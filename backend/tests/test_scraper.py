@@ -1,0 +1,40 @@
+from datetime import UTC, datetime, timedelta
+
+from semasa.scraper import annotate, dedupe_and_filter
+from semasa.sources import Item
+
+NOW = datetime(2026, 9, 23, 12, 0, tzinfo=UTC)
+
+
+def _item(url, hours_old=1, title="Tajuk yang cukup panjang", snippet=None):
+    return Item(title=title, url=url, source="S", lang="ms",
+                published_at=NOW - timedelta(hours=hours_old), snippet=snippet)
+
+
+def test_dedupe_and_age():
+    items = [_item("https://a/1"), _item("https://a/1"), _item("https://a/2", hours_old=90),
+             Item(title="tanpa tarikh", url="https://a/3", source="S", lang="ms")]
+    out = dedupe_and_filter(items, 48, now=NOW)
+    assert [i.url for i in out] == ["https://a/1", "https://a/3"]  # dup dropped, stale dropped, undated kept
+
+
+def test_annotate_rules_only_marks_source():
+    rows = annotate([_item("https://a/1", title="NPRA batal notifikasi produk kosmetik", snippet="Ringkasan feed.")], None, 10)
+    assert rows[0]["category"] == "kosmetik"
+    assert rows[0]["summary"] == "Ringkasan feed."
+    assert rows[0]["summary_source"] == "rules"
+    rows = annotate([_item("https://a/2", title="Tajuk tanpa ringkasan langsung")], None, 10)
+    assert rows[0]["summary"] is None and rows[0]["summary_source"] == "none"
+
+
+def test_annotate_llm_overrides_only_answered(monkeypatch):
+    class FakeLLM:
+        pass
+
+    def fake_annotate(llm, batch):
+        return {0: {"summary": "LLM kata.", "category": "halal", "lang": "en"}}
+
+    monkeypatch.setattr("semasa.scraper.categorize.llm_annotate", fake_annotate)
+    rows = annotate([_item("https://a/1", title="JAKIM x"), _item("https://a/2", title="Polis tahan y")], FakeLLM(), 10)
+    assert rows[0]["summary_source"] == "llm" and rows[0]["summary"] == "LLM kata." and rows[0]["lang"] == "en"
+    assert rows[1]["summary_source"] == "none" and rows[1]["category"] == "jenayah"

@@ -1,0 +1,62 @@
+/* ---------------------------------------------------------------------------
+   DESIGN TOKENS — the one place the look is decided.
+   Semantic names only. Components never see a hex code; they see `bg-surface`,
+   `text-accent`, `rounded-card`. A theme file (themes/*.css) overrides these
+   variables under [data-theme="…"], so a redesign is a new file, not a rebuild.
+   Colours are stored as "R G B" so Tailwind can add opacity (`bg-accent/10`).
+--------------------------------------------------------------------------- */
+:root {
+  /* palette — defaults are the FACERINNA look (my.facerinna.com) */
+  --c-bg:         251 253 255;   /* #FBFDFF */
+  --c-surface:    255 255 255;
+  --c-surface-2:  242 248 253;   /* #F2F8FD */
+  --c-line:       226 236 246;
+  --c-ink:         16  34  47;   /* #10222F */
+  --c-muted:      100 116 139;
+  --c-accent:      63 166 238;   /* #3FA6EE */
+  --c-accent-ink: 255 255 255;
+  --c-warm:       255 194 206;   /* #FFC2CE */
+  --c-gold:       201 162  75;   /* #C9A24B */
+  --c-ok:          22 163  74;
+  --c-warn:       217 119   6;
+  --c-danger:     220  38  38;
+
+  /* type */
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body:    "Inter", system-ui, sans-serif;
+
+  /* shape */
+  --r-card: 22px;
+  --r-tile: 14px;
+  --r-pill: 999px;
+
+  /* depth */
+  --shadow-card: 0 1px 2px rgb(16 34 47 / 0.04), 0 8px 24px -12px rgb(16 34 47 / 0.12);
+  --shadow-lift: 0 2px 6px rgb(16 34 47 / 0.06), 0 24px 48px -16px rgb(16 34 47 / 0.22);
+  --blur: 14px;
+
+  /* layout + motion */
+  --page-max: 1280px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --hero-gradient: radial-gradient(1200px 500px at 10% -10%, rgb(var(--c-accent) / 0.16), transparent 60%),
+                   radial-gradient(800px 400px at 90% 0%, rgb(var(--c-warm) / 0.35), transparent 60%);
+}
+
+/* category colours — one place, read by <CategoryBadge> */
+:root {
+  --cat-kosmetik: 236 72 153;
+  --cat-halal: 22 163 74;
+  --cat-makanan: 234 88 12;
+  --cat-farmaseutikal: 124 58 237;
+  --cat-kesihatan: 220 38 38;
+  --cat-ekonomi: 202 138 4;
+  --cat-politik: 37 99 235;
+  --cat-jenayah: 71 85 105;
+  --cat-sosial: 13 148 136;
+  --cat-teknologi: 79 70 229;
+  --cat-hiburan: 219 39 119;
+  --cat-sukan: 5 150 105;
+  --cat-pendidikan: 2 132 199;
+  --cat-alam_sekitar: 101 163 13;
+  --cat-lain: 100 116 139;
+}

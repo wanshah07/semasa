@@ -1,0 +1,24 @@
+/* One client for the whole page. The anon key is public by design; Row Level Security
+   (supabase/002_rls.sql) is what protects the data, not secrecy of this key. */
+import { createClient } from "@supabase/supabase-js";
+
+const url = import.meta.env.VITE_SUPABASE_URL;
+const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+export const configured = Boolean(url && anon);
+
+export const supabase = configured
+  ? createClient(url, anon, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      realtime: { params: { eventsPerSecond: 5 } },
+    })
+  : null;
+
+export const TABLES = { trends: "isu_semasa_trends", media: "media_generations", runs: "scrape_runs" };
+export const BUCKETS = { reference: "reference", generated: "generated" };
+
+/** Surface a PostgREST/Storage error as one readable line. */
+export function errText(error) {
+  if (!error) return "";
+  return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+}

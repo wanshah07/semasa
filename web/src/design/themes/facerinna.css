@@ -1,0 +1,6 @@
+/* FACERINNA — light, airy, sky-blue accent, serif display. The default: tokens.css already IS this theme.
+   Kept as a file so the theme list has an explicit entry and so a future edit lands here, not in tokens. */
+[data-theme="facerinna"] {
+  --hero-gradient: radial-gradient(1200px 500px at 10% -10%, rgb(var(--c-accent) / 0.16), transparent 60%),
+                   radial-gradient(800px 400px at 90% 0%, rgb(var(--c-warm) / 0.35), transparent 60%);
+}

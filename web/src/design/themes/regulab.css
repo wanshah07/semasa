@@ -1,0 +1,16 @@
+/* REGULAB — warm paper, ink headline, gold accent. A third look to prove the swap costs one file. */
+[data-theme="regulab"] {
+  --c-bg:         250 247 242;
+  --c-surface:    255 253 250;
+  --c-surface-2:  244 238 228;
+  --c-line:       230 221 206;
+  --c-ink:         28  25  23;
+  --c-muted:      120 113 108;
+  --c-accent:     176 121  42;
+  --c-accent-ink: 255 255 255;
+  --c-warm:       246 206 160;
+  --c-gold:       201 162  75;
+  --r-card: 12px;
+  --r-tile: 8px;
+  --hero-gradient: radial-gradient(1000px 420px at 0% -10%, rgb(var(--c-accent) / 0.14), transparent 60%);
+}

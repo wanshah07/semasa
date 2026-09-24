@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body { background: rgb(var(--c-bg)); color: rgb(var(--c-ink)); }
+  ::selection { background: rgb(var(--c-accent) / 0.25); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em; }
+}
+
+@layer components {
+  .glass {
+    background: rgb(var(--c-surface) / 0.72);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    border-bottom: 1px solid rgb(var(--c-line) / 0.8);
+  }
+  .hero-bg { background-image: var(--hero-gradient); }
+  .masonry { column-gap: 1.25rem; column-count: 1; }
+  @media (min-width: 640px)  { .masonry { column-count: 2; } }
+  @media (min-width: 1024px) { .masonry { column-count: 3; } }
+  @media (min-width: 1440px) { .masonry { column-count: 4; } }
+  .masonry > * { break-inside: avoid; margin-bottom: 1.25rem; display: block; }
+}

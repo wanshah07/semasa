@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:ht="https://trends.google.com/trending/rss" version="2.0">
+<channel><title>Daily Search Trends</title>
+<item>
+<title>perikatan nasional</title>
+<ht:approx_traffic>1000+</ht:approx_traffic>
+<description/>
+<link>https://trends.google.com/trending/rss?geo=MY</link>
+<pubDate>Wed, 23 Sep 2026 05:50:00 -0700</pubDate>
+<ht:news_item>
+<ht:news_item_title>PN sudah terima notis RoS?</ht:news_item_title>
+<ht:news_item_snippet/>
+<ht:news_item_url>https://malaysiagazette.com/2026/09/23/pn-sudah-terima-notis-ros/</ht:news_item_url>
+<ht:news_item_source>MalaysiaGazette</ht:news_item_source>
+</ht:news_item>
+<ht:news_item>
+<ht:news_item_title>Muhyiddin: Pas decided to end political cooperation with Bersatu</ht:news_item_title>
+<ht:news_item_snippet/>
+<ht:news_item_url>https://www.nst.com.my/news/nation/2026/09/1536315/muhyiddin-pas-decided-end-political-cooperation-bersatu</ht:news_item_url>
+<ht:news_item_source>NST Online</ht:news_item_source>
+</ht:news_item>
+</item>
+<item>
+<title>azhar sulaiman</title>
+<ht:approx_traffic>500+</ht:approx_traffic>
+<pubDate>Wed, 23 Sep 2026 03:40:00 -0700</pubDate>
+<ht:news_item>
+<ht:news_item_title>Azhar Sulaiman bangga pencapaian Leona</ht:news_item_title>
+<ht:news_item_url>https://www.hmetro.com.my/amp/rap/rapextra/2026/09/1414361/azhar-sulaiman-bangga-pencapaian-leona</ht:news_item_url>
+<ht:news_item_source>Harian Metro</ht:news_item_source>
+</ht:news_item>
+</item>
+</channel></rss>

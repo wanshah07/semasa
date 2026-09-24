@@ -1,0 +1,54 @@
+name: Generate media
+
+on:
+  repository_dispatch:
+    types: [media_pending]
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      only_id:
+        description: "Process one media_generations.id only"
+        type: string
+        default: ""
+
+concurrency:
+  group: media
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Generate
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MEDIA_PROVIDER: ${{ vars.MEDIA_PROVIDER }}
+          REPLICATE_IMAGE_MODEL: ${{ vars.REPLICATE_IMAGE_MODEL }}
+          REPLICATE_VIDEO_MODEL: ${{ vars.REPLICATE_VIDEO_MODEL }}
+          REPLICATE_IMAGE_INPUT_KEY: ${{ vars.REPLICATE_IMAGE_INPUT_KEY }}
+          REPLICATE_VIDEO_INPUT_KEY: ${{ vars.REPLICATE_VIDEO_INPUT_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_IMAGE_MODEL: ${{ vars.OPENAI_IMAGE_MODEL }}
+          OPENAI_VIDEO_MODEL: ${{ vars.OPENAI_VIDEO_MODEL }}
+          MEDIA_ONLY_ID: ${{ github.event.client_payload.id || inputs.only_id }}
+        run: python -m semasa.media_generator

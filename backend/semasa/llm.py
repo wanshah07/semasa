@@ -30,7 +30,10 @@ from .log import get_logger
 
 log = get_logger("semasa.llm")
 
-_FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.S)
+_FENCE = re.compile(r"^\s*```(?:json|python)?\s*|\s*```\s*$", re.S)
+_THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
+_PY_LITERALS = {"True": "true", "False": "false", "None": "null"}
+_PY_LITERAL_AT = re.compile(r"(True|False|None)(?![A-Za-z0-9_])")
 
 
 class LLM:
@@ -63,10 +66,16 @@ class LLM:
             self.calls += 1
             try:
                 text = self._call(system, user, max_tokens)
-                data = _parse_json(text)
+                try:
+                    data = _parse_json(text)
+                except ValueError as exc:
+                    # say WHAT came back, or a parse failure is undiagnosable from the log
+                    log.warning("LLM answer not parsable (%s); it starts: %r", exc, (text or "")[:200])
+                    data = None
                 if isinstance(data, dict):
                     return data
-                log.warning("LLM answered non-object JSON (%s)", type(data).__name__)
+                if data is not None:
+                    log.warning("LLM answered non-object JSON (%s): %r", type(data).__name__, (text or "")[:200])
             except requests.Timeout:
                 log.warning("LLM timeout after %ss (attempt %d)", self.s.timeout, attempt + 1)
             except requests.HTTPError as exc:
@@ -140,15 +149,61 @@ class LLM:
         return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
 
 
+def _pythonish_to_json(s: str) -> str:
+    """Rewrite a Python-literal answer as JSON: True/False/None outside strings become
+    true/false/null, and single-quoted strings become double-quoted. Some gateways'
+    models answer `{"ok": True}` or `{'ok': True}` even when asked for JSON (run
+    36026074962: "Expecting value: line 1 column 7 (char 6)" on all three probes).
+    Text inside strings is never touched, so a summary saying "True" survives."""
+    out: list[str] = []
+    i, n, quote_char = 0, len(s), ""
+    while i < n:
+        c = s[i]
+        if quote_char:
+            if c == "\\" and i + 1 < n:
+                nxt = s[i + 1]
+                out.append("'" if (quote_char == "'" and nxt == "'") else c + nxt)
+                i += 2
+                continue
+            if c == quote_char:
+                out.append('"')
+                quote_char = ""
+            elif c == '"':            # a bare " inside a single-quoted string
+                out.append('\\"')
+            else:
+                out.append(c)
+            i += 1
+            continue
+        if c in "\"'":
+            quote_char = c
+            out.append('"')
+            i += 1
+            continue
+        m = _PY_LITERAL_AT.match(s, i)
+        if m and (i == 0 or not (s[i - 1].isalnum() or s[i - 1] == "_")):
+            out.append(_PY_LITERALS[m.group(1)])
+            i = m.end()
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def _parse_json(text: str) -> Any:
-    """Tolerates code fences and prose around the object; raises ValueError otherwise."""
-    if not text:
+    """Tolerates code fences, <think> blocks, prose around the object and Python-style
+    literals; raises ValueError otherwise."""
+    if not text or not text.strip():
         raise ValueError("empty answer")
-    cleaned = _FENCE.sub("", text.strip())
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        start, end = cleaned.find("{"), cleaned.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise ValueError(f"no JSON object in answer: {cleaned[:120]!r}") from None
-        return json.loads(cleaned[start : end + 1])
+    cleaned = _FENCE.sub("", _THINK.sub("", text).strip())
+    candidates = [cleaned]
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start != -1 and end > start:
+        candidates.append(cleaned[start : end + 1])
+    last: Exception | None = None
+    for candidate in candidates:
+        for attempt in (candidate, _pythonish_to_json(candidate)):
+            try:
+                return json.loads(attempt)
+            except json.JSONDecodeError as exc:
+                last = exc
+    raise ValueError(f"not a JSON object ({last})")

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable, Iterator
 from typing import Any
+from urllib.parse import quote
 
 from supabase import Client, create_client
 
@@ -29,13 +31,48 @@ def sha256_bytes(data: bytes) -> str:
 
 # --- trends ------------------------------------------------------------------
 
+# An `in.(…)` filter travels in the request URL. 100 Google News links came to about
+# 45,000 characters and the gateway answered 400 (scrape run 36026074962), so batches
+# are sized by what is actually sent, not by count.
+IN_FILTER_BUDGET = 6000
+
+
+def _in_filter_chunks(values: Iterable[str], budget: int = IN_FILTER_BUDGET) -> Iterator[list[str]]:
+    """Split values so each `in.(…)` stays under `budget` URL-encoded characters.
+    Mirrors the client's own quoting (values holding , : ( ) are wrapped in quotes).
+    A single value longer than the budget travels alone rather than being dropped."""
+    chunk: list[str] = []
+    size = 0
+    for value in values:
+        token = f'"{value}"' if any(c in value for c in ",:()") else value
+        cost = len(quote(token, safe="")) + 3  # + the encoded comma between values
+        if chunk and size + cost > budget:
+            yield chunk
+            chunk, size = [], 0
+        chunk.append(value)
+        size += cost
+    if chunk:
+        yield chunk
+
+
 def existing_urls(db: Client, urls: list[str]) -> set[str]:
-    """Which of these URLs are already stored. Chunked: PostgREST `in` filters have a URL-length limit."""
+    """Which of these URLs are already stored.
+
+    This lookup only saves LLM calls on headlines we already have. If a batch fails,
+    those URLs are treated as new: the upsert (`ignore_duplicates`) still refuses to
+    store them twice, so the cost of a failure is a few extra summaries, never a crash.
+    """
     found: set[str] = set()
-    for i in range(0, len(urls), 100):
-        chunk = urls[i : i + 100]
-        res = db.table(TRENDS).select("url").in_("url", chunk).execute()
-        found.update(row["url"] for row in (res.data or []))
+    failed = 0
+    for chunk in _in_filter_chunks(urls):
+        try:
+            res = db.table(TRENDS).select("url").in_("url", chunk).execute()
+            found.update(row["url"] for row in (res.data or []))
+        except Exception as exc:  # noqa: BLE001 - see docstring
+            failed += 1
+            log.warning("existing_urls: batch of %d failed (%s); treating them as new", len(chunk), str(exc)[:200])
+    if failed:
+        log.warning("existing_urls: %d batch(es) failed; duplicates are still refused by the upsert", failed)
     return found
 
 

@@ -44,3 +44,25 @@ def test_retention_cutoff():
     assert retention_cutoff(NOW, 30) == (NOW - timedelta(days=30)).isoformat()
     assert retention_cutoff(NOW, 0) is None
     assert retention_cutoff(NOW, -1) is None
+
+
+def test_crash_still_closes_the_run_row(monkeypatch):
+    import pytest
+
+    from semasa import scraper
+
+    closed = {}
+    monkeypatch.setenv("SUPABASE_URL", "https://x.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "k")
+    monkeypatch.setattr(scraper.db, "client", lambda s: object())
+    monkeypatch.setattr(scraper.db, "start_run", lambda store, sha: "run-1")
+    monkeypatch.setattr(scraper.db, "finish_run", lambda store, rid, **f: closed.update(rid=rid, **f))
+
+    def boom(*a, **k):
+        raise RuntimeError("400 Bad Request")
+
+    monkeypatch.setattr(scraper, "_run", boom)
+    with pytest.raises(RuntimeError):
+        scraper.main()
+    assert closed["rid"] == "run-1"
+    assert closed["note"] == "crashed: RuntimeError: 400 Bad Request"

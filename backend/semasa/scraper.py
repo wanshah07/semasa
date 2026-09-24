@@ -127,7 +127,18 @@ def main() -> int:
     store = db.client(SupabaseSettings.load())
     git_sha = os.environ.get("GITHUB_SHA")
     run_id = db.start_run(store, git_sha)
+    try:
+        return _run(store, run_id, settings, llm_settings)
+    except Exception as exc:
+        # Run 36026074962 died here and left its scrape_runs row open with no reason on it.
+        note = f"crashed: {type(exc).__name__}: {str(exc)[:400]}"
+        log.error(note)
+        db.finish_run(store, run_id, note=note)
+        print(f"::error::{note}")
+        raise
 
+
+def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings: LLMSettings) -> int:
     llm = LLM(llm_settings)
     llm_ok = llm.probe() if llm.configured else False
     if llm.configured and not llm_ok:

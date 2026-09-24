@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Film, Image as ImageIcon, UploadCloud } from "lucide-react";
 import { BUCKETS, TABLES, errText, supabase } from "../lib/SupabaseClient";
@@ -6,7 +6,9 @@ import { bytesText } from "../lib/format";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 
-const ACCEPT = ["image/png", "image/jpeg", "image/webp", "image/gif", "text/plain", "text/markdown", "application/pdf"];
+// Images only: both generation routes (Replicate, OpenAI) work FROM a picture, and a PDF or
+// text file used to be accepted here and then fail at the provider. Words go in the prompt.
+const ACCEPT = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const MAX_BYTES = 50 * 1024 * 1024;
 const PROVIDERS = [
   { id: "", label: "Lalai (tetapan runner)" },
@@ -30,6 +32,9 @@ export default function MediaUploader({ user, onToast, onQueued }) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const inputRef = useRef(null);
+  // one object URL per chosen file, released when the file changes (was: a new URL every render)
+  const preview = useMemo(() => (file ? URL.createObjectURL(file) : ""), [file]);
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
   const take = useCallback((f) => {
     if (!f) return;
@@ -107,14 +112,12 @@ export default function MediaUploader({ user, onToast, onQueued }) {
           <>
             <span className="text-sm font-medium">{file.name}</span>
             <span className="text-xs text-muted">{bytesText(file.size)} · {file.type}</span>
-            {file.type.startsWith("image/") && (
-              <img src={URL.createObjectURL(file)} alt="" className="mt-2 max-h-48 rounded-tile object-contain" />
-            )}
+            {preview && <img src={preview} alt="" className="mt-2 max-h-48 rounded-tile object-contain" />}
           </>
         ) : (
           <>
             <span className="text-sm font-medium">Seret fail ke sini, atau klik</span>
-            <span className="text-xs text-muted">PNG · JPG · WEBP · GIF · PDF · TXT · sehingga {bytesText(MAX_BYTES)}</span>
+            <span className="text-xs text-muted">PNG · JPG · WEBP · GIF · sehingga {bytesText(MAX_BYTES)} · teks tulis dalam prompt</span>
           </>
         )}
       </motion.label>

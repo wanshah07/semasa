@@ -108,6 +108,22 @@ answers nothing shows ❌ with the reason, and the run row (`scrape_runs`) carri
 the site's hero reads. **Exit 2** means the LLM key is set but not answering — rows were still written,
 rules-only, and the run is red on purpose so it cannot go unnoticed.
 
+## Custom domain
+
+The site is built with relative asset paths, so the same build serves at
+`https://<owner>.github.io/<repo>/` and at a domain of its own. For
+`socialmedia.kkmhalalconsultant.com` (DNS on Cloudflare):
+
+1. Cloudflare → DNS → **Add record**: type `CNAME`, name `socialmedia`, target `wanshah07.github.io`,
+   proxy status **DNS only** (grey cloud). An orange-cloud proxy stops GitHub issuing the certificate.
+2. Repo → Settings → Pages → **Custom domain**: `socialmedia.kkmhalalconsultant.com` → Save. Wait for the
+   DNS check to pass, then tick **Enforce HTTPS** once it is offered (the certificate can take up to an hour).
+3. Supabase → Authentication → URL Configuration → add `https://socialmedia.kkmhalalconsultant.com/**`
+   to Redirect URLs, or magic-link sign-in lands on an error page.
+
+The old `github.io/semasa` address then redirects to the new one. Email on the domain is unaffected:
+only the `socialmedia` name is added.
+
 ## Behaviour worth knowing
 
 - **A row says which brain summarised it.** `summary_source` is `llm`, `rules` or `none`. A dead LLM

@@ -35,12 +35,28 @@ def make_provider(name: str, s: MediaSettings) -> Provider:
     raise ProviderError(f"unknown provider {name!r}")
 
 
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+
+
+def reference_is_image(row: dict[str, Any]) -> bool:
+    """Both providers generate FROM a picture. A PDF or text reference used to reach
+    the provider and fail there (after the job was claimed, sometimes after credits
+    were spent), so it is refused here with a message the page can show."""
+    mime = str(((row.get("meta") or {}).get("mime")) or "").lower()
+    if mime:
+        return mime.startswith("image/")
+    path = str(row.get("reference_url") or "").split("?")[0].lower()
+    return path.endswith(IMAGE_EXTENSIONS)
+
+
 def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: dict[str, Provider]) -> bool:
     row_id = row["id"]
     kind = row.get("type") or "image"
     name = (row.get("provider") or s.provider).lower()
     options = dict((row.get("meta") or {}).get("options") or {})
     try:
+        if not reference_is_image(row):
+            raise ProviderError("reference must be an image (PNG, JPG, WEBP or GIF); put text in the prompt instead")
         if name not in providers:
             providers[name] = make_provider(name, s)
         provider = providers[name]

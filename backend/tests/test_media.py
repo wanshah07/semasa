@@ -52,7 +52,8 @@ def test_done_row_carries_url_sha_and_model(monkeypatch):
 def test_transient_failure_goes_back_to_pending_until_max(monkeypatch):
     writes, _ = _patch_db(monkeypatch)
     prov = FakeProvider(exc=TimeoutError("slow"))
-    row = {"id": "r2", "type": "video", "reference_url": "u", "prompt": "p", "attempts": 1, "provider": "replicate"}
+    row = {"id": "r2", "type": "video", "reference_url": "https://ref/x.png", "prompt": "p", "attempts": 1,
+           "provider": "replicate"}
     media_generator.process_row(None, row, _settings(max_attempts=3), {"replicate": prov})
     assert writes["r2"]["status"] == "pending" and "TimeoutError" in writes["r2"]["error"]
     writes.clear()
@@ -64,13 +65,32 @@ def test_transient_failure_goes_back_to_pending_until_max(monkeypatch):
 def test_provider_refusal_is_final(monkeypatch):
     writes, _ = _patch_db(monkeypatch)
     prov = FakeProvider(exc=ProviderError("rejected"))
-    row = {"id": "r3", "type": "image", "reference_url": "u", "prompt": "p", "attempts": 1}
+    row = {"id": "r3", "type": "image", "reference_url": "https://ref/x.png", "prompt": "p", "attempts": 1}
     media_generator.process_row(None, row, _settings(), {"replicate": prov})
     assert writes["r3"]["status"] == "error"
 
 
 def test_unknown_provider_is_recorded_not_raised(monkeypatch):
     writes, _ = _patch_db(monkeypatch)
-    row = {"id": "r4", "type": "image", "reference_url": "u", "prompt": "p", "attempts": 1, "provider": "nope"}
+    row = {"id": "r4", "type": "image", "reference_url": "https://ref/x.png", "prompt": "p", "attempts": 1, "provider": "nope"}
     assert media_generator.process_row(None, row, _settings(), {}) is False
     assert writes["r4"]["status"] == "error" and "unknown provider" in writes["r4"]["error"]
+
+
+def test_non_image_reference_is_refused_before_any_provider_call(monkeypatch):
+    writes, _ = _patch_db(monkeypatch)
+    prov = FakeProvider(Generated(b"x", "image/png", "a/b"))
+    for rid, row in {
+        "pdf": {"reference_url": "https://s/ref/x.pdf", "meta": {"mime": "application/pdf"}},
+        "txt": {"reference_url": "https://s/ref/notes.txt"},
+    }.items():
+        row.update(id=rid, type="image", prompt="p", attempts=1)
+        assert media_generator.process_row(None, row, _settings(), {"replicate": prov}) is False
+        assert writes[rid]["status"] == "error" and "must be an image" in writes[rid]["error"]
+    assert prov.calls == []                                # no credits spent on a doomed job
+
+
+def test_image_reference_detection():
+    assert media_generator.reference_is_image({"meta": {"mime": "image/webp"}, "reference_url": "u"})
+    assert media_generator.reference_is_image({"reference_url": "https://s/r/a.JPG?token=1"})
+    assert not media_generator.reference_is_image({"reference_url": "https://s/r/a.pdf"})

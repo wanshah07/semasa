@@ -40,7 +40,10 @@ export function useTrends({ limit = 240, everyMs = 600_000 } = {}) {
       const [t, r] = await Promise.all([
         supabase.from(TABLES.trends).select("id,title,source,url,summary,category,lang,summary_source,published_at,created_at,tags")
           .order("created_at", { ascending: false }).limit(limit),
-        supabase.from(TABLES.runs).select("started_at,finished_at,seen,inserted,llm_ok,llm_model,sources")
+        // last FINISHED run: an in-progress run (or one that crashed before closing) has
+        // seen/inserted 0 and would make the hero read "0 baharu" for minutes at a time
+        supabase.from(TABLES.runs).select("started_at,finished_at,seen,inserted,llm_ok,llm_model,sources,note")
+          .not("finished_at", "is", null)
           .order("started_at", { ascending: false }).limit(1),
       ]);
       if (t.error) setError(errText(t.error)); else { setRows(t.data ?? []); setError(""); }

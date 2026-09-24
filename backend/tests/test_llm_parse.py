@@ -60,3 +60,11 @@ def test_unparsable_answer_is_logged_with_its_opening(monkeypatch, caplog):
     with caplog.at_level("WARNING", logger="semasa.llm"):
         assert llm.chat_json("s", "u", retries=0) is None
     assert any("it starts: 'Sorry, I cannot do that." in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.parametrize("answer,expected", [
+    ('{"ok":<<true>>}', {"ok": True}),                     # rootsys, scrape run 36027449389, first probe answer
+    ('{"items": [{"i": <<0>>, "summary": "<<kept>> as text"}]}', {"items": [{"i": 0, "summary": "<<kept>> as text"}]}),
+])
+def test_gateway_markers_are_unwrapped_outside_strings_only(answer, expected):
+    assert _parse_json(answer) == expected

@@ -154,7 +154,8 @@ def _pythonish_to_json(s: str) -> str:
     true/false/null, and single-quoted strings become double-quoted. Some gateways'
     models answer `{"ok": True}` or `{'ok': True}` even when asked for JSON (run
     36026074962: "Expecting value: line 1 column 7 (char 6)" on all three probes).
-    Text inside strings is never touched, so a summary saying "True" survives."""
+    Text inside strings is never touched, so a summary saying "True" survives.
+    Also unwraps a gateway's <<value>> template markers found outside strings."""
     out: list[str] = []
     i, n, quote_char = 0, len(s), ""
     while i < n:
@@ -179,6 +180,14 @@ def _pythonish_to_json(s: str) -> str:
             out.append('"')
             i += 1
             continue
+        if s.startswith("<<", i):
+            # rootsys gateway, scrape run 36027449389: the first probe answer was
+            # {"ok":<<true>>}. Unwrap <<value>> outside strings; inside a string it is text.
+            close = s.find(">>", i + 2)
+            if close != -1:
+                out.append(_pythonish_to_json(s[i + 2 : close]))
+                i = close + 2
+                continue
         m = _PY_LITERAL_AT.match(s, i)
         if m and (i == 0 or not (s[i - 1].isalnum() or s[i - 1] == "_")):
             out.append(_PY_LITERALS[m.group(1)])

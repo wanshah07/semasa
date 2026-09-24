@@ -1,7 +1,7 @@
 """Media generator. Entry point: `python -m semasa.media_generator` (see .github/workflows/media.yml).
 
 Takes `pending` rows from media_generations, runs the provider the row names (or the
-default), stores the result in bucket `generated`, and writes the public address back.
+default), stores the result in bucket `semasa-generated`, and writes the public address back.
 A failure is stored ON THE ROW (`error`), and the row goes back to `pending` until
 `attempts` reaches MEDIA_MAX_ATTEMPTS — after that it is `error` and the page offers a
 requeue. Nothing here ever deletes a row or a file.

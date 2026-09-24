@@ -15,7 +15,9 @@ export const supabase = configured
   : null;
 
 export const TABLES = { trends: "isu_semasa_trends", media: "media_generations", runs: "scrape_runs" };
-export const BUCKETS = { reference: "reference", generated: "generated" };
+export const TABLES_UPLOADERS = "semasa_uploaders";
+// Namespaced so Semasa can share a Supabase project with another app (supabase/003_storage.sql).
+export const BUCKETS = { reference: "semasa-reference", generated: "semasa-generated" };
 
 /** Surface a PostgREST/Storage error as one readable line. */
 export function errText(error) {

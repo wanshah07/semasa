@@ -89,6 +89,7 @@ class ScraperSettings:
     llm_batch: int
     use_playwright: bool
     request_timeout: int
+    keep_days: int          # headlines and run rows older than this are deleted (0 = keep for ever)
 
     @classmethod
     def load(cls) -> ScraperSettings:
@@ -98,6 +99,9 @@ class ScraperSettings:
             llm_batch=env_int("SCRAPE_LLM_BATCH", 12),
             use_playwright=(env("SCRAPE_USE_PLAYWRIGHT", "1") or "1") not in ("0", "false", "no"),
             request_timeout=env_int("SCRAPE_REQUEST_TIMEOUT", 25),
+            # 30 days holds roughly 60 MB. The Supabase project may be shared with
+            # another app, and the free plan's 500 MB database is shared with it.
+            keep_days=env_int("SCRAPE_KEEP_DAYS", 30),
         )
 
 

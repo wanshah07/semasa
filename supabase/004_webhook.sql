@@ -8,18 +8,18 @@
 -- browser. Create it once (fine-grained PAT, this repo only, "Contents: read and
 -- write" is the scope repository_dispatch needs):
 --
---   select vault.create_secret('github_pat_xxx', 'github_dispatch_token',
+--   select vault.create_secret('github_pat_xxx', 'semasa_github_dispatch_token',
 --                              'PAT that may fire repository_dispatch on the semasa repo');
 --
 -- Then set the repo the dispatch goes to:
 --
---   select vault.create_secret('wanshah07/semasa', 'github_dispatch_repo', 'owner/repo');
+--   select vault.create_secret('wanshah07/semasa', 'semasa_github_dispatch_repo', 'owner/repo');
 --
 -- Requires the pg_net extension (Database → Extensions → pg_net).
 
 create extension if not exists pg_net;
 
-create or replace function public.notify_media_pending() returns trigger
+create or replace function public.semasa_notify_media_pending() returns trigger
 language plpgsql security definer set search_path = public, vault, net as $$
 declare
   v_token text;
@@ -28,10 +28,10 @@ begin
   if new.status <> 'pending' then
     return new;
   end if;
-  select decrypted_secret into v_token from vault.decrypted_secrets where name = 'github_dispatch_token';
-  select decrypted_secret into v_repo  from vault.decrypted_secrets where name = 'github_dispatch_repo';
+  select decrypted_secret into v_token from vault.decrypted_secrets where name = 'semasa_github_dispatch_token';
+  select decrypted_secret into v_repo  from vault.decrypted_secrets where name = 'semasa_github_dispatch_repo';
   if v_token is null or v_repo is null then
-    raise warning 'semasa: github_dispatch_token / github_dispatch_repo missing from vault; relying on the 15-minute poll';
+    raise warning 'semasa: semasa_github_dispatch_token / semasa_github_dispatch_repo missing from vault; relying on the 15-minute poll';
     return new;
   end if;
   perform net.http_post(
@@ -55,4 +55,4 @@ create trigger media_generations_notify_pending
   after insert or update of status on public.media_generations
   for each row
   when (new.status = 'pending')
-  execute function public.notify_media_pending();
+  execute function public.semasa_notify_media_pending();

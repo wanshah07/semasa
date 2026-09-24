@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from semasa.scraper import annotate, dedupe_and_filter
+from semasa.scraper import annotate, dedupe_and_filter, retention_cutoff
 from semasa.sources import Item
 
 NOW = datetime(2026, 9, 23, 12, 0, tzinfo=UTC)
@@ -38,3 +38,9 @@ def test_annotate_llm_overrides_only_answered(monkeypatch):
     rows = annotate([_item("https://a/1", title="JAKIM x"), _item("https://a/2", title="Polis tahan y")], FakeLLM(), 10)
     assert rows[0]["summary_source"] == "llm" and rows[0]["summary"] == "LLM kata." and rows[0]["lang"] == "en"
     assert rows[1]["summary_source"] == "none" and rows[1]["category"] == "jenayah"
+
+
+def test_retention_cutoff():
+    assert retention_cutoff(NOW, 30) == (NOW - timedelta(days=30)).isoformat()
+    assert retention_cutoff(NOW, 0) is None
+    assert retention_cutoff(NOW, -1) is None

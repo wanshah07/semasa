@@ -16,13 +16,13 @@ and Google Trends MY — and adds a reference-in, media-out generation queue.
                                                                               ▼
   ┌──────────────┐  upload      ┌────────────────────┐  insert     ┌──────────────────────┐
   │  Wan (UI on  │ ───────────▶ │ Supabase Storage   │ ──────────▶ │ media_generations    │
-  │  GH Pages)   │              │ bucket `reference` │  pending    │ (pg_net trigger ───────┐
+  │  GH Pages)   │              │ `semasa-reference` │  pending    │ (pg_net trigger ───────┐
   └──────────────┘              └────────────────────┘             └──────────────────────┘│
         ▲                                                                                  │
         │ realtime status                 ┌────────────────────┐  repository_dispatch      │
         └──────────────────────────────── │ media_generator.py │ ◀─────────────────────────┘
                                           │ Replicate / OpenAI │  (+ 15-min poll)
-                                          │ → bucket `generated`│
+                                          │ → `semasa-generated`│
                                           └────────────────────┘
 ```
 
@@ -36,18 +36,44 @@ and Google Trends MY — and adds a reference-in, media-out generation queue.
 
 ## Deploy, in order
 
-### 1 · Supabase
-1. New project → SQL editor → run `supabase/001_schema.sql`, `002_rls.sql`, `003_storage.sql` in that order.
-2. Authentication → Providers → Email: enable, keep *Confirm email* on. Authentication → Users → add your
-   own email (or leave sign-ups on if you want others to upload). Authentication → URL configuration →
-   add the Pages URL (`https://<owner>.github.io/<repo>/`) to *Redirect URLs*.
-3. Database → Extensions → enable `pg_net`. Then in the SQL editor:
+### 1 · Supabase (a new project, or one you already have)
+
+Semasa is built to **share** a Supabase project with another app: every table, function, bucket,
+policy and Vault secret it creates is named for Semasa (`isu_semasa_trends`, `media_generations`,
+`scrape_runs`, `semasa_*`, `semasa-*`), so running its SQL cannot replace or open up anything that
+belongs to the other app. This was tested by running the files on top of a stand-in app that already
+had a `set_updated_at()` function, a private `reference` bucket and its own storage policy — all three
+came through untouched.
+
+**Before sharing a project, check one thing about the other app:** Semasa's site publishes that
+project's anon key. Open **Advisors → Security Advisor** and confirm there is no *RLS disabled in
+public* finding. If there is, anyone holding the anon key can read or write that table, and the fix
+belongs to the other app before its key goes on a public page.
+
+1. SQL editor → run `supabase/001_schema.sql`, `002_rls.sql`, `003_storage.sql` in that order. Re-running
+   is safe. NOTICE lines about things that "do not exist, skipping" are normal.
+2. Authentication → URL Configuration → **add** `https://<owner>.github.io/<repo>/**` to *Redirect URLs*.
+   In a shared project, leave *Site URL* and the sign-up setting alone — they belong to the other app.
+3. Sign in once on the Semasa site (Makmal media tab), then allow yourself to upload. Being signed in is
+   not enough on its own, because the other app's users can sign in too:
    ```sql
-   select vault.create_secret('<fine-grained PAT, this repo, Contents: read+write>', 'github_dispatch_token', 'repository_dispatch');
-   select vault.create_secret('<owner>/<repo>', 'github_dispatch_repo', 'owner/repo');
+   insert into public.semasa_uploaders (user_id, note)
+   select id, email from auth.users where email = 'you@example.com';
    ```
-   and run `supabase/004_webhook.sql`. Without this step the media runner still works — on the 15-minute poll.
-4. Project settings → API: copy the **URL**, the **anon** key and the **service_role** key.
+4. Optional, for a job to start within seconds instead of on the 15-minute poll: create a fine-grained
+   PAT (this repo only, **Contents: read and write**), then
+   ```sql
+   select vault.create_secret('<the PAT>', 'semasa_github_dispatch_token', 'repository_dispatch for semasa');
+   select vault.create_secret('<owner>/<repo>', 'semasa_github_dispatch_repo', 'owner/repo');
+   ```
+   and run `supabase/004_webhook.sql`.
+5. Project Settings → API Keys: copy the **Project URL**, the **anon** (or publishable) key and the
+   **service_role** (or secret) key.
+
+**Space.** The free plan's 500 MB database and 1 GB storage are shared with the other app. The scraper
+deletes headlines and run rows older than `SCRAPE_KEEP_DAYS` (default 30, roughly 60 MB), and the site
+polls only while its tab is visible. Generated videos are the thing that fills storage; delete old jobs
+from the gallery when space runs low.
 
 ### 2 · GitHub
 Settings → Secrets and variables → Actions.
@@ -56,7 +82,7 @@ Settings → Secrets and variables → Actions.
 |---|---|
 | `SUPABASE_URL` | both runners |
 | `SUPABASE_SERVICE_ROLE_KEY` | both runners (bypasses RLS; never in the browser) |
-| `LLM_API_KEY` | scraper summariser — OpenAI, Anthropic, Mireld, any OpenAI-compatible key |
+| `LLM_API_KEY` | scraper summariser — an Anthropic or OpenAI key |
 | `REPLICATE_API_TOKEN` | media, when `MEDIA_PROVIDER=replicate` (default) |
 | `OPENAI_API_KEY` | media, when `MEDIA_PROVIDER=openai` |
 
@@ -64,7 +90,8 @@ Settings → Secrets and variables → Actions.
 |---|---|---|
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | — | **required** for the site build; the anon key is public by design |
 | `LLM_PROVIDER` | `openai` | `openai` = any OpenAI-compatible endpoint; `anthropic` = native Messages API |
-| `LLM_BASE_URL` | `https://api.openai.com/v1` | e.g. `https://api.mireld.my/v1` for a Mireld key — **a Mireld key with the default base fails as a 401 that looks like a typo** |
+| `LLM_BASE_URL` | `https://api.openai.com/v1` | only for another OpenAI-compatible gateway. **Not Mireld:** `api.mireld.my` completes TLS and then never answers GitHub runners (measured on two runs, 19 Sep 2026), so the scraper would wait out every timeout and write rules-only rows |
+| `SCRAPE_KEEP_DAYS` | `30` | headlines and run rows older than this are deleted; `0` keeps everything |
 | `LLM_MODEL` | `gpt-4o-mini` / `claude-haiku-4-5-20251001` | |
 | `MEDIA_PROVIDER` | `replicate` | or `openai` |
 | `REPLICATE_IMAGE_MODEL` | `black-forest-labs/flux-kontext-pro` | image → image; input field `input_image` |

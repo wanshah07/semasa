@@ -114,6 +114,13 @@ def annotate(items: list[Item], llm: LLM | None, batch_size: int) -> list[dict[s
     return rows
 
 
+def retention_cutoff(now: datetime, keep_days: int) -> str | None:
+    """ISO timestamp before which rows are deleted, or None when retention is off."""
+    if keep_days <= 0:
+        return None
+    return (now - timedelta(days=keep_days)).isoformat()
+
+
 def main() -> int:
     settings = ScraperSettings.load()
     llm_settings = LLMSettings.load()
@@ -139,6 +146,10 @@ def main() -> int:
     inserted = db.upsert_trends(store, rows)
     by_source = sum(1 for r in rows if r["summary_source"] == "llm")
     log.info("inserted %d rows (%d LLM-summarised, %d rules/none)", inserted, by_source, len(rows) - by_source)
+
+    cutoff = retention_cutoff(datetime.now(UTC), settings.keep_days)
+    if cutoff:
+        db.prune_older_than(store, cutoff)
 
     db.finish_run(store, run_id, sources=report, seen=len(items), inserted=inserted, llm_ok=llm_ok,
                   llm_model=f"{llm_settings.provider}:{llm_settings.model}" if llm.configured else None,

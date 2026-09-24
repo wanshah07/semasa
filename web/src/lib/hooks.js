@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BUCKETS, TABLES, errText, supabase } from "./SupabaseClient";
+import { BUCKETS, TABLES, TABLES_UPLOADERS, errText, supabase } from "./SupabaseClient";
 
 /** Auth session, kept live. */
 export function useSession() {
@@ -14,8 +14,21 @@ export function useSession() {
   return { session, user: session?.user ?? null, ready };
 }
 
+/** Is the signed-in user on public.semasa_uploaders? null while unknown. */
+export function useCanUpload(user) {
+  const [can, setCan] = useState(null);
+  useEffect(() => {
+    if (!supabase || !user) { setCan(null); return; }
+    let live = true;
+    supabase.from(TABLES_UPLOADERS).select("user_id").eq("user_id", user.id).maybeSingle()
+      .then(({ data, error }) => { if (live) setCan(!error && Boolean(data)); });
+    return () => { live = false; };
+  }, [user]);
+  return can;
+}
+
 /** Latest headlines plus the last scrape run, refreshed every `everyMs`. */
-export function useTrends({ limit = 240, everyMs = 180_000 } = {}) {
+export function useTrends({ limit = 240, everyMs = 600_000 } = {}) {
   const [rows, setRows] = useState([]);
   const [lastRun, setLastRun] = useState(null);
   const [error, setError] = useState("");
@@ -41,8 +54,12 @@ export function useTrends({ limit = 240, everyMs = 180_000 } = {}) {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, everyMs);
-    return () => clearInterval(id);
+    // Shared project: its free-plan egress is shared with the other app, so poll
+    // only while the tab is visible, and catch up the moment it comes back.
+    const tick = () => { if (!document.hidden) load(); };
+    const id = setInterval(tick, everyMs);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
   }, [load, everyMs]);
 
   return { rows, lastRun, error, loading, reload: load };

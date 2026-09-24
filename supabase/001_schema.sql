@@ -1,5 +1,9 @@
 -- Semasa · Module A · schema
 -- Run in the Supabase SQL editor (or `supabase db push`). Idempotent.
+--
+-- SAFE IN A SHARED PROJECT: every object this file creates is named for Semasa
+-- (isu_semasa_trends, media_generations, scrape_runs, semasa_*), so it can live
+-- beside another app's tables and functions without replacing any of them.
 
 create extension if not exists pgcrypto;
 
@@ -80,8 +84,24 @@ create table if not exists public.scrape_runs (
   note         text
 );
 
+-- Who may upload. The project may be shared with another app whose users can
+-- sign in too; only the user ids listed here can queue a (paid) generation job
+-- or add a headline. Add yourself once, after your first sign-in:
+--   insert into public.semasa_uploaders (user_id, note)
+--   select id, email from auth.users where email = 'you@example.com';
+create table if not exists public.semasa_uploaders (
+  user_id  uuid primary key references auth.users (id) on delete cascade,
+  note     text,
+  added_at timestamptz not null default now()
+);
+
+create or replace function public.semasa_is_uploader() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.semasa_uploaders where user_id = auth.uid())
+$$;
+
 -- updated_at maintenance
-create or replace function public.set_updated_at() returns trigger
+create or replace function public.semasa_set_updated_at() returns trigger
 language plpgsql as $$
 begin
   new.updated_at = now();
@@ -91,7 +111,7 @@ end $$;
 drop trigger if exists media_generations_set_updated_at on public.media_generations;
 create trigger media_generations_set_updated_at
   before update on public.media_generations
-  for each row execute function public.set_updated_at();
+  for each row execute function public.semasa_set_updated_at();
 
 -- Realtime for the gallery (status flips pending → done live in the page)
 do $$

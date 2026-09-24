@@ -15,6 +15,7 @@ log = get_logger("semasa.db")
 TRENDS = "isu_semasa_trends"
 MEDIA = "media_generations"
 RUNS = "scrape_runs"
+GENERATED_BUCKET = "semasa-generated"
 
 
 def client(settings: SupabaseSettings | None = None) -> Client:
@@ -49,6 +50,16 @@ def upsert_trends(db: Client, rows: list[dict[str, Any]]) -> int:
         res = db.table(TRENDS).upsert(chunk, on_conflict="url", ignore_duplicates=True).execute()
         written += len(res.data or [])
     return written
+
+
+def prune_older_than(db: Client, cutoff_iso: str) -> None:
+    """Delete headlines and run rows created before `cutoff_iso`. Never touches media."""
+    for table in (TRENDS, RUNS):
+        column = "created_at" if table == TRENDS else "started_at"
+        try:
+            db.table(table).delete().lt(column, cutoff_iso).execute()
+        except Exception as exc:  # retention must never fail the scrape
+            log.warning("could not prune %s: %s", table, exc)
 
 
 def start_run(db: Client, git_sha: str | None) -> str | None:
@@ -100,7 +111,7 @@ def finish_media(db: Client, row_id: str, **fields: Any) -> None:
 
 
 def upload_generated(db: Client, path: str, data: bytes, content_type: str) -> str:
-    """Put the bytes in bucket `generated` and return the public address."""
-    bucket = db.storage.from_("generated")
+    """Put the bytes in bucket `semasa-generated` and return the public address."""
+    bucket = db.storage.from_(GENERATED_BUCKET)
     bucket.upload(path, data, {"content-type": content_type, "upsert": "true"})
     return bucket.get_public_url(path)

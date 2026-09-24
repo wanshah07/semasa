@@ -4,7 +4,7 @@ import { RefreshCw } from "lucide-react";
 import { fadeUp } from "./design/motion";
 import { configured } from "./lib/SupabaseClient";
 import { stampMYT } from "./lib/format";
-import { useGenerations, useSession, useToasts, useTrends } from "./lib/hooks";
+import { useCanUpload, useGenerations, useSession, useToasts, useTrends } from "./lib/hooks";
 import AuthPanel from "./components/AuthPanel";
 import FilterBar from "./components/FilterBar";
 import GenerationGallery from "./components/GenerationGallery";
@@ -94,8 +94,21 @@ function IsuTab({ trends, onToast }) {
   );
 }
 
+function NotListed({ user }) {
+  return (
+    <div className="mx-auto max-w-md rounded-card border border-line bg-surface p-6 shadow-card">
+      <h3 className="text-lg">Akaun ini belum dibenarkan memuat naik</h3>
+      <p className="mt-2 text-sm text-muted">
+        {user.email} sudah log masuk, tetapi tiada dalam senarai <code>semasa_uploaders</code>. Pemilik projek
+        perlu menambah akaun ini dalam Supabase SQL editor sebelum kerja penjanaan boleh dihantar.
+      </p>
+    </div>
+  );
+}
+
 function MediaTab({ user, ready, onToast }) {
   const gens = useGenerations();
+  const canUpload = useCanUpload(user);
   async function guard(fn) {
     try { await fn(); } catch (e) { onToast(e.message, "danger"); }
   }
@@ -110,9 +123,12 @@ function MediaTab({ user, ready, onToast }) {
         </p>
       </motion.div>
       <div className="mt-8">
-        {!ready ? null : user
-          ? <MediaUploader user={user} onToast={onToast} onQueued={() => gens.reload()} />
-          : <AuthPanel onToast={onToast} />}
+        {!ready ? null : !user
+          ? <AuthPanel onToast={onToast} />
+          : canUpload === null ? null
+          : canUpload
+            ? <MediaUploader user={user} onToast={onToast} onQueued={() => gens.reload()} />
+            : <NotListed user={user} />}
       </div>
       <h2 className="mb-4 mt-12 text-xl">Hasil</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}

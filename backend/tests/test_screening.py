@@ -114,3 +114,41 @@ def test_a_bad_sorter_answer_pauses_the_sorter_instead_of_paying_every_run():
     failed[0]["at"] = (datetime.now(UTC) - timedelta(hours=4)).isoformat()
     faq_sort.run_sort(store, llm, {}, faq.categories({}))
     assert llm.calls == 2
+
+
+def test_a_key_is_only_ever_sent_to_its_own_host(monkeypatch):
+    from semasa.config import LLMSettings
+    for n in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_BASE_URL"):
+        monkeypatch.delenv(n, raising=False)
+    monkeypatch.setenv("LLM_API_KEY", "rootsys-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://rootsys.cloud/v1")
+    assert MediaSettings.load().openai_key is None                     # the 25 Sep 401: rootsys key to OpenAI
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
+    assert MediaSettings.load().openai_key == "sk-real"
+    monkeypatch.delenv("OPENAI_API_KEY")
+    monkeypatch.delenv("LLM_BASE_URL")                                  # the writer IS OpenAI: the same key serves both
+    assert MediaSettings.load().openai_key == "rootsys-key"
+    # the other way round: an OpenAI key never goes to a gateway
+    monkeypatch.delenv("LLM_API_KEY")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
+    monkeypatch.setenv("LLM_BASE_URL", "https://rootsys.cloud/v1")
+    assert LLMSettings.load().api_key is None
+    monkeypatch.delenv("LLM_BASE_URL")
+    assert LLMSettings.load().api_key == "sk-real"
+
+
+def test_a_refused_key_is_final_not_retried(monkeypatch):
+    from semasa.providers import ProviderError
+    from semasa.providers.openai_images import OpenAIProvider
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-wrong")
+
+    class R:
+        status_code = 401
+        text = "invalid key"
+
+        def raise_for_status(self):
+            raise AssertionError("never reached")
+    monkeypatch.setattr("semasa.providers.openai_images.requests.post", lambda *a, **k: R())
+    import pytest
+    with pytest.raises(ProviderError, match="refused the key"):
+        OpenAIProvider(MediaSettings.load()).generate_from_text("botol", {})

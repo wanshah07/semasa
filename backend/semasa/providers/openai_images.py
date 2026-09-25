@@ -49,6 +49,8 @@ class OpenAIProvider:
             json={"model": model, "prompt": prompt, "size": options.get("size") or self.s.openai_image_size, "n": 1},
             timeout=self.s.max_wait_image,
         )
+        if r.status_code in (401, 403):
+            raise ProviderError(f"OpenAI refused the key (HTTP {r.status_code}): check the OPENAI_API_KEY secret")
         if r.status_code in (400, 422):
             raise ProviderError(f"OpenAI rejected the request: {r.text[:300]}")
         r.raise_for_status()
@@ -76,6 +78,8 @@ class OpenAIProvider:
                   "n": 1},
             timeout=self.s.max_wait_image,
         )
+        if r.status_code in (401, 403):
+            raise ProviderError(f"OpenAI refused the key (HTTP {r.status_code}): check the OPENAI_API_KEY secret")
         if r.status_code in (400, 422):
             raise ProviderError(f"OpenAI rejected the request: {r.text[:300]}")
         r.raise_for_status()
@@ -92,6 +96,8 @@ class OpenAIProvider:
                   "size": options.get("size") or self.s.openai_video_size},
             timeout=120,
         )
+        if r.status_code in (401, 403):
+            raise ProviderError(f"OpenAI refused the key (HTTP {r.status_code}): check the OPENAI_API_KEY secret")
         if r.status_code in (400, 422):
             raise ProviderError(f"OpenAI rejected the video request: {r.text[:300]}")
         r.raise_for_status()

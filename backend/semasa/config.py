@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 
 class ConfigError(RuntimeError):
@@ -36,6 +37,10 @@ def env(name: str, default: str | None = None, *, required: bool = False) -> str
             raise ConfigError(f"{name} is not set — add it under Settings → Secrets and variables → Actions")
         return default
     return value.strip()
+
+
+def host_of(url: str | None) -> str:
+    return urlparse(url or "").hostname or ""
 
 
 def env_int(name: str, default: int) -> int:
@@ -77,10 +82,15 @@ class LLMSettings:
             raise ConfigError(f"LLM_PROVIDER must be openai or anthropic, got {provider!r}")
         default_model = "gpt-4o-mini" if provider == "openai" else "claude-haiku-4-5-20251001"
         default_base = "https://api.openai.com/v1" if provider == "openai" else "https://api.anthropic.com"
+        base_url = (env("LLM_BASE_URL", default_base) or default_base).rstrip("/")
+        # A key only ever goes to the host it belongs to: the OpenAI or Anthropic key is a stand-in only when the
+        # writer really is OpenAI or Anthropic, never for a gateway such as rootsys or Mireld.
+        stand_in = env("OPENAI_API_KEY") if host_of(base_url) == "api.openai.com" else \
+            env("ANTHROPIC_API_KEY") if host_of(base_url) == "api.anthropic.com" else None
         return cls(
             provider=provider,
-            api_key=env("LLM_API_KEY") or env("OPENAI_API_KEY") or env("ANTHROPIC_API_KEY"),
-            base_url=(env("LLM_BASE_URL", default_base) or default_base).rstrip("/"),
+            api_key=env("LLM_API_KEY") or stand_in,
+            base_url=base_url,
             model=env("LLM_MODEL", default_model) or default_model,
             timeout=env_int("LLM_TIMEOUT", 60),
             vision_model=env("VISION_MODEL") or env("LLM_MODEL", default_model) or default_model,
@@ -156,7 +166,11 @@ class MediaSettings:
             # The input field that carries the reference picture differs per model.
             replicate_image_input_key=env("REPLICATE_IMAGE_INPUT_KEY", "input_image"),
             replicate_video_input_key=env("REPLICATE_VIDEO_INPUT_KEY", "start_image"),
-            openai_key=env("OPENAI_API_KEY") or env("LLM_API_KEY"),
+            # LLM_API_KEY stands in only when the writer runs on the same host as the pictures: on 25 Sep 2026 the
+            # rootsys key was sent to api.openai.com this way (refused, 401) for a job that chose OpenAI.
+            openai_key=env("OPENAI_API_KEY") or (
+                env("LLM_API_KEY") if host_of(env("LLM_BASE_URL", "https://api.openai.com/v1"))
+                == host_of(env("OPENAI_BASE_URL", "https://api.openai.com/v1")) else None),
             openai_base_url=(env("OPENAI_BASE_URL", "https://api.openai.com/v1") or "").rstrip("/"),
             openai_image_model=env("OPENAI_IMAGE_MODEL", "gpt-image-1"),
             openai_video_model=env("OPENAI_VIDEO_MODEL", "sora-2"),

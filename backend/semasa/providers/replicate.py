@@ -61,6 +61,8 @@ class ReplicateProvider:
         else:
             r = requests.post(f"{API}/models/{model}/predictions", headers=self.headers,
                               json={"input": payload_input}, timeout=90)
+        if r.status_code in (401, 403):
+            raise ProviderError(f"Replicate refused the token (HTTP {r.status_code}): check the REPLICATE_API_TOKEN secret")
         if r.status_code == 422:
             raise ProviderError(f"Replicate rejected the input for {model}: {r.text[:300]}")
         r.raise_for_status()

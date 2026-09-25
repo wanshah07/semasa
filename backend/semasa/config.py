@@ -7,6 +7,8 @@ Secrets (GitHub → Settings → Secrets and variables → Actions → Secrets):
   LLM_API_KEY                  bearer for the summariser (OpenAI, Anthropic, Mireld, any OpenAI-compatible)
   REPLICATE_API_TOKEN          if MEDIA_PROVIDER=replicate
   OPENAI_API_KEY               if MEDIA_PROVIDER=openai (may equal LLM_API_KEY)
+  CLOUDFLARE_ACCOUNT_ID        if MEDIA_PROVIDER=cloudflare (dashboard sidebar)
+  CLOUDFLARE_API_TOKEN         if MEDIA_PROVIDER=cloudflare (My Profile → API Tokens → "Workers AI" template)
 
 Variables (same page → Variables; not secret):
   LLM_PROVIDER      openai | anthropic            default openai   (openai = any OpenAI-compatible endpoint)
@@ -18,7 +20,9 @@ Variables (same page → Variables; not secret):
   VISION_MODEL      the model that READS a reference picture; default LLM_MODEL. A text-only
                     model (e.g. deepseek) cannot: the job then records "not read" and
                     generates from the picture and prompt alone.
-  MEDIA_PROVIDER    replicate | openai            default replicate
+  MEDIA_PROVIDER    replicate | openai | cloudflare   default: cloudflare when CLOUDFLARE_ACCOUNT_ID and
+                    CLOUDFLARE_API_TOKEN are set and REPLICATE_API_TOKEN is not, else replicate.
+                    cloudflare: pictures only, free within 10,000 neurons a day
   ... the rest are documented beside their default below.
 """
 
@@ -140,7 +144,7 @@ class ScraperSettings:
 
 @dataclass(frozen=True)
 class MediaSettings:
-    provider: str                      # replicate | openai
+    provider: str                      # replicate | openai | cloudflare
     batch: int
     max_attempts: int
     poll_seconds: int
@@ -161,12 +165,21 @@ class MediaSettings:
     # Words-only generation (Flow B without a reference, and Flow A's recreate-from-a-read)
     replicate_t2i_model: str = "black-forest-labs/flux-1.1-pro"
     stale_minutes: int = 60            # a `processing` row older than this lost its runner
+    # Cloudflare Workers AI (semasa.providers.cloudflare): pictures only
+    cloudflare_account_id: str | None = None
+    cloudflare_token: str | None = None
+    cloudflare_t2i_model: str = "@cf/black-forest-labs/flux-1-schnell"
+    cloudflare_edit_model: str = "@cf/black-forest-labs/flux-2-klein-4b"
+    cloudflare_size: int = 1024
 
     @classmethod
     def load(cls) -> MediaSettings:
-        provider = (env("MEDIA_PROVIDER", "replicate") or "replicate").lower()
-        if provider not in ("replicate", "openai"):
-            raise ConfigError(f"MEDIA_PROVIDER must be replicate or openai, got {provider!r}")
+        # Unset: Cloudflare when its two secrets are there and Replicate's is not, so adding the free provider needs
+        # no Variable as well; otherwise Replicate, as before.
+        free = bool(env("CLOUDFLARE_ACCOUNT_ID") and env("CLOUDFLARE_API_TOKEN")) and not env("REPLICATE_API_TOKEN")
+        provider = (env("MEDIA_PROVIDER") or ("cloudflare" if free else "replicate")).lower()
+        if provider not in ("replicate", "openai", "cloudflare"):
+            raise ConfigError(f"MEDIA_PROVIDER must be replicate, openai or cloudflare, got {provider!r}")
         return cls(
             provider=provider,
             batch=env_int("MEDIA_BATCH", 5),
@@ -195,4 +208,11 @@ class MediaSettings:
             replicate_t2i_model=env("REPLICATE_T2I_MODEL", "black-forest-labs/flux-1.1-pro"),
             # media.yml's job timeout is 40 minutes, so 60 means the runner is certainly gone
             stale_minutes=env_int("MEDIA_STALE_MINUTES", 60),
+            cloudflare_account_id=env("CLOUDFLARE_ACCOUNT_ID"),
+            cloudflare_token=env("CLOUDFLARE_API_TOKEN"),
+            # FLUX.1 [schnell] ≈ 57.6 neurons a 1024 picture, ≈ 173 a day free; FLUX.2 [klein] 4B ≈ 104 (+5 for the
+            # reference), ≈ 91-95 a day. Pricing: developers.cloudflare.com/workers-ai/platform/pricing (17 Sep 2026)
+            cloudflare_t2i_model=env("CLOUDFLARE_T2I_MODEL", "@cf/black-forest-labs/flux-1-schnell"),
+            cloudflare_edit_model=env("CLOUDFLARE_EDIT_MODEL", "@cf/black-forest-labs/flux-2-klein-4b"),
+            cloudflare_size=env_int("CLOUDFLARE_IMAGE_SIZE", 1024),
         )

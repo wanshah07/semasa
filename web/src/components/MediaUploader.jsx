@@ -13,6 +13,7 @@ const providersOf = (t) => [
   { id: "", label: t("Lalai (tetapan runner)", "Default (runner setting)") },
   { id: "replicate", label: "Replicate" },
   { id: "openai", label: "OpenAI" },
+  { id: "cloudflare", label: t("Cloudflare (gambar sahaja, percuma)", "Cloudflare (pictures only, free)") },
 ];
 
 /* Flow B. Two ways in:
@@ -57,7 +58,8 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
 
   const needsRef = mode === "recreate";
   const hasRef = Boolean(file || savedRef);
-  const ready = prompt.trim() && (!needsRef || hasRef);
+  const cfVideo = provider === "cloudflare" && type === "video";   // Cloudflare's free neurons draw pictures only
+  const ready = prompt.trim() && (!needsRef || hasRef) && !cfVideo;
 
   async function submit(e) {
     e.preventDefault();
@@ -180,7 +182,9 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
           className="rounded-pill border border-line bg-surface px-3 py-2 text-xs text-ink outline-none">
           {providersOf(t).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
         </select>
-        <span className="text-xs text-muted">{progress}</span>
+        <span className="text-xs text-muted">{cfVideo
+          ? t("Cloudflare buat gambar sahaja: pilih Replicate atau OpenAI untuk video", "Cloudflare makes pictures only: choose Replicate or OpenAI for a video")
+          : progress}</span>
         <Button type="submit" className="ml-auto" disabled={busy || !ready}>
           {busy ? t("Menghantar…", "Sending…") : type === "video" ? t("Jana video", "Generate video") : t("Jana imej", "Generate image")}
         </Button>

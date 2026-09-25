@@ -68,6 +68,9 @@ def make_provider(name: str, s: MediaSettings) -> Provider:
     if name == "openai":
         from .providers.openai_images import OpenAIProvider
         return OpenAIProvider(s)
+    if name == "cloudflare":
+        from .providers.cloudflare import CloudflareProvider
+        return CloudflareProvider(s)
     raise ProviderError(f"unknown provider {name!r}")
 
 
@@ -282,6 +285,9 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
         if name not in providers:
             providers[name] = make_provider(name, s)
         provider = providers[name]
+        if kind == "video" and not getattr(provider, "video", True):
+            # stopped before the still is drawn: a picture made for a video nobody can make is spent for nothing
+            raise ProviderError(f"{name} makes pictures only: choose Replicate or OpenAI for a video")
 
         read = read_reference(llm, row["reference_url"]) if mode == "recreate" else None
         if mode == "recreate":

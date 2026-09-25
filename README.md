@@ -35,7 +35,8 @@ Two flows:
         ▲                                                                                  │
         │ realtime status                 ┌────────────────────┐  repository_dispatch      │
         └──────────────────────────────── │ media_generator.py │ ◀─────────────────────────┘
-                                          │ Replicate / OpenAI │  (+ 15-min poll)
+                                          │ Cloudflare/Replic. │  (+ 15-min poll)
+                                          │ / OpenAI           │
                                           │ → `semasa-generated`│
                                           └────────────────────┘
 ```
@@ -140,6 +141,7 @@ Settings → Secrets and variables → Actions.
 | `LLM_API_KEY` | scraper summariser, idea writer, the READ step (rootsys key, as now) |
 | `REPLICATE_API_TOKEN` | media, when `MEDIA_PROVIDER=replicate` (default) |
 | `OPENAI_API_KEY` | media, when `MEDIA_PROVIDER=openai` |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | media, when `MEDIA_PROVIDER=cloudflare`: **free pictures** (see *Free pictures: Cloudflare*). With both set and no `REPLICATE_API_TOKEN`, Cloudflare is the default and no Variable is needed |
 | `TELEGRAM_BOT_TOKEN` | optional: the FAQ bot in your Telegram group(s) (see *FAQ from Telegram*). Unset: Telegram is simply not read |
 | `SEMASA_SHEET_URL`, `SEMASA_SHEET_TOKEN` | the Semasa Google Sheet (FAQ tabs and the Log tab): the Apps Script `/exec` URL and the `API_TOKEN` its `setup` prints (see *The Semasa Sheet* below). Unset: everything works, and the Sheet is simply not written. `FAQ_SHEET_URL` / `FAQ_SHEET_TOKEN`, their first names, are still read if set |
 
@@ -151,9 +153,12 @@ Settings → Secrets and variables → Actions.
 | `SCRAPE_KEEP_DAYS` | `30` | headlines and run rows older than this are deleted; `0` keeps everything |
 | `SCRAPE_PICK_HOURS` | `48` | a headline nobody makes an idea of leaves the page at this age. The row is deleted once the feed's own date puts it past `SCRAPE_MAX_AGE_HOURS` (48), so it cannot come back as "new". An undated headline stays hidden until `SCRAPE_KEEP_DAYS`, because its row is the only thing stopping it from coming back. `0` never drops. The page's `PICK_HOURS` must match |
 | `LLM_MODEL` | `gpt-4o-mini` / `claude-haiku-4-5-20251001` | the writer too; `deepseek-v4.1-flash` on rootsys works |
-| `VISION_MODEL` | `LLM_MODEL` | the model that **reads** a reference picture: set it to `deepseek-v4.1-flash`, which rootsys lists with the VISION tag. (An earlier version of this line said DeepSeek was text-only; that was wrong.) rootsys can only **read** pictures. Its image, video and embedding endpoints answer 404, so generation is Replicate's or OpenAI's job. If no model can see, jobs say "not read": Flow B still recreates from the picture itself, and Flow A draws from the draft's words |
+| `VISION_MODEL` | `LLM_MODEL` | the model that **reads** a reference picture: set it to `deepseek-v4.1-flash`, which rootsys lists with the VISION tag. (An earlier version of this line said DeepSeek was text-only; that was wrong.) rootsys can only **read** pictures. Its image, video and embedding endpoints answer 404, so generation is Cloudflare's, Replicate's or OpenAI's job. If no model can see, jobs say "not read": Flow B still recreates from the picture itself, and Flow A draws from the draft's words |
 | `REPLICATE_T2I_MODEL` | `black-forest-labs/flux-1.1-pro` | words → image (prompt-only jobs, and Flow A's redraw) |
-| `MEDIA_PROVIDER` | `replicate` | or `openai` |
+| `MEDIA_PROVIDER` | `replicate` (`cloudflare` when only its secrets are set) | or `openai`, or `cloudflare` (pictures only) |
+| `CLOUDFLARE_T2I_MODEL` | `@cf/black-forest-labs/flux-1-schnell` | words → picture on Cloudflare |
+| `CLOUDFLARE_EDIT_MODEL` | `@cf/black-forest-labs/flux-2-klein-4b` | your reference → picture on Cloudflare (a FLUX.2 model: only those take a picture) |
+| `CLOUDFLARE_IMAGE_SIZE` | `1024` | width and height for the FLUX.2 models |
 | `REPLICATE_IMAGE_MODEL` | `black-forest-labs/flux-kontext-pro` | image → image; input field `input_image` |
 | `REPLICATE_VIDEO_MODEL` | `kwaivgi/kling-v2.1` | image → video; input field `start_image` |
 | `REPLICATE_IMAGE_INPUT_KEY` / `REPLICATE_VIDEO_INPUT_KEY` | as above | change when you change model — each model names its picture field differently |
@@ -263,6 +268,22 @@ only the `socialmedia` name is added.
   - **Excel** is a real `.xlsx`.
   - Posters keep every word: a card too long for its page says so rather than cutting. Long references
     wrap by character, and the website sits on the footer only.
+
+## Free pictures: Cloudflare
+
+Cloudflare Workers AI gives every account **10,000 neurons a day free**, reset at 00:00 UTC (08:00 MYT)
+(developers.cloudflare.com/workers-ai/platform/pricing, updated 17 Sep 2026). On the free Workers plan a call
+past the allowance is refused (error 3036) and **never billed**: the job says so and waits for Retry.
+
+| Model | Used for | Neurons per 1024×1024 picture | Free a day |
+|---|---|---|---|
+| FLUX.1 [schnell] (default words → picture) | prompt-only jobs, Flow A's redraw | 4 tiles × 4.80 + 4 steps × 9.60 = **57.6** | about **173** |
+| FLUX.2 [klein] 4B (default reference → picture) | Flow B with your picture | 4 × 26.05 = 104.2, + 5.37 for the reference = **109.6** | about **91** |
+
+Setup: Cloudflare dashboard → the account ID in the sidebar → GitHub secret `CLOUDFLARE_ACCOUNT_ID`; My Profile →
+API Tokens → Create Token → template **Workers AI** → secret `CLOUDFLARE_API_TOKEN`. **Pictures only**: Cloudflare's
+video models are third-party ones paid from prepaid credits, not from the free neurons, so a video job on
+Cloudflare stops before anything is drawn and the page does not offer it. Replicate or OpenAI make videos.
 
 ## FAQ from Telegram
 

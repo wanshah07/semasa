@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -208,6 +208,18 @@ def to_sort(rows: list[dict[str, Any]], cats: list[dict[str, Any]], changed_at: 
     return out[:SORT_BATCH]
 
 
+SORT_PAUSE = timedelta(hours=3)
+
+
+def recent_failure(store: Any) -> bool:
+    try:
+        cutoff = (datetime.now(UTC) - SORT_PAUSE).isoformat()
+        return bool(store.table(db.LOG).select("id").eq("event", "faq.sort_failed").gt("at", cutoff)
+                    .limit(1).execute().data)
+    except Exception:  # noqa: BLE001 - no log table: no pause
+        return False
+
+
 def listing(cats: list[dict[str, Any]]) -> str:
     return "; ".join(f"{c['key']}: {c['bm']} [{', '.join(c['subs'])}]" for c in cats)
 
@@ -223,8 +235,9 @@ def run_sort(store: Any, llm: LLM, settings: dict[str, Any], cats: list[dict[str
 
 def _sort(store: Any, llm: LLM, settings: dict[str, Any], cats: list[dict[str, Any]]) -> str:
     try:
-        rows = (store.table(FAQS).select("id,question_bm,answer_bm,category,subcategory,category_by,sorted_at,created_at")
-                .eq("status", "ready").limit(5000).execute().data or [])
+        rows = db.fetch_all(lambda: store.table(FAQS)
+                            .select("id,question_bm,answer_bm,category,subcategory,category_by,sorted_at,created_at")
+                            .eq("status", "ready").order("id"))
     except Exception as exc:  # noqa: BLE001
         return f"sort: skipped ({str(exc)[:100]})"
     faq_settings = settings.get("faq") if isinstance(settings.get("faq"), dict) else {}
@@ -247,10 +260,16 @@ def _sort(store: Any, llm: LLM, settings: dict[str, Any], cats: list[dict[str, A
     user = "ENTRIES:\n" + "\n".join(
         json.dumps({"id": r["id"], "q": (r.get("question_bm") or "")[:300], "a": (r.get("answer_bm") or "")[:300]},
                    ensure_ascii=False) for r in todo)
+    if recent_failure(store):
+        return "sort: waiting after a failed try (again within 3 hours)"
     out = llm.chat_json(SORT_SYSTEM % (listing(cats), MIN_GROUP), user, max_tokens=3000)
     if not isinstance(out, dict) or not isinstance(out.get("items"), list):
         log.warning("sorter did not answer")
-        return "sort: the writer did not answer; tried again next run"
+        # one warning, and a pause: a model that keeps answering badly must not cost a call every worker run
+        db.log_event(store, "warn", "faq", "faq.sort_failed",
+                     "Susunan automatik FAQ gagal: AI tidak menjawab dengan betul; cuba semula dalam 3 jam",
+                     detail={"looked_at": len(todo)})
+        return "sort: the writer did not answer; tried again in 3 hours"
 
     picks = {str(i.get("id")): i for i in out["items"] if isinstance(i, dict) and i.get("id")}
     declined = declined_of(settings)

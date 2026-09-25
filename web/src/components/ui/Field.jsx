@@ -41,7 +41,10 @@ export function Modal({ open, onClose, title, children }) {
   const { t } = useLang();
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4 pt-16" onClick={onClose}>
+    // close only when the press starts on the backdrop too: selecting text and letting go outside must not lose an edit
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4 pt-16"
+      onMouseDown={(e) => { e.currentTarget.dataset.down = e.target === e.currentTarget ? "1" : ""; }}
+      onClick={(e) => { if (e.target === e.currentTarget && e.currentTarget.dataset.down === "1") onClose(); }}>
       <div className="w-full max-w-lg rounded-card border border-line bg-surface p-5 shadow-lift" onClick={(e) => e.stopPropagation()}
         role="dialog" aria-modal="true" aria-label={title}>
         <div className="mb-3 flex items-center justify-between gap-3">

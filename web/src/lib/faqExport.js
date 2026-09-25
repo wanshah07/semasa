@@ -257,7 +257,8 @@ export async function posterPages(rows, { lang = "bm", label = "", website = "" 
     for (let s = 0.95; b.h > room && s >= 0.6 - 1e-9; s = Math.round((s - 0.05) * 100) / 100) b = blockOf(r, s);
     if (b.h > room) throw new PosterError(tr('"{q}…" terlalu panjang untuk satu halaman poster; pendekkan jawapannya',
       '"{q}…" is too long for a poster page; shorten its answer', { q: qOf(r, lang).slice(0, 60) }));
-    if (y + b.h > pageBottom && pages[pages.length - 1].length) { pages.push([]); y = pageTop(false); }
+    // page 1 has 160px less room (the title): a block that does not fit under it starts page 2
+    if (y + b.h > pageBottom && (pages[pages.length - 1].length || pages.length === 1)) { pages.push([]); y = pageTop(false); }
     pages[pages.length - 1].push({ b, y });
     y += b.h + GAP;
   }

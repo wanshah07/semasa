@@ -59,7 +59,7 @@ const TITLE_EN = [
   [/^Idea ditolak: /, "Idea rejected: "], [/^Idea dihantar semula: /, "Idea resent: "], [/^Idea dipadam: /, "Idea deleted: "],
   [/^Draf baharu: /, "New draft: "], [/^Post diluluskan: /, "Post approved: "], [/^Post ditolak: /, "Post rejected: "],
   [/^Kembali ke draf \(diubah selepas diluluskan\): /, "Back to draft (changed after approval): "],
-  [/^Post dipulihkan ke draf: /, "Post restored to draft: "], [/^Post dijadualkan: /, "Post scheduled: "],
+  [/^Post dipulihkan ke draf: /, "Post restored to draft: "], [/^Dikembalikan ke draf: /, "Returned to draft: "], [/^Post dijadualkan: /, "Post scheduled: "],
   [/^Post diterbitkan: /, "Post published: "], [/^Post dialih: /, "Post moved: "], [/^Post dipadam: /, "Post deleted: "],
   [/^(Kerja media dibaris|Media siap|Media gagal) \((slaid|cipta semula|prompt) · /, (m) => `${
     { "Kerja media dibaris": "Media job queued", "Media siap": "Media ready", "Media gagal": "Media failed" }[m[1]]} (${
@@ -73,6 +73,8 @@ const TITLE_EN = [
   [/^Google Sheet gagal dikemas kini: /, "Google Sheet update failed: "],
   [/^Log gagal disalin ke Google Sheet: /, "Log could not be copied to the Google Sheet: "],
   [/^Bot menambah subkategori: /, "The bot added subcategories: "],
+  [/^Susunan automatik FAQ gagal: AI tidak menjawab dengan betul; cuba semula dalam 3 jam/,
+    "Automatic FAQ sorting failed: the AI did not answer properly; trying again in 3 hours"],
   [/^Bot menyusun (\d+) FAQ(?:: (.*?))?(?:; kategori baharu: (.*))?$/, (m) => `The bot sorted ${m[1]} FAQ${m[1] === "1" ? "" : "s"}${
     m[2] ? `: ${m[2].replace(/(^|, )(\d+) ke /g, "$1$2 to ")}` : ""}${m[3] ? `; new categories: ${m[3]}` : ""}`],
   [/^Cubaan kering: (\S+) akan menghantar /, (m) => `Dry run: ${m[1]} would send `], [/^Dihantar ke /, "Sent to "],
@@ -183,7 +185,7 @@ export default function LogTab({ log, onOpen }) {
     ["faq", t("FAQ siap", "FAQs ready"), `${count((r) => r.event === "faq.ready")}`,
       t("{n} perlu semakan", "{n} to check", { n: count((r) => r.event === "faq.ready" && r.level === "warn") })],
     ["approved", t("Diluluskan", "Approved"), `${count((r) => r.event === "post.approved")}`,
-      t("{n} kembali ke draf", "{n} back to draft", { n: count((r) => r.event === "post.unapproved") })],
+      t("{n} kembali ke draf", "{n} back to draft", { n: count((r) => r.event === "post.unapproved" || r.event === "post.returned") })],
     ["errors", t("Ralat", "Errors"), `${count((r) => r.level === "error")}`,
       t("{n} amaran", ["{n} warning", "{n} warnings"], { n: count((r) => r.level === "warn") })],
   ];
@@ -220,7 +222,7 @@ export default function LogTab({ log, onOpen }) {
         ))}
       </section>
 
-      <div className="sticky top-[97px] z-30 xl:top-[65px] -mx-4 mt-4 bg-bg/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+      <div className="z-30 sm:sticky sm:top-[97px] xl:top-[65px] -mx-4 mt-4 bg-bg/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
         <div className="flex flex-wrap items-center gap-2">
           <Segmented value={range} onChange={setRange} options={RANGES()} />
           <Select value={level} onChange={setLevel} aria-label={t("Tahap", "Level")}

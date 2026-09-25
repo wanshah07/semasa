@@ -18,7 +18,7 @@ alter table public.media_generations drop constraint if exists media_generations
 alter table public.media_generations add constraint media_generations_mode_check
   check (mode in ('recreate', 'prompt', 'slides') and (mode <> 'recreate' or reference_url is not null));
 
--- Same function as 005 (kept identical by backend/tests/test_sql.py), now watching `slides` too.
+-- Same function as 005 (keep the two identical: 005 is what a fresh install runs), now watching `slides` too.
 create or replace function public.semasa_posts_gate() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin

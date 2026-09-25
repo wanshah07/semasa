@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BUCKETS, TABLES, TABLES_UPLOADERS, errText, supabase } from "./SupabaseClient";
 
 /** Auth session, kept live. */
@@ -130,11 +130,18 @@ export function useTable(table, { enabled = true, select = "*", order = "created
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const loadRef = useRef(null);
+  const sigRef = useRef("");
 
   const load = useCallback(async () => {
     if (!supabase || !enabled) { setLoading(false); return; }
     const { data, error: e } = await supabase.from(table).select(select).order(order, { ascending }).limit(limit);
-    if (e) setError(errText(e)); else { setRows(data ?? []); setError(""); }
+    if (e) setError(errText(e));
+    else {
+      // an unchanged answer keeps the same array, so a poll does not re-render (and reset) every open form
+      const sig = JSON.stringify(data ?? []);
+      if (sig !== sigRef.current) { sigRef.current = sig; setRows(data ?? []); }
+      setError("");
+    }
     setLoading(false);
   }, [table, enabled, select, order, ascending, limit]);
   loadRef.current = load;
@@ -163,8 +170,7 @@ export function useTable(table, { enabled = true, select = "*", order = "created
 /** semasa_settings as { key: value }. */
 export function useSettings(enabled) {
   const t = useTable(TABLES.settings, { enabled, select: "key,value,updated_at", order: "key", ascending: true, realtime: false });
-  const map = {};
-  for (const r of t.rows) map[r.key] = r.value;
+  const map = useMemo(() => Object.fromEntries(t.rows.map((r) => [r.key, r.value])), [t.rows]);
   const save = useCallback(async (key, value) => {
     const { data, error: e } = await supabase.from(TABLES.settings).update({ value }).eq("key", key).select("key");
     if (e) throw new Error(errText(e));

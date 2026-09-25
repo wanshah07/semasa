@@ -55,6 +55,10 @@ begin
 exception when others then
   raise warning 'semasa_log_write: % (%)', sqlerrm, p_event;
 end $$;
+-- Only the triggers (which run as the definer) may write the log. Supabase lets anon and authenticated call any
+-- public function through PostgREST (/rest/v1/rpc/...), and the anon key is published in the site, so without
+-- this a stranger could write "Dihantar ke instagram" rows, or fill the shared database with them.
+revoke execute on function public.semasa_log_write(text, text, text, text, text, text, jsonb) from public, anon, authenticated;
 
 -- helpers
 create or replace function public.semasa_log_clip(t text, n int default 90) returns text
@@ -158,8 +162,15 @@ begin
       perform public.semasa_log_write('info', 'post', 'post.approved', 'Post diluluskan: ' || v_name, 'semasa_posts', new.id::text, v_where);
     elsif new.status = 'rejected' then
       perform public.semasa_log_write('info', 'post', 'post.rejected', 'Post ditolak: ' || v_name, 'semasa_posts', new.id::text, v_where);
-    elsif new.status = 'draft' and old.status = 'approved' then
+    elsif new.status = 'draft' and old.status = 'approved'
+          and (new.text, new.citation, new.media_ids, new.date, new.slot, new.lang, new.stream, new.slides)
+              is distinct from (old.text, old.citation, old.media_ids, old.date, old.slot, old.lang, old.stream, old.slides) then
+      -- the gate sent it back because it was changed after approval (the same fields the gate watches)
       perform public.semasa_log_write('warn', 'post', 'post.unapproved', 'Kembali ke draf (diubah selepas diluluskan): ' || v_name,
+        'semasa_posts', new.id::text, v_where);
+    elsif new.status = 'draft' and old.status = 'approved' then
+      -- Wan pressed "Kembali ke draf" himself: nothing changed, nothing to warn about
+      perform public.semasa_log_write('info', 'post', 'post.returned', 'Dikembalikan ke draf: ' || v_name,
         'semasa_posts', new.id::text, v_where);
     elsif new.status = 'draft' and old.status = 'rejected' then
       perform public.semasa_log_write('info', 'post', 'post.restored', 'Post dipulihkan ke draf: ' || v_name, 'semasa_posts', new.id::text, v_where);

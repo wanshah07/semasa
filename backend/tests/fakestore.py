@@ -19,7 +19,7 @@ class _Not:
 class Query:
     def __init__(self, store, table):
         self.store, self.table, self.filters = store, table, []
-        self.op, self.payload, self._order, self._limit = "select", None, [], None
+        self.op, self.payload, self._order, self._limit, self._range = "select", None, [], None, None
 
     # verbs
     def select(self, *_a, **_k):
@@ -87,6 +87,10 @@ class Query:
         self._limit = n
         return self
 
+    def range(self, start, end):
+        self._range = (start, end)
+        return self
+
     def execute(self):
         rows = self.store.tables.setdefault(self.table, [])
         if self.op == "insert":
@@ -123,8 +127,12 @@ class Query:
             return SimpleNamespace(data=hit)
         for col, desc in reversed(self._order):
             hit.sort(key=lambda r, c=col: (r.get(c) is None, str(r.get(c))), reverse=desc)
+        if self._range is not None:
+            hit = hit[self._range[0]: self._range[1] + 1]
         if self._limit is not None:
             hit = hit[: self._limit]
+        if self.store.max_rows is not None:          # like PostgREST's max_rows (Supabase: 1000)
+            hit = hit[: self.store.max_rows]
         return SimpleNamespace(data=copy.deepcopy(hit))
 
 
@@ -132,6 +140,7 @@ class FakeStore:
     def __init__(self, **tables):
         self.tables = {k: copy.deepcopy(v) for k, v in tables.items()}
         self.now = "2026-09-24T00:00:00+00:00"
+        self.max_rows = None
 
     def table(self, name):
         return Query(self, name)

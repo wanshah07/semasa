@@ -30,7 +30,7 @@ import hashlib
 import io
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from . import db
@@ -175,6 +175,32 @@ def slide_ground(store: Any, row: dict[str, Any]) -> tuple[bytes | None, str | N
     return data, pick["id"]
 
 
+SLIDES_WAIT = timedelta(hours=2)
+
+
+def picture_pending(store: Any, row: dict[str, Any]) -> bool:
+    """True while slides meant to sit on the post's picture would be drawn before that picture exists: a picture
+    job for the same post is still pending or running. The picture and the slide job are queued together, with the
+    same timestamp, so their order is otherwise undefined. After SLIDES_WAIT the slides are drawn anyway (on paper,
+    and bg_missing says so) rather than wait for ever on a picture job that never ends."""
+    meta = row.get("meta") or {}
+    if meta.get("bg") != "post_image" or not row.get("post_id"):
+        return False
+    try:
+        made = datetime.fromisoformat(str(row.get("created_at")).replace("Z", "+00:00"))
+        if datetime.now(UTC) - made > SLIDES_WAIT:
+            return False
+    except (TypeError, ValueError):
+        return False
+    try:
+        rows = (store.table(db.MEDIA).select("id,mode,status").eq("post_id", row["post_id"])
+                .in_("status", ["pending", "processing"]).execute().data or [])
+    except Exception as exc:  # noqa: BLE001 - never block the slides on a failed look-up
+        log.info("could not check the post's picture (%s)", str(exc)[:80])
+        return False
+    return any(r.get("mode") != "slides" and r.get("id") != row["id"] for r in rows)
+
+
 def process_slides(store: Any, row: dict[str, Any], s: MediaSettings) -> bool:
     """Mode `slides`: draw the snapshot of words in meta.slides with semasa.slides. No provider,
     no key, no cost. Too long to fit is a final error that names the slide, never a cut."""
@@ -182,6 +208,12 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings) -> bool:
 
     row_id = row["id"]
     meta = dict(row.get("meta") or {})
+    if picture_pending(store, row):
+        # drawn on the post's picture, which is still being made: wait for it rather than draw on paper
+        store.table(db.MEDIA).update({"status": "pending", "attempts": max(0, int(row.get("attempts") or 1) - 1),
+                                      "error": None}).eq("id", row_id).eq("status", "processing").execute()
+        log.info("%s: waiting for the post's picture before drawing the slides", row_id)
+        return True
     try:
         items = slides.normalise(meta.get("slides"))
         if not items:
@@ -309,6 +341,7 @@ def main() -> int:
     done = 0
     if rows:
         providers: dict[str, Provider] = {}
+        rows.sort(key=lambda r: r.get("mode") == "slides")       # pictures first: slides may be drawn on them
         done = sum(process_row(store, r, s, providers, llm) for r in rows)
         log.info("%d/%d generated", done, len(rows))
     else:

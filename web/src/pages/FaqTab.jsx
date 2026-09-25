@@ -98,7 +98,7 @@ export default function FaqTab({ faqs, settings, brand, user, onToast }) {
         </p>
       )}
 
-      <div className="sticky top-[97px] z-30 xl:top-[65px] -mx-4 mt-6 bg-bg/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+      <div className="z-30 sm:sticky sm:top-[97px] xl:top-[65px] -mx-4 mt-6 bg-bg/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
         <div className="flex flex-wrap items-center gap-2">
           <label className="relative min-w-0 flex-1 basis-60">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
@@ -357,11 +357,11 @@ function EditFaq({ row, cats, onClose, onToast, onDone }) {
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? (e.target.type === "checkbox" ? e.target.checked : e.target.value) : e }));
   const subs = cats.find((c) => c.key === f.category)?.subs || [];
   async function save() {
-    const patch = { ...f, subcategory: subs.includes(f.subcategory) ? f.subcategory : "",
+    const patch = { ...f, subcategory: f.subcategory === (row.subcategory || "") || subs.includes(f.subcategory) ? f.subcategory : "",
       tags: f.tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean).slice(0, 5),
       check_note: f.needs_check ? f.check_note : "", status: "ready" };
     // a category chosen by hand stays put: the bot neither rewrites nor re-sorts it
-    if (f.category !== row.category || patch.subcategory !== (row.subcategory || "")) patch.category_by = "wan";
+    if (f.category !== row.category || f.subcategory !== (row.subcategory || "")) patch.category_by = "wan";
     const { error } = await supabase.from(TABLES.faqs).update(patch).eq("id", row.id);
     if (error) return onToast(errText(error), "danger");
     onToast(t("Disimpan.", "Saved."), "ok"); onDone?.(); onClose();
@@ -377,7 +377,7 @@ function EditFaq({ row, cats, onClose, onToast, onDone }) {
           <label className="block"><Label>{t("Kategori", "Category")}</Label>
             <Select value={f.category} onChange={(v) => setF((x) => ({ ...x, category: v, subcategory: "" }))} options={cats.map((c) => [c.key, lang === "en" ? c.en : c.bm])} className="w-full" aria-label={t("Kategori", "Category")} /></label>
           <label className="block"><Label>{t("Subkategori", "Subcategory")}</Label>
-            <Select value={f.subcategory} onChange={set("subcategory")} options={[["", "—"], ...subs.map((s) => [s, s])]} className="w-full" aria-label={t("Subkategori", "Subcategory")} /></label>
+            <Select value={f.subcategory} onChange={set("subcategory")} options={[["", "—"], ...subs.map((s) => [s, s]), ...(f.subcategory && !subs.includes(f.subcategory) ? [[f.subcategory, f.subcategory]] : [])]} className="w-full" aria-label={t("Subkategori", "Subcategory")} /></label>
         </div>
         <label className="block"><Label hint={t("pengawal selia / instrumen sahaja, bukan media sosial", "regulator / instrument only, not social media")}>{t("Sumber rasmi", "Official source")}</Label><Input value={f.instrument} onChange={set("instrument")} /></label>
         <label className="block"><Label hint={t("dipisah dengan koma, maksimum 5", "comma-separated, up to 5")}>{t("Tag", "Tags")}</Label><Input value={f.tags} onChange={set("tags")} /></label>

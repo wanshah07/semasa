@@ -42,7 +42,7 @@ Two flows:
 
 | Part | Where | Runs |
 |---|---|---|
-| Schema, RLS, buckets, dispatch trigger, the log | `supabase/001…008.sql` | once, in the SQL editor |
+| Schema, RLS, buckets, dispatch trigger, the log, the clock | `supabase/001…009.sql` | once, in the SQL editor |
 | Scraper | `backend/semasa/scraper.py` | `.github/workflows/scrape.yml`, `17 7,15,23 * * *` (07:17 · 15:17 · 23:17 MYT) |
 | Idea writer (Flow A) + media generator (both flows) + slide renderer | `backend/semasa/ideas.py`, `media_generator.py`, `slides.py` | `.github/workflows/media.yml`, dispatch + `*/15` |
 | Publisher (**dry run**) | `backend/semasa/publisher.py` | `.github/workflows/publish.yml`, 06:20 · 11:20 · 19:20 MYT |

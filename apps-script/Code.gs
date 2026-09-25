@@ -120,6 +120,7 @@ function appendLog_(fields, rows) {
     if (!fresh.length) return { ok: true, appended: 0, lastLogId: last };
     var values = fresh.map(function (r) { return fields.map(function (f) { return cell_(r[f]); }); });
     var start = sh.getLastRow() + 1;
+    ensureRows_(sh, start + values.length - 1);
     sh.getRange(start, 1, values.length, head.length).setValues(values).setVerticalAlignment('top');
     var colours = { error: '#fde8e8', warn: '#fff4dc' };
     fresh.forEach(function (r, i) {                       // errors and warnings stand out when scrolling
@@ -140,12 +141,19 @@ function writeTab_(ss, name, head, values, index) {
   sh.clear();
   if (sh.getFilter()) sh.getFilter().remove();
   sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#f4eee4');
+  ensureRows_(sh, values.length + 1);
   if (values.length) sh.getRange(2, 1, values.length, head.length).setValues(values).setWrap(true).setVerticalAlignment('top');
   sh.setFrozenRows(1);
   sh.getRange(1, 1, Math.max(values.length + 1, 2), head.length).createFilter();
   var widths = { 'Soalan (BM)': 320, 'Jawapan (BM)': 420, 'Question (EN)': 320, 'Answer (EN)': 420, 'Nota semakan': 240 };
   head.forEach(function (h, i) { sh.setColumnWidth(i + 1, widths[h] || 140); });
   return sh;
+}
+
+// A new tab has 1000 rows, and a range past the last row is refused: grow the tab first.
+function ensureRows_(sh, lastRow) {
+  var have = sh.getMaxRows();
+  if (lastRow > have) sh.insertRowsAfter(have, lastRow - have);
 }
 
 function tabName_(label) {

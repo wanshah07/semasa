@@ -22,7 +22,7 @@ from .log import get_logger
 
 log = get_logger("semasa.sheet")
 
-LOG_BATCH = 2000
+LOG_BATCH = 1000   # one page: Supabase returns at most 1000 rows a read
 # A row's id is taken when it is written but seen only when its transaction commits, so a row can appear after a
 # higher id was already copied. Copying only rows this old closes that gap (every write here commits in well under
 # a second); the newest rows simply go with the next run.

@@ -107,7 +107,7 @@ function IsuTab({ trends, onToast, onIdea, onFaq }) {
       </section>
 
       <main className="mx-auto max-w-page px-4 pb-20 sm:px-6">
-        <div className="sticky top-[97px] z-30 xl:top-[65px] -mx-4 bg-bg/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+        <div className="z-30 sm:sticky sm:top-[97px] xl:top-[65px] -mx-4 bg-bg/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
           <FilterBar query={query} setQuery={setQuery} category={category} setCategory={setCategory} lang={lang} setLang={setLang} counts={counts} />
         </div>
         {trends.error && <p className="my-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{trends.error}</p>}
@@ -187,8 +187,9 @@ export default function App() {
   const posts = useTable(TABLES.posts, { enabled: allowed, limit: 400 });
   const prompts = useTable(TABLES.prompts, { enabled: allowed, realtime: false });
   const log = useTable(TABLES.publishLog, { enabled: allowed, order: "at", limit: 400, realtime: false });
-  const faqs = useTable(TABLES.faqs, { enabled: allowed, limit: 3000 });
-  const activity = useTable(TABLES.log, { enabled: allowed, order: "at", limit: 3000 });
+  // the two big lists stream live changes only while their tab is open; elsewhere a slow poll is enough
+  const faqs = useTable(TABLES.faqs, { enabled: allowed, limit: 3000, realtime: tab === "faq" });
+  const activity = useTable(TABLES.log, { enabled: allowed && tab === "log", order: "at", limit: 3000 });
 
   // "Jadikan FAQ" on a headline: the worker reads the article and writes one bilingual FAQ from it
   async function faqFrom(trend) {

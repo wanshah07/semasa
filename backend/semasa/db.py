@@ -104,6 +104,21 @@ def prune_older_than(db: Client, cutoff_iso: str) -> None:
             log.warning("could not prune %s: %s", table, exc)
 
 
+PAGE = 1000   # Supabase's default max_rows: a single read never returns more, whatever .limit() asks for
+
+
+def fetch_all(make_query: Any, cap: int = 50000) -> list[dict[str, Any]]:
+    """Every row of a query, read page by page. `make_query()` builds the query afresh (a builder cannot be
+    reused), and it must be ordered, or pages can overlap."""
+    out: list[dict[str, Any]] = []
+    while len(out) < cap:
+        page = make_query().range(len(out), len(out) + PAGE - 1).execute().data or []
+        out.extend(page)
+        if len(page) < PAGE:
+            break
+    return out[:cap]
+
+
 def drop_unpicked(db: Client, shown_cutoff_iso: str, refetch_cutoff_iso: str) -> int:
     """Delete headlines nobody turned into an idea (Wan, 25 Sep 2026: "the news will be drop if
     not select within 48 hours"). The page already stops SHOWING a headline 48 hours after it
@@ -114,15 +129,15 @@ def drop_unpicked(db: Client, shown_cutoff_iso: str, refetch_cutoff_iso: str) ->
         its row was gone, so it stays (hidden) until the normal retention; the row is its memory.
     A picked headline stays too; the idea keeps its own copy either way. Never raises."""
     try:
-        picked = {r["trend_id"] for r in (db.table(IDEAS).select("trend_id").not_.is_("trend_id", "null")
-                                          .execute().data or []) if r.get("trend_id")}
+        picked = {r["trend_id"] for r in fetch_all(lambda: db.table(IDEAS).select("id,trend_id")
+                                                   .not_.is_("trend_id", "null").order("id")) if r.get("trend_id")}
         try:   # a headline made into a FAQ is picked too (the table arrives with 007_faq.sql)
-            picked |= {r["trend_id"] for r in (db.table("semasa_faqs").select("trend_id").not_.is_("trend_id", "null")
-                                               .execute().data or []) if r.get("trend_id")}
+            picked |= {r["trend_id"] for r in fetch_all(lambda: db.table("semasa_faqs").select("id,trend_id")
+                                                        .not_.is_("trend_id", "null").order("id")) if r.get("trend_id")}
         except Exception as exc:
             log.info("no FAQ table to consult yet (%s)", str(exc)[:80])
-        old = (db.table(TRENDS).select("id").lt("created_at", shown_cutoff_iso)
-               .lt("published_at", refetch_cutoff_iso).limit(5000).execute().data or [])
+        old = fetch_all(lambda: db.table(TRENDS).select("id").lt("created_at", shown_cutoff_iso)
+                        .lt("published_at", refetch_cutoff_iso).order("id"))
         doomed = [r["id"] for r in old if r["id"] not in picked]
         for chunk in _in_filter_chunks(doomed):
             db.table(TRENDS).delete().in_("id", chunk).execute()

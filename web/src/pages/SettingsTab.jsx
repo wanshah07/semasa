@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Lock, Plus, Save, Trash2 } from "lucide-react";
 import { dayNames } from "../lib/brand";
 import { faqCategories } from "../lib/faqExport";
+import { TABLES, supabase } from "../lib/SupabaseClient";
 import { BUILT_IN_INDO } from "../lib/compliance";
 import { useLang } from "../lib/i18n";
 import Button from "../components/ui/Button";
@@ -27,7 +28,7 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
     setLiSlots((brand.linkedin.slots || []).join(", "));
     setLiDays(brand.linkedin.days || []);
     setRota(Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, [...((brand.regulab.schedule || {})[d] || [])]])));
-  }, [brand]);
+  }, [JSON.stringify(brand)]); // eslint-disable-line react-hooks/exhaustive-deps -- only when the slots and rota themselves change
 
   const domains = Object.entries(brand.regulab.domains || {});
   const publishing = settings.publishing || {};
@@ -128,7 +129,7 @@ function FaqCategories({ settings, save, onToast }) {
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     setRows(faqCategories(settings).map((c) => ({ ...c, subs: c.subs.join(", "), fresh: false })));
-  }, [settings]);
+  }, [JSON.stringify(settings.faq?.categories)]); // eslint-disable-line react-hooks/exhaustive-deps -- a change elsewhere must not wipe an edit here
   const set = (i, k, v) => setRows((r) => r.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
 
   async function submit() {
@@ -154,8 +155,25 @@ function FaqCategories({ settings, save, onToast }) {
         const now = cats.find((x) => x.key === c.key);
         for (const sub of c.auto_subs || []) if (!now || !now.subs.includes(sub)) declined.add(sub);
       }
-      await save("faq", { ...(settings.faq || {}), categories: cats, declined: [...declined],
-        changed_at: new Date().toISOString() });
+      // the bot may have added to the list since this page loaded it: keep those additions, don't erase them unseen
+      const { data: live } = await supabase.from(TABLES.settings).select("value").eq("key", "faq").maybeSingle();
+      const liveValue = live?.value && typeof live.value === "object" ? live.value : (settings.faq || {});
+      const known = new Set(before.map((c) => c.key));
+      const knownSubs = Object.fromEntries(before.map((c) => [c.key, new Set(c.subs)]));
+      const merged = [...cats];
+      for (const c of faqCategories({ faq: liveValue })) {
+        if (c.auto && !known.has(c.key) && !merged.some((x) => x.key === c.key)) {
+          merged.splice(Math.max(0, merged.findIndex((x) => x.key === "lain")), 0, c);
+        }
+        const mine = merged.find((x) => x.key === c.key);
+        for (const sub of c.auto_subs || []) {
+          if (mine && known.has(c.key) && !knownSubs[c.key].has(sub) && !mine.subs.includes(sub)) {
+            mine.subs = [...mine.subs, sub]; mine.auto_subs = [...(mine.auto_subs || []), sub];
+          }
+        }
+      }
+      for (const d of liveValue.declined || []) declined.add(String(d));
+      await save("faq", { ...liveValue, categories: merged, declined: [...declined], changed_at: new Date().toISOString() });
       onToast(t("Kategori FAQ disimpan.", "FAQ categories saved."), "ok");
     } catch (e) {
       onToast(/0 rows|faq/i.test(e.message) ? t("Jalankan supabase/007_faq.sql dahulu.", "Run supabase/007_faq.sql first.") : e.message, "danger");
@@ -210,7 +228,7 @@ function IndoTabung({ settings, save, onToast }) {
   useEffect(() => {
     const list = settings.bahasa?.indo;
     setRows(Array.isArray(list) ? list.map((e) => (typeof e === "string" ? { indo: e, bm: "" } : { indo: e.indo || "", bm: e.bm || "" })) : []);
-  }, [settings]);
+  }, [JSON.stringify(settings.bahasa?.indo)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function persist(next, msg) {
     setBusy(true);

@@ -359,9 +359,11 @@ def sync_sheet(store: Any, settings: dict[str, Any], cats: list[dict[str, Any]])
     if not sheet.configured():
         return "sheet: not configured (SEMASA_SHEET_URL / SEMASA_SHEET_TOKEN)"
     try:
-        ready = store.table(FAQS).select("*").eq("status", "ready").limit(5000).execute().data or []
+        ready = db.fetch_all(lambda: store.table(FAQS).select("*").eq("status", "ready").order("id"))
         rows = sheet_rows(ready, cats)
-        digest = hashlib.sha256(json.dumps(rows, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        # the words decide, not the timestamp: the sorter touching an entry must not rewrite the whole sheet
+        same = [{k: v for k, v in r.items() if k != "updated_at"} for r in rows]
+        digest = hashlib.sha256(json.dumps(same, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         state = settings.get("faq_sheet") if isinstance(settings.get("faq_sheet"), dict) else {}
         if state.get("hash") == digest:
             return f"sheet: unchanged ({len(rows)} rows)"

@@ -28,11 +28,14 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
   const [busy, setBusy] = useState(false);
   const [newPic, setNewPic] = useState("");
 
+  // Reset only when this post changes in the database (another save, the worker attaching slides), never on a poll
+  // that hands back the same row: that used to wipe an unsaved caption every 90 seconds.
   useEffect(() => {
-    setText(post.text || {}); setLang(post.lang || "bm"); setView(post.lang || "bm"); setCitation(post.citation || "");
+    const l = post.lang || (post.stream === "linkedin" ? "en" : "bm");
+    setText(post.text || {}); setLang(l); setView(l); setCitation(post.citation || "");
     setDate(post.date || ""); setSlot(post.slot || ""); setMediaIds(post.media_ids || []);
     setSlideRows(toRows(post.slides));
-  }, [post]);
+  }, [post.id, post.updated_at]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reg = brand.regulab;
   const plats = platformsFor(post.stream);

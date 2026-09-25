@@ -17,6 +17,7 @@ const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const PLATFORMS = RULES.platforms;
+export const BUILT_IN_INDO = RULES.indo;
 export const LIMITS = RULES.limits;
 export const DEFAULT_BRAND = RULES.brand;
 
@@ -45,12 +46,73 @@ export function dowOf(iso) {
   return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay();
 }
 
+/** Wan's own list of Indonesian words to avoid (semasa_settings.bahasa.indo, edited in Tetapan):
+    [[indo, bm]], lowercase, deduped, minus the built-in list. Mirrors tabung() in compliance.py. */
+export function tabung(raw) {
+  const out = [];
+  const seen = new Set(RULES.indo);
+  for (const e of Array.isArray(raw) ? raw : []) {
+    const isObj = e && typeof e === "object";
+    const indo = String((isObj ? e.indo : e) ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+    const bm = String((isObj ? e.bm : "") ?? "").trim();
+    if (indo && !seen.has(indo)) { seen.add(indo); out.push([indo, bm]); }
+  }
+  return out;
+}
+
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Messages for every Indonesian word in `text`: the built-in list, then the tabung. */
+export function indoHits(text, extra) {
+  const low = String(text).toLowerCase();
+  const words = low.match(/[a-z]+/g) || [];
+  const msgs = RULES.indo.filter((w) => words.includes(w)).map((w) => `Bahasa Indonesia word "${w}"`);
+  for (const [indo, bm] of extra) {
+    const hit = /^[a-z]+$/.test(indo) ? words.includes(indo) : new RegExp(`(?<![a-z])${escRe(indo)}(?![a-z])`).test(low);
+    if (hit) msgs.push(`Bahasa Indonesia word "${indo}" (tabung${bm ? `: write "${bm}")` : ")"}`);
+  }
+  return msgs;
+}
+
+const MAX_SLIDES = 10;
+const MAX_POINTS = 5;
+
+/** [{title, points[]}]: the one shape the writer, this page, the renderer and the scan use.
+    Mirrors normalise_slides in backend/semasa/compliance.py exactly. */
+export function normaliseSlides(raw) {
+  const out = [];
+  if (!Array.isArray(raw)) return out;
+  for (let s of raw.slice(0, MAX_SLIDES)) {
+    if (typeof s === "string") s = { title: s };
+    if (!s || typeof s !== "object" || Array.isArray(s)) continue;
+    const title = String(s.title ?? "").trim().slice(0, 240);
+    let pts = s.points;
+    if (typeof pts === "string") pts = pts.split("\n");
+    let points = (Array.isArray(pts) ? pts : []).map((p) => String(p ?? "").trim()).filter(Boolean)
+      .map((p) => p.slice(0, 400)).slice(0, MAX_POINTS);
+    const body = String(s.body ?? "").trim();
+    if (body && !points.length) points = [body.slice(0, 400)];
+    if (title || points.length) out.push({ title, points });
+  }
+  return out;
+}
+
+/** Comparable form of a slide list: equal keys mean the same words. */
+export const slidesKey = (raw) => JSON.stringify(normaliseSlides(raw));
+
+/** What the scan needs of one attached media row: its alt text and, for a drawn slide set, the words
+    it was drawn from (the publisher builds the same entry: backend/semasa/publisher.py scan_entry). */
+export const scanMedia = (m) => (m.mode === "slides"
+  ? { alt: m.meta?.alt || "", slides: m.meta?.slides || [] }
+  : { alt: m.meta?.alt || "" });
+
 /** -> [{hard, where, msg}]. Any hard flag blocks Approve and blocks the send. */
-export function scan(post, brandIn = null, schedule = null) {
+export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   const brand = { ...RULES.brand, ...(brandIn || {}) };
   const stream = post.stream || "regulab";
   const flags = [];
   const add = (hard, where, msg) => flags.push({ hard, where, msg });
+  const extra = tabung(indoExtra);
   const lang = langOf(post);
   const burl = brandUrlRe(brand);
   const limits = RULES.limits[stream] || {};
@@ -66,7 +128,7 @@ export function scan(post, brandIn = null, schedule = null) {
     for (const [re, label] of SOFT) if (re.test(t)) add(false, where, label);
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. Never say the idea came from Reddit, YouTube, a forum or a post.");
     const words = t.toLowerCase().match(/[a-z]+/g) || [];
-    for (const w of RULES.indo) if (words.includes(w)) add(true, where, `Bahasa Indonesia word "${w}"`);
+    for (const msg of indoHits(t, extra)) add(true, where, msg);
     for (const [w, why] of RULES.indo_soft) if (words.includes(w)) add(false, where, why);
     if (burl.test(t)) add(true, where, "the ws.regulab website. The artwork footer already carries it.");
     else if (ANY_URL.test(t)) add(false, where, "a link. Naming the instrument usually reads better than pasting a URL.");
@@ -88,8 +150,7 @@ export function scan(post, brandIn = null, schedule = null) {
     if (!t) continue;
     const tag = other === "bm" ? "BM" : "EN";
     for (const [re, label] of HARD) if (re.test(t)) add(false, `${tag} variant (${p})`, label);
-    const words = t.toLowerCase().match(/[a-z]+/g) || [];
-    for (const w of RULES.indo) if (words.includes(w)) add(false, `${tag} variant (${p})`, `Bahasa Indonesia word "${w}"`);
+    for (const msg of indoHits(t, extra)) add(false, `${tag} variant (${p})`, msg);
   }
 
   const cit = String(post.citation || "");
@@ -108,6 +169,29 @@ export function scan(post, brandIn = null, schedule = null) {
       if (mark && mark.test(t)) add(true, where, "a ws.regulab mark on LinkedIn");
     }
   }
+
+  // Slides are artwork: judged like a caption, and what is DRAWN must be what is written.
+  const slides = normaliseSlides(post.slides);
+  slides.forEach((sl, i) => {
+    const where = `Slide ${i + 1}`;
+    const t = [sl.title, ...sl.points].join("\n");
+    if (SAHKAN_EMPTY.test(t)) add(true, where, "a [SAHKAN] that names nothing");
+    for (const [re, label] of HARD) if (re.test(t)) add(true, where, label);
+    if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. A post stands on the instrument, never on where the idea was spotted.");
+    for (const msg of indoHits(t, extra)) add(true, where, msg);
+    if (burl.test(t)) add(true, where, "the ws.regulab website. Only the artwork footer carries it.");
+    if (stream === "linkedin") {
+      const hit = t.match(AGGREGATOR);
+      if (hit) add(true, where, `cites "${hit[0]}", a blog or news aggregator. Cite the instrument.`);
+      const mark = brandMarkRe(brand);
+      if (mark && mark.test(t)) add(true, where, "a ws.regulab mark on LinkedIn");
+    }
+  });
+  const drawn = (post.media || []).filter((m) => m && typeof m === "object" && "slides" in m).map((m) => m.slides);
+  const key = slidesKey(slides);
+  if (drawn.some((d) => slidesKey(d) !== key))
+    add(true, "Slides", "the slide pictures carry different words from the slides written here. Draw them again (Jana slaid) so what is sent is what was checked.");
+  else if (slides.length && !drawn.length) add(false, "Slides", "written but not drawn yet. Only drawn slides are sent.");
 
   if (stream === "regulab" && post.domain === "fatwa") {
     const body = textOf(post, "facebook", lang) + textOf(post, "instagram", lang);

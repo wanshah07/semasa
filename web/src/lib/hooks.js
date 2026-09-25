@@ -27,7 +27,11 @@ export function useCanUpload(user) {
   return can;
 }
 
-/** Latest headlines plus the last scrape run, refreshed every `everyMs`. */
+/** A headline nobody turns into an idea leaves the page this many hours after it arrived, and the
+    scraper deletes it once it can never come back (backend SCRAPE_PICK_HOURS; keep the two equal). */
+export const PICK_HOURS = 48;
+
+/** Latest headlines (the last PICK_HOURS only) plus the last scrape run, refreshed every `everyMs`. */
 export function useTrends({ limit = 240, everyMs = 600_000 } = {}) {
   const [rows, setRows] = useState([]);
   const [lastRun, setLastRun] = useState(null);
@@ -39,6 +43,7 @@ export function useTrends({ limit = 240, everyMs = 600_000 } = {}) {
     try {
       const [t, r] = await Promise.all([
         supabase.from(TABLES.trends).select("id,title,source,url,summary,category,lang,summary_source,published_at,created_at,tags")
+          .gte("created_at", new Date(Date.now() - PICK_HOURS * 3600_000).toISOString())
           .order("created_at", { ascending: false }).limit(limit),
         // last FINISHED run: an in-progress run (or one that crashed before closing) has
         // seen/inserted 0 and would make the hero read "0 baharu" for minutes at a time
@@ -161,8 +166,10 @@ export function useSettings(enabled) {
   const map = {};
   for (const r of t.rows) map[r.key] = r.value;
   const save = useCallback(async (key, value) => {
-    const { error: e } = await supabase.from(TABLES.settings).update({ value }).eq("key", key);
+    const { data, error: e } = await supabase.from(TABLES.settings).update({ value }).eq("key", key).select("key");
     if (e) throw new Error(errText(e));
+    // an update that matched nothing is not a save: the row is missing (its SQL file has not run)
+    if (!data?.length) throw new Error(`setting "${key}" not found (0 rows): run its supabase/*.sql file`);
     await t.reload();
   }, [t]);
   return { settings: map, loading: t.loading, error: t.error, save, reload: t.reload };

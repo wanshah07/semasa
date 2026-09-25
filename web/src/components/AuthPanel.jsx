@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { KeyRound, Mail } from "lucide-react";
 import { supabase, errText } from "../lib/SupabaseClient";
+import { useLang } from "../lib/i18n";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 
@@ -11,6 +12,7 @@ import Card from "./ui/Card";
    provider is not enabled in that project, and a button that can only fail is worse than none.
    Signing in is not enough to use Semasa: the account must also be on semasa_uploaders. */
 export default function AuthPanel({ onToast }) {
+  const { t } = useLang();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -26,7 +28,7 @@ export default function AuthPanel({ onToast }) {
   }
 
   async function withLink() {
-    if (!email) return onToast("Tulis e-mel dahulu.", "warn");
+    if (!email) return onToast(t("Tulis e-mel dahulu.", "Enter your e-mail first."), "warn");
     setBusy(true);
     const { error } = await supabase.auth.signInWithOtp({
       email, options: { emailRedirectTo: back(), shouldCreateUser: false },
@@ -37,27 +39,32 @@ export default function AuthPanel({ onToast }) {
 
   return (
     <Card className="mx-auto max-w-md p-6">
-      <h3 className="text-lg">Log masuk</h3>
+      <h3 className="text-lg">{t("Log masuk", "Sign in")}</h3>
       <p className="mt-1 text-sm text-muted">
-        Akaun Semasa anda (e-mel dan kata laluan). Paparan isu semasa tidak memerlukan log masuk.
+        {t("Akaun Semasa anda (e-mel dan kata laluan). Paparan isu semasa tidak memerlukan log masuk.",
+          "Your Semasa account (e-mail and password). The current issues view does not need a sign-in.")}
       </p>
       <form onSubmit={withPassword} className="mt-4 space-y-2">
         <label className="flex items-center gap-2 rounded-pill border border-line bg-bg px-4 py-2">
           <Mail size={14} className="text-muted" />
           <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email"
-            placeholder="anda@contoh.com" className="w-full bg-transparent text-sm outline-none" aria-label="E-mel" />
+            placeholder={t("anda@contoh.com", "you@example.com")} className="w-full bg-transparent text-sm outline-none"
+            aria-label={t("E-mel", "E-mail")} />
         </label>
         <label className="flex items-center gap-2 rounded-pill border border-line bg-bg px-4 py-2">
           <KeyRound size={14} className="text-muted" />
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password"
-            placeholder="Kata laluan" className="w-full bg-transparent text-sm outline-none" aria-label="Kata laluan" />
+            placeholder={t("Kata laluan", "Password")} className="w-full bg-transparent text-sm outline-none"
+            aria-label={t("Kata laluan", "Password")} />
         </label>
-        <Button type="submit" className="w-full justify-center" disabled={busy || !password}>{busy ? "…" : "Log masuk"}</Button>
+        <Button type="submit" className="w-full justify-center" disabled={busy || !password}>{busy ? "…" : t("Log masuk", "Sign in")}</Button>
       </form>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant="ghost" size="sm" onClick={withLink} disabled={busy}>Hantar pautan ke e-mel</Button>
+        <Button variant="ghost" size="sm" onClick={withLink} disabled={busy}>{t("Hantar pautan ke e-mel", "Send a link to my e-mail")}</Button>
       </div>
-      {sent && <p className="mt-3 rounded-tile bg-ok/10 p-3 text-sm text-ok">Jika akaun ini wujud, pautan log masuk telah dihantar.</p>}
+      {sent && <p className="mt-3 rounded-tile bg-ok/10 p-3 text-sm text-ok">
+        {t("Jika akaun ini wujud, pautan log masuk telah dihantar.", "If this account exists, a sign-in link has been sent.")}
+      </p>}
     </Card>
   );
 }

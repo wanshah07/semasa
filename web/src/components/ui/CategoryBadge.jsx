@@ -1,4 +1,4 @@
-import { CATEGORY_LABEL } from "../../lib/format";
+import { categoryLabel } from "../../lib/format";
 
 /* Colour comes from --cat-<category> in tokens.css; the component knows no hex. */
 export default function CategoryBadge({ category, active = false, onClick, size = "sm" }) {
@@ -15,7 +15,7 @@ export default function CategoryBadge({ category, active = false, onClick, size 
       }}
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: active ? "currentColor" : `rgb(${c})` }} />
-      {CATEGORY_LABEL[category] || category}
+      {categoryLabel(category)}
     </Tag>
   );
 }

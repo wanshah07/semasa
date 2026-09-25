@@ -1,3 +1,4 @@
+import { currentLang } from "./i18n";
 /* Defaults mirror supabase/005_studio.sql; the live values come from semasa_settings.brand. */
 export const DEFAULT_BRAND = {
   regulab: {
@@ -19,6 +20,9 @@ export const DEFAULT_BRAND = {
 
 export const STREAMS = [["regulab", "ws.regulab (FB · IG · Threads)"], ["linkedin", "LinkedIn (Wan)"]];
 export const DAY_NAMES = ["Ahad", "Isnin", "Selasa", "Rabu", "Khamis", "Jumaat", "Sabtu"];
+const DAY_NAMES_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+/** Weekday names (0 = Sunday) in the page's language. */
+export const dayNames = () => (currentLang() === "en" ? DAY_NAMES_EN : DAY_NAMES);
 
 export function brandOf(settings) {
   const b = (settings && settings.brand) || {};

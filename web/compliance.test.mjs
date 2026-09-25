@@ -17,12 +17,12 @@ writeFileSync(tmp, src);
 const { scan } = await import(pathToFileURL(tmp).href);
 
 if (process.argv.includes("--dump")) {
-  console.log(JSON.stringify(cases.map((c) => scan(c.post, null, c.schedule || null))));
+  console.log(JSON.stringify(cases.map((c) => scan(c.post, null, c.schedule || null, c.indo_extra || null))));
   process.exit(0);
 }
 let failed = 0;
 for (const c of cases) {
-  const flags = scan(c.post, null, c.schedule || null);
+  const flags = scan(c.post, null, c.schedule || null, c.indo_extra || null);
   const hard = flags.filter((f) => f.hard).map((f) => `${f.where}: ${f.msg}`);
   const soft = flags.filter((f) => !f.hard).map((f) => `${f.where}: ${f.msg}`);
   const e = c.expect, errs = [];

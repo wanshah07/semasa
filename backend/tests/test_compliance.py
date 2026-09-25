@@ -30,7 +30,7 @@ def check(case, flags):
 
 @pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
 def test_case(case):
-    check(case, compliance.scan(case["post"], schedule=case.get("schedule")))
+    check(case, compliance.scan(case["post"], schedule=case.get("schedule"), indo_extra=case.get("indo_extra")))
 
 
 def test_every_rule_compiles_the_same_way():
@@ -50,6 +50,6 @@ def test_python_and_page_scanners_agree_exactly():
     web = Path(compliance.RULES_PATH).parents[1] / "web"
     out = subprocess.run([node, "compliance.test.mjs", "--dump"], cwd=web, capture_output=True, text=True, check=True)
     js = json.loads(out.stdout)
-    py = [compliance.scan(c["post"], schedule=c.get("schedule")) for c in CASES]
+    py = [compliance.scan(c["post"], schedule=c.get("schedule"), indo_extra=c.get("indo_extra")) for c in CASES]
     for case, a, b in zip(CASES, py, js, strict=True):
         assert a == b, case["name"]

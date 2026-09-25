@@ -127,3 +127,16 @@ def test_run_records_errors_on_the_idea_and_claims_once(monkeypatch):
     assert row["status"] == "error" and "did not answer" in row["error"] and row["attempts"] == 1
     assert "0/1" in note
     assert ideas.run(store, FakeLLM(None)) == "Ideas: none waiting"
+
+
+def test_the_tabung_reaches_the_writer_and_the_scan(monkeypatch):
+    monkeypatch.setattr(ideas, "read_source", lambda url: {"ok": False, "why": "x", "image": None})
+    store = _store()
+    cap = "Kilang boleh memakai bahan ini dengan selamat."
+    text = {"bm": {"instagram": cap, "facebook": cap, "threads": cap}}
+    llm = FakeLLM({"fit": True, "hook": "h", "citation": "NPRA", "text": text})
+    settings = {**ideas.load_settings(store), "bahasa": {"indo": [{"indo": "memakai", "bm": "menggunakan"}]}}
+    ideas.process_idea(store, llm, {"id": "i1", "stream": "regulab", "make_media": "none"}, settings)
+    assert '"memakai" (write "menggunakan")' in llm.seen[0][0]
+    post = store.tables["semasa_posts"][0]
+    assert any("memakai" in f["msg"] and f["hard"] for f in post["flags"])

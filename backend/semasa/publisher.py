@@ -64,9 +64,26 @@ def write_log(store: Any, post_id: str, channel: str, action: str, detail: dict[
 def media_for(store: Any, ids: list[str]) -> list[dict[str, Any]]:
     if not ids:
         return []
-    rows = store.table(db.MEDIA).select("id,status,generated_media_url,type,meta").in_("id", ids).execute().data or []
+    rows = store.table(db.MEDIA).select("id,status,generated_media_url,type,mode,meta").in_("id", ids).execute().data or []
     by_id = {r["id"]: r for r in rows}
     return [by_id[i] for i in ids if i in by_id]
+
+
+def scan_entry(m: dict[str, Any]) -> dict[str, Any]:
+    """What the compliance scan needs of one attached media: its alt text and, for a slide set,
+    the words it was drawn from (so a set drawn from older words blocks the send)."""
+    meta = m.get("meta") or {}
+    entry: dict[str, Any] = {"alt": meta.get("alt") or ""}
+    if m.get("mode") == "slides":
+        entry["slides"] = meta.get("slides") or []
+    return entry
+
+
+def pictures_of(m: dict[str, Any]) -> list[str]:
+    """The addresses a media row sends: every slide of a carousel, in order, else its one file."""
+    if m.get("mode") == "slides":
+        return [u for u in ((m.get("meta") or {}).get("slide_urls") or []) if u]
+    return [m["generated_media_url"]] if m.get("generated_media_url") else []
 
 
 def run(store: Any, now: datetime | None = None) -> dict[str, int]:
@@ -85,9 +102,9 @@ def run(store: Any, now: datetime | None = None) -> dict[str, int]:
             continue
         counts["considered"] += 1
         media = media_for(store, list(post.get("media_ids") or []))
-        scan_post = {**post, "media": [{"alt": (m.get("meta") or {}).get("alt") or ""} for m in media
-                                       if m.get("status") == "done"]}
-        flags = compliance.scan(scan_post, brand=reg, schedule=reg.get("schedule"))
+        scan_post = {**post, "media": [scan_entry(m) for m in media if m.get("status") == "done"]}
+        flags = compliance.scan(scan_post, brand=reg, schedule=reg.get("schedule"),
+                                indo_extra=(settings.get("bahasa") or {}).get("indo"))
         hard = [f"{f['where']}: {f['msg']}" for f in flags if f["hard"]]
         not_ready = [m["id"] for m in media if m.get("status") != "done" or not m.get("generated_media_url")]
         if not_ready:
@@ -98,7 +115,7 @@ def run(store: Any, now: datetime | None = None) -> dict[str, int]:
                 continue
             payload = {"channel": channel, "due_at": due.isoformat(),
                        "text": compliance.text_of(post, channel, lang),
-                       "media": [m.get("generated_media_url") for m in media]}
+                       "media": [u for m in media for u in pictures_of(m)]}
             fp = fingerprint(payload)
             if hard:
                 counts["blocked"] += 1
@@ -133,6 +150,8 @@ def main() -> int:
     store = db.client(SupabaseSettings.load())
     counts = run(store)
     log.info("publisher: %s", counts)
+    from . import sheet
+    log.info(sheet.sync_log(store))
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as fh:

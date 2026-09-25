@@ -87,11 +87,84 @@ def dow_of(iso_date: str) -> int | None:
         return None
 
 
+def tabung(raw: Any) -> list[tuple[str, str]]:
+    """Wan's own list of Indonesian words to avoid (semasa_settings.bahasa.indo, edited in Tetapan):
+    [(indo, bm)], lowercase, deduped, minus anything the built-in list already catches."""
+    out: list[tuple[str, str]] = []
+    seen = set(RULES["indo"])
+    for e in raw if isinstance(raw, list) else []:
+        indo = re.sub(r"\s+", " ", _str(e.get("indo") if isinstance(e, dict) else e)).strip().lower()
+        bm = _str(e.get("bm") if isinstance(e, dict) else "").strip()
+        if indo and indo not in seen:
+            seen.add(indo)
+            out.append((indo, bm))
+    return out
+
+
+def indo_hits(text: str, extra: list[tuple[str, str]]) -> list[str]:
+    """Messages for every Indonesian word in `text`: the built-in list, then Wan's tabung. A tabung
+    entry of several words is matched as a phrase; one word is matched as a whole word."""
+    low = text.lower()
+    words = _WORD.findall(low)
+    msgs = [f'Bahasa Indonesia word "{w}"' for w in RULES["indo"] if w in words]
+    for indo, bm in extra:
+        hit = indo in words if re.fullmatch(r"[a-z]+", indo) else \
+            re.search(r"(?<![a-z])" + re.escape(indo) + r"(?![a-z])", low) is not None
+        if hit:
+            msgs.append(f'Bahasa Indonesia word "{indo}" (tabung' + (f': write "{bm}")' if bm else ")"))
+    return msgs
+
+
+def avoid_line(indo_extra: Any) -> str:
+    """The tabung as one instruction for a writer's prompt ("" when the list is empty)."""
+    items = [f'"{i}"' + (f' (write "{b}")' if b else "") for i, b in tabung(indo_extra)]
+    return ("\nALSO NEVER USE these Indonesian words or phrases (Wan's own list; they have slipped through before): "
+            + "; ".join(items) + ".") if items else ""
+
+
+MAX_SLIDES = 10
+MAX_POINTS = 5
+
+
+def _str(v: Any) -> str:
+    return "" if v is None else str(v)
+
+
+def normalise_slides(raw: Any) -> list[dict[str, Any]]:
+    """[{title, points[]}]: the one shape the writer, the page, the renderer and this scan use.
+    Mirrored exactly by normaliseSlides in web/src/lib/compliance.js."""
+    out: list[dict[str, Any]] = []
+    if not isinstance(raw, list):
+        return out
+    for s in raw[:MAX_SLIDES]:
+        if isinstance(s, str):
+            s = {"title": s}
+        if not isinstance(s, dict):
+            continue
+        title = _str(s.get("title")).strip()[:240]
+        pts = s.get("points")
+        if isinstance(pts, str):
+            pts = pts.split("\n")
+        points = [_str(p).strip()[:400] for p in (pts if isinstance(pts, list) else []) if _str(p).strip()][:MAX_POINTS]
+        body = _str(s.get("body")).strip()
+        if body and not points:
+            points = [body[:400]]
+        if title or points:
+            out.append({"title": title, "points": points})
+    return out
+
+
+def slides_key(raw: Any) -> str:
+    """Comparable form of a slide list: equal keys mean the same words."""
+    return json.dumps(normalise_slides(raw), ensure_ascii=False, separators=(",", ":"))
+
+
 def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
-         schedule: dict[str, list[str]] | None = None) -> list[dict[str, Any]]:
+         schedule: dict[str, list[str]] | None = None, indo_extra: Any = None) -> list[dict[str, Any]]:
     brand = {**RULES["brand"], **(brand or {})}
     stream = post.get("stream") or "regulab"
     flags: list[dict[str, Any]] = []
+    extra = tabung(indo_extra)
 
     def add(hard: bool, where: str, msg: str) -> None:
         flags.append({"hard": hard, "where": where, "msg": msg})
@@ -120,9 +193,8 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
         if SOCIAL_SRC.search(t):
             add(True, where, "names a social source. Never say the idea came from Reddit, YouTube, a forum or a post.")
         words = _WORD.findall(t.lower())
-        for w in RULES["indo"]:
-            if w in words:
-                add(True, where, f'Bahasa Indonesia word "{w}"')
+        for msg in indo_hits(t, extra):
+            add(True, where, msg)
         for w, why in RULES["indo_soft"]:
             if w in words:
                 add(False, where, why)
@@ -156,10 +228,8 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
         for rx, label in HARD:
             if rx.search(t):
                 add(False, f"{tag} variant ({p})", label)
-        words = _WORD.findall(t.lower())
-        for w in RULES["indo"]:
-            if w in words:
-                add(False, f"{tag} variant ({p})", f'Bahasa Indonesia word "{w}"')
+        for msg in indo_hits(t, extra):
+            add(False, f"{tag} variant ({p})", msg)
 
     # The citation is printed on the artwork's source line, so it is judged like the artwork.
     cit = str(post.get("citation") or "")
@@ -185,6 +255,36 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
             mark = brand_mark_re(brand)
             if mark and mark.search(t):
                 add(True, where, "a ws.regulab mark on LinkedIn")
+
+    # Slides are artwork: judged like a caption, and what is DRAWN must be what is written.
+    slides = normalise_slides(post.get("slides"))
+    for i, sl in enumerate(slides):
+        where = f"Slide {i + 1}"
+        t = "\n".join([sl["title"], *sl["points"]])
+        if SAHKAN_EMPTY.search(t):
+            add(True, where, "a [SAHKAN] that names nothing")
+        for rx, label in HARD:
+            if rx.search(t):
+                add(True, where, label)
+        if SOCIAL_SRC.search(t):
+            add(True, where, "names a social source. A post stands on the instrument, never on where the idea was spotted.")
+        for msg in indo_hits(t, extra):
+            add(True, where, msg)
+        if burl.search(t):
+            add(True, where, "the ws.regulab website. Only the artwork footer carries it.")
+        if stream == "linkedin":
+            hit = AGGREGATOR.search(t)
+            if hit:
+                add(True, where, f'cites "{hit.group(0)}", a blog or news aggregator. Cite the instrument.')
+            mark = brand_mark_re(brand)
+            if mark and mark.search(t):
+                add(True, where, "a ws.regulab mark on LinkedIn")
+    drawn = [m.get("slides") for m in (post.get("media") or []) if isinstance(m, dict) and "slides" in m]
+    if any(slides_key(d) != slides_key(slides) for d in drawn):
+        add(True, "Slides", "the slide pictures carry different words from the slides written here. "
+                            "Draw them again (Jana slaid) so what is sent is what was checked.")
+    elif slides and not drawn:
+        add(False, "Slides", "written but not drawn yet. Only drawn slides are sent.")
 
     if stream == "regulab" and post.get("domain") == "fatwa":
         body = text_of(post, "facebook", lang) + text_of(post, "instagram", lang)

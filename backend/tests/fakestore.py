@@ -30,6 +30,10 @@ class Query:
         self.op, self.payload = "insert", payload
         return self
 
+    def upsert(self, payload, on_conflict=None, ignore_duplicates=False):
+        self.op, self.payload, self._conflict, self._ignore = "upsert", payload, on_conflict, ignore_duplicates
+        return self
+
     def update(self, payload):
         self.op, self.payload = "update", payload
         return self
@@ -49,6 +53,17 @@ class Query:
 
     def lt(self, c, v):
         self.filters.append(lambda r: r.get(c) is not None and str(r.get(c)) < str(v))
+        return self
+
+    def gt(self, c, v):
+        def after(r):
+            x = r.get(c)
+            if x is None:
+                return False
+            if isinstance(x, (int, float)) and isinstance(v, (int, float)):
+                return x > v
+            return str(x) > str(v)
+        self.filters.append(after)
         return self
 
     def gte(self, c, v):
@@ -80,6 +95,21 @@ class Query:
             for it in items:
                 row = {"id": str(uuid.uuid4()), "status": None, **copy.deepcopy(it)}
                 row.setdefault("updated_at", self.store.now)
+                rows.append(row)
+                out.append(copy.deepcopy(row))
+            return SimpleNamespace(data=out)
+        if self.op == "upsert":
+            items = self.payload if isinstance(self.payload, list) else [self.payload]
+            out = []
+            for it in items:
+                key = it.get(self._conflict) if self._conflict else None
+                old = next((r for r in rows if key is not None and r.get(self._conflict) == key), None)
+                if old is not None:
+                    if not self._ignore:
+                        old.update(copy.deepcopy(it))
+                        out.append(copy.deepcopy(old))
+                    continue
+                row = {"id": str(uuid.uuid4()), **copy.deepcopy(it)}
                 rows.append(row)
                 out.append(copy.deepcopy(row))
             return SimpleNamespace(data=out)

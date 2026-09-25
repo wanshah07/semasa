@@ -99,6 +99,7 @@ create table if not exists public.semasa_ideas (
   angle          text,
   note           text        not null default '',   -- what Wan wants from it
   make_media     text        not null default 'image',
+  make_slides    boolean     not null default false, -- also write + draw a carousel (006)
   reference_urls text[]      not null default '{}', -- extra references Wan attached
   status         text        not null default 'new',
   brief          jsonb       not null default '{}'::jsonb, -- what the bot read and decided
@@ -128,6 +129,7 @@ create table if not exists public.semasa_posts (
   text        jsonb       not null default '{}'::jsonb,
   citation    text        not null default '',
   media_ids   uuid[]      not null default '{}',     -- media_generations used, in order
+  slides      jsonb       not null default '[]'::jsonb, -- carousel words [{title, points[]}] (006)
   date        date,
   slot        text,                                  -- 'HH:MM', Malaysia time
   status      text        not null default 'draft',
@@ -168,19 +170,19 @@ create index if not exists semasa_publish_log_post_idx on public.semasa_publish_
 --   recreate  a reference picture is READ (vision) and a new one is generated from it
 --   prompt    words only; for video a still is generated first, then animated
 -- ---------------------------------------------------------------------------
+-- (also on a database whose tables were made before slides existed; the gate below reads it)
+alter table public.semasa_posts add column if not exists slides jsonb not null default '[]'::jsonb;
+alter table public.semasa_ideas add column if not exists make_slides boolean not null default false;
 alter table public.media_generations alter column reference_url drop not null;
 alter table public.media_generations add column if not exists mode text not null default 'recreate';
 alter table public.media_generations add column if not exists idea_id uuid references public.semasa_ideas (id) on delete set null;
 alter table public.media_generations add column if not exists post_id uuid references public.semasa_posts (id) on delete set null;
 alter table public.media_generations add column if not exists prompt_id uuid references public.semasa_prompts (id) on delete set null;
 alter table public.media_generations add column if not exists reference_read text;
-do $$
-begin
-  if not exists (select 1 from pg_constraint where conname = 'media_generations_mode_check') then
-    alter table public.media_generations add constraint media_generations_mode_check
-      check (mode in ('recreate', 'prompt') and (mode = 'prompt' or reference_url is not null));
-  end if;
-end $$;
+-- replaced every run, so a database made by an earlier 005 gets the current rule (006 does the same)
+alter table public.media_generations drop constraint if exists media_generations_mode_check;
+alter table public.media_generations add constraint media_generations_mode_check
+  check (mode in ('recreate', 'prompt', 'slides') and (mode <> 'recreate' or reference_url is not null));
 
 -- ---------------------------------------------------------------------------
 -- triggers
@@ -200,7 +202,7 @@ create trigger semasa_posts_set_updated_at before update on public.semasa_posts
 
 -- The approval gate, enforced by the database rather than trusted to the page:
 --  * approved_by / approved_at are stamped here from the session, never sent by the page;
---  * an APPROVED post whose words, source, pictures or time change goes back to draft,
+--  * an APPROVED post whose words, slides, source, pictures or time change goes back to draft,
 --    so what was approved is exactly what gets sent (Studio's Buffer-copy lesson);
 --  * the browser can never write scheduled / posted / published / errors: those belong to
 --    the publisher (service_role, where auth.uid() is null).
@@ -231,7 +233,7 @@ begin
   elsif new.status = 'approved' and (new.text is distinct from old.text or new.citation is distinct from old.citation
         or new.media_ids is distinct from old.media_ids or new.date is distinct from old.date
         or new.slot is distinct from old.slot or new.lang is distinct from old.lang
-        or new.stream is distinct from old.stream) then
+        or new.stream is distinct from old.stream or new.slides is distinct from old.slides) then
     new.status := 'draft'; new.approved_by := null; new.approved_at := null;
   elsif new.status <> 'approved' then
     new.approved_by := null; new.approved_at := null;

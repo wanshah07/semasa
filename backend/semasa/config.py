@@ -95,6 +95,8 @@ class ScraperSettings:
     use_playwright: bool
     request_timeout: int
     keep_days: int          # headlines and run rows older than this are deleted (0 = keep for ever)
+    pick_hours: int = 48    # a headline nobody makes an idea of is dropped after this (0 = never);
+                            # the page hides it at the same age (web/src/lib/hooks.js PICK_HOURS)
 
     @classmethod
     def load(cls) -> ScraperSettings:
@@ -107,6 +109,7 @@ class ScraperSettings:
             # 30 days holds roughly 60 MB. The Supabase project may be shared with
             # another app, and the free plan's 500 MB database is shared with it.
             keep_days=env_int("SCRAPE_KEEP_DAYS", 30),
+            pick_hours=env_int("SCRAPE_PICK_HOURS", 48),
         )
 
 

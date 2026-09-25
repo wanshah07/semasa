@@ -1,0 +1,109 @@
+{
+ "_note": "Default FAQ categories. The live list is semasa_settings.faq.categories (edited in Tetapan); this file is the fallback both the worker and the page read.",
+ "categories": [
+  {
+   "key": "halal",
+   "bm": "Halal",
+   "en": "Halal",
+   "subs": [
+    "Pensijilan & permohonan",
+    "Logo & sijil",
+    "OEM & kontrak pengilangan",
+    "Bahan & ramuan",
+    "Premis & pekerja",
+    "Isu tular"
+   ]
+  },
+  {
+   "key": "skincare",
+   "bm": "Penjagaan kulit",
+   "en": "Skincare",
+   "subs": [
+    "Serum",
+    "Sunscreen",
+    "Pelembap",
+    "Pencuci muka",
+    "Bahan aktif",
+    "Tuntutan & iklan"
+   ]
+  },
+  {
+   "key": "kosmetik",
+   "bm": "Kosmetik & notifikasi NPRA",
+   "en": "Cosmetics & NPRA notification",
+   "subs": [
+    "Notifikasi",
+    "Label",
+    "Bahan larangan & terhad",
+    "PIF & GMP",
+    "Import & pengedaran"
+   ]
+  },
+  {
+   "key": "makanan",
+   "bm": "Makanan",
+   "en": "Food",
+   "subs": [
+    "Label",
+    "Bahan tambah",
+    "Import",
+    "Tuntutan kesihatan"
+   ]
+  },
+  {
+   "key": "farmaseutikal",
+   "bm": "Farmaseutikal & suplemen",
+   "en": "Pharmaceuticals & supplements",
+   "subs": [
+    "Pendaftaran",
+    "Produk tradisional",
+    "Suplemen kesihatan",
+    "Sempadan kosmetik-ubat"
+   ]
+  },
+  {
+   "key": "lain",
+   "bm": "Lain-lain",
+   "en": "Other",
+   "subs": []
+  }
+ ],
+ "_hedges_note": "Hedges the FAQ writer must never leave in an answer (Wan, 25 Sep 2026: firm, formal answers; no 'setahu kami', 'apa yang saya nampak'). Regular expressions, case-insensitive, matched on whole words.",
+ "hedges": [
+  "kalau tak silap(?: saya| aku| kami)?",
+  "tak silap(?: saya| aku| kami)?",
+  "jika tidak silap(?: saya| kami)?",
+  "setahu (?:saya|kami|aku)",
+  "sepanjang pengetahuan (?:saya|kami)",
+  "apa yang (?:saya|kami|aku) (?:nampak|tahu|faham)",
+  "dari apa yang (?:saya|kami|aku) (?:nampak|tahu|faham)",
+  "(?:saya|aku|kami) rasa",
+  "rasanya",
+  "rasa-rasanya",
+  "pada pendapat (?:saya|kami)",
+  "pada hemat (?:saya|kami)",
+  "agaknya",
+  "barangkali",
+  "kot",
+  "kut",
+  "i think",
+  "i believe",
+  "we believe",
+  "we think",
+  "as far as (?:i|we) know",
+  "if i am not mistaken",
+  "if i'm not mistaken",
+  "from what (?:i|we) (?:see|know|understand)",
+  "in my (?:opinion|view|experience)",
+  "it seems(?: that)?",
+  "probably",
+  "perhaps"
+ ],
+ "auto": {
+  "_note": "How far the bot may grow the list by itself (semasa/faq_sort.py). A new category needs at least min_group entries that fit it; Wan can rename or delete any of them in Tetapan, and a deleted one is never created again.",
+  "max_categories": 12,
+  "max_subs": 10,
+  "min_group": 2,
+  "sort_batch": 40
+ }
+}

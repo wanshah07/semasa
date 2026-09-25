@@ -1,7 +1,7 @@
 """Media generator. Entry point: `python -m semasa.media_generator` (see .github/workflows/media.yml).
 
 A run first hands any `new` ideas to the idea writer (semasa.ideas: Flow A), then takes
-`pending` rows from media_generations, oldest first. Two modes:
+`pending` rows from media_generations, oldest first. Three modes:
 
   prompt    words only. An image comes straight from the words; a video is a still made
             from the words first, then animated from that still.
@@ -13,6 +13,8 @@ A run first hands any `new` ideas to the idea writer (semasa.ideas: Flow A), the
                 forward and the picture is made from words. A publisher's photograph is
                 somebody else's work — describing it and drawing afresh is a new picture;
                 feeding the pixels to an edit model is a copy of theirs.
+  slides    carousel slides drawn here from words (semasa.slides): no provider, no key, no
+            cost. meta.slides is the snapshot of the words; the pictures are meta.slide_urls.
 
 The result goes to bucket `semasa-generated`; the public address is written back. A failure
 is stored ON THE ROW, and the row goes back to `pending` until `attempts` reaches
@@ -151,8 +153,84 @@ def _store(store: Any, row_id: str, gen: Generated, suffix: str = "") -> tuple[s
     return db.upload_generated(store, path, gen.data, gen.content_type), path
 
 
+def slide_ground(store: Any, row: dict[str, Any]) -> tuple[bytes | None, str | None]:
+    """The background picture a slide job asked for: (bytes, the media id used) or (None, None).
+    meta.bg is "none", "post_image" (the post's first finished picture) or a media id."""
+    meta = row.get("meta") or {}
+    bg = str(meta.get("bg") or "none")
+    if bg == "none":
+        return None, None
+    q = store.table(db.MEDIA).select("id,status,type,mode,generated_media_url,created_at")
+    if bg == "post_image":
+        if not row.get("post_id"):
+            return None, None
+        rows = q.eq("post_id", row["post_id"]).eq("status", "done").order("created_at").execute().data or []
+    else:
+        rows = q.eq("id", bg).execute().data or []
+    pick = next((r for r in rows if r.get("type") == "image" and r.get("mode") != "slides"
+                 and r.get("status") == "done" and r.get("generated_media_url")), None)
+    if not pick:
+        return None, None
+    data, _, _ = fetch_reference(pick["generated_media_url"])
+    return data, pick["id"]
+
+
+def process_slides(store: Any, row: dict[str, Any], s: MediaSettings) -> bool:
+    """Mode `slides`: draw the snapshot of words in meta.slides with semasa.slides. No provider,
+    no key, no cost. Too long to fit is a final error that names the slide, never a cut."""
+    from . import ideas, slides
+
+    row_id = row["id"]
+    meta = dict(row.get("meta") or {})
+    try:
+        items = slides.normalise(meta.get("slides"))
+        if not items:
+            raise slides.SlideError("no slides to draw: write at least one slide in the post")
+        stream = meta.get("stream") or "regulab"
+        brand = (ideas.load_settings(store).get("brand") or {})
+        reg, li = brand.get("regulab") or {}, brand.get("linkedin") or {}
+        eyebrow = str(meta.get("eyebrow") or "").strip()
+        if not eyebrow:
+            if stream == "linkedin":
+                eyebrow = str((li.get("angles") or {}).get(meta.get("angle") or "", "") or "")
+            else:
+                eyebrow = str((reg.get("domains") or {}).get(meta.get("domain") or "", "") or "")
+        website = str(reg.get("website") or "www.kkmhalalconsultant.com")
+        ground, ground_id = slide_ground(store, row)
+        if meta.get("bg") not in (None, "none") and ground is None:
+            meta["bg_missing"] = "the background picture was not ready, so the slides were drawn on paper"
+        pics = slides.render(items, stream=stream, eyebrow=eyebrow, source=str(meta.get("citation") or ""),
+                             website=website, ground=ground)
+        day = datetime.now(UTC).strftime("%Y/%m")
+        urls, paths, sums = [], [], []
+        for i, data in enumerate(pics, 1):
+            path = f"{day}/{row_id}-slide{i:02d}.jpg"
+            urls.append(db.upload_generated(store, path, data, "image/jpeg"))
+            paths.append(path)
+            sums.append(hashlib.sha256(data).hexdigest())
+        meta.update(slides=items, slide_urls=urls, slide_paths=paths, sha256=sums, count=len(urls),
+                    bg_used=ground_id, content_type="image/jpeg", bytes=sum(len(p) for p in pics),
+                    finished_at=datetime.now(UTC).isoformat())
+        db.finish_media(store, row_id, status="done", generated_media_url=urls[0], provider="semasa",
+                        model="slides-v1", error=None, meta=meta)
+        if row.get("post_id"):
+            db.attach_slides_to_draft(store, row["post_id"], row_id)
+        log.info("%s: %d slides drawn", row_id, len(urls))
+        return True
+    except Exception as exc:  # noqa: BLE001 - the row records it; the run continues
+        from .slides import SlideError
+        attempts = int(row.get("attempts") or 0)
+        final = isinstance(exc, SlideError) or attempts >= s.max_attempts
+        msg = f"{type(exc).__name__}: {str(exc)[:600]}"
+        log.error("%s: %s (attempt %d)", row_id, msg, attempts)
+        db.finish_media(store, row_id, status="error" if final else "pending", error=msg, provider="semasa")
+        return False
+
+
 def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: dict[str, Provider],
                 llm: LLM | None = None) -> bool:
+    if row.get("mode") == "slides":
+        return process_slides(store, row, s)
     row_id = row["id"]
     kind = row.get("type") or "image"
     mode = row.get("mode") or "recreate"
@@ -221,8 +299,9 @@ def main() -> int:
     llm = LLM(LLMSettings.load())
 
     # Flow A first, so the pictures an idea asks for are made in this same run.
-    from . import ideas
+    from . import faq, ideas
     idea_note = ideas.run(store, llm)
+    faq_note = faq.run(store, llm)
 
     recovered = db.recover_stale_media(store, s.stale_minutes)
     only_id = (os.environ.get("MEDIA_ONLY_ID") or "").strip() or None
@@ -234,11 +313,13 @@ def main() -> int:
         log.info("%d/%d generated", done, len(rows))
     else:
         log.info("nothing pending")
+    from . import sheet
+    sheet_note = sheet.sync_log(store)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as fh:
-            fh.write(f"## Semasa worker\n\n{idea_note}\n\n{done}/{len(rows)} media jobs generated "
-                     f"(default provider {s.provider}); {recovered} stuck job(s) put back in the queue\n")
+            fh.write(f"## Semasa worker\n\n{idea_note}\n\n{faq_note}\n\n{done}/{len(rows)} media jobs generated "
+                     f"(default provider {s.provider}); {recovered} stuck job(s) put back in the queue\n\n{sheet_note}\n")
     return 0 if done == len(rows) else 1
 
 

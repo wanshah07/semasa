@@ -3,13 +3,14 @@ import { motion } from "framer-motion";
 import { BookmarkPlus, Film, Image as ImageIcon, UploadCloud } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { bytesText } from "../lib/format";
+import { useLang } from "../lib/i18n";
 import { IMAGE_TYPES, MAX_BYTES, refusal, removeReference, uploadReference } from "../lib/storage";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import { Input, Segmented } from "./ui/Field";
 
-const PROVIDERS = [
-  { id: "", label: "Lalai (tetapan runner)" },
+const providersOf = (t) => [
+  { id: "", label: t("Lalai (tetapan runner)", "Default (runner setting)") },
   { id: "replicate", label: "Replicate" },
   { id: "openai", label: "OpenAI" },
 ];
@@ -21,6 +22,7 @@ const PROVIDERS = [
    Tick "Simpan prompt" to keep the words (and the reference) in the library for next time.
    Everything after the insert is the runner's; this component's job ends at the row. */
 export default function MediaUploader({ user, onToast, onQueued, preset, onPresetUsed }) {
+  const { t } = useLang();
   const [mode, setMode] = useState("prompt");
   const [file, setFile] = useState(null);
   const [savedRef, setSavedRef] = useState(null);     // {url, path} from a library prompt
@@ -59,13 +61,14 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
 
   async function submit(e) {
     e.preventDefault();
-    if (!ready) return onToast(needsRef ? "Perlukan gambar rujukan dan prompt." : "Perlukan prompt.", "warn");
+    if (!ready) return onToast(needsRef ? t("Perlukan gambar rujukan dan prompt.", "Needs a reference picture and a prompt.")
+      : t("Perlukan prompt.", "Needs a prompt."), "warn");
     setBusy(true);
     let uploaded = null;
     try {
       let ref = needsRef ? savedRef : null;
       if (needsRef && file) {
-        setProgress("Memuat naik rujukan…");
+        setProgress(t("Memuat naik rujukan…", "Uploading reference…"));
         uploaded = await uploadReference(user, file);
         ref = uploaded;
       }
@@ -73,7 +76,7 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
       const linked = fromPrompt && fromPrompt.prompt === prompt.trim() ? fromPrompt : null;
       let promptId = linked?.id ?? null;
       if (keep) {
-        setProgress("Menyimpan prompt…");
+        setProgress(t("Menyimpan prompt…", "Saving prompt…"));
         const saved = await supabase.from(TABLES.prompts).insert({
           title: keepTitle.trim() || prompt.trim().slice(0, 60), prompt: prompt.trim(), type,
           reference_url: ref?.url ?? null, reference_path: ref?.path ?? null, created_by: user.id,
@@ -81,7 +84,7 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
         if (saved.error) throw new Error(errText(saved.error));
         promptId = saved.data.id;
       }
-      setProgress("Mendaftar kerja…");
+      setProgress(t("Mendaftar kerja…", "Registering job…"));
       const row = {
         // a reference kept in the library belongs to the library, not to this job: deleting the
         // job must not delete the file a saved prompt still points at
@@ -94,7 +97,7 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
       if (promptId && !keep) {
         await supabase.from(TABLES.prompts).update({ uses: (linked?.uses || 0) + 1 }).eq("id", promptId);
       }
-      onToast("Dalam giliran. Runner mula dalam beberapa saat hingga 15 minit.", "ok");
+      onToast(t("Dalam giliran. Runner mula dalam beberapa saat hingga 15 minit.", "Queued. The runner starts within a few seconds to 15 minutes."), "ok");
       onQueued?.(ins.data);
       setFile(null); setPrompt(""); setSavedRef(null); setKeep(false); setKeepTitle(""); setFromPrompt(null);
       if (inputRef.current) inputRef.current.value = "";
@@ -110,13 +113,15 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
     <Card as="form" onSubmit={submit} className="p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg">Jana imej atau video</h3>
-          <p className="mt-1 text-sm text-muted">Tulis prompt sahaja, atau muat naik rujukan: bot membacanya dan mencipta semula.</p>
+          <h3 className="text-lg">{t("Jana imej atau video", "Generate an image or video")}</h3>
+          <p className="mt-1 text-sm text-muted">
+            {t("Tulis prompt sahaja, atau muat naik rujukan: bot membacanya dan mencipta semula.",
+              "Write a prompt only, or upload a reference: the bot reads it and recreates it.")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Segmented value={mode} onChange={setMode} options={[["prompt", "Prompt sahaja"], ["recreate", "Rujukan + prompt"]]} />
+          <Segmented value={mode} onChange={setMode} options={[["prompt", t("Prompt sahaja", "Prompt only")], ["recreate", t("Rujukan + prompt", "Reference + prompt")]]} />
           <div className="flex rounded-pill bg-surface-2 p-1 text-xs">
-            {[["image", ImageIcon, "Imej"], ["video", Film, "Video"]].map(([v, Icon, l]) => (
+            {[["image", ImageIcon, t("Imej", "Image")], ["video", Film, "Video"]].map(([v, Icon, l]) => (
               <button type="button" key={v} onClick={() => setType(v)}
                 className={`flex items-center gap-1 rounded-pill px-3 py-1.5 ${type === v ? "bg-surface text-ink shadow-card" : "text-muted"}`}>
                 <Icon size={13} /> {l}
@@ -139,14 +144,14 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
           <UploadCloud size={26} className="text-accent" />
           {file || savedRef ? (
             <>
-              <span className="text-sm font-medium">{file ? file.name : "Rujukan daripada pustaka prompt"}</span>
+              <span className="text-sm font-medium">{file ? file.name : t("Rujukan daripada pustaka prompt", "Reference from the prompt library")}</span>
               {file && <span className="text-xs text-muted">{bytesText(file.size)} · {file.type}</span>}
               <img src={preview || savedRef?.url} alt="" className="mt-2 max-h-48 rounded-tile object-contain" />
             </>
           ) : (
             <>
-              <span className="text-sm font-medium">Seret gambar ke sini, atau klik</span>
-              <span className="text-xs text-muted">PNG · JPG · WEBP · GIF · sehingga {bytesText(MAX_BYTES)}</span>
+              <span className="text-sm font-medium">{t("Seret gambar ke sini, atau klik", "Drag a picture here, or click")}</span>
+              <span className="text-xs text-muted">PNG · JPG · WEBP · GIF · {t("sehingga {max}", "up to {max}", { max: bytesText(MAX_BYTES) })}</span>
             </>
           )}
         </motion.label>
@@ -154,27 +159,30 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
 
       <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} maxLength={2000} aria-label="Prompt"
         placeholder={needsRef
-          ? "Apa yang mahu diubah? Cth: latar makmal bersih, warna biru muda, kekalkan botol seperti asal…"
-          : type === "video" ? "Cth: botol serum di atas marmar, kamera bergerak perlahan ke kanan, cahaya pagi…"
-            : "Cth: botol serum kaca di atas marmar putih, cahaya lembut dari tingkap, gaya fotografi produk…"}
+          ? t("Apa yang mahu diubah? Cth: latar makmal bersih, warna biru muda, kekalkan botol seperti asal…",
+            "What should change? E.g. clean lab background, light blue, keep the bottle as it is…")
+          : type === "video" ? t("Cth: botol serum di atas marmar, kamera bergerak perlahan ke kanan, cahaya pagi…",
+            "E.g. serum bottle on marble, camera moving slowly to the right, morning light…")
+            : t("Cth: botol serum kaca di atas marmar putih, cahaya lembut dari tingkap, gaya fotografi produk…",
+              "E.g. glass serum bottle on white marble, soft window light, product photography style…")}
         className="mt-4 w-full resize-y rounded-tile border border-line bg-bg p-3 text-sm outline-none focus:border-accent" />
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-xs text-muted">
           <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
-          <BookmarkPlus size={13} /> Simpan prompt
+          <BookmarkPlus size={13} /> {t("Simpan prompt", "Save prompt")}
         </label>
-        {keep && <Input value={keepTitle} onChange={(e) => setKeepTitle(e.target.value)} placeholder="Nama (pilihan)" className="max-w-xs" />}
+        {keep && <Input value={keepTitle} onChange={(e) => setKeepTitle(e.target.value)} placeholder={t("Nama (pilihan)", "Name (optional)")} className="max-w-xs" />}
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label="Penyedia"
+        <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label={t("Penyedia", "Provider")}
           className="rounded-pill border border-line bg-surface px-3 py-2 text-xs text-ink outline-none">
-          {PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          {providersOf(t).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
         </select>
         <span className="text-xs text-muted">{progress}</span>
         <Button type="submit" className="ml-auto" disabled={busy || !ready}>
-          {busy ? "Menghantar…" : `Jana ${type === "video" ? "video" : "imej"}`}
+          {busy ? t("Menghantar…", "Sending…") : type === "video" ? t("Jana video", "Generate video") : t("Jana imej", "Generate image")}
         </Button>
       </div>
     </Card>

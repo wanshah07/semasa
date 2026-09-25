@@ -104,6 +104,59 @@ def prune_older_than(db: Client, cutoff_iso: str) -> None:
             log.warning("could not prune %s: %s", table, exc)
 
 
+def drop_unpicked(db: Client, shown_cutoff_iso: str, refetch_cutoff_iso: str) -> int:
+    """Delete headlines nobody turned into an idea (Wan, 25 Sep 2026: "the news will be drop if
+    not select within 48 hours"). The page already stops SHOWING a headline 48 hours after it
+    arrived; this removes the row, but only when the scraper can never bring it back:
+      * created before `shown_cutoff_iso` (out of the page's window), and
+      * the feed dated it before `refetch_cutoff_iso` (SCRAPE_MAX_AGE_HOURS), so the age filter
+        refuses it on every later run. An UNDATED headline would come back as "new" the moment
+        its row was gone, so it stays (hidden) until the normal retention; the row is its memory.
+    A picked headline stays too; the idea keeps its own copy either way. Never raises."""
+    try:
+        picked = {r["trend_id"] for r in (db.table(IDEAS).select("trend_id").not_.is_("trend_id", "null")
+                                          .execute().data or []) if r.get("trend_id")}
+        try:   # a headline made into a FAQ is picked too (the table arrives with 007_faq.sql)
+            picked |= {r["trend_id"] for r in (db.table("semasa_faqs").select("trend_id").not_.is_("trend_id", "null")
+                                               .execute().data or []) if r.get("trend_id")}
+        except Exception as exc:
+            log.info("no FAQ table to consult yet (%s)", str(exc)[:80])
+        old = (db.table(TRENDS).select("id").lt("created_at", shown_cutoff_iso)
+               .lt("published_at", refetch_cutoff_iso).limit(5000).execute().data or [])
+        doomed = [r["id"] for r in old if r["id"] not in picked]
+        for chunk in _in_filter_chunks(doomed):
+            db.table(TRENDS).delete().in_("id", chunk).execute()
+        if doomed:
+            log.info("dropped %d headline(s) nobody picked", len(doomed))
+        return len(doomed)
+    except Exception as exc:
+        log.warning("could not drop unpicked headlines: %s", exc)
+        return 0
+
+
+LOG = "semasa_log"
+LOG_KEEP_DAYS = 90
+
+
+def log_event(db: Client, level: str, area: str, event: str, title: str, *, ref_table: str | None = None,
+              ref_id: str | None = None, detail: dict[str, Any] | None = None) -> None:
+    """One row in the log (supabase/008_log.sql) for what no table change records by itself: candidates
+    gathered, headlines dropped, a sheet written. Same shape as the triggers' rows. Never raises."""
+    try:
+        db.table(LOG).insert({"level": level, "area": area, "event": event, "title": title[:300],
+                              "ref_table": ref_table, "ref_id": ref_id, "detail": detail or {}}).execute()
+    except Exception as exc:
+        log.info("log not written (%s): %s", event, str(exc)[:120])
+
+
+def prune_log(db: Client, now: datetime | None = None) -> None:
+    cutoff = ((now or datetime.now(UTC)) - timedelta(days=LOG_KEEP_DAYS)).isoformat()
+    try:
+        db.table(LOG).delete().lt("at", cutoff).execute()
+    except Exception as exc:
+        log.info("log not pruned: %s", str(exc)[:120])
+
+
 def start_run(db: Client, git_sha: str | None) -> str | None:
     try:
         res = db.table(RUNS).insert({"git_sha": git_sha}).execute()
@@ -180,6 +233,28 @@ def attach_media_to_draft(db: Client, post_id: str, media_id: str) -> None:
         db.table(POSTS).update({"media_ids": ids + [media_id]}).eq("id", post_id).eq("status", "draft").execute()
     except Exception as exc:
         log.warning("could not attach media %s to post %s: %s", media_id, post_id, exc)
+
+
+def attach_slides_to_draft(db: Client, post_id: str, media_id: str) -> None:
+    """A new slide render REPLACES the post's earlier slide set (one carousel per post) in the
+    same place in the order; drafts only, for the same reason as attach_media_to_draft."""
+    try:
+        rows = db.table(POSTS).select("id,status,media_ids").eq("id", post_id).limit(1).execute().data or []
+        if not rows or rows[0]["status"] != "draft":
+            return
+        ids = list(rows[0].get("media_ids") or [])
+        if media_id in ids:
+            return
+        old: set[str] = set()
+        if ids:
+            got = db.table(MEDIA).select("id,mode").in_("id", ids).execute().data or []
+            old = {r["id"] for r in got if r.get("mode") == "slides"}
+        at = next((i for i, x in enumerate(ids) if x in old), 0)   # a first carousel leads the post
+        kept = [x for x in ids if x not in old]
+        kept.insert(min(at, len(kept)), media_id)
+        db.table(POSTS).update({"media_ids": kept}).eq("id", post_id).eq("status", "draft").execute()
+    except Exception as exc:
+        log.warning("could not attach slides %s to post %s: %s", media_id, post_id, exc)
 
 
 def finish_media(db: Client, row_id: str, **fields: Any) -> None:

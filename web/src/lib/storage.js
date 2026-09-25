@@ -1,4 +1,5 @@
 import { BUCKETS, errText, supabase } from "./SupabaseClient";
+import { tr } from "./i18n";
 
 export const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 export const MAX_BYTES = 50 * 1024 * 1024;
@@ -9,8 +10,11 @@ export function safeName(name) {
 
 /** Why a file cannot be a reference, or "" when it can. */
 export function refusal(file) {
-  if (!IMAGE_TYPES.includes(file.type)) return `Jenis fail ${file.type || "tidak dikenali"} tidak disokong.`;
-  if (file.size > MAX_BYTES) return "Fail melebihi 50 MB.";
+  if (!IMAGE_TYPES.includes(file.type)) {
+    return tr("Jenis fail {type} tidak disokong.", "File type {type} is not supported.",
+      { type: file.type || tr("tidak dikenali", "unknown") });
+  }
+  if (file.size > MAX_BYTES) return tr("Fail melebihi 50 MB.", "The file is over 50 MB.");
   return "";
 }
 

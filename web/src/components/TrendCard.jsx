@@ -1,14 +1,19 @@
 import { motion } from "framer-motion";
-import { ExternalLink, Flame, Lightbulb } from "lucide-react";
+import { Clock, ExternalLink, Flame, HelpCircle, Lightbulb } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { hostOf, stampMYT, timeAgo } from "../lib/format";
+import { PICK_HOURS } from "../lib/hooks";
+import { useLang } from "../lib/i18n";
 import Card from "./ui/Card";
 import CategoryBadge from "./ui/CategoryBadge";
 
-export default function TrendCard({ row, onCategory, onIdea }) {
-  const trending = (row.tags || []).find((t) => t.startsWith("carian:"));
-  const traffic = (row.tags || []).find((t) => t.startsWith("trafik:"));
+export default function TrendCard({ row, onCategory, onIdea, onFaq }) {
+  const { t } = useLang();
+  const trending = (row.tags || []).find((g) => g.startsWith("carian:"));
+  const traffic = (row.tags || []).find((g) => g.startsWith("trafik:"));
   const when = row.published_at || row.created_at;
+  // the last 12 hours before an unpicked headline leaves the page are shown on the card
+  const leftH = row.created_at ? PICK_HOURS - (Date.now() - new Date(row.created_at).getTime()) / 3600_000 : null;
   return (
     <motion.div variants={fadeUp} layout>
       <Card as="article" className="group overflow-hidden transition duration-300 ease-out hover:-translate-y-0.5 hover:shadow-lift">
@@ -36,11 +41,26 @@ export default function TrendCard({ row, onCategory, onIdea }) {
           </div>
         </a>
         {onIdea && (
-          <div className="border-t border-line/70 px-4 py-2">
-            <button type="button" onClick={() => onIdea(row)}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline">
-              <Lightbulb size={13} /> Jadikan idea
-            </button>
+          <div className="flex items-center justify-between gap-2 border-t border-line/70 px-4 py-2">
+            <span className="flex flex-wrap items-center gap-3">
+              <button type="button" onClick={() => onIdea(row)}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline">
+                <Lightbulb size={13} /> {t("Jadikan idea", "Make an idea")}
+              </button>
+              {onFaq && (
+                <button type="button" onClick={() => onFaq(row)}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline">
+                  <HelpCircle size={13} /> {t("Jadikan FAQ", "Make an FAQ")}
+                </button>
+              )}
+            </span>
+            {leftH !== null && leftH > 0 && leftH <= 12 && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-warn" title={t("Isu yang tidak dijadikan idea hilang selepas {h} jam", "Issues not turned into an idea disappear after {h} hours",
+                { h: PICK_HOURS })}>
+                <Clock size={11} /> {t("hilang dalam", "gone in")}{" "}
+                {leftH < 1 ? t("< 1 j", "< 1 h") : t("{h} j", "{h} h", { h: Math.floor(leftH) })}
+              </span>
+            )}
           </div>
         )}
       </Card>

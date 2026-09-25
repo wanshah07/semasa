@@ -26,7 +26,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from . import compliance, db
+from . import compliance, db, slides
 from .fetch import get
 from .llm import LLM
 from .log import get_logger
@@ -152,7 +152,33 @@ Answer with ONE JSON object:
 Set "fit" false (and say why) only when the story gives a regulatory professional nothing to use."""
 
 
-def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str, Any]) -> tuple[str, str]:
+SLIDES_RULES = {
+    "regulab": """
+
+SLIDES WANTED. Also return "slides": a carousel of 5 to 7 slides in Malaysian Malay, drawn as 1080x1080 cards:
+[{"title": "...", "points": ["...", "..."]}, ...]
+- Slide 1 is the cover: a headline of at most 9 words, "points" empty or one short line.
+- Each middle slide carries ONE fact: a title of at most 8 words and at most 3 points of at most 20 words each.
+- The last slide is the takeaway, stated plainly. It is NOT a call to action.
+- Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
+- Every rule above applies to every slide: no call to action, no URL or website, no news portal or social source,
+  and [SAHKAN: <the exact missing fact>] where a fact is not in the SOURCE. The source line is added to the last
+  slide from "citation" automatically, so do not write it into a slide.""",
+    "linkedin": """
+
+SLIDES WANTED. Also return "slides": a carousel of 5 to 7 slides in English, drawn as 1080x1350 cards:
+[{"title": "...", "points": ["...", "..."]}, ...]
+- Slide 1 is the cover: a headline of at most 10 words, "points" empty or one short line.
+- Each middle slide carries ONE idea: a title of at most 9 words and at most 3 points of at most 22 words each.
+- The last slide is the takeaway. Never a question, never a call to action.
+- Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
+- No company identity, no URL, no blog or aggregator, and [SAHKAN: <the exact missing fact>] where the SOURCE does
+  not give a fact. The citation is added to the last slide automatically.""",
+}
+
+
+def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str, Any],
+                  avoid: str = "") -> tuple[str, str]:
     stream = idea.get("stream") or "regulab"
     if stream == "linkedin":
         angles = (brand.get("linkedin") or {}).get("angles") or {}
@@ -176,7 +202,7 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
     else:
         lines.append("SOURCE: only the headline and summary above could be read "
                      f"({source.get('why') or 'no article'}). Every specific fact beyond them needs [SAHKAN: …].")
-    return system, "\n\n".join(lines)
+    return system + avoid, "\n\n".join(lines)
 
 
 def normalise_text(raw: Any, stream: str, lang: str) -> dict[str, dict[str, str]]:
@@ -273,11 +299,15 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     if not llm.configured:
         raise IdeaError("no LLM key: set the LLM_API_KEY secret (the writer needs it)")
     brand = settings.get("brand") or {}
+    indo_extra = (settings.get("bahasa") or {}).get("indo")
     stream = idea.get("stream") or "regulab"
     lang = "en" if stream == "linkedin" else "bm"
     source = read_source(idea.get("source_url"))
-    system, user = build_request(idea, source, brand)
-    out = llm.chat_json(system, user, max_tokens=3500)
+    system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra))
+    want_slides = bool(idea.get("make_slides"))
+    if want_slides:
+        system += SLIDES_RULES.get(stream, SLIDES_RULES["regulab"])
+    out = llm.chat_json(system, user, max_tokens=5000 if want_slides else 3500)
     if not out:
         raise IdeaError("the writer did not answer (see the run log); press Cuba lagi")
     if out.get("fit") is False:
@@ -296,13 +326,20 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         "hook": str(out.get("hook") or "")[:300], "text": text, "citation": str(out.get("citation") or "")[:1000],
         "date": date, "slot": slot, "status": "draft", "created_by": idea.get("created_by"),
     }
+    if want_slides:
+        # only when asked: the column arrives with 006_slides.sql, and an idea that never asked
+        # for slides must still be written on a database that has not run it
+        post["slides"] = slides.normalise(out.get("slides"))
     reg = brand.get("regulab") or {}
-    flags = compliance.scan({**post, "media": []}, brand=reg, schedule=reg.get("schedule"))
+    flags = compliance.scan({**post, "media": []}, brand=reg, schedule=reg.get("schedule"),
+                            indo_extra=indo_extra)
     post["flags"] = flags
     post["hard_flags"] = compliance.hard_count(flags)
     post_id = store.table(db.POSTS).insert(post).execute().data[0]["id"]
 
     jobs = media_jobs(idea, source, out, post_id)
+    if want_slides and post.get("slides"):
+        jobs.append(slide_job(idea, post, post_id, bg="post_image" if jobs else "none"))
     if jobs:
         store.table(db.MEDIA).insert(jobs).execute()
     brief = {"source": {k: source.get(k) for k in ("ok", "why", "url", "title", "image")},
@@ -310,6 +347,16 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
              "model": llm.s.model}
     store.table(db.IDEAS).update({"status": "drafted", "brief": brief, "error": None}).eq("id", idea["id"]).execute()
     return post_id
+
+
+def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str = "none") -> dict[str, Any]:
+    """One render job for the whole carousel, carrying a snapshot of the words. Queued after the
+    picture jobs, so a picture made in the same run can be the slides' background."""
+    return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
+            "prompt": "", "created_by": idea.get("created_by"),
+            "meta": {"flow": "A", "slides": post.get("slides") or [], "stream": post.get("stream"),
+                     "citation": post.get("citation") or "", "domain": post.get("domain"),
+                     "angle": post.get("angle"), "bg": bg}}
 
 
 def media_jobs(idea: dict[str, Any], source: dict[str, Any], out: dict[str, Any], post_id: str) -> list[dict[str, Any]]:

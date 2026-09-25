@@ -18,7 +18,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import categorize, db, fetch
+from . import categorize, db, faq_sources, fetch
 from .config import LLMSettings, ScraperSettings, SupabaseSettings
 from .llm import LLM
 from .log import get_logger
@@ -169,20 +169,42 @@ def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings
         note = "LLM probe answer was malformed, but real summaries worked"
     log.info("inserted %d rows (%d LLM-summarised, %d rules/none)", inserted, by_source, len(rows) - by_source)
 
-    cutoff = retention_cutoff(datetime.now(UTC), settings.keep_days)
+    now = datetime.now(UTC)
+    cutoff = retention_cutoff(now, settings.keep_days)
     if cutoff:
         db.prune_older_than(store, cutoff)
+    dropped = 0
+    if settings.pick_hours > 0:
+        dropped = db.drop_unpicked(store, (now - timedelta(hours=settings.pick_hours)).isoformat(),
+                                   (now - timedelta(hours=settings.max_age_hours)).isoformat())
+
+    # Q&A-shaped items offered as FAQ candidates (supabase/007_faq.sql); reported like any source
+    faq_report = faq_sources.collect(store, timeout=settings.request_timeout)
+    report = report + faq_report
+    for r in faq_report:
+        if r["ok"] and r["items"]:
+            db.log_event(store, "info", "faq", "faq.candidates",
+                         f"{r['items']} calon FAQ baharu daripada {r['name'].removeprefix('FAQ · ')}",
+                         detail={"source": r["name"], "new": r["items"]})
+    if dropped:
+        db.log_event(store, "info", "scrape", "scrape.dropped",
+                     f"{dropped} isu yang tidak dijadikan idea dibuang (lebih {settings.pick_hours} jam)",
+                     detail={"dropped": dropped, "pick_hours": settings.pick_hours})
+    db.prune_log(store, now)
 
     db.finish_run(store, run_id, sources=report, seen=len(items), inserted=inserted, llm_ok=llm_ok,
                   llm_model=f"{llm_settings.provider}:{llm_settings.model}" if llm.configured else None,
                   note=note if ok_sources else "every source failed")
+    from . import sheet
+    log.info(sheet.sync_log(store))                        # after finish_run, whose trigger writes the run's row
 
     # GitHub Actions job summary
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as fh:
             fh.write(f"## Semasa scrape\n\n- read **{len(items)}**, new **{len(rows)}**, inserted **{inserted}**\n")
-            fh.write(f"- LLM: {'ok' if llm_ok else 'NOT USED'} ({llm_settings.provider}:{llm_settings.model})\n\n")
+            fh.write(f"- LLM: {'ok' if llm_ok else 'NOT USED'} ({llm_settings.provider}:{llm_settings.model})\n")
+            fh.write(f"- dropped **{dropped}** headline(s) nobody picked within {settings.pick_hours} h\n\n")
             fh.write("| source | kind | ok | items | error |\n|---|---|---|---|---|\n")
             for r in report:
                 fh.write(f"| {r['name']} | {r['kind']} | {'✅' if r['ok'] else '❌'} | {r['items']} | {r['error'] or ''} |\n")

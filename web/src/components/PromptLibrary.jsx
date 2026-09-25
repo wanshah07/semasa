@@ -1,19 +1,21 @@
 import { Film, Image as ImageIcon, Trash2 } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { timeAgo } from "../lib/format";
+import { useLang } from "../lib/i18n";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 
 /* Flow B's "keep the prompt": saved words (and their reference) to use again. */
 export default function PromptLibrary({ prompts, onUse, onToast }) {
+  const { t } = useLang();
   async function remove(p) {
     const { error } = await supabase.from(TABLES.prompts).delete().eq("id", p.id);
     if (error) onToast(errText(error), "danger"); else prompts.reload();
   }
   return (
     <Card className="p-5">
-      <h3 className="text-lg">Pustaka prompt</h3>
-      {!prompts.rows.length && <p className="mt-2 text-sm text-muted">Belum ada. Tandakan “Simpan prompt” semasa menjana.</p>}
+      <h3 className="text-lg">{t("Pustaka prompt", "Prompt library")}</h3>
+      {!prompts.rows.length && <p className="mt-2 text-sm text-muted">{t("Belum ada. Tandakan “Simpan prompt” semasa menjana.", "None yet. Tick “Save prompt” when generating.")}</p>}
       <ul className="mt-3 space-y-2">
         {prompts.rows.map((p) => (
           <li key={p.id} className="flex items-start gap-3 rounded-tile border border-line p-2">
@@ -24,11 +26,11 @@ export default function PromptLibrary({ prompts, onUse, onToast }) {
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium">{p.title || p.prompt.slice(0, 60)}</span>
               <span className="line-clamp-2 block text-[12px] text-muted">{p.prompt}</span>
-              <span className="text-[11px] text-muted">{p.type} · digunakan {p.uses}× · {timeAgo(p.created_at)}</span>
+              <span className="text-[11px] text-muted">{p.type} · {t("digunakan {n}×", "used {n}×", { n: p.uses })} · {timeAgo(p.created_at)}</span>
             </span>
             <span className="flex shrink-0 flex-col gap-1">
-              <Button size="sm" variant="soft" onClick={() => onUse(p)}>Guna</Button>
-              <Button size="sm" variant="danger" onClick={() => remove(p)} title="Padam"><Trash2 size={12} /></Button>
+              <Button size="sm" variant="soft" onClick={() => onUse(p)}>{t("Guna", "Use")}</Button>
+              <Button size="sm" variant="danger" onClick={() => remove(p)} title={t("Padam", "Delete")}><Trash2 size={12} /></Button>
             </span>
           </li>
         ))}

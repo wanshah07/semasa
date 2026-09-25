@@ -98,6 +98,8 @@ def _run_with(monkeypatch, probe_ok, answers, n_items=30):
     monkeypatch.setattr(scraper.db, "existing_urls", lambda store, urls: set())
     monkeypatch.setattr(scraper.db, "upsert_trends", lambda store, rows: len(rows))
     monkeypatch.setattr(scraper.db, "prune_older_than", lambda store, c: None)
+    monkeypatch.setattr(scraper.db, "drop_unpicked", lambda store, a, b: 0)
+    monkeypatch.setattr(scraper.faq_sources, "collect", lambda store, timeout: [])   # never the network in a test
     monkeypatch.setattr(scraper.db, "finish_run", lambda store, rid, **f: finished.update(f))
     s = ScraperSettings(max_per_source=40, max_age_hours=48, llm_batch=12, use_playwright=False,
                         request_timeout=5, keep_days=30)

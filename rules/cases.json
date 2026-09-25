@@ -783,5 +783,741 @@
     "promises approval"
    ]
   }
+ },
+ {
+  "name": "slides drawn with the same words pass",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "x",
+     "slides": [
+      {
+       "title": "Notifikasi *bukan* kelulusan",
+       "points": []
+      },
+      {
+       "title": "Apa NPRA semak",
+       "points": [
+        "Dokumen PIF selepas produk dipasarkan."
+       ]
+      }
+     ]
+    }
+   ],
+   "slides": [
+    {
+     "title": "Notifikasi *bukan* kelulusan",
+     "points": []
+    },
+    {
+     "title": "Apa NPRA semak",
+     "points": [
+      "Dokumen PIF selepas produk dipasarkan."
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0,
+   "soft_not_contains": [
+    "not drawn"
+   ]
+  }
+ },
+ {
+  "name": "slides written but not drawn warn",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "slides": [
+    {
+     "title": "Notifikasi *bukan* kelulusan",
+     "points": []
+    },
+    {
+     "title": "Apa NPRA semak",
+     "points": [
+      "Dokumen PIF selepas produk dipasarkan."
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0,
+   "soft_contains": [
+    "Slides: written but not drawn"
+   ]
+  }
+ },
+ {
+  "name": "slide pictures with other words block",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "x",
+     "slides": [
+      {
+       "title": "Notifikasi bukan kelulusan",
+       "points": []
+      }
+     ]
+    }
+   ],
+   "slides": [
+    {
+     "title": "Notifikasi *bukan* kelulusan",
+     "points": []
+    },
+    {
+     "title": "Apa NPRA semak",
+     "points": [
+      "Dokumen PIF selepas produk dipasarkan."
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "Slides: the slide pictures carry different words"
+   ]
+  }
+ },
+ {
+  "name": "drawn string points and nulls normalise to the same words",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "x",
+     "slides": [
+      {
+       "title": " Apa NPRA semak ",
+       "points": "Dokumen PIF.\nLabel.\n",
+       "body": null
+      },
+      {
+       "title": null,
+       "points": []
+      }
+     ]
+    }
+   ],
+   "slides": [
+    {
+     "title": "Apa NPRA semak",
+     "points": [
+      "Dokumen PIF.",
+      "Label."
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "unresolved SAHKAN on a slide blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "x",
+     "slides": [
+      {
+       "title": "Tarikh berkuat kuasa",
+       "points": [
+        "[SAHKAN: tarikh pekeliling NPRA]"
+       ]
+      }
+     ]
+    }
+   ],
+   "slides": [
+    {
+     "title": "Tarikh berkuat kuasa",
+     "points": [
+      "[SAHKAN: tarikh pekeliling NPRA]"
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "Slide 1:"
+   ]
+  }
+ },
+ {
+  "name": "empty SAHKAN on a slide is named",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "slides": [
+    {
+     "title": "Yuran",
+     "points": [
+      "[SAHKAN: what to verify]"
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "Slide 1: a [SAHKAN] that names nothing"
+   ]
+  }
+ },
+ {
+  "name": "CTA on a slide blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "slides": [
+    {
+     "title": "Ringkasnya",
+     "points": [
+      "Hubungi kami untuk semakan."
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "Slide 1: CTA: 'hubungi kami'"
+   ]
+  }
+ },
+ {
+  "name": "website on a slide blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "slides": [
+    {
+     "title": "Ringkasnya",
+     "points": [
+      "Baca lanjut di www.kkmhalalconsultant.com"
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "Slide 1: the ws.regulab website"
+   ]
+  }
+ },
+ {
+  "name": "Indonesian word on a slide blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "slides": [
+    {
+     "title": "Kualitas produk",
+     "points": []
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "Slide 1: Bahasa Indonesia word \"kualitas\""
+   ]
+  }
+ },
+ {
+  "name": "aggregator on a LinkedIn slide blocks",
+  "post": {
+   "stream": "linkedin",
+   "lang": "en",
+   "text": {
+    "en": {
+     "linkedin": "Annex III entry 325 changed the limit for this preservative. Formulators should check their stock now.\n\nSource: EC 1223/2009 Annex III"
+    }
+   },
+   "slides": [
+    {
+     "title": "What changed",
+     "points": [
+      "As ChemLinked reported, the limit fell."
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "Slide 1: cites"
+   ]
+  }
+ },
+ {
+  "name": "ws.regulab mark on a LinkedIn slide blocks",
+  "post": {
+   "stream": "linkedin",
+   "lang": "en",
+   "text": {
+    "en": {
+     "linkedin": "Annex III entry 325 changed the limit for this preservative. Formulators should check their stock now.\n\nSource: EC 1223/2009 Annex III"
+    }
+   },
+   "slides": [
+    {
+     "title": "Notes from ws.regulab",
+     "points": []
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "Slide 1: a ws.regulab mark on LinkedIn"
+   ]
+  }
+ },
+ {
+  "name": "tabung word in the caption blocks and says what to write",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Syarikat memakai bahan ini.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Syarikat memakai bahan ini.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Syarikat memakai bahan ini."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "indo_extra": [
+   {
+    "indo": "Kenapa sih",
+    "bm": "kenapa"
+   },
+   {
+    "indo": "memakai",
+    "bm": "menggunakan"
+   },
+   {
+    "indo": "obat",
+    "bm": "ubat"
+   },
+   {
+    "indo": "  ",
+    "bm": "x"
+   },
+   "DIPAKAI"
+  ],
+  "expect": {
+   "contains": [
+    "Caption (instagram): Bahasa Indonesia word \"memakai\" (tabung: write \"menggunakan\")"
+   ]
+  }
+ },
+ {
+  "name": "tabung phrase matched as a phrase, not inside a word",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Kenapa sih ramai tanya?",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Kenapa sih ramai tanya?",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Kenapa sih ramai tanya?"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "indo_extra": [
+   {
+    "indo": "Kenapa sih",
+    "bm": "kenapa"
+   },
+   {
+    "indo": "memakai",
+    "bm": "menggunakan"
+   },
+   {
+    "indo": "obat",
+    "bm": "ubat"
+   },
+   {
+    "indo": "  ",
+    "bm": "x"
+   },
+   "DIPAKAI"
+  ],
+  "expect": {
+   "contains": [
+    "Bahasa Indonesia word \"kenapa sih\" (tabung: write \"kenapa\")"
+   ]
+  }
+ },
+ {
+  "name": "tabung word without a replacement, plain-string entry",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Bahan yang dipakai selamat.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Bahan yang dipakai selamat.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Bahan yang dipakai selamat."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "indo_extra": [
+   {
+    "indo": "Kenapa sih",
+    "bm": "kenapa"
+   },
+   {
+    "indo": "memakai",
+    "bm": "menggunakan"
+   },
+   {
+    "indo": "obat",
+    "bm": "ubat"
+   },
+   {
+    "indo": "  ",
+    "bm": "x"
+   },
+   "DIPAKAI"
+  ],
+  "expect": {
+   "contains": [
+    "Bahasa Indonesia word \"dipakai\" (tabung)"
+   ]
+  }
+ },
+ {
+  "name": "a tabung word already built in is reported once",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Ini obat.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Ini obat.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Ini obat."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "indo_extra": [
+   {
+    "indo": "Kenapa sih",
+    "bm": "kenapa"
+   },
+   {
+    "indo": "memakai",
+    "bm": "menggunakan"
+   },
+   {
+    "indo": "obat",
+    "bm": "ubat"
+   },
+   {
+    "indo": "  ",
+    "bm": "x"
+   },
+   "DIPAKAI"
+  ],
+  "expect": {
+   "hard": 3,
+   "contains": [
+    "Bahasa Indonesia word \"obat\""
+   ],
+   "not_contains": [
+    "tabung"
+   ]
+  }
+ },
+ {
+  "name": "tabung does not match inside a longer word",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Pemakaian yang betul.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Pemakaian yang betul.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Pemakaian yang betul."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "indo_extra": [
+   {
+    "indo": "Kenapa sih",
+    "bm": "kenapa"
+   },
+   {
+    "indo": "memakai",
+    "bm": "menggunakan"
+   },
+   {
+    "indo": "obat",
+    "bm": "ubat"
+   },
+   {
+    "indo": "  ",
+    "bm": "x"
+   },
+   "DIPAKAI"
+  ],
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "tabung word in the other language variant only warns",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    },
+    "en": {
+     "instagram": "We are memakai it."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "indo_extra": [
+   {
+    "indo": "Kenapa sih",
+    "bm": "kenapa"
+   },
+   {
+    "indo": "memakai",
+    "bm": "menggunakan"
+   },
+   {
+    "indo": "obat",
+    "bm": "ubat"
+   },
+   {
+    "indo": "  ",
+    "bm": "x"
+   },
+   "DIPAKAI"
+  ],
+  "expect": {
+   "hard": 0,
+   "soft_contains": [
+    "EN variant (instagram): Bahasa Indonesia word \"memakai\" (tabung"
+   ]
+  }
+ },
+ {
+  "name": "tabung word on a slide blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "slides": [
+    {
+     "title": "Bahan yang memakai pengawet",
+     "points": []
+    }
+   ]
+  },
+  "indo_extra": [
+   {
+    "indo": "Kenapa sih",
+    "bm": "kenapa"
+   },
+   {
+    "indo": "memakai",
+    "bm": "menggunakan"
+   },
+   {
+    "indo": "obat",
+    "bm": "ubat"
+   },
+   {
+    "indo": "  ",
+    "bm": "x"
+   },
+   "DIPAKAI"
+  ],
+  "expect": {
+   "contains": [
+    "Slide 1: Bahasa Indonesia word \"memakai\" (tabung"
+   ]
+  }
+ },
+ {
+  "name": "no tabung, no tabung flags",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Syarikat memakai bahan ini.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Syarikat memakai bahan ini.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Syarikat memakai bahan ini."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
  }
 ]

@@ -1,3 +1,5 @@
+import { useLang } from "../../lib/i18n";
+
 /* Small form primitives so every screen reads the same. */
 export function Label({ children, hint }) {
   return (
@@ -36,6 +38,7 @@ export function Segmented({ value, onChange, options }) {
 }
 
 export function Modal({ open, onClose, title, children }) {
+  const { t } = useLang();
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4 pt-16" onClick={onClose}>
@@ -43,7 +46,7 @@ export function Modal({ open, onClose, title, children }) {
         role="dialog" aria-modal="true" aria-label={title}>
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="text-lg">{title}</h3>
-          <button type="button" onClick={onClose} className="text-sm text-muted hover:text-ink" aria-label="Tutup">✕</button>
+          <button type="button" onClick={onClose} className="text-sm text-muted hover:text-ink" aria-label={t("Tutup", "Close")}>✕</button>
         </div>
         {children}
       </div>

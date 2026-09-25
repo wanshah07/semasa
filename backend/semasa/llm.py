@@ -50,12 +50,21 @@ class LLM:
     # --- public -----------------------------------------------------------------
 
     def probe(self) -> bool:
-        """True when the endpoint answers a trivial request with parsable JSON."""
+        """True when the endpoint answers a small REAL question with parsable JSON.
+
+        It used to ask for {"ok": true}. The rootsys gateway filled that literal with junk on three
+        runs in a row (`<<true>>`, `<%= data.ok %>`, `##DISABLED## true`; runs 36041027392 and
+        36071479022) while real summaries worked, so the probe switched the LLM off for nothing.
+        A classification with a quoted string answer is the shape the real work has."""
         if not self.configured:
             log.warning("LLM: no API key — summaries will be rules-only")
             return False
-        out = self.chat_json("Reply with JSON only.", 'Return {"ok": true}.', max_tokens=20)
-        ok = bool(out) and out.get("ok") is True
+        out = self.chat_json(
+            "You classify Malaysian news headlines. Reply with one JSON object only.",
+            'Headline: "Harga minyak sawit naik minggu ini". Answer in the form {"category": "<one lowercase word>"}.',
+            max_tokens=40)
+        cat = out.get("category") if isinstance(out, dict) else None
+        ok = isinstance(cat, str) and bool(cat.strip())
         log.info("LLM probe %s: provider=%s model=%s base=%s", "OK" if ok else "FAILED",
                  self.s.provider, self.s.model, self.s.base_url)
         return ok

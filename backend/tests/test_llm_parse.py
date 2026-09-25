@@ -47,10 +47,28 @@ class _Resp:
 
 
 def test_probe_passes_on_python_style_answer(monkeypatch):
-    monkeypatch.setattr("semasa.llm.requests.post", lambda *a, **k: _Resp('{"ok":True}'))
+    monkeypatch.setattr("semasa.llm.requests.post", lambda *a, **k: _Resp("{'category': 'ekonomi'}"))
     llm = LLM(LLMSettings(provider="openai", api_key="k", base_url="https://rootsys.cloud/v1",
                           model="deepseek-v4.1-flash", timeout=5))
     assert llm.probe() is True
+
+
+@pytest.mark.parametrize("junk", [
+    '{"ok":## Installation\n\nCurrently, the only way to install **wow** is building from',   # run 36071479022
+    '{"ok":<%= data.ok %>}',
+    '{"ok":##DISABLED## true}',
+])
+def test_old_probe_junk_would_fail_and_the_new_probe_does_not_ask_for_a_literal(monkeypatch, junk):
+    seen = []
+
+    def post(*a, **k):
+        seen.append(k["json"]["messages"][-1]["content"])
+        return _Resp(junk)
+    monkeypatch.setattr("semasa.llm.requests.post", post)
+    monkeypatch.setattr("semasa.llm.time.sleep", lambda s: None)
+    llm = LLM(LLMSettings(provider="openai", api_key="k", base_url="https://x/v1", model="m", timeout=5))
+    assert llm.probe() is False
+    assert "true" not in seen[0] and '"category"' in seen[0]
 
 
 def test_unparsable_answer_is_logged_with_its_opening(monkeypatch, caplog):

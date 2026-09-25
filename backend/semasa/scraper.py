@@ -80,7 +80,7 @@ def dedupe_and_filter(items: list[Item], max_age_hours: int, now: datetime | Non
     return out
 
 
-def annotate(items: list[Item], llm: LLM | None, batch_size: int) -> list[dict[str, Any]]:
+def annotate(items: list[Item], llm: LLM | None, batch_size: int, *, give_up_after_first: bool = False) -> list[dict[str, Any]]:
     """Every item gets a rules verdict first; the LLM then overrides what it answers.
     `summary_source` records which one the stored row actually carries."""
     rows: list[dict[str, Any]] = []
@@ -104,6 +104,10 @@ def annotate(items: list[Item], llm: LLM | None, batch_size: int) -> list[dict[s
         batch = [{"i": i, "title": rows[i]["title"], "snippet": rows[i]["summary"], "source": rows[i]["source"]}
                  for i in range(start, min(start + batch_size, len(rows)))]
         answers = categorize.llm_annotate(llm, batch)
+        if give_up_after_first and start == 0 and not answers:
+            # the probe already failed and the first real batch agrees: stop spending time on it
+            log.warning("LLM probe failed and the first real batch got no answers — rules only for this run")
+            return rows
         for i, ans in answers.items():
             rows[i]["summary"] = ans["summary"]
             rows[i]["category"] = ans["category"]
@@ -140,9 +144,10 @@ def main() -> int:
 
 def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings: LLMSettings) -> int:
     llm = LLM(llm_settings)
-    llm_ok = llm.probe() if llm.configured else False
-    if llm.configured and not llm_ok:
-        print("::error::LLM endpoint is configured but not answering — rows will be rules-only this run")
+    probe_ok = llm.probe() if llm.configured else False
+    if llm.configured and not probe_ok:
+        # A failed probe alone no longer switches the LLM off: the first real batch decides.
+        log.warning("LLM probe failed; trying the first real batch before giving up")
 
     items, report = collect(SOURCES, settings)
     ok_sources = sum(1 for r in report if r["ok"])
@@ -153,9 +158,15 @@ def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings
     new_items = [it for it in fresh if it.url not in already]
     log.info("%d already stored, %d new", len(already), len(new_items))
 
-    rows = annotate(new_items, llm if llm_ok else None, settings.llm_batch)
+    rows = annotate(new_items, llm if llm.configured else None, settings.llm_batch, give_up_after_first=not probe_ok)
     inserted = db.upsert_trends(store, rows)
     by_source = sum(1 for r in rows if r["summary_source"] == "llm")
+    llm_ok = probe_ok or by_source > 0
+    note = None
+    if llm.configured and not llm_ok:
+        print("::error::LLM endpoint is configured but not answering — rows are rules-only this run")
+    elif llm.configured and not probe_ok:
+        note = "LLM probe answer was malformed, but real summaries worked"
     log.info("inserted %d rows (%d LLM-summarised, %d rules/none)", inserted, by_source, len(rows) - by_source)
 
     cutoff = retention_cutoff(datetime.now(UTC), settings.keep_days)
@@ -164,7 +175,7 @@ def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings
 
     db.finish_run(store, run_id, sources=report, seen=len(items), inserted=inserted, llm_ok=llm_ok,
                   llm_model=f"{llm_settings.provider}:{llm_settings.model}" if llm.configured else None,
-                  note=None if ok_sources else "every source failed")
+                  note=note if ok_sources else "every source failed")
 
     # GitHub Actions job summary
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")

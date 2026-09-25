@@ -66,3 +66,58 @@ def test_crash_still_closes_the_run_row(monkeypatch):
         scraper.main()
     assert closed["rid"] == "run-1"
     assert closed["note"] == "crashed: RuntimeError: 400 Bad Request"
+
+
+def _run_with(monkeypatch, probe_ok, answers, n_items=30):
+    """Drive scraper._run with a fake LLM, fake sources and a fake store; return (exit, finish_run fields, calls)."""
+    from semasa import scraper
+    from semasa.config import LLMSettings, ScraperSettings
+
+    calls = []
+
+    class FakeLLM:
+        configured = True
+
+        def __init__(self, s):
+            self.s = s
+
+        def probe(self):
+            return probe_ok
+
+    def fake_annotate(llm, batch):
+        calls.append(len(batch))
+        return {b["i"]: {"summary": "Ringkasan.", "category": "ekonomi", "lang": "ms"} for b in batch} if answers else {}
+
+    items = [_item(f"https://a/{i}", title=f"Tajuk berita nombor {i} yang panjang") for i in range(n_items)]
+    finished = {}
+    monkeypatch.setattr(scraper, "LLM", FakeLLM)
+    monkeypatch.setattr(scraper.categorize, "llm_annotate", fake_annotate)
+    monkeypatch.setattr(scraper, "collect", lambda sources, s: (items, [{"name": "x", "kind": "rss", "ok": True,
+                                                                          "items": n_items, "error": None}]))
+    monkeypatch.setattr(scraper, "dedupe_and_filter", lambda it, h: it)
+    monkeypatch.setattr(scraper.db, "existing_urls", lambda store, urls: set())
+    monkeypatch.setattr(scraper.db, "upsert_trends", lambda store, rows: len(rows))
+    monkeypatch.setattr(scraper.db, "prune_older_than", lambda store, c: None)
+    monkeypatch.setattr(scraper.db, "finish_run", lambda store, rid, **f: finished.update(f))
+    s = ScraperSettings(max_per_source=40, max_age_hours=48, llm_batch=12, use_playwright=False,
+                        request_timeout=5, keep_days=30)
+    ls = LLMSettings(provider="openai", api_key="k", base_url="https://x/v1", model="m", timeout=5)
+    return scraper._run(None, "run-1", s, ls), finished, calls
+
+
+def test_a_junk_probe_no_longer_switches_off_a_working_llm(monkeypatch):
+    code, finished, calls = _run_with(monkeypatch, probe_ok=False, answers=True)
+    assert code == 0 and finished["llm_ok"] is True
+    assert calls == [12, 12, 6]                                        # every batch was summarised
+    assert "probe answer was malformed" in finished["note"]
+
+
+def test_a_dead_llm_costs_one_batch_then_goes_rules_only(monkeypatch):
+    code, finished, calls = _run_with(monkeypatch, probe_ok=False, answers=False)
+    assert code == 2 and finished["llm_ok"] is False
+    assert calls == [12]                                               # gave up after the first real batch
+
+
+def test_a_passing_probe_keeps_going_even_if_one_batch_is_empty(monkeypatch):
+    code, finished, calls = _run_with(monkeypatch, probe_ok=True, answers=False)
+    assert calls == [12, 12, 6] and finished["llm_ok"] is True and code == 0

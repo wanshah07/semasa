@@ -94,7 +94,7 @@ def test_llm_anthropic_dialect(monkeypatch):
 
     def fake_post(url, headers=None, json=None, timeout=None):
         seen.update(url=url, headers=headers, body=json)
-        return _Resp(200, {"content": [{"type": "text", "text": '{"ok": true}'}]})
+        return _Resp(200, {"content": [{"type": "text", "text": '{"category": "ekonomi"}'}]})
 
     monkeypatch.setattr("semasa.llm.requests.post", fake_post)
     llm = LLM(LLMSettings(provider="anthropic", api_key="k", base_url="https://api.anthropic.com", model="m", timeout=5))

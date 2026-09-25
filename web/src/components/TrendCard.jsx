@@ -1,11 +1,11 @@
 import { motion } from "framer-motion";
-import { ExternalLink, Flame } from "lucide-react";
+import { ExternalLink, Flame, Lightbulb } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { hostOf, stampMYT, timeAgo } from "../lib/format";
 import Card from "./ui/Card";
 import CategoryBadge from "./ui/CategoryBadge";
 
-export default function TrendCard({ row, onCategory }) {
+export default function TrendCard({ row, onCategory, onIdea }) {
   const trending = (row.tags || []).find((t) => t.startsWith("carian:"));
   const traffic = (row.tags || []).find((t) => t.startsWith("trafik:"));
   const when = row.published_at || row.created_at;
@@ -35,6 +35,14 @@ export default function TrendCard({ row, onCategory }) {
             </span>
           </div>
         </a>
+        {onIdea && (
+          <div className="border-t border-line/70 px-4 py-2">
+            <button type="button" onClick={() => onIdea(row)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline">
+              <Lightbulb size={13} /> Jadikan idea
+            </button>
+          </div>
+        )}
       </Card>
     </motion.div>
   );

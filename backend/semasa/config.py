@@ -12,6 +12,9 @@ Variables (same page → Variables; not secret):
   LLM_PROVIDER      openai | anthropic            default openai   (openai = any OpenAI-compatible endpoint)
   LLM_BASE_URL      API root for LLM_PROVIDER=openai  default https://api.openai.com/v1
   LLM_MODEL         default gpt-4o-mini (openai) / claude-haiku-4-5-20251001 (anthropic)
+  VISION_MODEL      the model that READS a reference picture; default LLM_MODEL. A text-only
+                    model (e.g. deepseek) cannot: the job then records "not read" and
+                    generates from the picture and prompt alone.
   MEDIA_PROVIDER    replicate | openai            default replicate
   ... the rest are documented beside their default below.
 """
@@ -65,6 +68,7 @@ class LLMSettings:
     base_url: str
     model: str
     timeout: int
+    vision_model: str = ""  # the READ step; must accept pictures (rootsys: pick a vision model)
 
     @classmethod
     def load(cls) -> LLMSettings:
@@ -79,6 +83,7 @@ class LLMSettings:
             base_url=(env("LLM_BASE_URL", default_base) or default_base).rstrip("/"),
             model=env("LLM_MODEL", default_model) or default_model,
             timeout=env_int("LLM_TIMEOUT", 60),
+            vision_model=env("VISION_MODEL") or env("LLM_MODEL", default_model) or default_model,
         )
 
 
@@ -125,6 +130,9 @@ class MediaSettings:
     openai_image_size: str
     openai_video_seconds: str
     openai_video_size: str
+    # Words-only generation (Flow B without a reference, and Flow A's recreate-from-a-read)
+    replicate_t2i_model: str = "black-forest-labs/flux-1.1-pro"
+    stale_minutes: int = 60            # a `processing` row older than this lost its runner
 
     @classmethod
     def load(cls) -> MediaSettings:
@@ -152,4 +160,7 @@ class MediaSettings:
             openai_image_size=env("OPENAI_IMAGE_SIZE", "1024x1024"),
             openai_video_seconds=env("OPENAI_VIDEO_SECONDS", "8"),
             openai_video_size=env("OPENAI_VIDEO_SIZE", "1280x720"),
+            replicate_t2i_model=env("REPLICATE_T2I_MODEL", "black-forest-labs/flux-1.1-pro"),
+            # media.yml's job timeout is 40 minutes, so 60 means the runner is certainly gone
+            stale_minutes=env_int("MEDIA_STALE_MINUTES", 60),
         )

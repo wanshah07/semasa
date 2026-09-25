@@ -10,6 +10,8 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   base: "./",
+  // rules/compliance.json lives at the repo root, shared with the Python publisher
+  server: { fs: { allow: [".."] } },
   build: {
     outDir: "dist",
     sourcemap: false,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterable, Iterator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
 
@@ -17,6 +18,10 @@ log = get_logger("semasa.db")
 TRENDS = "isu_semasa_trends"
 MEDIA = "media_generations"
 RUNS = "scrape_runs"
+IDEAS = "semasa_ideas"
+POSTS = "semasa_posts"
+SETTINGS = "semasa_settings"
+PUBLISH_LOG = "semasa_publish_log"
 GENERATED_BUCKET = "semasa-generated"
 
 
@@ -141,6 +146,40 @@ def claim_pending(db: Client, limit: int, only_id: str | None = None) -> list[di
         if res.data:
             claimed.append(res.data[0])
     return claimed
+
+
+def recover_stale_media(db: Client, stale_minutes: int) -> int:
+    """A runner that dies (timeout, cancelled, lost) leaves its rows `processing` for ever:
+    nothing else would ever take them, and the page shows a spinner that never stops. Put
+    them back in the queue; `attempts` already counts the lost try, so a job that keeps
+    killing its runner still ends in `error` at MEDIA_MAX_ATTEMPTS."""
+    cutoff = (datetime.now(UTC) - timedelta(minutes=stale_minutes)).isoformat()
+    try:
+        res = (db.table(MEDIA).update({"status": "pending", "error": "runner stopped before finishing; queued again"})
+               .eq("status", "processing").lt("updated_at", cutoff).execute())
+        n = len(res.data or [])
+        if n:
+            log.warning("put %d stuck media job(s) back in the queue", n)
+        return n
+    except Exception as exc:  # recovery must never stop the run
+        log.warning("could not recover stuck media jobs: %s", exc)
+        return 0
+
+
+def attach_media_to_draft(db: Client, post_id: str, media_id: str) -> None:
+    """Add a finished picture to its post, but only while the post is a DRAFT: adding a
+    picture to an approved post would publish something Wan never saw (the page-side gate
+    trigger does not run for the service key, so this check is the gate here)."""
+    try:
+        rows = db.table(POSTS).select("id,status,media_ids").eq("id", post_id).limit(1).execute().data or []
+        if not rows or rows[0]["status"] != "draft":
+            return
+        ids = list(rows[0].get("media_ids") or [])
+        if media_id in ids:
+            return
+        db.table(POSTS).update({"media_ids": ids + [media_id]}).eq("id", post_id).eq("status", "draft").execute()
+    except Exception as exc:
+        log.warning("could not attach media %s to post %s: %s", media_id, post_id, exc)
 
 
 def finish_media(db: Client, row_id: str, **fields: Any) -> None:

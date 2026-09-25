@@ -69,28 +69,28 @@ export function useTrends({ limit = 240, everyMs = 600_000 } = {}) {
 }
 
 /** media_generations, live: realtime for status flips, a poll as the safety net. */
-export function useGenerations({ limit = 60 } = {}) {
+export function useGenerations({ limit = 300, enabled = true } = {}) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
   const loadRef = useRef(null);
 
   const load = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase || !enabled) return;
     const { data, error: e } = await supabase.from(TABLES.media).select("*")
       .order("created_at", { ascending: false }).limit(limit);
     if (e) setError(errText(e)); else { setRows(data ?? []); setError(""); }
-  }, [limit]);
+  }, [limit, enabled]);
   loadRef.current = load;
 
   useEffect(() => {
-    if (!supabase) return undefined;
+    if (!supabase || !enabled) return undefined;
     load();
     const channel = supabase.channel("media_generations_live")
       .on("postgres_changes", { event: "*", schema: "public", table: TABLES.media }, () => loadRef.current?.())
       .subscribe();
     const id = setInterval(() => loadRef.current?.(), 60_000);
     return () => { supabase.removeChannel(channel); clearInterval(id); };
-  }, [load]);
+  }, [load, enabled]);
 
   const requeue = useCallback(async (id) => {
     const { error: e } = await supabase.from(TABLES.media).update({ status: "pending", error: null }).eq("id", id);
@@ -115,4 +115,55 @@ export function useToasts() {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
   }, []);
   return { toasts, push };
+}
+
+/** A private table, kept live for a listed uploader: realtime where the table is in the
+ *  publication, a poll as the net (only while the tab is visible). `enabled` false = no reads. */
+export function useTable(table, { enabled = true, select = "*", order = "created_at", ascending = false, limit = 200,
+  realtime = true, everyMs = 90_000 } = {}) {
+  const [rows, setRows] = useState([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const loadRef = useRef(null);
+
+  const load = useCallback(async () => {
+    if (!supabase || !enabled) { setLoading(false); return; }
+    const { data, error: e } = await supabase.from(table).select(select).order(order, { ascending }).limit(limit);
+    if (e) setError(errText(e)); else { setRows(data ?? []); setError(""); }
+    setLoading(false);
+  }, [table, enabled, select, order, ascending, limit]);
+  loadRef.current = load;
+
+  useEffect(() => {
+    if (!supabase || !enabled) return undefined;
+    load();
+    let channel = null;
+    if (realtime) {
+      channel = supabase.channel(`${table}_live`)
+        .on("postgres_changes", { event: "*", schema: "public", table }, () => loadRef.current?.())
+        .subscribe();
+    }
+    const tick = () => { if (!document.hidden) loadRef.current?.(); };
+    const id = setInterval(tick, everyMs);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+      clearInterval(id); document.removeEventListener("visibilitychange", tick);
+    };
+  }, [load, enabled, realtime, table, everyMs]);
+
+  return { rows, error, loading, reload: load };
+}
+
+/** semasa_settings as { key: value }. */
+export function useSettings(enabled) {
+  const t = useTable(TABLES.settings, { enabled, select: "key,value,updated_at", order: "key", ascending: true, realtime: false });
+  const map = {};
+  for (const r of t.rows) map[r.key] = r.value;
+  const save = useCallback(async (key, value) => {
+    const { error: e } = await supabase.from(TABLES.settings).update({ value }).eq("key", key);
+    if (e) throw new Error(errText(e));
+    await t.reload();
+  }, [t]);
+  return { settings: map, loading: t.loading, error: t.error, save, reload: t.reload };
 }

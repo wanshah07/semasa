@@ -18,6 +18,7 @@ Dialects:
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import time
@@ -59,13 +60,15 @@ class LLM:
                  self.s.provider, self.s.model, self.s.base_url)
         return ok
 
-    def chat_json(self, system: str, user: str, *, max_tokens: int = 1500, retries: int = 2) -> dict[str, Any] | None:
+    def chat_json(self, system: str, user: str | list[dict[str, Any]], *, max_tokens: int = 1500, retries: int = 2,
+                  model: str | None = None) -> dict[str, Any] | None:
+        """`user` is a string, or a list of content parts (see `image_parts`)."""
         if not self.configured:
             return None
         for attempt in range(retries + 1):
             self.calls += 1
             try:
-                text = self._call(system, user, max_tokens)
+                text = self._call(system, user, max_tokens, model or self.s.model)
                 try:
                     data = _parse_json(text)
                 except ValueError as exc:
@@ -93,17 +96,28 @@ class LLM:
 
     # --- dialects ---------------------------------------------------------------
 
-    def _call(self, system: str, user: str, max_tokens: int) -> str:
-        if self.s.provider == "anthropic":
-            return self._anthropic(system, user, max_tokens)
-        return self._openai(system, user, max_tokens)
+    def describe_image(self, system: str, prompt: str, data: bytes, mime: str, *,
+                       max_tokens: int = 900) -> dict[str, Any] | None:
+        """The READ step: one picture and a question to VISION_MODEL. None when the key,
+        the gateway or the model will not take a picture — the caller records that the
+        reference was not read rather than pretending it was."""
+        if not self.configured:
+            return None
+        parts = image_parts(self.s.provider, prompt, data, mime)
+        return self.chat_json(system, parts, max_tokens=max_tokens, retries=1,
+                              model=self.s.vision_model or self.s.model)
 
-    def _openai(self, system: str, user: str, max_tokens: int) -> str:
+    def _call(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str) -> str:
+        if self.s.provider == "anthropic":
+            return self._anthropic(system, user, max_tokens, model)
+        return self._openai(system, user, max_tokens, model)
+
+    def _openai(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str) -> str:
         r = requests.post(
             f"{self.s.base_url}/chat/completions",
             headers={"Authorization": f"Bearer {self.s.api_key}", "Content-Type": "application/json"},
             json={
-                "model": self.s.model,
+                "model": model,
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
                 "temperature": 0.2,
                 "max_tokens": max_tokens,
@@ -117,7 +131,7 @@ class LLM:
                 f"{self.s.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.s.api_key}", "Content-Type": "application/json"},
                 json={
-                    "model": self.s.model,
+                    "model": model,
                     "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
                     "temperature": 0.2,
                     "max_tokens": max_tokens,
@@ -127,7 +141,7 @@ class LLM:
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"]
 
-    def _anthropic(self, system: str, user: str, max_tokens: int) -> str:
+    def _anthropic(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str) -> str:
         r = requests.post(
             f"{self.s.base_url}/v1/messages",
             headers={
@@ -136,7 +150,7 @@ class LLM:
                 "Content-Type": "application/json",
             },
             json={
-                "model": self.s.model,
+                "model": model,
                 "system": system,
                 "messages": [{"role": "user", "content": user}],
                 "max_tokens": max_tokens,
@@ -147,6 +161,18 @@ class LLM:
         r.raise_for_status()
         blocks = r.json().get("content") or []
         return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+
+
+def image_parts(provider: str, prompt: str, data: bytes, mime: str) -> list[dict[str, Any]]:
+    """A picture plus words, in the shape each dialect wants. The picture goes inline as
+    base64: a gateway is not guaranteed to fetch a URL (kkm-complaints sends data URIs to
+    rootsys for the same reason)."""
+    b64 = base64.b64encode(data).decode("ascii")
+    if provider == "anthropic":
+        return [{"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}},
+                {"type": "text", "text": prompt}]
+    return [{"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}]
 
 
 def _pythonish_to_json(s: str) -> str:

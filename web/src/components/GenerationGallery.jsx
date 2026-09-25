@@ -18,6 +18,9 @@ function Media({ row }) {
       ? <video src={row.generated_media_url} controls playsInline className="aspect-video w-full bg-black object-contain" />
       : <img src={row.generated_media_url} alt={row.prompt} loading="lazy" className="w-full object-cover" />;
   }
+  if (!row.reference_url) {
+    return <div className="grid aspect-video w-full place-items-center bg-surface-2 text-xs text-muted">prompt sahaja</div>;
+  }
   return (
     <div className="relative">
       <img src={row.reference_url} alt="" loading="lazy" className="w-full object-cover opacity-60" onError={(e) => { e.currentTarget.style.display = "none"; }} />
@@ -49,6 +52,15 @@ export default function GenerationGallery({ rows, user, onRequeue, onRemove }) {
                     <span className="text-[11px] text-muted" title={stampMYT(row.updated_at)}>{row.type} · {timeAgo(row.created_at)}</span>
                   </div>
                   <p className="mt-2 line-clamp-3 text-sm text-ink">{row.prompt}</p>
+                  {row.mode === "recreate" && (
+                    <details className="mt-2 text-[12px] text-muted">
+                      <summary className="cursor-pointer">{row.reference_read ? "Apa yang bot baca pada rujukan" : "Rujukan belum dibaca"}</summary>
+                      <p className="mt-1">{row.reference_read || (row.status === "done"
+                        ? "Tiada model penglihatan (VISION_MODEL): dijana daripada gambar dan prompt sahaja."
+                        : "Bot membacanya apabila kerja ini bermula.")}</p>
+                    </details>
+                  )}
+                  {(row.idea_id || row.post_id) && <p className="mt-1 text-[11px] text-accent">Aliran A · untuk draf post</p>}
                   {row.error && <p className="mt-2 break-words rounded-tile bg-danger/5 p-2 text-[11px] text-danger">{row.error}</p>}
                   <div className="mt-3 flex items-center justify-between text-[11px] text-muted">
                     <span>{row.provider || "—"}{row.model ? ` · ${row.model}` : ""}{row.attempts ? ` · cubaan ${row.attempts}` : ""}</span>

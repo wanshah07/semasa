@@ -1,0 +1,787 @@
+[
+ {
+  "name": "clean regulab post passes",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "resolved-looking but unresolved SAHKAN blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN: tarikh pekeliling NPRA]",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN: tarikh pekeliling NPRA]",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN: tarikh pekeliling NPRA]"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "hard_min": 3,
+   "contains": [
+    "[SAHKAN] unresolved"
+   ]
+  }
+ },
+ {
+  "name": "SAHKAN naming nothing is its own flag",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN: what to verify]",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN: what to verify]",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN: what to verify]"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "names nothing"
+   ],
+   "not_contains": [
+    "[SAHKAN] unresolved"
+   ]
+  }
+ },
+ {
+  "name": "bare SAHKAN is empty",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN]",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN]",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN]"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "names nothing"
+   ]
+  }
+ },
+ {
+  "name": "keyword-comment CTA is case sensitive on keyword",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Komen 'SEMAK' untuk info.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Komen 'SEMAK' untuk info.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Komen 'SEMAK' untuk info."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "keyword comment"
+   ]
+  }
+ },
+ {
+  "name": "lowercase komen word is not a CTA",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. komen ramai setuju.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. komen ramai setuju.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. komen ramai setuju."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "hubungi kami blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Hubungi kami hari ini.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Hubungi kami hari ini.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Hubungi kami hari ini."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "hubungi kami"
+   ]
+  }
+ },
+ {
+  "name": "brand website in caption blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. www.kkmhalalconsultant.com",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. www.kkmhalalconsultant.com",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. www.kkmhalalconsultant.com"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "ws.regulab website"
+   ]
+  }
+ },
+ {
+  "name": "regulator URL only warns",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Rujuk npra.gov.my",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Rujuk npra.gov.my",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Rujuk npra.gov.my"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0,
+   "soft_contains": [
+    "a link"
+   ]
+  }
+ },
+ {
+  "name": "Reddit named blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Ramai kat Reddit tanya.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Ramai kat Reddit tanya.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Ramai kat Reddit tanya."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "social source"
+   ]
+  }
+ },
+ {
+  "name": "facebook word alone is fine",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Kami juga di Facebook.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Kami juga di Facebook.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Kami juga di Facebook."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "Indonesian word blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Kualitas produk penting.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Kualitas produk penting.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Kualitas produk penting."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "Bahasa Indonesia word \"kualitas\""
+   ]
+  }
+ },
+ {
+  "name": "bisa warns only",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Produk ini bisa dijual.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Produk ini bisa dijual.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Produk ini bisa dijual."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0,
+   "soft_contains": [
+    "venom"
+   ]
+  }
+ },
+ {
+  "name": "em dash warns",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. — penting.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. — penting.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. — penting."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0,
+   "soft_contains": [
+    "em dash"
+   ]
+  }
+ },
+ {
+  "name": "threads over 500 chars blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "facebook": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "threads": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "over the 500 limit"
+   ]
+  }
+ },
+ {
+  "name": "empty caption blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "empty"
+   ]
+  }
+ },
+ {
+  "name": "instagram needs an image",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": []
+  },
+  "expect": {
+   "contains": [
+    "instagram needs an image"
+   ]
+  }
+ },
+ {
+  "name": "fatwa without diwartakan blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "domain": "fatwa"
+  },
+  "expect": {
+   "contains": [
+    "gazette warning"
+   ]
+  }
+ },
+ {
+  "name": "fatwa with diwartakan passes",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Fatwa ini telah diwartakan di Selangor.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Fatwa ini telah diwartakan di Selangor.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Fatwa ini telah diwartakan di Selangor."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "domain": "fatwa"
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "other language variant only warns",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    },
+    "en": {
+     "instagram": "Contact us now"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0,
+   "soft_contains": [
+    "contact us"
+   ]
+  }
+ },
+ {
+  "name": "misnested BM variant is not read as BM",
+  "post": {
+   "stream": "regulab",
+   "lang": "en",
+   "text": {
+    "en": {
+     "instagram": "ok text",
+     "facebook": "ok text",
+     "threads": "ok text",
+     "bm": "[SAHKAN: x]"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "citation SAHKAN blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "citation": "Garis Panduan [SAHKAN: edisi terkini]"
+  },
+  "expect": {
+   "contains": [
+    "Source"
+   ]
+  }
+ },
+ {
+  "name": "alt text CTA blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m",
+     "alt": "Simpan post ini"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "Picture 1 alt text"
+   ]
+  }
+ },
+ {
+  "name": "linkedin aggregator citation blocks",
+  "post": {
+   "stream": "linkedin",
+   "lang": "en",
+   "text": {
+    "en": {
+     "linkedin": "Annex III entry 325 changed the limit."
+    }
+   },
+   "citation": "ChemLinked, 3 Sep 2026"
+  },
+  "expect": {
+   "contains": [
+    "aggregator"
+   ]
+  }
+ },
+ {
+  "name": "linkedin aggregator ok on regulab",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "citation": "ChemLinked"
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "linkedin brand mark blocks",
+  "post": {
+   "stream": "linkedin",
+   "lang": "en",
+   "text": {
+    "en": {
+     "linkedin": "Wrote this at ws.regulab today."
+    }
+   }
+  },
+  "expect": {
+   "contains": [
+    "mark on LinkedIn"
+   ]
+  }
+ },
+ {
+  "name": "linkedin question ending warns",
+  "post": {
+   "stream": "linkedin",
+   "lang": "en",
+   "text": {
+    "en": {
+     "linkedin": "Is this the right limit?"
+    }
+   }
+  },
+  "expect": {
+   "hard": 0,
+   "soft_contains": [
+    "ends with a question"
+   ]
+  }
+ },
+ {
+  "name": "linkedin clean",
+  "post": {
+   "stream": "linkedin",
+   "lang": "en",
+   "text": {
+    "en": {
+     "linkedin": "SCCS/1647/22 sets the MoS at 100. The number matters."
+    }
+   }
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "off rota warns",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "date": "2026-09-27",
+   "domain": "kosmetik"
+  },
+  "expect": {
+   "hard": 0,
+   "soft_contains": [
+    "Sunday carries"
+   ]
+  },
+  "schedule": {
+   "0": [
+    "halal_my",
+    "fatwa"
+   ]
+  }
+ },
+ {
+  "name": "on rota silent",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "date": "2026-09-28",
+   "domain": "kosmetik"
+  },
+  "expect": {
+   "hard": 0,
+   "soft_not_contains": [
+    "carries"
+   ]
+  },
+  "schedule": {
+   "1": [
+    "kosmetik",
+    "sains_kosmetik"
+   ]
+  }
+ },
+ {
+  "name": "hashtag limit warns",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. #a #b",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. #a #b",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. #a #b"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0,
+   "soft_contains": [
+    "hashtags"
+   ]
+  }
+ },
+ {
+  "name": "dijamin lulus blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Dijamin lulus!",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Dijamin lulus!",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Dijamin lulus!"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "promises approval"
+   ]
+  }
+ }
+]

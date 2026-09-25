@@ -3,7 +3,7 @@ import { stagger } from "../design/motion";
 import Skeleton from "./ui/Skeleton";
 import TrendCard from "./TrendCard";
 
-export default function MasonryGrid({ rows, loading, onCategory }) {
+export default function MasonryGrid({ rows, loading, onCategory, onIdea }) {
   if (loading) {
     return (
       <div className="masonry">
@@ -16,7 +16,7 @@ export default function MasonryGrid({ rows, loading, onCategory }) {
   }
   return (
     <motion.div className="masonry" variants={stagger(0.03)} initial="hidden" animate="show">
-      {rows.map((row) => <TrendCard key={row.id} row={row} onCategory={onCategory} />)}
+      {rows.map((row) => <TrendCard key={row.id} row={row} onCategory={onCategory} onIdea={onIdea} />)}
     </motion.div>
   );
 }

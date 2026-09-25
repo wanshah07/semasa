@@ -1,5 +1,5 @@
 -- Semasa · Module A · Row Level Security
--- Anonymous READS everywhere; WRITES only from a signed-in user who is listed in
+-- Anonymous READS of headlines and runs; everything else, and every WRITE, only from a signed-in user who is listed in
 -- public.semasa_uploaders (see 001). Being signed in is not enough: in a shared
 -- project the other app's users can sign in too. The GitHub runner uses the
 -- service_role key, which bypasses RLS by design.
@@ -24,11 +24,14 @@ create policy "trends: signed-in can insert"
 -- no update/delete policy: only service_role (the scraper) may change a row
 
 -- media_generations ----------------------------------------------------------
+-- Not public: it carries unapproved Flow A artwork (Studio's rule: only an approved
+-- post's artwork is public). 005 enforces the same; either file may be re-run.
 drop policy if exists "media: anyone can read" on public.media_generations;
-create policy "media: anyone can read"
+drop policy if exists "media: uploaders can read" on public.media_generations;
+create policy "media: uploaders can read"
   on public.media_generations for select
-  to anon, authenticated
-  using (true);
+  to authenticated
+  using (public.semasa_is_uploader());
 
 drop policy if exists "media: signed-in can insert own" on public.media_generations;
 create policy "media: signed-in can insert own"

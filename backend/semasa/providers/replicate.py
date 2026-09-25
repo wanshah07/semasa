@@ -45,7 +45,15 @@ class ReplicateProvider:
             max_wait = self.s.max_wait_image
         payload_input: dict[str, Any] = {"prompt": prompt, key: reference_url}
         payload_input.update(options.get("input") or {})
+        return self._run(model, payload_input, max_wait)
 
+    def generate_from_text(self, prompt: str, options: dict[str, Any]) -> Generated:
+        model = options.get("t2i_model") or self.s.replicate_t2i_model
+        payload_input: dict[str, Any] = {"prompt": prompt, "aspect_ratio": options.get("aspect_ratio") or "1:1"}
+        payload_input.update(options.get("t2i_input") or {})
+        return self._run(model, payload_input, self.s.max_wait_image)
+
+    def _run(self, model: str, payload_input: dict[str, Any], max_wait: int) -> Generated:
         if ":" in model:
             slug, version = model.split(":", 1)
             r = requests.post(f"{API}/predictions", headers=self.headers,

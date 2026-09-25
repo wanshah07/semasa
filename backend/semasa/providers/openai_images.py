@@ -2,6 +2,7 @@
 base URL that implements the same routes.
 
 image → POST {base}/images/edits   multipart: model, prompt, size, image=<reference>
+text  → POST {base}/images/generations  json: model, prompt, size
 video → POST {base}/videos         multipart: model, prompt, seconds, size, input_reference=<reference>
         GET  {base}/videos/{id}    until status completed | failed
         GET  {base}/videos/{id}/content  → mp4 bytes
@@ -40,6 +41,31 @@ class OpenAIProvider:
         return self._video(ref_bytes, ref_ct, ref_name, prompt, options) if kind == "video" \
             else self._image(ref_bytes, ref_ct, ref_name, prompt, options)
 
+    def generate_from_text(self, prompt: str, options: dict[str, Any]) -> Generated:
+        model = options.get("model") or self.s.openai_image_model
+        r = requests.post(
+            f"{self.base}/images/generations",
+            headers={**self.auth, "Content-Type": "application/json"},
+            json={"model": model, "prompt": prompt, "size": options.get("size") or self.s.openai_image_size, "n": 1},
+            timeout=self.s.max_wait_image,
+        )
+        if r.status_code in (400, 422):
+            raise ProviderError(f"OpenAI rejected the request: {r.text[:300]}")
+        r.raise_for_status()
+        return self._image_answer(r.json(), model, options)
+
+    def _image_answer(self, body: dict[str, Any], model: str, options: dict[str, Any]) -> Generated:
+        item = (body.get("data") or [{}])[0]
+        if item.get("b64_json"):
+            out = base64.b64decode(item["b64_json"])
+            fmt = (options.get("output_format") or "png").lower()
+            ct = f"image/{'jpeg' if fmt == 'jpg' else fmt}"
+            return Generated(out, ct, model, {"revised_prompt": item.get("revised_prompt")})
+        if item.get("url"):
+            out, out_ct = download(item["url"])
+            return Generated(out, out_ct, model, {"output_url": item["url"]})
+        raise ProviderError("OpenAI answered without image data")
+
     def _image(self, data: bytes, ct: str, name: str, prompt: str, options: dict[str, Any]) -> Generated:
         model = options.get("model") or self.s.openai_image_model
         r = requests.post(
@@ -53,16 +79,7 @@ class OpenAIProvider:
         if r.status_code in (400, 422):
             raise ProviderError(f"OpenAI rejected the request: {r.text[:300]}")
         r.raise_for_status()
-        item = (r.json().get("data") or [{}])[0]
-        if item.get("b64_json"):
-            out = base64.b64decode(item["b64_json"])
-            fmt = (options.get("output_format") or "png").lower()
-            ct = f"image/{'jpeg' if fmt == 'jpg' else fmt}"
-            return Generated(out, ct, model, {"revised_prompt": item.get("revised_prompt")})
-        if item.get("url"):
-            out, out_ct = download(item["url"])
-            return Generated(out, out_ct, model, {"output_url": item["url"]})
-        raise ProviderError("OpenAI answered without image data")
+        return self._image_answer(r.json(), model, options)
 
     def _video(self, data: bytes, ct: str, name: str, prompt: str, options: dict[str, Any]) -> Generated:
         model = options.get("model") or self.s.openai_video_model

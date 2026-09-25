@@ -1,4 +1,4 @@
-"""Generation providers. Each exposes generate(kind, reference_url, prompt, options) -> Generated."""
+"""Generation providers: generate(kind, reference_url, prompt, options) and generate_from_text(prompt, options)."""
 
 from __future__ import annotations
 
@@ -24,7 +24,13 @@ class Generated:
 class Provider(Protocol):
     name: str
 
-    def generate(self, kind: str, reference_url: str, prompt: str, options: dict[str, Any]) -> Generated: ...
+    def generate(self, kind: str, reference_url: str, prompt: str, options: dict[str, Any]) -> Generated:
+        """From a picture (image edit / image-to-video)."""
+        ...
+
+    def generate_from_text(self, prompt: str, options: dict[str, Any]) -> Generated:
+        """An image from words alone. Video from words is a still from this, then generate()."""
+        ...
 
 
 class ProviderError(RuntimeError):

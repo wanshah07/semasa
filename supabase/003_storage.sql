@@ -11,7 +11,7 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values
   ('semasa-reference', 'semasa-reference', true, 52428800,
     array['image/png','image/jpeg','image/webp','image/gif','text/plain','text/markdown','application/pdf']),
-  ('semasa-generated', 'semasa-generated', true, 524288000,
+  ('semasa-generated', 'semasa-generated', true, 52428800,   -- 50 MB: the free plan's per-file ceiling
     array['image/png','image/jpeg','image/webp','video/mp4','video/webm'])
 on conflict (id) do update
   set public = excluded.public,

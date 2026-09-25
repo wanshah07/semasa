@@ -1,12 +1,18 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { RefreshCw } from "lucide-react";
 import { fadeUp } from "./design/motion";
-import { configured } from "./lib/SupabaseClient";
+import { TABLES, configured } from "./lib/SupabaseClient";
+import { brandOf } from "./lib/brand";
 import { stampMYT } from "./lib/format";
-import { useCanUpload, useGenerations, useSession, useToasts, useTrends } from "./lib/hooks";
-import AuthPanel from "./components/AuthPanel";
+import { useCanUpload, useGenerations, useSession, useSettings, useTable, useToasts, useTrends } from "./lib/hooks";
 import FilterBar from "./components/FilterBar";
+import Gate from "./components/Gate";
+import IdeaComposer from "./components/IdeaComposer";
+import PromptLibrary from "./components/PromptLibrary";
+import IdeasTab from "./pages/IdeasTab";
+import PostsTab from "./pages/PostsTab";
+import SettingsTab from "./pages/SettingsTab";
 import GenerationGallery from "./components/GenerationGallery";
 import Header from "./components/Header";
 import MasonryGrid from "./components/MasonryGrid";
@@ -26,7 +32,7 @@ function Unconfigured() {
   );
 }
 
-function IsuTab({ trends, onToast }) {
+function IsuTab({ trends, onToast, onIdea }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
   const [lang, setLang] = useState("");
@@ -87,48 +93,34 @@ function IsuTab({ trends, onToast }) {
         </div>
         {trends.error && <p className="my-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{trends.error}</p>}
         <div className="mt-4">
-          <MasonryGrid rows={filtered} loading={trends.loading} onCategory={(c) => setCategory(c)} />
+          <MasonryGrid rows={filtered} loading={trends.loading} onCategory={(c) => setCategory(c)} onIdea={onIdea} />
         </div>
       </main>
     </>
   );
 }
 
-function NotListed({ user }) {
-  return (
-    <div className="mx-auto max-w-md rounded-card border border-line bg-surface p-6 shadow-card">
-      <h3 className="text-lg">Akaun ini belum dibenarkan memuat naik</h3>
-      <p className="mt-2 text-sm text-muted">
-        {user.email} sudah log masuk, tetapi tiada dalam senarai <code>semasa_uploaders</code>. Pemilik projek
-        perlu menambah akaun ini dalam Supabase SQL editor sebelum kerja penjanaan boleh dihantar.
-      </p>
-    </div>
-  );
-}
-
-function MediaTab({ user, ready, onToast }) {
-  const gens = useGenerations();
-  const canUpload = useCanUpload(user);
+function MediaTab({ user, gens, prompts, onToast }) {
+  const [preset, setPreset] = useState(null);
+  const clearPreset = useCallback(() => setPreset(null), []);
   async function guard(fn) {
     try { await fn(); } catch (e) { onToast(e.message, "danger"); }
   }
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Makmal media</p>
-        <h1 className="mt-2 text-4xl leading-tight">Rujukan masuk, imej atau video keluar.</h1>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Aliran B · makmal media</p>
+        <h1 className="mt-2 text-4xl leading-tight">Prompt atau rujukan masuk, imej atau video keluar.</h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
-          Fail disimpan di Supabase Storage; GitHub Actions menjalankan penjanaan dan menulis alamat hasil semula ke sini.
-          Status bertukar secara langsung.
+          Tulis prompt sahaja, atau muat naik gambar rujukan: bot membacanya dahulu, kemudian mencipta semula mengikut
+          arahan anda. Simpan prompt yang baik ke pustaka untuk diguna semula. GitHub Actions menjalankan penjanaan;
+          status bertukar secara langsung.
         </p>
       </motion.div>
-      <div className="mt-8">
-        {!ready ? null : !user
-          ? <AuthPanel onToast={onToast} />
-          : canUpload === null ? null
-          : canUpload
-            ? <MediaUploader user={user} onToast={onToast} onQueued={() => gens.reload()} />
-            : <NotListed user={user} />}
+      <div className="mt-8 grid gap-5 lg:grid-cols-[1fr_380px]">
+        <MediaUploader user={user} onToast={onToast} onQueued={() => { gens.reload(); prompts.reload(); }}
+          preset={preset} onPresetUsed={clearPreset} />
+        <PromptLibrary prompts={prompts} onToast={onToast} onUse={(p) => { setPreset(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       </div>
       <h2 className="mb-4 mt-12 text-xl">Hasil</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
@@ -139,20 +131,58 @@ function MediaTab({ user, ready, onToast }) {
   );
 }
 
+const TAB_IDS = ["isu", "idea", "post", "media", "tetapan"];
+
 export default function App() {
-  const [tab, setTab] = useState(() => (window.location.hash === "#media" ? "media" : "isu"));
+  const [tab, setTab] = useState(() => {
+    const h = window.location.hash.replace("#", "");
+    return TAB_IDS.includes(h) ? h : "isu";
+  });
+  const [focusPost, setFocusPost] = useState(null);
+  // follow the address bar too: Back/Forward and a pasted #post link switch the tab
+  useEffect(() => {
+    const onHash = () => {
+      const h = window.location.hash.replace("#", "");
+      setTab(TAB_IDS.includes(h) ? h : "isu");
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  const [ideaFrom, setIdeaFrom] = useState(null);
   const { user, ready } = useSession();
+  const canUpload = useCanUpload(user);
+  const allowed = canUpload === true;
   const trends = useTrends();
   const { toasts, push } = useToasts();
+  const gens = useGenerations({ enabled: allowed });
+  const ideas = useTable(TABLES.ideas, { enabled: allowed });
+  const posts = useTable(TABLES.posts, { enabled: allowed, limit: 400 });
+  const prompts = useTable(TABLES.prompts, { enabled: allowed, realtime: false });
+  const log = useTable(TABLES.publishLog, { enabled: allowed, order: "at", limit: 400, realtime: false });
+  const { settings, save } = useSettings(allowed);
+  const brand = useMemo(() => brandOf(settings), [settings]);
 
-  function go(t) { setTab(t); window.location.hash = t === "media" ? "media" : ""; }
+  function go(t) { setTab(t); window.location.hash = t === "isu" ? "" : t; }
+  const gate = (node) => <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6"><Gate user={user} ready={ready} canUpload={canUpload} onToast={push}>{node}</Gate></main>;
+
+  let body;
+  if (!configured) body = <Unconfigured />;
+  else if (tab === "idea") body = allowed ? <IdeasTab ideas={ideas} user={user} brand={brand} onToast={push}
+    openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
+  else if (tab === "post") body = allowed ? <PostsTab posts={posts} media={gens} log={log} brand={brand} user={user}
+    settings={settings} onToast={push} focusId={focusPost} setFocusId={setFocusPost} /> : gate(null);
+  else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} onToast={push} /> : gate(null);
+  else if (tab === "tetapan") body = allowed ? <SettingsTab settings={settings} brand={brand} save={save} onToast={push} /> : gate(null);
+  else body = <IsuTab trends={trends} onToast={push} onIdea={allowed ? setIdeaFrom : undefined} />;
 
   return (
     <div id="top" className="min-h-screen">
       <Header tab={tab} setTab={go} user={user} />
-      {!configured ? <Unconfigured /> : tab === "media"
-        ? <MediaTab user={user} ready={ready} onToast={push} />
-        : <IsuTab trends={trends} onToast={push} />}
+      {body}
+      {allowed && (
+        <IdeaComposer open={Boolean(ideaFrom)} onClose={() => setIdeaFrom(null)} trend={ideaFrom} user={user} brand={brand}
+          onToast={push} onDone={() => ideas.reload()} />
+      )}
       <footer className="border-t border-line py-8 text-center text-[11px] text-muted">
         Semasa · sumber berita kekal milik penerbit masing-masing · dikemas kini setiap 2 jam
       </footer>

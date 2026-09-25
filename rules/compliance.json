@@ -1,0 +1,273 @@
+{
+ "_about": "Ported from ws.regulab Studio (argus studio/part2.html scanInner, 24 Sep 2026). ONE source of truth: read by backend/semasa/compliance.py and web/src/lib/compliance.js. Patterns are written in the subset JavaScript and Python regex share. Flags: 'i' or ''. Change a rule here, then run both test suites (rules/cases.json).",
+ "platforms": {
+  "regulab": [
+   "instagram",
+   "facebook",
+   "threads"
+  ],
+  "linkedin": [
+   "linkedin"
+  ]
+ },
+ "default_lang": {
+  "regulab": "bm",
+  "linkedin": "en"
+ },
+ "limits": {
+  "regulab": {
+   "instagram": {
+    "max": 2200,
+    "hashtags": 8
+   },
+   "facebook": {
+    "max": 63206,
+    "hashtags": 3
+   },
+   "threads": {
+    "max": 500,
+    "hashtags": 1
+   }
+  },
+  "linkedin": {
+   "linkedin": {
+    "max": 3000,
+    "hashtags": 5
+   }
+  }
+ },
+ "brand": {
+  "name": "ws.regulab",
+  "website": "www.kkmhalalconsultant.com",
+  "handle": "@ws.regulab"
+ },
+ "brand_url_always": "kkmhalalconsultant\\.com",
+ "hard": [
+  {
+   "re": "\\[SAHKAN:(?!\\s*(?:what to verify|apa yang perlu disahkan|\\.\\.\\.|…)?\\s*\\])[^\\]]*\\]",
+   "flags": "i",
+   "label": "[SAHKAN] unresolved: find the source, then edit the text to remove the marker"
+  },
+  {
+   "re": "KKM Halal Consultant",
+   "flags": "i",
+   "label": "old brand name 'KKM Halal Consultant'"
+  },
+  {
+   "re": "dijamin\\s+lulus",
+   "flags": "i",
+   "label": "promises approval ('dijamin lulus')"
+  },
+  {
+   "re": "guarantee[sd]?\\s+approval",
+   "flags": "i",
+   "label": "promises approval"
+  },
+  {
+   "re": "orang\\s+dalam",
+   "flags": "i",
+   "label": "implies an inside contact ('orang dalam')"
+  },
+  {
+   "re": "tiada\\s+kesan\\s+sampingan",
+   "flags": "i",
+   "label": "absolute safety claim"
+  },
+  {
+   "re": "no side effects",
+   "flags": "i",
+   "label": "absolute safety claim"
+  }
+ ],
+ "cta": [
+  {
+   "re": "semak\\s+kelayakan",
+   "flags": "i",
+   "label": "CTA: 'semak kelayakan'"
+  },
+  {
+   "re": "\\b[Kk]omen\\s+['\\\"‘“]?\\s*[A-Z]{3,}",
+   "flags": "",
+   "label": "CTA: asks for a keyword comment"
+  },
+  {
+   "re": "\\b[Cc]omment\\s+['\\\"‘“]?\\s*[A-Z]{3,}",
+   "flags": "",
+   "label": "CTA: asks for a keyword comment"
+  },
+  {
+   "re": "tanya\\s+di\\s+komen",
+   "flags": "i",
+   "label": "CTA: 'tanya di komen'"
+  },
+  {
+   "re": "komen\\s+di\\s+bawah",
+   "flags": "i",
+   "label": "CTA: 'komen di bawah'"
+  },
+  {
+   "re": "comment\\s+below",
+   "flags": "i",
+   "label": "CTA: 'comment below'"
+  },
+  {
+   "re": "simpan\\s+post",
+   "flags": "i",
+   "label": "CTA: 'simpan post'"
+  },
+  {
+   "re": "save\\s+this\\s+post",
+   "flags": "i",
+   "label": "CTA: 'save this post'"
+  },
+  {
+   "re": "kongsi\\s+(post|dengan)",
+   "flags": "i",
+   "label": "CTA: asks for a share"
+  },
+  {
+   "re": "share\\s+this",
+   "flags": "i",
+   "label": "CTA: 'share this'"
+  },
+  {
+   "re": "link\\s+in\\s+bio",
+   "flags": "i",
+   "label": "CTA: 'link in bio'"
+  },
+  {
+   "re": "pautan\\s+di\\s+bio",
+   "flags": "i",
+   "label": "CTA: 'pautan di bio'"
+  },
+  {
+   "re": "(dm|pm)\\s+(kami|us|me)",
+   "flags": "i",
+   "label": "CTA: asks for a DM"
+  },
+  {
+   "re": "hubungi\\s+kami",
+   "flags": "i",
+   "label": "CTA: 'hubungi kami'"
+  },
+  {
+   "re": "contact\\s+us",
+   "flags": "i",
+   "label": "CTA: 'contact us'"
+  },
+  {
+   "re": "whatsapp\\s+kami",
+   "flags": "i",
+   "label": "CTA: 'whatsapp kami'"
+  },
+  {
+   "re": "(ikuti|follow)\\s+(kami|us)",
+   "flags": "i",
+   "label": "CTA: asks for a follow"
+  },
+  {
+   "re": "klik\\s+(link|pautan)",
+   "flags": "i",
+   "label": "CTA: 'klik link'"
+  },
+  {
+   "re": "click\\s+the\\s+link",
+   "flags": "i",
+   "label": "CTA: 'click the link'"
+  }
+ ],
+ "soft": [
+  {
+   "re": "tahukah anda",
+   "flags": "i",
+   "label": "opens with 'Tahukah anda'"
+  },
+  {
+   "re": "dalam dunia yang serba pantas",
+   "flags": "i",
+   "label": "AI cliché opener"
+  },
+  {
+   "re": "adalah dimaklumkan",
+   "flags": "i",
+   "label": "government-memo BM"
+  },
+  {
+   "re": "terbaik di malaysia",
+   "flags": "i",
+   "label": "superlative claim"
+  },
+  {
+   "re": "nombor satu",
+   "flags": "i",
+   "label": "superlative claim"
+  },
+  {
+   "re": "halal[- ]friendly",
+   "flags": "i",
+   "label": "halal claim without certificate"
+  },
+  {
+   "re": "patuh syariah",
+   "flags": "i",
+   "label": "shariah claim without certificate"
+  },
+  {
+   "re": "—",
+   "flags": "",
+   "label": "em dash"
+  }
+ ],
+ "sahkan_empty": {
+  "re": "\\[SAHKAN:?\\s*(?:what to verify|apa yang perlu disahkan|\\.\\.\\.|…)?\\s*\\]",
+  "flags": "i",
+  "label": "a [SAHKAN] that names nothing"
+ },
+ "sahkan_any": {
+  "re": "\\[SAHKAN:[^\\]]*\\]",
+  "flags": "i",
+  "label": "an unresolved [SAHKAN]"
+ },
+ "social_src": {
+  "re": "\\b(reddit|subreddit|youtube|tiktok|redd\\.it|r/[a-z0-9_]{3,}|youtu\\.be|facebook\\.com|fb\\.com|instagram\\.com|threads\\.net|x\\.com|twitter\\.com)\\b",
+  "flags": "i",
+  "label": "names a social source"
+ },
+ "aggregator": {
+  "re": "\\b(chem\\s?linked|chemlinked|cirs(?:\\s?group)?|cosmetics\\s?design|cosmeticsdesign|coslaw|chemical\\s?watch|in\\s?cosmetics|happi|premium\\s?beauty|regulatory\\s?focus|personal\\s?care\\s?insights|cosmeticsbusiness|beauty\\s?packaging)\\b",
+  "flags": "i",
+  "label": "a blog or news aggregator"
+ },
+ "any_url": {
+  "re": "(https?://\\S|\\bwww\\.[a-z0-9-]|\\b[a-z0-9-]{2,}\\.(com|my|org|net|gov|co)\\b)",
+  "flags": "i",
+  "label": "a link"
+ },
+ "indo": [
+  "obat",
+  "perusahaan",
+  "kualitas",
+  "kemasan",
+  "nggak",
+  "banget",
+  "ijin",
+  "gimana",
+  "aja",
+  "udah"
+ ],
+ "indo_soft": [
+  [
+   "bisa",
+   "\"bisa\" is venom in BM; if you mean \"can\", write boleh"
+  ],
+  [
+   "kalian",
+   "\"kalian\" reads Indonesian here; anda or kamu semua is safer"
+  ],
+  [
+   "izin",
+   "\"izin\" is valid BM but kebenaran is the regulatory term"
+  ]
+ ],
+ "carousel_min_facts": 3
+}

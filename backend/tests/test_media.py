@@ -94,3 +94,124 @@ def test_image_reference_detection():
     assert media_generator.reference_is_image({"meta": {"mime": "image/webp"}, "reference_url": "u"})
     assert media_generator.reference_is_image({"reference_url": "https://s/r/a.JPG?token=1"})
     assert not media_generator.reference_is_image({"reference_url": "https://s/r/a.pdf"})
+
+
+class TextProvider(FakeProvider):
+    def __init__(self, result):
+        super().__init__(result)
+        self.text_calls = []
+
+    def generate_from_text(self, prompt, options):
+        self.text_calls.append(prompt)
+        return self.result
+
+
+def _db_all(monkeypatch):
+    writes, uploads = {}, {}
+    monkeypatch.setattr(media_generator.db, "upload_generated",
+                        lambda store, path, data, ct: uploads.setdefault(path, (data, ct)) and f"https://cdn/{path}")
+    monkeypatch.setattr(media_generator.db, "finish_media", lambda store, rid, **f: writes.setdefault(rid, f))
+    monkeypatch.setattr(media_generator.db, "attach_media_to_draft",
+                        lambda store, pid, mid: writes.setdefault("attach", (pid, mid)))
+    return writes, uploads
+
+
+def test_prompt_only_image_uses_words_alone(monkeypatch):
+    writes, _ = _db_all(monkeypatch)
+    prov = TextProvider(Generated(b"img", "image/png", "flux"))
+    row = {"id": "t1", "type": "image", "mode": "prompt", "prompt": "kucing di makmal", "reference_url": None,
+           "attempts": 1, "post_id": "p9"}
+    assert media_generator.process_row(None, row, _settings(), {"replicate": prov}) is True
+    assert prov.text_calls == ["kucing di makmal"] and prov.calls == []
+    assert writes["t1"]["status"] == "done" and writes["attach"] == ("p9", "t1")
+
+
+def test_prompt_only_video_makes_a_still_then_animates_it(monkeypatch):
+    writes, uploads = _db_all(monkeypatch)
+    prov = TextProvider(Generated(b"x", "image/png", "flux"))
+    prov.generate = lambda kind, ref, prompt, opt: prov.calls.append((kind, ref)) or Generated(b"vid", "video/mp4", "kling")
+    row = {"id": "t2", "type": "video", "mode": "prompt", "prompt": "kamera bergerak", "attempts": 1}
+    assert media_generator.process_row(None, row, _settings(), {"replicate": prov}) is True
+    assert prov.calls == [("video", "https://cdn/" + next(p for p in uploads if p.endswith("-still.png")))]
+    assert writes["t2"]["meta"]["still_url"].endswith("-still.png") and writes["t2"]["generated_media_url"].endswith(".mp4")
+
+
+def test_flow_a_news_picture_is_read_never_sent_to_the_edit_model(monkeypatch):
+    writes, _ = _db_all(monkeypatch)
+    monkeypatch.setattr(media_generator, "read_reference", lambda llm, url: {"description": "A shelf of jars."})
+    prov = TextProvider(Generated(b"img", "image/png", "flux"))
+    row = {"id": "t3", "type": "image", "mode": "recreate", "reference_url": "https://news/p.jpg",
+           "prompt": "bottles", "attempts": 1, "meta": {"flow": "A", "mime": "image/og"}}
+    assert media_generator.process_row(None, row, _settings(), {"replicate": prov}) is True
+    assert prov.calls == []                                  # no pixels of the publisher's photo went anywhere
+    p = prov.text_calls[0]
+    assert "A shelf of jars." in p and "bottles" in p and "No logos" in p
+    assert writes["t3"]["reference_read"] == "A shelf of jars."
+
+
+def test_flow_a_unreadable_picture_without_words_is_refused(monkeypatch):
+    writes, _ = _db_all(monkeypatch)
+    monkeypatch.setattr(media_generator, "read_reference", lambda llm, url: None)
+    prov = TextProvider(Generated(b"img", "image/png", "flux"))
+    row = {"id": "t4", "type": "image", "mode": "recreate", "reference_url": "https://news/p.jpg", "prompt": "",
+           "attempts": 1, "meta": {"flow": "A", "mime": "image/og"}}
+    assert media_generator.process_row(None, row, _settings(), {"replicate": prov}) is False
+    assert "VISION_MODEL" in writes["t4"]["error"] and prov.text_calls == []
+
+
+def test_flow_b_recreate_sends_the_reference_with_the_read(monkeypatch):
+    writes, _ = _db_all(monkeypatch)
+    monkeypatch.setattr(media_generator, "read_reference", lambda llm, url: {"description": "Serum bottle on marble."})
+    prov = TextProvider(Generated(b"img", "image/png", "kontext"))
+    row = {"id": "t5", "type": "image", "mode": "recreate", "reference_url": "https://ref/own.png",
+           "prompt": "latar biru", "attempts": 1}
+    assert media_generator.process_row(None, row, _settings(), {"replicate": prov}) is True
+    kind, ref, prompt, _ = prov.calls[0]
+    assert ref == "https://ref/own.png" and prompt.startswith("Recreate the reference picture. Changes wanted: latar biru")
+    assert "Serum bottle on marble." in prompt and "No logos" not in prompt
+    assert prompt.count("latar biru") == 1
+
+
+def test_prompt_mode_without_words_is_refused(monkeypatch):
+    writes, _ = _db_all(monkeypatch)
+    row = {"id": "t6", "type": "image", "mode": "prompt", "prompt": "  ", "attempts": 1}
+    assert media_generator.process_row(None, row, _settings(), {}) is False
+    assert "needs a prompt" in writes["t6"]["error"]
+
+
+def test_shrink_for_read_fits_the_budget():
+    import io
+
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.effect_noise((2400, 1800), 90).convert("RGB").save(buf, "PNG")
+    data, ct = media_generator.shrink_for_read(buf.getvalue(), "image/png", budget=200_000)
+    assert ct == "image/jpeg" and len(data) <= 200_000
+    small = b"\xff\xd8" + b"0" * 10
+    assert media_generator.shrink_for_read(small, "image/jpeg") == (small, "image/jpeg")
+
+
+def test_stale_processing_rows_go_back_to_pending():
+    from fakestore import FakeStore
+
+    from semasa import db
+    store = FakeStore(media_generations=[
+        {"id": "old", "status": "processing", "updated_at": "2026-09-23T00:00:00+00:00"},
+        {"id": "new", "status": "processing", "updated_at": "2999-01-01T00:00:00+00:00"},
+        {"id": "done", "status": "done", "updated_at": "2026-09-23T00:00:00+00:00"}])
+    assert db.recover_stale_media(store, 60) == 1
+    st = {r["id"]: r["status"] for r in store.tables["media_generations"]}
+    assert st == {"old": "pending", "new": "processing", "done": "done"}
+
+
+def test_attach_only_to_a_draft():
+    from fakestore import FakeStore
+
+    from semasa import db
+    store = FakeStore(semasa_posts=[{"id": "d", "status": "draft", "media_ids": []},
+                                    {"id": "a", "status": "approved", "media_ids": ["x"]}])
+    db.attach_media_to_draft(store, "d", "m1")
+    db.attach_media_to_draft(store, "d", "m1")
+    db.attach_media_to_draft(store, "a", "m2")
+    rows = {r["id"]: r["media_ids"] for r in store.tables["semasa_posts"]}
+    assert rows == {"d": ["m1"], "a": ["x"]}

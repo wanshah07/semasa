@@ -1,4 +1,4 @@
-import { LogOut, Palette, Radio, Sparkles } from "lucide-react";
+import { FileText, Lightbulb, LogOut, Palette, Radio, Settings, Sparkles } from "lucide-react";
 import { THEMES, useTheme } from "../design/ThemeProvider";
 import { supabase } from "../lib/SupabaseClient";
 import Button from "./ui/Button";
@@ -7,7 +7,10 @@ export default function Header({ tab, setTab, user }) {
   const { theme, setTheme } = useTheme();
   const tabs = [
     { id: "isu", label: "Isu semasa", icon: Radio },
+    { id: "idea", label: "Idea", icon: Lightbulb },
+    { id: "post", label: "Post", icon: FileText },
     { id: "media", label: "Makmal media", icon: Sparkles },
+    { id: "tetapan", label: "Tetapan", icon: Settings },
   ];
   return (
     <header className="glass sticky top-0 z-40">
@@ -19,7 +22,7 @@ export default function Header({ tab, setTab, user }) {
           <span className="font-display text-lg font-semibold tracking-tight">Semasa</span>
         </a>
 
-        <nav className="ml-2 hidden items-center gap-1 rounded-pill bg-surface-2 p-1 sm:flex">
+        <nav className="ml-2 hidden items-center gap-1 rounded-pill bg-surface-2 p-1 md:flex">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-sm transition ${
@@ -44,10 +47,10 @@ export default function Header({ tab, setTab, user }) {
           )}
         </div>
       </div>
-      <nav className="flex gap-1 px-4 pb-2 sm:hidden">
+      <nav className="flex gap-1 overflow-x-auto px-4 pb-2 md:hidden">
         {tabs.map(({ id, label }) => (
           <button key={id} onClick={() => setTab(id)}
-            className={`flex-1 rounded-pill px-3 py-1.5 text-sm ${tab === id ? "bg-ink text-bg" : "bg-surface-2 text-muted"}`}>
+            className={`shrink-0 rounded-pill px-3 py-1.5 text-sm ${tab === id ? "bg-ink text-bg" : "bg-surface-2 text-muted"}`}>
             {label}
           </button>
         ))}

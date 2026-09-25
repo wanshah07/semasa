@@ -1,0 +1,40 @@
+name: Publish (dry run)
+
+# Studio's release clock: 06:20 · 11:20 · 19:20 MYT (22:20 · 03:20 · 11:20 UTC).
+# While semasa_settings.publishing.enabled is false (it is, and only the SQL editor can change
+# it) this SENDS NOTHING: it writes to semasa_publish_log what it would have sent.
+# Never enable publishing while ws.regulab Studio's Routines still run: one schedule per job.
+on:
+  schedule:
+    - cron: "20 22,3,11 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Publish
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m semasa.publisher

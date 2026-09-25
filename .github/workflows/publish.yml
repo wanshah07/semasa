@@ -7,6 +7,8 @@ name: Publish (dry run)
 on:
   schedule:
     - cron: "20 22,3,11 * * *"
+  repository_dispatch:
+    types: [publish_due]         # Supabase's clock (supabase/009_clock.sql): GitHub's schedule above skips runs
   workflow_dispatch:
 
 concurrency:
@@ -37,4 +39,6 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SEMASA_SHEET_URL: ${{ secrets.SEMASA_SHEET_URL }}
+          SEMASA_SHEET_TOKEN: ${{ secrets.SEMASA_SHEET_TOKEN }}
         run: python -m semasa.publisher

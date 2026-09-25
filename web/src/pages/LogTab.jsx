@@ -61,6 +61,8 @@ const TITLE_EN = [
   [/^Kembali ke draf \(diubah selepas diluluskan\): /, "Back to draft (changed after approval): "],
   [/^Post dipulihkan ke draf: /, "Post restored to draft: "], [/^Dikembalikan ke draf: /, "Returned to draft: "], [/^Post dijadualkan: /, "Post scheduled: "],
   [/^Post diterbitkan: /, "Post published: "], [/^Post dialih: /, "Post moved: "], [/^Post dipadam: /, "Post deleted: "],
+  [/^(\d+) post diarkibkan \(24 jam selepas diterbitkan\); (\d+) gambar tidak digunakan dibuang/,
+    (m) => `${m[1]} post${m[1] === "1" ? "" : "s"} archived (24 hours after publishing); ${m[2]} unused picture${m[2] === "1" ? "" : "s"} removed`],
   [/^(Kerja media dibaris|Media siap|Media gagal) \((slaid|cipta semula|prompt) · /, (m) => `${
     { "Kerja media dibaris": "Media job queued", "Media siap": "Media ready", "Media gagal": "Media failed" }[m[1]]} (${
     { slaid: "slides", "cipta semula": "recreate", prompt: "prompt" }[m[2]]} · `],

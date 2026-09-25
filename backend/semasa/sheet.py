@@ -102,6 +102,9 @@ def sync_log(store: Any) -> str:
             store.table(db.SETTINGS).insert({"key": "log_sheet", "value": state}).execute()
         return f"log sheet: {state['appended']} rows appended"
     except Exception as exc:  # noqa: BLE001 - the sheet is a mirror; it never stops a run
+        if "semasa_log" in str(exc) and ("schema cache" in str(exc) or "does not exist" in str(exc)):
+            # on 25 Sep 2026 this read "FAILED (APIError)" for a database that had not run 008 yet
+            return "log sheet: skipped (the semasa_log table is missing: run supabase/008_log.sql)"
         why = str(exc)[:160] if isinstance(exc, SheetError) else type(exc).__name__
         log.warning("log sheet sync failed: %s", why)
         note_failure(store, "system", "system.sheet_failed", f"Log gagal disalin ke Google Sheet: {why}")

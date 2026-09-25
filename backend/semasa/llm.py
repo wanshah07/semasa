@@ -45,7 +45,13 @@ class LLM:
 
     @property
     def configured(self) -> bool:
-        return bool(self.s.api_key)
+        return bool(self.s.api_key) and not getattr(self.s, "blocked", "")
+
+    def why_off(self) -> str:
+        """For the page: why the writer did not run."""
+        if getattr(self.s, "blocked", ""):
+            return self.s.blocked
+        return "no LLM key: set the LLM_API_KEY secret (the writer needs it)"
 
     # --- public -----------------------------------------------------------------
 

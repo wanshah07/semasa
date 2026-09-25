@@ -220,7 +220,7 @@ def process(store: Any, llm: LLM, row: dict[str, Any], cats: list[dict[str, Any]
     """Rewrite one entry. A new subcategory the writer proposes is added to `cats` in place and noted in `grown`
     for run() to save once."""
     if not llm.configured:
-        raise FaqError("no LLM key: set the LLM_API_KEY secret (the writer needs it)")
+        raise FaqError(llm.why_off())
     article = None
     if row.get("source_kind") == "headline" and row.get("source_url"):
         from .ideas import read_source

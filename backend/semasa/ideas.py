@@ -294,10 +294,39 @@ def claim(store: Any, limit: int) -> list[dict[str, Any]]:
     return got
 
 
+PUBLISHED = ("approved", "scheduled", "posted")
+
+
+def already_published(store: Any, idea: dict[str, Any]) -> dict[str, Any] | None:
+    """The approved or published post already written from the same news for the same stream, if any (Wan, 25 Sep
+    2026: a posted story is never recreated as another draft). Never raises: a failed look-up blocks nothing."""
+    try:
+        stream = idea.get("stream") or "regulab"
+        ids: set[str] = set()
+        for col in ("trend_id", "source_url"):
+            if idea.get(col):
+                rows = (store.table(db.IDEAS).select("id,stream").eq(col, idea[col]).neq("id", idea["id"])
+                        .execute().data or [])
+                ids |= {r["id"] for r in rows if (r.get("stream") or "regulab") == stream}
+        if not ids:
+            return None
+        posts = (store.table(db.POSTS).select("id,status,date,hook,idea_id").in_("idea_id", sorted(ids))
+                 .in_("status", list(PUBLISHED)).execute().data or [])
+        return posts[0] if posts else None
+    except Exception as exc:  # noqa: BLE001
+        log.info("could not check for an earlier post (%s)", str(exc)[:100])
+        return None
+
+
 def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str, Any]) -> str:
     """Returns the new post id. Raises IdeaError with a message for the page."""
     if not llm.configured:
-        raise IdeaError("no LLM key: set the LLM_API_KEY secret (the writer needs it)")
+        raise IdeaError(llm.why_off())
+    earlier = already_published(store, idea)
+    if earlier and not str(idea.get("note") or "").strip():
+        raise IdeaError(f"this news already has a {earlier['status']} post for this stream "
+                        f"({earlier.get('hook') or earlier.get('date') or earlier['id']}), so it is not written again. "
+                        "For a follow-up, add a note saying what the new post should say, then Cuba lagi.")
     brand = settings.get("brand") or {}
     indo_extra = (settings.get("bahasa") or {}).get("indo")
     stream = idea.get("stream") or "regulab"

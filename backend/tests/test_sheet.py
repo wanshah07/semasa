@@ -128,3 +128,14 @@ def test_a_non_json_answer_is_a_clear_failure(monkeypatch):
             raise ValueError("no json")
     monkeypatch.setattr(sheet.requests, "post", lambda *a, **k: Html(None))
     assert "did not answer with JSON" in sheet.sync_log(FakeStore(semasa_log=[_log(1)], semasa_settings=[]))
+
+
+def test_a_missing_log_table_says_which_file_to_run(monkeypatch):
+    _env(monkeypatch)
+
+    class NoTable:
+        def table(self, name):
+            if name == "semasa_log":
+                raise RuntimeError("Could not find the table 'public.semasa_log' in the schema cache")
+            return FakeStore(semasa_settings=[]).table(name)
+    assert sheet.sync_log(NoTable()) == "log sheet: skipped (the semasa_log table is missing: run supabase/008_log.sql)"

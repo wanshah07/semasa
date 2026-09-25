@@ -42,7 +42,7 @@ Two flows:
 
 | Part | Where | Runs |
 |---|---|---|
-| Schema, RLS, buckets, dispatch trigger, the log, the clock | `supabase/001…009.sql` | once, in the SQL editor |
+| Schema, RLS, buckets, dispatch trigger, the log, the clock, the archive | `supabase/001…010.sql` | once, in the SQL editor |
 | Scraper | `backend/semasa/scraper.py` | `.github/workflows/scrape.yml`, `17 7,15,23 * * *` (07:17 · 15:17 · 23:17 MYT) |
 | Idea writer (Flow A) + media generator (both flows) + slide renderer | `backend/semasa/ideas.py`, `media_generator.py`, `slides.py` | `.github/workflows/media.yml`, dispatch + `*/15` |
 | Publisher (**dry run**) | `backend/semasa/publisher.py` | `.github/workflows/publish.yml`, 06:20 · 11:20 · 19:20 MYT |
@@ -96,6 +96,8 @@ an account), and no Google button.
    **Then `009_clock.sql`** (the clock, see *The clock* below). It schedules three `semasa_*` jobs in
    Supabase's own scheduler (pg_cron) and needs the Vault token from step 4. Without the token each job
    writes one warning to the Log every 6 hours and does nothing else.
+   **Then `010_archive.sql`** (a published post is never written again, and is archived 24 hours after it went
+   out: see *Published posts* below). Safe to run again.
    007 and 008 were changed on 25 Sep 2026 after they were first handed over (bot categories, and a
    settings row the log must never record). Both are safe to run again: run 007, 008 and 009 in that
    order even if you ran an earlier 007 or 008.
@@ -330,6 +332,34 @@ What it does **not** change:
   EN (the FAQ view follows the switch, and can still be flipped on its own);
 - the compliance messages, which are one rulebook shared with the publisher, in English;
 - the exports, which have their own language choice.
+
+## Published posts: never written again, archived after 24 hours
+
+Wan, 25 Sep 2026. `supabase/010_archive.sql` and `backend/semasa/archive.py`.
+
+- **Never written again.** An idea whose post is approved, scheduled or published cannot be sent back to the
+  writer: the database refuses it, from the page or anywhere else. A *second* idea from the same news for the
+  same stream is refused by the writer too, before any AI call is spent. The one way through is deliberate: add a
+  note to that idea saying what the follow-up post should say. The other stream (ws.regulab vs LinkedIn) is not
+  blocked, because it is a different post for a different audience.
+- **Archived after 24 hours.** `posted_at` is stamped the moment a post becomes published. The publisher run
+  (06:20 · 11:20 · 19:20 MYT) archives every post published more than 24 hours earlier, so between 24 and about
+  32 hours after it went out. Archiving compacts the row:
+  - only the captions that were sent are kept (that language, those channels);
+  - the page's old scan and send errors are cleared;
+  - picture and slide jobs made for the post but never used are deleted, with their files.
+  The pictures that went out are kept, because the live posts still point at them. The hook, citation, date,
+  slot, publish record and slides stay, so the archive is still a full record.
+- The Posts page has an **Arkib** tab, and an archived post says when it was archived.
+
+## One writer: rootsys
+
+Wan, 25 Sep 2026: from drafting to the Buffer queue, the AI is rootsys and nothing else. Every text AI call
+(headline summaries, drafts, slides, FAQ, sorting, reading pictures) goes through one place, and it may only call a
+host in `LLM_ALLOWED_HOSTS` (default `rootsys.cloud`). If `LLM_BASE_URL` points anywhere else, or is missing
+(which used to mean OpenAI), the writer switches **off**: nothing falls back to another AI, ideas and FAQs say
+why, and the scrape run turns red. Allowing another host is a deliberate GitHub variable, never a default. The
+Buffer step itself uses no AI: it moves the approved caption exactly as written.
 
 ## The clock
 

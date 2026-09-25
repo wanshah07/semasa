@@ -150,12 +150,14 @@ def main() -> int:
     store = db.client(SupabaseSettings.load())
     counts = run(store)
     log.info("publisher: %s", counts)
-    from . import sheet
+    from . import archive, sheet
+    archived = archive.run(store)                     # before the sheet, so today's archive rows go with it
+    log.info(archived)
     log.info(sheet.sync_log(store))
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as fh:
-            fh.write("## Semasa publisher\n\n" + ", ".join(f"{k} {v}" for k, v in counts.items()) + "\n")
+            fh.write("## Semasa publisher\n\n" + ", ".join(f"{k} {v}" for k, v in counts.items()) + f"\n\n{archived}\n")
     return 0
 
 

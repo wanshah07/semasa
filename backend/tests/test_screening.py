@@ -152,3 +152,33 @@ def test_a_refused_key_is_final_not_retried(monkeypatch):
     import pytest
     with pytest.raises(ProviderError, match="refused the key"):
         OpenAIProvider(MediaSettings.load()).generate_from_text("botol", {})
+
+
+def test_the_writer_calls_rootsys_and_nothing_else(monkeypatch):
+    """Wan, 25 Sep 2026: draft creation through to the Buffer queue uses rootsys, never another AI."""
+    from semasa.config import LLMSettings
+    from semasa.llm import LLM
+    monkeypatch.delenv("LLM_ALLOWED_HOSTS", raising=False)
+    monkeypatch.setenv("LLM_API_KEY", "rootsys-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://rootsys.cloud/v1")
+    assert LLM(LLMSettings.load()).configured
+    monkeypatch.delenv("LLM_BASE_URL")                      # a missing variable must not fall back to OpenAI
+    s = LLMSettings.load()
+    assert s.blocked and "api.openai.com" in s.blocked and not LLM(s).configured
+    assert LLM(s).chat_json("sys", "user") is None          # no call leaves the runner
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.mireld.my/v1")
+    assert not LLM(LLMSettings.load()).configured
+    monkeypatch.setenv("LLM_ALLOWED_HOSTS", "rootsys.cloud, mireld.my")   # widening it is a deliberate setting
+    assert LLM(LLMSettings.load()).configured
+
+
+def test_a_blocked_writer_says_why_on_the_idea(monkeypatch):
+    from semasa import ideas
+    from semasa.config import LLMSettings
+    from semasa.llm import LLM
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.delenv("LLM_ALLOWED_HOSTS", raising=False)
+    import pytest
+    with pytest.raises(ideas.IdeaError, match="not an allowed writer"):
+        ideas.process_idea(FakeStore(), LLM(LLMSettings.load()), {"id": "i1"}, {})

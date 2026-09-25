@@ -70,6 +70,10 @@ class Query:
         self.filters.append(lambda r: r.get(c) is not None and str(r.get(c)) >= str(v))
         return self
 
+    def is_(self, c, v):
+        self.filters.append(lambda r: r.get(c) is None if v == "null" else r.get(c) == v)
+        return self
+
     def in_(self, c, vals):
         vals = list(vals)
         self.filters.append(lambda r: r.get(c) in vals)
@@ -141,6 +145,17 @@ class FakeStore:
         self.tables = {k: copy.deepcopy(v) for k, v in tables.items()}
         self.now = "2026-09-24T00:00:00+00:00"
         self.max_rows = None
+        self.removed: list[tuple[str, list[str]]] = []
+        store = self
+
+        class _Bucket:
+            def __init__(self, name):
+                self.name = name
+
+            def remove(self, paths):
+                store.removed.append((self.name, list(paths)))
+
+        self.storage = SimpleNamespace(from_=_Bucket)
 
     def table(self, name):
         return Query(self, name)

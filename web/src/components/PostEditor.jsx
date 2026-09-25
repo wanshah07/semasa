@@ -226,6 +226,18 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
           {t("Penerbit menyekat pada {at}", "The publisher blocked it at {at}", { at: stampMYT(post.errors.at) })}: {post.errors.scan.join(" · ")}</p>}
       </div>
 
+      {post.status === "posted" && (
+        <p className="rounded-tile bg-surface-2/60 p-2 text-[12px] text-muted">
+          {post.archived_at
+            ? t("Diarkibkan {at}: hanya kapsyen yang dihantar disimpan. Post ini tidak akan ditulis semula sebagai draf baharu.",
+              "Archived {at}: only the captions that were sent are kept. This post will not be written again as a new draft.",
+              { at: stampMYT(post.archived_at) })
+            : t("Diterbitkan {at}. Ia diarkibkan secara automatik 24 jam selepas itu, dan tidak akan ditulis semula sebagai draf baharu.",
+              "Published {at}. It is archived automatically 24 hours later, and will not be written again as a new draft.",
+              { at: stampMYT(post.posted_at || post.updated_at) })}
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-2">
         {!locked && <Button variant="ghost" disabled={busy} onClick={() => write(content(), t("Disimpan.", "Saved."))}><Save size={13} /> {t("Simpan", "Save")}</Button>}
         {post.status !== "approved" && !locked && (

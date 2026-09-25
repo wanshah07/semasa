@@ -212,6 +212,9 @@ def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings
     if ok_sources == 0:
         print("::error::every source failed — nothing was measured")
         return 3
+    if llm_settings.blocked:
+        print(f"::error::{llm_settings.blocked}")          # rows were written rules-only; the run must not look fine
+        return 2
     if llm.configured and not llm_ok:
         return 2
     return 0

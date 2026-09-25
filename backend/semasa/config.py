@@ -12,6 +12,9 @@ Variables (same page → Variables; not secret):
   LLM_PROVIDER      openai | anthropic            default openai   (openai = any OpenAI-compatible endpoint)
   LLM_BASE_URL      API root for LLM_PROVIDER=openai  default https://api.openai.com/v1
   LLM_MODEL         default gpt-4o-mini (openai) / claude-haiku-4-5-20251001 (anthropic)
+  LLM_ALLOWED_HOSTS the only hosts the writer may call, comma-separated   default rootsys.cloud
+                    (Wan, 25 Sep 2026: drafts to the Buffer queue use rootsys and nothing else). A LLM_BASE_URL
+                    on any other host switches the writer OFF and turns the run red; it never falls back.
   VISION_MODEL      the model that READS a reference picture; default LLM_MODEL. A text-only
                     model (e.g. deepseek) cannot: the job then records "not read" and
                     generates from the picture and prompt alone.
@@ -74,6 +77,7 @@ class LLMSettings:
     model: str
     timeout: int
     vision_model: str = ""  # the READ step; must accept pictures (rootsys: pick a vision model)
+    blocked: str = ""       # why the writer is off although a key is set (a host not in LLM_ALLOWED_HOSTS)
 
     @classmethod
     def load(cls) -> LLMSettings:
@@ -94,7 +98,18 @@ class LLMSettings:
             model=env("LLM_MODEL", default_model) or default_model,
             timeout=env_int("LLM_TIMEOUT", 60),
             vision_model=env("VISION_MODEL") or env("LLM_MODEL", default_model) or default_model,
+            blocked=blocked_host(base_url),
         )
+
+
+def blocked_host(base_url: str) -> str:
+    """Why this writer address is refused, or "" when it is on the allowed list."""
+    allowed = [h.strip().lower() for h in (env("LLM_ALLOWED_HOSTS", "rootsys.cloud") or "").split(",") if h.strip()]
+    host = host_of(base_url).lower()
+    if allowed and not any(host == h or host.endswith("." + h) for h in allowed):
+        return (f"LLM_BASE_URL points at {host or 'nothing'}, which is not an allowed writer "
+                f"({', '.join(allowed)}): set LLM_BASE_URL=https://rootsys.cloud/v1, or add the host to LLM_ALLOWED_HOSTS")
+    return ""
 
 
 @dataclass(frozen=True)

@@ -8,9 +8,11 @@ import PostEditor from "../components/PostEditor";
 import Card from "../components/ui/Card";
 
 const tabsOf = (t) => [["draft", t("Draf", "Drafts")], ["approved", t("Diluluskan", "Approved")], ["scheduled", t("Dijadualkan", "Scheduled")],
-  ["posted", t("Diterbitkan", "Published")], ["rejected", t("Ditolak", "Rejected")]];
+  ["posted", t("Diterbitkan", "Published")], ["archived", t("Arkib", "Archive")], ["rejected", t("Ditolak", "Rejected")]];
+// a published post is archived (and compacted) by the publisher 24 hours after it went out (supabase/010_archive.sql)
+const bucketOf = (p) => (p.status === "posted" && p.archived_at ? "archived" : p.status);
 const TONE = { draft: "bg-surface-2 text-muted", approved: "bg-ok/10 text-ok", scheduled: "bg-accent/10 text-accent",
-  posted: "bg-ink text-bg", rejected: "bg-surface-2 text-muted line-through" };
+  posted: "bg-ink text-bg", archived: "bg-surface-2 text-muted", rejected: "bg-surface-2 text-muted line-through" };
 
 export default function PostsTab({ posts, media, log, brand, user, settings, onToast, focusId, setFocusId }) {
   const { lang: uiLang, t } = useLang();
@@ -20,15 +22,15 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
   useEffect(() => {
     if (!focusId) return;
     const p = posts.rows.find((r) => r.id === focusId);
-    if (p) setStatus(p.status);
+    if (p) setStatus(bucketOf(p));
   }, [focusId, posts.rows]);
 
   const counts = useMemo(() => {
     const c = {};
-    for (const p of posts.rows) c[p.status] = (c[p.status] || 0) + 1;
+    for (const p of posts.rows) c[bucketOf(p)] = (c[bucketOf(p)] || 0) + 1;
     return c;
   }, [posts.rows]);
-  const shown = posts.rows.filter((p) => p.status === status)
+  const shown = posts.rows.filter((p) => bucketOf(p) === status)
     .sort((a, b) => `${a.date || "9"}${a.slot || ""}`.localeCompare(`${b.date || "9"}${b.slot || ""}`));
   const publishing = settings.publishing || {};
 
@@ -91,8 +93,8 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
                     : <span className="h-16 w-16 shrink-0 rounded-tile bg-surface-2" />}
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
-                      <span className={`rounded-pill px-2 py-0.5 ${TONE[p.status]}`}>
-                        {(tabsOf(t).find(([v]) => v === p.status) || [null, p.status])[1]}</span>
+                      <span className={`rounded-pill px-2 py-0.5 ${TONE[bucketOf(p)]}`}>
+                        {(tabsOf(t).find(([v]) => v === bucketOf(p)) || [null, p.status])[1]}</span>
                       <span>{p.stream === "linkedin" ? "LinkedIn" : "ws.regulab"}{p.domain ? ` · ${p.domain}` : ""}{p.angle ? ` · ${p.angle}` : ""}</span>
                       <span>{p.date ? `${p.date} ${p.slot || ""} MYT` : t("tiada slot", "no slot")}</span>
                       <span className={hard ? "text-danger" : "text-ok"}>{hard ? `■ ${t("{n} sekatan", "{n} blocking", { n: hard })}` : t("✓ semakan lulus", "✓ checks passed")}</span>

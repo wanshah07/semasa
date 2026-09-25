@@ -395,3 +395,15 @@ def test_sheet_results_are_logged_in_one_shape(monkeypatch):
     logged = [(r["level"], r["area"], r["event"], r["title"]) for r in store.tables["semasa_log"]]
     assert logged == [("error", "faq", "faq.sheet_failed", "Google Sheet gagal dikemas kini: Unauthorised"),
                       ("info", "faq", "faq.sheet", "Google Sheet dikemas kini: 1 soalan")]
+
+
+def test_a_reddit_page_that_is_not_a_feed_is_a_failure_not_zero(monkeypatch):
+    class Resp:
+        def __init__(self, text):
+            self.text = text
+    blocked = "<!DOCTYPE html><html><body>whoa there, pardner!</body></html>"
+    monkeypatch.setattr(faq_sources.fetch, "get",
+                        lambda url, timeout=25: Resp(blocked if "reddit" in url else JAKIM_PAGE))
+    report = {r["name"]: r for r in faq_sources.collect(_store())}
+    assert report["FAQ · Reddit r/malaysia"]["ok"] is False and "without a feed" in report["FAQ · Reddit r/malaysia"]["error"]
+    assert report["FAQ · JAKIM Isu Tular Halal"]["ok"] is True                         # one source never stops another

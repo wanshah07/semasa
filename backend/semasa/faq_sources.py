@@ -232,7 +232,15 @@ def collect(store: Any, *, timeout: int = 25) -> list[dict[str, Any]]:
 
     def reddit() -> list[dict[str, Any]]:
         url = f"https://www.reddit.com/r/malaysia/search.rss?q={quote(REDDIT_QUERY)}&restrict_sr=1&sort=new"
-        return parse_reddit(fetch.get(url, timeout=timeout).text, "halal / skincare / kosmetik")
+        feed = fetch.get(url, timeout=timeout).text
+        # On 25 Sep 2026 this read "0 found" with nothing to say whether the feed was empty or never came: a page
+        # Reddit serves blocked visitors also answers 200. No feed is a failure, not zero questions.
+        if "<feed" not in feed[:3000]:
+            raise RuntimeError("Reddit answered without a feed (a page for blocked visitors?); not a count")
+        rows = parse_reddit(feed, "halal / skincare / kosmetik")
+        log.info("%-28s faq    %d posts read, %d read as questions", "FAQ · Reddit r/malaysia",
+                 feed.count("<entry>"), len(rows))
+        return rows
 
     run_source("FAQ · JAKIM Isu Tular Halal", jakim)
     run_source("FAQ · Reddit r/malaysia", reddit)

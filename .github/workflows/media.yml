@@ -1,5 +1,8 @@
 name: Generate media
 
+# One run = Flow A ideas first (headline → draft + picture jobs), then every pending media job.
+# Woken by the database (repository_dispatch) within seconds; the 15-minute poll is the net.
+
 on:
   repository_dispatch:
     types: [media_pending]
@@ -8,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       only_id:
-        description: "Process one media_generations.id only"
+        description: "Process one media_generations.id only (ideas still run)"
         type: string
         default: ""
 
@@ -42,7 +45,13 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          VISION_MODEL: ${{ vars.VISION_MODEL }}
           MEDIA_PROVIDER: ${{ vars.MEDIA_PROVIDER }}
+          REPLICATE_T2I_MODEL: ${{ vars.REPLICATE_T2I_MODEL }}
           REPLICATE_IMAGE_MODEL: ${{ vars.REPLICATE_IMAGE_MODEL }}
           REPLICATE_VIDEO_MODEL: ${{ vars.REPLICATE_VIDEO_MODEL }}
           REPLICATE_IMAGE_INPUT_KEY: ${{ vars.REPLICATE_IMAGE_INPUT_KEY }}

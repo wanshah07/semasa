@@ -103,7 +103,7 @@ export const slidesKey = (raw) => JSON.stringify(normaliseSlides(raw));
 /** What the scan needs of one attached media row: its alt text and, for a drawn slide set, the words
     it was drawn from (the publisher builds the same entry: backend/semasa/publisher.py scan_entry). */
 export const scanMedia = (m) => (m.mode === "slides"
-  ? { alt: m.meta?.alt || "", slides: m.meta?.slides || [] }
+  ? { alt: m.meta?.alt || "", [m.meta?.design ? "artwork" : "slides"]: m.meta?.slides || [] }
   : { alt: m.meta?.alt || "" });
 
 /** -> [{hard, where, msg}]. Any hard flag blocks Approve and blocks the send. */
@@ -171,12 +171,11 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   }
 
   // Slides are artwork: judged like a caption, and what is DRAWN must be what is written.
-  const slides = normaliseSlides(post.slides);
-  slides.forEach((sl, i) => {
-    const where = `Slide ${i + 1}`;
+  const artwork = (items, label) => items.forEach((sl, i) => {
+    const where = `${label} ${i + 1}`;
     const t = [sl.title, ...sl.points].join("\n");
     if (SAHKAN_EMPTY.test(t)) add(true, where, "a [SAHKAN] that names nothing");
-    for (const [re, label] of HARD) if (re.test(t)) add(true, where, label);
+    for (const [re, lab] of HARD) if (re.test(t)) add(true, where, lab);
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. A post stands on the instrument, never on where the idea was spotted.");
     for (const msg of indoHits(t, extra)) add(true, where, msg);
     if (burl.test(t)) add(true, where, "the ws.regulab website. Only the artwork footer carries it.");
@@ -186,6 +185,13 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
       const mark = brandMarkRe(brand);
       if (mark && mark.test(t)) add(true, where, "a ws.regulab mark on LinkedIn");
     }
+  });
+  const slides = normaliseSlides(post.slides);
+  artwork(slides, "Slide");
+  // A poster, card or carousel from the Design tab carries its own words: the same rules, but it is not a drawing
+  // of this post's slides, so it is never compared with them.
+  (post.media || []).forEach((m, k) => {
+    if (m && typeof m === "object" && "artwork" in m) artwork(normaliseSlides(m.artwork), `Design ${k + 1}, slide`);
   });
   const drawn = (post.media || []).filter((m) => m && typeof m === "object" && "slides" in m).map((m) => m.slides);
   const key = slidesKey(slides);

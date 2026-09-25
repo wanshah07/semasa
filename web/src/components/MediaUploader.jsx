@@ -9,7 +9,7 @@ import Button from "./ui/Button";
 import Card from "./ui/Card";
 import { Input, Segmented } from "./ui/Field";
 
-const providersOf = (t) => [
+export const providersOf = (t) => [
   { id: "", label: t("Lalai (tetapan runner)", "Default (runner setting)") },
   { id: "replicate", label: "Replicate" },
   { id: "openai", label: "OpenAI" },

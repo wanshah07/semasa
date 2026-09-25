@@ -22,7 +22,7 @@ export default function TrendCard({ row, onCategory, onIdea, onFaq }) {
           <time className="text-[11px] text-muted" title={stampMYT(when)}>{timeAgo(when)}</time>
         </div>
         <a href={row.url} target="_blank" rel="noopener noreferrer" className="block px-4 pb-4 pt-3">
-          <h3 className="font-display text-[17px] leading-snug text-ink group-hover:text-accent">{row.title}</h3>
+          <h3 className="[overflow-wrap:anywhere] font-display text-[17px] leading-snug text-ink group-hover:text-accent">{row.title}</h3>
           {row.summary && (
             <p className="mt-2 text-sm leading-relaxed text-muted">{row.summary}</p>
           )}
@@ -32,8 +32,8 @@ export default function TrendCard({ row, onCategory, onIdea, onFaq }) {
             </p>
           )}
           <div className="mt-3 flex items-center justify-between text-[11px] text-muted">
-            <span className="truncate">{row.source}{hostOf(row.url) && !hostOf(row.url).includes("google") ? ` · ${hostOf(row.url)}` : ""}</span>
-            <span className="flex items-center gap-1.5">
+            <span className="min-w-0 truncate" title={row.source}>{row.source}{hostOf(row.url) && !hostOf(row.url).includes("google") ? ` · ${hostOf(row.url)}` : ""}</span>
+            <span className="flex shrink-0 items-center gap-1.5">
               {row.summary_source === "llm" && <span className="rounded-pill bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent">AI</span>}
               <span className="uppercase">{row.lang}</span>
               <ExternalLink size={11} />

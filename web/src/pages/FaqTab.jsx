@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, Bot, Check, Clock, FileDown, FileSpreadsheet, Image as ImageIcon, Inbox, Loader2, Pencil, Plus,
-  RotateCcw, Search, Sparkles, Trash2, X } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, Clock, FileDown, FileSpreadsheet, Image as ImageIcon, Inbox, Loader2,
+  Megaphone, Pencil, Plus, RotateCcw, Search, Sparkles, Trash2, X } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { timeAgo } from "../lib/format";
@@ -20,7 +20,7 @@ function haystack(r) {
     ...(r.tags || [])].join(" "));
 }
 
-export default function FaqTab({ faqs, settings, brand, user, onToast }) {
+export default function FaqTab({ faqs, settings, brand, user, onToast, onPost }) {
   const { t, lang } = useLang();
   const cats = useMemo(() => faqCategories(settings), [settings]);
   const catBy = useMemo(() => Object.fromEntries(cats.map((c) => [c.key, c])), [cats]);
@@ -34,6 +34,7 @@ export default function FaqTab({ faqs, settings, brand, user, onToast }) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState("");
+  const [openCat, setOpenCat] = useState("");          // the category card opened to show all its questions
   const website = brand?.regulab?.website || "";
 
   const ready = faqs.rows.filter((r) => r.status === "ready");
@@ -67,6 +68,20 @@ export default function FaqTab({ faqs, settings, brand, user, onToast }) {
     setBusy(kind);
     try { await fn(); } catch (e) { onToast(e.message || String(e), "danger"); } finally { setBusy(""); }
   }
+
+  const catLabel = (r, lg) => (lg === "en" ? catBy[r.category]?.en : catBy[r.category]?.bm) || r.category;
+  const itemProps = (r) => ({
+    r, view, catLabel: catLabel(r, view), busy, onTag: setQuery, onEdit: () => setEditing(r), onDelete: () => remove(r.id),
+    onPost: onPost ? () => onPost(r) : undefined,
+    onCard: () => run(`card-${r.id}`, async () => {
+      download(await posterCard(r, { lang: view, catLabel: catLabel(r, view), website }), fileName(qOf(r, view).slice(0, 40), "png", view));
+    }),
+    onRewrite: () => {
+      if (window.confirm(t("Tulis semula daripada teks asal? Suntingan anda pada soalan ini akan diganti.", "Rewrite from the original text? Your edits to this question will be replaced."))) {
+        update([r.id], { status: "new", error: null }, t("Dihantar ke AI untuk ditulis semula.", "Sent to the AI to be rewritten."));
+      }
+    },
+  });
 
   const exportLangOptions = [["bm", "BM"], ["en", "EN"], ["both", "BM + EN"]];
   const posterLang = exportLang === "both" ? "bm" : exportLang;
@@ -188,7 +203,7 @@ export default function FaqTab({ faqs, settings, brand, user, onToast }) {
                 <span className="text-muted">{r.status === "working" ? t("AI sedang menulis", "AI is writing") : r.status === "error" ? t("Gagal", "Failed") : t("Menunggu bot", "Waiting for the bot")} · {timeAgo(r.created_at)}</span>
                 {r.status === "error" && <Button size="sm" variant="soft" onClick={() => update([r.id], { status: "new", error: null }, t("Dihantar semula.", "Sent again."))}><RotateCcw size={11} /> {t("Cuba lagi", "Try again")}</Button>}
                 {r.status !== "working" && <button type="button" aria-label={t("Padam", "Delete")} onClick={() => remove(r.id)} className="text-muted hover:text-danger"><Trash2 size={12} /></button>}
-                {r.error && <p className="w-full break-words text-danger">{r.error}</p>}
+                {r.error && <p className="w-full [overflow-wrap:anywhere] text-danger">{r.error}</p>}
                 {late && <p className="w-full text-ink">{t("Bot belum bermula: jadual GitHub kadang-kadang lewat. Mulakan di", "The bot has not started: GitHub's schedule is sometimes late. Start it at")}{" "}
                   <a href={WORKER_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-accent underline">GitHub → Generate media → Run workflow</a>.</p>}
               </div>
@@ -197,47 +212,27 @@ export default function FaqTab({ faqs, settings, brand, user, onToast }) {
         </div>
       )}
 
-      {cat === "all" && !words.length && ready.length > 0 && (
-        <CategoryCards cats={cats} rows={ready} view={view} onPick={(k, s) => { setCat(k); setSub(s || ""); }} />
+      {!shown.length && !faqs.loading && (
+        <p className="mt-4 rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">
+          {ready.length ? t("Tiada soalan sepadan dengan carian ini.", "No questions match this search.") : t("Belum ada FAQ. Tekan Tambah FAQ untuk tampal yang pertama.", "No FAQs yet. Press Add FAQ to paste the first one.")}</p>
       )}
 
-      <div className="mt-4 space-y-3">
-        {!shown.length && !faqs.loading && (
-          <p className="rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">
-            {ready.length ? t("Tiada soalan sepadan dengan carian ini.", "No questions match this search.") : t("Belum ada FAQ. Tekan Tambah FAQ untuk tampal yang pertama.", "No FAQs yet. Press Add FAQ to paste the first one.")}</p>
-        )}
-        {shown.map((r) => (
-          <Card key={r.id} as="article" className="p-4">
-            <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
-              <span className="rounded-pill bg-accent/10 px-2 py-0.5 text-accent">{(view === "en" ? catBy[r.category]?.en : catBy[r.category]?.bm) || r.category}</span>
-              {r.subcategory && <span>{r.subcategory}</span>}
-              {r.answer_source === "ai" && <span className="inline-flex items-center gap-1 rounded-pill bg-surface-2 px-2 py-0.5"><Bot size={10} /> {t("jawapan AI", "AI answer")}</span>}
-              {r.needs_check && <span className="inline-flex items-center gap-1 rounded-pill bg-warn/10 px-2 py-0.5 text-warn" title={r.check_note}><AlertTriangle size={10} /> {t("perlu semakan", "needs check")}</span>}
-              <span className="ml-auto">{timeAgo(r.updated_at || r.created_at)}</span>
-            </p>
-            <h3 className="mt-2 font-display text-[17px] leading-snug">{qOf(r, view)}</h3>
-            <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-ink/90">{aOf(r, view)}</p>
-            {r.instrument && <p className="mt-2 text-[11px] text-muted">{view === "en" ? "Source" : "Sumber"}: {r.instrument}</p>}
-            {r.needs_check && r.check_note && <p className="mt-2 rounded-tile bg-warn/10 p-2 text-[12px]">{r.check_note}</p>}
-            {(r.tags || []).length > 0 && <p className="mt-2 flex flex-wrap gap-1">{r.tags.map((t) => (
-              <button type="button" key={t} onClick={() => setQuery(t)} className="rounded-pill border border-line px-2 py-0.5 text-[10px] text-muted hover:text-ink">#{t}</button>))}</p>}
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setEditing(r)}><Pencil size={11} /> {t("Sunting", "Edit")}</Button>
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => run(`card-${r.id}`, async () => {
-                const lang = view;
-                download(await posterCard(r, { lang, catLabel: (lang === "en" ? catBy[r.category]?.en : catBy[r.category]?.bm) || r.category, website }),
-                  fileName(qOf(r, lang).slice(0, 40), "png", lang));
-              })}>{busy === `card-${r.id}` ? <Loader2 size={11} className="animate-spin" /> : <ImageIcon size={11} />} {t("Kad", "Card")}</Button>
-              <Button size="sm" variant="ghost" onClick={() => {
-                if (window.confirm(t("Tulis semula daripada teks asal? Suntingan anda pada soalan ini akan diganti.", "Rewrite from the original text? Your edits to this question will be replaced."))) {
-                  update([r.id], { status: "new", error: null }, t("Dihantar ke AI untuk ditulis semula.", "Sent to the AI to be rewritten."));
-                }
-              }}><RotateCcw size={11} /> {t("Tulis semula", "Rewrite")}</Button>
-              <Button size="sm" variant="danger" onClick={() => remove(r.id)} aria-label={t("Padam soalan", "Delete question")}><Trash2 size={11} /></Button>
-            </div>
-          </Card>
-        ))}
-      </div>
+      {/* A search shows its matches twice on purpose: as one list here, and inside each category card below. */}
+      {words.length > 0 && shown.length > 0 && (
+        <section className="mt-4" aria-label={t("Hasil carian", "Search results")}>
+          <h2 className="mb-2 text-sm font-semibold">{t("Hasil carian", "Search results")} · {shown.length}</h2>
+          <div className="space-y-3">
+            {shown.map((r) => <FaqItem key={r.id} {...itemProps(r)} />)}
+          </div>
+          <h2 className="mb-2 mt-6 text-sm font-semibold">{t("Dalam kategori", "In their categories")}</h2>
+        </section>
+      )}
+
+      {(shown.length > 0 || (cat === "all" && !words.length && ready.length > 0)) && (
+        <CategoryCards cats={cats} rows={shown} view={view} searching={words.length > 0 || cat !== "all"}
+          only={cat === "all" ? "" : cat} open={cat !== "all" ? cat : openCat} setOpen={setOpenCat}
+          onSub={(k, s) => { setCat(k); setSub(s || ""); }} renderItem={(r) => <FaqItem key={r.id} compact {...itemProps(r)} />} />
+      )}
 
       <AddFaq open={adding} onClose={() => setAdding(false)} cats={cats} user={user} onToast={onToast} onDone={faqs.reload} />
       {editing && <EditFaq row={editing} cats={cats} onClose={() => setEditing(null)} onToast={onToast} onDone={faqs.reload} />}
@@ -290,14 +285,74 @@ function AddFaq({ open, onClose, cats, user, onToast, onDone }) {
   );
 }
 
-/* The dashboard: one card per category with what is in it, the bot's own categories marked. A category with
-   nothing in it yet is left out, except the bot's newest, so a category it just opened is visible at once. */
-function CategoryCards({ cats, rows, view, onPick }) {
+/* One question and its answer. `compact` is the row inside a category card: the question is the summary line and
+   the answer opens under it; the full form is the search-result card. Both carry the same actions. */
+function FaqItem({ r, view, catLabel, compact, busy, onTag, onEdit, onDelete, onCard, onRewrite, onPost }) {
+  const { t } = useLang();
+  const badges = (
+    <>
+      {r.subcategory && <span className="text-muted">{r.subcategory}</span>}
+      {r.answer_source === "ai" && <span className="inline-flex items-center gap-1 rounded-pill bg-surface-2 px-2 py-0.5"><Bot size={10} /> {t("jawapan AI", "AI answer")}</span>}
+      {r.needs_check && <span className="inline-flex items-center gap-1 rounded-pill bg-warn/10 px-2 py-0.5 text-warn" title={r.check_note}><AlertTriangle size={10} /> {t("perlu semakan", "needs check")}</span>}
+    </>
+  );
+  const body = (
+    <>
+      <p className="mt-1.5 whitespace-pre-line [overflow-wrap:anywhere] text-sm leading-relaxed text-ink/90">{aOf(r, view)}</p>
+      {r.instrument && <p className="mt-2 [overflow-wrap:anywhere] text-[11px] text-muted">{view === "en" ? "Source" : "Sumber"}: {r.instrument}</p>}
+      {r.needs_check && r.check_note && <p className="mt-2 rounded-tile bg-warn/10 p-2 text-[12px]">{r.check_note}</p>}
+      {(r.tags || []).length > 0 && <p className="mt-2 flex flex-wrap gap-1">{r.tags.map((g) => (
+        <button type="button" key={g} onClick={() => onTag(g)} className="rounded-pill border border-line px-2 py-0.5 text-[10px] text-muted hover:text-ink">#{g}</button>))}</p>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {onPost && <Button size="sm" variant="soft" onClick={onPost} title={t("Hantar soalan ini ke bot sebagai idea post", "Send this question to the bot as a post idea")}>
+          <Megaphone size={11} /> {t("Jadikan post", "Make a post")}</Button>}
+        <Button size="sm" variant="ghost" onClick={onEdit}><Pencil size={11} /> {t("Sunting", "Edit")}</Button>
+        <Button size="sm" variant="ghost" disabled={!!busy} onClick={onCard}>
+          {busy === `card-${r.id}` ? <Loader2 size={11} className="animate-spin" /> : <ImageIcon size={11} />} {t("Kad", "Card")}</Button>
+        <Button size="sm" variant="ghost" onClick={onRewrite}><RotateCcw size={11} /> {t("Tulis semula", "Rewrite")}</Button>
+        <Button size="sm" variant="danger" onClick={onDelete} aria-label={t("Padam soalan", "Delete question")}><Trash2 size={11} /></Button>
+      </div>
+    </>
+  );
+  if (compact) {
+    return (
+      <details className="group/q border-t border-line/70 py-2 first:border-t-0">
+        <summary className="flex cursor-pointer list-none items-start gap-2 text-sm [&::-webkit-details-marker]:hidden">
+          <ChevronDown size={14} className="mt-0.5 shrink-0 text-muted transition group-open/q:rotate-180" />
+          <span className="min-w-0 flex-1 [overflow-wrap:anywhere] font-medium leading-snug">{qOf(r, view)}</span>
+        </summary>
+        <div className="pl-6">
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">{badges}</p>
+          {body}
+        </div>
+      </details>
+    );
+  }
+  return (
+    <Card as="article" className="p-4">
+      <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+        <span className="rounded-pill bg-accent/10 px-2 py-0.5 text-accent">{catLabel}</span>
+        {badges}
+        <span className="ml-auto">{timeAgo(r.updated_at || r.created_at)}</span>
+      </p>
+      <h3 className="mt-2 [overflow-wrap:anywhere] font-display text-[17px] leading-snug">{qOf(r, view)}</h3>
+      {body}
+    </Card>
+  );
+}
+
+const PREVIEW = 4;         // questions a closed card shows before "see all"
+
+/* The dashboard: one card per category, its questions inside it, the bot's own categories marked. A category with
+   nothing in it yet is left out, except the bot's newest, so a category it just opened is visible at once. A search
+   (or a picked category) keeps only the cards with matches. An opened card spans the row and lists every question. */
+function CategoryCards({ cats, rows, view, searching, only, open, setOpen, onSub, renderItem }) {
   const { t } = useLang();
   const stats = {};
   for (const r of rows) {
-    const s = (stats[r.category] ||= { n: 0, check: 0, subs: {}, last: "" });
+    const s = (stats[r.category] ||= { n: 0, check: 0, subs: {}, last: "", items: [] });
     s.n += 1;
+    s.items.push(r);
     if (r.needs_check) s.check += 1;
     if (r.subcategory) s.subs[r.subcategory] = (s.subs[r.subcategory] || 0) + 1;
     const at = r.updated_at || r.created_at || "";
@@ -305,41 +360,52 @@ function CategoryCards({ cats, rows, view, onPick }) {
   }
   const known = new Set(cats.map((c) => c.key));
   const orphans = Object.keys(stats).filter((k) => !known.has(k));
-  const list = [...cats.filter((c) => stats[c.key] || c.auto),
+  let list = [...cats.filter((c) => stats[c.key] || (!searching && c.auto)),
     ...orphans.map((k) => ({ key: k, bm: k, en: k, subs: [], gone: true }))];
+  if (only) list = list.filter((c) => c.key === only);
+  if (!list.length) return null;
   return (
     <section className="mt-4" aria-label={t("Kategori", "Categories")}>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {list.map((c) => {
-          const s = stats[c.key] || { n: 0, check: 0, subs: {}, last: "" };
-          const top = Object.entries(s.subs).sort((a, b) => b[1] - a[1]).slice(0, 3);
+          const s = stats[c.key] || { n: 0, check: 0, subs: {}, last: "", items: [] };
+          const top = Object.entries(s.subs).sort((a, b) => b[1] - a[1]).slice(0, 4);
           const autoSubs = new Set(c.auto_subs || []);
+          const isOpen = open === c.key;
+          const items = isOpen ? s.items : s.items.slice(0, PREVIEW);
           return (
-            <button type="button" key={c.key} onClick={() => onPick(c.key)} data-cat={c.key}
-              className="group rounded-card border border-line bg-surface p-4 text-left transition hover:border-accent/60 hover:shadow-sm">
-              <span className="flex items-start gap-2">
-                <span className="min-w-0 flex-1">
-                  <span className="block font-display text-lg leading-tight group-hover:text-accent">{view === "en" ? c.en : c.bm}</span>
+            <Card key={c.key} data-cat={c.key} className={`min-w-0 p-4 ${isOpen ? "sm:col-span-2 lg:col-span-3" : ""}`}>
+              <div className="flex items-start gap-2">
+                <button type="button" onClick={() => setOpen(isOpen ? "" : c.key)} className="group min-w-0 flex-1 text-left">
+                  <span className="block [overflow-wrap:anywhere] font-display text-lg leading-tight group-hover:text-accent">{view === "en" ? c.en : c.bm}</span>
                   <span className="mt-0.5 block text-[11px] text-muted">{view === "en" ? c.bm : c.en}</span>
-                </span>
+                </button>
                 <span className="font-display text-2xl tabular-nums">{s.n}</span>
-              </span>
-              <span className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
                 {c.auto && <span className="inline-flex items-center gap-1 rounded-pill bg-accent/10 px-2 py-0.5 text-accent"><Sparkles size={10} /> {t("dicipta bot", "made by the bot")}</span>}
                 {c.gone && <span className="rounded-pill bg-warn/10 px-2 py-0.5 text-warn">{t("kategori dipadam: bot akan menyusun semula", "category deleted: the bot will re-sort it")}</span>}
                 {s.check > 0 && <span className="inline-flex items-center gap-1 rounded-pill bg-warn/10 px-2 py-0.5 text-warn"><AlertTriangle size={10} /> {t("{n} perlu semakan", "{n} to check", { n: s.check })}</span>}
                 {!s.n && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-muted">{t("belum ada soalan", "no questions yet")}</span>}
-              </span>
+              </div>
               {top.length > 0 && (
-                <span className="mt-3 flex flex-wrap gap-1">
+                <div className="mt-2 flex flex-wrap gap-1">
                   {top.map(([name, n]) => (
-                    <span key={name} className="rounded-pill border border-line px-2 py-0.5 text-[10px] text-muted">
-                      {name} · {n}{autoSubs.has(name) ? " ✦" : ""}</span>
+                    <button type="button" key={name} onClick={() => onSub(c.key, name)}
+                      className="rounded-pill border border-line px-2 py-0.5 text-[10px] text-muted hover:border-accent hover:text-accent">
+                      {name} · {n}{autoSubs.has(name) ? " ✦" : ""}</button>
                   ))}
-                </span>
+                </div>
               )}
-              {s.last && <span className="mt-2 block text-[10px] text-muted">{t("dikemas kini {ago}", "updated {ago}", { ago: timeAgo(s.last) })}</span>}
-            </button>
+              {items.length > 0 && <div className="mt-3">{items.map(renderItem)}</div>}
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+                {s.last ? <span>{t("dikemas kini {ago}", "updated {ago}", { ago: timeAgo(s.last) })}</span> : <span />}
+                {s.n > PREVIEW && !only && (
+                  <button type="button" onClick={() => setOpen(isOpen ? "" : c.key)} className="font-medium text-accent hover:underline">
+                    {isOpen ? t("Tutup", "Close") : t("Lihat semua {n} soalan", "See all {n} questions", { n: s.n })}</button>
+                )}
+              </div>
+            </Card>
           );
         })}
       </div>

@@ -75,7 +75,8 @@ def scan_entry(m: dict[str, Any]) -> dict[str, Any]:
     meta = m.get("meta") or {}
     entry: dict[str, Any] = {"alt": meta.get("alt") or ""}
     if m.get("mode") == "slides":
-        entry["slides"] = meta.get("slides") or []
+        # a Design-tab artwork carries its own words; a post's carousel is a drawing of the post's slides
+        entry["artwork" if meta.get("design") else "slides"] = meta.get("slides") or []
     return entry
 
 

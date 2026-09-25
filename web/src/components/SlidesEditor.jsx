@@ -91,7 +91,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
             { n: latest.meta?.slides?.length || "" })}</p>
       )}
       {latest && latest.status === "error" && (
-        <p className="mt-3 break-words rounded-tile bg-danger/5 p-2 text-[12px] text-danger">{t("Lukisan terakhir gagal:", "Last drawing failed:")} {latest.error}</p>
+        <p className="mt-3 [overflow-wrap:anywhere] rounded-tile bg-danger/5 p-2 text-[12px] text-danger">{t("Lukisan terakhir gagal:", "Last drawing failed:")} {latest.error}</p>
       )}
 
       {latestDone && (

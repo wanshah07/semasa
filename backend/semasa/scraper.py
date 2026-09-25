@@ -142,6 +142,13 @@ def main() -> int:
         raise
 
 
+def writer_label(llm: LLM) -> str:
+    """Which writer summarised this run: rootsys, and the backup too if it had to answer."""
+    main = f"{llm.s.provider}:{llm.s.model}" if getattr(llm, "primary_ok", True) else "no rootsys"
+    n = getattr(llm, "backup_answers", 0)
+    return f"{main} + backup {getattr(llm.s, 'fallback_model', '')} ×{n}" if n else main
+
+
 def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings: LLMSettings) -> int:
     llm = LLM(llm_settings)
     probe_ok = llm.probe() if llm.configured else False
@@ -193,7 +200,7 @@ def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings
     db.prune_log(store, now)
 
     db.finish_run(store, run_id, sources=report, seen=len(items), inserted=inserted, llm_ok=llm_ok,
-                  llm_model=f"{llm_settings.provider}:{llm_settings.model}" if llm.configured else None,
+                  llm_model=writer_label(llm) if llm.configured else None,
                   note=note if ok_sources else "every source failed")
     from . import sheet
     log.info(sheet.sync_log(store))                        # after finish_run, whose trigger writes the run's row
@@ -203,7 +210,7 @@ def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as fh:
             fh.write(f"## Semasa scrape\n\n- read **{len(items)}**, new **{len(rows)}**, inserted **{inserted}**\n")
-            fh.write(f"- LLM: {'ok' if llm_ok else 'NOT USED'} ({llm_settings.provider}:{llm_settings.model})\n")
+            fh.write(f"- LLM: {'ok' if llm_ok else 'NOT USED'} ({writer_label(llm)})\n")
             fh.write(f"- dropped **{dropped}** headline(s) nobody picked within {settings.pick_hours} h\n\n")
             fh.write("| source | kind | ok | items | error |\n|---|---|---|---|---|\n")
             for r in report:
@@ -212,9 +219,11 @@ def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings
     if ok_sources == 0:
         print("::error::every source failed — nothing was measured")
         return 3
-    if llm_settings.blocked:
+    if llm_settings.blocked and not getattr(llm, "backup_answers", 0):
         print(f"::error::{llm_settings.blocked}")          # rows were written rules-only; the run must not look fine
         return 2
+    if getattr(llm, "backup_answers", 0):
+        print(f"::warning::rootsys gave no usable answer {llm.backup_answers} time(s); the backup writer answered")
     if llm.configured and not llm_ok:
         return 2
     return 0

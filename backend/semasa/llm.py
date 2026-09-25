@@ -7,13 +7,16 @@ verdicts that read like reviewed ones (`kkm-complaints` learned this the hard wa
 `summary_source` is a column, not a hope.
 
 Dialects:
-  openai     — POST {base}/chat/completions. Covers OpenAI, Mireld, Groq, OpenRouter,
+  openai     — POST {base}/chat/completions. Covers OpenAI, rootsys, Mireld, Groq, OpenRouter,
                and Anthropic's own OpenAI-compatible endpoint. `response_format`
                json_object is requested; a server that ignores it is handled by the
                fence-stripping parser.
   anthropic  — POST {base}/v1/messages with the native schema.
 
 `probe()` asks the endpoint who it is, before a run spends anything on it.
+
+Two writers: rootsys (LLM_*) and, when LLM_FALLBACK_API_KEY is set, a backup (Mireld by default) asked only when
+rootsys gives no usable answer. Each key goes only to its own host.
 """
 
 from __future__ import annotations
@@ -42,21 +45,45 @@ class LLM:
         self.s = settings or LLMSettings.load()
         self.calls = 0
         self.failures = 0
+        self.backup_answers = 0        # answers that came from the backup writer
+        self.last_model = ""           # the model behind the last answer, for the record on the draft
+
+    # --- which writer ---------------------------------------------------------------
+
+    @property
+    def primary_ok(self) -> bool:
+        return bool(self.s.api_key) and not getattr(self.s, "blocked", "")
+
+    @property
+    def backup_ok(self) -> bool:
+        return bool(getattr(self.s, "fallback_key", None)) and not getattr(self.s, "fallback_blocked", "")
 
     @property
     def configured(self) -> bool:
-        return bool(self.s.api_key) and not getattr(self.s, "blocked", "")
+        return self.primary_ok or self.backup_ok
 
     def why_off(self) -> str:
         """For the page: why the writer did not run."""
         if getattr(self.s, "blocked", ""):
             return self.s.blocked
+        if getattr(self.s, "fallback_key", None) and getattr(self.s, "fallback_blocked", ""):
+            return f"no LLM_API_KEY, and the backup is off: {self.s.fallback_blocked}"
         return "no LLM key: set the LLM_API_KEY secret (the writer needs it)"
+
+    def _writers(self, model: str | None, backup: bool) -> list[tuple[str, str, str, str, str]]:
+        """(label, provider, base_url, key, model) in the order they are asked. The backup speaks the OpenAI dialect
+        and gets its own key only: the rootsys key never leaves for Mireld, nor Mireld's for rootsys."""
+        out = []
+        if self.primary_ok:
+            out.append(("primary", self.s.provider, self.s.base_url, self.s.api_key or "", model or self.s.model))
+        if backup and self.backup_ok:
+            out.append(("backup", "openai", self.s.fallback_base_url, self.s.fallback_key or "", self.s.fallback_model))
+        return out
 
     # --- public -----------------------------------------------------------------
 
     def probe(self) -> bool:
-        """True when the endpoint answers a small REAL question with parsable JSON.
+        """True when a writer answers a small REAL question with parsable JSON (rootsys first, then the backup).
 
         It used to ask for {"ok": true}. The rootsys gateway filled that literal with junk on three
         runs in a row (`<<true>>`, `<%= data.ok %>`, `##DISABLED## true`; runs 36041027392 and
@@ -71,19 +98,37 @@ class LLM:
             max_tokens=40)
         cat = out.get("category") if isinstance(out, dict) else None
         ok = isinstance(cat, str) and bool(cat.strip())
-        log.info("LLM probe %s: provider=%s model=%s base=%s", "OK" if ok else "FAILED",
-                 self.s.provider, self.s.model, self.s.base_url)
+        backup = ok and self.backup_answers > 0
+        log.info("LLM probe %s: %s model=%s base=%s", "OK" if ok else "FAILED",
+                 "the BACKUP answered" if backup else f"provider={self.s.provider}",
+                 self.last_model or self.s.model, self.s.fallback_base_url if backup else self.s.base_url)
         return ok
 
     def chat_json(self, system: str, user: str | list[dict[str, Any]], *, max_tokens: int = 1500, retries: int = 2,
-                  model: str | None = None) -> dict[str, Any] | None:
-        """`user` is a string, or a list of content parts (see `image_parts`)."""
-        if not self.configured:
+                  model: str | None = None, backup: bool = True) -> dict[str, Any] | None:
+        """`user` is a string, or a list of content parts (see `image_parts`). rootsys first; the backup only when
+        rootsys gave nothing usable, with one retry of its own."""
+        writers = self._writers(model, backup)
+        if not writers:
             return None
+        for label, provider, base, key, use_model in writers:
+            if label == "backup":
+                log.warning("LLM: rootsys gave no usable answer; asking the backup (%s, %s)", base, use_model)
+            data = self._ask(system, user, max_tokens, retries if label == "primary" else 1, provider, base, key, use_model)
+            if data is not None:
+                self.last_model = use_model
+                if label == "backup":
+                    self.backup_answers += 1
+                return data
+        self.failures += 1
+        return None
+
+    def _ask(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, retries: int, provider: str,
+             base: str, key: str, model: str) -> dict[str, Any] | None:
         for attempt in range(retries + 1):
             self.calls += 1
             try:
-                text = self._call(system, user, max_tokens, model or self.s.model)
+                text = self._call(system, user, max_tokens, model, provider=provider, base=base, key=key)
                 try:
                     data = _parse_json(text)
                 except ValueError as exc:
@@ -106,7 +151,6 @@ class LLM:
                 log.warning("LLM error: %s", exc)
             if attempt < retries:
                 time.sleep(2 * (attempt + 1))
-        self.failures += 1
         return None
 
     # --- dialects ---------------------------------------------------------------
@@ -115,52 +159,47 @@ class LLM:
                        max_tokens: int = 900) -> dict[str, Any] | None:
         """The READ step: one picture and a question to VISION_MODEL. None when the key,
         the gateway or the model will not take a picture — the caller records that the
-        reference was not read rather than pretending it was."""
-        if not self.configured:
+        reference was not read rather than pretending it was. rootsys only: nothing says the
+        backup's model can see, and a text model would describe a picture it never saw."""
+        if not self.primary_ok:
             return None
         parts = image_parts(self.s.provider, prompt, data, mime)
         return self.chat_json(system, parts, max_tokens=max_tokens, retries=1,
-                              model=self.s.vision_model or self.s.model)
+                              model=self.s.vision_model or self.s.model, backup=False)
 
-    def _call(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str) -> str:
-        if self.s.provider == "anthropic":
-            return self._anthropic(system, user, max_tokens, model)
-        return self._openai(system, user, max_tokens, model)
+    def _call(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str, *,
+              provider: str | None = None, base: str | None = None, key: str | None = None) -> str:
+        provider = provider or self.s.provider
+        base = base or self.s.base_url
+        key = self.s.api_key if key is None else key
+        if provider == "anthropic":
+            return self._anthropic(system, user, max_tokens, model, base, key or "")
+        return self._openai(system, user, max_tokens, model, base, key or "")
 
-    def _openai(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str) -> str:
-        r = requests.post(
-            f"{self.s.base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {self.s.api_key}", "Content-Type": "application/json"},
-            json={
-                "model": model,
-                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                "temperature": 0.2,
-                "max_tokens": max_tokens,
-                "response_format": {"type": "json_object"},
-            },
-            timeout=self.s.timeout,
-        )
+    def _openai(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str, base: str,
+                key: str) -> str:
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        body: dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "temperature": 0.2,
+            "max_tokens": max_tokens,
+            "response_format": {"type": "json_object"},
+        }
+        r = requests.post(f"{base}/chat/completions", headers=headers, json=body, timeout=self.s.timeout)
         if r.status_code == 400 and "response_format" in r.text:
             # endpoint does not know json_object mode: ask again without it
-            r = requests.post(
-                f"{self.s.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self.s.api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": model,
-                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                    "temperature": 0.2,
-                    "max_tokens": max_tokens,
-                },
-                timeout=self.s.timeout,
-            )
+            body.pop("response_format")
+            r = requests.post(f"{base}/chat/completions", headers=headers, json=body, timeout=self.s.timeout)
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"]
 
-    def _anthropic(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str) -> str:
+    def _anthropic(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str, base: str,
+                   key: str) -> str:
         r = requests.post(
-            f"{self.s.base_url}/v1/messages",
+            f"{base}/v1/messages",
             headers={
-                "x-api-key": self.s.api_key or "",
+                "x-api-key": key,
                 "anthropic-version": "2023-06-01",
                 "Content-Type": "application/json",
             },

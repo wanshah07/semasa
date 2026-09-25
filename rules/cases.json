@@ -1519,5 +1519,73 @@
   "expect": {
    "hard": 0
   }
+ },
+ {
+  "name": "a Design poster attached to a post is not compared with the post's slides",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Poster",
+     "artwork": [
+      {
+       "title": "Notifikasi *bukan* kelulusan",
+       "points": [
+        "NPRA menyemak selepas dipasarkan"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0,
+   "not_contains": [
+    "different words"
+   ]
+  }
+ },
+ {
+  "name": "a Design artwork is judged by the same rules as slides",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Poster",
+     "artwork": [
+      {
+       "title": "Semak kelayakan anda",
+       "points": [
+        "Hubungi kami di www.kkmhalalconsultant.com"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "hard_min": 1,
+   "contains": [
+    "Design 1, slide 1"
+   ]
+  }
  }
 ]

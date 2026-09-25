@@ -25,7 +25,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   useEffect(() => {
     if (!open) return;
     setStream("regulab"); setMedia("image"); setSlides(false); setAngle(""); setNote(""); setRefs([]);
-    setDomain(trend ? CATEGORY_TO_DOMAIN[trend.category] || "" : "");
+    setDomain(trend ? (trend.faq ? trend.domain : CATEGORY_TO_DOMAIN[trend.category]) || "" : "");
     setTitle(trend?.title || ""); setUrl(trend?.url || "");
   }, [open, trend]);
 
@@ -59,7 +59,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     if (!title.trim()) return onToast(t("Perlukan tajuk atau isu.", "A title or an issue is needed."), "warn");
     setBusy(true);
     const row = {
-      trend_id: trend?.id ?? null,
+      trend_id: trend && !trend.faq ? trend.id ?? null : null,        // an FAQ is not a headline
       source_title: title.trim(), source_url: url.trim() || null,
       source_name: trend?.source ?? null, source_summary: trend?.summary ?? null,
       stream, make_media: media, note: note.trim(),
@@ -89,10 +89,12 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   const domains = Object.entries(brand.regulab.domains || {});
   const angles = Object.entries(brand.linkedin.angles || {});
   return (
-    <Modal open={open} onClose={cancel} title={trend ? t("Jadikan idea", "Make an idea") : t("Idea baharu", "New idea")}>
+    <Modal open={open} onClose={cancel} title={trend?.faq ? t("Jadikan post daripada FAQ", "Make a post from an FAQ")
+      : trend ? t("Jadikan idea", "Make an idea") : t("Idea baharu", "New idea")}>
       <form onSubmit={submit} className="space-y-3">
         {trend ? (
-          <p className="rounded-tile bg-surface-2 p-3 text-sm">{trend.title}<span className="block text-[11px] text-muted">{trend.source}</span></p>
+          <p className="rounded-tile bg-surface-2 p-3 text-sm [overflow-wrap:anywhere]">{trend.title}<span className="block text-[11px] text-muted">{trend.source}</span>
+            {trend.faq && <span className="mt-1 block text-[11px] text-muted">{t("Bot tulis post daripada jawapan FAQ ini.", "The bot writes the post from this FAQ answer.")}</span>}</p>
         ) : (
           <>
             <label className="block"><Label>{t("Isu / tajuk", "Issue / title")}</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>

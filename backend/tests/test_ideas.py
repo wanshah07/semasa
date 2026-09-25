@@ -140,3 +140,16 @@ def test_the_tabung_reaches_the_writer_and_the_scan(monkeypatch):
     assert '"memakai" (write "menggunakan")' in llm.seen[0][0]
     post = store.tables["semasa_posts"][0]
     assert any("memakai" in f["msg"] and f["hard"] for f in post["flags"])
+
+
+def test_an_idea_from_the_faq_is_written_from_its_answer(monkeypatch):
+    from semasa import ideas as ideas_mod
+    monkeypatch.setattr(ideas_mod, "read_source", lambda url: pytest.fail("an FAQ has no page to read"))
+    idea = {"id": "i9", "stream": "regulab", "source_name": "FAQ Semasa", "source_url": None,
+            "source_title": "Bolehkah pemegang sijil halal menyembunyikan nama pengilang OEM?",
+            "source_summary": "Tidak. Nama dan alamat pengilang OEM tetap dipaparkan.\n\nSumber: JAKIM"}
+    src = ideas_mod.faq_source(idea)
+    assert src["ok"] and "tetap dipaparkan" in src["text"]
+    system, user = ideas_mod.build_request(idea, src, {})
+    assert "SOURCE (an entry of Wan's own FAQ)" in user and "only the headline" not in user
+    assert ideas_mod.faq_source({**idea, "source_name": "Berita Harian"}) is None

@@ -35,3 +35,7 @@ export function brandOf(settings) {
 /** Headline category → the ws.regulab domain it most likely belongs to. */
 export const CATEGORY_TO_DOMAIN = { kosmetik: "kosmetik", halal: "halal_my", makanan: "makanan",
   farmaseutikal: "farmaseutikal", kesihatan: "farmaseutikal" };
+/** An idea made from an FAQ says so in source_name; the worker then writes from the answer (backend/semasa/ideas.py). */
+export const FAQ_SOURCE = "FAQ Semasa";
+export const FAQ_CATEGORY_TO_DOMAIN = { halal: "halal_my", skincare: "kosmetik", kosmetik: "kosmetik", makanan: "makanan",
+  farmaseutikal: "farmaseutikal" };

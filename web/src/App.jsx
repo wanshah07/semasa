@@ -3,14 +3,15 @@ import { motion } from "framer-motion";
 import { RefreshCw } from "lucide-react";
 import { fadeUp } from "./design/motion";
 import { TABLES, configured, errText, supabase } from "./lib/SupabaseClient";
-import { brandOf } from "./lib/brand";
+import { FAQ_CATEGORY_TO_DOMAIN, FAQ_SOURCE, brandOf } from "./lib/brand";
 import { stampMYT } from "./lib/format";
-import { useLang } from "./lib/i18n";
+import { currentLang, useLang } from "./lib/i18n";
 import { useCanUpload, useGenerations, useSession, useSettings, useTable, useToasts, useTrends } from "./lib/hooks";
 import FilterBar from "./components/FilterBar";
 import Gate from "./components/Gate";
 import IdeaComposer from "./components/IdeaComposer";
 import PromptLibrary from "./components/PromptLibrary";
+import DesignTab from "./pages/DesignTab";
 import FaqTab from "./pages/FaqTab";
 import LogTab from "./pages/LogTab";
 import IdeasTab from "./pages/IdeasTab";
@@ -19,6 +20,8 @@ import SettingsTab from "./pages/SettingsTab";
 import GenerationGallery from "./components/GenerationGallery";
 import Header from "./components/Header";
 import MasonryGrid from "./components/MasonryGrid";
+import TrendTable from "./components/TrendTable";
+import ViewToggle, { useView } from "./components/ViewToggle";
 import MediaUploader from "./components/MediaUploader";
 import Toasts from "./components/Toast";
 import Button from "./components/ui/Button";
@@ -50,6 +53,7 @@ function IsuTab({ trends, onToast, onIdea, onFaq }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
   const [lang, setLang] = useState("");
+  const [view, setView] = useView("isu");
 
   const counts = useMemo(() => {
     const c = { all: trends.rows.length };
@@ -111,8 +115,11 @@ function IsuTab({ trends, onToast, onIdea, onFaq }) {
           <FilterBar query={query} setQuery={setQuery} category={category} setCategory={setCategory} lang={lang} setLang={setLang} counts={counts} />
         </div>
         {trends.error && <p className="my-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{trends.error}</p>}
-        <div className="mt-4">
-          <MasonryGrid rows={filtered} loading={trends.loading} onCategory={(c) => setCategory(c)} onIdea={onIdea} onFaq={onFaq} />
+        <div className="mt-4 flex justify-end"><ViewToggle view={view} setView={setView} /></div>
+        <div className="mt-3">
+          {view === "table"
+            ? <TrendTable rows={filtered} loading={trends.loading} onCategory={(c) => setCategory(c)} onIdea={onIdea} onFaq={onFaq} />
+            : <MasonryGrid rows={filtered} loading={trends.loading} onCategory={(c) => setCategory(c)} onIdea={onIdea} onFaq={onFaq} />}
         </div>
       </main>
     </>
@@ -150,7 +157,7 @@ function MediaTab({ user, gens, prompts, onToast }) {
       <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
       <GenerationGallery rows={gens.rows} user={user}
-        onRequeue={(id) => guard(async () => { await gens.requeue(id); onToast(t("Dimasukkan semula ke giliran.", "Put back in the queue."), "ok"); })}
+        onRequeue={(id, provider) => guard(async () => { await gens.requeue(id, provider); onToast(t("Dimasukkan semula ke giliran.", "Put back in the queue."), "ok"); })}
         onRemove={(row) => guard(async () => { if (window.confirm(t("Padam kerja ini?", "Delete this job?"))) {
           await gens.remove(row); onToast(t("Dipadam.", "Deleted."), "info");
         } })} />
@@ -158,7 +165,7 @@ function MediaTab({ user, gens, prompts, onToast }) {
   );
 }
 
-const TAB_IDS = ["isu", "idea", "post", "media", "faq", "log", "tetapan"];
+const TAB_IDS = ["isu", "idea", "post", "media", "design", "faq", "log", "tetapan"];
 
 export default function App() {
   const { t } = useLang();                                   // read here so a language switch re-renders the page
@@ -206,6 +213,19 @@ export default function App() {
       "Sent. The AI will read the article and write one FAQ; see the FAQ tab."), "ok");
     faqs.reload();
   }
+  // "Jadikan post" on an FAQ: the question is the headline and the answer is the source the writer works from
+  function faqIdea(r) {
+    const bm = currentLang() !== "en";
+    const q = (bm ? r.question_bm : r.question_en) || r.question_bm || r.question_en || r.raw_question || "";
+    const a = (bm ? r.answer_bm : r.answer_en) || r.answer_bm || r.answer_en || "";
+    const unchecked = r.needs_check || r.answer_source === "ai";
+    return {
+      faq: true, id: r.id, title: q, url: null, source: FAQ_SOURCE, category: r.category,
+      domain: FAQ_CATEGORY_TO_DOMAIN[r.category] || "",
+      summary: [a, r.instrument ? `Sumber: ${r.instrument}` : "",
+        unchecked ? "(Jawapan ini ditulis AI dan belum disemak: setiap fakta khusus perlu [SAHKAN].)" : ""].filter(Boolean).join("\n\n"),
+    };
+  }
   const { settings, save } = useSettings(allowed);
   const brand = useMemo(() => brandOf(settings), [settings]);
 
@@ -219,7 +239,9 @@ export default function App() {
   else if (tab === "post") body = allowed ? <PostsTab posts={posts} media={gens} log={log} brand={brand} user={user}
     settings={settings} onToast={push} focusId={focusPost} setFocusId={setFocusPost} /> : gate(null);
   else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} onToast={push} /> : gate(null);
-  else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push} /> : gate(null);
+  else if (tab === "design") body = allowed ? <DesignTab user={user} gens={gens} posts={posts} brand={brand} onToast={push} /> : gate(null);
+  else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}
+    onPost={(r) => setIdeaFrom(faqIdea(r))} /> : gate(null);
   else if (tab === "log") body = allowed ? <LogTab log={activity} onOpen={(to) => { if (to.postId) setFocusPost(to.postId); go(to.tab); }} /> : gate(null);
   else if (tab === "tetapan") body = allowed ? <SettingsTab settings={settings} brand={brand} save={save} onToast={push} /> : gate(null);
   else body = <IsuTab trends={trends} onToast={push} onIdea={allowed ? setIdeaFrom : undefined} onFaq={allowed ? faqFrom : undefined} />;

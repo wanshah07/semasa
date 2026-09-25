@@ -35,6 +35,8 @@ BODY = FONTS / "Inter-Regular.ttf"
 BODY_BOLD = FONTS / "Inter-SemiBold.ttf"
 
 SIZES = {"regulab": (1080, 1080), "linkedin": (1080, 1350)}
+# The Design tab's shapes (web/src/pages/DesignTab.jsx): a feed square, a 4:5 portrait poster and a 9:16 story.
+FORMATS = {"square": (1080, 1080), "portrait": (1080, 1350), "story": (1080, 1920)}
 
 # The regulab theme of the page (web/src/design/themes/regulab.css), so the cards look like home.
 PAPER = (250, 247, 242)
@@ -165,8 +167,9 @@ def _font(path: Path, size: float) -> ImageFont.FreeTypeFont:
 
 
 def layout(slide: dict[str, Any], kind: str, width: int, scale: float, tall: bool) -> Block:
-    base_title = {"cover": 92 if not tall else 100, "point": 68, "close": 68}[kind]
-    base_body = {"cover": 38, "point": 40, "close": 40}[kind]
+    # "single" is a poster or a lone card: one picture carrying a headline, its points and the source
+    base_title = {"cover": 92 if not tall else 100, "point": 68, "close": 68, "single": 84 if not tall else 92}[kind]
+    base_body = {"cover": 38, "point": 40, "close": 40, "single": 40}[kind]
     tf = _font(DISPLAY, base_title * scale)
     bf = _font(BODY, base_body * scale)
     bullet = kind != "cover" and len(slide["points"]) > 1
@@ -245,8 +248,8 @@ def draw_lines(d: ImageDraw.ImageDraw, lines: list[Line], x: int, y: int, font: 
 
 
 def render_one(slide: dict[str, Any], index: int, total: int, *, stream: str, eyebrow: str, source: str,
-               website: str, ground: bytes | None) -> Image.Image:
-    size = SIZES.get(stream, SIZES["regulab"])
+               website: str, ground: bytes | None, size: tuple[int, int] | None = None) -> Image.Image:
+    size = size or SIZES.get(stream, SIZES["regulab"])
     w, h = size
     tall = h > w
     canvas, on_ground = background(size, ground)
@@ -255,19 +258,20 @@ def render_one(slide: dict[str, Any], index: int, total: int, *, stream: str, ey
     col = w - 2 * MARGIN
 
     small = _font(BODY_BOLD, 24)
-    counter = f"{index + 1}/{total}"
-    d.text((w - MARGIN - small.getlength(counter), MARGIN), counter, font=small, fill=muted)
+    counter = f"{index + 1}/{total}" if total > 1 else ""       # a poster or a lone card has no page count
+    if counter:
+        d.text((w - MARGIN - small.getlength(counter), MARGIN), counter, font=small, fill=muted)
     if eyebrow:
-        d.text((MARGIN, MARGIN), eyebrow_text(eyebrow, small, col - small.getlength(counter) - 40), font=small,
-               fill=accent)
+        room = col - (small.getlength(counter) + 40 if counter else 0)
+        d.text((MARGIN, MARGIN), eyebrow_text(eyebrow, small, room), font=small, fill=accent)
 
     top = MARGIN + HEAD_H
     bottom = h - MARGIN - FOOT_H
-    kind = "cover" if index == 0 else ("close" if index == total - 1 and total > 1 else "point")
+    kind = "single" if total == 1 else "cover" if index == 0 else ("close" if index == total - 1 else "point")
 
     src_lines: list[Line] = []
     src_font = _font(BODY, 24)
-    if kind == "close" and source.strip():
+    if kind in ("close", "single") and source.strip():
         label = "Sumber: " if stream != "linkedin" else "Source: "
         for sz in (24, 22, 20):
             src_font = _font(BODY, sz)
@@ -307,8 +311,9 @@ def render_one(slide: dict[str, Any], index: int, total: int, *, stream: str, ey
 
 
 def render(slides: Any, *, stream: str = "regulab", eyebrow: str = "", source: str = "", website: str = "",
-           ground: bytes | None = None, quality: int = 90) -> list[bytes]:
-    """JPEG bytes, one per slide, in order. Raises SlideError naming the slide that cannot be drawn."""
+           ground: bytes | None = None, quality: int = 90, size: tuple[int, int] | None = None) -> list[bytes]:
+    """JPEG bytes, one per slide, in order. Raises SlideError naming the slide that cannot be drawn. `size`
+    overrides the stream's carousel shape (the Design tab's square, portrait and story)."""
     items = normalise(slides)
     if not items:
         raise SlideError("no slides to draw: write at least one slide")
@@ -318,7 +323,7 @@ def render(slides: Any, *, stream: str = "regulab", eyebrow: str = "", source: s
     for i, s in enumerate(items):
         try:
             img = render_one(s, i, len(items), stream=stream, eyebrow=eyebrow, source=source,
-                             website=website, ground=ground)
+                             website=website, ground=ground, size=size)
         except SlideError as exc:
             raise SlideError(f"slide {i + 1}: {exc}") from exc
         buf = io.BytesIO()

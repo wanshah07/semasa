@@ -215,3 +215,16 @@ def test_attach_only_to_a_draft():
     db.attach_media_to_draft(store, "a", "m2")
     rows = {r["id"]: r["media_ids"] for r in store.tables["semasa_posts"]}
     assert rows == {"d": ["m1"], "a": ["x"]}
+
+
+def test_a_failure_keeps_the_provider_the_job_was_given(monkeypatch):
+    """Writing the runner's default onto a failed row pinned every later Retry to it (25 Sep 2026)."""
+    writes, _ = _patch_db(monkeypatch)
+    row = {"id": "r9", "type": "image", "mode": "prompt", "prompt": "p", "attempts": 1}      # no provider: the default
+    media_generator.process_row(None, row, _settings(replicate_token=None), {})
+    assert writes["r9"]["status"] == "error" and "REPLICATE_API_TOKEN" in writes["r9"]["error"]
+    assert writes["r9"]["provider"] is None
+    writes.clear()
+    chosen = {**row, "id": "r10", "provider": "openai"}
+    media_generator.process_row(None, chosen, _settings(), {})
+    assert writes["r10"]["provider"] == "openai"

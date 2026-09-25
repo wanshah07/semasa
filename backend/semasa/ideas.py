@@ -67,6 +67,20 @@ def read_source(url: str | None, *, timeout: int = 20) -> dict[str, Any]:
     return parse_article(r.text, r.url or url, out)
 
 
+FAQ_SOURCE = "FAQ Semasa"      # web/src/lib/brand.js: an idea made from an FAQ entry ("Jadikan post" in the FAQ tab)
+
+
+def faq_source(idea: dict[str, Any]) -> dict[str, Any] | None:
+    """An idea made from an FAQ has no page to read: its answer IS the source, so the writer works from it rather than
+    treating it as a bare headline. None for any other idea."""
+    if idea.get("source_name") != FAQ_SOURCE or idea.get("source_url"):
+        return None
+    text = str(idea.get("source_summary") or "").strip()
+    return {"ok": bool(text), "url": None, "title": str(idea.get("source_title") or ""), "description": "",
+            "image": None, "text": text[:SOURCE_TEXT_MAX], "label": "an entry of Wan's own FAQ",
+            **({} if text else {"why": "the FAQ entry had no answer"})}
+
+
 def parse_article(html: str, base_url: str, out: dict[str, Any] | None = None) -> dict[str, Any]:
     out = out or {"ok": False, "url": base_url, "title": "", "description": "", "image": None, "text": ""}
     soup = BeautifulSoup(html, "lxml")
@@ -197,8 +211,8 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
     if (idea.get("note") or "").strip():
         lines.append(f"WHAT WAN WANTS FROM THIS: {idea['note'].strip()}")
     if source.get("ok"):
-        lines.append(f"SOURCE (the article itself):\n{source.get('title') or ''}\n{source.get('description') or ''}\n"
-                     f"{source.get('text') or ''}")
+        lines.append(f"SOURCE ({source.get('label') or 'the article itself'}):\n{source.get('title') or ''}\n"
+                     f"{source.get('description') or ''}\n{source.get('text') or ''}")
     else:
         lines.append("SOURCE: only the headline and summary above could be read "
                      f"({source.get('why') or 'no article'}). Every specific fact beyond them needs [SAHKAN: …].")
@@ -331,7 +345,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     indo_extra = (settings.get("bahasa") or {}).get("indo")
     stream = idea.get("stream") or "regulab"
     lang = "en" if stream == "linkedin" else "bm"
-    source = read_source(idea.get("source_url"))
+    source = faq_source(idea) or read_source(idea.get("source_url"))
     system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra))
     want_slides = bool(idea.get("make_slides"))
     if want_slides:
@@ -373,7 +387,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         store.table(db.MEDIA).insert(jobs).execute()
     brief = {"source": {k: source.get(k) for k in ("ok", "why", "url", "title", "image")},
              "post_id": post_id, "media_jobs": len(jobs), "written_at": datetime.now(UTC).isoformat(),
-             "model": llm.s.model}
+             "model": getattr(llm, "last_model", "") or llm.s.model}
     store.table(db.IDEAS).update({"status": "drafted", "brief": brief, "error": None}).eq("id", idea["id"]).execute()
     return post_id
 

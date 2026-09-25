@@ -262,8 +262,9 @@ def attach_slides_to_draft(db: Client, post_id: str, media_id: str) -> None:
             return
         old: set[str] = set()
         if ids:
-            got = db.table(MEDIA).select("id,mode").in_("id", ids).execute().data or []
-            old = {r["id"] for r in got if r.get("mode") == "slides"}
+            got = db.table(MEDIA).select("id,mode,meta").in_("id", ids).execute().data or []
+            # a Design-tab artwork attached to the post is not its carousel, and stays
+            old = {r["id"] for r in got if r.get("mode") == "slides" and not (r.get("meta") or {}).get("design")}
         at = next((i for i, x in enumerate(ids) if x in old), 0)   # a first carousel leads the post
         kept = [x for x in ids if x not in old]
         kept.insert(min(at, len(kept)), media_id)

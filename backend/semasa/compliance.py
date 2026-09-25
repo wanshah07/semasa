@@ -257,28 +257,36 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
                 add(True, where, "a ws.regulab mark on LinkedIn")
 
     # Slides are artwork: judged like a caption, and what is DRAWN must be what is written.
+    def artwork(items: list[dict[str, Any]], label: str) -> None:
+        for i, sl in enumerate(items):
+            where = f"{label} {i + 1}"
+            t = "\n".join([sl["title"], *sl["points"]])
+            if SAHKAN_EMPTY.search(t):
+                add(True, where, "a [SAHKAN] that names nothing")
+            for rx, lab in HARD:
+                if rx.search(t):
+                    add(True, where, lab)
+            if SOCIAL_SRC.search(t):
+                add(True, where, "names a social source. A post stands on the instrument, never on where the idea was spotted.")
+            for msg in indo_hits(t, extra):
+                add(True, where, msg)
+            if burl.search(t):
+                add(True, where, "the ws.regulab website. Only the artwork footer carries it.")
+            if stream == "linkedin":
+                hit = AGGREGATOR.search(t)
+                if hit:
+                    add(True, where, f'cites "{hit.group(0)}", a blog or news aggregator. Cite the instrument.')
+                mark = brand_mark_re(brand)
+                if mark and mark.search(t):
+                    add(True, where, "a ws.regulab mark on LinkedIn")
+
     slides = normalise_slides(post.get("slides"))
-    for i, sl in enumerate(slides):
-        where = f"Slide {i + 1}"
-        t = "\n".join([sl["title"], *sl["points"]])
-        if SAHKAN_EMPTY.search(t):
-            add(True, where, "a [SAHKAN] that names nothing")
-        for rx, label in HARD:
-            if rx.search(t):
-                add(True, where, label)
-        if SOCIAL_SRC.search(t):
-            add(True, where, "names a social source. A post stands on the instrument, never on where the idea was spotted.")
-        for msg in indo_hits(t, extra):
-            add(True, where, msg)
-        if burl.search(t):
-            add(True, where, "the ws.regulab website. Only the artwork footer carries it.")
-        if stream == "linkedin":
-            hit = AGGREGATOR.search(t)
-            if hit:
-                add(True, where, f'cites "{hit.group(0)}", a blog or news aggregator. Cite the instrument.')
-            mark = brand_mark_re(brand)
-            if mark and mark.search(t):
-                add(True, where, "a ws.regulab mark on LinkedIn")
+    artwork(slides, "Slide")
+    # A poster, card or carousel from the Design tab carries its own words: the same rules, but it is not a drawing
+    # of this post's slides, so it is never compared with them.
+    for k, m in enumerate(post.get("media") or []):
+        if isinstance(m, dict) and "artwork" in m:
+            artwork(normalise_slides(m["artwork"]), f"Design {k + 1}, slide")
     drawn = [m.get("slides") for m in (post.get("media") or []) if isinstance(m, dict) and "slides" in m]
     if any(slides_key(d) != slides_key(slides) for d in drawn):
         add(True, "Slides", "the slide pictures carry different words from the slides written here. "

@@ -292,7 +292,7 @@ export default function LogTab({ log, onOpen }) {
                           {details.map(([k, v]) => (
                             <div key={k} className="contents">
                               <dt className="text-muted">{labelOf(k)}</dt>
-                              <dd className="break-words">{v}</dd>
+                              <dd className="[overflow-wrap:anywhere]">{v}</dd>
                             </div>
                           ))}
                         </dl>

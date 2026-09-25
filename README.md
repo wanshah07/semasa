@@ -141,6 +141,7 @@ Settings → Secrets and variables → Actions.
 | `LLM_API_KEY` | scraper summariser, idea writer, the READ step (rootsys key, as now) |
 | `REPLICATE_API_TOKEN` | media, when `MEDIA_PROVIDER=replicate` (default) |
 | `OPENAI_API_KEY` | media, when `MEDIA_PROVIDER=openai` |
+| `LLM_FALLBACK_API_KEY` | optional: the backup writer's key (Mireld). Asked only when rootsys gives no usable answer; needs the variable `LLM_FALLBACK_MODEL` too |
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | media, when `MEDIA_PROVIDER=cloudflare`: **free pictures** (see *Free pictures: Cloudflare*). With both set and no `REPLICATE_API_TOKEN`, Cloudflare is the default and no Variable is needed |
 | `TELEGRAM_BOT_TOKEN` | optional: the FAQ bot in your Telegram group(s) (see *FAQ from Telegram*). Unset: Telegram is simply not read |
 | `SEMASA_SHEET_URL`, `SEMASA_SHEET_TOKEN` | the Semasa Google Sheet (FAQ tabs and the Log tab): the Apps Script `/exec` URL and the `API_TOKEN` its `setup` prints (see *The Semasa Sheet* below). Unset: everything works, and the Sheet is simply not written. `FAQ_SHEET_URL` / `FAQ_SHEET_TOKEN`, their first names, are still read if set |
@@ -153,6 +154,8 @@ Settings → Secrets and variables → Actions.
 | `SCRAPE_KEEP_DAYS` | `30` | headlines and run rows older than this are deleted; `0` keeps everything |
 | `SCRAPE_PICK_HOURS` | `48` | a headline nobody makes an idea of leaves the page at this age. The row is deleted once the feed's own date puts it past `SCRAPE_MAX_AGE_HOURS` (48), so it cannot come back as "new". An undated headline stays hidden until `SCRAPE_KEEP_DAYS`, because its row is the only thing stopping it from coming back. `0` never drops. The page's `PICK_HOURS` must match |
 | `LLM_MODEL` | `gpt-4o-mini` / `claude-haiku-4-5-20251001` | the writer too; `deepseek-v4.1-flash` on rootsys works |
+| `LLM_FALLBACK_MODEL` | — | the backup writer's model (a Mireld model name); with `LLM_FALLBACK_API_KEY` it switches the backup on |
+| `LLM_FALLBACK_BASE_URL` | `https://api.mireld.my/v1` | only if the backup lives elsewhere; its host must be in `LLM_FALLBACK_ALLOWED_HOSTS` |
 | `VISION_MODEL` | `LLM_MODEL` | the model that **reads** a reference picture: set it to `deepseek-v4.1-flash`, which rootsys lists with the VISION tag. (An earlier version of this line said DeepSeek was text-only; that was wrong.) rootsys can only **read** pictures. Its image, video and embedding endpoints answer 404, so generation is Cloudflare's, Replicate's or OpenAI's job. If no model can see, jobs say "not read": Flow B still recreates from the picture itself, and Flow A draws from the draft's words |
 | `REPLICATE_T2I_MODEL` | `black-forest-labs/flux-1.1-pro` | words → image (prompt-only jobs, and Flow A's redraw) |
 | `MEDIA_PROVIDER` | `replicate` (`cloudflare` when only its secrets are set) | or `openai`, or `cloudflare` (pictures only) |
@@ -258,9 +261,13 @@ only the `socialmedia` name is added.
     delete it like any other. A category or sub you delete goes on a `declined` list and is **never
     created again**.
   - Each sort is one line in the Log ("Bot menyusun 3 FAQ: 2 ke Label & penandaan…").
-- **The dashboard** opens on one card per category: how many questions it holds, how many need a check,
-  its top subcategories and when it last changed. Click a card to open that category. Searching shows the
-  matching questions instead.
+- **The questions live inside their category cards** (Wan, 25 Sep 2026). Each card shows how many questions it
+  holds, how many need a check, its top subcategories, and its first four questions. Click a question to open
+  its answer and actions, or *Lihat semua* to open the whole card.
+  - **A search shows each match twice**, as one list above the cards and inside its own card below. The cards
+    keep only the categories with matches.
+  - **Jadikan post** on any question sends it to the writer as an idea. The answer is the source the draft is
+    written from. An AI-written answer that is not checked yet asks for `[SAHKAN]` on every specific fact.
 - **Exports** follow the current category, subcategory and search:
   - **PDF** is the browser's print → *Save as PDF*, on A4, in BM, EN or both.
   - **Poster** is 1080×1350: one PNG, or a ZIP of pages for a long category.
@@ -373,7 +380,36 @@ Wan, 25 Sep 2026. `supabase/010_archive.sql` and `backend/semasa/archive.py`.
   slot, publish record and slides stay, so the archive is still a full record.
 - The Posts page has an **Arkib** tab, and an archived post says when it was archived.
 
-## One writer: rootsys
+## Design: posters, cards and carousels
+
+The **Reka bentuk** tab (Wan, 25 Sep 2026) makes three kinds of picture:
+
+| Kind | Default size | Words |
+|---|---|---|
+| Poster | 4:5 · 1080×1350 | one headline and up to five points |
+| Single card | 1:1 · 1080×1080 | one headline and up to three points |
+| Carousel | the stream's own (1:1 ws.regulab, 4:5 LinkedIn) | 5 to 7 slides from an idea, or up to 10 by hand |
+
+Any of them can be made at 1:1, 4:5 or 9:16 (1080×1920, a story).
+
+- **Words:** write them yourself, or give an idea or a prompt and the writer (rootsys) turns it into words. The
+  words are saved on the job before drawing, so a retry never writes new ones. *Daripada post* fills the form from
+  an existing post: its slides for a carousel, otherwise its hook and caption as the idea.
+- **Background:** brand paper; your own picture (uploaded, drawn under a dark scrim); or an AI picture. The AI
+  picture is made first by the image provider (Cloudflare: free) and the drawing waits for it, up to 2 hours.
+- **Rules:** every word is judged by the post rules (no CTA, no URL, no social source, `[SAHKAN]`). The form shows
+  the flags as you type. A finished design shows them too. A design attached to a post blocks that post's
+  approval while a hard flag stands.
+- **Attach to a post** adds the design to that draft post's pictures. It never replaces the post's own carousel.
+- **Drawing:** done by `backend/semasa/slides.py` with no AI and no cost, the same as the post carousels.
+
+## Card or table
+
+Current issues, Ideas and Posts each switch between cards and a table. The switch is remembered in this browser.
+On a phone the table stacks each row into a block with the column names beside the values, so nothing is cut off.
+Long titles and references wrap and never push the page sideways.
+
+## One writer: rootsys, with Mireld as its backup
 
 Wan, 25 Sep 2026: from drafting to the Buffer queue, the AI is rootsys and nothing else. Every text AI call
 (headline summaries, drafts, slides, FAQ, sorting, reading pictures) goes through one place, and it may only call a
@@ -381,6 +417,21 @@ host in `LLM_ALLOWED_HOSTS` (default `rootsys.cloud`). If `LLM_BASE_URL` points 
 (which used to mean OpenAI), the writer switches **off**: nothing falls back to another AI, ideas and FAQs say
 why, and the scrape run turns red. Allowing another host is a deliberate GitHub variable, never a default. The
 Buffer step itself uses no AI: it moves the approved caption exactly as written.
+
+**The backup** (Wan, 25 Sep 2026: "can we add mireld as open api backup"):
+- **When it is asked:** only when rootsys gives no usable answer: it times out, errors, or answers with something
+  that is not JSON. Mireld is asked once, with its own key. The rootsys key never goes to Mireld, nor Mireld's to
+  rootsys.
+- **Where it is allowed:** only on its own list (`LLM_FALLBACK_ALLOWED_HOSTS`, default `api.mireld.my`). Mireld
+  can never become the main writer by accident.
+- **Pictures:** the backup never reads pictures, because nothing says its model can see.
+- **Showing that it answered:** the scrape run shows a yellow warning and records `+ backup <model> ×n` as its
+  writer. A draft records the model that wrote it.
+- **Switching it on:**
+  - secret `LLM_FALLBACK_API_KEY`: the Mireld key.
+  - variable `LLM_FALLBACK_MODEL`: the Mireld model name, from its dashboard.
+  - `LLM_FALLBACK_BASE_URL` is only needed for a different address than `https://api.mireld.my/v1`.
+  - A key without a model leaves the backup off and says why.
 
 ## The clock
 

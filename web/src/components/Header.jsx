@@ -1,4 +1,4 @@
-import { FileText, HelpCircle, Lightbulb, ListChecks, LogOut, Palette, Radio, Settings, Sparkles } from "lucide-react";
+import { FileText, HelpCircle, LayoutTemplate, Lightbulb, ListChecks, LogOut, Palette, Radio, Settings, Sparkles } from "lucide-react";
 import { THEMES, useTheme } from "../design/ThemeProvider";
 import { supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
@@ -12,6 +12,7 @@ export default function Header({ tab, setTab, user }) {
     { id: "idea", label: t("Idea", "Ideas"), icon: Lightbulb },
     { id: "post", label: t("Post", "Posts"), icon: FileText },
     { id: "media", label: t("Makmal media", "Media lab"), icon: Sparkles },
+    { id: "design", label: t("Reka bentuk", "Design"), icon: LayoutTemplate },
     { id: "faq", label: "FAQ", icon: HelpCircle },
     { id: "log", label: "Log", icon: ListChecks },
     { id: "tetapan", label: t("Tetapan", "Settings"), icon: Settings },
@@ -26,17 +27,18 @@ export default function Header({ tab, setTab, user }) {
           <span className="font-display text-lg font-semibold tracking-tight">Semasa</span>
         </a>
 
-        <nav className="hidden items-center gap-1 rounded-pill bg-surface-2 p-1 xl:ml-2 xl:flex">
+        {/* eight tabs: it may scroll inside itself, never push the page sideways (1280 px in BM was 4 px too wide) */}
+        <nav className="hidden min-w-0 items-center gap-0.5 overflow-x-auto rounded-pill bg-surface-2 p-1 xl:ml-1 xl:flex">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
-              className={`flex items-center gap-1.5 whitespace-nowrap rounded-pill px-3 py-1.5 text-sm transition ${
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill px-2.5 py-1.5 text-sm transition ${
                 tab === id ? "bg-surface text-ink shadow-card" : "text-muted hover:text-ink"}`}>
               <Icon size={14} /> {label}
             </button>
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <div role="group" aria-label={t("Bahasa", "Language")} className="flex rounded-pill border border-line bg-surface p-0.5 text-xs">
             {[["bm", "BM"], ["en", "EN"]].map(([id, label]) => (
               <button key={id} type="button" onClick={() => setLang(id)} aria-pressed={lang === id} data-lang={id}
@@ -56,7 +58,7 @@ export default function Header({ tab, setTab, user }) {
           {user && (
             <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} title={`${t("Keluar", "Sign out")} · ${user.email}`}
               aria-label={t("Keluar", "Sign out")}>
-              <LogOut size={13} /> <span className="hidden xl:inline">{t("Keluar", "Sign out")}</span>
+              <LogOut size={13} /> <span className="hidden 2xl:inline">{t("Keluar", "Sign out")}</span>
             </Button>
           )}
         </div>

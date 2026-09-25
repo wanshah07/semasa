@@ -158,11 +158,18 @@ def _store(store: Any, row_id: str, gen: Generated, suffix: str = "") -> tuple[s
 
 def slide_ground(store: Any, row: dict[str, Any]) -> tuple[bytes | None, str | None]:
     """The background picture a slide job asked for: (bytes, the media id used) or (None, None).
-    meta.bg is "none", "post_image" (the post's first finished picture) or a media id."""
+    meta.bg is "none", "post_image" (the post's first finished picture), "reference" (the job's own uploaded
+    picture) or a media id (a picture made for it, such as the Design tab's AI background)."""
     meta = row.get("meta") or {}
     bg = str(meta.get("bg") or "none")
     if bg == "none":
         return None, None
+    if bg == "reference":
+        # the Design tab: a picture Wan uploaded for this artwork, stored as the job's reference
+        if not row.get("reference_url"):
+            return None, None
+        data, _, _ = fetch_reference(row["reference_url"])
+        return data, "reference"
     q = store.table(db.MEDIA).select("id,status,type,mode,generated_media_url,created_at")
     if bg == "post_image":
         if not row.get("post_id"):
@@ -182,12 +189,13 @@ SLIDES_WAIT = timedelta(hours=2)
 
 
 def picture_pending(store: Any, row: dict[str, Any]) -> bool:
-    """True while slides meant to sit on the post's picture would be drawn before that picture exists: a picture
-    job for the same post is still pending or running. The picture and the slide job are queued together, with the
-    same timestamp, so their order is otherwise undefined. After SLIDES_WAIT the slides are drawn anyway (on paper,
-    and bg_missing says so) rather than wait for ever on a picture job that never ends."""
+    """True while slides meant to sit on a picture would be drawn before that picture exists: a picture job for the
+    same post (bg "post_image"), or the picture made for this artwork (bg = its media id), is still pending or
+    running. The picture and the slide job are queued together, so their order is otherwise undefined. After
+    SLIDES_WAIT the slides are drawn anyway (on paper, and bg_missing says so) rather than wait for ever."""
     meta = row.get("meta") or {}
-    if meta.get("bg") != "post_image" or not row.get("post_id"):
+    bg = str(meta.get("bg") or "none")
+    if bg in ("none", "reference") or (bg == "post_image" and not row.get("post_id")):
         return False
     try:
         made = datetime.fromisoformat(str(row.get("created_at")).replace("Z", "+00:00"))
@@ -196,18 +204,22 @@ def picture_pending(store: Any, row: dict[str, Any]) -> bool:
     except (TypeError, ValueError):
         return False
     try:
-        rows = (store.table(db.MEDIA).select("id,mode,status").eq("post_id", row["post_id"])
-                .in_("status", ["pending", "processing"]).execute().data or [])
+        q = store.table(db.MEDIA).select("id,mode,status").in_("status", ["pending", "processing"])
+        # the post's picture, or the one picture made for this artwork (a media id)
+        q = q.eq("post_id", row["post_id"]) if bg == "post_image" else q.eq("id", bg)
+        rows = q.execute().data or []
     except Exception as exc:  # noqa: BLE001 - never block the slides on a failed look-up
         log.info("could not check the post's picture (%s)", str(exc)[:80])
         return False
     return any(r.get("mode") != "slides" and r.get("id") != row["id"] for r in rows)
 
 
-def process_slides(store: Any, row: dict[str, Any], s: MediaSettings) -> bool:
+def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM | None = None) -> bool:
     """Mode `slides`: draw the snapshot of words in meta.slides with semasa.slides. No provider,
-    no key, no cost. Too long to fit is a final error that names the slide, never a cut."""
-    from . import ideas, slides
+    no key, no cost. Too long to fit is a final error that names the slide, never a cut.
+    A Design-tab job (meta.design) may bring only an idea (meta.brief): the writer turns it into words first, and
+    those words are saved on the job before drawing, so a retry draws them again instead of writing new ones."""
+    from . import compliance, design, ideas, slides
 
     row_id = row["id"]
     meta = dict(row.get("meta") or {})
@@ -219,9 +231,23 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings) -> bool:
         return True
     try:
         items = slides.normalise(meta.get("slides"))
-        if not items:
-            raise slides.SlideError("no slides to draw: write at least one slide in the post")
         stream = meta.get("stream") or "regulab"
+        kind = str(meta.get("design") or "")
+        if kind and not items and str(meta.get("brief") or "").strip():
+            items, cit = design.write(llm, str(meta["brief"]), kind, stream)
+            meta.update(slides=items, written_by=getattr(llm, "last_model", "") or None)
+            if not str(meta.get("citation") or "").strip():
+                meta["citation"] = cit
+            store.table(db.MEDIA).update({"meta": meta}).eq("id", row_id).execute()
+        if not items:
+            raise slides.SlideError("no slides to draw: write at least one slide" + ("" if kind else " in the post"))
+        if kind:
+            design.check(items, kind)
+            # the words are judged by the rules a post is judged by; a hard flag is shown on the artwork and blocks
+            # the post it is attached to, and the drawing still goes ahead so Wan can see what he is fixing
+            meta["flags"] = [f for f in compliance.scan({"stream": stream, "citation": meta.get("citation") or "",
+                                                         "media": [{"artwork": items}]})
+                             if f["where"].startswith(("Design", "Source"))]
         brand = (ideas.load_settings(store).get("brand") or {})
         reg, li = brand.get("regulab") or {}, brand.get("linkedin") or {}
         eyebrow = str(meta.get("eyebrow") or "").strip()
@@ -235,7 +261,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings) -> bool:
         if meta.get("bg") not in (None, "none") and ground is None:
             meta["bg_missing"] = "the background picture was not ready, so the slides were drawn on paper"
         pics = slides.render(items, stream=stream, eyebrow=eyebrow, source=str(meta.get("citation") or ""),
-                             website=website, ground=ground)
+                             website=website, ground=ground, size=design.size_of(meta, stream) if kind else None)
         day = datetime.now(UTC).strftime("%Y/%m")
         urls, paths, sums = [], [], []
         for i, data in enumerate(pics, 1):
@@ -249,7 +275,8 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings) -> bool:
         db.finish_media(store, row_id, status="done", generated_media_url=urls[0], provider="semasa",
                         model="slides-v1", error=None, meta=meta)
         if row.get("post_id"):
-            db.attach_slides_to_draft(store, row["post_id"], row_id)
+            # a Design artwork is added to the post's pictures; a post's own carousel replaces its earlier one
+            (db.attach_media_to_draft if kind else db.attach_slides_to_draft)(store, row["post_id"], row_id)
         log.info("%s: %d slides drawn", row_id, len(urls))
         return True
     except Exception as exc:  # noqa: BLE001 - the row records it; the run continues
@@ -265,7 +292,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings) -> bool:
 def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: dict[str, Provider],
                 llm: LLM | None = None) -> bool:
     if row.get("mode") == "slides":
-        return process_slides(store, row, s)
+        return process_slides(store, row, s, llm)
     row_id = row["id"]
     kind = row.get("type") or "image"
     mode = row.get("mode") or "recreate"
@@ -327,7 +354,10 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
         status = "error" if final else "pending"
         msg = f"{type(exc).__name__}: {str(exc)[:600]}"
         log.error("%s: %s (attempt %d, → %s)", row_id, msg, attempts, status)
-        db.finish_media(store, row_id, status=status, error=msg, provider=name, reference_read=_read_text(read))
+        # The row keeps the provider it was GIVEN: writing the runner's default here pinned every later Retry to it,
+        # so three jobs kept asking Replicate for a key it never had after Cloudflare became the default (25 Sep 2026)
+        db.finish_media(store, row_id, status=status, error=msg, provider=row.get("provider"),
+                        reference_read=_read_text(read))
         return False
 
 

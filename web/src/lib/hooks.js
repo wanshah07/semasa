@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BUCKETS, TABLES, TABLES_UPLOADERS, errText, supabase } from "./SupabaseClient";
+import { tr } from "./i18n";
 
 /** Auth session, kept live. */
 export function useSession() {
@@ -97,9 +98,15 @@ export function useGenerations({ limit = 300, enabled = true } = {}) {
     return () => { supabase.removeChannel(channel); clearInterval(id); };
   }, [load, enabled]);
 
-  const requeue = useCallback(async (id) => {
-    const { error: e } = await supabase.from(TABLES.media).update({ status: "pending", error: null }).eq("id", id);
+  // A Retry is a fresh start: the attempt count restarts and the provider is the one picked on the card ("" = the
+  // runner's default). RLS lets only the job's owner do it, and a refused update returns no row rather than an error.
+  const requeue = useCallback(async (id, provider) => {
+    const patch = { status: "pending", error: null, attempts: 0 };
+    if (provider !== undefined) patch.provider = provider || null;
+    const { data, error: e } = await supabase.from(TABLES.media).update(patch).eq("id", id).select("id");
     if (e) throw new Error(errText(e));
+    if (!data?.length) throw new Error(tr("Kerja ini tidak dapat dimasukkan semula: hanya orang yang memulakannya boleh cuba semula.",
+      "This job could not be put back in the queue: only the person who started it can retry it."));
   }, []);
 
   const remove = useCallback(async (row) => {

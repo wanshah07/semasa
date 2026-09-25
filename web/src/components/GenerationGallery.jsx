@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Clock, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { pop, stagger } from "../design/motion";
@@ -5,6 +6,28 @@ import { stampMYT, timeAgo } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
+import { providersOf } from "./MediaUploader";
+
+// A job that failed for want of a key is retried on the runner's default (Cloudflare once its secrets are set),
+// not on the provider that has no key: on 25 Sep 2026 three jobs sat pinned to Replicate/OpenAI and every Retry
+// failed the same way. Any other failure keeps the provider it had.
+const KEY_PROBLEM = /is not set|must both be set|refused the (key|token)/i;
+const retryDefault = (row) => (KEY_PROBLEM.test(row.error || "") ? "" : row.provider || "");
+
+function Retry({ row, onRequeue }) {
+  const { t } = useLang();
+  const [provider, setProvider] = useState(() => retryDefault(row));
+  return (
+    <>
+      <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label={t("Cuba semula dengan", "Retry with")}
+        title={t("Cuba semula dengan", "Retry with")}
+        className="max-w-[9rem] rounded-pill border border-line bg-surface px-2 py-1 text-[11px] text-ink outline-none">
+        {providersOf(t).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+      </select>
+      <Button size="sm" variant="soft" onClick={() => onRequeue(row.id, provider)} title={t("Cuba lagi", "Try again")}><RotateCcw size={12} /></Button>
+    </>
+  );
+}
 
 const statusOf = (t) => ({
   pending: { icon: Clock, label: t("Menunggu", "Waiting"), cls: "text-warn bg-warn/10" },
@@ -45,7 +68,7 @@ export default function GenerationGallery({ rows, user, onRequeue, onRemove }) {
           const Icon = st.icon;
           const mine = user && row.created_by === user.id;
           return (
-            <motion.div key={row.id} variants={pop} layout exit="exit">
+            <motion.div key={row.id} variants={pop} layout exit="exit" className="min-w-0">
               <Card className="overflow-hidden">
                 <Media row={row} />
                 <div className="p-4">
@@ -70,13 +93,13 @@ export default function GenerationGallery({ rows, user, onRequeue, onRemove }) {
                     </details>
                   )}
                   {(row.idea_id || row.post_id) && <p className="mt-1 text-[11px] text-accent">{t("Aliran A · untuk draf post", "Flow A · for a draft post")}</p>}
-                  {row.error && <p className="mt-2 break-words rounded-tile bg-danger/5 p-2 text-[11px] text-danger">{row.error}</p>}
+                  {row.error && <p className="mt-2 rounded-tile bg-danger/5 p-2 text-[11px] text-danger [overflow-wrap:anywhere]">{row.error}</p>}
                   <div className="mt-3 flex items-center justify-between text-[11px] text-muted">
                     <span>{row.provider || "—"}{row.model ? ` · ${row.model}` : ""}{row.attempts ? ` · ${t("cubaan {n}", "attempt {n}", { n: row.attempts })}` : ""}</span>
                     {mine && (
-                      <span className="flex gap-1">
+                      <span className="flex items-center gap-1">
                         {row.status === "error" && (
-                          <Button size="sm" variant="soft" onClick={() => onRequeue(row.id)} title={t("Cuba lagi", "Try again")}><RotateCcw size={12} /></Button>
+                          <Retry row={row} onRequeue={onRequeue} />
                         )}
                         {row.status !== "processing" && (
                           <Button size="sm" variant="danger" onClick={() => onRemove(row)} title={t("Padam", "Delete")}><Trash2 size={12} /></Button>

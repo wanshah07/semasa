@@ -2,7 +2,10 @@ name: Scrape isu semasa
 
 on:
   schedule:
-    - cron: "17 */2 * * *"
+    # every 8 hours: 07:17, 15:17 and 23:17 MYT (Wan, 25 Sep 2026: "change kemaskini setiap 2 jam kepada 8 jam")
+    - cron: "17 7,15,23 * * *"
+  repository_dispatch:
+    types: [scrape_due]          # Supabase's clock (supabase/009_clock.sql): GitHub's schedule above skips runs
   workflow_dispatch:
     inputs:
       use_playwright:
@@ -41,6 +44,9 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SEMASA_SHEET_URL: ${{ secrets.SEMASA_SHEET_URL }}
+          SEMASA_SHEET_TOKEN: ${{ secrets.SEMASA_SHEET_TOKEN }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}

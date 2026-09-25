@@ -8,7 +8,7 @@
 -- is published while settings `publishing.enabled` is false — which it is, and which the
 -- browser CANNOT change (only the SQL editor / service_role can; see the policy below).
 --
--- SAFE IN A SHARED PROJECT (KKM): every object is named semasa_*; nothing here reads or
+-- SAFE IN A SHARED PROJECT (KPI): every object is named semasa_*; nothing here reads or
 -- writes another app's tables, and nothing touches auth.users beyond a foreign key.
 
 -- ---------------------------------------------------------------------------

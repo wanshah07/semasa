@@ -1,8 +1,8 @@
 # Semasa
 
 **Isu Semasa scraper + AI media lab + the ws.regulab Studio workflow.** Runs entirely on GitHub
-(Actions as the backend, Pages as the front end) and Supabase (Postgres + Storage), sharing the **KKM**
-project with the KKM website. No Vercel, no server.
+(Actions as the backend, Pages as the front end) and Supabase (Postgres + Storage), sharing the **KPI**
+project with the KPI system (`wanshah07/kpi-system`). No Vercel, no server.
 
 Semasa is taking over from ws.regulab Studio (`wanshah07/argus`). Studio stays live, and its Routines stay
 the only thing that posts, until Semasa has been proven end to end. That is why **publishing is off**:
@@ -47,45 +47,58 @@ Two flows:
 
 ## Deploy, in order
 
-### 1 · Supabase: the KKM project
+### 1 · Supabase: the KPI project
 
-Semasa shares the **KKM** project (the one the KKM website, `wanshah07/KKM3`, uses). Everything it creates
-is named for Semasa (`isu_semasa_trends`, `media_generations`, `scrape_runs`, `semasa_*`, `semasa-*`
-buckets and Vault secrets). **Tested:** the KKM website's 13 migrations were loaded into a Postgres
-first, then Semasa's five files. All 53 KKM policies, KKM's functions, triggers and its `images` bucket
-came out byte-identical.
+Semasa shares the **KPI** project (`mwaocnbgvbkhovktgods`, the one `wanshah07/kpi-system` uses), and
+files 001–004 are **already installed there**: the live site and the scrape runs have used it since
+24 Sep. So the GitHub secrets and variables already point at the right project, and only the new files
+need running. Everything Semasa creates is named for Semasa (`isu_semasa_trends`, `media_generations`,
+`scrape_runs`, `semasa_*`, `semasa-*` buckets and Vault secrets). KPI's own objects are `tasks`,
+`settings` and the `attachments` bucket, and nothing of Semasa's shares a name with them.
 
-Sign-in is the KKM website's own: the same accounts, email + password or Google. Semasa adds no
-sign-up, and its email link cannot create an account. An account still has to be on
-`semasa_uploaders` to see anything but the headlines.
+**Tested:** KPI's `schema.sql` was loaded into a Postgres with a task and a settings value in it, then all
+five Semasa files. KPI's tables, their row-level security, columns, data and bucket came out
+byte-identical, and the public anon key the Semasa site publishes still reads **0** KPI tasks. KPI keeps
+its security by having RLS on with no policies and talking to Supabase with the service key from its
+server only; Semasa changes none of that.
 
-0. **Pre-check (read-only, change nothing).** In the KKM project's SQL editor run
-   `supabase/000_precheck.sql`. On a project that has never had Semasa it lists **no** `semasa`/`media_generations`/
-   `scrape_runs`/`isu_semasa_trends` objects. Anything listed there means stop and send me the output.
-   It also prints the database size and storage use, because both are shared with the KKM website.
-1. SQL editor → run `001_schema.sql`, `002_rls.sql`, `003_storage.sql`, `005_studio.sql`, in that order.
-   Re-running is safe. NOTICE lines about things that "do not exist, skipping" are normal.
-2. Authentication → URL Configuration → **add to Redirect URLs** (do not touch *Site URL*: it belongs to the
-   KKM website): `https://socialmedia.kkmhalalconsultant.com/**` and `https://wanshah07.github.io/semasa/**`.
-   Without these, Google sign-in returns you to the KKM website instead of Semasa.
-3. Let yourself in (use the email of your KKM website account):
+**Sign-in.** The KPI app never uses Supabase sign-in (it sits behind its own password), so every
+account in that project is Semasa's. You create it by hand. Checked on the live project: only the
+**email** provider is enabled, so Semasa offers email + password (and an email link that cannot create
+an account), and no Google button.
+
+0. **Pre-check (read-only, change nothing).** In the KPI project's SQL editor run
+   `supabase/000_precheck.sql`. Expected today: the 001–004 objects (`isu_semasa_trends`,
+   `media_generations`, `scrape_runs`, `semasa_uploaders`, three `semasa_*` functions, two buckets,
+   four storage policies) and **no** `semasa_settings`, `semasa_ideas`, `semasa_prompts`, `semasa_posts`.
+   Anything else listed means stop and send me the output. It also prints the database size and
+   storage use, because both are shared with the KPI system.
+1. SQL editor → run `002_rls.sql`, `003_storage.sql`, then `005_studio.sql`. 002 and 003 changed (the
+   media gallery is no longer public; the generated bucket's limit is now 50 MB). Re-running is safe.
+   NOTICE lines about things that "do not exist, skipping" are normal. If you set up the Vault secrets
+   in step 4 later, run `004_webhook.sql` then `005_studio.sql` again.
+2. Authentication → **Users → Add user**: your email and a password, *Auto confirm* ticked.
+   Then Authentication → **Sign In / Providers → turn OFF "Allow new users to sign up"**. KPI does not
+   use Supabase sign-in, so nothing of KPI's depends on it, and it stops strangers making accounts with
+   the public key. (They could not do anything with one, since writes need `semasa_uploaders`, but
+   there is no reason to allow it.)
+3. Let yourself in:
    ```sql
    insert into public.semasa_uploaders (user_id, note)
    select id, email from auth.users where email = 'info@kkmhalalconsultant.com';
    ```
-   `INSERT 0 0` means that email has no account in this project yet: add one under Authentication →
-   Users → Add user (it will also appear as an ordinary `user` on the KKM website, with no admin rights).
-4. For jobs to start within seconds instead of on the 15-minute poll: create a fine-grained PAT (this repo
-   only, **Contents: read and write**), then
+   `INSERT 0 0` means step 2's user was made with a different email.
+4. Optional, for a job to start within seconds instead of on the 15-minute poll: create a fine-grained
+   PAT (this repo only, **Contents: read and write**), then
    ```sql
    select vault.create_secret('<the PAT>', 'semasa_github_dispatch_token', 'repository_dispatch for semasa');
    select vault.create_secret('wanshah07/semasa', 'semasa_github_dispatch_repo', 'owner/repo');
    ```
-   and run `supabase/004_webhook.sql`. (Run 005 again after 004 if you do this later; both are idempotent.)
-5. Project Settings → API Keys: copy the **Project URL**, the **anon** (or publishable) key and the
-   **service_role** (or secret) key into GitHub (next section), replacing the old project's values.
+   and run `supabase/004_webhook.sql`, then `005_studio.sql` again.
+5. Authentication → URL Configuration → add to *Redirect URLs*: `https://socialmedia.kkmhalalconsultant.com/**`
+   and `https://wanshah07.github.io/semasa/**`, so an email link lands back on Semasa.
 
-**Space.** The free plan's 500 MB database and 1 GB storage are shared with the KKM website. The scraper
+**Space.** The free plan's 500 MB database and 1 GB storage are shared with the KPI system. The scraper
 deletes headlines and run rows older than `SCRAPE_KEEP_DAYS` (default 30, roughly 60 MB), and the site
 polls only while its tab is visible. Generated videos are what fills storage: delete old jobs from the
 gallery when space runs low.
@@ -95,7 +108,7 @@ Settings → Secrets and variables → Actions.
 
 | Secret | Used by |
 |---|---|
-| `SUPABASE_URL` | all runners — the **KKM** project's URL |
+| `SUPABASE_URL` | all runners — the **KPI** project's URL (already set) |
 | `SUPABASE_SERVICE_ROLE_KEY` | all runners (bypasses RLS; never in the browser) |
 | `LLM_API_KEY` | scraper summariser, idea writer, the READ step (rootsys key, as now) |
 | `REPLICATE_API_TOKEN` | media, when `MEDIA_PROVIDER=replicate` (default) |
@@ -103,7 +116,7 @@ Settings → Secrets and variables → Actions.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | — | **required** for the site build: the KKM project's URL and anon key (public by design) |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | — | **required** for the site build: the KPI project's URL and anon key (already set; the anon key is public by design) |
 | `LLM_PROVIDER` | `openai` | `openai` = any OpenAI-compatible endpoint; `anthropic` = native Messages API |
 | `LLM_BASE_URL` | `https://api.openai.com/v1` | only for another OpenAI-compatible gateway. **Not Mireld:** `api.mireld.my` completes TLS and then never answers GitHub runners (measured on two runs, 19 Sep 2026), so the scraper would wait out every timeout and write rules-only rows |
 | `SCRAPE_KEEP_DAYS` | `30` | headlines and run rows older than this are deleted; `0` keeps everything |
@@ -135,8 +148,8 @@ The site is built with relative asset paths, so the same build serves at
    proxy status **DNS only** (grey cloud). An orange-cloud proxy stops GitHub issuing the certificate.
 2. Repo → Settings → Pages → **Custom domain**: `socialmedia.kkmhalalconsultant.com` → Save. Wait for the
    DNS check to pass, then tick **Enforce HTTPS** once it is offered (the certificate can take up to an hour).
-3. Supabase (KKM project) → Authentication → URL Configuration → add `https://socialmedia.kkmhalalconsultant.com/**`
-   to Redirect URLs, or Google sign-in lands on the KKM website instead.
+3. Supabase (KPI project) → Authentication → URL Configuration → add `https://socialmedia.kkmhalalconsultant.com/**`
+   to Redirect URLs, or an email sign-in link lands on an error page.
 
 The old `github.io/semasa` address then redirects to the new one. Email on the domain is unaffected:
 only the `socialmedia` name is added.

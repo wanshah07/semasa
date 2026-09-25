@@ -4,9 +4,11 @@ import { supabase, errText } from "../lib/SupabaseClient";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 
-/* Sign-in with the SAME account as the KKM website (it shares this Supabase project):
-   email + password, or Google — the two ways that site signs people in. There is no
-   sign-up here, and the e-mail link will not create an account (shouldCreateUser:false).
+/* Semasa shares the KPI Supabase project. The KPI app itself never uses Supabase sign-in (it
+   sits behind its own password), so every account here is Semasa's, created by hand under
+   Authentication → Users. Email + password, or an e-mail link. There is no sign-up, and the
+   link will not create an account (shouldCreateUser:false). Google is not offered: its
+   provider is not enabled in that project, and a button that can only fail is worse than none.
    Signing in is not enough to use Semasa: the account must also be on semasa_uploaders. */
 export default function AuthPanel({ onToast }) {
   const [email, setEmail] = useState("");
@@ -20,11 +22,6 @@ export default function AuthPanel({ onToast }) {
     setBusy(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
-    if (error) onToast(errText(error), "danger");
-  }
-
-  async function withGoogle() {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: back() } });
     if (error) onToast(errText(error), "danger");
   }
 
@@ -42,7 +39,7 @@ export default function AuthPanel({ onToast }) {
     <Card className="mx-auto max-w-md p-6">
       <h3 className="text-lg">Log masuk</h3>
       <p className="mt-1 text-sm text-muted">
-        Guna akaun yang sama seperti laman web KKM. Paparan isu semasa tidak memerlukan log masuk.
+        Akaun Semasa anda (e-mel dan kata laluan). Paparan isu semasa tidak memerlukan log masuk.
       </p>
       <form onSubmit={withPassword} className="mt-4 space-y-2">
         <label className="flex items-center gap-2 rounded-pill border border-line bg-bg px-4 py-2">
@@ -58,7 +55,6 @@ export default function AuthPanel({ onToast }) {
         <Button type="submit" className="w-full justify-center" disabled={busy || !password}>{busy ? "…" : "Log masuk"}</Button>
       </form>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant="ghost" size="sm" onClick={withGoogle}>Log masuk dengan Google</Button>
         <Button variant="ghost" size="sm" onClick={withLink} disabled={busy}>Hantar pautan ke e-mel</Button>
       </div>
       {sent && <p className="mt-3 rounded-tile bg-ok/10 p-3 text-sm text-ok">Jika akaun ini wujud, pautan log masuk telah dihantar.</p>}

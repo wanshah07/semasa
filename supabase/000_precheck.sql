@@ -22,3 +22,5 @@ select 'size: storage ' || bucket_id, pg_size_pretty(sum(coalesce((metadata->>'s
   from storage.objects group by bucket_id
 order by 1, 2;
 -- Expected on a project that has never had Semasa: only the "size:" rows.
+-- Expected on the KPI project today (001–004 installed on 24 Sep): the 001–004 objects and NO
+-- semasa_settings / semasa_ideas / semasa_prompts / semasa_posts / semasa_publish_log.

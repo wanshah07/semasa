@@ -67,7 +67,8 @@ export default function IdeasTab({ ideas, user, brand, onToast, openPost }) {
 
   const shown = ideas.rows.filter((r) => (filter === "open" ? r.status !== "rejected" : r.status === "rejected"));
   const forText = (r) => `${r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"}${r.domain ? ` · ${r.domain}` : ""}${r.angle ? ` · ${r.angle}` : ""} · ${
-    { image: t("imej", "image"), video: "video", none: t("tiada media", "no media") }[r.make_media] || r.make_media}`;
+    { image: t("imej", "image"), video: "video", none: t("tiada media", "no media") }[r.make_media] || r.make_media}${
+    r.brief?.format === "poster" ? " · poster" : r.make_slides || r.brief?.format === "carousel" ? " · carousel" : ""}`;
   const actions = (r) => (
     <>
       {r.status === "drafted" && r.brief?.post_id && (

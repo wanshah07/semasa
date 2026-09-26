@@ -219,7 +219,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
     no key, no cost. Too long to fit is a final error that names the slide, never a cut.
     A Design-tab job (meta.design) may bring only an idea (meta.brief): the writer turns it into words first, and
     those words are saved on the job before drawing, so a retry draws them again instead of writing new ones."""
-    from . import compliance, design, ideas, slides
+    from . import compliance, design, ideas, slides, studio_cards
 
     row_id = row["id"]
     meta = dict(row.get("meta") or {})
@@ -260,8 +260,18 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         ground, ground_id = slide_ground(store, row)
         if meta.get("bg") not in (None, "none") and ground is None:
             meta["bg_missing"] = "the background picture was not ready, so the slides were drawn on paper"
-        pics = slides.render(items, stream=stream, eyebrow=eyebrow, source=str(meta.get("citation") or ""),
-                             website=website, ground=ground, size=design.size_of(meta, stream) if kind else None)
+        size = design.size_of(meta, stream) if kind else None
+        look = str(meta.get("look") or "classic")
+        if studio_cards.is_studio_look(look):
+            # ws.regulab Studio's own designs, drawn by Studio's own code in headless Chrome
+            from .providers.cloudflare import content_type_of
+            pics = studio_cards.render(items, look=look, stream=stream, eyebrow=eyebrow,
+                                       source=str(meta.get("citation") or ""), ground=ground,
+                                       ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size)
+        else:
+            look = "classic"
+            pics = slides.render(items, stream=stream, eyebrow=eyebrow, source=str(meta.get("citation") or ""),
+                                 website=website, ground=ground, size=size)
         day = datetime.now(UTC).strftime("%Y/%m")
         urls, paths, sums = [], [], []
         for i, data in enumerate(pics, 1):
@@ -269,15 +279,15 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             urls.append(db.upload_generated(store, path, data, "image/jpeg"))
             paths.append(path)
             sums.append(hashlib.sha256(data).hexdigest())
-        meta.update(slides=items, slide_urls=urls, slide_paths=paths, sha256=sums, count=len(urls),
+        meta.update(slides=items, slide_urls=urls, slide_paths=paths, sha256=sums, count=len(urls), look=look,
                     bg_used=ground_id, content_type="image/jpeg", bytes=sum(len(p) for p in pics),
                     finished_at=datetime.now(UTC).isoformat())
         db.finish_media(store, row_id, status="done", generated_media_url=urls[0], provider="semasa",
-                        model="slides-v1", error=None, meta=meta)
+                        model="slides-v1" if look == "classic" else f"studio-{look}", error=None, meta=meta)
         if row.get("post_id"):
             # a Design artwork is added to the post's pictures; a post's own carousel replaces its earlier one
             (db.attach_media_to_draft if kind else db.attach_slides_to_draft)(store, row["post_id"], row_id)
-        log.info("%s: %d slides drawn", row_id, len(urls))
+        log.info("%s: %d slides drawn (%s)", row_id, len(urls), look)
         return True
     except Exception as exc:  # noqa: BLE001 - the row records it; the run continues
         from .slides import SlideError
@@ -293,6 +303,14 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
                 llm: LLM | None = None) -> bool:
     if row.get("mode") == "slides":
         return process_slides(store, row, s, llm)
+    if row.get("mode") == "clip":
+        # a short cut from a long video (semasa.video)
+        from . import video
+        return video.process_clip(store, row, s.max_attempts)
+    if (row.get("provider") or "").lower() == "unsplash":
+        # a search, then a pick: not a generation (semasa.unsplash)
+        from . import unsplash
+        return unsplash.process(store, row, s.max_attempts)
     row_id = row["id"]
     kind = row.get("type") or "image"
     mode = row.get("mode") or "recreate"
@@ -365,11 +383,16 @@ def main() -> int:
     s = MediaSettings.load()
     store = db.client(SupabaseSettings.load())
     llm = LLM(LLMSettings.load())
+    from . import faq, ideas, trial
+    trial_on = trial.start(store, llm, "media")         # the page's "Try Mireld for one run": Mireld is asked first
 
     # Flow A first, so the pictures an idea asks for are made in this same run.
-    from . import faq, ideas
     idea_note = ideas.run(store, llm)
     faq_note = faq.run(store, llm)
+    from . import video
+    video_note = video.run(store, llm)                 # long videos waiting to be read (supabase/011_video.sql)
+    from . import watch
+    watch_note = watch.run_if_due(store, llm, only_forced=True)   # the page's "sweep now" (the scrape keeps the daily clock)
 
     recovered = db.recover_stale_media(store, s.stale_minutes)
     only_id = (os.environ.get("MEDIA_ONLY_ID") or "").strip() or None
@@ -377,18 +400,22 @@ def main() -> int:
     done = 0
     if rows:
         providers: dict[str, Provider] = {}
-        rows.sort(key=lambda r: r.get("mode") == "slides")       # pictures first: slides may be drawn on them
+        # pictures first (slides may be drawn on them), the long clips last
+        rows.sort(key=lambda r: {"slides": 1, "clip": 2}.get(r.get("mode"), 0))
         done = sum(process_row(store, r, s, providers, llm) for r in rows)
         log.info("%d/%d generated", done, len(rows))
     else:
         log.info("nothing pending")
+    trial_note = trial.finish(store, llm, "media") if trial_on else ""
     from . import sheet
     sheet_note = sheet.sync_log(store)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as fh:
-            fh.write(f"## Semasa worker\n\n{idea_note}\n\n{faq_note}\n\n{done}/{len(rows)} media jobs generated "
-                     f"(default provider {s.provider}); {recovered} stuck job(s) put back in the queue\n\n{sheet_note}\n")
+            fh.write(f"## Semasa worker\n\n{idea_note}\n\n{faq_note}\n\n{video_note}\n\n{watch_note}\n\n"
+                     f"{done}/{len(rows)} media jobs generated "
+                     f"(default provider {s.provider}); {recovered} stuck job(s) put back in the queue\n\n{sheet_note}\n"
+                     + (f"\n{trial_note}\n" if trial_note else ""))
     return 0 if done == len(rows) else 1
 
 

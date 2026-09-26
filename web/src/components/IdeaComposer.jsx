@@ -4,8 +4,19 @@ import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { CATEGORY_TO_DOMAIN, STREAMS } from "../lib/brand";
 import { useLang } from "../lib/i18n";
 import { IMAGE_TYPES, refusal, removeReference, uploadReference } from "../lib/storage";
+import LookPicker from "./LookPicker";
 import Button from "./ui/Button";
 import { Input, Label, Modal, Segmented, Select, TextArea } from "./ui/Field";
+
+/* The idea's slides do not exist yet (the bot writes them), so the design is previewed on sample words. */
+function sampleSlides(title, stream) {
+  const en = stream === "linkedin";
+  return [
+    { title: (title || (en ? "Your headline here" : "Tajuk anda di sini")).slice(0, 90), points: [en ? "One supporting line under the title." : "Satu baris sokongan di bawah tajuk."] },
+    { title: en ? "What the rule says" : "Apa kata peraturan", points: en ? ["One fact per slide.", "Short and cited."] : ["Satu fakta satu slaid.", "Ringkas dan bersumber."] },
+    { title: en ? "Remember this" : "Ingat ini", points: [en ? "The takeaway, never a call to action." : "Kesimpulan, bukan seruan tindakan."] },
+  ];
+}
 
 /* Flow A, step one. From a headline ("Jadikan idea") or by hand. Inserting the row is all the
    page does: the worker reads the source, writes the draft and queues the pictures. */
@@ -13,7 +24,9 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   const { t } = useLang();
   const [stream, setStream] = useState("regulab");
   const [media, setMedia] = useState("image");
-  const [slides, setSlides] = useState(false);
+  const [format, setFormat] = useState("post");   // post | carousel | poster (backend: ideas.format_of)
+  const [look, setLook] = useState("classic");
+  const [lookBlocked, setLookBlocked] = useState(null);
   const [domain, setDomain] = useState("");
   const [angle, setAngle] = useState("");
   const [note, setNote] = useState("");
@@ -24,8 +37,12 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
 
   useEffect(() => {
     if (!open) return;
-    setStream("regulab"); setMedia("image"); setSlides(false); setAngle(""); setNote(""); setRefs([]);
-    setDomain(trend ? (trend.faq ? trend.domain : CATEGORY_TO_DOMAIN[trend.category]) || "" : "");
+    // a regulator's notice or a paper (Regulatory / Latest publication) arrives with its stream, angle and domain
+    // chosen, and as a carousel: the flow Wan asked for is notice → idea → slides or a poster → post
+    setStream(trend?.watch ? trend.stream || "regulab" : "regulab"); setMedia("image");
+    setFormat(trend?.watch ? "carousel" : "post"); setLook("classic");
+    setAngle(trend?.watch ? trend.angle || "" : ""); setNote(""); setRefs([]);
+    setDomain(trend ? (trend.faq || trend.watch ? trend.domain : CATEGORY_TO_DOMAIN[trend.category]) || "" : "");
     setTitle(trend?.title || ""); setUrl(trend?.url || "");
   }, [open, trend]);
 
@@ -57,9 +74,15 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   async function submit(e) {
     e.preventDefault();
     if (!title.trim()) return onToast(t("Perlukan tajuk atau isu.", "A title or an issue is needed."), "warn");
+    const drawn = format !== "post";
+    if (drawn && lookBlocked === "photo") {
+      return onToast(t("Reka bentuk Foto dilukis di atas gambar post: pilih Media Imej, atau reka bentuk lain.",
+        "The Photo design is drawn on the post's picture: choose Media Image, or another design."), "warn");
+    }
     setBusy(true);
     const row = {
-      trend_id: trend && !trend.faq ? trend.id ?? null : null,        // an FAQ is not a headline
+      // an FAQ or a regulator's notice is not a headline: trend_id points at isu_semasa_trends only
+      trend_id: trend && !trend.faq && !trend.watch ? trend.id ?? null : null,
       source_title: title.trim(), source_url: url.trim() || null,
       source_name: trend?.source ?? null, source_summary: trend?.summary ?? null,
       stream, make_media: media, note: note.trim(),
@@ -68,7 +91,12 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
       reference_urls: refs.map((r) => r.url), status: "new", created_by: user.id,
     };
     // sent only when asked: the column arrives with supabase/006_slides.sql
-    if (slides) row.make_slides = true;
+    if (format === "carousel") row.make_slides = true;
+    // the look and a poster ride in the idea's brief until the bot writes the draft (backend: ideas.look_of, format_of)
+    const brief = {};
+    if (drawn && look !== "classic") brief.look = look;
+    if (format === "poster") brief.format = "poster";
+    if (Object.keys(brief).length) row.brief = brief;
     const { error } = await supabase.from(TABLES.ideas).insert(row);
     setBusy(false);
     if (error) {
@@ -77,10 +105,13 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
           "Slides are not set up in the database yet: run supabase/006_slides.sql once, then try again.")
         : errText(error), "danger");
     }
-    onToast(slides
+    onToast(format === "carousel"
       ? t("Idea dihantar. Bot akan tulis draf dan slaid, jana gambar, kemudian lukis slaid.",
         "Idea sent. The bot will write the draft and slides, generate a picture, then draw the slides.")
-      : t("Idea dihantar. Bot akan baca sumber, tulis draf dan jana gambar.",
+      : format === "poster"
+        ? t("Idea dihantar. Bot akan tulis draf dan kata-kata poster, jana gambar, kemudian lukis poster 4:5.",
+          "Idea sent. The bot will write the draft and the poster's words, generate a picture, then draw a 4:5 poster.")
+        : t("Idea dihantar. Bot akan baca sumber, tulis draf dan jana gambar.",
         "Idea sent. The bot will read the source, write the draft and generate a picture."), "ok");
     onDone?.();
     onClose();
@@ -88,13 +119,17 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
 
   const domains = Object.entries(brand.regulab.domains || {});
   const angles = Object.entries(brand.linkedin.angles || {});
+  const posterSample = sampleSlides(title, stream).slice(0, 1);
   return (
     <Modal open={open} onClose={cancel} title={trend?.faq ? t("Jadikan post daripada FAQ", "Make a post from an FAQ")
       : trend ? t("Jadikan idea", "Make an idea") : t("Idea baharu", "New idea")}>
       <form onSubmit={submit} className="space-y-3">
         {trend ? (
           <p className="rounded-tile bg-surface-2 p-3 text-sm [overflow-wrap:anywhere]">{trend.title}<span className="block text-[11px] text-muted">{trend.source}</span>
-            {trend.faq && <span className="mt-1 block text-[11px] text-muted">{t("Bot tulis post daripada jawapan FAQ ini.", "The bot writes the post from this FAQ answer.")}</span>}</p>
+            {trend.faq && <span className="mt-1 block text-[11px] text-muted">{t("Bot tulis post daripada jawapan FAQ ini.", "The bot writes the post from this FAQ answer.")}</span>}
+            {trend.watch && <span className="mt-1 block text-[11px] text-muted">{trend.section === "publication"
+              ? t("Bot baca kertas ini dan memetik pengarang, jurnal, tahun dan DOI.", "The bot reads this paper and cites its authors, journal, year and DOI.")
+              : t("Bot baca notis ini dan memetik pengawal selia serta rujukannya.", "The bot reads this notice and cites the regulator and its reference.")}</span>}</p>
         ) : (
           <>
             <label className="block"><Label>{t("Isu / tajuk", "Issue / title")}</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
@@ -108,17 +143,31 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
           : <label className="block"><Label hint={t("kosong = bot pilih", "empty = the bot chooses")}>{t("Sudut", "Angle")}</Label>
               <Select value={angle} onChange={setAngle} options={[["", t("Bot pilih", "Bot chooses")], ...angles.map(([k, v]) => [k, `${k} · ${v}`])]} className="w-full" /></label>}
         <div><Label>Media</Label><Segmented value={media} onChange={setMedia} options={[["image", t("Imej", "Image")], ["video", "Video"], ["none", t("Tiada", "None")]]} /></div>
-        <label className="flex items-start gap-2 text-sm">
-          <input type="checkbox" className="mt-1" checked={slides} onChange={(e) => setSlides(e.target.checked)} />
-          <span>{t("Buat slaid carousel", "Make carousel slides")}
-            <span className="block text-[11px] text-muted">
-              {t("Bot tulis 5 hingga 7 slaid, kemudian lukis sendiri ({size}, tanpa AI, percuma).",
+        <div>
+          <Label>{t("Jadikan", "Make it")}</Label>
+          <Segmented value={format} onChange={setFormat}
+            options={[["post", t("Post", "Post")], ["carousel", t("Carousel (slaid/PPT)", "Carousel (slides/PPT)")], ["poster", "Poster"]]} />
+          <span className="mt-1 block text-[11px] text-muted">
+            {format === "carousel"
+              ? t("Bot tulis 5 hingga 7 slaid, kemudian lukis sendiri ({size}, tanpa AI, percuma).",
                 "The bot writes 5 to 7 slides, then draws them itself ({size}, no AI, free).",
-                { size: stream === "linkedin" ? "1080×1350" : "1080×1080" })}
-              {media === "image" ? t(" Gambar post jadi latar slaid.", " The post picture becomes the slide background.") : ""}
-            </span>
+                { size: stream === "linkedin" ? "1080×1350" : "1080×1080" })
+              : format === "poster"
+                ? t("Bot tulis satu poster (tajuk dan hingga lima poin, sumber di kaki), kemudian lukis 1080×1350.",
+                  "The bot writes one poster (a headline and up to five points, the source at the foot), then draws it at 1080×1350.")
+                : t("Kapsyen dan satu gambar.", "A caption and one picture.")}
+            {format !== "post" && media === "image" ? t(" Gambar post jadi latar.", " The post picture becomes the background.") : ""}
           </span>
-        </label>
+        </div>
+        {format !== "post" && (
+          <div className="rounded-tile bg-surface-2/40 p-2.5">
+            <LookPicker value={look} onChange={setLook} sample stream={stream}
+              slides={format === "poster" ? posterSample : sampleSlides(title, stream)}
+              size={format === "poster" ? [1080, 1350] : null}
+              eyebrow={stream === "regulab" ? (brand.regulab.domains || {})[domain] || "" : (brand.linkedin.angles || {})[angle] || ""}
+              bgChosen={media === "image"} onBlocked={setLookBlocked} />
+          </div>
+        )}
         <label className="block"><Label hint={t("pilihan", "optional")}>{t("Apa yang anda mahu daripada isu ini", "What you want from this issue")}</Label>
           <TextArea rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1500}
             placeholder={t("Cth: fokus pada kesan kepada pengeluar kosmetik PKS; sebut Garis Panduan NPRA",

@@ -18,6 +18,9 @@ import IdeasTab from "./pages/IdeasTab";
 import PostsTab from "./pages/PostsTab";
 import SettingsTab from "./pages/SettingsTab";
 import GenerationGallery from "./components/GenerationGallery";
+import { UnsplashSearch } from "./components/Unsplash";
+import VideoTab from "./pages/VideoTab";
+import WatchSegment, { watchIdea } from "./components/WatchSegment";
 import Header from "./components/Header";
 import MasonryGrid from "./components/MasonryGrid";
 import TrendTable from "./components/TrendTable";
@@ -48,7 +51,60 @@ function Unconfigured() {
   );
 }
 
-function IsuTab({ trends, onToast, onIdea, onFaq }) {
+const SEGMENTS = ["isu", "regulatory", "publication"];
+
+function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, save, brand }) {
+  const { t } = useLang();
+  const [segRaw, setSeg] = useView("isu.segment", "isu");
+  const seg = SEGMENTS.includes(segRaw) ? segRaw : "isu";
+  // the two watch segments share one list; it is read only while one of them is open
+  const watch = useTable(TABLES.watch, { enabled: allowed && seg !== "isu", limit: 600, realtime: false, everyMs: 120_000 });
+  const segTabs = (
+    <div role="tablist" aria-label={t("Segmen", "Segments")} className="mb-5 flex flex-wrap gap-1.5">
+      {[["isu", t("Isu semasa", "Current issues")], ["regulatory", t("Regulatori", "Regulatory")],
+        ["publication", t("Penerbitan terkini", "Latest publications")]].map(([v, l]) => (
+        <button type="button" key={v} role="tab" aria-selected={seg === v} onClick={() => setSeg(v)}
+          className={`rounded-pill px-4 py-2 text-sm font-medium ${seg === v ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>{l}</button>
+      ))}
+    </div>
+  );
+  if (seg !== "isu") {
+    const reg = seg === "regulatory";
+    return (
+      <>
+        <section className="hero-bg">
+          <div className="mx-auto max-w-page px-4 pb-8 pt-12 sm:px-6 sm:pt-16">
+            <motion.div variants={fadeUp} initial="hidden" animate="show">
+              {segTabs}
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">
+                {reg ? t("Regulatori", "Regulatory") : t("Penerbitan terkini", "Latest publications")}</p>
+              <h1 className="mt-2 max-w-3xl text-4xl leading-[1.05] sm:text-5xl">
+                {reg ? t("Apa yang pengawal selia umumkan, terus dari sumbernya.", "What the regulators announce, straight from the source.")
+                  : t("Kajian terbaharu tentang kosmetik, kulit dan halal.", "The newest research on cosmetics, skin and halal.")}
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm text-muted sm:text-base">
+                {reg
+                  ? t("Disapu sekali sehari daripada halaman NPRA, Portal Halal Malaysia, HSA Singapura, SCCS EU, OPSS UK dan NMPA China sendiri. AI meringkaskan setiap notis dalam BM, memilih domain dan menulis kenapa ia penting.",
+                    "Swept once a day from the own pages of NPRA, Portal Halal Malaysia, HSA Singapore, EU SCCS, UK OPSS and China NMPA. AI summarises each notice in Malay, picks its domain and says why it matters.")
+                  : t("Disapu sekali sehari daripada PubMed: kertas 14 hari terakhir tentang sains kosmetik, dermatologi pengguna, sains halal dan bahan cemar kosmetik. Pengarang, jurnal dan DOI ikut sekali ke idea.",
+                    "Swept once a day from PubMed: papers from the last 14 days on cosmetic science, consumer dermatology, halal science and cosmetic contaminants. Authors, journal and DOI travel with the idea.")}
+              </p>
+            </motion.div>
+          </div>
+        </section>
+        {allowed ? (
+          <main className="mx-auto max-w-page px-4 pb-20 sm:px-6">
+            <WatchSegment section={seg} watch={watch} setting={settings.watch} saveSetting={save} brand={brand}
+              onIdea={onIdea ? (r) => onIdea(watchIdea(r, brand)) : undefined} onToast={onToast} />
+          </main>
+        ) : gateNode}
+      </>
+    );
+  }
+  return <IsuHeadlines trends={trends} onToast={onToast} onIdea={onIdea} onFaq={onFaq} segTabs={segTabs} />;
+}
+
+function IsuHeadlines({ trends, onToast, onIdea, onFaq, segTabs }) {
   const { t } = useLang();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
@@ -77,6 +133,7 @@ function IsuTab({ trends, onToast, onIdea, onFaq }) {
       <section className="hero-bg">
         <div className="mx-auto max-w-page px-4 pb-8 pt-12 sm:px-6 sm:pt-16">
           <motion.div variants={fadeUp} initial="hidden" animate="show">
+            {segTabs}
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t("Isu semasa Malaysia", "Current issues in Malaysia")}</p>
             <h1 className="mt-2 max-w-3xl text-4xl leading-[1.05] sm:text-5xl">
               {t("Apa yang orang Malaysia baca dan cari, sekarang.", "What Malaysians are reading and searching for, right now.")}
@@ -154,9 +211,14 @@ function MediaTab({ user, gens, prompts, onToast }) {
           preset={preset} onPresetUsed={clearPreset} />
         <PromptLibrary prompts={prompts} onToast={onToast} onUse={(p) => { setPreset(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       </div>
+      <div className="mt-5">
+        <UnsplashSearch user={user} onToast={onToast} onQueued={() => gens.reload()} />
+        <p className="mt-1 text-[11px] text-muted">{t("Foto Unsplash yang dipilih menjadi gambar biasa: boleh jadi gambar post, latar slaid atau latar reka bentuk. Jurugambar dikreditkan di sini.",
+          "A chosen Unsplash photo becomes an ordinary picture: a post picture, a slide background or a design background. The photographer is credited here.")}</p>
+      </div>
       <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
-      <GenerationGallery rows={gens.rows} user={user}
+      <GenerationGallery rows={gens.rows} user={user} onToast={onToast}
         onRequeue={(id, provider) => guard(async () => { await gens.requeue(id, provider); onToast(t("Dimasukkan semula ke giliran.", "Put back in the queue."), "ok"); })}
         onRemove={(row) => guard(async () => { if (window.confirm(t("Padam kerja ini?", "Delete this job?"))) {
           await gens.remove(row); onToast(t("Dipadam.", "Deleted."), "info");
@@ -165,7 +227,7 @@ function MediaTab({ user, gens, prompts, onToast }) {
   );
 }
 
-const TAB_IDS = ["isu", "idea", "post", "media", "design", "faq", "log", "tetapan"];
+const TAB_IDS = ["isu", "idea", "post", "media", "design", "video", "faq", "log", "tetapan"];
 
 export default function App() {
   const { t } = useLang();                                   // read here so a language switch re-renders the page
@@ -240,11 +302,14 @@ export default function App() {
     settings={settings} onToast={push} focusId={focusPost} setFocusId={setFocusPost} /> : gate(null);
   else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} onToast={push} /> : gate(null);
   else if (tab === "design") body = allowed ? <DesignTab user={user} gens={gens} posts={posts} brand={brand} onToast={push} /> : gate(null);
+  else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push}
+    openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}
     onPost={(r) => setIdeaFrom(faqIdea(r))} /> : gate(null);
   else if (tab === "log") body = allowed ? <LogTab log={activity} onOpen={(to) => { if (to.postId) setFocusPost(to.postId); go(to.tab); }} /> : gate(null);
   else if (tab === "tetapan") body = allowed ? <SettingsTab settings={settings} brand={brand} save={save} onToast={push} /> : gate(null);
-  else body = <IsuTab trends={trends} onToast={push} onIdea={allowed ? setIdeaFrom : undefined} onFaq={allowed ? faqFrom : undefined} />;
+  else body = <IsuTab trends={trends} onToast={push} onIdea={allowed ? setIdeaFrom : undefined} onFaq={allowed ? faqFrom : undefined}
+    allowed={allowed} gateNode={allowed ? null : gate(null)} settings={settings} save={save} brand={brand} />;
 
   return (
     <div id="top" className="min-h-screen">

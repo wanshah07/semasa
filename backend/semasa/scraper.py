@@ -18,7 +18,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import categorize, db, faq_sources, fetch
+from . import categorize, db, faq_sources, fetch, trial, watch
 from .config import LLMSettings, ScraperSettings, SupabaseSettings
 from .llm import LLM
 from .log import get_logger
@@ -151,6 +151,7 @@ def writer_label(llm: LLM) -> str:
 
 def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings: LLMSettings) -> int:
     llm = LLM(llm_settings)
+    trial_on = trial.start(store, llm, "scrape")        # the page's "Try Mireld for one run": Mireld is asked first
     probe_ok = llm.probe() if llm.configured else False
     if llm.configured and not probe_ok:
         # A failed probe alone no longer switches the LLM off: the first real batch decides.
@@ -199,6 +200,9 @@ def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings
                      detail={"dropped": dropped, "pick_hours": settings.pick_hours})
     db.prune_log(store, now)
 
+    # the regulators' own pages and PubMed, once every 24 hours (supabase/012_watch.sql)
+    watch_note = watch.run_if_due(store, llm if llm.configured else None, timeout=settings.request_timeout)
+    trial_note = trial.finish(store, llm, "scrape") if trial_on else ""
     db.finish_run(store, run_id, sources=report, seen=len(items), inserted=inserted, llm_ok=llm_ok,
                   llm_model=writer_label(llm) if llm.configured else None,
                   note=note if ok_sources else "every source failed")
@@ -211,7 +215,9 @@ def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings
         with open(summary_path, "a", encoding="utf-8") as fh:
             fh.write(f"## Semasa scrape\n\n- read **{len(items)}**, new **{len(rows)}**, inserted **{inserted}**\n")
             fh.write(f"- LLM: {'ok' if llm_ok else 'NOT USED'} ({writer_label(llm)})\n")
-            fh.write(f"- dropped **{dropped}** headline(s) nobody picked within {settings.pick_hours} h\n\n")
+            fh.write(f"- dropped **{dropped}** headline(s) nobody picked within {settings.pick_hours} h\n")
+            fh.write(f"- {watch_note}\n")
+            fh.write(f"- {trial_note}\n\n" if trial_note else "\n")
             fh.write("| source | kind | ok | items | error |\n|---|---|---|---|---|\n")
             for r in report:
                 fh.write(f"| {r['name']} | {r['kind']} | {'✅' if r['ok'] else '❌'} | {r['items']} | {r['error'] or ''} |\n")
@@ -222,7 +228,7 @@ def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings
     if llm_settings.blocked and not getattr(llm, "backup_answers", 0):
         print(f"::error::{llm_settings.blocked}")          # rows were written rules-only; the run must not look fine
         return 2
-    if getattr(llm, "backup_answers", 0):
+    if getattr(llm, "backup_answers", 0) and not trial_on:
         print(f"::warning::rootsys gave no usable answer {llm.backup_answers} time(s); the backup writer answered")
     if llm.configured and not llm_ok:
         return 2

@@ -99,6 +99,12 @@ an account), and no Google button.
    writes one warning to the Log every 6 hours and does nothing else.
    **Then `010_archive.sql`** (a published post is never written again, and is archived 24 hours after it went
    out: see *Published posts* below). Safe to run again.
+   **Then `011_video.sql`** (the Video tab, 26 Sep 2026: a long video becomes short clips and draft posts, see
+   *Video* below). It creates `semasa_videos`, allows a `clip` media job, and adds videos to 009's clock. Safe to
+   run again, and safe in the shared project (only `semasa_*` objects).
+   **Then `012_watch.sql`** (the Regulatory and Latest publication segments, 26 Sep 2026, see *Regulatory and
+   Latest publication* below). It creates `semasa_watch`, the `watch` settings row and the trigger behind *Sapu
+   sekarang*. The page may only hide a row. Safe to run again, and safe in the shared project.
    007 and 008 were changed on 25 Sep 2026 after they were first handed over (bot categories, and a
    settings row the log must never record). Both are safe to run again: run 007, 008 and 009 in that
    order even if you ran an earlier 007 or 008.
@@ -143,6 +149,8 @@ Settings → Secrets and variables → Actions.
 | `OPENAI_API_KEY` | media, when `MEDIA_PROVIDER=openai` |
 | `LLM_FALLBACK_API_KEY` | optional: the backup writer's key (Mireld). Asked only when rootsys gives no usable answer; needs the variable `LLM_FALLBACK_MODEL` too |
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | media, when `MEDIA_PROVIDER=cloudflare`: **free pictures** (see *Free pictures: Cloudflare*). With both set and no `REPLICATE_API_TOKEN`, Cloudflare is the default and no Variable is needed |
+| `UNSPLASH_ACCESS_KEY` | media: the **Unsplash** picture search (see *Unsplash*). A free app at unsplash.com/developers; the *Access Key*, never the Secret key. Unset: an Unsplash search says where the key goes and stops |
+| `YTDLP_COOKIES` | optional, media: only if YouTube keeps refusing GitHub's machine for the Video tab. The text of a `cookies.txt` export from a browser signed in to YouTube. It acts as that account, so use a spare one, never your main account |
 | `TELEGRAM_BOT_TOKEN` | optional: the FAQ bot in your Telegram group(s) (see *FAQ from Telegram*). Unset: Telegram is simply not read |
 | `SEMASA_SHEET_URL`, `SEMASA_SHEET_TOKEN` | the Semasa Google Sheet (FAQ tabs and the Log tab): the Apps Script `/exec` URL and the `API_TOKEN` its `setup` prints (see *The Semasa Sheet* below). Unset: everything works, and the Sheet is simply not written. `FAQ_SHEET_URL` / `FAQ_SHEET_TOKEN`, their first names, are still read if set |
 
@@ -402,6 +410,115 @@ Any of them can be made at 1:1, 4:5 or 9:16 (1080×1920, a story).
   approval while a hard flag stands.
 - **Attach to a post** adds the design to that draft post's pictures. It never replaces the post's own carousel.
 - **Drawing:** done by `backend/semasa/slides.py` with no AI and no cost, the same as the post carousels.
+
+## ws.regulab Studio's designs for carousels
+
+Wan, 26 Sep 2026: *"for post and idea carousel, copy the code design that already in ws.regulab studio, so we can
+choose the design"*. Every carousel (a post's slides, an idea's slides, and the Design tab) now offers four looks:
+
+| Look | What it is |
+|---|---|
+| Semasa | Semasa's own drawing (`backend/semasa/slides.py`, Pillow): cream paper, serif headline, slide numbers |
+| Grid | Studio: cream graph paper, ultra-bold headline, one word in orange |
+| Info ERA | Studio: kraft paper, marker highlights, red blocks |
+| Photo | Studio: the picture behind the words on every slide. **Needs a background** (the post's picture, an upload, an AI picture or Unsplash) |
+
+- **The code is Studio's own**, copied verbatim from `wanshah07/argus` `studio/part2.html` into
+  `web/src/lib/cards/studio.js`, with four marked edits (card size, CORS for pictures, the logo set at run time, and
+  nothing of Studio's store). Its fonts (Poppins, Instrument Sans, JetBrains Mono, Caveat; SIL Open Font License) and
+  the ws.regulab logo are in `web/public/cards/`.
+- **What you pick is what you get.** The picker previews every slide in your browser with that same file, and the
+  worker draws the real slides with it too, in headless Chrome (`backend/semasa/studio_cards.py`; the runner's own
+  Google Chrome, so nothing is downloaded).
+- **Every word is kept.** Studio's templates show at most 3 or 4 points; a slide with more gets the layout that
+  draws them all as lines. A slide Studio calls fuller than the card is shown in red in the preview, blocks
+  *Generate*, and fails the render with its number. It is never cut.
+- LinkedIn slides carry no ws.regulab logo, as in Studio.
+- An idea remembers its look (in its `brief`) until the bot writes its slides.
+
+## Try Mireld for one run
+
+Settings → **Cuba Mireld untuk satu larian**. The next scrape and the bot's next job that asks the writer anything
+ask Mireld **first**: the news summaries, the drafts, the design words, and the read of a reference picture. rootsys
+answers whatever Mireld cannot, so no work is lost. After three misses in a row, rootsys leads for the rest of that
+run, so a silent Mireld cannot stall a scrape. Each half then writes its result on the card and switches itself off:
+how many answers came from Mireld and from rootsys, whether Mireld could read a picture, and the models Mireld's own
+`/models` list names (the card marks any that look like image models). The result also goes to the Log.
+The switch (`semasa_settings.llm_trial`) is created by the worker on its first run after this update; the browser
+may edit settings but not add a key. It uses the secrets already set (`LLM_FALLBACK_API_KEY`, `LLM_FALLBACK_MODEL`).
+
+## Unsplash
+
+A picture source beside Cloudflare, in the Media lab, the post editor (*Gambar*) and the Design tab (*Latar →
+Unsplash*). Search, click a photo, and it becomes an ordinary picture: a post picture, a slide background or a
+design background.
+
+- **The key stays on the worker** (`UNSPLASH_ACCESS_KEY`). A search is a media row the worker answers in about a
+  minute; the pick is the same row sent back. Nothing about the key reaches the page.
+- **Unsplash's API rules are kept:** the results shown are Unsplash's own addresses, the download is reported to
+  Unsplash when you pick, and the photographer is credited with a link wherever the page shows the photo. No credit
+  goes into a caption (ws.regulab captions carry no URL, and the licence does not ask for one there).
+- A demo app gets 50 requests an hour (a search is one, a pick is one). For more, apply for production on the
+  Unsplash developer page.
+
+## Video: a long talk becomes short clips
+
+The **Video** tab (Wan, 26 Sep 2026: *"cut, edit video for short video such as youtube video (ceramah agama) …
+paste youtube page … once approve can cut edit and create into short video"*).
+
+1. **Paste a link:** a YouTube video, or a link to a video file (Google Drive shared with *anyone with the link*,
+   or a direct `.mp4`). Pick the stream and domain, and say what you want from it.
+2. **The bot reads it:** the transcript you pasted comes first; then the video's own subtitles; then YouTube's
+   automatic captions; for a video file with none of those, Cloudflare Whisper hears it (the same free allowance
+   as the pictures). The writer proposes 3 to 6 clips of 15 to 90 seconds, each a complete thought, with a hook, a
+   caption crediting the speaker, and a warning on any clip that states a ruling (hukum), so you check its context.
+3. **You confirm the rights once per video:** your own video, the owner's permission (with a note of the proof), or
+   Creative Commons. Cutting and republishing someone else's talk without permission can infringe the **Copyright
+   Act 1987** and YouTube's terms. Nothing is cut before this is recorded, and the worker checks it again.
+4. **Edit and approve a clip:** watch it in place, change the start and end, the hook and the caption (checked by
+   the post rules as you type), choose *whole + blurred sides* or *crop to fill*, captions on or off, then **Luluskan
+   & potong**.
+5. **The bot cuts it** (`backend/semasa/video.py`, the static ffmpeg from the `imageio-ffmpeg` wheel): 1080×1920,
+   captions burnt in, the hook in a box at the top, the ws.regulab mark on ws.regulab clips (none on LinkedIn), H.264
+   kept under 50 MB. It writes a **draft post** with the clip and the caption at the next free slot. The post goes
+   through the Posts tab like any other; nothing is published here. *Potong semula* on the same clip replaces the
+   clip in its own draft.
+
+**When YouTube refuses GitHub's machine** ("Sign in to confirm you're not a bot", which happens to cloud servers):
+paste the transcript yourself (YouTube → description → *Show transcript* → select all → copy) and *Baca semula*,
+which is enough to propose clips; to cut, add the video again as a Google Drive link. `YTDLP_COOKIES` is the last
+resort, with a spare account.
+
+## Regulatory and Latest publication
+
+Two segments beside *Isu semasa* in the first tab (Wan, 26 Sep 2026: *"add segment like current issue for regulatory
+and latest publication … run every 24 hours … regulatory/current issue/latest publication > idea/ppt/poster > render
+the carousel/card > post"*).
+
+- **Regulatori** reads the regulators' own list pages: NPRA (Kenyataan Media KKM, safety alerts, directives,
+  circulars, announcements), Portal Halal Malaysia, HSA Singapore, EU SCCS opinions, UK OPSS and China NMPA. Items
+  older than 45 days are skipped. Portal Halal's newest item was April 2025 when this was built, so that source is
+  often empty. That is the portal's own state, not a fault.
+- **Penerbitan terkini** reads PubMed (the official E-utilities API, no key): papers added in the last 14 days on
+  cosmetic science, consumer dermatology, halal science and cosmetic contaminants, with the journal, authors, DOI and
+  abstract.
+- **Once a day.** The sweep rides on the 8-hourly scrape and runs when 23 hours have passed, so in practice it is the
+  same run every day. *Sapu sekarang* wakes the worker to sweep straight away.
+- **The writer's notes.** For every new item the writer adds a Malay summary, the domain, *why it matters* to a
+  Malaysian business, and whether it is relevant at all. A foreign ministry's diplomatic news is marked *kurang
+  berkaitan* and hidden by default; tick the box to see it. *Sembunyi* hides an item for everyone. Items are kept
+  45 days.
+- **Jadikan idea** opens the same idea box as a headline:
+  - A notice goes to ws.regulab in its domain.
+  - A paper goes to LinkedIn, angle F (cosmetic science) or G (medicine and dermatology).
+  - Both start as a **carousel**. Pick **Post**, **Carousel (slaid/PPT)** or **Poster**, and the design (Semasa's own
+    or Studio's Grid, Info ERA or Photo).
+  - The worker writes the draft, draws the slides or the 4:5 poster, and the draft goes through the Posts tab like any
+    other.
+  - Unlike a news portal, the regulator or the journal **is** the source, so the writer is told to cite it by name
+    with its reference, or the paper's authors, journal, year and DOI.
+
+EU Safety Gate is not in the list: its alert pages are drawn by JavaScript and a plain fetch gets an empty shell.
 
 ## Card or table
 

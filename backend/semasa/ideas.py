@@ -191,6 +191,31 @@ SLIDES WANTED. Also return "slides": a carousel of 5 to 7 slides in English, dra
 }
 
 
+POSTER_RULES = {
+    "regulab": """
+
+POSTER WANTED. Also return "poster": ONE 4:5 poster in Malaysian Malay: {"title": "a headline of at most 10 words",
+"points": [up to 5 points of at most 22 words each]}. Mark the one key word of the title with *asterisks*. The same
+rules apply to every word: no call to action, no URL, [SAHKAN: <the exact missing fact>] where the SOURCE is silent.
+The citation is drawn at its foot automatically.""",
+    "linkedin": """
+
+POSTER WANTED. Also return "poster": ONE 4:5 poster in English: {"title": "a headline of at most 10 words",
+"points": [up to 5 points of at most 22 words each]}. Mark the one key word of the title with *asterisks*. No
+company identity, no URL, no blog or aggregator, [SAHKAN: <the exact missing fact>] where the SOURCE is silent. The
+citation is drawn at its foot automatically.""",
+}
+
+
+def format_of(idea: dict[str, Any]) -> str:
+    """What the idea should become besides its caption: 'post' (a picture), 'carousel' (slides) or 'poster' (one 4:5
+    artwork). make_slides (006) still means a carousel; the choice itself rides in the idea's brief."""
+    fmt = str(((idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}).get("format") or "")
+    if fmt in ("carousel", "poster"):
+        return fmt
+    return "carousel" if idea.get("make_slides") else "post"
+
+
 def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str, Any],
                   avoid: str = "") -> tuple[str, str]:
     stream = idea.get("stream") or "regulab"
@@ -199,9 +224,13 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
         system = LINKEDIN_SYSTEM % "; ".join(f"{k} = {v}" for k, v in sorted(angles.items()))
     else:
         system = REGULAB_SYSTEM % DOMAINS
+    from . import watch
+    issuer = watch.is_issuer(idea.get("source_name"))
     lines = [
         f"HEADLINE: {idea.get('source_title') or ''}",
-        f"PUBLISHER: {idea.get('source_name') or ''} (for your understanding only; never name it in the post)",
+        (f"ISSUER: {idea.get('source_name')} (the regulator or the journal itself: cite it by name, with the notice's "
+         "reference or the paper's authors, journal, year and DOI)" if issuer else
+         f"PUBLISHER: {idea.get('source_name') or ''} (for your understanding only; never name it in the post)"),
         f"SUMMARY: {idea.get('source_summary') or ''}",
     ]
     if idea.get("domain"):
@@ -347,10 +376,14 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     lang = "en" if stream == "linkedin" else "bm"
     source = faq_source(idea) or read_source(idea.get("source_url"))
     system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra))
-    want_slides = bool(idea.get("make_slides"))
+    fmt = format_of(idea)
+    want_slides = fmt == "carousel"
+    want_poster = fmt == "poster"
     if want_slides:
         system += SLIDES_RULES.get(stream, SLIDES_RULES["regulab"])
-    out = llm.chat_json(system, user, max_tokens=5000 if want_slides else 3500)
+    if want_poster:
+        system += POSTER_RULES.get(stream, POSTER_RULES["regulab"])
+    out = llm.chat_json(system, user, max_tokens=5000 if (want_slides or want_poster) else 3500)
     if not out:
         raise IdeaError("the writer did not answer (see the run log); press Cuba lagi")
     if out.get("fit") is False:
@@ -383,11 +416,18 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     jobs = media_jobs(idea, source, out, post_id)
     if want_slides and post.get("slides"):
         jobs.append(slide_job(idea, post, post_id, bg="post_image" if jobs else "none"))
+    poster = slides.normalise([out.get("poster")] if isinstance(out.get("poster"), dict) else [])[:1] if want_poster else []
+    if poster:
+        jobs.append(poster_job(idea, post, post_id, poster, bg="post_image" if jobs else "none"))
     if jobs:
         store.table(db.MEDIA).insert(jobs).execute()
     brief = {"source": {k: source.get(k) for k in ("ok", "why", "url", "title", "image")},
              "post_id": post_id, "media_jobs": len(jobs), "written_at": datetime.now(UTC).isoformat(),
              "model": getattr(llm, "last_model", "") or llm.s.model}
+    if look_of(idea) != "classic":
+        brief["look"] = look_of(idea)      # the carousel look Wan chose on the idea (Studio's designs), kept
+    if fmt != "post":
+        brief["format"] = fmt              # carousel or poster, kept for the page
     store.table(db.IDEAS).update({"status": "drafted", "brief": brief, "error": None}).eq("id", idea["id"]).execute()
     return post_id
 
@@ -399,7 +439,27 @@ def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str 
             "prompt": "", "created_by": idea.get("created_by"),
             "meta": {"flow": "A", "slides": post.get("slides") or [], "stream": post.get("stream"),
                      "citation": post.get("citation") or "", "domain": post.get("domain"),
-                     "angle": post.get("angle"), "bg": bg}}
+                     "angle": post.get("angle"), "bg": bg, "look": look_of(idea)}}
+
+
+def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: list[dict[str, Any]],
+               bg: str = "none") -> dict[str, Any]:
+    """The idea's poster: a Design job (one 4:5 artwork) attached to its draft, in the look chosen on the idea."""
+    return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
+            "prompt": "", "created_by": idea.get("created_by"),
+            "meta": {"flow": "A", "design": "poster", "format": "portrait", "slides": words, "stream": post.get("stream"),
+                     "citation": post.get("citation") or "", "domain": post.get("domain"), "angle": post.get("angle"),
+                     "bg": bg, "look": look_of(idea)}}
+
+
+LOOKS = ("classic", "grid", "era", "photo")
+
+
+def look_of(idea: dict[str, Any]) -> str:
+    """The carousel look chosen on the idea, carried in its brief ({"look": ...}) until the bot writes the draft:
+    Semasa's own drawing ("classic") or one of ws.regulab Studio's designs. Anything else is "classic"."""
+    look = str(((idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}).get("look") or "classic")
+    return look if look in LOOKS else "classic"
 
 
 def media_jobs(idea: dict[str, Any], source: dict[str, Any], out: dict[str, Any], post_id: str) -> list[dict[str, Any]]:

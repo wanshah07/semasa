@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xml:lang="en-US" xmlns="http://www.w3.org/2005/Atom">
+  <id>tag:www.gov.uk,2005:/search/news-and-communications</id>
+  <link rel="alternate" type="text/html" href="https://www.gov.uk"/>
+  <link rel="self" type="application/atom+xml" href="https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=office-for-product-safety-and-standards"/>
+  <title>News and communications from Office for Product Safety and Standards</title>
+  <updated>2026-07-20T10:00:00+01:00</updated>
+  <author>
+    <name>HM Government</name>
+  </author>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/stronger-asbestos-controls-needed-to-keep-kids-safe</id>
+    <updated>2026-07-20T10:00:00+01:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/stronger-asbestos-controls-needed-to-keep-kids-safe"/>
+    <title>Stronger asbestos controls needed to keep kids safe</title>
+    <summary type="html">Government tells business.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/new-data-on-uk-cosmetic-product-safety-notifications</id>
+    <updated>2026-07-17T15:38:22+01:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/new-data-on-uk-cosmetic-product-safety-notifications"/>
+    <title>New data on UK cosmetic product safety notifications</title>
+    <summary type="html">Office for Product Safety and Standards (OPSS) has published new data demonstrating protections for consumers from unsafe cosmetics.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/government-steps-up-action-to-protect-children-as-ai-enabled-toys-emerge</id>
+    <updated>2026-07-06T00:30:00+01:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/government-steps-up-action-to-protect-children-as-ai-enabled-toys-emerge"/>
+    <title>Government steps up action to protect children as AI-enabled toys emerge</title>
+    <summary type="html">Government steps up action to protect children with toy safety rules</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/joint-statement-on-asbestos-in-consumer-products</id>
+    <updated>2026-06-19T15:29:43+01:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/joint-statement-on-asbestos-in-consumer-products"/>
+    <title>Joint Statement on Asbestos in Consumer Products</title>
+    <summary type="html">Joint Statement from OPSS, UKHSA and HSE.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/opss-launches-safe-vapes-usage-and-disposal-awareness-campaign</id>
+    <updated>2026-03-04T10:40:38+00:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/opss-launches-safe-vapes-usage-and-disposal-awareness-campaign"/>
+    <title>OPSS launches safe vapes usage and disposal awareness campaign</title>
+    <summary type="html">New resources aimed at younger people to raise awareness of safe vapes usage and disposal.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/opss-launches-second-phase-of-online-product-safety-campaign</id>
+    <updated>2026-02-19T10:10:25+00:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/opss-launches-second-phase-of-online-product-safety-campaign"/>
+    <title>OPSS launches second phase of online product safety campaign</title>
+    <summary type="html">New resources aimed at older people provided to raise awareness of unsafe products sold online.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/call-for-data-safety-of-cosmetic-ingredients</id>
+    <updated>2026-02-05T11:34:37+00:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/call-for-data-safety-of-cosmetic-ingredients"/>
+    <title>Call for data: safety of cosmetic ingredients</title>
+    <summary type="html">OPSS would like to invite any interested parties to submit any scientific information relevant to the safety assessment of cosmetic ingredients. </summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/safety-alert-issued-for-baby-sleep-pillows</id>
+    <updated>2025-12-11T00:00:00+00:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/safety-alert-issued-for-baby-sleep-pillows"/>
+    <title>Safety Alert issued for baby sleep pillows</title>
+    <summary type="html">OPSS has issued a Safety Alert for baby sleep pillows following child fatalities.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/urgent-safety-check-for-85000-tumble-dryers</id>
+    <updated>2025-12-10T14:04:47+00:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/urgent-safety-check-for-85000-tumble-dryers"/>
+    <title>Urgent safety check for 85,000 tumble dryers</title>
+    <summary type="html">Households with specific tumble dryers manufactured by Haier must check if their machine needs an urgent safety repair.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/opss-launches-new-online-product-safety-campaign</id>
+    <updated>2025-11-27T11:00:48+00:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/opss-launches-new-online-product-safety-campaign"/>
+    <title>OPSS launches new online product safety campaign</title>
+    <summary type="html">New resources launched to raise awareness of unsafe products sold online.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/warning-of-new-variant-of-dangerous-baby-self-feeding-products</id>
+    <updated>2025-10-23T09:31:25+01:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/warning-of-new-variant-of-dangerous-baby-self-feeding-products"/>
+    <title>Warning of new variant of dangerous baby self-feeding products</title>
+    <summary type="html">Baby self-feeding products present a risk of serious harm or death.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/haier-to-restart-heat-pump-tumble-dryer-safety-repair-programme</id>
+    <updated>2025-09-09T16:00:34+01:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/haier-to-restart-heat-pump-tumble-dryer-safety-repair-programme"/>
+    <title>Haier to restart heat pump tumble dryer safety repair programme</title>
+    <summary type="html">OPSS has confirmed that Haier can begin an updated corrective action programme to address a fire safety risk that may not have been fixed by an earlier repair.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/opss-launches-new-small-hazards-big-harm-campaign</id>
+    <updated>2025-08-12T13:12:20+01:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/opss-launches-new-small-hazards-big-harm-campaign"/>
+    <title>OPSS launches new small hazards, big harm campaign</title>
+    <summary type="html">Parents urged to be aware of everyday items that pose serious risks when swallowed by young children.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/opss-issues-stop-warning-for-17000-heat-pump-tumble-dryer-owners</id>
+    <updated>2025-08-01T00:00:00+01:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/opss-issues-stop-warning-for-17000-heat-pump-tumble-dryer-owners"/>
+    <title>OPSS issues stop warning for 17,000 heat pump tumble dryer owners</title>
+    <summary type="html">The Office for Product Safety and Standards has issued a stop warning for 17,000 heat pump tumble dryer owners.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/new-members-appointed-to-opss-advisory-board</id>
+    <updated>2025-07-31T00:00:00+01:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/new-members-appointed-to-opss-advisory-board"/>
+    <title>New members appointed to OPSS Advisory Board</title>
+    <summary type="html">New members appointed to the Office for Product Safety and Standards Advisory Board.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/new-posters-promoting-button-battery-safety</id>
+    <updated>2025-05-27T14:42:38+01:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/new-posters-promoting-button-battery-safety"/>
+    <title>New posters promoting button battery safety</title>
+    <summary type="html">New posters promoting button battery safety provide 5 top tips to keep children safe.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/opss-launches-new-baby-sleeping-products-resources</id>
+    <updated>2025-03-18T11:42:51+00:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/opss-launches-new-baby-sleeping-products-resources"/>
+    <title>OPSS launches new baby sleeping products resources</title>
+    <summary type="html">New resources launched to raise awareness about unsafe baby sleeping products.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/opss-adds-translations-to-safety-videos-for-gig-economy-sector</id>
+    <updated>2025-03-13T11:33:51+00:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/opss-adds-translations-to-safety-videos-for-gig-economy-sector"/>
+    <title>OPSS adds translations to safety videos for gig economy sector</title>
+    <summary type="html">E-bike safety videos translated into several languages by OPSS to assist food delivery riders.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/opss-warning-on-dangerous-upp-e-bike-batteries</id>
+    <updated>2025-02-27T11:06:54+00:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/opss-warning-on-dangerous-upp-e-bike-batteries"/>
+    <title>OPSS warning on dangerous UPP e-bike batteries</title>
+    <summary type="html">Repeat warning to stop using UPP batteries linked to multiple serious fires.</summary>
+  </entry>
+  <entry>
+    <id>tag:www.gov.uk,2005:/government/news/government-publishes-research-report-into-e-bike-battery-safety</id>
+    <updated>2025-01-29T00:00:00+00:00</updated>
+    <link rel="alternate" type="text/html" href="https://www.gov.uk/government/news/government-publishes-research-report-into-e-bike-battery-safety"/>
+    <title>Government publishes research report into e-bike battery safety</title>
+    <summary type="html">The Government has published new independent research into the safety of e-bike and e-scooter lithium-ion batteries, chargers and e-bike conversion kits.</summary>
+  </entry>
+</feed>

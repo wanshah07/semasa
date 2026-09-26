@@ -561,9 +561,13 @@ with our by render or via canva"*) makes new ad pictures for a perfume, with **o
 3. **Lukis.** Pick a design, adjust the headline, and it is drawn **two ways** for you to choose per design:
    - **Botol sebenar (dipotong):** the image model paints an empty scene, and the real bottle photo is cut out and set
      into it with a shadow. The label is always right, because it is the photo.
-   - **Suntingan AI:** the image model paints the scene with the bottle photo as its reference. The light is more
-     natural, but the model may redraw the label wrong. A model that can see reads the label back, and the page warns
-     when the brand or the perfume's name is missing.
+   - **Suntingan AI:** the image model paints the scene with the bottle photo as its reference, and is given the label
+     word for word. The light is more natural, but an image model redraws small print and can misspell it (the first
+     live Noir Rush run printed "VOUR RIAH EAU DE PARFUM 100 ML"). A model that can see reads the label back and checks
+     all four words: brand, name, concentration and size. A wrong label is drawn once more. If it is still wrong, the page
+     shows what is missing in red, and **Simpan** stays locked until you tick that you have checked the bottle yourself.
+   - The cut-out finds a small bottle in a big frame (a 6000×4000 pack shot works) and cuts it at full resolution. On a
+     glossy surface (marble, glass, water) it also gets its own reflection.
 4. **Simpan yang ini** keeps one version and deletes the other. *Cuba konsep lain* draws another design, and the
    previous round's files are deleted.
 
@@ -571,6 +575,9 @@ The rules behind it:
 
 - **Every word is typeset in Chrome** (Playfair Display, Anton, Poppins; `web/public/cards/fragrance.css`). The image
   model draws no words, so the spelling is exact. A long headline shrinks until it fits, and is never cut.
+- **No claim slips into the words the writer makes up.** A headline, tagline or call-out carrying a number, a duration,
+  "long lasting", "best", "No.1", "halal", "safe", "natural", "organic", "clinically", "dermatologist" or the like is
+  dropped (a headline falls back to the perfume's name). Such words may appear only as a badge you approved.
 - **Badges carry only the approved claims, word for word, or the concentration.** A fragrance is a cosmetic, so a claim
   such as "more than 8 hours" needs its evidence in the PIF. Whatever the writer suggests, anything else is dropped.
 - **Compact storage:** a design never kept is deleted after 7 days, with its files. *Buang* deletes a design and its

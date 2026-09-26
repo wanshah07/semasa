@@ -30,6 +30,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import re
 from collections import deque
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -77,10 +78,13 @@ For each design answer:
 "scene": one English paragraph for an image model: the setting, surface, props (ingredients from the notes, fabrics,
   light), lighting and colours, photographic style. There must be NO bottle, NO perfume, NO text, NO logos in it, and a
   clear empty place on the surface at the {side_word} where a bottle will stand;
+"surface": "glossy" when the bottle stands on a mirror-like surface (polished marble, glass, still water, lacquer), else
+  "matte";
 "ink": the hex colour of the big words (readable on that scene); "accent": a second hex colour for small words;
 "headline": the words set large: the perfume's name ("NOIR RUSH"), or for "behind" up to three short sensory words
   ("LUSHER SOFTER WARMER"). Never a claim;
-"tagline": up to three words in spaced capitals ("TIMELESS ELEGANT"), or "". Never a claim;
+"tagline": up to three words in spaced capitals ("TIMELESS ELEGANT"), or "". Never a claim: no duration, no number,
+  no "long lasting", "best", "No.1", "halal", "safe", "natural", "organic", "clinically", "dermatologist";
 "badges": up to three, copied WORD FOR WORD from APPROVED CLAIMS, or the concentration. Nothing else. [] if none;
 "callouts": for "notes" only, up to three: {{"title": "SWEET & FRUITY", "line": "sweet, juicy & playful"}}, naming
   accords that are in NOTES only; [] otherwise.
@@ -115,6 +119,17 @@ def read_reference(llm: Any, data: bytes, mime: str) -> dict[str, Any] | None:
             "brands": [str(b)[:60] for b in (out.get("brands") or [])][:6] if isinstance(out.get("brands"), list) else []}
 
 
+# words that make a claim (a duration, a ranking, a certification, a safety or origin promise): on a fragrance artwork
+# they may only appear as an approved badge, never in a headline, tagline or call-out the writer made up
+CLAIMY = re.compile(r"\d|%|\b(long[- ]?lasting|lasts?|hours?|hrs?|jam|tahan|kekal|best|terbaik|no\.?\s*1|number one|nombor"
+                    r" satu|halal|safe|selamat|natural|semula jadi|organic|organik|vegan|clinically|dermatolog\w*|proven|"
+                    r"terbukti|guarantee\w*|dijamin|pure|tulen|100)\b", re.I)
+
+
+def _claimy(text: str) -> bool:
+    return bool(CLAIMY.search(text or ""))
+
+
 def clean_concept(c: dict[str, Any], p: dict[str, Any]) -> dict[str, Any] | None:
     """One design as the page and the renderer need it; badges kept only when they are an approved claim word for word
     (or the concentration), whatever the writer answered."""
@@ -133,12 +148,18 @@ def clean_concept(c: dict[str, Any], p: dict[str, Any]) -> dict[str, Any] | None
     if layout == "notes":
         for k in (c.get("callouts") or [])[:3]:
             if isinstance(k, dict) and str(k.get("title") or "").strip():
-                callouts.append({"title": str(k["title"]).strip()[:28], "line": str(k.get("line") or "").strip()[:40]})
+                title, line = str(k["title"]).strip()[:28], str(k.get("line") or "").strip()[:40]
+                if not _claimy(title) and not _claimy(line):
+                    callouts.append({"title": title, "line": line})
+    headline = str(c.get("headline") or "").strip()[:40]
+    if not headline or _claimy(headline):
+        headline = str(p.get("name") or "")[:40]
+    tagline = str(c.get("tagline") or "").strip()[:40]
     return {"title": str(c.get("title") or "Design")[:60], "why": str(c.get("why") or "")[:240], "layout": layout,
             "side": side, "scene": str(c["scene"]).strip()[:900], "ink": _hex(c.get("ink"), "#fffaf0"),
-            "accent": _hex(c.get("accent"), "#f3e6c4"),
-            "headline": (str(c.get("headline") or p.get("name") or "").strip() or str(p.get("name") or ""))[:40].upper(),
-            "tagline": str(c.get("tagline") or "").strip()[:40].upper(), "badges": badges, "callouts": callouts}
+            "accent": _hex(c.get("accent"), "#f3e6c4"), "surface": "glossy" if c.get("surface") == "glossy" else "matte",
+            "headline": headline.upper(), "tagline": "" if _claimy(tagline) else tagline.upper(), "badges": badges,
+            "callouts": callouts}
 
 
 def _hex(v: Any, default: str) -> str:
@@ -166,42 +187,63 @@ def write_concepts(llm: Any, p: dict[str, Any], ref: dict[str, Any] | None = Non
 def cutout(data: bytes) -> bytes:
     """The bottle on a transparent ground, cropped to it (PNG). A photo that is already transparent is used as it is; a
     pack shot on a plain background has that background removed from the edges inwards. A busy background cannot be
-    removed safely, and says so rather than cutting the bottle badly."""
+    removed safely, and says so rather than cutting the bottle badly.
+
+    Two passes, because a pack shot is often a big frame with a small bottle in it (Wan's Noir Rush: 6000x4000, the
+    bottle about 3% of it): a rough pass finds WHERE the bottle is, then the cut is made again on that crop alone, at a
+    resolution where the edge is clean. Cutting the whole frame at thumbnail size gave a bottle edge a few pixels thick
+    and blown up twentyfold."""
     img = Image.open(io.BytesIO(data))
     img.load()
     img = img.convert("RGBA")
     alpha = img.getchannel("A")
     if alpha.getextrema()[0] < 16 and _corners_clear(alpha):
         return _crop(img)
-    small = img.convert("RGB")
-    small.thumbnail((360, 360))
+    rgb = img.convert("RGB")
+    rough, bg = _flood(rgb, 480, None)
+    box = rough.getbbox()
+    rw, rh = rough.size
+    if not box or rough.histogram()[255] < 0.002 * rw * rh or (box[3] - box[1]) < 0.05 * rh:
+        raise FragranceError("no bottle was found on the plain background: is the bottle in the photo?")
+    sx, sy = img.width / rw, img.height / rh
+    pad = int(0.04 * max(img.width, img.height))
+    crop_box = (max(0, int(box[0] * sx) - pad), max(0, int(box[1] * sy) - pad),
+                min(img.width, int(box[2] * sx) + pad), min(img.height, int(box[3] * sy) + pad))
+    part = img.crop(crop_box)
+    part.thumbnail((1400, 1400))
+    fine, _ = _flood(part.convert("RGB"), 720, bg)
+    fine = fine.filter(ImageFilter.MinFilter(3))           # one pixel in: no white fringe on a dark scene
+    part.putalpha(fine.resize(part.size, Image.BILINEAR).filter(ImageFilter.GaussianBlur(0.8)))
+    return _crop(part)
+
+
+def _flood(rgb: Image.Image, size: int, bg: tuple[int, ...] | None) -> tuple[Image.Image, tuple[int, ...]]:
+    """A mask (255 = the object) of what is NOT reachable from the edges through background colour, worked at `size`."""
+    small = rgb.copy()
+    small.thumbnail((size, size))
     w, h = small.size
     px = small.load()
     border = [px[x, 0] for x in range(w)] + [px[x, h - 1] for x in range(w)] + [px[0, y] for y in range(h)] + \
              [px[w - 1, y] for y in range(h)]
-    bg = tuple(sorted(c[i] for c in border)[len(border) // 2] for i in range(3))
-    spread = sum(1 for c in border if _dist(c, bg) > 40) / len(border)
-    if spread > 0.25:
-        raise FragranceError("the bottle photo has a busy background, so it cannot be cut out cleanly: upload a pack "
-                             "shot on a plain white or light background, or a transparent PNG")
-    seen = [[False] * h for _ in range(w)]
-    queue = deque((x, y) for x in range(w) for y in (0, h - 1)) + deque((x, y) for y in range(h) for x in (0, w - 1))
+    if bg is None:
+        bg = tuple(sorted(c[i] for c in border)[len(border) // 2] for i in range(3))
+        if sum(1 for c in border if _dist(c, bg) > 40) / len(border) > 0.25:
+            raise FragranceError("the bottle photo has a busy background, so it cannot be cut out cleanly: upload a "
+                                 "pack shot on a plain white or light background, or a transparent PNG")
+    seen = bytearray(w * h)
     mask = Image.new("L", (w, h), 255)
     mp = mask.load()
+    queue = deque([(x, y) for x in range(w) for y in (0, h - 1)] + [(x, y) for y in range(h) for x in (0, w - 1)])
     while queue:
         x, y = queue.popleft()
-        if not (0 <= x < w and 0 <= y < h) or seen[x][y]:
+        if not (0 <= x < w and 0 <= y < h) or seen[y * w + x]:
             continue
-        seen[x][y] = True
+        seen[y * w + x] = 1
         if _dist(px[x, y], bg) > 30:
             continue
         mp[x, y] = 0
         queue.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
-    if mask.histogram()[255] < 0.04 * w * h:
-        raise FragranceError("nothing was left after removing the background: is the bottle in the photo?")
-    full = mask.resize(img.size, Image.BILINEAR).filter(ImageFilter.GaussianBlur(1.2))
-    img.putalpha(full)
-    return _crop(img)
+    return mask, bg
 
 
 def _dist(a: tuple[int, ...], b: tuple[int, ...]) -> float:
@@ -229,13 +271,22 @@ def _crop(img: Image.Image) -> bytes:
 SIDE_WORDS = {"left": "left third", "center": "centre", "right": "right third"}
 
 
-def scene_prompt(c: dict[str, Any], with_bottle: bool) -> str:
+def label_words(p: dict[str, Any]) -> list[str]:
+    """What the real label says, as far as the perfume's own record knows: brand, name, concentration, size."""
+    return [w for w in (str(p.get(k) or "").strip() for k in ("brand", "name", "concentration", "size")) if w]
+
+
+def scene_prompt(c: dict[str, Any], with_bottle: bool, p: dict[str, Any] | None = None, strict: bool = False) -> str:
     where = SIDE_WORDS.get(c.get("side"), "centre")
     if with_bottle:
+        words = ", ".join(f'"{w}"' for w in label_words(p or {}))
+        label = (f"The label must read exactly these words and no others, spelled exactly: {words}. " if words else "")
+        again = ("The previous attempt changed the label text; this time copy the label pixel for pixel from the photo "
+                 "and do not invent any letters. " if strict else "")
         return (f"Place this exact perfume bottle standing on the surface in the {where} of this scene: {c['scene']} "
-                "Keep the bottle exactly as in the photo: the same shape, cap, liquid colour and the same label text; do "
-                "not redraw or change the label. Photorealistic luxury product photography, natural contact shadow. "
-                "Leave calm space for large words. No other bottles, no other text, no logos.")
+                "Keep the bottle exactly as in the photo: the same shape, cap, liquid colour and the same label; do not "
+                f"redraw or change the label. {label}{again}Photorealistic luxury product photography, natural contact "
+                "shadow. Leave calm space for large words. No other bottles, no other text, no logos.")
     return (f"{c['scene']} Leave a clear, empty place on the surface in the {where} for a product to stand. "
             "Photorealistic luxury product photography. No bottles, no perfume, no text, no letters, no logos, no people.")
 
@@ -270,7 +321,8 @@ def page_html(c: dict[str, Any], p: dict[str, Any], size: tuple[int, int], scene
     layout, side = c["layout"], c["side"]
     logo_html = (f'<img class="logo" src="{_uri(logo, "image/png")}">' if logo
                  else f'<div class="brand">{_esc(p.get("brand") or "Valorith")}</div>')
-    bottle_html = (f'<div class="shadow {side}"></div><img class="bottle {side}" src="{_uri(bottle, "image/png")}">'
+    gloss = " glossy" if c.get("surface") == "glossy" else ""
+    bottle_html = (f'<div class="shadow {side}{gloss}"></div><img class="bottle {side}{gloss}" src="{_uri(bottle, "image/png")}">'
                    if bottle else "")
     if layout == "hero":
         words = [_esc(x) for x in c["headline"].split()]
@@ -337,7 +389,8 @@ LABEL_PROMPT = ('Read the words printed on the perfume bottle in this picture, e
 
 def check_label(llm: Any, scene: bytes, p: dict[str, Any]) -> dict[str, Any] | None:
     """The AI edit redraws the bottle, and may redraw its label wrong. A model that sees reads it back; `ok` is whether
-    the brand and the perfume's name are both there. None when no such model answered (the page then says unchecked)."""
+    every word the label must carry is there (brand, name, concentration, size: "EAU DE PARFUM 100 ML" on an Extrait
+    de Parfum 30ml is caught), and `missing` names the ones that are not. None when no such model answered."""
     if llm is None or not getattr(llm, "configured", False):
         return None
     from .media_generator import shrink_for_read
@@ -349,10 +402,10 @@ def check_label(llm: Any, scene: bytes, p: dict[str, Any]) -> dict[str, Any] | N
         return None
     if not isinstance(out, dict):
         return None
-    reads = str(out.get("reads") or "").strip()[:160]
-    flat = " ".join(reads.lower().split())
-    want = [str(p.get("brand") or "Valorith"), str(p.get("name") or "")]
-    return {"reads": reads, "ok": all(" ".join(w.lower().split()) in flat for w in want if w.strip())}
+    reads = str(out.get("reads") or "").strip()[:200]
+    flat = re.sub(r"[^a-z0-9]", "", reads.lower())
+    missing = [w for w in label_words(p) if re.sub(r"[^a-z0-9]", "", w.lower()) not in flat]
+    return {"reads": reads, "ok": not missing, "missing": missing}
 
 
 # --- the job -------------------------------------------------------------------------------------------------------
@@ -409,9 +462,17 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
                         scene = provider.generate_from_text(scene_prompt(c, with_bottle=False), {}).data
                         art = render_art(c, p, size, scene, bottle, logo)
                     else:
-                        scene = provider.generate("image", p["bottle_url"], scene_prompt(c, with_bottle=True), {}).data
+                        # an AI redraw may misspell the label: it is read back, drawn once more if wrong, and a label
+                        # still wrong is kept only as a flagged picture Wan cannot save without checking it himself
+                        for attempt in (1, 2):
+                            scene = provider.generate("image", p["bottle_url"],
+                                                      scene_prompt(c, True, p, strict=attempt > 1), {}).data
+                            label = check_label(llm, scene, p)
+                            if label is None or label["ok"]:
+                                break
+                        if label is not None:
+                            label["attempts"] = attempt
                         art = render_art(c, p, size, scene, None, logo)
-                        label = check_label(llm, scene, p)
                     url, path = _store(store, row_id, Generated(art, "image/jpeg", "semasa-fragrance"), f"-{m}-{stamp}")
                     renders.append({"method": m, "url": url, "path": path,
                                     **({"label": label} if m == "ai_edit" and label else {})})

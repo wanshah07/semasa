@@ -25,6 +25,10 @@ body { overflow: hidden; }
 .bottle.right { right: calc(var(--w) * .10); }
 .shadow.right { right: calc(var(--w) * .08); }
 .bottle.center, .shadow.center { left: 50%; transform: translateX(-50%); }
+/* on a mirror-like surface (the concept says "glossy") the real bottle casts its own reflection, faded out */
+.bottle.glossy { bottom: calc(var(--h) * .17); height: calc(var(--h) * (var(--bottle) - .1));
+  -webkit-box-reflect: below 1px linear-gradient(transparent 58%, rgba(255,255,255,.34)); }
+.shadow.glossy { bottom: calc(var(--h) * .155); height: calc(var(--h) * .025); }
 
 /* hero: the name very large beside the bottle, the tagline under it */
 .hero { position: absolute; z-index: 4; top: calc(var(--h) * .20); width: calc(var(--w) * .50); text-align: center; }

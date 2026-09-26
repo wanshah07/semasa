@@ -45,7 +45,7 @@ def _settings():
 class Writer:
     configured = True
 
-    def __init__(self, out=CONCEPTS, sees=None, reads="VALORITH NOIR RUSH EXTRAIT DE PARFUM"):
+    def __init__(self, out=CONCEPTS, sees=None, reads="Valorith NOIR RUSH EXTRAIT DE PARFUM 30ml | 1.01 fl.oz"):
         self.out, self.sees, self.reads, self.seen, self.looked = out, sees, reads, [], []
         self.s = LLMSettings(provider="openai", api_key="k", base_url="https://x/v1", model="m", timeout=5)
 
@@ -183,8 +183,11 @@ def test_render_draws_both_ways_with_our_bottle_and_waits_for_wan(rig):
     cut, edit = rig["art"]
     assert cut["bottle"] is True and edit["bottle"] is False                    # the AI edit already has the bottle
     assert "No bottles" in rig["t2i"][0] and "no text" in rig["t2i"][0]          # the scene for the cut-out is empty
-    assert rig["edit"][0][0] == NOIR["bottle_url"] and "same label text" in rig["edit"][0][1]
-    assert m["renders"][1]["label"] == {"reads": "VALORITH NOIR RUSH EXTRAIT DE PARFUM", "ok": True}
+    assert rig["edit"][0][0] == NOIR["bottle_url"] and "do not redraw or change the label" in rig["edit"][0][1]
+    assert '"Valorith", "Noir Rush", "Extrait de Parfum", "30ml"' in rig["edit"][0][1]   # the label, word for word
+    assert m["renders"][1]["label"] == {"reads": "Valorith NOIR RUSH EXTRAIT DE PARFUM 30ml | 1.01 fl.oz", "ok": True,
+                                        "missing": [], "attempts": 1}
+    assert len(rig["edit"]) == 1
     assert cut["size"] == (1080, 1080)
     assert sorted(p.rsplit("-", 2)[1] for p in rig["uploads"]) == ["ai_edit", "cutout"]
     assert store.removed == []
@@ -208,10 +211,40 @@ def test_a_redraw_that_fails_keeps_the_last_round(rig, monkeypatch):
     assert job["status"] == "error" and job["meta"]["renders"] == before and store.removed == []
 
 
-def test_a_wrong_label_is_flagged_not_hidden(rig):
+def test_a_wrong_label_is_drawn_once_more_then_flagged_not_hidden(rig):
+    # what the live AI edit wrote on Noir Rush on 26 Sep 2026
     store = _store(_chosen())
-    f.process(store, store.tables["media_generations"][0], _settings(), Writer(reads="VALORTIH NOIR RASH"))
-    assert store.tables["media_generations"][0]["meta"]["renders"][1]["label"]["ok"] is False
+    f.process(store, store.tables["media_generations"][0], _settings(),
+              Writer(reads="Tafheinik VOUR RIAH EAU DE PARFUM 100 ML"))
+    label = store.tables["media_generations"][0]["meta"]["renders"][1]["label"]
+    assert label["ok"] is False and label["attempts"] == 2 and len(rig["edit"]) == 2
+    assert label["missing"] == ["Valorith", "Noir Rush", "Extrait de Parfum", "30ml"]
+    assert "previous attempt changed the label" in rig["edit"][1][1] and "previous attempt" not in rig["edit"][0][1]
+
+
+def test_the_wrong_concentration_or_size_is_caught():
+    llm = Writer(reads="VALORITH NOIR RUSH EAU DE PARFUM 100 ML")
+    label = f.check_label(llm, _jpeg(), NOIR)
+    assert label["ok"] is False and label["missing"] == ["Extrait de Parfum", "30ml"]
+    assert f.check_label(Writer(reads="valorith noir rush extrait de parfum 30 ML"), _jpeg(), NOIR)["ok"] is True
+
+
+def test_the_writer_cannot_slip_a_claim_into_the_words():
+    c = f.clean_concept({**CONCEPTS["designs"][2], "layout": "notes", "headline": "8 HOURS OF NOIR",
+                         "tagline": "Long lasting luxury", "surface": "glossy",
+                         "callouts": [{"title": "Warm & woody", "line": "oud and amber"},
+                                      {"title": "Halal certified", "line": "safe for all"},
+                                      {"title": "Clean musk", "line": "100% natural"}]}, NOIR)
+    assert c["headline"] == "NOIR RUSH" and c["tagline"] == "" and c["surface"] == "glossy"
+    assert [k["title"] for k in c["callouts"]] == ["Warm & woody"]
+    ok = f.clean_concept({**CONCEPTS["designs"][0], "tagline": "Deep magnetic allure"}, NOIR)
+    assert ok["tagline"] == "DEEP MAGNETIC ALLURE" and ok["surface"] == "matte"
+
+
+def test_a_glossy_surface_gives_the_real_bottle_a_reflection():
+    c = f.clean_concept({**CONCEPTS["designs"][0], "surface": "glossy"}, NOIR)
+    assert 'class="bottle left glossy"' in f.page_html(c, NOIR, (1080, 1080), _jpeg(), f.cutout(_png()), None)
+    assert "glossy" not in f.page_html({**c, "surface": "matte"}, NOIR, (1080, 1080), _jpeg(), f.cutout(_png()), None)
 
 
 def test_one_method_failing_leaves_the_other_to_pick(rig, monkeypatch):
@@ -288,6 +321,26 @@ def test_a_plain_background_is_cut_away_and_the_bottle_kept():
     assert out.mode == "RGBA" and out.getpixel((0, 0))[3] == 0
     assert out.getpixel((out.width // 2, out.height // 2))[3] == 255
     assert 280 <= out.width <= 330 and 680 <= out.height <= 720                   # cropped to the bottle
+
+
+def test_a_small_bottle_in_a_big_white_frame_is_found_and_cut_cleanly():
+    # Wan's Noir Rush pack shot: 6000x4000 on pure white, the bottle about 3% of the frame. The old cut refused it.
+    img = Image.new("RGB", (3000, 2000), (255, 255, 255))
+    d = ImageDraw.Draw(img)
+    d.rectangle((1450, 700, 1550, 800), fill=(60, 60, 60))
+    d.rounded_rectangle((1380, 800, 1620, 1300), 30, fill=(234, 236, 177))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    out = Image.open(io.BytesIO(f.cutout(buf.getvalue())))
+    assert out.getpixel((0, 0))[3] == 0 and out.getpixel((out.width // 2, out.height // 2))[3] == 255
+    assert 230 <= out.width <= 250 and 590 <= out.height <= 610                       # full resolution, not a thumbnail
+
+
+def test_an_empty_white_frame_says_no_bottle():
+    buf = io.BytesIO()
+    Image.new("RGB", (800, 600), (255, 255, 255)).save(buf, "PNG")
+    with pytest.raises(f.FragranceError, match="no bottle"):
+        f.cutout(buf.getvalue())
 
 
 def test_a_transparent_png_is_used_as_it_is():

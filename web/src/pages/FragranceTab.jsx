@@ -277,6 +277,7 @@ function Job({ r, mine, gens, onToast }) {
   const step = m.step || "concepts";
   const [busy, setBusy] = useState(false);
   const [again, setAgain] = useState(false);
+  const [checked, setChecked] = useState({});
   const working = r.status === "pending" || r.status === "processing";
 
   async function send(patch, msg) {
@@ -332,14 +333,28 @@ function Job({ r, mine, gens, onToast }) {
               <a href={x.url} target="_blank" rel="noopener noreferrer"><img src={x.url} alt="" loading="lazy" className="w-full rounded-tile bg-surface-2 object-contain" /></a>
               <figcaption className="mt-1.5 space-y-1 text-[12px]">
                 <b className="block">{L(METHOD[x.method] || [x.method, x.method])}</b>
+                {x.method === "cutout" && <p className="text-ok">{t("Botol dan label ialah gambar sebenar anda: tepat.", "The bottle and label are your real photo: exact.")}</p>}
                 {x.method === "ai_edit" && (x.label ? (x.label.ok
                   ? <p className="text-ok">{t("Label dibaca: {reads}", "Label reads: {reads}", { reads: x.label.reads })}</p>
-                  : <p className="text-warn [overflow-wrap:anywhere]">{t("Label mungkin salah: dibaca \"{reads}\". Semak sebelum simpan.", "The label may be wrong: it reads \"{reads}\". Check before keeping it.", { reads: x.label.reads || "—" })}</p>)
-                  : <p className="text-muted">{t("Label belum disemak: semak sendiri.", "Label not checked: check it yourself.")}</p>)}
-                {mine && step === "pick" && !working && (
-                  <Button size="sm" disabled={busy} onClick={() => send({ step: "save", chosen: x.method }, t("Disimpan; yang satu lagi dibuang.", "Saved; the other one is discarded."))}>
-                    <Save size={12} /> {t("Simpan yang ini", "Keep this one")}</Button>
-                )}
+                  : <p className="text-danger [overflow-wrap:anywhere]">{t("Label SALAH: AI menulis \"{reads}\". Tiada: {missing}.", "Label WRONG: the AI wrote \"{reads}\". Missing: {missing}.", { reads: x.label.reads || "—", missing: (x.label.missing || []).join(", ") || "—" })}
+                    {x.label.attempts > 1 ? ` ${t("(dilukis 2 kali)", "(drawn twice)")}` : ""}</p>)
+                  : <p className="text-warn">{t("Label belum disemak oleh AI: semak sendiri.", "The label was not checked: check it yourself.")}</p>)}
+                {mine && step === "pick" && !working && (() => {
+                  // an AI redraw whose label was not read back correctly is not kept without Wan's own check
+                  const guarded = x.method === "ai_edit" && !x.label?.ok;
+                  return (
+                    <>
+                      {guarded && (
+                        <label className="flex items-start gap-1.5 text-[11px]">
+                          <input type="checkbox" className="mt-0.5" checked={!!checked[x.method]} onChange={(e) => setChecked({ ...checked, [x.method]: e.target.checked })} />
+                          <span>{t("Saya sudah semak: nama, kepekatan dan saiz pada botol tepat.", "I have checked it: the name, concentration and size on the bottle are right.")}</span>
+                        </label>
+                      )}
+                      <Button size="sm" disabled={busy || (guarded && !checked[x.method])} onClick={() => send({ step: "save", chosen: x.method }, t("Disimpan; yang satu lagi dibuang.", "Saved; the other one is discarded."))}>
+                        <Save size={12} /> {t("Simpan yang ini", "Keep this one")}</Button>
+                    </>
+                  );
+                })()}
                 {step === "saved" && <a href={x.url} target="_blank" rel="noopener noreferrer" download className="inline-flex items-center gap-1 text-accent hover:underline"><Download size={12} /> {t("Muat turun", "Download")}</a>}
               </figcaption>
             </figure>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, Clock, ExternalLink, ImagePlus, LayoutTemplate, Loader2, Plus, RotateCcw, Trash2,
-  Wand2, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Eye, ImagePlus, LayoutTemplate, Loader2, Pencil, Plus, RotateCcw,
+  Save, Trash2, Wand2, X } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { STREAMS } from "../lib/brand";
 import { normaliseSlides, scan } from "../lib/compliance";
@@ -46,6 +46,13 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
   const [fromPost, setFromPost] = useState("");
   const [busy, setBusy] = useState("");
   const [look, setLook] = useState("classic");
+  // a reference to take ideas from (Wan, 26 Sep 2026: "upload reference and AI will review > render and get
+  // confirmation to save the design"): read by the worker, drawn, and kept only when Wan presses Simpan
+  const [styleFile, setStyleFile] = useState(null);
+  const [autoLook, setAutoLook] = useState(true);
+  const stylePreview = useMemo(() => (styleFile ? URL.createObjectURL(styleFile) : ""), [styleFile]);
+  useEffect(() => () => { if (stylePreview) URL.revokeObjectURL(stylePreview); }, [stylePreview]);
+  useEffect(() => { if (!styleFile && bg === "from_ref") setBg("none"); }, [styleFile]); // eslint-disable-line react-hooks/exhaustive-deps
   const [lookBlocked, setLookBlocked] = useState(null);
   const preview = useMemo(() => (file ? URL.createObjectURL(file) : ""), [file]);
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
@@ -64,7 +71,8 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
   const uRow = gens.rows.find((r) => r.id === unsplashRow);
   const unsplashReady = !!uRow && (!!uRow.generated_media_url || !!uRow.meta?.pick) && uRow.status !== "error";
   const ready = (words === "ai" ? brief.trim().length > 0 : own.length > 0)
-    && (bg !== "upload" || file) && (bg !== "ai" || bgPrompt.trim()) && (bg !== "unsplash" || unsplashReady) && !lookBlocked;
+    && (bg !== "upload" || file) && (bg !== "ai" || bgPrompt.trim()) && (bg !== "unsplash" || unsplashReady)
+    && (!lookBlocked || (styleFile && autoLook));
   const previewBg = bg === "upload" ? preview : bg === "unsplash" ? (uRow?.generated_media_url || unsplashPick?.thumb || "") : "";
   // the design preview: Wan's own words when he writes them, sample words while the bot is to write them
   const sampleWords = !(words === "own" && own.length);
@@ -95,7 +103,9 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
     if (!ready) return onToast(t("Lengkapkan perkataan dan latar dahulu.", "Fill in the words and the background first."), "warn");
     setBusy("send");
     let uploaded = null;
+    let styleUp = null;
     try {
+      if (styleFile) styleUp = await uploadReference(user, styleFile);
       let bgValue = "none";
       if (bg === "upload") {
         uploaded = await uploadReference(user, file);
@@ -112,18 +122,24 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
       } else if (bg === "unsplash") {
         bgValue = unsplashRow;                               // the worker waits for the pick to be stored, then draws on it
       }
-      const meta = { flow: "design", design, format, stream, bg: bgValue, look, eyebrow: eyebrow.trim(), citation: citation.trim(),
+      if (bg === "from_ref") bgValue = "from_ref";           // an original background in the reference's mood (worker)
+      const meta = { flow: "design", design, format, stream, bg: bgValue, look: styleUp && autoLook ? "auto" : look,
+        eyebrow: eyebrow.trim(), citation: citation.trim(),
+        ...(styleUp ? { style_ref: { url: styleUp.url, path: styleUp.path, name: styleFile.name } } : {}),
         ...(words === "ai" ? { brief: brief.trim() } : { slides: own }), ...(fromPost ? { from_post: fromPost } : {}) };
       const ins = await supabase.from(TABLES.media).insert({
         mode: "slides", type: "image", status: "pending", created_by: user.id, prompt: "", post_id: attach || null,
         reference_url: uploaded?.url ?? null, reference_path: uploaded?.path ?? null, meta,
       });
       if (ins.error) throw new Error(errText(ins.error));
-      onToast(t("Dalam giliran. Hasil muncul di bawah dalam beberapa minit.", "Queued. The result appears below within a few minutes."), "ok");
+      onToast(styleUp
+        ? t("Dalam giliran. AI semak rujukan, lukis, kemudian tunggu anda tekan Simpan.", "Queued. The AI reviews the reference, draws, then waits for you to press Save.")
+        : t("Dalam giliran. Hasil muncul di bawah dalam beberapa minit.", "Queued. The result appears below within a few minutes."), "ok");
       gens.reload();
-      setFile(null);
+      setFile(null); setStyleFile(null);
     } catch (err) {
       if (uploaded) await removeReference(uploaded.path);
+      if (styleUp) await removeReference(styleUp.path);
       onToast(err.message || String(err), "danger");
     } finally {
       setBusy("");
@@ -158,9 +174,38 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
                 options={[["", "—"], ...usable.slice(0, 150).map((p) => [p.id, `${p.date || "—"} · ${(p.hook || "").slice(0, 60) || p.id.slice(0, 8)}`])]} /></label>
           </div>
           <div className="min-w-0 space-y-4">
+            <div className="rounded-tile border border-dashed border-line p-3">
+              <Label hint={t("pilihan · AI semak, lukis, anda sahkan", "optional · the AI reviews, draws, you confirm")}>{t("Rujukan reka bentuk", "Design reference")}</Label>
+              <div className="flex flex-wrap items-center gap-3">
+                {stylePreview ? <img src={stylePreview} alt="" className="h-20 w-20 rounded-tile object-cover" />
+                  : <span className="grid h-20 w-20 place-items-center rounded-tile bg-surface-2 text-muted"><Eye size={18} /></span>}
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <label className="cursor-pointer text-sm text-accent underline">
+                    {styleFile ? t("Tukar rujukan", "Change reference") : t("Muat naik reka bentuk yang anda suka", "Upload a design you like")}
+                    <input type="file" accept={IMAGE_TYPES.join(",")} className="hidden" onChange={(e) => {
+                      const f = e.target.files?.[0]; e.target.value = "";
+                      if (!f) return;
+                      const why = refusal(f);
+                      if (why) onToast(why, "warn"); else setStyleFile(f);
+                    }} />
+                  </label>
+                  {styleFile && (
+                    <>
+                      <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={autoLook} onChange={(e) => setAutoLook(e.target.checked)} />
+                        {t("Biar AI pilih reka bentuk yang paling hampir", "Let the AI pick the nearest design")}</label>
+                      <button type="button" onClick={() => setStyleFile(null)} className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-danger">
+                        <X size={12} /> {t("Buang rujukan", "Remove reference")}</button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] text-muted">{t("AI baca rujukan: apa yang baik, apa yang mesti diubah (CTA, laman web, logo jenama lain), dan buat reka bentuk asli, bukan salinan. Pratonton menunggu anda tekan Simpan; yang tidak disimpan dipadam selepas 7 hari.",
+                "The AI reads the reference: what works, what must change (a CTA, a website, another brand's logo), and makes an original design, not a copy. The preview waits for your Save; one not saved is deleted after 7 days.")}</p>
+            </div>
             <div><Label>{t("Latar", "Background")}</Label>
               <Segmented value={bg} onChange={setBg} options={[["none", t("Kertas jenama", "Brand paper")],
-                ["upload", t("Gambar saya", "My picture")], ["ai", t("Gambar AI", "AI picture")], ["unsplash", "Unsplash"]]} /></div>
+                ["upload", t("Gambar saya", "My picture")], ["ai", t("Gambar AI", "AI picture")], ["unsplash", "Unsplash"],
+                ...(styleFile ? [["from_ref", t("Ilham rujukan (AI)", "From the reference (AI)")]] : [])]} /></div>
             {bg === "unsplash" && (
               <div className="space-y-2">
                 <UnsplashSearch user={user} stream={stream} onToast={onToast} compact
@@ -227,6 +272,8 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
         </div>
 
         <div className="mt-5 border-t border-line pt-4">
+          {styleFile && autoLook && <p className="mb-2 text-[12px] text-accent">{t("AI akan memilih reka bentuk daripada rujukan; pilihan di bawah hanya pratonton.",
+            "The AI picks the design from the reference; the choice below is only a preview.")}</p>}
           <LookPicker value={look} onChange={setLook} slides={previewSlides} sample={sampleWords} stream={stream}
             eyebrow={eyebrow.trim()} citation={citation.trim()} bgUrl={previewBg} bgChosen={bg !== "none"}
             size={SIZE_PX[format]} onBlocked={setLookBlocked} />
@@ -291,6 +338,65 @@ function SlideRows({ rows, setRows, design }) {
   );
 }
 
+/* The art director's reading of a reference and Wan's three answers to the preview: Simpan (keep it; it is attached
+   to its post only now), Ubah & render semula (a note, then drawn again), Buang. The worker does each, so its files
+   and its post stay in step. */
+function ReviewPanel({ row, mine, onToast, gens }) {
+  const { t } = useLang();
+  const [note, setNote] = useState("");
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const m = row.meta || {};
+  const rv = m.review || {};
+  const waiting = m.awaiting_confirm && row.status === "done";
+  async function send(patch, msg) {
+    setBusy(true);
+    const { data, error } = await supabase.from(TABLES.media)
+      .update({ status: "pending", attempts: 0, error: null, meta: { ...m, ...patch } }).eq("id", row.id).select("id");
+    setBusy(false);
+    if (error) return onToast(errText(error), "danger");
+    if (!data?.length) return onToast(t("Tidak disimpan: hanya orang yang membuatnya boleh mengubahnya.", "Not saved: only the person who made it can change it."), "warn");
+    onToast(msg, "ok"); setOpen(false); setNote(""); gens.reload();
+  }
+  return (
+    <div className="mt-3 rounded-tile bg-surface-2/70 p-3 text-[12px]">
+      <p className="flex items-center gap-2 font-semibold">
+        {m.style_ref?.url && <img src={m.style_ref.url} alt="" className="h-9 w-9 shrink-0 rounded object-cover" />}
+        {t("Semakan rujukan", "Reference review")}
+        {m.look_chosen && <span className="rounded-pill bg-surface px-2 py-0.5 text-[10px] font-normal text-muted">{t("reka bentuk", "design")}: {m.look_chosen}</span>}
+      </p>
+      {rv.unread ? <p className="mt-1.5 text-warn [overflow-wrap:anywhere]">{t("Rujukan tidak dibaca", "Reference not read")}: {rv.unread}</p> : (
+        <>
+          {rv.summary && <p className="mt-1.5 [overflow-wrap:anywhere]">{rv.summary}</p>}
+          {rv.keep?.length > 0 && <p className="mt-1.5 [overflow-wrap:anywhere]"><b>{t("Diambil", "Taken")}:</b> {rv.keep.join(" · ")}</p>}
+          {rv.change?.length > 0 && <p className="mt-1 text-warn [overflow-wrap:anywhere]"><b>{t("Diubah", "Changed")}:</b> {rv.change.join(" · ")}</p>}
+          {rv.brands?.length > 0 && <p className="mt-1 text-muted [overflow-wrap:anywhere]">{t("Jenama dalam rujukan (tidak disalin)", "Brands in the reference (not copied)")}: {rv.brands.join(", ")}</p>}
+        </>
+      )}
+      {(m.revisions || []).length > 0 && <p className="mt-1 text-muted [overflow-wrap:anywhere]">{t("Diubah {n} kali · nota terakhir", ["Changed {n} time · last note", "Changed {n} times · last note"], { n: m.revisions.length })}: {m.revisions[m.revisions.length - 1].note || "—"}</p>}
+      {m.saved && <p className="mt-2 inline-flex items-center gap-1 font-semibold text-ok"><CheckCircle2 size={12} /> {t("Disimpan", "Saved")}</p>}
+      {mine && waiting && (
+        <div className="mt-2.5 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={busy} onClick={() => send({ confirm: "save" }, t("Disimpan. Dilampirkan pada post jika dipilih.", "Saved. Attached to the post if one was chosen."))}>
+              <Save size={12} /> {t("Simpan", "Save")}</Button>
+            <Button size="sm" variant="soft" disabled={busy} onClick={() => setOpen(!open)}><Pencil size={12} /> {t("Ubah & render semula", "Change & redraw")}</Button>
+          </div>
+          {open && (
+            <div className="space-y-2">
+              <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={600} aria-label={t("Apa yang perlu diubah", "What to change")}
+                placeholder={t("Cth: latar lebih gelap, tajuk lebih pendek, warna ikut jenama", "E.g. a darker background, a shorter headline, brand colours")} />
+              <Button size="sm" disabled={busy || !note.trim()} onClick={() => send({ revise: { note: note.trim() } }, t("Dihantar. Dilukis semula dalam beberapa minit.", "Sent. Redrawn within a few minutes."))}>
+                <RotateCcw size={12} /> {t("Render semula", "Redraw")}</Button>
+            </div>
+          )}
+        </div>
+      )}
+      {row.status !== "done" && (m.confirm || m.revise) && <p className="mt-2 inline-flex items-center gap-1 text-muted"><Loader2 size={12} className="animate-spin" /> {m.confirm ? t("Menyimpan…", "Saving…") : t("Melukis semula…", "Redrawing…")}</p>}
+    </div>
+  );
+}
+
 function DesignResults({ rows, user, gens, onToast, designs }) {
   const { t } = useLang();
   if (!rows.length) {
@@ -324,10 +430,12 @@ function DesignResults({ rows, user, gens, onToast, designs }) {
             )}
             <div className="p-4">
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                <span className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 font-semibold ${r.status === "done" ? "bg-ok/10 text-ok"
+                <span className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 font-semibold ${r.status === "done" && m.awaiting_confirm ? "bg-warn/10 text-warn"
+                  : r.status === "done" ? "bg-ok/10 text-ok"
                   : r.status === "error" ? "bg-danger/10 text-danger" : "bg-warn/10 text-warn"}`}>
                   <Icon size={12} className={r.status === "processing" ? "animate-spin" : ""} />
-                  {r.status === "done" ? t("Siap", "Done") : r.status === "error" ? t("Gagal", "Failed") : r.status === "processing" ? t("Melukis", "Drawing") : t("Menunggu", "Waiting")}
+                  {r.status === "done" ? (m.awaiting_confirm ? t("Tunggu pengesahan", "Awaiting your Save") : m.saved ? t("Disimpan", "Saved") : t("Siap", "Done"))
+                    : r.status === "error" ? t("Gagal", "Failed") : r.status === "processing" ? t("Melukis", "Drawing") : t("Menunggu", "Waiting")}
                 </span>
                 <span className="text-muted">{designs[m.design] || m.design} · {SIZE_LABEL[m.format] || "—"} · {timeAgo(r.created_at)}</span>
               </div>
@@ -338,6 +446,7 @@ function DesignResults({ rows, user, gens, onToast, designs }) {
               {hard.length > 0 && <ul className="mt-2 space-y-1 text-[11px] text-danger">{hard.map((f, i) => <li key={i} className="[overflow-wrap:anywhere]"><b>{f.where}</b>: {f.msg}</li>)}</ul>}
               {soft.length > 0 && <ul className="mt-2 space-y-1 text-[11px] text-warn">{soft.map((f, i) => <li key={i} className="[overflow-wrap:anywhere]"><b>{f.where}</b>: {f.msg}</li>)}</ul>}
               {r.error && <p className="mt-2 [overflow-wrap:anywhere] rounded-tile bg-danger/5 p-2 text-[11px] text-danger">{r.error}</p>}
+              {m.style_ref && <ReviewPanel row={r} mine={mine} onToast={onToast} gens={gens} />}
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {urls[0] && <a href={urls[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">
                   <ExternalLink size={11} /> {t("Buka fail", "Open file")}</a>}

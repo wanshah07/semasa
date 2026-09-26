@@ -185,6 +185,28 @@ def slide_ground(store: Any, row: dict[str, Any]) -> tuple[bytes | None, str | N
     return data, pick["id"]
 
 
+def reference_ground(store: Any, row_id: str, meta: dict[str, Any], s: MediaSettings,
+                     note: str = "") -> tuple[bytes | None, str | None]:
+    """An ORIGINAL background in the reference's mood (the review's words), made once by the image provider and kept
+    on the job, so a redraw that changes only the words does not spend the picture again."""
+    if meta.get("ground_url"):
+        data, _, _ = fetch_reference(meta["ground_url"])
+        return data, "from_ref"
+    from .design import background_prompt
+    prompt = background_prompt(meta.get("review"), note)
+    if not prompt:
+        meta["bg_missing"] = "the reference was not read, so there was no background to make: drawn on paper"
+        return None, None
+    try:
+        gen = make_provider(s.provider, s).generate_from_text(prompt, {})
+    except Exception as exc:  # noqa: BLE001 - the words still get drawn, on paper, and the card says why
+        meta["bg_missing"] = f"the background picture could not be made ({str(exc)[:160]}): drawn on paper"
+        return None, None
+    url, path = _store(store, row_id, gen, "-ground")
+    meta.update(ground_url=url, ground_path=path, ground_model=gen.model)
+    return gen.data, "from_ref"
+
+
 SLIDES_WAIT = timedelta(hours=2)
 
 
@@ -195,7 +217,7 @@ def picture_pending(store: Any, row: dict[str, Any]) -> bool:
     SLIDES_WAIT the slides are drawn anyway (on paper, and bg_missing says so) rather than wait for ever."""
     meta = row.get("meta") or {}
     bg = str(meta.get("bg") or "none")
-    if bg in ("none", "reference") or (bg == "post_image" and not row.get("post_id")):
+    if bg in ("none", "reference", "from_ref") or (bg == "post_image" and not row.get("post_id")):
         return False
     try:
         made = datetime.fromisoformat(str(row.get("created_at")).replace("Z", "+00:00"))
@@ -223,6 +245,15 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
 
     row_id = row["id"]
     meta = dict(row.get("meta") or {})
+    if meta.get("confirm") == "save":
+        # Wan confirmed a reference design's preview: it is kept and attached, nothing is drawn again
+        meta.pop("confirm", None)
+        meta.update(saved=True, awaiting_confirm=False, saved_at=datetime.now(UTC).isoformat())
+        db.finish_media(store, row_id, status="done", error=None, meta=meta)
+        if row.get("post_id"):
+            db.attach_media_to_draft(store, row["post_id"], row_id)
+        log.info("%s: design confirmed and saved", row_id)
+        return True
     if picture_pending(store, row):
         # drawn on the post's picture, which is still being made: wait for it rather than draw on paper
         store.table(db.MEDIA).update({"status": "pending", "attempts": max(0, int(row.get("attempts") or 1) - 1),
@@ -233,8 +264,34 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         items = slides.normalise(meta.get("slides"))
         stream = meta.get("stream") or "regulab"
         kind = str(meta.get("design") or "")
+        style = meta.get("style_ref") if isinstance(meta.get("style_ref"), dict) else {}
+        revise = meta.pop("revise", None) if isinstance(meta.get("revise"), dict) else None
+        note = str((revise or {}).get("note") or "").strip()[:600]
+        if revise:
+            # "Ubah & render semula": the words are written again with the note (when the bot wrote them) and the
+            # background made again; the earlier version is noted, not kept
+            meta.setdefault("revisions", []).append({"note": note, "at": datetime.now(UTC).isoformat()})
+            if str(meta.get("brief") or "").strip():
+                items = []
+            meta.pop("ground_url", None)
+            if revise.get("review_again"):
+                meta.pop("review", None)
+        if style.get("url") and "review" not in meta:
+            try:
+                ref, ref_ct, _ = fetch_reference(style["url"])
+                meta["review"] = design.review(llm, ref, ref_ct, kind, stream, note) or {
+                    "unread": "no model that can see answered, so the design follows your own choices"}
+            except Exception as exc:  # noqa: BLE001 - an unreadable reference must not stop the drawing
+                meta["review"] = {"unread": f"the reference could not be opened: {str(exc)[:160]}"}
+            store.table(db.MEDIA).update({"meta": meta}).eq("id", row_id).execute()
+        rev = meta.get("review") if isinstance(meta.get("review"), dict) else {}
         if kind and not items and str(meta.get("brief") or "").strip():
-            items, cit = design.write(llm, str(meta["brief"]), kind, stream)
+            brief = str(meta["brief"])
+            if rev.get("words_note"):
+                brief += f"\n\nShape of the words (from the reference): {rev['words_note']}"
+            if note:
+                brief += f"\n\nChanges Wan asked for on the last version: {note}"
+            items, cit = design.write(llm, brief, kind, stream)
             meta.update(slides=items, written_by=getattr(llm, "last_model", "") or None)
             if not str(meta.get("citation") or "").strip():
                 meta["citation"] = cit
@@ -257,11 +314,20 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             else:
                 eyebrow = str((reg.get("domains") or {}).get(meta.get("domain") or "", "") or "")
         website = str(reg.get("website") or "www.kkmhalalconsultant.com")
-        ground, ground_id = slide_ground(store, row)
+        if meta.get("bg") == "from_ref":
+            ground, ground_id = reference_ground(store, row_id, meta, s, note)
+        else:
+            ground, ground_id = slide_ground(store, row)
         if meta.get("bg") not in (None, "none") and ground is None:
             meta["bg_missing"] = "the background picture was not ready, so the slides were drawn on paper"
         size = design.size_of(meta, stream) if kind else None
         look = str(meta.get("look") or "classic")
+        if look == "auto":
+            # "let the reference decide": the art director's nearest look; Photo needs a picture under it
+            look = str(rev.get("look") or "grid")
+            if look == "photo" and not ground:
+                look = "grid"
+            meta["look_chosen"] = look
         if studio_cards.is_studio_look(look):
             # ws.regulab Studio's own designs, drawn by Studio's own code in headless Chrome
             from .providers.cloudflare import content_type_of
@@ -282,9 +348,11 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         meta.update(slides=items, slide_urls=urls, slide_paths=paths, sha256=sums, count=len(urls), look=look,
                     bg_used=ground_id, content_type="image/jpeg", bytes=sum(len(p) for p in pics),
                     finished_at=datetime.now(UTC).isoformat())
+        if style.get("url"):
+            meta["awaiting_confirm"] = not meta.get("saved")     # waits for Wan's Simpan; never attached before it
         db.finish_media(store, row_id, status="done", generated_media_url=urls[0], provider="semasa",
                         model="slides-v1" if look == "classic" else f"studio-{look}", error=None, meta=meta)
-        if row.get("post_id"):
+        if row.get("post_id") and not meta.get("awaiting_confirm"):
             # a Design artwork is added to the post's pictures; a post's own carousel replaces its earlier one
             (db.attach_media_to_draft if kind else db.attach_slides_to_draft)(store, row["post_id"], row_id)
         log.info("%s: %d slides drawn (%s)", row_id, len(urls), look)
@@ -303,6 +371,10 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
                 llm: LLM | None = None) -> bool:
     if row.get("mode") == "slides":
         return process_slides(store, row, s, llm)
+    if row.get("mode") == "fragrance":
+        # a perfume ad in steps: concepts, two renders, Wan's pick (semasa.fragrance)
+        from . import fragrance
+        return fragrance.process(store, row, s, llm)
     if row.get("mode") == "clip":
         # a short cut from a long video (semasa.video)
         from . import video
@@ -396,6 +468,14 @@ def main() -> int:
     paste_note = watch.process_pasted(store, llm)       # links pasted in Regulatory / Latest publication (013)
     watch_note = "\n\n".join(x for x in (watch_note, paste_note) if x)
 
+    from . import design as design_mod
+    cleared = design_mod.purge_unconfirmed(store)       # design previews nobody confirmed within 7 days
+    if cleared:
+        log.info("%d unconfirmed design preview(s) cleared", cleared)
+    from . import fragrance
+    gone = fragrance.purge_unsaved(store)                # fragrance designs never saved within 7 days
+    if gone:
+        log.info("%d unsaved fragrance design(s) cleared", gone)
     recovered = db.recover_stale_media(store, s.stale_minutes)
     only_id = (os.environ.get("MEDIA_ONLY_ID") or "").strip() or None
     rows = db.claim_pending(store, s.batch, only_id)

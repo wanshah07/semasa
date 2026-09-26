@@ -13,6 +13,7 @@ import IdeaComposer from "./components/IdeaComposer";
 import PromptLibrary from "./components/PromptLibrary";
 import DesignTab from "./pages/DesignTab";
 import FaqTab from "./pages/FaqTab";
+import FragranceTab from "./pages/FragranceTab";
 import LogTab from "./pages/LogTab";
 import IdeasTab from "./pages/IdeasTab";
 import PostsTab from "./pages/PostsTab";
@@ -214,7 +215,7 @@ function MediaTab({ user, gens, prompts, onToast }) {
         "Want a real photo? Choose Unsplash in the provider menu: the chosen photo becomes an ordinary picture (a post picture, a slide background or a design background), and the photographer is credited.")}</p>
       <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
-      <GenerationGallery rows={gens.rows} user={user} onToast={onToast}
+      <GenerationGallery rows={gens.rows.filter((r) => r.mode !== "fragrance")} user={user} onToast={onToast}
         onRequeue={(id, provider) => guard(async () => { await gens.requeue(id, provider); onToast(t("Dimasukkan semula ke giliran.", "Put back in the queue."), "ok"); })}
         onRemove={(row) => guard(async () => { if (window.confirm(t("Padam kerja ini?", "Delete this job?"))) {
           await gens.remove(row); onToast(t("Dipadam.", "Deleted."), "info");
@@ -223,7 +224,7 @@ function MediaTab({ user, gens, prompts, onToast }) {
   );
 }
 
-const TAB_IDS = ["isu", "idea", "post", "media", "design", "video", "faq", "log", "tetapan"];
+const TAB_IDS = ["isu", "idea", "post", "media", "design", "wangian", "video", "faq", "log", "tetapan"];
 
 export default function App() {
   const { t } = useLang();                                   // read here so a language switch re-renders the page
@@ -298,6 +299,7 @@ export default function App() {
     settings={settings} onToast={push} focusId={focusPost} setFocusId={setFocusPost} /> : gate(null);
   else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} onToast={push} /> : gate(null);
   else if (tab === "design") body = allowed ? <DesignTab user={user} gens={gens} posts={posts} brand={brand} onToast={push} /> : gate(null);
+  else if (tab === "wangian") body = allowed ? <FragranceTab user={user} gens={gens} onToast={push} /> : gate(null);
   else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push}
     openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}

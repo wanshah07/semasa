@@ -85,3 +85,97 @@ def size_of(meta: dict[str, Any], stream: str) -> tuple[int, int] | None:
     """The picture's shape: meta.format when set, else the design's default, else the stream's carousel shape."""
     fmt = meta.get("format") or DEFAULT_FORMAT.get(str(meta.get("design") or ""))
     return slides.FORMATS.get(str(fmt)) if fmt else None
+
+
+# --- a design from a reference (Wan, 26 Sep 2026: "let us upload reference and AI will review > render and get
+# confirmation to save the design") --------------------------------------------------------------------------------
+# The reference is read by the vision model as an art director would: what it does well, what must change for the
+# post rules, which of the looks it is nearest, and an ORIGINAL background in its mood (never a copy of its artwork,
+# its brand or its people). The preview is drawn, then waits for Wan: Simpan attaches and keeps it, Ubah re-draws it
+# with his note, Buang deletes it. A preview nobody confirms is cleared after UNCONFIRMED_DAYS.
+
+LOOK_CHOICES = ("grid", "era", "photo", "classic")
+UNCONFIRMED_DAYS = 7
+
+REVIEW_SYSTEM = ("You are an art director reviewing a reference picture for a new social media design. "
+                 "Answer with one JSON object only.")
+REVIEW_PROMPT = """Review this reference for a new {kind} for {who}. The new design takes ideas from it but never copies
+its artwork, its brand, its products or its people. JSON keys:
+"summary": two sentences in Malaysian Malay (never Bahasa Indonesia): what the reference does well and what the new
+  design will do;
+"keep": up to 4 short points in Malaysian Malay: what to take from it (layout, hierarchy, colour mood, spacing, type);
+"change": up to 4 short points in Malaysian Malay: what must change. Always flag, if present: a call to action, a
+  website or handle, another brand's logo or name, a real person's face, more text than one headline and a few points;
+"look": the nearest of "grid" (clean editorial grid, flat colour blocks), "era" (bold magazine style, strong accent
+  colour, a character), "photo" (a full-bleed photograph with the words over it), "classic" (quiet brand paper);
+"background": one English sentence describing an ORIGINAL background picture in the reference's mood and colours,
+  with calm empty space for text: no words, no letters, no logos, no products, no recognisable people;
+"words_note": one English sentence on the words' tone and length (e.g. "one short punchy headline, three short points");
+"text_in_image": the words printed in the reference, verbatim, or "";
+"brands": logos or brand names visible, or [].{note}"""
+
+
+def review(llm: LLM | None, data: bytes, mime: str, kind: str, stream: str, note: str = "") -> dict[str, Any] | None:
+    """The art director's reading of a reference, or None when no model that can see answered (the page then says the
+    reference was not read, and the design is drawn from Wan's own choices)."""
+    if llm is None or not getattr(llm, "configured", False):
+        return None
+    from .media_generator import shrink_for_read
+    small, small_ct = shrink_for_read(data, mime)
+    who = ("ws.regulab, a Malaysian regulatory brand speaking Malay to SME owners" if stream != "linkedin"
+           else "a named chemist's LinkedIn, in English, with no company identity")
+    prompt = REVIEW_PROMPT.format(kind=kind or "poster", who=who,
+                                  note=f"\nWan's note on the last version: {note}" if note.strip() else "")
+    out = llm.describe_image(REVIEW_SYSTEM, prompt, small, small_ct, max_tokens=900)
+    if not out or not str(out.get("summary") or "").strip():
+        return None
+    look = str(out.get("look") or "").strip().lower()
+
+    def points(key: str) -> list[str]:
+        vals = out.get(key) if isinstance(out.get(key), list) else []
+        return [str(v).strip()[:160] for v in vals if str(v).strip()][:4]
+    return {"summary": str(out["summary"]).strip()[:500], "keep": points("keep"), "change": points("change"),
+            "look": look if look in LOOK_CHOICES else "grid",
+            "background": str(out.get("background") or "").strip()[:500],
+            "words_note": str(out.get("words_note") or "").strip()[:200],
+            "text_in_image": str(out.get("text_in_image") or "").strip()[:300],
+            "brands": [str(b)[:60] for b in (out.get("brands") or []) if str(b).strip()][:6],
+            "model": getattr(llm, "last_model", "") or None}
+
+
+def background_prompt(review_out: dict[str, Any] | None, note: str = "") -> str:
+    base = (review_out or {}).get("background") or ""
+    if not base:
+        return ""
+    return (f"{base} {note.strip()}. " if note.strip() else f"{base} ") + (
+        "A calm, uncluttered background for text: no words, no letters, no logos, no products, no people's faces.")
+
+
+def purge_unconfirmed(store: Any, now: Any = None) -> int:
+    """Previews Wan never confirmed are cleared after UNCONFIRMED_DAYS: the row and its files (compact storage)."""
+    from datetime import UTC, datetime, timedelta
+
+    from . import db
+    now = now or datetime.now(UTC)
+    cutoff = (now - timedelta(days=UNCONFIRMED_DAYS)).isoformat()
+    try:
+        rows = store.table(db.MEDIA).select("id,meta,reference_path").eq("mode", "slides") \
+            .eq("meta->>awaiting_confirm", "true").lt("created_at", cutoff).limit(100).execute().data or []
+    except Exception as exc:  # noqa: BLE001 - housekeeping never fails the run
+        log.info("could not look for unconfirmed designs: %s", str(exc)[:120])
+        return 0
+    gone = 0
+    for r in rows:
+        m = r.get("meta") or {}
+        files = [p for p in (m.get("slide_paths") or []) + [m.get("ground_path")] if p]
+        try:
+            if files:
+                store.storage.from_(db.GENERATED_BUCKET).remove(files)
+            refs = [p for p in [(m.get("style_ref") or {}).get("path"), r.get("reference_path")] if p]
+            if refs:
+                store.storage.from_("semasa-reference").remove(refs)
+            store.table(db.MEDIA).delete().eq("id", r["id"]).execute()
+            gone += 1
+        except Exception as exc:  # noqa: BLE001
+            log.info("could not clear design %s: %s", r.get("id"), str(exc)[:120])
+    return gone

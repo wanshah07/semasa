@@ -178,3 +178,104 @@ def test_design_size_defaults():
     assert design.size_of({"design": "poster"}, "regulab") == (1080, 1350)
     assert design.size_of({"design": "card"}, "linkedin") == (1080, 1080)
     assert design.size_of({"design": "carousel"}, "linkedin") is None          # the stream's own shape
+
+
+# --- from a reference: review, draw, wait for Wan's confirmation --------------------------------------------------
+
+REVIEW = {"summary": "Rujukan ini tenang dan kemas. Reka bentuk baharu mengekalkan ruang lapang.",
+          "keep": ["Tajuk besar di atas", "Warna krim lembut"], "change": ["Buang laman web", "Buang logo jenama lain"],
+          "look": "era", "background": "A soft cream paper texture with warm window light", "words_note": "one short headline",
+          "text_in_image": "SHOP NOW", "brands": ["Acme"]}
+
+
+class Seer(Writer):
+    def __init__(self, out, review=REVIEW):
+        super().__init__(out)
+        self.review_out, self.looked = review, []
+
+    def describe_image(self, system, prompt, data, mime, max_tokens=900):
+        self.looked.append(prompt)
+        return self.review_out
+
+
+def _jpeg():
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 40), (200, 180, 150)).save(buf, "JPEG")
+    return buf.getvalue()
+
+
+@pytest.fixture
+def studio(monkeypatch):
+    drawn = []
+    from semasa import studio_cards
+    monkeypatch.setattr(studio_cards, "render", lambda items, **k: drawn.append(k) or [_jpeg() for _ in items])
+    monkeypatch.setattr(media_generator, "fetch_reference", lambda url: (_jpeg(), "image/jpeg", "r.jpg"))
+    made = []
+
+    class Maker:
+        def generate_from_text(self, prompt, options):
+            from semasa.providers import Generated
+            made.append(prompt)
+            return Generated(_jpeg(), "image/jpeg", "flux-schnell")
+    monkeypatch.setattr(media_generator, "make_provider", lambda name, s: Maker())
+    return {"drawn": drawn, "made": made}
+
+
+def _ref_store(**meta):
+    return _store({"design": "poster", "brief": "Pengilang OEM mesti dicetak pada sijil", "look": "auto", "bg": "from_ref",
+                   "style_ref": {"url": "https://ref/style.jpg", "path": "u/style.jpg"}, **meta}, post_id="p1")
+
+
+def test_a_reference_is_reviewed_drawn_and_waits_for_wan(studio):
+    llm = Seer({"slides": POSTER, "citation": "JAKIM, MPPHM 2020"})
+    store = _ref_store()
+    assert _run(store, llm) is True
+    job = store.tables["media_generations"][0]
+    m = job["meta"]
+    assert job["status"] == "done" and m["awaiting_confirm"] is True and not m.get("saved")
+    assert m["review"]["look"] == "era" and m["look_chosen"] == "era" and studio["drawn"][0]["look"] == "era"
+    assert m["review"]["change"] == ["Buang laman web", "Buang logo jenama lain"]
+    assert "never copies" in llm.looked[0] and "Bahasa Indonesia" in llm.looked[0]
+    assert "one short headline" in llm.seen[0][1]                                   # the words follow the reference's shape
+    assert studio["made"] and "cream paper" in studio["made"][0] and "no logos" in studio["made"][0]
+    assert m["ground_url"].endswith("-ground.jpg")
+    assert store.tables["semasa_posts"][0]["media_ids"] == ["own"]                  # not attached before Simpan
+
+
+def test_simpan_keeps_it_and_attaches_it_without_drawing_again(studio):
+    store = _ref_store(slides=POSTER, review=REVIEW, awaiting_confirm=True, confirm="save")
+    job = store.tables["media_generations"][0]
+    job["generated_media_url"] = "https://cdn/x.jpg"
+    assert _run(store, Seer({})) is True
+    assert job["status"] == "done" and job["meta"]["saved"] is True and job["meta"]["awaiting_confirm"] is False
+    assert "confirm" not in job["meta"] and not studio["drawn"] and not studio["made"]
+    assert store.tables["semasa_posts"][0]["media_ids"] == ["own", "d1"]
+
+
+def test_ubah_rewrites_with_the_note_and_makes_the_background_again(studio):
+    llm = Seer({"slides": POSTER, "citation": ""})
+    store = _ref_store(slides=POSTER, review=REVIEW, awaiting_confirm=True, ground_url="https://cdn/old-ground.jpg",
+                       revise={"note": "lebih gelap, tajuk lebih pendek"})
+    _run(store, llm)
+    m = store.tables["media_generations"][0]["meta"]
+    assert "lebih gelap, tajuk lebih pendek" in llm.seen[0][1]                       # the words were written again
+    assert "lebih gelap" in studio["made"][0]                                          # and the background made again
+    assert m["revisions"][0]["note"] == "lebih gelap, tajuk lebih pendek" and "revise" not in m
+    assert m["awaiting_confirm"] is True
+
+
+def test_an_unread_reference_still_draws_and_says_why(studio):
+    llm = Seer({"slides": POSTER, "citation": ""}, review=None)
+    store = _ref_store()
+    _run(store, llm)
+    m = store.tables["media_generations"][0]["meta"]
+    assert "unread" in m["review"] and m["look_chosen"] == "grid" and "bg_missing" in m and not studio["made"]
+    assert store.tables["media_generations"][0]["status"] == "done"
+
+
+def test_a_design_without_a_reference_is_unchanged(studio):
+    store = _store({"design": "poster", "slides": POSTER}, post_id="p1")
+    _run(store)
+    m = store.tables["media_generations"][0]["meta"]
+    assert "awaiting_confirm" not in m and "review" not in m
+    assert store.tables["semasa_posts"][0]["media_ids"] == ["own", "d1"]

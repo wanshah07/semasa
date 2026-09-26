@@ -108,6 +108,9 @@ an account), and no Google button.
    **Then `013_watch_paste.sql`** (paste a link into Regulatory or Latest publication, 26 Sep 2026). It adds the
    status columns, lets uploaders add a waiting link (and remove a pasted one), and wakes the worker on a paste.
    Safe to run again, and safe in the shared project.
+   **Then `014_fragrance.sql`** (the Wangian tab, 26 Sep 2026, see *Wangian* below). It creates `semasa_fragrances`
+   (the list of our perfumes) and allows media jobs of mode `fragrance`. Safe to run again, and safe in the shared
+   project. The check at the bottom prints `1 | 1 | 1`.
    007 and 008 were changed on 25 Sep 2026 after they were first handed over (bot categories, and a
    settings row the log must never record). Both are safe to run again: run 007, 008 and 009 in that
    order even if you ran an earlier 007 or 008.
@@ -542,6 +545,41 @@ The worker reads the link within a few minutes and the item appears like a swept
 A pasted item is always shown: you chose it, so the writer's "relevant" verdict does not hide it.
 
 EU Safety Gate is not in the list: its alert pages are drawn by JavaScript and a plain fetch gets an empty shell.
+
+## Wangian: fragrance ad designs with our bottle
+
+The **Wangian** tab (Wan, 26 Sep 2026: *"you will run to find new design and will replace the bottle in the design
+with our by render or via canva"*) makes new ad pictures for a perfume, with **our** bottle in them.
+
+1. **The perfume list.** Add a perfume with its brand, name, concentration, size, scent notes, mood, **approved claims**
+   (one per line) and a footnote for a claim marked `*`. Add a **bottle photo**: a transparent PNG is best, and a pack
+   shot on a plain white background also works. An optional transparent logo can be added too; without one, the brand
+   name is typeset.
+2. **Cari reka bentuk.** The writer proposes three designs from the notes. Each has a layout (*Nama besar*, *Tajuk di
+   belakang botol* or *Nota wangian*), a scene, colours, a headline and badges. You may upload a reference ad: its
+   layout and mood are taken, never its artwork, brand or people, and the first design follows it.
+3. **Lukis.** Pick a design, adjust the headline, and it is drawn **two ways** for you to choose per design:
+   - **Botol sebenar (dipotong):** the image model paints an empty scene, and the real bottle photo is cut out and set
+     into it with a shadow. The label is always right, because it is the photo.
+   - **Suntingan AI:** the image model paints the scene with the bottle photo as its reference. The light is more
+     natural, but the model may redraw the label wrong. A model that can see reads the label back, and the page warns
+     when the brand or the perfume's name is missing.
+4. **Simpan yang ini** keeps one version and deletes the other. *Cuba konsep lain* draws another design, and the
+   previous round's files are deleted.
+
+The rules behind it:
+
+- **Every word is typeset in Chrome** (Playfair Display, Anton, Poppins; `web/public/cards/fragrance.css`). The image
+  model draws no words, so the spelling is exact. A long headline shrinks until it fits, and is never cut.
+- **Badges carry only the approved claims, word for word, or the concentration.** A fragrance is a cosmetic, so a claim
+  such as "more than 8 hours" needs its evidence in the PIF. Whatever the writer suggests, anything else is dropped.
+- **Compact storage:** a design never kept is deleted after 7 days, with its files. *Buang* deletes a design and its
+  files through the worker, because the page cannot delete from the generated bucket.
+- **Canva:** the worker cannot sign in to Canva. To try a design there, ask in a chat session.
+- **Where it goes:** Valorith will be scheduled from Semasa once its publishing is switched on (Wan, 26 Sep 2026).
+  Until then, a saved design is a picture to download. Nothing here posts.
+- Cost: the concepts use the writer; the pictures use the image provider (Cloudflare by default). The label check uses
+  `VISION_MODEL`.
 
 ## Card or table
 

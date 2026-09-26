@@ -18,7 +18,7 @@ export const TABLES = {
   trends: "isu_semasa_trends", media: "media_generations", runs: "scrape_runs",
   ideas: "semasa_ideas", posts: "semasa_posts", prompts: "semasa_prompts",
   settings: "semasa_settings", publishLog: "semasa_publish_log", faqs: "semasa_faqs", log: "semasa_log",
-  watch: "semasa_watch",
+  watch: "semasa_watch", fragrances: "semasa_fragrances",
 };
 export const TABLES_UPLOADERS = "semasa_uploaders";
 // Namespaced so Semasa can share a Supabase project with another app (supabase/003_storage.sql).

@@ -138,8 +138,9 @@ def test_the_page_origin_serves_only_the_card_files(path, status):
 def test_the_card_files_are_in_the_checkout():
     assert studio_cards.MODULE.is_file()
     css = (studio_cards.ASSETS / "fonts.css").read_text()
+    both = css + (studio_cards.ASSETS / "fragrance-fonts.css").read_text()     # Wangian's Playfair Display and Anton
     for f in (studio_cards.ASSETS / "fonts").glob("*.woff2"):
-        assert f"fonts/{f.name}" in css
+        assert f"fonts/{f.name}" in both
     for family in ("Poppins", "Instrument Sans", "JetBrains Mono", "Caveat"):
         assert f"font-family: '{family}'" in css
 

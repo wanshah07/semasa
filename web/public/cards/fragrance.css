@@ -1,0 +1,69 @@
+/* Wangian artwork (backend/semasa/fragrance.py draws it in headless Chrome). Every size is a share of the card:
+   --w and --h are the card's width and height, set on .art by the page, so one sheet serves 1080x1080 and 1080x1350.
+   --ink and --accent are the design's own colours. */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; }
+.art { position: relative; width: var(--w); height: var(--h); overflow: hidden; background: #222 var(--scene) center / cover; }
+.veil { position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 70%, rgba(0,0,0,.22) 100%); }
+
+/* the brand at the top: the logo file when there is one, else the name set in the serif */
+.logo { position: absolute; z-index: 5; top: calc(var(--h) * .035); left: 50%; transform: translateX(-50%);
+  height: calc(var(--h) * .075); }
+.brand { position: absolute; z-index: 5; top: calc(var(--h) * .03); width: 100%; text-align: center;
+  font: italic 700 calc(var(--w) * .062) 'Playfair Display'; color: var(--ink); letter-spacing: .01em;
+  text-shadow: 0 2px 12px rgba(0,0,0,.35); }
+
+/* the bottle (the cut-out method only; in the AI edit the bottle is in the picture) */
+.bottle { position: absolute; z-index: 3; bottom: calc(var(--h) * .06); height: calc(var(--h) * var(--bottle));
+  filter: drop-shadow(0 18px 24px rgba(0,0,0,.28)); }
+.shadow { position: absolute; z-index: 2; bottom: calc(var(--h) * .045); width: calc(var(--w) * .30);
+  height: calc(var(--h) * .035); border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.45) 0%, rgba(0,0,0,0) 70%); }
+.bottle.left { left: calc(var(--w) * .10); }
+.shadow.left { left: calc(var(--w) * .08); }
+.bottle.right { right: calc(var(--w) * .10); }
+.shadow.right { right: calc(var(--w) * .08); }
+.bottle.center, .shadow.center { left: 50%; transform: translateX(-50%); }
+
+/* hero: the name very large beside the bottle, the tagline under it */
+.hero { position: absolute; z-index: 4; top: calc(var(--h) * .20); width: calc(var(--w) * .50); text-align: center; }
+.hero.right { right: calc(var(--w) * .04); }
+.hero.left { left: calc(var(--w) * .04); }
+.name { font: 800 calc(var(--w) * .16) / .95 'Playfair Display'; color: var(--ink); white-space: nowrap;
+  text-shadow: 0 4px 24px rgba(0,0,0,.35); }
+.tag { margin-top: calc(var(--h) * .018); font: 700 calc(var(--w) * .034) 'Poppins'; letter-spacing: .32em;
+  color: var(--ink); text-shadow: 0 2px 10px rgba(0,0,0,.4); }
+
+/* behind: a huge condensed headline across the top, the bottle in front of it */
+.behind { position: absolute; z-index: 2; top: calc(var(--h) * .135); left: calc(var(--w) * .04);
+  width: calc(var(--w) * .92); text-align: center; font: calc(var(--w) * .20) / .92 'Anton'; color: var(--ink);
+  text-transform: uppercase; word-spacing: .08em; }
+
+/* notes: call-outs naming the accords around the bottle */
+.call { position: absolute; z-index: 4; width: calc(var(--w) * .30); color: var(--ink);
+  text-shadow: 0 2px 10px rgba(0,0,0,.45); }
+.call b { display: block; font: 800 calc(var(--w) * .036) / 1.15 'Poppins'; letter-spacing: .06em;
+  text-transform: uppercase; }
+.call span { display: block; margin-top: 6px; font: 600 calc(var(--w) * .020) / 1.35 'Poppins'; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--accent); }
+.call.l1 { left: calc(var(--w) * .04); top: calc(var(--h) * .50); text-align: left; }
+.call.r1 { right: calc(var(--w) * .04); top: calc(var(--h) * .40); text-align: right; }
+.call.r2 { right: calc(var(--w) * .04); top: calc(var(--h) * .68); text-align: right; }
+
+/* round gold badges (approved claims only) and the footnote an asterisked claim needs. They stand on the side AWAY from
+   the bottle: beside the words on a hero, and two to a row in the free corner when the bottle is in the centre. */
+.badges { position: absolute; z-index: 4; bottom: calc(var(--h) * .07); display: flex; flex-wrap: wrap;
+  gap: calc(var(--w) * .012); --badge: calc(var(--w) * .15); }
+.badges.right { right: calc(var(--w) * .035); justify-content: flex-end; }
+.badges.left { left: calc(var(--w) * .035); justify-content: flex-start; }
+.badges.wrap { max-width: calc(var(--w) * .28); --badge: calc(var(--w) * .12); }
+.badge { width: var(--badge); height: var(--badge); border-radius: 50%; display: grid;
+  place-items: center; text-align: center; padding: calc(var(--badge) * .12);
+  background: radial-gradient(circle at 35% 30%, #fbf1d0 0%, #e3c888 45%, #b8914a 100%);
+  box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+.badge span { font: 800 calc(var(--badge) * .14) / 1.1 'Poppins'; color: #2b2113; }
+.foot { position: absolute; z-index: 4; bottom: calc(var(--h) * .022);
+  font: 700 calc(var(--w) * .0135) 'Poppins'; letter-spacing: .22em; text-transform: uppercase; color: var(--ink); }
+.foot.right { right: calc(var(--w) * .035); text-align: right; }
+.foot.left { left: calc(var(--w) * .035); }

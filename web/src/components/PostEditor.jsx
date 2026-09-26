@@ -5,6 +5,7 @@ import { LIMITS, hardCount, normaliseSlides, platformsFor, scan, scanMedia } fro
 import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import SlidesEditor, { fromRows, toRows } from "./SlidesEditor";
+import { UnsplashCredit, UnsplashResults, UnsplashSearch, isUnsplash } from "./Unsplash";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
 
@@ -25,6 +26,11 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
   const [mediaIds, setMediaIds] = useState(post.media_ids || []);
   const [slideRows, setSlideRows] = useState(toRows(post.slides));
   const [bg, setBg] = useState("none");
+  // the carousel's look: the one its last drawing used, Semasa's own drawing when there is none
+  const lastLook = () => (mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta?.look) || "classic";
+  const [look, setLook] = useState(lastLook);
+  const [lookBlocked, setLookBlocked] = useState(null);
   const [busy, setBusy] = useState(false);
   const [newPic, setNewPic] = useState("");
 
@@ -36,6 +42,7 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
     setDate(post.date || ""); setSlot(post.slot || ""); setMediaIds(post.media_ids || []);
     setSlideRows(toRows(post.slides));
   }, [post.id, post.updated_at]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setLook(lastLook()); }, [post.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reg = brand.regulab;
   const plats = platformsFor(post.stream);
@@ -43,14 +50,23 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
   const chosen = mediaIds.map((id) => mediaById[id]).filter(Boolean);
   const candidates = mediaRows.filter((m) => m.status === "done" && m.generated_media_url && !mediaIds.includes(m.id)
     && m.mode !== "slides" && (m.post_id === post.id || (post.idea_id && m.idea_id === post.idea_id)));
-  const pending = mediaRows.filter((m) => (m.post_id === post.id) && m.mode !== "slides"
+  const pending = mediaRows.filter((m) => (m.post_id === post.id) && m.mode !== "slides" && !isUnsplash(m)
     && (m.status === "pending" || m.status === "processing"));
+  // this post's Unsplash searches still waiting for a pick (a picked one is an ordinary candidate picture)
+  const unsplashOpen = mediaRows.filter((m) => m.post_id === post.id && isUnsplash(m) && !m.generated_media_url)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 2);
   // `slides` exists once supabase/006_slides.sql has run; before that the editor says so and saves nothing new
   const hasSlides = post.slides !== undefined;
   const slides = normaliseSlides(fromRows(slideRows));
   const slideJobs = mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  const pictures = mediaRows.filter((m) => m.post_id === post.id && m.type === "image" && m.mode !== "slides" && m.status === "done");
+  const pictures = mediaRows.filter((m) => m.post_id === post.id && m.type === "image" && m.mode !== "slides" && m.status === "done"
+    && m.generated_media_url);
+  // what the look preview draws on: the same picture the worker will fetch for this background choice
+  const firstPicture = pictures.slice().sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))[0];
+  const bgUrl = bg === "none" ? "" : bg === "post_image" ? (firstPicture?.generated_media_url || "")
+    : (pictures.find((m) => m.id === bg)?.generated_media_url || mediaById[bg]?.generated_media_url || "");
+  const eyebrow = post.stream === "linkedin" ? (brand.linkedin?.angles?.[post.angle] || "") : (brand.regulab?.domains?.[post.domain] || "");
   const bgOptions = [["none", t("Kertas", "Paper")], ["post_image", t("Gambar pertama post", "Post's first picture")],
     ...pictures.map((m, i) => [m.id, `${t("Gambar {n}", "Picture {n}", { n: i + 1 })}${m.prompt ? `: ${m.prompt.slice(0, 28)}` : ""}`])];
 
@@ -84,13 +100,16 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
 
   async function renderSlides() {
     if (!slides.length) return onToast(t("Tulis sekurang-kurangnya satu slaid.", "Write at least one slide."), "warn");
+    if (lookBlocked) return onToast(lookBlocked === "photo"
+      ? t("Reka bentuk Foto perlu gambar latar.", "The Photo design needs a background picture.")
+      : t("Ada slaid terlalu penuh untuk reka bentuk ini.", "A slide is too full for this design."), "warn");
     setBusy(true);
     const saved = await supabase.from(TABLES.posts).update(content()).eq("id", post.id).select().single();
     if (saved.error) { setBusy(false); return onToast(errText(saved.error), "danger"); }
     const { error } = await supabase.from(TABLES.media).insert({
       mode: "slides", type: "image", prompt: "", status: "pending", created_by: user.id,
       post_id: post.id, idea_id: post.idea_id,
-      meta: { flow: "B", slides, stream: post.stream, citation, domain: post.domain, angle: post.angle, bg },
+      meta: { flow: "B", slides, stream: post.stream, citation, domain: post.domain, angle: post.angle, bg, look },
     });
     setBusy(false);
     if (error) {
@@ -168,8 +187,8 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
             <span key={m.id} className="relative">
               {m.mode === "slides" && <span className="absolute bottom-1 left-1 z-10 rounded bg-ink/80 px-1 text-[10px] text-bg">{t("{n} slaid", ["{n} slide", "{n} slides"], { n: m.meta?.count || "?" })}</span>}
               {m.type === "video"
-                ? <video src={m.generated_media_url} className="h-24 w-24 rounded-tile bg-black object-cover" muted />
-                : <img src={m.generated_media_url || m.reference_url} alt={m.meta?.alt || ""} className="h-24 w-24 rounded-tile object-cover" />}
+                ? <video src={m.generated_media_url} className="h-36 w-36 rounded-tile bg-black object-cover sm:h-32 sm:w-32 lg:h-24 lg:w-24" muted />
+                : <img src={m.generated_media_url || m.reference_url} alt={m.meta?.alt || ""} className="h-36 w-36 rounded-tile object-cover sm:h-32 sm:w-32 lg:h-24 lg:w-24" />}
               {!locked && <button type="button" aria-label={t("Buang gambar", "Remove picture")} onClick={() => setMediaIds((ids) => ids.filter((x) => x !== m.id))}
                 className="absolute -right-1 -top-1 rounded-full bg-ink p-0.5 text-bg"><X size={11} /></button>}
             </span>
@@ -182,8 +201,8 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
             {candidates.map((m) => (
               <button type="button" key={m.id} onClick={() => setMediaIds((ids) => [...ids, m.id])} title={m.prompt}>
                 {m.type === "video"
-                  ? <video src={m.generated_media_url} className="h-14 w-14 rounded-tile bg-black object-cover opacity-80 hover:opacity-100" muted />
-                  : <img src={m.generated_media_url} alt="" className="h-14 w-14 rounded-tile object-cover opacity-80 hover:opacity-100" />}
+                  ? <video src={m.generated_media_url} className="h-24 w-24 rounded-tile bg-black object-cover opacity-80 hover:opacity-100 lg:h-14 lg:w-14" muted />
+                  : <img src={m.generated_media_url} alt="" className="h-24 w-24 rounded-tile object-cover opacity-80 hover:opacity-100 lg:h-14 lg:w-14" />}
               </button>
             ))}
           </div>
@@ -197,12 +216,22 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
             <Button type="button" size="sm" variant="soft" onClick={queuePicture} disabled={!newPic.trim()}><ImagePlus size={12} /> {t("Jana", "Generate")}</Button>
           </div>
         )}
+        {!locked && (
+          <div className="mt-2">
+            <UnsplashSearch user={user} postId={post.id} ideaId={post.idea_id} stream={post.stream} onToast={onToast} onQueued={onChanged} compact />
+            {unsplashOpen.map((m) => (
+              <div key={m.id} className="mt-2 rounded-tile border border-line"><UnsplashResults row={m} onToast={onToast} onPicked={onChanged} /></div>
+            ))}
+          </div>
+        )}
+        {chosen.filter(isUnsplash).map((m) => <UnsplashCredit key={m.id} row={m} className="mt-1" />)}
       </div>
 
       {hasSlides ? (
         <SlidesEditor post={post} rows={slideRows} setRows={setSlideRows} locked={locked} jobs={slideJobs}
           attachedIds={mediaIds} bg={bg} setBg={setBg} bgOptions={bgOptions} busy={busy}
-          onRender={renderSlides} onUse={chooseSet} />
+          onRender={renderSlides} onUse={chooseSet} look={look} setLook={setLook}
+          preview={{ eyebrow, citation, bgUrl }} blocked={lookBlocked} setBlocked={setLookBlocked} />
       ) : (
         <p className="rounded-tile border border-dashed border-line p-3 text-[12px] text-muted">
           {t("Slaid carousel belum tersedia: jalankan", "Carousel slides are not available yet: run")} <code>supabase/006_slides.sql</code>{" "}

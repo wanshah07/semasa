@@ -47,6 +47,14 @@ class LLM:
         self.failures = 0
         self.backup_answers = 0        # answers that came from the backup writer
         self.last_model = ""           # the model behind the last answer, for the record on the draft
+        # A one-run trial (semasa.trial, the page's "Try Mireld" button): the backup is asked FIRST and rootsys only
+        # when it gives nothing, so the run shows what Mireld can do while still finishing its work.
+        self.prefer_backup = False
+        self.answers = {"primary": 0, "backup": 0}         # usable answers, per writer
+        self.misses = {"primary": 0, "backup": 0}          # asked and got nothing usable, per writer
+        self.vision = {"primary": 0, "backup": 0, "backup_missed": 0}
+        self.trial_stopped = ""                             # why the trial stopped asking the backup first, if it did
+        self._backup_run = 0                                # consecutive misses of the backup while it goes first
 
     # --- which writer ---------------------------------------------------------------
 
@@ -77,7 +85,11 @@ class LLM:
         if self.primary_ok:
             out.append(("primary", self.s.provider, self.s.base_url, self.s.api_key or "", model or self.s.model))
         if backup and self.backup_ok:
-            out.append(("backup", "openai", self.s.fallback_base_url, self.s.fallback_key or "", self.s.fallback_model))
+            b = ("backup", "openai", self.s.fallback_base_url, self.s.fallback_key or "", self.s.fallback_model)
+            if self.prefer_backup:
+                out.insert(0, b)
+            else:
+                out.append(b)
         return out
 
     # --- public -----------------------------------------------------------------
@@ -111,15 +123,22 @@ class LLM:
         writers = self._writers(model, backup)
         if not writers:
             return None
-        for label, provider, base, key, use_model in writers:
-            if label == "backup":
+        for n, (label, provider, base, key, use_model) in enumerate(writers):
+            if label == "backup" and n > 0:
                 log.warning("LLM: rootsys gave no usable answer; asking the backup (%s, %s)", base, use_model)
+            elif label == "primary" and n > 0:
+                log.warning("LLM trial: the backup gave no usable answer; rootsys answers instead")
             data = self._ask(system, user, max_tokens, retries if label == "primary" else 1, provider, base, key, use_model)
             if data is not None:
                 self.last_model = use_model
+                self.answers[label] += 1
                 if label == "backup":
                     self.backup_answers += 1
+                    self._backup_run = 0
                 return data
+            self.misses[label] += 1
+            if label == "backup" and n == 0:
+                self._trial_miss()
         self.failures += 1
         return None
 
@@ -161,11 +180,55 @@ class LLM:
         the gateway or the model will not take a picture — the caller records that the
         reference was not read rather than pretending it was. rootsys only: nothing says the
         backup's model can see, and a text model would describe a picture it never saw."""
+        if self.prefer_backup and self.backup_ok:
+            # the trial: can the backup's model SEE? Asked once, with its own key; rootsys reads it if not.
+            out = self._ask(system, image_parts("openai", prompt, data, mime), max_tokens, 1, "openai",
+                            self.s.fallback_base_url, self.s.fallback_key or "", self.s.fallback_model)
+            if out is not None:
+                self.last_model = self.s.fallback_model
+                self.vision["backup"] += 1
+                self.answers["backup"] += 1
+                self.backup_answers += 1
+                return out
+            self.vision["backup_missed"] += 1
+            log.warning("LLM trial: the backup did not read the picture; rootsys reads it instead")
+            self._trial_miss()
         if not self.primary_ok:
             return None
         parts = image_parts(self.s.provider, prompt, data, mime)
-        return self.chat_json(system, parts, max_tokens=max_tokens, retries=1,
-                              model=self.s.vision_model or self.s.model, backup=False)
+        out = self.chat_json(system, parts, max_tokens=max_tokens, retries=1,
+                             model=self.s.vision_model or self.s.model, backup=False)
+        if out is not None:
+            self.vision["primary"] += 1
+        return out
+
+    TRIAL_MISS_LIMIT = 3
+
+    def _trial_miss(self) -> None:
+        """A backup that keeps failing while it goes first would cost every call a timeout. After three in a row the
+        trial stops asking it first (rootsys leads again), and the report says so."""
+        if not self.prefer_backup:
+            return
+        self._backup_run += 1
+        if self._backup_run >= self.TRIAL_MISS_LIMIT:
+            self.prefer_backup = False
+            self.trial_stopped = f"the backup missed {self._backup_run} times in a row, so rootsys led for the rest of the run"
+            log.warning("LLM trial stopped: %s", self.trial_stopped)
+
+    def backup_models(self) -> list[str]:
+        """The backup's own model list (GET /models with its key), for the trial report. [] when it will not say."""
+        if not self.backup_ok:
+            return []
+        try:
+            r = requests.get(f"{self.s.fallback_base_url}/models", headers={"Authorization": f"Bearer {self.s.fallback_key}"},
+                             timeout=min(self.s.timeout, 30))
+            r.raise_for_status()
+            data = r.json()
+            items = data.get("data") if isinstance(data, dict) else data
+            return sorted({str(m.get("id") if isinstance(m, dict) else m) for m in (items or [])})[:200]
+        except (requests.RequestException, ValueError, AttributeError) as exc:
+            log.warning("could not list the backup's models: %s", str(exc)[:200])
+            return []
 
     def _call(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str, *,
               provider: str | None = None, base: str | None = None, key: str | None = None) -> str:

@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node compliance.test.mjs"
+    "test": "node compliance.test.mjs && node cards.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.1",

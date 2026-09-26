@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Lock, Plus, Save, Trash2 } from "lucide-react";
+import { FlaskConical, Lock, Plus, Save, Trash2 } from "lucide-react";
 import { dayNames } from "../lib/brand";
 import { faqCategories } from "../lib/faqExport";
 import { TABLES, supabase } from "../lib/SupabaseClient";
 import { BUILT_IN_INDO } from "../lib/compliance";
+import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -69,6 +70,8 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
           <p className="mt-1 text-[12px] text-muted">{t("Suis ini tidak boleh diubah dari laman ini. Ia diubah di Supabase SQL editor sahaja.", "This switch cannot be changed from this page. It is changed in the Supabase SQL editor only.")}</p>
         </div>
       </Card>
+
+      <MireldTrial settings={settings} save={save} onToast={onToast} />
 
       <Card className="grid gap-4 p-5 sm:grid-cols-2">
         <label className="block"><Label hint={t("HH:MM, dipisah koma", "HH:MM, comma-separated")}>{t("Slot ws.regulab (MYT)", "ws.regulab slots (MYT)")}</Label>
@@ -271,6 +274,75 @@ function IndoTabung({ settings, save, onToast }) {
         </ul>
       ) : <p className="text-[12px] text-muted">{t("Tabung masih kosong.", "The list is still empty.")}</p>}
       <p className="text-[11px] text-muted">{t("Sudah disekat tanpa perlu ditambah: {list}.", "Already blocked without being added: {list}.", { list: BUILT_IN_INDO.join(", ") })}</p>
+    </Card>
+  );
+}
+
+/* One run of Mireld (Wan, 26 Sep 2026: "can we try mireld for 1 run to scan and do the image"). The next scrape and the
+   next worker run that has something to ask each ask Mireld FIRST: summaries, drafts, and the read of a picture.
+   rootsys answers whatever Mireld cannot, so nothing is lost. Each part then reports here and switches itself off
+   (backend/semasa/trial.py). The row is made by the worker, which the browser cannot do. */
+function MireldTrial({ settings, save, onToast }) {
+  const { t } = useLang();
+  const [busy, setBusy] = useState(false);
+  const row = settings.llm_trial;
+  const v = row || {};
+  const waiting = v.scrape === true || v.media === true;
+
+  async function start() {
+    setBusy(true);
+    try {
+      await save("llm_trial", { ...v, scrape: true, media: true, requested_at: new Date().toISOString() });
+      onToast(t("Percubaan dimulakan: scrape seterusnya dan kerja bot seterusnya akan tanya Mireld dahulu.",
+        "Trial set: the next scrape and the bot's next job will ask Mireld first."), "ok");
+    } catch (e) {
+      onToast(/not found/.test(e.message)
+        ? t("Suis ini dibuat oleh bot pada larian pertamanya selepas kemas kini ini (dalam 15 minit). Cuba lagi selepas itu.",
+          "The bot makes this switch on its first run after this update (within 15 minutes). Try again after that.")
+        : e.message, "danger");
+    }
+    setBusy(false);
+  }
+
+  const Result = ({ label, r }) => (!r ? null : (
+    <div className="min-w-0 rounded-tile bg-surface-2/60 p-3 text-[12px]">
+      <p className="font-semibold">{label} · <span className={r.ok ? "text-ok" : "text-danger"}>{r.ok ? t("Mireld menjawab", "Mireld answered") : t("Mireld tidak menjawab", "Mireld did not answer")}</span>
+        <span className="font-normal text-muted"> · {stampMYT(r.at)}</span></p>
+      {r.why ? <p className="mt-1 [overflow-wrap:anywhere] text-muted">{r.why}</p> : (
+        <ul className="mt-1 space-y-0.5 text-muted">
+          <li>{t("Model", "Model")}: <b className="text-ink">{r.model}</b></li>
+          <li>{t("Jawapan Mireld {a}, gagal {m} · rootsys menjawab {r}", "Mireld answered {a}, missed {m} · rootsys answered {r}",
+            { a: r.mireld_answers, m: r.mireld_misses, r: r.rootsys_answers })}</li>
+          <li>{t("Gambar dibaca oleh Mireld {a}, tidak dapat dibaca {b} · oleh rootsys {c}", "Pictures read by Mireld {a}, not read {b} · by rootsys {c}",
+            { a: r.picture_read_by_mireld, b: r.picture_not_read_by_mireld, c: r.picture_read_by_rootsys })}</li>
+          <li className="[overflow-wrap:anywhere]">{t("Model dalam senarai Mireld", "Models Mireld lists")}: {r.models?.length || 0}
+            {r.image_models?.length ? ` · ${t("nampak seperti model gambar", "look like image models")}: ${r.image_models.join(", ")}` : ""}</li>
+          {r.stopped && <li className="text-warn">{r.stopped}</li>}
+          {r.run && <li><a className="text-accent underline" href={r.run} target="_blank" rel="noopener noreferrer">{t("Buka larian", "Open the run")}</a></li>}
+        </ul>
+      )}
+    </div>
+  ));
+
+  return (
+    <Card className="space-y-3 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="flex items-center gap-2 text-lg"><FlaskConical size={17} /> {t("Cuba Mireld untuk satu larian", "Try Mireld for one run")}</h3>
+          <p className="mt-1 max-w-2xl text-sm text-muted">
+            {t("Scrape seterusnya dan kerja bot seterusnya bertanya Mireld dahulu: ringkasan berita, draf, dan bacaan gambar. rootsys menjawab apa yang Mireld tidak dapat, jadi tiada kerja hilang. Keputusan muncul di sini dan percubaan berhenti sendiri.",
+              "The next scrape and the bot's next job ask Mireld first: the news summaries, the drafts, and the read of a picture. rootsys answers what Mireld cannot, so no work is lost. The result appears here and the trial switches itself off.")}</p>
+        </div>
+        <Button onClick={start} disabled={busy || waiting || !row}>{waiting ? t("Menunggu larian…", "Waiting for a run…") : t("Cuba sekali", "Try once")}</Button>
+      </div>
+      {!row && <p className="text-[12px] text-muted">{t("Suis ini muncul selepas bot berjalan sekali dengan kemas kini ini.", "This switch appears after the bot has run once with this update.")}</p>}
+      {waiting && <p className="text-[12px] text-muted">{t("Menunggu: {p}. Scrape berjalan tiga kali sehari (untuk cepat: GitHub → Actions → Scrape isu semasa → Run workflow); bahagian bot berjalan pada kerja seterusnya yang bertanya penulis.",
+        "Waiting for: {p}. A scrape runs three times a day (to hurry it: GitHub → Actions → Scrape isu semasa → Run workflow); the bot's part runs on its next job that asks the writer.",
+        { p: [v.scrape === true && "scrape", v.media === true && t("kerja bot", "bot job")].filter(Boolean).join(", ") })}</p>}
+      <div className="grid gap-3 md:grid-cols-2">
+        <Result label="Scrape" r={v.scrape_result} />
+        <Result label={t("Kerja bot", "Bot job")} r={v.media_result} />
+      </div>
     </Card>
   );
 }

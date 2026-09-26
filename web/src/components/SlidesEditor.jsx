@@ -1,6 +1,8 @@
 import { ArrowDown, ArrowUp, ExternalLink, Layers, Loader2, Plus, Trash2 } from "lucide-react";
-import { slidesKey } from "../lib/compliance";
+import { normaliseSlides, slidesKey } from "../lib/compliance";
 import { useLang } from "../lib/i18n";
+import { LOOKS } from "../lib/cards/studio";
+import LookPicker from "./LookPicker";
 import Button from "./ui/Button";
 import { Input, Label, Select, TextArea } from "./ui/Field";
 
@@ -13,14 +15,16 @@ export const toRows = (slides) => (Array.isArray(slides) ? slides : []).map((s) 
 }));
 export const fromRows = (rows) => rows.map((r) => ({ title: r.title, points: r.points }));
 
+const lookName = (k, lang) => { const l = LOOKS.find((x) => x.k === (k || "classic")) || LOOKS[0]; return lang === "bm" ? l.bm : l.en; };
+
 const kindOf = (t, i, n) => (i === 0 ? t("Kulit", "Cover") : i === n - 1 && n > 1 ? t("Penutup · sumber dilukis di sini", "Closing · source drawn here")
   : t("Slaid {n}", "Slide {n}", { n: i + 1 }));
 
 /* The carousel of one post: its words, where they are drawn from, and the drawn pictures.
    Drawing is done by the worker (backend/semasa/slides.py) with no AI and no key. */
 export default function SlidesEditor({ post, rows, setRows, locked, jobs, attachedIds, bg, setBg, bgOptions, busy,
-  onRender, onUse }) {
-  const { t } = useLang();
+  onRender, onUse, look, setLook, preview, blocked, setBlocked }) {
+  const { t, lang } = useLang();
   const n = rows.length;
   const size = post.stream === "linkedin" ? "1080×1350" : "1080×1080";
   const latest = jobs[0];
@@ -73,12 +77,20 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
       </ol>
 
       {!locked && (
+        <div className="mt-3 rounded-tile bg-surface-2/40 p-2.5">
+          <LookPicker value={look} onChange={setLook} slides={normaliseSlides(fromRows(rows))} stream={post.stream}
+            eyebrow={preview.eyebrow} citation={preview.citation} bgUrl={preview.bgUrl} bgChosen={bg !== "none"}
+            onBlocked={setBlocked} />
+        </div>
+      )}
+
+      {!locked && (
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <Button type="button" size="sm" variant="ghost" disabled={n >= MAX_SLIDES}
             onClick={() => setRows([...rows, { title: "", points: "" }])}><Plus size={12} /> {t("Tambah slaid", "Add slide")}</Button>
           <label className="ml-auto"><Label>{t("Latar", "Background")}</Label>
             <Select value={bg} onChange={setBg} options={bgOptions} aria-label={t("Latar slaid", "Slide background")} /></label>
-          <Button type="button" size="sm" disabled={busy || !n} onClick={onRender}
+          <Button type="button" size="sm" disabled={busy || !n || !!blocked} onClick={onRender}
             title={t("Simpan post ini, kemudian bot melukis slaid", "Save this post, then the bot draws the slides")}>
             <Layers size={12} /> {t("Jana slaid", "Generate slides")}</Button>
         </div>
@@ -100,13 +112,14 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
             {(latestDone.meta?.slide_urls || []).map((u, i) => (
               <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="relative shrink-0" style={{ scrollSnapAlign: "start" }}
                 title={t("Slaid {n}: buka saiz penuh", "Slide {n}: open full size", { n: i + 1 })}>
-                <img src={u} alt={t("Slaid {n}", "Slide {n}", { n: i + 1 })} className={`${post.stream === "linkedin" ? "h-[120px] w-24" : "h-24 w-24"} rounded-tile border border-line object-cover`} />
+                <img src={u} alt={t("Slaid {n}", "Slide {n}", { n: i + 1 })} className={`${post.stream === "linkedin" ? "h-72 w-[230px] sm:h-60 sm:w-48 lg:h-[120px] lg:w-24" : "h-64 w-64 sm:h-52 sm:w-52 lg:h-24 lg:w-24"} max-w-[80vw] rounded-tile border border-line object-cover`} />
                 <span className="absolute left-1 top-1 rounded bg-ink/80 px-1 text-[10px] text-bg">{i + 1}</span>
               </a>
             ))}
           </div>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted">
             {t("{n} slaid dilukis", ["{n} slide drawn", "{n} slides drawn"], { n: latestDone.meta?.count })}
+            {` · ${lookName(latestDone.meta?.look, lang)}`}
             {latestDone.meta?.bg_missing ? ` · ${latestDone.meta.bg_missing}`
               : latestDone.meta?.bg_used ? ` · ${t("atas gambar post", "on the post picture")}` : ` · ${t("atas kertas", "on paper")}`}
             <a href={latestDone.meta?.slide_urls?.[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-accent"><ExternalLink size={10} /> {t("buka", "open")}</a>

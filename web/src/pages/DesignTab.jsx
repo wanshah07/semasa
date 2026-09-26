@@ -9,6 +9,8 @@ import { timeAgo } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import { IMAGE_TYPES, refusal, removeReference, uploadReference } from "../lib/storage";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
+import LookPicker from "../components/LookPicker";
+import { UnsplashResults, UnsplashSearch } from "../components/Unsplash";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Segmented, Select, TextArea } from "../components/ui/Field";
@@ -18,6 +20,7 @@ import { Input, Label, Segmented, Select, TextArea } from "../components/ui/Fiel
    (backend/semasa/design.py + slides.py) writes the words from an idea when asked, then draws them with no AI and no
    cost, on brand paper, on Wan's own picture, or on a picture the image provider makes for it first. */
 
+const SIZE_PX = { square: [1080, 1080], portrait: [1080, 1350], story: [1080, 1920] };
 const SIZE_LABEL = { square: "1:1 · 1080×1080", portrait: "4:5 · 1080×1350", story: "9:16 · 1080×1920" };
 const MAX_POINTS = { poster: 5, card: 3, carousel: 3 };
 const blankSlide = () => ({ title: "", points: "" });
@@ -34,12 +37,16 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
   const [rows, setRows] = useState([blankSlide()]);
   const [eyebrow, setEyebrow] = useState("");
   const [citation, setCitation] = useState("");
-  const [bg, setBg] = useState("none");                    // none | upload | ai
+  const [bg, setBg] = useState("none");                    // none | upload | ai | unsplash
+  const [unsplashRow, setUnsplashRow] = useState("");       // the search this form made
+  const [unsplashPick, setUnsplashPick] = useState(null);   // the photo chosen from it
   const [file, setFile] = useState(null);
   const [bgPrompt, setBgPrompt] = useState("");
   const [attach, setAttach] = useState("");
   const [fromPost, setFromPost] = useState("");
   const [busy, setBusy] = useState("");
+  const [look, setLook] = useState("classic");
+  const [lookBlocked, setLookBlocked] = useState(null);
   const preview = useMemo(() => (file ? URL.createObjectURL(file) : ""), [file]);
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
   useEffect(() => { setFormat(defaultSize(design, stream)); }, [design, stream]);
@@ -54,8 +61,14 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
   const flags = useMemo(() => (words === "own" && own.length ? scan({ stream, citation, media: [{ artwork: own }] },
     brand?.regulab).filter((f) => f.where.startsWith("Design") || f.where === "Source") : []),
   [words, JSON.stringify(own), stream, citation, brand]); // eslint-disable-line react-hooks/exhaustive-deps
+  const uRow = gens.rows.find((r) => r.id === unsplashRow);
+  const unsplashReady = !!uRow && (!!uRow.generated_media_url || !!uRow.meta?.pick) && uRow.status !== "error";
   const ready = (words === "ai" ? brief.trim().length > 0 : own.length > 0)
-    && (bg !== "upload" || file) && (bg !== "ai" || bgPrompt.trim());
+    && (bg !== "upload" || file) && (bg !== "ai" || bgPrompt.trim()) && (bg !== "unsplash" || unsplashReady) && !lookBlocked;
+  const previewBg = bg === "upload" ? preview : bg === "unsplash" ? (uRow?.generated_media_url || unsplashPick?.thumb || "") : "";
+  // the design preview: Wan's own words when he writes them, sample words while the bot is to write them
+  const sampleWords = !(words === "own" && own.length);
+  const previewSlides = sampleWords ? designSample(design, stream) : own;
 
   function usePost(id) {
     setFromPost(id);
@@ -96,8 +109,10 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
         }).select("id").single();
         if (pic.error) throw new Error(errText(pic.error));
         bgValue = pic.data.id;
+      } else if (bg === "unsplash") {
+        bgValue = unsplashRow;                               // the worker waits for the pick to be stored, then draws on it
       }
-      const meta = { flow: "design", design, format, stream, bg: bgValue, eyebrow: eyebrow.trim(), citation: citation.trim(),
+      const meta = { flow: "design", design, format, stream, bg: bgValue, look, eyebrow: eyebrow.trim(), citation: citation.trim(),
         ...(words === "ai" ? { brief: brief.trim() } : { slides: own }), ...(fromPost ? { from_post: fromPost } : {}) };
       const ins = await supabase.from(TABLES.media).insert({
         mode: "slides", type: "image", status: "pending", created_by: user.id, prompt: "", post_id: attach || null,
@@ -145,7 +160,15 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
           <div className="min-w-0 space-y-4">
             <div><Label>{t("Latar", "Background")}</Label>
               <Segmented value={bg} onChange={setBg} options={[["none", t("Kertas jenama", "Brand paper")],
-                ["upload", t("Gambar saya", "My picture")], ["ai", t("Gambar AI", "AI picture")]]} /></div>
+                ["upload", t("Gambar saya", "My picture")], ["ai", t("Gambar AI", "AI picture")], ["unsplash", "Unsplash"]]} /></div>
+            {bg === "unsplash" && (
+              <div className="space-y-2">
+                <UnsplashSearch user={user} stream={stream} onToast={onToast} compact
+                  onQueued={(id) => { setUnsplashRow(id); setUnsplashPick(null); gens.reload(); }} />
+                {uRow && <div className="rounded-tile border border-line"><UnsplashResults row={uRow} onToast={onToast}
+                  chosenId={uRow.meta?.pick || unsplashPick?.id} onPicked={(_, p) => { setUnsplashPick(p); gens.reload(); }} /></div>}
+              </div>
+            )}
             {bg === "upload" && (
               <div className="flex items-center gap-3">
                 {preview ? <img src={preview} alt="" className="h-20 w-20 rounded-tile object-cover" />
@@ -203,6 +226,12 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
           )}
         </div>
 
+        <div className="mt-5 border-t border-line pt-4">
+          <LookPicker value={look} onChange={setLook} slides={previewSlides} sample={sampleWords} stream={stream}
+            eyebrow={eyebrow.trim()} citation={citation.trim()} bgUrl={previewBg} bgChosen={bg !== "none"}
+            size={SIZE_PX[format]} onBlocked={setLookBlocked} />
+        </div>
+
         <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
           <span className="text-xs text-muted">{SIZE_LABEL[format]} · {t("dilukis tanpa AI, percuma", "drawn without AI, free")}</span>
           <Button type="submit" disabled={!!busy || !ready}>
@@ -215,6 +244,18 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
       <DesignResults rows={results} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} />
     </main>
   );
+}
+
+/* Sample words for the design preview while the bot is still to write the real ones. */
+function designSample(design, stream) {
+  const en = stream === "linkedin";
+  const cover = { title: en ? "Your *headline* here" : "Tajuk *anda* di sini",
+    points: design === "carousel" ? [en ? "One supporting line." : "Satu baris sokongan."]
+      : (en ? ["The first point, short and cited.", "The second point.", "The third point."]
+        : ["Poin pertama, ringkas dan bersumber.", "Poin kedua.", "Poin ketiga."]) };
+  if (design !== "carousel") return [cover];
+  return [cover, { title: en ? "What the rule says" : "Apa kata peraturan", points: en ? ["One fact per slide.", "Short and cited."] : ["Satu fakta satu slaid.", "Ringkas dan bersumber."] },
+    { title: en ? "Remember this" : "Ingat ini", points: [en ? "The takeaway, never a call to action." : "Kesimpulan, bukan seruan tindakan."] }];
 }
 
 /* The words by hand: one row per slide. A poster or a card is one row; a carousel is up to ten. */

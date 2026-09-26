@@ -7,6 +7,7 @@ import { useLang } from "../lib/i18n";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import { providersOf } from "./MediaUploader";
+import { UnsplashResults, isUnsplash } from "./Unsplash";
 
 // A job that failed for want of a key is retried on the runner's default (Cloudflare once its secrets are set),
 // not on the provider that has no key: on 25 Sep 2026 three jobs sat pinned to Replicate/OpenAI and every Retry
@@ -17,6 +18,10 @@ const retryDefault = (row) => (KEY_PROBLEM.test(row.error || "") ? "" : row.prov
 function Retry({ row, onRequeue }) {
   const { t } = useLang();
   const [provider, setProvider] = useState(() => retryDefault(row));
+  // an Unsplash search is retried as an Unsplash search: no image generator can answer it
+  if (isUnsplash(row)) {
+    return <Button size="sm" variant="soft" onClick={() => onRequeue(row.id, "unsplash")} title={t("Cuba lagi", "Try again")}><RotateCcw size={12} /></Button>;
+  }
   return (
     <>
       <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label={t("Cuba semula dengan", "Retry with")}
@@ -36,8 +41,9 @@ const statusOf = (t) => ({
   error: { icon: AlertTriangle, label: t("Gagal", "Failed"), cls: "text-danger bg-danger/10" },
 });
 
-function Media({ row }) {
+function Media({ row, onToast }) {
   const { t } = useLang();
+  if (isUnsplash(row)) return <UnsplashResults row={row} onToast={onToast} />;
   if (row.status === "done" && row.generated_media_url) {
     return row.type === "video"
       ? <video src={row.generated_media_url} controls playsInline className="aspect-video w-full bg-black object-contain" />
@@ -54,7 +60,7 @@ function Media({ row }) {
   );
 }
 
-export default function GenerationGallery({ rows, user, onRequeue, onRemove }) {
+export default function GenerationGallery({ rows, user, onRequeue, onRemove, onToast }) {
   const { t } = useLang();
   if (!rows.length) {
     return <p className="rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">{t("Belum ada kerja. Muat naik rujukan di atas.", "No jobs yet. Upload a reference above.")}</p>;
@@ -70,7 +76,7 @@ export default function GenerationGallery({ rows, user, onRequeue, onRemove }) {
           return (
             <motion.div key={row.id} variants={pop} layout exit="exit" className="min-w-0">
               <Card className="overflow-hidden">
-                <Media row={row} />
+                <Media row={row} onToast={onToast} />
                 <div className="p-4">
                   <div className="flex items-center justify-between gap-2">
                     <span className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-semibold ${st.cls}`}>

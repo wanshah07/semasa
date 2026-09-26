@@ -23,7 +23,7 @@
   }
  },
  {
-  "name": "resolved-looking but unresolved SAHKAN blocks",
+  "name": "a [SAHKAN] marker is not a rule any more",
   "post": {
    "stream": "regulab",
    "lang": "bm",
@@ -42,62 +42,9 @@
    ]
   },
   "expect": {
-   "hard_min": 3,
-   "contains": [
-    "[SAHKAN] unresolved"
-   ]
-  }
- },
- {
-  "name": "SAHKAN naming nothing is its own flag",
-  "post": {
-   "stream": "regulab",
-   "lang": "bm",
-   "text": {
-    "bm": {
-     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN: what to verify]",
-     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN: what to verify]",
-     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN: what to verify]"
-    }
-   },
-   "media": [
-    {
-     "id": "m1",
-     "alt": "Botol produk di rak"
-    }
-   ]
-  },
-  "expect": {
-   "contains": [
-    "names nothing"
-   ],
+   "hard": 0,
    "not_contains": [
-    "[SAHKAN] unresolved"
-   ]
-  }
- },
- {
-  "name": "bare SAHKAN is empty",
-  "post": {
-   "stream": "regulab",
-   "lang": "bm",
-   "text": {
-    "bm": {
-     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN]",
-     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN]",
-     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. [SAHKAN]"
-    }
-   },
-   "media": [
-    {
-     "id": "m1",
-     "alt": "Botol produk di rak"
-    }
-   ]
-  },
-  "expect": {
-   "contains": [
-    "names nothing"
+    "SAHKAN"
    ]
   }
  },
@@ -523,32 +470,6 @@
   }
  },
  {
-  "name": "citation SAHKAN blocks",
-  "post": {
-   "stream": "regulab",
-   "lang": "bm",
-   "text": {
-    "bm": {
-     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
-     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
-     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
-    }
-   },
-   "media": [
-    {
-     "id": "m1",
-     "alt": "Botol produk di rak"
-    }
-   ],
-   "citation": "Garis Panduan [SAHKAN: edisi terkini]"
-  },
-  "expect": {
-   "contains": [
-    "Source"
-   ]
-  }
- },
- {
   "name": "alt text CTA blocks",
   "post": {
    "stream": "regulab",
@@ -956,80 +877,6 @@
   },
   "expect": {
    "hard": 0
-  }
- },
- {
-  "name": "unresolved SAHKAN on a slide blocks",
-  "post": {
-   "stream": "regulab",
-   "lang": "bm",
-   "text": {
-    "bm": {
-     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
-     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
-     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
-    }
-   },
-   "media": [
-    {
-     "id": "m1",
-     "alt": "x",
-     "slides": [
-      {
-       "title": "Tarikh berkuat kuasa",
-       "points": [
-        "[SAHKAN: tarikh pekeliling NPRA]"
-       ]
-      }
-     ]
-    }
-   ],
-   "slides": [
-    {
-     "title": "Tarikh berkuat kuasa",
-     "points": [
-      "[SAHKAN: tarikh pekeliling NPRA]"
-     ]
-    }
-   ]
-  },
-  "expect": {
-   "contains": [
-    "Slide 1:"
-   ]
-  }
- },
- {
-  "name": "empty SAHKAN on a slide is named",
-  "post": {
-   "stream": "regulab",
-   "lang": "bm",
-   "text": {
-    "bm": {
-     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
-     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
-     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
-    }
-   },
-   "media": [
-    {
-     "id": "m1",
-     "alt": "Botol produk di rak"
-    }
-   ],
-   "slides": [
-    {
-     "title": "Yuran",
-     "points": [
-      "[SAHKAN: what to verify]"
-     ]
-    }
-   ]
-  },
-  "expect": {
-   "contains": [
-    "Slide 1: a [SAHKAN] that names nothing"
-   ]
   }
  },
  {

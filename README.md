@@ -284,7 +284,7 @@ only the `socialmedia` name is added.
   - **A search shows each match twice**, as one list above the cards and inside its own card below. The cards
     keep only the categories with matches.
   - **Jadikan post** on any question sends it to the writer as an idea. The answer is the source the draft is
-    written from. An AI-written answer that is not checked yet asks for `[SAHKAN]` on every specific fact.
+    written from. An AI-written answer that is not checked yet tells the writer to add no specific fact beyond it.
 - **Exports** follow the current category, subcategory and search:
   - **PDF** is the browser's print → *Save as PDF*, on A4, in BM, EN or both.
   - **Poster** is 1080×1350: one PNG, or a ZIP of pages for a long category.
@@ -414,7 +414,7 @@ Any of them can be made at 1:1, 4:5 or 9:16 (1080×1920, a story).
   an existing post: its slides for a carousel, otherwise its hook and caption as the idea.
 - **Background:** brand paper; your own picture (uploaded, drawn under a dark scrim); or an AI picture. The AI
   picture is made first by the image provider (Cloudflare: free) and the drawing waits for it, up to 2 hours.
-- **Rules:** every word is judged by the post rules (no CTA, no URL, no social source, `[SAHKAN]`). The form shows
+- **Rules:** every word is judged by the post rules (no CTA, no URL, no social source). The form shows
   the flags as you type. A finished design shows them too. A design attached to a post blocks that post's
   approval while a hard flag stands.
 - **Attach to a post** adds the design to that draft post's pictures. It never replaces the post's own carousel.
@@ -591,6 +591,24 @@ The rules behind it:
 - Cost: the concepts use the writer; the pictures use the image provider (Cloudflare by default). The label check uses
   `VISION_MODEL`.
 
+## No [SAHKAN] in Semasa
+
+Semasa has no `[SAHKAN: …]` markers (Wan, 26 Sep 2026: *"remove all SAHKAN feature"*). The writers are told to leave
+out any fee, date, circular, entry number or figure the source does not give, and to write around it. They never
+guess one, and never write a placeholder or a note in brackets. The rules checker no longer looks for the marker, so
+it cannot block an approval. Studio (wanshah07/argus) is a separate system and keeps its own rule.
+
+Because nothing looks for the marker any more, a draft written **before** this change could still carry one, and it
+would now pass approval with the marker in it. Find them once with this read-only query in the SQL editor, and edit
+the text in the Post tab:
+
+```sql
+select id, status, date, left(hook, 60) as hook
+  from public.semasa_posts
+ where status in ('draft', 'approved', 'scheduled')
+   and (text::text ilike '%[SAHKAN%' or coalesce(citation, '') ilike '%[SAHKAN%' or slides::text ilike '%[SAHKAN%');
+```
+
 ## Sizes: every social size Canva lists
 
 The Design tab, Wangian and Kanvas share one size list (`web/src/lib/sizes.js`, from Canva's resize panel, 26 Sep
@@ -724,7 +742,7 @@ allows one schedule per job.
 
 | Studio feature | In Semasa |
 |---|---|
-| Compliance: CTA, website in caption, `[SAHKAN]` (incl. empty), social source, BM-not-Indonesian, limits, hashtags, LinkedIn aggregator + brand mark, fatwa gazette, Instagram needs a picture, off-rota warning, other-language warnings | ✅ same rules, one file, page and publisher agree exactly (tested) |
+| Compliance: CTA, website in caption, social source, BM-not-Indonesian, limits, hashtags, LinkedIn aggregator + brand mark, fatwa gazette, Instagram needs a picture, off-rota warning, other-language warnings | ✅ same rules, one file, page and publisher agree exactly (tested) |
 | One approval gate, two voices, slots, weekly rota, LinkedIn days | ✅ |
 | Ideas → drafts | ✅ from headlines (Flow A) |
 | Release clock 06:20 · 11:20 · 19:20, 45-minute late grace | ✅ dry run |

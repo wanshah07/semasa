@@ -1,5 +1,5 @@
 {
- "_about": "Ported from ws.regulab Studio (argus studio/part2.html scanInner, 24 Sep 2026). ONE source of truth: read by backend/semasa/compliance.py and web/src/lib/compliance.js. Patterns are written in the subset JavaScript and Python regex share. Flags: 'i' or ''. Change a rule here, then run both test suites (rules/cases.json).",
+ "_about": "Ported from ws.regulab Studio (argus studio/part2.html scanInner, 24 Sep 2026). ONE source of truth: read by backend/semasa/compliance.py and web/src/lib/compliance.js. Patterns are written in the subset JavaScript and Python regex share. Flags: 'i' or ''. Change a rule here, then run both test suites (rules/cases.json). [SAHKAN] markers are not a rule in Semasa (Wan, 26 Sep 2026: \"remove all SAHKAN feature\"): the writers leave out a fact they cannot source instead.",
  "platforms": {
   "regulab": [
    "instagram",
@@ -43,11 +43,6 @@
  },
  "brand_url_always": "kkmhalalconsultant\\.com",
  "hard": [
-  {
-   "re": "\\[SAHKAN:(?!\\s*(?:what to verify|apa yang perlu disahkan|\\.\\.\\.|…)?\\s*\\])[^\\]]*\\]",
-   "flags": "i",
-   "label": "[SAHKAN] unresolved: find the source, then edit the text to remove the marker"
-  },
   {
    "re": "KKM Halal Consultant",
    "flags": "i",
@@ -218,16 +213,6 @@
    "label": "em dash"
   }
  ],
- "sahkan_empty": {
-  "re": "\\[SAHKAN:?\\s*(?:what to verify|apa yang perlu disahkan|\\.\\.\\.|…)?\\s*\\]",
-  "flags": "i",
-  "label": "a [SAHKAN] that names nothing"
- },
- "sahkan_any": {
-  "re": "\\[SAHKAN:[^\\]]*\\]",
-  "flags": "i",
-  "label": "an unresolved [SAHKAN]"
- },
  "social_src": {
   "re": "\\b(reddit|subreddit|youtube|tiktok|redd\\.it|r/[a-z0-9_]{3,}|youtu\\.be|facebook\\.com|fb\\.com|instagram\\.com|threads\\.net|x\\.com|twitter\\.com)\\b",
   "flags": "i",

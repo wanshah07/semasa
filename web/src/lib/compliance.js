@@ -8,8 +8,6 @@ const rx = (r) => new RegExp(r.re, (r.flags || "").includes("i") ? "i" : "");
 const HARD = [...RULES.hard, ...RULES.cta].map((r) => [rx(r), r.label]);
 const CTA = RULES.cta.map((r) => [rx(r), r.label]);
 const SOFT = RULES.soft.map((r) => [rx(r), r.label]);
-const SAHKAN_EMPTY = rx(RULES.sahkan_empty);
-const SAHKAN_ANY = rx(RULES.sahkan_any);
 const SOCIAL_SRC = rx(RULES.social_src);
 const AGGREGATOR = rx(RULES.aggregator);
 const ANY_URL = rx(RULES.any_url);
@@ -123,7 +121,6 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     if (!t) { add(true, where, "empty"); continue; }
     const lim = limits[p];
     if (lim && t.length > lim.max) add(true, where, `${t.length} chars, over the ${lim.max} limit`);
-    if (SAHKAN_EMPTY.test(t)) add(true, where, "a [SAHKAN] that names nothing. Name the exact missing fact, or find the source and delete the marker.");
     for (const [re, label] of HARD) if (re.test(t)) add(true, where, label);
     for (const [re, label] of SOFT) if (re.test(t)) add(false, where, label);
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. Never say the idea came from Reddit, YouTube, a forum or a post.");
@@ -157,8 +154,6 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   const alts = (post.media || []).filter((m) => m && typeof m === "object").map((m) => String(m.alt || ""));
   for (const [where, t] of [["Source", cit], ...alts.map((a, i) => [`Picture ${i + 1} alt text`, a])]) {
     if (!t) continue;
-    if (SAHKAN_EMPTY.test(t)) add(true, where, "a [SAHKAN] that names nothing");
-    else if (SAHKAN_ANY.test(t)) add(true, where, "an unresolved [SAHKAN]");
     for (const [re, label] of CTA) if (re.test(t)) add(true, where, label);
     if (burl.test(t)) add(true, where, "the ws.regulab website");
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. A post stands on the instrument, never on where the idea was spotted.");
@@ -174,7 +169,6 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   const artwork = (items, label) => items.forEach((sl, i) => {
     const where = `${label} ${i + 1}`;
     const t = [sl.title, ...sl.points].join("\n");
-    if (SAHKAN_EMPTY.test(t)) add(true, where, "a [SAHKAN] that names nothing");
     for (const [re, lab] of HARD) if (re.test(t)) add(true, where, lab);
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. A post stands on the instrument, never on where the idea was spotted.");
     for (const msg of indoHits(t, extra)) add(true, where, msg);

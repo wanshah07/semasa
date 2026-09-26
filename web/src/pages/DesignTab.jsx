@@ -158,9 +158,9 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
         <h1 className="mt-2 text-4xl leading-tight">{t("Poster, kad dan carousel untuk post.", "Posters, cards and carousels for posts.")}</h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
           {t("Beri idea atau prompt dan bot tulis perkataannya, atau tulis sendiri. Pilih latar: kertas jenama, gambar anda, "
-            + "atau gambar AI. Lukisan dibuat tanpa AI dan percuma; peraturan post (tiada CTA, tiada URL, [SAHKAN]) berlaku pada setiap perkataan.",
+            + "atau gambar AI. Lukisan dibuat tanpa AI dan percuma; peraturan post (tiada CTA, tiada URL, tiada sumber media sosial) berlaku pada setiap perkataan.",
           "Give an idea or a prompt and the bot writes the words, or write them yourself. Pick a background: brand paper, your "
-            + "own picture, or an AI picture. The drawing is made without AI and is free; the post rules (no CTA, no URL, [SAHKAN]) apply to every word.")}
+            + "own picture, or an AI picture. The drawing is made without AI and is free; the post rules (no CTA, no URL, no social source) apply to every word.")}
         </p>
       </motion.div>
 

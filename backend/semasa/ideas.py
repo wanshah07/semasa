@@ -133,17 +133,17 @@ Rules. Breaking any of them blocks the post, so follow them exactly:
 2. No website or URL in any caption, least of all kkmhalalconsultant.com.
 3. Never say where the idea came from: no Reddit, YouTube, TikTok, forum, subreddit, and do not name the news portal.
    The post stands on the regulator and the instrument.
-4. Facts: no fee, duration, circular, entry number, date or figure unless it is in the SOURCE below. Where one is
-   needed and the source does not give it, write [SAHKAN: <the exact missing fact, and where it would be found>].
-   Never write "[SAHKAN: what to verify]" or an empty [SAHKAN].
+4. Facts: no fee, duration, circular, entry number, date or figure unless it is in the SOURCE below. If the source
+   does not give one, leave it out and write around it: never guess one, and never write a placeholder or a note in
+   brackets.
 5. No em dash. Do not open with "Tahukah anda". No superlatives, no promise of approval, no "tiada kesan sampingan",
    no "halal-friendly" or "patuh syariah" claims.
 6. A fatwa post says whether the fatwa is diwartakan, and where.
 7. Lengths: instagram up to 2200 characters (aim about 900) with at most 8 hashtags; facebook aim about 500 with at
    most 3 hashtags; threads at most 500 characters with at most 1 hashtag.
 8. The citation names the regulator and the instrument (for example "NPRA, Guidelines for Control of Cosmetic Products
-   in Malaysia"), never a news portal, blog or social platform. If only a news report supports a fact, use
-   [SAHKAN: primary source for <that fact>].
+   in Malaysia"), never a news portal, blog or social platform. If only a news report supports a fact, leave that
+   fact out.
 
 Answer with ONE JSON object:
 {"fit": true or false, "why_not": "", "hook": "the first line", "domain": one of %s,
@@ -164,8 +164,8 @@ Rules. Breaking any blocks the post:
 2. No call to action (no "comment below", "follow", "DM me", "share this", "link in bio").
 3. Cite the INSTRUMENT (e.g. EC 1223/2009 Annex III entry 325, SI 2026/109, ISO 24444, a WTO TBT number), never a
    blog or aggregator (ChemLinked, CIRS, CosmeticsDesign, Chemical Watch, Happi and the like), never a news portal.
-4. No fact without a source in the SOURCE below; otherwise [SAHKAN: <the exact missing fact, and where to find it>].
-   Never "[SAHKAN: what to verify]".
+4. No fact without a source in the SOURCE below: a fact it does not give is left out, never guessed, and never
+   replaced by a placeholder or a note in brackets.
 5. Never say the idea came from Reddit, YouTube, TikTok or a forum.
 
 Angles: %s
@@ -188,7 +188,7 @@ SLIDES WANTED. Also return "slides": a carousel of 5 to 7 slides in Malaysian Ma
 - The last slide is the takeaway, stated plainly. It is NOT a call to action.
 - Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
 - Every rule above applies to every slide: no call to action, no URL or website, no news portal or social source,
-  and [SAHKAN: <the exact missing fact>] where a fact is not in the SOURCE. The source line is added to the last
+  and no fact that is not in the SOURCE. The source line is added to the last
   slide from "citation" automatically, so do not write it into a slide.""",
     "linkedin": """
 
@@ -198,8 +198,8 @@ SLIDES WANTED. Also return "slides": a carousel of 5 to 7 slides in English, dra
 - Each middle slide carries ONE idea: a title of at most 9 words and at most 3 points of at most 22 words each.
 - The last slide is the takeaway. Never a question, never a call to action.
 - Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
-- No company identity, no URL, no blog or aggregator, and [SAHKAN: <the exact missing fact>] where the SOURCE does
-  not give a fact. The citation is added to the last slide automatically.""",
+- No company identity, no URL, no blog or aggregator, and no fact the SOURCE does not give. The citation is added
+  to the last slide automatically.""",
 }
 
 
@@ -208,13 +208,13 @@ POSTER_RULES = {
 
 POSTER WANTED. Also return "poster": ONE 4:5 poster in Malaysian Malay: {"title": "a headline of at most 10 words",
 "points": [up to 5 points of at most 22 words each]}. Mark the one key word of the title with *asterisks*. The same
-rules apply to every word: no call to action, no URL, [SAHKAN: <the exact missing fact>] where the SOURCE is silent.
+rules apply to every word: no call to action, no URL, no fact the SOURCE does not give.
 The citation is drawn at its foot automatically.""",
     "linkedin": """
 
 POSTER WANTED. Also return "poster": ONE 4:5 poster in English: {"title": "a headline of at most 10 words",
 "points": [up to 5 points of at most 22 words each]}. Mark the one key word of the title with *asterisks*. No
-company identity, no URL, no blog or aggregator, [SAHKAN: <the exact missing fact>] where the SOURCE is silent. The
+company identity, no URL, no blog or aggregator, no fact the SOURCE does not give. The
 citation is drawn at its foot automatically.""",
 }
 
@@ -256,7 +256,7 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
                      f"{source.get('description') or ''}\n{source.get('text') or ''}")
     else:
         lines.append("SOURCE: only the headline and summary above could be read "
-                     f"({source.get('why') or 'no article'}). Every specific fact beyond them needs [SAHKAN: …].")
+                     f"({source.get('why') or 'no article'}). Use only the facts they give; leave out any specific they do not.")
     return system + avoid, "\n\n".join(lines)
 
 

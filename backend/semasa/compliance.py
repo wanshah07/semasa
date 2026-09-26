@@ -31,8 +31,6 @@ def _rx(rule: dict[str, Any]) -> re.Pattern[str]:
 HARD = [(_rx(r), r["label"]) for r in RULES["hard"]] + [(_rx(r), r["label"]) for r in RULES["cta"]]
 CTA = [(_rx(r), r["label"]) for r in RULES["cta"]]
 SOFT = [(_rx(r), r["label"]) for r in RULES["soft"]]
-SAHKAN_EMPTY = _rx(RULES["sahkan_empty"])
-SAHKAN_ANY = _rx(RULES["sahkan_any"])
 SOCIAL_SRC = _rx(RULES["social_src"])
 AGGREGATOR = _rx(RULES["aggregator"])
 ANY_URL = _rx(RULES["any_url"])
@@ -181,9 +179,6 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
         lim = limits.get(p)
         if lim and len(t) > lim["max"]:
             add(True, where, f"{len(t)} chars, over the {lim['max']} limit")
-        if SAHKAN_EMPTY.search(t):
-            add(True, where, "a [SAHKAN] that names nothing. "
-                             "Name the exact missing fact, or find the source and delete the marker.")
         for rx, label in HARD:
             if rx.search(t):
                 add(True, where, label)
@@ -237,10 +232,6 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
     for where, t in [("Source", cit)] + [(f"Picture {i + 1} alt text", a) for i, a in enumerate(alts)]:
         if not t:
             continue
-        if SAHKAN_EMPTY.search(t):
-            add(True, where, "a [SAHKAN] that names nothing")
-        elif SAHKAN_ANY.search(t):
-            add(True, where, "an unresolved [SAHKAN]")
         for rx, label in CTA:
             if rx.search(t):
                 add(True, where, label)
@@ -261,8 +252,6 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
         for i, sl in enumerate(items):
             where = f"{label} {i + 1}"
             t = "\n".join([sl["title"], *sl["points"]])
-            if SAHKAN_EMPTY.search(t):
-                add(True, where, "a [SAHKAN] that names nothing")
             for rx, lab in HARD:
                 if rx.search(t):
                     add(True, where, lab)

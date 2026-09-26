@@ -7,8 +7,8 @@ A design job is a `slides` render job (media_generations, mode `slides`) whose m
   carousel  5 to 7 slides, the stream's own shape by default
 
 The words come from Wan (meta.slides) or, when he gives only an idea or a prompt (meta.brief), from the writer here,
-under the same rules as a post: no call to action, no URL, no social source, and [SAHKAN: <the missing fact>] for any
-fact the brief does not give. The drawing is semasa.slides, with no AI and no cost.
+under the same rules as a post: no call to action, no URL, no social source, and no fact the brief does not give
+(one it cannot give is left out, never guessed). The drawing is semasa.slides, with no AI and no cost.
 """
 
 from __future__ import annotations
@@ -28,8 +28,8 @@ COMMON = """Rules. Breaking any of them blocks the artwork:
 1. No call to action of any kind ("hubungi kami", "DM", "klik link", "follow", "semak kelayakan", "comment below").
 2. No website or URL anywhere in the words: the artwork footer carries the website.
 3. Never name Reddit, YouTube, TikTok, a forum or a news portal as a source.
-4. No fee, duration, date, circular, entry number or figure unless it is in the BRIEF. Where one is needed and the
-   brief does not give it, write [SAHKAN: <the exact missing fact>]. Never an empty [SAHKAN].
+4. No fee, duration, date, circular, entry number or figure unless it is in the BRIEF. If one is not in the brief,
+   leave it out and write around it: never guess one, and never write a placeholder or a note in brackets.
 5. No em dash. No superlatives, no promise of approval.
 6. Mark the one key word of a title with *asterisks*, at most once per title.
 7. "citation" names the regulator and instrument the words rest on, or "" when the brief names none. It is drawn at

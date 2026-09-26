@@ -67,9 +67,9 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Post</p>
         <h1 className="mt-2 text-4xl leading-tight">{t("Satu pintu: kelulusan anda.", "One gate: your approval.")}</h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
-          {t("Setiap draf disemak dengan peraturan yang sama seperti Studio (tiada CTA, tiada laman web dalam kapsyen, tiada "
-            + "[SAHKAN] tertunggak, tiada sumber media sosial, BM Malaysia). Hanya post yang anda luluskan akan dihantar.",
-          "Every draft is checked against the same rules as Studio (no CTA, no website in a caption, no open [SAHKAN], "
+          {t("Setiap draf disemak dengan peraturan yang sama seperti Studio (tiada CTA, tiada laman web dalam kapsyen, "
+            + "tiada sumber media sosial, BM Malaysia). Hanya post yang anda luluskan akan dihantar.",
+          "Every draft is checked against the same rules as Studio (no CTA, no website in a caption, "
             + "no social media source, Malaysian BM). Only posts you approve are sent.")}
         </p>
       </motion.div>

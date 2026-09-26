@@ -286,7 +286,7 @@ export default function App() {
       faq: true, id: r.id, title: q, url: null, source: FAQ_SOURCE, category: r.category,
       domain: FAQ_CATEGORY_TO_DOMAIN[r.category] || "",
       summary: [a, r.instrument ? `Sumber: ${r.instrument}` : "",
-        unchecked ? "(Jawapan ini ditulis AI dan belum disemak: setiap fakta khusus perlu [SAHKAN].)" : ""].filter(Boolean).join("\n\n"),
+        unchecked ? "(Jawapan ini ditulis AI dan belum disemak: jangan tambah fakta khusus yang tiada di sini.)" : ""].filter(Boolean).join("\n\n"),
     };
   }
   const { settings, save } = useSettings(allowed);

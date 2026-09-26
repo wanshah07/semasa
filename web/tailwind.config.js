@@ -1,10 +1,12 @@
+import animate from "tailwindcss-animate";
+
 /** Every colour, radius, font and shadow maps to a CSS variable from src/design/tokens.css.
  *  A theme is a file that sets those variables; swapping it changes the whole app with
  *  no rebuild and no component edit. Use `bg-surface`, `text-ink`, `rounded-card` … only. */
 const c = (name) => `rgb(var(--c-${name}) / <alpha-value>)`;
 
 export default {
-  content: ["./index.html", "./src/**/*.{js,jsx}"],
+  content: ["./index.html", "./src/**/*.{js,jsx,ts,tsx}"],
   darkMode: ["selector", '[data-theme="noir"]'],
   theme: {
     extend: {
@@ -14,7 +16,6 @@ export default {
         "surface-2": c("surface-2"),
         line: c("line"),
         ink: c("ink"),
-        muted: c("muted"),
         accent: c("accent"),
         "accent-ink": c("accent-ink"),
         warm: c("warm"),
@@ -22,10 +23,24 @@ export default {
         ok: c("ok"),
         warn: c("warn"),
         danger: c("danger"),
+        // shadcn's names, pointed at the SAME tokens, so a pasted shadcn component follows every Semasa theme
+        // (bg-card, text-foreground, text-muted-foreground, border-border, bg-primary …)
+        background: c("bg"),
+        foreground: c("ink"),
+        card: { DEFAULT: c("surface"), foreground: c("ink") },
+        popover: { DEFAULT: c("surface"), foreground: c("ink") },
+        primary: { DEFAULT: c("accent"), foreground: c("accent-ink") },
+        secondary: { DEFAULT: c("surface-2"), foreground: c("ink") },
+        muted: { DEFAULT: c("muted"), foreground: c("muted") },   // text-muted stays exactly what it was
+        border: c("line"),
+        input: c("line"),
+        ring: c("accent"),
+        destructive: { DEFAULT: c("danger"), foreground: c("bg") },
       },
       fontFamily: {
         display: ["var(--font-display)"],
         body: ["var(--font-body)"],
+        sans: ["var(--font-body)"],   // shadcn components say font-sans: the theme's body face
       },
       borderRadius: {
         card: "var(--r-card)",
@@ -35,10 +50,11 @@ export default {
       boxShadow: {
         card: "var(--shadow-card)",
         lift: "var(--shadow-lift)",
+        xs: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
       },
       maxWidth: { page: "var(--page-max)" },
       transitionTimingFunction: { out: "var(--ease-out)" },
     },
   },
-  plugins: [],
+  plugins: [animate],   // animate-in / fade-in / zoom-in-95, as shadcn components use
 };

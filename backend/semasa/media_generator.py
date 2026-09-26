@@ -409,7 +409,7 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
         read = read_reference(llm, row["reference_url"]) if mode == "recreate" else None
         if mode == "recreate":
             extra["read"] = read or None
-            extra["read_model"] = (llm.s.vision_model or llm.s.model) if (read and llm) else None
+            extra["read_model"] = (llm.last_model or llm.s.vision_model or llm.s.model) if (read and llm) else None
             if flow_a and not read and not (row.get("prompt") or "").strip():
                 raise ProviderError("the news picture could not be read and there are no words to draw from; "
                                     "set VISION_MODEL to a model that sees pictures, or add a prompt")
@@ -452,9 +452,12 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
 
 
 def main() -> int:
-    s = MediaSettings.load()
     store = db.client(SupabaseSettings.load())
-    llm = LLM(LLMSettings.load())
+    from . import ai_config
+    cfg = ai_config.read(store)                          # the AI settings Wan saved in the page (016), over GitHub's
+    log.info(ai_config.describe(cfg))
+    s = ai_config.media_settings(MediaSettings.load(), cfg)
+    llm = LLM(ai_config.llm_settings(LLMSettings.load(), cfg))
     from . import faq, ideas, trial
     trial_on = trial.start(store, llm, "media")         # the page's "Try Mireld for one run": Mireld is asked first
 

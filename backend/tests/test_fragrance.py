@@ -282,6 +282,32 @@ def test_a_passing_service_fault_is_tried_once_more(rig, monkeypatch):
     assert calls["n"] == 2 and [r["method"] for r in m["renders"]] == ["cutout", "ai_edit"] and m["render_errors"] == {}
 
 
+def test_the_second_try_on_cloudflare_asks_for_a_smaller_picture(rig, monkeypatch):
+    # 26 Sep 2026, 12:13-12:17 UTC: Cloudflare's FLUX answered 408 on the AI edit; the retry asks for 768, not 1024
+    import requests
+    monkeypatch.setattr(f.time, "sleep", lambda s: None)
+    asked = []
+
+    class Busy:
+        name = "cloudflare"
+
+        def generate_from_text(self, prompt, options):
+            return Generated(_jpeg(), "image/jpeg", "flux")
+
+        def generate(self, kind, url, prompt, options):
+            asked.append(dict(options))
+            if len(asked) == 1:
+                resp = requests.Response()
+                resp.status_code = 408
+                raise requests.HTTPError("408 Client Error: Request Timeout", response=resp)
+            return Generated(_jpeg(), "image/jpeg", "klein")
+    monkeypatch.setattr(media_generator, "make_provider", lambda name, s: Busy())
+    store = _store(_chosen(methods=["ai_edit"]))
+    f.process(store, store.tables["media_generations"][0], _settings(), Writer())
+    m = store.tables["media_generations"][0]["meta"]
+    assert asked == [{}, {"size": f.LIGHTER_SIZE}] and [r["method"] for r in m["renders"]] == ["ai_edit"]
+
+
 def test_a_refusal_is_not_retried(monkeypatch):
     monkeypatch.setattr(f.time, "sleep", lambda s: None)
     calls = []

@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -10,6 +11,8 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   base: "./",
+  // "@/components/ui/…": the path a shadcn component is written against (components.json)
+  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   // rules/compliance.json lives at the repo root, shared with the Python publisher
   server: { fs: { allow: [".."] } },
   build: {

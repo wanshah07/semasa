@@ -108,7 +108,12 @@ an account), and no Google button.
    **Then `013_watch_paste.sql`** (paste a link into Regulatory or Latest publication, 26 Sep 2026). It adds the
    status columns, lets uploaders add a waiting link (and remove a pasted one), and wakes the worker on a paste.
    Safe to run again, and safe in the shared project.
-   **Then `015_canvas.sql`** (the Kanvas editor, 26 Sep 2026, see *Kanvas* below). It creates `semasa_canvas`, which
+   **Last, `016_ai_settings.sql`** (AI keys and endpoints set in the page, 27 Sep 2026, see *AI settings* below). It
+   creates `semasa_ai_config` (what the page may see) and `semasa_ai_secrets` (the keys, which the page can never read
+   back), and the two functions the page saves through. Until it is run, the Settings tab says so and every run uses
+   the GitHub secrets exactly as before. Safe to run again, and safe in the shared project. The check at the bottom
+   prints `1 | 1 | 1`.
+   **Before that, `015_canvas.sql`** (the Kanvas editor, 26 Sep 2026, see *Kanvas* below). It creates `semasa_canvas`, which
    holds the designs made in the editor. Safe to run again, and safe in the shared project. The check at the bottom
    prints `1 | 1 | 1`.
    **Before that, `014_fragrance.sql`** (the Wangian tab, 26 Sep 2026, see *Wangian* below). It creates `semasa_fragrances`
@@ -588,8 +593,12 @@ The rules behind it:
 - **Canva:** the worker cannot sign in to Canva. To try a design there, ask in a chat session.
 - **Where it goes:** Valorith will be scheduled from Semasa once its publishing is switched on (Wan, 26 Sep 2026).
   Until then, a saved design is a picture to download. Nothing here posts.
+- **A busy image service is asked twice.** A timeout (Cloudflare answered 408 after four minutes on 26 Sep 2026), a
+  rate limit or a 5xx waits 20 seconds and tries once more; on Cloudflare the second try asks for a 768 picture instead
+  of 1024, which is drawn faster, and the artwork is typeset over it anyway. A refusal on the merits is not retried.
+  Still failing: *Cuba lagi* on that version redraws it alone, or pick another image service in *Tetapan AI*.
 - Cost: the concepts use the writer; the pictures use the image provider (Cloudflare by default). The label check uses
-  `VISION_MODEL`.
+  the image reader from *Tetapan AI* when one is set, otherwise `VISION_MODEL`.
 
 ## No [SAHKAN] in Semasa
 
@@ -655,6 +664,31 @@ design as the background to add to.
 
 **Where the rules still apply:** the editor is yours, so it checks no words. A Kanvas design is not attached to a post
 by itself. Badges must still carry only claims with evidence in the PIF, and the editor says so beside the layers.
+
+## AI settings: keys and endpoints in the page
+
+Wan, 27 Sep 2026: *"can add in setting reader, image generation, image reader key and endpoint"*. **Tetapan → Tetapan
+AI** has three slots, each with a provider, an endpoint, a model and a key:
+
+| Slot | Does | Providers | Takes the place of |
+|---|---|---|---|
+| Text reader & writer | reads the news, writes ideas, drafts, FAQ | OpenAI-compatible, Anthropic | `LLM_PROVIDER` `LLM_BASE_URL` `LLM_MODEL` `LLM_API_KEY` |
+| Image generation | backgrounds, the Wangian AI bottle edit | Cloudflare, OpenAI-compatible, Replicate | `MEDIA_PROVIDER` and that provider's account, key and models |
+| Image reader | reads a reference, checks the bottle label | OpenAI-compatible, Anthropic | before this: the writer's own endpoint with `VISION_MODEL` |
+
+- **Empty means GitHub.** A slot nobody saved, or a field left empty, keeps the GitHub secret or variable. *Guna GitHub
+  semula* deletes the slot and its key.
+- **A key never comes back to the page.** It is kept in `semasa_ai_secrets`, which has no policy for the browser; the
+  page shows only its last four characters. Only the worker (service_role, on the GitHub runner) reads it.
+- **A key goes only where it was typed for.** The database records the endpoint's host with the key. Change the
+  endpoint without typing the key again and the key is dropped (the page says so); the worker also refuses a key whose
+  host does not match. A new reader endpoint with no key of its own gets the GitHub key only if its host is on
+  `LLM_ALLOWED_HOSTS`, the same rule as before. A key typed together with its endpoint is Wan's choice and needs no
+  allow-list entry.
+- **The image reader goes first, then the writer.** When it gives nothing, the writer's endpoint reads the picture with
+  its own `VISION_MODEL`, so a broken reader never costs a job.
+- **Every run says what it used** in the log (`AI settings from the page: reader=openai:model +key, …`), never a key.
+- Cloudflare's endpoint field is the **Account ID** (32 letters and digits); Replicate has one address, so it has none.
 
 ## Card or table
 
@@ -792,6 +826,20 @@ presets live in `design/motion.js` so the whole app moves with one hand.
 
 Components are one job each (`TrendCard`, `MasonryGrid`, `FilterBar`, `MediaUploader`,
 `GenerationGallery`, `AuthPanel`, `ui/*`); data access is in `lib/hooks.js` and never inside a component.
+
+**shadcn components drop straight in** (27 Sep 2026, the dashboard sidebar). `web/components.json` registers
+`src/components/ui` as the `ui` folder and `@/` as `src/`; `tsconfig.json` and the `typescript` / `@types/react`
+dev-dependencies let a `.tsx` file sit beside the `.jsx` ones (Vite compiles both; `npm run typecheck` checks the
+TypeScript). `tailwind.config.js` maps shadcn's colour names onto the same tokens (`bg-card` = surface,
+`text-foreground` = ink, `text-muted-foreground` = muted, `border-border` = line, `bg-primary` = accent), so a pasted
+component follows every theme with no edit, and `tailwindcss-animate` supplies `animate-in fade-in zoom-in-95`.
+`src/lib/utils.ts` has `cn()`. Put a new component in `src/components/ui/`, install what it imports, and use it from a
+page. `npx shadcn add …` works on a computer with the registry reachable.
+
+**The sidebar.** `components/ui/dashboard-sidebar.tsx` is the pasted component (its demo is `dashboard-sidebar.demo.tsx`);
+`components/AppSidebar.jsx` feeds it Semasa's tabs from `lib/tabs.js`, the same list the header reads, with counts of
+new ideas and drafts waiting. It shows from 1024 px wide; the button left of the header hides it (remembered on that
+browser), which brings the header tabs back. On a phone the header tab row stays as it was.
 
 ## Local
 

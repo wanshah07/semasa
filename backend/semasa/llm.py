@@ -179,7 +179,20 @@ class LLM:
         """The READ step: one picture and a question to VISION_MODEL. None when the key,
         the gateway or the model will not take a picture — the caller records that the
         reference was not read rather than pretending it was. rootsys only: nothing says the
-        backup's model can see, and a text model would describe a picture it never saw."""
+        backup's model can see, and a text model would describe a picture it never saw.
+
+        A picture reader set in the page (its own endpoint, key and model) is asked first; the writer's endpoint reads
+        the picture only when that reader gives nothing."""
+        if getattr(self.s, "vision_key", None) and getattr(self.s, "vision_base_url", "") and \
+                getattr(self.s, "vision_reader_model", ""):
+            provider = self.s.vision_provider or "openai"
+            out = self._ask(system, image_parts(provider, prompt, data, mime), max_tokens, 1, provider,
+                            self.s.vision_base_url, self.s.vision_key or "", self.s.vision_reader_model)
+            if out is not None:
+                self.last_model = self.s.vision_reader_model
+                self.vision["reader"] = self.vision.get("reader", 0) + 1
+                return out
+            log.warning("the picture reader set in the page gave nothing; the writer's endpoint reads it instead")
         if self.prefer_backup and self.backup_ok:
             # the trial: can the backup's model SEE? Asked once, with its own key; rootsys reads it if not.
             out = self._ask(system, image_parts("openai", prompt, data, mime), max_tokens, 1, "openai",

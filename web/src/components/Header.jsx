@@ -1,29 +1,28 @@
-import { Clapperboard, Droplets, FileText, PenTool, HelpCircle, LayoutTemplate, Lightbulb, ListChecks, LogOut, Palette, Radio, Settings, Sparkles } from "lucide-react";
+import { LogOut, Palette, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { THEMES, useTheme } from "../design/ThemeProvider";
 import { supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
+import { tabsOf } from "../lib/tabs";
 import Button from "./ui/Button";
 
-export default function Header({ tab, setTab, user }) {
+/* `sidebar`: the sidebar is showing on a wide screen (App.jsx), so the tabs and the logo live there and the header
+   keeps only the language, the theme and the switch that hides the sidebar again. Hidden, the header is as before. */
+export default function Header({ tab, setTab, user, sidebar = false, onToggleSidebar }) {
   const { theme, setTheme } = useTheme();
   const { lang, setLang, t } = useLang();
-  const tabs = [
-    { id: "isu", label: t("Isu semasa", "Current issues"), icon: Radio },
-    { id: "idea", label: t("Idea", "Ideas"), icon: Lightbulb },
-    { id: "post", label: t("Post", "Posts"), icon: FileText },
-    { id: "media", label: t("Makmal media", "Media lab"), icon: Sparkles },
-    { id: "design", label: t("Reka bentuk", "Design"), icon: LayoutTemplate },
-    { id: "wangian", label: t("Wangian", "Fragrance"), icon: Droplets },
-    { id: "kanvas", label: "Kanvas", icon: PenTool },
-    { id: "video", label: "Video", icon: Clapperboard },
-    { id: "faq", label: "FAQ", icon: HelpCircle },
-    { id: "log", label: "Log", icon: ListChecks },
-    { id: "tetapan", label: t("Tetapan", "Settings"), icon: Settings },
-  ];
+  const tabs = tabsOf(t);
   return (
     <header className="glass sticky top-0 z-40">
       <div className="mx-auto flex max-w-page items-center gap-3 px-4 py-3 sm:px-6 xl:gap-4">
-        <a href="#top" className="flex items-center gap-2">
+        {onToggleSidebar && (
+          <button type="button" onClick={onToggleSidebar} data-sidebar-toggle aria-pressed={sidebar}
+            aria-label={sidebar ? t("Sembunyi menu tepi", "Hide the sidebar") : t("Tunjuk menu tepi", "Show the sidebar")}
+            title={sidebar ? t("Sembunyi menu tepi", "Hide the sidebar") : t("Tunjuk menu tepi", "Show the sidebar")}
+            className="hidden rounded-tile p-1.5 text-muted transition hover:bg-surface-2 hover:text-ink lg:inline-flex">
+            {sidebar ? <PanelLeftClose size={18} strokeWidth={1.5} /> : <PanelLeftOpen size={18} strokeWidth={1.5} />}
+          </button>
+        )}
+        <a href="#top" className={`flex items-center gap-2 ${sidebar ? "lg:hidden" : ""}`}>
           <span className="grid h-8 w-8 place-items-center rounded-tile bg-ink text-bg">
             <span className="h-3 w-3 rounded-full border-2 border-accent" />
           </span>
@@ -31,7 +30,7 @@ export default function Header({ tab, setTab, user }) {
         </a>
 
         {/* eight tabs: it may scroll inside itself, never push the page sideways (1280 px in BM was 4 px too wide) */}
-        <nav className="hidden min-w-0 items-center gap-0.5 overflow-x-auto rounded-pill bg-surface-2 p-1 xl:ml-1 xl:flex">
+        <nav className={`hidden min-w-0 items-center gap-0.5 overflow-x-auto rounded-pill bg-surface-2 p-1 xl:ml-1 ${sidebar ? "" : "xl:flex"}`}>
           {tabs.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill px-2.5 py-1.5 text-sm transition ${
@@ -66,7 +65,7 @@ export default function Header({ tab, setTab, user }) {
           )}
         </div>
       </div>
-      <nav className="flex gap-1 overflow-x-auto px-4 pb-2 xl:hidden">
+      <nav className={`flex gap-1 overflow-x-auto px-4 pb-2 ${sidebar ? "lg:hidden" : "xl:hidden"}`}>
         {tabs.map(({ id, label }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`shrink-0 whitespace-nowrap rounded-pill px-3 py-1.5 text-sm ${tab === id ? "bg-ink text-bg" : "bg-surface-2 text-muted"}`}>

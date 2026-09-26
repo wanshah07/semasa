@@ -465,14 +465,18 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
                 try:
                     if m == "cutout":
                         bottle = cutout(bottle_raw)
-                        scene = _patient(lambda: provider.generate_from_text(scene_prompt(c, with_bottle=False), {})).data
+                        words = scene_prompt(c, with_bottle=False)
+                        scene = _patient(lambda w=words: provider.generate_from_text(w, {}),
+                                         lambda w=words: provider.generate_from_text(w, _lighter(provider))).data
                         art = render_art(c, p, size, scene, bottle, logo)
                     else:
                         # an AI redraw may misspell the label: it is read back, drawn once more if wrong, and a label
                         # still wrong is kept only as a flagged picture Wan cannot save without checking it himself
                         for attempt in (1, 2):
                             prompt = scene_prompt(c, True, p, strict=attempt > 1)
-                            scene = _patient(lambda q=prompt: provider.generate("image", p["bottle_url"], q, {})).data
+                            scene = _patient(
+                                lambda q=prompt: provider.generate("image", p["bottle_url"], q, {}),
+                                lambda q=prompt: provider.generate("image", p["bottle_url"], q, _lighter(provider))).data
                             label = check_label(llm, scene, p)
                             if label is None or label["ok"]:
                                 break
@@ -529,9 +533,20 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
         return False
 
 
-def _patient(call: Any, wait: float = 8.0) -> Any:
+LIGHTER_SIZE = 768      # the second try on Cloudflare: fewer pixels, so a busy model finishes inside its time limit
+
+
+def _lighter(provider: Any) -> dict[str, Any]:
+    """Options for the second try. Cloudflare's FLUX answered 408 twice on the AI edit (26 Sep 2026, 12:13-12:17 UTC:
+    four minutes each); a 768 picture is drawn faster, and the artwork is typeset over it anyway. Other providers
+    take their size in another shape, so they are asked the same way again."""
+    return {"size": LIGHTER_SIZE} if getattr(provider, "name", "") == "cloudflare" else {}
+
+
+def _patient(call: Any, again: Any = None, wait: float = 20.0) -> Any:
     """One more try when the image service had a passing fault: a timeout (Cloudflare answered 408 after four minutes
-    on the first live Noir Rush render), a rate limit or a 5xx. A refusal on the merits is not retried."""
+    on the first live Noir Rush render), a rate limit or a 5xx. A refusal on the merits is not retried. `again` is
+    the second try (a lighter request), after a longer pause than before so a busy service has room."""
     try:
         return call()
     except Exception as exc:  # noqa: BLE001
@@ -540,9 +555,9 @@ def _patient(call: Any, wait: float = 8.0) -> Any:
                                                                                      "ConnectTimeout", "ConnectionError")
         if not passing:
             raise
-        log.warning("image service fault (%s); trying once more", status or type(exc).__name__)
+        log.warning("image service fault (%s); trying once more in %.0fs", status or type(exc).__name__, wait)
         time.sleep(wait)
-        return call()
+        return (again or call)()
 
 
 def _files(render: dict[str, Any]) -> list[str]:

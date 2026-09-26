@@ -127,8 +127,11 @@ def retention_cutoff(now: datetime, keep_days: int) -> str | None:
 
 def main() -> int:
     settings = ScraperSettings.load()
-    llm_settings = LLMSettings.load()
     store = db.client(SupabaseSettings.load())
+    from . import ai_config
+    cfg = ai_config.read(store)                          # the AI settings Wan saved in the page (016), over GitHub's
+    log.info(ai_config.describe(cfg))
+    llm_settings = ai_config.llm_settings(LLMSettings.load(), cfg)
     git_sha = os.environ.get("GITHUB_SHA")
     run_id = db.start_run(store, git_sha)
     try:

@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
-import { FlaskConical, Lock, Plus, Save, Trash2 } from "lucide-react";
+import { Eye, FlaskConical, ImagePlus, KeyRound, Lock, Plus, Save, ScrollText, Trash2 } from "lucide-react";
 import { dayNames } from "../lib/brand";
 import { faqCategories } from "../lib/faqExport";
-import { TABLES, supabase } from "../lib/SupabaseClient";
+import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { BUILT_IN_INDO } from "../lib/compliance";
 import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
-import { Input, Label } from "../components/ui/Field";
+import { Input, Label, Select } from "../components/ui/Field";
 
 const SLOT = /^([01]\d|2[0-3]):[0-5]\d$/;
 const parseSlots = (s) => [...new Set(s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean))].sort();
@@ -70,6 +70,8 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
           <p className="mt-1 text-[12px] text-muted">{t("Suis ini tidak boleh diubah dari laman ini. Ia diubah di Supabase SQL editor sahaja.", "This switch cannot be changed from this page. It is changed in the Supabase SQL editor only.")}</p>
         </div>
       </Card>
+
+      <AiSettings onToast={onToast} />
 
       <MireldTrial settings={settings} save={save} onToast={onToast} />
 
@@ -343,6 +345,135 @@ function MireldTrial({ settings, save, onToast }) {
         <Result label="Scrape" r={v.scrape_result} />
         <Result label={t("Kerja bot", "Bot job")} r={v.media_result} />
       </div>
+    </Card>
+  );
+}
+
+/* The three AI slots, set here instead of only in GitHub (Wan, 27 Sep 2026: "can add in setting reader, image
+   generation, image reader key and endpoint"). supabase/016_ai_settings.sql keeps each key where the page can never
+   read it back, and bound to the endpoint it was typed with; the worker lays these over the GitHub secrets
+   (backend/semasa/ai_config.py). An empty field keeps what GitHub says. */
+const AI_SLOTS = [
+  { slot: "reader", icon: ScrollText, providers: ["openai", "anthropic"],
+    bm: "Pembaca & penulis teks", en: "Text reader & writer",
+    whatBm: "membaca berita, menulis idea, draf, FAQ", whatEn: "reads the news, writes ideas, drafts, FAQ" },
+  { slot: "image_gen", icon: ImagePlus, providers: ["cloudflare", "openai", "replicate"],
+    bm: "Penjana gambar", en: "Image generation",
+    whatBm: "melukis latar, suntingan AI botol", whatEn: "draws backgrounds and the AI bottle edit" },
+  { slot: "image_reader", icon: Eye, providers: ["openai", "anthropic"],
+    bm: "Pembaca gambar", en: "Image reader",
+    whatBm: "membaca rujukan, menyemak label botol", whatEn: "reads references, checks the bottle label" },
+];
+const PROVIDER_LABEL = { openai: "OpenAI-compatible", anthropic: "Anthropic", cloudflare: "Cloudflare Workers AI", replicate: "Replicate" };
+const ENDPOINT_HINT = {
+  openai: "https://…/v1", anthropic: "https://api.anthropic.com", cloudflare: "Account ID (32)", replicate: "",
+};
+const blankAi = (slot) => ({ provider: slot === "image_gen" ? "cloudflare" : "openai", base_url: "", model: "", edit_model: "", key: "" });
+
+function AiSettings({ onToast }) {
+  const { t } = useLang();
+  const [rows, setRows] = useState({});
+  const [forms, setForms] = useState({});
+  const [busy, setBusy] = useState("");
+  const [missing, setMissing] = useState(false);
+
+  async function load() {
+    const { data, error } = await supabase.from(TABLES.aiConfig).select("*");
+    if (error) { setMissing(true); return; }
+    setMissing(false);
+    const by = Object.fromEntries((data || []).map((r) => [r.slot, r]));
+    setRows(by);
+    setForms(Object.fromEntries(AI_SLOTS.map(({ slot }) => {
+      const r = by[slot];
+      return [slot, r ? { provider: r.provider, base_url: r.base_url || "", model: r.model || "", edit_model: r.edit_model || "", key: "" } : blankAi(slot)];
+    })));
+  }
+  useEffect(() => { load(); }, []);
+
+  const set = (slot, k, v) => setForms((f) => ({ ...f, [slot]: { ...f[slot], [k]: v } }));
+
+  async function saveSlot(slot, clearKey = false) {
+    const f = forms[slot];
+    setBusy(slot);
+    const { data, error } = await supabase.rpc("semasa_save_ai_slot", {
+      p_slot: slot, p_provider: f.provider, p_base_url: f.base_url, p_model: f.model, p_edit_model: f.edit_model,
+      p_key: clearKey ? null : (f.key || null), p_clear_key: clearKey,
+    });
+    setBusy("");
+    if (error) return onToast(errText(error), "danger");
+    onToast(data?.key_dropped
+      ? t("Disimpan. Kunci lama dibuang kerana alamat berubah: masukkan kunci untuk alamat baharu.", "Saved. The old key was dropped because the endpoint changed: enter the key for the new endpoint.")
+      : t("Tetapan AI disimpan. Larian seterusnya menggunakannya.", "AI settings saved. The next run uses them."), data?.key_dropped ? "warn" : "ok");
+    load();
+  }
+
+  async function reset(slot) {
+    setBusy(slot);
+    const { error } = await supabase.rpc("semasa_clear_ai_slot", { p_slot: slot });
+    setBusy("");
+    if (error) return onToast(errText(error), "danger");
+    onToast(t("Kembali kepada tetapan GitHub.", "Back to the GitHub settings."), "ok");
+    load();
+  }
+
+  if (missing) {
+    return (
+      <Card className="p-5 text-sm text-muted">
+        <h3 className="flex items-center gap-2 text-lg text-ink"><KeyRound size={16} /> {t("Tetapan AI", "AI settings")}</h3>
+        <p className="mt-1">{t("Jalankan supabase/016_ai_settings.sql dahulu.", "Run supabase/016_ai_settings.sql first.")}</p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="space-y-4 p-5">
+      <div>
+        <h3 className="flex items-center gap-2 text-lg"><KeyRound size={16} /> {t("Tetapan AI: kunci dan alamat", "AI settings: keys and endpoints")}</h3>
+        <p className="mt-1 text-[12px] text-muted">{t(
+          "Kosong = guna rahsia GitHub seperti sekarang. Kunci yang disimpan tidak akan dipaparkan semula (hanya 4 aksara terakhir), dan hanya dihantar ke alamat yang ditaip bersamanya. Tukar alamat tanpa kunci baharu, kunci lama dibuang.",
+          "Empty = use the GitHub secrets as now. A saved key is never shown again (only its last 4 characters), and is only sent to the endpoint it was typed with. Change the endpoint without a new key and the old key is dropped.")}</p>
+      </div>
+      {AI_SLOTS.map(({ slot, icon: Icon, providers, bm, en, whatBm, whatEn }) => {
+        const f = forms[slot] || blankAi(slot);
+        const r = rows[slot];
+        const cf = f.provider === "cloudflare", rep = f.provider === "replicate";
+        return (
+          <div key={slot} className="space-y-2 rounded-tile bg-surface-2/60 p-3" data-ai-slot={slot}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="flex items-center gap-2 text-sm font-medium"><Icon size={14} className="text-accent" /> {t(bm, en)}
+                <span className="font-normal text-muted">· {t(whatBm, whatEn)}</span></p>
+              <span className={`rounded-pill px-2 py-0.5 text-[11px] ${r ? "bg-accent/15 text-accent" : "bg-surface text-muted"}`}>
+                {r ? t("dari laman ini", "from this page") : "GitHub"}{r?.key_hint ? ` · ${t("kunci", "key")} ${r.key_hint}` : ""}
+              </span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="block"><Label>{t("Penyedia", "Provider")}</Label>
+                <Select className="w-full" value={f.provider} onChange={(v) => set(slot, "provider", v)}
+                  options={providers.map((p) => [p, PROVIDER_LABEL[p]])} aria-label={t("Penyedia", "Provider")} /></label>
+              {!rep && (
+                <label className="block"><Label hint={ENDPOINT_HINT[f.provider]}>{cf ? "Cloudflare Account ID" : t("Alamat (endpoint)", "Endpoint")}</Label>
+                  <Input value={f.base_url} onChange={(e) => set(slot, "base_url", e.target.value)} placeholder={ENDPOINT_HINT[f.provider]}
+                    autoComplete="off" spellCheck={false} /></label>
+              )}
+              <label className="block"><Label hint={slot === "image_gen" ? t("gambar dari kata-kata", "picture from words") : ""}>{t("Model", "Model")}</Label>
+                <Input value={f.model} onChange={(e) => set(slot, "model", e.target.value)} autoComplete="off" spellCheck={false}
+                  placeholder={cf ? "@cf/black-forest-labs/flux-1-schnell" : rep ? "black-forest-labs/flux-1.1-pro" : f.provider === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini"} /></label>
+              {slot === "image_gen" && f.provider !== "openai" && (
+                <label className="block"><Label hint={t("lukis semula DENGAN gambar botol", "redraws WITH the bottle photo")}>{t("Model suntingan", "Edit model")}</Label>
+                  <Input value={f.edit_model} onChange={(e) => set(slot, "edit_model", e.target.value)} autoComplete="off" spellCheck={false}
+                    placeholder={cf ? "@cf/black-forest-labs/flux-2-klein-4b" : "black-forest-labs/flux-kontext-pro"} /></label>
+              )}
+              <label className="block sm:col-span-2"><Label hint={r?.key_hint ? t("kosongkan untuk kekalkan {h}", "leave empty to keep {h}", { h: r.key_hint }) : t("disimpan tersembunyi", "stored hidden")}>{cf ? "API token" : t("Kunci API", "API key")}</Label>
+                <Input type="password" value={f.key} onChange={(e) => set(slot, "key", e.target.value)} autoComplete="new-password" spellCheck={false} /></label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => saveSlot(slot)} disabled={busy === slot}><Save size={12} /> {t("Simpan", "Save")}</Button>
+              {r?.key_hint && <Button size="sm" variant="soft" onClick={() => saveSlot(slot, true)} disabled={busy === slot}>{t("Buang kunci", "Remove key")}</Button>}
+              {r && <Button size="sm" variant="ghost" onClick={() => reset(slot)} disabled={busy === slot}><Trash2 size={12} /> {t("Guna GitHub semula", "Use GitHub again")}</Button>}
+            </div>
+          </div>
+        );
+      })}
     </Card>
   );
 }

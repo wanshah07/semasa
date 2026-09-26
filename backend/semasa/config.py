@@ -27,6 +27,9 @@ Variables (same page → Variables; not secret):
                     CLOUDFLARE_API_TOKEN are set and REPLICATE_API_TOKEN is not, else replicate.
                     cloudflare: pictures only, free within 10,000 neurons a day
   ... the rest are documented beside their default below.
+
+The page's Settings → AI settings (supabase/016_ai_settings.sql) can replace the writer, the picture maker and the
+picture reader; semasa.ai_config lays those over what is read here. An empty field keeps the value from GitHub.
 """
 
 from __future__ import annotations
@@ -91,6 +94,12 @@ class LLMSettings:
     fallback_key: str | None = None
     fallback_model: str = ""
     fallback_blocked: str = ""   # why the backup is off although its key is set
+    # The PICTURE READER on an endpoint of its own (Settings in the page, semasa.ai_config). Empty: the writer's
+    # endpoint reads pictures with vision_model, as before.
+    vision_provider: str = ""
+    vision_base_url: str = ""
+    vision_key: str | None = None
+    vision_reader_model: str = ""
 
     @classmethod
     def load(cls) -> LLMSettings:

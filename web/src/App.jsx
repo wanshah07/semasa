@@ -24,6 +24,7 @@ import GenerationGallery from "./components/GenerationGallery";
 import VideoTab from "./pages/VideoTab";
 import WatchSegment, { watchIdea } from "./components/WatchSegment";
 import Header from "./components/Header";
+import AppSidebar from "./components/AppSidebar";
 import MasonryGrid from "./components/MasonryGrid";
 import TrendTable from "./components/TrendTable";
 import ViewToggle, { useView } from "./components/ViewToggle";
@@ -293,6 +294,15 @@ export default function App() {
   const brand = useMemo(() => brandOf(settings), [settings]);
 
   function go(next) { setTab(next); window.location.hash = next === "isu" ? "" : next; }
+  // the sidebar on wide screens: shown unless Wan hid it (remembered on this browser only)
+  const [navOpen, setNavOpen] = useState(() => { try { return localStorage.getItem("semasa.sidebar") !== "0"; } catch { return true; } });
+  function toggleNav() {
+    setNavOpen((v) => { try { localStorage.setItem("semasa.sidebar", v ? "0" : "1"); } catch { /* private window */ } return !v; });
+  }
+  const counts = {
+    idea: ideas.rows.filter((r) => r.status === "new").length,
+    post: posts.rows.filter((r) => r.status === "draft").length,
+  };
   const gate = (node) => <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6"><Gate user={user} ready={ready} canUpload={canUpload} onToast={push}>{node}</Gate></main>;
 
   let body;
@@ -318,8 +328,14 @@ export default function App() {
     allowed={allowed} gateNode={allowed ? null : gate(null)} settings={settings} save={save} brand={brand} user={user} />;
 
   return (
-    <div id="top" className="min-h-screen">
-      <Header tab={tab} setTab={go} user={user} />
+    <div id="top" className="min-h-screen lg:flex">
+      {navOpen && (
+        <aside className="hidden h-screen shrink-0 lg:sticky lg:top-0 lg:block" data-sidebar>
+          <AppSidebar tab={tab} setTab={go} user={user} counts={allowed ? counts : {}} />
+        </aside>
+      )}
+      <div className="min-w-0 flex-1">
+      <Header tab={tab} setTab={go} user={user} sidebar={navOpen} onToggleSidebar={toggleNav} />
       {body}
       {allowed && (
         <IdeaComposer open={Boolean(ideaFrom)} onClose={() => setIdeaFrom(null)} trend={ideaFrom} user={user} brand={brand}
@@ -331,6 +347,7 @@ export default function App() {
         "Semasa · news sources remain the property of their publishers · updated every 8 hours · "
           + "issues not turned into an idea disappear after 48 hours")}
       </footer>
+      </div>
       <Toasts toasts={toasts} />
     </div>
   );

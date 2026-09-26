@@ -498,13 +498,22 @@ Two segments beside *Isu semasa* in the first tab (Wan, 26 Sep 2026: *"add segme
 and latest publication … run every 24 hours … regulatory/current issue/latest publication > idea/ppt/poster > render
 the carousel/card > post"*).
 
-- **Regulatori** reads the regulators' own list pages: NPRA (Kenyataan Media KKM, safety alerts, directives,
-  circulars, announcements), Portal Halal Malaysia, HSA Singapore, EU SCCS opinions, UK OPSS and China NMPA. Items
-  older than 45 days are skipped. Portal Halal's newest item was April 2025 when this was built, so that source is
-  often empty. That is the portal's own state, not a fault.
-- **Penerbitan terkini** reads PubMed (the official E-utilities API, no key): papers added in the last 14 days on
-  cosmetic science, consumer dermatology, halal science and cosmetic contaminants, with the journal, authors, DOI and
-  abstract.
+- **Regulatori** reads the regulators' own list pages, across cosmetics, medicines, food and halal:
+  - Malaysia: NPRA (Kenyataan Media KKM, safety alerts, directives, circulars), KKM Bahagian Farmasi, JAKIM's
+    Kenyataan Media and Portal Halal Malaysia;
+  - abroad: HSA Singapore, EU SCCS, EFSA and the EU's food-safety news, UK OPSS and the UK FSA's food recall and
+    allergy alerts, FSANZ recalls and notices (Australia/NZ), China NMPA.
+  Items older than 45 days are skipped. Not reachable from GitHub's machines, so not read: e-Fatwa, FSQD
+  (fsq.moh.gov.my) and moh.gov.my. JAKIM's *Isu-Isu Tular Halal* pages carry no dates: paste one when you need it.
+- **Penerbitan terkini** reads PubMed (the official E-utilities API, no key), with the journal, authors, DOI and
+  abstract: cosmetic science (title words plus every paper in the cosmetic-science journals), cosmetic safety
+  (allergy, toxicity, contaminants), dermatology (the main dermatology journals, on skin conditions rather than cancer
+  or surgery), consumer dermatology and halal science, over the last 14 days; and the **derma competitors'** own
+  papers over 30 days, found by the company in the authors' affiliations and labelled *Pesaing · brand*. The list of
+  brands is under *Jenama pesaing* in that segment and can be edited there.
+- **Kept compact:** abstracts are stored to 800 characters (an idea re-reads the paper itself), three authors and a
+  count, short summaries. Notices go after 45 days, papers after 31, pasted links after 90. A hidden or less-relevant
+  item is shrunk to its link and title after 3 days, so the sweep still knows it and does not add it again.
 - **Once a day.** The sweep rides on the 8-hourly scrape and runs when 23 hours have passed, so in practice it is the
   same run every day. *Sapu sekarang* wakes the worker to sweep straight away.
 - **The writer's notes.** For every new item the writer adds a Malay summary, the domain, *why it matters* to a

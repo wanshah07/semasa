@@ -98,7 +98,7 @@ def test_pubmed_papers_come_with_journal_doi_and_abstract(monkeypatch):
     assert p["url"] == "https://pubmed.ncbi.nlm.nih.gov/111/" and p["published_at"] == date(2026, 9, 23)
     assert p["raw"]["doi"] == "10.1016/j.ijpharm.2026.127447" and p["source"] == "PubMed · Int J Pharm"
     assert p["snippet"] == "BACKGROUND: Actives cross the skin. RESULTS: Depth varied."
-    assert len(report) == len(watch.PUBMED_QUERIES) and all(r["ok"] for r in report)
+    assert len(report) == len(watch.PUBMED_QUERIES) + 1 and all(r["ok"] for r in report)   # + the competitors
     assert all("tool=semasa" in u for u in calls) and not any("email" in u for u in calls)
 
 
@@ -123,7 +123,8 @@ def _collected(monkeypatch):
             {"section": "publication", "source": "PubMed · Int J Pharm", "title": "Paper", "url": "https://p/111",
              "published_at": date(2026, 9, 23), "kind": "Paper", "snippet": "abstract", "domain": "sains_kosmetik",
              "raw": {"doi": "10.1/x"}}]
-    monkeypatch.setattr(watch, "collect", lambda timeout=30: ([dict(r) for r in rows], [{"name": "NPRA", "ok": True}]))
+    monkeypatch.setattr(watch, "collect",
+                        lambda timeout=30, competitors=None: ([dict(r) for r in rows], [{"name": "NPRA", "ok": True}]))
 
 
 def test_a_sweep_stores_new_items_once_with_the_writers_verdicts(monkeypatch):
@@ -180,7 +181,7 @@ def test_an_idea_can_ask_for_a_carousel_or_a_poster():
     assert job["post_id"] == "p1" and job["mode"] == "slides"
 
 
-@pytest.mark.parametrize("q", [q for _, q in watch.PUBMED_QUERIES])
+@pytest.mark.parametrize("q", [q[1] for q in watch.PUBMED_QUERIES] + [watch.competitor_query(watch.competitors_of(None))])
 def test_pubmed_queries_are_balanced(q):
     assert q.count("(") == q.count(")") and q.count('"') % 2 == 0
 
@@ -319,3 +320,77 @@ def test_an_idea_made_from_a_pasted_pdf_reads_the_pdf(monkeypatch):
     monkeypatch.setattr(ideas, "get", lambda url, timeout=20, retries=1: pdf)
     src = ideas.read_source("https://www.npra.gov.my/a.pdf")
     assert src["ok"] and "Direktif Label Keselamatan" in src["text"]
+
+
+def test_food_halal_and_pharmacy_regulators_are_read_too():
+    by = {name: _parse(fn, next(i for i, x in enumerate(watch.SOURCES) if x.name == name))
+          for name, fn in [("KKM · Bahagian Farmasi", "farmasi.html"), ("JAKIM", "jakim_km.html"),
+                           ("FSANZ recalls", "fsanz_recalls.html"), ("FSANZ", "fsanz_news.html"), ("UK FSA", "fsa_alerts.json"),
+                           ("EFSA", "efsa.rss"), ("EU food safety", "eufood.html")]}
+    far = by["KKM · Bahagian Farmasi"]
+    assert far[0]["published_at"] == date(2026, 8, 27) and far[0]["title"].startswith("PENGUMUMAN PENTING")
+    assert not any(g["title"].lower().startswith("bacaan penuh") for g in far) and len({g["url"] for g in far}) == len(far)
+    assert by["JAKIM"][0]["published_at"] == date(2026, 7, 21) and by["JAKIM"][0]["kind"] == "Kenyataan Media JAKIM"
+    rec = by["FSANZ recalls"]
+    assert rec[0]["published_at"] == date(2026, 9, 26) and "Supercol" in rec[0]["title"]
+    assert not any(g["url"].endswith("/food-recalls/recalls") for g in rec)          # the menu link is not an item
+    assert by["FSANZ"][0]["title"] == "Notification Circular 412-26" and by["FSANZ"][0]["published_at"] == date(2026, 9, 15)
+    fsa = by["UK FSA"]
+    assert fsa[0]["published_at"] == date(2026, 9, 25) and fsa[0]["url"].startswith("https://")
+    assert fsa[0]["kind"] == "Food recall"
+    assert by["EFSA"][0]["kind"] == "EFSA opinion" and by["EFSA"][0]["published_at"] == date(2026, 9, 25)
+    eu = by["EU food safety"]
+    save = next(g for g in eu if g["title"].startswith("SAVE THE DATE"))
+    assert save["published_at"] == date(2026, 8, 31)                                  # not the event's 3 December
+    assert all(len(v) >= 3 for v in by.values())
+
+
+def test_competitor_papers_are_labelled_by_the_brand_in_the_affiliation(monkeypatch):
+    xml = """<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>111</PMID><Article>
+    <AuthorList><Author><AffiliationInfo><Affiliation>L'Or\u00e9al Research and Innovation, Clichy, France</Affiliation>
+    </AffiliationInfo></Author></AuthorList><Abstract><AbstractText>x</AbstractText></Abstract></Article></MedlineCitation>
+    </PubmedArticle></PubmedArticleSet>"""
+
+    def get(url, timeout):
+        if "esearch" in url:
+            return json.dumps({"esearchresult": {"idlist": ["111"] if "5Bad" in url else []}})
+        return json.dumps(ESUMMARY) if "esummary" in url else xml
+    monkeypatch.setattr(watch, "_get", get)
+    monkeypatch.setattr(watch, "EUTILS_GAP", 0)
+    items, report = watch.pubmed()
+    assert items[0]["raw"]["topic"] == "Competitor · La Roche-Posay · CeraVe · Vichy (L'Oréal)"
+    assert report[-1]["name"] == "PubMed · Competitors" and report[-1]["items"] == 1
+    mine = watch.competitors_of(["Physiogel = Physiogel|Hong Kong Physiogel",
+                                 {"label": "Sebamed", "company": "Sebapharma"}, "junk"])
+    assert mine == [("Physiogel", ["Physiogel", "Hong Kong Physiogel"]), ("Sebamed", ["Sebapharma"]), ("junk", ["junk"])]
+    assert '"Sebapharma"[ad]' in watch.competitor_query(mine)
+
+
+def test_the_store_stays_compact():
+    now = datetime(2026, 9, 26, 12, tzinfo=UTC)
+    ago = lambda d: (now - timedelta(days=d)).isoformat()  # noqa: E731
+    base = {"pasted": False, "dismissed": False, "relevant": True, "summary": "s", "why": "w", "raw": {"abstract": "a"}}
+    rows = [{**base, "id": "reg_old", "section": "regulatory", "created_at": ago(46)},
+            {**base, "id": "reg_ok", "section": "regulatory", "created_at": ago(40)},
+            {**base, "id": "pap_old", "section": "publication", "created_at": ago(32)},
+            {**base, "id": "pap_ok", "section": "publication", "created_at": ago(20)},
+            {**base, "id": "paste_ok", "section": "publication", "pasted": True, "created_at": ago(60)},
+            {**base, "id": "paste_old", "section": "regulatory", "pasted": True, "created_at": ago(91)},
+            {**base, "id": "hidden", "section": "regulatory", "dismissed": True, "created_at": ago(4)},
+            {**base, "id": "irrelevant", "section": "publication", "relevant": False, "created_at": ago(5)},
+            {**base, "id": "hidden_new", "section": "regulatory", "dismissed": True, "created_at": ago(1)}]
+    store = FakeStore(semasa_watch=rows)
+    watch.compact(store, now)
+    left = {r["id"]: r for r in store.tables["semasa_watch"]}
+    assert set(left) == {"reg_ok", "pap_ok", "paste_ok", "hidden", "irrelevant", "hidden_new"}
+    assert left["hidden"]["summary"] is None and left["hidden"]["raw"] == {} and left["irrelevant"]["why"] is None
+    assert left["hidden_new"]["summary"] == "s" and left["pap_ok"]["raw"] == {"abstract": "a"}
+
+
+def test_a_stored_row_is_small():
+    r = watch.to_row({"section": "publication", "title": "T", "url": "https://p/1", "source": "PubMed · X",
+                      "snippet": "a" * 5000, "published_at": date(2026, 9, 1),
+                      "raw": {"doi": "10.1/x", "authors": ["A", "B", "C"], "n_authors": 9, "final_url": "https://p/1",
+                              "empty": ""}})
+    assert len(r["raw"]["abstract"]) == watch.ABSTRACT_KEEP and len(r["summary"]) == watch.SUMMARY_KEEP
+    assert "final_url" not in r["raw"] and "empty" not in r["raw"]

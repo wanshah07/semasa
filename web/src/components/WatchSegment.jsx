@@ -30,7 +30,7 @@ export function paperLine(r) {
   const au = Array.isArray(raw.authors) ? raw.authors : [];
   const who = au.length ? au.slice(0, 3).join(", ") + (au.length > 3 ? " et al." : "") : "";
   const year = r.published_at ? String(r.published_at).slice(0, 4) : "";
-  return [who, raw.journal, year, raw.doi ? `DOI ${raw.doi}` : "", raw.pmid ? `PMID ${raw.pmid}` : ""].filter(Boolean).join(" · ");
+  return [who && (raw.n_authors > 3 && !who.endsWith("et al.") ? `${who} et al.` : who), raw.journal, year, raw.doi ? `DOI ${raw.doi}` : "", raw.pmid ? `PMID ${raw.pmid}` : ""].filter(Boolean).join(" · ");
 }
 
 /** A watch row as the idea composer's "trend": the summary carries everything the writer needs to cite it. */
@@ -52,6 +52,54 @@ export function watchIdea(r, brand) {
     stream: pub ? "linkedin" : "regulab",
     angle: pub ? (r.domain === "farmaseutikal" ? "G" : "F") : "",
   };
+}
+
+/* The worker's default derma competitors (backend/semasa/watch.py COMPETITORS), shown until Wan saves his own list.
+   One line each: "Label = Company as written in the authors' affiliation", "|" between two names for one brand. */
+export const DEFAULT_COMPETITORS = [
+  "La Roche-Posay · CeraVe · Vichy (L'Oréal) = L'Oreal", "Eucerin · Nivea (Beiersdorf) = Beiersdorf",
+  "Cetaphil (Galderma) = Galderma", "Avène (Pierre Fabre) = Pierre Fabre", "Bioderma (NAOS) = NAOS|Bioderma",
+  "Neutrogena · Aveeno (Kenvue) = Kenvue", "Uriage = Uriage", "ISDIN = ISDIN", "Shiseido = Shiseido",
+  "Amorepacific = Amorepacific", "Hada Labo (Rohto) = Rohto", "Kao = Kao Corporation",
+];
+
+/** A paper's topic in the page's language ("Competitor · Eucerin" → "Pesaing · Eucerin"). */
+export function topicLabel(topic, t) {
+  const tp = String(topic || "");
+  if (!tp) return "";
+  if (tp.startsWith("Competitor · ")) return `${t("Pesaing", "Competitor")} · ${tp.slice(13)}`;
+  return ({ "Cosmetic science": t("Sains kosmetik", "Cosmetic science"), "Cosmetic safety": t("Keselamatan kosmetik", "Cosmetic safety"),
+    Dermatology: t("Dermatologi", "Dermatology"), "Dermatology for consumers": t("Dermatologi pengguna", "Consumer dermatology"),
+    "Halal science": t("Sains halal", "Halal science"), Competitors: t("Pesaing", "Competitors"), pasted: t("Ditampal", "Pasted") })[tp] || tp;
+}
+
+function Competitors({ setting, saveSetting, onToast }) {
+  const { t } = useLang();
+  const saved = Array.isArray(setting?.competitors) && setting.competitors.length ? setting.competitors : null;
+  const [text, setText] = useState((saved || DEFAULT_COMPETITORS).join("\n"));
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 25);
+    setBusy(true);
+    try {
+      await saveSetting("watch", { ...(setting || {}), competitors: lines });
+      onToast(t("Disimpan. Sapuan seterusnya mencari kertas jenama-jenama ini.", "Saved. The next sweep looks for these brands' papers."), "ok");
+    } catch (e) { onToast(e.message, "danger"); } finally { setBusy(false); }
+  }
+  return (
+    <details className="mt-3 rounded-card border border-line bg-surface p-3 shadow-card sm:p-4">
+      <summary className="cursor-pointer text-sm font-medium">{t("Jenama pesaing (derma)", "Competitor brands (derma)")}
+        <span className="ml-1 text-[11px] font-normal text-muted">· {(saved || DEFAULT_COMPETITORS).length}</span></summary>
+      <p className="mt-2 text-[11px] text-muted">{t("Satu baris setiap jenama: Nama paparan = nama syarikat seperti dalam afiliasi pengarang. Guna | untuk dua nama. Kertas 30 hari terakhir dicari di PubMed.",
+        "One line per brand: Display name = the company as written in the authors' affiliation. Use | for two names. PubMed is searched over the last 30 days.")}</p>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={7} aria-label={t("Jenama pesaing", "Competitor brands")}
+        className="mt-2 w-full resize-y rounded-tile border border-line bg-bg p-2.5 font-mono text-[12px] outline-none focus:border-accent" />
+      <div className="mt-2 flex flex-wrap justify-end gap-2">
+        <Button type="button" size="sm" variant="ghost" onClick={() => setText(DEFAULT_COMPETITORS.join("\n"))}>{t("Senarai asal", "Default list")}</Button>
+        <Button type="button" size="sm" disabled={busy} onClick={save}>{busy ? t("Menyimpan…", "Saving…") : t("Simpan", "Save")}</Button>
+      </div>
+    </details>
+  );
 }
 
 function Pill({ active, onClick, children }) {
@@ -104,6 +152,10 @@ function Tags({ row, domainLabel }) {
     <span className="flex min-w-0 flex-wrap items-center gap-1.5">
       <span className="max-w-full truncate rounded-pill bg-accent/10 px-2 py-0.5 text-[11px] font-semibold text-accent">{row.source || t("Pautan", "Link")}</span>
       {row.pasted && <span className="rounded-pill bg-ink/5 px-2 py-0.5 text-[11px] text-ink">{t("ditampal", "pasted")}</span>}
+      {row.section === "publication" && row.raw?.topic && row.raw.topic !== "pasted" && (
+        <span className={`rounded-pill px-2 py-0.5 text-[11px] ${String(row.raw.topic).startsWith("Competitor") ? "bg-warn/15 font-semibold text-ink" : "bg-surface-2 text-muted"}`}>
+          {topicLabel(row.raw.topic, t)}</span>
+      )}
       {row.kind && row.section === "regulatory" && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted">{row.kind}</span>}
       {row.domain && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted">{domainLabel(row.domain)}</span>}
       {row.relevant === false && !row.pasted && <span className="rounded-pill bg-warn/10 px-2 py-0.5 text-[11px] text-warn">{t("kurang berkaitan", "less relevant")}</span>}
@@ -241,6 +293,7 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
   const [query, setQuery] = useState("");
   const [domain, setDomain] = useState("");
   const [source, setSource] = useState("");
+  const [topic, setTopic] = useState("");
   const [showLess, setShowLess] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [busyId, setBusyId] = useState(null);
@@ -265,8 +318,14 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
     const q = query.trim().toLowerCase();
     return visible.filter((r) => (!domain || r.domain === domain)
       && (!source || r.source === source || r.source === `PubMed · ${source}`)
+      && (!topic || (topic === "Competitor" ? String(r.raw?.topic || "").startsWith("Competitor") : r.raw?.topic === topic))
       && (!q || [r.title, r.summary, r.why, r.source, r.kind, r.raw && r.raw.doi].some((v) => String(v || "").toLowerCase().includes(q))));
-  }, [visible, domain, source, query]);
+  }, [visible, domain, source, topic, query]);
+  const topics = useMemo(() => {
+    const seen = new Set(visible.map((r) => String(r.raw?.topic || "")).filter((x) => x && x !== "pasted")
+      .map((x) => (x.startsWith("Competitor") ? "Competitor" : x)));
+    return [...seen].sort();
+  }, [visible]);
   const hiddenN = mine.filter((r) => r.dismissed).length;
   // while a pasted link is being read, look again every 15 seconds rather than every two minutes
   const reading = mine.some(isReading);
@@ -335,6 +394,7 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
       </div>
 
       {user && <PasteLink section={section} user={user} onToast={onToast} onAdded={() => watch.reload()} />}
+      {section === "publication" && <Competitors key={JSON.stringify(setting?.competitors || [])} setting={setting} saveSetting={saveSetting} onToast={onToast} />}
 
       <div className="z-30 sm:sticky sm:top-[97px] xl:top-[65px] -mx-4 mt-4 bg-bg/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
         <div className="flex flex-col gap-3">
@@ -345,6 +405,10 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
                 placeholder={section === "publication" ? t("Cari tajuk, jurnal, DOI…", "Search titles, journals, DOIs…") : t("Cari tajuk, sumber, ringkasan…", "Search titles, sources, summaries…")}
                 className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted" />
             </label>
+            {section === "publication" && topics.length > 1 && (
+              <Select value={topic} onChange={setTopic} className="max-w-full" aria-label={t("Topik", "Topic")}
+                options={[["", t("Semua topik", "All topics")], ...topics.map((x) => [x, x === "Competitor" ? t("Pesaing (semua jenama)", "Competitors (all brands)") : topicLabel(x, t)])]} />
+            )}
             {sources.length > 1 && (
               <Select value={source} onChange={setSource} className="max-w-full"
                 options={[["", section === "publication" ? t("Semua jurnal", "All journals") : t("Semua sumber", "All sources")], ...sources.map((x) => [x, x])]} />

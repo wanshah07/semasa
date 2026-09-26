@@ -12,6 +12,8 @@ import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import SizePicker from "../components/SizePicker";
+import { BlogsSection } from "@/components/ui/blogs-3";
+import { SegmentedProgress, ShimmerProgress } from "@/components/ui/progress-styled";
 import { Input, Label, TextArea } from "../components/ui/Field";
 
 /* Wangian (Wan, 26 Sep 2026: "add one more segment for fragrance, design is separate or can try to redesign via canva"
@@ -26,6 +28,8 @@ const BLANK = { brand: "Valorith", name: "", concentration: "Extrait de Parfum",
 const LAYOUT = { hero: ["Nama besar", "Big name"], behind: ["Tajuk di belakang botol", "Headline behind the bottle"],
   notes: ["Nota wangian", "Scent notes"] };
 const METHOD = { cutout: ["Botol sebenar (dipotong)", "Real bottle (cut out)"], ai_edit: ["Suntingan AI", "AI edit"] };
+// how far a design has come, for the step bar on each job (concepts → choose → render → pick → saved)
+const STEP_PCT = { concepts: 10, choose: 40, render: 60, pick: 80, save: 90, saved: 100 };
 
 export default function FragranceTab({ user, gens, onToast, onCanvas }) {
   const { t } = useLang();
@@ -73,7 +77,7 @@ export default function FragranceTab({ user, gens, onToast, onCanvas }) {
       </motion.div>
       {error && <p className="mt-6 rounded-tile bg-danger/10 p-3 text-sm text-danger">{error}</p>}
 
-      <div className="mt-8 grid items-start gap-5 lg:grid-cols-[300px_1fr]">
+      <div className="mt-8 grid items-start gap-5 xl:grid-cols-[300px_1fr]">
         <Card className="min-w-0 p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-lg">{t("Wangian kita", "Our perfumes")}</h2>
@@ -119,9 +123,47 @@ export default function FragranceTab({ user, gens, onToast, onCanvas }) {
         </div>
       </div>
 
+      <Gallery rows={gens.rows} />
+
       {editing && <PerfumeForm row={editing === "new" ? null : editing} user={user} onToast={onToast}
         onClose={() => setEditing(null)} onSaved={(id) => { setEditing(null); setSel(id); load(); }} />}
     </main>
+  );
+}
+
+/* Every saved design, of every perfume, newest first: the pasted "blogs-3" card grid (components/ui/blogs-3.tsx). A card
+   opens the full-size picture. Portrait and square designs are shown whole (object-contain on a 4:5 frame), never
+   cropped. Shown once there is something saved. */
+function Gallery({ rows }) {
+  const { t, lang } = useLang();
+  const L = (pair) => pair[lang === "en" ? 1 : 0];
+  const items = rows
+    .filter((r) => r.mode === "fragrance" && r.meta?.step === "saved" && r.meta?.renders?.[0]?.url)
+    .map((r) => {
+      const m = r.meta, keep = m.renders[0], p = m.product || {}, c = m.rendered || {};
+      const at = m.saved_at || r.updated_at || r.created_at;
+      return {
+        title: [p.name, c.title].filter(Boolean).join(" · ") || t("Reka bentuk", "Design"),
+        description: [c.headline, c.tagline].filter(Boolean).join(" — ") || c.why || p.notes || "",
+        author: p.brand || "Valorith",
+        createdAt: at ? new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "ms-MY", { timeZone: "Asia/Kuala_Lumpur",
+          day: "numeric", month: "short", year: "numeric" }).format(new Date(at)) : "",
+        readTime: [L(METHOD[keep.method] || [keep.method, keep.method]), m.size?.length === 2 ? `${m.size[0]}×${m.size[1]}` : ""].filter(Boolean).join(" · "),
+        image: keep.url,
+        href: keep.url,
+        at,
+      };
+    })
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  if (!items.length) return null;
+  return (
+    <section className="mt-10" aria-label={t("Galeri reka bentuk tersimpan", "Gallery of saved designs")} data-gallery>
+      <BlogsSection blogs={items} ratio={4 / 5} imageClassName="object-contain bg-secondary" target="_blank"
+        by={t("oleh", "by")} className="max-w-none"
+        title={t("Galeri reka bentuk tersimpan", "Gallery of saved designs")}
+        description={t("Setiap reka bentuk yang anda simpan, untuk semua wangian. Klik untuk buka saiz penuh.",
+          "Every design you saved, for every perfume. Click one to open it at full size.")} />
+    </section>
   );
 }
 
@@ -338,6 +380,12 @@ function Job({ r, mine, gens, onToast, onCanvas }) {
           <Icon size={12} className={r.status === "processing" ? "animate-spin" : ""} /> {label}</span>
         <span className="text-muted">{m.size_name ? `${m.size_name} · ${m.size?.[0]}×${m.size?.[1]}` : sizeLabel(m.format || "square", m.size)} · {timeAgo(r.created_at)}</span>
       </div>
+      {r.status !== "error" && (
+        <div className="mt-3 space-y-1.5" data-progress>
+          <SegmentedProgress size="sm" className="w-full" value={STEP_PCT[step] ?? 0} label={t("Kemajuan reka bentuk", "Design progress")} />
+          {working && <ShimmerProgress size="sm" className="w-full" label={label} />}
+        </div>
+      )}
       {m.style_ref?.url && (
         <div className="mt-3 flex min-w-0 gap-2 rounded-tile bg-surface-2/70 p-2 text-[12px]">
           <img src={m.style_ref.url} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />

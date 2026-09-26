@@ -6,6 +6,7 @@ import { fadeUp } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { timeAgo } from "../lib/format";
 import { useLang } from "../lib/i18n";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion-card-utils/accordion";
 import { aOf, download, exportExcel, exportPdf, exportPoster, faqCategories, fileName, posterCard, qOf } from "../lib/faqExport";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -221,9 +222,10 @@ export default function FaqTab({ faqs, settings, brand, user, onToast, onPost })
       {words.length > 0 && shown.length > 0 && (
         <section className="mt-4" aria-label={t("Hasil carian", "Search results")}>
           <h2 className="mb-2 text-sm font-semibold">{t("Hasil carian", "Search results")} · {shown.length}</h2>
-          <div className="space-y-3">
+          {/* the pasted accordion-card: each match its own card, the first one open (a new search starts fresh) */}
+          <Accordion key={words.join(" ")} type="multiple" variant="card" defaultValue={shown[0] ? [shown[0].id] : []}>
             {shown.map((r) => <FaqItem key={r.id} {...itemProps(r)} />)}
-          </div>
+          </Accordion>
           <h2 className="mb-2 mt-6 text-sm font-semibold">{t("Dalam kategori", "In their categories")}</h2>
         </section>
       )}
@@ -315,29 +317,34 @@ function FaqItem({ r, view, catLabel, compact, busy, onTag, onEdit, onDelete, on
     </>
   );
   if (compact) {
+    // a row inside a category card: the question is the trigger, the answer opens under it (shadcn Accordion)
     return (
-      <details className="group/q border-t border-line/70 py-2 first:border-t-0">
-        <summary className="flex cursor-pointer list-none items-start gap-2 text-sm [&::-webkit-details-marker]:hidden">
-          <ChevronDown size={14} className="mt-0.5 shrink-0 text-muted transition group-open/q:rotate-180" />
-          <span className="min-w-0 flex-1 [overflow-wrap:anywhere] font-medium leading-snug">{qOf(r, view)}</span>
-        </summary>
-        <div className="pl-6">
-          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">{badges}</p>
+      <AccordionItem value={r.id} className="border-b-0 border-t border-line/70 first:border-t-0">
+        <AccordionTrigger className="items-start py-2 text-sm leading-snug hover:no-underline hover:text-accent">
+          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{qOf(r, view)}</span>
+        </AccordionTrigger>
+        <AccordionContent className="pb-3">
+          <p className="flex flex-wrap items-center gap-1.5 text-[10px]">{badges}</p>
           {body}
-        </div>
-      </details>
+        </AccordionContent>
+      </AccordionItem>
     );
   }
+  // a search match: its own card (the accordion-card look), category and badges above the question
   return (
-    <Card as="article" className="p-4">
-      <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
-        <span className="rounded-pill bg-accent/10 px-2 py-0.5 text-accent">{catLabel}</span>
-        {badges}
-        <span className="ml-auto">{timeAgo(r.updated_at || r.created_at)}</span>
-      </p>
-      <h3 className="mt-2 [overflow-wrap:anywhere] font-display text-[17px] leading-snug">{qOf(r, view)}</h3>
-      {body}
-    </Card>
+    <AccordionItem value={r.id} data-faq={r.id}>
+      <AccordionTrigger className="items-start">
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-normal text-muted">
+            <span className="rounded-pill bg-accent/10 px-2 py-0.5 text-accent">{catLabel}</span>
+            {badges}
+            <span className="ml-auto">{timeAgo(r.updated_at || r.created_at)}</span>
+          </span>
+          <span className="mt-2 block [overflow-wrap:anywhere] font-display text-[17px] leading-snug">{qOf(r, view)}</span>
+        </span>
+      </AccordionTrigger>
+      <AccordionContent>{body}</AccordionContent>
+    </AccordionItem>
   );
 }
 
@@ -397,7 +404,7 @@ function CategoryCards({ cats, rows, view, searching, only, open, setOpen, onSub
                   ))}
                 </div>
               )}
-              {items.length > 0 && <div className="mt-3">{items.map(renderItem)}</div>}
+              {items.length > 0 && <Accordion type="multiple" className="mt-3">{items.map(renderItem)}</Accordion>}
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
                 {s.last ? <span>{t("dikemas kini {ago}", "updated {ago}", { ago: timeAgo(s.last) })}</span> : <span />}
                 {s.n > PREVIEW && !only && (

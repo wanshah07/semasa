@@ -294,10 +294,17 @@ export default function App() {
   const brand = useMemo(() => brandOf(settings), [settings]);
 
   function go(next) { setTab(next); window.location.hash = next === "isu" ? "" : next; }
-  // the sidebar on wide screens: shown unless Wan hid it (remembered on this browser only)
-  const [navOpen, setNavOpen] = useState(() => { try { return localStorage.getItem("semasa.sidebar") !== "0"; } catch { return true; } });
+  // the sidebar on wide screens: pinned open, or auto (a rail of icons that slides open on hover). Remembered on this
+  // browser only; the "0" an earlier build stored for "hidden" now means auto.
+  const [navMode, setNavMode] = useState(() => {
+    try { return ["0", "auto"].includes(localStorage.getItem("semasa.sidebar")) ? "auto" : "pinned"; } catch { return "pinned"; }
+  });
   function toggleNav() {
-    setNavOpen((v) => { try { localStorage.setItem("semasa.sidebar", v ? "0" : "1"); } catch { /* private window */ } return !v; });
+    setNavMode((m) => {
+      const next = m === "auto" ? "pinned" : "auto";
+      try { localStorage.setItem("semasa.sidebar", next); } catch { /* private window */ }
+      return next;
+    });
   }
   const counts = {
     idea: ideas.rows.filter((r) => r.status === "new").length,
@@ -329,13 +336,9 @@ export default function App() {
 
   return (
     <div id="top" className="min-h-screen lg:flex">
-      {navOpen && (
-        <aside className="hidden h-screen shrink-0 lg:sticky lg:top-0 lg:block" data-sidebar>
-          <AppSidebar tab={tab} setTab={go} user={user} counts={allowed ? counts : {}} />
-        </aside>
-      )}
+      <AppSidebar tab={tab} setTab={go} user={user} counts={allowed ? counts : {}} mode={navMode} />
       <div className="min-w-0 flex-1">
-      <Header tab={tab} setTab={go} user={user} sidebar={navOpen} onToggleSidebar={toggleNav} />
+      <Header tab={tab} setTab={go} user={user} sidebar navMode={navMode} onToggleSidebar={toggleNav} />
       {body}
       {allowed && (
         <IdeaComposer open={Boolean(ideaFrom)} onClose={() => setIdeaFrom(null)} trend={ideaFrom} user={user} brand={brand}

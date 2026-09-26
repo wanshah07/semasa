@@ -2,6 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Tokens the pasted shadcn components read by name (components/ui/progress-styled.tsx): the values Wan pasted, with the
+   dark set under Semasa's dark theme (noir) instead of shadcn's .dark. --primary-foreground follows the theme. */
+:root {
+  --primary-foreground: rgb(var(--c-accent-ink));
+  --brand: oklch(0.55 0.2 331);
+  --brand-foreground: oklch(1 0 0);
+  --success: oklch(0.527 0.154 150);
+  --success-foreground: oklch(1 0 0);
+  --info: oklch(0.5 0.134 242);
+  --info-foreground: oklch(1 0 0);
+}
+[data-theme="noir"] {
+  --brand: oklch(0.8 0.183 331);
+  --brand-foreground: oklch(0.115 0.002 265);
+  --success: oklch(0.723 0.192 150);
+  --success-foreground: oklch(0.115 0.002 265);
+  --info: oklch(0.685 0.169 237);
+  --info-foreground: oklch(0.115 0.002 265);
+}
+
 @layer base {
   html { scroll-behavior: smooth; }
   body { background: rgb(var(--c-bg)); color: rgb(var(--c-ink)); }

@@ -1,4 +1,4 @@
-import { LogOut, Palette, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LogOut, Palette, PanelLeftClose, Pin } from "lucide-react";
 import { THEMES, useTheme } from "../design/ThemeProvider";
 import { supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
@@ -6,22 +6,26 @@ import { tabsOf } from "../lib/tabs";
 import Button from "./ui/Button";
 
 /* `sidebar`: the sidebar is showing on a wide screen (App.jsx), so the tabs and the logo live there and the header
-   keeps only the language, the theme and the switch that hides the sidebar again. Hidden, the header is as before. */
-export default function Header({ tab, setTab, user, sidebar = false, onToggleSidebar }) {
+   keeps only the language, the theme and the switch between a pinned sidebar and one that hides itself (`navMode`). */
+export default function Header({ tab, setTab, user, sidebar = false, navMode = "pinned", onToggleSidebar }) {
   const { theme, setTheme } = useTheme();
   const { lang, setLang, t } = useLang();
   const tabs = tabsOf(t);
   return (
     <header className="glass sticky top-0 z-40">
       <div className="mx-auto flex max-w-page items-center gap-3 px-4 py-3 sm:px-6 xl:gap-4">
-        {onToggleSidebar && (
-          <button type="button" onClick={onToggleSidebar} data-sidebar-toggle aria-pressed={sidebar}
-            aria-label={sidebar ? t("Sembunyi menu tepi", "Hide the sidebar") : t("Tunjuk menu tepi", "Show the sidebar")}
-            title={sidebar ? t("Sembunyi menu tepi", "Hide the sidebar") : t("Tunjuk menu tepi", "Show the sidebar")}
-            className="hidden rounded-tile p-1.5 text-muted transition hover:bg-surface-2 hover:text-ink lg:inline-flex">
-            {sidebar ? <PanelLeftClose size={18} strokeWidth={1.5} /> : <PanelLeftOpen size={18} strokeWidth={1.5} />}
-          </button>
-        )}
+        {onToggleSidebar && (() => {
+          const auto = navMode === "auto";
+          const label = auto ? t("Pin menu tepi (sentiasa tunjuk)", "Pin the sidebar (always show)")
+            : t("Auto sembunyi menu tepi (buka bila tuding)", "Auto-hide the sidebar (opens when you point at it)");
+          return (
+            <button type="button" onClick={onToggleSidebar} data-sidebar-toggle data-mode={navMode} aria-pressed={!auto}
+              aria-label={label} title={label}
+              className="hidden rounded-tile p-1.5 text-muted transition hover:bg-surface-2 hover:text-ink lg:inline-flex">
+              {auto ? <Pin size={18} strokeWidth={1.5} /> : <PanelLeftClose size={18} strokeWidth={1.5} />}
+            </button>
+          );
+        })()}
         <a href="#top" className={`flex items-center gap-2 ${sidebar ? "lg:hidden" : ""}`}>
           <span className="grid h-8 w-8 place-items-center rounded-tile bg-ink text-bg">
             <span className="h-3 w-3 rounded-full border-2 border-accent" />

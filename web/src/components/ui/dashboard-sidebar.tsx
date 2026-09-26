@@ -5,7 +5,9 @@
    - a single workspace is shown as a plain block, not a menu with one choice, and "Create Workspace" appears only when
      `onCreateWorkspace` is given (a button that does nothing is worse than none);
    - a nav row is a <button> with aria-current, so it can be reached with the keyboard;
-   - a badge of 0 is drawn as "0", not swallowed (`badge && …` printed a bare 0 in React).
+   - a badge of 0 is drawn as "0", not swallowed (`badge && …` printed a bare 0 in React);
+   - `collapsed` draws the icons only (a 60 px rail: labels, headings and chevrons go, a badge becomes a dot, and each
+     icon keeps its name for a tooltip and a screen reader). Semasa's auto-hide mode uses it (components/AppSidebar.jsx).
    Colours come from Semasa's theme through the shadcn names mapped in tailwind.config.js (bg-card → surface, …). */
 import React, { useState } from 'react';
 import {
@@ -105,6 +107,8 @@ const mockBottomItems: NavItemData[] = [
 
 const mockWorkspaces = ['Acme Corp', 'Personal Workspace', 'Client Sandbox'];
 
+const CollapsedContext = React.createContext(false);
+
 function WorkspaceSwitcher({ selected, onSelect, workspaces = mockWorkspaces, plan = 'Pro Plan', onCreate }: {
   selected?: string,
   onSelect?: (ws: string) => void,
@@ -118,6 +122,17 @@ function WorkspaceSwitcher({ selected, onSelect, workspaces = mockWorkspaces, pl
   const current = selected || internalSelected;
   const handleSelect = onSelect || setInternalSelected;
   const single = workspaces.length <= 1 && !onCreate;
+  const collapsed = React.useContext(CollapsedContext);
+
+  if (collapsed) {
+    return (
+      <div className="flex justify-center py-2 mb-4 select-none" title={`${current} · ${plan}`}>
+        <div className="w-8 h-8 shrink-0 rounded-[6px] bg-primary text-primary-foreground flex items-center justify-center font-semibold text-[13px] shadow-sm">
+          {current.charAt(0)}
+        </div>
+      </div>
+    );
+  }
 
   const face = (
     <div className="flex items-center gap-3 min-w-0">
@@ -194,9 +209,31 @@ function NavItem({
   onSelect: (id: string) => void;
   level?: number;
 }) {
-  const isActive = activeId === item.id;
+  const collapsed = React.useContext(CollapsedContext);
+  const isActive = activeId === item.id || (collapsed && !!item.children?.some(c => c.id === activeId));
   const hasChildren = !!item.children;
-  const [isOpen, setIsOpen] = useState(() => !!item.children?.some(c => c.id === activeId));
+  const hasBadge = item.badge !== undefined && item.badge !== '';
+  const [isOpen, setIsOpen] = useState(() => !!item.children?.some(c => c.id === activeId));   // before any return: hooks keep their order
+
+  if (collapsed) {
+    // icons only: a group with children opens to its first child, since there is no room to list them
+    const target = item.children?.[0]?.id ?? item.id;
+    return (
+      <button
+        type="button"
+        data-nav={item.id}
+        aria-current={isActive ? 'page' : undefined}
+        aria-label={hasBadge ? `${item.title} (${item.badge})` : item.title}
+        title={item.title}
+        onClick={() => onSelect(target)}
+        className={`relative flex w-full items-center justify-center py-[7px] rounded-[6px] cursor-pointer transition-colors
+          ${isActive ? 'bg-black/5 dark:bg-white/10 text-foreground' : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground/90'}`}
+      >
+        <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.5} />
+        {hasBadge && <span className="absolute right-1.5 top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />}
+      </button>
+    );
+  }
 
   const handleClick = () => {
     if (hasChildren) {
@@ -240,7 +277,7 @@ function NavItem({
                {item.shortcut}
              </kbd>
           )}
-          {item.badge !== undefined && item.badge !== '' && (
+          {hasBadge && (
             <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-medium rounded-full bg-primary/10 text-primary">
               {item.badge}
             </span>
@@ -292,7 +329,8 @@ export function SidebarNav({
   workspaces,
   plan,
   onCreateWorkspace,
-  label = 'Main'
+  label = 'Main',
+  collapsed = false
 }: {
   className?: string,
   activeId?: string,
@@ -304,21 +342,25 @@ export function SidebarNav({
   workspaces?: string[],
   plan?: string,
   onCreateWorkspace?: () => void,
-  label?: string
+  label?: string,
+  collapsed?: boolean
 }) {
   const [internalId, setInternalId] = useState('home');
   const currentId = activeId !== undefined ? activeId : internalId;
   const handleSelect = onSelect || setInternalId;
 
   return (
-    <nav aria-label={label} className={`flex flex-col w-[260px] h-full bg-card/50 border-r border-border/50 p-3 font-sans ${className}`}>
+    <CollapsedContext.Provider value={collapsed}>
+    <nav aria-label={label} data-collapsed={collapsed || undefined}
+      className={`flex flex-col ${collapsed ? 'w-[60px]' : 'w-[260px]'} h-full bg-card/50 border-r border-border/50 p-3 font-sans ${className}`}>
       <WorkspaceSwitcher selected={activeWorkspace} onSelect={onWorkspaceSelect} workspaces={workspaces} plan={plan}
         onCreate={onCreateWorkspace} />
 
       <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] flex flex-col gap-4 mt-2">
         {groups.map((group, idx) => (
           <div key={idx} className="flex flex-col gap-0.5">
-            {group.heading && (
+            {group.heading && collapsed && idx > 0 && <div aria-hidden="true" className="mx-auto mb-1 h-px w-6 bg-border" />}
+            {group.heading && !collapsed && (
               <span className="px-2.5 mb-1 text-[11px] font-semibold tracking-wider text-muted-foreground/50 uppercase">
                 {group.heading}
               </span>
@@ -346,6 +388,7 @@ export function SidebarNav({
         ))}
       </div>
     </nav>
+    </CollapsedContext.Provider>
   );
 }
 

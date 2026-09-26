@@ -36,6 +36,22 @@ export default {
         input: c("line"),
         ring: c("accent"),
         destructive: { DEFAULT: c("danger"), foreground: c("bg") },
+        "accent-foreground": c("accent-ink"),
+        // the progress bars' own tokens (src/index.css): a fixed brand/info/success, lighter under the dark theme
+        brand: { DEFAULT: "var(--brand)", foreground: "var(--brand-foreground)" },
+        info: { DEFAULT: "var(--info)", foreground: "var(--info-foreground)" },
+        success: { DEFAULT: "var(--success)", foreground: "var(--success-foreground)" },
+      },
+      // shadcn's bg-muted is a pale surface, not the grey Semasa writes text in: backgrounds only, so text-muted is
+      // exactly what it always was
+      backgroundColor: { muted: { DEFAULT: c("surface-2"), foreground: c("muted") } },
+      keyframes: {
+        "accordion-down": { from: { height: "0" }, to: { height: "var(--radix-accordion-content-height)" } },
+        "accordion-up": { from: { height: "var(--radix-accordion-content-height)" }, to: { height: "0" } },
+      },
+      animation: {
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
       },
       fontFamily: {
         display: ["var(--font-display)"],

@@ -40,7 +40,7 @@ export default function SizePicker({ value, onChange, only }) {
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-[11px] font-semibold">{name}</span>
-                <span className="block text-[10px] text-muted">{w}×{h} · {ratioLabel(w, h)}</span>
+                <span className="block [overflow-wrap:anywhere] text-[10px] text-muted">{w}×{h} · {ratioLabel(w, h)}</span>
               </span>
             </button>
           );

@@ -827,19 +827,44 @@ presets live in `design/motion.js` so the whole app moves with one hand.
 Components are one job each (`TrendCard`, `MasonryGrid`, `FilterBar`, `MediaUploader`,
 `GenerationGallery`, `AuthPanel`, `ui/*`); data access is in `lib/hooks.js` and never inside a component.
 
-**shadcn components drop straight in** (27 Sep 2026, the dashboard sidebar). `web/components.json` registers
-`src/components/ui` as the `ui` folder and `@/` as `src/`; `tsconfig.json` and the `typescript` / `@types/react`
-dev-dependencies let a `.tsx` file sit beside the `.jsx` ones (Vite compiles both; `npm run typecheck` checks the
-TypeScript). `tailwind.config.js` maps shadcn's colour names onto the same tokens (`bg-card` = surface,
-`text-foreground` = ink, `text-muted-foreground` = muted, `border-border` = line, `bg-primary` = accent), so a pasted
-component follows every theme with no edit, and `tailwindcss-animate` supplies `animate-in fade-in zoom-in-95`.
-`src/lib/utils.ts` has `cn()`. Put a new component in `src/components/ui/`, install what it imports, and use it from a
-page. `npx shadcn add …` works on a computer with the registry reachable.
+**shadcn components drop straight in** (27 Sep 2026). `web/components.json` registers `src/components/ui` as the `ui`
+folder and `@/` as `src/`; `tsconfig.json` and the `typescript` / `@types/react` dev-dependencies let a `.tsx` file sit
+beside the `.jsx` ones (Vite compiles both; `npm run typecheck` checks the TypeScript). `tailwind.config.js` maps
+shadcn's colour names onto the same tokens (`bg-card` = surface, `text-foreground` = ink, `text-muted-foreground` =
+muted, `border-border` = line, `bg-primary` = accent, and `bg-muted` = the pale surface for backgrounds only, so
+`text-muted` is unchanged), so a pasted component follows every theme with no edit. `tailwindcss-animate` supplies
+`animate-in fade-in zoom-in-95`, and the accordion's `accordion-down/up` keyframes are in the config (Tailwind 3's
+place for what a Tailwind 4 paste puts in `index.css`). `src/lib/utils.ts` has shadcn's real `cn()` (clsx +
+tailwind-merge 2, the line for Tailwind 3). `src/components/ui/button.tsx` is shadcn's Button for pastes that import
+it; Semasa's own pages keep `Button.jsx`. Put a new component in `src/components/ui/`, install what it imports, and use
+it from a page. `npx shadcn add …` works on a computer with the registry reachable.
 
-**The sidebar.** `components/ui/dashboard-sidebar.tsx` is the pasted component (its demo is `dashboard-sidebar.demo.tsx`);
-`components/AppSidebar.jsx` feeds it Semasa's tabs from `lib/tabs.js`, the same list the header reads, with counts of
-new ideas and drafts waiting. It shows from 1024 px wide; the button left of the header hides it (remembered on that
-browser), which brings the header tabs back. On a phone the header tab row stays as it was.
+**What was pasted, and where it is used:**
+
+| Component | File | Used in |
+|---|---|---|
+| dashboard sidebar | `ui/dashboard-sidebar.tsx` | the main menu from 1024 px (`components/AppSidebar.jsx`) |
+| blogs-3 (+ lazy-image, aspect-ratio) | `ui/blogs-3.tsx` | Wangian: the gallery of saved designs |
+| progress-styled | `ui/progress-styled.tsx` | Wangian: each design's step bar and a shimmer while the worker is on it; Media lab: a shimmer on a waiting job |
+| accordion-card | `ui/accordion-card-utils/accordion.tsx` | FAQ: search matches as accordion cards (the first one open), and the questions inside each category card |
+
+Each keeps its pasted demo as `*.demo.tsx`, not mounted. Every change from the paste is written at the top of its file:
+mostly Tailwind 3 spellings (`outline-offset-[3px]`, `[transition-duration:2000ms]`), a `variant` prop the pasted
+accordion lacked, the divider blogs-3 imports but the paste did not include, and demo pictures moved from the 21st.dev
+CDN to Unsplash. The progress bars' `--brand`, `--info` and `--success` are in `src/index.css`, with the dark set under
+the Noir theme.
+
+**The sidebar.** `components/ui/dashboard-sidebar.tsx` is the pasted component; `components/AppSidebar.jsx` feeds it
+Semasa's tabs from `lib/tabs.js`, the same list the header reads, with counts of new ideas and drafts waiting. It shows
+from 1024 px wide, in one of two modes, switched by the button left of the header and remembered on that browser:
+
+- **pinned:** the full menu beside the page;
+- **auto** (Wan, 27 Sep 2026: *"can make the sidebar auto hide unhide"*): a 60 px rail of icons, with a dot where
+  something waits. Point at it, or tab into it, and the full menu slides out over the page; it slides back when the
+  pointer leaves (after a short pause, so a slip does not close it) or a tab is chosen, and Esc closes it. The page
+  never moves, so Kanvas keeps its width.
+
+On a phone the header tab row stays as it was.
 
 ## Local
 

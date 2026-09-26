@@ -7,6 +7,7 @@ import { useLang } from "../lib/i18n";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import { providersOf } from "./MediaUploader";
+import { ShimmerProgress } from "@/components/ui/progress-styled";
 import { UnsplashResults, isUnsplash } from "./Unsplash";
 
 // A job that failed for want of a key is retried on the runner's default (Cloudflare once its secrets are set),
@@ -84,6 +85,9 @@ export default function GenerationGallery({ rows, user, onRequeue, onRemove, onT
                     </span>
                     <span className="text-[11px] text-muted" title={stampMYT(row.updated_at)}>{row.type} · {timeAgo(row.created_at)}</span>
                   </div>
+                  {(row.status === "pending" || row.status === "processing") && (
+                    <ShimmerProgress size="sm" className="mt-3 w-full" label={st.label} />
+                  )}
                   <p className="mt-2 line-clamp-3 text-sm text-ink">{row.mode === "slides"
                     ? `${t("Slaid carousel · {n} slaid", ["Carousel slides · {n} slide", "Carousel slides · {n} slides"], { n: row.meta?.count || row.meta?.slides?.length || "?" })}${
                     row.meta?.slides?.[0]?.title ? `: ${row.meta.slides[0].title.replace(/\*/g, "")}` : ""}`

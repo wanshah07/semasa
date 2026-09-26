@@ -18,7 +18,6 @@ import IdeasTab from "./pages/IdeasTab";
 import PostsTab from "./pages/PostsTab";
 import SettingsTab from "./pages/SettingsTab";
 import GenerationGallery from "./components/GenerationGallery";
-import { UnsplashSearch } from "./components/Unsplash";
 import VideoTab from "./pages/VideoTab";
 import WatchSegment, { watchIdea } from "./components/WatchSegment";
 import Header from "./components/Header";
@@ -211,11 +210,8 @@ function MediaTab({ user, gens, prompts, onToast }) {
           preset={preset} onPresetUsed={clearPreset} />
         <PromptLibrary prompts={prompts} onToast={onToast} onUse={(p) => { setPreset(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       </div>
-      <div className="mt-5">
-        <UnsplashSearch user={user} onToast={onToast} onQueued={() => gens.reload()} />
-        <p className="mt-1 text-[11px] text-muted">{t("Foto Unsplash yang dipilih menjadi gambar biasa: boleh jadi gambar post, latar slaid atau latar reka bentuk. Jurugambar dikreditkan di sini.",
-          "A chosen Unsplash photo becomes an ordinary picture: a post picture, a slide background or a design background. The photographer is credited here.")}</p>
-      </div>
+      <p className="mt-3 text-[11px] text-muted">{t("Mahu foto sebenar? Pilih Unsplash dalam menu penyedia: foto yang dipilih jadi gambar biasa (gambar post, latar slaid atau latar reka bentuk), dan jurugambar dikreditkan.",
+        "Want a real photo? Choose Unsplash in the provider menu: the chosen photo becomes an ordinary picture (a post picture, a slide background or a design background), and the photographer is credited.")}</p>
       <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
       <GenerationGallery rows={gens.rows} user={user} onToast={onToast}

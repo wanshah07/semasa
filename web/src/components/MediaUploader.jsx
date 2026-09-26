@@ -7,7 +7,7 @@ import { useLang } from "../lib/i18n";
 import { IMAGE_TYPES, MAX_BYTES, refusal, removeReference, uploadReference } from "../lib/storage";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
-import { Input, Segmented } from "./ui/Field";
+import { Input, Segmented, Select } from "./ui/Field";
 
 export const providersOf = (t) => [
   { id: "", label: t("Lalai (tetapan runner)", "Default (runner setting)") },
@@ -15,6 +15,11 @@ export const providersOf = (t) => [
   { id: "openai", label: "OpenAI" },
   { id: "cloudflare", label: t("Cloudflare (gambar sahaja, percuma)", "Cloudflare (pictures only, free)") },
 ];
+
+/* Unsplash sits in the same menu (Wan, 26 Sep 2026: "why still no unsplashed", looking for it here): it does not
+   generate, it searches Unsplash for the words and offers 12 free photos under Results, one click to keep one
+   (backend/semasa/unsplash.py). Not in providersOf, because a failed generation cannot be retried "on Unsplash". */
+const UNSPLASH = "unsplash";
 
 /* Flow B. Two ways in:
      Prompt sahaja   words only → an image (or a still, then a video)
@@ -29,6 +34,7 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
   const [savedRef, setSavedRef] = useState(null);     // {url, path} from a library prompt
   const [type, setType] = useState("image");
   const [provider, setProvider] = useState("");
+  const [orientation, setOrientation] = useState("squarish");
   const [prompt, setPrompt] = useState("");
   const [keep, setKeep] = useState(false);
   const [keepTitle, setKeepTitle] = useState("");
@@ -56,13 +62,37 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
     setFile(f); setSavedRef(null); setMode("recreate");
   }, [onToast]);
 
+  const unsplash = provider === UNSPLASH;
+  // a search is words only and a still picture: choosing Unsplash sets both, leaving either unchooses Unsplash
+  const chooseProvider = (v) => { setProvider(v); if (v === UNSPLASH) { setMode("prompt"); setType("image"); } };
+  const chooseMode = (v) => { setMode(v); if (v === "recreate" && unsplash) setProvider(""); };
+  const chooseType = (v) => { setType(v); if (v === "video" && unsplash) setProvider(""); };
   const needsRef = mode === "recreate";
   const hasRef = Boolean(file || savedRef);
   const cfVideo = provider === "cloudflare" && type === "video";   // Cloudflare's free neurons draw pictures only
   const ready = prompt.trim() && (!needsRef || hasRef) && !cfVideo;
 
+  async function searchUnsplash() {
+    setBusy(true);
+    const words = prompt.trim().slice(0, 120);
+    const { data, error } = await supabase.from(TABLES.media).insert({
+      mode: "prompt", type: "image", provider: UNSPLASH, prompt: words, status: "pending", created_by: user.id,
+      meta: { flow: "unsplash", orientation, alt: words },
+    }).select().single();
+    setBusy(false);
+    if (error) return onToast(errText(error), "danger");
+    onToast(t("Carian dihantar. 12 foto muncul di Hasil dalam kira-kira seminit: klik satu untuk guna.",
+      "Search sent. 12 photos appear under Results in about a minute: click one to use it."), "ok");
+    onQueued?.(data);
+    setPrompt(""); setFromPrompt(null);
+  }
+
   async function submit(e) {
     e.preventDefault();
+    if (unsplash) {
+      if (!prompt.trim()) return onToast(t("Tulis perkataan carian dahulu.", "Type what to search for first."), "warn");
+      return searchUnsplash();
+    }
     if (!ready) return onToast(needsRef ? t("Perlukan gambar rujukan dan prompt.", "Needs a reference picture and a prompt.")
       : t("Perlukan prompt.", "Needs a prompt."), "warn");
     setBusy(true);
@@ -121,10 +151,10 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
               "Write a prompt only, or upload a reference: the bot reads it and recreates it.")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Segmented value={mode} onChange={setMode} options={[["prompt", t("Prompt sahaja", "Prompt only")], ["recreate", t("Rujukan + prompt", "Reference + prompt")]]} />
+          <Segmented value={mode} onChange={chooseMode} options={[["prompt", t("Prompt sahaja", "Prompt only")], ["recreate", t("Rujukan + prompt", "Reference + prompt")]]} />
           <div className="flex rounded-pill bg-surface-2 p-1 text-xs">
             {[["image", ImageIcon, t("Imej", "Image")], ["video", Film, "Video"]].map(([v, Icon, l]) => (
-              <button type="button" key={v} onClick={() => setType(v)}
+              <button type="button" key={v} onClick={() => chooseType(v)}
                 className={`flex items-center gap-1 rounded-pill px-3 py-1.5 ${type === v ? "bg-surface text-ink shadow-card" : "text-muted"}`}>
                 <Icon size={13} /> {l}
               </button>
@@ -160,7 +190,10 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
       )}
 
       <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} maxLength={2000} aria-label="Prompt"
-        placeholder={needsRef
+        placeholder={unsplash
+          ? t("Cari foto Unsplash (perkataan Inggeris lebih tepat), cth: cosmetic laboratory, halal food market…",
+            "Search Unsplash photos, e.g. cosmetic laboratory, halal food market…")
+          : needsRef
           ? t("Apa yang mahu diubah? Cth: latar makmal bersih, warna biru muda, kekalkan botol seperti asal…",
             "What should change? E.g. clean lab background, light blue, keep the bottle as it is…")
           : type === "video" ? t("Cth: botol serum di atas marmar, kamera bergerak perlahan ke kanan, cahaya pagi…",
@@ -169,24 +202,30 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
               "E.g. glass serum bottle on white marble, soft window light, product photography style…")}
         className="mt-4 w-full resize-y rounded-tile border border-line bg-bg p-3 text-sm outline-none focus:border-accent" />
 
-      <div className="mt-3 flex flex-wrap items-center gap-3">
+      {!unsplash && <div className="mt-3 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-xs text-muted">
           <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
           <BookmarkPlus size={13} /> {t("Simpan prompt", "Save prompt")}
         </label>
         {keep && <Input value={keepTitle} onChange={(e) => setKeepTitle(e.target.value)} placeholder={t("Nama (pilihan)", "Name (optional)")} className="max-w-xs" />}
-      </div>
+      </div>}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label={t("Penyedia", "Provider")}
-          className="rounded-pill border border-line bg-surface px-3 py-2 text-xs text-ink outline-none">
+        <select value={provider} onChange={(e) => chooseProvider(e.target.value)} aria-label={t("Penyedia", "Provider")}
+          className="max-w-full rounded-pill border border-line bg-surface px-3 py-2 text-xs text-ink outline-none">
           {providersOf(t).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          <option value={UNSPLASH}>{t("Unsplash (cari foto percuma)", "Unsplash (search free photos)")}</option>
         </select>
+        {unsplash && (
+          <Select value={orientation} onChange={setOrientation} aria-label={t("Orientasi", "Orientation")}
+            options={[["squarish", t("Segi empat", "Square")], ["portrait", t("Potret", "Portrait")], ["landscape", t("Landskap", "Landscape")]]} />
+        )}
         <span className="text-xs text-muted">{cfVideo
           ? t("Cloudflare buat gambar sahaja: pilih Replicate atau OpenAI untuk video", "Cloudflare makes pictures only: choose Replicate or OpenAI for a video")
-          : progress}</span>
-        <Button type="submit" className="ml-auto" disabled={busy || !ready}>
-          {busy ? t("Menghantar…", "Sending…") : type === "video" ? t("Jana video", "Generate video") : t("Jana imej", "Generate image")}
+          : unsplash ? t("Foto sebenar, bukan AI. Jurugambar dikreditkan.", "Real photos, not AI. The photographer is credited.") : progress}</span>
+        <Button type="submit" className="ml-auto" disabled={busy || (unsplash ? !prompt.trim() : !ready)}>
+          {busy ? t("Menghantar…", "Sending…") : unsplash ? t("Cari di Unsplash", "Search Unsplash")
+            : type === "video" ? t("Jana video", "Generate video") : t("Jana imej", "Generate image")}
         </Button>
       </div>
     </Card>

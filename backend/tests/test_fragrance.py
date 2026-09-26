@@ -255,6 +255,48 @@ def test_one_method_failing_leaves_the_other_to_pick(rig, monkeypatch):
     assert [r["method"] for r in m["renders"]] == ["ai_edit"] and "busy background" in m["render_errors"]["cutout"]
 
 
+def test_a_passing_service_fault_is_tried_once_more(rig, monkeypatch):
+    # the first live render: Cloudflare answered 408 Request Timeout after four minutes on the AI edit
+    import requests
+    monkeypatch.setattr(f.time, "sleep", lambda s: None)
+    calls = {"n": 0}
+
+    class Flaky:
+        def generate_from_text(self, prompt, options):
+            return Generated(_jpeg(), "image/jpeg", "flux")
+
+        def generate(self, kind, url, prompt, options):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                resp = requests.Response()
+                resp.status_code = 408
+                raise requests.HTTPError("408 Client Error: Request Timeout", response=resp)
+            return Generated(_jpeg(), "image/jpeg", "klein")
+    monkeypatch.setattr(media_generator, "make_provider", lambda name, s: Flaky())
+    store = _store(_chosen())
+    f.process(store, store.tables["media_generations"][0], _settings(), Writer())
+    m = store.tables["media_generations"][0]["meta"]
+    assert calls["n"] == 2 and [r["method"] for r in m["renders"]] == ["cutout", "ai_edit"] and m["render_errors"] == {}
+
+
+def test_a_refusal_is_not_retried(monkeypatch):
+    monkeypatch.setattr(f.time, "sleep", lambda s: None)
+    calls = []
+    with pytest.raises(ValueError):
+        f._patient(lambda: calls.append(1) or (_ for _ in ()).throw(ValueError("bad prompt")))
+    assert calls == [1]
+
+
+def test_trying_one_version_again_keeps_the_other(rig):
+    before = [{"method": "cutout", "url": "https://cdn/keep", "path": "2026/09/g1-cutout-1.jpg"}]
+    store = _store(_chosen(renders=before, methods=["ai_edit"], rendered_pick=0,
+                           render_errors={"ai_edit": "HTTPError: 408"}))
+    f.process(store, store.tables["media_generations"][0], _settings(), Writer())
+    m = store.tables["media_generations"][0]["meta"]
+    assert [r["method"] for r in m["renders"]] == ["cutout", "ai_edit"] and m["renders"][0] == before[0]
+    assert store.removed == [] and m["render_errors"] == {} and len(rig["art"]) == 1
+
+
 def test_edited_words_and_the_portrait_shape_reach_the_artwork(rig):
     store = _store(_chosen(edits={"headline": "NOIR", "tagline": "", "badges": ["No.1"]}, format="portrait",
                            methods=["cutout"]))

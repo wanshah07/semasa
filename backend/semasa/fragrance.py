@@ -31,6 +31,7 @@ import base64
 import io
 import json
 import re
+import time
 from collections import deque
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -454,19 +455,23 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
             renders, errors = [], {}
             label: dict[str, Any] | None = None
             stamp = datetime.now(UTC).strftime("%d%H%M%S")    # a new name each round: a redraw is never an old cached file
-            earlier = [r["path"] for r in meta.get("renders") or [] if r.get("path")]
+            # the same concept redrawn for one method only ("Cuba lagi" on a version that failed) keeps the other
+            # version; a different concept, or both methods again, replaces the whole last round
+            same = meta.get("rendered_pick", pick) == pick         # a job drawn before rendered_pick existed: same
+            kept = [r for r in meta.get("renders") or [] if same and r.get("method") not in methods]
+            earlier = [r["path"] for r in meta.get("renders") or [] if r.get("path") and r not in kept]
             for m in methods:
                 try:
                     if m == "cutout":
                         bottle = cutout(bottle_raw)
-                        scene = provider.generate_from_text(scene_prompt(c, with_bottle=False), {}).data
+                        scene = _patient(lambda: provider.generate_from_text(scene_prompt(c, with_bottle=False), {})).data
                         art = render_art(c, p, size, scene, bottle, logo)
                     else:
                         # an AI redraw may misspell the label: it is read back, drawn once more if wrong, and a label
                         # still wrong is kept only as a flagged picture Wan cannot save without checking it himself
                         for attempt in (1, 2):
-                            scene = provider.generate("image", p["bottle_url"],
-                                                      scene_prompt(c, True, p, strict=attempt > 1), {}).data
+                            prompt = scene_prompt(c, True, p, strict=attempt > 1)
+                            scene = _patient(lambda q=prompt: provider.generate("image", p["bottle_url"], q, {})).data
                             label = check_label(llm, scene, p)
                             if label is None or label["ok"]:
                                 break
@@ -479,11 +484,12 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
                 except Exception as exc:  # noqa: BLE001 - one method failing leaves the other for Wan to pick
                     errors[m] = f"{type(exc).__name__}: {str(exc)[:300]}"
                     log.warning("%s: %s failed: %s", row_id, m, errors[m])
+            renders = sorted(kept + renders, key=lambda r: METHODS.index(r["method"]) if r["method"] in METHODS else 9)
             if not renders:
                 raise FragranceError("neither version could be made: " + "; ".join(f"{k}: {v}" for k, v in errors.items()))
             if earlier:                                       # another concept, or the same one again: the last round goes
                 _remove(store, row_id, earlier)
-            meta.update(renders=renders, render_errors=errors, rendered=c, step="pick",
+            meta.update(renders=renders, render_errors=errors, rendered=c, rendered_pick=pick, step="pick",
                         rendered_at=datetime.now(UTC).isoformat())
             db.finish_media(store, row_id, status="done", provider="semasa", error=None, meta=meta,
                             generated_media_url=renders[0]["url"])
@@ -515,6 +521,22 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
         db.finish_media(store, row_id, status="error" if final else "pending", error=msg[:600], provider="semasa")
         log.error("%s: %s", row_id, msg)
         return False
+
+
+def _patient(call: Any, wait: float = 8.0) -> Any:
+    """One more try when the image service had a passing fault: a timeout (Cloudflare answered 408 after four minutes
+    on the first live Noir Rush render), a rate limit or a 5xx. A refusal on the merits is not retried."""
+    try:
+        return call()
+    except Exception as exc:  # noqa: BLE001
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        passing = status in (408, 429, 500, 502, 503, 504) or type(exc).__name__ in ("Timeout", "ReadTimeout",
+                                                                                     "ConnectTimeout", "ConnectionError")
+        if not passing:
+            raise
+        log.warning("image service fault (%s); trying once more", status or type(exc).__name__)
+        time.sleep(wait)
+        return call()
 
 
 def _remove(store: Any, row_id: str, paths: list[str]) -> None:

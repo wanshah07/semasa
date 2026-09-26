@@ -362,7 +362,17 @@ function Job({ r, mine, gens, onToast }) {
         </div>
       )}
       {Object.entries(m.render_errors || {}).map(([k, v]) => (
-        <p key={k} className="mt-2 text-[11px] text-warn [overflow-wrap:anywhere]">{L(METHOD[k] || [k, k])} {t("tidak dapat dilukis", "could not be drawn")}: {v}</p>
+        <div key={k} className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-warn">
+          <p className="min-w-0 [overflow-wrap:anywhere]">{L(METHOD[k] || [k, k])} {t("tidak dapat dilukis", "could not be drawn")}: {v}</p>
+          {mine && step === "pick" && !working && (
+            // redraw this version alone: the version already drawn stays
+            <Button size="sm" variant="soft" disabled={busy}
+              onClick={() => send({ step: "render", pick: m.rendered_pick ?? m.pick ?? 0, methods: [k],
+                edits: { headline: m.rendered?.headline || "", tagline: m.rendered?.tagline || "" } },
+              t("Dihantar. Versi ini dilukis semula; versi yang sudah ada kekal.", "Sent. This version is redrawn; the one already made stays."))}>
+              <RotateCcw size={12} /> {t("Cuba lagi", "Try again")}</Button>
+          )}
+        </div>
       ))}
       {step === "saved" && <p className="mt-2 text-[11px] text-muted">{t("Akan dijadualkan ke Valorith bila penerbitan Semasa dihidupkan. Buat masa ini, muat turun.", "It will be scheduled to Valorith once Semasa's publishing is switched on. For now, download it.")}</p>}
 

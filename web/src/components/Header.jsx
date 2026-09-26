@@ -1,4 +1,4 @@
-import { Clapperboard, Droplets, FileText, HelpCircle, LayoutTemplate, Lightbulb, ListChecks, LogOut, Palette, Radio, Settings, Sparkles } from "lucide-react";
+import { Clapperboard, Droplets, FileText, PenTool, HelpCircle, LayoutTemplate, Lightbulb, ListChecks, LogOut, Palette, Radio, Settings, Sparkles } from "lucide-react";
 import { THEMES, useTheme } from "../design/ThemeProvider";
 import { supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
@@ -14,6 +14,7 @@ export default function Header({ tab, setTab, user }) {
     { id: "media", label: t("Makmal media", "Media lab"), icon: Sparkles },
     { id: "design", label: t("Reka bentuk", "Design"), icon: LayoutTemplate },
     { id: "wangian", label: t("Wangian", "Fragrance"), icon: Droplets },
+    { id: "kanvas", label: "Kanvas", icon: PenTool },
     { id: "video", label: "Video", icon: Clapperboard },
     { id: "faq", label: "FAQ", icon: HelpCircle },
     { id: "log", label: "Log", icon: ListChecks },

@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, Clock, Download, Droplets, ImagePlus, Loader2, Pencil, Plus, RotateCcw, Save, Search,
+import { AlertTriangle, CheckCircle2, Clock, Download, Droplets, ImagePlus, Loader2, Maximize2, PenTool, Pencil, Plus, RotateCcw, Save, Search,
   Trash2, Wand2, X } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { timeAgo } from "../lib/format";
+import { sizeLabel, sizeMeta } from "../lib/sizes";
+import { fragranceSeed } from "../lib/canvasSeed";
 import { useLang } from "../lib/i18n";
 import { refusal, removeReference, uploadReference } from "../lib/storage";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
-import { Input, Label, Segmented, TextArea } from "../components/ui/Field";
+import SizePicker from "../components/SizePicker";
+import { Input, Label, TextArea } from "../components/ui/Field";
 
 /* Wangian (Wan, 26 Sep 2026: "add one more segment for fragrance, design is separate or can try to redesign via canva"
    and "you will run to find new design and will replace the bottle in the design with our by render or via canva").
@@ -24,7 +27,7 @@ const LAYOUT = { hero: ["Nama besar", "Big name"], behind: ["Tajuk di belakang b
   notes: ["Nota wangian", "Scent notes"] };
 const METHOD = { cutout: ["Botol sebenar (dipotong)", "Real bottle (cut out)"], ai_edit: ["Suntingan AI", "AI edit"] };
 
-export default function FragranceTab({ user, gens, onToast }) {
+export default function FragranceTab({ user, gens, onToast, onCanvas }) {
   const { t } = useLang();
   const [list, setList] = useState([]);
   const [error, setError] = useState("");
@@ -112,7 +115,7 @@ export default function FragranceTab({ user, gens, onToast }) {
               <FindConcepts p={p} user={user} gens={gens} onToast={onToast} />
             </Card>
           )}
-          {p && <Jobs rows={jobs} user={user} gens={gens} onToast={onToast} />}
+          {p && <Jobs rows={jobs} user={user} gens={gens} onToast={onToast} onCanvas={onCanvas} />}
         </div>
       </div>
 
@@ -228,7 +231,7 @@ function FindConcepts({ p, user, gens, onToast }) {
       if (ref) up = await uploadReference(user, ref);
       const { error } = await supabase.from(TABLES.media).insert({
         mode: "fragrance", type: "image", status: "pending", created_by: user.id, provider: null,
-        meta: { step: "concepts", fragrance_id: p.id, format, ...(up ? { style_ref: { url: up.url, path: up.path, name: ref.name } } : {}) },
+        meta: { step: "concepts", fragrance_id: p.id, ...sizeMeta(format), ...(up ? { style_ref: { url: up.url, path: up.path, name: ref.name } } : {}) },
       });
       if (error) throw new Error(/mode_check/.test(errText(error))
         ? t("Jalankan supabase/014_fragrance.sql sekali dahulu.", "Run supabase/014_fragrance.sql once first.") : errText(error));
@@ -253,7 +256,7 @@ function FindConcepts({ p, user, gens, onToast }) {
           onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (!file) return; const why = refusal(file); if (why) onToast(why, "warn"); else setRef(file); }} />
       </label>
       {ref && <button type="button" onClick={() => setRef(null)} className="text-[11px] text-muted hover:text-ink">{t("Buang rujukan", "Remove reference")}</button>}
-      <Segmented value={format} onChange={setFormat} options={[["square", "1:1"], ["portrait", "4:5"]]} />
+      <div className="w-full"><Label hint={sizeLabel(format)}>{t("Saiz", "Size")}</Label><SizePicker value={format} onChange={setFormat} /></div>
       <Button onClick={go} disabled={busy || !p.bottle_url} title={p.bottle_url ? "" : t("Tambah gambar botol dahulu", "Add a bottle photo first")}>
         {busy ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} {t("Cari reka bentuk", "Find designs")}</Button>
       {!p.bottle_url && <p className="w-full text-[11px] text-warn">{t("Tambah gambar botol (Ubah) sebelum mencari reka bentuk.", "Add a bottle photo (Edit) before finding designs.")}</p>}
@@ -261,16 +264,16 @@ function FindConcepts({ p, user, gens, onToast }) {
   );
 }
 
-function Jobs({ rows, user, gens, onToast }) {
+function Jobs({ rows, user, gens, onToast, onCanvas }) {
   const { t } = useLang();
   if (!rows.length) {
     return <p className="rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">
       {t("Belum ada reka bentuk untuk wangian ini.", "No designs for this perfume yet.")}</p>;
   }
-  return <div className="space-y-4">{rows.map((r) => <Job key={r.id} r={r} mine={user && r.created_by === user.id} gens={gens} onToast={onToast} />)}</div>;
+  return <div className="space-y-4">{rows.map((r) => <Job key={r.id} r={r} mine={user && r.created_by === user.id} gens={gens} onToast={onToast} onCanvas={onCanvas} />)}</div>;
 }
 
-function Job({ r, mine, gens, onToast }) {
+function Job({ r, mine, gens, onToast, onCanvas }) {
   const { t, lang } = useLang();
   const L = (pair) => (lang === "en" ? pair[1] : pair[0]);
   const m = r.meta || {};
@@ -278,6 +281,27 @@ function Job({ r, mine, gens, onToast }) {
   const [busy, setBusy] = useState(false);
   const [again, setAgain] = useState(false);
   const [checked, setChecked] = useState({});
+  const [resize, setResize] = useState(false);
+  const [newSize, setNewSize] = useState("ig_story");
+
+  // Canva's "resize": the same concept and words drawn again at another size, as a job of its own, so the version
+  // already kept (or waiting to be picked) is never touched
+  async function otherSize() {
+    const keep = ["fragrance_id", "product", "concepts", "review", "style_ref"];
+    const base = Object.fromEntries(keep.filter((k) => m[k] !== undefined).map((k) => [k, m[k]]));
+    const pick = m.rendered_pick ?? m.pick ?? 0;
+    const edits = { headline: m.rendered?.headline || m.concepts?.[pick]?.headline || "", tagline: m.rendered?.tagline || "" };
+    setBusy(true);
+    const { error } = await supabase.from(TABLES.media).insert({
+      mode: "fragrance", type: "image", status: "pending", created_by: r.created_by, provider: null,
+      meta: { ...base, style_ref: undefined, step: "render", pick, edits, methods: ["cutout", "ai_edit"], ...sizeMeta(newSize) },
+    });
+    setBusy(false);
+    if (error) return onToast(errText(error), "danger");
+    setResize(false);
+    onToast(t("Dihantar. Saiz baharu dilukis sebagai reka bentuk berasingan.", "Sent. The new size is drawn as a separate design."), "ok");
+    gens.reload();
+  }
   const working = r.status === "pending" || r.status === "processing";
 
   async function send(patch, msg) {
@@ -312,7 +336,7 @@ function Job({ r, mine, gens, onToast }) {
       <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
         <span className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 font-semibold ${tone}`}>
           <Icon size={12} className={r.status === "processing" ? "animate-spin" : ""} /> {label}</span>
-        <span className="text-muted">{m.format === "portrait" ? "4:5 · 1080×1350" : "1:1 · 1080×1080"} · {timeAgo(r.created_at)}</span>
+        <span className="text-muted">{m.size_name ? `${m.size_name} · ${m.size?.[0]}×${m.size?.[1]}` : sizeLabel(m.format || "square", m.size)} · {timeAgo(r.created_at)}</span>
       </div>
       {m.style_ref?.url && (
         <div className="mt-3 flex min-w-0 gap-2 rounded-tile bg-surface-2/70 p-2 text-[12px]">
@@ -356,6 +380,11 @@ function Job({ r, mine, gens, onToast }) {
                   );
                 })()}
                 {step === "saved" && <a href={x.url} target="_blank" rel="noopener noreferrer" download className="inline-flex items-center gap-1 text-accent hover:underline"><Download size={12} /> {t("Muat turun", "Download")}</a>}
+                {onCanvas && !working && (
+                  // every piece of this design as a movable layer: the scene, the real bottle, each word and badge
+                  <button type="button" onClick={() => onCanvas({ ...fragranceSeed(x, m, m.product), source: "fragrance", sourceId: r.id, sizeId: m.format || null })}
+                    className="ml-2 inline-flex items-center gap-1 text-accent hover:underline"><PenTool size={12} /> {t("Ubah dalam Kanvas", "Edit in Kanvas")}</button>
+                )}
               </figcaption>
             </figure>
           ))}
@@ -380,7 +409,16 @@ function Job({ r, mine, gens, onToast }) {
         <Concepts m={m} mine={mine} busy={busy || working} onRender={(patch) => send({ step: "render", ...patch }, t("Dihantar. Dua versi dalam beberapa minit.", "Sent. Two versions within a few minutes."))} />
       )}
 
+      {resize && (
+        <div className="mt-3 space-y-2">
+          <SizePicker value={newSize} onChange={setNewSize} />
+          <Button size="sm" disabled={busy} onClick={otherSize}><Wand2 size={12} /> {t("Lukis dalam {size}", "Draw it as {size}", { size: sizeLabel(newSize) })}</Button>
+        </div>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
+        {mine && ["pick", "saved"].includes(step) && !working && (m.concepts || []).length > 0 && (
+          <Button size="sm" variant="soft" onClick={() => setResize(!resize)}><Maximize2 size={12} /> {t("Buat saiz lain", "Make another size")}</Button>
+        )}
         {mine && step === "pick" && !working && (m.concepts || []).length > 0 && (
           <Button size="sm" variant="soft" onClick={() => setAgain(!again)}><Wand2 size={12} /> {again ? t("Tutup konsep", "Hide concepts") : t("Cuba konsep lain", "Try another concept")}</Button>
         )}

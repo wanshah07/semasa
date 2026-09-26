@@ -279,3 +279,11 @@ def test_a_design_without_a_reference_is_unchanged(studio):
     m = store.tables["media_generations"][0]["meta"]
     assert "awaiting_confirm" not in m and "review" not in m
     assert store.tables["semasa_posts"][0]["media_ids"] == ["own", "d1"]
+
+
+def test_any_canva_social_size_is_taken_and_a_silly_one_is_not():
+    assert design.size_of({"size": [1584, 396]}, "regulab") == (1584, 396)          # LinkedIn background
+    assert design.size_of({"size": [851, 315], "format": "fb_cover"}, "regulab") == (851, 315)
+    assert design.size_of({"size": [100, 100], "format": "portrait"}, "regulab") == (1080, 1350)   # too small: format
+    assert design.size_of({"size": [4000, 200]}, "regulab") is None                  # 20:1 is not a picture
+    assert design.size_of({"size": "big", "design": "card"}, "regulab") == (1080, 1080)

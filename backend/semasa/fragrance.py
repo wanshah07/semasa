@@ -342,7 +342,7 @@ def page_html(c: dict[str, Any], p: dict[str, Any], size: tuple[int, int], scene
     badges = "".join(f'<div class="badge"><span>{_esc(b)}</span></div>' for b in c.get("badges") or [])
     starred = any("*" in b for b in c.get("badges") or [])
     foot = f'<div class="foot {at}">{_esc(p.get("footnote"))}</div>' if starred and p.get("footnote") else ""
-    style = (f"--w:{w}px;--h:{h}px;--ink:{c['ink']};--accent:{c['accent']};"
+    style = (f"--w:{w}px;--h:{h}px;--u:{min(w, h)}px;--ink:{c['ink']};--accent:{c['accent']};"
              f"--bottle:{0.70 if layout == 'behind' else 0.64};--scene:url('{_uri(scene, 'image/jpeg')}')")
     return ('<!doctype html><html><head><meta charset="utf-8">'
             '<link rel="stylesheet" href="/cards/fonts.css"><link rel="stylesheet" href="/cards/fragrance-fonts.css">'
@@ -445,7 +445,8 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
             if not 0 <= pick < len(concepts):
                 raise FragranceError("choose one of the concepts first")
             c = {**concepts[pick], **{k: v for k, v in (meta.get("edits") or {}).items() if k in ("headline", "tagline")}}
-            size = SIZES.get(meta.get("format") or "square", SIZES["square"])
+            from .design import pixels
+            size = pixels(meta.get("size")) or SIZES.get(meta.get("format") or "square", SIZES["square"])
             methods = [m for m in (meta.get("methods") or list(METHODS)) if m in METHODS] or list(METHODS)
             if not p.get("bottle_url"):
                 raise FragranceError("this perfume has no bottle photo: add one in the perfume list")
@@ -459,7 +460,7 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
             # version; a different concept, or both methods again, replaces the whole last round
             same = meta.get("rendered_pick", pick) == pick         # a job drawn before rendered_pick existed: same
             kept = [r for r in meta.get("renders") or [] if same and r.get("method") not in methods]
-            earlier = [r["path"] for r in meta.get("renders") or [] if r.get("path") and r not in kept]
+            earlier = [x for r in meta.get("renders") or [] if r not in kept for x in _files(r)]
             for m in methods:
                 try:
                     if m == "cutout":
@@ -479,7 +480,12 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
                             label["attempts"] = attempt
                         art = render_art(c, p, size, scene, None, logo)
                     url, path = _store(store, row_id, Generated(art, "image/jpeg", "semasa-fragrance"), f"-{m}-{stamp}")
-                    renders.append({"method": m, "url": url, "path": path,
+                    # the pieces, kept so the Kanvas editor can open this design as layers (the scene without a word,
+                    # and for the cut-out the bottle itself); they go wherever the render goes
+                    layers = {"scene": _layer(store, row_id, _jpeg_small(scene), "image/jpeg", f"-{m}-scene-{stamp}")}
+                    if m == "cutout":
+                        layers["bottle"] = _layer(store, row_id, bottle, "image/png", f"-{m}-bottle-{stamp}")
+                    renders.append({"method": m, "url": url, "path": path, "layers": layers,
                                     **({"label": label} if m == "ai_edit" and label else {})})
                 except Exception as exc:  # noqa: BLE001 - one method failing leaves the other for Wan to pick
                     errors[m] = f"{type(exc).__name__}: {str(exc)[:300]}"
@@ -498,14 +504,14 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
             keep = next((r for r in meta.get("renders") or [] if r.get("method") == meta.get("chosen")), None)
             if not keep:
                 raise FragranceError("pick the version to keep first")
-            _remove(store, row_id, [r["path"] for r in meta.get("renders") or [] if r is not keep and r.get("path")])
+            _remove(store, row_id, [x for r in meta.get("renders") or [] if r is not keep for x in _files(r)])
             meta.update(renders=[keep], saved=True, step="saved", saved_at=datetime.now(UTC).isoformat())
             db.finish_media(store, row_id, status="done", provider="semasa", error=None, meta=meta,
                             generated_media_url=keep["url"])
             return True
         if step == "discard":
             # Wan's Buang: the page cannot delete from the generated bucket, so the worker clears the files and the row
-            _remove(store, row_id, [r["path"] for r in meta.get("renders") or [] if r.get("path")])
+            _remove(store, row_id, [x for r in meta.get("renders") or [] for x in _files(r)])
             if (meta.get("style_ref") or {}).get("path"):
                 try:
                     store.storage.from_("semasa-reference").remove([meta["style_ref"]["path"]])
@@ -539,6 +545,25 @@ def _patient(call: Any, wait: float = 8.0) -> Any:
         return call()
 
 
+def _files(render: dict[str, Any]) -> list[str]:
+    """Every stored file of one render: the picture and its layers."""
+    return [x for x in [render.get("path"), *[(v or {}).get("path") for v in (render.get("layers") or {}).values()]] if x]
+
+
+def _jpeg_small(data: bytes, longest: int = 1600) -> bytes:
+    img = Image.open(io.BytesIO(data)).convert("RGB")
+    img.thumbnail((longest, longest))
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=88)
+    return buf.getvalue()
+
+
+def _layer(store: Any, row_id: str, data: bytes, kind: str, suffix: str) -> dict[str, str]:
+    from .media_generator import _store
+    url, path = _store(store, row_id, Generated(data, kind, "semasa-fragrance"), suffix)
+    return {"url": url, "path": path}
+
+
 def _remove(store: Any, row_id: str, paths: list[str]) -> None:
     if not paths:
         return
@@ -563,7 +588,7 @@ def purge_unsaved(store: Any, now: datetime | None = None) -> int:
         if m.get("saved"):
             continue
         try:
-            files = [x["path"] for x in m.get("renders") or [] if x.get("path")]
+            files = [x for r in m.get("renders") or [] for x in _files(r)]
             if files:
                 store.storage.from_(db.GENERATED_BUCKET).remove(files)
             if (m.get("style_ref") or {}).get("path"):

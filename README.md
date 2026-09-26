@@ -108,7 +108,10 @@ an account), and no Google button.
    **Then `013_watch_paste.sql`** (paste a link into Regulatory or Latest publication, 26 Sep 2026). It adds the
    status columns, lets uploaders add a waiting link (and remove a pasted one), and wakes the worker on a paste.
    Safe to run again, and safe in the shared project.
-   **Then `014_fragrance.sql`** (the Wangian tab, 26 Sep 2026, see *Wangian* below). It creates `semasa_fragrances`
+   **Then `015_canvas.sql`** (the Kanvas editor, 26 Sep 2026, see *Kanvas* below). It creates `semasa_canvas`, which
+   holds the designs made in the editor. Safe to run again, and safe in the shared project. The check at the bottom
+   prints `1 | 1 | 1`.
+   **Before that, `014_fragrance.sql`** (the Wangian tab, 26 Sep 2026, see *Wangian* below). It creates `semasa_fragrances`
    (the list of our perfumes) and allows media jobs of mode `fragrance`. Safe to run again, and safe in the shared
    project. The check at the bottom prints `1 | 1 | 1`.
    007 and 008 were changed on 25 Sep 2026 after they were first handed over (bot categories, and a
@@ -587,6 +590,53 @@ The rules behind it:
   Until then, a saved design is a picture to download. Nothing here posts.
 - Cost: the concepts use the writer; the pictures use the image provider (Cloudflare by default). The label check uses
   `VISION_MODEL`.
+
+## Sizes: every social size Canva lists
+
+The Design tab, Wangian and Kanvas share one size list (`web/src/lib/sizes.js`, from Canva's resize panel, 26 Sep
+2026). It covers the stills for Instagram (post 4:5, 1:1, 3:4, story, reel cover, ad), TikTok, Facebook (post, story,
+cover, event cover, ad, app ad, Shops), YouTube (thumbnail, banner), LinkedIn (post, 4:5, single-image ad, background),
+Pinterest and X, plus Studio's own three shapes. Animated and video formats are left out. The picker searches by name
+or pixels. The worker takes any size from 200 to 4096 px a side, with no side more than 4.5 times the other.
+
+- **Words that do not fit:** at an extreme shape such as 1584×396, a design whose words cannot fit fails with a clear
+  message rather than cutting them.
+- **Buat saiz lain** on a Wangian design redraws the same concept and words at another size, as a design of its own.
+  The version already kept is untouched.
+
+## Kanvas: a Canva-like editor
+
+The **Kanvas** tab (26 Sep 2026, Wan: *"add any repo that the design can similar like canva"*) is an editor built on
+[Fabric.js](https://github.com/fabricjs/fabric.js) (MIT licence), the canvas engine the open-source Canva clones use.
+
+**Why not a whole Canva-clone app:** they need a server of their own (a Node or Go backend and a database), are built
+for Vue, or are licensed only as source-available. Semasa is a static site on Supabase, so the editor lives inside it:
+nothing extra to host, and designs save to your own project.
+
+What it does:
+- **Sizes:** any size from the list, and *Saiz* resizes a design with every element keeping its place (Canva's Resize).
+- **Content:** text (heading, subheading, body) in the bundled fonts: Playfair Display, Anton, Poppins, Instrument
+  Sans, JetBrains Mono and Caveat.
+- **Elements:** rectangle, circle, triangle, line and the gold badge.
+- **Pictures:** your own uploads (a transparent PNG stays transparent), and a background colour or picture.
+- **Editing:** drag, resize, rotate, font, size, bold, italic, alignment, letter spacing, colour, opacity, forward and
+  backward, duplicate, delete, lock and hide.
+- **Helpers:** centre-snapping with a pink guide line, undo and redo (Ctrl+Z / Ctrl+Y), and arrow-key nudges.
+- **Output:** **Simpan** keeps the design (re-openable and editable) with a PNG preview. **PNG / JPG** download the
+  design at full size.
+
+**From other tabs:** *Ubah dalam Kanvas* on a Wangian version opens it as layers: the AI scene, the real bottle cut out,
+the brand, headline, tagline, each badge and the footnote, all movable. On a Design-tab result, it opens the drawn
+design as the background to add to.
+
+**Storage:**
+- A design is Fabric JSON: its pictures are addresses in the uploads bucket, never the pictures themselves.
+- Pictures opened from a Wangian design are copied into your own folder, so they outlive the design job.
+- Deleting a design deletes its preview and the pictures uploaded into it.
+- A design closed without saving takes its new uploads with it.
+
+**Where the rules still apply:** the editor is yours, so it checks no words. A Kanvas design is not attached to a post
+by itself. Badges must still carry only claims with evidence in the PIF, and the editor says so beside the layers.
 
 ## Card or table
 

@@ -189,7 +189,10 @@ def test_render_draws_both_ways_with_our_bottle_and_waits_for_wan(rig):
                                         "missing": [], "attempts": 1}
     assert len(rig["edit"]) == 1
     assert cut["size"] == (1080, 1080)
-    assert sorted(p.rsplit("-", 2)[1] for p in rig["uploads"]) == ["ai_edit", "cutout"]
+    names = sorted(p.split("/")[-1].split(".")[0].split("-", 1)[1].rsplit("-", 1)[0] for p in rig["uploads"])
+    assert names == ["ai_edit", "ai_edit-scene", "cutout", "cutout-bottle", "cutout-scene"]
+    assert set(m["renders"][0]["layers"]) == {"scene", "bottle"} and set(m["renders"][1]["layers"]) == {"scene"}
+    assert m["renders"][0]["layers"]["bottle"]["path"].endswith(".png")
     assert store.removed == []
 
 
@@ -307,6 +310,12 @@ def test_edited_words_and_the_portrait_shape_reach_the_artwork(rig):
     assert len(rig["art"]) == 1
 
 
+def test_a_canva_size_reaches_the_artwork(rig):
+    store = _store(_chosen(size=[1280, 720], format="yt_thumb", size_name="YouTube Thumbnail", methods=["cutout"]))
+    f.process(store, store.tables["media_generations"][0], _settings(), Writer())
+    assert rig["art"][0]["size"] == (1280, 720)
+
+
 def test_no_bottle_photo_is_a_clear_final_error(rig):
     store = _store(_chosen(product={**NOIR, "bottle_url": None}))
     f.process(store, store.tables["media_generations"][0], _settings(), Writer())
@@ -333,6 +342,16 @@ def test_buang_deletes_the_files_the_reference_and_the_job(rig):
     assert f.process(store, store.tables["media_generations"][0], _settings(), None) is True
     assert store.tables["media_generations"] == []
     assert store.removed == [("semasa-generated", [r["path"] for r in renders]), ("semasa-reference", ["u/ad.jpg"])]
+
+
+def test_saving_one_version_also_clears_the_other_versions_layers(rig):
+    renders = [{"method": "cutout", "url": "u/a", "path": "x/a.jpg",
+                "layers": {"scene": {"url": "u/as", "path": "x/as.jpg"}, "bottle": {"url": "u/ab", "path": "x/ab.png"}}},
+               {"method": "ai_edit", "url": "u/b", "path": "x/b.jpg", "layers": {"scene": {"url": "u/bs", "path": "x/bs.jpg"}}}]
+    store = _store(_job(step="save", chosen="ai_edit", renders=renders))
+    f.process(store, store.tables["media_generations"][0], _settings(), None)
+    assert store.removed == [("semasa-generated", ["x/a.jpg", "x/as.jpg", "x/ab.png"])]
+    assert store.tables["media_generations"][0]["meta"]["renders"] == [renders[1]]      # its own layers stay
 
 
 def test_unsaved_designs_are_cleared_after_a_week_and_saved_ones_kept():

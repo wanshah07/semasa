@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Eye, ImagePlus, LayoutTemplate, Loader2, Pencil, Plus, RotateCcw,
+import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Eye, ImagePlus, LayoutTemplate, Loader2, PenTool, Pencil, Plus, RotateCcw,
   Save, Trash2, Wand2, X } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { STREAMS } from "../lib/brand";
 import { normaliseSlides, scan } from "../lib/compliance";
 import { timeAgo } from "../lib/format";
+import { sizeLabel, sizeMeta, sizeOf } from "../lib/sizes";
 import { useLang } from "../lib/i18n";
 import { IMAGE_TYPES, refusal, removeReference, uploadReference } from "../lib/storage";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import LookPicker from "../components/LookPicker";
+import SizePicker from "../components/SizePicker";
 import { UnsplashResults, UnsplashSearch } from "../components/Unsplash";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -20,14 +22,14 @@ import { Input, Label, Segmented, Select, TextArea } from "../components/ui/Fiel
    (backend/semasa/design.py + slides.py) writes the words from an idea when asked, then draws them with no AI and no
    cost, on brand paper, on Wan's own picture, or on a picture the image provider makes for it first. */
 
-const SIZE_PX = { square: [1080, 1080], portrait: [1080, 1350], story: [1080, 1920] };
-const SIZE_LABEL = { square: "1:1 · 1080×1080", portrait: "4:5 · 1080×1350", story: "9:16 · 1080×1920" };
+// every size Canva lists for social media (lib/sizes.js); the three Studio shapes keep their old ids
+const pxOf = (id) => { const s = sizeOf(id); return s ? [s.w, s.h] : [1080, 1350]; };
 const MAX_POINTS = { poster: 5, card: 3, carousel: 3 };
 const blankSlide = () => ({ title: "", points: "" });
 const defaultSize = (design, stream) => (design === "poster" ? "portrait" : design === "card" ? "square"
   : stream === "linkedin" ? "portrait" : "square");
 
-export default function DesignTab({ user, gens, posts, brand, onToast }) {
+export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas }) {
   const { t } = useLang();
   const [design, setDesign] = useState("poster");
   const [stream, setStream] = useState("regulab");
@@ -123,7 +125,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
         bgValue = unsplashRow;                               // the worker waits for the pick to be stored, then draws on it
       }
       if (bg === "from_ref") bgValue = "from_ref";           // an original background in the reference's mood (worker)
-      const meta = { flow: "design", design, format, stream, bg: bgValue, look: styleUp && autoLook ? "auto" : look,
+      const meta = { flow: "design", design, format, ...sizeMeta(format), stream, bg: bgValue, look: styleUp && autoLook ? "auto" : look,
         eyebrow: eyebrow.trim(), citation: citation.trim(),
         ...(styleUp ? { style_ref: { url: styleUp.url, path: styleUp.path, name: styleFile.name } } : {}),
         ...(words === "ai" ? { brief: brief.trim() } : { slides: own }), ...(fromPost ? { from_post: fromPost } : {}) };
@@ -167,8 +169,8 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
           <div className="min-w-0 space-y-4">
             <div><Label>{t("Jenis", "Kind")}</Label><Segmented value={design} onChange={setDesign} options={designs} /></div>
             <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
-            <div><Label>{t("Saiz", "Size")}</Label>
-              <Segmented value={format} onChange={setFormat} options={Object.entries(SIZE_LABEL)} /></div>
+            <div><Label hint={sizeLabel(format)}>{t("Saiz", "Size")}</Label>
+              <SizePicker value={format} onChange={setFormat} /></div>
             <label className="block"><Label hint={t("pilihan · isi borang daripada post sedia ada", "optional · fill the form from an existing post")}>{t("Daripada post", "From a post")}</Label>
               <Select value={fromPost} onChange={usePost} className="w-full" aria-label={t("Daripada post", "From a post")}
                 options={[["", "—"], ...usable.slice(0, 150).map((p) => [p.id, `${p.date || "—"} · ${(p.hook || "").slice(0, 60) || p.id.slice(0, 8)}`])]} /></label>
@@ -276,11 +278,11 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
             "The AI picks the design from the reference; the choice below is only a preview.")}</p>}
           <LookPicker value={look} onChange={setLook} slides={previewSlides} sample={sampleWords} stream={stream}
             eyebrow={eyebrow.trim()} citation={citation.trim()} bgUrl={previewBg} bgChosen={bg !== "none"}
-            size={SIZE_PX[format]} onBlocked={setLookBlocked} />
+            size={pxOf(format)} onBlocked={setLookBlocked} />
         </div>
 
         <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
-          <span className="text-xs text-muted">{SIZE_LABEL[format]} · {t("dilukis tanpa AI, percuma", "drawn without AI, free")}</span>
+          <span className="text-xs text-muted">{sizeLabel(format)} · {t("dilukis tanpa AI, percuma", "drawn without AI, free")}</span>
           <Button type="submit" disabled={!!busy || !ready}>
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} {t("Jana reka bentuk", "Make the design")}</Button>
         </div>
@@ -288,7 +290,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast }) {
 
       <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
-      <DesignResults rows={results} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} />
+      <DesignResults rows={results} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} onCanvas={onCanvas} />
     </main>
   );
 }
@@ -397,7 +399,7 @@ function ReviewPanel({ row, mine, onToast, gens }) {
   );
 }
 
-function DesignResults({ rows, user, gens, onToast, designs }) {
+function DesignResults({ rows, user, gens, onToast, designs, onCanvas }) {
   const { t } = useLang();
   if (!rows.length) {
     return <p className="rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">
@@ -437,7 +439,7 @@ function DesignResults({ rows, user, gens, onToast, designs }) {
                   {r.status === "done" ? (m.awaiting_confirm ? t("Tunggu pengesahan", "Awaiting your Save") : m.saved ? t("Disimpan", "Saved") : t("Siap", "Done"))
                     : r.status === "error" ? t("Gagal", "Failed") : r.status === "processing" ? t("Melukis", "Drawing") : t("Menunggu", "Waiting")}
                 </span>
-                <span className="text-muted">{designs[m.design] || m.design} · {SIZE_LABEL[m.format] || "—"} · {timeAgo(r.created_at)}</span>
+                <span className="text-muted">{designs[m.design] || m.design} · {m.size_name ? `${m.size_name} · ${m.size?.[0]}×${m.size?.[1]}` : sizeLabel(m.format, m.size)} · {timeAgo(r.created_at)}</span>
               </div>
               <p className="mt-2 line-clamp-2 [overflow-wrap:anywhere] text-sm">{(m.slides?.[0]?.title || m.brief || "").replace(/\*/g, "")}</p>
               {m.stream && <p className="mt-1 text-[11px] text-muted">{m.stream === "linkedin" ? "LinkedIn" : "ws.regulab"}
@@ -448,6 +450,13 @@ function DesignResults({ rows, user, gens, onToast, designs }) {
               {r.error && <p className="mt-2 [overflow-wrap:anywhere] rounded-tile bg-danger/5 p-2 text-[11px] text-danger">{r.error}</p>}
               {m.style_ref && <ReviewPanel row={r} mine={mine} onToast={onToast} gens={gens} />}
               <div className="mt-3 flex flex-wrap items-center gap-2">
+                {urls[0] && onCanvas && r.status === "done" && (
+                  // a drawn design is one flat picture: it opens as the background, with room to add text and pictures on top
+                  <button type="button" onClick={() => { const [w, h] = m.size?.length === 2 ? m.size : pxOf(m.format); onCanvas({ width: w, height: h, sizeId: m.format || null,
+                    name: (m.slides?.[0]?.title || m.brief || t("Reka bentuk", "Design")).replace(/\*/g, "").slice(0, 60), source: "design", sourceId: r.id,
+                    layers: [{ kind: "image", role: "bg", url: urls[0], cover: true, name: t("Reka bentuk", "Design") }] }); }}
+                    className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline"><PenTool size={11} /> {t("Ubah dalam Kanvas", "Edit in Kanvas")}</button>
+                )}
                 {urls[0] && <a href={urls[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">
                   <ExternalLink size={11} /> {t("Buka fail", "Open file")}</a>}
                 {mine && (

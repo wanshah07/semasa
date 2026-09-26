@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { RefreshCw } from "lucide-react";
 import { fadeUp } from "./design/motion";
@@ -14,6 +14,8 @@ import PromptLibrary from "./components/PromptLibrary";
 import DesignTab from "./pages/DesignTab";
 import FaqTab from "./pages/FaqTab";
 import FragranceTab from "./pages/FragranceTab";
+// the editor carries Fabric.js: loaded only when the Kanvas tab opens, so every other tab stays as light as before
+const CanvasTab = lazy(() => import("./pages/CanvasTab"));
 import LogTab from "./pages/LogTab";
 import IdeasTab from "./pages/IdeasTab";
 import PostsTab from "./pages/PostsTab";
@@ -224,7 +226,7 @@ function MediaTab({ user, gens, prompts, onToast }) {
   );
 }
 
-const TAB_IDS = ["isu", "idea", "post", "media", "design", "wangian", "video", "faq", "log", "tetapan"];
+const TAB_IDS = ["isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "faq", "log", "tetapan"];
 
 export default function App() {
   const { t } = useLang();                                   // read here so a language switch re-renders the page
@@ -233,6 +235,8 @@ export default function App() {
     return TAB_IDS.includes(h) ? h : "isu";
   });
   const [focusPost, setFocusPost] = useState(null);
+  const [canvasSeed, setCanvasSeed] = useState(null);         // a design sent to Kanvas from Wangian or Design
+  const clearSeed = useCallback(() => setCanvasSeed(null), []);
   // follow the address bar too: Back/Forward and a pasted #post link switch the tab
   useEffect(() => {
     const onHash = () => {
@@ -298,8 +302,12 @@ export default function App() {
   else if (tab === "post") body = allowed ? <PostsTab posts={posts} media={gens} log={log} brand={brand} user={user}
     settings={settings} onToast={push} focusId={focusPost} setFocusId={setFocusPost} /> : gate(null);
   else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} onToast={push} /> : gate(null);
-  else if (tab === "design") body = allowed ? <DesignTab user={user} gens={gens} posts={posts} brand={brand} onToast={push} /> : gate(null);
-  else if (tab === "wangian") body = allowed ? <FragranceTab user={user} gens={gens} onToast={push} /> : gate(null);
+  else if (tab === "design") body = allowed ? <DesignTab user={user} gens={gens} posts={posts} brand={brand} onToast={push}
+    onCanvas={(seed) => { setCanvasSeed(seed); go("kanvas"); }} /> : gate(null);
+  else if (tab === "wangian") body = allowed ? <FragranceTab user={user} gens={gens} onToast={push}
+    onCanvas={(seed) => { setCanvasSeed(seed); go("kanvas"); }} /> : gate(null);
+  else if (tab === "kanvas") body = allowed ? <Suspense fallback={<main className="grid min-h-[40vh] place-items-center text-sm text-muted">Kanvas…</main>}>
+    <CanvasTab user={user} onToast={push} seed={canvasSeed} clearSeed={clearSeed} /></Suspense> : gate(null);
   else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push}
     openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}

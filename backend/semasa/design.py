@@ -81,8 +81,27 @@ def check(items: list[dict[str, Any]], design: str) -> None:
                                 "keep one, or make it a carousel")
 
 
+SIZE_MIN, SIZE_MAX = 200, 4096                    # web/src/lib/sizes.js holds the same bounds
+
+
+def pixels(value: Any) -> tuple[int, int] | None:
+    """A [width, height] the page sent (one of Canva's social sizes, web/src/lib/sizes.js), or None if it is not a
+    sane picture size: both sides within SIZE_MIN..SIZE_MAX and no side more than 4.5 times the other."""
+    try:
+        w, h = (int(value[0]), int(value[1]))
+    except (TypeError, ValueError, IndexError, KeyError):
+        return None
+    if not (SIZE_MIN <= w <= SIZE_MAX and SIZE_MIN <= h <= SIZE_MAX) or max(w, h) > 4.5 * min(w, h):
+        return None
+    return w, h
+
+
 def size_of(meta: dict[str, Any], stream: str) -> tuple[int, int] | None:
-    """The picture's shape: meta.format when set, else the design's default, else the stream's carousel shape."""
+    """The picture's shape: meta.size (any of Canva's social sizes) when set, else meta.format, else the design's
+    default, else the stream's carousel shape."""
+    exact = pixels(meta.get("size"))
+    if exact:
+        return exact
     fmt = meta.get("format") or DEFAULT_FORMAT.get(str(meta.get("design") or ""))
     return slides.FORMATS.get(str(fmt)) if fmt else None
 

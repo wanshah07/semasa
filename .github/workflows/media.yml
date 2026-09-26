@@ -47,6 +47,8 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          YTDLP_COOKIES: ${{ secrets.YTDLP_COOKIES }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
           SEMASA_SHEET_URL: ${{ secrets.SEMASA_SHEET_URL }}

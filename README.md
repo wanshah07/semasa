@@ -105,6 +105,9 @@ an account), and no Google button.
    **Then `012_watch.sql`** (the Regulatory and Latest publication segments, 26 Sep 2026, see *Regulatory and
    Latest publication* below). It creates `semasa_watch`, the `watch` settings row and the trigger behind *Sapu
    sekarang*. The page may only hide a row. Safe to run again, and safe in the shared project.
+   **Then `013_watch_paste.sql`** (paste a link into Regulatory or Latest publication, 26 Sep 2026). It adds the
+   status columns, lets uploaders add a waiting link (and remove a pasted one), and wakes the worker on a paste.
+   Safe to run again, and safe in the shared project.
    007 and 008 were changed on 25 Sep 2026 after they were first handed over (bot categories, and a
    settings row the log must never record). Both are safe to run again: run 007, 008 and 009 in that
    order even if you ran an earlier 007 or 008.
@@ -517,6 +520,17 @@ the carousel/card > post"*).
     other.
   - Unlike a news portal, the regulator or the journal **is** the source, so the writer is told to cite it by name
     with its reference, or the paper's authors, journal, year and DOI.
+
+**Paste a link** (Wan, same day: *"allow us to paste the link as well"*). Each segment has a *Tampal pautan* box.
+The worker reads the link within a few minutes and the item appears like a swept one, marked *ditampal*:
+- **a PubMed link or a DOI** is looked up in PubMed itself, so the authors, journal, year, DOI and abstract are exact;
+- **a journal's page** is read through its citation tags (title, journal, authors, DOI, date);
+- **a regulator's page or PDF** (NPRA, JAKIM's Google Sites pages, KKM, HSA, EUR-Lex, legislation.gov.uk, NMPA, FDA and
+  more) is read for its text, and the regulator is named as the source and cited in the post;
+- **a site that refuses a machine** (Wiley, ScienceDirect and MDPI often answer 403) shows why on the item, with what to
+  paste instead. A scanned PDF with no text says so too. *Buang* removes a pasted link; a swept item can only be hidden.
+
+A pasted item is always shown: you chose it, so the writer's "relevant" verdict does not hide it.
 
 EU Safety Gate is not in the list: its alert pages are drawn by JavaScript and a plain fetch gets an empty shell.
 

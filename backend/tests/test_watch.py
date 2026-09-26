@@ -183,3 +183,139 @@ def test_an_idea_can_ask_for_a_carousel_or_a_poster():
 @pytest.mark.parametrize("q", [q for _, q in watch.PUBMED_QUERIES])
 def test_pubmed_queries_are_balanced(q):
     assert q.count("(") == q.count(")") and q.count('"') % 2 == 0
+
+
+# --- a pasted link ---------------------------------------------------------------------------------------------------
+
+class Resp:
+    def __init__(self, text="", status=200, ctype="text/html", url="", content=None):
+        self.text, self.status_code, self.url = text, status, url
+        self.headers = {"content-type": ctype}
+        self.content = content if content is not None else text.encode()
+
+
+def _pdf(text: str) -> bytes:
+    """A one-page PDF carrying `text`, built by hand (pypdf rebuilds the cross-reference table itself)."""
+    stream = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode()
+    objs = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+            b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream",
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    out, offs = b"%PDF-1.4\n", []
+    for i, o in enumerate(objs, 1):
+        offs.append(len(out))
+        out += b"%d 0 obj\n" % i + o + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 6\n0000000000 65535 f \n" + b"".join(b"%010d 00000 n \n" % o for o in offs)
+    return out + b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF" % xref
+
+
+def test_who_issued_a_pasted_page():
+    assert watch.issuer_of("https://www.npra.gov.my/index.php/en/x.html") == ("NPRA", "MY")
+    assert watch.issuer_of("https://sites.google.com/islam.gov.my/skkbph/isu-isu-tular-halal") == ("JAKIM", "MY")
+    assert watch.issuer_of("https://www.legislation.gov.uk/uksi/2026/109") == ("legislation.gov.uk", "UK")
+    assert watch.issuer_of("https://eur-lex.europa.eu/eli/reg/2009/1223") == ("EUR-Lex", "EU")
+    assert watch.issuer_of("https://www.thestar.com.my/news") is None
+    assert watch.is_issuer("NPRA") and watch.is_issuer("Paper · Int J Cosmet Sci") and not watch.is_issuer("The Star")
+
+
+def test_a_pubmed_or_doi_link_becomes_the_pubmed_record(monkeypatch):
+    seen = []
+
+    def get(url, timeout):
+        seen.append(url)
+        if "esearch" in url:
+            return json.dumps({"esearchresult": {"idlist": ["111"]}})
+        return json.dumps(ESUMMARY) if "esummary" in url else EFETCH
+    monkeypatch.setattr(watch, "_get", get)
+    monkeypatch.setattr(watch, "EUTILS_GAP", 0)
+    p = watch.resolve({"url": "https://pubmed.ncbi.nlm.nih.gov/111/", "section": "publication"})
+    assert p["source"] == "PubMed · Int J Pharm" and p["raw"]["abstract"].startswith("BACKGROUND")
+    seen.clear()
+    d = watch.resolve({"url": "https://doi.org/10.1016/j.ijpharm.2026.127447", "section": "publication"})
+    assert "10.1016%2Fj.ijpharm.2026.127447%5Bdoi%5D" in seen[0] and d["raw"]["pmid"] == "111"
+
+
+JOURNAL = """<html><head><title>x</title>
+<meta name="citation_title" content="Niacinamide stability in emulsions">
+<meta name="citation_journal_title" content="Cosmetics"><meta name="citation_doi" content="10.3390/cosmetics1301">
+<meta name="citation_author" content="Tan, A"><meta name="citation_author" content="Lee, B">
+<meta name="citation_publication_date" content="2026/09/20">
+<meta name="citation_abstract" content="We measured niacinamide over 12 weeks."></head><body><p>x</p></body></html>"""
+NOTICE = """<html><head><meta property="og:title" content="Kenyataan Media: Kosmetik Mengandungi Racun Berjadual"></head>
+<body><article><p>Kementerian Kesihatan Malaysia memaklumkan produk kosmetik berikut telah dibatalkan notifikasi
+pada 24 Ogos 2026 kerana dikesan mengandungi racun berjadual.</p></article></body></html>"""
+
+
+def test_a_journal_page_a_notice_and_a_pdf(monkeypatch):
+    pages = {"https://www.mdpi.com/2079-9284/13/1/1": Resp(JOURNAL, url="https://www.mdpi.com/2079-9284/13/1/1"),
+             "https://www.npra.gov.my/index.php/en/x.html": Resp(NOTICE, url="https://www.npra.gov.my/index.php/en/x.html"),
+             "https://www.npra.gov.my/images/a.pdf": Resp(ctype="application/pdf", url="https://www.npra.gov.my/images/a.pdf",
+                                                          content=_pdf("Direktif Label Keselamatan 18 September 2026"))}
+    monkeypatch.setattr(watch.fetch, "get", lambda url, timeout=25, retries=2: pages[url])
+    monkeypatch.setattr(watch, "pmid_for_doi", lambda doi, timeout=30: pytest.fail("no DOI in this link"))
+    j = watch.resolve({"url": "https://www.mdpi.com/2079-9284/13/1/1", "section": "publication"})
+    assert j["source"] == "Paper · Cosmetics" and j["kind"] == "Paper" and j["published_at"] == date(2026, 9, 20)
+    assert j["raw"]["doi"] == "10.3390/cosmetics1301" and j["raw"]["authors"] == ["Tan, A", "Lee, B"]
+    n = watch.resolve({"url": "https://www.npra.gov.my/index.php/en/x.html", "section": "regulatory"})
+    assert n["source"] == "NPRA" and n["country"] == "MY" and n["published_at"] == date(2026, 8, 24)
+    assert n["title"].startswith("Kenyataan Media") and "racun berjadual" in n["snippet"]
+    f = watch.resolve({"url": "https://www.npra.gov.my/images/a.pdf", "section": "regulatory"})
+    assert f["kind"] == "PDF" and "Direktif Label Keselamatan" in f["title"] and f["published_at"] == date(2026, 9, 18)
+
+
+def test_a_site_that_refuses_says_what_to_paste_instead(monkeypatch):
+    import requests
+
+    def refuse(url, timeout=25, retries=2):
+        raise requests.HTTPError("403", response=Resp(status=403))
+    monkeypatch.setattr(watch.fetch, "get", refuse)
+    with pytest.raises(watch.PasteError, match="PubMed link or DOI"):
+        watch.resolve({"url": "https://onlinelibrary.wiley.com/doi/abs/x", "section": "publication"})
+    with pytest.raises(watch.PasteError, match="http"):
+        watch.resolve({"url": "npra.gov.my", "section": "regulatory"})
+
+
+def test_pasted_links_are_read_once_named_by_wan_and_never_hidden(monkeypatch):
+    rows = [{"id": "a", "section": "regulatory", "url": "https://www.npra.gov.my/n", "title": "https://www.npra.gov.my/n",
+             "status": "pending", "attempts": 0, "pasted": True, "created_at": "2026-09-26T10:00:00Z"},
+            {"id": "b", "section": "regulatory", "url": "https://x.example/bad", "title": "Label rule (mine)",
+             "status": "pending", "attempts": 0, "pasted": True, "created_at": "2026-09-26T10:01:00Z"},
+            {"id": "c", "section": "publication", "url": "https://y.example", "title": "old", "status": "ready"}]
+    store = FakeStore(semasa_watch=rows, semasa_log=[])
+
+    def resolve(row, timeout=30):
+        if "bad" in row["url"]:
+            raise watch.PasteError("the site refused GitHub's machine (403)")
+        return {"title": "Kenyataan Media KKM", "source": "NPRA", "kind": "Notice", "country": "MY", "lang": "en",
+                "published_at": date(2026, 9, 25), "snippet": "teks notis", "raw": {"final_url": row["url"]}}
+    monkeypatch.setattr(watch, "resolve", resolve)
+
+    class Picky(Writer):
+        def chat_json(self, system, user, max_tokens=0, **k):
+            out = super().chat_json(system, user, max_tokens)
+            for it in out["items"]:
+                it["relevant"] = False                      # the writer would hide it; Wan's paste is shown anyway
+            return out
+    note = watch.process_pasted(store, Picky())
+    a, b, c = (next(r for r in store.tables["semasa_watch"] if r["id"] == i) for i in "abc")
+    assert note == "Pasted links: 1 read, 1 failed"
+    assert a["status"] == "ready" and a["relevant"] is True and a["title"] == "Kenyataan Media KKM" and a["source"] == "NPRA"
+    assert a["summary_source"] == "llm" and a["published_at"] == "2026-09-25" and a["attempts"] == 1
+    assert b["status"] == "error" and "403" in b["error"] and b["title"] == "Label rule (mine)"
+    assert c["status"] == "ready" and c["title"] == "old"
+    assert watch.process_pasted(store, Picky()) == ""       # nothing left waiting
+
+
+def test_paste_before_013_is_a_line_not_a_crash():
+    class Broken:
+        def table(self, name):
+            raise RuntimeError('column "status" does not exist')
+    assert "013_watch_paste.sql" in watch.process_pasted(Broken(), None)
+
+
+def test_an_idea_made_from_a_pasted_pdf_reads_the_pdf(monkeypatch):
+    pdf = Resp(ctype="application/pdf", url="https://www.npra.gov.my/a.pdf", content=_pdf("Direktif Label Keselamatan 2026"))
+    monkeypatch.setattr(ideas, "get", lambda url, timeout=20, retries=1: pdf)
+    src = ideas.read_source("https://www.npra.gov.my/a.pdf")
+    assert src["ok"] and "Direktif Label Keselamatan" in src["text"]

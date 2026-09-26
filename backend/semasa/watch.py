@@ -27,14 +27,16 @@ publisher is a dry run, and only one publisher is ever switched on.
 
 from __future__ import annotations
 
+import io
 import json
 import re
+import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -260,13 +262,34 @@ def _get(url: str, timeout: int) -> str:
     return fetch.get(url, timeout=timeout).text           # fetch.get carries a browser identity itself
 
 
+EUTILS_GAP = 0.4                    # NCBI allows 3 calls a second without a key; the 26 Sep sweep lost a topic to 429
+_last_eutils = [0.0]
+
+
+def _eutils(url: str, timeout: int) -> str:
+    """One E-utilities call, spaced out, with one patient retry on 429 (fetch.get never retries a 4xx)."""
+    import requests
+    for attempt in range(2):
+        wait = _last_eutils[0] + EUTILS_GAP - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _last_eutils[0] = time.monotonic()
+        try:
+            return _get(url, timeout)
+        except requests.HTTPError as exc:
+            if attempt or exc.response is None or exc.response.status_code != 429:
+                raise
+            time.sleep(3)
+    raise RuntimeError("unreachable")
+
+
 def pubmed(timeout: int = 30, days: int = 14, per_query: int = 12) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """(items, report) — the papers entered in PubMed in the last `days`, one search per topic, with abstracts."""
     ids: dict[str, str] = {}
     report = []
     for label, term in PUBMED_QUERIES:
         try:
-            q = json.loads(_get(f"{EUTILS}/esearch.fcgi?db=pubmed&retmode=json&sort=date&datetype=edat&reldate={days}"
+            q = json.loads(_eutils(f"{EUTILS}/esearch.fcgi?db=pubmed&retmode=json&sort=date&datetype=edat&reldate={days}"
                                 f"&retmax={per_query}&tool=semasa&term={_quote(term)}", timeout))
             got = (q.get("esearchresult") or {}).get("idlist") or []
             for i in got:
@@ -277,9 +300,15 @@ def pubmed(timeout: int = 30, days: int = 14, per_query: int = 12) -> tuple[list
                            "error": f"{type(exc).__name__}: {str(exc)[:160]}"})
     if not ids:
         return [], report
+    return papers(ids, timeout), report
+
+
+def papers(ids: dict[str, str], timeout: int = 30) -> list[dict[str, Any]]:
+    """PubMed records for these PMIDs ({pmid: topic}), each with its journal, authors, DOI and abstract."""
     idlist = ",".join(ids)
-    summ = json.loads(_get(f"{EUTILS}/esummary.fcgi?db=pubmed&retmode=json&tool=semasa&id={idlist}", timeout)).get("result") or {}
-    abstracts = parse_abstracts(_get(f"{EUTILS}/efetch.fcgi?db=pubmed&retmode=xml&tool=semasa&id={idlist}", timeout))
+    summ = json.loads(_eutils(f"{EUTILS}/esummary.fcgi?db=pubmed&retmode=json&tool=semasa&id={idlist}", timeout))
+    summ = summ.get("result") or {}
+    abstracts = parse_abstracts(_eutils(f"{EUTILS}/efetch.fcgi?db=pubmed&retmode=xml&tool=semasa&id={idlist}", timeout))
     items = []
     for pmid, label in ids.items():
         s = summ.get(pmid) or {}
@@ -294,7 +323,7 @@ def pubmed(timeout: int = 30, days: int = 14, per_query: int = 12) -> tuple[list
                            snippet=abstracts.get(pmid, "")[:1500], source=f"PubMed · {journal}"[:120],
                            raw={"pmid": pmid, "doi": doi, "journal": journal, "authors": authors[:6],
                                 "topic": label, "pubdate": s.get("pubdate")}))
-    return items, report
+    return items
 
 
 def _quote(term: str) -> str:
@@ -483,10 +512,202 @@ def _parse_iso(v: Any) -> datetime | None:
         return None
 
 
-ISSUERS = {s.name for s in SOURCES}
+# --- a link Wan pastes ---------------------------------------------------------------------------------------------
+# Wan, 26 Sep 2026: "for regulatory and latest publication, allow us to paste the link as well". The page inserts a
+# row with status 'pending' (supabase/013_watch_paste.sql); the worker reads the link, fills the row like a swept one
+# and marks it 'ready'. A pasted item is always shown: Wan chose it, so the writer's "relevant" verdict does not hide it.
+
+PASTE_ATTEMPTS = 3
+PASTE_STALE = timedelta(minutes=30)
+# who issued a pasted page, by its host (most specific first): named and cited like the swept regulators
+HOSTS: tuple[tuple[str, str, str], ...] = (
+    ("npra.gov.my", "NPRA", "MY"), ("pharmacy.moh.gov.my", "KKM · Bahagian Farmasi", "MY"),
+    ("fsq.moh.gov.my", "KKM · BKKM", "MY"), ("moh.gov.my", "KKM", "MY"), ("halal.gov.my", "Portal Halal Malaysia", "MY"),
+    ("islam.gov.my", "JAKIM", "MY"), ("jakim.gov.my", "JAKIM", "MY"), ("e-fatwa.gov.my", "e-Fatwa", "MY"),
+    ("hsa.gov.sg", "HSA Singapore", "SG"), ("sfa.gov.sg", "SFA Singapore", "SG"), ("asean.org", "ASEAN", ""),
+    ("eur-lex.europa.eu", "EUR-Lex", "EU"), ("echa.europa.eu", "ECHA", "EU"), ("efsa.europa.eu", "EFSA", "EU"),
+    ("ec.europa.eu", "European Commission", "EU"), ("legislation.gov.uk", "legislation.gov.uk", "UK"),
+    ("gov.uk", "UK Government", "UK"), ("nmpa.gov.cn", "China NMPA", "CN"), ("fda.gov", "US FDA", "US"),
+    ("tga.gov.au", "TGA Australia", "AU"), ("mfds.go.kr", "MFDS Korea", "KR"), ("mhlw.go.jp", "MHLW Japan", "JP"),
+    ("epingalert.org", "WTO ePing", ""), ("who.int", "WHO", ""),
+)
+PMID_RE = re.compile(r"(?:pubmed\.ncbi\.nlm\.nih\.gov/|ncbi\.nlm\.nih\.gov/pubmed/)(\d{1,9})\b")
+DOI_RE = re.compile(r"\b(10\.\d{4,9}/[^\s?#\"'<>]+)")
+
+
+class PasteError(RuntimeError):
+    """Final for the row: the message is shown on the page."""
+
+
+def issuer_of(url: str) -> tuple[str, str] | None:
+    u = urlparse(url)
+    host = u.netloc.lower().split(":")[0]
+    if host == "sites.google.com" and u.path.lower().startswith("/islam.gov.my"):
+        return "JAKIM", "MY"                             # JAKIM's own Isu-Isu Tular Halal pages live on Google Sites
+    for suffix, name, country in HOSTS:
+        if host == suffix or host.endswith("." + suffix):
+            return name, country
+    return None
+
+
+def pdf_text(data: bytes, limit: int = 6000) -> tuple[str, str]:
+    """(title, text) of a PDF: its own title if it has one, else the first line that reads like one."""
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(data))
+    parts = []
+    for page in reader.pages[:8]:
+        parts.append(page.extract_text() or "")
+        if sum(map(len, parts)) > limit:
+            break
+    text = re.sub(r"[ \t]+", " ", "\n".join(parts)).strip()
+    title = str((reader.metadata or {}).get("/Title") or "").strip()
+    if not title or len(title) < 8 or title.lower().startswith(("microsoft", "untitled")):
+        title = next((ln.strip() for ln in text.splitlines() if len(ln.strip()) > 15), "")
+    return title[:500], text[:limit]
+
+
+def read_page(url: str, timeout: int = 30) -> dict[str, Any]:
+    """Any other link: a regulator's page or PDF, or a journal's page (its citation_* tags name the paper)."""
+    import requests
+    try:
+        r = fetch.get(url, timeout=timeout, retries=1)
+    except requests.HTTPError as exc:
+        code = exc.response.status_code if exc.response is not None else 0
+        raise PasteError(f"the site refused GitHub's machine ({code}). For a paper, paste its PubMed link or DOI instead; "
+                         "for a notice, paste the PDF link, or make the idea by hand in the Idea tab") from exc
+    except requests.RequestException as exc:
+        raise PasteError(f"could not open the link: {type(exc).__name__}: {str(exc)[:200]}") from exc
+    final = r.url or url
+    ctype = (r.headers.get("content-type") or "").lower()
+    if "pdf" in ctype or r.content[:5] == b"%PDF-" or final.lower().split("?")[0].endswith(".pdf"):
+        try:
+            title, text = pdf_text(r.content)
+        except Exception as exc:  # noqa: BLE001
+            raise PasteError(f"the PDF could not be read: {type(exc).__name__}: {str(exc)[:160]}") from exc
+        if not text:
+            raise PasteError("the PDF has no text layer (a scan): make the idea by hand in the Idea tab")
+        return {"title": title or final.rsplit("/", 1)[-1], "snippet": text[:1500], "published_at": date_in_words(text[:3000]),
+                "kind": "PDF", "raw": {"final_url": final}}
+    soup = BeautifulSoup(r.text, "lxml")
+
+    def meta(*names: str) -> str:
+        for n in names:
+            tag = soup.find("meta", attrs={"name": n}) or soup.find("meta", attrs={"property": n})
+            if tag and tag.get("content"):
+                return str(tag["content"]).strip()
+        return ""
+
+    authors = [str(t["content"]).strip() for t in soup.find_all("meta", attrs={"name": "citation_author"}) if t.get("content")]
+    title = meta("citation_title", "og:title", "twitter:title", "dc.title") \
+        or (soup.title.get_text(strip=True) if soup.title else "")
+    when_raw = meta("citation_publication_date", "citation_online_date", "citation_date", "article:published_time",
+                    "dc.date", "date")
+    when = _any_date(when_raw)
+    for bad in soup(["script", "style", "nav", "footer", "header", "aside", "form", "noscript"]):
+        bad.decompose()
+    root = soup.find("article") or soup.find("main") or soup.body or soup
+    paras = [re.sub(r"\s+", " ", p.get_text(" ", strip=True)) for p in root.find_all(["p", "li", "td"])]
+    text = "\n".join(p for p in paras if len(p) > 50)
+    abstract = meta("citation_abstract", "dc.description", "description", "og:description")
+    snippet = (abstract + "\n" + text).strip() if abstract else text
+    if not title and not snippet:
+        raise PasteError("the page had no title and no readable text (it may need a browser)")
+    item: dict[str, Any] = {"title": title or final, "snippet": snippet[:1500],
+                            "published_at": when or date_in_words(text[:3000]),
+                            "kind": "Paper" if meta("citation_journal_title", "citation_doi") else "Notice",
+                            "raw": {"final_url": final}}
+    if meta("citation_journal_title", "citation_doi"):
+        item["raw"].update(journal=meta("citation_journal_title"), doi=meta("citation_doi"), authors=authors[:6],
+                           abstract=abstract[:1500] if abstract else "")
+    return item
+
+
+def _any_date(s: str) -> date | None:
+    m = re.match(r"(\d{4})[-/](\d{1,2})(?:[-/](\d{1,2}))?", s or "")
+    if m:
+        try:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3) or 1))
+        except ValueError:
+            return None
+    return date_in_words(s or "")
+
+
+def pmid_for_doi(doi: str, timeout: int = 30) -> str | None:
+    q = json.loads(_eutils(f"{EUTILS}/esearch.fcgi?db=pubmed&retmode=json&tool=semasa&term={_quote(doi + '[doi]')}", timeout))
+    ids = (q.get("esearchresult") or {}).get("idlist") or []
+    return ids[0] if len(ids) == 1 else None
+
+
+def resolve(row: dict[str, Any], timeout: int = 30) -> dict[str, Any]:
+    """A pasted row → the fields a swept row carries (title, source, kind, date, snippet, raw)."""
+    url = str(row.get("url") or "").strip()
+    if not re.match(r"https?://", url):
+        raise PasteError("not a web link (it must start with http:// or https://)")
+    m = PMID_RE.search(url)
+    doi = None if m else (DOI_RE.search(url) or [None, None])[1]
+    pmid = m.group(1) if m else (pmid_for_doi(doi.rstrip(".,;)"), timeout) if doi else None)
+    if pmid:
+        got = papers({pmid: "pasted"}, timeout)
+        if not got:
+            raise PasteError(f"PubMed has no record {pmid}")
+        p = got[0]
+        return {**p, "raw": {**p["raw"], "abstract": p.get("snippet") or ""}, "country": "", "lang": "en"}
+    page = read_page(url, timeout)
+    who = issuer_of(page["raw"].get("final_url") or url) or issuer_of(url)
+    raw = page["raw"]
+    if page["kind"] == "Paper":
+        source = f"Paper · {raw.get('journal') or urlparse(url).netloc}"[:120]
+    else:
+        source = who[0] if who else urlparse(url).netloc.removeprefix("www.")
+    return {**page, "source": source, "country": (who[1] if who else "") or None, "lang": "en",
+            "domain": "sains_kosmetik" if row.get("section") == "publication" else None}
+
+
+def process_pasted(store: Any, llm: Any, *, timeout: int = 30, limit: int = 10, now: datetime | None = None) -> str:
+    """Read every link waiting in semasa_watch. Never raises: a missing column (013 not run) is a line in the summary."""
+    now = now or datetime.now(UTC)
+    try:
+        store.table(WATCH).update({"status": "pending"}).eq("status", "working") \
+            .lt("claimed_at", (now - PASTE_STALE).isoformat()).lt("attempts", PASTE_ATTEMPTS).execute()
+        rows = store.table(WATCH).select("*").eq("status", "pending").order("created_at").limit(limit).execute().data or []
+    except Exception as exc:  # noqa: BLE001
+        return f"Pasted links: not set up ({str(exc)[:120]}); run supabase/013_watch_paste.sql"
+    done = failed = 0
+    for row in rows:
+        claim = store.table(WATCH).update({"status": "working", "attempts": int(row.get("attempts") or 0) + 1,
+                                           "claimed_at": now.isoformat()}).eq("id", row["id"]).eq("status", "pending").execute()
+        if not (claim.data or []):
+            continue                                        # another run took it
+        try:
+            item = resolve(row, timeout)
+            item["summary"] = item.get("snippet")
+            annotate(llm, [item])
+            fields = to_row({**row, **item, "section": row["section"], "url": row["url"]})
+            if (row.get("title") or "") not in ("", row["url"]):
+                fields["title"] = row["title"]              # Wan named it himself
+            fields.update(relevant=True, status="ready", error=None)
+            fields.pop("url", None)
+            store.table(WATCH).update(fields).eq("id", row["id"]).execute()
+            done += 1
+        except Exception as exc:  # noqa: BLE001 - one bad link must not stop the others
+            msg = str(exc) if isinstance(exc, PasteError) else f"{type(exc).__name__}: {str(exc)[:300]}"
+            store.table(WATCH).update({"status": "error", "error": msg[:500]}).eq("id", row["id"]).execute()
+            failed += 1
+            log.warning("pasted link %s: %s", row.get("url"), msg)
+    if not rows:
+        return ""
+    note = f"Pasted links: {done} read" + (f", {failed} failed" if failed else "")
+    try:
+        db.log_event(store, "info" if not failed else "warn", "scrape", "watch.paste", note)
+    except Exception:  # noqa: BLE001
+        pass
+    return note
+
+
+ISSUERS = {s.name for s in SOURCES} | {name for _, name, _ in HOSTS}
 
 
 def is_issuer(name: str | None) -> bool:
-    """An idea taken from a regulator's own page: the regulator is the source to cite, not a portal to hide."""
+    """An idea taken from a regulator's own page or a paper: the issuer is the source to cite, not a portal to hide."""
     n = str(name or "")
-    return n in ISSUERS or n.startswith("PubMed ·")
+    return n in ISSUERS or n.startswith(("PubMed ·", "Paper ·"))

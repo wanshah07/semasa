@@ -393,6 +393,8 @@ def main() -> int:
     video_note = video.run(store, llm)                 # long videos waiting to be read (supabase/011_video.sql)
     from . import watch
     watch_note = watch.run_if_due(store, llm, only_forced=True)   # the page's "sweep now" (the scrape keeps the daily clock)
+    paste_note = watch.process_pasted(store, llm)       # links pasted in Regulatory / Latest publication (013)
+    watch_note = "\n\n".join(x for x in (watch_note, paste_note) if x)
 
     recovered = db.recover_stale_media(store, s.stale_minutes)
     only_id = (os.environ.get("MEDIA_ONLY_ID") or "").strip() or None

@@ -52,7 +52,7 @@ function Unconfigured() {
 
 const SEGMENTS = ["isu", "regulatory", "publication"];
 
-function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, save, brand }) {
+function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, save, brand, user }) {
   const { t } = useLang();
   const [segRaw, setSeg] = useView("isu.segment", "isu");
   const seg = SEGMENTS.includes(segRaw) ? segRaw : "isu";
@@ -93,7 +93,7 @@ function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, s
         </section>
         {allowed ? (
           <main className="mx-auto max-w-page px-4 pb-20 sm:px-6">
-            <WatchSegment section={seg} watch={watch} setting={settings.watch} saveSetting={save} brand={brand}
+            <WatchSegment section={seg} watch={watch} setting={settings.watch} saveSetting={save} brand={brand} user={user}
               onIdea={onIdea ? (r) => onIdea(watchIdea(r, brand)) : undefined} onToast={onToast} />
           </main>
         ) : gateNode}
@@ -305,7 +305,7 @@ export default function App() {
   else if (tab === "log") body = allowed ? <LogTab log={activity} onOpen={(to) => { if (to.postId) setFocusPost(to.postId); go(to.tab); }} /> : gate(null);
   else if (tab === "tetapan") body = allowed ? <SettingsTab settings={settings} brand={brand} save={save} onToast={push} /> : gate(null);
   else body = <IsuTab trends={trends} onToast={push} onIdea={allowed ? setIdeaFrom : undefined} onFaq={allowed ? faqFrom : undefined}
-    allowed={allowed} gateNode={allowed ? null : gate(null)} settings={settings} save={save} brand={brand} />;
+    allowed={allowed} gateNode={allowed ? null : gate(null)} settings={settings} save={save} brand={brand} user={user} />;
 
   return (
     <div id="top" className="min-h-screen">

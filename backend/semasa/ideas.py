@@ -64,6 +64,18 @@ def read_source(url: str | None, *, timeout: int = 20) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         out["why"] = f"could not fetch: {type(exc).__name__}: {str(exc)[:160]}"
         return out
+    if "pdf" in (r.headers.get("content-type") or "").lower() or r.content[:5] == b"%PDF-":
+        # a regulator's circular or directive is often a PDF (pasted in Regulatory, then made an idea)
+        from .watch import pdf_text
+        try:
+            out["title"], out["text"] = pdf_text(r.content, SOURCE_TEXT_MAX)
+        except Exception as exc:  # noqa: BLE001
+            out["why"] = f"the PDF could not be read: {type(exc).__name__}: {str(exc)[:160]}"
+            return out
+        out["ok"] = bool(out["text"])
+        if not out["ok"]:
+            out["why"] = "the PDF has no text layer (a scan)"
+        return out
     return parse_article(r.text, r.url or url, out)
 
 

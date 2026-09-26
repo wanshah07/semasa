@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, ExternalLink, Lightbulb, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, Eye, EyeOff, ExternalLink, Lightbulb, Link2, Loader2, RefreshCw, Search, Trash2 } from "lucide-react";
 import { fadeUp, stagger } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { currentLang, useLang } from "../lib/i18n";
@@ -8,7 +8,7 @@ import { stampMYT } from "../lib/format";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import Skeleton from "./ui/Skeleton";
-import { Select } from "./ui/Field";
+import { Input, Select } from "./ui/Field";
 import ViewToggle, { TBODY, TD, TH, THEAD, TR, TableFrame, useView } from "./ViewToggle";
 
 /* Regulatory and Latest publication: the regulators' own notices and PubMed's newest papers, swept once a day by the
@@ -63,8 +63,21 @@ function Pill({ active, onClick, children }) {
   );
 }
 
-function Actions({ row, onIdea, onHide, busy }) {
+const isReading = (r) => r.status === "pending" || r.status === "working";
+
+function Actions({ row, onIdea, onHide, onRemove, busy }) {
   const { t } = useLang();
+  if (isReading(row) || row.status === "error") {
+    return (
+      <span className="flex flex-wrap items-center gap-3">
+        {isReading(row) && <span className="inline-flex items-center gap-1.5 text-xs text-muted"><Loader2 size={13} className="animate-spin" />
+          {t("Sedang dibaca…", "Being read…")}</span>}
+        <button type="button" disabled={busy} onClick={() => onRemove(row)}
+          className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted hover:text-danger disabled:opacity-50">
+          <Trash2 size={13} /> {t("Buang", "Remove")}</button>
+      </span>
+    );
+  }
   return (
     <span className="flex flex-wrap items-center gap-3">
       {onIdea && (
@@ -76,6 +89,11 @@ function Actions({ row, onIdea, onHide, busy }) {
         className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted hover:text-ink disabled:opacity-50">
         {row.dismissed ? <><Eye size={13} /> {t("Tunjuk semula", "Show again")}</> : <><EyeOff size={13} /> {t("Sembunyi", "Hide")}</>}
       </button>
+      {row.pasted && (
+        <button type="button" disabled={busy} onClick={() => onRemove(row)}
+          className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted hover:text-danger disabled:opacity-50">
+          <Trash2 size={13} /> {t("Buang", "Remove")}</button>
+      )}
     </span>
   );
 }
@@ -84,15 +102,16 @@ function Tags({ row, domainLabel }) {
   const { t } = useLang();
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-      <span className="rounded-pill bg-accent/10 px-2 py-0.5 text-[11px] font-semibold text-accent">{row.source}</span>
+      <span className="max-w-full truncate rounded-pill bg-accent/10 px-2 py-0.5 text-[11px] font-semibold text-accent">{row.source || t("Pautan", "Link")}</span>
+      {row.pasted && <span className="rounded-pill bg-ink/5 px-2 py-0.5 text-[11px] text-ink">{t("ditampal", "pasted")}</span>}
       {row.kind && row.section === "regulatory" && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted">{row.kind}</span>}
       {row.domain && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted">{domainLabel(row.domain)}</span>}
-      {row.relevant === false && <span className="rounded-pill bg-warn/10 px-2 py-0.5 text-[11px] text-warn">{t("kurang berkaitan", "less relevant")}</span>}
+      {row.relevant === false && !row.pasted && <span className="rounded-pill bg-warn/10 px-2 py-0.5 text-[11px] text-warn">{t("kurang berkaitan", "less relevant")}</span>}
     </span>
   );
 }
 
-function WatchCard({ row, onIdea, onHide, busy, domainLabel }) {
+function WatchCard({ row, onIdea, onHide, onRemove, busy, domainLabel }) {
   const { t } = useLang();
   const pub = row.section === "publication";
   return (
@@ -108,6 +127,10 @@ function WatchCard({ row, onIdea, onHide, busy, domainLabel }) {
           <h3 className="[overflow-wrap:anywhere] font-display text-[17px] leading-snug text-ink group-hover:text-accent">
             {row.title} <ExternalLink size={12} className="inline align-baseline text-muted" />
           </h3>
+          {row.status === "error" && row.error && (
+            <p className="mt-2 flex gap-1.5 rounded-tile bg-danger/5 p-2 text-[12px] text-danger [overflow-wrap:anywhere]">
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" /> {row.error}</p>
+          )}
           {pub && paperLine(row) && <p className="mt-1.5 text-[12px] text-muted [overflow-wrap:anywhere]">{paperLine(row)}</p>}
           {row.summary && <p className="mt-2 text-sm leading-relaxed text-muted [overflow-wrap:anywhere]">{row.summary}</p>}
           {row.why && (
@@ -122,13 +145,13 @@ function WatchCard({ row, onIdea, onHide, busy, domainLabel }) {
             <span className="uppercase">{row.lang}</span>
           </p>
         </a>
-        <div className="border-t border-line/70 px-4 py-2"><Actions row={row} onIdea={onIdea} onHide={onHide} busy={busy} /></div>
+        <div className="border-t border-line/70 px-4 py-2"><Actions row={row} onIdea={onIdea} onHide={onHide} onRemove={onRemove} busy={busy} /></div>
       </Card>
     </motion.div>
   );
 }
 
-function WatchTable({ rows, onIdea, onHide, busyId, domainLabel }) {
+function WatchTable({ rows, onIdea, onHide, onRemove, busyId, domainLabel }) {
   const { t } = useLang();
   return (
     <TableFrame label={t("Senarai", "List")}>
@@ -147,12 +170,13 @@ function WatchTable({ rows, onIdea, onHide, busyId, domainLabel }) {
             <td className={`${TD} [overflow-wrap:anywhere]`} data-label={t("Tajuk", "Title")}>
               <a href={r.url} target="_blank" rel="noopener noreferrer" className="font-medium leading-snug hover:text-accent">
                 {r.title} <ExternalLink size={11} className="inline align-baseline text-muted" /></a>
+              {r.status === "error" && r.error && <p className="mt-1 text-[12px] text-danger">{r.error}</p>}
               {r.section === "publication" && paperLine(r) && <p className="mt-0.5 text-[11px] text-muted">{paperLine(r)}</p>}
               {r.summary && <p className="mt-1 line-clamp-3 text-[12px] text-muted">{r.summary}</p>}
               {r.why && <p className="mt-1 text-[12px] text-ink"><span className="font-semibold">{t("Kenapa penting:", "Why it matters:")}</span> {r.why}</p>}
             </td>
             <td className={`${TD} whitespace-nowrap text-[12px] text-muted`} data-label={t("Tarikh", "Date")}>{dayText(r.published_at || r.created_at)}</td>
-            <td className={TD} data-label={t("Tindakan", "Actions")}><Actions row={r} onIdea={onIdea} onHide={onHide} busy={busyId === r.id} /></td>
+            <td className={TD} data-label={t("Tindakan", "Actions")}><Actions row={r} onIdea={onIdea} onHide={onHide} onRemove={onRemove} busy={busyId === r.id} /></td>
           </tr>
         ))}
       </tbody>
@@ -161,7 +185,57 @@ function WatchTable({ rows, onIdea, onHide, busyId, domainLabel }) {
 }
 
 /** One segment (regulatory | publication) over the shared semasa_watch rows. */
-export default function WatchSegment({ section, watch, setting, saveSetting, brand, onIdea, onToast }) {
+/* Paste a link (Wan, 26 Sep 2026: "allow us to paste the link as well"): the page adds the row, the worker reads it
+   (backend/semasa/watch.py process_pasted) and it becomes an item like any swept one. */
+function PasteLink({ section, user, onToast, onAdded }) {
+  const { t } = useLang();
+  const [url, setUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const pub = section === "publication";
+  async function add(e) {
+    e.preventDefault();
+    const link = url.trim();
+    if (!/^https?:\/\/\S+\.\S+/.test(link)) return onToast(t("Tampal pautan penuh, bermula dengan https://", "Paste a full link, starting with https://"), "warn");
+    let host = "";
+    try { host = new URL(link).hostname.replace(/^www\./, ""); } catch { /* the test above already passed */ }
+    setBusy(true);
+    const { error } = await supabase.from(TABLES.watch).insert({
+      section, url: link, title: title.trim() || link, source: host, status: "pending", pasted: true, created_by: user.id,
+    });
+    setBusy(false);
+    if (error) {
+      if (error.code === "23505") return onToast(t("Pautan ini sudah ada dalam senarai (mungkin disembunyikan).", "This link is already in the list (it may be hidden)."), "warn");
+      return onToast(/pasted|status|column/.test(errText(error))
+        ? t("Belum disediakan: jalankan supabase/013_watch_paste.sql sekali.", "Not set up yet: run supabase/013_watch_paste.sql once.")
+        : errText(error), "danger");
+    }
+    setUrl(""); setTitle("");
+    onToast(t("Ditampal. Pekerja membacanya dalam beberapa minit.", "Pasted. The worker reads it within a few minutes."), "ok");
+    onAdded?.();
+  }
+  return (
+    <form onSubmit={add} className="mt-4 rounded-card border border-line bg-surface p-3 shadow-card sm:p-4">
+      <p className="mb-2 flex items-center gap-1.5 text-sm font-medium"><Link2 size={15} className="text-accent" />
+        {pub ? t("Tampal pautan kertas", "Paste a paper's link") : t("Tampal pautan notis", "Paste a notice's link")}</p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Input type="url" value={url} onChange={(e) => setUrl(e.target.value)} required aria-label={t("Pautan", "Link")} className="sm:flex-[2]"
+          placeholder={pub ? "https://pubmed.ncbi.nlm.nih.gov/… · https://doi.org/10.…" : "https://www.npra.gov.my/… (halaman atau PDF)"} />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} aria-label={t("Nama (pilihan)", "Name (optional)")} className="sm:flex-1"
+          placeholder={t("Nama (pilihan)", "Name (optional)")} />
+        <Button type="submit" size="sm" disabled={busy || !url.trim()} className="justify-center">
+          {busy ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />} {t("Tampal", "Paste")}</Button>
+      </div>
+      <p className="mt-2 text-[11px] text-muted">{pub
+        ? t("PubMed atau DOI paling tepat: pengarang, jurnal, tahun dan abstrak diambil terus dari PubMed. Laman jurnal juga boleh.",
+          "PubMed or a DOI works best: authors, journal, year and abstract come straight from PubMed. A journal page works too.")
+        : t("Laman atau PDF pengawal selia (NPRA, JAKIM, KKM, HSA, EU, UK…): bot baca teks dan menamakan pengawal selia sebagai sumber.",
+          "A regulator's page or PDF (NPRA, JAKIM, KKM, HSA, EU, UK…): the bot reads its text and names the regulator as the source.")}</p>
+    </form>
+  );
+}
+
+export default function WatchSegment({ section, watch, setting, saveSetting, brand, user, onIdea, onToast }) {
   const { t } = useLang();
   const [view, setView] = useView(`watch.${section}`);
   const [query, setQuery] = useState("");
@@ -178,7 +252,7 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
   const mine = useMemo(() => watch.rows.filter((r) => r.section === section)
     .sort((a, b) => String(b.published_at || b.created_at || "").localeCompare(String(a.published_at || a.created_at || ""))),
   [watch.rows, section]);
-  const visible = useMemo(() => mine.filter((r) => (showHidden || !r.dismissed) && (showLess || r.relevant !== false)),
+  const visible = useMemo(() => mine.filter((r) => (showHidden || !r.dismissed) && (showLess || r.pasted || r.relevant !== false)),
     [mine, showHidden, showLess]);
   const counts = useMemo(() => {
     const c = {};
@@ -194,7 +268,25 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
       && (!q || [r.title, r.summary, r.why, r.source, r.kind, r.raw && r.raw.doi].some((v) => String(v || "").toLowerCase().includes(q))));
   }, [visible, domain, source, query]);
   const hiddenN = mine.filter((r) => r.dismissed).length;
-  const lessN = mine.filter((r) => r.relevant === false && !r.dismissed).length;
+  // while a pasted link is being read, look again every 15 seconds rather than every two minutes
+  const reading = mine.some(isReading);
+  const reload = watch.reload;
+  useEffect(() => {
+    if (!reading) return undefined;
+    const id = setInterval(() => { if (!document.hidden) reload(); }, 15_000);
+    return () => clearInterval(id);
+  }, [reading, reload]);
+
+  async function remove(r) {
+    setBusyId(r.id);
+    const { data, error } = await supabase.from(TABLES.watch).delete().eq("id", r.id).select("id");
+    setBusyId(null);
+    if (error) return onToast(errText(error), "danger");
+    if (!data?.length) return onToast(t("Tidak dibuang: hanya pautan yang ditampal boleh dibuang.", "Not removed: only a pasted link can be removed."), "warn");
+    onToast(t("Dibuang.", "Removed."), "info");
+    watch.reload();
+  }
+  const lessN = mine.filter((r) => r.relevant === false && !r.pasted && !r.dismissed).length;
 
   async function hide(r) {
     setBusyId(r.id);
@@ -242,6 +334,8 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
         </Button>
       </div>
 
+      {user && <PasteLink section={section} user={user} onToast={onToast} onAdded={() => watch.reload()} />}
+
       <div className="z-30 sm:sticky sm:top-[97px] xl:top-[65px] -mx-4 mt-4 bg-bg/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -288,10 +382,10 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
               "No items yet. The sweep runs once a day; press Sweep now to start.")}
           </p>
         ) : view === "table" ? (
-          <WatchTable rows={rows} onIdea={onIdea} onHide={hide} busyId={busyId} domainLabel={domainLabel} />
+          <WatchTable rows={rows} onIdea={onIdea} onHide={hide} onRemove={remove} busyId={busyId} domainLabel={domainLabel} />
         ) : (
           <motion.div className="masonry" variants={stagger(0.03)} initial="hidden" animate="show">
-            {rows.map((r) => <WatchCard key={r.id} row={r} onIdea={onIdea} onHide={hide} busy={busyId === r.id} domainLabel={domainLabel} />)}
+            {rows.map((r) => <WatchCard key={r.id} row={r} onIdea={onIdea} onHide={hide} onRemove={remove} busy={busyId === r.id} domainLabel={domainLabel} />)}
           </motion.div>
         )}
       </div>

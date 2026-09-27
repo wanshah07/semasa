@@ -48,11 +48,21 @@ def semasa_id(studio_id: str) -> str:
 
 
 def when_utc(stamp: Any) -> datetime | None:
-    """Studio's delivery stamp is its page's display form, "2026-09-24 19:25 MYT"; a real ISO time is taken as it is."""
+    """Studio's delivery stamp is its page's display form, "2026-09-24 19:25 MYT"; a real ISO time is taken as it is.
+    A Studio Routine wrote "15 Sep 2026, 6:27 AM MYT" for about a week in mid-September (argus rule 1), and 21 of the
+    records still carry it: unread, a copy filed from them took today as its posted_at, for good."""
     s = str(stamp or "").strip()
     m = re.match(r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})(?::\d{2})?\s*MYT$", s)
     if m:
         return datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}:{m.group(3)}:00").replace(tzinfo=UTC) - MYT
+    m = re.fullmatch(r"(\d{1,2}) ([A-Za-z]{3}) (\d{4}), (\d{1,2}):(\d{2}) ?([AaPp][Mm]) MYT", s)
+    if m:
+        try:
+            local = datetime.strptime(f"{m.group(1)} {m.group(2).title()} {m.group(3)} {m.group(4)}:{m.group(5)} "
+                                      f"{m.group(6).upper()}", "%d %b %Y %I:%M %p")
+        except ValueError:
+            return None
+        return local.replace(tzinfo=UTC) - MYT
     try:
         d = datetime.fromisoformat(s.replace("Z", "+00:00"))
     except ValueError:

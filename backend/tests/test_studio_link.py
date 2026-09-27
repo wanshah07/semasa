@@ -1,6 +1,7 @@
 """The Studio link: a Studio post that went out takes its Semasa copy out of the drafts, into the Arkib."""
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 from fakestore import FakeStore
@@ -79,3 +80,12 @@ def test_studio_stamps_are_read_as_malaysia_time():
     assert sl.when_utc("2026-09-24 19:25 MYT").isoformat() == "2026-09-24T11:25:00+00:00"
     assert sl.when_utc("2026-09-22T22:29:00.000Z").isoformat() == "2026-09-22T22:29:00+00:00"
     assert sl.when_utc("15 Sep") is None and sl.when_utc("2026-09-24T19:25") is None
+
+
+def test_every_stamp_shape_studio_has_written_is_read():
+    want = datetime(2026, 9, 14, 22, 27, tzinfo=UTC)          # 15 Sep 06:27 MYT
+    for s in ("2026-09-15 06:27 MYT", "2026-09-15T06:27 MYT", "15 Sep 2026, 6:27 AM MYT", "2026-09-15T06:27:00+08:00"):
+        assert sl.when_utc(s) == want, s
+    assert sl.when_utc("17 Sep 2026, 7:23 PM MYT") == datetime(2026, 9, 17, 11, 23, tzinfo=UTC)
+    assert sl.when_utc("12 Sep 2026, 12:05 AM MYT") == datetime(2026, 9, 11, 16, 5, tzinfo=UTC)
+    assert sl.when_utc("31 Feb 2026, 6:27 AM MYT") is None and sl.when_utc("soon") is None

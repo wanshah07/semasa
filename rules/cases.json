@@ -1517,5 +1517,36 @@
   "expect": {
    "hard": 0
   }
+ },
+ {
+  "name": "the words \"in cosmetics\" are English, not the in-cosmetics site",
+  "post": {
+   "stream": "linkedin",
+   "lang": "en",
+   "text": {
+    "en": {
+     "linkedin": "SCCS/1647/22 sets the MoS at 100. The number matters.\n\nISO 23674 sets mercury limits in cosmetics."
+    }
+   }
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "citing in-cosmetics on LinkedIn blocks",
+  "post": {
+   "stream": "linkedin",
+   "lang": "en",
+   "text": {
+    "en": {
+     "linkedin": "SCCS/1647/22 sets the MoS at 100. The number matters."
+    }
+   },
+   "citation": "in-cosmetics Global, 2026"
+  },
+  "expect": {
+   "hard": 1
+  }
  }
 ]

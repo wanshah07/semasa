@@ -219,7 +219,7 @@
   "label": "names a social source"
  },
  "aggregator": {
-  "re": "\\b(chem\\s?linked|chemlinked|cirs(?:\\s?group)?|cosmetics\\s?design|cosmeticsdesign|coslaw|chemical\\s?watch|in\\s?cosmetics|happi|premium\\s?beauty|regulatory\\s?focus|personal\\s?care\\s?insights|cosmeticsbusiness|beauty\\s?packaging)\\b",
+  "re": "\\b(chem\\s?linked|chemlinked|cirs(?:\\s?group)?|cosmetics\\s?design|cosmeticsdesign|coslaw|chemical\\s?watch|in-cosmetics|incosmetics|happi|premium\\s?beauty|regulatory\\s?focus|personal\\s?care\\s?insights|cosmeticsbusiness|beauty\\s?packaging)\\b",
   "flags": "i",
   "label": "a blog or news aggregator"
  },

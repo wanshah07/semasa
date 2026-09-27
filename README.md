@@ -134,6 +134,12 @@ an account), and no Google button.
    post is approved, scheduled or posted cannot be deleted from the page (reject it instead); an idea with only a
    draft, or none, deletes as before. One trigger is added, nothing else. Safe to run again, and safe in the shared
    project. The check at the bottom prints `1 | 1 | 1`.
+   **Once: the ws.regulab Studio import (`020_import_studio_part1_ideas.sql`, `part2_posts`, `part3_history`)**, 27 Sep 2026.
+   Studio's ideas, drafts and posted history, brought over once. It is DATA, so it was handed over as files and is not kept
+   in this repo (Studio's unpublished drafts do not belong in git history). Run in order 1, 2, 3; each is one transaction
+   and safe to run again. Nothing imported can post: drafts need Wan's approval inside Semasa, and Studio's scheduled and
+   posted records sit in `published`, so the publisher skips every channel Studio already used. The check at the end of
+   part 3 prints `1 | 1 | 1`.
    **Before that, `014_fragrance.sql`** (the Wangian tab, 26 Sep 2026, see *Wangian* below). It creates `semasa_fragrances`
    (the list of our perfumes) and allows media jobs of mode `fragrance`. Safe to run again, and safe in the shared
    project. The check at the bottom prints `1 | 1 | 1`.

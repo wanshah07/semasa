@@ -7,6 +7,7 @@ import { FAQ_CATEGORY_TO_DOMAIN, FAQ_SOURCE, brandOf } from "./lib/brand";
 import { stampMYT } from "./lib/format";
 import { currentLang, useLang } from "./lib/i18n";
 import { useCanUpload, useGenerations, useSession, useSettings, useTable, useToasts, useTrends } from "./lib/hooks";
+import { canLeave } from "./lib/leaveGuard";
 import FilterBar from "./components/FilterBar";
 import Gate from "./components/Gate";
 import IdeaComposer from "./components/IdeaComposer";
@@ -186,7 +187,9 @@ function IsuHeadlines({ trends, onToast, onIdea, onFaq, segTabs }) {
   );
 }
 
-function MediaTab({ user, gens, prompts, onToast }) {
+function MediaTab({ user, gens, prompts, posts, onToast }) {
+  // a picture inside an approved, scheduled or posted post cannot be deleted (supabase/017: the database refuses it)
+  const locked = new Set((posts?.rows || []).filter((p) => ["approved", "scheduled", "posted"].includes(p.status)).flatMap((p) => p.media_ids || []));
   const { t } = useLang();
   const [preset, setPreset] = useState(null);
   const clearPreset = useCallback(() => setPreset(null), []);
@@ -218,7 +221,7 @@ function MediaTab({ user, gens, prompts, onToast }) {
         "Want a real photo? Choose Unsplash in the provider menu: the chosen photo becomes an ordinary picture (a post picture, a slide background or a design background), and the photographer is credited.")}</p>
       <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
-      <GenerationGallery rows={gens.rows.filter((r) => r.mode !== "fragrance")} user={user} onToast={onToast}
+      <GenerationGallery rows={gens.rows.filter((r) => r.mode !== "fragrance")} user={user} onToast={onToast} locked={locked}
         onRequeue={(id, provider) => guard(async () => { await gens.requeue(id, provider); onToast(t("Dimasukkan semula ke giliran.", "Put back in the queue."), "ok"); })}
         onRemove={(row) => guard(async () => { if (window.confirm(t("Padam kerja ini?", "Delete this job?"))) {
           await gens.remove(row); onToast(t("Dipadam.", "Deleted."), "info");
@@ -242,7 +245,13 @@ export default function App() {
   useEffect(() => {
     const onHash = () => {
       const h = window.location.hash.replace("#", "");
-      setTab(TAB_IDS.includes(h) ? h : "isu");
+      const next = TAB_IDS.includes(h) ? h : "isu";
+      // the browser's Back/Forward: ask before unsaved Kanvas work goes, and put the address back if the answer is no
+      setTab((cur) => {
+        if (next === cur) return cur;
+        if (!canLeave()) { window.history.replaceState(null, "", cur === "isu" ? "#" : `#${cur}`); return cur; }
+        return next;
+      });
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -295,7 +304,10 @@ export default function App() {
   const { settings, save } = useSettings(allowed);
   const brand = useMemo(() => brandOf(settings), [settings]);
 
-  function go(next) { setTab(next); window.location.hash = next === "isu" ? "" : next; }
+  function go(next) {
+    if (next !== tab && !canLeave()) return;          // unsaved Kanvas work: ask first
+    setTab(next); window.location.hash = next === "isu" ? "" : next;
+  }
   // the sidebar on wide screens: auto (a rail of icons that slides open on hover) unless Wan pins it. Auto is the
   // default (Wan, 27 Sep 2026: "make the sidebar auto mode the default"); the choice is remembered on this browser
   // under a new key, so a "pinned" saved while pinned was still the default does not hide the new default.
@@ -318,11 +330,11 @@ export default function App() {
 
   let body;
   if (!configured) body = <Unconfigured />;
-  else if (tab === "idea") body = allowed ? <IdeasTab ideas={ideas} user={user} brand={brand} onToast={push}
+  else if (tab === "idea") body = allowed ? <IdeasTab ideas={ideas} posts={posts} user={user} brand={brand} onToast={push}
     openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
   else if (tab === "post") body = allowed ? <PostsTab posts={posts} media={gens} log={log} brand={brand} user={user}
     settings={settings} onToast={push} focusId={focusPost} setFocusId={setFocusPost} /> : gate(null);
-  else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} onToast={push} /> : gate(null);
+  else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} posts={posts} onToast={push} /> : gate(null);
   else if (tab === "design") body = allowed ? <DesignTab user={user} gens={gens} posts={posts} brand={brand} onToast={push}
     onCanvas={(seed) => { setCanvasSeed(seed); go("kanvas"); }} /> : gate(null);
   else if (tab === "wangian") body = allowed ? <FragranceTab user={user} gens={gens} onToast={push}

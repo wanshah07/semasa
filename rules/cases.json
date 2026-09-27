@@ -1434,5 +1434,88 @@
     "Design 1, slide 1"
    ]
   }
+ },
+ {
+  "name": "emoji count as one character each, as the publisher counts them",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. 🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪🧪 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "x",
+     "slides": [
+      {
+       "title": " Apa NPRA semak ",
+       "points": "Dokumen PIF.\nLabel.\n",
+       "body": null
+      },
+      {
+       "title": null,
+       "points": []
+      }
+     ]
+    }
+   ],
+   "slides": [
+    {
+     "title": "Apa NPRA semak",
+     "points": [
+      "Dokumen PIF.",
+      "Label."
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "a stored point holding two lines is two points on both sides",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "x",
+     "slides": [
+      {
+       "title": "Apa NPRA semak",
+       "points": [
+        "Dokumen PIF.",
+        "Label."
+       ]
+      }
+     ]
+    }
+   ],
+   "slides": [
+    {
+     "title": "Apa NPRA semak",
+     "points": [
+      "Dokumen PIF.\nLabel."
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
  }
 ]

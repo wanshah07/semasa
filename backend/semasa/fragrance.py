@@ -515,21 +515,23 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
             renders = sorted(kept + renders, key=lambda r: METHODS.index(r["method"]) if r["method"] in METHODS else 9)
             if not renders:
                 raise FragranceError("neither version could be made: " + "; ".join(f"{k}: {v}" for k, v in errors.items()))
-            if earlier:                                       # another concept, or the same one again: the last round goes
-                _remove(store, row_id, earlier)
             meta.update(renders=renders, render_errors=errors, rendered=c, rendered_pick=pick, step="pick",
                         rendered_at=datetime.now(UTC).isoformat())
             db.finish_media(store, row_id, status="done", provider="semasa", error=None, meta=meta,
                             generated_media_url=renders[0]["url"])
+            # another concept, or the same one again: the last round goes, but only once the new one is recorded, so a
+            # failed write never leaves the row pointing at deleted files
+            _remove(store, row_id, [x for x in earlier if x not in {y for r in renders for y in _files(r)}])
             return True
         if step == "save":
             keep = next((r for r in meta.get("renders") or [] if r.get("method") == meta.get("chosen")), None)
             if not keep:
                 raise FragranceError("pick the version to keep first")
-            _remove(store, row_id, [x for r in meta.get("renders") or [] if r is not keep for x in _files(r)])
+            dropped = [x for r in meta.get("renders") or [] if r is not keep for x in _files(r)]
             meta.update(renders=[keep], saved=True, step="saved", saved_at=datetime.now(UTC).isoformat())
             db.finish_media(store, row_id, status="done", provider="semasa", error=None, meta=meta,
                             generated_media_url=keep["url"])
+            _remove(store, row_id, [x for x in dropped if x not in set(_files(keep))])
             return True
         if step == "discard":
             # Wan's Buang: the page cannot delete from the generated bucket, so the worker clears the files and the row

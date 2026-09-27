@@ -4,8 +4,9 @@ import { AlignCenterHorizontal, AlignCenterVertical, ArrowDown, ArrowLeft, Arrow
   Download, Eye, EyeOff, ImagePlus, Italic, Layers, Loader2, Lock, Maximize2, Minus, Plus, Redo2, Save, Square,
   Trash2, Triangle as TriangleIcon, Type, Undo2, Unlock } from "lucide-react";
 import { FONTS } from "../lib/canvasSeed";
+import { setLeaveGuard } from "../lib/leaveGuard";
 import { timeAgo } from "../lib/format";
-import { useLang } from "../lib/i18n";
+import { tr, useLang } from "../lib/i18n";
 import { sizeLabel, sizeOf } from "../lib/sizes";
 import { refusal, uploadReference } from "../lib/storage";
 import { BUCKETS, TABLES, errText, supabase } from "../lib/SupabaseClient";
@@ -82,7 +83,14 @@ export default function CanvasTab({ user, onToast, seed, clearSeed }) {
     if (e) return onToast(errText(e), "danger");
     const { error: d } = await supabase.from(TABLES.canvas).delete().eq("id", r.id);
     if (d) return onToast(errText(d), "danger");
-    const files = [data.preview_path, ...(data.assets || [])].filter(Boolean);
+    let files = [data.preview_path, ...(data.assets || [])].filter(Boolean);
+    // a copy someone saved of this design still draws these pictures from this folder: keep any file another design
+    // names, or deleting the original silently emptied the copy (Fabric drops an image it cannot load, with no error)
+    if (files.length > 1) {
+      const { data: others } = await supabase.from(TABLES.canvas).select("doc");
+      const used = JSON.stringify((others || []).map((o) => o.doc));
+      files = files.filter((f, i) => i === 0 || !used.includes(f));
+    }
     if (files.length) await supabase.storage.from(BUCKETS.reference).remove(files);
     onToast(t("Dipadam.", "Deleted."), "info"); load();
   }
@@ -247,7 +255,9 @@ function Editor({ user, start, onToast, onClose }) {
           setBg(typeof fc.backgroundColor === "string" ? fc.backgroundColor : "#ffffff");
         } else if (start.seed) {
           // the copies made for this design are its assets: deleting the design deletes them too
-          await buildSeed(fc, start.seed, user, (p) => { pending.current.push(p); setAssets((a) => [...a, p]); });
+          const missed = await buildSeed(fc, start.seed, user, (p) => { pending.current.push(p); setAssets((a) => [...a, p]); });
+          if (missed.length) onToast(t("Gambar ini tidak dapat dibuka dan ditinggalkan: {n}", "These pictures could not be opened and were left out: {n}",
+            { n: missed.join(", ") }), "warn");
         }
       } catch (err) {
         onToast(t("Sebahagian reka bentuk tidak dapat dibuka: {e}", "Part of the design could not be opened: {e}", { e: err.message || String(err) }), "warn");
@@ -264,10 +274,13 @@ function Editor({ user, start, onToast, onClose }) {
     // closing the browser tab with unsaved changes asks first
     const onLeave = (e) => { if (dirty()) { e.preventDefault(); e.returnValue = ""; } };
     window.addEventListener("beforeunload", onLeave);
+    // and a tab switch or the browser's Back asks too (App reads this through lib/leaveGuard)
+    const dropGuard = setLeaveGuard(() => dirty());
     return () => {
       alive = false;
       window.removeEventListener("resize", onResize);
       window.removeEventListener("beforeunload", onLeave);
+      dropGuard();
       // left by the sidebar, a header tab or Back: pictures uploaded into a design never saved belong to nothing
       const left = pending.current;
       pending.current = [];
@@ -475,6 +488,9 @@ function Editor({ user, start, onToast, onClose }) {
   async function save() {
     const fc = fcRef.current;
     setBusy("save");
+    // what this save covers, taken NOW: an edit or an upload made while it runs is not in it and must stay unsaved
+    const rev = hist.current.revs[hist.current.at];
+    const pend = [...pending.current];
     try {
       const doc = fc.toObject(PROPS);
       const json = JSON.stringify(doc);
@@ -495,8 +511,8 @@ function Editor({ user, start, onToast, onClose }) {
       if (!foreign && previewPath && previewPath !== up.path) await supabase.storage.from(BUCKETS.reference).remove([previewPath]);
       setPreviewPath(up.path); setRowId(data.id);
       if (foreign) setForeign(false);
-      pending.current = [];
-      savedRev.current = hist.current.revs[hist.current.at];
+      pending.current = pending.current.filter((p) => !pend.includes(p));
+      savedRev.current = rev;
       onToast(t("Disimpan.", "Saved."), "ok");
     } catch (err) {
       onToast(err.message || String(err), "danger");
@@ -639,7 +655,9 @@ function Editor({ user, start, onToast, onClose }) {
 // --- helpers --------------------------------------------------------------------------------------------------------
 
 function typeLabel(o) {
-  return { textbox: "Teks", image: "Gambar", rect: "Segi empat", circle: "Bulatan", triangle: "Segi tiga", line: "Garisan", group: "Kumpulan" }[o.type] || o.type;
+  const names = { textbox: ["Teks", "Text"], image: ["Gambar", "Picture"], rect: ["Segi empat", "Rectangle"], circle: ["Bulatan", "Circle"],
+    triangle: ["Segi tiga", "Triangle"], line: ["Garisan", "Line"], group: ["Kumpulan", "Group"] }[o.type];
+  return names ? tr(...names) : o.type;
 }
 
 function readSel(o) {
@@ -683,12 +701,18 @@ function tainted(err, t) {
 async function buildSeed(fc, seed, user, own) {
   fc.backgroundColor = "#111111";
   const byName = {};
+  const missed = [];
   for (const L of seed.layers) {
     let obj = null;
+    // one picture that will not open (a logo replaced since the design was made) is left out and named; it used to
+    // throw out of the loop, so the bottle, the headline and the badges never appeared either
+    try {
     if (L.kind === "image") {
       let url = L.url;
       try {
-        const blob = await (await fetch(url, { mode: "cors" })).blob();
+        const res = await fetch(url, { mode: "cors" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);   // a 404 page is not a picture: never copy it
+        const blob = await res.blob();
         const ext = blob.type === "image/png" ? "png" : "jpg";
         const up = await uploadReference(user, new File([blob], `kanvas-${L.role || "gambar"}.${ext}`, { type: blob.type || "image/jpeg" }));
         own(up.path);
@@ -720,6 +744,10 @@ async function buildSeed(fc, seed, user, own) {
     } else if (L.kind === "badge") {
       obj = makeBadge(L.text, L.x, L.y, L.d);
     }
+    } catch {
+      missed.push(L.name || L.role || "?");
+      continue;
+    }
     if (!obj) continue;
     obj.name = L.name;
     byName[L.name] = obj;
@@ -727,6 +755,7 @@ async function buildSeed(fc, seed, user, own) {
     if (L.under && byName[L.under]) fc.moveObjectTo(obj, fc.getObjects().indexOf(byName[L.under]));
   }
   fc.requestRenderAll();
+  return missed;
 }
 
 /* A font size you can type: the number is kept as typed and applied (6 to 800) on Enter or when the field is left.

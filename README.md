@@ -129,6 +129,11 @@ an account), and no Google button.
    And the worker's recovery of ideas left `working` by a dead runner no longer fails for all of them when one already
    has an approved post: that one is marked drafted. Only two trigger functions are replaced (010 and 017 carry the
    same bodies now). Safe to run again, and safe in the shared project. The check at the bottom prints `1 | 1 | 1`.
+   **Then `019_idea_delete_guard.sql`** (27 Sep 2026, third review). The worker knows a story was already written through
+   the idea it came from, so deleting that idea let the same news be written again as a new draft. Now an idea whose
+   post is approved, scheduled or posted cannot be deleted from the page (reject it instead); an idea with only a
+   draft, or none, deletes as before. One trigger is added, nothing else. Safe to run again, and safe in the shared
+   project. The check at the bottom prints `1 | 1 | 1`.
    **Before that, `014_fragrance.sql`** (the Wangian tab, 26 Sep 2026, see *Wangian* below). It creates `semasa_fragrances`
    (the list of our perfumes) and allows media jobs of mode `fragrance`. Safe to run again, and safe in the shared
    project. The check at the bottom prints `1 | 1 | 1`.
@@ -840,6 +845,11 @@ Found and fixed in the full review (27 Sep 2026):
   starting a job it cannot finish; the rest go back to `pending` untouched, with no attempt counted. A dispatch
   for one job still fills the rest of its batch with the oldest waiting jobs, so a job queued while another run
   held the lock is never left for the next poll.
+- **A paid job never outlives the run** (third review, 27 Sep 2026). A picture or video is only started when the
+  run still has the time its provider may take (a video about 17 minutes, a picture 6); otherwise it goes back to the
+  queue with no attempt counted. A provider's wait is cut short before GitHub's 40-minute limit, the Replicate
+  prediction is cancelled so it stops billing, and the job is handed back the same way. A video's still picture, and
+  a design's generated background, are recorded on the job the moment they are paid for, so a retry reuses them.
 - **Nothing is retried for ever.** An idea, question, video or pasted link left `working` by a dead runner goes
   back to the queue at most 3 times, then stops as `error` with the reason; a media job the same, at
   `MEDIA_MAX_ATTEMPTS`.

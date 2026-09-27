@@ -257,3 +257,65 @@ def test_a_picture_in_an_approved_post_is_never_redrawn():
     finally:
         mg.process_slides = orig
     assert called == [1]
+
+
+def test_a_video_retry_reuses_the_still_it_already_paid_for(monkeypatch):
+    from fakestore import FakeStore
+    writes, uploads = _db_all(monkeypatch)
+    store = FakeStore(media_generations=[{"id": "v1", "meta": {"flow": "A"}}])
+    prov = TextProvider(Generated(b"x", "image/png", "flux"))
+    prov.generate = lambda kind, ref, prompt, opt: (_ for _ in ()).throw(TimeoutError("slow"))
+    row = {"id": "v1", "type": "video", "mode": "prompt", "prompt": "kamera", "attempts": 1, "meta": {"flow": "A"}}
+    assert media_generator.process_row(store, row, _settings(), {"replicate": prov}) is False
+    kept = store.tables["media_generations"][0]["meta"]
+    assert kept["still_url"].endswith("-still.png") and kept["flow"] == "A"
+    prov.generate = lambda kind, ref, prompt, opt: prov.calls.append((kind, ref)) or Generated(b"vid", "video/mp4", "k")
+    writes.clear()
+    assert media_generator.process_row(store, {**row, "meta": kept}, _settings(), {"replicate": prov}) is True
+    assert len(prov.text_calls) == 1 and prov.calls == [("video", kept["still_url"])]
+
+
+def test_out_of_time_hands_the_job_back_with_its_attempt(monkeypatch):
+    from semasa.providers import OutOfTime
+    writes, _ = _patch_db(monkeypatch)
+    back = []
+    monkeypatch.setattr(media_generator.db, "release_media", lambda store, r: back.append(r["id"]))
+    prov = FakeProvider(exc=OutOfTime("run over"))
+    prov.deadline = None
+    row = {"id": "r9", "type": "video", "reference_url": "https://ref/x.png", "prompt": "p", "attempts": 1}
+    assert media_generator.process_row(None, row, _settings(), {"replicate": prov}, deadline=123.0) is False
+    assert back == ["r9"] and "r9" not in writes and prov.deadline == 123.0
+
+
+def test_a_job_is_not_started_without_the_time_to_finish_it():
+    s = _settings(max_wait_image=300, max_wait_video=1500)
+    assert media_generator.need_seconds({"type": "video"}, s) == 1020
+    assert media_generator.need_seconds({"type": "image"}, s) == 360
+    assert media_generator.need_seconds({"mode": "slides"}, s) == 120
+
+
+def test_a_vision_answer_given_as_a_list_is_one_description(monkeypatch):
+    class SeeLLM:
+        configured = can_see = True
+
+        def describe_image(self, *a):
+            return {"description": ["A shelf.", "Three jars."], "style": "flat"}
+    monkeypatch.setattr(media_generator, "fetch_reference", lambda url: (b"x", "image/png", None))
+    monkeypatch.setattr(media_generator, "shrink_for_read", lambda d, ct: (d, ct))
+    read = media_generator.read_reference(SeeLLM(), "https://ref/x.png")
+    assert read["description"] == "A shelf. Three jars." and read["style"] == "flat"
+    assert "A shelf. Three jars." in media_generator.compose_prompt({"mode": "recreate", "prompt": ""}, read)
+
+
+def test_replicate_cancels_a_prediction_the_run_has_no_time_left_for(monkeypatch):
+    from semasa.providers import OutOfTime, replicate
+    posted = []
+    monkeypatch.setattr(replicate.requests, "post", lambda url, **k: posted.append(url))
+    monkeypatch.setattr(replicate.time, "sleep", lambda s: None)
+    p = replicate.ReplicateProvider(_settings(max_wait_video=1500))
+    p.deadline = replicate.time.time() - 1
+    pred = {"id": "x", "status": "processing", "urls": {"get": "g", "cancel": "https://api/cancel/x"}}
+    import pytest as _pt
+    with _pt.raises(OutOfTime):
+        p._wait(pred, 1500)
+    assert posted == ["https://api/cancel/x"]

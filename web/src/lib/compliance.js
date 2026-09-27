@@ -77,19 +77,24 @@ const MAX_POINTS = 5;
 
 /** [{title, points[]}]: the one shape the writer, this page, the renderer and the scan use.
     Mirrors normalise_slides in backend/semasa/compliance.py exactly. */
+/** Length and cut in characters as Python counts them (code points): an emoji is one, never two. */
+export const charLen = (t) => [...String(t ?? "")].length;
+const cut = (t, n) => { const a = [...t]; return a.length > n ? a.slice(0, n).join("") : t; };
+
 export function normaliseSlides(raw) {
   const out = [];
   if (!Array.isArray(raw)) return out;
   for (let s of raw.slice(0, MAX_SLIDES)) {
     if (typeof s === "string") s = { title: s };
     if (!s || typeof s !== "object" || Array.isArray(s)) continue;
-    const title = String(s.title ?? "").trim().slice(0, 240);
+    const title = cut(String(s.title ?? "").trim(), 240);
     let pts = s.points;
     if (typeof pts === "string") pts = pts.split("\n");
-    let points = (Array.isArray(pts) ? pts : []).map((p) => String(p ?? "").trim()).filter(Boolean)
-      .map((p) => p.slice(0, 400)).slice(0, MAX_POINTS);
+    // a point is one line: the editor edits points as lines, so "a\nb" stored as one point reads as two there
+    let points = (Array.isArray(pts) ? pts : []).flatMap((p) => String(p ?? "").split("\n")).map((p) => p.trim()).filter(Boolean)
+      .map((p) => cut(p, 400)).slice(0, MAX_POINTS);
     const body = String(s.body ?? "").trim();
-    if (body && !points.length) points = [body.slice(0, 400)];
+    if (body && !points.length) points = [cut(body, 400)];
     if (title || points.length) out.push({ title, points });
   }
   return out;
@@ -120,7 +125,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     const t = textOf(post, p, lang);
     if (!t) { add(true, where, "empty"); continue; }
     const lim = limits[p];
-    if (lim && t.length > lim.max) add(true, where, `${t.length} chars, over the ${lim.max} limit`);
+    if (lim && charLen(t) > lim.max) add(true, where, `${charLen(t)} chars, over the ${lim.max} limit`);
     for (const [re, label] of HARD) if (re.test(t)) add(true, where, label);
     for (const [re, label] of SOFT) if (re.test(t)) add(false, where, label);
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. Never say the idea came from Reddit, YouTube, a forum or a post.");

@@ -181,3 +181,19 @@ def test_a_retry_after_a_failure_part_way_finishes_the_same_draft(monkeypatch):
     assert len(store.tables["semasa_posts"]) == 1 and store.tables["semasa_posts"][0]["id"] == pid
     assert len(store.tables["media_generations"]) == 1
     assert store.tables["semasa_ideas"][0]["status"] == "drafted"
+
+
+def test_a_retry_whose_draft_already_has_jobs_does_not_pay_the_writer_again(monkeypatch):
+    # review 27 Sep 2026: writing again overwrote the post's slides while the queued slide job kept the old ones
+    monkeypatch.setattr(ideas, "read_source", lambda url: {"ok": False, "why": "x", "image": None})
+    store = _store()
+    store.tables["semasa_posts"].append({"id": "p1", "status": "draft", "slides": [{"title": "old", "points": []}]})
+    store.tables["media_generations"].append({"id": "m1", "post_id": "p1", "mode": "slides", "status": "pending"})
+    idea = {"id": "i1", "stream": "regulab", "brief": {"partial_post_id": "p1"}, "make_media": "image"}
+    store.tables["semasa_ideas"].append({**idea, "status": "working"})
+    llm = FakeLLM({"fit": True})
+    assert ideas.process_idea(store, llm, idea, ideas.load_settings(store)) == "p1"
+    assert llm.seen == [] and len(store.tables["semasa_posts"]) == 1
+    assert store.tables["semasa_posts"][0]["slides"] == [{"title": "old", "points": []}]
+    got = store.tables["semasa_ideas"][0]
+    assert got["status"] == "drafted" and got["brief"]["post_id"] == "p1" and "partial_post_id" not in got["brief"]

@@ -284,11 +284,15 @@ def whisper(path: Path, account: str | None, token: str | None, model: str = "@c
     if not (account and token):
         raise VideoError("this video has no transcript and Cloudflare is not set up to hear it: paste the transcript, "
                          "or set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN")
+    # ffmpeg reports "Duration: N/A" for some webm/mkv and streamed recordings: then the chunks run until one comes out
+    # empty (not one chunk only, which heard the first ten minutes of a two-hour talk), and never past the source limit
     total = probe_duration(path) or 0
     segs: list[dict[str, Any]] = []
     with tempfile.TemporaryDirectory() as tmp:
         start = 0.0
-        while start < max(total, 1):
+        while start < (total or MAX_SOURCE_S + chunk_s):
+            if not total and start >= MAX_SOURCE_S:
+                raise VideoError(f"the video is longer than the limit of {fmt_ts(MAX_SOURCE_S)}")
             part = Path(tmp) / f"a{int(start)}.mp3"
             subprocess.run([ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", "-ss", str(start), "-t", str(chunk_s),
                             "-i", str(path), "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", str(part)], check=True)

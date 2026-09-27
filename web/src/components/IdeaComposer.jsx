@@ -34,6 +34,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   const [url, setUrl] = useState("");
   const [refs, setRefs] = useState([]);           // [{url, path, name}]
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(0);   // a file still uploading would miss the idea, or outlive a Cancel
 
   useEffect(() => {
     if (!open) return;
@@ -50,10 +51,12 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     for (const f of files) {
       const why = refusal(f);
       if (why) { onToast(why, "warn"); continue; }
+      setUploading((n) => n + 1);
       try {
         const up = await uploadReference(user, f);
         setRefs((r) => [...r, { ...up, name: f.name }]);
       } catch (e) { onToast(e.message, "danger"); }
+      finally { setUploading((n) => n - 1); }
     }
   }
 
@@ -65,6 +68,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
 
   // closing without sending leaves no orphan files behind
   function cancel() {
+    if (uploading) return onToast(t("Tunggu muat naik selesai dahulu.", "Wait for the upload to finish first."), "warn");
     const paths = refs.map((r) => r.path);
     setRefs([]);
     paths.forEach((p) => removeReference(p));
@@ -73,6 +77,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
 
   async function submit(e) {
     e.preventDefault();
+    if (uploading) return;
     if (!title.trim()) return onToast(t("Perlukan tajuk atau isu.", "A title or an issue is needed."), "warn");
     const drawn = format !== "post";
     if (drawn && lookBlocked === "photo") {
@@ -196,8 +201,8 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
           )}
         </div>
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="ghost" onClick={cancel}>{t("Batal", "Cancel")}</Button>
-          <Button type="submit" disabled={busy}>{busy ? t("Menghantar…", "Sending…") : t("Hantar ke bot", "Send to the bot")}</Button>
+          <Button type="button" variant="ghost" onClick={cancel} disabled={uploading > 0}>{t("Batal", "Cancel")}</Button>
+          <Button type="submit" disabled={busy || uploading > 0}>{uploading ? t("Memuat naik…", "Uploading…") : busy ? t("Menghantar…", "Sending…") : t("Hantar ke bot", "Send to the bot")}</Button>
         </div>
       </form>
     </Modal>

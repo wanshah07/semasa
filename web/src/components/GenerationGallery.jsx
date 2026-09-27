@@ -61,7 +61,7 @@ function Media({ row, onToast }) {
   );
 }
 
-export default function GenerationGallery({ rows, user, onRequeue, onRemove, onToast }) {
+export default function GenerationGallery({ rows, user, onRequeue, onRemove, onToast, locked = new Set() }) {
   const { t } = useLang();
   if (!rows.length) {
     return <p className="rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">{t("Belum ada kerja. Muat naik rujukan di atas.", "No jobs yet. Upload a reference above.")}</p>;
@@ -111,7 +111,9 @@ export default function GenerationGallery({ rows, user, onRequeue, onRemove, onT
                         {row.status === "error" && (
                           <Retry row={row} onRequeue={onRequeue} />
                         )}
-                        {row.status !== "processing" && (
+                        {locked.has(row.id) && <span title={t("Kembalikan post itu ke draf untuk memadam gambar ini.", "Put that post back to draft to delete this picture.")}>
+                          {t("Dalam post yang diluluskan", "In an approved post")}</span>}
+                        {row.status !== "processing" && !locked.has(row.id) && (
                           <Button size="sm" variant="danger" onClick={() => onRemove(row)} title={t("Padam", "Delete")}><Trash2 size={12} /></Button>
                         )}
                       </span>

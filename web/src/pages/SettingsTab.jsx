@@ -237,19 +237,23 @@ function IndoTabung({ settings, save, onToast }) {
 
   async function persist(next, msg) {
     setBusy(true);
-    try { await save("bahasa", { ...(settings.bahasa || {}), indo: next }); setRows(next); onToast(msg, "ok"); } catch (e) {
+    let ok = false;
+    try { await save("bahasa", { ...(settings.bahasa || {}), indo: next }); setRows(next); onToast(msg, "ok"); ok = true; } catch (e) {
       onToast(/0 rows/.test(e.message) ? t("Jalankan supabase/007_faq.sql dahulu (ia menyediakan tabung ini).", "Run supabase/007_faq.sql first (it sets up this list).") : e.message, "danger");
     }
     setBusy(false);
+    return ok;
   }
-  function add(e) {
+  async function add(e) {
     e.preventDefault();
     const w = indo.replace(/\s+/g, " ").trim().toLowerCase();
     if (!w) return;
     if (BUILT_IN_INDO.includes(w)) return onToast(t('"{w}" sudah dalam senarai terbina.', '"{w}" is already in the built-in list.', { w }), "info");
     if (rows.some((r) => r.indo.toLowerCase() === w)) return onToast(t('"{w}" sudah ada dalam tabung.', '"{w}" is already in the list.', { w }), "info");
-    persist([...rows, { indo: w, bm: bm.trim() }], t('"{w}" ditambah. Semua penulis AI akan mengelaknya.', '"{w}" added. Every AI writer will avoid it.', { w }));
-    setIndo(""); setBm("");
+    // the words stay in the boxes when the save fails, so nothing typed is lost
+    if (await persist([...rows, { indo: w, bm: bm.trim() }], t('"{w}" ditambah. Semua penulis AI akan mengelaknya.', '"{w}" added. Every AI writer will avoid it.', { w }))) {
+      setIndo(""); setBm("");
+    }
   }
 
   return (

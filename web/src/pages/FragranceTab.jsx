@@ -125,7 +125,7 @@ export default function FragranceTab({ user, gens, onToast, onCanvas }) {
               <FindConcepts p={p} user={user} gens={gens} onToast={onToast} />
             </Card>
           )}
-          {p && <Jobs rows={jobs} user={user} gens={gens} onToast={onToast} onCanvas={onCanvas} />}
+          {p && <Jobs perfumes={list} rows={jobs} user={user} gens={gens} onToast={onToast} onCanvas={onCanvas} />}
         </div>
       </div>
 
@@ -317,16 +317,23 @@ function FindConcepts({ p, user, gens, onToast }) {
   );
 }
 
-function Jobs({ rows, user, gens, onToast, onCanvas }) {
+function Jobs({ rows, user, gens, onToast, onCanvas, perfumes = [] }) {
   const { t } = useLang();
   if (!rows.length) {
     return <p className="rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">
       {t("Belum ada reka bentuk untuk wangian ini.", "No designs for this perfume yet.")}</p>;
   }
-  return <div className="space-y-4">{rows.map((r) => <Job key={r.id} r={r} mine={user && r.created_by === user.id} gens={gens} onToast={onToast} onCanvas={onCanvas} />)}</div>;
+  return <div className="space-y-4">{rows.map((r) => <Job perfumes={perfumes} key={r.id} r={r} mine={user && r.created_by === user.id} gens={gens} onToast={onToast} onCanvas={onCanvas} />)}</div>;
 }
 
-function Job({ r, mine, gens, onToast, onCanvas }) {
+/* The perfume as it is now: the design's copy of it was taken when the job ran, and its logo file is deleted when the
+   logo is replaced or the perfume removed, so a Kanvas copy seeded from the old address opened without it. */
+function liveProduct(m, perfumes) {
+  const live = perfumes.find((p) => p.id === m.fragrance_id);
+  return live ? { ...(m.product || {}), logo_url: live.logo_url || null } : m.product;
+}
+
+function Job({ r, mine, gens, onToast, onCanvas, perfumes = [] }) {
   const { t, lang } = useLang();
   const L = (pair) => (lang === "en" ? pair[1] : pair[0]);
   const m = r.meta || {};
@@ -443,7 +450,7 @@ function Job({ r, mine, gens, onToast, onCanvas }) {
                 {step === "saved" && <a href={x.url} target="_blank" rel="noopener noreferrer" download className="inline-flex items-center gap-1 text-accent hover:underline"><Download size={12} /> {t("Muat turun", "Download")}</a>}
                 {onCanvas && !working && (
                   // every piece of this design as a movable layer: the scene, the real bottle, each word and badge
-                  <button type="button" onClick={() => onCanvas({ ...fragranceSeed(x, m, m.product), source: "fragrance", sourceId: r.id, sizeId: m.format || null })}
+                  <button type="button" onClick={() => onCanvas({ ...fragranceSeed(x, m, liveProduct(m, perfumes)), source: "fragrance", sourceId: r.id, sizeId: m.format || null })}
                     className="ml-2 inline-flex items-center gap-1 text-accent hover:underline"><PenTool size={12} /> {t("Ubah dalam Kanvas", "Edit in Kanvas")}</button>
                 )}
               </figcaption>

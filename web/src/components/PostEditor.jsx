@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, ImagePlus, Info, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
-import { LIMITS, hardCount, normaliseSlides, platformsFor, scan, scanMedia } from "../lib/compliance";
+import { LIMITS, charLen, hardCount, normaliseSlides, platformsFor, scan, scanMedia } from "../lib/compliance";
 import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import SlidesEditor, { fromRows, toRows } from "./SlidesEditor";
@@ -89,6 +89,19 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
     ...(hasSlides ? { slides } : {}),
     media: chosen.filter((m) => m.status === "done").map(scanMedia) };
   const flags = useMemo(() => scan(current, reg, reg.schedule, indoExtra), [JSON.stringify(current), reg, indoExtra]); // eslint-disable-line
+  const [mediaState, setMediaState] = useState({ key: "", rows: [] });
+  const idsKey = mediaIds.join(",");
+  const rowsSig = mediaIds.map((id) => `${id}:${mediaById[id]?.status || "?"}`).join(",");
+  useEffect(() => {
+    let live = true;
+    if (!mediaIds.length || !supabase) { setMediaState({ key: idsKey, rows: [] }); return undefined; }
+    supabase.from(TABLES.media).select("id,status,generated_media_url").in("id", mediaIds)
+      .then(({ data, error }) => { if (live && !error) setMediaState({ key: idsKey, rows: data || [] }); });
+    return () => { live = false; };
+  }, [idsKey, rowsSig]); // eslint-disable-line react-hooks/exhaustive-deps
+  const checked = mediaState.key === idsKey;
+  const gone = checked ? mediaIds.filter((id) => !mediaState.rows.some((m) => m.id === id)) : [];
+  const unready = checked ? mediaState.rows.filter((m) => mediaIds.includes(m.id) && (m.status !== "done" || !m.generated_media_url)) : [];
   const hard = hardCount(flags);
   // a slot more than 45 minutes gone is never sent (publisher.py LATE_GRACE): approving it would only read "✓ checks
   // passed" while nothing goes out. A page-only block, not saved in hard_flags, because it depends on the clock.
@@ -99,8 +112,14 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
       "no date and slot yet: the publisher skips a post without one") }]
     : past ? [...flags, { hard: true, where: t("Kedudukan", "Position"), msg: t("slot ini sudah lepas: penerbit tidak menghantar post yang lewat lebih 45 minit. Pilih tarikh atau slot baharu.",
       "this slot has passed: the publisher never sends a post more than 45 minutes late. Pick a new date or slot.") }]
-      : flags;
-  const blocking = hard + (past ? 1 : 0);
+      : [...flags];
+  // the publisher refuses a post whose attached picture was deleted or never finished (publisher.py not_ready/gone);
+  // read from the database, because the Media list holds only the newest rows
+  if (gone.length) shownFlags.push({ hard: true, where: t("Gambar", "Pictures"), msg: t("{n} gambar yang dilampirkan sudah dipadam: buang daripada post ini",
+    "{n} attached picture(s) were deleted: remove them from this post", { n: gone.length }) });
+  if (unready.length) shownFlags.push({ hard: true, where: t("Gambar", "Pictures"), msg: t("{n} gambar yang dilampirkan belum siap atau gagal",
+    "{n} attached picture(s) are not finished or failed", { n: unready.length }) });
+  const blocking = hard + (past ? 1 : 0) + (gone.length ? 1 : 0) + (unready.length ? 1 : 0);
 
   function setCaption(lg, plat, v) {
     setText((prev) => ({ ...prev, [lg]: { ...(prev[lg] || {}), [plat]: v } }));
@@ -189,10 +208,10 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
         const lim = (LIMITS[post.stream] || {})[p];
         return (
           <label key={p} className="block">
-            <Label hint={`${v.length}${lim ? ` / ${lim.max}` : ""} ${t("aksara", "characters")}${
+            <Label hint={`${charLen(v)}${lim ? ` / ${lim.max}` : ""} ${t("aksara", "characters")}${
               view !== lang ? ` · ${t("tidak dihantar", "not sent")}` : ""}`}>{PLAT_LABEL[p]}</Label>
             <TextArea rows={p === "threads" ? 4 : 7} value={v} disabled={locked} onChange={(e) => setCaption(view, p, e.target.value)}
-              className={lim && v.length > lim.max ? "border-danger" : ""} />
+              className={lim && charLen(v) > lim.max ? "border-danger" : ""} />
           </label>
         );
       })}
@@ -277,6 +296,9 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
             </li>
           ))}
         </ul>
+        {gone.length > 0 && !locked && <Button size="sm" variant="soft" className="mt-2"
+          onClick={() => setMediaIds((ids) => ids.filter((id) => !gone.includes(id)))}>
+          <Trash2 size={12} /> {t("Buang gambar yang sudah dipadam", "Remove the deleted pictures")}</Button>}
         {post.errors?.scan && <p className="mt-2 text-[12px] text-danger">
           {t("Penerbit menyekat pada {at}", "The publisher blocked it at {at}", { at: stampMYT(post.errors.at) })}: {post.errors.scan.join(" · ")}</p>}
       </div>
@@ -296,7 +318,7 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
       <div className="flex flex-wrap gap-2">
         {!locked && <Button variant="ghost" disabled={busy} onClick={() => write(content(), t("Disimpan.", "Saved."))}><Save size={13} /> {t("Simpan", "Save")}</Button>}
         {post.status !== "approved" && !locked && (
-          <Button disabled={busy || hard > 0 || !date || !slot || past} onClick={() => write({ ...content(), status: "approved" }, t("Diluluskan.", "Approved."))}
+          <Button disabled={busy || blocking > 0 || !date || !slot} onClick={() => write({ ...content(), status: "approved" }, t("Diluluskan.", "Approved."))}
             title={blocking ? t("Selesaikan perkara bertanda ■ dahulu", "Resolve the items marked ■ first")
               : !date || !slot ? t("Pilih tarikh dan slot", "Choose a date and slot") : ""}>
             <Check size={13} /> {t("Luluskan", "Approve")}

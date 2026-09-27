@@ -389,6 +389,20 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         system += SLIDES_RULES.get(stream, SLIDES_RULES["regulab"])
     if want_poster:
         system += POSTER_RULES.get(stream, POSTER_RULES["regulab"])
+    # A retry after a failure part-way (the draft written, then the picture jobs or the idea's own update failed) must
+    # finish THAT draft, not write a second one holding a second slot. The draft's id is noted on the idea the moment
+    # it exists, so the retry finds it.
+    brief0 = idea.get("brief") if isinstance(idea.get("brief"), dict) else {}
+    earlier = str(brief0.get("partial_post_id") or "")
+    still = (store.table(db.POSTS).select("id,status").eq("id", earlier).limit(1).execute().data or []) if earlier else []
+    reuse = bool(still and still[0].get("status") == "draft")
+    if reuse and store.table(db.MEDIA).select("id").eq("post_id", earlier).limit(1).execute().data:
+        # its pictures and slides are already queued from the words written then: writing again would pay the writer
+        # and leave the carousel drawn from words the post no longer carries. Only the idea's own update is missing.
+        store.table(db.IDEAS).update({"status": "drafted", "error": None, "brief": {
+            **{k: v for k, v in brief0.items() if k != "partial_post_id"}, "post_id": earlier, "media_jobs": 0,
+            "written_at": datetime.now(UTC).isoformat()}}).eq("id", idea["id"]).execute()
+        return earlier
     out = llm.chat_json(system, user, max_tokens=5000 if (want_slides or want_poster) else 3500)
     if not out:
         raise IdeaError("the writer did not answer (see the run log); press Cuba lagi")
@@ -417,17 +431,11 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
                             indo_extra=indo_extra)
     post["flags"] = flags
     post["hard_flags"] = compliance.hard_count(flags)
-    # A retry after a failure part-way (the draft written, then the picture jobs or the idea's own update failed) must
-    # finish THAT draft, not write a second one holding a second slot. The draft's id is noted on the idea the moment
-    # it exists, so the retry finds it.
-    brief0 = idea.get("brief") if isinstance(idea.get("brief"), dict) else {}
-    earlier = str(brief0.get("partial_post_id") or "")
-    still = (store.table(db.POSTS).select("id,status").eq("id", earlier).limit(1).execute().data or []) if earlier else []
-    if still and still[0].get("status") == "draft":
+    if reuse:
         post_id = earlier
         store.table(db.POSTS).update({k: v for k, v in post.items() if k not in ("created_by", "date", "slot")}) \
             .eq("id", post_id).eq("status", "draft").execute()
-        has_jobs = bool(store.table(db.MEDIA).select("id").eq("post_id", post_id).limit(1).execute().data)
+        has_jobs = False                   # a draft with jobs already returned above, before the writer was asked
     else:
         post_id = store.table(db.POSTS).insert(post).execute().data[0]["id"]
         has_jobs = False

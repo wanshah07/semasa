@@ -4,6 +4,8 @@
    Positions are CENTRES: Fabric.js 7 anchors objects at their centre. Sizes follow the same rule as the CSS: type and
    badges follow the shorter side (u), positions follow the width and height. */
 
+import { tr } from "./i18n";
+
 export const FONTS = {
   "Playfair Display": [700, 800], Anton: [400], Poppins: [600, 700, 800], "Instrument Sans": [400, 500, 600],
   "JetBrains Mono": [400, 500], Caveat: [700],
@@ -20,33 +22,33 @@ export function fragranceSeed(render, meta, product) {
   const side = layout === "hero" ? (c.side || "left") : "center";
   const layers = [];
   const L = render.layers || {};
-  if (L.scene?.url) layers.push({ kind: "image", role: "bg", url: L.scene.url, cover: true, name: "Latar (babak AI)" });
-  else layers.push({ kind: "image", role: "bg", url: render.url, cover: true, name: "Latar" });
+  if (L.scene?.url) layers.push({ kind: "image", role: "bg", url: L.scene.url, cover: true, name: tr("Latar (babak AI)", "Background (AI scene)") });
+  else layers.push({ kind: "image", role: "bg", url: render.url, cover: true, name: tr("Latar", "Background") });
   if (product?.logo_url) {
     layers.push({ kind: "image", url: product.logo_url, name: "Logo", x: w / 2, top: h * 0.035, height: h * 0.075 });
   } else {
-    layers.push({ kind: "text", name: "Jenama", text: product?.brand || "Valorith", font: "Playfair Display", weight: 700,
+    layers.push({ kind: "text", name: tr("Jenama", "Brand"), text: product?.brand || "Valorith", font: "Playfair Display", weight: 700,
       italic: true, size: u * 0.062, fill: ink, x: w / 2, top: h * 0.03, width: w * 0.8, align: "center", shadow: true });
   }
   if (L.bottle?.url) {
     const glossy = c.surface === "glossy";
     const bh = h * ((layout === "behind" ? 0.70 : 0.64) - (glossy ? 0.1 : 0));
     const bottom = h * (glossy ? 0.17 : 0.06);
-    layers.push({ kind: "image", role: "bottle", url: L.bottle.url, name: "Botol (gambar sebenar)", height: bh,
+    layers.push({ kind: "image", role: "bottle", url: L.bottle.url, name: tr("Botol (gambar sebenar)", "Bottle (real photo)"), height: bh,
       bottomY: h - bottom, side, xLeft: w * 0.10, xRight: w - w * 0.10, x: w / 2, shadow: true });
   }
   if (layout === "hero") {
     const onLeft = side === "right";
     const cx = onLeft ? w * 0.04 + w * 0.25 : w - w * 0.04 - w * 0.25;
-    layers.push({ kind: "text", name: "Tajuk", text: (c.headline || product?.name || "").split(/\s+/).join("\n"),
+    layers.push({ kind: "text", name: tr("Tajuk", "Headline"), text: (c.headline || product?.name || "").split(/\s+/).join("\n"),
       font: "Playfair Display", weight: 800, size: u * 0.16, lineHeight: 0.95, fill: ink, x: cx, top: h * 0.20,
       width: w * 0.5, align: "center", shadow: true, fit: true });
     if (c.tagline) {
-      layers.push({ kind: "text", name: "Slogan", text: c.tagline, font: "Poppins", weight: 700, size: u * 0.034,
+      layers.push({ kind: "text", name: tr("Slogan", "Tagline"), text: c.tagline, font: "Poppins", weight: 700, size: u * 0.034,
         spacing: 320, fill: ink, x: cx, below: "Tajuk", gap: h * 0.018, width: w * 0.5, align: "center", shadow: true });
     }
   } else if (layout === "behind") {
-    layers.push({ kind: "text", name: "Tajuk", text: (c.headline || "").toUpperCase(), font: "Anton", weight: 400,
+    layers.push({ kind: "text", name: tr("Tajuk", "Headline"), text: (c.headline || "").toUpperCase(), font: "Anton", weight: 400,
       size: u * 0.20, lineHeight: 0.92, fill: ink, x: w / 2, top: h * 0.135, width: w * 0.92, align: "center",
       fit: true, under: "Botol (gambar sebenar)" });
   } else {
@@ -54,7 +56,7 @@ export function fragranceSeed(render, meta, product) {
     (c.callouts || []).slice(0, 3).forEach((k, i) => {
       const [x, y, align] = spots[i];
       const cw = w * 0.30;
-      layers.push({ kind: "text", name: `Nota ${i + 1}`, text: `${(k.title || "").toUpperCase()}\n${(k.line || "").toUpperCase()}`,
+      layers.push({ kind: "text", name: tr("Nota {n}", "Note {n}", { n: i + 1 }), text: `${(k.title || "").toUpperCase()}\n${(k.line || "").toUpperCase()}`,
         font: "Poppins", weight: 800, size: u * 0.036, lineHeight: 1.15, fill: ink, x: align === "left" ? x + cw / 2 : x - cw / 2,
         top: y, width: cw, align, shadow: true });
     });
@@ -74,13 +76,13 @@ export function fragranceSeed(render, meta, product) {
       const x = atLeft ? edge + d / 2 + col * (d + gap) : w - edge - d / 2 - (inRow - 1 - col) * (d + gap);
       const rowsTotal = Math.ceil(badges.length / perRow);
       const y = h - h * 0.07 - d / 2 - (rowsTotal - 1 - row) * (d + gap);
-      layers.push({ kind: "badge", name: `Lencana ${i + 1}`, text: b, x, y, d });
+      layers.push({ kind: "badge", name: tr("Lencana {n}", "Badge {n}", { n: i + 1 }), text: b, x, y, d });
     });
     if (badges.some((b) => b.includes("*")) && product?.footnote) {
-      layers.push({ kind: "text", name: "Nota kaki", text: product.footnote.toUpperCase(), font: "Poppins", weight: 700,
+      layers.push({ kind: "text", name: tr("Nota kaki", "Footnote"), text: product.footnote.toUpperCase(), font: "Poppins", weight: 700,
         size: u * 0.0135, spacing: 220, fill: ink, x: atLeft ? w * 0.035 + w * 0.2 : w - w * 0.035 - w * 0.2,
         top: h - h * 0.022 - u * 0.02, width: w * 0.4, align: atLeft ? "left" : "right" });
     }
   }
-  return { width: w, height: h, name: `${product?.name || "Wangian"} · ${c.title || "reka bentuk"}`, layers, accent };
+  return { width: w, height: h, name: `${product?.name || tr("Wangian", "Fragrance")} · ${c.title || tr("reka bentuk", "design")}`, layers, accent };
 }

@@ -38,7 +38,7 @@ from . import db
 from .config import LLMSettings, MediaSettings, SupabaseSettings
 from .llm import LLM
 from .log import get_logger
-from .providers import Generated, Provider, ProviderError
+from .providers import Generated, OutOfTime, Provider, ProviderError
 from .providers.common import fetch_reference
 
 log = get_logger("semasa.media")
@@ -121,9 +121,15 @@ def read_reference(llm: LLM | None, url: str) -> dict[str, Any] | None:
         log.warning("could not load the reference for reading: %s", exc)
         return None
     out = llm.describe_image(READ_SYSTEM, READ_PROMPT, small, small_ct)
-    if not out or not str(out.get("description") or "").strip():
+    if not out:
         return None
-    return out
+    desc = out.get("description")
+    # asked for "4 to 7 sentences", a model may answer with a list of them: one string, or compose_prompt crashed
+    # and every retry paid for the read again
+    desc = " ".join(str(x).strip() for x in desc if str(x).strip()) if isinstance(desc, list) else str(desc or "")
+    if not desc.strip():
+        return None
+    return {**out, "description": desc.strip()}
 
 
 def compose_prompt(row: dict[str, Any], read: dict[str, Any] | None) -> str:
@@ -206,6 +212,12 @@ def reference_ground(store: Any, row_id: str, meta: dict[str, Any], s: MediaSett
     # the old name showed the old picture (and Wan could confirm what he never saw)
     url, path = _store(store, row_id, gen, f"-ground-{datetime.now(UTC).strftime('%d%H%M%S')}")
     meta.update(ground_url=url, ground_path=path, ground_model=gen.model)
+    try:
+        # kept on the row now: a drawing that fails after this reuses the paid picture instead of buying another
+        store.table(db.MEDIA).update({"meta": meta}).eq("id", row_id).execute()
+    except Exception as exc:  # noqa: BLE001 - then the old ground stays too, rather than a row pointing at nothing
+        log.warning("%s: new background not recorded yet (%s)", row_id, str(exc)[:160])
+        return gen.data, "from_ref"
     if old_ground and old_ground != path:
         _drop_files(store, row_id, [old_ground])
     return gen.data, "from_ref"
@@ -402,7 +414,7 @@ def locked_by_post(store: Any, media_id: str) -> dict[str, Any] | None:
 
 
 def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: dict[str, Provider],
-                llm: LLM | None = None) -> bool:
+                llm: LLM | None = None, deadline: float | None = None) -> bool:
     held = locked_by_post(store, row["id"])
     if held:
         # the approved artwork stays exactly as approved: "done" again when its file is still there
@@ -444,6 +456,8 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
         if name not in providers:
             providers[name] = make_provider(name, s)
         provider = providers[name]
+        if hasattr(provider, "deadline"):
+            provider.deadline = deadline        # waits end, and the paid job is cancelled, before GitHub kills the run
         if kind == "video" and not getattr(provider, "video", True):
             # stopped before the still is drawn: a picture made for a video nobody can make is spent for nothing
             raise ProviderError(f"{name} makes pictures only: choose Replicate or OpenAI for a video")
@@ -461,13 +475,25 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
         if mode == "recreate" and not flow_a:
             gen = provider.generate(kind, row["reference_url"], prompt, options)
         else:
-            still = provider.generate_from_text(prompt, options)
-            if kind == "video":
-                still_url, still_path = _store(store, row_id, still, "-still")
+            kept = (row.get("meta") or {}) if kind == "video" else {}
+            if kept.get("still_url"):
+                # the still a failed try already paid for: only the video half is tried again
+                still_url, still_path = kept["still_url"], kept.get("still_path")
                 extra.update(still_url=still_url, still_path=still_path)
                 gen = provider.generate("video", still_url, (row.get("prompt") or prompt), options)
             else:
-                gen = still
+                still = provider.generate_from_text(prompt, options)
+                if kind == "video":
+                    still_url, still_path = _store(store, row_id, still, "-still")
+                    extra.update(still_url=still_url, still_path=still_path)
+                    try:
+                        store.table(db.MEDIA).update({"meta": {**(row.get("meta") or {}), "still_url": still_url,
+                                                               "still_path": still_path}}).eq("id", row_id).execute()
+                    except Exception as exc:  # noqa: BLE001 - a retry then draws the still again, as before
+                        log.warning("%s: still not recorded (%s)", row_id, str(exc)[:160])
+                    gen = provider.generate("video", still_url, (row.get("prompt") or prompt), options)
+                else:
+                    gen = still
         if not gen.data:
             raise ProviderError("provider returned no bytes")
         url, path = _store(store, row_id, gen)
@@ -480,6 +506,11 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
             db.attach_media_to_draft(store, row["post_id"], row_id)
         log.info("%s: done → %s (%d bytes)", row_id, url, len(gen.data))
         return True
+    except OutOfTime as exc:
+        # the run's time, not the job, ran out: back to the queue with the attempt given back
+        log.warning("%s: %s; handed back to the next run", row_id, exc)
+        db.release_media(store, row)
+        return False
     except Exception as exc:  # noqa: BLE001 - the row records it; the run continues
         attempts = int(row.get("attempts") or 0)
         final = isinstance(exc, ProviderError) or attempts >= s.max_attempts
@@ -491,6 +522,19 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
         db.finish_media(store, row_id, status=status, error=msg, provider=row.get("provider"),
                         reference_read=_read_text(read))
         return False
+
+
+STOP_MARGIN = 60           # seconds past MEDIA_RUN_BUDGET a provider may still wait; downloads and uploads come after
+
+
+def need_seconds(row: dict[str, Any], s: MediaSettings) -> int:
+    """The least time left worth starting this job in. Less than that and it is handed back unstarted, since a job
+    GitHub kills mid-way loses its attempt, and at a paid provider keeps running (and billing) with nobody to collect."""
+    if row.get("mode") in ("slides", "clip", "fragrance") or (row.get("provider") or "").lower() == "unsplash":
+        return 120
+    if (row.get("type") or "image") == "video":
+        return min(s.max_wait_video, 900) + 120
+    return min(s.max_wait_image, 300) + 60
 
 
 def main() -> int:
@@ -533,13 +577,17 @@ def main() -> int:
         # pictures first (slides may be drawn on them), the long clips last
         rows.sort(key=lambda r: {"slides": 1, "clip": 2}.get(r.get("mode"), 0))
         deadline = time.monotonic() + max(60, s.run_budget - (time.monotonic() - started))
+        # the last moment a provider may still be WAITING: the run budget plus room for the download, the upload and
+        # the steps after this loop, all inside media.yml's 40-minute job (MEDIA_RUN_BUDGET 1800 → about 35 minutes)
+        stop_waiting = time.time() + (started + s.run_budget + STOP_MARGIN - time.monotonic())
         handed_back = []
         for r in rows:
-            if time.monotonic() > deadline:
+            short = stop_waiting - time.time() < need_seconds(r, s)
+            if time.monotonic() > deadline or short:
                 db.release_media(store, r)          # the next run takes it, with no attempt spent
                 handed_back.append(r)
                 continue
-            done += bool(process_row(store, r, s, providers, llm))
+            done += bool(process_row(store, r, s, providers, llm, deadline=stop_waiting))
         if handed_back:
             log.info("%d job(s) handed back unstarted: the run's time budget (%ds) is spent", len(handed_back), s.run_budget)
         rows = [r for r in rows if r not in handed_back]

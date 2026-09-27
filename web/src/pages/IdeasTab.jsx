@@ -77,7 +77,7 @@ function LateNote({ r }) {
   );
 }
 
-export default function IdeasTab({ ideas, user, brand, onToast, openPost }) {
+export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost }) {
   const { t, lang } = useLang();
   const [composer, setComposer] = useState(false);
   const [filter, setFilter] = useState("open");
@@ -87,7 +87,10 @@ export default function IdeasTab({ ideas, user, brand, onToast, openPost }) {
     const { error } = await supabase.from(TABLES.ideas).update(patch).eq("id", id);
     if (error) onToast(errText(error), "danger"); else { onToast(msg, "ok"); ideas.reload(); }
   }
+  // an idea whose post is approved or out is how the bot knows that news was already written (supabase/019 keeps it)
+  const published = new Set((posts?.rows || []).filter((p) => ["approved", "scheduled", "posted"].includes(p.status) && p.idea_id).map((p) => p.idea_id));
   async function remove(id) {
+    if (!window.confirm(t("Padam idea ini?", "Delete this idea?"))) return;
     const { error } = await supabase.from(TABLES.ideas).delete().eq("id", id);
     if (error) onToast(errText(error), "danger"); else ideas.reload();
   }
@@ -112,7 +115,7 @@ export default function IdeasTab({ ideas, user, brand, onToast, openPost }) {
         <Button size="sm" variant="ghost" onClick={() => update(r.id, { status: "rejected" }, t("Ditolak.", "Rejected."))}>
           {t("Tolak", "Reject")}</Button>
       )}
-      {r.status !== "working" && (
+      {r.status !== "working" && !published.has(r.id) && (
         <Button size="sm" variant="danger" onClick={() => remove(r.id)} title={t("Padam idea", "Delete idea")}><Trash2 size={12} /></Button>
       )}
     </>

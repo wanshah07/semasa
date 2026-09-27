@@ -17,7 +17,7 @@ import requests
 
 from ..config import MediaSettings
 from ..log import get_logger
-from . import Generated, ProviderError
+from . import Generated, OutOfTime, ProviderError, wait_limit
 from .common import download
 
 log = get_logger("semasa.replicate")
@@ -33,6 +33,7 @@ class ReplicateProvider:
         self.s = s
         self.headers = {"Authorization": f"Bearer {s.replicate_token}", "Content-Type": "application/json",
                         "Prefer": "wait=60"}
+        self.deadline: float | None = None      # time.time() by which the run must stop waiting (media_generator)
 
     def generate(self, kind: str, reference_url: str, prompt: str, options: dict[str, Any]) -> Generated:
         if kind == "video":
@@ -78,8 +79,13 @@ class ReplicateProvider:
 
     def _wait(self, pred: dict[str, Any], max_wait: int) -> dict[str, Any]:
         started = time.time()
+        limit, cut = wait_limit(max_wait, self.deadline)
         while pred.get("status") not in ("succeeded", "failed", "canceled"):
-            if time.time() - started > max_wait:
+            if time.time() - started > limit:
+                # a prediction left running keeps billing and its result is lost to the next try, which pays again
+                self._cancel(pred)
+                if cut:
+                    raise OutOfTime(f"Replicate prediction {pred.get('id')} cancelled: the run's time was up")
                 raise TimeoutError(f"Replicate prediction {pred.get('id')} still {pred.get('status')} after {max_wait}s")
             time.sleep(self.s.poll_seconds)
             r = requests.get(pred["urls"]["get"], headers=self.headers, timeout=60)
@@ -88,3 +94,12 @@ class ReplicateProvider:
         if pred["status"] != "succeeded":
             raise ProviderError(f"Replicate {pred['status']}: {str(pred.get('error'))[:300]}")
         return pred
+
+    def _cancel(self, pred: dict[str, Any]) -> None:
+        url = (pred.get("urls") or {}).get("cancel")
+        if not url:
+            return
+        try:
+            requests.post(url, headers=self.headers, timeout=30)
+        except Exception as exc:  # noqa: BLE001 - best effort: the timeout is reported either way
+            log.warning("could not cancel Replicate prediction %s: %s", pred.get("id"), exc)

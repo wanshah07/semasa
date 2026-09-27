@@ -18,7 +18,7 @@ import requests
 
 from ..config import MediaSettings
 from ..log import get_logger
-from . import Generated, ProviderError
+from . import Generated, OutOfTime, ProviderError, wait_limit
 from .common import download, fetch_reference
 
 log = get_logger("semasa.openai")
@@ -33,6 +33,7 @@ class OpenAIProvider:
         self.s = s
         self.base = s.openai_base_url
         self.auth = {"Authorization": f"Bearer {s.openai_key}"}
+        self.deadline: float | None = None      # time.time() by which the run must stop waiting (media_generator)
 
     def generate(self, kind: str, reference_url: str, prompt: str, options: dict[str, Any]) -> Generated:
         ref_bytes, ref_ct, ref_name = fetch_reference(reference_url)
@@ -103,8 +104,11 @@ class OpenAIProvider:
         r.raise_for_status()
         job = r.json()
         started = time.time()
+        limit, cut = wait_limit(self.s.max_wait_video, self.deadline)
         while job.get("status") not in ("completed", "failed", "cancelled", "canceled"):
-            if time.time() - started > self.s.max_wait_video:
+            if time.time() - started > limit:
+                if cut:
+                    raise OutOfTime(f"OpenAI video {job.get('id')} still {job.get('status')}: the run's time was up")
                 raise TimeoutError(f"OpenAI video {job.get('id')} still {job.get('status')} after {self.s.max_wait_video}s")
             time.sleep(self.s.poll_seconds)
             rr = requests.get(f"{self.base}/videos/{job['id']}", headers=self.auth, timeout=60)

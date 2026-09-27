@@ -1,5 +1,5 @@
 import { Film, Image as ImageIcon, Trash2 } from "lucide-react";
-import { TABLES, errText, supabase } from "../lib/SupabaseClient";
+import { BUCKETS, TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { timeAgo } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import Button from "./ui/Button";
@@ -10,7 +10,13 @@ export default function PromptLibrary({ prompts, onUse, onToast }) {
   const { t } = useLang();
   async function remove(p) {
     const { error } = await supabase.from(TABLES.prompts).delete().eq("id", p.id);
-    if (error) onToast(errText(error), "danger"); else prompts.reload();
+    if (error) return onToast(errText(error), "danger");
+    prompts.reload();
+    // its reference picture goes too, unless a job made from this prompt still points at it (a retry reads it again)
+    if (p.reference_path && p.reference_url) {
+      const { data: users, error: e } = await supabase.from(TABLES.media).select("id").eq("reference_url", p.reference_url).limit(1);
+      if (!e && !(users || []).length) await supabase.storage.from(BUCKETS.reference).remove([p.reference_path]);
+    }
   }
   return (
     <Card className="p-5">

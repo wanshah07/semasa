@@ -215,3 +215,31 @@ def test_a_recut_replaces_the_old_clip_in_its_own_draft(talk, monkeypatch):
     media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None)
     assert next(p for p in store.tables["semasa_posts"] if p["id"] == "p9")["media_ids"] == ["c1"]
     assert len(store.tables["semasa_posts"]) == 1                          # no second post
+
+
+def test_whisper_keeps_listening_when_ffmpeg_reports_no_duration(monkeypatch, tmp_path):
+    # review 27 Sep 2026: "Duration: N/A" meant one 10-minute chunk of a two-hour talk
+    from pathlib import Path as _P
+
+    from semasa import video as v
+    monkeypatch.setattr(v, "probe_duration", lambda p: None)
+    monkeypatch.setattr(v, "ffmpeg", lambda: "ffmpeg")
+    sizes = iter([5000, 5000, 5000, 10])
+
+    def fake_run(cmd, **k):
+        _P(cmd[-1]).write_bytes(b"x" * next(sizes))
+
+    class R:
+        status_code = 200
+
+        def __init__(self, n):
+            self.n = n
+
+        def json(self):
+            return {"result": {"segments": [{"start": 1, "end": 2, "text": f"part {self.n}"}]}}
+    calls = []
+    monkeypatch.setattr(v.subprocess, "run", fake_run)
+    monkeypatch.setattr(v.requests, "post", lambda *a, **k: calls.append(1) or R(len(calls)))
+    segs = v.whisper(tmp_path / "src.webm", "acc", "tok")
+    assert len(calls) == 3 and [s["t"] for s in segs] == ["part 1", "part 2", "part 3"]
+    assert segs[-1]["s"] == 1201.0

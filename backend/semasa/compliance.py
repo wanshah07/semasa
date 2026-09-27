@@ -143,7 +143,9 @@ def normalise_slides(raw: Any) -> list[dict[str, Any]]:
         pts = s.get("points")
         if isinstance(pts, str):
             pts = pts.split("\n")
-        points = [_str(p).strip()[:400] for p in (pts if isinstance(pts, list) else []) if _str(p).strip()][:MAX_POINTS]
+        # a point is one line: the page edits points as lines, so "a\nb" stored as one point reads as two there
+        lines = [ln for p in (pts if isinstance(pts, list) else []) for ln in _str(p).split("\n")]
+        points = [ln.strip()[:400] for ln in lines if ln.strip()][:MAX_POINTS]
         body = _str(s.get("body")).strip()
         if body and not points:
             points = [body[:400]]

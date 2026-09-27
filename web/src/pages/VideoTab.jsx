@@ -203,7 +203,11 @@ function VideoCard({ v, user, gens, brand, onToast, reload, openPost }) {
           {v.error && <p className="mt-2 [overflow-wrap:anywhere] rounded-tile bg-danger/5 p-2 text-[12px] text-danger">{v.error}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
             {(v.status === "error" || v.status === "ready") && (
-              <Button size="sm" variant="soft" onClick={() => patch({ status: "new", error: null }, t("Dibaca semula.", "Reading again."))}>
+              <Button size="sm" variant="soft" onClick={() => {
+                if (v.status === "ready" && (v.clips || []).length && !window.confirm(t("Baca semula video ini? Cadangan klip dan suntingan klip di sini diganti dengan yang baharu. Klip yang sudah dipotong dan draf post kekal.",
+                  "Read this video again? The proposed clips and your edits to them here are replaced with new ones. Clips already cut and their draft posts stay."))) return;
+                patch({ status: "new", error: null }, t("Dibaca semula.", "Reading again."));
+              }}>
                 <RotateCcw size={12} /> {t("Baca semula", "Read again")}</Button>
             )}
             {v.status === "ready" && <Button size="sm" variant="ghost" onClick={addClip}><Plus size={12} /> {t("Klip sendiri", "Own clip")}</Button>}
@@ -283,14 +287,22 @@ function ClipCard({ v, c, ytid, user, brand, onToast, jobs, save, openPost, relo
   const stream = v.stream || "regulab";
   const lang = stream === "linkedin" ? "en" : "bm";
   const speaker = c.speaker || v.channel || "";
-  const flags = useMemo(() => scan({ stream, lang, text: { [lang]: Object.fromEntries(platformsFor(stream).map((p) => [p, caption])) },
+  // the same post the worker writes and scans (video.py write_post): its domain decides the fatwa gazette rule
+  const domain = stream === "regulab" ? v.domain || null : null;
+  const flags = useMemo(() => scan({ stream, lang, domain, text: { [lang]: Object.fromEntries(platformsFor(stream).map((p) => [p, caption])) },
     citation: `${speaker}, ${v.title || ""}`, media: [{ type: "video" }] }, brand?.regulab)
-    .filter((f) => f.where.startsWith("Caption") || f.where === "Source"), [caption, stream, lang, speaker, v.title, brand]);
+    .filter((f) => f.where.startsWith("Caption") || f.where === "Source" || (f.where === "Post" && /^fatwa/.test(f.msg))),
+  [caption, stream, lang, domain, speaker, v.title, brand]);
   const hard = flags.filter((f) => f.hard);
-  const latest = jobs.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+  const byNew = jobs.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const latest = byNew[0];
+  // the draft this clip already wrote: a later failed cut must not make the next one write a second draft
+  const postId = byNew.find((j) => j.status === "done" && j.post_id)?.post_id || null;
+  const cutting = latest && (latest.status === "pending" || latest.status === "processing");
   const edited = { ...c, start: s ?? c.start, end: e ?? c.end, hook, caption, frame, captions };
 
   async function cut() {
+    if (cutting) return;
     if (!v.rights) return onToast(t("Rekod hak guna video dahulu.", "Record the video's rights first."), "warn");
     if (timeBad) return onToast(t("Klip mesti {a} hingga {b} saat, di dalam video.", "A clip is {a} to {b} seconds, inside the video.", { a: MIN_CLIP, b: MAX_CLIP }), "warn");
     if (hard.length) return onToast(t("Selesaikan perkara bertanda merah dalam kapsyen dahulu.", "Fix the red items in the caption first."), "warn");
@@ -298,7 +310,7 @@ function ClipCard({ v, c, ytid, user, brand, onToast, jobs, save, openPost, relo
     await save(edited);
     const { error } = await supabase.from(TABLES.media).insert({
       mode: "clip", type: "video", status: "pending", created_by: user.id, prompt: hook || c.title || "",
-      post_id: latest?.post_id && latest?.status === "done" ? latest.post_id : null,
+      post_id: postId,
       meta: { video_id: v.id, clip_id: c.id, start: s, end: e, hook, caption, speaker, title: c.title || "", frame, captions, stream },
     });
     setBusy(false);
@@ -330,7 +342,8 @@ function ClipCard({ v, c, ytid, user, brand, onToast, jobs, save, openPost, relo
       {timeBad && <p className="mt-1 text-[12px] text-danger">{t("Masa m:ss, {a} hingga {b} saat.", "Times as m:ss, {a} to {b} seconds.", { a: MIN_CLIP, b: MAX_CLIP })}</p>}
       <label className="mt-3 block"><Label hint={t("baris pertama di atas video, maksimum 8 perkataan", "first line on the video, at most 8 words")}>{t("Cangkuk", "Hook")}</Label>
         <Input value={hook} onChange={(ev) => setHook(ev.target.value)} maxLength={90} /></label>
-      <label className="mt-3 block"><Label hint={speaker ? t("dikreditkan kepada {s}", "credited to {s}", { s: speaker }) : ""}>{t("Kapsyen post", "Post caption")}</Label>
+      <label className="mt-3 block"><Label hint={postId ? t("draf sudah ditulis: ubah kapsyennya di tab Post", "the draft is written: change its caption in Posts")
+          : speaker ? t("dikreditkan kepada {s}", "credited to {s}", { s: speaker }) : ""}>{t("Kapsyen post", "Post caption")}</Label>
         <TextArea rows={5} value={caption} onChange={(ev) => setCaption(ev.target.value)} maxLength={2200} /></label>
       {flags.length > 0 && (
         <ul className="mt-2 space-y-1 text-[12px]">
@@ -343,8 +356,8 @@ function ClipCard({ v, c, ytid, user, brand, onToast, jobs, save, openPost, relo
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Button size="sm" disabled={busy || !v.rights || timeBad || hard.length > 0} onClick={cut}
-          title={!v.rights ? t("Rekod hak guna dahulu", "Record the rights first") : ""}>
+        <Button size="sm" disabled={busy || cutting || !v.rights || timeBad || hard.length > 0} onClick={cut}
+          title={!v.rights ? t("Rekod hak guna dahulu", "Record the rights first") : cutting ? t("Potongan sebelum ini belum siap", "The last cut is not finished") : ""}>
           {busy ? <Loader2 size={12} className="animate-spin" /> : <Scissors size={12} />} {latest ? t("Potong semula", "Cut again") : t("Luluskan & potong", "Approve & cut")}</Button>
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => save(edited).then((ok) => ok !== false && onToast(t("Disimpan.", "Saved."), "ok"))}>{t("Simpan", "Save")}</Button>
       </div>

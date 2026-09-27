@@ -174,7 +174,21 @@ def telegram(store: Any, token: str, *, timeout: int = 25) -> int:
         params["offset"] = int(state["offset"])
     # getUpdates hands back at most 100 at a time, and Telegram drops what is not fetched within 24 hours: a busy
     # group lost its questions past the first 100. Ask again from the next offset until nothing is left (10 pages).
-    updates: list[dict[str, Any]] = []
+    # Asking for the next page CONFIRMS the one before (Telegram deletes it), so each page is stored and its offset
+    # saved first: storing only after the last page lost every earlier page when a later request or a write failed.
+    from datetime import UTC, datetime
+    exists = bool(got)
+
+    def save() -> None:
+        nonlocal exists
+        state["last_run"] = datetime.now(UTC).isoformat()
+        if exists:
+            store.table("semasa_settings").update({"value": state}).eq("key", "telegram").execute()
+        else:
+            store.table("semasa_settings").insert({"key": "telegram", "value": state}).execute()
+            exists = True
+
+    n = 0
     for _ in range(10):
         r = requests.get(TG_API.format(token=token, method="getUpdates"), params=params, timeout=timeout)
         body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
@@ -182,25 +196,20 @@ def telegram(store: Any, token: str, *, timeout: int = 25) -> int:
             why = body.get("description") or f"HTTP {r.status_code}"
             raise RuntimeError(f"Telegram refused getUpdates: {why}")
         page = body.get("result") or []
-        updates += page
+        if page:
+            questions, replies = parse_telegram(page)
+            n += insert_candidates(store, questions) + apply_replies(store, replies)
+            chats = dict(state.get("chats") or {})
+            for u in page:
+                c = (u.get("message") or {}).get("chat") or {}
+                if c.get("type") in ("group", "supergroup"):
+                    chats[str(c.get("id"))] = str(c.get("title") or "")
+            state.update(offset=max(int(u["update_id"]) for u in page) + 1, chats=chats)
+            save()
         if len(page) < 100:
             break
-        params["offset"] = max(int(u["update_id"]) for u in page) + 1
-    questions, replies = parse_telegram(updates)
-    n = insert_candidates(store, questions) + apply_replies(store, replies)
-    if updates:
-        chats = dict(state.get("chats") or {})
-        for u in updates:
-            c = (u.get("message") or {}).get("chat") or {}
-            if c.get("type") in ("group", "supergroup"):
-                chats[str(c.get("id"))] = str(c.get("title") or "")
-        state.update(offset=max(int(u["update_id"]) for u in updates) + 1, chats=chats)
-    from datetime import UTC, datetime
-    state["last_run"] = datetime.now(UTC).isoformat()
-    if got:
-        store.table("semasa_settings").update({"value": state}).eq("key", "telegram").execute()
-    else:
-        store.table("semasa_settings").insert({"key": "telegram", "value": state}).execute()
+        params["offset"] = state["offset"]
+    save()
     return n
 
 
@@ -233,9 +242,20 @@ def collect(store: Any, *, timeout: int = 25) -> list[dict[str, Any]]:
             log.warning("%-28s faq    FAILED %s", name, err)
 
     def jakim() -> list[dict[str, Any]]:
+        # one section at a time: a section Google Sites renamed or dropped used to fail all eight, every run
         rows: list[dict[str, Any]] = []
+        dead: list[str] = []
         for sec in JAKIM_SECTIONS:
-            rows += parse_jakim(fetch.get(f"{JAKIM_BASE}/{sec}", timeout=timeout).text, sec)
+            try:
+                rows += parse_jakim(fetch.get(f"{JAKIM_BASE}/{sec}", timeout=timeout).text, sec)
+            except Exception as exc:  # noqa: BLE001
+                dead.append(f"{sec} ({type(exc).__name__})")
+        if dead and len(dead) == len(JAKIM_SECTIONS):
+            raise RuntimeError("every section failed: " + ", ".join(dead))
+        if dead:
+            report.append({"name": "JAKIM isu tular · " + ", ".join(dead), "kind": "faq", "ok": False, "items": 0,
+                           "error": "section not read; the others were"})
+            log.warning("JAKIM sections not read: %s", ", ".join(dead))
         return rows
 
     def reddit() -> list[dict[str, Any]]:

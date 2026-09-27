@@ -133,3 +133,63 @@ def test_when_the_picture_reader_fails_the_writer_reads_with_its_own_model(env):
 def test_a_reader_model_alone_changes_the_writers_vision_model(env):
     s = ai_config.llm_settings(LLMSettings.load(), {"image_reader": {"model": "qwen-vl"}})
     assert s.vision_model == "qwen-vl" and not s.vision_key
+
+
+# --- what GitHub says, shown in the page (Wan: "can this part display what in github secret") --------------------
+
+def test_the_github_snapshot_never_carries_a_key(env):
+    import json
+    env.setenv("LLM_FALLBACK_API_KEY", "mireld-secret-key-9876")
+    env.setenv("LLM_FALLBACK_BASE_URL", "https://api.mireld.my/v1")
+    env.setenv("LLM_FALLBACK_MODEL", "mireld-chat")
+    env.setenv("LLM_API_KEY", "rootsys-secret-key-1234")
+    env.setenv("CLOUDFLARE_API_TOKEN", "cf-secret-token-5678")
+    snap = ai_config.github_snapshot(LLMSettings.load(), MediaSettings.load())
+    text = json.dumps(snap)
+    for secret in ("rootsys-secret-key", "mireld-secret-key", "cf-secret-token", "a" * 32):
+        assert secret not in text
+    assert snap["reader"]["key"] == "…1234" and snap["reader"]["model"] == "deepseek"
+    assert snap["reader"]["base_url"] == "https://rootsys.cloud/v1"
+    assert snap["reader"]["fallback"] == {"base_url": "https://api.mireld.my/v1", "model": "mireld-chat",
+                                          "key": "…9876", "blocked": None}
+    cf = snap["image_gen"]["cloudflare"]
+    assert snap["image_gen"]["provider"] == "cloudflare" and cf["key"] == "…5678" and cf["account"] == "…aaaa"
+    assert snap["image_reader"]["model"] == "deepseek"
+
+
+def test_a_short_or_missing_key_says_only_set_or_nothing(env):
+    assert ai_config.key_hint(None) is None and ai_config.key_hint("") is None
+    assert ai_config.key_hint("short-key") == "set"          # 4 of 9 characters would give too much away
+    assert ai_config.key_hint("x" * 11 + "WXYZ") == "…WXYZ"
+
+
+def test_each_workflow_writes_its_own_row_and_the_scrape_has_no_image_slot(env):
+    store = FakeStore(semasa_settings=[{"key": "brand", "value": {"x": 1}}])
+    ai_config.record_github(store, "scrape", LLMSettings.load())
+    ai_config.record_github(store, "media", LLMSettings.load(), MediaSettings.load())
+    ai_config.record_github(store, "media", LLMSettings.load(), MediaSettings.load())   # a second run replaces it
+    rows = {r["key"]: r["value"] for r in store.tables["semasa_settings"]}
+    assert set(rows) == {"brand", "ai_github_scrape", "ai_github_media"}
+    assert "image_gen" not in rows["ai_github_scrape"] and "image_gen" in rows["ai_github_media"]
+    assert rows["ai_github_media"]["at"] and rows["brand"] == {"x": 1}
+
+
+def test_a_failed_record_never_stops_the_run(env):
+    class Broken:
+        def table(self, name):
+            raise RuntimeError("permission denied")
+    ai_config.record_github(Broken(), "media", LLMSettings.load(), MediaSettings.load())   # no exception
+
+
+def test_moving_the_reader_moves_the_picture_model_with_it(env):
+    env.setenv("VISION_MODEL", "deepseek-vl")
+    cfg = {"reader": {"slot": "reader", "provider": "openai", "base_url": "https://api.openai.com/v1",
+                      "model": "gpt-4o-mini", "api_key": "sk-page-key-123456", "key_host": "api.openai.com"}}
+    s = ai_config.llm_settings(LLMSettings.load(), cfg)
+    assert s.base_url == "https://api.openai.com/v1" and s.vision_model == "gpt-4o-mini"   # not rootsys's deepseek-vl
+    # an image-reader model named in the page still wins
+    cfg["image_reader"] = {"slot": "image_reader", "model": "gpt-4.1"}
+    assert ai_config.llm_settings(LLMSettings.load(), cfg).vision_model == "gpt-4.1"
+    # a reader slot that keeps GitHub's endpoint and model leaves GitHub's VISION_MODEL alone
+    same = {"reader": {"slot": "reader", "provider": "openai", "base_url": "", "model": ""}}
+    assert ai_config.llm_settings(LLMSettings.load(), same).vision_model == "deepseek-vl"

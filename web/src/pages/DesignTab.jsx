@@ -149,6 +149,8 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
   }
 
   const results = gens.rows.filter((r) => r.meta?.design);
+  // a design inside an approved, scheduled or posted post cannot be deleted (supabase/017: the database refuses it)
+  const lockedBy = (id) => (posts?.rows || []).find((p) => ["approved", "scheduled", "posted"].includes(p.status) && (p.media_ids || []).includes(id));
   const designs = [["poster", "Poster"], ["card", t("Kad tunggal", "Single card")], ["carousel", "Carousel"]];
 
   return (
@@ -290,7 +292,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
 
       <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
-      <DesignResults rows={results} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} onCanvas={onCanvas} />
+      <DesignResults lockedBy={lockedBy} rows={results} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} onCanvas={onCanvas} />
     </main>
   );
 }
@@ -399,7 +401,7 @@ function ReviewPanel({ row, mine, onToast, gens }) {
   );
 }
 
-function DesignResults({ rows, user, gens, onToast, designs, onCanvas }) {
+function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy = () => null }) {
   const { t } = useLang();
   if (!rows.length) {
     return <p className="rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">
@@ -463,7 +465,10 @@ function DesignResults({ rows, user, gens, onToast, designs, onCanvas }) {
                   <span className="ml-auto flex gap-1">
                     {r.status === "error" && <Button size="sm" variant="soft" title={t("Cuba lagi", "Try again")}
                       onClick={() => guard(async () => { await gens.requeue(r.id); onToast(t("Dimasukkan semula ke giliran.", "Put back in the queue."), "ok"); })}><RotateCcw size={12} /></Button>}
-                    {r.status !== "processing" && <Button size="sm" variant="danger" title={t("Padam", "Delete")}
+                    {lockedBy(r.id) && <span className="self-center text-[11px] text-muted"
+                      title={t("Kembalikan post itu ke draf untuk memadam reka bentuk ini.", "Put that post back to draft to delete this design.")}>
+                      {t("Dalam post yang diluluskan", "In an approved post")}</span>}
+                    {r.status !== "processing" && !lockedBy(r.id) && <Button size="sm" variant="danger" title={t("Padam", "Delete")}
                       onClick={() => guard(async () => { if (window.confirm(t("Padam reka bentuk ini?", "Delete this design?"))) { await gens.remove(r); onToast(t("Dipadam.", "Deleted."), "info"); } })}><Trash2 size={12} /></Button>}
                   </span>
                 )}

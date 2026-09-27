@@ -8,6 +8,7 @@ import { useLang } from "../lib/i18n";
 import IdeaComposer from "../components/IdeaComposer";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
+import { TextArea } from "../components/ui/Field";
 import ViewToggle, { TBODY, TD, TH, THEAD, TR, TableFrame, useView } from "../components/ViewToggle";
 
 // GitHub starts scheduled runs late or skips them when it is busy; the database dispatch
@@ -32,6 +33,32 @@ function StatusChip({ r }) {
     <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2.5 py-1 text-[11px] font-semibold ${st.cls}`}>
       <Icon size={12} className={st.spin ? "animate-spin" : ""} /> {t(...st.label)}
     </span>
+  );
+}
+
+/* A failed idea can be given a note before it is tried again. The worker's refusal for news that already has a post
+   says "add a note saying what the new post should say, then Cuba lagi", and without this there was nowhere to add
+   one, so Cuba lagi met the same refusal every time. */
+function NoteRetry({ r, onSave }) {
+  const { t } = useLang();
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState(r.note || "");
+  const [busy, setBusy] = useState(false);
+  if (!open) {
+    return <Button size="sm" variant="ghost" onClick={() => { setNote(r.note || ""); setOpen(true); }}>
+      {r.note ? t("Ubah nota", "Edit note") : t("Tambah nota", "Add a note")}</Button>;
+  }
+  return (
+    <div className="mt-2 w-full space-y-2">
+      <TextArea rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1500} autoFocus
+        placeholder={t("Apa yang post baharu patut katakan (contoh: susulan, apa yang berubah)", "What the new post should say (for example: a follow-up, what changed)")} />
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" disabled={busy || !note.trim()} onClick={async () => {
+          setBusy(true); await onSave(note.trim()); setBusy(false); setOpen(false);
+        }}><RotateCcw size={12} /> {t("Simpan nota & cuba lagi", "Save note & try again")}</Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>{t("Batal", "Cancel")}</Button>
+      </div>
+    </div>
   );
 }
 
@@ -77,6 +104,9 @@ export default function IdeasTab({ ideas, user, brand, onToast, openPost }) {
       {(r.status === "error" || r.status === "rejected") && (
         <Button size="sm" variant="soft" onClick={() => update(r.id, { status: "new", error: null }, t("Dihantar semula ke bot.", "Sent back to the bot."))}>
           <RotateCcw size={12} /> {t("Cuba lagi", "Try again")}</Button>
+      )}
+      {r.status === "error" && (
+        <NoteRetry r={r} onSave={(note) => update(r.id, { note, status: "new", error: null }, t("Nota disimpan, dihantar semula ke bot.", "Note saved, sent back to the bot."))} />
       )}
       {(r.status === "new" || r.status === "error") && (
         <Button size="sm" variant="ghost" onClick={() => update(r.id, { status: "rejected" }, t("Ditolak.", "Rejected."))}>

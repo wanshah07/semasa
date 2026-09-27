@@ -388,8 +388,29 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         return False
 
 
+def locked_by_post(store: Any, media_id: str) -> dict[str, Any] | None:
+    """The approved, scheduled or posted post this picture is already in. A job redrawn after that (a Design
+    "render again" queued while the post was a draft, then the post approved before the runner got to it) would change
+    artwork Wan had already approved: the worker is service_role, so 017's page gate never sees it."""
+    try:
+        got = (store.table(db.POSTS).select("id,status").contains("media_ids", [media_id])
+               .in_("status", ["approved", "scheduled", "posted"]).limit(1).execute().data or [])
+        return got[0] if got else None
+    except Exception as exc:  # noqa: BLE001 - unsure means go ahead, as before
+        log.info("could not check %s against approved posts: %s", media_id, str(exc)[:120])
+        return None
+
+
 def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: dict[str, Provider],
                 llm: LLM | None = None) -> bool:
+    held = locked_by_post(store, row["id"])
+    if held:
+        # the approved artwork stays exactly as approved: "done" again when its file is still there
+        db.finish_media(store, row["id"], status="done" if row.get("generated_media_url") else "error",
+                        provider=row.get("provider"),
+                        error=f"this picture is in a post that is already {held['status']}: nothing was redrawn. "
+                              "Put the post back to draft, then run it again.")
+        return False
     if row.get("mode") == "slides":
         return process_slides(store, row, s, llm)
     if row.get("mode") == "fragrance":
@@ -478,8 +499,10 @@ def main() -> int:
     from . import ai_config
     cfg = ai_config.read(store)                          # the AI settings Wan saved in the page (016), over GitHub's
     log.info(ai_config.describe(cfg))
-    s = ai_config.media_settings(MediaSettings.load(), cfg)
-    llm = LLM(ai_config.llm_settings(LLMSettings.load(), cfg))
+    github_media, github_llm = MediaSettings.load(), LLMSettings.load()
+    ai_config.record_github(store, "media", github_llm, github_media)   # shown under Settings → AI settings
+    s = ai_config.media_settings(github_media, cfg)
+    llm = LLM(ai_config.llm_settings(github_llm, cfg))
     from . import faq, ideas, trial
     trial_on = trial.start(store, llm, "media")         # the page's "Try Mireld for one run": Mireld is asked first
 

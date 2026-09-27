@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, ImagePlus, Info, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { LIMITS, hardCount, normaliseSlides, platformsFor, scan, scanMedia } from "../lib/compliance";
@@ -36,11 +36,26 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
 
   // Reset only when this post changes in the database (another save, the worker attaching slides), never on a poll
   // that hands back the same row: that used to wipe an unsaved caption every 90 seconds.
+  // A change to the SAME post takes a field from the database only where nothing was typed into it since the last
+  // copy: the worker attaching a picture or slides bumps updated_at, and that used to throw away an unsaved caption.
+  // New pictures are added to the ones being edited, so an attach is never lost either.
+  const base = useRef(null);
   useEffect(() => {
     const l = post.lang || (post.stream === "linkedin" ? "en" : "bm");
-    setText(post.text || {}); setLang(l); setView(l); setCitation(post.citation || "");
-    setDate(post.date || ""); setSlot(post.slot || ""); setMediaIds(post.media_ids || []);
-    setSlideRows(toRows(post.slides));
+    const fresh = { text: post.text || {}, lang: l, citation: post.citation || "", date: post.date || "",
+      slot: post.slot || "", mediaIds: post.media_ids || [], slideRows: toRows(post.slides) };
+    const old = base.current;
+    base.current = { id: post.id, ...fresh };
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const take = (k, setter, now) => { if (!old || old.id !== post.id || same(now, old[k])) setter(fresh[k]); };
+    take("text", setText, text); take("citation", setCitation, citation);
+    take("date", setDate, date); take("slot", setSlot, slot); take("slideRows", setSlideRows, slideRows);
+    if (!old || old.id !== post.id || same(lang, old.lang)) { setLang(l); setView(l); }
+    if (!old || old.id !== post.id || same(mediaIds, old.mediaIds)) setMediaIds(fresh.mediaIds);
+    else {
+      const added = fresh.mediaIds.filter((id) => !old.mediaIds.includes(id) && !mediaIds.includes(id));
+      if (added.length) setMediaIds((ids) => [...ids, ...added]);
+    }
   }, [post.id, post.updated_at]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setLook(lastLook()); }, [post.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -58,7 +73,7 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
   // `slides` exists once supabase/006_slides.sql has run; before that the editor says so and saves nothing new
   const hasSlides = post.slides !== undefined;
   const slides = normaliseSlides(fromRows(slideRows));
-  const slideJobs = mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id)
+  const slideJobs = mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   const pictures = mediaRows.filter((m) => m.post_id === post.id && m.type === "image" && m.mode !== "slides" && m.status === "done"
     && m.generated_media_url);
@@ -75,9 +90,17 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
     media: chosen.filter((m) => m.status === "done").map(scanMedia) };
   const flags = useMemo(() => scan(current, reg, reg.schedule, indoExtra), [JSON.stringify(current), reg, indoExtra]); // eslint-disable-line
   const hard = hardCount(flags);
+  // a slot more than 45 minutes gone is never sent (publisher.py LATE_GRACE): approving it would only read "✓ checks
+  // passed" while nothing goes out. A page-only block, not saved in hard_flags, because it depends on the clock.
+  const past = ["draft", "approved", "rejected"].includes(post.status) && !!(date && slot)
+    && Date.parse(`${date}T${slot}:00+08:00`) < Date.now() - 45 * 60_000;
   const shownFlags = !date || !slot
-    ? [...flags, { hard: false, where: t("Kedudukan", "Position"), msg: "no date and slot yet: the publisher skips a post without one" }]
-    : flags;
+    ? [...flags, { hard: false, where: t("Kedudukan", "Position"), msg: t("belum ada tarikh dan slot: penerbit melangkau post tanpanya",
+      "no date and slot yet: the publisher skips a post without one") }]
+    : past ? [...flags, { hard: true, where: t("Kedudukan", "Position"), msg: t("slot ini sudah lepas: penerbit tidak menghantar post yang lewat lebih 45 minit. Pilih tarikh atau slot baharu.",
+      "this slot has passed: the publisher never sends a post more than 45 minutes late. Pick a new date or slot.") }]
+      : flags;
+  const blocking = hard + (past ? 1 : 0);
 
   function setCaption(lg, plat, v) {
     setText((prev) => ({ ...prev, [lg]: { ...(prev[lg] || {}), [plat]: v } }));
@@ -126,7 +149,8 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
 
   // one carousel per post: a set chosen here replaces the post's earlier set, in the same place
   function chooseSet(id) {
-    const old = new Set(mediaRows.filter((m) => m.mode === "slides").map((m) => m.id));
+    // the carousel's own sets only: a Design-tab poster is also mode "slides" and must stay on the post
+    const old = new Set(mediaRows.filter((m) => m.mode === "slides" && !m.meta?.design).map((m) => m.id));
     setMediaIds((ids) => {
       const at = Math.max(0, ids.findIndex((x) => old.has(x)));
       const kept = ids.filter((x) => !old.has(x));
@@ -137,11 +161,13 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
   }
 
   async function queuePicture() {
-    if (!newPic.trim()) return;
+    if (!newPic.trim() || busy) return;
+    setBusy(true);                      // a double click queued two jobs
     const { error } = await supabase.from(TABLES.media).insert({
       mode: "prompt", type: "image", prompt: newPic.trim(), status: "pending", created_by: user.id,
       post_id: post.id, idea_id: post.idea_id, meta: { alt: "", flow: "B" },
     });
+    setBusy(false);
     if (error) return onToast(errText(error), "danger");
     setNewPic(""); onToast(t("Gambar baharu dalam giliran.", "New picture queued."), "ok"); onChanged();
   }
@@ -213,7 +239,7 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
         {!locked && (
           <div className="mt-2 flex gap-2">
             <Input value={newPic} onChange={(e) => setNewPic(e.target.value)} placeholder={t("Jana gambar lain: terangkan gambarnya…", "Generate another picture: describe it…")} />
-            <Button type="button" size="sm" variant="soft" onClick={queuePicture} disabled={!newPic.trim()}><ImagePlus size={12} /> {t("Jana", "Generate")}</Button>
+            <Button type="button" size="sm" variant="soft" onClick={queuePicture} disabled={!newPic.trim() || busy}><ImagePlus size={12} /> {t("Jana", "Generate")}</Button>
           </div>
         )}
         {!locked && (
@@ -240,9 +266,9 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
       )}
 
       <div className="rounded-tile border border-line p-3">
-        <p className={`flex items-center gap-1.5 text-sm font-medium ${hard ? "text-danger" : "text-ok"}`}>
-          {hard ? <AlertTriangle size={14} /> : <Check size={14} />}
-          {hard ? t("{n} perkara menyekat kelulusan", ["{n} item blocking approval", "{n} items blocking approval"], { n: hard }) : t("Semakan lulus", "Checks passed")}
+        <p className={`flex items-center gap-1.5 text-sm font-medium ${blocking ? "text-danger" : "text-ok"}`}>
+          {blocking ? <AlertTriangle size={14} /> : <Check size={14} />}
+          {blocking ? t("{n} perkara menyekat kelulusan", ["{n} item blocking approval", "{n} items blocking approval"], { n: blocking }) : t("Semakan lulus", "Checks passed")}
         </p>
         <ul className="mt-2 space-y-1 text-[12px]">
           {shownFlags.map((f, i) => (
@@ -270,8 +296,8 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
       <div className="flex flex-wrap gap-2">
         {!locked && <Button variant="ghost" disabled={busy} onClick={() => write(content(), t("Disimpan.", "Saved."))}><Save size={13} /> {t("Simpan", "Save")}</Button>}
         {post.status !== "approved" && !locked && (
-          <Button disabled={busy || hard > 0 || !date || !slot} onClick={() => write({ ...content(), status: "approved" }, t("Diluluskan.", "Approved."))}
-            title={hard ? t("Selesaikan perkara bertanda ■ dahulu", "Resolve the items marked ■ first")
+          <Button disabled={busy || hard > 0 || !date || !slot || past} onClick={() => write({ ...content(), status: "approved" }, t("Diluluskan.", "Approved."))}
+            title={blocking ? t("Selesaikan perkara bertanda ■ dahulu", "Resolve the items marked ■ first")
               : !date || !slot ? t("Pilih tarikh dan slot", "Choose a date and slot") : ""}>
             <Check size={13} /> {t("Luluskan", "Approve")}
           </Button>
@@ -297,7 +323,8 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
             {myLog.map((l) => (
               <li key={l.id} className="flex gap-2">
                 <Info size={12} className="mt-0.5 shrink-0" />
-                <span>{stampMYT(l.at)} · <b>{l.channel}</b> · {l.action === "dry_run" ? t("cubaan kering: akan dihantar", "dry run: would send") : l.action}
+                <span>{stampMYT(l.at)} · <b>{l.channel}</b> · {({ dry_run: t("cubaan kering: akan dihantar", "dry run: would send"), sent: t("dihantar", "sent"),
+                  error: t("ralat", "error"), blocked: t("disekat", "blocked") })[l.action] || l.action}
                   {l.detail?.why ? `: ${[].concat(l.detail.why).join("; ")}` : ""}
                   {l.detail?.would_send ? ` ${t("pada {at}, {c} aksara, {m} gambar", "at {at}, {c} characters, {m} pictures", {
                     at: stampMYT(l.detail.would_send.due_at), c: l.detail.chars, m: l.detail.would_send.media.length })}` : ""}</span>

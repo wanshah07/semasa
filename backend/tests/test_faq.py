@@ -407,3 +407,51 @@ def test_a_reddit_page_that_is_not_a_feed_is_a_failure_not_zero(monkeypatch):
     report = {r["name"]: r for r in faq_sources.collect(_store())}
     assert report["FAQ · Reddit r/malaysia"]["ok"] is False and "without a feed" in report["FAQ · Reddit r/malaysia"]["error"]
     assert report["FAQ · JAKIM Isu Tular Halal"]["ok"] is True                         # one source never stops another
+
+
+def test_a_full_telegram_page_is_stored_before_the_next_is_asked_for(monkeypatch):
+    """Asking for page 2 confirms page 1 and Telegram deletes it. Page 1 must already be stored with its offset, or a
+    failure on page 2 loses those updates for good."""
+    page1 = [_tg(i, 10 + i, f"{Q_TEXT} ({i})") for i in range(1, 101)]
+    calls = []
+
+    class Resp:
+        status_code = 200
+        headers = {"content-type": "application/json"}
+
+        def __init__(self, result):
+            self.result = result
+
+        def json(self):
+            return {"ok": True, "result": self.result}
+
+    def get(url, params, timeout):
+        calls.append(dict(params))
+        if len(calls) == 2:
+            raise TimeoutError("Telegram timed out")
+        return Resp(page1)
+    import requests
+    monkeypatch.setattr(requests, "get", get)
+    store = _store()
+    with pytest.raises(TimeoutError):
+        faq_sources.telegram(store, "TOKEN")
+    assert calls[1]["offset"] == 101
+    assert len(store.tables["semasa_faqs"]) >= 1                        # page 1's questions were kept
+    assert store.tables["semasa_settings"][0]["value"]["offset"] == 101    # and the next run starts after them
+
+
+def test_one_dead_jakim_section_keeps_the_other_seven(monkeypatch):
+    from types import SimpleNamespace
+    dead = faq_sources.JAKIM_SECTIONS[0]
+
+    def get(url, timeout=25):
+        if url.endswith("/" + dead):
+            raise RuntimeError("404 Not Found")
+        return SimpleNamespace(text="<html></html>")
+    monkeypatch.setattr(faq_sources.fetch, "get", get)
+    monkeypatch.setattr(faq_sources, "parse_jakim", lambda html, sec: [{"source_key": f"jakim:{sec}", "status": "candidate",
+                                                                       "source_kind": "auto", "raw_question": sec}])
+    got = [r for r in faq_sources.collect(_store(), timeout=1) if "JAKIM" in r["name"]]
+    ok = [r for r in got if r["ok"]]
+    assert ok and ok[0]["items"] == len(faq_sources.JAKIM_SECTIONS) - 1
+    assert any(not r["ok"] and dead in r["name"] for r in got)

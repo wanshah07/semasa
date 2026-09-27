@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Loader2, Search } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
-import { useLang } from "../lib/i18n";
+import { tr, useLang } from "../lib/i18n";
 import Button from "./ui/Button";
 import { Input, Select } from "./ui/Field";
 
@@ -53,7 +53,7 @@ export async function pickUnsplash(row, photoId) {
     .update({ status: "pending", attempts: 0, error: null, meta: { ...(row.meta || {}), pick: photoId } })
     .eq("id", row.id).select("id");
   if (error) throw new Error(errText(error));
-  if (!data?.length) throw new Error("the search was not updated (0 rows): it may have been deleted");
+  if (!data?.length) throw new Error(tr("Carian tidak dikemas kini (0 baris): ia mungkin telah dipadam.", "The search was not updated (0 rows): it may have been deleted."));
 }
 
 export function UnsplashCredit({ row, className = "" }) {

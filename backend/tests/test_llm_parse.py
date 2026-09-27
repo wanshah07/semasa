@@ -86,3 +86,10 @@ def test_unparsable_answer_is_logged_with_its_opening(monkeypatch, caplog):
 ])
 def test_gateway_markers_are_unwrapped_outside_strings_only(answer, expected):
     assert _parse_json(answer) == expected
+
+
+def test_an_object_followed_by_a_note_with_braces():
+    from semasa.llm import _parse_json
+    reply = '```json\n{"items": [{"i": 0, "summary": "x"}]}\n```\nNote: each {i} is the index of the item.'
+    assert _parse_json(reply) == {"items": [{"i": 0, "summary": "x"}]}
+    assert _parse_json('Sure: {"ok": True} (see {ref})') == {"ok": True}

@@ -381,4 +381,12 @@ def _parse_json(text: str) -> Any:
                 return json.loads(attempt)
             except json.JSONDecodeError as exc:
                 last = exc
+    # The object followed by prose that has a brace of its own ("Note: each {i} is the index"): the first-to-last-brace
+    # cut above then ends in the note and fails. Read exactly one object from the first brace and ignore what follows.
+    if start != -1:
+        for attempt in (cleaned[start:], _pythonish_to_json(cleaned[start:])):
+            try:
+                return json.JSONDecoder().raw_decode(attempt)[0]
+            except json.JSONDecodeError as exc:
+                last = exc
     raise ValueError(f"not a JSON object ({last})")

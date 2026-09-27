@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ShieldOff } from "lucide-react";
 import { fadeUp } from "../design/motion";
@@ -29,10 +29,15 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
   const [view, setView] = useView("post");
   const mediaById = useMemo(() => Object.fromEntries(media.rows.map((m) => [m.id, m])), [media.rows]);
 
+  // Move to the opened post's tab once per opening. It used to run on every change to posts.rows, so any live update
+  // (the worker attaching a picture) threw Wan back from the tab he had just chosen, and closed an editor with unsaved
+  // typing. A post opened before it has loaded (fresh from an idea) is still followed when it arrives.
+  const followed = useRef(null);
   useEffect(() => {
-    if (!focusId) return;
+    if (!focusId) { followed.current = null; return; }
+    if (followed.current === focusId) return;
     const p = posts.rows.find((r) => r.id === focusId);
-    if (p) setStatus(bucketOf(p));
+    if (p) { setStatus(bucketOf(p)); followed.current = focusId; }
   }, [focusId, posts.rows]);
   // the post opened from a row or a card is edited at the top of the list: bring it into view
   useEffect(() => {
@@ -92,7 +97,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
       <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2 text-xs">
           {tabsOf(t).map(([v, l]) => (
-            <button key={v} onClick={() => setStatus(v)}
+            <button key={v} onClick={() => setStatus(v)} aria-pressed={status === v}
               className={`rounded-pill px-3 py-1.5 ${status === v ? "bg-ink text-bg" : "bg-surface-2 text-muted"}`}>
               {l} {counts[v] ? `· ${counts[v]}` : ""}
             </button>

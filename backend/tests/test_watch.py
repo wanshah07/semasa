@@ -410,3 +410,65 @@ def test_a_dead_writer_is_asked_once_not_once_per_batch():
     rows = [{"source": "NPRA", "title": f"t{i}", "summary": "s"} for i in range(200)]
     watch.annotate(Dead(), rows)
     assert Dead.calls == 1 and rows[0]["summary"] == "s"
+
+
+def test_a_halal_portal_item_keeps_its_key_when_a_new_one_is_listed_above_it():
+    def page(*titles):
+        links = "".join(f'<a href="/news?page_title=News&content_id=X1">{t} 2{i}/09/2026 chevron_right</a>'
+                        for i, t in enumerate(titles, 1))
+        return f"<html><body>{links}</body></html>"
+    today = date(2026, 9, 27)
+    day1 = {g["title"]: g["url"] for g in watch.parse_halal_portal(page("Recall of product Alpha", "Recall of product Bravo"),
+                                                                    "https://www.halal.gov.my/", today)}
+    listed = page("Recall of product Charlie", "Recall of product Alpha", "Recall of product Bravo")
+    day2 = {g["title"]: g["url"] for g in watch.parse_halal_portal(listed, "https://www.halal.gov.my/", today)}
+    assert day2["Recall of product Alpha"] == day1["Recall of product Alpha"]
+    assert day2["Recall of product Bravo"] == day1["Recall of product Bravo"]
+    assert day2["Recall of product Charlie"] not in day1.values()
+
+
+def test_an_item_stored_under_the_old_bare_key_is_not_stored_again(monkeypatch):
+    bare = "https://www.halal.gov.my/news?page_title=News&content_id=X1"
+    rows = [{"section": "regulatory", "source": "Portal Halal Malaysia", "title": "Recall of product Alpha",
+             "url": bare + "#recall-of-product-alpha", "published_at": date(2026, 9, 21), "kind": "News", "snippet": ""},
+            {"section": "regulatory", "source": "Portal Halal Malaysia", "title": "Recall of product Charlie",
+             "url": bare + "#recall-of-product-charlie", "published_at": date(2026, 9, 27), "kind": "News", "snippet": ""}]
+    monkeypatch.setattr(watch, "collect", lambda timeout=30, competitors=None: ([dict(r) for r in rows], []))
+    store = FakeStore(semasa_watch=[{"url": bare, "title": "Recall of product Alpha"}], semasa_settings=[], semasa_log=[])
+    res = watch.sweep(store, Writer())
+    assert res["new"] == 1
+    assert {r["url"] for r in store.tables["semasa_watch"]} == {bare, bare + "#recall-of-product-charlie"}
+
+
+def test_a_failed_pubmed_record_call_keeps_the_regulators_and_retries_next_scrape(monkeypatch):
+    def boom(url, timeout):
+        if "esummary" in url:
+            raise RuntimeError("503 Service Unavailable")
+        return json.dumps({"esearchresult": {"idlist": ["1", "2"]}})
+    monkeypatch.setattr(watch, "_eutils", boom)
+    items, report = watch.pubmed(5)
+    assert items == [] and any(r["name"] == "PubMed · records" and not r["ok"] for r in report)
+
+    def crash(*a, **k):
+        raise RuntimeError("whole sweep died")
+    monkeypatch.setattr(watch, "sweep", crash)
+    store = FakeStore(semasa_settings=[{"key": "watch", "value": {"last_run": "2026-09-20T00:00:00+00:00"}, "updated_at": "x"}],
+                      semasa_log=[])
+    note = watch.run_if_due(store, Writer(), now=datetime(2026, 9, 27, tzinfo=UTC))
+    assert "sweep failed" in note
+    value = store.tables["semasa_settings"][0]["value"]
+    assert value["last_run"] == "2026-09-20T00:00:00+00:00" and value["running_at"] is None   # not counted as done
+
+
+def test_a_sweep_under_way_is_not_started_twice(monkeypatch):
+    now = datetime(2026, 9, 27, 3, 0, tzinfo=UTC)
+    store = FakeStore(semasa_settings=[{"key": "watch", "updated_at": "x", "value": {
+        "force": True, "running_at": (now - timedelta(minutes=10)).isoformat()}}], semasa_log=[])
+    monkeypatch.setattr(watch, "sweep", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not sweep")))
+    assert "already running" in watch.run_if_due(store, Writer(), now=now, only_forced=True)
+    assert store.tables["semasa_settings"][0]["value"]["force"] is True       # the page's request is kept
+
+
+def test_the_writers_no_as_text_hides_the_item():
+    assert watch._yes("false") is False and watch._yes("No") is False and watch._yes(False) is False
+    assert watch._yes(True) is True and watch._yes("true") is True and watch._yes("yes") is True

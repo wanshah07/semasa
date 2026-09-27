@@ -234,9 +234,23 @@ def requeue_stale(db: Client, table: str, *, working: str, back: str, cutoff: st
                                  "error": f"the {what} stopped its runner {max_attempts} times (too long or too big); "
                                           "not tried again. Change it or delete it."})
          .eq("status", working).lt(column, cutoff).gte("attempts", max_attempts).execute())
-        res = (db.table(table).update({"status": back, "error": "runner stopped before finishing; queued again"})
-               .eq("status", working).lt(column, cutoff).execute())
-        return len(res.data or [])
+        back_patch = {"status": back, "error": "runner stopped before finishing; queued again"}
+        try:
+            res = db.table(table).update(back_patch).eq("status", working).lt(column, cutoff).execute()
+            return len(res.data or [])
+        except Exception as exc:  # noqa: BLE001
+            # One row the database refuses (before 018: an idea whose draft was approved meanwhile) failed the whole
+            # statement and left EVERY stuck row stuck. Row by row, the others still go back.
+            log.info("recovering %s rows one by one (%s)", table, str(exc)[:120])
+            stuck = db.table(table).select("id").eq("status", working).lt(column, cutoff).limit(200).execute().data or []
+            done = 0
+            for r in stuck:
+                try:
+                    db.table(table).update(back_patch).eq("id", r["id"]).eq("status", working).execute()
+                    done += 1
+                except Exception as one:  # noqa: BLE001
+                    log.warning("could not recover %s %s: %s", what, r["id"], str(one)[:160])
+            return done
     except Exception as exc:  # noqa: BLE001 - recovery must never stop the run
         log.warning("could not recover stuck %s rows: %s", table, exc)
         return 0

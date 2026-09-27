@@ -33,6 +33,7 @@ create trigger semasa_posts_posted_at before insert or update on public.semasa_p
 -- 3. never write a published story again
 create or replace function public.semasa_ideas_no_rewrite() returns trigger
 language plpgsql security definer set search_path = public as $$
+-- ONE body in every file that defines this function (010, 018).
 declare
   v_post record;
 begin
@@ -41,6 +42,12 @@ begin
      where idea_id = new.id and status in ('approved', 'scheduled', 'posted')
      order by created_at desc limit 1;
     if found then
+      -- The worker putting back an idea its dead runner left `working` (db.requeue_stale): the draft it had written was
+      -- approved since, so the idea is done. Raising here failed the whole recovery and left every stuck idea stuck.
+      if auth.uid() is null and old.status = 'working' then
+        new.status := 'drafted'; new.error := null;
+        return new;
+      end if;
       raise exception 'semasa: this idea already has a % post (%): it is not written again', v_post.status,
         coalesce(nullif(v_post.hook, ''), v_post.date::text, v_post.id::text)
         using hint = 'Start a new idea with a different angle if a follow-up is wanted.';

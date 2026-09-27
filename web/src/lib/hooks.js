@@ -75,7 +75,10 @@ export function useTrends({ limit = 240, everyMs = 600_000 } = {}) {
 }
 
 /** media_generations, live: realtime for status flips, a poll as the safety net. */
-export function useGenerations({ limit = 300, enabled = true } = {}) {
+/* `need`: ids a post points at. The newest `limit` rows are loaded, and any needed row older than that is fetched by
+   id, so an older post keeps its pictures (without it, once 300 newer jobs existed, an older post showed no picture,
+   read "instagram needs an image" and could not be approved). */
+export function useGenerations({ limit = 300, enabled = true, need = "" } = {}) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
   const loadRef = useRef(null);
@@ -84,8 +87,17 @@ export function useGenerations({ limit = 300, enabled = true } = {}) {
     if (!supabase || !enabled) return;
     const { data, error: e } = await supabase.from(TABLES.media).select("*")
       .order("created_at", { ascending: false }).limit(limit);
-    if (e) setError(errText(e)); else { setRows(data ?? []); setError(""); }
-  }, [limit, enabled]);
+    if (e) { setError(errText(e)); return; }
+    let all = data ?? [];
+    const have = new Set(all.map((r) => r.id));
+    const missing = need ? need.split(",").filter((id) => id && !have.has(id)) : [];
+    for (let i = 0; i < missing.length; i += 100) {
+      const { data: more, error: e2 } = await supabase.from(TABLES.media).select("*").in("id", missing.slice(i, i + 100));
+      if (e2) break;                        // the newest rows still show; the next poll tries again
+      all = all.concat(more ?? []);
+    }
+    setRows(all); setError("");
+  }, [limit, enabled, need]);
   loadRef.current = load;
 
   useEffect(() => {

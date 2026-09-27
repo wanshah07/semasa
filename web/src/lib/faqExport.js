@@ -30,7 +30,8 @@ export const qOf = (r, lang) => (lang === "en" ? r.question_en : r.question_bm) 
 export const aOf = (r, lang) => (lang === "en" ? r.answer_en : r.answer_bm) || r.answer_bm || r.raw_answer || "";
 
 const slug = (s) => String(s || "faq").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "faq";
-const today = () => new Date().toISOString().slice(0, 10);
+// the date in Malaysia: toISOString() is UTC, so from 00:00 to 07:59 MYT every export was named yesterday
+const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kuala_Lumpur" }).format(new Date());
 export const fileName = (label, ext, extra = "") => `faq-${slug(label)}${extra ? `-${extra}` : ""}-${today()}.${ext}`;
 
 export function download(blob, name) {

@@ -228,3 +228,32 @@ def test_a_failure_keeps_the_provider_the_job_was_given(monkeypatch):
     chosen = {**row, "id": "r10", "provider": "openai"}
     media_generator.process_row(None, chosen, _settings(), {})
     assert writes["r10"]["provider"] == "openai"
+
+
+def test_a_picture_in_an_approved_post_is_never_redrawn():
+    """A Design "render again" queued while the post was a draft, then the post approved before the runner got to it:
+    the worker must not change artwork Wan already approved."""
+    from semasa import media_generator as mg
+    from tests.fakestore import FakeStore
+    row = {"id": "m1", "mode": "slides", "type": "image", "status": "processing", "provider": None,
+           "generated_media_url": "https://x/old.png", "meta": {"design": "poster"}}
+    store = FakeStore(media_generations=[dict(row)],
+                      semasa_posts=[{"id": "p1", "status": "approved", "media_ids": ["m1"]}])
+    called = []
+    orig = mg.process_slides
+    mg.process_slides = lambda *a, **k: called.append(1) or True
+    try:
+        assert mg.process_row(store, row, None, {}) is False
+    finally:
+        mg.process_slides = orig
+    assert not called
+    m = store.tables["media_generations"][0]
+    assert m["status"] == "done" and m["generated_media_url"] == "https://x/old.png" and "already approved" in m["error"]
+    # the same job on a draft goes ahead
+    store.tables["semasa_posts"][0]["status"] = "draft"
+    mg.process_slides = lambda *a, **k: called.append(1) or True
+    try:
+        assert mg.process_row(store, row, None, {}) is True
+    finally:
+        mg.process_slides = orig
+    assert called == [1]

@@ -76,6 +76,11 @@ def llm_settings(s: LLMSettings, cfg: dict[str, dict[str, Any]]) -> LLMSettings:
         elif host_of(base) != host_of(s.base_url):
             # a new endpoint with no key of its own: the GitHub key may go there only if the host is allowed
             change["blocked"] = blocked_host(base)
+        # The picture step asks the writer's endpoint for vision_model. Moving the reader to another host or model left
+        # that at GitHub's VISION_MODEL, a model the new host does not have, so every picture read failed. The reader's
+        # own model reads pictures unless the image-reader slot names one (below).
+        if host_of(base) != host_of(s.base_url) or (r.get("model") and r["model"] != s.model):
+            change["vision_model"] = r.get("model") or s.model
     v = cfg.get("image_reader")
     if v:
         provider = v.get("provider") or "openai"
@@ -124,6 +129,61 @@ def media_settings(s: MediaSettings, cfg: dict[str, dict[str, Any]]) -> MediaSet
         if r.get("edit_model"):
             change["replicate_image_model"] = r["edit_model"]
     return dataclasses.replace(s, **change)
+
+
+# --- what GitHub says, for the page ------------------------------------------------------------------------------
+# Wan, 27 Sep 2026: "can this part display what in github secret". A GitHub secret can never be read back, by the page
+# or by anyone, so each run writes down what IT loaded from GitHub before the page's own settings were laid over it:
+# providers, endpoints and models in full (they are Variables, not secrets), and for a key only whether it is set and
+# its last 4 characters, the same rule the page keeps for its own keys. One settings row per workflow, because
+# scrape.yml and media.yml are handed different secrets.
+GITHUB_KEY = {"scrape": "ai_github_scrape", "media": "ai_github_media"}
+
+
+def key_hint(key: str | None) -> str | None:
+    """"…abcd" for a key long enough that 4 characters give nothing away, "set" for a short one, None when unset."""
+    if not key:
+        return None
+    return "…" + key[-4:] if len(key) >= 12 else "set"
+
+
+def github_snapshot(llm: LLMSettings, media: MediaSettings | None = None) -> dict[str, Any]:
+    """What this run loaded from GitHub, with every secret reduced to key_hint. Never a key, never an account ID."""
+    snap: dict[str, Any] = {
+        "reader": {
+            "provider": llm.provider, "base_url": llm.base_url, "model": llm.model,
+            "key": key_hint(llm.api_key), "blocked": llm.blocked or None,
+            "fallback": {"base_url": llm.fallback_base_url or None, "model": llm.fallback_model or None,
+                         "key": key_hint(llm.fallback_key), "blocked": llm.fallback_blocked or None},
+        },
+        "image_reader": {"provider": llm.provider, "base_url": llm.base_url, "model": llm.vision_model,
+                         "key": key_hint(llm.api_key), "note": "the writer's own endpoint (VISION_MODEL)"},
+    }
+    if media is not None:
+        m = media
+        snap["image_gen"] = {
+            "provider": m.provider,
+            "cloudflare": {"account": key_hint(m.cloudflare_account_id), "key": key_hint(m.cloudflare_token),
+                           "model": m.cloudflare_t2i_model, "edit_model": m.cloudflare_edit_model,
+                           "size": m.cloudflare_size},
+            "openai": {"base_url": m.openai_base_url, "key": key_hint(m.openai_key), "model": m.openai_image_model},
+            "replicate": {"key": key_hint(m.replicate_token), "model": m.replicate_t2i_model,
+                          "edit_model": m.replicate_image_model},
+        }
+    return snap
+
+
+def record_github(store: Any, workflow: str, llm: LLMSettings, media: MediaSettings | None = None) -> None:
+    """Save this run's GitHub snapshot for the Settings tab. A failure here never stops the run."""
+    import os
+    from datetime import UTC, datetime
+    value = {**github_snapshot(llm, media), "at": datetime.now(UTC).isoformat(),
+             "run": os.environ.get("GITHUB_RUN_ID") or None}
+    try:
+        store.table("semasa_settings").upsert({"key": GITHUB_KEY[workflow], "value": value},
+                                              on_conflict="key").execute()
+    except Exception as exc:  # noqa: BLE001 - only the page's display depends on it
+        log.info("GitHub AI settings not recorded for the page (%s)", str(exc)[:160])
 
 
 def describe(cfg: dict[str, dict[str, Any]]) -> str:

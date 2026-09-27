@@ -71,7 +71,7 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
         </div>
       </Card>
 
-      <AiSettings onToast={onToast} />
+      <AiSettings onToast={onToast} github={{ scrape: settings.ai_github_scrape, media: settings.ai_github_media }} />
 
       <MireldTrial settings={settings} save={save} onToast={onToast} />
 
@@ -368,9 +368,52 @@ const PROVIDER_LABEL = { openai: "OpenAI-compatible", anthropic: "Anthropic", cl
 const ENDPOINT_HINT = {
   openai: "https://…/v1", anthropic: "https://api.anthropic.com", cloudflare: "Account ID (32)", replicate: "",
 };
+/* What GitHub's secrets and variables say, as the worker last loaded them (backend/semasa/ai_config.py record_github).
+   A GitHub secret can never be read back, so a key shows only as set, with its last 4 characters, like the page's own. */
+const hostPath = (u) => (u || "").replace(/^https:\/\//, "");
+function githubOf(github, slot) {
+  const runs = [github?.media, github?.scrape].filter((x) => x && typeof x === "object" && x[slot]);
+  if (slot !== "image_gen") runs.sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
+  const run = runs[0];
+  return run ? { ...run[slot], at: run.at, from: run === github?.media ? "media" : "scrape" } : null;
+}
+function githubFacts(slot, g, t) {
+  const key = (k) => (k ? `${t("kunci", "key")} ${k}` : t("tiada kunci", "no key"));
+  if (slot === "image_gen") {
+    const p = g.provider, c = g[p] || {};
+    if (p === "cloudflare") return [PROVIDER_LABEL[p], `${t("akaun", "account")} ${c.account || t("tiada", "none")}`, c.model, `${t("suntingan", "edit")} ${c.edit_model}`, `token ${c.key || t("tiada", "none")}`];
+    if (p === "openai") return [PROVIDER_LABEL[p], hostPath(c.base_url), c.model, key(c.key)];
+    return [PROVIDER_LABEL[p] || p, c.model, `${t("suntingan", "edit")} ${c.edit_model}`, `token ${c.key || t("tiada", "none")}`];
+  }
+  const facts = [PROVIDER_LABEL[g.provider] || g.provider, hostPath(g.base_url), g.model, key(g.key)];
+  return slot === "image_reader" ? [t("alamat penulis", "the writer's endpoint"), ...facts.slice(1)] : facts;
+}
+function GithubNow({ slot, github, overridden }) {
+  const { t } = useLang();
+  const g = githubOf(github, slot);
+  if (!g) {
+    return <p className="text-[11px] text-muted" data-github-now="none">{t(
+      "GitHub: belum dilaporkan. Dipaparkan selepas larian seterusnya (media setiap 15 minit, scrape tiga kali sehari).",
+      "GitHub: not reported yet. Shown after the next run (media every 15 minutes, scrape three times a day).")}</p>;
+  }
+  const fb = slot === "reader" && g.fallback?.base_url ? g.fallback : null;
+  return (
+    <div className="rounded-tile border border-line bg-surface px-2.5 py-1.5 text-[11px] text-muted" data-github-now={slot}>
+      <p className="break-words"><span className="font-medium text-ink">{t("Dalam GitHub", "In GitHub")}:</span>{" "}
+        {githubFacts(slot, g, t).filter(Boolean).join(" · ")}</p>
+      {fb && <p className="break-words">{t("Sandaran", "Backup")}: {hostPath(fb.base_url)} · {fb.model || "—"} · {fb.key ? `${t("kunci", "key")} ${fb.key}` : t("tiada kunci", "no key")}</p>}
+      {g.blocked && <p className="text-danger">{g.blocked}</p>}
+      {fb?.blocked && <p className="text-danger">{fb.blocked}</p>}
+      <p>{t("Dibaca oleh larian {w}, {at}.", "Read by the {w} run, {at}.", { w: g.from, at: stampMYT(g.at) })}{" "}
+        {overridden ? t("Medan yang anda isi di bawah mengatasi ini; medan kosong masih guna GitHub.", "The fields you filled below win over this; empty fields still use GitHub.")
+                    : t("Inilah yang digunakan sekarang.", "This is what is in use now.")}</p>
+    </div>
+  );
+}
+
 const blankAi = (slot) => ({ provider: slot === "image_gen" ? "cloudflare" : "openai", base_url: "", model: "", edit_model: "", key: "" });
 
-function AiSettings({ onToast }) {
+function AiSettings({ onToast, github }) {
   const { t } = useLang();
   const [rows, setRows] = useState({});
   const [forms, setForms] = useState({});
@@ -449,6 +492,7 @@ function AiSettings({ onToast }) {
                 {r ? t("dari laman ini", "from this page") : "GitHub"}{r?.key_hint ? ` · ${t("kunci", "key")} ${r.key_hint}` : ""}
               </span>
             </div>
+            <GithubNow slot={slot} github={github} overridden={!!r} />
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="block"><Label>{t("Penyedia", "Provider")}</Label>
                 <Select className="w-full" value={f.provider} onChange={(v) => set(slot, "provider", v)}

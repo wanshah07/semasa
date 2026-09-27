@@ -131,7 +131,9 @@ def main() -> int:
     from . import ai_config
     cfg = ai_config.read(store)                          # the AI settings Wan saved in the page (016), over GitHub's
     log.info(ai_config.describe(cfg))
-    llm_settings = ai_config.llm_settings(LLMSettings.load(), cfg)
+    github_llm = LLMSettings.load()
+    ai_config.record_github(store, "scrape", github_llm)   # what GitHub says, shown under Settings → AI settings
+    llm_settings = ai_config.llm_settings(github_llm, cfg)
     git_sha = os.environ.get("GITHUB_SHA")
     if recently_ran(store):
         # GitHub's schedule and Supabase's clock (009) fire at the same minutes, so each slot ran twice back to back:

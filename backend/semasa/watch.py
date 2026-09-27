@@ -49,6 +49,7 @@ log = get_logger("semasa.watch")
 WATCH = "semasa_watch"
 KEY = "watch"                       # semasa_settings row: last run, the page's "sweep now", the last report
 EVERY = timedelta(hours=23)         # the scrape runs every 8 h; the first run after 23 h does the daily sweep
+RUNNING_STALE = timedelta(minutes=45)   # longer than any job may run (media 40 min): a claim older than this is dead
 MAX_AGE = timedelta(days=45)        # a notice older than this on its own page is not "latest"
 # Kept compact (Wan, 26 Sep 2026: "make the data compact to save the storage"). Each window is at least as long as the
 # window the source is read over, so nothing pruned can come back as "new" on the next sweep.
@@ -145,7 +146,9 @@ def parse_npra(html: str, base: str, today: date) -> list[dict[str, Any]]:
 
 def parse_halal_portal(html: str, base: str, today: date) -> list[dict[str, Any]]:
     """Portal Halal Malaysia: 'TITLE dd/mm/yyyy chevron_right' links, Announcement and News. The portal gives several
-    news items the SAME address, so a duplicate address is told apart by its title."""
+    news items the SAME address, so every item's key carries its title. It used to be added from the second item on
+    the page only, so a key depended on the item's position that day: a new recall listed above the others took the
+    old first item's key (and was never stored) while that one came back as new (and was stored twice)."""
     soup = BeautifulSoup(html, "lxml")
     out, seen = [], set()
     for a in soup.find_all("a", href=True):
@@ -161,8 +164,7 @@ def parse_halal_portal(html: str, base: str, today: date) -> list[dict[str, Any]
         if key in seen or len(title) < 12:
             continue
         seen.add(key)
-        if any(o["url"] == url for o in out):
-            url += "#" + re.sub(r"[^a-z0-9]+", "-", title.lower())[:60]
+        url += "#" + re.sub(r"[^a-z0-9]+", "-", title.lower())[:60]
         kind = "Announcement" if "page_title=Announcement" in a["href"] else "News"
         try:
             when = date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
@@ -466,7 +468,12 @@ def pubmed(timeout: int = 30, competitors: Any = None) -> tuple[list[dict[str, A
                            "error": f"{type(exc).__name__}: {str(exc)[:160]}"})
     if not ids:
         return [], report
-    return papers(ids, timeout, rivals), report
+    try:
+        return papers(ids, timeout, rivals), report
+    except Exception as exc:  # noqa: BLE001 - a failed record call used to throw away the whole sweep, regulators too
+        report.append({"name": "PubMed · records", "ok": False, "items": 0,
+                       "error": f"{type(exc).__name__}: {str(exc)[:160]}"})
+        return [], report
 
 
 def papers(ids: dict[str, str], timeout: int = 30, rivals: list[tuple[str, list[str]]] | None = None) -> list[dict[str, Any]]:
@@ -602,7 +609,7 @@ def annotate(llm: Any, rows: list[dict[str, Any]], batch: int = 10) -> None:
             r["why"] = str(ans.get("why") or "").strip()[:WHY_KEEP] or None
             dom = str(ans.get("domain") or "").strip().lower()
             r["domain"] = dom if dom in DOMAINS else r.get("domain")
-            r["relevant"] = bool(ans.get("relevant", True))
+            r["relevant"] = _yes(ans.get("relevant", True))
             r["summary_source"] = "llm"
 
 
@@ -668,7 +675,15 @@ def sweep(store: Any, llm: Any, timeout: int = 30, competitors: Any = None) -> d
     have: set[str] = set()
     for i in range(0, len(urls), 100):
         have |= {x["url"] for x in (store.table(WATCH).select("url").in_("url", urls[i:i + 100]).execute().data or [])}
-    new = [r for r in rows if r["url"] not in have]
+    # An item stored before its key carried a title sits at the bare address: the same title there is the same item.
+    bare = {r["url"].split("#", 1)[0]: None for r in rows if "#" in r["url"] and r["url"] not in have}
+    old_titles: set[tuple[str, str]] = set()
+    keys = list(bare)
+    for i in range(0, len(keys), 100):
+        for x in store.table(WATCH).select("url,title").in_("url", keys[i:i + 100]).execute().data or []:
+            old_titles.add((x["url"], (x.get("title") or "").strip().lower()))
+    new = [r for r in rows if r["url"] not in have
+           and (r["url"].split("#", 1)[0], (r.get("title") or "").strip().lower()) not in old_titles]
     for r in new:
         r.setdefault("summary", r.get("snippet"))
     annotate(llm, new)
@@ -703,6 +718,11 @@ def run_if_due(store: Any, llm: Any, *, timeout: int = 30, now: datetime | None 
             return ""
         if not value.get("force") and last and now - last < EVERY:
             return f"Regulatory/publication: next sweep after {(last + EVERY).strftime('%Y-%m-%d %H:%M')} UTC"
+        running = _parse_iso(value.get("running_at"))
+        if running and now - running < RUNNING_STALE:
+            # a sweep is under way (the scrape's, or an earlier "sweep now"): a second one doubled the writer's cost.
+            # A "sweep now" pressed meanwhile stays asked for, and the next media run after this one takes it.
+            return "Regulatory/publication: a sweep is already running"
         claim = store.table(db.SETTINGS).update({"value": {**value, "running_at": now.isoformat()}}).eq("key", KEY)
         if row.get("updated_at"):
             claim = claim.eq("updated_at", row["updated_at"])
@@ -717,10 +737,17 @@ def run_if_due(store: Any, llm: Any, *, timeout: int = 30, now: datetime | None 
         failed = [s for s in result["sources"] if not s["ok"]]
         if failed:
             note += "; failed: " + ", ".join(f"{s['name']} ({s['error']})" for s in failed)
+        swept = True
     except Exception as exc:  # noqa: BLE001
         result, note = {"error": f"{type(exc).__name__}: {str(exc)[:300]}"}, f"Regulatory/publication: sweep failed: {exc}"
+        swept = False
     fresh = dict((store.table(db.SETTINGS).select("value").eq("key", KEY).execute().data or [{}])[0].get("value") or {})
-    fresh.update(last_run=now.isoformat(), force=False, running_at=None, result={**result, "at": now.isoformat()})
+    # A sweep that crashed does not count as the day's sweep: the next scrape tries again, not one 23 hours later.
+    # A "sweep now" pressed while this one ran is kept for the next run; the one this sweep answered is cleared.
+    fresh.update(force=bool(fresh.get("force")) and not value.get("force"), running_at=None,
+                 result={**result, "at": now.isoformat()})
+    if swept:
+        fresh["last_run"] = now.isoformat()
     store.table(db.SETTINGS).update({"value": fresh}).eq("key", KEY).execute()
     try:
         db.log_event(store, "info", "scrape", "watch.sweep", note[:200], detail={"new": result.get("new")})
@@ -728,6 +755,14 @@ def run_if_due(store: Any, llm: Any, *, timeout: int = 30, now: datetime | None 
         pass
     log.info(note)
     return note
+
+
+def _yes(v: Any) -> bool:
+    """The writer's yes/no. Some gateways hand back "false" or "no" as text, and bool("false") is True, so an item the
+    writer called irrelevant was shown anyway."""
+    if isinstance(v, str):
+        return v.strip().lower() not in ("false", "no", "0", "tidak", "")
+    return bool(v)
 
 
 def _parse_iso(v: Any) -> datetime | None:

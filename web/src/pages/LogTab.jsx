@@ -55,6 +55,7 @@ const TITLE_EN = [
   [/^(Scrape finished: .*?) · AI tidak digunakan/, (m) => `${m[1]} · AI not used`],
   [/^(\d+) calon FAQ baharu daripada /, (m) => `${m[1]} new FAQ candidate${m[1] === "1" ? "" : "s"} from `],
   [/^(\d+) isu yang tidak dijadikan idea dibuang \(lebih (\d+) jam\)/, (m) => `${m[1]} issue${m[1] === "1" ? "" : "s"} not made into ideas dropped (older than ${m[2]} hours)`],
+  [/^Klip video siap dan draf ditulis: /, "Video clip ready and draft written: "], [/^Video dibaca: /, "Video read: "],
   [/^Idea baharu: /, "New idea: "], [/^Draf ditulis: /, "Draft written: "], [/^Idea gagal: /, "Idea failed: "],
   [/^Idea ditolak: /, "Idea rejected: "], [/^Idea dihantar semula: /, "Idea resent: "], [/^Idea dipadam: /, "Idea deleted: "],
   [/^Draf baharu: /, "New draft: "], [/^Post diluluskan: /, "Post approved: "], [/^Post ditolak: /, "Post rejected: "],

@@ -116,13 +116,19 @@ an account), and no Google button.
    **Before that, `015_canvas.sql`** (the Kanvas editor, 26 Sep 2026, see *Kanvas* below). It creates `semasa_canvas`, which
    holds the designs made in the editor. Safe to run again, and safe in the shared project. The check at the bottom
    prints `1 | 1 | 1`.
-   **Last, `017_review_fixes.sql`** (the full review, 27 Sep 2026, see *Behaviour worth knowing*). A picture used by
+   **Then `017_review_fixes.sql`** (the full review, 27 Sep 2026, see *Behaviour worth knowing*). A picture used by
    an approved, scheduled or posted post cannot be changed or deleted from the page (put the post back to draft
    first); an approved post that gains a hard flag goes back to draft; the page can no longer move `posted_at` or
    `archived_at`; the two public bucket listings are gone (a reference picture is readable only by its uploader; a
    generated one still opens by its link); the worker's own settings writes are no longer logged as a person's; and
    the clock gets one canonical body. Safe to run again, and safe in the shared project. The check at the bottom
    prints `1 | 1 | 1`.
+   **Last, `018_delete_and_recovery.sql`** (27 Sep 2026, found by the second review, after 017 went live). 017's picture
+   lock also refused the update Postgres makes itself when an idea, a saved prompt or a draft is deleted, so those
+   deletes failed whenever their picture sat in an approved post; now only a change to the picture itself is refused.
+   And the worker's recovery of ideas left `working` by a dead runner no longer fails for all of them when one already
+   has an approved post: that one is marked drafted. Only two trigger functions are replaced (010 and 017 carry the
+   same bodies now). Safe to run again, and safe in the shared project. The check at the bottom prints `1 | 1 | 1`.
    **Before that, `014_fragrance.sql`** (the Wangian tab, 26 Sep 2026, see *Wangian* below). It creates `semasa_fragrances`
    (the list of our perfumes) and allows media jobs of mode `fragrance`. Safe to run again, and safe in the shared
    project. The check at the bottom prints `1 | 1 | 1`.
@@ -696,6 +702,13 @@ AI** has three slots, each with a provider, an endpoint, a model and a key:
   its own `VISION_MODEL`, so a broken reader never costs a job.
 - **Every run says what it used** in the log (`AI settings from the page: reader=openai:model +key, …`), never a key.
 - Cloudflare's endpoint field is the **Account ID** (32 letters and digits); Replicate has one address, so it has none.
+- **Each slot shows what GitHub says** (Wan, 27 Sep 2026: *"can this part display what in github secret"*). A GitHub
+  secret can never be read back, by the page or by anyone, so every scrape and media run writes down what it loaded
+  from GitHub before the page's settings were laid over it (`ai_config.record_github`, settings rows
+  `ai_github_scrape` and `ai_github_media`, readable by uploaders only). Providers, endpoints and models are shown in
+  full, since they are Variables; a secret shows only as set, with its last four characters (a key shorter than 12
+  characters shows just "set"). The Cloudflare Account ID is treated as a secret too. The line under each slot says
+  which run read it and when, and whether this page's own setting overrides it. Until a run has reported, it says so.
 
 ## Card or table
 
@@ -847,6 +860,22 @@ Found and fixed in the full review (27 Sep 2026):
   shows the old picture from cache.
 - **A short banner** (under 600 px tall) is drawn at 1000 px and scaled down, so its words are never squeezed.
 - **Archiving keeps any picture a post still uses**, and a post whose picture was deleted gets a hard flag.
+- **The worker never redraws a picture that is already in an approved, scheduled or posted post.** A Design "render
+  again" queued while the post was a draft, with the post approved before the runner got to it, would have changed
+  approved artwork; the job now ends with the old artwork kept and a note to put the post back to draft.
+- **The post editor keeps what you typed** when the worker attaches a picture or slides to the same post: a field
+  takes the database's value only if it was not edited since, and a newly attached picture is added to the ones being
+  edited. The status tabs no longer jump back to the open post's tab on every live update.
+- **An old post keeps its pictures** in the page: pictures a post points at are loaded even when 300 newer jobs exist.
+- **A slot that has passed cannot be approved** (the publisher never sends a post more than 45 minutes late).
+- **A failed idea can be given a note** and tried again (the "already has a post" refusal asks for one).
+- **Regulatory & publication:** a failed PubMed record call no longer throws away the whole day's sweep; a sweep that
+  crashed is tried again at the next scrape; a second "sweep now" during a sweep waits; Portal Halal items that share
+  one address keep their own key whatever their position on the page; the writer's "not relevant" given as text is
+  honoured.
+- **Telegram:** each page of updates is stored before the next is asked for (asking confirms the page before).
+  **JAKIM:** one dead section no longer loses the other seven.
+- **Changing the reader in Tetapan AI moves the picture reading with it** unless the image-reader slot names a model.
 - **Kanvas:** fonts are loaded before the first draw; undo also undoes a resize; closing or leaving with unsaved
   changes asks first, and pictures uploaded for a design that was never saved are removed; a design opened from
   someone else is saved as your own copy; the font size box takes effect on Enter or when you leave it.

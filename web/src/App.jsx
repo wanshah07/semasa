@@ -253,9 +253,11 @@ export default function App() {
   const allowed = canUpload === true;
   const trends = useTrends();
   const { toasts, push } = useToasts();
-  const gens = useGenerations({ enabled: allowed });
-  const ideas = useTable(TABLES.ideas, { enabled: allowed });
   const posts = useTable(TABLES.posts, { enabled: allowed, limit: 400 });
+  // every picture a post points at, so an old post's pictures load even when 300 newer jobs exist
+  const needMedia = useMemo(() => [...new Set(posts.rows.flatMap((p) => p.media_ids || []))].sort().join(","), [posts.rows]);
+  const gens = useGenerations({ enabled: allowed, need: needMedia });
+  const ideas = useTable(TABLES.ideas, { enabled: allowed });
   const prompts = useTable(TABLES.prompts, { enabled: allowed, realtime: false });
   const log = useTable(TABLES.publishLog, { enabled: allowed, order: "at", limit: 400, realtime: false });
   // the two big lists stream live changes only while their tab is open; elsewhere a slow poll is enough

@@ -422,19 +422,25 @@ function CategoryCards({ cats, rows, view, searching, only, open, setOpen, onSub
 
 function EditFaq({ row, cats, onClose, onToast, onDone }) {
   const { t, lang } = useLang();
-  const [f, setF] = useState({
+  const initial = () => ({
     question_bm: row.question_bm, answer_bm: row.answer_bm, question_en: row.question_en, answer_en: row.answer_en,
     category: row.category, subcategory: row.subcategory || "", instrument: row.instrument || "",
     needs_check: !!row.needs_check, check_note: row.check_note || "", tags: (row.tags || []).join(", "),
   });
+  const [f, setF] = useState(initial);
+  const [opened] = useState(initial);   // what the form showed when it opened: only what Wan changed is written back
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? (e.target.type === "checkbox" ? e.target.checked : e.target.value) : e }));
   const subs = cats.find((c) => c.key === f.category)?.subs || [];
   async function save() {
-    const patch = { ...f, subcategory: f.subcategory === (row.subcategory || "") || subs.includes(f.subcategory) ? f.subcategory : "",
+    const all = { ...f, subcategory: f.subcategory === (row.subcategory || "") || subs.includes(f.subcategory) ? f.subcategory : "",
       tags: f.tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean).slice(0, 5),
-      check_note: f.needs_check ? f.check_note : "", status: "ready" };
+      check_note: f.needs_check ? f.check_note : "" };
+    // only the fields Wan changed: the sorter or a rewrite may have changed the others while the form was open, and
+    // writing the whole opened copy back used to undo that
+    const patch = { status: "ready" };
+    for (const k of Object.keys(all)) if (JSON.stringify(f[k]) !== JSON.stringify(opened[k]) || (k === "check_note" && !f.needs_check && opened.check_note)) patch[k] = all[k];
     // a category chosen by hand stays put: the bot neither rewrites nor re-sorts it
-    if (f.category !== row.category || f.subcategory !== (row.subcategory || "")) patch.category_by = "wan";
+    if (f.category !== opened.category || f.subcategory !== opened.subcategory) patch.category_by = "wan";
     const { error } = await supabase.from(TABLES.faqs).update(patch).eq("id", row.id);
     if (error) return onToast(errText(error), "danger");
     onToast(t("Disimpan.", "Saved."), "ok"); onDone?.(); onClose();

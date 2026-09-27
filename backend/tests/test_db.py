@@ -85,3 +85,31 @@ def test_a_one_job_run_respects_the_batch_size():
     store = FakeStore(media_generations=[{"id": f"r{i}", "status": "pending", "created_at": f"2026-09-26T10:00:0{i}+00:00",
                                           "attempts": 0} for i in range(4)])
     assert [r["id"] for r in db.claim_pending(store, 2, "r3")] == ["r3", "r0"]
+
+
+def test_one_refused_stuck_row_does_not_keep_the_others_stuck():
+    """Before 018, the database refused to put back an idea whose draft had been approved, and that one refusal failed
+    the whole recovery statement, so every stuck idea stayed `working` for ever."""
+    from semasa import db
+    from tests.fakestore import FakeStore
+    old = "2026-09-24T00:00:00+00:00"
+    store = FakeStore(semasa_ideas=[{"id": i, "status": "working", "attempts": 1, "updated_at": old} for i in ("A", "B", "C")])
+    real_table = store.table
+
+    def table(name):
+        q = real_table(name)
+        run = q.execute
+
+        def execute():
+            if q.op == "update" and (q.payload or {}).get("status") == "new":
+                hit = [r for r in store.tables[name] if all(f(r) for f in q.filters)]
+                if any(r["id"] == "B" for r in hit):
+                    raise RuntimeError("semasa: this idea already has a approved post")
+            return run()
+        q.execute = execute
+        return q
+    store.table = table
+    n = db.requeue_stale(store, "semasa_ideas", working="working", back="new", cutoff="2026-09-25T00:00:00+00:00",
+                         max_attempts=3, what="idea")
+    status = {r["id"]: r["status"] for r in store.tables["semasa_ideas"]}
+    assert n == 2 and status == {"A": "new", "B": "working", "C": "new"}

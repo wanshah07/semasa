@@ -1,6 +1,7 @@
 /* One client for the whole page. The anon key is public by design; Row Level Security
    (supabase/002_rls.sql) is what protects the data, not secrecy of this key. */
 import { createClient } from "@supabase/supabase-js";
+import { tr } from "./i18n";
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -27,5 +28,11 @@ export const BUCKETS = { reference: "semasa-reference", generated: "semasa-gener
 /** Surface a PostgREST/Storage error as one readable line. */
 export function errText(error) {
   if (!error) return "";
-  return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+  const text = [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+  // the database's own refusals (supabase/017_review_fixes.sql) are written in English: say them in the page's language
+  if (/belongs to an approved post/.test(text)) {
+    return tr("Gambar ini milik post yang sudah diluluskan: kembalikan post itu ke draf dahulu, kemudian ubah atau padam gambar.",
+      "This picture belongs to an approved post: put that post back to draft first, then change or delete the picture.");
+  }
+  return text;
 }

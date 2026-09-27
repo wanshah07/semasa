@@ -20,11 +20,18 @@
 -- 1 ---------------------------------------------------------------------------------------------------------------
 create or replace function public.semasa_media_gate() returns trigger
 language plpgsql security definer set search_path = public as $$
+-- ONE body in every file that defines this function (017, 018).
 declare
   v_post uuid;
+  v_links text[] := array['idea_id', 'prompt_id', 'post_id', 'created_by', 'updated_at'];
 begin
   if auth.uid() is null then
     return coalesce(new, old);          -- the worker (service_role) finishes jobs; its own gate is attach_media_to_draft
+  end if;
+  -- Deleting an idea, a prompt, a draft or a user clears the link on this row (on delete set null). That is not a change
+  -- to the picture, and refusing it made those deletes fail for any idea or prompt whose picture sat in an approved post.
+  if tg_op = 'UPDATE' and (to_jsonb(new) - v_links) = (to_jsonb(old) - v_links) then
+    return new;
   end if;
   select id into v_post from public.semasa_posts
    where status in ('approved', 'scheduled', 'posted') and old.id = any(media_ids) limit 1;

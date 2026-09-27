@@ -45,6 +45,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
@@ -78,5 +79,14 @@ jobs:
           MEDIA_MAX_ATTEMPTS: ${{ vars.MEDIA_MAX_ATTEMPTS }}
           MEDIA_STALE_MINUTES: ${{ vars.MEDIA_STALE_MINUTES }}
           MEDIA_RUN_BUDGET: ${{ vars.MEDIA_RUN_BUDGET }}
+          MEDIA_BATCH: ${{ vars.MEDIA_BATCH }}
+          MEDIA_POLL_SECONDS: ${{ vars.MEDIA_POLL_SECONDS }}
+          MEDIA_MAX_WAIT_IMAGE: ${{ vars.MEDIA_MAX_WAIT_IMAGE }}
+          MEDIA_MAX_WAIT_VIDEO: ${{ vars.MEDIA_MAX_WAIT_VIDEO }}
+          OPENAI_IMAGE_SIZE: ${{ vars.OPENAI_IMAGE_SIZE }}
+          OPENAI_VIDEO_SECONDS: ${{ vars.OPENAI_VIDEO_SECONDS }}
+          OPENAI_VIDEO_SIZE: ${{ vars.OPENAI_VIDEO_SIZE }}
+          IDEAS_BATCH: ${{ vars.IDEAS_BATCH }}
+          FAQ_BATCH: ${{ vars.FAQ_BATCH }}
           MEDIA_ONLY_ID: ${{ github.event.client_payload.id || inputs.only_id }}
         run: python -m semasa.media_generator

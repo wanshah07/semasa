@@ -149,9 +149,40 @@ def normalise_slides(raw: Any) -> list[dict[str, Any]]:
         body = _str(s.get("body")).strip()
         if body and not points:
             points = [body[:400]]
-        if title or points:
-            out.append({"title": title, "points": points})
+        extra = slide_extras(s)
+        if title or points or any(extra.get(k) for k in SLIDE_WORDS):
+            out.append({"title": title, "points": points, **extra})
     return out
+
+
+# A slide's own design (Studio's per-slide editor, brought over 27 Sep 2026): the words each design draws besides the
+# headline and the points, and how it is drawn. Kept only when set, in this order, so a slide written before these
+# existed compares equal to itself. Mirrored exactly by slideExtras in web/src/lib/compliance.js.
+SLIDE_WORDS = {"lead": 400, "eyebrow": 80, "chip": 60, "note": 240, "footnote": 300}
+SLIDE_STYLE = {
+    "template": re.compile(r"^[gep]_[a-z]{3,8}$"),
+    "scrim": re.compile(r"^(light|medium|heavy)$"),
+    "bg": re.compile(r"^(none|post_image|lib:g_[a-z0-9]{2,30}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
+    "mascot": re.compile(r"^(none|[a-z]{2,20})$"),
+}
+
+
+def slide_extras(s: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, cap in SLIDE_WORDS.items():
+        v = _str(s.get(k)).strip()[:cap]
+        if v:
+            out[k] = v
+    for k, rx in SLIDE_STYLE.items():
+        v = _str(s.get(k)).strip()
+        if v and rx.match(v):
+            out[k] = v
+    return out
+
+
+def slide_text(sl: dict[str, Any]) -> str:
+    """Every word a slide can put on the picture, for the scan."""
+    return "\n".join([sl.get("title") or "", *(sl.get("points") or []), *(sl.get(k) or "" for k in SLIDE_WORDS)])
 
 
 def slides_key(raw: Any) -> str:
@@ -253,7 +284,7 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
     def artwork(items: list[dict[str, Any]], label: str) -> None:
         for i, sl in enumerate(items):
             where = f"{label} {i + 1}"
-            t = "\n".join([sl["title"], *sl["points"]])
+            t = slide_text(sl)
             for rx, lab in HARD:
                 if rx.search(t):
                     add(True, where, lab)
@@ -273,6 +304,17 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
 
     slides = normalise_slides(post.get("slides"))
     artwork(slides, "Slide")
+    # Wan's shape for a carousel (Studio, 7 Sep 2026): a cover, at least three slides carrying facts, then a closing
+    # line that leaves them curious. One slide is a single card and is not a carousel.
+    if len(slides) > 1:
+        min_facts = int(RULES.get("carousel_min_facts") or 3)
+        facts = sum(1 for x in slides[1:-1] if x.get("title") or x.get("lead") or x.get("points"))
+        if facts < min_facts:
+            add(True, "Carousel", f"{facts} slide{'' if facts == 1 else 's'} of substance between the cover and the "
+                                  f"closing. At least {min_facts}.")
+        last = slides[-1]
+        if not (last.get("title") or last.get("lead")):
+            add(True, "Carousel", "write the closing line: one statement that leaves them curious. Not a question, not an ask.")
     # A poster, card or carousel from the Design tab carries its own words: the same rules, but it is not a drawing
     # of this post's slides, so it is never compared with them.
     for k, m in enumerate(post.get("media") or []):
@@ -294,7 +336,7 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
     if stream == "regulab" and schedule and post.get("date") and post.get("domain"):
         dow = dow_of(str(post["date"]))
         allow = schedule.get(str(dow)) if dow is not None else None
-        if allow and post["domain"] not in allow:
+        if allow and post["domain"] not in allow and post["domain"] not in RULES.get("rota_any_day", []):
             add(False, "Rota", f"{DOW_MS[dow]} carries {' and '.join(allow)}, and this is {post['domain']}. A note, not a block.")
     return flags
 

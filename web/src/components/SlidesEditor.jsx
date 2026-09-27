@@ -1,19 +1,30 @@
-import { ArrowDown, ArrowUp, ExternalLink, Layers, Loader2, Plus, Trash2 } from "lucide-react";
-import { normaliseSlides, slidesKey } from "../lib/compliance";
+import { useState } from "react";
+import { ArrowDown, ArrowUp, ExternalLink, Layers, Loader2, Paintbrush, Plus, Trash2 } from "lucide-react";
+import { SLIDE_WORDS, isPromo, normaliseSlides, slidesKey } from "../lib/compliance";
+import { cardFromCaption, slidesFromCaption } from "../lib/cards/fromCaption";
 import { useLang } from "../lib/i18n";
-import { LOOKS } from "../lib/cards/studio";
+import { LOOKS, isStudioLook, takesMascot } from "../lib/cards/studio";
+import { MASCOTS, TEMPLATES, noteLabel, templateOf } from "../lib/cards/library";
 import LookPicker from "./LookPicker";
+import TemplateCatalogue from "./TemplateCatalogue";
 import Button from "./ui/Button";
 import { Input, Label, Select, TextArea } from "./ui/Field";
 
 export const MAX_SLIDES = 10;
 
+/* A slide's own design (Studio's per-slide editor): the words its template draws besides the headline and the points,
+   and how it is drawn. Empty = the look decides. */
+const DESIGN = [...Object.keys(SLIDE_WORDS), "template", "scrim", "bg", "mascot"];
+
 /** Editor rows <-> stored slides. The editor keeps empty rows while typing; the scan and the save
     see normaliseSlides() of them, which drops empties exactly as the worker does. */
 export const toRows = (slides) => (Array.isArray(slides) ? slides : []).map((s) => ({
   title: String(s?.title ?? ""), points: (Array.isArray(s?.points) ? s.points : []).join("\n"),
+  ...Object.fromEntries(DESIGN.map((k) => [k, String(s?.[k] ?? "")])),
 }));
-export const fromRows = (rows) => rows.map((r) => ({ title: r.title, points: r.points }));
+export const fromRows = (rows) => rows.map((r) => ({ title: r.title, points: r.points,
+  ...Object.fromEntries(DESIGN.filter((k) => String(r[k] ?? "").trim()).map((k) => [k, r[k]])) }));
+const blankRow = () => ({ title: "", points: "", ...Object.fromEntries(DESIGN.map((k) => [k, ""])) });
 
 const lookName = (k, lang) => { const l = LOOKS.find((x) => x.k === (k || "classic")) || LOOKS[0]; return lang === "bm" ? l.bm : l.en; };
 
@@ -23,7 +34,7 @@ const kindOf = (t, i, n) => (i === 0 ? t("Kulit", "Cover") : i === n - 1 && n > 
 /* The carousel of one post: its words, where they are drawn from, and the drawn pictures.
    Drawing is done by the worker (backend/semasa/slides.py) with no AI and no key. */
 export default function SlidesEditor({ post, rows, setRows, locked, jobs, attachedIds, bg, setBg, bgOptions, busy,
-  onRender, onUse, look, setLook, preview, blocked, setBlocked }) {
+  onRender, onUse, look, setLook, preview, blocked, setBlocked, resolveBg = () => "", captionPost = null, onToast = () => {} }) {
   const { t, lang } = useLang();
   const n = rows.length;
   const size = post.stream === "linkedin" ? "1080×1350" : "1080×1080";
@@ -31,6 +42,32 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
   const latestDone = jobs.find((j) => j.status === "done");
   const drawnStale = latestDone && slidesKey(latestDone.meta?.slides) !== slidesKey(fromRows(rows));
   const set = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const studio = isStudioLook(look);
+  const [open, setOpen] = useState(() => new Set());
+  const toggle = (i) => setOpen((o) => { const x = new Set(o); if (x.has(i)) x.delete(i); else x.add(i); return x; });
+  // "Use this background on all N slides" (Studio's #bgAll): this slide's background and scrim, on every slide
+  const bgAll = (i) => setRows(rows.map((r) => ({ ...r, bg: rows[i].bg, scrim: rows[i].scrim })));
+  const bgClearAll = () => setRows(rows.map((r) => ({ ...r, bg: "", scrim: "" })));
+  const anyOwnBg = rows.some((r) => r.bg);
+  // what the preview draws: the rows as slides, each slide's own background resolved to an address this page can load
+  const previewSlides = normaliseSlides(fromRows(rows)).map((s) => (s.bg && s.bg !== "none" ? { ...s, bg_url: resolveBg(s.bg) } : s));
+  // Studio's "Reset from caption" and single card: built from the caption as it is on screen now
+  const hasWords = rows.some((r) => r.title.trim() || r.points.trim());
+  const fromCaption = (single) => {
+    if (!captionPost?.caption?.trim()) return onToast(t("Tulis kapsyen dahulu.", "Write the caption first."), "warn");
+    if (hasWords && !window.confirm(t("Ganti slaid yang ada dengan slaid daripada kapsyen?", "Replace the slides you have with slides from the caption?"))) return;
+    const brand = preview.brand || null;
+    const promo = (x) => isPromo(x, brand);
+    if (single) {
+      setRows(toRows(cardFromCaption(captionPost, promo)));
+      return onToast(t("Satu kad daripada kapsyen.", "One card from the caption."), "ok");
+    }
+    const { slides, over } = slidesFromCaption(captionPost, promo);
+    setRows(toRows(slides));
+    onToast(over ? t("{n} slaid daripada kapsyen. {m} poin lagi tidak muat dalam 8 slaid dan kekal dalam kapsyen sahaja.",
+      "{n} slides from the caption. {m} more points do not fit in 8 slides and stay in the caption only.", { n: slides.length, m: over })
+      : t("{n} slaid daripada kapsyen.", "{n} slides from the caption.", { n: slides.length }), over ? "warn" : "ok");
+  };
   const move = (i, d) => {
     const j = i + d;
     if (j < 0 || j >= n) return;
@@ -70,24 +107,45 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
                 : t("Tajuk slaid", "Slide title")} />
             <TextArea rows={i === 0 ? 2 : 3} value={r.points} disabled={locked} className="mt-1.5"
               onChange={(e) => set(i, { points: e.target.value })}
-              placeholder={i === 0 ? t("Baris kecil di bawah tajuk (pilihan)", "Small line under the title (optional)")
+              placeholder={templateOf(r.template)?.items ? t(templateOf(r.template).items, templateOf(r.template).itemsEn)
+                : i === 0 ? t("Baris kecil di bawah tajuk (pilihan)", "Small line under the title (optional)")
                 : t("Satu poin satu baris (maksimum 5)", "One point per line (up to 5)")} />
+            {studio && (
+              <button type="button" onClick={() => toggle(i)} aria-expanded={open.has(i)}
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline">
+                <Paintbrush size={11} /> {t("Reka bentuk slaid ini", "This slide's design")}
+                {DESIGN.some((k) => r[k]) && <span className="rounded bg-accent/10 px-1 text-[10px]">{t("diubah", "changed")}</span>}
+              </button>
+            )}
+            {studio && open.has(i) && (
+              <SlideDesign r={r} i={i} n={n} set={(patch) => set(i, patch)} locked={locked} bgOptions={bgOptions} stream={post.stream}
+                onBgAll={() => bgAll(i)} />
+            )}
           </li>
         ))}
       </ol>
 
       {!locked && (
         <div className="mt-3 rounded-tile bg-surface-2/40 p-2.5">
-          <LookPicker value={look} onChange={setLook} slides={normaliseSlides(fromRows(rows))} stream={post.stream}
+          <LookPicker value={look} onChange={setLook} slides={previewSlides} stream={post.stream}
             eyebrow={preview.eyebrow} citation={preview.citation} bgUrl={preview.bgUrl} bgChosen={bg !== "none"}
-            onBlocked={setBlocked} />
+            mascots={MASCOTS} onBlocked={setBlocked} />
         </div>
       )}
 
       {!locked && (
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <Button type="button" size="sm" variant="ghost" disabled={n >= MAX_SLIDES}
-            onClick={() => setRows([...rows, { title: "", points: "" }])}><Plus size={12} /> {t("Tambah slaid", "Add slide")}</Button>
+            onClick={() => setRows([...rows, blankRow()])}><Plus size={12} /> {t("Tambah slaid", "Add slide")}</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => fromCaption(false)}
+            title={t("Kulit, sekurang-kurangnya tiga fakta, dan baris penutup, daripada kapsyen", "A cover, at least three facts and a closing line, from the caption")}>
+            {t("Bina daripada kapsyen", "Build from the caption")}</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => fromCaption(true)}
+            title={t("Satu kad sahaja: cangkuk dan baris pertamanya", "One card only: the hook and its first line")}>
+            {t("Kad tunggal", "Single card")}</Button>
+          {studio && anyOwnBg && <Button type="button" size="sm" variant="ghost" onClick={bgClearAll}
+            title={t("Setiap slaid kembali memakai latar set ini", "Every slide goes back to the set's background")}>
+            {t("Kosongkan latar setiap slaid", "Clear every slide's background")}</Button>}
           <label className="ml-auto"><Label>{t("Latar", "Background")}</Label>
             <Select value={bg} onChange={setBg} options={bgOptions} aria-label={t("Latar slaid", "Slide background")} /></label>
           <Button type="button" size="sm" disabled={busy || !n || !!blocked} onClick={onRender}
@@ -134,6 +192,63 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
               <button type="button" className="font-medium text-accent underline" onClick={() => onUse(latestDone.id)}>
                 {t("Guna set ini", "Use this set")}</button></p>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* One slide's own design, Studio's cardPanel fields: template, lead, eyebrow, chip, note, source line, background, scrim
+   and mascot. Every field left empty means the chosen look decides, exactly as before. */
+function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, stream }) {
+  const { t, lang } = useLang();
+  const [showCat, setShowCat] = useState(false);
+  const tpl = templateOf(r.template);
+  const uses = (f) => !tpl || tpl.uses.includes(f);
+  const note = tpl ? noteLabel(r.template, t) : t("Nota / belon (pilihan)", "Note / bubble (optional)");
+  const groups = [["grid", "Grid"], ["era", "Info ERA"], ["photo", t("Foto", "Photo")]];
+  const tplOptions = [["", t("Ikut reka bentuk set (auto)", "As the set's design (auto)")],
+    ...groups.flatMap(([g, name]) => TEMPLATES.filter((x) => x.group === g).map((x) => [x.k, `${name} · ${lang === "bm" ? x.name.split(" · ")[1] : x.en.split(" · ")[1]}`]))];
+  const mascotOk = !r.template || takesMascot(r.template);
+  const f = (k, label, extra = {}) => (
+    <label className="block min-w-0"><Label>{label}</Label>
+      <Input value={r[k]} disabled={locked} maxLength={SLIDE_WORDS[k]} onChange={(e) => set({ [k]: e.target.value })} {...extra} /></label>
+  );
+  return (
+    <div className="mt-2 grid gap-2 rounded-tile border border-line bg-surface p-2.5 sm:grid-cols-2">
+      <div className="min-w-0 sm:col-span-2"><label className="block"><Label hint={tpl ? t(tpl.hint, tpl.hintEn) : ""}>{t("Templat slaid ini", "This slide's template")}</Label>
+        <Select value={r.template} onChange={(v) => set({ template: v })} options={tplOptions} disabled={locked} className="w-full"
+          aria-label={t("Templat slaid {n}", "Slide {n} template", { n: i + 1 })} /></label>
+        <button type="button" onClick={() => setShowCat((x) => !x)} aria-expanded={showCat}
+          className="mt-1 text-[11px] font-medium text-accent hover:underline">
+          {showCat ? t("Tutup katalog", "Close the catalogue") : t("Pilih dari katalog (12 templat, dilukis)", "Pick from the catalogue (12 templates, drawn)")}</button>
+        {showCat && <div className="mt-1.5"><TemplateCatalogue value={r.template} stream={stream} disabled={locked}
+          onPick={(k) => set({ template: k })} /></div>}</div>
+      {uses("lead") && f("lead", tpl?.lead ? t(tpl.lead, tpl.leadEn) : t("Baris sokongan", "Supporting line"))}
+      {uses("eyebrow") && f("eyebrow", t("Label atas (eyebrow)", "Eyebrow"), { placeholder: t("ikut set", "as the set") })}
+      {(tpl ? tpl.group !== "photo" : true) && f("chip", t("Label cip (instrumen, bukan logo)", "Chip label (the instrument, not a logo)"),
+        { placeholder: i === n - 1 ? t("Sumber", "Source") : "" })}
+      {note && f("note", note)}
+      {f("footnote", t("Baris sumber (kaki)", "Source line (footer)"), { placeholder: i === n - 1 ? t("dari medan Sumber", "from the Source field") : "" })}
+      <label className="block min-w-0"><Label>{t("Latar slaid ini", "This slide's background")}</Label>
+        <Select value={r.bg} onChange={(v) => set({ bg: v })} disabled={locked} className="w-full"
+          options={[["", t("Ikut latar set", "As the set's background")], ["none", t("Tiada gambar", "No picture")], ...bgOptions.filter(([k]) => k !== "none")]}
+          aria-label={t("Latar slaid {n}", "Slide {n} background", { n: i + 1 })} /></label>
+      <label className="block min-w-0"><Label>{t("Tutupan atas gambar", "How much the words cover the picture")}</Label>
+        <Select value={r.scrim} onChange={(v) => set({ scrim: v })} disabled={locked} className="w-full"
+          options={[["", t("Lalai", "Default")], ["light", t("Ringan: gambar jelas", "Light: the picture stays visible")],
+            ["medium", t("Sederhana", "Medium: balanced")], ["heavy", t("Tebal: gambar sibuk", "Heavy: for a busy photo")]]} /></label>
+      {mascotOk && (
+        <label className="block min-w-0"><Label>{t("Maskot", "Mascot")}</Label>
+          <Select value={r.mascot} onChange={(v) => set({ mascot: v })} disabled={locked} className="w-full"
+            options={[["", t("Auto (ikut templat)", "Auto (by template)")], ["none", t("Tiada", "None")],
+              ...MASCOTS.map((m) => [m.k, lang === "bm" ? m.name : m.en])]} /></label>
+      )}
+      {n > 1 && r.bg && (
+        <div className="flex items-end sm:col-span-2">
+          <Button type="button" size="sm" variant="soft" onClick={onBgAll} disabled={locked}>
+            {r.bg === "none" ? t("Tiada gambar pada semua {n} slaid", "No picture on all {n} slides", { n })
+              : t("Guna latar ini pada semua {n} slaid", "Use this background on all {n} slides", { n })}</Button>
         </div>
       )}
     </div>

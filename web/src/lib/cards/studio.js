@@ -1266,40 +1266,66 @@ function asLines(points) {
   return p.length > 1 ? p.map((x) => "• " + x).join("\n") : (p[0] || "");
 }
 
-/* A Semasa slide list ({title, points}[]) as Studio card specs. EVERY WORD IS KEPT: Studio's templates slice their
-   item lists (e_hook 3, e_explain 3, p_fact 4), so a slide with more points than its template shows is given the
-   layout that draws them all as lines instead of a template that would silently drop the rest.
-   Cover, middle and closing slides take the templates Studio's own groups name (CARD_GROUPS). The source line is
-   drawn on the closing slide only, Semasa's rule; the eyebrow on every slide, Studio's. */
+/* A Semasa slide list as Studio card specs. EVERY WORD IS KEPT: Studio's templates slice their item lists
+   (e_hook 3, e_explain 3, p_fact 4), so a slide with more points than its template shows is given the layout that
+   draws them all as lines instead of a template that would silently drop the rest.
+   A slide may carry its own design (Studio's per-slide editor, brought over 27 Sep 2026): `template` (any of the
+   twelve, which then takes the points verbatim as its items, "Label | number" shapes and all), `lead`, `eyebrow`,
+   `chip`, `note`, `footnote`, `scrim`, `mascot` ("none", a pose key, or unset = the pose the template hints at) and a
+   background already resolved to a drawable address in `bg_url` (`bg: "none"` = no picture on this slide).
+   Unset fields fall back to the look's own choices: cover, middle and closing slides take the templates Studio's
+   groups name (CARD_GROUPS); the source line is drawn on the closing slide, Semasa's rule; the eyebrow on every
+   slide, Studio's. o.mascots = [{k, url}] are the poses on offer (none offered = no mascot anywhere). */
+export const TEMPLATE_KEYS = [...Object.keys(GRID_TPL), ...Object.keys(ERA_TPL), ...Object.keys(PHOTO_TPL)];
+export const takesMascot = (t) => !!MASCOT_TPL[t];
+
+function mascotUrl(s, template, mascots) {
+  if (!mascots || !mascots.length || !MASCOT_TPL[template]) return "";
+  if (s.mascot === "none") return "";
+  if (s.mascot) return (mascots.find((m) => m.k === s.mascot) || {}).url || "";
+  const m = pickMascotFor(template, mascots.map((x) => ({ name: x.k, url: x.url })));
+  return m ? m.url : "";
+}
+
 export function specsFor(slides, o = {}) {
   const look = STUDIO_LOOKS.includes(o.look) ? o.look : "grid";
-  const list = (slides || []).filter((s) => s && (String(s.title || "").trim() || (s.points || []).length));
+  const list = (slides || []).filter((s) => s && (String(s.title || "").trim() || (s.points || []).length
+    || String(s.lead || "").trim() || String(s.note || "").trim()));
   const n = list.length;
   const linkedin = o.stream === "linkedin";
   return list.map((s, i) => {
     const pts = (s.points || []).map((x) => String(x || "").trim()).filter(Boolean);
     const last = i === n - 1;
+    const lead0 = String(s.lead || "").trim();
+    const withLead = (x) => [lead0, x].filter(Boolean).join("\n");
+    const cite = String(o.citation || "").trim();
     const base = {
       stream: linkedin ? "linkedin" : "regulab",
       title: String(s.title || "").trim(),
-      eyebrow: String(o.eyebrow || "").trim(),
-      footnote: last ? String(o.citation || "").trim() : "",
-      chip_label: last && String(o.citation || "").trim() ? (linkedin ? "Source" : "Sumber") : "",
-      bg: o.bg || "",
-      scrim: linkedin ? "heavy" : "medium",
+      eyebrow: String(s.eyebrow || o.eyebrow || "").trim(),
+      footnote: String(s.footnote || "").trim() || (last ? cite : ""),
+      chip_label: String(s.chip || "").trim() || (last && cite ? (linkedin ? "Source" : "Sumber") : ""),
+      note: String(s.note || "").trim(),
+      bg: s.bg === "none" ? "" : (s.bg_url || o.bg || ""),
+      scrim: s.scrim || (linkedin ? "heavy" : "medium"),
       size: o.size || undefined,
     };
-    if (look === "grid") return { ...base, template: "g_title", lead: asLines(pts) };
-    if (look === "era") {
-      if (i === 0 && n > 1 && pts.length <= 4) return { ...base, template: "e_hook", lead: pts[0] || "", items: pts.slice(1) };
-      if (pts.length && pts.length <= 3) return { ...base, template: "e_explain", items: pts };
-      return { ...base, template: "e_explain", lead: asLines(pts) };
-    }
-    // photo
-    if (i === 0 || n === 1) return { ...base, template: "p_title", lead: asLines(pts) };
-    if (last) return { ...base, template: "p_quote", lead: asLines(pts) };
-    if (pts.length && pts.length <= 4) return { ...base, template: "p_fact", items: pts };
-    return { ...base, template: "p_fact", lead: asLines(pts) };
+    let spec;
+    if (s.template && TEMPLATE_KEYS.includes(s.template)) {
+      spec = { ...base, template: s.template, lead: lead0, items: pts };
+    } else if (look === "grid") {
+      spec = { ...base, template: "g_title", lead: withLead(asLines(pts)) };
+    } else if (look === "era") {
+      if (i === 0 && n > 1 && pts.length <= 4) spec = { ...base, template: "e_hook", lead: lead0 || pts[0] || "", items: lead0 ? pts : pts.slice(1) };
+      else if (pts.length && pts.length <= 3) spec = { ...base, template: "e_explain", lead: lead0, items: pts };
+      else spec = { ...base, template: "e_explain", lead: withLead(asLines(pts)) };
+    } else if (i === 0 || n === 1) spec = { ...base, template: "p_title", lead: withLead(asLines(pts)) };
+    else if (last) spec = { ...base, template: "p_quote", lead: withLead(asLines(pts)) };
+    else if (pts.length && pts.length <= 4) spec = { ...base, template: "p_fact", lead: lead0, items: pts };
+    else spec = { ...base, template: "p_fact", lead: withLead(asLines(pts)) };
+    const mascot = mascotUrl(s, spec.template, o.mascots);
+    if (mascot) spec.mascot = mascot;
+    return spec;
   });
 }
 

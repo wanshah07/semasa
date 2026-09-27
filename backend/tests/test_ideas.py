@@ -197,3 +197,143 @@ def test_a_retry_whose_draft_already_has_jobs_does_not_pay_the_writer_again(monk
     assert store.tables["semasa_posts"][0]["slides"] == [{"title": "old", "points": []}]
     got = store.tables["semasa_ideas"][0]
     assert got["status"] == "drafted" and got["brief"]["post_id"] == "p1" and "partial_post_id" not in got["brief"]
+
+
+def _revise_store(**post):
+    store = _store()
+    cap = "Notifikasi kosmetik ialah pemberitahuan kepada NPRA, bukan kelulusan produk."
+    row = {"id": "p1", "stream": "regulab", "lang": "bm", "status": "draft", "domain": "kosmetik", "hook": "Lama",
+           "citation": "NPRA, Garis Panduan Kawalan Kosmetik",
+           "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}},
+           "slides": [{"title": "Kekal", "points": [], "template": "g_title"}], "media_ids": [],
+           "revise_state": "new", "revise_note": "Pendekkan, mula dengan kesilapan biasa", "versions": [], "decisions": [],
+           "updated_at": "2026-09-24T00:00:00+00:00", **post}
+    store.tables["semasa_posts"].append(row)
+    return store
+
+
+def test_revise_rewrites_the_words_keeps_slides_and_history():
+    store = _revise_store()
+    new = "Ramai sangka notifikasi itu kelulusan. Ia hanya pemberitahuan kepada NPRA."
+    llm = FakeLLM({"fit": True, "hook": "Baru", "citation": "NPRA, Garis Panduan Kawalan Kosmetik",
+                   "text": {"bm": {"instagram": new, "facebook": new, "threads": new}},
+                   "slides": [{"title": "Jangan tukar", "points": []}]})
+    assert ideas.revise_posts(store, llm) == "Revise: 1/1 rewritten"
+    p = store.tables["semasa_posts"][0]
+    assert p["hook"] == "Baru" and p["text"]["bm"]["instagram"] == new
+    assert p["slides"] == [{"title": "Kekal", "points": [], "template": "g_title"}]      # designs and pictures kept
+    assert p["versions"][0]["hook"] == "Lama" and p["versions"][0]["why"].startswith("Pendekkan")
+    assert "slides" not in p["versions"][0]
+    assert p["decisions"][-1]["action"] == "revised" and p["decisions"][-1]["by"] == "bot"
+    assert p["revise_state"] is None and p["revise_note"] is None and isinstance(p["flags"], list)
+    system, user = llm.seen[0]
+    assert "Pendekkan, mula dengan kesilapan biasa" in user and "CURRENT CAPTION (bm)" in user
+    assert "SLIDES WANTED" not in system
+    assert any(r.get("event") == "post.revised" for r in store.tables.get("semasa_log", []))
+
+
+def test_revise_never_touches_an_approved_post():
+    store = _revise_store(status="approved")
+    llm = FakeLLM({"fit": True, "hook": "x", "text": {"bm": {"instagram": "y"}}})
+    ideas.revise_posts(store, llm)
+    p = store.tables["semasa_posts"][0]
+    assert p["hook"] == "Lama" and p["revise_state"] == "error" and "only a draft" in p["revise_error"]
+    assert llm.seen == []
+
+
+def test_revise_keeps_the_post_when_the_writer_returns_nothing():
+    store = _revise_store()
+    ideas.revise_posts(store, FakeLLM({"fit": True, "hook": "x", "text": {"en": {"linkedin": "wrong language"}}}))
+    p = store.tables["semasa_posts"][0]
+    assert p["hook"] == "Lama" and p["revise_state"] == "error" and "no BM caption" in p["revise_error"]
+    assert p["versions"] == []
+
+
+def test_revise_picks_up_a_stale_claim_and_skips_other_runs_claims():
+    store = _revise_store(revise_state="working", updated_at="2026-01-01T00:00:00+00:00")
+    fresh = dict(store.tables["semasa_posts"][0], id="p2", revise_state="working",
+                 updated_at=datetime.now(UTC).isoformat())
+    store.tables["semasa_posts"].append(fresh)
+    new = "Ramai sangka notifikasi itu kelulusan. Ia hanya pemberitahuan kepada NPRA."
+    ideas.revise_posts(store, FakeLLM({"fit": True, "hook": "Baru", "text": {"bm": {"instagram": new}}}))
+    p1, p2 = store.tables["semasa_posts"]
+    assert p1["hook"] == "Baru" and p2["hook"] == "Lama" and p2["revise_state"] == "working"
+
+
+def test_revise_without_021_is_a_quiet_skip():
+    class Broken:
+        def table(self, name):
+            raise RuntimeError('column "revise_state" does not exist')
+    assert ideas.revise_posts(Broken(), FakeLLM({})).startswith("Revise: skipped")
+
+
+def test_a_case_study_takes_any_posting_day():
+    # Fri 25 Sep is a kosmetik/sains_kosmetik day, yet a case study still goes there (Studio's e2: one a day)
+    assert ideas.next_free_position("regulab", "kajian_kes", BRAND, set(), NOW) == ("2026-09-25", "08:00")
+    # but never on a no-posting day (Sat 26 has an empty rota)
+    full = {("2026-09-25", s) for s in ("08:00", "13:00", "21:00")}
+    assert ideas.next_free_position("regulab", "kajian_kes", BRAND, full, NOW) == ("2026-09-27", "08:00")
+
+
+def test_a_replacement_keeps_its_slot_and_the_rejected_drafts_pictures(monkeypatch):
+    monkeypatch.setattr(ideas, "read_source", lambda url: {"ok": False, "why": "no link", "image": None})
+    monkeypatch.setattr(ideas, "datetime", type("D", (), {"now": staticmethod(lambda tz=None: NOW)}))
+    store = _store()
+    store.tables["media_generations"] += [
+        {"id": "m1", "status": "done", "generated_media_url": "https://x/m1.png", "type": "image", "mode": "prompt",
+         "meta": {"alt": "Botol di rak"}},
+        {"id": "m2", "status": "error", "generated_media_url": None, "type": "image", "mode": "prompt", "meta": {}},
+        {"id": "m3", "status": "done", "generated_media_url": "https://x/s.jpg", "type": "image", "mode": "slides", "meta": {}}]
+    cap = "Notifikasi kosmetik ialah pemberitahuan kepada NPRA, bukan kelulusan produk."
+    llm = FakeLLM({"fit": True, "hook": "h", "domain": "kosmetik", "citation": "NPRA",
+                   "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}}, "visual_prompt": "x"})
+    idea = {"id": "i9", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "none",
+            "note": "Pengganti draf yang ditolak", "status": "working",
+            "brief": {"position": {"date": "2026-09-25", "slot": "13:00"}, "replaces": "old",
+                      "keep_media_ids": ["m1", "m2", "m3"]}}
+    store.tables["semasa_ideas"].append(idea)
+    pid = ideas.process_idea(store, llm, idea, ideas.load_settings(store))
+    post = next(p for p in store.tables["semasa_posts"] if p["id"] == pid)
+    assert (post["date"], post["slot"]) == ("2026-09-25", "13:00") and post["media_ids"] == ["m1"]
+    assert not any(f["msg"] == "instagram needs an image" for f in post["flags"])
+    assert len(store.tables["media_generations"]) == 3              # no new picture paid for
+    assert store.tables["semasa_ideas"][0]["brief"]["replaces"] == "old"
+
+
+WRITER = {"regulab": {"voice": "Blunt, warm.", "never": ["Never name a client."], "hashtags_core": ["#NPRA"],
+                      "hashtags_rotate": ["#KosmetikMalaysia"], "fatwa_warning": "Keputusan Muzakarah MKI bukan undang-undang.",
+                      "pillars": {"kosmetik": ["kajian_kes", "mitos"], "fatwa": ["soal_jawab"]}},
+          "linkedin": {"voice": "A named professional."}}
+
+
+def test_writer_settings_and_pillars_reach_the_writer():
+    system, _ = ideas.build_request({"stream": "regulab", "domain": "kosmetik", "source_title": "T"}, {"ok": False}, BRAND,
+                                    writer=WRITER)
+    assert "Blunt, warm." in system and "Never name a client." in system and "#NPRA" in system
+    assert "PILLAR" in system and "mitos = a common belief" in system and "soal_jawab" not in system
+    li, _ = ideas.build_request({"stream": "linkedin", "source_title": "T"}, {"ok": False}, BRAND, writer=WRITER)
+    assert "A named professional." in li and "PILLAR" not in li and "MKI" not in li
+    assert ideas.pillars_for(WRITER, "regulab", None) == ["kajian_kes", "mitos", "soal_jawab"]
+    assert ideas.pillar_line({}, "regulab", "kosmetik") == ""
+
+
+def test_the_writers_pillar_is_kept_only_from_the_list(monkeypatch):
+    monkeypatch.setattr(ideas, "read_source", lambda url: {"ok": False, "why": "no link", "image": None})
+    cap = "Notifikasi kosmetik ialah pemberitahuan kepada NPRA, bukan kelulusan produk."
+    for said, kept in (("mitos", "mitos"), ("invented", None)):
+        store = _store()
+        store.tables["semasa_settings"].append({"key": "writer", "value": WRITER})
+        llm = FakeLLM({"fit": True, "hook": "h", "domain": "kosmetik", "pillar": said, "citation": "NPRA",
+                       "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}}})
+        idea = {"id": "i1", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "none",
+                "status": "working"}
+        store.tables["semasa_ideas"].append(idea)
+        pid = ideas.process_idea(store, llm, idea, ideas.load_settings(store))
+        post = next(p for p in store.tables["semasa_posts"] if p["id"] == pid)
+        assert post.get("pillar") == kept
+
+
+def test_a_settings_line_asking_for_sahkan_never_reaches_the_writer():
+    w = {"regulab": {"voice": "Blunt.", "never": ["Never name a client.", "Unsourced fee: write [SAHKAN: fee] instead."]}}
+    block = ideas.writer_block(w, "regulab")
+    assert "Never name a client." in block and "SAHKAN" not in block

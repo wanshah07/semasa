@@ -72,7 +72,36 @@ def test_a_studio_look_is_drawn_by_studio_and_recorded(monkeypatch, _uploads):
     assert done["status"] == "done" and done["model"] == "studio-era" and done["meta"]["look"] == "era"
     assert done["meta"]["count"] == 3 and len(_uploads) == 3
     assert seen == {"look": "era", "stream": "regulab", "eyebrow": "Kosmetik", "source": "NPRA, Garis Panduan",
-                    "ground": None, "ground_mime": "image/jpeg", "size": None, "n": 3}
+                    "ground": None, "ground_mime": "image/jpeg", "size": None, "n": 3,
+                    "mascots": [{"k": k, "url": f"/cards/mascots/{k}.webp"} for k in ("wave", "point", "confused", "shocked")]}
+
+
+def test_each_slide_gets_its_own_background_once_fetched(monkeypatch, _uploads):
+    """Studio's per-slide ground (27 Sep 2026): a slide naming Wan's photograph gets its bytes as a data address;
+    the set's background stays for the others; the words kept on the job carry no address."""
+    seen = {}
+
+    def fake(items, **kw):
+        seen["items"] = items
+        return [_jpeg() for _ in items]
+
+    monkeypatch.setattr(studio_cards, "render", fake)
+    store = _store({"look": "grid", "citation": "NPRA", "slides": [
+        {"title": "Satu", "points": ["a"], "bg": "lib:g_makmal02", "scrim": "heavy"},
+        {"title": "Dua", "points": ["b"]},
+        {"title": "Tiga", "points": ["c"], "bg": "lib:g_tiada"}]})
+    assert _run(store) is True
+    got = seen["items"]
+    assert got[0]["bg_url"].startswith("data:image/jpeg;base64,") and got[0]["scrim"] == "heavy"
+    assert "bg_url" not in got[1] and "bg_url" not in got[2]           # an unknown photograph: the set's background
+    kept = store.tables["media_generations"][0]["meta"]["slides"]
+    assert kept[0]["bg"] == "lib:g_makmal02" and not any("bg_url" in k for k in kept)
+
+
+def test_the_classic_drawing_keeps_a_lead_and_a_note():
+    from semasa.media_generator import classic_words
+    got = classic_words([{"title": "T", "points": ["a", "b", "c", "d"], "lead": "L", "note": "N"}])
+    assert got == [{"title": "T", "points": ["L", "a", "b", "c", "d · N"]}]
 
 
 def test_no_look_or_an_unknown_one_is_semasas_own_drawing(monkeypatch, _uploads):
@@ -113,6 +142,12 @@ def test_the_idea_carries_its_look_to_the_slide_job():
     idea = {"id": "i1", "created_by": "u", "brief": {"look": "grid"}}
     post = {"slides": SLIDES, "stream": "regulab", "citation": "", "domain": "kosmetik", "angle": None}
     assert ideas.slide_job(idea, post, "p1")["meta"]["look"] == "grid"
+    # no picture made: a Studio look is drawn on Studio's ground for the domain; Semasa's own look stays on paper
+    assert ideas.slide_job(idea, post, "p1")["meta"]["bg"] == "lib:g_makmal02"
+    assert ideas.slide_job(idea, post, "p1", bg="post_image")["meta"]["bg"] == "post_image"
+    assert ideas.slide_job({"id": "i2", "brief": {}}, post, "p1")["meta"]["bg"] == "none"
+    li = {**post, "stream": "linkedin", "domain": None, "angle": "E"}
+    assert ideas.slide_job(idea, li, "p1")["meta"]["bg"] == "lib:g_gudang01"
     for brief in ({}, None, {"look": "neon"}, "not a dict"):
         assert ideas.look_of({"brief": brief}) == "classic"
 
@@ -170,3 +205,26 @@ def test_too_much_for_the_card_fails_with_the_slide_number_never_clipped():
                         "points": ["Satu ayat yang agak panjang untuk mengisi ruang pada kad ini. " * 3] * 5}]
     with pytest.raises(SlideError, match="slide 2"):
         studio_cards.render(long, look="grid", stream="regulab")
+
+
+@browser
+def test_a_mascot_a_template_and_a_photograph_really_reach_the_picture():
+    """Studio's per-slide editor, drawn for real: each choice must change the pixels, not only the settings."""
+    from semasa import cards_library
+    from semasa.media_generator import own_grounds
+
+    def px(items, **kw):
+        return Image.open(io.BytesIO(studio_cards.render(items, look="grid", stream="regulab", **kw)[0])).convert("L")
+
+    def differs(a, b):
+        from PIL import ImageChops
+        return ImageChops.difference(a, b).getbbox() is not None
+
+    base = [{"title": "Semak *dahulu*", "points": []}]           # short: a full slide makes the character stand down
+    plain = px(base)
+    assert differs(plain, px(base, mascots=cards_library.mascots())), "the auto pose was not drawn"
+    assert not differs(plain, px([{**base[0], "mascot": "none"}], mascots=cards_library.mascots())), "None still drew one"
+    bars = [{"title": "Had", "template": "g_bars", "points": ["Malaysia | 0.5 | 0.5%", "EU | 0.4 | 0.4%"]}]
+    assert differs(plain, px(bars)), "the chosen template was not used"
+    ground = own_grounds(None, {"id": "t"}, [{**base[0], "bg": "lib:g_makmal02"}])
+    assert differs(plain, px(ground)), "the photograph was not drawn behind the slide"

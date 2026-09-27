@@ -92,3 +92,64 @@ def run(store: Any, now: datetime | None = None) -> str:
                      f"{archived} post diarkibkan (24 jam selepas diterbitkan); {removed} gambar tidak digunakan dibuang",
                      detail={"archived": archived, "media_removed": removed})
     return f"archive: {archived} post(s) archived, {removed} unused media removed"
+
+
+REJECT_PURGE = timedelta(hours=72)
+
+
+def purge_rejected(store: Any, now: datetime | None = None) -> str:
+    """A rejected post is deleted 72 hours after it was rejected (Studio's purgeRejected, Wan 24 Sep 2026: "for rejected
+    post auto permanently delete after 72 hours"). The clock is `rejected_at`, stamped by the database (021), so the
+    page's countdown and this step read the same moment. Three guards, as in Studio: a post being rewritten is skipped,
+    a post with no `rejected_at` is NEVER deleted (failing safe costs a row; failing open deletes work), and a post
+    carrying a `published` record is kept as evidence. Pictures made FOR the post and used by no other post go with it;
+    a picture another post uses, a Design-tab design and anything from the library stay."""
+    now = now or datetime.now(UTC)
+    cutoff = (now - REJECT_PURGE).isoformat()
+    try:
+        due = db.fetch_all(lambda: store.table(db.POSTS).select("id,published,revise_state,rejected_at,media_ids")
+                           .eq("status", "rejected").lt("rejected_at", cutoff).order("id"))
+    except Exception as exc:  # noqa: BLE001 - 021 not run yet
+        msg = str(exc)
+        if "rejected_at" in msg:
+            return "purge: skipped (run supabase/021_studio_workflow.sql)"
+        return f"purge: skipped ({msg[:100]})"
+    purged = removed = kept = 0
+    for post in due:
+        if not post.get("rejected_at") or post.get("revise_state") == "working" or post.get("published"):
+            kept += 1
+            continue
+        try:
+            own = store.table(db.MEDIA).select("id,status,meta").eq("post_id", post["id"]).execute().data or []
+            dead = []
+            for r in own:
+                if (r.get("meta") or {}).get("design"):
+                    continue
+                try:
+                    other = store.table(db.POSTS).select("id").contains("media_ids", [r["id"]]).neq("id", post["id"]) \
+                        .limit(1).execute().data
+                except Exception:  # noqa: BLE001 - when in doubt, keep the picture
+                    other = True
+                if not other:
+                    dead.append(r)
+            gone = store.table(db.POSTS).delete().eq("id", post["id"]).eq("status", "rejected") \
+                .lt("rejected_at", cutoff).execute().data or []
+            if not gone:
+                continue                 # restored (or changed) between the read and the delete
+            paths = [p for r in dead for p in files_of(r)]
+            if paths:
+                try:
+                    store.storage.from_(db.GENERATED_BUCKET).remove(paths)
+                except Exception as exc:  # noqa: BLE001
+                    log.info("post %s: could not remove %d file(s): %s", post["id"], len(paths), str(exc)[:100])
+            for r in dead:
+                store.table(db.MEDIA).delete().eq("id", r["id"]).execute()
+            purged += 1
+            removed += len(dead)
+        except Exception as exc:  # noqa: BLE001 - one post must not stop the others
+            log.warning("rejected post %s not purged: %s", post["id"], str(exc)[:200])
+    if purged:
+        db.log_event(store, "info", "post", "post.purged",
+                     f"{purged} post ditolak dipadam (72 jam selepas ditolak); {removed} gambar miliknya dibuang",
+                     detail={"purged": purged, "media_removed": removed, "kept": kept})
+    return f"purge: {purged} rejected post(s) deleted after 72h, {removed} of their pictures removed, {kept} kept"

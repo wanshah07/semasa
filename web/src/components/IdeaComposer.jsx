@@ -20,7 +20,7 @@ function sampleSlides(title, stream) {
 
 /* Flow A, step one. From a headline ("Jadikan idea") or by hand. Inserting the row is all the
    page does: the worker reads the source, writes the draft and queues the pictures. */
-export default function IdeaComposer({ open, onClose, trend, user, brand, onToast, onDone }) {
+export default function IdeaComposer({ open, onClose, trend, user, brand, onToast, onDone, position = null }) {
   const { t } = useLang();
   const [stream, setStream] = useState("regulab");
   const [media, setMedia] = useState("image");
@@ -40,12 +40,14 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     if (!open) return;
     // a regulator's notice or a paper (Regulatory / Latest publication) arrives with its stream, angle and domain
     // chosen, and as a carousel: the flow Wan asked for is notice → idea → slides or a poster → post
-    setStream(trend?.watch ? trend.stream || "regulab" : "regulab"); setMedia("image");
+    // an empty slot in the Schedule opens this for that slot: its stream, and the rota's first domain that day
+    setStream(position?.stream || (trend?.watch ? trend.stream || "regulab" : "regulab")); setMedia("image");
     setFormat(trend?.watch ? "carousel" : "post"); setLook("classic");
     setAngle(trend?.watch ? trend.angle || "" : ""); setNote(""); setRefs([]);
-    setDomain(trend ? (trend.faq || trend.watch ? trend.domain : CATEGORY_TO_DOMAIN[trend.category]) || "" : "");
+    setDomain(trend ? (trend.faq || trend.watch ? trend.domain : CATEGORY_TO_DOMAIN[trend.category]) || ""
+      : position?.domain || "");
     setTitle(trend?.title || ""); setUrl(trend?.url || "");
-  }, [open, trend]);
+  }, [open, trend, position]);
 
   async function addFiles(files) {
     for (const f of files) {
@@ -101,6 +103,8 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     const brief = {};
     if (drawn && look !== "classic") brief.look = look;
     if (format === "poster") brief.format = "poster";
+    // the worker keeps this slot while it is still ahead and free (backend ideas.asked_position), else the next free
+    if (position?.date && position?.slot && stream === position.stream) brief.position = { date: position.date, slot: position.slot };
     if (Object.keys(brief).length) row.brief = brief;
     const { error } = await supabase.from(TABLES.ideas).insert(row);
     setBusy(false);
@@ -129,6 +133,9 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     <Modal open={open} onClose={cancel} title={trend?.faq ? t("Jadikan post daripada FAQ", "Make a post from an FAQ")
       : trend ? t("Jadikan idea", "Make an idea") : t("Idea baharu", "New idea")}>
       <form onSubmit={submit} className="space-y-3">
+        {position && <p className="rounded-tile bg-accent/10 p-2 text-[12px]">{stream === position.stream
+          ? t("Untuk slot {d} {s} MYT.", "For the {d} {s} MYT slot.", { d: position.date, s: position.slot })
+          : t("Aliran lain dipilih: bot memilih slot kosong seterusnya.", "Another stream chosen: the bot picks the next free slot.")}</p>}
         {trend ? (
           <p className="rounded-tile bg-surface-2 p-3 text-sm [overflow-wrap:anywhere]">{trend.title}<span className="block text-[11px] text-muted">{trend.source}</span>
             {trend.faq && <span className="mt-1 block text-[11px] text-muted">{t("Bot tulis post daripada jawapan FAQ ini.", "The bot writes the post from this FAQ answer.")}</span>}

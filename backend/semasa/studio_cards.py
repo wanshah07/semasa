@@ -82,11 +82,11 @@ def _launch(p: Any) -> Any:
 
 def render(items: list[dict[str, Any]], *, look: str, stream: str, eyebrow: str = "", source: str = "",
            ground: bytes | None = None, ground_mime: str = "image/jpeg",
-           size: tuple[int, int] | None = None) -> list[bytes]:
+           size: tuple[int, int] | None = None, mascots: list[dict[str, str]] | None = None) -> list[bytes]:
     """JPEG bytes per slide, drawn in the chosen Studio look. Raises SlideError with a message for the page."""
     if look not in LOOKS:
         raise SlideError(f"unknown look {look!r}")
-    if look == "photo" and not ground:
+    if look == "photo" and not ground and not all(it.get("bg_url") for it in items):
         raise SlideError("the Photo look is drawn on a picture and there is none: choose a background "
                          "(the post's picture or an upload), or pick Grid or Info ERA")
     if not MODULE.is_file() or not (ASSETS / "fonts.css").is_file():
@@ -99,6 +99,8 @@ def render(items: list[dict[str, Any]], *, look: str, stream: str, eyebrow: str 
         opts["bg"] = f"data:{ground_mime};base64," + base64.b64encode(ground).decode("ascii")
     if size:
         opts["size"] = [int(size[0]), int(size[1])]
+    if mascots:
+        opts["mascots"] = mascots          # served from web/public/cards by the routed origin
     with sync_playwright() as p:
         browser = _launch(p)
         try:

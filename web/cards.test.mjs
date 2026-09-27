@@ -2,6 +2,7 @@
 // browser by backend/tests/test_studio_cards.py; this checks the one rule the mapping owns: every point of every
 // slide reaches a card, whatever the look. `npm test`.
 import { specsFor, LOOKS, STUDIO_LOOKS } from "./src/lib/cards/studio.js";
+import { cardFromCaption, headAndRest, slidesFromCaption } from "./src/lib/cards/fromCaption.js";
 
 let failed = 0;
 const ok = (cond, what) => { if (!cond) { failed++; console.error("FAIL", what); } };
@@ -38,7 +39,53 @@ ok(g("photo") === "p_title,p_fact,p_quote", "photo: title, fact, quote, like Stu
 const li = specsFor(decks[0], { look: "grid", stream: "linkedin", citation: "EC 1223/2009" });
 ok(li.at(-1).chip_label === "Source" && li[0].scrim === "heavy" && li[0].stream === "linkedin", "linkedin label and scrim");
 ok(specsFor(decks[0], { look: "grid", size: [1080, 1920] })[0].size[1] === 1920, "a Design shape reaches the card");
+
+// Studio's per-slide editor (27 Sep 2026): a slide's own design wins over the look's choice
+const M = [{ k: "wave", url: "/m/wave.webp" }, { k: "point", url: "/m/point.webp" }, { k: "confused", url: "/m/confused.webp" }];
+const own = specsFor([
+  { title: "Had", points: ["Malaysia | 0.5 | 0.5%", "EU | 0.4 | 0.4%"], template: "g_bars", lead: "angka contoh", eyebrow: "ACD",
+    chip: "Annex III", footnote: "ACD 2026", note: "Semak dahulu.", scrim: "light", bg_url: "/g/x.jpg", mascot: "none" },
+  { title: "Dua", points: ["A"], lead: "Baris sokongan." },
+  { title: "Tiga", points: [], bg: "none" },
+], { look: "era", stream: "regulab", eyebrow: "Kosmetik", citation: "NPRA", bg: "/g/set.jpg", mascots: M });
+ok(own[0].template === "g_bars" && own[0].items.join("|") === "Malaysia | 0.5 | 0.5%|EU | 0.4 | 0.4%", "an explicit template takes the points verbatim as items");
+ok(own[0].lead === "angka contoh" && own[0].eyebrow === "ACD" && own[0].chip_label === "Annex III" && own[0].footnote === "ACD 2026"
+  && own[0].note === "Semak dahulu." && own[0].scrim === "light", "a slide's own lead, eyebrow, chip, source, note and scrim are used");
+ok(own[0].bg === "/g/x.jpg" && !own[0].mascot, "its own background, and mascot none means none");
+ok(own[1].template === "e_explain" && words(own[1]).includes("Baris sokongan.") && words(own[1]).includes("A"), "an auto slide keeps the typed lead and its points");
+ok(own[1].eyebrow === "Kosmetik" && own[1].bg === "/g/set.jpg", "unset fields fall back to the set's eyebrow and background");
+ok(own[1].mascot === "/m/point.webp", "auto mascot: e_explain gets the pointing pose, the template's own hint");
+ok(own[2].bg === "" && own[2].footnote === "NPRA" && own[2].chip_label === "Sumber", "bg none clears this slide only; the closing slide still carries the source");
+const hook = specsFor([{ title: "Kenapa?", points: ["a", "b"] }, { title: "x", points: ["c"] }], { look: "era", mascots: M });
+ok(hook[0].template === "e_hook" && hook[0].mascot === "/m/confused.webp", "the ERA hook gets the confused pose");
+ok(!specsFor([{ title: "t", points: [] }], { look: "grid" })[0].mascot, "no poses offered, no mascot");
+ok(!specsFor([{ title: "t", points: ["a"], template: "e_flow" }], { look: "era", mascots: M })[0].mascot, "e_flow never carries a mascot (Studio)");
+ok(specsFor([{ title: "t", points: [], mascot: "wave", template: "e_vs" }], { mascots: M })[0].mascot === "/m/wave.webp", "a chosen pose wins over the hint");
 ok(LOOKS.map((l) => l.k).join(",") === "classic,grid,era,photo", "the four looks, Semasa's own first");
+
+// Studio's "Reset from caption": every paragraph kept, asks and the website never built onto the artwork
+{
+  const long = "NPRA menyemak dokumen PIF selepas produk dipasarkan, bukan sebelum. Pemeriksaan boleh berlaku bila-bila masa dan syarikat perlu bersedia dengan fail lengkap. Kegagalan boleh membawa kepada pembatalan notifikasi.";
+  const cap = ["Notifikasi bukan kelulusan.", "Notifikasi ialah pemberitahuan kepada NPRA, bukan pengesahan keselamatan produk.", long,
+    "Label mesti sepadan dengan formula yang dinotifikasi.", "Hubungi kami untuk semakan percuma.",
+    "Formula yang berubah perlu dinotifikasi semula.", "Yang ramai tak sedar: tanggungjawab kekal pada pemilik produk.",
+    "#NPRA #Kosmetik", "www.kkmhalalconsultant.com"].join("\n\n");
+  const post = { stream: "regulab", hook: "Notifikasi bukan kelulusan.", caption: cap };
+  const promo = (t) => /hubungi kami|www\.kkmhalalconsultant/i.test(t);    // stands in for compliance.js isPromo
+  const { slides, over } = slidesFromCaption(post, promo);
+  const all = slides.map((x) => [x.title, x.lead || ""].join(" ")).join(" ");
+  ok(slides[0].title === "Notifikasi bukan kelulusan.", "the hook is the cover");
+  ok(slides.length >= 5 && slides.length <= 8, `cover, facts and a closing (${slides.length})`);
+  ok(all.includes("pembatalan notifikasi") && all.includes("Pemeriksaan boleh berlaku"), "a long paragraph is packed, not dropped");
+  ok(!/Hubungi kami|#NPRA|www\./.test(all), "no ask, no hashtags, no website on the artwork");
+  ok(slides.at(-1).title.startsWith("Yang ramai tak sedar") && slides.at(-1).eyebrow === "Yang ramai tak sedar", "the last statement closes");
+  ok(over === 0, "nothing over the ceiling");
+  ok(slides.every((x) => x.title.length <= 110), "every headline fits");
+  const card = cardFromCaption(post, promo);
+  ok(card.length === 1 && card[0].title === "Notifikasi bukan kelulusan." && card[0].lead.startsWith("Notifikasi ialah"), "a single card: hook and its line");
+  const [h, r] = headAndRest("Perintah Perihal Dagangan (Perakuan dan Penandaan Halal) 2011, perenggan 4(1), menetapkan bila perkataan halal boleh digunakan pada produk makanan, kosmetik dan farmaseutikal yang dijual di Malaysia, termasuk yang diimport.");
+  ok(h.length <= 110 && (h + " " + r).replace(/\s+/g, " ").length >= 190, "a long first sentence is broken until it fits, nothing lost");
+}
 
 if (failed) { console.error(`${failed} card mapping check(s) failed`); process.exit(1); }
 console.log("cards: slide -> Studio card mapping keeps every word");

@@ -166,9 +166,18 @@ def slide_ground(store: Any, row: dict[str, Any]) -> tuple[bytes | None, str | N
     meta.bg is "none", "post_image" (the post's first finished picture), "reference" (the job's own uploaded
     picture) or a media id (a picture made for it, such as the Design tab's AI background)."""
     meta = row.get("meta") or {}
-    bg = str(meta.get("bg") or "none")
-    if bg == "none":
+    return ground_for(store, row, str(meta.get("bg") or "none"))
+
+
+def ground_for(store: Any, row: dict[str, Any], bg: str) -> tuple[bytes | None, str | None]:
+    """One background token as bytes: "none", "post_image", "reference", "lib:<photo>" (Wan's own photographs, Studio's
+    grounds) or a media id. The set's background and each slide's own go through here alike."""
+    if not bg or bg == "none":
         return None, None
+    if bg.startswith("lib:"):
+        from . import cards_library
+        data = cards_library.ground_bytes(bg)
+        return (data, bg) if data else (None, None)
     if bg == "reference":
         # the Design tab: a picture Wan uploaded for this artwork, stored as the job's reference
         if not row.get("reference_url"):
@@ -188,6 +197,47 @@ def slide_ground(store: Any, row: dict[str, Any]) -> tuple[bytes | None, str | N
         return None, None
     data, _, _ = fetch_reference(pick["generated_media_url"])
     return data, pick["id"]
+
+
+def own_grounds(store: Any, row: dict[str, Any], items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each slide that names its own background gets it as a data address (`bg_url`) for the Studio renderer, fetched
+    once per distinct picture. A picture that cannot be had leaves that slide on the set's background, and says so in
+    the log; it never stops the drawing. The words kept on the job are the slides as written, without the addresses."""
+    import base64
+
+    from .providers.cloudflare import content_type_of
+    cache: dict[str, str] = {}
+    out = []
+    for it in items:
+        tok = str(it.get("bg") or "")
+        if tok and tok != "none":
+            if tok not in cache:
+                try:
+                    data, _ = ground_for(store, row, tok)
+                except Exception as exc:  # noqa: BLE001 - one slide's picture must not cost the whole set
+                    log.warning("%s: slide background %s could not be read: %s", row["id"], tok, str(exc)[:160])
+                    data = None
+                cache[tok] = (f"data:{content_type_of(data)};base64," + base64.b64encode(data).decode("ascii")) if data else ""
+            if cache[tok]:
+                it = {**it, "bg_url": cache[tok]}
+        out.append(it)
+    return out
+
+
+MAX_CLASSIC_POINTS = 5
+
+
+def classic_words(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Semasa's own drawing has a headline and points only: a slide's lead goes first and its note last, so a word
+    typed for another design is never silently left off when the set is drawn this way."""
+    out = []
+    for it in items:
+        words = [it.get("lead"), *(it.get("points") or []), it.get("note")]
+        pts = [" ".join(str(p).split()) for p in words if str(p or "").strip()]
+        if len(pts) > MAX_CLASSIC_POINTS:            # the drawing takes five: the rest share the fifth line, never cut
+            pts = pts[:MAX_CLASSIC_POINTS - 1] + [" · ".join(pts[MAX_CLASSIC_POINTS - 1:])]
+        out.append({"title": it.get("title") or "", "points": pts})
+    return out
 
 
 def reference_ground(store: Any, row_id: str, meta: dict[str, Any], s: MediaSettings,
@@ -357,13 +407,15 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             meta["look_chosen"] = look
         if studio_cards.is_studio_look(look):
             # ws.regulab Studio's own designs, drawn by Studio's own code in headless Chrome
+            from . import cards_library
             from .providers.cloudflare import content_type_of
-            pics = studio_cards.render(items, look=look, stream=stream, eyebrow=eyebrow,
+            pics = studio_cards.render(own_grounds(store, row, items), look=look, stream=stream, eyebrow=eyebrow,
                                        source=str(meta.get("citation") or ""), ground=ground,
-                                       ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size)
+                                       ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size,
+                                       mascots=cards_library.mascots())
         else:
             look = "classic"
-            pics = slides.render(items, stream=stream, eyebrow=eyebrow, source=str(meta.get("citation") or ""),
+            pics = slides.render(classic_words(items), stream=stream, eyebrow=eyebrow, source=str(meta.get("citation") or ""),
                                  website=website, ground=ground, size=size)
         day = datetime.now(UTC).strftime("%Y/%m")
         stamp = datetime.now(UTC).strftime("%d%H%M%S")      # a redraw is a new file, never an hour-old cached one
@@ -551,7 +603,7 @@ def main() -> int:
     trial_on = trial.start(store, llm, "media")         # the page's "Try Mireld for one run": Mireld is asked first
 
     # Flow A first, so the pictures an idea asks for are made in this same run.
-    idea_note = ideas.run(store, llm)
+    idea_note = ideas.run_all(store, llm)               # new ideas, then drafts Wan asked to revise (021)
     faq_note = faq.run(store, llm)
     from . import video
     video_note = video.run(store, llm)                 # long videos waiting to be read (supabase/011_video.sql)

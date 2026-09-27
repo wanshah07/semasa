@@ -37,6 +37,9 @@ MYT = timedelta(hours=8)
 STALE_MINUTES = 30
 CATEGORY_TO_DOMAIN = {"kosmetik": "kosmetik", "halal": "halal_my", "makanan": "makanan",
                       "farmaseutikal": "farmaseutikal", "kesihatan": "farmaseutikal"}
+# a case study is a FORMAT, not a subject (Studio, 22 Sep 2026: "make sure everyday got case study"): any posting day
+# takes one, whatever pair the rota gives that day. web/src/lib/slots.js carries the same list.
+ANY_DAY_DOMAINS = {"kajian_kes"}
 DOMAINS = ["kosmetik", "makanan", "halal_my", "farmaseutikal", "fatwa", "kajian_kes", "sains_kosmetik"]
 ANGLES = list("ABCDEFG")
 SOURCE_TEXT_MAX = 6000
@@ -228,8 +231,62 @@ def format_of(idea: dict[str, Any]) -> str:
     return "carousel" if idea.get("make_slides") else "post"
 
 
+# Studio's pillars: what KIND of post it is, named by the writer (settings "writer".regulab.pillars, per domain)
+PILLAR_HINT = {
+    "kajian_kes": "a real case: what happened to a product or company and what the rule did about it",
+    "mitos": "a common belief corrected against the instrument", "urutan": "the steps in order",
+    "silap": "a mistake people make, and the right way",
+    "kos_tempoh": "what it costs or how long it takes (sourced figures only)",
+    "dokumen": "the documents needed", "soal_jawab": "one real question answered",
+    "kajian_sains": "a new paper and what it found",
+}
+
+
+def pillars_for(writer: dict[str, Any] | None, stream: str, domain: str | None) -> list[str]:
+    w = ((writer or {}).get(stream) or {}) if isinstance(writer, dict) else {}
+    table = w.get("pillars") if isinstance(w, dict) and isinstance(w.get("pillars"), dict) else {}
+    got = table.get(domain or "") if domain else sorted({p for v in table.values() if isinstance(v, list) for p in v})
+    return [str(p) for p in (got or []) if re.fullmatch(r"[a-z_]{2,30}", str(p))][:12]
+
+
+def pillar_line(writer: dict[str, Any] | None, stream: str, domain: str | None) -> str:
+    opts = pillars_for(writer, stream, domain)
+    if not opts:
+        return ""
+    return ("\n- PILLAR: the post is ONE of these kinds; write it as that kind and name it in \"pillar\": "
+            + "; ".join(f"{p} = {PILLAR_HINT.get(p, p)}" for p in opts))
+
+
+def writer_block(writer: dict[str, Any] | None, stream: str) -> str:
+    """Wan's own words for the writer, from Settings (Studio's voice, never-list and hashtag lists; 021). Empty
+    settings add nothing: the rules above still hold. These can only add to the rules, never lift one."""
+    w = ((writer or {}).get(stream) or {}) if isinstance(writer, dict) else {}
+    if not isinstance(w, dict):
+        return ""
+    lines: list[str] = []
+    # Semasa has no [SAHKAN] marker and nothing looks for one (Wan, 26 Sep 2026): a Settings line asking for it would
+    # put markers into drafts that pass approval unseen, so such a line is never handed to the writer.
+    ok = lambda x: "sahkan" not in str(x).lower()  # noqa: E731
+    if str(w.get("voice") or "").strip() and ok(w.get("voice")):
+        lines.append(f"VOICE (Wan's words, follow them): {str(w['voice']).strip()[:1200]}")
+    never = [str(x).strip() for x in (w.get("never") or []) if str(x).strip() and ok(x)][:30]
+    if never:
+        lines.append("NEVER write: " + "; ".join(never))
+    tags = [str(x).strip() for x in (w.get("hashtags_core") or w.get("hashtags") or []) if str(x).strip()][:12]
+    if tags:
+        lines.append("HASHTAGS to use (within each platform's limit): " + " ".join(tags))
+    rot = [str(x).strip() for x in (w.get("hashtags_rotate") or []) if str(x).strip()][:20]
+    if rot:
+        lines.append("ROTATE one or two of these as fits the story: " + " ".join(rot))
+    if stream == "regulab" and str(w.get("fatwa_warning") or "").strip() and ok(w.get("fatwa_warning")):
+        lines.append("A FATWA post carries this line word for word: " + str(w["fatwa_warning"]).strip()[:400])
+    if not lines:
+        return ""
+    return "\n\nHOUSE STYLE (from Settings). It adds to the rules above and never lifts one:\n- " + "\n- ".join(lines)
+
+
 def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str, Any],
-                  avoid: str = "") -> tuple[str, str]:
+                  avoid: str = "", writer: dict[str, Any] | None = None) -> tuple[str, str]:
     stream = idea.get("stream") or "regulab"
     if stream == "linkedin":
         angles = (brand.get("linkedin") or {}).get("angles") or {}
@@ -257,7 +314,7 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
     else:
         lines.append("SOURCE: only the headline and summary above could be read "
                      f"({source.get('why') or 'no article'}). Use only the facts they give; leave out any specific they do not.")
-    return system + avoid, "\n\n".join(lines)
+    return system + avoid + writer_block(writer, stream) + pillar_line(writer, stream, idea.get("domain")), "\n\n".join(lines)
 
 
 def normalise_text(raw: Any, stream: str, lang: str) -> dict[str, dict[str, str]]:
@@ -282,6 +339,20 @@ def normalise_text(raw: Any, stream: str, lang: str) -> dict[str, dict[str, str]
 
 # --- placing ---------------------------------------------------------------------
 
+def asked_position(idea: dict[str, Any], stream: str, store: Any) -> tuple[str, str] | None:
+    """The date and slot an idea was made FOR (the Schedule tab's empty slot, or a rejected post's own slot when Reject
+    writes a replacement, as Studio did), when it is still in the future and still free; otherwise None."""
+    b = idea.get("brief") if isinstance(idea.get("brief"), dict) else {}
+    pos = b.get("position") if isinstance(b.get("position"), dict) else {}
+    date, slot = str(pos.get("date") or ""), str(pos.get("slot") or "")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) or not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", slot):
+        return None
+    now = (datetime.now(UTC) + MYT).strftime("%Y-%m-%d %H:%M")
+    if f"{date} {slot}" <= now or (date, slot) in taken_positions(store, stream):
+        return None
+    return date, slot
+
+
 def next_free_position(stream: str, domain: str | None, brand: dict[str, Any], taken: set[tuple[str, str]],
                        now: datetime | None = None, horizon_days: int = 28) -> tuple[str | None, str | None]:
     """The first date+slot, from tomorrow (Malaysia time), that this stream posts on and nobody holds.
@@ -296,7 +367,7 @@ def next_free_position(stream: str, domain: str | None, brand: dict[str, Any], t
             allow = (cfg.get("schedule") or {}).get(str(dow))
             if allow is not None and not allow:
                 continue                                  # a no-posting day
-            if domain and allow and domain not in allow:
+            if domain and allow and domain not in allow and domain not in ANY_DAY_DOMAINS:
                 continue
         else:
             days = cfg.get("days")
@@ -367,6 +438,22 @@ def already_published(store: Any, idea: dict[str, Any]) -> dict[str, Any] | None
         return None
 
 
+def kept_media(store: Any, brief: dict[str, Any]) -> list[str]:
+    """Pictures a replacement keeps from the draft it replaces (brief.keep_media_ids, written by Reject & replace):
+    only those still there and finished, in their order. Never raises: a failed look-up keeps nothing and the worker
+    makes new pictures as usual."""
+    ids = [str(x) for x in (brief.get("keep_media_ids") or []) if isinstance(x, str)][:10]
+    if not ids:
+        return []
+    try:
+        rows = store.table(db.MEDIA).select("id,status,mode,generated_media_url").in_("id", ids).execute().data or []
+    except Exception:  # noqa: BLE001
+        return []
+    # a drawn slide set carries the OLD words: the replacement's slides are drawn again from its own
+    ok = {r["id"] for r in rows if r.get("status") == "done" and r.get("generated_media_url") and r.get("mode") != "slides"}
+    return [i for i in ids if i in ok]
+
+
 def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str, Any]) -> str:
     """Returns the new post id. Raises IdeaError with a message for the page."""
     if not llm.configured:
@@ -381,7 +468,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     stream = idea.get("stream") or "regulab"
     lang = "en" if stream == "linkedin" else "bm"
     source = faq_source(idea) or read_source(idea.get("source_url"))
-    system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra))
+    system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra), writer=settings.get("writer"))
     fmt = format_of(idea)
     want_slides = fmt == "carousel"
     want_poster = fmt == "poster"
@@ -416,18 +503,29 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     angle = idea.get("angle") or (out.get("angle") if out.get("angle") in ANGLES else None)
     if stream == "linkedin":
         domain = None
-    date, slot = next_free_position(stream, domain, brand, taken_positions(store, stream))
+    date, slot = asked_position(idea, stream, store) or next_free_position(stream, domain, brand, taken_positions(store, stream))
     post = {
         "idea_id": idea["id"], "stream": stream, "domain": domain, "angle": angle, "lang": lang,
         "hook": str(out.get("hook") or "")[:300], "text": text, "citation": str(out.get("citation") or "")[:1000],
         "date": date, "slot": slot, "status": "draft", "created_by": idea.get("created_by"),
     }
+    pillar = str(out.get("pillar") or "").strip()
+    if pillar and pillar in pillars_for(settings.get("writer"), stream, domain or None):
+        post["pillar"] = pillar          # only with a pillar list, which only exists once 021 (and its column) ran
+    kept = kept_media(store, brief0)
+    if kept:
+        post["media_ids"] = kept         # Reject & replace kept the rejected draft's own pictures (Studio did the same)
     if want_slides:
         # only when asked: the column arrives with 006_slides.sql, and an idea that never asked
         # for slides must still be written on a database that has not run it
         post["slides"] = slides.normalise(out.get("slides"))
     reg = brand.get("regulab") or {}
-    flags = compliance.scan({**post, "media": []}, brand=reg, schedule=reg.get("schedule"),
+    if kept:
+        from . import publisher
+        shown = [publisher.scan_entry(m) for m in publisher.media_for(store, kept)]
+    else:
+        shown = []
+    flags = compliance.scan({**post, "media": shown}, brand=reg, schedule=reg.get("schedule"),
                             indo_extra=indo_extra)
     post["flags"] = flags
     post["hard_flags"] = compliance.hard_count(flags)
@@ -442,12 +540,12 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         store.table(db.IDEAS).update({"brief": {**brief0, "partial_post_id": post_id}}) \
             .eq("id", idea["id"]).execute()
 
-    jobs = [] if has_jobs else media_jobs(idea, source, out, post_id)
+    jobs = [] if has_jobs or kept else media_jobs(idea, source, out, post_id)
     if want_slides and post.get("slides") and not has_jobs:
-        jobs.append(slide_job(idea, post, post_id, bg="post_image" if jobs else "none"))
+        jobs.append(slide_job(idea, post, post_id, bg="post_image" if jobs or kept else "none"))
     poster = slides.normalise([out.get("poster")] if isinstance(out.get("poster"), dict) else [])[:1] if want_poster else []
     if poster and not has_jobs:
-        jobs.append(poster_job(idea, post, post_id, poster, bg="post_image" if jobs else "none"))
+        jobs.append(poster_job(idea, post, post_id, poster, bg="post_image" if jobs or kept else "none"))
     if jobs:
         store.table(db.MEDIA).insert(jobs).execute()
     brief = {"source": {k: source.get(k) for k in ("ok", "why", "url", "title", "image")},
@@ -457,13 +555,118 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         brief["look"] = look_of(idea)      # the carousel look Wan chose on the idea (Studio's designs), kept
     if fmt != "post":
         brief["format"] = fmt              # carousel or poster, kept for the page
+    for k in ("position", "replaces", "keep_media_ids"):
+        if k in brief0:
+            brief[k] = brief0[k]           # what the idea was made for stays readable on it
     store.table(db.IDEAS).update({"status": "drafted", "brief": brief, "error": None}).eq("id", idea["id"]).execute()
     return post_id
 
 
+REVISE_ASK = """REWRITE THIS POST on the SAME subject. Wan read it and wants a change:
+WAN'S NOTE: %s
+
+Keep every fact the current post and its citation carry, and add none: the note changes how it is said, what it leads
+with or what it leaves out, never what the source says. Every rule above still applies. Answer in the same JSON shape
+("fit" true). Do not return "slides": the slides stay as they are.
+
+CURRENT HOOK: %s
+CURRENT CITATION: %s
+CURRENT CAPTION (%s):
+%s"""
+REVISE_STALE_MINUTES = 30
+
+
+def stamp() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def revise_posts(store: Any, llm: LLM, limit: int = 3) -> str:
+    """"Revise with a note" (Studio's revise): the post keeps its slot, its idea and its pictures; its caption, hook and
+    citation are written again with Wan's note, and the words it had go into `versions`. Slides are NOT rewritten: they
+    carry Wan's per-slide designs and the pictures already drawn from them, and "Build from the caption" in the slides
+    editor redoes them on purpose. Only a draft is rewritten: an approved post is what Wan approved. The worker never
+    approves anything."""
+    try:
+        cutoff = (datetime.now(UTC) - timedelta(minutes=REVISE_STALE_MINUTES)).isoformat()
+        store.table(db.POSTS).update({"revise_state": "new"}).eq("revise_state", "working").lt("updated_at", cutoff).execute()
+        rows = (store.table(db.POSTS).select("*").eq("revise_state", "new").order("updated_at").limit(limit)
+                .execute().data or [])
+    except Exception as exc:  # noqa: BLE001 - 021 not run yet: nothing to revise
+        return f"Revise: skipped ({str(exc)[:100]})"
+    if not rows:
+        return "Revise: none waiting"
+    settings = load_settings(store)
+    done = 0
+    for post in rows:
+        got = (store.table(db.POSTS).update({"revise_state": "working", "revise_error": None}).eq("id", post["id"])
+               .eq("revise_state", "new").execute().data or [])
+        if not got:
+            continue                      # another run took it
+        try:
+            revise_one(store, llm, post, settings)
+            done += 1
+        except Exception as exc:  # noqa: BLE001 - recorded on the post for the page
+            msg = str(exc) if isinstance(exc, IdeaError) else f"{type(exc).__name__}: {str(exc)[:400]}"
+            log.error("revise %s: %s", post["id"], msg)
+            store.table(db.POSTS).update({"revise_state": "error", "revise_error": msg[:800]}).eq("id", post["id"]).execute()
+    return f"Revise: {done}/{len(rows)} rewritten"
+
+
+def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, Any]) -> None:
+    from . import publisher
+    if not llm.configured:
+        raise IdeaError(llm.why_off())
+    if post.get("status") != "draft":
+        raise IdeaError("only a draft is rewritten: put the post back to draft first, then ask again")
+    stream = post.get("stream") or "regulab"
+    lang = post.get("lang") or ("en" if stream == "linkedin" else "bm")
+    brand = settings.get("brand") or {}
+    indo_extra = (settings.get("bahasa") or {}).get("indo")
+    if stream == "linkedin":
+        angles = (brand.get("linkedin") or {}).get("angles") or {}
+        system = LINKEDIN_SYSTEM % "; ".join(f"{k} = {v}" for k, v in sorted(angles.items()))
+    else:
+        system = REGULAB_SYSTEM % DOMAINS
+    system += compliance.avoid_line(indo_extra) + writer_block(settings.get("writer"), stream)
+    plat = "linkedin" if stream == "linkedin" else "instagram"
+    caption = ((post.get("text") or {}).get(lang) or {}).get(plat) or ""
+    user = REVISE_ASK % (str(post.get("revise_note") or "").strip()[:800], post.get("hook") or "", post.get("citation") or "",
+                         lang, caption)
+    out = llm.chat_json(system, user, max_tokens=3500)
+    if not out:
+        raise IdeaError("the writer did not answer (see the run log); ask again")
+    text = normalise_text(out.get("text"), stream, lang)
+    if not text.get(lang):
+        raise IdeaError(f"the writer returned no {lang.upper()} caption; the post is unchanged")
+    before = {k: post.get(k) for k in ("hook", "text", "citation")}
+    update: dict[str, Any] = {
+        "text": text, "hook": str(out.get("hook") or post.get("hook") or "")[:300],
+        "citation": str(out.get("citation") or post.get("citation") or "")[:1000],
+        "versions": [*(post.get("versions") or []), {**before, "at": stamp(), "why": post.get("revise_note") or ""}][-20:],
+        "decisions": [*(post.get("decisions") or []), {"at": stamp(), "by": "bot", "action": "revised",
+                                                       "note": str(post.get("revise_note") or "")[:400]}][-50:],
+        "revise_state": None, "revise_note": None, "revise_error": None,
+    }
+    media = publisher.media_for(store, list(post.get("media_ids") or []))
+    reg = brand.get("regulab") or {}
+    flags = compliance.scan({**post, **update, "media": [publisher.scan_entry(m) for m in media if m.get("status") == "done"]},
+                            brand=reg, schedule=reg.get("schedule"), indo_extra=indo_extra)
+    update["flags"], update["hard_flags"] = flags, compliance.hard_count(flags)
+    got = (store.table(db.POSTS).update(update).eq("id", post["id"]).eq("status", "draft").eq("revise_state", "working")
+           .execute().data or [])
+    if not got:
+        raise IdeaError("the post changed while it was being rewritten (approved, or edited): nothing was written")
+    db.log_event(store, "info", "post", "post.revised", f"Ditulis semula dengan nota: {update['hook'][:80]}",
+                 ref_table="semasa_posts", ref_id=post["id"])
+
+
 def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str = "none") -> dict[str, Any]:
     """One render job for the whole carousel, carrying a snapshot of the words. Queued after the
-    picture jobs, so a picture made in the same run can be the slides' background."""
+    picture jobs, so a picture made in the same run can be the slides' background. With no picture, a Studio look is
+    drawn on Studio's default ground for the domain or angle (Wan's own photographs), as Studio did."""
+    from . import cards_library, studio_cards
+    if bg == "none" and studio_cards.is_studio_look(look_of(idea)):
+        bg = cards_library.default_ground(post.get("stream") or "regulab", post.get("domain"), post.get("angle")) or "none"
     return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
             "prompt": "", "created_by": idea.get("created_by"),
             "meta": {"flow": "A", "slides": post.get("slides") or [], "stream": post.get("stream"),
@@ -534,3 +737,8 @@ def run(store: Any, llm: LLM, limit: int | None = None) -> str:
             log.error("idea %s: %s", idea["id"], msg)
             store.table(db.IDEAS).update({"status": "error", "error": msg[:800]}).eq("id", idea["id"]).execute()
     return f"Ideas: {ok}/{len(ideas)} written as drafts"
+
+
+def run_all(store: Any, llm: LLM) -> str:
+    """The worker's writing step: new ideas into drafts, then drafts Wan asked to revise."""
+    return "\n".join([run(store, llm), revise_posts(store, llm)])

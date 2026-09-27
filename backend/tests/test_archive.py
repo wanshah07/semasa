@@ -113,3 +113,36 @@ def test_a_picture_another_post_uses_is_never_deleted():
                            {"id": "c", "post_id": "p1", "status": "done", "meta": {"generated_path": "x/c.jpg"}}])
     archive.run(store, datetime(2026, 9, 26, tzinfo=UTC))
     assert sorted(r["id"] for r in store.tables["media_generations"]) == ["a", "b"]   # c was unused by anyone
+
+
+def test_purge_rejected_after_72h_with_studio_guards():
+    now = datetime(2026, 9, 27, 0, 0, tzinfo=UTC)
+    old, fresh = "2026-09-23T00:00:00+00:00", "2026-09-26T00:00:00+00:00"
+    posts = [
+        {"id": "gone", "status": "rejected", "rejected_at": old, "media_ids": ["m1"], "published": {}},
+        {"id": "young", "status": "rejected", "rejected_at": fresh, "media_ids": []},
+        {"id": "nostamp", "status": "rejected", "rejected_at": None, "media_ids": []},
+        {"id": "evidence", "status": "rejected", "rejected_at": old, "published": {"facebook": {"id": "b1"}}},
+        {"id": "busy", "status": "rejected", "rejected_at": old, "revise_state": "working"},
+        {"id": "live", "status": "draft", "rejected_at": None, "media_ids": ["m2"]},
+    ]
+    media = [
+        {"id": "m1", "post_id": "gone", "status": "done", "meta": {"generated_path": "a/m1.png"}},
+        {"id": "m2", "post_id": "gone", "status": "done", "meta": {"generated_path": "a/m2.png"}},   # the live post uses it
+        {"id": "m3", "post_id": "gone", "status": "done", "meta": {"design": "poster", "generated_path": "a/m3.png"}},
+        {"id": "m4", "post_id": "young", "status": "done", "meta": {}},
+    ]
+    store = FakeStore(semasa_posts=posts, media_generations=media, semasa_log=[])
+    out = archive.purge_rejected(store, now)
+    left = {p["id"] for p in store.tables["semasa_posts"]}
+    assert left == {"young", "nostamp", "evidence", "busy", "live"}
+    assert {m["id"] for m in store.tables["media_generations"]} == {"m2", "m3", "m4"}
+    assert [p for _, ps in store.removed for p in ps] == ["a/m1.png"]
+    assert out.startswith("purge: 1 rejected post(s) deleted") and "2 kept" in out      # "nostamp" is never even selected
+
+
+def test_purge_rejected_without_021_says_so():
+    class Broken:
+        def table(self, name):
+            raise RuntimeError('column semasa_posts.rejected_at does not exist')
+    assert "021" in archive.purge_rejected(Broken())

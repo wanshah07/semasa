@@ -11,6 +11,7 @@ import { useLang } from "../lib/i18n";
 import { IMAGE_TYPES, refusal, removeReference, uploadReference } from "../lib/storage";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import LookPicker from "../components/LookPicker";
+import { GROUNDS, MASCOTS, groundOf } from "../lib/cards/library";
 import SizePicker from "../components/SizePicker";
 import { UnsplashResults, UnsplashSearch } from "../components/Unsplash";
 import Button from "../components/ui/Button";
@@ -44,6 +45,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
   const [unsplashPick, setUnsplashPick] = useState(null);   // the photo chosen from it
   const [file, setFile] = useState(null);
   const [bgPrompt, setBgPrompt] = useState("");
+  const [libPick, setLibPick] = useState(GROUNDS[0]?.k || "");   // Wan's own photographs, Studio's grounds
   const [attach, setAttach] = useState("");
   const [fromPost, setFromPost] = useState("");
   const [busy, setBusy] = useState("");
@@ -74,8 +76,10 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
   const unsplashReady = !!uRow && (!!uRow.generated_media_url || !!uRow.meta?.pick) && uRow.status !== "error";
   const ready = (words === "ai" ? brief.trim().length > 0 : own.length > 0)
     && (bg !== "upload" || file) && (bg !== "ai" || bgPrompt.trim()) && (bg !== "unsplash" || unsplashReady)
+    && (bg !== "library" || !!groundOf(libPick))
     && (!lookBlocked || (styleFile && autoLook));
-  const previewBg = bg === "upload" ? preview : bg === "unsplash" ? (uRow?.generated_media_url || unsplashPick?.thumb || "") : "";
+  const previewBg = bg === "upload" ? preview : bg === "unsplash" ? (uRow?.generated_media_url || unsplashPick?.thumb || "")
+    : bg === "library" ? (groundOf(libPick)?.url || "") : "";
   // the design preview: Wan's own words when he writes them, sample words while the bot is to write them
   const sampleWords = !(words === "own" && own.length);
   const previewSlides = sampleWords ? designSample(design, stream) : own;
@@ -125,6 +129,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
         bgValue = unsplashRow;                               // the worker waits for the pick to be stored, then draws on it
       }
       if (bg === "from_ref") bgValue = "from_ref";           // an original background in the reference's mood (worker)
+      if (bg === "library") bgValue = `lib:${libPick}`;     // one of Wan's own photographs (web/public/cards/grounds)
       const meta = { flow: "design", design, format, ...sizeMeta(format), stream, bg: bgValue, look: styleUp && autoLook ? "auto" : look,
         eyebrow: eyebrow.trim(), citation: citation.trim(),
         ...(styleUp ? { style_ref: { url: styleUp.url, path: styleUp.path, name: styleFile.name } } : {}),
@@ -208,7 +213,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
             </div>
             <div><Label>{t("Latar", "Background")}</Label>
               <Segmented value={bg} onChange={setBg} options={[["none", t("Kertas jenama", "Brand paper")],
-                ["upload", t("Gambar saya", "My picture")], ["ai", t("Gambar AI", "AI picture")], ["unsplash", "Unsplash"],
+                ["upload", t("Gambar saya", "My picture")], ["library", t("Foto Wan", "Wan's photos")], ["ai", t("Gambar AI", "AI picture")], ["unsplash", "Unsplash"],
                 ...(styleFile ? [["from_ref", t("Ilham rujukan (AI)", "From the reference (AI)")]] : [])]} /></div>
             {bg === "unsplash" && (
               <div className="space-y-2">
@@ -216,6 +221,17 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
                   onQueued={(id) => { setUnsplashRow(id); setUnsplashPick(null); gens.reload(); }} />
                 {uRow && <div className="rounded-tile border border-line"><UnsplashResults row={uRow} onToast={onToast}
                   chosenId={uRow.meta?.pick || unsplashPick?.id} onPicked={(_, p) => { setUnsplashPick(p); gens.reload(); }} /></div>}
+              </div>
+            )}
+            {bg === "library" && (
+              <div role="radiogroup" aria-label={t("Foto Wan", "Wan's photos")} className="flex gap-2 overflow-x-auto pb-1" style={{ scrollSnapType: "x mandatory" }}>
+                {GROUNDS.map((g) => (
+                  <button key={g.k} type="button" role="radio" aria-checked={libPick === g.k} onClick={() => setLibPick(g.k)} title={g.alt}
+                    className={`shrink-0 overflow-hidden rounded-tile border ${libPick === g.k ? "border-accent ring-2 ring-accent/30" : "border-line"}`} style={{ scrollSnapAlign: "start" }}>
+                    <img src={g.url} alt={g.alt} className="h-24 w-20 object-cover" loading="lazy" />
+                    <span className="block px-1 py-0.5 text-center text-[10px] text-muted">{g.name}</span>
+                  </button>
+                ))}
               </div>
             )}
             {bg === "upload" && (
@@ -279,7 +295,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
           {styleFile && autoLook && <p className="mb-2 text-[12px] text-accent">{t("AI akan memilih reka bentuk daripada rujukan; pilihan di bawah hanya pratonton.",
             "The AI picks the design from the reference; the choice below is only a preview.")}</p>}
           <LookPicker value={look} onChange={setLook} slides={previewSlides} sample={sampleWords} stream={stream}
-            eyebrow={eyebrow.trim()} citation={citation.trim()} bgUrl={previewBg} bgChosen={bg !== "none"}
+            eyebrow={eyebrow.trim()} citation={citation.trim()} bgUrl={previewBg} bgChosen={bg !== "none"} mascots={MASCOTS}
             size={pxOf(format)} onBlocked={setLookBlocked} />
         </div>
 

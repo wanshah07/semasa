@@ -161,6 +161,7 @@ def main() -> int:
     log.info("publisher: %s", counts)
     from . import archive, sheet
     archived = archive.run(store)                     # before the sheet, so today's archive rows go with it
+    archived += "; " + archive.purge_rejected(store)   # rejected 72 hours ago (021)
     log.info(archived)
     log.info(sheet.sync_log(store))
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")

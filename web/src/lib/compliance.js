@@ -95,10 +95,37 @@ export function normaliseSlides(raw) {
       .map((p) => cut(p, 400)).slice(0, MAX_POINTS);
     const body = String(s.body ?? "").trim();
     if (body && !points.length) points = [cut(body, 400)];
-    if (title || points.length) out.push({ title, points });
+    const extra = slideExtras(s);
+    if (title || points.length || SLIDE_WORD_KEYS.some((k) => extra[k])) out.push({ title, points, ...extra });
   }
   return out;
 }
+
+/* A slide's own design (Studio's per-slide editor, brought over 27 Sep 2026): the words each design draws besides the
+   headline and the points, and how it is drawn. Kept only when set, in this order, so a slide written before these
+   existed compares equal to itself. Mirrored exactly by slide_extras in backend/semasa/compliance.py. */
+export const SLIDE_WORDS = { lead: 400, eyebrow: 80, chip: 60, note: 240, footnote: 300 };
+const SLIDE_WORD_KEYS = Object.keys(SLIDE_WORDS);
+const SLIDE_STYLE = {
+  template: /^[gep]_[a-z]{3,8}$/,
+  scrim: /^(light|medium|heavy)$/,
+  bg: /^(none|post_image|lib:g_[a-z0-9]{2,30}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/,
+  mascot: /^(none|[a-z]{2,20})$/,
+};
+export function slideExtras(s) {
+  const out = {};
+  for (const [k, cap] of Object.entries(SLIDE_WORDS)) {
+    const v = cut(String(s[k] ?? "").trim(), cap);
+    if (v) out[k] = v;
+  }
+  for (const [k, rx] of Object.entries(SLIDE_STYLE)) {
+    const v = String(s[k] ?? "").trim();
+    if (v && rx.test(v)) out[k] = v;
+  }
+  return out;
+}
+/** Every word a slide can put on the picture, for the scan. */
+export const slideText = (sl) => [sl.title || "", ...(sl.points || []), ...SLIDE_WORD_KEYS.map((k) => sl[k] || "")].join("\n");
 
 /** Comparable form of a slide list: equal keys mean the same words. */
 export const slidesKey = (raw) => JSON.stringify(normaliseSlides(raw));
@@ -173,7 +200,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   // Slides are artwork: judged like a caption, and what is DRAWN must be what is written.
   const artwork = (items, label) => items.forEach((sl, i) => {
     const where = `${label} ${i + 1}`;
-    const t = [sl.title, ...sl.points].join("\n");
+    const t = slideText(sl);
     for (const [re, lab] of HARD) if (re.test(t)) add(true, where, lab);
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. A post stands on the instrument, never on where the idea was spotted.");
     for (const msg of indoHits(t, extra)) add(true, where, msg);
@@ -187,6 +214,16 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   });
   const slides = normaliseSlides(post.slides);
   artwork(slides, "Slide");
+  // Wan's shape for a carousel (Studio, 7 Sep 2026): a cover, at least three slides carrying facts, then a closing line
+  // that leaves them curious. One slide is a single card and is not a carousel.
+  if (slides.length > 1) {
+    const substance = (x) => !!(x.title || x.lead || x.points.length);
+    const facts = slides.slice(1, -1).filter(substance).length;
+    if (facts < RULES.carousel_min_facts)
+      add(true, "Carousel", `${facts} slide${facts === 1 ? "" : "s"} of substance between the cover and the closing. At least ${RULES.carousel_min_facts}.`);
+    const last = slides[slides.length - 1];
+    if (!(last.title || last.lead)) add(true, "Carousel", "write the closing line: one statement that leaves them curious. Not a question, not an ask.");
+  }
   // A poster, card or carousel from the Design tab carries its own words: the same rules, but it is not a drawing
   // of this post's slides, so it is never compared with them.
   (post.media || []).forEach((m, k) => {
@@ -207,10 +244,33 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   if (stream === "regulab" && schedule && post.date && post.domain) {
     const dow = dowOf(post.date);
     const allow = dow === null ? null : schedule[String(dow)];
-    if (allow && allow.length && !allow.includes(post.domain))
+    if (allow && allow.length && !allow.includes(post.domain) && !(RULES.rota_any_day || []).includes(post.domain))
       add(false, "Rota", `${DOW[dow]} carries ${allow.join(" and ")}, and this is ${post.domain}. A note, not a block.`);
   }
   return flags;
 }
 
 export const hardCount = (flags) => flags.filter((f) => f.hard).length;
+
+/** A sentence that asks for something or carries the ws.regulab website: never built onto the artwork. */
+export function isPromo(sentence, brand = null) {
+  const t = String(sentence || "");
+  return brandUrlRe(brand || RULES.brand).test(t) || CTA.some(([re]) => re.test(t));
+}
+
+/** One click for Studio's "strip the ask": every sentence that asks for something or carries the ws.regulab website
+    comes out of a caption; everything else, line breaks included, stays exactly as written. A regulator's link is
+    only a warning, so it stays. Returns {text, removed: [sentences]}. */
+export function stripPromo(caption, brand = null) {
+  const removed = [];
+  const lines = String(caption || "").split("\n").map((line) => {
+    if (!isPromo(line, brand)) return line;
+    const kept = line.split(/(?<=[.!?])\s+/).filter((s) => {
+      if (isPromo(s, brand)) { removed.push(s.trim()); return false; }
+      return true;
+    });
+    return kept.join(" ");
+  });
+  const text = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return { text, removed };
+}

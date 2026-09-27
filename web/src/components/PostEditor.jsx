@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, ImagePlus, Info, RotateCcw, Save, Trash2, X } from "lucide-react";
+import { AlertTriangle, CalendarClock, Check, Eraser, ImagePlus, Info, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
-import { LIMITS, charLen, hardCount, normaliseSlides, platformsFor, scan, scanMedia } from "../lib/compliance";
+import { LIMITS, charLen, hardCount, normaliseSlides, platformsFor, scan, scanMedia, stripPromo } from "../lib/compliance";
+import { dueMs, nextFreeSlot, refOf, slotsOf, takenSet } from "../lib/slots";
+import { withDecision } from "../lib/workflow";
+import PostWorkflow from "./PostWorkflow";
 import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import SlidesEditor, { fromRows, toRows } from "./SlidesEditor";
+import { GROUNDS, bgUrlOf, defaultGround } from "../lib/cards/library";
+import { isStudioLook } from "../lib/cards/studio";
 import { UnsplashCredit, UnsplashResults, UnsplashSearch, isUnsplash } from "./Unsplash";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
@@ -15,7 +20,7 @@ const PLAT_LABEL = { instagram: "Instagram", facebook: "Facebook", threads: "Thr
    the position, the pictures, and the same checks the publisher will run — live, as you type.
    Approve is offered only when nothing blocks. Changing an approved post sends it back to
    draft (the database does that, not this page), so what was approved is what goes out. */
-export default function PostEditor({ post, mediaById, mediaRows, log, brand, user, indoExtra, onToast, onChanged, onClose }) {
+export default function PostEditor({ post, posts = [], mediaById, mediaRows, log, brand, user, indoExtra, onToast, onChanged, onClose }) {
   const { t } = useLang();
   const [text, setText] = useState(post.text || {});
   const [lang, setLang] = useState(post.lang || (post.stream === "linkedin" ? "en" : "bm"));
@@ -25,7 +30,9 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
   const [slot, setSlot] = useState(post.slot || "");
   const [mediaIds, setMediaIds] = useState(post.media_ids || []);
   const [slideRows, setSlideRows] = useState(toRows(post.slides));
-  const [bg, setBg] = useState("none");
+  // the set's background: the last drawing's, else Studio's default for this domain or angle (Wan's own photographs)
+  const [bg, setBg] = useState(() => (mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta?.bg) || "none");
   // the carousel's look: the one its last drawing used, Semasa's own drawing when there is none
   const lastLook = () => (mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta?.look) || "classic";
@@ -79,11 +86,15 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
     && m.generated_media_url);
   // what the look preview draws on: the same picture the worker will fetch for this background choice
   const firstPicture = pictures.slice().sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))[0];
-  const bgUrl = bg === "none" ? "" : bg === "post_image" ? (firstPicture?.generated_media_url || "")
-    : (pictures.find((m) => m.id === bg)?.generated_media_url || mediaById[bg]?.generated_media_url || "");
+  const resolveBg = (token) => bgUrlOf(token, { postImage: firstPicture?.generated_media_url || "",
+    mediaUrl: (id) => pictures.find((m) => m.id === id)?.generated_media_url || mediaById[id]?.generated_media_url || "" });
+  const bgUrl = resolveBg(bg);
   const eyebrow = post.stream === "linkedin" ? (brand.linkedin?.angles?.[post.angle] || "") : (brand.regulab?.domains?.[post.domain] || "");
   const bgOptions = [["none", t("Kertas", "Paper")], ["post_image", t("Gambar pertama post", "Post's first picture")],
-    ...pictures.map((m, i) => [m.id, `${t("Gambar {n}", "Picture {n}", { n: i + 1 })}${m.prompt ? `: ${m.prompt.slice(0, 28)}` : ""}`])];
+    ...pictures.map((m, i) => [m.id, `${t("Gambar {n}", "Picture {n}", { n: i + 1 })}${m.prompt ? `: ${m.prompt.slice(0, 28)}` : ""}`]),
+    ...(bg && !["none", "post_image"].includes(bg) && !bg.startsWith("lib:") && !pictures.some((m) => m.id === bg)
+      ? [[bg, t("Latar lukisan terakhir", "The last drawing's background")]] : []),
+    ...GROUNDS.map((g) => [`lib:${g.k}`, `${t("Foto Wan", "Wan's photo")}: ${g.name}`])];
 
   const current = { ...post, text, lang, citation, date: date || null, slot: slot || null, media_ids: mediaIds,
     ...(hasSlides ? { slides } : {}),
@@ -139,6 +150,77 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
 
   const content = () => ({ text, lang, citation, date: date || null, slot: slot || null, media_ids: mediaIds,
     ...(hasSlides ? { slides } : {}), flags, hard_flags: hard });
+  // the decision record rides on the same write, only once 021 has added the column (a row read before it has no key)
+  const decided = (action, note = "") => ("decisions" in post ? { decisions: withDecision(post, action, note) } : {});
+  const dirty = JSON.stringify(text) !== JSON.stringify(post.text || {}) || citation !== (post.citation || "")
+    || (date || "") !== (post.date || "") || (slot || "") !== (post.slot || "")
+    || JSON.stringify(mediaIds) !== JSON.stringify(post.media_ids || []);
+
+  // Restore goes back on its own slot while that is still ahead and free, else on the next free one for the stream
+  // (Studio's restoreDraft put two posts on one slot until it asked claimSlot; the slot is re-read from the database
+  // first, since the list on screen can be a poll behind)
+  async function restore() {
+    setBusy(true);
+    const { data: live, error } = await supabase.from(TABLES.posts).select("id,stream,status,date,slot")
+      .eq("stream", post.stream || "regulab").neq("status", "rejected").gte("date", new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10));
+    setBusy(false);
+    if (error) return onToast(errText(error), "danger");
+    const all = live || posts;
+    const ownFree = post.date && post.slot && dueMs(post.date, post.slot) > Date.now() + 30 * 60_000
+      && !takenSet(all, post.stream || "regulab", post.id).has(`${post.date} ${post.slot}`);
+    const pos = ownFree ? { date: post.date, slot: post.slot }
+      : nextFreeSlot({ posts: all, brand, stream: post.stream || "regulab", domain: post.domain, skipId: post.id, fromDate: post.date });
+    const moved = pos && (pos.date !== post.date || pos.slot !== post.slot);
+    await write({ status: "draft", ...(pos ? { date: pos.date, slot: pos.slot } : {}),
+      ...decided("restored", moved ? `from ${post.date || "-"} ${post.slot || ""}` : "") },
+    moved ? t("Dipulihkan ke draf, dipindah ke {d} {s} (slot asal sudah lepas atau diambil).", "Restored to draft, moved to {d} {s} (its slot had passed or was taken).", { d: pos.date, s: pos.slot })
+      : pos ? t("Dipulihkan ke draf.", "Restored to draft.") : t("Dipulihkan ke draf. Tiada slot kosong dalam 60 hari: pilih tarikh.", "Restored to draft. No free slot in 60 days: pick a date."));
+  }
+
+  // Studio's "Fix →": from a flag to the field it is about (the other language's caption opens that language first)
+  function fixTarget(where) {
+    const w = String(where || "");
+    const plat = (w.match(/\((instagram|facebook|threads|linkedin)\)/) || [])[1];
+    if (plat) return { id: `cap-${post.id}-${plat}`, other: /variant/.test(w) };
+    if (/^(Slide|Carousel|Slides|Sources)/.test(w)) return { id: `slides-${post.id}` };
+    if (/^(Position|Kedudukan|Rota)/.test(w)) return { id: `date-${post.id}` };
+    if (/^(Pictures|Gambar|Post|Design)/.test(w)) return { id: `pics-${post.id}` };
+    return null;
+  }
+  function jump(where) {
+    const to = fixTarget(where);
+    if (!to) return;
+    if (to.other) setView(lang === "bm" ? "en" : "bm"); else if (/^cap-/.test(to.id)) setView(lang);
+    window.setTimeout(() => {
+      const el = document.getElementById(to.id);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (el.focus && /^(cap|date)-/.test(to.id)) el.focus({ preventScroll: true });
+    }, 60);
+  }
+
+  function takeNextFree() {
+    const pos = nextFreeSlot({ posts, brand, stream: post.stream || "regulab", domain: post.domain, skipId: post.id });
+    if (!pos) return onToast(t("Tiada slot kosong dalam 60 hari.", "No free slot in the next 60 days."), "warn");
+    setDate(pos.date); setSlot(pos.slot);
+    onToast(t("{d} {s} dipilih. Tekan Simpan.", "{d} {s} chosen. Press Save.", { d: pos.date, s: pos.slot }), "info");
+  }
+
+  // the ask and the brand's website out of every caption, in one click; the words stay on screen until Save
+  const promo = (() => {
+    let n = 0;
+    for (const lg of Object.keys(text || {})) for (const v of Object.values(text[lg] || {})) n += stripPromo(v, reg).removed.length;
+    return n;
+  })();
+  function stripAll() {
+    const out = {};
+    for (const [lg, byPlat] of Object.entries(text || {})) {
+      out[lg] = {};
+      for (const [p, v] of Object.entries(byPlat || {})) out[lg][p] = stripPromo(v, reg).text;
+    }
+    setText(out);
+    onToast(t("{n} ayat seruan atau laman web dibuang. Semak, kemudian Simpan.", "{n} ask or website sentence(s) removed. Check, then Save.", { n: promo }), "info");
+  }
 
   async function renderSlides() {
     if (!slides.length) return onToast(t("Tulis sekurang-kurangnya satu slaid.", "Write at least one slide."), "warn");
@@ -191,7 +273,9 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
     setNewPic(""); onToast(t("Gambar baharu dalam giliran.", "New picture queued."), "ok"); onChanged();
   }
 
-  const slots = (post.stream === "linkedin" ? brand.linkedin.slots : reg.slots) || [];
+  const slots = slotsOf(brand, post.stream || "regulab");
+  const clash = date && slot ? posts.filter((p) => p.id !== post.id && (p.stream || "regulab") === (post.stream || "regulab")
+    && p.status !== "rejected" && p.date === date && p.slot === slot) : [];
   const myLog = log.filter((l) => l.post_id === post.id).slice(0, 12);
 
   return (
@@ -210,7 +294,7 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
           <label key={p} className="block">
             <Label hint={`${charLen(v)}${lim ? ` / ${lim.max}` : ""} ${t("aksara", "characters")}${
               view !== lang ? ` · ${t("tidak dihantar", "not sent")}` : ""}`}>{PLAT_LABEL[p]}</Label>
-            <TextArea rows={p === "threads" ? 4 : 7} value={v} disabled={locked} onChange={(e) => setCaption(view, p, e.target.value)}
+            <TextArea id={`cap-${post.id}-${p}`} rows={p === "threads" ? 4 : 7} value={v} disabled={locked} onChange={(e) => setCaption(view, p, e.target.value)}
               className={lim && charLen(v) > lim.max ? "border-danger" : ""} />
           </label>
         );
@@ -221,11 +305,22 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
         <Input value={citation} disabled={locked} onChange={(e) => setCitation(e.target.value)} /></label>
 
       <div className="flex flex-wrap items-end gap-3">
-        <label><Label>{t("Tarikh (MYT)", "Date (MYT)")}</Label><Input type="date" value={date || ""} disabled={locked} onChange={(e) => setDate(e.target.value)} className="w-44" /></label>
-        <label><Label>Slot</Label><Select value={slot || ""} disabled={locked} onChange={setSlot} options={[["", "—"], ...slots.map((s) => [s, s])]} /></label>
+        <label><Label>{t("Tarikh (MYT)", "Date (MYT)")}</Label><Input id={`date-${post.id}`} type="date" value={date || ""} disabled={locked} onChange={(e) => setDate(e.target.value)} className="w-44" /></label>
+        <label><Label>Slot</Label><Select value={slot && !slots.includes(slot) ? "other" : slot || ""} disabled={locked}
+          onChange={(v) => setSlot(v === "other" ? (slot && !slots.includes(slot) ? slot : "10:00") : v)}
+          options={[["", "—"], ...slots.map((s) => [s, s]), ["other", t("Masa lain…", "Another time…")]]} /></label>
+        {slot && !slots.includes(slot) && (
+          <label><Label>{t("Masa (MYT)", "Time (MYT)")}</Label><Input type="time" value={slot} disabled={locked} onChange={(e) => setSlot(e.target.value)} className="w-32" /></label>
+        )}
+        {!locked && <Button type="button" size="sm" variant="ghost" onClick={takeNextFree}><CalendarClock size={12} /> {t("Slot kosong seterusnya", "Next free slot")}</Button>}
+        {date && slot && <span className="self-center text-[11px] text-muted">{refOf({ ...post, date, slot }, brand)}</span>}
       </div>
+      {clash.length > 0 && !locked && (
+        <p className="-mt-2 text-[12px] text-warn">{t("Slot ini juga dipegang oleh: {h}. Dua post pada satu slot akan keluar serentak.",
+          "This slot is also held by: {h}. Two posts on one slot go out together.", { h: clash.map((p) => p.hook || p.id.slice(0, 8)).join(" · ") })}</p>
+      )}
 
-      <div>
+      <div id={`pics-${post.id}`}>
         <Label hint={t("urutan = urutan dihantar", "order = order sent")}>{t("Gambar", "Pictures")}</Label>
         <div className="flex flex-wrap gap-2">
           {chosen.map((m) => (
@@ -273,10 +368,13 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
       </div>
 
       {hasSlides ? (
-        <SlidesEditor post={post} rows={slideRows} setRows={setSlideRows} locked={locked} jobs={slideJobs}
+        <div id={`slides-${post.id}`}><SlidesEditor post={post} rows={slideRows} setRows={setSlideRows} locked={locked} jobs={slideJobs}
           attachedIds={mediaIds} bg={bg} setBg={setBg} bgOptions={bgOptions} busy={busy}
-          onRender={renderSlides} onUse={chooseSet} look={look} setLook={setLook}
-          preview={{ eyebrow, citation, bgUrl }} blocked={lookBlocked} setBlocked={setLookBlocked} />
+          onRender={renderSlides} onUse={chooseSet} look={look}
+          setLook={(k) => { setLook(k); if (isStudioLook(k) && bg === "none" && defaultGround(post)) setBg(defaultGround(post)); }}
+          preview={{ eyebrow, citation, bgUrl, brand: reg }} blocked={lookBlocked} setBlocked={setLookBlocked} resolveBg={resolveBg}
+          onToast={onToast} captionPost={{ stream: post.stream, hook: post.hook || "",
+            caption: ((text[lang] || {})[post.stream === "linkedin" ? "linkedin" : "instagram"]) || ((text[lang] || {}).facebook) || "" }} /></div>
       ) : (
         <p className="rounded-tile border border-dashed border-line p-3 text-[12px] text-muted">
           {t("Slaid carousel belum tersedia: jalankan", "Carousel slides are not available yet: run")} <code>supabase/006_slides.sql</code>{" "}
@@ -293,9 +391,13 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
           {shownFlags.map((f, i) => (
             <li key={i} className={f.hard ? "text-danger" : "text-muted"}>
               {f.hard ? "■" : "□"} <b>{f.where}</b>: {f.msg}
+              {!locked && fixTarget(f.where) && <button type="button" className="ml-1 underline decoration-dotted hover:text-ink"
+                onClick={() => jump(f.where)}>{t("Betulkan →", "Fix →")}</button>}
             </li>
           ))}
         </ul>
+        {promo > 0 && !locked && <Button size="sm" variant="soft" className="mt-2 mr-2" onClick={stripAll}>
+          <Eraser size={12} /> {t("Buang {n} ayat seruan / laman web", "Remove {n} ask / website sentence(s)", { n: promo })}</Button>}
         {gone.length > 0 && !locked && <Button size="sm" variant="soft" className="mt-2"
           onClick={() => setMediaIds((ids) => ids.filter((id) => !gone.includes(id)))}>
           <Trash2 size={12} /> {t("Buang gambar yang sudah dipadam", "Remove the deleted pictures")}</Button>}
@@ -318,17 +420,15 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
       <div className="flex flex-wrap gap-2">
         {!locked && <Button variant="ghost" disabled={busy} onClick={() => write(content(), t("Disimpan.", "Saved."))}><Save size={13} /> {t("Simpan", "Save")}</Button>}
         {post.status !== "approved" && !locked && (
-          <Button disabled={busy || blocking > 0 || !date || !slot} onClick={() => write({ ...content(), status: "approved" }, t("Diluluskan.", "Approved."))}
+          <Button disabled={busy || blocking > 0 || !date || !slot} onClick={() => write({ ...content(), status: "approved", ...decided("approved") }, t("Diluluskan.", "Approved."))}
             title={blocking ? t("Selesaikan perkara bertanda ■ dahulu", "Resolve the items marked ■ first")
               : !date || !slot ? t("Pilih tarikh dan slot", "Choose a date and slot") : ""}>
             <Check size={13} /> {t("Luluskan", "Approve")}
           </Button>
         )}
-        {post.status === "approved" && <Button variant="soft" disabled={busy} onClick={() => write({ status: "draft" }, t("Kembali ke draf.", "Back to draft."))}>
+        {post.status === "approved" && <Button variant="soft" disabled={busy} onClick={() => write({ status: "draft", ...decided("back to draft") }, t("Kembali ke draf.", "Back to draft."))}>
           <RotateCcw size={13} /> {t("Kembali ke draf", "Back to draft")}</Button>}
-        {(post.status === "draft" || post.status === "approved") && <Button variant="ghost" disabled={busy} onClick={() => write({ status: "rejected" }, t("Ditolak.", "Rejected."))}>
-          {t("Tolak", "Reject")}</Button>}
-        {post.status === "rejected" && <Button variant="soft" disabled={busy} onClick={() => write({ status: "draft" }, t("Dipulihkan ke draf.", "Restored to draft."))}>
+        {post.status === "rejected" && <Button variant="soft" disabled={busy} onClick={restore}>
           {t("Pulihkan", "Restore")}</Button>}
         {(post.status === "draft" || post.status === "rejected") && (
           <Button variant="danger" disabled={busy} onClick={async () => {
@@ -337,6 +437,9 @@ export default function PostEditor({ post, mediaById, mediaRows, log, brand, use
           }}><Trash2 size={13} /></Button>
         )}
       </div>
+
+      <PostWorkflow post={post} dirty={dirty} locked={locked} mediaById={mediaById} lastLook={look} user={user}
+        onToast={onToast} onChanged={onChanged} />
 
       {myLog.length > 0 && (
         <div>

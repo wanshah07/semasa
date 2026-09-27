@@ -117,10 +117,78 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
 
       <Button onClick={submit} disabled={busy}><Save size={14} /> {t("Simpan tetapan", "Save settings")}</Button>
 
+      <WriterSettings settings={settings} save={save} onToast={onToast} />
+
       <IndoTabung settings={settings} save={save} onToast={onToast} />
 
       <FaqCategories settings={settings} save={save} onToast={onToast} />
     </main>
+  );
+}
+
+const lines = (v) => (Array.isArray(v) ? v : []).join("\n");
+const listOf = (s) => [...new Set(String(s || "").split("\n").map((x) => x.trim()).filter(Boolean))];
+const tagsOf = (s) => [...new Set(String(s || "").split(/[\s,]+/).map((x) => x.trim()).filter(Boolean)
+  .map((x) => (x.startsWith("#") ? x : `#${x}`)))];
+
+/* Studio's writer settings (supabase/021 seeded them from Studio itself): the voice each stream writes in, what it must
+   never write, its hashtags and the fatwa gazette line. Every writer in the worker reads them (ideas.writer_block);
+   they add to the rules and can never lift one, so nothing typed here can switch a check off. */
+function WriterSettings({ settings, save, onToast }) {
+  const { t } = useLang();
+  const [f, setF] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const w = settings.writer;
+  useEffect(() => {
+    const r = w?.regulab || {}, l = w?.linkedin || {};
+    setF({ rVoice: r.voice || "", rNever: lines(r.never), rCore: (r.hashtags_core || []).join(" "), rRot: (r.hashtags_rotate || []).join(" "),
+      rFatwa: r.fatwa_warning || "", lVoice: l.voice || "", lNever: lines(l.never), lTags: (l.hashtags || []).join(" ") });
+  }, [JSON.stringify(w)]); // eslint-disable-line react-hooks/exhaustive-deps -- a change elsewhere must not wipe an edit here
+  if (!f) return null;
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+
+  async function submit() {
+    const next = {
+      ...(w || {}),
+      regulab: { ...((w || {}).regulab || {}), voice: f.rVoice.trim(), never: listOf(f.rNever), hashtags_core: tagsOf(f.rCore),
+        hashtags_rotate: tagsOf(f.rRot), fatwa_warning: f.rFatwa.trim() },
+      linkedin: { ...((w || {}).linkedin || {}), voice: f.lVoice.trim(), never: listOf(f.lNever), hashtags: tagsOf(f.lTags) },
+    };
+    setBusy(true);
+    try { await save("writer", next); onToast(t("Gaya penulisan disimpan. Draf seterusnya ikut ini.", "Writing style saved. The next drafts follow it."), "ok"); } catch (e) {
+      onToast(/0 rows/.test(e.message) ? t("Jalankan supabase/021_studio_workflow.sql dahulu.", "Run supabase/021_studio_workflow.sql first.") : e.message, "danger");
+    }
+    setBusy(false);
+  }
+
+  const area = (k, rows = 3, ph = "") => <textarea value={f[k]} onChange={set(k)} rows={rows} placeholder={ph}
+    className="w-full resize-y rounded-tile border border-line bg-bg p-2 text-[13px] outline-none focus:border-accent" />;
+  const pillars = Object.entries(w?.regulab?.pillars || {});
+  return (
+    <Card className="p-5">
+      <h2 className="flex items-center gap-2 text-lg"><ScrollText size={16} /> {t("Gaya penulisan", "Writing style")}</h2>
+      <p className="mt-1 text-[12px] text-muted">{t("Dibaca oleh setiap penulis bot. Ia menambah pada peraturan, tidak pernah menarik balik mana-mana semakan.",
+        "Read by every writer in the bot. It adds to the rules and never switches a check off.")}</p>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="space-y-2">
+          <p className="text-sm font-medium">ws.regulab</p>
+          <label className="block"><Label>{t("Suara", "Voice")}</Label>{area("rVoice", 4)}</label>
+          <label className="block"><Label hint={t("satu baris satu", "one per line")}>{t("Jangan sekali-kali", "Never")}</Label>{area("rNever", 6)}</label>
+          <label className="block"><Label hint={t("sentiasa", "always")}>{t("Hashtag teras", "Core hashtags")}</Label><Input value={f.rCore} onChange={set("rCore")} /></label>
+          <label className="block"><Label hint={t("satu atau dua ikut cerita", "one or two as the story fits")}>{t("Hashtag bergilir", "Rotating hashtags")}</Label><Input value={f.rRot} onChange={set("rRot")} /></label>
+          <label className="block"><Label hint={t("ayat tepat dalam setiap post fatwa", "the exact line in every fatwa post")}>{t("Amaran fatwa", "Fatwa line")}</Label>{area("rFatwa", 2)}</label>
+          {pillars.length > 0 && <p className="text-[11.5px] text-muted">{t("Tiang (dari Studio): ", "Pillars (from Studio): ")}
+            {pillars.map(([d, ps]) => `${d}: ${(ps || []).join(", ")}`).join(" · ")}</p>}
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm font-medium">LinkedIn</p>
+          <label className="block"><Label>{t("Suara", "Voice")}</Label>{area("lVoice", 4)}</label>
+          <label className="block"><Label hint={t("satu baris satu", "one per line")}>{t("Jangan sekali-kali", "Never")}</Label>{area("lNever", 6)}</label>
+          <label className="block"><Label hint={t("pilihan", "optional")}>Hashtag</Label><Input value={f.lTags} onChange={set("lTags")} /></label>
+        </div>
+      </div>
+      <Button className="mt-4" onClick={submit} disabled={busy}><Save size={14} /> {t("Simpan gaya penulisan", "Save writing style")}</Button>
+    </Card>
   );
 }
 

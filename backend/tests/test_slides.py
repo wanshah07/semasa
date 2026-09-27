@@ -258,17 +258,20 @@ def test_the_publisher_sends_every_slide_and_blocks_stale_pictures():
     from datetime import UTC, datetime
     now = datetime(2026, 9, 24, 2, 0, tzinfo=UTC)
     cap = "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    # a real carousel: cover, three facts, closing (Studio's shape, checked by the scan since 27 Sep 2026)
+    full = GOOD[:2] + [{"title": "Label", "points": ["Nama dan amaran."]},
+                       {"title": "Formula", "points": ["Seperti dinotifikasi."]}] + GOOD[2:]
     post = {"id": "p1", "stream": "regulab", "lang": "bm", "status": "approved", "date": "2026-09-25", "slot": "08:00",
             "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}}, "citation": "NPRA",
-            "media_ids": ["s1"], "published": {}, "errors": {}, "slides": GOOD}
+            "media_ids": ["s1"], "published": {}, "errors": {}, "slides": full}
     media = {"id": "s1", "status": "done", "mode": "slides", "generated_media_url": "https://cdn/1.jpg",
-             "meta": {"slides": GOOD, "slide_urls": ["https://cdn/1.jpg", "https://cdn/2.jpg", "https://cdn/3.jpg"]}}
+             "meta": {"slides": full, "slide_urls": [f"https://cdn/{n}.jpg" for n in range(1, 6)]}}
     store = FakeStore(semasa_settings=[], semasa_posts=[post], media_generations=[media], semasa_publish_log=[])
     c = publisher.run(store, now)
     assert c["dry_run"] == 3
     assert store.tables["semasa_publish_log"][0]["detail"]["would_send"]["media"] == media["meta"]["slide_urls"]
 
-    store.tables["semasa_posts"][0]["slides"] = GOOD[:2]                       # edited after drawing
+    store.tables["semasa_posts"][0]["slides"] = full[:4] + [{"title": "Lain", "points": []}]   # edited after drawing
     store.tables["semasa_publish_log"] = []
     c = publisher.run(store, now)
     assert c["blocked"] == 3 and c["dry_run"] == 0

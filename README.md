@@ -820,9 +820,39 @@ allows one schedule per job.
 | Buffer sender (FB · IG · Threads): confirm, tally, queue-full wait, one transient retry | ⏳ phase 2 |
 | LinkedIn sender (Composio, text or images) | ⏳ phase 2 |
 | Carousel slides: written by the writer or by hand, drawn by the worker (`slides.py`, Pillow, no AI, no key), 1080×1080 / 1080×1350, `*emphasis*`, long references split instead of clipped, never a word cut (too long fails the job and names the slide), the website on the ws.regulab footer only, source on the closing slide, optional photo ground under a scrim, compliance on every slide, and a block when the drawn slides carry older words | ✅ 25 Sep 2026 |
-| Studio's other card families (grid / ERA / photo), logo, mascots | ⏳ phase 2 |
-| Regulator sweep (NPRA, halal.gov.my, EUR-Lex, PubMed…) as ideas | ⏳ phase 2 (Semasa reads news only today) |
-| Moving Studio's store (drafts, media, settings, log) | ⏳ last, then Studio is retired |
+| Studio's card families (grid / ERA / photo), all twelve templates, per-slide design, mascot poses, Wan's OneDrive grounds by domain and angle, build slides from the caption | ✅ 27 Sep 2026 |
+| Revise with a note, Reject & replace, versions and decisions, 72-hour purge of rejected posts, Schedule (coverage, gaps, clashes, off-rota, Bump all), next free slot, another time, short references, writer settings, pillars, Fix →, strip the ask | ✅ 27 Sep 2026 (see *Studio's day-to-day workflow*) |
+| Regulator sweep (NPRA, halal.gov.my, EUR-Lex, PubMed…) as ideas | ✅ Regulatory and Latest publication |
+| Moving Studio's store (drafts, ideas, approved and posted) | ✅ imported 27 Sep 2026; Studio's posted drafts are filed here by the Studio link |
+
+## Studio's day-to-day workflow
+
+Wan, 27 Sep 2026: *"make sure all ws.regulab studio features … is brought to the new system"*, then *"improve it, if you
+have better way"*. Run `supabase/021_studio_workflow.sql` once. What came over, and where Semasa does it better:
+
+| In the post | What it does | Better than Studio because |
+|---|---|---|
+| **Revise with a note** | The worker writes the caption, hook and source line again with your note, keeps every sourced fact and adds none. Only a draft; an approved post is what you approved. | The slides, their per-slide designs and the pictures stay. Studio redrew the card. *Build from the caption* redoes slides when you want that. It also refuses while you have unsaved edits, since it rewrites the saved words. |
+| **Reject…** | A reason, then *Reject* or *Reject & replace*. The replacement is a new idea on the same source, for the same slot while it is still ahead, with your reason read by its writer. | It can **reuse the rejected draft's photographs** (no new picture paid for). A drawn slide set is never reused, because it carries the old words. |
+| **History** | Every rewrite keeps the words it replaced (`versions`); every approve, reject, restore, move and revise is recorded with its time (`decisions`). *Restore this version* puts old words back. | Restoring also keeps the words it replaces, so nothing you wrote is ever lost. |
+| **Restore** (a rejected post) | Back to draft on its own slot if that is still ahead and free, otherwise the next free slot, read from the database first. | Studio's first version put two posts on one slot. |
+| **Next free slot**, **Another time…**, clash warning, short reference (`R0928a`, `L0925b`) | As in Studio. | Case studies (`kajian_kes`) may take any posting day, as Studio's "one case study every day" intends; the worker, the page and the rota note agree. |
+| **Fix →** on a flag, **Remove N ask / website sentence(s)** | Jumps to the field a flag is about; removes every call to action and ws.regulab address from every caption in one click, on screen until you Save. | A regulator's link stays: it is only a warning. |
+
+In the Post tab: a **Schedule** view (21 days of positions per stream, empty slots, two posts on one slot, off-rota,
+and posts past their slot with **Bump all to free slots**). Click an empty slot to write an idea FOR that slot. The list
+gains a stream filter, short references, *slot passed*, and on a rejected post the time left before it deletes itself.
+
+**Rejected posts delete themselves 72 hours after rejection.** The publisher run does it (`archive.purge_rejected`),
+counting from `rejected_at`, which the database stamps, so the page's countdown and the delete read the same moment.
+Three guards, as in Studio: a post being rewritten is skipped, a post with no stamp is never deleted, and a post with a
+delivery record is kept as evidence. Pictures made for that post and used by no other post go with it. A picture another
+post uses, a Design-tab design and the ground library stay.
+
+**Writing style** (Settings): voice, never-list, hashtags and the fatwa line per stream, seeded from Studio's own
+Settings, plus Studio's pillars per domain (the writer names the kind of post, e.g. `mitos`, `urutan`, `kajian_kes`). It
+adds to the rules and never lifts one. Two of Studio's never-lines asked the writer to write `[SAHKAN: …]`; Semasa has no
+such marker, so they say *leave it out and write around it*, and the worker ignores any Settings line that mentions one.
 
 ## Behaviour worth knowing
 

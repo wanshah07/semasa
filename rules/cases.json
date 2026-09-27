@@ -727,6 +727,24 @@
        "points": []
       },
       {
+       "title": "Dokumen PIF",
+       "points": [
+        "Senarai bahan lengkap."
+       ]
+      },
+      {
+       "title": "Label",
+       "points": [
+        "Nama dan amaran."
+       ]
+      },
+      {
+       "title": "Formula",
+       "points": [
+        "Sama seperti dinotifikasi."
+       ]
+      },
+      {
        "title": "Apa NPRA semak",
        "points": [
         "Dokumen PIF selepas produk dipasarkan."
@@ -739,6 +757,24 @@
     {
      "title": "Notifikasi *bukan* kelulusan",
      "points": []
+    },
+    {
+     "title": "Dokumen PIF",
+     "points": [
+      "Senarai bahan lengkap."
+     ]
+    },
+    {
+     "title": "Label",
+     "points": [
+      "Nama dan amaran."
+     ]
+    },
+    {
+     "title": "Formula",
+     "points": [
+      "Sama seperti dinotifikasi."
+     ]
     },
     {
      "title": "Apa NPRA semak",
@@ -777,6 +813,24 @@
     {
      "title": "Notifikasi *bukan* kelulusan",
      "points": []
+    },
+    {
+     "title": "Dokumen PIF",
+     "points": [
+      "Senarai bahan lengkap."
+     ]
+    },
+    {
+     "title": "Label",
+     "points": [
+      "Nama dan amaran."
+     ]
+    },
+    {
+     "title": "Formula",
+     "points": [
+      "Sama seperti dinotifikasi."
+     ]
     },
     {
      "title": "Apa NPRA semak",
@@ -1547,6 +1601,360 @@
   },
   "expect": {
    "hard": 1
+  }
+ },
+ {
+  "name": "a call to action in a slide note blocks, like one in the headline",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "x",
+     "slides": [
+      {
+       "title": " Apa NPRA semak ",
+       "points": "Dokumen PIF.\nLabel.\n",
+       "body": null,
+       "note": "Hubungi kami untuk semakan percuma."
+      },
+      {
+       "title": null,
+       "points": []
+      }
+     ]
+    }
+   ],
+   "slides": [
+    {
+     "title": "Apa NPRA semak",
+     "points": [
+      "Dokumen PIF.",
+      "Label."
+     ],
+     "note": "Hubungi kami untuk semakan percuma."
+    }
+   ]
+  },
+  "expect": {
+   "hard": 1
+  }
+ },
+ {
+  "name": "a slide re-styled after drawing (template, mascot) is not what was drawn",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "x",
+     "slides": [
+      {
+       "title": " Apa NPRA semak ",
+       "points": "Dokumen PIF.\nLabel.\n",
+       "body": null
+      },
+      {
+       "title": null,
+       "points": []
+      }
+     ]
+    }
+   ],
+   "slides": [
+    {
+     "title": "Apa NPRA semak",
+     "points": [
+      "Dokumen PIF.",
+      "Label."
+     ],
+     "template": "e_hook",
+     "mascot": "wave"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 1
+  }
+ },
+ {
+  "name": "blank and unknown slide fields are dropped, so old slides still match",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "x",
+     "slides": [
+      {
+       "title": " Apa NPRA semak ",
+       "points": "Dokumen PIF.\nLabel.\n",
+       "body": null
+      },
+      {
+       "title": null,
+       "points": []
+      }
+     ]
+    }
+   ],
+   "slides": [
+    {
+     "title": "Apa NPRA semak",
+     "points": [
+      "Dokumen PIF.",
+      "Label."
+     ],
+     "lead": "  ",
+     "template": "xx",
+     "scrim": "loud",
+     "bg": "http://x",
+     "mascot": "Wave!",
+     "chip": ""
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "per-slide fields drawn as written match",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "x",
+     "slides": [
+      {
+       "title": " Apa NPRA semak ",
+       "points": "Dokumen PIF.\nLabel.\n",
+       "body": null,
+       "lead": "Bukan kelulusan.",
+       "eyebrow": "NPRA",
+       "chip": "Annex III",
+       "footnote": "Cosmetic Guidelines Malaysia",
+       "template": "g_title",
+       "scrim": "heavy",
+       "bg": "lib:g_makmal02",
+       "mascot": "none"
+      },
+      {
+       "title": null,
+       "points": []
+      }
+     ]
+    }
+   ],
+   "slides": [
+    {
+     "title": "Apa NPRA semak",
+     "points": [
+      "Dokumen PIF.",
+      "Label."
+     ],
+     "lead": "Bukan kelulusan.",
+     "eyebrow": "NPRA",
+     "chip": "Annex III",
+     "footnote": "Cosmetic Guidelines Malaysia",
+     "template": "g_title",
+     "scrim": "heavy",
+     "bg": "lib:g_makmal02",
+     "mascot": "none"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "a carousel needs three slides of substance between the cover and the closing",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "slides": [
+    {
+     "title": "Kulit",
+     "points": []
+    },
+    {
+     "title": "Satu fakta",
+     "points": [
+      "a"
+     ]
+    },
+    {
+     "title": "Penutup",
+     "points": []
+    }
+   ]
+  },
+  "expect": {
+   "hard": 1
+  }
+ },
+ {
+  "name": "a carousel whose closing slide has no line is blocked",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "slides": [
+    {
+     "title": "Kulit",
+     "points": []
+    },
+    {
+     "title": "Dokumen PIF",
+     "points": [
+      "Senarai bahan lengkap."
+     ]
+    },
+    {
+     "title": "Label",
+     "points": [
+      "Nama dan amaran."
+     ]
+    },
+    {
+     "title": "Formula",
+     "points": [
+      "Sama seperti dinotifikasi."
+     ]
+    },
+    {
+     "title": "",
+     "points": [],
+     "note": "nota sahaja"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 1
+  }
+ },
+ {
+  "name": "one slide is a single card, not a carousel",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "slides": [
+    {
+     "title": "Kad tunggal",
+     "points": [
+      "satu baris"
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "a case study is on rota any posting day",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "date": "2026-09-27",
+   "domain": "kajian_kes"
+  },
+  "expect": {
+   "hard": 0,
+   "soft_not_contains": [
+    "carries"
+   ]
+  },
+  "schedule": {
+   "0": [
+    "halal_my",
+    "fatwa"
+   ]
   }
  }
 ]

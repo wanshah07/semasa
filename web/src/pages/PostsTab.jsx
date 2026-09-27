@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { ShieldOff } from "lucide-react";
+import { AlertTriangle, ShieldOff, Timer } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { useLang } from "../lib/i18n";
 import { hardCount, langOf, scan, scanMedia, textOf, platformsFor } from "../lib/compliance";
 import PostEditor from "../components/PostEditor";
+import IdeaComposer from "../components/IdeaComposer";
+import ScheduleView from "../components/ScheduleView";
+import { fmtLeft, isPastDue, purgeLeftMs, refOf } from "../lib/slots";
 import Card from "../components/ui/Card";
 import ViewToggle, { TBODY, TD, TH, THEAD, TR, TableFrame, useView } from "../components/ViewToggle";
 
 const tabsOf = (t) => [["draft", t("Draf", "Drafts")], ["approved", t("Diluluskan", "Approved")], ["scheduled", t("Dijadualkan", "Scheduled")],
-  ["posted", t("Diterbitkan", "Published")], ["archived", t("Arkib", "Archive")], ["rejected", t("Ditolak", "Rejected")]];
+  ["posted", t("Diterbitkan", "Published")], ["archived", t("Arkib", "Archive")], ["rejected", t("Ditolak", "Rejected")],
+  ["schedule", t("Jadual", "Schedule")]];
 // a published post is archived (and compacted) by the publisher 24 hours after it went out (supabase/010_archive.sql)
 const bucketOf = (p) => (p.status === "posted" && p.archived_at ? "archived" : p.status);
 const TONE = { draft: "bg-surface-2 text-muted", approved: "bg-ok/10 text-ok", scheduled: "bg-accent/10 text-accent",
@@ -27,6 +31,8 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
   const { lang: uiLang, t } = useLang();
   const [status, setStatus] = useState("draft");
   const [view, setView] = useView("post");
+  const [streamF, setStreamF] = useState("all");
+  const [slotIdea, setSlotIdea] = useState(null);     // an empty Schedule slot being written for (kept stable while open)
   const mediaById = useMemo(() => Object.fromEntries(media.rows.map((m) => [m.id, m])), [media.rows]);
 
   // Move to the opened post's tab once per opening. It used to run on every change to posts.rows, so any live update
@@ -51,7 +57,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
     for (const p of posts.rows) c[bucketOf(p)] = (c[bucketOf(p)] || 0) + 1;
     return c;
   }, [posts.rows]);
-  const shown = posts.rows.filter((p) => bucketOf(p) === status)
+  const shown = posts.rows.filter((p) => bucketOf(p) === status && (streamF === "all" || (p.stream || "regulab") === streamF))
     .sort((a, b) => `${a.date || "9"}${a.slot || ""}`.localeCompare(`${b.date || "9"}${b.slot || ""}`));
   const publishing = settings.publishing || {};
   const summary = (p) => {
@@ -60,9 +66,10 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
     const pics = (p.media_ids || []).map((id) => mediaById[id]).filter((m) => m && m.status === "done");
     return {
       pics, label: (tabsOf(t).find(([v]) => v === bucketOf(p)) || [null, p.status])[1],
-      forText: `${p.stream === "linkedin" ? "LinkedIn" : "ws.regulab"}${p.domain ? ` · ${p.domain}` : ""}${p.angle ? ` · ${p.angle}` : ""}`,
+      forText: `${p.stream === "linkedin" ? "LinkedIn" : "ws.regulab"}${p.domain ? ` · ${p.domain}` : ""}${p.angle ? ` · ${p.angle}` : ""}${p.pillar ? ` · ${p.pillar}` : ""}`,
       hook: p.hook || first.split("\n")[0] || t("(tiada kapsyen)", "(no caption)"),
       hard: hardCount(scan({ ...p, media: pics.map(scanMedia) }, brand.regulab, brand.regulab.schedule, settings.bahasa?.indo)),
+      ref: refOf(p, brand), late: isPastDue(p), purge: purgeLeftMs(p),
     };
   };
 
@@ -103,22 +110,41 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
             </button>
           ))}
         </div>
-        <ViewToggle view={view} setView={setView} />
+        {status !== "schedule" && (
+          <div className="flex items-center gap-2">
+            <select value={streamF} onChange={(e) => setStreamF(e.target.value)} aria-label={t("Aliran", "Stream")}
+              className="rounded-pill border border-line bg-surface px-3 py-1.5 text-xs">
+              <option value="all">{t("Semua", "All")}</option><option value="regulab">ws.regulab</option><option value="linkedin">LinkedIn</option>
+            </select>
+            <ViewToggle view={view} setView={setView} />
+          </div>
+        )}
       </div>
+      {status === "rejected" && shown.length > 0 && (
+        <p className="mt-3 text-[12px] text-muted">{t("Post ditolak dipadam sendiri 72 jam selepas ditolak (kecuali yang ada rekod penghantaran). Pulihkan sebelum itu jika perlu.",
+          "A rejected post deletes itself 72 hours after it was rejected (except one with a delivery record). Restore it before then if needed.")}</p>
+      )}
       {posts.error && <p className="mt-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{posts.error}</p>}
 
-      {!shown.length && !posts.loading && (
+      {status === "schedule" && (
+        <ScheduleView posts={posts.rows} brand={brand} onToast={onToast} onChanged={() => posts.reload()}
+          onOpen={(id) => { const p = posts.rows.find((r) => r.id === id); if (p) setStatus(bucketOf(p)); setFocusId(id); }}
+          onNewIdea={setSlotIdea} />
+      )}
+      <IdeaComposer open={Boolean(slotIdea)} onClose={() => setSlotIdea(null)} trend={null} position={slotIdea} user={user} brand={brand}
+        onToast={onToast} onDone={() => posts.reload()} />
+      {status !== "schedule" && !shown.length && !posts.loading && (
         <p className="mt-4 rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">{t("Tiada post di sini.", "No posts here.")}</p>
       )}
       {/* the post being edited opens above the list in either view */}
       {shown.filter((p) => p.id === focusId).map((p) => (
         <Card key={p.id} id="post-editor" className="mt-4 scroll-mt-32 p-4 ring-2 ring-accent/40">
-          <PostEditor post={p} mediaById={mediaById} mediaRows={media.rows} log={log.rows} brand={brand} user={user}
+          <PostEditor post={p} posts={posts.rows} mediaById={mediaById} mediaRows={media.rows} log={log.rows} brand={brand} user={user}
             indoExtra={settings.bahasa?.indo}
             onToast={onToast} onChanged={() => { posts.reload(); media.reload(); }} onClose={() => setFocusId(null)} />
         </Card>
       ))}
-      {view === "table" && shown.length > 0 ? (
+      {status === "schedule" ? null : view === "table" && shown.length > 0 ? (
         <div className="mt-4">
           <TableFrame label={t("Post", "Posts")}>
             <thead className={THEAD}>
@@ -138,7 +164,10 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
                   <tr key={p.id} onClick={() => setFocusId(p.id)} className={`${TR} cursor-pointer hover:bg-surface-2/50 ${focusId === p.id ? "bg-accent/5" : ""}`}>
                     <td className={TD} data-label={t("Gambar", "Picture")}><Thumb pic={s.pics[0]} small /></td>
                     <td className={TD} data-label="Status"><span className={`whitespace-nowrap rounded-pill px-2 py-0.5 text-[11px] ${TONE[bucketOf(p)]}`}>{s.label}</span></td>
-                    <td className={`${TD} whitespace-nowrap text-[12px] text-muted`} data-label={t("Slot", "Slot")}>{p.date ? `${p.date} ${p.slot || ""}` : t("tiada slot", "no slot")}</td>
+                    <td className={`${TD} whitespace-nowrap text-[12px] text-muted`} data-label={t("Slot", "Slot")}>{p.date ? `${p.date} ${p.slot || ""}` : t("tiada slot", "no slot")}
+                      {s.ref && <span className="block text-[10.5px]">{s.ref}</span>}
+                      {s.late && <span className="block text-danger">{t("slot sudah lepas", "slot passed")}</span>}
+                      {s.purge !== null && <span className="block">{t("dipadam dalam {x}", "deleted in {x}", { x: fmtLeft(s.purge) })}</span>}</td>
                     <td className={`${TD} text-[12px] text-muted`} data-label={t("Untuk", "For")}>{s.forText}</td>
                     <td className={`${TD} [overflow-wrap:anywhere]`} data-label={t("Cangkuk", "Hook")}><button type="button" className="text-left font-medium leading-snug hover:text-accent" onClick={() => setFocusId(p.id)}>
                       <span className="line-clamp-2">{s.hook}</span></button></td>
@@ -162,7 +191,9 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
                     <span className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
                       <span className={`rounded-pill px-2 py-0.5 ${TONE[bucketOf(p)]}`}>{s.label}</span>
                       <span>{s.forText}</span>
-                      <span>{p.date ? `${p.date} ${p.slot || ""} MYT` : t("tiada slot", "no slot")}</span>
+                      <span>{p.date ? `${p.date} ${p.slot || ""} MYT` : t("tiada slot", "no slot")}{s.ref ? ` · ${s.ref}` : ""}</span>
+                      {s.late && <span className="flex items-center gap-1 text-danger"><AlertTriangle size={11} /> {t("slot sudah lepas", "slot passed")}</span>}
+                      {s.purge !== null && <span className="flex items-center gap-1"><Timer size={11} /> {t("dipadam dalam {x}", "deleted in {x}", { x: fmtLeft(s.purge) })}</span>}
                       <span className={s.hard ? "text-danger" : "text-ok"}>{s.hard ? `■ ${t("{n} sekatan", "{n} blocking", { n: s.hard })}` : t("✓ semakan lulus", "✓ checks passed")}</span>
                     </span>
                     <span className="mt-1 line-clamp-2 block [overflow-wrap:anywhere] font-display text-[16px] leading-snug">{s.hook}</span>

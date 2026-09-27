@@ -49,13 +49,14 @@ function sampleWords(stream) {
 }
 
 export default function LookPicker({ value, onChange, slides: given, sample: givenSample = false, stream = "regulab", eyebrow = "",
-  citation = "", bgUrl = "", bgChosen = false, size = null, full = true, onBlocked, disabled = false }) {
+  citation = "", bgUrl = "", bgChosen = false, size = null, full = true, onBlocked, disabled = false, mascots = [] }) {
   const { t, lang } = useLang();
   const sample = givenSample || !given.length;
   const slides = given.length ? given : sampleWords(stream);
   const [W, H] = sizeOf(stream, size);
   const ratio = `${W} / ${H}`;
-  const opts = { stream, eyebrow, citation, bg: bgUrl || "", size: Array.isArray(size) ? size : undefined };
+  const opts = { stream, eyebrow, citation, bg: bgUrl || "", size: Array.isArray(size) ? size : undefined,
+    mascots: mascots.map((m) => ({ k: m.k, url: m.url })) };
   const cover = slides.slice(0, 1);
   // one cover per Studio look for the tiles, and the whole set in the chosen look
   const grid = usePreview(cover, { ...opts, look: "grid" }, true);

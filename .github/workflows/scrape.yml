@@ -45,6 +45,9 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
+          # stand-ins for LLM_API_KEY, used only when LLM_BASE_URL is api.openai.com / api.anthropic.com (config.py)
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           SEMASA_SHEET_URL: ${{ secrets.SEMASA_SHEET_URL }}
           SEMASA_SHEET_TOKEN: ${{ secrets.SEMASA_SHEET_TOKEN }}
@@ -59,5 +62,9 @@ jobs:
           LLM_TIMEOUT: ${{ vars.LLM_TIMEOUT }}
           SCRAPE_KEEP_DAYS: ${{ vars.SCRAPE_KEEP_DAYS }}
           SCRAPE_PICK_HOURS: ${{ vars.SCRAPE_PICK_HOURS }}
+          SCRAPE_MAX_PER_SOURCE: ${{ vars.SCRAPE_MAX_PER_SOURCE }}
+          SCRAPE_MAX_AGE_HOURS: ${{ vars.SCRAPE_MAX_AGE_HOURS }}
+          SCRAPE_LLM_BATCH: ${{ vars.SCRAPE_LLM_BATCH }}
+          SCRAPE_REQUEST_TIMEOUT: ${{ vars.SCRAPE_REQUEST_TIMEOUT }}
           SCRAPE_USE_PLAYWRIGHT: ${{ github.event_name == 'workflow_dispatch' && (inputs.use_playwright && '1' || '0') || '1' }}
         run: python -m semasa.scraper

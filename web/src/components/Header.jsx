@@ -7,7 +7,7 @@ import Button from "./ui/Button";
 
 /* `sidebar`: the sidebar is showing on a wide screen (App.jsx), so the tabs and the logo live there and the header
    keeps only the language, the theme and the switch between a pinned sidebar and one that hides itself (`navMode`). */
-export default function Header({ tab, setTab, user, sidebar = false, navMode = "auto", onToggleSidebar }) {
+export default function Header({ tab, setTab, user, sidebar = false, navMode = "auto", onToggleSidebar, onGuide }) {
   const { theme, setTheme } = useTheme();
   const { lang, setLang, t } = useLang();
   const tabs = tabsOf(t);
@@ -30,7 +30,8 @@ export default function Header({ tab, setTab, user, sidebar = false, navMode = "
           <span className="grid h-8 w-8 place-items-center rounded-tile bg-ink text-bg">
             <span className="h-3 w-3 rounded-full border-2 border-accent" />
           </span>
-          <span className="font-display text-lg font-semibold tracking-tight">Semasa</span>
+          {/* on a phone the mark alone: the word, the language, the theme, the guide and sign-out did not fit in 390 px */}
+          <span className={`font-display text-lg font-semibold tracking-tight ${onGuide ? "hidden min-[430px]:inline" : ""}`}>Semasa</span>
         </a>
 
         {/* eight tabs: it may scroll inside itself, never push the page sideways (1280 px in BM was 4 px too wide) */}
@@ -61,6 +62,10 @@ export default function Header({ tab, setTab, user, sidebar = false, navMode = "
               {THEMES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
           </label>
+          {onGuide && (
+            <button type="button" onClick={onGuide} aria-label={t("Panduan", "Guide")} title={t("Panduan", "Guide")} data-guide
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line bg-surface text-sm font-semibold text-muted transition hover:bg-surface-2 hover:text-ink">?</button>
+          )}
           {user && (
             <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} title={`${t("Keluar", "Sign out")} · ${user.email}`}
               aria-label={t("Keluar", "Sign out")}>

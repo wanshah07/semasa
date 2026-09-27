@@ -822,6 +822,7 @@ allows one schedule per job.
 | Carousel slides: written by the writer or by hand, drawn by the worker (`slides.py`, Pillow, no AI, no key), 1080×1080 / 1080×1350, `*emphasis*`, long references split instead of clipped, never a word cut (too long fails the job and names the slide), the website on the ws.regulab footer only, source on the closing slide, optional photo ground under a scrim, compliance on every slide, and a block when the drawn slides carry older words | ✅ 25 Sep 2026 |
 | Studio's card families (grid / ERA / photo), all twelve templates, per-slide design, mascot poses, Wan's OneDrive grounds by domain and angle, build slides from the caption | ✅ 27 Sep 2026 |
 | Revise with a note, Reject & replace, versions and decisions, 72-hour purge of rejected posts, Schedule (coverage, gaps, clashes, off-rota, Bump all), next free slot, another time, short references, writer settings, pillars, Fix →, strip the ask | ✅ 27 Sep 2026 (see *Studio's day-to-day workflow*) |
+| Your own picture into a post, idea editing, filters and source pills, fill empty slots (a switch, off), design library, Panduan (?) | ✅ 27 Sep 2026 |
 | Regulator sweep (NPRA, halal.gov.my, EUR-Lex, PubMed…) as ideas | ✅ Regulatory and Latest publication |
 | Moving Studio's store (drafts, ideas, approved and posted) | ✅ imported 27 Sep 2026; Studio's posted drafts are filed here by the Studio link |
 
@@ -848,6 +849,31 @@ counting from `rejected_at`, which the database stamps, so the page's countdown 
 Three guards, as in Studio: a post being rewritten is skipped, a post with no stamp is never deleted, and a post with a
 delivery record is kept as evidence. Pictures made for that post and used by no other post go with it. A picture another
 post uses, a Design-tab design and the ground library stay.
+
+**Your own picture into a post** (run `supabase/022_studio_extras.sql` once): *Upload your own picture* under the post's
+pictures, with optional alt text. The worker checks it is really a picture, turns a phone photo the right way up, makes
+a clean JPEG of at most 2160 px, hosts it in `semasa-generated` (an address that never expires), attaches it to the
+draft and removes the temporary copy. No AI, no cost. Studio held such a picture until a release run had hosted it; here
+it is hosted for good the moment it arrives. It is never attached to an approved post.
+
+**Ideas tab**: an idea still waiting or failed can be **edited** before the bot writes it (title, note, domain or angle,
+media). Filters by status (with counts) and stream, a search box, and pills for the source's site (a link back, never
+into a post), the issuer, *Replaces a rejected draft*, *For <date> <slot>* and *Auto-filled empty slot*.
+
+**Fill empty slots** (Settings, **off** by default; seeded by 022). Studio's nightly drafter as a switch. Off, no idea is
+written without your click, as before. On, each worker run looks at the next 1 to 7 days, finds positions no post holds
+and no waiting idea is written for, and writes an idea FOR each from the Regulatory and Latest publication feed: an item
+judged relevant, not hidden by you, not used by any idea, and for ws.regulab on the rota that day (a case study fits any
+posting day). At most 1 to 5 a run. A gap with no fitting item stays a gap. The ideas carry no note, so the
+already-published guard still holds, and every one becomes a draft that waits for your approval.
+
+**Design library** (Design tab, at the bottom): your 12 photographs and the 4 mascot poses, each saying what uses it by
+default. "Picked by" is asked of the renderer's own rule, so the library and a render cannot disagree.
+
+**Panduan (?)** in the top bar: the flow, when a post goes out, the rota, what to do with a draft that is not right, the
+checks, pictures and the autofill state, BM first with English under it. It reads the slots, rota and switches from
+Settings, so it cannot drift from the page. The publisher's clock is the one value a page cannot read
+(`.github/workflows/publish.yml`); it lives in `web/src/components/Guide.jsx` as `PUBLISH_RUNS_MYT`: change both together.
 
 **Writing style** (Settings): voice, never-list, hashtags and the fatwa line per stream, seeded from Studio's own
 Settings, plus Studio's pillars per domain (the writer names the kind of post, e.g. `mitos`, `urutan`, `kajian_kes`). It

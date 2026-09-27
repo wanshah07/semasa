@@ -23,6 +23,10 @@ function Retry({ row, onRequeue }) {
   if (isUnsplash(row)) {
     return <Button size="sm" variant="soft" onClick={() => onRequeue(row.id, "unsplash")} title={t("Cuba lagi", "Try again")}><RotateCcw size={12} /></Button>;
   }
+  // your own picture is hosted, not generated: no provider to choose
+  if (row.mode === "upload") {
+    return <Button size="sm" variant="soft" onClick={() => onRequeue(row.id, "own")} title={t("Cuba lagi", "Try again")}><RotateCcw size={12} /></Button>;
+  }
   return (
     <>
       <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label={t("Cuba semula dengan", "Retry with")}
@@ -91,6 +95,7 @@ export default function GenerationGallery({ rows, user, onRequeue, onRemove, onT
                   <p className="mt-2 line-clamp-3 text-sm text-ink">{row.mode === "slides"
                     ? `${t("Slaid carousel · {n} slaid", ["Carousel slides · {n} slide", "Carousel slides · {n} slides"], { n: row.meta?.count || row.meta?.slides?.length || "?" })}${
                     row.meta?.slides?.[0]?.title ? `: ${row.meta.slides[0].title.replace(/\*/g, "")}` : ""}`
+                    : row.mode === "upload" ? `${t("Gambar anda sendiri", "Your own picture")}${row.meta?.name ? ` · ${row.meta.name}` : ""}`
                     : row.prompt}</p>
                   {row.mode === "recreate" && (
                     <details className="mt-2 text-[12px] text-muted">

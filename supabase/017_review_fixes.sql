@@ -103,7 +103,7 @@ end $$;
 -- 5 ---------------------------------------------------------------------------------------------------------------
 alter table public.media_generations drop constraint if exists media_generations_mode_check;
 alter table public.media_generations add constraint media_generations_mode_check
-  check (mode in ('recreate', 'prompt', 'slides', 'clip', 'fragrance') and (mode <> 'recreate' or reference_url is not null));
+  check (mode in ('recreate', 'prompt', 'slides', 'clip', 'fragrance', 'upload') and (mode not in ('recreate', 'upload') or reference_url is not null));
 
 create or replace function public.semasa_clock_worker() returns text
 language plpgsql security definer set search_path = public as $$

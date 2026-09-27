@@ -1278,6 +1278,16 @@ function asLines(points) {
    slide, Studio's. o.mascots = [{k, url}] are the poses on offer (none offered = no mascot anywhere). */
 export const TEMPLATE_KEYS = [...Object.keys(GRID_TPL), ...Object.keys(ERA_TPL), ...Object.keys(PHOTO_TPL)];
 export const takesMascot = (t) => !!MASCOT_TPL[t];
+/** Which templates draw each pose by default: asked of pickMascotFor itself, the renderer's own rule, so the Design
+    tab's library can never disagree with a render (Studio's mascotDutyMap). {poseKey: [template, ...]} */
+export function mascotDuty(mascots) {
+  const out = {};
+  for (const tpl of Object.keys(MASCOT_TPL)) {
+    const m = pickMascotFor(tpl, (mascots || []).map((x) => ({ name: x.k, k: x.k })));
+    if (m) (out[m.k] ||= []).push(tpl);
+  }
+  return out;
+}
 
 function mascotUrl(s, template, mascots) {
   if (!mascots || !mascots.length || !MASCOT_TPL[template]) return "";

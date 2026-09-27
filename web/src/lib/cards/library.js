@@ -20,6 +20,15 @@ export function defaultGround(post) {
   return k && groundOf(k) ? `lib:${k}` : "";
 }
 
+/** What a ground is the default for: the ws.regulab domains and LinkedIn angles that draw it when nobody chose one. */
+export function groundUses(k) {
+  return {
+    domains: Object.entries(CARDS.ground_by_domain).filter(([, g]) => g === k).map(([d]) => d),
+    angles: Object.entries(CARDS.ground_by_angle).filter(([, g]) => g === k).map(([a]) => a),
+    linkedinDefault: CARDS.ground_default_linkedin === k,
+  };
+}
+
 /** The note field's label for a template: what that design actually draws (Studio's cardPanel), or "" for none. */
 export function noteLabel(k, t) {
   const tpl = templateOf(k);

@@ -17,6 +17,7 @@ import { UnsplashResults, UnsplashSearch } from "../components/Unsplash";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Segmented, Select, TextArea } from "../components/ui/Field";
+import DesignLibrary from "../components/DesignLibrary";
 
 /* The Design tab (Wan, 25 Sep 2026: "add design section - to create poster, single card and carousel for post" and
    "the slide can create based on upload and prompt/idea provided"). The page only registers a job: the worker
@@ -309,6 +310,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
       <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
       <DesignResults lockedBy={lockedBy} rows={results} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} onCanvas={onCanvas} />
+      <DesignLibrary />
     </main>
   );
 }

@@ -740,5 +740,8 @@ def run(store: Any, llm: LLM, limit: int | None = None) -> str:
 
 
 def run_all(store: Any, llm: LLM) -> str:
-    """The worker's writing step: new ideas into drafts, then drafts Wan asked to revise."""
-    return "\n".join([run(store, llm), revise_posts(store, llm)])
+    """The worker's writing step: empty slots given an idea (only when Wan switched autofill on), new ideas into
+    drafts, then drafts Wan asked to revise."""
+    from . import autofill
+    fill = autofill.run(store, load_settings(store)) if llm.configured else "Autofill: waiting for a writer"
+    return "\n".join([fill, run(store, llm), revise_posts(store, llm)])

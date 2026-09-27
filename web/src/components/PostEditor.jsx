@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CalendarClock, Check, Eraser, ImagePlus, Info, RotateCcw, Save, Trash2, X } from "lucide-react";
+import { AlertTriangle, CalendarClock, Check, Eraser, ImagePlus, Info, RotateCcw, Save, Trash2, UploadCloud, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { LIMITS, charLen, hardCount, normaliseSlides, platformsFor, scan, scanMedia, stripPromo } from "../lib/compliance";
 import { dueMs, nextFreeSlot, refOf, slotsOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
 import PostWorkflow from "./PostWorkflow";
 import { stampMYT } from "../lib/format";
+import { refusal, removeReference, uploadReference } from "../lib/storage";
 import { useLang } from "../lib/i18n";
 import SlidesEditor, { fromRows, toRows } from "./SlidesEditor";
 import { GROUNDS, bgUrlOf, defaultGround } from "../lib/cards/library";
@@ -40,6 +41,8 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   const [lookBlocked, setLookBlocked] = useState(null);
   const [busy, setBusy] = useState(false);
   const [newPic, setNewPic] = useState("");
+  const [ownAlt, setOwnAlt] = useState("");
+  const ownRef = useRef(null);
 
   // Reset only when this post changes in the database (another save, the worker attaching slides), never on a poll
   // that hands back the same row: that used to wipe an unsaved caption every 90 seconds.
@@ -273,6 +276,41 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
     setNewPic(""); onToast(t("Gambar baharu dalam giliran.", "New picture queued."), "ok"); onChanged();
   }
 
+  // Wan's own picture, used as it is (supabase/022, backend/semasa/own_picture.py): the worker checks it, makes a clean
+  // JPEG, hosts it for good and attaches it to this draft. Nothing is generated and nothing is paid for.
+  async function uploadOwn(files) {
+    const list = [...(files || [])];
+    if (!list.length || busy) return;
+    setBusy(true);
+    let queued = 0;
+    for (const f of list) {
+      const why = refusal(f);
+      if (why) { onToast(`${f.name}: ${why}`, "warn"); continue; }
+      let up;
+      try { up = await uploadReference(user, f); } catch (e) { onToast(e.message, "danger"); continue; }
+      const { error } = await supabase.from(TABLES.media).insert({
+        mode: "upload", type: "image", prompt: "", status: "pending", created_by: user.id, reference_url: up.url,
+        reference_path: up.path, post_id: post.id, idea_id: post.idea_id, meta: { flow: "B", alt: ownAlt.trim(), name: f.name },
+      });
+      if (error) {
+        await removeReference(up.path);          // no orphan file for a job that was never queued
+        onToast(/mode_check/.test(errText(error))
+          ? t("Muat naik gambar sendiri belum disediakan: jalankan supabase/022_studio_extras.sql sekali.",
+            "Uploading your own picture is not set up yet: run supabase/022_studio_extras.sql once.") : errText(error), "danger");
+        break;
+      }
+      queued++;
+    }
+    setBusy(false);
+    if (ownRef.current) ownRef.current.value = "";
+    if (queued) {
+      setOwnAlt("");
+      onToast(t("{n} gambar anda dalam giliran: ia disemak, dihoskan dan masuk ke post ini sendiri.",
+        "{n} picture(s) of yours queued: checked, hosted and added to this post by themselves.", { n: queued }), "ok");
+      onChanged();
+    }
+  }
+
   const slots = slotsOf(brand, post.stream || "regulab");
   const clash = date && slot ? posts.filter((p) => p.id !== post.id && (p.stream || "regulab") === (post.stream || "regulab")
     && p.status !== "rejected" && p.date === date && p.slot === slot) : [];
@@ -354,6 +392,16 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
           <div className="mt-2 flex gap-2">
             <Input value={newPic} onChange={(e) => setNewPic(e.target.value)} placeholder={t("Jana gambar lain: terangkan gambarnya…", "Generate another picture: describe it…")} />
             <Button type="button" size="sm" variant="soft" onClick={queuePicture} disabled={!newPic.trim() || busy}><ImagePlus size={12} /> {t("Jana", "Generate")}</Button>
+          </div>
+        )}
+        {!locked && (
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input value={ownAlt} onChange={(e) => setOwnAlt(e.target.value)} maxLength={300}
+              placeholder={t("Teks alt untuk gambar anda (pilihan)", "Alt text for your picture (optional)")} />
+            <input ref={ownRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple className="hidden"
+              onChange={(e) => uploadOwn(e.target.files)} aria-label={t("Muat naik gambar sendiri", "Upload your own picture")} />
+            <Button type="button" size="sm" variant="soft" disabled={busy} onClick={() => ownRef.current?.click()} className="shrink-0">
+              <UploadCloud size={12} /> {t("Muat naik gambar sendiri", "Upload your own picture")}</Button>
           </div>
         )}
         {!locked && (

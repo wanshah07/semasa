@@ -16,7 +16,7 @@ alter table public.semasa_posts add column if not exists slides jsonb not null d
 
 alter table public.media_generations drop constraint if exists media_generations_mode_check;
 alter table public.media_generations add constraint media_generations_mode_check
-  check (mode in ('recreate', 'prompt', 'slides', 'clip', 'fragrance') and (mode <> 'recreate' or reference_url is not null));
+  check (mode in ('recreate', 'prompt', 'slides', 'clip', 'fragrance', 'upload') and (mode not in ('recreate', 'upload') or reference_url is not null));
   -- the FULL list in every file that sets it (005, 006, 011, 014, 017): re-running an older file must never narrow it
 
 -- Same function as 005 (keep the two identical: 005 is what a fresh install runs), now watching `slides` too.

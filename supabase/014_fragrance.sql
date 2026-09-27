@@ -58,8 +58,8 @@ grant select, insert, update, delete on public.semasa_fragrances to authenticate
 -- a fragrance design is a media job like any other, of its own mode (every earlier mode kept exactly as 011 wrote it)
 alter table public.media_generations drop constraint if exists media_generations_mode_check;
 alter table public.media_generations add constraint media_generations_mode_check
-  check (mode in ('recreate', 'prompt', 'slides', 'clip', 'fragrance')
-         and (mode <> 'recreate' or reference_url is not null));
+  check (mode in ('recreate', 'prompt', 'slides', 'clip', 'fragrance', 'upload')
+         and (mode not in ('recreate', 'upload') or reference_url is not null));
 
 -- Check (should print 1 | 1 | 1):
 --   select (select count(*) from information_schema.tables where table_name = 'semasa_fragrances'),

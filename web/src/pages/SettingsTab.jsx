@@ -119,6 +119,8 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
 
       <WriterSettings settings={settings} save={save} onToast={onToast} />
 
+      <AutofillSettings settings={settings} save={save} onToast={onToast} />
+
       <IndoTabung settings={settings} save={save} onToast={onToast} />
 
       <FaqCategories settings={settings} save={save} onToast={onToast} />
@@ -188,6 +190,57 @@ function WriterSettings({ settings, save, onToast }) {
         </div>
       </div>
       <Button className="mt-4" onClick={submit} disabled={busy}><Save size={14} /> {t("Simpan gaya penulisan", "Save writing style")}</Button>
+    </Card>
+  );
+}
+
+/* Studio's nightly drafter as a switch (supabase/022, backend/semasa/autofill.py). Off, nothing is written without
+   Wan's click, as before; on, each worker run writes ideas for the empty slots of the next few days from the Regulatory
+   and Latest publication feed, rota-true. They become drafts that still wait for his approval. */
+function AutofillSettings({ settings, save, onToast }) {
+  const { t } = useLang();
+  const a = settings.autofill;
+  const [f, setF] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setF({ enabled: a?.enabled === true, days: String(a?.days_ahead || 3), per: String(a?.per_run || 2),
+      streams: Array.isArray(a?.streams) ? a.streams : ["regulab", "linkedin"] });
+  }, [JSON.stringify(a)]); // eslint-disable-line react-hooks/exhaustive-deps -- a change elsewhere must not wipe an edit here
+  if (!f) return null;
+  const toggleStream = (k) => setF((x) => ({ ...x, streams: x.streams.includes(k) ? x.streams.filter((y) => y !== k) : [...x.streams, k] }));
+
+  async function submit() {
+    setBusy(true);
+    try {
+      await save("autofill", { enabled: f.enabled, days_ahead: Number(f.days), per_run: Number(f.per), streams: f.streams });
+      onToast(f.enabled ? t("Auto-isi dihidupkan. Larian bot seterusnya menulis idea untuk slot kosong; semuanya draf.",
+        "Autofill is on. The next bot run writes ideas for empty slots; all of them stay drafts.")
+        : t("Auto-isi dimatikan.", "Autofill is off."), "ok");
+    } catch (e) {
+      onToast(/0 rows/.test(e.message) ? t("Jalankan supabase/022_studio_extras.sql dahulu.", "Run supabase/022_studio_extras.sql first.") : e.message, "danger");
+    }
+    setBusy(false);
+  }
+  const days = [1, 2, 3, 4, 5, 6, 7].map((n) => [String(n), t("{n} hari", ["{n} day", "{n} days"], { n })]);
+  const per = [1, 2, 3, 4, 5].map((n) => [String(n), String(n)]);
+  return (
+    <Card className="p-5">
+      <h2 className="flex items-center gap-2 text-lg"><FlaskConical size={16} /> {t("Auto-isi slot kosong", "Fill empty slots")}</h2>
+      <p className="mt-1 text-[12px] text-muted">{t("Seperti penulis malam Studio. Mati: tiada idea ditulis tanpa klik anda. Hidup: setiap larian bot menulis idea untuk slot kosong beberapa hari ke depan, daripada suapan Regulatori dan Penerbitan Terkini, ikut rota. Semuanya kekal draf sehingga anda luluskan.",
+        "Like Studio's nightly drafter. Off: no idea is written without your click. On: each bot run writes ideas for the empty slots of the next few days, from the Regulatory and Latest publication feed, following the rota. Every one stays a draft until you approve it.")}</p>
+      <label className="mt-3 flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={f.enabled} onChange={(e) => setF((x) => ({ ...x, enabled: e.target.checked }))} />
+        {t("Hidupkan auto-isi", "Switch autofill on")}</label>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <label><Label>{t("Berapa hari ke depan", "How many days ahead")}</Label><Select value={f.days} onChange={(v) => setF((x) => ({ ...x, days: v }))} options={days} /></label>
+        <label><Label>{t("Idea paling banyak setiap larian", "Most ideas per run")}</Label><Select value={f.per} onChange={(v) => setF((x) => ({ ...x, per: v }))} options={per} /></label>
+        <span className="flex gap-3 text-sm">
+          {[["regulab", "ws.regulab"], ["linkedin", "LinkedIn"]].map(([k, l]) => (
+            <label key={k} className="flex items-center gap-1.5"><input type="checkbox" checked={f.streams.includes(k)} onChange={() => toggleStream(k)} />{l}</label>
+          ))}
+        </span>
+      </div>
+      <Button className="mt-4" onClick={submit} disabled={busy}><Save size={14} /> {t("Simpan auto-isi", "Save autofill")}</Button>
     </Card>
   );
 }

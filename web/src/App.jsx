@@ -32,6 +32,7 @@ import ViewToggle, { useView } from "./components/ViewToggle";
 import MediaUploader from "./components/MediaUploader";
 import Toasts from "./components/Toast";
 import Button from "./components/ui/Button";
+import Guide from "./components/Guide";
 
 function Unconfigured() {
   const { t, lang } = useLang();
@@ -304,6 +305,7 @@ export default function App() {
   }
   const { settings, save } = useSettings(allowed);
   const brand = useMemo(() => brandOf(settings), [settings]);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   function go(next) {
     if (next !== tab && !canLeave()) return;          // unsaved Kanvas work: ask first
@@ -355,7 +357,9 @@ export default function App() {
     <div id="top" className="min-h-screen lg:flex">
       <AppSidebar tab={tab} setTab={go} user={user} counts={allowed ? counts : {}} mode={navMode} />
       <div className="min-w-0 flex-1">
-      <Header tab={tab} setTab={go} user={user} sidebar navMode={navMode} onToggleSidebar={toggleNav} />
+      <Header tab={tab} setTab={go} user={user} sidebar navMode={navMode} onToggleSidebar={toggleNav}
+        onGuide={allowed ? () => setGuideOpen(true) : undefined} />
+      {allowed && <Guide open={guideOpen} onClose={() => setGuideOpen(false)} settings={settings} brand={brand} />}
       {body}
       {allowed && (
         <IdeaComposer open={Boolean(ideaFrom)} onClose={() => setIdeaFrom(null)} trend={ideaFrom} user={user} brand={brand}

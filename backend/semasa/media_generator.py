@@ -481,6 +481,10 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
         # a perfume ad in steps: concepts, two renders, Wan's pick (semasa.fragrance)
         from . import fragrance
         return fragrance.process(store, row, s, llm)
+    if row.get("mode") == "upload":
+        # Wan's own picture, used as it is: checked, made a clean JPEG and hosted (semasa.own_picture, 022)
+        from . import own_picture
+        return own_picture.process(store, row, s.max_attempts)
     if row.get("mode") == "clip":
         # a short cut from a long video (semasa.video)
         from . import video
@@ -582,7 +586,7 @@ STOP_MARGIN = 60           # seconds past MEDIA_RUN_BUDGET a provider may still 
 def need_seconds(row: dict[str, Any], s: MediaSettings) -> int:
     """The least time left worth starting this job in. Less than that and it is handed back unstarted, since a job
     GitHub kills mid-way loses its attempt, and at a paid provider keeps running (and billing) with nobody to collect."""
-    if row.get("mode") in ("slides", "clip", "fragrance") or (row.get("provider") or "").lower() == "unsplash":
+    if row.get("mode") in ("slides", "clip", "fragrance", "upload") or (row.get("provider") or "").lower() == "unsplash":
         return 120
     if (row.get("type") or "image") == "video":
         return min(s.max_wait_video, 900) + 120

@@ -53,5 +53,11 @@ jobs:
           LLM_MODEL: ${{ vars.LLM_MODEL }}
           LLM_FALLBACK_BASE_URL: ${{ vars.LLM_FALLBACK_BASE_URL }}
           LLM_FALLBACK_MODEL: ${{ vars.LLM_FALLBACK_MODEL }}
+          # read by the code but never passed before: setting them in GitHub did nothing (empty = the default)
+          LLM_ALLOWED_HOSTS: ${{ vars.LLM_ALLOWED_HOSTS }}
+          LLM_FALLBACK_ALLOWED_HOSTS: ${{ vars.LLM_FALLBACK_ALLOWED_HOSTS }}
+          LLM_TIMEOUT: ${{ vars.LLM_TIMEOUT }}
+          SCRAPE_KEEP_DAYS: ${{ vars.SCRAPE_KEEP_DAYS }}
+          SCRAPE_PICK_HOURS: ${{ vars.SCRAPE_PICK_HOURS }}
           SCRAPE_USE_PLAYWRIGHT: ${{ github.event_name == 'workflow_dispatch' && (inputs.use_playwright && '1' || '0') || '1' }}
         run: python -m semasa.scraper

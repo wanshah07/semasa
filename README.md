@@ -140,6 +140,11 @@ an account), and no Google button.
    and safe to run again. Nothing imported can post: drafts need Wan's approval inside Semasa, and Studio's scheduled and
    posted records sit in `published`, so the publisher skips every channel Studio already used. The check at the end of
    part 3 prints `1 | 1 | 1`.
+   **The Studio link (27 Sep 2026, until Wan retires Studio).** After each Studio release run a Routine reads which
+   Studio drafts went out and starts `studio-link.yml`; their Semasa copies leave the drafts and are filed in the Arkib as
+   `posted`, with Studio's delivery ids (`backend/semasa/studio_link.py`, instructions in `ops/STUDIO-LINK-ROUTINE.md`).
+   Filed rather than deleted, so the idea still stops the same news being written twice. It sends nothing and approves
+   nothing. To retire Studio: delete the Routine and set the Status line in that file to RETIRED.
    **Before that, `014_fragrance.sql`** (the Wangian tab, 26 Sep 2026, see *Wangian* below). It creates `semasa_fragrances`
    (the list of our perfumes) and allows media jobs of mode `fragrance`. Safe to run again, and safe in the shared
    project. The check at the bottom prints `1 | 1 | 1`.

@@ -74,6 +74,11 @@ class Query:
         self.filters.append(lambda r: r.get(c) is None if v == "null" else r.get(c) == v)
         return self
 
+    def contains(self, c, vals):
+        vals = list(vals)
+        self.filters.append(lambda r: isinstance(r.get(c), list) and all(v in r.get(c) for v in vals))
+        return self
+
     def in_(self, c, vals):
         vals = list(vals)
         self.filters.append(lambda r: r.get(c) in vals)

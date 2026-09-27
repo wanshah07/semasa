@@ -36,9 +36,19 @@ def compact_text(post: dict[str, Any]) -> dict[str, Any]:
 
 
 def unused_media(store: Any, post: dict[str, Any]) -> list[dict[str, Any]]:
+    """Pictures made for this post that it does not use. A picture another post has attached (the editor offers every
+    picture made from the same idea) is in use, whoever made it: deleting it took that post's picture away."""
     keep = set(post.get("media_ids") or [])
     rows = store.table(db.MEDIA).select("id,status,meta").eq("post_id", post["id"]).execute().data or []
-    return [r for r in rows if r["id"] not in keep and r.get("status") in ("done", "error")]
+    dead = [r for r in rows if r["id"] not in keep and r.get("status") in ("done", "error")]
+    used = set()
+    for r in dead:
+        try:
+            if store.table(db.POSTS).select("id").contains("media_ids", [r["id"]]).limit(1).execute().data:
+                used.add(r["id"])
+        except Exception:  # noqa: BLE001 - when in doubt, keep the picture
+            used.add(r["id"])
+    return [r for r in dead if r["id"] not in used]
 
 
 def files_of(row: dict[str, Any]) -> list[str]:

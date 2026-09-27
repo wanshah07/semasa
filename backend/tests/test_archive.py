@@ -94,3 +94,22 @@ def test_the_guard_lets_through_a_draft_a_rejection_another_stream_and_a_follow_
     with pytest.raises(ideas.IdeaError, match="did not answer"):             # it goes on to the writer
         ideas.process_idea(store, llm, _idea("i2", note="susulan: kesan kepada pengeluar"), {})
     assert llm.calls == 1
+
+
+def test_a_picture_another_post_uses_is_never_deleted():
+    # the editor offers every picture made from the same idea: P2 may use a picture whose post_id is P1
+    from datetime import UTC, datetime
+
+    from fakestore import FakeStore
+
+    from semasa import archive
+    old = "2026-09-20T00:00:00+00:00"
+    store = FakeStore(
+        semasa_posts=[{"id": "p1", "status": "posted", "posted_at": old, "archived_at": None, "media_ids": ["a"],
+                       "text": {}, "lang": "bm", "published": {}},
+                      {"id": "p2", "status": "draft", "media_ids": ["b"]}],
+        media_generations=[{"id": "a", "post_id": "p1", "status": "done", "meta": {}},
+                           {"id": "b", "post_id": "p1", "status": "done", "meta": {"generated_path": "x/b.jpg"}},
+                           {"id": "c", "post_id": "p1", "status": "done", "meta": {"generated_path": "x/c.jpg"}}])
+    archive.run(store, datetime(2026, 9, 26, tzinfo=UTC))
+    assert sorted(r["id"] for r in store.tables["media_generations"]) == ["a", "b"]   # c was unused by anyone

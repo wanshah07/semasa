@@ -36,6 +36,7 @@ from collections import deque
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import requests
 from PIL import Image, ImageFilter
 
 from . import db
@@ -107,7 +108,7 @@ def product_text(p: dict[str, Any]) -> str:
 
 
 def read_reference(llm: Any, data: bytes, mime: str) -> dict[str, Any] | None:
-    if llm is None or not getattr(llm, "configured", False):
+    if llm is None or not getattr(llm, "can_see", getattr(llm, "configured", False)):
         return None
     from .media_generator import shrink_for_read
     small, small_ct = shrink_for_read(data, mime)
@@ -144,10 +145,11 @@ def clean_concept(c: dict[str, Any], p: dict[str, Any]) -> dict[str, Any] | None
     conc = str(p.get("concentration") or "").strip()
     if conc:
         allowed[conc.lower()] = conc
-    badges = [allowed[str(b).strip().lower()] for b in (c.get("badges") or []) if str(b).strip().lower() in allowed][:3]
+    badges = [allowed[str(b).strip().lower()] for b in (c.get("badges") if isinstance(c.get("badges"), list) else [])
+              if str(b).strip().lower() in allowed][:3]
     callouts = []
     if layout == "notes":
-        for k in (c.get("callouts") or [])[:3]:
+        for k in (c.get("callouts") if isinstance(c.get("callouts"), list) else [])[:3]:
             if isinstance(k, dict) and str(k.get("title") or "").strip():
                 title, line = str(k["title"]).strip()[:28], str(k.get("line") or "").strip()[:40]
                 if not _claimy(title) and not _claimy(line):
@@ -194,9 +196,8 @@ def cutout(data: bytes) -> bytes:
     bottle about 3% of it): a rough pass finds WHERE the bottle is, then the cut is made again on that crop alone, at a
     resolution where the edge is clean. Cutting the whole frame at thumbnail size gave a bottle edge a few pixels thick
     and blown up twentyfold."""
-    img = Image.open(io.BytesIO(data))
-    img.load()
-    img = img.convert("RGBA")
+    from .images import open_upright
+    img = open_upright(data).convert("RGBA")          # a phone photo the right way up, as the browser showed it
     alpha = img.getchannel("A")
     if alpha.getextrema()[0] < 16 and _corners_clear(alpha):
         return _crop(img)
@@ -392,7 +393,7 @@ def check_label(llm: Any, scene: bytes, p: dict[str, Any]) -> dict[str, Any] | N
     """The AI edit redraws the bottle, and may redraw its label wrong. A model that sees reads it back; `ok` is whether
     every word the label must carry is there (brand, name, concentration, size: "EAU DE PARFUM 100 ML" on an Extrait
     de Parfum 30ml is caught), and `missing` names the ones that are not. None when no such model answered."""
-    if llm is None or not getattr(llm, "configured", False):
+    if llm is None or not getattr(llm, "can_see", getattr(llm, "configured", False)):
         return None
     from .media_generator import shrink_for_read
     small, ct = shrink_for_read(scene, "image/jpeg")
@@ -411,6 +412,10 @@ def check_label(llm: Any, scene: bytes, p: dict[str, Any]) -> dict[str, Any] | N
 
 # --- the job -------------------------------------------------------------------------------------------------------
 
+PRODUCT_KEYS = ("id", "brand", "name", "concentration", "size", "notes", "mood", "claims", "footnote", "bottle_url",
+                "logo_url")
+
+
 def load_product(store: Any, fid: str) -> dict[str, Any]:
     rows = store.table(FRAGRANCES).select("*").eq("id", fid).limit(1).execute().data or []
     if not rows:
@@ -427,8 +432,7 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
     try:
         if step == "concepts":
             p = load_product(store, meta.get("fragrance_id") or "")
-            meta["product"] = {k: p.get(k) for k in ("id", "brand", "name", "concentration", "size", "notes", "mood",
-                                                      "claims", "footnote", "bottle_url", "logo_url")}
+            meta["product"] = {k: p.get(k) for k in PRODUCT_KEYS}
             ref = None
             if (meta.get("style_ref") or {}).get("url"):
                 data, ct, _ = fetch_reference(meta["style_ref"]["url"])
@@ -439,7 +443,16 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
             db.finish_media(store, row_id, status="done", provider="semasa", error=None, meta=meta)
             return True
         if step == "render":
-            p = meta.get("product") or {}
+            # the perfume as it is NOW: a bottle photo replaced since the concepts were written deleted the old file,
+            # and a changed name or claim must reach the artwork and the label check. The snapshot draws only when
+            # the perfume has been removed from the list.
+            p = dict(meta.get("product") or {})
+            try:
+                fresh = load_product(store, meta.get("fragrance_id") or p.get("id") or "")
+                p = {**p, **{k: fresh.get(k) for k in PRODUCT_KEYS}}
+                meta["product"] = p
+            except FragranceError:
+                pass
             concepts = meta.get("concepts") or []
             pick = int(meta.get("pick") if meta.get("pick") is not None else -1)
             if not 0 <= pick < len(concepts):
@@ -450,7 +463,12 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None) -> bool:
             methods = [m for m in (meta.get("methods") or list(METHODS)) if m in METHODS] or list(METHODS)
             if not p.get("bottle_url"):
                 raise FragranceError("this perfume has no bottle photo: add one in the perfume list")
-            bottle_raw, _, _ = fetch_reference(p["bottle_url"])
+            try:
+                bottle_raw, _, _ = fetch_reference(p["bottle_url"])
+            except requests.HTTPError as exc:
+                if getattr(exc.response, "status_code", None) in (400, 403, 404):
+                    raise FragranceError("the bottle photo is no longer there: add it again in the perfume list") from exc
+                raise
             logo = fetch_reference(p["logo_url"])[0] if p.get("logo_url") else None
             provider = make_provider(s.provider, s)
             renders, errors = [], {}
@@ -589,11 +607,17 @@ def _remove(store: Any, row_id: str, paths: list[str]) -> None:
 
 
 def purge_unsaved(store: Any, now: datetime | None = None) -> int:
-    """Fragrance designs never saved are cleared after UNSAVED_DAYS, with their files."""
+    """Fragrance designs never saved are cleared after UNSAVED_DAYS, with their files.
+
+    Only a design at rest (done or failed) and untouched for UNSAVED_DAYS: one Wan has just sent a step for (Keep, Draw,
+    Try again) is `pending` and newer, and deleting it before the run gets to it lost the design he had just chosen.
+    Saved rows are left out in the query itself, so a pile of old saved designs can never fill the page of 200 and
+    hide the unsaved ones behind it."""
     now = now or datetime.now(UTC)
     try:
-        rows = store.table(db.MEDIA).select("id,meta,created_at").eq("mode", "fragrance") \
-            .lt("created_at", (now - timedelta(days=UNSAVED_DAYS)).isoformat()).limit(200).execute().data or []
+        rows = store.table(db.MEDIA).select("id,meta,updated_at").eq("mode", "fragrance") \
+            .in_("status", ["done", "error"]).is_("meta->>saved", "null") \
+            .lt("updated_at", (now - timedelta(days=UNSAVED_DAYS)).isoformat()).limit(200).execute().data or []
     except Exception as exc:  # noqa: BLE001
         log.info("could not look for unsaved fragrance designs: %s", str(exc)[:120])
         return 0

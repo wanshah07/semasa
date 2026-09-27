@@ -172,12 +172,20 @@ def telegram(store: Any, token: str, *, timeout: int = 25) -> int:
     params: dict[str, Any] = {"timeout": 0, "allowed_updates": '["message"]'}
     if state.get("offset"):
         params["offset"] = int(state["offset"])
-    r = requests.get(TG_API.format(token=token, method="getUpdates"), params=params, timeout=timeout)
-    body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
-    if not body.get("ok"):
-        why = body.get("description") or f"HTTP {r.status_code}"
-        raise RuntimeError(f"Telegram refused getUpdates: {why}")
-    updates = body.get("result") or []
+    # getUpdates hands back at most 100 at a time, and Telegram drops what is not fetched within 24 hours: a busy
+    # group lost its questions past the first 100. Ask again from the next offset until nothing is left (10 pages).
+    updates: list[dict[str, Any]] = []
+    for _ in range(10):
+        r = requests.get(TG_API.format(token=token, method="getUpdates"), params=params, timeout=timeout)
+        body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if not body.get("ok"):
+            why = body.get("description") or f"HTTP {r.status_code}"
+            raise RuntimeError(f"Telegram refused getUpdates: {why}")
+        page = body.get("result") or []
+        updates += page
+        if len(page) < 100:
+            break
+        params["offset"] = max(int(u["update_id"]) for u in page) + 1
     questions, replies = parse_telegram(updates)
     n = insert_candidates(store, questions) + apply_replies(store, replies)
     if updates:

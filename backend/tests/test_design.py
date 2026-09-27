@@ -3,6 +3,7 @@ words, on paper, on an uploaded picture or on a picture made for them; judged by
 the post's own carousel."""
 
 import io
+import re
 
 import pytest
 from fakestore import FakeStore
@@ -238,7 +239,7 @@ def test_a_reference_is_reviewed_drawn_and_waits_for_wan(studio):
     assert "never copies" in llm.looked[0] and "Bahasa Indonesia" in llm.looked[0]
     assert "one short headline" in llm.seen[0][1]                                   # the words follow the reference's shape
     assert studio["made"] and "cream paper" in studio["made"][0] and "no logos" in studio["made"][0]
-    assert m["ground_url"].endswith("-ground.jpg")
+    assert re.search(r"-ground-\d{8}\.jpg$", m["ground_url"])       # a new name each time: never a cached old picture
     assert store.tables["semasa_posts"][0]["media_ids"] == ["own"]                  # not attached before Simpan
 
 

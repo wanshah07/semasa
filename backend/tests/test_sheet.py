@@ -108,6 +108,7 @@ def test_a_refusal_keeps_the_mark_and_is_logged_once_per_six_hours(monkeypatch):
 
 def test_an_unreachable_sheet_never_raises_and_hides_the_token(monkeypatch):
     _env(monkeypatch)
+    monkeypatch.setattr(sheet.time, "sleep", lambda s: None)
 
     def boom(*a, **k):
         raise sheet.requests.ConnectionError("https://script/exec?token=tok refused")
@@ -120,6 +121,7 @@ def test_an_unreachable_sheet_never_raises_and_hides_the_token(monkeypatch):
 
 def test_a_non_json_answer_is_a_clear_failure(monkeypatch):
     _env(monkeypatch)
+    monkeypatch.setattr(sheet.time, "sleep", lambda s: None)
 
     class Html(Resp):
         status_code = 302
@@ -139,3 +141,48 @@ def test_a_missing_log_table_says_which_file_to_run(monkeypatch):
                 raise RuntimeError("Could not find the table 'public.semasa_log' in the schema cache")
             return FakeStore(semasa_settings=[]).table(name)
     assert sheet.sync_log(NoTable()) == "log sheet: skipped (the semasa_log table is missing: run supabase/008_log.sql)"
+
+
+class Html404(Resp):
+    status_code = 404
+
+    def json(self):
+        raise ValueError("<html>Sorry, unable to open the file at this time.</html>")
+
+
+def test_googles_passing_404_page_is_tried_once_more(monkeypatch):
+    # scrape run 36263176978, 26 Sep 2026 18:39 UTC: "HTTP 404: the sheet did not answer with JSON"
+    _env(monkeypatch)
+    monkeypatch.setattr(sheet.time, "sleep", lambda s: None)
+    answers = [Html404(None), Resp({"ok": True, "appended": 1})]
+    calls = []
+    monkeypatch.setattr(sheet.requests, "post", lambda *a, **k: calls.append(1) or answers.pop(0))
+    store = FakeStore(semasa_log=[_log(1)], semasa_settings=[])
+    assert sheet.sync_log(store) == "log sheet: 1 rows appended" and len(calls) == 2
+
+
+def test_a_refusal_is_not_retried(monkeypatch):
+    _env(monkeypatch)
+    monkeypatch.setattr(sheet.time, "sleep", lambda s: None)
+    calls = []
+    monkeypatch.setattr(sheet.requests, "post", lambda *a, **k: calls.append(1) or Resp({"ok": False, "error": "Unauthorised"}))
+    sheet.sync_log(FakeStore(semasa_log=[_log(1)], semasa_settings=[]))
+    assert len(calls) == 1
+
+
+def test_a_long_log_goes_in_chunks_and_keeps_what_landed(monkeypatch):
+    _env(monkeypatch)
+    monkeypatch.setattr(sheet.time, "sleep", lambda s: None)
+    monkeypatch.setattr(sheet, "LOG_CHUNK", 2)
+    sent = []
+
+    def post(url, data=None, **k):
+        rows = json.loads(data)["rows"]
+        sent.append([r["id"] for r in rows])
+        return Html404(None) if len(sent) >= 3 else Resp({"ok": True, "appended": len(rows)})
+    monkeypatch.setattr(sheet.requests, "post", post)
+    store = FakeStore(semasa_log=[_log(i) for i in range(1, 6)], semasa_settings=[])
+    out = sheet.sync_log(store)
+    assert sent[:2] == [[1, 2], [3, 4]] and "after 4 rows appended" in out
+    mark = next(r for r in store.tables["semasa_settings"] if r["key"] == "log_sheet")["value"]
+    assert mark["last_id"] == 4          # the next run starts at row 5, not again from row 1

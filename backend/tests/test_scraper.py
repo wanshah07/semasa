@@ -123,3 +123,19 @@ def test_a_dead_llm_costs_one_batch_then_goes_rules_only(monkeypatch):
 def test_a_passing_probe_keeps_going_even_if_one_batch_is_empty(monkeypatch):
     code, finished, calls = _run_with(monkeypatch, probe_ok=True, answers=False)
     assert calls == [12, 12, 6] and finished["llm_ok"] is True and code == 0
+
+
+def test_a_second_run_in_the_same_slot_does_nothing(monkeypatch):
+    # GitHub's schedule and Supabase's clock both start a scrape at 07:17, 15:17 and 23:17 UTC
+    from datetime import UTC, datetime
+
+    from fakestore import FakeStore
+
+    from semasa import scraper
+    monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
+    now = datetime(2026, 9, 26, 15, 20, tzinfo=UTC)
+    store = FakeStore(scrape_runs=[{"id": "r1", "started_at": "2026-09-26T15:17:05+00:00"}])
+    assert scraper.recently_ran(store, now) is True
+    assert scraper.recently_ran(FakeStore(scrape_runs=[{"id": "r0", "started_at": "2026-09-26T07:17:05+00:00"}]), now) is False
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    assert scraper.recently_ran(store, now) is False                 # Wan's own Run workflow always runs

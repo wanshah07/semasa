@@ -30,6 +30,7 @@ import hashlib
 import io
 import os
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -93,11 +94,9 @@ def shrink_for_read(data: bytes, mime: str, budget: int = READ_MAX_BYTES) -> tup
     until it fits. Returns the input untouched when it already fits and is not a GIF."""
     if len(data) <= budget and mime in ("image/jpeg", "image/png", "image/webp"):
         return data, mime
-    from PIL import Image
 
-    img = Image.open(io.BytesIO(data))
-    img.seek(0)
-    img = img.convert("RGB")
+    from .images import open_upright
+    img = open_upright(data).convert("RGB")       # a phone photo the right way up, as it was seen in the browser
     img.thumbnail((1024, 1024))
     for quality in (85, 75, 65, 50, 40):
         buf = io.BytesIO()
@@ -113,7 +112,7 @@ def shrink_for_read(data: bytes, mime: str, budget: int = READ_MAX_BYTES) -> tup
 def read_reference(llm: LLM | None, url: str) -> dict[str, Any] | None:
     """The READ step. None when there is no model that can see, or it would not answer:
     the row then says "not read", never an invented description."""
-    if llm is None or not llm.configured:
+    if llm is None or not getattr(llm, "can_see", llm.configured):
         return None
     try:
         data, ct, _ = fetch_reference(url)
@@ -202,9 +201,24 @@ def reference_ground(store: Any, row_id: str, meta: dict[str, Any], s: MediaSett
     except Exception as exc:  # noqa: BLE001 - the words still get drawn, on paper, and the card says why
         meta["bg_missing"] = f"the background picture could not be made ({str(exc)[:160]}): drawn on paper"
         return None, None
-    url, path = _store(store, row_id, gen, "-ground")
+    old_ground = meta.get("ground_path")
+    # a new name each time: the storage CDN keeps a file an hour under its name, so a redrawn background written to
+    # the old name showed the old picture (and Wan could confirm what he never saw)
+    url, path = _store(store, row_id, gen, f"-ground-{datetime.now(UTC).strftime('%d%H%M%S')}")
     meta.update(ground_url=url, ground_path=path, ground_model=gen.model)
+    if old_ground and old_ground != path:
+        _drop_files(store, row_id, [old_ground])
     return gen.data, "from_ref"
+
+
+def _drop_files(store: Any, row_id: str, paths: list[str]) -> None:
+    """Files a redraw replaced. Housekeeping: a file left behind is never a failure of the job."""
+    if not paths:
+        return
+    try:
+        store.storage.from_(db.GENERATED_BUCKET).remove(paths)
+    except Exception as exc:  # noqa: BLE001
+        log.info("%s: could not delete %d replaced file(s): %s", row_id, len(paths), str(exc)[:120])
 
 
 SLIDES_WAIT = timedelta(hours=2)
@@ -265,12 +279,13 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         stream = meta.get("stream") or "regulab"
         kind = str(meta.get("design") or "")
         style = meta.get("style_ref") if isinstance(meta.get("style_ref"), dict) else {}
-        revise = meta.pop("revise", None) if isinstance(meta.get("revise"), dict) else None
+        # the request stays on the job until the redraw is DONE: taken off at the start, a retry after a passing
+        # fault redrew without Wan's change and reported "done"
+        revise = meta.get("revise") if isinstance(meta.get("revise"), dict) else None
         note = str((revise or {}).get("note") or "").strip()[:600]
         if revise:
             # "Ubah & render semula": the words are written again with the note (when the bot wrote them) and the
             # background made again; the earlier version is noted, not kept
-            meta.setdefault("revisions", []).append({"note": note, "at": datetime.now(UTC).isoformat()})
             if str(meta.get("brief") or "").strip():
                 items = []
             meta.pop("ground_url", None)
@@ -339,12 +354,17 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             pics = slides.render(items, stream=stream, eyebrow=eyebrow, source=str(meta.get("citation") or ""),
                                  website=website, ground=ground, size=size)
         day = datetime.now(UTC).strftime("%Y/%m")
+        stamp = datetime.now(UTC).strftime("%d%H%M%S")      # a redraw is a new file, never an hour-old cached one
+        before = [x for x in (meta.get("slide_paths") or []) if x]
         urls, paths, sums = [], [], []
         for i, data in enumerate(pics, 1):
-            path = f"{day}/{row_id}-slide{i:02d}.jpg"
+            path = f"{day}/{row_id}-{stamp}-slide{i:02d}.jpg"
             urls.append(db.upload_generated(store, path, data, "image/jpeg"))
             paths.append(path)
             sums.append(hashlib.sha256(data).hexdigest())
+        if revise:
+            meta.pop("revise", None)
+            meta.setdefault("revisions", []).append({"note": note, "at": datetime.now(UTC).isoformat()})
         meta.update(slides=items, slide_urls=urls, slide_paths=paths, sha256=sums, count=len(urls), look=look,
                     bg_used=ground_id, content_type="image/jpeg", bytes=sum(len(p) for p in pics),
                     finished_at=datetime.now(UTC).isoformat())
@@ -352,6 +372,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             meta["awaiting_confirm"] = not meta.get("saved")     # waits for Wan's Simpan; never attached before it
         db.finish_media(store, row_id, status="done", generated_media_url=urls[0], provider="semasa",
                         model="slides-v1" if look == "classic" else f"studio-{look}", error=None, meta=meta)
+        _drop_files(store, row_id, [x for x in before if x not in paths])     # the last version's slides, all of them
         if row.get("post_id") and not meta.get("awaiting_confirm"):
             # a Design artwork is added to the post's pictures; a post's own carousel replaces its earlier one
             (db.attach_media_to_draft if kind else db.attach_slides_to_draft)(store, row["post_id"], row_id)
@@ -452,6 +473,7 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
 
 
 def main() -> int:
+    started = time.monotonic()               # the ideas, FAQ, video and sweep steps below count against the budget too
     store = db.client(SupabaseSettings.load())
     from . import ai_config
     cfg = ai_config.read(store)                          # the AI settings Wan saved in the page (016), over GitHub's
@@ -479,7 +501,7 @@ def main() -> int:
     gone = fragrance.purge_unsaved(store)                # fragrance designs never saved within 7 days
     if gone:
         log.info("%d unsaved fragrance design(s) cleared", gone)
-    recovered = db.recover_stale_media(store, s.stale_minutes)
+    recovered = db.recover_stale_media(store, s.stale_minutes, s.max_attempts)
     only_id = (os.environ.get("MEDIA_ONLY_ID") or "").strip() or None
     rows = db.claim_pending(store, s.batch, only_id)
     done = 0
@@ -487,7 +509,17 @@ def main() -> int:
         providers: dict[str, Provider] = {}
         # pictures first (slides may be drawn on them), the long clips last
         rows.sort(key=lambda r: {"slides": 1, "clip": 2}.get(r.get("mode"), 0))
-        done = sum(process_row(store, r, s, providers, llm) for r in rows)
+        deadline = time.monotonic() + max(60, s.run_budget - (time.monotonic() - started))
+        handed_back = []
+        for r in rows:
+            if time.monotonic() > deadline:
+                db.release_media(store, r)          # the next run takes it, with no attempt spent
+                handed_back.append(r)
+                continue
+            done += bool(process_row(store, r, s, providers, llm))
+        if handed_back:
+            log.info("%d job(s) handed back unstarted: the run's time budget (%ds) is spent", len(handed_back), s.run_budget)
+        rows = [r for r in rows if r not in handed_back]
         log.info("%d/%d generated", done, len(rows))
     else:
         log.info("nothing pending")

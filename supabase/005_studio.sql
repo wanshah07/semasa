@@ -182,7 +182,8 @@ alter table public.media_generations add column if not exists reference_read tex
 -- replaced every run, so a database made by an earlier 005 gets the current rule (006 does the same)
 alter table public.media_generations drop constraint if exists media_generations_mode_check;
 alter table public.media_generations add constraint media_generations_mode_check
-  check (mode in ('recreate', 'prompt', 'slides') and (mode <> 'recreate' or reference_url is not null));
+  check (mode in ('recreate', 'prompt', 'slides', 'clip', 'fragrance') and (mode <> 'recreate' or reference_url is not null));
+  -- the FULL list in every file that sets it (005, 006, 011, 014, 017): re-running an older file must never narrow it
 
 -- ---------------------------------------------------------------------------
 -- triggers

@@ -413,6 +413,9 @@ def read(store: Any, llm: Any, video: dict[str, Any]) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = download_link(url, Path(tmp) / "source")
             meta["duration_s"] = int(probe_duration(path) or 0) or None
+            if meta["duration_s"] and meta["duration_s"] > MAX_SOURCE_S:
+                # before a single minute is transcribed: a 10-hour file was sent through ~60 Whisper calls first
+                raise VideoError(f"the video is {fmt_ts(meta['duration_s'])} long; the limit is {fmt_ts(MAX_SOURCE_S)}")
             if pasted:
                 segs, source = pasted, "pasted"
             else:
@@ -441,7 +444,8 @@ def run(store: Any, llm: Any, limit: int = 2, max_attempts: int = 3) -> str:
     """Read the videos waiting. Never raises: a missing table (011 not run yet) is a line in the summary."""
     try:
         cutoff = (datetime.now(UTC) - STALE).isoformat()
-        store.table(VIDEOS).update({"status": "new"}).eq("status", "working").lt("updated_at", cutoff).execute()
+        db.requeue_stale(store, VIDEOS, working="working", back="new", cutoff=cutoff, max_attempts=max_attempts,
+                         what="video")
         rows = store.table(VIDEOS).select("*").eq("status", "new").order("created_at").limit(limit).execute().data or []
     except Exception as exc:  # noqa: BLE001
         return f"Video: not set up ({str(exc)[:120]}); run supabase/011_video.sql"
@@ -636,11 +640,13 @@ def process_clip(store: Any, row: dict[str, Any], max_attempts: int) -> bool:
                 if poster.exists() else None
         meta.update(bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), poster_url=poster_url, width=W, height=H,
                     seconds=round(end - start, 2), content_type="video/mp4", finished_at=datetime.now(UTC).isoformat())
-        db.finish_media(store, row_id, status="done", generated_media_url=url, provider="semasa", model="clip-v1",
-                        error=None, meta=meta)
+        # the draft first, the clip marked done last: done first, a failure writing the draft flipped a finished clip
+        # back to pending, and its retry wrote a second draft
         post_id = row.get("post_id") or write_post(store, row, video, meta)
         if row.get("post_id"):
             replace_clip_in_draft(store, row["post_id"], row_id)
+        db.finish_media(store, row_id, status="done", generated_media_url=url, provider="semasa", model="clip-v1",
+                        error=None, meta=meta)
         log.info("%s: clip %s-%s cut (%d bytes), post %s", row_id, fmt_ts(start), fmt_ts(end), len(data), post_id)
         return True
     except Exception as exc:  # noqa: BLE001 - the row records it; the run continues
@@ -683,6 +689,11 @@ def write_post(store: Any, row: dict[str, Any], video: dict[str, Any], meta: dic
     settings = ideas.load_settings(store)
     brand = settings.get("brand") or {}
     domain = video.get("domain") if stream == "regulab" else None
+    # a retry after the draft was written but before the clip was marked done: that draft is this clip's, not a new one
+    have = store.table(db.POSTS).select("id").contains("media_ids", [row["id"]]).limit(1).execute().data or []
+    if have:
+        store.table(db.MEDIA).update({"post_id": have[0]["id"]}).eq("id", row["id"]).execute()
+        return have[0]["id"]
     date, slot = ideas.next_free_position(stream, domain, brand, ideas.taken_positions(store, stream))
     speaker = str(meta.get("speaker") or video.get("channel") or "").strip()
     post = {"stream": stream, "domain": domain, "angle": video.get("angle") if stream == "linkedin" else None,

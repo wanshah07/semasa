@@ -47,12 +47,11 @@ def is_multipart(model: str) -> bool:
 
 def shrink(data: bytes, limit: int = REF_MAX) -> tuple[bytes, str]:
     """The reference as a JPEG no larger than limit x limit, keeping its shape."""
-    from PIL import Image
-    with Image.open(io.BytesIO(data)) as im:
-        im = im.convert("RGB")
-        im.thumbnail((limit, limit))
-        out = io.BytesIO()
-        im.save(out, format="JPEG", quality=90)
+    from ..images import open_upright
+    im = open_upright(data).convert("RGB")       # the right way up: a phone photo's EXIF turn is applied
+    im.thumbnail((limit, limit))
+    out = io.BytesIO()
+    im.save(out, format="JPEG", quality=90)
     return out.getvalue(), "image/jpeg"
 
 

@@ -377,16 +377,19 @@ function AiSettings({ onToast }) {
   const [busy, setBusy] = useState("");
   const [missing, setMissing] = useState(false);
 
-  async function load() {
+  // `only`: after saving one slot, refresh that slot's form alone, so what is typed in the others (a key included)
+  // is not wiped by the reload
+  async function load(only) {
     const { data, error } = await supabase.from(TABLES.aiConfig).select("*");
     if (error) { setMissing(true); return; }
     setMissing(false);
     const by = Object.fromEntries((data || []).map((r) => [r.slot, r]));
     setRows(by);
-    setForms(Object.fromEntries(AI_SLOTS.map(({ slot }) => {
+    const formOf = (slot) => {
       const r = by[slot];
-      return [slot, r ? { provider: r.provider, base_url: r.base_url || "", model: r.model || "", edit_model: r.edit_model || "", key: "" } : blankAi(slot)];
-    })));
+      return r ? { provider: r.provider, base_url: r.base_url || "", model: r.model || "", edit_model: r.edit_model || "", key: "" } : blankAi(slot);
+    };
+    setForms((f) => Object.fromEntries(AI_SLOTS.map(({ slot }) => [slot, !only || only === slot || !f[slot] ? formOf(slot) : f[slot]])));
   }
   useEffect(() => { load(); }, []);
 
@@ -404,7 +407,7 @@ function AiSettings({ onToast }) {
     onToast(data?.key_dropped
       ? t("Disimpan. Kunci lama dibuang kerana alamat berubah: masukkan kunci untuk alamat baharu.", "Saved. The old key was dropped because the endpoint changed: enter the key for the new endpoint.")
       : t("Tetapan AI disimpan. Larian seterusnya menggunakannya.", "AI settings saved. The next run uses them."), data?.key_dropped ? "warn" : "ok");
-    load();
+    load(slot);
   }
 
   async function reset(slot) {
@@ -413,7 +416,7 @@ function AiSettings({ onToast }) {
     setBusy("");
     if (error) return onToast(errText(error), "danger");
     onToast(t("Kembali kepada tetapan GitHub.", "Back to the GitHub settings."), "ok");
-    load();
+    load(slot);
   }
 
   if (missing) {

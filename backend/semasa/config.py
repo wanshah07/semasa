@@ -125,6 +125,14 @@ class LLMSettings:
         )
 
 
+def llm_base_url() -> str:
+    """The writer's real address, the way LLMSettings.load works it out. An Anthropic writer with no LLM_BASE_URL is
+    api.anthropic.com, not api.openai.com: comparing against the OpenAI default sent an Anthropic key to OpenAI."""
+    provider = (env("LLM_PROVIDER", "openai") or "openai").lower()
+    default_base = "https://api.openai.com/v1" if provider == "openai" else "https://api.anthropic.com"
+    return (env("LLM_BASE_URL", default_base) or default_base).rstrip("/")
+
+
 def fallback_settings() -> dict[str, str | None]:
     """LLM_FALLBACK_API_KEY switches the backup on; LLM_FALLBACK_BASE_URL defaults to Mireld and LLM_FALLBACK_MODEL
     must name one of its models. A backup that is half set up says so instead of failing quietly at 3 a.m."""
@@ -147,7 +155,8 @@ def blocked_host(base_url: str, what: str = "LLM_BASE_URL") -> str:
     host = host_of(base_url).lower()
     if allowed and not any(host == h or host.endswith("." + h) for h in allowed):
         return (f"{what} points at {host or 'nothing'}, which is not an allowed writer "
-                f"({', '.join(allowed)}): set {what}={fix}, or add the host to {var}")
+                f"({', '.join(allowed)}): set {what}={fix}, add the host to the GitHub variable {var}, or save this "
+                "endpoint TOGETHER with its own key in Tetapan → Tetapan AI")
     return ""
 
 
@@ -206,6 +215,9 @@ class MediaSettings:
     cloudflare_t2i_model: str = "@cf/black-forest-labs/flux-1-schnell"
     cloudflare_edit_model: str = "@cf/black-forest-labs/flux-2-klein-4b"
     cloudflare_size: int = 1024
+    # a run starts no new job past this many seconds: media.yml stops the whole job at 40 minutes, and a job killed
+    # there leaves every row it had claimed stuck `processing` for an hour, one attempt spent each
+    run_budget: int = 1800
 
     @classmethod
     def load(cls) -> MediaSettings:
@@ -232,7 +244,7 @@ class MediaSettings:
             # LLM_API_KEY stands in only when the writer runs on the same host as the pictures: on 25 Sep 2026 the
             # rootsys key was sent to api.openai.com this way (refused, 401) for a job that chose OpenAI.
             openai_key=env("OPENAI_API_KEY") or (
-                env("LLM_API_KEY") if host_of(env("LLM_BASE_URL", "https://api.openai.com/v1"))
+                env("LLM_API_KEY") if host_of(llm_base_url())
                 == host_of(env("OPENAI_BASE_URL", "https://api.openai.com/v1")) else None),
             openai_base_url=(env("OPENAI_BASE_URL", "https://api.openai.com/v1") or "").rstrip("/"),
             openai_image_model=env("OPENAI_IMAGE_MODEL", "gpt-image-1"),
@@ -250,4 +262,5 @@ class MediaSettings:
             cloudflare_t2i_model=env("CLOUDFLARE_T2I_MODEL", "@cf/black-forest-labs/flux-1-schnell"),
             cloudflare_edit_model=env("CLOUDFLARE_EDIT_MODEL", "@cf/black-forest-labs/flux-2-klein-4b"),
             cloudflare_size=env_int("CLOUDFLARE_IMAGE_SIZE", 1024),
+            run_budget=env_int("MEDIA_RUN_BUDGET", 1800),
         )

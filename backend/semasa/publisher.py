@@ -110,6 +110,10 @@ def run(store: Any, now: datetime | None = None) -> dict[str, int]:
         not_ready = [m["id"] for m in media if m.get("status") != "done" or not m.get("generated_media_url")]
         if not_ready:
             hard.append(f"{len(not_ready)} picture(s) not generated yet")
+        gone = [i for i in (post.get("media_ids") or []) if i not in {m["id"] for m in media}]
+        if gone:
+            # a picture approved with the post has since been deleted: sending without it is not what Wan approved
+            hard.append(f"{len(gone)} picture(s) approved with this post no longer exist; attach them again and approve")
         lang = compliance.lang_of(post)
         for channel in compliance.platforms_for(post.get("stream") or "regulab"):
             if (post.get("published") or {}).get(channel):
@@ -144,6 +148,10 @@ def run(store: Any, now: datetime | None = None) -> dict[str, int]:
                                                      "version of Semasa; nothing was sent"})
         if hard:
             store.table(db.POSTS).update({"errors": {"scan": hard, "at": now.isoformat()}}).eq("id", post["id"]).execute()
+        elif (post.get("errors") or {}).get("scan"):
+            # the block cleared (the picture is ready now): the post must stop reading "the publisher blocked it",
+            # and the page cannot clear `errors` itself (the gate keeps it the publisher's)
+            store.table(db.POSTS).update({"errors": {}}).eq("id", post["id"]).execute()
     return counts
 
 

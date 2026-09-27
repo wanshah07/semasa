@@ -70,6 +70,14 @@ class LLM:
     def configured(self) -> bool:
         return self.primary_ok or self.backup_ok
 
+    @property
+    def can_see(self) -> bool:
+        """Something can READ a picture: the writer, or a picture reader of its own set in the page (which works even
+        when the writer is off)."""
+        own = bool(getattr(self.s, "vision_key", None) and getattr(self.s, "vision_base_url", "")
+                   and getattr(self.s, "vision_reader_model", ""))
+        return self.configured or own
+
     def why_off(self) -> str:
         """For the page: why the writer did not run."""
         if getattr(self.s, "blocked", ""):
@@ -166,7 +174,9 @@ class LLM:
                 log.warning("LLM HTTP %s: %s", status, body)
                 if status in (400, 401, 403, 404):
                     break  # not going to change on retry
-            except (requests.RequestException, ValueError, KeyError) as exc:
+            except (requests.RequestException, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+                # IndexError / TypeError: a 200 whose "choices" is empty or null (a content filter's usual answer) is
+                # "no answer", so the backup is asked, never a crash of the whole run
                 log.warning("LLM error: %s", exc)
             if attempt < retries:
                 time.sleep(2 * (attempt + 1))

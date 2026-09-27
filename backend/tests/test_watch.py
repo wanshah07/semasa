@@ -394,3 +394,19 @@ def test_a_stored_row_is_small():
                               "empty": ""}})
     assert len(r["raw"]["abstract"]) == watch.ABSTRACT_KEEP and len(r["summary"]) == watch.SUMMARY_KEEP
     assert "final_url" not in r["raw"] and "empty" not in r["raw"]
+
+
+def test_a_dead_writer_is_asked_once_not_once_per_batch():
+    # 200 rows with a hanging writer ran 20 batches of minutes each, past the scrape's 25-minute limit
+    from semasa import watch
+
+    class Dead:
+        configured = True
+        calls = 0
+
+        def chat_json(self, *a, **k):
+            Dead.calls += 1
+            return None
+    rows = [{"source": "NPRA", "title": f"t{i}", "summary": "s"} for i in range(200)]
+    watch.annotate(Dead(), rows)
+    assert Dead.calls == 1 and rows[0]["summary"] == "s"

@@ -301,7 +301,8 @@ create trigger semasa_log_publish after insert on public.semasa_publish_log
 create or replace function public.semasa_log_settings() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  if new.key in ('faq_sheet', 'log_sheet', 'telegram') or new.value is not distinct from old.value then
+  -- a PERSON's change of a setting (the worker's own writes: the sweep's clock, the trial, the FAQ sorter, are not)
+  if auth.uid() is null or new.key in ('faq_sheet', 'log_sheet', 'telegram') or new.value is not distinct from old.value then
     return new;
   end if;
   perform public.semasa_log_write('info', 'settings', 'settings.changed',

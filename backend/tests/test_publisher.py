@@ -80,3 +80,19 @@ def test_enabled_without_a_sender_records_an_error_and_sends_nothing():
 def test_a_channel_already_published_is_skipped():
     c = publisher.run(_store(_post(published={"instagram": {"status": "sent"}})), NOW)
     assert c["dry_run"] == 2
+
+
+def test_a_cleared_block_stops_reading_as_blocked():
+    # 06:20 the picture was not ready (blocked); 11:20 it is ready: the post must not keep "the publisher blocked it"
+    store = _store(_post(), media_status="processing")
+    publisher.run(store, NOW)
+    assert store.tables["semasa_posts"][0]["errors"]["scan"]
+    store.tables["media_generations"][0]["status"] = "done"
+    c = publisher.run(store, NOW)
+    assert c["dry_run"] == 3 and store.tables["semasa_posts"][0]["errors"] == {}
+
+
+def test_a_picture_deleted_after_approval_blocks():
+    store = _store(_post(media_ids=["m1", "gone"]))
+    c = publisher.run(store, NOW)
+    assert c["blocked"] == 3 and "no longer exist" in " ".join(store.tables["semasa_posts"][0]["errors"]["scan"])

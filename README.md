@@ -108,13 +108,20 @@ an account), and no Google button.
    **Then `013_watch_paste.sql`** (paste a link into Regulatory or Latest publication, 26 Sep 2026). It adds the
    status columns, lets uploaders add a waiting link (and remove a pasted one), and wakes the worker on a paste.
    Safe to run again, and safe in the shared project.
-   **Last, `016_ai_settings.sql`** (AI keys and endpoints set in the page, 27 Sep 2026, see *AI settings* below). It
+   **Then `016_ai_settings.sql`** (AI keys and endpoints set in the page, 27 Sep 2026, see *AI settings* below). It
    creates `semasa_ai_config` (what the page may see) and `semasa_ai_secrets` (the keys, which the page can never read
    back), and the two functions the page saves through. Until it is run, the Settings tab says so and every run uses
    the GitHub secrets exactly as before. Safe to run again, and safe in the shared project. The check at the bottom
    prints `1 | 1 | 1`.
    **Before that, `015_canvas.sql`** (the Kanvas editor, 26 Sep 2026, see *Kanvas* below). It creates `semasa_canvas`, which
    holds the designs made in the editor. Safe to run again, and safe in the shared project. The check at the bottom
+   prints `1 | 1 | 1`.
+   **Last, `017_review_fixes.sql`** (the full review, 27 Sep 2026, see *Behaviour worth knowing*). A picture used by
+   an approved, scheduled or posted post cannot be changed or deleted from the page (put the post back to draft
+   first); an approved post that gains a hard flag goes back to draft; the page can no longer move `posted_at` or
+   `archived_at`; the two public bucket listings are gone (a reference picture is readable only by its uploader; a
+   generated one still opens by its link); the worker's own settings writes are no longer logged as a person's; and
+   the clock gets one canonical body. Safe to run again, and safe in the shared project. The check at the bottom
    prints `1 | 1 | 1`.
    **Before that, `014_fragrance.sql`** (the Wangian tab, 26 Sep 2026, see *Wangian* below). It creates `semasa_fragrances`
    (the list of our perfumes) and allows media jobs of mode `fragrance`. Safe to run again, and safe in the shared
@@ -814,6 +821,36 @@ allows one schedule per job.
 - **Generated files carry a sha256 and byte count** in `meta`, so what is in the bucket can be proved
   against what the provider returned.
 
+Found and fixed in the full review (27 Sep 2026):
+
+- **A media run keeps to its time.** `MEDIA_RUN_BUDGET` (1800 s, inside the job's 40 minutes) stops a run
+  starting a job it cannot finish; the rest go back to `pending` untouched, with no attempt counted. A dispatch
+  for one job still fills the rest of its batch with the oldest waiting jobs, so a job queued while another run
+  held the lock is never left for the next poll.
+- **Nothing is retried for ever.** An idea, question, video or pasted link left `working` by a dead runner goes
+  back to the queue at most 3 times, then stops as `error` with the reason; a media job the same, at
+  `MEDIA_MAX_ATTEMPTS`.
+- **A retried idea reuses its half-written draft** instead of writing a second one.
+- **The log sheet is sent 200 rows at a time**, and a call Google answers with a page instead of JSON (the 404 of
+  26 Sep) is tried once more after 5 s. A refusal from the script itself is never retried. A failure part-way says
+  how many rows already went.
+- **A second scheduled scrape within 45 minutes is skipped** (GitHub's cron and the database clock landing
+  together); *Run workflow* always runs.
+- **Unsaved Wangian designs and unconfirmed Design renders are purged after 7 days of no change**, and never a
+  job still waiting or running.
+- **Wangian renders from the perfume as it is now**, not the copy taken when the job was queued, and a bottle
+  photo that is gone fails with that reason instead of an HTTP code. The page offers Edit and Delete on a perfume
+  only to the person who added it, because its bottle photo sits in that person's storage folder.
+- **Photos are turned upright** (`images.open_upright`, EXIF) before they are read, cut out or used as a ground,
+  so a phone picture is never sideways.
+- **A redrawn ground or slide gets a new file name** and the old file is deleted, so a browser or Buffer never
+  shows the old picture from cache.
+- **A short banner** (under 600 px tall) is drawn at 1000 px and scaled down, so its words are never squeezed.
+- **Archiving keeps any picture a post still uses**, and a post whose picture was deleted gets a hard flag.
+- **Kanvas:** fonts are loaded before the first draw; undo also undoes a resize; closing or leaving with unsaved
+  changes asks first, and pictures uploaded for a design that was never saved are removed; a design opened from
+  someone else is saved as your own copy; the font size box takes effect on Enter or when you leave it.
+
 ## Design system
 
 `web/src/design/tokens.css` is the only place a colour, radius, font or shadow is decided. Tailwind
@@ -858,11 +895,13 @@ the Noir theme.
 Semasa's tabs from `lib/tabs.js`, the same list the header reads, with counts of new ideas and drafts waiting. It shows
 from 1024 px wide, in one of two modes, switched by the button left of the header and remembered on that browser:
 
-- **pinned:** the full menu beside the page;
-- **auto** (Wan, 27 Sep 2026: *"can make the sidebar auto hide unhide"*): a 60 px rail of icons, with a dot where
+- **auto, the default** (Wan, 27 Sep 2026: *"can make the sidebar auto hide unhide"*, then *"make the sidebar auto
+  mode the default"*): a 60 px rail of icons, with a dot where
   something waits. Point at it, or tab into it, and the full menu slides out over the page; it slides back when the
   pointer leaves (after a short pause, so a slip does not close it) or a tab is chosen, and Esc closes it. The page
-  never moves, so Kanvas keeps its width.
+  never moves, so Kanvas keeps its width. The choice is kept under `semasa.sidebar.v2`, so a browser that had the old
+  default saved starts on auto once; only a pin made after that sticks.
+- **pinned:** the full menu beside the page.
 
 On a phone the header tab row stays as it was.
 

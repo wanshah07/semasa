@@ -153,3 +153,31 @@ def test_an_idea_from_the_faq_is_written_from_its_answer(monkeypatch):
     system, user = ideas_mod.build_request(idea, src, {})
     assert "SOURCE (an entry of Wan's own FAQ)" in user and "only the headline" not in user
     assert ideas_mod.faq_source({**idea, "source_name": "Berita Harian"}) is None
+
+
+def test_a_retry_after_a_failure_part_way_finishes_the_same_draft(monkeypatch):
+    # the media insert failed after the draft was written: "Cuba lagi" wrote a second draft on a second slot
+    monkeypatch.setattr(ideas, "read_source", lambda url: {"ok": False, "why": "no link", "image": None})
+    store = _store()
+    cap = "Notifikasi kosmetik bukan kelulusan produk."
+    llm = FakeLLM({"fit": True, "hook": "h", "domain": "kosmetik", "citation": "NPRA",
+                   "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}},
+                   "visual_prompt": "botol di rak", "alt": "botol"})
+    idea = {"id": "i1", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "image"}
+    store.tables["semasa_ideas"].append({**idea, "status": "working"})
+    real_insert = store.table("media_generations").__class__.insert
+    fail = {"on": True}
+
+    def flaky(self, payload):
+        if self.table == "media_generations" and fail["on"]:
+            raise RuntimeError("502 Bad Gateway")
+        return real_insert(self, payload)
+    monkeypatch.setattr(store.table("media_generations").__class__, "insert", flaky)
+    with pytest.raises(RuntimeError):
+        ideas.process_idea(store, llm, idea, ideas.load_settings(store))
+    fail["on"] = False
+    again = {**idea, "brief": store.tables["semasa_ideas"][0].get("brief")}
+    pid = ideas.process_idea(store, llm, again, ideas.load_settings(store))
+    assert len(store.tables["semasa_posts"]) == 1 and store.tables["semasa_posts"][0]["id"] == pid
+    assert len(store.tables["media_generations"]) == 1
+    assert store.tables["semasa_ideas"][0]["status"] == "drafted"

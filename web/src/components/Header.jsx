@@ -7,7 +7,7 @@ import Button from "./ui/Button";
 
 /* `sidebar`: the sidebar is showing on a wide screen (App.jsx), so the tabs and the logo live there and the header
    keeps only the language, the theme and the switch between a pinned sidebar and one that hides itself (`navMode`). */
-export default function Header({ tab, setTab, user, sidebar = false, navMode = "pinned", onToggleSidebar }) {
+export default function Header({ tab, setTab, user, sidebar = false, navMode = "auto", onToggleSidebar }) {
   const { theme, setTheme } = useTheme();
   const { lang, setLang, t } = useLang();
   const tabs = tabsOf(t);

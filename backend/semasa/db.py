@@ -197,11 +197,18 @@ def claim_pending(db: Client, limit: int, only_id: str | None = None) -> list[di
 
     The update is conditional on the row still reading `pending`, so two runners
     started seconds apart (a dispatch and the poll) cannot both take the same job.
+
+    A run started for one job (`only_id`, the page's dispatch) takes that job FIRST and then fills the rest of the batch
+    with the oldest other waiting jobs. Taking the one job alone could loop: a slide job waiting for its post's picture
+    goes back to `pending`, that re-dispatches a run for the slide alone, and the picture it waits on was never taken
+    (the queued runs that would have taken it were cancelled by the concurrency group) until SLIDES_WAIT ran out.
     """
-    q = db.table(MEDIA).select("*").eq("status", "pending").order("created_at").limit(limit)
+    rows: list[dict[str, Any]] = []
     if only_id:
-        q = q.eq("id", only_id)
-    rows = q.execute().data or []
+        rows = db.table(MEDIA).select("*").eq("status", "pending").eq("id", only_id).limit(1).execute().data or []
+    if len(rows) < limit:
+        more = db.table(MEDIA).select("*").eq("status", "pending").order("created_at").limit(limit + 1).execute().data or []
+        rows += [r for r in more if r["id"] != only_id][: limit - len(rows)]
     claimed: list[dict[str, Any]] = []
     for row in rows:
         res = (
@@ -216,22 +223,43 @@ def claim_pending(db: Client, limit: int, only_id: str | None = None) -> list[di
     return claimed
 
 
-def recover_stale_media(db: Client, stale_minutes: int) -> int:
-    """A runner that dies (timeout, cancelled, lost) leaves its rows `processing` for ever:
-    nothing else would ever take them, and the page shows a spinner that never stops. Put
-    them back in the queue; `attempts` already counts the lost try, so a job that keeps
-    killing its runner still ends in `error` at MEDIA_MAX_ATTEMPTS."""
-    cutoff = (datetime.now(UTC) - timedelta(minutes=stale_minutes)).isoformat()
+def requeue_stale(db: Client, table: str, *, working: str, back: str, cutoff: str, max_attempts: int,
+                  what: str, column: str = "updated_at") -> int:
+    """A runner that dies (timeout, cancelled, lost) leaves its rows `working` for ever: nothing else would take them,
+    and the page shows a spinner that never stops. Put them back in the queue, EXCEPT a row that has already been tried
+    `max_attempts` times: that one ends in `error`. Without the cap, a job that kills its runner (a video longer than
+    the job's time limit) was taken again, killed again, for ever, and the whole queue behind it starved."""
     try:
-        res = (db.table(MEDIA).update({"status": "pending", "error": "runner stopped before finishing; queued again"})
-               .eq("status", "processing").lt("updated_at", cutoff).execute())
-        n = len(res.data or [])
-        if n:
-            log.warning("put %d stuck media job(s) back in the queue", n)
-        return n
-    except Exception as exc:  # recovery must never stop the run
-        log.warning("could not recover stuck media jobs: %s", exc)
+        (db.table(table).update({"status": "error",
+                                 "error": f"the {what} stopped its runner {max_attempts} times (too long or too big); "
+                                          "not tried again. Change it or delete it."})
+         .eq("status", working).lt(column, cutoff).gte("attempts", max_attempts).execute())
+        res = (db.table(table).update({"status": back, "error": "runner stopped before finishing; queued again"})
+               .eq("status", working).lt(column, cutoff).execute())
+        return len(res.data or [])
+    except Exception as exc:  # noqa: BLE001 - recovery must never stop the run
+        log.warning("could not recover stuck %s rows: %s", table, exc)
         return 0
+
+
+def release_media(db: Client, row: dict[str, Any]) -> None:
+    """Hand a claimed job back unstarted (the run is out of time): `pending` again, and the attempt it was charged
+    at the claim is given back, since nothing was tried."""
+    try:
+        db.table(MEDIA).update({"status": "pending", "attempts": max(0, int(row.get("attempts") or 1) - 1),
+                                "error": None}).eq("id", row["id"]).eq("status", "processing").execute()
+    except Exception as exc:  # noqa: BLE001 - recovery puts it back within the hour anyway
+        log.warning("could not hand %s back: %s", row.get("id"), exc)
+
+
+def recover_stale_media(db: Client, stale_minutes: int, max_attempts: int = 3) -> int:
+    """Media rows left `processing` by a dead runner go back to `pending`, or to `error` at MEDIA_MAX_ATTEMPTS."""
+    cutoff = (datetime.now(UTC) - timedelta(minutes=stale_minutes)).isoformat()
+    n = requeue_stale(db, MEDIA, working="processing", back="pending", cutoff=cutoff, max_attempts=max_attempts,
+                      what="job")
+    if n:
+        log.warning("put %d stuck media job(s) back in the queue", n)
+    return n
 
 
 def attach_media_to_draft(db: Client, post_id: str, media_id: str) -> None:

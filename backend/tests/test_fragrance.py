@@ -343,7 +343,7 @@ def test_a_canva_size_reaches_the_artwork(rig):
 
 
 def test_no_bottle_photo_is_a_clear_final_error(rig):
-    store = _store(_chosen(product={**NOIR, "bottle_url": None}))
+    store = _store(_chosen(product={**NOIR, "bottle_url": None}), product={**NOIR, "bottle_url": None})
     f.process(store, store.tables["media_generations"][0], _settings(), Writer())
     job = store.tables["media_generations"][0]
     assert job["status"] == "error" and "no bottle photo" in job["error"]
@@ -383,14 +383,19 @@ def test_saving_one_version_also_clears_the_other_versions_layers(rig):
 def test_unsaved_designs_are_cleared_after_a_week_and_saved_ones_kept():
     old = "2026-09-01T00:00:00+00:00"
     store = FakeStore(media_generations=[
-        {"id": "a", "mode": "fragrance", "created_at": old,
+        {"id": "a", "mode": "fragrance", "status": "done", "created_at": old, "updated_at": old,
          "meta": {"renders": [{"path": "x/a-cutout.jpg"}], "style_ref": {"path": "u/ad.jpg"}}},
-        {"id": "b", "mode": "fragrance", "created_at": old, "meta": {"saved": True, "renders": [{"path": "x/b.jpg"}]}},
-        {"id": "c", "mode": "fragrance", "created_at": "2099-01-01T00:00:00+00:00", "meta": {}},
-        {"id": "d", "mode": "slides", "created_at": old, "meta": {}}])
+        {"id": "b", "mode": "fragrance", "status": "done", "created_at": old, "updated_at": old,
+         "meta": {"saved": True, "renders": [{"path": "x/b.jpg"}]}},
+        {"id": "c", "mode": "fragrance", "status": "done", "created_at": old,
+         "updated_at": "2099-01-01T00:00:00+00:00", "meta": {}},
+        {"id": "d", "mode": "slides", "status": "done", "created_at": old, "updated_at": old, "meta": {}},
+        # made 8 days ago, but Wan pressed Keep today: its save is waiting for this very run
+        {"id": "e", "mode": "fragrance", "status": "pending", "created_at": old, "updated_at": old,
+         "meta": {"step": "save", "chosen": "cutout", "renders": [{"path": "x/e.jpg"}]}}])
     from datetime import UTC, datetime
     assert f.purge_unsaved(store, datetime(2026, 9, 26, tzinfo=UTC)) == 1
-    assert [r["id"] for r in store.tables["media_generations"]] == ["b", "c", "d"]
+    assert [r["id"] for r in store.tables["media_generations"]] == ["b", "c", "d", "e"]
     assert ("semasa-generated", ["x/a-cutout.jpg"]) in store.removed and ("semasa-reference", ["u/ad.jpg"]) in store.removed
 
 
@@ -459,3 +464,43 @@ def test_a_real_render_fits_the_words(tmp_path):
     c = f.clean_concept({**CONCEPTS["designs"][0], "headline": "EXTRAORDINARILY MAGNIFICENT"}, NOIR)
     art = Image.open(io.BytesIO(f.render_art(c, NOIR, (1080, 1350), _jpeg(), f.cutout(_png()))))
     assert art.size == (1080, 1350)
+
+
+def test_the_render_uses_the_perfume_as_it_is_now(rig):
+    # the bottle photo was replaced after the concepts were written: the old file is gone, the new one is drawn
+    store = _store(_chosen(product={**NOIR, "bottle_url": "https://cdn.test/old-bottle.png", "name": "Old name"},
+                           methods=["cutout"]))
+    f.process(store, store.tables["media_generations"][0], _settings(), Writer())
+    job = store.tables["media_generations"][0]
+    assert job["status"] == "done" and job["meta"]["product"]["bottle_url"] == NOIR["bottle_url"]
+    assert job["meta"]["product"]["name"] == NOIR["name"]
+
+
+def test_a_bottle_photo_that_is_gone_is_a_final_error(rig, monkeypatch):
+    import requests
+    resp = requests.Response()
+    resp.status_code = 404
+
+    def gone(url, **k):
+        raise requests.HTTPError("404 Not Found", response=resp)
+    monkeypatch.setattr(f, "fetch_reference", gone)
+    store = _store(_chosen(methods=["cutout"]))
+    f.process(store, store.tables["media_generations"][0], _settings(), Writer())
+    job = store.tables["media_generations"][0]
+    assert job["status"] == "error" and "no longer there" in job["error"]
+
+
+def test_a_sideways_phone_photo_is_cut_out_upright():
+    import io
+
+    from PIL import Image
+    img = Image.new("RGB", (600, 300), (255, 255, 255))           # stored sideways: wide
+    for x in range(250, 350):                                     # a bottle that is tall once turned upright
+        for y in range(120, 180):
+            img.putpixel((x, y), (20, 20, 20))
+    exif = Image.Exif()
+    exif[0x0112] = 6                                              # "rotate 90° to show": what a phone writes
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", exif=exif.tobytes())
+    out = Image.open(io.BytesIO(f.cutout(buf.getvalue())))
+    assert out.height > out.width                                 # upright, not lying on its side

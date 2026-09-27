@@ -218,20 +218,24 @@ function NavItem({
   if (collapsed) {
     // icons only: a group with children opens to its first child, since there is no room to list them
     const target = item.children?.[0]?.id ?? item.id;
+    // the SAME shape as the open row (a div around one button): switching between the two keeps the button, so the
+    // keyboard focus that opened the menu stays on it instead of falling back to the page
     return (
-      <button
-        type="button"
-        data-nav={item.id}
-        aria-current={isActive ? 'page' : undefined}
-        aria-label={hasBadge ? `${item.title} (${item.badge})` : item.title}
-        title={item.title}
-        onClick={() => onSelect(target)}
-        className={`relative flex w-full items-center justify-center py-[7px] rounded-[6px] cursor-pointer transition-colors
-          ${isActive ? 'bg-black/5 dark:bg-white/10 text-foreground' : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground/90'}`}
-      >
-        <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.5} />
-        {hasBadge && <span className="absolute right-1.5 top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />}
-      </button>
+      <div className="flex flex-col w-full">
+        <button
+          type="button"
+          data-nav={item.id}
+          aria-current={isActive ? 'page' : undefined}
+          aria-label={hasBadge ? `${item.title} (${item.badge})` : item.title}
+          title={item.title}
+          onClick={() => onSelect(target)}
+          className={`relative flex w-full items-center justify-center py-[7px] rounded-[6px] cursor-pointer transition-colors
+            ${isActive ? 'bg-black/5 dark:bg-white/10 text-foreground' : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground/90'}`}
+        >
+          <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.5} />
+          {hasBadge && <span className="absolute right-1.5 top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />}
+        </button>
+      </div>
     );
   }
 

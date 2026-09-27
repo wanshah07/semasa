@@ -61,3 +61,27 @@ def test_a_failed_batch_does_not_crash_and_other_batches_still_count():
     found = db.existing_urls(fake, urls)
     assert len(fake.calls) >= 3                         # batch 2 raised, the rest still ran
     assert set(urls[:5]) <= found and urls[-1] in found
+
+
+def test_a_run_for_one_job_takes_it_first_and_fills_the_batch():
+    # a slide waiting for its post's picture used to re-dispatch runs for the slide alone until SLIDES_WAIT ran out
+    from fakestore import FakeStore
+
+    from semasa import db
+    store = FakeStore(media_generations=[
+        {"id": "pic", "status": "pending", "created_at": "2026-09-26T10:00:00+00:00", "attempts": 0},
+        {"id": "slide", "status": "pending", "created_at": "2026-09-26T10:00:01+00:00", "attempts": 0},
+        {"id": "done", "status": "done", "created_at": "2026-09-26T09:00:00+00:00", "attempts": 1}])
+    got = [r["id"] for r in db.claim_pending(store, 5, "slide")]
+    assert got == ["slide", "pic"]
+    statuses = {r["id"]: r["status"] for r in store.tables["media_generations"]}
+    assert statuses == {"pic": "processing", "slide": "processing", "done": "done"}
+
+
+def test_a_one_job_run_respects_the_batch_size():
+    from fakestore import FakeStore
+
+    from semasa import db
+    store = FakeStore(media_generations=[{"id": f"r{i}", "status": "pending", "created_at": f"2026-09-26T10:00:0{i}+00:00",
+                                          "attempts": 0} for i in range(4)])
+    assert [r["id"] for r in db.claim_pending(store, 2, "r3")] == ["r3", "r0"]

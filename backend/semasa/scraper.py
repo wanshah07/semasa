@@ -133,6 +133,11 @@ def main() -> int:
     log.info(ai_config.describe(cfg))
     llm_settings = ai_config.llm_settings(LLMSettings.load(), cfg)
     git_sha = os.environ.get("GITHUB_SHA")
+    if recently_ran(store):
+        # GitHub's schedule and Supabase's clock (009) fire at the same minutes, so each slot ran twice back to back:
+        # a second fetch of every source, a second writer probe and a second run row. A run started by hand always runs.
+        log.info("a scrape already started in this slot; nothing to do")
+        return 0
     run_id = db.start_run(store, git_sha)
     try:
         return _run(store, run_id, settings, llm_settings)
@@ -143,6 +148,20 @@ def main() -> int:
         db.finish_run(store, run_id, note=note)
         print(f"::error::{note}")
         raise
+
+
+SAME_SLOT = timedelta(minutes=45)
+
+
+def recently_ran(store: Any, now: datetime | None = None) -> bool:
+    if (os.environ.get("GITHUB_EVENT_NAME") or "") == "workflow_dispatch":
+        return False
+    now = now or datetime.now(UTC)
+    try:
+        return bool(store.table(db.RUNS).select("id").gt("started_at", (now - SAME_SLOT).isoformat()).limit(1)
+                    .execute().data)
+    except Exception:  # noqa: BLE001 - when unsure, scrape
+        return False
 
 
 def writer_label(llm: LLM) -> str:

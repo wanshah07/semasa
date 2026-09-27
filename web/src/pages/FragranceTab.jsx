@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Clock, Download, Droplets, ImagePlus, Loader2, Maximize2, PenTool, Pencil, Plus, RotateCcw, Save, Search,
   Trash2, Wand2, X } from "lucide-react";
@@ -46,7 +46,9 @@ export default function FragranceTab({ user, gens, onToast, onCanvas }) {
     else { setError(""); setList(data || []); }
   }
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (!sel && list.length) setSel(list[0].id); }, [list, sel]);
+  // re-pick whenever the chosen perfume is not in the list (none chosen yet, or the one just deleted): an empty sel
+  // alone was not enough, since deleting the first perfume re-picked it from the old list before the reload
+  useEffect(() => { if (list.length && !list.some((x) => x.id === sel)) setSel(list[0].id); }, [list, sel]);
   const p = list.find((x) => x.id === sel);
   const jobs = gens.rows.filter((r) => r.mode === "fragrance" && r.meta?.fragrance_id === sel);
 
@@ -55,7 +57,7 @@ export default function FragranceTab({ user, gens, onToast, onCanvas }) {
     const { error: e } = await supabase.from(TABLES.fragrances).delete().eq("id", row.id);
     if (e) return onToast(errText(e), "danger");
     await Promise.all([removeReference(row.bottle_path), removeReference(row.logo_path)]).catch(() => {});
-    if (sel === row.id) setSel("");
+    setList((xs) => xs.filter((x) => x.id !== row.id));
     onToast(t("Dipadam.", "Deleted."), "info"); load();
   }
 
@@ -111,10 +113,14 @@ export default function FragranceTab({ user, gens, onToast, onCanvas }) {
                   <p className="text-[12px] text-muted [overflow-wrap:anywhere]">{p.notes || t("Tiada nota wangian", "No scent notes")}</p>
                   <p className="mt-1 text-[12px] [overflow-wrap:anywhere]"><b>{t("Dakwaan diluluskan", "Approved claims")}:</b> {(p.claims || []).join(" · ") || t("tiada (tiada lencana dakwaan)", "none (no claim badges)")}</p>
                 </div>
-                <span className="flex gap-1">
-                  <Button size="sm" variant="soft" onClick={() => setEditing(p)}><Pencil size={12} /> {t("Ubah", "Edit")}</Button>
-                  <Button size="sm" variant="danger" title={t("Padam", "Delete")} onClick={() => removePerfume(p)}><Trash2 size={12} /></Button>
-                </span>
+                {/* photos live in their uploader's own storage folder, which only that person can delete from: anyone
+                    else changing or deleting the perfume would leave its files behind for good */}
+                {!p.created_by || p.created_by === user?.id ? (
+                  <span className="flex gap-1">
+                    <Button size="sm" variant="soft" onClick={() => setEditing(p)}><Pencil size={12} /> {t("Ubah", "Edit")}</Button>
+                    <Button size="sm" variant="danger" title={t("Padam", "Delete")} onClick={() => removePerfume(p)}><Trash2 size={12} /></Button>
+                  </span>
+                ) : <span className="text-[11px] text-muted">{t("Ditambah oleh pengguna lain: hanya dia boleh mengubahnya.", "Added by another user: only they can change it.")}</span>}
               </div>
               <FindConcepts p={p} user={user} gens={gens} onToast={onToast} />
             </Card>
@@ -174,6 +180,7 @@ function PerfumeForm({ row, user, onToast, onClose, onSaved }) {
   const [logo, setLogo] = useState(null);
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const downOnBackdrop = useRef(false);
 
   function pick(setter, pngOnly) {
     return (e) => {
@@ -215,8 +222,12 @@ function PerfumeForm({ row, user, onToast, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4 pt-10" onClick={onClose}>
-      <form onSubmit={save} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true"
+    // closes only when the press STARTS on the backdrop: a text selection dragged out of the form and released there
+    // used to close it and lose everything typed
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4 pt-10"
+      onMouseDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (downOnBackdrop.current && e.target === e.currentTarget) onClose(); downOnBackdrop.current = false; }}>
+      <form onSubmit={save} role="dialog" aria-modal="true"
         className="w-full max-w-xl space-y-3 rounded-card border border-line bg-surface p-5 shadow-lift">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-lg">{row ? t("Ubah wangian", "Edit perfume") : t("Tambah wangian", "Add a perfume")}</h3>
@@ -322,6 +333,8 @@ function Job({ r, mine, gens, onToast, onCanvas }) {
   const step = m.step || "concepts";
   const [busy, setBusy] = useState(false);
   const [again, setAgain] = useState(false);
+  // ticks are kept per picture FILE, not per method: a redraw is a new file, so a tick given to the last picture can
+  // never unlock Keep on a new one whose label may be wrong too
   const [checked, setChecked] = useState({});
   const [resize, setResize] = useState(false);
   const [newSize, setNewSize] = useState("ig_story");
@@ -418,11 +431,11 @@ function Job({ r, mine, gens, onToast, onCanvas }) {
                     <>
                       {guarded && (
                         <label className="flex items-start gap-1.5 text-[11px]">
-                          <input type="checkbox" className="mt-0.5" checked={!!checked[x.method]} onChange={(e) => setChecked({ ...checked, [x.method]: e.target.checked })} />
+                          <input type="checkbox" className="mt-0.5" checked={!!checked[x.path || x.url]} onChange={(e) => setChecked({ ...checked, [x.path || x.url]: e.target.checked })} />
                           <span>{t("Saya sudah semak: nama, kepekatan dan saiz pada botol tepat.", "I have checked it: the name, concentration and size on the bottle are right.")}</span>
                         </label>
                       )}
-                      <Button size="sm" disabled={busy || (guarded && !checked[x.method])} onClick={() => send({ step: "save", chosen: x.method }, t("Disimpan; yang satu lagi dibuang.", "Saved; the other one is discarded."))}>
+                      <Button size="sm" disabled={busy || (guarded && !checked[x.path || x.url])} onClick={() => send({ step: "save", chosen: x.method }, t("Disimpan; yang satu lagi dibuang.", "Saved; the other one is discarded."))}>
                         <Save size={12} /> {t("Simpan yang ini", "Keep this one")}</Button>
                     </>
                   );

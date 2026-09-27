@@ -156,7 +156,8 @@ def test_slide_job_draws_uploads_and_replaces_the_old_set(monkeypatch):
     assert done["generated_media_url"] == done["meta"]["slide_urls"][0]
     assert done["meta"]["slides"] == compliance.normalise_slides(GOOD)
     assert all(ct == "image/jpeg" for _, ct in uploads.values())
-    assert [p.rsplit("/", 1)[1] for p in uploads] == ["s1-slide01.jpg", "s1-slide02.jpg", "s1-slide03.jpg"]
+    names = [p.rsplit("/", 1)[1] for p in uploads]
+    assert [re.sub(r"-\d{8}-", "-", n) for n in names] == ["s1-slide01.jpg", "s1-slide02.jpg", "s1-slide03.jpg"]
     assert store.tables["semasa_posts"][0]["media_ids"] == ["pic", "s1"]         # the old set replaced in place
 
 
@@ -316,3 +317,11 @@ def test_scrape_runs_every_eight_hours():
     cron = re.search(r'cron:\s*"([^"]+)"', wf).group(1)
     minute, hours, *_ = cron.split()
     assert minute.isdigit() and [int(h) for h in hours.split(",")] == [7, 15, 23]
+
+
+@pytest.mark.parametrize("size", [(851, 315), (810, 450), (1584, 396)])
+def test_a_short_banner_has_room_for_its_words(size):
+    # Facebook Cover, Facebook App Ad and LinkedIn Background failed with "too long to fit" for a single word
+    out = slides.render([{"title": "Notifikasi kosmetik", "points": ["Satu perkara penting"]}], stream="regulab",
+                        eyebrow="Halal", source="NPRA", website="kkmhalalconsultant.com", ground=None, size=size)
+    assert Image.open(io.BytesIO(out[0])).size == size

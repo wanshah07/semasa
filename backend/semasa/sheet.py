@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -23,6 +24,10 @@ from .log import get_logger
 log = get_logger("semasa.sheet")
 
 LOG_BATCH = 1000   # one page: Supabase returns at most 1000 rows a read
+LOG_CHUNK = 200    # rows per call to the sheet. The whole page in one call was the first append the sheet ever got
+                   # (26 Sep 2026, 18:39 UTC) and Google answered it with an HTML 404; a smaller call finishes well
+                   # inside what Apps Script serves, and each chunk that lands is kept even if a later one fails.
+RETRY_WAIT = 5     # seconds before the one retry of a call Google answered with a page instead of JSON
 # A row's id is taken when it is written but seen only when its transaction commits, so a row can appear after a
 # higher id was already copied. Copying only rows this old closes that gap (every write here commits in well under
 # a second); the newest rows simply go with the next run.
@@ -45,23 +50,35 @@ def configured() -> bool:
     return all(config())
 
 
-def call(action: str, payload: dict[str, Any], *, timeout: int = 90) -> dict[str, Any]:
+def call(action: str, payload: dict[str, Any], *, timeout: int = 90, retries: int = 1) -> dict[str, Any]:
+    """One call to the sheet. A call Google could not deliver (no connection, or an HTML page such as its passing
+    "unable to open the file" 404 instead of the script's JSON) is tried once more after a short wait: both actions
+    are safe to repeat (the FAQ is replaced whole, and the log ignores an id it already has). A refusal from the
+    script itself (a wrong token, an unknown action) is not retried."""
     url, token = config()
     if not url or not token:
         raise SheetError("not configured (SEMASA_SHEET_URL / SEMASA_SHEET_TOKEN)")
     body = json.dumps({"token": token, "action": action, **payload}, ensure_ascii=False).encode("utf-8")
-    try:
-        r = requests.post(url, data=body, headers={"Content-Type": "application/json"}, timeout=timeout,
-                          allow_redirects=True)
-    except requests.RequestException as exc:
-        raise SheetError(f"{type(exc).__name__}: cannot reach the sheet") from exc
-    try:
-        out = r.json()
-    except ValueError as exc:
-        raise SheetError(f"HTTP {r.status_code}: the sheet did not answer with JSON") from exc
-    if not out.get("ok"):
-        raise SheetError(str(out.get("error") or "refused"))
-    return out
+    for attempt in range(retries + 1):
+        try:
+            r = requests.post(url, data=body, headers={"Content-Type": "application/json"}, timeout=timeout,
+                              allow_redirects=True)
+            try:
+                out = r.json()
+            except ValueError as exc:
+                raise SheetError(f"HTTP {r.status_code}: the sheet did not answer with JSON") from exc
+        except (requests.RequestException, SheetError) as exc:
+            if attempt < retries:
+                log.info("sheet %s: %s; trying once more", action, type(exc).__name__)
+                time.sleep(RETRY_WAIT)
+                continue
+            if isinstance(exc, SheetError):
+                raise
+            raise SheetError(f"{type(exc).__name__}: cannot reach the sheet") from exc
+        if not out.get("ok"):
+            raise SheetError(str(out.get("error") or "refused"))
+        return out
+    raise SheetError("cannot reach the sheet")    # not reached: the loop returns or raises
 
 
 def myt(iso: str | None) -> str:
@@ -93,14 +110,23 @@ def sync_log(store: Any) -> str:
                 .execute().data or [])
         if not rows:
             return "log sheet: nothing new"
-        out = call("append_log", {"fields": LOG_FIELDS, "rows": log_rows(rows)})
-        state.update(last_id=max(int(r["id"]) for r in rows), at=datetime.now(UTC).isoformat(),
-                     appended=int(out.get("appended") or 0))
-        if got:
-            store.table(db.SETTINGS).update({"value": state}).eq("key", "log_sheet").execute()
-        else:
-            store.table(db.SETTINGS).insert({"key": "log_sheet", "value": state}).execute()
-        return f"log sheet: {state['appended']} rows appended"
+        appended = 0
+        for i in range(0, len(rows), LOG_CHUNK):
+            chunk = rows[i:i + LOG_CHUNK]
+            try:
+                out = call("append_log", {"fields": LOG_FIELDS, "rows": log_rows(chunk)})
+            except SheetError as exc:
+                if appended:                        # what landed is kept; the rest goes with the next run
+                    raise SheetError(f"{exc} (after {appended} rows appended)") from exc
+                raise
+            appended += int(out.get("appended") or 0)
+            state.update(last_id=max(int(r["id"]) for r in chunk), at=datetime.now(UTC).isoformat(), appended=appended)
+            if got:
+                store.table(db.SETTINGS).update({"value": state}).eq("key", "log_sheet").execute()
+            else:
+                store.table(db.SETTINGS).insert({"key": "log_sheet", "value": state}).execute()
+                got = [{"key": "log_sheet"}]
+        return f"log sheet: {appended} rows appended"
     except Exception as exc:  # noqa: BLE001 - the sheet is a mirror; it never stops a run
         if "semasa_log" in str(exc) and ("schema cache" in str(exc) or "does not exist" in str(exc)):
             # on 25 Sep 2026 this read "FAILED (APIError)" for a database that had not run 008 yet

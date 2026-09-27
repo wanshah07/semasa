@@ -328,13 +328,7 @@ def taken_positions(store: Any, stream: str) -> set[tuple[str, str]]:
 
 def recover_stale(store: Any) -> int:
     cutoff = (datetime.now(UTC) - timedelta(minutes=STALE_MINUTES)).isoformat()
-    try:
-        res = (store.table(db.IDEAS).update({"status": "new", "error": "worker stopped before finishing; queued again"})
-               .eq("status", "working").lt("updated_at", cutoff).execute())
-        return len(res.data or [])
-    except Exception as exc:  # noqa: BLE001
-        log.warning("could not recover stuck ideas: %s", exc)
-        return 0
+    return db.requeue_stale(store, db.IDEAS, working="working", back="new", cutoff=cutoff, max_attempts=3, what="idea")
 
 
 def claim(store: Any, limit: int) -> list[dict[str, Any]]:
@@ -423,13 +417,28 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
                             indo_extra=indo_extra)
     post["flags"] = flags
     post["hard_flags"] = compliance.hard_count(flags)
-    post_id = store.table(db.POSTS).insert(post).execute().data[0]["id"]
+    # A retry after a failure part-way (the draft written, then the picture jobs or the idea's own update failed) must
+    # finish THAT draft, not write a second one holding a second slot. The draft's id is noted on the idea the moment
+    # it exists, so the retry finds it.
+    brief0 = idea.get("brief") if isinstance(idea.get("brief"), dict) else {}
+    earlier = str(brief0.get("partial_post_id") or "")
+    still = (store.table(db.POSTS).select("id,status").eq("id", earlier).limit(1).execute().data or []) if earlier else []
+    if still and still[0].get("status") == "draft":
+        post_id = earlier
+        store.table(db.POSTS).update({k: v for k, v in post.items() if k not in ("created_by", "date", "slot")}) \
+            .eq("id", post_id).eq("status", "draft").execute()
+        has_jobs = bool(store.table(db.MEDIA).select("id").eq("post_id", post_id).limit(1).execute().data)
+    else:
+        post_id = store.table(db.POSTS).insert(post).execute().data[0]["id"]
+        has_jobs = False
+        store.table(db.IDEAS).update({"brief": {**brief0, "partial_post_id": post_id}}) \
+            .eq("id", idea["id"]).execute()
 
-    jobs = media_jobs(idea, source, out, post_id)
-    if want_slides and post.get("slides"):
+    jobs = [] if has_jobs else media_jobs(idea, source, out, post_id)
+    if want_slides and post.get("slides") and not has_jobs:
         jobs.append(slide_job(idea, post, post_id, bg="post_image" if jobs else "none"))
     poster = slides.normalise([out.get("poster")] if isinstance(out.get("poster"), dict) else [])[:1] if want_poster else []
-    if poster:
+    if poster and not has_jobs:
         jobs.append(poster_job(idea, post, post_id, poster, bg="post_image" if jobs else "none"))
     if jobs:
         store.table(db.MEDIA).insert(jobs).execute()

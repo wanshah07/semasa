@@ -206,7 +206,8 @@ def background(size: tuple[int, int], ground: bytes | None) -> tuple[Image.Image
     w, h = size
     if ground:
         try:
-            photo = cover_fit(Image.open(io.BytesIO(ground)), size)
+            from .images import open_upright
+            photo = cover_fit(open_upright(ground), size)
         except Exception as exc:  # noqa: BLE001 - a bad ground is reported, never drawn half
             raise SlideError(f"the background picture could not be opened ({type(exc).__name__})") from exc
         scrim = Image.new("L", (1, h))
@@ -247,10 +248,22 @@ def draw_lines(d: ImageDraw.ImageDraw, lines: list[Line], x: int, y: int, font: 
     return y
 
 
+SHORT_H = 600       # below this height the fixed margins, header and footer leave no room for words
+SHORT_DRAW_H = 1000  # ... so a short banner is drawn at this height and scaled down to its real size
+
+
 def render_one(slide: dict[str, Any], index: int, total: int, *, stream: str, eyebrow: str, source: str,
                website: str, ground: bytes | None, size: tuple[int, int] | None = None) -> Image.Image:
     size = size or SIZES.get(stream, SIZES["regulab"])
     w, h = size
+    if h < SHORT_H:
+        # Facebook Cover (851x315), Facebook App Ad (810x450) and LinkedIn Background (1584x396) failed with "too long
+        # to fit even at the smallest type size" for a single word: the 88px margins and the header and footer take
+        # the whole height. Drawn taller with the same proportions and scaled down, the layout keeps its rules.
+        k = SHORT_DRAW_H / h
+        big = render_one(slide, index, total, stream=stream, eyebrow=eyebrow, source=source, website=website,
+                         ground=ground, size=(round(w * k), SHORT_DRAW_H))
+        return big.resize((w, h), Image.LANCZOS)
     tall = h > w
     canvas, on_ground = background(size, ground)
     ink, muted, accent = (ON_GROUND_INK, ON_GROUND_MUTED, ON_GROUND_ACCENT) if on_ground else (INK, MUTED, ACCENT)

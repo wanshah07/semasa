@@ -26,16 +26,26 @@ const SNAP_PX = 8;                         // screen pixels: a centre this close
 const TEXT_SHADOW = () => new Shadow({ color: "rgba(0,0,0,0.35)", blur: 14, offsetX: 0, offsetY: 3 });
 const fontsHref = (f) => `${import.meta.env.BASE_URL}cards/${f}`;
 
+// document.fonts.load() asked before a stylesheet is parsed finds no @font-face and answers at once with nothing, so the
+// first opening laid text out in the fallback font (measured: 0 faces). Wait for each stylesheet first, then the faces.
 function loadFonts() {
-  for (const f of ["fonts.css", "fragrance-fonts.css"]) {
-    if (!document.querySelector(`link[data-kanvas="${f}"]`)) {
-      const l = document.createElement("link");
-      l.rel = "stylesheet"; l.href = fontsHref(f); l.dataset.kanvas = f;
-      document.head.appendChild(l);
-    }
-  }
+  const sheets = ["fonts.css", "fragrance-fonts.css"].map((f) => {
+    let l = document.querySelector(`link[data-kanvas="${f}"]`);
+    if (l?.dataset.loaded) return Promise.resolve();
+    const done = new Promise((res) => {
+      if (!l) {
+        l = document.createElement("link");
+        l.rel = "stylesheet"; l.href = fontsHref(f); l.dataset.kanvas = f;
+        document.head.appendChild(l);
+      }
+      l.addEventListener("load", () => { l.dataset.loaded = "1"; res(); }, { once: true });
+      l.addEventListener("error", () => res(), { once: true });
+      setTimeout(res, 8000);                 // never hang the editor on a slow sheet
+    });
+    return done;
+  });
   const wanted = Object.entries(FONTS).flatMap(([fam, ws]) => ws.map((w) => `${w} 40px "${fam}"`));
-  return Promise.all(wanted.map((f) => document.fonts.load(f).catch(() => null)));
+  return Promise.all(sheets).then(() => Promise.all(wanted.map((f) => document.fonts.load(f).catch(() => null))));
 }
 
 const nearestWeight = (family, want) => {
@@ -128,7 +138,8 @@ function Editor({ user, start, onToast, onClose }) {
   const elRef = useRef(null);
   const fcRef = useRef(null);
   const zoomRef = useRef(1);
-  const hist = useRef({ stack: [], at: -1, quiet: false });
+  const hist = useRef({ stack: [], revs: [], at: -1, quiet: false, rev: 0 });
+  const savedRev = useRef(-1);                               // the revision on screen when it was last opened or saved
   const pending = useRef([]);                                // uploads not yet saved into a design
   const guides = useRef([]);
   const [dims, setDims] = useState(() => {
@@ -137,8 +148,14 @@ function Editor({ user, start, onToast, onClose }) {
     const s = sizeOf(start.blank) || sizeOf("ig_post_45");
     return { w: s.w, h: s.h, sizeId: s.id };
   });
+  const dimsRef = useRef(dims);             // what snapping and history read: never the first render's size
+  dimsRef.current = dims;
+  const applyDims = (d) => { dimsRef.current = d; setDims(d); };
   const [name, setName] = useState(start.row?.name || start.seed?.name || t("Reka bentuk baharu", "New design"));
   const [rowId, setRowId] = useState(start.row?.id || null);
+  // another uploader's design: saving it would overwrite their row and fail to delete their old preview (storage lets
+  // only the owner delete), so it is saved as a copy of my own instead
+  const [foreign, setForeign] = useState(() => !!(start.row?.created_by && user && start.row.created_by !== user.id));
   const [assets, setAssets] = useState(start.row?.assets || []);
   const [previewPath, setPreviewPath] = useState(start.row?.preview_path || null);
   const [ready, setReady] = useState(false);
@@ -162,9 +179,13 @@ function Editor({ user, start, onToast, onClose }) {
     const fc = fcRef.current;
     const h = hist.current;
     if (!fc || h.quiet) return;
-    const json = JSON.stringify(fc.toObject(PROPS));
+    // each step keeps the card's size too, so undoing a Resize puts the card back as well as the objects
+    const d = dimsRef.current;
+    const json = JSON.stringify({ doc: fc.toObject(PROPS), dims: { w: d.w, h: d.h, sizeId: d.sizeId || null } });
     if (h.stack[h.at] === json) return;
+    h.rev += 1;
     h.stack = h.stack.slice(0, h.at + 1).concat(json).slice(-HISTORY_MAX);
+    h.revs = h.revs.slice(0, h.at + 1).concat(h.rev).slice(-HISTORY_MAX);
     h.at = h.stack.length - 1;
     setCanUndo(h.at > 0); setCanRedo(false);
     refreshLayers();
@@ -174,7 +195,11 @@ function Editor({ user, start, onToast, onClose }) {
     const h = hist.current;
     if (!fc || to < 0 || to >= h.stack.length) return;
     h.quiet = true;
-    await fc.loadFromJSON(JSON.parse(h.stack[to]));
+    const step = JSON.parse(h.stack[to]);
+    await fc.loadFromJSON(step.doc);
+    if (step.dims && (step.dims.w !== dimsRef.current.w || step.dims.h !== dimsRef.current.h)) {
+      applyDims(step.dims); setResizeTo(step.dims.sizeId || "ig_post_45");
+    }
     fc.requestRenderAll();
     h.quiet = false;
     h.at = to;
@@ -221,7 +246,8 @@ function Editor({ user, start, onToast, onClose }) {
           await fc.loadFromJSON(start.row.doc);
           setBg(typeof fc.backgroundColor === "string" ? fc.backgroundColor : "#ffffff");
         } else if (start.seed) {
-          await buildSeed(fc, start.seed, user, (p) => pending.current.push(p));
+          // the copies made for this design are its assets: deleting the design deletes them too
+          await buildSeed(fc, start.seed, user, (p) => { pending.current.push(p); setAssets((a) => [...a, p]); });
         }
       } catch (err) {
         onToast(t("Sebahagian reka bentuk tidak dapat dibuka: {e}", "Part of the design could not be opened: {e}", { e: err.message || String(err) }), "warn");
@@ -230,13 +256,22 @@ function Editor({ user, start, onToast, onClose }) {
       if (!alive) return;
       fitRef.current();
       snapshot();
+      savedRev.current = hist.current.revs[hist.current.at];
       setReady(true);
     })();
     const onResize = () => fitRef.current();
     window.addEventListener("resize", onResize);
+    // closing the browser tab with unsaved changes asks first
+    const onLeave = (e) => { if (dirty()) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", onLeave);
     return () => {
       alive = false;
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("beforeunload", onLeave);
+      // left by the sidebar, a header tab or Back: pictures uploaded into a design never saved belong to nothing
+      const left = pending.current;
+      pending.current = [];
+      if (left.length) supabase.storage.from(BUCKETS.reference).remove(left).catch(() => {});
       fcRef.current = null;
       fc.dispose();
     };
@@ -244,6 +279,7 @@ function Editor({ user, start, onToast, onClose }) {
   useEffect(() => { fit(); }, [fit]);
 
   function snapToCentre(fc, o) {
+    const dims = dimsRef.current;           // registered once at mount: read today's size, not the first one
     const z = zoomRef.current;
     const c = o.getCenterPoint();
     const tol = SNAP_PX / z;
@@ -389,8 +425,8 @@ function Editor({ user, start, onToast, onClose }) {
       o.setPositionByOrigin(new Point(c.x * sx, c.y * sy), "center", "center");
       o.setCoords();
     });
-    setDims({ w: s.w, h: s.h, sizeId: id });
-    setTimeout(snapshot, 0);
+    applyDims({ w: s.w, h: s.h, sizeId: id });
+    snapshot();
   }
   function setBackground(color) {
     setBg(color);
@@ -451,23 +487,33 @@ function Editor({ user, start, onToast, onClose }) {
       const fields = { name: name.trim() || t("Reka bentuk", "Design"), width: dims.w, height: dims.h, size_id: dims.sizeId || null,
         doc, preview_url: up.url, preview_path: up.path, assets,
         ...(start.seed?.source ? { source: start.seed.source, source_id: start.seed.sourceId || null } : {}) };
-      const q = rowId ? supabase.from(TABLES.canvas).update(fields).eq("id", rowId)
+      if (foreign) fields.assets = assets.filter((a) => String(a).startsWith(`${user.id}/`));   // only files I can delete
+      const q = rowId && !foreign ? supabase.from(TABLES.canvas).update(fields).eq("id", rowId)
         : supabase.from(TABLES.canvas).insert({ ...fields, created_by: user.id });
       const { data, error } = await q.select("id").single();
       if (error) { await supabase.storage.from(BUCKETS.reference).remove([up.path]); throw new Error(errText(error)); }
-      if (previewPath && previewPath !== up.path) await supabase.storage.from(BUCKETS.reference).remove([previewPath]);
+      if (!foreign && previewPath && previewPath !== up.path) await supabase.storage.from(BUCKETS.reference).remove([previewPath]);
       setPreviewPath(up.path); setRowId(data.id);
+      if (foreign) setForeign(false);
       pending.current = [];
+      savedRev.current = hist.current.revs[hist.current.at];
       onToast(t("Disimpan.", "Saved."), "ok");
     } catch (err) {
       onToast(err.message || String(err), "danger");
     } finally { setBusy(""); }
   }
+  function dirty() {
+    const h = hist.current;
+    return pending.current.length > 0 || (h.at >= 0 && h.revs[h.at] !== savedRev.current);
+  }
   async function close() {
-    // pictures uploaded into a design that was never saved belong to nothing: they go with it
-    if (pending.current.length) {
+    // any change not saved asks first (text and layout too, not only uploads); pictures uploaded into a design that
+    // was never saved belong to nothing and go with it
+    if (dirty()) {
       if (!window.confirm(t("Tutup tanpa simpan? Perubahan terakhir hilang.", "Close without saving? The last changes are lost."))) return;
-      await supabase.storage.from(BUCKETS.reference).remove(pending.current).catch(() => {});
+      const left = pending.current;
+      pending.current = [];
+      if (left.length) await supabase.storage.from(BUCKETS.reference).remove(left).catch(() => {});
     }
     onClose();
   }
@@ -546,7 +592,7 @@ function Editor({ user, start, onToast, onClose }) {
                 <select value={sel.fontFamily} onChange={(e) => change({ fontFamily: e.target.value })} className="rounded-pill border border-line bg-bg px-2 py-1" aria-label={t("Fon", "Font")}>
                   {Object.keys(FONTS).map((f) => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}
                 </select>
-                <input type="number" min={6} max={800} value={Math.round(sel.fontSize)} onChange={(e) => change({ fontSize: Math.max(6, Number(e.target.value) || 6) })} className="w-16 rounded-pill border border-line bg-bg px-2 py-1" aria-label={t("Saiz fon", "Font size")} />
+                <SizeField value={Math.round(sel.fontSize)} onCommit={(v) => change({ fontSize: v })} label={t("Saiz fon", "Font size")} />
                 <Button size="sm" variant={sel.bold ? "primary" : "soft"} onClick={() => change({ fontWeight: sel.bold ? 400 : 800 })} aria-label={t("Tebal", "Bold")}><Bold size={12} /></Button>
                 <Button size="sm" variant={sel.italic ? "primary" : "soft"} onClick={() => change({ fontStyle: sel.italic ? "normal" : "italic" })} aria-label={t("Condong", "Italic")}><Italic size={12} /></Button>
                 <select value={sel.textAlign} onChange={(e) => change({ textAlign: e.target.value })} className="rounded-pill border border-line bg-bg px-2 py-1" aria-label={t("Jajaran", "Alignment")}>
@@ -681,4 +727,23 @@ async function buildSeed(fc, seed, user, own) {
     if (L.under && byName[L.under]) fc.moveObjectTo(obj, fc.getObjects().indexOf(byName[L.under]));
   }
   fc.requestRenderAll();
+}
+
+/* A font size you can type: the number is kept as typed and applied (6 to 800) on Enter or when the field is left.
+   Clamping on every keystroke turned "24" into 6, then 64. */
+function SizeField({ value, onCommit, label }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => { setText(String(value)); }, [value]);
+  const commit = () => {
+    const n = Math.round(Number(text));
+    if (!Number.isFinite(n) || n <= 0) { setText(String(value)); return; }
+    const v = Math.min(800, Math.max(6, n));
+    setText(String(v));
+    if (v !== value) onCommit(v);
+  };
+  return (
+    <input type="number" min={6} max={800} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }}
+      className="w-16 rounded-pill border border-line bg-bg px-2 py-1" aria-label={label} />
+  );
 }

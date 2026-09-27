@@ -571,12 +571,25 @@ def annotate(llm: Any, rows: list[dict[str, Any]], batch: int = 10) -> None:
     shown, marked as not read."""
     if not llm or not getattr(llm, "configured", False):
         return
+    answered = misses = 0
     for start in range(0, len(rows), batch):
+        # a writer that is down or hanging costs minutes a batch (three tries and the backup's): with 200 rows that
+        # was 20 batches and ran the scrape past its 25-minute limit, so nothing was saved and the run never closed.
+        # Stop at the first batch with no answer when none has answered yet, or after two in a row later on; the
+        # rows keep their own snippets and are marked not read.
+        if misses >= (1 if not answered else 2):
+            log.warning("the writer stopped answering; %d item(s) keep their own snippet", len(rows) - start)
+            break
         chunk = rows[start:start + batch]
         user = "Items:\n" + "\n".join(json.dumps({"i": start + k, "source": r["source"], "title": r["title"],
                                                    "snippet": (r.get("summary") or "")[:700]}, ensure_ascii=False)
                                         for k, r in enumerate(chunk))
         out = llm.chat_json(SYSTEM, user, max_tokens=260 * len(chunk) + 120)
+        if out is None:
+            misses += 1
+            continue
+        answered += 1
+        misses = 0
         for ans in (out or {}).get("items") or []:
             try:
                 i = int(ans.get("i"))
@@ -880,8 +893,10 @@ def process_pasted(store: Any, llm: Any, *, timeout: int = 30, limit: int = 10, 
     """Read every link waiting in semasa_watch. Never raises: a missing column (013 not run) is a line in the summary."""
     now = now or datetime.now(UTC)
     try:
-        store.table(WATCH).update({"status": "pending"}).eq("status", "working") \
-            .lt("claimed_at", (now - PASTE_STALE).isoformat()).lt("attempts", PASTE_ATTEMPTS).execute()
+        # a link whose last try killed its run goes back to the queue; after PASTE_ATTEMPTS it ends in error, never
+        # left `working` with its spinner on for ever
+        db.requeue_stale(store, WATCH, working="working", back="pending", cutoff=(now - PASTE_STALE).isoformat(),
+                         max_attempts=PASTE_ATTEMPTS, what="link", column="claimed_at")
         rows = store.table(WATCH).select("*").eq("status", "pending").order("created_at").limit(limit).execute().data or []
     except Exception as exc:  # noqa: BLE001
         return f"Pasted links: not set up ({str(exc)[:120]}); run supabase/013_watch_paste.sql"

@@ -294,15 +294,17 @@ export default function App() {
   const brand = useMemo(() => brandOf(settings), [settings]);
 
   function go(next) { setTab(next); window.location.hash = next === "isu" ? "" : next; }
-  // the sidebar on wide screens: pinned open, or auto (a rail of icons that slides open on hover). Remembered on this
-  // browser only; the "0" an earlier build stored for "hidden" now means auto.
+  // the sidebar on wide screens: auto (a rail of icons that slides open on hover) unless Wan pins it. Auto is the
+  // default (Wan, 27 Sep 2026: "make the sidebar auto mode the default"); the choice is remembered on this browser
+  // under a new key, so a "pinned" saved while pinned was still the default does not hide the new default.
+  const NAV_KEY = "semasa.sidebar.v2";
   const [navMode, setNavMode] = useState(() => {
-    try { return ["0", "auto"].includes(localStorage.getItem("semasa.sidebar")) ? "auto" : "pinned"; } catch { return "pinned"; }
+    try { return localStorage.getItem(NAV_KEY) === "pinned" ? "pinned" : "auto"; } catch { return "auto"; }
   });
   function toggleNav() {
     setNavMode((m) => {
       const next = m === "auto" ? "pinned" : "auto";
-      try { localStorage.setItem("semasa.sidebar", next); } catch { /* private window */ }
+      try { localStorage.setItem(NAV_KEY, next); } catch { /* private window */ }
       return next;
     });
   }

@@ -269,13 +269,7 @@ def process(store: Any, llm: LLM, row: dict[str, Any], cats: list[dict[str, Any]
 
 def recover_stale(store: Any) -> int:
     cutoff = (datetime.now(UTC) - timedelta(minutes=STALE_MINUTES)).isoformat()
-    try:
-        res = (store.table(FAQS).update({"status": "new", "error": "worker stopped before finishing; queued again"})
-               .eq("status", "working").lt("updated_at", cutoff).execute())
-        return len(res.data or [])
-    except Exception as exc:  # noqa: BLE001
-        log.warning("could not recover stuck FAQs: %s", exc)
-        return 0
+    return db.requeue_stale(store, FAQS, working="working", back="new", cutoff=cutoff, max_attempts=3, what="question")
 
 
 def claim(store: Any, limit: int) -> list[dict[str, Any]]:

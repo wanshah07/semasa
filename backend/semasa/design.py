@@ -137,7 +137,7 @@ its artwork, its brand, its products or its people. JSON keys:
 def review(llm: LLM | None, data: bytes, mime: str, kind: str, stream: str, note: str = "") -> dict[str, Any] | None:
     """The art director's reading of a reference, or None when no model that can see answered (the page then says the
     reference was not read, and the design is drawn from Wan's own choices)."""
-    if llm is None or not getattr(llm, "configured", False):
+    if llm is None or not getattr(llm, "can_see", getattr(llm, "configured", False)):
         return None
     from .media_generator import shrink_for_read
     small, small_ct = shrink_for_read(data, mime)
@@ -171,7 +171,8 @@ def background_prompt(review_out: dict[str, Any] | None, note: str = "") -> str:
 
 
 def purge_unconfirmed(store: Any, now: Any = None) -> int:
-    """Previews Wan never confirmed are cleared after UNCONFIRMED_DAYS: the row and its files (compact storage)."""
+    """Previews Wan never confirmed are cleared after UNCONFIRMED_DAYS: the row and its files (compact storage). Only a
+    preview at rest and untouched that long: one with a Save or a revision waiting (`pending`) is his answer arriving."""
     from datetime import UTC, datetime, timedelta
 
     from . import db
@@ -179,7 +180,8 @@ def purge_unconfirmed(store: Any, now: Any = None) -> int:
     cutoff = (now - timedelta(days=UNCONFIRMED_DAYS)).isoformat()
     try:
         rows = store.table(db.MEDIA).select("id,meta,reference_path").eq("mode", "slides") \
-            .eq("meta->>awaiting_confirm", "true").lt("created_at", cutoff).limit(100).execute().data or []
+            .eq("meta->>awaiting_confirm", "true").in_("status", ["done", "error"]).lt("updated_at", cutoff) \
+            .limit(100).execute().data or []
     except Exception as exc:  # noqa: BLE001 - housekeeping never fails the run
         log.info("could not look for unconfirmed designs: %s", str(exc)[:120])
         return 0

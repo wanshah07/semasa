@@ -55,6 +55,8 @@ revoke execute on function public.semasa_watch_wake() from public, anon, authent
 -- 011's net, now also counting pasted links waiting to be read (everything else exactly as 011 wrote it)
 create or replace function public.semasa_clock_worker() returns text
 language plpgsql security definer set search_path = public as $$
+-- ONE body in every file that defines this function (009, 011, 013, 017): re-running an older file must never drop what
+-- a later one added. A table or column a later file creates is counted only once it exists.
 declare
   v_waiting int := 0;
 begin
@@ -67,10 +69,17 @@ begin
      where status = 'new' or (status = 'working' and updated_at < now() - interval '30 minutes'));
   exception when undefined_table then null;            -- 007 not run yet
   end;
-  v_waiting := v_waiting + (select count(*) from public.semasa_videos
-   where status = 'new' or (status = 'working' and updated_at < now() - interval '30 minutes'));
-  v_waiting := v_waiting + (select count(*) from public.semasa_watch
-   where status = 'pending' or (status = 'working' and claimed_at < now() - interval '30 minutes' and attempts < 3));
+  begin
+    v_waiting := v_waiting + (select count(*) from public.semasa_videos
+     where status = 'new' or (status = 'working' and updated_at < now() - interval '30 minutes'));
+  exception when undefined_table then null;            -- 011 not run yet
+  end;
+  begin
+    -- a stuck link is counted whatever its attempts: the worker ends it in error rather than leave it spinning
+    v_waiting := v_waiting + (select count(*) from public.semasa_watch
+     where status = 'pending' or (status = 'working' and claimed_at < now() - interval '30 minutes'));
+  exception when undefined_table or undefined_column then null;   -- 012 / 013 not run yet
+  end;
   if v_waiting = 0 then
     return 'nothing waiting';
   end if;

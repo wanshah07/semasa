@@ -12,11 +12,12 @@ const CLOSE_MS = 300;   // a cursor slipping off the edge for a moment does not 
    (components/ui/dashboard-sidebar.tsx). Below that width the header's own tab row stays, as before. The counts are
    what waits for Wan: new ideas to turn into drafts, and drafts to approve.
 
-   Two modes (Wan, 27 Sep 2026: "can make the sidebar auto hide unhide"), switched by the button left of the header:
+   Two modes (Wan, 27 Sep 2026: "can make the sidebar auto hide unhide"; auto is the default), switched by the button
+   left of the header:
    - pinned: the full menu always shows beside the page;
    - auto:   a 60 px rail of icons; pointing at it (or tabbing into it) slides the full menu out OVER the page, and it
              slides back when the pointer leaves or a tab is chosen. The page never moves, so Kanvas keeps its width. */
-export default function AppSidebar({ tab, setTab, user, counts = {}, mode = "pinned" }) {
+export default function AppSidebar({ tab, setTab, user, counts = {}, mode = "auto" }) {
   const { t } = useLang();
   const [peek, setPeek] = useState(false);
   const timer = useRef(null);
@@ -53,7 +54,7 @@ export default function AppSidebar({ tab, setTab, user, counts = {}, mode = "pin
       onMouseEnter={() => later(true, OPEN_MS)} onMouseLeave={() => later(false, CLOSE_MS)}
       onFocus={() => later(true, 0)}
       onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) later(false, 0); }}
-      onKeyDown={(e) => { if (e.key === "Escape") { setPeek(false); e.currentTarget.querySelector("[aria-current=page]")?.blur(); } }}>
+      onKeyDown={(e) => { if (e.key === "Escape") { clearTimeout(timer.current); setPeek(false); } }}>
       <div className={`absolute inset-y-0 left-0 overflow-hidden border-r border-line bg-surface transition-[width,box-shadow] duration-200 ease-out ${
         peek ? "w-[260px] shadow-lift" : "w-[60px]"}`}>
         {nav(!peek, "border-none bg-transparent")}

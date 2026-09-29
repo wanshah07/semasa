@@ -23,6 +23,7 @@ import PostsTab from "./pages/PostsTab";
 import SettingsTab from "./pages/SettingsTab";
 import GenerationGallery from "./components/GenerationGallery";
 import VideoTab from "./pages/VideoTab";
+import ChatTab from "./pages/ChatTab";
 import WatchSegment, { watchIdea } from "./components/WatchSegment";
 import Header from "./components/Header";
 import AppSidebar from "./components/AppSidebar";
@@ -231,7 +232,7 @@ function MediaTab({ user, gens, prompts, posts, onToast }) {
   );
 }
 
-const TAB_IDS = ["isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "faq", "log", "tetapan"];
+const TAB_IDS = ["isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "chat", "faq", "log", "tetapan"];
 
 export default function App() {
   const { t } = useLang();                                   // read here so a language switch re-renders the page
@@ -346,6 +347,7 @@ export default function App() {
     <CanvasTab user={user} onToast={push} seed={canvasSeed} clearSeed={clearSeed} /></Suspense> : gate(null);
   else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push}
     openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
+  else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}
     onPost={(r) => setIdeaFrom(faqIdea(r))} /> : gate(null);
   else if (tab === "log") body = allowed ? <LogTab log={activity} onOpen={(to) => { if (to.postId) setFocusPost(to.postId); go(to.tab); }} /> : gate(null);

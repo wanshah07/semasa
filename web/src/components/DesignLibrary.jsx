@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Download } from "lucide-react";
+import { NotchedProjectCard } from "@/components/ui/notched-project-card";
 import { GROUNDS, MASCOTS, groundUses, templateOf } from "../lib/cards/library";
 import { mascotDuty } from "../lib/cards/studio";
 import { useLang } from "../lib/i18n";
@@ -19,19 +19,18 @@ export default function DesignLibrary() {
         "Your own photographs (from OneDrive, through Studio) behind the cards, and the mascot poses. Pick them in any slide editor as a background or a mascot.")}</p>
 
       <h3 className="mt-4 text-sm font-medium">{t("Latar: {n} gambar", "Grounds: {n} photographs", { n: GROUNDS.length })}</h3>
-      <div className={rail} style={{ scrollSnapType: "x mandatory" }}>
+      {/* each photograph as a notched card (components/ui/notched-project-card.tsx, Wan 29 Sep 2026: "add this for
+          card"); the card opens the full photograph in a new tab, where it can be saved */}
+      <div className="mt-3 grid gap-x-5 gap-y-10 sm:grid-cols-2 xl:grid-cols-3">
         {GROUNDS.map((g) => {
           const u = groundUses(g.k);
           const uses = [...u.domains, ...u.angles.map((a) => `LinkedIn ${a}`), ...(u.linkedinDefault ? [t("LinkedIn (lalai)", "LinkedIn (default)")] : [])];
           return (
-            <figure key={g.k} className="w-40 shrink-0 overflow-hidden rounded-tile border border-line bg-surface" style={{ scrollSnapAlign: "start" }}>
-              <img src={g.url} alt={g.alt} loading="lazy" className="aspect-[4/5] w-full object-cover" />
-              <figcaption className="space-y-0.5 p-2 text-[11px]">
-                <span className="flex items-center justify-between gap-1 font-medium">{g.name}
-                  <a href={g.url} download className="text-muted hover:text-ink" aria-label={t("Muat turun {n}", "Download {n}", { n: g.name })}><Download size={11} /></a></span>
-                <span className="block text-muted">{uses.length ? `${t("Lalai untuk", "Default for")}: ${uses.join(", ")}` : t("Pilih sendiri", "Pick it yourself")}</span>
-              </figcaption>
-            </figure>
+            <NotchedProjectCard key={g.k} href={g.url} target="_blank" rel="noreferrer" imgLoading="lazy"
+              aria-label={t("Buka {n} dalam tab baharu", "Open {n} in a new tab", { n: g.name })}
+              title={g.name} image={g.url} imageAlt={g.alt} badge={uses.length ? t("Lalai", "Default") : undefined}
+              description={uses.length ? `${t("Lalai untuk", "Default for")}: ${uses.join(", ")}` : t("Pilih sendiri", "Pick it yourself")}
+              tags={uses.slice(0, 4)} />
           );
         })}
       </div>

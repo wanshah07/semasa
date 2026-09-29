@@ -31,16 +31,23 @@ Keys never go in a chat, a file or a commit.
 The session commands, in order:
 
 ```
-python ops/studio_cutover.py host  --dump DIR --cards /home/user/argus-cards --since 2026-10-02T21:00+08:00
+python ops/studio_cutover.py host  --dump DIR --cards /home/user/argus-cards --since 2026-09-27T00:00+08:00
 git -C /home/user/argus-cards push
-python ops/studio_cutover.py build --dump DIR --cards /home/user/argus-cards --since 2026-10-02T21:00+08:00 --out OUT
+python ops/studio_cutover.py build --dump DIR --cards /home/user/argus-cards --since 2026-09-27T00:00+08:00 --out OUT
 # then one studio-import.yml dispatch per OUT/import-NN.json, dry=true first, then dry=false
 ```
 
 Rehearsed 29 Sep: the four approved ws.regulab posts from Fri 21:00 to Sat 21:00 had their cards hosted in
 `argus-cards` (`673b228`), all four md5-proven, one message of 20.5k characters.
 
-`DIR` is an **empty** folder the Studio `drafts` (date ≥ 2 Oct) and their cards were read into with `out_dir`.
+`DIR` is an **empty** folder the Studio `drafts` (date ≥ 27 Sep) and their cards were read into with `out_dir`.
+
+**Why from 27 Sep and not only Friday night.** The 27 Sep import brought Studio's queue over as drafts, and Studio kept
+moving posts after that. The 29 Sep rehearsal found one: Semasa's copy of `k1pju7557n` still sat on Fri 2 Oct 21:00,
+while Studio had moved it to Thu 1 Oct 21:00 and put it in Buffer. Re-importing everything since 27 Sep brings every
+copy up to date on the same ids: what Studio already put in Buffer arrives `scheduled` and is never sent again (the
+tally marks it posted); an approved post whose slot has passed is overdue and waits for Wan, never fired late. Only
+a post from Friday 21:00 on is actually sent by Semasa.
 
 ## Why nothing is sent twice
 

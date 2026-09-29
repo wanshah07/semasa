@@ -1,5 +1,6 @@
 import { slotsOf, PURGE_HOURS, LATE_GRACE_MIN } from "../lib/slots";
 import { Modal } from "./ui/Field";
+import { publishingOn } from "../lib/publishing";
 
 /* Studio's Panduan (argus rule 5: "include the layman guide in the system using ? icon"): what happens to a post and
    why it has or has not gone out, Bahasa Malaysia first and English under it. It reads its numbers (slots, rota, the
@@ -29,7 +30,7 @@ export default function Guide({ open, onClose, settings = {}, brand }) {
     const list = Array.isArray(v) ? v : v ? [v] : null;
     return { d, list };
   });
-  const publishing = settings.publishing?.enabled === true;
+  const publishing = publishingOn(settings.publishing);
   const auto = settings.autofill?.enabled === true;
   const runs = PUBLISH_RUNS_MYT.join(" · ");
   const sec = "space-y-2 border-t border-line pt-3";
@@ -49,7 +50,7 @@ export default function Guide({ open, onClose, settings = {}, brand }) {
           <p className={`rounded-tile p-2 text-[12.5px] ${publishing ? "bg-ok/10 text-ok" : "bg-warn/10 text-ink"}`}>
             {publishing
               ? "Penerbitan HIDUP. · Publishing is ON."
-              : "Penerbitan MATI: penerbit hanya merekod apa yang akan dihantar (cubaan kering). ws.regulab Studio masih penerbit sebenar. · Publishing is OFF: the publisher only records what it would send (a dry run). ws.regulab Studio is still the real publisher."}
+              : "Penerbitan MATI: penerbit hanya merekod apa yang akan dihantar (cubaan kering). · Publishing is OFF: the publisher only records what it would send (a dry run)."}
           </p>
         </div>
 

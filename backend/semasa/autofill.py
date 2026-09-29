@@ -25,12 +25,20 @@ FRESH_DAYS = 21                 # an item older than this is not news any more
 MAX_DAYS, MAX_PER_RUN = 7, 5
 
 
-def config(settings: dict[str, Any]) -> dict[str, Any]:
+def config(settings: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
     raw = settings.get("autofill") if isinstance(settings.get("autofill"), dict) else {}
+    on = raw.get("enabled") is True
+    if not on and raw.get("enabled_from"):
+        # the same self-opening switch as publishing (supabase/023): autofill starts the night Studio's drafter stops
+        try:
+            at = datetime.fromisoformat(str(raw["enabled_from"]).replace("Z", "+00:00"))
+            on = at.tzinfo is not None and (now or datetime.now(UTC)) >= at
+        except ValueError:
+            on = False
     days = max(1, min(MAX_DAYS, int(raw.get("days_ahead") or 3)))
     per = max(1, min(MAX_PER_RUN, int(raw.get("per_run") or 2)))
     streams = [s for s in (raw.get("streams") or ["regulab", "linkedin"]) if s in ("regulab", "linkedin")]
-    return {"enabled": raw.get("enabled") is True, "days_ahead": days, "per_run": per, "streams": streams}
+    return {"enabled": on, "days_ahead": days, "per_run": per, "streams": streams}
 
 
 def gaps(stream: str, brand: dict[str, Any], taken: set[tuple[str, str]], days: int,
@@ -100,7 +108,7 @@ def fits(item: dict[str, Any], stream: str, allow: list[str] | None) -> bool:
 
 
 def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> str:
-    cfg = config(settings)
+    cfg = config(settings, now)
     if not cfg["enabled"]:
         return "Autofill: off (switch it on in Settings)"
     try:

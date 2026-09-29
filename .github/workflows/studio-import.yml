@@ -1,0 +1,50 @@
+name: Studio import
+
+# ws.regulab Studio's live queue into Semasa, once, on the night Studio is retired (Fri 2 Oct 2026). Started by the
+# cutover session with posts already shaped for Semasa (ops/studio_cutover.py) and every card already proven in
+# argus-cards. `dry` defaults to true: it then reports what it WOULD write and writes nothing.
+# It sends nothing anywhere; the publisher decides that, at each post's slot (backend/semasa/studio_import.py).
+on:
+  workflow_dispatch:
+    inputs:
+      posts:
+        description: 'JSON: {"posts": [...]} from ops/studio_cutover.py'
+        type: string
+        required: true
+      dry:
+        description: "true = report only, write nothing"
+        type: boolean
+        default: true
+
+concurrency:
+  group: studio-import
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Import Studio's queue
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # through the environment, never pasted into the command: the text is data, not shell
+          STUDIO_IMPORT: ${{ inputs.posts }}
+          STUDIO_IMPORT_DRY: ${{ inputs.dry }}
+        run: python -m semasa.studio_import

@@ -6,6 +6,7 @@ import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { BUILT_IN_INDO } from "../lib/compliance";
 import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
+import { opensAt, publishingOn } from "../lib/publishing";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Select } from "../components/ui/Field";
@@ -33,6 +34,8 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
 
   const domains = Object.entries(brand.regulab.domains || {});
   const publishing = settings.publishing || {};
+  const live = publishingOn(publishing);
+  const opens = opensAt(publishing);
 
   function toggle(day, dom) {
     setRota((r) => ({ ...r, [day]: r[day].includes(dom) ? r[day].filter((x) => x !== dom) : [...r[day], dom] }));
@@ -63,9 +66,13 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
       </div>
 
       <Card className="flex items-start gap-3 p-5">
-        <Lock size={18} className={publishing.enabled ? "text-ok" : "text-warn"} />
+        <Lock size={18} className={live ? "text-ok" : "text-warn"} />
         <div>
-          <h3 className="text-lg">{t("Penerbitan", "Publishing")}: {publishing.enabled ? t("HIDUP", "ON") : t("MATI", "OFF")}</h3>
+          <h3 className="text-lg">{t("Penerbitan", "Publishing")}: {live ? t("HIDUP", "ON") : t("MATI", "OFF")}</h3>
+          {!live && opens && !publishing.paused && (
+            <p className="mt-1 text-sm text-ink">{t("Dibuka sendiri pada ", "Opens by itself on ")}
+              {new Date(opens).toLocaleString("en-GB", { timeZone: "Asia/Kuala_Lumpur", dateStyle: "medium", timeStyle: "short" })} MYT</p>
+          )}
           <p className="mt-1 text-sm text-muted">{publishing.why || ""}</p>
           <p className="mt-1 text-[12px] text-muted">{t("Suis ini tidak boleh diubah dari laman ini. Ia diubah di Supabase SQL editor sahaja.", "This switch cannot be changed from this page. It is changed in the Supabase SQL editor only.")}</p>
         </div>

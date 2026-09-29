@@ -1,9 +1,11 @@
-name: Publish (dry run)
+name: Publish
 
 # Studio's release clock: 06:20 · 11:20 · 19:20 MYT (22:20 · 03:20 · 11:20 UTC).
-# While semasa_settings.publishing.enabled is false (it is, and only the SQL editor can change
-# it) this SENDS NOTHING: it writes to semasa_publish_log what it would have sent.
-# Never enable publishing while ws.regulab Studio's Routines still run: one schedule per job.
+# ws.regulab (Facebook, Instagram, Threads) goes to Buffer for its slot; LinkedIn goes through Composio at its slot.
+# While the publishing switch is shut (semasa_settings.publishing: `enabled`, or `enabled_from` not reached yet, or
+# `paused`) this SENDS NOTHING: it writes to semasa_publish_log what it would have sent.
+# The switch opens by itself at `enabled_from` (supabase/023_go_live.sql), set for the night Studio is retired:
+# one schedule per job, never two publishers on one Buffer account.
 on:
   schedule:
     - cron: "20 22,3,11 * * *"
@@ -41,4 +43,6 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SEMASA_SHEET_URL: ${{ secrets.SEMASA_SHEET_URL }}
           SEMASA_SHEET_TOKEN: ${{ secrets.SEMASA_SHEET_TOKEN }}
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
         run: python -m semasa.publisher

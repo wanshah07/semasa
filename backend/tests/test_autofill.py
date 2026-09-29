@@ -72,3 +72,9 @@ def test_an_autofilled_idea_carries_no_note_so_the_published_guard_still_holds()
     autofill.run(store, {"brand": BRAND, "autofill": {"enabled": True, "days_ahead": 1, "per_run": 1,
                                                        "streams": ["regulab"]}}, NOW)
     assert store.tables["semasa_ideas"][0]["note"] == ""
+
+
+def test_autofill_opens_by_itself_at_enabled_from():
+    s = {"autofill": {"enabled": False, "enabled_from": "2026-10-02T12:00:00Z"}}
+    assert autofill.config(s, datetime(2026, 10, 2, 11, 0, tzinfo=UTC))["enabled"] is False
+    assert autofill.config(s, datetime(2026, 10, 2, 12, 0, tzinfo=UTC))["enabled"] is True

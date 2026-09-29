@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { AlertTriangle, ShieldOff, Timer } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { useLang } from "../lib/i18n";
+import { opensAt, publishingOn } from "../lib/publishing";
 import { hardCount, langOf, scan, scanMedia, textOf, platformsFor } from "../lib/compliance";
 import PostEditor from "../components/PostEditor";
 import IdeaComposer from "../components/IdeaComposer";
@@ -60,6 +61,8 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
   const shown = posts.rows.filter((p) => bucketOf(p) === status && (streamF === "all" || (p.stream || "regulab") === streamF))
     .sort((a, b) => `${a.date || "9"}${a.slot || ""}`.localeCompare(`${b.date || "9"}${b.slot || ""}`));
   const publishing = settings.publishing || {};
+  const live = publishingOn(publishing);
+  const opens = opensAt(publishing);
   const summary = (p) => {
     const lang = langOf(p);
     const first = textOf(p, platformsFor(p.stream)[0], lang);
@@ -86,17 +89,25 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
         </p>
       </motion.div>
 
-      {!publishing.enabled && (
+      {!live && (
         <p className="mt-5 flex items-start gap-2 rounded-tile border border-warn/40 bg-warn/10 p-3 text-sm text-ink">
           <ShieldOff size={16} className="mt-0.5 shrink-0 text-warn" />
-          {uiLang === "en" ? (
-            <span><b>Publishing is off.</b> Semasa has not sent anything to Buffer or LinkedIn. The publisher runs
+          {opens && !publishing.paused ? (
+            uiLang === "en" ? (
+              <span><b>Publishing opens by itself on {new Date(opens).toLocaleString("en-GB", { timeZone: "Asia/Kuala_Lumpur", dateStyle: "medium", timeStyle: "short" })} MYT.</b> Until
+                then the publisher is a dry run: it records what it <i>would</i> send (see the log in each post) and sends nothing.</span>
+            ) : (
+              <span><b>Penerbitan dibuka sendiri pada {new Date(opens).toLocaleString("ms-MY", { timeZone: "Asia/Kuala_Lumpur", dateStyle: "medium", timeStyle: "short" })} MYT.</b> Sebelum
+                itu penerbit hanya cubaan kering: ia merekod apa yang <i>akan</i> dihantar (lihat log dalam setiap post) dan tidak menghantar apa-apa.</span>
+            )
+          ) : uiLang === "en" ? (
+            <span><b>Publishing is off.</b> Semasa sends nothing to Buffer or LinkedIn. The publisher runs
               as a dry run and records what it <i>would</i> send (see the log in each post). It can only be
-              switched on in the Supabase SQL editor, and only after the ws.regulab Studio Routine is switched off.</span>
+              switched on in the Supabase SQL editor.</span>
           ) : (
-            <span><b>Penerbitan dimatikan.</b> Semasa belum menghantar apa-apa ke Buffer atau LinkedIn. Penerbit berjalan
+            <span><b>Penerbitan dimatikan.</b> Semasa tidak menghantar apa-apa ke Buffer atau LinkedIn. Penerbit berjalan
               sebagai cubaan kering dan merekod apa yang <i>akan</i> dihantar (lihat log dalam setiap post). Ia hanya boleh
-              dihidupkan di Supabase SQL editor, dan hanya selepas Routine ws.regulab Studio dimatikan.</span>
+              dihidupkan di Supabase SQL editor.</span>
           )}
         </p>
       )}

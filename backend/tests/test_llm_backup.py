@@ -104,3 +104,23 @@ def test_pictures_are_read_by_rootsys_only(env):
     sent = _calls(env, lambda url: Resp(502, text="down"))
     assert LLM(LLMSettings.load()).describe_image("s", "p", b"\xff\xd8", "image/jpeg") is None
     assert sent and all("rootsys" in url for url, _, _ in sent)
+
+
+def test_the_instructions_ride_in_the_user_turn_too(env, monkeypatch):
+    bodies = []
+
+    def post(url, headers=None, json=None, timeout=None):
+        bodies.append(json)
+        return Resp(200, '{"ok": 1}')
+    monkeypatch.setattr(llm_mod.requests, "post", post)
+    LLM(LLMSettings.load()).chat_json("Answer in JSON only.", "item 1")
+    msgs = bodies[0]["messages"]
+    assert msgs[0] == {"role": "system", "content": "Answer in JSON only."}
+    assert msgs[1]["content"].startswith("INSTRUCTIONS") and "Answer in JSON only." in msgs[1]["content"]
+    assert msgs[1]["content"].endswith("item 1")
+
+
+def test_a_picture_turn_gets_the_instructions_as_its_first_part():
+    parts = llm_mod.with_instructions("Read the label.", [{"type": "image_url", "image_url": {"url": "data:x"}}])
+    assert parts[0]["type"] == "text" and "Read the label." in parts[0]["text"] and parts[1]["type"] == "image_url"
+    assert llm_mod.with_instructions("", "u") == "u"

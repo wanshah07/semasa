@@ -80,6 +80,9 @@ def dedupe_and_filter(items: list[Item], max_age_hours: int, now: datetime | Non
     return out
 
 
+DEAD_BATCHES = 2   # batches in a row with no answer at all before the run stops asking (annotate)
+
+
 def annotate(items: list[Item], llm: LLM | None, batch_size: int, *, give_up_after_first: bool = False) -> list[dict[str, Any]]:
     """Every item gets a rules verdict first; the LLM then overrides what it answers.
     `summary_source` records which one the stored row actually carries."""
@@ -100,7 +103,14 @@ def annotate(items: list[Item], llm: LLM | None, batch_size: int, *, give_up_aft
         })
     if llm is None:
         return rows
+    dead = 0
     for start in range(0, len(rows), batch_size):
+        if dead >= DEAD_BATCHES:
+            # Two whole batches with no answer from any writer: the rest keep their rules verdict. Each dead batch
+            # costs about 2.5 minutes of retries and backup timeouts, and before this every run from 28 Sep 15:17 on
+            # hit the 25-minute limit and was cancelled with NOTHING stored. A run on rules beats no run.
+            log.warning("LLM: %d batches in a row got no answer — rows %d onward keep their rules verdict", dead, start)
+            break
         batch = [{"i": i, "title": rows[i]["title"], "snippet": rows[i]["summary"], "source": rows[i]["source"]}
                  for i in range(start, min(start + batch_size, len(rows)))]
         answers = categorize.llm_annotate(llm, batch)
@@ -114,6 +124,7 @@ def annotate(items: list[Item], llm: LLM | None, batch_size: int, *, give_up_aft
             rows[i]["summary_source"] = "llm"
             if ans["lang"]:
                 rows[i]["lang"] = ans["lang"]
+        dead = 0 if answers else dead + 1
         log.info("LLM batch %d–%d: %d/%d answered", start, start + len(batch) - 1, len(answers), len(batch))
     return rows
 

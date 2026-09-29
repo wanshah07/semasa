@@ -121,8 +121,10 @@ def test_a_dead_llm_costs_one_batch_then_goes_rules_only(monkeypatch):
 
 
 def test_a_passing_probe_keeps_going_even_if_one_batch_is_empty(monkeypatch):
+    # one empty batch never stops the run; TWO in a row do (scraper.DEAD_BATCHES), so the third is not asked and the
+    # run finishes on rules instead of hitting the 25-minute limit
     code, finished, calls = _run_with(monkeypatch, probe_ok=True, answers=False)
-    assert calls == [12, 12, 6] and finished["llm_ok"] is True and code == 0
+    assert calls == [12, 12] and finished["llm_ok"] is True and code == 0
 
 
 def test_a_second_run_in_the_same_slot_does_nothing(monkeypatch):
@@ -139,3 +141,29 @@ def test_a_second_run_in_the_same_slot_does_nothing(monkeypatch):
     assert scraper.recently_ran(FakeStore(scrape_runs=[{"id": "r0", "started_at": "2026-09-26T07:17:05+00:00"}]), now) is False
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     assert scraper.recently_ran(store, now) is False                 # Wan's own Run workflow always runs
+
+
+def test_two_dead_batches_stop_the_asking_and_the_rest_keep_rules(monkeypatch):
+    calls = []
+
+    def dead(llm, batch):
+        calls.append(batch[0]["i"])
+        return {}
+
+    monkeypatch.setattr("semasa.scraper.categorize.llm_annotate", dead)
+    items = [_item(f"https://a/{i}", title=f"Polis tahan suspek {i}") for i in range(10)]
+    rows = annotate(items, object(), 2)
+    assert calls == [0, 2] and len(rows) == 10
+    assert all(r["summary_source"] != "llm" and r["category"] == "jenayah" for r in rows)
+
+
+def test_one_answered_batch_resets_the_count(monkeypatch):
+    calls = []
+
+    def flaky(llm, batch):
+        calls.append(batch[0]["i"])
+        return {batch[0]["i"]: {"summary": "ok", "category": "halal", "lang": None}} if batch[0]["i"] == 2 else {}
+
+    monkeypatch.setattr("semasa.scraper.categorize.llm_annotate", flaky)
+    annotate([_item(f"https://a/{i}", title=f"t{i}") for i in range(8)], object(), 2)
+    assert calls == [0, 2, 4, 6]

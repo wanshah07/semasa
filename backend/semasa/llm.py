@@ -267,7 +267,7 @@ class LLM:
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         body: dict[str, Any] = {
             "model": model,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": with_instructions(system, user)}],
             "temperature": 0.2,
             "max_tokens": max_tokens,
             "response_format": {"type": "json_object"},
@@ -301,6 +301,19 @@ class LLM:
         r.raise_for_status()
         blocks = r.json().get("content") or []
         return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+
+
+def with_instructions(system: str, user: str | list[dict[str, Any]]) -> str | list[dict[str, Any]]:
+    """The instructions again, at the top of the user turn (OpenAI dialect only). From 28 Sep 2026 the rootsys gateway
+    stopped passing the system message on: every scrape batch came back as "you haven't included a question or
+    request — what would you like me to do?", 0/12 answered, and six runs in a row hit the 25-minute limit (scrape
+    runs 36497165283 to 36589007283). A model that does get the system message loses nothing by reading them twice."""
+    if not system:
+        return user
+    head = f"INSTRUCTIONS (follow them exactly):\n{system}\n\nINPUT:\n"
+    if isinstance(user, str):
+        return head + user
+    return [{"type": "text", "text": head.rstrip()}, *user]
 
 
 def image_parts(provider: str, prompt: str, data: bytes, mime: str) -> list[dict[str, Any]]:

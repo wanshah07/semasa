@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { IconBulb, IconFileText, IconPencil, IconShieldCheck } from "@tabler/icons-react";
 import Ai04 from "@/components/ui/ai-04";
-import { askAI } from "../lib/chat";
+import { askAI, checkAI } from "../lib/chat";
 import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
 
@@ -47,10 +47,37 @@ export default function ChatTab() {
     }
   }
 
+  // "Semak model": is the model listed at Mireld, and does it really read a picture (it is asked the colour of a red square).
+  async function checkModel() {
+    setBusy(true);
+    const r = await checkAI();
+    const now = new Date().toISOString();
+    let line;
+    if (r.error) line = t(`Semakan gagal: ${r.error}`, `Check failed: ${r.error}`);
+    else {
+      const l = r.listed || {};
+      const listed = !l.read ? t("senarai model tidak dapat dibaca", "the model list could not be read")
+        : l.exact ? t("ada dalam senarai", "is in the list")
+          : l.spelled_as ? t(`dieja "${l.spelled_as}" di sana, tukar MIRELD_MODEL`, `is spelled "${l.spelled_as}" there, set MIRELD_MODEL to that`)
+            : t(`tiada dalam senarai (${(l.related || []).join(", ") || "tiada yang serupa"})`, `is not in the list (${(l.related || []).join(", ") || "nothing similar"})`);
+      const im = r.image || {};
+      const reads = im.reads === true ? t(`boleh baca gambar (jawab: ${im.answer})`, `reads pictures (answered: ${im.answer})`)
+        : im.error ? t(`tidak baca gambar: ${im.error}`, `does not read pictures: ${im.error}`)
+          : t(`tidak pasti baca gambar (jawab: ${im.answer || "-"})`, `no proof it reads pictures (answered: ${im.answer || "-"})`);
+      line = `${r.model}: ${listed}; ${reads}.`;
+    }
+    setMessages((m) => [...m, { role: "note", text: line, at: now }]);
+    setBusy(false);
+  }
+
   const empty = messages.length === 0;
   return (
     <main className="mx-auto flex min-h-[calc(100vh-8rem)] max-w-page flex-col px-4 pb-10 pt-10 sm:px-6">
       <p className="text-center text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t("Sembang AI", "AI chat")}</p>
+      <button type="button" onClick={checkModel} disabled={busy}
+        className="mx-auto mt-2 text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-50">
+        {t("Semak model dan pembaca gambar", "Check the model and its image reader")}
+      </button>
       {!empty && (
         <ol className="mx-auto mt-6 w-full max-w-2xl flex-1 space-y-3" aria-live="polite">
           {messages.map((m, i) => (

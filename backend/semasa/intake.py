@@ -34,7 +34,11 @@ DEFAULTS: dict[str, Any] = {
     "enabled": True,
     "community": {
         "enabled": True, "subreddit": "malaysia", "window": "week", "limit": 15, "keep": 10,
-        "terms": ["halal", "kosmetik", "skincare", "sunscreen", "NPRA", "supplement", "label"],
+        # 19 terms, measured live on 30 Sep 2026: seven found 1 thread a week, these find 3 and 20 of 22 a month.
+        # Past about 20 terms Reddit stops matching and hands back the subreddit's general top, so community.py caps it.
+        "terms": ["halal", "kosmetik", "skincare", "sunscreen", "NPRA", "supplement", "label",
+                  "KKM", "BKKM", "JAKIM", "makanan", "ubat", "racun", "kulit", "haram", "recall", "serum", "vitamin",
+                  "cosmetic"],
         "youtube": {"enabled": True, "days": 14, "max_results": 8,
                     "queries": ["sunscreen skincare Malaysia", "halal certification Malaysia", "kosmetik NPRA"]},
     },

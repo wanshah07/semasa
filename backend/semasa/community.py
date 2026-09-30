@@ -99,10 +99,13 @@ def _when(v: Any) -> datetime | None:
         return None
 
 
+MAX_TERMS = 20        # measured: 19 terms match as OR; 27 return the subreddit's general top (3 of 25 mention any term)
+
+
 def fetch(client: Any, cfg: dict[str, Any]) -> dict[str, Any]:
     yt = cfg.get("youtube") or {}
     return client.cell(_CELL, {
-        "subreddit": str(cfg.get("subreddit") or "malaysia"), "terms": list(cfg.get("terms") or ["halal"]),
+        "subreddit": str(cfg.get("subreddit") or "malaysia"), "terms": list(cfg.get("terms") or ["halal"])[:MAX_TERMS],
         "window": cfg.get("window") if cfg.get("window") in ("day", "week", "month") else "week",
         "limit": max(1, min(25, int(cfg.get("limit") or 15))),
         "youtube": {"enabled": yt.get("enabled") is not False, "queries": list(yt.get("queries") or [])[:4],

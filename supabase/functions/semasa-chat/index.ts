@@ -17,7 +17,7 @@
 // Actions: {action:"chat", messages, files}  and  {action:"check"}  (lists Mireld's models and asks the model the
 // colour of a red square, which tells "accepts an image" from "reads one").
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { SYSTEM, TEST_IMAGE, buildMessages, checkReport, cors } from "./logic.js";
+import { SYSTEM, TEST_IMAGE, buildMessages, checkReport, cors, whoIs } from "./logic.js";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "content-type": "application/json" } });
@@ -51,9 +51,10 @@ Deno.serve(async (req) => {
   // Say WHY sign-in failed (never the token itself), so the check button tells us what to fix.
   if (!token) return json({ error: "sign in first (no login token reached the function)" }, 401);
   if (token === anon) return json({ error: "sign in first (the page sent the public key, not your login; sign out and in again)" }, 401);
-  const { data: who, error: whoErr } = await db.auth.getUser(token);
-  if (!who?.user) return json({ error: `sign in first (${String(whoErr?.message || "no user for this token").slice(0, 160)})` }, 401);
-  const { data: allowed } = await db.rpc("semasa_is_uploader");
+  const who = await whoIs(fetch, url, anon, token);
+  if (!who.user) return json({ error: `sign in first (${who.why})` }, 401);
+  const { data: allowed, error: rpcErr } = await db.rpc("semasa_is_uploader");
+  if (rpcErr) return json({ error: `could not check the Semasa user list (${String(rpcErr.message || rpcErr).slice(0, 120)})` }, 500);
   if (allowed !== true) return json({ error: "this account is not a Semasa user" }, 403);
 
   const key = Deno.env.get("MIRELD_API_KEY");

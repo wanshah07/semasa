@@ -1,6 +1,6 @@
 /* The pure half of the AI chat function (supabase/functions/semasa-chat/logic.js), run in Node. */
 import assert from "node:assert/strict";
-import { LIMITS, SYSTEM, TEST_IMAGE, buildMessages, checkReport } from "../supabase/functions/semasa-chat/logic.js";
+import { LIMITS, SYSTEM, TEST_IMAGE, buildMessages, checkReport, whoIs } from "../supabase/functions/semasa-chat/logic.js";
 
 let n = 0;
 const t = (name, fn) => { fn(); n++; };
@@ -77,6 +77,40 @@ t("check: accepting an image is not reading it, and an error is reported as one"
   assert.equal(e.image.reads, false);
   assert.ok(e.image.error.includes("HTTP 400"));
   assert.deepEqual(checkReport("m", ["m"], null).image, { tested: false });
+});
+
+const reply = (status, type, body) => async () => ({
+  ok: status >= 200 && status < 300, status, headers: { get: (h) => (h.toLowerCase() === "content-type" ? type : null) }, text: async () => body,
+});
+const run = async (name, fn) => { await fn(); n++; };
+
+await run("whoIs: a real user comes back as {user}, and the call carries the token and the key as headers", async () => {
+  let seen;
+  const f = async (u, init) => { seen = { u, h: init.headers }; return reply(200, "application/json", '{"id":"abc","email":"w@x.my"}')(); };
+  const r = await whoIs(f, "https://ref.supabase.co/", "ANON", "TOK");
+  assert.equal(r.user.id, "abc");
+  assert.equal(seen.u, "https://ref.supabase.co/auth/v1/user");
+  assert.equal(seen.h.authorization, "Bearer TOK");
+  assert.equal(seen.h.apikey, "ANON");
+});
+
+await run("whoIs: an HTML answer says the host, status, type and what it said, and never the token or key", async () => {
+  const r = await whoIs(reply(502, "text/html; charset=utf-8", "<html>\n <head><title>502 Bad Gateway</title></head></html>"), "https://ref.supabase.co", "ANON-KEY-123", "TOKEN-456");
+  assert.equal(r.user, undefined);
+  assert.ok(r.why.includes("ref.supabase.co") && r.why.includes("HTTP 502") && r.why.includes("text/html"));
+  assert.ok(r.why.includes("<html> <head><title>502"));
+  assert.ok(!r.why.includes("ANON-KEY-123") && !r.why.includes("TOKEN-456"));
+});
+
+await run("whoIs: a JSON refusal is reported in its own words; a network failure is reported as unreachable", async () => {
+  const j = await whoIs(reply(401, "application/json", '{"code":401,"msg":"invalid JWT: token is expired"}'), "https://ref.supabase.co", "A", "T");
+  assert.ok(j.why.includes("HTTP 401") && j.why.includes("invalid JWT: token is expired"));
+  const dead = await whoIs(async () => { throw new Error("connection refused"); }, "https://ref.supabase.co", "A", "T");
+  assert.ok(dead.why.startsWith("could not reach auth at ref.supabase.co") && dead.why.includes("connection refused"));
+});
+
+await run("whoIs: a 200 that is not a user (no id) is not a login", async () => {
+  assert.ok((await whoIs(reply(200, "application/json", "{}"), "https://r.supabase.co", "A", "T")).why);
 });
 
 console.log(`chat: ${n} ok`);

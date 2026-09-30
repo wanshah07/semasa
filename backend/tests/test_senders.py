@@ -150,3 +150,104 @@ def test_linkedin_bad_picture_and_missing_urn_are_refusals():
 def test_text_key_ignores_spacing():
     assert senders.text_key("A  b\n\nc") == senders.text_key("A b c")
     assert json.dumps(senders.text_key("x" * 300)).count("x") == 100
+
+
+# --- LinkedIn through Composio For You (MCP + consumer key) ---------------------------------------------------------
+
+class MResp(Resp):
+    def __init__(self, status=200, body=None, headers=None, text=""):
+        super().__init__(status, body, headers or {"content-type": "application/json"})
+        self.text = text
+
+
+def rpc(n, result):
+    return MResp(body={"jsonrpc": "2.0", "id": n, "result": result})
+
+
+def tool_text(obj):
+    return {"content": [{"type": "text", "text": json.dumps(obj)}]}
+
+
+def cell(obj):
+    return tool_text({"data": {"stdout": "noise\n" + senders._MARK + json.dumps(obj) + "\n", "error": ""},
+                      "successful": True})
+
+
+LI_LIST = tool_text({"data": {"results": {"linkedin": {"accounts": [
+    {"id": "linkedin_abc", "status": "active", "user_info": {"sub": "X"}}]}}}})
+
+
+def opened(*after):
+    return Session(MResp(body={"jsonrpc": "2.0", "id": 1, "result": {}}, headers={"content-type": "application/json",
+                                                                                   "Mcp-Session-Id": "sid-1"}),
+                   MResp(status=202), *after)
+
+
+def test_mcp_card_post_uploads_then_posts_once_with_the_consumer_key():
+    s = opened(rpc(2, LI_LIST),
+               rpc(3, cell({"ok": True, "images": [{"name": "slide-01.png", "mimetype": "image/png", "s3key": "k1"}]})),
+               rpc(4, cell({"err": "", "res": {"data": {"x_restli_id": "urn:li:share:9"}, "successful": True}})))
+    res = senders.LinkedInMCP("ck", "urn:li:person:X", session=s).post("Hello", ["https://cdn/1.png"])
+    assert res.urn == "urn:li:share:9" and res.url.endswith("urn:li:share:9/")
+    first = s.calls[0][2]
+    assert first["headers"]["x-consumer-api-key"] == "ck" and first["json"]["method"] == "initialize"
+    assert s.calls[1][2]["json"]["method"] == "notifications/initialized" and "id" not in s.calls[1][2]["json"]
+    assert all(c[2]["headers"].get("Mcp-Session-Id") == "sid-1" for c in s.calls[1:])
+    post_code = s.calls[4][2]["json"]["params"]["arguments"]["code_to_execute"]
+    assert "LINKEDIN_CREATE_LINKED_IN_POST" in post_code and "account='linkedin_abc'" in post_code
+    import base64
+    b64 = post_code.split('b64decode("')[1].split('"')[0]
+    args = json.loads(base64.b64decode(b64))
+    assert args == {"author": "urn:li:person:X", "commentary": "Hello", "visibility": "PUBLIC",
+                    "images": [{"name": "slide-01.png", "mimetype": "image/png", "s3key": "k1"}]}
+
+
+def test_mcp_text_post_skips_the_upload_and_reads_sse():
+    sse = MResp(headers={"content-type": "text/event-stream"}, text="event: message\ndata: " + json.dumps(
+        {"jsonrpc": "2.0", "id": 3, "result": cell({"err": "", "res": {"data": {"id": "urn:li:share:2"}}})}) + "\n\n")
+    s = opened(rpc(2, LI_LIST), sse)
+    res = senders.LinkedInMCP("ck", "urn:li:person:X", session=s).post("Words", [])
+    assert res.urn == "urn:li:share:2" and len(s.calls) == 4
+
+
+def test_mcp_refuses_a_connection_that_is_not_the_author():
+    s = opened(rpc(2, tool_text({"data": {"results": {"linkedin": {"accounts": [
+        {"id": "linkedin_abc", "status": "active", "user_info": {"sub": "SOMEONE"}}]}}}})))
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedInMCP("ck", "urn:li:person:X", session=s).post("t", [])
+    assert e.value.kind == "refused" and "not urn:li:person:X" in e.value.message
+
+
+def test_mcp_upload_failure_is_transient_but_a_failed_post_call_is_never_retried():
+    s = opened(rpc(2, LI_LIST), rpc(3, cell({"ok": False, "kind": "transient", "message": "picture 1 upload failed"})))
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedInMCP("ck", "urn:li:person:X", session=s).post("t", ["https://x/1.png"])
+    assert e.value.kind == "transient"
+    # the post call itself times out: it may have posted, so refused (and 'LinkedIn' in the message) = no retry
+    import requests
+    s = opened(rpc(2, LI_LIST), requests.Timeout("slow"))
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedInMCP("ck", "urn:li:person:X", session=s).post("t", [])
+    assert e.value.kind == "refused" and "LinkedIn" in e.value.message
+
+
+def test_mcp_bad_key_and_missing_urn_are_refusals():
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedInMCP("bad", "urn:li:person:X", session=Session(MResp(status=401))).post("t", [])
+    assert e.value.kind == "refused" and "COMPOSIO_CONSUMER_KEY" in e.value.message
+    s = opened(rpc(2, LI_LIST), rpc(3, cell({"err": "", "res": {"data": {}, "successful": True}})))
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedInMCP("ck", "urn:li:person:X", session=s).post("t", [])
+    assert e.value.kind == "refused" and "without a post id" in e.value.message
+
+
+def test_publisher_prefers_the_for_you_key(monkeypatch):
+    from semasa import publisher
+    monkeypatch.setenv("COMPOSIO_API_KEY", "ak")
+    monkeypatch.setenv("COMPOSIO_CONSUMER_KEY", "ck")
+    monkeypatch.delenv("BUFFER_API_KEY", raising=False)
+    c = publisher.make_clients({"channels": {"linkedin": {"author": "urn:li:person:X"}}})
+    assert isinstance(c["linkedin"], senders.LinkedInMCP)
+    monkeypatch.delenv("COMPOSIO_CONSUMER_KEY")
+    c = publisher.make_clients({"channels": {"linkedin": {"author": "urn:li:person:X"}}})
+    assert isinstance(c["linkedin"], senders.LinkedIn)

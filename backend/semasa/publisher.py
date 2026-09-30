@@ -122,7 +122,11 @@ def make_clients(settings: dict[str, Any]) -> dict[str, Any]:
     buf, li = cfg.get("buffer") or {}, cfg.get("linkedin") or {}
     if os.environ.get("BUFFER_API_KEY") and buf.get("organizationId"):
         out["buffer"] = senders.Buffer(os.environ["BUFFER_API_KEY"], buf["organizationId"])
-    if os.environ.get("COMPOSIO_API_KEY") and li.get("author"):
+    if os.environ.get("COMPOSIO_CONSUMER_KEY") and li.get("author"):
+        # For You (the workspace that holds Wan's LinkedIn connection): wins over a Platform key if both are set
+        out["linkedin"] = senders.LinkedInMCP(os.environ["COMPOSIO_CONSUMER_KEY"], li["author"],
+                                              account_id=li.get("foryou_account_id") or None)
+    elif os.environ.get("COMPOSIO_API_KEY") and li.get("author"):
         out["linkedin"] = senders.LinkedIn(os.environ["COMPOSIO_API_KEY"], li["author"],
                                            account_id=li.get("account_id") or None)
     return out

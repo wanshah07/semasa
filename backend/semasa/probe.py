@@ -58,10 +58,12 @@ def check_buffer(settings: dict) -> list[str]:
 
 
 def check_composio(settings: dict) -> list[str]:
-    key = os.environ.get("COMPOSIO_API_KEY")
     cfg = (settings.get("channels") or {}).get("linkedin") or {}
+    if os.environ.get("COMPOSIO_CONSUMER_KEY"):
+        return check_composio_foryou(cfg)
+    key = os.environ.get("COMPOSIO_API_KEY")
     if not key:
-        return ["Composio: COMPOSIO_API_KEY secret is not set"]
+        return ["Composio: neither COMPOSIO_CONSUMER_KEY (For You) nor COMPOSIO_API_KEY (Platform) is set"]
     if not cfg.get("author"):
         return ["Composio: settings 'channels' has no linkedin.author (run supabase/023_go_live.sql)"]
     li = senders.LinkedIn(key, cfg["author"], account_id=cfg.get("account_id") or None)
@@ -75,6 +77,22 @@ def check_composio(settings: dict) -> list[str]:
         return []
     except senders.SendError as exc:
         return [f"Composio: {exc.message}", *what_the_key_sees(li)]
+
+
+def check_composio_foryou(cfg: dict) -> list[str]:
+    """The For You road (publisher.make_clients picks it whenever COMPOSIO_CONSUMER_KEY is set)."""
+    if not cfg.get("author"):
+        return ["Composio For You: settings 'channels' has no linkedin.author (run supabase/023_go_live.sql)"]
+    li = senders.LinkedInMCP(os.environ["COMPOSIO_CONSUMER_KEY"], cfg["author"],
+                             account_id=cfg.get("foryou_account_id") or None)
+    try:
+        acct = li.account()
+        print(f"Composio For You: LinkedIn connection {acct} is active and is {cfg['author']}")
+        key = li.probe_upload()
+        print(f"Composio For You: a picture uploads through the workbench (key …{key[-8:]}); nothing was posted")
+        return []
+    except senders.SendError as exc:
+        return [f"Composio For You: {exc.message}"]
 
 
 def what_the_key_sees(li: senders.LinkedIn) -> list[str]:

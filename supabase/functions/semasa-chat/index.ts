@@ -47,8 +47,12 @@ Deno.serve(async (req) => {
   const url = Deno.env.get("SUPABASE_URL"), anon = Deno.env.get("SUPABASE_ANON_KEY");
   if (!url || !anon) return json({ error: "function is missing SUPABASE_URL / SUPABASE_ANON_KEY" }, 500);
   const db = createClient(url, anon, { global: { headers: { authorization: auth } } });
-  const { data: who } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, "")); // pass the JWT: a server client has no stored session
-  if (!who?.user) return json({ error: "sign in first" }, 401);
+  const token = auth.replace(/^Bearer\s+/i, "").trim(); // pass the JWT: a server client has no stored session
+  // Say WHY sign-in failed (never the token itself), so the check button tells us what to fix.
+  if (!token) return json({ error: "sign in first (no login token reached the function)" }, 401);
+  if (token === anon) return json({ error: "sign in first (the page sent the public key, not your login; sign out and in again)" }, 401);
+  const { data: who, error: whoErr } = await db.auth.getUser(token);
+  if (!who?.user) return json({ error: `sign in first (${String(whoErr?.message || "no user for this token").slice(0, 160)})` }, 401);
   const { data: allowed } = await db.rpc("semasa_is_uploader");
   if (allowed !== true) return json({ error: "this account is not a Semasa user" }, 403);
 

@@ -242,7 +242,7 @@ def test_the_read_cell_extracts_pdf_text_with_page_markers_and_reports_what_it_c
     dl = _download(monkeypatch, {"s3://p1": tiny_pdf("Notifikasi kosmetik bukan kelulusan produk"), "s3://z1": b"zip"})
     files = [{"id": "p1", "name": "a.pdf", "size": 5000}, {"id": "z1", "name": "b.zip", "size": 10},
              {"id": "big", "name": "c.pdf", "size": 90_000_000}]
-    out = run_cell(folders._READ, {"account": "Muhammad-Ridzuan", "files": files, "max_chars": 14000, "max_bytes": 60_000_000,
+    out = run_cell(folders._READ, {"account": "Muhammad-Ridzuan", "files": files, "max_chars": 14000, "max_bytes": 60_000_000, "room": 18000,
                                    "matrix": {}}, tools_from({"ONE_DRIVE_DOWNLOAD_FILE": dl}))["out"]
     by = {d["id"]: d for d in out["docs"]}
     assert by["p1"]["kind"] == "pdf" and by["p1"]["pages"] == 1 and "[hlm 1]" in by["p1"]["text"]
@@ -250,10 +250,36 @@ def test_the_read_cell_extracts_pdf_text_with_page_markers_and_reports_what_it_c
     assert by["z1"]["error"].startswith("type .zip") and by["big"]["error"].startswith("too big")
 
 
+def test_the_read_cell_stops_opening_files_once_its_answer_is_long_enough(monkeypatch):
+    """Found live (30 Sep 2026): six files at 14,000 characters were 72,000 characters, the wrapper refused the whole
+    answer and every file was lost. The cell now leaves the rest for the next cell instead."""
+    pytest.importorskip("pypdf")
+    dl = _download(monkeypatch, {f"s3://p{i}": tiny_pdf("Notifikasi kosmetik " * 40) for i in range(1, 5)})
+    files = [{"id": f"p{i}", "name": f"{i}.pdf", "size": 100} for i in range(1, 5)]
+    out = run_cell(folders._READ, {"account": "x", "files": files, "max_chars": 14000, "max_bytes": 10**8, "room": 60,
+                                   "matrix": {}}, tools_from({"ONE_DRIVE_DOWNLOAD_FILE": dl}))["out"]
+    assert [d["id"] for d in out["docs"]] == ["p1"] and out["skipped"] == ["p2", "p3", "p4"]
+
+
+def test_read_files_asks_in_small_cells_and_joins_the_answers():
+    seen = []
+
+    class C:
+        def cell(self, body, params=None, thought="", budget=0):
+            seen.append([f["id"] for f in params["files"]])
+            assert params["room"] == folders.ROOM
+            return {"docs": [{"id": f["id"], "kind": "pdf", "text": "x"} for f in params["files"]], "skipped": []}
+
+    files = [{"id": f"f{i}", "name": f"{i}.pdf", "size": 1} for i in range(5)]
+    out = folders.read_files(C(), {}, files, {})
+    assert seen == [["f0", "f1"], ["f2", "f3"], ["f4"]]
+    assert [d["id"] for d in out["docs"]] == ["f0", "f1", "f2", "f3", "f4"]
+
+
 def test_the_read_cell_stops_at_its_time_budget_and_says_what_it_skipped(monkeypatch):
     dl = _download(monkeypatch, {})
     out = run_cell(folders._READ, {"account": "x", "files": [{"id": "p1", "name": "a.pdf", "size": 1}], "max_chars": 100,
-                                   "max_bytes": 1000, "matrix": {}}, tools_from({"ONE_DRIVE_DOWNLOAD_FILE": dl}), budget=10)["out"]
+                                   "max_bytes": 1000, "room": 18000, "matrix": {}}, tools_from({"ONE_DRIVE_DOWNLOAD_FILE": dl}), budget=10)["out"]
     assert out["docs"] == [] and out["skipped"] == ["p1"]
 
 
@@ -269,7 +295,7 @@ def test_the_read_cell_takes_the_next_unused_rows_of_a_post_matrix_workbook(monk
     wb.save(buf)
     dl = _download(monkeypatch, {"s3://m1": buf.getvalue()})
     out = run_cell(folders._READ, {"account": "Muhammad-Ridzuan", "files": [{"id": "m1", "name": "LabMuffin.xlsx", "size": 999}],
-                                   "max_chars": 1000, "max_bytes": 10**8, "matrix": {"skip": [2, 3], "want": 2}},
+                                   "max_chars": 1000, "max_bytes": 10**8, "room": 18000, "matrix": {"skip": [2, 3], "want": 2}},
                    tools_from({"ONE_DRIVE_DOWNLOAD_FILE": dl}))["out"]
     doc = out["docs"][0]
     assert doc["kind"] == "matrix" and [r["row"] for r in doc["rows"]] == [4, 5]

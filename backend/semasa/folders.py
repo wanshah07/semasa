@@ -35,6 +35,8 @@ DOMAINS = ("kosmetik", "makanan", "halal_my", "farmaseutikal", "fatwa", "sains_k
 MYT = timedelta(hours=8)
 MAX_BYTES = 60_000_000
 SEND_CHARS = 12_000
+PER_CELL = 2          # files per workbench cell: 2 x 14,000 characters fits under the 36,000 the wrapper allows
+ROOM = 18_000         # a cell stops opening files once its answer is this long
 MATRIX_KIND = "Matriks siaran"
 
 _LIST = '''
@@ -123,8 +125,8 @@ def xlsx_read(b, m):
             break
     return {"kind": "xlsx", "pages": 0, "text": out[:CAP]}
 for f in P["files"]:
-    if left() < 45:
-        OUT["skipped"].append(f["id"]); continue
+    if left() < 45 or len(json.dumps(OUT, ensure_ascii=False)) > P["room"]:
+        OUT["skipped"].append(f["id"]); continue          # the answer must stay under what the workbench prints
     try:
         if f["size"] > P["max_bytes"]:
             OUT["docs"].append({"id": f["id"], "error": "too big (" + str(f["size"]) + " bytes)"}); continue
@@ -191,10 +193,18 @@ def list_files(client: Any, cfg: dict[str, Any], now: datetime) -> dict[str, Any
 
 
 def read_files(client: Any, cfg: dict[str, Any], files: list[dict[str, Any]], matrix: dict[str, Any]) -> dict[str, Any]:
+    """Read files in cells of PER_CELL. One cell may print about 36,000 characters, so a cell that read six files at
+    14,000 characters each was refused whole and every file in it was lost (found live, 30 Sep 2026)."""
     slim = [{k: f[k] for k in ("id", "name", "size")} for f in files]
-    return client.cell(_READ, {"account": cfg.get("account") or None, "files": slim, "max_chars": 14_000,
-                               "max_bytes": MAX_BYTES, "matrix": matrix},
-                       thought="Semasa: read new reference files (nothing is changed or uploaded)", budget=140)
+    docs: list[dict[str, Any]] = []
+    skipped: list[str] = []
+    for i in range(0, len(slim), PER_CELL):
+        out = client.cell(_READ, {"account": cfg.get("account") or None, "files": slim[i:i + PER_CELL], "max_chars": 14_000,
+                                  "max_bytes": MAX_BYTES, "matrix": matrix, "room": ROOM},
+                          thought="Semasa: read new reference files (nothing is changed or uploaded)", budget=140) or {}
+        docs += out.get("docs") or []
+        skipped += out.get("skipped") or []
+    return {"docs": docs, "skipped": skipped}
 
 
 def kind_of(doc: dict[str, Any]) -> str:

@@ -486,3 +486,18 @@ def test_autofill_keeps_the_folder_bank_beyond_the_news_window_and_gives_an_urge
     assert autofill.pick(pool, "regulab", ["kosmetik"], "2026-10-01")["id"] == "u1"           # urgent, off-rota, its own day
     assert autofill.pick(pool, "regulab", ["halal_my"], "2026-10-02")["id"] == "b1"
     assert autofill.pick(pool, "regulab", ["fatwa"], "2026-10-02") is None
+
+
+def test_reddit_terms_are_capped_because_a_long_query_stops_matching():
+    """Measured live: 19 OR-terms match; 27 make the search hand back the general top (3 of 25 mention any term)."""
+    seen = []
+
+    class C:
+        def cell(self, body, params=None, thought="", budget=0):
+            seen.append(params)
+            return {"posts": [], "videos": []}
+
+    community.fetch(C(), {"terms": [f"t{i}" for i in range(40)]})
+    assert len(seen[0]["terms"]) == community.MAX_TERMS == 20
+    assert len(intake.DEFAULTS["community"]["terms"]) <= community.MAX_TERMS
+    assert {"halal", "NPRA", "KKM", "JAKIM"} <= set(intake.DEFAULTS["community"]["terms"])

@@ -86,16 +86,34 @@ def asked_for(store: Any, stream: str) -> set[tuple[str, str]]:
     return out
 
 
+SELECT = "id,section,source,kind,title,url,summary,why,domain,raw,published_at,created_at"
+
+
 def candidates(store: Any, now: datetime | None = None) -> list[dict[str, Any]]:
+    """Feed items an idea has not used yet. News is fresh for FRESH_DAYS; the OneDrive angle bank is not news and has no
+    age limit (its rows are written once, when a file is first read, and wait until they are used)."""
     since = ((now or datetime.now(UTC)) - timedelta(days=FRESH_DAYS)).isoformat()
-    rows = (store.table(WATCH).select("id,section,source,kind,title,url,summary,why,domain,raw,published_at,created_at")
-            .eq("relevant", True).eq("dismissed", False).gte("created_at", since).order("created_at", desc=True)
-            .limit(200).execute().data or [])
+    rows = (store.table(WATCH).select(SELECT).eq("relevant", True).eq("dismissed", False).gte("created_at", since)
+            .neq("section", "folder").order("created_at", desc=True).limit(200).execute().data or [])
+    bank = (store.table(WATCH).select(SELECT).eq("section", "folder").eq("relevant", True).eq("dismissed", False)
+            .order("created_at", desc=True).limit(300).execute().data or [])
+    rows = rows + bank
     if not rows:
         return []
-    used = {r.get("source_url") for r in (store.table(db.IDEAS).select("source_url")
-                                          .in_("source_url", [r["url"] for r in rows]).execute().data or [])}
-    return [r for r in rows if r["url"] not in used]
+    urls = [r["url"] for r in rows]
+    spent: set[str] = set()
+    for chunk in db._in_filter_chunks(urls):
+        spent |= {r.get("source_url") for r in (store.table(db.IDEAS).select("source_url").in_("source_url", chunk)
+                                                .execute().data or [])}
+    return [r for r in rows if r["url"] not in spent]
+
+
+def pick(pool: list[dict[str, Any]], stream: str, allow: list[str] | None, day: str) -> dict[str, Any] | None:
+    """An urgent file for THIS date first (Studio's `urgent post/DDMMYY` override), then the first item that fits."""
+    for x in pool:
+        if (x.get("raw") or {}).get("urgent_for") == day:
+            return x
+    return next((x for x in pool if fits(x, stream, allow)), None)
 
 
 def fits(item: dict[str, Any], stream: str, allow: list[str] | None) -> bool:
@@ -120,20 +138,23 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
             for date, slot, allow in gaps(stream, brand, busy, cfg["days_ahead"], now):
                 if made >= cfg["per_run"]:
                     break
-                item = next((x for x in pool if fits(x, stream, allow)), None)
+                item = pick(pool, stream, allow, date)
                 if not item:
                     empty += 1
                     continue
                 pool.remove(item)
                 domain = None
+                urgent = (item.get("raw") or {}).get("urgent_for") == date
                 if stream == "regulab":
-                    domain = item.get("domain") if item.get("domain") and fits(item, stream, allow) else None
-                    if allow and domain not in allow and domain not in ANY_DAY_DOMAINS:
+                    domain = item.get("domain") if item.get("domain") and (urgent or fits(item, stream, allow)) else None
+                    if allow and domain not in allow and domain not in ANY_DAY_DOMAINS and not urgent:
                         domain = allow[0]
                 store.table(db.IDEAS).insert({
                     "source_title": str(item.get("title") or "")[:500], "source_url": item["url"],
                     "source_name": item.get("source") or None,
-                    "source_summary": str(item.get("summary") or item.get("why") or "")[:4000] or None,
+                    "source_summary": (str(item.get("summary") or item.get("why") or "")
+                                       + (f" (Rujukan dalam dokumen: {(item.get('raw') or {}).get('cite')})"
+                                          if (item.get("raw") or {}).get("cite") else ""))[:4000] or None,
                     "stream": stream, "domain": domain,
                     "angle": ("F" if item.get("section") == "publication" else "A") if stream == "linkedin" else None,
                     "make_media": "image", "status": "new", "created_by": None,

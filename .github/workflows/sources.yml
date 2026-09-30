@@ -1,0 +1,67 @@
+name: Sources
+
+# Wan's own sources, read through Composio For You and put in the feed (backend/semasa/intake.py): Reddit and YouTube
+# (what is being argued about), the OneDrive reference folders (post angles) and MYRA's daily regulatory sheet.
+# Twice a day: 05:10 and 17:10 MYT (21:10 and 09:10 UTC). The database's clock wakes it too (supabase/024).
+# It writes FEED ROWS only: nothing here drafts, approves or posts. A duplicate READ of what ws.regulab Studio's Routines
+# still read until Fri 2 Oct 19:45 MYT, never a duplicate SCHEDULE.
+on:
+  schedule:
+    - cron: "10 21,9 * * *"
+  repository_dispatch:
+    types: [sources_due]
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: "true = read and judge, write nothing (no SQL needed)"
+        type: boolean
+        default: false
+      only:
+        description: "Only these parts: community, folders, myra (space separated; empty = all)"
+        type: string
+        default: ""
+
+concurrency:
+  group: sources
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sources:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Sweep
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          COMPOSIO_CONSUMER_KEY: ${{ secrets.COMPOSIO_CONSUMER_KEY }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_FALLBACK_BASE_URL: ${{ vars.LLM_FALLBACK_BASE_URL }}
+          LLM_FALLBACK_MODEL: ${{ vars.LLM_FALLBACK_MODEL }}
+          LLM_ALLOWED_HOSTS: ${{ vars.LLM_ALLOWED_HOSTS }}
+          LLM_FALLBACK_ALLOWED_HOSTS: ${{ vars.LLM_FALLBACK_ALLOWED_HOSTS }}
+          LLM_TIMEOUT: ${{ vars.LLM_TIMEOUT }}
+          SOURCES_DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry && 'true' || 'false' }}
+          SOURCES_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.only || '' }}
+        run: python -m semasa.intake

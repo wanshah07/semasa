@@ -96,6 +96,27 @@ def faq_source(idea: dict[str, Any]) -> dict[str, Any] | None:
             **({} if text else {"why": "the FAQ entry had no answer"})}
 
 
+STORED_SCHEMES = ("onedrive://", "myra://")
+STORED_HOSTS = ("reddit.com", "youtube.com", "youtu.be")
+
+
+def stored_source(idea: dict[str, Any]) -> dict[str, Any] | None:
+    """An idea made from Wan's own sources (supabase/024): a Reddit thread or YouTube video, a file in his OneDrive
+    library, a finding in MYRA's sheet with no link. None of them has a page the writer should fetch (Reddit and YouTube
+    refuse the fetch, and their addresses must never reach a post; the others are not web addresses), so the row's own
+    words are the source, exactly as an FAQ entry's answer is. The address is withheld from the writer on purpose."""
+    url = str(idea.get("source_url") or "")
+    host = urlparse(url).netloc.lower()
+    if not (url.startswith(STORED_SCHEMES) or any(host == h or host.endswith("." + h) for h in STORED_HOSTS)):
+        return None
+    text = str(idea.get("source_summary") or "").strip()
+    label = ("an argument people are having in public (never name the platform, a subreddit, a channel or a person)"
+             if not url.startswith(STORED_SCHEMES) else "an angle from Wan's own reference library")
+    return {"ok": bool(text), "url": None, "title": str(idea.get("source_title") or ""), "description": "",
+            "image": None, "text": text[:SOURCE_TEXT_MAX], "label": label,
+            **({} if text else {"why": "the row carried no summary"})}
+
+
 def parse_article(html: str, base_url: str, out: dict[str, Any] | None = None) -> dict[str, Any]:
     out = out or {"ok": False, "url": base_url, "title": "", "description": "", "image": None, "text": ""}
     soup = BeautifulSoup(html, "lxml")
@@ -467,7 +488,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     indo_extra = (settings.get("bahasa") or {}).get("indo")
     stream = idea.get("stream") or "regulab"
     lang = "en" if stream == "linkedin" else "bm"
-    source = faq_source(idea) or read_source(idea.get("source_url"))
+    source = faq_source(idea) or stored_source(idea) or read_source(idea.get("source_url"))
     system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra), writer=settings.get("writer"))
     fmt = format_of(idea)
     want_slides = fmt == "carousel"

@@ -333,15 +333,14 @@ def _find_urn(obj: Any) -> str:
     return ""
 
 
-class LinkedInMCP:
-    """LinkedIn through Composio For You's MCP endpoint and the consumer key. Same face as LinkedIn above (post,
-    account), so the publisher does not care which road it is given."""
+class ComposioMCP:
+    """The connection to Composio For You's MCP endpoint with the consumer key: the JSON-RPC wire, the session, the meta
+    tool call and the workbench cell. LinkedInMCP (below) and the three source readers (foryou.py) are built on it, so
+    there is one place that knows how the endpoint answers."""
 
-    def __init__(self, consumer_key: str, author: str, session: Any = None, url: str = MCP_URL,
-                 account_id: str | None = None):
-        self.key, self.author, self.url = consumer_key, author, url
+    def __init__(self, consumer_key: str, session: Any = None, url: str = MCP_URL):
+        self.key, self.url = consumer_key, url
         self.http = session or requests.Session()
-        self.account_id = account_id
         self.sid: str | None = None
         self.n = 0
 
@@ -454,6 +453,18 @@ class LinkedInMCP:
             if line.startswith(_MARK):
                 return json.loads(line[len(_MARK):])
         raise SendError("transient", f"workbench gave no result: {str(data.get('error') or data.get('stderr') or body)[:300]}")
+
+
+
+class LinkedInMCP(ComposioMCP):
+    """LinkedIn through Composio For You's MCP endpoint and the consumer key. Same face as LinkedIn above (post,
+    account), so the publisher does not care which road it is given."""
+
+    def __init__(self, consumer_key: str, author: str, session: Any = None, url: str = MCP_URL,
+                 account_id: str | None = None):
+        super().__init__(consumer_key, session=session, url=url)
+        self.author = author
+        self.account_id = account_id
 
     # the face -------------------------------------------------------------------------------------------------------
     def account(self) -> str:

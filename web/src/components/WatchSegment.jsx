@@ -5,6 +5,7 @@ import { fadeUp, stagger } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { currentLang, useLang } from "../lib/i18n";
 import { stampMYT } from "../lib/format";
+import { OWN_SECTIONS, linkOf, ownLine, ownSummary } from "../lib/ownSources";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import Skeleton from "./ui/Skeleton";
@@ -44,6 +45,9 @@ export function watchIdea(r, brand) {
     r.kind ? `Jenis: ${r.kind}${raw.ref ? ` (${raw.ref})` : ""}` : "",
     pub ? `Kertas: ${paperLine(r)}` : "",
     pub && raw.abstract ? `Abstrak: ${raw.abstract}` : "",
+    r.section === "folder" && raw.cite ? `Rujukan dalam dokumen: ${raw.cite}` : "",
+    r.section === "myra" && raw.ref_no ? `Rujukan: ${raw.ref_no}${raw.markets ? ` (${raw.markets})` : ""}` : "",
+    (r.section === "reddit" || r.section === "youtube") ? "Ini hujah orang ramai: betulkan kepercayaannya, jangan sebut platform atau pautannya." : "",
   ].filter(Boolean).join("\n\n");
   return {
     watch: true, section: r.section, id: r.id, title: r.title, url: r.url, source: r.source, summary,
@@ -156,11 +160,18 @@ function Tags({ row, domainLabel }) {
         <span className={`rounded-pill px-2 py-0.5 text-[11px] ${String(row.raw.topic).startsWith("Competitor") ? "bg-warn/15 font-semibold text-ink" : "bg-surface-2 text-muted"}`}>
           {topicLabel(row.raw.topic, t)}</span>
       )}
-      {row.kind && row.section === "regulatory" && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted">{row.kind}</span>}
+      {row.kind && (row.section === "regulatory" || OWN_SECTIONS.includes(row.section)) && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted">{row.kind}</span>}
       {row.domain && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted">{domainLabel(row.domain)}</span>}
       {row.relevant === false && !row.pasted && <span className="rounded-pill bg-warn/10 px-2 py-0.5 text-[11px] text-warn">{t("kurang berkaitan", "less relevant")}</span>}
     </span>
   );
+}
+
+/* A link when the row has a web address, a plain block when it does not (a OneDrive angle or a MYRA finding with no link). */
+function Wrap({ href, className, children }) {
+  return href
+    ? <a href={href} target="_blank" rel="noopener noreferrer" className={className}>{children}</a>
+    : <div className={className}>{children}</div>;
 }
 
 function WatchCard({ row, onIdea, onHide, onRemove, busy, domainLabel }) {
@@ -175,15 +186,16 @@ function WatchCard({ row, onIdea, onHide, onRemove, busy, domainLabel }) {
             {dayText(row.published_at || row.created_at)}
           </time>
         </div>
-        <a href={row.url} target="_blank" rel="noopener noreferrer" className="group block px-4 pb-4 pt-3">
+        <Wrap href={linkOf(row)} className="group block px-4 pb-4 pt-3">
           <h3 className="[overflow-wrap:anywhere] font-display text-[17px] leading-snug text-ink group-hover:text-accent">
-            {row.title} <ExternalLink size={12} className="inline align-baseline text-muted" />
+            {row.title} {linkOf(row) && <ExternalLink size={12} className="inline align-baseline text-muted" />}
           </h3>
           {row.status === "error" && row.error && (
             <p className="mt-2 flex gap-1.5 rounded-tile bg-danger/5 p-2 text-[12px] text-danger [overflow-wrap:anywhere]">
               <AlertTriangle size={13} className="mt-0.5 shrink-0" /> {row.error}</p>
           )}
           {pub && paperLine(row) && <p className="mt-1.5 text-[12px] text-muted [overflow-wrap:anywhere]">{paperLine(row)}</p>}
+          {ownLine(row, t) && <p className="mt-1.5 text-[12px] text-muted [overflow-wrap:anywhere]">{ownLine(row, t)}</p>}
           {row.summary && <p className="mt-2 text-sm leading-relaxed text-muted [overflow-wrap:anywhere]">{row.summary}</p>}
           {row.why && (
             <p className="mt-3 rounded-tile bg-surface-2 p-2.5 text-[13px] leading-relaxed text-ink [overflow-wrap:anywhere]">
@@ -196,7 +208,7 @@ function WatchCard({ row, onIdea, onHide, onRemove, busy, domainLabel }) {
             {row.summary_source === "llm" && <span className="rounded-pill bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent">AI</span>}
             <span className="uppercase">{row.lang}</span>
           </p>
-        </a>
+        </Wrap>
         <div className="border-t border-line/70 px-4 py-2"><Actions row={row} onIdea={onIdea} onHide={onHide} onRemove={onRemove} busy={busy} /></div>
       </Card>
     </motion.div>
@@ -220,10 +232,11 @@ function WatchTable({ rows, onIdea, onHide, onRemove, busyId, domainLabel }) {
           <tr key={r.id} className={`${TR} hover:bg-surface-2/50 ${r.dismissed ? "opacity-60" : ""}`}>
             <td className={TD} data-label={t("Sumber", "Source")}><Tags row={r} domainLabel={domainLabel} /></td>
             <td className={`${TD} [overflow-wrap:anywhere]`} data-label={t("Tajuk", "Title")}>
-              <a href={r.url} target="_blank" rel="noopener noreferrer" className="font-medium leading-snug hover:text-accent">
-                {r.title} <ExternalLink size={11} className="inline align-baseline text-muted" /></a>
+              <Wrap href={linkOf(r)} className="block font-medium leading-snug hover:text-accent">
+                {r.title} {linkOf(r) && <ExternalLink size={11} className="inline align-baseline text-muted" />}</Wrap>
               {r.status === "error" && r.error && <p className="mt-1 text-[12px] text-danger">{r.error}</p>}
               {r.section === "publication" && paperLine(r) && <p className="mt-0.5 text-[11px] text-muted">{paperLine(r)}</p>}
+              {ownLine(r, t) && <p className="mt-0.5 text-[11px] text-muted">{ownLine(r, t)}</p>}
               {r.summary && <p className="mt-1 line-clamp-3 text-[12px] text-muted">{r.summary}</p>}
               {r.why && <p className="mt-1 text-[12px] text-ink"><span className="font-semibold">{t("Kenapa penting:", "Why it matters:")}</span> {r.why}</p>}
             </td>
@@ -357,15 +370,19 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
     watch.reload();
   }
 
+  const own = OWN_SECTIONS.includes(section);
   const s = setting || {};
-  const res = s.result || {};
-  const failing = (res.sources || []).filter((x) => !x.ok);
+  const ownRes = ownSummary(section, s);
+  // the four own sources are swept by their own workflow (setting "sources"); a person's save of force:true wakes it (024)
+  const res = own ? { new: ownRes.new } : (s.result || {});
+  const failing = own ? ownRes.failing : (res.sources || []).filter((x) => !x.ok);
+  const lastRun = own ? ownRes.last : s.last_run;
   const waiting = Boolean(s.force);
 
   async function sweepNow() {
     setAsking(true);
     try {
-      await saveSetting("watch", { ...s, force: true });
+      await saveSetting(own ? "sources" : "watch", { ...s, force: true });
       onToast(t("Diminta. Pekerja akan menyapu dalam beberapa minit; senarai dikemas kini sendiri.",
         "Asked. The worker sweeps within a few minutes; the list updates by itself."), "ok");
     } catch (e) {
@@ -378,13 +395,14 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
   return (
     <>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
-        {s.last_run
-          ? <span>{t("Sapuan terakhir {at} · {n} baharu", "Last sweep {at} · {n} new", { at: stampMYT(s.last_run), n: res.new ?? 0 })}</span>
+        {lastRun
+          ? <span>{t("Sapuan terakhir {at} · {n} baharu", "Last sweep {at} · {n} new", { at: stampMYT(lastRun), n: res.new ?? 0 })}</span>
           : <span>{t("Belum pernah disapu.", "Not swept yet.")}</span>}
         {res.error && <span className="rounded-pill bg-danger/10 px-2 py-0.5 text-danger" title={res.error}>{t("sapuan gagal", "sweep failed")}</span>}
         {failing.length > 0 && (
           <span className="rounded-pill bg-danger/10 px-2 py-0.5 text-danger" title={failing.map((x) => `${x.name}: ${x.error}`).join("\n")}>
-            {t("{n} sumber gagal", ["{n} source failed", "{n} sources failed"], { n: failing.length })}
+            {own ? t("{n} masalah dalam sapuan", ["{n} problem in the sweep", "{n} problems in the sweep"], { n: failing.length })
+              : t("{n} sumber gagal", ["{n} source failed", "{n} sources failed"], { n: failing.length })}
           </span>
         )}
         <Button variant="ghost" size="sm" onClick={sweepNow} disabled={asking || waiting}>
@@ -393,7 +411,7 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
         </Button>
       </div>
 
-      {user && <PasteLink section={section} user={user} onToast={onToast} onAdded={() => watch.reload()} />}
+      {user && !own && <PasteLink section={section} user={user} onToast={onToast} onAdded={() => watch.reload()} />}
       {section === "publication" && <Competitors key={JSON.stringify(setting?.competitors || [])} setting={setting} saveSetting={saveSetting} onToast={onToast} />}
 
       <div className="z-30 sm:sticky sm:top-[97px] xl:top-[65px] -mx-4 mt-4 bg-bg/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
@@ -442,8 +460,11 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
           <div className="masonry">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} style={{ height: 160 + (i % 3) * 40 }} />)}</div>
         ) : !rows.length ? (
           <p className="rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">
-            {mine.length ? t("Tiada yang sepadan.", "Nothing matches.") : t("Belum ada item. Sapuan berjalan sekali sehari; tekan Sapu sekarang untuk mula.",
-              "No items yet. The sweep runs once a day; press Sweep now to start.")}
+            {mine.length ? t("Tiada yang sepadan.", "Nothing matches.") : own
+              ? t("Belum ada item. Sapuan berjalan dua kali sehari (05:10 dan 17:10); tekan Sapu sekarang untuk mula. Kalau ia terus kosong, jalankan supabase/024_sources.sql sekali.",
+                "No items yet. The sweep runs twice a day (05:10 and 17:10); press Sweep now to start. If it stays empty, run supabase/024_sources.sql once.")
+              : t("Belum ada item. Sapuan berjalan sekali sehari; tekan Sapu sekarang untuk mula.",
+                "No items yet. The sweep runs once a day; press Sweep now to start.")}
           </p>
         ) : view === "table" ? (
           <WatchTable rows={rows} onIdea={onIdea} onHide={hide} onRemove={remove} busyId={busyId} domainLabel={domainLabel} />

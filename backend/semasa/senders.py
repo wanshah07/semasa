@@ -387,12 +387,23 @@ class LinkedInMCP:
                 bodies.append(r.json())
             except ValueError as exc:
                 raise SendError("refused", f"Composio MCP answered {r.status_code} with no JSON") from exc
+        flat: list[Any] = []
         for b in bodies:
-            if isinstance(b, dict) and b.get("id") == msg["id"]:
+            flat.extend(b if isinstance(b, list) else [b])       # a JSON-RPC batch is a list of answers
+        for b in flat:
+            if not isinstance(b, dict):
+                continue
+            mine = str(b.get("id")) == str(msg["id"])
+            # one request is in flight, so an error with no id at all (a server that could not read the request far
+            # enough to copy its id back) is the answer to it
+            orphan_error = b.get("id") is None and b.get("error")
+            if mine or orphan_error:
                 if b.get("error"):
                     raise SendError("refused", f"Composio MCP {method}: {_message(b)}")
                 return b.get("result") or {}
-        raise SendError("transient", f"Composio MCP {method}: no answer for request {msg['id']}")
+        seen = str(getattr(r, "text", ""))[:300].replace("\n", " ")
+        raise SendError("transient", f"Composio MCP {method}: no answer for request {msg['id']} "
+                                     f"(HTTP {r.status_code}, {ctype or 'no content-type'}, body starts: {seen!r})")
 
     def _open(self) -> None:
         if self.sid is not None or self.n:

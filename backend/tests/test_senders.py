@@ -251,3 +251,19 @@ def test_publisher_prefers_the_for_you_key(monkeypatch):
     monkeypatch.delenv("COMPOSIO_CONSUMER_KEY")
     c = publisher.make_clients({"channels": {"linkedin": {"author": "urn:li:person:X"}}})
     assert isinstance(c["linkedin"], senders.LinkedIn)
+
+
+def test_mcp_string_ids_batches_and_orphan_errors_are_read():
+    s = opened(MResp(body=[{"jsonrpc": "2.0", "id": "2", "result": LI_LIST}]))
+    assert senders.LinkedInMCP("ck", "urn:li:person:X", session=s).account() == "linkedin_abc"
+    s = opened(MResp(body={"jsonrpc": "2.0", "id": None, "error": {"code": -32602, "message": "bad arguments"}}))
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedInMCP("ck", "urn:li:person:X", session=s).account()
+    assert e.value.kind == "refused" and "bad arguments" in e.value.message
+
+
+def test_mcp_an_unmatched_answer_says_what_came_back():
+    s = opened(MResp(body={"jsonrpc": "2.0", "id": 99, "result": {}}, text='{"jsonrpc":"2.0","id":99}'))
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedInMCP("ck", "urn:li:person:X", session=s).account()
+    assert e.value.kind == "transient" and "HTTP 200" in e.value.message and '"id":99' in e.value.message

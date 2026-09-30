@@ -74,7 +74,23 @@ def check_composio(settings: dict) -> list[str]:
         print(f"Composio: a picture uploads (key {up['s3key'][:12]}…); nothing was posted")
         return []
     except senders.SendError as exc:
-        return [f"Composio: {exc.message}"]
+        return [f"Composio: {exc.message}", *what_the_key_sees(li)]
+
+
+def what_the_key_sees(li: senders.LinkedIn) -> list[str]:
+    """When the LinkedIn connection is not found, say what this key DOES see, so 'wrong project' and 'wrong filter'
+    can be told apart without another round trip. Names, statuses and the first 6 characters of an id only."""
+    try:
+        body = li._call("GET", "/api/v3/connected_accounts", params={"limit": 50})
+    except senders.SendError as exc:
+        return [f"Composio: listing every connection failed too: {exc.message}"]
+    items = body.get("items") or []
+    lines = [f"Composio: this key sees {len(items)} connected account(s) in total (response keys: {sorted(body)})"]
+    for it in items:
+        tk = it.get("toolkit") or {}
+        lines.append(f"Composio:   toolkit={tk.get('slug') if isinstance(tk, dict) else tk} status={it.get('status')} "
+                     f"id={str(it.get('id'))[:6]}… alias={it.get('alias') or it.get('word_id') or '-'}")
+    return lines
 
 
 def main() -> int:

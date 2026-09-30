@@ -249,3 +249,236 @@ class LinkedIn:
             # it may have posted: never let the publisher try again on its own
             raise SendError("refused", f"LinkedIn answered without a post id: {str(data)[:300]}")
         return LinkedInResult(urn=urn, url=f"https://www.linkedin.com/feed/update/{urn}/")
+
+
+# --- Composio For You (LinkedIn over MCP) --------------------------------------------------------------------------
+#
+# Wan, 30 Sep 2026: the LinkedIn connection lives in Composio's FOR YOU workspace (the one ws.regulab Studio and
+# Claude use), not in any Platform project, so a Platform key (COMPOSIO_API_KEY, x-api-key) can never see it. The
+# For You side is reached only through its MCP endpoint with the consumer key (COMPOSIO_CONSUMER_KEY, header
+# x-consumer-api-key). Its tools are Composio's meta tools, so the picture upload and the post both run inside the
+# Composio workbench, exactly as Studio did:
+#   call 1  fetch each card by URL and put it through upload_local_file  -> s3keys   (safe to retry: nothing posted)
+#   call 2  run_composio_tool(LINKEDIN_CREATE_LINKED_IN_POST)            -> urn      (NEVER retried: may have posted)
+
+MCP_URL = os.environ.get("COMPOSIO_MCP_URL", "https://connect.composio.dev/mcp")
+MCP_PROTOCOL = "2025-03-26"
+_MARK = "SEMASA_RESULT "
+
+_UPLOAD_CELL = """
+import json, base64, os, mimetypes, requests
+def _semasa():
+    urls = json.loads(base64.b64decode("{urls}").decode())
+    os.makedirs("/home/user/semasa", exist_ok=True)
+    out = []
+    for i, u in enumerate(urls, 1):
+        r = requests.get(u, timeout=60)
+        ct = (r.headers.get("content-type") or "").split(";")[0].strip()
+        if r.status_code != 200 or not ct.startswith("image/"):
+            why = f"picture {{i}} answered {{r.status_code}} {{ct or 'no type'}}: {{u}}"
+            return {{"ok": False, "kind": "refused", "message": why}}
+        name = f"slide-{{i:02d}}" + (mimetypes.guess_extension(ct) or ".jpg")
+        path = "/home/user/semasa/" + name
+        with open(path, "wb") as fh:
+            fh.write(r.content)
+        res, err = upload_local_file(path)
+        if err:
+            return {{"ok": False, "kind": "transient", "message": f"picture {{i}} upload failed: {{err}}"}}
+        key = (res or {{}}).get("s3key") or ((res or {{}}).get("data") or {{}}).get("s3key")
+        if not key:
+            return {{"ok": False, "kind": "transient", "message": f"picture {{i}} upload gave no s3key: {{str(res)[:200]}}"}}
+        out.append({{"name": name, "mimetype": ct, "s3key": key}})
+    return {{"ok": True, "images": out}}
+try:
+    _r = _semasa()
+except Exception as _e:
+    _r = {{"ok": False, "kind": "transient", "message": f"{{type(_e).__name__}}: {{_e}}"}}
+print("{mark}" + json.dumps(_r))
+"""
+
+_POST_CELL = """
+import json, base64
+_args = json.loads(base64.b64decode("{args}").decode())
+try:
+    _res, _err = run_composio_tool("{tool}", _args{account})
+    _r = {{"err": str(_err) if _err else "", "res": _res}}
+except Exception as _e:
+    _r = {{"err": f"{{type(_e).__name__}}: {{_e}}", "res": None}}
+print("{mark}" + json.dumps(_r, default=str))
+"""
+
+
+def _b64(obj: Any) -> str:
+    import base64
+    import json
+    return base64.b64encode(json.dumps(obj, ensure_ascii=False).encode()).decode()
+
+
+def _find_urn(obj: Any) -> str:
+    """The post's urn wherever the workbench nested it (x_restli_id first, then any id that is a urn)."""
+    if isinstance(obj, dict):
+        for k in ("x_restli_id", "id"):
+            v = obj.get(k)
+            if isinstance(v, str) and v.startswith("urn:li:"):
+                return v
+        for v in obj.values():
+            found = _find_urn(v)
+            if found:
+                return found
+    elif isinstance(obj, list):
+        for v in obj:
+            found = _find_urn(v)
+            if found:
+                return found
+    return ""
+
+
+class LinkedInMCP:
+    """LinkedIn through Composio For You's MCP endpoint and the consumer key. Same face as LinkedIn above (post,
+    account), so the publisher does not care which road it is given."""
+
+    def __init__(self, consumer_key: str, author: str, session: Any = None, url: str = MCP_URL,
+                 account_id: str | None = None):
+        self.key, self.author, self.url = consumer_key, author, url
+        self.http = session or requests.Session()
+        self.account_id = account_id
+        self.sid: str | None = None
+        self.n = 0
+
+    # the wire -------------------------------------------------------------------------------------------------------
+    def _rpc(self, method: str, params: dict[str, Any] | None = None, note: bool = False) -> dict[str, Any]:
+        import json
+        headers = {"x-consumer-api-key": self.key, "Content-Type": "application/json",
+                   "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": MCP_PROTOCOL}
+        if self.sid:
+            headers["Mcp-Session-Id"] = self.sid
+        msg: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
+        if params is not None:
+            msg["params"] = params
+        if not note:
+            self.n += 1
+            msg["id"] = self.n
+        try:
+            r = self.http.post(self.url, json=msg, headers=headers, timeout=240)
+        except requests.RequestException as exc:
+            raise SendError("transient", f"Composio MCP unreachable: {exc}") from exc
+        sid = (r.headers or {}).get("Mcp-Session-Id") or (r.headers or {}).get("mcp-session-id")
+        if sid:
+            self.sid = sid
+        if r.status_code in (401, 403):
+            raise SendError("refused", f"Composio MCP answered {r.status_code}: check the COMPOSIO_CONSUMER_KEY secret")
+        if r.status_code == 429 or r.status_code >= 500:
+            raise SendError("transient", f"Composio MCP answered {r.status_code}")
+        if note:
+            return {}
+        if r.status_code >= 400:
+            raise SendError("refused", f"Composio MCP answered {r.status_code}: {str(getattr(r, 'text', ''))[:300]}")
+        ctype = ((r.headers or {}).get("content-type") or (r.headers or {}).get("Content-Type") or "").lower()
+        bodies: list[Any] = []
+        if "text/event-stream" in ctype:
+            for line in str(r.text).splitlines():
+                if line.startswith("data:"):
+                    try:
+                        bodies.append(json.loads(line[5:].strip()))
+                    except ValueError:
+                        continue
+        else:
+            try:
+                bodies.append(r.json())
+            except ValueError as exc:
+                raise SendError("refused", f"Composio MCP answered {r.status_code} with no JSON") from exc
+        for b in bodies:
+            if isinstance(b, dict) and b.get("id") == msg["id"]:
+                if b.get("error"):
+                    raise SendError("refused", f"Composio MCP {method}: {_message(b)}")
+                return b.get("result") or {}
+        raise SendError("transient", f"Composio MCP {method}: no answer for request {msg['id']}")
+
+    def _open(self) -> None:
+        if self.sid is not None or self.n:
+            return
+        self._rpc("initialize", {"protocolVersion": MCP_PROTOCOL, "capabilities": {},
+                                 "clientInfo": {"name": "semasa-publisher", "version": "1"}})
+        self._rpc("notifications/initialized", note=True)
+
+    def _tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """One meta tool call; returns the JSON Composio put in the text content."""
+        import json
+        self._open()
+        res = self._rpc("tools/call", {"name": name, "arguments": arguments})
+        text = "".join(c.get("text", "") for c in res.get("content") or [] if isinstance(c, dict))
+        try:
+            body = json.loads(text) if text else {}
+        except ValueError:
+            body = {"raw": text}
+        if res.get("isError"):
+            raise SendError(classify(text), f"Composio {name}: {text[:300]}")
+        return body if isinstance(body, dict) else {"raw": body}
+
+    def _cell(self, code: str, thought: str) -> dict[str, Any]:
+        import json
+        body = self._tool("COMPOSIO_REMOTE_WORKBENCH", {"code_to_execute": code, "thought": thought})
+        data = body.get("data") or {}
+        for line in str(data.get("stdout") or "").splitlines():
+            if line.startswith(_MARK):
+                return json.loads(line[len(_MARK):])
+        raise SendError("transient", f"workbench gave no result: {str(data.get('error') or data.get('stderr') or body)[:300]}")
+
+    # the face -------------------------------------------------------------------------------------------------------
+    def account(self) -> str:
+        if self.account_id:
+            return self.account_id
+        body = self._tool("COMPOSIO_MANAGE_CONNECTIONS", {"toolkits": [{"name": "linkedin", "action": "list"}]})
+        accts = (((body.get("data") or {}).get("results") or {}).get("linkedin") or {}).get("accounts") or []
+        live = [a for a in accts if str(a.get("status", "")).lower() == "active"]
+        if len(live) != 1:
+            raise SendError("refused", f"Composio For You: expected exactly 1 active LinkedIn connection, found {len(live)}")
+        who = (live[0].get("user_info") or {}).get("sub")
+        if who and not self.author.endswith(":" + who):
+            raise SendError("refused", f"Composio For You: the LinkedIn connection is {who}, not {self.author}")
+        self.account_id = live[0]["id"]
+        return self.account_id
+
+    def upload(self, urls: list[str]) -> list[dict[str, str]]:
+        r = self._cell(_UPLOAD_CELL.format(urls=_b64(urls), mark=_MARK), "Semasa: upload LinkedIn card pictures")
+        if not r.get("ok"):
+            raise SendError(r.get("kind") or "transient", str(r.get("message") or "picture upload failed"))
+        return r["images"]
+
+    def probe_upload(self) -> str:
+        """For the senders probe: a 1-pixel JPEG made inside the workbench goes through upload_local_file. Nothing posts."""
+        code = (
+            "import json\nfrom PIL import Image\n"
+            "try:\n"
+            "    Image.new('RGB', (1, 1), (255, 255, 255)).save('/home/user/semasa-probe.jpg', 'JPEG')\n"
+            "    _res, _err = upload_local_file('/home/user/semasa-probe.jpg')\n"
+            "    _k = (_res or {}).get('s3key') or ((_res or {}).get('data') or {}).get('s3key')\n"
+            "    _r = {'ok': bool(_k) and not _err, 'key': _k or '', 'message': str(_err or '')}\n"
+            "except Exception as _e:\n"
+            "    _r = {'ok': False, 'key': '', 'message': f'{type(_e).__name__}: {_e}'}\n"
+            f"print({_MARK!r} + json.dumps(_r))\n")
+        r = self._cell(code, "Semasa: probe the picture upload (nothing is posted)")
+        if not r.get("ok"):
+            raise SendError("transient", f"probe picture upload failed: {r.get('message')}")
+        return r["key"]
+
+    def post(self, text: str, pictures: list[str]) -> LinkedInResult:
+        acct = self.account()
+        images = self.upload(pictures[:20]) if pictures else []
+        args: dict[str, Any] = {"author": self.author, "commentary": text, "visibility": "PUBLIC"}
+        if images:
+            args["images"] = images
+        code = _POST_CELL.format(args=_b64(args), tool=LINKEDIN_TOOL, account=f", account={acct!r}", mark=_MARK)
+        try:
+            r = self._cell(code, "Semasa: post to LinkedIn")
+        except SendError as exc:
+            # the post call went out: whatever happened, it may be on LinkedIn, so never let the publisher retry
+            raise SendError("refused", f"LinkedIn refused or unconfirmed: {exc.message}") from exc
+        res = r.get("res")
+        if r.get("err") or (isinstance(res, dict) and res.get("successful") is False):
+            msg = r.get("err") or (res or {}).get("error") or "no reason given"
+            raise SendError("refused", f"LinkedIn refused: {msg}")
+        urn = _find_urn(res)
+        if not urn:
+            raise SendError("refused", f"LinkedIn answered without a post id: {str(res)[:300]}")
+        return LinkedInResult(urn=urn, url=f"https://www.linkedin.com/feed/update/{urn}/")

@@ -11,7 +11,7 @@ Wan approved in Studio arrives in Semasa already approved; a post he had not app
 | # | What | Where |
 |---|------|-------|
 | 1 | `BUFFER_API_KEY` secret | publish.buffer.com/settings/api → GitHub → semasa → Settings → Secrets → Actions |
-| 2 | `COMPOSIO_API_KEY` secret | Composio dashboard → Settings → API Keys → same place |
+| 2 | `COMPOSIO_CONSUMER_KEY` secret (the **For You** key, `ck_…`: the workspace that holds the LinkedIn connection) | Composio → Switch → For You → Connect my agent → MCP URL → Your API Key → **Copy** (never Regenerate: that cuts off Claude too) → same place. The old `COMPOSIO_API_KEY` (Platform) is ignored while this one is set |
 | 3 | Run `supabase/023_go_live.sql` once | Supabase (KPI project) → SQL editor. The last select must return one row |
 | 4 | Run **Senders probe** once | GitHub → Actions → Senders probe → Run workflow. Green = both roads open, nothing posted |
 

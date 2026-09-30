@@ -2,7 +2,8 @@ name: Senders probe
 
 # Proves both roads out (Buffer for ws.regulab, Composio for LinkedIn) with the repository's own secrets, SENDING
 # NOTHING: it reads the Buffer account and channels, finds the LinkedIn connection, and pushes a 1-pixel picture
-# through Composio's upload. Run it by hand after adding BUFFER_API_KEY / COMPOSIO_API_KEY (backend/semasa/probe.py).
+# through Composio's upload. Run it by hand after adding BUFFER_API_KEY and COMPOSIO_CONSUMER_KEY (For You; or the
+# older COMPOSIO_API_KEY for a Platform project) (backend/semasa/probe.py).
 on:
   workflow_dispatch:
 
@@ -32,4 +33,5 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+          COMPOSIO_CONSUMER_KEY: ${{ secrets.COMPOSIO_CONSUMER_KEY }}
         run: python -m semasa.probe

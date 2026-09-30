@@ -251,3 +251,46 @@ def test_publisher_prefers_the_for_you_key(monkeypatch):
     monkeypatch.delenv("COMPOSIO_CONSUMER_KEY")
     c = publisher.make_clients({"channels": {"linkedin": {"author": "urn:li:person:X"}}})
     assert isinstance(c["linkedin"], senders.LinkedIn)
+
+
+def test_mcp_string_ids_batches_and_orphan_errors_are_read():
+    s = opened(MResp(body=[{"jsonrpc": "2.0", "id": "2", "result": LI_LIST}]))
+    assert senders.LinkedInMCP("ck", "urn:li:person:X", session=s).account() == "linkedin_abc"
+    s = opened(MResp(body={"jsonrpc": "2.0", "id": None, "error": {"code": -32602, "message": "bad arguments"}}))
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedInMCP("ck", "urn:li:person:X", session=s).account()
+    assert e.value.kind == "refused" and "bad arguments" in e.value.message
+
+
+def test_mcp_an_unmatched_answer_says_what_came_back(monkeypatch):
+    monkeypatch.setattr(senders.time, "sleep", lambda _s: None)       # listing connections gets one more try
+    odd = MResp(body={"jsonrpc": "2.0", "id": 99, "result": {}}, text='{"jsonrpc":"2.0","id":99}')
+    s = opened(odd, odd)
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedInMCP("ck", "urn:li:person:X", session=s).account()
+    assert e.value.kind == "transient" and "HTTP 200" in e.value.message and '"id":99' in e.value.message
+
+
+def test_mcp_sse_answer_with_a_check_mark_is_not_cut_in_half():
+    """The live answer carried a ✅ (E2 9C 85). Decoded as Latin-1 that holds U+0085, which str.splitlines() splits on."""
+    inner = json.dumps({"data": {"stdout": "✅ uploaded\n" + senders._MARK + json.dumps(
+        {"ok": True, "key": "s3/k"}) + "\n"}})
+    line = json.dumps({"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": inner}]}},
+                      ensure_ascii=False)
+    raw = (": connected\n\nevent: message\ndata: " + line + "\n\n").encode("utf-8")
+    sse = MResp(headers={"content-type": "text/event-stream"}, text=raw.decode("latin-1"))
+    sse.content = raw                                    # what requests holds; .text is its Latin-1 guess
+    s = opened(sse)                                      # probe_upload goes straight to the workbench: request 2
+    assert senders.LinkedInMCP("ck", "urn:li:person:X", session=s).probe_upload() == "s3/k"
+
+
+def test_mcp_opening_and_listing_get_one_more_try_on_a_502_but_the_post_never_does(monkeypatch):
+    monkeypatch.setattr(senders.time, "sleep", lambda _s: None)
+    s = Session(MResp(status=502), MResp(body={"jsonrpc": "2.0", "id": 2, "result": {}},
+                                         headers={"content-type": "application/json", "Mcp-Session-Id": "sid-2"}),
+                MResp(status=202), rpc(3, LI_LIST))
+    assert senders.LinkedInMCP("ck", "urn:li:person:X", session=s).account() == "linkedin_abc"
+    s = opened(rpc(2, LI_LIST), MResp(status=502))       # the post call itself answers 502: one call, no second try
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedInMCP("ck", "urn:li:person:X", session=s).post("t", [])
+    assert e.value.kind == "refused" and len(s.calls) == 4

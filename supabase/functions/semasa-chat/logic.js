@@ -82,3 +82,27 @@ export function checkReport(wanted, models, image) {
         : { tested: true, reads: sawRed, answer: String(image.answer || "").slice(0, 80) },
   };
 }
+
+/** Who is this login token? The same call supabase-js auth.getUser makes (GET {url}/auth/v1/user), done by hand so that
+    when it fails the answer says WHAT came back. Found 1 Oct 2026: getUser threw "Unexpected token '<' ... is not valid
+    JSON", which says the auth endpoint answered HTML and nothing about which host, which status or what it said.
+    Returns {user} or {why}; the token and the keys are never part of `why`. */
+export async function whoIs(fetchFn, url, anon, token) {
+  let host = "?";
+  try { host = new URL(url).host; } catch { /* keep "?" */ }
+  try {
+    const r = await fetchFn(url.replace(/\/+$/, "") + "/auth/v1/user", {
+      headers: { apikey: anon, authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000),
+    });
+    const type = (r.headers.get("content-type") || "").split(";")[0] || "no content-type";
+    const text = await r.text();
+    let j = null;
+    try { j = JSON.parse(text); } catch { /* HTML or empty */ }
+    if (r.ok && j && j.id) return { user: j };
+    const said = j ? String(j.msg || j.message || j.error_description || j.error || "").slice(0, 100)
+      : text.replace(/\s+/g, " ").trim().slice(0, 80);
+    return { why: `auth at ${host} answered HTTP ${r.status} (${type}): ${said || "empty"}` };
+  } catch (e) {
+    return { why: `could not reach auth at ${host}: ${String((e && e.message) || e).slice(0, 100)}` };
+  }
+}

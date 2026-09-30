@@ -57,50 +57,67 @@ function Unconfigured() {
   );
 }
 
-const SEGMENTS = ["isu", "regulatory", "publication"];
+const SEGMENTS = ["isu", "regulatory", "publication", "reddit", "youtube", "folder", "myra"];
+
+/* The words above each segment that is not the news headlines. Reddit, YouTube, OneDrive and MYRA are Wan's own sources
+   (supabase/024, backend/semasa/intake.py): each is a tab here, over the same semasa_watch rows. */
+function segCopy(seg, t) {
+  const copy = {
+    regulatory: [t("Regulatori", "Regulatory"), t("Apa yang pengawal selia umumkan, terus dari sumbernya.", "What the regulators announce, straight from the source."),
+      t("Disapu sekali sehari daripada halaman NPRA, Portal Halal Malaysia, HSA Singapura, SCCS EU, OPSS UK dan NMPA China sendiri. AI meringkaskan setiap notis dalam BM, memilih domain dan menulis kenapa ia penting.",
+        "Swept once a day from the own pages of NPRA, Portal Halal Malaysia, HSA Singapore, EU SCCS, UK OPSS and China NMPA. AI summarises each notice in Malay, picks its domain and says why it matters.")],
+    publication: [t("Penerbitan terkini", "Latest publications"), t("Kajian terbaharu tentang kosmetik, kulit dan halal.", "The newest research on cosmetics, skin and halal."),
+      t("Disapu sekali sehari daripada PubMed: kertas 14 hari terakhir tentang sains kosmetik, dermatologi pengguna, sains halal dan bahan cemar kosmetik. Pengarang, jurnal dan DOI ikut sekali ke idea.",
+        "Swept once a day from PubMed: papers from the last 14 days on cosmetic science, consumer dermatology, halal science and cosmetic contaminants. Authors, journal and DOI travel with the idea.")],
+    reddit: ["Reddit", t("Apa yang orang Malaysia sedang bertengkar, minggu ini.", "What Malaysians are arguing about this week."),
+      t("Benang r/malaysia paling banyak komen tentang halal, kosmetik, krim sunscreen, suplemen dan label. Setiap baris ialah kepercayaan yang perlu dibetulkan, ditulis semula secara neutral: platform dan pautannya tidak masuk ke dalam post.",
+        "The most-commented r/malaysia threads on halal, cosmetics, sunscreen, supplements and labels. Each row is the belief to correct, rewritten neutrally: the platform and its link never reach a post.")],
+    youtube: ["YouTube", t("Video yang sedang ditonton dan dipertikaikan.", "The videos people are watching and disputing."),
+      t("Video paling ditonton dalam 14 hari terakhir tentang kulit, sunscreen dan halal di Malaysia. Bilangan tontonan ialah angka sebenar daripada YouTube. Kuota carian YouTube dikongsi dan kadang-kadang habis; kalau begitu Reddit tetap berjalan.",
+        "The most-watched videos of the last 14 days on skin, sunscreen and halal in Malaysia. View counts are YouTube's own. The search quota is shared and sometimes runs out; Reddit carries on when it does.")],
+    folder: ["OneDrive", t("Sudut siaran daripada perpustakaan rujukan anda.", "Post angles from your own reference library."),
+      t("Setiap fail dalam /40. HERMES dibaca sekali: sehingga 8 sudut, tiada nama pelanggan atau nombor fail. Matriks siaran LabMuffin masuk baris demi baris. Folder “urgent post/DDMMYY” untuk hari ini atau esok didahulukan.",
+        "Each file in /40. HERMES is read once: up to 8 angles, no client names or file numbers. The LabMuffin post matrix comes in row by row. An “urgent post/DDMMYY” folder for today or tomorrow goes first.")],
+    myra: ["MYRA", t("Penemuan harian daripada Daftar Peraturan Kosmetik Global.", "Daily findings from the Global Cosmetic Reg Daily Log."),
+      t("Dibaca terus daripada lembaran MYRA (baca sahaja). Hanya baris “Ada Update? = Yes”; setiap penemuan dalam Ringkasan ialah satu baris. Kalau satu pautan dikongsi beberapa penemuan, ia ditandakan.",
+        "Read straight from MYRA's sheet (read only). Only rows with “Ada Update? = Yes”; each finding in the Ringkasan is one row. A link shared by several findings is flagged.")],
+  };
+  return copy[seg] || copy.publication;
+}
 
 function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, save, brand, user }) {
   const { t } = useLang();
   const [segRaw, setSeg] = useView("isu.segment", "isu");
   const seg = SEGMENTS.includes(segRaw) ? segRaw : "isu";
   // the two watch segments share one list; it is read only while one of them is open
-  const watch = useTable(TABLES.watch, { enabled: allowed && seg !== "isu", limit: 600, realtime: false, everyMs: 120_000 });
+  const watch = useTable(TABLES.watch, { enabled: allowed && seg !== "isu", limit: 900, realtime: false, everyMs: 120_000 });
   const segTabs = (
     <div role="tablist" aria-label={t("Segmen", "Segments")} className="mb-5 flex flex-wrap gap-1.5">
       {[["isu", t("Isu semasa", "Current issues")], ["regulatory", t("Regulatori", "Regulatory")],
-        ["publication", t("Penerbitan terkini", "Latest publications")]].map(([v, l]) => (
+        ["publication", t("Penerbitan terkini", "Latest publications")], ["reddit", "Reddit"], ["youtube", "YouTube"],
+        ["folder", "OneDrive"], ["myra", "MYRA"]].map(([v, l]) => (
         <button type="button" key={v} role="tab" aria-selected={seg === v} onClick={() => setSeg(v)}
           className={`rounded-pill px-4 py-2 text-sm font-medium ${seg === v ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>{l}</button>
       ))}
     </div>
   );
   if (seg !== "isu") {
-    const reg = seg === "regulatory";
+    const [eyebrow, headline, blurb] = segCopy(seg, t);
     return (
       <>
         <section className="hero-bg">
           <div className="mx-auto max-w-page px-4 pb-8 pt-12 sm:px-6 sm:pt-16">
             <motion.div variants={fadeUp} initial="hidden" animate="show">
               {segTabs}
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">
-                {reg ? t("Regulatori", "Regulatory") : t("Penerbitan terkini", "Latest publications")}</p>
-              <h1 className="mt-2 max-w-3xl text-4xl leading-[1.05] sm:text-5xl">
-                {reg ? t("Apa yang pengawal selia umumkan, terus dari sumbernya.", "What the regulators announce, straight from the source.")
-                  : t("Kajian terbaharu tentang kosmetik, kulit dan halal.", "The newest research on cosmetics, skin and halal.")}
-              </h1>
-              <p className="mt-4 max-w-2xl text-sm text-muted sm:text-base">
-                {reg
-                  ? t("Disapu sekali sehari daripada halaman NPRA, Portal Halal Malaysia, HSA Singapura, SCCS EU, OPSS UK dan NMPA China sendiri. AI meringkaskan setiap notis dalam BM, memilih domain dan menulis kenapa ia penting.",
-                    "Swept once a day from the own pages of NPRA, Portal Halal Malaysia, HSA Singapore, EU SCCS, UK OPSS and China NMPA. AI summarises each notice in Malay, picks its domain and says why it matters.")
-                  : t("Disapu sekali sehari daripada PubMed: kertas 14 hari terakhir tentang sains kosmetik, dermatologi pengguna, sains halal dan bahan cemar kosmetik. Pengarang, jurnal dan DOI ikut sekali ke idea.",
-                    "Swept once a day from PubMed: papers from the last 14 days on cosmetic science, consumer dermatology, halal science and cosmetic contaminants. Authors, journal and DOI travel with the idea.")}
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{eyebrow}</p>
+              <h1 className="mt-2 max-w-3xl text-4xl leading-[1.05] sm:text-5xl">{headline}</h1>
+              <p className="mt-4 max-w-2xl text-sm text-muted sm:text-base">{blurb}</p>
             </motion.div>
           </div>
         </section>
         {allowed ? (
           <main className="mx-auto max-w-page px-4 pb-20 sm:px-6">
-            <WatchSegment section={seg} watch={watch} setting={settings.watch} saveSetting={save} brand={brand} user={user}
+            <WatchSegment section={seg} watch={watch} setting={["reddit", "youtube", "folder", "myra"].includes(seg) ? settings.sources : settings.watch} saveSetting={save} brand={brand} user={user}
               onIdea={onIdea ? (r) => onIdea(watchIdea(r, brand)) : undefined} onToast={onToast} />
           </main>
         ) : gateNode}

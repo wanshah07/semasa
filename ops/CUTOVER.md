@@ -65,6 +65,27 @@ a post from Friday 21:00 on is actually sent by Semasa.
 2. Re-enable Studio's release Routine (`trig_01SemfrrqFRXZ2Jf4LVXuPJe`) only after pausing, never while Semasa publishes:
    one publisher per Buffer account and LinkedIn profile.
 
+## What replaces Studio's three source-reading duties (added 30 Sep 2026)
+
+Wan: *"port all three before Friday"*. They run from `sources.yml` (05:10 and 17:10 MYT, also woken by the database) through
+the Composio For You key, and they only ever write FEED ROWS in `semasa_watch` (`backend/semasa/intake.py`). Nothing drafts,
+approves or posts; a click on "Jadikan idea", or autofill from Fri 20:00, still ends in a draft that waits for Wan.
+
+| Studio Routine duty | Semasa | Tab (Isu semasa row) |
+|---|---|---|
+| Ideas sweep, Reddit pass (`REDDIT_SEARCH_ACROSS_SUBREDDITS`, r/malaysia, ranked by comments) | `community.py` | Reddit |
+| Ideas sweep, YouTube pass (`YOUTUBE_SEARCH_YOU_TUBE`, real view counts) | `community.py` | YouTube |
+| Nightly drafter §2, OneDrive `/40. HERMES` folders (+ `urgent post/DDMMYY`, + LabMuffin "Post Matrix") | `folders.py` + `autofill.py` | OneDrive |
+| "Cosmetic Reg Daily Sweep" reader (MYRA's sheet, read only) | `myra.py` | MYRA |
+
+Needs `supabase/024_sources.sql` once (four new sections, the twice-a-day clock, the "Sweep now" trigger). Until it is run,
+`SOURCES_DRY=1` reads and judges everything and stores nothing, and a real run stops with "024 has not been run".
+
+Known limits, so they are not discovered on the night: YouTube search runs on Composio's SHARED Google project, whose daily
+search quota was already used up on 30 Sep (the sweep reports it and Reddit carries on); `sains_kosmetik` has no folder (as
+in Studio) and is fed by the Latest publications tab; what the writer is sent from a OneDrive file is at most 12,000
+characters with e-mail addresses, phone numbers and company names masked, and `sources.folders.use_writer: false` stops it.
+
 ## Routines after cutover (8 → 2)
 
 | Routine | Fate |

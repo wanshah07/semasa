@@ -375,8 +375,15 @@ class LinkedInMCP:
             raise SendError("refused", f"Composio MCP answered {r.status_code}: {str(getattr(r, 'text', ''))[:300]}")
         ctype = ((r.headers or {}).get("content-type") or (r.headers or {}).get("Content-Type") or "").lower()
         bodies: list[Any] = []
+        # Decode the BYTES as UTF-8. requests guesses Latin-1 for a text/event-stream with no charset, which turns the
+        # ✅ in the workbench's own upload message (E2 9C 85) into a string holding U+0085, and str.splitlines() treats
+        # U+0085 as a line break: the answer's data line was cut in half, no JSON parsed, and the probe reported "no
+        # answer for request 3" while the answer, id 3 included, was sitting in the body (run 36655669614).
+        raw = getattr(r, "content", b"") or b""
+        text = raw.decode("utf-8", errors="replace") if raw else str(getattr(r, "text", ""))
         if "text/event-stream" in ctype:
-            for line in str(r.text).splitlines():
+            for line in text.split("\n"):
+                line = line.rstrip("\r")
                 if line.startswith("data:"):
                     try:
                         bodies.append(json.loads(line[5:].strip()))
@@ -401,15 +408,28 @@ class LinkedInMCP:
                 if b.get("error"):
                     raise SendError("refused", f"Composio MCP {method}: {_message(b)}")
                 return b.get("result") or {}
-        seen = str(getattr(r, "text", ""))[:300].replace("\n", " ")
+        seen = text[:300].replace("\n", " ")
         raise SendError("transient", f"Composio MCP {method}: no answer for request {msg['id']} "
                                      f"(HTTP {r.status_code}, {ctype or 'no content-type'}, body starts: {seen!r})")
+
+    @staticmethod
+    def _twice(fn: Any) -> Any:
+        """One more try, 2 seconds later, when Composio's gateway says 5xx/429 or does not answer. ONLY for calls that
+        cannot have posted anything: opening the session and listing connections (a 502 from connect.composio.dev
+        failed a probe run at exactly that step, run 36655570023). The post call never goes through here."""
+        try:
+            return fn()
+        except SendError as exc:
+            if exc.kind != "transient":
+                raise
+            time.sleep(2)
+            return fn()
 
     def _open(self) -> None:
         if self.sid is not None or self.n:
             return
-        self._rpc("initialize", {"protocolVersion": MCP_PROTOCOL, "capabilities": {},
-                                 "clientInfo": {"name": "semasa-publisher", "version": "1"}})
+        self._twice(lambda: self._rpc("initialize", {"protocolVersion": MCP_PROTOCOL, "capabilities": {},
+                                                     "clientInfo": {"name": "semasa-publisher", "version": "1"}}))
         self._rpc("notifications/initialized", note=True)
 
     def _tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -439,7 +459,8 @@ class LinkedInMCP:
     def account(self) -> str:
         if self.account_id:
             return self.account_id
-        body = self._tool("COMPOSIO_MANAGE_CONNECTIONS", {"toolkits": [{"name": "linkedin", "action": "list"}]})
+        body = self._twice(lambda: self._tool("COMPOSIO_MANAGE_CONNECTIONS",
+                                              {"toolkits": [{"name": "linkedin", "action": "list"}]}))
         accts = (((body.get("data") or {}).get("results") or {}).get("linkedin") or {}).get("accounts") or []
         live = [a for a in accts if str(a.get("status", "")).lower() == "active"]
         if len(live) != 1:

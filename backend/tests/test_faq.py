@@ -115,6 +115,40 @@ def test_run_records_failures_and_skips_without_the_table(monkeypatch):
     assert faq.run(NoTable(), FakeLLM(GOOD)).startswith("FAQ: skipped")
 
 
+def _waiting(n):
+    return [{"id": f"w{i:02d}", "status": "new", "created_at": f"{i:02d}", "attempts": 0, "raw_question": f"Soalan {i}?",
+             "raw_answer": "Jawapan.", "source_kind": "paste"} for i in range(n)]
+
+
+def test_one_run_drains_a_long_queue_in_batches(monkeypatch):
+    """49 questions added at once from a spreadsheet (1 Oct 2026) used to take one batch of 8 per 15-minute run."""
+    monkeypatch.delenv("FAQ_SHEET_URL", raising=False)
+    store = _store(*_waiting(20))
+    note = faq.run(store, FakeLLM(GOOD), limit=8)
+    assert [r["status"] for r in store.tables["semasa_faqs"]] == ["ready"] * 20
+    assert "20/20 rewritten" in note
+
+
+def test_the_drain_stops_at_its_time_cap_and_leaves_the_rest_waiting(monkeypatch):
+    monkeypatch.delenv("FAQ_SHEET_URL", raising=False)
+    store = _store(*_waiting(20))
+    note = faq.run(store, FakeLLM(GOOD), limit=8, drain_seconds=0)
+    states = [r["status"] for r in store.tables["semasa_faqs"]]
+    assert states.count("ready") == 8 and states.count("new") == 12 and "working" not in states
+    assert "8/8 rewritten" in note
+    # the next run takes up where this one stopped
+    faq.run(store, FakeLLM(GOOD), limit=8, drain_seconds=0)
+    assert [r["status"] for r in store.tables["semasa_faqs"]].count("ready") == 16
+
+
+def test_a_failing_entry_does_not_hold_the_drain_in_a_loop(monkeypatch):
+    monkeypatch.delenv("FAQ_SHEET_URL", raising=False)
+    store = _store(*_waiting(10))
+    faq.run(store, FakeLLM(None), limit=4)         # the writer answers nothing: each becomes an error once
+    rows = store.tables["semasa_faqs"]
+    assert [r["status"] for r in rows] == ["error"] * 10 and all(r["attempts"] == 1 for r in rows)
+
+
 # --- the sheet --------------------------------------------------------------------------
 
 def _ready(i, cat):

@@ -23,6 +23,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,7 @@ CATEGORIES_PATH = Path(__file__).resolve().parents[2] / "rules" / "faq_categorie
 DEFAULT_CATEGORIES: list[dict[str, Any]] = json.loads(CATEGORIES_PATH.read_text(encoding="utf-8"))["categories"]
 STALE_MINUTES = 30
 RAW_MAX = 6000
+DRAIN_SECONDS = 600          # one run keeps taking batches for this long, then leaves the rest for the next run
 
 SYSTEM = """You turn a question and its answer into one clean FAQ entry, in Malaysian Malay AND English, for a
 Malaysian regulatory-affairs knowledge base (halal, cosmetics, skincare, food, pharmaceuticals and supplements).
@@ -284,9 +286,15 @@ def claim(store: Any, limit: int) -> list[dict[str, Any]]:
     return got
 
 
-def run(store: Any, llm: LLM, limit: int | None = None) -> str:
-    """Rewrite waiting entries, then mirror the list to the sheet. Never raises."""
+def run(store: Any, llm: LLM, limit: int | None = None, drain_seconds: float | None = None) -> str:
+    """Rewrite waiting entries, then mirror the list to the sheet. Never raises.
+
+    It takes batches of `limit` (FAQ_BATCH, 8) until nothing is waiting or `drain_seconds` (FAQ_RUN_SECONDS, ten minutes)
+    have passed. One batch per run left a long queue waiting a quarter of an hour per eight entries: 49 questions added at
+    once from a spreadsheet (1 Oct 2026) would have taken over an hour. The time cap keeps the ideas, video and media steps
+    that follow inside the job's own budget, and what is left stays `new` for the next run."""
     limit = limit or int(os.environ.get("FAQ_BATCH") or 8)
+    drain = float(os.environ.get("FAQ_RUN_SECONDS") or DRAIN_SECONDS) if drain_seconds is None else drain_seconds
     try:
         recovered = recover_stale(store)
         rows = claim(store, limit)
@@ -299,16 +307,27 @@ def run(store: Any, llm: LLM, limit: int | None = None) -> str:
     declined = faq_sort.declined_of(settings)
     grown: list[tuple[str, str]] = []
     ok = 0
-    for row in rows:
+    taken = 0
+    started = time.monotonic()
+    while rows:
+        taken += len(rows)
+        for row in rows:
+            try:
+                process(store, llm, row, cats, (settings.get("bahasa") or {}).get("indo"), grown, declined)
+                ok += 1
+                log.info("faq %s ready", row["id"])
+            except Exception as exc:  # noqa: BLE001 - recorded on the entry
+                msg = str(exc) if isinstance(exc, FaqError) else f"{type(exc).__name__}: {str(exc)[:400]}"
+                log.error("faq %s: %s", row["id"], msg)
+                store.table(FAQS).update({"status": "error", "error": msg[:800]}).eq("id", row["id"]).execute()
+        if time.monotonic() - started >= drain:
+            break
         try:
-            process(store, llm, row, cats, (settings.get("bahasa") or {}).get("indo"), grown, declined)
-            ok += 1
-            log.info("faq %s ready", row["id"])
-        except Exception as exc:  # noqa: BLE001 - recorded on the entry
-            msg = str(exc) if isinstance(exc, FaqError) else f"{type(exc).__name__}: {str(exc)[:400]}"
-            log.error("faq %s: %s", row["id"], msg)
-            store.table(FAQS).update({"status": "error", "error": msg[:800]}).eq("id", row["id"]).execute()
-    note = f"FAQ: {ok}/{len(rows)} rewritten" + (f"; {recovered} stuck re-queued" if recovered else "")
+            rows = claim(store, limit)
+        except Exception as exc:  # noqa: BLE001 - what was done stays done
+            log.warning("FAQ: could not take the next batch: %s", exc)
+            break
+    note = f"FAQ: {ok}/{taken} rewritten" + (f"; {recovered} stuck re-queued" if recovered else "")
     if grown:
         try:
             faq_sort.save_growth(store, [], grown)

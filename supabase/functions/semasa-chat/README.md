@@ -74,6 +74,22 @@ web search is installed. If Mireld rejects tools the chat still answers, without
 - Conversations are listed, renamed and deleted from the page's history panel straight through row-level security; the function
   is not involved.
 
+## What keeps it safe (1 Oct 2026, "check the security and the flow")
+
+- **Who may call it**: a signed-in Semasa user, proved twice (the login token through `auth/v1/user`, then `semasa_is_uploader()`);
+  the public anon key alone is refused. The gateway's JWT verification stays on.
+- **How much**: a body over 40 MB is refused (413); per user, a window of 40 chat calls, 12 design reads, 20 FAQ reads and 10 checks
+  in 10 minutes, then 429 with `retry-after` (`logic.js RATE`, `allow`). Attachments: 6 pictures of 4 MB, 6 documents of 60,000
+  characters and 150,000 characters together.
+- **What the model can reach**: `fetch_url` is https only, no logins, no odd ports, no IP literals, no internal names, no supabase
+  host and never this project's own host, every resolved address checked and every redirect re-checked; `query_semasa` reads an
+  allow-list of tables through the caller's own login with secret-looking columns dropped; `remember` writes only when Wan's own
+  message asked. Everything a page, a search or a table returns is marked as untrusted data. One limit is honest to state: the
+  address check and the fetch are two steps, so a name that changes its address between them (DNS rebinding) is not caught; the
+  private-address refusal and the https-only rule are the defence in depth.
+- **What reaches the page**: answers are Markdown drawn as React elements, never HTML; links only http(s)/mailto, opened with
+  `noopener noreferrer`. The key never leaves the function.
+
 ## FAQ AI bar (`faq_extract`, 1 Oct 2026)
 
 Wan: *"for faq add AI bar that allow us to paste screenshot, image, upload pdf then AI will analyze and auto to categorize

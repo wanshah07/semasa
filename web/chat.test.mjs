@@ -344,3 +344,38 @@ t("a PDF read as pages and a workbook read as sheets become one attachment each;
   assert.deepEqual(foldAttachments(null), []);
 });
 console.log(`chat files: ok`);
+
+// ---- hardening (1 Oct 2026: "check the security and the flow") ------------------------------------------------------------
+import { OWN_HOSTS, RATE, allow, rateKind } from "../supabase/functions/semasa-chat/logic.js";
+t("fetch_url refuses the project's own hosts and any supabase host, and drops a fragment", () => {
+  assert.match(checkFetchUrl("https://mwaocnbgvbkhovktgods.supabase.co/rest/v1/semasa_posts").why, /own hosts/);
+  assert.match(checkFetchUrl("https://x.supabase.in/auth/v1/user").why, /own hosts/);
+  OWN_HOSTS.push("my.own.example");
+  assert.match(checkFetchUrl("https://my.own.example/x").why, /own hosts/);
+  OWN_HOSTS.pop();
+  assert.equal(checkFetchUrl("https://www.npra.gov.my/index.php/ms#top").url, "https://www.npra.gov.my/index.php/ms");
+});
+
+t("the rate guard allows up to the limit inside the window, then says how long to wait, and forgets old calls", () => {
+  const times = [];
+  for (let i = 0; i < 3; i++) assert.equal(allow(times, 1000 + i, 3, 10_000).ok, true);
+  const no = allow(times, 1005, 3, 10_000);
+  assert.equal(no.ok, false);
+  assert.equal(no.retryAfter, 10);
+  assert.equal(allow(times, 11_001, 3, 10_000).ok, true, "the first call fell out of the window");
+  assert.deepEqual(rateKind("design_clone"), "design"); assert.deepEqual(rateKind("design_refine"), "design");
+  assert.deepEqual(rateKind("faq_extract"), "faq"); assert.deepEqual(rateKind("models"), ""); assert.deepEqual(rateKind("chat"), "chat"); assert.deepEqual(rateKind(undefined), "chat");
+  assert.ok(RATE.chat[0] >= 20 && RATE.design[0] >= 4, "the limits leave room for real work");
+});
+
+t("documents together never exceed the total cap: the one that crosses it is cut, the next is named as skipped", () => {
+  const big = "y".repeat(LIMITS.fileChars);
+  const files = Array.from({ length: 5 }, (_, i) => ({ name: `d${i}.txt`, text: big }));
+  const { messages, sent } = buildMessages([user("x")], files);
+  const body = messages.at(-1).content;
+  const used = (body.match(/\[Fail: d\d\.txt\]/g) || []).length;
+  assert.equal(used, 3, "150k of 60k-character files is two whole ones and a third cut");
+  assert.ok(sent.skipped.some((s) => /had keseluruhan/.test(s)));
+  assert.ok(body.length < LIMITS.totalFileChars + 2000);
+});
+console.log("hardening: ok");

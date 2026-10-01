@@ -6,10 +6,7 @@
 
 import { tr } from "./i18n";
 
-export const FONTS = {
-  "Playfair Display": [700, 800], Anton: [400], Poppins: [600, 700, 800], "Instrument Sans": [400, 500, 600],
-  "JetBrains Mono": [400, 500], Caveat: [700],
-};
+export { FONTS } from "./fonts";
 
 /** { width, height, name, layers: [...] } for the editor to build; layers are plain descriptions, not Fabric objects. */
 export function fragranceSeed(render, meta, product) {

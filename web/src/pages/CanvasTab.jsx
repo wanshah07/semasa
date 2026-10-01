@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Canvas, Circle, FabricImage, Gradient, Group, Line, Point, Rect, Shadow, Textbox, Triangle } from "fabric";
+import { Canvas, Circle, Ellipse, FabricImage, Gradient, Group, Line, Point, Rect, Shadow, Textbox, Triangle } from "fabric";
 import { AlignCenterHorizontal, AlignCenterVertical, ArrowDown, ArrowLeft, ArrowUp, Bold, Circle as CircleIcon, Copy,
   Download, Eye, EyeOff, ImagePlus, Italic, Layers, Loader2, Lock, Maximize2, Minus, Plus, Redo2, Save, Square,
   Trash2, Triangle as TriangleIcon, Type, Undo2, Unlock } from "lucide-react";
 import { FONTS } from "../lib/canvasSeed";
+import { gradientCoords } from "../lib/designCloneSeed";
 import { setLeaveGuard } from "../lib/leaveGuard";
 import { timeAgo } from "../lib/format";
 import { tr, useLang } from "../lib/i18n";
@@ -677,6 +678,38 @@ function coverImage(img, w, h) {
   img.setCoords();
 }
 
+/** A gradient from a layout's {angle, stops}, in the object's own pixels. */
+function gradientOf(g, w, h) {
+  return new Gradient({ type: "linear", gradientUnits: "pixels", coords: gradientCoords(g.angle, w, h),
+    colorStops: g.stops.map((s) => ({ offset: s.at, color: s.color })) });
+}
+
+/** A rectangle or ellipse from a design-clone layer: a top-left box in pixels, solid or gradient fill, opacity, rounded corners. */
+function shapeLayer(L) {
+  const common = { left: L.x + L.w / 2, top: L.y + L.h / 2, opacity: L.opacity ?? 1,
+    fill: L.gradient ? gradientOf(L.gradient, L.w, L.h) : L.fill || "rgba(0,0,0,0)",
+    stroke: L.stroke || undefined, strokeWidth: L.stroke ? Math.max(1, L.strokeW || 1) : 0 };
+  if (L.ellipse) return new Ellipse({ ...common, rx: L.w / 2, ry: L.h / 2 });
+  return new Rect({ ...common, width: L.w, height: L.h, rx: L.radius || 0, ry: L.radius || 0 });
+}
+
+/** A picture area from a design-clone layer: the picture covers the box and is clipped to its shape; with no picture, a dashed empty box. */
+async function photoLayer(L, user, own) {
+  const cx = L.x + L.w / 2, cy = L.y + L.h / 2;
+  const clip = () => (L.shape === "ellipse" ? new Ellipse({ left: cx, top: cy, rx: L.w / 2, ry: L.h / 2, absolutePositioned: true })
+    : new Rect({ left: cx, top: cy, width: L.w, height: L.h, rx: L.shape === "rounded" ? Math.min(L.w, L.h) * 0.08 : 0, ry: L.shape === "rounded" ? Math.min(L.w, L.h) * 0.08 : 0, absolutePositioned: true }));
+  if (!L.url) {
+    const box = L.shape === "ellipse" ? new Ellipse({ left: cx, top: cy, rx: L.w / 2, ry: L.h / 2 }) : new Rect({ left: cx, top: cy, width: L.w, height: L.h, rx: L.shape === "rounded" ? Math.min(L.w, L.h) * 0.08 : 0 });
+    box.set({ fill: "rgba(128,128,128,0.28)", stroke: "rgba(255,255,255,0.7)", strokeWidth: 3, strokeDashArray: [14, 10] });
+    return box;
+  }
+  const img = await FabricImage.fromURL(L.url, { crossOrigin: "anonymous" });
+  const k = Math.max(L.w / img.width, L.h / img.height);
+  img.set({ left: cx, top: cy, scaleX: k, scaleY: k });
+  img.clipPath = clip();
+  return img;
+}
+
 function makeBadge(text, x, y, d) {
   const disc = new Circle({ left: x, top: y, radius: d / 2,
     fill: new Gradient({ type: "radial", gradientUnits: "percentage",
@@ -699,7 +732,7 @@ function tainted(err, t) {
 // the worker's own files are deleted with the design job (7 days unsaved, or the version not kept), and a Kanvas
 // design must not lose its background the week after.
 async function buildSeed(fc, seed, user, own) {
-  fc.backgroundColor = "#111111";
+  fc.backgroundColor = seed.bgColor || "#111111";
   const byName = {};
   const missed = [];
   for (const L of seed.layers) {
@@ -738,11 +771,19 @@ async function buildSeed(fc, seed, user, own) {
         // a Textbox widens itself to its longest word (dynamicMinWidth): shrink until that word fits the box
         while (obj.width > L.width + 1 && obj.fontSize > 12) { obj.set({ fontSize: obj.fontSize * 0.94, width: L.width }); obj.initDimensions(); }
       }
+      // a block of new words may be longer than the reference's: shrink until it fits the box it had, never cut a word
+      if (L.maxHeight) while (obj.height > L.maxHeight && obj.fontSize > 12) { obj.set({ fontSize: obj.fontSize * 0.94 }); obj.initDimensions(); }
       const prev = L.below ? byName[L.below] : null;
       const topEdge = prev ? prev.top + prev.height / 2 + (L.gap || 0) : L.top;
       obj.set({ top: topEdge + obj.height / 2 });
     } else if (L.kind === "badge") {
       obj = makeBadge(L.text, L.x, L.y, L.d);
+    } else if (L.kind === "rect") {
+      obj = shapeLayer(L);
+    } else if (L.kind === "line") {
+      obj = new Line([L.x1, L.y1, L.x2, L.y2], { stroke: L.stroke, strokeWidth: L.strokeW, opacity: L.opacity ?? 1, strokeLineCap: "round" });
+    } else if (L.kind === "photo") {
+      obj = await photoLayer(L, user, own);
     }
     } catch {
       missed.push(L.name || L.role || "?");

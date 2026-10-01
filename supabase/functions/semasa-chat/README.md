@@ -81,6 +81,27 @@ sheet by a side door.
 - Needs no new secret and no SQL: same Mireld key, same table. Deploying this function (merge → *Deploy functions*) is the
   only step.
 
+## Rebuild a design from a reference (`design_clone`, 1 Oct 2026)
+
+Wan: *"allow upload design, then ai render similarly, only context is different"*. He chose to **rebuild the reference as editable layers**
+(not to have an image AI repaint it), and to **drop logos from other people's designs**. In the Design tab, once a reference is uploaded,
+the switch **Rebuild it the same** sends it here with the target size, the stream and, if the bot is to write the words, the idea.
+
+- The reader returns a **layout**, never a picture: background (colour or gradient), shapes, picture areas, and every text block with its
+  place, size, colour, type class, weight, alignment and spacing, roles `eyebrow | headline | point | source | deco`. With an idea it also
+  writes the new words for each block, under the same rules as a post (no CTA, no URL, no social source, no invented figure).
+- `design.js` `cleanLayout` holds the answer to the rules: known kinds only, numbers clamped to the canvas, colours as `#rrggbb`, at most 40
+  elements. **A logo, a brand mark, a person's face, a web address or a handle never becomes a layer**; they are listed in `removed` and shown.
+- The page (`web/src/lib/designCloneSeed.js`) lays the layout out as Kanvas layers with the words: the reference's own place, size, colour and
+  font for each block, shapes in its stacking order, gradients, picture areas (empty boxes, or the picture chosen in the form). No word of the
+  reference is ever drawn; a block with no new words is left out. Extra points are spread evenly through the room the points had, never onto
+  another block.
+- Before it opens in Kanvas the words are checked against the post rules in a review step; a hard flag (a call to action, a URL) stops it opening.
+- Poster and single card only (one picture). The AI reads the layout once; everything after is drawn in the browser without AI.
+- What it cannot do: copy a photograph or an illustration (the area stays an empty box for your own picture), reproduce a font it does not have
+  (the nearest of Playfair Display, Poppins, Instrument Sans, Anton, JetBrains Mono and Caveat is used), or match pixel for pixel. It rebuilds the
+  *design*, close and editable.
+
 ## What it enforces
 
 - Caller must be signed in **and** pass `public.semasa_is_uploader()`. The project's public anon key is itself a valid

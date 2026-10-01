@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   DB_TABLES, LIMITS, MEMORY, SYSTEM, TEST_IMAGE, TOOLS, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, htmlToText,
   MODEL_PREFERENCE, cleanModelId, isPrivateIp, modelNote, parseArgs, planFold, planQuery, rankModels, resolveModel, shapeRows, summaryMessages,
-  userAskedToRemember, whoIs,
+  userAskedToRemember, whoIs, foldDelta, lastQuestion, sseEvents,
 } from "../supabase/functions/semasa-chat/logic.js";
 
 let n = 0;
@@ -14,7 +14,7 @@ t("system prompt first, then the conversation; the page's own notes never reach 
   const { messages } = buildMessages([user("a"), { role: "note", text: "AI belum disambungkan" }, { role: "assistant", text: "b" }, user("c")]);
   assert.deepEqual(messages.map((m) => m.role), ["system", "user", "assistant", "user"]);
   assert.equal(messages[0].content, SYSTEM);
-  assert.ok(/Bahasa Malaysia \(bukan Bahasa Indonesia\)/.test(SYSTEM));
+  assert.ok(/Bahasa Malaysia \(bukan Bahasa Indonesia/.test(SYSTEM));
 });
 
 t("the last message has to be the user's", () => {
@@ -291,4 +291,56 @@ t("the model asked for is used only when Mireld lists it; otherwise the default,
   assert.deepEqual(resolveModel("../../etc", null, "claude-sonnet-5.5"), { model: "claude-sonnet-5.5", changed: false });
 });
 
+// ---- streaming and regenerate (1 Oct 2026: "improve the system and how the AI respond especially for chat AI feature") ----------
+t("the system prompt is Wan's own brief: answer first, Markdown, Malaysian Malay, never 'consult a professional', facts never invented", () => {
+  for (const needle of [/jawapan terus pada baris pertama/, /Markdown/, /bukan Bahasa Indonesia/, /rujuk profesional/, /jangan reka nombor notifikasi/i, /Tiada em dash/, /ACD Annex III/]) assert.match(SYSTEM, needle);
+});
+
+t("SSE events are split on blank lines, data lines joined, the unfinished tail kept for the next read", () => {
+  const { events, rest } = sseEvents("data: a\n\ndata: b\ndata: c\n\n: ping\n\ndata: {\"half");
+  assert.deepEqual(events, ["a", "b\nc"]);
+  assert.equal(rest, "data: {\"half");
+  assert.deepEqual(sseEvents("data: x\r\n\r\n").events, ["x"]);
+  assert.deepEqual(sseEvents(""), { events: [], rest: "" });
+});
+
+t("streamed deltas fold into one answer: text pieces append, tool-call pieces assemble by index, the finish reason and model are kept", () => {
+  let a = null;
+  a = foldDelta(a, { model: "claude-sonnet-5.5", choices: [{ delta: { role: "assistant", content: "Hal" } }] });
+  a = foldDelta(a, { choices: [{ delta: { content: "o" } }] });
+  a = foldDelta(a, { choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "fetch_", arguments: "{\"ur" } }] } }] });
+  a = foldDelta(a, { choices: [{ delta: { tool_calls: [{ index: 0, function: { name: "url", arguments: "l\":\"https://x\"}" } }] } }] });
+  a = foldDelta(a, { choices: [{ delta: { tool_calls: [{ index: 1, id: "c2", function: { name: "remember", arguments: "{}" } }] } }] });
+  a = foldDelta(a, { choices: [{ delta: {}, finish_reason: "tool_calls" }] });
+  assert.equal(a.content, "Halo");
+  assert.deepEqual(a.toolCalls, [{ id: "c1", name: "fetch_url", arguments: "{\"url\":\"https://x\"}" }, { id: "c2", name: "remember", arguments: "{}" }]);
+  assert.equal(a.finish, "tool_calls");
+  assert.equal(a.model, "claude-sonnet-5.5");
+  assert.equal(foldDelta(a, { choices: [] }).content, "Halo");
+  assert.equal(foldDelta(null, { choices: [{ delta: { content: [{ type: "text", text: "parts" }] } }] }).content, "parts");
+});
+
+t("regenerate answers the last user question, without the attachment note the function appended", () => {
+  assert.equal(lastQuestion([{ role: "user", content: "a" }, { role: "assistant", content: "b" }, { role: "user", content: "soalan\n[lampiran: x.pdf, y.png]" }]), "soalan");
+  assert.equal(lastQuestion([{ role: "user", content: "a" }, { role: "assistant", content: "b" }]), "a");
+  assert.equal(lastQuestion([]), "");
+  assert.equal(lastQuestion(null), "");
+});
+
 console.log(`chat: ${n} ok`);
+
+// ---- attachments folded per file (lib/chatFiles.js) ---------------------------------------------------------------------------
+import { foldAttachments } from "./src/lib/chatFiles.js";
+t("a PDF read as pages and a workbook read as sheets become one attachment each; pictures and refusals pass through", () => {
+  const out = foldAttachments([
+    { name: "a.pdf · halaman 1", text: "p1" }, { name: "scan.png", dataUrl: "data:image/png;base64,AA" }, { name: "a.pdf · halaman 2", text: "p2" },
+    { name: "b.xlsx · helaian Harga", text: "rows" }, { name: "c.txt", text: "plain" }, { name: "d.doc", skipped: "lama" }, null,
+  ]);
+  assert.deepEqual(out.map((o) => o.name), ["scan.png", "d.doc", "a.pdf", "b.xlsx", "c.txt"]);
+  assert.equal(out.find((o) => o.name === "a.pdf").text, "[halaman 1]\np1\n\n[halaman 2]\np2");
+  assert.equal(out.find((o) => o.name === "b.xlsx").text, "[helaian Harga]\nrows");
+  assert.equal(out.find((o) => o.name === "c.txt").text, "plain");
+  assert.equal(out.find((o) => o.name === "d.doc").skipped, "lama");
+  assert.deepEqual(foldAttachments(null), []);
+});
+console.log(`chat files: ok`);

@@ -54,6 +54,26 @@ Everything a page, a search or a table returns is handed to the model marked as 
 contain instructions aimed at the model. The check button now also says whether the model accepts tools and whether
 web search is installed. If Mireld rejects tools the chat still answers, without them, and says so.
 
+## Streaming, answering again, attachments (`chat`, 1 Oct 2026, "almost similar with claude")
+
+- `{action:"chat", stream:true}` answers as **Server-Sent Events**: `data: {"type":"start"}` then `{"type":"status","tool","detail"}` as
+  a tool runs, `{"type":"delta","text"}` for every piece of the answer as the model writes it, and `{"type":"done", ...}` carrying the
+  same fields as the one-piece answer (`text`, `thread_id`, `model`, `tools`, `memory_saved`). An error after the headers went out
+  comes as `{"type":"error"}`. The page reads this with `fetch` and the person's own login token (`web/src/lib/chat.js streamChat`),
+  can stop it (the answer that arrived stays on screen, marked *stopped*; the function still finishes and saves the whole answer, so a
+  reload shows it in full), and falls back to the one-piece call when the function does not stream. Mireld's own stream dialect
+  (OpenAI SSE, `delta.content` and `delta.tool_calls` pieces) is folded by `logic.js foldDelta`, tested in Node.
+- `{action:"chat", regenerate:true, thread_id}` drops the thread's last answer and answers its last question again (attachments are
+  not re-sent). The page's **Again** button.
+- The system prompt is Wan's own brief: answer first, Markdown, Malaysian Malay or English as asked, never "consult a professional",
+  no invented numbers, cite the instrument and entry. Answers are drawn as Markdown by `web/src/components/Markdown.jsx` from a
+  reader that never passes HTML through (`web/src/lib/markdown.js`, tested), so a model cannot put markup into the page.
+- Attachments: pictures, PDF (text pages as text, scanned pages as pictures), Word, Excel, CSV and text, read in the browser by the
+  FAQ bar's readers and folded one attachment per file (`web/src/lib/chatFiles.js`). Limits: 6 pictures, 6 documents, 60,000
+  characters each.
+- Conversations are listed, renamed and deleted from the page's history panel straight through row-level security; the function
+  is not involved.
+
 ## FAQ AI bar (`faq_extract`, 1 Oct 2026)
 
 Wan: *"for faq add AI bar that allow us to paste screenshot, image, upload pdf then AI will analyze and auto to categorize

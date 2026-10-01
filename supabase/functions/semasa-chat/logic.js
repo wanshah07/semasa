@@ -1,15 +1,27 @@
 /* The pure half of the AI chat function (index.ts). Plain ESM so the Edge Function (Deno) and web/chat.test.mjs (Node)
    run the very same code; nothing here touches the network or a key. */
 
-export const LIMITS = { turns: 30, chars: 8000, images: 4, imageChars: 4_200_000, textFiles: 3, fileChars: 20000 };
+export const LIMITS = { turns: 30, chars: 8000, images: 6, imageChars: 4_200_000, textFiles: 6, fileChars: 60000 };
 
 export const SYSTEM = [
-  "Anda pembantu Wan (Ahli Kimia Berdaftar, pakar RA kosmetik dan ASEAN) untuk kerja ws.regulab dan LinkedIn beliau.",
-  "Jawab dalam Bahasa Malaysia (bukan Bahasa Indonesia) melainkan diminta dalam Inggeris; istilah rasmi seperti Notifikasi",
-  "Kosmetik, Garis Panduan dan Borang kekal asal.",
-  "Jangan reka nombor notifikasi, klausa, tarikh, had kepekatan atau angka. Jika tidak pasti, nyatakan apa yang perlu",
-  "disemak dan di mana (NPRA, ACD, EC 1223/2009, SCCS). Kapsyen tidak mengandungi ajakan bertindak atau URL ws.regulab,",
-  "dan tidak menyebut Reddit atau YouTube sebagai sumber.",
+  // who it serves, and the voice (Wan, 1 Oct 2026: "improve ... how the AI respond especially for chat AI feature ... almost similar with claude")
+  "Anda pembantu Wan: Ahli Kimia Berdaftar, penilai keselamatan dan pakar RA kosmetik (NPRA, ACD, EC 1223/2009, SCCS) di Malaysia dan ASEAN,",
+  "untuk kerja ws.regulab dan LinkedIn beliau. Dia PAKAR: jangan sekali-kali menyuruhnya 'rujuk profesional'. Jawab seperti rakan sekerja",
+  "yang teliti, mesra dan terus terang.",
+  // language
+  "Bahasa: ikut bahasa mesej Wan. Bahasa Malaysia (bukan Bahasa Indonesia: boleh, ubat, syarikat, kualiti, pembungkusan) atau Inggeris;",
+  "istilah rasmi seperti Notifikasi Kosmetik, Garis Panduan dan Borang kekal asal. Jika dia minta 'layman' atau 'mudah', BM dahulu, Inggeris di bawah.",
+  // shape of an answer
+  "Bentuk jawapan: jawapan terus pada baris pertama, tanpa mukadimah dan tanpa mengulang soalan. Kemudian butiran, ringkas dan tersusun.",
+  "Guna Markdown: tajuk kecil (##), senarai bullet, **tebal** untuk perkara penting, jadual untuk perbandingan, blok kod untuk kod atau data.",
+  "Pendek untuk soalan pendek; panjang hanya apabila perlu. Tiada 'ada apa-apa lagi?' di hujung. Tiada em dash.",
+  // facts
+  "Fakta: jangan reka nombor notifikasi, klausa, tarikh, had kepekatan, yuran atau angka. Sebut instrumen dan entri tepat (contoh: ACD Annex III",
+  "entri 12, EC 1223/2009 Annex V) apabila anda pasti; jika tidak pasti, kata apa yang perlu disemak dan di mana, dan guna alat untuk menyemak",
+  "jika alat ada. Bezakan dengan jelas apa yang disahkan dan apa yang andaian. Betulkan Wan jika dia tersilap, dengan sumber.",
+  // posts
+  "Kapsyen atau post: tiada ajakan bertindak, tiada URL ws.regulab, tiada Reddit/YouTube/TikTok sebagai sumber; ws.regulab berbahasa BM campur",
+  "untuk PKS, LinkedIn berbahasa Inggeris sebagai ahli kimia bernama. Tanya satu soalan penjelas hanya apabila jawapan benar-benar bergantung padanya.",
 ].join(" ");
 
 /** A solid red 32x32 PNG. The model is asked its colour, so "it accepted an image" and "it read one" are told apart. */
@@ -321,4 +333,52 @@ export function resolveModel(requested, listed, fallback) {
   if (!want) return { model: def, changed: false };
   if (Array.isArray(listed) && listed.length && !listed.some((m) => m === want)) return { model: def, changed: true, asked: want };
   return { model: want, changed: false };
+}
+
+/* ===== Streaming (Wan, 1 Oct 2026: a chat that answers as it thinks, like Claude) ===========================================
+   Mireld speaks the OpenAI stream dialect: Server-Sent Events, each `data:` a JSON chunk with choices[0].delta carrying `content`
+   and/or `tool_calls` pieces, ended by `data: [DONE]`. These helpers are pure so the parsing is tested in Node; index.ts feeds them
+   the bytes and forwards the text pieces to the page the moment they arrive. */
+
+/** Split a growing SSE buffer into complete events. Returns { events: [data strings], rest } where `rest` is the unfinished tail. */
+export function sseEvents(buffer) {
+  const text = String(buffer || "").replace(/\r\n/g, "\n");
+  const parts = text.split("\n\n");
+  const rest = parts.pop() ?? "";
+  const events = [];
+  for (const block of parts) {
+    const data = block.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).replace(/^ /, "")).join("\n");
+    if (data) events.push(data);
+  }
+  return { events, rest };
+}
+
+/** Fold one streamed chunk into the answer being assembled: { content, toolCalls: [{id, name, arguments}], finish, model }. Pure. */
+export function foldDelta(acc, chunk) {
+  const a = acc || { content: "", toolCalls: [], finish: null, model: "" };
+  const choice = chunk?.choices?.[0];
+  if (chunk?.model && !a.model) a.model = String(chunk.model);
+  if (!choice) return a;
+  const d = choice.delta || {};
+  if (typeof d.content === "string") a.content += d.content;
+  else if (Array.isArray(d.content)) a.content += d.content.map((p) => (typeof p?.text === "string" ? p.text : "")).join("");
+  for (const tc of Array.isArray(d.tool_calls) ? d.tool_calls : []) {
+    const i = Number.isInteger(tc?.index) ? tc.index : a.toolCalls.length;
+    while (a.toolCalls.length <= i) a.toolCalls.push({ id: "", name: "", arguments: "" });
+    const slot = a.toolCalls[i];
+    if (tc.id) slot.id = String(tc.id);
+    if (tc.function?.name) slot.name += String(tc.function.name);
+    if (typeof tc.function?.arguments === "string") slot.arguments += tc.function.arguments;
+  }
+  if (choice.finish_reason) a.finish = String(choice.finish_reason);
+  return a;
+}
+
+/** The question a "regenerate" answers: the last user turn of the thread, without the attachment note the function appends. */
+export function lastQuestion(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i]?.role === "user" && typeof list[i].content === "string") return list[i].content.replace(/\n\[lampiran: [^\]]*\]$/, "").trim();
+  }
+  return "";
 }

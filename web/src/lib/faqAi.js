@@ -7,7 +7,7 @@
    PDF: read in the browser with pdf.js, loaded only when a PDF is chosen. A page with text sends its text; a page with
    none (a scan, a photographed page) is drawn and sent as a picture, so a scanned PDF works too. */
 import { supabase } from "./SupabaseClient";
-import { explain } from "./chat";
+import { explain } from "./fnError";
 import { AI_LIMITS, batchInputs, fitSize, kindOf, legacyWhy, mergeItems, splitNote, tilePlan } from "./faqAiLogic";
 import { OfficeError, csvToRows, docxToText, tablePairs, tableText, xlsxToTables } from "./officeText";
 

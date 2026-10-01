@@ -14,7 +14,8 @@
 //   MIRELD_BASE_URL   optional, default https://api.mireld.my/v1
 //   MIRELD_MODEL      optional, default claude-sonnet-5.5  (the "check" action says how Mireld spells it)
 //
-// Actions: {action:"chat", thread_id?, text, files}  and  {action:"check"}  (lists Mireld's models, asks the model the
+// Actions: {action:"chat", thread_id?, text, files, stream?, regenerate?}  (stream:true answers as SSE; regenerate answers the last
+// question again)  and  {action:"check"}  (lists Mireld's models, asks the model the
 // colour of a red square, which tells "accepts an image" from "reads one", and whether it calls tools), and
 // {action:"faq_extract", note?, files}  (the FAQ page's AI bar, 1 Oct 2026: reads pictures, PDF text and typed text and
 // returns the question-and-answer pairs found; writes nothing, see ./faq.js), {action:"models"} (the chat models Mireld lists,
@@ -40,7 +41,7 @@ import { faqMessages, parseFaqItems } from "./faq.js";
 import { firstJson } from "./faq.js";
 import {
   MEMORY, SYSTEM, rankModels, resolveModel, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
-  htmlToText, isPrivateIp, parseArgs, planFold, planQuery, shapeRows, summaryMessages, userAskedToRemember, whoIs,
+  foldDelta, htmlToText, isPrivateIp, lastQuestion, parseArgs, planFold, planQuery, shapeRows, sseEvents, summaryMessages, userAskedToRemember, whoIs,
 } from "./logic.js";
 
 const json = (body: unknown, status = 200) =>
@@ -284,9 +285,15 @@ Deno.serve(async (req) => {
       return json({ layout: keepWords(before, cleaned.layout), removed: cleaned.removed, model });
     }
 
-    // ---- chat: thread, memory, tools -----------------------------------------------------------------
-    const userText = String(body?.text ?? "").trim();
-    if (!userText) return json({ error: Array.isArray(body?.messages) ? "this page is an old version: reload it" : "empty message" }, 400);
+    // ---- chat: thread, memory, tools, streaming -----------------------------------------------------------
+    // {stream:true} answers as Server-Sent Events (data: {type:"delta",text} ... {type:"done",...}) so the page shows the words as they
+    // come, like Claude; without it the answer is one JSON as before. {regenerate:true, thread_id} drops the last answer and answers the
+    // last question again (its attachments are not re-sent).
+    const wantStream = body?.stream === true;
+    const regenerate = body?.regenerate === true;
+    let userText = String(body?.text ?? "").trim();
+    if (!userText && !regenerate) return json({ error: Array.isArray(body?.messages) ? "this page is an old version: reload it" : "empty message" }, 400);
+    if (regenerate && !body?.thread_id) return json({ error: "nothing to answer again: no conversation" }, 400);
 
     let threadId: string | null = body?.thread_id ? String(body.thread_id) : null;
     let thread: any = null;
@@ -301,9 +308,16 @@ Deno.serve(async (req) => {
       thread = data; threadId = data.id;
     }
 
-    const { data: stored } = await db.from("semasa_chat_messages").select("id,role,content")
+    const { data: storedRows } = await db.from("semasa_chat_messages").select("id,role,content")
       .eq("thread_id", threadId).gt("id", thread.summarized_upto || 0).order("id", { ascending: true }).limit(200);
-    const plan = planFold(stored || []);
+    const stored: any[] = storedRows || [];
+    if (regenerate) {
+      const last = stored[stored.length - 1];
+      if (last?.role === "assistant") { await db.from("semasa_chat_messages").delete().eq("id", last.id); stored.pop(); }
+      userText = lastQuestion(stored);
+      if (!userText) return json({ error: "nothing to answer again: no question in this conversation" }, 400);
+    }
+    const plan = planFold(stored);
     let summary: string = thread.summary || "";
     if (plan.fold.length) {
       const r = await upstream(base, key, "/chat/completions", { method: "POST", body: JSON.stringify({ model, max_tokens: 1800, temperature: 0.2, messages: summaryMessages(summary, plan.fold) }) }).catch(() => null);
@@ -316,56 +330,127 @@ Deno.serve(async (req) => {
     const { data: noteRows } = await db.from("semasa_chat_memory").select("id,note").order("created_at", { ascending: true }).limit(MEMORY.notes * 2);
 
     const fileNames = (Array.isArray(body?.files) ? body.files : []).map((f: any) => String(f?.name || "")).filter(Boolean).slice(0, 8);
-    const saved = await db.from("semasa_chat_messages").insert({ thread_id: threadId, user_id: uid, role: "user", content: userText + (fileNames.length ? `\n[lampiran: ${fileNames.join(", ")}]` : "") });
-    if (saved.error) return json({ error: `could not save your message (${String(saved.error.message).slice(0, 100)})` }, 500);
+    if (!regenerate) {
+      const saved = await db.from("semasa_chat_messages").insert({ thread_id: threadId, user_id: uid, role: "user", content: userText + (fileNames.length ? `\n[lampiran: ${fileNames.join(", ")}]` : "") });
+      if (saved.error) return json({ error: `could not save your message (${String(saved.error.message).slice(0, 100)})` }, 500);
+    }
 
     let toolsOn = body?.tools !== false;
     const system = buildSystem({ notes: noteRows || [], summary, now: new Date(), tools: toolsOn });
-    const history = [...(plan.recent.map((m: any) => ({ role: m.role, text: m.content }))), { role: "user", text: userText }];
-    const built = buildMessages(history, body?.files, system);
+    const recent = plan.recent.map((m: any) => ({ role: m.role, text: m.content }));
+    const history = regenerate && recent.length && recent[recent.length - 1].role === "user" ? recent : [...recent, { role: "user", text: userText }];
+    const built = buildMessages(history, regenerate ? [] : body?.files, system);
     const msgs: any[] = built.messages;
 
-    const used: string[] = [];
-    let memorySaved = false, toolsNote = "";
-    let final = "", lastModel = model;
-    for (let round = 0; round < 5 && !final; round++) {
-      const withTools = toolsOn && round < 4;
-      let r = await upstream(base, key, "/chat/completions", {
-        method: "POST",
-        body: JSON.stringify({ model, messages: msgs, max_tokens: 1800, temperature: 0.3, ...(withTools ? { tools: TOOLS, tool_choice: "auto" } : {}) }),
-      });
-      if (!r.ok && withTools && r.status === 400) {      // this model/gateway does not take tools: answer without them, and say so
-        toolsOn = false; toolsNote = "tools_unsupported";
-        r = await upstream(base, key, "/chat/completions", { method: "POST", body: JSON.stringify({ model, messages: msgs, max_tokens: 1800, temperature: 0.3 }) });
+    // one upstream call, streamed or not, answered in one shape: { ok, status, content, toolCalls, model, err }
+    type Turn = { ok: boolean; status: number; content: string; toolCalls: { id: string; name: string; arguments: string }[]; model: string; err: string };
+    async function turn(payload: any, onText: (t: string) => void): Promise<Turn> {
+      const path = base.replace(/\/+$/, "") + "/chat/completions";
+      if (!wantStream) {
+        const r = await upstream(base, key, "/chat/completions", { method: "POST", body: JSON.stringify(payload) });
+        if (!r.ok) return { ok: false, status: r.status, content: "", toolCalls: [], model: "", err: String(r.data?.error?.message || r.text).slice(0, 200) };
+        const m = r.data?.choices?.[0]?.message;
+        const calls = (Array.isArray(m?.tool_calls) ? m.tool_calls : []).map((c: any) => ({ id: String(c?.id || ""), name: String(c?.function?.name || ""), arguments: typeof c?.function?.arguments === "string" ? c.function.arguments : JSON.stringify(c?.function?.arguments || {}) }));
+        return { ok: true, status: r.status, content: asText(r.data), toolCalls: calls, model: String(r.data?.model || ""), err: "" };
       }
-      if (!r.ok) return json({ error: `the model answered HTTP ${r.status}: ${String(r.data?.error?.message || r.text).slice(0, 200)}` }, 502);
-      lastModel = r.data?.model || model;
-      const m = r.data?.choices?.[0]?.message;
-      const calls = Array.isArray(m?.tool_calls) ? m.tool_calls : [];
-      if (calls.length && withTools) {
-        msgs.push({ role: "assistant", content: m.content ?? null, tool_calls: calls });
-        for (const c of calls.slice(0, 3)) {
-          const name = String(c?.function?.name || ""), args = parseArgs(c?.function?.arguments);
-          let out = "unknown tool";
-          try {
-            if (name === "fetch_url") out = await fetchUrl(String(args.url || ""));
-            else if (name === "search_web") out = await searchWeb(String(args.query || ""));
-            else if (name === "query_semasa") out = await querySemasa(args);
-            else if (name === "remember") { const x = await remember(args.note, userText); out = x.text; memorySaved = memorySaved || x.saved; }
-          } catch (e) { out = `${name} failed: ${String(e instanceof Error ? e.message : e).slice(0, 120)}`; }
-          used.push(name);
-          msgs.push({ role: "tool", tool_call_id: c.id, content: out.slice(0, 9000) });
+      const res = await fetch(path, { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", accept: "text/event-stream" },
+        body: JSON.stringify({ ...payload, stream: true }), signal: AbortSignal.timeout(110000) });
+      if (!res.ok || !res.body) {
+        const text = await res.text().catch(() => "");
+        let j: any = null; try { j = JSON.parse(text); } catch { /* not JSON */ }
+        return { ok: false, status: res.status, content: "", toolCalls: [], model: "", err: String(j?.error?.message || text).slice(0, 200) };
+      }
+      const type = res.headers.get("content-type") || "";
+      if (!/event-stream/.test(type)) {                       // a gateway that ignores stream:true answers one JSON: read it as such
+        const j: any = await res.json().catch(() => null);
+        const m = j?.choices?.[0]?.message;
+        const calls = (Array.isArray(m?.tool_calls) ? m.tool_calls : []).map((c: any) => ({ id: String(c?.id || ""), name: String(c?.function?.name || ""), arguments: typeof c?.function?.arguments === "string" ? c.function.arguments : JSON.stringify(c?.function?.arguments || {}) }));
+        const content = asText(j);
+        if (content) onText(content);
+        return { ok: true, status: res.status, content, toolCalls: calls, model: String(j?.model || ""), err: "" };
+      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "", acc: any = null;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const { events, rest } = sseEvents(buf);
+        buf = rest;
+        for (const ev of events) {
+          if (ev.trim() === "[DONE]") continue;
+          let chunk: any = null; try { chunk = JSON.parse(ev); } catch { continue; }
+          if (chunk?.error) return { ok: false, status: 502, content: "", toolCalls: [], model: "", err: String(chunk.error?.message || chunk.error).slice(0, 200) };
+          const before = acc?.content || "";
+          acc = foldDelta(acc, chunk);
+          if (acc.content.length > before.length) onText(acc.content.slice(before.length));
         }
-        continue;
       }
-      final = asText(r.data).trim();
-      if (!final) return json({ error: "the model answered with nothing" }, 502);
+      acc = acc || { content: "", toolCalls: [], finish: null, model: "" };
+      return { ok: true, status: res.status, content: acc.content, toolCalls: acc.toolCalls.filter((c: any) => c.name), model: acc.model, err: "" };
     }
-    if (!final) return json({ error: "the model kept calling tools and never answered" }, 502);
 
-    await db.from("semasa_chat_messages").insert({ thread_id: threadId, user_id: uid, role: "assistant", content: final, tools: used.length ? [...new Set(used)] : null });
-    return json({ text: final, thread_id: threadId, model: lastModel, tools: [...new Set(used)], memory_saved: memorySaved, notice: toolsNote || undefined, sent: built.sent,
-      ...(picked.changed ? { model_changed: { asked: picked.asked, used: model } } : {}) });
+    // the whole exchange, with `emit` telling the page what is happening (a no-op when not streaming)
+    async function runChat(emit: (o: any) => void) {
+      const used: string[] = [];
+      let memorySaved = false, toolsNote = "";
+      let final = "", shown = "", lastModel = model;
+      for (let round = 0; round < 5 && !final; round++) {
+        const withTools = toolsOn && round < 4;
+        const payload = { model, messages: msgs, max_tokens: 2400, temperature: 0.3, ...(withTools ? { tools: TOOLS, tool_choice: "auto" } : {}) };
+        let r = await turn(payload, (t) => emit({ type: "delta", text: t }));
+        if (!r.ok && withTools && r.status === 400) {      // this model/gateway does not take tools: answer without them, and say so
+          toolsOn = false; toolsNote = "tools_unsupported";
+          r = await turn({ model, messages: msgs, max_tokens: 2400, temperature: 0.3 }, (t) => emit({ type: "delta", text: t }));
+        }
+        if (!r.ok) throw new Error(`the model answered HTTP ${r.status}: ${r.err}`);
+        if (r.model) lastModel = r.model;
+        if (r.toolCalls.length && withTools) {
+          if (r.content.trim()) shown += (shown ? "\n\n" : "") + r.content.trim();
+          msgs.push({ role: "assistant", content: r.content || null, tool_calls: r.toolCalls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.arguments } })) });
+          for (const c of r.toolCalls.slice(0, 3)) {
+            const name = c.name, args = parseArgs(c.arguments);
+            emit({ type: "status", tool: name, detail: String(args.url || args.query || args.table || "").slice(0, 120) });
+            let out = "unknown tool";
+            try {
+              if (name === "fetch_url") out = await fetchUrl(String(args.url || ""));
+              else if (name === "search_web") out = await searchWeb(String(args.query || ""));
+              else if (name === "query_semasa") out = await querySemasa(args);
+              else if (name === "remember") { const x = await remember(args.note, userText); out = x.text; memorySaved = memorySaved || x.saved; }
+            } catch (e) { out = `${name} failed: ${String(e instanceof Error ? e.message : e).slice(0, 120)}`; }
+            used.push(name);
+            msgs.push({ role: "tool", tool_call_id: c.id, content: out.slice(0, 9000) });
+          }
+          if (r.content.trim()) emit({ type: "delta", text: "\n\n" });
+          continue;
+        }
+        final = r.content.trim();
+        if (!final) throw new Error("the model answered with nothing");
+        if (shown) final = shown + "\n\n" + final;
+      }
+      if (!final) throw new Error("the model kept calling tools and never answered");
+      await db.from("semasa_chat_messages").insert({ thread_id: threadId, user_id: uid, role: "assistant", content: final, tools: used.length ? [...new Set(used)] : null });
+      return { text: final, thread_id: threadId, model: lastModel, tools: [...new Set(used)], memory_saved: memorySaved, notice: toolsNote || undefined, sent: built.sent,
+        ...(picked.changed ? { model_changed: { asked: picked.asked, used: model } } : {}) };
+    }
+
+    if (!wantStream) return json(await runChat(() => {}));
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const emit = (o: any) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* the page went away */ } };
+        emit({ type: "start", thread_id: threadId, model });
+        try {
+          emit({ type: "done", ...(await runChat(emit)) });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          emit({ type: "error", error: /timed? ?out|abort/i.test(msg) ? "the model did not answer in time" : msg.slice(0, 200) });
+        }
+        try { controller.close(); } catch { /* already closed */ }
+      },
+    });
+    return new Response(stream, { headers: { ...cors, "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", "x-accel-buffering": "no" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return json({ error: /timed? ?out|abort/i.test(msg) ? "the model did not answer in time" : msg.slice(0, 200) }, 502);

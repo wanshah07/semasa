@@ -2,7 +2,7 @@
    and lay it out as editable Kanvas layers with new words (lib/designCloneSeed.js). The AI is used once to read the layout, and once more
    per refine pass (action design_refine: the reference and our own rendering side by side, a corrected layout back); the words, the
    spelling and the drawing are ours, so the post rules can be checked on every word and every piece stays movable. */
-import { explain } from "./chat";
+import { explain } from "./fnError";
 import { supabase } from "./SupabaseClient";
 import { loadImageFile } from "./designPatch";
 

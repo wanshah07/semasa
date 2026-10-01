@@ -11,8 +11,11 @@
    - the words, the quick actions and the placeholder are props (defaults are the original English), so the page can
      speak BM and offer Semasa's own starters; a quick action fills the box instead of doing nothing;
    - onSubmit also hands over the attached files and the three switches, and the attachments clear after sending;
-   - "Import from URL" and "Use Template" are shown disabled until they do something: a menu item that does nothing
-     when clicked reads as broken. "Paste from Clipboard" pastes. */
+   - "Use Template" is shown disabled until it does something: a menu item that does nothing when clicked reads as
+     broken. "Paste from Clipboard" pastes. "Import from URL" (1 Oct 2026) asks for an address and puts it in the box,
+     so the chat's own web tool reads it;
+   - the three switches can be seeded (`defaultSettings`) and reported as they change (`onSettingsChange`), so the page
+     can keep "Streaming" and "Show history" as real settings rather than per-submit flags. */
 
 import {
   IconAdjustmentsHorizontal,
@@ -82,6 +85,7 @@ export interface Ai04Labels {
   add: string;
   adjust: string;
   remove: string;
+  urlPrompt: string;
 }
 
 const ACTIONS: Ai04Action[] = [
@@ -105,6 +109,7 @@ const LABELS: Ai04Labels = {
   add: "Add attachments",
   adjust: "Adjust settings",
   remove: "Remove",
+  urlPrompt: "Paste the address of a page to read",
 };
 
 export default function Ai04({
@@ -115,6 +120,8 @@ export default function Ai04({
   actions = ACTIONS,
   labels: labelsIn,
   busy = false,
+  defaultSettings,
+  onSettingsChange,
 }: {
   onSubmit?: (prompt: string, extra: { files: File[]; settings: Ai04Settings }) => void;
   title?: string | null;
@@ -124,6 +131,8 @@ export default function Ai04({
   labels?: Partial<Ai04Labels>;
   /** true while an answer is on its way: the send button waits */
   busy?: boolean;
+  defaultSettings?: Partial<Ai04Settings>;
+  onSettingsChange?: (s: Ai04Settings) => void;
 }) {
   const L = { ...LABELS, ...labelsIn };
   const [prompt, setPrompt] = useState("");
@@ -134,8 +143,9 @@ export default function Ai04({
 
   const [settings, setSettings] = useState<Ai04Settings>({
     autoComplete: true,
-    streaming: false,
+    streaming: true,
     showHistory: false,
+    ...(defaultSettings || {}),
   });
 
   const generateFileId = () => Math.random().toString(36).substring(7);
@@ -171,7 +181,16 @@ export default function Ai04({
     }
   };
   const updateSetting = (key: keyof Ai04Settings, value: boolean) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
+    setSettings((prev) => {
+      const next = { ...prev, [key]: value };
+      onSettingsChange?.(next);
+      return next;
+    });
+  };
+  const importUrl = () => {
+    const url = window.prompt(L.urlPrompt, "https://");
+    if (url && /^https?:\/\/\S+$/i.test(url.trim())) fill(prompt ? `${prompt}\n${url.trim()}` : url.trim());
+    else textRef.current?.focus();
   };
   const fill = (text: string) => {
     setPrompt(text);
@@ -337,11 +356,13 @@ export default function Ai04({
                         <span>{L.attach}</span>
                       </div>
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="rounded-md text-xs" disabled>
+                    <DropdownMenuItem
+                      className="rounded-md text-xs"
+                      onSelect={() => { importUrl(); }}
+                    >
                       <div className="flex items-center gap-2">
                         <IconLink className="text-muted-foreground" size={16} />
                         <span>{L.url}</span>
-                        <span className="text-[10px] text-muted-foreground">· {L.soon}</span>
                       </div>
                     </DropdownMenuItem>
                     <DropdownMenuItem

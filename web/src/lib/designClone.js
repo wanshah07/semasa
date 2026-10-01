@@ -1,7 +1,7 @@
 /* The Design tab's "rebuild this design" (Wan, 1 Oct 2026): send the reference to the function (action design_clone), get its LAYOUT back,
    and lay it out as editable Kanvas layers with new words (lib/designCloneSeed.js). The AI is used once, to read the layout; the words, the
    spelling and the drawing are ours, so the post rules can be checked on every word and every piece stays movable. */
-import { explain } from "./chat";
+import { explain } from "./fnError";
 import { supabase } from "./SupabaseClient";
 
 const MAX_SIDE = 1600;

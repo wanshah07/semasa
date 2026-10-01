@@ -1,7 +1,7 @@
 /* The pure half of the AI chat function (index.ts). Plain ESM so the Edge Function (Deno) and web/chat.test.mjs (Node)
    run the very same code; nothing here touches the network or a key. */
 
-export const LIMITS = { turns: 30, chars: 8000, images: 6, imageChars: 4_200_000, textFiles: 6, fileChars: 60000 };
+export const LIMITS = { turns: 30, chars: 8000, images: 6, imageChars: 4_200_000, textFiles: 6, fileChars: 60000, totalFileChars: 150000 };
 
 export const SYSTEM = [
   // who it serves, and the voice (Wan, 1 Oct 2026: "improve ... how the AI respond especially for chat AI feature ... almost similar with claude")
@@ -45,6 +45,7 @@ export function buildMessages(history, files = [], system = SYSTEM) {
   if (!turns.length || turns[turns.length - 1].role !== "user") throw new Error("the last message must be from the user");
 
   const images = [], docs = [], skipped = [];
+  let docChars = 0;                                        // every document together stays inside the model's room (totalFileChars)
   for (const f of Array.isArray(files) ? files : []) {
     const name = String(f?.name || "fail").slice(0, 80);
     if (typeof f?.dataUrl === "string") {
@@ -54,7 +55,12 @@ export function buildMessages(history, files = [], system = SYSTEM) {
       else images.push({ name, url: f.dataUrl });
     } else if (typeof f?.text === "string" && f.text.trim()) {
       if (docs.length >= LIMITS.textFiles) skipped.push(`${name} (terlalu banyak fail teks)`);
-      else docs.push({ name, text: f.text.slice(0, LIMITS.fileChars) });
+      else if (docChars >= LIMITS.totalFileChars) skipped.push(`${name} (lampiran teks sudah melebihi had keseluruhan)`);
+      else {
+        const text = f.text.slice(0, Math.min(LIMITS.fileChars, LIMITS.totalFileChars - docChars));
+        docChars += text.length;
+        docs.push({ name, text });
+      }
     } else {
       skipped.push(`${name}${f?.skipped ? ` (${String(f.skipped).slice(0, 60)})` : ""}`);
     }
@@ -259,6 +265,9 @@ export function isPrivateIp(ip) {
   return true;     // not an address we can read: treat as unsafe
 }
 
+/** Host names fetch_url must never reach besides the private ones: index.ts adds the function's own SUPABASE_URL host. */
+export const OWN_HOSTS = [];
+
 export function checkFetchUrl(raw) {
   let u;
   try { u = new URL(String(raw || "").trim()); } catch { return { ok: false, why: "not a valid URL" }; }
@@ -268,6 +277,9 @@ export function checkFetchUrl(raw) {
   const h = u.hostname.toLowerCase().replace(/\.$/, "");
   if (!h.includes(".") || h.startsWith("[") || /^[\d.]+$/.test(h)) return { ok: false, why: "a host name is required, not an address" };
   if (/(^|\.)(localhost|local|internal|lan|home|corp|intranet|home\.arpa)$/.test(h) || h.endsWith(".supabase.internal")) return { ok: false, why: "internal host names are refused" };
+  // the project's own API (REST, auth, storage) is not a web page: the tool reads the public web, never the database by a side door
+  if (/(^|\.)supabase\.(co|in|red|net)$/.test(h) || (OWN_HOSTS.length && OWN_HOSTS.includes(h))) return { ok: false, why: "the project's own hosts are refused" };
+  u.hash = "";
   return { ok: true, url: u.toString(), host: h };
 }
 
@@ -382,3 +394,21 @@ export function lastQuestion(rows) {
   }
   return "";
 }
+
+/* ===== Rate guard (1 Oct 2026, "check the security") ========================================================================
+   Every call here spends Mireld credit on Wan's account, and a signed-in Semasa user is the only gate. A per-user window keeps a
+   runaway page (a loop, a stuck retry, a stolen session) from spending it all: `allow` is pure over the list of recent call times
+   that index.ts keeps in memory per user and kind. The memory is the isolate's own, so a restart forgets it; that is fine for a guard
+   whose job is to slow a flood, not to meter. */
+export const RATE = { chat: [40, 600_000], design: [12, 600_000], faq: [20, 600_000], check: [10, 600_000] };
+
+/** `times` are the user's recent calls of this kind (mutated: old ones are dropped, this one is added when allowed). */
+export function allow(times, now, limit, windowMs) {
+  const list = Array.isArray(times) ? times : [];
+  while (list.length && now - list[0] >= windowMs) list.shift();
+  if (list.length >= limit) return { ok: false, retryAfter: Math.max(1, Math.ceil((list[0] + windowMs - now) / 1000)) };
+  list.push(now);
+  return { ok: true, retryAfter: 0 };
+}
+
+export const rateKind = (action) => (action === "design_clone" || action === "design_refine" ? "design" : action === "faq_extract" ? "faq" : action === "check" ? "check" : action === "models" ? "" : "chat");

@@ -41,7 +41,8 @@ import { faqMessages, parseFaqItems } from "./faq.js";
 import { firstJson } from "./faq.js";
 import {
   MEMORY, SYSTEM, rankModels, resolveModel, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
-  foldDelta, htmlToText, isPrivateIp, lastQuestion, parseArgs, planFold, planQuery, shapeRows, sseEvents, summaryMessages, userAskedToRemember, whoIs,
+  OWN_HOSTS, RATE, allow, foldDelta, htmlToText, isPrivateIp, lastQuestion, parseArgs, planFold, planQuery, rateKind, shapeRows, sseEvents,
+  summaryMessages, userAskedToRemember, whoIs,
 } from "./logic.js";
 
 const json = (body: unknown, status = 200) =>
@@ -65,6 +66,8 @@ const asText = (d: any) => {
 };
 
 let modelCache: { at: number; ids: string[] | null } = { at: 0, ids: null };   // Mireld's model list, kept five minutes
+const MAX_BODY = 40_000_000;                                   // bytes: six pictures of 4 MB plus text; anything more is not a request
+const hits = new Map<string, number[]>();                      // recent calls per user and kind (logic.js allow)
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -73,6 +76,9 @@ Deno.serve(async (req) => {
   const auth = req.headers.get("authorization") || "";
   const url = Deno.env.get("SUPABASE_URL"), anon = Deno.env.get("SUPABASE_ANON_KEY");
   if (!url || !anon) return json({ error: "function is missing SUPABASE_URL / SUPABASE_ANON_KEY" }, 500);
+  const declared = Number(req.headers.get("content-length") || 0);
+  if (declared > MAX_BODY) return json({ error: "the request is too large" }, 413);
+  try { const own = new URL(url).hostname.toLowerCase(); if (own && !OWN_HOSTS.includes(own)) OWN_HOSTS.push(own); } catch { /* keep the list as is */ }
   const db = createClient(url, anon, { global: { headers: { authorization: auth } } });
   const token = auth.replace(/^Bearer\s+/i, "").trim(); // pass the JWT: a server client has no stored session
   // Say WHY sign-in failed (never the token itself), so the check button tells us what to fix.
@@ -93,7 +99,24 @@ Deno.serve(async (req) => {
   const uid = who.user.id;
 
   let body: any;
-  try { body = await req.json(); } catch { return json({ error: "body is not JSON" }, 400); }
+  try {
+    const raw = await req.text();
+    if (raw.length > MAX_BODY) return json({ error: "the request is too large" }, 413);
+    body = JSON.parse(raw);
+  } catch { return json({ error: "body is not JSON" }, 400); }
+  if (!body || typeof body !== "object") return json({ error: "body is not JSON" }, 400);
+
+  // ---- rate guard: a flood from one login is slowed, never the whole function
+  const kind = rateKind(String(body.action || "chat"));
+  if (kind) {
+    const k = `${uid}:${kind}`;
+    const list = hits.get(k) || [];
+    const gate = allow(list, Date.now(), RATE[kind as keyof typeof RATE][0], RATE[kind as keyof typeof RATE][1]);
+    hits.set(k, list);
+    if (!gate.ok) return new Response(JSON.stringify({ error: `terlalu banyak permintaan; cuba lagi dalam ${gate.retryAfter} saat / too many requests; try again in ${gate.retryAfter} seconds` }),
+      { status: 429, headers: { ...cors, "content-type": "application/json", "retry-after": String(gate.retryAfter) } });
+    if (hits.size > 5000) hits.clear();                     // a map that only grows is a leak; starting over costs one window of leniency
+  }
 
   // ---- which model answers (Wan, 1 Oct 2026): the one the page asked for if Mireld lists it, else the default. The default is
   // MIRELD_MODEL when set, else the best of Mireld's list by logic.js MODEL_PREFERENCE (Sonnet 5.5 first).

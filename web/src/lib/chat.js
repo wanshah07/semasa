@@ -55,10 +55,10 @@ export async function explain(error) {
 }
 
 /** One turn. `threadId` is null for a new conversation; the function creates it and answers with its id. */
-export async function askAI({ text, files = [], threadId = null }) {
+export async function askAI({ text, files = [], threadId = null, model = "" }) {
   if (!supabase) return { connected: false, text: "" };
   const { data, error } = await supabase.functions.invoke("semasa-chat", {
-    body: { action: "chat", thread_id: threadId, text, files: await prepareFiles(files) },
+    body: { action: "chat", thread_id: threadId, text, files: await prepareFiles(files), ...(model ? { model } : {}) },
   });
   if (error) {
     const why = await explain(error);
@@ -66,7 +66,8 @@ export async function askAI({ text, files = [], threadId = null }) {
     throw new Error(why.message);
   }
   if (!data?.text) throw new Error(data?.error || "Tiada jawapan / no answer");
-  return { connected: true, text: data.text, threadId: data.thread_id || threadId, tools: data.tools || [], memorySaved: data.memory_saved === true, notice: data.notice };
+  return { connected: true, text: data.text, threadId: data.thread_id || threadId, tools: data.tools || [], memorySaved: data.memory_saved === true, notice: data.notice,
+    model: data.model || "", modelChanged: data.model_changed || null };
 }
 
 /** The newest conversation and its turns, read with the person's own login (row-level security shows only theirs). */
@@ -98,12 +99,26 @@ export async function deleteMemory(id) {
 }
 
 /** The "check" action: is the model listed, and does it read a picture. Used from the chat tab's check button. */
-export async function checkAI() {
+export async function checkAI(model = "") {
   if (!supabase) return { error: "not configured" };
-  const { data, error } = await supabase.functions.invoke("semasa-chat", { body: { action: "check" } });
+  const { data, error } = await supabase.functions.invoke("semasa-chat", { body: { action: "check", ...(model ? { model } : {}) } });
   if (error) {
     const why = await explain(error);
     return { error: why.missing ? "function belum dipasang / not deployed" : why.message };
   }
   return data;
 }
+
+/** The chat models the function offers, best default first: { models: [{id, recommended, family, note_en, note_bm}], recommended,
+    default, listed }. null when the function is not deployed or answers an old shape (the page then hides the picker). */
+export async function listModels() {
+  if (!supabase) return null;
+  const { data, error } = await supabase.functions.invoke("semasa-chat", { body: { action: "models" } });
+  if (error || !data || !Array.isArray(data.models)) return null;
+  return data;
+}
+
+const MODEL_KEY = "semasa.chat.model";
+/** The model this browser chose; "" means Auto (the function's own default, the recommended one). */
+export const savedModel = () => { try { return localStorage.getItem(MODEL_KEY) || ""; } catch { return ""; } };
+export const saveModel = (id) => { try { if (id) localStorage.setItem(MODEL_KEY, id); else localStorage.removeItem(MODEL_KEY); } catch { /* private mode: not remembered */ } };

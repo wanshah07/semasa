@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node compliance.test.mjs && node cards.test.mjs && node slots.test.mjs && node workflow.test.mjs && node publishing.test.mjs && node ownSources.test.mjs && node chat.test.mjs"
+    "test": "node compliance.test.mjs && node cards.test.mjs && node slots.test.mjs && node workflow.test.mjs && node publishing.test.mjs && node ownSources.test.mjs && node chat.test.mjs && node faq_ai.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.20",
@@ -27,6 +27,7 @@
     "framer-motion": "^13.4.1",
     "lucide-react": "^1.47.0",
     "motion": "^13.4.4",
+    "pdfjs-dist": "^5.7.284",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^2.6.1",

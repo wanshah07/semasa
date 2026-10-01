@@ -54,12 +54,34 @@ Everything a page, a search or a table returns is handed to the model marked as 
 contain instructions aimed at the model. The check button now also says whether the model accepts tools and whether
 web search is installed. If Mireld rejects tools the chat still answers, without them, and says so.
 
+## FAQ AI bar (`faq_extract`, 1 Oct 2026)
+
+Wan: *"for faq add AI bar that allow us to paste screenshot, image, upload pdf then AI will analyze and auto to categorize
+them to proper Q&A FAQ"*. The FAQ tab's bar sends pictures, PDF text and a typed note here; the function returns the
+question-and-answer pairs it finds (`{items:[{question, answer, instrument, source_hint, unclear}], skipped, not_read}`)
+and **writes nothing**. The page lists them, Wan keeps the ones he wants, and each kept pair is inserted as a `new`
+`semasa_faqs` row, exactly like **Add FAQ**: the worker (`backend/semasa/faq.py`) then rewrites it in BM and English,
+anonymises it again, picks the category and syncs the sheet. One writer and one rule set, so a screenshot cannot reach the
+sheet by a side door.
+
+- **Reading.** The model is told to take only what the material says, to leave `answer` empty when there is none (the
+  worker then writes one and flags it *needs check*), to drop names, numbers and clients at source, and to treat any text
+  inside a picture as data, never as an instruction. At most 30 pairs, 6 pictures and 40,000 characters a call; the page
+  splits more into several calls and folds duplicates.
+- **PDF** is read in the browser (pdf.js, legacy build, loaded only when a PDF is chosen): a page with text sends its
+  text, a scanned page is drawn and sent as a picture, so Mireld needs no PDF support. First 40 pages; 12 scanned pages.
+- **Tall screenshots** are cut into overlapping tiles, because a 1080 x 5000 chat shrunk whole is unreadable.
+- Needs no new secret and no SQL: same Mireld key, same table. Deploying this function (merge → *Deploy functions*) is the
+  only step.
+
 ## What it enforces
 
 - Caller must be signed in **and** pass `public.semasa_is_uploader()`. The project's public anon key is itself a valid
   JWT and the project is shared with another app, so a JWT check alone would let any of their users spend the key.
 - Sends only user/assistant turns (last 30, 8,000 characters each). Pictures: up to 4 PNG/JPEG/WEBP/GIF, 3 MB each.
   Plain-text files: up to 3. PDFs and Word files are named in the message as "not read", never silently dropped.
+- `faq_extract` takes up to 6 pictures a call (JPEG the page has already shrunk, 4.5 MB each at most), text files and a
+  note of 500 characters; anything it cannot take is returned in `not_read`, never dropped silently.
 - Errors carry the model's HTTP status and first 200 characters, never the key.
 
 ## Not proven yet

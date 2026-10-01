@@ -15,7 +15,9 @@
 //   MIRELD_MODEL      optional, default claude-sonnet-5.5  (the "check" action says how Mireld spells it)
 //
 // Actions: {action:"chat", thread_id?, text, files}  and  {action:"check"}  (lists Mireld's models, asks the model the
-// colour of a red square, which tells "accepts an image" from "reads one", and whether it calls tools).
+// colour of a red square, which tells "accepts an image" from "reads one", and whether it calls tools), and
+// {action:"faq_extract", note?, files}  (the FAQ page's AI bar, 1 Oct 2026: reads pictures, PDF text and typed text and
+// returns the question-and-answer pairs found; writes nothing, see ./faq.js).
 //
 // 1 Oct 2026 (Wan: "let AI Chat access the website and any database live, ... memory stable and always remember"):
 //   * MEMORY. History is kept in semasa_chat_* (supabase/025_chat_memory.sql), read and written with the CALLER's login
@@ -28,6 +30,7 @@
 //       - Whatever a page, a search or a table returns is handed to the model as UNTRUSTED data.
 //     Optional secret BRAVE_API_KEY turns on search_web; without it that tool says it is not installed.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { faqMessages, parseFaqItems } from "./faq.js";
 import {
   MEMORY, SYSTEM, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
   htmlToText, isPrivateIp, parseArgs, planFold, planQuery, shapeRows, summaryMessages, userAskedToRemember, whoIs,
@@ -192,6 +195,22 @@ Deno.serve(async (req) => {
       const tools = tp.ok ? { calls: Array.isArray(tp.data?.choices?.[0]?.message?.tool_calls) && tp.data.choices[0].message.tool_calls.length > 0 }
         : { error: `HTTP ${tp.status}: ${String(tp.data?.error?.message || tp.text).slice(0, 160)}` };
       return json({ ...checkReport(model, ids, image, tools), base_url: base, list_status: list.status, search_configured: !!Deno.env.get("BRAVE_API_KEY") });
+    }
+
+    // ---- faq_extract: the FAQ page's AI bar (Wan, 1 Oct 2026) -------------------------------------------
+    // Reads pictures / PDF text / typed text and returns the Q&A pairs found, anonymised. It writes nothing: the page
+    // shows them and inserts the ones kept as `new` FAQ rows, and backend/semasa/faq.py rewrites and categorises them.
+    if (body?.action === "faq_extract") {
+      const built = faqMessages(body?.note, body?.files);
+      if (built.error) return json({ error: built.error, skipped: built.skipped }, 400);
+      const r = await upstream(base, key, "/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({ model, max_tokens: 6000, temperature: 0, messages: built.messages }),
+      }, 110000).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
+      if (!r.ok) return json({ error: `the reader did not answer (HTTP ${r.status}: ${String(r.data?.error?.message || r.text).slice(0, 200)})` }, 502);
+      const parsed = parseFaqItems(asText(r.data));
+      if (parsed.error) return json({ error: parsed.error, skipped: built.skipped }, 502);
+      return json({ items: parsed.items, skipped: parsed.skipped, not_read: built.skipped, pictures: built.pictures, files: built.files, model });
     }
 
     // ---- chat: thread, memory, tools -----------------------------------------------------------------

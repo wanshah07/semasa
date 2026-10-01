@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bot, Check, FileText, Loader2, Paperclip, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Bot, Check, FileSpreadsheet, FileText, Loader2, Paperclip, Sparkles, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
-import { acceptKind, extractFaqs, prepareInputs } from "../lib/faqAi";
-import { AI_LIMITS, faqRow, markExisting } from "../lib/faqAiLogic";
+import { acceptKind, extractFaqs, legacyWhy, prepareInputs } from "../lib/faqAi";
+import { AI_LIMITS, faqRow, markExisting, sourceLabel, splitNote } from "../lib/faqAiLogic";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, TextArea } from "../components/ui/Field";
@@ -30,9 +30,15 @@ export default function FaqAiBar({ rows, user, onToast, onDone }) {
 
   const busy = phase !== "";
   function addFiles(list) {
+    if (busy) return;                                       // the list is being read: changing it now would be lost
     const take = [], refused = [];
-    for (const f of Array.from(list || [])) (acceptKind(f) ? take : refused).push(f);
-    if (refused.length) onToast(t("Hanya gambar, PDF dan fail teks boleh dibaca: {n}", "Only pictures, PDFs and text files can be read: {n}", { n: refused.map((f) => f.name || f.type).join(", ") }), "warn");
+    for (const f of Array.from(list || [])) {
+      const kind = acceptKind(f);
+      if (kind === "legacy") refused.push(`${f.name}: ${legacyWhy(f.name)}`);
+      else if (!kind) refused.push(`${f.name || f.type || "?"}`);
+      else take.push(f);
+    }
+    if (refused.length) onToast(t("Tidak boleh dibaca: {n}", "Cannot be read: {n}", { n: refused.join(" · ") }), "warn");
     if (take.length) setFiles((cur) => [...cur, ...take].slice(0, AI_LIMITS.files));
   }
   function onPaste(e) {
@@ -60,17 +66,18 @@ export default function FaqAiBar({ rows, user, onToast, onDone }) {
       const inputs = files.length ? await prepareInputs(files, (s) => setProgress(s)) : [];
       setPhase("read");
       const found = await extractFaqs({ note, inputs, onProgress: setProgress });
-      const label = files.length ? files.slice(0, 2).map((f) => f.name || t("gambar tampal", "pasted picture")).join(", ") + (files.length > 2 ? ` +${files.length - 2}` : "") : t("teks ditaip", "typed text");
+      // what it is filed as: the KIND of material, never a file name (a name can carry a client's; source_name reaches the sheet)
+      const label = sourceLabel([...files.map((f) => acceptKind(f)), splitNote(note).material || (!files.length && note.trim()) ? "typed" : ""]);
       const marked = markExisting(found.items, rows).map((it) => ({ ...it, keep: !it.exists }));
       if (auto && marked.some((m) => m.keep) && !found.errors.length) {
         setPhase("add");
         const n = await insert(marked.filter((m) => m.keep), label);
         onToast(t("{n} soalan dihantar ke AI untuk ditulis semula.", ["{n} question sent to the AI to be rewritten.", "{n} questions sent to the AI to be rewritten."], { n }), "ok");
-        setResult({ items: marked.filter((m) => !m.keep), notRead: found.notRead, errors: found.errors, label, added: n });
+        setResult({ items: marked.filter((m) => !m.keep), notRead: found.notRead, errors: found.errors, label, added: n, calls: found.calls, direct: found.direct });
         reset(); onDone?.();
         return;
       }
-      setResult({ items: marked, notRead: found.notRead, errors: found.errors, missing: found.missing, label });
+      setResult({ items: marked, notRead: found.notRead, errors: found.errors, missing: found.missing, label, calls: found.calls, direct: found.direct });
     } catch (e) {
       setResult({ items: [], notRead: [], errors: [String(e?.message || e)], label: "" });
     } finally { setPhase(""); setProgress(""); }
@@ -103,7 +110,7 @@ export default function FaqAiBar({ rows, user, onToast, onDone }) {
       <div className="flex flex-wrap items-center gap-2">
         <Sparkles size={14} className="text-accent" />
         <h2 className="text-sm font-semibold">{t("Bar AI", "AI bar")}</h2>
-        <span className="text-[11px] text-muted">{t("tampal tangkapan skrin (Ctrl+V), seret gambar atau PDF; AI mengasingkan soalan dan jawapan", "paste a screenshot (Ctrl+V), drop a picture or PDF; the AI separates the questions and answers")}</span>
+        <span className="text-[11px] text-muted">{t("tampal tangkapan skrin (Ctrl+V), seret gambar, PDF, Word, Excel atau CSV; AI mengasingkan soalan dan jawapan", "paste a screenshot (Ctrl+V), drop a picture, PDF, Word, Excel or CSV file; the AI separates the questions and answers")}</span>
       </div>
 
       <div className="mt-3 flex flex-wrap items-start gap-2" onPaste={onPaste}>
@@ -114,7 +121,7 @@ export default function FaqAiBar({ rows, user, onToast, onDone }) {
               "Paste here: pictures are attached. Or type or paste Q&A text, or a note like “this is a customer chat about the halal logo”.")} />
         </label>
         <div className="flex flex-col gap-2">
-          <input ref={pick} type="file" multiple accept="image/*,application/pdf,.pdf,.txt,.md,.csv" className="hidden"
+          <input ref={pick} type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.docx,.xlsx,.xlsm,.csv,.tsv,.txt,.md" className="hidden"
             onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
           <Button size="sm" variant="soft" disabled={busy} onClick={() => pick.current?.click()}><Paperclip size={12} /> {t("Lampir", "Attach")}</Button>
           <Button size="sm" disabled={busy || (!files.length && !note.trim())} onClick={analyse}>
@@ -127,7 +134,7 @@ export default function FaqAiBar({ rows, user, onToast, onDone }) {
           {files.map((f, i) => (
             <li key={`${f.name}-${i}`} className="group relative flex items-center gap-2 rounded-tile border border-line bg-surface-2/60 p-1.5 pr-7 text-[11px]">
               {acceptKind(f) === "image" ? <img src={previewOf(f)} alt="" className="h-10 w-10 rounded object-cover" />
-                : <span className="grid h-10 w-10 place-items-center rounded bg-surface text-muted"><FileText size={16} /></span>}
+                : <span className="grid h-10 w-10 place-items-center rounded bg-surface text-muted">{["xlsx", "csv"].includes(acceptKind(f)) ? <FileSpreadsheet size={16} /> : <FileText size={16} />}</span>}
               <span className="max-w-[10rem] truncate">{f.name || t("gambar tampal", "pasted picture")}</span>
               {!busy && <button type="button" aria-label={t("Buang lampiran", "Remove attachment")} onClick={() => dropFile(f)} className="absolute right-1.5 top-1.5 text-muted hover:text-danger"><X size={12} /></button>}
             </li>
@@ -157,7 +164,9 @@ export default function FaqAiBar({ rows, user, onToast, onDone }) {
           {result.added > 0 && <p className="mb-3 text-[12px] text-ok"><Check size={12} className="inline" /> {t("{n} ditambah.", "{n} added.", { n: result.added })}</p>}
 
           {result.items.length === 0 && !result.errors?.length && !result.added && (
-            <p className="text-sm text-muted">{t("AI tidak menjumpai soalan dan jawapan dalam bahan ini. Cuba gambar yang lebih jelas, atau tambah nota tentang apa yang dicari.", "The AI found no questions and answers in this material. Try a clearer picture, or add a note about what to look for.")}</p>
+            <p className="text-sm text-muted">{result.calls === 0 && !result.direct
+              ? t("Tiada fail yang boleh dibaca. Lihat “Tidak dibaca” di atas.", "None of the files could be read. See “Not read” above.")
+              : t("AI tidak menjumpai soalan dan jawapan dalam bahan ini. Cuba gambar yang lebih jelas, atau tambah nota tentang apa yang dicari.", "The AI found no questions and answers in this material. Try a clearer picture, or add a note about what to look for.")}</p>
           )}
 
           {result.items.length > 0 && (

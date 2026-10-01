@@ -8,17 +8,12 @@
    none (a scan, a photographed page) is drawn and sent as a picture, so a scanned PDF works too. */
 import { supabase } from "./SupabaseClient";
 import { explain } from "./chat";
-import { AI_LIMITS, batchInputs, fitSize, mergeItems, tilePlan } from "./faqAiLogic";
+import { AI_LIMITS, batchInputs, fitSize, kindOf, legacyWhy, mergeItems, splitNote, tilePlan } from "./faqAiLogic";
+import { OfficeError, csvToRows, docxToText, tablePairs, tableText, xlsxToTables } from "./officeText";
 
-const IMG = /^image\/(png|jpe?g|webp|gif)$/;
-const TEXT_EXT = /\.(txt|md|csv|tsv|json|log)$/i;
-
-export function acceptKind(file) {
-  if (IMG.test(file.type)) return "image";
-  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name || "")) return "pdf";
-  if (file.type.startsWith("text/") || TEXT_EXT.test(file.name || "")) return "text";
-  return "";
-}
+/** image | pdf | docx | xlsx | csv | text | legacy | "" (see faqAiLogic.kindOf) */
+export const acceptKind = (file) => kindOf(file.name, file.type);
+export { legacyWhy };
 
 const readAs = (file, how) => new Promise((resolve, reject) => {
   const r = new FileReader();
@@ -70,10 +65,20 @@ async function pdfjs() {
 
 async function pdfItems(file, name) {
   const lib = await pdfjs();
-  const doc = await lib.getDocument({ data: new Uint8Array(await readAs(file, "readAsArrayBuffer")) }).promise;
+  let doc;
+  try {
+    doc = await lib.getDocument({ data: new Uint8Array(await readAs(file, "readAsArrayBuffer")) }).promise;
+  } catch (e) {
+    if (e?.name === "PasswordException") return [{ name, skipped: "PDF dilindungi kata laluan; buka dan simpan tanpa kata laluan / the PDF is password-protected: save a copy without the password" }];
+    throw e;
+  }
+  try { return await pdfPages(doc, name); } finally { try { await doc.destroy(); } catch { /* already gone */ } }
+}
+
+async function pdfPages(doc, name) {
   const pages = Math.min(doc.numPages, AI_LIMITS.pdfPages);
   const items = [];
-  let text = "", pictures = 0, scanned = 0;
+  let text = "", pictures = 0, unread = 0;
   for (let n = 1; n <= pages; n++) {
     const page = await doc.getPage(n);
     const content = await page.getTextContent();
@@ -99,7 +104,9 @@ async function pdfItems(file, name) {
       ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
       await page.render({ canvasContext: ctx, viewport: vp }).promise;
       items.push({ name: `${name} · halaman ${n}`, dataUrl: toJpeg(c) });
-      pictures++; scanned++;
+      pictures++;
+    } else if (pageText.length < 40) {
+      unread++;                         // a scanned page past the picture limit: counted so the person is told
     }
     page.cleanup();
   }
@@ -107,8 +114,43 @@ async function pdfItems(file, name) {
   const notes = [];
   if (doc.numPages > pages) notes.push({ name, skipped: `hanya ${pages} halaman pertama dibaca daripada ${doc.numPages} / only the first ${pages} of ${doc.numPages} pages were read` });
   if (!items.length) notes.push({ name, skipped: "PDF ini tiada teks dan halaman tidak dapat dilukis / this PDF has no text and its pages could not be drawn" });
-  if (scanned >= AI_LIMITS.pdfImagePages) notes.push({ name, skipped: `halaman imbasan melebihi ${AI_LIMITS.pdfImagePages}; selebihnya tidak dibaca / more than ${AI_LIMITS.pdfImagePages} scanned pages; the rest were not read` });
+  if (unread) notes.push({ name, skipped: `${unread} halaman imbasan tidak dibaca; had ${AI_LIMITS.pdfImagePages} halaman imbasan / ${unread} scanned pages not read; the limit is ${AI_LIMITS.pdfImagePages} scanned pages` });
   return [...items, ...notes];
+}
+
+/** A Word file → one text item. */
+async function docxItems(file, name) {
+  const { text } = docxToText(new Uint8Array(await readAs(file, "readAsArrayBuffer")));
+  return text.trim() ? [{ name, text }] : [{ name, skipped: "tiada teks dalam fail Word ini / no text in this Word file" }];
+}
+
+/** A table (sheet or CSV) → the pairs themselves when it already has question and answer columns, else text for the reader. */
+function tableItems(name, sheet, t, label) {
+  const found = tablePairs(sheet, t, label);
+  if (found) {
+    const out = found.pairs.length ? [{ name, pairs: found.pairs }] : [{ name, skipped: `${sheet}: lajur soalan dijumpai tetapi tiada baris dengan soalan / a question column was found but no row has a question` }];
+    if (found.cut) out.push({ name, skipped: `${sheet}: hanya ${found.pairs.length} baris pertama diambil / only the first ${found.pairs.length} rows were taken` });
+    if (found.skipped) out.push({ name, skipped: `${sheet}: ${found.skipped} baris tanpa soalan dilangkau / ${found.skipped} rows without a question were skipped` });
+    return out;
+  }
+  const { text, header } = tableText(sheet, t.rows);
+  const out = text ? [{ name, text, header }] : [];
+  if (t.truncated) out.push({ name, skipped: `${sheet}: hanya baris pertama dibaca (had) / only the first rows were read (limit)` });
+  return out;
+}
+
+async function xlsxItems(file, name) {
+  const { tables, hidden } = xlsxToTables(new Uint8Array(await readAs(file, "readAsArrayBuffer")));
+  const out = tables.flatMap((t, i) => tableItems(name, t.sheet, t, `Excel, helaian ${i + 1}`));
+  if (hidden.length) out.push({ name, skipped: `helaian tersembunyi tidak dibaca / hidden sheets not read: ${hidden.join(", ")}` });
+  if (!out.length) out.push({ name, skipped: "tiada data dalam fail Excel ini / no data in this Excel file" });
+  return out;
+}
+
+async function csvItems(file, name) {
+  const t = csvToRows(String(await readAs(file, "readAsText")));
+  const out = tableItems(name, name.replace(/\.[^.]+$/, "") || "CSV", t, "CSV");
+  return out.length ? out : [{ name, skipped: "tiada data dalam fail ini / no data in this file" }];
 }
 
 /** Everything the person gave → items for batchInputs. A file that cannot be read is named, never dropped silently. */
@@ -118,7 +160,7 @@ export async function prepareInputs(files, onProgress = () => {}) {
   const extra = Array.from(files || []).length - list.length;
   for (let i = 0; i < list.length; i++) {
     const f = list[i];
-    const name = f.name || (IMG.test(f.type) ? `tampalan-${i + 1}.png` : "fail");
+    const name = f.name || (/^image\//.test(f.type) ? `tampalan-${i + 1}.png` : "fail");
     onProgress(`${i + 1}/${list.length} ${name}`);
     try {
       const kind = acceptKind(f);
@@ -126,13 +168,20 @@ export async function prepareInputs(files, onProgress = () => {}) {
         out.push(...(f.size > AI_LIMITS.imageBytes ? [{ name, skipped: "gambar lebih 12 MB / picture over 12 MB" }] : await imageItems(f, name)));
       } else if (kind === "pdf") {
         out.push(...(f.size > AI_LIMITS.pdfBytes ? [{ name, skipped: "PDF lebih 25 MB / PDF over 25 MB" }] : await pdfItems(f, name)));
+      } else if (kind === "docx" || kind === "xlsx") {
+        if (f.size > AI_LIMITS.officeBytes) out.push({ name, skipped: "fail lebih 20 MB / file over 20 MB" });
+        else out.push(...(kind === "docx" ? await docxItems(f, name) : await xlsxItems(f, name)));
+      } else if (kind === "csv") {
+        out.push(...(f.size > AI_LIMITS.officeBytes ? [{ name, skipped: "fail lebih 20 MB / file over 20 MB" }] : await csvItems(f, name)));
       } else if (kind === "text") {
         out.push({ name, text: String(await readAs(f, "readAsText")) });
+      } else if (kind === "legacy") {
+        out.push({ name, skipped: legacyWhy(name) });
       } else {
-        out.push({ name, skipped: "jenis fail ini belum boleh dibaca (gambar, PDF dan teks sahaja) / this file type is not read yet (pictures, PDF and text only)" });
+        out.push({ name, skipped: "jenis fail ini belum boleh dibaca (gambar, PDF, Word, Excel, CSV dan teks) / this file type is not read (pictures, PDF, Word, Excel, CSV and text)" });
       }
     } catch (e) {
-      out.push({ name, skipped: `gagal dibaca / could not be read: ${String(e?.message || e).slice(0, 100)}` });
+      out.push({ name, skipped: e instanceof OfficeError ? e.message : `gagal dibaca / could not be read: ${String(e?.message || e).slice(0, 100)}` });
     }
   }
   if (extra > 0) out.push({ name: "…", skipped: `${extra} fail lagi tidak dibaca; had ${AI_LIMITS.files} fail sekali / ${extra} more files not read; ${AI_LIMITS.files} files at a time` });
@@ -142,14 +191,18 @@ export async function prepareInputs(files, onProgress = () => {}) {
 /** Send the prepared items (several calls when there is a lot) and fold the answers into one list. Never throws:
     `errors` says which call failed and why, `items` keeps what the others found. */
 export async function extractFaqs({ note = "", inputs = [], onProgress = () => {} }) {
-  if (!supabase) return { items: [], notRead: [], errors: ["Supabase belum disambung / Supabase is not configured"], missing: false };
-  const { batches, skipped } = batchInputs(inputs);
-  const calls = batches.length || (note.trim() ? 1 : 0);
-  const lists = [], errors = [], notRead = skipped.map((s) => `${s.name}: ${s.why}`);
+  if (!supabase) return { items: [], notRead: [], errors: ["Supabase belum disambung / Supabase is not configured"], missing: false, calls: 0 };
+  // a typed text longer than a note is material, not a note (the function keeps 500 characters of a note)
+  const typed = splitNote(note);
+  const all = typed.material ? [...inputs, { name: "teks ditaip", text: typed.material }] : inputs;
+  const { batches, skipped, direct, dropped } = batchInputs(all);
+  const calls = batches.length || (typed.note ? 1 : 0);
+  const lists = [direct], errors = [], notRead = skipped.map((s) => `${s.name}: ${s.why}`);
+  if (dropped) notRead.push(`${dropped} bahagian lagi tidak dibaca; had ${AI_LIMITS.calls} panggilan sekali / ${dropped} more parts were not read; ${AI_LIMITS.calls} calls at a time. Hantar fail ini dalam bahagian yang lebih kecil / send the file in smaller parts`);
   let missing = false;
   for (let i = 0; i < calls; i++) {
     onProgress(calls > 1 ? `AI membaca bahagian ${i + 1}/${calls}… / AI is reading part ${i + 1}/${calls}…` : "AI sedang membaca… / the AI is reading…");
-    const { data, error } = await supabase.functions.invoke("semasa-chat", { body: { action: "faq_extract", note: i === 0 ? note : "", files: batches[i] || [] } });
+    const { data, error } = await supabase.functions.invoke("semasa-chat", { body: { action: "faq_extract", note: i === 0 ? typed.note : "", files: batches[i] || [] } });
     if (error) {
       const why = await explain(error);
       if (why.missing) { missing = true; errors.push("fungsi belum dipasang / the function is not deployed"); break; }
@@ -160,5 +213,5 @@ export async function extractFaqs({ note = "", inputs = [], onProgress = () => {
     lists.push(data?.items || []);
     for (const n of data?.not_read || []) notRead.push(n);
   }
-  return { items: mergeItems(lists), notRead, errors, missing };
+  return { items: mergeItems(lists), notRead, errors, missing, calls, direct: direct.length };
 }

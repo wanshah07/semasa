@@ -5,8 +5,9 @@
    goes to the Edge Function, which holds MIRELD_API_KEY, accepts only a signed-in Semasa user and forwards the
    conversation. Until the function is deployed the page says so plainly (connected:false), never with a made-up reply.
 
-   messages: [{ role: "user" | "assistant" | "note", text, at }]   (notes are the page's own and are never sent)
-   returns   { text, connected } */
+   Memory (supabase/025_chat_memory.sql, 1 Oct 2026): the conversation lives in the database, not in this tab. The page
+   sends only the NEW message and a thread id; the function loads the history, Wan's pinned notes and a rolling summary
+   itself, so a reload, another device or a long conversation does not lose anything. */
 import { supabase } from "./SupabaseClient";
 
 const MAX_IMAGE_BYTES = 3_000_000;
@@ -53,11 +54,11 @@ export async function explain(error) {
   return { message: String(error?.message || error) };
 }
 
-export async function askAI(messages, { files = [] } = {}) {
+/** One turn. `threadId` is null for a new conversation; the function creates it and answers with its id. */
+export async function askAI({ text, files = [], threadId = null }) {
   if (!supabase) return { connected: false, text: "" };
-  const history = (messages || []).filter((m) => m.role === "user" || m.role === "assistant").map((m) => ({ role: m.role, text: m.text }));
   const { data, error } = await supabase.functions.invoke("semasa-chat", {
-    body: { action: "chat", messages: history, files: await prepareFiles(files) },
+    body: { action: "chat", thread_id: threadId, text, files: await prepareFiles(files) },
   });
   if (error) {
     const why = await explain(error);
@@ -65,7 +66,35 @@ export async function askAI(messages, { files = [] } = {}) {
     throw new Error(why.message);
   }
   if (!data?.text) throw new Error(data?.error || "Tiada jawapan / no answer");
-  return { connected: true, text: data.text };
+  return { connected: true, text: data.text, threadId: data.thread_id || threadId, tools: data.tools || [], memorySaved: data.memory_saved === true, notice: data.notice };
+}
+
+/** The newest conversation and its turns, read with the person's own login (row-level security shows only theirs). */
+export async function loadLatestThread() {
+  if (!supabase) return { thread: null, messages: [] };
+  const { data: t, error } = await supabase.from("semasa_chat_threads").select("id,title,updated_at").order("updated_at", { ascending: false }).limit(1).maybeSingle();
+  if (error || !t) return { thread: null, messages: [], error: error ? String(error.message || error) : "" };
+  const { data: rows } = await supabase.from("semasa_chat_messages").select("id,role,content,tools,created_at").eq("thread_id", t.id).order("id", { ascending: true }).limit(300);
+  return { thread: t, messages: (rows || []).map((r) => ({ role: r.role, text: r.content, at: r.created_at, tools: r.tools || [] })) };
+}
+
+export async function listMemory() {
+  if (!supabase) return [];
+  const { data } = await supabase.from("semasa_chat_memory").select("id,note,source,created_at").order("created_at", { ascending: true }).limit(100);
+  return data || [];
+}
+
+export async function addMemory(note) {
+  const n = String(note || "").replace(/\s+/g, " ").trim();
+  if (n.length < 3 || n.length > 500) throw new Error("Nota mesti 3 hingga 500 aksara / a note is 3 to 500 characters");
+  const { data: u } = await supabase.auth.getUser();
+  const { error } = await supabase.from("semasa_chat_memory").insert({ user_id: u?.user?.id, note: n, source: "user" });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteMemory(id) {
+  const { error } = await supabase.from("semasa_chat_memory").delete().eq("id", id);
+  if (error) throw new Error(error.message);
 }
 
 /** The "check" action: is the model listed, and does it read a picture. Used from the chat tab's check button. */

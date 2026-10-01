@@ -14,10 +14,24 @@
 //   MIRELD_BASE_URL   optional, default https://api.mireld.my/v1
 //   MIRELD_MODEL      optional, default claude-sonnet-5.5  (the "check" action says how Mireld spells it)
 //
-// Actions: {action:"chat", messages, files}  and  {action:"check"}  (lists Mireld's models and asks the model the
-// colour of a red square, which tells "accepts an image" from "reads one").
+// Actions: {action:"chat", thread_id?, text, files}  and  {action:"check"}  (lists Mireld's models, asks the model the
+// colour of a red square, which tells "accepts an image" from "reads one", and whether it calls tools).
+//
+// 1 Oct 2026 (Wan: "let AI Chat access the website and any database live, ... memory stable and always remember"):
+//   * MEMORY. History is kept in semasa_chat_* (supabase/025_chat_memory.sql), read and written with the CALLER's login
+//     so row-level security is the only gate. Every call sends: the system rules, Wan's pinned notes, a rolling summary
+//     of old turns, the recent turns. The page sends only the new message and a thread id.
+//   * TOOLS (OpenAI function calling, at most 4 rounds): fetch_url, search_web, query_semasa, remember.
+//       - fetch_url: https only, no IP literals or internal names, every resolved address checked, redirects re-checked.
+//       - query_semasa: read only, an allow-list of Semasa tables, through the caller's login (RLS), secrets never listed.
+//       - remember: only when Wan's own message asks for it; a web page cannot make the chat write a note.
+//       - Whatever a page, a search or a table returns is handed to the model as UNTRUSTED data.
+//     Optional secret BRAVE_API_KEY turns on search_web; without it that tool says it is not installed.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { SYSTEM, TEST_IMAGE, buildMessages, checkReport, cors, whoIs } from "./logic.js";
+import {
+  MEMORY, SYSTEM, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
+  htmlToText, isPrivateIp, parseArgs, planFold, planQuery, shapeRows, summaryMessages, userAskedToRemember, whoIs,
+} from "./logic.js";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "content-type": "application/json" } });
@@ -62,11 +76,96 @@ Deno.serve(async (req) => {
   const base = Deno.env.get("MIRELD_BASE_URL") || "https://api.mireld.my/v1";
   const model = Deno.env.get("MIRELD_MODEL") || "claude-sonnet-5.5";
   if (!/^https:\/\//.test(base)) return json({ error: "MIRELD_BASE_URL must be https" }, 500);
+  const uid = who.user.id;
 
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "body is not JSON" }, 400); }
 
+  // ---- tools -------------------------------------------------------------------------------------------
+  async function addressesOk(host: string): Promise<string | null> {
+    const found: string[] = [];
+    for (const type of ["A", "AAAA"] as const) {
+      try { found.push(...(await Deno.resolveDns(host, type))); } catch { /* none of this type */ }
+    }
+    if (!found.length) return "the host name did not resolve";
+    if (found.some((ip) => isPrivateIp(ip))) return "the host resolves to a private address";
+    return null;
+  }
+
+  async function fetchUrl(raw: string): Promise<string> {
+    let current = String(raw || "");
+    for (let hop = 0; hop < 4; hop++) {
+      const ok = checkFetchUrl(current);
+      if (!ok.ok) return `fetch_url refused: ${ok.why}`;
+      const bad = await addressesOk(ok.host);
+      if (bad) return `fetch_url refused: ${bad}`;
+      const res = await fetch(ok.url, {
+        redirect: "manual", signal: AbortSignal.timeout(15000),
+        headers: { "user-agent": "SemasaChat/1.0", accept: "text/html,text/plain,application/json;q=0.9,*/*;q=0.1" },
+      });
+      if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
+        current = new URL(res.headers.get("location")!, ok.url).toString();
+        continue;
+      }
+      const type = (res.headers.get("content-type") || "").toLowerCase();
+      if (/pdf|image\/|audio\/|video\/|zip|octet-stream/.test(type)) return `fetch_url: HTTP ${res.status}, ${type.split(";")[0]} cannot be read as text yet (PDF/Word not supported here).`;
+      const reader = res.body?.getReader();
+      let got = new Uint8Array(0);
+      if (reader) {
+        const parts: Uint8Array[] = []; let n = 0;
+        while (n < 1_500_000) {
+          const { done, value } = await reader.read();
+          if (done || !value) break;
+          parts.push(value); n += value.length;
+        }
+        try { await reader.cancel(); } catch { /* already closed */ }
+        got = new Uint8Array(n); let o = 0;
+        for (const p of parts) { got.set(p, o); o += p.length; }
+      }
+      const raw2 = new TextDecoder("utf-8", { fatal: false }).decode(got);
+      const text = /html/.test(type) || /^\s*<(!doctype|html)/i.test(raw2) ? htmlToText(raw2, 8000) : raw2.slice(0, 8000);
+      return `${UNTRUSTED}URL: ${ok.url}\nHTTP ${res.status}\n${text}`;
+    }
+    return "fetch_url refused: too many redirects";
+  }
+
+  async function searchWeb(q: string): Promise<string> {
+    const k = Deno.env.get("BRAVE_API_KEY");
+    if (!k) return "search_web belum dipasang: tiada BRAVE_API_KEY pada fungsi. Guna fetch_url dengan URL yang diketahui.";
+    const query = String(q || "").trim().slice(0, 200);
+    if (!query) return "search_web: empty query";
+    const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`, {
+      headers: { "x-subscription-token": k, accept: "application/json" }, signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return `search_web: HTTP ${res.status}`;
+    const j: any = await res.json().catch(() => null);
+    const items = (j?.web?.results || []).slice(0, 5).map((r: any) => ({ title: String(r.title || "").slice(0, 160), url: r.url, snippet: String(r.description || "").replace(/<[^>]+>/g, "").slice(0, 300) }));
+    return UNTRUSTED + JSON.stringify(items);
+  }
+
+  async function querySemasa(args: unknown): Promise<string> {
+    const plan = planQuery(args);
+    if (!plan.ok) return `query_semasa refused: ${plan.why}`;
+    let q: any = db.from(plan.table).select(plan.columns.length ? plan.columns.join(",") : "*");
+    for (const [col, op, val] of plan.filters) q = q[op === "neq" ? "neq" : op](col, val);
+    if (plan.order) q = q.order(plan.order.column, { ascending: plan.order.ascending });
+    const { data, error } = await q.limit(plan.limit);
+    if (error) return `query_semasa: ${String(error.message || error).slice(0, 160)}`;
+    return UNTRUSTED + JSON.stringify({ table: plan.table, rows: shapeRows(data) });
+  }
+
+  async function remember(note: unknown, userText: string): Promise<{ text: string; saved: boolean }> {
+    if (!userAskedToRemember(userText)) return { text: "Nota tidak disimpan: mesej Wan ini tidak meminta anda mengingatinya.", saved: false };
+    const n = cleanNote(note);
+    if (!n) return { text: "Nota tidak disimpan: mesti 3 hingga 500 aksara.", saved: false };
+    const { count } = await db.from("semasa_chat_memory").select("id", { count: "exact", head: true });
+    if ((count ?? 0) >= MEMORY.notes) return { text: `Nota tidak disimpan: sudah ada ${MEMORY.notes} nota. Minta Wan padam yang lama.`, saved: false };
+    const { error } = await db.from("semasa_chat_memory").insert({ user_id: uid, note: n, source: "chat" });
+    return error ? { text: `Nota tidak disimpan: ${String(error.message).slice(0, 100)}`, saved: false } : { text: "Nota disimpan.", saved: true };
+  }
+
   try {
+    // ---- check: models, picture reading, tool calling -------------------------------------------------
     if (body?.action === "check") {
       let ids: string[] | null = null;
       const list = await upstream(base, key, "/models", { method: "GET" }, 20000).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
@@ -82,20 +181,100 @@ Deno.serve(async (req) => {
       }).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
       const image = probe.ok ? { answer: asText(probe.data) }
         : { error: `HTTP ${probe.status}: ${String(probe.data?.error?.message || probe.text).slice(0, 160)}` };
-      return json({ ...checkReport(model, ids, image), base_url: base, list_status: list.status });
+      const tp = await upstream(base, key, "/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({
+          model, max_tokens: 60, temperature: 0, tool_choice: "auto",
+          tools: [{ type: "function", function: { name: "ping", description: "Reply to the user by calling this.", parameters: { type: "object", properties: { word: { type: "string" } }, required: ["word"] } } }],
+          messages: [{ role: "user", content: "Call the ping tool with word = hello. Do not answer in text." }],
+        }),
+      }).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
+      const tools = tp.ok ? { calls: Array.isArray(tp.data?.choices?.[0]?.message?.tool_calls) && tp.data.choices[0].message.tool_calls.length > 0 }
+        : { error: `HTTP ${tp.status}: ${String(tp.data?.error?.message || tp.text).slice(0, 160)}` };
+      return json({ ...checkReport(model, ids, image, tools), base_url: base, list_status: list.status, search_configured: !!Deno.env.get("BRAVE_API_KEY") });
     }
 
-    const { messages, sent } = buildMessages(body?.messages, body?.files, SYSTEM);
-    const r = await upstream(base, key, "/chat/completions", {
-      method: "POST", body: JSON.stringify({ model, messages, max_tokens: 1800, temperature: 0.3 }),
-    });
-    if (!r.ok) {
-      const why = String(r.data?.error?.message || r.text).slice(0, 200);
-      return json({ error: `the model answered HTTP ${r.status}: ${why}` }, 502);
+    // ---- chat: thread, memory, tools -----------------------------------------------------------------
+    const userText = String(body?.text ?? "").trim();
+    if (!userText) return json({ error: Array.isArray(body?.messages) ? "this page is an old version: reload it" : "empty message" }, 400);
+
+    let threadId: string | null = body?.thread_id ? String(body.thread_id) : null;
+    let thread: any = null;
+    if (threadId) {
+      const { data, error } = await db.from("semasa_chat_threads").select("id,summary,summarized_upto").eq("id", threadId).maybeSingle();
+      if (error) return json({ error: `could not open the conversation (${String(error.message).slice(0, 100)})` }, 500);
+      thread = data;
+      if (!thread) return json({ error: "that conversation was not found" }, 404);
+    } else {
+      const { data, error } = await db.from("semasa_chat_threads").insert({ user_id: uid, title: userText.slice(0, 60) }).select("id,summary,summarized_upto").single();
+      if (error) return json({ error: `could not start a conversation (${String(error.message).slice(0, 100)}). Has supabase/025_chat_memory.sql been run?` }, 500);
+      thread = data; threadId = data.id;
     }
-    const text = asText(r.data).trim();
-    if (!text) return json({ error: "the model answered with nothing" }, 502);
-    return json({ text, model: r.data?.model || model, sent });
+
+    const { data: stored } = await db.from("semasa_chat_messages").select("id,role,content")
+      .eq("thread_id", threadId).gt("id", thread.summarized_upto || 0).order("id", { ascending: true }).limit(200);
+    const plan = planFold(stored || []);
+    let summary: string = thread.summary || "";
+    if (plan.fold.length) {
+      const r = await upstream(base, key, "/chat/completions", { method: "POST", body: JSON.stringify({ model, max_tokens: 1800, temperature: 0.2, messages: summaryMessages(summary, plan.fold) }) }).catch(() => null);
+      const t = r?.ok ? asText(r.data).trim() : "";
+      if (t) {
+        summary = t.slice(0, 12000);
+        await db.from("semasa_chat_threads").update({ summary, summarized_upto: plan.upto }).eq("id", threadId);
+      }
+    }
+    const { data: noteRows } = await db.from("semasa_chat_memory").select("id,note").order("created_at", { ascending: true }).limit(MEMORY.notes * 2);
+
+    const fileNames = (Array.isArray(body?.files) ? body.files : []).map((f: any) => String(f?.name || "")).filter(Boolean).slice(0, 8);
+    const saved = await db.from("semasa_chat_messages").insert({ thread_id: threadId, user_id: uid, role: "user", content: userText + (fileNames.length ? `\n[lampiran: ${fileNames.join(", ")}]` : "") });
+    if (saved.error) return json({ error: `could not save your message (${String(saved.error.message).slice(0, 100)})` }, 500);
+
+    let toolsOn = body?.tools !== false;
+    const system = buildSystem({ notes: noteRows || [], summary, now: new Date(), tools: toolsOn });
+    const history = [...(plan.recent.map((m: any) => ({ role: m.role, text: m.content }))), { role: "user", text: userText }];
+    const built = buildMessages(history, body?.files, system);
+    const msgs: any[] = built.messages;
+
+    const used: string[] = [];
+    let memorySaved = false, toolsNote = "";
+    let final = "", lastModel = model;
+    for (let round = 0; round < 5 && !final; round++) {
+      const withTools = toolsOn && round < 4;
+      let r = await upstream(base, key, "/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({ model, messages: msgs, max_tokens: 1800, temperature: 0.3, ...(withTools ? { tools: TOOLS, tool_choice: "auto" } : {}) }),
+      });
+      if (!r.ok && withTools && r.status === 400) {      // this model/gateway does not take tools: answer without them, and say so
+        toolsOn = false; toolsNote = "tools_unsupported";
+        r = await upstream(base, key, "/chat/completions", { method: "POST", body: JSON.stringify({ model, messages: msgs, max_tokens: 1800, temperature: 0.3 }) });
+      }
+      if (!r.ok) return json({ error: `the model answered HTTP ${r.status}: ${String(r.data?.error?.message || r.text).slice(0, 200)}` }, 502);
+      lastModel = r.data?.model || model;
+      const m = r.data?.choices?.[0]?.message;
+      const calls = Array.isArray(m?.tool_calls) ? m.tool_calls : [];
+      if (calls.length && withTools) {
+        msgs.push({ role: "assistant", content: m.content ?? null, tool_calls: calls });
+        for (const c of calls.slice(0, 3)) {
+          const name = String(c?.function?.name || ""), args = parseArgs(c?.function?.arguments);
+          let out = "unknown tool";
+          try {
+            if (name === "fetch_url") out = await fetchUrl(String(args.url || ""));
+            else if (name === "search_web") out = await searchWeb(String(args.query || ""));
+            else if (name === "query_semasa") out = await querySemasa(args);
+            else if (name === "remember") { const x = await remember(args.note, userText); out = x.text; memorySaved = memorySaved || x.saved; }
+          } catch (e) { out = `${name} failed: ${String(e instanceof Error ? e.message : e).slice(0, 120)}`; }
+          used.push(name);
+          msgs.push({ role: "tool", tool_call_id: c.id, content: out.slice(0, 9000) });
+        }
+        continue;
+      }
+      final = asText(r.data).trim();
+      if (!final) return json({ error: "the model answered with nothing" }, 502);
+    }
+    if (!final) return json({ error: "the model kept calling tools and never answered" }, 502);
+
+    await db.from("semasa_chat_messages").insert({ thread_id: threadId, user_id: uid, role: "assistant", content: final, tools: used.length ? [...new Set(used)] : null });
+    return json({ text: final, thread_id: threadId, model: lastModel, tools: [...new Set(used)], memory_saved: memorySaved, notice: toolsNote || undefined, sent: built.sent });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return json({ error: /timed? ?out|abort/i.test(msg) ? "the model did not answer in time" : msg.slice(0, 200) }, 502);

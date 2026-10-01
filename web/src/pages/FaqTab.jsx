@@ -8,6 +8,7 @@ import { timeAgo } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion-card-utils/accordion";
 import { aOf, download, exportExcel, exportPdf, exportPoster, faqCategories, fileName, posterCard, qOf } from "../lib/faqExport";
+import FaqAiBar from "./FaqAiBar";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Modal, Segmented, Select, TextArea } from "../components/ui/Field";
@@ -95,11 +96,11 @@ export default function FaqTab({ faqs, settings, brand, user, onToast, onPost })
           <h1 className="mt-2 text-4xl leading-tight">{t("Soalan lazim, satu tempat.", "Frequently asked questions, in one place.")}</h1>
           <p className="mt-3 max-w-2xl text-sm text-muted">
             {lang === "en" ? (<>
-              Paste your own questions (and answers), press <b>Make an FAQ</b> on an issue, or accept candidates the bot has gathered.
+              Paste your own questions (and answers), drop a screenshot or PDF on the <b>AI bar</b>, press <b>Make an FAQ</b> on an issue, or accept candidates the bot has gathered.
               The AI rewrites them in BM and English, removes names and personal details, and picks a category. Every
               question is copied to the Semasa Google Sheet, and every category can be exported as a PDF, poster or Excel file.
             </>) : (<>
-              Tampal soalan (dan jawapan) sendiri, tekan <b>Jadikan FAQ</b> pada isu, atau terima calon yang dikumpul bot.
+              Tampal soalan (dan jawapan) sendiri, letak tangkapan skrin atau PDF pada <b>Bar AI</b>, tekan <b>Jadikan FAQ</b> pada isu, atau terima calon yang dikumpul bot.
               AI menulis semula dalam BM dan English, membuang nama dan maklumat peribadi, dan memilih kategori. Setiap
               soalan disalin ke Google Sheet Semasa, dan setiap kategori boleh dieksport sebagai PDF, poster atau Excel.
             </>)}
@@ -107,6 +108,8 @@ export default function FaqTab({ faqs, settings, brand, user, onToast, onPost })
         </div>
         <Button onClick={() => setAdding(true)}><Plus size={14} /> {t("Tambah FAQ", "Add FAQ")}</Button>
       </motion.div>
+
+      <FaqAiBar rows={faqs.rows} user={user} onToast={onToast} onDone={faqs.reload} />
 
       {faqs.error && (
         <p className="mt-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">

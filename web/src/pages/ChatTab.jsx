@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { IconBulb, IconFileText, IconPencil, IconShieldCheck } from "@tabler/icons-react";
 import Ai04 from "@/components/ui/ai-04";
-import { askAI, checkAI } from "../lib/chat";
+import { addMemory, askAI, checkAI, deleteMemory, listMemory, loadLatestThread } from "../lib/chat";
 import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
 
@@ -10,6 +10,8 @@ import { useLang } from "../lib/i18n";
    place a model gets plugged in is lib/chat.js `askAI`. Until then every message is kept on screen and answered with
    a plain note saying nothing is connected, never with a made-up reply. The conversation lives in this tab only and
    is gone on reload: nothing is written to the database. */
+const toolLabel = (n) => ({ fetch_url: "baca laman web", search_web: "cari web", query_semasa: "data Semasa", remember: "nota disimpan" }[n] || n);
+
 export default function ChatTab() {
   const { t } = useLang();
   const [messages, setMessages] = useState([]);
@@ -28,18 +30,46 @@ export default function ChatTab() {
       prompt: t("Beri tiga idea post daripada isu semasa ini: ", "Give three post ideas from this current issue: ") },
   ];
 
-  async function send(text, { files, settings }) {
+  const [threadId, setThreadId] = useState(null);
+  const [notes, setNotes] = useState([]);
+  const [showNotes, setShowNotes] = useState(false);
+  const [draftNote, setDraftNote] = useState("");
+
+  // The conversation lives in the database: open the newest one, and the pinned notes, when the tab opens.
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const { thread, messages: old } = await loadLatestThread();
+      if (live && thread) { setThreadId(thread.id); setMessages(old); }
+      const n = await listMemory();
+      if (live) setNotes(n);
+    })();
+    return () => { live = false; };
+  }, []);
+
+  async function refreshNotes() { setNotes(await listMemory()); }
+  async function pin() {
+    try { await addMemory(draftNote); setDraftNote(""); await refreshNotes(); }
+    catch (e) { setMessages((m) => [...m, { role: "note", text: String(e?.message || e), at: new Date().toISOString() }]); }
+  }
+  async function unpin(id) { try { await deleteMemory(id); await refreshNotes(); } catch { /* shown on the next refresh */ } }
+  function fresh() { setThreadId(null); setMessages([]); }
+
+  async function send(text, { files }) {
     const mine = { role: "user", text, at: new Date().toISOString(), files: files.map((f) => f.name) };
-    const history = [...messages, mine];
-    setMessages(history);
+    setMessages((m) => [...m, mine]);
     setBusy(true);
     try {
-      const res = await askAI(history, { files, settings });
+      const res = await askAI({ text, files, threadId });
+      if (res.threadId) setThreadId(res.threadId);
       const reply = res.connected
-        ? { role: "assistant", text: res.text, at: new Date().toISOString() }
+        ? { role: "assistant", text: res.text, at: new Date().toISOString(), tools: res.tools }
         : { role: "note", text: t("AI belum disambungkan. Mesej anda disimpan di skrin ini sahaja.",
             "The AI is not connected yet. Your message is kept on this screen only."), at: new Date().toISOString() };
       setMessages((m) => [...m, reply]);
+      if (res.memorySaved) refreshNotes();
+      if (res.notice === "tools_unsupported") setMessages((m) => [...m, { role: "note", at: new Date().toISOString(),
+        text: t("Model ini tidak menerima alat (web, pangkalan data); dijawab tanpa alat.", "This model does not accept tools (web, database); answered without them.") }]);
     } catch (e) {
       setMessages((m) => [...m, { role: "note", text: String(e?.message || e), at: new Date().toISOString() }]);
     } finally {
@@ -64,7 +94,11 @@ export default function ChatTab() {
       const reads = im.reads === true ? t(`boleh baca gambar (jawab: ${im.answer})`, `reads pictures (answered: ${im.answer})`)
         : im.error ? t(`tidak baca gambar: ${im.error}`, `does not read pictures: ${im.error}`)
           : t(`tidak pasti baca gambar (jawab: ${im.answer || "-"})`, `no proof it reads pictures (answered: ${im.answer || "-"})`);
-      line = `${r.model}: ${listed}; ${reads}.`;
+      const tl = r.tools || {};
+      const tools = tl.calls === true ? t("boleh guna alat", "can use tools")
+        : tl.error ? t(`tiada alat: ${tl.error}`, `no tools: ${tl.error}`) : t("alat tidak pasti", "tools unclear");
+      const search = r.search_configured ? t("carian web aktif", "web search on") : t("carian web belum dipasang (BRAVE_API_KEY)", "web search not installed (BRAVE_API_KEY)");
+      line = `${r.model}: ${listed}; ${reads}; ${tools}; ${search}.`;
     }
     setMessages((m) => [...m, { role: "note", text: line, at: now }]);
     setBusy(false);
@@ -78,6 +112,34 @@ export default function ChatTab() {
         className="mx-auto mt-2 text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-50">
         {t("Semak model dan pembaca gambar", "Check the model and its image reader")}
       </button>
+      <div className="mx-auto mt-1 flex items-center gap-3 text-[11px] text-muted">
+        <button type="button" onClick={() => setShowNotes((v) => !v)} className="underline decoration-dotted underline-offset-2 hover:text-accent">
+          {t(`Ingatan kekal (${notes.length})`, `Pinned memory (${notes.length})`)}
+        </button>
+        <button type="button" onClick={fresh} disabled={busy || messages.length === 0} className="underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-50">
+          {t("Sembang baharu", "New conversation")}
+        </button>
+      </div>
+      {showNotes && (
+        <section className="mx-auto mt-3 w-full max-w-2xl rounded-card border border-line bg-surface p-3 text-xs">
+          <p className="mb-2 text-muted">{t("Nota ini dihantar kepada AI pada setiap mesej, dalam semua sembang. Anda juga boleh berkata \"ingat bahawa ...\".",
+            "These notes go to the AI with every message, in every conversation. You can also say \"remember that ...\".")}</p>
+          <ul className="space-y-1">
+            {notes.map((n) => (
+              <li key={n.id} className="flex items-start justify-between gap-2">
+                <span>{n.note}{n.source === "chat" && <span className="ml-1 opacity-60">({t("disimpan oleh sembang", "saved by chat")})</span>}</span>
+                <button type="button" onClick={() => unpin(n.id)} className="shrink-0 text-warn underline" aria-label={t("Padam nota", "Delete note")}>{t("padam", "delete")}</button>
+              </li>
+            ))}
+            {notes.length === 0 && <li className="opacity-60">{t("Belum ada nota.", "No notes yet.")}</li>}
+          </ul>
+          <div className="mt-2 flex gap-2">
+            <input value={draftNote} onChange={(e) => setDraftNote(e.target.value)} maxLength={500} placeholder={t("Nota baharu", "New note")}
+              className="min-w-0 flex-1 rounded border border-line bg-bg px-2 py-1" />
+            <button type="button" onClick={pin} disabled={draftNote.trim().length < 3} className="rounded bg-ink px-3 py-1 text-bg disabled:opacity-50">{t("Simpan", "Save")}</button>
+          </div>
+        </section>
+      )}
       {!empty && (
         <ol className="mx-auto mt-6 w-full max-w-2xl flex-1 space-y-3" aria-live="polite">
           {messages.map((m, i) => (
@@ -88,6 +150,7 @@ export default function ChatTab() {
                     : "max-w-[85%] rounded-card bg-warn/10 px-4 py-2 text-xs text-warn"}>
                 {m.text}
                 {m.files?.length > 0 && <span className="mt-1 block text-[11px] opacity-70">📎 {m.files.join(", ")}</span>}
+                {m.role === "assistant" && m.tools?.length > 0 && <span className="mt-1 block text-[11px] opacity-70">🔎 {m.tools.map(toolLabel).join(" · ")}</span>}
                 <span className="mt-1 block text-[10px] opacity-60">{stampMYT(m.at)}</span>
               </div>
             </li>

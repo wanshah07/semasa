@@ -21,6 +21,39 @@ The chat tab (`web/src/lib/chat.js`) calls this function. The Mireld key lives h
    - whether the model **reads a picture**: it is sent a solid red square and asked its colour. "It answered with an
      image attached" is not the test; saying *red* / *merah* is.
 
+## Memory, web and data (1 Oct 2026)
+
+Run `supabase/025_chat_memory.sql` once, then deploy the function again. Nothing else changes for the page.
+
+**Why the chat can "forget", and what makes it not.** A model keeps nothing between calls: it knows only what is sent
+with each call. So memory here is three things the function re-sends every time:
+
+| Layer | Where | What it holds | Lives |
+|---|---|---|---|
+| Pinned notes | `semasa_chat_memory` | Short notes Wan pins (or tells the chat to remember). Sent at the top of EVERY call, in every conversation. | Until Wan deletes them |
+| Transcript | `semasa_chat_messages` | Every turn. The page reopens the newest conversation on load, from any device. | Until the thread is deleted |
+| Rolling summary | `semasa_chat_threads.summary` | When a conversation passes 30 turns, all but the newest 12 are folded into a summary by the model and the summary is sent instead. | With the thread |
+
+"Always" has a limit: the model reads a bounded amount per call (24 recent turns, a 6,000-character summary, 40 notes).
+Anything that must never be lost belongs in a **pinned note**, not in the conversation. Summaries are the model's own
+words and can drop detail, so a fact that matters should be pinned.
+
+**Tools** (the model decides when to use them, at most 4 rounds a message):
+- `fetch_url` reads one public https page: the Semasa site, NPRA, JAKIM, EUR-Lex, a link Wan pastes. It refuses IP
+  addresses, internal names, odd ports and logins, checks every address the name resolves to, and re-checks each
+  redirect. PDFs and Word files are not read yet.
+- `search_web` needs a Brave Search API key: `supabase secrets set BRAVE_API_KEY=<key> --project-ref mwaocnbgvbkhovktgods`.
+  Without it the tool says it is not installed and the chat uses `fetch_url` instead.
+- `query_semasa` reads these tables only, read only, through Wan's own login (row-level security): `semasa_ideas`,
+  `semasa_posts`, `semasa_watch`, `semasa_faqs`, `semasa_log`, `semasa_publish_log`, `isu_semasa_trends`. Not "any
+  database": the project is shared with another app, and keys and secrets are never listed.
+- `remember` saves a note, and only when Wan's own message asks for it ("ingat ...", "remember ..."). A web page or a
+  search result cannot make the chat write a note.
+
+Everything a page, a search or a table returns is handed to the model marked as untrusted data, because a page can
+contain instructions aimed at the model. The check button now also says whether the model accepts tools and whether
+web search is installed. If Mireld rejects tools the chat still answers, without them, and says so.
+
 ## What it enforces
 
 - Caller must be signed in **and** pass `public.semasa_is_uploader()`. The project's public anon key is itself a valid

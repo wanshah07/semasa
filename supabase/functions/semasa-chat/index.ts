@@ -17,7 +17,8 @@
 // Actions: {action:"chat", thread_id?, text, files}  and  {action:"check"}  (lists Mireld's models, asks the model the
 // colour of a red square, which tells "accepts an image" from "reads one", and whether it calls tools), and
 // {action:"faq_extract", note?, files}  (the FAQ page's AI bar, 1 Oct 2026: reads pictures, PDF text and typed text and
-// returns the question-and-answer pairs found; writes nothing, see ./faq.js).
+// returns the question-and-answer pairs found; writes nothing, see ./faq.js), and {action:"models"} (the chat models Mireld lists,
+// best default first). `chat` and `check` also take {model} to use another listed model for that call.
 //
 // 1 Oct 2026 (Wan: "let AI Chat access the website and any database live, ... memory stable and always remember"):
 //   * MEMORY. History is kept in semasa_chat_* (supabase/025_chat_memory.sql), read and written with the CALLER's login
@@ -32,7 +33,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { faqMessages, parseFaqItems } from "./faq.js";
 import {
-  MEMORY, SYSTEM, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
+  MEMORY, SYSTEM, rankModels, resolveModel, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
   htmlToText, isPrivateIp, parseArgs, planFold, planQuery, shapeRows, summaryMessages, userAskedToRemember, whoIs,
 } from "./logic.js";
 
@@ -56,6 +57,8 @@ const asText = (d: any) => {
   return typeof c === "string" ? c : Array.isArray(c) ? c.map((p: any) => p?.text || "").join("") : "";
 };
 
+let modelCache: { at: number; ids: string[] | null } = { at: 0, ids: null };   // Mireld's model list, kept five minutes
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -77,12 +80,31 @@ Deno.serve(async (req) => {
   const key = Deno.env.get("MIRELD_API_KEY");
   if (!key) return json({ error: "MIRELD_API_KEY is not set on the function" }, 503);
   const base = Deno.env.get("MIRELD_BASE_URL") || "https://api.mireld.my/v1";
-  const model = Deno.env.get("MIRELD_MODEL") || "claude-sonnet-5.5";
+  const envModel = Deno.env.get("MIRELD_MODEL") || "";
+  let model = envModel || "claude-sonnet-5.5";            // the default; the page may ask for another (below)
   if (!/^https:\/\//.test(base)) return json({ error: "MIRELD_BASE_URL must be https" }, 500);
   const uid = who.user.id;
 
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "body is not JSON" }, 400); }
+
+  // ---- which model answers (Wan, 1 Oct 2026): the one the page asked for if Mireld lists it, else the default. The default is
+  // MIRELD_MODEL when set, else the best of Mireld's list by logic.js MODEL_PREFERENCE (Sonnet 5.5 first).
+  let modelIds: string[] | null = null;
+  if (body?.model || body?.action === "models") {
+    if (modelCache.ids && Date.now() - modelCache.at < 300000) modelIds = modelCache.ids;
+    else {
+      const l = await upstream(base, key, "/models", { method: "GET" }, 15000).catch(() => null);
+      if (l?.ok && Array.isArray(l.data?.data)) {
+        modelIds = l.data.data.map((m: any) => String(m?.id || "")).filter(Boolean);
+        modelCache = { at: Date.now(), ids: modelIds };
+      }
+    }
+  }
+  const ranked = rankModels(modelIds, envModel || "claude-sonnet-5.5");
+  const defaultModel = envModel || ranked.recommended || "claude-sonnet-5.5";
+  const picked = resolveModel(body?.model, modelIds, defaultModel);
+  model = picked.model;
 
   // ---- tools -------------------------------------------------------------------------------------------
   async function addressesOk(host: string): Promise<string | null> {
@@ -168,6 +190,12 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // ---- models: what the page's picker offers (Wan, 1 Oct 2026) ------------------------------------------
+    if (body?.action === "models") {
+      if (!modelIds) return json({ models: [], recommended: ranked.recommended, default: defaultModel, listed: false });
+      return json({ models: ranked.models, recommended: ranked.recommended, default: defaultModel, listed: true });
+    }
+
     // ---- check: models, picture reading, tool calling -------------------------------------------------
     if (body?.action === "check") {
       let ids: string[] | null = null;
@@ -293,7 +321,8 @@ Deno.serve(async (req) => {
     if (!final) return json({ error: "the model kept calling tools and never answered" }, 502);
 
     await db.from("semasa_chat_messages").insert({ thread_id: threadId, user_id: uid, role: "assistant", content: final, tools: used.length ? [...new Set(used)] : null });
-    return json({ text: final, thread_id: threadId, model: lastModel, tools: [...new Set(used)], memory_saved: memorySaved, notice: toolsNote || undefined, sent: built.sent });
+    return json({ text: final, thread_id: threadId, model: lastModel, tools: [...new Set(used)], memory_saved: memorySaved, notice: toolsNote || undefined, sent: built.sent,
+      ...(picked.changed ? { model_changed: { asked: picked.asked, used: model } } : {}) });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return json({ error: /timed? ?out|abort/i.test(msg) ? "the model did not answer in time" : msg.slice(0, 200) }, 502);

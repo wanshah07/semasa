@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { IconBulb, IconFileText, IconPencil, IconShieldCheck } from "@tabler/icons-react";
 import Ai04 from "@/components/ui/ai-04";
-import { addMemory, askAI, checkAI, deleteMemory, listMemory, loadLatestThread } from "../lib/chat";
+import { addMemory, askAI, checkAI, deleteMemory, listMemory, listModels, loadLatestThread, saveModel, savedModel } from "../lib/chat";
 import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
 
@@ -31,6 +31,27 @@ export default function ChatTab() {
   ];
 
   const [threadId, setThreadId] = useState(null);
+  // the model: "" is Auto, which is the function's default (the recommended one); a name is this browser's own choice
+  const [models, setModels] = useState(null);                // { models, recommended, default } | null (picker hidden)
+  const [model, setModel] = useState(savedModel);
+  useEffect(() => {
+    let live = true;
+    listModels().then((m) => {
+      if (!live || !m) return;
+      setModels(m);
+      // a model chosen earlier that Mireld no longer lists would only be refused: go back to Auto and say so
+      const kept = savedModel();
+      if (kept && m.listed && !m.models.some((x) => x.id === kept)) {
+        saveModel(""); setModel("");
+        setMessages((cur) => [...cur, { role: "note", at: new Date().toISOString(),
+          text: t(`Model pilihan anda (${kept}) tiada lagi dalam senarai Mireld; guna Auto (${m.default}).`, `Your chosen model (${kept}) is no longer in Mireld's list; using Auto (${m.default}).`) }]);
+      }
+    });
+    return () => { live = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const chooseModel = (id) => { setModel(id); saveModel(id); };
+  const shownModel = model || models?.default || "";
+  const modelNote = models?.models.find((x) => x.id === shownModel);
   const [notes, setNotes] = useState([]);
   const [showNotes, setShowNotes] = useState(false);
   const [draftNote, setDraftNote] = useState("");
@@ -60,14 +81,16 @@ export default function ChatTab() {
     setMessages((m) => [...m, mine]);
     setBusy(true);
     try {
-      const res = await askAI({ text, files, threadId });
+      const res = await askAI({ text, files, threadId, model });
       if (res.threadId) setThreadId(res.threadId);
       const reply = res.connected
-        ? { role: "assistant", text: res.text, at: new Date().toISOString(), tools: res.tools }
+        ? { role: "assistant", text: res.text, at: new Date().toISOString(), tools: res.tools, model: res.model }
         : { role: "note", text: t("AI belum disambungkan. Mesej anda disimpan di skrin ini sahaja.",
             "The AI is not connected yet. Your message is kept on this screen only."), at: new Date().toISOString() };
       setMessages((m) => [...m, reply]);
       if (res.memorySaved) refreshNotes();
+      if (res.modelChanged) setMessages((m) => [...m, { role: "note", at: new Date().toISOString(),
+        text: t(`Model ${res.modelChanged.asked} tidak ada di Mireld; dijawab oleh ${res.modelChanged.used}.`, `Model ${res.modelChanged.asked} is not at Mireld; answered by ${res.modelChanged.used}.`) }]);
       if (res.notice === "tools_unsupported") setMessages((m) => [...m, { role: "note", at: new Date().toISOString(),
         text: t("Model ini tidak menerima alat (web, pangkalan data); dijawab tanpa alat.", "This model does not accept tools (web, database); answered without them.") }]);
     } catch (e) {
@@ -80,7 +103,7 @@ export default function ChatTab() {
   // "Semak model": is the model listed at Mireld, and does it really read a picture (it is asked the colour of a red square).
   async function checkModel() {
     setBusy(true);
-    const r = await checkAI();
+    const r = await checkAI(model);
     const now = new Date().toISOString();
     let line;
     if (r.error) line = t(`Semakan gagal: ${r.error}`, `Check failed: ${r.error}`);
@@ -110,8 +133,27 @@ export default function ChatTab() {
       <p className="text-center text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t("Sembang AI", "AI chat")}</p>
       <button type="button" onClick={checkModel} disabled={busy}
         className="mx-auto mt-2 text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-50">
-        {t("Semak model dan pembaca gambar", "Check the model and its image reader")}
+        {t("Uji model terpilih: baca gambar dan guna alat", "Test the selected model: pictures and tools")}
       </button>
+      {models && models.models.length > 0 && (
+        <div className="mx-auto mt-2 flex max-w-2xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted">
+          <label className="flex items-center gap-1.5">
+            <span>{t("Model AI", "AI model")}</span>
+            <select value={model} onChange={(e) => chooseModel(e.target.value)} disabled={busy} aria-label={t("Pilih model AI", "Choose the AI model")}
+              className="max-w-[16rem] rounded-pill border border-line bg-surface px-2.5 py-1 text-[11px] text-ink outline-none focus:border-accent">
+              <option value="">{t("Auto", "Auto")} · {models.default}</option>
+              {models.models.map((m) => (
+                <option key={m.id} value={m.id}>{m.id}{m.recommended ? ` ★ ${t("disyorkan", "recommended")}` : ""}</option>
+              ))}
+            </select>
+          </label>
+          {modelNote && (
+            <span className="max-w-md text-center">
+              {shownModel === models.recommended ? `★ ${t("Disyorkan", "Recommended")}: ` : ""}{t(modelNote.note_bm, modelNote.note_en)}
+            </span>
+          )}
+        </div>
+      )}
       <div className="mx-auto mt-1 flex items-center gap-3 text-[11px] text-muted">
         <button type="button" onClick={() => setShowNotes((v) => !v)} className="underline decoration-dotted underline-offset-2 hover:text-accent">
           {t(`Ingatan kekal (${notes.length})`, `Pinned memory (${notes.length})`)}
@@ -150,7 +192,9 @@ export default function ChatTab() {
                     : "max-w-[85%] rounded-card bg-warn/10 px-4 py-2 text-xs text-warn"}>
                 {m.text}
                 {m.files?.length > 0 && <span className="mt-1 block text-[11px] opacity-70">📎 {m.files.join(", ")}</span>}
-                {m.role === "assistant" && m.tools?.length > 0 && <span className="mt-1 block text-[11px] opacity-70">🔎 {m.tools.map(toolLabel).join(" · ")}</span>}
+                {m.role === "assistant" && (m.tools?.length > 0 || m.model) && (
+                  <span className="mt-1 block text-[11px] opacity-70">{m.tools?.length > 0 ? `🔎 ${m.tools.map(toolLabel).join(" · ")}` : ""}{m.tools?.length > 0 && m.model ? " · " : ""}{m.model || ""}</span>
+                )}
                 <span className="mt-1 block text-[10px] opacity-60">{stampMYT(m.at)}</span>
               </div>
             </li>

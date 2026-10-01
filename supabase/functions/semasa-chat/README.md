@@ -81,6 +81,22 @@ sheet by a side door.
 - Needs no new secret and no SQL: same Mireld key, same table. Deploying this function (merge → *Deploy functions*) is the
   only step.
 
+## Choosing the model (1 Oct 2026)
+
+Wan: *"we allow to choose AI model and you will suggest default AI that is the best"*. The chat page has a **Model AI** picker.
+
+- `{action:"models"}` returns the chat models Mireld lists (embedding, speech and image models are left out), best default first, each
+  with a one-line note from its name alone (never a price or a speed). Mireld's list is read once and kept five minutes.
+- **The default is Auto**: `MIRELD_MODEL` if you set it, else the first of `claude-sonnet-5.5`, `claude-opus-5.5`, `claude-sonnet-5`,
+  `claude-fable-5.1`, `claude-haiku-4.5` that Mireld lists (`MODEL_PREFERENCE` in `logic.js`). **Sonnet 5.5** is the recommended default:
+  it is the model the chat was proven on (reads pictures, calls tools, writes Malay), and it answers quickly. **Opus** is the one to pick
+  for a hard clause or a long document: more thorough, slower, dearer. Haiku is the lightest.
+- The choice is kept in the browser (`semasa.chat.model`); Auto sends no model, so the default can improve without anyone changing a setting.
+- `chat` and `check` take `{model}`. It is used only if Mireld lists it (or the list cannot be read and it is a plain id); otherwise the
+  default answers and the page says so. **Test** is the existing check button, now run on the model picked: it proves that model reads a
+  picture and calls tools, which is how an unfamiliar model earns a place.
+- The picker needs this function deployed; an older function simply hides it.
+
 ## What it enforces
 
 - Caller must be signed in **and** pass `public.semasa_is_uploader()`. The project's public anon key is itself a valid

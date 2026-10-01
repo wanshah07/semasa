@@ -6,7 +6,14 @@
 
    Positions in the layout are fractions of the canvas, x and y the top-left of the box; the seed's own positions are pixels. Text
    layers keep the existing meaning (x is the CENTRE of the box, `top` its top edge); shapes and photo boxes are given as top-left
-   boxes and placed by CanvasTab, which anchors Fabric objects at their centre. */
+   boxes and placed by CanvasTab, which anchors Fabric objects at their centre.
+
+   Two ways to rebuild (Wan, same day: "make sure almost 100% serupa"):
+     * `referenceUrl` set: the REFERENCE PICTURE ITSELF is the background, so every shape, photo, gradient and texture is the
+       original's own pixels; the old words (and any logo or face) are covered by PATCHES in the colour found behind them, and only the
+       new words are drawn on top. Nothing else from the layout is drawn, because it is already in the picture.
+     * no `referenceUrl`: every shape is rebuilt as a layer, as before (the only way when the canvas shape differs from the reference's,
+       or when the reference's photo must not be reused). */
 
 import { FONTS } from "./fonts.js";
 
@@ -33,6 +40,42 @@ export function gradientCoords(angle, w, h) {
   const len = Math.abs(w * dx) + Math.abs(h * dy);
   const cx = w / 2, cy = h / 2;
   return { x1: cx - dx * len / 2, y1: cy - dy * len / 2, x2: cx + dx * len / 2, y2: cy + dy * len / 2 };
+}
+
+/* ---- patches: the colour behind the old words, read from the reference's own pixels (lib/designPatch.js samples them) ---------- */
+
+export const rgbHex = (rgb) => "#" + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+
+/** The median colour of a list of [r, g, b] samples, channel by channel: a few glyph pixels in the ring cannot pull it. */
+export function medianRgb(samples) {
+  if (!samples?.length) return null;
+  const ch = (i) => { const v = samples.map((s) => s[i]).sort((a, b) => a - b); return v[Math.floor(v.length / 2)]; };
+  return [ch(0), ch(1), ch(2)];
+}
+
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+/** A patch for one box from the median colours just above and just below it: a vertical gradient from the one to the other, so on a
+    gradient or a scrim the patch blends in (a flat patch of the top colour showed as a lighter box on a teal gradient, measured in
+    Chromium), and one flat colour only when the two agree to the pixel. `fallback` is the reader's own "behind" guess, used when
+    nothing could be sampled. Returns { fill } or { gradient } or null. */
+export function patchFromRings(top, bottom, fallback = null) {
+  const a = medianRgb(top), b = medianRgb(bottom);
+  if (!a && !b) return fallback ? { fill: fallback } : null;
+  if (!a || !b || dist(a, b) < 3) return { fill: rgbHex(a || b) };
+  return { gradient: { angle: 180, stops: [{ at: 0, color: rgbHex(a) }, { at: 1, color: rgbHex(b) }] } };
+}
+
+/** The boxes that need patching when the reference stays as the background: every text block that gets new words (or is left out),
+    plus the logo and face boxes the reader listed. Each is grown a little so the anti-aliased edges of the old glyphs go too. Fractions. */
+export function patchBoxes(layout, grow = 0.012) {
+  const out = [];
+  for (const e of layout?.elements || []) {
+    if (e.type !== "text") continue;
+    out.push({ kind: "text", x: Math.max(0, e.x - grow), y: Math.max(0, e.y - grow), w: Math.min(1, e.w + grow * 2), h: Math.min(1, e.h + grow * 2), behind: e.behind || null });
+  }
+  for (const c of layout?.covers || []) out.push({ kind: c.kind, x: Math.max(0, c.x - grow), y: Math.max(0, c.y - grow), w: Math.min(1, c.w + grow * 2), h: Math.min(1, c.h + grow * 2), behind: null });
+  return out.map((b) => ({ ...b, w: Math.min(b.w, 1 - b.x), h: Math.min(b.h, 1 - b.y) }));
 }
 
 const byPosition = (a, b) => a.y - b.y || a.x - b.x;
@@ -100,17 +143,27 @@ function spreadPoints(points, others, count) {
  *            t is the page's translator, used for layer names
  * Returns { seed, notes } where notes name what was left out or moved, for the page to show.
  */
-export function layoutToSeed(layout, words, { width, height, name, pictureUrl = "", t = (bm, en) => en } = {}) {
+export function layoutToSeed(layout, words, { width, height, name, pictureUrl = "", referenceUrl = "", patches = [], t = (bm, en) => en } = {}) {
   const W = Math.round(width), H = Math.round(height), u = Math.min(W, H);
   const notes = [];
   const layers = [];
   const bg = layout.background || { color: "#ffffff", gradient: null };
+  const onReference = !!referenceUrl;
   layers.push({ kind: "rect", name: t("Latar", "Background"), role: "bg", x: 0, y: 0, w: W, h: H, fill: bg.color, gradient: bg.gradient, opacity: 1 });
 
   const photos = (layout.elements || []).filter((e) => e.type === "photo");
   const main = photos.slice().sort((a, b) => area(b) - area(a))[0] || null;
   const fullBleed = (e) => e.w >= 0.9 && e.h >= 0.9;
-  if (pictureUrl && (!main || fullBleed(main))) layers.push({ kind: "image", name: t("Gambar", "Picture"), role: "bg", url: pictureUrl, cover: true });
+  if (onReference) {
+    layers.push({ kind: "image", name: t("Rujukan (latar)", "Reference (background)"), role: "bg", url: referenceUrl, cover: true });
+    // the old words, logos and faces go under a patch in the colour that was behind them; a patch is a layer, so one that lands on a
+    // photograph can be moved, shrunk or deleted in Kanvas
+    patches.forEach((p, i) => {
+      if (!p || (!p.fill && !p.gradient)) return;
+      layers.push({ kind: "rect", name: `${t("Tampalan", "Patch")} ${i + 1}`, role: "patch", x: p.x * W, y: p.y * H, w: p.w * W, h: p.h * H,
+        fill: p.fill || null, gradient: p.gradient || null, opacity: 1, radius: 0, stroke: null, strokeW: 0 });
+    });
+  } else if (pictureUrl && (!main || fullBleed(main))) layers.push({ kind: "image", name: t("Gambar", "Picture"), role: "bg", url: pictureUrl, cover: true });
 
   const slots = slotsOf(layout);
   if (slots.extraHeadlines.length) notes.push(t("{n} blok tajuk tambahan digabungkan ke dalam satu.", "{n} extra headline block(s) were merged into one.", { n: slots.extraHeadlines.length }));
@@ -144,8 +197,10 @@ export function layoutToSeed(layout, words, { width, height, name, pictureUrl = 
   }
   if (slots.points.length > pts.length) notes.push(t("{n} blok poin dalam rujukan tiada perkataan dan ditinggalkan.", "{n} point block(s) in the reference had no words and were left out.", { n: slots.points.length - pts.length }));
 
-  // z-order is the layout's own: shapes and text interleave as the reference stacked them
+  // z-order is the layout's own: shapes and text interleave as the reference stacked them (on the reference picture only the words
+  // are drawn: the shapes are already in it)
   for (const el of layout.elements || []) {
+    if (onReference && el.type !== "text") continue;
     if (el.type === "rect" || el.type === "ellipse") {
       if (!el.fill && !el.gradient && !el.stroke) continue;
       layers.push({ kind: "rect", name: el.type === "ellipse" ? t("Bulatan", "Ellipse") : t("Bentuk", "Shape"), ellipse: el.type === "ellipse", x: el.x * W, y: el.y * H,
@@ -162,7 +217,9 @@ export function layoutToSeed(layout, words, { width, height, name, pictureUrl = 
     }
   }
   for (const x of [...made, ...extra]) layers.push(textLayer(x.el, x.text, x.name, W, H, u));
-  if (main && !pictureUrl && fullBleed(main)) notes.push(t("Gambar latar rujukan diganti dengan warna dan kecerunan yang serupa: tambah gambar anda sendiri di Kanvas.", "The reference's background photo is replaced by a similar colour and gradient: add your own picture in Kanvas."));
+  if (onReference) {
+    if (patches.some((p) => p && p.onPhoto)) notes.push(t("Perkataan lama di atas gambar ditampal dengan warna purata: alihkan atau padam tampalan itu di Kanvas jika kelihatan.", "Old words over a photograph are patched with the average colour: move or delete that patch in Kanvas if it shows."));
+  } else if (main && !pictureUrl && fullBleed(main)) notes.push(t("Gambar latar rujukan diganti dengan warna dan kecerunan yang serupa: tambah gambar anda sendiri di Kanvas.", "The reference's background photo is replaced by a similar colour and gradient: add your own picture in Kanvas."));
   else if (photos.some((p) => !fullBleed(p)) && !pictureUrl) notes.push(t("Kawasan gambar dibiarkan sebagai ruang kosong untuk anda ganti.", "Picture areas are left as empty boxes for you to replace."));
-  return { seed: { width: W, height: H, name: name || t("Reka bentuk daripada rujukan", "Design from a reference"), layers, bgColor: bg.color, source: "design-clone" }, notes };
+  return { seed: { width: W, height: H, name: name || t("Reka bentuk daripada rujukan", "Design from a reference"), layers, bgColor: bg.color, source: onReference ? "design-clone-ref" : "design-clone" }, notes };
 }

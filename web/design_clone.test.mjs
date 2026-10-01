@@ -226,3 +226,107 @@ t("fonts: classes map to the faces Kanvas has, bold sans is Poppins, weights sna
 });
 
 console.log(`${n} design clone tests passed`);
+
+// ---- second pass (1 Oct 2026): "almost 100% serupa" and "inspired ... generate" ---------------------------------------------------
+import { MODES, REFINE_SYSTEM, inspireSystem, keepWords, refineMessages } from "../supabase/functions/semasa-chat/design.js";
+import { medianRgb, patchBoxes, patchFromRings, rgbHex } from "./src/lib/designCloneSeed.js";
+import { sizeLike } from "./src/lib/designPatch.js";
+
+t("the reader is asked for tight boxes, the colour behind each block and the logo/face boxes; clone keeps the arrangement, inspire must not", () => {
+  const s = designSystem("regulab", true);
+  for (const needle of [/TIGHT box/, /"behind"/, /"lines"/, /"palette"/, /AS CLOSE TO IDENTICAL/]) assert.match(s, needle);
+  const i = inspireSystem("regulab", true);
+  for (const needle of [/Do NOT copy its layout/, /ORIGINAL design/, /NEVER carry these over/, /two to five points/]) assert.match(i, needle);
+  assert.deepEqual(MODES, ["clone", "inspire"]);
+  assert.equal(designMessages({ image: PNG, width: 1080, height: 1080, brief: "x", mode: "inspire" }).mode, "inspire");
+  assert.match(designMessages({ image: PNG, width: 1080, height: 1080, brief: "x", mode: "inspire" }).messages[0].content, /art director/);
+  assert.equal(designMessages({ image: PNG, width: 1080, height: 1080, brief: "x", mode: "nonsense" }).mode, "clone");
+});
+
+t("cleanLayout keeps what the second pass needs: behind colours, line counts, the palette, and the boxes of logos and faces as covers", () => {
+  const r = cleanLayout({ palette: ["#AABBCC", "bad", "#aabbcc", "#112233"], elements: [
+    { type: "logo", x: 0.8, y: 0.02, w: 0.15, h: 0.08 }, { type: "person", x: 0.4, y: 0.2, w: 0.3, h: 0.5 },
+    text({ text: "Hi", behind: "#0A3D3A", lines: 3 }), text({ role: "point", text: "p", behind: "nope", lines: 0, y: 0.5 })] });
+  assert.deepEqual(r.layout.palette, ["#aabbcc", "#112233"]);
+  assert.deepEqual(r.layout.covers.map((c) => c.kind), ["logo", "person"]);
+  assert.equal(r.layout.covers[0].x, 0.8);
+  const [h, p] = r.layout.elements;
+  assert.deepEqual([h.behind, h.lines, p.behind, p.lines], ["#0a3d3a", 3, null, 1]);
+  assert.ok(!r.layout.elements.some((e) => e.type === "logo"), "a logo is a cover, never a layer");
+});
+
+t("the refine request carries both pictures and the cleaned layout, and refuses a bad picture or layout before any AI call", () => {
+  const r = refineMessages({ image: PNG, render: PNG, layout: LAYOUT, width: 1080, height: 1350 });
+  assert.ok(!r.error, r.error);
+  assert.equal(r.messages[0].content, REFINE_SYSTEM);
+  assert.match(REFINE_SYSTEM, /never the words themselves/);
+  const parts = r.messages[1].content;
+  assert.deepEqual(parts.map((p) => p.type), ["text", "image_url", "image_url"]);
+  assert.match(parts[0].text, /"elements"/);
+  assert.match(refineMessages({ image: PNG, render: "nope", layout: LAYOUT, width: 1080, height: 1350 }).error, /rebuild must be sent/);
+  assert.match(refineMessages({ image: PNG, render: PNG, layout: { elements: [] }, width: 1080, height: 1350 }).error, /not a layout/);
+  assert.match(refineMessages({ image: PNG, render: PNG, layout: LAYOUT, width: 10, height: 1350 }).error, /size/);
+});
+
+t("a refined layout keeps the words and roles of the layout it refines, by role and order, even when the reader rewrote them", () => {
+  const moved = { ...LAYOUT, elements: LAYOUT.elements.map((e) => (e.type === "text" ? { ...e, y: e.y + 0.05, text: "REWRITTEN" } : e)) };
+  const kept = keepWords(LAYOUT, moved);
+  const texts = kept.elements.filter((e) => e.type === "text");
+  assert.deepEqual(texts.map((e) => e.text), ["LABEL", "Headline", "one", "two", "src", "01/10"]);
+  assert.ok(texts.every((e, i) => e.y === LAYOUT.elements.filter((x) => x.type === "text")[i].y + 0.05), "the moves are kept");
+  const fewer = { ...LAYOUT, elements: LAYOUT.elements.filter((e) => e.role !== "point") };
+  assert.equal(keepWords(LAYOUT, fewer).elements.filter((e) => e.role === "point").length, 0, "a dropped block stays dropped");
+  assert.equal(keepWords(null, moved), moved);
+});
+
+t("patches: the median colour of a ring, a vertical gradient from the top ring to the bottom one, flat only when they agree, the reader's guess as the fallback", () => {
+  assert.deepEqual(medianRgb([[10, 10, 10], [250, 250, 250], [12, 11, 10]]), [12, 11, 10]);
+  assert.equal(medianRgb([]), null);
+  assert.equal(rgbHex([255, 0, 128]), "#ff0080");
+  assert.deepEqual(patchFromRings([[20, 20, 20]], [[21, 20, 20]]), { fill: "#141414" });
+  assert.ok(patchFromRings([[20, 20, 20]], [[30, 28, 26]]).gradient, "even a small run is a gradient, so it blends on a gradient background");
+  const g = patchFromRings([[0, 0, 0]], [[255, 255, 255]]);
+  assert.deepEqual(g.gradient.stops.map((s) => s.color), ["#000000", "#ffffff"]);
+  assert.deepEqual(patchFromRings([], [], "#0a3d3a"), { fill: "#0a3d3a" });
+  assert.equal(patchFromRings([], [], null), null);
+  assert.deepEqual(patchFromRings([], [[9, 9, 9]]), { fill: "#090909" });
+});
+
+t("patch boxes cover every text block and every logo or face box, grown a little and never past the canvas", () => {
+  const lay = cleanLayout({ elements: [{ type: "logo", x: 0.9, y: 0.9, w: 0.1, h: 0.1 }, text({ text: "Hi", x: 0, y: 0, w: 0.5, h: 0.1, behind: "#123456" })] }).layout;
+  const boxes = patchBoxes(lay);
+  assert.deepEqual(boxes.map((b) => b.kind), ["text", "logo"]);
+  assert.deepEqual([boxes[0].x, boxes[0].y, boxes[0].behind], [0, 0, "#123456"]);
+  assert.ok(boxes[0].w > 0.5 && boxes[0].h > 0.1, "grown");
+  assert.ok(boxes[1].x + boxes[1].w <= 1 + 1e-9 && boxes[1].y + boxes[1].h <= 1 + 1e-9, "never past the canvas");
+});
+
+t("on the reference picture only the words and the patches are drawn, the picture itself is the background, and nothing is rebuilt twice", () => {
+  const patches = patchBoxes(LAYOUT).map((b, i) => ({ ...b, fill: i % 2 ? "#000000" : null, gradient: i % 2 ? null : { angle: 180, stops: [{ at: 0, color: "#000000" }, { at: 1, color: "#ffffff" }] } }));
+  const { seed, notes } = layoutToSeed(LAYOUT, WORDS, { width: 1080, height: 1350, referenceUrl: "blob:ref", patches });
+  assert.equal(seed.source, "design-clone-ref");
+  assert.equal(seed.layers[1].kind, "image");
+  assert.equal(seed.layers[1].url, "blob:ref");
+  assert.ok(seed.layers[1].cover);
+  const kinds = seed.layers.map((l) => l.kind);
+  assert.ok(!kinds.includes("photo") && !kinds.includes("line"), "shapes of the reference are in the picture already");
+  assert.equal(seed.layers.filter((l) => l.role === "patch").length, patches.length);
+  assert.equal(seed.layers.filter((l) => l.kind === "text").length, 6, "eyebrow, headline, three points (spread over the two blocks), source");
+  assert.ok(seed.layers.findIndex((l) => l.role === "patch") < seed.layers.findIndex((l) => l.kind === "text"), "patches go under the words");
+  assert.ok(!notes.some((n) => /background photo/.test(n)));
+  const withPhoto = layoutToSeed(LAYOUT, WORDS, { width: 1080, height: 1350, referenceUrl: "blob:ref", patches: [{ ...patches[0], onPhoto: true }] });
+  assert.ok(withPhoto.notes.some((n) => /photograph/.test(n)), "a patch on a photograph is said");
+  const plain = layoutToSeed(LAYOUT, WORDS, { width: 1080, height: 1350 });
+  assert.equal(plain.seed.source, "design-clone");
+  assert.ok(plain.seed.layers.some((l) => l.kind === "line"), "without the reference every shape is rebuilt as before");
+});
+
+t("a canvas the reference's own shape: the shorter side is 1080 and the longer side keeps the ratio, capped at the function's limit", () => {
+  assert.deepEqual(sizeLike(1200, 1500), [1080, 1350]);
+  assert.deepEqual(sizeLike(1920, 1080), [1920, 1080]);
+  assert.deepEqual(sizeLike(500, 500), [1080, 1080]);
+  assert.deepEqual(sizeLike(100, 3000), [1080, 4096]);
+  assert.deepEqual(sizeLike(0, 0), [1080, 1080]);
+});
+
+console.log(`design_clone: ${n} ok`);

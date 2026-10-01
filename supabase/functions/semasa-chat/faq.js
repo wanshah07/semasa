@@ -62,7 +62,7 @@ export function faqMessages(note, files, system = FAQ_SYSTEM) {
   let textLeft = FAQ_LIMITS.text;
   let images = 0;
   for (const f of Array.isArray(files) ? files : []) {
-    const name = String(f?.name || "file").slice(0, 120);
+    const name = String(f?.name || "file").replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 120); // a file name is data, and one line
     if (f?.skipped) { skipped.push(`${name}: ${String(f.skipped).slice(0, 120)}`); continue; }
     if (typeof f?.dataUrl === "string") {
       if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(f.dataUrl)) { skipped.push(`${name}: not a picture the reader accepts`); continue; }

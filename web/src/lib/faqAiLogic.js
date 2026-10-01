@@ -4,7 +4,49 @@
    auto to categorize them to proper Q&A FAQ". The limits below mirror supabase/functions/semasa-chat/faq.js: a call
    the function would refuse is split here instead of failing there. */
 
-export const AI_LIMITS = { images: 6, text: 40_000, files: 12, pdfPages: 40, pdfImagePages: 12, imageBytes: 12_000_000, pdfBytes: 25_000_000 };
+export const AI_LIMITS = { images: 6, text: 40_000, files: 12, pdfPages: 40, pdfImagePages: 12, imageBytes: 12_000_000, pdfBytes: 25_000_000,
+  officeBytes: 20_000_000, calls: 10, note: 500 };
+
+const EXT = (name) => (String(name || "").toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || "";
+/** What the bar does with a file: image | pdf | docx | xlsx | csv | text, or `legacy` (an old Office or other format it
+    names and refuses), or "" (not a thing it reads). Decided by the extension first: browsers often send no type for
+    .csv or .docx, and Windows sends odd ones. */
+export function kindOf(name, type = "") {
+  const ext = EXT(name), ty = String(type || "").toLowerCase();
+  if (/^image\/(png|jpe?g|webp|gif)$/.test(ty) || ["png", "jpg", "jpeg", "webp", "gif"].includes(ext)) return "image";
+  if (ty === "application/pdf" || ext === "pdf") return "pdf";
+  if (ext === "docx" || ext === "docm" || ty === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return "docx";
+  if (ext === "xlsx" || ext === "xlsm" || ty === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") return "xlsx";
+  if (ext === "csv" || ext === "tsv" || ty === "text/csv" || ty === "text/tab-separated-values") return "csv";
+  if (["doc", "xls", "xlsb", "rtf", "odt", "ods", "ppt", "pptx", "pages", "numbers", "heic", "heif", "tif", "tiff", "bmp", "svg"].includes(ext)) return "legacy";
+  if (["txt", "md", "json", "log"].includes(ext) || ty.startsWith("text/")) return "text";
+  return "";
+}
+
+/** Why a `legacy` file is refused, in one line the person can act on. */
+export function legacyWhy(name) {
+  const ext = EXT(name);
+  if (["doc", "rtf", "odt", "pages"].includes(ext)) return "fail Word lama; buka dan simpan sebagai .docx atau PDF / an old Word format: open it and save as .docx or PDF";
+  if (["xls", "xlsb", "ods", "numbers"].includes(ext)) return "fail Excel lama; buka dan simpan sebagai .xlsx atau .csv / an old Excel format: open it and save as .xlsx or .csv";
+  if (["ppt", "pptx"].includes(ext)) return "PowerPoint belum boleh dibaca; simpan sebagai PDF / PowerPoint is not read yet: save it as a PDF";
+  return "format gambar ini belum boleh dibaca; simpan sebagai PNG atau JPG / this picture format is not read yet: save it as PNG or JPG";
+}
+
+/** A typed or pasted text longer than the note limit is MATERIAL, not a note: the function keeps only 500 characters of a
+    note, so a pasted Q&A of 2,000 characters would have been cut without a word. It goes as a text file instead. */
+export function splitNote(note) {
+  const text = String(note || "").trim();
+  if (!text) return { note: "", material: "" };
+  return text.length > AI_LIMITS.note ? { note: "", material: text } : { note: text, material: "" };
+}
+
+/** What each kept pair is filed as. Never the file's own name: a screenshot called "Syarikat ABC - Puan Siti.png" would
+    otherwise go into source_name, which the worker mirrors to the Semasa sheet. */
+export function sourceLabel(kinds) {
+  const names = { image: "gambar", pdf: "PDF", docx: "Word", xlsx: "Excel", csv: "CSV", text: "teks", typed: "teks ditaip" };
+  const seen = [...new Set((kinds || []).map((k) => names[k]).filter(Boolean))];
+  return seen.length ? seen.join(" + ") : "teks ditaip";
+}
 
 /** Where a long screenshot is cut. A phone screenshot of a chat can be 1080 x 5000: sent whole, the reader shrinks it
     until the words are unreadable. Tiles are at most `maxRatio` times as tall as wide and overlap a little, so a
@@ -30,42 +72,52 @@ export function fitSize(width, height, max = 1600) {
   return { w: Math.max(1, Math.round(width * s)), h: Math.max(1, Math.round(height * s)) };
 }
 
-/** Text cut into pieces of at most `limit` characters, at a blank line or a page marker when there is one. */
-export function chunkText(text, limit = AI_LIMITS.text) {
+/** Text cut into pieces of at most `limit` characters, at a blank line or a line end when there is one. `header` (the
+    first row of a spreadsheet) is put in front of every piece after the first, inside the limit, so a long sheet keeps
+    its column names in each call. */
+export function chunkText(text, limit = AI_LIMITS.text, header = "") {
   const out = [];
   let rest = String(text || "").trim();
-  while (rest.length > limit) {
-    let cut = rest.lastIndexOf("\n\n", limit);
-    if (cut < limit * 0.5) cut = rest.lastIndexOf("\n", limit);
-    if (cut < limit * 0.5) cut = limit;
-    out.push(rest.slice(0, cut).trim());
+  const pre = header ? `${header}\n` : "";
+  let room = limit;
+  while (rest.length > room) {
+    let cut = rest.lastIndexOf("\n\n", room);
+    if (cut < room * 0.5) cut = rest.lastIndexOf("\n", room);
+    if (cut < room * 0.5) cut = room;
+    out.push((out.length ? pre : "") + rest.slice(0, cut).trim());
     rest = rest.slice(cut).trim();
+    room = Math.max(1000, limit - pre.length);
   }
-  if (rest) out.push(rest);
+  if (rest) out.push((out.length ? pre : "") + rest);
   return out;
 }
 
 /** Prepared items → calls the function takes: at most `images` pictures and `text` characters each. Items marked
-    `skipped` never go; they are reported back by name. Order is kept so a PDF's pages stay in order. */
+    `skipped` never go; they are reported back by name. Order is kept so a PDF's pages stay in order. `pairs` items (a
+    spreadsheet that already has question and answer columns) need no reading at all and come back as `direct`. No more
+    than `calls` calls are made; the rest are counted in `dropped` so the page can say so. */
 export function batchInputs(items) {
   const batches = [];
   const skipped = [];
+  const direct = [];
   let cur = { files: [], images: 0, chars: 0 };
   const flush = () => { if (cur.files.length) batches.push(cur.files); cur = { files: [], images: 0, chars: 0 }; };
   for (const it of items || []) {
     if (it.skipped) { skipped.push({ name: it.name, why: it.skipped }); continue; }
+    if (it.pairs) { direct.push(...it.pairs); continue; }
     if (it.dataUrl) {
       if (cur.images >= AI_LIMITS.images) flush();
       cur.files.push({ name: it.name, dataUrl: it.dataUrl }); cur.images++;
     } else if (it.text) {
-      for (const piece of chunkText(it.text)) {
+      for (const piece of chunkText(it.text, AI_LIMITS.text, it.header || "")) {
         if (cur.chars + piece.length > AI_LIMITS.text) flush();
         cur.files.push({ name: it.name, text: piece }); cur.chars += piece.length;
       }
     }
   }
   flush();
-  return { batches, skipped };
+  const dropped = Math.max(0, batches.length - AI_LIMITS.calls);
+  return { batches: batches.slice(0, AI_LIMITS.calls), skipped, direct, dropped };
 }
 
 const fold = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();

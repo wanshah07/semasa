@@ -70,6 +70,13 @@ sheet by a side door.
   splits more into several calls and folds duplicates.
 - **PDF** is read in the browser (pdf.js, legacy build, loaded only when a PDF is chosen): a page with text sends its
   text, a scanned page is drawn and sent as a picture, so Mireld needs no PDF support. First 40 pages; 12 scanned pages.
+- **Word, Excel and CSV** (1 Oct 2026, second pass) are read in the browser too, with no new dependency (`web/src/lib/officeText.js`:
+  fflate opens the zip, a few tags carry the words). A `.docx` becomes its paragraphs, tables as `a | b` rows; an `.xlsx` or
+  `.csv` that already has a question column and an answer column becomes the pairs **directly, with no AI call**; any other
+  sheet goes to the reader as text with its header repeated on every part. Not read, and said so on screen: the old `.doc` /
+  `.xls` (save as `.docx` / `.xlsx`), hidden sheets, formulas without a stored value, macros, pictures inside the file.
+  Each kept pair is filed as `AI bar · <kind of file>` and never carries a file name, a sheet name or a person's name, because
+  `source_name` is mirrored to the Semasa sheet.
 - **Tall screenshots** are cut into overlapping tiles, because a 1080 x 5000 chat shrunk whole is unreadable.
 - Needs no new secret and no SQL: same Mireld key, same table. Deploying this function (merge → *Deploy functions*) is the
   only step.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Eye, ImagePlus, LayoutTemplate, Loader2, PenTool, Pencil, Plus, RotateCcw,
   Save, Trash2, Wand2, X } from "lucide-react";
@@ -17,8 +17,10 @@ import { UnsplashResults, UnsplashSearch } from "../components/Unsplash";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Modal, Segmented, Select, TextArea } from "../components/ui/Field";
-import { cloneLayout } from "../lib/designClone";
-import { layoutToSeed, slotsOf, wordsFromLayout } from "../lib/designCloneSeed";
+import { cloneLayout, refineLayout } from "../lib/designClone";
+import { layoutToSeed, patchBoxes, slotsOf, wordsFromLayout } from "../lib/designCloneSeed";
+import { loadImageFile, samplePatches, sizeLike } from "../lib/designPatch";
+import { renderSeedPreview } from "../lib/kanvasBuild";
 import DesignLibrary from "../components/DesignLibrary";
 
 /* The Design tab (Wan, 25 Sep 2026: "add design section - to create poster, single card and carousel for post" and
@@ -60,7 +62,9 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
   // how the reference is used (Wan, 1 Oct 2026: "upload design, then ai render similarly, only context is different"):
   // inspire = the worker draws an original design in its mood (as before); rebuild = its layout is rebuilt as editable Kanvas layers
   const [refMode, setRefMode] = useState("inspire");
-  const [cloneReview, setCloneReview] = useState(null);       // { layout, removed, words, hasWords } waiting for the words to be checked
+  // rebuild on the reference picture itself (only the words change: "almost 100% serupa") or as rebuilt layers (every shape editable)
+  const [refBase, setRefBase] = useState("original");
+  const [cloneReview, setCloneReview] = useState(null);       // { layout, removed, words, image, base, size, mode, refUrl } waiting for the words to be checked
   const stylePreview = useMemo(() => (styleFile ? URL.createObjectURL(styleFile) : ""), [styleFile]);
   useEffect(() => () => { if (stylePreview) URL.revokeObjectURL(stylePreview); }, [stylePreview]);
   useEffect(() => { if (!styleFile && bg === "from_ref") setBg("none"); }, [styleFile]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -115,13 +119,19 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
     setBrief([p.hook, caption].filter(Boolean).join("\n\n").slice(0, 3500));
   }
 
-  // Rebuild: the AI reads the reference ONCE as a layout (no picture is made); the words are then checked here against the post rules
-  // and the design opens in Kanvas as layers, every piece movable.
-  async function startClone() {
-    setBusy("clone");
+  // Rebuild: the AI reads the reference ONCE as a layout (no picture is made); the words are then checked here against the post rules,
+  // the result is drawn as a preview, a refine pass compares that preview with the reference, and the design opens in Kanvas as layers,
+  // every piece movable. `mode` "inspire" asks for an ORIGINAL composition in the reference's visual language instead.
+  async function startClone(mode = "clone") {
+    setBusy(mode === "inspire" ? "inspire" : "clone");
     try {
-      const [W, H] = pxOf(format);
-      const got = await cloneLayout({ file: styleFile, width: W, height: H, stream, brief: words === "ai" ? brief : "" });
+      const base = mode === "clone" && refBase === "original" ? "original" : "layers";
+      let size = pxOf(format);
+      if (base === "original") {                      // the canvas takes the reference's own shape, so its picture fits edge to edge
+        const img = await loadImageFile(styleFile);
+        size = sizeLike(img.naturalWidth, img.naturalHeight);
+      }
+      const got = await cloneLayout({ file: styleFile, width: size[0], height: size[1], stream, brief: words === "ai" ? brief : "", mode });
       let w;
       if (words === "own" && own.length) w = { eyebrow: eyebrow.trim(), headline: own[0].title, points: own[0].points, source: citation.trim() };
       else {
@@ -129,7 +139,8 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
         if (eyebrow.trim()) w.eyebrow = eyebrow.trim();
         if (citation.trim()) w.source = citation.trim();
       }
-      setCloneReview({ layout: got.layout, removed: got.removed, words: w, model: got.model });
+      setCloneReview({ layout: got.layout, removed: got.removed, words: w, model: got.model, image: got.image, base, size, mode,
+        refUrl: base === "original" ? URL.createObjectURL(styleFile) : "" });
     } catch (err) {
       onToast(err.message || String(err), "danger");
     } finally {
@@ -137,13 +148,43 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
     }
   }
 
-  function openInKanvas(layout, w) {
-    const [W, H] = pxOf(format);
+  // layout + words → the seed Kanvas draws, the same for the preview and for opening (so what is shown is what opens)
+  async function seedFor(review, layout, w) {
+    const [W, H] = review.size;
+    const name = styleFile?.name ? styleFile.name.replace(/\.[^.]+$/, "") : "";
+    if (review.base === "original") {
+      // the old words are where the FIRST reading put them; a refine pass moves the boxes towards the truth, so both sets are patched
+      // (a moved box uncovered the top of the old headline in the Chromium check)
+      const boxes = [...patchBoxes(review.layout), ...patchBoxes(layout)];
+      const seen = new Set();
+      const patches = await samplePatches(styleFile, boxes.filter((bx) => { const k = [bx.x, bx.y, bx.w, bx.h].map((v) => v.toFixed(3)).join(); if (seen.has(k)) return false; seen.add(k); return true; }));
+      return layoutToSeed(layout, w, { width: W, height: H, referenceUrl: review.refUrl, patches, t, name });
+    }
     const pictureUrl = bg === "upload" && file ? URL.createObjectURL(file) : bg === "library" ? (groundOf(libPick)?.url || "") : "";
-    const { seed, notes } = layoutToSeed(layout, w, { width: W, height: H, pictureUrl, t, name: styleFile?.name ? styleFile.name.replace(/\.[^.]+$/, "") : "" });
+    return layoutToSeed(layout, w, { width: W, height: H, pictureUrl, t, name });
+  }
+
+  async function previewOf(review, layout, w) {
+    const { seed } = await seedFor(review, layout, w);
+    return (await renderSeedPreview(seed, { maxSide: 1000 })).dataUrl;
+  }
+
+  async function refineOnce(review, layout, w) {
+    const render = await previewOf(review, layout, w);
+    const [W, H] = review.size;
+    return (await refineLayout({ image: review.image, render, layout, width: W, height: H })).layout;
+  }
+
+  async function openInKanvas(review, layout, w) {
+    const { seed, notes } = await seedFor(review, layout, w);
     notes.slice(0, 3).forEach((n) => onToast(n, "info"));
     setCloneReview(null);
-    onCanvas?.({ ...seed, sizeId: format });
+    onCanvas?.({ ...seed, sizeId: review.base === "original" ? null : format });
+  }
+
+  function closeReview() {
+    if (cloneReview?.refUrl) URL.revokeObjectURL(cloneReview.refUrl);
+    setCloneReview(null);
   }
 
   async function submit(e) {
@@ -246,6 +287,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
                       <Segmented value={refMode} onChange={setRefMode} options={[["inspire", t("Ilham", "Inspired")], ["rebuild", t("Bina semula serupa", "Rebuild it the same")]]} />
                       {refMode === "inspire" && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={autoLook} onChange={(e) => setAutoLook(e.target.checked)} />
                         {t("Biar AI pilih reka bentuk yang paling hampir", "Let the AI pick the nearest design")}</label>}
+                      {refMode === "rebuild" && <Segmented value={refBase} onChange={setRefBase} options={[["original", t("Atas gambar rujukan (paling serupa)", "On the reference picture (closest)")], ["layers", t("Lapisan dibina semula", "Rebuilt layers")]]} />}
                       <button type="button" onClick={() => setStyleFile(null)} className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-danger">
                         <X size={12} /> {t("Buang rujukan", "Remove reference")}</button>
                     </>
@@ -254,8 +296,11 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
               </div>
               {rebuild && <p className="mt-2 text-[11px] text-accent">{design === "carousel"
                 ? t("Bina semula untuk satu gambar sahaja: pilih Poster atau Kad tunggal.", "Rebuild makes one picture: choose Poster or Single card.")
-                : t("AI baca susun atur rujukan (latar, bentuk, kawasan gambar, setiap blok teks) dan ia dibina semula sebagai lapisan boleh sunting di Kanvas dengan perkataan anda. Logo, nama jenama, laman web, CTA dan wajah orang tidak disalin.",
-                  "The AI reads the reference's layout (background, shapes, picture areas, every text block) and it is rebuilt as editable layers in Kanvas with your words. Logos, brand names, websites, calls to action and people's faces are not copied.")}</p>}
+                : refBase === "original"
+                  ? t("Gambar rujukan kekal sebagai latar (saiz ikut rujukan): perkataan lama, logo dan wajah ditampal dengan warna di belakangnya, perkataan baharu diletakkan di tempat yang sama, kemudian AI banding pratonton dengan rujukan dan betulkan kedudukan. Semuanya lapisan boleh sunting di Kanvas.",
+                    "The reference picture stays as the background (the size follows the reference): the old words, logos and faces are patched in the colour behind them, the new words go in the same places, then the AI compares the preview with the reference and corrects the placing. Everything is an editable layer in Kanvas.")
+                  : t("AI baca susun atur rujukan (latar, bentuk, kawasan gambar, setiap blok teks) dan ia dibina semula sebagai lapisan boleh sunting di Kanvas dengan perkataan anda, kemudian banding pratonton dengan rujukan dan betulkan. Logo, nama jenama, laman web, CTA dan wajah orang tidak disalin.",
+                    "The AI reads the reference's layout (background, shapes, picture areas, every text block) and it is rebuilt as editable layers in Kanvas with your words, then compares the preview with the reference and corrects it. Logos, brand names, websites, calls to action and people's faces are not copied.")}</p>}
               <p className={`mt-2 text-[11px] text-muted ${rebuild ? "hidden" : ""}`}>{t("AI baca rujukan: apa yang baik, apa yang mesti diubah (CTA, laman web, logo jenama lain), dan buat reka bentuk asli, bukan salinan. Pratonton menunggu anda tekan Simpan; yang tidak disimpan dipadam selepas 7 hari.",
                 "The AI reads the reference: what works, what must change (a CTA, a website, another brand's logo), and makes an original design, not a copy. The preview waits for your Save; one not saved is deleted after 7 days.")}</p>
             </div>
@@ -349,13 +394,19 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
 
         <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
           <span className="text-xs text-muted">{sizeLabel(format)} · {rebuild ? t("AI baca susun atur sekali; selebihnya tanpa AI", "the AI reads the layout once; the rest is drawn without AI") : t("dilukis tanpa AI, percuma", "drawn without AI, free")}</span>
+          {styleFile && refMode === "inspire" && design !== "carousel" && (
+            <Button type="button" variant="soft" disabled={!!busy || !wordsOk} onClick={() => startClone("inspire")}
+              title={t("AI gubah reka bentuk asli dalam gaya rujukan (warna, jenis huruf, suasana) dan buka terus di Kanvas, tanpa menunggu pekerja.", "The AI composes an original design in the reference's style (colours, type, mood) and opens it in Kanvas at once, with no worker queue.")}>
+              {busy === "inspire" ? <Loader2 size={14} className="animate-spin" /> : <PenTool size={14} />} {t("Jana di Kanvas (serta-merta)", "Make it in Kanvas (now)")}</Button>
+          )}
           <Button type="submit" disabled={!!busy || !ready}>
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} {rebuild ? t("Bina semula di Kanvas", "Rebuild in Kanvas") : t("Jana reka bentuk", "Make the design")}</Button>
         </div>
       </Card>
 
-      {cloneReview && <CloneReview data={cloneReview} stream={stream} brand={brand} onClose={() => setCloneReview(null)}
-        onOpen={(w) => openInKanvas(cloneReview.layout, w)} />}
+      {cloneReview && <CloneReview data={cloneReview} stream={stream} brand={brand} onClose={closeReview} onToast={onToast}
+        onPreview={(layout, w) => previewOf(cloneReview, layout, w)} onRefine={(layout, w) => refineOnce(cloneReview, layout, w)}
+        onOpen={(layout, w) => openInKanvas(cloneReview, layout, w)} />}
 
       <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
@@ -553,19 +604,69 @@ function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy 
    given an idea, or they are Wan's own; either way every word goes through the same post rules as a post's artwork, and a hard flag
    stops the design opening until it is fixed here. Only the blocks the reference has are offered: a reference with no small label has
    no Label field, because a field with nowhere to go would be a lie. */
-function CloneReview({ data, stream, brand, onClose, onOpen }) {
+function CloneReview({ data, stream, brand, onClose, onOpen, onPreview, onRefine, onToast }) {
   const { t } = useLang();
-  const slots = useMemo(() => slotsOf(data.layout), [data.layout]);
+  const [layout, setLayout] = useState(data.layout);
+  const slots = useMemo(() => slotsOf(layout), [layout]);
   const [w, setW] = useState({ eyebrow: data.words.eyebrow || "", headline: data.words.headline || "", points: (data.words.points || []).join("\n"), source: data.words.source || "" });
   const points = w.points.split("\n").map((x) => x.trim()).filter(Boolean);
+  const wordsOut = () => ({ eyebrow: slots.eyebrow ? w.eyebrow.trim() : "", headline: w.headline.trim(), points, source: slots.source ? w.source.trim() : "" });
   const flags = useMemo(() => scan({ stream, citation: w.source, media: [{ artwork: normaliseSlides([{ title: w.headline, points: [w.eyebrow, ...points].filter(Boolean) }]) }] },
     brand?.regulab).filter((f) => f.where.startsWith("Design") || f.where === "Source"), [stream, w.source, w.headline, w.eyebrow, w.points, brand]); // eslint-disable-line react-hooks/exhaustive-deps
   const blocked = flags.some((f) => f.hard) || !w.headline.trim();
   const ptLimit = Math.max(slots.points.length, 1);
+  // the preview: what Kanvas will open, drawn here first; redrawn (after a pause) when the words or the layout change
+  const [preview, setPreview] = useState("");
+  const [busy, setBusy] = useState("");                 // "" | "preview" | "refine"
+  const [passes, setPasses] = useState(0);
+  const auto = useRef(data.mode !== "inspire");         // one refine pass runs by itself on a rebuild; an inspired design has nothing to match
+  useEffect(() => {
+    let live = true;
+    const h = setTimeout(async () => {
+      setBusy((b) => b || "preview");
+      try {
+        const url = await onPreview(layout, wordsOut());
+        if (live) setPreview(url);
+      } catch (e) {
+        if (live) onToast(e.message || String(e), "warn");
+      } finally {
+        if (live) setBusy((b) => (b === "preview" ? "" : b));
+      }
+    }, 400);
+    return () => { live = false; clearTimeout(h); };
+  }, [layout, w.headline, w.eyebrow, w.points, w.source]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function refine() {
+    if (busy) return;
+    setBusy("refine");
+    try {
+      const next = await onRefine(layout, wordsOut());
+      setLayout(next);
+      setPasses((n) => n + 1);
+    } catch (e) {
+      onToast(t("Penghalusan gagal: {e}", "Refining failed: {e}", { e: e.message || String(e) }), "warn");
+    } finally {
+      setBusy("");
+    }
+  }
+  useEffect(() => {                                     // the first pass, once, as soon as the first preview exists
+    if (auto.current && preview && !busy) { auto.current = false; refine(); }
+  }, [preview]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <Modal open onClose={onClose} title={t("Semak perkataan sebelum dibina", "Check the words before it is rebuilt")}>
+    <Modal open onClose={onClose} title={data.mode === "inspire" ? t("Reka bentuk diilhamkan: semak sebelum dibuka", "Inspired design: check before it opens") : t("Semak perkataan sebelum dibina", "Check the words before it is rebuilt")}>
       <div className="space-y-3">
-        <p className="text-[12px] text-muted">{data.layout.summary || ""}</p>
+        <div className="relative overflow-hidden rounded-tile border border-line bg-surface-2">
+          {preview ? <img src={preview} alt={t("Pratonton", "Preview")} className="mx-auto max-h-[22rem] w-auto" />
+            : <div className="grid h-40 place-items-center text-xs text-muted"><Loader2 size={16} className="animate-spin" /></div>}
+          {busy && <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-pill bg-surface/90 px-2 py-1 text-[11px] text-muted">
+            <Loader2 size={11} className="animate-spin" /> {busy === "refine" ? t("AI banding dengan rujukan…", "AI comparing with the reference…") : t("Melukis…", "Drawing…")}</span>}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+          <span>{data.base === "original" ? t("Atas gambar rujukan · {w}×{h}", "On the reference picture · {w}×{h}", { w: data.size[0], h: data.size[1] }) : t("Lapisan dibina semula · {w}×{h}", "Rebuilt layers · {w}×{h}", { w: data.size[0], h: data.size[1] })}
+            {passes > 0 ? ` · ${t("{n} kali dihalusi", "refined {n} time(s)", { n: passes })}` : ""}</span>
+          {data.mode !== "inspire" && <button type="button" onClick={refine} disabled={!!busy || passes >= 4} className="inline-flex items-center gap-1 text-accent underline decoration-dotted underline-offset-2 disabled:opacity-50">
+            <RotateCcw size={11} /> {t("Halusi lagi (AI banding)", "Refine again (AI compares)")}</button>}
+        </div>
+        <p className="text-[12px] text-muted">{layout.summary || ""}</p>
         {data.removed.length > 0 && (
           <div className="rounded-tile bg-warn/10 p-2.5 text-[12px] text-warn">
             <p className="font-medium">{t("Tidak disalin daripada rujukan", "Not copied from the reference")}</p>
@@ -590,7 +691,7 @@ function CloneReview({ data, stream, brand, onClose, onOpen }) {
         )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>{t("Batal", "Cancel")}</Button>
-          <Button type="button" disabled={blocked} onClick={() => onOpen({ eyebrow: slots.eyebrow ? w.eyebrow.trim() : "", headline: w.headline.trim(), points, source: slots.source ? w.source.trim() : "" })}>
+          <Button type="button" disabled={blocked || !!busy} onClick={() => onOpen(layout, wordsOut())}>
             <PenTool size={14} /> {t("Buka di Kanvas", "Open in Kanvas")}</Button>
         </div>
       </div>

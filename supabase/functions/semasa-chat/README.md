@@ -98,9 +98,26 @@ the switch **Rebuild it the same** sends it here with the target size, the strea
   another block.
 - Before it opens in Kanvas the words are checked against the post rules in a review step; a hard flag (a call to action, a URL) stops it opening.
 - Poster and single card only (one picture). The AI reads the layout once; everything after is drawn in the browser without AI.
-- What it cannot do: copy a photograph or an illustration (the area stays an empty box for your own picture), reproduce a font it does not have
-  (the nearest of Playfair Display, Poppins, Instrument Sans, Anton, JetBrains Mono and Caveat is used), or match pixel for pixel. It rebuilds the
-  *design*, close and editable.
+- What it cannot do in **Rebuilt layers** mode: copy a photograph or an illustration (the area stays an empty box for your own picture),
+  reproduce a font it does not have (the nearest of Playfair Display, Poppins, Instrument Sans, Anton, JetBrains Mono and Caveat is used).
+
+### Second pass (same day): "make sure almost 100% serupa", and "inspired ... generate"
+
+- **On the reference picture (closest)**, the default under *Rebuild it the same*: the reference picture itself becomes the background
+  layer (the canvas takes the reference's own shape, shorter side 1080), so every shape, gradient, texture and photograph is the
+  original's own pixels. The old words, and the logo and face boxes the reader listed, go under **patches** in the colour found behind
+  them, read off the picture in the browser (`web/src/lib/designPatch.js`: the median of a thin ring above and below the box, drawn as a
+  top-to-bottom gradient so it blends on a gradient or a scrim); only the new words are drawn on top. A patch on a photograph is said on
+  screen, and is a layer, so it can be moved or deleted in Kanvas. Nothing leaves the browser for this step.
+- **A preview, then a refine pass.** The review step now draws the rebuild (`web/src/lib/kanvasBuild.js` `renderSeedPreview`, the same
+  builder Kanvas uses, so what is shown is what opens) and sends the reference and the drawing side by side to `design_refine`; the
+  reader answers with the layout corrected (places, sizes, colours, fonts, alignment), the words untouched (`design.js keepWords` copies
+  them back whatever the reader did). One pass runs by itself; **Refine again** runs more, up to four.
+- **Make it in Kanvas (now)** under *Inspired*: `design_clone` with `mode: "inspire"` asks for an ORIGINAL composition in the reference's
+  visual language (palette, type, rhythm, mood), never its arrangement, and opens it in Kanvas at once with no worker queue. The worker
+  route (*Make the design*) is unchanged beside it.
+- The reader's contract also grew `behind` (the colour behind each block), `lines`, `palette` and the boxes of logos and faces
+  (`layout.covers`), and asks for TIGHT boxes measured against the edges.
 
 ## Choosing the model (1 Oct 2026)
 

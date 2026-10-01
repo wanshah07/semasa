@@ -19,8 +19,10 @@
 // {action:"faq_extract", note?, files}  (the FAQ page's AI bar, 1 Oct 2026: reads pictures, PDF text and typed text and
 // returns the question-and-answer pairs found; writes nothing, see ./faq.js), {action:"models"} (the chat models Mireld lists,
 // best default first; `chat` and `check` also take {model} to use another listed model for that call), and
-// {action:"design_clone", image, width, height, stream, brief?}  (the Design tab: a reference picture read as a LAYOUT to rebuild as
-// editable layers with new words; see ./design.js).
+// {action:"design_clone", image, width, height, stream, brief?, mode?}  (the Design tab: a reference picture read as a LAYOUT to
+// rebuild as editable layers with new words, or with mode "inspire" an original layout in its visual language; see ./design.js), and
+// {action:"design_refine", image, render, layout, width, height}  (the reference and the page's own rendering side by side; a
+// corrected layout back, which is how the rebuild gets to "almost identical").
 //
 // 1 Oct 2026 (Wan: "let AI Chat access the website and any database live, ... memory stable and always remember"):
 //   * MEMORY. History is kept in semasa_chat_* (supabase/025_chat_memory.sql), read and written with the CALLER's login
@@ -33,7 +35,7 @@
 //       - Whatever a page, a search or a table returns is handed to the model as UNTRUSTED data.
 //     Optional secret BRAVE_API_KEY turns on search_web; without it that tool says it is not installed.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { cleanLayout, designMessages } from "./design.js";
+import { cleanLayout, designMessages, keepWords, refineMessages } from "./design.js";
 import { faqMessages, parseFaqItems } from "./faq.js";
 import { firstJson } from "./faq.js";
 import {
@@ -249,18 +251,37 @@ Deno.serve(async (req) => {
     // Reads a reference picture as a layout artist would and returns a LAYOUT (background, shapes, photo areas, text blocks with
     // place, size, colour and type style), never a picture. With a `brief` it also writes the new words for each text block under
     // the post rules; without one the page supplies the words. Logos, brand names, URLs, calls to action and faces are never
-    // rebuilt, and are listed in `removed`. It writes nothing: the page lays the layout out as editable layers in Kanvas.
+    // rebuilt, and are listed in `removed` (their boxes in layout.covers, for patching). `mode: "inspire"` composes an ORIGINAL
+    // layout in the reference's visual language instead of describing its arrangement. It writes nothing: the page lays the
+    // layout out as editable layers in Kanvas.
     if (body?.action === "design_clone") {
-      const built = designMessages({ image: body?.image, width: body?.width, height: body?.height, stream: body?.stream, brief: body?.brief });
+      const built = designMessages({ image: body?.image, width: body?.width, height: body?.height, stream: body?.stream, brief: body?.brief, mode: body?.mode });
       if (built.error) return json({ error: built.error }, 400);
       const r = await upstream(base, key, "/chat/completions", {
         method: "POST",
-        body: JSON.stringify({ model, max_tokens: 7000, temperature: 0.2, messages: built.messages }),
+        body: JSON.stringify({ model, max_tokens: 7000, temperature: built.mode === "inspire" ? 0.5 : 0.1, messages: built.messages }),
       }, 120000).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
       if (!r.ok) return json({ error: `the reader did not answer (HTTP ${r.status}: ${String(r.data?.error?.message || r.text).slice(0, 200)})` }, 502);
       const cleaned = cleanLayout(firstJson(asText(r.data)));
       if (cleaned.error) return json({ error: cleaned.error }, 502);
-      return json({ layout: cleaned.layout, removed: cleaned.removed, has_words: built.hasBrief, model });
+      return json({ layout: cleaned.layout, removed: cleaned.removed, has_words: built.hasBrief, mode: built.mode, model });
+    }
+
+    // ---- design_refine: reference and rebuild side by side, a corrected layout back (same day) ---------------------------
+    // The page draws the layout, sends the reference and the drawing together, and the reader moves, resizes and recolours the
+    // elements until the two match. The words are never the reader's to change here: `keepWords` copies them back.
+    if (body?.action === "design_refine") {
+      const built = refineMessages({ image: body?.image, render: body?.render, layout: body?.layout, width: body?.width, height: body?.height });
+      if (built.error) return json({ error: built.error }, 400);
+      const r = await upstream(base, key, "/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({ model, max_tokens: 7000, temperature: 0, messages: built.messages }),
+      }, 120000).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
+      if (!r.ok) return json({ error: `the reader did not answer (HTTP ${r.status}: ${String(r.data?.error?.message || r.text).slice(0, 200)})` }, 502);
+      const cleaned = cleanLayout(firstJson(asText(r.data)));
+      if (cleaned.error) return json({ error: cleaned.error }, 502);
+      const before = cleanLayout(body.layout).layout;
+      return json({ layout: keepWords(before, cleaned.layout), removed: cleaned.removed, model });
     }
 
     // ---- chat: thread, memory, tools -----------------------------------------------------------------

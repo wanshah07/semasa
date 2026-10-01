@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import {
   DB_TABLES, LIMITS, MEMORY, SYSTEM, TEST_IMAGE, TOOLS, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, htmlToText,
-  isPrivateIp, parseArgs, planFold, planQuery, shapeRows, summaryMessages, userAskedToRemember, whoIs,
+  MODEL_PREFERENCE, cleanModelId, isPrivateIp, modelNote, parseArgs, planFold, planQuery, rankModels, resolveModel, shapeRows, summaryMessages,
+  userAskedToRemember, whoIs,
 } from "../supabase/functions/semasa-chat/logic.js";
 
 let n = 0;
@@ -234,6 +235,60 @@ await run("check report: tool calling is reported, tested or not", async () => {
   assert.deepEqual(checkReport("m", ["m"], null, { calls: false }).tools, { tested: true, calls: false });
   assert.ok(checkReport("m", ["m"], null, { error: "HTTP 400: tools not supported" }).tools.error.includes("HTTP 400"));
   assert.deepEqual(checkReport("m", ["m"], null).tools, { tested: false });
+});
+
+
+// ---- which model answers (Wan, 1 Oct 2026) -----------------------------------------------------------------------
+t("a model id is a plain name: path tricks, spaces, newlines and empty values are refused", () => {
+  assert.equal(cleanModelId("claude-sonnet-5.5"), "claude-sonnet-5.5");
+  assert.equal(cleanModelId("  gpt-4o:mini "), "gpt-4o:mini");
+  for (const bad of ["", null, undefined, "../x", "a b", "a\nb", "x".repeat(81), "-lead", "a;b", "a/../b\u0000"]) assert.equal(cleanModelId(bad), "", String(bad));
+});
+
+t("the default is the first preferred model Mireld lists: Sonnet 5.5, then Opus 5.5; Opus is the deep choice, not the everyday default", () => {
+  assert.equal(MODEL_PREFERENCE[0], "claude-sonnet-5.5");
+  const r = rankModels(["claude-haiku-4.5", "claude-opus-5.5", "claude-sonnet-5.5", "claude-fable-5.1"]);
+  assert.equal(r.recommended, "claude-sonnet-5.5");
+  assert.deepEqual(r.models.map((m) => m.id), ["claude-sonnet-5.5", "claude-opus-5.5", "claude-fable-5.1", "claude-haiku-4.5"]);
+  assert.deepEqual(r.models.map((m) => m.recommended), [true, false, false, false]);
+  assert.equal(rankModels(["claude-haiku-4.5", "claude-opus-5.5"]).recommended, "claude-opus-5.5");
+});
+
+t("models that cannot chat are not offered; a different spelling of a preferred model still counts", () => {
+  const r = rankModels(["text-embedding-3-large", "whisper-1", "dall-e-3", "flux-pro", "Claude_Sonnet_5.5", "gpt-5"]);
+  assert.deepEqual(r.models.map((m) => m.id), ["Claude_Sonnet_5.5", "gpt-5"]);
+  assert.equal(r.recommended, "Claude_Sonnet_5.5");
+});
+
+t("nothing preferred is listed: the configured model if listed, else a Claude, else the first; an unreadable list offers nothing", () => {
+  assert.equal(rankModels(["mistral-large", "my-model"], "my-model").recommended, "my-model");
+  assert.equal(rankModels(["mistral-large", "claude-x-1"], "absent").recommended, "claude-x-1");
+  assert.equal(rankModels(["mistral-large", "llama"], "absent").recommended, "mistral-large");
+  assert.deepEqual(rankModels(null, "claude-sonnet-5.5"), { models: [], recommended: "claude-sonnet-5.5" });
+});
+
+t("what is said about a model comes from its name alone and never states a price or a speed figure", () => {
+  assert.equal(modelNote("claude-opus-5.5").family, "opus");
+  assert.equal(modelNote("claude-sonnet-5.5").family, "sonnet");
+  assert.equal(modelNote("claude-haiku-4.5").family, "haiku");
+  assert.equal(modelNote("gpt-5").family, "other");
+  for (const id of ["claude-opus-5.5", "claude-sonnet-5.5", "claude-haiku-4.5", "claude-fable-5.1", "gpt-5"]) {
+    const n = modelNote(id);
+    assert.ok(n.note_bm && n.note_en);
+    assert.ok(!/\d+\s*(ms|s\b|sec|second|\$|usd|rm)/i.test(n.note_en), n.note_en);
+  }
+  assert.ok(/Uji/.test(modelNote("gpt-5").note_bm) && /Test/.test(modelNote("gpt-5").note_en), "an unknown model says to test it");
+});
+
+t("the model asked for is used only when Mireld lists it; otherwise the default, and the page is told", () => {
+  const listed = ["claude-sonnet-5.5", "claude-opus-5.5"];
+  assert.deepEqual(resolveModel("claude-opus-5.5", listed, "claude-sonnet-5.5"), { model: "claude-opus-5.5", changed: false });
+  assert.deepEqual(resolveModel("gpt-nope", listed, "claude-sonnet-5.5"), { model: "claude-sonnet-5.5", changed: true, asked: "gpt-nope" });
+  assert.deepEqual(resolveModel("", listed, "claude-sonnet-5.5"), { model: "claude-sonnet-5.5", changed: false });
+  assert.deepEqual(resolveModel(undefined, null, "claude-sonnet-5.5"), { model: "claude-sonnet-5.5", changed: false });
+  // the list could not be read: a sane id is passed on (Mireld refuses a wrong one); an insane one never is
+  assert.deepEqual(resolveModel("claude-opus-5.5", null, "claude-sonnet-5.5"), { model: "claude-opus-5.5", changed: false });
+  assert.deepEqual(resolveModel("../../etc", null, "claude-sonnet-5.5"), { model: "claude-sonnet-5.5", changed: false });
 });
 
 console.log(`chat: ${n} ok`);

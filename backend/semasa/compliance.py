@@ -164,6 +164,11 @@ SLIDE_STYLE = {
     "scrim": re.compile(r"^(light|medium|heavy)$"),
     "bg": re.compile(r"^(none|post_image|lib:g_[a-z0-9]{2,30}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
     "mascot": re.compile(r"^(none|[a-z]{2,20})$"),
+    # typography and the character's placement (Wan, 3 Oct 2026); 100% is the default and is never stored
+    "type_size": re.compile(r"^(60|70|80|90|110|120)$"),
+    "font": re.compile(r"^(sans|round|hand)$"),
+    "mascot_pos": re.compile(r"^(bl|bc|br)$"),
+    "mascot_size": re.compile(r"^(60|80|130|160)$"),
 }
 
 

@@ -4,6 +4,7 @@ import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { clashes, coverage, isPastDue, nextFreeSlot, offRota, refOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
+import ScheduleMap from "./ScheduleMap";
 import Button from "./ui/Button";
 import { Segmented } from "./ui/Field";
 
@@ -51,7 +52,10 @@ export default function ScheduleView({ posts, brand, onOpen, onNewIdea, onToast,
 
   return (
     <div className="mt-4 space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
+      <ScheduleMap posts={posts} brand={brand} onOpen={onOpen} onNewIdea={onNewIdea} />
+
+      <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
+        <b className="text-[12px]">{t("Butiran dan pembetulan untuk:", "Details and fixes for:")}</b>
         <Segmented value={stream} onChange={setStream} options={[["regulab", "ws.regulab"], ["linkedin", "LinkedIn"]]} />
         <span className="text-[12px] text-muted">{t("{g} slot kosong dalam 21 hari", "{g} empty slot(s) in the next 21 days", { g: gaps })}</span>
       </div>

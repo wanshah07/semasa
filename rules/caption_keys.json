@@ -1,0 +1,33 @@
+{
+ "_": "Caption keys: web/src/lib/slots.js captionKey, backend/semasa/guard.py caption_key and supabase/026 semasa_caption_keys must agree. Run by web/slots.test.mjs and backend/tests/test_guard.py.",
+ "cases": [
+  {
+   "text": "Notifikasi KOSMETIK, bukan kelulusan produk! NPRA menyemak dokumen.",
+   "key": "notifikasikosmetikbukankelulusanproduknpramenyemakdokumen"
+  },
+  {
+   "text": "notifikasi kosmetik bukan   kelulusan produk NPRA menyemak dokumen",
+   "key": "notifikasikosmetikbukankelulusanproduknpramenyemakdokumen"
+  },
+  {
+   "text": "Ok juga",
+   "key": ""
+  },
+  {
+   "text": "Klausa 40(2): pemegang SPHM dibenarkan mencetak warna logo Halal Malaysia — 100% sah! #halal 🟢 Klausa 40(2): pemegang SPHM dibenarkan mencetak warna logo Halal Malaysia — 100% sah! #halal 🟢 Klausa 40(2): pemegang SPHM dibenarkan mencetak warna logo Halal Malaysia — 100% sah! #halal 🟢 ",
+   "key": "klausa402pemegangsphmdibenarkanmencetakwarnalogohalalmalaysia100sahhalalklausa402pemegangsphmdibenarkanmencetakwarnalogo"
+  },
+  {
+   "text": "Café au lait: naïve résumé of the Ångström case study, 2026 — see Annex III entry 325 for the limit and the label warning.",
+   "key": "caféaulaitnaïverésuméoftheångströmcasestudy2026seeannexiiientry325forthelimitandthelabelwarning"
+  },
+  {
+   "text": "",
+   "key": ""
+  },
+  {
+   "text": "a_b_c_d_e_f_g_h_i_j_k_l_m_n_o_p_q_r_s_t_u_v_w_x_y_z",
+   "key": "abcdefghijklmnopqrstuvwxyz"
+  }
+ ]
+}

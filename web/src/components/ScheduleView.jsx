@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, CalendarPlus, MoveRight } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
-import { clashes, coverage, isPastDue, nextFreeSlot, offRota, refOf, takenSet } from "../lib/slots";
+import { clashes, coverage, isPastDue, moveCheck, nextFreeSlot, offRota, refOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
 import ScheduleMap from "./ScheduleMap";
 import Button from "./ui/Button";
@@ -50,9 +50,47 @@ export default function ScheduleView({ posts, brand, onOpen, onNewIdea, onToast,
     onChanged();
   }
 
+  // Drag and drop on the map (Wan, 3 Oct 2026). The slot is asked of the DATABASE first, not of the list on screen, which
+  // can be a poll behind, so two tabs cannot book one slot; the write itself is also pinned to the post's old position and
+  // status, and the database refuses a clash or a duplicate on its own (supabase/026) if this check is ever beaten.
+  async function movePost(p, date, slot) {
+    const ps = p.stream || "regulab";
+    const { data: live, error } = await supabase.from(TABLES.posts).select("id,stream,status,date,slot,hook")
+      .eq("stream", ps).neq("status", "rejected").eq("date", date);
+    if (error) return onToast(errText(error), "danger");
+    const chk = moveCheck({ post: p, date, slot, posts: live || [], brand });
+    if (!chk.ok) {
+      const by = (chk.by || []).map((x) => x.hook || String(x.id).slice(0, 8)).join(" · ");
+      const why = {
+        status: t("Post ini sudah dijadualkan atau diterbitkan: Buffer memegang masanya, jadi ia tidak boleh dipindah di sini.", "This post is already scheduled or posted: Buffer holds its time, so it cannot be moved here."),
+        same: t("Post ini memang di slot itu.", "This post is already on that slot."),
+        slot: t("{s} bukan salah satu slot lorong ini.", "{s} is not one of this lane's slots.", { s: slot }),
+        day: t("Lorong ini tidak menerbitkan pada {d}.", "This lane does not post on {d}.", { d: date }),
+        past: t("Slot itu sudah lepas atau terlalu hampir: penerbit tidak akan menghantarnya.", "That slot has passed or is too close: the publisher would never send it."),
+        taken: t("Slot {d} {s} sudah dipegang oleh: {h}. Satu slot, satu post.", "The slot {d} {s} is already held by: {h}. One post to a slot.", { d: date, s: slot, h: by }),
+      }[chk.why];
+      return onToast(why, "warn");
+    }
+    const patch = { date, slot, ...("decisions" in p ? { decisions: withDecision(p, "moved", `from ${p.date} ${p.slot}: dragged on the schedule map`) } : {}) };
+    const res = await supabase.from(TABLES.posts).update(patch).eq("id", p.id).eq("date", p.date).eq("slot", p.slot)
+      .in("status", ["draft", "approved"]).select("id,status");
+    if (res.error) return onToast(errText(res.error), "danger");
+    if (!(res.data || []).length) {
+      onChanged();
+      return onToast(t("Post ini berubah semasa anda menyeretnya (diluluskan, dihantar atau dipindah di tempat lain). Tiada apa-apa dipindah.", "This post changed while you were dragging it (approved, sent or moved elsewhere). Nothing was moved."), "warn");
+    }
+    const back = p.status === "approved" && res.data[0].status === "draft";
+    onToast(back
+      ? t("Dipindah ke {d} {s}. Post ini kembali ke draf kerana masanya berubah: luluskan semula.", "Moved to {d} {s}. It went back to draft because its time changed: approve it again.", { d: date, s: slot })
+      : chk.note === "rota"
+        ? t("Dipindah ke {d} {s}. Nota: domain {m} tiada pada rota hari itu.", "Moved to {d} {s}. Note: {m} is not on the rota that day.", { d: date, s: slot, m: p.domain })
+        : t("Dipindah ke {d} {s}.", "Moved to {d} {s}.", { d: date, s: slot }), back || chk.note ? "warn" : "ok");
+    onChanged();
+  }
+
   return (
     <div className="mt-4 space-y-3">
-      <ScheduleMap posts={posts} brand={brand} onOpen={onOpen} onNewIdea={onNewIdea} />
+      <ScheduleMap posts={posts} brand={brand} onOpen={onOpen} onNewIdea={onNewIdea} onMove={movePost} />
 
       <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
         <b className="text-[12px]">{t("Butiran dan pembetulan untuk:", "Details and fixes for:")}</b>

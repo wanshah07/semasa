@@ -120,3 +120,21 @@ Backup zip of Studio's whole store goes to Wan first. Studio's artifact is delet
 - **A "clash" in the dry run can be a post in another message.** The check looks at every Semasa post on those dates that
   is not in THIS message, so a Studio post that moves date in message 3 (k1pju7557n) shows as a clash in message 4.
   A clash with a post whose id is not a Studio id is the real one.
+
+## One post to a slot, the same words never twice (added 3 Oct 2026)
+
+Wan: *"allow us to drag and drop the post to dedicated time … make blocker to avoid duplicate post to be posted, and more
+than 1 post in 1 slot"*. Three layers, one rule, so a gap in one is not a gap in the post:
+
+- **Page** (`web/src/lib/slots.js` `moveCheck`, `duplicatesOf`): the schedule map moves a draft or approved post by drag or by
+  grip-then-click; a held, past, off-day or foreign slot is refused with the reason, and the slot is re-read from the database
+  first. The editor will not approve onto a held slot or with words another approved, scheduled or posted post already carries.
+- **Database** (`supabase/026_slot_and_duplicate_guard.sql`, run once in the KPI project's SQL editor): the same two refusals
+  for a signed-in browser. A clash that already exists is not touched (editing its words still works; approving it does not).
+  The importer, the worker and the publisher write with the service key and are never stopped here on purpose.
+- **Publisher** (`backend/semasa/guard.py`, no SQL needed): of two approved posts on one slot, or carrying the same opening
+  words within 90 days, only the one that outranks the other is sent (already scheduled or posted, then half-sent, then
+  approved first). The other is logged `blocked`, shown on its card, and goes when the other is moved or rejected.
+
+The caption key (first 120 letters and digits, case and punctuation ignored, in the language sent) is the same in all three;
+`rules/caption_keys.json` is run by both test suites.

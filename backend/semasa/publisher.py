@@ -24,7 +24,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import compliance, db, senders
+from . import compliance, db, guard, senders
 from .config import SupabaseSettings
 from .log import get_logger
 from .studio_link import when_utc
@@ -236,6 +236,7 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
 
     posts = (store.table(db.POSTS).select("*").eq("status", "approved").not_.is_("date", "null")
              .not_.is_("slot", "null").order("date").order("slot").execute().data or [])
+    live = guard.load_live(store, db.POSTS, myt_date(now)) if posts else []
     for post in posts:
         due = due_utc(post["date"], post["slot"])
         if due > now + LOOKAHEAD:
@@ -254,6 +255,8 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
         if gone:
             # a picture approved with the post has since been deleted: sending without it is not what Wan approved
             hard.append(f"{len(gone)} picture(s) approved with this post no longer exist; attach them again and approve")
+        # one post to a slot and the same words never twice: only the post that outranks the others goes (guard.py)
+        hard += guard.blockers(post, live)
         lang = compliance.lang_of(post)
         published = dict(post.get("published") or {})
         errors = {k: v for k, v in (post.get("errors") or {}).items() if k != "scan"}

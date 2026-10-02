@@ -89,9 +89,9 @@ def apply(store: Any, rows: list[dict[str, Any]], dry: bool = False) -> dict[str
         if dry:
             continue
         m = media_row(row)
+        store.table(db.POSTS).upsert(post, on_conflict="id").execute()      # the post first: the picture row points at it
         if m:
             store.table(db.MEDIA).upsert(m, on_conflict="id").execute()
-        store.table(db.POSTS).upsert(post, on_conflict="id").execute()
     if not dry and report["written"]:
         db.log_event(store, "info", "post", "studio.import",
                      f"{len(report['written'])} post dari ws.regulab Studio dipindahkan ke Semasa",

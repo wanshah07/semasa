@@ -103,3 +103,20 @@ Semasa's own schedule lives in GitHub Actions (`publish.yml`, the sweeps, autofi
 ## Saturday
 
 Backup zip of Studio's whole store goes to Wan first. Studio's artifact is deleted **only** on Wan's confirmation.
+
+## What the 2 Oct run taught (added the same night)
+
+- **Delivery of the import.** `studio-import.yml` takes the posts as one pasted input of up to 65,535 characters, and four
+  messages were ~190 KB. Retyping that through a chat cannot be proved byte for byte, so the session committed the four
+  files to a throwaway branch (`cutover/studio-import-1002`, never merged: it holds caption text) and dispatched the
+  workflow from that branch with `posts` set to the file name. A branch run uses that branch's `studio_import.py`, which
+  reads `ops/import/<name>` when the input is a `.json` file name. Dry first, then real, one dispatch at a time: the
+  `studio-import` concurrency group keeps one pending run and cancels any extra.
+- **The importer wrote the picture before the post.** `media_generations.post_id` has a foreign key to the post, so the
+  first post the 27 Sep import never created failed the whole run (nothing written). Post first, then the picture, and a
+  test pins the order.
+- **`host` now also covers `posted` drafts, and `build` tolerates a posted picture with no bytes** (an Unsplash pick):
+  the first is public already, the second is history and has nothing to prove against.
+- **A "clash" in the dry run can be a post in another message.** The check looks at every Semasa post on those dates that
+  is not in THIS message, so a Studio post that moves date in message 3 (k1pju7557n) shows as a clash in message 4.
+  A clash with a post whose id is not a Studio id is the real one.

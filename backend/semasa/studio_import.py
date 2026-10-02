@@ -101,6 +101,10 @@ def apply(store: Any, rows: list[dict[str, Any]], dry: bool = False) -> dict[str
 
 def main() -> int:
     raw = os.environ.get("STUDIO_IMPORT", "")
+    if raw.strip().endswith(".json") and not raw.lstrip().startswith("{"):     # a file name under ops/import/, from the
+        root = os.environ.get("GITHUB_WORKSPACE", "..")                          # cutover branch: exact bytes, no retyping
+        with open(os.path.join(root, "ops", "import", os.path.basename(raw.strip())), encoding="utf-8") as fh:
+            raw = fh.read()
     dry = os.environ.get("STUDIO_IMPORT_DRY", "true").lower() != "false"
     try:
         rows = json.loads(raw)["posts"]

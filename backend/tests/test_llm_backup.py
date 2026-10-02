@@ -124,3 +124,51 @@ def test_a_picture_turn_gets_the_instructions_as_its_first_part():
     parts = llm_mod.with_instructions("Read the label.", [{"type": "image_url", "image_url": {"url": "data:x"}}])
     assert parts[0]["type"] == "text" and "Read the label." in parts[0]["text"] and parts[1]["type"] == "image_url"
     assert llm_mod.with_instructions("", "u") == "u"
+
+
+def test_rootsys_down_for_the_run_the_backup_goes_first_after_two_empty_calls(env):
+    """Run 48 (1 Oct 2026): rootsys timed out 3 x 60s on every batch before the backup answered; four batches ate the
+    25-minute job limit. After two calls in a row where rootsys gave nothing, the backup is asked first."""
+    env.setenv("LLM_FALLBACK_API_KEY", "mireld-key")
+    env.setenv("LLM_FALLBACK_MODEL", "mireld-chat")
+    sent = _calls(env, lambda url: Resp(502, text="down") if "rootsys" in url else Resp(200, '{"ok": "m"}'))
+    w = LLM(LLMSettings.load())
+    assert w.chat_json("s", "u") == {"ok": "m"} and not w.primary_down       # call 1: rootsys tried 3 times, then the backup
+    assert w.chat_json("s", "u") == {"ok": "m"} and w.primary_down           # call 2: the same, and now rootsys is written off
+    before = len(sent)
+    for _ in range(4):
+        assert w.chat_json("s", "u") == {"ok": "m"}
+    later = sent[before:]
+    assert len(later) == 4 and all(url.startswith("https://api.mireld.my/") for url, _, _ in later), "no more waiting on rootsys"
+
+
+def test_rootsys_asked_once_as_a_last_resort_when_it_is_down_and_the_backup_fails_too(env):
+    env.setenv("LLM_FALLBACK_API_KEY", "mireld-key")
+    env.setenv("LLM_FALLBACK_MODEL", "mireld-chat")
+    alive = {"backup": False}
+
+    def answers(url):
+        if "rootsys" in url:
+            return Resp(502, text="down") if not alive.get("primary") else Resp(200, '{"ok": "r"}')
+        return Resp(200, '{"ok": "m"}') if alive["backup"] else Resp(502, text="down")
+    sent = _calls(env, answers)
+    w = LLM(LLMSettings.load())
+    alive["backup"] = True
+    w.chat_json("s", "u")
+    w.chat_json("s", "u")
+    assert w.primary_down
+    alive["backup"] = False
+    alive["primary"] = True                                                    # rootsys is back while the backup is down
+    sent.clear()
+    assert w.chat_json("s", "u") == {"ok": "r"}                                # the last-resort ask reaches it
+    assert [("rootsys" in u) for u, _, _ in sent] == [False, False, True], "backup (1 try + 1 retry), then rootsys once"
+    assert not w.primary_down, "an answer from rootsys clears the write-off"
+
+
+def test_a_run_without_a_backup_never_writes_rootsys_off(env):
+    sent = _calls(env, lambda url: Resp(502, text="down"))
+    w = LLM(LLMSettings.load())
+    for _ in range(3):
+        assert w.chat_json("s", "u") is None
+    assert not w.primary_down and all("rootsys" in u for u, _, _ in sent)
+    assert len(sent) == 9, "three attempts every call: with no backup there is nothing else to wait for"

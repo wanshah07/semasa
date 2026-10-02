@@ -55,8 +55,20 @@ class LLM:
         self.vision = {"primary": 0, "backup": 0, "backup_missed": 0}
         self.trial_stopped = ""                             # why the trial stopped asking the backup first, if it did
         self._backup_run = 0                                # consecutive misses of the backup while it goes first
+        # rootsys down for the run (2 Oct 2026, run 48): every batch spent 3 x 60s on rootsys before the backup answered,
+        # four batches ate the 25-minute job limit and the run was cancelled with 90 new items unsummarised. After
+        # PRIMARY_DOWN_AFTER calls in a row where rootsys gave nothing, the backup goes first for the rest of the run and
+        # rootsys is only asked once, as a last resort, when the backup also gives nothing.
+        self._primary_run = 0                               # consecutive calls where rootsys gave nothing usable
+
+    PRIMARY_DOWN_AFTER = 2
 
     # --- which writer ---------------------------------------------------------------
+
+    @property
+    def primary_down(self) -> bool:
+        """rootsys has given nothing for PRIMARY_DOWN_AFTER calls in a row and a backup exists to carry the run."""
+        return self._primary_run >= self.PRIMARY_DOWN_AFTER and self.backup_ok
 
     @property
     def primary_ok(self) -> bool:
@@ -94,7 +106,7 @@ class LLM:
             out.append(("primary", self.s.provider, self.s.base_url, self.s.api_key or "", model or self.s.model))
         if backup and self.backup_ok:
             b = ("backup", "openai", self.s.fallback_base_url, self.s.fallback_key or "", self.s.fallback_model)
-            if self.prefer_backup:
+            if self.prefer_backup or (self.primary_down and self.primary_ok and out):
                 out.insert(0, b)
             else:
                 out.append(b)
@@ -135,16 +147,26 @@ class LLM:
             if label == "backup" and n > 0:
                 log.warning("LLM: rootsys gave no usable answer; asking the backup (%s, %s)", base, use_model)
             elif label == "primary" and n > 0:
-                log.warning("LLM trial: the backup gave no usable answer; rootsys answers instead")
-            data = self._ask(system, user, max_tokens, retries if label == "primary" else 1, provider, base, key, use_model)
+                log.warning("LLM: the backup gave no usable answer; rootsys is asked once as a last resort"
+                            if self.primary_down else "LLM trial: the backup gave no usable answer; rootsys answers instead")
+            # a primary asked AFTER the backup because it is down is a last resort: one try, not 3 x 60s of waiting
+            tries = (0 if (n > 0 and self.primary_down) else retries) if label == "primary" else 1
+            data = self._ask(system, user, max_tokens, tries, provider, base, key, use_model)
             if data is not None:
                 self.last_model = use_model
                 self.answers[label] += 1
                 if label == "backup":
                     self.backup_answers += 1
                     self._backup_run = 0
+                else:
+                    self._primary_run = 0
                 return data
             self.misses[label] += 1
+            if label == "primary":
+                self._primary_run += 1
+                if self._primary_run == self.PRIMARY_DOWN_AFTER and self.backup_ok:
+                    log.warning("LLM: rootsys has given nothing %d calls in a row; the backup goes first for the rest of the run",
+                                self._primary_run)
             if label == "backup" and n == 0:
                 self._trial_miss()
         self.failures += 1

@@ -228,7 +228,8 @@ def test_studio_scheduled_posts_are_tallied_too():
 
 
 def _li(**kw):
-    return _post(id=kw.pop("id", "L1"), stream="linkedin", lang="en", text={"en": {"linkedin": CAP}}, **kw)
+    kw.setdefault("text", {"en": {"linkedin": CAP}})
+    return _post(id=kw.pop("id", "L1"), stream="linkedin", lang="en", **kw)
 
 
 def test_linkedin_waits_for_its_slot_then_posts_with_its_card():
@@ -242,7 +243,9 @@ def test_linkedin_waits_for_its_slot_then_posts_with_its_card():
 
 
 def test_linkedin_daily_cap_and_a_missed_day_is_never_sent():
-    posted = [_li(id=f"x{i}", status="posted", published={"linkedin": {"at": "2026-09-24T00:00:00+00:00"}})
+    # earlier posts of the day carry their own words: the same words twice are blocked (guard.py), not capped
+    posted = [_li(id=f"x{i}", status="posted", published={"linkedin": {"at": "2026-09-24T00:00:00+00:00"}},
+                  text={"en": {"linkedin": f"Earlier post number {i} of the day, about something else entirely."}})
               for i in range(2)]
     store, li = _live(_li(date="2026-09-24", slot="06:00"), extra_posts=posted), FakeLinkedIn()
     c = publisher.run(store, NOW, clients={"linkedin": li})

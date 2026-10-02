@@ -1,6 +1,7 @@
 /* web/src/lib/slots.js, the page's half of the position rules (the worker's half is ideas.next_free_position). */
 import assert from "node:assert/strict";
-import { clashes, coverage, fmtLeft, isPastDue, nextFreeSlot, offRota, onRota, postsOn, purgeLeftMs, refOf, slotsOf } from "./src/lib/slots.js";
+import { readFileSync } from "node:fs";
+import { captionKey, captionKeys, clashes, coverage, duplicatesOf, fmtLeft, holdersOf, isPastDue, moveCheck, nextFreeSlot, offRota, onRota, postsOn, purgeLeftMs, refOf, slotsOf } from "./src/lib/slots.js";
 
 const BRAND = {
   regulab: { slots: ["13:00", "08:00", "21:00"],
@@ -84,4 +85,47 @@ t("short references", () => {
   assert.equal(refOf({ stream: "regulab", date: "2026-09-09", slot: "14:30" }, BRAND), "R0909-1430");
   assert.equal(refOf({ stream: "regulab" }, BRAND), "");
 });
-console.log(`${n}/9 slot tests pass`);
+// ---- one post to a slot, the same words never twice (Wan, 3 Oct 2026) ----
+t("caption keys agree with the Python and SQL rule (rules/caption_keys.json)", () => {
+  const { cases } = JSON.parse(readFileSync(new URL("../rules/caption_keys.json", import.meta.url), "utf8"));
+  assert.ok(cases.length >= 6);
+  for (const c of cases) assert.equal(captionKey(c.text), c.key, c.text.slice(0, 40));
+});
+const CAPA = "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.";
+const live = (id, over = {}) => ({ id, stream: "regulab", lang: "bm", status: "approved", date: "2026-09-30", slot: "13:00", text: { bm: { instagram: CAPA } }, ...over });
+t("a duplicate is the same opening words on the same stream within 90 days, only against approved, scheduled or posted", () => {
+  const me = live("me", { status: "draft", slot: "08:00", text: { bm: { instagram: CAPA.toUpperCase() + "!!" } } });
+  assert.deepEqual(duplicatesOf(me, [live("a")]).map((p) => p.id), ["a"]);
+  assert.deepEqual(duplicatesOf(me, [live("d", { status: "draft" })]), []);                 // another draft is not yet a post to be sent
+  assert.deepEqual(duplicatesOf(me, [live("r", { status: "rejected" })]), []);
+  assert.deepEqual(duplicatesOf(me, [live("l", { stream: "linkedin" })]), []);              // the two voices are not compared
+  assert.deepEqual(duplicatesOf(me, [live("far", { date: "2026-05-01" })]), []);            // five months apart
+  assert.deepEqual(duplicatesOf(me, [live("me")]), []);                                      // never itself
+  assert.deepEqual(duplicatesOf({ ...me, text: { bm: { instagram: "Ok" } } }, [live("a", { text: { bm: { instagram: "Ok" } } })]), []);   // too short to call a copy
+  assert.deepEqual(captionKeys({ stream: "linkedin", text: { en: { linkedin: CAPA }, bm: { linkedin: "x" } } }).length, 1);     // linkedin sends English
+});
+t("holdersOf: a rejected post holds nothing, another stream holds nothing", () => {
+  const ps = [live("a"), live("b", { status: "rejected" }), live("c", { stream: "linkedin" })];
+  assert.deepEqual(holdersOf(ps, "regulab", "2026-09-30", "13:00").map((p) => p.id), ["a"]);
+  assert.deepEqual(holdersOf(ps, "regulab", "2026-09-30", "13:00", "a"), []);
+});
+t("moveCheck: free future slot of the lane ok; locked, same, taken, past, off-day and foreign slots refused", () => {
+  const me = live("me", { status: "draft", date: "2026-09-29", slot: "21:00", domain: "kosmetik" });
+  const others = [live("a", { date: "2026-09-30", slot: "13:00", status: "scheduled" })];
+  const mv = (over = {}, ps = others) => moveCheck({ post: { ...me, ...(over.post || {}) }, date: over.date || "2026-09-30", slot: over.slot || "21:00", posts: ps, brand: BRAND, now: NOW });
+  assert.deepEqual(mv(), { ok: true });
+  assert.equal(mv({ slot: "13:00" }).why, "taken");
+  assert.deepEqual(mv({ slot: "13:00" }).by.map((p) => p.id), ["a"]);
+  assert.equal(mv({ post: { status: "scheduled" } }).why, "status");
+  assert.equal(mv({ post: { status: "posted" } }).why, "status");
+  assert.equal(mv({ post: { status: "rejected" } }).why, "status");
+  assert.equal(mv({ date: "2026-09-29", slot: "21:00" }).why, "same");
+  assert.equal(mv({ slot: "09:00" }).why, "slot");                                           // not one of the lane's slots
+  assert.equal(mv({ date: "2026-09-26", slot: "08:00" }).why, "day");                        // Saturday: no posting day
+  assert.equal(mv({ date: "2026-09-24", slot: "08:00" }).why, "past");                       // this morning
+  assert.equal(mv({ date: "2026-09-24", slot: "13:00" }).ok, true);                          // 13:00 is still ahead of 10:00
+  assert.equal(mv({ date: "2026-09-27", slot: "08:00" }).note, "rota");                      // a kosmetik post on a halal Sunday: a note only
+  assert.equal(mv({ slot: "13:00" }, [live("r", { date: "2026-09-30", slot: "13:00", status: "rejected" })]).ok, true);
+  assert.equal(mv({ slot: "13:00" }, [live("l", { date: "2026-09-30", slot: "13:00", stream: "linkedin" })]).ok, true);
+});
+console.log(`${n} slot tests pass`);

@@ -115,6 +115,58 @@ export function clashes(posts) {
     .map((v) => ({ date: v[0].date, slot: v[0].slot, stream: v[0].stream || "regulab", posts: v }));
 }
 
+/* ---- Blockers: one post to a slot, and the same words never twice (Wan, 3 Oct 2026: "blocker to avoid duplicate post
+   to be posted, and more than 1 post in 1 slot"). Three layers say the same thing: this file (what the page offers and
+   refuses), supabase/026_slot_and_duplicate_guard.sql (what the database accepts from a browser) and
+   backend/semasa/guard.py (what the publisher sends). The caption key is the same in all three. */
+
+export const DUP_KEY_LEN = 120;                    // letters of a caption that must match
+export const DUP_MIN_LEN = 20;                     // a caption shorter than this carries too little to call a copy
+export const DUP_WINDOW_DAYS = 90;                 // a repost of the same words months later is not what this stops
+
+/** A caption's fingerprint: its first 120 letters and digits, lower-cased, everything else squeezed out. */
+export function captionKey(text) {
+  const k = String(text || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "").slice(0, DUP_KEY_LEN);
+  return k.length >= DUP_MIN_LEN ? k : "";
+}
+/** The keys of every caption a post would send (its sent language, each platform), without empties. */
+export function captionKeys(post) {
+  const lang = post?.lang || (post?.stream === "linkedin" ? "en" : "bm");      // rules/compliance.json default_lang
+  const byPlat = ((post?.text || {})[lang]) || {};
+  return [...new Set(Object.values(byPlat).map(captionKey).filter(Boolean))];
+}
+const LIVE = ["approved", "scheduled", "posted"];
+const dayGap = (a, b) => Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
+
+/** Other posts of the same stream that already carry the same words: approved, scheduled or posted, within 90 days. */
+export function duplicatesOf(post, posts) {
+  const mine = captionKeys(post);
+  if (!mine.length) return [];
+  return posts.filter((p) => p.id !== post.id && LIVE.includes(p.status) && (p.stream || "regulab") === (post.stream || "regulab")
+    && (!p.date || !post.date || dayGap(p.date, post.date) <= DUP_WINDOW_DAYS)
+    && captionKeys(p).some((k) => mine.includes(k)));
+}
+
+/** Who already holds a position (same stream, date and slot, any post that is not rejected), except `skipId`. */
+export function holdersOf(posts, stream, date, slot, skipId = null) {
+  return posts.filter((p) => holds(p) && p.id !== skipId && (p.stream || "regulab") === stream && p.date === date && p.slot === slot);
+}
+
+/** May `post` be moved to date+slot? {ok, why?, note?}. `why` is a refusal; `note` is a warning that does not block
+    (the rota is a plan, never a block). The database refuses the same moves, so this is the polite version. */
+export function moveCheck({ post, date, slot, posts, brand, now = Date.now(), leadMin = 30 }) {
+  const stream = post.stream || "regulab";
+  if (!["draft", "approved"].includes(post.status)) return { ok: false, why: "status" };
+  if (post.date === date && post.slot === slot) return { ok: false, why: "same" };
+  if (!slotsOf(brand, stream).includes(slot)) return { ok: false, why: "slot" };
+  if (!postsOn(brand, stream, date)) return { ok: false, why: "day" };
+  if (dueMs(date, slot) <= +now + leadMin * 60_000) return { ok: false, why: "past" };
+  const held = holdersOf(posts, stream, date, slot, post.id);
+  if (held.length) return { ok: false, why: "taken", by: held };
+  const note = stream === "regulab" && post.domain && !onRota(brand, date, post.domain) ? "rota" : undefined;
+  return { ok: true, ...(note ? { note } : {}) };
+}
+
 /** Every waiting ws.regulab post from today on whose domain the rota does not give that day (Studio's offRota). */
 export function offRota(posts, brand, now = Date.now()) {
   const today = myt(now).date;

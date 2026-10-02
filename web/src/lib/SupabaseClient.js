@@ -34,5 +34,16 @@ export function errText(error) {
     return tr("Gambar ini milik post yang sudah diluluskan: kembalikan post itu ke draf dahulu, kemudian ubah atau padam gambar.",
       "This picture belongs to an approved post: put that post back to draft first, then change or delete the picture.");
   }
+  // supabase/026: a browser write that would put two posts on one slot, or approve the same words twice
+  const taken = /semasa: slot taken: (\S+) (\d\d:\d\d) is already held by "([^"]*)"/.exec(text);
+  if (taken) {
+    return tr(`Slot ${taken[1]} ${taken[2]} sudah dipegang oleh "${taken[3]}". Pindahkan salah satu post dahulu.`,
+      `The slot ${taken[1]} ${taken[2]} is already held by "${taken[3]}". Move one of the two posts first.`);
+  }
+  const dup = /semasa: duplicate post: "([^"]*)" \(([^)]*)\) already carries these words/.exec(text);
+  if (dup) {
+    return tr(`Perkataan yang sama sudah ada pada "${dup[1]}" (${dup[2]}). Ubah ayatnya atau tolak salah satu post.`,
+      `"${dup[1]}" (${dup[2]}) already carries these words. Change the wording or reject one of the two posts.`);
+  }
   return text;
 }

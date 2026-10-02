@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CalendarClock, Check, Eraser, ImagePlus, Info, RotateCcw, Save, Trash2, UploadCloud, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { LIMITS, charLen, hardCount, normaliseSlides, platformsFor, scan, scanMedia, stripPromo } from "../lib/compliance";
-import { dueMs, nextFreeSlot, refOf, slotsOf, takenSet } from "../lib/slots";
+import { dueMs, duplicatesOf, nextFreeSlot, refOf, slotsOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
 import PostWorkflow from "./PostWorkflow";
 import { stampMYT } from "../lib/format";
@@ -139,19 +139,31 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   // passed" while nothing goes out. A page-only block, not saved in hard_flags, because it depends on the clock.
   const past = ["draft", "approved", "rejected"].includes(post.status) && !!(date && slot)
     && Date.parse(`${date}T${slot}:00+08:00`) < Date.now() - 45 * 60_000;
+  // one post to a slot, and the same words never twice (Wan, 3 Oct 2026): both block approval here, the database refuses a
+  // browser's write that does either (supabase/026) and the publisher never sends the second (guard.py)
+  const clash = date && slot ? posts.filter((p) => p.id !== post.id && (p.stream || "regulab") === (post.stream || "regulab")
+    && p.status !== "rejected" && p.date === date && p.slot === slot) : [];
+  const dups = useMemo(() => duplicatesOf({ ...post, text, lang, date: date || null }, posts), [post, text, lang, date, posts]);
+  const movedPosition = (date || "") !== (post.date || "") || (slot || "") !== (post.slot || "");
   const shownFlags = !date || !slot
     ? [...flags, { hard: false, where: t("Kedudukan", "Position"), msg: t("belum ada tarikh dan slot: penerbit melangkau post tanpanya",
       "no date and slot yet: the publisher skips a post without one") }]
     : past ? [...flags, { hard: true, where: t("Kedudukan", "Position"), msg: t("slot ini sudah lepas: penerbit tidak menghantar post yang lewat lebih 45 minit. Pilih tarikh atau slot baharu.",
       "this slot has passed: the publisher never sends a post more than 45 minutes late. Pick a new date or slot.") }]
       : [...flags];
+  if (clash.length && !locked) shownFlags.push({ hard: true, where: t("Kedudukan", "Position"), msg: t(
+    "slot ini sudah dipegang oleh: {h}. Satu slot, satu post: pindahkan salah satu.",
+    "this slot is already held by: {h}. One post to a slot: move one of the two.", { h: clash.map((p) => p.hook || p.id.slice(0, 8)).join(" · ") }) });
+  if (dups.length && !locked) shownFlags.push({ hard: true, where: t("Duplikasi", "Duplicate"), msg: t(
+    "perkataan yang sama sudah ada pada: {h}. Ubah ayatnya atau tolak salah satu post.",
+    "these words are already in: {h}. Change the wording or reject one of the two posts.", { h: dups.map((p) => `${p.hook || p.id.slice(0, 8)} (${p.date || "-"})`).join(" · ") }) });
   // the publisher refuses a post whose attached picture was deleted or never finished (publisher.py not_ready/gone);
   // read from the database, because the Media list holds only the newest rows
   if (gone.length) shownFlags.push({ hard: true, where: t("Gambar", "Pictures"), msg: t("{n} gambar yang dilampirkan sudah dipadam: buang daripada post ini",
     "{n} attached picture(s) were deleted: remove them from this post", { n: gone.length }) });
   if (unready.length) shownFlags.push({ hard: true, where: t("Gambar", "Pictures"), msg: t("{n} gambar yang dilampirkan belum siap atau gagal",
     "{n} attached picture(s) are not finished or failed", { n: unready.length }) });
-  const blocking = hard + (past ? 1 : 0) + (gone.length ? 1 : 0) + (unready.length ? 1 : 0);
+  const blocking = hard + (past ? 1 : 0) + (gone.length ? 1 : 0) + (unready.length ? 1 : 0) + (clash.length ? 1 : 0) + (dups.length ? 1 : 0);
 
   function setCaption(lg, plat, v) {
     setText((prev) => ({ ...prev, [lg]: { ...(prev[lg] || {}), [plat]: v } }));
@@ -334,8 +346,6 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   }
 
   const slots = slotsOf(brand, post.stream || "regulab");
-  const clash = date && slot ? posts.filter((p) => p.id !== post.id && (p.stream || "regulab") === (post.stream || "regulab")
-    && p.status !== "rejected" && p.date === date && p.slot === slot) : [];
   const myLog = log.filter((l) => l.post_id === post.id).slice(0, 12);
 
   return (
@@ -376,8 +386,14 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
         {date && slot && <span className="self-center text-[11px] text-muted">{refOf({ ...post, date, slot }, brand)}</span>}
       </div>
       {clash.length > 0 && !locked && (
-        <p className="-mt-2 text-[12px] text-warn">{t("Slot ini juga dipegang oleh: {h}. Dua post pada satu slot akan keluar serentak.",
-          "This slot is also held by: {h}. Two posts on one slot go out together.", { h: clash.map((p) => p.hook || p.id.slice(0, 8)).join(" · ") })}</p>
+        <p className="-mt-2 text-[12px] text-danger">{t("Slot ini sudah dipegang oleh: {h}. Satu slot, satu post: ia tidak boleh diluluskan sehingga salah satu dipindah.",
+          "This slot is already held by: {h}. One post to a slot: it cannot be approved until one of the two moves.", { h: clash.map((p) => p.hook || p.id.slice(0, 8)).join(" · ") })}</p>
+      )}
+
+      {dups.length > 0 && !locked && (
+        <p className="-mt-2 text-[12px] text-danger">{t("Perkataan yang sama sudah ada pada: {h}. Ia tidak boleh diluluskan; ubah ayatnya atau tolak salah satu.",
+          "These words are already in: {h}. It cannot be approved; change the wording or reject one of the two.",
+          { h: dups.map((p) => `${p.hook || p.id.slice(0, 8)} (${p.date || "-"} ${p.slot || ""}, ${p.status})`).join(" · ") })}</p>
       )}
 
       <div id={`pics-${post.id}`}>
@@ -490,7 +506,9 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       )}
 
       <div className="flex flex-wrap gap-2">
-        {!locked && <Button variant="ghost" disabled={busy} onClick={() => write(content(), t("Disimpan.", "Saved."))}><Save size={13} /> {t("Simpan", "Save")}</Button>}
+        {!locked && <Button variant="ghost" disabled={busy || (clash.length > 0 && movedPosition)}
+          title={clash.length && movedPosition ? t("Slot itu sudah dipegang: pilih slot lain", "That slot is already held: choose another") : ""}
+          onClick={() => write(content(), t("Disimpan.", "Saved."))}><Save size={13} /> {t("Simpan", "Save")}</Button>}
         {post.status !== "approved" && !locked && (
           <Button disabled={busy || blocking > 0 || !date || !slot} onClick={() => write({ ...content(), status: "approved", ...decided("approved") }, t("Diluluskan.", "Approved."))}
             title={blocking ? t("Selesaikan perkara bertanda ■ dahulu", "Resolve the items marked ■ first")

@@ -12,7 +12,9 @@ never-write-twice link); `backend/semasa/studio_link.py` does that when this Rou
 **It runs until Wan says to retire Studio.** Then the Routine is deleted. If the line below says RETIRED, stop at once,
 do nothing else and report "Studio retired: nothing to do".
 
-Status: ACTIVE
+Status: RETIRED (Fri 2 Oct 2026, cutover). Studio's release Routine, nightly drafter and this link Routine were disabled
+at 19:47 MYT and Studio's queue was imported into Semasa the same night. This Routine (trig_01Nu26P8gBCt23h7B6KbvfYy) is
+disabled and is deleted with Studio.
 
 ## What this Routine may and may not do
 

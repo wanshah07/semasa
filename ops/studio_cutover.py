@@ -7,7 +7,7 @@
 DIR is an EMPTY folder that Studio's `drafts` and `media` collections were read into (ArtifactData query/get with
 `out_dir`), so a card's bytes go store -> disk -> git and never through a conversation.
 
-host   For every post from --since on that Studio has approved (or already scheduled), every card that has no permanent
+host   For every post from --since on that Studio has approved (or already scheduled or posted), every card that has no permanent
        address yet is decoded from Studio's own bytes into the argus-cards clone and committed there. Only an approved
        post's artwork ever goes in argus-cards: it is public, and git keeps what lands.
 build  Every card address is fetched back with no credentials and its md5 compared with Studio's bytes; one mismatch
@@ -81,8 +81,9 @@ def host(args) -> None:
     since = datetime.fromisoformat(args.since)
     wrote = []
     for sid, d in queue(drafts, since).items():
-        if d.get("status") not in ("approved", "scheduled"):
+        if d.get("status") not in ("approved", "scheduled", "posted"):
             continue                                        # a draft's card is not public yet: it stays out of git
+                                                            # (a posted one is public already, and build needs its address)
         for n, mid in enumerate(card_ids(d), 1):
             m = media.get(mid)
             if m is None:
@@ -172,6 +173,11 @@ def build(args) -> None:
                 if m is None:
                     raise SystemExit(f"{sid}: card {mid} was not read into {args.dump}/media")
                 url = hosted_url(args, d, sid, n, mid, m)
+                if d.get("status") == "posted" and "," not in str(m.get("full") or ""):
+                    md5s.append("")                         # a posted picture Studio holds no bytes for (an Unsplash
+                    urls.append(url)                        # pick): nothing to prove against, and it is history
+                    ids.append(mid)
+                    continue
                 md5s.append(prove(url, card_bytes(m)))
                 urls.append(url)
                 ids.append(mid)

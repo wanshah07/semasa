@@ -63,3 +63,22 @@ def test_dry_run_writes_nothing():
 def test_an_approved_post_without_a_picture_is_named_as_blocked():
     rep = studio_import.apply(_store(), [_row(media=None)])
     assert rep["hard"] and "instagram needs an image" in rep["hard"][0]
+
+
+def test_the_post_is_written_before_its_picture_because_the_picture_points_at_it():
+    store = _store()
+    order = []
+    real = store.table
+
+    def table(name):
+        q = real(name)
+        up = q.upsert
+
+        def upsert(*a, **k):
+            order.append(name)
+            return up(*a, **k)
+        q.upsert = upsert
+        return q
+    store.table = table
+    studio_import.apply(store, [_row()])
+    assert order == ["semasa_posts", "media_generations"]

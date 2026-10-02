@@ -8,6 +8,7 @@ import PostWorkflow from "./PostWorkflow";
 import { stampMYT } from "../lib/format";
 import { refusal, removeReference, uploadReference } from "../lib/storage";
 import { useLang } from "../lib/i18n";
+import ImageLightbox, { useLightbox } from "./ImageLightbox";
 import SlidesEditor, { fromRows, toRows } from "./SlidesEditor";
 import { GROUNDS, bgUrlOf, defaultGround } from "../lib/cards/library";
 import { isStudioLook } from "../lib/cards/studio";
@@ -73,6 +74,16 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   const plats = platformsFor(post.stream);
   const locked = post.status === "scheduled" || post.status === "posted";
   const chosen = mediaIds.map((id) => mediaById[id]).filter(Boolean);
+  // a chosen picture opens in place, a slide set opens its slides one after another (never a blank new tab)
+  const lbStart = {};
+  const lbItems = [];
+  for (const m of chosen) {
+    if (m.type === "video") continue;
+    const urls = m.mode === "slides" && m.meta?.slide_urls?.length ? m.meta.slide_urls : [m.generated_media_url || m.reference_url].filter(Boolean);
+    lbStart[m.id] = lbItems.length;
+    urls.forEach((u, i) => lbItems.push({ url: u, alt: m.meta?.alt || "", title: urls.length > 1 ? `${i + 1} / ${urls.length}` : (m.meta?.alt || "") }));
+  }
+  const lb = useLightbox(lbItems);
   const candidates = mediaRows.filter((m) => m.status === "done" && m.generated_media_url && !mediaIds.includes(m.id)
     && m.mode !== "slides" && (m.post_id === post.id || (post.idea_id && m.idea_id === post.idea_id)));
   const pending = mediaRows.filter((m) => (m.post_id === post.id) && m.mode !== "slides" && !isUnsplash(m)
@@ -99,6 +110,13 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       ? [[bg, t("Latar lukisan terakhir", "The last drawing's background")]] : []),
     ...GROUNDS.map((g) => [`lib:${g.k}`, `${t("Foto Wan", "Wan's photo")}: ${g.name}`])];
 
+  // what the background picker (SlidesEditor) offers: this post's finished pictures with the photographer where Unsplash,
+  // the searches still waiting for a pick, and the generations still being drawn
+  const picker = {
+    pictures: pictures.map((m, i) => ({ id: m.id, url: m.generated_media_url, credit: isUnsplash(m) ? m.meta?.credit?.name || "Unsplash" : "",
+      creditMeta: isUnsplash(m) ? m.meta?.credit : null, label: m.prompt ? m.prompt.slice(0, 40) : t("Gambar {n}", "Picture {n}", { n: i + 1 }) })),
+    unsplashOpen, pending, user, post, busy, onToast, onQueued: onChanged, onGenerate: (prompt) => queuePicture(prompt),
+  };
   const current = { ...post, text, lang, citation, date: date || null, slot: slot || null, media_ids: mediaIds,
     ...(hasSlides ? { slides } : {}),
     media: chosen.filter((m) => m.status === "done").map(scanMedia) };
@@ -264,16 +282,20 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
     onToast(t("Set slaid dipilih. Tekan Simpan.", "Slide set chosen. Press Save."), "info");
   }
 
-  async function queuePicture() {
-    if (!newPic.trim() || busy) return;
+  // the Pictures section's own box and the background picker's Generate tab both queue the same job; true = queued
+  async function queuePicture(promptIn) {
+    const prompt = (typeof promptIn === "string" ? promptIn : newPic).trim();
+    if (!prompt || busy) return false;
     setBusy(true);                      // a double click queued two jobs
     const { error } = await supabase.from(TABLES.media).insert({
-      mode: "prompt", type: "image", prompt: newPic.trim(), status: "pending", created_by: user.id,
+      mode: "prompt", type: "image", prompt, status: "pending", created_by: user.id,
       post_id: post.id, idea_id: post.idea_id, meta: { alt: "", flow: "B" },
     });
     setBusy(false);
-    if (error) return onToast(errText(error), "danger");
-    setNewPic(""); onToast(t("Gambar baharu dalam giliran.", "New picture queued."), "ok"); onChanged();
+    if (error) { onToast(errText(error), "danger"); return false; }
+    if (typeof promptIn !== "string") setNewPic("");
+    onToast(t("Gambar baharu dalam giliran.", "New picture queued."), "ok"); onChanged();
+    return true;
   }
 
   // Wan's own picture, used as it is (supabase/022, backend/semasa/own_picture.py): the worker checks it, makes a clean
@@ -366,7 +388,9 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
               {m.mode === "slides" && <span className="absolute bottom-1 left-1 z-10 rounded bg-ink/80 px-1 text-[10px] text-bg">{t("{n} slaid", ["{n} slide", "{n} slides"], { n: m.meta?.count || "?" })}</span>}
               {m.type === "video"
                 ? <video src={m.generated_media_url} className="h-36 w-36 rounded-tile bg-black object-cover sm:h-32 sm:w-32 lg:h-24 lg:w-24" muted />
-                : <img src={m.generated_media_url || m.reference_url} alt={m.meta?.alt || ""} className="h-36 w-36 rounded-tile object-cover sm:h-32 sm:w-32 lg:h-24 lg:w-24" />}
+                : <button type="button" onClick={() => lbStart[m.id] !== undefined && lb.open(lbStart[m.id])} className="block cursor-zoom-in"
+                  title={t("Klik untuk melihat besar", "Click to view large")}>
+                  <img src={m.generated_media_url || m.reference_url} alt={m.meta?.alt || ""} className="h-36 w-36 rounded-tile object-cover sm:h-32 sm:w-32 lg:h-24 lg:w-24" /></button>}
               {!locked && <button type="button" aria-label={t("Buang gambar", "Remove picture")} onClick={() => setMediaIds((ids) => ids.filter((x) => x !== m.id))}
                 className="absolute -right-1 -top-1 rounded-full bg-ink p-0.5 text-bg"><X size={11} /></button>}
             </span>
@@ -421,7 +445,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
           onRender={renderSlides} onUse={chooseSet} look={look}
           setLook={(k) => { setLook(k); if (isStudioLook(k) && bg === "none" && defaultGround(post)) setBg(defaultGround(post)); }}
           preview={{ eyebrow, citation, bgUrl, brand: reg }} blocked={lookBlocked} setBlocked={setLookBlocked} resolveBg={resolveBg}
-          onToast={onToast} captionPost={{ stream: post.stream, hook: post.hook || "",
+          onToast={onToast} picker={picker} captionPost={{ stream: post.stream, hook: post.hook || "",
             caption: ((text[lang] || {})[post.stream === "linkedin" ? "linkedin" : "instagram"]) || ((text[lang] || {}).facebook) || "" }} /></div>
       ) : (
         <p className="rounded-tile border border-dashed border-line p-3 text-[12px] text-muted">
@@ -506,6 +530,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
           </ul>
         </div>
       )}
+      <ImageLightbox {...lb.props} />
     </div>
   );
 }

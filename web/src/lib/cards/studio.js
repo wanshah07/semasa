@@ -24,6 +24,42 @@ function sizeOf(spec) {
   return CARD_SIZES[spec.stream === "linkedin" ? "linkedin" : "regulab"];
 }
 
+/* SEMASA (Wan, 3 Oct 2026: "make sure we can choose to compact the text on card - smaller font size, font type, and
+   move the mascot"). Four optional fields on a slide, all empty by default so every card drawn before today is drawn
+   exactly as before:
+     type_size   60..120  percent of the template's own text sizes (headline, lead, items), line height included
+     font        sans | round | hand   which face the words use (the template's own pairing when empty)
+     mascot_pos  bl | bc | br          which of the three bottom spots the character stands in
+     mascot_size 50..160  percent of the character's own height
+   The type sizes stay fixed for a given choice (no size follows how much text there is), so the carousel rule that a
+   deleted line never changes the type still holds: the person chooses the size, the text never does. */
+export const TYPE_SIZES = [60, 70, 80, 90, 100, 110, 120];
+export const MASCOT_SIZES = [60, 80, 100, 130, 160];
+export const FONT_CHOICES = ["sans", "round", "hand"];
+const FONT_SWAP = {
+  sans: { family: '"Instrument Sans", system-ui, sans-serif', maxWeight: 600 },     // narrower: more words per line
+  round: { family: 'Poppins, "Instrument Sans", system-ui, sans-serif', maxWeight: 800 },
+  hand: { family: 'Caveat, "Instrument Sans", cursive', maxWeight: 700, only: 700 },
+};
+const pct = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n / 100 : 1; };
+function textScale(spec) { return pct(spec && spec.type_size, 60, 120); }
+function mascotScale(spec) { return pct(spec && spec.mascot_size, 50, 160); }
+/* The canvas context with its `font` rewritten on the way in: only a font that names Poppins or Instrument Sans (the
+   words) is touched; the handwritten bubble note and the monospace table keep their own faces. */
+function styleCtx(ctx, spec) {
+  const f = FONT_SWAP[spec && spec.font];
+  if (!f) return ctx;
+  const swap = (v) => {
+    const m = /^(\d{3})\s+(\d+(?:\.\d+)?px)\s+(.*)$/.exec(v);
+    if (!m || !/Poppins|Instrument Sans/.test(m[3])) return v;
+    return `${f.only || Math.min(Number(m[1]), f.maxWeight)} ${m[2]} ${f.family}`;
+  };
+  return new Proxy(ctx, {
+    get(t, k) { const v = t[k]; return typeof v === "function" ? v.bind(t) : v; },
+    set(t, k, v) { t[k] = k === "font" ? swap(String(v)) : v; return true; },
+  });
+}
+
 /* ======================= COPIED FROM STUDIO (begin) ======================= */
 /* ---------- card templates: rendered in-page to a real PNG ---------- */
 const CARD_SIZES = { regulab: [1080, 1080], linkedin: [1080, 1350] };
@@ -503,7 +539,7 @@ function centreShift(H, u, contentEndY, topU) {
 async function renderGridCard(spec) {
   const [W, H] = sizeOf(spec);
   const c = document.createElement("canvas"); c.width = W; c.height = H;
-  const ctx = c.getContext("2d");
+  const ctx = styleCtx(c.getContext("2d"), spec);                  // SEMASA: the slide's own face, when it chose one
   try { await document.fonts.ready; } catch (e) { }
   const u = W / 1080;
   /* Wan, 19 Sep 2026: "make sure the design and render ensure the text is middle of card".
@@ -531,9 +567,10 @@ async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
      much text a field actually holds -- an empty lead just leaves blank space, it never
      grows the headline to fill it. g_stat's giant figure and its own subhead stay a
      deliberately separate, smaller tier: they are numerals, not the slide's headline. */
-  const HEAD_PX = Math.round(80 * u), HEAD_LH = Math.round(90 * u);
-  const LEAD_PX = Math.round(34 * u), LEAD_LH = Math.round(48 * u);
-  const ITEM_HEAD_PX = Math.round(36 * u), ITEM_BODY_PX = Math.round(30 * u), ITEM_BODY_LH = Math.round(40 * u);
+  const TS = textScale(spec);              // SEMASA: the person's own text size for this slide (100% = the template's)
+  const HEAD_PX = Math.round(80 * u * TS), HEAD_LH = Math.round(90 * u * TS);
+  const LEAD_PX = Math.round(34 * u * TS), LEAD_LH = Math.round(48 * u * TS);
+  const ITEM_HEAD_PX = Math.round(36 * u * TS), ITEM_BODY_PX = Math.round(30 * u * TS), ITEM_BODY_LH = Math.round(40 * u * TS);
 
   if (!await drawGround(ctx, spec, W, H)) gPaper(ctx, W, H, dark);
 
@@ -557,7 +594,7 @@ async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
      also why headW below is just maxW again -- the earlier per-mascot narrowing existed
      only because the character used to take up half the card. */
   const mascotPos = mascot ? pickMascotPos(spec) : "br";
-  const mascotMh = mascot ? Math.round(H * 0.30) : 0;
+  const mascotMh = mascot ? Math.round(H * 0.30 * mascotScale(spec)) : 0;
   const mascotMw = mascot ? mascot.width * (mascotMh / mascot.height) : 0;
   const headW = maxW;
   const mascotX = mascotPos === "bl" ? M - Math.round(6 * u)
@@ -630,7 +667,7 @@ async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
       /* This subhead sits under a giant numeral -- a deliberately smaller tier than the
          carousel's main headline, the same way it was before standardisation; only the
          body text below it joins the shared LEAD size. */
-      if (spec.title) y = gHeadline(ctx, spec.title, M, y, maxW, Math.round(58 * u), Math.round(70 * u), ink, accent);
+      if (spec.title) y = gHeadline(ctx, spec.title, M, y, maxW, Math.round(58 * u * TS), Math.round(70 * u * TS), ink, accent);
       y += Math.round(34 * u);
       if (spec.lead) y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.95), LEAD_PX, LEAD_LH, muted);
       gSparks(ctx, W - Math.round(84 * u), Math.round(220 * u), 3, accent, Math.round(22 * u), Math.round(26 * u));
@@ -907,7 +944,7 @@ function eraBullet(ctx, text, x, y, maxW, px, lh) {
 async function renderEraCard(spec) {
   const [W, H] = sizeOf(spec);
   const c = document.createElement("canvas"); c.width = W; c.height = H;
-  const ctx = c.getContext("2d");
+  const ctx = styleCtx(c.getContext("2d"), spec);                  // SEMASA: the slide's own face, when it chose one
   try { await document.fonts.ready; } catch (e) { }
   /* THIS FAMILY IS NEVER CENTRED, and the attempt on 19 Sep made it visibly worse.
      ERA already distributes itself across the whole card, from the top and from the bottom
@@ -950,9 +987,11 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   const items = (spec.items || []).filter(x => String(x || "").trim());
   /* One fixed type scale for the whole family, for the same reason the grid family has one
      (Wan, 19 Sep 2026: "no font size change if we delete the text"). */
-  const HEAD_PX = Math.round(76 * u), HEAD_LH = Math.round(90 * u);
-  const LEAD_PX = Math.round(33 * u), LEAD_LH = Math.round(46 * u);
-  const ITEM_HEAD_PX = Math.round(40 * u), ITEM_BODY_PX = Math.round(29 * u), ITEM_BODY_LH = Math.round(39 * u);
+  const TS = textScale(spec);              // SEMASA: the person's own text size for this slide (100% = the template's)
+  const HEAD_PX = Math.round(76 * u * TS), HEAD_LH = Math.round(90 * u * TS);
+  const LEAD_PX = Math.round(33 * u * TS), LEAD_LH = Math.round(46 * u * TS);
+  const ITEM_HEAD_PX = Math.round(40 * u * TS), ITEM_BODY_PX = Math.round(29 * u * TS), ITEM_BODY_LH = Math.round(39 * u * TS);
+  const MS = mascotScale(spec);            // SEMASA: the person's own character size (100% = the template's)
 
   if (!await drawGround(ctx, spec, W, H)) eraPaper(ctx, W, H);
   /* Rule 7 again: the mark is the consultancy's and LinkedIn carries none of it. */
@@ -979,7 +1018,7 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
       : mascotPos === "bc" ? Math.round((W - mascotMw) / 2)
         : W - mascotMw - Math.round(18 * u);
   };
-  sizeMascot(H * (hero ? 0.36 : 0.27));
+  sizeMascot(H * (hero ? 0.36 : 0.27) * MS);
   const drawMascot = (afterY, floorIt) => {
     if (!mascot) return 0;
     /* The hero on e_hook is floored and SIZED from the slack, so it always fits by
@@ -1001,7 +1040,8 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
     if (spec.lead) y = eraBand(ctx, M, y, maxW, spec.lead, Math.round(36 * u));
     /* The character takes whatever the words leave, inside sane bounds, with room reserved
        for the questions. That is what keeps the square and the portrait card both full. */
-    sizeMascot(Math.min(H * 0.44, Math.max(H * 0.26, mascotFloor - y - Math.round(215 * u))));
+    // the hero is sized from the room the words left, so it may only be made smaller, never past that room
+    sizeMascot(Math.min(H * 0.44, Math.max(H * 0.26, mascotFloor - y - Math.round(215 * u))) * Math.min(MS, 1));
     /* Character first, questions over it: a sticker that clips a shoulder reads as
        intentional layering, which is what the reference does. */
     const mTop = drawMascot(0, true);
@@ -1157,7 +1197,7 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
 async function renderPhotoCard(spec) {
   const [W, H] = sizeOf(spec);
   const c = document.createElement("canvas"); c.width = W; c.height = H;
-  const ctx = c.getContext("2d");
+  const ctx = styleCtx(c.getContext("2d"), spec);                  // SEMASA: the slide's own face, when it chose one
   try { await document.fonts.ready; } catch (e) { }
   if (spec.template === "p_fact") {
     const probe = await photoCardPaint(measureProxy(ctx), spec, W, H, 0);
@@ -1173,8 +1213,9 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   const items = (spec.items || []).filter(x => String(x || "").trim());
   const bg = spec.bg ? await loadImg(spec.bg) : null;
   if (!bg) warn.push("This design is built on a picture and none is chosen — pick one under Background.");
-  const HEAD_PX = Math.round(72 * u), HEAD_LH = Math.round(84 * u);
-  const LEAD_PX = Math.round(32 * u), LEAD_LH = Math.round(45 * u);
+  const TS = textScale(spec);              // SEMASA: the person's own text size for this slide (100% = the template's)
+  const HEAD_PX = Math.round(72 * u * TS), HEAD_LH = Math.round(84 * u * TS);
+  const LEAD_PX = Math.round(32 * u * TS), LEAD_LH = Math.round(45 * u * TS);
   const paintBg = (x, y, w, h) => {
     ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.translate(x, y);
     if (bg) coverDraw(ctx, bg, w, h);
@@ -1217,7 +1258,7 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   } else {
     paintBg(0, 0, W, H);
     scrim(0, 0, W, H, spec.scrim || (spec.stream === "linkedin" ? "heavy" : "medium"));
-    const hp = quote ? Math.round(62 * u) : HEAD_PX, hl = quote ? Math.round(78 * u) : HEAD_LH;
+    const hp = quote ? Math.round(62 * u * TS) : HEAD_PX, hl = quote ? Math.round(78 * u * TS) : HEAD_LH;
     const headText = quote ? "“" + String(spec.title || "") + "”" : String(spec.title || "");
     ctx.font = "800 " + hp + "px " + G_HEAD;
     const hLines = gWrap(ctx, headText, maxW);
@@ -1319,6 +1360,11 @@ export function specsFor(slides, o = {}) {
       bg: s.bg === "none" ? "" : (s.bg_url || o.bg || ""),
       scrim: s.scrim || (linkedin ? "heavy" : "medium"),
       size: o.size || undefined,
+      // SEMASA: the slide's own typography and character placement; absent = the template decides
+      type_size: Number(s.type_size) || undefined,
+      font: FONT_CHOICES.includes(s.font) ? s.font : undefined,
+      mascot_pos: MASCOT_POS.includes(s.mascot_pos) ? s.mascot_pos : undefined,
+      mascot_size: Number(s.mascot_size) || undefined,
     };
     let spec;
     if (s.template && TEMPLATE_KEYS.includes(s.template)) {

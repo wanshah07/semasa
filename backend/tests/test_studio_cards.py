@@ -228,3 +228,29 @@ def test_a_mascot_a_template_and_a_photograph_really_reach_the_picture():
     assert differs(plain, px(bars)), "the chosen template was not used"
     ground = own_grounds(None, {"id": "t"}, [{**base[0], "bg": "lib:g_makmal02"}])
     assert differs(plain, px(ground)), "the photograph was not drawn behind the slide"
+
+
+@browser
+def test_text_size_font_and_mascot_choices_really_change_the_picture_and_the_default_does_not():
+    """Wan, 3 Oct 2026: compact the text, change the font, move and resize the mascot. A card with none of these
+    drawn exactly as before; each choice must move pixels, not only a setting."""
+    from PIL import ImageChops
+
+    from semasa import cards_library
+
+    def px(items):
+        return Image.open(io.BytesIO(studio_cards.render(items, look="era", stream="regulab",
+                                                         mascots=cards_library.mascots())[0])).convert("L")
+
+    def differs(a, b):
+        return ImageChops.difference(a, b).getbbox() is not None
+
+    base = [{"title": "Notifikasi *bukan* kelulusan", "template": "e_explain", "lead": "Semak selepas dipasarkan.",
+             "points": ["Satu", "Dua", "Tiga"]}]
+    plain = px(base)
+    assert not differs(plain, px([{**base[0]}])), "the same slide drew two different pictures"
+    for key, val in (("type_size", "70"), ("font", "sans"), ("font", "hand"), ("mascot_size", "60")):
+        assert differs(plain, px([{**base[0], key: val}])), f"{key}={val} changed nothing"
+    # the automatic place is picked from the title, so one of the three may be the one already drawn: the other two move it
+    spots = {pos: px([{**base[0], "mascot_pos": pos}]) for pos in ("bl", "bc", "br")}
+    assert sum(differs(plain, img) for img in spots.values()) == 2, "a chosen place must move the mascot, except to where it was"

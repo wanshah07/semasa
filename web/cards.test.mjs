@@ -87,5 +87,15 @@ ok(LOOKS.map((l) => l.k).join(",") === "classic,grid,era,photo", "the four looks
   ok(h.length <= 110 && (h + " " + r).replace(/\s+/g, " ").length >= 190, "a long first sentence is broken until it fits, nothing lost");
 }
 
+// text size, font and the mascot's place and size (Wan, 3 Oct 2026): reach the card spec, and never when invalid
+{
+  const [s] = specsFor([{ title: "Tajuk", points: ["a"], type_size: "80", font: "sans", mascot_pos: "bl", mascot_size: "130" }], { look: "grid", mascots: M });
+  ok(s.type_size === 80 && s.font === "sans" && s.mascot_pos === "bl" && s.mascot_size === 130, "text size, font and mascot choices reach the card");
+  const [d] = specsFor([{ title: "Tajuk", points: ["a"] }], { look: "grid", mascots: M });
+  ok(d.type_size === undefined && d.font === undefined && d.mascot_pos === undefined && d.mascot_size === undefined, "a slide that chose none keeps the template's own");
+  const [bad] = specsFor([{ title: "Tajuk", points: ["a"], font: "comic", mascot_pos: "top" }], { look: "grid", mascots: M });
+  ok(bad.font === undefined && bad.mascot_pos === undefined, "an unknown font or place is ignored");
+}
+
 if (failed) { console.error(`${failed} card mapping check(s) failed`); process.exit(1); }
 console.log("cards: slide -> Studio card mapping keeps every word");

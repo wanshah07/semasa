@@ -111,6 +111,11 @@ const SLIDE_STYLE = {
   scrim: /^(light|medium|heavy)$/,
   bg: /^(none|post_image|lib:g_[a-z0-9]{2,30}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/,
   mascot: /^(none|[a-z]{2,20})$/,
+  // typography and the character's placement (Wan, 3 Oct 2026); 100% is the default and is never stored
+  type_size: /^(60|70|80|90|110|120)$/,
+  font: /^(sans|round|hand)$/,
+  mascot_pos: /^(bl|bc|br)$/,
+  mascot_size: /^(60|80|130|160)$/,
 };
 export function slideExtras(s) {
   const out = {};

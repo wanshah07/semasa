@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2, Palette } from "lucide-react";
 import { LOOKS, ensureFonts, isStudioLook, renderSlides, setLogo } from "../lib/cards/studio";
 import { useLang } from "../lib/i18n";
+import ImageLightbox, { useLightbox } from "./ImageLightbox";
 
 /* Pick how a carousel (or a single card) is drawn (Wan, 26 Sep 2026: "copy the code design that already in ws.regulab
    studio, so we can choose the design"). Semasa's own drawing, or one of Studio's three: Grid, Info ERA, Photo.
@@ -64,6 +65,7 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const photo = usePreview(cover, { ...opts, look: "photo" }, true);
   const tiles = { grid, era, photo };
   const all = usePreview(slides, { ...opts, look: value }, full && isStudioLook(value));
+  const box = useLightbox(all.pics.map((p, i) => ({ url: p.url, title: t("Slaid {n} daripada {m}", "Slide {n} of {m}", { n: i + 1, m: all.pics.length }) })));
 
   // Studio's own warnings, minus "no picture" while a picture is chosen but not made yet (the worker waits for it)
   const problems = useMemo(() => all.pics.map((p, i) => ({ n: i + 1,
@@ -134,12 +136,12 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
             {all.pics.map((p, i) => {
               const bad = problems.find((x) => x.n === i + 1);
               return (
-                <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="relative shrink-0" style={{ scrollSnapAlign: "start" }}
-                  title={bad ? bad.warn.join(" ") : t("Slaid {n}", "Slide {n}", { n: i + 1 })}>
+                <button type="button" key={i} onClick={() => box.open(i)} className="relative shrink-0 cursor-zoom-in" style={{ scrollSnapAlign: "start" }}
+                  title={bad ? bad.warn.join(" ") : t("Slaid {n}: klik untuk baca perkataan pada kad", "Slide {n}: click to read the words on the card", { n: i + 1 })}>
                   <img src={p.url} alt={t("Slaid {n}", "Slide {n}", { n: i + 1 })}
                     className={`h-72 max-w-[80vw] rounded-tile border object-cover sm:h-64 lg:h-36 ${bad ? "border-danger ring-2 ring-danger/40" : "border-line"}`} style={{ aspectRatio: ratio }} />
                   <span className="absolute left-1 top-1 rounded bg-ink/80 px-1 text-[10px] text-bg">{i + 1}</span>
-                </a>
+                </button>
               );
             })}
           </div>
@@ -152,7 +154,7 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
           )}
         </div>
       )}
+      <ImageLightbox {...box.props} />
     </div>
   );
 }
-

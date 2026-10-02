@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { ArrowDown, ArrowUp, ExternalLink, Layers, Loader2, Paintbrush, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Expand, ImageIcon, Layers, Loader2, Minimize2, Paintbrush, Plus, Trash2 } from "lucide-react";
 import { SLIDE_WORDS, isPromo, normaliseSlides, slidesKey } from "../lib/compliance";
 import { cardFromCaption, slidesFromCaption } from "../lib/cards/fromCaption";
 import { useLang } from "../lib/i18n";
 import { LOOKS, isStudioLook, takesMascot } from "../lib/cards/studio";
 import { MASCOTS, TEMPLATES, noteLabel, templateOf } from "../lib/cards/library";
+import BackgroundPicker from "./BackgroundPicker";
+import ImageLightbox, { useLightbox } from "./ImageLightbox";
 import LookPicker from "./LookPicker";
 import TemplateCatalogue from "./TemplateCatalogue";
 import Button from "./ui/Button";
@@ -14,7 +16,10 @@ export const MAX_SLIDES = 10;
 
 /* A slide's own design (Studio's per-slide editor): the words its template draws besides the headline and the points,
    and how it is drawn. Empty = the look decides. */
-const DESIGN = [...Object.keys(SLIDE_WORDS), "template", "scrim", "bg", "mascot"];
+const DESIGN = [...Object.keys(SLIDE_WORDS), "template", "scrim", "bg", "mascot", "type_size", "font", "mascot_pos", "mascot_size"];
+/* The compact-text preset (Wan, 3 Oct 2026): smaller type in the narrower face, and a smaller character. */
+const COMPACT = { type_size: "80", font: "sans", mascot_size: "80" };
+const STYLE_KEYS = ["type_size", "font", "mascot_pos", "mascot_size"];
 
 /** Editor rows <-> stored slides. The editor keeps empty rows while typing; the scan and the save
     see normaliseSlides() of them, which drops empties exactly as the worker does. */
@@ -34,7 +39,7 @@ const kindOf = (t, i, n) => (i === 0 ? t("Kulit", "Cover") : i === n - 1 && n > 
 /* The carousel of one post: its words, where they are drawn from, and the drawn pictures.
    Drawing is done by the worker (backend/semasa/slides.py) with no AI and no key. */
 export default function SlidesEditor({ post, rows, setRows, locked, jobs, attachedIds, bg, setBg, bgOptions, busy,
-  onRender, onUse, look, setLook, preview, blocked, setBlocked, resolveBg = () => "", captionPost = null, onToast = () => {} }) {
+  onRender, onUse, look, setLook, preview, blocked, setBlocked, resolveBg = () => "", captionPost = null, onToast = () => {}, picker = null }) {
   const { t, lang } = useLang();
   const n = rows.length;
   const size = post.stream === "linkedin" ? "1080×1350" : "1080×1080";
@@ -44,10 +49,21 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
   const set = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const studio = isStudioLook(look);
   const [open, setOpen] = useState(() => new Set());
+  const [pickFor, setPickFor] = useState(null);          // {i: null} the set's background, {i: n} slide n+1's, null closed
+  const slideUrls = latestDone?.meta?.slide_urls || [];
+  const box = useLightbox(slideUrls.map((u, i) => ({ url: u, title: t("Slaid {n} daripada {m}", "Slide {n} of {m}", { n: i + 1, m: slideUrls.length }) })));
   const toggle = (i) => setOpen((o) => { const x = new Set(o); if (x.has(i)) x.delete(i); else x.add(i); return x; });
   // "Use this background on all N slides" (Studio's #bgAll): this slide's background and scrim, on every slide
   const bgAll = (i) => setRows(rows.map((r) => ({ ...r, bg: rows[i].bg, scrim: rows[i].scrim })));
   const bgClearAll = () => setRows(rows.map((r) => ({ ...r, bg: "", scrim: "" })));
+  // typography and the character, from one slide onto every slide (the same idea as the background's "all")
+  const styleAll = (i) => setRows(rows.map((r) => ({ ...r, ...Object.fromEntries(STYLE_KEYS.map((k) => [k, rows[i][k]])) })));
+  const chooseBg = (token, all) => {
+    if (pickFor?.i === null) setBg(token);
+    else if (all) setRows(rows.map((r) => ({ ...r, bg: token })));
+    else set(pickFor.i, { bg: token });
+    setPickFor(null);
+  };
   const anyOwnBg = rows.some((r) => r.bg);
   // what the preview draws: the rows as slides, each slide's own background resolved to an address this page can load
   const previewSlides = normaliseSlides(fromRows(rows)).map((s) => (s.bg && s.bg !== "none" ? { ...s, bg_url: resolveBg(s.bg) } : s));
@@ -105,10 +121,14 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
             <Input value={r.title} disabled={locked} maxLength={240} onChange={(e) => set(i, { title: e.target.value })}
               placeholder={i === 0 ? t("Tajuk kulit (cth: Notifikasi *bukan* kelulusan)", "Cover title (e.g. Notification is *not* approval)")
                 : t("Tajuk slaid", "Slide title")} />
+            <label className="mt-1.5 block"><span className="sr-only">{t("Baris sokongan", "Supporting line")}</span>
+              <Input value={r.lead} disabled={locked} maxLength={SLIDE_WORDS.lead} onChange={(e) => set(i, { lead: e.target.value })}
+                placeholder={templateOf(r.template)?.lead ? t(templateOf(r.template).lead, templateOf(r.template).leadEn)
+                  : t("Baris sokongan di bawah tajuk (pilihan)", "Supporting line under the title (optional)")} /></label>
             <TextArea rows={i === 0 ? 2 : 3} value={r.points} disabled={locked} className="mt-1.5"
               onChange={(e) => set(i, { points: e.target.value })}
               placeholder={templateOf(r.template)?.items ? t(templateOf(r.template).items, templateOf(r.template).itemsEn)
-                : i === 0 ? t("Baris kecil di bawah tajuk (pilihan)", "Small line under the title (optional)")
+                : i === 0 ? t("Poin (pilihan)", "Points (optional)")
                 : t("Satu poin satu baris (maksimum 5)", "One point per line (up to 5)")} />
             {studio && (
               <button type="button" onClick={() => toggle(i)} aria-expanded={open.has(i)}
@@ -119,7 +139,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
             )}
             {studio && open.has(i) && (
               <SlideDesign r={r} i={i} n={n} set={(patch) => set(i, patch)} locked={locked} bgOptions={bgOptions} stream={post.stream}
-                onBgAll={() => bgAll(i)} />
+                onBgAll={() => bgAll(i)} onStyleAll={() => styleAll(i)} resolveBg={resolveBg} onPick={picker ? () => setPickFor({ i }) : null} />
             )}
           </li>
         ))}
@@ -148,6 +168,9 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
             {t("Kosongkan latar setiap slaid", "Clear every slide's background")}</Button>}
           <label className="ml-auto"><Label>{t("Latar", "Background")}</Label>
             <Select value={bg} onChange={setBg} options={bgOptions} aria-label={t("Latar slaid", "Slide background")} /></label>
+          {picker && <Button type="button" size="sm" variant="soft" onClick={() => setPickFor({ i: null })}
+            title={t("Pilih daripada gambar post, foto Wan, Unsplash atau jana gambar baharu", "Choose from the post's pictures, Wan's photos, Unsplash, or generate a new one")}>
+            <ImageIcon size={12} /> {t("Pilih latar…", "Choose background…")}</Button>}
           <Button type="button" size="sm" disabled={busy || !n || !!blocked} onClick={onRender}
             title={t("Simpan post ini, kemudian bot melukis slaid", "Save this post, then the bot draws the slides")}>
             <Layers size={12} /> {t("Jana slaid", "Generate slides")}</Button>
@@ -168,11 +191,12 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
         <div className="mt-3">
           <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollSnapType: "x mandatory" }}>
             {(latestDone.meta?.slide_urls || []).map((u, i) => (
-              <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="relative shrink-0" style={{ scrollSnapAlign: "start" }}
-                title={t("Slaid {n}: buka saiz penuh", "Slide {n}: open full size", { n: i + 1 })}>
+              <button type="button" key={u} onClick={() => box.open(i)} className="relative shrink-0 cursor-zoom-in" style={{ scrollSnapAlign: "start" }}
+                title={t("Slaid {n}: klik untuk baca perkataan pada kad", "Slide {n}: click to read the words on the card", { n: i + 1 })}>
                 <img src={u} alt={t("Slaid {n}", "Slide {n}", { n: i + 1 })} className={`${post.stream === "linkedin" ? "h-72 w-[230px] sm:h-60 sm:w-48 lg:h-[120px] lg:w-24" : "h-64 w-64 sm:h-52 sm:w-52 lg:h-24 lg:w-24"} max-w-[80vw] rounded-tile border border-line object-cover`} />
                 <span className="absolute left-1 top-1 rounded bg-ink/80 px-1 text-[10px] text-bg">{i + 1}</span>
-              </a>
+                <span className="absolute bottom-1 right-1 rounded bg-ink/70 p-0.5 text-bg"><Expand size={11} /></span>
+              </button>
             ))}
           </div>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted">
@@ -180,7 +204,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
             {` · ${lookName(latestDone.meta?.look, lang)}`}
             {latestDone.meta?.bg_missing ? ` · ${latestDone.meta.bg_missing}`
               : latestDone.meta?.bg_used ? ` · ${t("atas gambar post", "on the post picture")}` : ` · ${t("atas kertas", "on paper")}`}
-            <a href={latestDone.meta?.slide_urls?.[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-accent"><ExternalLink size={10} /> {t("buka", "open")}</a>
+            <button type="button" onClick={() => box.open(0)} className="inline-flex items-center gap-0.5 text-accent"><Expand size={10} /> {t("besarkan", "enlarge")}</button>
           </p>
           {drawnStale && <p className="mt-1 text-[12px] text-warn">
             {t("Slaid di atas telah diubah sejak dilukis. Tekan Jana slaid supaya gambar membawa perkataan yang sama.",
@@ -194,13 +218,17 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
           )}
         </div>
       )}
+      <ImageLightbox {...box.props} />
+      {picker && <BackgroundPicker open={!!pickFor} onClose={() => setPickFor(null)} target={pickFor} nSlides={n}
+        current={pickFor?.i === null || pickFor === null ? bg : rows[pickFor.i]?.bg} onChoose={chooseBg} picker={picker} />}
     </div>
   );
 }
 
-/* One slide's own design, Studio's cardPanel fields: template, lead, eyebrow, chip, note, source line, background, scrim
-   and mascot. Every field left empty means the chosen look decides, exactly as before. */
-function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, stream }) {
+/* One slide's own design, Studio's cardPanel fields: template, eyebrow, chip, note, source line, background, scrim and
+   mascot, plus the text size, face and character placement (Wan, 3 Oct 2026). The headline and the supporting line are
+   always on the slide above, never in here. Every field left empty means the chosen look decides, exactly as before. */
+function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, stream, resolveBg = () => "", onPick = null }) {
   const { t, lang } = useLang();
   const [showCat, setShowCat] = useState(false);
   const tpl = templateOf(r.template);
@@ -214,8 +242,49 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, stream }) {
     <label className="block min-w-0"><Label>{label}</Label>
       <Input value={r[k]} disabled={locked} maxLength={SLIDE_WORDS[k]} onChange={(e) => set({ [k]: e.target.value })} {...extra} /></label>
   );
+  const bgUrl = r.bg && r.bg !== "none" ? resolveBg(r.bg) : "";
+  const compact = Object.entries(COMPACT).every(([k, v]) => r[k] === v);
   return (
     <div className="mt-2 grid gap-2 rounded-tile border border-line bg-surface p-2.5 sm:grid-cols-2">
+      <div className="min-w-0 sm:col-span-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{t("Teks dan maskot pada kad", "Text and mascot on the card")}</p>
+          <Button type="button" size="sm" variant={compact ? "primary" : "soft"} disabled={locked}
+            onClick={() => set(compact ? Object.fromEntries(Object.keys(COMPACT).map((k) => [k, ""])) : COMPACT)}
+            title={t("Teks 80%, fon sempit, maskot lebih kecil: lebih banyak ruang untuk gambar", "Text 80%, narrow face, smaller mascot: more room for the picture")}>
+            <Minimize2 size={12} /> {compact ? t("Padatkan: hidup (klik untuk kembali)", "Compact: on (click to undo)") : t("Padatkan teks", "Compact the text")}</Button>
+          {n > 1 && STYLE_KEYS.some((k) => r[k]) && (
+            <Button type="button" size="sm" variant="ghost" disabled={locked} onClick={onStyleAll}>
+              {t("Guna pada semua {n} slaid", "Use on all {n} slides", { n })}</Button>
+          )}
+        </div>
+        <div className="mt-1.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="block min-w-0"><Label>{t("Saiz teks", "Text size")}</Label>
+            <Select value={r.type_size} onChange={(v) => set({ type_size: v })} disabled={locked} className="w-full"
+              aria-label={t("Saiz teks slaid {n}", "Slide {n} text size", { n: i + 1 })}
+              options={[["", t("100% (templat)", "100% (the template's)")], ["120", "120%"], ["110", "110%"], ["90", "90%"], ["80", t("80% · padat", "80% · compact")],
+                ["70", "70%"], ["60", t("60% · terkecil", "60% · smallest")]]} /></label>
+          <label className="block min-w-0"><Label>{t("Jenis fon", "Font")}</Label>
+            <Select value={r.font} onChange={(v) => set({ font: v })} disabled={locked} className="w-full"
+              aria-label={t("Fon slaid {n}", "Slide {n} font", { n: i + 1 })}
+              options={[["", t("Asal templat", "The template's own")], ["sans", t("Sempit (Instrument Sans): muat lebih banyak", "Narrow (Instrument Sans): fits more")],
+                ["round", t("Bulat (Poppins)", "Round (Poppins)")], ["hand", t("Tulisan tangan (Caveat)", "Handwritten (Caveat)")]]} /></label>
+          {mascotOk && (
+            <label className="block min-w-0"><Label>{t("Kedudukan maskot", "Mascot position")}</Label>
+              <Select value={r.mascot_pos} onChange={(v) => set({ mascot_pos: v })} disabled={locked} className="w-full"
+                aria-label={t("Kedudukan maskot slaid {n}", "Slide {n} mascot position", { n: i + 1 })}
+                options={[["", t("Auto", "Auto")], ["bl", t("Kiri bawah", "Bottom left")], ["bc", t("Tengah bawah", "Bottom centre")], ["br", t("Kanan bawah", "Bottom right")]]} /></label>
+          )}
+          {mascotOk && (
+            <label className="block min-w-0"><Label>{t("Saiz maskot", "Mascot size")}</Label>
+              <Select value={r.mascot_size} onChange={(v) => set({ mascot_size: v })} disabled={locked} className="w-full"
+                aria-label={t("Saiz maskot slaid {n}", "Slide {n} mascot size", { n: i + 1 })}
+                options={[["", t("Biasa", "Normal")], ["60", t("Kecil sangat (60%)", "Tiny (60%)")], ["80", t("Kecil (80%)", "Small (80%)")],
+                  ["130", t("Besar (130%)", "Large (130%)")], ["160", t("Besar sangat (160%)", "Larger (160%)")]]} /></label>
+          )}
+        </div>
+      </div>
+
       <div className="min-w-0 sm:col-span-2"><label className="block"><Label hint={tpl ? t(tpl.hint, tpl.hintEn) : ""}>{t("Templat slaid ini", "This slide's template")}</Label>
         <Select value={r.template} onChange={(v) => set({ template: v })} options={tplOptions} disabled={locked} className="w-full"
           aria-label={t("Templat slaid {n}", "Slide {n} template", { n: i + 1 })} /></label>
@@ -224,16 +293,24 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, stream }) {
           {showCat ? t("Tutup katalog", "Close the catalogue") : t("Pilih dari katalog (12 templat, dilukis)", "Pick from the catalogue (12 templates, drawn)")}</button>
         {showCat && <div className="mt-1.5"><TemplateCatalogue value={r.template} stream={stream} disabled={locked}
           onPick={(k) => set({ template: k })} /></div>}</div>
-      {uses("lead") && f("lead", tpl?.lead ? t(tpl.lead, tpl.leadEn) : t("Baris sokongan", "Supporting line"))}
       {uses("eyebrow") && f("eyebrow", t("Label atas (eyebrow)", "Eyebrow"), { placeholder: t("ikut set", "as the set") })}
       {(tpl ? tpl.group !== "photo" : true) && f("chip", t("Label cip (instrumen, bukan logo)", "Chip label (the instrument, not a logo)"),
         { placeholder: i === n - 1 ? t("Sumber", "Source") : "" })}
       {note && f("note", note)}
       {f("footnote", t("Baris sumber (kaki)", "Source line (footer)"), { placeholder: i === n - 1 ? t("dari medan Sumber", "from the Source field") : "" })}
-      <label className="block min-w-0"><Label>{t("Latar slaid ini", "This slide's background")}</Label>
-        <Select value={r.bg} onChange={(v) => set({ bg: v })} disabled={locked} className="w-full"
-          options={[["", t("Ikut latar set", "As the set's background")], ["none", t("Tiada gambar", "No picture")], ...bgOptions.filter(([k]) => k !== "none")]}
-          aria-label={t("Latar slaid {n}", "Slide {n} background", { n: i + 1 })} /></label>
+      <div className="block min-w-0"><Label>{t("Latar slaid ini", "This slide's background")}</Label>
+        <div className="flex items-center gap-2">
+          <span className="h-9 w-9 shrink-0 overflow-hidden rounded border border-line bg-surface-2">
+            {bgUrl && <img src={bgUrl} alt="" className="h-full w-full object-cover" />}</span>
+          <Select value={r.bg} onChange={(v) => set({ bg: v })} disabled={locked} className="min-w-0 flex-1"
+            options={[["", t("Ikut latar set", "As the set's background")], ["none", t("Tiada gambar", "No picture")], ...bgOptions.filter(([k]) => k !== "none")]}
+            aria-label={t("Latar slaid {n}", "Slide {n} background", { n: i + 1 })} />
+        </div>
+        {onPick && !locked && (
+          <button type="button" onClick={onPick} className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline">
+            <ImageIcon size={11} /> {t("Pilih daripada Unsplash, gambar post atau jana…", "Pick from Unsplash, the post's pictures, or generate…")}</button>
+        )}
+      </div>
       <label className="block min-w-0"><Label>{t("Tutupan atas gambar", "How much the words cover the picture")}</Label>
         <Select value={r.scrim} onChange={(v) => set({ scrim: v })} disabled={locked} className="w-full"
           options={[["", t("Lalai", "Default")], ["light", t("Ringan: gambar jelas", "Light: the picture stays visible")],

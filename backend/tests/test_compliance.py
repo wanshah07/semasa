@@ -53,3 +53,13 @@ def test_python_and_page_scanners_agree_exactly():
     py = [compliance.scan(c["post"], schedule=c.get("schedule"), indo_extra=c.get("indo_extra")) for c in CASES]
     for case, a, b in zip(CASES, py, js, strict=True):
         assert a == b, case["name"]
+
+
+def test_a_slides_text_size_font_and_mascot_choices_are_kept_only_when_valid_and_not_the_default():
+    """Wan, 3 Oct 2026. Mirrored by web/cards.test.mjs (normaliseSlides): the same keys, the same values, the same order."""
+    kept = compliance.normalise_slides([{"title": "A", "points": ["x"], "type_size": "80", "font": "sans",
+                                         "mascot_pos": "bl", "mascot_size": "130"}])
+    assert kept == [{"title": "A", "points": ["x"], "type_size": "80", "font": "sans", "mascot_pos": "bl", "mascot_size": "130"}]
+    dropped = compliance.normalise_slides([{"title": "A", "points": ["x"], "type_size": "100", "font": "comic",
+                                            "mascot_pos": "top", "mascot_size": "999"}])
+    assert dropped == [{"title": "A", "points": ["x"]}], "100% is the default and an unknown value is never stored"

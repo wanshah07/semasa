@@ -74,6 +74,16 @@ web search is installed. If Mireld rejects tools the chat still answers, without
 - Conversations are listed, renamed and deleted from the page's history panel straight through row-level security; the function
   is not involved.
 
+## Slow first output (`faq_extract`, `design_clone`, `design_refine`, 2 Oct 2026)
+
+Wan's screenshot of the Design tab: *"the reader did not answer (HTTP 500: Member first-output deadline)"*. Mireld gives each model a
+deadline to START answering; a non-streamed call produces nothing until the whole answer is written, so a long layout (thousands of
+tokens) can miss it. These three actions now **stream** the reader's answer (the first token arrives at once, and the pieces are
+folded back into one text), and when the call still fails in a way another try could fix (a deadline, a timeout, any 5xx, a 429, an
+empty answer), they ask **once more on the best other chat model Mireld lists** (70 s, then 50 s, inside the function's own limit).
+A 400, 401, 403 or 404 is not retried. The error names the models tried and says what to do. `logic.js retryable` and `pickFallback`
+decide this and are tested; the streaming itself is the same SSE fold the chat uses.
+
 ## What keeps it safe (1 Oct 2026, "check the security and the flow")
 
 - **Who may call it**: a signed-in Semasa user, proved twice (the login token through `auth/v1/user`, then `semasa_is_uploader()`);

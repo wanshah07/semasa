@@ -379,3 +379,27 @@ t("documents together never exceed the total cap: the one that crosses it is cut
   assert.ok(body.length < LIMITS.totalFileChars + 2000);
 });
 console.log("hardening: ok");
+
+// ---- reader calls that survive a slow first output (2 Oct 2026, "HTTP 500: Member first-output deadline") ---------------------
+import { pickFallback, retryable } from "../supabase/functions/semasa-chat/logic.js";
+t("a deadline, a timeout, a throttle or any 5xx may pass on another try; a 400, 401, 403 or 404 never will", () => {
+  assert.equal(retryable(500, "Member first-output deadline"), true);
+  assert.equal(retryable(0, "the model did not answer in time"), true);
+  assert.equal(retryable(429, ""), true);
+  assert.equal(retryable(503, ""), true);
+  assert.equal(retryable(408, ""), true);
+  assert.equal(retryable(400, "this model is overloaded"), true, "the message counts too");
+  for (const st of [400, 401, 403, 404]) assert.equal(retryable(st, "invalid image"), false);
+  assert.equal(retryable(undefined, undefined), true, "no status at all is a failed connection");
+});
+
+t("the fallback is the best OTHER chat model Mireld lists, never the failed one, never a non-chat model, and empty when there is none", () => {
+  const ids = ["text-embedding-3", "claude-haiku-4.5", "claude-opus-5.5", "claude-sonnet-5.5", "whisper-1"];
+  assert.equal(pickFallback(ids, "claude-sonnet-5.5"), "claude-opus-5.5");
+  assert.equal(pickFallback(ids, "claude-opus-5.5"), "claude-sonnet-5.5");
+  assert.equal(pickFallback(["claude-sonnet-5.5"], "claude-sonnet-5.5"), "");
+  assert.equal(pickFallback(["claude-sonnet-5-5", "claude-opus-5-5"], "claude-sonnet-5.5"), "claude-opus-5-5", "spelled differently is still the same model");
+  assert.equal(pickFallback(null, "claude-sonnet-5.5"), "");
+  assert.equal(pickFallback([], "x"), "");
+});
+console.log("reader retry: ok");

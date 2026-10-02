@@ -412,3 +412,25 @@ export function allow(times, now, limit, windowMs) {
 }
 
 export const rateKind = (action) => (action === "design_clone" || action === "design_refine" ? "design" : action === "faq_extract" ? "faq" : action === "check" ? "check" : action === "models" ? "" : "chat");
+
+/* ===== Reader calls that survive a slow first output (Wan, 2 Oct 2026, screenshot of the Design tab: "the reader did not answer
+   (HTTP 500: Member first-output deadline)"). The Mireld gateway gives each model ("member") a deadline to START answering, and a
+   non-streamed call produces nothing until the whole answer is written, so a long layout (thousands of tokens) can miss it. The
+   function now streams the reader's answer (the first token arrives at once), and when a call still fails in a way that may pass on
+   another try, asks once more on a DIFFERENT model. These two helpers decide that; index.ts does the calling. */
+
+/** Could a second attempt help? A timeout or network failure (status 0), a throttle, any 5xx, or a message about a deadline,
+    overload or an unavailable member. Not a 400/401/403/404: those do not change on retry. */
+export function retryable(status, message) {
+  const st = Number(status) || 0;
+  if (st === 0 || st === 408 || st === 425 || st === 429 || st >= 500) return true;
+  return /deadline|time(?:d)? ?out|overload|unavailable|capacity|try again|temporar/i.test(String(message || ""));
+}
+
+/** The model to try after `failed`: the best OTHER chat model Mireld lists (by MODEL_PREFERENCE), or "" when there is none. */
+export function pickFallback(ids, failed) {
+  const { models } = rankModels(ids, failed);
+  const bad = modelNorm(failed);
+  const hit = models.find((m) => modelNorm(m.id) !== bad);
+  return hit ? hit.id : "";
+}

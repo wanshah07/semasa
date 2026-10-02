@@ -41,8 +41,8 @@ import { faqMessages, parseFaqItems } from "./faq.js";
 import { firstJson } from "./faq.js";
 import {
   MEMORY, SYSTEM, rankModels, resolveModel, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
-  OWN_HOSTS, RATE, allow, foldDelta, htmlToText, isPrivateIp, lastQuestion, parseArgs, planFold, planQuery, rateKind, shapeRows, sseEvents,
-  summaryMessages, userAskedToRemember, whoIs,
+  OWN_HOSTS, RATE, allow, foldDelta, htmlToText, isPrivateIp, lastQuestion, parseArgs, pickFallback, planFold, planQuery, rateKind, retryable,
+  shapeRows, sseEvents, summaryMessages, userAskedToRemember, whoIs,
 } from "./logic.js";
 
 const json = (body: unknown, status = 200) =>
@@ -120,21 +120,83 @@ Deno.serve(async (req) => {
 
   // ---- which model answers (Wan, 1 Oct 2026): the one the page asked for if Mireld lists it, else the default. The default is
   // MIRELD_MODEL when set, else the best of Mireld's list by logic.js MODEL_PREFERENCE (Sonnet 5.5 first).
-  let modelIds: string[] | null = null;
-  if (body?.model || body?.action === "models") {
-    if (modelCache.ids && Date.now() - modelCache.at < 300000) modelIds = modelCache.ids;
-    else {
-      const l = await upstream(base, key, "/models", { method: "GET" }, 15000).catch(() => null);
-      if (l?.ok && Array.isArray(l.data?.data)) {
-        modelIds = l.data.data.map((m: any) => String(m?.id || "")).filter(Boolean);
-        modelCache = { at: Date.now(), ids: modelIds };
-      }
+  async function listModelIds(): Promise<string[] | null> {
+    if (modelCache.ids && Date.now() - modelCache.at < 300000) return modelCache.ids;
+    const l = await upstream(base, key, "/models", { method: "GET" }, 15000).catch(() => null);
+    if (l?.ok && Array.isArray(l.data?.data)) {
+      const ids = l.data.data.map((m: any) => String(m?.id || "")).filter(Boolean);
+      modelCache = { at: Date.now(), ids };
+      return ids;
     }
+    return null;
   }
+  let modelIds: string[] | null = null;
+  if (body?.model || body?.action === "models") modelIds = await listModelIds();
   const ranked = rankModels(modelIds, envModel || "claude-sonnet-5.5");
   const defaultModel = envModel || ranked.recommended || "claude-sonnet-5.5";
   const picked = resolveModel(body?.model, modelIds, defaultModel);
   model = picked.model;
+
+  // ---- reader calls (faq_extract, design_clone, design_refine): streamed, and asked once more on another model --------------
+  // One attempt: the answer is STREAMED so the gateway sees the first token at once (its "first-output deadline" is what failed a long
+  // layout when the call was not streamed), and the pieces are folded back into one text. Never throws.
+  type Read = { ok: boolean; status: number; content: string; err: string };
+  async function readOnce(payload: any, ms: number): Promise<Read> {
+    try {
+      const res = await fetch(base.replace(/\/+$/, "") + "/chat/completions", {
+        method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", accept: "text/event-stream" },
+        body: JSON.stringify({ ...payload, stream: true }), signal: AbortSignal.timeout(ms),
+      });
+      const type = res.headers.get("content-type") || "";
+      if (!res.ok || !res.body) {
+        const text = await res.text().catch(() => "");
+        let j: any = null; try { j = JSON.parse(text); } catch { /* not JSON */ }
+        return { ok: false, status: res.status, content: "", err: String(j?.error?.message || text).slice(0, 200) };
+      }
+      if (!/event-stream/.test(type)) {                      // a gateway that ignores stream:true answers one JSON
+        const j: any = await res.json().catch(() => null);
+        return { ok: true, status: res.status, content: asText(j), err: "" };
+      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "", acc: any = null;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const { events, rest } = sseEvents(buf);
+        buf = rest;
+        for (const ev of events) {
+          if (ev.trim() === "[DONE]") continue;
+          let chunk: any = null; try { chunk = JSON.parse(ev); } catch { continue; }
+          if (chunk?.error) return { ok: false, status: Number(chunk.error?.code) || 502, content: "", err: String(chunk.error?.message || chunk.error).slice(0, 200) };
+          acc = foldDelta(acc, chunk);
+        }
+      }
+      return { ok: true, status: res.status, content: acc?.content || "", err: "" };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, status: 0, content: "", err: /abort|time/i.test(msg) ? "the model did not answer in time" : msg.slice(0, 200) };
+    }
+  }
+  /** The reader's answer. First the chosen model; if that fails in a way another try could fix (a deadline, a timeout, a 5xx, an empty
+      answer), once more on the best OTHER model Mireld lists (or the same one when it lists no other). 70 s then 50 s, so both fit
+      inside the function's own limit. `tried` names the models asked, for the error the page shows. */
+  async function readerCall(payload: any): Promise<Read & { model: string; tried: string[] }> {
+    const tried: string[] = [];
+    let last: Read = { ok: false, status: 0, content: "", err: "no answer" };
+    let used = model;
+    for (let i = 0; i < 2; i++) {
+      used = i === 0 ? model : (pickFallback(await listModelIds(), model) || model);
+      tried.push(used);
+      last = await readOnce({ ...payload, model: used }, i === 0 ? 70000 : 50000);
+      if (last.ok && last.content.trim()) return { ...last, model: used, tried };
+      if (!last.ok && !retryable(last.status, last.err)) break;
+    }
+    return { ...last, ok: false, model: used, tried };
+  }
+  const readerError = (r: Read & { tried: string[] }) =>
+    `the reader did not answer (${r.ok ? "an empty answer" : `HTTP ${r.status || "-"}: ${r.err}`}; tried ${[...new Set(r.tried)].join(", ")}). Try again in a minute, or pick another model in the chat's model list`;
 
   // ---- tools -------------------------------------------------------------------------------------------
   async function addressesOk(host: string): Promise<string | null> {
@@ -261,14 +323,11 @@ Deno.serve(async (req) => {
     if (body?.action === "faq_extract") {
       const built = faqMessages(body?.note, body?.files);
       if (built.error) return json({ error: built.error, skipped: built.skipped }, 400);
-      const r = await upstream(base, key, "/chat/completions", {
-        method: "POST",
-        body: JSON.stringify({ model, max_tokens: 6000, temperature: 0, messages: built.messages }),
-      }, 110000).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
-      if (!r.ok) return json({ error: `the reader did not answer (HTTP ${r.status}: ${String(r.data?.error?.message || r.text).slice(0, 200)})` }, 502);
-      const parsed = parseFaqItems(asText(r.data));
+      const r = await readerCall({ max_tokens: 6000, temperature: 0, messages: built.messages });
+      if (!r.ok) return json({ error: readerError(r) }, 502);
+      const parsed = parseFaqItems(r.content);
       if (parsed.error) return json({ error: parsed.error, skipped: built.skipped }, 502);
-      return json({ items: parsed.items, skipped: parsed.skipped, not_read: built.skipped, pictures: built.pictures, files: built.files, model });
+      return json({ items: parsed.items, skipped: parsed.skipped, not_read: built.skipped, pictures: built.pictures, files: built.files, model: r.model });
     }
 
     // ---- design_clone: the Design tab's "rebuild this design" (Wan, 1 Oct 2026) ----------------------------
@@ -281,14 +340,11 @@ Deno.serve(async (req) => {
     if (body?.action === "design_clone") {
       const built = designMessages({ image: body?.image, width: body?.width, height: body?.height, stream: body?.stream, brief: body?.brief, mode: body?.mode });
       if (built.error) return json({ error: built.error }, 400);
-      const r = await upstream(base, key, "/chat/completions", {
-        method: "POST",
-        body: JSON.stringify({ model, max_tokens: 7000, temperature: built.mode === "inspire" ? 0.5 : 0.1, messages: built.messages }),
-      }, 120000).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
-      if (!r.ok) return json({ error: `the reader did not answer (HTTP ${r.status}: ${String(r.data?.error?.message || r.text).slice(0, 200)})` }, 502);
-      const cleaned = cleanLayout(firstJson(asText(r.data)));
+      const r = await readerCall({ max_tokens: 6000, temperature: built.mode === "inspire" ? 0.5 : 0.1, messages: built.messages });
+      if (!r.ok) return json({ error: readerError(r) }, 502);
+      const cleaned = cleanLayout(firstJson(r.content));
       if (cleaned.error) return json({ error: cleaned.error }, 502);
-      return json({ layout: cleaned.layout, removed: cleaned.removed, has_words: built.hasBrief, mode: built.mode, model });
+      return json({ layout: cleaned.layout, removed: cleaned.removed, has_words: built.hasBrief, mode: built.mode, model: r.model });
     }
 
     // ---- design_refine: reference and rebuild side by side, a corrected layout back (same day) ---------------------------
@@ -297,15 +353,12 @@ Deno.serve(async (req) => {
     if (body?.action === "design_refine") {
       const built = refineMessages({ image: body?.image, render: body?.render, layout: body?.layout, width: body?.width, height: body?.height });
       if (built.error) return json({ error: built.error }, 400);
-      const r = await upstream(base, key, "/chat/completions", {
-        method: "POST",
-        body: JSON.stringify({ model, max_tokens: 7000, temperature: 0, messages: built.messages }),
-      }, 120000).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
-      if (!r.ok) return json({ error: `the reader did not answer (HTTP ${r.status}: ${String(r.data?.error?.message || r.text).slice(0, 200)})` }, 502);
-      const cleaned = cleanLayout(firstJson(asText(r.data)));
+      const r = await readerCall({ max_tokens: 6000, temperature: 0, messages: built.messages });
+      if (!r.ok) return json({ error: readerError(r) }, 502);
+      const cleaned = cleanLayout(firstJson(r.content));
       if (cleaned.error) return json({ error: cleaned.error }, 502);
       const before = cleanLayout(body.layout).layout;
-      return json({ layout: keepWords(before, cleaned.layout), removed: cleaned.removed, model });
+      return json({ layout: keepWords(before, cleaned.layout), removed: cleaned.removed, model: r.model });
     }
 
     // ---- chat: thread, memory, tools, streaming -----------------------------------------------------------

@@ -14,14 +14,22 @@ What each Studio post becomes
   draft                             draft         waits for your click in Semasa
   rejected                          (skipped)
 
+Studio's still-open IDEAS (the regulatory notices its sweep found and Wan had not yet turned into a post) come over as
+rows in `semasa_watch` (the Regulatory row of Isu semasa), where "Jadikan idea" is Wan's click, exactly as "Approve ->
+draft" was in Studio. They are NEVER written to `semasa_ideas`: a new idea there wakes the worker, which drafts it at once.
+An idea whose reference or name already appears in an approved, scheduled or posted post is skipped, so nothing Studio
+already put in Buffer is touched or repeated (Wan, 3 Oct 2026). Posts are never written by this path.
+
 A post Semasa has ALREADY scheduled or sent is never overwritten by Studio's copy. Pictures come over as one media row
 per post (mode 'slides', status done) pointing at the proven `argus-cards` addresses; nothing is uploaded here.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 import sys
 from typing import Any
 
@@ -32,6 +40,9 @@ from .log import get_logger
 log = get_logger("semasa.studio_import")
 
 LOCKED = ("scheduled", "posted")
+LIVE = ("approved", "scheduled", "posted")
+WATCH = "semasa_watch"
+SAHKAN = re.compile(r"\s*\[SAHKAN[^\]]*\]", re.I)
 POST_FIELDS = ("stream", "domain", "angle", "lang", "hook", "text", "citation", "slides", "date", "slot", "status",
                "published", "approved_at")
 
@@ -99,21 +110,78 @@ def apply(store: Any, rows: list[dict[str, Any]], dry: bool = False) -> dict[str
     return report
 
 
+def watch_row(i: dict[str, Any]) -> dict[str, Any]:
+    """One open Studio idea as a Regulatory row. The `[SAHKAN: ...]` caveats Studio's sweep left in the note are lifted out
+    of the words (a writer would copy them into a caption) and kept in `raw.caveat`; the link is whatever the idea
+    carried, else the regulator's register with the reference after a `#`, which opens the right site and never claims to
+    be a page about this finding."""
+    note = str(i.get("note") or "")
+    caveats = [m.strip() for m in re.findall(r"\[SAHKAN[^\]]*\]", note, re.I)]
+    note = SAHKAN.sub("", note).strip()
+    summary, _, why = note.partition("Sudut:")
+    raw = {"from": "ws.regulab Studio idea", "studio_id": i["studio_id"], "ref": i.get("ref_no") or "",
+           "tier": i.get("tier") or "", "markets": i.get("markets") or [], "evidence": i.get("evidence") or "",
+           "caveat": "; ".join(caveats) or ("Studio's sweep did not record a link of its own for this finding: check the "
+                                            "reference in the register before posting" if not i.get("evidence") else "")}
+    return {"section": "regulatory", "source": i["source"], "kind": i.get("kind"), "country": i.get("country"),
+            "title": i["title"], "url": i["url"], "summary": summary.strip() or None, "why": why.strip() or None,
+            "domain": i.get("domain") or "kosmetik", "relevant": True, "dismissed": False, "lang": "ms",
+            "summary_source": "source", "published_at": i.get("at"), "status": "ready", "pasted": False,
+            "raw": {k: v for k, v in raw.items() if v not in ("", [], None)}}
+
+
+def apply_ideas(store: Any, ideas: list[dict[str, Any]], dry: bool = False) -> dict[str, Any]:
+    """Open Studio ideas into the Regulatory feed. Writes only `semasa_watch`, only rows whose link is new, and none whose
+    reference or name an approved, scheduled or posted post already carries."""
+    report: dict[str, Any] = {"written": [], "already_there": [], "already_posted": [], "dry": dry}
+    live = (store.table(db.POSTS).select("id,status,hook,citation,text").in_("status", list(LIVE)).execute().data or [])
+    blobs = [(p, json.dumps([p.get("hook"), p.get("citation"), p.get("text")], ensure_ascii=False).lower()) for p in live]
+    have = {r["url"] for r in (store.table(WATCH).select("url").in_("url", [i["url"] for i in ideas]).execute().data or [])}
+    fresh = []
+    for i in ideas:
+        terms = [t.lower() for t in ([i.get("ref_no")] if i.get("ref_no") else []) + list(i.get("match") or []) if t]
+        hit = next((p for p, blob in blobs if any(t in blob for t in terms)), None)
+        if hit:
+            report["already_posted"].append(f"{i['studio_id']} is already in post {hit['id']} ({hit['status']})")
+        elif i["url"] in have:
+            report["already_there"].append(i["studio_id"])
+        else:
+            fresh.append(i)
+            report["written"].append(f"{i['studio_id']} -> {i['source']}: {i['title'][:70]}")
+    if fresh and not dry:
+        store.table(WATCH).upsert([watch_row(i) for i in fresh], on_conflict="url", ignore_duplicates=True).execute()
+        db.log_event(store, "info", "watch", "studio.ideas",
+                     f"{len(fresh)} idea terbuka dari ws.regulab Studio dimasukkan ke Regulatory",
+                     detail={"ideas": [i["studio_id"] for i in fresh]})
+    return report
+
+
 def main() -> int:
     raw = os.environ.get("STUDIO_IMPORT", "")
     dry = os.environ.get("STUDIO_IMPORT_DRY", "true").lower() != "false"
     try:
-        rows = json.loads(raw)["posts"]
-    except (ValueError, KeyError, TypeError) as exc:
-        log.error("studio import: the message is not {\"posts\": [...]}: %s", exc)
+        msg = json.loads(raw)
+        rows, ideas = list(msg.get("posts") or []), list(msg.get("ideas") or [])
+        if not rows and not ideas:
+            raise KeyError("posts")
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        log.error("studio import: the message is not {\"posts\": [...]} or {\"ideas\": [...]}: %s", exc)
         return 1
     store = db.client(SupabaseSettings.load())
-    report = apply(store, rows, dry=dry)
-    lines = [f"## Studio import ({'DRY RUN, nothing written' if dry else 'written'})", ""]
+    report = apply(store, rows, dry=dry) if rows else {"written": [], "kept_semasa": [], "clashes": [], "hard": []}
+    lines = [f"## Studio import ({'DRY RUN, nothing written' if dry else 'written'})", "",
+             # proves the pasted message arrived byte for byte: compare with the sha256 of the file it was made from
+             f"message: {len(raw)} characters, sha256 {hashlib.sha256(raw.encode()).hexdigest()[:16]}", ""]
     for key, title in (("written", "Posts"), ("kept_semasa", "Kept Semasa's own (already scheduled or sent)"),
                        ("clashes", "Slot clashes (both kept; move one)"), ("hard", "Approved but blocked by a check")):
         if report[key]:
             lines += [f"**{title}**", *[f"- {x}" for x in report[key]], ""]
+    if ideas:
+        irep = apply_ideas(store, ideas, dry=dry)
+        for key, title in (("written", "Ideas into Regulatory"), ("already_there", "Already in the feed (same link)"),
+                           ("already_posted", "Skipped: already in a post (left alone)")):
+            if irep[key]:
+                lines += [f"**{title}**", *[f"- {x}" for x in irep[key]], ""]
     text = "\n".join(lines)
     print(text)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")

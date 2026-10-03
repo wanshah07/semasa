@@ -82,3 +82,64 @@ def test_the_post_is_written_before_its_picture_because_the_picture_points_at_it
     store.table = table
     studio_import.apply(store, [_row()])
     assert order == ["semasa_posts", "media_generations"]
+
+
+# --- Studio's open ideas (Wan, 3 Oct 2026): into the Regulatory feed, never into semasa_ideas, never over a live post ---
+
+def _idea(**kw):
+    i = {"studio_id": "i_eusgvahranbmhca0929",
+         "title": "EU Safety Gate: minyak wangi Scent of VAHRAN mengandungi BMHCA (SR/02687/26)",
+         "ref_no": "SR/02687/26", "match": ["vahran"], "source": "EU Safety Gate", "kind": "Safety alert", "country": "EU",
+         "url": "https://ec.europa.eu/safety-gate-alerts/screen/home#SR/02687/26", "tier": "I", "markets": ["EU (Hungary)"],
+         "at": "2026-09-30T14:17:07.000Z", "domain": "kosmetik", "evidence": "",
+         "note": "Amaran Hungary SR/02687/26: BMHCA dilarang. Sudut: BMHCA berulang selepas kes LACOSTE. "
+                 "[SAHKAN: baris 29/09/2026 hanya bawa satu pautan, bukan untuk penemuan ini]"}
+    i.update(kw)
+    return i
+
+
+def _wstore(posts=(), watch=()):
+    return FakeStore(semasa_posts=list(posts), semasa_watch=list(watch), semasa_ideas=[], semasa_log=[])
+
+
+def test_an_open_idea_becomes_a_regulatory_row_ready_for_wans_click_and_nothing_else():
+    store = _wstore()
+    rep = studio_import.apply_ideas(store, [_idea()])
+    row = store.tables["semasa_watch"][0]
+    assert rep["written"] and row["section"] == "regulatory" and row["status"] == "ready" and row["pasted"] is False
+    # no idea (it would wake the worker), no post
+    assert store.tables["semasa_ideas"] == [] and store.tables["semasa_posts"] == []
+    assert row["summary"].startswith("Amaran Hungary") and row["why"] == "BMHCA berulang selepas kes LACOSTE."
+    # a writer would copy the marker into a caption
+    assert "SAHKAN" not in (row["summary"] or "") + (row["why"] or "")
+    assert "SAHKAN" in row["raw"]["caveat"] and row["raw"]["ref"] == "SR/02687/26" and row["lang"] == "ms"
+
+
+def test_an_idea_already_in_a_live_post_is_left_alone_so_nothing_in_buffer_is_repeated():
+    posted = {"id": "p1", "status": "scheduled", "hook": "x", "citation": "EU Safety Gate SR/02687/26",
+              "text": {"bm": {"facebook": "-"}}}
+    by_name = {"id": "p2", "status": "posted", "hook": "x", "citation": "",
+               "text": {"bm": {"facebook": "Scent of VAHRAN ditarik balik"}}}
+    for p in (posted, by_name):
+        store = _wstore([p])
+        rep = studio_import.apply_ideas(store, [_idea()])
+        assert rep["already_posted"] and not rep["written"] and store.tables["semasa_watch"] == []
+    # a draft is not a post in Buffer
+    draft = {"id": "p3", "status": "draft", "hook": "x", "citation": "SR/02687/26", "text": {}}
+    assert studio_import.apply_ideas(_wstore([draft]), [_idea()])["written"]
+
+
+def test_running_it_twice_and_a_link_already_in_the_feed_change_nothing_and_dry_writes_nothing():
+    store = _wstore()
+    studio_import.apply_ideas(store, [_idea()], dry=True)
+    assert store.tables["semasa_watch"] == []
+    studio_import.apply_ideas(store, [_idea()])
+    rep = studio_import.apply_ideas(store, [_idea()])
+    assert len(store.tables["semasa_watch"]) == 1 and rep["already_there"] == ["i_eusgvahranbmhca0929"]
+
+
+def test_an_idea_without_a_link_of_its_own_says_so_and_a_real_link_is_kept():
+    bare = studio_import.watch_row(_idea())
+    assert "did not record a link" in bare["raw"]["caveat"] or "SAHKAN" in bare["raw"]["caveat"]
+    real = studio_import.watch_row(_idea(evidence="https://docs.wto.org/x.pdf", note="Draf. Sudut: jiran ASEAN."))
+    assert real["raw"]["evidence"] == "https://docs.wto.org/x.pdf" and "caveat" not in real["raw"]

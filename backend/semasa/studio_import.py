@@ -150,7 +150,7 @@ def apply_ideas(store: Any, ideas: list[dict[str, Any]], dry: bool = False) -> d
             report["written"].append(f"{i['studio_id']} -> {i['source']}: {i['title'][:70]}")
     if fresh and not dry:
         store.table(WATCH).upsert([watch_row(i) for i in fresh], on_conflict="url", ignore_duplicates=True).execute()
-        db.log_event(store, "info", "watch", "studio.ideas",
+        db.log_event(store, "info", "system", "studio.ideas",
                      f"{len(fresh)} idea terbuka dari ws.regulab Studio dimasukkan ke Regulatory",
                      detail={"ideas": [i["studio_id"] for i in fresh]})
     return report

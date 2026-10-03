@@ -138,3 +138,19 @@ than 1 post in 1 slot"*. Three layers, one rule, so a gap in one is not a gap in
 
 The caption key (first 120 letters and digits, case and punctuation ignored, in the language sent) is the same in all three;
 `rules/caption_keys.json` is run by both test suites.
+
+## What Studio did that Semasa now does too (added 3 Oct 2026)
+
+Wan: *"do the 2 things Studio did that Semasa doesn't … if the Studio post is already in Buffer let it be, avoid a duplicate"*.
+
+- **Studio's open ideas** (9, all regulatory notices) came over as rows in the Regulatory feed (`semasa_watch`), where
+  "Jadikan idea" is Wan's click. Not as `semasa_ideas` (the worker would draft them at once) and never as posts. One that is
+  already in an approved, scheduled or posted post is skipped. `studio-import.yml` takes `{"ideas": [...]}` for this and prints
+  the message's sha256.
+- **Nota regulatori** (the landing page's list of what ws.regulab posted): Studio's release run refreshed it as its step 9.
+  `publish.yml` now ends with a step that dumps the posted ws.regulab posts (hook, citation, public links; no caption) and
+  runs `tools/notes_from_semasa.py` in `wanshah07/malaysian-regulatory-affairs`, which applies the same rules as before and
+  commits `site/src/data/notes.json` only when it changed. The Studio-era entries stay exactly as they are. It needs one
+  secret, **`LANDING_REPO_TOKEN`**: a fine-grained token with *Contents: write* on that one repository. Without it the step
+  skips with a notice and nothing else is affected.
+- **Studio posts already in Buffer are never touched:** neither path writes, edits or deletes a post or a Buffer item.

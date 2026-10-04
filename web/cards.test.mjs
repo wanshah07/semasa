@@ -1,7 +1,7 @@
 // The slide -> Studio card mapping (web/src/lib/cards/studio.js, specsFor). The drawing itself is tested in a real
 // browser by backend/tests/test_studio_cards.py; this checks the one rule the mapping owns: every point of every
 // slide reaches a card, whatever the look. `npm test`.
-import { specsFor, LOOKS, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf } from "./src/lib/cards/studio.js";
+import { specsFor, LOOKS, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf, normDesign, placeOf } from "./src/lib/cards/studio.js";
 import { canvaBrief } from "./src/lib/canvaBrief.js";
 import { readFileSync } from "node:fs";
 import { cardFromCaption, headAndRest, slidesFromCaption } from "./src/lib/cards/fromCaption.js";
@@ -147,6 +147,23 @@ ok(specsFor(EV, { look: "grid", fit: true })[0].template === "e_event", "the eve
 ok(specsFor(EV, { look: "era", fit: false })[0].template !== "e_event", "fit off: the look decides, as before");
 ok(specsFor([{ title: "Tempoh", points: ["14", "hari"], note: "Angka contoh." }], { look: "era", fit: true })[0].template === "e_stat", "a note without a date does not make an event");
 ok(specsFor(EV, { look: "era" })[0].auto_scrim === true && specsFor([{ ...EV[0], scrim: "heavy" }], { look: "era" })[0].auto_scrim === false, "a scrim chosen on purpose is remembered, so a light picture does not override it");
+
+// my designs: a saved look with a template per place, two colours, a background, and no words
+const SLIDES5 = ["Satu", "Dua", "Tiga", "Empat", "Lima"].map((x) => ({ title: x, points: ["a | b", "c | d"] }));
+ok(normDesign(null) === null && normDesign({ look: "classic" }) === null && normDesign({}) === null, "a design needs one of the three Studio families");
+const DG = normDesign({ look: "era", cover: "e_hook", middle: "e_check", closing: "g_title", single: "e_stat", accent: "#0A7C6E", paper: "#F3EFE6",
+  bg: "lib:g_makmal02", scrim: "light", mascot: "none", eyebrow: " Kosmetik ", junk: 1 });
+ok(DG.cover === "e_hook" && DG.middle === "e_check" && !("closing" in DG) && DG.single === "e_stat", "templates of another family are dropped");
+ok(DG.accent === "#0a7c6e" && DG.paper === "#f3efe6" && DG.bg === "lib:g_makmal02" && DG.scrim === "light" && DG.mascot === "none" && DG.eyebrow === "Kosmetik" && !("junk" in DG), "a design keeps only what it understands");
+ok(!("accent" in normDesign({ look: "grid", accent: "red" })) && !("bg" in normDesign({ look: "grid", bg: "none" })), "a bad colour and an empty background are dropped");
+ok([0, 1, 4].map((i) => placeOf(i, 5)).join() === "cover,middle,closing" && placeOf(0, 1) === "single", "a slide's place in its set");
+const ds = specsFor(SLIDES5, { design: DG, look: "grid" });
+ok(ds.map((x) => x.template).join() === "e_hook,e_check,e_check,e_check,e_explain", "the design chooses the templates by place and the look fills the closing (auto)");
+ok(ds.every((x) => x.palette && x.palette.accent === "#0a7c6e" && x.palette.paper === "#f3efe6" && x.eyebrow === "Kosmetik" && x.scrim === "light" && x.auto_scrim === false), "the design's colours, label and cover reach every slide");
+ok(specsFor([SLIDES5[0]], { design: DG })[0].template === "e_stat", "a single card or poster takes the design's single template");
+ok(specsFor(SLIDES5, { design: DG }).every((x, i) => (i ? true : x.template === "e_hook")) && specsFor([{ ...SLIDES5[1], template: "e_vs" }, SLIDES5[2], SLIDES5[3]], { design: DG })[0].template === "e_vs", "a template chosen on the slide beats the design");
+ok(specsFor(SLIDES5, { look: "grid" }).every((x) => !x.palette), "without a design nothing changes");
+ok(specsFor(SLIDES5, { design: { look: "photo" }, fit: true }).every((x) => x.template[0] === "p"), "a design with no templates falls back to the family and fit");
 
 if (failed) { console.error(`${failed} card mapping check(s) failed`); process.exit(1); }
 console.log("cards: slide -> Studio card mapping keeps every word");

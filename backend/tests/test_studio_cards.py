@@ -72,7 +72,7 @@ def test_a_studio_look_is_drawn_by_studio_and_recorded(monkeypatch, _uploads):
     assert done["status"] == "done" and done["model"] == "studio-era" and done["meta"]["look"] == "era"
     assert done["meta"]["count"] == 3 and len(_uploads) == 3
     assert seen == {"look": "era", "stream": "regulab", "eyebrow": "Kosmetik", "source": "NPRA, Garis Panduan",
-                    "ground": None, "ground_mime": "image/jpeg", "size": None, "n": 3, "fit": False,
+                    "ground": None, "ground_mime": "image/jpeg", "size": None, "n": 3, "fit": False, "design": None,
                     "mascots": [{"k": k, "url": f"/cards/mascots/{k}.webp"} for k in ("wave", "point", "confused", "shocked")]}
 
 
@@ -420,3 +420,37 @@ def test_the_event_poster_draws_a_speakers_own_photo_in_the_round_slot_and_initi
     plain = studio_cards.render([bare], look="era", stream="regulab", ground=_pale())[0]
     px2 = Image.open(io.BytesIO(plain)).convert("RGB").crop((60, 540, 560, 1000)).load()
     assert sum(1 for x in range(500) for y in range(460) if px2[x, y][0] > 180 and px2[x, y][1] < 70) < 50
+
+
+def test_a_saved_design_on_the_job_reaches_the_renderer_and_decides_the_look(monkeypatch, _uploads):
+    seen = {}
+    monkeypatch.setattr(studio_cards, "render", lambda items, **kw: seen.update(kw) or [_jpeg() for _ in items])
+    pack = {"look": "era", "cover": "e_hook", "accent": "#0a7c6e"}
+    assert _run(_store({"look": "classic", "fit": True, "design_pack": pack})) is True
+    assert seen["look"] == "era" and seen["design"] == pack            # the design's family wins over the job's look
+    seen.clear()
+    assert _run(_store({"look": "grid", "design_pack": {"look": "classic"}})) is True
+    assert seen["look"] == "grid" and seen["design"] is None           # an unusable snapshot is ignored, the job's look stands
+
+
+def _near(png: bytes, rgb, tol=18) -> int:
+    px = Image.open(io.BytesIO(png)).convert("RGB")
+    data = px.tobytes()
+    return sum(1 for i in range(0, len(data), 3)
+               if abs(data[i] - rgb[0]) < tol and abs(data[i + 1] - rgb[1]) < tol and abs(data[i + 2] - rgb[2]) < tol)
+
+
+@browser
+def test_a_saved_design_recolours_the_cards_and_the_next_card_gets_its_own_colours_back():
+    deck = [{"title": "*Kenapa* ditarik balik", "points": ["Apa yang dilanggar?", "Siapa menyemak?"]},
+            {"title": "Sebelum *notifikasi*", "points": ["INCI | Padan.", "Label | Nama.", "Surat"]},
+            {"title": "Tutup", "points": ["Satu ayat."]}]
+    design = {"look": "era", "cover": "e_hook", "middle": "e_check", "closing": "e_explain",
+              "accent": "#0a7c6e", "paper": "#eaf3f1"}
+    kw = dict(look="era", stream="regulab", eyebrow="Kosmetik", source="NPRA", mascots=cards_library.mascots())
+    mine = studio_cards.render(deck, design=design, **kw)
+    plain = studio_cards.render(deck, **kw)
+    assert len(mine) == 3
+    assert _near(mine[1], (10, 124, 110)) > 400 and _near(mine[1], (216, 35, 42)) < 100           # teal, no ERA red
+    assert _near(plain[1], (216, 35, 42)) > 400 and _near(plain[1], (10, 124, 110)) < 100         # the family's own again
+    assert _near(mine[0], (234, 243, 241)) > _near(plain[0], (234, 243, 241))                      # the design's paper

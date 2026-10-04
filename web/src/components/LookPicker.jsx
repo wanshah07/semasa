@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2, Palette } from "lucide-react";
 import { LOOKS, ensureFonts, isStudioLook, renderSlides, setLogo } from "../lib/cards/studio";
+import { GROUNDS } from "../lib/cards/library";
+import { resolveLook, useDesigns } from "../lib/designs";
 import { useLang } from "../lib/i18n";
 import ImageLightbox, { useLightbox } from "./ImageLightbox";
 
@@ -49,10 +51,32 @@ function sampleWords(stream) {
   ];
 }
 
+/* One saved design (My designs) as a tile: its cover on the words in hand, drawn by the same code as everything else. */
+function DesignTile({ d, opts, cover, ratio, on, onPick, disabled, defaultId }) {
+  const { t } = useLang();
+  const g = d.bg && d.bg.startsWith("lib:") ? GROUNDS.find((x) => `lib:${x.k}` === d.bg) : null;
+  const pic = usePreview(cover, { ...opts, bg: g?.url || opts.bg, look: d.look, design: d }, true).pics[0];
+  return (
+    <button type="button" role="radio" aria-checked={on} disabled={disabled} onClick={onPick}
+      className={`min-w-0 overflow-hidden rounded-tile border text-left transition ${on ? "border-accent ring-2 ring-accent/30" : "border-line hover:border-ink/30"} disabled:opacity-50`}>
+      <div className="relative w-full bg-surface-2" style={{ aspectRatio: ratio }}>
+        {pic ? <img src={pic.url} alt={d.name} className="h-full w-full object-cover" />
+          : <span className="absolute inset-0 flex items-center justify-center text-muted"><Loader2 size={16} className="animate-spin" /></span>}
+      </div>
+      <div className="px-2 py-1.5">
+        <div className="truncate text-sm font-semibold leading-none lg:text-[12px]">{d.name}</div>
+        <div className="mt-1 text-[10.5px] leading-snug text-muted">{defaultId === d.id ? t("reka bentuk lalai", "default design") : t("reka bentuk saya", "my design")}</div>
+      </div>
+    </button>
+  );
+}
+
 export default function LookPicker({ value, onChange, slides: given, sample: givenSample = false, stream = "regulab", eyebrow = "",
   citation = "", bgUrl = "", bgChosen = false, size = null, full = true, onBlocked, disabled = false, mascots = [],
   fit = false, onFit = null }) {
   const { t, lang } = useLang();
+  const { designs, defaultId } = useDesigns();
+  const chosen = resolveLook(value, designs);                    // "d:<id>" is one of My designs: its family, colours and layouts
   const sample = givenSample || !given.length;
   const slides = given.length ? given : sampleWords(stream);
   const [W, H] = sizeOf(stream, size);
@@ -65,15 +89,17 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const era = usePreview(cover, { ...opts, look: "era" }, true);
   const photo = usePreview(cover, { ...opts, look: "photo" }, true);
   const tiles = { grid, era, photo };
-  const all = usePreview(slides, { ...opts, look: value }, full && isStudioLook(value));
+  const dBg = chosen.design?.bg && chosen.design.bg.startsWith("lib:") ? GROUNDS.find((x) => `lib:${x.k}` === chosen.design.bg)?.url : "";
+  const all = usePreview(slides, { ...opts, look: chosen.look, bg: bgUrl || dBg || "", ...(chosen.design ? { design: chosen.design } : {}) },
+    full && isStudioLook(chosen.look));
   const box = useLightbox(all.pics.map((p, i) => ({ url: p.url, title: t("Slaid {n} daripada {m}", "Slide {n} of {m}", { n: i + 1, m: all.pics.length }) })));
 
   // Studio's own warnings, minus "no picture" while a picture is chosen but not made yet (the worker waits for it)
   const problems = useMemo(() => all.pics.map((p, i) => ({ n: i + 1,
     warn: (p.warn || []).filter((w) => !(bgChosen && w.startsWith(NO_PICTURE))) })).filter((p) => p.warn.length),
   [all.pics, bgChosen]);
-  const photoNeedsPicture = value === "photo" && !bgChosen;
-  const blocked = photoNeedsPicture ? "photo" : isStudioLook(value) && !sample && problems.length ? "full" : null;
+  const photoNeedsPicture = chosen.look === "photo" && !bgChosen && !chosen.design?.bg;
+  const blocked = photoNeedsPicture ? "photo" : isStudioLook(chosen.look) && !sample && problems.length ? "full" : null;
   useEffect(() => { onBlocked?.(blocked); }, [blocked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const name = (l) => (lang === "bm" ? l.bm : l.en);
@@ -118,7 +144,20 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
         })}
       </div>
 
-      {onFit && isStudioLook(value) && (
+      {designs.length > 0 && (
+        <div className="mt-3">
+          <p className="flex items-center gap-1.5 text-[12px] font-medium"><Palette size={13} /> {t("Reka bentuk saya", "My designs")}
+            <span className="font-normal text-muted">· {t("perkataan diisi sendiri bila draf dibuat", "the words fill in by themselves when a draft is made")}</span></p>
+          <div role="radiogroup" aria-label={t("Reka bentuk saya", "My designs")} className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 lg:gap-2">
+            {designs.map((d) => (
+              <DesignTile key={d.id} d={resolveLook(`d:${d.id}`, designs).design ? { ...resolveLook(`d:${d.id}`, designs).design, id: d.id, name: d.name } : { look: "grid", id: d.id, name: d.name }}
+                opts={opts} cover={cover} ratio={ratio} on={value === `d:${d.id}`} defaultId={defaultId} disabled={disabled} onPick={() => onChange(`d:${d.id}`)} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {onFit && isStudioLook(chosen.look) && (
         <label className="mt-2 flex cursor-pointer items-start gap-2 text-[12px]">
           <input type="checkbox" checked={!!fit} disabled={disabled} onChange={(e) => onFit(e.target.checked)} className="mt-0.5 accent-[var(--accent)]" />
           <span><span className="font-medium">{t("Padankan reka bentuk dengan setiap slaid", "Fit the design to each slide")}</span>
@@ -133,7 +172,7 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
             "Photo is drawn on a picture. Choose a background (the post's picture or an upload) first, or pick Grid / Info ERA.")}</p>
       )}
 
-      {full && isStudioLook(value) && slides.length > 0 && (
+      {full && isStudioLook(chosen.look) && slides.length > 0 && (
         <div className="mt-3">
           <p className="flex items-center gap-1.5 text-[11px] text-muted">
             {all.busy && <Loader2 size={11} className="animate-spin" />}

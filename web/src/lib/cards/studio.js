@@ -1914,8 +1914,42 @@ export function fitTemplate(look, s, i, n, pts) {
   return "";
 }
 
+/* ---- MY DESIGNS (Wan, 4 Oct 2026: "create a default design to use for carousel, poster and single card, like ERA, Photo, Grid
+   and Semasa. I need not fill any text: the design has the layout, and the text fills it when the idea comes in from the draft.
+   Don't make it complicated."). A design is the same machinery as a look, saved with a name and no words:
+     look      grid | era | photo: the family whose drawing and palette it uses
+     cover / middle / closing / single    the template for each place a slide can have in a set ("" = auto, as the look would choose);
+               `single` is a poster or a one-card post
+     accent, paper    two colours that replace the family's accent and its paper ("" = the family's own)
+     bg, scrim, mascot, eyebrow    the background token, how much it is covered, the character, the small label (all optional)
+   Pure and tolerant: anything it does not recognise is dropped, so a bad entry can never stop a card being drawn. */
+const HEX6 = /^#[0-9a-f]{6}$/i;
+const POSITIONS = ["cover", "middle", "closing", "single"];
+export function normDesign(d) {
+  if (!d || typeof d !== "object") return null;
+  const look = STUDIO_LOOKS.includes(d.look) ? d.look : null;
+  if (!look) return null;
+  const out = { look };
+  for (const p of POSITIONS) {
+    const k = String(d[p] || "");
+    if (TEMPLATE_KEYS.includes(k) && k[0] === look[0]) out[p] = k;       // a template of another family would not match the palette
+  }
+  if (HEX6.test(d.accent || "")) out.accent = d.accent.toLowerCase();
+  if (HEX6.test(d.paper || "")) out.paper = d.paper.toLowerCase();
+  const bg = String(d.bg || "");
+  if (bg && bg !== "none") out.bg = bg;
+  if (/^(none|light|medium|heavy)$/.test(d.scrim || "")) out.scrim = d.scrim;
+  if (/^(none|[a-z]{2,20})$/.test(d.mascot || "")) out.mascot = d.mascot;
+  const eb = String(d.eyebrow || "").trim().slice(0, 80);
+  if (eb) out.eyebrow = eb;
+  return out;
+}
+/** Where a slide sits in its set, for the design's per-place template. */
+export const placeOf = (i, n) => (n <= 1 ? "single" : i === 0 ? "cover" : i === n - 1 ? "closing" : "middle");
+
 export function specsFor(slides, o = {}) {
-  const look = STUDIO_LOOKS.includes(o.look) ? o.look : "grid";
+  const D = normDesign(o.design);
+  const look = D ? D.look : (STUDIO_LOOKS.includes(o.look) ? o.look : "grid");
   const list = (slides || []).filter((s) => s && (String(s.title || "").trim() || (s.points || []).length
     || String(s.lead || "").trim() || String(s.note || "").trim()));
   const n = list.length;
@@ -1929,13 +1963,14 @@ export function specsFor(slides, o = {}) {
     const base = {
       stream: linkedin ? "linkedin" : "regulab",
       title: String(s.title || "").trim(),
-      eyebrow: String(s.eyebrow || o.eyebrow || "").trim(),
+      eyebrow: String(s.eyebrow || o.eyebrow || (D && D.eyebrow) || "").trim(),
       footnote: String(s.footnote || "").trim() || (last ? cite : ""),
       chip_label: String(s.chip || "").trim() || (last && cite ? (linkedin ? "Source" : "Sumber") : ""),
       note: String(s.note || "").trim(),
       bg: s.bg === "none" ? "" : (s.bg_url || o.bg || ""),
-      scrim: s.scrim || (linkedin ? "heavy" : "medium"),
-      auto_scrim: !s.scrim,
+      scrim: s.scrim || (D && D.scrim) || (linkedin ? "heavy" : "medium"),
+      auto_scrim: !s.scrim && !(D && D.scrim),
+      palette: D && (D.accent || D.paper) ? { accent: D.accent, paper: D.paper } : undefined,
       // the event poster's speaker photos, one per point in order, already resolved to drawable addresses ("" = initials)
       avatars: Array.isArray(s.photo_urls) && s.photo_urls.some(Boolean) ? s.photo_urls : undefined,
       size: o.size || undefined,
@@ -1946,7 +1981,8 @@ export function specsFor(slides, o = {}) {
       mascot_size: Number(s.mascot_size) || undefined,
     };
     let spec;
-    const chosen = s.template && TEMPLATE_KEYS.includes(s.template) ? s.template : (o.fit ? fitTemplate(look, s, i, n, pts) : "");
+    const chosen = s.template && TEMPLATE_KEYS.includes(s.template) ? s.template
+      : (D && D[placeOf(i, n)]) || (o.fit ? fitTemplate(look, s, i, n, pts) : "");
     if (chosen) {
       spec = { ...base, template: chosen, lead: lead0, items: pts };
     } else if (look === "grid") {
@@ -1959,13 +1995,30 @@ export function specsFor(slides, o = {}) {
     else if (last) spec = { ...base, template: "p_quote", lead: withLead(asLines(pts)) };
     else if (pts.length && pts.length <= 4) spec = { ...base, template: "p_fact", lead: lead0, items: pts };
     else spec = { ...base, template: "p_fact", lead: withLead(asLines(pts)) };
-    const mascot = mascotUrl(s, spec.template, o.mascots);
+    const mascot = mascotUrl(D && D.mascot && !s.mascot ? { ...s, mascot: D.mascot } : s, spec.template, o.mascots);
     if (mascot) spec.mascot = mascot;
     return spec;
   });
 }
 
-async function renderSpec(spec) {
+/* A design's two colours replace the family's accent and paper while ONE card is drawn. The palettes are shared constants, so every
+   render waits its turn (the page previews several looks at once) and the originals are put back in a `finally`: a card in another
+   look, or a failed one, can never inherit someone else's colours. */
+let _renderTurn = Promise.resolve();
+function renderSpec(spec) {
+  const run = async () => {
+    const p = spec.palette;
+    if (!p) return renderSpecNow(spec);
+    const keep = { go: GRID_PAL.orange, gc: GRID_PAL.cream, er: ERA_PAL.red, ep: ERA_PAL.paper };
+    if (p.accent) { GRID_PAL.orange = p.accent; ERA_PAL.red = p.accent; }
+    if (p.paper) { GRID_PAL.cream = p.paper; ERA_PAL.paper = p.paper; }
+    try { return await renderSpecNow(spec); } finally { GRID_PAL.orange = keep.go; GRID_PAL.cream = keep.gc; ERA_PAL.red = keep.er; ERA_PAL.paper = keep.ep; }
+  };
+  const next = _renderTurn.then(run, run);
+  _renderTurn = next.catch(() => null);
+  return next;
+}
+async function renderSpecNow(spec) {
   if (spec.bg && spec.template[0] !== "p" && await groundIsLight(spec)) spec = { ...spec, scrim: "none", _light: true };
   if (MORE_TPL[spec.template]) return renderMoreCard(spec);
   if (GRID_TPL[spec.template]) return renderGridCard(spec);

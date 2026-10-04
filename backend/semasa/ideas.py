@@ -26,7 +26,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from . import compliance, db, slides
+from . import compliance, db, my_designs, slides
 from .fetch import get
 from .llm import LLM
 from .log import get_logger
@@ -561,12 +561,13 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         store.table(db.IDEAS).update({"brief": {**brief0, "partial_post_id": post_id}}) \
             .eq("id", idea["id"]).execute()
 
+    chosen = my_designs.for_idea(store, idea)      # the idea's look, or the default "My design" when it asked for none
     jobs = [] if has_jobs or kept else media_jobs(idea, source, out, post_id)
     if want_slides and post.get("slides") and not has_jobs:
-        jobs.append(slide_job(idea, post, post_id, bg="post_image" if jobs or kept else "none"))
+        jobs.append(slide_job(idea, post, post_id, bg="post_image" if jobs or kept else "none", chosen=chosen))
     poster = slides.normalise([out.get("poster")] if isinstance(out.get("poster"), dict) else [])[:1] if want_poster else []
     if poster and not has_jobs:
-        jobs.append(poster_job(idea, post, post_id, poster, bg="post_image" if jobs or kept else "none"))
+        jobs.append(poster_job(idea, post, post_id, poster, bg="post_image" if jobs or kept else "none", chosen=chosen))
     if jobs:
         store.table(db.MEDIA).insert(jobs).execute()
     brief = {"source": {k: source.get(k) for k in ("ok", "why", "url", "title", "image")},
@@ -681,28 +682,36 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
                  ref_table="semasa_posts", ref_id=post["id"])
 
 
-def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str = "none") -> dict[str, Any]:
+def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str = "none",
+              chosen: tuple[str, dict[str, Any] | None] | None = None) -> dict[str, Any]:
     """One render job for the whole carousel, carrying a snapshot of the words. Queued after the
     picture jobs, so a picture made in the same run can be the slides' background. With no picture, a Studio look is
     drawn on Studio's default ground for the domain or angle (Wan's own photographs), as Studio did."""
     from . import cards_library, studio_cards
-    if bg == "none" and studio_cards.is_studio_look(look_of(idea)):
+    look, saved = chosen or (look_of(idea), None)
+    if bg == "none" and saved and saved.get("bg"):
+        bg = saved["bg"]                       # the saved design's own background, when the post has no picture of its own
+    elif bg == "none" and studio_cards.is_studio_look(look):
         bg = cards_library.default_ground(post.get("stream") or "regulab", post.get("domain"), post.get("angle")) or "none"
     return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
             "prompt": "", "created_by": idea.get("created_by"),
             "meta": {"flow": "A", "slides": post.get("slides") or [], "stream": post.get("stream"),
                      "citation": post.get("citation") or "", "domain": post.get("domain"),
-                     "angle": post.get("angle"), "bg": bg, "look": look_of(idea), "fit": look_of(idea) != "classic"}}
+                     "angle": post.get("angle"), "bg": bg, "look": look, "fit": look != "classic",
+                     **({"design_pack": saved} if saved else {})}}
 
 
 def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: list[dict[str, Any]],
-               bg: str = "none") -> dict[str, Any]:
+               bg: str = "none", chosen: tuple[str, dict[str, Any] | None] | None = None) -> dict[str, Any]:
     """The idea's poster: a Design job (one 4:5 artwork) attached to its draft, in the look chosen on the idea."""
+    look, saved = chosen or (look_of(idea), None)
+    if bg == "none" and saved and saved.get("bg"):
+        bg = saved["bg"]
     return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
             "prompt": "", "created_by": idea.get("created_by"),
             "meta": {"flow": "A", "design": "poster", "format": "portrait", "slides": words, "stream": post.get("stream"),
                      "citation": post.get("citation") or "", "domain": post.get("domain"), "angle": post.get("angle"),
-                     "bg": bg, "look": look_of(idea), "fit": look_of(idea) != "classic"}}
+                     "bg": bg, "look": look, "fit": look != "classic", **({"design_pack": saved} if saved else {})}}
 
 
 LOOKS = ("classic", "grid", "era", "photo")
@@ -712,7 +721,7 @@ def look_of(idea: dict[str, Any]) -> str:
     """The carousel look chosen on the idea, carried in its brief ({"look": ...}) until the bot writes the draft:
     Semasa's own drawing ("classic") or one of ws.regulab Studio's designs. Anything else is "classic"."""
     look = str(((idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}).get("look") or "classic")
-    return look if look in LOOKS else "classic"
+    return look if look in LOOKS or my_designs.token(look) else "classic"
 
 
 def media_jobs(idea: dict[str, Any], source: dict[str, Any], out: dict[str, Any], post_id: str) -> list[dict[str, Any]]:

@@ -439,6 +439,12 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             meta["bg_missing"] = "the background picture was not ready, so the slides were drawn on paper"
         size = design.size_of(meta, stream) if kind else None
         look = str(meta.get("look") or "classic")
+        # a saved "My design" (my_designs.py), carried on the job as a snapshot
+        saved = meta.get("design_pack") if isinstance(meta.get("design_pack"), dict) else None
+        if saved and studio_cards.is_studio_look(saved.get("look")):
+            look = str(saved["look"])
+        else:
+            saved = None
         if look == "auto":
             # "let the reference decide": the art director's nearest look; Photo needs a picture under it
             look = str(rev.get("look") or "grid")
@@ -453,7 +459,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             pics = studio_cards.render(drawn, look=look, stream=stream, eyebrow=eyebrow,
                                        source=str(meta.get("citation") or ""), ground=ground,
                                        ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size,
-                                       mascots=cards_library.mascots(), fit=bool(meta.get("fit")))
+                                       mascots=cards_library.mascots(), fit=bool(meta.get("fit")), design=saved)
         else:
             look = "classic"
             pics = slides.render(classic_words(items), stream=stream, eyebrow=eyebrow, source=str(meta.get("citation") or ""),

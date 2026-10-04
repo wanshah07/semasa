@@ -12,6 +12,7 @@ import ImageLightbox, { useLightbox } from "./ImageLightbox";
 import SlidesEditor, { fromRows, toRows } from "./SlidesEditor";
 import { GROUNDS, bgUrlOf, defaultGround } from "../lib/cards/library";
 import { isStudioLook } from "../lib/cards/studio";
+import { lookValueOf, resolveLook, useDesigns } from "../lib/designs";
 import { UnsplashCredit, UnsplashResults, UnsplashSearch, isUnsplash } from "./Unsplash";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
@@ -37,8 +38,10 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta?.bg) || "none");
   // the carousel's look: the one its last drawing used, Semasa's own drawing when there is none
   // (a set the Canva bot built is not a look this page can draw, so it is skipped here)
-  const lastLook = () => (mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design && m.meta?.look !== "canva")
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta?.look) || "classic";
+  const { designs } = useDesigns();
+  const lastMeta = () => mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design && m.meta?.look !== "canva")
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta;
+  const lastLook = () => lookValueOf(lastMeta(), designs);       // a design the last drawing used comes back as that design
   const [look, setLook] = useState(lastLook);
   // "fit the design to each slide": on unless the last drawing was explicitly made with it off (a drawing from before
   // the option existed carries no flag, and gets the varied designs when it is drawn again)
@@ -266,12 +269,15 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       ? t("Reka bentuk Foto perlu gambar latar.", "The Photo design needs a background picture.")
       : t("Ada slaid terlalu penuh untuk reka bentuk ini.", "A slide is too full for this design."), "warn");
     setBusy(true);
+    const rl = resolveLook(look, designs);                         // "d:<id>": the saved design rides on the job as a snapshot
     const saved = await supabase.from(TABLES.posts).update(content()).eq("id", post.id).select().single();
     if (saved.error) { setBusy(false); return onToast(errText(saved.error), "danger"); }
     const { error } = await supabase.from(TABLES.media).insert({
       mode: "slides", type: "image", prompt: "", status: "pending", created_by: user.id,
       post_id: post.id, idea_id: post.idea_id,
-      meta: { flow: "B", slides, stream: post.stream, citation, domain: post.domain, angle: post.angle, bg, look, fit: fit && look !== "classic" },
+      meta: { flow: "B", slides, stream: post.stream, citation, domain: post.domain, angle: post.angle,
+        bg: bg === "none" && rl.pack?.bg ? rl.pack.bg : bg, look: rl.look, fit: fit && rl.look !== "classic",
+        ...(rl.pack ? { design_pack: rl.pack, design_id: rl.id } : {}) },
     });
     setBusy(false);
     if (error) {

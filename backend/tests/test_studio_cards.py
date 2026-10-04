@@ -342,3 +342,18 @@ def test_a_light_ground_keeps_dark_ink_and_no_scrim_unless_a_scrim_was_chosen():
     assert _mean_luma(auto, (700, 380, 1000, 520)) > 170
     chosen = studio_cards.render([{**slide, "scrim": "heavy"}], look="era", stream="regulab", ground=_pale())[0]
     assert _mean_luma(chosen, (700, 380, 1000, 520)) < 130        # Wan chose a heavy scrim on purpose: it is honoured
+
+
+@browser
+def test_a_light_ground_is_light_under_every_grid_and_era_design_and_every_size():
+    """A carousel slide and a single card go through the same designs: none of them may grey a pale picture out."""
+    for stream, size in (("regulab", (1080, 1080)), ("linkedin", (1080, 1350))):
+        for k, shape in SHAPES.items():
+            if k[0] == "p":
+                continue                                    # the Photo family is a dark photograph by design
+            look = "grid" if k[0] == "g" else "era"
+            pic = studio_cards.render([{"title": "Semak *dahulu*", "template": k, **shape}], look=look, stream=stream,
+                                      eyebrow="Kosmetik", source="NPRA", ground=_pale(), mascots=cards_library.mascots())[0]
+            assert Image.open(io.BytesIO(pic)).size == size
+            # the right margin carries no words on any design: it shows the picture as it is, under no scrim
+            assert _mean_luma(pic, (1030, 300, 1070, 700)) > 150, (k, stream)

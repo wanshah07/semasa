@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, ImageIcon, Loader2, Sparkles, X } from "lucide-react";
 import { useLang } from "../lib/i18n";
 import { GROUNDS } from "../lib/cards/library";
+import { GROUND_STYLES, GROUND_SUFFIX } from "../lib/groundStyles";
 import { UnsplashCredit, UnsplashResults, UnsplashSearch } from "./Unsplash";
 import Button from "./ui/Button";
 import { Segmented, TextArea } from "./ui/Field";
@@ -92,15 +93,22 @@ export default function BackgroundPicker({ open, onClose, target, current, nSlid
 
         {tab === "generate" && (
           <div className="mt-3 space-y-2">
-            <TextArea rows={3} value={prompt} maxLength={400} onChange={(e) => setPrompt(e.target.value)}
+            <div className="flex flex-wrap gap-1.5" aria-label={t("Gaya latar", "Background styles")}>
+              {GROUND_STYLES.map((g) => (
+                <button key={g.k} type="button" onClick={() => setPrompt(g.prompt)}
+                  className="rounded-pill border border-line px-2.5 py-1 text-[11px] text-muted hover:border-accent hover:text-accent">{t(g.bm, g.en)}</button>
+              ))}
+            </div>
+            <TextArea rows={3} value={prompt} maxLength={600} onChange={(e) => setPrompt(e.target.value)}
               placeholder={t("Terangkan gambar latar (Inggeris lebih tepat), cth: soft-focus cosmetic laboratory bench, teal tones, no people, no text",
                 "Describe the background (English is more exact), e.g. soft-focus cosmetic laboratory bench, teal tones, no people, no text")} />
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" size="sm" disabled={busy || !prompt.trim()}
-                onClick={async () => { const ok = await onGenerate?.(prompt.trim()); if (ok) setPrompt(""); }}>
+                onClick={async () => { const ok = await onGenerate?.(/no words|no text/i.test(prompt) ? prompt.trim() : prompt.trim() + GROUND_SUFFIX); if (ok) setPrompt(""); }}>
                 {busy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {t("Jana gambar", "Generate picture")}</Button>
               <span className="text-[11px] text-muted">{t("Mengambil kira-kira seminit. Ia muncul di tab Gambar bila siap.",
-                "Takes about a minute. It appears under Pictures when it is ready.")}</span>
+                "Takes about a minute. It appears under Pictures when it is ready.")}
+                {" "}{t("Gambar cerah: tulisan gelap secara automatik.", "A light picture gets dark words automatically.")}</span>
             </div>
             {pending.length > 0 && (
               <ul className="space-y-1 text-[12px] text-muted">

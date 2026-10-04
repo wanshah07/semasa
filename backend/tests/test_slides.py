@@ -111,6 +111,17 @@ def test_a_ground_is_drawn_under_a_scrim():
         slides.render(GOOD[:1], ground=b"not a picture")
 
 
+def test_a_light_ground_keeps_dark_ink_and_stays_light():
+    photo = Image.new("RGB", (1600, 900), (236, 222, 238))
+    buf = io.BytesIO()
+    photo.save(buf, "PNG")
+    out = _img(slides.render(GOOD[:1], ground=buf.getvalue())[0])
+    r, g, b = out.getpixel((540, 20))
+    assert min(r, g, b) > 200                              # no dark scrim over a pale picture
+    dark = sum(1 for v in out.convert("L").crop((60, 200, 1000, 700)).tobytes() if v < 80)
+    assert dark > 200                                      # the words are drawn in dark ink and show
+
+
 def test_empty_slides_are_an_error_and_normalise_matches_the_scan():
     with pytest.raises(slides.SlideError, match="no slides"):
         slides.render([{"title": " ", "points": [""]}])

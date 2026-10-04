@@ -14,3 +14,6 @@ export const GROUND_STYLES = [
   { k: "botanical", bm: "Daun & embun", en: "Leaves and dew",
     prompt: "Soft-focus green leaves with dew drops along the right edge on a pale cream background, natural morning light, the left side and the centre smooth and empty." },
 ];
+
+/** What every generated background must also say, whichever starter or free text it began from. */
+export const GROUND_SUFFIX = " A calm background for text: no words, no letters, no logos, no products, no people's faces.";

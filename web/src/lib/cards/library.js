@@ -1,4 +1,4 @@
-/* ws.regulab Studio's card catalogue in the page: the twelve templates, the mascot poses and Wan's own photographs
+/* ws.regulab Studio's card catalogue in the page: the twenty-one templates, the mascot poses and Wan's own photographs
    (rules/cards.json, shared with backend/semasa/cards_library.py). The files are in web/public/cards/, served with the
    site and, for the worker, from the same checkout, so the preview and the render load the same bytes. */
 import CARDS from "../../../../rules/cards.json";

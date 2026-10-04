@@ -510,6 +510,7 @@ function gCells(line) { return String(line || "").split("|").map(t => t.trim());
    then for real with the block shifted. Text metrics come from the real context, so
    measureText and the font property are the only things that pass through. Gradient
    factories return a stub because callers immediately call addColorStop on the result. */
+const MEASURE_PROPS = ["font", "textBaseline", "textAlign", "direction", "fontKerning", "textRendering"];
 function measureProxy(ctx) {
   const noop = () => { };
   const stubGrad = () => ({ addColorStop: noop });
@@ -521,7 +522,11 @@ function measureProxy(ctx) {
       const v = t[k];
       return typeof v === "function" ? noop : v;
     },
-    set(t, k, v) { try { t[k] = v; } catch (e) { } return true; },
+    /* SEMASA: only what measureText reads is carried out of a measuring pass. save() and restore() are no-ops here, so
+       any other property a painter sets and later puts back that way (letterSpacing in gEyebrow, globalAlpha in
+       eraPaper) stayed set on the real context: the first pass left 4px of tracking on every word the second pass drew
+       and, through ERA's paper, drew the whole card at half strength. */
+    set(t, k, v) { if (MEASURE_PROPS.includes(k)) { try { t[k] = v; } catch (e) { } } return true; },
   });
 }
 /* Where the words sit between the handle at the top and the source line pinned to the
@@ -995,7 +1000,8 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
 
   if (!await drawGround(ctx, spec, W, H)) eraPaper(ctx, W, H);
   /* Rule 7 again: the mark is the consultancy's and LinkedIn carries none of it. */
-  await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, textFill: "rgba(21,21,21,.6)" });
+  /* SEMASA: over a ground the mark is knocked out in white (its own dark green vanished into the scrim) */
+  await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: onGround, textFill: onGround ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
   eraBadge(ctx, W, u, M, spec.eyebrow);
 
   const mascot = spec.mascot && MASCOT_TPL[t] ? await loadImg(spec.mascot) : null;
@@ -1283,6 +1289,350 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
 }
 /* ======================= COPIED FROM STUDIO (end) ========================= */
 
+/* ======================= SEMASA: nine more designs ========================== */
+/* Wan, 4 Oct 2026: "I want to have more design like ERA, grid, photo". Three new templates in each of Studio's three
+   families, drawn with the family's own palette and helpers above, so a post can mix them freely:
+     Grid   g_check  checklist panel        g_myth     myth | fact, side by side     g_steps  numbered timeline
+     ERA    e_myth   struck myth, red fact  e_check  tipped notes with ticks        e_stat   one big red figure
+     Photo  p_stat   figure over the photo  p_list   glass panels over the photo    p_split  photo above, dark panel below
+   Same rules as the older templates: nothing is sliced to fit (a slide that is fuller than the card says so and the
+   worker refuses it, so a point is never silently dropped), `*word*` takes the accent, and a ground (`spec.bg`) works
+   under every one of them. All but p_split are centred between the handle and the source line the way the Grid family is
+   (measure first, then shift). That is safe for the ERA ones too, unlike the older ERA templates: none of these carries a
+   character, so nothing in them sizes off where they start (the rule in renderEraCard). */
+const MORE_TPL = { g_check: 1, g_myth: 1, g_steps: 1, e_myth: 1, e_check: 1, e_stat: 1, p_stat: 1, p_list: 1, p_split: 1 };
+const MORE_CENTRED = { g_check: 1, g_myth: 1, g_steps: 1, e_myth: 1, e_check: 1, e_stat: 1, p_stat: 1, p_list: 1 };
+const moreLabels = (spec) => (spec.stream === "linkedin" ? { myth: "MYTH", fact: "FACT" } : { myth: "MITOS", fact: "FAKTA" });
+
+async function renderMoreCard(spec) {
+  const [W, H] = sizeOf(spec);
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const ctx = styleCtx(c.getContext("2d"), spec);
+  try { await document.fonts.ready; } catch (e) { }
+  if (MORE_CENTRED[spec.template]) {
+    const probe = await morePaint(measureProxy(ctx), spec, W, H, 0);
+    return morePaint(ctx, spec, W, H, centreShift(H, W / 1080, probe.y, spec.template[0] === "e" ? 138 : 150), c);
+  }
+  return morePaint(ctx, spec, W, H, 0, c);
+}
+
+/* A figure sized to the column: the largest size up to maxPx that fits, never below 40. */
+function fitFigure(ctx, text, maxW, maxPx, family) {
+  let px = maxPx;
+  ctx.font = "800 " + px + "px " + family;
+  while (px > 40 && ctx.measureText(text).width > maxW) { px -= 4; ctx.font = "800 " + px + "px " + family; }
+  return px;
+}
+/* A tick or a cross, drawn as strokes so it needs no font. */
+function moreMark(ctx, kind, x, y, s, colour, lw) {
+  ctx.save(); ctx.strokeStyle = colour; ctx.lineWidth = lw; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.beginPath();
+  if (kind === "tick") { ctx.moveTo(x + s * 0.2, y + s * 0.54); ctx.lineTo(x + s * 0.42, y + s * 0.76); ctx.lineTo(x + s * 0.82, y + s * 0.26); }
+  else { ctx.moveTo(x + s * 0.24, y + s * 0.24); ctx.lineTo(x + s * 0.76, y + s * 0.76); ctx.moveTo(x + s * 0.76, y + s * 0.24); ctx.lineTo(x + s * 0.24, y + s * 0.76); }
+  ctx.stroke(); ctx.restore();
+}
+/* A coloured block tipped a degree, the red twin of eraCard (which is always white paper). */
+function eraBlock(ctx, x, y, w, h, rot, fill, paint) {
+  ctx.save();
+  ctx.translate(x + w / 2, y + h / 2); ctx.rotate(rot || 0); ctx.translate(-w / 2, -h / 2);
+  ctx.shadowColor = "rgba(20,20,20,.22)"; ctx.shadowBlur = Math.round(w * 0.04); ctx.shadowOffsetY = Math.round(w * 0.014);
+  ctx.fillStyle = fill; ctx.fillRect(0, 0, w, h);
+  ctx.shadowColor = "transparent";
+  if (paint) paint(ctx, w, h);
+  ctx.restore();
+}
+/* A small black label stuck on a note ("MITOS", "FAKTA"). Returns its height. */
+function eraTag(ctx, text, x, y, px, fill, colour) {
+  ctx.font = "800 " + px + "px " + G_HEAD; ctx.textBaseline = "top";
+  const padX = Math.round(px * 0.6), h = Math.round(px * 1.7), w = ctx.measureText(text).width + padX * 2;
+  ctx.fillStyle = fill || ERA_PAL.ink; gRound(ctx, x, y, w, h, Math.round(px * 0.3)); ctx.fill();
+  ctx.fillStyle = colour || "#FFFFFF"; ctx.fillText(text, x + padX, y + Math.round((h - px) / 2) - Math.round(px * 0.05));
+  return h;
+}
+
+async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
+  const warn = [];
+  const t = spec.template, u = W / 1080, M = Math.round(72 * u), maxW = W - M * 2;
+  const fam = t[0];                                                // g | e | p
+  const items = (spec.items || []).filter((x) => String(x || "").trim());
+  const TS = textScale(spec);
+  const HEAD_PX = Math.round(74 * u * TS), HEAD_LH = Math.round(86 * u * TS);
+  const LEAD_PX = Math.round(32 * u * TS), LEAD_LH = Math.round(45 * u * TS);
+  const IH = Math.round(34 * u * TS), IB = Math.round(28 * u * TS), IBL = Math.round(38 * u * TS);
+  const accent = GRID_PAL.orange, red = ERA_PAL.red;
+  let dark = false, ink = GRID_PAL.ink, muted = GRID_PAL.muted;
+  let bg = null;
+  if (fam === "p") {
+    bg = spec.bg ? await loadImg(spec.bg) : null;
+    if (!bg) warn.push("This design is built on a picture and none is chosen — pick one under Background.");
+    dark = true; ink = "#FFFFFF"; muted = "rgba(255,255,255,.78)";
+  } else if (fam === "g") {
+    dark = !!spec.bg;
+    if (dark) { ink = "#FFFFFF"; muted = "rgba(255,255,255,.66)"; }
+    if (!await drawGround(ctx, spec, W, H)) gPaper(ctx, W, H, false);
+  } else {
+    const onGround = !!spec.bg;
+    if (onGround) { ink = "#FFFFFF"; muted = "rgba(255,255,255,.72)"; }
+    if (!await drawGround(ctx, spec, W, H)) eraPaper(ctx, W, H);
+    ink = onGround ? "#FFFFFF" : ERA_PAL.ink; muted = onGround ? "rgba(255,255,255,.72)" : ERA_PAL.muted;
+  }
+  const photo = (x, y, w, h) => {
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.translate(x, y);
+    if (bg) coverDraw(ctx, bg, w, h);
+    else { const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#2B323A"); g.addColorStop(1, "#11151A"); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h); }
+    ctx.restore();
+  };
+  const scrim = (x, y, w, h, level) => {
+    const s = SCRIM[level] || SCRIM.medium, g = ctx.createLinearGradient(x, y, x, y + h);
+    g.addColorStop(0, "rgba(8,10,12," + s[0] + ")"); g.addColorStop(0.55, "rgba(8,10,12," + s[1] + ")"); g.addColorStop(1, "rgba(8,10,12," + s[2] + ")");
+    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  };
+  const panel = (x, y, w, h) => (dark
+    ? gPanel(ctx, x, y, w, h, { fill: "rgba(255,255,255,.08)", shadow: false, stroke: "rgba(255,255,255,.16)" })
+    : gPanel(ctx, x, y, w, h));
+  const sticky = (y) => {
+    if (!spec.note) return y;
+    const h = gSticky(ctx, W - M - Math.round(410 * u), y + Math.round(26 * u), Math.round(410 * u), spec.note, GRID_PAL.yellow, 0.03, Math.round(46 * u));
+    return y + Math.round(26 * u) + h + Math.round(10 * u);
+  };
+  let y = Math.round((fam === "e" ? 138 : 150) * u) + (yShift || 0);
+  const scrimLevel = spec.scrim || (spec.stream === "linkedin" ? "heavy" : "medium");
+
+  if (t === "g_check") {
+    y = gEyebrow(ctx, spec.eyebrow, M, y, accent, Math.round(24 * u));
+    y = gHeadline(ctx, spec.title || "", M, y, maxW, HEAD_PX, HEAD_LH, ink, accent);
+    y += Math.round(18 * u);
+    if (spec.lead) y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted);
+    y += Math.round(22 * u);
+    const box = Math.round(46 * u), padX = Math.round(38 * u), textX = M + padX + box + Math.round(26 * u), textW = M + maxW - padX - textX;
+    const gap = Math.round(30 * u);
+    const lay = items.map(gCells).map((r) => {
+      ctx.font = "700 " + IH + "px " + G_HEAD; const hl = gWrap(ctx, r[0] || "", textW);
+      ctx.font = "500 " + IB + "px " + G_BODY; const bl = r[1] ? gWrap(ctx, r[1], textW) : [];
+      return { hl, bl, h: Math.max(box, hl.length * Math.round(IH * 1.2) + (bl.length ? Math.round(6 * u) + bl.length * IBL : 0)) };
+    });
+    const total = lay.reduce((s, r) => s + r.h, 0) + gap * Math.max(0, lay.length - 1) + Math.round(76 * u);
+    panel(M, y, maxW, total);
+    let ry = y + Math.round(38 * u);
+    lay.forEach((r, i) => {
+      ctx.fillStyle = accent; gRound(ctx, M + padX, ry, box, box, Math.round(12 * u)); ctx.fill();
+      moreMark(ctx, "tick", M + padX, ry, box, "#FFFFFF", Math.max(4, Math.round(7 * u)));
+      let ty = ry; ctx.textBaseline = "top";
+      ctx.font = "700 " + IH + "px " + G_HEAD; ctx.fillStyle = ink;
+      for (const l of r.hl) { ctx.fillText(l, textX, ty); ty += Math.round(IH * 1.2); }
+      if (r.bl.length) { ty += Math.round(6 * u); ctx.font = "500 " + IB + "px " + G_BODY; ctx.fillStyle = muted; for (const l of r.bl) { ctx.fillText(l, textX, ty); ty += IBL; } }
+      if (i < lay.length - 1) {
+        ctx.save(); ctx.strokeStyle = dark ? "rgba(255,255,255,.14)" : GRID_PAL.panelLine; ctx.lineWidth = 2; ctx.setLineDash([8, 8]);
+        const ly = ry + r.h + Math.round(gap / 2); ctx.beginPath(); ctx.moveTo(M + padX, ly); ctx.lineTo(M + maxW - padX, ly); ctx.stroke(); ctx.restore();
+      }
+      ry += r.h + gap;
+    });
+    y = sticky(y + total);
+  } else if (t === "g_myth") {
+    const L = moreLabels(spec);
+    y = gEyebrow(ctx, spec.eyebrow, M, y, accent, Math.round(24 * u));
+    y = gHeadline(ctx, spec.title || "", M, y, maxW, HEAD_PX, HEAD_LH, ink, accent);
+    y += Math.round(18 * u);
+    if (spec.lead) y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted);
+    y += Math.round(24 * u);
+    const gap = Math.round(24 * u), colW = Math.round((maxW - gap) / 2), pad = Math.round(28 * u);
+    // the two column labels, each with its own mark
+    const lp = Math.round(26 * u), ic = Math.round(38 * u);
+    [[M, L.myth, "cross", muted], [M + colW + gap, L.fact, "tick", accent]].forEach(([x, label, kind, col]) => {
+      ctx.fillStyle = kind === "tick" ? accent : (dark ? "rgba(255,255,255,.22)" : "#CFC6B2");
+      ctx.beginPath(); ctx.arc(x + ic / 2, y + ic / 2, ic / 2, 0, Math.PI * 2); ctx.fill();
+      moreMark(ctx, kind, x + ic * 0.12, y + ic * 0.12, ic * 0.76, kind === "tick" ? "#FFFFFF" : ink, Math.max(3, Math.round(5 * u)));
+      ctx.font = "800 " + lp + "px " + G_HEAD; ctx.fillStyle = col; ctx.textBaseline = "top";
+      try { ctx.letterSpacing = Math.round(lp * 0.14) + "px"; } catch (e) { }
+      ctx.fillText(label, x + ic + Math.round(14 * u), y + Math.round((ic - lp) / 2));
+      try { ctx.letterSpacing = "0px"; } catch (e) { }
+    });
+    y += ic + Math.round(18 * u);
+    for (const r of items.map(gCells)) {
+      ctx.font = "600 " + IB + "px " + G_BODY; const ml = gWrap(ctx, r[0] || "", colW - pad * 2);
+      ctx.font = "700 " + IB + "px " + G_BODY; const fl = gWrap(ctx, r[1] || "", colW - pad * 2);
+      const h = Math.max(ml.length, fl.length) * IBL + pad * 2;
+      gPanel(ctx, M, y, colW, h, { fill: dark ? "rgba(255,255,255,.05)" : "#EDE6D6", shadow: false, stroke: dark ? "rgba(255,255,255,.1)" : GRID_PAL.panelLine, r: 22 });
+      panel(M + colW + gap, y, colW, h);
+      ctx.textBaseline = "top";
+      ctx.font = "600 " + IB + "px " + G_BODY; ctx.fillStyle = muted;
+      ml.forEach((l, i) => {
+        const ly = y + pad + i * IBL; ctx.fillText(l, M + pad, ly);
+        ctx.save(); ctx.strokeStyle = dark ? "rgba(255,255,255,.55)" : "#8A6F5A"; ctx.lineWidth = Math.max(2, Math.round(3 * u));
+        ctx.beginPath(); ctx.moveTo(M + pad, ly + Math.round(IB * 0.58)); ctx.lineTo(M + pad + ctx.measureText(l).width, ly + Math.round(IB * 0.58)); ctx.stroke(); ctx.restore();
+      });
+      ctx.font = "700 " + IB + "px " + G_BODY; ctx.fillStyle = ink;
+      fl.forEach((l, i) => ctx.fillText(l, M + colW + gap + pad, y + pad + i * IBL));
+      y += h + Math.round(18 * u);
+    }
+    y = sticky(y);
+  } else if (t === "g_steps") {
+    y = gEyebrow(ctx, spec.eyebrow, M, y, accent, Math.round(24 * u));
+    y = gHeadline(ctx, spec.title || "", M, y, maxW, HEAD_PX, HEAD_LH, ink, accent);
+    y += Math.round(18 * u);
+    if (spec.lead) y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted);
+    y += Math.round(30 * u);
+    const r0 = Math.round(32 * u), textX = M + r0 * 2 + Math.round(30 * u), textW = M + maxW - textX, gap = Math.round(30 * u);
+    const lay = items.map(gCells).map((r) => {
+      ctx.font = "700 " + IH + "px " + G_HEAD; const hl = gWrap(ctx, r[0] || "", textW);
+      ctx.font = "500 " + IB + "px " + G_BODY; const bl = r[1] ? gWrap(ctx, r[1], textW) : [];
+      return { hl, bl, h: Math.max(r0 * 2, hl.length * Math.round(IH * 1.2) + (bl.length ? Math.round(6 * u) + bl.length * IBL : 0)) };
+    });
+    if (lay.length > 1) {                                           // the rail the numbers sit on
+      const top = y + r0, bottom = y + lay.slice(0, -1).reduce((s, r) => s + r.h + gap, 0) + r0;
+      ctx.save(); ctx.strokeStyle = dark ? "rgba(255,255,255,.28)" : "#D9CFBA"; ctx.lineWidth = Math.max(4, Math.round(6 * u)); ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(M + r0, top); ctx.lineTo(M + r0, bottom); ctx.stroke(); ctx.restore();
+    }
+    lay.forEach((r, i) => {
+      ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(M + r0, y + r0, r0, 0, Math.PI * 2); ctx.fill();
+      ctx.font = "800 " + Math.round(34 * u) + "px " + G_HEAD; ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(String(i + 1), M + r0, y + r0 + Math.round(2 * u)); ctx.textAlign = "left"; ctx.textBaseline = "top";
+      let ty = y; ctx.font = "700 " + IH + "px " + G_HEAD; ctx.fillStyle = ink;
+      for (const l of r.hl) { ctx.fillText(l, textX, ty); ty += Math.round(IH * 1.2); }
+      if (r.bl.length) { ty += Math.round(6 * u); ctx.font = "500 " + IB + "px " + G_BODY; ctx.fillStyle = muted; for (const l of r.bl) { ctx.fillText(l, textX, ty); ty += IBL; } }
+      y += r.h + gap;
+    });
+    y = sticky(y - gap);
+  } else if (t === "e_myth") {
+    const L = moreLabels(spec);
+    await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: !!spec.bg, textFill: spec.bg ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
+    eraBadge(ctx, W, u, M, spec.eyebrow);
+    y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(70 * u * TS), ink, red);
+    y += Math.round(30 * u);
+    if (spec.lead) { y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted); y += Math.round(10 * u); }
+    const pad = Math.round(32 * u), tagPx = Math.round(24 * u), textW = maxW - pad * 2;
+    items.map(gCells).forEach((p, i, all) => {
+      ctx.font = "600 " + IH + "px " + G_BODY; const ml = gWrap(ctx, p[0] || "", textW);
+      ctx.font = "800 " + Math.round(38 * u * TS) + "px " + G_HEAD; const fl = gWrap(ctx, p[1] || "", textW);
+      const fh = Math.round(38 * u * TS * 1.2), tagH = Math.round(tagPx * 1.7);
+      const h1 = pad + tagH + Math.round(14 * u) + ml.length * Math.round(IH * 1.3) + pad;
+      eraCard(ctx, M, y, maxW, h1, -0.007, (k) => {
+        eraTag(k, L.myth, pad, pad, tagPx);
+        k.textBaseline = "top"; k.font = "600 " + IH + "px " + G_BODY; k.fillStyle = ERA_PAL.muted;
+        let ty = pad + tagH + Math.round(14 * u);
+        for (const l of ml) {
+          k.fillText(l, pad, ty);
+          k.save(); k.strokeStyle = red; k.lineWidth = Math.max(3, Math.round(5 * u));
+          const ly = ty + Math.round(IH * 0.6); k.beginPath(); k.moveTo(pad - 6, ly + 1); k.lineTo(pad + k.measureText(l).width + 6, ly - 2); k.stroke(); k.restore();
+          ty += Math.round(IH * 1.3);
+        }
+      });
+      y += h1 + Math.round(10 * u);
+      eraArrow(ctx, M + Math.round(maxW * 0.5), y, M + Math.round(maxW * 0.5), y + Math.round(44 * u), Math.round(12 * u), red, Math.max(3, Math.round(6 * u)));
+      y += Math.round(58 * u);
+      const h2 = pad + tagH + Math.round(14 * u) + fl.length * fh + pad;
+      eraBlock(ctx, M, y, maxW, h2, 0.006, red, (k) => {
+        eraTag(k, L.fact, pad, pad, tagPx, ERA_PAL.yellow, ERA_PAL.ink);
+        k.textBaseline = "top"; k.font = "800 " + Math.round(38 * u * TS) + "px " + G_HEAD; k.fillStyle = "#FFFFFF";
+        let ty = pad + tagH + Math.round(14 * u);
+        for (const l of fl) { k.fillText(l, pad, ty); ty += fh; }
+      });
+      y += h2 + Math.round((i < all.length - 1 ? 34 : 24) * u);
+    });
+    if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(32 * u));
+  } else if (t === "e_check") {
+    await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: !!spec.bg, textFill: spec.bg ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
+    eraBadge(ctx, W, u, M, spec.eyebrow);
+    y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(70 * u * TS), ink, red);
+    y += Math.round(30 * u);
+    if (spec.lead) { y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted); y += Math.round(10 * u); }
+    const box = Math.round(52 * u), inset = Math.round(40 * u) + box + Math.round(26 * u), textW = maxW - inset - Math.round(30 * u);
+    items.map(gCells).forEach((r, i) => {
+      ctx.font = "800 " + IH + "px " + G_HEAD; const hl = gWrap(ctx, r[0] || "", textW);
+      ctx.font = "500 " + IB + "px " + G_BODY; const bl = r[1] ? gWrap(ctx, r[1], textW) : [];
+      const h = Math.round(30 * u) + hl.length * Math.round(IH * 1.2) + bl.length * IBL + Math.round(22 * u);
+      eraCard(ctx, M, y, maxW, h, i % 2 ? 0.006 : -0.006, (k) => {
+        const bx = Math.round(40 * u), by = Math.round(28 * u);
+        k.strokeStyle = ERA_PAL.ink; k.lineWidth = Math.max(3, Math.round(5 * u)); k.strokeRect(bx, by, box, box);
+        moreMark(k, "tick", bx - Math.round(2 * u), by - Math.round(14 * u), box * 1.15, red, Math.max(5, Math.round(9 * u)));
+        k.textBaseline = "top"; let ty = Math.round(30 * u);
+        k.font = "800 " + IH + "px " + G_HEAD; k.fillStyle = ERA_PAL.ink;
+        for (const l of hl) { k.fillText(l, inset, ty); ty += Math.round(IH * 1.2); }
+        k.font = "500 " + IB + "px " + G_BODY; k.fillStyle = ERA_PAL.muted;
+        for (const l of bl) { k.fillText(l, inset, ty); ty += IBL; }
+      });
+      y += h + Math.round(26 * u);
+    });
+    if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(32 * u));
+  } else if (t === "e_stat") {
+    await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: !!spec.bg, textFill: spec.bg ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
+    eraBadge(ctx, W, u, M, spec.eyebrow);
+    y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(70 * u * TS), ink, red);
+    y += Math.round(30 * u);
+    const figure = items[0] || "", unit = items[1] || "";
+    if (figure) {
+      const px = fitFigure(ctx, figure, maxW, Math.round(330 * u * TS), G_HEAD);
+      ctx.font = "800 " + px + "px " + G_HEAD; ctx.textBaseline = "top"; ctx.fillStyle = red; ctx.fillText(figure, M, y);
+      const fw = ctx.measureText(figure).width;
+      eraArrow(ctx, M + Math.min(fw, maxW - Math.round(60 * u)) + Math.round(34 * u), y + Math.round(px * 1.18), M + Math.min(fw, maxW - Math.round(60 * u)) - Math.round(6 * u), y + Math.round(px * 0.9), -Math.round(16 * u), ERA_PAL.ink, Math.max(3, Math.round(6 * u)));
+      y += Math.round(px * 1.12) + Math.round(8 * u);
+      if (unit) y = eraMark(ctx, unit, M, y, maxW, Math.round(54 * u * TS), Math.round(66 * u * TS), ink, red);
+      y += Math.round(20 * u);
+    }
+    if (spec.lead) { y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted); y += Math.round(18 * u); }
+    if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(34 * u));
+  } else if (t === "p_stat") {
+    photo(0, 0, W, H); scrim(0, 0, W, H, scrimLevel);
+    y = gEyebrow(ctx, spec.eyebrow, M, y, "#FFFFFF", Math.round(24 * u));
+    const figure = items[0] || "", unit = items[1] || "";
+    if (figure) {
+      const px = fitFigure(ctx, figure, maxW, Math.round(320 * u * TS), G_HEAD);
+      ctx.font = "800 " + px + "px " + G_HEAD; ctx.textBaseline = "top"; ctx.fillStyle = "#FFFFFF"; ctx.fillText(figure, M, y);
+      const fw = ctx.measureText(figure).width, upx = Math.round(54 * u * TS);
+      if (unit) {
+        ctx.font = "700 " + upx + "px " + G_HEAD;
+        if (fw + Math.round(28 * u) + ctx.measureText(unit).width <= maxW) { ctx.fillStyle = GRID_PAL.yellow; ctx.fillText(unit, M + fw + Math.round(28 * u), y + Math.round(px * 0.5)); y += Math.round(px * 1.12); }
+        else { y += Math.round(px * 1.08); ctx.fillStyle = GRID_PAL.yellow; ctx.fillText(unit, M, y); y += Math.round(upx * 1.3); }
+      } else y += Math.round(px * 1.12);
+      y += Math.round(14 * u);
+    }
+    y = gHeadline(ctx, spec.title || "", M, y, maxW, Math.round(58 * u * TS), Math.round(70 * u * TS), "#FFFFFF", GRID_PAL.yellow);
+    if (spec.lead) { y += Math.round(18 * u); y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.9), LEAD_PX, LEAD_LH, "rgba(255,255,255,.84)"); }
+  } else if (t === "p_list") {
+    photo(0, 0, W, H); scrim(0, 0, W, H, spec.scrim || "heavy");
+    y = gEyebrow(ctx, spec.eyebrow, M, y, "#FFFFFF", Math.round(24 * u));
+    y = gHeadline(ctx, spec.title || "", M, y, maxW, Math.round(66 * u * TS), Math.round(78 * u * TS), "#FFFFFF", GRID_PAL.yellow);
+    if (spec.lead) { y += Math.round(14 * u); y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.9), LEAD_PX, LEAD_LH, "rgba(255,255,255,.84)"); }
+    y += Math.round(26 * u);
+    const numW = Math.round(76 * u), textX = M + Math.round(34 * u) + numW, textW = M + maxW - Math.round(34 * u) - textX, gap = Math.round(20 * u);
+    for (const [i, r] of items.map(gCells).entries()) {
+      ctx.font = "700 " + IH + "px " + G_HEAD; const hl = gWrap(ctx, r[0] || "", textW);
+      ctx.font = "500 " + IB + "px " + G_BODY; const bl = r[1] ? gWrap(ctx, r[1], textW) : [];
+      const h = Math.max(Math.round(110 * u), Math.round(36 * u) + hl.length * Math.round(IH * 1.2) + (bl.length ? Math.round(4 * u) + bl.length * IBL : 0));
+      gPanel(ctx, M, y, maxW, h, { fill: "rgba(255,255,255,.11)", shadow: false, stroke: "rgba(255,255,255,.2)", r: 22 });
+      ctx.font = "800 " + Math.round(48 * u) + "px " + G_HEAD; ctx.fillStyle = GRID_PAL.yellow; ctx.textBaseline = "top";
+      ctx.fillText(String(i + 1), M + Math.round(34 * u), y + Math.round((h - 48 * u) / 2 - 4 * u));
+      let ty = y + Math.round(18 * u); ctx.font = "700 " + IH + "px " + G_HEAD; ctx.fillStyle = "#FFFFFF";
+      for (const l of hl) { ctx.fillText(l, textX, ty); ty += Math.round(IH * 1.2); }
+      if (bl.length) { ty += Math.round(4 * u); ctx.font = "500 " + IB + "px " + G_BODY; ctx.fillStyle = "rgba(255,255,255,.8)"; for (const l of bl) { ctx.fillText(l, textX, ty); ty += IBL; } }
+      y += h + gap;
+    }
+    y -= gap;
+  } else if (t === "p_split") {
+    const photoH = Math.round(H * 0.5);
+    photo(0, 0, W, photoH); scrim(0, 0, W, photoH, "light");
+    ctx.fillStyle = GRID_PAL.dark; ctx.fillRect(0, photoH, W, H - photoH);
+    ctx.fillStyle = accent; ctx.fillRect(0, photoH, W, Math.round(10 * u));
+    y = photoH + Math.round(52 * u);
+    if (spec.eyebrow) y = gEyebrow(ctx, spec.eyebrow, M, y, accent, Math.round(23 * u));
+    y = gHeadline(ctx, spec.title || "", M, y, maxW, Math.round(54 * u * TS), Math.round(66 * u * TS), "#FFFFFF", GRID_PAL.yellow);
+    if (spec.lead) { y += Math.round(14 * u); y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), Math.round(29 * u * TS), Math.round(40 * u * TS), "rgba(255,255,255,.78)"); }
+    if (items.length) {
+      y += Math.round(14 * u);
+      for (const it of items) {
+        ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(M + Math.round(9 * u), y + Math.round(15 * u), Math.round(8 * u), 0, Math.PI * 2); ctx.fill();
+        y = gPara(ctx, it, M + Math.round(34 * u), y, maxW - Math.round(34 * u), Math.round(28 * u * TS), Math.round(38 * u * TS), "#FFFFFF", 600);
+        y += Math.round(8 * u);
+      }
+    }
+  }
+
+  if (fam !== "e") await drawBrandMark(ctx, spec, W, u, M, { top: 56, h: 34, knockout: dark, textFill: dark ? "rgba(255,255,255,.62)" : "rgba(21,23,27,.5)" });
+  gSourceLine(ctx, W, H, M, u, spec.chip_label || (spec.footnote ? "Sumber" : ""), spec.footnote || "", fam === "e" ? !!spec.bg : dark || t === "p_split");
+  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card — shorten a line.");
+  return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y } : { warn, y };
+}
+
 /* ======================= SEMASA: slides -> Studio cards ===================== */
 
 /* The looks Wan chooses from. "classic" is Semasa's own Pillow drawing (backend/semasa/slides.py); the other three
@@ -1297,7 +1647,14 @@ export const LOOKS = [
   { k: "photo", bm: "Foto", en: "Photo", hintBm: "Studio: gambar anda di belakang perkataan, pada setiap slaid. Perlu gambar latar.",
     hintEn: "Studio: your picture behind the words, on every slide. Needs a background picture." },
 ];
+/** A template key as a short readable name ("e_myth" → "ERA · Myth vs fact"), for hand-offs and logs. */
+export const templateLabel = (k) => ({ g_title: "Grid · Title", g_stat: "Grid · Number", g_bars: "Grid · Bars", g_rows: "Grid · Numbered", g_table: "Grid · Table",
+  g_check: "Grid · Checklist", g_myth: "Grid · Myth vs fact", g_steps: "Grid · Steps", e_hook: "ERA · Hook", e_explain: "ERA · Explainer", e_flow: "ERA · Flow",
+  e_vs: "ERA · Versus", e_myth: "ERA · Myth vs fact", e_check: "ERA · Checklist", e_stat: "ERA · Figure", p_title: "Photo · Title", p_fact: "Photo · Fact",
+  p_quote: "Photo · Quote", p_stat: "Photo · Figure", p_list: "Photo · List", p_split: "Photo · Split" }[k] || String(k || ""));
 export const STUDIO_LOOKS = ["grid", "era", "photo"];
+/** The family palettes, for the Canva hand-off brief: one copy of the hex codes, the ones the renderer draws with. */
+export const PALETTES = { grid: GRID_PAL, era: ERA_PAL };
 export const isStudioLook = (k) => STUDIO_LOOKS.includes(k);
 
 /* The points of a slide as one paragraph block: one line each, marked when there is more than one. Studio's
@@ -1311,13 +1668,13 @@ function asLines(points) {
    (e_hook 3, e_explain 3, p_fact 4), so a slide with more points than its template shows is given the layout that
    draws them all as lines instead of a template that would silently drop the rest.
    A slide may carry its own design (Studio's per-slide editor, brought over 27 Sep 2026): `template` (any of the
-   twelve, which then takes the points verbatim as its items, "Label | number" shapes and all), `lead`, `eyebrow`,
+   twenty-one, which then takes the points verbatim as its items, "Label | number" shapes and all), `lead`, `eyebrow`,
    `chip`, `note`, `footnote`, `scrim`, `mascot` ("none", a pose key, or unset = the pose the template hints at) and a
    background already resolved to a drawable address in `bg_url` (`bg: "none"` = no picture on this slide).
    Unset fields fall back to the look's own choices: cover, middle and closing slides take the templates Studio's
    groups name (CARD_GROUPS); the source line is drawn on the closing slide, Semasa's rule; the eyebrow on every
    slide, Studio's. o.mascots = [{k, url}] are the poses on offer (none offered = no mascot anywhere). */
-export const TEMPLATE_KEYS = [...Object.keys(GRID_TPL), ...Object.keys(ERA_TPL), ...Object.keys(PHOTO_TPL)];
+export const TEMPLATE_KEYS = [...Object.keys(GRID_TPL), ...Object.keys(ERA_TPL), ...Object.keys(PHOTO_TPL), ...Object.keys(MORE_TPL)];
 export const takesMascot = (t) => !!MASCOT_TPL[t];
 /** Which templates draw each pose by default: asked of pickMascotFor itself, the renderer's own rule, so the Design
     tab's library can never disagree with a render (Studio's mascotDutyMap). {poseKey: [template, ...]} */
@@ -1336,6 +1693,50 @@ function mascotUrl(s, template, mascots) {
   if (s.mascot) return (mascots.find((m) => m.k === s.mascot) || {}).url || "";
   const m = pickMascotFor(template, mascots.map((x) => ({ name: x.k, url: x.url })));
   return m ? m.url : "";
+}
+
+/* "Fit the design to each slide" (Wan, 4 Oct 2026: "more design like ERA, grid, photo"). A look used to give every
+   middle slide the same template, so a carousel read as one layout repeated. With `o.fit` a slide that has no template
+   of its own gets the one in its family that suits its words: a figure → the figure card, "myth | fact" pairs → the
+   myth card, a how-to → steps, a "before you ..." list → the checklist, "heading | detail" lines → the numbered panels.
+   Only a template that draws EVERY point is ever chosen (the older ones slice their lists: rows 4, explain 3, flow 4,
+   stat 2), and anything unrecognised returns "" so the look's own rule applies, unchanged. Pure: no canvas, no store. */
+const RE_FIGURE = /^[~≈<>+\-]?\s*(RM\s?)?\d[\d.,]*\s*(%|x|×|k|m|hari|bulan|tahun|minggu|jam|days?|months?|years?|weeks?|hours?)?$/i;
+const RE_MYTH = /mitos|myth|salah faham|misconception|fakta|\bfacts?\b/i;
+const RE_STEPS = /langkah|\bsteps?\b|proses|process|cara |how to|aliran|\bflow\b|garis masa|timeline|urutan|selepas|after/i;
+const RE_CHECK = /senarai semak|checklist|\bsemak|\bcheck\b|sebelum|before|pastikan|ensure|wajib|\bmust\b|dokumen|documents/i;
+export function fitTemplate(look, s, i, n, pts) {
+  const title = String(s.title || "");
+  const piped = pts.length > 0 && pts.every((x) => x.includes("|"));
+  const figure = pts.length >= 1 && pts.length <= 2 && pts[0].length <= 12 && RE_FIGURE.test(pts[0]) && (!pts[1] || pts[1].length <= 28);
+  const myth = piped && pts.length <= 3 && pts.every((x) => x.split("|").length === 2) && (RE_MYTH.test(title) || RE_MYTH.test(String(s.lead || "")));
+  const steps = pts.length >= 2 && pts.length <= 5 && RE_STEPS.test(title);
+  const check = pts.length >= 2 && pts.length <= 5 && RE_CHECK.test(title);
+  const first = i === 0 && n > 1, last = i === n - 1 && n > 1;
+  if (!pts.length || first) return "";
+  if (look === "grid") {
+    if (figure) return "g_stat";
+    if (myth) return "g_myth";
+    if (steps) return "g_steps";
+    if (check) return "g_check";
+    if (piped && pts.length <= 4) return "g_rows";
+    return "";
+  }
+  if (look === "era") {
+    if (figure) return "e_stat";
+    if (myth) return "e_myth";
+    if (steps && piped && pts.length <= 4) return "e_flow";
+    if (check || steps) return "e_check";
+    if (piped && pts.length <= 3) return "e_explain";
+    return "";
+  }
+  if (look === "photo") {
+    if (figure) return "p_stat";
+    if (last) return "";
+    if (piped || pts.length >= 3) return "p_list";
+    return i % 2 ? "p_split" : "";
+  }
+  return "";
 }
 
 export function specsFor(slides, o = {}) {
@@ -1367,8 +1768,9 @@ export function specsFor(slides, o = {}) {
       mascot_size: Number(s.mascot_size) || undefined,
     };
     let spec;
-    if (s.template && TEMPLATE_KEYS.includes(s.template)) {
-      spec = { ...base, template: s.template, lead: lead0, items: pts };
+    const chosen = s.template && TEMPLATE_KEYS.includes(s.template) ? s.template : (o.fit ? fitTemplate(look, s, i, n, pts) : "");
+    if (chosen) {
+      spec = { ...base, template: chosen, lead: lead0, items: pts };
     } else if (look === "grid") {
       spec = { ...base, template: "g_title", lead: withLead(asLines(pts)) };
     } else if (look === "era") {
@@ -1386,6 +1788,7 @@ export function specsFor(slides, o = {}) {
 }
 
 function renderSpec(spec) {
+  if (MORE_TPL[spec.template]) return renderMoreCard(spec);
   if (GRID_TPL[spec.template]) return renderGridCard(spec);
   if (ERA_TPL[spec.template]) return renderEraCard(spec);
   if (PHOTO_TPL[spec.template]) return renderPhotoCard(spec);

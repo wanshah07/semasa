@@ -692,7 +692,7 @@ def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str 
             "prompt": "", "created_by": idea.get("created_by"),
             "meta": {"flow": "A", "slides": post.get("slides") or [], "stream": post.get("stream"),
                      "citation": post.get("citation") or "", "domain": post.get("domain"),
-                     "angle": post.get("angle"), "bg": bg, "look": look_of(idea)}}
+                     "angle": post.get("angle"), "bg": bg, "look": look_of(idea), "fit": look_of(idea) != "classic"}}
 
 
 def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: list[dict[str, Any]],
@@ -702,7 +702,7 @@ def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: 
             "prompt": "", "created_by": idea.get("created_by"),
             "meta": {"flow": "A", "design": "poster", "format": "portrait", "slides": words, "stream": post.get("stream"),
                      "citation": post.get("citation") or "", "domain": post.get("domain"), "angle": post.get("angle"),
-                     "bg": bg, "look": look_of(idea)}}
+                     "bg": bg, "look": look_of(idea), "fit": look_of(idea) != "classic"}}
 
 
 LOOKS = ("classic", "grid", "era", "photo")

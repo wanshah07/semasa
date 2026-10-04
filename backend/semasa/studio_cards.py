@@ -82,8 +82,11 @@ def _launch(p: Any) -> Any:
 
 def render(items: list[dict[str, Any]], *, look: str, stream: str, eyebrow: str = "", source: str = "",
            ground: bytes | None = None, ground_mime: str = "image/jpeg",
-           size: tuple[int, int] | None = None, mascots: list[dict[str, str]] | None = None) -> list[bytes]:
-    """JPEG bytes per slide, drawn in the chosen Studio look. Raises SlideError with a message for the page."""
+           size: tuple[int, int] | None = None, mascots: list[dict[str, str]] | None = None,
+           fit: bool = False) -> list[bytes]:
+    """JPEG bytes per slide, drawn in the chosen Studio look. Raises SlideError with a message for the page.
+    fit=True lets each slide that names no template take the design in its family that suits its words (studio.js
+    fitTemplate); off, every slide follows the look's own rule exactly as before."""
     if look not in LOOKS:
         raise SlideError(f"unknown look {look!r}")
     if look == "photo" and not ground and not all(it.get("bg_url") for it in items):
@@ -95,6 +98,8 @@ def render(items: list[dict[str, Any]], *, look: str, stream: str, eyebrow: str 
     from playwright.sync_api import sync_playwright
 
     opts: dict[str, Any] = {"look": look, "stream": stream, "eyebrow": eyebrow, "citation": source}
+    if fit:
+        opts["fit"] = True
     if ground:
         opts["bg"] = f"data:{ground_mime};base64," + base64.b64encode(ground).decode("ascii")
     if size:

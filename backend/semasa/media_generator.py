@@ -412,7 +412,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             pics = studio_cards.render(own_grounds(store, row, items), look=look, stream=stream, eyebrow=eyebrow,
                                        source=str(meta.get("citation") or ""), ground=ground,
                                        ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size,
-                                       mascots=cards_library.mascots())
+                                       mascots=cards_library.mascots(), fit=bool(meta.get("fit")))
         else:
             look = "classic"
             pics = slides.render(classic_words(items), stream=stream, eyebrow=eyebrow, source=str(meta.get("citation") or ""),

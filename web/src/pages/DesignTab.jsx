@@ -22,6 +22,8 @@ import { layoutToSeed, patchBoxes, slotsOf, wordsFromLayout } from "../lib/desig
 import { loadImageFile, readPixels, samplePatches, sizeLike } from "../lib/designPatch";
 import { compareImages, judgePass, snapLayout } from "../lib/designFidelity";
 import { GROUND_STYLES } from "../lib/groundStyles";
+import MyDesigns from "../components/MyDesigns";
+import { resolveLook, useDesigns } from "../lib/designs";
 import { renderSeedPreview } from "../lib/kanvasBuild";
 import DesignLibrary from "../components/DesignLibrary";
 import CanvaHandoff from "../components/CanvaHandoff";
@@ -40,6 +42,7 @@ const defaultSize = (design, stream) => (design === "poster" ? "portrait" : desi
 
 export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas }) {
   const { t } = useLang();
+  const { designs: myDesigns } = useDesigns();
   const [design, setDesign] = useState("poster");
   const [stream, setStream] = useState("regulab");
   const [format, setFormat] = useState("portrait");
@@ -232,7 +235,9 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
       }
       if (bg === "from_ref") bgValue = "from_ref";           // an original background in the reference's mood (worker)
       if (bg === "library") bgValue = `lib:${libPick}`;     // one of Wan's own photographs (web/public/cards/grounds)
-      const meta = { flow: "design", design, format, ...sizeMeta(format), stream, bg: bgValue, look: styleUp && autoLook ? "auto" : look, fit: fit && look !== "classic",
+      const rl = resolveLook(look, myDesigns);                  // "d:<id>": a saved design rides on the job as a snapshot
+      const meta = { flow: "design", design, format, ...sizeMeta(format), stream, bg: bgValue === "none" && rl.pack?.bg ? rl.pack.bg : bgValue,
+        look: styleUp && autoLook ? "auto" : rl.look, fit: fit && rl.look !== "classic", ...(rl.pack && !(styleUp && autoLook) ? { design_pack: rl.pack, design_id: rl.id } : {}),
         eyebrow: eyebrow.trim(), citation: citation.trim(),
         ...(styleUp ? { style_ref: { url: styleUp.url, path: styleUp.path, name: styleFile.name } } : {}),
         ...(words === "ai" ? { brief: brief.trim() } : { slides: own }), ...(fromPost ? { from_post: fromPost } : {}) };
@@ -273,7 +278,9 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
         </p>
       </motion.div>
 
-      <Card as="form" onSubmit={submit} className="mt-8 p-5 sm:p-6">
+      <div className="mt-8"><MyDesigns onToast={onToast} /></div>
+
+      <Card as="form" onSubmit={submit} className="mt-2 p-5 sm:p-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="min-w-0 space-y-4">
             <div><Label>{t("Jenis", "Kind")}</Label><Segmented value={design} onChange={setDesign} options={designs} /></div>

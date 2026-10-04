@@ -6,6 +6,7 @@ import { useLang } from "../lib/i18n";
 import { LOOKS, isEventSlide, isStudioLook, takesMascot } from "../lib/cards/studio";
 import { photoAt, photosFollow, speakersOf, withPhoto } from "../lib/photos";
 import { photoUrl, uploadSpeakerPhoto } from "../lib/storage";
+import { resolveLook, useDesigns } from "../lib/designs";
 import { MASCOTS, TEMPLATES, noteLabel, templateOf } from "../lib/cards/library";
 import BackgroundPicker from "./BackgroundPicker";
 import CanvaHandoff from "./CanvaHandoff";
@@ -51,7 +52,8 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
   const latestDone = jobs.find((j) => j.status === "done");
   const drawnStale = latestDone && slidesKey(latestDone.meta?.slides) !== slidesKey(fromRows(rows));
   const set = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const studio = isStudioLook(look);
+  const { designs } = useDesigns();
+  const studio = isStudioLook(resolveLook(look, designs).look);
   const [open, setOpen] = useState(() => new Set());
   const [canva, setCanva] = useState(false);
   const [pickFor, setPickFor] = useState(null);          // {i: null} the set's background, {i: n} slide n+1's, null closed
@@ -233,7 +235,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
       <ImageLightbox {...box.props} />
       <CanvaHandoff open={canva} onClose={() => setCanva(false)} slides={latestDone?.meta?.slides || normaliseSlides(fromRows(rows))}
         urls={slideUrls} stream={post.stream} size={latestDone?.meta?.size?.length === 2 ? latestDone.meta.size : post.stream === "linkedin" ? [1080, 1350] : [1080, 1080]}
-        look={latestDone?.meta?.look || look} citation={preview.citation || ""} eyebrow={preview.eyebrow || ""} kind="carousel" />
+        look={latestDone?.meta?.look || resolveLook(look, designs).look} citation={preview.citation || ""} eyebrow={preview.eyebrow || ""} kind="carousel" />
       {picker && <BackgroundPicker open={!!pickFor} onClose={() => setPickFor(null)} target={pickFor} nSlides={n}
         current={pickFor?.i === null || pickFor === null ? bg : rows[pickFor.i]?.bg} onChoose={chooseBg} picker={picker} />}
     </div>

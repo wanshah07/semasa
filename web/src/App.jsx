@@ -13,6 +13,7 @@ import Gate from "./components/Gate";
 import IdeaComposer from "./components/IdeaComposer";
 import PromptLibrary from "./components/PromptLibrary";
 import DesignTab from "./pages/DesignTab";
+import { DesignsContext } from "./lib/designs";
 import FaqTab from "./pages/FaqTab";
 import FragranceTab from "./pages/FragranceTab";
 // the editor carries Fabric.js: loaded only when the Kanvas tab opens, so every other tab stays as light as before
@@ -322,6 +323,12 @@ export default function App() {
     };
   }
   const { settings, save } = useSettings(allowed);
+  // My designs (supabase/027): the saved text-free designs and the default, offered to every look picker through one context
+  const designsCtx = useMemo(() => ({
+    designs: Array.isArray(settings.designs) ? settings.designs.filter((d) => d && typeof d === "object" && d.id) : [],
+    defaultId: String(settings.default_design?.id || ""), ready: Array.isArray(settings.designs),
+    saveDesigns: (list) => save("designs", list), setDefault: (id) => save("default_design", id ? { id } : {}),
+  }), [settings, save]);
   const brand = useMemo(() => brandOf(settings), [settings]);
   const [guideOpen, setGuideOpen] = useState(false);
 
@@ -373,6 +380,7 @@ export default function App() {
     allowed={allowed} gateNode={allowed ? null : gate(null)} settings={settings} save={save} brand={brand} user={user} />;
 
   return (
+    <DesignsContext.Provider value={designsCtx}>
     <div id="top" className="min-h-screen lg:flex">
       <AppSidebar tab={tab} setTab={go} user={user} counts={allowed ? counts : {}} mode={navMode} />
       <div className="min-w-0 flex-1">
@@ -393,5 +401,6 @@ export default function App() {
       </div>
       <Toasts toasts={toasts} />
     </div>
+    </DesignsContext.Provider>
   );
 }

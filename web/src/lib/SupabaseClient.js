@@ -2,6 +2,7 @@
    (supabase/002_rls.sql) is what protects the data, not secrecy of this key. */
 import { createClient } from "@supabase/supabase-js";
 import { tr } from "./i18n";
+import { isOutage } from "./upstream";
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -29,6 +30,11 @@ export const BUCKETS = { reference: "semasa-reference", generated: "semasa-gener
 export function errText(error) {
   if (!error) return "";
   const text = [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+  // an upstream outage (Cloudflare/Supabase 5xx) comes back as a whole HTML error page: say it in one line, never print the page
+  if (isOutage(error)) {
+    return tr("Pelayan Supabase tidak menjawab seketika (ralat 5xx). Cuba lagi sebentar; fail anda tidak hilang.",
+      "Supabase did not answer for a moment (a 5xx error). Try again shortly; your file is not lost.");
+  }
   // the database's own refusals (supabase/017_review_fixes.sql) are written in English: say them in the page's language
   if (/belongs to an approved post/.test(text)) {
     return tr("Gambar ini milik post yang sudah diluluskan: kembalikan post itu ke draf dahulu, kemudian ubah atau padam gambar.",

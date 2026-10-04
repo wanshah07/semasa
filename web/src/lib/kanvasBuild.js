@@ -118,7 +118,10 @@ export async function buildSeed(fc, seed, user, own, { copy = true } = {}) {
       } catch { /* keep the worker's address: it still opens, and saving warns nothing extra */ }
       obj = await FabricImage.fromURL(url, { crossOrigin: "anonymous" });
       if (L.cover) coverImage(obj, seed.width, seed.height);
-      else {
+      else if (L.fitIn) {                // a logo slot: the picture kept whole, as large as the reference's logo box allows, centred in it
+        const k = Math.min(L.fitIn.w / obj.width, L.fitIn.h / obj.height);
+        obj.set({ left: L.fitIn.x + L.fitIn.w / 2, top: L.fitIn.y + L.fitIn.h / 2, scaleX: k, scaleY: k });
+      } else {
         const k = L.height / obj.height;
         const wd = obj.width * k;
         const x = L.side === "left" ? L.xLeft + wd / 2 : L.side === "right" ? L.xRight - wd / 2 : L.x;

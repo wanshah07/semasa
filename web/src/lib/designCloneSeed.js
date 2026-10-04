@@ -143,7 +143,7 @@ function spreadPoints(points, others, count) {
  *            t is the page's translator, used for layer names
  * Returns { seed, notes } where notes name what was left out or moved, for the page to show.
  */
-export function layoutToSeed(layout, words, { width, height, name, pictureUrl = "", referenceUrl = "", patches = [], t = (bm, en) => en } = {}) {
+export function layoutToSeed(layout, words, { width, height, name, pictureUrl = "", referenceUrl = "", patches = [], logoUrl = "", t = (bm, en) => en } = {}) {
   const W = Math.round(width), H = Math.round(height), u = Math.min(W, H);
   const notes = [];
   const layers = [];
@@ -217,6 +217,17 @@ export function layoutToSeed(layout, words, { width, height, name, pictureUrl = 
     }
   }
   for (const x of [...made, ...extra]) layers.push(textLayer(x.el, x.text, x.name, W, H, u));
+  // the reference's own logo and faces are never copied (they are patched out above), but their PLACES stay as slots: our logo goes where
+  // theirs was (`logoUrl`, only ever passed for ws.regulab), and a face becomes an empty picture box to drop a picture of our own into
+  const slotted = { logo: 0, person: 0 };
+  for (const c of layout.covers || []) {
+    if (c.kind === "logo" && logoUrl && !slotted.logo++) {
+      layers.push({ kind: "image", name: t("Logo (ganti)", "Logo (replaceable)"), role: "logo", url: logoUrl, fitIn: { x: c.x * W, y: c.y * H, w: c.w * W, h: c.h * H } });
+    } else if (c.kind === "person") {
+      layers.push({ kind: "photo", name: `${t("Gambar (ganti)", "Picture (replace)")}: ${t("orang", "person")} ${++slotted.person}`, url: "", shape: "rounded",
+        x: c.x * W, y: c.y * H, w: c.w * W, h: c.h * H });
+    }
+  }
   if (onReference) {
     if (patches.some((p) => p && p.onPhoto)) notes.push(t("Perkataan lama di atas gambar ditampal dengan warna purata: alihkan atau padam tampalan itu di Kanvas jika kelihatan.", "Old words over a photograph are patched with the average colour: move or delete that patch in Kanvas if it shows."));
   } else if (main && !pictureUrl && fullBleed(main)) notes.push(t("Gambar latar rujukan diganti dengan warna dan kecerunan yang serupa: tambah gambar anda sendiri di Kanvas.", "The reference's background photo is replaced by a similar colour and gradient: add your own picture in Kanvas."));

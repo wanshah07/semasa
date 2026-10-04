@@ -68,3 +68,24 @@ export async function samplePatches(file, boxes) {
     return { ...b, ...patch, onPhoto: spread([...top, ...bottom]) > 14 };
   });
 }
+
+/** A picture (a File/Blob, or a data/object URL) as RGBA pixels no wider than `maxSide`: { data, width, height }, or null when the
+    browser will not let it be read (a tainted canvas). Used to MEASURE the reference and the rebuild (lib/designFidelity.js). */
+export async function readPixels(source, maxSide = 360) {
+  let img;
+  if (typeof source === "string") {
+    img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("gambar tidak boleh dibuka / the picture could not be opened"));
+      el.src = source;
+    });
+  } else img = await loadImageFile(source);
+  const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const width = Math.max(1, Math.round(img.naturalWidth * k)), height = Math.max(1, Math.round(img.naturalHeight * k));
+  const c = document.createElement("canvas");
+  c.width = width; c.height = height;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, width, height);
+  try { return { data: ctx.getImageData(0, 0, width, height).data, width, height }; } catch { return null; }
+}

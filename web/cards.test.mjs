@@ -1,7 +1,7 @@
 // The slide -> Studio card mapping (web/src/lib/cards/studio.js, specsFor). The drawing itself is tested in a real
 // browser by backend/tests/test_studio_cards.py; this checks the one rule the mapping owns: every point of every
 // slide reaches a card, whatever the look. `npm test`.
-import { specsFor, LOOKS, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf, normDesign, placeOf } from "./src/lib/cards/studio.js";
+import { specsFor, LOOKS, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf, normDesign, normLayout, placeOf } from "./src/lib/cards/studio.js";
 import { canvaBrief } from "./src/lib/canvaBrief.js";
 import { readFileSync } from "node:fs";
 import { cardFromCaption, headAndRest, slidesFromCaption } from "./src/lib/cards/fromCaption.js";
@@ -164,6 +164,22 @@ ok(specsFor([SLIDES5[0]], { design: DG })[0].template === "e_stat", "a single ca
 ok(specsFor(SLIDES5, { design: DG }).every((x, i) => (i ? true : x.template === "e_hook")) && specsFor([{ ...SLIDES5[1], template: "e_vs" }, SLIDES5[2], SLIDES5[3]], { design: DG })[0].template === "e_vs", "a template chosen on the slide beats the design");
 ok(specsFor(SLIDES5, { look: "grid" }).every((x) => !x.palette), "without a design nothing changes");
 ok(specsFor(SLIDES5, { design: { look: "photo" }, fit: true }).every((x) => x.template[0] === "p"), "a design with no templates falls back to the family and fit");
+
+// a design made from a reference: its layout is trusted only as far as the painter understands it
+const LAY = { background: { color: "#e6dfec", gradient: null }, covers: [{ kind: "logo", x: 0.7, y: 0.03, w: 0.2, h: 0.04 }, { kind: "face", x: 0, y: 0, w: 1, h: 1 }],
+  elements: [{ type: "text", role: "headline", x: 0.06, y: 0.2, w: 0.8, h: 0.14, text: "x".repeat(900), size: 0.06 }, { type: "logo", x: 0, y: 0, w: 1, h: 1 },
+    { type: "rect", x: "0.1", y: 0.1, w: 0.3, h: 0.05, fill: "#e0d4e6" }] };
+const NL = normLayout(LAY);
+ok(NL.elements.length === 2 && NL.elements[0].text.length === 400 && NL.elements[1].x === 0.1 && NL.covers.length === 1, "a layout keeps known elements and covers, caps long text, coerces numbers");
+ok(normLayout(null) === null && normLayout({ elements: [] }) === null && normLayout({ elements: [{ type: "logo" }] }) === null && normLayout({ elements: "x" }) === null, "nothing usable is no layout");
+ok(normLayout({ elements: Array.from({ length: 200 }, () => ({ type: "rect", x: 0, y: 0, w: 1, h: 1 })) }).elements.length === 60, "at most 60 elements");
+const RD = normDesign({ look: "grid", layouts: { main: LAY, middle: { elements: [] }, bogus: LAY } });
+ok(RD.layouts && Object.keys(RD.layouts).join() === "main", "a design keeps the layouts it understands, in the places it knows");
+const rs = specsFor(SLIDES5, { design: { look: "grid", layouts: { main: LAY, closing: { ...LAY, background: { color: "#000000", gradient: null } } } } });
+ok(rs.every((x) => x.template === "c_ref" && x.layout), "every slide is drawn in the reference's layout");
+ok(rs[4].layout.background.color === "#000000" && rs[0].layout.background.color === "#e6dfec", "a layout for one place is used there; the main layout elsewhere");
+ok(rs.every((x, i) => x.title === SLIDES5[i].title && x.items.join() === SLIDES5[i].points.join()), "the words travel on the spec");
+ok(specsFor([{ ...SLIDES5[0], template: "g_stat" }], { design: { look: "grid", layouts: { main: LAY } } })[0].template === "g_stat", "a template chosen on the slide beats the reference layout");
 
 if (failed) { console.error(`${failed} card mapping check(s) failed`); process.exit(1); }
 console.log("cards: slide -> Studio card mapping keeps every word");

@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Loader2, Palette, Plus, Star, Trash2 } from "lucide-react";
+import { Check, ImageIcon, Loader2, Palette, Plus, Star, Trash2 } from "lucide-react";
 import { LOOKS, STUDIO_LOOKS, ensureFonts, renderSlides, setLogo } from "../lib/cards/studio";
 import { GROUNDS, MASCOTS, TEMPLATES } from "../lib/cards/library";
 import { newDesignId, packDesign, resolveLook, useDesigns } from "../lib/designs";
+import { cloneLayout } from "../lib/designClone";
+import { snapLayout } from "../lib/designFidelity";
+import { loadImageFile, readPixels, sizeLike } from "../lib/designPatch";
 import { useLang } from "../lib/i18n";
 import Button from "./ui/Button";
 import { Input, Label, Select } from "./ui/Field";
@@ -151,6 +154,91 @@ function Editor({ initial, onSave, onCancel, isDefault }) {
   );
 }
 
+/* A design made FROM A REFERENCE, the way ERA, Grid and Photo were made (Wan, 4 Oct 2026): upload a reference picture once. The AI reads
+   its layout (where the headline, the points, the label, the source, the pictures and the logo go; colours, type, shapes), the colours
+   are then measured from the picture's own pixels, and the layout is saved with NO words. Every draft pours its own words into it. */
+const PLACE_FILES = [["cover", "Kulit", "Cover"], ["middle", "Slaid tengah", "Middle slides"], ["closing", "Penutup", "Closing slide"], ["single", "Kad tunggal / poster", "Single card / poster"]];
+
+async function readReference(file) {
+  const img = await loadImageFile(file);
+  const [w, h] = sizeLike(img.naturalWidth, img.naturalHeight);
+  const got = await cloneLayout({ file, width: w, height: h, stream: "regulab", mode: "clone" });
+  const px = await readPixels(file, 900).catch(() => null);
+  const snapped = px ? snapLayout(got.layout, px) : null;           // the AI guessed the colours by eye: the picture's pixels know them
+  return { layout: snapped ? snapped.layout : got.layout, measured: snapped ? snapped.changes.length : 0, removed: got.removed || [] };
+}
+
+function RefEditor({ initial, onSave, onCancel, isDefault }) {
+  const { t } = useLang();
+  const [d, setD] = useState(initial);
+  const [asDefault, setAsDefault] = useState(isDefault);
+  const [busy, setBusy] = useState("");                                 // "" | place being read | "save"
+  const [notes, setNotes] = useState([]);
+  const [error, setError] = useState("");
+  const layouts = d.layouts || {};
+  const hasAny = Object.keys(layouts).length > 0;
+  const samples = useSamples(d, hasAny);
+  const named = d.name.trim().length >= 2 && hasAny;
+  async function pick(place, file) {
+    if (!file) return;
+    setBusy(place); setError("");
+    try {
+      const r = await readReference(file);
+      setD((x) => ({ ...x, layouts: { ...(x.layouts || {}), [place]: r.layout } }));
+      setNotes((n) => [...n.filter((x) => x.place !== place), { place, measured: r.measured, removed: r.removed }]);
+    } catch (e) { setError(e?.message || String(e)); } finally { setBusy(""); }
+  }
+  const fileBtn = (place, label, req) => (
+    <label key={place} className={`flex min-w-0 cursor-pointer items-center gap-2 rounded-tile border px-3 py-2 text-[12px] ${layouts[place] ? "border-accent bg-accent/5" : "border-line hover:border-ink/30"}`}>
+      {busy === place ? <Loader2 size={14} className="animate-spin" /> : layouts[place] ? <Check size={14} className="text-accent" /> : <ImageIcon size={14} className="text-muted" />}
+      <span className="min-w-0 flex-1 truncate">{label}{req && <span className="text-muted"> · {t("wajib", "required")}</span>}</span>
+      <span className="text-accent">{layouts[place] ? t("Tukar", "Replace") : t("Pilih gambar", "Choose picture")}</span>
+      <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={!!busy}
+        onChange={(e) => { pick(place, e.target.files?.[0]); e.target.value = ""; }} aria-label={label} />
+    </label>
+  );
+  return (
+    <div className="space-y-3 rounded-tile border border-line p-3">
+      <label className="block"><Label>{t("Nama reka bentuk", "Design name")}</Label>
+        <Input value={d.name} maxLength={40} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder={t("Cth: Poster NPRA", "E.g. NPRA poster")} /></label>
+      <div>
+        <Label hint={t("AI membaca susun atur sekali (kira-kira setengah minit); warna disukat daripada piksel gambar", "The AI reads the layout once (about half a minute); the colours are measured from the picture's pixels")}>
+          {t("Gambar rujukan", "Reference picture")}</Label>
+        {fileBtn("main", t("Untuk semua tempat", "For every place"), true)}
+        <details className="mt-2">
+          <summary className="cursor-pointer text-[12px] text-accent">{t("Rujukan berlainan untuk tempat tertentu (pilihan)", "A different reference for one place (optional)")}</summary>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">{PLACE_FILES.map(([k, bm, en]) => fileBtn(k, t(bm, en), false))}</div>
+        </details>
+        {error && <p className="mt-1.5 [overflow-wrap:anywhere] text-[12px] text-danger">{error}</p>}
+        {notes.map((n) => (
+          <p key={n.place} className="mt-1 text-[11px] text-muted">{n.place}: {t("{n} warna disukat daripada piksel.", "{n} colour(s) measured from the pixels.", { n: n.measured })}
+            {n.removed.length > 0 && ` ${t("Tidak disalin (logo, jenama, wajah, CTA):", "Not copied (logo, brand, faces, CTA):")} ${n.removed.slice(0, 3).join("; ")}.`}</p>
+        ))}
+      </div>
+      {hasAny && (
+        <label className="block min-w-0"><Label hint={t("mengisi kawasan gambar rujukan", "fills the reference's picture area")}>{t("Gambar latar reka bentuk ini", "This design's picture")}</Label>
+          <Select value={d.bg} onChange={(v) => setD({ ...d, bg: v })} className="w-full"
+            options={[["", t("Tiada (ikut gambar post)", "None (the post's picture)")], ...GROUNDS.map((g) => [`lib:${g.k}`, g.name])]} /></label>
+      )}
+      {hasAny && (
+        <div>
+          <p className="mb-1 text-[11px] text-muted">{t("Contoh dengan perkataan palsu sahaja: perkataan sebenar masuk bila draf dibuat.", "Shown on sample words only: the real words go in when a draft is made.")}</p>
+          <Strip {...samples} placeLabel={(bm, en) => t(bm, en)} />
+        </div>
+      )}
+      <label className="flex cursor-pointer items-center gap-2 text-[12px]">
+        <input type="checkbox" checked={asDefault} onChange={(e) => setAsDefault(e.target.checked)} className="accent-[var(--accent)]" />
+        {t("Guna untuk draf baharu (bila idea tidak pilih reka bentuk)", "Use for new drafts (when the idea picked no design)")}
+      </label>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>{t("Batal", "Cancel")}</Button>
+        <Button type="button" size="sm" disabled={!named || !!busy} onClick={async () => { setBusy("save"); try { await onSave({ ...d, look: "grid", kind: "ref" }, asDefault); } finally { setBusy(""); } }}>
+          {busy === "save" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} {t("Simpan reka bentuk", "Save design")}</Button>
+      </div>
+    </div>
+  );
+}
+
 export default function MyDesigns({ onToast = () => {} }) {
   const { t } = useLang();
   const { designs, defaultId, ready, saveDesigns, setDefault } = useDesigns();
@@ -199,7 +287,7 @@ export default function MyDesigns({ onToast = () => {} }) {
               <div key={d.id} className="flex flex-wrap items-center gap-2 rounded-tile border border-line px-3 py-2">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{d.name}{defaultId === d.id && <span className="ml-2 rounded-pill bg-accent/15 px-2 py-0.5 text-[10px] text-accent">{t("lalai", "default")}</span>}</span>
-                  <span className="block text-[11px] text-muted">{r.look} · {[d.cover, d.middle, d.closing, d.single].filter(Boolean).length || t("auto", "auto")} {t("susun atur dipilih", "layouts chosen")}
+                  <span className="block text-[11px] text-muted">{d.kind === "ref" ? `${t("daripada rujukan", "from a reference")} · ${Object.keys(d.layouts || {}).length} ${t("susun atur", "layout(s)")}` : `${r.look} · ${[d.cover, d.middle, d.closing, d.single].filter(Boolean).length || t("auto", "auto")} ${t("susun atur dipilih", "layouts chosen")}`}
                     {d.accent && <span className="ml-2 inline-block h-2.5 w-2.5 rounded-full align-middle" style={{ background: d.accent }} />}
                     {d.paper && <span className="ml-1 inline-block h-2.5 w-2.5 rounded-full border border-line align-middle" style={{ background: d.paper }} />}</span>
                 </span>
@@ -210,9 +298,16 @@ export default function MyDesigns({ onToast = () => {} }) {
             );
           })}
           {editing ? (
-            <Editor key={editing.id || "new"} initial={{ ...BLANK, ...editing }} isDefault={!!editing.id && defaultId === editing.id} onSave={save} onCancel={() => setEditing(null)} />
+            editing.kind === "ref"
+              ? <RefEditor key={editing.id || "newref"} initial={{ ...BLANK, ...editing }} isDefault={!!editing.id && defaultId === editing.id} onSave={save} onCancel={() => setEditing(null)} />
+              : <Editor key={editing.id || "new"} initial={{ ...BLANK, ...editing }} isDefault={!!editing.id && defaultId === editing.id} onSave={save} onCancel={() => setEditing(null)} />
           ) : (
-            <Button type="button" size="sm" variant="soft" disabled={!ready} onClick={() => setEditing({ ...BLANK })}><Plus size={12} /> {t("Reka bentuk baharu", "New design")}</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" disabled={!ready} onClick={() => setEditing({ ...BLANK, kind: "ref", layouts: {} })}>
+                <ImageIcon size={12} /> {t("Reka bentuk baharu daripada gambar rujukan", "New design from a reference picture")}</Button>
+              <Button type="button" size="sm" variant="soft" disabled={!ready} onClick={() => setEditing({ ...BLANK })}>
+                <Plus size={12} /> {t("Mudah: pilih keluarga dan warna", "Simple: pick a family and colours")}</Button>
+            </div>
           )}
         </div>
       )}

@@ -10,6 +10,7 @@ import os
 import pytest
 from fakestore import FakeStore
 from PIL import Image
+from ref_layout_fixture import POSTER
 
 from semasa import cards_library, ideas, media_generator, studio_cards
 from semasa.config import MediaSettings
@@ -454,3 +455,42 @@ def test_a_saved_design_recolours_the_cards_and_the_next_card_gets_its_own_colou
     assert _near(mine[1], (10, 124, 110)) > 400 and _near(mine[1], (216, 35, 42)) < 100           # teal, no ERA red
     assert _near(plain[1], (216, 35, 42)) > 400 and _near(plain[1], (10, 124, 110)) < 100         # the family's own again
     assert _near(mine[0], (234, 243, 241)) > _near(plain[0], (234, 243, 241))                      # the design's paper
+
+
+def _dark(png: bytes, box, limit=90) -> int:
+    crop = Image.open(io.BytesIO(png)).convert("L").crop(box)
+    return sum(1 for v in crop.tobytes() if v < limit)
+
+
+@browser
+def test_a_design_from_a_reference_pours_the_words_into_the_saved_layout():
+    design = {"look": "grid", "layouts": {"main": POSTER}}
+    deck = [{"title": "Notifikasi bukan kelulusan produk", "eyebrow": "Kosmetik",
+             "points": ["NPRA menyemak maklumat.", "Nombor bukan tanda lulus.", "Iklan dinilai berasingan."]},
+            {"title": "Apa yang disemak", "points": ["Dokumen PIF lengkap."]}]
+    pics = studio_cards.render(deck, look="grid", stream="regulab", source="NPRA, Garis Panduan", design=design)
+    assert [Image.open(io.BytesIO(p)).size for p in pics] == [(1080, 1080)] * 2
+    # the background is the reference's pale lilac, not Studio's cream or kraft
+    r, g, b = Image.open(io.BytesIO(pics[0])).convert("RGB").getpixel((540, 1000))
+    assert b > 225 and r > 215 and abs(r - b) < 40, (r, g, b)
+    # the headline block (dark navy ink, heavy) sits where the reference put it, and the three points below it
+    assert _dark(pics[0], (60, 200, 1020, 360)) > 3000
+    assert _dark(pics[0], (60, 400, 640, 760)) > 1200
+    assert _dark(pics[1], (60, 400, 640, 760)) < _dark(pics[0], (60, 400, 640, 760))        # one point instead of three
+    # the same layout at LinkedIn's shape, without the ws.regulab logo in the reference's logo slot
+    li = studio_cards.render(deck[:1], look="grid", stream="linkedin", source="NPRA", design=design)[0]
+    assert Image.open(io.BytesIO(li)).size == (1080, 1350)
+
+
+@browser
+def test_a_references_picture_area_shows_the_chosen_background_and_nothing_when_there_is_none():
+    design = {"look": "grid", "layouts": {"main": POSTER}}
+    deck = [{"title": "Satu", "points": ["a", "b", "c"]}]
+    green = io.BytesIO()
+    Image.new("RGB", (400, 400), (20, 160, 60)).save(green, "JPEG")
+    with_pic = studio_cards.render(deck, look="grid", stream="regulab", design=design, ground=green.getvalue())[0]
+    without = studio_cards.render(deck, look="grid", stream="regulab", design=design)[0]
+    px = Image.open(io.BytesIO(with_pic)).convert("RGB").getpixel((830, 780))                # inside the ellipse's picture area
+    assert px[1] > px[0] + 60 and px[1] > px[2] + 60, px
+    bare = Image.open(io.BytesIO(without)).convert("RGB").getpixel((830, 780))
+    assert abs(bare[0] - bare[1]) < 30 and bare[2] > 200, bare                  # the lilac background, no placeholder blob

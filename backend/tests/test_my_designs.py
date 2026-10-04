@@ -91,3 +91,24 @@ def test_the_jobs_carry_the_snapshot_the_look_and_the_designs_background():
     assert poster["design"] == "poster" and poster["design_pack"]["single"] == "e_stat" and poster["look"] == "era"
     plain = ideas.slide_job(idea, post, "p1", "none")["meta"]
     assert "design_pack" not in plain and plain["look"] == "classic"
+
+
+def test_a_design_made_from_a_reference_carries_its_layouts_within_bounds():
+    head = {"type": "text", "role": "headline", "x": 0, "y": 0, "w": 1, "h": 0.1}
+    layout = {"background": {"color": "#fff"}, "elements": [head]}
+    layouts = {"main": layout, "cover": layout, "bogus": layout, "closing": "x", "single": {"elements": 3}}
+    got = my_designs.pack({"look": "grid", "layouts": layouts})
+    assert set(got["layouts"]) == {"main", "cover"}                         # only known places holding a layout
+    huge = {"look": "grid", "layouts": {"main": {"elements": [{"type": "text", "text": "x" * 400}] * 400}}}
+    assert "layouts" not in my_designs.pack(huge)                           # a layout beyond the size cap is not carried
+    assert "layouts" not in my_designs.pack({"look": "grid", "layouts": "nope"})
+
+
+def test_a_reference_design_does_not_get_a_default_ground_it_never_asked_for():
+    idea = {"id": "i1", "created_by": "u", "brief": {}}
+    post = {"stream": "regulab", "domain": "kosmetik", "slides": [{"title": "x"}]}
+    layout = {"elements": [{"type": "text", "role": "headline", "x": 0, "y": 0, "w": 1, "h": 0.1}]}
+    ref = my_designs.choose([{"id": "ref1234", "look": "grid", "layouts": {"main": layout}}], "", "d:ref1234")
+    assert ideas.slide_job(idea, post, "p1", "none", chosen=ref)["meta"]["bg"] == "none"
+    plain = ideas.slide_job(idea, post, "p1", "none", chosen=("grid", None))["meta"]["bg"]
+    assert plain != "none"                                                  # a Studio look still gets the domain's ground

@@ -15,6 +15,8 @@
      - the worker loads it in headless Chrome (backend/semasa/studio_cards.py) for the real render.
    Below the copied block is Semasa's own part: how a Semasa slide ({title, points}) becomes a Studio card spec. */
 
+import { gradientCoords, layoutToSeed } from "../designCloneSeed.js";
+
 /* SEMASA: set by setLogo(); Studio pasted its logo in here at build time. */
 let LOGO = "";
 export function setLogo(src) { LOGO = src || ""; _logoInk = null; }
@@ -1914,6 +1916,121 @@ export function fitTemplate(look, s, i, n, pts) {
   return "";
 }
 
+/* ---- DESIGNS MADE FROM A REFERENCE (Wan, 4 Oct 2026: "how did you create ERA, Semasa, Grid before? all those are from a reference
+   I gave from ws.regulab Studio, I want like that"). ERA, Grid and Photo were drawn by hand from his references. A design from a
+   reference is the same idea made by the machine: the Design tab reads a reference picture once (the AI returns its LAYOUT: boxes,
+   colours, fonts, which block is the headline, the points, the source, where the pictures and the logo are) and the layout is saved
+   with NO words. When an idea becomes a draft, the new words are poured into that layout (lib/designCloneSeed.js layoutToSeed does
+   the slot-filling and the fit) and this painter draws the result on the card. Pure canvas, no AI at draw time. */
+const MAX_ELEMENTS = 60;
+/** A layout as the painter will trust it: an object with at most MAX_ELEMENTS elements, and nothing else it does not know. */
+export function normLayout(l) {
+  if (!l || typeof l !== "object" || !Array.isArray(l.elements)) return null;
+  const num = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  const els = l.elements.slice(0, MAX_ELEMENTS).filter((e) => e && ["text", "photo", "rect", "ellipse", "line"].includes(e.type)).map((e) => ({
+    ...e, x: num(e.x), y: num(e.y), w: num(e.w), h: num(e.h), text: String(e.text || "").slice(0, 400),
+  }));
+  if (!els.length) return null;
+  const covers = (Array.isArray(l.covers) ? l.covers : []).slice(0, 12).filter((c) => c && ["logo", "person"].includes(c.kind))
+    .map((c) => ({ kind: c.kind, x: num(c.x), y: num(c.y), w: num(c.w), h: num(c.h) }));
+  return { background: l.background && typeof l.background === "object" ? l.background : { color: "#ffffff", gradient: null }, elements: els, covers };
+}
+const wordsFromSpec = (spec) => ({
+  eyebrow: String(spec.eyebrow || "").trim(),
+  headline: stripEmph(spec.title || ""),
+  points: [spec.lead, ...(spec.items || []), spec.note].map((x) => stripEmph(String(x || "").trim())).filter(Boolean),
+  source: String(spec.footnote || "").trim(),
+});
+function seedGradient(ctx, g, x, y, w, h) {
+  const c = gradientCoords(g.angle, w, h), gr = ctx.createLinearGradient(x + c.x1, y + c.y1, x + c.x2, y + c.y2);
+  for (const st of g.stops || []) { try { gr.addColorStop(Math.max(0, Math.min(1, Number(st.at))), st.color); } catch (e) { } }
+  return gr;
+}
+function seedPath(ctx, L) {
+  ctx.beginPath();
+  if (L.ellipse) { ctx.ellipse(L.x + L.w / 2, L.y + L.h / 2, L.w / 2, L.h / 2, 0, 0, Math.PI * 2); return; }
+  const r = Math.min(Math.max(0, L.radius || 0), L.w / 2, L.h / 2);
+  if (r > 0) gRound(ctx, L.x, L.y, L.w, L.h, r); else ctx.rect(L.x, L.y, L.w, L.h);
+}
+/* A text layer as the seed describes it: x is the CENTRE of the box and `top` its top edge. Lines are wrapped on spaces (a word
+   wider than the box is split), the type shrinks by 6% a step until the widest word fits and, with `maxHeight`, until the block fits
+   the box it had in the reference: the words are never cut. */
+function seedText(ctx, L) {
+  let size = L.size;
+  const lh = L.lineHeight || 1.16, left = L.x - L.width / 2;
+  const setFont = () => { ctx.font = `${L.italic ? "italic " : ""}${L.weight} ${size}px "${L.font}", ${L.font === "Playfair Display" ? "serif" : "sans-serif"}`; };
+  let lines = [];
+  const wrap = () => {
+    setFont(); lines = [];
+    for (const para of String(L.text).split("\n")) {
+      let line = "";
+      for (const w of para.split(/\s+/).filter(Boolean).flatMap((x) => hardSplit(ctx, x, L.width))) {
+        const next = line ? line + " " + w : w;
+        if (line && ctx.measureText(next).width > L.width) { lines.push(line); line = w; } else line = next;
+      }
+      lines.push(line);
+    }
+  };
+  wrap();
+  while ((L.maxHeight && lines.length * size * lh > L.maxHeight || lines.some((l) => ctx.measureText(l).width > L.width + 1)) && size > 12) { size = Math.max(12, size * 0.94); wrap(); }
+  ctx.save();
+  try { ctx.letterSpacing = ((L.spacing || 0) / 1000) * size + "px"; } catch (e) { }
+  ctx.fillStyle = L.fill; ctx.textBaseline = "top"; ctx.textAlign = L.align === "center" ? "center" : L.align === "right" ? "right" : "left";
+  if (L.shadow) { ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = Math.round(size * 0.25); ctx.shadowOffsetY = Math.round(size * 0.08); }
+  const ax = L.align === "center" ? L.x : L.align === "right" ? left + L.width : left;
+  lines.forEach((l, i) => ctx.fillText(l, ax, L.top + i * size * lh + (size * lh - size) / 2));
+  ctx.restore();
+  return L.top + lines.length * size * lh;
+}
+async function paintSeed(ctx, seed, o) {
+  for (const L of seed.layers) {
+    if (L.kind === "rect") {
+      if (!L.fill && !L.gradient && !L.stroke) continue;
+      ctx.save(); ctx.globalAlpha = L.opacity == null ? 1 : L.opacity; seedPath(ctx, L);
+      if (L.gradient && (L.gradient.stops || []).length >= 2) ctx.fillStyle = seedGradient(ctx, L.gradient, L.x, L.y, L.w, L.h); else ctx.fillStyle = L.fill || "transparent";
+      if (L.fill || L.gradient) ctx.fill();
+      if (L.stroke && L.strokeW > 0) { ctx.strokeStyle = L.stroke; ctx.lineWidth = L.strokeW; ctx.stroke(); }
+      ctx.restore();
+    } else if (L.kind === "line") {
+      ctx.save(); ctx.globalAlpha = L.opacity == null ? 1 : L.opacity; ctx.strokeStyle = L.stroke || "#000"; ctx.lineWidth = L.strokeW || 2; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(L.x1, L.y1); ctx.lineTo(L.x2, L.y2); ctx.stroke(); ctx.restore();
+    } else if (L.kind === "image") {
+      const im = await loadImg(L.url);
+      if (!im) continue;
+      if (L.cover) coverDraw(ctx, im, seed.width, seed.height);
+      else if (L.fitIn) {
+        const k = Math.min(L.fitIn.w / im.width, L.fitIn.h / im.height);
+        ctx.drawImage(im, L.fitIn.x + (L.fitIn.w - im.width * k) / 2, L.fitIn.y + (L.fitIn.h - im.height * k) / 2, im.width * k, im.height * k);
+      }
+    } else if (L.kind === "photo") {
+      if (L.role === "person" && !L.url) continue;              // a face in the reference: nothing of ours stands in for it
+      const im = L.url ? await loadImg(L.url) : null;
+      if (!im) continue;                                       // no picture for this area: nothing is drawn (the background carries the look)
+      ctx.save(); seedPath(ctx, { ...L, ellipse: L.shape === "ellipse", radius: L.shape === "rounded" ? Math.min(L.w, L.h) * 0.08 : 0 }); ctx.clip();
+      ctx.translate(L.x, L.y); coverDraw(ctx, im, L.w, L.h);
+      ctx.restore();
+    } else if (L.kind === "text") seedText(ctx, L);
+  }
+}
+async function renderRefCard(spec) {
+  const [W, H] = sizeOf(spec);
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const ctx = styleCtx(c.getContext("2d"), spec);
+  try { await document.fonts.ready; } catch (e) { }
+  const layout = normLayout(spec.layout);
+  if (!layout) return { warn: ["The saved design has no usable layout."], y: 0 };
+  const hasPhoto = layout.elements.some((e) => e.type === "photo");
+  const words = wordsFromSpec(spec);
+  // our logo takes the place of the reference's logo, for ws.regulab only (a LinkedIn card carries no ws.regulab identity)
+  const logoUrl = spec.stream === "linkedin" ? "" : LOGO;
+  const { seed } = layoutToSeed(layout, words, { width: W, height: H, pictureUrl: hasPhoto ? spec.bg || "" : "", logoUrl });
+  ctx.fillStyle = (layout.background && layout.background.color) || "#fff"; ctx.fillRect(0, 0, W, H);
+  await paintSeed(ctx, seed, {});
+  const warn = [];
+  if (!words.headline) warn.push("The design needs a headline.");
+  return { url: c.toDataURL("image/jpeg", 0.9), warn, y: 0 };
+}
+
 /* ---- MY DESIGNS (Wan, 4 Oct 2026: "create a default design to use for carousel, poster and single card, like ERA, Photo, Grid
    and Semasa. I need not fill any text: the design has the layout, and the text fills it when the idea comes in from the draft.
    Don't make it complicated."). A design is the same machinery as a look, saved with a name and no words:
@@ -1942,6 +2059,11 @@ export function normDesign(d) {
   if (/^(none|[a-z]{2,20})$/.test(d.mascot || "")) out.mascot = d.mascot;
   const eb = String(d.eyebrow || "").trim().slice(0, 80);
   if (eb) out.eyebrow = eb;
+  if (d.layouts && typeof d.layouts === "object") {                 // a design made from a reference: one layout per place, or "main" for all
+    const ls = {};
+    for (const k of [...POSITIONS, "main"]) { const nl = normLayout(d.layouts[k]); if (nl) ls[k] = nl; }
+    if (Object.keys(ls).length) out.layouts = ls;
+  }
   return out;
 }
 /** Where a slide sits in its set, for the design's per-place template. */
@@ -1981,6 +2103,11 @@ export function specsFor(slides, o = {}) {
       mascot_size: Number(s.mascot_size) || undefined,
     };
     let spec;
+    const place = placeOf(i, n), refLayout = D && D.layouts && (D.layouts[place] || D.layouts.main || D.layouts.middle || D.layouts.cover || D.layouts.single);
+    if (refLayout && !(s.template && TEMPLATE_KEYS.includes(s.template))) {
+      // a design from a reference: every slide without a template of its own is drawn in that layout, the words poured in
+      return { ...base, template: "c_ref", layout: refLayout, lead: lead0, items: pts, palette: undefined };
+    }
     const chosen = s.template && TEMPLATE_KEYS.includes(s.template) ? s.template
       : (D && D[placeOf(i, n)]) || (o.fit ? fitTemplate(look, s, i, n, pts) : "");
     if (chosen) {
@@ -2020,6 +2147,7 @@ function renderSpec(spec) {
 }
 async function renderSpecNow(spec) {
   if (spec.bg && spec.template[0] !== "p" && await groundIsLight(spec)) spec = { ...spec, scrim: "none", _light: true };
+  if (spec.template === "c_ref") return renderRefCard(spec);
   if (MORE_TPL[spec.template]) return renderMoreCard(spec);
   if (GRID_TPL[spec.template]) return renderGridCard(spec);
   if (ERA_TPL[spec.template]) return renderEraCard(spec);
@@ -2055,17 +2183,18 @@ function fullWarnFixed(spec, r) {
 
 /* The faces Studio's cards use. The canvas only draws with a face that is already LOADED, and nothing in the DOM
    uses these, so each is asked for by name; the sample text covers latin and latin-ext (ā, ş, ı ...). */
-const FACES = ["600 20px Poppins", "700 20px Poppins", "800 20px Poppins",
+const FACES = ["600 20px Poppins", "700 20px Poppins", "800 20px Poppins", '400 20px Anton', '700 20px "Playfair Display"', '800 20px "Playfair Display"',
   '400 20px "Instrument Sans"', '500 20px "Instrument Sans"', '600 20px "Instrument Sans"',
   '400 20px "JetBrains Mono"', '500 20px "JetBrains Mono"', "700 20px Caveat"];
 let _fonts = null;
 export function ensureFonts(base = "") {
   if (_fonts) return _fonts;
   _fonts = (async () => {
-    const href = base + "fonts.css";
-    if (!document.querySelector(`link[data-studio-cards]`)) {
+    // fonts.css: the Studio faces; fragrance-fonts.css: Anton and Playfair, which a design made from a reference may ask for
+    for (const css of ["fonts.css", "fragrance-fonts.css"]) {
+      if (document.querySelector(`link[data-studio-cards="${css}"]`)) continue;
       const link = document.createElement("link");
-      link.rel = "stylesheet"; link.href = href; link.dataset.studioCards = "1";
+      link.rel = "stylesheet"; link.href = base + css; link.dataset.studioCards = css;
       await new Promise((res) => { link.onload = res; link.onerror = res; document.head.appendChild(link); });
     }
     await Promise.all(FACES.map((f) => document.fonts.load(f, "Aa āşı 1–2").catch(() => null)));

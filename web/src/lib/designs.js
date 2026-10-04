@@ -17,7 +17,9 @@ export const newDesignId = () => `x${Math.random().toString(36).slice(2, 8)}`;
 export const DESIGN_KEYS = ["look", "cover", "middle", "closing", "single", "accent", "paper", "bg", "scrim", "mascot", "eyebrow"];
 export function packDesign(d) {
   if (!d || !["grid", "era", "photo"].includes(d.look)) return null;
-  return Object.fromEntries(DESIGN_KEYS.filter((k) => typeof d[k] === "string" && d[k].trim()).map((k) => [k, d[k].trim().slice(0, 120)]));
+  const out = Object.fromEntries(DESIGN_KEYS.filter((k) => typeof d[k] === "string" && d[k].trim()).map((k) => [k, d[k].trim().slice(0, 120)]));
+  if (d.layouts && typeof d.layouts === "object" && Object.keys(d.layouts).length) out.layouts = d.layouts;   // a design made from a reference
+  return out;
 }
 
 /** A look value -> the family to draw in, the design (normalised, for the renderer) and the snapshot a job carries.

@@ -27,6 +27,8 @@ log = get_logger("semasa.studio_cards")
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE = ROOT / "web" / "src" / "lib" / "cards" / "studio.js"
+LIB = ROOT / "web" / "src" / "lib"
+LIB_MODULES = ("/designCloneSeed.js", "/fonts.js")
 ASSETS = ROOT / "web" / "public" / "cards"
 ORIGIN = "https://cards.semasa.invalid"
 LOOKS = ("grid", "era", "photo")
@@ -47,6 +49,9 @@ def _serve(route: Any) -> None:
         return route.fulfill(status=200, content_type="text/html", body=PAGE)
     if path == "/studio.js":
         return route.fulfill(status=200, content_type="application/javascript", body=MODULE.read_text("utf-8"))
+    if path in LIB_MODULES:
+        # the two files studio.js imports (a design made from a reference pours its words into a saved layout)
+        return route.fulfill(status=200, content_type="application/javascript", body=(LIB / path[1:]).read_text("utf-8"))
     if path.startswith("/cards/"):
         target = (ASSETS / path[len("/cards/"):]).resolve()
         if ASSETS.resolve() in target.parents and target.is_file():
@@ -92,7 +97,7 @@ def render(items: list[dict[str, Any]], *, look: str, stream: str, eyebrow: str 
     if look == "photo" and not ground and not all(it.get("bg_url") for it in items):
         raise SlideError("the Photo look is drawn on a picture and there is none: choose a background "
                          "(the post's picture or an upload), or pick Grid or Info ERA")
-    if not MODULE.is_file() or not (ASSETS / "fonts.css").is_file():
+    if not MODULE.is_file() or not (ASSETS / "fonts.css").is_file() or not all((LIB / m[1:]).is_file() for m in LIB_MODULES):
         raise SlideError("the Studio card files are missing from this checkout (web/src/lib/cards/studio.js, "
                          "web/public/cards/)")
     from playwright.sync_api import sync_playwright

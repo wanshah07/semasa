@@ -11,6 +11,7 @@ The drawing is the Studio renderer (web/src/lib/cards/studio.js normDesign), whi
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -30,11 +31,23 @@ def token(look: str) -> str | None:
     return m.group(1) if m else None
 
 
+MAX_LAYOUT_BYTES = 80_000      # a design made from a reference carries its layouts; nothing bigger is kept
+PLACES = ("cover", "middle", "closing", "single", "main")
+
+
 def pack(design: dict[str, Any] | None) -> dict[str, Any] | None:
-    """The snapshot a job carries: only the known keys, strings only, and only if the family is a Studio one."""
+    """The snapshot a job carries: only the known keys, strings only, and only if the family is a Studio one. A design made
+    from a reference also carries its `layouts` ({place: layout}), read by the renderer (studio.js normLayout), which keeps
+    only what it understands; here they are only bounded in size and place."""
     if not isinstance(design, dict) or design.get("look") not in FAMILIES:
         return None
-    return {k: str(design[k])[:120] for k in KEYS if isinstance(design.get(k), str) and design[k].strip()}
+    out: dict[str, Any] = {k: str(design[k])[:120] for k in KEYS if isinstance(design.get(k), str) and design[k].strip()}
+    layouts = design.get("layouts")
+    if isinstance(layouts, dict):
+        keep = {k: v for k, v in layouts.items() if k in PLACES and isinstance(v, dict) and isinstance(v.get("elements"), list)}
+        if keep and len(json.dumps(keep, separators=(",", ":"))) <= MAX_LAYOUT_BYTES:
+            out["layouts"] = keep
+    return out
 
 
 def load(store: Any) -> tuple[list[dict[str, Any]], str]:

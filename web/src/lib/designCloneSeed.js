@@ -224,7 +224,7 @@ export function layoutToSeed(layout, words, { width, height, name, pictureUrl = 
     if (c.kind === "logo" && logoUrl && !slotted.logo++) {
       layers.push({ kind: "image", name: t("Logo (ganti)", "Logo (replaceable)"), role: "logo", url: logoUrl, fitIn: { x: c.x * W, y: c.y * H, w: c.w * W, h: c.h * H } });
     } else if (c.kind === "person") {
-      layers.push({ kind: "photo", name: `${t("Gambar (ganti)", "Picture (replace)")}: ${t("orang", "person")} ${++slotted.person}`, url: "", shape: "rounded",
+      layers.push({ kind: "photo", role: "person", name: `${t("Gambar (ganti)", "Picture (replace)")}: ${t("orang", "person")} ${++slotted.person}`, url: "", shape: "rounded",
         x: c.x * W, y: c.y * H, w: c.w * W, h: c.h * H });
     }
   }

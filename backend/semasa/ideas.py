@@ -691,7 +691,7 @@ def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str 
     look, saved = chosen or (look_of(idea), None)
     if bg == "none" and saved and saved.get("bg"):
         bg = saved["bg"]                       # the saved design's own background, when the post has no picture of its own
-    elif bg == "none" and studio_cards.is_studio_look(look):
+    elif bg == "none" and studio_cards.is_studio_look(look) and not (saved and saved.get("layouts")):
         bg = cards_library.default_ground(post.get("stream") or "regulab", post.get("domain"), post.get("angle")) or "none"
     return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
             "prompt": "", "created_by": idea.get("created_by"),

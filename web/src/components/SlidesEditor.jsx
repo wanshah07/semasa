@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Expand, ImageIcon, Layers, Loader2, Minimize2, Paintbrush, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Expand, ImageIcon, Layers, Loader2, Minimize2, Paintbrush, Palette, Plus, Trash2 } from "lucide-react";
 import { SLIDE_WORDS, isPromo, normaliseSlides, slidesKey } from "../lib/compliance";
 import { cardFromCaption, slidesFromCaption } from "../lib/cards/fromCaption";
 import { useLang } from "../lib/i18n";
 import { LOOKS, isStudioLook, takesMascot } from "../lib/cards/studio";
 import { MASCOTS, TEMPLATES, noteLabel, templateOf } from "../lib/cards/library";
 import BackgroundPicker from "./BackgroundPicker";
+import CanvaHandoff from "./CanvaHandoff";
 import ImageLightbox, { useLightbox } from "./ImageLightbox";
 import LookPicker from "./LookPicker";
 import TemplateCatalogue from "./TemplateCatalogue";
@@ -39,7 +40,7 @@ const kindOf = (t, i, n) => (i === 0 ? t("Kulit", "Cover") : i === n - 1 && n > 
 /* The carousel of one post: its words, where they are drawn from, and the drawn pictures.
    Drawing is done by the worker (backend/semasa/slides.py) with no AI and no key. */
 export default function SlidesEditor({ post, rows, setRows, locked, jobs, attachedIds, bg, setBg, bgOptions, busy,
-  onRender, onUse, look, setLook, preview, blocked, setBlocked, resolveBg = () => "", captionPost = null, onToast = () => {}, picker = null }) {
+  onRender, onUse, look, setLook, fit = false, setFit = null, preview, blocked, setBlocked, resolveBg = () => "", captionPost = null, onToast = () => {}, picker = null }) {
   const { t, lang } = useLang();
   const n = rows.length;
   const size = post.stream === "linkedin" ? "1080×1350" : "1080×1080";
@@ -49,6 +50,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
   const set = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const studio = isStudioLook(look);
   const [open, setOpen] = useState(() => new Set());
+  const [canva, setCanva] = useState(false);
   const [pickFor, setPickFor] = useState(null);          // {i: null} the set's background, {i: n} slide n+1's, null closed
   const slideUrls = latestDone?.meta?.slide_urls || [];
   const box = useLightbox(slideUrls.map((u, i) => ({ url: u, title: t("Slaid {n} daripada {m}", "Slide {n} of {m}", { n: i + 1, m: slideUrls.length }) })));
@@ -149,7 +151,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
         <div className="mt-3 rounded-tile bg-surface-2/40 p-2.5">
           <LookPicker value={look} onChange={setLook} slides={previewSlides} stream={post.stream}
             eyebrow={preview.eyebrow} citation={preview.citation} bgUrl={preview.bgUrl} bgChosen={bg !== "none"}
-            mascots={MASCOTS} onBlocked={setBlocked} />
+            mascots={MASCOTS} onBlocked={setBlocked} fit={fit} onFit={setFit} />
         </div>
       )}
 
@@ -205,6 +207,9 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
             {latestDone.meta?.bg_missing ? ` · ${latestDone.meta.bg_missing}`
               : latestDone.meta?.bg_used ? ` · ${t("atas gambar post", "on the post picture")}` : ` · ${t("atas kertas", "on paper")}`}
             <button type="button" onClick={() => box.open(0)} className="inline-flex items-center gap-0.5 text-accent"><Expand size={10} /> {t("besarkan", "enlarge")}</button>
+            <button type="button" onClick={() => setCanva(true)} className="inline-flex items-center gap-0.5 text-accent"
+              title={t("Bina semula slaid ini sebagai reka bentuk Canva yang boleh disunting", "Rebuild these slides as an editable Canva design")}>
+              <Palette size={10} /> {t("Bina semula dalam Canva", "Rebuild in Canva")}</button>
           </p>
           {drawnStale && <p className="mt-1 text-[12px] text-warn">
             {t("Slaid di atas telah diubah sejak dilukis. Tekan Jana slaid supaya gambar membawa perkataan yang sama.",
@@ -219,6 +224,9 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
         </div>
       )}
       <ImageLightbox {...box.props} />
+      <CanvaHandoff open={canva} onClose={() => setCanva(false)} slides={latestDone?.meta?.slides || normaliseSlides(fromRows(rows))}
+        urls={slideUrls} stream={post.stream} size={latestDone?.meta?.size?.length === 2 ? latestDone.meta.size : post.stream === "linkedin" ? [1080, 1350] : [1080, 1080]}
+        look={latestDone?.meta?.look || look} citation={preview.citation || ""} eyebrow={preview.eyebrow || ""} kind="carousel" />
       {picker && <BackgroundPicker open={!!pickFor} onClose={() => setPickFor(null)} target={pickFor} nSlides={n}
         current={pickFor?.i === null || pickFor === null ? bg : rows[pickFor.i]?.bg} onChoose={chooseBg} picker={picker} />}
     </div>
@@ -290,7 +298,7 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, str
           aria-label={t("Templat slaid {n}", "Slide {n} template", { n: i + 1 })} /></label>
         <button type="button" onClick={() => setShowCat((x) => !x)} aria-expanded={showCat}
           className="mt-1 text-[11px] font-medium text-accent hover:underline">
-          {showCat ? t("Tutup katalog", "Close the catalogue") : t("Pilih dari katalog (12 templat, dilukis)", "Pick from the catalogue (12 templates, drawn)")}</button>
+          {showCat ? t("Tutup katalog", "Close the catalogue") : t("Pilih dari katalog ({n} templat, dilukis)", "Pick from the catalogue ({n} templates, drawn)", { n: TEMPLATES.length })}</button>
         {showCat && <div className="mt-1.5"><TemplateCatalogue value={r.template} stream={stream} disabled={locked}
           onPick={(k) => set({ template: k })} /></div>}</div>
       {uses("eyebrow") && f("eyebrow", t("Label atas (eyebrow)", "Eyebrow"), { placeholder: t("ikut set", "as the set") })}

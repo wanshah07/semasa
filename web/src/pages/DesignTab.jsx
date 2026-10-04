@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Eye, ImagePlus, LayoutTemplate, Loader2, PenTool, Pencil, Plus, RotateCcw,
+import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Eye, ImagePlus, LayoutTemplate, Loader2, Palette, PenTool, Pencil, Plus, RotateCcw,
   Save, Trash2, Wand2, X } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { STREAMS } from "../lib/brand";
@@ -22,6 +22,7 @@ import { layoutToSeed, patchBoxes, slotsOf, wordsFromLayout } from "../lib/desig
 import { loadImageFile, samplePatches, sizeLike } from "../lib/designPatch";
 import { renderSeedPreview } from "../lib/kanvasBuild";
 import DesignLibrary from "../components/DesignLibrary";
+import CanvaHandoff from "../components/CanvaHandoff";
 
 /* The Design tab (Wan, 25 Sep 2026: "add design section - to create poster, single card and carousel for post" and
    "the slide can create based on upload and prompt/idea provided"). The page only registers a job: the worker
@@ -55,6 +56,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
   const [fromPost, setFromPost] = useState("");
   const [busy, setBusy] = useState("");
   const [look, setLook] = useState("classic");
+  const [fit, setFit] = useState(true);                      // fit the design to each slide (studio.js fitTemplate)
   // a reference to take ideas from (Wan, 26 Sep 2026: "upload reference and AI will review > render and get
   // confirmation to save the design"): read by the worker, drawn, and kept only when Wan presses Simpan
   const [styleFile, setStyleFile] = useState(null);
@@ -214,7 +216,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
       }
       if (bg === "from_ref") bgValue = "from_ref";           // an original background in the reference's mood (worker)
       if (bg === "library") bgValue = `lib:${libPick}`;     // one of Wan's own photographs (web/public/cards/grounds)
-      const meta = { flow: "design", design, format, ...sizeMeta(format), stream, bg: bgValue, look: styleUp && autoLook ? "auto" : look,
+      const meta = { flow: "design", design, format, ...sizeMeta(format), stream, bg: bgValue, look: styleUp && autoLook ? "auto" : look, fit: fit && look !== "classic",
         eyebrow: eyebrow.trim(), citation: citation.trim(),
         ...(styleUp ? { style_ref: { url: styleUp.url, path: styleUp.path, name: styleFile.name } } : {}),
         ...(words === "ai" ? { brief: brief.trim() } : { slides: own }), ...(fromPost ? { from_post: fromPost } : {}) };
@@ -389,7 +391,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
             "The AI picks the design from the reference; the choice below is only a preview.")}</p>}
           <LookPicker value={look} onChange={setLook} slides={previewSlides} sample={sampleWords} stream={stream}
             eyebrow={eyebrow.trim()} citation={citation.trim()} bgUrl={previewBg} bgChosen={bg !== "none"} mascots={MASCOTS}
-            size={pxOf(format)} onBlocked={setLookBlocked} />
+            size={pxOf(format)} onBlocked={setLookBlocked} fit={fit} onFit={setFit} />
         </div>}
 
         <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
@@ -522,6 +524,7 @@ function ReviewPanel({ row, mine, onToast, gens }) {
 
 function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy = () => null }) {
   const { t } = useLang();
+  const [canva, setCanva] = useState(null);                  // the design row being handed to Canva
   if (!rows.length) {
     return <p className="rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">
       {t("Belum ada reka bentuk. Isi borang di atas.", "No designs yet. Fill in the form above.")}</p>;
@@ -580,6 +583,11 @@ function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy 
                 )}
                 {urls[0] && <a href={urls[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">
                   <ExternalLink size={11} /> {t("Buka fail", "Open file")}</a>}
+                {urls[0] && r.status === "done" && Array.isArray(m.slides) && m.slides.length > 0 && (
+                  <button type="button" onClick={() => setCanva(r)} className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline"
+                    title={t("Bina semula sebagai reka bentuk Canva yang boleh disunting", "Rebuild as an editable Canva design")}>
+                    <Palette size={11} /> {t("Bina semula dalam Canva", "Rebuild in Canva")}</button>
+                )}
                 {mine && (
                   <span className="ml-auto flex gap-1">
                     {r.status === "error" && <Button size="sm" variant="soft" title={t("Cuba lagi", "Try again")}
@@ -596,6 +604,10 @@ function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy 
           </Card>
         );
       })}
+      <CanvaHandoff open={!!canva} onClose={() => setCanva(null)} slides={canva?.meta?.slides || []} urls={canva?.meta?.slide_urls || []}
+        stream={canva?.meta?.stream || "regulab"} size={canva?.meta?.size?.length === 2 ? canva.meta.size : pxOf(canva?.meta?.format)}
+        sizeName={canva?.meta?.size_name || ""} look={canva?.meta?.look || "classic"} citation={canva?.meta?.citation || ""}
+        eyebrow={canva?.meta?.eyebrow || ""} kind={canva?.meta?.design || "carousel"} />
     </div>
   );
 }

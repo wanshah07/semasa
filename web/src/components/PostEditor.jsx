@@ -39,6 +39,10 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   const lastLook = () => (mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta?.look) || "classic";
   const [look, setLook] = useState(lastLook);
+  // "fit the design to each slide": on unless the last drawing was explicitly made with it off (a drawing from before
+  // the option existed carries no flag, and gets the varied designs when it is drawn again)
+  const [fit, setFit] = useState(() => (mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta?.fit) !== false);
   const [lookBlocked, setLookBlocked] = useState(null);
   const [busy, setBusy] = useState(false);
   const [newPic, setNewPic] = useState("");
@@ -266,7 +270,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
     const { error } = await supabase.from(TABLES.media).insert({
       mode: "slides", type: "image", prompt: "", status: "pending", created_by: user.id,
       post_id: post.id, idea_id: post.idea_id,
-      meta: { flow: "B", slides, stream: post.stream, citation, domain: post.domain, angle: post.angle, bg, look },
+      meta: { flow: "B", slides, stream: post.stream, citation, domain: post.domain, angle: post.angle, bg, look, fit: fit && look !== "classic" },
     });
     setBusy(false);
     if (error) {
@@ -458,7 +462,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       {hasSlides ? (
         <div id={`slides-${post.id}`}><SlidesEditor post={post} rows={slideRows} setRows={setSlideRows} locked={locked} jobs={slideJobs}
           attachedIds={mediaIds} bg={bg} setBg={setBg} bgOptions={bgOptions} busy={busy}
-          onRender={renderSlides} onUse={chooseSet} look={look}
+          onRender={renderSlides} onUse={chooseSet} look={look} fit={fit} setFit={setFit}
           setLook={(k) => { setLook(k); if (isStudioLook(k) && bg === "none" && defaultGround(post)) setBg(defaultGround(post)); }}
           preview={{ eyebrow, citation, bgUrl, brand: reg }} blocked={lookBlocked} setBlocked={setLookBlocked} resolveBg={resolveBg}
           onToast={onToast} picker={picker} captionPost={{ stream: post.stream, hook: post.hook || "",

@@ -1,7 +1,9 @@
 // The slide -> Studio card mapping (web/src/lib/cards/studio.js, specsFor). The drawing itself is tested in a real
 // browser by backend/tests/test_studio_cards.py; this checks the one rule the mapping owns: every point of every
 // slide reaches a card, whatever the look. `npm test`.
-import { specsFor, LOOKS, STUDIO_LOOKS } from "./src/lib/cards/studio.js";
+import { specsFor, LOOKS, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate } from "./src/lib/cards/studio.js";
+import { canvaBrief } from "./src/lib/canvaBrief.js";
+import { readFileSync } from "node:fs";
 import { cardFromCaption, headAndRest, slidesFromCaption } from "./src/lib/cards/fromCaption.js";
 
 let failed = 0;
@@ -96,6 +98,38 @@ ok(LOOKS.map((l) => l.k).join(",") === "classic,grid,era,photo", "the four looks
   const [bad] = specsFor([{ title: "Tajuk", points: ["a"], font: "comic", mascot_pos: "top" }], { look: "grid", mascots: M });
   ok(bad.font === undefined && bad.mascot_pos === undefined, "an unknown font or place is ignored");
 }
+
+// the catalogue file and the renderer name the same twenty-one templates (4 Oct 2026: nine added)
+const cat = JSON.parse(readFileSync(new URL("../rules/cards.json", import.meta.url), "utf8")).templates.map((x) => x.k);
+ok(cat.length === 21 && cat.slice().sort().join() === TEMPLATE_KEYS.slice().sort().join(), "rules/cards.json and studio.js list the same templates");
+ok(cat.every((k) => /^[gep]_[a-z]{2,8}$/.test(k)), "every template key passes the slide-design pattern the database and the worker check");
+
+// "fit the design to each slide": off, nothing changes; on, only a template that draws every point is chosen
+const FIT = [{ title: "Kulit", points: [] }, { title: "Tempoh purata", points: ["14", "hari"] },
+  { title: "Mitos dan fakta", points: ["Ada nombor, lulus | Nombor bukan kelulusan", "NPRA uji semua | NPRA semak maklumat"] },
+  { title: "Langkah notifikasi", points: ["PIF | Lengkap.", "Hantar | QUEST3+.", "Nombor | Boleh jual."] },
+  { title: "Sebelum anda hantar", points: ["INCI", "Label", "Surat"] }, { title: "Tutup", points: ["Satu ayat."] }];
+const tpls = (look, fit) => specsFor(FIT, { look, fit }).map((x) => x.template).join(",");
+ok(tpls("grid", false) === "g_title,g_title,g_title,g_title,g_title,g_title", "fit off: grid is unchanged");
+ok(tpls("grid", true) === "g_title,g_stat,g_myth,g_steps,g_check,g_title", "fit on, grid: figure, myth, steps, checklist; plain slides keep the look's own");
+ok(tpls("era", true) === "e_hook,e_stat,e_myth,e_flow,e_check,e_explain", "fit on, era: figure, myth, flow, checklist");
+ok(tpls("photo", true).startsWith("p_title,p_stat,p_list,p_list,p_list,"), "fit on, photo: figure, then list panels");
+for (const look of STUDIO_LOOKS) {
+  specsFor(FIT, { look, fit: true }).forEach((sp, i) => {
+    for (const p of FIT[i].points) ok(words(sp).includes(p), `fit ${look} slide ${i + 1} (${sp.template}) keeps "${p}"`);
+  });
+}
+ok(specsFor([{ title: "x", points: ["14", "hari"], template: "g_bars" }], { look: "grid", fit: true })[0].template === "g_bars", "a template chosen on the slide beats fit");
+ok(fitTemplate("grid", { title: "Tempoh", lead: "" }, 0, 1, ["14", "hari"]) === "g_stat", "a single card can take the figure design (it is not a cover)");
+ok(fitTemplate("grid", { title: "Mitos", lead: "" }, 1, 3, ["a | b | c"]) !== "g_myth", "a myth row needs exactly two cells");
+ok(fitTemplate("era", { title: "Langkah", lead: "" }, 1, 3, ["a", "b", "c", "d", "e", "f"]) === "", "too many points for a template that would not draw them all: the look's own rule");
+
+// the Canva brief carries every word and names the stream's rule
+const br = canvaBrief({ slides: [{ title: "Notifikasi *bukan* kelulusan", points: ["Satu", "Dua"], lead: "Sokongan" }], urls: ["https://x/1.jpg"],
+  stream: "linkedin", size: [1080, 1350], look: "era", citation: "EC 1223/2009" });
+ok(["Notifikasi *bukan* kelulusan", "Satu", "Dua", "Sokongan", "https://x/1.jpg", "1080×1350", "#D8232A", "EC 1223/2009"].every((x) => br.includes(x)), "the brief carries the words, picture, size, colours and source");
+ok(br.includes("no ws.regulab logo") && !br.includes("website only in the footer"), "LinkedIn: no ws.regulab identity");
+ok(canvaBrief({ slides: [{ title: "T", points: [] }], stream: "regulab" }).includes("website only in the footer"), "ws.regulab: logo and website in the footer only");
 
 if (failed) { console.error(`${failed} card mapping check(s) failed`); process.exit(1); }
 console.log("cards: slide -> Studio card mapping keeps every word");

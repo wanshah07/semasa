@@ -11,7 +11,7 @@ import pytest
 from fakestore import FakeStore
 from PIL import Image
 
-from semasa import ideas, media_generator, studio_cards
+from semasa import cards_library, ideas, media_generator, studio_cards
 from semasa.config import MediaSettings
 from semasa.slides import SlideError
 
@@ -72,8 +72,16 @@ def test_a_studio_look_is_drawn_by_studio_and_recorded(monkeypatch, _uploads):
     assert done["status"] == "done" and done["model"] == "studio-era" and done["meta"]["look"] == "era"
     assert done["meta"]["count"] == 3 and len(_uploads) == 3
     assert seen == {"look": "era", "stream": "regulab", "eyebrow": "Kosmetik", "source": "NPRA, Garis Panduan",
-                    "ground": None, "ground_mime": "image/jpeg", "size": None, "n": 3,
+                    "ground": None, "ground_mime": "image/jpeg", "size": None, "n": 3, "fit": False,
                     "mascots": [{"k": k, "url": f"/cards/mascots/{k}.webp"} for k in ("wave", "point", "confused", "shocked")]}
+
+
+def test_fit_the_design_to_each_slide_reaches_the_renderer_only_when_the_job_says_so(monkeypatch, _uploads):
+    seen = []
+    monkeypatch.setattr(studio_cards, "render", lambda items, **kw: seen.append(kw["fit"]) or [_jpeg() for _ in items])
+    for meta in ({"look": "era", "fit": True}, {"look": "era", "fit": False}, {"look": "era"}):
+        assert _run(_store(meta)) is True
+    assert seen == [True, False, False]
 
 
 def test_each_slide_gets_its_own_background_once_fetched(monkeypatch, _uploads):
@@ -142,6 +150,8 @@ def test_the_idea_carries_its_look_to_the_slide_job():
     idea = {"id": "i1", "created_by": "u", "brief": {"look": "grid"}}
     post = {"slides": SLIDES, "stream": "regulab", "citation": "", "domain": "kosmetik", "angle": None}
     assert ideas.slide_job(idea, post, "p1")["meta"]["look"] == "grid"
+    assert ideas.slide_job(idea, post, "p1")["meta"]["fit"] is True            # a Studio look fits each slide by default
+    assert ideas.slide_job({"id": "i2", "brief": {}}, post, "p1")["meta"]["fit"] is False
     # no picture made: a Studio look is drawn on Studio's ground for the domain; Semasa's own look stays on paper
     assert ideas.slide_job(idea, post, "p1")["meta"]["bg"] == "lib:g_makmal02"
     assert ideas.slide_job(idea, post, "p1", bg="post_image")["meta"]["bg"] == "post_image"
@@ -254,3 +264,46 @@ def test_text_size_font_and_mascot_choices_really_change_the_picture_and_the_def
     # the automatic place is picked from the title, so one of the three may be the one already drawn: the other two move it
     spots = {pos: px([{**base[0], "mascot_pos": pos}]) for pos in ("bl", "bc", "br")}
     assert sum(differs(plain, img) for img in spots.values()) == 2, "a chosen place must move the mascot, except to where it was"
+
+
+# the twenty-one designs, each on words shaped for it (4 Oct 2026: nine added). A slide the browser calls too full raises.
+SHAPES = {
+    "g_title": {"note": "Semak sumber."}, "g_stat": {"points": ["245", "hari"]},
+    "g_bars": {"points": ["Malaysia | 0.5 | 0.5%", "EU | 0.4 | 0.4%"]}, "g_rows": {"points": ["A | b", "C | d", "E | f"]},
+    "g_table": {"points": ["I | Surat | amaran", "II | Batal | produk"]},
+    "g_check": {"points": ["Senarai INCI | Setiap bahan.", "Artwork label | Bahasa betul.", "Surat pengilang"]},
+    "g_myth": {"points": ["Ada nombor, sudah lulus | Nombor bukan kelulusan", "NPRA uji semua | NPRA semak maklumat"]},
+    "g_steps": {"points": ["PIF | Dokumen lengkap.", "Hantar | QUEST3+.", "Nombor | Boleh jual."]},
+    "e_hook": {"lead": "Padahal sudah di pasaran?", "points": ["Apa dilanggar?", "Siapa semak?"]},
+    "e_explain": {"points": ["INCI | Padan formula.", "Label | Nama."]},
+    "e_flow": {"points": ["Aduan | Fail dibuka.", "Sampel | Diuji."], "note": "Kos ditanggung syarikat."},
+    "e_vs": {"points": ["Ujian | RM8,000", "Tarik balik | RM240,000", "Kos henti"], "note": "Contoh."},
+    "e_myth": {"points": ["Bernombor bermakna lulus | Nombor bukan kelulusan."], "note": "Semak sumber."},
+    "e_check": {"points": ["INCI | Padan formula.", "Label | Nama.", "Surat"], "note": "Satu tiada, lot tertahan."},
+    "e_stat": {"points": ["14", "hari bekerja"], "lead": "Hantar hingga nombor.", "note": "Contoh."},
+    "p_title": {}, "p_fact": {"points": ["Surat", "INCI", "Label"]}, "p_quote": {"lead": "NPRA"},
+    "p_stat": {"points": ["245", "hari"]},
+    "p_list": {"points": ["Surat | Pengeluar asal.", "INCI | Setiap bahan.", "Label | Betul."]},
+    "p_split": {"lead": "Nombor hanya bukti.", "points": ["Semak maklumat", "Bukan ujian"]},
+}
+
+
+@browser
+@pytest.mark.parametrize("stream,size", [("regulab", (1080, 1080)), ("linkedin", (1080, 1350))])
+def test_every_template_draws_at_the_streams_size_without_a_warning(stream, size):
+    assert set(SHAPES) == {t["k"] for t in cards_library.catalogue()["templates"]}, "a template with no sample here is untested"
+    ground = _jpeg(900, 1100)
+    for k, shape in SHAPES.items():
+        look = {"g": "grid", "e": "era", "p": "photo"}[k[0]]
+        slide = {"title": "Semak *dahulu*", "template": k, **shape}
+        pics = studio_cards.render([slide], look=look, stream=stream, eyebrow="Kosmetik", source="NPRA",
+                                   ground=ground if look == "photo" else None, mascots=cards_library.mascots())
+        assert Image.open(io.BytesIO(pics[0])).size == size, k
+
+
+@browser
+def test_fit_draws_a_figure_slide_with_the_figure_design():
+    deck = [{"title": "Kulit", "points": []}, {"title": "Tempoh purata", "points": ["14", "hari"]},
+            {"title": "Langkah notifikasi", "points": ["PIF | Lengkap.", "Hantar | QUEST3+."]}]
+    pics = studio_cards.render(deck, look="grid", stream="regulab", eyebrow="K", source="NPRA", fit=True)
+    assert len(pics) == 3

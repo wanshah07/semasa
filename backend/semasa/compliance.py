@@ -160,7 +160,7 @@ def normalise_slides(raw: Any) -> list[dict[str, Any]]:
 # existed compares equal to itself. Mirrored exactly by slideExtras in web/src/lib/compliance.js.
 SLIDE_WORDS = {"lead": 400, "eyebrow": 80, "chip": 60, "note": 240, "footnote": 300}
 SLIDE_STYLE = {
-    "template": re.compile(r"^[gep]_[a-z]{3,8}$"),
+    "template": re.compile(r"^[gep]_[a-z]{2,8}$"),
     "scrim": re.compile(r"^(light|medium|heavy)$"),
     "bg": re.compile(r"^(none|post_image|lib:g_[a-z0-9]{2,30}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
     "mascot": re.compile(r"^(none|[a-z]{2,20})$"),

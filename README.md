@@ -820,7 +820,7 @@ allows one schedule per job.
 | Buffer sender (FB · IG · Threads): confirm, tally, queue-full wait, one transient retry | ⏳ phase 2 |
 | LinkedIn sender (Composio, text or images) | ⏳ phase 2 |
 | Carousel slides: written by the writer or by hand, drawn by the worker (`slides.py`, Pillow, no AI, no key), 1080×1080 / 1080×1350, `*emphasis*`, long references split instead of clipped, never a word cut (too long fails the job and names the slide), the website on the ws.regulab footer only, source on the closing slide, optional photo ground under a scrim, compliance on every slide, and a block when the drawn slides carry older words | ✅ 25 Sep 2026 |
-| Studio's card families (grid / ERA / photo), all twelve templates, per-slide design, mascot poses, Wan's OneDrive grounds by domain and angle, build slides from the caption | ✅ 27 Sep 2026 |
+| Studio's card families (grid / ERA / photo), all twenty-one templates, per-slide design, mascot poses, Wan's OneDrive grounds by domain and angle, build slides from the caption | ✅ 27 Sep 2026 |
 | Revise with a note, Reject & replace, versions and decisions, 72-hour purge of rejected posts, Schedule (coverage, gaps, clashes, off-rota, Bump all), next free slot, another time, short references, writer settings, pillars, Fix →, strip the ask | ✅ 27 Sep 2026 (see *Studio's day-to-day workflow*) |
 | Your own picture into a post, idea editing, filters and source pills, fill empty slots (a switch, off), design library, Panduan (?) | ✅ 27 Sep 2026 |
 | Regulator sweep (NPRA, halal.gov.my, EUR-Lex, PubMed…) as ideas | ✅ Regulatory and Latest publication |

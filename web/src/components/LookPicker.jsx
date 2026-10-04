@@ -50,14 +50,15 @@ function sampleWords(stream) {
 }
 
 export default function LookPicker({ value, onChange, slides: given, sample: givenSample = false, stream = "regulab", eyebrow = "",
-  citation = "", bgUrl = "", bgChosen = false, size = null, full = true, onBlocked, disabled = false, mascots = [] }) {
+  citation = "", bgUrl = "", bgChosen = false, size = null, full = true, onBlocked, disabled = false, mascots = [],
+  fit = false, onFit = null }) {
   const { t, lang } = useLang();
   const sample = givenSample || !given.length;
   const slides = given.length ? given : sampleWords(stream);
   const [W, H] = sizeOf(stream, size);
   const ratio = `${W} / ${H}`;
   const opts = { stream, eyebrow, citation, bg: bgUrl || "", size: Array.isArray(size) ? size : undefined,
-    mascots: mascots.map((m) => ({ k: m.k, url: m.url })) };
+    mascots: mascots.map((m) => ({ k: m.k, url: m.url })), ...(fit ? { fit: true } : {}) };
   const cover = slides.slice(0, 1);
   // one cover per Studio look for the tiles, and the whole set in the chosen look
   const grid = usePreview(cover, { ...opts, look: "grid" }, true);
@@ -116,6 +117,15 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
           );
         })}
       </div>
+
+      {onFit && isStudioLook(value) && (
+        <label className="mt-2 flex cursor-pointer items-start gap-2 text-[12px]">
+          <input type="checkbox" checked={!!fit} disabled={disabled} onChange={(e) => onFit(e.target.checked)} className="mt-0.5 accent-[var(--accent)]" />
+          <span><span className="font-medium">{t("Padankan reka bentuk dengan setiap slaid", "Fit the design to each slide")}</span>
+            <span className="block text-muted">{t("Dalam keluarga yang dipilih, setiap slaid mendapat templat yang sesuai dengan isinya: angka, mitos dan fakta, langkah, senarai semak atau panel bernombor. Dimatikan, semua slaid tengah guna satu templat. Templat yang anda pilih sendiri pada satu slaid sentiasa menang.",
+              "Inside the chosen family, each slide gets the template that suits its words: a figure, myth and fact, steps, a checklist or numbered panels. Off, every middle slide uses one template. A template you pick yourself on a slide always wins.")}</span></span>
+        </label>
+      )}
 
       {photoNeedsPicture && (
         <p className="mt-2 flex items-start gap-1.5 text-[12px] text-warn"><AlertTriangle size={13} className="mt-0.5 shrink-0" />

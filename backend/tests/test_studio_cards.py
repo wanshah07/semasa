@@ -281,6 +281,10 @@ SHAPES = {
     "e_myth": {"points": ["Bernombor bermakna lulus | Nombor bukan kelulusan."], "note": "Semak sumber."},
     "e_check": {"points": ["INCI | Padan formula.", "Label | Nama.", "Surat"], "note": "Satu tiada, lot tertahan."},
     "e_stat": {"points": ["14", "hari bekerja"], "lead": "Hantar hingga nombor.", "note": "Contoh."},
+    "e_event": {"eyebrow": "Bengkel", "lead": "Notifikasi kosmetik\nbagi pemilik SME",
+                "title": "*NOTIFIKASI* langkah demi langkah untuk *SME*",
+                "points": ["Penceramah A | Malaysia", "Penceramah B | Singapura", "Penceramah C | Thailand"],
+                "note": "Rabu 14 Okt 2026 | 10:00 – 12:00 | Bilik seminar 2", "chip": "Contoh"},
     "p_title": {}, "p_fact": {"points": ["Surat", "INCI", "Label"]}, "p_quote": {"lead": "NPRA"},
     "p_stat": {"points": ["245", "hari"]},
     "p_list": {"points": ["Surat | Pengeluar asal.", "INCI | Setiap bahan.", "Label | Betul."]},
@@ -307,3 +311,34 @@ def test_fit_draws_a_figure_slide_with_the_figure_design():
             {"title": "Langkah notifikasi", "points": ["PIF | Lengkap.", "Hantar | QUEST3+."]}]
     pics = studio_cards.render(deck, look="grid", stream="regulab", eyebrow="K", source="NPRA", fit=True)
     assert len(pics) == 3
+
+
+def _pale(w=900, h=1100):
+    """A light, airy ground like a studio background: pale lilac to blush, with a soft pink disc low on the right."""
+    im = Image.new("RGB", (w, h))
+    px = im.load()
+    for y in range(h):
+        for x in range(w):
+            t = (x / w + y / h) / 2
+            px[x, y] = (int(226 + 26 * t), int(218 + 30 * t), int(236 + 12 * t))
+    from PIL import ImageDraw
+    ImageDraw.Draw(im).ellipse([w * 0.5, h * 0.62, w * 1.3, h * 1.4], fill=(238, 170, 190))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=90)
+    return buf.getvalue()
+
+
+def _mean_luma(png: bytes, box) -> float:
+    crop = Image.open(io.BytesIO(png)).convert("L").crop(box)
+    return sum(crop.get_flattened_data() if hasattr(crop, 'get_flattened_data') else crop.getdata()) / (crop.width * crop.height)
+
+
+@browser
+def test_a_light_ground_keeps_dark_ink_and_no_scrim_unless_a_scrim_was_chosen():
+    slide = {"title": "*Semak* dahulu", "template": "e_event", **SHAPES["e_event"]}
+    auto = studio_cards.render([slide], look="era", stream="regulab", ground=_pale())[0]
+    assert Image.open(io.BytesIO(auto)).size == (1080, 1080)
+    # the corner under the logo stays as bright as the picture: no dark scrim was laid over a light ground
+    assert _mean_luma(auto, (700, 380, 1000, 520)) > 170
+    chosen = studio_cards.render([{**slide, "scrim": "heavy"}], look="era", stream="regulab", ground=_pale())[0]
+    assert _mean_luma(chosen, (700, 380, 1000, 520)) < 130        # Wan chose a heavy scrim on purpose: it is honoured

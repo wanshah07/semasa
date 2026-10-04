@@ -213,10 +213,10 @@ async function drawBrandMark(ctx, spec, W, u, M, opts) {
     octx.fillStyle = "#FFFFFF"; octx.fillRect(0, 0, w, h);
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = Math.round(10 * u);
-    ctx.drawImage(oc, M, top, w, h);
+    ctx.drawImage(oc, o.right ? W - M - w : M, top, w, h);
     ctx.restore();
   } else {
-    ctx.drawImage(ink.im, ink.sx, ink.sy, ink.sw, ink.sh, M, top, w, h);
+    ctx.drawImage(ink.im, ink.sx, ink.sy, ink.sw, ink.sh, o.right ? W - M - w : M, top, w, h);
   }
 }
 /* A TOKEN WIDER THAN THE COLUMN IS DRAWN PAST THE EDGE AND CLIPPED, silently. Every wrapper
@@ -317,6 +317,36 @@ const G_MARK = 'Caveat, "Instrument Sans", cursive';
    `g_title`, `g_rows` and `e_explain` came back IDENTICAL, `p_title` and `p_fact` differed.
    A card with NO ground must still paint exactly as it did before, which is why this is an
    `else` around the existing `gPaper`/`eraPaper` call rather than a change to either. */
+/* A LIGHT GROUND keeps dark ink and no scrim (Wan, 4 Oct 2026, from a pink glass-sphere event poster: "make sure the AI can
+   generate the same background as per attached"). A ground used to be a photograph under a dark scrim with white ink, so a
+   pale, airy background came out grey and heavy. Now the ground's own brightness decides, unless a scrim was chosen on
+   purpose (`auto_scrim` false): scrim "none" forces it, and the Photo family keeps its dark treatment always. */
+const toneCache = new Map();
+async function groundIsLight(spec) {
+  if (!spec || !spec.bg) return false;
+  if (spec.scrim === "none") return true;
+  if (spec.auto_scrim === false) return false;
+  const key = String(spec.bg).length + ":" + String(spec.bg).slice(-96);
+  if (toneCache.has(key)) return toneCache.get(key);
+  let light = false;
+  try {
+    const img = await loadImg(spec.bg);
+    if (img) {
+      const c = document.createElement("canvas"); c.width = 32; c.height = 32;
+      const g = c.getContext("2d", { willReadFrequently: true });
+      coverDraw(g, img, 32, 32);
+      const d = g.getImageData(0, 0, 32, 32).data, lum = [];
+      for (let i = 0; i < d.length; i += 4) lum.push(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+      lum.sort((a, b) => a - b);
+      light = lum[Math.floor(lum.length * 0.4)] >= 168;        // the 40th percentile: a bright subject on a dark ground stays dark
+    }
+  } catch (e) { light = false; }
+  toneCache.set(key, light);
+  return light;
+}
+/* White ink and a knocked-out logo: over a ground that is dark (a scrim, or a dark picture), never over a light one. */
+const inkWhite = (spec) => !!(spec && spec.bg && !spec._light);
+
 async function drawGround(ctx, spec, W, H) {
   if (!spec || !spec.bg) return false;
   let img = null;
@@ -557,7 +587,7 @@ async function renderGridCard(spec) {
 async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   const warn = [];
   const t = spec.template;
-  const dark = !!GRID_DARK[t] || !!(spec && spec.bg);   // a photograph is always a dark card
+  const dark = !!GRID_DARK[t] || inkWhite(spec);   // a photograph is always a dark card
   const u = W / 1080;                    // every measurement below is in 1080-wide units
   const M = Math.round(72 * u);
   const maxW = W - M * 2;
@@ -770,7 +800,7 @@ async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
      only where the content ended, which is what centreShift needs. */
   return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.88), warn, y } : { warn, y };
 }
-const SCRIM = { light: [0.28, 0.38, 0.56], medium: [0.46, 0.54, 0.72], heavy: [0.62, 0.70, 0.86] };
+const SCRIM = { none: [0, 0, 0], light: [0.28, 0.38, 0.56], medium: [0.46, 0.54, 0.72], heavy: [0.62, 0.70, 0.86] };
 
 /* ===================== the Info ERA family ==================================
    Wan, 19 Sep 2026, from a KTM "Info ERA" reference set: kraft paper with a faint
@@ -985,7 +1015,7 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   /* ERA paints dark ink on its own light paper, which is unreadable over a photograph's
      scrim — so a ground flips the ink to white, exactly as the grid family's `dark` does.
      The red stays: it is the family's signal colour and it holds against a dark scrim. */
-  const onGround = !!(spec && spec.bg);
+  const onGround = inkWhite(spec);
   const ink = onGround ? "#FFFFFF" : ERA_PAL.ink,
         muted = onGround ? "rgba(255,255,255,.72)" : ERA_PAL.muted,
         red = ERA_PAL.red;
@@ -1300,7 +1330,7 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
    under every one of them. All but p_split are centred between the handle and the source line the way the Grid family is
    (measure first, then shift). That is safe for the ERA ones too, unlike the older ERA templates: none of these carries a
    character, so nothing in them sizes off where they start (the rule in renderEraCard). */
-const MORE_TPL = { g_check: 1, g_myth: 1, g_steps: 1, e_myth: 1, e_check: 1, e_stat: 1, p_stat: 1, p_list: 1, p_split: 1 };
+const MORE_TPL = { g_check: 1, g_myth: 1, g_steps: 1, e_myth: 1, e_check: 1, e_stat: 1, e_event: 1, p_stat: 1, p_list: 1, p_split: 1 };
 const MORE_CENTRED = { g_check: 1, g_myth: 1, g_steps: 1, e_myth: 1, e_check: 1, e_stat: 1, p_stat: 1, p_list: 1 };
 const moreLabels = (spec) => (spec.stream === "linkedin" ? { myth: "MYTH", fact: "FACT" } : { myth: "MITOS", fact: "FAKTA" });
 
@@ -1350,6 +1380,58 @@ function eraTag(ctx, text, x, y, px, fill, colour) {
   return h;
 }
 
+
+/* ---- e_event: an event poster (Wan, 4 Oct 2026, from a symposium poster: "make sure semasa can render and design based on
+   this attached, same like info ERA"). The words arrive in the slide's usual fields:
+     eyebrow  the small spaced label on top ("SCIENTIFIC SYMPOSIUM")      lead   the boxed topic, one or two lines
+     title    the headline: *bold* phrases on their own lines, the rest light ("*SAFE & EFFECTIVE* TREATMENT ... *HYPERPIGMENTATION*")
+     points   one speaker each, "Name | Country", with a round picture slot      note   "Wednesday 30 Sep 2026 | 16:15 - 17:00 | Room: Hub 2"
+     chip     the organiser under the date ("EADV CONGRESS")                       footnote  an optional source line, drawn as everywhere else
+   The date is read into the big day, the month, the year and the lines under them; a note that is not a date is drawn as plain
+   bold lines, so nothing typed is ever lost. Sits on a ground, light or dark, or on the ERA paper. */
+const MONTHS = { jan: "JAN", feb: "FEB", mar: "MAR", apr: "APR", may: "MAY", mei: "MEI", jun: "JUN", jul: "JUL", aug: "AUG", ogo: "OGO", sep: "SEP",
+  oct: "OCT", okt: "OKT", nov: "NOV", dec: "DEC", dis: "DIS" };
+export function eventDate(note) {
+  const parts = String(note || "").split("|").map((x) => x.trim()).filter(Boolean);
+  const m = /^(?:([A-Za-zÀ-ÿ']{3,})\.?,?\s+)?(\d{1,2})\s+([A-Za-zÀ-ÿ]{3,})\.?\s+(\d{4})$/.exec(parts[0] || "");
+  if (!m) return { day: "", weekday: "", month: "", year: "", lines: parts };
+  return { weekday: (m[1] || "").toUpperCase(), day: m[2], month: MONTHS[m[3].slice(0, 3).toLowerCase()] || m[3].toUpperCase().slice(0, 4), year: m[4], lines: parts.slice(1) };
+}
+const TITLE_RE = /^(assoc\.?\s*prof\.?|prof\.?|dr\.?|ts\.?|dato'?|datin|datuk|puan|encik|cik|mr\.?|ms\.?|mrs\.?)\s+/i;
+export function initialsOf(name) {
+  const words = String(name || "").replace(TITLE_RE, "").replace(TITLE_RE, "").split(/\s+/).filter(Boolean);
+  return ((words[0] || "")[0] || "") + ((words.length > 1 ? words[words.length - 1] : "")[0] || "");
+}
+/* The headline in two weights. Every *bold* phrase takes its own line(s); the words between wrap freely in the light face. */
+function eventHeadline(ctx, text, x, y, maxW, px, lh, ink) {
+  const bold = "800 " + px + "px " + G_HEAD, light = "400 " + Math.round(px * 1.04) + "px " + G_BODY;
+  ctx.textBaseline = "top"; ctx.fillStyle = ink;
+  const groups = [];
+  for (const tk of gTokens(String(text || "").toUpperCase(), 0, 1)) {
+    for (const seg of tk.t.split("\n")) if (seg.trim()) groups.push({ t: seg.trim(), b: tk.c === 1 });
+  }
+  for (const g of groups) {
+    ctx.font = g.b ? bold : light;
+    const words = g.t.split(/\s+/).flatMap((w) => hardSplit(ctx, w, maxW));
+    let line = "";
+    for (const w of words) {
+      const next = line ? line + " " + w : w;
+      if (line && ctx.measureText(next).width > maxW) { ctx.fillText(line, x, y); y += lh; line = w; } else line = next;
+    }
+    if (line) { ctx.fillText(line, x, y); y += lh; }
+  }
+  return y;
+}
+/* The four small corner brackets round the topic box (the reference's way of framing it). */
+function cornerBrackets(ctx, x, y, w, h, len, off, colour, lw) {
+  ctx.save(); ctx.strokeStyle = colour; ctx.lineWidth = lw; ctx.lineCap = "butt"; ctx.beginPath();
+  const x0 = x - off, y0 = y - off, x1 = x + w + off, y1 = y + h + off;
+  ctx.moveTo(x0, y0 + len); ctx.lineTo(x0, y0); ctx.lineTo(x0 + len, y0);
+  ctx.moveTo(x1 - len, y0); ctx.lineTo(x1, y0); ctx.lineTo(x1, y0 + len);
+  ctx.moveTo(x0, y1 - len); ctx.lineTo(x0, y1); ctx.lineTo(x0 + len, y1);
+  ctx.stroke(); ctx.restore();
+}
+
 async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
   const warn = [];
   const t = spec.template, u = W / 1080, M = Math.round(72 * u), maxW = W - M * 2;
@@ -1367,11 +1449,11 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     if (!bg) warn.push("This design is built on a picture and none is chosen — pick one under Background.");
     dark = true; ink = "#FFFFFF"; muted = "rgba(255,255,255,.78)";
   } else if (fam === "g") {
-    dark = !!spec.bg;
+    dark = inkWhite(spec);
     if (dark) { ink = "#FFFFFF"; muted = "rgba(255,255,255,.66)"; }
     if (!await drawGround(ctx, spec, W, H)) gPaper(ctx, W, H, false);
   } else {
-    const onGround = !!spec.bg;
+    const onGround = inkWhite(spec);
     if (onGround) { ink = "#FFFFFF"; muted = "rgba(255,255,255,.72)"; }
     if (!await drawGround(ctx, spec, W, H)) eraPaper(ctx, W, H);
     ink = onGround ? "#FFFFFF" : ERA_PAL.ink; muted = onGround ? "rgba(255,255,255,.72)" : ERA_PAL.muted;
@@ -1495,7 +1577,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     y = sticky(y - gap);
   } else if (t === "e_myth") {
     const L = moreLabels(spec);
-    await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: !!spec.bg, textFill: spec.bg ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
+    await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: inkWhite(spec), textFill: inkWhite(spec) ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
     eraBadge(ctx, W, u, M, spec.eyebrow);
     y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(70 * u * TS), ink, red);
     y += Math.round(30 * u);
@@ -1531,7 +1613,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     });
     if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(32 * u));
   } else if (t === "e_check") {
-    await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: !!spec.bg, textFill: spec.bg ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
+    await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: inkWhite(spec), textFill: inkWhite(spec) ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
     eraBadge(ctx, W, u, M, spec.eyebrow);
     y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(70 * u * TS), ink, red);
     y += Math.round(30 * u);
@@ -1554,8 +1636,84 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
       y += h + Math.round(26 * u);
     });
     if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(32 * u));
+  } else if (t === "e_event") {
+    const white = inkWhite(spec), line = white ? "rgba(255,255,255,.9)" : ink;
+    const speakers = items.map(gCells).map((r) => ({ name: r[0] || "", where: r[1] || "" })).filter((r) => r.name);
+    const top = Math.round(50 * u);
+    ctx.font = "700 " + Math.round(25 * u) + "px " + G_HEAD; ctx.textBaseline = "top"; ctx.fillStyle = ink;
+    try { ctx.letterSpacing = Math.round(3 * u) + "px"; } catch (e) { }
+    if (spec.eyebrow) ctx.fillText(stripEmph(spec.eyebrow).toUpperCase(), M, top + Math.round(4 * u));
+    try { ctx.letterSpacing = "0px"; } catch (e) { }
+    await drawBrandMark(ctx, spec, W, u, M, { top: 48, h: 34, right: true, knockout: white, textFill: white ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
+    y = top + Math.round(70 * u);
+    // the boxed topic
+    if (spec.lead) {
+      const lp = Math.round(27 * u * TS), lines = String(spec.lead).split("\n").map((x) => x.trim()).filter(Boolean);
+      ctx.font = "700 " + lp + "px " + G_HEAD;
+      const wrapped = lines.flatMap((l, i) => { ctx.font = (i === 0 ? "700 " : "500 ") + lp + "px " + (i === 0 ? G_HEAD : G_BODY); return gWrap(ctx, stripEmph(l).toUpperCase(), Math.round(maxW * 0.8)).map((t2) => ({ t: t2, b: i === 0 })); });
+      const padX = Math.round(26 * u), padY = Math.round(18 * u), lh = Math.round(lp * 1.3);
+      let tw = 0;
+      for (const w2 of wrapped) { ctx.font = (w2.b ? "700 " : "500 ") + lp + "px " + (w2.b ? G_HEAD : G_BODY); tw = Math.max(tw, ctx.measureText(w2.t).width); }
+      const bw = Math.round(tw + padX * 2), bh = wrapped.length * lh + padY * 2;
+      ctx.save(); ctx.fillStyle = white ? "rgba(255,255,255,.16)" : "rgba(214,200,226,.55)"; gRound(ctx, M, y, bw, bh, Math.round(10 * u)); ctx.fill(); ctx.restore();
+      cornerBrackets(ctx, M, y, bw, bh, Math.round(26 * u), Math.round(8 * u), line, Math.max(2, Math.round(3 * u)));
+      ctx.textBaseline = "top"; ctx.fillStyle = ink;
+      wrapped.forEach((w2, i) => { ctx.font = (w2.b ? "700 " : "500 ") + lp + "px " + (w2.b ? G_HEAD : G_BODY); ctx.fillText(w2.t, M + padX, y + padY + i * lh + Math.round(lp * 0.06)); });
+      y += bh + Math.round(46 * u);
+    }
+    y = eventHeadline(ctx, spec.title || "", M, y, maxW, Math.round(60 * u * TS), Math.round(70 * u * TS), ink);
+    const topEnd = y;
+    // the foot: speakers on the left, the date on the right, both anchored to the bottom
+    const foot = H - Math.round((spec.footnote ? 130 : 78) * u);
+    const colR = Math.round(W * 0.655);
+    const dt = eventDate(spec.note);
+    const dayPx = Math.round(128 * u), monPx = Math.round(70 * u), yrPx = Math.round(118 * u), dPx = Math.round(31 * u);
+    if (speakers.length) {
+      const room = foot - (topEnd + Math.round(34 * u));
+      const pitch = Math.min(Math.round(112 * u), Math.floor(room / speakers.length));
+      const d = Math.round(pitch * 0.84), namePx = Math.min(Math.round(27 * u * TS), Math.round(pitch * 0.3)), whPx = Math.round(namePx * 0.96);
+      const tx = M + d + Math.round(26 * u), tw = colR - tx - Math.round(30 * u);
+      if (pitch < Math.round(66 * u)) warn.push("The speakers are fuller than the card — fewer speakers or a taller card.");
+      const y0 = foot - pitch * speakers.length;
+      speakers.forEach((sp, i) => {
+        const ry = y0 + i * pitch, cy = ry + d / 2;
+        ctx.save(); ctx.fillStyle = white ? "rgba(255,255,255,.22)" : "rgba(196,186,210,.55)";
+        ctx.beginPath(); ctx.arc(M + d / 2, cy, d / 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        ctx.font = "700 " + Math.round(d * 0.3) + "px " + G_HEAD; ctx.fillStyle = muted; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(initialsOf(sp.name).toUpperCase(), M + d / 2, cy + Math.round(d * 0.02));
+        ctx.textAlign = "left"; ctx.textBaseline = "top";
+        ctx.font = "700 " + namePx + "px " + G_HEAD;
+        const nl = gWrap(ctx, stripEmph(sp.name).toUpperCase(), tw);
+        const lhN = Math.round(namePx * 1.22), blockH = nl.length * lhN + (sp.where ? whPx + Math.round(6 * u) : 0);
+        let ty = cy - blockH / 2;
+        ctx.fillStyle = ink; nl.forEach((l) => { ctx.fillText(l, tx, ty); ty += lhN; });
+        if (sp.where) { ctx.font = "400 " + whPx + "px " + G_BODY; ctx.fillStyle = ink; ctx.fillText(stripEmph(sp.where).toUpperCase(), tx, ty + Math.round(4 * u)); }
+      });
+      if (y0 < topEnd + Math.round(20 * u)) warn.push("The slide is fuller than the card — shorten the headline or the topic.");
+    }
+    if (dt.day || dt.lines.length || spec.chip_label) {
+      const w = W - M - colR;
+      const tall = (dt.day ? Math.round(dayPx * 0.92) + Math.round(yrPx * 0.9) + Math.round(22 * u) : 0) + dt.lines.length * Math.round(dPx * 1.35) + (spec.chip_label ? Math.round(dPx * 1.7) : 0);
+      let dy = foot - tall;
+      if (dt.day) {
+        ctx.font = "800 " + dayPx + "px " + G_HEAD; ctx.textBaseline = "top"; ctx.fillStyle = ink;
+        const dayW = ctx.measureText(dt.day).width;
+        ctx.fillText(dt.day, colR, dy);
+        const mx = colR + dayW + Math.round(14 * u);
+        if (dt.weekday) { ctx.font = "500 " + Math.round(21 * u) + "px " + G_BODY; ctx.fillStyle = ink; ctx.fillText(dt.weekday, mx, dy + Math.round(8 * u)); }
+        ctx.font = "400 " + monPx + "px " + G_BODY; ctx.fillStyle = ink; ctx.fillText(dt.month, mx, dy + Math.round(dayPx * 0.38));
+        dy += Math.round(dayPx * 0.92);
+        ctx.font = "400 " + yrPx + "px " + G_BODY; ctx.fillText(dt.year, colR, dy);
+        dy += Math.round(yrPx * 0.9) + Math.round(22 * u);
+      }
+      ctx.font = "700 " + dPx + "px " + G_HEAD; ctx.fillStyle = ink; ctx.textBaseline = "top";
+      for (const l of dt.lines) for (const piece of gWrap(ctx, stripEmph(l).toUpperCase(), w)) { ctx.fillText(piece, colR, dy); dy += Math.round(dPx * 1.35); }
+      if (spec.chip_label) { ctx.font = "600 " + Math.round(dPx * 0.92) + "px " + G_HEAD; ctx.fillStyle = muted; ctx.fillText(stripEmph(spec.chip_label).toUpperCase(), colR, dy + Math.round(dPx * 0.5)); }
+      if (dy - 0 < topEnd) warn.push("The slide is fuller than the card — shorten the headline or the topic.");
+    }
+    y = warn.length ? H : Math.min(topEnd, H - Math.round(160 * u));
   } else if (t === "e_stat") {
-    await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: !!spec.bg, textFill: spec.bg ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
+    await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: inkWhite(spec), textFill: inkWhite(spec) ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
     eraBadge(ctx, W, u, M, spec.eyebrow);
     y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(70 * u * TS), ink, red);
     y += Math.round(30 * u);
@@ -1628,7 +1786,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
   }
 
   if (fam !== "e") await drawBrandMark(ctx, spec, W, u, M, { top: 56, h: 34, knockout: dark, textFill: dark ? "rgba(255,255,255,.62)" : "rgba(21,23,27,.5)" });
-  gSourceLine(ctx, W, H, M, u, spec.chip_label || (spec.footnote ? "Sumber" : ""), spec.footnote || "", fam === "e" ? !!spec.bg : dark || t === "p_split");
+  gSourceLine(ctx, W, H, M, u, t === "e_event" ? (spec.footnote ? "Sumber" : "") : (spec.chip_label || (spec.footnote ? "Sumber" : "")), spec.footnote || "", fam === "e" ? inkWhite(spec) : dark || t === "p_split");
   if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card — shorten a line.");
   return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y } : { warn, y };
 }
@@ -1650,7 +1808,7 @@ export const LOOKS = [
 /** A template key as a short readable name ("e_myth" → "ERA · Myth vs fact"), for hand-offs and logs. */
 export const templateLabel = (k) => ({ g_title: "Grid · Title", g_stat: "Grid · Number", g_bars: "Grid · Bars", g_rows: "Grid · Numbered", g_table: "Grid · Table",
   g_check: "Grid · Checklist", g_myth: "Grid · Myth vs fact", g_steps: "Grid · Steps", e_hook: "ERA · Hook", e_explain: "ERA · Explainer", e_flow: "ERA · Flow",
-  e_vs: "ERA · Versus", e_myth: "ERA · Myth vs fact", e_check: "ERA · Checklist", e_stat: "ERA · Figure", p_title: "Photo · Title", p_fact: "Photo · Fact",
+  e_vs: "ERA · Versus", e_myth: "ERA · Myth vs fact", e_check: "ERA · Checklist", e_stat: "ERA · Figure", e_event: "ERA · Event poster", p_title: "Photo · Title", p_fact: "Photo · Fact",
   p_quote: "Photo · Quote", p_stat: "Photo · Figure", p_list: "Photo · List", p_split: "Photo · Split" }[k] || String(k || ""));
 export const STUDIO_LOOKS = ["grid", "era", "photo"];
 /** The family palettes, for the Canva hand-off brief: one copy of the hex codes, the ones the renderer draws with. */
@@ -1704,6 +1862,7 @@ function mascotUrl(s, template, mascots) {
 const RE_FIGURE = /^[~≈<>+\-]?\s*(RM\s?)?\d[\d.,]*\s*(%|x|×|k|m|hari|bulan|tahun|minggu|jam|days?|months?|years?|weeks?|hours?)?$/i;
 const RE_MYTH = /mitos|myth|salah faham|misconception|fakta|\bfacts?\b/i;
 const RE_STEPS = /langkah|\bsteps?\b|proses|process|cara |how to|aliran|\bflow\b|garis masa|timeline|urutan|selepas|after/i;
+const RE_DATE = /\b\d{1,2}\s+[A-Za-zÀ-ÿ]{3,}\.?\s+\d{4}\b/;
 const RE_CHECK = /senarai semak|checklist|\bsemak|\bcheck\b|sebelum|before|pastikan|ensure|wajib|\bmust\b|dokumen|documents/i;
 export function fitTemplate(look, s, i, n, pts) {
   const title = String(s.title || "");
@@ -1714,6 +1873,7 @@ export function fitTemplate(look, s, i, n, pts) {
   const check = pts.length >= 2 && pts.length <= 5 && RE_CHECK.test(title);
   const first = i === 0 && n > 1, last = i === n - 1 && n > 1;
   if (!pts.length || first) return "";
+  if (pts.length <= 6 && RE_DATE.test(String(s.note || ""))) return "e_event";     // a date in the note and people in the points: an event poster
   if (look === "grid") {
     if (figure) return "g_stat";
     if (myth) return "g_myth";
@@ -1760,6 +1920,7 @@ export function specsFor(slides, o = {}) {
       note: String(s.note || "").trim(),
       bg: s.bg === "none" ? "" : (s.bg_url || o.bg || ""),
       scrim: s.scrim || (linkedin ? "heavy" : "medium"),
+      auto_scrim: !s.scrim,
       size: o.size || undefined,
       // SEMASA: the slide's own typography and character placement; absent = the template decides
       type_size: Number(s.type_size) || undefined,
@@ -1787,7 +1948,8 @@ export function specsFor(slides, o = {}) {
   });
 }
 
-function renderSpec(spec) {
+async function renderSpec(spec) {
+  if (spec.bg && spec.template[0] !== "p" && await groundIsLight(spec)) spec = { ...spec, scrim: "none", _light: true };
   if (MORE_TPL[spec.template]) return renderMoreCard(spec);
   if (GRID_TPL[spec.template]) return renderGridCard(spec);
   if (ERA_TPL[spec.template]) return renderEraCard(spec);

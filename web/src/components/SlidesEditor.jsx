@@ -322,7 +322,8 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, str
       </div>
       <label className="block min-w-0"><Label>{t("Tutupan atas gambar", "How much the words cover the picture")}</Label>
         <Select value={r.scrim} onChange={(v) => set({ scrim: v })} disabled={locked} className="w-full"
-          options={[["", t("Lalai", "Default")], ["light", t("Ringan: gambar jelas", "Light: the picture stays visible")],
+          options={[["", t("Auto (gambar cerah = tiada tutupan)", "Auto (a light picture gets none)")], ["none", t("Tiada: gambar cerah, tulisan gelap", "None: a light picture, dark words")],
+            ["light", t("Ringan: gambar jelas", "Light: the picture stays visible")],
             ["medium", t("Sederhana", "Medium: balanced")], ["heavy", t("Tebal: gambar sibuk", "Heavy: for a busy photo")]]} /></label>
       {mascotOk && (
         <label className="block min-w-0"><Label>{t("Maskot", "Mascot")}</Label>

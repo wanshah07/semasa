@@ -36,12 +36,13 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   const [bg, setBg] = useState(() => (mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta?.bg) || "none");
   // the carousel's look: the one its last drawing used, Semasa's own drawing when there is none
-  const lastLook = () => (mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design)
+  // (a set the Canva bot built is not a look this page can draw, so it is skipped here)
+  const lastLook = () => (mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design && m.meta?.look !== "canva")
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta?.look) || "classic";
   const [look, setLook] = useState(lastLook);
   // "fit the design to each slide": on unless the last drawing was explicitly made with it off (a drawing from before
   // the option existed carries no flag, and gets the varied designs when it is drawn again)
-  const [fit, setFit] = useState(() => (mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design)
+  const [fit, setFit] = useState(() => (mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design && m.meta?.look !== "canva")
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta?.fit) !== false);
   const [lookBlocked, setLookBlocked] = useState(null);
   const [busy, setBusy] = useState(false);

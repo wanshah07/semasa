@@ -32,7 +32,8 @@ export const fromRows = (rows) => rows.map((r) => ({ title: r.title, points: r.p
   ...Object.fromEntries(DESIGN.filter((k) => String(r[k] ?? "").trim()).map((k) => [k, r[k]])) }));
 const blankRow = () => ({ title: "", points: "", ...Object.fromEntries(DESIGN.map((k) => [k, ""])) });
 
-const lookName = (k, lang) => { const l = LOOKS.find((x) => x.k === (k || "classic")) || LOOKS[0]; return lang === "bm" ? l.bm : l.en; };
+const lookName = (k, lang) => {
+  if (k === "canva") return "Canva"; const l = LOOKS.find((x) => x.k === (k || "classic")) || LOOKS[0]; return lang === "bm" ? l.bm : l.en; };
 
 const kindOf = (t, i, n) => (i === 0 ? t("Kulit", "Cover") : i === n - 1 && n > 1 ? t("Penutup · sumber dilukis di sini", "Closing · source drawn here")
   : t("Slaid {n}", "Slide {n}", { n: i + 1 }));
@@ -204,12 +205,12 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
           <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted">
             {t("{n} slaid dilukis", ["{n} slide drawn", "{n} slides drawn"], { n: latestDone.meta?.count })}
             {` · ${lookName(latestDone.meta?.look, lang)}`}
-            {latestDone.meta?.bg_missing ? ` · ${latestDone.meta.bg_missing}`
+            {latestDone.meta?.look === "canva" ? "" : latestDone.meta?.bg_missing ? ` · ${latestDone.meta.bg_missing}`
               : latestDone.meta?.bg_used ? ` · ${t("atas gambar post", "on the post picture")}` : ` · ${t("atas kertas", "on paper")}`}
             <button type="button" onClick={() => box.open(0)} className="inline-flex items-center gap-0.5 text-accent"><Expand size={10} /> {t("besarkan", "enlarge")}</button>
-            <button type="button" onClick={() => setCanva(true)} className="inline-flex items-center gap-0.5 text-accent"
+            {latestDone.meta?.look !== "canva" && <button type="button" onClick={() => setCanva(true)} className="inline-flex items-center gap-0.5 text-accent"
               title={t("Bina semula slaid ini sebagai reka bentuk Canva yang boleh disunting", "Rebuild these slides as an editable Canva design")}>
-              <Palette size={10} /> {t("Bina semula dalam Canva", "Rebuild in Canva")}</button>
+              <Palette size={10} /> {t("Bina semula dalam Canva", "Rebuild in Canva")}</button>}
           </p>
           {drawnStale && <p className="mt-1 text-[12px] text-warn">
             {t("Slaid di atas telah diubah sejak dilukis. Tekan Jana slaid supaya gambar membawa perkataan yang sama.",

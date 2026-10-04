@@ -19,7 +19,8 @@ import Card from "../components/ui/Card";
 import { Input, Label, Modal, Segmented, Select, TextArea } from "../components/ui/Field";
 import { cloneLayout, refineLayout } from "../lib/designClone";
 import { layoutToSeed, patchBoxes, slotsOf, wordsFromLayout } from "../lib/designCloneSeed";
-import { loadImageFile, samplePatches, sizeLike } from "../lib/designPatch";
+import { loadImageFile, readPixels, samplePatches, sizeLike } from "../lib/designPatch";
+import { compareImages, judgePass, snapLayout } from "../lib/designFidelity";
 import { renderSeedPreview } from "../lib/kanvasBuild";
 import DesignLibrary from "../components/DesignLibrary";
 import CanvaHandoff from "../components/CanvaHandoff";
@@ -141,7 +142,14 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
         if (eyebrow.trim()) w.eyebrow = eyebrow.trim();
         if (citation.trim()) w.source = citation.trim();
       }
-      setCloneReview({ layout: got.layout, removed: got.removed, words: w, model: got.model, image: got.image, base, size, mode,
+      // the reader guessed the colours by eye; the reference's own pixels know them. Measured colours replace the guesses (a block on a
+      // photograph keeps the guess and is listed), and the same pixels score every rebuild below. A tainted canvas leaves both off.
+      let pixels = null, layout = got.layout, snap = { changes: [], kept: [] };
+      if (mode === "clone") {
+        try { pixels = await readPixels(styleFile, 900); } catch { pixels = null; }
+        if (pixels) { const sn = snapLayout(got.layout, pixels); layout = sn.layout; snap = { changes: sn.changes, kept: sn.kept }; }
+      }
+      setCloneReview({ layout, removed: got.removed, words: w, model: got.model, image: got.image, base, size, mode, pixels, snap,
         refUrl: base === "original" ? URL.createObjectURL(styleFile) : "" });
     } catch (err) {
       onToast(err.message || String(err), "danger");
@@ -154,27 +162,34 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
   async function seedFor(review, layout, w) {
     const [W, H] = review.size;
     const name = styleFile?.name ? styleFile.name.replace(/\.[^.]+$/, "") : "";
+    // our logo goes where the reference's logo was, for ws.regulab only: a LinkedIn card carries no ws.regulab identity (rule 7)
+    const logoUrl = stream === "regulab" ? `${import.meta.env.BASE_URL}cards/logo-ink.png` : "";
     if (review.base === "original") {
       // the old words are where the FIRST reading put them; a refine pass moves the boxes towards the truth, so both sets are patched
       // (a moved box uncovered the top of the old headline in the Chromium check)
       const boxes = [...patchBoxes(review.layout), ...patchBoxes(layout)];
       const seen = new Set();
       const patches = await samplePatches(styleFile, boxes.filter((bx) => { const k = [bx.x, bx.y, bx.w, bx.h].map((v) => v.toFixed(3)).join(); if (seen.has(k)) return false; seen.add(k); return true; }));
-      return layoutToSeed(layout, w, { width: W, height: H, referenceUrl: review.refUrl, patches, t, name });
+      return layoutToSeed(layout, w, { width: W, height: H, referenceUrl: review.refUrl, patches, logoUrl, t, name });
     }
     const pictureUrl = bg === "upload" && file ? URL.createObjectURL(file) : bg === "library" ? (groundOf(libPick)?.url || "") : "";
-    return layoutToSeed(layout, w, { width: W, height: H, pictureUrl, t, name });
+    return layoutToSeed(layout, w, { width: W, height: H, pictureUrl, logoUrl, t, name });
   }
 
+  // the preview, and how close it is to the reference ({score, colour, structure, worst}, null when there is nothing to measure against)
   async function previewOf(review, layout, w) {
     const { seed } = await seedFor(review, layout, w);
-    return (await renderSeedPreview(seed, { maxSide: 1000 })).dataUrl;
+    const url = (await renderSeedPreview(seed, { maxSide: 1000 })).dataUrl;
+    let fit = null;
+    if (review.pixels) { try { const px = await readPixels(url, 900); if (px) fit = compareImages(review.pixels, px); } catch { fit = null; } }
+    return { url, fit };
   }
 
   async function refineOnce(review, layout, w) {
-    const render = await previewOf(review, layout, w);
+    const { url: render } = await previewOf(review, layout, w);
     const [W, H] = review.size;
-    return (await refineLayout({ image: review.image, render, layout, width: W, height: H })).layout;
+    const next = (await refineLayout({ image: review.image, render, layout, width: W, height: H })).layout;
+    return review.pixels ? snapLayout(next, review.pixels).layout : next;      // the refine moves boxes: measure the colours again
   }
 
   async function openInKanvas(review, layout, w) {
@@ -631,14 +646,16 @@ function CloneReview({ data, stream, brand, onClose, onOpen, onPreview, onRefine
   const [preview, setPreview] = useState("");
   const [busy, setBusy] = useState("");                 // "" | "preview" | "refine"
   const [passes, setPasses] = useState(0);
-  const auto = useRef(data.mode !== "inspire");         // one refine pass runs by itself on a rebuild; an inspired design has nothing to match
+  const [fit, setFit] = useState(null);                 // how close the preview is to the reference, from the reference's own pixels
+  const [verdict, setVerdict] = useState("");
+  const auto = useRef(data.mode !== "inspire");         // refine passes run by themselves on a rebuild (up to 3, stopping at the goal or when one stops helping)
   useEffect(() => {
     let live = true;
     const h = setTimeout(async () => {
       setBusy((b) => b || "preview");
       try {
-        const url = await onPreview(layout, wordsOut());
-        if (live) setPreview(url);
+        const got = await onPreview(layout, wordsOut());
+        if (live) { setPreview(got.url); setFit(got.fit); }
       } catch (e) {
         if (live) onToast(e.message || String(e), "warn");
       } finally {
@@ -647,22 +664,44 @@ function CloneReview({ data, stream, brand, onClose, onOpen, onPreview, onRefine
     }, 400);
     return () => { live = false; clearTimeout(h); };
   }, [layout, w.headline, w.eyebrow, w.points, w.source]); // eslint-disable-line react-hooks/exhaustive-deps
+  // One refine pass: the AI proposes a better layout, the proposal is DRAWN and SCORED against the reference, and it is kept only if it
+  // scores better than what is on screen (the AI can make a good rebuild worse, and without this nothing would say so).
   async function refine() {
-    if (busy) return;
+    if (busy) return { stop: true };
     setBusy("refine");
     try {
-      const next = await onRefine(layout, wordsOut());
-      setLayout(next);
+      const words = wordsOut();
+      const next = await onRefine(layout, words);
+      let res = { stop: false };
+      if (data.pixels && fit) {
+        const got = await onPreview(next, words);
+        const v = judgePass({ score: fit.score }, { score: got.fit ? got.fit.score : -1 });
+        res = v;
+        if (v.accepted) {
+          setLayout(next); setPreview(got.url); setFit(got.fit);
+          setVerdict(t("Penghalusan diterima: {a}% → {b}%", "Refine accepted: {a}% → {b}%", { a: Math.round(fit.score), b: Math.round(got.fit.score) }));
+        } else {
+          setVerdict(t("Penghalusan ditolak (tidak lebih hampir: {b}% berbanding {a}%); susunan terdahulu dikekalkan.",
+            "Refine rejected (no closer: {b}% against {a}%); the previous layout is kept.", { a: Math.round(fit.score), b: Math.round(got.fit?.score ?? 0) }));
+        }
+      } else { setLayout(next); res = { stop: true }; }     // nothing to score against: one pass, as before
       setPasses((n) => n + 1);
+      return res;
     } catch (e) {
       onToast(t("Penghalusan gagal: {e}", "Refining failed: {e}", { e: e.message || String(e) }), "warn");
+      return { stop: true };
     } finally {
       setBusy("");
     }
   }
-  useEffect(() => {                                     // the first pass, once, as soon as the first preview exists
-    if (auto.current && preview && !busy) { auto.current = false; refine(); }
-  }, [preview]); // eslint-disable-line react-hooks/exhaustive-deps
+  const autoPasses = useRef(0);
+  useEffect(() => {                                     // the automatic passes: as soon as a preview and its score exist, up to 3 in a row
+    if (!auto.current || !preview || busy) return;
+    if (data.pixels && !fit) return;
+    if (autoPasses.current >= 3 || (fit && fit.score >= 90)) { auto.current = false; return; }
+    autoPasses.current += 1;
+    refine().then((r) => { if (r.stop) auto.current = false; });
+  }, [preview, fit, busy]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <Modal open onClose={onClose} title={data.mode === "inspire" ? t("Reka bentuk diilhamkan: semak sebelum dibuka", "Inspired design: check before it opens") : t("Semak perkataan sebelum dibina", "Check the words before it is rebuilt")}>
       <div className="space-y-3">
@@ -674,10 +713,19 @@ function CloneReview({ data, stream, brand, onClose, onOpen, onPreview, onRefine
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
           <span>{data.base === "original" ? t("Atas gambar rujukan · {w}×{h}", "On the reference picture · {w}×{h}", { w: data.size[0], h: data.size[1] }) : t("Lapisan dibina semula · {w}×{h}", "Rebuilt layers · {w}×{h}", { w: data.size[0], h: data.size[1] })}
-            {passes > 0 ? ` · ${t("{n} kali dihalusi", "refined {n} time(s)", { n: passes })}` : ""}</span>
+            {passes > 0 ? ` · ${t("{n} kali dihalusi", "refined {n} time(s)", { n: passes })}` : ""}
+            {fit && <b className={`ml-1 ${fit.score >= 85 ? "text-ok" : fit.score >= 70 ? "text-warn" : "text-danger"}`}>
+              {t("Padanan dengan rujukan", "Match to the reference")} {Math.round(fit.score)}%</b>}</span>
           {data.mode !== "inspire" && <button type="button" onClick={refine} disabled={!!busy || passes >= 4} className="inline-flex items-center gap-1 text-accent underline decoration-dotted underline-offset-2 disabled:opacity-50">
             <RotateCcw size={11} /> {t("Halusi lagi (AI banding)", "Refine again (AI compares)")}</button>}
         </div>
+        {verdict && <p className="text-[12px] text-muted">{verdict}</p>}
+        {fit && fit.score < 85 && fit.worst.length > 0 && <p className="text-[12px] text-warn">{t("Paling berbeza: {where}. Betulkan di Kanvas atau halusi lagi.", "Furthest from the reference: {where}. Fix it in Kanvas or refine again.",
+          { where: fit.worst.slice(0, 3).map((c) => `${Math.round((c.x + c.w / 2) * 100)}%→, ${Math.round((c.y + c.h / 2) * 100)}%↓`).join(" · ") })}</p>}
+        {data.snap && (data.snap.changes.length > 0 || data.snap.kept.length > 0) && (
+          <p className="text-[12px] text-muted">{t("{n} warna disukat terus daripada piksel rujukan.", "{n} colour(s) measured straight from the reference's pixels.", { n: data.snap.changes.length })}
+            {data.snap.kept.length > 0 ? ` ${t("Atas foto (warna AI dikekalkan): {l}.", "On a photograph (the AI's colour kept): {l}.", { l: data.snap.kept.slice(0, 4).join(", ") })}` : ""}</p>
+        )}
         <p className="text-[12px] text-muted">{layout.summary || ""}</p>
         {data.removed.length > 0 && (
           <div className="rounded-tile bg-warn/10 p-2.5 text-[12px] text-warn">

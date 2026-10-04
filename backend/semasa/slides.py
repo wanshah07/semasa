@@ -201,8 +201,20 @@ def cover_fit(img: Image.Image, size: tuple[int, int]) -> Image.Image:
     return src.crop((left, top, left + w, top + h))
 
 
+LIGHT_LUMA = 168          # the 40th percentile of a picture's brightness (0-255) above which it counts as a light ground
+
+
+def ground_is_light(photo: Image.Image) -> bool:
+    """A pale, airy picture (a studio gradient, a glass sphere on blush): dark ink reads on it and a dark scrim would only
+    turn it grey. The same test as groundIsLight in web/src/lib/cards/studio.js, so every look treats a ground alike."""
+    small = photo.convert("L").resize((32, 32), Image.BILINEAR)
+    vals = sorted(small.tobytes())
+    return vals[int(len(vals) * 0.4)] >= LIGHT_LUMA
+
+
 def background(size: tuple[int, int], ground: bytes | None) -> tuple[Image.Image, bool]:
-    """(canvas, on_ground). A ground is a photograph under a dark scrim, so white ink reads on it."""
+    """(canvas, on_ground). A ground is a photograph under a dark scrim, so white ink reads on it, unless it is a LIGHT
+    picture: then it keeps dark ink under a faint white veil (Wan, 4 Oct 2026: the same background on every kind of post)."""
     w, h = size
     if ground:
         try:
@@ -210,6 +222,8 @@ def background(size: tuple[int, int], ground: bytes | None) -> tuple[Image.Image
             photo = cover_fit(open_upright(ground), size)
         except Exception as exc:  # noqa: BLE001 - a bad ground is reported, never drawn half
             raise SlideError(f"the background picture could not be opened ({type(exc).__name__})") from exc
+        if ground_is_light(photo):
+            return Image.blend(photo, Image.new("RGB", size, (255, 255, 255)), 0.22), False
         scrim = Image.new("L", (1, h))
         for y in range(h):
             scrim.putpixel((0, y), round(150 + 70 * (y / max(1, h - 1))))   # 59% at the top, 86% at the foot

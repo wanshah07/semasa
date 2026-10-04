@@ -21,6 +21,7 @@ import { cloneLayout, refineLayout } from "../lib/designClone";
 import { layoutToSeed, patchBoxes, slotsOf, wordsFromLayout } from "../lib/designCloneSeed";
 import { loadImageFile, readPixels, samplePatches, sizeLike } from "../lib/designPatch";
 import { compareImages, judgePass, snapLayout } from "../lib/designFidelity";
+import { GROUND_STYLES } from "../lib/groundStyles";
 import { renderSeedPreview } from "../lib/kanvasBuild";
 import DesignLibrary from "../components/DesignLibrary";
 import CanvaHandoff from "../components/CanvaHandoff";
@@ -364,7 +365,14 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
               <label className="block"><Label hint={t("dijana dahulu oleh penyedia gambar (Cloudflare: percuma), kemudian dijadikan latar", "made first by the image provider (Cloudflare: free), then used as the background")}>
                 {t("Gambar latar", "Background picture")}</Label>
                 <TextArea rows={2} value={bgPrompt} onChange={(e) => setBgPrompt(e.target.value)} maxLength={600}
-                  placeholder={t("Cth: makmal kosmetik yang bersih, cahaya siang lembut", "E.g. a clean cosmetics lab, soft daylight")} /></label>
+                  placeholder={t("Cth: makmal kosmetik yang bersih, cahaya siang lembut", "E.g. a clean cosmetics lab, soft daylight")} />
+                <span className="mt-1.5 flex flex-wrap gap-1.5" aria-label={t("Gaya latar", "Background styles")}>
+                  {GROUND_STYLES.map((g) => (
+                    <button key={g.k} type="button" onClick={() => setBgPrompt(g.prompt)}
+                      className="rounded-pill border border-line px-2.5 py-1 text-[11px] text-muted hover:border-accent hover:text-accent">{t(g.bm, g.en)}</button>
+                  ))}
+                </span>
+                <span className="mt-1 block text-[11px] text-muted">{t("Gambar cerah: tulisan gelap dan tiada tutupan, secara automatik.", "A light picture gets dark words and no cover, automatically.")}</span></label>
             )}
             <label className="block"><Label hint={t("pilihan · label kecil di atas", "optional · the small label on top")}>{t("Label", "Label")}</Label>
               <Input value={eyebrow} onChange={(e) => setEyebrow(e.target.value)} maxLength={60} placeholder={t("Cth: Halal Malaysia", "E.g. Halal Malaysia")} /></label>

@@ -32,6 +32,8 @@ const SHAPE = {
   e_myth: { eyebrow: "Info ERA", title: "Satu *mitos* yang mahal", lead: "", note: "Semak sumber sebelum semak claim.", points: ["Produk bernombor bermakna sudah diluluskan | Nombor notifikasi hanya bukti pemberitahuan, bukan kelulusan."] },
   e_check: { eyebrow: "Info ERA", title: "Sebelum *notifikasi*", lead: "", note: "Satu tiada, satu lot tertahan.", points: ["Senarai INCI | Setiap bahan mesti padan dengan formula.", "Artwork label | Nama, kuantiti dan amaran.", "Surat pengilang"] },
   e_stat: { eyebrow: "Info ERA", title: "Tempoh *purata* satu permohonan", lead: "Daripada hantar hingga nombor diterima.", note: "Angka contoh.", points: ["14", "hari bekerja"] },
+  e_event: { eyebrow: "Bengkel pematuhan", title: "*NOTIFIKASI KOSMETIK* langkah demi langkah untuk *SME*", lead: "Pengurusan notifikasi\nbagi pemilik syarikat",
+    points: ["Penceramah A | Malaysia", "Penceramah B | Singapura", "Penceramah C | Thailand"], note: "Rabu 14 Okt 2026 | 10:00 – 12:00 | Bilik seminar 2", chip: "Contoh" },
   p_stat: { photo: true, title: "Tempoh purata satu permohonan lengkap", lead: "", points: ["245", "hari"] },
   p_list: { photo: true, title: "Empat *dokumen* wajib", lead: "", points: ["Surat kebenaran pengilang | Daripada pengeluar asal.", "Senarai penuh INCI | Setiap bahan.", "Artwork label siap | Bahasa yang betul."] },
   p_split: { photo: true, title: "Notifikasi bukan kelulusan", lead: "Nombor hanya bukti pemberitahuan diterima.", points: ["Semak maklumat produk", "Bukan ujian formula"] },

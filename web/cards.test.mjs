@@ -1,7 +1,7 @@
 // The slide -> Studio card mapping (web/src/lib/cards/studio.js, specsFor). The drawing itself is tested in a real
 // browser by backend/tests/test_studio_cards.py; this checks the one rule the mapping owns: every point of every
 // slide reaches a card, whatever the look. `npm test`.
-import { specsFor, LOOKS, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate } from "./src/lib/cards/studio.js";
+import { specsFor, LOOKS, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf } from "./src/lib/cards/studio.js";
 import { canvaBrief } from "./src/lib/canvaBrief.js";
 import { readFileSync } from "node:fs";
 import { cardFromCaption, headAndRest, slidesFromCaption } from "./src/lib/cards/fromCaption.js";
@@ -99,9 +99,9 @@ ok(LOOKS.map((l) => l.k).join(",") === "classic,grid,era,photo", "the four looks
   ok(bad.font === undefined && bad.mascot_pos === undefined, "an unknown font or place is ignored");
 }
 
-// the catalogue file and the renderer name the same twenty-one templates (4 Oct 2026: nine added)
+// the catalogue file and the renderer name the same twenty-two templates (4 Oct 2026: nine added, then the event poster)
 const cat = JSON.parse(readFileSync(new URL("../rules/cards.json", import.meta.url), "utf8")).templates.map((x) => x.k);
-ok(cat.length === 21 && cat.slice().sort().join() === TEMPLATE_KEYS.slice().sort().join(), "rules/cards.json and studio.js list the same templates");
+ok(cat.length === 22 && cat.slice().sort().join() === TEMPLATE_KEYS.slice().sort().join(), "rules/cards.json and studio.js list the same templates");
 ok(cat.every((k) => /^[gep]_[a-z]{2,8}$/.test(k)), "every template key passes the slide-design pattern the database and the worker check");
 
 // "fit the design to each slide": off, nothing changes; on, only a template that draws every point is chosen
@@ -130,6 +130,23 @@ const br = canvaBrief({ slides: [{ title: "Notifikasi *bukan* kelulusan", points
 ok(["Notifikasi *bukan* kelulusan", "Satu", "Dua", "Sokongan", "https://x/1.jpg", "1080×1350", "#D8232A", "EC 1223/2009"].every((x) => br.includes(x)), "the brief carries the words, picture, size, colours and source");
 ok(br.includes("no ws.regulab logo") && !br.includes("website only in the footer"), "LinkedIn: no ws.regulab identity");
 ok(canvaBrief({ slides: [{ title: "T", points: [] }], stream: "regulab" }).includes("website only in the footer"), "ws.regulab: logo and website in the footer only");
+
+// the event poster (4 Oct 2026): the date is read, the speakers keep their names, fit picks it, a light ground is told apart
+const dt = eventDate("Wednesday 30 Sep 2026 | 16:15 – 17:00 | Room: Hub 2");
+ok(dt.weekday === "WEDNESDAY" && dt.day === "30" && dt.month === "SEP" && dt.year === "2026" && dt.lines.join() === "16:15 – 17:00,Room: Hub 2", "an event date is read into weekday, day, month, year and the lines under it");
+const dm = eventDate("Rabu 14 Okt 2026 | 10:00");
+ok(dm.weekday === "RABU" && dm.month === "OKT" && dm.day === "14", "a Malay date reads too (Okt, Rabu)");
+ok(eventDate("Terbuka kepada semua | Percuma").day === "" && eventDate("Terbuka kepada semua | Percuma").lines.length === 2, "a note that is not a date is kept as plain lines, nothing is lost");
+ok(eventDate("30 Sep 2026").weekday === "" && eventDate("30 Sep 2026").day === "30", "a date without a weekday reads");
+ok(initialsOf("DR SEEMAL DESAI") === "SD" && initialsOf("Prof Thierry Passeron") === "TP" && initialsOf("Dr Cristina Wöhlke Vendruscolo") === "CV" && initialsOf("Ncoza") === "N", "speaker initials skip the title");
+const EV = [{ title: "*SAFE & EFFECTIVE* TREATMENT *HYPERPIGMENTATION*", lead: "TOPIC\nSECOND", eyebrow: "SCIENTIFIC SYMPOSIUM",
+  points: ["DR A | USA", "PROF B | FRANCE"], note: "Wednesday 30 Sep 2026 | 16:15 – 17:00 | Room: Hub 2", chip: "EADV CONGRESS" }];
+const evs = specsFor(EV, { look: "era", fit: true })[0];
+ok(evs.template === "e_event" && evs.items.length === 2 && evs.note.includes("Hub 2") && evs.chip_label === "EADV CONGRESS", "fit gives a slide with a date and people the event poster, keeping every word");
+ok(specsFor(EV, { look: "grid", fit: true })[0].template === "e_event", "the event poster is chosen under any look when the words are an event");
+ok(specsFor(EV, { look: "era", fit: false })[0].template !== "e_event", "fit off: the look decides, as before");
+ok(specsFor([{ title: "Tempoh", points: ["14", "hari"], note: "Angka contoh." }], { look: "era", fit: true })[0].template === "e_stat", "a note without a date does not make an event");
+ok(specsFor(EV, { look: "era" })[0].auto_scrim === true && specsFor([{ ...EV[0], scrim: "heavy" }], { look: "era" })[0].auto_scrim === false, "a scrim chosen on purpose is remembered, so a light picture does not override it");
 
 if (failed) { console.error(`${failed} card mapping check(s) failed`); process.exit(1); }
 console.log("cards: slide -> Studio card mapping keeps every word");

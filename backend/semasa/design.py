@@ -44,7 +44,11 @@ VOICE = {
 
 SHAPE = {
     "poster": 'ONE poster: {"slides": [{"title": "a headline of at most 10 words", "points": [up to 5 points of at '
-              'most 22 words each]}], "citation": "..."}',
+              'most 22 words each]}], "citation": "..."}. If the BRIEF is an EVENT (a talk, symposium, webinar, workshop), '
+              'also give "eyebrow" (the kind of event, 2-3 words), "lead" (the topic, one or two short lines), "points" '
+              '(one speaker each as "Name | Country", up to 6), "note" (only what the brief states, as "Weekday D Mon '
+              'YYYY | time | venue") and "chip" (the organiser); mark the one or two key phrases of the title with '
+              '*asterisks*. Never invent a speaker, date, time or venue.',
     "card": 'ONE card: {"slides": [{"title": "a headline of at most 9 words", "points": [up to 3 points of at most '
             '18 words each]}], "citation": "..."}',
     "carousel": 'A carousel of 5 to 7 slides: {"slides": [{"title": "...", "points": ["..."]}, ...], "citation": "..."}. '
@@ -127,8 +131,12 @@ its artwork, its brand, its products or its people. JSON keys:
   website or handle, another brand's logo or name, a real person's face, more text than one headline and a few points;
 "look": the nearest of "grid" (clean editorial grid, flat colour blocks), "era" (bold magazine style, strong accent
   colour, a character), "photo" (a full-bleed photograph with the words over it), "classic" (quiet brand paper);
-"background": one English sentence describing an ORIGINAL background picture in the reference's mood and colours,
-  with calm empty space for text: no words, no letters, no logos, no products, no recognisable people;
+"background": two or three English sentences an image generator can follow to make an ORIGINAL background in the
+  reference's style: the material and subject (e.g. "a translucent pink glass sphere filled with clear gel bubbles"), the
+  camera crop and WHERE the subject sits (e.g. "cropped off the bottom-right corner, filling a third of the frame"),
+  the palette with approximate hex values, the light and the depth of field. Say which part stays EMPTY and calm for
+  text. If the reference is a flat colour or a simple gradient, say so with the hex values. No words, no letters, no
+  logos, no products, no recognisable people;
 "words_note": one English sentence on the words' tone and length (e.g. "one short punchy headline, three short points");
 "text_in_image": the words printed in the reference, verbatim, or "";
 "brands": logos or brand names visible, or [].{note}"""
@@ -155,7 +163,7 @@ def review(llm: LLM | None, data: bytes, mime: str, kind: str, stream: str, note
         return [str(v).strip()[:160] for v in vals if str(v).strip()][:4]
     return {"summary": str(out["summary"]).strip()[:500], "keep": points("keep"), "change": points("change"),
             "look": look if look in LOOK_CHOICES else "grid",
-            "background": str(out.get("background") or "").strip()[:500],
+            "background": str(out.get("background") or "").strip()[:700],
             "words_note": str(out.get("words_note") or "").strip()[:200],
             "text_in_image": str(out.get("text_in_image") or "").strip()[:300],
             "brands": [str(b)[:60] for b in (out.get("brands") or []) if str(b).strip()][:6],

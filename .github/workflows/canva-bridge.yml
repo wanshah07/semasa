@@ -1,0 +1,70 @@
+name: Canva bridge
+
+# Semasa's half of "rebuild this carousel in Canva" (Wan, 4 Oct 2026: "Carousel Studio > Create Design > send to semasa ...
+# bot will design not me in canva"). Canva is driven from a Claude session that has the Canva connector, never from here.
+#   queue   prints the next carousel post (and the newest uploaded reference design) the bot should build, as JSON.
+#           Posts that are scheduled or posted are never offered: Buffer already holds their pictures.
+#   import  takes the pages the bot exported from Canva (https addresses on canva.com, in page order) and stores them as
+#           that post's slide set, or as a reference design waiting for Wan's Save. A draft takes them at once; an
+#           approved post does not get its pictures changed behind Wan's back (backend/semasa/canva_bridge.py).
+# It posts nothing anywhere.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "queue = what to build next; import = bring the Canva pages in"
+        type: choice
+        options: [queue, import]
+        default: queue
+      post_id:
+        description: "import: the post the pages belong to"
+        type: string
+        required: false
+      job_id:
+        description: "import: a reference design job instead of a post"
+        type: string
+        required: false
+      urls:
+        description: 'import: JSON list of the exported page addresses, in page order'
+        type: string
+        required: false
+      design_url:
+        description: "import: the Canva design link, kept on the pictures"
+        type: string
+        required: false
+
+concurrency:
+  group: canva-bridge
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bridge:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Canva bridge
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # through the environment, never pasted into the command: the text is data, not shell
+          CANVA_ACTION: ${{ inputs.action }}
+          CANVA_POST_ID: ${{ inputs.post_id }}
+          CANVA_JOB_ID: ${{ inputs.job_id }}
+          CANVA_URLS: ${{ inputs.urls }}
+          CANVA_DESIGN_URL: ${{ inputs.design_url }}
+        run: python -m semasa.canva_bridge

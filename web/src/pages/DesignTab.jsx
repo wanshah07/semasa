@@ -487,7 +487,7 @@ function ReviewPanel({ row, mine, onToast, gens }) {
     <div className="mt-3 rounded-tile bg-surface-2/70 p-3 text-[12px]">
       <p className="flex items-center gap-2 font-semibold">
         {m.style_ref?.url && <img src={m.style_ref.url} alt="" className="h-9 w-9 shrink-0 rounded object-cover" />}
-        {t("Semakan rujukan", "Reference review")}
+        {m.flow === "canva" ? t("Dibina dalam Canva oleh bot", "Built in Canva by the bot") : t("Semakan rujukan", "Reference review")}
         {m.look_chosen && <span className="rounded-pill bg-surface px-2 py-0.5 text-[10px] font-normal text-muted">{t("reka bentuk", "design")}: {m.look_chosen}</span>}
       </p>
       {rv.unread ? <p className="mt-1.5 text-warn [overflow-wrap:anywhere]">{t("Rujukan tidak dibaca", "Reference not read")}: {rv.unread}</p> : (
@@ -505,7 +505,7 @@ function ReviewPanel({ row, mine, onToast, gens }) {
           <div className="flex flex-wrap gap-2">
             <Button size="sm" disabled={busy} onClick={() => send({ confirm: "save" }, t("Disimpan. Dilampirkan pada post jika dipilih.", "Saved. Attached to the post if one was chosen."))}>
               <Save size={12} /> {t("Simpan", "Save")}</Button>
-            <Button size="sm" variant="soft" disabled={busy} onClick={() => setOpen(!open)}><Pencil size={12} /> {t("Ubah & render semula", "Change & redraw")}</Button>
+            {m.flow !== "canva" && <Button size="sm" variant="soft" disabled={busy} onClick={() => setOpen(!open)}><Pencil size={12} /> {t("Ubah & render semula", "Change & redraw")}</Button>}
           </div>
           {open && (
             <div className="space-y-2">
@@ -583,7 +583,7 @@ function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy 
                 )}
                 {urls[0] && <a href={urls[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">
                   <ExternalLink size={11} /> {t("Buka fail", "Open file")}</a>}
-                {urls[0] && r.status === "done" && Array.isArray(m.slides) && m.slides.length > 0 && (
+                {urls[0] && r.status === "done" && m.flow !== "canva" && Array.isArray(m.slides) && m.slides.length > 0 && (
                   <button type="button" onClick={() => setCanva(r)} className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline"
                     title={t("Bina semula sebagai reka bentuk Canva yang boleh disunting", "Rebuild as an editable Canva design")}>
                     <Palette size={11} /> {t("Bina semula dalam Canva", "Rebuild in Canva")}</button>

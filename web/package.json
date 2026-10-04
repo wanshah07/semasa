@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node compliance.test.mjs && node cards.test.mjs && node slots.test.mjs && node workflow.test.mjs && node publishing.test.mjs && node ownSources.test.mjs && node chat.test.mjs && node faq_ai.test.mjs && node office.test.mjs && node design_clone.test.mjs && node design_fidelity.test.mjs && node markdown.test.mjs"
+    "test": "node compliance.test.mjs && node cards.test.mjs && node slots.test.mjs && node workflow.test.mjs && node publishing.test.mjs && node ownSources.test.mjs && node chat.test.mjs && node faq_ai.test.mjs && node office.test.mjs && node design_clone.test.mjs && node design_fidelity.test.mjs && node photos.test.mjs && node markdown.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.20",

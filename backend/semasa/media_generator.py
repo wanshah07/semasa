@@ -224,6 +224,46 @@ def own_grounds(store: Any, row: dict[str, Any], items: list[dict[str, Any]]) ->
     return out
 
 
+def own_photos(store: Any, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Speaker photos for the event poster (Wan, 4 Oct 2026): each `ref:<user id>/<file>` token in a slide's `photos` is read
+    from the reference bucket, cropped square, shrunk to PHOTO_EDGE and handed to the renderer as a data address in
+    `photo_urls`, in the order of the slide's points. A photo that cannot be had leaves that speaker on their initials, says
+    so in the log, and never stops the drawing."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    from .compliance import photo_tokens
+    from .images import open_upright
+    cache: dict[str, str] = {}
+    out = []
+    for it in items:
+        toks = photo_tokens(it.get("photos"))
+        if not any(toks):
+            out.append(it)
+            continue
+        urls = []
+        for tok in toks:
+            if tok and tok not in cache:
+                try:
+                    img = open_upright(store.storage.from_("semasa-reference").download(tok[4:]))
+                    w, h = img.size
+                    e = min(w, h)
+                    img = img.convert("RGB").crop(((w - e) // 2, (h - e) // 2, (w - e) // 2 + e, (h - e) // 2 + e))
+                    img = img.resize((PHOTO_EDGE, PHOTO_EDGE), Image.LANCZOS)
+                    buf = io.BytesIO()
+                    img.save(buf, "JPEG", quality=88)
+                    cache[tok] = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+                except Exception as exc:  # noqa: BLE001 - one speaker's photo must not cost the whole set
+                    log.warning("speaker photo %s could not be read: %s", tok[:60], str(exc)[:160])
+                    cache[tok] = ""
+            urls.append(cache.get(tok, "") if tok else "")
+        out.append({**it, "photo_urls": urls})
+    return out
+
+
+PHOTO_EDGE = 480
 MAX_CLASSIC_POINTS = 5
 
 
@@ -409,7 +449,8 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             # ws.regulab Studio's own designs, drawn by Studio's own code in headless Chrome
             from . import cards_library
             from .providers.cloudflare import content_type_of
-            pics = studio_cards.render(own_grounds(store, row, items), look=look, stream=stream, eyebrow=eyebrow,
+            drawn = own_photos(store, own_grounds(store, row, items))
+            pics = studio_cards.render(drawn, look=look, stream=stream, eyebrow=eyebrow,
                                        source=str(meta.get("citation") or ""), ground=ground,
                                        ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size,
                                        mascots=cards_library.mascots(), fit=bool(meta.get("fit")))

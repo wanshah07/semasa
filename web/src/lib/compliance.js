@@ -117,6 +117,16 @@ const SLIDE_STYLE = {
   mascot_pos: /^(bl|bc|br)$/,
   mascot_size: /^(60|80|130|160)$/,
 };
+/** Speaker photos for the event poster (Wan, 4 Oct 2026): up to six, comma-joined in the order of the slide's points, each a file
+    uploaded to the reference bucket as "ref:<user id>/<file>" or empty. Mirrored exactly by photo_tokens in compliance.py. */
+const PHOTO_TOKEN = /^ref:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[\w.-]{1,120}$/;
+export const MAX_PHOTOS = 6;
+export function photoTokens(raw) {
+  const parts = (Array.isArray(raw) ? raw : String(raw ?? "").split(",")).map((x) => String(x ?? "").trim()).slice(0, MAX_PHOTOS);
+  const toks = parts.map((x) => (PHOTO_TOKEN.test(x) ? x : ""));
+  while (toks.length && !toks[toks.length - 1]) toks.pop();
+  return toks;
+}
 export function slideExtras(s) {
   const out = {};
   for (const [k, cap] of Object.entries(SLIDE_WORDS)) {
@@ -127,6 +137,8 @@ export function slideExtras(s) {
     const v = String(s[k] ?? "").trim();
     if (v && rx.test(v)) out[k] = v;
   }
+  const toks = photoTokens(s.photos);
+  if (toks.some(Boolean)) out.photos = toks.join(",");
   return out;
 }
 /** Every word a slide can put on the picture, for the scan. */

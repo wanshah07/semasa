@@ -357,3 +357,66 @@ def test_a_light_ground_is_light_under_every_grid_and_era_design_and_every_size(
             assert Image.open(io.BytesIO(pic)).size == size
             # the right margin carries no words on any design: it shows the picture as it is, under no scrim
             assert _mean_luma(pic, (1030, 300, 1070, 700)) > 150, (k, stream)
+
+
+def _solid(rgb, size=(400, 300)):
+    buf = io.BytesIO()
+    Image.new("RGB", size, rgb).save(buf, "JPEG", quality=90)
+    return buf.getvalue()
+
+
+UID = "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d"
+
+
+class _Bucket:
+    def __init__(self, files):
+        self.files = files
+
+    def download(self, path):
+        if path not in self.files:
+            raise FileNotFoundError(path)
+        return self.files[path]
+
+
+class _Storage:
+    def __init__(self, files):
+        self.files = files
+
+    def from_(self, name):
+        assert name == "semasa-reference"
+        return _Bucket(self.files)
+
+
+class _Store:
+    def __init__(self, files):
+        self.storage = _Storage(files)
+
+
+def test_speaker_photos_are_read_cropped_square_and_a_missing_one_is_skipped():
+    from semasa import media_generator
+    ok, gone = f"ref:{UID}/a.jpg", f"ref:{UID}/missing.jpg"
+    store = _Store({f"{UID}/a.jpg": _solid((200, 30, 30))})
+    out = media_generator.own_photos(store, [{"title": "x", "photos": f"{ok},{gone},not-a-token"}, {"title": "no photos"}])
+    assert out[1] == {"title": "no photos"}                          # a slide without photos is untouched
+    urls = out[0]["photo_urls"]
+    assert urls[0].startswith("data:image/jpeg;base64,") and urls[1] == ""
+    got = Image.open(io.BytesIO(__import__("base64").b64decode(urls[0].split(",", 1)[1])))
+    assert got.size == (media_generator.PHOTO_EDGE, media_generator.PHOTO_EDGE)       # a landscape photo, cropped square
+    assert len(urls) == 2                                           # the malformed third entry was dropped by the rules
+
+
+@browser
+def test_the_event_poster_draws_a_speakers_own_photo_in_the_round_slot_and_initials_for_the_rest():
+    import base64
+    red = "data:image/jpeg;base64," + base64.b64encode(_solid((220, 20, 20), (480, 480))).decode("ascii")
+    slide = {"title": "*Simposium*", "template": "e_event", **SHAPES["e_event"], "photo_urls": [red, ""]}
+    pic = studio_cards.render([slide], look="era", stream="regulab", ground=_pale())[0]
+    left = Image.open(io.BytesIO(pic)).convert("RGB").crop((60, 540, 560, 1000))
+    px = left.load()
+    n = sum(1 for x in range(left.width) for y in range(left.height)
+            if px[x, y][0] > 180 and px[x, y][1] < 70 and px[x, y][2] < 70)
+    assert n > 2500                                                 # the first speaker's circle holds the photo
+    bare = {k: v for k, v in slide.items() if k != "photo_urls"}
+    plain = studio_cards.render([bare], look="era", stream="regulab", ground=_pale())[0]
+    px2 = Image.open(io.BytesIO(plain)).convert("RGB").crop((60, 540, 560, 1000)).load()
+    assert sum(1 for x in range(500) for y in range(460) if px2[x, y][0] > 180 and px2[x, y][1] < 70) < 50

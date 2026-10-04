@@ -3,7 +3,9 @@ import { ArrowDown, ArrowUp, Expand, ImageIcon, Layers, Loader2, Minimize2, Pain
 import { SLIDE_WORDS, isPromo, normaliseSlides, slidesKey } from "../lib/compliance";
 import { cardFromCaption, slidesFromCaption } from "../lib/cards/fromCaption";
 import { useLang } from "../lib/i18n";
-import { LOOKS, isStudioLook, takesMascot } from "../lib/cards/studio";
+import { LOOKS, isEventSlide, isStudioLook, takesMascot } from "../lib/cards/studio";
+import { photoAt, photosFollow, speakersOf, withPhoto } from "../lib/photos";
+import { photoUrl, uploadSpeakerPhoto } from "../lib/storage";
 import { MASCOTS, TEMPLATES, noteLabel, templateOf } from "../lib/cards/library";
 import BackgroundPicker from "./BackgroundPicker";
 import CanvaHandoff from "./CanvaHandoff";
@@ -17,7 +19,7 @@ export const MAX_SLIDES = 10;
 
 /* A slide's own design (Studio's per-slide editor): the words its template draws besides the headline and the points,
    and how it is drawn. Empty = the look decides. */
-const DESIGN = [...Object.keys(SLIDE_WORDS), "template", "scrim", "bg", "mascot", "type_size", "font", "mascot_pos", "mascot_size"];
+const DESIGN = [...Object.keys(SLIDE_WORDS), "template", "scrim", "bg", "mascot", "type_size", "font", "mascot_pos", "mascot_size", "photos"];
 /* The compact-text preset (Wan, 3 Oct 2026): smaller type in the narrower face, and a smaller character. */
 const COMPACT = { type_size: "80", font: "sans", mascot_size: "80" };
 const STYLE_KEYS = ["type_size", "font", "mascot_pos", "mascot_size"];
@@ -69,7 +71,10 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
   };
   const anyOwnBg = rows.some((r) => r.bg);
   // what the preview draws: the rows as slides, each slide's own background resolved to an address this page can load
-  const previewSlides = normaliseSlides(fromRows(rows)).map((s) => (s.bg && s.bg !== "none" ? { ...s, bg_url: resolveBg(s.bg) } : s));
+  const previewSlides = normaliseSlides(fromRows(rows)).map((s0) => {
+    const s = s0.bg && s0.bg !== "none" ? { ...s0, bg_url: resolveBg(s0.bg) } : s0;
+    return s.photos ? { ...s, photo_urls: s.photos.split(",").map(photoUrl) } : s;     // speaker photos, drawn in the preview too
+  });
   // Studio's "Reset from caption" and single card: built from the caption as it is on screen now
   const hasWords = rows.some((r) => r.title.trim() || r.points.trim());
   const fromCaption = (single) => {
@@ -129,7 +134,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
                 placeholder={templateOf(r.template)?.lead ? t(templateOf(r.template).lead, templateOf(r.template).leadEn)
                   : t("Baris sokongan di bawah tajuk (pilihan)", "Supporting line under the title (optional)")} /></label>
             <TextArea rows={i === 0 ? 2 : 3} value={r.points} disabled={locked} className="mt-1.5"
-              onChange={(e) => set(i, { points: e.target.value })}
+              onChange={(e) => set(i, { points: e.target.value, ...(r.photos ? { photos: photosFollow(r.photos, speakersOf(r.points), speakersOf(e.target.value)) } : {}) })}
               placeholder={templateOf(r.template)?.items ? t(templateOf(r.template).items, templateOf(r.template).itemsEn)
                 : i === 0 ? t("Poin (pilihan)", "Points (optional)")
                 : t("Satu poin satu baris (maksimum 5)", "One point per line (up to 5)")} />
@@ -142,7 +147,8 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
             )}
             {studio && open.has(i) && (
               <SlideDesign r={r} i={i} n={n} set={(patch) => set(i, patch)} locked={locked} bgOptions={bgOptions} stream={post.stream}
-                onBgAll={() => bgAll(i)} onStyleAll={() => styleAll(i)} resolveBg={resolveBg} onPick={picker ? () => setPickFor({ i }) : null} />
+                onBgAll={() => bgAll(i)} onStyleAll={() => styleAll(i)} resolveBg={resolveBg} onPick={picker ? () => setPickFor({ i }) : null}
+                user={picker?.user || null} onToast={onToast} />
             )}
           </li>
         ))}
@@ -234,10 +240,58 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
   );
 }
 
+/* The event poster's speakers, each with a round photo slot (Wan, 4 Oct 2026: "add real speaker photo upload to the event poster").
+   One row per speaker in the points ("Name | Country"); Upload shrinks the photo, stores it and draws it in the circle; a speaker
+   without one keeps their initials. The photos belong to the points in order and follow a speaker who is moved. */
+function SpeakerPhotos({ r, set, locked, user, onToast }) {
+  const { t } = useLang();
+  const [busy, setBusy] = useState(-1);
+  const speakers = speakersOf(r.points).slice(0, 6);
+  if (!speakers.length) return null;
+  const pick = async (idx, file) => {
+    if (!file || !user) return;
+    setBusy(idx);
+    try {
+      const token = await uploadSpeakerPhoto(user, file);
+      set({ photos: withPhoto(r.photos, idx, token) });
+    } catch (e) { onToast(e.message || String(e), "danger"); } finally { setBusy(-1); }
+  };
+  return (
+    <div className="min-w-0 sm:col-span-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{t("Gambar penceramah", "Speaker photos")}</p>
+      <ul className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
+        {speakers.map((sp, idx) => {
+          const tok = photoAt(r.photos, idx), url = tok ? photoUrl(tok) : "";
+          return (
+            <li key={idx} className="flex min-w-0 items-center gap-2 rounded-tile border border-line px-2 py-1.5">
+              <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-surface-2 text-[11px] font-semibold text-muted">
+                {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : (sp.name.replace(/^(assoc\.? ?prof\.?|prof\.?|dr\.?|ts\.?)\s+/i, "").split(/\s+/).filter(Boolean)
+                  .map((w, k, a) => (k === 0 || k === a.length - 1 ? w[0] : "")).join("").toUpperCase())}</span>
+              <span className="min-w-0 flex-1 truncate text-[12px]" title={sp.name}>{sp.name}</span>
+              {busy === idx ? <Loader2 size={14} className="animate-spin text-muted" /> : (
+                <>
+                  <label className={`cursor-pointer text-[11px] font-medium text-accent hover:underline ${locked || !user ? "pointer-events-none opacity-50" : ""}`}>
+                    {tok ? t("Tukar", "Replace") : t("Muat naik", "Upload")}
+                    <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={locked || !user}
+                      onChange={(e) => { pick(idx, e.target.files?.[0]); e.target.value = ""; }} aria-label={t("Gambar untuk {n}", "Photo for {n}", { n: sp.name })} /></label>
+                  {tok && !locked && <button type="button" onClick={() => set({ photos: withPhoto(r.photos, idx, "") })}
+                    className="text-[11px] text-muted hover:text-danger">{t("Buang", "Remove")}</button>}
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-1 text-[11px] text-muted">{t("Foto disimpan dalam storan rujukan Semasa dan hanya muncul pada kad ini. Pastikan penceramah membenarkan penggunaannya.",
+        "Photos are kept in Semasa's reference storage and appear only on this card. Make sure each speaker has agreed to their use.")}</p>
+    </div>
+  );
+}
+
 /* One slide's own design, Studio's cardPanel fields: template, eyebrow, chip, note, source line, background, scrim and
    mascot, plus the text size, face and character placement (Wan, 3 Oct 2026). The headline and the supporting line are
    always on the slide above, never in here. Every field left empty means the chosen look decides, exactly as before. */
-function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, stream, resolveBg = () => "", onPick = null }) {
+function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, stream, resolveBg = () => "", onPick = null, user = null, onToast = () => {} }) {
   const { t, lang } = useLang();
   const [showCat, setShowCat] = useState(false);
   const tpl = templateOf(r.template);
@@ -302,6 +356,7 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, str
           {showCat ? t("Tutup katalog", "Close the catalogue") : t("Pilih dari katalog ({n} templat, dilukis)", "Pick from the catalogue ({n} templates, drawn)", { n: TEMPLATES.length })}</button>
         {showCat && <div className="mt-1.5"><TemplateCatalogue value={r.template} stream={stream} disabled={locked}
           onPick={(k) => set({ template: k })} /></div>}</div>
+      {isEventSlide(r) && <SpeakerPhotos r={r} set={set} locked={locked} user={user} onToast={onToast} />}
       {uses("eyebrow") && f("eyebrow", t("Label atas (eyebrow)", "Eyebrow"), { placeholder: t("ikut set", "as the set") })}
       {(tpl ? tpl.group !== "photo" : true) && f("chip", t("Label cip (instrumen, bukan logo)", "Chip label (the instrument, not a logo)"),
         { placeholder: i === n - 1 ? t("Sumber", "Source") : "" })}

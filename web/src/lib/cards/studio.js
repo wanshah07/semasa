@@ -1668,6 +1668,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     const colR = Math.round(W * 0.655);
     const dt = eventDate(spec.note);
     const dayPx = Math.round(128 * u), monPx = Math.round(70 * u), yrPx = Math.round(118 * u), dPx = Math.round(31 * u);
+    const faces = await Promise.all((spec.avatars || []).map(async (u2) => { try { return u2 ? await loadImg(u2) : null; } catch (e) { return null; } }));
     if (speakers.length) {
       const room = foot - (topEnd + Math.round(34 * u));
       const pitch = Math.min(Math.round(112 * u), Math.floor(room / speakers.length));
@@ -1677,10 +1678,20 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
       const y0 = foot - pitch * speakers.length;
       speakers.forEach((sp, i) => {
         const ry = y0 + i * pitch, cy = ry + d / 2;
+        const face = faces[i] || null;                   // the speaker's own photo, cropped to the circle; else a tint with initials
         ctx.save(); ctx.fillStyle = white ? "rgba(255,255,255,.22)" : "rgba(196,186,210,.55)";
-        ctx.beginPath(); ctx.arc(M + d / 2, cy, d / 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-        ctx.font = "700 " + Math.round(d * 0.3) + "px " + G_HEAD; ctx.fillStyle = muted; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(initialsOf(sp.name).toUpperCase(), M + d / 2, cy + Math.round(d * 0.02));
+        ctx.beginPath(); ctx.arc(M + d / 2, cy, d / 2, 0, Math.PI * 2); ctx.fill();
+        if (face) {
+          ctx.clip(); ctx.translate(M, cy - d / 2); coverDraw(ctx, face, d, d);
+        }
+        ctx.restore();
+        if (face) {
+          ctx.save(); ctx.strokeStyle = white ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.9)"; ctx.lineWidth = Math.max(2, Math.round(3 * u));
+          ctx.beginPath(); ctx.arc(M + d / 2, cy, d / 2 - ctx.lineWidth / 2, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+        } else {
+          ctx.font = "700 " + Math.round(d * 0.3) + "px " + G_HEAD; ctx.fillStyle = muted; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(initialsOf(sp.name).toUpperCase(), M + d / 2, cy + Math.round(d * 0.02));
+        }
         ctx.textAlign = "left"; ctx.textBaseline = "top";
         ctx.font = "700 " + namePx + "px " + G_HEAD;
         const nl = gWrap(ctx, stripEmph(sp.name).toUpperCase(), tw);
@@ -1864,6 +1875,10 @@ const RE_MYTH = /mitos|myth|salah faham|misconception|fakta|\bfacts?\b/i;
 const RE_STEPS = /langkah|\bsteps?\b|proses|process|cara |how to|aliran|\bflow\b|garis masa|timeline|urutan|selepas|after/i;
 const RE_DATE = /\b\d{1,2}\s+[A-Za-zÀ-ÿ]{3,}\.?\s+\d{4}\b/;
 const RE_CHECK = /senarai semak|checklist|\bsemak|\bcheck\b|sebelum|before|pastikan|ensure|wajib|\bmust\b|dokumen|documents/i;
+/** An event slide: drawn as the event poster, or about to be by fit (a date in the note and people in the points). The editor shows
+    the speaker photos for these. */
+export const isEventSlide = (s) => (s.template ? s.template === "e_event"
+  : RE_DATE.test(String(s.note || "")) && String(s.points || "").split("\n").some((l) => l.trim()));
 export function fitTemplate(look, s, i, n, pts) {
   const title = String(s.title || "");
   const piped = pts.length > 0 && pts.every((x) => x.includes("|"));
@@ -1921,6 +1936,8 @@ export function specsFor(slides, o = {}) {
       bg: s.bg === "none" ? "" : (s.bg_url || o.bg || ""),
       scrim: s.scrim || (linkedin ? "heavy" : "medium"),
       auto_scrim: !s.scrim,
+      // the event poster's speaker photos, one per point in order, already resolved to drawable addresses ("" = initials)
+      avatars: Array.isArray(s.photo_urls) && s.photo_urls.some(Boolean) ? s.photo_urls : undefined,
       size: o.size || undefined,
       // SEMASA: the slide's own typography and character placement; absent = the template decides
       type_size: Number(s.type_size) || undefined,

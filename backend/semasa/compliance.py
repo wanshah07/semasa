@@ -172,6 +172,22 @@ SLIDE_STYLE = {
 }
 
 
+# Speaker photos for the event poster (Wan, 4 Oct 2026): up to six, comma-joined and in the order of the slide's points, each
+# one a file Wan uploaded to the reference bucket as "ref:<user id>/<file>" or empty ("no photo for this speaker").
+# Mirrored exactly by photoTokens in web/src/lib/compliance.js.
+PHOTO_TOKEN = re.compile(r"^ref:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[\w.\-]{1,120}$")
+MAX_PHOTOS = 6
+
+
+def photo_tokens(raw: Any) -> list[str]:
+    """The tokens of a `photos` value in point order, an unusable entry becoming "" and trailing blanks dropped."""
+    parts = [x.strip() for x in (raw if isinstance(raw, list) else _str(raw).split(","))][:MAX_PHOTOS]
+    toks = [x if PHOTO_TOKEN.match(x) else "" for x in parts]
+    while toks and not toks[-1]:
+        toks.pop()
+    return toks
+
+
 def slide_extras(s: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for k, cap in SLIDE_WORDS.items():
@@ -182,6 +198,9 @@ def slide_extras(s: dict[str, Any]) -> dict[str, Any]:
         v = _str(s.get(k)).strip()
         if v and rx.match(v):
             out[k] = v
+    toks = photo_tokens(s.get("photos"))
+    if any(toks):
+        out["photos"] = ",".join(toks)
     return out
 
 

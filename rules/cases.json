@@ -1956,5 +1956,93 @@
     "fatwa"
    ]
   }
+ },
+ {
+  "name": "speaker photos drawn as written match; a malformed or trailing entry is dropped",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "x",
+     "slides": [
+      {
+       "title": "Simposium",
+       "points": "Dr A | USA\nProf B | France\n",
+       "note": "Rabu 14 Okt 2026 | 10:00",
+       "template": "e_event",
+       "photos": " ref:0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d/1759-aaaa-dr-a.jpg , ,ref:0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d/1759-bbbb-prof-b.jpg, http://x/y.jpg,,"
+      }
+     ]
+    }
+   ],
+   "slides": [
+    {
+     "title": "Simposium",
+     "points": [
+      "Dr A | USA",
+      "Prof B | France"
+     ],
+     "note": "Rabu 14 Okt 2026 | 10:00",
+     "template": "e_event",
+     "photos": "ref:0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d/1759-aaaa-dr-a.jpg,,ref:0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d/1759-bbbb-prof-b.jpg"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "a changed speaker photo is not what was drawn",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "x",
+     "slides": [
+      {
+       "title": "Simposium",
+       "points": "Dr A | USA\nProf B | France\n",
+       "note": "Rabu 14 Okt 2026 | 10:00",
+       "template": "e_event",
+       "photos": " ref:0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d/1759-aaaa-dr-a.jpg , ,ref:0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d/1759-bbbb-prof-b.jpg, http://x/y.jpg,,"
+      }
+     ]
+    }
+   ],
+   "slides": [
+    {
+     "title": "Simposium",
+     "points": [
+      "Dr A | USA",
+      "Prof B | France"
+     ],
+     "note": "Rabu 14 Okt 2026 | 10:00",
+     "template": "e_event",
+     "photos": "ref:0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d/1759-bbbb-prof-b.jpg,,ref:0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d/1759-aaaa-dr-a.jpg"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 1
+  }
  }
 ]

@@ -33,3 +33,17 @@ sphere behind it). Semasa now draws that kind of poster, and can make that kind 
   soft studio gradient, bright lab, leaves and dew) and *Like the reference* uses the reader's description. Cloudflare makes it free.
 * **Canva**: the same poster was rebuilt in Canva (folder Carousel Studio) with the brand kit's colours, the real logo, the glass picture
   made by Canva, round picture slots, and live text.
+
+## Speaker photos on the event poster (4 Oct 2026)
+
+Post → Slides → open a slide on a Studio look whose template is *ERA · Event poster* (or whose note holds a date and whose points are
+speakers): the **Speaker photos** panel lists each speaker from the points, with **Upload / Replace / Remove**.
+
+* The photo is shrunk in the browser (long edge 720 px), stored in the reference bucket under the uploader's id and kept on the slide
+  as `photos`: comma-joined tokens `ref:<user id>/<file>` in the order of the points (`compliance.js photoTokens` = `compliance.py
+  photo_tokens`; anything else is dropped). It follows a speaker who is moved or removed, and stays put while a name is edited.
+* The worker reads each file (`media_generator.own_photos`), crops it square, shrinks it to 480 px and draws it in the round slot with a
+  white ring. A photo that cannot be read leaves that speaker on initials and logs why; it never stops the drawing.
+* Photos are not post pictures: they are not attached to the post and not sent as separate media. A replaced or removed photo's file is
+  left in storage (an earlier drawn set may still need it); ask for a tidy-up if the bucket grows.
+* Make sure each speaker agreed to the use of their photo. The reference bucket is public.

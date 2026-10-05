@@ -24,7 +24,7 @@ import { compareImages, judgePass, snapLayout } from "../lib/designFidelity";
 import { GROUND_STYLES } from "../lib/groundStyles";
 import MyDesigns from "../components/MyDesigns";
 import ImageLightbox, { useLightbox } from "../components/ImageLightbox";
-import { buildDesignFromReference, nameFromFile, uploadReferenceArt } from "../lib/designFromReference";
+import { buildDesignFromReference, nameFromFile } from "../lib/designFromReference";
 import { newDesignId } from "../lib/designs";
 import { resolveLook, useDesigns } from "../lib/designs";
 import { renderSeedPreview } from "../lib/kanvasBuild";
@@ -211,11 +211,10 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
     setBusy("mydesign"); setMdStatus({ steps: [], error: "", done: null });
     const say = (x) => setMdStatus((m) => ({ ...m, steps: [...m.steps, x].slice(-8) }));
     try {
-      // read the layout, draw it on the reference, compare, correct (up to 3 passes), then keep the picture and the layout
+      // read the layout, draw it as new artwork, compare with the reference, correct (up to 3 passes), then keep the layout and the background description
       const built = await buildDesignFromReference(styleFile, { stream, t, onStep: say });
-      say(t("Menyimpan gambar rujukan dan susun atur…", "Saving the reference picture and the layout…"));
-      const refart = await uploadReferenceArt(user, built);
-      const d = { id: newDesignId(), name: nameFromFile(styleFile), look: "grid", kind: "ref", layouts: { main: built.layout }, refart, bg: "", scrim: "", mascot: "", eyebrow: "" };
+      say(t("Menyimpan susun atur dan penerangan latar…", "Saving the layout and the background description…"));
+      const d = { id: newDesignId(), name: nameFromFile(styleFile), look: "grid", kind: "ref", layouts: { main: built.layout }, bg_prompt: built.bgPrompt, bg: "", scrim: "", mascot: "", eyebrow: "" };
       await saveDesigns([...myDesigns, d]);
       await setDefault(d.id);
       setLook(`d:${d.id}`);

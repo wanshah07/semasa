@@ -2,7 +2,7 @@
    rebuild is, a refine that is never accepted when it is worse, our logo and replaceable picture boxes where the reference had its own,
    and the 5xx that used to print a whole HTML page. Pictures are drawn here, pixel by pixel; nothing third-party is committed. */
 import assert from "node:assert/strict";
-import { compareImages, fillerOf, fillerSlide, fromHex, judgePass, measureBackground, measureFill, measureInk, snapLayout, toHex } from "./src/lib/designFidelity.js";
+import { backgroundPromptOf, compareImages, fillerOf, fillerSlide, fromHex, judgePass, measureBackground, measureFill, measureInk, snapLayout, toHex } from "./src/lib/designFidelity.js";
 import { layoutToSeed } from "./src/lib/designCloneSeed.js";
 import { isOutage, transient } from "./src/lib/upstream.js";
 
@@ -189,6 +189,18 @@ t("a filler slide has a slot's worth of words for every slot the layout has, and
   assert.ok(f.title.length >= 20 && f.points.length === 2 && f.eyebrow && !("footnote" in f));
   assert.ok(f.points[0].length > f.points[1].length);
   assert.equal(fillerSlide({ elements: [{ type: "rect" }] }).points.length, 0);
+});
+
+// ---- what the image provider is asked to paint --------------------------------------------------------------------------------
+t("the background description comes from the largest picture area and the colours, never from the reference's words", () => {
+  const L = { background: { color: "#e6dfec", gradient: { angle: 160, stops: [{ at: 0, color: "#D9D1E2" }, { at: 1, color: "#f7f3f8" }] } }, summary: "a calm clinical poster",
+    elements: [{ type: "photo", x: 0, y: 0, w: 0.2, h: 0.2, description: "a small logo" }, { type: "photo", x: 0.5, y: 0.5, w: 0.7, h: 0.55, description: "a pink glass sphere filled with bubbles." },
+      { type: "text", role: "headline", text: "SCIENTIFIC SYMPOSIUM", x: 0, y: 0, w: 1, h: 0.1 }] };
+  const p = backgroundPromptOf(L);
+  assert.ok(p.startsWith("a pink glass sphere filled with bubbles; soft colours close to #d9d1e2, #f7f3f8, #e6dfec") && p.includes("mood: a calm clinical poster"), p);
+  assert.ok(!/SYMPOSIUM|logo/i.test(p));
+  assert.equal(backgroundPromptOf({ elements: [{ type: "text", text: "x" }] }), "");
+  assert.ok(backgroundPromptOf({ ...L, summary: "x".repeat(2000) }).length <= 600);
 });
 
 console.log(`design_fidelity: ${n} cases ok`);

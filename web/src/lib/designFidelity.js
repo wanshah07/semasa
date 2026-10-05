@@ -201,3 +201,17 @@ export function fillerSlide(layout) {
   return { title: fillerOf(s.headline ? s.headline.chars || 28 : 28), ...(s.eyebrow ? { eyebrow: fillerOf(s.eyebrow.chars || 16, 3) } : {}),
     points: s.points.map((p, i) => fillerOf(p.chars || 44, i * 2 + 1)), ...(s.source ? { footnote: fillerOf(s.source.chars || 30, 5) } : {}) };
 }
+
+const hexName = (h) => String(h || "").toLowerCase();
+/** What the image provider is asked to paint behind a design: the reference's own description of its picture (the largest picture area, or
+    the whole-card one) and the colours of its background, never its words. "" when the layout shows no picture at all. */
+export function backgroundPromptOf(layout) {
+  const photos = (layout?.elements || []).filter((e) => e.type === "photo" && String(e.description || "").trim());
+  if (!photos.length) return "";
+  const big = photos.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
+  const bg = layout.background || {};
+  const tones = [...new Set([...(bg.gradient?.stops || []).map((x) => hexName(x.color)), hexName(bg.color)].filter(Boolean))].slice(0, 3);
+  const mood = String(layout.summary || "").trim();
+  return [String(big.description).trim().replace(/[.\s]+$/, ""), tones.length ? `soft colours close to ${tones.join(", ")}` : "", mood ? `mood: ${mood}` : ""]
+    .filter(Boolean).join("; ").slice(0, 600);
+}

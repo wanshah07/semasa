@@ -3,9 +3,8 @@ import { Check, ImageIcon, Loader2, Palette, Plus, Star, Trash2 } from "lucide-r
 import { LOOKS, STUDIO_LOOKS, ensureFonts, renderSlides, setLogo } from "../lib/cards/studio";
 import { GROUNDS, MASCOTS, TEMPLATES } from "../lib/cards/library";
 import { newDesignId, packDesign, resolveLook, useDesigns } from "../lib/designs";
-import { buildDesignFromReference, uploadReferenceArt } from "../lib/designFromReference";
+import { buildDesignFromReference } from "../lib/designFromReference";
 import ImageLightbox, { useLightbox } from "./ImageLightbox";
-import { withArt } from "../lib/designs";
 import { useLang } from "../lib/i18n";
 import Button from "./ui/Button";
 import { Input, Label, Select } from "./ui/Field";
@@ -39,7 +38,7 @@ function useSamples(draft, enabled) {
       try {
         setLogo(`${BASE}logo.png`);
         await ensureFonts(BASE);
-        const pack = withArt(packDesign(draft));
+        const pack = packDesign(draft);
         const g = draft.bg && draft.bg.startsWith("lib:") ? GROUNDS.find((x) => `lib:${x.k}` === draft.bg) : null;
         const photoFallback = draft.look === "photo" && !g ? GROUNDS[0] : null;      // Photo is drawn on a picture: show one
         const opts = { stream: "regulab", eyebrow: draft.eyebrow || "Kosmetik", design: pack, bg: (g || photoFallback)?.url || "",
@@ -183,16 +182,14 @@ function RefEditor({ initial, onSave, onCancel, isDefault, user }) {
     try {
       const r = await buildDesignFromReference(file, { stream: "regulab", t, onStep: (x) => setSteps((s) => [...s, x].slice(-8)) });
       setD((x) => ({ ...x, name: x.name || file.name.replace(/\.[^.]+$/, "").slice(0, 40), layouts: { ...(x.layouts || {}), [place]: r.layout },
-        ...(place === "main" ? { refart: { url: r.image, w: r.size[0], h: r.size[1], patches: r.patches } } : {}) }));
+        ...(place === "main" ? { bg_prompt: r.bgPrompt } : {}) }));
       if (place === "main") setBuilt({ score: r.score, first: r.first, image: r.image, render: r.render, removed: r.removed });
     } catch (e) { setError(e?.message || String(e)); } finally { setBusy(""); }
   }
   async function save() {
     setBusy("save"); setError("");
     try {
-      let refart = d.refart;
-      if (refart && !refart.path) refart = await uploadReferenceArt(user, { image: refart.url, size: [refart.w, refart.h], patches: refart.patches });   // keep the picture
-      await onSave({ ...d, refart, look: "grid", kind: "ref" }, asDefault);
+      await onSave({ ...d, look: "grid", kind: "ref" }, asDefault);
     } catch (e) { setError(`${t("Gagal disimpan", "Could not save")}: ${e?.message || String(e)}`); } finally { setBusy(""); }
   }
   const fileBtn = (place, label, req) => (
@@ -209,7 +206,7 @@ function RefEditor({ initial, onSave, onCancel, isDefault, user }) {
       <label className="block"><Label>{t("Nama reka bentuk", "Design name")}</Label>
         <Input value={d.name} maxLength={40} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder={t("Cth: Poster NPRA", "E.g. NPRA poster")} /></label>
       <div>
-        <Label hint={t("AI membaca susun atur, kemudian melukis dan membandingkan dengan rujukan sehingga serupa (sehingga 3 pusingan)", "The AI reads the layout, then draws it and compares with the reference until it is close (up to 3 passes)")}>
+        <Label hint={t("AI membaca susun atur, melukis rekaan BAHARU dan membandingkan dengan rujukan (sehingga 3 pusingan). Gambar rujukan tidak digunakan semula: setiap draf mendapat latar baharu yang dijana AI.", "The AI reads the layout, draws NEW artwork and compares it with the reference (up to 3 passes). The reference picture is never reused: every draft gets a new AI-generated background.")}>
           {t("Gambar rujukan", "Reference picture")}</Label>
         {fileBtn("main", t("Untuk semua tempat", "For every place"), true)}
         {busy && busy !== "save" && steps.length > 0 && (

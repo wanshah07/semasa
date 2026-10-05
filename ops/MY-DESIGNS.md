@@ -30,20 +30,21 @@ reference had (a word is never cut), the ws.regulab logo takes the place of the 
 fills the reference's picture area. Small decorative text in the reference (dates, page marks, side labels) is left out.
 Best results come from a reference of the same shape as the cards (square for ws.regulab, 4:5 for LinkedIn).
 
-## Drawn on the reference picture (5 Oct 2026)
-A design from a reference now keeps the reference picture itself (`refart`: a file in the `semasa-reference` bucket, its size, and the
-patches that cover its old words, logos and faces in the colour behind them). The card is drawn ON that picture, so the background is
-the reference's own, and only the new words are drawn on top, where the layout puts them. A card of another shape (square or 4:5) sees
-a cover-crop window of the picture, kept around the words (`cropWindow`); the layout is moved into the window (`remapLayout`).
-* **Logo**: the ws.regulab logo is always drawn (LinkedIn carries none): in the reference's own logo slot if that slot is fully on the
-  card, otherwise in the first corner no words touch. It is trimmed to its ink and goes white over a dark area. *Cause of the hidden
-  logo*: the slot sat partly outside the cropped window, so the logo was drawn half off the card.
-* **Matching**: after saving the design the page draws filler words of the reference's own length over it, scores it against the
-  reference (`compareImages`), and asks the AI for up to 3 refine passes, keeping a pass only when the score rises.
-* **Zoom**: every card preview (design strip, tiles, saved result) opens a full-size popup when clicked.
-* **Saving**: each step (read, measure, draw, upload, save) shows its progress, and a failure stays on screen with the reason, in
-  place of a toast that disappears. If saving still fails, copy that line.
-* The worker reads the picture for each job (`media_generator.own_reference_art`); if it cannot, the design is drawn in layers as before.
+## New artwork from a reference, never the reference itself (5 Oct 2026)
+Wan: *"generate/render new, not using the reference directly, not tampal2 the reference to cover the logo."* A design from a reference
+keeps **no copy of the picture**. The AI reads the layout (where each block goes, colours, type, shapes, picture areas); the colours are
+measured from the pixels; and the layout is saved with a **background description** (`bg_prompt`: what its largest picture area shows,
+the colours of its background, its mood: never its words).
+* Every draft made with the design asks the image provider (Settings → image generation) for an ORIGINAL background from that
+  description (`bg: from_ref`, the same path as "From the reference (AI)"), shows it in the layout's picture area, and pours the draft's
+  own words and our logo on top. One background per job, kept for redraws.
+* The reference only ever serves as the yardstick: after reading, the page draws the layout as new artwork with sample words and
+  scores it against the reference (`compareImages`), up to 3 AI correction passes kept only when the score rises.
+* **Logo**: the ws.regulab logo is always drawn (LinkedIn: none): in the reference's logo slot, or a free corner.
+* **Zoom**: every card preview opens a full-size popup. **Saving** shows its steps and keeps its error on screen.
+* If no image provider is set up, or it fails, the draft is drawn on the layout's colours and says why (`bg_missing`).
+* A design saved by the previous version (drawn on a copy of its reference picture) is no longer drawn on that picture: it falls back
+  to its layout and colours. Make it again from the reference to give it a background description.
 
 ## The simple way (family and colours)
 Design tab → *My designs* → *Simple*, no words needed

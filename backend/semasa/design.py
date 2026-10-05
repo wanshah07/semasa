@@ -175,7 +175,8 @@ def background_prompt(review_out: dict[str, Any] | None, note: str = "") -> str:
     if not base:
         return ""
     return (f"{base} {note.strip()}. " if note.strip() else f"{base} ") + (
-        "A calm, uncluttered background for text: no words, no letters, no logos, no products, no people's faces.")
+        "A calm, uncluttered background for text: no words, no letters, no logos, no brand marks, no icons, no bottles, no "
+        "packaging, no products, no people or faces.")
 
 
 def purge_unconfirmed(store: Any, now: Any = None) -> int:

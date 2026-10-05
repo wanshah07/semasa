@@ -203,10 +203,17 @@ export function fillerSlide(layout) {
 }
 
 const hexName = (h) => String(h || "").toLowerCase();
+/** A picture area that shows a brand, a logo, an icon, a product or a person is the reference's own artwork: it is never rebuilt, and nothing
+    is painted in its place. Only atmosphere (colour, material, light) may become a background. */
+export const BRAND_ART = /\b(logo|logos|icon|icons|brand|brands|emblem|badge|bottle|bottles|packaging|package|pack|packshot|product|products|tube|jar|label|mascot|trademark|lockup|wordmark|symbol|person|people|face|faces|portrait|speaker|speakers|doctor|model)\b/i;
+export function dropBrandPhotos(layout) {
+  if (!layout || !Array.isArray(layout.elements)) return layout;
+  return { ...layout, elements: layout.elements.filter((e) => !(e.type === "photo" && BRAND_ART.test(String(e.description || "")))) };
+}
 /** What the image provider is asked to paint behind a design: the reference's own description of its picture (the largest picture area, or
     the whole-card one) and the colours of its background, never its words. "" when the layout shows no picture at all. */
 export function backgroundPromptOf(layout) {
-  const photos = (layout?.elements || []).filter((e) => e.type === "photo" && String(e.description || "").trim());
+  const photos = (layout?.elements || []).filter((e) => e.type === "photo" && String(e.description || "").trim() && !BRAND_ART.test(String(e.description)));
   if (!photos.length) return "";
   const big = photos.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
   const bg = layout.background || {};

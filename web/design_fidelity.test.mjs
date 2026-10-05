@@ -2,7 +2,7 @@
    rebuild is, a refine that is never accepted when it is worse, our logo and replaceable picture boxes where the reference had its own,
    and the 5xx that used to print a whole HTML page. Pictures are drawn here, pixel by pixel; nothing third-party is committed. */
 import assert from "node:assert/strict";
-import { backgroundPromptOf, compareImages, fillerOf, fillerSlide, fromHex, judgePass, measureBackground, measureFill, measureInk, snapLayout, toHex } from "./src/lib/designFidelity.js";
+import { backgroundPromptOf, compareImages, dropBrandPhotos, fillerOf, fillerSlide, fromHex, judgePass, measureBackground, measureFill, measureInk, snapLayout, toHex } from "./src/lib/designFidelity.js";
 import { layoutToSeed } from "./src/lib/designCloneSeed.js";
 import { isOutage, transient } from "./src/lib/upstream.js";
 
@@ -201,6 +201,18 @@ t("the background description comes from the largest picture area and the colour
   assert.ok(!/SYMPOSIUM|logo/i.test(p));
   assert.equal(backgroundPromptOf({ elements: [{ type: "text", text: "x" }] }), "");
   assert.ok(backgroundPromptOf({ ...L, summary: "x".repeat(2000) }).length <= 600);
+});
+
+t("a picture area showing a brand, an icon, a product or a person is dropped and never becomes a background", () => {
+  const L = { background: { color: "#c00018", gradient: null }, summary: "",
+    elements: [{ type: "photo", x: 0, y: 0.7, w: 0.6, h: 0.3, description: "line drawing of skincare bottles icon" },
+      { type: "photo", x: 0, y: 0, w: 0.3, h: 0.1, description: "Eucerin brand logo" }, { type: "photo", x: 0.6, y: 0.2, w: 0.4, h: 0.5, description: "a doctor's portrait" },
+      { type: "photo", x: 0, y: 0, w: 1, h: 1, description: "deep red satin with soft light" }, { type: "text", role: "headline", x: 0, y: 0, w: 1, h: 0.1 }] };
+  const kept = dropBrandPhotos(L).elements;
+  assert.deepEqual(kept.filter((e) => e.type === "photo").map((e) => e.description), ["deep red satin with soft light"]);
+  assert.equal(kept.length, 2);
+  assert.ok(backgroundPromptOf(L).startsWith("deep red satin with soft light"));
+  assert.equal(backgroundPromptOf({ ...L, elements: L.elements.slice(0, 3) }), "");
 });
 
 console.log(`design_fidelity: ${n} cases ok`);

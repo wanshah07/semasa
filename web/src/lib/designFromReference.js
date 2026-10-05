@@ -6,7 +6,7 @@
    background, from which the image provider makes an ORIGINAL background for every draft.
    Used by the My designs editor and by "Save as my design" in the Design tab's reference box. */
 import { cloneLayout, refineLayout } from "./designClone";
-import { backgroundPromptOf, compareImages, fillerSlide, judgePass, snapLayout } from "./designFidelity";
+import { backgroundPromptOf, compareImages, dropBrandPhotos, fillerSlide, judgePass, snapLayout } from "./designFidelity";
 import { loadImageFile, readPixels, sizeLike } from "./designPatch";
 import { ensureFonts, renderSlides, setLogo } from "./cards/studio";
 
@@ -23,7 +23,7 @@ export async function readReference(file, stream = "regulab") {
   const got = await cloneLayout({ file, width: w, height: h, stream, mode: "clone" });
   const px = await readPixels(file, 900).catch(() => null);
   const snapped = px ? snapLayout(got.layout, px) : null;           // the AI guessed the colours by eye: the picture's pixels know them
-  return { layout: snapped ? snapped.layout : got.layout, measured: snapped ? snapped.changes.length : 0, removed: got.removed || [], image: got.image };
+  return { layout: dropBrandPhotos(snapped ? snapped.layout : got.layout), measured: snapped ? snapped.changes.length : 0, removed: got.removed || [], image: got.image };
 }
 
 /**
@@ -56,7 +56,7 @@ export async function buildDesignFromReference(file, { stream = "regulab", onSte
     onStep(t("Pusingan {p}: AI membetulkan kedudukan ({n}%)…", "Pass {p}: the AI corrects the placing ({n}%)…", { p: pass, n: Math.round(best.score) }));
     let next;
     try { next = await refineLayout({ image: first.image, render: best.render, layout: best.layout, width: w, height: h }); } catch { break; }
-    const cand = await evaluate(snapLayout(next.layout, refPx).layout);
+    const cand = await evaluate(dropBrandPhotos(snapLayout(next.layout, refPx).layout));
     const v = judgePass({ score: best.score }, { score: cand.score });
     if (v.accepted) best = cand;
     onStep(v.accepted ? t("Diterima: {n}%", "Accepted: {n}%", { n: Math.round(cand.score) }) : t("Tidak lebih hampir ({n}%): dikekalkan {m}%", "Not closer ({n}%): keeping {m}%", { n: Math.round(cand.score), m: Math.round(best.score) }));

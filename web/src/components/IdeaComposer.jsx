@@ -5,6 +5,7 @@ import { CATEGORY_TO_DOMAIN, STREAMS } from "../lib/brand";
 import { useLang } from "../lib/i18n";
 import { IMAGE_TYPES, refusal, removeReference, uploadReference } from "../lib/storage";
 import LookPicker from "./LookPicker";
+import { useDesigns } from "../lib/designs";
 import Button from "./ui/Button";
 import { Input, Label, Modal, Segmented, Select, TextArea } from "./ui/Field";
 
@@ -25,7 +26,10 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   const [stream, setStream] = useState("regulab");
   const [media, setMedia] = useState("image");
   const [format, setFormat] = useState("post");   // post | carousel | poster (backend: ideas.format_of)
-  const [look, setLook] = useState("classic");
+  // the slide design: what Wan picked, else the DEFAULT of My designs (chosen in the same place as Semasa, Grid, Info ERA and Photo)
+  const { designs, defaultId } = useDesigns();
+  const [lookPick, setLook] = useState(null);
+  const look = lookPick ?? (defaultId && designs.some((d) => d.id === defaultId) ? `d:${defaultId}` : "classic");
   const [lookBlocked, setLookBlocked] = useState(null);
   const [domain, setDomain] = useState("");
   const [angle, setAngle] = useState("");
@@ -42,7 +46,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     // chosen, and as a carousel: the flow Wan asked for is notice → idea → slides or a poster → post
     // an empty slot in the Schedule opens this for that slot: its stream, and the rota's first domain that day
     setStream(position?.stream || (trend?.watch ? trend.stream || "regulab" : "regulab")); setMedia("image");
-    setFormat(trend?.watch ? "carousel" : "post"); setLook("classic");
+    setFormat(trend?.watch ? "carousel" : "post"); setLook(null);
     setAngle(trend?.watch ? trend.angle || "" : ""); setNote(""); setRefs([]);
     setDomain(trend ? (trend.faq || trend.watch ? trend.domain : CATEGORY_TO_DOMAIN[trend.category]) || ""
       : position?.domain || "");
@@ -101,7 +105,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     if (format === "carousel") row.make_slides = true;
     // the look and a poster ride in the idea's brief until the bot writes the draft (backend: ideas.look_of, format_of)
     const brief = {};
-    if (drawn && look !== "classic") brief.look = look;
+    if (drawn) brief.look = look;                       // always said, "classic" included: an explicit choice beats the default design
     if (format === "poster") brief.format = "poster";
     // the worker keeps this slot while it is still ahead and free (backend ideas.asked_position), else the next free
     if (position?.date && position?.slot && stream === position.stream) brief.position = { date: position.date, slot: position.slot };

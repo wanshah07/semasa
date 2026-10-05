@@ -5,6 +5,15 @@ text: the design has the layout, and the text fills it when the idea comes in fr
 
 **Run `supabase/027_my_designs.sql` once** (two settings rows). Until then the Design tab says so and nothing else changes.
 
+## Where you find it
+* **Design tab → *My designs*** (open by default) → *New design from a reference picture*.
+* **Design tab → Design reference box → *Save as my design*** (after you upload a reference there): reads the layout once, saves it, makes it
+  the default for new drafts and selects it in *Slide design*. (The older *Rebuild / Inspired* buttons are unchanged: they make ONE picture and
+  save nothing.)
+* **Slide design** (in a post, in the Design tab and in the idea composer) shows your designs as tiles in the SAME row as Semasa, Grid, Info
+  ERA and Photo, plus a dashed *My design from a reference picture* tile. The default design is pre-selected there.
+* An idea that names a look (including Semasa's own) keeps it; only an idea that names none takes the default design.
+
 ## Make one FROM A REFERENCE PICTURE (the way ERA, Grid and Photo were made) — the main way
 Wan, 4 Oct 2026: *"ERA, Grid and Photo came from references I gave from ws.regulab Studio. I want like that."*
 

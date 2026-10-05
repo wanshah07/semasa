@@ -23,6 +23,8 @@ import { loadImageFile, readPixels, samplePatches, sizeLike } from "../lib/desig
 import { compareImages, judgePass, snapLayout } from "../lib/designFidelity";
 import { GROUND_STYLES } from "../lib/groundStyles";
 import MyDesigns from "../components/MyDesigns";
+import { nameFromFile, readReference } from "../lib/designFromReference";
+import { newDesignId } from "../lib/designs";
 import { resolveLook, useDesigns } from "../lib/designs";
 import { renderSeedPreview } from "../lib/kanvasBuild";
 import DesignLibrary from "../components/DesignLibrary";
@@ -42,7 +44,7 @@ const defaultSize = (design, stream) => (design === "poster" ? "portrait" : desi
 
 export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas }) {
   const { t } = useLang();
-  const { designs: myDesigns } = useDesigns();
+  const { designs: myDesigns, defaultId, ready: designsReady, saveDesigns, setDefault } = useDesigns();
   const [design, setDesign] = useState("poster");
   const [stream, setStream] = useState("regulab");
   const [format, setFormat] = useState("portrait");
@@ -60,7 +62,9 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
   const [attach, setAttach] = useState("");
   const [fromPost, setFromPost] = useState("");
   const [busy, setBusy] = useState("");
-  const [look, setLook] = useState("classic");
+  // the slide design: what Wan picked, else the DEFAULT of "My designs" (the same place ERA, Grid and Photo are chosen), else Semasa's own
+  const [lookPick, setLook] = useState(null);
+  const look = lookPick ?? (defaultId && myDesigns.some((d) => d.id === defaultId) ? `d:${defaultId}` : "classic");
   const [fit, setFit] = useState(true);                      // fit the design to each slide (studio.js fitTemplate)
   // a reference to take ideas from (Wan, 26 Sep 2026: "upload reference and AI will review > render and get
   // confirmation to save the design"): read by the worker, drawn, and kept only when Wan presses Simpan
@@ -196,6 +200,27 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
     return review.pixels ? snapLayout(next, review.pixels).layout : next;      // the refine moves boxes: measure the colours again
   }
 
+  // "Save as my design": the reference is read once and kept, with no words, as a design every draft fills (ops/MY-DESIGNS.md); it becomes the
+  // default for new drafts and is chosen in Slide design below, the same place as Semasa, Grid, Info ERA and Photo
+  async function saveReferenceAsDesign() {
+    if (!styleFile) return;
+    if (!designsReady) return onToast(t("Belum disediakan: jalankan supabase/027_my_designs.sql sekali dalam Supabase.", "Not set up yet: run supabase/027_my_designs.sql once in Supabase."), "warn");
+    setBusy("mydesign");
+    try {
+      const r = await readReference(styleFile, stream);
+      const d = { id: newDesignId(), name: nameFromFile(styleFile), look: "grid", kind: "ref", layouts: { main: r.layout }, bg: "", scrim: "", mascot: "", eyebrow: "" };
+      await saveDesigns([...myDesigns, d]);
+      await setDefault(d.id);
+      setLook(`d:${d.id}`);
+      onToast(t("Disimpan sebagai reka bentuk saya \"{n}\": ada di Reka bentuk slaid di bawah dan kini lalai untuk draf baharu.",
+        "Saved as my design \"{n}\": it is in Slide design below and is now the default for new drafts.", { n: d.name }), "ok");
+    } catch (err) {
+      onToast(err.message || String(err), "danger");
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function openInKanvas(review, layout, w) {
     const { seed, notes } = await seedFor(review, layout, w);
     notes.slice(0, 3).forEach((n) => onToast(n, "info"));
@@ -313,6 +338,11 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
                       {refMode === "inspire" && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={autoLook} onChange={(e) => setAutoLook(e.target.checked)} />
                         {t("Biar AI pilih reka bentuk yang paling hampir", "Let the AI pick the nearest design")}</label>}
                       {refMode === "rebuild" && <Segmented value={refBase} onChange={setRefBase} options={[["original", t("Atas gambar rujukan (paling serupa)", "On the reference picture (closest)")], ["layers", t("Lapisan dibina semula", "Rebuilt layers")]]} />}
+                      <button type="button" disabled={!!busy} onClick={saveReferenceAsDesign}
+                        className="inline-flex items-center gap-1.5 rounded-pill bg-accent px-3 py-1.5 text-[12px] font-medium text-bg disabled:opacity-50"
+                        title={t("AI baca susun atur rujukan sekali dan simpan sebagai reka bentuk, tanpa perkataan. Draf baharu mengisinya sendiri.",
+                          "The AI reads the reference's layout once and keeps it as a design with no words. New drafts fill it by themselves.")}>
+                        {busy === "mydesign" ? <Loader2 size={12} className="animate-spin" /> : <Palette size={12} />} {t("Simpan sebagai reka bentuk saya", "Save as my design")}</button>
                       <button type="button" onClick={() => setStyleFile(null)} className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-danger">
                         <X size={12} /> {t("Buang rujukan", "Remove reference")}</button>
                     </>

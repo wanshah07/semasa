@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, Palette } from "lucide-react";
+import { AlertTriangle, Loader2, Palette, Plus } from "lucide-react";
 import { LOOKS, ensureFonts, isStudioLook, renderSlides, setLogo } from "../lib/cards/studio";
 import { GROUNDS } from "../lib/cards/library";
 import { resolveLook, useDesigns } from "../lib/designs";
@@ -142,20 +142,21 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
             </button>
           );
         })}
+        {designs.map((d) => {
+          const r = resolveLook(`d:${d.id}`, designs);
+          return (
+            <DesignTile key={d.id} d={r.design ? { ...r.design, id: d.id, name: d.name } : { look: "grid", id: d.id, name: d.name }}
+              opts={opts} cover={cover} ratio={ratio} on={value === `d:${d.id}`} defaultId={defaultId} disabled={disabled} onPick={() => onChange(`d:${d.id}`)} />
+          );
+        })}
+        {!disabled && (
+          <button type="button" onClick={() => window.dispatchEvent(new Event("semasa:my-designs"))}
+            className="grid min-w-0 place-items-center rounded-tile border border-dashed border-line p-3 text-center text-[12px] text-accent hover:border-accent"
+            style={{ minHeight: "6rem" }}>
+            <span><Plus size={16} className="mx-auto mb-1" />{t("Reka bentuk saya daripada gambar rujukan", "My design from a reference picture")}</span>
+          </button>
+        )}
       </div>
-
-      {designs.length > 0 && (
-        <div className="mt-3">
-          <p className="flex items-center gap-1.5 text-[12px] font-medium"><Palette size={13} /> {t("Reka bentuk saya", "My designs")}
-            <span className="font-normal text-muted">· {t("perkataan diisi sendiri bila draf dibuat", "the words fill in by themselves when a draft is made")}</span></p>
-          <div role="radiogroup" aria-label={t("Reka bentuk saya", "My designs")} className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 lg:gap-2">
-            {designs.map((d) => (
-              <DesignTile key={d.id} d={resolveLook(`d:${d.id}`, designs).design ? { ...resolveLook(`d:${d.id}`, designs).design, id: d.id, name: d.name } : { look: "grid", id: d.id, name: d.name }}
-                opts={opts} cover={cover} ratio={ratio} on={value === `d:${d.id}`} defaultId={defaultId} disabled={disabled} onPick={() => onChange(`d:${d.id}`)} />
-            ))}
-          </div>
-        </div>
-      )}
 
       {onFit && isStudioLook(chosen.look) && (
         <label className="mt-2 flex cursor-pointer items-start gap-2 text-[12px]">

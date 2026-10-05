@@ -67,8 +67,8 @@ def load(store: Any) -> tuple[list[dict[str, Any]], str]:
 
 def choose(designs: list[dict[str, Any]], default_id: str, look: str) -> tuple[str, dict[str, Any] | None]:
     """(look, design pack) for the look an idea or post asked for. "d:<id>" names a design; a plain look stays as it is,
-    except that an idea with no look of its own ("classic") takes the default design when one is set."""
-    want = token(look) or (default_id if look in ("", "classic") else "")
+    except that an idea that said nothing ("") takes the default design when one is set; "classic" is a choice and stands."""
+    want = token(look) or (default_id if not look else "")
     if want:
         d = next((x for x in designs if str(x.get("id")) == want), None)
         got = pack(d)
@@ -78,6 +78,9 @@ def choose(designs: list[dict[str, Any]], default_id: str, look: str) -> tuple[s
 
 
 def for_idea(store: Any, idea: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
+    """The look an idea was written with. An idea whose brief names a look (even "classic") keeps it; one that says nothing
+    (older ideas, ideas made elsewhere) takes the default design when one is set."""
     from .ideas import look_of
     designs, default_id = load(store)
-    return choose(designs, default_id, look_of(idea))
+    brief = idea.get("brief") if isinstance(idea.get("brief"), dict) else {}
+    return choose(designs, default_id, look_of(idea) if brief.get("look") else "")

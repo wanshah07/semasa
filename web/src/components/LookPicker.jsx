@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, Palette, Plus } from "lucide-react";
+import { AlertTriangle, Loader2, Palette, Plus, ZoomIn } from "lucide-react";
 import { LOOKS, ensureFonts, isStudioLook, renderSlides, setLogo } from "../lib/cards/studio";
 import { GROUNDS } from "../lib/cards/library";
 import { resolveLook, useDesigns } from "../lib/designs";
@@ -56,7 +56,9 @@ function DesignTile({ d, opts, cover, ratio, on, onPick, disabled, defaultId }) 
   const { t } = useLang();
   const g = d.bg && d.bg.startsWith("lib:") ? GROUNDS.find((x) => `lib:${x.k}` === d.bg) : null;
   const pic = usePreview(cover, { ...opts, bg: g?.url || opts.bg, look: d.look, design: d }, true).pics[0];
+  const box = useLightbox(pic ? [{ url: pic.url, title: d.name }] : []);
   return (
+    <div className="relative min-w-0">
     <button type="button" role="radio" aria-checked={on} disabled={disabled} onClick={onPick}
       className={`min-w-0 overflow-hidden rounded-tile border text-left transition ${on ? "border-accent ring-2 ring-accent/30" : "border-line hover:border-ink/30"} disabled:opacity-50`}>
       <div className="relative w-full bg-surface-2" style={{ aspectRatio: ratio }}>
@@ -68,6 +70,10 @@ function DesignTile({ d, opts, cover, ratio, on, onPick, disabled, defaultId }) 
         <div className="mt-1 text-[10.5px] leading-snug text-muted">{defaultId === d.id ? t("reka bentuk lalai", "default design") : t("reka bentuk saya", "my design")}</div>
       </div>
     </button>
+    {pic && <button type="button" onClick={() => box.open(0)} aria-label={t("Zum kad", "Zoom the card")} title={t("Zum kad", "Zoom the card")}
+      className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-ink/70 text-bg hover:bg-ink"><ZoomIn size={14} /></button>}
+    <ImageLightbox {...box.props} />
+    </div>
   );
 }
 

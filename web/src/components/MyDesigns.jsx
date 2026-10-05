@@ -3,7 +3,9 @@ import { Check, ImageIcon, Loader2, Palette, Plus, Star, Trash2 } from "lucide-r
 import { LOOKS, STUDIO_LOOKS, ensureFonts, renderSlides, setLogo } from "../lib/cards/studio";
 import { GROUNDS, MASCOTS, TEMPLATES } from "../lib/cards/library";
 import { newDesignId, packDesign, resolveLook, useDesigns } from "../lib/designs";
-import { readReference } from "../lib/designFromReference";
+import { buildDesignFromReference, uploadReferenceArt } from "../lib/designFromReference";
+import ImageLightbox, { useLightbox } from "./ImageLightbox";
+import { withArt } from "../lib/designs";
 import { useLang } from "../lib/i18n";
 import Button from "./ui/Button";
 import { Input, Label, Select } from "./ui/Field";
@@ -37,7 +39,7 @@ function useSamples(draft, enabled) {
       try {
         setLogo(`${BASE}logo.png`);
         await ensureFonts(BASE);
-        const pack = packDesign(draft);
+        const pack = withArt(packDesign(draft));
         const g = draft.bg && draft.bg.startsWith("lib:") ? GROUNDS.find((x) => `lib:${x.k}` === draft.bg) : null;
         const photoFallback = draft.look === "photo" && !g ? GROUNDS[0] : null;      // Photo is drawn on a picture: show one
         const opts = { stream: "regulab", eyebrow: draft.eyebrow || "Kosmetik", design: pack, bg: (g || photoFallback)?.url || "",
@@ -54,16 +56,17 @@ function useSamples(draft, enabled) {
   return state;
 }
 
-function Strip({ pics, busy, error, placeLabel }) {
+function Strip({ pics, busy, error, placeLabel, onOpen = null }) {
   if (error) return <p className="text-[12px] text-danger">{error}</p>;
   return (
     <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollSnapType: "x mandatory" }}>
       {PLACES.map(([k, bm, en], i) => (
         <figure key={k} className="w-28 shrink-0 snap-start sm:w-32">
-          <div className="relative overflow-hidden rounded-tile border border-line bg-surface-2" style={{ aspectRatio: "1 / 1" }}>
+          <button type="button" disabled={!pics[i]?.url || !onOpen} onClick={() => onOpen && onOpen(i)} title={placeLabel("Klik untuk zum", "Click to zoom")}
+            className="relative block w-full cursor-zoom-in overflow-hidden rounded-tile border border-line bg-surface-2" style={{ aspectRatio: "1 / 1" }}>
             {pics[i]?.url ? <img src={pics[i].url} alt={placeLabel(bm, en)} className="h-full w-full object-cover" />
               : <span className="absolute inset-0 grid place-items-center text-muted">{busy ? <Loader2 size={14} className="animate-spin" /> : "·"}</span>}
-          </div>
+          </button>
           <figcaption className="mt-0.5 truncate text-[10.5px] text-muted">{placeLabel(bm, en)}</figcaption>
         </figure>
       ))}
@@ -81,6 +84,7 @@ function Editor({ initial, onSave, onCancel, isDefault }) {
   const tplOptions = useMemo(() => [["", t("Auto (keluarga memilih)", "Auto (the family chooses)")],
     ...TEMPLATES.filter((x) => x.k[0] === family).map((x) => [x.k, lang === "bm" ? x.name.split(" · ")[1] : x.en.split(" · ")[1]])], [family, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const samples = useSamples(d, true);
+  const box = useLightbox(samples.pics.filter((p) => p?.url).map((p, i) => ({ url: p.url, title: t(PLACES[i][1], PLACES[i][2]) })));
   const named = d.name.trim().length >= 2;
   const pal = (k, auto) => (
     <label className="block min-w-0"><Label>{k === "accent" ? t("Warna aksen", "Accent colour") : t("Warna kertas", "Paper colour")}</Label>
@@ -137,7 +141,8 @@ function Editor({ initial, onSave, onCancel, isDefault }) {
       <div>
         <p className="mb-1 text-[11px] text-muted">{t("Contoh dengan perkataan palsu sahaja: perkataan sebenar masuk bila draf dibuat.",
           "Shown on sample words only: the real words go in when a draft is made.")}</p>
-        <Strip {...samples} placeLabel={(bm, en) => t(bm, en)} />
+        <Strip {...samples} placeLabel={(bm, en) => t(bm, en)} onOpen={box.open} />
+        <ImageLightbox {...box.props} />
       </div>
       <label className="flex cursor-pointer items-center gap-2 text-[12px]">
         <input type="checkbox" checked={asDefault} onChange={(e) => setAsDefault(e.target.checked)} className="accent-[var(--accent)]" />
@@ -157,25 +162,38 @@ function Editor({ initial, onSave, onCancel, isDefault }) {
    are then measured from the picture's own pixels, and the layout is saved with NO words. Every draft pours its own words into it. */
 const PLACE_FILES = [["cover", "Kulit", "Cover"], ["middle", "Slaid tengah", "Middle slides"], ["closing", "Penutup", "Closing slide"], ["single", "Kad tunggal / poster", "Single card / poster"]];
 
-function RefEditor({ initial, onSave, onCancel, isDefault }) {
+function RefEditor({ initial, onSave, onCancel, isDefault, user }) {
   const { t } = useLang();
   const [d, setD] = useState(initial);
-  const [asDefault, setAsDefault] = useState(isDefault);
+  const [asDefault, setAsDefault] = useState(isDefault !== false);        // a new design is the default for new drafts unless unticked
   const [busy, setBusy] = useState("");                                 // "" | place being read | "save"
-  const [notes, setNotes] = useState([]);
+  const [steps, setSteps] = useState([]);
+  const [built, setBuilt] = useState(null);                             // { score, first, image, render } of the last read
   const [error, setError] = useState("");
   const layouts = d.layouts || {};
   const hasAny = Object.keys(layouts).length > 0;
   const samples = useSamples(d, hasAny);
   const named = d.name.trim().length >= 2 && hasAny;
+  const items = [...samples.pics.filter((p) => p?.url).map((p, i) => ({ url: p.url, title: t(PLACES[i][1], PLACES[i][2]) })),
+    ...(built ? [{ url: built.image, title: t("Rujukan", "Reference") }, { url: built.render, title: t("Lukisan kita", "Our drawing") }] : [])];
+  const box = useLightbox(items);
   async function pick(place, file) {
     if (!file) return;
-    setBusy(place); setError("");
+    setBusy(place); setError(""); setSteps([]);
     try {
-      const r = await readReference(file);
-      setD((x) => ({ ...x, layouts: { ...(x.layouts || {}), [place]: r.layout } }));
-      setNotes((n) => [...n.filter((x) => x.place !== place), { place, measured: r.measured, removed: r.removed }]);
+      const r = await buildDesignFromReference(file, { stream: "regulab", t, onStep: (x) => setSteps((s) => [...s, x].slice(-8)) });
+      setD((x) => ({ ...x, name: x.name || file.name.replace(/\.[^.]+$/, "").slice(0, 40), layouts: { ...(x.layouts || {}), [place]: r.layout },
+        ...(place === "main" ? { refart: { url: r.image, w: r.size[0], h: r.size[1], patches: r.patches } } : {}) }));
+      if (place === "main") setBuilt({ score: r.score, first: r.first, image: r.image, render: r.render, removed: r.removed });
     } catch (e) { setError(e?.message || String(e)); } finally { setBusy(""); }
+  }
+  async function save() {
+    setBusy("save"); setError("");
+    try {
+      let refart = d.refart;
+      if (refart && !refart.path) refart = await uploadReferenceArt(user, { image: refart.url, size: [refart.w, refart.h], patches: refart.patches });   // keep the picture
+      await onSave({ ...d, refart, look: "grid", kind: "ref" }, asDefault);
+    } catch (e) { setError(`${t("Gagal disimpan", "Could not save")}: ${e?.message || String(e)}`); } finally { setBusy(""); }
   }
   const fileBtn = (place, label, req) => (
     <label key={place} className={`flex min-w-0 cursor-pointer items-center gap-2 rounded-tile border px-3 py-2 text-[12px] ${layouts[place] ? "border-accent bg-accent/5" : "border-line hover:border-ink/30"}`}>
@@ -191,44 +209,55 @@ function RefEditor({ initial, onSave, onCancel, isDefault }) {
       <label className="block"><Label>{t("Nama reka bentuk", "Design name")}</Label>
         <Input value={d.name} maxLength={40} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder={t("Cth: Poster NPRA", "E.g. NPRA poster")} /></label>
       <div>
-        <Label hint={t("AI membaca susun atur sekali (kira-kira setengah minit); warna disukat daripada piksel gambar", "The AI reads the layout once (about half a minute); the colours are measured from the picture's pixels")}>
+        <Label hint={t("AI membaca susun atur, kemudian melukis dan membandingkan dengan rujukan sehingga serupa (sehingga 3 pusingan)", "The AI reads the layout, then draws it and compares with the reference until it is close (up to 3 passes)")}>
           {t("Gambar rujukan", "Reference picture")}</Label>
         {fileBtn("main", t("Untuk semua tempat", "For every place"), true)}
+        {busy && busy !== "save" && steps.length > 0 && (
+          <ul className="mt-1.5 space-y-0.5 text-[11px] text-muted">{steps.map((x, i) => <li key={i} className={i === steps.length - 1 ? "text-ink" : ""}>{i === steps.length - 1 ? "▸ " : "✓ "}{x}</li>)}</ul>
+        )}
         <details className="mt-2">
           <summary className="cursor-pointer text-[12px] text-accent">{t("Rujukan berlainan untuk tempat tertentu (pilihan)", "A different reference for one place (optional)")}</summary>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">{PLACE_FILES.map(([k, bm, en]) => fileBtn(k, t(bm, en), false))}</div>
         </details>
-        {error && <p className="mt-1.5 [overflow-wrap:anywhere] text-[12px] text-danger">{error}</p>}
-        {notes.map((n) => (
-          <p key={n.place} className="mt-1 text-[11px] text-muted">{n.place}: {t("{n} warna disukat daripada piksel.", "{n} colour(s) measured from the pixels.", { n: n.measured })}
-            {n.removed.length > 0 && ` ${t("Tidak disalin (logo, jenama, wajah, CTA):", "Not copied (logo, brand, faces, CTA):")} ${n.removed.slice(0, 3).join("; ")}.`}</p>
-        ))}
+        {error && <p className="mt-1.5 rounded-tile bg-danger/10 p-2 [overflow-wrap:anywhere] text-[12px] text-danger" role="alert">{error}</p>}
       </div>
-      {hasAny && (
-        <label className="block min-w-0"><Label hint={t("mengisi kawasan gambar rujukan", "fills the reference's picture area")}>{t("Gambar latar reka bentuk ini", "This design's picture")}</Label>
-          <Select value={d.bg} onChange={(v) => setD({ ...d, bg: v })} className="w-full"
-            options={[["", t("Tiada (ikut gambar post)", "None (the post's picture)")], ...GROUNDS.map((g) => [`lib:${g.k}`, g.name])]} /></label>
+      {built && (
+        <div>
+          <p className="text-[12px] font-medium">{t("Padanan dengan rujukan", "Match to the reference")}: <b className={built.score >= 85 ? "text-ok" : built.score >= 70 ? "text-warn" : "text-danger"}>{Math.round(built.score)}%</b>
+            {built.first != null && Math.round(built.first) !== Math.round(built.score) && <span className="font-normal text-muted"> ({t("bermula", "from")} {Math.round(built.first)}%)</span>}</p>
+          <div className="mt-1 flex gap-2">
+            {[[built.image, t("Rujukan", "Reference"), samples.pics.filter((p) => p?.url).length], [built.render, t("Lukisan kita (perkataan contoh)", "Our drawing (sample words)"), samples.pics.filter((p) => p?.url).length + 1]].map(([u, label, at]) => (
+              <figure key={label} className="w-32 shrink-0 sm:w-40">
+                <button type="button" onClick={() => box.open(at)} className="block w-full cursor-zoom-in overflow-hidden rounded-tile border border-line bg-surface-2"><img src={u} alt={label} className="w-full" /></button>
+                <figcaption className="mt-0.5 text-[10.5px] text-muted">{label}</figcaption>
+              </figure>
+            ))}
+          </div>
+          {built.removed.length > 0 && <p className="mt-1 text-[11px] text-muted">{t("Tidak disalin (jenama, wajah, CTA):", "Not copied (brands, faces, CTA):")} {built.removed.slice(0, 4).join("; ")}.</p>}
+        </div>
       )}
       {hasAny && (
         <div>
-          <p className="mb-1 text-[11px] text-muted">{t("Contoh dengan perkataan palsu sahaja: perkataan sebenar masuk bila draf dibuat.", "Shown on sample words only: the real words go in when a draft is made.")}</p>
-          <Strip {...samples} placeLabel={(bm, en) => t(bm, en)} />
+          <p className="mb-1 text-[11px] text-muted">{t("Contoh pada saiz kad dengan perkataan palsu: perkataan sebenar masuk bila draf dibuat. Klik untuk zum.", "Shown at card size on sample words: the real words go in when a draft is made. Click to zoom.")}</p>
+          <Strip {...samples} placeLabel={(bm, en) => t(bm, en)} onOpen={box.open} />
         </div>
       )}
+      <ImageLightbox {...box.props} />
       <label className="flex cursor-pointer items-center gap-2 text-[12px]">
         <input type="checkbox" checked={asDefault} onChange={(e) => setAsDefault(e.target.checked)} className="accent-[var(--accent)]" />
         {t("Guna untuk draf baharu (bila idea tidak pilih reka bentuk)", "Use for new drafts (when the idea picked no design)")}
       </label>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>{t("Batal", "Cancel")}</Button>
-        <Button type="button" size="sm" disabled={!named || !!busy} onClick={async () => { setBusy("save"); try { await onSave({ ...d, look: "grid", kind: "ref" }, asDefault); } finally { setBusy(""); } }}>
+        <Button type="button" size="sm" disabled={!named || !!busy} onClick={save}>
           {busy === "save" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} {t("Simpan reka bentuk", "Save design")}</Button>
       </div>
+      {!named && <p className="text-right text-[11px] text-muted">{!hasAny ? t("Pilih gambar rujukan dahulu.", "Choose the reference picture first.") : t("Beri nama (sekurang-kurangnya 2 huruf).", "Give it a name (at least 2 letters).")}</p>}
     </div>
   );
 }
 
-export default function MyDesigns({ onToast = () => {} }) {
+export default function MyDesigns({ onToast = () => {}, user = null }) {
   const { t } = useLang();
   const { designs, defaultId, ready, saveDesigns, setDefault } = useDesigns();
   const [editing, setEditing] = useState(null);                       // a design (new or existing) being edited, or null
@@ -293,7 +322,7 @@ export default function MyDesigns({ onToast = () => {} }) {
           })}
           {editing ? (
             editing.kind === "ref"
-              ? <RefEditor key={editing.id || "newref"} initial={{ ...BLANK, ...editing }} isDefault={!!editing.id && defaultId === editing.id} onSave={save} onCancel={() => setEditing(null)} />
+              ? <RefEditor key={editing.id || "newref"} user={user} initial={{ ...BLANK, ...editing }} isDefault={editing.id ? defaultId === editing.id : true} onSave={save} onCancel={() => setEditing(null)} />
               : <Editor key={editing.id || "new"} initial={{ ...BLANK, ...editing }} isDefault={!!editing.id && defaultId === editing.id} onSave={save} onCancel={() => setEditing(null)} />
           ) : (
             <div className="flex flex-wrap gap-2">

@@ -35,6 +35,35 @@ MAX_LAYOUT_BYTES = 80_000      # a design made from a reference carries its layo
 PLACES = ("cover", "middle", "closing", "single", "main")
 
 
+ART_PATH = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[\w.\-]{1,120}$")
+
+
+def refart(raw: Any) -> dict[str, Any] | None:
+    """The reference picture a design is drawn on: a file in the reference bucket (`<user id>/<file>`), its size, and the
+    patches (boxes in the reference's own fractions, each a flat colour or a gradient) that cover its old words, logos and
+    faces. Anything malformed is dropped, never repaired."""
+    if not isinstance(raw, dict) or not ART_PATH.match(str(raw.get("path") or "")):
+        return None
+    try:
+        w, h = int(raw["w"]), int(raw["h"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not (50 <= w <= 8000 and 50 <= h <= 8000):
+        return None
+    patches = []
+    for p in (raw.get("patches") if isinstance(raw.get("patches"), list) else [])[:60]:
+        if not isinstance(p, dict) or not (isinstance(p.get("fill"), str) or isinstance(p.get("gradient"), dict)):
+            continue
+        try:
+            box = {k: float(p[k]) for k in ("x", "y", "w", "h")}
+        except (KeyError, TypeError, ValueError):
+            continue
+        fill = p.get("fill") if isinstance(p.get("fill"), str) else None
+        gradient = p.get("gradient") if isinstance(p.get("gradient"), dict) else None
+        patches.append({**box, "kind": str(p.get("kind") or "")[:8], "fill": fill, "gradient": gradient})
+    return {"path": str(raw["path"]), "w": w, "h": h, "patches": patches}
+
+
 def pack(design: dict[str, Any] | None) -> dict[str, Any] | None:
     """The snapshot a job carries: only the known keys, strings only, and only if the family is a Studio one. A design made
     from a reference also carries its `layouts` ({place: layout}), read by the renderer (studio.js normLayout), which keeps
@@ -42,6 +71,9 @@ def pack(design: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(design, dict) or design.get("look") not in FAMILIES:
         return None
     out: dict[str, Any] = {k: str(design[k])[:120] for k in KEYS if isinstance(design.get(k), str) and design[k].strip()}
+    art = refart(design.get("refart"))
+    if art:
+        out["refart"] = art
     layouts = design.get("layouts")
     if isinstance(layouts, dict):
         keep = {k: v for k, v in layouts.items() if k in PLACES and isinstance(v, dict) and isinstance(v.get("elements"), list)}

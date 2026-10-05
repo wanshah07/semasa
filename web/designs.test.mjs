@@ -1,6 +1,6 @@
 /* My designs in the page: look values, snapshots, and a deleted design never breaking a draft. */
 import assert from "node:assert/strict";
-import { designToken, lookValueOf, newDesignId, packDesign, resolveLook, tokenId } from "./src/lib/designs.js";
+import { designNameOf, designToken, lookValueOf, newDesignId, packDesign, resolveLook, tokenId } from "./src/lib/designs.js";
 
 let n = 0;
 const t = (name, fn) => { try { fn(); n++; } catch (e) { console.error("FAIL:", name); throw e; } };
@@ -36,6 +36,13 @@ t("the look value of a drawn job comes back as its design while that design exis
   assert.equal(lookValueOf({ look: "era", design_id: "ab12cd" }, D), "d:ab12cd");
   assert.equal(lookValueOf({ look: "era", design_id: "gone1234" }, D), "era");
   assert.equal(lookValueOf({ look: "grid" }, D), "grid"); assert.equal(lookValueOf(undefined, D), "classic");
+});
+
+t("a design made from a file is named by the file only when the name says something", () => {
+  assert.equal(designNameOf("Poster NPRA_2026.png"), "Poster NPRA 2026");
+  assert.equal(designNameOf("1790665268999.png", new Date(2026, 9, 5)), "Reka bentuk 5 Okt");
+  assert.equal(designNameOf("", new Date(2026, 0, 31)), "Reka bentuk 31 Jan");
+  assert.equal(designNameOf("a1.jpg", new Date(2026, 4, 2)), "Reka bentuk 2 Mei");
 });
 
 console.log(`designs: ${n} cases ok`);

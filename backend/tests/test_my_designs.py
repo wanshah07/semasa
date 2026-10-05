@@ -116,17 +116,21 @@ def test_a_reference_design_does_not_get_a_default_ground_it_never_asked_for():
     assert plain != "none"                                                  # a Studio look still gets the domain's ground
 
 
-ART_UID = "0b9f1a52-6c1e-4f6e-9c1a-3a1d2b7c9e10"
-
-
-def test_the_reference_picture_is_carried_as_a_path_a_size_and_patches_that_have_a_colour():
-    art = {"path": f"{ART_UID}/ref.jpg", "w": 800, "h": 1000, "patches": [
-        {"x": 0.1, "y": 0.1, "w": 0.4, "h": 0.1, "kind": "text", "fill": "#e6e6f0"},
-        {"x": 0, "y": 0.5, "w": 1, "h": 0.2, "gradient": {"from": "#fff", "to": "#000"}},
-        {"x": 0, "y": 0, "w": 1, "h": 1},                                   # no colour: dropped
-        {"x": "a", "y": 0, "w": 1, "h": 1, "fill": "#000"}]}                 # not a number: dropped
-    got = my_designs.pack({"look": "grid", "refart": art})["refart"]
-    assert got["path"] == art["path"] and (got["w"], got["h"]) == (800, 1000) and len(got["patches"]) == 2
-    for bad in ({**art, "path": "../../etc/passwd"}, {**art, "path": "ref.jpg"}, {**art, "w": 10}, {**art, "h": "x"},
-                "nope", None):
-        assert "refart" not in my_designs.pack({"look": "grid", "refart": bad})   # malformed: dropped
+def test_a_designs_background_description_is_carried_and_the_job_asks_for_an_original_picture():
+    layout = {"elements": [{"type": "text", "role": "headline", "x": 0, "y": 0, "w": 1, "h": 0.1}]}
+    d = {"id": "ref1234", "look": "grid", "layouts": {"main": layout}, "bg_prompt": "  a pink glass   sphere; soft colours  ",
+         "refart": {"path": "x/y.jpg", "w": 800, "h": 1000}}
+    packed = my_designs.pack(d)
+    assert packed["bg_prompt"] == "a pink glass sphere; soft colours"
+    assert "refart" not in packed                                            # the reference picture is never carried
+    assert "bg_prompt" not in my_designs.pack({"look": "grid", "bg_prompt": "   "})
+    assert len(my_designs.pack({"look": "grid", "bg_prompt": "x" * 2000})["bg_prompt"]) == my_designs.MAX_BG_PROMPT
+    idea = {"id": "i1", "created_by": "u", "brief": {}}
+    post = {"stream": "regulab", "domain": "kosmetik", "slides": [{"title": "x"}]}
+    chosen = my_designs.choose([d], "", "d:ref1234")
+    jobs = (ideas.slide_job(idea, post, "p1", "none", chosen=chosen),
+            ideas.poster_job(idea, post, "p1", [{"title": "x"}], "none", chosen=chosen))
+    for job in jobs:
+        assert job["meta"]["bg"] == "from_ref" and job["meta"]["review"] == {"background": "a pink glass sphere; soft colours"}
+    own = ideas.slide_job(idea, post, "p1", "lib:g_makmal02", chosen=chosen)          # a picture the post already has wins
+    assert own["meta"]["bg"] == "lib:g_makmal02" and "review" not in own["meta"]

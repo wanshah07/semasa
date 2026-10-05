@@ -689,8 +689,11 @@ def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str 
     drawn on Studio's default ground for the domain or angle (Wan's own photographs), as Studio did."""
     from . import cards_library, studio_cards
     look, saved = chosen or (look_of(idea), None)
+    review: dict[str, Any] = {}
     if bg == "none" and saved and saved.get("bg"):
         bg = saved["bg"]                       # the saved design's own background, when the post has no picture of its own
+    elif bg == "none" and saved and saved.get("bg_prompt"):
+        bg, review = "from_ref", {"background": saved["bg_prompt"]}      # a design from a reference: an ORIGINAL picture
     elif bg == "none" and studio_cards.is_studio_look(look) and not (saved and saved.get("layouts")):
         bg = cards_library.default_ground(post.get("stream") or "regulab", post.get("domain"), post.get("angle")) or "none"
     return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
@@ -698,20 +701,24 @@ def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str 
             "meta": {"flow": "A", "slides": post.get("slides") or [], "stream": post.get("stream"),
                      "citation": post.get("citation") or "", "domain": post.get("domain"),
                      "angle": post.get("angle"), "bg": bg, "look": look, "fit": look != "classic",
-                     **({"design_pack": saved} if saved else {})}}
+                     **({"review": review} if review else {}), **({"design_pack": saved} if saved else {})}}
 
 
 def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: list[dict[str, Any]],
                bg: str = "none", chosen: tuple[str, dict[str, Any] | None] | None = None) -> dict[str, Any]:
     """The idea's poster: a Design job (one 4:5 artwork) attached to its draft, in the look chosen on the idea."""
     look, saved = chosen or (look_of(idea), None)
+    review: dict[str, Any] = {}
     if bg == "none" and saved and saved.get("bg"):
         bg = saved["bg"]
+    elif bg == "none" and saved and saved.get("bg_prompt"):
+        bg, review = "from_ref", {"background": saved["bg_prompt"]}
     return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
             "prompt": "", "created_by": idea.get("created_by"),
             "meta": {"flow": "A", "design": "poster", "format": "portrait", "slides": words, "stream": post.get("stream"),
                      "citation": post.get("citation") or "", "domain": post.get("domain"), "angle": post.get("angle"),
-                     "bg": bg, "look": look, "fit": look != "classic", **({"design_pack": saved} if saved else {})}}
+                     "bg": bg, "look": look, "fit": look != "classic",
+                     **({"review": review} if review else {}), **({"design_pack": saved} if saved else {})}}
 
 
 LOOKS = ("classic", "grid", "era", "photo")

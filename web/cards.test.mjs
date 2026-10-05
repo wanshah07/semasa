@@ -1,7 +1,7 @@
 // The slide -> Studio card mapping (web/src/lib/cards/studio.js, specsFor). The drawing itself is tested in a real
 // browser by backend/tests/test_studio_cards.py; this checks the one rule the mapping owns: every point of every
 // slide reaches a card, whatever the look. `npm test`.
-import { specsFor, LOOKS, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf, normDesign, normLayout, placeOf, cropWindow } from "./src/lib/cards/studio.js";
+import { specsFor, LOOKS, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf, normDesign, normLayout, placeOf } from "./src/lib/cards/studio.js";
 import { canvaBrief } from "./src/lib/canvaBrief.js";
 import { readFileSync } from "node:fs";
 import { cardFromCaption, headAndRest, slidesFromCaption } from "./src/lib/cards/fromCaption.js";
@@ -181,21 +181,8 @@ ok(rs[4].layout.background.color === "#000000" && rs[0].layout.background.color 
 ok(rs.every((x, i) => x.title === SLIDES5[i].title && x.items.join() === SLIDES5[i].points.join()), "the words travel on the spec");
 ok(specsFor([{ ...SLIDES5[0], template: "g_stat" }], { design: { look: "grid", layouts: { main: LAY } } })[0].template === "g_stat", "a template chosen on the slide beats the reference layout");
 
-// the reference picture as the background: how a card of another shape sees it, and what a design keeps of it
-const ART = { url: "data:image/jpeg;base64,AAAA", w: 800, h: 1000, patches: [{ kind: "text", x: 0.1, y: 0.1, w: 0.5, h: 0.1, fill: "#e6e6f0" }, { x: 0, y: 0, w: 1, h: 1 }] };
-const NA = normDesign({ look: "grid", layouts: { main: LAY }, refart: ART });
-ok(NA.refart && NA.refart.patches.length === 1 && NA.refart.w === 800 && NA.refart.patches[0].fill === "#e6e6f0", "a design keeps its reference picture and the patches that have a colour");
-ok(!("refart" in normDesign({ look: "grid", layouts: { main: LAY }, refart: { url: "", w: 800, h: 1000 } })) && !("refart" in normDesign({ look: "grid", layouts: { main: LAY }, refart: { url: "x", w: 0, h: 5 } })), "no address or no size: no reference picture");
-const sq = cropWindow(NL, 0.8, 1);                                  // a 4:5 reference on a square card: a band of the height
-ok(Math.abs(sq.fh - 0.8) < 1e-9 && sq.fw === 1 && sq.ty >= 0 && sq.ty <= 0.2 + 1e-9, "a taller reference on a square card shows 80% of its height");
-const wide = cropWindow(NL, 1.25, 1);                               // a wide reference on a square card: a band of the width
-ok(Math.abs(wide.fw - 0.8) < 1e-9 && wide.fh === 1, "a wider reference shows 80% of its width");
-ok(cropWindow(NL, 1, 1.0).fw === 1 && cropWindow(NL, 1, 1).ty === 0, "the same shape: no crop");
-const top = cropWindow({ elements: [{ type: "text", x: 0.1, y: 0.0, w: 0.5, h: 0.1 }], covers: [] }, 0.8, 1);
-const bottom = cropWindow({ elements: [{ type: "text", x: 0.1, y: 0.9, w: 0.5, h: 0.1 }], covers: [] }, 0.8, 1);
-ok(top.ty === 0 && Math.abs(bottom.ty - 0.2) < 1e-9, "the window follows the words: top-heavy layouts keep the top, bottom-heavy the bottom");
-ok(specsFor([SLIDES5[0]], { design: { look: "grid", layouts: { main: LAY }, refart: ART } })[0].refart.url === ART.url, "the picture travels with the main layout");
-ok(specsFor([SLIDES5[0]], { design: { look: "grid", layouts: { cover: LAY, middle: LAY }, refart: ART } })[0].refart === undefined, "a layout that is not the main one is not drawn on the main picture");
+// a design never carries a copy of its reference picture, whatever it is handed
+ok(!("refart" in normDesign({ look: "grid", layouts: { main: LAY }, refart: { url: "data:image/jpeg;base64,AAAA", w: 800, h: 1000 } })), "no reference picture is kept");
 
 if (failed) { console.error(`${failed} card mapping check(s) failed`); process.exit(1); }
 console.log("cards: slide -> Studio card mapping keeps every word");

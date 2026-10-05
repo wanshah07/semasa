@@ -13,9 +13,7 @@ import Gate from "./components/Gate";
 import IdeaComposer from "./components/IdeaComposer";
 import PromptLibrary from "./components/PromptLibrary";
 import DesignTab from "./pages/DesignTab";
-import { DesignsContext, setArtResolver } from "./lib/designs";
-import { photoToken } from "./lib/photos";
-import { photoUrl } from "./lib/storage";
+import { DesignsContext } from "./lib/designs";
 import FaqTab from "./pages/FaqTab";
 import FragranceTab from "./pages/FragranceTab";
 // the editor carries Fabric.js: loaded only when the Kanvas tab opens, so every other tab stays as light as before
@@ -254,8 +252,6 @@ function MediaTab({ user, gens, prompts, posts, onToast }) {
 
 const TAB_IDS = ["isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "chat", "faq", "log", "tetapan"];
 
-// the address of a saved design's reference picture (a file in the reference bucket), for drawing it in this page
-setArtResolver((path) => photoUrl(photoToken(path)));
 
 export default function App() {
   const { t } = useLang();                                   // read here so a language switch re-renders the page

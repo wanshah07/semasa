@@ -1,15 +1,14 @@
 /* A design from a reference picture (Wan, 4-5 Oct 2026): "render the design until it has a similar background and text layout with the
    reference". The AI reads the picture's LAYOUT once; the colours are measured from its own pixels; then the layout is DRAWN the way
-   a draft would draw it (on the reference picture itself, the old words and logos covered by patches, words as long as the reference's
-   poured in), the drawing is SCORED against the reference, and the AI is asked to correct the layout, up to three times, keeping a pass
-   only if it scores better. What is left is saved with no words: the layout, the patches and the picture, for every draft to fill.
+   a draft would draw it (NEW artwork from the layout: the reference picture itself is never pasted in, covered or reused; words as long as
+   the reference's poured in), the drawing is SCORED against the reference, and the AI is asked to correct the layout, up to three times,
+   keeping a pass only if it scores better. What is saved has no words and no copy of the reference: the layout and a description of its
+   background, from which the image provider makes an ORIGINAL background for every draft.
    Used by the My designs editor and by "Save as my design" in the Design tab's reference box. */
 import { cloneLayout, refineLayout } from "./designClone";
-import { compareImages, fillerSlide, judgePass, snapLayout } from "./designFidelity";
-import { loadImageFile, readPixels, samplePatches, sizeLike } from "./designPatch";
-import { patchBoxes } from "./designCloneSeed";
+import { backgroundPromptOf, compareImages, fillerSlide, judgePass, snapLayout } from "./designFidelity";
+import { loadImageFile, readPixels, sizeLike } from "./designPatch";
 import { ensureFonts, renderSlides, setLogo } from "./cards/studio";
-import { uploadReference } from "./storage";
 
 const BASE = `${import.meta.env.BASE_URL}cards/`;
 export const GOAL = 90, MAX_PASSES = 3;
@@ -29,7 +28,7 @@ export async function readReference(file, stream = "regulab") {
 
 /**
  * Read, draw, score, correct: the design a reference makes. `onStep(text)` reports progress in the person's words.
- * Returns { layout, patches, score, first, size: [w, h], image (the shrunk reference as a data URL), render (the best drawing as a data URL),
+ * Returns { layout, bgPrompt, score, first, size: [w, h], image (the shrunk reference as a data URL, for comparing only), render (the best drawing as a data URL),
  * measured, removed }. Nothing is uploaded here.
  */
 export async function buildDesignFromReference(file, { stream = "regulab", onStep = () => {}, t = (bm, en) => en } = {}) {
@@ -43,12 +42,11 @@ export async function buildDesignFromReference(file, { stream = "regulab", onSte
 
   // one drawing of a layout, as a draft would draw it, compared with the reference
   async function evaluate(layout) {
-    const patches = (await samplePatches(file, patchBoxes(layout))).filter(Boolean);
-    const design = { look: "grid", layouts: { main: layout }, refart: { url: first.image, w, h, patches } };
+    const design = { look: "grid", layouts: { main: layout } };
     const [card] = await renderSlides([fillerSlide(layout)], { design, size: [w, h], stream });
     const px = await readPixels(card.url, 900);
     const fit = compareImages(refPx, px);
-    return { layout, patches, score: fit.score, render: card.url, worst: fit.worst };
+    return { layout, score: fit.score, render: card.url, worst: fit.worst };
   }
   onStep(t("Melukis dan membandingkan dengan rujukan…", "Drawing it and comparing with the reference…"));
   let best = await evaluate(first.layout);
@@ -64,13 +62,6 @@ export async function buildDesignFromReference(file, { stream = "regulab", onSte
     onStep(v.accepted ? t("Diterima: {n}%", "Accepted: {n}%", { n: Math.round(cand.score) }) : t("Tidak lebih hampir ({n}%): dikekalkan {m}%", "Not closer ({n}%): keeping {m}%", { n: Math.round(cand.score), m: Math.round(best.score) }));
     if (v.stop) break;
   }
-  return { layout: best.layout, patches: best.patches, score: best.score, first: firstScore, size: [w, h], image: first.image, render: best.render,
-    measured: first.measured, removed: first.removed };
-}
-
-/** The saved form of a build: the reference picture is stored (a file in the reference bucket) and the design keeps its path, size and patches. */
-export async function uploadReferenceArt(user, built) {
-  const blob = await (await fetch(built.image)).blob();
-  const up = await uploadReference(user, new File([blob], "reference-art.jpg", { type: "image/jpeg" }));
-  return { path: up.path, w: built.size[0], h: built.size[1], patches: built.patches };
+  return { layout: best.layout, bgPrompt: backgroundPromptOf(best.layout), score: best.score, first: firstScore, size: [w, h], image: first.image,
+    render: best.render, measured: first.measured, removed: first.removed };
 }

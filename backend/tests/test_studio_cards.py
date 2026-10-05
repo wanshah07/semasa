@@ -496,51 +496,20 @@ def test_a_references_picture_area_shows_the_chosen_background_and_nothing_when_
     assert abs(bare[0] - bare[1]) < 30 and bare[2] > 200, bare                  # the lilac background, no placeholder blob
 
 
-def test_a_reference_picture_is_read_shrunk_and_handed_over_and_a_missing_one_leaves_the_design_in_layers():
-    from semasa import media_generator
-    path = f"{UID}/ref.jpg"
-    saved = {"look": "grid", "refart": {"path": path, "w": 3000, "h": 2000, "patches": []}, "layouts": {"main": {"elements": []}}}
-    got = media_generator.own_reference_art(_Store({path: _solid((30, 60, 200), (3000, 2000))}), saved)
-    url = got["refart"]["url"]
-    assert url.startswith("data:image/jpeg;base64,") and got["layouts"] == saved["layouts"] and got["refart"]["path"] == path
-    img = Image.open(io.BytesIO(__import__("base64").b64decode(url.split(",", 1)[1])))
-    assert max(img.size) == media_generator.ART_EDGE                  # shrunk, not left at 3000
-    lost = media_generator.own_reference_art(_Store({}), saved)
-    assert "refart" not in lost and lost["layouts"] == saved["layouts"]   # drawn in layers, still a design
-    assert media_generator.own_reference_art(_Store({}), {"look": "grid"}) == {"look": "grid"}
-    assert media_generator.own_reference_art(_Store({}), None) is None
-
-
 @browser
-def test_a_design_drawn_on_its_reference_picture_keeps_the_picture_covers_old_words_and_pours_the_new_ones():
-    import base64
-    ref = Image.new("RGB", (800, 1000), (120, 170, 230))                    # the reference's own light blue background
-    for x in range(60, 700):
-        for y in range(180, 330):
-            ref.putpixel((x, y), (220, 30, 30))                              # its old headline, here a red block
-    buf = io.BytesIO()
-    ref.save(buf, "JPEG", quality=95)
-    url = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-    art = {"url": url, "w": 800, "h": 1000,
-           "patches": [{"kind": "text", "x": 0.05, "y": 0.17, "w": 0.85, "h": 0.17, "fill": "#78aae6", "gradient": None}]}
-    straddling = {**POSTER, "covers": [{"kind": "logo", "x": 0.7, "y": 0.04, "w": 0.24, "h": 0.10}]}   # half cut off by the shape
-    design = {"look": "grid", "layouts": {"main": straddling}, "refart": art}
+def test_a_design_from_a_reference_is_drawn_as_new_artwork_with_the_logo_always_on_the_card():
+    # the layout's picture area shows the background made for this draft; nothing of the reference's own picture is involved
+    green = io.BytesIO()
+    Image.new("RGB", (400, 400), (20, 160, 60)).save(green, "JPEG")
+    straddling = {**POSTER, "covers": [{"kind": "logo", "x": 0.7, "y": 0.04, "w": 0.24, "h": 0.10}]}
+    design = {"look": "grid", "layouts": {"main": straddling}}
     deck = [{"title": "Notifikasi bukan kelulusan produk", "eyebrow": "Kosmetik", "points": ["Satu.", "Dua.", "Tiga."]}]
-    pic = Image.open(io.BytesIO(studio_cards.render(deck, look="grid", stream="regulab", design=design)[0])).convert("RGB")
-    assert pic.size == (1080, 1080)                                          # the square card, from a 4:5 reference
-    r, g, b = pic.getpixel((1040, 700))
-    assert b > 200 and r < 150, (r, g, b)                                     # the reference's blue, not the layout's lilac
-    red = sum(1 for x in range(300, 1000, 7) for y in range(120, 330, 7)
-              if pic.getpixel((x, y))[0] > 200 and pic.getpixel((x, y))[1] < 70)
-    assert red < 5                                                           # the old headline is covered, not left showing
-    white = sum(1 for x in range(60, 1020, 3) for y in range(150, 400, 3) if min(pic.getpixel((x, y))) > 225)
-    dark = sum(1 for x in range(60, 1020, 3) for y in range(150, 400, 3) if max(pic.getpixel((x, y))) < 90)
-    assert white + dark > 120                                                # the new headline is drawn where the old one was
-    # the ws.regulab logo is always on the card, even where the reference's own logo slot was cropped away by the square shape
-    green = [(x, y) for x in range(0, 1080, 2) for y in range(0, 1080, 2)
-             if pic.getpixel((x, y))[0] < 70 and 80 < pic.getpixel((x, y))[1] < 150 and pic.getpixel((x, y))[2] < 110]
-    assert green and max(y for _, y in green) - min(y for _, y in green) > 30, len(green)     # the whole mark, not half of it
+    png = studio_cards.render(deck, look="grid", stream="regulab", design=design, ground=green.getvalue())[0]
+    pic = Image.open(io.BytesIO(png)).convert("RGB")
+    r, g, b = pic.getpixel((830, 780))
+    assert g > r + 60 and g > b + 60, (r, g, b)                              # the new background, in the reference's picture area
+    marks = [(x, y) for x in range(0, 1080, 2) for y in range(0, 1080, 2)
+             if pic.getpixel((x, y))[0] < 70 and 80 < pic.getpixel((x, y))[1] < 150 and pic.getpixel((x, y))[2] < 110 and y < 160]
+    assert marks and max(y for _, y in marks) - min(y for _, y in marks) > 30     # the logo, whole, in the reference's logo slot
     li = Image.open(io.BytesIO(studio_cards.render(deck, look="grid", stream="linkedin", design=design)[0])).convert("RGB")
-    gone = sum(1 for x in range(0, 1080, 2) for y in range(0, 1350, 2)
-               if li.getpixel((x, y))[0] < 70 and 80 < li.getpixel((x, y))[1] < 150 and li.getpixel((x, y))[2] < 110)
-    assert gone < 30, gone                                                   # LinkedIn carries none
+    assert li.size == (1080, 1350)

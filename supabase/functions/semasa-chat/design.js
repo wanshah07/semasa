@@ -66,7 +66,7 @@ Element kinds:
    (a dark gradient with opacity), and frames.
  {"type":"ellipse", same fields as rect}                      circles, dots, badges' discs
  {"type":"line","x":0.1,"y":0.5,"w":0.8,"h":0,"stroke":"#rrggbb","stroke_w":0.004,"opacity":1}   w and h are the run; stroke_w is a fraction of the shorter canvas side
- {"type":"photo","x":0,"y":0,"w":1,"h":1,"shape":"rect"|"ellipse"|"rounded","description":"what the picture shows, 8 words"}
+ {"type":"photo","x":0,"y":0,"w":1,"h":1,"shape":"rect"|"ellipse"|"rounded","description":"what the picture shows, 8 words: only colour, material and light (e.g. soft pink glass spheres); NEVER a logo, brand, icon, product, bottle, packaging or person: list those as type logo/person instead"}
    a photograph or an illustration area that will be replaced by another picture. A photo behind the whole design is ONE photo
    element covering the canvas; ALSO set "background" to the picture's average tones as a gradient so it still looks right without it.
  {"type":"text","role":"eyebrow"|"headline"|"point"|"source"|"deco","x":..,"y":..,"w":..,"h":..,"text":"...","chars":24,"lines":2,

@@ -23,7 +23,8 @@ import { loadImageFile, readPixels, samplePatches, sizeLike } from "../lib/desig
 import { compareImages, judgePass, snapLayout } from "../lib/designFidelity";
 import { GROUND_STYLES } from "../lib/groundStyles";
 import MyDesigns from "../components/MyDesigns";
-import { nameFromFile, readReference } from "../lib/designFromReference";
+import ImageLightbox, { useLightbox } from "../components/ImageLightbox";
+import { buildDesignFromReference, nameFromFile, uploadReferenceArt } from "../lib/designFromReference";
 import { newDesignId } from "../lib/designs";
 import { resolveLook, useDesigns } from "../lib/designs";
 import { renderSeedPreview } from "../lib/kanvasBuild";
@@ -64,6 +65,8 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
   const [busy, setBusy] = useState("");
   // the slide design: what Wan picked, else the DEFAULT of "My designs" (the same place ERA, Grid and Photo are chosen), else Semasa's own
   const [lookPick, setLook] = useState(null);
+  const [mdStatus, setMdStatus] = useState({ steps: [], error: "", done: null });          // the progress of "Save as my design"
+  const zoom = useLightbox(mdStatus.done ? [{ url: mdStatus.done.image, title: t("Rujukan", "Reference") }, { url: mdStatus.done.render, title: t("Lukisan kita", "Our drawing") }] : []);
   const look = lookPick ?? (defaultId && myDesigns.some((d) => d.id === defaultId) ? `d:${defaultId}` : "classic");
   const [fit, setFit] = useState(true);                      // fit the design to each slide (studio.js fitTemplate)
   // a reference to take ideas from (Wan, 26 Sep 2026: "upload reference and AI will review > render and get
@@ -205,16 +208,22 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
   async function saveReferenceAsDesign() {
     if (!styleFile) return;
     if (!designsReady) return onToast(t("Belum disediakan: jalankan supabase/027_my_designs.sql sekali dalam Supabase.", "Not set up yet: run supabase/027_my_designs.sql once in Supabase."), "warn");
-    setBusy("mydesign");
+    setBusy("mydesign"); setMdStatus({ steps: [], error: "", done: null });
+    const say = (x) => setMdStatus((m) => ({ ...m, steps: [...m.steps, x].slice(-8) }));
     try {
-      const r = await readReference(styleFile, stream);
-      const d = { id: newDesignId(), name: nameFromFile(styleFile), look: "grid", kind: "ref", layouts: { main: r.layout }, bg: "", scrim: "", mascot: "", eyebrow: "" };
+      // read the layout, draw it on the reference, compare, correct (up to 3 passes), then keep the picture and the layout
+      const built = await buildDesignFromReference(styleFile, { stream, t, onStep: say });
+      say(t("Menyimpan gambar rujukan dan susun atur…", "Saving the reference picture and the layout…"));
+      const refart = await uploadReferenceArt(user, built);
+      const d = { id: newDesignId(), name: nameFromFile(styleFile), look: "grid", kind: "ref", layouts: { main: built.layout }, refart, bg: "", scrim: "", mascot: "", eyebrow: "" };
       await saveDesigns([...myDesigns, d]);
       await setDefault(d.id);
       setLook(`d:${d.id}`);
+      setMdStatus((m) => ({ ...m, done: { name: d.name, score: built.score, image: built.image, render: built.render } }));
       onToast(t("Disimpan sebagai reka bentuk saya \"{n}\": ada di Reka bentuk slaid di bawah dan kini lalai untuk draf baharu.",
         "Saved as my design \"{n}\": it is in Slide design below and is now the default for new drafts.", { n: d.name }), "ok");
     } catch (err) {
+      setMdStatus((m) => ({ ...m, error: `${t("Gagal disimpan", "Could not save")}: ${err.message || String(err)}` }));
       onToast(err.message || String(err), "danger");
     } finally {
       setBusy("");
@@ -303,7 +312,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
         </p>
       </motion.div>
 
-      <div className="mt-8"><MyDesigns onToast={onToast} /></div>
+      <div className="mt-8"><MyDesigns onToast={onToast} user={user} /></div>
 
       <Card as="form" onSubmit={submit} className="mt-2 p-5 sm:p-6">
         <div className="grid gap-4 md:grid-cols-2">
@@ -343,6 +352,24 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
                         title={t("AI baca susun atur rujukan sekali dan simpan sebagai reka bentuk, tanpa perkataan. Draf baharu mengisinya sendiri.",
                           "The AI reads the reference's layout once and keeps it as a design with no words. New drafts fill it by themselves.")}>
                         {busy === "mydesign" ? <Loader2 size={12} className="animate-spin" /> : <Palette size={12} />} {t("Simpan sebagai reka bentuk saya", "Save as my design")}</button>
+                      {mdStatus.steps.length > 0 && !mdStatus.done && !mdStatus.error && (
+                        <ul className="space-y-0.5 text-[11px] text-muted">{mdStatus.steps.map((x, i) => <li key={i} className={i === mdStatus.steps.length - 1 ? "text-ink" : ""}>{i === mdStatus.steps.length - 1 ? "▸ " : "✓ "}{x}</li>)}</ul>
+                      )}
+                      {mdStatus.error && <p role="alert" className="rounded-tile bg-danger/10 p-2 text-[12px] text-danger [overflow-wrap:anywhere]">{mdStatus.error}</p>}
+                      {mdStatus.done && (
+                        <div className="text-[12px]">
+                          <p>{t("Disimpan: ", "Saved: ")}<b>{mdStatus.done.name}</b> · {t("padanan", "match")} <b>{Math.round(mdStatus.done.score)}%</b></p>
+                          <div className="mt-1 flex gap-2">
+                            {[[mdStatus.done.image, t("Rujukan", "Reference")], [mdStatus.done.render, t("Lukisan kita (perkataan contoh)", "Our drawing (sample words)")]].map(([u, label], i) => (
+                              <figure key={label} className="w-28">
+                                <button type="button" onClick={() => zoom.open(i)} className="block w-full cursor-zoom-in overflow-hidden rounded-tile border border-line"><img src={u} alt={label} className="w-full" /></button>
+                                <figcaption className="text-[10.5px] text-muted">{label}</figcaption>
+                              </figure>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <ImageLightbox {...zoom.props} />
                       <button type="button" onClick={() => setStyleFile(null)} className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-danger">
                         <X size={12} /> {t("Buang rujukan", "Remove reference")}</button>
                     </>

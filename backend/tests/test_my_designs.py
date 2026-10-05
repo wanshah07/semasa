@@ -114,3 +114,19 @@ def test_a_reference_design_does_not_get_a_default_ground_it_never_asked_for():
     assert ideas.slide_job(idea, post, "p1", "none", chosen=ref)["meta"]["bg"] == "none"
     plain = ideas.slide_job(idea, post, "p1", "none", chosen=("grid", None))["meta"]["bg"]
     assert plain != "none"                                                  # a Studio look still gets the domain's ground
+
+
+ART_UID = "0b9f1a52-6c1e-4f6e-9c1a-3a1d2b7c9e10"
+
+
+def test_the_reference_picture_is_carried_as_a_path_a_size_and_patches_that_have_a_colour():
+    art = {"path": f"{ART_UID}/ref.jpg", "w": 800, "h": 1000, "patches": [
+        {"x": 0.1, "y": 0.1, "w": 0.4, "h": 0.1, "kind": "text", "fill": "#e6e6f0"},
+        {"x": 0, "y": 0.5, "w": 1, "h": 0.2, "gradient": {"from": "#fff", "to": "#000"}},
+        {"x": 0, "y": 0, "w": 1, "h": 1},                                   # no colour: dropped
+        {"x": "a", "y": 0, "w": 1, "h": 1, "fill": "#000"}]}                 # not a number: dropped
+    got = my_designs.pack({"look": "grid", "refart": art})["refart"]
+    assert got["path"] == art["path"] and (got["w"], got["h"]) == (800, 1000) and len(got["patches"]) == 2
+    for bad in ({**art, "path": "../../etc/passwd"}, {**art, "path": "ref.jpg"}, {**art, "w": 10}, {**art, "h": "x"},
+                "nope", None):
+        assert "refart" not in my_designs.pack({"look": "grid", "refart": bad})   # malformed: dropped

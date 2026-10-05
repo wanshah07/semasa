@@ -1997,7 +1997,8 @@ async function paintSeed(ctx, seed, o) {
     } else if (L.kind === "image") {
       const im = await loadImg(L.url);
       if (!im) continue;
-      if (L.cover) coverDraw(ctx, im, seed.width, seed.height);
+      if (L.cover && o.crop) ctx.drawImage(im, o.crop.tx * im.width, o.crop.ty * im.height, o.crop.fw * im.width, o.crop.fh * im.height, 0, 0, seed.width, seed.height);
+      else if (L.cover) coverDraw(ctx, im, seed.width, seed.height);
       else if (L.fitIn) {
         const k = Math.min(L.fitIn.w / im.width, L.fitIn.h / im.height);
         ctx.drawImage(im, L.fitIn.x + (L.fitIn.w - im.width * k) / 2, L.fitIn.y + (L.fitIn.h - im.height * k) / 2, im.width * k, im.height * k);
@@ -2012,20 +2013,86 @@ async function paintSeed(ctx, seed, o) {
     } else if (L.kind === "text") seedText(ctx, L);
   }
 }
+/* THE REFERENCE PICTURE AS THE BACKGROUND (Wan, 5 Oct 2026: "render the design until it has a similar background and text layout with the
+   reference"). A design made from a reference keeps the picture itself (`refart`: its address, its size and the patches that cover the old
+   words, logos and faces in the colour behind them). The card is drawn on that picture, so the background is the reference's own, and only
+   the new words are drawn on top, in the places the layout names. When the card's shape differs from the reference's, the picture is
+   COVER-cropped (a circle stays a circle) and everything in the layout is moved into the visible window, so words still sit where they sat. */
+export function cropWindow(layout, refAspect, cardAspect) {
+  const same = Math.abs(refAspect - cardAspect) < 0.01;
+  if (same) return { tx: 0, ty: 0, fw: 1, fh: 1 };
+  const ys = [], xs = [];
+  for (const e of layout.elements) if (e.type === "text") { ys.push(e.y, e.y + e.h); xs.push(e.x, e.x + e.w); }
+  for (const c of layout.covers) { ys.push(c.y, c.y + c.h); xs.push(c.x, c.x + c.w); }
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  if (cardAspect > refAspect) {                                    // the card is wider: show a band of the picture's height
+    const fh = refAspect / cardAspect, c = ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 0.5;
+    return { tx: 0, ty: clamp(c - fh / 2, 0, 1 - fh), fw: 1, fh };
+  }
+  const fw = cardAspect / refAspect, c = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 0.5;     // taller: a band of the width
+  return { tx: clamp(c - fw / 2, 0, 1 - fw), ty: 0, fw, fh: 1 };
+}
+const inWindow = (b) => b.x < 1 && b.y < 1 && b.x + b.w > 0 && b.y + b.h > 0;
+function remapBox(b, k) { return { ...b, x: (b.x - k.tx) / k.fw, y: (b.y - k.ty) / k.fh, w: b.w / k.fw, h: b.h / k.fh }; }
+function remapLayout(layout, k) {
+  return { ...layout, covers: layout.covers.map((c) => remapBox(c, k)).filter(inWindow),
+    elements: layout.elements.map((e) => { const r = remapBox(e, k); return e.type === "text" && e.size ? { ...r, size: e.size / k.fw } : r; }).filter(inWindow) };
+}
+/** A free place for our logo: the reference's own logo slot, else the first corner (top-left, top-right, bottom-right, bottom-left) no text touches. */
+function logoSlot(layout) {
+  const inside = (b) => b.x >= 0 && b.y >= 0 && b.x + b.w <= 1 && b.y + b.h <= 1;       // a slot cropped away by a different card shape is no slot
+  const own = layout.covers.find((c) => c.kind === "logo" && inside(c));
+  if (own) return own;
+  const w = 0.26, h = 0.05, m = 0.045;
+  const corners = [{ x: m, y: m }, { x: 1 - m - w, y: m }, { x: 1 - m - w, y: 1 - m - h }, { x: m, y: 1 - m - h }];
+  const hit = (a, e) => a.x < e.x + e.w && a.x + w > e.x && a.y < e.y + e.h && a.y + h > e.y;
+  const free = corners.find((c) => !layout.elements.some((e) => e.type === "text" && e.text !== undefined && hit(c, e)));
+  return { kind: "logo", ...(free || corners[0]), w, h };
+}
+/** Our logo, trimmed to its mark and fitted in its slot; white when what is under it is dark. Drawn last, so nothing can hide it. */
+async function paintLogo(ctx, box) {
+  const ink = await logoInk();
+  if (!ink || !ink.im) return;
+  const k = Math.min(box.w / ink.sw, box.h / ink.sh), w = ink.sw * k, h = ink.sh * k, x = box.x + (box.w - w) / 2, y = box.y + (box.h - h) / 2;
+  let dark = false;
+  try {
+    const d = ctx.getImageData(Math.max(0, Math.floor(x)), Math.max(0, Math.floor(y)), Math.max(1, Math.ceil(w)), Math.max(1, Math.ceil(h))).data;
+    let sum = 0, n = 0;
+    for (let i = 0; i < d.length; i += 16) { sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; n++; }
+    dark = n > 0 && sum / n < 120;
+  } catch (e) { dark = false; }
+  if (!dark) { ctx.drawImage(ink.im, ink.sx, ink.sy, ink.sw, ink.sh, x, y, w, h); return; }
+  const oc = document.createElement("canvas");
+  oc.width = Math.max(1, Math.round(w)); oc.height = Math.max(1, Math.round(h));
+  const o = oc.getContext("2d");
+  o.drawImage(ink.im, ink.sx, ink.sy, ink.sw, ink.sh, 0, 0, oc.width, oc.height);
+  o.globalCompositeOperation = "source-in"; o.fillStyle = "#FFFFFF"; o.fillRect(0, 0, oc.width, oc.height);
+  ctx.drawImage(oc, x, y, w, h);
+}
 async function renderRefCard(spec) {
   const [W, H] = sizeOf(spec);
   const c = document.createElement("canvas"); c.width = W; c.height = H;
   const ctx = styleCtx(c.getContext("2d"), spec);
   try { await document.fonts.ready; } catch (e) { }
-  const layout = normLayout(spec.layout);
+  let layout = normLayout(spec.layout);
   if (!layout) return { warn: ["The saved design has no usable layout."], y: 0 };
+  const art = spec.refart && spec.refart.url ? spec.refart : null;
+  const showLogo = spec.stream !== "linkedin" && !!LOGO;         // our logo on every ws.regulab card, never hidden; LinkedIn carries none
+  let crop = null, patches = [];
+  if (art) {
+    crop = cropWindow(layout, art.w / art.h, W / H);
+    patches = (art.patches || []).map((p) => remapBox(p, crop)).filter(inWindow);
+    layout = remapLayout(layout, crop);
+  }
+  const slot = showLogo ? logoSlot(layout) : null;                // asked of the layout as it sits on THIS card, after any crop
   const hasPhoto = layout.elements.some((e) => e.type === "photo");
   const words = wordsFromSpec(spec);
-  // our logo takes the place of the reference's logo, for ws.regulab only (a LinkedIn card carries no ws.regulab identity)
-  const logoUrl = spec.stream === "linkedin" ? "" : LOGO;
-  const { seed } = layoutToSeed(layout, words, { width: W, height: H, pictureUrl: hasPhoto ? spec.bg || "" : "", logoUrl });
+  const seedOpts = { width: W, height: H, pictureUrl: !art && hasPhoto ? spec.bg || "" : "", logoUrl: "" };
+  if (art) Object.assign(seedOpts, { referenceUrl: art.url, patches });
+  const { seed } = layoutToSeed(layout, words, seedOpts);
   ctx.fillStyle = (layout.background && layout.background.color) || "#fff"; ctx.fillRect(0, 0, W, H);
-  await paintSeed(ctx, seed, {});
+  await paintSeed(ctx, seed, { crop });
+  if (slot) await paintLogo(ctx, { x: slot.x * W, y: slot.y * H, w: slot.w * W, h: slot.h * H });
   const warn = [];
   if (!words.headline) warn.push("The design needs a headline.");
   return { url: c.toDataURL("image/jpeg", 0.9), warn, y: 0 };
@@ -2059,6 +2126,12 @@ export function normDesign(d) {
   if (/^(none|[a-z]{2,20})$/.test(d.mascot || "")) out.mascot = d.mascot;
   const eb = String(d.eyebrow || "").trim().slice(0, 80);
   if (eb) out.eyebrow = eb;
+  const ra = d.refart;
+  if (ra && typeof ra === "object" && typeof ra.url === "string" && ra.url && Number(ra.w) > 0 && Number(ra.h) > 0) {
+    const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+    out.refart = { url: ra.url, w: Number(ra.w), h: Number(ra.h), patches: (Array.isArray(ra.patches) ? ra.patches : []).slice(0, 60).filter((p) => p && (p.fill || p.gradient))
+      .map((p) => ({ kind: String(p.kind || ""), x: n(p.x), y: n(p.y), w: n(p.w), h: n(p.h), fill: typeof p.fill === "string" ? p.fill : null, gradient: p.gradient && typeof p.gradient === "object" ? p.gradient : null })) };
+  }
   if (d.layouts && typeof d.layouts === "object") {                 // a design made from a reference: one layout per place, or "main" for all
     const ls = {};
     for (const k of [...POSITIONS, "main"]) { const nl = normLayout(d.layouts[k]); if (nl) ls[k] = nl; }
@@ -2106,7 +2179,7 @@ export function specsFor(slides, o = {}) {
     const place = placeOf(i, n), refLayout = D && D.layouts && (D.layouts[place] || D.layouts.main || D.layouts.middle || D.layouts.cover || D.layouts.single);
     if (refLayout && !(s.template && TEMPLATE_KEYS.includes(s.template))) {
       // a design from a reference: every slide without a template of its own is drawn in that layout, the words poured in
-      return { ...base, template: "c_ref", layout: refLayout, lead: lead0, items: pts, palette: undefined };
+      return { ...base, template: "c_ref", layout: refLayout, refart: refLayout === D.layouts.main ? D.refart : undefined, lead: lead0, items: pts, palette: undefined };
     }
     const chosen = s.template && TEMPLATE_KEYS.includes(s.template) ? s.template
       : (D && D[placeOf(i, n)]) || (o.fit ? fitTemplate(look, s, i, n, pts) : "");

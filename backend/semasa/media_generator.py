@@ -263,6 +263,34 @@ def own_photos(store: Any, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def own_reference_art(store: Any, saved: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A design made from a reference is drawn ON the reference picture (Wan, 5 Oct 2026): its file is read from the reference
+    bucket, shrunk to ART_EDGE and handed to the renderer as a data address in `refart.url`. If the file cannot be had the
+    design is drawn in layers, as before, and says so in the log; it never stops the drawing."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    from .images import open_upright
+    art = (saved or {}).get("refart")
+    if not isinstance(art, dict) or not art.get("path"):
+        return saved
+    try:
+        img = open_upright(store.storage.from_("semasa-reference").download(art["path"])).convert("RGB")
+        k = min(1.0, ART_EDGE / max(img.size))
+        if k < 1:
+            img = img.resize((max(1, round(img.width * k)), max(1, round(img.height * k))), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=90)
+        return {**saved, "refart": {**art, "url": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")}}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("reference picture %s could not be read: %s; the design is drawn in layers",
+                    str(art.get("path"))[:60], str(exc)[:160])
+        return {k: v for k, v in saved.items() if k != "refart"}
+
+
+ART_EDGE = 1600
 PHOTO_EDGE = 480
 MAX_CLASSIC_POINTS = 5
 
@@ -443,6 +471,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         saved = meta.get("design_pack") if isinstance(meta.get("design_pack"), dict) else None
         if saved and studio_cards.is_studio_look(saved.get("look")):
             look = str(saved["look"])
+            saved = own_reference_art(store, saved)
         else:
             saved = None
         if look == "auto":

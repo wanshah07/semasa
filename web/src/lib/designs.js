@@ -13,12 +13,20 @@ export const designToken = (id) => `d:${id}`;
 export const tokenId = (v) => (TOKEN.exec(String(v || "")) || [])[1] || "";
 export const newDesignId = () => `x${Math.random().toString(36).slice(2, 8)}`;
 
+/* The address of a design's reference picture (a file in the reference bucket) is the page's business; App.jsx supplies it, so this
+   file stays free of the Supabase client and Node can test it. */
+let artUrlOf = () => "";
+export const setArtResolver = (f) => { artUrlOf = typeof f === "function" ? f : () => ""; };
+/** A stored design with its reference picture's address filled in, for drawing in this page (an address already there is kept). */
+export const withArt = (pack) => (pack && pack.refart && pack.refart.path && !pack.refart.url ? { ...pack, refart: { ...pack.refart, url: artUrlOf(pack.refart.path) } } : pack);
+
 /** The keys a job carries (the same list as my_designs.KEYS): strings only, so a snapshot is plain data. */
 export const DESIGN_KEYS = ["look", "cover", "middle", "closing", "single", "accent", "paper", "bg", "scrim", "mascot", "eyebrow"];
 export function packDesign(d) {
   if (!d || !["grid", "era", "photo"].includes(d.look)) return null;
   const out = Object.fromEntries(DESIGN_KEYS.filter((k) => typeof d[k] === "string" && d[k].trim()).map((k) => [k, d[k].trim().slice(0, 120)]));
   if (d.layouts && typeof d.layouts === "object" && Object.keys(d.layouts).length) out.layouts = d.layouts;   // a design made from a reference
+  if (d.refart && typeof d.refart === "object" && (d.refart.path || d.refart.url)) out.refart = d.refart;       // ... drawn on its reference picture
   return out;
 }
 
@@ -29,7 +37,7 @@ export function resolveLook(value, designs = []) {
   if (!id) return { look: value || "classic", design: null, pack: null, id: "" };
   const found = designs.find((d) => d.id === id);
   const pack = packDesign(found);
-  return pack ? { look: pack.look, design: normDesign(pack), pack, id } : { look: "classic", design: null, pack: null, id: "" };
+  return pack ? { look: pack.look, design: normDesign(withArt(pack)), pack, id } : { look: "classic", design: null, pack: null, id: "" };
 }
 
 /** The look value for a job's meta: a design's id when it used one that still exists, else its plain look. */

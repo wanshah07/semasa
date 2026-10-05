@@ -2,7 +2,7 @@
    rebuild is, a refine that is never accepted when it is worse, our logo and replaceable picture boxes where the reference had its own,
    and the 5xx that used to print a whole HTML page. Pictures are drawn here, pixel by pixel; nothing third-party is committed. */
 import assert from "node:assert/strict";
-import { compareImages, fromHex, judgePass, measureBackground, measureFill, measureInk, snapLayout, toHex } from "./src/lib/designFidelity.js";
+import { compareImages, fillerOf, fillerSlide, fromHex, judgePass, measureBackground, measureFill, measureInk, snapLayout, toHex } from "./src/lib/designFidelity.js";
 import { layoutToSeed } from "./src/lib/designCloneSeed.js";
 import { isOutage, transient } from "./src/lib/upstream.js";
 
@@ -174,6 +174,21 @@ t("Cloudflare's HTML error page and 5xx codes are an outage and worth retrying; 
   for (const e of [{ statusCode: 403, message: "new row violates row-level security policy" }, { statusCode: 413, message: "The object exceeded the maximum allowed size" }, { message: "Duplicate" }, null]) {
     assert.equal(isOutage(e), false); assert.equal(transient(e), false);
   }
+});
+
+// ---- sample words the length of the reference's own ----------------------------------------------------------------------------
+t("filler is about the length asked, cut at a word, never empty, and differs by seed", () => {
+  for (const len of [8, 24, 60, 140]) { const f = fillerOf(len); assert.ok(f.length >= Math.min(len, 8) && f.length <= len + 8 && !/\s$/.test(f), `${len}: ${f.length}`); }
+  assert.notEqual(fillerOf(40, 0), fillerOf(40, 3));
+  assert.ok(fillerOf(0).length >= 4);
+});
+t("a filler slide has a slot's worth of words for every slot the layout has, and nothing for the slots it lacks", () => {
+  const L = { elements: [{ type: "text", role: "headline", chars: 30 }, { type: "text", role: "point", chars: 50, y: 0.4 }, { type: "text", role: "point", chars: 20, y: 0.5 },
+    { type: "text", role: "eyebrow", chars: 14 }, { type: "text", role: "deco", chars: 5 }] };
+  const f = fillerSlide(L);
+  assert.ok(f.title.length >= 20 && f.points.length === 2 && f.eyebrow && !("footnote" in f));
+  assert.ok(f.points[0].length > f.points[1].length);
+  assert.equal(fillerSlide({ elements: [{ type: "rect" }] }).points.length, 0);
 });
 
 console.log(`design_fidelity: ${n} cases ok`);

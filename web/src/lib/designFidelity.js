@@ -14,6 +14,8 @@
    Pure: pixels in ({data: RGBA bytes, width, height}), numbers out. The browser reads them from a canvas (lib/designPatch.js
    readPixels); Node tests it on pictures it draws itself. Nothing here calls the AI or the network. */
 
+import { slotsOf } from "./designCloneSeed.js";
+
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const hex2 = (n) => clamp(Math.round(n), 0, 255).toString(16).padStart(2, "0");
 export const toHex = (rgb) => "#" + hex2(rgb[0]) + hex2(rgb[1]) + hex2(rgb[2]);
@@ -179,4 +181,23 @@ export function judgePass(best, next, { goal = 90, eps = 0.4, minGain = 1 } = {}
   const keep = better ? next : best;
   const gain = next.score - best.score;
   return { keep, accepted: better, stop: keep.score >= goal || !better || gain < minGain };
+}
+
+/* ---- sample words the length of the reference's own ------------------------------------------------------------------------------ */
+
+const POOL = "Notifikasi kosmetik bukan kelulusan produk dan semakan dokumen kualiti pembungkusan sebelum dijual kepada pengguna di pasaran Malaysia";
+/** Words of about `n` characters, cut at a word end, from a fixed Malay pool: a block of the layout gets text as long as the reference's. */
+export function fillerOf(n, seed = 0) {
+  const words = POOL.split(" "), want = Math.max(4, Math.round(Number(n) || 24));
+  let out = "";
+  for (let i = 0; out.length < want && i < 60; i++) out += (out ? " " : "") + words[(i + seed) % words.length];
+  if (out.length > want + 6) { const cut = out.slice(0, want).replace(/\s+\S*$/, ""); out = cut.length >= 4 ? cut : out.slice(0, want); }
+  return out;
+}
+/** A slide whose every slot holds filler as long as the reference's text there (`chars` in the layout), to draw the saved layout and
+    compare the drawing with the reference: the same shape of words, never the reference's own. */
+export function fillerSlide(layout) {
+  const s = slotsOf(layout);
+  return { title: fillerOf(s.headline ? s.headline.chars || 28 : 28), ...(s.eyebrow ? { eyebrow: fillerOf(s.eyebrow.chars || 16, 3) } : {}),
+    points: s.points.map((p, i) => fillerOf(p.chars || 44, i * 2 + 1)), ...(s.source ? { footnote: fillerOf(s.source.chars || 30, 5) } : {}) };
 }

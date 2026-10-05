@@ -3,7 +3,7 @@ import { Check, ImageIcon, Loader2, Palette, Plus, Star, Trash2 } from "lucide-r
 import { LOOKS, STUDIO_LOOKS, ensureFonts, renderSlides, setLogo } from "../lib/cards/studio";
 import { GROUNDS, MASCOTS, TEMPLATES } from "../lib/cards/library";
 import { newDesignId, packDesign, resolveLook, useDesigns } from "../lib/designs";
-import { buildDesignFromReference } from "../lib/designFromReference";
+import { buildDesignFromReference, nameFromFile } from "../lib/designFromReference";
 import ImageLightbox, { useLightbox } from "./ImageLightbox";
 import { useLang } from "../lib/i18n";
 import Button from "./ui/Button";
@@ -181,7 +181,7 @@ function RefEditor({ initial, onSave, onCancel, isDefault, user }) {
     setBusy(place); setError(""); setSteps([]);
     try {
       const r = await buildDesignFromReference(file, { stream: "regulab", t, onStep: (x) => setSteps((s) => [...s, x].slice(-8)) });
-      setD((x) => ({ ...x, name: x.name || file.name.replace(/\.[^.]+$/, "").slice(0, 40), layouts: { ...(x.layouts || {}), [place]: r.layout },
+      setD((x) => ({ ...x, name: x.name || nameFromFile(file), layouts: { ...(x.layouts || {}), [place]: r.layout },
         ...(place === "main" ? { bg_prompt: r.bgPrompt } : {}) }));
       if (place === "main") setBuilt({ score: r.score, first: r.first, image: r.image, render: r.render, removed: r.removed });
     } catch (e) { setError(e?.message || String(e)); } finally { setBusy(""); }

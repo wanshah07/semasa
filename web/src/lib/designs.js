@@ -11,6 +11,13 @@ export const useDesigns = () => useContext(DesignsContext);
 const TOKEN = /^d:([a-z0-9_]{4,24})$/;
 export const designToken = (id) => `d:${id}`;
 export const tokenId = (v) => (TOKEN.exec(String(v || "")) || [])[1] || "";
+/** A readable name for a design made from a file: the file's own name when it says something (3+ letters), else "Reka bentuk <day> <month>" —
+    a camera or export name such as 1790665268999.png says nothing. */
+export function designNameOf(fileName, now = new Date()) {
+  const base = String(fileName || "").replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim().slice(0, 40);
+  if ((base.match(/\p{L}/gu) || []).length >= 3) return base;
+  return `Reka bentuk ${now.getDate()} ${["Jan", "Feb", "Mac", "Apr", "Mei", "Jun", "Jul", "Ogo", "Sep", "Okt", "Nov", "Dis"][now.getMonth()]}`;
+}
 export const newDesignId = () => `x${Math.random().toString(36).slice(2, 8)}`;
 
 /** The keys a job carries (the same list as my_designs.KEYS): strings only, so a snapshot is plain data. */

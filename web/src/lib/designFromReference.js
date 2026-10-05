@@ -6,6 +6,7 @@
    background, from which the image provider makes an ORIGINAL background for every draft.
    Used by the My designs editor and by "Save as my design" in the Design tab's reference box. */
 import { cloneLayout, refineLayout } from "./designClone";
+import { designNameOf } from "./designs";
 import { backgroundPromptOf, compareImages, dropBrandPhotos, fillerSlide, judgePass, snapLayout } from "./designFidelity";
 import { loadImageFile, readPixels, sizeLike } from "./designPatch";
 import { ensureFonts, renderSlides, setLogo } from "./cards/studio";
@@ -13,8 +14,8 @@ import { ensureFonts, renderSlides, setLogo } from "./cards/studio";
 const BASE = `${import.meta.env.BASE_URL}cards/`;
 export const GOAL = 90, MAX_PASSES = 3;
 
-/** A name for a design made from a file: its file name without the extension, tidied. */
-export const nameFromFile = (file) => String(file?.name || "").replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim().slice(0, 40) || "Reka bentuk rujukan";
+/** A name for a design made from a file (see designs.js designNameOf). */
+export const nameFromFile = (file) => designNameOf(file?.name);
 
 /** { layout, measured, removed, image } for a reference file (one AI read). Throws an Error with a sentence the person can read. */
 export async function readReference(file, stream = "regulab") {

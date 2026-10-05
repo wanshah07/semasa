@@ -57,7 +57,8 @@ def test_a_design_is_found_by_its_token_and_a_plain_look_is_left_alone():
 
 def test_the_default_design_applies_only_when_the_idea_chose_no_look():
     ds = [ERA, GRID]
-    assert my_designs.choose(ds, "ab12cd", "classic")[0] == "era"
+    assert my_designs.choose(ds, "ab12cd", "")[0] == "era"
+    assert my_designs.choose(ds, "ab12cd", "classic") == ("classic", None)   # Semasa's own drawing, chosen on purpose, stands
     assert my_designs.choose(ds, "ab12cd", "grid") == ("grid", None)           # an explicit look beats the default
     assert my_designs.choose(ds, "ab12cd", "d:zz99yy")[0] == "grid"
     assert my_designs.choose(ds, "missing1", "classic") == ("classic", None)
@@ -73,6 +74,7 @@ def test_settings_are_read_and_a_missing_or_failed_read_is_just_off():
 def test_for_idea_reads_the_look_from_the_idea_brief():
     store = _Store([ERA, GRID], "ab12cd")
     assert my_designs.for_idea(store, {"brief": {}})[0] == "era"                       # nothing chosen: the default
+    assert my_designs.for_idea(store, {"brief": {"look": "classic"}}) == ("classic", None)   # chosen: it stands
     assert my_designs.for_idea(store, {"brief": {"look": "d:zz99yy"}})[0] == "grid"
     assert my_designs.for_idea(store, {"brief": {"look": "photo"}}) == ("photo", None)
     assert ideas.look_of({"brief": {"look": "d:zz99yy"}}) == "d:zz99yy"

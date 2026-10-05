@@ -3,9 +3,7 @@ import { Check, ImageIcon, Loader2, Palette, Plus, Star, Trash2 } from "lucide-r
 import { LOOKS, STUDIO_LOOKS, ensureFonts, renderSlides, setLogo } from "../lib/cards/studio";
 import { GROUNDS, MASCOTS, TEMPLATES } from "../lib/cards/library";
 import { newDesignId, packDesign, resolveLook, useDesigns } from "../lib/designs";
-import { cloneLayout } from "../lib/designClone";
-import { snapLayout } from "../lib/designFidelity";
-import { loadImageFile, readPixels, sizeLike } from "../lib/designPatch";
+import { readReference } from "../lib/designFromReference";
 import { useLang } from "../lib/i18n";
 import Button from "./ui/Button";
 import { Input, Label, Select } from "./ui/Field";
@@ -159,15 +157,6 @@ function Editor({ initial, onSave, onCancel, isDefault }) {
    are then measured from the picture's own pixels, and the layout is saved with NO words. Every draft pours its own words into it. */
 const PLACE_FILES = [["cover", "Kulit", "Cover"], ["middle", "Slaid tengah", "Middle slides"], ["closing", "Penutup", "Closing slide"], ["single", "Kad tunggal / poster", "Single card / poster"]];
 
-async function readReference(file) {
-  const img = await loadImageFile(file);
-  const [w, h] = sizeLike(img.naturalWidth, img.naturalHeight);
-  const got = await cloneLayout({ file, width: w, height: h, stream: "regulab", mode: "clone" });
-  const px = await readPixels(file, 900).catch(() => null);
-  const snapped = px ? snapLayout(got.layout, px) : null;           // the AI guessed the colours by eye: the picture's pixels know them
-  return { layout: snapped ? snapped.layout : got.layout, measured: snapped ? snapped.changes.length : 0, removed: got.removed || [] };
-}
-
 function RefEditor({ initial, onSave, onCancel, isDefault }) {
   const { t } = useLang();
   const [d, setD] = useState(initial);
@@ -243,7 +232,12 @@ export default function MyDesigns({ onToast = () => {} }) {
   const { t } = useLang();
   const { designs, defaultId, ready, saveDesigns, setDefault } = useDesigns();
   const [editing, setEditing] = useState(null);                       // a design (new or existing) being edited, or null
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);                          // open by default: the button to make a design must be seen
+  useEffect(() => {                                                 // "Add my design" in the slide-design picker opens and shows this section
+    const show = () => { setOpen(true); document.getElementById("my-designs")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
+    window.addEventListener("semasa:my-designs", show);
+    return () => window.removeEventListener("semasa:my-designs", show);
+  }, []);
   const fail = (e) => onToast(e?.message || String(e), "danger");
 
   async function save(d, asDefault) {
@@ -267,7 +261,7 @@ export default function MyDesigns({ onToast = () => {} }) {
   }
 
   return (
-    <section className="mb-6 rounded-card border border-line bg-surface p-4 sm:p-5">
+    <section id="my-designs" className="mb-6 scroll-mt-20 rounded-card border border-line bg-surface p-4 sm:p-5">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-2 text-left">
         <Palette size={16} />
         <span className="min-w-0 flex-1">

@@ -21,6 +21,9 @@ export const TABLES = {
   ideas: "semasa_ideas", posts: "semasa_posts", prompts: "semasa_prompts",
   settings: "semasa_settings", publishLog: "semasa_publish_log", faqs: "semasa_faqs", log: "semasa_log",
   watch: "semasa_watch", fragrances: "semasa_fragrances", canvas: "semasa_canvas", aiConfig: "semasa_ai_config",
+  // Bil (supabase/028_billing.sql)
+  clients: "semasa_clients", projects: "semasa_projects", billingDocs: "semasa_billing_docs", billingEvents: "semasa_billing_events",
+  billingOutbox: "semasa_billing_outbox", billingCounters: "semasa_billing_counters",
 };
 export const TABLES_UPLOADERS = "semasa_uploaders";
 // Namespaced so Semasa can share a Supabase project with another app (supabase/003_storage.sql).

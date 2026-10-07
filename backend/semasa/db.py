@@ -23,6 +23,12 @@ POSTS = "semasa_posts"
 SETTINGS = "semasa_settings"
 PUBLISH_LOG = "semasa_publish_log"
 GENERATED_BUCKET = "semasa-generated"
+# Bil (supabase/028_billing.sql)
+CLIENTS = "semasa_clients"
+PROJECTS = "semasa_projects"
+BILLING_DOCS = "semasa_billing_docs"
+BILLING_EVENTS = "semasa_billing_events"
+BILLING_OUTBOX = "semasa_billing_outbox"
 
 
 def client(settings: SupabaseSettings | None = None) -> Client:

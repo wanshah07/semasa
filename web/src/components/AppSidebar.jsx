@@ -31,6 +31,7 @@ export default function AppSidebar({ tab, setTab, user, counts = {}, mode = "aut
   const groups = [
     { items: tabs.filter((x) => x.group === "").map(item) },
     { heading: t("Cipta", "Create"), items: tabs.filter((x) => x.group === "create").map(item) },
+    { heading: t("Perniagaan", "Business"), items: tabs.filter((x) => x.group === "business").map(item) },
     { heading: t("Rujukan", "Reference"), items: tabs.filter((x) => x.group === "reference").map(item) },
   ];
   const bottom = [...tabs.filter((x) => x.group === "bottom").map(item),

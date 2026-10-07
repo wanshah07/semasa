@@ -27,6 +27,9 @@ const buttonVariants = cva(
         sm: "h-9 rounded-md px-3",
         lg: "h-11 rounded-md px-8",
         icon: "h-10 w-10",
+        // used by table-2.tsx (Bil): a 28 px icon button in a table row and a small text button in the selection bar
+        xs: "h-7 rounded-md px-2 text-xs",
+        "icon-sm": "h-8 w-8",
       },
     },
     defaultVariants: {

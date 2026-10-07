@@ -25,6 +25,8 @@ import SettingsTab from "./pages/SettingsTab";
 import GenerationGallery from "./components/GenerationGallery";
 import VideoTab from "./pages/VideoTab";
 import ChatTab from "./pages/ChatTab";
+import BillingTab from "./pages/BillingTab";
+import BillingPublic from "./pages/BillingPublic";
 import WatchSegment, { watchIdea } from "./components/WatchSegment";
 import Header from "./components/Header";
 import AppSidebar from "./components/AppSidebar";
@@ -250,7 +252,9 @@ function MediaTab({ user, gens, prompts, posts, onToast }) {
   );
 }
 
-const TAB_IDS = ["isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "chat", "faq", "log", "tetapan"];
+const TAB_IDS = ["isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "chat", "bil", "faq", "log", "tetapan"];
+// #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
+const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 
 
 export default function App() {
@@ -259,6 +263,7 @@ export default function App() {
     const h = window.location.hash.replace("#", "");
     return TAB_IDS.includes(h) ? h : "isu";
   });
+  const [pubToken, setPubToken] = useState(() => (PUBLIC_DOC.exec(window.location.hash.replace("#", "")) || [])[1] || "");
   const [focusPost, setFocusPost] = useState(null);
   const [canvasSeed, setCanvasSeed] = useState(null);         // a design sent to Kanvas from Wangian or Design
   const clearSeed = useCallback(() => setCanvasSeed(null), []);
@@ -266,6 +271,7 @@ export default function App() {
   useEffect(() => {
     const onHash = () => {
       const h = window.location.hash.replace("#", "");
+      setPubToken((PUBLIC_DOC.exec(h) || [])[1] || "");
       const next = TAB_IDS.includes(h) ? h : "isu";
       // the browser's Back/Forward: ask before unsaved Kanvas work goes, and put the address back if the answer is no
       setTab((cur) => {
@@ -357,6 +363,9 @@ export default function App() {
   };
   const gate = (node) => <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6"><Gate user={user} ready={ready} canUpload={canUpload} onToast={push}>{node}</Gate></main>;
 
+  // a client's "view online" link: the paper and nothing else, no sign-in, no menu
+  if (pubToken && configured) return <BillingPublic token={pubToken} />;
+
   let body;
   if (!configured) body = <Unconfigured />;
   else if (tab === "idea") body = allowed ? <IdeasTab ideas={ideas} posts={posts} user={user} brand={brand} onToast={push}
@@ -373,6 +382,7 @@ export default function App() {
   else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push}
     openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
+  else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}
     onPost={(r) => setIdeaFrom(faqIdea(r))} /> : gate(null);
   else if (tab === "log") body = allowed ? <LogTab log={activity} onOpen={(to) => { if (to.postId) setFocusPost(to.postId); go(to.tab); }} /> : gate(null);

@@ -4,7 +4,7 @@ Wan: *"create feature for quotation, invoice and receipt, can auto send email, v
 create the dashboard to overview … register client > Project name > details"*.
 
 ## Set up once
-1. Supabase SQL editor (KPI project) → run `supabase/028_billing.sql`. It prints `6 | 1 | 1 | 3`.
+1. Supabase SQL editor (KPI project) → run `supabase/028_billing.sql` (prints `6 | 1 | 1 | 3`), then `029_billing_english.sql` (already applied to the KPI project on 7 Oct 2026).
    It creates `semasa_clients`, `semasa_projects`, `semasa_billing_docs`, `semasa_billing_events`, `semasa_billing_outbox`,
    `semasa_billing_counters`, the settings row `billing`, two functions (`semasa_billing_issue`, `semasa_billing_public`) and the
    outbox trigger that wakes the worker. The counters start at the numbers Wan used by hand (QT 009, INV 014, RPT 016), so the
@@ -47,7 +47,12 @@ Client (semasa_clients) ──► Project (semasa_projects: name, details, statu
   the same HTML (Save as PDF). Bulk download prints every selected paper as one file, one A4 page each.
 * **Projects.** `Pelanggan → Projek`: a client's piece of work (name, details, status lead/active/on_hold/done/cancelled, dates,
   budget, client reference). A document may belong to a project; the project card shows quoted / invoiced / paid / outstanding
-  from its documents (`projectSummary`), and the timeline strip draws every project with dates by month.
+  from its documents (`projectSummary`), and each project carries its four stages across (`components/ui/timeline.tsx`,
+  the 21st.dev Timeline adapted to Tailwind 3 with no Base UI): opened → quotation → invoice → paid in full / done, with the
+  date and the paper's number and status under each, read from the papers rather than kept as a field. The same component
+  drawn down is a paper's history in the viewer.
+* **Language.** English by default (`settings billing.lang`, `supabase/029`), for the paper and the e-mail alike; a client
+  record carries its own language and a paper can be switched in the editor. Bahasa Malaysia stays a full second set of words.
 
 ## What the hand-made papers got wrong, and what the template does instead
 | Found on QT-2026-009 / INV-2026-014 / RPT-2026-016 | Now |
@@ -71,6 +76,6 @@ Client (semasa_clients) ──► Project (semasa_projects: name, details, statu
 ## Not done, said plainly
 * **e-Invois (LHDN MyInvois)** is not submitted from here. The paper carries a TIN field for the day it is needed; the
   submission itself is a separate integration and needs Wan's decision on phase and scope.
-* The Gantt component Wan pasted (`reui-gantt.tsx`) is the headless root of a multi-file package; its view, lib, types, i18n and
-  nav files and the Base UI primitives were not in the paste, so it cannot render. The project timeline in the Bil tab is a small
-  component of our own; if Wan wants that exact Gantt, the remaining files are needed.
+* The Gantt component Wan pasted on 7 Oct (`reui-gantt.tsx`) could not render without its sibling files; the Timeline
+  component he pasted the same day replaced it (see Projects above), so no Gantt is pending.
+* e-Invois (MyInvois) submission: not built, by Wan's decision on 7 Oct 2026 ("ignore e-vois"). The TIN field stays.

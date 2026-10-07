@@ -129,7 +129,7 @@ def render_pdf(doc: dict[str, Any], settings: dict[str, Any], *, link: str = "",
     if not all((LIB / m[1:]).is_file() for m in MODULES) or not (ASSETS / "fonts.css").is_file():
         raise SendError("refused", "the billing template files are missing from this checkout (web/src/lib/billing*.js)")
     from playwright.sync_api import sync_playwright
-    opts = {"lang": lang or doc.get("lang") or "bm", "logoUrl": f"{ORIGIN}/cards/logo-ink.png",
+    opts = {"lang": lang or doc.get("lang") or "en", "logoUrl": f"{ORIGIN}/cards/logo-ink.png",
             "fontsCss": f"{ORIGIN}/cards/fonts.css"}
     if link:
         opts["qr"] = qr_data_url(link)
@@ -471,7 +471,7 @@ def sweep(store: Any, settings: dict[str, Any], now: datetime) -> dict[str, int]
         if offset is None or "@" not in to or (d["id"], "reminder") in queued:
             continue
         store.table(db.BILLING_OUTBOX).insert({"doc_id": d["id"], "action": "reminder", "to_email": to, "status": "pending",
-                                               "lang": d.get("lang") or "bm", "meta": {"offset": offset, "auto": True}}).execute()
+                                               "lang": d.get("lang") or "en", "meta": {"offset": offset, "auto": True}}).execute()
         counts["reminders"] += 1
     return counts
 

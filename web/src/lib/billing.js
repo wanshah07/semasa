@@ -268,6 +268,7 @@ export function receiptFromInvoice(inv, payment, settings = {}, today = isoDate(
 
 /** The default settings row (supabase/028 writes the same shape); a missing key reads from here. */
 export const DEFAULT_BILLING = {
+  lang: "en",      // the language a new client and a new paper start in (Wan, 7 Oct 2026: "make the receipt, invoice and quotation in english")
   company: { name: "WS Regulab Solutions", reg_no: "", tagline: "", footer: "", website: "", email: "", phone: "", address: "", sst_no: "", tin: "", signatory: "" },
   bank: { name: "", account_name: "", account_no: "" },
   prefix: { quotation: "QT", invoice: "INV", receipt: "RPT" },
@@ -280,5 +281,5 @@ export function billingSettings(raw) {
   const b = raw && typeof raw === "object" ? raw : {};
   const merge = (k) => ({ ...DEFAULT_BILLING[k], ...(b[k] && typeof b[k] === "object" ? b[k] : {}) });
   return { company: merge("company"), bank: merge("bank"), prefix: merge("prefix"), days: merge("days"), terms: merge("terms"),
-    email: merge("email"), tax_rate: Number(b.tax_rate) || 0 };
+    email: merge("email"), tax_rate: Number(b.tax_rate) || 0, lang: b.lang === "bm" ? "bm" : "en" };
 }

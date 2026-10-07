@@ -8,7 +8,7 @@ import { stampMYT } from "../lib/format";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useTable } from "../lib/hooks";
 import {
-  DEFAULT_OFFSETS, KINDS, OPEN, PROJECT_STATUS, addDays, billingSettings, calcTotals, clientSnapshot, daysBetween, effectiveStatus, emailFor,
+  DEFAULT_OFFSETS, KINDS, OPEN, PROJECT_STATUS, addDays, billingSettings, calcTotals, clientSnapshot, effectiveStatus, emailFor,
   emailOf, fileName, fmtDate, invoiceFromQuotation, isoDate, kindLabel, money, nextReminder, numberPreview, projectSummary, publicLink,
   receiptFromInvoice, statusLabel, summary, validEmail, validateDoc,
 } from "../lib/billing";
@@ -18,6 +18,7 @@ import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Segmented, Select, TextArea } from "../components/ui/Field";
 import DocumentsTable from "@/components/ui/table-2";
+import { Timeline, TimelineContent, TimelineDate, TimelineHeader, TimelineIndicator, TimelineItem, TimelineSeparator, TimelineTitle } from "@/components/ui/timeline";
 
 /* Bil (Wan, 7 Oct 2026: "create feature for quotation, invoice and receipt, can auto send email, view, download, send
    reminder, status ... create the dashboard to overview"). One place for the three papers WS Regulab Solutions sends:
@@ -33,7 +34,7 @@ const MYT = "Asia/Kuala_Lumpur";
 const STATES = ["Johor", "Kedah", "Kelantan", "Melaka", "Negeri Sembilan", "Pahang", "Perak", "Perlis", "Pulau Pinang", "Sabah", "Sarawak", "Selangor",
   "Terengganu", "W.P. Kuala Lumpur", "W.P. Labuan", "W.P. Putrajaya"];
 const METHODS = { bm: ["Pindahan bank", "DuitNow", "Tunai", "Cek", "Kad", "Lain-lain"], en: ["Bank transfer", "DuitNow", "Cash", "Cheque", "Card", "Other"] };
-const BLANK_CLIENT = { name: "", reg_no: "", attention: "", email: "", phone: "", address: "", postcode: "", city: "", state: "", country: "Malaysia", lang: "bm", notes: "" };
+const BLANK_CLIENT = { name: "", reg_no: "", attention: "", email: "", phone: "", address: "", postcode: "", city: "", state: "", country: "Malaysia", lang: "en", notes: "" };
 const initialsOf = (name) => String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?";
 const nowIso = () => new Date().toISOString();
 
@@ -130,7 +131,7 @@ export default function BillingTab({ user, settings, save, onToast }) {
     setEditing({ kind: k, status: "draft", client_id: from.client_id || null, project_id: from.project_id || null, client: from.client || (c ? clientSnapshot(c) : {}), items: from.items || [{ description: "", qty: 1, rate: "" }],
       currency: "MYR", tax_rate: from.tax_rate ?? cfg.tax_rate, discount: from.discount || 0, issue_date: today,
       due_date: k === "receipt" ? null : addDays(today, k === "quotation" ? cfg.days.quotation_valid : cfg.days.invoice_due),
-      terms: from.terms ?? cfg.terms[k] ?? "", notes: from.notes || "", reference: from.reference || "", lang: from.lang || c?.lang || "bm",
+      terms: from.terms ?? cfg.terms[k] ?? "", notes: from.notes || "", reference: from.reference || "", lang: from.lang || c?.lang || cfg.lang,
       payment: k === "receipt" ? { method: METHODS[lang][0], date: today, reference: "" } : {}, parent_id: from.parent_id || null, ...(from.id ? { id: from.id } : {}) });
   };
 
@@ -140,7 +141,7 @@ export default function BillingTab({ user, settings, save, onToast }) {
       .map((it) => ({ description: String(it.description || "").trim(), detail: String(it.detail || "").trim() || undefined, qty: Number(it.qty) || 0, rate: Number(it.rate) || 0 }));
     const row = { kind: d.kind, status: "draft", client_id: d.client_id || null, project_id: d.project_id || null, client: d.client || {}, items, currency: d.currency || "MYR", tax_rate: Number(d.tax_rate) || 0,
       discount: Number(d.discount) || 0, subtotal: totals.subtotal, tax: totals.tax, total: totals.total, issue_date: d.issue_date || today, due_date: d.kind === "receipt" ? null : (d.due_date || null),
-      terms: d.terms || "", notes: d.notes || "", reference: d.reference || "", lang: d.lang || "bm", payment: d.payment || {}, parent_id: d.parent_id || null };
+      terms: d.terms || "", notes: d.notes || "", reference: d.reference || "", lang: d.lang || cfg.lang, payment: d.payment || {}, parent_id: d.parent_id || null };
     if (issue) {
       const problems = validateDoc({ ...row, items }, lang);
       if (problems.length) throw new Error(problems.join(" "));
@@ -170,7 +171,7 @@ export default function BillingTab({ user, settings, save, onToast }) {
 
   async function upsertClient(c, id) {
     const row = { name: c.name, reg_no: c.reg_no || "", attention: c.attention || "", email: c.email || "", phone: c.phone || "", address: c.address || "",
-      postcode: c.postcode || "", city: c.city || "", state: c.state || "", country: c.country || "Malaysia", lang: c.lang === "en" ? "en" : "bm", notes: c.notes || "" };
+      postcode: c.postcode || "", city: c.city || "", state: c.state || "", country: c.country || "Malaysia", lang: c.lang === "bm" ? "bm" : "en", notes: c.notes || "" };
     const q = id ? supabase.from(TABLES.clients).update(row).eq("id", id) : supabase.from(TABLES.clients).insert({ ...row, created_by: user?.id || null });
     const { error } = await q;
     if (error) throw new Error(errText(error));
@@ -348,7 +349,7 @@ export default function BillingTab({ user, settings, save, onToast }) {
         })} t={t} lang={lang} today={today} site={site} />}
       {sending && <SendModal doc={sending.doc} action={sending.action} cfg={cfg} clients={clients} site={site} onClose={() => setSending(null)} onSend={sendNow} busy={!!busy} t={t} />}
       {paying && <PayModal docs={paying.docs} lang={lang} onClose={() => setPaying(null)} onPay={markPaid} busy={!!busy} t={t} today={today} />}
-      {clientsOpen && <ClientsModal clients={clients} docs={docs} onClose={() => setClientsOpen(false)} onSave={guard(upsertClient)} onDelete={guard(async (c) => {
+      {clientsOpen && <ClientsModal clients={clients} docs={docs} defaultLang={cfg.lang} onClose={() => setClientsOpen(false)} onSave={guard(upsertClient)} onDelete={guard(async (c) => {
         if (!window.confirm(t("Padam {n}? Dokumen yang sudah dikeluarkan kekal (butirannya disalin pada kertas).", "Delete {n}? Issued documents keep their copy of the details.", { n: c.name }))) return;
         const { error } = await supabase.from(TABLES.clients).delete().eq("id", c.id); if (error) throw new Error(errText(error)); clientsT.reload();
       })} t={t} lang={lang} />}
@@ -461,7 +462,7 @@ function ClientFields({ c, onChange, t, lang }) {
         <Select value={c.state || ""} onChange={(v) => onChange({ ...c, state: v })} options={[["", "—"], ...STATES.map((s) => [s, s])]} className="w-full" /></label>
       <label className="block"><Label>{t("Negara", "Country")}</Label><Input value={c.country || "Malaysia"} onChange={set("country")} /></label>
       {"lang" in c && <label className="block"><Label>{t("Bahasa dokumen", "Document language")}</Label>
-        <Select value={c.lang || "bm"} onChange={(v) => onChange({ ...c, lang: v })} options={[["bm", "Bahasa Malaysia"], ["en", "English"]]} className="w-full" /></label>}
+        <Select value={c.lang || "en"} onChange={(v) => onChange({ ...c, lang: v })} options={[["en", "English"], ["bm", "Bahasa Malaysia"]]} className="w-full" /></label>}
     </div>
   );
 }
@@ -531,7 +532,7 @@ function Editor({ doc, clients, projects, counters, cfg, onChange, onClose, onSa
           </div>
           <div>
             <div className="mb-1 flex items-center justify-between"><Label>{t("Perkhidmatan", "Services")}</Label>
-              <Label>{t("Bahasa", "Language")}: <select className="ml-1 rounded-pill border border-line bg-surface px-2 py-0.5 text-xs" value={d.lang || "bm"} onChange={(e) => onChange({ ...d, lang: e.target.value })}><option value="bm">BM</option><option value="en">EN</option></select></Label></div>
+              <Label>{t("Bahasa", "Language")}: <select className="ml-1 rounded-pill border border-line bg-surface px-2 py-0.5 text-xs" value={d.lang || "en"} onChange={(e) => onChange({ ...d, lang: e.target.value })}><option value="en">EN</option><option value="bm">BM</option></select></Label></div>
             <div className="space-y-2">
               {d.items.map((it, i) => (
                 <div key={i} className="grid grid-cols-[1fr_64px_96px_28px] items-start gap-2">
@@ -629,10 +630,7 @@ function Viewer({ doc: d, html, events, outbox, onClose, onAction, onRetry, t, l
           )}
           <div>
             <Label>{t("Garis masa", "Timeline")}</Label>
-            <ul className="space-y-1 text-xs">
-              {events.map((ev) => <li key={ev.id} className="flex gap-2"><span className="w-28 shrink-0 text-muted">{stampMYT(ev.at)}</span><span>{eventLabel(ev, t)}</span></li>)}
-              <li className="flex gap-2"><span className="w-28 shrink-0 text-muted">{stampMYT(d.created_at)}</span><span>{t("draf dibuat", "draft created")}</span></li>
-            </ul>
+            <DocHistory doc={d} events={events} t={t} />
           </div>
           {d.token && d.status !== "draft" && <div className="break-all text-[11px] text-muted"><Eye size={11} className="mr-1 inline" />{publicLink(d.token, site)}</div>}
         </div>
@@ -685,13 +683,13 @@ function PayModal({ docs, lang, onClose, onPay, busy, t, today }) {
   );
 }
 
-function ClientsModal({ clients, docs, onClose, onSave, onDelete, t, lang }) {
+function ClientsModal({ clients, docs, onClose, onSave, onDelete, t, lang, defaultLang = "en" }) {
   const [editing, setEditing] = useState(null);
   const [q, setQ] = useState("");
   const list = clients.filter((c) => !q || `${c.name} ${c.email} ${c.reg_no}`.toLowerCase().includes(q.toLowerCase()));
   const countOf = (id) => docs.filter((d) => d.client_id === id).length;
   return (
-    <Sheet title={t("Pelanggan", "Clients")} onClose={onClose} width="max-w-4xl" actions={<Button size="sm" onClick={() => setEditing({ ...BLANK_CLIENT })}><Plus size={14} /> {t("Pelanggan", "Client")}</Button>}>
+    <Sheet title={t("Pelanggan", "Clients")} onClose={onClose} width="max-w-4xl" actions={<Button size="sm" onClick={() => setEditing({ ...BLANK_CLIENT, lang: defaultLang })}><Plus size={14} /> {t("Pelanggan", "Client")}</Button>}>
       {editing ? (
         <div className="space-y-3">
           <ClientFields c={editing} onChange={setEditing} t={t} lang={lang} />
@@ -770,7 +768,6 @@ function ProjectsModal({ projects, clients, docs, today, onClose, onSave, onDele
             <Select value={clientId} onChange={setClientId} options={[["", t("Semua", "All")], ...clients.map((c) => [c.id, c.name])]} />
             {!clients.length && <span className="text-xs text-muted">{t("Daftarkan pelanggan dahulu.", "Register a client first.")}</span>}
           </div>
-          <ProjectTimeline projects={list} today={today} t={t} />
           <ul className="divide-y divide-line/70">
             {list.map((p) => {
               const m = projectSummary(p.id, docs, today);
@@ -794,6 +791,7 @@ function ProjectsModal({ projects, clients, docs, today, onClose, onSave, onDele
                       <Button variant="ghost" size="sm" onClick={() => onDelete(p)}><Trash2 size={12} /></Button>
                     </div>
                   </div>
+                  <div className="mt-3 overflow-x-auto"><ProjectStages project={p} docs={docs} today={today} t={t} lang={L} /></div>
                   {open === p.id && (
                     <div className="mt-2 rounded-tile bg-surface-2 p-3 text-sm">
                       {p.details && <p className="whitespace-pre-wrap text-ink">{p.details}</p>}
@@ -819,41 +817,69 @@ function ProjectsModal({ projects, clients, docs, today, onClose, onSave, onDele
   );
 }
 
-/* Months across, one bar per project with dates. A project with one date gets a 1-month bar; today is a line. */
-function ProjectTimeline({ projects, today, t }) {
-  const dated = projects.filter((p) => p.start_date || p.end_date);
-  if (!dated.length) return <p className="text-xs text-muted">{t("Garis masa: tambah tarikh mula/tamat pada projek untuk melihatnya di sini.", "Timeline: add start/end dates to projects to see them here.")}</p>;
-  const starts = dated.map((p) => (p.start_date || p.end_date).slice(0, 7));
-  const ends = dated.map((p) => (p.end_date || p.start_date).slice(0, 7));
-  const first = [...starts, today.slice(0, 7)].sort()[0];
-  const last = [...ends, today.slice(0, 7)].sort().slice(-1)[0];
-  const months = [];
-  for (let m = first; m <= last && months.length < 36; m = addDays(`${m}-01`, 32).slice(0, 7)) months.push(m);
-  const span = months.length;
-  const firstDay = `${months[0]}-01`;
-  const total = daysBetween(firstDay, addDays(`${months[span - 1]}-01`, 32).slice(0, 7) + "-01");
-  const pct = (iso) => `${Math.min(100, Math.max(0, (100 * daysBetween(firstDay, iso)) / total))}%`;
-  const tone = { lead: "bg-muted/60", active: "bg-accent", on_hold: "bg-warn", done: "bg-ok", cancelled: "bg-danger/60" };
+/* A project's four stages across (components/ui/timeline.tsx), read from its papers rather than kept as a field: the
+   project is opened; a quotation is issued (accepted/declined said under it); an invoice is issued (outstanding under it);
+   paid in full, or the project marked done. The current step is the first one still ahead. */
+function projectStages(p, docs, today, t, L) {
+  const mine = docs.filter((d) => d.project_id === p.id && d.status !== "draft" && d.status !== "void");
+  const quotes = mine.filter((d) => d.kind === "quotation").sort((a, b) => String(a.issue_date).localeCompare(String(b.issue_date)));
+  const invoices = mine.filter((d) => d.kind === "invoice").sort((a, b) => String(a.issue_date).localeCompare(String(b.issue_date)));
+  const m = projectSummary(p.id, docs, today);
+  const paidAll = invoices.length > 0 && invoices.every((d) => d.status === "paid");
+  const lastPaid = invoices.filter((d) => d.paid_at).map((d) => d.paid_at).sort().slice(-1)[0];
+  const closed = paidAll || p.status === "done";
+  const q = quotes.slice(-1)[0], inv = invoices[0];
+  const qState = q ? statusLabel(effectiveStatus(q, today), L) : "";
+  return [
+    { title: t("Projek dibuka", "Project opened"), date: p.start_date || (p.created_at || "").slice(0, 10), done: true,
+      content: PROJECT_STATUS[p.status]?.[L] || p.status },
+    { title: t("Sebut harga", "Quotation"), date: q?.issue_date, done: !!q,
+      content: q ? `${q.number} · ${qState} · ${money(q.total)}` : t("belum ada", "none yet") },
+    { title: t("Invois", "Invoice"), date: inv?.issue_date, done: !!inv,
+      content: inv ? `${invoices.map((d) => d.number).join(", ")}${m.outstanding > 0 ? ` · ${t("baki", "due")} ${money(m.outstanding)}` : ""}` : t("belum ada", "none yet") },
+    { title: paidAll ? t("Dibayar penuh", "Paid in full") : t("Selesai", "Done"), date: lastPaid ? lastPaid.slice(0, 10) : closed ? p.end_date : "", done: closed,
+      content: closed ? `${t("dibayar", "paid")} ${money(m.paid)}` : p.end_date ? `${t("sasaran", "target")} ${fmtDate(p.end_date)}` : "" },
+  ];
+}
+
+function ProjectStages({ project, docs, today, t, lang }) {
+  const L = lang === "en" ? "en" : "bm";
+  const stages = projectStages(project, docs, today, t, L);
+  const firstOpen = stages.findIndex((s) => !s.done);
   return (
-    <div className="overflow-x-auto rounded-tile border border-line p-3">
-      <div className="relative min-w-[560px]">
-        <div className="grid text-[10px] text-muted" style={{ gridTemplateColumns: `repeat(${span}, minmax(0, 1fr))` }}>
-          {months.map((m) => <div key={m} className="truncate border-l border-line/60 pl-1">{m.slice(5)}/{m.slice(2, 4)}</div>)}
-        </div>
-        <div className="relative mt-1 space-y-1">
-          <div className="pointer-events-none absolute inset-y-0 w-px bg-danger" style={{ left: pct(today) }} title={t("Hari ini", "Today")} />
-          {dated.map((p) => {
-            const a = p.start_date || p.end_date, b = p.end_date || addDays(a, 30);
-            return (
-              <div key={p.id} className="relative h-6">
-                <div className={`absolute top-1 h-4 rounded-pill ${tone[p.status] || "bg-accent"}`} style={{ left: pct(a), width: `calc(${pct(b)} - ${pct(a)})`, minWidth: 6 }} title={`${p.name}: ${fmtDate(a)} → ${fmtDate(b)}`} />
-                <div className="absolute inset-y-0 flex items-center truncate pl-1 text-[11px]" style={{ left: `calc(${pct(b)} + 4px)` }}>{p.name}</div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
+    <Timeline orientation="horizontal" value={firstOpen === -1 ? stages.length + 1 : firstOpen + 1} gap="[&:not(:last-child)]:pe-4" className="min-w-[520px] pt-1">
+      {stages.map((s, i) => (
+        <TimelineItem key={s.title} step={i + 1}>
+          <TimelineIndicator>{s.done && <Check size={12} />}</TimelineIndicator>
+          <TimelineSeparator />
+          <TimelineHeader>
+            <TimelineDate>{s.date ? fmtDate(s.date) : "—"}</TimelineDate>
+            <TimelineTitle className="text-xs">{s.title}</TimelineTitle>
+          </TimelineHeader>
+          {s.content && <TimelineContent className="text-[11px] leading-snug">{s.content}</TimelineContent>}
+        </TimelineItem>
+      ))}
+    </Timeline>
+  );
+}
+
+/* A paper's history, newest at the bottom, every step completed: the same component drawn down. */
+function DocHistory({ doc: d, events, t }) {
+  const rows = [{ id: "created", at: d.created_at, label: t("draf dibuat", "draft created") },
+    ...[...events].sort((a, b) => String(a.at).localeCompare(String(b.at))).map((ev) => ({ id: ev.id, at: ev.at, label: eventLabel(ev, t), failed: ev.kind === "email_failed" }))];
+  return (
+    <Timeline value={rows.length + 1} gap="[&:not(:last-child)]:pb-5" className="mt-1 text-xs">
+      {rows.map((r, i) => (
+        <TimelineItem key={r.id} step={i + 1} className="ms-6 gap-0.5">
+          <TimelineIndicator className={`size-4 -left-6 ${r.failed ? "border-danger bg-danger" : ""}`}><Check size={9} /></TimelineIndicator>
+          <TimelineSeparator className="-left-6 top-5 h-[calc(100%-1.25rem)]" />
+          <TimelineHeader className="flex flex-wrap items-baseline gap-x-2">
+            <TimelineDate className="mb-0 inline">{stampMYT(r.at)}</TimelineDate>
+            <TimelineTitle className={`text-xs font-medium ${r.failed ? "text-danger" : ""}`}>{r.label}</TimelineTitle>
+          </TimelineHeader>
+        </TimelineItem>
+      ))}
+    </Timeline>
   );
 }
 
@@ -904,6 +930,8 @@ function SettingsModal({ cfg, counters, onClose, onSave, busy, t }) {
             <label className="block"><Label>{t("Invois tempoh (hari)", "Invoice due (days)")}</Label><Input type="number" min="0" value={v.days.invoice_due} onChange={(e) => setV({ ...v, days: { ...v.days, invoice_due: Number(e.target.value) || 0 } })} /></label>
             <label className="block"><Label>{t("Cukai lalai %", "Default tax %")}</Label><Input type="number" min="0" step="0.01" value={v.tax_rate} onChange={(e) => setV({ ...v, tax_rate: e.target.value })} /></label>
           </div>
+          <label className="block"><Label>{t("Bahasa lalai dokumen dan e-mel (setiap pelanggan dan kertas boleh ditukar sendiri)", "Default language of papers and e-mails (each client and paper can still be switched)")}</Label>
+            <Select value={v.lang || "en"} onChange={(val) => setV({ ...v, lang: val })} options={[["en", "English"], ["bm", "Bahasa Malaysia"]]} className="w-full" /></label>
           <h4 className="pt-2 text-sm font-medium">{t("Terma lalai", "Default terms")}</h4>
           {KINDS.map((k) => <label key={k} className="block"><Label>{kindLabel(k)}</Label><TextArea rows={3} value={v.terms[k] || ""} onChange={(e) => setV({ ...v, terms: { ...v.terms, [k]: e.target.value } })} /></label>)}
           <h4 className="pt-2 text-sm font-medium">{t("E-mel", "E-mail")}</h4>

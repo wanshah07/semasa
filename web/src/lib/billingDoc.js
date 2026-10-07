@@ -76,7 +76,7 @@ export function documentHtml(doc, settings = {}, opts = {}) {
   if (kind === "receipt") dateChips.push([W.payment_date, fmtDate(doc?.payment?.date || doc?.issue_date)]);
   if (doc?.reference && kind !== "receipt") dateChips.push([W.your_ref, doc.reference]);
   const recipientLabel = kind === "receipt" ? W.received_from : kind === "invoice" ? W.bill_to : W.recipient;
-  const totalLabel = kind === "quotation" ? W.total_quote : kind === "receipt" ? W.amount_paid : W.amount_due;
+  const totalLabel = kind === "quotation" ? W.total_quote : kind === "receipt" || status === "paid" ? W.amount_paid : W.amount_due;
   const showTax = totals.tax_rate > 0 || isTax;
   const items = (doc?.items || []).map((it, i) => `
       <tr>
@@ -184,7 +184,7 @@ td.a { font-weight: 800; color: ${INK.green}; font-size: 11.5pt; white-space: no
 .foot .co { font-weight: 700; font-size: 8.5pt; } .foot .sub { color: ${INK.muted}; font-size: 7.5pt; }
 .foot .tag { font-size: 7.5pt; letter-spacing: .2em; color: ${INK.muted}; font-weight: 700; font-style: italic; text-align: right; }
 .foot .note { color: ${INK.muted}; font-size: 6.5pt; }
-.stamp { position: absolute; top: 15mm; left: 50%; transform: translateX(-50%) rotate(-10deg); border: 1.2mm solid; border-radius: 3mm; padding: 2mm 6mm; font-size: 18pt; font-weight: 900; letter-spacing: .25em; opacity: .85; pointer-events: none; }
+.stamp { position: absolute; top: 36.5mm; right: 15mm; transform: rotate(-6deg); border: 0.9mm solid; border-radius: 2.5mm; padding: 1mm 4mm; font-size: 12pt; font-weight: 900; letter-spacing: .25em; opacity: .9; pointer-events: none; }
 .stamp.paid { color: ${INK.green}; border-color: ${INK.green}; background: rgba(243,250,247,.85); }
 .stamp.void { color: #B42318; border-color: #B42318; background: rgba(255,245,244,.9); }
 .stamp.draft { color: ${INK.muted}; border-color: ${INK.muted}; background: rgba(244,247,250,.9); }
@@ -230,7 +230,7 @@ td.a { font-weight: 800; color: ${INK.green}; font-size: 11.5pt; white-space: no
   <div class="grow"></div>
   ${badge(W, status, number)}
   <div class="foot">
-    <div><div class="co">${esc(co.name || "")}${co.reg_no ? ` ${esc(co.reg_no)}` : ""}</div><div class="sub">${esc(co.footer || "")}${co.website ? ` · ${esc(co.website)}` : ""}${co.email ? ` · ${esc(co.email)}` : ""}${co.phone ? ` · ${esc(co.phone)}` : ""}</div></div>
+    <div><div class="co">${esc(co.name || "")}${co.reg_no ? ` ${esc(co.reg_no)}` : ""}</div><div class="sub">${[co.footer, co.website, co.email, co.phone].filter(Boolean).map(esc).join(" · ")}</div></div>
     <div><div class="tag">${esc(co.tagline || "")}</div><div class="note">${W.page_note}</div></div>
   </div>
 </div></body></html>`;

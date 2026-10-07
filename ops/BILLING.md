@@ -4,7 +4,7 @@ Wan: *"create feature for quotation, invoice and receipt, can auto send email, v
 create the dashboard to overview … register client > Project name > details"*.
 
 ## Set up once
-1. Supabase SQL editor (KPI project) → run `supabase/028_billing.sql`. It prints `6 | 1 | 1 | 3`.
+1. Supabase SQL editor (KPI project) → run `supabase/028_billing.sql` (prints `6 | 1 | 1 | 3`), then `029_billing_english.sql` (already applied to the KPI project on 7 Oct 2026).
    It creates `semasa_clients`, `semasa_projects`, `semasa_billing_docs`, `semasa_billing_events`, `semasa_billing_outbox`,
    `semasa_billing_counters`, the settings row `billing`, two functions (`semasa_billing_issue`, `semasa_billing_public`) and the
    outbox trigger that wakes the worker. The counters start at the numbers Wan used by hand (QT 009, INV 014, RPT 016), so the

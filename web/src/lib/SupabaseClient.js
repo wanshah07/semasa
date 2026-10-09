@@ -26,6 +26,7 @@ export const TABLES = {
   billingOutbox: "semasa_billing_outbox", billingCounters: "semasa_billing_counters",
   subscriptions: "semasa_subscriptions",                      // Langganan (supabase/030_subscriptions.sql)
   receipts: "semasa_receipts",                                // Resit (supabase/033_receipts.sql)
+  postMetrics: "semasa_post_metrics",                         // Prestasi (supabase/034_post_metrics.sql)
   // CRM (supabase/031_crm.sql)
   crmContacts: "semasa_crm_contacts", crmCampaigns: "semasa_crm_campaigns", crmOutbox: "semasa_crm_outbox", crmActivities: "semasa_crm_activities",
 };

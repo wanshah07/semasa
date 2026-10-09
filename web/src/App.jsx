@@ -32,6 +32,7 @@ import SubscriptionsTab from "./pages/SubscriptionsTab";
 import CrmTab from "./pages/CrmTab";
 import CrmUnsubscribe from "./pages/CrmUnsubscribe";
 import ResitTab from "./pages/ResitTab";
+import PrestasiTab from "./pages/PrestasiTab";
 import WatchSegment, { watchIdea } from "./components/WatchSegment";
 import Header from "./components/Header";
 import AppSidebar from "./components/AppSidebar";
@@ -257,7 +258,7 @@ function MediaTab({ user, gens, prompts, posts, onToast }) {
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "chat", "bil", "langganan", "crm", "resit", "faq", "log", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "prestasi", "media", "design", "wangian", "kanvas", "video", "chat", "bil", "langganan", "crm", "resit", "faq", "log", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 // #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)
@@ -396,6 +397,7 @@ export default function App() {
   else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "langganan") body = allowed ? <SubscriptionsTab user={user} onToast={push} /> : gate(null);
   else if (tab === "crm") body = allowed ? <CrmTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
+  else if (tab === "prestasi") body = allowed ? <PrestasiTab posts={posts} go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
   else if (tab === "papan") body = allowed ? <HomeTab ideas={ideas} posts={posts} log={log} activity={activity} brand={brand} user={user}
     go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}

@@ -115,8 +115,9 @@ class Query:
             items = self.payload if isinstance(self.payload, list) else [self.payload]
             out = []
             for it in items:
-                key = it.get(self._conflict) if self._conflict else None
-                old = next((r for r in rows if key is not None and r.get(self._conflict) == key), None)
+                cols = [c.strip() for c in str(self._conflict or "").split(",") if c.strip()]   # "a" or "a,b"
+                key = tuple(it.get(c) for c in cols) if cols else None
+                old = next((r for r in rows if key is not None and tuple(r.get(c) for c in cols) == key), None)
                 if old is not None:
                     if not self._ignore:
                         old.update(copy.deepcopy(it))

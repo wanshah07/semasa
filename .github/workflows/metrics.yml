@@ -1,0 +1,41 @@
+name: Metrics
+
+# Prestasi (Wan, 9 Oct 2026): once a day, after Buffer has refreshed its per-post figures (it does so between about 01:30
+# and 04:00 UTC), read every sent ws.regulab post with its metrics and write semasa_post_metrics. The page computes reach,
+# average views, engagement, replies, the peak post, the best publishing window and the heatmap from those rows.
+# One schedule, in the repo that owns the job. Two Buffer calls a run against the 250-a-day budget.
+on:
+  schedule:
+    - cron: "10 5 * * *"           # 13:10 MYT
+  workflow_dispatch:
+
+concurrency:
+  group: metrics
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  metrics:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Read the figures
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+        run: python -m semasa.metrics

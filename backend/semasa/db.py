@@ -31,6 +31,8 @@ BILLING_EVENTS = "semasa_billing_events"
 BILLING_OUTBOX = "semasa_billing_outbox"
 SUBSCRIPTIONS = "semasa_subscriptions"
 RECEIPTS = "semasa_receipts"
+POST_METRICS = "semasa_post_metrics"
+REPOS = "semasa_repos"
 # CRM (supabase/031_crm.sql)
 CRM_CONTACTS = "semasa_crm_contacts"
 CRM_CAMPAIGNS = "semasa_crm_campaigns"

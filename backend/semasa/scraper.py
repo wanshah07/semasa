@@ -18,7 +18,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import categorize, db, faq_sources, fetch, trial, watch
+from . import api_status, categorize, db, faq_sources, fetch, trial, watch
 from .config import LLMSettings, ScraperSettings, SupabaseSettings
 from .llm import LLM
 from .log import get_logger
@@ -185,6 +185,7 @@ def writer_label(llm: LLM) -> str:
 
 
 def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings: LLMSettings) -> int:
+    api_status.attach(store, "scrape")                 # every AI call of this run writes a token-usage row
     llm = LLM(llm_settings)
     trial_on = trial.start(store, llm, "scrape")        # the page's "Try Mireld for one run": Mireld is asked first
     probe_ok = llm.probe() if llm.configured else False

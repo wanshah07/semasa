@@ -34,7 +34,7 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import db
+from . import api_status, db
 from .config import LLMSettings, MediaSettings, SupabaseSettings
 from .llm import LLM
 from .log import get_logger
@@ -649,6 +649,7 @@ def main() -> int:
     github_media, github_llm = MediaSettings.load(), LLMSettings.load()
     ai_config.record_github(store, "media", github_llm, github_media)   # shown under Settings → AI settings
     s = ai_config.media_settings(github_media, cfg)
+    api_status.attach(store, "media")
     llm = LLM(ai_config.llm_settings(github_llm, cfg))
     from . import faq, ideas, trial
     trial_on = trial.start(store, llm, "media")         # the page's "Try Mireld for one run": Mireld is asked first

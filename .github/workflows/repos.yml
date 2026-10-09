@@ -1,0 +1,46 @@
+name: Repos
+
+# Repo tracker (Wan, 9 Oct 2026): every 6 hours, read the office repositories named in settings.repos.list (six by default)
+# and write their six dimensions (code, PRs, CI, issues, schedules, deploy) to semasa_repos for the Repo tab.
+# Needs REPOS_TOKEN (a fine-grained PAT, read-only on those repositories); LANDING_REPO_TOKEN is the fallback and the
+# job's own GITHUB_TOKEN the last resort (then private repositories other than this one read as 404).
+on:
+  schedule:
+    - cron: "25 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: repos
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  repos:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Read the repositories
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          REPOS_TOKEN: ${{ secrets.REPOS_TOKEN }}
+          LANDING_REPO_TOKEN: ${{ secrets.LANDING_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python -m semasa.repos

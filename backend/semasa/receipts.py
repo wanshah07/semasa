@@ -23,7 +23,7 @@ from typing import Any
 
 import requests
 
-from . import ai_config, db
+from . import ai_config, api_status, db
 from .config import LLMSettings
 from .foryou import ForYou
 from .llm import LLM
@@ -370,6 +370,7 @@ def process(store: Any, settings: dict[str, Any], llm: Any, drive: Drive | None,
 
 def make_llm(store: Any) -> Any | None:
     try:
+        api_status.attach(store, "receipt")
         return LLM(ai_config.llm_settings(LLMSettings.load(), ai_config.read(store)))
     except Exception as exc:                          # noqa: BLE001 - no key is "not read", never a crash
         log.warning("no LLM: %s", exc)

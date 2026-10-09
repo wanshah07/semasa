@@ -33,6 +33,8 @@ SUBSCRIPTIONS = "semasa_subscriptions"
 RECEIPTS = "semasa_receipts"
 POST_METRICS = "semasa_post_metrics"
 REPOS = "semasa_repos"
+API_STATUS = "semasa_api_status"
+API_USAGE = "semasa_api_usage"
 # CRM (supabase/031_crm.sql)
 CRM_CONTACTS = "semasa_crm_contacts"
 CRM_CAMPAIGNS = "semasa_crm_campaigns"

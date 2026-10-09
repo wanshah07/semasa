@@ -726,6 +726,22 @@ AI** has three slots, each with a provider, an endpoint, a model and a key:
   characters shows just "set"). The Cloudflare Account ID is treated as a secret too. The line under each slot says
   which run read it and when, and whether this page's own setting overrides it. Until a run has reported, it says so.
 
+## Repo: the office repositories in six dimensions
+
+Wan, 9 Oct 2026. The **Repo** tab (Reference) draws every repository in `settings.repos.list` (the six by default) as a card
+with six tiles: code, pull requests, CI, issues, schedules, deploy, plus a health ring and a progress ring, sorted worst
+first, and one table of every cron in the office with its last verdict. `backend/semasa/repos.py` reads GitHub every 6 hours
+(`repos.yml`); it needs the secret `REPOS_TOKEN` (a read-only fine-grained PAT on those repositories) to see the private
+ones. `ops/REPOS.md` has the table of what each tile reads.
+
+## API: gateway status and token usage
+
+Wan, 9 Oct 2026. The **API** tab (Reference) shows each AI gateway the workers use (rootsys = Afiq's, Mireld as backup): up or
+not, the key accepted or refused, the models it lists and whether the configured model is among them, latency, balance when
+the gateway exposes one, and the tokens we spent (a day, by gateway, by job). `backend/semasa/api_status.py` probes every
+6 hours (`api.yml`); every worker run writes one `semasa_api_usage` row per AI call through `llm.set_usage_sink`. A key
+never reaches the page: only its last four characters do. `ops/API.md`.
+
 ## Card or table
 
 Current issues, Ideas and Posts each switch between cards and a table. The switch is remembered in this browser.

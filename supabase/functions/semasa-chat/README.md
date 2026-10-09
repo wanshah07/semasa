@@ -21,6 +21,26 @@ The chat tab (`web/src/lib/chat.js`) calls this function. The Mireld key lives h
    - whether the model **reads a picture**: it is sent a solid red square and asked its colour. "It answered with an
      image attached" is not the test; saying *red* / *merah* is.
 
+## Use another gateway: Afiq's rootsys (9 Oct 2026)
+
+The function talks to any OpenAI-compatible gateway. To move the chat, the Design reader and the FAQ bar to rootsys, set these
+secrets (type the key into the dashboard or your own terminal, never into a chat) and deploy again:
+
+```
+supabase secrets set AI_API_KEY=<the rootsys key> AI_BASE_URL=https://rootsys.cloud/v1 AI_MODEL=kimi-k3 --project-ref mwaocnbgvbkhovktgods
+```
+
+- With `AI_API_KEY` set, `AI_*` win and `MIRELD_*` are ignored. `AI_BASE_URL` is then required, so the key can never be sent to
+  Mireld's address; `MIRELD_MODEL` is ignored too, because a model id belongs to one gateway. To go back, `supabase secrets unset
+  AI_API_KEY AI_BASE_URL AI_MODEL`.
+- rootsys drops the system message, so for that host the instructions are also repeated at the top of the first user turn (the same
+  fix the worker has had since 28 Sep). `AI_REPEAT_SYSTEM=1` or `0` forces it on or off for any gateway.
+- Models that read a picture are what the Design reader and the FAQ bar need. rootsys marks `kimi-k3`, `glm-5.3-flashx`,
+  `glm-5.3-flash`, `deepseek-v4.1-flash`, `minimax-m3` and `kimi-k2.7` as vision; with no `AI_MODEL` the function picks the first
+  of those it lists (`kimi-k3`). That order is a guess from the names, not a measurement: press **Check the model** in the AI chat
+  tab, which sends a red square and a test tool call, and pin the winner with `AI_MODEL`.
+- The page names the gateway it is really using (`rootsys`, `Mireld`, or the host) in its notes and in the "reader did not answer" text.
+
 ## Memory, web and data (1 Oct 2026)
 
 Run `supabase/025_chat_memory.sql` once, then deploy the function again. Nothing else changes for the page.

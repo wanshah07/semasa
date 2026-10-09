@@ -381,7 +381,7 @@ t("documents together never exceed the total cap: the one that crosses it is cut
 console.log("hardening: ok");
 
 // ---- reader calls that survive a slow first output (2 Oct 2026, "HTTP 500: Member first-output deadline") ---------------------
-import { gatewayDown, pickFallback, readerMessage, retryPause, retryable } from "../supabase/functions/semasa-chat/logic.js";
+import { gatewayConfig, gatewayDown, pickFallback, readerMessage, retryPause, retryable, withInstructions } from "../supabase/functions/semasa-chat/logic.js";
 t("a deadline, a timeout, a throttle or any 5xx may pass on another try; a 400, 401, 403 or 404 never will", () => {
   assert.equal(retryable(500, "Member first-output deadline"), true);
   assert.equal(retryable(0, "the model did not answer in time"), true);
@@ -413,7 +413,7 @@ assert.equal(gatewayDown(200, "down for maintenance"), true, "the words count wh
 assert.equal(retryPause(503, ""), 4000);
 assert.equal(retryPause(500, "Member first-output deadline"), 0);
 {
-  const down = readerMessage({ ok: false, status: 503, err: "Scheduled server upgrade in progress. Please retry later.", tried: ["claude-sonnet-5-5", "claude-sonnet-5-5"] });
+  const down = readerMessage({ ok: false, status: 503, err: "Scheduled server upgrade in progress. Please retry later.", tried: ["claude-sonnet-5-5", "claude-sonnet-5-5"], gateway: "Mireld" });
   assert.match(down, /HTTP 503: Scheduled server upgrade/);
   assert.match(down, /tried claude-sonnet-5-5\)/, "the same model twice is named once");
   assert.match(down, /Mireld\) is down or being upgraded/);
@@ -423,3 +423,43 @@ assert.equal(retryPause(500, "Member first-output deadline"), 0);
   assert.match(readerMessage({ ok: true, status: 200, err: "", tried: ["a"] }), /an empty answer/);
 }
 console.log("reader message: ok");
+
+// The function can run on another gateway by secrets alone (Wan, 9 Oct 2026: move to Afiq's rootsys).
+{
+  const env = (o) => (k) => o[k];
+  const m = gatewayConfig(env({ MIRELD_API_KEY: "k1" }));
+  assert.equal(m.error, ""); assert.equal(m.name, "Mireld"); assert.equal(m.base, "https://api.mireld.my/v1");
+  assert.equal(m.keyName, "MIRELD_API_KEY"); assert.equal(m.repeatSystem, false, "Mireld passes the system message on");
+  const r = gatewayConfig(env({ AI_API_KEY: "k2", AI_BASE_URL: "https://rootsys.cloud/v1", AI_MODEL: "kimi-k3", MIRELD_API_KEY: "k1", MIRELD_MODEL: "claude-sonnet-5.5" }));
+  assert.equal(r.error, ""); assert.equal(r.name, "rootsys"); assert.equal(r.key, "k2"); assert.equal(r.base, "https://rootsys.cloud/v1");
+  assert.equal(r.model, "kimi-k3", "AI_MODEL wins, and MIRELD_MODEL is ignored with AI_API_KEY"); assert.equal(r.repeatSystem, true, "rootsys drops the system message");
+  const noModel = gatewayConfig(env({ AI_API_KEY: "k2", AI_BASE_URL: "https://rootsys.cloud/v1", MIRELD_MODEL: "claude-sonnet-5.5" }));
+  assert.equal(noModel.model, "", "a Mireld model id is never carried to another gateway");
+  const leak = gatewayConfig(env({ AI_API_KEY: "k2", MIRELD_BASE_URL: "https://api.mireld.my/v1" }));
+  assert.match(leak.error, /AI_BASE_URL/); assert.equal(leak.base, "", "the AI key is never sent to Mireld's address");
+  assert.equal(gatewayConfig(env({ AI_API_KEY: "k2", AI_BASE_URL: "https://example.org/v1", AI_REPEAT_SYSTEM: "1" })).repeatSystem, true);
+  assert.equal(gatewayConfig(env({ AI_API_KEY: "k2", AI_BASE_URL: "https://rootsys.cloud/v1", AI_REPEAT_SYSTEM: "0" })).repeatSystem, false);
+  assert.equal(gatewayConfig({ MIRELD_API_KEY: "k1" }).name, "Mireld", "a plain object works as the source too");
+  assert.equal(gatewayConfig(env({ AI_API_KEY: "k", AI_BASE_URL: "https://llm.example.org/v1" })).name, "llm.example.org");
+}
+{
+  const msgs = [{ role: "system", content: "Be brief." }, { role: "user", content: "Hi" }, { role: "assistant", content: "Hello" }, { role: "user", content: "Again" }];
+  const out = withInstructions(msgs);
+  assert.equal(out[0].content, "Be brief.", "the system message stays");
+  assert.match(out[1].content, /^INSTRUCTIONS \(follow them exactly\):\nBe brief\.\n\nINPUT:\nHi$/);
+  assert.equal(out[3].content, "Again", "only the first user turn carries them"); assert.equal(msgs[1].content, "Hi", "the argument is not mutated");
+  const parts = withInstructions([{ role: "system", content: "S" }, { role: "user", content: [{ type: "text", text: "read" }, { type: "image_url", image_url: { url: "data:x" } }] }]);
+  assert.equal(parts[1].content.length, 3); assert.match(parts[1].content[0].text, /^INSTRUCTIONS/); assert.equal(parts[1].content[2].type, "image_url");
+  const same = [{ role: "user", content: "no system" }];
+  assert.equal(withInstructions(same), same, "nothing to repeat");
+}
+{
+  // rootsys's list, as on its page: the vision models lead, a non-vision one is never the default, and Claude still wins on Mireld
+  const ids = ["glm-5.1", "glm-5.2", "glm-5.3", "glm-5.3-flash", "glm-5.3-flashx", "kimi-k2.7", "kimi-k3", "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4.1-flash", "minimax-m3", "hy3-tencent", "hy4-preview", "gpt-5.6-luna"];
+  assert.equal(rankModels(ids, "").recommended, "kimi-k3");
+  assert.equal(rankModels(ids.filter((x) => x !== "kimi-k3"), "").recommended, "glm-5.3-flashx");
+  assert.equal(rankModels([...ids, "claude-sonnet-5.5"], "").recommended, "claude-sonnet-5.5");
+  assert.equal(readerMessage({ ok: false, status: 503, err: "Scheduled server upgrade", tried: ["kimi-k3"], gateway: "rootsys" }).includes("(rootsys) is down"), true);
+  assert.equal(readerMessage({ ok: false, status: 503, err: "upgrade", tried: ["a"] }).includes("The AI gateway is down"), true, "no name, no empty brackets");
+}
+console.log("gateway config: ok");

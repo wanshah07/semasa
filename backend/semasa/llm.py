@@ -25,6 +25,7 @@ import base64
 import json
 import re
 import time
+from collections.abc import Callable
 from typing import Any
 
 import requests
@@ -38,6 +39,36 @@ _FENCE = re.compile(r"^\s*```(?:json|python)?\s*|\s*```\s*$", re.S)
 _THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
 _PY_LITERALS = {"True": "true", "False": "false", "None": "null"}
 _PY_LITERAL_AT = re.compile(r"(True|False|None)(?![A-Za-z0-9_])")
+
+
+# Token usage (Wan, 9 Oct 2026: "track status of token from mireld and afiq API"): every call records what the gateway's
+# `usage` said, where it went and how long it took, through a sink a runner attaches (api_status.attach). No sink: nothing
+# is recorded, and a sink that throws never fails a call.
+_USAGE_SINK: Callable[[dict[str, Any]], None] | None = None
+_LAST_USAGE: dict[str, int] = {}
+
+
+def set_usage_sink(fn: Callable[[dict[str, Any]], None] | None) -> None:
+    global _USAGE_SINK
+    _USAGE_SINK = fn
+
+
+def _record_usage(rec: dict[str, Any]) -> None:
+    if _USAGE_SINK is None:
+        return
+    try:
+        _USAGE_SINK(rec)
+    except Exception as exc:  # noqa: BLE001
+        log.info("usage sink: %s", str(exc)[:120])
+
+
+def _usage_from(j: Any) -> dict[str, int]:
+    u = j.get("usage") if isinstance(j, dict) else None
+    if not isinstance(u, dict):
+        return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    p = int(u.get("prompt_tokens") or u.get("input_tokens") or 0)
+    c = int(u.get("completion_tokens") or u.get("output_tokens") or 0)
+    return {"prompt_tokens": p, "completion_tokens": c, "total_tokens": int(u.get("total_tokens") or (p + c))}
 
 
 class LLM:
@@ -280,9 +311,19 @@ class LLM:
         provider = provider or self.s.provider
         base = base or self.s.base_url
         key = self.s.api_key if key is None else key
-        if provider == "anthropic":
-            return self._anthropic(system, user, max_tokens, model, base, key or "")
-        return self._openai(system, user, max_tokens, model, base, key or "")
+        t0 = time.monotonic()
+        _LAST_USAGE.clear()
+        try:
+            if provider == "anthropic":
+                out = self._anthropic(system, user, max_tokens, model, base, key or "")
+            else:
+                out = self._openai(system, user, max_tokens, model, base, key or "")
+        except Exception as exc:
+            ms = int((time.monotonic() - t0) * 1000)
+            _record_usage({"base": base, "model": model, "ok": False, "ms": ms, "error": str(exc)[:200]})
+            raise
+        _record_usage({"base": base, "model": model, "ok": True, "ms": int((time.monotonic() - t0) * 1000), **_LAST_USAGE})
+        return out
 
     def _openai(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str, base: str,
                 key: str) -> str:
@@ -300,7 +341,9 @@ class LLM:
             body.pop("response_format")
             r = requests.post(f"{base}/chat/completions", headers=headers, json=body, timeout=self.s.timeout)
         r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"]
+        j = r.json()
+        _LAST_USAGE.update(_usage_from(j))
+        return j["choices"][0]["message"]["content"]
 
     def _anthropic(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str, base: str,
                    key: str) -> str:
@@ -321,7 +364,9 @@ class LLM:
             timeout=self.s.timeout,
         )
         r.raise_for_status()
-        blocks = r.json().get("content") or []
+        j = r.json()
+        _LAST_USAGE.update(_usage_from(j))
+        blocks = j.get("content") or []
         return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
 
 

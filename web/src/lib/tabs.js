@@ -1,4 +1,4 @@
-import { BarChart3, Clapperboard, Contact, CreditCard, Droplets, ScanLine, FileText, HelpCircle, LayoutDashboard, LayoutTemplate, Lightbulb, ListChecks, MessageSquare, PenTool, Radio, Receipt, Settings, Sparkles } from "lucide-react";
+import { BarChart3, Clapperboard, Contact, Cpu, CreditCard, Droplets, GitBranch, ScanLine, FileText, HelpCircle, LayoutDashboard, LayoutTemplate, Lightbulb, ListChecks, MessageSquare, PenTool, Radio, Receipt, Settings, Sparkles } from "lucide-react";
 
 /* Every tab, once: the header's tab row and the sidebar both read this list, so the two can never disagree.
    `group` places a tab in the sidebar: "" (top), "create", "business", "reference" or "bottom". */
@@ -21,6 +21,8 @@ export function tabsOf(t) {
     { id: "resit", label: t("Resit", "Receipts"), icon: ScanLine, group: "business" },
     { id: "faq", label: "FAQ", icon: HelpCircle, group: "reference" },
     { id: "log", label: "Log", icon: ListChecks, group: "reference" },
+    { id: "repo", label: t("Repo", "Repos"), icon: GitBranch, group: "reference" },
+    { id: "api", label: "API", icon: Cpu, group: "reference" },
     { id: "tetapan", label: t("Tetapan", "Settings"), icon: Settings, group: "bottom" },
   ];
 }

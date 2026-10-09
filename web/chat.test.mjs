@@ -381,7 +381,7 @@ t("documents together never exceed the total cap: the one that crosses it is cut
 console.log("hardening: ok");
 
 // ---- reader calls that survive a slow first output (2 Oct 2026, "HTTP 500: Member first-output deadline") ---------------------
-import { attemptCap, gatewayConfig, gatewayDown, pickFallback, readerMessage, retryPause, retryable, withInstructions } from "../supabase/functions/semasa-chat/logic.js";
+import { raceCandidates, readerCandidates, summariseFailures, gatewayConfig, gatewayDown, pickFallback, readerMessage, retryPause, retryable, withInstructions } from "../supabase/functions/semasa-chat/logic.js";
 t("a deadline, a timeout, a throttle or any 5xx may pass on another try; a 400, 401, 403 or 404 never will", () => {
   assert.equal(retryable(500, "Member first-output deadline"), true);
   assert.equal(retryable(0, "the model did not answer in time"), true);
@@ -465,16 +465,66 @@ console.log("reader message: ok");
 }
 console.log("gateway config: ok");
 
-// The reader's time budget (Wan, 9 Oct 2026: kimi-k3 then glm-5.3-flash both timed out at 70 s and 50 s).
+// The reader chooses its own model (Wan, 9 Oct 2026: "choose the model and AI for me as long as successful").
 {
-  const t0 = 1_000_000;
-  assert.equal(attemptCap(t0, t0, 0), 130000, "the first attempt may use nearly everything");
-  assert.equal(attemptCap(t0, t0 + 5000, 1) > 25000, true, "a second try after a quick failure still has real time");
-  assert.equal(attemptCap(t0, t0 + 115000, 1), 0, "no 20-second afterthought after a slow first try");
-  assert.equal(attemptCap(t0, t0 + 100000, 1), 34000, "a second try with 34 s left is still allowed");
-  assert.equal(attemptCap(t0, t0 + 100000, 0), 34000, "the first attempt never runs past the budget either");
-  assert.equal(attemptCap(t0, t0 + 200000, 0), 0);
-  assert.match(readerMessage({ ok: false, status: 0, err: "the model did not answer in time", tried: ["kimi-k3", "glm-5.3-flash"], gateway: "rootsys" }), /too slowly[\s\S]*flash/);
-  assert.doesNotMatch(readerMessage({ ok: false, status: 400, err: "bad image", tried: ["x"] }), /too slowly/);
+  const list = ["glm-5.1", "glm-5.3-flashx", "glm-5.3-flash", "kimi-k3", "deepseek-v4-pro", "hy4-preview", "gpt-5.6-luna", "minimax-m3"];
+  assert.deepEqual(readerCandidates(list, "kimi-k3", ""), ["kimi-k3", "glm-5.3-flashx", "glm-5.3-flash", "minimax-m3"], "only listed picture readers; the chosen one first");
+  assert.deepEqual(readerCandidates(list, "glm-5.1", ""), ["glm-5.3-flashx", "glm-5.3-flash", "kimi-k3", "minimax-m3"], "a chosen model that cannot see is never asked to read");
+  assert.equal(readerCandidates(list, "", "minimax-m3")[0], "minimax-m3", "the last winner goes first");
+  assert.ok(readerCandidates(null, "", "").includes("glm-5.3-flashx"), "an unreadable list still gives the known names");
+  assert.deepEqual(readerCandidates(["gpt-5.6-luna"], "", ""), [], "nothing that sees: no candidates");
+  assert.equal(readerCandidates(["claude-sonnet-5-5", "glm-5.3-flash"], "", "")[0], "claude-sonnet-5-5", "spelled differently is still the model, and the listed spelling is used");
+  assert.ok(readerCandidates(null, "", "", 3).length <= 3);
 }
-console.log("reader budget: ok");
+{
+  const fast = (ms, r) => (c, signal) => new Promise((res) => {
+    const t = setTimeout(() => res(r(c)), ms);
+    signal.addEventListener("abort", () => { clearTimeout(t); res({ ok: false, accepted: false, status: 0, err: "cancelled" }); });
+  });
+  const opts = { staggerMs: 40, budgetMs: 600, maxParallel: 3, label: (c) => c };
+  // the first that answers wins; a slow earlier one is cancelled
+  let aborted = [];
+  const run = (c, signal) => {
+    const plan = { a: [300, true], b: [10, true] }[c] || [10, false];
+    return new Promise((res) => {
+      let over = false;
+      const t = setTimeout(() => { over = true; res({ ok: true, accepted: plan[1], status: 200, content: c }); }, plan[0]);
+      signal.addEventListener("abort", () => { if (over) return; clearTimeout(t); aborted.push(c); res({ ok: false, accepted: false, status: 0, err: "cancelled" }); });
+    });
+  };
+  let r = await raceCandidates(["a", "b", "c"], run, opts);
+  assert.equal(r.win.cand, "b", "b started after the stagger and beat the slow a");
+  assert.deepEqual(r.tried, ["a", "b"]); assert.deepEqual(aborted, ["a"], "the loser was cancelled");
+  // a failure starts the next at once, not after the stagger
+  const t0 = Date.now();
+  r = await raceCandidates(["x", "y"], async (c) => (c === "x" ? { ok: false, accepted: false, status: 400, err: "no images" } : { ok: true, accepted: true, status: 200 }), { ...opts, staggerMs: 5000, label: (c) => c });
+  assert.equal(r.win.cand, "y"); assert.ok(Date.now() - t0 < 1000, "no waiting for the stagger after a failure");
+  assert.deepEqual(r.failures.map((f) => f.label), ["x"]);
+  // an answer that is not accepted (not a layout) is a failure, and the next model is tried
+  r = await raceCandidates(["j", "k"], async (c) => ({ ok: true, accepted: c === "k", status: 200, err: "" }), opts);
+  assert.equal(r.win.cand, "k"); assert.match(r.failures[0].err, /could not be used/);
+  // nothing succeeds: every model and why, and the end comes when the last one has failed
+  r = await raceCandidates(["p", "q"], async (c) => ({ ok: false, accepted: false, status: c === "p" ? 503 : 0, err: c === "p" ? "upgrade" : "the model did not answer in time" }), opts);
+  assert.equal(r.win, null); assert.equal(r.failures.length, 2); assert.deepEqual(r.tried, ["p", "q"]);
+  // the budget ends a race whose models never answer
+  r = await raceCandidates(["s"], fast(5000, () => ({ ok: true, accepted: true })), { ...opts, budgetMs: 80 });
+  assert.equal(r.win, null, "the budget is final");
+  // a throw is a failure, not a crash; no candidates ends at once
+  r = await raceCandidates(["t", "u"], async (c) => { if (c === "t") throw new Error("boom"); return { ok: true, accepted: true, status: 200 }; }, opts);
+  assert.equal(r.win.cand, "u"); assert.match(r.failures[0].err, /boom/);
+  assert.equal((await raceCandidates([], async () => ({}), opts)).win, null);
+  // never more than maxParallel at once
+  let live = 0, peak = 0;
+  await raceCandidates(["1", "2", "3", "4", "5"], async () => { live++; peak = Math.max(peak, live); await new Promise((x) => setTimeout(x, 120)); live--; return { ok: false, accepted: false, status: 500, err: "x" }; }, { ...opts, staggerMs: 10, maxParallel: 2, budgetMs: 2000 });
+  assert.ok(peak <= 2, `peak ${peak}`);
+}
+{
+  assert.deepEqual(summariseFailures([{ status: 503, err: "upgrade" }, { status: 503, err: "upgrade" }]).status, 503, "all gateway-down: say so");
+  assert.equal(summariseFailures([{ status: 503, err: "upgrade" }, { status: 0, err: "the model did not answer in time" }]).err, "the model did not answer in time", "one timeout means a faster model may help");
+  assert.equal(summariseFailures([{ status: 400, err: "bad" }, { status: 500, err: "oops" }]).status, 500);
+  assert.equal(summariseFailures([]).err, "no answer");
+  const m = readerMessage({ ok: false, status: 0, err: "the model did not answer in time", tried: ["a", "b"], failures: [{ label: "a", status: 0, err: "the model did not answer in time" }, { label: "b", status: 400, err: "no images" }] });
+  assert.match(m, /Each try: a \(the model did not answer in time\); b \(HTTP 400: no images\)/);
+  assert.doesNotMatch(readerMessage({ ok: false, status: 400, err: "x", tried: ["a"], failures: [{ label: "a", status: 400, err: "x" }] }), /Each try/, "one failure needs no list");
+}
+console.log("reader race: ok");

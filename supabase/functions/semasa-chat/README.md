@@ -41,8 +41,17 @@ supabase secrets set AI_API_KEY=<the rootsys key> AI_BASE_URL=https://rootsys.cl
   function picks the first of them it lists. That order is a guess from the names, not a measurement: press **Check the model** in the
   AI chat tab, which sends a red square and a test tool call and now prints how long the picture test took; pin the fastest one that
   reads the picture with `AI_MODEL`.
-- **Time budget.** The reader (Design, FAQ bar) has one 138 s budget for both tries, under the platform's 150 s limit. A model that is
-  still writing is not cut off at a fixed 70 s; one that goes silent for 60 s is. A second model is tried only if enough time is left.
+- **The reader chooses its own model** (Design reader, FAQ bar; 9 Oct 2026, "choose the model and AI for me as long as successful").
+  It does not wait on one model. The candidates are the models known to read a picture (Claude first when Mireld is the gateway, then
+  `glm-5.3-flashx`, `glm-5.3-flash`, `deepseek-v4.1-flash`, `kimi-k3`, `minimax-m3`, `kimi-k2.7`, `hy3-tencent`), with `AI_MODEL` and
+  the last model that answered first. It starts the first; if that fails it starts the next at once, and if it is merely slow (25 s) it
+  starts the next as well, up to three at a time. **The first answer that really is a layout wins** and the others are cancelled, so a
+  model that answers with nonsense is skipped, not used. A model that cannot see pictures is never asked to read one, because it could
+  invent a convincing layout from nothing. When `AI_API_KEY` carries the main gateway and a `MIRELD_API_KEY` is still set, Mireld is
+  the last candidate: the second AI behind the first. One 138 s budget covers everything, under the platform's 150 s limit. If every
+  model fails, the message lists each one and why, so the slow ones can be told from the broken ones.
+- Cost: a slow first model means up to three reads of the same picture run at once. That only happens when a model is slow, and the
+  losers are cancelled the moment one wins.
 - The page names the gateway it is really using (`rootsys`, `Mireld`, or the host) in its notes and in the "reader did not answer" text.
 
 ## Memory, web and data (1 Oct 2026)

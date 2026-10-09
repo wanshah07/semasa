@@ -59,9 +59,10 @@ export default function ChatTab() {
       setModels(m);
       // a model chosen earlier that Mireld no longer lists would only be refused: go back to Auto and say so
       const kept = savedModel();
+      const gwn = m.gateway || "Mireld";
       if (kept && m.listed && !m.models.some((x) => x.id === kept)) {
         saveModel(""); setModel("");
-        note(t(`Model pilihan anda (${kept}) tiada lagi dalam senarai Mireld; guna Auto (${m.default}).`, `Your chosen model (${kept}) is no longer in Mireld's list; using Auto (${m.default}).`));
+        note(t(`Model pilihan anda (${kept}) tiada lagi dalam senarai ${gwn}; guna Auto (${m.default}).`, `Your chosen model (${kept}) is no longer in ${gwn}'s list; using Auto (${m.default}).`));
       }
     });
     return () => { live = false; };
@@ -146,7 +147,7 @@ export default function ChatTab() {
       if (res.threadId) setThreadId(res.threadId);
       settle({ text: res.text, tools: res.tools, model: res.model, at: new Date().toISOString() });
       if (res.memorySaved) refreshNotes();
-      if (res.modelChanged) note(t(`Model ${res.modelChanged.asked} tidak ada di Mireld; dijawab oleh ${res.modelChanged.used}.`, `Model ${res.modelChanged.asked} is not at Mireld; answered by ${res.modelChanged.used}.`));
+      if (res.modelChanged) note(t(`Model ${res.modelChanged.asked} tidak ada di ${models?.gateway || "Mireld"}; dijawab oleh ${res.modelChanged.used}.`, `Model ${res.modelChanged.asked} is not at ${models?.gateway || "Mireld"}; answered by ${res.modelChanged.used}.`));
       if (res.notice === "tools_unsupported") note(t("Model ini tidak menerima alat (web, pangkalan data); dijawab tanpa alat.", "This model does not accept tools (web, database); answered without them."));
       refreshThreads();
     } catch (e) {
@@ -180,7 +181,7 @@ export default function ChatTab() {
       const l = r.listed || {};
       const listed = !l.read ? t("senarai model tidak dapat dibaca", "the model list could not be read")
         : l.exact ? t("ada dalam senarai", "is in the list")
-          : l.spelled_as ? t(`dieja "${l.spelled_as}" di sana, tukar MIRELD_MODEL`, `is spelled "${l.spelled_as}" there, set MIRELD_MODEL to that`)
+          : l.spelled_as ? t(`dieja "${l.spelled_as}" di sana, tetapkan rahsia model (AI_MODEL atau MIRELD_MODEL) kepada itu`, `is spelled "${l.spelled_as}" there, set the model secret (AI_MODEL or MIRELD_MODEL) to that`)
             : t(`tiada dalam senarai (${(l.related || []).join(", ") || "tiada yang serupa"})`, `is not in the list (${(l.related || []).join(", ") || "nothing similar"})`);
       const im = r.image || {};
       const reads = im.reads === true ? t(`boleh baca gambar (jawab: ${im.answer})`, `reads pictures (answered: ${im.answer})`)

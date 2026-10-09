@@ -10,9 +10,13 @@
 // auth.getUser AND pass public.semasa_is_uploader() (supabase/001_schema.sql), the same test Semasa's tables use.
 //
 // Secrets (Supabase dashboard → Edge Functions → Secrets, or `supabase secrets set`):
-//   MIRELD_API_KEY    required
+//   MIRELD_API_KEY    required (unless AI_API_KEY is set)
 //   MIRELD_BASE_URL   optional, default https://api.mireld.my/v1
 //   MIRELD_MODEL      optional, default claude-sonnet-5.5  (the "check" action says how Mireld spells it)
+//   AI_API_KEY, AI_BASE_URL, AI_MODEL   the neutral names, for any OpenAI-compatible gateway (9 Oct 2026: Afiq's rootsys,
+//                     https://rootsys.cloud/v1). When AI_API_KEY is set they win and MIRELD_* are ignored; AI_BASE_URL is then
+//                     required, so a key never goes to a host it was not set for. AI_REPEAT_SYSTEM=1/0 forces the instructions to be
+//                     repeated in the user turn (rootsys drops the system message, so it is on for that host by itself).
 //
 // Actions: {action:"chat", thread_id?, text, files, stream?, regenerate?}  (stream:true answers as SSE; regenerate answers the last
 // question again)  and  {action:"check"}  (lists Mireld's models, asks the model the
@@ -41,7 +45,7 @@ import { faqMessages, parseFaqItems } from "./faq.js";
 import { firstJson } from "./faq.js";
 import {
   MEMORY, SYSTEM, rankModels, resolveModel, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
-  OWN_HOSTS, RATE, allow, foldDelta, htmlToText, isPrivateIp, lastQuestion, parseArgs, pickFallback, planFold, planQuery, rateKind, readerMessage, retryPause, retryable,
+  OWN_HOSTS, RATE, allow, foldDelta, gatewayConfig, withInstructions, htmlToText, isPrivateIp, lastQuestion, parseArgs, pickFallback, planFold, planQuery, rateKind, readerMessage, retryPause, retryable,
   shapeRows, sseEvents, summaryMessages, userAskedToRemember, whoIs,
 } from "./logic.js";
 
@@ -90,12 +94,13 @@ Deno.serve(async (req) => {
   if (rpcErr) return json({ error: `could not check the Semasa user list (${String(rpcErr.message || rpcErr).slice(0, 120)})` }, 500);
   if (allowed !== true) return json({ error: "this account is not a Semasa user" }, 403);
 
-  const key = Deno.env.get("MIRELD_API_KEY");
-  if (!key) return json({ error: "MIRELD_API_KEY is not set on the function" }, 503);
-  const base = Deno.env.get("MIRELD_BASE_URL") || "https://api.mireld.my/v1";
-  const envModel = Deno.env.get("MIRELD_MODEL") || "";
+  const gw = gatewayConfig((k: string) => Deno.env.get(k));
+  if (gw.error) return json({ error: gw.error }, 503);
+  const { key, base, model: envModel } = gw;
+  if (!key) return json({ error: `${gw.keyName} is not set on the function` }, 503);
+  const outbound = (p: any) => (gw.repeatSystem && p?.messages ? { ...p, messages: withInstructions(p.messages) } : p);
   let model = envModel || "claude-sonnet-5.5";            // the default; the page may ask for another (below)
-  if (!/^https:\/\//.test(base)) return json({ error: "MIRELD_BASE_URL must be https" }, 500);
+  if (!/^https:\/\//.test(base)) return json({ error: `${gw.baseName} must be https` }, 500);
   const uid = who.user.id;
 
   let body: any;
@@ -131,7 +136,7 @@ Deno.serve(async (req) => {
     return null;
   }
   let modelIds: string[] | null = null;
-  if (body?.model || body?.action === "models") modelIds = await listModelIds();
+  if (body?.model || body?.action === "models" || (!envModel && gw.name !== "Mireld")) modelIds = await listModelIds();
   const ranked = rankModels(modelIds, envModel || "claude-sonnet-5.5");
   const defaultModel = envModel || ranked.recommended || "claude-sonnet-5.5";
   const picked = resolveModel(body?.model, modelIds, defaultModel);
@@ -145,7 +150,7 @@ Deno.serve(async (req) => {
     try {
       const res = await fetch(base.replace(/\/+$/, "") + "/chat/completions", {
         method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify({ ...payload, stream: true }), signal: AbortSignal.timeout(ms),
+        body: JSON.stringify(outbound({ ...payload, stream: true })), signal: AbortSignal.timeout(ms),
       });
       const type = res.headers.get("content-type") || "";
       if (!res.ok || !res.body) {
@@ -197,7 +202,7 @@ Deno.serve(async (req) => {
     }
     return { ...last, ok: false, model: used, tried };
   }
-  const readerError = (r: Read & { tried: string[] }) => readerMessage(r);
+  const readerError = (r: Read & { tried: string[] }) => readerMessage({ ...r, gateway: gw.name });
 
   // ---- tools -------------------------------------------------------------------------------------------
   async function addressesOk(host: string): Promise<string | null> {
@@ -285,8 +290,8 @@ Deno.serve(async (req) => {
   try {
     // ---- models: what the page's picker offers (Wan, 1 Oct 2026) ------------------------------------------
     if (body?.action === "models") {
-      if (!modelIds) return json({ models: [], recommended: ranked.recommended, default: defaultModel, listed: false });
-      return json({ models: ranked.models, recommended: ranked.recommended, default: defaultModel, listed: true });
+      if (!modelIds) return json({ models: [], recommended: ranked.recommended, default: defaultModel, listed: false, gateway: gw.name });
+      return json({ models: ranked.models, recommended: ranked.recommended, default: defaultModel, listed: true, gateway: gw.name });
     }
 
     // ---- check: models, picture reading, tool calling -------------------------------------------------
@@ -315,7 +320,7 @@ Deno.serve(async (req) => {
       }).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
       const tools = tp.ok ? { calls: Array.isArray(tp.data?.choices?.[0]?.message?.tool_calls) && tp.data.choices[0].message.tool_calls.length > 0 }
         : { error: `HTTP ${tp.status}: ${String(tp.data?.error?.message || tp.text).slice(0, 160)}` };
-      return json({ ...checkReport(model, ids, image, tools), base_url: base, list_status: list.status, search_configured: !!Deno.env.get("BRAVE_API_KEY") });
+      return json({ ...checkReport(model, ids, image, tools), base_url: base, gateway: gw.name, list_status: list.status, search_configured: !!Deno.env.get("BRAVE_API_KEY") });
     }
 
     // ---- faq_extract: the FAQ page's AI bar (Wan, 1 Oct 2026) -------------------------------------------
@@ -397,7 +402,7 @@ Deno.serve(async (req) => {
     const plan = planFold(stored);
     let summary: string = thread.summary || "";
     if (plan.fold.length) {
-      const r = await upstream(base, key, "/chat/completions", { method: "POST", body: JSON.stringify({ model, max_tokens: 1800, temperature: 0.2, messages: summaryMessages(summary, plan.fold) }) }).catch(() => null);
+      const r = await upstream(base, key, "/chat/completions", { method: "POST", body: JSON.stringify(outbound({ model, max_tokens: 1800, temperature: 0.2, messages: summaryMessages(summary, plan.fold) })) }).catch(() => null);
       const t = r?.ok ? asText(r.data).trim() : "";
       if (t) {
         summary = t.slice(0, 12000);
@@ -424,14 +429,14 @@ Deno.serve(async (req) => {
     async function turn(payload: any, onText: (t: string) => void): Promise<Turn> {
       const path = base.replace(/\/+$/, "") + "/chat/completions";
       if (!wantStream) {
-        const r = await upstream(base, key, "/chat/completions", { method: "POST", body: JSON.stringify(payload) });
+        const r = await upstream(base, key, "/chat/completions", { method: "POST", body: JSON.stringify(outbound(payload)) });
         if (!r.ok) return { ok: false, status: r.status, content: "", toolCalls: [], model: "", err: String(r.data?.error?.message || r.text).slice(0, 200) };
         const m = r.data?.choices?.[0]?.message;
         const calls = (Array.isArray(m?.tool_calls) ? m.tool_calls : []).map((c: any) => ({ id: String(c?.id || ""), name: String(c?.function?.name || ""), arguments: typeof c?.function?.arguments === "string" ? c.function.arguments : JSON.stringify(c?.function?.arguments || {}) }));
         return { ok: true, status: r.status, content: asText(r.data), toolCalls: calls, model: String(r.data?.model || ""), err: "" };
       }
       const res = await fetch(path, { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify({ ...payload, stream: true }), signal: AbortSignal.timeout(110000) });
+        body: JSON.stringify(outbound({ ...payload, stream: true })), signal: AbortSignal.timeout(110000) });
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => "");
         let j: any = null; try { j = JSON.parse(text); } catch { /* not JSON */ }

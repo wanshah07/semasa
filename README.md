@@ -214,7 +214,7 @@ Settings → Secrets and variables → Actions.
 | `CLOUDFLARE_EDIT_MODEL` | `@cf/black-forest-labs/flux-2-klein-4b` | your reference → picture on Cloudflare (a FLUX.2 model: only those take a picture) |
 | `CLOUDFLARE_IMAGE_SIZE` | `1024` | width and height for the FLUX.2 models |
 | `REPLICATE_IMAGE_MODEL` | `black-forest-labs/flux-kontext-pro` | image → image; input field `input_image` |
-| `REPLICATE_VIDEO_MODEL` | `kwaivgi/kling-v2.1` | image → video; input field `start_image` |
+| `REPLICATE_VIDEO_MODEL` | `kwaivgi/kling-v2.1` | image → video; input field `start_image`. **MiniMax (Hailuo) is on Replicate as `minimax/video-01`** with the picture in `first_frame_image`: set `REPLICATE_VIDEO_MODEL=minimax/video-01` and `REPLICATE_VIDEO_INPUT_KEY=first_frame_image` and nothing else changes. rootsys's `minimax-m3` is the chat model, not the video one: rootsys's video endpoints answer 404 (see `VISION_MODEL`), so MiniMax video goes through Replicate (or a native `MINIMAX_API_KEY` provider that does not exist yet) |
 | `REPLICATE_IMAGE_INPUT_KEY` / `REPLICATE_VIDEO_INPUT_KEY` | as above | change when you change model — each model names its picture field differently |
 | `OPENAI_IMAGE_MODEL` / `OPENAI_VIDEO_MODEL` | `gpt-image-1` / `sora-2` | |
 

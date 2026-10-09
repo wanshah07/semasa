@@ -24,6 +24,7 @@ export const TABLES = {
   // Bil (supabase/028_billing.sql)
   clients: "semasa_clients", projects: "semasa_projects", billingDocs: "semasa_billing_docs", billingEvents: "semasa_billing_events",
   billingOutbox: "semasa_billing_outbox", billingCounters: "semasa_billing_counters",
+  subscriptions: "semasa_subscriptions",                      // Langganan (supabase/030_subscriptions.sql)
 };
 export const TABLES_UPLOADERS = "semasa_uploaders";
 // Namespaced so Semasa can share a Supabase project with another app (supabase/003_storage.sql).

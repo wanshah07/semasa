@@ -1,9 +1,10 @@
-import { Clapperboard, Droplets, FileText, HelpCircle, LayoutTemplate, Lightbulb, ListChecks, MessageSquare, PenTool, Radio, Receipt, Settings, Sparkles } from "lucide-react";
+import { Clapperboard, CreditCard, Droplets, FileText, HelpCircle, LayoutDashboard, LayoutTemplate, Lightbulb, ListChecks, MessageSquare, PenTool, Radio, Receipt, Settings, Sparkles } from "lucide-react";
 
 /* Every tab, once: the header's tab row and the sidebar both read this list, so the two can never disagree.
    `group` places a tab in the sidebar: "" (top), "create", "business", "reference" or "bottom". */
 export function tabsOf(t) {
   return [
+    { id: "papan", label: t("Papan", "Dashboard"), icon: LayoutDashboard, group: "" },
     { id: "isu", label: t("Isu semasa", "Current issues"), icon: Radio, group: "" },
     { id: "idea", label: t("Idea", "Ideas"), icon: Lightbulb, group: "" },
     { id: "post", label: t("Post", "Posts"), icon: FileText, group: "" },
@@ -14,6 +15,7 @@ export function tabsOf(t) {
     { id: "video", label: "Video", icon: Clapperboard, group: "create" },
     { id: "chat", label: t("Sembang AI", "AI chat"), icon: MessageSquare, group: "create" },
     { id: "bil", label: t("Bil & Resit", "Billing"), icon: Receipt, group: "business" },
+    { id: "langganan", label: t("Langganan", "Subscriptions"), icon: CreditCard, group: "business" },
     { id: "faq", label: "FAQ", icon: HelpCircle, group: "reference" },
     { id: "log", label: "Log", icon: ListChecks, group: "reference" },
     { id: "tetapan", label: t("Tetapan", "Settings"), icon: Settings, group: "bottom" },

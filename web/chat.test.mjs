@@ -381,7 +381,7 @@ t("documents together never exceed the total cap: the one that crosses it is cut
 console.log("hardening: ok");
 
 // ---- reader calls that survive a slow first output (2 Oct 2026, "HTTP 500: Member first-output deadline") ---------------------
-import { gatewayConfig, gatewayDown, pickFallback, readerMessage, retryPause, retryable, withInstructions } from "../supabase/functions/semasa-chat/logic.js";
+import { attemptCap, gatewayConfig, gatewayDown, pickFallback, readerMessage, retryPause, retryable, withInstructions } from "../supabase/functions/semasa-chat/logic.js";
 t("a deadline, a timeout, a throttle or any 5xx may pass on another try; a 400, 401, 403 or 404 never will", () => {
   assert.equal(retryable(500, "Member first-output deadline"), true);
   assert.equal(retryable(0, "the model did not answer in time"), true);
@@ -456,10 +456,25 @@ console.log("reader message: ok");
 {
   // rootsys's list, as on its page: the vision models lead, a non-vision one is never the default, and Claude still wins on Mireld
   const ids = ["glm-5.1", "glm-5.2", "glm-5.3", "glm-5.3-flash", "glm-5.3-flashx", "kimi-k2.7", "kimi-k3", "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4.1-flash", "minimax-m3", "hy3-tencent", "hy4-preview", "gpt-5.6-luna"];
-  assert.equal(rankModels(ids, "").recommended, "kimi-k3");
-  assert.equal(rankModels(ids.filter((x) => x !== "kimi-k3"), "").recommended, "glm-5.3-flashx");
+  assert.equal(rankModels(ids, "").recommended, "glm-5.3-flashx", "a fast vision model first: a layout is thousands of tokens");
+  assert.equal(rankModels(ids.filter((x) => x !== "glm-5.3-flashx"), "").recommended, "glm-5.3-flash");
+  assert.equal(rankModels(["kimi-k3", "glm-5.1", "deepseek-v4-pro"], "").recommended, "kimi-k3", "with no flash model listed, the best vision one");
   assert.equal(rankModels([...ids, "claude-sonnet-5.5"], "").recommended, "claude-sonnet-5.5");
   assert.equal(readerMessage({ ok: false, status: 503, err: "Scheduled server upgrade", tried: ["kimi-k3"], gateway: "rootsys" }).includes("(rootsys) is down"), true);
   assert.equal(readerMessage({ ok: false, status: 503, err: "upgrade", tried: ["a"] }).includes("The AI gateway is down"), true, "no name, no empty brackets");
 }
 console.log("gateway config: ok");
+
+// The reader's time budget (Wan, 9 Oct 2026: kimi-k3 then glm-5.3-flash both timed out at 70 s and 50 s).
+{
+  const t0 = 1_000_000;
+  assert.equal(attemptCap(t0, t0, 0), 130000, "the first attempt may use nearly everything");
+  assert.equal(attemptCap(t0, t0 + 5000, 1) > 25000, true, "a second try after a quick failure still has real time");
+  assert.equal(attemptCap(t0, t0 + 115000, 1), 0, "no 20-second afterthought after a slow first try");
+  assert.equal(attemptCap(t0, t0 + 100000, 1), 34000, "a second try with 34 s left is still allowed");
+  assert.equal(attemptCap(t0, t0 + 100000, 0), 34000, "the first attempt never runs past the budget either");
+  assert.equal(attemptCap(t0, t0 + 200000, 0), 0);
+  assert.match(readerMessage({ ok: false, status: 0, err: "the model did not answer in time", tried: ["kimi-k3", "glm-5.3-flash"], gateway: "rootsys" }), /too slowly[\s\S]*flash/);
+  assert.doesNotMatch(readerMessage({ ok: false, status: 400, err: "bad image", tried: ["x"] }), /too slowly/);
+}
+console.log("reader budget: ok");

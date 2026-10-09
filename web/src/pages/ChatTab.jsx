@@ -191,7 +191,8 @@ export default function ChatTab() {
       const tools = tl.calls === true ? t("boleh guna alat", "can use tools")
         : tl.error ? t(`tiada alat: ${tl.error}`, `no tools: ${tl.error}`) : t("alat tidak pasti", "tools unclear");
       const search = r.search_configured ? t("carian web aktif", "web search on") : t("carian web belum dipasang (BRAVE_API_KEY)", "web search not installed (BRAVE_API_KEY)");
-      line = `${r.model}: ${listed}; ${reads}; ${tools}; ${search}.`;
+      const speed = r.image_ms ? t(`; jawab gambar dalam ${(r.image_ms / 1000).toFixed(1)} s`, `; the picture test took ${(r.image_ms / 1000).toFixed(1)} s`) : "";
+      line = `${r.model}: ${listed}; ${reads}; ${tools}${speed}; ${search}.`;
     }
     note(line);
     setBusy(false);

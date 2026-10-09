@@ -10,15 +10,35 @@ export const STAGE_WORDS = {
 export const ACTIVITY_KINDS = ["note", "call", "meeting", "email", "whatsapp"];
 export const CAMPAIGN_STATUS = ["draft", "scheduled", "sending", "sent", "paused"];
 
-/** Can this contact receive marketing e-mail at all: an address, consent, not unsubscribed. */
-export function mailable(k) {
-  return Boolean(k?.email && k.email.includes("@") && k.consent && !k.unsubscribed_at);
+export const CHANNELS = ["email", "whatsapp"];
+
+/** The phone as WhatsApp wants it: digits only, a Malaysian 01x number becomes 601x; "" when it cannot be a number.
+    Mirrors semasa_crm_phone_digits (032). */
+export function phoneDigits(p) {
+  const d = String(p || "").replace(/[^0-9]/g, "");
+  if (/^0[0-9]{8,10}$/.test(d)) return `6${d}`;
+  return /^[0-9]{8,15}$/.test(d) ? d : "";
 }
 
-/** The contacts a campaign's audience names (stages / tags / lang; empty = everyone), split into those who get the mail
-    and those skipped, with the reason. Mirrors semasa_crm_queue. */
+/** A click-through WhatsApp link with the words filled in (the blast board, when no API sender is set). */
+export const waLink = (phone, text) => `https://wa.me/${phoneDigits(phone)}?text=${encodeURIComponent(text || "")}`;
+
+/** Consent to marketing at all: agreed, not unsubscribed. PDPA covers WhatsApp as much as e-mail. */
+export const consented = (k) => Boolean(k?.consent && !k.unsubscribed_at);
+
+/** Can this contact be reached on the channel: an address or a usable phone, plus consent. */
+export function reachable(k, channel = "email") {
+  const has = channel === "whatsapp" ? Boolean(phoneDigits(k?.phone)) : Boolean(k?.email && k.email.includes("@"));
+  return has && consented(k);
+}
+/** Can this contact receive marketing e-mail at all: an address, consent, not unsubscribed. */
+export const mailable = (k) => reachable(k, "email");
+
+/** The contacts a campaign's audience names (stages / tags / lang; empty = everyone), split into those who get the
+    message on the campaign's channel and those skipped, with the reason. Mirrors semasa_crm_queue. */
 export function audienceOf(campaign, contacts) {
   const a = campaign?.audience || {};
+  const channel = campaign?.channel === "whatsapp" ? "whatsapp" : "email";
   const stages = Array.isArray(a.stages) ? a.stages : [];
   const tags = Array.isArray(a.tags) ? a.tags : [];
   const lang = a.lang || "";
@@ -26,9 +46,11 @@ export function audienceOf(campaign, contacts) {
     (!stages.length || stages.includes(k.stage))
     && (!tags.length || tags.some((t) => (k.tags || []).includes(t)))
     && (!lang || k.lang === lang));
-  const send = named.filter(mailable);
-  const skipped = named.filter((k) => !mailable(k)).map((k) => ({ ...k, why: !k.email ? "no_email" : k.unsubscribed_at ? "unsubscribed" : "no_consent" }));
-  return { named, send, skipped };
+  const send = named.filter((k) => reachable(k, channel));
+  const missing = (k) => (channel === "whatsapp" ? !phoneDigits(k.phone) : !(k.email && k.email.includes("@")));
+  const skipped = named.filter((k) => !reachable(k, channel))
+    .map((k) => ({ ...k, why: missing(k) ? (channel === "whatsapp" ? "no_phone" : "no_email") : k.unsubscribed_at ? "unsubscribed" : "no_consent" }));
+  return { named, send, skipped, channel };
 }
 
 /** {{name}} and {{company}} filled for one contact (the same two fields the database fills). */
@@ -40,7 +62,7 @@ export function merge(text, k) {
 export function validateCampaign(c) {
   const bad = [];
   if (!String(c.name || "").trim()) bad.push("name");
-  if (!String(c.subject || "").trim()) bad.push("subject");
+  if (c.channel !== "whatsapp" && !String(c.subject || "").trim()) bad.push("subject");
   if (!String(c.body || "").trim()) bad.push("body");
   if (c.kind === "broadcast" && c.send_at && Number.isNaN(Date.parse(c.send_at))) bad.push("send_at");
   return bad;
@@ -72,8 +94,9 @@ export function crmSummary(contacts, outbox, today) {
   }
   const due = (contacts || []).filter((k) => k.next_action_at && k.next_action_at <= today && !["client", "lost"].includes(k.stage) ? true : k.next_action_at && k.next_action_at <= today).length;
   const sent30 = (outbox || []).filter((o) => o.status === "sent" && !o.is_test && o.sent_at && o.sent_at.slice(0, 10) >= addDays(today, -30)).length;
+  const waiting = (outbox || []).filter((o) => o.status === "pending" && o.channel === "whatsapp" && !o.is_test).length;
   const failed = (outbox || []).filter((o) => o.status === "error").length;
-  return { total: (contacts || []).length, byStage: by, consenting, unsubscribed: unsub, actionsDue: due, sent30, failed };
+  return { total: (contacts || []).length, byStage: by, consenting, unsubscribed: unsub, actionsDue: due, sent30, failed, waWaiting: waiting };
 }
 
 export function addDays(iso, n) {
@@ -85,7 +108,7 @@ export function addDays(iso, n) {
 /** A blank contact / campaign for the forms. */
 export const blankContact = () => ({ name: "", company: "", email: "", phone: "", stage: "lead", source: "", tags: [], lang: "bm", consent: false,
   consent_source: "", notes: "", next_action: "", next_action_at: "" });
-export const blankCampaign = () => ({ name: "", kind: "broadcast", subject: "", body: "", lang: "bm", audience: { stages: [], tags: [], lang: "" }, send_at: "" });
+export const blankCampaign = () => ({ name: "", kind: "broadcast", channel: "email", subject: "", body: "", lang: "bm", audience: { stages: [], tags: [], lang: "" }, send_at: "" });
 
 /** The picker's "YYYY-MM-DDTHH:MM" is Malaysia time whatever the browser's zone; a value carrying its own zone is kept. */
 export function sendAtIso(v) {
@@ -107,7 +130,8 @@ export function contactRow(k) {
 }
 export function campaignRow(c) {
   return {
-    name: String(c.name || "").trim(), kind: c.kind === "welcome" ? "welcome" : "broadcast", subject: String(c.subject || "").trim(),
+    name: String(c.name || "").trim(), kind: c.kind === "welcome" ? "welcome" : "broadcast", channel: c.channel === "whatsapp" ? "whatsapp" : "email",
+    subject: String(c.subject || "").trim(),
     body: String(c.body || ""), lang: c.lang === "en" ? "en" : "bm",
     audience: { stages: (c.audience?.stages || []).filter((s) => STAGES.includes(s)), tags: c.audience?.tags || [], lang: c.audience?.lang || "" },
     send_at: c.kind === "welcome" ? null : sendAtIso(c.send_at),

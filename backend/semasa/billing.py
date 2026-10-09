@@ -261,6 +261,21 @@ class GmailMCP(ComposioMCP):
             raise SendError(r.get("kind") or "transient", str(r.get("message") or "PDF upload failed"))
         return r["file"]
 
+    def trash(self, message_id: str) -> None:
+        """Move one sent mail to Gmail's Trash (recoverable there for 30 days). Used by the CRM's delete (crm.py)."""
+        account = f', account="{self.account()}"'
+        r = self._cell(_POST_CELL.format(args=_b64({"message_id": message_id, "user_id": "me"}), tool="GMAIL_MOVE_TO_TRASH",
+                                         account=account, mark=_MARK), "Semasa: move a sent e-mail to Trash")
+        if r.get("err"):
+            raise SendError("refused", f"GMAIL_MOVE_TO_TRASH: {str(r['err'])[:300]}")
+        res = r.get("res") or {}
+        if isinstance(res, dict) and res.get("successful") is False:
+            msg = str(res.get("error") or res)
+            # a mail already gone from the mailbox is the outcome asked for, not a failure
+            if "404" in msg or "not found" in msg.lower():
+                return
+            raise SendError("refused", f"GMAIL_MOVE_TO_TRASH: {msg[:300]}")
+
     def send(self, *, to: str, cc: list[str], subject: str, html: str, attachment: dict[str, str] | None,
              from_email: str = "") -> dict[str, Any]:
         """ONE call, never retried: a timeout here may already have sent the mail."""

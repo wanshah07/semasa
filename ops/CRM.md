@@ -53,3 +53,26 @@ Contact (consent + source)  ──►  Campaign (words, audience, when)  ──�
 ## Files
 `supabase/031_crm.sql` · `backend/semasa/crm.py` (+ `tests/test_crm.py`) · `.github/workflows/crm.yml` ·
 `web/src/lib/crm.js` (+ `crm.test.mjs`) · `web/src/pages/CrmTab.jsx` · `web/src/pages/CrmUnsubscribe.jsx`.
+
+## Second pass, 9 Oct 2026: WhatsApp, and edit / delete that reach the mailbox (`supabase/032_crm_channels.sql`)
+Wan: *"make sure the CRM include whatsapp blast, for email make sure I can edit, delete from the system and it will delete
+in the email"*.
+
+- **Channel.** A campaign is e-mail or WhatsApp. A WhatsApp campaign queues one row per consenting contact with a usable
+  phone (digits only; `012-345 6789` → `60123456789`), the same PDPA gate as e-mail, with a "Reply STOP" line and the
+  unsubscribe link under every message.
+- **Two ways a WhatsApp campaign goes out.** With a WhatsApp Business **phone number id** saved in the CRM tab (Composio's
+  `whatsapp` toolkit connected to the Meta Business account), the worker sends it itself (`WHATSAPP_SEND_MESSAGE`). With
+  none, the campaign becomes a **blast board**: one `wa.me` link per contact with the words filled in, Open → send in
+  WhatsApp → press Sent; the row is then counted like any other. Meta's rule applies to the API only: free text is allowed
+  within 24 hours of the person's last message, otherwise only an approved template goes through and the worker records
+  the refusal word for word. The board has no such limit because it is Wan's own phone sending.
+- **Edit reaches the queue.** Saving a campaign that is already scheduled / sending / paused rewrites the words on every
+  row still pending (`semasa_crm_refill`). Rows already sent are history and never change.
+- **Delete reaches Gmail.** Deleting a campaign asks whether the e-mails already sent should also go to Gmail's Trash; yes
+  flags them, the worker calls `GMAIL_MOVE_TO_TRASH` on each (recoverable in Trash for 30 days), deletes the rows one by
+  one, and deletes the campaign when none is left (status `deleting` meanwhile). A single sent e-mail can be deleted from
+  the contact's record the same way. A WhatsApp message cannot be unsent by any API; it is deleted from the system only
+  and the page says so.
+- Not done, said plainly: reading a STOP reply (needs a Meta webhook; the unsubscribe link does the job today), template
+  messages for cold WhatsApp outreach (create them in Meta Business Suite; the worker sends free text only).

@@ -28,7 +28,7 @@ import requests
 from . import db
 from .billing import GmailMCP
 from .log import get_logger
-from .senders import SendError
+from .senders import _MARK, _POST_CELL, ComposioMCP, SendError, _b64
 
 log = get_logger("semasa.crm")
 
@@ -37,7 +37,9 @@ SITE_URL = os.environ.get("SEMASA_SITE_URL", "https://socialmedia.kkmhalalconsul
 MAX_ATTEMPTS = 3
 DEFAULTS = {"daily_cap": 200, "per_run": 60, "from_name": "WS Regulab Solutions", "reply_to": "",
             "footer_bm": "Anda menerima e-mel ini kerana anda bersetuju menerima makluman daripada WS Regulab Solutions.",
-            "footer_en": "You receive this e-mail because you agreed to hear from WS Regulab Solutions.", "test_to": ""}
+            "footer_en": "You receive this e-mail because you agreed to hear from WS Regulab Solutions.", "test_to": "",
+            "whatsapp_phone_number_id": "", "whatsapp_footer_bm": "Balas STOP untuk berhenti menerima mesej ini.",
+            "whatsapp_footer_en": "Reply STOP to stop receiving these messages."}
 MYT = timedelta(hours=8)
 
 
@@ -74,6 +76,58 @@ def with_footer(body_html: str, lang: str, token: str, settings: dict[str, Any],
     return (f"{body_html}<hr style=\"border:0;border-top:1px solid #e2ecf6;margin:24px 0 12px\">"
             f"<p style=\"font-size:12px;color:#64748b\">{html_mod.escape(words)} "
             f"<a href=\"{html_mod.escape(link)}\" style=\"color:#64748b\">{out}</a></p>")
+
+
+class WhatsAppMCP(ComposioMCP):
+    """The WhatsApp Business Cloud API through Composio For You: one free-form text per contact. Meta's rule, not ours:
+    a business may send free text only inside 24 hours of the person's last message; outside that window the API refuses
+    (error 131047 / 131026) and only an approved TEMPLATE goes through. The worker records that refusal word for word so
+    Wan sees which it was, and never retries it (a retry gets the same answer)."""
+
+    def __init__(self, consumer_key: str, phone_number_id: str, session: Any = None, account_id: str | None = None):
+        super().__init__(consumer_key, session=session)
+        self.phone_number_id = phone_number_id
+        self.account_id = account_id
+
+    def account(self) -> str:
+        if self.account_id:
+            return self.account_id
+        body = self._twice(lambda: self._tool("COMPOSIO_MANAGE_CONNECTIONS",
+                                              {"toolkits": [{"name": "whatsapp", "action": "list"}]}))
+        accts = (((body.get("data") or {}).get("results") or {}).get("whatsapp") or {}).get("accounts") or []
+        live = [a for a in accts if str(a.get("status", "")).lower() == "active"]
+        if len(live) != 1:
+            raise SendError("refused", f"Composio For You: expected exactly 1 active WhatsApp connection, found {len(live)}")
+        self.account_id = live[0]["id"]
+        return self.account_id
+
+    def send_text(self, *, to_number: str, text: str) -> dict[str, Any]:
+        """ONE call, never retried: a timeout here may already have sent the message."""
+        args = {"phone_number_id": self.phone_number_id, "to_number": to_number, "text": text[:4096], "preview_url": False}
+        account = f', account="{self.account()}"'
+        r = self._cell(_POST_CELL.format(args=_b64(args), tool="WHATSAPP_SEND_MESSAGE", account=account, mark=_MARK),
+                       "Semasa: send a WhatsApp message")
+        if r.get("err"):
+            raise SendError("refused", f"WHATSAPP_SEND_MESSAGE: {str(r['err'])[:300]}")
+        res = r.get("res") or {}
+        if isinstance(res, dict) and res.get("successful") is False:
+            raise SendError("refused", f"WHATSAPP_SEND_MESSAGE: {str(res.get('error') or res)[:300]}")
+        data = res.get("data") if isinstance(res, dict) else None
+        msgs = (data or {}).get("messages") if isinstance(data, dict) else None
+        wamid = (msgs[0] or {}).get("id") if isinstance(msgs, list) and msgs else None
+        return {"id": wamid or "", "raw": res if not wamid else None}
+
+
+def whatsapp_text(body: str, lang: str, token: str, settings: dict[str, Any], site: str = SITE_URL) -> str:
+    """A WhatsApp message is plain text: tags stripped, paragraphs kept, and the way out under it (the same unsubscribe
+    link as e-mail, because nothing here reads a STOP reply yet — the footer says both)."""
+    text = re.sub(r"<br\s*/?>", "\n", body, flags=re.I)
+    text = re.sub(r"</p>\s*<p[^>]*>", "\n\n", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = html_mod.unescape(text).strip()
+    key = "whatsapp_footer_en" if lang == "en" else "whatsapp_footer_bm"
+    words = settings.get(key) or DEFAULTS[key]
+    return f"{text}\n\n{words} {unsubscribe_link(token, site)}"
 
 
 def sent_today(store: Any, now: datetime) -> int:
@@ -118,8 +172,8 @@ def _fail(store: Any, row: dict[str, Any], exc: Exception, back: str) -> None:
 
 
 def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None, now: datetime,
-                   site: str = SITE_URL) -> dict[str, int]:
-    counts = {"sent": 0, "error": 0, "skipped": 0, "left": 0}
+                   site: str = SITE_URL, wa: WhatsAppMCP | None = None) -> dict[str, int]:
+    counts = {"sent": 0, "error": 0, "skipped": 0, "left": 0, "manual": 0}
     campaigns = due_campaigns(store, now)
     cap_day = int(settings.get("daily_cap") or DEFAULTS["daily_cap"])
     cap_run = int(settings.get("per_run") or DEFAULTS["per_run"])
@@ -132,10 +186,17 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
             db.log_event(store, "info", "crm", "crm.cap", f"Had harian {cap_day} e-mel dicapai; {len(pending)} menunggu esok")
         return counts
     me = company_email(store)
-    for row in claim(store, list(campaigns), room):
+    # a WhatsApp campaign with no API sender is the page's blast board: its rows stay pending for Wan to click through
+    manual_wa = {cid for cid, c in campaigns.items() if c.get("channel") == "whatsapp"} if wa is None else set()
+    if manual_wa:
+        q = store.table(db.CRM_OUTBOX).select("id").eq("status", "pending").in_("campaign_id", list(manual_wa))
+        counts["manual"] = len(q.execute().data or [])
+    for row in claim(store, [cid for cid in campaigns if cid not in manual_wa], room):
         camp = campaigns.get(row["campaign_id"]) or {}
         try:
-            if sender is None:
+            if row.get("channel") == "whatsapp" and wa is None:
+                raise SendError("refused", "no WhatsApp sender: settings.crm.whatsapp_phone_number_id is blank")
+            if row.get("channel") != "whatsapp" and sender is None:
                 raise SendError("refused", "no Gmail sender: the COMPOSIO_CONSUMER_KEY secret is not set")
             k_rows = store.table(db.CRM_CONTACTS).select("*").eq("id", row["contact_id"]).execute().data or []
             k = k_rows[0] if k_rows else None
@@ -146,15 +207,20 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
                 counts["skipped"] += 1
                 continue
             lang = k.get("lang") or camp.get("lang") or "bm"
-            body = with_footer(as_html(row["body"]), lang, k["unsub_token"], settings, site)
-            result = sender.send(to=row["to_email"], cc=[], subject=row["subject"], html=body, attachment=None, from_email=me)
+            if row.get("channel") == "whatsapp":
+                text = whatsapp_text(row["body"], lang, k["unsub_token"], settings, site)
+                result = wa.send_text(to_number=row["to_phone"], text=text)
+            else:
+                body = with_footer(as_html(row["body"]), lang, k["unsub_token"], settings, site)
+                result = sender.send(to=row["to_email"], cc=[], subject=row["subject"], html=body, attachment=None, from_email=me)
             store.table(db.CRM_OUTBOX).update({"status": "sent", "sent_at": now.isoformat(), "result": result, "error": ""}) \
                 .eq("id", row["id"]).execute()
             counts["sent"] += 1
             if not row.get("is_test"):
                 store.table(db.CRM_CONTACTS).update({"last_contact_at": now.isoformat()}).eq("id", k["id"]).execute()
-                activity(store, k["id"], "campaign", f"E-mel kempen: {camp.get('name') or row['subject']}",
-                         {"campaign_id": row["campaign_id"], "outbox_id": row["id"]})
+                what = "WhatsApp kempen" if row.get("channel") == "whatsapp" else "E-mel kempen"
+                activity(store, k["id"], "campaign", f"{what}: {camp.get('name') or row['subject']}",
+                         {"campaign_id": row["campaign_id"], "outbox_id": row["id"], "channel": row.get("channel") or "email"})
         except SendError as exc:
             back = "pending" if exc.kind == "transient" and row["attempts"] < MAX_ATTEMPTS else "error"
             _fail(store, row, exc, back)
@@ -169,7 +235,8 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
         patch = {"sent_count": sum(1 for r in real if r["status"] == "sent"),
                  "error_count": sum(1 for r in real if r["status"] == "error"), "status": camp["status"]}
         pending = sum(1 for r in real if r["status"] in ("pending", "working"))
-        counts["left"] += pending
+        if cid not in manual_wa:
+            counts["left"] += pending
         if camp.get("kind") == "broadcast":
             patch["status"] = "sending" if pending else "sent"
         store.table(db.CRM_CAMPAIGNS).update(patch).eq("id", cid).execute()
@@ -190,6 +257,39 @@ def welcome_sweep(store: Any) -> dict[str, int]:
     return counts
 
 
+def process_trash(store: Any, sender: GmailMCP | None) -> dict[str, int]:
+    """Delete that reaches Gmail (032): every row flagged trash_requested is moved to Trash by its message id, then the row
+    goes; a campaign left 'deleting' with no flagged row goes too. A row the mailbox cannot find is treated as trashed."""
+    counts = {"trashed": 0, "trash_error": 0}
+    rows = store.table(db.CRM_OUTBOX).select("*").eq("trash_requested", True).execute().data or []
+    for r in rows:
+        mid = str((r.get("result") or {}).get("id") or "")
+        try:
+            if sender is None:
+                raise SendError("refused", "no Gmail sender: the COMPOSIO_CONSUMER_KEY secret is not set")
+            if mid and r.get("channel") != "whatsapp":
+                sender.trash(mid)
+            store.table(db.CRM_OUTBOX).delete().eq("id", r["id"]).execute()
+            counts["trashed"] += 1
+        except Exception as exc:                      # noqa: BLE001 - the row stays flagged; the next run tries again
+            counts["trash_error"] += 1
+            db.log_event(store, "warn", "crm", "crm.trash_failed", f"{r.get('to_email') or r.get('to_phone')}: {str(exc)[:200]}",
+                         ref_table=db.CRM_OUTBOX, ref_id=r["id"])
+    for c in store.table(db.CRM_CAMPAIGNS).select("id").eq("status", "deleting").execute().data or []:
+        left = store.table(db.CRM_OUTBOX).select("id").eq("campaign_id", c["id"]).eq("trash_requested", True).execute().data or []
+        if not left:
+            store.table(db.CRM_CAMPAIGNS).delete().eq("id", c["id"]).execute()
+    return counts
+
+
+def make_whatsapp(settings: dict[str, Any]) -> WhatsAppMCP | None:
+    key = os.environ.get("COMPOSIO_CONSUMER_KEY", "").strip()
+    pid = str(settings.get("whatsapp_phone_number_id") or os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")).strip()
+    if not key or not pid:
+        return None
+    return WhatsAppMCP(key, pid, session=requests.Session())
+
+
 def make_sender(store: Any) -> GmailMCP | None:
     key = os.environ.get("COMPOSIO_CONSUMER_KEY", "").strip()
     if not key:
@@ -197,13 +297,16 @@ def make_sender(store: Any) -> GmailMCP | None:
     return GmailMCP(key, session=requests.Session(), expect=company_email(store))
 
 
-def run(store: Any, now: datetime | None = None, sender: GmailMCP | None = None, sweep_too: bool = True) -> dict[str, int]:
+def run(store: Any, now: datetime | None = None, sender: GmailMCP | None = None, sweep_too: bool = True,
+        wa: WhatsAppMCP | None = None) -> dict[str, int]:
     now = now or datetime.now(UTC)
     settings = load_settings(store)
+    gmail = sender if sender is not None else make_sender(store)
     counts: dict[str, int] = {}
     if sweep_too:
         counts.update(welcome_sweep(store))
-    counts.update(process_outbox(store, settings, sender if sender is not None else make_sender(store), now))
+    counts.update(process_trash(store, gmail))
+    counts.update(process_outbox(store, settings, gmail, now, wa=wa if wa is not None else make_whatsapp(settings)))
     return counts
 
 

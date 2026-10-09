@@ -1,13 +1,13 @@
 /* CRM: the audience rule (mirror of semasa_crm_queue), merge fields, validation, summary. `npm test`. */
 import assert from "node:assert/strict";
-import { audienceOf, campaignRow, contactRow, crmSummary, mailable, merge, parseTags, validateCampaign, validateContact } from "./src/lib/crm.js";
+import { audienceOf, campaignRow, contactRow, crmSummary, mailable, merge, parseTags, phoneDigits, reachable, validateCampaign, validateContact, waLink } from "./src/lib/crm.js";
 
 let n = 0;
 const t = (name, fn) => { try { fn(); n++; } catch (e) { console.error("FAIL:", name); throw e; } };
 
 const K = [
-  { id: 1, name: "Aisyah Rahman", company: "Marosia", email: "a@m.my", stage: "client", tags: ["kosmetik"], lang: "bm", consent: true },
-  { id: 2, name: "Ben", company: "Benco", email: "b@b.my", stage: "lead", tags: ["halal"], lang: "en", consent: true },
+  { id: 1, name: "Aisyah Rahman", company: "Marosia", email: "a@m.my", phone: "012-345 6789", stage: "client", tags: ["kosmetik"], lang: "bm", consent: true },
+  { id: 2, name: "Ben", company: "Benco", email: "b@b.my", phone: "", stage: "lead", tags: ["halal"], lang: "en", consent: true },
   { id: 3, name: "Cik C", company: "", email: "c@c.my", stage: "lead", tags: [], lang: "bm", consent: false },
   { id: 4, name: "Dee", company: "", email: "d@d.my", stage: "prospect", tags: ["kosmetik"], lang: "bm", consent: true, unsubscribed_at: "2026-10-01T00:00:00Z" },
   { id: 5, name: "Encik E", company: "", email: "", stage: "lead", tags: [], lang: "bm", consent: true },
@@ -25,6 +25,24 @@ t("audience: empty means everyone consenting; stages/tags/lang narrow; skipped c
   assert.deepEqual(audienceOf({ audience: { tags: ["kosmetik"] } }, K).send.map((k) => k.id), [1]);
   assert.deepEqual(audienceOf({ audience: { lang: "en" } }, K).send.map((k) => k.id), [2]);
   assert.deepEqual(audienceOf({ audience: { stages: ["client"], lang: "en" } }, K).named, []);
+});
+
+t("whatsapp: phone digits, the wa.me link, and an audience that needs a phone instead of an address", () => {
+  assert.equal(phoneDigits("012-345 6789"), "60123456789");
+  assert.equal(phoneDigits("+60 12 345 6789"), "60123456789");
+  assert.equal(phoneDigits("0123456789"), "60123456789");
+  assert.equal(phoneDigits("65 9123 4567"), "6591234567");
+  assert.equal(phoneDigits("12345"), ""); assert.equal(phoneDigits(""), "");
+  assert.equal(waLink("012-345 6789", "Hai Aisyah & co"), "https://wa.me/60123456789?text=Hai%20Aisyah%20%26%20co");
+  assert.equal(reachable(K[0], "whatsapp"), true); assert.equal(reachable(K[1], "whatsapp"), false); assert.equal(reachable(K[1], "email"), true);
+  const wa = audienceOf({ channel: "whatsapp", audience: {} }, K);
+  assert.deepEqual(wa.send.map((k) => k.id), [1]);
+  assert.deepEqual(wa.skipped.map((k) => [k.id, k.why]), [[2, "no_phone"], [3, "no_phone"], [4, "no_phone"], [5, "no_phone"]]);
+  const wa2 = audienceOf({ channel: "whatsapp", audience: {} }, [{ ...K[2], phone: "0199998888" }, { ...K[3], phone: "0199998887" }]);
+  assert.deepEqual(wa2.skipped.map((k) => [k.id, k.why]), [[3, "no_consent"], [4, "unsubscribed"]]);
+  assert.deepEqual(validateCampaign({ name: "a", channel: "whatsapp", subject: "", body: "c", kind: "broadcast" }), []);
+  assert.equal(campaignRow({ name: "a", channel: "whatsapp" }).channel, "whatsapp");
+  assert.equal(campaignRow({ name: "a" }).channel, "email");
 });
 
 t("merge fills name and company, nothing else", () => {

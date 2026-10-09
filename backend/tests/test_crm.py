@@ -55,7 +55,7 @@ def test_sends_once_with_footer_and_unsubscribe_link_and_records_the_activity():
     store = _store(**{db.CRM_CONTACTS: [_contact(1)], db.CRM_CAMPAIGNS: [_camp()], db.CRM_OUTBOX: [_row(1)]})
     sender = FakeSender()
     counts = crm.process_outbox(store, SETTINGS, sender, NOW, site="https://s.my")
-    assert counts == {"sent": 1, "error": 0, "skipped": 0, "left": 0}
+    assert counts == {"sent": 1, "error": 0, "skipped": 0, "left": 0, "manual": 0}
     mail = sender.sent[0]
     assert mail["to"] == "k1@x.my" and mail["from_email"] == "info@x.my" and mail["subject"] == "Hai Orang"
     assert "<p>Baris satu</p><p>Baris dua</p>" in mail["html"]
@@ -142,3 +142,73 @@ def test_welcome_sweep_calls_the_queue_function_for_live_welcome_campaigns():
     store.rpc = lambda name, params: R(name, params)
     assert crm.welcome_sweep(store) == {"welcome_queued": 2}
     assert calls == [("semasa_crm_queue", {"p_campaign": "w1"})]
+
+
+class FakeWA:
+    def __init__(self, fail=None):
+        self.sent, self.fail = [], fail
+
+    def send_text(self, **kw):
+        if self.fail:
+            raise self.fail
+        self.sent.append(kw)
+        return {"id": "wamid.1", "raw": None}
+
+
+def test_whatsapp_row_goes_through_the_whatsapp_sender_as_plain_text_with_the_way_out():
+    camp = _camp(channel="whatsapp", name="Promo WA")
+    row = _row(1, channel="whatsapp", to_phone="60123456789", subject="Promo WA",
+               body="<p>Hai <b>Orang</b></p><p>Baris dua</p>")
+    store = _store(**{db.CRM_CONTACTS: [_contact(1, phone="012-345 6789")], db.CRM_CAMPAIGNS: [camp], db.CRM_OUTBOX: [row]})
+    gmail, wa = FakeSender(), FakeWA()
+    counts = crm.process_outbox(store, SETTINGS, gmail, NOW, site="https://s.my", wa=wa)
+    assert counts["sent"] == 1 and not gmail.sent
+    msg = wa.sent[0]
+    assert msg["to_number"] == "60123456789"
+    assert msg["text"].startswith("Hai Orang\n\nBaris dua") and "Balas STOP" in msg["text"] and "/#crm/unsub/" in msg["text"]
+    assert store.tables[db.CRM_ACTIVITIES][0]["title"].startswith("WhatsApp kempen")
+
+
+def test_whatsapp_without_an_api_sender_is_the_blast_board_rows_stay_pending_and_are_counted_manual():
+    camp = _camp(channel="whatsapp")
+    rows = [_row(1, channel="whatsapp", to_phone="60123456789"), _row(2, channel="whatsapp", to_phone="60123456788")]
+    store = _store(**{db.CRM_CONTACTS: [_contact(1), _contact(2)], db.CRM_CAMPAIGNS: [camp], db.CRM_OUTBOX: rows})
+    counts = crm.process_outbox(store, SETTINGS, FakeSender(), NOW, wa=None)
+    assert counts["sent"] == 0 and counts["manual"] == 2 and counts["left"] == 0
+    assert all(r["status"] == "pending" for r in store.tables[db.CRM_OUTBOX])
+    assert store.tables[db.CRM_CAMPAIGNS][0]["status"] == "sending"
+
+
+def test_trash_requested_rows_are_moved_to_gmail_trash_then_deleted_and_a_deleting_campaign_goes_last():
+    class Trashing(FakeSender):
+        def __init__(self):
+            super().__init__()
+            self.trashed = []
+
+        def trash(self, mid):
+            if mid == "bad":
+                raise SendError("transient", "502")
+            self.trashed.append(mid)
+
+    camp = _camp(status="deleting")
+    rows = [_row(1, status="sent", result={"id": "m1"}, trash_requested=True),
+            _row(2, status="sent", result={"id": "bad"}, trash_requested=True),
+            _row(3, status="sent", channel="whatsapp", to_phone="60123456789", result={"id": "wamid.3"}, trash_requested=True)]
+    store = _store(**{db.CRM_CONTACTS: [_contact(1), _contact(2), _contact(3)], db.CRM_CAMPAIGNS: [camp], db.CRM_OUTBOX: rows})
+    g = Trashing()
+    counts = crm.process_trash(store, g)
+    assert counts == {"trashed": 2, "trash_error": 1}
+    assert g.trashed == ["m1"]                                        # the WhatsApp row is deleted without a Gmail call
+    assert [r["id"] for r in store.tables[db.CRM_OUTBOX]] == ["o2"]    # the failed one stays flagged for the next run
+    assert len(store.tables[db.CRM_CAMPAIGNS]) == 1                   # still deleting: one row left
+    g2 = Trashing()
+    store.tables[db.CRM_OUTBOX][0]["result"] = {"id": "m2"}
+    assert crm.process_trash(store, g2) == {"trashed": 1, "trash_error": 0}
+    assert store.tables[db.CRM_CAMPAIGNS] == []
+    assert crm.process_trash(store, None) == {"trashed": 0, "trash_error": 0}
+
+
+def test_whatsapp_text_strips_tags_and_keeps_paragraphs():
+    out = crm.whatsapp_text("Baris satu\nBaris 1b\n\nBaris dua", "en", "t" * 32, SETTINGS, site="https://s.my")
+    tail = "Reply STOP to stop receiving these messages. https://s.my/#crm/unsub/" + "t" * 32
+    assert out == "Baris satu\nBaris 1b\n\nBaris dua\n\n" + tail

@@ -427,6 +427,30 @@ export function retryable(status, message) {
   return /deadline|time(?:d)? ?out|overload|unavailable|capacity|try again|temporar/i.test(String(message || ""));
 }
 
+/** Is the gateway itself down or being worked on, as opposed to this one request or this one model failing? A 502/503/504, or words
+    like "scheduled server upgrade ... retry later" (Wan, 9 Oct 2026, My designs: "HTTP 503: Scheduled server upgrade in progress").
+    Asking again at once, or on another model, goes to the same gateway: it cannot help, and the page should say so. */
+export function gatewayDown(status, message) {
+  const st = Number(status) || 0;
+  if (st === 502 || st === 503 || st === 504) return true;
+  return /maintenance|upgrade|scheduled|retry later|temporarily (?:down|unavailable)|service unavailable/i.test(String(message || ""));
+}
+
+/** How long to wait before the second attempt: a few seconds when the gateway is down (a restart can be that short), none otherwise. */
+export const retryPause = (status, message) => (gatewayDown(status, message) ? 4000 : 0);
+
+/** The sentence the page shows when the reader did not answer: what happened, and the one thing that may help. `r` is
+    { ok, status, err, tried: [model ids] }. */
+export function readerMessage(r) {
+  const what = r.ok ? "an empty answer" : `HTTP ${r.status || "-"}: ${r.err}`;
+  const tried = [...new Set(r.tried || [])].join(", ");
+  const head = `the reader did not answer (${what}; tried ${tried})`;
+  if (!r.ok && gatewayDown(r.status, r.err)) {
+    return `${head}. The AI gateway (Mireld) is down or being upgraded, which is its side and not Semasa's, and another model on the same gateway fails the same way. Wait a few minutes and press the button again`;
+  }
+  return `${head}. Try again in a minute, or pick another model in the chat's model list`;
+}
+
 /** The model to try after `failed`: the best OTHER chat model Mireld lists (by MODEL_PREFERENCE), or "" when there is none. */
 export function pickFallback(ids, failed) {
   const { models } = rankModels(ids, failed);

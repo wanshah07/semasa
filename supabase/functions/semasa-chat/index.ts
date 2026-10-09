@@ -41,7 +41,7 @@ import { faqMessages, parseFaqItems } from "./faq.js";
 import { firstJson } from "./faq.js";
 import {
   MEMORY, SYSTEM, rankModels, resolveModel, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
-  OWN_HOSTS, RATE, allow, foldDelta, htmlToText, isPrivateIp, lastQuestion, parseArgs, pickFallback, planFold, planQuery, rateKind, retryable,
+  OWN_HOSTS, RATE, allow, foldDelta, htmlToText, isPrivateIp, lastQuestion, parseArgs, pickFallback, planFold, planQuery, rateKind, readerMessage, retryPause, retryable,
   shapeRows, sseEvents, summaryMessages, userAskedToRemember, whoIs,
 } from "./logic.js";
 
@@ -192,11 +192,12 @@ Deno.serve(async (req) => {
       last = await readOnce({ ...payload, model: used }, i === 0 ? 70000 : 50000);
       if (last.ok && last.content.trim()) return { ...last, model: used, tried };
       if (!last.ok && !retryable(last.status, last.err)) break;
+      const pause = last.ok ? 0 : retryPause(last.status, last.err);          // a gateway being upgraded may be back in seconds
+      if (pause && i === 0) await new Promise((r) => setTimeout(r, pause));
     }
     return { ...last, ok: false, model: used, tried };
   }
-  const readerError = (r: Read & { tried: string[] }) =>
-    `the reader did not answer (${r.ok ? "an empty answer" : `HTTP ${r.status || "-"}: ${r.err}`}; tried ${[...new Set(r.tried)].join(", ")}). Try again in a minute, or pick another model in the chat's model list`;
+  const readerError = (r: Read & { tried: string[] }) => readerMessage(r);
 
   // ---- tools -------------------------------------------------------------------------------------------
   async function addressesOk(host: string): Promise<string | null> {

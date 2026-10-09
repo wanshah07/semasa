@@ -21,7 +21,10 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 export type OverviewStat = { label: string; value: string; hint?: string; icon: LucideIcon; tone?: "" | "ok" | "danger" };
-export type OverviewPoint = { week: string; invoiced: number; paid: number };
+export type OverviewPoint = { week: string } & Record<string, number | string>;
+/** Which two fields of a point the chart draws: `line` is the dashed line, `area` the filled area (the Bil tab's
+    invoiced/paid; the home dashboard's drafted/published). Each names its label in `words`. */
+export type OverviewKeys = { line: string; area: string };
 export type OverviewProject = {
   id: string; name: string; description?: string; progress: number; status: string;
   badge?: "default" | "secondary" | "destructive" | "outline"; due?: string; team: { name: string; initials: string }[];
@@ -30,7 +33,7 @@ export type OverviewProject = {
 export type OverviewActivity = { id: string; person: { name: string; initials: string }; action: string; time: string; onClick?: () => void };
 
 export type OverviewWords = {
-  chartTitle: string; chartDescription: string; invoiced: string; paid: string;
+  chartTitle: string; chartDescription: string; invoiced: string; paid: string;   // the labels of `keys.line` and `keys.area`
   projectsTitle: string; projectsDescription: string; noProjects: string; due: string;
   activityTitle: string; activityDescription: string; noActivity: string;
 };
@@ -45,17 +48,24 @@ type Props = {
   aside?: React.ReactNode;
   /** The tooltip's number format (money). */
   formatValue?: (n: number) => string;
+  /** The point fields to draw; default invoiced (line) and paid (area). */
+  keys?: OverviewKeys;
+  /** Drawn above the stat tiles (the home dashboard's hero band). */
+  header?: React.ReactNode;
   className?: string;
 };
 
-export function App1({ stats, series, projects, activity, words, aside, formatValue, className }: Props) {
+export function App1({ stats, series, projects, activity, words, aside, formatValue, keys, header, className }: Props) {
+  const k: OverviewKeys = keys || { line: "invoiced", area: "paid" };
   const config: ChartConfig = {
-    invoiced: { label: words.invoiced, theme: { light: "#C9A24B", dark: "#B38B2D" } },   // --c-gold; darker step under noir
-    paid: { label: words.paid, theme: { light: "#3FA6EE", dark: "#4898D8" } },           // --c-accent in each theme
+    [k.line]: { label: words.invoiced, theme: { light: "#C9A24B", dark: "#B38B2D" } },   // --c-gold; darker step under noir
+    [k.area]: { label: words.paid, theme: { light: "#3FA6EE", dark: "#4898D8" } },       // --c-accent in each theme
   };
   const fmt = formatValue || ((n: number) => n.toLocaleString());
+  const gradId = `app1fill-${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;     // two dashboards on one page must not share a <defs> id
   return (
     <div className={cn("flex flex-col gap-4", className)}>
+      {header}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
           <Card key={stat.label} className={cn(stat.tone === "danger" && "border-danger/40", stat.tone === "ok" && "border-ok/40")}>
@@ -81,9 +91,9 @@ export function App1({ stats, series, projects, activity, words, aside, formatVa
             <ChartContainer config={config} className="h-56 w-full">
               <AreaChart data={series} margin={{ left: 4, right: 4, top: 8 }} accessibilityLayer>
                 <defs>
-                  <linearGradient id="bilPaid" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-paid)" stopOpacity={0.25} />
-                    <stop offset="100%" stopColor="var(--color-paid)" stopOpacity={0.02} />
+                  <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={`var(--color-${k.area})`} stopOpacity={0.25} />
+                    <stop offset="100%" stopColor={`var(--color-${k.area})`} stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -97,8 +107,8 @@ export function App1({ stats, series, projects, activity, words, aside, formatVa
                 )} />} />
                 <ChartLegend content={<ChartLegendContent />} />
                 {/* identity by form as well as colour: invoiced is a dashed line, paid a filled area */}
-                <Area dataKey="invoiced" type="monotone" stroke="var(--color-invoiced)" strokeDasharray="4 4" fill="none" strokeWidth={2} />
-                <Area dataKey="paid" type="monotone" stroke="var(--color-paid)" fill="url(#bilPaid)" strokeWidth={2} />
+                <Area dataKey={k.line} type="monotone" stroke={`var(--color-${k.line})`} strokeDasharray="4 4" fill="none" strokeWidth={2} />
+                <Area dataKey={k.area} type="monotone" stroke={`var(--color-${k.area})`} fill={`url(#${gradId})`} strokeWidth={2} />
               </AreaChart>
             </ChartContainer>
           </CardContent>

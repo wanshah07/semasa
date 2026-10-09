@@ -27,6 +27,8 @@ import VideoTab from "./pages/VideoTab";
 import ChatTab from "./pages/ChatTab";
 import BillingTab from "./pages/BillingTab";
 import BillingPublic from "./pages/BillingPublic";
+import HomeTab from "./pages/HomeTab";
+import SubscriptionsTab from "./pages/SubscriptionsTab";
 import WatchSegment, { watchIdea } from "./components/WatchSegment";
 import Header from "./components/Header";
 import AppSidebar from "./components/AppSidebar";
@@ -252,7 +254,7 @@ function MediaTab({ user, gens, prompts, posts, onToast }) {
   );
 }
 
-const TAB_IDS = ["isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "chat", "bil", "faq", "log", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "chat", "bil", "langganan", "faq", "log", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 
@@ -261,7 +263,7 @@ export default function App() {
   const { t } = useLang();                                   // read here so a language switch re-renders the page
   const [tab, setTab] = useState(() => {
     const h = window.location.hash.replace("#", "");
-    return TAB_IDS.includes(h) ? h : "isu";
+    return TAB_IDS.includes(h) ? h : "papan";                 // the home is the dashboard (Wan, 9 Oct 2026); #isu still opens the issues
   });
   const [pubToken, setPubToken] = useState(() => (PUBLIC_DOC.exec(window.location.hash.replace("#", "")) || [])[1] || "");
   const [focusPost, setFocusPost] = useState(null);
@@ -272,11 +274,11 @@ export default function App() {
     const onHash = () => {
       const h = window.location.hash.replace("#", "");
       setPubToken((PUBLIC_DOC.exec(h) || [])[1] || "");
-      const next = TAB_IDS.includes(h) ? h : "isu";
+      const next = TAB_IDS.includes(h) ? h : "papan";
       // the browser's Back/Forward: ask before unsaved Kanvas work goes, and put the address back if the answer is no
       setTab((cur) => {
         if (next === cur) return cur;
-        if (!canLeave()) { window.history.replaceState(null, "", cur === "isu" ? "#" : `#${cur}`); return cur; }
+        if (!canLeave()) { window.history.replaceState(null, "", cur === "papan" ? "#" : `#${cur}`); return cur; }
         return next;
       });
     };
@@ -299,7 +301,8 @@ export default function App() {
   const log = useTable(TABLES.publishLog, { enabled: allowed, order: "at", limit: 400, realtime: false });
   // the two big lists stream live changes only while their tab is open; elsewhere a slow poll is enough
   const faqs = useTable(TABLES.faqs, { enabled: allowed, limit: 3000, realtime: tab === "faq" });
-  const activity = useTable(TABLES.log, { enabled: allowed && tab === "log", order: "at", limit: 3000 });
+  // the home dashboard shows the last few lines, so it loads the log too (a shorter read than the Log tab's)
+  const activity = useTable(TABLES.log, { enabled: allowed && (tab === "log" || tab === "papan"), order: "at", limit: tab === "log" ? 3000 : 40 });
 
   // "Jadikan FAQ" on a headline: the worker reads the article and writes one bilingual FAQ from it
   async function faqFrom(trend) {
@@ -341,7 +344,7 @@ export default function App() {
 
   function go(next) {
     if (next !== tab && !canLeave()) return;          // unsaved Kanvas work: ask first
-    setTab(next); window.location.hash = next === "isu" ? "" : next;
+    setTab(next); window.location.hash = next === "papan" ? "" : next;
   }
   // the sidebar on wide screens: auto (a rail of icons that slides open on hover) unless Wan pins it. Auto is the
   // default (Wan, 27 Sep 2026: "make the sidebar auto mode the default"); the choice is remembered on this browser
@@ -383,6 +386,9 @@ export default function App() {
     openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
   else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
+  else if (tab === "langganan") body = allowed ? <SubscriptionsTab user={user} onToast={push} /> : gate(null);
+  else if (tab === "papan") body = allowed ? <HomeTab ideas={ideas} posts={posts} log={log} activity={activity} brand={brand} user={user}
+    go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}
     onPost={(r) => setIdeaFrom(faqIdea(r))} /> : gate(null);
   else if (tab === "log") body = allowed ? <LogTab log={activity} onOpen={(to) => { if (to.postId) setFocusPost(to.postId); go(to.tab); }} /> : gate(null);

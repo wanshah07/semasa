@@ -21,7 +21,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import community, db, folders, myra, watch
+from . import api_status, community, db, folders, myra, watch
 from .log import get_logger
 
 log = get_logger("semasa.intake")
@@ -259,6 +259,7 @@ def main() -> int:
     dry = os.environ.get("SOURCES_DRY", "").lower() in ("1", "true", "yes")
     only = [p for p in os.environ.get("SOURCES_ONLY", "").replace(",", " ").split() if p] or None
     store = db.client(SupabaseSettings.load())
+    api_status.attach(store, "idea")
     llm = LLM(ai_config.llm_settings(LLMSettings.load(), ai_config.read(store)))
     try:
         report = run(store, llm, ForYou(key), only=only, dry=dry)

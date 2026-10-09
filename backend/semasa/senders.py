@@ -141,6 +141,28 @@ class Buffer:
             after = info.get("endCursor")
         return out
 
+    def sent_with_metrics(self, channel_ids: list[str], start: str, end: str) -> list[dict[str, Any]]:
+        """Every SENT post on these channels, due in [start, end], with Buffer's own per-post figures (Prestasi,
+        metrics.py). Buffer refreshes the figures about once a day; `metricsUpdatedAt` says when."""
+        out: list[dict[str, Any]] = []
+        after = None
+        for _ in range(40):
+            data = self._gql(
+                "query($input: PostsInput!, $after: String) { posts(input: $input, first: 50, after: $after) { "
+                "edges { node { id status channelId channelService dueAt sentAt text externalLink metricsUpdatedAt "
+                "metrics { type value unit } } } pageInfo { hasNextPage endCursor } } }",
+                {"input": {"organizationId": self.org,
+                           "filter": {"channelIds": channel_ids, "status": ["sent"], "dueAt": {"start": start, "end": end}},
+                           "sort": [{"field": "dueAt", "direction": "desc"}]},
+                 "after": after})
+            page = data.get("posts") or {}
+            out += [e["node"] for e in page.get("edges") or []]
+            info = page.get("pageInfo") or {}
+            if not info.get("hasNextPage"):
+                break
+            after = info.get("endCursor")
+        return out
+
     def confirm(self, post_id: str, tries: int = 10, every: float = 3.0) -> dict[str, Any]:
         """Buffer accepting a post is not the network publishing it: for a share-now, read it back until it settles."""
         last: dict[str, Any] = {}

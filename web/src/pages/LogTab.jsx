@@ -17,6 +17,7 @@ export const AREAS = {
   post: { label: "Post", en: "Posts", icon: FileText }, media: { label: "Media", en: "Media", icon: Sparkles },
   faq: { label: "FAQ", en: "FAQ", icon: HelpCircle }, publish: { label: "Penerbit", en: "Publisher", icon: Send },
   settings: { label: "Tetapan", en: "Settings", icon: Settings }, system: { label: "Sistem", en: "System", icon: Cpu },
+  metrics: { label: "Prestasi", en: "Performance", icon: Radio }, repos: { label: "Repo", en: "Repos", icon: Cpu }, api: { label: "API", en: "API", icon: Cpu },
 };
 const areaLabel = (a) => (currentLang() === "en" ? a.en : a.label);
 const LEVEL = {

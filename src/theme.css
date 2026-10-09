@@ -1,0 +1,68 @@
+/* Bernard Tan · the look, in one file. A diner-cartoon palette: ketchup red, mustard yellow, lettuce green, bun cream, a
+   sky blue, and a dark-chocolate ink for the chunky outlines. Inspired by the Bob's Burgers title card's colours and
+   mood; no character, logo or artwork from the show is used. `data-theme="night"` is the second theme. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --c-bg:        255 246 229;   /* #FFF6E5 bun cream */
+  --c-surface:   255 253 247;
+  --c-surface-2: 253 234 196;   /* #FDEAC4 */
+  --c-line:       43  31  26;   /* #2B1F1A chocolate ink, also the outlines */
+  --c-ink:        43  31  26;
+  --c-muted:     122  96  82;
+  --c-ketchup:   232  69  44;   /* #E8452C */
+  --c-mustard:   249 199  73;   /* #F9C749 */
+  --c-lettuce:   124 179  66;   /* #7CB342 */
+  --c-bun:       244 184  96;   /* #F4B860 */
+  --c-sky:        91 192 222;   /* #5BC0DE */
+  --c-ok:         46 140  60;
+  --c-warn:      214 122   0;
+  --c-danger:    198  40  40;
+}
+:root[data-theme="night"] {
+  --c-bg:         32  24  22;
+  --c-surface:    45  34  31;
+  --c-surface-2:  60  45  40;
+  --c-line:      255 246 229;
+  --c-ink:       255 246 229;
+  --c-muted:     214 190 170;
+  --c-ketchup:   255 103  78;
+  --c-mustard:   255 214 102;
+  --c-lettuce:   150 204  96;
+  --c-bun:       255 203 128;
+  --c-sky:       120 210 240;
+  --c-ok:         94 190 110;
+  --c-warn:      255 170  60;
+  --c-danger:    255 110 110;
+}
+
+html { -webkit-tap-highlight-color: transparent; }
+body { min-height: 100dvh; padding-bottom: env(safe-area-inset-bottom); }
+
+/* the diner stripe: a slanted checker in mustard and ketchup, one CSS gradient, used as the top band */
+.stripe {
+  background-image: repeating-linear-gradient(135deg, rgb(var(--c-ketchup)) 0 18px, rgb(var(--c-mustard)) 18px 36px);
+}
+/* a chunky card: hard outline and a hard offset shadow, the cartoon look */
+.card {
+  background: rgb(var(--c-surface));
+  border: 3px solid rgb(var(--c-line));
+  border-radius: 1.25rem;
+  box-shadow: 0 5px 0 0 rgb(var(--c-line));
+}
+.btn {
+  display: inline-flex; align-items: center; gap: .5rem;
+  border: 3px solid rgb(var(--c-line)); border-radius: 999px; padding: .55rem 1.1rem;
+  font-family: 'Fredoka', system-ui, sans-serif; font-weight: 600; letter-spacing: .01em;
+  box-shadow: 0 4px 0 0 rgb(var(--c-line)); transition: transform .08s ease, box-shadow .08s ease;
+}
+.btn:active { transform: translateY(3px); box-shadow: 0 1px 0 0 rgb(var(--c-line)); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-ketchup { background: rgb(var(--c-ketchup)); color: #fff; }
+.btn-mustard { background: rgb(var(--c-mustard)); color: rgb(43 31 26); }
+.btn-plain { background: rgb(var(--c-surface)); color: rgb(var(--c-ink)); }
+.wobble:hover { animation: wobble .5s ease; }
+@keyframes wobble { 0%,100% { transform: rotate(0) } 25% { transform: rotate(-2deg) } 75% { transform: rotate(2deg) } }
+@media (prefers-reduced-motion: reduce) { .wobble:hover { animation: none; } }

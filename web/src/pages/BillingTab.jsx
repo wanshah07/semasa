@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, Bell, Briefcase, Building2, Check, Copy, Download, Eye, FileText, Link2, Loader2, Mail, Pencil, Plus, Printer, Receipt,
-  Send, Settings2, Trash2, Users, X } from "lucide-react";
+  Send, Settings2, Trash2, Users, Wallet, X } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { useLang } from "../lib/i18n";
 import { stampMYT } from "../lib/format";
@@ -10,7 +10,7 @@ import { useTable } from "../lib/hooks";
 import {
   DEFAULT_OFFSETS, KINDS, OPEN, PROJECT_STATUS, addDays, billingSettings, calcTotals, clientSnapshot, effectiveStatus, emailFor,
   emailOf, fileName, fmtDate, invoiceFromQuotation, isoDate, kindLabel, money, nextReminder, numberPreview, projectSummary, publicLink,
-  receiptFromInvoice, statusLabel, summary, validEmail, validateDoc,
+  receiptFromInvoice, statusLabel, summary, validEmail, validateDoc, weeklySeries, projectProgress,
 } from "../lib/billing";
 import { documentHtml, pagesHtml } from "../lib/billingDoc";
 import { qrDataUrl } from "../lib/qr";
@@ -18,6 +18,7 @@ import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Segmented, Select, TextArea } from "../components/ui/Field";
 import DocumentsTable from "@/components/ui/table-2";
+import App1 from "@/components/ui/app-1";
 import { Timeline, TimelineContent, TimelineDate, TimelineHeader, TimelineIndicator, TimelineItem, TimelineSeparator, TimelineTitle } from "@/components/ui/timeline";
 
 /* Bil (Wan, 7 Oct 2026: "create feature for quotation, invoice and receipt, can auto send email, view, download, send
@@ -68,6 +69,27 @@ export default function BillingTab({ user, settings, save, onToast }) {
 
   const reload = useCallback(() => { docsT.reload(); eventsT.reload(); outboxT.reload(); countersT.reload(); }, [docsT, eventsT, outboxT, countersT]);
   const sum = useMemo(() => summary(docs, today), [docs, today]);
+  const weekly = useMemo(() => weeklySeries(docs, today, 8), [docs, today]);
+  const overviewProjects = useMemo(() => projects
+    .filter((p) => !["done", "cancelled"].includes(p.status))
+    .sort((a, b) => String(a.end_date || "9999").localeCompare(String(b.end_date || "9999")))
+    .slice(0, 6)
+    .map((p) => {
+      const m = projectSummary(p.id, docs, today);
+      const L = lang === "en" ? "en" : "bm";
+      const badge = p.status === "active" ? "default" : p.status === "on_hold" ? "destructive" : "secondary";
+      const desc = m.invoiced > 0
+        ? t("Dibayar {a} daripada {b}{c}", "Paid {a} of {b}{c}", { a: money(m.paid), b: money(m.invoiced), c: m.overdue > 0 ? ` · ${t("lewat", "overdue")} ${money(m.overdue)}` : "" })
+        : m.quoted > 0 ? t("Disebut harga {a}, belum diinvois", "Quoted {a}, not invoiced yet", { a: money(m.quoted) }) : t("Belum ada kertas", "No papers yet");
+      const client = clients.find((c) => c.id === p.client_id);
+      return { id: p.id, name: p.name, description: desc, progress: projectProgress(p, docs, today), status: PROJECT_STATUS[p.status]?.[L] || p.status, badge,
+        due: p.end_date ? fmtDate(p.end_date) : "", team: client ? [{ name: client.name, initials: initialsOf(client.name) }] : [], onClick: () => setProjectsOpen(true) };
+    }), [projects, docs, clients, today, lang, t]);
+  const overviewActivity = useMemo(() => eventsT.rows.slice(0, 12).map((ev) => {
+    const d = docs.find((x) => x.id === ev.doc_id);
+    const who = d?.client?.name || t("(tiada pelanggan)", "(no client)");
+    return { id: ev.id, person: { name: who, initials: initialsOf(who) }, action: `${d?.number || "—"} · ${eventLabel(ev, t)}`, time: stampMYT(ev.at), onClick: d ? () => setViewing(d) : undefined };
+  }), [eventsT.rows, docs, t]);
   const site = `${window.location.origin}${window.location.pathname}`;
   const base = `${import.meta.env.BASE_URL}cards/`;
   const abs = (p) => new URL(p, window.location.href).href;
@@ -300,42 +322,36 @@ export default function BillingTab({ user, settings, save, onToast }) {
         </div>
       </motion.div>
 
-      {/* the dashboard */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi label={t("Belum dijelaskan", "Outstanding")} value={money(sum.outstanding, { currency: "MYR" })} sub={t("{n} invois", "{n} invoices", { n: sum.outstandingCount })} />
-        <Kpi label={t("Lewat", "Overdue")} value={money(sum.overdue, { currency: "MYR" })} sub={t("{n} invois", "{n} invoices", { n: sum.overdueCount })} tone={sum.overdueCount ? "danger" : ""} />
-        <Kpi label={t("Dibayar bulan ini", "Paid this month")} value={money(sum.paidMonth, { currency: "MYR" })} sub={t("{n} invois", "{n} invoices", { n: sum.paidMonthCount })} tone="ok" />
-        <Kpi label={t("Sebut harga terbuka", "Open quotations")} value={money(sum.openQuotes, { currency: "MYR" })}
-          sub={sum.winRate == null ? t("{n} terbuka", "{n} open", { n: sum.openQuotesCount }) : t("{n} terbuka · {w}% diterima", "{n} open · {w}% won", { n: sum.openQuotesCount, w: sum.winRate })} />
-      </div>
-      <Card className="grid gap-4 p-5 lg:grid-cols-[1fr_1fr]">
-        <div>
-          <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-medium">{t("Umur hutang", "Aging")}</h2><span className="text-xs text-muted">{t("invois belum dijelaskan, mengikut hari lewat", "unpaid invoices, by days past due")}</span></div>
-          <Aging aging={sum.aging} total={sum.outstanding} t={t} />
-        </div>
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-medium">{t("Aktiviti terkini", "Recent activity")}</h2>
-            <span className="text-xs text-muted">
-              {pendingMail ? <span className="mr-2 inline-flex items-center gap-1 text-warn"><Loader2 size={12} className="animate-spin" /> {t("{n} e-mel menunggu pekerja", "{n} e-mails waiting for the worker", { n: pendingMail })}</span> : null}
-              {failedMail ? <span className="text-danger">{t("{n} e-mel gagal", "{n} e-mails failed", { n: failedMail })}</span> : null}
-            </span>
-          </div>
-          <ul className="max-h-44 space-y-1 overflow-y-auto text-xs">
-            {eventsT.rows.slice(0, 12).map((ev) => {
-              const d = docs.find((x) => x.id === ev.doc_id);
-              return (
-                <li key={ev.id} className="flex items-start gap-2">
-                  <span className="w-28 shrink-0 text-muted">{stampMYT(ev.at)}</span>
-                  <button type="button" className="font-mono text-ink hover:underline" onClick={() => d && setViewing(d)}>{d?.number || "—"}</button>
-                  <span className="text-muted">{eventLabel(ev, t)}</span>
-                </li>
-              );
-            })}
-            {!eventsT.rows.length && <li className="text-muted">{t("Belum ada aktiviti.", "Nothing yet.")}</li>}
-          </ul>
-        </div>
-      </Card>
+      {/* the dashboard (components/ui/app-1.tsx, fed from the live documents) */}
+      <App1
+        stats={[
+          { label: t("Belum dijelaskan", "Outstanding"), value: money(sum.outstanding, { currency: "MYR" }), hint: t("{n} invois", "{n} invoices", { n: sum.outstandingCount }), icon: Wallet },
+          { label: t("Lewat", "Overdue"), value: money(sum.overdue, { currency: "MYR" }), hint: t("{n} invois", "{n} invoices", { n: sum.overdueCount }), icon: AlertTriangle, tone: sum.overdueCount ? "danger" : "" },
+          { label: t("Dibayar bulan ini", "Paid this month"), value: money(sum.paidMonth, { currency: "MYR" }), hint: t("{n} invois", "{n} invoices", { n: sum.paidMonthCount }), icon: Check, tone: "ok" },
+          { label: t("Sebut harga terbuka", "Open quotations"), value: money(sum.openQuotes, { currency: "MYR" }), icon: FileText,
+            hint: sum.winRate == null ? t("{n} terbuka", "{n} open", { n: sum.openQuotesCount }) : t("{n} terbuka · {w}% diterima", "{n} open · {w}% won", { n: sum.openQuotesCount, w: sum.winRate }) },
+        ]}
+        series={weekly}
+        formatValue={(n) => money(n, { currency: "MYR" })}
+        projects={overviewProjects}
+        activity={overviewActivity}
+        words={{
+          chartTitle: t("Diinvois lawan dibayar", "Invoiced against paid"), chartDescription: t("Lapan minggu terakhir, mengikut minggu invois dikeluarkan dan hari ia dibayar", "The last eight weeks, by the week an invoice was issued and the day it was paid"),
+          invoiced: t("Diinvois", "Invoiced"), paid: t("Dibayar", "Paid"),
+          projectsTitle: t("Projek aktif", "Active projects"), projectsDescription: t("Sejauh mana setiap projek sudah dibayar", "How far each project is paid"),
+          noProjects: t("Tiada projek aktif. Tambah dalam Projek.", "No active projects. Add one under Projects."), due: t("Tamat", "Due"),
+          activityTitle: t("Aktiviti terkini", "Recent activity"), activityDescription: pendingMail || failedMail
+            ? [pendingMail ? t("{n} e-mel menunggu pekerja", "{n} e-mails waiting for the worker", { n: pendingMail }) : "", failedMail ? t("{n} e-mel gagal", "{n} e-mails failed", { n: failedMail }) : ""].filter(Boolean).join(" · ")
+            : t("Apa yang berlaku pada setiap kertas", "What happened to each paper"),
+          noActivity: t("Belum ada aktiviti.", "Nothing yet."),
+        }}
+        aside={
+          <Card className="p-5">
+            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-medium">{t("Umur hutang", "Aging")}</h2><span className="text-xs text-muted">{t("invois belum dijelaskan, mengikut hari lewat", "unpaid invoices, by days past due")}</span></div>
+            <Aging aging={sum.aging} total={sum.outstanding} t={t} />
+          </Card>
+        }
+      />
 
       <Segmented value={kind} onChange={setKind} options={[["all", t("Semua", "All")], ...KINDS.map((k) => [k, kindLabel(k, lang)])]} />
       <DocumentsTable rows={rows} words={words} onAction={act} onBulk={bulk}
@@ -397,18 +413,6 @@ function eventLabel(ev, t) {
     case "email_failed": return t("e-mel gagal: {e}", "e-mail failed: {e}", { e: d.error || "" });
     default: return ev.kind;
   }
-}
-
-function Kpi({ label, value, sub, tone = "" }) {
-  const ring = tone === "danger" ? "border-danger/40" : tone === "ok" ? "border-ok/40" : "border-line/80";
-  const ink = tone === "danger" ? "text-danger" : "text-ink";
-  return (
-    <Card className={`p-4 ${ring}`}>
-      <div className="text-[11px] uppercase tracking-widest text-muted">{label}</div>
-      <div className={`mt-1 font-display text-2xl tabular-nums ${ink}`}>{value}</div>
-      <div className="mt-0.5 text-xs text-muted">{sub}</div>
-    </Card>
-  );
 }
 
 function Aging({ aging, total, t }) {

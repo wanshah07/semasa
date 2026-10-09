@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   addDays, afterReminder, billingSettings, calcTotals, clientSnapshot, daysBetween, effectiveStatus, emailFor, fileName, fmtDate,
   invoiceFromQuotation, money, nextReminder, numberPreview, projectSummary, publicLink, receiptFromInvoice, summary, validateDoc,
+  weeklySeries, projectProgress,
 } from "./src/lib/billing.js";
 import { documentHtml, pagesHtml } from "./src/lib/billingDoc.js";
 
@@ -143,3 +144,30 @@ t("the paper: labels per kind, TAX INVOICE only with an SST number, the receipt 
 });
 
 console.log(`billing: ${n} cases ok`);
+
+// Overview chart and project progress (app-1, 9 Oct 2026)
+{
+  const today = "2026-10-09";                                   // a Friday; the 8-week window starts Monday 17 Aug
+  const docs = [
+    { kind: "invoice", status: "paid", total: 1000, issue_date: "2026-10-06", paid_at: "2026-10-08T02:00:00Z" },
+    { kind: "invoice", status: "sent", total: 500, issue_date: "2026-10-01" },         // last week: invoiced, not paid
+    { kind: "invoice", status: "void", total: 9999, issue_date: "2026-10-07" },        // never counted
+    { kind: "invoice", status: "draft", total: 9999, issue_date: "2026-10-07" },       // never counted
+    { kind: "invoice", status: "paid", total: 300, issue_date: "2026-06-01", paid_at: "2026-06-10T00:00:00Z" },   // outside the window
+    { kind: "quotation", status: "sent", total: 7777, issue_date: "2026-10-07" },
+  ];
+  const s = weeklySeries(docs, today, 8);
+  assert.equal(s.length, 8); assert.equal(s[0].week, "17/08"); assert.equal(s[7].week, "05/10");   // Mondays
+  assert.deepEqual(s[7], { week: "05/10", invoiced: 1000, paid: 1000 });
+  assert.deepEqual(s[6], { week: "28/09", invoiced: 500, paid: 0 });
+  assert.equal(s.slice(0, 6).every((w) => w.invoiced === 0 && w.paid === 0), true, "empty weeks are present as zero");
+  const pid = "p1";
+  const pd = [{ kind: "invoice", status: "paid", total: 400, project_id: pid, issue_date: "2026-10-01", due_date: "2026-10-30" },
+    { kind: "invoice", status: "sent", total: 600, project_id: pid, issue_date: "2026-10-01", due_date: "2026-10-30" }];
+  assert.equal(projectProgress({ id: pid, status: "active" }, pd, today), 40);
+  assert.equal(projectProgress({ id: pid, status: "done" }, pd, today), 100);
+  assert.equal(projectProgress({ id: pid, status: "cancelled" }, pd, today), 0);
+  assert.equal(projectProgress({ id: "none", status: "active" }, [{ kind: "quotation", status: "sent", total: 1, project_id: "none" }], today), 25);
+  assert.equal(projectProgress({ id: "none", status: "lead" }, [], today), 10);
+}
+console.log("overview: 11 cases ok");

@@ -381,7 +381,7 @@ t("documents together never exceed the total cap: the one that crosses it is cut
 console.log("hardening: ok");
 
 // ---- reader calls that survive a slow first output (2 Oct 2026, "HTTP 500: Member first-output deadline") ---------------------
-import { pickFallback, retryable } from "../supabase/functions/semasa-chat/logic.js";
+import { gatewayDown, pickFallback, readerMessage, retryPause, retryable } from "../supabase/functions/semasa-chat/logic.js";
 t("a deadline, a timeout, a throttle or any 5xx may pass on another try; a 400, 401, 403 or 404 never will", () => {
   assert.equal(retryable(500, "Member first-output deadline"), true);
   assert.equal(retryable(0, "the model did not answer in time"), true);
@@ -403,3 +403,23 @@ t("the fallback is the best OTHER chat model Mireld lists, never the failed one,
   assert.equal(pickFallback([], "x"), "");
 });
 console.log("reader retry: ok");
+
+// The gateway being down is said plainly, and is not "pick another model" (Wan, 9 Oct 2026, screenshot: HTTP 503 Scheduled server upgrade).
+assert.equal(gatewayDown(503, "Scheduled server upgrade in progress. Please retry later."), true);
+assert.equal(gatewayDown(500, "Member first-output deadline"), false, "a slow model is not a down gateway: another model may answer");
+assert.equal(gatewayDown(0, "the model did not answer in time"), false);
+assert.equal(gatewayDown(400, "invalid image"), false);
+assert.equal(gatewayDown(200, "down for maintenance"), true, "the words count when the status is odd");
+assert.equal(retryPause(503, ""), 4000);
+assert.equal(retryPause(500, "Member first-output deadline"), 0);
+{
+  const down = readerMessage({ ok: false, status: 503, err: "Scheduled server upgrade in progress. Please retry later.", tried: ["claude-sonnet-5-5", "claude-sonnet-5-5"] });
+  assert.match(down, /HTTP 503: Scheduled server upgrade/);
+  assert.match(down, /tried claude-sonnet-5-5\)/, "the same model twice is named once");
+  assert.match(down, /Mireld\) is down or being upgraded/);
+  assert.doesNotMatch(down, /pick another model/, "another model on the same gateway cannot help");
+  const slow = readerMessage({ ok: false, status: 500, err: "Member first-output deadline", tried: ["a", "b"] });
+  assert.match(slow, /pick another model/);
+  assert.match(readerMessage({ ok: true, status: 200, err: "", tried: ["a"] }), /an empty answer/);
+}
+console.log("reader message: ok");

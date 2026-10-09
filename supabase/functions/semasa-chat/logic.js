@@ -470,16 +470,89 @@ export function withInstructions(messages) {
   return messages.map((m, i) => (i === ui ? { ...m, content } : m));
 }
 
-/** The reader's time budget (Wan, 9 Oct 2026: "the model did not answer in time; tried kimi-k3, glm-5.3-flash"). A layout is thousands
-    of tokens, and the two attempts used to get a fixed 70 s and 50 s each, so a slow-but-working model died at 70 s and its fallback,
-    just as slow, at 50 s. Now one budget covers both: the first attempt may use nearly all of it, and a second is tried only when
-    enough is left (after a quick 503, say), never as a 20-second afterthought. 138 s sits under the platform's 150 s limit.
-    Returns the milliseconds this attempt may run, or 0 for "do not try". */
+/* ===== The reader picks its own model (Wan, 9 Oct 2026: "can the system automatically choose the model and AI for me as long as
+   successful") ==================================================================================================================
+   A layout read is not a chat: nobody watches it type, it either comes back as a usable layout or it does not, and a gateway's models
+   differ wildly in speed. So instead of one model at a time, the reader HEDGES: it starts the best candidate, and if that has neither
+   answered nor failed after `staggerMs` it starts the next as well (up to `maxParallel`), and a failure starts the next at once. The first
+   answer the caller ACCEPTS (a layout that parses, not just any text) wins and the others are cancelled. If nothing succeeds inside the
+   budget, the error names every model tried and why it failed. */
+
+/** Models known to read a picture, best first: Claude (Mireld), then rootsys's vision models, fast ones first. A model not in this list
+    is never asked to read a reference, because one that cannot see the picture may still return a perfectly valid, invented layout. */
+export const READER_MODELS = ["claude-sonnet-5.5", "claude-opus-5.5", "claude-sonnet-5", "claude-fable-5.1", "claude-haiku-4.5",
+  "glm-5.3-flashx", "glm-5.3-flash", "deepseek-v4.1-flash", "kimi-k3", "minimax-m3", "kimi-k2.7", "hy3-tencent"];
+
+/** The models to try, in order. `listed` is the gateway's model list (null when unreadable: then every known name is a candidate and a
+    wrong one fails fast), `preferred` the model chosen by the person or AI_MODEL (kept first only when it is a known picture reader),
+    `remembered` the one that answered last time on this instance. At most `max`. */
+export function readerCandidates(listed, preferred = "", remembered = "", max = 6) {
+  const ids = Array.isArray(listed) && listed.length ? listed.map(cleanModelId).filter(Boolean) : null;
+  const byNorm = ids ? new Map(ids.map((m) => [modelNorm(m), m])) : null;
+  const known = new Set(READER_MODELS.map(modelNorm));
+  const out = [], seen = new Set();
+  const add = (name) => {
+    const n = modelNorm(name);
+    if (!n || seen.has(n)) return;
+    const id = byNorm ? byNorm.get(n) : cleanModelId(name);
+    if (!id) return;
+    seen.add(n); out.push(id);
+  };
+  if (remembered && known.has(modelNorm(remembered))) add(remembered);
+  if (preferred && known.has(modelNorm(preferred))) add(preferred);
+  for (const m of READER_MODELS) add(m);
+  return out.slice(0, max);
+}
+
+/** Run `attempt(candidate, signal)` over the candidates as described above. `attempt` resolves { ok, accepted, status, err, ... } and
+    never needs to throw (a throw counts as a failure). Resolves { win, last, tried, failures }: `win` is { cand, result } or null;
+    `failures` is [{ label, status, err }] in the order they failed; `tried` is the labels of everything started. */
+export function raceCandidates(cands, attempt, { staggerMs = 25000, budgetMs = 138000, maxParallel = 3, label = (c) => String(c) } = {}) {
+  return new Promise((resolve) => {
+    const tried = [], failures = [], ctls = [];
+    let next = 0, running = 0, done = false, last = null, stagger = null;
+    const finish = (win) => {
+      if (done) return;
+      done = true; clearTimeout(stagger); clearTimeout(deadline);
+      ctls.forEach((c) => { try { c.abort(); } catch { /* already over */ } });
+      resolve({ win, last, tried, failures });
+    };
+    const deadline = setTimeout(() => finish(null), budgetMs);
+    const launch = () => {
+      clearTimeout(stagger);
+      if (done) return;
+      if (next >= cands.length) { if (!running) finish(null); return; }
+      if (running >= maxParallel) return;                       // a finished attempt launches the next
+      const cand = cands[next++];
+      const ctl = new AbortController(); ctls.push(ctl);
+      tried.push(label(cand)); running++;
+      Promise.resolve().then(() => attempt(cand, ctl.signal)).catch((e) => ({ ok: false, accepted: false, status: 0, err: String(e?.message || e) }))
+        .then((r) => {
+          running--;
+          if (done) return;
+          if (r && r.ok && r.accepted) { finish({ cand, result: r }); return; }
+          last = { ...(r || {}), cand };
+          failures.push({ label: label(cand), status: Number(r?.status) || 0, err: String(r?.err || (r?.ok ? "an answer that could not be used" : "no answer")).slice(0, 120) });
+          launch();
+        });
+      if (next < cands.length) stagger = setTimeout(launch, staggerMs);
+    };
+    if (!cands.length) { finish(null); return; }
+    launch();
+  });
+}
+
+/** The reader's whole time budget: one for all candidates together, under the platform's 150 s request limit. */
 export const READER_BUDGET_MS = 138000;
-export function attemptCap(startedAt, now, attempt) {
-  const left = startedAt + READER_BUDGET_MS - now - 4000;
-  if (attempt > 0 && left < 25000) return 0;
-  return Math.max(0, Math.min(left, 130000));
+
+/** One { status, err } to show for a set of failures: "gateway down" only when every one was (nothing else could have helped), "too
+    slow" when any one timed out (a faster model might), else the last. */
+export function summariseFailures(failures) {
+  const list = Array.isArray(failures) ? failures : [];
+  if (!list.length) return { status: 0, err: "no answer" };
+  if (list.every((f) => gatewayDown(f.status, f.err))) return list[list.length - 1];
+  const slow = list.find((f) => !f.status && /in time|timed? ?out|abort/i.test(f.err || ""));
+  return slow || list[list.length - 1];
 }
 
 /** Is the gateway itself down or being worked on, as opposed to this one request or this one model failing? A 502/503/504, or words
@@ -500,13 +573,15 @@ export function readerMessage(r) {
   const what = r.ok ? "an empty answer" : `HTTP ${r.status || "-"}: ${r.err}`;
   const tried = [...new Set(r.tried || [])].join(", ");
   const head = `the reader did not answer (${what}; tried ${tried})`;
+  const each = Array.isArray(r.failures) && r.failures.length > 1
+    ? `. Each try: ${r.failures.map((f) => `${f.label} (${f.status ? `HTTP ${f.status}: ` : ""}${f.err})`).join("; ")}` : "";
   if (!r.ok && gatewayDown(r.status, r.err)) {
-    return `${head}. The AI gateway${r.gateway ? ` (${r.gateway})` : ""} is down or being upgraded, which is its side and not Semasa's, and another model on the same gateway fails the same way. Wait a few minutes and press the button again`;
+    return `${head}. The AI gateway${r.gateway ? ` (${r.gateway})` : ""} is down or being upgraded, which is its side and not Semasa's, and another model on the same gateway fails the same way. Wait a few minutes and press the button again${each}`;
   }
   if (!r.ok && Number(r.status || 0) === 0 && /in time|timed? ?out|abort/i.test(String(r.err || ""))) {
-    return `${head}. The model is working but too slowly for a whole layout. Pick a faster one (a "flash" model) in the chat's model list, or set AI_MODEL to it, then try again`;
+    return `${head}. The models are working but too slowly for a whole layout. Pick a faster one (a "flash" model) or set AI_MODEL to it, then try again${each}`;
   }
-  return `${head}. Try again in a minute, or pick another model in the chat's model list`;
+  return `${head}. Try again in a minute, or pick another model in the chat's model list${each}`;
 }
 
 /** The model to try after `failed`: the best OTHER chat model Mireld lists (by MODEL_PREFERENCE), or "" when there is none. */

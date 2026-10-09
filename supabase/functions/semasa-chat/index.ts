@@ -45,7 +45,7 @@ import { faqMessages, parseFaqItems } from "./faq.js";
 import { firstJson } from "./faq.js";
 import {
   MEMORY, SYSTEM, rankModels, resolveModel, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
-  OWN_HOSTS, RATE, allow, foldDelta, gatewayConfig, withInstructions, htmlToText, isPrivateIp, lastQuestion, parseArgs, pickFallback, planFold, planQuery, rateKind, readerMessage, retryPause, retryable, attemptCap,
+  OWN_HOSTS, RATE, allow, foldDelta, gatewayConfig, withInstructions, htmlToText, isPrivateIp, lastQuestion, parseArgs, planFold, planQuery, rateKind, readerMessage, readerCandidates, raceCandidates, summariseFailures, READER_BUDGET_MS,
   shapeRows, sseEvents, summaryMessages, userAskedToRemember, whoIs,
 } from "./logic.js";
 
@@ -71,6 +71,7 @@ const asText = (d: any) => {
 
 let modelCache: { at: number; ids: string[] | null } = { at: 0, ids: null };   // Mireld's model list, kept five minutes
 const MAX_BODY = 40_000_000;                                   // bytes: six pictures of 4 MB plus text; anything more is not a request
+let lastReaderWin = "";                                        // the reader model that answered last on this instance: tried first next time
 const hits = new Map<string, number[]>();                      // recent calls per user and kind (logic.js allow)
 
 Deno.serve(async (req) => {
@@ -98,7 +99,15 @@ Deno.serve(async (req) => {
   if (gw.error) return json({ error: gw.error }, 503);
   const { key, base, model: envModel } = gw;
   if (!key) return json({ error: `${gw.keyName} is not set on the function` }, 503);
-  const outbound = (p: any) => (gw.repeatSystem && p?.messages ? { ...p, messages: withInstructions(p.messages) } : p);
+  type Gate = { name: string; base: string; key: string; repeatSystem: boolean };
+  const primary: Gate = { name: gw.name, base, key, repeatSystem: gw.repeatSystem };
+  const outboundFor = (g: Gate, p: any) => (g.repeatSystem && p?.messages ? { ...p, messages: withInstructions(p.messages) } : p);
+  const outbound = (p: any) => outboundFor(primary, p);
+  // When the neutral AI_* secrets carry the main gateway and a Mireld key is still set, Mireld is the reader's last-resort candidate.
+  const mireldKey = gw.keyName === "AI_API_KEY" ? (Deno.env.get("MIRELD_API_KEY") || "") : "";
+  const mireldBase = Deno.env.get("MIRELD_BASE_URL") || "https://api.mireld.my/v1";
+  const backup: Gate | null = mireldKey && /^https:\/\//.test(mireldBase) ? { name: "Mireld", base: mireldBase, key: mireldKey, repeatSystem: false } : null;
+  const backupModel = Deno.env.get("MIRELD_MODEL") || "claude-sonnet-5.5";
   let model = envModel || "claude-sonnet-5.5";            // the default; the page may ask for another (below)
   if (!/^https:\/\//.test(base)) return json({ error: `${gw.baseName} must be https` }, 500);
   const uid = who.user.id;
@@ -146,17 +155,18 @@ Deno.serve(async (req) => {
   // One attempt: the answer is STREAMED so the gateway sees the first token at once (its "first-output deadline" is what failed a long
   // layout when the call was not streamed), and the pieces are folded back into one text. Never throws.
   type Read = { ok: boolean; status: number; content: string; err: string };
-  async function readOnce(payload: any, ms: number): Promise<Read> {
+  async function readOnce(payload: any, ms: number, g: Gate = primary, outer?: AbortSignal): Promise<Read> {
     // `ms` is the most this attempt may take; a stream that goes quiet for 60 s is given up on sooner (a hung connection), but one that
     // keeps writing is not cut off at a fixed 70 s, which is what killed slow models that were answering.
     const ctl = new AbortController();
+    outer?.addEventListener("abort", () => ctl.abort());     // the race cancels the losers
     const capTimer = setTimeout(() => ctl.abort(), ms);
     let idleTimer = setTimeout(() => ctl.abort(), 60000);
     const poke = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => ctl.abort(), 60000); };
     try {
-      const res = await fetch(base.replace(/\/+$/, "") + "/chat/completions", {
-        method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify(outbound({ ...payload, stream: true })), signal: ctl.signal,
+      const res = await fetch(g.base.replace(/\/+$/, "") + "/chat/completions", {
+        method: "POST", headers: { authorization: `Bearer ${g.key}`, "content-type": "application/json", accept: "text/event-stream" },
+        body: JSON.stringify(outboundFor(g, { ...payload, stream: true })), signal: ctl.signal,
       });
       const type = res.headers.get("content-type") || "";
       if (!res.ok || !res.body) {
@@ -193,29 +203,35 @@ Deno.serve(async (req) => {
       clearTimeout(capTimer); clearTimeout(idleTimer);
     }
   }
-  /** The reader's answer. First the chosen model; if that fails in a way another try could fix (a deadline, a timeout, a 5xx, an empty
-      answer), once more on the best OTHER model the gateway lists (or the same one when it lists no other). One time budget covers
-      both (logic.js attemptCap, 138 s under the platform's 150 s): a slow model that is still answering gets nearly all of it, and the
-      second try happens only when enough is left. `tried` names the models asked, for the error the page shows. */
-  async function readerCall(payload: any): Promise<Read & { model: string; tried: string[] }> {
-    const tried: string[] = [];
-    let last: Read = { ok: false, status: 0, content: "", err: "no answer" };
-    let used = model;
+  /** The reader's answer, from whichever model gets one (Wan, 9 Oct 2026: "choose the model and AI for me as long as successful").
+      Candidates are the models known to read a picture, the chosen one and the last winner first; they are HEDGED (logic.js
+      raceCandidates): the next starts when the previous has failed, or has not answered in 25 s, and the first answer `accept` takes
+      (a layout that really parses) wins while the others are cancelled. When the main gateway is the neutral AI_* one and a Mireld key
+      is still set, Mireld is the last candidate. One 138 s budget covers all of it, under the platform's 150 s. */
+  async function readerCall(payload: any, accept: (content: string) => boolean = () => true): Promise<Read & { model: string; tried: string[]; failures: any[] }> {
+    const ids = await listModelIds();
+    type Cand = { gate: Gate; model: string };
+    const cands: Cand[] = readerCandidates(ids, model, lastReaderWin).map((m) => ({ gate: primary, model: m }));
+    if (!cands.length) cands.push({ gate: primary, model });                  // nothing known: the chosen model, as before
+    if (backup) cands.push({ gate: backup, model: backupModel });
     const startedAt = Date.now();
-    for (let i = 0; i < 2; i++) {
-      const cap = attemptCap(startedAt, Date.now(), i);
-      if (!cap) break;
-      used = i === 0 ? model : (pickFallback(await listModelIds(), model) || model);
-      tried.push(used);
-      last = await readOnce({ ...payload, model: used }, cap);
-      if (last.ok && last.content.trim()) return { ...last, model: used, tried };
-      if (!last.ok && !retryable(last.status, last.err)) break;
-      const pause = last.ok ? 0 : retryPause(last.status, last.err);          // a gateway being upgraded may be back in seconds
-      if (pause && i === 0) await new Promise((r) => setTimeout(r, pause));
+    const label = (c: Cand) => (c.gate === primary ? c.model : `${c.gate.name}:${c.model}`);
+    const race = await raceCandidates(cands, async (c: Cand, signal: AbortSignal) => {
+      const cap = Math.max(8000, READER_BUDGET_MS - (Date.now() - startedAt) - 3000);
+      const r = await readOnce({ ...payload, model: c.model }, cap, c.gate, signal);
+      return { ...r, accepted: r.ok && r.content.trim() !== "" && accept(r.content) };
+    }, { label, budgetMs: READER_BUDGET_MS - 3000 });
+    if (race.win) {
+      const w = race.win.cand as Cand;
+      if (w.gate === primary) lastReaderWin = w.model;
+      return { ...(race.win.result as Read), ok: true, model: w.model, tried: race.tried, failures: race.failures };
     }
-    return { ...last, ok: false, model: used, tried };
+    const sum = summariseFailures(race.failures);
+    const lastCand = (race.last?.cand || cands[0]) as Cand;
+    const empty = !race.failures.length || (race.last?.ok && !sum.status && !sum.err);
+    return { ok: false, status: sum.status, content: "", err: sum.err || (empty ? "no answer" : ""), model: lastCand.model, tried: race.tried, failures: race.failures };
   }
-  const readerError = (r: Read & { tried: string[] }) => readerMessage({ ...r, gateway: gw.name });
+  const readerError = (r: Read & { tried: string[]; failures?: any[] }) => readerMessage({ ...r, gateway: gw.name });
 
   // ---- tools -------------------------------------------------------------------------------------------
   async function addressesOk(host: string): Promise<string | null> {
@@ -344,7 +360,7 @@ Deno.serve(async (req) => {
     if (body?.action === "faq_extract") {
       const built = faqMessages(body?.note, body?.files);
       if (built.error) return json({ error: built.error, skipped: built.skipped }, 400);
-      const r = await readerCall({ max_tokens: 6000, temperature: 0, messages: built.messages });
+      const r = await readerCall({ max_tokens: 6000, temperature: 0, messages: built.messages }, (c) => !parseFaqItems(c).error);
       if (!r.ok) return json({ error: readerError(r) }, 502);
       const parsed = parseFaqItems(r.content);
       if (parsed.error) return json({ error: parsed.error, skipped: built.skipped }, 502);
@@ -361,7 +377,7 @@ Deno.serve(async (req) => {
     if (body?.action === "design_clone") {
       const built = designMessages({ image: body?.image, width: body?.width, height: body?.height, stream: body?.stream, brief: body?.brief, mode: body?.mode });
       if (built.error) return json({ error: built.error }, 400);
-      const r = await readerCall({ max_tokens: 6000, temperature: built.mode === "inspire" ? 0.5 : 0.1, messages: built.messages });
+      const r = await readerCall({ max_tokens: 6000, temperature: built.mode === "inspire" ? 0.5 : 0.1, messages: built.messages }, (c) => !cleanLayout(firstJson(c)).error);
       if (!r.ok) return json({ error: readerError(r) }, 502);
       const cleaned = cleanLayout(firstJson(r.content));
       if (cleaned.error) return json({ error: cleaned.error }, 502);
@@ -374,7 +390,7 @@ Deno.serve(async (req) => {
     if (body?.action === "design_refine") {
       const built = refineMessages({ image: body?.image, render: body?.render, layout: body?.layout, width: body?.width, height: body?.height });
       if (built.error) return json({ error: built.error }, 400);
-      const r = await readerCall({ max_tokens: 6000, temperature: 0, messages: built.messages });
+      const r = await readerCall({ max_tokens: 6000, temperature: 0, messages: built.messages }, (c) => !cleanLayout(firstJson(c)).error);
       if (!r.ok) return json({ error: readerError(r) }, 502);
       const cleaned = cleanLayout(firstJson(r.content));
       if (cleaned.error) return json({ error: cleaned.error }, 502);

@@ -1,0 +1,53 @@
+name: Receipts
+
+# Resit (Wan, 9 Oct 2026): a receipt photographed in the page is read by the vision model, filed in Google Drive under
+# Semasa/Resit/<YYYY>/<MM>, matched to a subscription and written back. Woken by the database within seconds of a snap
+# (supabase/033_receipts.sql, repository_dispatch 'receipts_pending'); the daily schedule is the net for a dispatch
+# GitHub dropped. One schedule, in the repo that owns the job.
+on:
+  repository_dispatch:
+    types: [receipts_pending]
+  schedule:
+    - cron: "35 2 * * *"          # 10:35 MYT
+  workflow_dispatch:
+
+concurrency:
+  group: receipts
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  receipts:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Read and file
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          COMPOSIO_CONSUMER_KEY: ${{ secrets.COMPOSIO_CONSUMER_KEY }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          VISION_MODEL: ${{ vars.VISION_MODEL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_ALLOWED_HOSTS: ${{ vars.LLM_ALLOWED_HOSTS }}
+          LLM_FALLBACK_BASE_URL: ${{ vars.LLM_FALLBACK_BASE_URL }}
+          LLM_FALLBACK_MODEL: ${{ vars.LLM_FALLBACK_MODEL }}
+          LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
+          LLM_FALLBACK_ALLOWED_HOSTS: ${{ vars.LLM_FALLBACK_ALLOWED_HOSTS }}
+        run: python -m semasa.receipts

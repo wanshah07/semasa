@@ -31,6 +31,7 @@ import HomeTab from "./pages/HomeTab";
 import SubscriptionsTab from "./pages/SubscriptionsTab";
 import CrmTab from "./pages/CrmTab";
 import CrmUnsubscribe from "./pages/CrmUnsubscribe";
+import ResitTab from "./pages/ResitTab";
 import WatchSegment, { watchIdea } from "./components/WatchSegment";
 import Header from "./components/Header";
 import AppSidebar from "./components/AppSidebar";
@@ -256,7 +257,7 @@ function MediaTab({ user, gens, prompts, posts, onToast }) {
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "chat", "bil", "langganan", "crm", "faq", "log", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "chat", "bil", "langganan", "crm", "resit", "faq", "log", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 // #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)

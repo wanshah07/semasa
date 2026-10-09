@@ -170,6 +170,34 @@ export function projectSummary(projectId, docs, today = isoDate()) {
   return { quoted: sum(mine.filter((d) => d.kind === "quotation")), invoiced: sum(inv), paid: sum(inv.filter((d) => d.status === "paid")),
     outstanding: sum(open), overdue: sum(open.filter((d) => effectiveStatus(d, today) === "overdue")), count: mine.length };
 }
+/** Money by ISO week for the overview chart (components/ui/app-1.tsx): `invoiced` is every non-void invoice by its issue date,
+    `paid` every paid invoice by the day it was paid. The last `weeks` weeks ending on `today`, oldest first, every week present
+    (a week with nothing is 0, not missing, or the line would join across the gap). `week` is the Monday as dd/mm. */
+export function weeklySeries(docs, today = isoDate(), weeks = 8) {
+  const monday = (iso) => { const d = new Date(`${iso}T00:00:00Z`); const dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow); return d.toISOString().slice(0, 10); };
+  const start = monday(addDays(today, -7 * (weeks - 1)));
+  const out = [];
+  for (let i = 0; i < weeks; i++) { const m = addDays(start, 7 * i); out.push({ key: m, week: `${m.slice(8, 10)}/${m.slice(5, 7)}`, invoiced: 0, paid: 0 }); }
+  const at = (iso) => { if (!iso) return null; const m = monday(String(iso).slice(0, 10)); return out.find((w) => w.key === m) || null; };
+  for (const d of docs || []) {
+    if (d.kind !== "invoice" || d.status === "void" || d.status === "draft") continue;
+    const w = at(d.issue_date); if (w) w.invoiced = r2(w.invoiced + (Number(d.total) || 0));
+    if (d.status === "paid") { const p = at(d.paid_at); if (p) p.paid = r2(p.paid + (Number(d.total) || 0)); }
+  }
+  return out.map(({ key, ...rest }) => rest);   // eslint-disable-line no-unused-vars
+}
+
+/** How far a project is along, 0-100, from its papers: done or paid in full is 100; otherwise the share of invoiced money that is
+    paid, or, with nothing invoiced yet, 25 for a quotation issued, 10 for an open lead. Cancelled is 0. */
+export function projectProgress(p, docs, today = isoDate()) {
+  if (p.status === "cancelled") return 0;
+  if (p.status === "done") return 100;
+  const m = projectSummary(p.id, docs, today);
+  if (m.invoiced > 0) return Math.max(5, Math.min(100, Math.round((100 * m.paid) / m.invoiced)));
+  if (m.quoted > 0) return 25;
+  return 10;
+}
+
 export const PROJECT_STATUS = {
   lead: { bm: "Prospek", en: "Lead" }, active: { bm: "Aktif", en: "Active" }, on_hold: { bm: "Ditangguh", en: "On hold" },
   done: { bm: "Selesai", en: "Done" }, cancelled: { bm: "Dibatalkan", en: "Cancelled" },

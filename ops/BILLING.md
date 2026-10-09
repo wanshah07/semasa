@@ -51,6 +51,12 @@ Client (semasa_clients) ──► Project (semasa_projects: name, details, statu
   the 21st.dev Timeline adapted to Tailwind 3 with no Base UI): opened → quotation → invoice → paid in full / done, with the
   date and the paper's number and status under each, read from the papers rather than kept as a field. The same component
   drawn down is a paper's history in the viewer.
+* **Overview.** The top of the tab is `components/ui/app-1.tsx` (the 21st.dev dashboard Wan pasted on 9 Oct, with its sidebar and
+  invented numbers removed and everything a prop): four stat tiles, a chart of money invoiced against money paid by ISO week
+  (`weeklySeries`, eight weeks, every week present), the aging bar beside it, the open projects with how far each is paid
+  (`projectProgress`: paid over invoiced; 25 for quoted only; 10 for a lead; 100 done), and the latest events. Chart colours are the
+  accent and gold tokens, validated for both themes with the dataviz palette script; the series also differ by form (dashed line
+  against filled area), so colour is never the only cue.
 * **Language.** English by default (`settings billing.lang`, `supabase/029`), for the paper and the e-mail alike; a client
   record carries its own language and a paper can be switched in the editor. Bahasa Malaysia stays a full second set of words.
 

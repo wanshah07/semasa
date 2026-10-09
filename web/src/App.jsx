@@ -394,7 +394,7 @@ export default function App() {
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
   else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "langganan") body = allowed ? <SubscriptionsTab user={user} onToast={push} /> : gate(null);
-  else if (tab === "crm") body = allowed ? <CrmTab user={user} settings={settings} onToast={push} /> : gate(null);
+  else if (tab === "crm") body = allowed ? <CrmTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "papan") body = allowed ? <HomeTab ideas={ideas} posts={posts} log={log} activity={activity} brand={brand} user={user}
     go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}

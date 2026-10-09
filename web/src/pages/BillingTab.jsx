@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, Bell, Briefcase, Building2, Check, Copy, Download, Eye, FileText, Link2, Loader2, Mail, Pencil, Plus, Printer, Receipt,
+import { AlertTriangle, Bell, Briefcase, Building2, Check, Copy, Download, Eye, FileText, Link2, Mail, Pencil, Plus, Printer, Receipt,
   Send, Settings2, Trash2, Users, Wallet, X } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { useLang } from "../lib/i18n";

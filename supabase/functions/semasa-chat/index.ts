@@ -45,7 +45,7 @@ import { faqMessages, parseFaqItems } from "./faq.js";
 import { firstJson } from "./faq.js";
 import {
   MEMORY, SYSTEM, rankModels, resolveModel, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
-  OWN_HOSTS, RATE, allow, foldDelta, gatewayConfig, withInstructions, htmlToText, isPrivateIp, lastQuestion, parseArgs, pickFallback, planFold, planQuery, rateKind, readerMessage, retryPause, retryable,
+  OWN_HOSTS, RATE, allow, foldDelta, gatewayConfig, withInstructions, htmlToText, isPrivateIp, lastQuestion, parseArgs, pickFallback, planFold, planQuery, rateKind, readerMessage, retryPause, retryable, attemptCap,
   shapeRows, sseEvents, summaryMessages, userAskedToRemember, whoIs,
 } from "./logic.js";
 
@@ -147,10 +147,16 @@ Deno.serve(async (req) => {
   // layout when the call was not streamed), and the pieces are folded back into one text. Never throws.
   type Read = { ok: boolean; status: number; content: string; err: string };
   async function readOnce(payload: any, ms: number): Promise<Read> {
+    // `ms` is the most this attempt may take; a stream that goes quiet for 60 s is given up on sooner (a hung connection), but one that
+    // keeps writing is not cut off at a fixed 70 s, which is what killed slow models that were answering.
+    const ctl = new AbortController();
+    const capTimer = setTimeout(() => ctl.abort(), ms);
+    let idleTimer = setTimeout(() => ctl.abort(), 60000);
+    const poke = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => ctl.abort(), 60000); };
     try {
       const res = await fetch(base.replace(/\/+$/, "") + "/chat/completions", {
         method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify(outbound({ ...payload, stream: true })), signal: AbortSignal.timeout(ms),
+        body: JSON.stringify(outbound({ ...payload, stream: true })), signal: ctl.signal,
       });
       const type = res.headers.get("content-type") || "";
       if (!res.ok || !res.body) {
@@ -168,6 +174,7 @@ Deno.serve(async (req) => {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
+        poke();
         buf += dec.decode(value, { stream: true });
         const { events, rest } = sseEvents(buf);
         buf = rest;
@@ -182,19 +189,25 @@ Deno.serve(async (req) => {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return { ok: false, status: 0, content: "", err: /abort|time/i.test(msg) ? "the model did not answer in time" : msg.slice(0, 200) };
+    } finally {
+      clearTimeout(capTimer); clearTimeout(idleTimer);
     }
   }
   /** The reader's answer. First the chosen model; if that fails in a way another try could fix (a deadline, a timeout, a 5xx, an empty
-      answer), once more on the best OTHER model Mireld lists (or the same one when it lists no other). 70 s then 50 s, so both fit
-      inside the function's own limit. `tried` names the models asked, for the error the page shows. */
+      answer), once more on the best OTHER model the gateway lists (or the same one when it lists no other). One time budget covers
+      both (logic.js attemptCap, 138 s under the platform's 150 s): a slow model that is still answering gets nearly all of it, and the
+      second try happens only when enough is left. `tried` names the models asked, for the error the page shows. */
   async function readerCall(payload: any): Promise<Read & { model: string; tried: string[] }> {
     const tried: string[] = [];
     let last: Read = { ok: false, status: 0, content: "", err: "no answer" };
     let used = model;
+    const startedAt = Date.now();
     for (let i = 0; i < 2; i++) {
+      const cap = attemptCap(startedAt, Date.now(), i);
+      if (!cap) break;
       used = i === 0 ? model : (pickFallback(await listModelIds(), model) || model);
       tried.push(used);
-      last = await readOnce({ ...payload, model: used }, i === 0 ? 70000 : 50000);
+      last = await readOnce({ ...payload, model: used }, cap);
       if (last.ok && last.content.trim()) return { ...last, model: used, tried };
       if (!last.ok && !retryable(last.status, last.err)) break;
       const pause = last.ok ? 0 : retryPause(last.status, last.err);          // a gateway being upgraded may be back in seconds
@@ -299,6 +312,7 @@ Deno.serve(async (req) => {
       let ids: string[] | null = null;
       const list = await upstream(base, key, "/models", { method: "GET" }, 20000).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
       if (list.ok && Array.isArray(list.data?.data)) ids = list.data.data.map((m: any) => String(m?.id || "")).filter(Boolean);
+      const t0 = Date.now();
       const probe = await upstream(base, key, "/chat/completions", {
         method: "POST",
         body: JSON.stringify({
@@ -308,6 +322,7 @@ Deno.serve(async (req) => {
             { type: "image_url", image_url: { url: TEST_IMAGE } }] }],
         }),
       }).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
+      const imageMs = Date.now() - t0;
       const image = probe.ok ? { answer: asText(probe.data) }
         : { error: `HTTP ${probe.status}: ${String(probe.data?.error?.message || probe.text).slice(0, 160)}` };
       const tp = await upstream(base, key, "/chat/completions", {
@@ -320,7 +335,7 @@ Deno.serve(async (req) => {
       }).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
       const tools = tp.ok ? { calls: Array.isArray(tp.data?.choices?.[0]?.message?.tool_calls) && tp.data.choices[0].message.tool_calls.length > 0 }
         : { error: `HTTP ${tp.status}: ${String(tp.data?.error?.message || tp.text).slice(0, 160)}` };
-      return json({ ...checkReport(model, ids, image, tools), base_url: base, gateway: gw.name, list_status: list.status, search_configured: !!Deno.env.get("BRAVE_API_KEY") });
+      return json({ ...checkReport(model, ids, image, tools), base_url: base, gateway: gw.name, image_ms: imageMs, list_status: list.status, search_configured: !!Deno.env.get("BRAVE_API_KEY") });
     }
 
     // ---- faq_extract: the FAQ page's AI bar (Wan, 1 Oct 2026) -------------------------------------------

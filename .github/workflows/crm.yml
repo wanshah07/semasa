@@ -1,0 +1,47 @@
+name: CRM
+
+# CRM (Wan, 9 Oct 2026): marketing e-mail to consenting contacts. This run
+#   1. sends every pending row in semasa_crm_outbox whose campaign is due, from Wan's own Gmail through Composio For You
+#      (the Bil sender), with the PDPA footer and the unsubscribe link, up to the day's cap (semasa_settings.crm);
+#   2. queues the welcome campaign for any new consenting contact who has not had it.
+# Woken by the database within seconds of a Send click (supabase/031_crm.sql, repository_dispatch 'crm_pending'); the
+# hourly schedule is the net for a scheduled campaign, the welcome sweep, the day's cap and a dispatch GitHub dropped.
+# One schedule, in the repo that owns the job.
+on:
+  repository_dispatch:
+    types: [crm_pending]
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: crm
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  crm:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Send
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          COMPOSIO_CONSUMER_KEY: ${{ secrets.COMPOSIO_CONSUMER_KEY }}
+          SEMASA_SITE_URL: ${{ vars.SEMASA_SITE_URL }}
+        run: python -m semasa.crm

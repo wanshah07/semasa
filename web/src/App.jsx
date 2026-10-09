@@ -29,6 +29,8 @@ import BillingTab from "./pages/BillingTab";
 import BillingPublic from "./pages/BillingPublic";
 import HomeTab from "./pages/HomeTab";
 import SubscriptionsTab from "./pages/SubscriptionsTab";
+import CrmTab from "./pages/CrmTab";
+import CrmUnsubscribe from "./pages/CrmUnsubscribe";
 import WatchSegment, { watchIdea } from "./components/WatchSegment";
 import Header from "./components/Header";
 import AppSidebar from "./components/AppSidebar";
@@ -254,9 +256,11 @@ function MediaTab({ user, gens, prompts, posts, onToast }) {
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "chat", "bil", "langganan", "faq", "log", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "media", "design", "wangian", "kanvas", "video", "chat", "bil", "langganan", "crm", "faq", "log", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
+// #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)
+const UNSUB = /^crm\/unsub\/([a-f0-9]{32})$/;
 
 
 export default function App() {
@@ -266,6 +270,7 @@ export default function App() {
     return TAB_IDS.includes(h) ? h : "papan";                 // the home is the dashboard (Wan, 9 Oct 2026); #isu still opens the issues
   });
   const [pubToken, setPubToken] = useState(() => (PUBLIC_DOC.exec(window.location.hash.replace("#", "")) || [])[1] || "");
+  const [unsubToken, setUnsubToken] = useState(() => (UNSUB.exec(window.location.hash.replace("#", "")) || [])[1] || "");
   const [focusPost, setFocusPost] = useState(null);
   const [canvasSeed, setCanvasSeed] = useState(null);         // a design sent to Kanvas from Wangian or Design
   const clearSeed = useCallback(() => setCanvasSeed(null), []);
@@ -274,6 +279,7 @@ export default function App() {
     const onHash = () => {
       const h = window.location.hash.replace("#", "");
       setPubToken((PUBLIC_DOC.exec(h) || [])[1] || "");
+      setUnsubToken((UNSUB.exec(h) || [])[1] || "");
       const next = TAB_IDS.includes(h) ? h : "papan";
       // the browser's Back/Forward: ask before unsaved Kanvas work goes, and put the address back if the answer is no
       setTab((cur) => {
@@ -368,6 +374,7 @@ export default function App() {
 
   // a client's "view online" link: the paper and nothing else, no sign-in, no menu
   if (pubToken && configured) return <BillingPublic token={pubToken} />;
+  if (unsubToken && configured) return <CrmUnsubscribe token={unsubToken} />;
 
   let body;
   if (!configured) body = <Unconfigured />;
@@ -387,6 +394,7 @@ export default function App() {
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
   else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "langganan") body = allowed ? <SubscriptionsTab user={user} onToast={push} /> : gate(null);
+  else if (tab === "crm") body = allowed ? <CrmTab user={user} settings={settings} onToast={push} /> : gate(null);
   else if (tab === "papan") body = allowed ? <HomeTab ideas={ideas} posts={posts} log={log} activity={activity} brand={brand} user={user}
     go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}

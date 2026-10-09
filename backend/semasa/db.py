@@ -29,6 +29,11 @@ PROJECTS = "semasa_projects"
 BILLING_DOCS = "semasa_billing_docs"
 BILLING_EVENTS = "semasa_billing_events"
 BILLING_OUTBOX = "semasa_billing_outbox"
+# CRM (supabase/031_crm.sql)
+CRM_CONTACTS = "semasa_crm_contacts"
+CRM_CAMPAIGNS = "semasa_crm_campaigns"
+CRM_OUTBOX = "semasa_crm_outbox"
+CRM_ACTIVITIES = "semasa_crm_activities"
 
 
 def client(settings: SupabaseSettings | None = None) -> Client:

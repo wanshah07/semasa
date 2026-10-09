@@ -25,6 +25,8 @@ export const TABLES = {
   clients: "semasa_clients", projects: "semasa_projects", billingDocs: "semasa_billing_docs", billingEvents: "semasa_billing_events",
   billingOutbox: "semasa_billing_outbox", billingCounters: "semasa_billing_counters",
   subscriptions: "semasa_subscriptions",                      // Langganan (supabase/030_subscriptions.sql)
+  // CRM (supabase/031_crm.sql)
+  crmContacts: "semasa_crm_contacts", crmCampaigns: "semasa_crm_campaigns", crmOutbox: "semasa_crm_outbox", crmActivities: "semasa_crm_activities",
 };
 export const TABLES_UPLOADERS = "semasa_uploaders";
 // Namespaced so Semasa can share a Supabase project with another app (supabase/003_storage.sql).

@@ -742,6 +742,15 @@ the gateway exposes one, and the tokens we spent (a day, by gateway, by job). `b
 6 hours (`api.yml`); every worker run writes one `semasa_api_usage` row per AI call through `llm.set_usage_sink`. A key
 never reaches the page: only its last four characters do. `ops/API.md`.
 
+## Otak AI: drop anything in, the AI files it
+
+Wan, 10 Oct 2026. The **Otak AI** tab (Create group) takes text, a pasted or dropped screenshot, a picture, a PDF, a Word, Excel,
+CSV or text file, a link (social-media links included) and a page to scrape. The worker (`backend/semasa/brain.py`, `brain.yml`,
+woken by the database within seconds) reads it with the AI gateway (rootsys, Mireld as the backup) and files it as notes, FAQs,
+skills, prompts, references and checklists, each with a category and tags. Search, filter, pin, copy, edit, and export the lot as a
+zip (skills as `<slug>/SKILL.md`). A link a machine cannot read (a post behind a login) says so and asks for the caption or a
+screenshot instead; nothing is invented. Run `supabase/036_brain.sql` once. `ops/BRAIN.md`.
+
 ## Card or table
 
 Current issues, Ideas and Posts each switch between cards and a table. The switch is remembered in this browser.

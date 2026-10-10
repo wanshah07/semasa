@@ -1,0 +1,54 @@
+name: Otak AI
+
+# Otak AI (Wan, 10 Oct 2026): whatever is dropped in the Otak tab (text, a picture, a file, a link, a page to scrape) is read by
+# the AI gateway and filed as notes, FAQs, skills, prompts, references and checklists with a category and tags. Woken by the
+# database within seconds of a drop (supabase/036_brain.sql, repository_dispatch 'brain_pending'); the schedule is the net for
+# a dispatch GitHub dropped. One schedule, in the repo that owns the job.
+on:
+  repository_dispatch:
+    types: [brain_pending]
+  schedule:
+    - cron: "50 2 * * *"          # 10:50 MYT
+  workflow_dispatch:
+
+concurrency:
+  group: brain
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  brain:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium     # for a page that draws its words with JavaScript, and "scrape"
+      - name: Read and file
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          VISION_MODEL: ${{ vars.VISION_MODEL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_ALLOWED_HOSTS: ${{ vars.LLM_ALLOWED_HOSTS }}
+          LLM_FALLBACK_BASE_URL: ${{ vars.LLM_FALLBACK_BASE_URL }}
+          LLM_FALLBACK_MODEL: ${{ vars.LLM_FALLBACK_MODEL }}
+          LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
+          LLM_FALLBACK_ALLOWED_HOSTS: ${{ vars.LLM_FALLBACK_ALLOWED_HOSTS }}
+        run: python -m semasa.brain

@@ -32,6 +32,7 @@ import SubscriptionsTab from "./pages/SubscriptionsTab";
 import CrmTab from "./pages/CrmTab";
 import CrmUnsubscribe from "./pages/CrmUnsubscribe";
 import ResitTab from "./pages/ResitTab";
+import BrainTab from "./pages/BrainTab";
 import PrestasiTab from "./pages/PrestasiTab";
 import RepoTab from "./pages/RepoTab";
 import ApiTab from "./pages/ApiTab";
@@ -260,7 +261,7 @@ function MediaTab({ user, gens, prompts, posts, onToast }) {
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "prestasi", "media", "design", "wangian", "kanvas", "video", "chat", "bil", "langganan", "crm", "resit", "faq", "log", "repo", "api", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "prestasi", "media", "design", "wangian", "kanvas", "video", "chat", "otak", "bil", "langganan", "crm", "resit", "faq", "log", "repo", "api", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 // #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)
@@ -396,6 +397,7 @@ export default function App() {
   else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push}
     openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
+  else if (tab === "otak") body = allowed ? <BrainTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "langganan") body = allowed ? <SubscriptionsTab user={user} onToast={push} /> : gate(null);
   else if (tab === "crm") body = allowed ? <CrmTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);

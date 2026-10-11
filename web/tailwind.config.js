@@ -5,6 +5,24 @@ import animate from "tailwindcss-animate";
  *  no rebuild and no component edit. Use `bg-surface`, `text-ink`, `rounded-card` … only. */
 const c = (name) => `rgb(var(--c-${name}) / <alpha-value>)`;
 
+/** Tailwind's own palette as CSS variables on :root (var(--blue-500), var(--white), var(--transparent) …), which the pasted
+ *  aurora background reads. The paste's version published EVERY theme colour; here Semasa's token colours are left out on
+ *  purpose: they are `rgb(var(--c-…) / <alpha-value>)` templates, not colours, and three of their names (--brand, --info,
+ *  --success) are variables src/index.css already defines, which the paste's plugin would have overwritten with a reference
+ *  to themselves. Only plain colour strings pass the filter. */
+function paletteVariables({ addBase, theme }) {
+  const flat = {};
+  const walk = (obj, prefix) => {
+    for (const [k, v] of Object.entries(obj || {})) {
+      const name = k === "DEFAULT" ? prefix : prefix ? `${prefix}-${k}` : k;
+      if (v && typeof v === "object") walk(v, name);
+      else if (typeof v === "string" && !v.includes("var(") && !v.includes("<alpha-value>")) flat[`--${name}`] = v;
+    }
+  };
+  walk(theme("colors"), "");
+  addBase({ ":root": flat });
+}
+
 export default {
   content: ["./index.html", "./src/**/*.{js,jsx,ts,tsx}"],
   darkMode: ["selector", '[data-theme="noir"]'],
@@ -48,10 +66,13 @@ export default {
       keyframes: {
         "accordion-down": { from: { height: "0" }, to: { height: "var(--radix-accordion-content-height)" } },
         "accordion-up": { from: { height: "var(--radix-accordion-content-height)" }, to: { height: "0" } },
+        // the aurora behind the dashboard's hero band (components/ui/aurora-background.tsx)
+        aurora: { from: { backgroundPosition: "50% 50%, 50% 50%" }, to: { backgroundPosition: "350% 50%, 350% 50%" } },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        aurora: "aurora 60s linear infinite",
       },
       fontFamily: {
         display: ["var(--font-display)"],
@@ -72,5 +93,5 @@ export default {
       transitionTimingFunction: { out: "var(--ease-out)" },
     },
   },
-  plugins: [animate],   // animate-in / fade-in / zoom-in-95, as shadcn components use
+  plugins: [animate, paletteVariables],   // animate-in / fade-in / zoom-in-95, as shadcn components use; palette vars for the aurora
 };

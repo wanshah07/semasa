@@ -14,7 +14,7 @@ import { POST_PROGRESS, nextInQueue, recentActivity, systemStats, weeklyPosts } 
 import { AREAS, titleOf } from "./LogTab";
 import { CYCLE_WORDS } from "./SubscriptionsTab";
 import App1 from "@/components/ui/app-1";
-import { GradientBackground } from "@/components/ui/gradient-backgrounds";
+import { AuroraBackground } from "@/components/ui/aurora-background";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/app-1-utils/card";
 import Button from "../components/ui/Button";
 
@@ -61,7 +61,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user }
   });
 
   const header = (
-    <GradientBackground glow="top" className="mb-2">
+    <AuroraBackground className="mb-2 h-auto w-full items-stretch justify-start overflow-hidden rounded-card border border-line/80 bg-surface text-ink dark:bg-surface">
       <motion.div {...fadeUp} className="flex flex-wrap items-end justify-between gap-4 p-6 sm:p-8">
         <div>
           <p className="text-[11px] uppercase tracking-widest text-muted">{dayNames()[dowOf(today)]} · {fmtDate(today)} · {now.time} MYT</p>
@@ -79,7 +79,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user }
           <Button onClick={() => go("isu")}>{t("Isu semasa", "Current issues")}</Button>
         </div>
       </motion.div>
-    </GradientBackground>
+    </AuroraBackground>
   );
 
   const aside = (

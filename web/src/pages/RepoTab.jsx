@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CalendarClock, CheckCircle2, CircleDashed, ExternalLink, GitBranch, GitCommitHorizontal, GitPullRequest, Globe, Lock, MessageSquareWarning, PlayCircle, RefreshCw, Save, XCircle } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, CircleDashed, ExternalLink, GitCommitHorizontal, GitPullRequest, Globe, Lock, MessageSquareWarning, PlayCircle, RefreshCw, Save, XCircle } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { TABLES } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
@@ -8,6 +8,7 @@ import { useSettings, useTable } from "../lib/hooks";
 import { stampMYT, timeAgo } from "../lib/format";
 import { DIMS, DIM_WORDS, officeSummary, parseRepoList, rankRepos, schedules, sparkline, staleDays, worstState } from "../lib/repos";
 import Card from "../components/ui/Card";
+import { Icons } from "@/components/ui/icons";
 import Button from "../components/ui/Button";
 import { TextArea } from "../components/ui/Field";
 
@@ -15,6 +16,8 @@ import { TextArea } from "../components/ui/Field";
    can track the repos progress and status"). Rows come from semasa_repos (supabase/035_repos_api.sql), written every 6 hours by
    backend/semasa/repos.py from GitHub; the page reads them and edits only the list of repositories (settings.repos). */
 
+// lucide's icons take `size`; the pasted brand marks take width/height: one adapter so the tile row draws both the same way
+const GitHubMark = ({ size = 16, className = "" }) => <Icons.gitHub width={size} height={size} className={className} aria-hidden />;
 const STATE_CLS = { ok: "bg-ok/15 text-ok", warn: "bg-warn/15 text-warn", bad: "bg-danger/15 text-danger", none: "bg-surface-2 text-muted" };
 const EDGE_CLS = { ok: "border-l-ok", warn: "border-l-warn", bad: "border-l-danger", none: "border-l-line" };
 const CI_WORDS = { green: ["lulus", "passing"], red: ["gagal", "failing"], running: ["berjalan", "running"], none: ["tiada", "none"] };
@@ -36,7 +39,7 @@ export default function RepoTab({ settings, save, onToast }) {
   const notYet = list.filter((n) => !rows.some((r) => r.full_name === n));
 
   const tiles = [
-    { label: t("Repositori", "Repositories"), value: sum.repos, hint: sum.unread ? t("{n} tidak dapat dibaca", "{n} could not be read", { n: sum.unread }) : t("semua dibaca", "all read"), icon: GitBranch },
+    { label: t("Repositori", "Repositories"), value: sum.repos, hint: sum.unread ? t("{n} tidak dapat dibaca", "{n} could not be read", { n: sum.unread }) : t("semua dibaca", "all read"), icon: GitHubMark },
     { label: t("CI merah", "CI red"), value: sum.red, hint: t("{n} hijau", "{n} green", { n: sum.green }), icon: sum.red ? XCircle : CheckCircle2, cls: sum.red ? "text-danger" : "text-ok" },
     { label: t("PR terbuka", "Open PRs"), value: sum.openPrs, hint: t("{n} digabung 30 hari", "{n} merged in 30 days", { n: sum.merged30d }), icon: GitPullRequest },
     { label: t("Commit 7 hari", "Commits 7 days"), value: sum.commits7d, hint: t("{n} isu terbuka", "{n} open issues", { n: sum.openIssues }), icon: GitCommitHorizontal },
@@ -107,7 +110,7 @@ export default function RepoTab({ settings, save, onToast }) {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <a href={r.html_url || `https://github.com/${r.full_name}`} target="_blank" rel="noreferrer" className="font-display text-lg hover:underline">{r.name}</a>
+                    <a href={r.html_url || `https://github.com/${r.full_name}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-display text-lg hover:underline"><Icons.gitHub className="h-4 w-4 shrink-0 text-muted" aria-hidden />{r.name}</a>
                     {r.private ? <Lock size={13} className="text-muted" /> : <Globe size={13} className="text-muted" />}
                     <span className={`rounded-pill px-2 py-0.5 text-[11px] ${STATE_CLS[r.ci === "green" ? "ok" : r.ci === "red" ? "bad" : r.ci === "running" ? "warn" : "none"]}`}>CI {CI_WORDS[r.ci || "none"]?.[L]}</span>
                     {r.error && <span className="rounded-pill bg-danger/15 px-2 py-0.5 text-[11px] text-danger"><AlertTriangle size={11} className="mr-1 inline" />{r.error.slice(0, 60)}</span>}

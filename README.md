@@ -751,6 +751,25 @@ skills, prompts, references and checklists, each with a category and tags. Searc
 zip (skills as `<slug>/SKILL.md`). A link a machine cannot read (a post behind a login) says so and asks for the caption or a
 screenshot instead; nothing is invented. Run `supabase/036_brain.sql` once. `ops/BRAIN.md`.
 
+**Documents from the FAQ and the brain** (Wan, 11 Oct 2026, with the halal-documentation prompt workbook as the pattern). Tick
+entries in the Otak tab (or press **Dokumen** in the FAQ tab), choose a type and a language (Bahasa Malaysia, English or both) and
+the bot drafts a Word file: FAQ document, work instruction, SOP gap review, SOP draft, fact extraction, reference comparison,
+gap list with a follow-up e-mail, NCR draft, risk register, meeting minutes, manual amendment list, AI use-case map, reusable
+prompt, or your own structure. Every one is a **DRAFT FOR REVIEW**: the AI never decides halal status, compliance, approval or
+closure, and invents no name, date, number, version, signature or owner; whatever the material lacks is marked
+`[Perlu pengesahan]` / `[Needs confirmation]` and highlighted yellow. The worker checks the draft against the material (a figure
+or clause that is not in it is listed under *Source check*; an owner, date, version or name is kept only if the material has it;
+wording that reads as a halal or approval decision is listed for a person). The structure of every type is one file,
+`rules/documents.json`, read by the worker and the page. Run `supabase/037_brain_docs.sql` once. `ops/BRAIN.md`.
+
+**Your own templates.** Under *Templat dokumen* in the Otak tab, **Tambah rujukan** takes a blank form, a SOP template or an example
+(Word, Excel, CSV, text, Markdown). The AI lists its sections and table columns in the reference's own words with the other
+language beside them, a check lists any title it could not find in the reference, and you can edit the result. Then choose it under
+*My templates* when you make a document (from the Otak tab or the FAQ tab). A column named No./Bil. is numbered by the renderer;
+an owner, date, version or signature column is filled only if the material names it. Only the words of the reference are kept, not
+the file, and the Word file follows the template's structure, not its fonts, header or footer. Run `supabase/038_doc_templates.sql`
+once, after 037.
+
 ## Card or table
 
 Current issues, Ideas and Posts each switch between cards and a table. The switch is remembered in this browser.

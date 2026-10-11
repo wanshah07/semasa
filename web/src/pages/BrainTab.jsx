@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, BookOpen, Brain, ChevronDown, Clipboard, Download, FileUp, HelpCircle, ListChecks, Pencil, Pin, PinOff, Plus, RefreshCw, ScrollText, Search, Sparkles, Terminal, Trash2, Wand2 } from "lucide-react";
+import { AlertTriangle, BookOpen, Brain, ChevronDown, Clipboard, Download, FileText, FileUp, HelpCircle, ListChecks, Pencil, Pin, PinOff, Plus, RefreshCw, ScrollText, Search, Sparkles, Terminal, Trash2, Wand2 } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
@@ -13,6 +13,11 @@ import {
   KINDS, KIND_HELP, KIND_WORDS, SOURCE_WORDS, STATUS_WORDS, brainSummary, categoriesOf, copyText, entryRow, exportFiles, filterEntries,
   hostOf, inboxLabel, isWalled, rowsFromPaste, tagCloud, toMarkdown, toSkillMd, validateEntry,
 } from "../lib/brain";
+import { entryText } from "../lib/documents";
+import DocumentModal from "../components/DocumentModal";
+import DocumentsPanel from "../components/DocumentsPanel";
+import TemplateModal from "../components/TemplateModal";
+import TemplatePanel from "../components/TemplatePanel";
 import Markdown from "../components/Markdown";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -45,6 +50,11 @@ export default function BrainTab({ user, settings, save, onToast }) {
   const [editing, setEditing] = useState(null);
   const [catsOpen, setCatsOpen] = useState(false);
   const [catsText, setCatsText] = useState("");
+  const [pick, setPick] = useState({});                   // entry id → true: the entries a document will be drafted from
+  const [docOpen, setDocOpen] = useState(false);
+  const [docTemplate, setDocTemplate] = useState("");        // a template chosen with Guna: the document modal opens on it
+  const [tplOpen, setTplOpen] = useState(false);
+  const templatesT = useTable(TABLES.docTemplates, { enabled: true, order: "created_at", limit: 100 });
   const fileRef = useRef(null);
   const entries = entriesT.rows;
   const missing = /semasa_brain/.test(entriesT.error || inboxT.error || "");
@@ -154,6 +164,11 @@ export default function BrainTab({ user, settings, save, onToast }) {
     { label: t("Perlu semakan", "Needs a look"), value: String(sum.lowConfidence), icon: Sparkles, hint: t("AI kurang pasti", "the AI was unsure"), tone: sum.lowConfidence ? "warn" : "" },
   ];
   const set = (k, v) => setFilter((f) => ({ ...f, [k]: v }));
+  const picked = entries.filter((e) => pick[e.id]);
+  const docItems = picked.map((e) => ({ kind: e.kind, id: e.id, title: e.title, text: entryText(e) }));
+  const kindsPicked = new Set(picked.map((e) => e.kind));
+  const docType = kindsPicked.size && [...kindsPicked].every((k) => ["skill", "checklist"].includes(k)) ? "work_instruction"
+    : kindsPicked.size && [...kindsPicked].every((k) => k === "prompt") ? "reusable_prompt" : "faq_pack";
 
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
@@ -166,6 +181,7 @@ export default function BrainTab({ user, settings, save, onToast }) {
         <div className="flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" onClick={() => { setCatsText(cats.join("\n")); setCatsOpen(true); }}>{t("Kategori", "Categories")}</Button>
           <Button variant="ghost" size="sm" onClick={exportAll}><Download size={14} /> {t("Eksport ({n})", "Export ({n})", { n: shown.length })}</Button>
+          <Button variant="ghost" size="sm" onClick={() => setDocOpen(true)} title={t("AI menulis dokumen Word (draf) daripada entri yang dipilih, dalam BM atau English", "The AI drafts a Word document from the entries you ticked, in BM or English")}><FileText size={14} /> {t("Buat dokumen{n}", "Make a document{n}", { n: picked.length ? ` (${picked.length})` : "" })}</Button>
           <Button size="sm" onClick={() => setEditing({ ...BLANK })}><Plus size={14} /> {t("Entri baharu", "New entry")}</Button>
         </div>
       </motion.div>
@@ -228,6 +244,9 @@ export default function BrainTab({ user, settings, save, onToast }) {
         </Card>
       )}
 
+      <DocumentsPanel onToast={onToast} />
+      <TemplatePanel templates={templatesT} onAdd={() => setTplOpen(true)} onUse={(tpl) => { setDocTemplate(tpl.id); setDocOpen(true); }} onToast={onToast} />
+
       {/* the library */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[14rem] flex-1">
@@ -266,6 +285,8 @@ export default function BrainTab({ user, settings, save, onToast }) {
             return (
               <Card key={e.id} className={`p-4 ${e.pinned ? "border-accent/50" : ""}`}>
                 <div className="flex items-start gap-2">
+                  <input type="checkbox" className="mt-1" checked={!!pick[e.id]} onChange={(ev) => setPick((m) => ({ ...m, [e.id]: ev.target.checked }))}
+                    aria-label={t("Pilih untuk dokumen", "Pick for a document")} title={t("Pilih untuk dokumen", "Pick for a document")} />
                   <span className={`mt-0.5 inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${KIND_TONE[e.kind] || ""}`}><Icon size={12} /> {w(KIND_WORDS, e.kind)}</span>
                   <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted">{e.category}</span>
                   {e.confidence != null && Number(e.confidence) < 0.6 && !e.edited && <span className="rounded-pill bg-warn/10 px-2 py-0.5 text-[11px] text-warn" title={t("AI kurang pasti: semak sebelum percaya", "The AI was unsure: check before trusting")}>{Math.round(Number(e.confidence) * 100)}%</span>}
@@ -298,6 +319,10 @@ export default function BrainTab({ user, settings, save, onToast }) {
         </div>
       )}
 
+      {tplOpen && <TemplateModal open onClose={() => setTplOpen(false)} user={user} onToast={onToast} onSent={templatesT.reload} />}
+      {docOpen && <DocumentModal open onClose={() => { setDocOpen(false); setDocTemplate(""); }} user={user} onToast={onToast} items={docItems} defaultType={docType}
+        templates={templatesT.rows} presetTemplate={docTemplate}
+        scope={picked.length ? t("{n} entri dipilih", "{n} entries ticked", { n: picked.length }) : t("tiada entri dipilih: tampal fakta di bawah", "no entries ticked: paste facts below")} onSent={() => setPick({})} />}
       <EditModal editing={editing} onClose={() => setEditing(null)} onSave={saveEntry} cats={cats} t={t} w={w} />
       <Modal open={catsOpen} onClose={() => setCatsOpen(false)} title={t("Kategori", "Categories")}>
         <p className="mb-2 text-xs text-muted">{t("Satu kategori setiap baris. AI memilih daripada senarai ini; \"lain\" sentiasa ada. Entri lama kekal dengan kategori mereka.", "One category per line. The AI chooses from this list; \"lain\" is always there. Older entries keep their category.")}</p>

@@ -1,4 +1,4 @@
-# Resit · snap a receipt, Drive files it, the AI reads it (9 Oct 2026)
+# Resit belian (Purchases) · snap a receipt, Drive files it, the AI reads it (9 Oct 2026)
 
 Wan: *"add feature I can snap and take picture and the picture go to google drive, the AI will read the receipt and outline
 the content and automatically organize"*.

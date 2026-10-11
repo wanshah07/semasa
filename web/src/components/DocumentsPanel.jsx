@@ -57,6 +57,7 @@ export default function DocumentsPanel({ onToast }) {
   const [showLang, setShowLang] = useState({});
   const [busy, setBusy] = useState("");
   const missing = /semasa_brain_docs/.test(docs.error || "");
+  const typeLabel = (r) => (r.doc_type === "template" ? `${t("Templat", "Template")}: ${r.template_snapshot?.name || ""}` : typeOf(r.doc_type)?.label[L]);
   const guard = (id, fn) => async () => { setBusy(id); try { await fn(); } catch (e) { onToast(e.message || String(e), "danger"); } finally { setBusy(""); } };
 
   const save = (doc) => {
@@ -91,8 +92,8 @@ export default function DocumentsPanel({ onToast }) {
             <li key={r.id} className="py-2.5 text-sm">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className={`rounded-pill px-2 py-0.5 text-[11px] ${TONE[r.status] || ""}`}>{(STATUS_WORDS[r.status] || [r.status, r.status])[L]}</span>
-                <span className="min-w-0 flex-1 truncate font-medium">{(r.title || doc?.title || typeOf(r.doc_type)?.label[L] || r.doc_type)}</span>
-                <span className="text-xs text-muted">{typeOf(r.doc_type)?.label[L]} · {r.lang === "both" ? "BM + EN" : r.lang === "en" ? "EN" : "BM"} · {t("{n} bahan", ["{n} item", "{n} items"], { n: (r.source_refs || []).length })}</span>
+                <span className="min-w-0 flex-1 truncate font-medium">{(r.title || doc?.title || typeLabel(r) || r.doc_type)}</span>
+                <span className="text-xs text-muted">{typeLabel(r)} · {r.lang === "both" ? "BM + EN" : r.lang === "en" ? "EN" : "BM"} · {t("{n} bahan", ["{n} item", "{n} items"], { n: (r.source_refs || []).length })}</span>
                 <span className="text-xs text-muted">{timeAgo(r.updated_at || r.created_at)}</span>
                 <span className="flex flex-wrap gap-1">
                   {r.status === "done" && langs.filter((l) => r.result?.[l]).map((l) => (

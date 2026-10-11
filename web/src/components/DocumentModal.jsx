@@ -3,7 +3,8 @@ import { FileUp, Loader2, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { prepareFile } from "../lib/brainFiles";
-import { DOC_TYPES, LANG_CHOICES, LIMITS, MARKER, STATUS, assembleSource, requestRow, typeOf, validateRequest } from "../lib/documents";
+import { useTable } from "../lib/hooks";
+import { BUILTIN_TYPES, LANG_CHOICES, LIMITS, MARKER, STATUS, assembleSource, requestRow, typeOf, usableTemplates, validateRequest } from "../lib/documents";
 import Button from "./ui/Button";
 import { Input, Label, Modal, Segmented, Select, TextArea } from "./ui/Field";
 
@@ -11,9 +12,13 @@ import { Input, Label, Modal, Segmented, Select, TextArea } from "./ui/Field";
    (Otak entries or FAQs) plus any facts pasted here and any Word / Excel / CSV / text file read here. The worker
    (backend/semasa/brain_docs.py) drafts it in Bahasa Malaysia, English or both; it comes back in the Dokumen list in the Otak
    tab as a Word file. A PDF or a picture is dropped into Otak first and its entries picked here: the page reads only words. */
-export default function DocumentModal({ open, onClose, user, onToast, items = [], scope = "", defaultType = "faq_pack", onSent }) {
+export default function DocumentModal({ open, onClose, user, onToast, items = [], scope = "", defaultType = "faq_pack", templates, presetTemplate = "", onSent }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? 1 : 0;
+  const loaded = useTable(TABLES.docTemplates, { enabled: open && templates === undefined, realtime: false, limit: 100 });
+  const tpls = usableTemplates(templates ?? loaded.rows);
+  const [via, setVia] = useState(presetTemplate ? "template" : "builtin");      // the structure comes from a built-in type or from one of my templates
+  const [templateId, setTemplateId] = useState(presetTemplate || "");
   const [type, setType] = useState(defaultType);
   const [docLang, setDocLang] = useState("ms");
   const [title, setTitle] = useState("");
@@ -22,9 +27,11 @@ export default function DocumentModal({ open, onClose, user, onToast, items = []
   const [facts, setFacts] = useState("");
   const [files, setFiles] = useState([]);                 // [{ name, text }] read here
   const [busy, setBusy] = useState(false);
-  const spec = typeOf(type);
+  const chosen = via === "template" ? tpls.find((x) => x.id === (templateId || tpls[0]?.id)) || null : null;
+  const effType = via === "template" ? "template" : type;
+  const spec = via === "template" ? (chosen ? { description: [chosen.description, chosen.description], sections: chosen.structure.map((s) => ({ heading: [s.heading.ms, s.heading.en] })) } : null) : typeOf(type);
   const source = assembleSource({ items: [...items, ...files.map((f) => ({ kind: "file", id: "", title: f.name, text: f.text }))], text: facts });
-  const bad = validateRequest({ type, lang: docLang, source, structure });
+  const bad = validateRequest({ type: effType, lang: docLang, source, structure, template: chosen });
 
   const addFiles = async (list) => {
     for (const f of Array.from(list || [])) {
@@ -40,7 +47,7 @@ export default function DocumentModal({ open, onClose, user, onToast, items = []
     if (bad.length) return onToast(t("Semak: {f}", "Check: {f}", { f: bad.map((b) => b[L]).join("; ") }), "danger");
     setBusy(true);
     try {
-      const { error } = await supabase.from(TABLES.brainDocs).insert(requestRow({ type, lang: docLang, title, note, structure, source, userId: user?.id || null }));
+      const { error } = await supabase.from(TABLES.brainDocs).insert(requestRow({ type: effType, lang: docLang, title, note, structure, source, userId: user?.id || null, template: chosen }));
       if (error) throw new Error(/semasa_brain_docs/.test(errText(error)) ? t("Jadual belum ada: jalankan supabase/037_brain_docs.sql sekali.", "The table is not there yet: run supabase/037_brain_docs.sql once.") : errText(error));
       onToast(t("Dihantar. Draf siap dalam seminit dua: lihat Otak AI → Dokumen.", "Sent. The draft is ready in a minute or two: see AI brain → Documents."), "ok");
       setFiles([]); setFacts(""); setNote(""); setTitle("");
@@ -56,9 +63,19 @@ export default function DocumentModal({ open, onClose, user, onToast, items = []
             `Every document is a ${STATUS.en}. The AI does not decide halal status, compliance or approval, and invents no name, date, number, version, signature or owner. Whatever the material lacks is marked ${MARKER.en}.`)}
         </p>
         <div>
-          <Label>{t("Jenis dokumen", "Document type")}</Label>
-          <Select className="w-full" value={type} onChange={setType} aria-label={t("Jenis dokumen", "Document type")} options={DOC_TYPES.map((d) => [d.id, d.label[L]])} />
-          <p className="mt-1 text-xs text-muted">{spec?.description[L]}</p>
+          <Label>{t("Struktur dokumen", "Document structure")}</Label>
+          <Segmented value={via} onChange={setVia} options={[["builtin", t("Jenis siap", "Built-in types")], ["template", t("Templat saya ({n})", "My templates ({n})", { n: tpls.length })]]} />
+          {via === "builtin" ? (
+            <div className="mt-2">
+              <Select className="w-full" value={type} onChange={setType} aria-label={t("Jenis dokumen", "Document type")} options={BUILTIN_TYPES.map((d) => [d.id, d.label[L]])} />
+              <p className="mt-1 text-xs text-muted">{spec?.description[L]}</p>
+            </div>
+          ) : tpls.length ? (
+            <div className="mt-2">
+              <Select className="w-full" value={chosen?.id || ""} onChange={setTemplateId} aria-label={t("Templat", "Template")} options={tpls.map((x) => [x.id, x.name])} />
+              {chosen?.description && <p className="mt-1 text-xs text-muted">{chosen.description}</p>}
+            </div>
+          ) : <p className="mt-2 text-xs text-warn">{t("Belum ada templat yang siap. Tambah dokumen rujukan di Otak AI → Templat dokumen.", "No template is ready yet. Add a reference document under AI brain → Document templates.")}</p>}
           {spec && spec.sections.length > 0 && <p className="mt-1 text-[11px] text-muted">{spec.sections.map((s) => s.heading[L]).join(" · ")}</p>}
         </div>
         <div>
@@ -66,7 +83,7 @@ export default function DocumentModal({ open, onClose, user, onToast, items = []
           <Segmented value={docLang} onChange={setDocLang} options={LANG_CHOICES.map(([v, ms, en]) => [v, L ? en : ms])} />
           {docLang === "both" && <p className="mt-1 text-xs text-muted">{t("Dua fail Word: satu BM, satu English, masing-masing ditulis daripada bahan yang sama.", "Two Word files: one BM, one English, each written from the same material.")}</p>}
         </div>
-        {type === "custom" && (
+        {via === "builtin" && type === "custom" && (
           <div><Label hint={t("satu bahagian setiap baris; tambah | untuk jadual dan lajurnya", "one section per line; add | for a table and its columns")}>{t("Struktur anda", "Your structure")}</Label>
             <TextArea rows={5} maxLength={LIMITS.structure} value={structure} onChange={(e) => setStructure(e.target.value)} placeholder={"Tujuan\nSkop\nSenarai semak | Item | Status | Catatan"} /></div>
         )}

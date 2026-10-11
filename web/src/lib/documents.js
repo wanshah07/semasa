@@ -15,7 +15,10 @@ export const DOC_TYPES = RULES.types.map((t) => ({
   sections: t.sections.map((s) => ({ key: s.key, kind: s.kind, heading: [s.heading.ms, s.heading.en] })),
 }));
 export const TYPE_IDS = DOC_TYPES.map((t) => t.id);
+/** The types offered as they are; "template" is chosen through the user's own templates instead. */
+export const BUILTIN_TYPES = DOC_TYPES.filter((t) => t.id !== "template");
 export const LANG_CHOICES = [["ms", "Bahasa Malaysia", "Bahasa Malaysia"], ["en", "English", "English"], ["both", "BM + English", "BM + English"]];
+export const KIND_WORDS = { paragraphs: ["Teks", "Text"], bullets: ["Senarai", "List"], table: ["Jadual", "Table"] };
 export const STATUS_WORDS = { pending: ["Menunggu AI", "Waiting for the AI"], working: ["Sedang ditulis", "Being drafted"], done: ["Siap", "Ready"], error: ["Gagal", "Failed"] };
 
 const kindWord = { note: "Nota", faq: "FAQ", skill: "Skill", prompt: "Prompt", reference: "Rujukan", checklist: "Senarai semak" };
@@ -61,23 +64,79 @@ export function assembleSource({ items = [], text = "" } = {}) {
   return { text: joined, refs, chars, over: chars > LIMITS.read, cut };
 }
 
-/** Why a request cannot be sent yet, in words (an empty list means it can). */
-export function validateRequest({ type, lang, source, structure } = {}) {
+/** Why a request cannot be sent yet, in words (an empty list means it can). `template` is the chosen one when type is "template". */
+export function validateRequest({ type, lang, source, structure, template } = {}) {
   const bad = [];
   if (!TYPE_IDS.includes(type)) bad.push(["jenis dokumen", "document type"]);
   if (!["ms", "en", "both"].includes(lang)) bad.push(["bahasa", "language"]);
   if (String(source?.text || "").trim().length < LIMITS.minimum) bad.push(["bahan: pilih entri atau FAQ, atau tampal fakta", "material: pick entries or FAQs, or paste the facts"]);
   if (type === "custom" && !String(structure || "").trim()) bad.push(["struktur: satu bahagian setiap baris", "structure: one section per line"]);
+  if (type === "template" && !(template && template.status === "done" && Array.isArray(template.structure) && template.structure.length)) bad.push(["templat: pilih templat yang sudah siap", "template: choose a template that is ready"]);
   return bad;
 }
 
-/** The row to insert in semasa_brain_docs. */
-export function requestRow({ type, lang, title = "", note = "", structure = "", source, userId = null }) {
+/** The row to insert in semasa_brain_docs. A chosen template travels as a copy of its structure, so the document can be drafted
+    again after the template is edited or deleted. */
+export function requestRow({ type, lang, title = "", note = "", structure = "", source, userId = null, template = null }) {
   return {
     status: "pending", doc_type: type, lang, title: clean(title).slice(0, 120), note: clean(note).slice(0, LIMITS.note),
     custom_structure: type === "custom" ? String(structure || "").slice(0, LIMITS.structure) : "",
+    template_id: type === "template" ? template?.id || null : null,
+    template_snapshot: type === "template" ? { name: template?.name || "", source_lang: template?.source_lang || "ms", structure: template?.structure || [] } : {},
     source_text: source.text, source_refs: source.refs, result: {}, error: "", attempts: 0, created_by: userId,
   };
+}
+
+// ---- templates (supabase/038_doc_templates.sql) ---------------------------------------------------------------------------
+
+/** The row to insert in semasa_doc_templates for one reference read by `readReference`. */
+export function templateRow({ reference, name = "", note = "", userId = null }) {
+  return {
+    status: "pending", name: clean(name || reference.name).slice(0, 120), description: "", source_file: reference.file || "", source_lang: "",
+    note: clean(note).slice(0, LIMITS.note), source_text: reference.text, structure: [], warnings: [], error: "", attempts: 0, created_by: userId,
+  };
+}
+
+/** The templates that can be chosen: read, with at least one section. */
+export const usableTemplates = (list) => (list || []).filter((t) => t.status === "done" && Array.isArray(t.structure) && t.structure.length);
+
+const pipe = (v) => String(v ?? "").split("|").map((c) => clean(c)).filter(Boolean);
+/** A template's sections as the editor's rows: titles in both languages, the kind, columns as "a | b | c", the hint, optional. */
+export function editRows(template) {
+  return (template?.structure || []).map((s) => ({
+    headingMs: s.heading?.ms || "", headingEn: s.heading?.en || "", kind: s.kind || "paragraphs",
+    columnsMs: (s.columns || []).map((c) => c.ms).join(" | "), columnsEn: (s.columns || []).map((c) => c.en).join(" | "),
+    hint: s.hint?.ms || s.hint?.en || "", optional: !!s.optional,
+  }));
+}
+
+/** Why the editor's rows cannot be saved, in words (an empty list means they can). */
+export function editProblems(rows) {
+  const bad = [];
+  const real = (rows || []).filter((r) => clean(r.headingMs) || clean(r.headingEn));
+  if (!real.length) bad.push(["sekurang-kurangnya satu bahagian", "at least one section"]);
+  real.forEach((r, i) => { if (r.kind === "table" && pipe(r.columnsMs || r.columnsEn).length < 2) bad.push([`bahagian ${i + 1}: jadual perlu dua lajur atau lebih (asingkan dengan |)`, `section ${i + 1}: a table needs two or more columns (separate with |)`]); });
+  return bad;
+}
+
+/** The editor's rows back into stored sections. The worker re-checks them when a document is made: it numbers the first column
+    called No. or Bil., and keeps a column that names an owner, date, version or signature only when the material has it. */
+export function structureFromEdit(rows) {
+  const out = [];
+  for (const r of rows || []) {
+    const ms = clean(r.headingMs).slice(0, 120), en = clean(r.headingEn).slice(0, 120);
+    if (!ms && !en) continue;
+    const kind = ["paragraphs", "bullets", "table"].includes(r.kind) ? r.kind : "paragraphs";
+    const hint = clean(r.hint).slice(0, 300);
+    const sec = { key: `s${out.length + 1}`, kind, heading: { ms: ms || en, en: en || ms }, hint: { ms: hint, en: hint } };
+    if (kind === "table") {
+      const cm = pipe(r.columnsMs), ce = pipe(r.columnsEn);
+      const names = cm.length ? cm : ce;
+      sec.columns = names.slice(0, 8).map((c, i) => ({ ms: cm[i] || ce[i] || c, en: ce[i] || cm[i] || c }));
+    } else if (r.optional) sec.optional = true;
+    out.push(sec);
+  }
+  return out;
 }
 
 /** The languages a request asked for, in the order they are shown. */

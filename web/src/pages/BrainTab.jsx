@@ -16,6 +16,8 @@ import {
 import { entryText } from "../lib/documents";
 import DocumentModal from "../components/DocumentModal";
 import DocumentsPanel from "../components/DocumentsPanel";
+import TemplateModal from "../components/TemplateModal";
+import TemplatePanel from "../components/TemplatePanel";
 import Markdown from "../components/Markdown";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -50,6 +52,9 @@ export default function BrainTab({ user, settings, save, onToast }) {
   const [catsText, setCatsText] = useState("");
   const [pick, setPick] = useState({});                   // entry id → true: the entries a document will be drafted from
   const [docOpen, setDocOpen] = useState(false);
+  const [docTemplate, setDocTemplate] = useState("");        // a template chosen with Guna: the document modal opens on it
+  const [tplOpen, setTplOpen] = useState(false);
+  const templatesT = useTable(TABLES.docTemplates, { enabled: true, order: "created_at", limit: 100 });
   const fileRef = useRef(null);
   const entries = entriesT.rows;
   const missing = /semasa_brain/.test(entriesT.error || inboxT.error || "");
@@ -240,6 +245,7 @@ export default function BrainTab({ user, settings, save, onToast }) {
       )}
 
       <DocumentsPanel onToast={onToast} />
+      <TemplatePanel templates={templatesT} onAdd={() => setTplOpen(true)} onUse={(tpl) => { setDocTemplate(tpl.id); setDocOpen(true); }} onToast={onToast} />
 
       {/* the library */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -313,7 +319,9 @@ export default function BrainTab({ user, settings, save, onToast }) {
         </div>
       )}
 
-      {docOpen && <DocumentModal open onClose={() => setDocOpen(false)} user={user} onToast={onToast} items={docItems} defaultType={docType}
+      {tplOpen && <TemplateModal open onClose={() => setTplOpen(false)} user={user} onToast={onToast} onSent={templatesT.reload} />}
+      {docOpen && <DocumentModal open onClose={() => { setDocOpen(false); setDocTemplate(""); }} user={user} onToast={onToast} items={docItems} defaultType={docType}
+        templates={templatesT.rows} presetTemplate={docTemplate}
         scope={picked.length ? t("{n} entri dipilih", "{n} entries ticked", { n: picked.length }) : t("tiada entri dipilih: tampal fakta di bawah", "no entries ticked: paste facts below")} onSent={() => setPick({})} />}
       <EditModal editing={editing} onClose={() => setEditing(null)} onSave={saveEntry} cats={cats} t={t} w={w} />
       <Modal open={catsOpen} onClose={() => setCatsOpen(false)} title={t("Kategori", "Categories")}>

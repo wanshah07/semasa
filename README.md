@@ -762,6 +762,14 @@ or clause that is not in it is listed under *Source check*; an owner, date, vers
 wording that reads as a halal or approval decision is listed for a person). The structure of every type is one file,
 `rules/documents.json`, read by the worker and the page. Run `supabase/037_brain_docs.sql` once. `ops/BRAIN.md`.
 
+**Your own templates.** Under *Templat dokumen* in the Otak tab, **Tambah rujukan** takes a blank form, a SOP template or an example
+(Word, Excel, CSV, text, Markdown). The AI lists its sections and table columns in the reference's own words with the other
+language beside them, a check lists any title it could not find in the reference, and you can edit the result. Then choose it under
+*My templates* when you make a document (from the Otak tab or the FAQ tab). A column named No./Bil. is numbered by the renderer;
+an owner, date, version or signature column is filled only if the material names it. Only the words of the reference are kept, not
+the file, and the Word file follows the template's structure, not its fonts, header or footer. Run `supabase/038_doc_templates.sql`
+once, after 037.
+
 ## Card or table
 
 Current issues, Ideas and Posts each switch between cards and a table. The switch is remembered in this browser.

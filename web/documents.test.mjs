@@ -8,18 +8,21 @@ import { pathToFileURL } from "node:url";
 import { unzipSync, strFromU8 } from "fflate";
 import { DOCX_MIME, buildDocx, docFileName } from "./src/lib/docxWrite.js";
 import { docxToText } from "./src/lib/officeText.js";
+import { REFERENCE_LIMIT, baseName, docxMarked, isHeading, readReference } from "./src/lib/templateOutline.js";
 
 const here = new URL("./", import.meta.url);
 // Node needs an import attribute for JSON that Vite does not; inline the rules into a temporary copy of the module instead.
 const rules = readFileSync(new URL("../rules/documents.json", here), "utf8");
 const dir = mkdtempSync(join(tmpdir(), "documents-"));
 writeFileSync(join(dir, "documents.mjs"), readFileSync(new URL("./src/lib/documents.js", here), "utf8").replace(/import RULES from [^\n]+\n/, `const RULES = ${rules};\n`));
-const { DOC_TYPES, LIMITS, TYPE_IDS, assembleSource, docToText, docWarnings, entryText, faqText, requestRow, validateRequest } = await import(pathToFileURL(join(dir, "documents.mjs")).href);
+const { BUILTIN_TYPES, DOC_TYPES, LIMITS, TYPE_IDS, assembleSource, docToText, docWarnings, editProblems, editRows, entryText, faqText, requestRow, structureFromEdit, templateRow, usableTemplates, validateRequest } = await import(pathToFileURL(join(dir, "documents.mjs")).href);
 
 let n = 0;
 const t = (name, fn) => { try { fn(); n++; } catch (e) { console.error("FAIL:", name); throw e; } };
+const ta = async (name, fn) => { try { await fn(); n++; } catch (e) { console.error("FAIL:", name); throw e; } };
 const py = readFileSync(new URL("../backend/semasa/brain_docs.py", here), "utf8");
 const sql = readFileSync(new URL("../supabase/037_brain_docs.sql", here), "utf8");
+const sql38 = readFileSync(new URL("../supabase/038_doc_templates.sql", here), "utf8");
 
 const doc = (over = {}) => ({
   lang: "ms", type: "sop_draft", title: "SOP Penerimaan Bahan & Label <1>", status: "DRAF UNTUK SEMAKAN",
@@ -34,12 +37,14 @@ const doc = (over = {}) => ({
 });
 
 t("the types are the worker's types and the database's: one list in three places", () => {
-  assert.equal(TYPE_IDS.length, 14);
-  for (const id of TYPE_IDS) { assert.ok(py.includes("RULES_PATH") && sql.includes(`'${id}'`), id); }
-  const listed = [...sql.match(/doc_type in \(([^)]*)\)/s)[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
-  assert.deepEqual([...listed].sort(), [...TYPE_IDS].sort());
+  assert.equal(TYPE_IDS.length, 15);
+  for (const id of TYPE_IDS) assert.ok(py.includes("RULES_PATH") && sql38.includes(`'${id}'`), id);
+  const list = (text) => [...text.match(/doc_type in \(([^)]*)\)/s)[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
+  assert.deepEqual(list(sql), [...TYPE_IDS].filter((i) => i !== "template").sort());      // 037 as it was run
+  assert.deepEqual(list(sql38), [...TYPE_IDS].sort());                                       // 038 adds "template"
   assert.ok(DOC_TYPES.every((x) => x.label[0] && x.label[1] && x.description[0] && x.description[1]));
   assert.equal(DOC_TYPES.find((x) => x.id === "custom").sections.length, 0);
+  assert.equal(BUILTIN_TYPES.length, 14); assert.ok(!BUILTIN_TYPES.some((x) => x.id === "template"));
 });
 
 t("the limit the page warns at is the one the worker reads", () => {
@@ -75,7 +80,75 @@ t("a request is checked in words and becomes a pending row, with an own structur
   assert.equal(validateRequest({ type: "custom", lang: "ms", source, structure: " " }).length, 1);
   const row = requestRow({ type: "faq_pack", lang: "en", title: "  FAQ  halal ", note: "n".repeat(900), structure: "ignored", source, userId: "u1" });
   assert.equal(row.status, "pending"); assert.equal(row.title, "FAQ halal"); assert.equal(row.note.length, LIMITS.note); assert.equal(row.custom_structure, "");
+  assert.equal(row.template_id, null); assert.deepEqual(row.template_snapshot, {});
   assert.deepEqual(row.result, {}); assert.equal(row.created_by, "u1"); assert.equal(requestRow({ type: "custom", lang: "ms", structure: "A | b", source }).custom_structure, "A | b");
+});
+
+const TPL = { id: "t1", status: "done", name: "Peta kes guna AI", source_lang: "ms", structure: [{ key: "s1", kind: "paragraphs", heading: { ms: "Tujuan", en: "Purpose" }, hint: { ms: "", en: "" } }] };
+
+t("a request that chooses a template carries a copy of it and needs a template that is ready", () => {
+  const source = assembleSource({ text: "Pekerja receiving memeriksa label bahan." });
+  assert.deepEqual(validateRequest({ type: "template", lang: "ms", source, template: TPL }), []);
+  assert.equal(validateRequest({ type: "template", lang: "ms", source }).length, 1);
+  assert.equal(validateRequest({ type: "template", lang: "ms", source, template: { ...TPL, status: "working" } }).length, 1);
+  assert.equal(validateRequest({ type: "template", lang: "ms", source, template: { ...TPL, structure: [] } }).length, 1);
+  const row = requestRow({ type: "template", lang: "both", source, template: TPL, structure: "ignored" });
+  assert.equal(row.doc_type, "template"); assert.equal(row.template_id, "t1"); assert.equal(row.custom_structure, "");
+  assert.deepEqual(row.template_snapshot, { name: "Peta kes guna AI", source_lang: "ms", structure: TPL.structure });
+  assert.equal(requestRow({ type: "sop_draft", lang: "ms", source, template: TPL }).template_id, null);       // a template means nothing for another type
+});
+
+t("a template is chosen only when it is read and has sections; a reference row is a pending template", () => {
+  assert.deepEqual(usableTemplates([TPL, { ...TPL, id: "2", status: "pending" }, { ...TPL, id: "3", structure: [] }, { id: "4", status: "done" }]).map((x) => x.id), ["t1"]);
+  assert.deepEqual(usableTemplates(null), []);
+  const row = templateRow({ reference: { name: "Borang FRM", file: "Borang_FRM.docx", text: "# Tujuan\nxx" }, note: "  untuk klien halal ", userId: "u1" });
+  assert.equal(row.status, "pending"); assert.equal(row.name, "Borang FRM"); assert.equal(row.source_file, "Borang_FRM.docx"); assert.equal(row.note, "untuk klien halal");
+  assert.deepEqual(row.structure, []); assert.equal(row.created_by, "u1"); assert.equal(templateRow({ reference: { name: "a", text: "x" }, name: "  Nama saya " }).name, "Nama saya");
+});
+
+t("the editor's rows round-trip a template and say in words what cannot be saved", () => {
+  const tpl = { structure: [
+    { key: "s1", kind: "paragraphs", heading: { ms: "Tujuan", en: "Purpose" }, hint: { ms: "Satu ayat", en: "Satu ayat" }, optional: true },
+    { key: "s2", kind: "table", heading: { ms: "Tugasan", en: "Tasks" }, hint: { ms: "", en: "" }, columns: [{ ms: "Bil.", en: "No.", auto_no: true }, { ms: "Tugasan kerja", en: "Work task" }, { ms: "Pemilik", en: "Owner", verbatim: true }] }] };
+  const rows = editRows(tpl);
+  assert.deepEqual(rows[1], { headingMs: "Tugasan", headingEn: "Tasks", kind: "table", columnsMs: "Bil. | Tugasan kerja | Pemilik", columnsEn: "No. | Work task | Owner", hint: "", optional: false });
+  assert.equal(rows[0].optional, true);
+  const back = structureFromEdit(rows);
+  assert.deepEqual(back.map((s) => [s.key, s.kind, s.heading.en, s.optional || false]), [["s1", "paragraphs", "Purpose", true], ["s2", "table", "Tasks", false]]);
+  assert.deepEqual(back[1].columns, [{ ms: "Bil.", en: "No." }, { ms: "Tugasan kerja", en: "Work task" }, { ms: "Pemilik", en: "Owner" }]);   // the worker re-derives the flags
+  assert.deepEqual(editProblems(rows), []);
+  assert.equal(editProblems([]).length, 1);
+  assert.equal(editProblems([{ headingMs: "J", kind: "table", columnsMs: "Satu" }]).length, 1);
+  assert.equal(editProblems([{ headingMs: "J", kind: "table", columnsMs: "A | B" }]).length, 0);
+  const half = structureFromEdit([{ headingMs: "Hanya BM", kind: "table", columnsMs: "A | B", columnsEn: "", hint: "h".repeat(500) }, { headingMs: " ", headingEn: " " }, { headingEn: "Only EN", kind: "weird", optional: true }]);
+  assert.equal(half.length, 2); assert.equal(half[0].heading.en, "Hanya BM"); assert.deepEqual(half[0].columns, [{ ms: "A", en: "A" }, { ms: "B", en: "B" }]);
+  assert.equal(half[0].hint.ms.length, 300); assert.equal(half[1].kind, "paragraphs"); assert.equal(half[1].heading.ms, "Only EN"); assert.equal(half[1].optional, true);
+});
+
+t("a real Word form is read with its headings, its instruction text and its table marked, and the file's own words are kept", () => {
+  const marked = docxMarked(new Uint8Array(readFileSync(new URL("./test-fixtures/template.docx", here))));
+  assert.equal(marked, ["# FRM-AI-001 Peta Kes Guna AI", "Nyatakan tujuan borang ini.", "# Tujuan", "[Tulis tujuan di sini]", "# SKOP DAN TANGGUNGJAWAB",
+    "TABLE:", "| Bil. | Tugasan kerja | Pemilik |", "|  |  |  |", "|  |  |  |", "1. Periksa label bahan dan nombor lot.", "# Catatan (pilihan)", "Akhir."].join("\n"));
+  assert.ok(isHeading({ text: "Tujuan", style: "", allBold: true }) && isHeading({ text: "Anything", style: "Heading2", allBold: false }) && isHeading({ text: "SKOP DAN PERANAN", style: "", allBold: false }));
+  assert.ok(!isHeading({ text: "1. Periksa label bahan.", style: "", allBold: false }) && !isHeading({ text: "Ayat biasa.", style: "", allBold: true }) && !isHeading({ text: "", style: "Heading1", allBold: true }));
+  assert.throws(() => docxMarked(new Uint8Array([1, 2, 3])), /bukan fail Word/);
+});
+
+await ta("a reference of any readable kind becomes words for the worker, and the others are refused by name with what to do", async () => {
+  const f = (parts, name, type = "") => new File(parts, name, { type });
+  const docx = await readReference(f([readFileSync(new URL("./test-fixtures/template.docx", here))], "FRM_AI_001.docx"));
+  assert.equal(docx.name, "FRM AI 001"); assert.equal(docx.file, "FRM_AI_001.docx"); assert.ok(docx.text.startsWith("# FRM-AI-001") && !docx.cut);
+  const xlsx = await readReference(f([readFileSync(new URL("./test-fixtures/plain.xlsx", here))], "Daftar.xlsx"));
+  assert.ok(xlsx.text.includes("TABLE:") && xlsx.text.startsWith("# "));
+  const csv = await readReference(f(["Bil,Tugasan,Pemilik\n1,Semak,Ali\n"], "x.csv"));
+  assert.equal(csv.text, "TABLE:\n| Bil | Tugasan | Pemilik |\n| 1 | Semak | Ali |");
+  const txt = await readReference(f(["# Tujuan\nSkop dan tanggungjawab\n# Prosedur\nLangkah"], "SOP.md"));
+  assert.ok(txt.text.startsWith("# Tujuan"));
+  const long = await readReference(f(["x ".repeat(REFERENCE_LIMIT)], "long.txt"));
+  assert.equal(long.text.length, REFERENCE_LIMIT); assert.equal(long.cut, true);
+  for (const [name, type, why] of [["a.pdf", "application/pdf", "PDF"], ["a.png", "image/png", "gambar"], ["a.doc", "", "format lama"], ["a.exe", "", "tidak dibaca"], ["kosong.txt", "text/plain", "hampir tiada"]])
+    await assert.rejects(() => readReference(f([name === "kosong.txt" ? "  " : "x"], name, type)), (e) => e.message.startsWith(`${name}: `) && e.message.includes(why));
+  assert.equal(baseName("Borang_Receiving v2.docx"), "Borang Receiving v2");
 });
 
 t("the Word file is a valid package that the Word reader reads back, with the marker, the table and the lists in it", () => {

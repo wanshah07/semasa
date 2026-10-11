@@ -82,6 +82,10 @@
   "truncated": {
    "ms": "Bahan terlalu panjang: hanya bahagian pertama dibaca untuk draf ini. Semak bahagian yang tertinggal.",
    "en": "The material was too long: only the first part was read for this draft. Check the part that was left out."
+  },
+  "template_note": {
+   "ms": "Disediakan mengikut templat",
+   "en": "Prepared from the template"
   }
  },
  "types": [
@@ -1264,6 +1268,18 @@
    "description": {
     "ms": "Tulis tajuk bahagian anda sendiri (satu setiap baris; tambah | untuk jadual dan lajurnya).",
     "en": "Write your own section headings (one per line; add | for a table and its columns)."
+   },
+   "sections": []
+  },
+  {
+   "id": "template",
+   "label": {
+    "ms": "Templat saya",
+    "en": "My template"
+   },
+   "description": {
+    "ms": "Struktur daripada dokumen rujukan yang anda tambah dan AI jadikan templat.",
+    "en": "The structure of a reference document you added and the AI made into a template."
    },
    "sections": []
   }

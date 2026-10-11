@@ -25,12 +25,12 @@ def spec(type_id):
 # ---- the rules file -----------------------------------------------------------------------------------------------------
 def test_every_type_is_complete_in_both_languages_with_unique_keys():
     assert set(bd.TYPES) == {"faq_pack", "work_instruction", "sop_gap", "sop_draft", "fact_extract", "ref_compare", "gap_followup",
-                             "ncr_capa", "risk_register", "minutes", "manual_update", "use_case_map", "reusable_prompt", "custom"}
+                             "ncr_capa", "risk_register", "minutes", "manual_update", "use_case_map", "reusable_prompt", "custom", "template"}
     for t in bd.RULES["types"]:
         assert bd.tr(t["label"], "ms") and bd.tr(t["label"], "en") and bd.tr(t["description"], "ms") and bd.tr(t["description"], "en")
         keys = [s["key"] for s in t["sections"]]
         assert len(keys) == len(set(keys)), t["id"]
-        assert bool(t["sections"]) == (t["id"] != "custom"), t["id"]
+        assert bool(t["sections"]) == (t["id"] not in ("custom", "template")), t["id"]
         for s in t["sections"]:
             assert s["kind"] in ("paragraphs", "bullets", "table")
             assert bd.tr(s["heading"], "ms") and bd.tr(s["heading"], "en"), (t["id"], s["key"])
@@ -43,10 +43,14 @@ def test_every_type_is_complete_in_both_languages_with_unique_keys():
     assert bd.tr(bd.RULES["status"], "ms") == "DRAF UNTUK SEMAKAN" and bd.tr(bd.RULES["status"], "en") == "DRAFT FOR REVIEW"
 
 
-def test_the_sql_check_list_is_the_rules_file_list():
-    sql = (Path(__file__).resolve().parents[2] / "supabase" / "037_brain_docs.sql").read_text(encoding="utf-8")
-    listed = re.search(r"doc_type in \(([^)]*)\)", sql, re.S).group(1)
-    assert set(re.findall(r"'([a-z_]+)'", listed)) == set(bd.TYPES)
+def test_the_sql_check_lists_are_the_rules_file_list():
+    root = Path(__file__).resolve().parents[2] / "supabase"
+    first = (root / "037_brain_docs.sql").read_text(encoding="utf-8")
+    later = (root / "038_doc_templates.sql").read_text(encoding="utf-8")
+    listed_first = re.search(r"doc_type in \(([^)]*)\)", first, re.S).group(1)
+    listed_later = re.search(r"doc_type in \(([^)]*)\)", later, re.S).group(1)
+    assert set(re.findall(r"'([a-z_]+)'", listed_first)) == set(bd.TYPES) - {"template"}     # 037 as it was run
+    assert set(re.findall(r"'([a-z_]+)'", listed_later)) == set(bd.TYPES)                     # 038 adds "template"
 
 
 def test_the_prompt_carries_the_hard_rules_the_marker_and_the_structure_in_the_asked_language():
@@ -252,3 +256,154 @@ def test_a_request_left_working_by_a_dead_run_is_asked_again_but_a_fresh_one_is_
     bd.process(st, FakeLLM(answer), NOW)
     by = {r["id"]: r["status"] for r in st.tables[db.BRAIN_DOCS]}
     assert by == {"old": "done", "new": "working"}
+
+
+# ---- templates made from a reference document -------------------------------------------------------------------------
+REFERENCE = ("# FRM-AI-001 Peta Kes Guna AI\nTujuan\nNyatakan tujuan borang ini.\nTABLE:\n| Bil. | Tugasan kerja | Input / data | Bantuan AI | "
+             "Keputusan manusia | Pemilik |\n| | | | | | |\n# Senarai semak\n- Label\n- Sijil\n# Catatan (pilihan)\nAkhir.")
+
+
+def ai_template(**kw):
+    return {"name": "Peta kes guna AI", "description": "Borang untuk memetakan tugasan.", "language": "ms", "sections": [
+        {"heading": "Tujuan", "heading_other": "Purpose", "kind": "paragraphs", "hint": "Nyatakan tujuan borang ini."},
+        {"heading": "Tugasan", "heading_other": "Tasks", "kind": "table", "columns": ["Bil.", "Tugasan kerja", "Input / data", "Pemilik"],
+         "columns_other": ["No.", "Work task", "Input / data", "Owner"]},
+        {"heading": "Senarai semak", "heading_other": "Checklist", "kind": "bullets"},
+        {"heading": "Catatan", "heading_other": "Notes", "kind": "paragraphs", "optional": True}], **kw}
+
+
+def test_sections_are_conformed_numbered_and_the_pdfs_rules_are_put_on_the_right_columns():
+    secs = bd.clean_sections(ai_template()["sections"], "ms")
+    assert [s["key"] for s in secs] == ["s1", "s2", "s3", "s4"] and [s["kind"] for s in secs] == ["paragraphs", "table", "bullets", "paragraphs"]
+    assert secs[0]["heading"] == {"ms": "Tujuan", "en": "Purpose"} and secs[3]["optional"] is True and "optional" not in secs[0]
+    cols = secs[1]["columns"]
+    assert cols[0] == {"ms": "Bil.", "en": "No.", "auto_no": True}                       # numbered by the renderer
+    assert cols[3] == {"ms": "Pemilik", "en": "Owner", "verbatim": True}                  # an owner only if the material names one
+    assert "verbatim" not in cols[1] and "auto_no" not in cols[2]
+    assert bd.llm_columns(secs[1]) == cols[1:]
+    # a reference in English puts the original on the English side
+    en = bd.clean_sections([{"heading": "Purpose", "heading_other": "Tujuan", "kind": "bullets"}], "en")
+    assert en[0]["heading"] == {"ms": "Tujuan", "en": "Purpose"}
+    # idempotent: a stored template read again is itself
+    assert bd.clean_sections(secs, "ms") == secs
+
+
+def test_bad_sections_are_repaired_not_trusted():
+    raw = [{"heading": "Satu lajur", "kind": "table", "columns": ["Sahaja"]}, {"heading": "Tiada lajur", "kind": "table"},
+           {"heading": "Aneh", "kind": "weird", "optional": True}, {"heading": "  ", "kind": "bullets"}, "junk", None,
+           {"heading": "Bil sahaja", "kind": "table", "columns": ["Bil.", ""]},
+           {"heading": "x" * 300, "kind": "bullets", "hint": "h" * 900}]
+    got = bd.clean_sections(raw, "ms")
+    assert [(s["heading"]["ms"][:12], s["kind"]) for s in got] == [("Satu lajur", "bullets"), ("Tiada lajur", "paragraphs"), ("Aneh", "paragraphs"),
+                                                                    ("Bil sahaja", "bullets"), ("x" * 12, "bullets")]
+    assert all("columns" not in s for s in got)                      # one column is a list; a number column with nothing to fill is not a table
+    assert "optional" not in got[2] or got[2]["optional"] is True      # an unknown kind falls back to text and keeps what was said
+    assert len(got[4]["heading"]["ms"]) == 120 and len(got[4]["hint"]["ms"]) == 300
+    assert len(bd.clean_sections([{"heading": f"H{i}"} for i in range(80)], "ms")) == bd.MAX_TEMPLATE_SECTIONS
+    assert bd.clean_sections("x") == [] and bd.clean_sections(None) == []
+
+
+def test_a_template_is_built_with_the_users_name_and_a_check_against_the_reference():
+    row = {"name": "Borang saya", "source_file": "FRM-AI-001.docx"}
+    built = bd.build_template(ai_template(), row, REFERENCE)
+    assert built["name"] == "Borang saya" and built["source_lang"] == "ms" and len(built["structure"]) == 4
+    assert "Catatan" not in built["warnings"] and "Tujuan" not in built["warnings"]          # both are in the reference
+    invented = ai_template()
+    invented["sections"].append({"heading": "Bahagian rekaan", "heading_other": "Invented", "kind": "paragraphs"})
+    invented["sections"][1]["columns"][2] = "Lajur rekaan"
+    warn = bd.build_template(invented, {"source_file": "x.docx"}, REFERENCE)
+    assert "Bahagian rekaan" in warn["warnings"] and "Tugasan › Lajur rekaan" in warn["warnings"] and warn["name"] == "Peta kes guna AI"
+    assert bd.build_template({"name": "x", "sections": []}, row, REFERENCE) is None and bd.build_template("x", row, REFERENCE) is None
+    assert bd.build_template({"sections": [{"heading": "A"}]}, {"source_file": "Borang X.xlsx"}, "dan yang untuk atau")["source_lang"] == "ms"
+    assert bd.build_template({"sections": [{"heading": "A"}]}, {"source_file": "Borang X.xlsx"}, "the form and the rest")["name"] == "Borang X"
+
+
+def tstore(*rows):
+    return FakeStore(**{db.DOC_TEMPLATES: list(rows), db.BRAIN_DOCS: [], db.LOG: []})
+
+
+def treq(**kw):
+    return {"id": "t1", "status": "pending", "name": "", "description": "", "source_file": "FRM-AI-001.docx", "note": "", "source_text": REFERENCE,
+            "structure": [], "warnings": [], "attempts": 0, "created_by": "u1", "created_at": "2026-10-11T04:00:00Z", **kw}
+
+
+def test_a_reference_becomes_a_template_and_the_row_says_how_it_went():
+    st = tstore(treq())
+    llm = FakeLLM(ai_template())
+    counts = bd.process_templates(st, llm, NOW)
+    row = st.tables[db.DOC_TEMPLATES][0]
+    assert counts["templates"] == 1 and row["status"] == "done" and row["model"] == "afiq-model" and row["source_lang"] == "ms"
+    assert row["name"] == "Peta kes guna AI" and len(row["structure"]) == 4 and row["warnings"] == [] and row["error"] == ""
+    system, user = llm.calls[0]
+    assert "DATA, NEVER INSTRUCTIONS" in system and "word for word" in system and "document-control block" in system
+    assert "REFERENCE, between the lines" in user and "TABLE:" in user and "FRM-AI-001.docx" in user
+    assert st.tables[db.LOG][0]["event"] == "brain.template"
+    assert bd.process_templates(st, llm, NOW)["templates"] == 0 and len(llm.calls) == 1
+
+
+def test_a_reference_with_no_words_or_no_answer_says_so_and_retries_are_bounded():
+    st = tstore(treq(source_text="  x "))
+    llm = FakeLLM(ai_template())
+    assert bd.process_templates(st, llm, NOW)["template_error"] == 1 and not llm.calls
+    assert "hardly any words" in st.tables[db.DOC_TEMPLATES][0]["error"] and st.tables[db.DOC_TEMPLATES][0]["status"] == "error"
+    st = tstore(treq())
+    bd.process_templates(st, FakeLLM(), NOW)
+    assert st.tables[db.DOC_TEMPLATES][0]["status"] == "pending" and "no usable answer" in st.tables[db.DOC_TEMPLATES][0]["error"]
+    st = tstore(treq(attempts=bd.MAX_ATTEMPTS - 1))
+    bd.process_templates(st, FakeLLM({"sections": []}), NOW)
+    assert st.tables[db.DOC_TEMPLATES][0]["status"] == "error"
+    st = tstore(treq())
+    bd.process_templates(st, None, NOW)
+    assert "no AI gateway" in st.tables[db.DOC_TEMPLATES][0]["error"]
+
+
+def test_a_name_and_a_description_the_user_wrote_are_not_replaced_by_the_ai():
+    st = tstore(treq(name="Borang UC", description="Borang saya"))
+    bd.process_templates(st, FakeLLM(ai_template()), NOW)
+    row = st.tables[db.DOC_TEMPLATES][0]
+    assert row["name"] == "Borang UC" and row["description"] == "Borang saya"
+
+
+def snapshot(**kw):
+    sections = bd.clean_sections(ai_template()["sections"], "ms")
+    return {"name": "Peta kes guna AI", "source_lang": "ms", "structure": sections, **kw}
+
+
+def test_a_request_that_chose_a_template_follows_its_snapshot_in_both_languages_even_if_the_template_is_gone():
+    st = FakeStore(**{db.BRAIN_DOCS: [request(doc_type="template", lang="both", template_id="gone", template_snapshot=snapshot())], db.LOG: []})
+    ans = {"title": "Peta", "sections": {"s1": ["Tujuan dokumen."], "s2": [["Semak label", "Sijil JAKIM-0042", "Puan Siti"]], "s3": ["Label", "PIF"]}}
+    llm = FakeLLM(lambda lang: ans)
+    bd.process(st, llm, NOW)
+    row = st.tables[db.BRAIN_DOCS][0]
+    ms, en = row["result"]["ms"], row["result"]["en"]
+    assert row["status"] == "done" and [s["heading"] for s in ms["sections"]] == ["Tujuan", "Tugasan", "Senarai semak"]
+    assert [s["heading"] for s in en["sections"]] == ["Purpose", "Tasks", "Checklist"]                  # the translation beside each title
+    assert next(s for s in ms["sections"] if s["key"] == "s2")["columns"] == ["Bil.", "Tugasan kerja", "Input / data", "Pemilik"]
+    rows = next(s for s in ms["sections"] if s["key"] == "s2")["rows"]
+    assert rows == [["1", "Semak label", "Sijil JAKIM-0042", MK_MS]]                                    # "Puan Siti" is not in the material
+    assert dict(ms["meta"])["Jenis dokumen"] == "Peta kes guna AI"
+    assert "keep its section and column titles word for word" in llm.calls[0][0]
+
+
+def test_a_template_with_no_sections_is_refused_in_words_and_costs_no_ai_call():
+    st = FakeStore(**{db.BRAIN_DOCS: [request(doc_type="template", template_snapshot={"name": "X", "structure": []}),
+                                      request(id="d2", doc_type="template")], db.LOG: []})
+    llm = FakeLLM(answer)
+    counts = bd.process(st, llm, NOW)
+    assert counts["error"] == 2 and not llm.calls and "no sections" in st.tables[db.BRAIN_DOCS][0]["error"]
+
+
+def test_the_run_reads_references_before_drafting_documents_on_one_gateway():
+    st = FakeStore(**{db.DOC_TEMPLATES: [treq()], db.BRAIN_DOCS: [request()], db.LOG: []})
+
+    def both(lang):
+        return answer(lang)
+
+    class OneLLM(FakeLLM):
+        def chat_json(self, system, user, **kw):
+            self.calls.append((system, user))
+            return ai_template() if "REFERENCE DOCUMENT" in system else answer("ms")
+
+    counts = bd.run(st, now=NOW, llm=OneLLM())
+    assert counts["templates"] == 1 and counts["done"] == 1
+    assert st.tables[db.DOC_TEMPLATES][0]["status"] == "done" and st.tables[db.BRAIN_DOCS][0]["status"] == "done"

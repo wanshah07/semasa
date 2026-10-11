@@ -76,9 +76,33 @@ brain-docs.yml → python -m semasa.brain_docs → result {ms, en} → the page 
   template file in place, so its fonts, header and footer are not carried over (give your own structure instead, or paste the
   result into your template). Dates the AI writes in another form than the material's (05/10/2026 for 5 Oktober 2026) are listed
   under *Source check* or, in a must-come-from-the-material column, replaced by the marker: safe, a little strict.
-- Set up once: run `supabase/037_brain_docs.sql` (prints `1 | 4 | 1 | 1`); the `Dokumen AI` workflow uses the same secrets and
+- Set up once: run `supabase/037_brain_docs.sql` (prints `1 | 4 | 1 | 1`), then `supabase/038_doc_templates.sql` (prints `1 | 4 | 1 | 1 | 2 | 1`); the `Dokumen AI` workflow uses the same secrets and
   variables as the Otak AI one and needs no Chromium.
 
-Files: `supabase/037_brain_docs.sql` · `rules/documents.json` · `backend/semasa/brain_docs.py` (+ `tests/test_brain_docs.py`, 18)
-· `.github/workflows/brain-docs.yml` · `web/src/lib/documents.js` · `web/src/lib/docxWrite.js` (+ `web/documents.test.mjs`, 11)
+Files: `supabase/037_brain_docs.sql` · `rules/documents.json` · `backend/semasa/brain_docs.py` (+ `tests/test_brain_docs.py`, 27)
+· `.github/workflows/brain-docs.yml` · `web/src/lib/documents.js` · `web/src/lib/docxWrite.js` (+ `web/documents.test.mjs`, 16)
 · `web/src/components/DocumentModal.jsx` · `web/src/components/DocumentsPanel.jsx`.
+
+### Your own templates (11 Oct 2026)
+```
+Otak tab → Templat dokumen → "Tambah rujukan": a Word / Excel / CSV / text file, read in the browser (web/src/lib/templateOutline.js)
+  → semasa_doc_templates row, status pending ──(database → 'brain_doc_pending')──► brain-docs.yml → process_templates
+  → structure (sections, kinds, table columns, BM + EN titles) + warnings → Edit / Guna → a document request carrying a copy of it
+```
+- **Reading**: a Word form keeps its shape for the AI: a paragraph in a heading style, or short and all bold, or short and all
+  capitals, is `# Heading`; a table is `TABLE:` and `| a | b |` rows (first row the header); other paragraphs, such as the form's own
+  instruction text, stay as lines. Excel: each sheet is a heading and a table. CSV: a table. Text and Markdown as they are. The marks
+  are a hint, never a rule. PDF, pictures and old .doc/.xls are refused by name with what to do.
+- **The AI makes the template, and the code checks it** (`clean_sections`, `unmatched`): the reference's own titles word for word, the
+  translation beside each; a kind outside paragraphs / bullets / table becomes text; a table needs two columns; a first column called
+  No. or Bil. is numbered by the renderer; a column that names an owner, date, version, signature or approver is kept only if the
+  material has it (the same rule as the built-in types); every title the reference does not contain is listed under *Not found in the
+  reference*, for you to check or edit. The document-control block (number, version, dates, prepared, reviewed, approved,
+  signature), headers and footers are left out because the renderer writes them.
+- **A request keeps a copy of the template** (`template_snapshot`), so *Draft again* works after the template is edited or deleted.
+  Editing a template changes only documents made afterwards.
+- **Not done, said plainly**: the reference file is not stored (only its words) and the Word file is built from the structure, so the
+  template's fonts, header, footer and logo are not carried over. Doing that means keeping the file and building the output inside it:
+  a separate change, with a private bucket for the file.
+- Files: `supabase/038_doc_templates.sql` · `web/src/lib/templateOutline.js` · `web/src/components/TemplateModal.jsx` ·
+  `web/src/components/TemplatePanel.jsx` · `web/test-fixtures/template.docx` (made with python-docx).

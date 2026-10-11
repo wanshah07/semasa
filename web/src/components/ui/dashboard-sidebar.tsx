@@ -10,6 +10,7 @@
      icon keeps its name for a tooltip and a screen reader). Semasa's auto-hide mode uses it (components/AppSidebar.jsx).
    Colours come from Semasa's theme through the shadcn names mapped in tailwind.config.js (bg-card → surface, …). */
 import React, { useState } from 'react';
+import { VariableFontCursorProximity } from '@/components/ui/variable-font-cursor-proximity';
 import {
   Search,
   LayoutDashboard,
@@ -108,6 +109,8 @@ const mockBottomItems: NavItemData[] = [
 const mockWorkspaces = ['Acme Corp', 'Personal Workspace', 'Client Sandbox'];
 
 const CollapsedContext = React.createContext(false);
+// the nav element, so a label's variable-font effect measures the pointer inside the menu (components/ui/variable-font-cursor-proximity.tsx)
+const NavRefContext = React.createContext<React.RefObject<HTMLElement | null> | null>(null);
 
 function WorkspaceSwitcher({ selected, onSelect, workspaces = mockWorkspaces, plan = 'Pro Plan', onCreate }: {
   selected?: string,
@@ -210,6 +213,7 @@ function NavItem({
   level?: number;
 }) {
   const collapsed = React.useContext(CollapsedContext);
+  const navRef = React.useContext(NavRefContext);
   const isActive = activeId === item.id || (collapsed && !!item.children?.some(c => c.id === activeId));
   const hasChildren = !!item.children;
   const hasBadge = item.badge !== undefined && item.badge !== '';
@@ -271,7 +275,12 @@ function NavItem({
             strokeWidth={1.5}
           />
           <span className="text-[13px] tracking-wide truncate">
-            {item.title}
+            {navRef ? (
+              <VariableFontCursorProximity containerRef={navRef} radius={48} falloff="exponential"
+                fromFontVariationSettings={isActive ? "'wght' 500" : "'wght' 400"} toFontVariationSettings="'wght' 700">
+                {item.title}
+              </VariableFontCursorProximity>
+            ) : item.title}
           </span>
         </div>
 
@@ -352,10 +361,12 @@ export function SidebarNav({
   const [internalId, setInternalId] = useState('home');
   const currentId = activeId !== undefined ? activeId : internalId;
   const handleSelect = onSelect || setInternalId;
+  const navRef = React.useRef<HTMLElement>(null);
 
   return (
     <CollapsedContext.Provider value={collapsed}>
-    <nav aria-label={label} data-collapsed={collapsed || undefined}
+    <NavRefContext.Provider value={navRef}>
+    <nav ref={navRef} aria-label={label} data-collapsed={collapsed || undefined}
       className={`flex flex-col ${collapsed ? 'w-[60px]' : 'w-[260px]'} h-full bg-card/50 border-r border-border/50 p-3 font-sans ${className}`}>
       <WorkspaceSwitcher selected={activeWorkspace} onSelect={onWorkspaceSelect} workspaces={workspaces} plan={plan}
         onCreate={onCreateWorkspace} />
@@ -392,6 +403,7 @@ export function SidebarNav({
         ))}
       </div>
     </nav>
+    </NavRefContext.Provider>
     </CollapsedContext.Provider>
   );
 }

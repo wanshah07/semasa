@@ -400,6 +400,7 @@ export default function App() {
   else if (tab === "otak") body = allowed ? <BrainTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "langganan") body = allowed ? <SubscriptionsTab user={user} onToast={push} /> : gate(null);
+  else if (tab === "resit") body = allowed ? <ResitTab user={user} onToast={push} /> : gate(null);
   else if (tab === "crm") body = allowed ? <CrmTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "repo") body = allowed ? <RepoTab settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "api") body = allowed ? <ApiTab /> : gate(null);

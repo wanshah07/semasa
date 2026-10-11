@@ -27,6 +27,7 @@ export const TABLES = {
   subscriptions: "semasa_subscriptions",                      // Langganan (supabase/030_subscriptions.sql)
   receipts: "semasa_receipts",                                // Resit (supabase/033_receipts.sql)
   brainInbox: "semasa_brain_inbox", brainEntries: "semasa_brain_entries",   // Otak AI (supabase/036_brain.sql)
+  brainDocs: "semasa_brain_docs",                             // documents drafted from the brain and the FAQ (supabase/037_brain_docs.sql)
   postMetrics: "semasa_post_metrics",                         // Prestasi (supabase/034_post_metrics.sql)
   repos: "semasa_repos", apiStatus: "semasa_api_status", apiUsage: "semasa_api_usage",   // Repo + API (supabase/035_repos_api.sql)
   // CRM (supabase/031_crm.sql)

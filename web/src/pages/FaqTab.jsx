@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, Bot, Check, ChevronDown, Clock, FileDown, FileSpreadsheet, Image as ImageIcon, Inbox, Loader2,
+import { AlertTriangle, Bot, Check, ChevronDown, Clock, FileDown, FileSpreadsheet, FileText, Image as ImageIcon, Inbox, Loader2,
   Megaphone, Pencil, Plus, RotateCcw, Search, Sparkles, Trash2, X } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
@@ -8,6 +8,8 @@ import { timeAgo } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion-card-utils/accordion";
 import { aOf, download, exportExcel, exportPdf, exportPoster, faqCategories, fileName, posterCard, qOf } from "../lib/faqExport";
+import { faqText } from "../lib/documents";
+import DocumentModal from "../components/DocumentModal";
 import FaqAiBar from "./FaqAiBar";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -36,6 +38,7 @@ export default function FaqTab({ faqs, settings, brand, user, onToast, onPost })
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState("");
+  const [docOpen, setDocOpen] = useState(false);       // "Dokumen": the AI drafts a Word document from the questions shown
   const [openCat, setOpenCat] = useState("");          // the category card opened to show all its questions
   const website = brand?.regulab?.website || "";
 
@@ -164,7 +167,15 @@ export default function FaqTab({ faqs, settings, brand, user, onToast, onPost })
           onToast(t("Excel dimuat turun.", "Excel file downloaded."), "ok");
         })}>
           {busy === "excel" ? <Loader2 size={12} className="animate-spin" /> : <FileSpreadsheet size={12} />} Excel</Button>
+        <Button size="sm" variant="soft" disabled={!shown.length || !!busy} onClick={() => setDocOpen(true)}
+          title={t("AI menulis dokumen Word (draf) daripada soalan ini, dalam BM atau English", "The AI drafts a Word document from these questions, in BM or English")}>
+          <FileText size={12} /> {t("Dokumen", "Document")}</Button>
       </Card>
+      {docOpen && <DocumentModal open onClose={() => setDocOpen(false)} user={user} onToast={onToast} defaultType="faq_pack" scope={label}
+        items={shown.map((r) => {
+          const l = exportLang === "en" ? "en" : "bm";
+          return { kind: "faq", id: r.id, title: qOf(r, l).slice(0, 90), text: faqText(qOf(r, l), aOf(r, l), (l === "en" ? catBy[r.category]?.en : catBy[r.category]?.bm) || r.category) };
+        })} />}
 
       {candidates.length > 0 && (
         <details className="mt-4 rounded-card border border-line bg-surface p-3">

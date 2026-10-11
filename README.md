@@ -751,6 +751,17 @@ skills, prompts, references and checklists, each with a category and tags. Searc
 zip (skills as `<slug>/SKILL.md`). A link a machine cannot read (a post behind a login) says so and asks for the caption or a
 screenshot instead; nothing is invented. Run `supabase/036_brain.sql` once. `ops/BRAIN.md`.
 
+**Documents from the FAQ and the brain** (Wan, 11 Oct 2026, with the halal-documentation prompt workbook as the pattern). Tick
+entries in the Otak tab (or press **Dokumen** in the FAQ tab), choose a type and a language (Bahasa Malaysia, English or both) and
+the bot drafts a Word file: FAQ document, work instruction, SOP gap review, SOP draft, fact extraction, reference comparison,
+gap list with a follow-up e-mail, NCR draft, risk register, meeting minutes, manual amendment list, AI use-case map, reusable
+prompt, or your own structure. Every one is a **DRAFT FOR REVIEW**: the AI never decides halal status, compliance, approval or
+closure, and invents no name, date, number, version, signature or owner; whatever the material lacks is marked
+`[Perlu pengesahan]` / `[Needs confirmation]` and highlighted yellow. The worker checks the draft against the material (a figure
+or clause that is not in it is listed under *Source check*; an owner, date, version or name is kept only if the material has it;
+wording that reads as a halal or approval decision is listed for a person). The structure of every type is one file,
+`rules/documents.json`, read by the worker and the page. Run `supabase/037_brain_docs.sql` once. `ops/BRAIN.md`.
+
 ## Card or table
 
 Current issues, Ideas and Posts each switch between cards and a table. The switch is remembered in this browser.

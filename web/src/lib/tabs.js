@@ -19,7 +19,7 @@ export function tabsOf(t) {
     { id: "bil", label: t("Bil & Resit", "Billing"), icon: Receipt, group: "business" },
     { id: "langganan", label: t("Langganan", "Subscriptions"), icon: CreditCard, group: "business" },
     { id: "crm", label: "CRM", icon: Contact, group: "business" },
-    { id: "resit", label: t("Resit", "Receipts"), icon: ScanLine, group: "business" },
+    { id: "resit", label: t("Resit belian", "Purchases"), icon: ScanLine, group: "business" },
     { id: "faq", label: "FAQ", icon: HelpCircle, group: "reference" },
     { id: "log", label: "Log", icon: ListChecks, group: "reference" },
     { id: "repo", label: t("Repo", "Repos"), icon: GitBranch, group: "reference" },

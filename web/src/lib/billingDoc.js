@@ -132,6 +132,14 @@ body { font-family: "Instrument Sans", "Inter", -apple-system, "Segoe UI", Robot
 .page { position: relative; width: ${PAPER.w}mm; min-height: ${PAPER.h}mm; margin: 0 auto; background: ${INK.paper}; padding: 14mm 14mm 24mm; display: flex; flex-direction: column; }
 @media print { html, body { background: #fff; } .page { margin: 0; box-shadow: none; } }
 @media screen { .page { box-shadow: 0 10px 40px rgba(16,34,47,.15); margin: 12px auto; } }
+/* On a screen narrower than A4 (a client's phone, the drawer preview) the paper is scaled down to fit instead of being cut
+   off at the right; print is untouched, so the PDF is still true A4. */
+@media screen and (max-width: 840px) { .page { zoom: .92; } }
+@media screen and (max-width: 720px) { .page { zoom: .8; } }
+@media screen and (max-width: 620px) { .page { zoom: .68; } }
+@media screen and (max-width: 520px) { .page { zoom: .58; } }
+@media screen and (max-width: 440px) { .page { zoom: .48; } }
+@media screen and (max-width: 360px) { .page { zoom: .4; } }
 .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; }
 .brand { display: flex; align-items: center; gap: 6mm; }
 .logo { height: 9mm; width: auto; display: block; }        /* logo-ink.png: the mark trimmed to its ink (230×35), so 9mm IS 9mm */

@@ -100,7 +100,7 @@ export default function RepoTab({ settings, save, onToast }) {
         ))}
       </div>
 
-      <div className="grid gap-4">
+      <div className="grid gap-4 [&>*]:min-w-0">
         {rows.map((r) => {
           const edge = EDGE_CLS[worstState(r)] || EDGE_CLS.none;
           const stale = staleDays(r);
@@ -108,7 +108,7 @@ export default function RepoTab({ settings, save, onToast }) {
           return (
             <Card key={r.full_name} className={`border-l-4 p-4 ${edge}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
+                <div className="w-full min-w-0 sm:w-auto sm:flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <a href={r.html_url || `https://github.com/${r.full_name}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-display text-lg hover:underline"><Icons.gitHub className="h-4 w-4 shrink-0 text-muted" aria-hidden />{r.name}</a>
                     {r.private ? <Lock size={13} className="text-muted" /> : <Globe size={13} className="text-muted" />}

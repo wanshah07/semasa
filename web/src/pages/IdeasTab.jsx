@@ -287,7 +287,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
                 <h3 className="mt-2 [overflow-wrap:anywhere] font-display text-[17px] leading-snug">{r.source_title}</h3>
                 {r.note && <p className="mt-1 [overflow-wrap:anywhere] text-sm text-muted">“{r.note}”</p>}
                 {src && (
-                  <p className="mt-2 text-[11px] text-muted">
+                  <p className="mt-2 [overflow-wrap:anywhere] text-[11px] text-muted">
                     {src.ok ? t("Bot membaca sumber penuh.", "The bot read the full source.")
                       : t("Ditulis daripada tajuk sahaja: {why}.", "Written from the headline only: {why}.",
                         { why: src.why || t("artikel tidak dapat dibaca", "the article could not be read") })}

@@ -38,8 +38,10 @@ export default function BillingPublic({ token }) {
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.open(); w.document.write(html); w.document.close();
-    w.addEventListener("load", () => { w.focus(); w.print(); });
-    setTimeout(() => { try { w.focus(); w.print(); } catch { /* already printed */ } }, 600);
+    let printed = false;                         // the load event AND the timer used to both print: two dialogs
+    const go = () => { if (printed) return; printed = true; try { w.focus(); w.print(); } catch { /* closed */ } };
+    w.addEventListener("load", go);
+    setTimeout(go, 600);
   }
 
   if (data === undefined && !error) return <main className="grid min-h-screen place-items-center text-sm text-muted">…</main>;

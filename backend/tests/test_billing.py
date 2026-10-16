@@ -159,3 +159,21 @@ def test_email_words_in_both_languages():
     assert s.startswith("Sebut harga QT-2026-010 daripada") and "sah sehingga" in html and "href" not in html
     s, html = billing.email_words(_doc(lang="en", due_date="2026-09-30", status="sent"), "reminder", SETTINGS, "")
     assert "overdue" in s and "remains unpaid" in html
+
+
+def test_a_bucket_that_refuses_pdfs_says_which_sql_to_run(monkeypatch):
+    """17 Oct 2026: Storage answered 415 invalid_mime_type; the timeline showed a raw StorageApiError and no way out."""
+    monkeypatch.setattr(billing, "render_pdf", lambda *a, **k: b"%PDF-1.4 x")
+
+    def refuse(*a, **k):
+        raise Exception("StorageApiError: {'statusCode': 415, 'error': 'invalid_mime_type', "
+                        "'message': 'mime type application/pdf is not supported'}")
+    monkeypatch.setattr(db, "upload_generated", refuse)
+    store = _store(**{db.BILLING_DOCS: [_doc()]})
+    try:
+        billing.ensure_pdf(store, _doc(), SETTINGS, NOW)
+    except SendError as exc:
+        assert exc.kind == "refused" and "039_generated_pdf.sql" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("a refused upload must not pass")
+    assert store.tables[db.BILLING_DOCS][0].get("pdf_url") is None

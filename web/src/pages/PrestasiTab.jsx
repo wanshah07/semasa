@@ -88,7 +88,7 @@ export default function PrestasiTab({ posts, go }) {
         ))}
       </div>
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-3">
+      <div className="mb-6 grid gap-4 lg:grid-cols-3 [&>*]:min-w-0">
         <Card className="p-4 lg:col-span-2">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-medium">{t("Tontonan sehari", "Views a day")}</h2>
@@ -129,7 +129,7 @@ export default function PrestasiTab({ posts, go }) {
         </Card>
       </div>
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-3">
+      <div className="mb-6 grid gap-4 lg:grid-cols-3 [&>*]:min-w-0">
         <Card className="p-4 lg:col-span-2">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>

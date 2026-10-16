@@ -81,7 +81,7 @@ export function App1({ stats, series, projects, activity, words, aside, formatVa
         ))}
       </div>
 
-      <div className={cn("grid gap-4", aside && "lg:grid-cols-[3fr_2fr]")}>
+      <div className={cn("grid gap-4 [&>*]:min-w-0", aside && "lg:grid-cols-[3fr_2fr]")}>
         <Card>
           <CardHeader>
             <CardTitle>{words.chartTitle}</CardTitle>
@@ -116,7 +116,7 @@ export function App1({ stats, series, projects, activity, words, aside, formatVa
         {aside}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <Card>
           <CardHeader>
             <CardTitle>{words.projectsTitle}</CardTitle>

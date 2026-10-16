@@ -12,7 +12,7 @@ values
   ('semasa-reference', 'semasa-reference', true, 52428800,
     array['image/png','image/jpeg','image/webp','image/gif','text/plain','text/markdown','application/pdf']),
   ('semasa-generated', 'semasa-generated', true, 52428800,   -- 50 MB: the free plan's per-file ceiling
-    array['image/png','image/jpeg','image/webp','video/mp4','video/webm'])
+    array['image/png','image/jpeg','image/webp','video/mp4','video/webm','application/pdf'])
 on conflict (id) do update
   set public = excluded.public,
       file_size_limit = excluded.file_size_limit,

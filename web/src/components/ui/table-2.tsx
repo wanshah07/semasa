@@ -367,7 +367,7 @@ export default function DocumentsTable({ rows, words, onAction, onBulk, pageSize
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">   {/* hidden clipped the Amount and Status columns on a phone */}
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

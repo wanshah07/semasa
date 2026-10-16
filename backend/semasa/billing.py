@@ -179,7 +179,13 @@ def ensure_pdf(store: Any, doc: dict[str, Any], settings: dict[str, Any], now: d
         return doc["pdf_url"], doc["pdf_path"]
     pdf = render_pdf(with_names(store, doc), settings, link=public_link(doc["token"]))
     path = f"billing/{doc['token']}/{file_name(doc)}"
-    url = db.upload_generated(store, path, pdf, "application/pdf")
+    try:
+        url = db.upload_generated(store, path, pdf, "application/pdf")
+    except Exception as exc:  # noqa: BLE001 - storage errors come in several shapes
+        if "invalid_mime_type" in str(exc) or "415" in str(exc):
+            raise SendError("refused", "the generated bucket does not accept PDFs yet: run supabase/039_generated_pdf.sql "
+                                       f"in Supabase, then press Try again ({str(exc)[:120]})") from exc
+        raise
     stamp = now.isoformat()
     store.table(db.BILLING_DOCS).update({"pdf_url": url, "pdf_path": path, "pdf_at": stamp}).eq("id", doc["id"]).execute()
     doc.update(pdf_url=url, pdf_path=path, pdf_at=stamp)

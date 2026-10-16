@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, Bell, Briefcase, Building2, Check, Copy, Download, Eye, FileText, Link2, Mail, Pencil, Plus, Printer, Receipt,
   Send, Settings2, Trash2, Users, Wallet, X } from "lucide-react";
@@ -952,20 +952,38 @@ function SettingsModal({ cfg, counters, onClose, onSave, busy, t }) {
   );
 }
 
-/* Print through a hidden frame: the browser's own print dialog, where "Save as PDF" lives (the FAQ export does the same). */
+/* Print through a hidden frame: the browser's own print dialog, where "Save as PDF" lives (the FAQ export does the same).
+   The dialog opens ONCE per request. Two faults made it come back on its own (16 Oct 2026): `onDone` was a new function on
+   every render of the tab, so any re-render while the frame was open (the table reloading, a toast) re-ran the effect and
+   printed again; and the `afterprint` listener was added BEFORE document.open(), which erases the window's listeners, so the
+   frame never reported it was done and stayed "printing" until the 60-second fallback. */
 function PrintFrame({ html, onDone }) {
+  const done = useRef(onDone);
+  done.current = onDone;
   useEffect(() => {
     const frame = document.createElement("iframe");
-    frame.style.position = "fixed"; frame.style.right = "0"; frame.style.bottom = "0"; frame.style.width = "0"; frame.style.height = "0"; frame.style.border = "0";
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
     document.body.appendChild(frame);
     const w = frame.contentWindow;
-    const finish = () => { setTimeout(() => { try { document.body.removeChild(frame); } catch { /* gone */ } onDone(); }, 500); };
-    w.addEventListener("afterprint", finish);
+    let finished = false;
+    let printed = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      setTimeout(() => { try { frame.remove(); } catch { /* gone */ } done.current(); }, 500);
+    };
+    const go = () => {
+      if (printed) return;
+      printed = true;
+      try { w.focus(); w.print(); } catch { /* the browser refused: nothing more to do */ }
+      finish();                                  // print() blocks until the dialog closes in most browsers; either way it is done
+    };
     w.document.open(); w.document.write(html); w.document.close();
-    const go = () => { try { w.focus(); w.print(); } catch { finish(); } };
+    w.addEventListener("afterprint", finish);    // after document.open(), or it is erased
     if (w.document.readyState === "complete") setTimeout(go, 300); else w.addEventListener("load", () => setTimeout(go, 300));
     const safety = setTimeout(finish, 60_000);
-    return () => clearTimeout(safety);
-  }, [html, onDone]);
+    return () => { clearTimeout(safety); finished = true; try { frame.remove(); } catch { /* gone */ } };
+  }, [html]);
   return null;
 }

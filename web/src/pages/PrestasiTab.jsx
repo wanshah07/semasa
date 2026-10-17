@@ -262,7 +262,7 @@ function RowCells({ dow, cells, picked, best, setPicked, label }) {
 function Stat({ label, value }) {
   return (
     <div className="rounded-tile bg-surface-2/60 p-2">
-      <p className="text-[10px] uppercase tracking-widest text-muted">{label}</p>
+      <p className="[overflow-wrap:anywhere] text-[10px] uppercase tracking-widest text-muted">{label}</p>
       <p className="font-display text-lg tabular-nums">{value}</p>
     </div>
   );

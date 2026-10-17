@@ -136,7 +136,7 @@ export default function ResitTab({ user, onToast }) {
           <div className="mb-3 flex flex-wrap gap-2 text-[11px] text-muted">
             {Object.entries(g.byCategory).sort((a, b) => b[1] - a[1]).map(([c, v]) => <span key={c} className="rounded-pill bg-surface-2 px-2 py-0.5">{w(CATEGORY_WORDS, c)} <span className="font-mono tabular-nums text-ink">{money(v)}</span></span>)}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 [&>*]:min-w-0">
             {g.rows.map((r) => (
               <Card key={r.id} className="flex gap-3 p-3">
                 <a href={r.image_url} target="_blank" rel="noreferrer" className="shrink-0"><img src={r.image_url} alt="" loading="lazy" className="h-24 w-20 rounded-tile object-cover" /></a>
@@ -148,7 +148,7 @@ export default function ResitTab({ user, onToast }) {
                   <p className="font-mono text-sm tabular-nums">{r.total != null ? money(r.total, { currency: r.currency || "MYR" }) : "—"}{r.doc_date ? <span className="ml-2 text-xs text-muted">{fmtDate(r.doc_date)}</span> : null}</p>
                   <p className="text-xs text-muted">{w(CATEGORY_WORDS, r.category || "lain")}{r.payment_method && r.payment_method !== "unknown" ? ` · ${r.payment_method}` : ""}{r.confidence != null && r.confidence < 0.6 ? ` · ${t("kurang pasti", "unsure")}` : ""}</p>
                   {r.summary && <p className="mt-1 line-clamp-2 text-xs text-ink/80">{r.summary}</p>}
-                  {r.error && <p className="mt-1 text-[11px] text-danger">{r.error}</p>}
+                  {r.error && <p className="mt-1 [overflow-wrap:anywhere] text-[11px] text-danger">{r.error}</p>}
                   {r.subscription_id && subsT.rows.find((s) => s.id === r.subscription_id) && (
                     <p className="mt-1 text-[11px] text-muted">{t("Langganan: {v}", "Subscription: {v}", { v: subsT.rows.find((s) => s.id === r.subscription_id).vendor })} · <button type="button" className="underline" onClick={() => paySubscription(r)}>{t("tanda dibayar", "mark paid")}</button></p>
                   )}

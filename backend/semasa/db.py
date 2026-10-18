@@ -46,6 +46,30 @@ CRM_OUTBOX = "semasa_crm_outbox"
 CRM_ACTIVITIES = "semasa_crm_activities"
 
 
+def read_with_retry(query: Any, tries: int = 3, wait: float = 2.0) -> Any:
+    """Execute a READ query, retrying a dropped connection.
+
+    postgrest retries only a 503/520 answer, never a connection the server closed
+    mid-request. Supabase did exactly that to Publish on 15 and 17 Oct 2026
+    (RemoteProtocolError "Server disconnected", WriteError "EOF occurred in
+    violation of protocol") and each blip failed the whole run. Reads only: a
+    write retried after a drop could land twice.
+    """
+    import time
+
+    import httpx
+
+    for attempt in range(tries):
+        try:
+            return query.execute()
+        except httpx.TransportError as e:
+            if attempt == tries - 1:
+                raise
+            log.warning("Supabase read dropped (%s); retrying in %.0fs", type(e).__name__, wait * (attempt + 1))
+            time.sleep(wait * (attempt + 1))
+    raise RuntimeError("unreachable")
+
+
 def client(settings: SupabaseSettings | None = None) -> Client:
     s = settings or SupabaseSettings.load()
     return create_client(s.url, s.service_role_key)

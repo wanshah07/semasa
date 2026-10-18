@@ -47,7 +47,7 @@ def fingerprint(payload: dict[str, Any]) -> str:
 
 
 def load_settings(store: Any) -> dict[str, Any]:
-    rows = store.table(db.SETTINGS).select("key,value").execute().data or []
+    rows = db.read_with_retry(store.table(db.SETTINGS).select("key,value")).data or []
     return {r["key"]: r["value"] for r in rows}
 
 
@@ -234,8 +234,8 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
     li_cap = max(1, len((brand.get("linkedin") or {}).get("slots") or ["06:00"]))
     li_today: int | None = None
 
-    posts = (store.table(db.POSTS).select("*").eq("status", "approved").not_.is_("date", "null")
-             .not_.is_("slot", "null").order("date").order("slot").execute().data or [])
+    posts = (db.read_with_retry(store.table(db.POSTS).select("*").eq("status", "approved").not_.is_("date", "null")
+             .not_.is_("slot", "null").order("date").order("slot")).data or [])
     live = guard.load_live(store, db.POSTS, myt_date(now)) if posts else []
     for post in posts:
         due = due_utc(post["date"], post["slot"])

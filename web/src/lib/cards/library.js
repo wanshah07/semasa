@@ -8,6 +8,17 @@ const BASE = `${import.meta.env.BASE_URL}cards/`;
 export const TEMPLATES = CARDS.templates;
 export const templateOf = (k) => TEMPLATES.find((x) => x.k === k) || null;
 export const MASCOTS = CARDS.mascots.map((m) => ({ ...m, url: BASE + m.file }));
+/** Wanshah (the 3D robot, supabase/040): approved pictures replace the four poses in place, so every importer of MASCOTS (the card
+    renderer, the pickers, the catalogue) sees the robot with no change of its own. `{}` puts the original poses back. */
+const ORIGINAL = CARDS.mascots.map((m) => ({ k: m.k, url: BASE + m.file, name: m.name, en: m.en }));
+export function setWanshah(urls) {
+  const map = urls && typeof urls === "object" ? urls : {};
+  MASCOTS.forEach((m, i) => {
+    const u = map[m.k];
+    if (u) { m.url = u; m.name = `Wanshah · ${ORIGINAL[i].name}`; m.en = `Wanshah · ${ORIGINAL[i].en}`; }
+    else { m.url = ORIGINAL[i].url; m.name = ORIGINAL[i].name; m.en = ORIGINAL[i].en; }
+  });
+}
 export const GROUNDS = CARDS.grounds.map((g) => ({ ...g, url: BASE + g.file }));
 export const groundOf = (k) => GROUNDS.find((g) => g.k === k) || null;
 

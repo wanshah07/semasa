@@ -513,3 +513,28 @@ def test_a_design_from_a_reference_is_drawn_as_new_artwork_with_the_logo_always_
     assert marks and max(y for _, y in marks) - min(y for _, y in marks) > 30     # the logo, whole, in the reference's logo slot
     li = Image.open(io.BytesIO(studio_cards.render(deck, look="grid", stream="linkedin", design=design)[0])).convert("RGB")
     assert li.size == (1080, 1350)
+
+
+def test_approved_wanshah_poses_replace_only_their_own_pose():
+    from fakestore import FakeStore
+
+    from semasa import cards_library
+
+    plain = cards_library.mascots()
+    assert plain and all(m["url"].startswith("/cards/") for m in plain)
+    store = FakeStore(semasa_settings=[{"key": "wanshah", "value": {"poses": {
+        "wave": {"url": "https://x.supabase.co/storage/v1/object/public/semasa-reference/u/wave.png"},
+        "point": {"url": "http://insecure/p.png"}, "shocked": {}}}}])
+    by = {m["k"]: m["url"] for m in cards_library.mascots(store)}
+    assert by["wave"].startswith("https://x.supabase.co/")
+    assert by["point"] == "/cards/mascots/point.webp" and by["confused"] == "/cards/mascots/confused.webp"
+    assert cards_library.mascots(FakeStore(semasa_settings=[])) == plain
+
+
+def test_a_broken_settings_read_never_fails_a_render():
+    from semasa import cards_library
+
+    class Boom:
+        def table(self, *a):
+            raise RuntimeError("no table")
+    assert cards_library.mascots(Boom()) == cards_library.mascots()

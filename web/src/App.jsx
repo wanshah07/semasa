@@ -46,6 +46,8 @@ import MediaUploader from "./components/MediaUploader";
 import Toasts from "./components/Toast";
 import Button from "./components/ui/Button";
 import Guide from "./components/Guide";
+import { setWanshah } from "./lib/cards/library";
+import { approvedPoses } from "./lib/wanshah";
 
 function Unconfigured() {
   const { t, lang } = useLang();
@@ -344,6 +346,7 @@ export default function App() {
     };
   }
   const { settings, save } = useSettings(allowed);
+  useEffect(() => { setWanshah(approvedPoses(settings.wanshah)); }, [settings.wanshah]);   // Wanshah (supabase/040) replaces the poses in place
   // My designs (supabase/027): the saved text-free designs and the default, offered to every look picker through one context
   const designsCtx = useMemo(() => ({
     designs: Array.isArray(settings.designs) ? settings.designs.filter((d) => d && typeof d === "object" && d.id) : [],
@@ -388,7 +391,7 @@ export default function App() {
   else if (tab === "post") body = allowed ? <PostsTab posts={posts} media={gens} log={log} brand={brand} user={user}
     settings={settings} onToast={push} focusId={focusPost} setFocusId={setFocusPost} /> : gate(null);
   else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} posts={posts} onToast={push} /> : gate(null);
-  else if (tab === "design") body = allowed ? <DesignTab user={user} gens={gens} posts={posts} brand={brand} onToast={push}
+  else if (tab === "design") body = allowed ? <DesignTab user={user} gens={gens} posts={posts} brand={brand} settings={settings} saveSetting={save} onToast={push}
     onCanvas={(seed) => { setCanvasSeed(seed); go("kanvas"); }} /> : gate(null);
   else if (tab === "wangian") body = allowed ? <FragranceTab user={user} gens={gens} onToast={push}
     onCanvas={(seed) => { setCanvasSeed(seed); go("kanvas"); }} /> : gate(null);

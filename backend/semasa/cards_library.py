@@ -43,6 +43,19 @@ def default_ground(stream: str, domain: str | None, angle: str | None) -> str | 
     return f"lib:{k}" if k and ground_bytes(f"lib:{k}") else None
 
 
-def mascots() -> list[dict[str, str]]:
-    """The poses on offer to the Studio renderer, as addresses on its routed origin."""
-    return [{"k": m["k"], "url": "/cards/" + m["file"]} for m in catalogue()["mascots"] if (ASSETS / m["file"]).is_file()]
+def mascots(store: Any = None) -> list[dict[str, str]]:
+    """The poses on offer to the Studio renderer, as addresses on its routed origin. With a store, the Wanshah pictures Wan
+    approved (settings row `wanshah`, supabase/040) stand in for their poses, as https addresses the browser fetches itself."""
+    out = [{"k": m["k"], "url": "/cards/" + m["file"]} for m in catalogue()["mascots"] if (ASSETS / m["file"]).is_file()]
+    if store is None:
+        return out
+    try:
+        rows = store.table("semasa_settings").select("value").eq("key", "wanshah").execute().data or []
+    except Exception:  # noqa: BLE001 - a missing row or table is the original poses, never a failed render
+        return out
+    poses = ((rows[0].get("value") if rows else None) or {}).get("poses") or {}
+    for m in out:
+        url = (poses.get(m["k"]) or {}).get("url") if isinstance(poses.get(m["k"]), dict) else None
+        if isinstance(url, str) and url.startswith("https://"):
+            m["url"] = url
+    return out

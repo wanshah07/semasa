@@ -23,6 +23,7 @@ import { loadImageFile, readPixels, samplePatches, sizeLike } from "../lib/desig
 import { compareImages, judgePass, snapLayout } from "../lib/designFidelity";
 import { GROUND_STYLES } from "../lib/groundStyles";
 import MyDesigns from "../components/MyDesigns";
+import WanshahPanel from "../components/WanshahPanel";
 import ImageLightbox, { useLightbox } from "../components/ImageLightbox";
 import { buildDesignFromReference, nameFromFile } from "../lib/designFromReference";
 import { newDesignId } from "../lib/designs";
@@ -43,7 +44,7 @@ const blankSlide = () => ({ title: "", points: "" });
 const defaultSize = (design, stream) => (design === "poster" ? "portrait" : design === "card" ? "square"
   : stream === "linkedin" ? "portrait" : "square");
 
-export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas }) {
+export default function DesignTab({ user, gens, posts, brand, settings, saveSetting, onToast, onCanvas }) {
   const { t } = useLang();
   const { designs: myDesigns, defaultId, ready: designsReady, saveDesigns, setDefault } = useDesigns();
   const [design, setDesign] = useState("poster");
@@ -312,6 +313,7 @@ export default function DesignTab({ user, gens, posts, brand, onToast, onCanvas 
       </motion.div>
 
       <div className="mt-8"><MyDesigns onToast={onToast} user={user} /></div>
+      <div className="mt-6"><WanshahPanel user={user} gens={gens} settings={settings} saveSetting={saveSetting} onToast={onToast} /></div>
 
       <Card as="form" onSubmit={submit} className="mt-2 p-5 sm:p-6">
         <div className="grid gap-4 md:grid-cols-2">

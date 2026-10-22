@@ -102,21 +102,28 @@ def test_caps_per_run_and_per_day_leave_the_rest_pending_and_say_so():
     assert len(sender.sent) == 3
 
 
-def test_not_yet_due_campaign_is_left_alone_and_a_transient_failure_retries_then_fails():
+def test_not_yet_due_campaign_is_left_alone_and_a_transient_send_failure_never_auto_retries():
     later = _camp(status="scheduled", send_at="2026-10-09T09:00:00+00:00")
     store = _store(**{db.CRM_CONTACTS: [_contact(1)], db.CRM_CAMPAIGNS: [later], db.CRM_OUTBOX: [_row(1)]})
     assert crm.process_outbox(store, SETTINGS, FakeSender(), NOW)["sent"] == 0
     assert store.tables[db.CRM_OUTBOX][0]["status"] == "pending"
+    # a transient error (timeout, 5xx) from the LIVE send call does not prove the message never went out, so it is
+    # never silently retried from 'pending' -- that would risk sending the same campaign message twice (crm.py#224)
     store = _store(**{db.CRM_CONTACTS: [_contact(1)], db.CRM_CAMPAIGNS: [_camp()], db.CRM_OUTBOX: [_row(1)]})
     bad = FakeSender(fail=SendError("transient", "gateway 502"))
     assert crm.process_outbox(store, SETTINGS, bad, NOW)["error"] == 1
-    assert store.tables[db.CRM_OUTBOX][0]["status"] == "pending" and store.tables[db.CRM_OUTBOX][0]["attempts"] == 1
-    store.tables[db.CRM_OUTBOX][0]["attempts"] = crm.MAX_ATTEMPTS - 1
-    crm.process_outbox(store, SETTINGS, bad, NOW)
     assert store.tables[db.CRM_OUTBOX][0]["status"] == "error" and store.tables[db.CRM_CAMPAIGNS][0]["error_count"] == 1
     store = _store(**{db.CRM_CONTACTS: [_contact(1)], db.CRM_CAMPAIGNS: [_camp()], db.CRM_OUTBOX: [_row(1)]})
     assert crm.process_outbox(store, SETTINGS, None, NOW)["error"] == 1
     assert "COMPOSIO_CONSUMER_KEY" in store.tables[db.CRM_OUTBOX][0]["error"]
+
+
+def test_a_refusal_before_the_send_call_never_retries():
+    # a "refused" raised before anything was ever sent (here: the contact vanished) was already, and remains,
+    # non-retryable; only "transient" ever retries, and only when it did not come from the live send call
+    store = _store(**{db.CRM_CONTACTS: [], db.CRM_CAMPAIGNS: [_camp()], db.CRM_OUTBOX: [_row(1)]})
+    assert crm.process_outbox(store, SETTINGS, FakeSender(), NOW)["error"] == 1
+    assert store.tables[db.CRM_OUTBOX][0]["status"] == "error"
 
 
 def test_body_html_is_kept_and_english_footer_follows_the_contact():

@@ -19,6 +19,7 @@ import io
 import os
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 from PIL import Image
@@ -33,6 +34,16 @@ APP = "semasa"
 ORIENTATIONS = ("squarish", "portrait", "landscape")
 PER_PAGE = 24
 WIDTH = 2160
+# Every address the worker ever requests with its key, or otherwise trusts, must be Unsplash's own: `results` and
+# therefore a photo's `download_location`/`raw` are stored on the row and the page can round-trip them back (the page
+# sets meta.pick and the worker re-reads meta.results), so a page that could set them to anything would have turned
+# this worker into an open proxy that posts UNSPLASH_ACCESS_KEY wherever it was told.
+TRUSTED_HOSTS = ("api.unsplash.com", "images.unsplash.com")
+
+
+def _is_unsplash_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in TRUSTED_HOSTS)
 
 
 class UnsplashError(RuntimeError):
@@ -86,9 +97,16 @@ def search(query: str, orientation: str | None = None) -> list[dict[str, Any]]:
 
 def fetch(photo: dict[str, Any]) -> bytes:
     """Report the download (Unsplash's rule for an app that uses a photo), then fetch it as a 2160 px JPEG."""
-    if photo.get("download_location"):
-        _get(photo["download_location"])
+    dl = photo.get("download_location")
+    if dl:
+        if not _is_unsplash_url(dl):
+            # this row's meta.results is data the page can set (it writes meta.pick back onto the same row); never
+            # send the real Unsplash key to an address that didn't come straight from an Unsplash API response
+            raise UnsplashError("this photo's download_location is not an Unsplash address; refusing to send the key")
+        _get(dl)
     raw = photo["raw"]
+    if not _is_unsplash_url(raw):
+        raise UnsplashError("this photo's image address is not an Unsplash address")
     r = requests.get(f"{raw}{'&' if '?' in raw else '?'}w={WIDTH}&fm=jpg&q=85", timeout=60)
     r.raise_for_status()
     data = r.content

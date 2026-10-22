@@ -84,8 +84,17 @@ function replaceAll_(fields, rows) {
       byCat[k].push(fields.map(function (f) { return cell_(r[f]); }));
     });
     var managed = JSON.parse(PROPS.getProperty('CATEGORY_TABS') || '[]');
-    order.forEach(function (k, i) { writeTab_(ss, tabName_(k), head, byCat[k], i + 1); });
-    var now = order.map(tabName_);
+    // two different category labels can clean up to the same tab name (tabName_ truncates to 90 chars, strips the
+    // same punctuation, and both MAIN_TAB/LOG_TAB collide to one "(FAQ)" suffix): writing them in `order` as-is let
+    // the second category's write wipe the first's tab. Disambiguate every collision before writing anything.
+    var used = {}, tabNames = order.map(function (k) {
+      var base = tabName_(k), name = base, n = 2;
+      while (used[name]) { name = base + ' (' + n + ')'; n++; }
+      used[name] = true;
+      return name;
+    });
+    order.forEach(function (k, i) { writeTab_(ss, tabNames[i], head, byCat[k], i + 1); });
+    var now = tabNames;
     managed.forEach(function (name) {                     // a category with no entries left loses its tab
       if (now.indexOf(name) < 0 && name !== MAIN_TAB) {
         var sh = ss.getSheetByName(name);

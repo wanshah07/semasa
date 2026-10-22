@@ -115,6 +115,23 @@ def test_a_picture_another_post_uses_is_never_deleted():
     assert sorted(r["id"] for r in store.tables["media_generations"]) == ["a", "b"]   # c was unused by anyone
 
 
+def test_a_design_tab_artwork_or_canva_rebuild_waiting_to_be_saved_is_never_deleted():
+    # a Design-tab job and its Canva rebuild both carry meta.design (canva_bridge.py copies it forward); unattached
+    # and unused by any other post, they still must not be swept away just because THIS post is 24h past posting --
+    # Wan may come back days later and click Simpan to attach one of them to a different post
+    old = "2026-09-20T00:00:00+00:00"
+    store = FakeStore(
+        semasa_posts=[{"id": "p1", "status": "posted", "posted_at": old, "archived_at": None, "media_ids": ["a"],
+                       "text": {}, "lang": "bm", "published": {}}],
+        media_generations=[{"id": "a", "post_id": "p1", "status": "done", "meta": {}},
+                           {"id": "d1", "post_id": "p1", "status": "done",
+                            "meta": {"design": "poster", "generated_path": "x/d1.jpg"}},
+                           {"id": "d2", "post_id": "p1", "status": "done",
+                            "meta": {"design": "poster", "flow": "canva", "generated_path": "x/d2.jpg"}}])
+    archive.run(store, datetime(2026, 9, 26, tzinfo=UTC))
+    assert sorted(r["id"] for r in store.tables["media_generations"]) == ["a", "d1", "d2"]
+
+
 def test_purge_rejected_after_72h_with_studio_guards():
     now = datetime(2026, 9, 27, 0, 0, tzinfo=UTC)
     old, fresh = "2026-09-23T00:00:00+00:00", "2026-09-26T00:00:00+00:00"

@@ -420,6 +420,7 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
     for row in claim(store):
         doc_rows = store.table(db.BILLING_DOCS).select("*").eq("id", row["doc_id"]).execute().data or []
         doc = doc_rows[0] if doc_rows else None
+        sent_attempted = False
         try:
             if not doc:
                 raise SendError("refused", "the document no longer exists")
@@ -427,6 +428,14 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
                 raise SendError("refused", f"{doc.get('number') or 'this draft'} is {doc.get('status')}: nothing is sent for it")
             if sender is None:
                 raise SendError("refused", "no Gmail sender: the COMPOSIO_CONSUMER_KEY secret is not set")
+            # idempotency guard: a previous attempt may have sent this and only failed to record it (a timeout
+            # waiting for Gmail's answer does not mean Gmail never got the message); never send the SAME invoice
+            # action twice just because the row came back around through 'pending'
+            if row["action"] == "send" and doc.get("status") == "sent":
+                store.table(db.BILLING_OUTBOX).update({"status": "sent", "error": "already sent (idempotency guard)"}) \
+                    .eq("id", row["id"]).execute()
+                counts["sent"] += 1
+                continue
             link = public_link(doc["token"])
             url, _path = render(store, doc, settings, now)
             attachment = sender.upload_pdf(url, file_name(doc))
@@ -438,6 +447,7 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
             me = str(co.get("email") or "")
             if email.get("cc_self") and me and me not in cc and me.lower() != str(row["to_email"]).lower():
                 cc.append(me)
+            sent_attempted = True                 # from here on, a failure cannot be assumed to mean nothing sent
             result = sender.send(to=row["to_email"], cc=cc, subject=subject, html=html, attachment=attachment, from_email=me)
             patch: dict[str, Any] = {}
             if row["action"] == "send":
@@ -459,9 +469,12 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
                          ref_table=db.BILLING_DOCS, ref_id=doc["id"], detail={"subject": subject})
             counts["sent"] += 1
         except SendError as exc:
-            # a transient refusal BEFORE the send call may try again on the next run; the send itself is never retried
-            # (the row is 'working' through the call, so a timeout there ends as 'error' and Wan decides)
-            back = "pending" if exc.kind == "transient" and int(row.get("attempts") or 1) < MAX_ATTEMPTS else "error"
+            # a transient refusal BEFORE the send call may try again on the next run; the send itself is never
+            # retried: once `sent_attempted` is True, a timeout or 5xx does not prove the e-mail never went out,
+            # so it is never silently re-queued (the row is 'working' through the call, so a timeout there ends
+            # as 'error' and Wan decides) -- that is the whole point of the idempotency guard above
+            back = "pending" if (not sent_attempted and exc.kind == "transient"
+                                  and int(row.get("attempts") or 1) < MAX_ATTEMPTS) else "error"
             _fail(store, row, doc, exc, back, "warn")
             counts["error"] += 1
         except Exception as exc:  # noqa: BLE001 - one bad row never stops the others

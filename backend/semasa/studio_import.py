@@ -84,7 +84,12 @@ def apply(store: Any, rows: list[dict[str, Any]], dry: bool = False) -> dict[str
     held = {(o["stream"], str(o["date"]), o["slot"]): o for o in others if o["id"] not in set(ids)}
     for row in rows:
         ex = existing.get(row["id"])
-        if ex and ex["status"] in LOCKED and row["status"] not in LOCKED:
+        if ex and ex["status"] in LOCKED:
+            # Semasa has already scheduled or sent this post (both 'scheduled' and 'posted' are LOCKED): its row,
+            # including the Buffer ids on `published`, must never be overwritten by Studio's copy, even when
+            # Studio's own copy is ALSO locked (e.g. it shows 'scheduled' there too) -- the old check here only
+            # skipped when Studio's incoming copy was unlocked, so two locked copies still overwrote Semasa's row,
+            # reverting a posted post back to scheduled and losing its Buffer ids.
             report["kept_semasa"].append(row["studio_id"])
             continue
         clash = held.get((row["stream"], str(row.get("date")), row.get("slot")))

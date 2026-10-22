@@ -48,6 +48,18 @@ def test_semasas_own_sent_post_is_never_overwritten():
     assert rep["kept_semasa"] == ["41oikyb71y"] and store.tables["semasa_posts"][0]["status"] == "scheduled"
 
 
+def test_semasas_posted_row_is_kept_even_when_studios_own_copy_is_also_locked():
+    # both copies locked (Semasa already 'posted', Studio's incoming copy says 'scheduled') must still keep Semasa's
+    # row untouched: overwriting it would revert 'posted' back to 'scheduled' and lose its Buffer ids
+    posted = {"id": _row()["id"], "status": "posted", "stream": "regulab", "date": "2026-10-03", "slot": "08:00",
+              "published": {"instagram": {"id": "buf-123", "status": "sent"}}}
+    store = _store([posted])
+    rep = studio_import.apply(store, [_row(status="scheduled")])
+    assert rep["kept_semasa"] == ["41oikyb71y"]
+    assert store.tables["semasa_posts"][0]["status"] == "posted"
+    assert store.tables["semasa_posts"][0]["published"]["instagram"]["id"] == "buf-123"
+
+
 def test_a_slot_clash_with_a_semasa_post_is_reported_not_resolved():
     mine = {"id": "x", "status": "draft", "stream": "regulab", "date": "2026-10-03", "slot": "08:00", "hook": "h"}
     rep = studio_import.apply(_store([mine]), [_row()])

@@ -200,6 +200,29 @@ def test_a_transient_refusal_is_retried_once_and_a_real_one_is_not():
     assert sum(1 for x in buf.created if x["service"] == "facebook") == 0
 
 
+class GhostPostBuffer(FakeBuffer):
+    """A 'transient' create() that actually reached Buffer and made the post before the response timed out."""
+
+    def create(self, channel_id, service, text, pictures, alt, due_at):
+        if service == "threads" and not any(c["service"] == "threads" for c in self.created):
+            pid = "ghost" + "0" * 19
+            self.existing.append({"id": pid, "status": "scheduled", "dueAt": due_at, "text": text,
+                                  "channelId": channel_id})
+            raise senders.SendError("transient", "timeout waiting for Buffer's answer")
+        return super().create(channel_id, service, text, pictures, alt, due_at)
+
+
+def test_a_transient_failure_whose_post_landed_anyway_is_adopted_not_duplicated():
+    # publisher.py#204: the pre-attempt view cache must be refreshed before deciding whether a failed create()
+    # actually landed, or the check always misses a post made just now and resends it -> a duplicate post
+    store, buf = _live(_post()), GhostPostBuffer()
+    c = publisher.run(store, NOW, clients={"buffer": buf})
+    p = store.tables["semasa_posts"][0]
+    assert p["published"]["threads"]["id"].startswith("ghost")
+    assert sum(1 for x in buf.created if x["service"] == "threads") == 0   # create() never actually ran twice
+    assert c["error"] == 0
+
+
 def test_a_slot_just_come_goes_now_and_is_confirmed_sent():
     store, buf = _live(_post(date="2026-09-24", slot="10:00")), FakeBuffer()
     publisher.run(store, NOW, clients={"buffer": buf})
@@ -267,6 +290,20 @@ def test_linkedin_is_never_sent_twice_after_an_unanswered_attempt():
     ok = FakeLinkedIn()
     publisher.run(store2, NOW, clients={"linkedin": ok})
     assert ok.sent == [] and store2.tables["semasa_posts"][0]["errors"]["linkedin"]["unconfirmed"]
+
+
+def test_a_transient_linkedin_error_never_auto_retries_within_the_same_run():
+    # publisher.py#330: a timeout/5xx from Composio does not prove the post never went out, so resending it
+    # immediately within the same run risked a duplicate LinkedIn post; it must surface as an error instead
+    # and rely on the "sending"-without-"sent" guard (tested above) for the NEXT run to catch it
+    store = _live(_li(date="2026-09-24", slot="06:00"))
+    li = FakeLinkedIn(fail="transient")
+    c = publisher.run(store, NOW, clients={"linkedin": li})
+    assert li.sent == [] and c["sent"] == 0 and c["error"] == 1
+    assert store.tables["semasa_posts"][0]["errors"]["linkedin"]["kind"] == "transient"
+    sending = [r for r in store.tables["semasa_publish_log"] if r["action"] == "sending"]
+    sent = [r for r in store.tables["semasa_publish_log"] if r["action"] == "sent"]
+    assert len(sending) == 1 and len(sent) == 0            # exactly one post() call was ever made, and it failed
 
 
 def test_the_switch_opens_by_itself_at_enabled_from_and_pause_wins():

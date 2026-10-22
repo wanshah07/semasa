@@ -201,9 +201,10 @@ def _send_buffer(client: Any, view: _BufferView, channel_id: str, channel: str, 
         except senders.SendError as exc:
             if exc.kind != "transient" or attempt == 2:
                 raise
-            if view.find(channel_id, text, due) is not None:   # the first try did land after all
-                view.cache.pop(channel_id, None)
-                return _record(view.find(channel_id, text, due), mode, "buffer-adopted", now)
+            view.cache.pop(channel_id, None)        # the pre-attempt cache cannot show a post made just now:
+            found = view.find(channel_id, text, due)  # force a fresh read before deciding to retry
+            if found is not None:                   # the first try did land after all
+                return _record(found, mode, "buffer-adopted", now)
             continue
         if share_now:
             fin = client.confirm(bp["id"])
@@ -324,12 +325,12 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
                     continue
                 write_log(store, post["id"], channel, "sending", {"fingerprint": fp, "pictures": len(pictures)})
                 try:
-                    try:
-                        res = client.post(text, pictures)
-                    except senders.SendError as exc:
-                        if exc.kind != "transient" or "LinkedIn" in exc.message:
-                            raise                          # a refusal FROM LinkedIn may still have posted: no retry
-                        res = client.post(text, pictures)  # the upload/connection hiccuped before the post was made
+                    # No automatic retry here: a timeout or 5xx from Composio does not prove the post never landed,
+                    # and LinkedIn/Composio give us no safe way to check or an idempotency key. Resending blindly
+                    # risked a duplicate LinkedIn post. The "sending" log line just above, with no matching "sent"
+                    # line, is exactly what the guard at the top of this branch checks on the NEXT run: it stops and
+                    # asks a human to check LinkedIn rather than silently sending again.
+                    res = client.post(text, pictures)
                 except senders.SendError as exc:
                     errors[channel] = {"fingerprint": fp, "message": exc.message, "kind": exc.kind,
                                        "at": now.isoformat()}
@@ -343,6 +344,9 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
                 changed = True
                 li_today += 1
                 counts["sent"] += 1
+                # persist 'published' BEFORE the log line: a crash/failure between the two must never leave a
+                # "sent" log with no matching published record, or the next run sends this channel again
+                store.table(db.POSTS).update({"published": published}).eq("id", post["id"]).execute()
                 write_log(store, post["id"], channel, "sent", {"fingerprint": fp, "urn": res.urn})
                 continue
 
@@ -365,12 +369,16 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
                 if found:
                     published[channel] = _record(found, "customScheduled", "buffer-adopted", now)
                     counts["adopted"] += 1
+                    store.table(db.POSTS).update({"published": published}).eq("id", post["id"]).execute()
                     write_log(store, post["id"], channel, "adopted", {"fingerprint": fp, "buffer_id": found.get("id")})
                 else:
                     rec = _send_buffer(client, view, channel_id, channel, text, pictures, alt, due, now)
                     published[channel] = rec
                     action = "sent" if rec.get("status") == "sent" else "scheduled"
                     counts[action] += 1
+                    # persist 'published' BEFORE the log line (same reasoning as the LinkedIn branch above): if the
+                    # save below this loop never runs, the next run must still see this channel as already handled
+                    store.table(db.POSTS).update({"published": published}).eq("id", post["id"]).execute()
                     write_log(store, post["id"], channel, action,
                               {"fingerprint": fp, "buffer_id": rec.get("id"), "due_at": due.isoformat()})
                 errors.pop(channel, None)

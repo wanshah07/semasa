@@ -37,10 +37,14 @@ def compact_text(post: dict[str, Any]) -> dict[str, Any]:
 
 def unused_media(store: Any, post: dict[str, Any]) -> list[dict[str, Any]]:
     """Pictures made for this post that it does not use. A picture another post has attached (the editor offers every
-    picture made from the same idea) is in use, whoever made it: deleting it took that post's picture away."""
+    picture made from the same idea) is in use, whoever made it: deleting it took that post's picture away. A
+    Design-tab artwork or a Canva rebuild of one (both carry meta.design, canva_bridge.py copies it forward) is
+    excluded too: it may still be sitting unattached waiting for Wan's own Simpan click, same rule purge_rejected
+    already keeps for a rejected post's pictures."""
     keep = set(post.get("media_ids") or [])
     rows = store.table(db.MEDIA).select("id,status,meta").eq("post_id", post["id"]).execute().data or []
-    dead = [r for r in rows if r["id"] not in keep and r.get("status") in ("done", "error")]
+    dead = [r for r in rows if r["id"] not in keep and r.get("status") in ("done", "error")
+            and not (r.get("meta") or {}).get("design")]
     used = set()
     for r in dead:
         try:

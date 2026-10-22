@@ -193,6 +193,7 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
         counts["manual"] = len(q.execute().data or [])
     for row in claim(store, [cid for cid in campaigns if cid not in manual_wa], room):
         camp = campaigns.get(row["campaign_id"]) or {}
+        sent_attempted = False
         try:
             if row.get("channel") == "whatsapp" and wa is None:
                 raise SendError("refused", "no WhatsApp sender: settings.crm.whatsapp_phone_number_id is blank")
@@ -207,6 +208,7 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
                 counts["skipped"] += 1
                 continue
             lang = k.get("lang") or camp.get("lang") or "bm"
+            sent_attempted = True              # from here on a timeout/5xx does not prove the message never went out
             if row.get("channel") == "whatsapp":
                 text = whatsapp_text(row["body"], lang, k["unsub_token"], settings, site)
                 result = wa.send_text(to_number=row["to_phone"], text=text)
@@ -222,7 +224,9 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
                 activity(store, k["id"], "campaign", f"{what}: {camp.get('name') or row['subject']}",
                          {"campaign_id": row["campaign_id"], "outbox_id": row["id"], "channel": row.get("channel") or "email"})
         except SendError as exc:
-            back = "pending" if exc.kind == "transient" and row["attempts"] < MAX_ATTEMPTS else "error"
+            # same idempotency reasoning as billing.py: once the live send call was reached, a timeout/5xx does not
+            # prove the message never went out, so it must never be silently retried from 'pending'
+            back = "pending" if (not sent_attempted and exc.kind == "transient" and row["attempts"] < MAX_ATTEMPTS) else "error"
             _fail(store, row, exc, back)
             counts["error"] += 1
         except Exception as exc:                      # noqa: BLE001 - a crash must leave the row readable, never 'working' for ever

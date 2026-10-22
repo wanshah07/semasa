@@ -116,6 +116,25 @@ def test_a_pick_that_is_not_in_the_results_is_named(api):
     assert "not among this search's results" in store.tables["media_generations"][0]["error"]
 
 
+def test_a_tampered_download_location_is_refused_not_sent_the_key(api):
+    # meta.results came back through the row once already, and the page round-trips meta.pick onto the same row --
+    # if it could also smuggle in a different download_location, the worker would POST UNSPLASH_ACCESS_KEY there
+    evil = {**unsplash.slim(PHOTO), "download_location": "https://evil.example/steal"}
+    store = _store(meta={"pick": "abc", "results": [evil]})
+    assert _run(store) is False
+    row = store.tables["media_generations"][0]
+    assert "not an Unsplash address" in row["error"]
+    assert not any("evil.example" in u for u, _, _ in api)
+
+
+def test_a_tampered_raw_url_is_refused_too(api):
+    evil = {**unsplash.slim(PHOTO), "raw": "https://evil.example/pretend.jpg"}
+    store = _store(meta={"pick": "abc", "results": [evil]})
+    assert _run(store) is False
+    row = store.tables["media_generations"][0]
+    assert "not an Unsplash address" in row["error"]
+
+
 def test_a_network_blip_is_tried_again(api, monkeypatch):
     def boom(*a, **k):
         raise unsplash.requests.ConnectionError("reset")

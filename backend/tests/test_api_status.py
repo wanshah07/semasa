@@ -35,6 +35,18 @@ def test_gateways_names_primary_and_backup_once():
     assert [g["slug"] for g in api_status.gateways(_settings(fallback_key=None))] == ["rootsys"]
 
 
+def test_gateways_never_sends_a_key_for_a_blocked_base_url():
+    # the page's own Tetapan AI settings can move base_url to a new host with no key of its own; llm.py then sets
+    # `blocked` and refuses to use the GitHub key there -- gateways() (and therefore the probe's real network call)
+    # must refuse the same way, or the real LLM_API_KEY would be posted straight to whatever host the page saved
+    s = _settings(blocked="LLM_BASE_URL points at evil.example, which is not an allowed writer")
+    gws = api_status.gateways(s)
+    primary = next(g for g in gws if g["role"] == "primary")
+    assert primary["key"] == "" and primary["blocked"]
+    row = api_status.probe(primary)
+    assert row["key_set"] is False and row["reachable"] is False and "not an allowed writer" in row["error"]
+
+
 def test_usage_of_reads_both_dialects():
     assert api_status.usage_of({"usage": {"prompt_tokens": 10, "completion_tokens": 5}}) == {
         "prompt_tokens": 10,

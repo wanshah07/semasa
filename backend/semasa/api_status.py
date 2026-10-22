@@ -59,7 +59,7 @@ def gateways(s: LLMSettings) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
 
-    def add(role: str, base: str, key: str | None, model: str, provider: str = "openai") -> None:
+    def add(role: str, base: str, key: str | None, model: str, provider: str = "openai", blocked: str = "") -> None:
         if not base:
             return
         slug, name = slug_of(base)
@@ -72,15 +72,20 @@ def gateways(s: LLMSettings) -> list[dict[str, Any]]:
                 "name": name,
                 "role": role,
                 "base_url": base.rstrip("/"),
-                "key": key or "",
+                # llm.py never sends a key where `blocked` is set (base_url is not on the allowed-hosts list, which
+                # the page's own Tetapan AI settings can move); the probe must not either, or anyone with page
+                # access could park base_url on their own server and have the real LLM_API_KEY posted straight to it.
+                "key": "" if blocked else (key or ""),
                 "model": model or "",
                 "provider": provider,
+                "blocked": blocked,
             }
         )
 
-    add("primary", s.base_url, s.api_key, s.model, s.provider)
+    add("primary", s.base_url, s.api_key, s.model, s.provider, blocked=getattr(s, "blocked", "") or "")
     if getattr(s, "fallback_base_url", "") and getattr(s, "fallback_key", None):
-        add("backup", s.fallback_base_url, s.fallback_key, getattr(s, "fallback_model", ""))
+        add("backup", s.fallback_base_url, s.fallback_key, getattr(s, "fallback_model", ""),
+            blocked=getattr(s, "fallback_blocked", "") or "")
     if getattr(s, "vision_base_url", "") and getattr(s, "vision_key", None):
         add("reader", s.vision_base_url, s.vision_key, getattr(s, "vision_reader_model", ""))
     return out
@@ -190,7 +195,7 @@ def probe(gw: dict[str, Any], timeout: int = 30) -> dict[str, Any]:
         "error": "",
     }
     if not gw["key"]:
-        row.update(reachable=False, key_ok=None, error="no key set")
+        row.update(reachable=False, key_ok=None, error=gw.get("blocked") or "no key set")
         return row
     models, http, ms, err = _models(gw, timeout)
     row.update(

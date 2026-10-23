@@ -72,7 +72,7 @@ function JobPins({ cards, state, team, save, onToast }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? 1 : 0;
   const [busy, setBusy] = useState("");
-  const jobs = ["reader", "image_gen", "image_reader"];
+  const jobs = ["reader", "motion", "image_gen", "image_reader"];
   const canSave = typeof save === "function";
 
   const setPin = async (job, pin) => {
@@ -91,7 +91,7 @@ function JobPins({ cards, state, team, save, onToast }) {
         <h2 className="text-sm font-medium">{t("Siapa buat apa", "Who does what")}</h2>
         <span className="text-[11px] text-muted">{state?.at ? `${t("diputuskan", "decided")} ${stampMYT(state.at)}` : t("belum diputuskan: larian seterusnya menulisnya", "not decided yet: the next run writes it")}</span>
       </div>
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {jobs.map((job) => {
           const d = decisionOf(state, job);
           const pin = pinFor(team, job);
@@ -101,16 +101,16 @@ function JobPins({ cards, state, team, save, onToast }) {
           return (
             <div key={job} className="rounded-tile bg-surface-2/60 p-3" data-ai-job={job}>
               <p className="text-[11px] uppercase tracking-widest text-muted">{JOBS[job][L]}</p>
-              {job === "reader" ? (
+              {job === "reader" || job === "motion" ? (
                 <p className="mt-1 text-sm">{d.chosen ? <><span className="font-medium">{d.chosen.name}</span> · {d.chosen.model}</> : <span className="text-muted">{d.why || t("tiada robot teks dengan kunci", "no text robot with a key")}</span>}</p>
               ) : (
                 <p className="mt-1 text-sm text-muted">{pin ? <><span className="font-medium text-ink">{pinnedCard?.name || pin.gateway}</span>{pin.model ? ` · ${pin.model}` : ""}</> : t("ikut Tetapan → Tetapan AI", "as set in Tetapan → AI settings")}</p>
               )}
-              {job === "reader" && d.why && d.chosen && <p className="text-[11px] text-muted">{d.why}{d.backup ? ` · ${t("sandaran", "backup")}: ${d.backup.name || d.backup.slug}` : ""}</p>}
-              {job === "reader" && d.order.length > 1 && (
+              {(job === "reader" || job === "motion") && d.why && d.chosen && <p className="text-[11px] text-muted">{d.why}{d.backup ? ` · ${t("sandaran", "backup")}: ${d.backup.name || d.backup.slug}` : ""}</p>}
+              {(job === "reader" || job === "motion") && d.order.length > 1 && (
                 <ol className="mt-1 text-[11px] text-muted">{d.order.map((o, i) => <li key={o.slug}>{i + 1}. {o.name} · {o.model || "—"} · {o.why}</li>)}</ol>
               )}
-              {job === "reader" && d.skipped.map((o) => <p key={o.slug} className="mt-1 text-[11px] text-danger">{o.why}</p>)}
+              {(job === "reader" || job === "motion") && d.skipped.map((o) => <p key={o.slug} className="mt-1 text-[11px] text-danger">{o.why}</p>)}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Select value={pin?.gateway || ""} disabled={!canSave || busy === job}
                   onChange={(v) => setPin(job, v ? { gateway: v, model: "" } : null)}

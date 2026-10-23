@@ -51,9 +51,10 @@ MIN_CALLS = 3                              # fewer measured calls than this: tru
 ROBOTS: dict[str, dict[str, Any]] = {
     "rootsys": {"robot": "W1", "name": "Wanshah 1", "tone": "afiq", "does": ["read", "write"]},
     "mireld": {"robot": "W2", "name": "Wanshah 2", "tone": "mireld", "does": ["read", "write"]},
-    "kiosapi": {"robot": "W3", "name": "Wanshah 3", "tone": "kios", "does": ["read_image", "make_image"]},
+    # KiosAPI serves chat models too (Wan's reader slot runs gpt-5.6-sol there), so it may write text; what it may NOT do is
+    # answer a chat question with an image model, which cannot_write_text() refuses by the model's name.
+    "kiosapi": {"robot": "W3", "name": "Wanshah 3", "tone": "kios", "does": ["read", "write", "read_image", "make_image"]},
 }
-IMAGE_HOSTS = {"kiosapi.com"}
 # a model that draws, not one that talks: never a text writer whatever slot it was typed into
 IMAGE_MODEL_RE = re.compile(r"image|dall-?e|flux|stable-?diffusion|sdxl|imagen|seedream|sora|veo|kling|wan2|hunyuan", re.I)
 
@@ -70,10 +71,8 @@ def robot_of(base_url: str) -> dict[str, Any]:
 
 
 def cannot_write_text(base_url: str, model: str) -> str:
-    """Why this gateway+model is not a text writer, or ""."""
-    host = host_of(base_url).lower()
-    if host in IMAGE_HOSTS:
-        return f"{ROBOTS['kiosapi']['name']} ({host}) makes pictures; it is not a text reader"
+    """Why this gateway+model is not a text writer, or "". By the MODEL, never the host: a gateway that draws pictures may
+    also serve chat models, and judging it by its address skipped Wan's own text model (gpt-5.6-sol on kiosapi.com)."""
     if model and IMAGE_MODEL_RE.search(model):
         return f"{model} is an image model: the Chat Completions endpoint refuses it (HTTP 400)"
     return ""
@@ -130,9 +129,9 @@ def _parse(s: Any) -> datetime | None:
 
 # --- the decision ---------------------------------------------------------------------------------------------------
 
-def candidates(github: LLMSettings, cfg: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    """Every text gateway a key exists for, each host once: GitHub's primary, GitHub's backup, the page's reader slot.
-    `skipped` names the ones that cannot write text, so the API tab can say why."""
+def candidates(github: LLMSettings, cfg: dict[str, dict[str, Any]], job: str = "reader") -> list[dict[str, Any]]:
+    """Every text gateway a key exists for, each host once: for the motion job the page's own motion slot first, then the
+    page's reader slot, GitHub's primary, GitHub's backup. `skipped` names the ones that cannot write text."""
     from . import ai_config
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -148,15 +147,17 @@ def candidates(github: LLMSettings, cfg: dict[str, dict[str, Any]]) -> list[dict
         out.append({"source": source, "slug": slug, "provider": provider or "openai", "base_url": base, "key": key,
                     "model": model or "", "blocked": blocked or cannot_write_text(base, model), **robot_of(base)})
 
-    r = cfg.get("reader") or {}
-    if r.get("base_url"):
+    for slot, source in ((("motion", "motion"),) if job == "motion" else ()) + (("reader", "page"),):
+        r = cfg.get(slot) or {}
+        if not r.get("base_url"):
+            continue
         provider = r.get("provider") or "openai"
         base = r["base_url"]
-        key = ai_config._key(r, "reader", provider, base)        # the page's key, only at the host it was saved for
+        key = ai_config._key(r, slot, provider, base)            # the page's key, only at the host it was saved for
         if key:
-            add("page", provider, base, key, r.get("model") or "")
-        elif host_of(base) == host_of(github.base_url) and github.api_key:
-            add("page", provider, base, github.api_key, r.get("model") or github.model, github.blocked)
+            add(source, provider, base, key, r.get("model") or "")
+        elif slot == "reader" and host_of(base) == host_of(github.base_url) and github.api_key:
+            add(source, provider, base, github.api_key, r.get("model") or github.model, github.blocked)
     add("github", github.provider, github.base_url, github.api_key, github.model, github.blocked)
     if github.fallback_key:
         add("backup", "openai", github.fallback_base_url, github.fallback_key, github.fallback_model, github.fallback_blocked)
@@ -192,29 +193,33 @@ def order(cands: list[dict[str, Any]], hl: dict[str, dict[str, Any]], pin: dict[
     return usable
 
 
-def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: datetime | None = None) -> LLMSettings:
+def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: datetime | None = None,
+          job: str = "reader") -> LLMSettings:
     """LLMSettings with the fastest healthy text robot as the primary and the next as the backup; the picture reader as
     ai_config decides it. Records the decision in settings.ai_team_state. With nothing measured the configured order
     stands, so a store that cannot be read changes nothing."""
     from . import ai_config
     base = ai_config.llm_settings(github, cfg)                 # the page's picture reader and vision model, as before
-    cands = candidates(github, cfg)
+    cands = candidates(github, cfg, job)
     pins = read_pins(store)
-    ranked = order(cands, health(store, now), pins.get("reader"))
+    pin = pins.get(job)
+    if not pin and job == "motion" and cands and cands[0]["source"] == "motion":
+        pin = {"gateway": cands[0]["slug"], "model": ""}        # Wan's own motion API goes first while it is healthy
+    ranked = order(cands, health(store, now), pin)
     skipped = [c for c in cands if c["blocked"]]
     state: dict[str, Any] = {
         "at": (now or datetime.now(UTC)).isoformat(),
-        "reader": {
+        job: {
             "order": [{k: c.get(k) for k in ("slug", "robot", "name", "model", "source", "healthy", "speed_ms", "why", "pinned")}
                       for c in ranked],
             "skipped": [{"slug": c["slug"], "robot": c["robot"], "name": c["name"], "model": c["model"], "why": c["blocked"]}
                         for c in skipped],
-            "pin": pins.get("reader"),
+            "pin": pin,
         },
     }
     if not ranked:
-        state["reader"]["chosen"] = None
-        state["reader"]["why"] = "no text robot has a usable key" + (": " + skipped[0]["blocked"] if skipped else "")
+        state[job]["chosen"] = None
+        state[job]["why"] = "no text robot has a usable key" + (": " + skipped[0]["blocked"] if skipped else "")
         _record(store, state)
         # keep what ai_config made, minus a reader that cannot write text: llm.py then says why_off() honestly
         if skipped and host_of(base.base_url) == host_of(skipped[0]["base_url"]):
@@ -222,9 +227,9 @@ def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
         return base
     first = ranked[0]
     second = next((c for c in ranked[1:] if c["provider"] == "openai"), None)   # the backup speaks the OpenAI dialect only
-    state["reader"]["chosen"] = {"slug": first["slug"], "robot": first["robot"], "name": first["name"], "model": first["model"]}
-    state["reader"]["why"] = first["why"]
-    state["reader"]["backup"] = {"slug": second["slug"], "robot": second["robot"], "name": second["name"],
+    state[job]["chosen"] = {"slug": first["slug"], "robot": first["robot"], "name": first["name"], "model": first["model"]}
+    state[job]["why"] = first["why"]
+    state[job]["backup"] = {"slug": second["slug"], "robot": second["robot"], "name": second["name"],
                                  "model": second["model"]} if second else None
     _record(store, state)
     change: dict[str, Any] = dict(provider=first["provider"], base_url=first["base_url"], api_key=first["key"],

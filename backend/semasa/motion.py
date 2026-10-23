@@ -347,7 +347,7 @@ def main() -> int:
     llm = None
     try:
         api_status.attach(store, "media")
-        llm = LLM(ai_config.llm_for(store))
+        llm = LLM(ai_config.llm_for(store, job="motion"))      # the page's own motion API first, then the team
     except Exception as exc:  # noqa: BLE001
         log.warning("no LLM: %s", exc)
     token = os.environ.get("REPOS_TOKEN") or os.environ.get("LANDING_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")

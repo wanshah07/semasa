@@ -33,7 +33,6 @@ from pathlib import Path
 from typing import Any
 
 from . import ai_config, api_status, db
-from .config import LLMSettings
 from .llm import LLM
 from .log import get_logger
 
@@ -604,7 +603,7 @@ def process_templates(store: Any, llm: Any, now: datetime, limit: int = PER_RUN)
 def make_llm(store: Any) -> Any | None:
     try:
         api_status.attach(store, "brain_docs")
-        return LLM(ai_config.llm_settings(LLMSettings.load(), ai_config.read(store)))
+        return LLM(ai_config.llm_for(store))
     except Exception as exc:                                  # noqa: BLE001 - no key is "not drafted", never a crash
         log.warning("no LLM: %s", exc)
         return None

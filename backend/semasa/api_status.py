@@ -26,7 +26,7 @@ import requests
 
 from . import ai_config, db
 from . import llm as llm_mod
-from .config import LLMSettings, host_of
+from .config import LLMSettings, MediaSettings, host_of
 
 log = logging.getLogger("semasa.api_status")
 SETTINGS_KEY = "api_probe"
@@ -35,7 +35,9 @@ NAMES = {
     "api.mireld.my": ("mireld", "Mireld"),
     "api.openai.com": ("openai", "OpenAI"),
     "api.anthropic.com": ("anthropic", "Anthropic"),
+    "kiosapi.com": ("kiosapi", "KiosAPI (Wanshah 3)"),
 }
+IMAGE_ROLES = ("image",)       # a picture maker: list its models and accept the key, never ask it a chat question
 BALANCE_PATHS = (
     "/dashboard/billing/credit_grants",
     "/dashboard/billing/subscription",
@@ -54,8 +56,11 @@ def slug_of(base_url: str) -> tuple[str, str]:
     return host.replace(".", "-") or "unknown", host or "unknown"
 
 
-def gateways(s: LLMSettings) -> list[dict[str, Any]]:
-    """The gateways the workers are configured with, each once: primary, backup, and a page reader on another host."""
+def gateways(s: LLMSettings, media: MediaSettings | None = None) -> list[dict[str, Any]]:
+    """The gateways the workers are configured with, each once: primary, backup, a page reader on another host, and the
+    OpenAI-dialect picture maker (KiosAPI) as role "image", which is probed by its /models only (Wan's screenshot of
+    23 Oct 2026: kiosapi.com asked a chat question with gpt-image-2 answered 400 "not supported on the Chat Completions
+    endpoint", which read as a dead gateway when it was a text question put to a painter)."""
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
 
@@ -88,6 +93,8 @@ def gateways(s: LLMSettings) -> list[dict[str, Any]]:
             blocked=getattr(s, "fallback_blocked", "") or "")
     if getattr(s, "vision_base_url", "") and getattr(s, "vision_key", None):
         add("reader", s.vision_base_url, s.vision_key, getattr(s, "vision_reader_model", ""))
+    if media is not None and media.provider == "openai" and media.openai_key:
+        add("image", media.openai_base_url, media.openai_key, media.openai_image_model)
     return out
 
 
@@ -207,6 +214,11 @@ def probe(gw: dict[str, Any], timeout: int = 30) -> dict[str, Any]:
         error=err,
     )
     row["model_listed"] = (gw["model"] in models) if models and gw["model"] else None
+    if gw["role"] in IMAGE_ROLES:
+        # a painter is "up" when it lists models with the key accepted; its chat endpoint is not its job
+        row.update(chat_ok=bool(row["key_ok"]) and bool(models), chat_ms=ms)
+        row["balance"] = _balance(gw, timeout) if row["key_ok"] else {}
+        return row
     chat_ok, chat_ms, _usage, chat_err = _chat(gw, timeout)
     row.update(chat_ok=chat_ok, chat_ms=chat_ms)
     if chat_err and not row["error"]:
@@ -217,9 +229,9 @@ def probe(gw: dict[str, Any], timeout: int = 30) -> dict[str, Any]:
     return row
 
 
-def run(store: Any, settings: LLMSettings, timeout: int = 30) -> list[dict[str, Any]]:
+def run(store: Any, settings: LLMSettings, timeout: int = 30, media: MediaSettings | None = None) -> list[dict[str, Any]]:
     rows = []
-    for gw in gateways(settings):
+    for gw in gateways(settings, media):
         row = probe(gw, timeout)
         rows.append(row)
         store.table(db.API_STATUS).upsert(row, on_conflict="slug").execute()
@@ -298,8 +310,17 @@ def attach(store: Any, area: str) -> None:
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     store = db.client()
-    settings = ai_config.llm_settings(LLMSettings.load(), ai_config.read(store))
-    rows = run(store, settings, timeout=int(os.environ.get("LLM_TIMEOUT") or 30))
+    cfg = ai_config.read(store)
+    settings = ai_config.llm_settings(LLMSettings.load(), cfg)
+    try:
+        media = ai_config.media_settings(MediaSettings.load(), cfg)
+    except Exception as exc:  # noqa: BLE001 - the image slot is optional to the probe
+        log.info("media settings not loaded (%s); the picture maker is not probed", str(exc)[:120])
+        media = None
+    rows = run(store, settings, timeout=int(os.environ.get("LLM_TIMEOUT") or 30), media=media)
+    # the probe just measured every robot: decide the order now, so the API tab shows the team the next run will use
+    from . import ai_team
+    ai_team.route(store, LLMSettings.load(), cfg)
     for r in rows:
         print(
             f"{r['name']}: reachable={r.get('reachable')} key_ok={r.get('key_ok')} chat_ok={r.get('chat_ok')} "

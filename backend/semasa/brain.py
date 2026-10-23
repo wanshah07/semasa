@@ -31,7 +31,6 @@ import requests
 
 from . import ai_config, api_status, db
 from . import fetch as web
-from .config import LLMSettings
 from .llm import LLM
 from .log import get_logger
 
@@ -515,7 +514,7 @@ def process(store: Any, settings: dict[str, Any], llm: Any, now: datetime, *, br
 def make_llm(store: Any) -> Any | None:
     try:
         api_status.attach(store, "brain")
-        return LLM(ai_config.llm_settings(LLMSettings.load(), ai_config.read(store)))
+        return LLM(ai_config.llm_for(store))
     except Exception as exc:                              # noqa: BLE001 - no key is "not read", never a crash
         log.warning("no LLM: %s", exc)
         return None

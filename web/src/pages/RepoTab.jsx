@@ -11,6 +11,7 @@ import Card from "../components/ui/Card";
 import { Icons } from "@/components/ui/icons";
 import Button from "../components/ui/Button";
 import { TextArea } from "../components/ui/Field";
+import RepoLibrary from "../components/RepoLibrary";
 
 /* Repo: the office repositories in six dimensions (Wan, 9 Oct 2026: "add all repo office environment in 6D in the system so i
    can track the repos progress and status"). Rows come from semasa_repos (supabase/035_repos_api.sql), written every 6 hours by
@@ -23,7 +24,7 @@ const EDGE_CLS = { ok: "border-l-ok", warn: "border-l-warn", bad: "border-l-dang
 const CI_WORDS = { green: ["lulus", "passing"], red: ["gagal", "failing"], running: ["berjalan", "running"], none: ["tiada", "none"] };
 const DIM_ICON = { code: GitCommitHorizontal, prs: GitPullRequest, ci: PlayCircle, issues: MessageSquareWarning, schedules: CalendarClock, deploy: Globe };
 
-export default function RepoTab({ settings, save, onToast }) {
+export default function RepoTab({ settings, save, onToast, user }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? 1 : 0;
   const reposT = useTable(TABLES.repos, { enabled: true, order: "full_name", ascending: true, limit: 100, realtime: false, everyMs: 300_000 });
@@ -71,6 +72,9 @@ export default function RepoTab({ settings, save, onToast }) {
         </div>
       </motion.div>
 
+      <RepoLibrary settings={settings} user={user} onToast={onToast} />
+
+      <h2 className="mb-2 font-display text-2xl">{t("Repo pejabat", "Office repos")}</h2>
       {missing && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual belum ada: jalankan supabase/035_repos_api.sql sekali, kemudian larian Repos di GitHub.", "The table is not there yet: run supabase/035_repos_api.sql once, then the Repos workflow on GitHub.")}</p>}
       {reposT.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{reposT.error}</p>}
       {!reposT.loading && !reposT.error && !rows.length && (

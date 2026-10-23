@@ -9,7 +9,7 @@ import { useLang } from "../lib/i18n";
 import { opensAt, publishingOn } from "../lib/publishing";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
-import { Input, Label, Select } from "../components/ui/Field";
+import { Input, Label, Select, TextArea } from "../components/ui/Field";
 
 const SLOT = /^([01]\d|2[0-3]):[0-5]\d$/;
 const parseSlots = (s) => [...new Set(s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean))].sort();
@@ -132,6 +132,7 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
 
       <FaqCategories settings={settings} save={save} onToast={onToast} />
       <HalalExecutiveFaq settings={settings} save={save} onToast={onToast} />
+      <MotionPrompt settings={settings} save={save} onToast={onToast} />
     </main>
   );
 }
@@ -285,6 +286,35 @@ function HalalExecutiveFaq({ settings, save, onToast }) {
       <label className="block"><Label hint={ok ? "" : t("alamat …/exec dijangka", "an …/exec address is expected")}>{t("Alamat Apps Script", "Apps Script address")}</Label>
         <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://script.google.com/macros/s/…/exec" /></label>
       <Button size="sm" onClick={submit} disabled={busy || !ok}><Save size={12} /> {t("Simpan", "Save")}</Button>
+    </Card>
+  );
+}
+
+/* Wan's own skill/prompt for motion videos (Wan, 23 Oct 2026: "add this skill/prompt to create motion"): added to every
+   motion brief the worker writes from (backend/semasa/motion.py, settings.motion.prompt). */
+function MotionPrompt({ settings, save, onToast }) {
+  const { t } = useLang();
+  const [text, setText] = useState(settings.motion?.prompt || "");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setText(settings.motion?.prompt || ""); }, [settings.motion?.prompt]);
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await save("motion", { ...(settings.motion || {}), prompt: text.trim() });
+      onToast(t("Disimpan: setiap video motion seterusnya mengikutnya.", "Saved: every motion video from now on follows it."), "ok");
+    } catch (e) { onToast(/0 rows|motion/i.test(e.message) ? t("Jalankan supabase/043_motion.sql dahulu.", "Run supabase/043_motion.sql first.") : e.message, "danger"); }
+    setBusy(false);
+  };
+  return (
+    <Card className="space-y-3 p-5" data-motion-prompt>
+      <div>
+        <h3 className="text-lg">{t("Kemahiran motion", "Motion skill")}</h3>
+        <p className="mt-1 text-[12px] text-muted">{t("Arahan anda sendiri untuk video motion (gaya, rentak, warna, apa yang mesti ada). Kontrak HyperFrames (komposisi HTML, garis masa GSAP, tiada media luar) sudah ada dalam pekerja; tulis di sini apa yang anda mahu di atasnya.",
+          "Your own instructions for motion videos (style, pace, colours, what must appear). The HyperFrames contract (HTML composition, GSAP timeline, no outside media) is already in the worker; write here what you want on top of it.")}</p>
+      </div>
+      <TextArea rows={6} value={text} onChange={(e) => setText(e.target.value)} maxLength={6000}
+        placeholder={t("Cth: Mula dengan hook 3 patah perkataan, satu nombor besar setiap babak, tutup dengan nama instrumen.", "E.g. Open with a three-word hook, one big number a scene, close on the instrument's name.")} />
+      <Button size="sm" onClick={submit} disabled={busy}><Save size={12} /> {t("Simpan", "Save")}</Button>
     </Card>
   );
 }

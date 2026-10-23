@@ -68,7 +68,7 @@ def test_crash_still_closes_the_run_row(monkeypatch):
     assert closed["note"] == "crashed: RuntimeError: 400 Bad Request"
 
 
-def _run_with(monkeypatch, probe_ok, answers, n_items=30):
+def _run_with(monkeypatch, probe_ok, answers, n_items=30, waits=None):
     """Drive scraper._run with a fake LLM, fake sources and a fake store; return (exit, finish_run fields, calls)."""
     from semasa import scraper
     from semasa.config import LLMSettings, ScraperSettings
@@ -86,11 +86,14 @@ def _run_with(monkeypatch, probe_ok, answers, n_items=30):
 
     def fake_annotate(llm, batch):
         calls.append(len(batch))
-        return {b["i"]: {"summary": "Ringkasan.", "category": "ekonomi", "lang": "ms"} for b in batch} if answers else {}
+        on = answers(len(calls)) if callable(answers) else answers
+        return {b["i"]: {"summary": "Ringkasan.", "category": "ekonomi", "lang": "ms"} for b in batch} if on else {}
 
     items = [_item(f"https://a/{i}", title=f"Tajuk berita nombor {i} yang panjang") for i in range(n_items)]
     finished = {}
     monkeypatch.setattr(scraper, "LLM", FakeLLM)
+    slept = waits if waits is not None else []
+    monkeypatch.setattr(scraper.time, "sleep", slept.append)                                  # never wait in a test
     monkeypatch.setattr(scraper.categorize, "llm_annotate", fake_annotate)
     monkeypatch.setattr(scraper, "collect", lambda sources, s: (items, [{"name": "x", "kind": "rss", "ok": True,
                                                                           "items": n_items, "error": None}]))
@@ -115,9 +118,10 @@ def test_a_junk_probe_no_longer_switches_off_a_working_llm(monkeypatch):
 
 
 def test_a_dead_llm_costs_one_batch_then_goes_rules_only(monkeypatch):
+    from semasa import scraper
     code, finished, calls = _run_with(monkeypatch, probe_ok=False, answers=False)
     assert code == 2 and finished["llm_ok"] is False
-    assert calls == [12]                                               # gave up after the first real batch
+    assert calls == [12] * (1 + len(scraper.RETRY_WAITS))              # one batch a try: the first, then one after each wait
 
 
 def test_a_passing_probe_keeps_going_even_if_one_batch_is_empty(monkeypatch):
@@ -167,3 +171,22 @@ def test_one_answered_batch_resets_the_count(monkeypatch):
     monkeypatch.setattr("semasa.scraper.categorize.llm_annotate", flaky)
     annotate([_item(f"https://a/{i}", title=f"t{i}") for i in range(8)], object(), 2)
     assert calls == [0, 2, 4, 6]
+
+
+def test_a_short_outage_is_waited_out_instead_of_saving_rules_only_rows(monkeypatch):
+    """22-23 Oct 2026: the gateway was down for a few minutes and two runs gave up after seconds. Now it waits and asks again."""
+    waits = []
+    code, finished, calls = _run_with(monkeypatch, probe_ok=False, answers=lambda n: n >= 2, waits=waits)
+    assert waits == [30]                                               # one wait was enough
+    assert code == 0 and finished["llm_ok"] is True
+    assert calls[0] == 12 and calls[1:] == [12, 12, 6]                 # the second try summarised every batch
+
+
+def test_every_wait_is_used_before_giving_up_and_a_healthy_run_never_waits(monkeypatch):
+    waits = []
+    _run_with(monkeypatch, probe_ok=False, answers=False, waits=waits)
+    from semasa import scraper
+    assert waits == list(scraper.RETRY_WAITS)
+    waits = []
+    code, _f, _c = _run_with(monkeypatch, probe_ok=True, answers=True, waits=waits)
+    assert waits == [] and code == 0

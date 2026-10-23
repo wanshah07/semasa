@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -80,6 +81,11 @@ def dedupe_and_filter(items: list[Item], max_age_hours: int, now: datetime | Non
     return out
 
 
+# Seconds to wait before asking the writer again when a run got NO summary at all. The 22 and 23 Oct 2026 runs failed with
+# "LLM endpoint is configured but not answering" while the next run, hours later, was fine: the gateway had a short outage and the
+# run, which only retried for a few seconds, gave up and saved rules-only rows for good. Waiting a little and asking again turns
+# most of those into full summaries. Only when the probe failed AND nothing was summarised, so a healthy run never waits.
+RETRY_WAITS = (30, 60, 120)
 DEAD_BATCHES = 2   # batches in a row with no answer at all before the run stops asking (annotate)
 
 
@@ -203,8 +209,18 @@ def _run(store: Any, run_id: str | None, settings: ScraperSettings, llm_settings
     log.info("%d already stored, %d new", len(already), len(new_items))
 
     rows = annotate(new_items, llm if llm.configured else None, settings.llm_batch, give_up_after_first=not probe_ok)
-    inserted = db.upsert_trends(store, rows)
     by_source = sum(1 for r in rows if r["summary_source"] == "llm")
+    for attempt, wait in enumerate(RETRY_WAITS, 1):
+        if not (llm.configured and new_items and by_source == 0 and not probe_ok):    # a passing probe means the gateway is up
+            break
+        log.warning("no LLM summary at all; waiting %ds, then asking again (%d of %d)", wait, attempt, len(RETRY_WAITS))
+        time.sleep(wait)
+        probe_ok = llm.probe() or probe_ok
+        rows = annotate(new_items, llm, settings.llm_batch, give_up_after_first=not probe_ok)
+        by_source = sum(1 for r in rows if r["summary_source"] == "llm")
+        if by_source:
+            log.info("the writer answered again on attempt %d", attempt)
+    inserted = db.upsert_trends(store, rows)
     llm_ok = probe_ok or by_source > 0
     note = None
     if llm.configured and not llm_ok:

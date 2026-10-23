@@ -11,6 +11,7 @@ import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Segmented, Select, TextArea } from "../components/ui/Field";
+import MotionLab from "../components/MotionLab";
 
 /* The Video tab (Wan, 26 Sep 2026: "add segment that can cut, edit video for short video such as youtube video (ceramah
    agama) to able act idea and post, allow me to paste youtube page to you scrape, once approve can cut edit and create
@@ -88,6 +89,7 @@ export default function VideoTab({ user, gens, brand, onToast, openPost }) {
           </div>
         </>
       )}
+      <MotionLab user={user} onToast={onToast} />
     </main>
   );
 }

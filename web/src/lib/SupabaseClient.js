@@ -31,6 +31,7 @@ export const TABLES = {
   postMetrics: "semasa_post_metrics",                         // Prestasi (supabase/034_post_metrics.sql)
   repos: "semasa_repos", apiStatus: "semasa_api_status", apiUsage: "semasa_api_usage",   // Repo + API (supabase/035_repos_api.sql)
   repoLibrary: "semasa_repo_library",                         // Pustaka repo (supabase/042_repo_library.sql)
+  motions: "semasa_motions",                                  // Motion (supabase/043_motion.sql)
   // CRM (supabase/031_crm.sql)
   crmContacts: "semasa_crm_contacts", crmCampaigns: "semasa_crm_campaigns", crmOutbox: "semasa_crm_outbox", crmActivities: "semasa_crm_activities",
 };

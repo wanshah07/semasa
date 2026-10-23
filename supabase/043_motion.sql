@@ -11,6 +11,7 @@
 --
 -- settings.motion: {"prompt": "<Wan's own skill/prompt text, added to every brief>", "cli": "0.8.188"}.
 -- status: pending → working → done | error.
+-- Needs 042 (semasa_repo_library) first.
 -- SAFE IN A SHARED PROJECT (KPI): one semasa_ table, one trigger function, one settings row. Run once; re-running changes nothing.
 
 create table if not exists public.semasa_motions (
@@ -21,6 +22,11 @@ create table if not exists public.semasa_motions (
   stream         text        not null default 'regulab',               -- regulab (BM) | linkedin (EN)
   resolution     text        not null default 'portrait',              -- portrait 1080x1920 | landscape 1920x1080 | square 1080x1080
   seconds        int         not null default 12,
+  style_repo_id  uuid        references public.semasa_repo_library (id) on delete set null,   -- a motion repo from Pustaka repo
+                                                                      -- whose README/skill files set the look (Wan, 23 Oct 2026:
+                                                                      -- "allow me to add repo motion, so I can have choice to
+                                                                      -- create different angle of motion video")
+  style_note     text        not null default '',                     -- what was read from that repo, for the record
   title          text        not null default '',
   html           text        not null default '',                      -- the composition the AI wrote (index.html)
   check_report   jsonb       not null default '{}'::jsonb,             -- hyperframes check: {ok, errors, warnings}

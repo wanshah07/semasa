@@ -46,6 +46,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          REPOS_TOKEN: ${{ secrets.REPOS_TOKEN }}                # reads the style repo's README/skill files (public ones need none)
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HYPERFRAMES_SKIP_SKILLS: "1"
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}

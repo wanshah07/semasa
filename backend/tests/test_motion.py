@@ -197,3 +197,45 @@ def test_source_words_reads_the_link_and_survives_a_dead_one(monkeypatch):
     monkeypatch.setattr(motion.fetch, "get", lambda url, timeout=25: (_ for _ in ()).throw(RuntimeError("down")))
     assert motion.source_words("https://x/z") == ("", "")
     assert motion.source_words("") == ("", "")
+
+
+class FakeGH:
+    def __init__(self, files):
+        self.files, self.calls = files, []
+
+    def maybe(self, path, params=None, *, raw=False, default=None):
+        self.calls.append(path)
+        for name, text in self.files.items():
+            if path.endswith("/" + name):
+                return text
+        return default
+
+
+def test_style_words_reads_the_chosen_motion_repo_and_the_writer_is_told_it_is_a_reference():
+    store = FakeStore()
+    lib = store.table("semasa_repo_library").insert({"full_name": "heygen-com/hyperframes", "url": "https://github.com/heygen-com/hyperframes",
+                                                     "summary_en": "HTML to MP4.", "how_to_run": "npx hyperframes render",
+                                                     "default_branch": "main", "readme_excerpt": "excerpt"}).execute().data[0]
+    gh = FakeGH({"readme": "# HyperFrames\nWrite HTML.", "SKILL.md": "Use power3.out eases."})
+    name, text = motion.style_words(store, gh, {"style_repo_id": lib["id"]})
+    assert name == "heygen-com/hyperframes" and "HTML to MP4." in text and "Write HTML." in text and "power3.out" in text
+    assert "npx hyperframes render" in text
+    # no GitHub reader: the library's own excerpt stands in
+    _n, text2 = motion.style_words(store, None, {"style_repo_id": lib["id"]})
+    assert "excerpt" in text2 and "Write HTML." not in text2
+    assert motion.style_words(store, gh, {"style_repo_id": None}) == ("", "")
+    assert motion.style_words(store, gh, {"style_repo_id": "missing"}) == ("", "")
+    u = motion.build_user({"brief": "b"}, "", "", style=(name, text))
+    assert "STYLE REFERENCE (the motion repo heygen-com/hyperframes)" in u and "not a dependency" in u and "power3.out" in u
+    assert "STYLE REFERENCE" not in motion.build_user({"brief": "b"}, "", "")
+
+
+def test_process_records_the_style_it_used(tmp_path):
+    store = Store()
+    lib = store.table("semasa_repo_library").insert({"full_name": "a/style", "summary_en": "Bold type."}).execute().data[0]
+    r = _row(store, style_repo_id=lib["id"])
+    llm = FakeLLM([{"title": "t", "html": GOOD}])
+    assert motion.process(store, llm, {**r, "attempts": 1}, {"prompt": "", "cli": "0.8.188"}, runner=_runner(), workdir=tmp_path,
+                          now=NOW, gh=FakeGH({}))
+    got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
+    assert got["style_note"].startswith("a/style: ") and "Bold type." in llm.asked[0][1]

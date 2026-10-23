@@ -35,6 +35,7 @@ from typing import Any
 
 from . import ai_config, api_status, db, fetch
 from .llm import LLM
+from .repos import GitHub
 
 log = logging.getLogger("semasa.motion")
 TABLE = "semasa_motions"
@@ -42,6 +43,8 @@ SETTINGS_KEY = "motion"
 CLI_VERSION = "0.8.188"
 MAX_ATTEMPTS = 2
 MAX_HTML = 60_000
+STYLE_MAX = 9_000                      # characters of a style repo handed to the writer
+STYLE_FILES = ("SKILL.md", "skills/SKILL.md", "STYLE.md", "DESIGN.md", "frame.md", "FRAME.md", "AGENTS.md", "CLAUDE.md")
 SIZES = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1080)}
 GSAP = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"
 PALETTE = {"regulab": {"ground": "#0f172a", "ink": "#f8fafc", "accent": "#38bdf8", "accent2": "#fbbf24"},
@@ -108,6 +111,40 @@ def source_words(url: str, timeout: int = 25) -> tuple[str, str]:
         return "", ""
 
 
+def style_words(store: Any, gh: GitHub | None, row: dict[str, Any]) -> tuple[str, str]:
+    """(name, text) of the motion repo chosen as the style: its library summary and how-to-run, then its README and any
+    skill/style file it carries (SKILL.md, DESIGN.md, frame.md ...). Read only, never run; ('', '') when none is chosen or
+    it cannot be read. The writer is told it is a STYLE reference: patterns, palette, pacing, never its media or scripts."""
+    rid = row.get("style_repo_id")
+    if not rid:
+        return "", ""
+    try:
+        rows = store.table("semasa_repo_library").select("*").eq("id", rid).execute().data or []
+    except Exception as exc:  # noqa: BLE001
+        log.info("style repo not read (%s)", str(exc)[:120])
+        return "", ""
+    if not rows:
+        return "", ""
+    lib = rows[0]
+    name = lib.get("full_name") or lib.get("url") or str(rid)
+    parts = [f"{name}: {lib.get('summary_en') or lib.get('summary_bm') or lib.get('description') or ''}".strip()]
+    if lib.get("how_to_run"):
+        parts.append("How it runs: " + str(lib["how_to_run"]))
+    if gh is not None and lib.get("full_name"):
+        base = f"/repos/{lib['full_name']}"
+        branch = lib.get("default_branch") or "main"
+        readme = gh.maybe(f"{base}/readme", raw=True, default="") or ""
+        if readme:
+            parts.append("README:\n" + readme[:STYLE_MAX // 2])
+        for f in STYLE_FILES:
+            text = gh.maybe(f"{base}/contents/{f}", {"ref": branch}, raw=True, default="") or ""
+            if text:
+                parts.append(f"{f}:\n{text[:STYLE_MAX // 3]}")
+    elif lib.get("readme_excerpt"):
+        parts.append("README:\n" + str(lib["readme_excerpt"]))
+    return name, "\n\n".join(parts)[:STYLE_MAX]
+
+
 def build_system(row: dict[str, Any], extra: str) -> str:
     stream = row.get("stream") or "regulab"
     res = row.get("resolution") or "portrait"
@@ -121,8 +158,12 @@ def build_system(row: dict[str, Any], extra: str) -> str:
 
 
 def build_user(row: dict[str, Any], src_title: str, src_text: str, findings: list[dict[str, Any]] | None = None,
-               previous: str = "") -> str:
+               previous: str = "", style: tuple[str, str] = ("", "")) -> str:
     parts = [f"BRIEF: {row.get('brief') or '(none)'}"]
+    if style[1]:
+        parts.append(f"STYLE REFERENCE (the motion repo {style[0]}): follow its visual language, scene patterns, pacing, type "
+                     "and palette ideas. It is a reference, not a dependency: use none of its files, media, fonts or scripts, "
+                     "and keep the contract above.\n" + style[1])
     if row.get("source_url"):
         parts.append(f"LINK: {row['source_url']}")
         if src_title or src_text:
@@ -239,22 +280,23 @@ def claim(store: Any, limit: int = 3) -> list[dict[str, Any]]:
 
 
 def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any], *, runner: Any = subprocess.run,
-            workdir: Path | None = None, now: datetime | None = None) -> bool:
+            workdir: Path | None = None, now: datetime | None = None, gh: GitHub | None = None) -> bool:
     now = now or datetime.now(UTC)
     folder = (workdir or Path(tempfile.mkdtemp(prefix="motion-"))) / str(row["id"])[:8]
     try:
         if llm is None:
             raise RuntimeError("no AI writer: set a reader key in Tetapan → Tetapan AI")
         title, text = source_words(row.get("source_url") or "")
+        style = style_words(store, gh, row)
         system = build_system(row, settings.get("prompt") or "")
-        out = llm.chat_json(system, build_user(row, title, text), max_tokens=7000)
+        out = llm.chat_json(system, build_user(row, title, text, style=style), max_tokens=7000)
         if not isinstance(out, dict):
             raise RuntimeError("the writer gave no answer")
         html = clean_html(out.get("html"))
         write_project(folder, html)
         report = check(folder, settings["cli"], runner)
         if not report["ok"] and report["errors"]:
-            out2 = llm.chat_json(system, build_user(row, title, text, report["errors"], html), max_tokens=7000)
+            out2 = llm.chat_json(system, build_user(row, title, text, report["errors"], html, style=style), max_tokens=7000)
             if isinstance(out2, dict) and out2.get("html"):
                 html = clean_html(out2.get("html"))
                 write_project(folder, html)
@@ -275,6 +317,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             "video_path": path, "video_url": url, "poster_url": poster_url, "bytes": len(data),
             **probe(video, runner),
             "model": getattr(llm, "last_model", "") or "", "error": "",
+            "style_note": (f"{style[0]}: {len(style[1])} characters read" if style[1] else ""),
         }).eq("id", row["id"]).execute()
         db.log_event(store, "info", "media", "motion.done", f"Motion siap: {(out.get('title') or row.get('brief') or '')[:80]}",
                      ref_table=TABLE, ref_id=row["id"])
@@ -290,10 +333,11 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             shutil.rmtree(folder.parent, ignore_errors=True)
 
 
-def run(store: Any, llm: Any, *, runner: Any = subprocess.run, now: datetime | None = None) -> dict[str, int]:
+def run(store: Any, llm: Any, *, runner: Any = subprocess.run, now: datetime | None = None,
+        gh: GitHub | None = None) -> dict[str, int]:
     settings = load_settings(store)
     rows = claim(store)
-    done = sum(process(store, llm, r, settings, runner=runner, now=now) for r in rows)
+    done = sum(process(store, llm, r, settings, runner=runner, now=now, gh=gh) for r in rows)
     return {"claimed": len(rows), "done": done, "failed": len(rows) - done}
 
 
@@ -306,7 +350,8 @@ def main() -> int:
         llm = LLM(ai_config.llm_for(store))
     except Exception as exc:  # noqa: BLE001
         log.warning("no LLM: %s", exc)
-    counts = run(store, llm)
+    token = os.environ.get("REPOS_TOKEN") or os.environ.get("LANDING_REPO_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    counts = run(store, llm, gh=GitHub(token))
     log.info("motion: %s", counts)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as fh:

@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { AlertTriangle, Clapperboard, Download, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Clapperboard, Download, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { useTable } from "../lib/hooks";
 import { timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
-import { RESOLUTIONS, SECONDS, STATUS_WORDS, checkItems, fmtBytes, motionLabel, motionRow } from "../lib/motion";
+import { RESOLUTIONS, SECONDS, STATUS_WORDS, checkItems, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "../lib/motion";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
@@ -28,11 +28,18 @@ export default function MotionLab({ user, onToast }) {
   const [stream, setStream] = useState("regulab");
   const [resolution, setResolution] = useState("portrait");
   const [seconds, setSeconds] = useState(SECONDS.default);
+  const [styleRepoId, setStyleRepoId] = useState("");
+  const [repoUrl, setRepoUrl] = useState("");
   const [busy, setBusy] = useState("");
+  // the motion repos in Pustaka repo: each one is a different look the writer can follow (Wan, 23 Oct 2026: "allow me to
+  // add repo motion, so I can have choice to create different angle of motion video")
+  const libT = useTable(TABLES.repoLibrary, { enabled: true, order: "updated_at", limit: 500, realtime: false, everyMs: 120_000 });
+  const styles = styleRepos(libT.rows);
+  const styleOf = (id) => libT.rows.find((r) => r.id === id);
   const missing = /semasa_motions/.test(motions.error || "");
 
   const add = async () => {
-    const built = motionRow({ brief, url, stream, resolution, seconds }, user?.id || null);
+    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId }, user?.id || null);
     if (built.error === "empty") return onToast?.(t("Tulis idea atau tampal pautan.", "Write an idea or paste a link."), "warn");
     if (built.error === "url") return onToast?.(t("Pautan perlu bermula dengan https://", "The link must start with https://"), "warn");
     setBusy("add");
@@ -42,6 +49,19 @@ export default function MotionLab({ user, onToast }) {
       setBrief(""); setUrl("");
       onToast?.(t("Dihantar: bot tulis komposisi, semak dan render MP4. Biasanya 2 hingga 5 minit.", "Sent: the bot writes the composition, checks it and renders the MP4. Usually 2 to 5 minutes."), "ok");
       motions.reload();
+    } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
+  };
+  const addRepo = async () => {
+    const row = motionRepoRow(repoUrl, user?.id || null);
+    if (!row) return onToast?.(t("Tampal pautan github.com/owner/nama.", "Paste a github.com/owner/name link."), "warn");
+    setBusy("repo");
+    try {
+      const { data, error } = await supabase.from(TABLES.repoLibrary).insert(row).select("id").single();
+      if (error) throw new Error(/duplicate|unique/i.test(errText(error)) ? t("Repo ini sudah ada dalam pustaka: pilih ia di senarai gaya.", "This repo is already in the library: pick it in the style list.") : errText(error));
+      setRepoUrl("");
+      if (data?.id) setStyleRepoId(data.id);
+      onToast?.(t("Repo motion ditambah ke Pustaka repo; bot membacanya sebentar lagi, dan ia sudah boleh dipilih sebagai gaya.", "Motion repo added to the repo library; the bot reads it shortly, and it can already be chosen as the style."), "ok");
+      libT.reload();
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
   };
   const patch = async (r, fields) => {
@@ -77,6 +97,17 @@ export default function MotionLab({ user, onToast }) {
             placeholder={t("Cth: Tiga perkara tentang PFAS dalam kosmetik yang SME perlu tahu sebelum 2027", "E.g. Three things about PFAS in cosmetics an SME must know before 2027")} /></label>
         <label className="block"><Label hint={t("pilihan: bot baca halaman itu", "optional: the bot reads that page")}>{t("Pautan", "Link")}</Label>
           <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" inputMode="url" /></label>
+        <div className="grid gap-4 md:grid-cols-[1fr_auto]" data-motion-style>
+          <label className="block"><Label hint={t("repo kategori motion dalam Pustaka repo; setiap satu gaya yang berbeza", "a motion-category repo from the repo library; each one a different look")}>{t("Gaya (repo motion)", "Style (motion repo)")}</Label>
+            <Select value={styleRepoId} onChange={setStyleRepoId} className="w-full"
+              options={[["", t("Gaya lalai Semasa", "Semasa's default look")], ...styles.map((r) => [r.id, `${r.name || r.full_name}${r.status !== "done" ? ` · ${t("belum dibaca", "not read yet")}` : ""}${r.safety === "avoid" ? ` · ${t("elakkan", "avoid")}` : ""}`])]} /></label>
+          <div className="flex items-end gap-2">
+            <label className="block min-w-0 flex-1"><Label>{t("Tambah repo motion", "Add a motion repo")}</Label>
+              <Input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/owner/nama" inputMode="url" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRepo())} /></label>
+            <Button variant="ghost" size="sm" className="mb-0.5" onClick={addRepo} disabled={busy === "repo" || !repoUrl.trim()}>{busy === "repo" ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} {t("Tambah", "Add")}</Button>
+          </div>
+        </div>
+        {styleRepoId && styleOf(styleRepoId)?.summary_bm && <p className="text-xs text-muted">{L ? styleOf(styleRepoId).summary_en || styleOf(styleRepoId).summary_bm : styleOf(styleRepoId).summary_bm}</p>}
         <div className="grid gap-4 md:grid-cols-3">
           <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
           <label className="block"><Label>{t("Saiz", "Size")}</Label><Select value={resolution} onChange={setResolution} className="w-full"
@@ -98,7 +129,7 @@ export default function MotionLab({ user, onToast }) {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-display text-lg">{motionLabel(r) || t("(tiada tajuk)", "(untitled)")}</p>
-                  <p className="truncate text-xs text-muted">{r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · {w([RESOLUTIONS[r.resolution]?.bm, RESOLUTIONS[r.resolution]?.en]) || r.resolution} · {r.seconds}s{r.model ? ` · ${r.model}` : ""}</p>
+                  <p className="truncate text-xs text-muted">{r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · {w([RESOLUTIONS[r.resolution]?.bm, RESOLUTIONS[r.resolution]?.en]) || r.resolution} · {r.seconds}s{r.model ? ` · ${r.model}` : ""}{r.style_repo_id ? ` · ${t("gaya", "style")}: ${styleOf(r.style_repo_id)?.name || styleOf(r.style_repo_id)?.full_name || r.style_note.split(":")[0] || "repo"}` : ""}</p>
                 </div>
                 <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${STATUS_CLS[r.status] || ""}`}>{r.status === "working" && <Loader2 size={10} className="animate-spin" />}{w(STATUS_WORDS[r.status] || [r.status, r.status])}</span>
               </div>

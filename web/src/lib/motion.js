@@ -19,7 +19,7 @@ export function clampSeconds(v) {
 }
 
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. */
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "" } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
@@ -28,7 +28,7 @@ export function motionRow({ brief = "", url = "", stream = "regulab", resolution
     row: {
       brief: b.slice(0, 2000), source_url: u, stream: stream === "linkedin" ? "linkedin" : "regulab",
       resolution: RESOLUTIONS[resolution] ? resolution : "portrait", seconds: clampSeconds(seconds), status: "pending",
-      created_by: userId,
+      style_repo_id: styleRepoId || null, created_by: userId,
     },
   };
 }
@@ -45,3 +45,17 @@ export function checkItems(r) {
 }
 
 export const fmtBytes = (n) => (n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n || 0} B`);
+
+/** The motion repos a video may take its look from: library rows filed under motion (Wan's own filing first), read or not. */
+export function styleRepos(libraryRows) {
+  return (libraryRows || []).filter((r) => r.category === "motion" && r.status !== "error")
+    .sort((a, b) => (b.category_by === "wan") - (a.category_by === "wan") || String(a.name || a.full_name).localeCompare(String(b.name || b.full_name)));
+}
+
+/** The row to insert into Pustaka repo for a motion repo added from the Motion form: filed under motion by Wan himself. */
+export function motionRepoRow(url, userId = null) {
+  const m = /^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[/#?].*)?$/i.exec(String(url || "").trim());
+  if (!m) return null;
+  return { url: `https://github.com/${m[1]}/${m[2]}`, full_name: `${m[1]}/${m[2]}`, note: "motion style", category: "motion",
+    category_by: "wan", status: "pending", created_by: userId };
+}

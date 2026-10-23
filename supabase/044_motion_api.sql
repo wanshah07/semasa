@@ -19,6 +19,9 @@ alter table public.semasa_ai_config add constraint semasa_ai_config_provider_che
   or (slot = 'image_gen' and provider in ('cloudflare', 'openai', 'replicate')));
 
 alter table public.semasa_motions add column if not exists idea_id uuid references public.semasa_ideas (id) on delete set null;
+-- one AI-drawn background picture under the composition, made by the image slot (KiosAPI gpt-image-2 in Wan's setup), off by default
+-- because it spends picture credits
+alter table public.semasa_motions add column if not exists ai_background boolean not null default false;
 create index if not exists semasa_motions_idea_idx on public.semasa_motions (idea_id);
 
 create or replace function public.semasa_save_ai_slot(

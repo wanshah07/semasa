@@ -19,7 +19,7 @@ export function clampSeconds(v) {
 }
 
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. */
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "" } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
@@ -28,7 +28,7 @@ export function motionRow({ brief = "", url = "", stream = "regulab", resolution
     row: {
       brief: b.slice(0, 2000), source_url: u, stream: stream === "linkedin" ? "linkedin" : "regulab",
       resolution: RESOLUTIONS[resolution] ? resolution : "portrait", seconds: clampSeconds(seconds), status: "pending",
-      style_repo_id: styleRepoId || null, created_by: userId,
+      style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
     },
   };
 }
@@ -70,5 +70,5 @@ export function motionFromIdea(idea, userId = null) {
   if (!brief) return null;
   const url = /^https?:\/\/\S+$/.test(String(idea?.source_url || "")) ? idea.source_url : "";
   return { brief, source_url: url, stream: idea?.stream === "linkedin" ? "linkedin" : "regulab", resolution: "portrait", seconds: 12,
-    status: "pending", idea_id: idea.id, created_by: userId };
+    status: "pending", idea_id: idea.id, ai_background: false, created_by: userId };
 }

@@ -239,3 +239,47 @@ def test_process_records_the_style_it_used(tmp_path):
                           now=NOW, gh=FakeGH({}))
     got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
     assert got["style_note"].startswith("a/style: ") and "Bold type." in llm.asked[0][1]
+
+
+class FakePicture:
+    name = "openai"
+
+    def __init__(self, fail=False):
+        self.fail, self.prompts = fail, []
+
+    def generate_from_text(self, prompt, options):
+        self.prompts.append(prompt)
+        if self.fail:
+            raise RuntimeError("402 credits")
+        from semasa.providers import Generated
+        return Generated(b"\x89PNG...", "image/png", "gpt-image-2")
+
+
+def test_the_ai_background_is_drawn_handed_to_the_writer_and_recorded(tmp_path):
+    store = Store()
+    r = _row(store, ai_background=True)
+    llm = FakeLLM([{"title": "t", "html": GOOD}])
+    pic = FakePicture()
+    assert motion.process(store, llm, {**r, "attempts": 1}, {"prompt": "", "cli": "0.8.188"}, runner=_runner(), workdir=tmp_path,
+                          now=NOW, picture_provider=pic)
+    assert (tmp_path / r["id"][:8] / "assets" / "bg.png").read_bytes().startswith(b"\x89PNG")
+    assert "url(assets/bg.png)" in llm.asked[0][0] and "Tiga perkara tentang PFAS" in pic.prompts[0]
+    got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
+    assert got["status"] == "done" and "background: gpt-image-2 via openai" in got["style_note"]
+
+
+def test_no_background_asked_means_none_is_drawn_and_a_failed_one_never_stops_the_video(tmp_path):
+    store = Store()
+    r = _row(store)
+    llm = FakeLLM([{"title": "t", "html": GOOD}])
+    pic = FakePicture()
+    motion.process(store, llm, {**r, "attempts": 1}, {"prompt": "", "cli": "0.8.188"}, runner=_runner(), workdir=tmp_path,
+                   now=NOW, picture_provider=pic)
+    assert pic.prompts == [] and "assets/bg" not in llm.asked[0][0]
+    r2 = _row(store, ai_background=True)
+    llm2 = FakeLLM([{"title": "t", "html": GOOD}])
+    assert motion.process(store, llm2, {**r2, "attempts": 1}, {"prompt": "", "cli": "0.8.188"}, runner=_runner(),
+                          workdir=tmp_path, now=NOW, picture_provider=FakePicture(fail=True))
+    got = store.table(motion.TABLE).select("*").eq("id", r2["id"]).execute().data[0]
+    assert got["status"] == "done" and "background not made: 402 credits" in got["style_note"]
+    assert "assets/bg" not in llm2.asked[0][0]

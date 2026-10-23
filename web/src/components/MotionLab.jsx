@@ -29,6 +29,7 @@ export default function MotionLab({ user, onToast }) {
   const [resolution, setResolution] = useState("portrait");
   const [seconds, setSeconds] = useState(SECONDS.default);
   const [styleRepoId, setStyleRepoId] = useState("");
+  const [aiBackground, setAiBackground] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
   const [busy, setBusy] = useState("");
   // the motion repos in Pustaka repo: each one is a different look the writer can follow (Wan, 23 Oct 2026: "allow me to
@@ -39,7 +40,7 @@ export default function MotionLab({ user, onToast }) {
   const missing = /semasa_motions/.test(motions.error || "");
 
   const add = async () => {
-    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId }, user?.id || null);
+    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground }, user?.id || null);
     if (built.error === "empty") return onToast?.(t("Tulis idea atau tampal pautan.", "Write an idea or paste a link."), "warn");
     if (built.error === "url") return onToast?.(t("Pautan perlu bermula dengan https://", "The link must start with https://"), "warn");
     setBusy("add");
@@ -115,6 +116,12 @@ export default function MotionLab({ user, onToast }) {
           <label className="block"><Label hint={`${SECONDS.min}–${SECONDS.max}`}>{t("Saat", "Seconds")}</Label>
             <Input type="number" min={SECONDS.min} max={SECONDS.max} value={seconds} onChange={(e) => setSeconds(e.target.value)} /></label>
         </div>
+        <label className="flex items-start gap-2 text-sm" data-motion-bg>
+          <input type="checkbox" className="mt-1" checked={aiBackground} onChange={(e) => setAiBackground(e.target.checked)} />
+          <span>{t("Latar gambar AI", "AI background picture")}
+            <span className="block text-[12px] text-muted">{t("Satu gambar dilukis oleh slot Penjana gambar (KiosAPI jika itu yang anda tetapkan) dan diletak di bawah komposisi. Menggunakan kredit gambar; tiada gambar = video tetap dibuat.",
+              "One picture drawn by the Image generation slot (KiosAPI if that is what you set) and placed under the composition. It spends picture credits; if it cannot be made the video is still made.")}</span></span>
+        </label>
         <Button onClick={add} disabled={busy === "add"}>{busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {t("Buat video motion", "Make the motion video")}</Button>
       </Card>
 

@@ -70,7 +70,7 @@ THE CONTRACT (a render fails or looks wrong if any is broken):
 4. One paused timeline, registered AFTER its tweens: const tl = gsap.timeline({{ paused: true }}); ... ;
    window.__timelines["main"] = tl; tl.seek(0); Position every tween with an absolute time as the last argument.
 5. No Date.now(), no Math.random(), no fetch, no timers, no repeat: -1, no <video>, <audio> or <img>. Everything visible is a
-   function of timeline time. Draw with CSS only: type, shapes, gradients, borders, simple SVG written inline.
+   function of timeline time. Draw with CSS only: type, shapes, gradients, borders, simple SVG written inline.{background}
 6. Never tween display, visibility or autoAlpha on a .clip; animate a child. Animate transforms and opacity, never left/top/
    width/height. No CSS transform on an element GSAP transforms.
 7. Fonts: font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif (no @font-face). Keep all content inside the
@@ -145,7 +145,14 @@ def style_words(store: Any, gh: GitHub | None, row: dict[str, Any]) -> tuple[str
     return name, "\n\n".join(parts)[:STYLE_MAX]
 
 
-def build_system(row: dict[str, Any], extra: str) -> str:
+BACKGROUND = """
+   ONE picture exists for you at {path}: use it ONLY as a CSS background-image (url({path}), background-size: cover) on a
+   full-frame element at the bottom of the stack, under a dark gradient scrim so the type stays readable, with a slow scale or
+   drift tween.
+   No other file exists: do not reference any other asset."""
+
+
+def build_system(row: dict[str, Any], extra: str, background: str = "") -> str:
     stream = row.get("stream") or "regulab"
     res = row.get("resolution") or "portrait"
     w, h = SIZES.get(res, SIZES["portrait"])
@@ -154,7 +161,32 @@ def build_system(row: dict[str, Any], extra: str) -> str:
                          seconds=int(row.get("seconds") or 12), source_line=row.get("source_line") or "Sumber: lihat kapsyen",
                          voice=VOICE.get(stream, VOICE["regulab"]),
                          language="Bahasa Malaysia" if stream == "regulab" else "English",
-                         extra=("WAN'S OWN INSTRUCTIONS:\n" + extra) if extra else "", **pal)
+                         extra=("WAN'S OWN INSTRUCTIONS:\n" + extra) if extra else "",
+                         background=BACKGROUND.format(path=background) if background else "", **pal)
+
+
+def make_background(store: Any, row: dict[str, Any], folder: Path, provider: Any = None) -> tuple[str, str]:
+    """(path relative to the project, note) of one picture drawn by the page's image slot (KiosAPI, OpenAI, Cloudflare or
+    Replicate, whichever Wan set), written under assets/. ('', note) when it cannot be made: the video is made without it."""
+    try:
+        if provider is None:
+            from .config import MediaSettings
+            from .media_generator import make_provider
+            s = ai_config.media_for(store, MediaSettings.load())
+            provider = make_provider(s.provider, s)
+        words = " ".join(str(row.get("brief") or "").split())[:300]
+        prompt = ("An abstract, cinematic background plate for a motion-graphics video about: " + words +
+                  ". Soft depth, calm dark tones, plenty of empty space for large type. "
+                  "No text, no letters, no logos, no people.")
+        gen = provider.generate_from_text(prompt, {})
+        ext = gen.extension if gen.extension != "bin" else "png"
+        rel = f"assets/bg.{ext}"
+        (folder / "assets").mkdir(parents=True, exist_ok=True)
+        (folder / rel).write_bytes(gen.data)
+        return rel, f"background: {gen.model} via {getattr(provider, 'name', 'image slot')}"
+    except Exception as exc:  # noqa: BLE001 - a missing picture never stops the video
+        log.warning("background not made: %s", str(exc)[:200])
+        return "", f"background not made: {str(exc)[:120]}"
 
 
 def build_user(row: dict[str, Any], src_title: str, src_text: str, findings: list[dict[str, Any]] | None = None,
@@ -280,7 +312,8 @@ def claim(store: Any, limit: int = 3) -> list[dict[str, Any]]:
 
 
 def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any], *, runner: Any = subprocess.run,
-            workdir: Path | None = None, now: datetime | None = None, gh: GitHub | None = None) -> bool:
+            workdir: Path | None = None, now: datetime | None = None, gh: GitHub | None = None,
+            picture_provider: Any = None) -> bool:
     now = now or datetime.now(UTC)
     folder = (workdir or Path(tempfile.mkdtemp(prefix="motion-"))) / str(row["id"])[:8]
     try:
@@ -288,7 +321,11 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             raise RuntimeError("no AI writer: set a reader key in Tetapan → Tetapan AI")
         title, text = source_words(row.get("source_url") or "")
         style = style_words(store, gh, row)
-        system = build_system(row, settings.get("prompt") or "")
+        bg_path, bg_note = ("", "")
+        if row.get("ai_background"):
+            folder.mkdir(parents=True, exist_ok=True)
+            bg_path, bg_note = make_background(store, row, folder, provider=picture_provider)
+        system = build_system(row, settings.get("prompt") or "", bg_path)
         out = llm.chat_json(system, build_user(row, title, text, style=style), max_tokens=7000)
         if not isinstance(out, dict):
             raise RuntimeError("the writer gave no answer")
@@ -304,6 +341,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         if report["errors"]:
             # render anyway in best-effort mode: a lint error is often cosmetic; the row keeps the report either way
             log.warning("%s: %d check error(s) remain; rendering best-effort", row["id"], len(report["errors"]))
+        style_line = f"{style[0]}: {len(style[1])} characters read" if style[1] else ""
         video = render(folder, settings["cli"], row.get("resolution") or "portrait", runner)
         data = video.read_bytes()
         path = f"motion/{row['id']}.mp4"
@@ -317,7 +355,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             "video_path": path, "video_url": url, "poster_url": poster_url, "bytes": len(data),
             **probe(video, runner),
             "model": getattr(llm, "last_model", "") or "", "error": "",
-            "style_note": (f"{style[0]}: {len(style[1])} characters read" if style[1] else ""),
+            "style_note": " · ".join(x for x in (style_line, bg_note) if x),
         }).eq("id", row["id"]).execute()
         db.log_event(store, "info", "media", "motion.done", f"Motion siap: {(out.get('title') or row.get('brief') or '')[:80]}",
                      ref_table=TABLE, ref_id=row["id"])

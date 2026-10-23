@@ -406,9 +406,9 @@ export default function App() {
   else if (tab === "resit") body = allowed ? <ResitTab user={user} onToast={push} /> : gate(null);
   else if (tab === "crm") body = allowed ? <CrmTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "repo") body = allowed ? <RepoTab settings={settings} save={save} onToast={push} /> : gate(null);
-  else if (tab === "api") body = allowed ? <ApiTab /> : gate(null);
+  else if (tab === "api") body = allowed ? <ApiTab settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "prestasi") body = allowed ? <PrestasiTab posts={posts} go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
-  else if (tab === "papan") body = allowed ? <HomeTab ideas={ideas} posts={posts} log={log} activity={activity} brand={brand} user={user}
+  else if (tab === "papan") body = allowed ? <HomeTab ideas={ideas} posts={posts} log={log} activity={activity} brand={brand} user={user} settings={settings}
     go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}
     onPost={(r) => setIdeaFrom(faqIdea(r))} /> : gate(null);

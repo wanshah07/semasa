@@ -17,6 +17,7 @@ import App1 from "@/components/ui/app-1";
 import { AuroraBackground } from "@/components/ui/aurora-background";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/app-1-utils/card";
 import Button from "../components/ui/Button";
+import AiTeam from "../components/AiTeam";
 
 /* Papan: the whole system on one page (Wan, 9 Oct 2026: "yes whole system dashboard"). Everything is computed from
    rows the page already loads (ideas, posts, the publish log, the log, the Bil documents and the subscriptions) with
@@ -28,12 +29,14 @@ const DOMAIN_WORDS = {
   fatwa: "Fatwa", farmaseutikal: ["Farmaseutikal", "Pharma"], makanan: ["Makanan", "Food"],
 };
 
-export default function HomeTab({ ideas, posts, log, activity, brand, go, user }) {
+export default function HomeTab({ ideas, posts, log, activity, brand, go, user, settings }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? 1 : 0;
   const w = (v) => (Array.isArray(v) ? v[L] : v);
   const docsT = useTable(TABLES.billingDocs, { enabled: true, limit: 2000, realtime: false });
   const subsT = useTable(TABLES.subscriptions, { enabled: true, order: "next_payment", ascending: true, limit: 500, realtime: false });
+  const apiT = useTable(TABLES.apiStatus, { enabled: true, order: "role", ascending: true, limit: 20, realtime: false, everyMs: 300_000 });
+  const usageT = useTable(TABLES.apiUsage, { enabled: true, order: "created_at", limit: 300, realtime: false, everyMs: 300_000 });
   const now = myt();
   const today = now.date;
   const stats = useMemo(() => systemStats({ ideas: ideas.rows, posts: posts.rows, log: log.rows, today }), [ideas.rows, posts.rows, log.rows, today]);
@@ -67,9 +70,10 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user }
           <p className="text-[11px] uppercase tracking-widest text-muted">{dayNames()[dowOf(today)]} · {fmtDate(today)} · {now.time} MYT</p>
           <h1 className="mt-1 font-display text-3xl sm:text-4xl">{greet}, {name}.</h1>
           <p className="mt-2 max-w-2xl text-sm text-ink/80">
-            {todaysDomains.length
+            {/* domainsOn is null when the rota names nothing for this weekday, which means "posts, any domain", not "no posting day" */}
+            {todaysDomains?.length !== 0
               ? t("Hari ini ws.regulab menyiarkan {d} pada {s}. LinkedIn: {l}.", "Today ws.regulab posts {d} at {s}. LinkedIn: {l}.",
-                { d: todaysDomains.map((d) => w(DOMAIN_WORDS[d] || d)).join(" + "), s: slotsOf(brand, "regulab").join(" · "), l: slotsOf(brand, "linkedin").join(" · ") })
+                { d: (todaysDomains || []).map((d) => w(DOMAIN_WORDS[d] || d)).join(" + ") || t("ikut rota", "per the rota"), s: slotsOf(brand, "regulab").join(" · "), l: slotsOf(brand, "linkedin").join(" · ") })
               : t("Hari ini bukan hari siaran ws.regulab. LinkedIn: {l}.", "ws.regulab does not post today. LinkedIn: {l}.", { l: slotsOf(brand, "linkedin").join(" · ") })}
           </p>
         </div>
@@ -83,6 +87,19 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user }
   );
 
   const aside = (
+    <>
+    <Card className="mb-4" data-ai-team>
+      <CardHeader>
+        <CardTitle>{t("Pasukan AI", "AI team")}</CardTitle>
+        <CardDescription>{settings?.ai_team_state?.reader?.chosen
+          ? t("{r} menulis sekarang · {m}", "{r} writes now · {m}", { r: settings.ai_team_state.reader.chosen.name, m: settings.ai_team_state.reader.chosen.model })
+          : t("Tiga robot Wanshah; pengarah pilih yang terpantas.", "Three Wanshah robots; the router picks the fastest.")}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <AiTeam statusRows={apiT.rows} usageRows={usageT.rows} state={settings?.ai_team_state} team={settings?.ai_team} compact />
+        <Button size="sm" variant="ghost" className="mt-3" onClick={() => go("api")}>{t("Tab API", "API tab")}</Button>
+      </CardContent>
+    </Card>
     <Card>
       <CardHeader>
         <CardTitle>{t("Langganan akan datang", "Upcoming subscriptions")}</CardTitle>
@@ -109,6 +126,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user }
         <Button size="sm" variant="ghost" className="mt-3" onClick={() => go("langganan")}><CreditCard size={13} /> {t("Semua langganan", "All subscriptions")}</Button>
       </CardContent>
     </Card>
+    </>
   );
 
   return (

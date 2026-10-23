@@ -648,9 +648,9 @@ def main() -> int:
     log.info(ai_config.describe(cfg))
     github_media, github_llm = MediaSettings.load(), LLMSettings.load()
     ai_config.record_github(store, "media", github_llm, github_media)   # shown under Settings → AI settings
-    s = ai_config.media_settings(github_media, cfg)
+    s = ai_config.media_for(store, github_media, cfg)
     api_status.attach(store, "media")
-    llm = LLM(ai_config.llm_settings(github_llm, cfg))
+    llm = LLM(ai_config.llm_for(store, github_llm))
     from . import faq, ideas, trial
     trial_on = trial.start(store, llm, "media")         # the page's "Try Mireld for one run": Mireld is asked first
 

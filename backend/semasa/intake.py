@@ -248,7 +248,7 @@ def run(store: Any, llm: Any, client: Any, now: datetime | None = None, only: li
 
 def main() -> int:
     from . import ai_config
-    from .config import LLMSettings, SupabaseSettings
+    from .config import SupabaseSettings
     from .foryou import ForYou
     from .llm import LLM
 
@@ -260,7 +260,7 @@ def main() -> int:
     only = [p for p in os.environ.get("SOURCES_ONLY", "").replace(",", " ").split() if p] or None
     store = db.client(SupabaseSettings.load())
     api_status.attach(store, "idea")
-    llm = LLM(ai_config.llm_settings(LLMSettings.load(), ai_config.read(store)))
+    llm = LLM(ai_config.llm_for(store))
     try:
         report = run(store, llm, ForYou(key), only=only, dry=dry)
     except NeedsMigration as exc:

@@ -74,6 +74,12 @@ class Query:
         self.filters.append(lambda r: r.get(c) is None if v == "null" else r.get(c) == v)
         return self
 
+    def like(self, c, pattern):
+        import re as _re
+        rx = _re.compile("^" + ".*".join(_re.escape(p) for p in str(pattern).split("%")) + "$", _re.S)
+        self.filters.append(lambda r: r.get(c) is not None and bool(rx.match(str(r.get(c)))))
+        return self
+
     def contains(self, c, vals):
         vals = list(vals)
         self.filters.append(lambda r: isinstance(r.get(c), list) and all(v in r.get(c) for v in vals))

@@ -272,6 +272,18 @@ def collect(store: Any, *, timeout: int = 25) -> list[dict[str, Any]]:
 
     run_source("FAQ · JAKIM Isu Tular Halal", jakim)
     run_source("FAQ · Reddit r/malaysia", reddit)
+    # the Halal Executive FAQ, mirrored as READY rows and kept in step (semasa.faq_he); not a candidate source
+    from . import faq_he
+    he_url = faq_he.api_url(store)
+    if he_url:
+        try:
+            out = faq_he.sync(store, he_url, timeout=timeout)
+            report.append({"name": faq_he.SOURCE_NAME, "kind": "faq", "ok": True, "items": out["added"] + out["updated"],
+                           "error": None if not out["dismissed"] else f"{out['dismissed']} dismissed (unpublished there)"})
+        except Exception as exc:  # noqa: BLE001 - the mirror never stops the scrape
+            err = f"{type(exc).__name__}: {str(exc)[:160]}"
+            report.append({"name": faq_he.SOURCE_NAME, "kind": "faq", "ok": False, "items": 0, "error": err})
+            log.warning("%-28s faq    FAILED %s", faq_he.SOURCE_NAME, err)
     token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
     if token:                                   # dormant until Wan gives the bot a token
         try:

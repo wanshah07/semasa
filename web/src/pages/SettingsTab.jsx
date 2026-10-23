@@ -131,6 +131,7 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
       <IndoTabung settings={settings} save={save} onToast={onToast} />
 
       <FaqCategories settings={settings} save={save} onToast={onToast} />
+      <HalalExecutiveFaq settings={settings} save={save} onToast={onToast} />
     </main>
   );
 }
@@ -253,6 +254,40 @@ function AutofillSettings({ settings, save, onToast }) {
 }
 
 const keyOf = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 30);
+
+/* The Halal Executive FAQ feed (Wan, 23 Oct 2026: "pull the FAQ from halal executive repo, and if that faq in the repo
+   update, so semasa also will update"). Its exec URL is a deploy secret of that project, not in its repository, so Wan
+   pastes it here once; every scrape then mirrors the published rows (backend/semasa/faq_he.py). */
+function HalalExecutiveFaq({ settings, save, onToast }) {
+  const { t } = useLang();
+  const [url, setUrl] = useState(settings.faq?.he_api_url || "");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setUrl(settings.faq?.he_api_url || ""); }, [settings.faq?.he_api_url]);
+  const ok = !url.trim() || /^https:\/\/script\.google(?:usercontent)?\.com\/.+\/exec/.test(url.trim());
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const { data: live } = await supabase.from(TABLES.settings).select("value").eq("key", "faq").maybeSingle();
+      const liveValue = live?.value && typeof live.value === "object" ? live.value : (settings.faq || {});
+      await save("faq", { ...liveValue, he_api_url: url.trim() });
+      onToast(url.trim() ? t("Disimpan: scrape seterusnya menyalin FAQ Halal Executive.", "Saved: the next scrape mirrors the Halal Executive FAQ.")
+        : t("Dikosongkan: FAQ Halal Executive tidak disalin lagi.", "Cleared: the Halal Executive FAQ is no longer mirrored."), "ok");
+    } catch (e) { onToast(/0 rows|faq/i.test(e.message) ? t("Jalankan supabase/007_faq.sql dahulu.", "Run supabase/007_faq.sql first.") : e.message, "danger"); }
+    setBusy(false);
+  };
+  return (
+    <Card className="space-y-3 p-5" data-he-faq>
+      <div>
+        <h3 className="text-lg">{t("FAQ Halal Executive", "Halal Executive FAQ")}</h3>
+        <p className="mt-1 text-[12px] text-muted">{t("Tampal alamat Apps Script Halal Executive (…/exec). Setiap scrape menyalin FAQ yang diterbitkan di sana sebagai entri sedia di sini, mengemas kini yang berubah, dan menandakan yang ditarik balik sebagai dibuang. Kategori yang anda letak sendiri tidak dialih.",
+          "Paste the Halal Executive Apps Script address (…/exec). Every scrape mirrors the FAQ published there as ready entries here, updates what changed, and marks what was unpublished as dismissed. A category you set yourself is never moved.")}</p>
+      </div>
+      <label className="block"><Label hint={ok ? "" : t("alamat …/exec dijangka", "an …/exec address is expected")}>{t("Alamat Apps Script", "Apps Script address")}</Label>
+        <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://script.google.com/macros/s/…/exec" /></label>
+      <Button size="sm" onClick={submit} disabled={busy || !ok}><Save size={12} /> {t("Simpan", "Save")}</Button>
+    </Card>
+  );
+}
 
 /* The FAQ categories the AI chooses from, and the chips in the FAQ tab. "lain" (Other) always stays:
    it is where anything that fits nowhere else goes. */

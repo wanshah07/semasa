@@ -49,6 +49,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          HE_API_URL: ${{ vars.HE_API_URL }}                     # the Halal Executive FAQ feed, else settings.faq.he_api_url
           SEMASA_SHEET_URL: ${{ secrets.SEMASA_SHEET_URL }}
           SEMASA_SHEET_TOKEN: ${{ secrets.SEMASA_SHEET_TOKEN }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}

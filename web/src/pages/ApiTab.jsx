@@ -10,6 +10,7 @@ import { stampMYT, timeAgo } from "../lib/format";
 import { fmtTokens, orderedModels, usageByArea, usageByDay, usageByGateway, verdictOf } from "../lib/api";
 import Card from "../components/ui/Card";
 import { Segmented } from "../components/ui/Field";
+import AiTeam from "../components/AiTeam";
 
 /* API: the AI gateways (rootsys = Afiq's, Mireld), their keys, their models and the tokens we spend (Wan, 9 Oct 2026: "track
    status of token from mireld and afiq API including their models"). Status rows come from semasa_api_status (the probe, every
@@ -26,7 +27,7 @@ const VERDICT = {
 };
 const COLOURS = ["rgb(var(--c-accent))", "rgb(var(--c-ok))", "rgb(var(--c-warn))", "rgb(var(--c-danger))", "rgb(var(--c-muted))"];
 
-export default function ApiTab() {
+export default function ApiTab({ settings, save, onToast }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? "en" : "bm";
   const statusT = useTable(TABLES.apiStatus, { enabled: true, order: "role", ascending: true, limit: 20, realtime: false, everyMs: 300_000 });
@@ -62,6 +63,11 @@ export default function ApiTab() {
         <p className="mb-4 rounded-tile bg-surface-2 p-3 text-sm text-muted">{t("Belum disemak: larian API status (GitHub → Actions → API status → Run workflow) menanya setiap gerbang dan mengisi kad di bawah.",
           "Not checked yet: the API status workflow (GitHub → Actions → API status → Run workflow) asks every gateway and fills the cards below.")}</p>
       )}
+
+      <section className="mb-6" data-ai-team>
+        <h2 className="mb-2 flex items-center gap-2 text-sm font-medium"><Cpu size={14} className="text-accent" /> {t("Pasukan AI", "AI team")}</h2>
+        <AiTeam statusRows={statusT.rows} usageRows={usageT.rows} state={settings?.ai_team_state} team={settings?.ai_team} save={save} onToast={onToast} />
+      </section>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
         {statusT.rows.map((r) => {

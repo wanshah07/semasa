@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { RESOLUTIONS, SECONDS, checkItems, clampSeconds, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "./src/lib/motion.js";
+import { motionFromIdea, RESOLUTIONS, SECONDS, checkItems, clampSeconds, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "./src/lib/motion.js";
 
 assert.equal(clampSeconds("abc"), SECONDS.default);
 assert.equal(clampSeconds(1), SECONDS.min);
@@ -9,7 +9,7 @@ assert.equal(clampSeconds("14.6"), 15);
 assert.deepEqual(motionRow({}), { error: "empty" });
 assert.deepEqual(motionRow({ url: "github.com/x" }), { error: "url" });
 const ok = motionRow({ brief: "  PFAS  ", url: "", stream: "linkedin", resolution: "square", seconds: "20" }, "u1");
-assert.deepEqual(ok.row, { brief: "PFAS", source_url: "", stream: "linkedin", resolution: "square", seconds: 20, status: "pending", style_repo_id: null, created_by: "u1" });
+assert.deepEqual(ok.row, { brief: "PFAS", source_url: "", stream: "linkedin", resolution: "square", seconds: 20, status: "pending", style_repo_id: null, ai_background: false, created_by: "u1" });
 const dflt = motionRow({ url: "https://x/y", stream: "nope", resolution: "nope", seconds: 0 });
 assert.equal(dflt.row.stream, "regulab"); assert.equal(dflt.row.resolution, "portrait"); assert.equal(dflt.row.seconds, SECONDS.min);
 assert.equal(dflt.row.created_by, null);
@@ -25,6 +25,7 @@ assert.deepEqual(items.map((i) => [i.code, i.level]), [["e1", "error"], ["w1", "
 assert.deepEqual(checkItems({}), []);
 assert.equal(fmtBytes(2_200_000), "2.1 MB"); assert.equal(fmtBytes(2048), "2 KB"); assert.equal(fmtBytes(0), "0 B");
 assert.equal(ok.row.style_repo_id, null);
+assert.equal(motionRow({ brief: "x", aiBackground: true }).row.ai_background, true);
 assert.equal(motionRow({ brief: "x", styleRepoId: "r1" }).row.style_repo_id, "r1");
 
 const lib = [
@@ -38,4 +39,10 @@ assert.deepEqual(styleRepos(null), []);
 assert.deepEqual(motionRepoRow("https://github.com/heygen-com/hyperframes/tree/main", "u1"),
   { url: "https://github.com/heygen-com/hyperframes", full_name: "heygen-com/hyperframes", note: "motion style", category: "motion", category_by: "wan", status: "pending", created_by: "u1" });
 assert.equal(motionRepoRow("skills.sh"), null);
+const idea = { id: "i1", source_title: "NPRA batalkan 12 produk", note: "tekankan label", source_summary: "Ringkasan.", source_url: "https://npra.gov.my/x", stream: "regulab" };
+assert.deepEqual(motionFromIdea(idea, "u1"), { brief: "NPRA batalkan 12 produk\nWan: tekankan label\nRingkasan.", source_url: "https://npra.gov.my/x", stream: "regulab", resolution: "portrait", seconds: 12, status: "pending", idea_id: "i1", ai_background: false, created_by: "u1" });
+assert.equal(motionFromIdea({ id: "i2", source_title: "T", stream: "linkedin", source_url: "not a url" }).stream, "linkedin");
+assert.equal(motionFromIdea({ id: "i2", source_title: "T", source_url: "not a url" }).source_url, "");
+assert.equal(motionFromIdea({ id: "i3" }), null);
+assert.equal(motionFromIdea({ id: "i4", source_title: "x".repeat(3000) }).brief.length, 1900);
 console.log("motion.test.mjs: ok");

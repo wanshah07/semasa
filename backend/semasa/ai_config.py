@@ -94,13 +94,13 @@ def llm_settings(s: LLMSettings, cfg: dict[str, dict[str, Any]]) -> LLMSettings:
     return dataclasses.replace(s, **change) if change else s
 
 
-def llm_for(store: Any, github: LLMSettings | None = None) -> LLMSettings:
+def llm_for(store: Any, github: LLMSettings | None = None, job: str = "reader") -> LLMSettings:
     """The writer settings a runner should build its LLM from: GitHub's, the page's slots laid over them, and then the
     AI team router choosing the fastest healthy text robot (semasa.ai_team). One call at every construction site, so no
     runner can forget the router the way the Routine prompts forgot BUFFER_FULL."""
     from . import ai_team
     github = github or LLMSettings.load()
-    return ai_team.route(store, github, read(store))
+    return ai_team.route(store, github, read(store), job=job)
 
 
 def media_for(store: Any, github: MediaSettings | None = None, cfg: dict[str, dict[str, Any]] | None = None) -> MediaSettings:

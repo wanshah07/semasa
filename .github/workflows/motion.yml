@@ -49,6 +49,11 @@ jobs:
           REPOS_TOKEN: ${{ secrets.REPOS_TOKEN }}                # reads the style repo's README/skill files (public ones need none)
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HYPERFRAMES_SKIP_SKILLS: "1"
+          # the optional AI background is drawn by the page's image slot (KiosAPI in Tetapan), else these, as media.yml has them
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}

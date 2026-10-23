@@ -11,8 +11,11 @@ The exec URL is not in the repository (it is a deploy secret of that project): W
 (settings.faq.he_api_url), or sets HE_API_URL on the scrape workflow. Without it this source reports "not configured"
 and does nothing.
 
-Category: Halal Executive's categories are halal topics, so a row files under Semasa's `halal` category with the HE
-category + subcategory as the subcategory, unless Wan filed it himself (category_by = wan), which is never moved.
+Category: a mirrored row lands in "lain" with the HE category + subcategory kept as its subcategory, and Semasa's own
+FAQ sorter (semasa.faq_sort, run by the media worker after every FAQ pass) files it under the category it belongs to
+(kosmetik & notifikasi NPRA, halal, skincare, ...) by reading the question (Wan, 24 Oct 2026: "run the faq and
+categorize it into respective category ... make it permanently in the flow"). Halal Executive's own categories are
+halal-process names, which is not how Semasa's FAQ is cut. A row Wan filed himself (category_by = wan) is never moved.
 """
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ FAQS = "semasa_faqs"
 SOURCE_NAME = "FAQ · Halal Executive"
 SOURCE_URL = "https://halalexecutive.kkmhalalconsultant.com/#faq"
 PREFIX = "he:"
-CATEGORY = "halal"
+CATEGORY = "lain"                    # the sorter files it; see the module note
 TAG = "halal-executive"
 # the fields a change in which means "update the row": the words, and the filing
 MIRROR = ("question_bm", "question_en", "answer_bm", "answer_en", "subcategory")

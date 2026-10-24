@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { motionFromIdea, RESOLUTIONS, SECONDS, checkItems, clampSeconds, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "./src/lib/motion.js";
+import { LANGUAGES, defaultLanguage, motionFromIdea, RESOLUTIONS, SECONDS, checkItems, clampSeconds, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "./src/lib/motion.js";
 
 assert.equal(clampSeconds("abc"), SECONDS.default);
 assert.equal(clampSeconds(1), SECONDS.min);
@@ -9,7 +9,13 @@ assert.equal(clampSeconds("14.6"), 15);
 assert.deepEqual(motionRow({}), { error: "empty" });
 assert.deepEqual(motionRow({ url: "github.com/x" }), { error: "url" });
 const ok = motionRow({ brief: "  PFAS  ", url: "", stream: "linkedin", resolution: "square", seconds: "20" }, "u1");
-assert.deepEqual(ok.row, { brief: "PFAS", source_url: "", stream: "linkedin", resolution: "square", seconds: 20, status: "pending", style_repo_id: null, ai_background: false, created_by: "u1" });
+assert.deepEqual(ok.row, { brief: "PFAS", source_url: "", stream: "linkedin", language: "en", resolution: "square", seconds: 20, status: "pending", style_repo_id: null, ai_background: false, created_by: "u1" });
+// the words on screen: the row's choice, else the stream's own language
+assert.equal(motionRow({ brief: "x", stream: "regulab", language: "both" }).row.language, "both");
+assert.equal(motionRow({ brief: "x", stream: "regulab", language: "nope" }).row.language, "bm");
+assert.equal(motionRow({ brief: "x", stream: "linkedin" }).row.language, "en");
+assert.deepEqual(LANGUAGES.map(([k]) => k), ["bm", "en", "both"]);
+assert.equal(defaultLanguage("linkedin"), "en"); assert.equal(defaultLanguage("regulab"), "bm");
 const dflt = motionRow({ url: "https://x/y", stream: "nope", resolution: "nope", seconds: 0 });
 assert.equal(dflt.row.stream, "regulab"); assert.equal(dflt.row.resolution, "portrait"); assert.equal(dflt.row.seconds, SECONDS.min);
 assert.equal(dflt.row.created_by, null);
@@ -40,7 +46,7 @@ assert.deepEqual(motionRepoRow("https://github.com/heygen-com/hyperframes/tree/m
   { url: "https://github.com/heygen-com/hyperframes", full_name: "heygen-com/hyperframes", note: "motion style", category: "motion", category_by: "wan", status: "pending", created_by: "u1" });
 assert.equal(motionRepoRow("skills.sh"), null);
 const idea = { id: "i1", source_title: "NPRA batalkan 12 produk", note: "tekankan label", source_summary: "Ringkasan.", source_url: "https://npra.gov.my/x", stream: "regulab" };
-assert.deepEqual(motionFromIdea(idea, "u1"), { brief: "NPRA batalkan 12 produk\nWan: tekankan label\nRingkasan.", source_url: "https://npra.gov.my/x", stream: "regulab", resolution: "portrait", seconds: 12, status: "pending", idea_id: "i1", ai_background: false, created_by: "u1" });
+assert.deepEqual(motionFromIdea(idea, "u1"), { brief: "NPRA batalkan 12 produk\nWan: tekankan label\nRingkasan.", source_url: "https://npra.gov.my/x", stream: "regulab", language: "bm", resolution: "portrait", seconds: 12, status: "pending", idea_id: "i1", ai_background: false, created_by: "u1" });
 assert.equal(motionFromIdea({ id: "i2", source_title: "T", stream: "linkedin", source_url: "not a url" }).stream, "linkedin");
 assert.equal(motionFromIdea({ id: "i2", source_title: "T", source_url: "not a url" }).source_url, "");
 assert.equal(motionFromIdea({ id: "i3" }), null);

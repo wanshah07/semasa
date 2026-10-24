@@ -25,6 +25,17 @@ def test_build_system_carries_size_seconds_voice_and_wans_prompt():
     assert "gsap.timeline({ paused: true })" in s2 and '{"title":' in s2, "literal braces survive the format"
 
 
+def test_the_language_is_the_rows_choice_and_falls_back_to_the_stream():
+    # Wan, 24 Oct 2026: "choice for english, malay, or english + malay version"
+    assert motion.language_of({"stream": "regulab"}) == "bm" and motion.language_of({"stream": "linkedin"}) == "en"
+    assert motion.language_of({"stream": "regulab", "language": "en"}) == "en"
+    assert motion.language_of({"stream": "linkedin", "language": "nope"}) == "en"
+    s = motion.build_system({"stream": "regulab", "resolution": "portrait", "seconds": 10, "language": "en"}, "")
+    assert 'lang="en"' in s and "Write the words in English." in s and "ws.regulab" in s, "English words, ws.regulab's voice"
+    s = motion.build_system({"stream": "linkedin", "resolution": "square", "seconds": 10, "language": "both"}, "")
+    assert 'lang="ms"' in s and "BOTH languages" in s and "English line directly under it" in s
+
+
 def test_build_user_adds_the_link_words_and_the_findings():
     u = motion.build_user({"brief": "PFAS dalam kosmetik", "source_url": "https://x/y"}, "Tajuk", "Isi halaman")
     assert "BRIEF: PFAS" in u and "LINK: https://x/y" in u and "title: Tajuk" in u and "Isi halaman" in u

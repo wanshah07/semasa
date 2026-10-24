@@ -39,7 +39,8 @@ def test_team_probes_every_robot_the_router_may_choose():
     # Wan, 24 Oct 2026: "why robot still offline" - the page's reader slot on KiosAPI hid rootsys from the probe
     github = _settings()
     page = _settings(base_url="https://kiosapi.com/v1", api_key="k-kios", model="gpt-5.6-sol")
-    cfg = {"reader": {"base_url": "https://kiosapi.com/v1", "api_key": "k-kios", "key_host": "kiosapi.com", "model": "gpt-5.6-sol"}}
+    cfg = {"reader": {"base_url": "https://kiosapi.com/v1", "api_key": "k-kios", "key_host": "kiosapi.com",
+                      "model": "gpt-5.6-sol"}}
     slugs = [(g["slug"], g["role"]) for g in api_status.team(page, None, github, cfg)]
     assert slugs == [("kiosapi", "primary"), ("mireld", "backup"), ("rootsys", "primary")]
     # without the router's view it is the old list

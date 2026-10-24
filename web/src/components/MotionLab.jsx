@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { AlertTriangle, Clapperboard, Download, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Clapperboard, Download, FolderGit2, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { useTable } from "../lib/hooks";
 import { timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
-import { RESOLUTIONS, SECONDS, STATUS_WORDS, checkItems, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "../lib/motion";
+import { LANGUAGES, RESOLUTIONS, SECONDS, STATUS_WORDS, checkItems, defaultLanguage, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "../lib/motion";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
@@ -25,7 +25,12 @@ export default function MotionLab({ user, onToast }) {
   const motions = useTable(TABLES.motions, { enabled: true, order: "created_at", limit: 60, realtime: true, everyMs: 60_000 });
   const [brief, setBrief] = useState("");
   const [url, setUrl] = useState("");
-  const [stream, setStream] = useState("regulab");
+  const [stream, setStreamOnly] = useState("regulab");
+  // the words on screen follow the stream until Wan picks otherwise (Wan, 24 Oct 2026: "english, malay, or english + malay")
+  const [language, setLanguage] = useState(defaultLanguage("regulab"));
+  const [langTouched, setLangTouched] = useState(false);
+  const setStream = (v) => { setStreamOnly(v); if (!langTouched) setLanguage(defaultLanguage(v)); };
+  const pickLanguage = (v) => { setLanguage(v); setLangTouched(true); };
   const [resolution, setResolution] = useState("portrait");
   const [seconds, setSeconds] = useState(SECONDS.default);
   const [styleRepoId, setStyleRepoId] = useState("");
@@ -40,7 +45,7 @@ export default function MotionLab({ user, onToast }) {
   const missing = /semasa_motions/.test(motions.error || "");
 
   const add = async () => {
-    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground }, user?.id || null);
+    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language }, user?.id || null);
     if (built.error === "empty") return onToast?.(t("Tulis idea atau tampal pautan.", "Write an idea or paste a link."), "warn");
     if (built.error === "url") return onToast?.(t("Pautan perlu bermula dengan https://", "The link must start with https://"), "warn");
     setBusy("add");
@@ -98,19 +103,16 @@ export default function MotionLab({ user, onToast }) {
             placeholder={t("Cth: Tiga perkara tentang PFAS dalam kosmetik yang SME perlu tahu sebelum 2027", "E.g. Three things about PFAS in cosmetics an SME must know before 2027")} /></label>
         <label className="block"><Label hint={t("pilihan: bot baca halaman itu", "optional: the bot reads that page")}>{t("Pautan", "Link")}</Label>
           <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" inputMode="url" /></label>
-        <div className="grid gap-4 md:grid-cols-[1fr_auto]" data-motion-style>
-          <label className="block"><Label hint={t("repo kategori motion dalam Pustaka repo; setiap satu gaya yang berbeza", "a motion-category repo from the repo library; each one a different look")}>{t("Gaya (repo motion)", "Style (motion repo)")}</Label>
-            <Select value={styleRepoId} onChange={setStyleRepoId} className="w-full"
-              options={[["", t("Gaya lalai Semasa", "Semasa's default look")], ...styles.map((r) => [r.id, `${r.name || r.full_name}${r.status !== "done" ? ` · ${t("belum dibaca", "not read yet")}` : ""}${r.safety === "avoid" ? ` · ${t("elakkan", "avoid")}` : ""}`])]} /></label>
-          <div className="flex items-end gap-2">
-            <label className="block min-w-0 flex-1"><Label>{t("Tambah repo motion", "Add a motion repo")}</Label>
-              <Input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/owner/nama" inputMode="url" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRepo())} /></label>
-            <Button variant="ghost" size="sm" className="mb-0.5" onClick={addRepo} disabled={busy === "repo" || !repoUrl.trim()}>{busy === "repo" ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} {t("Tambah", "Add")}</Button>
-          </div>
-        </div>
+        <label className="block" data-motion-style><Label hint={t("repo motion dari kotak di bawah; setiap satu gaya yang berbeza", "a motion repo from the box below; each one a different look")}>{t("Gaya (repo motion)", "Style (motion repo)")}</Label>
+          <Select value={styleRepoId} onChange={setStyleRepoId} className="w-full"
+            options={[["", t("Gaya lalai Semasa", "Semasa's default look")], ...styles.map((r) => [r.id, `${r.name || r.full_name}${r.status !== "done" ? ` · ${t("belum dibaca", "not read yet")}` : ""}${r.safety === "avoid" ? ` · ${t("elakkan", "avoid")}` : ""}`])]} /></label>
         {styleRepoId && styleOf(styleRepoId)?.summary_bm && <p className="text-xs text-muted">{L ? styleOf(styleRepoId).summary_en || styleOf(styleRepoId).summary_bm : styleOf(styleRepoId).summary_bm}</p>}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
+          <div data-motion-language><Label hint={t("perkataan di skrin; BM + English letak kedua-dua baris", "the words on screen; BM + English puts both lines up")}>{t("Bahasa", "Language")}</Label>
+            <Segmented value={language} onChange={pickLanguage} options={LANGUAGES} /></div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
           <label className="block"><Label>{t("Saiz", "Size")}</Label><Select value={resolution} onChange={setResolution} className="w-full"
             options={Object.entries(RESOLUTIONS).map(([k, v]) => [k, w([v.bm, v.en])])} /></label>
           <label className="block"><Label hint={`${SECONDS.min}–${SECONDS.max}`}>{t("Saat", "Seconds")}</Label>
@@ -125,6 +127,34 @@ export default function MotionLab({ user, onToast }) {
         <Button onClick={add} disabled={busy === "add"}>{busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {t("Buat video motion", "Make the motion video")}</Button>
       </Card>
 
+      <Card className="mt-4 space-y-3 p-5" data-motion-repos>
+        <div>
+          <h3 className="flex items-center gap-2 font-display text-lg"><FolderGit2 size={16} className="text-accent" /> {t("Repo motion", "Motion repos")}</h3>
+          <p className="mt-1 text-sm text-muted">{t("Setiap repo satu gaya: bot baca ia (Pustaka repo), semak keselamatan dan ringkaskan; kemudian ia boleh dipilih sebagai Gaya di atas. Seberapa banyak yang anda mahu.",
+            "Each repo is one look: the bot reads it (Pustaka repo), checks it for safety and summarises it; then it can be chosen as the Style above. Add as many as you like.")}</p>
+        </div>
+        <div className="flex items-end gap-2">
+          <label className="block min-w-0 flex-1"><Label>{t("Tambah repo motion", "Add a motion repo")}</Label>
+            <Input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/owner/nama" inputMode="url" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRepo())} /></label>
+          <Button variant="ghost" size="sm" className="mb-0.5" onClick={addRepo} disabled={busy === "repo" || !repoUrl.trim()}>{busy === "repo" ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} {t("Tambah", "Add")}</Button>
+        </div>
+        {!styles.length && <p className="text-xs text-muted">{t("Belum ada repo motion. Cth: https://github.com/heygen-com/hyperframes", "No motion repos yet. E.g. https://github.com/heygen-com/hyperframes")}</p>}
+        {styles.length > 0 && (
+          <ul className="divide-y divide-line">
+            {styles.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-2 py-2 text-sm" data-motion-repo>
+                <button type="button" className={`truncate text-left font-medium hover:underline ${styleRepoId === r.id ? "text-accent" : ""}`} onClick={() => setStyleRepoId(r.id)} title={t("Guna sebagai gaya", "Use as the style")}>{r.name || r.full_name}</button>
+                <a className="truncate text-xs text-muted hover:underline" href={r.url} target="_blank" rel="noreferrer">{r.full_name}</a>
+                <span className={`rounded-pill px-2 py-0.5 text-[11px] ${r.status === "done" ? (r.safety === "avoid" ? "bg-danger/15 text-danger" : r.safety === "caution" ? "bg-warn/15 text-warn" : "bg-ok/15 text-ok") : "bg-surface-2 text-muted"}`}>
+                  {r.status !== "done" ? t("belum dibaca", "not read yet") : r.safety === "avoid" ? t("elakkan", "avoid") : r.safety === "caution" ? t("berhati-hati", "caution") : t("selamat", "safe")}</span>
+                {styleRepoId === r.id && <span className="text-[11px] text-accent">{t("dipilih", "chosen")}</span>}
+                {(L ? r.summary_en || r.summary_bm : r.summary_bm) && <p className="w-full text-xs text-muted">{L ? r.summary_en || r.summary_bm : r.summary_bm}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
       <div className="mt-6 grid gap-4 md:grid-cols-2 [&>*]:min-w-0">
         {!motions.loading && !motions.error && !motions.rows.length && (
           <p className="rounded-card border border-dashed border-line p-8 text-center text-sm text-muted md:col-span-2">{t("Belum ada video motion.", "No motion videos yet.")}</p>
@@ -136,7 +166,7 @@ export default function MotionLab({ user, onToast }) {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-display text-lg">{motionLabel(r) || t("(tiada tajuk)", "(untitled)")}</p>
-                  <p className="truncate text-xs text-muted">{r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · {w([RESOLUTIONS[r.resolution]?.bm, RESOLUTIONS[r.resolution]?.en]) || r.resolution} · {r.seconds}s{r.model ? ` · ${r.model}` : ""}{r.style_repo_id ? ` · ${t("gaya", "style")}: ${styleOf(r.style_repo_id)?.name || styleOf(r.style_repo_id)?.full_name || r.style_note.split(":")[0] || "repo"}` : ""}</p>
+                  <p className="truncate text-xs text-muted">{r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · {(LANGUAGES.find(([k]) => k === (r.language || defaultLanguage(r.stream))) || [])[1]} · {w([RESOLUTIONS[r.resolution]?.bm, RESOLUTIONS[r.resolution]?.en]) || r.resolution} · {r.seconds}s{r.model ? ` · ${r.model}` : ""}{r.style_repo_id ? ` · ${t("gaya", "style")}: ${styleOf(r.style_repo_id)?.name || styleOf(r.style_repo_id)?.full_name || r.style_note.split(":")[0] || "repo"}` : ""}</p>
                 </div>
                 <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${STATUS_CLS[r.status] || ""}`}>{r.status === "working" && <Loader2 size={10} className="animate-spin" />}{w(STATUS_WORDS[r.status] || [r.status, r.status])}</span>
               </div>

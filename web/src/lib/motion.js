@@ -7,6 +7,11 @@ export const RESOLUTIONS = {
   landscape: { w: 1920, h: 1080, bm: "Melintang 16:9 (YouTube, LinkedIn)", en: "Landscape 16:9 (YouTube, LinkedIn)" },
 };
 export const SECONDS = { min: 3, max: 60, default: 12 };
+/* the words on screen (Wan, 24 Oct 2026: "choice for english, malay, or english + malay version") */
+export const LANGUAGES = [["bm", "Bahasa Malaysia"], ["en", "English"], ["both", "BM + English"]];
+/** The language a stream speaks by itself: ws.regulab in BM, LinkedIn in English. */
+export const defaultLanguage = (stream) => (stream === "linkedin" ? "en" : "bm");
+const langOf = (v, stream) => (LANGUAGES.some(([k]) => k === v) ? v : defaultLanguage(stream));
 export const STATUS_WORDS = {
   pending: ["Menunggu", "Waiting"], working: ["Sedang dibuat", "Being made"], done: ["Siap", "Done"], error: ["Ralat", "Error"],
 };
@@ -19,14 +24,15 @@ export function clampSeconds(v) {
 }
 
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. */
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "" } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
   if (u && !/^https?:\/\/\S+$/.test(u)) return { error: "url" };
+  const st = stream === "linkedin" ? "linkedin" : "regulab";
   return {
     row: {
-      brief: b.slice(0, 2000), source_url: u, stream: stream === "linkedin" ? "linkedin" : "regulab",
+      brief: b.slice(0, 2000), source_url: u, stream: st, language: langOf(language, st),
       resolution: RESOLUTIONS[resolution] ? resolution : "portrait", seconds: clampSeconds(seconds), status: "pending",
       style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
     },
@@ -69,6 +75,7 @@ export function motionFromIdea(idea, userId = null) {
   const brief = [title, note && `Wan: ${note}`, summary].filter(Boolean).join("\n").slice(0, 1900);
   if (!brief) return null;
   const url = /^https?:\/\/\S+$/.test(String(idea?.source_url || "")) ? idea.source_url : "";
-  return { brief, source_url: url, stream: idea?.stream === "linkedin" ? "linkedin" : "regulab", resolution: "portrait", seconds: 12,
+  const stream = idea?.stream === "linkedin" ? "linkedin" : "regulab";
+  return { brief, source_url: url, stream, language: defaultLanguage(stream), resolution: "portrait", seconds: 12,
     status: "pending", idea_id: idea.id, ai_background: false, created_by: userId };
 }

@@ -49,6 +49,13 @@ SIZES = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1
 GSAP = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"
 PALETTE = {"regulab": {"ground": "#0f172a", "ink": "#f8fafc", "accent": "#38bdf8", "accent2": "#fbbf24"},
            "linkedin": {"ground": "#111827", "ink": "#f9fafb", "accent": "#34d399", "accent2": "#f472b6"}}
+# the words on screen (Wan, 24 Oct 2026: "choice for english, malay, or english + malay version"); the default follows the stream
+LANGUAGE = {
+    "bm": ("ms", "Bahasa Malaysia (Malaysian, never Indonesian)"),
+    "en": ("en", "English"),
+    "both": ("ms", "BOTH languages on every scene: the Bahasa Malaysia line first and its English line directly under it, "
+                   "a little smaller and in the second accent colour; the title in both; the source line once"),
+}
 VOICE = {
     "regulab": "ws.regulab, a Malaysian regulatory consultancy speaking Bahasa Malaysia (Malaysian, never Indonesian: boleh not "
                "bisa, ubat not obat, syarikat not perusahaan) in a warm, plain BM-mix voice to SME owners.",
@@ -152,15 +159,24 @@ BACKGROUND = """
    No other file exists: do not reference any other asset."""
 
 
+def language_of(row: dict[str, Any]) -> str:
+    """bm | en | both: the row's own choice, else the stream's language (rows written before 045 have no column)."""
+    lang = str(row.get("language") or "").strip().lower()
+    if lang in LANGUAGE:
+        return lang
+    return "en" if (row.get("stream") or "regulab") == "linkedin" else "bm"
+
+
 def build_system(row: dict[str, Any], extra: str, background: str = "") -> str:
     stream = row.get("stream") or "regulab"
+    html_lang, language = LANGUAGE[language_of(row)]
     res = row.get("resolution") or "portrait"
     w, h = SIZES.get(res, SIZES["portrait"])
     pal = PALETTE.get(stream, PALETTE["regulab"])
-    return SYSTEM.format(lang="ms" if stream == "regulab" else "en", resolution=res, w=w, h=h, gsap=GSAP,
+    return SYSTEM.format(lang=html_lang, resolution=res, w=w, h=h, gsap=GSAP,
                          seconds=int(row.get("seconds") or 12), source_line=row.get("source_line") or "Sumber: lihat kapsyen",
                          voice=VOICE.get(stream, VOICE["regulab"]),
-                         language="Bahasa Malaysia" if stream == "regulab" else "English",
+                         language=language,
                          extra=("WAN'S OWN INSTRUCTIONS:\n" + extra) if extra else "",
                          background=BACKGROUND.format(path=background) if background else "", **pal)
 

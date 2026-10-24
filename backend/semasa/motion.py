@@ -43,6 +43,8 @@ SETTINGS_KEY = "motion"
 CLI_VERSION = "0.8.188"
 MAX_ATTEMPTS = 2
 MAX_HTML = 60_000
+# the whole film is one JSON answer, and a thinking model reasons first: 7000 was eaten by reasoning alone on 24 Oct 2026
+WRITER_TOKENS = 20_000
 STYLE_MAX = 9_000                      # characters of a style repo handed to the writer
 STYLE_FILES = ("SKILL.md", "skills/SKILL.md", "STYLE.md", "DESIGN.md", "frame.md", "FRAME.md", "AGENTS.md", "CLAUDE.md")
 SIZES = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1080)}
@@ -342,14 +344,15 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             folder.mkdir(parents=True, exist_ok=True)
             bg_path, bg_note = make_background(store, row, folder, provider=picture_provider)
         system = build_system(row, settings.get("prompt") or "", bg_path)
-        out = llm.chat_json(system, build_user(row, title, text, style=style), max_tokens=7000)
+        out = llm.chat_json(system, build_user(row, title, text, style=style), max_tokens=WRITER_TOKENS)
         if not isinstance(out, dict):
             raise RuntimeError("the writer gave no answer")
         html = clean_html(out.get("html"))
         write_project(folder, html)
         report = check(folder, settings["cli"], runner)
         if not report["ok"] and report["errors"]:
-            out2 = llm.chat_json(system, build_user(row, title, text, report["errors"], html, style=style), max_tokens=7000)
+            out2 = llm.chat_json(system, build_user(row, title, text, report["errors"], html, style=style),
+                                 max_tokens=WRITER_TOKENS)
             if isinstance(out2, dict) and out2.get("html"):
                 html = clean_html(out2.get("html"))
                 write_project(folder, html)

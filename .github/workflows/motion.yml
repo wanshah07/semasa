@@ -39,6 +39,8 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install
         run: |
+          # ubuntu-latest no longer ships ffmpeg (hyperframes doctor, 24 Oct 2026: "FFmpeg is required to encode video")
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
           pip install -r requirements.txt
           npx -y hyperframes@0.8.188 doctor || true          # warms the npx cache and says what the runner has
       - name: Write, check and render

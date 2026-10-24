@@ -343,7 +343,16 @@ class LLM:
         r.raise_for_status()
         j = r.json()
         _LAST_USAGE.update(_usage_from(j))
-        return j["choices"][0]["message"]["content"]
+        choice = (j.get("choices") or [{}])[0]
+        msg = choice.get("message") or {}
+        content = msg.get("content") or ""
+        # a thinking model (deepseek-v4.1-flash, kimi-k3, glm-5.x) spends its budget on reasoning FIRST; when that eats the
+        # whole max_tokens the answer is empty and finish_reason is "length". Say so, or the log reads as a dead gateway
+        # (24 Oct 2026: three motion calls, 7000 of 7000 tokens each, content "")
+        if not content.strip() and (choice.get("finish_reason") == "length" or msg.get("reasoning_content")):
+            log.warning("LLM %s: no answer text; the model spent its %d tokens thinking (finish_reason=%s). Raise max_tokens "
+                        "or pick a non-thinking model", model, max_tokens, choice.get("finish_reason"))
+        return content
 
     def _anthropic(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str, base: str,
                    key: str) -> str:

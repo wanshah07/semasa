@@ -35,6 +35,18 @@ def test_gateways_names_primary_and_backup_once():
     assert [g["slug"] for g in api_status.gateways(_settings(fallback_key=None))] == ["rootsys"]
 
 
+def test_team_probes_every_robot_the_router_may_choose():
+    # Wan, 24 Oct 2026: "why robot still offline" - the page's reader slot on KiosAPI hid rootsys from the probe
+    github = _settings()
+    page = _settings(base_url="https://kiosapi.com/v1", api_key="k-kios", model="gpt-5.6-sol")
+    cfg = {"reader": {"base_url": "https://kiosapi.com/v1", "api_key": "k-kios", "key_host": "kiosapi.com",
+                      "model": "gpt-5.6-sol"}}
+    slugs = [(g["slug"], g["role"]) for g in api_status.team(page, None, github, cfg)]
+    assert slugs == [("kiosapi", "primary"), ("mireld", "backup"), ("rootsys", "primary")]
+    # without the router's view it is the old list
+    assert [g["slug"] for g in api_status.team(page, None)] == ["kiosapi", "mireld"]
+
+
 def test_gateways_never_sends_a_key_for_a_blocked_base_url():
     # the page's own Tetapan AI settings can move base_url to a new host with no key of its own; llm.py then sets
     # `blocked` and refuses to use the GitHub key there -- gateways() (and therefore the probe's real network call)

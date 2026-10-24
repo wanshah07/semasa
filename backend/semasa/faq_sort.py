@@ -36,6 +36,8 @@ AUTO = _RULES.get("auto") or {}
 MAX_CATEGORIES = int(AUTO.get("max_categories") or 12)
 MAX_SUBS = int(AUTO.get("max_subs") or 10)
 MIN_GROUP = int(AUTO.get("min_group") or 2)
+# Wan, 24 Oct 2026: "I don't want other category for FAQ" - off, the sorter only files into the list that exists
+NEW_CATEGORIES = bool(AUTO.get("new_categories", False))
 SORT_BATCH = int(AUTO.get("sort_batch") or 40)
 STOP = {"dan", "and", "the", "of", "untuk", "for", "serta", "yang"}
 
@@ -45,14 +47,18 @@ pharmaceuticals, supplements) into categories.
 CATEGORIES (key: Malay name [subcategories]): %s
 
 For EVERY entry give the best category key and one of that category's subcategories (or ""). Use "lain" only when
-nothing fits. When at least %d entries share a clear topic that no category covers, you may propose a new category
-for them in "new_categories" and use its key for those entries. A new category must be broad enough to hold future
-questions (for example "Label & penandaan", "Import & eksport"), never one product, company or incident. Names:
-Malaysian Malay (never Bahasa Indonesia) and English, 1 to 4 words each.
+nothing fits. %s
 
 Answer with ONE JSON object:
 {"items": [{"id": "...", "category": "...", "subcategory": ""}],
  "new_categories": [{"key": "short_snake_case", "bm": "...", "en": "...", "subs": []}]}"""
+
+GROW = """When at least %d entries share a clear topic that no category covers, you may propose a new category
+for them in "new_categories" and use its key for those entries. A new category must be broad enough to hold future
+questions (for example "Label & penandaan", "Import & eksport"), never one product, company or incident. Names:
+Malaysian Malay (never Bahasa Indonesia) and English, 1 to 4 words each."""
+NO_GROW = """Never propose a new category: every entry goes into one of the categories listed above, and
+"new_categories" stays an empty list."""
 
 
 # --- names ------------------------------------------------------------------------------------------------
@@ -262,7 +268,8 @@ def _sort(store: Any, llm: LLM, settings: dict[str, Any], cats: list[dict[str, A
                    ensure_ascii=False) for r in todo)
     if recent_failure(store):
         return "sort: waiting after a failed try (again within 3 hours)"
-    out = llm.chat_json(SORT_SYSTEM % (listing(cats), MIN_GROUP), user, max_tokens=3000)
+    grow = GROW % MIN_GROUP if NEW_CATEGORIES else NO_GROW
+    out = llm.chat_json(SORT_SYSTEM % (listing(cats), grow), user, max_tokens=3000)
     if not isinstance(out, dict) or not isinstance(out.get("items"), list):
         log.warning("sorter did not answer")
         # one warning, and a pause: a model that keeps answering badly must not cost a call every worker run
@@ -285,8 +292,8 @@ def _sort(store: Any, llm: LLM, settings: dict[str, Any], cats: list[dict[str, A
         pk = str(p.get("key") or "").strip()
         if not pk or pk in keys:
             continue
-        if counts.get(pk, 0) < MIN_GROUP:
-            alias[pk] = find_category(cats, p.get("bm"), p.get("en")) or "lain"
+        if not NEW_CATEGORIES or counts.get(pk, 0) < MIN_GROUP:
+            alias[pk] = find_category(cats, p.get("bm"), p.get("en")) or "lain"   # off, or a group of one: no new one
             continue
         before = len(cats)
         alias[pk] = add_category(cats, p, declined, now)

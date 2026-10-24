@@ -36,9 +36,9 @@ def _rows(store):
     return {r["source_key"]: r for r in store.tables.get(faq_he.FAQS, [])}
 
 
-def test_to_row_prefers_the_formal_answer_and_files_under_halal():
+def test_to_row_prefers_the_formal_answer_and_leaves_filing_to_the_sorter():
     r = faq_he.to_row(_he(1))
-    assert r["status"] == "ready" and r["source_key"] == "he:FAQ-1" and r["category"] == "halal"
+    assert r["status"] == "ready" and r["source_key"] == "he:FAQ-1" and r["category"] == "lain", "the sorter files it"
     assert r["answer_bm"] == "J1 formal bm" and r["answer_en"] == "A1 formal en" and r["subcategory"] == "Pensijilan · Permohonan"
     assert r["tags"] == ["halal-executive"] and r["needs_check"] is False and r["answer_source"] == "given"
     r2 = faq_he.to_row(_he(2, answer_formal_bm="", answer_formal_en=""))

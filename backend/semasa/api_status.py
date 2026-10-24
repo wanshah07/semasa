@@ -229,9 +229,38 @@ def probe(gw: dict[str, Any], timeout: int = 30) -> dict[str, Any]:
     return row
 
 
-def run(store: Any, settings: LLMSettings, timeout: int = 30, media: MediaSettings | None = None) -> list[dict[str, Any]]:
+def team(settings: LLMSettings, media: MediaSettings | None = None, github: LLMSettings | None = None,
+         cfg: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """The gateways to probe: the configured ones, plus every text robot the router may choose (Wan, 24 Oct 2026:
+    "why robot still offline"). Once the page's reader slot pointed at KiosAPI, rootsys was no longer the primary or the
+    backup, so it was never probed again: its row aged past the page's 13-hour rule and read Offline while the router
+    was writing with it. The router's own candidate list is the team, so the probe reads it too."""
+    out = gateways(settings, media)
+    if github is None:
+        return out
+    from . import ai_team
+    seen = {g["slug"] for g in out}
+    cands = ai_team.candidates(github, cfg or {})
+    if (cfg or {}).get("motion"):
+        cands += ai_team.candidates(github, cfg or {}, job="motion")
+    for c in cands:
+        if c["slug"] in seen:
+            continue
+        seen.add(c["slug"])
+        # a candidate blocked for its HOST (config.blocked_host) never gets the key; one blocked only because its
+        # model paints pictures is still a reachable robot and is probed like any other
+        host_blocked = bool(c["blocked"]) and c["blocked"] != ai_team.cannot_write_text(c["base_url"], c["model"])
+        out.append({"slug": c["slug"], "name": slug_of(c["base_url"])[1],
+                    "role": "backup" if c["source"] == "backup" else "primary", "base_url": c["base_url"],
+                    "key": "" if host_blocked else c["key"], "model": c["model"], "provider": c["provider"],
+                    "blocked": c["blocked"] if host_blocked else ""})
+    return out
+
+
+def run(store: Any, settings: LLMSettings, timeout: int = 30, media: MediaSettings | None = None,
+        github: LLMSettings | None = None, cfg: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     rows = []
-    for gw in gateways(settings, media):
+    for gw in team(settings, media, github, cfg):
         row = probe(gw, timeout)
         rows.append(row)
         store.table(db.API_STATUS).upsert(row, on_conflict="slug").execute()
@@ -317,7 +346,7 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 - the image slot is optional to the probe
         log.info("media settings not loaded (%s); the picture maker is not probed", str(exc)[:120])
         media = None
-    rows = run(store, settings, timeout=int(os.environ.get("LLM_TIMEOUT") or 30), media=media)
+    rows = run(store, settings, timeout=int(os.environ.get("LLM_TIMEOUT") or 30), media=media, github=LLMSettings.load(), cfg=cfg)
     # the probe just measured every robot: decide the order now, so the API tab shows the team the next run will use
     from . import ai_team
     ai_team.route(store, LLMSettings.load(), cfg)

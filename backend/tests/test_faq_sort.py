@@ -139,7 +139,8 @@ def test_what_the_sorter_looks_at():
     assert [r["id"] for r in faq_sort.to_sort(rows, cats, None)] == [1, 6]
 
 
-def test_a_new_category_needs_a_group_and_moves_are_logged_once():
+def test_a_new_category_needs_a_group_and_moves_are_logged_once(monkeypatch):
+    monkeypatch.setattr(faq_sort, "NEW_CATEGORIES", True)
     store = FakeStore(semasa_faqs=[_faq(1), _faq(2), _faq(3), _faq(4), _faq(5, by="wan")],
                       semasa_settings=[{"key": "faq", "value": {}}], semasa_log=[])
     out = {"items": [{"id": 1, "category": "label", "subcategory": ""}, {"id": 2, "category": "label", "subcategory": ""},
@@ -169,7 +170,8 @@ def _saved_settings(store):
     return {"faq": _saved(store)}
 
 
-def test_a_deleted_category_is_never_made_again():
+def test_a_deleted_category_is_never_made_again(monkeypatch):
+    monkeypatch.setattr(faq_sort, "NEW_CATEGORIES", True)
     store = FakeStore(semasa_faqs=[_faq(1), _faq(2)],
                       semasa_settings=[{"key": "faq", "value": {"declined": ["Label & penandaan"]}}])
     out = {"items": [{"id": 1, "category": "lbl"}, {"id": 2, "category": "lbl"}],
@@ -177,6 +179,23 @@ def test_a_deleted_category_is_never_made_again():
     settings = {"faq": {"declined": ["Label & penandaan"]}}
     faq_sort.run_sort(store, FakeLLM(out), settings, faq.categories(settings))
     assert _row(store, 1)["category"] == "lain" and not any(c.get("auto") for c in faq.categories(settings))
+
+
+def test_with_new_categories_off_a_proposal_is_filed_into_the_list_that_exists():
+    # Wan, 24 Oct 2026: "I don't want other category for FAQ" - the default in rules/faq_categories.json
+    assert faq_sort.NEW_CATEGORIES is False
+    store = FakeStore(semasa_faqs=[_faq(1), _faq(2), _faq(3)], semasa_settings=[{"key": "faq", "value": {}}], semasa_log=[])
+    out = {"items": [{"id": 1, "category": "label"}, {"id": 2, "category": "label"}, {"id": 3, "category": "kosmetik_dan_npra"}],
+           "new_categories": [{"key": "label", "bm": "Label & penandaan", "en": "Labelling", "subs": []},
+                              {"key": "kosmetik_dan_npra", "bm": "Kosmetik", "en": "Cosmetics", "subs": []}]}
+    llm = FakeLLM(out)
+    settings = {"faq": {}}
+    note = faq_sort.run_sort(store, llm, settings, faq.categories(settings))
+    assert "new category" not in note
+    assert "Never propose a new category" in llm.seen[0][0]
+    assert _row(store, 1)["category"] == "lain" and _row(store, 2)["category"] == "lain" and _row(store, 1)["sorted_at"]
+    assert _row(store, 3)["category"] == "kosmetik"                     # a proposal that means an existing one is that one
+    assert [c["key"] for c in faq.categories(settings)] == ["halal", "skincare", "kosmetik", "makanan", "farmaseutikal", "lain"]
 
 
 def test_without_a_writer_only_orphans_move():

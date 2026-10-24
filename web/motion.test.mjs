@@ -9,7 +9,11 @@ assert.equal(clampSeconds("14.6"), 15);
 assert.deepEqual(motionRow({}), { error: "empty" });
 assert.deepEqual(motionRow({ url: "github.com/x" }), { error: "url" });
 const ok = motionRow({ brief: "  PFAS  ", url: "", stream: "linkedin", resolution: "square", seconds: "20" }, "u1");
-assert.deepEqual(ok.row, { brief: "PFAS", source_url: "", stream: "linkedin", language: "en", resolution: "square", seconds: 20, status: "pending", style_repo_id: null, ai_background: false, created_by: "u1" });
+assert.deepEqual(ok.row, { brief: "PFAS", source_url: "", stream: "linkedin", language: "en", resolution: "square", seconds: 20, status: "pending", style_repo_id: null, ai_background: false, created_by: "u1", voice: "male", mascot: "wave" });
+// the presenter and the voice: on by default, Wan can turn either off
+assert.equal(motionRow({ brief: "x", voice: "female" }).row.voice, "female");
+assert.equal(motionRow({ brief: "x", voice: "nope" }).row.voice, "male");
+assert.equal(motionRow({ brief: "x", mascot: false }).row.mascot, "");
 // the words on screen: the row's choice, else the stream's own language
 assert.equal(motionRow({ brief: "x", stream: "regulab", language: "both" }).row.language, "both");
 assert.equal(motionRow({ brief: "x", stream: "regulab", language: "nope" }).row.language, "bm");

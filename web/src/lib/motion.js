@@ -12,6 +12,10 @@ export const LANGUAGES = [["bm", "Bahasa Malaysia"], ["en", "English"], ["both",
 /** The language a stream speaks by itself: ws.regulab in BM, LinkedIn in English. */
 export const defaultLanguage = (stream) => (stream === "linkedin" ? "en" : "bm");
 const langOf = (v, stream) => (LANGUAGES.some(([k]) => k === v) ? v : defaultLanguage(stream));
+/* the presenter and the voice (Wan, 24 Oct 2026: "add mascot looks like talking, and make sure got voice or audio") */
+export const VOICES = [["male", "Lelaki", "Male"], ["female", "Perempuan", "Female"], ["off", "Tiada suara", "No voice"]];
+export const DEFAULT_MASCOT = "wave";
+const voiceOf = (v) => (VOICES.some(([k]) => k === v) ? v : "male");
 export const STATUS_WORDS = {
   pending: ["Menunggu", "Waiting"], working: ["Sedang dibuat", "Being made"], done: ["Siap", "Done"], error: ["Ralat", "Error"],
 };
@@ -24,7 +28,7 @@ export function clampSeconds(v) {
 }
 
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. */
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "" } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "male", mascot = true } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
@@ -35,6 +39,7 @@ export function motionRow({ brief = "", url = "", stream = "regulab", resolution
       brief: b.slice(0, 2000), source_url: u, stream: st, language: langOf(language, st),
       resolution: RESOLUTIONS[resolution] ? resolution : "portrait", seconds: clampSeconds(seconds), status: "pending",
       style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
+      voice: voiceOf(voice), mascot: mascot ? DEFAULT_MASCOT : "",
     },
   };
 }

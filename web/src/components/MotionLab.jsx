@@ -5,7 +5,7 @@ import { useLang } from "../lib/i18n";
 import { useTable } from "../lib/hooks";
 import { timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
-import { LANGUAGES, RESOLUTIONS, SECONDS, STATUS_WORDS, checkItems, defaultLanguage, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "../lib/motion";
+import { LANGUAGES, RESOLUTIONS, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "../lib/motion";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
@@ -35,6 +35,8 @@ export default function MotionLab({ user, onToast }) {
   const [seconds, setSeconds] = useState(SECONDS.default);
   const [styleRepoId, setStyleRepoId] = useState("");
   const [aiBackground, setAiBackground] = useState(false);
+  const [voice, setVoice] = useState("male");
+  const [mascot, setMascot] = useState(true);
   const [repoUrl, setRepoUrl] = useState("");
   const [busy, setBusy] = useState("");
   // the motion repos in Pustaka repo: each one is a different look the writer can follow (Wan, 23 Oct 2026: "allow me to
@@ -45,7 +47,7 @@ export default function MotionLab({ user, onToast }) {
   const missing = /semasa_motions/.test(motions.error || "");
 
   const add = async () => {
-    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language }, user?.id || null);
+    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, mascot }, user?.id || null);
     if (built.error === "empty") return onToast?.(t("Tulis idea atau tampal pautan.", "Write an idea or paste a link."), "warn");
     if (built.error === "url") return onToast?.(t("Pautan perlu bermula dengan https://", "The link must start with https://"), "warn");
     setBusy("add");
@@ -118,6 +120,15 @@ export default function MotionLab({ user, onToast }) {
           <label className="block"><Label hint={`${SECONDS.min}–${SECONDS.max}`}>{t("Saat", "Seconds")}</Label>
             <Input type="number" min={SECONDS.min} max={SECONDS.max} value={seconds} onChange={(e) => setSeconds(e.target.value)} /></label>
         </div>
+        <div className="grid gap-4 md:grid-cols-2" data-motion-voice>
+          <div><Label hint={t("suara Edge neural: Osman / Yasmin (BM), Andrew / Ava (EN)", "Edge neural voices: Osman / Yasmin (BM), Andrew / Ava (EN)")}>{t("Suara", "Voice")}</Label>
+            <Segmented value={voice} onChange={setVoice} options={VOICES.map(([k, bm, en]) => [k, L ? en : bm])} /></div>
+          <label className="flex items-start gap-2 text-sm md:pt-6">
+            <input type="checkbox" className="mt-1" checked={mascot} onChange={(e) => setMascot(e.target.checked)} />
+            <span>{t("Maskot bercakap", "Talking mascot")}
+              <span className="block text-[12px] text-muted">{t("Watak ahli kimia di sudut bawah, mulut bergerak ikut perkataan yang disebut.", "The chemist character in the lower corner, mouth moving on the spoken words.")}</span></span>
+          </label>
+        </div>
         <label className="flex items-start gap-2 text-sm" data-motion-bg>
           <input type="checkbox" className="mt-1" checked={aiBackground} onChange={(e) => setAiBackground(e.target.checked)} />
           <span>{t("Latar gambar AI", "AI background picture")}
@@ -166,7 +177,7 @@ export default function MotionLab({ user, onToast }) {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-display text-lg">{motionLabel(r) || t("(tiada tajuk)", "(untitled)")}</p>
-                  <p className="truncate text-xs text-muted">{r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · {(LANGUAGES.find(([k]) => k === (r.language || defaultLanguage(r.stream))) || [])[1]} · {w([RESOLUTIONS[r.resolution]?.bm, RESOLUTIONS[r.resolution]?.en]) || r.resolution} · {r.seconds}s{r.model ? ` · ${r.model}` : ""}{r.style_repo_id ? ` · ${t("gaya", "style")}: ${styleOf(r.style_repo_id)?.name || styleOf(r.style_repo_id)?.full_name || r.style_note.split(":")[0] || "repo"}` : ""}</p>
+                  <p className="truncate text-xs text-muted">{r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · {(LANGUAGES.find(([k]) => k === (r.language || defaultLanguage(r.stream))) || [])[1]} · {w([RESOLUTIONS[r.resolution]?.bm, RESOLUTIONS[r.resolution]?.en]) || r.resolution} · {r.seconds}s{r.voice && r.voice !== "off" ? ` · ${t("suara", "voice")}` : ""}{r.mascot ? ` · ${t("maskot", "mascot")}` : ""}{r.model ? ` · ${r.model}` : ""}{r.style_repo_id ? ` · ${t("gaya", "style")}: ${styleOf(r.style_repo_id)?.name || styleOf(r.style_repo_id)?.full_name || r.style_note.split(":")[0] || "repo"}` : ""}</p>
                 </div>
                 <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${STATUS_CLS[r.status] || ""}`}>{r.status === "working" && <Loader2 size={10} className="animate-spin" />}{w(STATUS_WORDS[r.status] || [r.status, r.status])}</span>
               </div>

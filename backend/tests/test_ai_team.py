@@ -130,7 +130,7 @@ def test_an_image_gateway_on_the_reader_slot_never_writes_text():
     s = ai_team.route(store, _github(), cfg, NOW)
     assert s.base_url == "https://rootsys.cloud/v1" and s.api_key == "sk-root" and not s.blocked
     st = _state(store)["reader"]
-    assert st["skipped"][0]["robot"] == "W3" and "makes pictures" in st["skipped"][0]["why"]
+    assert st["skipped"][0]["robot"] == "W3" and "image model" in st["skipped"][0]["why"]
     assert [o["slug"] for o in st["order"]] == ["rootsys", "mireld"]
 
 
@@ -158,7 +158,7 @@ def test_no_usable_robot_keeps_the_blocked_reason_for_why_off():
     cfg = {"reader": {"slot": "reader", "provider": "openai", "base_url": "https://kiosapi.com/v1", "model": "gpt-image-2",
                       "api_key": "kk-1", "key_host": "kiosapi.com"}}
     s = ai_team.route(store, _github(api_key=None, fallback_key=None), cfg, NOW)
-    assert "makes pictures" in s.blocked
+    assert "image model" in s.blocked
     assert _state(store)["reader"]["chosen"] is None
 
 
@@ -211,3 +211,38 @@ def test_the_probe_lists_the_painter_without_a_chat_question(monkeypatch):
     assert [(g["slug"], g["role"]) for g in gws] == [("rootsys", "primary"), ("kiosapi", "image")]
     row = api_status.probe(gws[1])
     assert row["chat_ok"] is True and row["model_listed"] is True and row["error"] == "" and posted == []
+
+
+def test_kiosapi_may_write_text_with_a_text_model_and_is_judged_by_speed():
+    """Wan's reader slot is kiosapi.com + gpt-5.6-sol: a chat model on a gateway that also draws pictures. Judging by the host
+    skipped his own text model; the model's name is what decides."""
+    store = FakeStore()
+    _probe(store, "kiosapi", chat_ms=300)
+    _probe(store, "rootsys", chat_ms=2400)
+    cfg = {"reader": {"slot": "reader", "provider": "openai", "base_url": "https://kiosapi.com/v1", "model": "gpt-5.6-sol",
+                      "api_key": "kk-1", "key_host": "kiosapi.com"}}
+    s = ai_team.route(store, _github(), cfg, NOW)
+    assert s.base_url == "https://kiosapi.com/v1" and s.model == "gpt-5.6-sol" and s.api_key == "kk-1"
+    st = _state(store)["reader"]
+    assert st["chosen"]["robot"] == "W3" and st["skipped"] == []
+
+
+def test_the_motion_job_asks_the_motion_api_first_then_the_team():
+    store = FakeStore()
+    _probe(store, "mireld", chat_ms=100)
+    _probe(store, "rootsys", chat_ms=200)
+    _probe(store, "kiosapi", chat_ms=900)
+    cfg = {"motion": {"slot": "motion", "provider": "openai", "base_url": "https://kiosapi.com/v1", "model": "gpt-5.6-sol",
+                      "api_key": "kk-1", "key_host": "kiosapi.com"}}
+    s = ai_team.route(store, _github(), cfg, NOW, job="motion")
+    assert s.base_url == "https://kiosapi.com/v1" and s.model == "gpt-5.6-sol", "its own API first even though slower"
+    assert s.fallback_base_url == "https://api.mireld.my/v1", "the fastest of the team is the backup"
+    st = _state(store)["motion"]
+    assert st["chosen"]["slug"] == "kiosapi" and [o["slug"] for o in st["order"]] == ["kiosapi", "mireld", "rootsys"]
+    # the reader job ignores the motion slot
+    assert ai_team.route(store, _github(), cfg, NOW).base_url == "https://api.mireld.my/v1"
+    assert _state(store)["reader"]["order"][0]["slug"] == "mireld"
+    # the motion API down: the team answers
+    _probe(store, "kiosapi", chat_ok=False, chat_ms=50, error="402 overage")
+    store.tables[db.API_STATUS] = [r for r in store.tables[db.API_STATUS] if not (r["slug"] == "kiosapi" and r["chat_ok"])]
+    assert ai_team.route(store, _github(), cfg, NOW, job="motion").base_url == "https://api.mireld.my/v1"

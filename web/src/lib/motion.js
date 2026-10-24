@@ -19,7 +19,7 @@ export function clampSeconds(v) {
 }
 
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. */
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "" } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
@@ -28,7 +28,7 @@ export function motionRow({ brief = "", url = "", stream = "regulab", resolution
     row: {
       brief: b.slice(0, 2000), source_url: u, stream: stream === "linkedin" ? "linkedin" : "regulab",
       resolution: RESOLUTIONS[resolution] ? resolution : "portrait", seconds: clampSeconds(seconds), status: "pending",
-      style_repo_id: styleRepoId || null, created_by: userId,
+      style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
     },
   };
 }
@@ -58,4 +58,17 @@ export function motionRepoRow(url, userId = null) {
   if (!m) return null;
   return { url: `https://github.com/${m[1]}/${m[2]}`, full_name: `${m[1]}/${m[2]}`, note: "motion style", category: "motion",
     category_by: "wan", status: "pending", created_by: userId };
+}
+
+/** The motion row for an idea: its headline, what Wan wrote on it and what the bot read, in the idea's own voice and size. Returns
+    null for an idea with nothing to say. A short vertical video, 12 s, is the default: the idea becomes one scroll-stopping clip. */
+export function motionFromIdea(idea, userId = null) {
+  const title = String(idea?.source_title || "").trim();
+  const note = String(idea?.note || "").trim();
+  const summary = String(idea?.source_summary || idea?.brief?.source?.summary || "").trim();
+  const brief = [title, note && `Wan: ${note}`, summary].filter(Boolean).join("\n").slice(0, 1900);
+  if (!brief) return null;
+  const url = /^https?:\/\/\S+$/.test(String(idea?.source_url || "")) ? idea.source_url : "";
+  return { brief, source_url: url, stream: idea?.stream === "linkedin" ? "linkedin" : "regulab", resolution: "portrait", seconds: 12,
+    status: "pending", idea_id: idea.id, ai_background: false, created_by: userId };
 }

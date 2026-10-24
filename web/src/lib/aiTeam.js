@@ -6,7 +6,7 @@
 export const ROBOTS = {
   rootsys: { robot: "W1", name: "Wanshah 1", tone: "afiq", does: ["read", "write"] },
   mireld: { robot: "W2", name: "Wanshah 2", tone: "mireld", does: ["read", "write"] },
-  kiosapi: { robot: "W3", name: "Wanshah 3", tone: "kios", does: ["read_image", "make_image"] },
+  kiosapi: { robot: "W3", name: "Wanshah 3", tone: "kios", does: ["read", "write", "read_image", "make_image"] },
 };
 // shown in this order, like halal-executive: Wanshah 1, then 3, then 2
 export const ORDER = ["rootsys", "kiosapi", "mireld"];
@@ -14,7 +14,7 @@ export const DOES = {
   read: ["Baca", "Read"], write: ["Tulis", "Write"], read_image: ["Baca gambar", "Read image"], make_image: ["Buat gambar", "Make image"],
 };
 export const JOBS = {
-  reader: ["Penulis teks", "Text writer"], image_reader: ["Pembaca gambar", "Picture reader"], image_gen: ["Pelukis", "Picture maker"],
+  reader: ["Penulis teks", "Text writer"], motion: ["Penulis motion", "Motion writer"], image_reader: ["Pembaca gambar", "Picture reader"], image_gen: ["Pelukis", "Picture maker"],
 };
 const ACTIVE_MS = 3 * 3600_000;
 const STALE_MS = 13 * 3600_000;
@@ -73,12 +73,12 @@ export function withPin(team, job, pin) {
 const IMAGE_RE = /image|dall-?e|flux|stable-?diffusion|sdxl|imagen|seedream|sora|veo|kling|wan2|hunyuan/i;
 export function modelsFor(row, job) {
   const list = [...new Set([row?.model, ...(row?.models || [])].filter(Boolean))];
-  const want = job === "image_gen" ? (m) => IMAGE_RE.test(m) : (m) => !IMAGE_RE.test(m);
+  const want = job === "image_gen" ? (m) => IMAGE_RE.test(m) : (m) => !IMAGE_RE.test(m);   // reader, motion, image_reader: chat models
   const ok = list.filter(want);
   return ok.length ? ok : list;
 }
 
-/** Which robots may take a job at all. */
+/** Which robots may take a job at all (the text jobs, reader and motion, take any robot that writes). */
 export function robotsFor(cards, job) {
   const need = job === "image_gen" ? "make_image" : job === "image_reader" ? "read_image" : "write";
   return cards.filter((c) => c.does.includes(need) || (job === "image_reader" && c.does.includes("read")));

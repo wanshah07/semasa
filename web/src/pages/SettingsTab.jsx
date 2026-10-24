@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Eye, FlaskConical, ImagePlus, KeyRound, Lock, Plus, Save, ScrollText, Trash2 } from "lucide-react";
+import { Clapperboard, Eye, FlaskConical, ImagePlus, KeyRound, Lock, Plus, Save, ScrollText, Trash2 } from "lucide-react";
 import { dayNames } from "../lib/brand";
 import { faqCategories } from "../lib/faqExport";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
@@ -554,6 +554,9 @@ const AI_SLOTS = [
   { slot: "reader", icon: ScrollText, providers: ["openai", "anthropic"],
     bm: "Pembaca & penulis teks", en: "Text reader & writer",
     whatBm: "membaca berita, menulis idea, draf, FAQ", whatEn: "reads the news, writes ideas, drafts, FAQ" },
+  { slot: "motion", icon: Clapperboard, providers: ["openai", "anthropic"],
+    bm: "Penulis video motion", en: "Motion video writer",
+    whatBm: "menulis komposisi video motion (Video → Motion); kosong = pasukan AI pilih", whatEn: "writes the motion-video composition (Video → Motion); empty = the AI team picks" },
   { slot: "image_gen", icon: ImagePlus, providers: ["cloudflare", "openai", "replicate"],
     bm: "Penjana gambar", en: "Image generation",
     whatBm: "melukis latar, suntingan AI botol", whatEn: "draws backgrounds and the AI bottle edit" },

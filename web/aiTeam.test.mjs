@@ -54,7 +54,8 @@ assert.deepEqual(modelsFor(null, "reader"), []);
 
 // who may take a job
 const three = teamCards([], [], NOW);
-assert.deepEqual(robotsFor(three, "reader").map((c) => c.robot), ["W1", "W2"], "Wanshah 3 never writes text");
+assert.deepEqual(robotsFor(three, "reader").map((c) => c.robot), ["W1", "W3", "W2"], "KiosAPI serves chat models too; an image model is refused by name, not by host");
+assert.deepEqual(robotsFor(three, "motion").map((c) => c.robot), ["W1", "W3", "W2"]);
 assert.deepEqual(robotsFor(three, "image_gen").map((c) => c.robot), ["W3"]);
 assert.deepEqual(robotsFor(three, "image_reader").map((c) => c.robot), ["W1", "W3", "W2"]);
 

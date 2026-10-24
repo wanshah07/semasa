@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CalendarClock, CheckCircle2, Clock, ExternalLink, FileText, Loader2, Pencil, Plus, RotateCcw, Search, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Clapperboard, Clock, ExternalLink, FileText, Loader2, Pencil, Plus, RotateCcw, Search, Trash2, XCircle } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { timeAgo } from "../lib/format";
+import { useTable } from "../lib/hooks";
+import { motionFromIdea } from "../lib/motion";
 import { useLang } from "../lib/i18n";
 import IdeaComposer from "../components/IdeaComposer";
 import Button from "../components/ui/Button";
@@ -145,6 +147,21 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
   const [editing, setEditing] = useState(null);
   const [view, setView] = useView("idea");
 
+  // a motion video made from an idea (Wan, 23 Oct 2026: "make the idea as short motion video"): the Video tab's Motion section
+  // plays it; the idea only needs to know one was asked for
+  const motionsT = useTable(TABLES.motions, { enabled: true, order: "created_at", limit: 300, realtime: false, everyMs: 120_000 });
+  const motionOf = (id) => motionsT.rows.find((m) => m.idea_id === id);
+  const [motionBusy, setMotionBusy] = useState("");
+  async function makeMotion(r) {
+    const row = motionFromIdea(r, user?.id || null);
+    if (!row) return onToast(t("Idea ini tiada apa untuk dijadikan video.", "This idea has nothing to make a video from."), "warn");
+    setMotionBusy(r.id);
+    const { error } = await supabase.from(TABLES.motions).insert(row);
+    setMotionBusy("");
+    if (error) return onToast(errText(error), "danger");
+    onToast(t("Video motion dihantar: tengok di Video → Motion dalam 2 hingga 5 minit.", "Motion video sent: see it in Video → Motion in 2 to 5 minutes."), "ok");
+    motionsT.reload();
+  }
   async function update(id, patch, msg) {
     const { error } = await supabase.from(TABLES.ideas).update(patch).eq("id", id);
     if (error) onToast(errText(error), "danger"); else { onToast(msg, "ok"); ideas.reload(); }
@@ -190,6 +207,9 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
         <Button size="sm" variant="ghost" onClick={() => update(r.id, { status: "rejected" }, t("Ditolak.", "Rejected."))}>
           {t("Tolak", "Reject")}</Button>
       )}
+      {r.status !== "rejected" && r.status !== "working" && (motionOf(r.id)
+        ? <span className="inline-flex items-center gap-1 rounded-pill bg-surface-2 px-3 py-1.5 text-xs text-muted" data-idea-motion={motionOf(r.id).status}><Clapperboard size={12} /> {t("Motion", "Motion")}: {({ pending: t("menunggu", "waiting"), working: t("dibuat", "being made"), done: t("siap", "done"), error: t("ralat", "error") })[motionOf(r.id).status] || motionOf(r.id).status}</span>
+        : <Button size="sm" variant="ghost" disabled={motionBusy === r.id} onClick={() => makeMotion(r)} title={t("Jadikan video motion pendek", "Make a short motion video")}><Clapperboard size={12} /> {t("Video motion", "Motion video")}</Button>)}
       {r.status !== "working" && !published.has(r.id) && (
         <Button size="sm" variant="danger" onClick={() => remove(r.id)} title={t("Padam idea", "Delete idea")}><Trash2 size={12} /></Button>
       )}

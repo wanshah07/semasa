@@ -5,11 +5,30 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from fakestore import FakeStore
 
 from semasa import motion
 
 NOW = datetime(2026, 10, 23, 6, 0, tzinfo=UTC)
+# the writer's plan (the first answer every film needs since the voice came in, 24 Oct 2026)
+SCRIPT = {"title": "PFAS: tiga perkara", "scenes": [
+    {"kicker": "PFAS", "heading": "Tiga perkara", "lines": ["satu", "dua"], "narration": "Hai. Tiga perkara tentang PFAS.",
+     "mascot": "wave"},
+    {"kicker": "LABEL", "heading": "Semak label", "lines": [], "narration": "Semak label dahulu.", "mascot": "point"}]}
+
+
+def fake_speak(text, voice, out, runner=None):
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(b"ID3" + b"\x00" * 2000)
+    n = len(text.split())
+    return {"duration": round(0.4 * n, 2),
+            "words": [[round(0.4 * i, 2), round(0.4 * i + 0.3, 2), w] for i, w in enumerate(text.split())]}
+
+
+@pytest.fixture(autouse=True)
+def _no_real_voice(monkeypatch):
+    monkeypatch.setattr(motion.voice_mod, "speak", fake_speak)
 GOOD = ('<!doctype html><html lang="ms" data-resolution="portrait"><head><script src="' + motion.GSAP + '"></script></head>'
         '<body><div id="root" data-composition-id="main" data-start="0" data-duration="12" data-width="1080" data-height="1920">'
         '<h1 id="t" class="clip" data-start="0" data-duration="12">Hai</h1></div>'
@@ -131,7 +150,7 @@ def test_process_writes_checks_renders_and_stores_the_video(tmp_path):
     store = Store()
     r = _row(store)
     settings = {"prompt": "Guna font besar.", "cli": "0.8.188"}
-    llm = FakeLLM([{"title": "PFAS: tiga perkara", "html": GOOD}])
+    llm = FakeLLM([SCRIPT, {"title": "PFAS: tiga perkara", "html": GOOD}])
     calls = []
     assert motion.process(store, llm, {**r, "attempts": 1}, settings, runner=_runner(calls=calls), workdir=tmp_path, now=NOW)
     got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
@@ -139,9 +158,17 @@ def test_process_writes_checks_renders_and_stores_the_video(tmp_path):
     assert got["video_url"] == f"https://cdn/motion/{r['id']}.mp4"
     assert got["poster_url"].endswith(".jpg") and got["width"] == 1080 and got["duration_s"] == 12.0 and got["model"] == "m1"
     assert got["html"] == GOOD and got["check_report"]["ok"] is True and got["bytes"] > 0
-    assert "Guna font besar." in llm.asked[0][0] and "BRIEF: Tiga perkara" in llm.asked[0][1]
+    assert "Guna font besar." in llm.asked[1][0] and "BRIEF: Tiga perkara" in llm.asked[1][1]
+    assert "SCENES, FIXED" in llm.asked[1][1] and 'data-start="0"' in llm.asked[1][1], "the film is written to the recorded times"
     assert [c[3] if len(c) > 3 else c[0] for c in calls][:2] == ["check", "render"]
-    assert (tmp_path / r["id"][:8] / "index.html").read_text() == GOOD
+    index = (tmp_path / r["id"][:8] / "index.html").read_text()
+    assert '<audio class="clip" id="sv-s1" src="assets/voice-1.mp3"' in index and "mascot-wave.webp" in index
+    assert "sm-mouth" in index
+    assert index.index("</script>\n</body>") > index.index("__timelines"), "mouth script after the timeline"
+    assets = tmp_path / r["id"][:8] / "assets"
+    assert (assets / "voice-2.mp3").exists() and (assets / "mascot-point.webp").exists()
+    assert got["script"][0]["narration"] == "Hai. Tiga perkara tentang PFAS." and got["script"][1]["start"] > 0
+    assert "voice: ms-MY-OsmanNeural" in got["style_note"]
     assert store.bucket.files[f"motion/{r['id']}.mp4"][1] == "video/mp4"
 
 
@@ -161,7 +188,7 @@ def test_run_claims_pending_rows_and_reads_the_settings(monkeypatch):
 def test_a_failed_check_goes_back_to_the_writer_once(tmp_path):
     store = Store()
     r = _row(store)
-    bad_then_good = [{"title": "t", "html": GOOD.replace("Hai", "Dulu")}, {"title": "t", "html": GOOD}]
+    bad_then_good = [SCRIPT, {"title": "t", "html": GOOD.replace("Hai", "Dulu")}, {"title": "t", "html": GOOD}]
     llm = FakeLLM(bad_then_good)
     reports = [{"ok": False, "lint": {"findings": [{"code": "x", "severity": "error", "message": "fix me"}]}}, {"ok": True}]
 
@@ -171,18 +198,19 @@ def test_a_failed_check_goes_back_to_the_writer_once(tmp_path):
         return _runner()(cmd, **kw)
     cfg = {"prompt": "", "cli": "0.8.188"}
     assert motion.process(store, llm, {**r, "attempts": 1}, cfg, runner=runner, workdir=tmp_path, now=NOW)
-    assert len(llm.asked) == 2 and "THE CHECK FAILED" in llm.asked[1][1] and "[x] fix me" in llm.asked[1][1]
+    assert len(llm.asked) == 3 and "THE CHECK FAILED" in llm.asked[2][1] and "[x] fix me" in llm.asked[2][1]
     assert store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]["html"] == GOOD
 
 
 def test_a_render_failure_retries_then_errors(tmp_path):
     store = Store()
     r = _row(store)
-    ok = motion.process(store, FakeLLM([{"html": GOOD}]), {**r, "attempts": 1}, {"prompt": "", "cli": "0.8.188"},
+    ok = motion.process(store, FakeLLM([SCRIPT, {"html": GOOD}]), {**r, "attempts": 1}, {"prompt": "", "cli": "0.8.188"},
                         runner=_runner(render_ok=False), workdir=tmp_path, now=NOW)
     got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
     assert ok is False and got["status"] == "pending" and "Chrome crashed" in got["error"]
-    motion.process(store, FakeLLM([{"html": GOOD}]), {**r, "attempts": motion.MAX_ATTEMPTS}, {"prompt": "", "cli": "0.8.188"},
+    motion.process(store, FakeLLM([SCRIPT, {"html": GOOD}]), {**r, "attempts": motion.MAX_ATTEMPTS},
+                   {"prompt": "", "cli": "0.8.188"},
                    runner=_runner(render_ok=False), workdir=tmp_path, now=NOW)
     assert store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]["status"] == "error"
 
@@ -190,7 +218,8 @@ def test_a_render_failure_retries_then_errors(tmp_path):
 def test_a_bad_composition_is_an_error_at_once_and_no_llm_says_so(tmp_path):
     store = Store()
     r = _row(store)
-    motion.process(store, FakeLLM([{"html": "<html>nope</html>"}]), {**r, "attempts": 1}, {"prompt": "", "cli": "0.8.188"},
+    motion.process(store, FakeLLM([SCRIPT, {"html": "<html>nope</html>"}]), {**r, "attempts": 1},
+                   {"prompt": "", "cli": "0.8.188"},
                    runner=_runner(), workdir=tmp_path, now=NOW)
     got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
     assert got["status"] == "error" and "whole HyperFrames composition" in got["error"]
@@ -245,7 +274,7 @@ def test_process_records_the_style_it_used(tmp_path):
     store = Store()
     lib = store.table("semasa_repo_library").insert({"full_name": "a/style", "summary_en": "Bold type."}).execute().data[0]
     r = _row(store, style_repo_id=lib["id"])
-    llm = FakeLLM([{"title": "t", "html": GOOD}])
+    llm = FakeLLM([SCRIPT, {"title": "t", "html": GOOD}])
     assert motion.process(store, llm, {**r, "attempts": 1}, {"prompt": "", "cli": "0.8.188"}, runner=_runner(), workdir=tmp_path,
                           now=NOW, gh=FakeGH({}))
     got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
@@ -269,12 +298,12 @@ class FakePicture:
 def test_the_ai_background_is_drawn_handed_to_the_writer_and_recorded(tmp_path):
     store = Store()
     r = _row(store, ai_background=True)
-    llm = FakeLLM([{"title": "t", "html": GOOD}])
+    llm = FakeLLM([SCRIPT, {"title": "t", "html": GOOD}])
     pic = FakePicture()
     assert motion.process(store, llm, {**r, "attempts": 1}, {"prompt": "", "cli": "0.8.188"}, runner=_runner(), workdir=tmp_path,
                           now=NOW, picture_provider=pic)
     assert (tmp_path / r["id"][:8] / "assets" / "bg.png").read_bytes().startswith(b"\x89PNG")
-    assert "url(assets/bg.png)" in llm.asked[0][0] and "Tiga perkara tentang PFAS" in pic.prompts[0]
+    assert "url(assets/bg.png)" in llm.asked[1][0] and "Tiga perkara tentang PFAS" in pic.prompts[0]
     got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
     assert got["status"] == "done" and "background: gpt-image-2 via openai" in got["style_note"]
 
@@ -282,15 +311,62 @@ def test_the_ai_background_is_drawn_handed_to_the_writer_and_recorded(tmp_path):
 def test_no_background_asked_means_none_is_drawn_and_a_failed_one_never_stops_the_video(tmp_path):
     store = Store()
     r = _row(store)
-    llm = FakeLLM([{"title": "t", "html": GOOD}])
+    llm = FakeLLM([SCRIPT, {"title": "t", "html": GOOD}])
     pic = FakePicture()
     motion.process(store, llm, {**r, "attempts": 1}, {"prompt": "", "cli": "0.8.188"}, runner=_runner(), workdir=tmp_path,
                    now=NOW, picture_provider=pic)
     assert pic.prompts == [] and "assets/bg" not in llm.asked[0][0]
     r2 = _row(store, ai_background=True)
-    llm2 = FakeLLM([{"title": "t", "html": GOOD}])
+    llm2 = FakeLLM([SCRIPT, {"title": "t", "html": GOOD}])
     assert motion.process(store, llm2, {**r2, "attempts": 1}, {"prompt": "", "cli": "0.8.188"}, runner=_runner(),
                           workdir=tmp_path, now=NOW, picture_provider=FakePicture(fail=True))
     got = store.table(motion.TABLE).select("*").eq("id", r2["id"]).execute().data[0]
     assert got["status"] == "done" and "background not made: 402 credits" in got["style_note"]
     assert "assets/bg" not in llm2.asked[0][0]
+
+
+def test_voice_scenes_times_the_film_to_the_recording_and_off_means_silence(tmp_path):
+    # Wan, 24 Oct 2026: "make sure got voice or audio"
+    scenes = [{"id": "s1", "narration": "Hai semua, tiga perkara."}, {"id": "s2", "narration": ""},
+              {"id": "s3", "narration": "Itu sahaja untuk hari ini."}]
+    got, total, note = motion.voice_scenes([dict(s) for s in scenes], "bm", "female", tmp_path, speak=fake_speak)
+    assert note == "voice: ms-MY-YasminNeural" and got[0]["audio"] == "assets/voice-1.mp3" and got[1]["audio"] == ""
+    assert got[0]["start"] == 0 and got[0]["duration"] == 2.5                 # 4 words x 0.4 + pad, under the floor
+    assert got[1]["start"] == 2.85 and got[1]["duration"] == 3.0              # a silent scene gets its default length
+    assert got[2]["start"] == 6.2 and total == round(6.2 + got[2]["duration"], 2)
+    off, total_off, note_off = motion.voice_scenes([dict(s) for s in scenes], "bm", "off", tmp_path, speak=fake_speak)
+    assert note_off == "no voice" and all(not s["audio"] for s in off) and total_off > 0
+    # a voice that fails never stops the film
+    def broken(text, voice, out, runner=None):
+        raise RuntimeError("TLS")
+    quiet, _, n = motion.voice_scenes([dict(s) for s in scenes], "en", "male", tmp_path, speak=broken)
+    assert n.startswith("voice failed") and all(not s["audio"] for s in quiet)
+
+
+def test_the_presenter_and_the_voice_are_put_into_the_film_after_the_writer():
+    scenes, total, _ = motion.voice_scenes([{"id": "s1", "narration": "Hai dunia", "mascot": "point"}], "bm", "male",
+                                           Path("/tmp/motion-test-inject"), speak=fake_speak)
+    out = motion.inject_layers(GOOD, scenes, total, 1080, 1920, True)
+    root = out.index('id="root"')
+    assert out.index("<audio") > root and out.index('id="sm-s1"') > root and 'src="assets/mascot-point.webp"' in out
+    assert 'var W=[[0.0, 0.3, "s1"], [0.4, 0.7, "s1"]]' in out and out.rindex("<script>") > out.index("__timelines")
+    assert 'data-start="0"' in out and "data-volume" in out
+    # the voice without the character: audio only, no script
+    plain = motion.inject_layers(GOOD, scenes, total, 1080, 1920, False)
+    assert "<audio" in plain and "sm-mouth" not in plain and "scaleY" not in plain
+    try:
+        motion.inject_layers("<html><body>no root</body></html>", scenes, total, 1080, 1920, True)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a film with no #root was accepted")
+
+
+def test_the_script_prompt_speaks_the_films_language_and_both_means_two_lines():
+    s = motion.build_script_system({"stream": "regulab", "seconds": 20, "language": "both"}, "Sebut nama produk.")
+    assert "about 20 seconds" in s and "46 words" in s and "Bahasa Malaysia with the English line" in s
+    assert "WAN'S OWN INSTRUCTIONS:\nSebut nama produk." in s and "ws.regulab" in s
+    assert "English" in motion.build_script_system({"stream": "linkedin", "seconds": 8}, "")
+    assert motion.voice_mod.voice_for("both", "female") == "ms-MY-YasminNeural"
+    assert motion.voice_mod.voice_for("en", "male") == "en-US-AndrewMultilingualNeural"
+    assert motion.voice_mod.voice_for("en", "en-GB-RyanNeural") == "en-GB-RyanNeural"

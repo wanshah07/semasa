@@ -4,8 +4,8 @@ import { AlertTriangle, CalendarClock, CheckCircle2, Clapperboard, Clock, Extern
 import { fadeUp } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { timeAgo } from "../lib/format";
-import { useTable } from "../lib/hooks";
-import { motionFromIdea } from "../lib/motion";
+import { useSettings, useTable } from "../lib/hooks";
+import { motionDefaults, motionFromIdea } from "../lib/motion";
 import { useLang } from "../lib/i18n";
 import IdeaComposer from "../components/IdeaComposer";
 import Button from "../components/ui/Button";
@@ -152,14 +152,30 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
   const motionsT = useTable(TABLES.motions, { enabled: true, order: "created_at", limit: 300, realtime: false, everyMs: 120_000 });
   const motionOf = (id) => motionsT.rows.find((m) => m.idea_id === id);
   const [motionBusy, setMotionBusy] = useState("");
+  const { settings: motionSettings } = useSettings(true);
+  const mDefaults = motionDefaults(motionSettings);
   async function makeMotion(r) {
-    const row = motionFromIdea(r, user?.id || null);
+    const row = motionFromIdea(r, user?.id || null, mDefaults);
     if (!row) return onToast(t("Idea ini tiada apa untuk dijadikan video.", "This idea has nothing to make a video from."), "warn");
     setMotionBusy(r.id);
     const { error } = await supabase.from(TABLES.motions).insert(row);
     setMotionBusy("");
     if (error) return onToast(errText(error), "danger");
     onToast(t("Video motion dihantar: tengok di Video → Motion dalam 2 hingga 5 minit.", "Motion video sent: see it in Video → Motion in 2 to 5 minutes."), "ok");
+    motionsT.reload();
+  }
+  // every shown idea at once, with the saved way (Wan, 24 Oct 2026: "apply to all idea if I need")
+  const motionable = () => shown.filter((r) => r.status !== "rejected" && r.status !== "working" && !motionOf(r.id)
+    && motionFromIdea(r, user?.id || null, mDefaults));
+  async function makeMotionAll() {
+    const rows = motionable().map((r) => motionFromIdea(r, user?.id || null, mDefaults));
+    if (!rows.length) return onToast(t("Tiada idea yang belum ada video motion dalam senarai ini.", "No shown idea is without a motion video."), "warn");
+    if (!window.confirm(t("Buat {n} video motion? Setiap satu sekitar 2 hingga 5 minit, satu demi satu.", "Make {n} motion videos? Each about 2 to 5 minutes, one after another.", { n: rows.length }))) return;
+    setMotionBusy("all");
+    const { error } = await supabase.from(TABLES.motions).insert(rows);
+    setMotionBusy("");
+    if (error) return onToast(errText(error), "danger");
+    onToast(t("{n} video motion dihantar: tengok di Video → Motion.", "{n} motion videos sent: see Video → Motion.", { n: rows.length }), "ok");
     motionsT.reload();
   }
   async function update(id, patch, msg) {
@@ -236,7 +252,12 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
             )}
           </p>
         </div>
-        <Button onClick={() => setComposer(true)}><Plus size={14} /> {t("Idea baharu", "New idea")}</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={makeMotionAll} disabled={motionBusy === "all"} data-ideas-motion-all
+            title={t("Video motion untuk setiap idea yang dipapar dan belum ada video, ikut cara lalai yang disimpan di Video → Motion", "A motion video for every shown idea without one, the default way saved in Video → Motion")}>
+            {motionBusy === "all" ? <Loader2 size={12} className="animate-spin" /> : <Clapperboard size={12} />} {t("Video motion semua", "Motion video for all")}</Button>
+          <Button onClick={() => setComposer(true)}><Plus size={14} /> {t("Idea baharu", "New idea")}</Button>
+        </div>
       </motion.div>
       <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2 text-xs">

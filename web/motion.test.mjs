@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { LANGUAGES, defaultLanguage, motionFromIdea, motionFromPost, RESOLUTIONS, SECONDS, checkItems, clampSeconds, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "./src/lib/motion.js";
+import { LANGUAGES, defaultLanguage, freshUrl, motionDefaults, motionFromIdea, motionFromPost, withDefaults, RESOLUTIONS, SECONDS, checkItems, clampSeconds, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "./src/lib/motion.js";
 
 assert.equal(clampSeconds("abc"), SECONDS.default);
 assert.equal(clampSeconds(1), SECONDS.min);
@@ -50,7 +50,18 @@ assert.deepEqual(motionRepoRow("https://github.com/heygen-com/hyperframes/tree/m
   { url: "https://github.com/heygen-com/hyperframes", full_name: "heygen-com/hyperframes", note: "motion style", category: "motion", category_by: "wan", status: "pending", created_by: "u1" });
 assert.equal(motionRepoRow("skills.sh"), null);
 const idea = { id: "i1", source_title: "NPRA batalkan 12 produk", note: "tekankan label", source_summary: "Ringkasan.", source_url: "https://npra.gov.my/x", stream: "regulab" };
-assert.deepEqual(motionFromIdea(idea, "u1"), { brief: "NPRA batalkan 12 produk\nWan: tekankan label\nRingkasan.", source_url: "https://npra.gov.my/x", stream: "regulab", language: "bm", resolution: "portrait", seconds: 12, status: "pending", idea_id: "i1", ai_background: false, created_by: "u1" });
+assert.deepEqual(motionFromIdea(idea, "u1"), { brief: "NPRA batalkan 12 produk\nWan: tekankan label\nRingkasan.", source_url: "https://npra.gov.my/x", stream: "regulab", language: "bm", resolution: "portrait", seconds: 12, status: "pending", idea_id: "i1", ai_background: false, style_repo_id: null, voice: "male", mascot: "wave", created_by: "u1" });
+// the saved defaults ("the skill") apply to an idea and to a post
+const saved = withDefaults({ prompt: "P" }, { language: "en", voice: "female", mascot: false, resolution: "square", seconds: "25", aiBackground: true, styleRepoId: "r9" });
+assert.deepEqual(saved, { prompt: "P", defaults: { language: "en", voice: "female", mascot: false, resolution: "square", seconds: 25, aiBackground: true, styleRepoId: "r9" } });
+const dflts = motionDefaults({ motion: saved });
+const fromIdea = motionFromIdea(idea, "u1", dflts);
+assert.deepEqual([fromIdea.language, fromIdea.voice, fromIdea.mascot, fromIdea.resolution, fromIdea.seconds, fromIdea.ai_background, fromIdea.style_repo_id], ["en", "female", "", "square", 25, true, "r9"]);
+assert.equal(motionFromIdea({ id: "i3", source_title: "T", stream: "linkedin" }, null, motionDefaults({})).language, "en", "no saved language: the stream's own");
+assert.equal(motionFromPost({ lang: "bm", text: { bm: { facebook: "K" } } }, null, dflts).language, "en");
+assert.equal(motionDefaults(null).voice, "male");
+assert.equal(freshUrl("https://x/a.mp4", "2026-10-24T05:00:00Z"), "https://x/a.mp4?v=2026-10-24T05%3A00%3A00Z");
+assert.equal(freshUrl("", "x"), "");
 assert.equal(motionFromIdea({ id: "i2", source_title: "T", stream: "linkedin", source_url: "not a url" }).stream, "linkedin");
 assert.equal(motionFromIdea({ id: "i2", source_title: "T", source_url: "not a url" }).source_url, "");
 assert.equal(motionFromIdea({ id: "i3" }), null);
@@ -59,7 +70,7 @@ console.log("motion.test.mjs: ok");
 
 // a post draft: slides first, else the caption in the post's own language
 const post = { lang: "bm", stream: "regulab", idea_id: "i9", slides: [{ title: "Tiga perkara", points: ["Satu", "Dua"] }, { title: "Penutup" }], text: { bm: { facebook: "Kapsyen" } } };
-assert.deepEqual(motionFromPost(post, "u1"), { brief: "Tiga perkara\n- Satu\n- Dua\n\nPenutup", source_url: "", stream: "regulab", language: "bm", resolution: "portrait", seconds: 12, status: "pending", idea_id: "i9", ai_background: false, created_by: "u1" });
+assert.deepEqual(motionFromPost(post, "u1"), { brief: "Tiga perkara\n- Satu\n- Dua\n\nPenutup", source_url: "", stream: "regulab", language: "bm", resolution: "portrait", seconds: 12, status: "pending", idea_id: "i9", ai_background: false, style_repo_id: null, voice: "male", mascot: "wave", created_by: "u1" });
 assert.equal(motionFromPost({ lang: "en", stream: "linkedin", text: { en: { linkedin: "Words" } } }).brief, "Words");
 assert.equal(motionFromPost({ lang: "en", stream: "linkedin", text: { en: { linkedin: "Words" } } }).language, "en");
 assert.equal(motionFromPost({ lang: "bm", text: {} }), null);

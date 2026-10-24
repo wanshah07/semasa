@@ -5,7 +5,8 @@ import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import { restoreVersion, withDecision } from "../lib/workflow";
 import { dueMs } from "../lib/slots";
-import { motionFromPost } from "../lib/motion";
+import { motionDefaults, motionFromPost } from "../lib/motion";
+import { useSettings } from "../lib/hooks";
 import Button from "./ui/Button";
 import { Input, Label } from "./ui/Field";
 
@@ -25,10 +26,11 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
   const [busy, setBusy] = useState(false);
   const [showHist, setShowHist] = useState(false);
   const [motionSent, setMotionSent] = useState(false);
+  const { settings: motionSettings } = useSettings(true);
   // the draft as a short motion video (Wan, 24 Oct 2026: "make sure all draft idea have option to be motion"); it plays in
   // Video → Motion, and nothing here changes the post
   async function makeMotion() {
-    const row = motionFromPost(post, user?.id || null);
+    const row = motionFromPost(post, user?.id || null, motionDefaults(motionSettings));
     if (!row) return onToast(t("Draf ini tiada perkataan untuk dijadikan video.", "This draft has no words to make a video from."), "warn");
     setBusy(true);
     const { error } = await supabase.from(TABLES.motions).insert(row);

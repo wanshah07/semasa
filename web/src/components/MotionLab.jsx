@@ -1,11 +1,11 @@
-import { useState } from "react";
-import { AlertTriangle, Clapperboard, Download, FolderGit2, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, Clapperboard, Download, FolderGit2, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2 } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
-import { useTable } from "../lib/hooks";
+import { useSettings, useTable } from "../lib/hooks";
 import { timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
-import { LANGUAGES, RESOLUTIONS, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "../lib/motion";
+import { LANGUAGES, RESOLUTIONS, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, styleRepos, withDefaults } from "../lib/motion";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
@@ -39,6 +39,23 @@ export default function MotionLab({ user, onToast }) {
   const [mascot, setMascot] = useState(true);
   const [repoUrl, setRepoUrl] = useState("");
   const [busy, setBusy] = useState("");
+  // Wan's saved way (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"): the form opens on it, and
+  // every idea or draft made into a video takes it
+  const { settings, save } = useSettings(true);
+  const defaultsKey = JSON.stringify(settings.motion?.defaults || null);
+  useEffect(() => {
+    const d = motionDefaults(settings);
+    if (!settings.motion?.defaults) return;
+    setLanguage(d.language || defaultLanguage(stream)); setLangTouched(!!d.language); setVoice(d.voice); setMascot(d.mascot !== false);
+    setResolution(d.resolution); setSeconds(d.seconds); setAiBackground(!!d.aiBackground); setStyleRepoId(d.styleRepoId || "");
+  }, [defaultsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const saveDefaults = async () => {
+    setBusy("defaults");
+    try {
+      await save("motion", withDefaults(settings.motion, { language: langTouched ? language : "", voice, mascot, resolution, seconds, aiBackground, styleRepoId }));
+      onToast?.(t("Disimpan sebagai cara lalai: setiap idea atau draf yang dijadikan video motion ikut tetapan ini.", "Saved as the default way: every idea or draft made into a motion video follows these settings."), "ok");
+    } catch (e) { onToast?.(/0 rows|motion/i.test(e.message) ? t("Jalankan supabase/043_motion.sql dahulu.", "Run supabase/043_motion.sql first.") : e.message, "error"); } finally { setBusy(""); }
+  };
   // the motion repos in Pustaka repo: each one is a different look the writer can follow (Wan, 23 Oct 2026: "allow me to
   // add repo motion, so I can have choice to create different angle of motion video")
   const libT = useTable(TABLES.repoLibrary, { enabled: true, order: "updated_at", limit: 500, realtime: false, everyMs: 120_000 });
@@ -135,7 +152,12 @@ export default function MotionLab({ user, onToast }) {
             <span className="block text-[12px] text-muted">{t("Satu gambar dilukis oleh slot Penjana gambar (KiosAPI jika itu yang anda tetapkan) dan diletak di bawah komposisi. Menggunakan kredit gambar; tiada gambar = video tetap dibuat.",
               "One picture drawn by the Image generation slot (KiosAPI if that is what you set) and placed under the composition. It spends picture credits; if it cannot be made the video is still made.")}</span></span>
         </label>
-        <Button onClick={add} disabled={busy === "add"}>{busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {t("Buat video motion", "Make the motion video")}</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={add} disabled={busy === "add"}>{busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {t("Buat video motion", "Make the motion video")}</Button>
+          <Button variant="ghost" size="sm" onClick={saveDefaults} disabled={busy === "defaults"} title={t("Bahasa, suara, maskot, saiz, saat, gaya dan latar: dipakai bila idea atau draf dijadikan video", "Language, voice, mascot, size, seconds, style and background: used when an idea or draft is made into a video")}
+            data-motion-save-defaults>{busy === "defaults" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {t("Simpan sebagai cara lalai", "Save as the default way")}</Button>
+          {settings.motion?.defaults && <span className="text-[11px] text-muted">{t("Cara lalai tersimpan: idea dan draf ikutnya.", "Default way saved: ideas and drafts follow it.")}</span>}
+        </div>
       </Card>
 
       <Card className="mt-4 space-y-3 p-5" data-motion-repos>
@@ -182,7 +204,7 @@ export default function MotionLab({ user, onToast }) {
                 <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${STATUS_CLS[r.status] || ""}`}>{r.status === "working" && <Loader2 size={10} className="animate-spin" />}{w(STATUS_WORDS[r.status] || [r.status, r.status])}</span>
               </div>
               {r.status === "done" && r.video_url && (
-                <video className="mt-3 w-full rounded-tile bg-black" style={{ aspectRatio: `${r.width || 9} / ${r.height || 16}`, maxHeight: 480 }} controls playsInline preload="metadata" poster={r.poster_url || undefined} src={r.video_url} />
+                <video key={`${r.id}-${r.updated_at}`} className="mt-3 w-full rounded-tile bg-black" style={{ aspectRatio: `${r.width || 9} / ${r.height || 16}`, maxHeight: 480 }} controls playsInline preload="metadata" poster={freshUrl(r.poster_url, r.updated_at) || undefined} src={freshUrl(r.video_url, r.updated_at)} />
               )}
               {r.brief && r.title && <p className="mt-2 text-xs text-muted">{r.brief}</p>}
               {r.error && <p className="mt-2 rounded-tile bg-danger/10 p-2 text-xs text-danger">{r.error}</p>}
@@ -191,7 +213,7 @@ export default function MotionLab({ user, onToast }) {
                   <ul className="mt-1 space-y-0.5">{items.map((it, i) => <li key={i} className={it.level === "error" ? "text-danger" : "text-muted"}><b>{it.code}</b> · {it.message}</li>)}</ul></details>
               )}
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                {r.status === "done" && r.video_url && <a className="inline-flex items-center gap-1 rounded-pill bg-surface-2 px-3 py-1.5 text-xs hover:bg-line" href={r.video_url} download target="_blank" rel="noreferrer"><Download size={12} /> MP4{r.bytes ? ` · ${fmtBytes(r.bytes)}` : ""}</a>}
+                {r.status === "done" && r.video_url && <a className="inline-flex items-center gap-1 rounded-pill bg-surface-2 px-3 py-1.5 text-xs hover:bg-line" href={freshUrl(r.video_url, r.updated_at)} download target="_blank" rel="noreferrer"><Download size={12} /> MP4{r.bytes ? ` · ${fmtBytes(r.bytes)}` : ""}</a>}
                 <Button size="sm" variant="ghost" disabled={busy === r.id || r.status === "working"} onClick={() => patch(r, { status: "pending", attempts: 0, error: "" })}><RefreshCw size={12} /> {t("Buat semula", "Make again")}</Button>
                 <Button size="sm" variant="ghost" disabled={busy === r.id} onClick={() => remove(r)}><Trash2 size={12} /> {t("Buang", "Remove")}</Button>
                 <span className="ml-auto text-[11px] text-muted">{r.created_at ? timeAgo(r.created_at) : ""}</span>

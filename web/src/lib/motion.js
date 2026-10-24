@@ -27,6 +27,23 @@ export function clampSeconds(v) {
   return Math.min(SECONDS.max, Math.max(SECONDS.min, n));
 }
 
+/* Wan's saved way of making a motion video (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"):
+   settings.motion.defaults, saved from the Motion form, read whenever an idea or a post draft is made into a video. */
+export const MOTION_DEFAULTS = { language: "", voice: "male", mascot: true, resolution: "portrait", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
+/** The saved defaults over the built-in ones; an empty language means "the stream's own". */
+export function motionDefaults(settings) {
+  const d = (settings || {}).motion?.defaults;
+  return { ...MOTION_DEFAULTS, ...(d && typeof d === "object" ? d : {}) };
+}
+/** settings.motion with the form saved as the defaults; everything else in it (the prompt) untouched. */
+export function withDefaults(motionSettings, form) {
+  const d = { language: form.language || "", voice: voiceOf(form.voice), mascot: form.mascot !== false, resolution: RESOLUTIONS[form.resolution] ? form.resolution : "portrait",
+    seconds: clampSeconds(form.seconds), aiBackground: !!form.aiBackground, styleRepoId: form.styleRepoId || "" };
+  return { ...(motionSettings || {}), defaults: d };
+}
+/** A cache-busting address for a video that was remade under the same path (the browser kept the first MP4 otherwise). */
+export const freshUrl = (url, stamp) => (url ? `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(stamp || "")}` : url);
+
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. */
 export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "male", mascot = true } = {}, userId = null) {
   const b = String(brief || "").trim();
@@ -73,7 +90,8 @@ export function motionRepoRow(url, userId = null) {
 
 /** The motion row for an idea: its headline, what Wan wrote on it and what the bot read, in the idea's own voice and size. Returns
     null for an idea with nothing to say. A short vertical video, 12 s, is the default: the idea becomes one scroll-stopping clip. */
-export function motionFromIdea(idea, userId = null) {
+export function motionFromIdea(idea, userId = null, defaults = null) {
+  const d = { ...MOTION_DEFAULTS, ...(defaults || {}) };
   const title = String(idea?.source_title || "").trim();
   const note = String(idea?.note || "").trim();
   const summary = String(idea?.source_summary || idea?.brief?.source?.summary || "").trim();
@@ -81,13 +99,15 @@ export function motionFromIdea(idea, userId = null) {
   if (!brief) return null;
   const url = /^https?:\/\/\S+$/.test(String(idea?.source_url || "")) ? idea.source_url : "";
   const stream = idea?.stream === "linkedin" ? "linkedin" : "regulab";
-  return { brief, source_url: url, stream, language: defaultLanguage(stream), resolution: "portrait", seconds: 12,
-    status: "pending", idea_id: idea.id, ai_background: false, created_by: userId };
+  return { brief, source_url: url, stream, language: langOf(d.language, stream), resolution: RESOLUTIONS[d.resolution] ? d.resolution : "portrait",
+    seconds: clampSeconds(d.seconds), status: "pending", idea_id: idea.id, ai_background: !!d.aiBackground,
+    style_repo_id: d.styleRepoId || null, voice: voiceOf(d.voice), mascot: d.mascot !== false ? DEFAULT_MASCOT : "", created_by: userId };
 }
 
 /** The motion row for a post draft (Wan, 24 Oct 2026: "make sure all draft idea have option to be motion"): the slides' titles and
     points when the post has them, else its caption in the post's own language; the post's language and stream carry over. */
-export function motionFromPost(post, userId = null) {
+export function motionFromPost(post, userId = null, defaults = null) {
+  const d = { ...MOTION_DEFAULTS, ...(defaults || {}) };
   const lang = post?.lang === "en" ? "en" : "bm";
   const slides = Array.isArray(post?.slides) ? post.slides : [];
   const fromSlides = slides.map((s) => [String(s?.title || "").trim(), ...(Array.isArray(s?.points) ? s.points : []).map((p) => `- ${String(p || "").trim()}`)]
@@ -97,6 +117,7 @@ export function motionFromPost(post, userId = null) {
   const brief = (fromSlides || caption).slice(0, 1900);
   if (!brief) return null;
   const stream = post?.stream === "linkedin" ? "linkedin" : "regulab";
-  return { brief, source_url: "", stream, language: lang, resolution: "portrait", seconds: 12, status: "pending",
-    idea_id: post?.idea_id || null, ai_background: false, created_by: userId };
+  return { brief, source_url: "", stream, language: d.language || lang, resolution: RESOLUTIONS[d.resolution] ? d.resolution : "portrait",
+    seconds: clampSeconds(d.seconds), status: "pending", idea_id: post?.idea_id || null, ai_background: !!d.aiBackground,
+    style_repo_id: d.styleRepoId || null, voice: voiceOf(d.voice), mascot: d.mascot !== false ? DEFAULT_MASCOT : "", created_by: userId };
 }

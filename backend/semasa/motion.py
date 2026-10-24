@@ -52,6 +52,10 @@ SCRIPT_TOKENS = 6_000
 # by eye on each pose, and opens on every word of the narration
 MASCOT_DIR = Path(__file__).resolve().parents[2] / "web" / "public" / "cards" / "mascots"
 MOUTH = {"wave": (0.55, 0.20), "point": (0.55, 0.30), "confused": (0.54, 0.22), "shocked": (0.60, 0.24)}
+# the presenter walks (Wan, 25 Oct 2026: "make sure mascot bergerak dan berjalan dan bercakap macam mengajar"): it paces
+# between these two marks (fraction of frame width) during the SCENE_GAP air between two scenes, then stands still and
+# gestures/talks for the scene itself, like a teacher stepping across a stage between points
+WALK_MARKS = (0.04, 0.30)
 SCENE_GAP = 0.35                        # seconds of air between two narrated scenes
 SCENE_MIN = 2.5                         # a scene is never shorter than this, whatever the voice says
 VOICE_PAD = 0.6                         # a scene stays up this long after its last word
@@ -208,39 +212,65 @@ def plan_text(scenes: list[dict[str, Any]]) -> str:
 
 
 def mascot_layer(scenes: list[dict[str, Any]], total: float, w: int, h: int) -> tuple[str, str]:
-    """(markup, script) for the presenter and the voice: one <img> per scene pose in the lower-left of the frame, a mouth
-    that opens on each word, a gentle bob, and one <audio> clip per narrated scene. Added by the worker AFTER the writer,
-    so the film never loses a word to the character."""
+    """(markup, script) for the presenter and the voice: ONE character that lives for the whole film (not recreated per
+    scene, so it can be seen moving between scenes), crossfading pose at each scene's own start, a mouth that opens on
+    each word and repositions itself per pose, and a walk: in the SCENE_GAP air between two scenes it paces to the next
+    of WALK_MARKS with a two-step bounce, then stands and gestures/talks for the scene itself with a gentle idle bob.
+    Plus one <audio> clip per narrated scene. Added by the worker AFTER the writer, so the film never loses a word to the
+    character (Wan, 25 Oct 2026: "make sure mascot bergerak dan berjalan dan bercakap macam mengajar")."""
     size = int(w * 0.34) if w < h else int(h * 0.42)
-    parts, audio, script = [], [], []
+    audio = []
     for sc in scenes:
         if sc.get("audio"):
             # the slot is the recording's own length (hyperframes check: a longer slot is "shortened to the media length")
             audio.append(f'<audio class="clip" id="sv-{sc["id"]}" src="{sc["audio"]}" data-start="{sc["start"]:g}" '
                          f'data-duration="{float(sc.get("audio_s") or sc["duration"]):g}" data-volume="1"></audio>')
-        pose = sc.get("mascot") or "wave"
-        mx, my = MOUTH.get(pose, MOUTH["wave"])
-        box = f"position:absolute;left:{int(w * 0.04)}px;bottom:{int(h * 0.05)}px;width:{size}px;height:{int(size * 4 / 3)}px;"
-        img = ("position:absolute;inset:0;width:100%;height:100%;object-fit:contain;"
-               "filter:drop-shadow(0 18px 30px rgba(0,0,0,.45));")
-        mouth = (f"position:absolute;left:{mx * 100:.1f}%;top:{my * 100:.1f}%;width:4.2%;height:2.4%;margin-left:-2.1%;"
-                 "margin-top:-1.2%;border-radius:50%;background:#3a1616;transform:scaleY(.2);transform-origin:50% 50%;")
-        parts.append(
-            f'<div class="clip sm-scene" id="sm-{sc["id"]}" data-start="{sc["start"]:g}" data-duration="{sc["duration"]:g}" '
-            f'style="position:absolute;left:0;top:0;width:{w}px;height:{h}px;pointer-events:none;z-index:40;">'
-            f'<div class="sm-wrap" style="{box}"><img src="assets/mascot-{pose}.webp" alt="" style="{img}">'
-            f'<div class="sm-mouth" data-scene="{sc["id"]}" style="{mouth}"></div></div></div>')
+    if not scenes:
+        return "\n".join(audio), ""
+    base_left = int(w * WALK_MARKS[0])
+    box = f"position:absolute;left:{base_left}px;bottom:{int(h * 0.05)}px;width:{size}px;height:{int(size * 4 / 3)}px;"
+    img_style = ("position:absolute;inset:0;width:100%;height:100%;object-fit:contain;"
+                 "filter:drop-shadow(0 18px 30px rgba(0,0,0,.45));")
+    mouth_style = ("position:absolute;width:4.2%;height:2.4%;margin-left:-2.1%;margin-top:-1.2%;border-radius:50%;"
+                   "background:#3a1616;transform:scaleY(.2);transform-origin:50% 50%;")
+    poses: list[str] = []
+    for sc in scenes:
+        p = sc.get("mascot") or "wave"
+        if p not in poses:
+            poses.append(p)
+    pose_imgs = "\n".join(f'<img class="sm-pose" data-pose="{p}" src="assets/mascot-{p}.webp" alt="" '
+                          f'style="{img_style}opacity:{1 if i == 0 else 0};">' for i, p in enumerate(poses))
+    first_mx, first_my = MOUTH.get(scenes[0].get("mascot") or "wave", MOUTH["wave"])
+    markup = (f'<div class="clip sm-presenter" id="sm-presenter" data-start="0" data-duration="{total:g}" '
+              f'style="position:absolute;left:0;top:0;width:{w}px;height:{h}px;pointer-events:none;z-index:40;">'
+              f'<div class="sm-wrap" style="{box}">{pose_imgs}'
+              f'<div class="sm-mouth" style="{mouth_style}left:{first_mx * 100:.1f}%;top:{first_my * 100:.1f}%;"></div>'
+              f'</div></div>')
     words = [[round(sc["start"] + ws, 3), round(sc["start"] + we, 3), sc["id"]]
              for sc in scenes for ws, we, _ in (sc.get("words") or [])]
-    script.append("<script>(function(){var T=window.__timelines&&window.__timelines.main;if(!T)return;"
-                  f"var W={json.dumps(words)};var mouths={{}};"
-                  "document.querySelectorAll('.sm-mouth').forEach(function(m){mouths[m.dataset.scene]=m;});"
-                  "W.forEach(function(w){var m=mouths[w[2]];if(!m)return;T.set(m,{scaleY:1},w[0]);"
-                  "T.set(m,{scaleY:.2},Math.max(w[0]+.06,w[1]));});"
-                  f"var total={total};document.querySelectorAll('.sm-wrap').forEach(function(el){{for(var t=0;t<total;t+=0.8){{"
-                  "T.to(el,{y:-6,duration:.4,ease:'sine.inOut'},t);T.to(el,{y:0,duration:.4,ease:'sine.inOut'},t+.4);}});"
-                  "T.seek(0);})();</script>")
-    return "\n".join(audio + parts), "\n".join(script)
+    scene_meta = [{"start": sc["start"], "end": round(sc["start"] + sc["duration"], 3), "pose": sc.get("mascot") or "wave",
+                   "mx": round(MOUTH.get(sc.get("mascot") or "wave", MOUTH["wave"])[0] * 100, 1),
+                   "my": round(MOUTH.get(sc.get("mascot") or "wave", MOUTH["wave"])[1] * 100, 1)} for sc in scenes]
+    marks_px = [round(w * (WALK_MARKS[i % 2] - WALK_MARKS[0])) for i in range(len(scenes))]
+    script = ("<script>(function(){var T=window.__timelines&&window.__timelines.main;if(!T)return;"
+             f"var W={json.dumps(words)};var S={json.dumps(scene_meta)};var MARKS={json.dumps(marks_px)};"
+             "var wrap=document.querySelector('.sm-wrap');var mouth=document.querySelector('.sm-mouth');"
+             "var poses={};document.querySelectorAll('.sm-pose').forEach(function(im){poses[im.dataset.pose]=im;});"
+             "if(!wrap||!mouth)return;"
+             # crossfade to the scene's own pose and move the mouth to its spot, right as the scene starts
+             "S.forEach(function(sc){Object.keys(poses).forEach(function(p){"
+             "T.set(poses[p],{opacity:p===sc.pose?1:0},sc.start);});T.set(mouth,{left:sc.mx+'%',top:sc.my+'%'},sc.start);});"
+             # the mouth opens on every spoken word, wherever the character is standing
+             "W.forEach(function(w){T.set(mouth,{scaleY:1},w[0]);T.set(mouth,{scaleY:.2},Math.max(w[0]+.06,w[1]));});"
+             # walk to the next mark during the gap between two scenes: a two-step bounce, not a straight slide
+             "for(var i=1;i<S.length;i++){var dx=MARKS[i];var t0=S[i-1].end;var t1=S[i].start;var half=(t1-t0)/2;"
+             "T.to(wrap,{keyframes:[{x:dx*0.5,y:-14,rotation:-4,duration:half},{x:dx,y:0,rotation:3,duration:half}],"
+             "ease:'sine.inOut'},t0);T.to(wrap,{rotation:0,duration:.15},t1);}"
+             # standing still inside a scene: a gentle idle bob while the character gestures and talks
+             "S.forEach(function(sc){for(var t=sc.start;t<sc.end;t+=0.8){"
+             "T.to(wrap,{y:-6,duration:.4,ease:'sine.inOut'},t);T.to(wrap,{y:0,duration:.4,ease:'sine.inOut'},t+.4);}});"
+             "T.seek(0);})();</script>")
+    return "\n".join(audio + [markup]), script
 
 
 def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int, h: int, mascot: bool) -> str:

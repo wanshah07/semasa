@@ -348,9 +348,12 @@ def test_the_presenter_and_the_voice_are_put_into_the_film_after_the_writer():
                                            Path("/tmp/motion-test-inject"), speak=fake_speak)
     out = motion.inject_layers(GOOD, scenes, total, 1080, 1920, True)
     root = out.index('id="root"')
-    assert out.index("<audio") > root and out.index('id="sm-s1"') > root and 'src="assets/mascot-point.webp"' in out
+    # ONE presenter lives for the whole film (not recreated per scene, so it can be seen walking between scenes)
+    assert out.index("<audio") > root and out.index('id="sm-presenter"') > root and 'src="assets/mascot-point.webp"' in out
     assert 'var W=[[0.0, 0.3, "s1"], [0.4, 0.7, "s1"]]' in out and out.rindex("<script>") > out.index("__timelines")
     assert 'data-start="0"' in out and "data-volume" in out
+    # the walk: paces between WALK_MARKS, a two-step bounce in the gap between scenes, then an idle bob while it talks
+    assert "MARKS=" in out and "keyframes" in out and "rotation" in out
     # the voice without the character: audio only, no script
     plain = motion.inject_layers(GOOD, scenes, total, 1080, 1920, False)
     assert "<audio" in plain and "sm-mouth" not in plain and "scaleY" not in plain
@@ -360,6 +363,17 @@ def test_the_presenter_and_the_voice_are_put_into_the_film_after_the_writer():
         pass
     else:
         raise AssertionError("a film with no #root was accepted")
+
+
+def test_the_presenter_walks_between_two_scenes_and_crossfades_pose():
+    scenes, total, _ = motion.voice_scenes(
+        [{"id": "s1", "narration": "Hai semua", "mascot": "wave"}, {"id": "s2", "narration": "Lihat ini", "mascot": "point"}],
+        "bm", "male", Path("/tmp/motion-test-walk"), speak=fake_speak)
+    markup, script = motion.mascot_layer(scenes, total, 1080, 1920)
+    # both poses are present on ONE presenter (crossfaded, not swapped by recreating the element per scene)
+    assert 'data-pose="wave"' in markup and 'data-pose="point"' in markup
+    assert markup.count('id="sm-presenter"') == 1, "one presenter element for the whole film, not one per scene"
+    assert json.dumps(round(1080 * (motion.WALK_MARKS[1] - motion.WALK_MARKS[0]))) in script, "walks to the second mark"
 
 
 def test_the_script_prompt_speaks_the_films_language_and_both_means_two_lines():

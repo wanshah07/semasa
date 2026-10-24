@@ -79,3 +79,19 @@ export function motionFromIdea(idea, userId = null) {
   return { brief, source_url: url, stream, language: defaultLanguage(stream), resolution: "portrait", seconds: 12,
     status: "pending", idea_id: idea.id, ai_background: false, created_by: userId };
 }
+
+/** The motion row for a post draft (Wan, 24 Oct 2026: "make sure all draft idea have option to be motion"): the slides' titles and
+    points when the post has them, else its caption in the post's own language; the post's language and stream carry over. */
+export function motionFromPost(post, userId = null) {
+  const lang = post?.lang === "en" ? "en" : "bm";
+  const slides = Array.isArray(post?.slides) ? post.slides : [];
+  const fromSlides = slides.map((s) => [String(s?.title || "").trim(), ...(Array.isArray(s?.points) ? s.points : []).map((p) => `- ${String(p || "").trim()}`)]
+    .filter(Boolean).join("\n")).filter(Boolean).join("\n\n");
+  const text = (post?.text || {})[lang] || {};
+  const caption = String(text.facebook || text.instagram || text.threads || text.linkedin || Object.values(text)[0] || "").trim();
+  const brief = (fromSlides || caption).slice(0, 1900);
+  if (!brief) return null;
+  const stream = post?.stream === "linkedin" ? "linkedin" : "regulab";
+  return { brief, source_url: "", stream, language: lang, resolution: "portrait", seconds: 12, status: "pending",
+    idea_id: post?.idea_id || null, ai_background: false, created_by: userId };
+}

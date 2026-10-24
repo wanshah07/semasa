@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { History, Loader2, PenLine, RotateCcw, XCircle } from "lucide-react";
+import { Clapperboard, History, Loader2, PenLine, RotateCcw, XCircle } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import { restoreVersion, withDecision } from "../lib/workflow";
 import { dueMs } from "../lib/slots";
+import { motionFromPost } from "../lib/motion";
 import Button from "./ui/Button";
 import { Input, Label } from "./ui/Field";
 
@@ -23,6 +24,19 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
   const [keepPics, setKeepPics] = useState(true);
   const [busy, setBusy] = useState(false);
   const [showHist, setShowHist] = useState(false);
+  const [motionSent, setMotionSent] = useState(false);
+  // the draft as a short motion video (Wan, 24 Oct 2026: "make sure all draft idea have option to be motion"); it plays in
+  // Video → Motion, and nothing here changes the post
+  async function makeMotion() {
+    const row = motionFromPost(post, user?.id || null);
+    if (!row) return onToast(t("Draf ini tiada perkataan untuk dijadikan video.", "This draft has no words to make a video from."), "warn");
+    setBusy(true);
+    const { error } = await supabase.from(TABLES.motions).insert(row);
+    setBusy(false);
+    if (error) return onToast(errText(error), "danger");
+    setMotionSent(true);
+    onToast(t("Video motion dihantar: tengok di Video → Motion dalam 2 hingga 5 minit.", "Motion video sent: see it in Video → Motion in 2 to 5 minutes."), "ok");
+  }
   const has021 = "versions" in post && "revise_state" in post;
   const versions = Array.isArray(post.versions) ? post.versions : [];
   const decisions = Array.isArray(post.decisions) ? post.decisions : [];
@@ -127,6 +141,13 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
               <button type="button" className="underline" disabled={busy}
                 onClick={() => update({ revise_state: null, revise_error: null }, "")}>{t("Tutup", "Dismiss")}</button></p>
           )}
+        </div>
+      )}
+
+      {post.status !== "rejected" && (
+        <div data-post-motion>
+          <Button size="sm" variant="ghost" disabled={busy || motionSent} onClick={makeMotion} title={t("Jadikan video motion pendek daripada draf ini", "Make a short motion video from this draft")}>
+            <Clapperboard size={12} /> {motionSent ? t("Video motion dihantar", "Motion video sent") : t("Video motion", "Motion video")}</Button>
         </div>
       )}
 

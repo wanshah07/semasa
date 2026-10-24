@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { LANGUAGES, defaultLanguage, motionFromIdea, RESOLUTIONS, SECONDS, checkItems, clampSeconds, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "./src/lib/motion.js";
+import { LANGUAGES, defaultLanguage, motionFromIdea, motionFromPost, RESOLUTIONS, SECONDS, checkItems, clampSeconds, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "./src/lib/motion.js";
 
 assert.equal(clampSeconds("abc"), SECONDS.default);
 assert.equal(clampSeconds(1), SECONDS.min);
@@ -52,3 +52,10 @@ assert.equal(motionFromIdea({ id: "i2", source_title: "T", source_url: "not a ur
 assert.equal(motionFromIdea({ id: "i3" }), null);
 assert.equal(motionFromIdea({ id: "i4", source_title: "x".repeat(3000) }).brief.length, 1900);
 console.log("motion.test.mjs: ok");
+
+// a post draft: slides first, else the caption in the post's own language
+const post = { lang: "bm", stream: "regulab", idea_id: "i9", slides: [{ title: "Tiga perkara", points: ["Satu", "Dua"] }, { title: "Penutup" }], text: { bm: { facebook: "Kapsyen" } } };
+assert.deepEqual(motionFromPost(post, "u1"), { brief: "Tiga perkara\n- Satu\n- Dua\n\nPenutup", source_url: "", stream: "regulab", language: "bm", resolution: "portrait", seconds: 12, status: "pending", idea_id: "i9", ai_background: false, created_by: "u1" });
+assert.equal(motionFromPost({ lang: "en", stream: "linkedin", text: { en: { linkedin: "Words" } } }).brief, "Words");
+assert.equal(motionFromPost({ lang: "en", stream: "linkedin", text: { en: { linkedin: "Words" } } }).language, "en");
+assert.equal(motionFromPost({ lang: "bm", text: {} }), null);

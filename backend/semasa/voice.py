@@ -42,7 +42,10 @@ async def _synth(text: str, voice: str, out: Path) -> list[tuple[float, float, s
     import edge_tts
     words: list[tuple[float, float, str]] = []
     with out.open("wb") as f:
-        async for chunk in edge_tts.Communicate(text, voice, rate=RATE).stream():
+        # edge-tts >=7.2 defaults Communicate(boundary=...) to "SentenceBoundary"; without "WordBoundary" explicitly, no
+        # per-word timing ever comes back and the mascot's mouth cannot move on the words (Wan, 25 Oct 2026: found while
+        # making the mascot actually talk while it walks)
+        async for chunk in edge_tts.Communicate(text, voice, rate=RATE, boundary="WordBoundary").stream():
             if chunk["type"] == "audio":
                 f.write(chunk["data"])
             elif chunk["type"] == "WordBoundary":

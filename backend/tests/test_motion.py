@@ -367,6 +367,12 @@ def test_the_script_prompt_speaks_the_films_language_and_both_means_two_lines():
     assert "about 20 seconds" in s and "46 words" in s and "Bahasa Malaysia with the English line" in s
     assert "WAN'S OWN INSTRUCTIONS:\nSebut nama produk." in s and "ws.regulab" in s
     assert "English" in motion.build_script_system({"stream": "linkedin", "seconds": 8}, "")
+    # an English film for ws.regulab: the brand line no longer says "speaking Bahasa Malaysia" (24 Oct 2026, Malay narration)
+    en = motion.build_script_system({"stream": "regulab", "seconds": 15, "language": "en"}, "")
+    assert "NARRATION LANGUAGE: English." in en and "speaking warm, plain English" in en and "speaking Bahasa Malaysia" not in en
+    bm = motion.build_script_system({"stream": "linkedin", "seconds": 15, "language": "bm"}, "")
+    assert "speaking Bahasa Malaysia" in bm and "speaking English" not in bm
+    assert "speaking warm, plain English" in motion.build_system({"stream": "regulab", "seconds": 10, "language": "en"}, "")
     assert motion.voice_mod.voice_for("both", "female") == "ms-MY-YasminNeural"
     assert motion.voice_mod.voice_for("en", "male") == "en-US-AndrewMultilingualNeural"
     assert motion.voice_mod.voice_for("en", "en-GB-RyanNeural") == "en-GB-RyanNeural"

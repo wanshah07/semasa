@@ -73,6 +73,23 @@ VOICE = {
                "bisa, ubat not obat, syarikat not perusahaan) in a warm, plain BM-mix voice to SME owners.",
     "linkedin": "a named Malaysian chemist speaking English to peers on LinkedIn: precise, plain, no hype.",
 }
+# the same voices when the film's language is not the stream's own (24 Oct 2026: an English film for ws.regulab came out
+# with Malay narration, because the brand line above said "speaking Bahasa Malaysia" and the writer obeyed it)
+VOICE_EN = {
+    "regulab": "ws.regulab, a Malaysian regulatory consultancy speaking warm, plain English to SME owners.",
+    "linkedin": VOICE["linkedin"],
+}
+VOICE_BM = {
+    "regulab": VOICE["regulab"],
+    "linkedin": "a named Malaysian chemist speaking Bahasa Malaysia (Malaysian, never Indonesian) to peers: precise, plain, "
+                "no hype.",
+}
+
+
+def voice_line(stream: str, lang: str) -> str:
+    """The brand voice in the language the film is in, so the voice line never contradicts the language line."""
+    table = VOICE_EN if lang == "en" else VOICE_BM
+    return table.get(stream, table["regulab"])
 
 SYSTEM = """You write a short motion-graphics video as ONE self-contained HTML file for HyperFrames (HTML rendered to video by
 seeking a paused GSAP timeline frame by frame). Answer with ONE JSON object: {{"title": "<short title>", "html": "<the whole
@@ -117,6 +134,7 @@ closing scene that ends on the substance. Narration is spoken {language}: plain,
 handle, no hashtag; never invent a fee, date, number or clause the brief did not give. The on-screen lines are {lines}.
 Pick the presenter's pose per scene: wave for a greeting or the close, point for a fact with numbers, confused for a
 doubt or a myth, shocked for a warning.
+NARRATION LANGUAGE: {language}. Every spoken word of every narration is in {language}; a product name may stay as it is.
 VOICE: {voice}
 {extra}"""
 
@@ -129,7 +147,7 @@ def build_script_system(row: dict[str, Any], extra: str) -> str:
     lines = {"bm": "in Bahasa Malaysia", "en": "in English",
              "both": "in Bahasa Malaysia with the English line after it, in the same string, separated by ' / '"}[lang]
     return SCRIPT_SYSTEM.format(seconds=seconds, language=spoken, words=max(12, int(seconds * 2.3)), lines=lines,
-                                voice=VOICE.get(stream, VOICE["regulab"]),
+                                voice=voice_line(stream, lang),
                                 extra=("WAN'S OWN INSTRUCTIONS:\n" + extra) if extra else "")
 
 
@@ -327,7 +345,7 @@ def build_system(row: dict[str, Any], extra: str, background: str = "", seconds:
     return SYSTEM.format(lang=html_lang, resolution=res, w=w, h=h, gsap=GSAP,
                          seconds=(seconds if seconds else int(row.get("seconds") or 12)),
                          source_line=row.get("source_line") or "Sumber: lihat kapsyen",
-                         voice=VOICE.get(stream, VOICE["regulab"]),
+                         voice=voice_line(stream, language_of(row)),
                          language=language,
                          extra=("WAN'S OWN INSTRUCTIONS:\n" + extra) if extra else "",
                          background=BACKGROUND.format(path=background) if background else "", **pal)

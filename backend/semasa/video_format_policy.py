@@ -68,8 +68,11 @@ def prepare_brand(store: Any, row: dict[str, Any], folder: Path) -> dict[str, st
         raise ValueError('LinkedIn personal avatar unconfigured: upload your own still avatar in Motion and save defaults')
     if '..' in str(path).split('/') or str(path).startswith('/'):
         raise ValueError('Invalid personal avatar storage path')
-    from .motion_assets import BUCKET
+    from .motion_assets import BUCKET, MAX_BYTES, validate_ref
+    validate_ref(avatar, str(row.get('created_by') or ''))
     data = store.storage.from_(BUCKET).download(path)
+    if len(data) != int(avatar['size']) or len(data) > MAX_BYTES:
+        raise ValueError('Personal avatar size differs from its private asset metadata')
     # Validate a real decodable image, not SVG/HTML disguised as a still.
     from io import BytesIO
 

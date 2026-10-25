@@ -39,6 +39,32 @@ def test_missing_personal_avatar_blocks_before_any_writer(tmp_path):
         prepare_brand(None, {'stream':'linkedin'}, tmp_path)
 
 
+def test_personal_avatar_cannot_read_another_creators_private_folder(tmp_path):
+    from semasa.video_format_policy import prepare_brand
+    row = {'stream':'linkedin', 'created_by':'owner', 'options':{'personal_avatar':{
+        'path':'someone-else/avatar.png', 'mime':'image/png', 'size':100, 'rights':'self-owned'}}}
+    with pytest.raises(ValueError, match='creator-owned'):
+        prepare_brand(None, row, tmp_path)
+
+
+def test_personal_avatar_prepares_real_decodable_owned_still(tmp_path):
+    from io import BytesIO
+    from types import SimpleNamespace
+
+    from PIL import Image
+
+    from semasa.video_format_policy import prepare_brand
+    buffer = BytesIO()
+    Image.new('RGB', (8,8), 'green').save(buffer, format='PNG')
+    data = buffer.getvalue()
+    ref = {'path':'owner/avatar.png', 'mime':'image/png', 'size':len(data), 'rights':'self-owned'}
+    store = SimpleNamespace(storage=SimpleNamespace(from_=lambda bucket:SimpleNamespace(download=lambda path:data)))
+    brand = prepare_brand(store, {'stream':'linkedin', 'created_by':'owner',
+                                 'options':{'personal_avatar':ref}}, tmp_path)
+    assert brand == {'profile':'linkedin-personal', 'avatar':'assets/personal-avatar.png'}
+    assert Image.open(tmp_path / brand['avatar']).size == (8,8)
+
+
 def test_silent_outro_has_no_narration():
     from test_motion import SCRIPT, FakeLLM
     plan = motion.plan_scenes(FakeLLM([SCRIPT]), {'voice':'off'}, '', '', '')

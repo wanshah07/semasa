@@ -1,0 +1,497 @@
+{
+  "X01": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a subject matte, run the 2D arc: cards travel a front-only arc around the upper body and fade out at the ends instead of passing behind. If segmentation is attempted but flickers or tears hair edges, fall back to 2D rather than shipping a broken matte. With fewer than three cards, use B02 Floating Screenshot Cards instead."
+  },
+  "X02": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a matte, use the 2D inset-card version: the untouched footage floats in a rounded card over the scrolling wall. With fewer than 6 distinct tiles, reduce to 2\u20133 columns so repetition is less obvious."
+  },
+  "X03": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a subject matte, break the frame with a supplied transparent cutout (product, logo, sticker or a still cutout photo of the subject) instead of the live footage. If no cutout asset exists either, use L04 Floating Device Frame with a punch-in rather than faking the break."
+  },
+  "H01": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no transcript is available, ask for the headline text or transcribe the first 5 seconds locally before writing it. If brand fonts are missing, use Inter Black / Space Grotesk Bold."
+  },
+  "C01": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no transcript is supplied and local transcription is not possible, ask the user for an SRT/VTT. With only line-level timing, render whole-line captions without word highlights rather than spacing fake word times evenly \u2014 invented timing visibly drifts out of sync."
+  },
+  "P01": {
+    "readiness": "manualasset",
+    "adapter": "screenshot",
+    "reason": "Punch-in of supplied sourced screenshot, not screenshot fabrication"
+  },
+  "H02": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the opening has no natural pause, place the interrupt on the first breath between sentences. Inverted flashes are skipped when the user requests photosensitivity-safe output."
+  },
+  "H03": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the speaker never poses or answers a question, ask the user for the question text instead of inventing one."
+  },
+  "H04": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the footage has no visible result, use the speaker's strongest concluding sentence as an audio-led teaser and flag the substitution."
+  },
+  "H05": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without music, use the fixed interval. If the beat interval would exceed the available opening, shorten the count rather than slowing the beat."
+  },
+  "H06": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the speaker is off-center, align the split seam with the subject's center line rather than the frame center."
+  },
+  "H08": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the footage resolution is too low for the punch-in (below 1.25x headroom), reduce the scale and add a slight sharpen rather than upscaling blurrily."
+  },
+  "H09": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the speaker does not explicitly state an opposing belief, ask the user for both statements rather than inventing a strawman."
+  },
+  "H10": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without B-roll, use a slow crop of the most textural part of the source (hands, desk, window light). Never generate fake stock footage."
+  },
+  "C02": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without word timing, transcribe locally with Whisper before building this style. If that is impossible, use C06 Editorial Lower Thirds with line-level timing instead \u2014 word pops on guessed timing look visibly out of sync."
+  },
+  "C03": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. With only line-level SRT timing, run the reveal across each SRT cue's duration (capped at the cue end). Without any transcript, transcribe locally with Whisper first; do not type out text the speaker didn't say."
+  },
+  "C04": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If keywords can't be identified with confidence, ask the user to supply them. Without word timing, transcribe locally first; as a last resort apply highlights at the start of each line rather than mid-line on guessed timing."
+  },
+  "C05": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If word timing is missing, phrase-level SRT timing is enough for this style \u2014 animate each stack on the cue start. Without any transcript, transcribe locally first rather than writing condensed copy."
+  },
+  "C06": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Line-level SRT timing is sufficient for this style. Without a transcript, transcribe locally with Whisper; never condense or rewrite the dialogue for elegance."
+  },
+  "C07": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without word timing, explosions cannot land on the word \u2014 transcribe locally first. If no clear keywords exist, ask the user which words matter rather than exploding filler."
+  },
+  "C08": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Line-level SRT timing works if word timing is unavailable \u2014 use cue boundaries as phrase changes. Without any transcript, transcribe locally first."
+  },
+  "C09": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without word timing, use phrase-level SRT cues and reveal each line's words evenly across its cue. Without a transcript, transcribe locally \u2014 never type out paraphrased 'code-like' text."
+  },
+  "C10": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no translation is supplied and translating is not approved, render primary captions only (as C06) and list the missing secondary-language file in the report. Never machine-translate silently."
+  },
+  "L01": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no second source is supplied, ask for one \u2014 do not fill region B with invented UI or stock footage. A screen recording can be replaced by a sequence of supplied screenshots with slow pans."
+  },
+  "L02": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a separate source (screen recording / B-roll), ask for one; do not pip the speaker over a duplicate of their own shot. If no clean corner exists, shrink the window to 24% width rather than covering essential content."
+  },
+  "L03": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. With only two sources, use L01 Vertical Split Screen instead. Never fill the third band with a duplicate or invented asset."
+  },
+  "L04": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If only screenshots are supplied, use them as stills inside the device with a slow scroll; never mock up UI that isn't in the supplied material. Without any screen material, ask for it."
+  },
+  "L05": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no heading or notes are supplied and the transcript lacks clear takeaways, ask the user for the panel copy. Never pad the sidebar with generic tips."
+  },
+  "L06": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the subject moves a lot, track the window to the face (or use a wider frame size) rather than letting them leave it; if tracking isn't possible, keep the effect to stationary sections."
+  },
+  "L07": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. With a single camera, don't fake extra participants \u2014 use L02 Picture-in-Picture with supplied reference media instead. Missing feeds should be reported, not filled with placeholders."
+  },
+  "L08": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If key content (faces, on-screen text) can't fit the band, use the 'fit' reframing with a blurred fill, or limit the letterbox to B-roll shots and keep talking-head sections full frame."
+  },
+  "L09": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. With fewer than three supplied visuals, reduce the card count or use B02 Floating Screenshot Cards; never pad the collage with stock or generated imagery."
+  },
+  "L10": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without supplied evidence, do not use this layout \u2014 keep the speaker full-frame and note in the report which claim lacked proof."
+  },
+  "P02": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a real comment (screenshot or exact text with permission), omit the beat \u2014 never write a sample comment, invent a handle or paraphrase feedback as if it were a quote. If the speaker reads a comment aloud, you may caption their spoken words as speech, not as a comment card."
+  },
+  "P03": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no verified value or source is supplied, skip the counter and ask for the data. If the user can share a dashboard screenshot instead, use P01 Screenshot Punch with the real capture. Never animate a number that you calculated, rounded up or approximated from vague speech."
+  },
+  "P04": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If only one image exists, or the two are not aligned (different angles/zoom), do not fake the missing state or morph one into the other. Use a simple side-by-side or sequential cut with clear labels instead, and flag that a true wipe needs matching framing."
+  },
+  "P05": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a real result capture, show only the typed query as a typographic beat (it is the speaker's own words) and do not fabricate a results page. Ask the user to capture the result page or supply a screen recording of the search."
+  },
+  "P06": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. With only one real capture, use P01 Screenshot Punch instead. If captures contain data the user cannot share, redact it or drop that card \u2014 never replace it with a recreated or 'example' receipt."
+  },
+  "P07": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a supplied screenshot there is nothing to annotate \u2014 do not draw onto a recreated interface. If the target cannot be located confidently, ask the user for coordinates or a marked-up reference image."
+  },
+  "P08": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If events lack dates or sources, show only those that have both and ask about the rest. With no supplied events at all, omit the timeline \u2014 never reconstruct a chronology from assumptions."
+  },
+  "P09": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the exact wording or the attribution is missing, do not present the line as a quotation. Either ask the user for the sourced quote, or show the speaker's own sentence as a statement (V10 Statement Reveal) without quote marks or an author."
+  },
+  "P10": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a real capture of the interface, do not build a mock UI and present it as the product. Ask for a screenshot or recording; until then, explain the feature with V07 Callout Bubble on the speaker, clearly without showing an interface."
+  },
+  "V01": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no title is supplied and the transcript has no clear chapter phrasing, ask for the section name rather than inventing one. Without brand fonts use Space Grotesk Bold."
+  },
+  "V02": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the script contains no explicit numbers, skip this beat \u2014 do not create rankings or figures to fill it. Without SFX the visual pop works alone."
+  },
+  "V03": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without word-level timing, align the spotlight to the sentence and verify by listening. If no phrase is clearly emphasised, ask which one to use rather than choosing arbitrarily."
+  },
+  "V04": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the speaker's list is implicit, ask the user to confirm the items. For lists over 6 items, split into two cascades rather than shrinking the type."
+  },
+  "V05": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the script only names one option, use V03 Keyword Spotlight instead. Never add a competitor or a claim about either option that the speaker did not make."
+  },
+  "V06": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without clear stages, show a simple unlabelled progress bar tied to video runtime \u2014 but only if it is honest (actual time), not a fake percentage."
+  },
+  "V07": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the object moves too much to track reliably, freeze the frame briefly (M04) or place the label as a lower-third instead of attaching it."
+  },
+  "V08": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If path morphing is unavailable, approximate with a single element animating border-radius (circle \u2194 square) and a clip-path polygon cross-fade for the triangle."
+  },
+  "V09": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without supplied data, omit the chart \u2014 never draw an illustrative chart with made-up values. If the speaker states one exact number, use P03 Metrics Count-Up for that figure instead."
+  },
+  "V10": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without word timing, pace at the chosen words-per-second and nudge chunks to audible phrase breaks. Never rewrite the speaker's sentence; trim only with an ellipsis if the user approves."
+  },
+  "B01": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If only a URL is supplied, capture the page with a headless browser (e.g. Playwright full-page screenshot at 2\u00d7 pixel ratio, 390\u2013430px mobile width or 1440px desktop) and confirm with the user that it is current. If neither a capture nor a URL exists, ask for one \u2014 never mock up a website. With only a screen recording, apply the same crops and holds to its frames but keep its own timing."
+  },
+  "B02": {
+    "readiness": "manualasset",
+    "adapter": "screenshot",
+    "reason": "Single floating supplied screenshot adaptation"
+  },
+  "B03": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. With only a still screenshot, place it on the device screen and add a slow 6\u201310% internal scroll so the screen is not frozen. If 3D transforms are unavailable, use a frontal device with a gentle 2D scale and rise only."
+  },
+  "B04": {
+    "readiness": "autoasset",
+    "adapter": "flow",
+    "reason": "Original qualitative icon flow, not transcript-aligned footage"
+  },
+  "B05": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without separated layers or a subject matte, use the conservative 2D push-and-drift only. If the user wants true parallax, ask for layered exports (e.g. from the photo editor) or a clean background plate; never auto-generate missing background."
+  },
+  "B06": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no transparent cutout exists, frame the original product photo as a rounded card on the same backdrop instead of attempting a rough cutout. Never redraw or generate a product image."
+  },
+  "B07": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no locations or coordinates are supplied, ask for them. If licensed map tiles are not available, render coastlines and borders from open vector data (e.g. Natural Earth) as a flat minimal map rather than screenshotting a commercial map service."
+  },
+  "B08": {
+    "readiness": "autoasset",
+    "adapter": "concept",
+    "reason": "Original abstract vector with calm drift"
+  },
+  "B09": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If only a photo of the document exists, deskew and flatten it first; if the passage cannot be located reliably, ask the user for the page and line. Never retype a document as a mock page."
+  },
+  "B10": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the screenshot cannot be cleanly separated (overlapping translucent elements), explode only the 2\u20133 layers with clear boundaries, or use a flat front stagger with outlines drawn around each region instead."
+  },
+  "X04": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a matte, use the 2D layout: all panels float in front of the footage around the edges with a clear zone for the face. If only one or two screenshots exist, use B02 Floating Screenshot Cards instead of repeating the same screen many times."
+  },
+  "X05": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. With fewer than 3 images, create a simpler two-layer zoom-through transition (M01-style punch from one image into the next). If images are low resolution, increase the nesting ratio less and reduce layer time so no layer is shown enlarged past its native pixels."
+  },
+  "X06": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. With a single low-resolution image, use a 3\u00d73 grid so tiles are not shown enlarged. Without any images, ask for them \u2014 never generate mosaic content."
+  },
+  "X07": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a subject matte, open the portal in clear space beside the subject and use it as an expanding transition. Without a second shot, ask for one \u2014 do not generate an environment."
+  },
+  "X08": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a reliable matte, use the whole-frame time echo (blended delayed frames) \u2014 it smears moving areas but leaves the static background intact. If the subject barely moves during the range, choose a moment with clear motion or skip the effect."
+  },
+  "X09": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. With fewer than three panels, use B02 Floating Screenshot Cards. If 3D transforms are unavailable, fake the carousel in 2D: a horizontal row where the centre card is large and bright and side cards are scaled 0.7\u00d7, offset and dimmed."
+  },
+  "X10": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no source visual is supplied, start directly on the blueprint field. If the transcript doesn't describe a clear system, ask for the component list rather than inventing an architecture."
+  },
+  "M01": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the source lacks resolution headroom, reduce the zoom to what the pixels allow (often 1.10\u20131.15x for 1080p into 1080p) and add a light unsharp mask instead of upscaling. Without word timing, ask the user to point to the beat."
+  },
+  "M02": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If both shots are static and very similar, a whip can feel unmotivated \u2014 use a simple hard cut or a mask swipe (M09) instead. If motion blur rendering is too slow, use a 3-frame tmix blend around the cut."
+  },
+  "M03": {
+    "readiness": "ready",
+    "adapter": "push",
+    "reason": "Slow push on prepared illustration, not source-video camera editing"
+  },
+  "M04": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no frame is sharp enough (heavy motion blur), freeze 1\u20133 frames later on a steadier frame, or use a snap zoom (M01) instead of a freeze."
+  },
+  "M05": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. No music and no transcript? Ask for one of them, or derive phrasing markers from silence detection (ffmpeg silencedetect=noise=-35dB:d=0.18). Never invent a beat grid from a guessed BPM."
+  },
+  "M06": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. With 24\u201330fps source and no interpolation available, keep the slow speed at \u2265 0.5x or use a freeze beat (M04) instead; never present stepped frames as smooth slow motion."
+  },
+  "M07": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the footage is already handheld and shaky, reduce amplitude by half or use a single 2-frame offset instead; never stack shake on shake."
+  },
+  "M08": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no second shot is supplied or no element genuinely matches, do not fake one \u2014 use a whip transition (M02) or a clean cut, and tell the user what kind of shot B would enable a match cut."
+  },
+  "M09": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Mask swipes need no special assets. If the incoming shot is missing, wipe to a solid brand-colour card or the next sequence beat instead of an invented visual."
+  },
+  "M10": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If there is no clear beat, use a single freeze beat (M04) or skip the effect; a random stutter reads as a playback error."
+  },
+  "S01": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no licensed impact sound is supplied, request one and render the moment without it (silence-based fallback) \u2014 or use the S05 silence drop to create emphasis with no new audio."
+  },
+  "S02": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a licensed whoosh, request one and render the transition dry; the visual transition still works. Never generate a white-noise sweep and present it as a designed sound."
+  },
+  "S03": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a licensed riser, request one; meanwhile build anticipation visually and use a silence drop (S05) on the reveal. Do not synthesise a pseudo-riser and present it as finished sound design."
+  },
+  "S04": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without licensed key-click samples, request them and keep the typing silent. Recording a few real keystrokes on the user's own keyboard is a valid self-made alternative."
+  },
+  "S05": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Silence drops need no new assets. If the video has no music or effects to drop, ask whether a short dialogue pause is acceptable, or skip the technique."
+  },
+  "S06": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. No music supplied: request a licensed or self-owned track. Until then, sync to speech phrasing from the transcript and leave the music lane empty \u2014 never download a copyrighted song."
+  },
+  "S07": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without licensed foley, request a small sample set or record simple taps/slides locally (self-made is fine). Otherwise leave the interactions silent."
+  },
+  "S08": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. With no music bed there is nothing to duck \u2014 skip the style. If the voice track cannot be separated from the music, use transcript-based keyframes instead of a sidechain."
+  },
+  "S09": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. No sample supplied: generate a simple sine pulse locally (self-made audio is acceptable), or skip the accent. Never download a branded or copyrighted sub-drop."
+  },
+  "S10": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. No music supplied: request a licensed or self-owned track, or close on natural room tone with a gentle 1s fade. Never pull music from the internet."
+  },
+  "F01": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If shots were filmed under mixed lighting that cannot be neutralised with one balance, correct each shot's white balance individually first, then apply this grade uniformly. If the footage is already well balanced Rec.709, apply only the contrast/saturation trims at 50% strength."
+  },
+  "F02": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the footage already has strong warm tungsten light, reduce warmth to 0\u2013200 K and rely on the cream highlights alone. Mixed daylight/tungsten shots should be neutralised individually before the look."
+  },
+  "F03": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the footage was shot under warm tungsten light and the cool shift turns skin grey even with protection, halve the Kelvin shift and push the coolness into the shadows only (colorbalance shadows) instead of the whole image."
+  },
+  "F04": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If faces are lit dimly and fall under the luma pivot, raise the pivot or relight via an exposure power window on the face before the tint; if skin protection cannot be keyed cleanly (orange walls, wood), lower shadow amount to 25% and skip the highlight warmth."
+  },
+  "F05": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If skin and background sit at the same grey after conversion, switch the channel-mix filter (red \u2194 blue) before adding contrast; for very flat footage raise contrast in two stages rather than crushing blacks."
+  },
+  "F06": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the set is mostly beige or grey there is little colour to pop \u2014 apply at 50% strength and let the accent colour come from graphics instead. If skin cannot be keyed cleanly (warm walls), lower saturation to 125% rather than risk orange faces."
+  },
+  "F07": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the footage is heavily compressed, lifted blacks will reveal macro-blocking \u2014 reduce the black lift to 5\u20136% and add fine grain (F08) to mask it."
+  },
+  "F08": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the final delivery platform recompresses heavily, reduce grain to 15\u201320% and use the fine size, otherwise it turns into blocky noise. Without visible highlights (flat overcast footage), skip the bloom and keep only grain."
+  },
+  "F09": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the footage is already soft or low-resolution, halve the chroma offset and scanline opacity so the image does not degrade further. For platforms that recompress hard, prefer offsets + colour fade and skip the noise."
+  },
+  "F10": {
+    "readiness": "fallback",
+    "adapter": "concept",
+    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a product reference, match product colour across shots to the best-exposed shot rather than to an absolute value, and say so. If the footage is noisy, keep sharpening \u2264 15% so noise is not amplified."
+  }
+}

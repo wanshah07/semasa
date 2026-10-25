@@ -34,7 +34,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import ai_config, api_status, db, fetch, motion_styles
+from . import ai_config, api_status, db, fetch, motion_assets, motion_styles
 from . import voice as voice_mod
 from .llm import LLM
 from .repos import GitHub
@@ -635,6 +635,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
     try:
         motion_styles.validate_export(row)
         row = hydrate_evidence(store, row)
+        asset_plan = motion_assets.prepare(
+            row, folder, download=lambda path: store.storage.from_(motion_assets.BUCKET).download(path))
         if llm is None:
             raise RuntimeError("no AI writer: set a reader key in Tetapan → Tetapan AI")
         title, text = source_words(row.get("source_url") or "")
@@ -667,6 +669,11 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                  "data-start and data-duration for timed text only. For Design 2 keep ONE persistent SVG world underneath, "
                  "not separate scene cards. Show exactly these words; no extra lines in silent mode:\n"
                  + plan_text(scenes))
+        if asset_plan['effects']:
+            fixed += ("\nWorker adds a prepared asset panel at x12–82%, y48–70% during scene one. "
+                      "Keep this region free of writer text/art. Do not simulate unsupported effects or proof. "
+                      "For continuous-line preserve the persistent world behind the panel.\n" +
+                      json.dumps(asset_plan['effects'], ensure_ascii=False))
         recipe_plan = motion_styles.complete_plan(row, total)
         if recipe_plan:
             for stage, scene in zip(recipe_plan["stages"], scenes, strict=True):
@@ -681,20 +688,24 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         out.setdefault("title", plan.get("title"))
         html = clean_html(out.get("html"))
         poses = {sc.get("mascot") or "wave" for sc in scenes} if want_mascot else set()
-        write_project(folder, inject_layers(html, scenes, total, w, h, want_mascot), poses)
+        def composed(raw):
+            return motion_assets.inject(inject_layers(raw, scenes, total, w, h, want_mascot), asset_plan, scenes, total,
+                                        design=motion_styles.design(row))
+        write_project(folder, composed(html), poses)
         report = check(folder, settings["cli"], runner)
         if not report["ok"] and report["errors"]:
             out2 = llm.chat_json(system, build_user(row, title, text, report["errors"], html, style=style) + "\n\n" + fixed,
                                  max_tokens=WRITER_TOKENS)
             if isinstance(out2, dict) and out2.get("html"):
                 html = clean_html(out2.get("html"))
-                write_project(folder, inject_layers(html, scenes, total, w, h, want_mascot), poses)
+                write_project(folder, composed(html), poses)
                 report = check(folder, settings["cli"], runner)
         if report["errors"]:
             # render anyway in best-effort mode: a lint error is often cosmetic; the row keeps the report either way
             log.warning("%s: %d check error(s) remain; rendering best-effort", row["id"], len(report["errors"]))
         if recipe_plan:
             report["recipe_plan"] = recipe_plan
+        report['asset_plan'] = asset_plan
         style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]
         video = render(folder, settings["cli"], row.get("resolution") or "portrait", runner)
         meta = probe(video, runner)
@@ -709,7 +720,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         if jpg:
             poster_url = db.upload_generated(store, f"motion/{row['id']}.jpg", jpg, "image/jpeg")
         store.table(TABLE).update({
-            "status": "done", "title": str(out.get("title") or "")[:160], "html": html, "check_report": report,
+            "status": "done", "title": str(out.get("title") or "")[:160],
+            "html": (folder / 'index.html').read_text() if asset_plan['effects'] else html, "check_report": report,
             "video_path": path, "video_url": url, "poster_url": poster_url, "bytes": len(data),
             **meta,
             "model": getattr(llm, "last_model", "") or "", "error": "",

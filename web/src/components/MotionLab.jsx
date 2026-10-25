@@ -7,6 +7,7 @@ import { timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
 import { LANGUAGES, RESOLUTIONS, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, styleRepos, withDefaults } from "../lib/motion";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
+import MotionEffectLibrary from "./MotionEffectLibrary";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
@@ -38,6 +39,11 @@ export default function MotionLab({ user, onToast }) {
   const [styleRepoId, setStyleRepoId] = useState("");
   const [style, setStyle] = useState("bright-education");
   const [design, setDesign] = useState("bright-editorial");
+  const [effects, setEffects] = useState(['B04']);
+  const [effectMode, setEffectMode] = useState('auto');
+  const [assets, setAssets] = useState([]);
+  const [assetsBusy, setAssetsBusy] = useState(false);
+  const assetMode = assets.length ? 'mixed' : 'auto';
   const [aiBackground, setAiBackground] = useState(false);
   const [voice, setVoice] = useState("kitten");
   const [mascot, setMascot] = useState(false);
@@ -51,12 +57,13 @@ export default function MotionLab({ user, onToast }) {
     const d = motionDefaults(settings);
     if (!settings.motion?.defaults) return;
     setLanguage(d.language || defaultLanguage(stream)); setLangTouched(!!d.language); setVoice(d.voice); setMascot(d.mascot === true); setStyle(validStyle(d.style)); setDesign(d.design);
+    setEffects(d.effects); setEffectMode(d.effectMode || 'auto');
     setResolution(d.resolution); setMode(d.mode); setSeconds(d.seconds); setAiBackground(!!d.aiBackground); setStyleRepoId(d.styleRepoId || "");
   }, [defaultsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const saveDefaults = async () => {
     setBusy("defaults");
     try {
-      await save("motion", withDefaults(settings.motion, { language: langTouched ? language : "", voice, mascot, resolution, seconds, aiBackground, styleRepoId, style, mode, design }));
+      await save("motion", withDefaults(settings.motion, { language: langTouched ? language : "", voice, mascot, resolution, seconds, aiBackground, styleRepoId, style, mode, design, effects, effectMode }));
       onToast?.(t("Disimpan sebagai cara lalai: setiap idea atau draf yang dijadikan video motion ikut tetapan ini.", "Saved as the default way: every idea or draft made into a motion video follows these settings."), "ok");
     } catch (e) { onToast?.(/0 rows|motion/i.test(e.message) ? t("Jalankan supabase/043_motion.sql dahulu.", "Run supabase/043_motion.sql first.") : e.message, "error"); } finally { setBusy(""); }
   };
@@ -68,14 +75,15 @@ export default function MotionLab({ user, onToast }) {
   const missing = /semasa_motions/.test(motions.error || "");
 
   const add = async () => {
-    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, mascot, style, mode }, user?.id || null);
+    if (assetsBusy) return;
+    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, mascot, style, mode, design, effects, effectMode, assetMode, assets }, user?.id || null);
     if (built.error === "empty") return onToast?.(t("Tulis idea atau tampal pautan.", "Write an idea or paste a link."), "warn");
     if (built.error === "url") return onToast?.(t("Pautan perlu bermula dengan https://", "The link must start with https://"), "warn");
     setBusy("add");
     try {
       const { error } = await supabase.from(TABLES.motions).insert(built.row);
       if (error) throw new Error(errText(error));
-      setBrief(""); setUrl("");
+      setBrief(""); setUrl(""); setAssets([]);
       onToast?.(t("Dihantar: bot tulis komposisi, semak dan render MP4. Biasanya 2 hingga 5 minit.", "Sent: the bot writes the composition, checks it and renders the MP4. Usually 2 to 5 minutes."), "ok");
       motions.reload();
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
@@ -134,6 +142,9 @@ export default function MotionLab({ user, onToast }) {
           <select aria-label="Attachment style" value={style} onChange={e => setStyle(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
             {recipeOptions().map(r => <option key={r.id} value={r.id} disabled={!r.available}>{r.name}{!r.available ? ` · ${r.reason}` : ""}</option>)}
           </select></label>
+        <MotionEffectLibrary brief={brief} mode={mode} effects={effects} effectMode={effectMode}
+          onEffects={setEffects} onEffectMode={setEffectMode} assets={assets} onAssets={setAssets}
+          client={supabase} user={user} onBusy={setAssetsBusy} />
         <p className="text-xs text-muted" data-motion-audio-rights>Preferred preview music: supplied reel (rights unverified, private preview only, v17 quiet mix). Public export: cleared/self-owned piano; alternatively add licensed platform audio yourself. Reel audio is not bundled or downloaded automatically; unavailable preview source does not block the cleared export.</p>
         <p className="text-xs text-muted">{recipeOf(style).name} · Hook → Fact → Why → Solution. 30s by default; optional 60s for fuller publication context. 10s is only an explicitly selected gimmick/teaser, never an explainer. Long explainers include a separate 3s outro; 10s gimmicks stay in one continuous composition. Missing real footage/captures/data disables unsuitable recipes; charts and counters are omitted without verified data.</p>
         <label className="block" data-motion-style><Label hint={t("repo motion dari kotak di bawah; setiap satu gaya yang berbeza", "a motion repo from the box below; each one a different look")}>{t("Gaya (repo motion)", "Style (motion repo)")}</Label>
@@ -170,7 +181,7 @@ export default function MotionLab({ user, onToast }) {
               "One picture drawn by the Image generation slot (KiosAPI if that is what you set) and placed under the composition. It spends picture credits; if it cannot be made the video is still made.")}</span></span>
         </label>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={add} disabled={busy === "add"}>{busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {t("Buat video motion", "Make the motion video")}</Button>
+          <Button onClick={add} disabled={busy === "add" || assetsBusy}>{busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {t("Buat video motion", "Make the motion video")}</Button>
           <Button variant="ghost" size="sm" onClick={saveDefaults} disabled={busy === "defaults"} title={t("Bahasa, suara, maskot, saiz, saat, gaya dan latar: dipakai bila idea atau draf dijadikan video", "Language, voice, mascot, size, seconds, style and background: used when an idea or draft is made into a video")}
             data-motion-save-defaults>{busy === "defaults" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {t("Simpan sebagai cara lalai", "Save as the default way")}</Button>
           {settings.motion?.defaults && <span className="text-[11px] text-muted">{t("Cara lalai tersimpan: idea dan draf ikutnya.", "Default way saved: ideas and drafts follow it.")}</span>}
@@ -225,6 +236,11 @@ export default function MotionLab({ user, onToast }) {
               )}
               {r.brief && r.title && <p className="mt-2 text-xs text-muted">{r.brief}</p>}
               {r.error && <p className="mt-2 rounded-tile bg-danger/10 p-2 text-xs text-danger">{r.error}</p>}
+              {r.check_report?.asset_plan && <details className="mt-2 text-xs">
+                <summary className="cursor-pointer text-muted">Prepared assets & actual effect readiness</summary>
+                <ul className="mt-1 space-y-1">{r.check_report.asset_plan.effects.map(e => <li key={e.id}><b>{e.id} · {e.readiness}</b> — {e.reason}</li>)}</ul>
+                {r.check_report.asset_plan.notes.map((note,i)=><p key={i} className="mt-1 text-muted">{note}</p>)}
+              </details>}
               {items.length > 0 && (
                 <details className="mt-2 text-xs"><summary className="cursor-pointer text-muted"><AlertTriangle size={11} className="mr-1 inline" />{t("{n} nota semakan", "{n} check notes", { n: items.length })}</summary>
                   <ul className="mt-1 space-y-0.5">{items.map((it, i) => <li key={i} className={it.level === "error" ? "text-danger" : "text-muted"}><b>{it.code}</b> · {it.message}</li>)}</ul></details>

@@ -162,6 +162,9 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
               if isinstance(sc, dict) and (sc.get("heading") or sc.get("narration"))]
     if not isinstance(out, dict) or not scenes:
         raise RuntimeError("the writer gave no script")
+    recipe_plan = motion_styles.complete_plan(row)
+    if recipe_plan and motion_styles.duration(row) != 10 and len(scenes) != 4:
+        raise ValueError("Complete Styles recipe requires four teaching scenes: Hook, Fact, Why, Solution")
     clean = []
     for i, sc in enumerate(scenes[:6]):
         clean.append({"id": f"s{i + 1}", "kicker": str(sc.get("kicker") or "")[:40],
@@ -169,6 +172,9 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
                       "lines": [str(x)[:200] for x in (sc.get("lines") or []) if str(x).strip()][:4],
                       "narration": " ".join(str(sc.get("narration") or "").split())[:600],
                       "mascot": sc.get("mascot") if sc.get("mascot") in MOUTH else "wave"})
+    if recipe_plan:
+        for sc, stage in zip(clean, recipe_plan["stages"], strict=False):
+            sc["role"] = stage["role"]
     if row.get("voice") == "off":
         for sc in clean:
             sc["narration"] = ""
@@ -180,7 +186,7 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
         clean[0]["mascot"] = ""
         return {"title": str(out.get("title") or "")[:160], "scenes": clean}
     clean.append({"id": "brand-outro", "kicker": "", "heading": motion_styles.cta(row), "lines": [],
-                  "narration": motion_styles.cta(row), "mascot": ""})
+                  "narration": motion_styles.cta(row), "mascot": "", **({"role": "Outro"} if recipe_plan else {})})
     return {"title": str(out.get("title") or "")[:160], "scenes": clean}
 
 
@@ -653,6 +659,14 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                  "data-start and data-duration for timed text only. For Design 2 keep ONE persistent SVG world underneath, "
                  "not separate scene cards. Show exactly these words; no extra lines in silent mode:\n"
                  + plan_text(scenes))
+        recipe_plan = motion_styles.complete_plan(row, total)
+        if recipe_plan:
+            for stage, scene in zip(recipe_plan["stages"], scenes, strict=True):
+                stage.update(scene_id=scene["id"], start=scene["start"], end=scene["start"] + scene["duration"])
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "recipe-plan.json").write_text(json.dumps(recipe_plan, ensure_ascii=False, indent=2), encoding="utf-8")
+            fixed += "\nACTUAL COMPLETE RECIPE PLAN (these fixed times override the initial stage windows):\n" + \
+                json.dumps(recipe_plan, ensure_ascii=False)
         out = llm.chat_json(system, build_user(row, title, text, style=style) + "\n\n" + fixed, max_tokens=WRITER_TOKENS)
         if not isinstance(out, dict):
             raise RuntimeError("the writer gave no answer")
@@ -671,6 +685,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         if report["errors"]:
             # render anyway in best-effort mode: a lint error is often cosmetic; the row keeps the report either way
             log.warning("%s: %d check error(s) remain; rendering best-effort", row["id"], len(report["errors"]))
+        if recipe_plan:
+            report["recipe_plan"] = recipe_plan
         style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]
         video = render(folder, settings["cli"], row.get("resolution") or "portrait", runner)
         meta = probe(video, runner)
@@ -691,7 +707,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             "model": getattr(llm, "last_model", "") or "", "error": "",
             "style_note": " · ".join(x for x in (style_line, bg_note, voice_note,
                                                "approved self-owned piano; faded/ducked; music x0.45, voice x0.9") if x),
-            "script": [{k: sc.get(k) for k in ("id", "kicker", "heading", "lines", "narration", "mascot", "start", "duration")}
+            "script": [{k: sc.get(k) for k in (
+                "id", "role", "kicker", "heading", "lines", "narration", "mascot", "start", "duration")}
                        for sc in scenes],
         }).eq("id", row["id"]).execute()
         db.log_event(store, "info", "media", "motion.done", f"Motion siap: {(out.get('title') or row.get('brief') or '')[:80]}",

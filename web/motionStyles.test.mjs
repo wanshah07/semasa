@@ -19,7 +19,26 @@ assert.equal(row.voice, 'kitten');
 assert.equal(catalog.length, 8);
 assert.equal(recipeOf('wrong').id, 'bright-education');
 assert.equal(recipeOf('saas-product-demo').id, 'bright-education');
-assert.equal(recipeOptions().filter(r => r.available).length, 3); // Auto + bright + financial
+assert.equal(recipeOptions().filter(r => r.available).length, 6); // old three + three complete NEW Styles bundles
+for (const key of ['styles-editorial-explainer', 'styles-kinetic-explainer', 'styles-blueprint-explainer']) {
+  const recipe = recipeOf(key);
+  assert.equal(recipe.id, key);
+  assert.equal(Object.keys(recipe.tracks).length, 8);
+  assert.deepEqual(recipe.required_assets, []);
+  assert.equal(recipeOptions().find(r => r.id === key).available, true);
+  const made = motionRow({brief:'Explain', style:key, design:'continuous-line'}).row;
+  assert.equal(made.options.style, key);
+  assert.equal(made.options.design, 'continuous-line');
+  const settings = withDefaults({prompt:'keep'}, {style:key, seconds:60});
+  assert.equal(motionDefaults({motion:settings}).style, key);
+  assert.equal(motionFromIdea({id:'i',source_title:'x'},null,settings.defaults).options.style, key);
+  assert.equal(motionFromPost({lang:'en',text:{en:{linkedin:'x'}}},null,settings.defaults).options.style, key);
+}
+const footage = recipeOptions().find(r => r.id === 'styles-creator-footage');
+assert.equal(footage.available, false);
+assert.match(footage.reason, /uploaded-footage/i);
+assert.equal(recipeOf(footage.id).id, 'bright-education');
+assert.equal(motionRow({brief:'x', style:footage.id}).row.options.style, 'bright-education');
 assert.equal(motionRow({brief:'x', style:'financial-education-reel'}).row.options.style, 'financial-education-reel');
 const saved = withDefaults({prompt:'keep'}, {style:'financial-education-reel', seconds:30, mascot:false});
 assert.equal(saved.prompt, 'keep');

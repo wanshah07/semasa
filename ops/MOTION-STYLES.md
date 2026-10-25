@@ -26,6 +26,37 @@ The form selector, saved defaults, direct idea composer, idea rows/bulk and post
 
 Auto and Bright education are additional supported adaptations, not extra attachment sections. Rebuild metadata with `python ops/import_motion_recipes.py /path/to/attachment-text.txt` (original DOCX alongside). Attachment references never authorize executing Claude CLI/model calls or installing tools.
 
+## NEW Styles.docx: separate effect library and complete recipes
+
+The new document is archived independently at `docs/motion/Styles.docx`, with a full
+paragraph extraction in `Styles.txt`. `rules/motion/style-effects.json` preserves
+**106 occurrences, 99 unique instruction bodies and seven exact duplicates**.
+There are no conflicting same-code bodies in this source; **H07 was not supplied**.
+The importer preserves conflicting bodies under distinct digest-qualified IDs rather
+than overwriting them. Source and extraction SHA-256 hashes, counts and categories
+are in `style-effects-provenance.json`. Rebuild using
+`python ops/import_style_effects.py /path/to/Styles.docx`; no source instructions execute.
+
+The 99 entries are a reference effect library, **not 99 finished-video recipes**.
+`style-bundles.json` defines three selectable complete native adaptations:
+Editorial explainer, Kinetic explainer and Blueprint / process explainer. Each
+combines eight tracks (hook, captions, layout, proof, illustration, motion, audio,
+look) with Hook → Fact → Why → Solution and the official final outro. Both writers
+receive the entire adapted recipe; the worker saves `recipe-plan.json` with actual
+scene times and retains roles in the stored script and plan in the lint report.
+An isolated opening overlay does not satisfy the four-scene explainer contract.
+Explicit 10s teasers remain one persistent scene with the in-scene CTA.
+
+Both approved design selectors, the old eight-section attachment, saved defaults
+and all motion entry points remain independent and supported. These new recipes
+adapt named techniques to the approved design and latest requirements; they do
+not execute the raw attachment or promise deterministic recreation of every effect.
+Creator / proof footage editing stays listed but disabled; the backend rejects it
+even if a caller supplies a fake asset path. No footage upload/alignment/matte
+pipeline or selfie media has been added. Real footage, verified screenshots,
+word timestamps, licensed audio and consent for any voice cloning are not inferred.
+Real runtime/visual/listening acceptance remains required as described below.
+
 ## Latest Wan requirements
 
 - Default 30-second portrait explainer; optional 60 seconds. Final 1080×1920, 30 fps; approved reference previews 540×960 (manual v16/v17 references are 24 fps). Never silently upscale a reference preview and call it a native full-resolution final.

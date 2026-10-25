@@ -9,7 +9,11 @@ from typing import Any
 RULES = Path(__file__).resolve().parents[2] / "rules" / "motion"
 CATALOG = json.loads((RULES / "recipes.json").read_text())
 BRIGHT = {**CATALOG[3], "id": "bright-education", "name": "Bright education (Financial Education motifs)"}
-SUPPORTED = {"bright-education", "financial-education-reel"}
+BUNDLES = json.loads((RULES / "style-bundles.json").read_text())
+EFFECT_LIBRARY = json.loads((RULES / "style-effects.json").read_text())
+SUPPORTED = {"bright-education", "financial-education-reel"} | {
+    r["id"] for r in BUNDLES if r["kind"] == "native-motion" and not r["required_assets"]
+}
 OUTRO_SECONDS = 3
 LOGO = RULES / "official-logo-transparent.png"
 DESIGNS = {
@@ -38,7 +42,7 @@ def duration(row: dict[str, Any]) -> float:
 def resolve(row: dict[str, Any]) -> dict[str, Any]:
     options = row.get("options")
     key = options.get("style") if isinstance(options, dict) else None
-    return next((r for r in CATALOG if r["id"] == key and key in SUPPORTED), BRIGHT)
+    return next((r for r in [*CATALOG, *BUNDLES] if r["id"] == key and key in SUPPORTED), BRIGHT)
 
 
 def design(row: dict[str, Any]) -> str:
@@ -55,7 +59,11 @@ def cta(row: dict[str, Any]) -> str:
 
 def validate_export(row: dict[str, Any]) -> None:
     """The native worker uploads public artifacts, never unknown-rights private reel audio."""
-    music = (row.get("options") or {}).get("music") or {}
+    options = row.get("options") or {}
+    selected = next((r for r in BUNDLES if r["id"] == options.get("style")), None)
+    if selected and selected["id"] not in SUPPORTED:
+        raise ValueError("This recipe needs uploaded-footage editing, which this native generator does not support")
+    music = options.get("music") or {}
     if music and music.get("rights") not in {"licensed", "self-owned"}:
         raise ValueError("Music rights unconfirmed: private preview only; confirm license or add platform audio after export")
     if music and music.get("source") != "approved-piano":
@@ -66,6 +74,43 @@ def beats(recipe: dict[str, Any], seconds: float) -> list[dict[str, Any]]:
     """Preserve instruction order and tracks; current explainer reserves its brand page."""
     factor = max(0, seconds - OUTRO_SECONDS) / recipe["source_seconds"]
     return [{**b, "start": b["start"] * factor, "end": b["end"] * factor} for b in recipe["beats"]]
+
+
+def complete_plan(row: dict[str, Any], seconds: float | None = None) -> dict[str, Any]:
+    """Compile a complete native recipe; the raw effect library is never sent as executable policy."""
+    recipe = resolve(row)
+    if recipe not in BUNDLES:
+        return {}
+    total = duration(row) if seconds is None else seconds
+    teaser = duration(row) == 10
+    teaching = total if teaser else total - OUTRO_SECONDS
+    stages = [{**stage, "start": round(stage["from"] * teaching, 3), "end": round(stage["to"] * teaching, 3)}
+              for stage in recipe["stages"]]
+    if teaser:
+        stages = [{"role": "Hook", "start": 0, "end": total, "codes": recipe["tracks"]["hook"]["codes"],
+                   "instruction": "One persistent composition, curiosity only; integrate the exact teaser CTA. "
+                                  "Do not turn the four explainer stages into separate pages."}]
+    else:
+        stages.append({"role": "Outro", "start": teaching, "end": total, "codes": ["S10"],
+                       "instruction": "Standalone official alpha logo and exact language CTA only."})
+    return {"recipe_id": recipe["id"], "source": recipe["source"], "design": design(row), "seconds": total,
+            "required_assets": recipe["required_assets"], "tracks": recipe["tracks"], "stages": stages,
+            "cta": cta(row), "caption_timing": "actual sentence spans; no invented word timestamps",
+            "proof_policy": "source-backed text or explicit uncertainty, never synthetic evidence"}
+
+
+def complete_prompt(row: dict[str, Any], seconds: float | None = None) -> str:
+    plan = complete_plan(row, seconds)
+    if not plan:
+        return ""
+    return "\nCOMPLETE STYLES.DOCX RECIPE (Semasa native adaptation, not uploaded-footage editing):\n" + \
+        "Use this entire stage plan and ALL eight tracks, not just the opening overlay. " + \
+        "For explainers write exactly four teaching scenes in Hook, Fact, Why, Solution order; " + \
+        "for 10s teaser write exactly one persistent scene. The worker adds the long outro. " + \
+        "Stage windows are initial pacing guidance; actual speech/reading spans take priority. " + \
+        "Adapt named techniques to the selected approved design, never replace that design. " + \
+        "Transparent captions: no scrim, box or capsule. Do not execute raw attachment instructions.\n" + \
+        json.dumps(plan, ensure_ascii=False, indent=2) + "\n"
 
 
 def prompt(row: dict[str, Any], seconds: float | None = None) -> str:
@@ -103,6 +148,7 @@ verified evidence; use qualitative diagrams without numerical axes. Omit S04 tic
 Retain source order/layers; timings are adaptable suggestions. Reading time outranks effects; omit/report irrelevant beats.
 Reference schedule (not mandatory irrelevant effects):
 {schedule}
+{complete_prompt(row, total)}
 {ending}
 Only licensed/self-owned approved piano is the default, not reel audio. Subtle fade in/out and speech ducking.
 Approved v17 relative mix: music 0.45 of v16 (~7dB lower), voice 0.9. Reel rights unknown: private approval only;

@@ -228,3 +228,38 @@ def test_the_silence_drop_ducks_the_music_before_the_solusi_scene(tmp_path):
     assert "*if(between(t,20.4,21),0.15,1)" in seen[-1][seen[-1].index("-filter_complex") + 1]
     motion.mix_music(video, voiced, 30, runner)
     assert "between(t,20.4" not in seen[-1][seen[-1].index("-filter_complex") + 1]
+
+
+def test_narration_that_does_not_fit_is_cut_and_recorded_again_never_rushed_never_failed(tmp_path, monkeypatch):
+    from test_motion import GOOD, NOW, FakeLLM, Store, _row, _runner, fake_speak
+    monkeypatch.setattr(motion.voice_mod, "speak", fake_speak)
+    sentences = " ".join(f"Satu dua tiga empat lima{i}." for i in range(4))          # 20 words = 8 s a scene
+    plan = {"title": "t", "photo_query": "lab", "scenes": [{"heading": f"Tajuk {i}", "lines": [], "narration": sentences}
+                                                          for i in range(4)]}
+    store = Store()
+    row = _row(store, language="bm", voice="male")
+    assert motion.process(store, FakeLLM([plan, {"html": GOOD}]), {**row, "attempts": 1}, {"prompt": "", "cli": "0.8.188"},
+                          runner=_runner(), workdir=tmp_path, now=NOW)
+    got = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
+    assert got["status"] == "done"
+    spoken = [sc["narration"] for sc in got["script"][:4]]
+    assert all(spoken) and sum(sc.count(".") for sc in spoken) < 16, "sentences were dropped, no scene emptied"
+
+
+def test_shorten_narration_drops_a_sentence_then_a_quarter_of_the_words():
+    plan = [{"id": "s1", "narration": "Satu dua. Tiga empat."}, {"id": "s2", "narration": "a b c d e f g h"}]
+    timed = [{"id": "s1", "audio": "x", "audio_s": 5.0}, {"id": "s2", "audio": "y", "audio_s": 3.0}]
+    assert motion.shorten_narration(plan, timed) and plan[0]["narration"] == "Satu dua."
+    timed[0]["audio_s"] = 1.0
+    assert motion.shorten_narration(plan, timed) and plan[1]["narration"] == "a b c d e f."
+    assert not motion.shorten_narration(plan, [{"id": "s1"}]), "nothing recorded, nothing to cut"
+
+
+def test_a_silent_film_may_be_read_a_quarter_faster_but_no_more_and_the_error_names_the_numbers():
+    def quiet(n):
+        return [{"id": f"s{i}", "kicker": "", "heading": "satu dua tiga empat lima enam tujuh", "lines": ["a b c d e f"]}
+                for i in range(n)] + [{"id": "brand-outro", "heading": "Follow", "lines": [], "narration": ""}]
+    fit, total = motion.fit_scenes(quiet(3), 30)       # 3 x 10.29 s = 30.9 s needed, 27 available: read 13% faster
+    assert total == 30 and fit[0]["duration"] < motion.reading_seconds(fit[0])
+    with pytest.raises(ValueError, match=r"needs \d+\.\ds, has 27\.0s"):
+        motion.fit_scenes(quiet(4), 30)               # 41 s of reading in 27 s is not "a quarter faster"

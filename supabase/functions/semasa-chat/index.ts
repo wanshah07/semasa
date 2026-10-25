@@ -44,7 +44,7 @@ import { cleanLayout, designMessages, keepWords, refineMessages } from "./design
 import { faqMessages, parseFaqItems } from "./faq.js";
 import { firstJson } from "./faq.js";
 import {
-  MEMORY, SYSTEM, rankModels, resolveModel, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
+  MEMORY, SYSTEM, planFaq, rankModels, shapeFaq, resolveModel, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
   OWN_HOSTS, RATE, allow, foldDelta, gatewayConfig, withInstructions, htmlToText, isPrivateIp, lastQuestion, parseArgs, planFold, planQuery, rateKind, readerMessage, readerCandidates, raceCandidates, summariseFailures, READER_BUDGET_MS,
   shapeRows, sseEvents, summaryMessages, userAskedToRemember, whoIs,
 } from "./logic.js";
@@ -306,6 +306,18 @@ Deno.serve(async (req) => {
     return UNTRUSTED + JSON.stringify({ table: plan.table, rows: shapeRows(data) });
   }
 
+  async function searchFaq(args: unknown): Promise<string> {
+    const plan = planFaq(args);
+    if (!plan.ok) return `search_faq refused: ${plan.why}`;
+    let q: any = db.from("semasa_faqs").select("category,subcategory,question_bm,question_en,answer_bm,answer_en,instrument")
+      .eq("status", "ready").or(plan.or);
+    if (plan.category) q = q.eq("category", plan.category);
+    const { data, error } = await q.limit(40);
+    if (error) return `search_faq: ${String(error.message || error).slice(0, 160)}`;
+    const rows = shapeFaq(data, plan.words);
+    return UNTRUSTED + JSON.stringify({ faq: rows, found: rows.length, note: rows.length ? "cite as: Soalan Lazim Semasa (<category>)" : "nothing in the FAQ; try search_web" });
+  }
+
   async function remember(note: unknown, userText: string): Promise<{ text: string; saved: boolean }> {
     if (!userAskedToRemember(userText)) return { text: "Nota tidak disimpan: mesej Wan ini tidak meminta anda mengingatinya.", saved: false };
     const n = cleanNote(note);
@@ -530,6 +542,7 @@ Deno.serve(async (req) => {
               if (name === "fetch_url") out = await fetchUrl(String(args.url || ""));
               else if (name === "search_web") out = await searchWeb(String(args.query || ""));
               else if (name === "query_semasa") out = await querySemasa(args);
+              else if (name === "search_faq") out = await searchFaq(args);
               else if (name === "remember") { const x = await remember(args.note, userText); out = x.text; memorySaved = memorySaved || x.saved; }
             } catch (e) { out = `${name} failed: ${String(e instanceof Error ? e.message : e).slice(0, 120)}`; }
             used.push(name);

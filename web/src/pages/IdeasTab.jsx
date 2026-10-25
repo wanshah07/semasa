@@ -5,7 +5,7 @@ import { fadeUp } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { timeAgo } from "../lib/format";
 import { useSettings, useTable } from "../lib/hooks";
-import { motionDefaults, motionFromIdea } from "../lib/motion";
+import { LANGUAGES, defaultLanguage, motionDefaults, motionFromIdea } from "../lib/motion";
 import { useLang } from "../lib/i18n";
 import IdeaComposer from "../components/IdeaComposer";
 import Button from "../components/ui/Button";
@@ -154,8 +154,12 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
   const [motionBusy, setMotionBusy] = useState("");
   const { settings: motionSettings } = useSettings(true);
   const mDefaults = motionDefaults(motionSettings);
+  // the direction of each idea's film (Wan, 24 Oct 2026: "I can select for which direction for idea/draft"): the saved
+  // default, else the stream's own (LinkedIn English, ws.regulab BM + English), changeable per idea before the click
+  const [motionLang, setMotionLang] = useState({});
+  const langFor = (r) => motionLang[r.id] || mDefaults.language || defaultLanguage(r.stream === "linkedin" ? "linkedin" : "regulab");
   async function makeMotion(r) {
-    const row = motionFromIdea(r, user?.id || null, mDefaults);
+    const row = motionFromIdea(r, user?.id || null, mDefaults, langFor(r));
     if (!row) return onToast(t("Idea ini tiada apa untuk dijadikan video.", "This idea has nothing to make a video from."), "warn");
     setMotionBusy(r.id);
     const { error } = await supabase.from(TABLES.motions).insert(row);
@@ -225,7 +229,11 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
       )}
       {r.status !== "rejected" && r.status !== "working" && (motionOf(r.id)
         ? <span className="inline-flex items-center gap-1 rounded-pill bg-surface-2 px-3 py-1.5 text-xs text-muted" data-idea-motion={motionOf(r.id).status}><Clapperboard size={12} /> {t("Motion", "Motion")}: {({ pending: t("menunggu", "waiting"), working: t("dibuat", "being made"), done: t("siap", "done"), error: t("ralat", "error") })[motionOf(r.id).status] || motionOf(r.id).status}</span>
-        : <Button size="sm" variant="ghost" disabled={motionBusy === r.id} onClick={() => makeMotion(r)} title={t("Jadikan video motion pendek", "Make a short motion video")}><Clapperboard size={12} /> {t("Video motion", "Motion video")}</Button>)}
+        : <span className="inline-flex items-center gap-1" data-idea-motion-make>
+            <select value={langFor(r)} onChange={(e) => setMotionLang((m) => ({ ...m, [r.id]: e.target.value }))} aria-label={t("Bahasa video", "Video language")}
+              className="rounded-pill border border-line bg-surface px-2 py-1.5 text-xs">{LANGUAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            <Button size="sm" variant="ghost" disabled={motionBusy === r.id} onClick={() => makeMotion(r)} title={t("Jadikan video motion pendek", "Make a short motion video")}><Clapperboard size={12} /> {t("Video motion", "Motion video")}</Button>
+          </span>)}
       {r.status !== "working" && !published.has(r.id) && (
         <Button size="sm" variant="danger" onClick={() => remove(r.id)} title={t("Padam idea", "Delete idea")}><Trash2 size={12} /></Button>
       )}

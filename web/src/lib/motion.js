@@ -9,8 +9,9 @@ export const RESOLUTIONS = {
 export const SECONDS = { min: 3, max: 60, default: 12 };
 /* the words on screen (Wan, 24 Oct 2026: "choice for english, malay, or english + malay version") */
 export const LANGUAGES = [["bm", "Bahasa Malaysia"], ["en", "English"], ["both", "BM + English"]];
-/** The language a stream speaks by itself: ws.regulab in BM, LinkedIn in English. */
-export const defaultLanguage = (stream) => (stream === "linkedin" ? "en" : "bm");
+/** The language a stream's film speaks by itself (Wan, 24 Oct 2026: "default in english for linkedin and english + malay
+    for ws regulab"): LinkedIn in English, ws.regulab with the Malay line and the English line together. */
+export const defaultLanguage = (stream) => (stream === "linkedin" ? "en" : "both");
 const langOf = (v, stream) => (LANGUAGES.some(([k]) => k === v) ? v : defaultLanguage(stream));
 /* the presenter and the voice (Wan, 24 Oct 2026: "add mascot looks like talking, and make sure got voice or audio") */
 export const VOICES = [["male", "Lelaki", "Male"], ["female", "Perempuan", "Female"], ["off", "Tiada suara", "No voice"]];
@@ -90,8 +91,8 @@ export function motionRepoRow(url, userId = null) {
 
 /** The motion row for an idea: its headline, what Wan wrote on it and what the bot read, in the idea's own voice and size. Returns
     null for an idea with nothing to say. A short vertical video, 12 s, is the default: the idea becomes one scroll-stopping clip. */
-export function motionFromIdea(idea, userId = null, defaults = null) {
-  const d = { ...MOTION_DEFAULTS, ...(defaults || {}) };
+export function motionFromIdea(idea, userId = null, defaults = null, language = "") {
+  const d = { ...MOTION_DEFAULTS, ...(defaults || {}), ...(LANGUAGES.some(([k]) => k === language) ? { language } : {}) };
   const title = String(idea?.source_title || "").trim();
   const note = String(idea?.note || "").trim();
   const summary = String(idea?.source_summary || idea?.brief?.source?.summary || "").trim();
@@ -106,8 +107,8 @@ export function motionFromIdea(idea, userId = null, defaults = null) {
 
 /** The motion row for a post draft (Wan, 24 Oct 2026: "make sure all draft idea have option to be motion"): the slides' titles and
     points when the post has them, else its caption in the post's own language; the post's language and stream carry over. */
-export function motionFromPost(post, userId = null, defaults = null) {
-  const d = { ...MOTION_DEFAULTS, ...(defaults || {}) };
+export function motionFromPost(post, userId = null, defaults = null, language = "") {
+  const d = { ...MOTION_DEFAULTS, ...(defaults || {}), ...(LANGUAGES.some(([k]) => k === language) ? { language } : {}) };
   const lang = post?.lang === "en" ? "en" : "bm";
   const slides = Array.isArray(post?.slides) ? post.slides : [];
   const fromSlides = slides.map((s) => [String(s?.title || "").trim(), ...(Array.isArray(s?.points) ? s.points : []).map((p) => `- ${String(p || "").trim()}`)]

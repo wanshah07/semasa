@@ -16,10 +16,10 @@ assert.equal(motionRow({ brief: "x", voice: "nope" }).row.voice, "male");
 assert.equal(motionRow({ brief: "x", mascot: false }).row.mascot, "");
 // the words on screen: the row's choice, else the stream's own language
 assert.equal(motionRow({ brief: "x", stream: "regulab", language: "both" }).row.language, "both");
-assert.equal(motionRow({ brief: "x", stream: "regulab", language: "nope" }).row.language, "bm");
+assert.equal(motionRow({ brief: "x", stream: "regulab", language: "nope" }).row.language, "both");
 assert.equal(motionRow({ brief: "x", stream: "linkedin" }).row.language, "en");
 assert.deepEqual(LANGUAGES.map(([k]) => k), ["bm", "en", "both"]);
-assert.equal(defaultLanguage("linkedin"), "en"); assert.equal(defaultLanguage("regulab"), "bm");
+assert.equal(defaultLanguage("linkedin"), "en"); assert.equal(defaultLanguage("regulab"), "both");
 const dflt = motionRow({ url: "https://x/y", stream: "nope", resolution: "nope", seconds: 0 });
 assert.equal(dflt.row.stream, "regulab"); assert.equal(dflt.row.resolution, "portrait"); assert.equal(dflt.row.seconds, SECONDS.min);
 assert.equal(dflt.row.created_by, null);
@@ -50,7 +50,7 @@ assert.deepEqual(motionRepoRow("https://github.com/heygen-com/hyperframes/tree/m
   { url: "https://github.com/heygen-com/hyperframes", full_name: "heygen-com/hyperframes", note: "motion style", category: "motion", category_by: "wan", status: "pending", created_by: "u1" });
 assert.equal(motionRepoRow("skills.sh"), null);
 const idea = { id: "i1", source_title: "NPRA batalkan 12 produk", note: "tekankan label", source_summary: "Ringkasan.", source_url: "https://npra.gov.my/x", stream: "regulab" };
-assert.deepEqual(motionFromIdea(idea, "u1"), { brief: "NPRA batalkan 12 produk\nWan: tekankan label\nRingkasan.", source_url: "https://npra.gov.my/x", stream: "regulab", language: "bm", resolution: "portrait", seconds: 12, status: "pending", idea_id: "i1", ai_background: false, style_repo_id: null, voice: "male", mascot: "wave", created_by: "u1" });
+assert.deepEqual(motionFromIdea(idea, "u1"), { brief: "NPRA batalkan 12 produk\nWan: tekankan label\nRingkasan.", source_url: "https://npra.gov.my/x", stream: "regulab", language: "both", resolution: "portrait", seconds: 12, status: "pending", idea_id: "i1", ai_background: false, style_repo_id: null, voice: "male", mascot: "wave", created_by: "u1" });
 // the saved defaults ("the skill") apply to an idea and to a post
 const saved = withDefaults({ prompt: "P" }, { language: "en", voice: "female", mascot: false, resolution: "square", seconds: "25", aiBackground: true, styleRepoId: "r9" });
 assert.deepEqual(saved, { prompt: "P", defaults: { language: "en", voice: "female", mascot: false, resolution: "square", seconds: 25, aiBackground: true, styleRepoId: "r9" } });
@@ -74,3 +74,8 @@ assert.deepEqual(motionFromPost(post, "u1"), { brief: "Tiga perkara\n- Satu\n- D
 assert.equal(motionFromPost({ lang: "en", stream: "linkedin", text: { en: { linkedin: "Words" } } }).brief, "Words");
 assert.equal(motionFromPost({ lang: "en", stream: "linkedin", text: { en: { linkedin: "Words" } } }).language, "en");
 assert.equal(motionFromPost({ lang: "bm", text: {} }), null);
+// the direction chosen on the idea or the draft itself wins over the saved default and the stream
+assert.equal(motionFromIdea(idea, "u1", dflts, "bm").language, "bm");
+assert.equal(motionFromIdea(idea, "u1", null, "en").language, "en");
+assert.equal(motionFromPost(post, "u1", null, "both").language, "both");
+assert.equal(motionFromPost(post, "u1", null, "nope").language, "bm", "an unknown choice falls back to the post's own language");

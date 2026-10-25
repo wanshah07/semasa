@@ -85,7 +85,7 @@ def test_a_poster_is_one_portrait_picture_with_no_page_count(_uploads):
 def test_card_and_story_shapes(_uploads):
     store = _store({"design": "card", "slides": [POSTER[0] | {"points": POSTER[0]["points"][:2]}]})
     _run(store)
-    assert _img(next(iter(_uploads.values()))).size == (1080, 1080)
+    assert _img(next(iter(_uploads.values()))).size == (1080, 1350)
     _uploads.clear()
     store = _store({"design": "poster", "format": "story", "slides": POSTER})
     _run(store)
@@ -177,7 +177,7 @@ def test_the_publisher_judges_it_as_artwork_not_as_the_posts_slides():
 
 def test_design_size_defaults():
     assert design.size_of({"design": "poster"}, "regulab") == (1080, 1350)
-    assert design.size_of({"design": "card"}, "linkedin") == (1080, 1080)
+    assert design.size_of({"design": "card"}, "linkedin") == (1080, 1350)
     assert design.size_of({"design": "carousel"}, "linkedin") is None          # the stream's own shape
 
 
@@ -287,4 +287,4 @@ def test_any_canva_social_size_is_taken_and_a_silly_one_is_not():
     assert design.size_of({"size": [851, 315], "format": "fb_cover"}, "regulab") == (851, 315)
     assert design.size_of({"size": [100, 100], "format": "portrait"}, "regulab") == (1080, 1350)   # too small: format
     assert design.size_of({"size": [4000, 200]}, "regulab") is None                  # 20:1 is not a picture
-    assert design.size_of({"size": "big", "design": "card"}, "regulab") == (1080, 1080)
+    assert design.size_of({"size": "big", "design": "card"}, "regulab") == (1080, 1350)

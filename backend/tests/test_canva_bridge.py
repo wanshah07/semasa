@@ -72,7 +72,7 @@ def test_the_queue_prints_the_first_post_in_full_and_the_others_as_a_line():
     assert q["next"]["id"] == "a" and q["next"]["size"] == [1080, 1350] and len(q["next"]["slides"]) == 3
     assert q["next"]["slides"][0] == {"title": "Slaid 1", "points": ["Satu", "Dua"]}
     assert q["after"] == [{"id": "b", "status": "draft", "stream": "regulab", "date": "2026-10-06", "slot": "06:00",
-                           "lang": None, "pages": 3, "size": [1080, 1080]}]
+                           "lang": None, "pages": 3, "size": [1080, 1350]}]
     assert cb.render_queue([]) == {"next": None, "after": []}
 
 

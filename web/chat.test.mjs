@@ -1,7 +1,7 @@
 /* The pure half of the AI chat function (supabase/functions/semasa-chat/logic.js), run in Node. */
 import assert from "node:assert/strict";
 import {
-  DB_TABLES, LIMITS, MEMORY, SYSTEM, TEST_IMAGE, TOOLS, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, htmlToText,
+  DB_TABLES, FAQ_CATEGORIES, LIMITS, MEMORY, SYSTEM, TEST_IMAGE, TOOLS, buildMessages, planFaq, shapeFaq, buildSystem, checkFetchUrl, checkReport, cleanNote, htmlToText,
   MODEL_PREFERENCE, cleanModelId, isPrivateIp, modelNote, parseArgs, planFold, planQuery, rankModels, resolveModel, shapeRows, summaryMessages,
   userAskedToRemember, whoIs, foldDelta, lastQuestion, sseEvents,
 } from "../supabase/functions/semasa-chat/logic.js";
@@ -225,7 +225,7 @@ await run("fetch_url text: script, style and tags go, entities decode, long page
 });
 
 await run("tools: four of them, each with a name and required arguments; remember and the database tool cannot write elsewhere", async () => {
-  assert.deepEqual(TOOLS.map((x) => x.function.name), ["fetch_url", "search_web", "query_semasa", "remember"]);
+  assert.deepEqual(TOOLS.map((x) => x.function.name), ["fetch_url", "search_web", "query_semasa", "search_faq", "remember"]);
   for (const x of TOOLS) assert.ok(x.type === "function" && x.function.description && x.function.parameters.required.length);
   assert.ok(!JSON.stringify(TOOLS).match(/insert|update|delete|drop/i), "no write verbs offered to the model except remember's note");
 });
@@ -528,3 +528,22 @@ console.log("gateway config: ok");
   assert.doesNotMatch(readerMessage({ ok: false, status: 400, err: "x", tried: ["a"], failures: [{ label: "a", status: 400, err: "x" }] }), /Each try/, "one failure needs no list");
 }
 console.log("reader race: ok");
+
+await run("search_faq: the query words become one `or` filter over the four text columns; a bad category is dropped", async () => {
+  // Wan, 24 Oct 2026: "for AI chat make it got access for FAQ as well"
+  const p = planFaq({ query: "logo halal hijau?", category: "halal" });
+  assert.ok(p.ok && p.words.join(" ") === "logo halal hijau" && p.category === "halal" && p.limit === 8);
+  assert.ok(p.or.includes("question_bm.ilike.*logo*") && p.or.includes("answer_en.ilike.*hijau*") && p.or.split(",").length === 12);
+  assert.equal(planFaq({ query: "ab" }).ok, false);
+  assert.equal(planFaq('{"query":"SPF label","category":"nope"}').category, "");
+  assert.ok(FAQ_CATEGORIES.includes("lain"));
+});
+
+await run("search_faq answer: ranked by hits, answers clipped, secret-looking fields dropped", async () => {
+  const rows = [{ category: "kosmetik", question_bm: "SPF pada label?", question_en: "SPF on the label?", answer_bm: "x".repeat(1000), answer_en: "", api_key: "s" },
+    { category: "halal", question_bm: "Logo halal", question_en: "", answer_bm: "label", answer_en: "", instrument: "MPPHM 2020" }];
+  const out = shapeFaq(rows, ["spf", "label"]);
+  assert.equal(out[0].category, "kosmetik"); assert.equal(out[0].answer_bm.length, 900); assert.ok(!("api_key" in out[0]));
+  assert.equal(out[1].instrument, "MPPHM 2020");
+  assert.ok(/search_faq/.test(buildSystem({ tools: true })));
+});

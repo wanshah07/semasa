@@ -43,7 +43,10 @@ async def _synth(text: str, voice: str, out: Path) -> list[tuple[float, float, s
     import edge_tts
     words: list[tuple[float, float, str]] = []
     with out.open("wb") as f:
-        async for chunk in edge_tts.Communicate(text, voice, rate="+15%" if voice.startswith("ms-MY-") else RATE).stream():
+        # boundary="WordBoundary" is explicit: edge-tts >= 7.2 defaults to "SentenceBoundary", which returns no per-word
+        # timing at all, so the mascot's mouth never opened on a real film (found 25 Oct 2026; PR #76 found it first)
+        comm = edge_tts.Communicate(text, voice, rate="+15%" if voice.startswith("ms-MY-") else RATE, boundary="WordBoundary")
+        async for chunk in comm.stream():
             if chunk["type"] == "audio":
                 f.write(chunk["data"])
             elif chunk["type"] == "WordBoundary":

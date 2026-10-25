@@ -24,6 +24,7 @@ from __future__ import annotations
 import html as html_mod
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -133,7 +134,8 @@ SCRIPT_SYSTEM = """You plan a short narrated motion-graphics video. Answer with 
 Plan ONLY the teaching scenes, not the outro (the worker appends that). Hook -> Fact -> Why -> Solution,
 combined into 1–4 concise scenes for about {seconds:g} seconds INCLUDING the worker's 3-second outro.
 Narration is spoken {language}: plain, warm, short sentences, about
-{words} words in all (moderate natural pacing, English target about 154 active-speech wpm), never reading headings verbatim, no URL, no
+{words} words in all (moderate natural pacing, English target about 154 active-speech wpm),
+never reading headings verbatim, no URL, no
 handle, no hashtag; never invent a fee, date, number or clause the brief did not give. The on-screen lines are {lines}.
 Pick the presenter's pose per scene: wave for a greeting or the close, point for a fact with numbers, confused for a
 doubt or a myth, shocked for a warning.
@@ -218,6 +220,8 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
             rel = f"assets/voice-{i + 1}.mp3"
             try:
                 got = speak(sc["narration"], name, folder / rel, runner)
+                if not math.isfinite(float(got.get('duration') or 0)) or float(got.get('duration') or 0) <= 0:
+                    raise ValueError('Voice returned no measurable audio duration')
                 sc["audio"], sc["words"], sc["audio_s"] = rel, got["words"], got["duration"]
                 dur = float(got["duration"]) + VOICE_PAD
             except Exception as exc:  # noqa: BLE001 - a scene without its voice is still a scene

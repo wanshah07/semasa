@@ -156,7 +156,7 @@ Reference schedule (not mandatory irrelevant effects):
 {complete_prompt(row, total)}
 {ending if row.get('stream') != 'linkedin' else 'Personal avatar replaces corporate logo; no WS logo. Follow me for more.'}
 {video_format_policy.prompt(row)}
-Only licensed/self-owned approved piano is the default, not reel audio. Subtle fade in/out and speech ducking.
+Only licensed/self-owned approved piano is the default, not reel audio. Subtle fade in/out and speech ducking; no noise/drone.
 Approved v17 relative mix: music 0.45 of v16 (~7dB lower), voice 0.9. Reel rights unknown: private approval only;
 block public export unless license confirmed, or export without reel audio and add through the user's platform route.
 """

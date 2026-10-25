@@ -73,7 +73,7 @@ export default function MotionLab({ user, onToast }) {
   const saveDefaults = async () => {
     setBusy("defaults");
     try {
-      await save("motion", withDefaults(settings.motion, { format, muteAll, personalAvatar, language: langTouched ? language : "", voice, mascot, resolution, seconds, aiBackground, styleRepoId, style, mode, design, effects, effectMode }));
+      await save("motion", withDefaults(settings.motion, { format, muteAll, personalAvatar, language, voice, mascot, resolution, seconds, aiBackground, styleRepoId, style, mode, design, effects, effectMode }));
       onToast?.(t("Disimpan sebagai cara lalai: setiap idea atau draf yang dijadikan video motion ikut tetapan ini.", "Saved as the default way: every idea or draft made into a motion video follows these settings."), "ok");
     } catch (e) { onToast?.(/0 rows|motion/i.test(e.message) ? t("Jalankan supabase/043_motion.sql dahulu.", "Run supabase/043_motion.sql first.") : e.message, "error"); } finally { setBusy(""); }
   };

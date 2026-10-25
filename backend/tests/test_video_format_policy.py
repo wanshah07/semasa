@@ -52,6 +52,13 @@ def test_requested_voice_never_silently_becomes_silent(tmp_path):
         motion.voice_scenes([{'narration':'A fact.'}], 'en', 'female', tmp_path, speak=unavailable)
 
 
+def test_zero_duration_voice_blocks_instead_of_shipping_silence(tmp_path):
+    def empty(*args):
+        return {'duration':0, 'words':[]}
+    with pytest.raises(RuntimeError, match='duration'):
+        motion.voice_scenes([{'narration':'A fact.'}], 'en', 'female', tmp_path, speak=empty)
+
+
 def test_preview_is_half_master_without_touching_audio(tmp_path):
     from types import SimpleNamespace
     calls = []
@@ -65,3 +72,51 @@ def test_preview_is_half_master_without_touching_audio(tmp_path):
     assert motion.make_preview(source, run).name == 'motion-preview.mp4'
     assert 'scale=iw/2:ih/2' in calls[0]
     assert calls[0][calls[0].index('-c:a')+1] == 'copy'
+
+
+@pytest.mark.parametrize('row', [
+    {'voice':'clone'}, {'options':{'talking_avatar':True}},
+    {'options':{'source_footage':'private/source.mp4'}},
+])
+def test_unconfigured_runtime_capabilities_block_clearly(row):
+    from semasa.video_format_policy import normalize
+    with pytest.raises(ValueError, match='unconfigured|unsupported'):
+        normalize(row)
+
+
+@pytest.mark.parametrize('text', [
+    'Hook -> Fact -> Why -> Solution', 'Frame one: strong truthful hook',
+    'reading-paced', '2 words', '154', 'ms-MY Edge +15%', 'never Indonesian', 'pembungkusan',
+    'no background', 'No source-labels', 'Protect faces; torso overlays allowed',
+    'No LabelLiteracy', 'page counters', 'FirstAuthor et al.',
+    'LICENSES/provenance', 'never imply that a stock product was tested',
+    'qualitative diagrams', 'ducking', 'licensed/self-owned', 'no noise/drone',
+])
+def test_policy_in_both_writer_prompts(text):
+    row = {'language':'en', 'voice':'off', 'options':{'format':'silent-first'}}
+    assert text in motion.build_script_system(row, '')
+    assert text in motion.build_system(row, '')
+
+
+def test_policy_capabilities_are_honest():
+    from semasa.video_format_policy import POLICY
+    assert 'unconfigured' in POLICY['capabilities']['talking_avatar']
+    assert 'unconfigured' in POLICY['capabilities']['voice_clone']
+    assert 'unconfigured' in POLICY['capabilities']['drive_archive']
+
+
+def test_mute_all_consumption(tmp_path):
+    from test_motion import GOOD, SCRIPT, FakeLLM, Store, _row, _runner
+    store = Store()
+    row = _row(store, language='en', voice='kitten', options={'mute_all':True, 'format':'english-voiced'})
+    calls = []
+    def never_speak(*args):
+        raise AssertionError('mute all must not synthesize')
+    assert motion.process(store, FakeLLM([SCRIPT, {'html':GOOD}]), row,
+                          {'prompt':'', 'cli':motion.CLI_VERSION}, runner=_runner(calls=calls),
+                          speak=never_speak, workdir=tmp_path)
+    assert not any('-filter_complex' in cmd for cmd in calls)
+    saved = store.table(motion.TABLE).select('*').eq('id',row['id']).execute().data[0]
+    assert saved['check_report']['video_policy']['mute_all']
+    assert saved['check_report']['video_policy']['voice'] == 'off'
+    assert 'all audio muted' in saved['style_note']

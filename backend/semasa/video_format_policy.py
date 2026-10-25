@@ -12,6 +12,13 @@ FORMATS = {f['id']: f for f in POLICY['formats']}
 
 def normalize(row: dict[str, Any]) -> dict[str, Any]:
     options = dict(row.get('options') or {})
+    if row.get('voice') == 'clone' or options.get('voice_clone'):
+        raise ValueError('Voice clone unconfigured: consent does not configure a provider; never default to cloning')
+    if options.get('talking_avatar'):
+        raise ValueError('Talking avatar unconfigured / experimental: actual SadTalker smoke must pass first')
+    if options.get('source_footage'):
+        raise ValueError('Source-footage editing unsupported here: preserve original audio/pacing; '
+                         'do not replace with generated TTS')
     fmt = options.get('format')
     if fmt not in FORMATS:
         fmt = ('gimmick' if options.get('mode') == 'teaser' else 'silent-first' if row.get('voice') == 'off'

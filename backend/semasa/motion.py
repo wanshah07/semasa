@@ -124,13 +124,16 @@ THE FILM: exactly the scenes under SCENES, FIXED (Hook, Fakta, Kenapa, Solusi: o
 then the worker's closing card; the source line "{source_line}" goes in small type on the last teaching scene. Motion: eases
 power3.out / power2.inOut, 0.4 to 0.8 s entrances, staggered lines, a slow background drift, punchy but readable; every scene
 stays on screen for its fixed time.
-NO OVERLAP (the check rejects the film otherwise): each scene is ONE container, position:absolute, left 8%, top 13%,
-width 78%, height 64%, display:flex, flex-direction:column, justify-content:center, gap 3%. Every block inside it (photo frame,
-kicker, heading, lines) is a normal-flow flex child: never position:absolute, never placed by left/top/margin tricks, never
-moved by a transform into another block. Entrances move opacity and y by at most 40px inside the block's own place. Size the
-type from its length (heading 104px up to 4 words, 88px up to 7, 72px up to 11, else 60px, on a 1080-wide frame; lines 50px;
-kicker 40px) and keep every block inside the box. A photo is a div with background-image in its own frame at the top of the
-column, never behind text. The persistent background holds no text. Two scenes never show text at the same moment.
+LOOK: the approved reference film under "APPROVED DESIGN VISUAL REFERENCE" is the target. Match its type, colours, composition and
+vocabulary: a heading at the top, ONE visual in the middle that fits the scene (a photo in an arch frame, a small diagram, a
+card, a comparison, a list), the narration as short transparent subtitles in their own lane below. Do not copy its words,
+photos or evidence; do not turn every scene into the same box. Use the STYLES CHOSEN FOR THIS FILM, from the style catalogues,
+to make each scene move differently.
+NO OVERLAP (the check rejects the film otherwise): give every block its own region of the frame (heading, visual, lines,
+subtitle lane) and keep it there; nothing is placed on top of another block's words, and no two scenes show text at the same
+moment. Keep to the safe areas (not the top 12%, not the right 12%). Entrances move opacity and y by a few pixels inside
+the block's own place. Size type from its length so it fits its region (1080-wide frame: heading 60 to 104px, lines 44 to 56px).
+A photo is a div with background-image in its own frame, never behind text. The persistent background holds no text.
 Palette: background {ground}, text {ink}, accent {accent}, second accent {accent2}.
 VOICE: {voice}
 RULES: no website, no URL, no handle, no hashtag, no emoji on screen; never invent a fee, date, number or
@@ -546,8 +549,9 @@ def build_user(row: dict[str, Any], src_title: str, src_text: str, findings: lis
         reference = "bright-bm-reference.html"
     else:
         reference = "bright-editorial-reference.html"
-    parts.append("APPROVED DESIGN VISUAL REFERENCE (inert sample; adapt words/times, never reuse its evidence/media, "
-                 "obey current policy rather than stale sample captions/audio settings):\n" +
+    parts.append("APPROVED DESIGN VISUAL REFERENCE (Wan's own approved film, 25 Oct 2026: make this film LOOK like it: the "
+                 "same type, colours, composition and motion vocabulary, with this brief's words and times; never reuse its "
+                 "words, evidence or media; obey current policy rather than stale sample captions/audio settings):\n" +
                  (motion_styles.RULES / "designs" / reference).read_text())
     if style[1]:
         parts.append(f"STYLE REFERENCE (the motion repo {style[0]}): follow its visual language, scene patterns, pacing, type "
@@ -769,8 +773,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                     for sc in scenes if sc.get("audio") and sc.get("id") != "brand-outro"]
             fixed += ("\nSUBTITLES (the format of Wan's approved reference films): the narration as short transparent subtitles, "
                       "centred, in a lane of their own from 78% to 89.5% of the frame height, 52px (1080-wide), no box, "
-                      "capsule or scrim, each chunk visible exactly for its times. The scene's content column stops at 76% "
-                      "of the frame height (height 61% instead of 64%), so a subtitle never meets other text:\n"
+                      "capsule or scrim, each chunk visible exactly for its times. The scene's own content stops at 76% "
+                      "of the frame height, so a subtitle never meets other text:\n"
                       + "\n".join(subs))
         if auto:
             fixed += "\n" + motion_auto.prompt_block(auto, scenes)

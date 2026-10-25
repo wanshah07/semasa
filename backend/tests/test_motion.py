@@ -157,7 +157,7 @@ def test_process_writes_checks_renders_and_stores_the_video(tmp_path):
     assert got["status"] == "done" and got["title"] == "PFAS: tiga perkara"
     assert got["video_url"] == f"https://cdn/motion/{r['id']}.mp4"
     assert got["poster_url"].endswith(".jpg") and got["width"] == 1080 and got["duration_s"] == 30.0 and got["model"] == "m1"
-    assert got["html"] == GOOD and got["check_report"]["ok"] is True and got["bytes"] > 0
+    assert 'wan-brand-final' in got['html'] and got['check_report']['ok'] is True and got['bytes'] > 0
     assert "Guna font besar." in llm.asked[1][0] and "BRIEF: Tiga perkara" in llm.asked[1][1]
     assert "SCENES, FIXED" in llm.asked[1][1] and 'data-start="0"' in llm.asked[1][1], "the film is written to the recorded times"
     assert [c[3] if len(c) > 3 else c[0] for c in calls][:2] == ["check", "render"]
@@ -199,7 +199,9 @@ def test_a_failed_check_goes_back_to_the_writer_once(tmp_path):
     cfg = {"prompt": "", "cli": "0.8.188"}
     assert motion.process(store, llm, {**r, "attempts": 1}, cfg, runner=runner, workdir=tmp_path, now=NOW)
     assert len(llm.asked) == 3 and "THE CHECK FAILED" in llm.asked[2][1] and "[x] fix me" in llm.asked[2][1]
-    assert store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]["html"] == GOOD
+    saved_html = store.table(motion.TABLE).select('*').eq('id', r['id']).execute().data[0]['html']
+    assert saved_html == (tmp_path / r['id'][:8] / 'index.html').read_text()
+    assert 'Dulu' not in saved_html and 'Hai' in saved_html
 
 
 def test_a_render_failure_retries_then_errors(tmp_path):

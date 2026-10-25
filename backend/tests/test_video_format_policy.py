@@ -120,3 +120,4 @@ def test_mute_all_consumption(tmp_path):
     assert saved['check_report']['video_policy']['mute_all']
     assert saved['check_report']['video_policy']['voice'] == 'off'
     assert 'all audio muted' in saved['style_note']
+    assert 'wan-brand-final' in saved['html']

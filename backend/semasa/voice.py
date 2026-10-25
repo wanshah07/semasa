@@ -39,19 +39,44 @@ def voice_for(language: str, choice: str) -> str:
     return c or VOICES[lang]["male"]
 
 
-async def _synth(text: str, voice: str, out: Path) -> list[tuple[float, float, str]]:
+# The service answered "No audio was received" when word boundaries were requested, on GitHub's runner (25 Oct 2026, the film
+# came out silent), while sentence boundaries have always returned audio. So word boundaries are tried first and, the first time
+# they fail or return nothing, every later call in this process goes straight to sentences.
+_WORD_OK = True
+
+
+def spread(text: str, start: float, end: float) -> list[tuple[float, float, str]]:
+    """Words of one spoken sentence timed across its real span [start, end], each in proportion to its length (a flap of the
+    mouth per word, never a caption timestamp). Real word timing is used whenever the service gives it."""
+    words = text.split()
+    if not words or end <= start:
+        return []
+    weights = [len(w.strip(".,;:!?\"'()")) + 1 for w in words]
+    total = float(sum(weights))
+    out, t = [], start
+    for w, wt in zip(words, weights, strict=True):
+        d = (end - start) * wt / total
+        out.append((round(t, 3), round(t + d, 3), w))
+        t += d
+    return out
+
+
+async def _synth(text: str, voice: str, out: Path, boundary: str = "WordBoundary") -> list[tuple[float, float, str]]:
     import edge_tts
     words: list[tuple[float, float, str]] = []
     with out.open("wb") as f:
-        # boundary="WordBoundary" is explicit: edge-tts >= 7.2 defaults to "SentenceBoundary", which returns no per-word
-        # timing at all, so the mascot's mouth never opened on a real film (found 25 Oct 2026; PR #76 found it first)
-        comm = edge_tts.Communicate(text, voice, rate="+15%" if voice.startswith("ms-MY-") else RATE, boundary="WordBoundary")
+        comm = edge_tts.Communicate(text, voice, rate="+15%" if voice.startswith("ms-MY-") else RATE, boundary=boundary)
         async for chunk in comm.stream():
-            if chunk["type"] == "audio":
+            kind = chunk["type"]
+            if kind == "audio":
                 f.write(chunk["data"])
-            elif chunk["type"] == "WordBoundary":
+            elif kind in ("WordBoundary", "SentenceBoundary"):
                 start = chunk["offset"] / 10_000_000
-                words.append((round(start, 3), round(start + chunk["duration"] / 10_000_000, 3), str(chunk.get("text") or "")))
+                end = start + chunk["duration"] / 10_000_000
+                if kind == "WordBoundary":
+                    words.append((round(start, 3), round(end, 3), str(chunk.get("text") or "")))
+                else:
+                    words.extend(spread(str(chunk.get("text") or ""), start, end))
     return words
 
 
@@ -90,7 +115,19 @@ def speak(text: str, voice: str, out: Path, runner: Any = subprocess.run) -> dic
             raise RuntimeError("KittenTTS MP3 conversion failed")
         words = []  # The adapter supplies no alignment: never fabricate word timestamps.
     else:
-        words = asyncio.run(_synth(text, voice, out))
+        global _WORD_OK
+        words = None
+        if _WORD_OK:
+            try:
+                words = asyncio.run(_synth(text, voice, out, "WordBoundary"))
+                if not out.exists() or out.stat().st_size < 1000:
+                    raise RuntimeError("no audio with word boundaries")
+            except Exception as exc:  # noqa: BLE001 - the service refused word boundaries: use sentences from now on
+                log.warning("edge-tts word boundaries gave no audio (%s); using sentence boundaries", str(exc)[:120])
+                _WORD_OK = False
+                words = None
+        if words is None:
+            words = asyncio.run(_synth(text, voice, out, "SentenceBoundary"))
     if not out.exists() or out.stat().st_size < 1000:
         raise RuntimeError(f"no audio from {voice}")
     dur = duration_of(out, runner) or (words[-1][1] + 0.3 if words else 0.0)

@@ -157,7 +157,7 @@ def test_process_writes_checks_renders_and_stores_the_video(tmp_path):
     assert got["status"] == "done" and got["title"] == "PFAS: tiga perkara"
     assert got["video_url"] == f"https://cdn/motion/{r['id']}.mp4"
     assert got["poster_url"].endswith(".jpg") and got["width"] == 1080 and got["duration_s"] == 30.0 and got["model"] == "m1"
-    assert got["html"] == GOOD and got["check_report"]["ok"] is True and got["bytes"] > 0
+    assert 'wan-brand-final' in got['html'] and got['check_report']['ok'] is True and got['bytes'] > 0
     assert "Guna font besar." in llm.asked[1][0] and "BRIEF: Tiga perkara" in llm.asked[1][1]
     assert "SCENES, FIXED" in llm.asked[1][1] and 'data-start="0"' in llm.asked[1][1], "the film is written to the recorded times"
     assert [c[3] if len(c) > 3 else c[0] for c in calls][:2] == ["check", "render"]
@@ -168,7 +168,7 @@ def test_process_writes_checks_renders_and_stores_the_video(tmp_path):
     assets = tmp_path / r["id"][:8] / "assets"
     assert (assets / "voice-2.mp3").exists() and (assets / "mascot-point.webp").exists()
     assert got["script"][0]["narration"] == "Hai. Tiga perkara tentang PFAS." and got["script"][1]["start"] > 0
-    assert "voice: ms-MY-OsmanNeural" in got["style_note"]
+    assert 'voice: en-US-AndrewMultilingualNeural' in got['style_note']
     assert store.bucket.files[f"motion/{r['id']}.mp4"][1] == "video/mp4"
 
 
@@ -199,7 +199,9 @@ def test_a_failed_check_goes_back_to_the_writer_once(tmp_path):
     cfg = {"prompt": "", "cli": "0.8.188"}
     assert motion.process(store, llm, {**r, "attempts": 1}, cfg, runner=runner, workdir=tmp_path, now=NOW)
     assert len(llm.asked) == 3 and "THE CHECK FAILED" in llm.asked[2][1] and "[x] fix me" in llm.asked[2][1]
-    assert store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]["html"] == GOOD
+    saved_html = store.table(motion.TABLE).select('*').eq('id', r['id']).execute().data[0]['html']
+    assert saved_html == (tmp_path / r['id'][:8] / 'index.html').read_text()
+    assert 'Dulu' not in saved_html and 'Hai' in saved_html
 
 
 def test_a_render_failure_retries_then_errors(tmp_path):
@@ -336,11 +338,11 @@ def test_voice_scenes_times_the_film_to_the_recording_and_off_means_silence(tmp_
     assert got[2]["start"] == 6.2 and total == round(6.2 + got[2]["duration"], 2)
     off, total_off, note_off = motion.voice_scenes([dict(s) for s in scenes], "bm", "off", tmp_path, speak=fake_speak)
     assert note_off == "no voice" and all(not s["audio"] for s in off) and total_off > 0
-    # a voice that fails never stops the film
+    # Requested voice must not silently turn into a muted narrated film.
     def broken(text, voice, out, runner=None):
         raise RuntimeError("TLS")
-    quiet, _, n = motion.voice_scenes([dict(s) for s in scenes], "en", "male", tmp_path, speak=broken)
-    assert n.startswith("voice failed") and all(not s["audio"] for s in quiet)
+    with pytest.raises(RuntimeError, match='TLS'):
+        motion.voice_scenes([dict(s) for s in scenes], 'en', 'male', tmp_path, speak=broken)
 
 
 def test_the_presenter_and_the_voice_are_put_into_the_film_after_the_writer():

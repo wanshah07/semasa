@@ -6,6 +6,8 @@ import math
 from pathlib import Path
 from typing import Any
 
+from . import video_format_policy
+
 RULES = Path(__file__).resolve().parents[2] / "rules" / "motion"
 CATALOG = json.loads((RULES / "recipes.json").read_text())
 BRIGHT = {**CATALOG[3], "id": "bright-education", "name": "Bright education (Financial Education motifs)"}
@@ -32,7 +34,7 @@ def duration(row: dict[str, Any]) -> float:
     try:
         value = float(row.get("seconds", 30))
         options = row.get("options") or {}
-        if isinstance(options, dict) and options.get("mode") == "teaser" and value == 10:
+        if isinstance(options, dict) and (options.get("mode") == "teaser" or options.get('format') == 'gimmick'):
             return 10
         return 60 if math.isfinite(value) and value > 30 else 30
     except (TypeError, ValueError):
@@ -52,8 +54,10 @@ def design(row: dict[str, Any]) -> str:
 
 
 def cta(row: dict[str, Any]) -> str:
+    if row.get('stream') == 'linkedin':
+        return video_format_policy.POLICY['cta']['personal']
     if duration(row) == 10:
-        return "Stay tuned. Follow us for more"
+        return video_format_policy.POLICY['cta']['gimmick']
     return "Jangan lupa follow kami untuk tips seterusnya" if row.get("language") in {"bm", "both"} else "Follow us for more"
 
 
@@ -143,14 +147,16 @@ Publication citation: >2 authors FirstAuthor et al. (year); two authors both sur
 it studied or reviewed and how it supports THIS claim. Stay within accessible abstract/full-text evidence.
 No fake numbers, efficacy, screenshots, product UI, charts, reviews or testimonials. Ingredient role is not product proof.
 Real licensed images require LICENSES/provenance sidecars; never claim photos/evidence exist when not supplied.
-This worker has no uploaded footage/captures/documents/photos/verified numeric data. Omit V09 chart/P03 counter without
+Use only worker-prepared assets with actual provenance; no uploaded-footage editing or automatic stock search is configured.
+Omit V09 chart/P03 counter without
 verified evidence; use qualitative diagrams without numerical axes. Omit S04 ticks without licensed/self-made samples.
 Retain source order/layers; timings are adaptable suggestions. Reading time outranks effects; omit/report irrelevant beats.
 Reference schedule (not mandatory irrelevant effects):
 {schedule}
 {complete_prompt(row, total)}
-{ending}
-Only licensed/self-owned approved piano is the default, not reel audio. Subtle fade in/out and speech ducking.
+{ending if row.get('stream') != 'linkedin' else 'Personal avatar replaces corporate logo; no WS logo. Follow me for more.'}
+{video_format_policy.prompt(row)}
+Only licensed/self-owned approved piano is the default, not reel audio. Subtle fade in/out and speech ducking; no noise/drone.
 Approved v17 relative mix: music 0.45 of v16 (~7dB lower), voice 0.9. Reel rights unknown: private approval only;
 block public export unless license confirmed, or export without reel audio and add through the user's platform route.
 """

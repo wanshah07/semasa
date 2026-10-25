@@ -8,6 +8,8 @@ import { STREAMS } from "../lib/brand";
 import { LANGUAGES, RESOLUTIONS, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, styleRepos, withDefaults } from "../lib/motion";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
 import MotionEffectLibrary from "./MotionEffectLibrary";
+import { VIDEO_FORMATS, VIDEO_POLICY, resolveFormat } from '../lib/videoFormatPolicy';
+import { uploadMotionAsset } from '../lib/motionAssetStorage';
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
@@ -31,11 +33,18 @@ export default function MotionLab({ user, onToast }) {
   // the words on screen follow the stream until Wan picks otherwise (Wan, 24 Oct 2026: "english, malay, or english + malay")
   const [language, setLanguage] = useState(defaultLanguage("regulab"));
   const [langTouched, setLangTouched] = useState(false);
-  const setStream = (v) => { setStreamOnly(v); if (!langTouched) setLanguage(defaultLanguage(v)); };
+  const setStream = (v) => { setStreamOnly(v); if (v === 'linkedin') { setLanguage('en'); setResolution('portrait'); if (format === 'malay-voiced') setFormat('english-voiced'); } else if (!langTouched) setLanguage(defaultLanguage(v)); };
   const pickLanguage = (v) => { setLanguage(v); setLangTouched(true); };
   const [resolution, setResolution] = useState("portrait");
   const [seconds, setSeconds] = useState(SECONDS.default);
   const [mode, setMode] = useState("explainer");
+  const [format, setFormat] = useState('english-voiced');
+  const [muteAll, setMuteAll] = useState(false);
+  const [personalAvatar, setPersonalAvatar] = useState(null);
+  const pickFormat = value => {
+    const d = resolveFormat({format:value, language, seconds});
+    setFormat(d.format); setMode(d.mode); setLanguage(d.language); setVoice(d.voice); setSeconds(d.seconds);
+  };
   const [styleRepoId, setStyleRepoId] = useState("");
   const [style, setStyle] = useState("bright-education");
   const [design, setDesign] = useState("bright-editorial");
@@ -58,12 +67,13 @@ export default function MotionLab({ user, onToast }) {
     if (!settings.motion?.defaults) return;
     setLanguage(d.language || defaultLanguage(stream)); setLangTouched(!!d.language); setVoice(d.voice); setMascot(d.mascot === true); setStyle(validStyle(d.style)); setDesign(d.design);
     setEffects(d.effects); setEffectMode(d.effectMode || 'auto');
+    setFormat(d.format); setMuteAll(d.muteAll); setPersonalAvatar(d.personalAvatar);
     setResolution(d.resolution); setMode(d.mode); setSeconds(d.seconds); setAiBackground(!!d.aiBackground); setStyleRepoId(d.styleRepoId || "");
   }, [defaultsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const saveDefaults = async () => {
     setBusy("defaults");
     try {
-      await save("motion", withDefaults(settings.motion, { language: langTouched ? language : "", voice, mascot, resolution, seconds, aiBackground, styleRepoId, style, mode, design, effects, effectMode }));
+      await save("motion", withDefaults(settings.motion, { format, muteAll, personalAvatar, language, voice, mascot, resolution, seconds, aiBackground, styleRepoId, style, mode, design, effects, effectMode }));
       onToast?.(t("Disimpan sebagai cara lalai: setiap idea atau draf yang dijadikan video motion ikut tetapan ini.", "Saved as the default way: every idea or draft made into a motion video follows these settings."), "ok");
     } catch (e) { onToast?.(/0 rows|motion/i.test(e.message) ? t("Jalankan supabase/043_motion.sql dahulu.", "Run supabase/043_motion.sql first.") : e.message, "error"); } finally { setBusy(""); }
   };
@@ -76,7 +86,7 @@ export default function MotionLab({ user, onToast }) {
 
   const add = async () => {
     if (assetsBusy) return;
-    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, mascot, style, mode, design, effects, effectMode, assetMode, assets }, user?.id || null);
+    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, mascot, style, mode, design, effects, effectMode, assetMode, assets, format, muteAll, personalAvatar }, user?.id || null);
     if (built.error === "empty") return onToast?.(t("Tulis idea atau tampal pautan.", "Write an idea or paste a link."), "warn");
     if (built.error === "url") return onToast?.(t("Pautan perlu bermula dengan https://", "The link must start with https://"), "warn");
     setBusy("add");
@@ -129,6 +139,21 @@ export default function MotionLab({ user, onToast }) {
       {motions.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{motions.error}</p>}
 
       <Card className="space-y-4 p-5">
+        <label className="block" data-video-format><Label>Video format</Label>
+          <Select value={format} onChange={pickFormat} options={VIDEO_FORMATS.map(f => [f.id, f.name])} />
+        </label>
+        <p className="text-xs text-muted">Master 1080×1920; preview 540×960. No voice keeps quiet music/SFX; mute all is separate. Silent-first is written for complete, connected reading, not muted narration.</p>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={muteAll} onChange={e => setMuteAll(e.target.checked)} />Mute all audio (including narration, music and SFX)</label>
+        <p className="text-xs text-muted" data-video-capabilities>{Object.entries(VIDEO_POLICY.capabilities).map(([key,value]) => `${key}: ${value}`).join(' · ')}</p>
+        {stream === 'linkedin' && <label className="block text-sm" data-personal-avatar>Personal LinkedIn · English, 9:16 · Ts. ChM. Muhammad · Follow me for more
+          <span className="block text-xs text-muted">Your own still avatar replaces the WS logo. Required; not a talking-avatar render. Save defaults for idea/draft entry points.</span>
+          <input aria-label="Personal avatar" type="file" accept="image/png,image/jpeg,image/webp" onChange={async e => {
+            const file=e.target.files?.[0]; if (!file) return; setAssetsBusy(true);
+            try { setPersonalAvatar(await uploadMotionAsset(supabase, user, file, {role:'photo', rights:'self-owned', source:'user-owned personal avatar'})); }
+            catch (error) { onToast?.(error.message, 'error'); } finally { setAssetsBusy(false); }
+          }} />
+          <span className="block text-xs">{personalAvatar ? 'Still avatar uploaded' : 'Avatar unconfigured — worker will block, never substitute WS logo'}</span>
+        </label>}
         <label className="block"><Label hint={t("idea, hook, atau 3 perkara yang video perlu sampaikan", "the idea, the hook, or the 3 things the video must say")}>{t("Idea", "Idea")}</Label>
           <TextArea rows={3} value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={2000}
             placeholder={t("Cth: Tiga perkara tentang PFAS dalam kosmetik yang SME perlu tahu sebelum 2027", "E.g. Three things about PFAS in cosmetics an SME must know before 2027")} /></label>
@@ -154,20 +179,20 @@ export default function MotionLab({ user, onToast }) {
         <div className="grid gap-4 md:grid-cols-2">
           <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
           <div data-motion-language><Label hint={t("perkataan di skrin; BM + English letak kedua-dua baris", "the words on screen; BM + English puts both lines up")}>{t("Bahasa", "Language")}</Label>
-            <Segmented value={language} onChange={pickLanguage} options={LANGUAGES} /></div>
+            <Segmented value={stream === 'linkedin' ? 'en' : language} onChange={v => { pickLanguage(v); if (!['silent-first','gimmick'].includes(format)) setFormat(v === 'en' ? 'english-voiced' : 'malay-voiced'); }} options={stream === 'linkedin' ? [['en','English (personal profile)']] : LANGUAGES} /></div>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="block"><Label>{t("Saiz", "Size")}</Label><Select value={resolution} onChange={setResolution} className="w-full"
-            options={Object.entries(RESOLUTIONS).map(([k, v]) => [k, w([v.bm, v.en])])} /></label>
+          <label className="block"><Label>{t("Saiz", "Size")}</Label><Select value={stream === 'linkedin' ? 'portrait' : resolution} onChange={setResolution} className="w-full"
+            options={Object.entries(RESOLUTIONS).filter(([k]) => stream !== 'linkedin' || k === 'portrait').map(([k, v]) => [k, w([v.bm, v.en])])} /></label>
           <label className="block"><Label>{t("Mod", "Mode")}</Label>
-            <Select value={mode} onChange={v => { setMode(v); setSeconds(v === "teaser" ? 10 : selectedSeconds(seconds, v)); }}
+            <Select value={mode} onChange={v => pickFormat(v === 'teaser' ? 'gimmick' : voice === 'off' ? 'silent-first' : language === 'en' ? 'english-voiced' : 'malay-voiced')}
               options={[["explainer", "Explainer · Hook / Fact / Why / Solution"], ["teaser", "Gimmick / teaser only · not an explainer"]]} /></label>
           <label className="block"><Label>{t("Saat", "Seconds")}</Label>
-            <Select value={String(seconds)} onChange={setSeconds} options={mode === "teaser" ? [["10", "10s · one persistent gimmick scene"], ["30", "30s"], ["60", "60s"]] : [["30", "30s · default"], ["60", "60s"]]} /></label>
+            <Select value={String(seconds)} onChange={setSeconds} options={mode === "teaser" ? [["10", "10s · one persistent gimmick scene"]] : [["30", "30s · default"], ["60", "60s"]]} /></label>
         </div>
         <div className="grid gap-4 md:grid-cols-2" data-motion-voice>
           <div><Label hint={t("suara Edge neural: Osman / Yasmin (BM), Andrew / Ava (EN)", "VoiceStudio KittenTTS: English preset, configured worker required; BM/both automatically uses native Edge female +15%")}>{t("Suara", "Voice")}</Label>
-            <Segmented value={voice} onChange={setVoice} options={VOICES.map(([k, bm, en]) => [k, L ? en : bm])} /></div>
+            <Segmented value={voice} onChange={v => { setVoice(v); if (format !== 'gimmick') setFormat(v === 'off' ? 'silent-first' : language === 'en' ? 'english-voiced' : 'malay-voiced'); }} options={VOICES.map(([k, bm, en]) => [k, L ? en : bm])} /></div>
           <label className="flex items-start gap-2 text-sm md:pt-6">
             <input type="checkbox" className="mt-1" checked={mascot} onChange={(e) => setMascot(e.target.checked)} />
             <span>{t("Maskot bercakap", "Talking mascot")}
@@ -232,7 +257,7 @@ export default function MotionLab({ user, onToast }) {
                 <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${STATUS_CLS[r.status] || ""}`}>{r.status === "working" && <Loader2 size={10} className="animate-spin" />}{w(STATUS_WORDS[r.status] || [r.status, r.status])}</span>
               </div>
               {r.status === "done" && r.video_url && (
-                <video key={`${r.id}-${r.updated_at}`} className="mt-3 w-full rounded-tile bg-black" style={{ aspectRatio: `${r.width || 9} / ${r.height || 16}`, maxHeight: 480 }} controls playsInline preload="metadata" poster={freshUrl(r.poster_url, r.updated_at) || undefined} src={freshUrl(r.video_url, r.updated_at)} />
+                <video key={`${r.id}-${r.updated_at}`} className="mt-3 w-full rounded-tile bg-black" style={{ aspectRatio: `${r.width || 9} / ${r.height || 16}`, maxHeight: 480 }} controls playsInline preload="metadata" poster={freshUrl(r.poster_url, r.updated_at) || undefined} src={freshUrl(r.check_report?.preview?.url || r.video_url, r.updated_at)} />
               )}
               {r.brief && r.title && <p className="mt-2 text-xs text-muted">{r.brief}</p>}
               {r.error && <p className="mt-2 rounded-tile bg-danger/10 p-2 text-xs text-danger">{r.error}</p>}

@@ -14,4 +14,4 @@ alter table public.semasa_motions add column if not exists voice  text  not null
 alter table public.semasa_motions add column if not exists mascot text  not null default 'wave';
 alter table public.semasa_motions add column if not exists script jsonb not null default '[]'::jsonb;
 alter table public.semasa_motions drop constraint if exists semasa_motions_voice_check;
-alter table public.semasa_motions add constraint semasa_motions_voice_check check (voice in ('male', 'female', 'off'));
+alter table public.semasa_motions add constraint semasa_motions_voice_check check (voice in ('male', 'female', 'off', 'kitten'));   -- 'kitten' is 047's; kept here so re-running 046 never resets it

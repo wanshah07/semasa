@@ -29,7 +29,8 @@ def test_bm_and_silent_policy_and_cta():
     prompt = motion.build_script_system(row, "")
     assert "reading-paced" in prompt and "2 words" in prompt
     plan = motion.plan_scenes(FakeLLM([SCRIPT]), row, "", "", "")
-    assert plan["scenes"][-1]["narration"] == "Jangan lupa follow kami untuk tips seterusnya"
+    assert plan['scenes'][-1]['heading'] == 'Jangan lupa follow kami untuk tips seterusnya'
+    assert plan['scenes'][-1]['narration'] == ''
 
 
 def test_gimmick_is_one_persistent_scene():

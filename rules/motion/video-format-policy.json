@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "formats": [
+    {"id":"english-voiced","name":"A · English voiced explainer","mode":"explainer","language":"en","voice":"kitten"},
+    {"id":"malay-voiced","name":"B · Malaysian Malay voiced explainer","mode":"explainer","language":"bm","voice":"female"},
+    {"id":"silent-first","name":"C · Silent-first reading explainer","mode":"explainer","voice":"off"},
+    {"id":"gimmick","name":"D · 10s gimmick / teaser","mode":"teaser","seconds":10}
+  ],
+  "default_format":"english-voiced",
+  "explainer_seconds":[30,60],
+  "master":[1080,1920],
+  "preview":[540,960],
+  "silent_words_per_second":2,
+  "english_active_wpm":154,
+  "bm_rate":"+15%",
+  "personal_name":"Ts. ChM. Muhammad",
+  "cta":{"en":"Follow us for more","bm":"Jangan lupa follow kami untuk tips seterusnya","personal":"Follow me for more","gimmick":"Stay tuned. Follow us for more."},
+  "capabilities":{"talking_avatar":"unconfigured / experimental; actual SadTalker smoke required","voice_clone":"unconfigured; never default","drive_archive":"pending / unconfigured; never automatic"}
+}

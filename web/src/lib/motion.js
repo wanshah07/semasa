@@ -15,9 +15,8 @@ export const LANGUAGES = [["bm", "Bahasa Malaysia"], ["en", "English"], ["both",
 /** Current generated explainer default: English for both streams; explicit BM/bilingual remains supported with Edge. */
 export const defaultLanguage = () => "en";
 const langOf = (v, stream) => (LANGUAGES.some(([k]) => k === v) ? v : defaultLanguage(stream));
-/* the presenter and the voice (Wan, 24 Oct 2026: "add mascot looks like talking, and make sure got voice or audio") */
+/* the voice (Wan, 24 Oct 2026); the talking mascot was removed on 25 Oct 2026: "remove mascot usage" */
 export const VOICES = [["kitten", "VoiceStudio KittenTTS (EN)", "VoiceStudio KittenTTS (EN)"], ["male", "Lelaki", "Male"], ["female", "Perempuan", "Female"], ["off", "Tiada suara", "No voice"]];
-export const DEFAULT_MASCOT = "wave";
 const voiceOf = (v) => (VOICES.some(([k]) => k === v) ? v : "kitten");
 export const designOf = v => v === 'continuous-line' ? v : 'bright-editorial';
 export function resolveLanguageVoice(language, voice, stream) {
@@ -56,7 +55,7 @@ export const selectedSeconds = (seconds, mode) => modeOf(mode) === "teaser" && N
 
 /* Wan's saved way of making a motion video (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"):
    settings.motion.defaults, saved from the Motion form, read whenever an idea or a post draft is made into a video. */
-export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "kitten", mascot: false, design: "bright-editorial", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "portrait", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
+export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "kitten", design: "bright-editorial", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "portrait", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
 /** The saved defaults over the built-in ones; an empty language means "the stream's own". */
 export function motionDefaults(settings) {
   const d = (settings || {}).motion?.defaults;
@@ -65,7 +64,7 @@ export function motionDefaults(settings) {
 }
 /** settings.motion with the form saved as the defaults; everything else in it (the prompt) untouched. */
 export function withDefaults(motionSettings, form) {
-  const d = { effects:validEffects(form.effects), effectMode:form.effectMode === 'manual' ? 'manual' : 'auto', assetMode:'auto', ...resolveLanguageVoice(form.language, form.voice), design: designOf(form.design), previewMusic: "user-reel", mascot: form.mascot === true, style: styleOf(form.style), mode: modeOf(form.mode), resolution: RESOLUTIONS[form.resolution] ? form.resolution : "portrait",
+  const d = { effects:validEffects(form.effects), effectMode:form.effectMode === 'manual' ? 'manual' : 'auto', assetMode:'auto', ...resolveLanguageVoice(form.language, form.voice), design: designOf(form.design), previewMusic: "user-reel", style: styleOf(form.style), mode: modeOf(form.mode), resolution: RESOLUTIONS[form.resolution] ? form.resolution : "portrait",
     seconds: selectedSeconds(form.seconds, form.mode), aiBackground: !!form.aiBackground, styleRepoId: form.styleRepoId || "" };
   return { ...(motionSettings || {}), defaults: d };
 }
@@ -73,7 +72,7 @@ export function withDefaults(motionSettings, form) {
 export const freshUrl = (url, stamp) => (url ? `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(stamp || "")}` : url);
 
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. */
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "kitten", mascot = false, design = "bright-editorial", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[] } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "kitten", design = "bright-editorial", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[] } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
@@ -84,7 +83,7 @@ export function motionRow({ brief = "", url = "", stream = "regulab", resolution
       brief: b.slice(0, 2000), source_url: u, stream: st, language: langOf(language, st),
       resolution: RESOLUTIONS[resolution] ? resolution : "portrait", seconds: selectedSeconds(seconds, mode), status: "pending",
       options: motionOptions({style, mode, design, effects, effectMode, assetMode, assets}), style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
-      ...resolveLanguageVoice(language, voice, st), mascot: mascot ? DEFAULT_MASCOT : "",
+      ...resolveLanguageVoice(language, voice, st), mascot: "",
     },
   };
 }
@@ -129,7 +128,7 @@ export function motionFromIdea(idea, userId = null, defaults = null, language = 
   const stream = idea?.stream === "linkedin" ? "linkedin" : "regulab";
   return { brief, source_url: url, stream, language: langOf(d.language, stream), resolution: RESOLUTIONS[d.resolution] ? d.resolution : "portrait",
     seconds: selectedSeconds(d.seconds, d.mode), status: "pending", idea_id: idea.id || null, ai_background: !!d.aiBackground,
-    options: { ...motionOptions(d), evidence: evidenceOf(idea) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: d.mascot === true ? DEFAULT_MASCOT : "", created_by: userId };
+    options: { ...motionOptions(d), evidence: evidenceOf(idea) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: "", created_by: userId };
 }
 
 /** The motion row for a post draft (Wan, 24 Oct 2026: "make sure all draft idea have option to be motion"): the slides' titles and
@@ -147,5 +146,5 @@ export function motionFromPost(post, userId = null, defaults = null, language = 
   const stream = post?.stream === "linkedin" ? "linkedin" : "regulab";
   return { brief, source_url: post?.source_url || "", stream, language: d.language || lang, resolution: RESOLUTIONS[d.resolution] ? d.resolution : "portrait",
     seconds: selectedSeconds(d.seconds, d.mode), status: "pending", idea_id: post?.idea_id || null, ai_background: !!d.aiBackground,
-    options: { ...motionOptions(d), evidence: evidenceOf(post) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: d.mascot === true ? DEFAULT_MASCOT : "", created_by: userId };
+    options: { ...motionOptions(d), evidence: evidenceOf(post) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: "", created_by: userId };
 }

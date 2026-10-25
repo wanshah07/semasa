@@ -45,17 +45,12 @@ def validate_ref(ref: dict, owner: str) -> None:
         raise ValueError("Confirm asset rights before public export")
 
 
-def recommended_effects(row: dict, refs: list) -> list[str]:
-    screenshot = any(
-        r.get("mime", "").startswith("image/") and r.get("role") == "screenshot" and str(r.get("source") or "").strip()
-        for r in refs
-    )
-    visual = (
-        "P01"
-        if screenshot
-        else ("B08" if re.search(r"\b(abstract|calm|ambient)\b", str(row.get("brief") or ""), re.I) else "B04")
-    )
-    return [visual] if (row.get("options") or {}).get("mode") == "teaser" else [visual, "M03"]
+def is_auto(row: dict) -> bool:
+    """Auto is the default (Wan, 25 Oct 2026: every video gets the styles that suit it, motion_auto.py): a row asks for the
+    hand-picked list only by saying effect_mode "manual", or by listing effects with no mode at all (rows from before it)."""
+    options = row.get("options") or {}
+    mode = options.get("effect_mode")
+    return mode == "auto" or (mode is None and not options.get("effects"))
 
 
 def prepare(row: dict, folder: Path, *, download: Any = None) -> dict:
@@ -64,11 +59,8 @@ def prepare(row: dict, folder: Path, *, download: Any = None) -> dict:
     if mode not in {"auto", "manual", "mixed"}:
         raise ValueError("Unknown asset mode")
     refs = options.get("assets") or []
-    ids = (
-        recommended_effects(row, refs)
-        if options.get("effect_mode") == "auto"
-        else list(dict.fromkeys(options.get("effects", [])))
-    )
+    # Auto picks no placeholder panel here: motion_auto.choose() assigns styles to the scenes once the film is planned
+    ids = [] if is_auto(row) else list(dict.fromkeys(options.get("effects", [])))
     if any(code not in CATALOG for code in ids):
         raise ValueError("Unknown effect ID")
     if len(refs) > 8:

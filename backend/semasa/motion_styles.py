@@ -131,11 +131,13 @@ Use HyperFrames + GSAP, not Claude CLI or Claude model calls. Remotion optional,
 Default 30s explainer, optional 60s. Total {total:g}s including ending. 10s ONLY explicit gimmick/teaser, never an explainer.
 Explain with Hook -> Fact -> Why -> Solution: strong curiosity hook, connected complete casual sentences, not isolated labels.
 Use English or Malaysian Malay, never Indonesian. BM narration uses pembungkusan rather than the mispronounced label.
-Voice on/off is independent: English VoiceStudio KittenTTS; BM/both native ms-MY Edge +15%, never mislabeled VoiceStudio.
-English approved v17 pace is 90% of v16 (~154 vs ~171 active-speech wpm); do not reset to rushed v16 pace.
-Silent is a separately written reading-paced narrative, not a muted voice transcript: <=2 words per second counting ALL
-visible heading/lines (both languages counted), complete connected sentences. Leave narration empty in silent mode.
+Voice on/off is independent: English VoiceStudio KittenTTS (Edge male when no VoiceStudio worker); BM/both native ms-MY
+Edge, never mislabeled VoiceStudio. Narrated films are BRISK (25 Oct 2026: Edge English +15%, Malay +25%, short gaps).
+Silent is a separately written, SLOW reading-paced narrative, not a muted voice transcript: about 1.4 words per second
+counting ALL visible heading/lines (both languages counted), complete connected sentences. Leave narration empty in silent mode.
 Do not accelerate/truncate speech to fit; request 30/60s or narrower topic when needed. Preserve uploaded original speech.
+Flow of every explainer: Hook, Fakta, Kenapa, Solusi. Format of the approved reference films: heading on top, the visual in
+the middle (arch photo or diagram), narration as two-line transparent subtitles below, no presenter.
 Bright mint/cream, deep teal, no mascot. No repeated brand header or page counters.
 Subtitles transparent: no background box, capsule, pill or scrim. Center consistently or align an explicit grid.
 Minimum 4.5:1 contrast, phone readable; avoid top 12%, bottom 22%, right 12%. Never invent word timestamps.

@@ -27,7 +27,13 @@ VOICES = {
     "bm": {"male": "ms-MY-OsmanNeural", "female": "ms-MY-YasminNeural"},
     "en": {"male": "en-US-AndrewMultilingualNeural", "female": "en-US-AvaMultilingualNeural"},
 }
-RATE = "+0%"
+# a narrated film is brisk (Wan, 25 Oct 2026: "for video with narrator make it faster rate"): English +15%, Malay +25%
+RATE = "+15%"
+RATE_BM = "+25%"
+
+
+def rate_for(voice: str) -> str:
+    return RATE_BM if voice.startswith("ms-MY-") else RATE
 
 
 def voice_for(language: str, choice: str) -> str:
@@ -65,7 +71,7 @@ async def _synth(text: str, voice: str, out: Path, boundary: str = "WordBoundary
     import edge_tts
     words: list[tuple[float, float, str]] = []
     with out.open("wb") as f:
-        comm = edge_tts.Communicate(text, voice, rate="+15%" if voice.startswith("ms-MY-") else RATE, boundary=boundary)
+        comm = edge_tts.Communicate(text, voice, rate=rate_for(voice), boundary=boundary)
         async for chunk in comm.stream():
             kind = chunk["type"]
             if kind == "audio":
@@ -109,7 +115,7 @@ def speak(text: str, voice: str, out: Path, runner: Any = subprocess.run) -> dic
                    capture_output=True, text=True, timeout=300, env=dict(os.environ))
         if p.returncode != 0 or not wav.exists():
             raise RuntimeError("VoiceStudio KittenTTS failed: " + (p.stderr or "no WAV")[-300:])
-        converted = runner(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-af", "atempo=0.936", "-c:a", "libmp3lame", str(out)],
+        converted = runner(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-af", "atempo=1.0", "-c:a", "libmp3lame", str(out)],
                            capture_output=True, text=True, timeout=60)
         if converted.returncode != 0:
             raise RuntimeError("KittenTTS MP3 conversion failed")

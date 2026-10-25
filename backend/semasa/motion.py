@@ -22,6 +22,7 @@ no key at all; the only key spent is the writer's.
 from __future__ import annotations
 
 import html as html_mod
+import io
 import json
 import logging
 import os
@@ -34,7 +35,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import ai_config, api_status, db, fetch, motion_assets, motion_styles
+from PIL import Image
+
+from . import ai_config, api_status, db, fetch, motion_assets, motion_auto, motion_layout, motion_styles, unsplash
 from . import voice as voice_mod
 from .llm import LLM
 from .repos import GitHub
@@ -48,14 +51,17 @@ MAX_HTML = 60_000
 # the whole film is one JSON answer, and a thinking model reasons first: 7000 was eaten by reasoning alone on 24 Oct 2026
 WRITER_TOKENS = 20_000
 SCRIPT_TOKENS = 6_000
-# the presenter (Wan, 24 Oct 2026: "add mascot looks like talking, and make sure got voice or audio"): the poses in
-# rules/cards.json, served from web/public/cards/mascots; the mouth sits at this fraction of the picture (x, y), measured
-# by eye on each pose, and opens on every word of the narration
-MASCOT_DIR = Path(__file__).resolve().parents[2] / "web" / "public" / "cards" / "mascots"
-MOUTH = {"wave": (0.55, 0.20), "point": (0.55, 0.30), "confused": (0.54, 0.22), "shocked": (0.60, 0.24)}
-SCENE_GAP = 0.35                        # seconds of air between two narrated scenes
-SCENE_MIN = 2.5                         # a scene is never shorter than this, whatever the voice says
-VOICE_PAD = 0.6                         # a scene stays up this long after its last word
+# pace (Wan, 25 Oct 2026: "for video without any audio make it slow so user can read ... with narrator make it faster rate"):
+# a narrated film is brisk, a silent one is paced for reading
+SCENE_GAP = 0.2                         # seconds of air between two narrated scenes
+SCENE_MIN = 1.8                         # a narrated scene is never shorter than this, whatever the voice says
+VOICE_PAD = 0.3                         # a narrated scene stays up this long after its last word
+NARRATED_WPS = 2.6                      # words a second the script asks for when a voice reads it (the voice runs ~2.9)
+READ_WPS = 1.4                          # words a second a silent film allows the eye, heading and lines together
+READ_PAD = 1.0                          # seconds a silent scene holds after the eye has finished
+SILENT_MIN = 4.0                        # and never shorter than this
+PHOTOS = 3                              # Unsplash pictures looked for per film
+MAX_FIX = 2                             # rewrites the writer gets for a layout the check rejects, before the safe layout
 STYLE_MAX = 9_000                      # characters of a style repo handed to the writer
 STYLE_FILES = ("SKILL.md", "skills/SKILL.md", "STYLE.md", "DESIGN.md", "frame.md", "FRAME.md", "AGENTS.md", "CLAUDE.md")
 SIZES = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1080)}
@@ -114,9 +120,17 @@ THE CONTRACT (a render fails or looks wrong if any is broken):
    central 90% of the frame; key text inside the central 80%. Type at least 44px on a 1080-wide frame.
 8. Frame 0 already shows the title (it is the social thumbnail): do not enter from an empty frame.
 
-THE FILM: 3 to 6 scenes for {seconds:g} seconds: a hook (the title, big), two to four points (one idea each, short lines,
-numbers big), and a closing card with the source line "{source_line}" in small type. Motion: eases power3.out / power2.inOut,
-0.4 to 0.8 s entrances, staggered lines, a slow background drift, punchy but readable; every line stays on screen at least 2.5 s.
+THE FILM: exactly the scenes under SCENES, FIXED (Hook, Fakta, Kenapa, Solusi: one idea each, short lines, numbers big),
+then the worker's closing card; the source line "{source_line}" goes in small type on the last teaching scene. Motion: eases
+power3.out / power2.inOut, 0.4 to 0.8 s entrances, staggered lines, a slow background drift, punchy but readable; every scene
+stays on screen for its fixed time.
+NO OVERLAP (the check rejects the film otherwise): each scene is ONE container, position:absolute, left 8%, top 13%,
+width 78%, height 64%, display:flex, flex-direction:column, justify-content:center, gap 3%. Every block inside it (photo frame,
+kicker, heading, lines) is a normal-flow flex child: never position:absolute, never placed by left/top/margin tricks, never
+moved by a transform into another block. Entrances move opacity and y by at most 40px inside the block's own place. Size the
+type from its length (heading 104px up to 4 words, 88px up to 7, 72px up to 11, else 60px, on a 1080-wide frame; lines 50px;
+kicker 40px) and keep every block inside the box. A photo is a div with background-image in its own frame at the top of the
+column, never behind text. The persistent background holds no text. Two scenes never show text at the same moment.
 Palette: background {ground}, text {ink}, accent {accent}, second accent {accent2}.
 VOICE: {voice}
 RULES: no website, no URL, no handle, no hashtag, no emoji on screen; never invent a fee, date, number or
@@ -124,70 +138,95 @@ clause that the brief did not give; finish on the standalone brand outro. Write 
 {extra}"""
 
 
-SCRIPT_SYSTEM = """You plan a short narrated motion-graphics video. Answer with ONE JSON object:
-{{"title": "<short title>", "scenes": [{{"kicker": "<2-3 words, upper case label>", "heading": "<the line, big>",
-"lines": ["<short supporting line>", "..."], "narration": "<what the presenter SAYS over this scene, spoken, 1-3 sentences>",
-"mascot": "wave|point|confused|shocked"}}]}}. Nothing else.
+SCRIPT_SYSTEM = """You plan a short motion-graphics video. Answer with ONE JSON object:
+{{"title": "<short title>", "photo_query": "<2 to 4 plain English words that find a stock photo of the topic: no brand, no name>",
+"scenes": [{{"kicker": "<the label>", "heading": "<the line, big>", "lines": ["<short supporting line>", "..."],
+"narration": "<what is SAID over this scene>"}}]}}. Nothing else.
 
-Plan ONLY the teaching scenes, not the outro (the worker appends that). Hook -> Fact -> Why -> Solution,
-combined into 1–4 concise scenes for about {seconds:g} seconds INCLUDING the worker's 3-second outro.
-Narration is spoken {language}: plain, warm, short sentences, about
-{words} words in all (2.3 words a second), never reading the headings word for word, no URL, no
-handle, no hashtag; never invent a fee, date, number or clause the brief did not give. The on-screen lines are {lines}.
-Pick the presenter's pose per scene: wave for a greeting or the close, point for a fact with numbers, confused for a
-doubt or a myth, shocked for a warning.
-NARRATION LANGUAGE: {language}. Every spoken word of every narration is in {language}; a product name may stay as it is.
+Plan EXACTLY {count} teaching scene(s), in this order, with these kickers: {kickers}. {flow}
+The worker adds its own 3-second outro: plan about {seconds:g} seconds INCLUDING it.
+{pace}
 VOICE: {voice}
 {extra}"""
 
+FLOW = ("Hook = one curiosity line that makes this reader stop; Fakta = the one thing that is true, from the brief; Kenapa = "
+        "why it matters to this reader; Solusi = the one thing to do next. Connected, complete sentences, never isolated labels.")
+FLOW_TEASER = "ONE scene: a curiosity hook only."
+PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, about {words} words in all (about "
+               f"{NARRATED_WPS} words a second), never reading the headings word for word, no URL, no handle, no hashtag; "
+               "never invent a fee, date, number or clause the brief did not give. The on-screen lines are {lines}; "
+               "each heading at most 8 words, at most 2 lines a scene.\nNARRATION LANGUAGE: {language}. Every spoken word of "
+               "every narration is in {language}; a product name may stay as it is.")
+PACE_SILENT = ("There is NO narrator: leave every narration empty \"\". The viewer READS, slowly: at most {budget} words in all "
+               "on screen across the scenes (headings and lines together, both languages counted), each heading at most 7 words, "
+               "at most 2 short lines a scene, complete connected sentences in the lines. The on-screen lines are {lines}.")
 
-def build_script_system(row: dict[str, Any], extra: str) -> str:
+
+def build_script_system(row: dict[str, Any], extra: str, count: int = 4) -> str:
     stream = row.get("stream") or "regulab"
     lang = language_of(row)
     seconds = motion_styles.duration(row)
     spoken = {"bm": "Bahasa Malaysia (Malaysian, never Indonesian)", "en": "English", "both": "Bahasa Malaysia"}[lang]
     lines = {"bm": "in Bahasa Malaysia", "en": "in English",
              "both": "in Bahasa Malaysia with the English line after it, in the same string, separated by ' / '"}[lang]
-    return SCRIPT_SYSTEM.format(seconds=seconds, language=spoken, words=max(1, int(max(0, seconds - 3) * 2.3)), lines=lines,
-                                voice=voice_line(stream, lang),
+    teaching = max(1.0, seconds - 3)
+    if row.get("voice") == "off":
+        pace = PACE_SILENT.format(budget=max(8, int(teaching * 1.25)), lines=lines)
+    else:
+        pace = PACE_VOICED.format(language=spoken, words=max(1, int(teaching * NARRATED_WPS)), lines=lines)
+    return SCRIPT_SYSTEM.format(seconds=seconds, count=count, kickers=" · ".join(motion_auto.LABELS[lang][:count]),
+                                flow=FLOW if count > 1 else FLOW_TEASER, pace=pace, voice=voice_line(stream, lang),
                                 extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "") + motion_styles.prompt(row))
+
+
+def words_on_screen(sc: dict[str, Any]) -> int:
+    return len(" ".join([sc.get("heading", ""), *(sc.get("lines") or [])]).split())
 
 
 def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_text: str,
                 style: tuple[str, str] = ("", "")) -> dict[str, Any]:
-    """The writer's plan: title and scenes with on-screen words, narration and a pose. Raises when it gives none."""
-    out = llm.chat_json(build_script_system(row, extra), build_user(row, src_title, src_text, style=style),
-                        max_tokens=SCRIPT_TOKENS)
-    scenes = [sc for sc in ((out or {}).get("scenes") or [])
-              if isinstance(sc, dict) and (sc.get("heading") or sc.get("narration"))]
-    if not isinstance(out, dict) or not scenes:
-        raise RuntimeError("the writer gave no script")
+    """The writer's plan: title, photo search words and EXACTLY four scenes (Hook, Fakta, Kenapa, Solusi; one in a 10 s
+    teaser) with on-screen words and narration. Asked a second time when the count is wrong; raises when it gives none."""
+    teaser = motion_styles.duration(row) == 10
+    count = 1 if teaser else 4
+    system = build_script_system(row, extra, count)
+    user = build_user(row, src_title, src_text, style=style)
+    for ask in range(2):
+        out = llm.chat_json(system, user, max_tokens=SCRIPT_TOKENS)
+        scenes = [sc for sc in ((out or {}).get("scenes") or [])
+                  if isinstance(sc, dict) and (sc.get("heading") or sc.get("narration"))]
+        if not isinstance(out, dict) or not scenes:
+            raise RuntimeError("the writer gave no script")
+        if len(scenes) >= count or ask:
+            break
+        user += f"\n\nYOUR LAST PLAN HAD {len(scenes)} SCENES. Plan exactly {count}, with the kickers given."
+    if len(scenes) < count:
+        raise RuntimeError(f"the writer planned {len(scenes)} scenes instead of {count}")
+    lang = language_of(row)
     recipe_plan = motion_styles.complete_plan(row)
-    if recipe_plan and motion_styles.duration(row) != 10 and len(scenes) != 4:
-        raise ValueError("Complete Styles recipe requires four teaching scenes: Hook, Fact, Why, Solution")
     clean = []
-    for i, sc in enumerate(scenes[:6]):
-        clean.append({"id": f"s{i + 1}", "kicker": str(sc.get("kicker") or "")[:40],
+    for i, sc in enumerate(scenes[:count]):
+        clean.append({"id": f"s{i + 1}", "kicker": motion_auto.LABELS[lang][i] if not teaser else "",
+                      "role": motion_auto.ROLES[i] if not teaser else "hook",
                       "heading": str(sc.get("heading") or "")[:160],
-                      "lines": [str(x)[:200] for x in (sc.get("lines") or []) if str(x).strip()][:4],
-                      "narration": " ".join(str(sc.get("narration") or "").split())[:600],
-                      "mascot": sc.get("mascot") if sc.get("mascot") in MOUTH else "wave"})
+                      "lines": [str(x)[:200] for x in (sc.get("lines") or []) if str(x).strip()][:2],
+                      "narration": " ".join(str(sc.get("narration") or "").split())[:600]})
     if recipe_plan:
         for sc, stage in zip(clean, recipe_plan["stages"], strict=False):
             sc["role"] = stage["role"]
     if row.get("voice") == "off":
         for sc in clean:
             sc["narration"] = ""
-    if motion_styles.duration(row) == 10:
-        clean = clean[:1]
+    meta = {"title": str(out.get("title") or "")[:160],
+            "photo_query": " ".join(str(out.get("photo_query") or "").split())[:80]}
+    if teaser:
         clean[0]["heading"] += " · " + motion_styles.cta(row)
         clean[0]["narration"] = "" if row.get("voice") == "off" else (
             clean[0]["narration"] + " " + motion_styles.cta(row)).strip()
-        clean[0]["mascot"] = ""
-        return {"title": str(out.get("title") or "")[:160], "scenes": clean}
+        return {**meta, "scenes": clean}
     clean.append({"id": "brand-outro", "kicker": "", "heading": motion_styles.cta(row), "lines": [],
-                  "narration": motion_styles.cta(row), "mascot": "", **({"role": "Outro"} if recipe_plan else {})})
-    return {"title": str(out.get("title") or "")[:160], "scenes": clean}
+                  "narration": motion_styles.cta(row), **({"role": "Outro"} if recipe_plan else {})})
+    return {**meta, "scenes": clean}
 
 
 def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folder: Path, *, speak: Any = None,
@@ -215,10 +254,29 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
                 log.warning("voice not made for scene %d: %s", i + 1, str(exc)[:160])
                 note = f"voice failed ({str(exc)[:80]})"
                 name = ""
-        sc["duration"] = round(max(SCENE_MIN, dur or 3.0), 2)
+        sc["duration"] = round(max(SCENE_MIN, dur), 2) if dur else reading_seconds(sc)
         t += sc["duration"] + SCENE_GAP
     total = round(t - SCENE_GAP, 2)
     return scenes, total, note
+
+
+def reading_seconds(sc: dict[str, Any]) -> float:
+    """How long a scene with no voice stays up: the eye at READ_WPS over everything on screen, then a hold."""
+    return round(max(SILENT_MIN, words_on_screen(sc) / READ_WPS + READ_PAD), 2)
+
+
+def trim_for_reading(scenes: list[dict[str, Any]], seconds: float) -> list[dict[str, Any]]:
+    """A silent film that cannot be read in its time loses its last supporting line, longest scene first, rather than the
+    slow pace: reading time outranks the number of lines (Wan, 25 Oct 2026)."""
+    has_outro = scenes[-1].get("id") == "brand-outro"
+    teaching = scenes[:-1] if has_outro else scenes
+    available = seconds - (3.0 if has_outro else 0)
+    while sum(reading_seconds(sc) for sc in teaching) > available:
+        fat = max((sc for sc in teaching if sc.get("lines")), key=words_on_screen, default=None)
+        if fat is None:
+            break
+        fat["lines"] = fat["lines"][:-1]
+    return scenes
 
 
 def fit_scenes(scenes: list[dict[str, Any]], seconds: float) -> tuple[list[dict[str, Any]], float]:
@@ -228,11 +286,9 @@ def fit_scenes(scenes: list[dict[str, Any]], seconds: float) -> tuple[list[dict[
     outro = scenes[-1] if has_outro else {}
     outro_seconds = max(3.0, float(outro.get("audio_s") or 0) + .2) if has_outro else 0
     if has_outro and not outro.get("audio"):
-        outro_seconds = max(outro_seconds, len(outro.get("heading", "").split()) / 2)
+        outro_seconds = max(outro_seconds, len(outro.get("heading", "").split()) / 1.5)
     available = seconds - outro_seconds
-    floors = [max(.7, float(sc.get("audio_s") or 0) + .15) if sc.get("audio") else
-              max(.7, len(" ".join([sc.get("kicker", ""), sc.get("heading", ""), *(sc.get("lines") or [])]).split()) / 2)
-              for sc in teaching]
+    floors = [max(.7, float(sc.get("audio_s") or 0) + .15) if sc.get("audio") else reading_seconds(sc) for sc in teaching]
     if not teaching or sum(floors) > available or available <= 0:
         raise ValueError("Narration cannot fit this duration including the outro; choose 30/60s or a narrower micro-topic")
     slack = (available - sum(floors)) / len(teaching)
@@ -241,7 +297,7 @@ def fit_scenes(scenes: list[dict[str, Any]], seconds: float) -> tuple[list[dict[
         sc.update(start=round(start, 3), duration=round(floor + slack, 3))
         start += floor + slack
     if has_outro:
-        outro.update(start=available, duration=outro_seconds, mascot="")
+        outro.update(start=available, duration=outro_seconds)
     return scenes, seconds
 
 
@@ -255,51 +311,18 @@ def plan_text(scenes: list[dict[str, Any]]) -> str:
     return "\n".join(rows)
 
 
-def mascot_layer(scenes: list[dict[str, Any]], total: float, w: int, h: int) -> tuple[str, str]:
-    """(markup, script) for the presenter and the voice: one <img> per scene pose in the lower-left of the frame, a mouth
-    that opens on each word, a gentle bob, and one <audio> clip per narrated scene. Added by the worker AFTER the writer,
-    so the film never loses a word to the character."""
-    size = int(w * 0.34) if w < h else int(h * 0.42)
-    parts, audio, script = [], [], []
-    for sc in scenes:
-        if sc.get("audio"):
-            # the slot is the recording's own length (hyperframes check: a longer slot is "shortened to the media length")
-            audio.append(f'<audio class="clip" id="sv-{sc["id"]}" src="{sc["audio"]}" data-start="{sc["start"]:g}" '
-                         f'data-duration="{float(sc.get("audio_s") or sc["duration"]):g}" data-volume="1"></audio>')
-        if sc.get("id") == "brand-outro":
-            continue
-        pose = sc.get("mascot") or "wave"
-        mx, my = MOUTH.get(pose, MOUTH["wave"])
-        box = f"position:absolute;left:{int(w * 0.04)}px;bottom:{int(h * 0.05)}px;width:{size}px;height:{int(size * 4 / 3)}px;"
-        img = ("position:absolute;inset:0;width:100%;height:100%;object-fit:contain;"
-               "filter:drop-shadow(0 18px 30px rgba(0,0,0,.45));")
-        mouth = (f"position:absolute;left:{mx * 100:.1f}%;top:{my * 100:.1f}%;width:4.2%;height:2.4%;margin-left:-2.1%;"
-                 "margin-top:-1.2%;border-radius:50%;background:#3a1616;transform:scaleY(.2);transform-origin:50% 50%;")
-        parts.append(
-            f'<div class="clip sm-scene" id="sm-{sc["id"]}" data-start="{sc["start"]:g}" data-duration="{sc["duration"]:g}" '
-            f'style="position:absolute;left:0;top:0;width:{w}px;height:{h}px;pointer-events:none;z-index:40;">'
-            f'<div class="sm-wrap" style="{box}"><img src="assets/mascot-{pose}.webp" alt="" style="{img}">'
-            f'<div class="sm-mouth" data-scene="{sc["id"]}" style="{mouth}"></div></div></div>')
-    words = [[round(sc["start"] + ws, 3), round(sc["start"] + we, 3), sc["id"]]
-             for sc in scenes for ws, we, _ in (sc.get("words") or [])]
-    script.append("<script>(function(){var T=window.__timelines&&window.__timelines.main;if(!T)return;"
-                  f"var W={json.dumps(words)};var mouths={{}};"
-                  "document.querySelectorAll('.sm-mouth').forEach(function(m){mouths[m.dataset.scene]=m;});"
-                  "W.forEach(function(w){var m=mouths[w[2]];if(!m)return;T.set(m,{scaleY:1},w[0]);"
-                  "T.set(m,{scaleY:.2},Math.max(w[0]+.06,w[1]));});"
-                  f"var total={total};document.querySelectorAll('.sm-wrap').forEach(function(el){{for(var t=0;t<total;t+=0.8){{"
-                  "T.to(el,{y:-6,duration:.4,ease:'sine.inOut'},t);T.to(el,{y:0,duration:.4,ease:'sine.inOut'},t+.4);}});"
-                  "T.seek(0);})();</script>")
-    return "\n".join(audio + parts), "\n".join(script)
+def audio_layer(scenes: list[dict[str, Any]]) -> str:
+    """One <audio> clip per narrated scene, added by the worker AFTER the writer so the film never loses a word to it. (The
+    talking mascot was removed on Wan's word, 25 Oct 2026: "remove mascot usage".)"""
+    # the slot is the recording's own length (hyperframes check: a longer slot is "shortened to the media length")
+    return "\n".join(f'<audio class="clip" id="sv-{sc["id"]}" src="{sc["audio"]}" data-start="{sc["start"]:g}" '
+                     f'data-duration="{float(sc.get("audio_s") or sc["duration"]):g}" data-volume="1"></audio>'
+                     for sc in scenes if sc.get("audio"))
 
 
-def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int, h: int, mascot: bool) -> str:
-    """Put the voice clips (and the presenter, when wanted) into the writer's film: inside the root composition, with the
-    mouth script at the end of the body, after the writer's own timeline is registered."""
-    markup, script = mascot_layer(scenes, total, w, h)
-    if not mascot:
-        markup = "\n".join(line for line in markup.split("\n") if line.startswith("<audio"))
-        script = ""
+def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int, h: int) -> str:
+    """Put the voice clips and the closing logo page into the film, inside the root composition."""
+    markup = audio_layer(scenes)
     m = re.search(r"<div\b[^>]*\bid=[\"']root[\"'][^>]*>", html)
     if not m:
         raise ValueError("the composition has no #root")
@@ -313,11 +336,8 @@ def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int,
                    f'<div style="color:#143e35;font-family:Inter,system-ui,sans-serif;font-size:{w * .05:g}px;'
                    f'text-align:center;">{html_mod.escape(scenes[-1]["heading"])}</div></div>')
     out = html[:m.end()] + "\n" + markup + "\n" + html[m.end():]
-    out = re.sub(r'(<div\b[^>]*\bid=[\"\']root[\"\'][^>]*data-duration=)[\"\'][^\"\']+[\"\']',
-                 lambda match: match[1] + f'"{total:g}"', out, count=1)
-    if script:
-        out = re.sub(r"</body>", script + "\n</body>", out, count=1) if "</body>" in out else out + script
-    return out
+    return re.sub(r'(<div\b[^>]*\bid=[\"\']root[\"\'][^>]*data-duration=)[\"\'][^\"\']+[\"\']',
+                  lambda match: match[1] + f'"{total:g}"', out, count=1)
 
 
 def load_settings(store: Any) -> dict[str, Any]:
@@ -393,13 +413,9 @@ def language_of(row: dict[str, Any]) -> str:
     return "en" if (row.get("stream") or "regulab") == "linkedin" else "bm"
 
 
-def build_system(row: dict[str, Any], extra: str, background: str = "", seconds: float | None = None,
-                 presenter: bool = False) -> str:
+def build_system(row: dict[str, Any], extra: str, background: str = "", seconds: float | None = None) -> str:
     stream = row.get("stream") or "regulab"
     html_lang, language = LANGUAGE[language_of(row)]
-    if presenter:
-        extra = (extra + "\n" if extra else "") + ("THE PRESENTER: a character stands in the lower-left 34% of the frame, added "
-                                                   "after you; keep the bottom 36% of the frame free of text on every scene.")
     res = row.get("resolution") or "portrait"
     w, h = SIZES.get(res, SIZES["portrait"])
     pal = PALETTE["regulab"]
@@ -435,6 +451,37 @@ def make_background(store: Any, row: dict[str, Any], folder: Path, provider: Any
     except Exception as exc:  # noqa: BLE001 - a missing picture never stops the video
         log.warning("background not made: %s", str(exc)[:200])
         return "", f"background not made: {str(exc)[:120]}"
+
+
+def fetch_photos(query: str, folder: Path, count: int = PHOTOS, *, search: Any = None,
+                 get: Any = None) -> tuple[list[dict[str, Any]], str]:
+    """Unsplash pictures for the film (Wan, 25 Oct 2026: "make sure have image from unsplashed"): the writer's own search
+    words, `count` photos saved as assets/photo-N.jpg (1600 px, JPEG), the download reported to Unsplash as its API rules
+    ask, the photographer kept for the credit. ([], note) when it cannot be done: the film is made without them and says so.
+    The photos are illustration only: never the product, never proof."""
+    search = search or unsplash.search
+    get = get or unsplash.fetch
+    try:
+        words = query.split()
+        found = search(query, "landscape") if words else []
+        if len(found) < count and len(words) > 2:
+            found += [p for p in search(" ".join(words[:2]), "landscape") if p["id"] not in {f["id"] for f in found}]
+        if not found:
+            return [], f"photos: Unsplash found nothing for {query!r}"
+        (folder / "assets").mkdir(parents=True, exist_ok=True)
+        out = []
+        for i, photo in enumerate(found[:count]):
+            data = get(photo)
+            im = Image.open(io.BytesIO(data)).convert("RGB")
+            im.thumbnail((1600, 1600))
+            rel = f"assets/photo-{i + 1}.jpg"
+            im.save(folder / rel, "JPEG", quality=85)
+            out.append({"path": rel, "id": photo["id"], "credit": f"{photo.get('name') or 'Unsplash'} / Unsplash",
+                        "page": photo.get("page") or "", "alt": photo.get("alt") or ""})
+        return out, f"photos: {len(out)} from Unsplash for {query!r}"
+    except Exception as exc:  # noqa: BLE001 - a film without pictures is still a film, and the row says why
+        log.warning("photos not fetched: %s", str(exc)[:200])
+        return [], f"photos not fetched: {str(exc)[:140]}"
 
 
 def hydrate_evidence(store: Any, row: dict[str, Any]) -> dict[str, Any]:
@@ -506,18 +553,11 @@ def cli_env() -> dict[str, str]:
     return env
 
 
-def write_project(folder: Path, html: str, poses: set[str] | None = None) -> None:
+def write_project(folder: Path, html: str) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "index.html").write_text(html, encoding="utf-8")
     (folder / "assets").mkdir(exist_ok=True)
     shutil.copyfile(motion_styles.LOGO, folder / "assets" / motion_styles.LOGO.name)
-    for pose in poses or ():
-        src = MASCOT_DIR / f"{pose}.webp"
-        if src.is_file():
-            (folder / "assets").mkdir(exist_ok=True)
-            shutil.copyfile(src, folder / "assets" / f"mascot-{pose}.webp")
-        else:
-            log.warning("mascot pose %s not found at %s", pose, src)
     (folder / "hyperframes.json").write_text(json.dumps({
         "$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
         "paths": {"blocks": "compositions", "components": "compositions/components", "assets": "assets"},
@@ -554,7 +594,8 @@ def render(folder: Path, cli: str, resolution: str, runner: Any = subprocess.run
     return out
 
 
-def mix_music(video: Path, scenes: list[dict[str, Any]], seconds: float, runner: Any = subprocess.run) -> Path:
+def mix_music(video: Path, scenes: list[dict[str, Any]], seconds: float, runner: Any = subprocess.run,
+              drop: tuple[float, float] | None = None) -> Path:
     """Keep the rendered video; mux original v8 melody + recorded stems, with explicit speech ducking and fades."""
     music = motion_styles.RULES / "music-v8.mp3"
     voiced = [sc for sc in scenes if sc.get("audio")]
@@ -563,9 +604,11 @@ def mix_music(video: Path, scenes: list[dict[str, Any]], seconds: float, runner:
     cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(video), "-stream_loop", "-1", "-i", str(music)]
     for sc in voiced:
         cmd += ["-i", str(folder / sc["audio"])]
+    # S05 Silence Drop: the music falls away for a breath just before the Solusi scene (voiced films only)
+    silence = f"*if(between(t,{drop[0]:g},{drop[1]:g}),0.15,1)" if drop else ""
     active = "+".join(f"between(t,{sc['start']:g},{sc['start'] + sc['audio_s']:g})" for sc in voiced) or "0"
     filters = [f"[1:a]atrim=duration={seconds:g},asetpts=PTS-STARTPTS,"
-               f"volume='if(gt({active},0),0.072,0.1215)':eval=frame,afade=t=in:d=0.2,"
+               f"volume='if(gt({active},0),0.072,0.1215){silence}':eval=frame,afade=t=in:d=0.2,"
                f"afade=t=out:st={max(0, seconds - 1.15):g}:d=1.15[music]"]
     for i, sc in enumerate(voiced):
         filters.append(f"[{i + 2}:a]volume=0.9,adelay={round(sc['start'] * 1000)}:all=1[v{i}]")
@@ -629,7 +672,7 @@ def claim(store: Any, limit: int = 3) -> list[dict[str, Any]]:
 
 def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any], *, runner: Any = subprocess.run,
             workdir: Path | None = None, now: datetime | None = None, gh: GitHub | None = None,
-            picture_provider: Any = None, speak: Any = None) -> bool:
+            picture_provider: Any = None, speak: Any = None, photo_search: Any = None, photo_get: Any = None) -> bool:
     now = now or datetime.now(UTC)
     folder = (workdir or Path(tempfile.mkdtemp(prefix="motion-"))) / str(row["id"])[:8]
     try:
@@ -648,9 +691,9 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         # the voice first (Wan, 24 Oct 2026): the writer plans the scenes, each narration is recorded, and the film is
         # written to those exact times; with the voice off the plan still fixes the scenes and nothing is recorded
         plan = plan_scenes(llm, row, settings.get("prompt") or "", title, text, style=style)
-        want_mascot = bool(row.get("mascot")) and row.get("mascot") in MOUTH
+        lang = language_of(row)
         choice = str(row.get("voice") or "male")
-        if choice == "kitten" and language_of(row) != "en":
+        if choice == "kitten" and lang != "en":
             choice = "female"
         kitten_fallback = ""
         if choice == "kitten" and speak is None and not voice_mod.kitten_ready():
@@ -659,17 +702,42 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             # A worker that IS configured and then fails still fails loudly, below.
             choice = "male"
             kitten_fallback = " (KittenTTS is not set up on this runner, so an Edge voice was used)"
-        scenes, total, voice_note = voice_scenes(plan["scenes"], language_of(row), choice, folder,
-                                               speak=speak, runner=runner)
+        scenes, total, voice_note = voice_scenes(plan["scenes"], lang, choice, folder, speak=speak, runner=runner)
         voice_note += kitten_fallback
+        voiced = any(sc.get("audio") for sc in scenes)
+        if not voiced:
+            scenes = trim_for_reading(scenes, motion_styles.duration(row))
         scenes, total = fit_scenes(scenes, motion_styles.duration(row))
+        pace_note = ("narrated: brisk" if voiced else f"silent: paced for reading at {READ_WPS:g} words a second")
         w, h = SIZES.get(row.get("resolution") or "portrait", SIZES["portrait"])
-        system = build_system(row, settings.get("prompt") or "", bg_path, seconds=total, presenter=want_mascot)
+        photos, photo_note = fetch_photos(plan.get("photo_query") or "", folder, search=photo_search, get=photo_get)
+        motion_auto.assign_photos(scenes, photos)
+        auto = None
+        if motion_assets.is_auto(row):
+            auto = motion_auto.choose(row, scenes, voiced=voiced, lang=lang, stream=row.get("stream") or "regulab")
+            asset_plan["effects"] = [*asset_plan["effects"], *motion_auto.effect_rows(auto)]
+        system = build_system(row, settings.get("prompt") or "", bg_path, seconds=total)
         fixed = ("SCENES, FIXED: the voice is already recorded to these times. One .clip per scene with EXACTLY this id, "
                  "data-start and data-duration for timed text only. For Design 2 keep ONE persistent SVG world underneath, "
                  "not separate scene cards. Show exactly these words; no extra lines in silent mode:\n"
                  + plan_text(scenes))
-        if asset_plan['effects']:
+        shown = [sc for sc in scenes if sc.get("photo")]
+        if shown:
+            fixed += ("\nPHOTOS (Unsplash, illustration only: never present one as the product, a result or evidence). Each is a "
+                      "div with background-image:url(PATH);background-size:cover in its OWN frame, border-radius 28px, height "
+                      f"{30 if h >= w else 36}% of the frame, as the FIRST block of that scene's column, never behind text:\n"
+                      + "\n".join(f"- {sc['id']}: {sc['photo']}" for sc in shown))
+        if voiced:
+            subs = [f"- {sc['id']}: " + " | ".join(f'"{text}" {a:g}-{b:g}s' for text, a, b in motion_layout.caption_chunks(sc))
+                    for sc in scenes if sc.get("audio") and sc.get("id") != "brand-outro"]
+            fixed += ("\nSUBTITLES (the format of Wan's approved reference films): the narration as short transparent subtitles, "
+                      "centred, in a lane of their own from 78% to 89.5% of the frame height, 52px (1080-wide), no box, "
+                      "capsule or scrim, each chunk visible exactly for its times. The scene's content column stops at 76% "
+                      "of the frame height (height 61% instead of 64%), so a subtitle never meets other text:\n"
+                      + "\n".join(subs))
+        if auto:
+            fixed += "\n" + motion_auto.prompt_block(auto, scenes)
+        if any(e["adapter"] != "native-text" for e in asset_plan["effects"]):
             fixed += ("\nWorker adds a prepared asset panel at x12–82%, y48–70% during scene one. "
                       "Keep this region free of writer text/art. Do not simulate unsupported effects or proof. "
                       "For continuous-line preserve the persistent world behind the panel.\n" +
@@ -682,39 +750,79 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             (folder / "recipe-plan.json").write_text(json.dumps(recipe_plan, ensure_ascii=False, indent=2), encoding="utf-8")
             fixed += "\nACTUAL COMPLETE RECIPE PLAN (these fixed times override the initial stage windows):\n" + \
                 json.dumps(recipe_plan, ensure_ascii=False)
-        out = llm.chat_json(system, build_user(row, title, text, style=style) + "\n\n" + fixed, max_tokens=WRITER_TOKENS)
-        if not isinstance(out, dict):
-            raise RuntimeError("the writer gave no answer")
-        out.setdefault("title", plan.get("title"))
-        html = clean_html(out.get("html"))
-        poses = {sc.get("mascot") or "wave" for sc in scenes} if want_mascot else set()
-        def composed(raw):
-            document = motion_assets.inject(inject_layers(raw, scenes, total, w, h, want_mascot), asset_plan, scenes, total,
+
+        def composed(raw: str) -> str:
+            document = motion_assets.inject(inject_layers(raw, scenes, total, w, h), asset_plan, scenes, total,
                                             design=motion_styles.design(row))
             # Composition resolves conditional native cues, including skipped/conflicting selections.
             (folder / "asset-plan.json").write_text(json.dumps(asset_plan, ensure_ascii=False, indent=2))
             return document
-        write_project(folder, composed(html), poses)
-        report = check(folder, settings["cli"], runner)
-        if not report["ok"] and report["errors"]:
-            out2 = llm.chat_json(system, build_user(row, title, text, report["errors"], html, style=style) + "\n\n" + fixed,
-                                 max_tokens=WRITER_TOKENS)
-            if isinstance(out2, dict) and out2.get("html"):
-                html = clean_html(out2.get("html"))
-                write_project(folder, composed(html), poses)
-                report = check(folder, settings["cli"], runner)
+
+        def checked(raw: str) -> dict[str, Any]:
+            write_project(folder, composed(raw))
+            return check(folder, settings["cli"], runner)
+
+        layout_note, layout = "", {}
+        out: dict[str, Any] = {}
+        html = ""
+        try:
+            out = llm.chat_json(system, build_user(row, title, text, style=style) + "\n\n" + fixed, max_tokens=WRITER_TOKENS)
+            if not isinstance(out, dict):
+                raise RuntimeError("the writer gave no answer")
+            html = clean_html(out.get("html"))
+            report = checked(html)
+            # whatever the check rejects goes back to the writer (twice) with the findings, never to Wan
+            for _ in range(MAX_FIX):
+                if not report["errors"]:
+                    break
+                again = llm.chat_json(system, build_user(row, title, text, report["errors"], html, style=style) + "\n\n" + fixed,
+                                      max_tokens=WRITER_TOKENS)
+                if not isinstance(again, dict) or not again.get("html"):
+                    break
+                html = clean_html(again.get("html"))
+                report = checked(html)
+            writer_error = ""
+        except Exception as exc:  # noqa: BLE001 - the safe layout still makes the film
+            writer_error = f"{type(exc).__name__}: {str(exc)[:160]}"
+            report = {"ok": False, "errors": [{"code": "writer_failed", "message": writer_error}], "warnings": []}
+        if writer_error or motion_layout.layout_findings(report["errors"]):
+            log.warning("%s: writer layout rejected (%s); using the safe layout", row["id"],
+                        writer_error or [f.get("code") for f in report["errors"]][:4])
+            page, layout = motion_layout.compose(scenes=scenes, total=total, w=w, h=h, lang=lang,
+                                                 plan=auto or {"scenes": {}, "video": {}}, palette=PALETTE["regulab"],
+                                                 gsap=GSAP, html_lang=LANGUAGE[lang][0],
+                                                 resolution=row.get("resolution") or "portrait")
+            first = [f.get("code") for f in report["errors"]][:4]
+            report = checked(page)
+            html = page
+            out.setdefault("title", plan.get("title"))
+            why = f" (the writer's own layout failed: {', '.join(map(str, first))})" if first else ""
+            layout_note = "safe layout used" + why
+            leftover = motion_layout.layout_findings(report["errors"])
+            if leftover:
+                raise RuntimeError("text overlap remains even in the safe layout: " +
+                                   "; ".join(f"[{f.get('code')}] {f.get('message')}" for f in leftover)[:400])
+        out.setdefault("title", plan.get("title"))
         if report["errors"]:
             # render anyway in best-effort mode: a lint error is often cosmetic; the row keeps the report either way
             log.warning("%s: %d check error(s) remain; rendering best-effort", row["id"], len(report["errors"]))
         if recipe_plan:
             report["recipe_plan"] = recipe_plan
         report['asset_plan'] = asset_plan
+        if auto:
+            report["auto_effects"] = auto
+        if layout:
+            report["layout"] = layout
+        report["photos"] = [{k: p[k] for k in ("id", "credit", "page", "alt")} for p in photos]
+        report["pace"] = pace_note
         style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]
         video = render(folder, settings["cli"], row.get("resolution") or "portrait", runner)
         meta = probe(video, runner)
         if not 0 < meta["duration_s"] <= 60.5 or abs(meta["duration_s"] - total) > .5:
             raise ValueError("Rendered duration does not match selected duration; choose 30/60s or narrow the topic")
-        video = mix_music(video, scenes, total, runner)
+        solution = next((sc for sc in scenes if sc.get("role") == "solution"), None)
+        drop = (max(0.0, float(solution["start"]) - 0.6), float(solution["start"])) if voiced and solution else None
+        video = mix_music(video, scenes, total, runner, drop)
         data = video.read_bytes()
         path = f"motion/{row['id']}.mp4"
         url = db.upload_generated(store, path, data, "video/mp4")
@@ -722,16 +830,18 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         jpg = poster(video, runner)
         if jpg:
             poster_url = db.upload_generated(store, f"motion/{row['id']}.jpg", jpg, "image/jpeg")
+        credits = "; ".join(dict.fromkeys(p["credit"] for p in photos))
         store.table(TABLE).update({
             "status": "done", "title": str(out.get("title") or "")[:160],
             "html": (folder / 'index.html').read_text() if asset_plan['effects'] else html, "check_report": report,
             "video_path": path, "video_url": url, "poster_url": poster_url, "bytes": len(data),
             **meta,
             "model": getattr(llm, "last_model", "") or "", "error": "",
-            "style_note": " · ".join(x for x in (style_line, bg_note, voice_note,
+            "style_note": " · ".join(x for x in (style_line, bg_note, voice_note, pace_note, photo_note,
+                                               f"photo credit: {credits}" if credits else "", layout_note,
                                                "approved self-owned piano; faded/ducked; music x0.45, voice x0.9") if x),
             "script": [{k: sc.get(k) for k in (
-                "id", "role", "kicker", "heading", "lines", "narration", "mascot", "start", "duration")}
+                "id", "role", "kicker", "heading", "lines", "narration", "start", "duration", "photo")}
                        for sc in scenes],
         }).eq("id", row["id"]).execute()
         db.log_event(store, "info", "media", "motion.done", f"Motion siap: {(out.get('title') or row.get('brief') or '')[:80]}",

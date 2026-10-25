@@ -6,14 +6,12 @@ from semasa import motion_assets as assets
 from semasa.motion_styles import EFFECT_LIBRARY
 
 
-def test_auto_recommends_compatible_small_recipe(tmp_path):
+def test_auto_adds_no_placeholder_panel_the_scenes_get_their_own_styles(tmp_path):
+    # Wan, 25 Oct 2026: the old Auto laid a "Concept illustration" panel over scene one, where the writer's own text was
     row = {"brief": "Explain a safety process", "options": {"effect_mode": "auto", "mode": "explainer"}}
-    report = assets.prepare(row, tmp_path)
-    assert [e["id"] for e in report["effects"]] == ["B04", "M03"]
-    assert all(e["readiness"] != "fallback" for e in report["effects"])
-    row["options"]["mode"] = "teaser"
-    row["brief"] = "Calm abstract introduction"
-    assert [e["id"] for e in assets.prepare(row, tmp_path)["effects"]] == ["B08"]
+    assert assets.prepare(row, tmp_path)["effects"] == [] and assets.is_auto(row)
+    assert assets.is_auto({"options": {}}) and not assets.is_auto({"options": {"effect_mode": "manual"}})
+    assert not assets.is_auto({"options": {"effects": ["B04"]}}), "a list with no mode is a hand-picked list"
 
 
 def test_legacy_job_without_effects_keeps_original_composition(tmp_path):

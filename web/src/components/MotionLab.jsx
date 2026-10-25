@@ -46,7 +46,6 @@ export default function MotionLab({ user, onToast }) {
   const assetMode = assets.length ? 'mixed' : 'auto';
   const [aiBackground, setAiBackground] = useState(false);
   const [voice, setVoice] = useState("kitten");
-  const [mascot, setMascot] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
   const [busy, setBusy] = useState("");
   // Wan's saved way (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"): the form opens on it, and
@@ -56,14 +55,14 @@ export default function MotionLab({ user, onToast }) {
   useEffect(() => {
     const d = motionDefaults(settings);
     if (!settings.motion?.defaults) return;
-    setLanguage(d.language || defaultLanguage(stream)); setLangTouched(!!d.language); setVoice(d.voice); setMascot(d.mascot === true); setStyle(validStyle(d.style)); setDesign(d.design);
+    setLanguage(d.language || defaultLanguage(stream)); setLangTouched(!!d.language); setVoice(d.voice); setStyle(validStyle(d.style)); setDesign(d.design);
     setEffects(d.effects); setEffectMode(d.effectMode || 'auto');
     setResolution(d.resolution); setMode(d.mode); setSeconds(d.seconds); setAiBackground(!!d.aiBackground); setStyleRepoId(d.styleRepoId || "");
   }, [defaultsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const saveDefaults = async () => {
     setBusy("defaults");
     try {
-      await save("motion", withDefaults(settings.motion, { language: langTouched ? language : "", voice, mascot, resolution, seconds, aiBackground, styleRepoId, style, mode, design, effects, effectMode }));
+      await save("motion", withDefaults(settings.motion, { language: langTouched ? language : "", voice, resolution, seconds, aiBackground, styleRepoId, style, mode, design, effects, effectMode }));
       onToast?.(t("Disimpan sebagai cara lalai: setiap idea atau draf yang dijadikan video motion ikut tetapan ini.", "Saved as the default way: every idea or draft made into a motion video follows these settings."), "ok");
     } catch (e) { onToast?.(/0 rows|motion/i.test(e.message) ? t("Jalankan supabase/043_motion.sql dahulu.", "Run supabase/043_motion.sql first.") : e.message, "error"); } finally { setBusy(""); }
   };
@@ -76,7 +75,7 @@ export default function MotionLab({ user, onToast }) {
 
   const add = async () => {
     if (assetsBusy) return;
-    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, mascot, style, mode, design, effects, effectMode, assetMode, assets }, user?.id || null);
+    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, style, mode, design, effects, effectMode, assetMode, assets }, user?.id || null);
     if (built.error === "empty") return onToast?.(t("Tulis idea atau tampal pautan.", "Write an idea or paste a link."), "warn");
     if (built.error === "url") return onToast?.(t("Pautan perlu bermula dengan https://", "The link must start with https://"), "warn");
     setBusy("add");
@@ -168,11 +167,7 @@ export default function MotionLab({ user, onToast }) {
         <div className="grid gap-4 md:grid-cols-2" data-motion-voice>
           <div><Label hint={t("suara Edge neural: Osman / Yasmin (BM), Andrew / Ava (EN)", "VoiceStudio KittenTTS: English preset, configured worker required; BM/both automatically uses native Edge female +15%")}>{t("Suara", "Voice")}</Label>
             <Segmented value={voice} onChange={setVoice} options={VOICES.map(([k, bm, en]) => [k, L ? en : bm])} /></div>
-          <label className="flex items-start gap-2 text-sm md:pt-6">
-            <input type="checkbox" className="mt-1" checked={mascot} onChange={(e) => setMascot(e.target.checked)} />
-            <span>{t("Maskot bercakap", "Talking mascot")}
-              <span className="block text-[12px] text-muted">{t("Watak ahli kimia di sudut bawah, mulut bergerak ikut perkataan yang disebut.", "The chemist character in the lower corner, mouth moving on the spoken words.")}</span></span>
-          </label>
+          <p className="text-[12px] text-muted md:pt-6">{t("Setiap video: Hook, Fakta, Kenapa, Solusi, gambar Unsplash, gaya dipilih ikut kesesuaian. Dengan suara: lebih laju. Tanpa suara: perlahan supaya boleh dibaca.", "Every video: Hook, Fact, Why, Solution, Unsplash photos, styles chosen for fit. With a voice: brisk. Without: slow enough to read.")}</p>
         </div>
         <label className="flex items-start gap-2 text-sm" data-motion-bg>
           <input type="checkbox" className="mt-1" checked={aiBackground} onChange={(e) => setAiBackground(e.target.checked)} />
@@ -182,7 +177,7 @@ export default function MotionLab({ user, onToast }) {
         </label>
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={add} disabled={busy === "add" || assetsBusy}>{busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {t("Buat video motion", "Make the motion video")}</Button>
-          <Button variant="ghost" size="sm" onClick={saveDefaults} disabled={busy === "defaults"} title={t("Bahasa, suara, maskot, saiz, saat, gaya dan latar: dipakai bila idea atau draf dijadikan video", "Language, voice, mascot, size, seconds, style and background: used when an idea or draft is made into a video")}
+          <Button variant="ghost" size="sm" onClick={saveDefaults} disabled={busy === "defaults"} title={t("Bahasa, suara, saiz, saat, gaya dan latar: dipakai bila idea atau draf dijadikan video", "Language, voice, size, seconds, style and background: used when an idea or draft is made into a video")}
             data-motion-save-defaults>{busy === "defaults" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {t("Simpan sebagai cara lalai", "Save as the default way")}</Button>
           {settings.motion?.defaults && <span className="text-[11px] text-muted">{t("Cara lalai tersimpan: idea dan draf ikutnya.", "Default way saved: ideas and drafts follow it.")}</span>}
         </div>
@@ -227,7 +222,7 @@ export default function MotionLab({ user, onToast }) {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-display text-lg">{motionLabel(r) || t("(tiada tajuk)", "(untitled)")}</p>
-                  <p className="truncate text-xs text-muted">{r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · {(LANGUAGES.find(([k]) => k === (r.language || defaultLanguage(r.stream))) || [])[1]} · {w([RESOLUTIONS[r.resolution]?.bm, RESOLUTIONS[r.resolution]?.en]) || r.resolution} · {r.seconds}s{r.voice && r.voice !== "off" ? ` · ${t("suara", "voice")}` : ""}{r.mascot ? ` · ${t("maskot", "mascot")}` : ""}{r.model ? ` · ${r.model}` : ""}{r.style_repo_id ? ` · ${t("gaya", "style")}: ${styleOf(r.style_repo_id)?.name || styleOf(r.style_repo_id)?.full_name || (r.style_note || "").split(":")[0] || "repo"}` : ""}</p>
+                  <p className="truncate text-xs text-muted">{r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · {(LANGUAGES.find(([k]) => k === (r.language || defaultLanguage(r.stream))) || [])[1]} · {w([RESOLUTIONS[r.resolution]?.bm, RESOLUTIONS[r.resolution]?.en]) || r.resolution} · {r.seconds}s{r.voice && r.voice !== "off" ? ` · ${t("suara", "voice")}` : ""}{r.model ? ` · ${r.model}` : ""}{r.style_repo_id ? ` · ${t("gaya", "style")}: ${styleOf(r.style_repo_id)?.name || styleOf(r.style_repo_id)?.full_name || (r.style_note || "").split(":")[0] || "repo"}` : ""}</p>
                 </div>
                 <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${STATUS_CLS[r.status] || ""}`}>{r.status === "working" && <Loader2 size={10} className="animate-spin" />}{w(STATUS_WORDS[r.status] || [r.status, r.status])}</span>
               </div>

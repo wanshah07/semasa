@@ -10,10 +10,10 @@ assert.deepEqual(motionRow({}), { error: "empty" });
 assert.deepEqual(motionRow({ url: "github.com/x" }), { error: "url" });
 const ok = motionRow({ brief: "  PFAS  ", url: "", stream: "linkedin", resolution: "square", seconds: "20" }, "u1");
 assert.deepEqual(ok.row, { brief: "PFAS", source_url: "", stream: "linkedin", language: "en", resolution: "square", seconds: 30, status: "pending", options: { style: "bright-education", mode: "explainer", design: "bright-editorial", effects:["B04"], effect_mode:"auto", asset_mode:"auto", assets:[], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true} }, style_repo_id: null, ai_background: false, created_by: "u1", voice: "kitten", mascot: "" });
-// the presenter and the voice: on by default, Wan can turn either off
+// the voice: Wan can choose it or turn it off
 assert.equal(motionRow({ brief: "x", voice: "female" }).row.voice, "female");
 assert.equal(motionRow({ brief: "x", voice: "nope" }).row.voice, "kitten");
-assert.equal(motionRow({ brief: "x", mascot: false }).row.mascot, "");
+assert.equal(motionRow({ brief: "x", mascot: true }).row.mascot, "", "no talking mascot in any video (Wan, 25 Oct 2026)");
 // the words on screen: the row's choice, else the stream's own language
 assert.equal(motionRow({ brief: "x", stream: "regulab", language: "both" }).row.language, "both");
 assert.equal(motionRow({ brief: "x", stream: "regulab", language: "nope" }).row.language, "en");
@@ -52,8 +52,8 @@ assert.equal(motionRepoRow("skills.sh"), null);
 const idea = { id: "i1", source_title: "NPRA batalkan 12 produk", note: "tekankan label", source_summary: "Ringkasan.", source_url: "https://npra.gov.my/x", stream: "regulab" };
 assert.deepEqual(motionFromIdea(idea, "u1"), { brief: "NPRA batalkan 12 produk\nWan: tekankan label\nRingkasan.", source_url: "https://npra.gov.my/x", stream: "regulab", language: "en", resolution: "portrait", seconds: 30, status: "pending", idea_id: "i1", ai_background: false, options: { style: "bright-education", mode: "explainer", design: "bright-editorial", effects:["B04"], effect_mode:"auto", asset_mode:"auto", assets:[], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true}, evidence: {source_url: idea.source_url, source_summary: idea.source_summary, id: idea.id} }, style_repo_id: null, voice: "kitten", mascot: "", created_by: "u1" });
 // the saved defaults ("the skill") apply to an idea and to a post
-const saved = withDefaults({ prompt: "P" }, { language: "en", voice: "female", mascot: false, resolution: "square", seconds: "25", aiBackground: true, styleRepoId: "r9" });
-assert.deepEqual(saved, { prompt: "P", defaults: { effects:["B04"], effectMode:"auto", assetMode:"auto", language: "en", voice: "female", mascot: false, design: "bright-editorial", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "square", seconds: 30, aiBackground: true, styleRepoId: "r9" } });
+const saved = withDefaults({ prompt: "P" }, { language: "en", voice: "female", resolution: "square", seconds: "25", aiBackground: true, styleRepoId: "r9" });
+assert.deepEqual(saved, { prompt: "P", defaults: { effects:["B04"], effectMode:"auto", assetMode:"auto", language: "en", voice: "female", design: "bright-editorial", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "square", seconds: 30, aiBackground: true, styleRepoId: "r9" } });
 const dflts = motionDefaults({ motion: saved });
 const fromIdea = motionFromIdea(idea, "u1", dflts);
 assert.deepEqual([fromIdea.language, fromIdea.voice, fromIdea.mascot, fromIdea.resolution, fromIdea.seconds, fromIdea.ai_background, fromIdea.style_repo_id], ["en", "female", "", "square", 30, true, "r9"]);

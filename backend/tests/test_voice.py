@@ -34,7 +34,7 @@ def test_malay_voices_are_read_a_little_faster(monkeypatch, tmp_path):
     monkeypatch.setattr(voice, "_WORD_OK", True)
     monkeypatch.setattr(edge_tts, "Communicate", _Comm)
     asyncio.run(voice._synth("Hai", "ms-MY-OsmanNeural", Path(tmp_path) / "b.mp3"))
-    assert _Comm.seen["rate"] == "+15%" and _Comm.seen["boundary"] == "WordBoundary"
+    assert _Comm.seen["rate"] == "+25%" and _Comm.seen["boundary"] == "WordBoundary"
 
 
 class _NoWords:

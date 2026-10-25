@@ -652,8 +652,16 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         choice = str(row.get("voice") or "male")
         if choice == "kitten" and language_of(row) != "en":
             choice = "female"
+        kitten_fallback = ""
+        if choice == "kitten" and speak is None and not voice_mod.kitten_ready():
+            # no VoiceStudio worker on this machine (GitHub's runner never has one): narrate with the Edge male voice and
+            # SAY so on the row, rather than ending the film in an error (Wan, 25 Oct 2026, screenshot of the failed card).
+            # A worker that IS configured and then fails still fails loudly, below.
+            choice = "male"
+            kitten_fallback = " (KittenTTS is not set up on this runner, so an Edge voice was used)"
         scenes, total, voice_note = voice_scenes(plan["scenes"], language_of(row), choice, folder,
                                                speak=speak, runner=runner)
+        voice_note += kitten_fallback
         scenes, total = fit_scenes(scenes, motion_styles.duration(row))
         w, h = SIZES.get(row.get("resolution") or "portrait", SIZES["portrait"])
         system = build_system(row, settings.get("prompt") or "", bg_path, seconds=total, presenter=want_mascot)

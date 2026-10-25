@@ -2,6 +2,7 @@
    and rendered on the runner (backend/semasa/motion.py, semasa_motions). Pure helpers, tested in motion.test.mjs. */
 
 import { styleOf } from "./motionStyles.js";
+import { validEffects, assetModeOf } from './motionEffects.js';
 
 export const RESOLUTIONS = {
   portrait: { w: 1080, h: 1920, bm: "Menegak 9:16 (Reels, TikTok, Shorts)", en: "Portrait 9:16 (Reels, TikTok, Shorts)" },
@@ -25,12 +26,16 @@ export function resolveLanguageVoice(language, voice, stream) {
   return { language: lang, voice: chosen === 'kitten' && lang !== 'en' ? 'female' : chosen };
 }
 const evidenceOf = source => ({...Object.fromEntries(['source_url', 'reference_urls', 'source_name', 'angle', 'domain', 'citations', 'source_summary', 'trend_id', 'idea_id', 'id'].filter(k => source?.[k] != null).map(k => [k, source[k]])), ...(source?.brief?.source ? {structured_source:source.brief.source} : {})});
-const motionOptions = d => ({ style: styleOf(d.style), mode: modeOf(d.mode), design: designOf(d.design), preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true} });
+const motionOptions = d => ({ style: styleOf(d.style), mode: modeOf(d.mode), design: designOf(d.design), effects:validEffects(d.effects), effect_mode:d.effectMode === 'manual' ? 'manual' : 'auto', asset_mode:assetModeOf(d.assetMode), assets:d.assets || [], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true} });
 export function motionVariantMatches(existing, wanted) {
   return !!wanted && ['pending', 'working', 'done'].includes(existing.status) &&
     existing.idea_id === wanted.idea_id && existing.language === wanted.language &&
     designOf(existing.options?.design) === designOf(wanted.options?.design) &&
     styleOf(existing.options?.style) === styleOf(wanted.options?.style) &&
+    JSON.stringify(validEffects(existing.options?.effects)) === JSON.stringify(validEffects(wanted.options?.effects)) &&
+    (existing.options?.effect_mode || 'auto') === (wanted.options?.effect_mode || 'auto') &&
+    assetModeOf(existing.options?.asset_mode) === assetModeOf(wanted.options?.asset_mode) &&
+    JSON.stringify(existing.options?.assets || []) === JSON.stringify(wanted.options?.assets || []) &&
     modeOf(existing.options?.mode) === modeOf(wanted.options?.mode) &&
     selectedSeconds(existing.seconds, existing.options?.mode) === wanted.seconds &&
     resolveLanguageVoice(existing.language, existing.voice).voice === wanted.voice;
@@ -51,7 +56,7 @@ export const selectedSeconds = (seconds, mode) => modeOf(mode) === "teaser" && N
 
 /* Wan's saved way of making a motion video (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"):
    settings.motion.defaults, saved from the Motion form, read whenever an idea or a post draft is made into a video. */
-export const MOTION_DEFAULTS = { language: "en", voice: "kitten", mascot: false, design: "bright-editorial", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "portrait", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
+export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "kitten", mascot: false, design: "bright-editorial", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "portrait", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
 /** The saved defaults over the built-in ones; an empty language means "the stream's own". */
 export function motionDefaults(settings) {
   const d = (settings || {}).motion?.defaults;
@@ -60,7 +65,7 @@ export function motionDefaults(settings) {
 }
 /** settings.motion with the form saved as the defaults; everything else in it (the prompt) untouched. */
 export function withDefaults(motionSettings, form) {
-  const d = { ...resolveLanguageVoice(form.language, form.voice), design: designOf(form.design), previewMusic: "user-reel", mascot: form.mascot === true, style: styleOf(form.style), mode: modeOf(form.mode), resolution: RESOLUTIONS[form.resolution] ? form.resolution : "portrait",
+  const d = { effects:validEffects(form.effects), effectMode:form.effectMode === 'manual' ? 'manual' : 'auto', assetMode:'auto', ...resolveLanguageVoice(form.language, form.voice), design: designOf(form.design), previewMusic: "user-reel", mascot: form.mascot === true, style: styleOf(form.style), mode: modeOf(form.mode), resolution: RESOLUTIONS[form.resolution] ? form.resolution : "portrait",
     seconds: selectedSeconds(form.seconds, form.mode), aiBackground: !!form.aiBackground, styleRepoId: form.styleRepoId || "" };
   return { ...(motionSettings || {}), defaults: d };
 }
@@ -68,7 +73,7 @@ export function withDefaults(motionSettings, form) {
 export const freshUrl = (url, stamp) => (url ? `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(stamp || "")}` : url);
 
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. */
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "kitten", mascot = false, design = "bright-editorial", style = "bright-education", mode = "explainer" } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "kitten", mascot = false, design = "bright-editorial", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[] } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
@@ -78,7 +83,7 @@ export function motionRow({ brief = "", url = "", stream = "regulab", resolution
     row: {
       brief: b.slice(0, 2000), source_url: u, stream: st, language: langOf(language, st),
       resolution: RESOLUTIONS[resolution] ? resolution : "portrait", seconds: selectedSeconds(seconds, mode), status: "pending",
-      options: motionOptions({style, mode, design}), style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
+      options: motionOptions({style, mode, design, effects, effectMode, assetMode, assets}), style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
       ...resolveLanguageVoice(language, voice, st), mascot: mascot ? DEFAULT_MASCOT : "",
     },
   };

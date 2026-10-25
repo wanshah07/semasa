@@ -79,8 +79,9 @@ def test_worker_passes_complete_bundle_to_both_writers_and_saves_actual_plan(tmp
 
 def test_complete_recipe_refuses_an_isolated_overlay_script():
     row = {"voice": "off", "options": {"style": "styles-kinetic-explainer"}}
-    with pytest.raises(ValueError, match="four teaching scenes"):
-        motion.plan_scenes(FakeLLM([SCRIPT]), row, "", "", "")
+    one = {**SCRIPT, "scenes": SCRIPT["scenes"][:1]}
+    with pytest.raises(RuntimeError, match="1 scenes instead of 4"):
+        motion.plan_scenes(FakeLLM([one, one]), row, "", "", "")
 
 
 def test_teaser_plan_has_one_persistent_stage_not_four_pages():

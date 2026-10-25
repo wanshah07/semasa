@@ -73,7 +73,7 @@ def test_mime_spoof_rejected(tmp_path):
 def test_worker_persists_resolved_native_schedule(tmp_path):
     store = Store()
     row = _row(store, seconds=30, voice="off", mascot="", language="en", options={"effects": ["H01"]})
-    script = {**SCRIPT, "scenes": [{**SCRIPT["scenes"][0], "heading": "Keep food safe"}]}
+    script = {**SCRIPT, "scenes": [{**SCRIPT["scenes"][0], "heading": "Keep food safe"}, *SCRIPT["scenes"][1:]]}
     document = GOOD.replace("</div>", "<h1>Keep food safe</h1></div>", 1)
     assert motion.process(
         store,

@@ -6,6 +6,15 @@ assert.equal(new Set(effectGroups().flatMap(g=>g.effects.map(e=>e.id))).size,99)
 assert.equal(effectGroups().flatMap(g=>g.effects).length,106);
 assert.equal(effectGroups('H06')[1]?.effects.length || effectGroups('H06')[0]?.effects.length,2);
 assert.equal(Object.keys(effectPolicy).length,99);
+for (const id of ['H01','H03','V01','V03']) {
+  assert.equal(effectPolicy[id].adapter,'native-text');
+  assert.equal(effectPolicy[id].scope,'authored-heading-only');
+  assert.equal(effectPolicy[id].readiness,'ready');
+  const queued=motionRow({brief:'Native heading QA',effectMode:'manual',effects:[id]},'owner').row;
+  assert.deepEqual(queued.options.effects,[id]);
+  assert.equal(queued.options.effect_mode,'manual');
+}
+assert.equal(Object.values(effectPolicy).filter(e=>e.readiness==='fallback').length,90);
 assert.deepEqual(validEffects(['X01','H07','X01']),['X01']);
 assert.equal(assetRefusal({name:'../../bad.png',type:'image/png',size:2}) !== '',true);
 assert.equal(assetRefusal({name:'good.png',type:'image/png',size:2}),'');

@@ -1,0 +1,2574 @@
+{
+  "baseline_commit": "f5e6fb4e23ae17ec1a6cba3f8d8bc97108718931",
+  "catalog_unique_ids": 99,
+  "source_occurrences": 106,
+  "source_exact_duplicates": 7,
+  "missing_codes": [
+    "H07"
+  ],
+  "conflicting_codes": [],
+  "baseline_fallback_count": 94,
+  "batch_ids": [
+    "H01",
+    "H03",
+    "V01",
+    "V03"
+  ],
+  "status_counts": {
+    "not_implemented": 90,
+    "render_tested_heading_adaptation": 4
+  },
+  "track_counts": {
+    "needs_assets_and_core_renderer": 88,
+    "core_renderer": 6
+  },
+  "existing_adaptations": {
+    "P01": {
+      "readiness": "manualasset",
+      "adapter": "screenshot",
+      "reason": "Punch-in of supplied sourced screenshot, not screenshot fabrication"
+    },
+    "B02": {
+      "readiness": "manualasset",
+      "adapter": "screenshot",
+      "reason": "Single floating supplied screenshot adaptation"
+    },
+    "B04": {
+      "readiness": "autoasset",
+      "adapter": "flow",
+      "reason": "Original qualitative icon flow, not transcript-aligned footage"
+    },
+    "B08": {
+      "readiness": "autoasset",
+      "adapter": "concept",
+      "reason": "Original abstract vector with calm drift"
+    },
+    "M03": {
+      "readiness": "ready",
+      "adapter": "push",
+      "reason": "Slow push on prepared illustration, not source-video camera editing"
+    }
+  },
+  "groups": [
+    {
+      "title": "Featured Effects",
+      "ids": [
+        "X01",
+        "X02",
+        "X03",
+        "H01",
+        "C01"
+      ]
+    },
+    {
+      "title": "Hooks",
+      "ids": [
+        "H01",
+        "H02",
+        "H03",
+        "H04",
+        "H05",
+        "H06",
+        "H08",
+        "H09",
+        "H10"
+      ]
+    },
+    {
+      "title": "Captions",
+      "ids": [
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C06",
+        "C07",
+        "C08",
+        "C09",
+        "C10"
+      ]
+    },
+    {
+      "title": "Layouts",
+      "ids": [
+        "L01",
+        "L02",
+        "L03",
+        "L04",
+        "L05",
+        "L06",
+        "L07",
+        "L08",
+        "L09",
+        "L10"
+      ]
+    },
+    {
+      "title": "Proof",
+      "ids": [
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P06",
+        "P07",
+        "P08",
+        "P09",
+        "P10"
+      ]
+    },
+    {
+      "title": "Visual Beats",
+      "ids": [
+        "V01",
+        "V02",
+        "V03",
+        "V04",
+        "V05",
+        "V06",
+        "V07",
+        "V08",
+        "V09",
+        "V10"
+      ]
+    },
+    {
+      "title": "Animated B-Roll",
+      "ids": [
+        "B01",
+        "B03",
+        "B05",
+        "B06",
+        "B07",
+        "B09",
+        "B10"
+      ]
+    },
+    {
+      "title": "Signature Effects",
+      "ids": [
+        "X01",
+        "X02",
+        "X03",
+        "X04",
+        "X05",
+        "X06",
+        "X07",
+        "X08",
+        "X09",
+        "X10"
+      ]
+    },
+    {
+      "title": "Motion Pace",
+      "ids": [
+        "M01",
+        "M02",
+        "M04",
+        "M05",
+        "M06",
+        "M07",
+        "M08",
+        "M09",
+        "M10"
+      ]
+    },
+    {
+      "title": "Sound",
+      "ids": [
+        "S01",
+        "S02",
+        "S03",
+        "S04",
+        "S05",
+        "S06",
+        "S07",
+        "S08",
+        "S09",
+        "S10"
+      ]
+    },
+    {
+      "title": "Colour & Finish",
+      "ids": [
+        "F01",
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06",
+        "F07",
+        "F08",
+        "F09",
+        "F10"
+      ]
+    }
+  ],
+  "effects": [
+    {
+      "id": "X01",
+      "name": "Orbit Cards",
+      "source_sections": [
+        "Featured Effects",
+        "Signature Effects"
+      ],
+      "primary_section": "Featured Effects",
+      "source_occurrences": [
+        1,
+        67
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Screenshots"
+      ],
+      "optional_assets_original": [
+        "Subject mask / matte",
+        "Photos",
+        "Social comment"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a subject matte, run the 2D arc: cards travel a front-only arc around the upper body and fade out at the ends instead of passing behind. If segmentation is attempted but flickers or tears hair edges, fall back to 2D rather than shipping a broken matte. With fewer than three cards, use B02 Floating Screenshot Cards instead.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "X02",
+      "name": "Infinite Content Wall",
+      "source_sections": [
+        "Featured Effects",
+        "Signature Effects"
+      ],
+      "primary_section": "Featured Effects",
+      "source_occurrences": [
+        2,
+        68
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Screenshots"
+      ],
+      "optional_assets_original": [
+        "Subject mask / matte",
+        "Photos",
+        "Social comment"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a matte, use the 2D inset-card version: the untouched footage floats in a rounded card over the scrolling wall. With fewer than 6 distinct tiles, reduce to 2–3 columns so repetition is less obvious.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "X03",
+      "name": "Frame Break",
+      "source_sections": [
+        "Featured Effects",
+        "Signature Effects"
+      ],
+      "primary_section": "Featured Effects",
+      "source_occurrences": [
+        3,
+        69
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Subject mask / matte",
+        "Product image",
+        "Photos"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a subject matte, break the frame with a supplied transparent cutout (product, logo, sticker or a still cutout photo of the subject) instead of the live footage. If no cutout asset exists either, use L04 Floating Device Frame with a punch-in rather than faking the break.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "H01",
+      "name": "Headline Slam",
+      "source_sections": [
+        "Featured Effects",
+        "Hooks"
+      ],
+      "primary_section": "Featured Effects",
+      "source_occurrences": [
+        4,
+        7
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Brand fonts"
+      ],
+      "asset_note": "Authored heading suffices for limited text adaptation; original footage technique remains unsupported.",
+      "original_fallback": "If no transcript is available, ask for the headline text or transcribe the first 5 seconds locally before writing it. If brand fonts are missing, use Inter Black / Space Grotesk Bold.",
+      "status": "render_tested_heading_adaptation",
+      "native_scope": "authored-heading-only"
+    },
+    {
+      "id": "C01",
+      "name": "Karaoke Follow",
+      "source_sections": [
+        "Featured Effects",
+        "Captions"
+      ],
+      "primary_section": "Featured Effects",
+      "source_occurrences": [
+        5,
+        17
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If no transcript is supplied and local transcription is not possible, ask the user for an SRT/VTT. With only line-level timing, render whole-line captions without word highlights rather than spacing fake word times evenly — invented timing visibly drifts out of sync.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "H02",
+      "name": "Pattern Interrupt",
+      "source_sections": [
+        "Hooks"
+      ],
+      "primary_section": "Hooks",
+      "source_occurrences": [
+        8
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the opening has no natural pause, place the interrupt on the first breath between sentences. Inverted flashes are skipped when the user requests photosensitivity-safe output.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "H03",
+      "name": "Question First",
+      "source_sections": [
+        "Hooks"
+      ],
+      "primary_section": "Hooks",
+      "source_occurrences": [
+        9
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing"
+      ],
+      "asset_note": "Authored heading suffices for limited text adaptation; original footage technique remains unsupported.",
+      "original_fallback": "If the speaker never poses or answers a question, ask the user for the question text instead of inventing one.",
+      "status": "render_tested_heading_adaptation",
+      "native_scope": "authored-heading-only"
+    },
+    {
+      "id": "H04",
+      "name": "Result Before Process",
+      "source_sections": [
+        "Hooks"
+      ],
+      "primary_section": "Hooks",
+      "source_occurrences": [
+        10
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "B-roll footage",
+        "Product image"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the footage has no visible result, use the speaker's strongest concluding sentence as an audio-led teaser and flag the substitution.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "H05",
+      "name": "Countdown Hook",
+      "source_sections": [
+        "Hooks"
+      ],
+      "primary_section": "Hooks",
+      "source_occurrences": [
+        11
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Music track"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without music, use the fixed interval. If the beat interval would exceed the available opening, shorten the count rather than slowing the beat.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "H06",
+      "name": "Split Reveal",
+      "source_sections": [
+        "Hooks"
+      ],
+      "primary_section": "Hooks",
+      "source_occurrences": [
+        12,
+        13
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the speaker is off-center, align the split seam with the subject's center line rather than the frame center.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "H08",
+      "name": "Scroll Stop Flash",
+      "source_sections": [
+        "Hooks"
+      ],
+      "primary_section": "Hooks",
+      "source_occurrences": [
+        14
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the footage resolution is too low for the punch-in (below 1.25x headroom), reduce the scale and add a slight sharpen rather than upscaling blurrily.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "H09",
+      "name": "Contrarian Hook",
+      "source_sections": [
+        "Hooks"
+      ],
+      "primary_section": "Hooks",
+      "source_occurrences": [
+        15
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the speaker does not explicitly state an opposing belief, ask the user for both statements rather than inventing a strawman.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "H10",
+      "name": "Cinematic Cold Open",
+      "source_sections": [
+        "Hooks"
+      ],
+      "primary_section": "Hooks",
+      "source_occurrences": [
+        16
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "B-roll footage",
+        "Music track",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without B-roll, use a slow crop of the most textural part of the source (hands, desk, window light). Never generate fake stock footage.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "C02",
+      "name": "Pop Word Captions",
+      "source_sections": [
+        "Captions"
+      ],
+      "primary_section": "Captions",
+      "source_occurrences": [
+        18
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without word timing, transcribe locally with Whisper before building this style. If that is impossible, use C06 Editorial Lower Thirds with line-level timing instead — word pops on guessed timing look visibly out of sync.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "C03",
+      "name": "Typewriter Subtitles",
+      "source_sections": [
+        "Captions"
+      ],
+      "primary_section": "Captions",
+      "source_occurrences": [
+        19
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "With only line-level SRT timing, run the reveal across each SRT cue's duration (capped at the cue end). Without any transcript, transcribe locally with Whisper first; do not type out text the speaker didn't say.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "C04",
+      "name": "Highlight Sweep",
+      "source_sections": [
+        "Captions"
+      ],
+      "primary_section": "Captions",
+      "source_occurrences": [
+        20
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If keywords can't be identified with confidence, ask the user to supply them. Without word timing, transcribe locally first; as a last resort apply highlights at the start of each line rather than mid-line on guessed timing.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "C05",
+      "name": "Stacked Captions",
+      "source_sections": [
+        "Captions"
+      ],
+      "primary_section": "Captions",
+      "source_occurrences": [
+        21
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If word timing is missing, phrase-level SRT timing is enough for this style — animate each stack on the cue start. Without any transcript, transcribe locally first rather than writing condensed copy.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "C06",
+      "name": "Editorial Lower Thirds",
+      "source_sections": [
+        "Captions"
+      ],
+      "primary_section": "Captions",
+      "source_occurrences": [
+        22
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Line-level SRT timing is sufficient for this style. Without a transcript, transcribe locally with Whisper; never condense or rewrite the dialogue for elegance.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "C07",
+      "name": "Explosive Keywords",
+      "source_sections": [
+        "Captions"
+      ],
+      "primary_section": "Captions",
+      "source_occurrences": [
+        23
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Sound effects",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without word timing, explosions cannot land on the word — transcribe locally first. If no clear keywords exist, ask the user which words matter rather than exploding filler.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "C08",
+      "name": "Subtitle Capsules",
+      "source_sections": [
+        "Captions"
+      ],
+      "primary_section": "Captions",
+      "source_occurrences": [
+        24
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Line-level SRT timing works if word timing is unavailable — use cue boundaries as phrase changes. Without any transcript, transcribe locally first.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "C09",
+      "name": "Monospace Terminal Captions",
+      "source_sections": [
+        "Captions"
+      ],
+      "primary_section": "Captions",
+      "source_occurrences": [
+        25
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without word timing, use phrase-level SRT cues and reveal each line's words evenly across its cue. Without a transcript, transcribe locally — never type out paraphrased 'code-like' text.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "C10",
+      "name": "Bilingual Caption Flow",
+      "source_sections": [
+        "Captions"
+      ],
+      "primary_section": "Captions",
+      "source_occurrences": [
+        26
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Transcript with timing"
+      ],
+      "optional_assets_original": [
+        "Document / PDF",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If no translation is supplied and translating is not approved, render primary captions only (as C06) and list the missing secondary-language file in the report. Never machine-translate silently.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "L01",
+      "name": "Vertical Split Screen",
+      "source_sections": [
+        "Layouts"
+      ],
+      "primary_section": "Layouts",
+      "source_occurrences": [
+        27
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Screen recording",
+        "B-roll footage",
+        "Second shot"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If no second source is supplied, ask for one — do not fill region B with invented UI or stock footage. A screen recording can be replaced by a sequence of supplied screenshots with slow pans.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "L02",
+      "name": "Picture-in-Picture Focus",
+      "source_sections": [
+        "Layouts"
+      ],
+      "primary_section": "Layouts",
+      "source_occurrences": [
+        28
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Screen recording",
+        "B-roll footage",
+        "Second shot"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a separate source (screen recording / B-roll), ask for one; do not pip the speaker over a duplicate of their own shot. If no clean corner exists, shrink the window to 24% width rather than covering essential content.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "L03",
+      "name": "Triple Stack",
+      "source_sections": [
+        "Layouts"
+      ],
+      "primary_section": "Layouts",
+      "source_occurrences": [
+        29
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Screen recording",
+        "B-roll footage",
+        "Screenshots",
+        "Second shot"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "With only two sources, use L01 Vertical Split Screen instead. Never fill the third band with a duplicate or invented asset.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "L04",
+      "name": "Floating Device Frame",
+      "source_sections": [
+        "Layouts"
+      ],
+      "primary_section": "Layouts",
+      "source_occurrences": [
+        30
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Screen recording"
+      ],
+      "optional_assets_original": [
+        "Source video",
+        "Screenshots",
+        "Brand logo"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If only screenshots are supplied, use them as stills inside the device with a slow scroll; never mock up UI that isn't in the supplied material. Without any screen material, ask for it.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "L05",
+      "name": "Editorial Sidebar",
+      "source_sections": [
+        "Layouts"
+      ],
+      "primary_section": "Layouts",
+      "source_occurrences": [
+        31
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Verified data",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If no heading or notes are supplied and the transcript lacks clear takeaways, ask the user for the panel copy. Never pad the sidebar with generic tips.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "L06",
+      "name": "Center Spotlight",
+      "source_sections": [
+        "Layouts"
+      ],
+      "primary_section": "Layouts",
+      "source_occurrences": [
+        32
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Second shot",
+        "B-roll footage"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the subject moves a lot, track the window to the face (or use a wider frame size) rather than letting them leave it; if tracking isn't possible, keep the effect to stationary sections.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "L07",
+      "name": "Grid Conversation",
+      "source_sections": [
+        "Layouts"
+      ],
+      "primary_section": "Layouts",
+      "source_occurrences": [
+        33
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Second shot"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "With a single camera, don't fake extra participants — use L02 Picture-in-Picture with supplied reference media instead. Missing feeds should be reported, not filled with placeholders.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "L08",
+      "name": "Cinematic Letterbox",
+      "source_sections": [
+        "Layouts"
+      ],
+      "primary_section": "Layouts",
+      "source_occurrences": [
+        34
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If key content (faces, on-screen text) can't fit the band, use the 'fit' reframing with a blurred fill, or limit the letterbox to B-roll shots and keep talking-head sections full frame.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "L09",
+      "name": "Collage Canvas",
+      "source_sections": [
+        "Layouts"
+      ],
+      "primary_section": "Layouts",
+      "source_occurrences": [
+        35
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Photos"
+      ],
+      "optional_assets_original": [
+        "Source video",
+        "Subject mask / matte",
+        "Screenshots",
+        "Brand logo"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "With fewer than three supplied visuals, reduce the card count or use B02 Floating Screenshot Cards; never pad the collage with stock or generated imagery.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "L10",
+      "name": "Adaptive Proof Panel",
+      "source_sections": [
+        "Layouts"
+      ],
+      "primary_section": "Layouts",
+      "source_occurrences": [
+        36
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Screenshots"
+      ],
+      "optional_assets_original": [
+        "Social comment",
+        "Document / PDF",
+        "Verified data",
+        "Screen recording"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without supplied evidence, do not use this layout — keep the speaker full-frame and note in the report which claim lacked proof.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "P02",
+      "name": "Comment Spotlight",
+      "source_sections": [
+        "Proof"
+      ],
+      "primary_section": "Proof",
+      "source_occurrences": [
+        38
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Social comment"
+      ],
+      "optional_assets_original": [
+        "Screenshots",
+        "Transcript with timing"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a real comment (screenshot or exact text with permission), omit the beat — never write a sample comment, invent a handle or paraphrase feedback as if it were a quote. If the speaker reads a comment aloud, you may caption their spoken words as speech, not as a comment card.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "P03",
+      "name": "Metrics Count-Up",
+      "source_sections": [
+        "Proof"
+      ],
+      "primary_section": "Proof",
+      "source_occurrences": [
+        39
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Verified data"
+      ],
+      "optional_assets_original": [
+        "Screenshots",
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If no verified value or source is supplied, skip the counter and ask for the data. If the user can share a dashboard screenshot instead, use P01 Screenshot Punch with the real capture. Never animate a number that you calculated, rounded up or approximated from vague speech.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "P04",
+      "name": "Before and After Wipe",
+      "source_sections": [
+        "Proof"
+      ],
+      "primary_section": "Proof",
+      "source_occurrences": [
+        40
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Before & after pair"
+      ],
+      "optional_assets_original": [
+        "Source video",
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If only one image exists, or the two are not aligned (different angles/zoom), do not fake the missing state or morph one into the other. Use a simple side-by-side or sequential cut with clear labels instead, and flag that a true wipe needs matching framing.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "P05",
+      "name": "Search-to-Result",
+      "source_sections": [
+        "Proof"
+      ],
+      "primary_section": "Proof",
+      "source_occurrences": [
+        41
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Screenshots"
+      ],
+      "optional_assets_original": [
+        "Screen recording",
+        "Website capture",
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a real result capture, show only the typed query as a typographic beat (it is the speaker's own words) and do not fabricate a results page. Ask the user to capture the result page or supply a screen recording of the search.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "P06",
+      "name": "Receipt Stack",
+      "source_sections": [
+        "Proof"
+      ],
+      "primary_section": "Proof",
+      "source_occurrences": [
+        42
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Screenshots"
+      ],
+      "optional_assets_original": [
+        "Social comment",
+        "Document / PDF",
+        "Source video",
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "With only one real capture, use P01 Screenshot Punch instead. If captures contain data the user cannot share, redact it or drop that card — never replace it with a recreated or 'example' receipt.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "P07",
+      "name": "Annotation Marker",
+      "source_sections": [
+        "Proof"
+      ],
+      "primary_section": "Proof",
+      "source_occurrences": [
+        43
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Screenshots"
+      ],
+      "optional_assets_original": [
+        "Source video",
+        "Screen recording"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a supplied screenshot there is nothing to annotate — do not draw onto a recreated interface. If the target cannot be located confidently, ask the user for coordinates or a marked-up reference image.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "P08",
+      "name": "Timeline Evidence",
+      "source_sections": [
+        "Proof"
+      ],
+      "primary_section": "Proof",
+      "source_occurrences": [
+        44
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Verified data"
+      ],
+      "optional_assets_original": [
+        "Screenshots",
+        "Document / PDF",
+        "Photos",
+        "Source video"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If events lack dates or sources, show only those that have both and ask about the rest. With no supplied events at all, omit the timeline — never reconstruct a chronology from assumptions.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "P09",
+      "name": "Quote Card Reveal",
+      "source_sections": [
+        "Proof"
+      ],
+      "primary_section": "Proof",
+      "source_occurrences": [
+        45
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Quotation text"
+      ],
+      "optional_assets_original": [
+        "Source video",
+        "Brand fonts",
+        "Photos"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the exact wording or the attribution is missing, do not present the line as a quotation. Either ask the user for the sourced quote, or show the speaker's own sentence as a statement (V10 Statement Reveal) without quote marks or an author.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "P10",
+      "name": "App UI Breakdown",
+      "source_sections": [
+        "Proof"
+      ],
+      "primary_section": "Proof",
+      "source_occurrences": [
+        46
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Screenshots"
+      ],
+      "optional_assets_original": [
+        "Screen recording",
+        "Source video",
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a real capture of the interface, do not build a mock UI and present it as the product. Ask for a screenshot or recording; until then, explain the feature with V07 Callout Bubble on the speaker, clearly without showing an interface.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "V01",
+      "name": "Kinetic Section Title",
+      "source_sections": [
+        "Visual Beats"
+      ],
+      "primary_section": "Visual Beats",
+      "source_occurrences": [
+        47
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Brand fonts"
+      ],
+      "asset_note": "Authored heading suffices for limited text adaptation; original footage technique remains unsupported.",
+      "original_fallback": "If no title is supplied and the transcript has no clear chapter phrasing, ask for the section name rather than inventing one. Without brand fonts use Space Grotesk Bold.",
+      "status": "render_tested_heading_adaptation",
+      "native_scope": "authored-heading-only"
+    },
+    {
+      "id": "V02",
+      "name": "Number Burst",
+      "source_sections": [
+        "Visual Beats"
+      ],
+      "primary_section": "Visual Beats",
+      "source_occurrences": [
+        48
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Verified data",
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the script contains no explicit numbers, skip this beat — do not create rankings or figures to fill it. Without SFX the visual pop works alone.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "V03",
+      "name": "Keyword Spotlight",
+      "source_sections": [
+        "Visual Beats"
+      ],
+      "primary_section": "Visual Beats",
+      "source_occurrences": [
+        49
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Transcript with timing"
+      ],
+      "optional_assets_original": [
+        "Brand fonts"
+      ],
+      "asset_note": "Authored heading suffices for limited text adaptation; original footage technique remains unsupported.",
+      "original_fallback": "Without word-level timing, align the spotlight to the sentence and verify by listening. If no phrase is clearly emphasised, ask which one to use rather than choosing arbitrarily.",
+      "status": "render_tested_heading_adaptation",
+      "native_scope": "authored-heading-only"
+    },
+    {
+      "id": "V04",
+      "name": "List Cascade",
+      "source_sections": [
+        "Visual Beats"
+      ],
+      "primary_section": "Visual Beats",
+      "source_occurrences": [
+        50
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the speaker's list is implicit, ask the user to confirm the items. For lists over 6 items, split into two cascades rather than shrinking the type.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "V05",
+      "name": "Comparison Collision",
+      "source_sections": [
+        "Visual Beats"
+      ],
+      "primary_section": "Visual Beats",
+      "source_occurrences": [
+        51
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Product image",
+        "Screenshots",
+        "Transcript with timing"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the script only names one option, use V03 Keyword Spotlight instead. Never add a competitor or a claim about either option that the speaker did not make.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "V06",
+      "name": "Progress Journey",
+      "source_sections": [
+        "Visual Beats"
+      ],
+      "primary_section": "Visual Beats",
+      "source_occurrences": [
+        52
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without clear stages, show a simple unlabelled progress bar tied to video runtime — but only if it is honest (actual time), not a fake percentage.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "V07",
+      "name": "Callout Bubble",
+      "source_sections": [
+        "Visual Beats"
+      ],
+      "primary_section": "Visual Beats",
+      "source_occurrences": [
+        53
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Subject mask / matte"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the object moves too much to track reliably, freeze the frame briefly (M04) or place the label as a lower-third instead of attaching it.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "V08",
+      "name": "Shape Morph",
+      "source_sections": [
+        "Visual Beats"
+      ],
+      "primary_section": "Visual Beats",
+      "source_occurrences": [
+        54
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "core_renderer",
+      "required_assets_original": [],
+      "optional_assets_original": [
+        "Source video",
+        "Brand logo"
+      ],
+      "asset_note": "No required assets in original source; core renderer missing. Optional inputs remain optional.",
+      "original_fallback": "If path morphing is unavailable, approximate with a single element animating border-radius (circle ↔ square) and a clip-path polygon cross-fade for the triangle.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "V09",
+      "name": "Data Visualization Beat",
+      "source_sections": [
+        "Visual Beats"
+      ],
+      "primary_section": "Visual Beats",
+      "source_occurrences": [
+        55
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Verified data"
+      ],
+      "optional_assets_original": [
+        "Source video",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without supplied data, omit the chart — never draw an illustrative chart with made-up values. If the speaker states one exact number, use P03 Metrics Count-Up for that figure instead.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "V10",
+      "name": "Statement Reveal",
+      "source_sections": [
+        "Visual Beats"
+      ],
+      "primary_section": "Visual Beats",
+      "source_occurrences": [
+        56
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Brand fonts"
+      ],
+      "asset_note": "Authored heading suffices for limited text adaptation; original footage technique remains unsupported.",
+      "original_fallback": "Without word timing, pace at the chosen words-per-second and nudge chunks to audible phrase breaks. Never rewrite the speaker's sentence; trim only with an ellipsis if the user approves.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "B01",
+      "name": "Browser Flythrough",
+      "source_sections": [
+        "Animated B-Roll"
+      ],
+      "primary_section": "Animated B-Roll",
+      "source_occurrences": [
+        57
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Screenshots"
+      ],
+      "optional_assets_original": [
+        "Website capture",
+        "Screen recording"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If only a URL is supplied, capture the page with a headless browser (e.g. Playwright full-page screenshot at 2× pixel ratio, 390–430px mobile width or 1440px desktop) and confirm with the user that it is current. If neither a capture nor a URL exists, ask for one — never mock up a website. With only a screen recording, apply the same crops and holds to its frames but keep its own timing.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "B03",
+      "name": "Device Showcase",
+      "source_sections": [
+        "Animated B-Roll"
+      ],
+      "primary_section": "Animated B-Roll",
+      "source_occurrences": [
+        59
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Screen recording"
+      ],
+      "optional_assets_original": [
+        "Screenshots",
+        "Brand logo"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "With only a still screenshot, place it on the device screen and add a slow 6–10% internal scroll so the screen is not frozen. If 3D transforms are unavailable, use a frontal device with a gentle 2D scale and rise only.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "B05",
+      "name": "Parallax Photo Depth",
+      "source_sections": [
+        "Animated B-Roll"
+      ],
+      "primary_section": "Animated B-Roll",
+      "source_occurrences": [
+        61
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Photos"
+      ],
+      "optional_assets_original": [
+        "Subject mask / matte"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without separated layers or a subject matte, use the conservative 2D push-and-drift only. If the user wants true parallax, ask for layered exports (e.g. from the photo editor) or a clean background plate; never auto-generate missing background.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "B06",
+      "name": "Product Cutout Reveal",
+      "source_sections": [
+        "Animated B-Roll"
+      ],
+      "primary_section": "Animated B-Roll",
+      "source_occurrences": [
+        62
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Product image"
+      ],
+      "optional_assets_original": [
+        "Brand logo",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If no transparent cutout exists, frame the original product photo as a rounded card on the same backdrop instead of attempting a rough cutout. Never redraw or generate a product image.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "B07",
+      "name": "Animated Map Journey",
+      "source_sections": [
+        "Animated B-Roll"
+      ],
+      "primary_section": "Animated B-Roll",
+      "source_occurrences": [
+        63
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Map locations"
+      ],
+      "optional_assets_original": [
+        "Verified data"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If no locations or coordinates are supplied, ask for them. If licensed map tiles are not available, render coastlines and borders from open vector data (e.g. Natural Earth) as a flat minimal map rather than screenshotting a commercial map service.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "B09",
+      "name": "Document Flyover",
+      "source_sections": [
+        "Animated B-Roll"
+      ],
+      "primary_section": "Animated B-Roll",
+      "source_occurrences": [
+        65
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Document / PDF"
+      ],
+      "optional_assets_original": [
+        "Screenshots"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If only a photo of the document exists, deskew and flatten it first; if the passage cannot be located reliably, ask the user for the page and line. Never retype a document as a mock page.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "B10",
+      "name": "Interface Component Breakdown",
+      "source_sections": [
+        "Animated B-Roll"
+      ],
+      "primary_section": "Animated B-Roll",
+      "source_occurrences": [
+        66
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Screenshots"
+      ],
+      "optional_assets_original": [
+        "Screen recording"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the screenshot cannot be cleanly separated (overlapping translucent elements), explode only the 2–3 layers with clear boundaries, or use a flat front stagger with outlines drawn around each region instead.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "X04",
+      "name": "UI World",
+      "source_sections": [
+        "Signature Effects"
+      ],
+      "primary_section": "Signature Effects",
+      "source_occurrences": [
+        70
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Screenshots"
+      ],
+      "optional_assets_original": [
+        "Subject mask / matte",
+        "Screen recording"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a matte, use the 2D layout: all panels float in front of the footage around the edges with a clear zone for the face. If only one or two screenshots exist, use B02 Floating Screenshot Cards instead of repeating the same screen many times.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "X05",
+      "name": "Infinite Zoom Tunnel",
+      "source_sections": [
+        "Signature Effects"
+      ],
+      "primary_section": "Signature Effects",
+      "source_occurrences": [
+        71
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Photos"
+      ],
+      "optional_assets_original": [
+        "Screenshots",
+        "B-roll footage"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "With fewer than 3 images, create a simpler two-layer zoom-through transition (M01-style punch from one image into the next). If images are low resolution, increase the nesting ratio less and reduce layer time so no layer is shown enlarged past its native pixels.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "X06",
+      "name": "Magnetic Mosaic",
+      "source_sections": [
+        "Signature Effects"
+      ],
+      "primary_section": "Signature Effects",
+      "source_occurrences": [
+        72
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Photos"
+      ],
+      "optional_assets_original": [
+        "Screenshots",
+        "Brand logo"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "With a single low-resolution image, use a 3×3 grid so tiles are not shown enlarged. Without any images, ask for them — never generate mosaic content.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "X07",
+      "name": "Reality Portal",
+      "source_sections": [
+        "Signature Effects"
+      ],
+      "primary_section": "Signature Effects",
+      "source_occurrences": [
+        73
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Second shot"
+      ],
+      "optional_assets_original": [
+        "Subject mask / matte",
+        "B-roll footage",
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a subject matte, open the portal in clear space beside the subject and use it as an expanding transition. Without a second shot, ask for one — do not generate an environment.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "X08",
+      "name": "Clone Echo",
+      "source_sections": [
+        "Signature Effects"
+      ],
+      "primary_section": "Signature Effects",
+      "source_occurrences": [
+        74
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Subject mask / matte"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a reliable matte, use the whole-frame time echo (blended delayed frames) — it smears moving areas but leaves the static background intact. If the subject barely moves during the range, choose a moment with clear motion or skip the effect.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "X09",
+      "name": "Cinematic Carousel",
+      "source_sections": [
+        "Signature Effects"
+      ],
+      "primary_section": "Signature Effects",
+      "source_occurrences": [
+        75
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Screenshots"
+      ],
+      "optional_assets_original": [
+        "Photos",
+        "B-roll footage",
+        "Screen recording"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "With fewer than three panels, use B02 Floating Screenshot Cards. If 3D transforms are unavailable, fake the carousel in 2D: a horizontal row where the centre card is large and bright and side cards are scaled 0.7×, offset and dimmed.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "X10",
+      "name": "Blueprint Universe",
+      "source_sections": [
+        "Signature Effects"
+      ],
+      "primary_section": "Signature Effects",
+      "source_occurrences": [
+        76
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Transcript with timing"
+      ],
+      "optional_assets_original": [
+        "Screenshots",
+        "Photos",
+        "Document / PDF",
+        "Brand fonts"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If no source visual is supplied, start directly on the blueprint field. If the transcript doesn't describe a clear system, ask for the component list rather than inventing an architecture.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "M01",
+      "name": "Snap Zoom",
+      "source_sections": [
+        "Motion Pace"
+      ],
+      "primary_section": "Motion Pace",
+      "source_occurrences": [
+        77
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Music track"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the source lacks resolution headroom, reduce the zoom to what the pixels allow (often 1.10–1.15x for 1080p into 1080p) and add a light unsharp mask instead of upscaling. Without word timing, ask the user to point to the beat.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "M02",
+      "name": "Whip Transition",
+      "source_sections": [
+        "Motion Pace"
+      ],
+      "primary_section": "Motion Pace",
+      "source_occurrences": [
+        78
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Second shot",
+        "B-roll footage",
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If both shots are static and very similar, a whip can feel unmotivated — use a simple hard cut or a mask swipe (M09) instead. If motion blur rendering is too slow, use a 3-frame tmix blend around the cut.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "M04",
+      "name": "Freeze Beat",
+      "source_sections": [
+        "Motion Pace"
+      ],
+      "primary_section": "Motion Pace",
+      "source_occurrences": [
+        80
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing",
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If no frame is sharp enough (heavy motion blur), freeze 1–3 frames later on a steadier frame, or use a snap zoom (M01) instead of a freeze.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "M05",
+      "name": "Rhythm Cuts",
+      "source_sections": [
+        "Motion Pace"
+      ],
+      "primary_section": "Motion Pace",
+      "source_occurrences": [
+        81
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Music track",
+        "Transcript with timing",
+        "B-roll footage"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "No music and no transcript? Ask for one of them, or derive phrasing markers from silence detection (ffmpeg silencedetect=noise=-35dB:d=0.18). Never invent a beat grid from a guessed BPM.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "M06",
+      "name": "Speed Ramp",
+      "source_sections": [
+        "Motion Pace"
+      ],
+      "primary_section": "Motion Pace",
+      "source_occurrences": [
+        82
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Music track",
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "With 24–30fps source and no interpolation available, keep the slow speed at ≥ 0.5x or use a freeze beat (M04) instead; never present stepped frames as smooth slow motion.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "M07",
+      "name": "Subtle Camera Shake",
+      "source_sections": [
+        "Motion Pace"
+      ],
+      "primary_section": "Motion Pace",
+      "source_occurrences": [
+        83
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the footage is already handheld and shaky, reduce amplitude by half or use a single 2-frame offset instead; never stack shake on shake.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "M08",
+      "name": "Seamless Match Cut",
+      "source_sections": [
+        "Motion Pace"
+      ],
+      "primary_section": "Motion Pace",
+      "source_occurrences": [
+        84
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Second shot"
+      ],
+      "optional_assets_original": [
+        "B-roll footage"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If no second shot is supplied or no element genuinely matches, do not fake one — use a whip transition (M02) or a clean cut, and tell the user what kind of shot B would enable a match cut.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "M09",
+      "name": "Mask Swipe",
+      "source_sections": [
+        "Motion Pace"
+      ],
+      "primary_section": "Motion Pace",
+      "source_occurrences": [
+        85
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Second shot",
+        "B-roll footage"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Mask swipes need no special assets. If the incoming shot is missing, wipe to a solid brand-colour card or the next sequence beat instead of an invented visual.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "M10",
+      "name": "Stutter Motion",
+      "source_sections": [
+        "Motion Pace"
+      ],
+      "primary_section": "Motion Pace",
+      "source_occurrences": [
+        86
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Music track",
+        "Transcript with timing"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If there is no clear beat, use a single freeze beat (M04) or skip the effect; a random stutter reads as a playback error.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "S01",
+      "name": "Impact Hit",
+      "source_sections": [
+        "Sound"
+      ],
+      "primary_section": "Sound",
+      "source_occurrences": [
+        87
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Sound effects"
+      ],
+      "optional_assets_original": [
+        "Music track"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If no licensed impact sound is supplied, request one and render the moment without it (silence-based fallback) — or use the S05 silence drop to create emphasis with no new audio.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "S02",
+      "name": "Cinematic Whoosh",
+      "source_sections": [
+        "Sound"
+      ],
+      "primary_section": "Sound",
+      "source_occurrences": [
+        88
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Sound effects"
+      ],
+      "optional_assets_original": [],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a licensed whoosh, request one and render the transition dry; the visual transition still works. Never generate a white-noise sweep and present it as a designed sound.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "S03",
+      "name": "Tension Riser",
+      "source_sections": [
+        "Sound"
+      ],
+      "primary_section": "Sound",
+      "source_occurrences": [
+        89
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Sound effects"
+      ],
+      "optional_assets_original": [
+        "Music track"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a licensed riser, request one; meanwhile build anticipation visually and use a silence drop (S05) on the reveal. Do not synthesise a pseudo-riser and present it as finished sound design.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "S04",
+      "name": "Keyboard Ticks",
+      "source_sections": [
+        "Sound"
+      ],
+      "primary_section": "Sound",
+      "source_occurrences": [
+        90
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Sound effects"
+      ],
+      "optional_assets_original": [],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without licensed key-click samples, request them and keep the typing silent. Recording a few real keystrokes on the user's own keyboard is a valid self-made alternative.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "S05",
+      "name": "Silence Drop",
+      "source_sections": [
+        "Sound"
+      ],
+      "primary_section": "Sound",
+      "source_occurrences": [
+        91
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Music track",
+        "Transcript with timing"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Silence drops need no new assets. If the video has no music or effects to drop, ask whether a short dialogue pause is acceptable, or skip the technique.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "S06",
+      "name": "Beat Synchronization",
+      "source_sections": [
+        "Sound"
+      ],
+      "primary_section": "Sound",
+      "source_occurrences": [
+        92
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Music track"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "No music supplied: request a licensed or self-owned track. Until then, sync to speech phrasing from the transcript and leave the music lane empty — never download a copyrighted song.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "S07",
+      "name": "Subtle Foley Accents",
+      "source_sections": [
+        "Sound"
+      ],
+      "primary_section": "Sound",
+      "source_occurrences": [
+        93
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Sound effects"
+      ],
+      "optional_assets_original": [
+        "Screen recording"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without licensed foley, request a small sample set or record simple taps/slides locally (self-made is fine). Otherwise leave the interactions silent.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "S08",
+      "name": "Dynamic Voice Ducking",
+      "source_sections": [
+        "Sound"
+      ],
+      "primary_section": "Sound",
+      "source_occurrences": [
+        94
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Music track"
+      ],
+      "optional_assets_original": [
+        "Transcript with timing"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "With no music bed there is nothing to duck — skip the style. If the voice track cannot be separated from the music, use transcript-based keyframes instead of a sidechain.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "S09",
+      "name": "Transition Bass Pulse",
+      "source_sections": [
+        "Sound"
+      ],
+      "primary_section": "Sound",
+      "source_occurrences": [
+        95
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "Sound effects",
+        "Music track"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "No sample supplied: generate a simple sine pulse locally (self-made audio is acceptable), or skip the accent. Never download a branded or copyrighted sub-drop.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "S10",
+      "name": "Outro Audio Resolve",
+      "source_sections": [
+        "Sound"
+      ],
+      "primary_section": "Sound",
+      "source_occurrences": [
+        96
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video",
+        "Music track"
+      ],
+      "optional_assets_original": [
+        "Sound effects"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "No music supplied: request a licensed or self-owned track, or close on natural room tone with a gentle 1s fade. Never pull music from the internet.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "F01",
+      "name": "Clean Creator Grade",
+      "source_sections": [
+        "Colour & Finish"
+      ],
+      "primary_section": "Colour & Finish",
+      "source_occurrences": [
+        97
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "LUT file"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If shots were filmed under mixed lighting that cannot be neutralised with one balance, correct each shot's white balance individually first, then apply this grade uniformly. If the footage is already well balanced Rec.709, apply only the contrast/saturation trims at 50% strength.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "F02",
+      "name": "Warm Editorial",
+      "source_sections": [
+        "Colour & Finish"
+      ],
+      "primary_section": "Colour & Finish",
+      "source_occurrences": [
+        98
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "LUT file"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the footage already has strong warm tungsten light, reduce warmth to 0–200 K and rely on the cream highlights alone. Mixed daylight/tungsten shots should be neutralised individually before the look.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "F03",
+      "name": "Cool Technology",
+      "source_sections": [
+        "Colour & Finish"
+      ],
+      "primary_section": "Colour & Finish",
+      "source_occurrences": [
+        99
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "LUT file",
+        "Screen recording"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the footage was shot under warm tungsten light and the cool shift turns skin grey even with protection, halve the Kelvin shift and push the coolness into the shadows only (colorbalance shadows) instead of the whole image.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "F04",
+      "name": "Cinematic Teal Shadows",
+      "source_sections": [
+        "Colour & Finish"
+      ],
+      "primary_section": "Colour & Finish",
+      "source_occurrences": [
+        100
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "LUT file"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If faces are lit dimly and fall under the luma pivot, raise the pivot or relight via an exposure power window on the face before the tint; if skin protection cannot be keyed cleanly (orange walls, wood), lower shadow amount to 25% and skip the highlight warmth.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "F05",
+      "name": "Modern Monochrome",
+      "source_sections": [
+        "Colour & Finish"
+      ],
+      "primary_section": "Colour & Finish",
+      "source_occurrences": [
+        101
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "LUT file"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If skin and background sit at the same grey after conversion, switch the channel-mix filter (red ↔ blue) before adding contrast; for very flat footage raise contrast in two stages rather than crushing blacks.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "F06",
+      "name": "Bold Pop Colour",
+      "source_sections": [
+        "Colour & Finish"
+      ],
+      "primary_section": "Colour & Finish",
+      "source_occurrences": [
+        102
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "LUT file"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the set is mostly beige or grey there is little colour to pop — apply at 50% strength and let the accent colour come from graphics instead. If skin cannot be keyed cleanly (warm walls), lower saturation to 125% rather than risk orange faces.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "F07",
+      "name": "Soft Pastel Film",
+      "source_sections": [
+        "Colour & Finish"
+      ],
+      "primary_section": "Colour & Finish",
+      "source_occurrences": [
+        103
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "LUT file"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the footage is heavily compressed, lifted blacks will reveal macro-blocking — reduce the black lift to 5–6% and add fine grain (F08) to mask it.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "F08",
+      "name": "Film Grain & Bloom",
+      "source_sections": [
+        "Colour & Finish"
+      ],
+      "primary_section": "Colour & Finish",
+      "source_occurrences": [
+        104
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the final delivery platform recompresses heavily, reduce grain to 15–20% and use the fine size, otherwise it turns into blocky noise. Without visible highlights (flat overcast footage), skip the bloom and keep only grain.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "F09",
+      "name": "Analog Tape Texture",
+      "source_sections": [
+        "Colour & Finish"
+      ],
+      "primary_section": "Colour & Finish",
+      "source_occurrences": [
+        105
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "If the footage is already soft or low-resolution, halve the chroma offset and scanline opacity so the image does not degrade further. For platforms that recompress hard, prefer offsets + colour fade and skip the noise.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    },
+    {
+      "id": "F10",
+      "name": "Premium Commercial Finish",
+      "source_sections": [
+        "Colour & Finish"
+      ],
+      "primary_section": "Colour & Finish",
+      "source_occurrences": [
+        106
+      ],
+      "conflict": false,
+      "baseline_readiness": "fallback",
+      "implementation_track": "needs_assets_and_core_renderer",
+      "required_assets_original": [
+        "Source video"
+      ],
+      "optional_assets_original": [
+        "LUT file",
+        "Product image"
+      ],
+      "asset_note": "Original asset requirements remain blockers; a native renderer is also required. Assets alone do not implement this effect.",
+      "original_fallback": "Without a product reference, match product colour across shots to the best-exposed shot rather than to an absolute value, and say so. If the footage is noisy, keep sharpening ≤ 15% so noise is not amplified.",
+      "status": "not_implemented",
+      "native_scope": "none"
+    }
+  ]
+}

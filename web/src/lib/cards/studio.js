@@ -64,7 +64,9 @@ function styleCtx(ctx, spec) {
 
 /* ======================= COPIED FROM STUDIO (begin) ======================= */
 /* ---------- card templates: rendered in-page to a real PNG ---------- */
-const CARD_SIZES = { regulab: [1080, 1080], linkedin: [1080, 1350] };
+// ws.regulab posts go to Instagram, Facebook and Threads; Instagram's grid is portrait now and cut the square cards at the
+// sides (Wan, 24 Oct 2026, with a screenshot of the feed): every card is 4:5, the same shape as the LinkedIn carousel
+const CARD_SIZES = { regulab: [1080, 1350], linkedin: [1080, 1350] };
 
 const GRID_TPL = { g_title: 1, g_stat: 1, g_bars: 1, g_rows: 1, g_table: 1 };
 const GRID_DARK = { g_stat: 1, g_table: 1 };

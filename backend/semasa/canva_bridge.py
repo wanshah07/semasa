@@ -38,7 +38,7 @@ log = get_logger("semasa.canva_bridge")
 
 MYT = timedelta(hours=8)
 OPEN = ("draft", "approved")
-SIZES = {"regulab": (1080, 1080), "linkedin": (1080, 1350)}
+SIZES = {"regulab": (1080, 1350), "linkedin": (1080, 1350)}       # 4:5 on both streams since 24 Oct 2026
 MAX_PAGES = 10
 MAX_BYTES = 15 * 1024 * 1024
 # Canva serves an export from its own download host; anything else is refused before a byte is fetched.

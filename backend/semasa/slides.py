@@ -34,7 +34,8 @@ DISPLAY = FONTS / "Fraunces-SemiBold.ttf"
 BODY = FONTS / "Inter-Regular.ttf"
 BODY_BOLD = FONTS / "Inter-SemiBold.ttf"
 
-SIZES = {"regulab": (1080, 1080), "linkedin": (1080, 1350)}
+# 4:5 on both streams (24 Oct 2026): Instagram's portrait grid cut the square ws.regulab cards at the sides
+SIZES = {"regulab": (1080, 1350), "linkedin": (1080, 1350)}
 # The Design tab's shapes (web/src/pages/DesignTab.jsx): a feed square, a 4:5 portrait poster and a 9:16 story.
 FORMATS = {"square": (1080, 1080), "portrait": (1080, 1350), "story": (1080, 1920)}
 

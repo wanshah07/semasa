@@ -28,7 +28,7 @@ def test_sizes_count_and_format_per_stream():
     reg = slides.render(GOOD, stream="regulab", website="www.kkmhalalconsultant.com", source="NPRA")
     li = slides.render(GOOD, stream="linkedin", source="EC 1223/2009")
     assert len(reg) == len(li) == 3
-    assert all(_img(b).size == (1080, 1080) for b in reg)
+    assert all(_img(b).size == (1080, 1350) for b in reg), "4:5 on ws.regulab too since 24 Oct 2026"
     assert all(_img(b).size == (1080, 1350) for b in li)
     assert all(b[:2] == b"\xff\xd8" for b in reg + li)
 
@@ -64,8 +64,11 @@ def test_long_tokens_and_long_text_stay_inside_the_card():
 
 def test_a_word_is_never_cut_too_long_is_an_error_naming_the_slide():
     too_long = GOOD[:1] + [{"title": "Panjang", "points": ["perkataan " * 80] * 5}]
+    # the 4:5 stream card now holds the most a slide may carry (5 points of 400 characters); the shorter Design-tab square
+    # is where "too long" still happens
     with pytest.raises(slides.SlideError, match=r"slide 2: too long"):
-        slides.render(too_long)
+        slides.render(too_long, size=(1080, 1080))
+    assert len(slides.render(too_long)) == 2
 
 
 def test_hard_split_only_splits_what_does_not_fit():
@@ -184,6 +187,7 @@ def test_a_slide_that_cannot_fit_is_a_final_error_naming_it(monkeypatch):
     store = _job_store()
     row = store.tables["media_generations"][0]
     row["meta"]["slides"] = GOOD[:1] + [{"title": "P", "points": ["perkataan " * 80] * 5}]
+    row["meta"].update(design="carousel", size=[1080, 1080])        # the Design tab's square: 4:5 now fits any slide
     assert media_generator.process_row(store, row, _settings(), {}) is False
     got = store.tables["media_generations"][0]
     assert got["status"] == "error" and "slide 2: too long" in got["error"]

@@ -22,7 +22,7 @@ from .log import get_logger
 log = get_logger("semasa.design")
 
 DESIGNS = ("poster", "card", "carousel")
-DEFAULT_FORMAT = {"poster": "portrait", "card": "square"}        # a carousel follows its stream
+DEFAULT_FORMAT = {"poster": "portrait", "card": "portrait"}      # a carousel follows its stream; a card is 4:5 too (24 Oct 2026)
 
 COMMON = """Rules. Breaking any of them blocks the artwork:
 1. No call to action of any kind ("hubungi kami", "DM", "klik link", "follow", "semak kelayakan", "comment below").

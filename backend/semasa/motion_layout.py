@@ -252,7 +252,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
 
 def layout_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The check's errors that mean words collide, are hidden or leave the frame."""
-    code = re.compile(r"overlap|occlud|overflow|clipped|out_of_|off_?(?:frame|canvas|screen)|cut_?off|truncat", re.I)
+    code = re.compile(r"overlap|occlud|overflow|clipped|on_photo|out_of_|off_?(?:frame|canvas|screen)|cut_?off|truncat", re.I)
     said = re.compile(r"overlap|occlud|clipped|cut off|outside (?:the )?(?:frame|canvas|safe)", re.I)
-    return [f for f in findings if code.search(str(f.get("code") or "")) or said.search(str(f.get("message") or ""))]
+    return [f for f in findings if f.get("code") != "probe_unavailable"
+            and (code.search(str(f.get("code") or "")) or said.search(str(f.get("message") or "")))]
 

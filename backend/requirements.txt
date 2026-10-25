@@ -11,3 +11,4 @@ gdown>=5.2
 pypdf>=5.0
 segno>=1.6
 edge-tts>=7.2
+gTTS>=2.5

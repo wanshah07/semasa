@@ -16,6 +16,7 @@ import asyncio
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -27,13 +28,16 @@ VOICES = {
     "bm": {"male": "ms-MY-OsmanNeural", "female": "ms-MY-YasminNeural"},
     "en": {"male": "en-US-AndrewMultilingualNeural", "female": "en-US-AvaMultilingualNeural"},
 }
-# a narrated film is brisk (Wan, 25 Oct 2026: "for video with narrator make it faster rate"): English +15%, Malay +25%
-RATE = "+15%"
-RATE_BM = "+25%"
+# a narrated film is brisk (Wan, 25 Oct 2026: "for video with narrator make it faster rate"): English x1.15, Malay x1.25. The
+# speed is applied AFTER the recording, with ffmpeg's pitch-keeping atempo: on GitHub's runner the service answered "No audio
+# was received" for every request that carried a rate or a boundary setting (25 Oct 2026, three runs), while the plain call
+# that the first voiced films used (24 Oct) still works.
+TEMPO_EN = 1.15
+TEMPO_BM = 1.25
 
 
-def rate_for(voice: str) -> str:
-    return RATE_BM if voice.startswith("ms-MY-") else RATE
+def tempo_for(voice: str) -> float:
+    return TEMPO_BM if voice.startswith("ms-MY-") else TEMPO_EN
 
 
 def voice_for(language: str, choice: str) -> str:
@@ -45,15 +49,9 @@ def voice_for(language: str, choice: str) -> str:
     return c or VOICES[lang]["male"]
 
 
-# The service answered "No audio was received" when word boundaries were requested, on GitHub's runner (25 Oct 2026, the film
-# came out silent), while sentence boundaries have always returned audio. So word boundaries are tried first and, the first time
-# they fail or return nothing, every later call in this process goes straight to sentences.
-_WORD_OK = True
-
-
 def spread(text: str, start: float, end: float) -> list[tuple[float, float, str]]:
-    """Words of one spoken sentence timed across its real span [start, end], each in proportion to its length (a flap of the
-    mouth per word, never a caption timestamp). Real word timing is used whenever the service gives it."""
+    """Words of one spoken sentence timed across its real span [start, end], each in proportion to its length. Real word timing
+    is used whenever the service gives it."""
     words = text.split()
     if not words or end <= start:
         return []
@@ -67,12 +65,12 @@ def spread(text: str, start: float, end: float) -> list[tuple[float, float, str]
     return out
 
 
-async def _synth(text: str, voice: str, out: Path, boundary: str = "WordBoundary") -> list[tuple[float, float, str]]:
+async def _synth(text: str, voice: str, out: Path) -> list[tuple[float, float, str]]:
+    """The plain call: no rate, no boundary setting. Word times from whatever boundary events the service sends."""
     import edge_tts
     words: list[tuple[float, float, str]] = []
     with out.open("wb") as f:
-        comm = edge_tts.Communicate(text, voice, rate=rate_for(voice), boundary=boundary)
-        async for chunk in comm.stream():
+        async for chunk in edge_tts.Communicate(text, voice).stream():
             kind = chunk["type"]
             if kind == "audio":
                 f.write(chunk["data"])
@@ -101,6 +99,25 @@ def kitten_ready() -> bool:
     return bool(os.environ.get("VOICESTUDIO_PYTHON") and os.environ.get("VOICESTUDIO_ROOT"))
 
 
+def fallback(text: str, voice: str, out: Path, runner: Any, edge_error: Exception) -> dict[str, Any]:
+    """Edge gave no audio three times (it did so on GitHub's runner on 25 Oct 2026, every request, after 30 s of silence):
+    narrate with Google's text-to-speech, no key needed, and say so. Word times are not invented: `words` stays empty."""
+    try:
+        from gtts import gTTS
+        gTTS(text, lang="ms" if voice.startswith("ms-MY-") else "en").save(str(out))
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"no voice: Edge said {str(edge_error)[:120]}; Google said {str(exc)[:120]}") from exc
+    factor = tempo_for(voice)
+    fast = out.with_name(out.stem + "-fast.mp3")
+    done = runner(["ffmpeg", "-v", "error", "-y", "-i", str(out), "-filter:a", f"atempo={factor:g}", "-c:a", "libmp3lame",
+                   str(fast)], capture_output=True, text=True, timeout=120)
+    if done.returncode == 0 and fast.exists() and fast.stat().st_size >= 1000:
+        fast.replace(out)
+    if not out.exists() or out.stat().st_size < 1000:
+        raise RuntimeError("no audio from Google either")
+    return {"duration": duration_of(out, runner), "words": [], "provider": "google"}
+
+
 def speak(text: str, voice: str, out: Path, runner: Any = subprocess.run) -> dict[str, Any]:
     """Write `text` as MP3 to `out`. {"duration": seconds, "words": [[start, end, word], ...]}; raises when nothing came back."""
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -121,19 +138,27 @@ def speak(text: str, voice: str, out: Path, runner: Any = subprocess.run) -> dic
             raise RuntimeError("KittenTTS MP3 conversion failed")
         words = []  # The adapter supplies no alignment: never fabricate word timestamps.
     else:
-        global _WORD_OK
-        words = None
-        if _WORD_OK:
+        words = []
+        for attempt in range(3):                      # the service is sometimes empty-handed for a moment
             try:
-                words = asyncio.run(_synth(text, voice, out, "WordBoundary"))
-                if not out.exists() or out.stat().st_size < 1000:
-                    raise RuntimeError("no audio with word boundaries")
-            except Exception as exc:  # noqa: BLE001 - the service refused word boundaries: use sentences from now on
-                log.warning("edge-tts word boundaries gave no audio (%s); using sentence boundaries", str(exc)[:120])
-                _WORD_OK = False
-                words = None
-        if words is None:
-            words = asyncio.run(_synth(text, voice, out, "SentenceBoundary"))
+                words = asyncio.run(_synth(text, voice, out))
+                if out.exists() and out.stat().st_size >= 1000:
+                    break
+                raise RuntimeError("no audio")
+            except Exception as exc:  # noqa: BLE001
+                log.warning("edge-tts %s attempt %d gave nothing: %s", voice, attempt + 1, str(exc)[:160])
+                if attempt == 2:
+                    return fallback(text, voice, out, runner, exc)
+                time.sleep(2 * (attempt + 1))
+        factor = tempo_for(voice)
+        fast = out.with_name(out.stem + "-fast.mp3")
+        done = runner(["ffmpeg", "-v", "error", "-y", "-i", str(out), "-filter:a", f"atempo={factor:g}", "-c:a", "libmp3lame",
+                       str(fast)], capture_output=True, text=True, timeout=120)
+        if done.returncode == 0 and fast.exists() and fast.stat().st_size >= 1000:
+            fast.replace(out)
+            words = [(round(a / factor, 3), round(b / factor, 3), w) for a, b, w in words]
+        else:
+            log.warning("tempo x%g not applied to %s: %s", factor, voice, (done.stderr or "")[-160:])
     if not out.exists() or out.stat().st_size < 1000:
         raise RuntimeError(f"no audio from {voice}")
     dur = duration_of(out, runner) or (words[-1][1] + 0.3 if words else 0.0)

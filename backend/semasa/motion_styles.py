@@ -132,7 +132,7 @@ Default 30s explainer, optional 60s. Total {total:g}s including ending. 10s ONLY
 Explain with Hook -> Fact -> Why -> Solution: strong curiosity hook, connected complete casual sentences, not isolated labels.
 Use English or Malaysian Malay, never Indonesian. BM narration uses pembungkusan rather than the mispronounced label.
 Voice on/off is independent: English VoiceStudio KittenTTS (Edge male when no VoiceStudio worker); BM/both native ms-MY
-Edge, never mislabeled VoiceStudio. Narrated films are BRISK (25 Oct 2026: Edge English +15%, Malay +25%, short gaps).
+Edge, never mislabeled VoiceStudio. Narrated films are BRISK (25 Oct 2026: English x1.15, Malay x1.25, short gaps).
 Silent is a separately written, SLOW reading-paced narrative, not a muted voice transcript: about 1.4 words per second
 counting ALL visible heading/lines (both languages counted), complete connected sentences. Leave narration empty in silent mode.
 Do not accelerate/truncate speech to fit; request 30/60s or narrower topic when needed. Preserve uploaded original speech.

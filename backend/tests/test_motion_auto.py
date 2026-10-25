@@ -150,8 +150,8 @@ def test_a_silent_film_is_paced_for_reading_and_a_narrated_one_is_brisk():
     assert sum(motion.reading_seconds(s) for s in trimmed[:-1]) <= 27, "lines are dropped before the pace is rushed"
     fit, total = motion.fit_scenes(trimmed, 30)
     assert total == 30 and all(s["duration"] >= motion.reading_seconds(s) for s in fit[:-1])
-    assert motion.voice_mod.rate_for("en-US-AndrewMultilingualNeural") == "+15%"
-    assert motion.voice_mod.rate_for("ms-MY-OsmanNeural") == "+25%"
+    assert motion.voice_mod.tempo_for("en-US-AndrewMultilingualNeural") == 1.15
+    assert motion.voice_mod.tempo_for("ms-MY-OsmanNeural") == 1.25
     assert (motion.SCENE_GAP, motion.VOICE_PAD) == (0.2, 0.3)
 
 

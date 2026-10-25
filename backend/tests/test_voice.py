@@ -1,74 +1,88 @@
-"""The narration's word timing: edge-tts must be asked for WordBoundary, or the mascot's mouth never moves."""
+"""The Edge voice: the plain call (no rate, no boundary setting), retried, then sped up by ffmpeg afterwards."""
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 import edge_tts
+import pytest
 
 from semasa import voice
 
 
 class _Comm:
     seen: dict = {}
+    fails = 0                     # how many calls come back empty before one succeeds
 
     def __init__(self, text, voice_name, **kw):
         _Comm.seen = {"text": text, "voice": voice_name, **kw}
 
     async def stream(self):
-        yield {"type": "audio", "data": b"ID3" + b"\x00" * 40}
-        yield {"type": "WordBoundary", "offset": 5_000_000, "duration": 3_000_000, "text": "Hai"}
-        yield {"type": "WordBoundary", "offset": 9_000_000, "duration": 2_500_000, "text": "dunia"}
-
-
-def test_the_word_boundary_is_asked_for_and_the_words_come_back_timed(monkeypatch, tmp_path):
-    monkeypatch.setattr(voice, "_WORD_OK", True)
-    monkeypatch.setattr(edge_tts, "Communicate", _Comm)
-    out = Path(tmp_path) / "a.mp3"
-    words = asyncio.run(voice._synth("Hai dunia", "en-US-AndrewMultilingualNeural", out))
-    assert _Comm.seen["boundary"] == "WordBoundary", "edge-tts >= 7.2 defaults to SentenceBoundary: no word timing"
-    assert words == [(0.5, 0.8, "Hai"), (0.9, 1.15, "dunia")]
-    assert out.read_bytes().startswith(b"ID3")
-
-
-def test_malay_voices_are_read_a_little_faster(monkeypatch, tmp_path):
-    monkeypatch.setattr(voice, "_WORD_OK", True)
-    monkeypatch.setattr(edge_tts, "Communicate", _Comm)
-    asyncio.run(voice._synth("Hai", "ms-MY-OsmanNeural", Path(tmp_path) / "b.mp3"))
-    assert _Comm.seen["rate"] == "+25%" and _Comm.seen["boundary"] == "WordBoundary"
-
-
-class _NoWords:
-    """The runner's behaviour on 25 Oct 2026: word boundaries -> no audio; sentence boundaries -> audio + one sentence span."""
-    calls: list = []
-
-    def __init__(self, text, voice_name, **kw):
-        self.boundary = kw.get("boundary")
-        _NoWords.calls.append(self.boundary)
-
-    async def stream(self):
-        if self.boundary == "WordBoundary":
+        if _Comm.fails > 0:
+            _Comm.fails -= 1
             raise RuntimeError("No audio was received. Please verify that your parameters are correct.")
         yield {"type": "audio", "data": b"ID3" + b"\x00" * 2000}
         yield {"type": "SentenceBoundary", "offset": 10_000_000, "duration": 20_000_000, "text": "Swipe three or four times."}
 
 
-def test_when_word_boundaries_give_no_audio_sentences_are_used_and_words_are_spread(monkeypatch, tmp_path):
-    # the film came out silent because of exactly this (25 Oct 2026)
-    monkeypatch.setattr(voice, "_WORD_OK", True)
-    monkeypatch.setattr(edge_tts, "Communicate", _NoWords)
-    _NoWords.calls.clear()
+def _ffmpeg(calls):
+    """A runner that answers ffprobe with 3.5 s and ffmpeg by writing the 'faster' file."""
+    def run(cmd, **kw):
+        calls.append(cmd)
+        if cmd[0] == "ffmpeg":
+            Path(cmd[-1]).write_bytes(b"ID3" + b"\x01" * 2000)
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return SimpleNamespace(returncode=0, stdout='{"format": {"duration": "3.5"}}', stderr="")
+    return run
+
+
+@pytest.fixture(autouse=True)
+def _no_sleep(monkeypatch):
+    monkeypatch.setattr(voice.time, "sleep", lambda s: None)
+    monkeypatch.setattr(edge_tts, "Communicate", _Comm)
+    _Comm.fails = 0
+
+
+def test_the_call_to_the_service_is_plain_no_rate_and_no_boundary_setting(tmp_path):
+    # on the runner (25 Oct 2026) any request carrying a rate or a boundary setting got "No audio was received"
+    asyncio.run(voice._synth("Hai", "ms-MY-OsmanNeural", Path(tmp_path) / "a.mp3"))
+    assert _Comm.seen == {"text": "Hai", "voice": "ms-MY-OsmanNeural"}
+
+
+def test_the_speed_comes_from_ffmpeg_afterwards_and_the_word_times_follow(tmp_path):
+    calls: list = []
     got = voice.speak("Swipe three or four times.", "en-US-AndrewMultilingualNeural", Path(tmp_path) / "c.mp3",
-                      runner=lambda *a, **k: type("R", (), {"stdout": '{"format": {"duration": "3.5"}}'})())
-    assert _NoWords.calls == ["WordBoundary", "SentenceBoundary"] and voice._WORD_OK is False
+                      runner=_ffmpeg(calls))
+    tempo = next(c for c in calls if c[0] == "ffmpeg")
+    assert "atempo=1.15" in tempo and "libmp3lame" in tempo
     words = got["words"]
     assert [w[2] for w in words] == ["Swipe", "three", "or", "four", "times."]
-    assert words[0][0] == 1.0 and abs(words[-1][1] - 3.0) < 0.01, "spread across the sentence's own span, 1 s to 3 s"
-    assert all(a[1] <= b[0] + 0.001 for a, b in zip(words, words[1:], strict=False)), "in order, no overlap"
-    # the second call goes straight to sentences: no wasted attempt
-    _NoWords.calls.clear()
-    voice.speak("Again.", "en-US-AndrewMultilingualNeural", Path(tmp_path) / "d.mp3",
-                runner=lambda *a, **k: type("R", (), {"stdout": '{"format": {"duration": "1.0"}}'})())
-    assert _NoWords.calls == ["SentenceBoundary"]
+    assert abs(words[0][0] - 1.0 / 1.15) < 0.01 and abs(words[-1][1] - 3.0 / 1.15) < 0.01, "times scaled by the tempo"
+    assert got["duration"] == 3.5 and (Path(tmp_path) / "c.mp3").read_bytes()[3:5] == b"\x01\x01", "the faster file replaced it"
+    calls.clear()
+    voice.speak("Hai.", "ms-MY-OsmanNeural", Path(tmp_path) / "d.mp3", runner=_ffmpeg(calls))
+    assert any("atempo=1.25" in c for c in calls if c[0] == "ffmpeg"), "Malay is read faster than English"
+    assert (voice.tempo_for("en-US-AvaMultilingualNeural"), voice.tempo_for("ms-MY-YasminNeural")) == (1.15, 1.25)
+
+
+def test_an_empty_answer_is_asked_again_and_a_service_that_stays_silent_raises(tmp_path, monkeypatch):
+    _Comm.fails = 2
+    got = voice.speak("Hai.", "en-US-AndrewMultilingualNeural", Path(tmp_path) / "e.mp3", runner=_ffmpeg([]))
+    assert got["duration"] == 3.5 and _Comm.fails == 0, "two empty answers, the third call worked"
+    _Comm.fails = 5
+    import sys
+    monkeypatch.setitem(sys.modules, "gtts", SimpleNamespace(gTTS=lambda *a, **k: (_ for _ in ()).throw(OSError("blocked"))))
+    with pytest.raises(RuntimeError, match="No audio was received"):
+        voice.speak("Hai.", "en-US-AndrewMultilingualNeural", Path(tmp_path) / "f.mp3", runner=_ffmpeg([]))
+
+
+def test_a_failed_tempo_keeps_the_plain_recording(tmp_path):
+    def run(cmd, **kw):
+        if cmd[0] == "ffmpeg":
+            return SimpleNamespace(returncode=1, stdout="", stderr="atempo broke")
+        return SimpleNamespace(returncode=0, stdout='{"format": {"duration": "3.5"}}', stderr="")
+    got = voice.speak("Hai.", "en-US-AndrewMultilingualNeural", Path(tmp_path) / "g.mp3", runner=run)
+    assert got["duration"] == 3.5 and got["words"][0][0] == 1.0, "unscaled times: the recording was not sped up"
 
 
 def test_spread_is_proportional_and_safe():
@@ -76,3 +90,26 @@ def test_spread_is_proportional_and_safe():
     assert [w[2] for w in s] == ["a", "bb", "cccc"] and s[0][0] == 0.0 and abs(s[-1][1] - 4.0) < 0.01
     assert (s[2][1] - s[2][0]) > (s[0][1] - s[0][0])
     assert voice.spread("", 0, 1) == [] and voice.spread("x", 2, 2) == []
+
+
+def test_when_edge_stays_silent_google_narrates_and_the_row_can_say_so(tmp_path, monkeypatch):
+    import sys
+    saved = {}
+
+    class _G:
+        def __init__(self, text, lang="en"):
+            saved.update(text=text, lang=lang)
+
+        def save(self, path):
+            Path(path).write_bytes(b"ID3" + b"\x02" * 2000)
+    monkeypatch.setitem(sys.modules, "gtts", SimpleNamespace(gTTS=_G))
+    _Comm.fails = 9
+    got = voice.speak("Hai dunia.", "ms-MY-OsmanNeural", Path(tmp_path) / "h.mp3", runner=_ffmpeg([]))
+    assert got["provider"] == "google" and got["words"] == [] and saved == {"text": "Hai dunia.", "lang": "ms"}
+    _Comm.fails = 9
+    voice.speak("Hello.", "en-US-AvaMultilingualNeural", Path(tmp_path) / "i.mp3", runner=_ffmpeg([]))
+    assert saved["lang"] == "en"
+    monkeypatch.setitem(sys.modules, "gtts", SimpleNamespace(gTTS=lambda *a, **k: (_ for _ in ()).throw(OSError("blocked"))))
+    _Comm.fails = 9
+    with pytest.raises(RuntimeError, match="Edge said No audio.*Google said blocked"):
+        voice.speak("Hello.", "en-US-AvaMultilingualNeural", Path(tmp_path) / "j.mp3", runner=_ffmpeg([]))

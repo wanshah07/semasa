@@ -250,6 +250,8 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
             try:
                 got = speak(sc["narration"], name, folder / rel, runner)
                 sc["audio"], sc["words"], sc["audio_s"] = rel, got["words"], got["duration"]
+                if got.get("provider") == "google" and "Google" not in note:
+                    note += " (Edge gave no audio, so Google's voice was used)"
                 dur = float(got["duration"]) + VOICE_PAD
             except Exception as exc:  # noqa: BLE001 - a scene without its voice is still a scene
                 if choice == "kitten":

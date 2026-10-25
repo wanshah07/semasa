@@ -33,7 +33,7 @@ export default function MotionLab({ user, onToast }) {
   // the words on screen follow the stream until Wan picks otherwise (Wan, 24 Oct 2026: "english, malay, or english + malay")
   const [language, setLanguage] = useState(defaultLanguage("regulab"));
   const [langTouched, setLangTouched] = useState(false);
-  const setStream = (v) => { setStreamOnly(v); if (!langTouched) setLanguage(defaultLanguage(v)); };
+  const setStream = (v) => { setStreamOnly(v); if (v === 'linkedin') { setLanguage('en'); setResolution('portrait'); if (format === 'malay-voiced') setFormat('english-voiced'); } else if (!langTouched) setLanguage(defaultLanguage(v)); };
   const pickLanguage = (v) => { setLanguage(v); setLangTouched(true); };
   const [resolution, setResolution] = useState("portrait");
   const [seconds, setSeconds] = useState(SECONDS.default);
@@ -182,8 +182,8 @@ export default function MotionLab({ user, onToast }) {
             <Segmented value={stream === 'linkedin' ? 'en' : language} onChange={v => { pickLanguage(v); if (!['silent-first','gimmick'].includes(format)) setFormat(v === 'en' ? 'english-voiced' : 'malay-voiced'); }} options={stream === 'linkedin' ? [['en','English (personal profile)']] : LANGUAGES} /></div>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="block"><Label>{t("Saiz", "Size")}</Label><Select value={resolution} onChange={setResolution} className="w-full"
-            options={Object.entries(RESOLUTIONS).map(([k, v]) => [k, w([v.bm, v.en])])} /></label>
+          <label className="block"><Label>{t("Saiz", "Size")}</Label><Select value={stream === 'linkedin' ? 'portrait' : resolution} onChange={setResolution} className="w-full"
+            options={Object.entries(RESOLUTIONS).filter(([k]) => stream !== 'linkedin' || k === 'portrait').map(([k, v]) => [k, w([v.bm, v.en])])} /></label>
           <label className="block"><Label>{t("Mod", "Mode")}</Label>
             <Select value={mode} onChange={v => pickFormat(v === 'teaser' ? 'gimmick' : voice === 'off' ? 'silent-first' : language === 'en' ? 'english-voiced' : 'malay-voiced')}
               options={[["explainer", "Explainer · Hook / Fact / Why / Solution"], ["teaser", "Gimmick / teaser only · not an explainer"]]} /></label>
@@ -257,7 +257,7 @@ export default function MotionLab({ user, onToast }) {
                 <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${STATUS_CLS[r.status] || ""}`}>{r.status === "working" && <Loader2 size={10} className="animate-spin" />}{w(STATUS_WORDS[r.status] || [r.status, r.status])}</span>
               </div>
               {r.status === "done" && r.video_url && (
-                <video key={`${r.id}-${r.updated_at}`} className="mt-3 w-full rounded-tile bg-black" style={{ aspectRatio: `${r.width || 9} / ${r.height || 16}`, maxHeight: 480 }} controls playsInline preload="metadata" poster={freshUrl(r.poster_url, r.updated_at) || undefined} src={freshUrl(r.video_url, r.updated_at)} />
+                <video key={`${r.id}-${r.updated_at}`} className="mt-3 w-full rounded-tile bg-black" style={{ aspectRatio: `${r.width || 9} / ${r.height || 16}`, maxHeight: 480 }} controls playsInline preload="metadata" poster={freshUrl(r.poster_url, r.updated_at) || undefined} src={freshUrl(r.check_report?.preview?.url || r.video_url, r.updated_at)} />
               )}
               {r.brief && r.title && <p className="mt-2 text-xs text-muted">{r.brief}</p>}
               {r.error && <p className="mt-2 rounded-tile bg-danger/10 p-2 text-xs text-danger">{r.error}</p>}

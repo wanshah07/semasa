@@ -34,9 +34,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import ai_config, api_status, db, fetch, motion_assets, motion_styles
+from . import ai_config, api_status, db, fetch, motion_assets, motion_styles, video_format_policy
 from . import voice as voice_mod
-from . import video_format_policy
 from .llm import LLM
 from .repos import GitHub
 
@@ -115,8 +114,9 @@ THE CONTRACT (a render fails or looks wrong if any is broken):
    central 90% of the frame; key text inside the central 80%. Type at least 44px on a 1080-wide frame.
 8. Frame 0 already shows the title (it is the social thumbnail): do not enter from an empty frame.
 
-THE FILM: 3 to 6 scenes for {seconds:g} seconds: a hook (the title, big), two to four points (one idea each, short lines,
-numbers big), and a closing card with the source line "{source_line}" in small type. Motion: eases power3.out / power2.inOut,
+THE FILM: follow the fixed scene plan for {seconds:g} seconds: Hook -> Fact -> Why -> Solution for explainers;
+one persistent composition for gimmicks. No source labels on screen unless legally required; keep citations in metadata.
+The worker supplies the exact brand ending. Motion: eases power3.out / power2.inOut,
 0.4 to 0.8 s entrances, staggered lines, a slow background drift, punchy but readable; every line stays on screen at least 2.5 s.
 Palette: background {ground}, text {ink}, accent {accent}, second accent {accent2}.
 VOICE: {voice}
@@ -133,7 +133,7 @@ SCRIPT_SYSTEM = """You plan a short narrated motion-graphics video. Answer with 
 Plan ONLY the teaching scenes, not the outro (the worker appends that). Hook -> Fact -> Why -> Solution,
 combined into 1–4 concise scenes for about {seconds:g} seconds INCLUDING the worker's 3-second outro.
 Narration is spoken {language}: plain, warm, short sentences, about
-{words} words in all (2.3 words a second), never reading the headings word for word, no URL, no
+{words} words in all (moderate natural pacing, English target about 154 active-speech wpm), never reading headings verbatim, no URL, no
 handle, no hashtag; never invent a fee, date, number or clause the brief did not give. The on-screen lines are {lines}.
 Pick the presenter's pose per scene: wave for a greeting or the close, point for a fact with numbers, confused for a
 doubt or a myth, shocked for a warning.
@@ -149,7 +149,16 @@ def build_script_system(row: dict[str, Any], extra: str) -> str:
     spoken = {"bm": "Bahasa Malaysia (Malaysian, never Indonesian)", "en": "English", "both": "Bahasa Malaysia"}[lang]
     lines = {"bm": "in Bahasa Malaysia", "en": "in English",
              "both": "in Bahasa Malaysia with the English line after it, in the same string, separated by ' / '"}[lang]
-    return SCRIPT_SYSTEM.format(seconds=seconds, language=spoken, words=max(1, int(max(0, seconds - 3) * 2.3)), lines=lines,
+    template = SCRIPT_SYSTEM
+    if row.get('voice') == 'off':
+        template = template.replace('You plan a short narrated motion-graphics video.',
+                                    'You write a silent-first reading explainer, not a muted narrated video.')
+        template = template.replace('<what the presenter SAYS over this scene, spoken, 1-3 sentences>', '')
+        template += ('\nSILENT-FIRST OVERRIDE: narration must be empty on EVERY scene. Use the heading and lines for '
+                     'complete connected casual sentences, at most 2 visible words per second including all labels; '
+                     'do not copy a voice script or add headings not counted in the reading budget.\n')
+    return template.format(seconds=seconds, language=spoken,
+                                words=max(1, int(max(0, seconds - 3) * (154 / 60 if lang == 'en' else 2.3))), lines=lines,
                                 voice=voice_line(stream, lang),
                                 extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "") + motion_styles.prompt(row))
 
@@ -187,7 +196,8 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
         clean[0]["mascot"] = ""
         return {"title": str(out.get("title") or "")[:160], "scenes": clean}
     clean.append({"id": "brand-outro", "kicker": "", "heading": motion_styles.cta(row), "lines": [],
-                  "narration": "" if row.get('voice') == 'off' else motion_styles.cta(row), "mascot": "", **({"role": "Outro"} if recipe_plan else {})})
+                  "narration": "" if row.get('voice') == 'off' else motion_styles.cta(row), "mascot": "",
+                  **({"role": "Outro"} if recipe_plan else {})})
     return {"title": str(out.get("title") or "")[:160], "scenes": clean}
 
 
@@ -213,7 +223,8 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
             except Exception as exc:  # noqa: BLE001 - a scene without its voice is still a scene
                 if choice == "kitten":
                     raise RuntimeError(str(exc)) from exc
-                raise RuntimeError(f"Requested voice unavailable: {str(exc)[:160]}; retry or explicitly choose silent-first") from exc
+                raise RuntimeError(f"Requested voice unavailable: {str(exc)[:160]}; "
+                                   "retry or explicitly choose silent-first") from exc
         sc["duration"] = round(max(SCENE_MIN, dur or 3.0), 2)
         t += sc["duration"] + SCENE_GAP
     total = round(t - SCENE_GAP, 2)
@@ -292,6 +303,30 @@ def mascot_layer(scenes: list[dict[str, Any]], total: float, w: int, h: int) -> 
     return "\n".join(audio + parts), "\n".join(script)
 
 
+def caption_cues(scenes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Real word alignment only; otherwise mark scene-level phrase timing as estimated."""
+    cues = []
+    for sc in scenes:
+        if not sc.get('audio') or sc.get('id') == 'brand-outro':
+            continue
+        words = sc.get('words') or []
+        start = float(sc.get('start') or 0)
+        if words:
+            groups = [words[i:i + 3] for i in range(0, len(words), 3)]
+            if len(groups) > 1 and len(groups[-1]) == 1:
+                groups[-2].extend(groups.pop())
+            for group in groups:
+                cues.append({'text':' '.join(str(w[2]) for w in group),
+                             'start':round(start + float(group[0][0]), 3),
+                             'end':round(start + float(group[-1][1]), 3), 'timing':'actual-word'})
+        else:
+            text = str(sc.get('narration') or '').strip()
+            if text:
+                cues.append({'text':text, 'start':start,
+                             'end':start + float(sc.get('audio_s') or sc['duration']), 'timing':'estimated-phrase'})
+    return cues
+
+
 def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int, h: int, mascot: bool,
                   brand: dict[str, str] | None = None) -> str:
     """Put the voice clips (and the presenter, when wanted) into the writer's film: inside the root composition, with the
@@ -303,6 +338,13 @@ def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int,
     m = re.search(r"<div\b[^>]*\bid=[\"']root[\"'][^>]*>", html)
     if not m:
         raise ValueError("the composition has no #root")
+    for i, cue in enumerate(caption_cues(scenes)):
+        markup += (f'<div class="clip" id="wan-caption-{i}" data-start="{cue["start"]:g}" '
+                   f'data-duration="{max(.01, cue["end"] - cue["start"]):g}" '
+                   f'data-caption-timing="{cue["timing"]}" style="position:absolute;left:12%;width:76%;'
+                   f'bottom:24%;z-index:60;text-align:center;background:transparent;color:#143e35;'
+                   f'font-family:Inter,system-ui,sans-serif;font-size:{w * .045:g}px;line-height:1.25;'
+                   f'text-shadow:0 1px 2px #fff7e6;">{html_mod.escape(cue["text"])}</div>')
     if any(sc.get("id") == "brand-outro" for sc in scenes):
         personal = (brand or {}).get('profile') == 'linkedin-personal'
         image = (brand or {}).get('avatar') if personal else 'assets/official-logo-transparent.png'
@@ -315,7 +357,8 @@ def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int,
         markup += (f'<div class="clip" id="wan-brand-final" data-start="{start:g}" data-duration="{ending_duration:g}" '
                    f'style="position:absolute;inset:0;z-index:100;background:#e5f6ed;display:flex;flex-direction:column;'
                    f'align-items:center;justify-content:center;gap:{w * .04:g}px;">'
-                   f'<img src="{html_mod.escape(image, quote=True)}" alt="" style="width:64%;height:auto;object-fit:contain;">{identity}'
+                   f'<img src="{html_mod.escape(image, quote=True)}" alt="" '
+                   f'style="width:64%;max-height:36%;height:auto;object-fit:contain;">{identity}'
                    f'<div style="color:#143e35;font-family:Inter,system-ui,sans-serif;font-size:{w * .05:g}px;'
                    f'text-align:center;">{html_mod.escape(scenes[-1]["heading"])}</div></div>')
     out = html[:m.end()] + "\n" + markup + "\n" + html[m.end():]
@@ -585,6 +628,17 @@ def mix_music(video: Path, scenes: list[dict[str, Any]], seconds: float, runner:
     return out
 
 
+def make_preview(video: Path, runner: Any = subprocess.run) -> Path:
+    """Half-size master preview (540x960 for default portrait); retain the approved mixed audio."""
+    out = video.with_name('motion-preview.mp4')
+    result = runner(['ffmpeg', '-v', 'error', '-y', '-i', str(video), '-vf', 'scale=iw/2:ih/2',
+                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy',
+                     '-movflags', '+faststart', str(out)], capture_output=True, text=True, timeout=180)
+    if result.returncode != 0 or not out.is_file():
+        raise RuntimeError('Preview encode failed: ' + (result.stderr or 'no output')[-300:])
+    return out
+
+
 def poster(video: Path, runner: Any = subprocess.run) -> bytes | None:
     """The frame at 0.5 s as JPEG (ffmpeg on the runner), or None."""
     out = video.with_suffix(".jpg")
@@ -676,7 +730,9 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         fixed = ("SCENES, FIXED: the voice is already recorded to these times. One .clip per scene with EXACTLY this id, "
                  "data-start and data-duration for timed text only. For Design 2 keep ONE persistent SVG world underneath, "
                  "not separate scene cards. Show exactly these words; no extra lines in silent mode:\n"
-                 + plan_text(scenes))
+                 + plan_text(scenes)
+                 + '\nWorker adds transparent narration captions at x12–88%, bottom24%. Keep that area free. '
+                 'Do not duplicate narration subtitles; authored headings/supporting lines remain above that area.')
         if asset_plan['effects']:
             fixed += ("\nWorker adds a prepared asset panel at x12–82%, y48–70% during scene one. "
                       "Keep this region free of writer text/art. Do not simulate unsupported effects or proof. "
@@ -697,8 +753,9 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         html = clean_html(out.get("html"))
         poses = {sc.get("mascot") or "wave" for sc in scenes} if want_mascot else set()
         def composed(raw):
-            document = motion_assets.inject(inject_layers(raw, scenes, total, w, h, want_mascot, brand=brand), asset_plan, scenes, total,
-                                            design=motion_styles.design(row))
+            document = motion_assets.inject(
+                inject_layers(raw, scenes, total, w, h, want_mascot, brand=brand), asset_plan, scenes, total,
+                design=motion_styles.design(row))
             # Composition resolves conditional native cues, including skipped/conflicting selections.
             (folder / "asset-plan.json").write_text(json.dumps(asset_plan, ensure_ascii=False, indent=2))
             return document
@@ -717,6 +774,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         if recipe_plan:
             report["recipe_plan"] = recipe_plan
         report['asset_plan'] = asset_plan
+        report['caption_timing'] = sorted({cue['timing'] for cue in caption_cues(scenes)})
         report['video_policy'] = {'version': video_format_policy.POLICY['version'], 'format':row['options']['format'],
                                   'language':row['language'], 'voice':choice, 'seconds':total,
                                   'brand':brand['profile'], 'mute_all':row['options']['mute_all'],
@@ -728,6 +786,10 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             raise ValueError("Rendered duration does not match selected duration; choose 30/60s or narrow the topic")
         if not row['options']['mute_all']:
             video = mix_music(video, scenes, total, runner)
+        preview = make_preview(video, runner)
+        report['preview'] = {'width':w // 2, 'height':h // 2,
+                             'url':db.upload_generated(store, f"motion/{row['id']}-preview.mp4",
+                                                       preview.read_bytes(), 'video/mp4')}
         data = video.read_bytes()
         path = f"motion/{row['id']}.mp4"
         url = db.upload_generated(store, path, data, "video/mp4")
@@ -744,6 +806,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             **meta,
             "model": getattr(llm, "last_model", "") or "", "error": "",
             "style_note": " · ".join(x for x in (style_line, bg_note, voice_note,
+                                               'all audio muted' if row['options']['mute_all'] else
                                                "approved self-owned piano; faded/ducked; music x0.45, voice x0.9") if x),
             "script": [{k: sc.get(k) for k in (
                 "id", "role", "kicker", "heading", "lines", "narration", "mascot", "start", "duration")}

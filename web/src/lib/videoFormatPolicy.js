@@ -8,7 +8,9 @@ export function formatOf(d = {}) {
   return d.language === 'bm' || d.language === 'both' ? 'malay-voiced' : policy.default_format;
 }
 export function resolveFormat(d = {}, stream = 'regulab') {
-  const format = formatOf(d), selected = VIDEO_FORMATS.find(f => f.id === format);
+  let format = formatOf(d);
+  if (stream === 'linkedin' && format === 'malay-voiced') format = 'english-voiced';
+  const selected = VIDEO_FORMATS.find(f => f.id === format);
   let language = selected.language || (['en','bm','both'].includes(d.language) ? d.language : 'en');
   if (format === 'malay-voiced' && d.language === 'both') language = 'both';
   const personal = stream === 'linkedin';
@@ -16,7 +18,7 @@ export function resolveFormat(d = {}, stream = 'regulab') {
   let voice = format === 'silent-first' ? 'off' : ['male','female','kitten'].includes(d.voice) ? d.voice : selected.voice || 'kitten';
   if (language !== 'en' && voice === 'kitten') voice = 'female';
   if (format === 'gimmick' && d.voice === 'off') voice = 'off';
-  const seconds = format === 'gimmick' ? 10 : Number(d.seconds) > 30 ? 60 : 30;
+  const seconds = format === 'gimmick' ? 10 : Number.isFinite(Number(d.seconds)) && Number(d.seconds) > 30 ? 60 : 30;
   return {format, mode:selected.mode, language, voice, seconds,
     resolution:personal ? 'portrait' : ['portrait','square','landscape'].includes(d.resolution) ? d.resolution : 'portrait',
     muteAll:d.muteAll === true, personalAvatar:d.personalAvatar || null};

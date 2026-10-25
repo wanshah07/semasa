@@ -16,10 +16,14 @@ def normalize(row: dict[str, Any]) -> dict[str, Any]:
     if fmt not in FORMATS:
         fmt = ('gimmick' if options.get('mode') == 'teaser' else 'silent-first' if row.get('voice') == 'off'
                else 'malay-voiced' if row.get('language') in {'bm', 'both'} else POLICY['default_format'])
+    if row.get('stream') == 'linkedin' and fmt == 'malay-voiced':
+        fmt = 'english-voiced'
     spec = FORMATS[fmt]
     language = spec.get('language', row.get('language') or 'en')
     if fmt == 'malay-voiced' and row.get('language') == 'both':
         language = 'both'
+    if language not in {'en', 'bm', 'both'}:
+        language = 'en'
     personal = row.get('stream') == 'linkedin'
     if personal:
         language = 'en'
@@ -60,8 +64,9 @@ def prepare_brand(store: Any, row: dict[str, Any], folder: Path) -> dict[str, st
     from .motion_assets import BUCKET
     data = store.storage.from_(BUCKET).download(path)
     # Validate a real decodable image, not SVG/HTML disguised as a still.
-    from PIL import Image
     from io import BytesIO
+
+    from PIL import Image
     image = Image.open(BytesIO(data))
     image.verify()
     target = folder / 'assets/personal-avatar.png'
@@ -84,6 +89,8 @@ def prompt(row: dict[str, Any]) -> str:
             "Voiced captions: transparent, clean 2–4 words only with actual word timings; otherwise phrase captions, "
             "honestly estimated timing, never fabricated word timestamps. "
             + ("Personal LinkedIn: avatar replaces WS logo; exact name Ts. ChM. Muhammad below it. "
-               "English voice and text, portrait 9:16, visible/spoken Follow me for more. " if r.get('stream') == 'linkedin' else '')
-            + ('Silent-first: write a complete connected casual reading narrative, NOT narration muted; no narration even on outro. '
+               "English voice and text, portrait 9:16, visible/spoken Follow me for more. "
+               if r.get('stream') == 'linkedin' else '')
+            + ('Silent-first: write a complete connected casual reading narrative, NOT narration muted; '
+               'no narration even on outro. '
                if r['voice'] == 'off' else ''))

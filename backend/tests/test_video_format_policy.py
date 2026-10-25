@@ -1,5 +1,6 @@
 """Actual selected format -> worker configuration; no network or paid synthesis."""
 import pytest
+
 from semasa import motion, motion_styles
 
 
@@ -39,7 +40,7 @@ def test_missing_personal_avatar_blocks_before_any_writer(tmp_path):
 
 
 def test_silent_outro_has_no_narration():
-    from test_motion import FakeLLM, SCRIPT
+    from test_motion import SCRIPT, FakeLLM
     plan = motion.plan_scenes(FakeLLM([SCRIPT]), {'voice':'off'}, '', '', '')
     assert all(not scene['narration'] for scene in plan['scenes'])
 
@@ -49,3 +50,18 @@ def test_requested_voice_never_silently_becomes_silent(tmp_path):
         raise RuntimeError('offline')
     with pytest.raises(RuntimeError, match='offline'):
         motion.voice_scenes([{'narration':'A fact.'}], 'en', 'female', tmp_path, speak=unavailable)
+
+
+def test_preview_is_half_master_without_touching_audio(tmp_path):
+    from types import SimpleNamespace
+    calls = []
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        from pathlib import Path
+        Path(cmd[-1]).write_bytes(b'test-double')
+        return SimpleNamespace(returncode=0, stderr='')
+    source = tmp_path / 'master.mp4'
+    source.write_bytes(b'test-double')
+    assert motion.make_preview(source, run).name == 'motion-preview.mp4'
+    assert 'scale=iw/2:ih/2' in calls[0]
+    assert calls[0][calls[0].index('-c:a')+1] == 'copy'

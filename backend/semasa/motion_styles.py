@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 from typing import Any
+
 from . import video_format_policy
 
 RULES = Path(__file__).resolve().parents[2] / "rules" / "motion"
@@ -146,13 +147,14 @@ Publication citation: >2 authors FirstAuthor et al. (year); two authors both sur
 it studied or reviewed and how it supports THIS claim. Stay within accessible abstract/full-text evidence.
 No fake numbers, efficacy, screenshots, product UI, charts, reviews or testimonials. Ingredient role is not product proof.
 Real licensed images require LICENSES/provenance sidecars; never claim photos/evidence exist when not supplied.
-This worker has no uploaded footage/captures/documents/photos/verified numeric data. Omit V09 chart/P03 counter without
+Use only worker-prepared assets with actual provenance; no uploaded-footage editing or automatic stock search is configured.
+Omit V09 chart/P03 counter without
 verified evidence; use qualitative diagrams without numerical axes. Omit S04 ticks without licensed/self-made samples.
 Retain source order/layers; timings are adaptable suggestions. Reading time outranks effects; omit/report irrelevant beats.
 Reference schedule (not mandatory irrelevant effects):
 {schedule}
 {complete_prompt(row, total)}
-{ending if row.get('stream') != 'linkedin' else 'Personal avatar replaces corporate logo. Exact name below: Ts. ChM. Muhammad. CTA: Follow me for more. No WS logo.'}
+{ending if row.get('stream') != 'linkedin' else 'Personal avatar replaces corporate logo; no WS logo. Follow me for more.'}
 {video_format_policy.prompt(row)}
 Only licensed/self-owned approved piano is the default, not reel audio. Subtle fade in/out and speech ducking.
 Approved v17 relative mix: music 0.45 of v16 (~7dB lower), voice 0.9. Reel rights unknown: private approval only;

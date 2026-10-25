@@ -36,6 +36,7 @@ from typing import Any
 
 from . import ai_config, api_status, db, fetch, motion_assets, motion_styles
 from . import voice as voice_mod
+from . import video_format_policy
 from .llm import LLM
 from .repos import GitHub
 
@@ -186,7 +187,7 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
         clean[0]["mascot"] = ""
         return {"title": str(out.get("title") or "")[:160], "scenes": clean}
     clean.append({"id": "brand-outro", "kicker": "", "heading": motion_styles.cta(row), "lines": [],
-                  "narration": motion_styles.cta(row), "mascot": "", **({"role": "Outro"} if recipe_plan else {})})
+                  "narration": "" if row.get('voice') == 'off' else motion_styles.cta(row), "mascot": "", **({"role": "Outro"} if recipe_plan else {})})
     return {"title": str(out.get("title") or "")[:160], "scenes": clean}
 
 
@@ -212,9 +213,7 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
             except Exception as exc:  # noqa: BLE001 - a scene without its voice is still a scene
                 if choice == "kitten":
                     raise RuntimeError(str(exc)) from exc
-                log.warning("voice not made for scene %d: %s", i + 1, str(exc)[:160])
-                note = f"voice failed ({str(exc)[:80]})"
-                name = ""
+                raise RuntimeError(f"Requested voice unavailable: {str(exc)[:160]}; retry or explicitly choose silent-first") from exc
         sc["duration"] = round(max(SCENE_MIN, dur or 3.0), 2)
         t += sc["duration"] + SCENE_GAP
     total = round(t - SCENE_GAP, 2)
@@ -293,7 +292,8 @@ def mascot_layer(scenes: list[dict[str, Any]], total: float, w: int, h: int) -> 
     return "\n".join(audio + parts), "\n".join(script)
 
 
-def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int, h: int, mascot: bool) -> str:
+def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int, h: int, mascot: bool,
+                  brand: dict[str, str] | None = None) -> str:
     """Put the voice clips (and the presenter, when wanted) into the writer's film: inside the root composition, with the
     mouth script at the end of the body, after the writer's own timeline is registered."""
     markup, script = mascot_layer(scenes, total, w, h)
@@ -304,12 +304,18 @@ def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int,
     if not m:
         raise ValueError("the composition has no #root")
     if any(sc.get("id") == "brand-outro" for sc in scenes):
+        personal = (brand or {}).get('profile') == 'linkedin-personal'
+        image = (brand or {}).get('avatar') if personal else 'assets/official-logo-transparent.png'
+        if not image:
+            raise ValueError('Personal avatar unconfigured')
+        identity = (f'<div style="color:#143e35;font-size:{w * .045:g}px;">Ts. ChM. Muhammad</div>'
+                    if personal else '')
         start = scenes[-1]["start"]
         ending_duration = scenes[-1]["duration"]
         markup += (f'<div class="clip" id="wan-brand-final" data-start="{start:g}" data-duration="{ending_duration:g}" '
                    f'style="position:absolute;inset:0;z-index:100;background:#e5f6ed;display:flex;flex-direction:column;'
                    f'align-items:center;justify-content:center;gap:{w * .04:g}px;">'
-                   f'<img src="assets/official-logo-transparent.png" alt="" style="width:64%;height:auto;object-fit:contain;">'
+                   f'<img src="{html_mod.escape(image, quote=True)}" alt="" style="width:64%;height:auto;object-fit:contain;">{identity}'
                    f'<div style="color:#143e35;font-family:Inter,system-ui,sans-serif;font-size:{w * .05:g}px;'
                    f'text-align:center;">{html_mod.escape(scenes[-1]["heading"])}</div></div>')
     out = html[:m.end()] + "\n" + markup + "\n" + html[m.end():]
@@ -633,7 +639,9 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
     now = now or datetime.now(UTC)
     folder = (workdir or Path(tempfile.mkdtemp(prefix="motion-"))) / str(row["id"])[:8]
     try:
+        row = video_format_policy.normalize(row)
         motion_styles.validate_export(row)
+        brand = video_format_policy.prepare_brand(store, row, folder)
         row = hydrate_evidence(store, row)
         asset_plan = motion_assets.prepare(
             row, folder, download=lambda path: store.storage.from_(motion_assets.BUCKET).download(path))
@@ -649,7 +657,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         # written to those exact times; with the voice off the plan still fixes the scenes and nothing is recorded
         plan = plan_scenes(llm, row, settings.get("prompt") or "", title, text, style=style)
         want_mascot = bool(row.get("mascot")) and row.get("mascot") in MOUTH
-        choice = str(row.get("voice") or "male")
+        choice = 'off' if row['options']['mute_all'] else str(row.get("voice") or "kitten")
         if choice == "kitten" and language_of(row) != "en":
             choice = "female"
         kitten_fallback = ""
@@ -689,7 +697,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         html = clean_html(out.get("html"))
         poses = {sc.get("mascot") or "wave" for sc in scenes} if want_mascot else set()
         def composed(raw):
-            document = motion_assets.inject(inject_layers(raw, scenes, total, w, h, want_mascot), asset_plan, scenes, total,
+            document = motion_assets.inject(inject_layers(raw, scenes, total, w, h, want_mascot, brand=brand), asset_plan, scenes, total,
                                             design=motion_styles.design(row))
             # Composition resolves conditional native cues, including skipped/conflicting selections.
             (folder / "asset-plan.json").write_text(json.dumps(asset_plan, ensure_ascii=False, indent=2))
@@ -709,12 +717,17 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         if recipe_plan:
             report["recipe_plan"] = recipe_plan
         report['asset_plan'] = asset_plan
+        report['video_policy'] = {'version': video_format_policy.POLICY['version'], 'format':row['options']['format'],
+                                  'language':row['language'], 'voice':choice, 'seconds':total,
+                                  'brand':brand['profile'], 'mute_all':row['options']['mute_all'],
+                                  'capabilities':video_format_policy.POLICY['capabilities']}
         style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]
         video = render(folder, settings["cli"], row.get("resolution") or "portrait", runner)
         meta = probe(video, runner)
         if not 0 < meta["duration_s"] <= 60.5 or abs(meta["duration_s"] - total) > .5:
             raise ValueError("Rendered duration does not match selected duration; choose 30/60s or narrow the topic")
-        video = mix_music(video, scenes, total, runner)
+        if not row['options']['mute_all']:
+            video = mix_music(video, scenes, total, runner)
         data = video.read_bytes()
         path = f"motion/{row['id']}.mp4"
         url = db.upload_generated(store, path, data, "video/mp4")
@@ -723,6 +736,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         if jpg:
             poster_url = db.upload_generated(store, f"motion/{row['id']}.jpg", jpg, "image/jpeg")
         store.table(TABLE).update({
+            'language':row['language'], 'voice':row['voice'], 'seconds':row['seconds'],
+            'resolution':row['resolution'], 'options':row['options'],
             "status": "done", "title": str(out.get("title") or "")[:160],
             "html": (folder / 'index.html').read_text() if asset_plan['effects'] else html, "check_report": report,
             "video_path": path, "video_url": url, "poster_url": poster_url, "bytes": len(data),

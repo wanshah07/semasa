@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 from typing import Any
+from . import video_format_policy
 
 RULES = Path(__file__).resolve().parents[2] / "rules" / "motion"
 CATALOG = json.loads((RULES / "recipes.json").read_text())
@@ -32,7 +33,7 @@ def duration(row: dict[str, Any]) -> float:
     try:
         value = float(row.get("seconds", 30))
         options = row.get("options") or {}
-        if isinstance(options, dict) and options.get("mode") == "teaser" and value == 10:
+        if isinstance(options, dict) and (options.get("mode") == "teaser" or options.get('format') == 'gimmick'):
             return 10
         return 60 if math.isfinite(value) and value > 30 else 30
     except (TypeError, ValueError):
@@ -52,8 +53,10 @@ def design(row: dict[str, Any]) -> str:
 
 
 def cta(row: dict[str, Any]) -> str:
+    if row.get('stream') == 'linkedin':
+        return video_format_policy.POLICY['cta']['personal']
     if duration(row) == 10:
-        return "Stay tuned. Follow us for more"
+        return video_format_policy.POLICY['cta']['gimmick']
     return "Jangan lupa follow kami untuk tips seterusnya" if row.get("language") in {"bm", "both"} else "Follow us for more"
 
 
@@ -149,7 +152,8 @@ Retain source order/layers; timings are adaptable suggestions. Reading time outr
 Reference schedule (not mandatory irrelevant effects):
 {schedule}
 {complete_prompt(row, total)}
-{ending}
+{ending if row.get('stream') != 'linkedin' else 'Personal avatar replaces corporate logo. Exact name below: Ts. ChM. Muhammad. CTA: Follow me for more. No WS logo.'}
+{video_format_policy.prompt(row)}
 Only licensed/self-owned approved piano is the default, not reel audio. Subtle fade in/out and speech ducking.
 Approved v17 relative mix: music 0.45 of v16 (~7dB lower), voice 0.9. Reel rights unknown: private approval only;
 block public export unless license confirmed, or export without reel audio and add through the user's platform route.

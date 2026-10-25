@@ -168,7 +168,7 @@ def test_process_writes_checks_renders_and_stores_the_video(tmp_path):
     assets = tmp_path / r["id"][:8] / "assets"
     assert (assets / "voice-2.mp3").exists() and (assets / "mascot-point.webp").exists()
     assert got["script"][0]["narration"] == "Hai. Tiga perkara tentang PFAS." and got["script"][1]["start"] > 0
-    assert "voice: ms-MY-OsmanNeural" in got["style_note"]
+    assert 'voice: en-US-AndrewMultilingualNeural' in got['style_note']
     assert store.bucket.files[f"motion/{r['id']}.mp4"][1] == "video/mp4"
 
 
@@ -336,11 +336,11 @@ def test_voice_scenes_times_the_film_to_the_recording_and_off_means_silence(tmp_
     assert got[2]["start"] == 6.2 and total == round(6.2 + got[2]["duration"], 2)
     off, total_off, note_off = motion.voice_scenes([dict(s) for s in scenes], "bm", "off", tmp_path, speak=fake_speak)
     assert note_off == "no voice" and all(not s["audio"] for s in off) and total_off > 0
-    # a voice that fails never stops the film
+    # Requested voice must not silently turn into a muted narrated film.
     def broken(text, voice, out, runner=None):
         raise RuntimeError("TLS")
-    quiet, _, n = motion.voice_scenes([dict(s) for s in scenes], "en", "male", tmp_path, speak=broken)
-    assert n.startswith("voice failed") and all(not s["audio"] for s in quiet)
+    with pytest.raises(RuntimeError, match='TLS'):
+        motion.voice_scenes([dict(s) for s in scenes], 'en', 'male', tmp_path, speak=broken)
 
 
 def test_the_presenter_and_the_voice_are_put_into_the_film_after_the_writer():

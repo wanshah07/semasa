@@ -81,7 +81,8 @@ def test_worker_consumes_recipe_and_enforces_selected_duration(tmp_path):
     assert 'data-duration="30"' in index and "official-logo-transparent.png" in index
     assert "Follow us for more" in index and "mascot-wave" not in index
     saved = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
-    assert saved["script"][-1]["narration"] == "Follow us for more"
+    assert saved['script'][-1]['heading'] == 'Follow us for more'
+    assert saved['script'][-1]['narration'] == ''
     assert saved["script"][-1]["start"] == 27
 
 

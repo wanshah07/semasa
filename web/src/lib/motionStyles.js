@@ -1,5 +1,9 @@
 import recipes from '../../../rules/motion/recipes.json' with { type: 'json' };
 export const catalog = recipes;
+export const designOptions = [
+  {id:'bright-editorial', name:'Design 1 · Original Bright Photo / Diagram / Editorial'},
+  {id:'continuous-line', name:'Design 2 · Continuous Line (approved v17)'},
+];
 const bright = { ...recipes[3], id: 'bright-education', name: 'Bright education (Financial Education motifs)' };
 const supported = new Set(['auto', 'bright-education', 'financial-education-reel']);
 // Actual current assets: an idea/link and optional AI backdrop, not uploaded product/footage/captures.

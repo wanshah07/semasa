@@ -32,6 +32,7 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
   // the draft as a short motion video (Wan, 24 Oct 2026: "make sure all draft idea have option to be motion"); it plays in
   // Video → Motion, and nothing here changes the post
   async function makeMotion() {
+    if (dirty || !post.id) return onToast(t("Simpan draf dahulu.", "Save the draft first."), "warn");
     const row = motionFromPost(post, user?.id || null, motionDefaults(motionSettings), langChosen);
     if (!row) return onToast(t("Draf ini tiada perkataan untuk dijadikan video.", "This draft has no words to make a video from."), "warn");
     setBusy(true);
@@ -152,7 +153,7 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
         <div className="flex flex-wrap items-center gap-2" data-post-motion>
           <select value={langChosen} onChange={(e) => setMotionLang(e.target.value)} aria-label={t("Bahasa video", "Video language")} disabled={motionSent}
             className="rounded-pill border border-line bg-surface px-2 py-1.5 text-xs">{LANGUAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-          <Button size="sm" variant="ghost" disabled={busy || motionSent} onClick={makeMotion} title={t("Jadikan video motion pendek daripada draf ini", "Make a short motion video from this draft")}>
+          <Button size="sm" variant="ghost" disabled={busy || motionSent || dirty || !post.id} onClick={makeMotion} title={t("Jadikan video motion pendek daripada draf ini", "Make a short motion video from this draft")}>
             <Clapperboard size={12} /> {motionSent ? t("Video motion dihantar", "Motion video sent") : t("Video motion", "Motion video")}</Button>
         </div>
       )}

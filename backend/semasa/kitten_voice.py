@@ -24,7 +24,7 @@ def main() -> None:
     ready, reason = backend.is_available()
     if not ready:
         raise RuntimeError(reason)
-    audio = backend.generate(request["text"], language="en", voice="expr-voice-2-f", speed=1.0)
+    audio = backend.generate(request["text"], language="en", voice="expr-voice-2-f", speed=1.5)
     sf.write(request["output"], audio.squeeze(0).cpu().numpy(), backend.sample_rate, subtype="PCM_16")
 
 

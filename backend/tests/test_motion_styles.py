@@ -55,7 +55,7 @@ def test_prompt_scaled_beats_and_current_defaults():
     assert beats[1]["start"] == pytest.approx(14.33 / 45 * 27)
     assert [b["code"] for b in beats] == ["H03", "V09", "P03", "V03", "S04"]
     assert "no call to action" not in motion.build_system(row, "")
-    assert "Follow for more tips!" in motion.build_system(row, "")
+    assert "Follow us for more" in motion.build_system(row, "")
     assert "closing scene that ends on the substance" not in motion.build_script_system(row, "")
 
 
@@ -79,9 +79,9 @@ def test_worker_consumes_recipe_and_enforces_selected_duration(tmp_path):
     assert all("Financial Education Reel" in system + user for system, user in llm.asked)
     index = (tmp_path / row["id"][:8] / "index.html").read_text()
     assert 'data-duration="30"' in index and "official-logo-transparent.png" in index
-    assert "Follow for more tips!" in index and "mascot-wave" not in index
+    assert "Follow us for more" in index and "mascot-wave" not in index
     saved = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
-    assert saved["script"][-1]["narration"] == "Follow us for more."
+    assert saved["script"][-1]["narration"] == "Follow us for more"
     assert saved["script"][-1]["start"] == 27
 
 

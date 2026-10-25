@@ -5,7 +5,7 @@ import { fadeUp } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { timeAgo } from "../lib/format";
 import { useSettings, useTable } from "../lib/hooks";
-import { LANGUAGES, defaultLanguage, motionDefaults, motionFromIdea } from "../lib/motion";
+import { LANGUAGES, defaultLanguage, motionDefaults, motionFromIdea, motionVariantMatches } from "../lib/motion";
 import { useLang } from "../lib/i18n";
 import IdeaComposer from "../components/IdeaComposer";
 import Button from "../components/ui/Button";
@@ -150,7 +150,11 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
   // a motion video made from an idea (Wan, 23 Oct 2026: "make the idea as short motion video"): the Video tab's Motion section
   // plays it; the idea only needs to know one was asked for
   const motionsT = useTable(TABLES.motions, { enabled: true, order: "created_at", limit: 300, realtime: false, everyMs: 120_000 });
-  const motionOf = (id) => motionsT.rows.find((m) => m.idea_id === id);
+  const motionOf = (id) => {
+    const idea = ideas.rows.find(r => r.id === id);
+    const wanted = idea && motionFromIdea(idea, user?.id || null, mDefaults, langFor(idea));
+    return motionsT.rows.find(m => motionVariantMatches(m, wanted));
+  };
   const [motionBusy, setMotionBusy] = useState("");
   const { settings: motionSettings } = useSettings(true);
   const mDefaults = motionDefaults(motionSettings);
@@ -170,11 +174,11 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
   }
   // every shown idea at once, with the saved way (Wan, 24 Oct 2026: "apply to all idea if I need")
   const motionable = () => shown.filter((r) => r.status !== "rejected" && r.status !== "working" && !motionOf(r.id)
-    && motionFromIdea(r, user?.id || null, mDefaults));
+    && motionFromIdea(r, user?.id || null, mDefaults, langFor(r)));
   async function makeMotionAll() {
-    const rows = motionable().map((r) => motionFromIdea(r, user?.id || null, mDefaults));
+    const rows = motionable().map((r) => motionFromIdea(r, user?.id || null, mDefaults, langFor(r)));
     if (!rows.length) return onToast(t("Tiada idea yang belum ada video motion dalam senarai ini.", "No shown idea is without a motion video."), "warn");
-    if (!window.confirm(t("Buat {n} video motion? Setiap satu sekitar 2 hingga 5 minit, satu demi satu.", "Make {n} motion videos? Each about 2 to 5 minutes, one after another.", { n: rows.length }))) return;
+    if (!window.confirm(t("Buat {n} video untuk idea dimuatkan dan ditapis sahaja, bukan semua idea tersimpan?", "Make {n} motion videos from filtered loaded ideas only? This is not every saved idea. Each about 2 to 5 minutes.", { n: rows.length }))) return;
     setMotionBusy("all");
     const { error } = await supabase.from(TABLES.motions).insert(rows);
     setMotionBusy("");
@@ -227,11 +231,10 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
         <Button size="sm" variant="ghost" onClick={() => update(r.id, { status: "rejected" }, t("Ditolak.", "Rejected."))}>
           {t("Tolak", "Reject")}</Button>
       )}
+      {r.status !== "rejected" && r.status !== "working" && <select value={langFor(r)} onChange={e => setMotionLang(m => ({...m, [r.id]:e.target.value}))} aria-label="Motion language variant" className="rounded-pill border border-line bg-surface px-2 py-1.5 text-xs">{LANGUAGES.map(([k,l]) => <option key={k} value={k}>{l}</option>)}</select>}
       {r.status !== "rejected" && r.status !== "working" && (motionOf(r.id)
         ? <span className="inline-flex items-center gap-1 rounded-pill bg-surface-2 px-3 py-1.5 text-xs text-muted" data-idea-motion={motionOf(r.id).status}><Clapperboard size={12} /> {t("Motion", "Motion")}: {({ pending: t("menunggu", "waiting"), working: t("dibuat", "being made"), done: t("siap", "done"), error: t("ralat", "error") })[motionOf(r.id).status] || motionOf(r.id).status}</span>
         : <span className="inline-flex items-center gap-1" data-idea-motion-make>
-            <select value={langFor(r)} onChange={(e) => setMotionLang((m) => ({ ...m, [r.id]: e.target.value }))} aria-label={t("Bahasa video", "Video language")}
-              className="rounded-pill border border-line bg-surface px-2 py-1.5 text-xs">{LANGUAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
             <Button size="sm" variant="ghost" disabled={motionBusy === r.id} onClick={() => makeMotion(r)} title={t("Jadikan video motion pendek", "Make a short motion video")}><Clapperboard size={12} /> {t("Video motion", "Motion video")}</Button>
           </span>)}
       {r.status !== "working" && !published.has(r.id) && (
@@ -263,7 +266,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="ghost" size="sm" onClick={makeMotionAll} disabled={motionBusy === "all"} data-ideas-motion-all
             title={t("Video motion untuk setiap idea yang dipapar dan belum ada video, ikut cara lalai yang disimpan di Video → Motion", "A motion video for every shown idea without one, the default way saved in Video → Motion")}>
-            {motionBusy === "all" ? <Loader2 size={12} className="animate-spin" /> : <Clapperboard size={12} />} {t("Video motion semua", "Motion video for all")}</Button>
+            {motionBusy === "all" ? <Loader2 size={12} className="animate-spin" /> : <Clapperboard size={12} />} {t("Motion idea dimuatkan/ditapis", "Motion for filtered loaded ideas")}</Button>
           <Button onClick={() => setComposer(true)}><Plus size={14} /> {t("Idea baharu", "New idea")}</Button>
         </div>
       </motion.div>

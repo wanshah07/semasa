@@ -43,7 +43,7 @@ async def _synth(text: str, voice: str, out: Path) -> list[tuple[float, float, s
     import edge_tts
     words: list[tuple[float, float, str]] = []
     with out.open("wb") as f:
-        async for chunk in edge_tts.Communicate(text, voice, rate=RATE).stream():
+        async for chunk in edge_tts.Communicate(text, voice, rate="+15%" if voice.startswith("ms-MY-") else RATE).stream():
             if chunk["type"] == "audio":
                 f.write(chunk["data"])
             elif chunk["type"] == "WordBoundary":
@@ -75,7 +75,7 @@ def speak(text: str, voice: str, out: Path, runner: Any = subprocess.run) -> dic
                    capture_output=True, text=True, timeout=300, env=dict(os.environ))
         if p.returncode != 0 or not wav.exists():
             raise RuntimeError("VoiceStudio KittenTTS failed: " + (p.stderr or "no WAV")[-300:])
-        converted = runner(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-c:a", "libmp3lame", str(out)],
+        converted = runner(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-af", "atempo=0.936", "-c:a", "libmp3lame", str(out)],
                            capture_output=True, text=True, timeout=60)
         if converted.returncode != 0:
             raise RuntimeError("KittenTTS MP3 conversion failed")

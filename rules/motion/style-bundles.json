@@ -1,0 +1,428 @@
+[
+  {
+    "id": "styles-editorial-explainer",
+    "name": "NEW Styles · Editorial explainer (complete video)",
+    "source": "Styles.docx",
+    "kind": "native-motion",
+    "required_assets": [],
+    "required_inputs": [
+      "brief-or-source"
+    ],
+    "source_seconds": 30,
+    "summary": "A question-led, calm editorial explanation: sourced fact, illustrated mechanism and practical solution, with transparent captions and a complete audio/look treatment.",
+    "tracks": {
+      "hook": {
+        "codes": [
+          "H03"
+        ],
+        "adaptation": "Ask a question the supplied topic genuinely answers. Show it on frame zero, use 0.09s word stagger as graphic entrance (not fake speech timestamps), pulse punctuation once, then reveal the answer. No dark dim layer on the bright plate."
+      },
+      "captions": {
+        "codes": [
+          "C06"
+        ],
+        "adaptation": "Sentence case, regular serif, at most two readable lines, 0.2s opacity crossfade. Transparent, no scrim; consistent centered grid inside top 12%, bottom 22%, right 12% safe bounds. Spoken text verbatim at actual sentence times; silent mode uses separately written reading-paced sentences."
+      },
+      "layout": {
+        "codes": [
+          "L05"
+        ],
+        "adaptation": "Mint/cream editorial explanation panel and qualitative diagram share a fixed grid, not footage. Slide a 40% side panel over 0.5s only if it fits phone-readable type; otherwise stack text above diagram. No numbered page counters. Reserve a separate citation row and never overlap captions."
+      },
+      "proof": {
+        "codes": [],
+        "adaptation": "Use a concise source/author-year text line ONLY from accessible supplied/fetched evidence, and explain its scope and limit. No P01/P02/P03 evidence captures, invented quotes, data or results. When unsupported, label the explanation qualitative, state uncertainty, do not fake proof."
+      },
+      "illustration": {
+        "codes": [
+          "B04",
+          "V03",
+          "V10"
+        ],
+        "adaptation": "Draw original simple outline nodes for the actual explained steps, connect in order with 0.6s line draws. Spotlight the causal phrase without a caption box. End on a complete actionable sentence revealed in phrase chunks. Illustrations are qualitative, not product efficacy evidence."
+      },
+      "motion": {
+        "codes": [
+          "M03"
+        ],
+        "adaptation": "Calm 1.00 to 1.04 scale push and <=0.5% drift on diagram only, never move captions; fades at sentence boundaries. On Continuous Line, keep one growing SVG world and camera tracking, not detached scene cards."
+      },
+      "audio": {
+        "codes": [
+          "S08",
+          "S10"
+        ],
+        "adaptation": "Use the worker's approved piano, real speech-span ducking and gentle final fade. Preserve approved v17 voice pace and mix; do not invent a chord/beat map or add unlicensed sound effects. Voice off has no narration stem. Final spoken CTA follows the selected language."
+      },
+      "look": {
+        "codes": [
+          "F02"
+        ],
+        "adaptation": "Adapt warm editorial to bright mint/cream with deep teal type and warm gold details. This is a native graphic palette, NOT a claim of footage grading, skin isolation or LUT processing. Keep logo/caption colours unfiltered."
+      }
+    },
+    "stages": [
+      {
+        "role": "Hook",
+        "from": 0,
+        "to": 0.14,
+        "codes": [
+          "H03"
+        ],
+        "instruction": "Open the curiosity gap with a complete question and a clear qualitative visual, not an unsupported promise."
+      },
+      {
+        "role": "Fact",
+        "from": 0.14,
+        "to": 0.4,
+        "codes": [
+          "L05",
+          "V03"
+        ],
+        "instruction": "Answer with one grounded fact. Add source scope and citation if available; make uncertainty explicit otherwise."
+      },
+      {
+        "role": "Why",
+        "from": 0.4,
+        "to": 0.7,
+        "codes": [
+          "B04",
+          "M03"
+        ],
+        "instruction": "Explain the causal connection with a connected original icon-flow diagram. No numeric axes or unsupported efficacy claims."
+      },
+      {
+        "role": "Solution",
+        "from": 0.7,
+        "to": 1,
+        "codes": [
+          "V10"
+        ],
+        "instruction": "Resolve the opening question with a usable next step, a complete sentence and any evidence limit. Do not substitute a generic CTA for the solution."
+      }
+    ],
+    "beats": []
+  },
+  {
+    "id": "styles-kinetic-explainer",
+    "name": "NEW Styles · Kinetic explainer (complete video)",
+    "source": "Styles.docx",
+    "kind": "native-motion",
+    "required_assets": [],
+    "required_inputs": [
+      "brief-or-source"
+    ],
+    "source_seconds": 30,
+    "summary": "Headline-led graphic explanation with phrase stacks, qualitative geometry, practical list and readable motion. No fake proof or footage.",
+    "tracks": {
+      "hook": {
+        "codes": [
+          "H01"
+        ],
+        "adaptation": "Use a 2–5 word headline derived from the actual opening promise, readable at frame zero. Settle 1.12 to 1.00 over 0.43s with restrained back-out easing, then hold; no camera shake or photosensitive flash. Use full connected narrative sentences after the headline."
+      },
+      "captions": {
+        "codes": [
+          "C05"
+        ],
+        "adaptation": "Transparent two or three line phrase stacks on a fixed centered grid; mask-rise each line over 0.36s with 0.12s stagger, then hold for reading. Use actual sentence spans, not guessed word timings. No pills or backdrop. At most 2 visible words per second in silent mode, counting headings too."
+      },
+      "layout": {
+        "codes": [
+          "L05"
+        ],
+        "adaptation": "Mint/cream editorial explanation panel and qualitative diagram share a fixed grid, not footage. Slide a 40% side panel over 0.5s only if it fits phone-readable type; otherwise stack text above diagram. No numbered page counters. Reserve a separate citation row and never overlap captions."
+      },
+      "proof": {
+        "codes": [],
+        "adaptation": "Use a concise source/author-year text line ONLY from accessible supplied/fetched evidence, and explain its scope and limit. No P01/P02/P03 evidence captures, invented quotes, data or results. When unsupported, label the explanation qualitative, state uncertainty, do not fake proof."
+      },
+      "illustration": {
+        "codes": [
+          "B08",
+          "V08",
+          "V04",
+          "V10"
+        ],
+        "adaptation": "Visualise the actual causal relationship with original nodes, lines and simple geometry; use one 0.6s compatible shape morph to bridge the idea, not decorative scene churn. Reveal only supported next steps as a short list, then resolve in a complete sentence. No numbered page counter or fabricated ranking."
+      },
+      "motion": {
+        "codes": [
+          "M09"
+        ],
+        "adaptation": "Use a crisp 0.47s mask swipe at a sentence boundary between native diagram states, with a thin mint accent edge; never wipe through captions. On Continuous Line, reveal the next area within the same world rather than swapping disconnected cards."
+      },
+      "audio": {
+        "codes": [
+          "S08",
+          "S10"
+        ],
+        "adaptation": "Use the worker's approved piano, real speech-span ducking and gentle final fade. Preserve approved v17 voice pace and mix; do not invent a chord/beat map or add unlicensed sound effects. Voice off has no narration stem. Final spoken CTA follows the selected language."
+      },
+      "look": {
+        "codes": [
+          "F01"
+        ],
+        "adaptation": "Clean bright mint/cream graphic palette with deep teal contrast, limited warm gold accent, consistent unfiltered type and official logo. Native graphic styling only; do not claim to grade nonexistent footage."
+      }
+    },
+    "stages": [
+      {
+        "role": "Hook",
+        "from": 0,
+        "to": 0.14,
+        "codes": [
+          "H01"
+        ],
+        "instruction": "Open the curiosity gap with a complete question and a clear qualitative visual, not an unsupported promise."
+      },
+      {
+        "role": "Fact",
+        "from": 0.14,
+        "to": 0.4,
+        "codes": [
+          "L05",
+          "B08"
+        ],
+        "instruction": "Answer with one grounded fact. Add source scope and citation if available; make uncertainty explicit otherwise."
+      },
+      {
+        "role": "Why",
+        "from": 0.4,
+        "to": 0.7,
+        "codes": [
+          "V08"
+        ],
+        "instruction": "Explain the causal connection with a connected original icon-flow diagram. No numeric axes or unsupported efficacy claims."
+      },
+      {
+        "role": "Solution",
+        "from": 0.7,
+        "to": 1,
+        "codes": [
+          "V04",
+          "V10"
+        ],
+        "instruction": "Resolve the opening question with a usable next step, a complete sentence and any evidence limit. Do not substitute a generic CTA for the solution."
+      }
+    ],
+    "beats": []
+  },
+  {
+    "id": "styles-blueprint-explainer",
+    "name": "NEW Styles · Blueprint / process explainer (complete video)",
+    "source": "Styles.docx",
+    "kind": "native-motion",
+    "required_assets": [],
+    "required_inputs": [
+      "brief-or-source"
+    ],
+    "source_seconds": 30,
+    "summary": "Question to grounded fact to traced qualitative system to practical solution; a bright blueprint adaptation, not made-up technical measurements.",
+    "tracks": {
+      "hook": {
+        "codes": [
+          "H03"
+        ],
+        "adaptation": "Ask a question the supplied topic genuinely answers. Show it on frame zero, use 0.09s word stagger as graphic entrance (not fake speech timestamps), pulse punctuation once, then reveal the answer. No dark dim layer on the bright plate."
+      },
+      "captions": {
+        "codes": [
+          "C06"
+        ],
+        "adaptation": "Sentence case, regular serif, at most two readable lines, 0.2s opacity crossfade. Transparent, no scrim; consistent centered grid inside top 12%, bottom 22%, right 12% safe bounds. Spoken text verbatim at actual sentence times; silent mode uses separately written reading-paced sentences."
+      },
+      "layout": {
+        "codes": [
+          "L05"
+        ],
+        "adaptation": "One connected qualitative drawing plus a restrained editorial text/citation column; original outline parts and no screenshots. On Continuous Line maintain one tall SVG world, single growing green stroke and warm-gold pen marker. Mask connectors beneath serif label glyphs. Keep caption grid independent and clear."
+      },
+      "proof": {
+        "codes": [],
+        "adaptation": "Use a concise source/author-year text line ONLY from accessible supplied/fetched evidence, and explain its scope and limit. No P01/P02/P03 evidence captures, invented quotes, data or results. When unsupported, label the explanation qualitative, state uncertainty, do not fake proof."
+      },
+      "illustration": {
+        "codes": [
+          "X10",
+          "B04",
+          "V06",
+          "V10"
+        ],
+        "adaptation": "Start directly on a bright mint/cream blueprint field (no source visual claimed). Fine grid at 10% opacity, trace components and connecting SVG paths over 1.2s in explanation order. Labels come only from the script/source; no invented dimensions, measurements or architecture. If no clear process exists use a neutral unlabelled node field, state the limit, do not imply a system. Practical steps use a simple progress line without percentages."
+      },
+      "motion": {
+        "codes": [
+          "M03"
+        ],
+        "adaptation": "Calm 1.00 to 1.04 scale push and <=0.5% drift on diagram only, never move captions; fades at sentence boundaries. On Continuous Line, keep one growing SVG world and camera tracking, not detached scene cards."
+      },
+      "audio": {
+        "codes": [
+          "S08",
+          "S10"
+        ],
+        "adaptation": "Use the worker's approved piano, real speech-span ducking and gentle final fade. Preserve approved v17 voice pace and mix; do not invent a chord/beat map or add unlicensed sound effects. Voice off has no narration stem. Final spoken CTA follows the selected language."
+      },
+      "look": {
+        "codes": [
+          "F02"
+        ],
+        "adaptation": "Adapt warm editorial to bright mint/cream with deep teal type and warm gold details. This is a native graphic palette, NOT a claim of footage grading, skin isolation or LUT processing. Keep logo/caption colours unfiltered."
+      }
+    },
+    "stages": [
+      {
+        "role": "Hook",
+        "from": 0,
+        "to": 0.14,
+        "codes": [
+          "H03"
+        ],
+        "instruction": "Open the curiosity gap with a complete question and a clear qualitative visual, not an unsupported promise."
+      },
+      {
+        "role": "Fact",
+        "from": 0.14,
+        "to": 0.4,
+        "codes": [
+          "L05"
+        ],
+        "instruction": "Answer with one grounded fact. Add source scope and citation if available; make uncertainty explicit otherwise."
+      },
+      {
+        "role": "Why",
+        "from": 0.4,
+        "to": 0.7,
+        "codes": [
+          "X10",
+          "B04",
+          "M03"
+        ],
+        "instruction": "Explain the causal connection with a connected original icon-flow diagram. No numeric axes or unsupported efficacy claims."
+      },
+      {
+        "role": "Solution",
+        "from": 0.7,
+        "to": 1,
+        "codes": [
+          "V06",
+          "V10"
+        ],
+        "instruction": "Resolve the opening question with a usable next step, a complete sentence and any evidence limit. Do not substitute a generic CTA for the solution."
+      }
+    ],
+    "beats": []
+  },
+  {
+    "id": "styles-creator-footage",
+    "name": "NEW Styles · Creator / proof edit (uploaded footage — unavailable)",
+    "source": "Styles.docx",
+    "kind": "uploaded-footage",
+    "required_assets": [
+      "source-video",
+      "screenshots",
+      "timed-transcript"
+    ],
+    "required_inputs": [
+      "source-video",
+      "screenshots",
+      "timed-transcript"
+    ],
+    "source_seconds": 30,
+    "summary": "Reference-only complete footage edit. This app has no footage upload/matte/alignment pipeline; remains disabled. Never replace missing media with invented captures.",
+    "tracks": {
+      "hook": {
+        "codes": [
+          "H01"
+        ],
+        "adaptation": "Use supplied original speech and a faithful headline, without altering the original voice."
+      },
+      "captions": {
+        "codes": [
+          "C01"
+        ],
+        "adaptation": "Requires verified word timestamps for karaoke; otherwise C06 line-level fallback. No invented timing. Transparent captions override source capsules."
+      },
+      "layout": {
+        "codes": [
+          "L10"
+        ],
+        "adaptation": "Requires actual speaker footage plus supplied proof; no source files, no layout. Never recreate proof."
+      },
+      "proof": {
+        "codes": [
+          "P01"
+        ],
+        "adaptation": "Only actual permission-cleared supplied screenshots, held long enough to read; otherwise omit/report."
+      },
+      "illustration": {
+        "codes": [
+          "B02",
+          "X01"
+        ],
+        "adaptation": "Use real supplied cards; orbit only with a tested matte, otherwise front-only 2D arc. Fewer than three cards use floating screenshot cards."
+      },
+      "motion": {
+        "codes": [
+          "M03"
+        ],
+        "adaptation": "Only if footage resolution has crop headroom. This app does not yet support uploaded-footage editing."
+      },
+      "audio": {
+        "codes": [
+          "S08",
+          "S10"
+        ],
+        "adaptation": "Use the worker's approved piano, real speech-span ducking and gentle final fade. Preserve approved v17 voice pace and mix; do not invent a chord/beat map or add unlicensed sound effects. Voice off has no narration stem. Final spoken CTA follows the selected language."
+      },
+      "look": {
+        "codes": [
+          "F01"
+        ],
+        "adaptation": "Real source primary balance and neutral grade, preserving skin, captions and logo; unsupported in the native generator."
+      }
+    },
+    "stages": [
+      {
+        "role": "Hook",
+        "from": 0,
+        "to": 0.14,
+        "codes": [
+          "H01"
+        ],
+        "instruction": "Open the curiosity gap with a complete question and a clear qualitative visual, not an unsupported promise."
+      },
+      {
+        "role": "Fact",
+        "from": 0.14,
+        "to": 0.4,
+        "codes": [
+          "L10",
+          "P01"
+        ],
+        "instruction": "Answer with one grounded fact. Add source scope and citation if available; make uncertainty explicit otherwise."
+      },
+      {
+        "role": "Why",
+        "from": 0.4,
+        "to": 0.7,
+        "codes": [
+          "B02",
+          "X01"
+        ],
+        "instruction": "Explain the causal connection with a connected original icon-flow diagram. No numeric axes or unsupported efficacy claims."
+      },
+      {
+        "role": "Solution",
+        "from": 0.7,
+        "to": 1,
+        "codes": [
+          "V10"
+        ],
+        "instruction": "Resolve the opening question with a usable next step, a complete sentence and any evidence limit. Do not substitute a generic CTA for the solution."
+      }
+    ],
+    "beats": []
+  }
+]

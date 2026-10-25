@@ -1,0 +1,998 @@
+{
+  "tempo_bpm": 92.3076923076923,
+  "chords_midi": [
+    [
+      48,
+      55,
+      59,
+      62,
+      64
+    ],
+    [
+      45,
+      52,
+      55,
+      59,
+      60
+    ],
+    [
+      41,
+      48,
+      52,
+      57,
+      60
+    ],
+    [
+      43,
+      50,
+      55,
+      57,
+      59
+    ],
+    [
+      40,
+      47,
+      50,
+      55,
+      59
+    ],
+    [
+      41,
+      48,
+      52,
+      55,
+      60
+    ],
+    [
+      38,
+      45,
+      48,
+      53,
+      57
+    ],
+    [
+      43,
+      50,
+      53,
+      59,
+      62
+    ],
+    [
+      48,
+      55,
+      59,
+      62,
+      64
+    ],
+    [
+      45,
+      52,
+      55,
+      60,
+      64
+    ],
+    [
+      41,
+      48,
+      52,
+      57,
+      60
+    ],
+    [
+      48,
+      55,
+      57,
+      60,
+      64
+    ],
+    [
+      48,
+      55,
+      59,
+      62,
+      64
+    ],
+    [
+      48,
+      55,
+      57,
+      60,
+      64
+    ]
+  ],
+  "melodies_midi": [
+    [
+      76,
+      74,
+      71
+    ],
+    [
+      72,
+      76
+    ],
+    [
+      69,
+      72,
+      76
+    ],
+    [
+      74,
+      71
+    ],
+    [
+      71,
+      67,
+      69
+    ],
+    [
+      72,
+      69
+    ],
+    [
+      69,
+      65,
+      64
+    ],
+    [
+      67,
+      71,
+      74
+    ],
+    [
+      76,
+      79,
+      74
+    ],
+    [
+      72,
+      76,
+      71
+    ],
+    [
+      69,
+      72,
+      74
+    ],
+    [
+      76,
+      72
+    ],
+    [
+      74,
+      71
+    ],
+    [
+      72
+    ]
+  ],
+  "notes": [
+    {
+      "time": 0.0,
+      "midi": 48.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 0.03,
+      "midi": 55,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 0.03,
+      "midi": 59,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 0.03,
+      "midi": 62,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 0.03,
+      "midi": 64,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 0.325,
+      "midi": 67,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 0.9750000000000001,
+      "midi": 74,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 1.625,
+      "midi": 71,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 0.9750000000000001,
+      "midi": 76,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 1.4625000000000001,
+      "midi": 74,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 1.9500000000000002,
+      "midi": 71,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 2.6,
+      "midi": 45.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 2.63,
+      "midi": 52,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 2.63,
+      "midi": 55,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 2.63,
+      "midi": 59,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 2.63,
+      "midi": 60,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 2.9250000000000003,
+      "midi": 67,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 3.575,
+      "midi": 64,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 4.225,
+      "midi": 72,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 3.575,
+      "midi": 72,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 4.0625,
+      "midi": 76,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 5.2,
+      "midi": 41.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 5.23,
+      "midi": 48,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 5.23,
+      "midi": 52,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 5.23,
+      "midi": 57,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 5.23,
+      "midi": 60,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 5.525,
+      "midi": 60,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 6.175000000000001,
+      "midi": 69,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 6.825,
+      "midi": 64,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 6.175000000000001,
+      "midi": 69,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 6.6625000000000005,
+      "midi": 72,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 7.15,
+      "midi": 76,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 7.800000000000001,
+      "midi": 43.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 7.830000000000001,
+      "midi": 50,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 7.830000000000001,
+      "midi": 55,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 7.830000000000001,
+      "midi": 57,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 7.830000000000001,
+      "midi": 59,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 8.125,
+      "midi": 67,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 8.775,
+      "midi": 62,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 9.425,
+      "midi": 71,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 8.775,
+      "midi": 74,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 9.262500000000001,
+      "midi": 71,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 10.4,
+      "midi": 40.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 10.43,
+      "midi": 47,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 10.43,
+      "midi": 50,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 10.43,
+      "midi": 55,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 10.43,
+      "midi": 59,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 10.725,
+      "midi": 59,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 11.375,
+      "midi": 67,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 12.025,
+      "midi": 62,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 11.375,
+      "midi": 71,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 11.8625,
+      "midi": 67,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 12.350000000000001,
+      "midi": 69,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 13.0,
+      "midi": 41.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 13.03,
+      "midi": 48,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 13.03,
+      "midi": 52,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 13.03,
+      "midi": 55,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 13.03,
+      "midi": 60,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 13.325,
+      "midi": 64,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 13.975,
+      "midi": 60,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 14.625,
+      "midi": 72,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 13.975,
+      "midi": 72,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 14.4625,
+      "midi": 69,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 15.600000000000001,
+      "midi": 38.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 15.63,
+      "midi": 45,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 15.63,
+      "midi": 48,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 15.63,
+      "midi": 53,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 15.63,
+      "midi": 57,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 15.925,
+      "midi": 57,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 16.575000000000003,
+      "midi": 65,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 17.225,
+      "midi": 60,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 16.575000000000003,
+      "midi": 69,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 17.0625,
+      "midi": 65,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 17.55,
+      "midi": 64,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 18.2,
+      "midi": 43.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 18.23,
+      "midi": 50,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 18.23,
+      "midi": 53,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 18.23,
+      "midi": 59,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 18.23,
+      "midi": 62,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 18.525,
+      "midi": 65,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 19.175,
+      "midi": 62,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 19.825,
+      "midi": 74,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 19.175,
+      "midi": 67,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 19.662499999999998,
+      "midi": 71,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 20.15,
+      "midi": 74,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 20.8,
+      "midi": 48.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 20.830000000000002,
+      "midi": 55,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 20.830000000000002,
+      "midi": 59,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 20.830000000000002,
+      "midi": 62,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 20.830000000000002,
+      "midi": 64,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 21.125,
+      "midi": 67,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 21.775000000000002,
+      "midi": 74,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 22.425,
+      "midi": 71,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 21.775000000000002,
+      "midi": 76,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 22.2625,
+      "midi": 79,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 22.75,
+      "midi": 74,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 23.400000000000002,
+      "midi": 45.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 23.430000000000003,
+      "midi": 52,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 23.430000000000003,
+      "midi": 55,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 23.430000000000003,
+      "midi": 60,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 23.430000000000003,
+      "midi": 64,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 23.725,
+      "midi": 67,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 24.375000000000004,
+      "midi": 64,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 25.025000000000002,
+      "midi": 76,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 24.375000000000004,
+      "midi": 72,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 24.8625,
+      "midi": 76,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 25.35,
+      "midi": 71,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 26.0,
+      "midi": 41.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 26.03,
+      "midi": 48,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 26.03,
+      "midi": 52,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 26.03,
+      "midi": 57,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 26.03,
+      "midi": 60,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 26.325,
+      "midi": 60,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 26.975,
+      "midi": 69,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 27.625,
+      "midi": 64,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 26.975,
+      "midi": 69,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 27.4625,
+      "midi": 72,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 27.95,
+      "midi": 74,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 28.6,
+      "midi": 48.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 28.630000000000003,
+      "midi": 55,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 28.630000000000003,
+      "midi": 57,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 28.630000000000003,
+      "midi": 60,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 28.630000000000003,
+      "midi": 64,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 28.925,
+      "midi": 69,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 29.575000000000003,
+      "midi": 67,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 30.225,
+      "midi": 76,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 29.575000000000003,
+      "midi": 76,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 30.0625,
+      "midi": 72,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 31.200000000000003,
+      "midi": 48.0,
+      "kind": "bass",
+      "length": 2.35
+    },
+    {
+      "time": 31.230000000000004,
+      "midi": 55,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 31.230000000000004,
+      "midi": 59,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 31.230000000000004,
+      "midi": 62,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 31.230000000000004,
+      "midi": 64,
+      "kind": "chord",
+      "length": 2.45
+    },
+    {
+      "time": 31.525000000000002,
+      "midi": 67,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 32.175000000000004,
+      "midi": 74,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 32.825,
+      "midi": 71,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 32.175000000000004,
+      "midi": 74,
+      "kind": "key",
+      "length": 1.8
+    },
+    {
+      "time": 32.6625,
+      "midi": 71,
+      "kind": "key",
+      "length": 1.8
+    }
+  ]
+}

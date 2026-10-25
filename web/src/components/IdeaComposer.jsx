@@ -3,6 +3,8 @@ import { ImagePlus, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { CATEGORY_TO_DOMAIN, STREAMS } from "../lib/brand";
 import { useLang } from "../lib/i18n";
+import { useSettings } from "../lib/hooks";
+import { LANGUAGES, motionDefaults, motionFromIdea } from "../lib/motion";
 import { IMAGE_TYPES, refusal, removeReference, uploadReference } from "../lib/storage";
 import LookPicker from "./LookPicker";
 import { useDesigns } from "../lib/designs";
@@ -25,6 +27,9 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   const { t } = useLang();
   const [stream, setStream] = useState("regulab");
   const [media, setMedia] = useState("image");
+  const [outputMotion, setOutputMotion] = useState(false);
+  const [motionLanguage, setMotionLanguage] = useState("en");
+  const { settings: motionSettings } = useSettings(true);
   const [format, setFormat] = useState("post");   // post | carousel | poster (backend: ideas.format_of)
   // the slide design: what Wan picked, else the DEFAULT of My designs (chosen in the same place as Semasa, Grid, Info ERA and Photo)
   const { designs, defaultId } = useDesigns();
@@ -46,6 +51,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     // chosen, and as a carousel: the flow Wan asked for is notice → idea → slides or a poster → post
     // an empty slot in the Schedule opens this for that slot: its stream, and the rota's first domain that day
     setStream(position?.stream || (trend?.watch ? trend.stream || "regulab" : "regulab")); setMedia("image");
+    setOutputMotion(false); setMotionLanguage(motionDefaults(motionSettings).language);
     setFormat(trend?.watch ? "carousel" : "post"); setLook(null);
     setAngle(trend?.watch ? trend.angle || "" : ""); setNote(""); setRefs([]);
     setDomain(trend ? (trend.faq || trend.watch ? trend.domain : CATEGORY_TO_DOMAIN[trend.category]) || ""
@@ -84,8 +90,8 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   async function submit(e) {
     e.preventDefault();
     if (uploading) return;
-    if (!title.trim()) return onToast(t("Perlukan tajuk atau isu.", "A title or an issue is needed."), "warn");
-    const drawn = format !== "post";
+    if (!title.trim() && !(outputMotion && url.trim())) return onToast(t("Perlukan tajuk atau isu.", "A title or an issue is needed."), "warn");
+    const drawn = !outputMotion && format !== "post";
     if (drawn && lookBlocked === "photo") {
       return onToast(t("Reka bentuk Foto dilukis di atas gambar post: pilih Media Imej, atau reka bentuk lain.",
         "The Photo design is drawn on the post's picture: choose Media Image, or another design."), "warn");
@@ -102,6 +108,15 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
       reference_urls: refs.map((r) => r.url), status: "new", created_by: user.id,
     };
     // sent only when asked: the column arrives with supabase/006_slides.sql
+    if (outputMotion) {
+      const motion = motionFromIdea({...row, citations: trend?.citations, brief: {source: trend || {}}}, user.id, motionDefaults(motionSettings), motionLanguage);
+      if (!motion) { setBusy(false); return onToast("Add an idea or valid source URL.", "warn"); }
+      const { error } = await supabase.from(TABLES.motions).insert(motion);
+      setBusy(false);
+      if (error) return onToast(errText(error), "danger");
+      onToast("Motion queued directly; no post or image draft created.", "ok");
+      onDone?.(); onClose(); return;
+    }
     if (format === "carousel") row.make_slides = true;
     // the look and a poster ride in the idea's brief until the bot writes the draft (backend: ideas.look_of, format_of)
     const brief = {};
@@ -148,7 +163,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
               : t("Bot baca notis ini dan memetik pengawal selia serta rujukannya.", "The bot reads this notice and cites the regulator and its reference.")}</span>}</p>
         ) : (
           <>
-            <label className="block"><Label>{t("Isu / tajuk", "Issue / title")}</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
+            <label className="block"><Label>{t("Isu / tajuk", "Issue / title")}</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} required={!outputMotion} /></label>
             <label className="block"><Label hint={t("pilihan", "optional")}>{t("Pautan sumber", "Source link")}</Label><Input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" /></label>
           </>
         )}
@@ -158,6 +173,8 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
               <Select value={domain} onChange={setDomain} options={[["", t("Bot pilih", "Bot chooses")], ...domains]} className="w-full" /></label>
           : <label className="block"><Label hint={t("kosong = bot pilih", "empty = the bot chooses")}>{t("Sudut", "Angle")}</Label>
               <Select value={angle} onChange={setAngle} options={[["", t("Bot pilih", "Bot chooses")], ...angles.map(([k, v]) => [k, `${k} · ${v}`])]} className="w-full" /></label>}
+        <label className="flex items-center gap-2"><input type="checkbox" checked={outputMotion} onChange={e => setOutputMotion(e.target.checked)} />Motion only · no post/image draft</label>
+        {outputMotion && <Select value={motionLanguage} onChange={setMotionLanguage} options={LANGUAGES} />}
         <div><Label>Media</Label><Segmented value={media} onChange={setMedia} options={[["image", t("Imej", "Image")], ["video", "Video"], ["none", t("Tiada", "None")]]} /></div>
         <div>
           <Label>{t("Jadikan", "Make it")}</Label>
@@ -175,7 +192,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
             {format !== "post" && media === "image" ? t(" Gambar post jadi latar.", " The post picture becomes the background.") : ""}
           </span>
         </div>
-        {format !== "post" && (
+        {!outputMotion && format !== "post" && (
           <div className="rounded-tile bg-surface-2/40 p-2.5">
             <LookPicker value={look} onChange={setLook} sample stream={stream}
               slides={format === "poster" ? posterSample : sampleSlides(title, stream)}

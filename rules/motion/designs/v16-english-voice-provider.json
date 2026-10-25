@@ -1,0 +1,46 @@
+{
+  "engine": "debpalash/VoiceStudio services.tts_backend.KittenTTSBackend",
+  "model": "KittenML/kitten-tts-mini-0.8",
+  "preset": "expr-voice-2-f",
+  "language": "en",
+  "native_speed": 1.5,
+  "segments": [
+    {
+      "text": "Can one ingredient name tell you the whole formula?",
+      "native_speed": 1.5,
+      "file": "/opt/data/outputs/motion-v15/english-audio/voice-0.wav"
+    },
+    {
+      "text": "Not quite. Take glycerin. It helps skin hold water.",
+      "native_speed": 1.5,
+      "file": "/opt/data/outputs/motion-v15/english-audio/voice-1.wav"
+    },
+    {
+      "text": "A dermatology review by Fluhr and colleagues explains how glycerol supports skin hydration.",
+      "native_speed": 1.5,
+      "file": "/opt/data/outputs/motion-v15/english-audio/voice-2.wav"
+    },
+    {
+      "text": "But one ingredient\u2019s role does not prove a finished product\u2019s performance. The whole formula matters.",
+      "native_speed": 1.5,
+      "file": "/opt/data/outputs/motion-v15/english-audio/voice-3.wav"
+    },
+    {
+      "text": "So read the directions and warnings on the packaging, not just the ingredient names.",
+      "native_speed": 1.5,
+      "file": "/opt/data/outputs/motion-v15/english-audio/voice-4.wav"
+    },
+    {
+      "text": "Follow us for more.",
+      "native_speed": 1.5,
+      "file": "/opt/data/outputs/motion-v15/english-audio/voice-5.wav"
+    }
+  ],
+  "native_trimmed_seconds": 23.227,
+  "post_tempo": 1.04,
+  "pitch_preserving": true,
+  "processed_speech_seconds": 22.366208333333333,
+  "speech_wpm": 171.68757183921429,
+  "duration_seconds": 26.041666666666668,
+  "previous_native_speed": 1.36
+}

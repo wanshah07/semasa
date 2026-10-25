@@ -1,0 +1,25 @@
+{
+  "source_filename": "Styles.docx",
+  "occurrences": 106,
+  "exact_duplicates": 7,
+  "conflicting_codes": [],
+  "missing_codes": [
+    "H07"
+  ],
+  "categories": {
+    "Signature effects": 10,
+    "Hooks": 9,
+    "Captions": 10,
+    "Proof": 10,
+    "Layouts": 10,
+    "Visual emphasis": 10,
+    "B-roll and illustration": 10,
+    "Motion": 10,
+    "Sound": 10,
+    "Colour and finish": 10
+  },
+  "docx_sha256": "52a99c5fe51bb672d82285611f301f1135afae404906ab0e01d57d20e45d8bb2",
+  "extraction_sha256": "b74c1cc0c8dabd0f6642a11fe24660eadecc826fa8c9e41c3c60bc933342001a",
+  "unique_effect_bodies": 99,
+  "note": "Separate from the old 8-section/7-distinct complete-recipe attachment. H07 not supplied."
+}

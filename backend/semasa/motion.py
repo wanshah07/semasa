@@ -733,7 +733,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             fixed += ("\nSUBTITLES (the format of Wan's approved reference films): the narration as short transparent subtitles, "
                       "centred, in a lane of their own from 78% to 89.5% of the frame height, 52px (1080-wide), no box, "
                       "capsule or scrim, each chunk visible exactly for its times. The scene's content column stops at 76% "
-                      "of the frame height (height 61% instead of 64%), so a subtitle never meets other text:\n" + "\n".join(subs))
+                      "of the frame height (height 61% instead of 64%), so a subtitle never meets other text:\n"
+                      + "\n".join(subs))
         if auto:
             fixed += "\n" + motion_auto.prompt_block(auto, scenes)
         if any(e["adapter"] != "native-text" for e in asset_plan["effects"]):

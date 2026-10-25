@@ -260,6 +260,25 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
     return scenes, total, note
 
 
+def shorten_narration(plan_scenes: list[dict[str, Any]], timed: list[dict[str, Any]]) -> bool:
+    """The film's speech does not fit: drop the last sentence of the longest narrated scene (or, with one sentence, its last
+    quarter of words). True when something was cut. Speech is cut, never rushed (Wan, 25 Oct 2026)."""
+    teaching = [sc for sc in timed if sc.get("id") != "brand-outro" and sc.get("audio")]
+    if not teaching:
+        return False
+    longest = max(teaching, key=lambda sc: float(sc.get("audio_s") or 0))
+    target = next(sc for sc in plan_scenes if sc["id"] == longest["id"])
+    sentences = re.split(r"(?<=[.!?])\s+", target["narration"].strip())
+    if len(sentences) > 1:
+        target["narration"] = " ".join(sentences[:-1])
+        return True
+    words = target["narration"].split()
+    if len(words) < 6:
+        return False
+    target["narration"] = " ".join(words[:max(4, int(len(words) * .75))]).rstrip(",;:") + "."
+    return True
+
+
 def reading_seconds(sc: dict[str, Any]) -> float:
     """How long a scene with no voice stays up: the eye at READ_WPS over everything on screen, then a hold."""
     return round(max(SILENT_MIN, words_on_screen(sc) / READ_WPS + READ_PAD), 2)
@@ -289,8 +308,17 @@ def fit_scenes(scenes: list[dict[str, Any]], seconds: float) -> tuple[list[dict[
         outro_seconds = max(outro_seconds, len(outro.get("heading", "").split()) / 1.5)
     available = seconds - outro_seconds
     floors = [max(.7, float(sc.get("audio_s") or 0) + .15) if sc.get("audio") else reading_seconds(sc) for sc in teaching]
-    if not teaching or sum(floors) > available or available <= 0:
-        raise ValueError("Narration cannot fit this duration including the outro; choose 30/60s or a narrower micro-topic")
+    need = sum(floors)
+    if teaching and need > available > 0:
+        # a silent scene may be read a quarter faster rather than the film failing; speech is never squeezed
+        quiet = sum(f for f, sc in zip(floors, teaching, strict=True) if not sc.get("audio"))
+        room = available - (need - quiet)
+        if quiet and room >= quiet * 0.75:
+            floors = [f if sc.get("audio") else f * room / quiet for f, sc in zip(floors, teaching, strict=True)]
+            need = sum(floors)
+    if not teaching or need > available or available <= 0:
+        raise ValueError(f"Narration cannot fit this duration including the outro (needs {need:.1f}s, has {available:.1f}s); "
+                         "choose 30/60s or a narrower micro-topic")
     slack = (available - sum(floors)) / len(teaching)
     start = 0.0
     for sc, floor in zip(teaching, floors, strict=True):
@@ -702,12 +730,21 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             # A worker that IS configured and then fails still fails loudly, below.
             choice = "male"
             kitten_fallback = " (KittenTTS is not set up on this runner, so an Edge voice was used)"
-        scenes, total, voice_note = voice_scenes(plan["scenes"], lang, choice, folder, speak=speak, runner=runner)
+        for attempt in range(6):
+            scenes, total, voice_note = voice_scenes([dict(sc) for sc in plan["scenes"]], lang, choice, folder,
+                                                     speak=speak, runner=runner)
+            voiced = any(sc.get("audio") for sc in scenes)
+            if not voiced:
+                scenes = trim_for_reading(scenes, motion_styles.duration(row))
+            try:
+                scenes, total = fit_scenes(scenes, motion_styles.duration(row))
+                break
+            except ValueError:
+                if not voiced or attempt == 5 or not shorten_narration(plan["scenes"], scenes):
+                    raise
+                log.info("%s: the narration is too long for %gs; cut a sentence and recorded again", row["id"],
+                         motion_styles.duration(row))
         voice_note += kitten_fallback
-        voiced = any(sc.get("audio") for sc in scenes)
-        if not voiced:
-            scenes = trim_for_reading(scenes, motion_styles.duration(row))
-        scenes, total = fit_scenes(scenes, motion_styles.duration(row))
         pace_note = ("narrated: brisk" if voiced else f"silent: paced for reading at {READ_WPS:g} words a second")
         w, h = SIZES.get(row.get("resolution") or "portrait", SIZES["portrait"])
         photos, photo_note = fetch_photos(plan.get("photo_query") or "", folder, search=photo_search, get=photo_get)

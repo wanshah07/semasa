@@ -64,6 +64,12 @@ def duration_of(path: Path, runner: Any = subprocess.run) -> float:
         return 0.0
 
 
+def kitten_ready() -> bool:
+    """True when this machine has a VoiceStudio worker for the English Kitten voice (both variables set). GitHub's hosted
+    runner has none, so a film asking for Kitten there narrates with an Edge voice and says so (Wan, 25 Oct 2026)."""
+    return bool(os.environ.get("VOICESTUDIO_PYTHON") and os.environ.get("VOICESTUDIO_ROOT"))
+
+
 def speak(text: str, voice: str, out: Path, runner: Any = subprocess.run) -> dict[str, Any]:
     """Write `text` as MP3 to `out`. {"duration": seconds, "words": [[start, end, word], ...]}; raises when nothing came back."""
     out.parent.mkdir(parents=True, exist_ok=True)

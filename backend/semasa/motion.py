@@ -37,7 +37,7 @@ from typing import Any
 
 from PIL import Image
 
-from . import ai_config, api_status, db, fetch, motion_assets, motion_auto, motion_layout, motion_styles, unsplash
+from . import ai_config, api_status, db, fetch, motion_assets, motion_auto, motion_layout, motion_probe, motion_styles, unsplash
 from . import voice as voice_mod
 from .llm import LLM
 from .repos import GitHub
@@ -121,7 +121,7 @@ THE CONTRACT (a render fails or looks wrong if any is broken):
 8. Frame 0 already shows the title (it is the social thumbnail): do not enter from an empty frame.
 
 THE FILM: exactly the scenes under SCENES, FIXED (Hook, Fakta, Kenapa, Solusi: one idea each, short lines, numbers big),
-then the worker's closing card; the source line "{source_line}" goes in small type on the last teaching scene. Motion: eases
+then the worker's closing card{source_clause}. No scene label (HOOK, FAKTA, KENAPA, SOLUSI) is ever shown on screen. Motion: eases
 power3.out / power2.inOut, 0.4 to 0.8 s entrances, staggered lines, a slow background drift, punchy but readable; every scene
 stays on screen for its fixed time.
 LOOK: the approved reference film under "APPROVED DESIGN VISUAL REFERENCE" is the target. Match its type, colours, composition and
@@ -339,7 +339,7 @@ def plan_text(scenes: list[dict[str, Any]]) -> str:
     rows = []
     for sc in scenes:
         rows.append(f"- {sc['id']}: data-start=\"{sc['start']:g}\" data-duration=\"{sc['duration']:g}\" · "
-                    f"kicker \"{sc['kicker']}\" · heading \"{sc['heading']}\" · "
+                    f"heading \"{sc['heading']}\" · "
                     f"lines {json.dumps(sc.get('lines') or [], ensure_ascii=False)}")
     return "\n".join(rows)
 
@@ -454,7 +454,8 @@ def build_system(row: dict[str, Any], extra: str, background: str = "", seconds:
     pal = PALETTE["regulab"]
     return SYSTEM.format(lang=html_lang, resolution=res, w=w, h=h, gsap=GSAP,
                          seconds=(seconds if seconds else motion_styles.duration(row)),
-                         source_line=row.get("source_line") or "Sumber: lihat kapsyen",
+                         source_clause=(f'; the source line "{row["source_line"]}" goes in small type on the last teaching scene'
+                                        if row.get("source_line") else ""),
                          voice=voice_line(stream, language_of(row)),
                          language=language,
                          extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "")
@@ -767,8 +768,10 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         shown = [sc for sc in scenes if sc.get("photo")]
         if shown:
             fixed += ("\nPHOTOS (Unsplash, illustration only: never present one as the product, a result or evidence). Each is a "
-                      "div with background-image:url(PATH);background-size:cover in its OWN frame, border-radius 28px, height "
-                      f"{30 if h >= w else 36}% of the frame, as the FIRST block of that scene's column, never behind text:\n"
+                      "div with background-image:url(PATH);background-size:cover in its OWN arch-shaped frame like the reference "
+                      f"films (border-radius 999px 999px 28px 28px), about {44 if h >= w else 30}% of the frame wide and "
+                      f"{30 if h >= w else 36}% of its height, centred, in the visual position of that scene (heading above "
+                      "it, never touching it), never behind text:\n"
                       + "\n".join(f"- {sc['id']}: {sc['photo']}" for sc in shown))
         if voiced:
             subs = [f"- {sc['id']}: " + " | ".join(f'"{text}" {a:g}-{b:g}s' for text, a, b in motion_layout.caption_chunks(sc))
@@ -803,7 +806,14 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
 
         def checked(raw: str) -> dict[str, Any]:
             write_project(folder, composed(raw))
-            return check(folder, settings["cli"], runner)
+            rep = check(folder, settings["cli"], runner)
+            # HyperFrames' own check missed a photo squeezed onto a heading (25 Oct 2026): the worker measures the film too
+            found = motion_probe.overlaps(folder, w, h, total)
+            real = [f for f in found if f["code"] != "probe_unavailable"]
+            rep["warnings"] = [*rep["warnings"], *(f for f in found if f["code"] == "probe_unavailable")]
+            if real:
+                rep["errors"], rep["ok"] = [*rep["errors"], *real], False
+            return rep
 
         layout_note, layout = "", {}
         out: dict[str, Any] = {}

@@ -263,3 +263,46 @@ def test_a_silent_film_may_be_read_a_quarter_faster_but_no_more_and_the_error_na
     assert total == 30 and fit[0]["duration"] < motion.reading_seconds(fit[0])
     with pytest.raises(ValueError, match=r"needs \d+\.\ds, has 27\.0s"):
         motion.fit_scenes(quiet(4), 30)               # 41 s of reading in 27 s is not "a quarter faster"
+
+
+PAGE = """<!doctype html><html><head><style>
+html,body{margin:0;width:1080px;height:1920px}#root{position:absolute;inset:0}
+.clip{position:absolute;left:0;top:0;width:1080px;height:1920px}
+h2,p{margin:0;position:absolute;left:100px;font:60px/1.1 sans-serif}
+.ph{position:absolute;left:100px;width:400px;height:300px;background-image:url(data:image/gif;base64,R0lGODlhAQABAAAAACw=)}
+</style></head><body><div id="root" data-composition-id="main" data-start="0" data-duration="6">
+%s
+</div><script>window.__timelines={main:{seek(){},pause(){}}};</script></body></html>"""
+
+
+def _probe(tmp_path, body):
+    pytest.importorskip("playwright")
+    from semasa import motion_probe
+    if not motion_probe.chrome_path():
+        pytest.skip("no Chrome here")
+    (tmp_path / "index.html").write_text(PAGE % body)
+    return motion_probe.overlaps(tmp_path, 1080, 1920, 6)
+
+
+def test_the_overlap_probe_flags_text_on_text_text_on_a_photo_and_text_off_the_frame(tmp_path):
+    clip = '<div class="clip" data-start="0" data-duration="6">%s</div>'
+    clean = clip % '<h2 style="top:200px">Title</h2><p style="top:400px">Line</p>'
+    assert _probe(tmp_path, clean) == []
+    stacked = clip % '<h2 style="top:200px">Title here</h2><p style="top:215px">Line over it</p>'
+    assert {f["code"] for f in _probe(tmp_path, stacked)} == {"text_overlap"}
+    on_photo = clip % '<div class="ph" style="top:200px"></div><h2 style="top:300px">Hi</h2>'
+    assert {f["code"] for f in _probe(tmp_path, on_photo)} == {"text_on_photo"}
+    off = clip % '<h2 style="top:200px;left:900px;white-space:nowrap">Too far right</h2>'
+    assert "text_off_frame" in {f["code"] for f in _probe(tmp_path, off)}
+    # two scenes that never share a moment may share a place
+    apart = ('<div class="clip" data-start="0" data-duration="3"><h2 style="top:200px">One</h2></div>'
+             '<div class="clip" data-start="3" data-duration="3"><h2 style="top:200px">Two</h2></div>')
+    assert _probe(tmp_path, apart) == []
+
+
+def test_a_probe_finding_counts_as_a_layout_finding_and_an_unavailable_probe_does_not_fail_a_film():
+    f = [{"code": "text_on_photo", "message": "x"}, {"code": "text_overlap", "message": "y"},
+         {"code": "text_off_frame", "message": "z"}]
+    assert len(motion_layout.layout_findings(f)) == 3
+    unavailable = [{"code": "probe_unavailable", "message": "no Chrome found for the overlap test"}]
+    assert motion_layout.layout_findings(unavailable) == []

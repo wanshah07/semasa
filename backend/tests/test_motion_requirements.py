@@ -27,7 +27,7 @@ def test_design_consumed_by_both_prompts(design, label):
 def test_bm_and_silent_policy_and_cta():
     row = {"language": "bm", "voice": "off"}
     prompt = motion.build_script_system(row, "")
-    assert "reading-paced" in prompt and "2 words" in prompt
+    assert "reading-paced" in prompt and "1.4 words" in prompt and "READS, slowly" in prompt
     plan = motion.plan_scenes(FakeLLM([SCRIPT]), row, "", "", "")
     assert plan["scenes"][-1]["narration"] == "Jangan lupa follow kami untuk tips seterusnya"
 

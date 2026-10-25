@@ -94,3 +94,26 @@ def test_narration_that_cannot_fit_fails_instead_of_speeding_or_overrunning(tmp_
                               runner=_runner(), workdir=tmp_path, now=NOW, speak=fake_speak)
     got = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
     assert "30/60" in got["error"]
+
+
+def test_kitten_without_a_voicestudio_worker_falls_back_to_edge_and_says_so(tmp_path, monkeypatch):
+    # Wan, 25 Oct 2026: the default voice is kitten and the hosted runner has no VoiceStudio worker, so every English film
+    # ended in "Configure VOICESTUDIO_PYTHON ...". It now narrates with the Edge male voice and the row says why.
+    monkeypatch.delenv("VOICESTUDIO_PYTHON", raising=False)
+    monkeypatch.delenv("VOICESTUDIO_ROOT", raising=False)
+    assert motion.voice_mod.kitten_ready() is False
+    monkeypatch.setenv("VOICESTUDIO_PYTHON", "/x/python")
+    assert motion.voice_mod.kitten_ready() is False, "both variables are needed"
+    monkeypatch.setenv("VOICESTUDIO_ROOT", "/x/voicestudio")
+    assert motion.voice_mod.kitten_ready() is True
+    monkeypatch.delenv("VOICESTUDIO_PYTHON")
+    monkeypatch.delenv("VOICESTUDIO_ROOT")
+    monkeypatch.setattr(motion.voice_mod, "speak", fake_speak)
+    store = Store()
+    r = _row(store, voice="kitten", language="en")
+    cfg = {"prompt": "", "cli": "0.8.188"}
+    assert motion.process(store, FakeLLM([SCRIPT, {"title": "t", "html": GOOD}]), {**r, "attempts": 1}, cfg,
+                          runner=_runner(), workdir=tmp_path, now=NOW)
+    got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
+    assert got["status"] == "done"
+    assert "en-US-AndrewMultilingualNeural" in got["style_note"] and "KittenTTS is not set up" in got["style_note"]

@@ -33,9 +33,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import ai_config, api_status, db, fetch
+from . import ai_config, api_status, db, fetch, motion_styles
 from . import voice as voice_mod
-from . import motion_styles
 from .llm import LLM
 from .repos import GitHub
 
@@ -130,7 +129,8 @@ SCRIPT_SYSTEM = """You plan a short narrated motion-graphics video. Answer with 
 "mascot": "wave|point|confused|shocked"}}]}}. Nothing else.
 
 Plan ONLY the teaching scenes, not the outro (the worker appends that). Hook -> Fact -> Why -> Solution,
-combined into 1–4 concise scenes for about {seconds:g} seconds INCLUDING the worker's 3-second outro. Narration is spoken {language}: plain, warm, short sentences, about
+combined into 1–4 concise scenes for about {seconds:g} seconds INCLUDING the worker's 3-second outro.
+Narration is spoken {language}: plain, warm, short sentences, about
 {words} words in all (2.3 words a second), never reading the headings word for word, no URL, no
 handle, no hashtag; never invent a fee, date, number or clause the brief did not give. The on-screen lines are {lines}.
 Pick the presenter's pose per scene: wave for a greeting or the close, point for a fact with numbers, confused for a
@@ -382,7 +382,8 @@ def build_system(row: dict[str, Any], extra: str, background: str = "", seconds:
                          source_line=row.get("source_line") or "Sumber: lihat kapsyen",
                          voice=voice_line(stream, language_of(row)),
                          language=language,
-                         extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "") + motion_styles.prompt(row, seconds),
+                         extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "")
+                         + motion_styles.prompt(row, seconds),
                          background=BACKGROUND.format(path=background) if background else "", **pal)
 
 
@@ -628,7 +629,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             "video_path": path, "video_url": url, "poster_url": poster_url, "bytes": len(data),
             **meta,
             "model": getattr(llm, "last_model", "") or "", "error": "",
-            "style_note": " · ".join(x for x in (style_line, bg_note, voice_note, "original synthesized melody v8; faded and speech-ducked") if x),
+            "style_note": " · ".join(x for x in (style_line, bg_note, voice_note,
+                                               "original synthesized melody v8; faded and speech-ducked") if x),
             "script": [{k: sc.get(k) for k in ("id", "kicker", "heading", "lines", "narration", "mascot", "start", "duration")}
                        for sc in scenes],
         }).eq("id", row["id"]).execute()

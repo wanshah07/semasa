@@ -1,8 +1,9 @@
 """Attachment recipes consumed by the real worker (CLI/TTS boundaries stubbed)."""
 import pytest
+from test_motion import GOOD, NOW, SCRIPT, FakeLLM, Store, _row, _runner, fake_speak
+
 from semasa import motion
 from semasa import motion_styles as styles
-from test_motion import Store, FakeLLM, SCRIPT, GOOD, _row, _runner, NOW, fake_speak
 
 
 def test_kitten_requires_english_and_configured_worker(tmp_path, monkeypatch):

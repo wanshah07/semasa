@@ -37,7 +37,7 @@ GOOD = ('<!doctype html><html lang="ms" data-resolution="portrait"><head><script
 
 def test_build_system_carries_size_seconds_voice_and_wans_prompt():
     s = motion.build_system({"stream": "regulab", "resolution": "portrait", "seconds": 15}, "Guna warna hijau.")
-    assert 'data-resolution="portrait"' in s and "width=1080, height=1920" in s and "15 seconds" in s
+    assert 'data-resolution="portrait"' in s and "width=1080, height=1920" in s and "30 seconds" in s
     assert "Bahasa Malaysia" in s and "WAN'S OWN INSTRUCTIONS:\nGuna warna hijau." in s and motion.GSAP in s
     s2 = motion.build_system({"stream": "linkedin", "resolution": "landscape", "seconds": 8}, "")
     assert "width=1920, height=1080" in s2 and "English" in s2 and "WAN'S OWN" not in s2
@@ -94,7 +94,7 @@ def _runner(check_json=None, render_ok=True, calls=None):
             Path(cmd[-1]).write_bytes(b"\xff\xd8jpg")
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         if cmd[0] == "ffprobe":
-            meta = {"streams": [{"width": 1080, "height": 1920}], "format": {"duration": "12.0"}}
+            meta = {"streams": [{"width": 1080, "height": 1920}], "format": {"duration": "30.0"}}
             return SimpleNamespace(returncode=0, stdout=json.dumps(meta), stderr="")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
     return run
@@ -148,7 +148,7 @@ def _row(store, **over):
 
 def test_process_writes_checks_renders_and_stores_the_video(tmp_path):
     store = Store()
-    r = _row(store)
+    r = _row(store, mascot="wave")
     settings = {"prompt": "Guna font besar.", "cli": "0.8.188"}
     llm = FakeLLM([SCRIPT, {"title": "PFAS: tiga perkara", "html": GOOD}])
     calls = []
@@ -156,7 +156,7 @@ def test_process_writes_checks_renders_and_stores_the_video(tmp_path):
     got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
     assert got["status"] == "done" and got["title"] == "PFAS: tiga perkara"
     assert got["video_url"] == f"https://cdn/motion/{r['id']}.mp4"
-    assert got["poster_url"].endswith(".jpg") and got["width"] == 1080 and got["duration_s"] == 12.0 and got["model"] == "m1"
+    assert got["poster_url"].endswith(".jpg") and got["width"] == 1080 and got["duration_s"] == 30.0 and got["model"] == "m1"
     assert got["html"] == GOOD and got["check_report"]["ok"] is True and got["bytes"] > 0
     assert "Guna font besar." in llm.asked[1][0] and "BRIEF: Tiga perkara" in llm.asked[1][1]
     assert "SCENES, FIXED" in llm.asked[1][1] and 'data-start="0"' in llm.asked[1][1], "the film is written to the recorded times"
@@ -364,7 +364,7 @@ def test_the_presenter_and_the_voice_are_put_into_the_film_after_the_writer():
 
 def test_the_script_prompt_speaks_the_films_language_and_both_means_two_lines():
     s = motion.build_script_system({"stream": "regulab", "seconds": 20, "language": "both"}, "Sebut nama produk.")
-    assert "about 20 seconds" in s and "46 words" in s and "Bahasa Malaysia with the English line" in s
+    assert "about 30 seconds" in s and "62 words" in s and "Bahasa Malaysia with the English line" in s
     assert "WAN'S OWN INSTRUCTIONS:\nSebut nama produk." in s and "ws.regulab" in s
     assert "English" in motion.build_script_system({"stream": "linkedin", "seconds": 8}, "")
     # an English film for ws.regulab: the brand line no longer says "speaking Bahasa Malaysia" (24 Oct 2026, Malay narration)

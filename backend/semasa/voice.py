@@ -5,15 +5,16 @@ and every word comes back with its time, which is what makes the mascot's mouth 
 runner (speech.platform.bing.com); from a proxied session it may fail on TLS, so the worker treats a voice that cannot be
 made as "no voice" and still makes the film.
 
-Wan's own VoiceStudio link (debpalash/VoiceStudio) is a desktop app with a local Python backend (OmniVoice, ~5 GB of
-PyTorch on CPU, AGPL): voice cloning and dubbing on his own machine. It is not something a 30-minute runner job can
-install each hour, so it is not the route here; a cloned voice from it can be used later as a reference file.
+VoiceStudio KittenTTS is an optional English-only adapter to an already-installed local worker. It requires
+VOICESTUDIO_PYTHON and VOICESTUDIO_ROOT, cached model weights and VoiceStudio's services.tts_backend API.
+No installation, model downloads or cloning occurs here. Missing prerequisites fail explicitly, never silently re-voice.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -63,7 +64,24 @@ def duration_of(path: Path, runner: Any = subprocess.run) -> float:
 def speak(text: str, voice: str, out: Path, runner: Any = subprocess.run) -> dict[str, Any]:
     """Write `text` as MP3 to `out`. {"duration": seconds, "words": [[start, end, word], ...]}; raises when nothing came back."""
     out.parent.mkdir(parents=True, exist_ok=True)
-    words = asyncio.run(_synth(text, voice, out))
+    if voice == "kitten":
+        python = os.environ.get("VOICESTUDIO_PYTHON")
+        root = os.environ.get("VOICESTUDIO_ROOT")
+        if not python or not root:
+            raise RuntimeError("Configure VOICESTUDIO_PYTHON and VOICESTUDIO_ROOT on a preinstalled VoiceStudio worker")
+        wav = out.with_suffix(".wav")
+        p = runner([python, str(Path(__file__).with_name("kitten_voice.py"))],
+                   input=json.dumps({"text": text, "output": str(wav.resolve())}),
+                   capture_output=True, text=True, timeout=300, env=dict(os.environ))
+        if p.returncode != 0 or not wav.exists():
+            raise RuntimeError("VoiceStudio KittenTTS failed: " + (p.stderr or "no WAV")[-300:])
+        converted = runner(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-c:a", "libmp3lame", str(out)],
+                           capture_output=True, text=True, timeout=60)
+        if converted.returncode != 0:
+            raise RuntimeError("KittenTTS MP3 conversion failed")
+        words = []  # The adapter supplies no alignment: never fabricate word timestamps.
+    else:
+        words = asyncio.run(_synth(text, voice, out))
     if not out.exists() or out.stat().st_size < 1000:
         raise RuntimeError(f"no audio from {voice}")
     dur = duration_of(out, runner) or (words[-1][1] + 0.3 if words else 0.0)

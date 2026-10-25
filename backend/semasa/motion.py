@@ -35,6 +35,7 @@ from typing import Any
 
 from . import ai_config, api_status, db, fetch
 from . import voice as voice_mod
+from . import motion_styles
 from .llm import LLM
 from .repos import GitHub
 
@@ -59,7 +60,7 @@ STYLE_MAX = 9_000                      # characters of a style repo handed to th
 STYLE_FILES = ("SKILL.md", "skills/SKILL.md", "STYLE.md", "DESIGN.md", "frame.md", "FRAME.md", "AGENTS.md", "CLAUDE.md")
 SIZES = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1080)}
 GSAP = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"
-PALETTE = {"regulab": {"ground": "#0f172a", "ink": "#f8fafc", "accent": "#38bdf8", "accent2": "#fbbf24"},
+PALETTE = {"regulab": {"ground": "#e5f6ed", "ink": "#143e35", "accent": "#287b65", "accent2": "#fff7e6"},
            "linkedin": {"ground": "#111827", "ink": "#f9fafb", "accent": "#34d399", "accent2": "#f472b6"}}
 # the words on screen (Wan, 24 Oct 2026: "choice for english, malay, or english + malay version"); the default follows the stream
 LANGUAGE = {
@@ -100,7 +101,7 @@ THE CONTRACT (a render fails or looks wrong if any is broken):
    content="width={w}, height={h}">, and loads GSAP with exactly: <script src="{gsap}"></script>. No other script, stylesheet,
    font or network request. html, body are {w}px by {h}px, overflow hidden, with the film's background.
 2. The root is <div id="root" data-composition-id="main" data-start="0" data-duration="{seconds}" data-width="{w}"
-   data-height="{h}"> and holds every scene. The video's length is the root's data-duration: {seconds} seconds.
+   data-height="{h}"> and holds every scene. The video's length is the root's data-duration: {seconds:g} seconds.
 3. Every timed element has class="clip", data-start and data-duration in seconds, a stable id, and shows over
    [start, start + duration). Land an end state just before its end. Elements are written in the HTML, never made by script.
 4. One paused timeline, registered AFTER its tweens: const tl = gsap.timeline({{ paused: true }}); ... ;
@@ -113,13 +114,13 @@ THE CONTRACT (a render fails or looks wrong if any is broken):
    central 90% of the frame; key text inside the central 80%. Type at least 44px on a 1080-wide frame.
 8. Frame 0 already shows the title (it is the social thumbnail): do not enter from an empty frame.
 
-THE FILM: 3 to 6 scenes for {seconds} seconds: a hook (the title, big), two to four points (one idea each, short lines,
+THE FILM: 3 to 6 scenes for {seconds:g} seconds: a hook (the title, big), two to four points (one idea each, short lines,
 numbers big), and a closing card with the source line "{source_line}" in small type. Motion: eases power3.out / power2.inOut,
 0.4 to 0.8 s entrances, staggered lines, a slow background drift, punchy but readable; every line stays on screen at least 2.5 s.
 Palette: background {ground}, text {ink}, accent {accent}, second accent {accent2}.
 VOICE: {voice}
-RULES: no call to action, no website, no URL, no handle, no hashtag, no emoji on screen; never invent a fee, date, number or
-clause that the brief did not give; end on the substance. Write the words in {language}.
+RULES: no website, no URL, no handle, no hashtag, no emoji on screen; never invent a fee, date, number or
+clause that the brief did not give; finish on the standalone brand outro. Write the words in {language}.
 {extra}"""
 
 
@@ -128,9 +129,9 @@ SCRIPT_SYSTEM = """You plan a short narrated motion-graphics video. Answer with 
 "lines": ["<short supporting line>", "..."], "narration": "<what the presenter SAYS over this scene, spoken, 1-3 sentences>",
 "mascot": "wave|point|confused|shocked"}}]}}. Nothing else.
 
-3 to 6 scenes for about {seconds} seconds: a hook first (the title, one line), two to four points (one idea each), a
-closing scene that ends on the substance. Narration is spoken {language}: plain, warm, short sentences, about
-{words} words in all (2.3 words a second), never reading the headings word for word, no URL, no call to action, no
+Plan ONLY the teaching scenes, not the outro (the worker appends that). Hook -> Fact -> Why -> Solution,
+combined into 1–4 concise scenes for about {seconds:g} seconds INCLUDING the worker's 3-second outro. Narration is spoken {language}: plain, warm, short sentences, about
+{words} words in all (2.3 words a second), never reading the headings word for word, no URL, no
 handle, no hashtag; never invent a fee, date, number or clause the brief did not give. The on-screen lines are {lines}.
 Pick the presenter's pose per scene: wave for a greeting or the close, point for a fact with numbers, confused for a
 doubt or a myth, shocked for a warning.
@@ -142,13 +143,13 @@ VOICE: {voice}
 def build_script_system(row: dict[str, Any], extra: str) -> str:
     stream = row.get("stream") or "regulab"
     lang = language_of(row)
-    seconds = int(row.get("seconds") or 12)
+    seconds = motion_styles.duration(row)
     spoken = {"bm": "Bahasa Malaysia (Malaysian, never Indonesian)", "en": "English", "both": "Bahasa Malaysia"}[lang]
     lines = {"bm": "in Bahasa Malaysia", "en": "in English",
              "both": "in Bahasa Malaysia with the English line after it, in the same string, separated by ' / '"}[lang]
-    return SCRIPT_SYSTEM.format(seconds=seconds, language=spoken, words=max(12, int(seconds * 2.3)), lines=lines,
+    return SCRIPT_SYSTEM.format(seconds=seconds, language=spoken, words=max(1, int(max(0, seconds - 3) * 2.3)), lines=lines,
                                 voice=voice_line(stream, lang),
-                                extra=("WAN'S OWN INSTRUCTIONS:\n" + extra) if extra else "")
+                                extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "") + motion_styles.prompt(row))
 
 
 def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_text: str,
@@ -167,6 +168,8 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
                       "lines": [str(x)[:200] for x in (sc.get("lines") or []) if str(x).strip()][:4],
                       "narration": " ".join(str(sc.get("narration") or "").split())[:600],
                       "mascot": sc.get("mascot") if sc.get("mascot") in MOUTH else "wave"})
+    clean.append({"id": "brand-outro", "kicker": "", "heading": "Follow for more tips!", "lines": [],
+                  "narration": "Follow us for more.", "mascot": ""})
     return {"title": str(out.get("title") or "")[:160], "scenes": clean}
 
 
@@ -174,6 +177,8 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
                  runner: Any = subprocess.run) -> tuple[list[dict[str, Any]], float, str]:
     """Record each scene's narration and fix the timeline to it: (scenes with start/duration/audio/words, total seconds,
     note). With choice 'off', or when the voice cannot be made, the scenes are timed evenly and carry no audio."""
+    if choice == "kitten" and language != "en":
+        raise ValueError("VoiceStudio KittenTTS supports English only; pick English or an Edge voice")
     speak = speak or voice_mod.speak
     name = voice_mod.voice_for(language, choice) if choice != "off" else ""
     t = 0.0
@@ -188,6 +193,8 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
                 sc["audio"], sc["words"], sc["audio_s"] = rel, got["words"], got["duration"]
                 dur = float(got["duration"]) + VOICE_PAD
             except Exception as exc:  # noqa: BLE001 - a scene without its voice is still a scene
+                if choice == "kitten":
+                    raise RuntimeError(str(exc)) from exc
                 log.warning("voice not made for scene %d: %s", i + 1, str(exc)[:160])
                 note = f"voice failed ({str(exc)[:80]})"
                 name = ""
@@ -195,6 +202,22 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
         t += sc["duration"] + SCENE_GAP
     total = round(t - SCENE_GAP, 2)
     return scenes, total, note
+
+
+def fit_scenes(scenes: list[dict[str, Any]], seconds: float) -> tuple[list[dict[str, Any]], float]:
+    """Fit pauses, never speech. Reserve 3s for the final CTA; fail with actionable scope advice."""
+    teaching, outro = scenes[:-1], scenes[-1]
+    available = seconds - motion_styles.OUTRO_SECONDS
+    floors = [max(.7, float(sc.get("audio_s") or 0) + .15) for sc in teaching]
+    if not teaching or sum(floors) > available or float(outro.get("audio_s") or 0) > 3:
+        raise ValueError("Narration cannot fit this duration including the outro; choose 30/60s or a narrower micro-topic")
+    slack = (available - sum(floors)) / len(teaching)
+    start = 0.0
+    for sc, floor in zip(teaching, floors, strict=True):
+        sc.update(start=round(start, 3), duration=round(floor + slack, 3))
+        start += floor + slack
+    outro.update(start=available, duration=3, mascot="")
+    return scenes, seconds
 
 
 def plan_text(scenes: list[dict[str, Any]]) -> str:
@@ -218,6 +241,8 @@ def mascot_layer(scenes: list[dict[str, Any]], total: float, w: int, h: int) -> 
             # the slot is the recording's own length (hyperframes check: a longer slot is "shortened to the media length")
             audio.append(f'<audio class="clip" id="sv-{sc["id"]}" src="{sc["audio"]}" data-start="{sc["start"]:g}" '
                          f'data-duration="{float(sc.get("audio_s") or sc["duration"]):g}" data-volume="1"></audio>')
+        if sc.get("id") == "brand-outro":
+            continue
         pose = sc.get("mascot") or "wave"
         mx, my = MOUTH.get(pose, MOUTH["wave"])
         box = f"position:absolute;left:{int(w * 0.04)}px;bottom:{int(h * 0.05)}px;width:{size}px;height:{int(size * 4 / 3)}px;"
@@ -253,7 +278,17 @@ def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int,
     m = re.search(r"<div\b[^>]*\bid=[\"']root[\"'][^>]*>", html)
     if not m:
         raise ValueError("the composition has no #root")
+    if any(sc.get("id") == "brand-outro" for sc in scenes):
+        start = total - 3
+        markup += (f'<div class="clip" id="wan-brand-final" data-start="{start:g}" data-duration="3" '
+                   f'style="position:absolute;inset:0;z-index:100;background:#e5f6ed;display:flex;flex-direction:column;'
+                   f'align-items:center;justify-content:center;gap:{w * .04:g}px;">'
+                   f'<img src="assets/official-logo-transparent.png" alt="" style="width:64%;height:auto;object-fit:contain;">'
+                   f'<div style="color:#143e35;font-family:Inter,system-ui,sans-serif;font-size:{w * .05:g}px;'
+                   'text-align:center;">Follow for more tips!</div></div>')
     out = html[:m.end()] + "\n" + markup + "\n" + html[m.end():]
+    out = re.sub(r'(<div\b[^>]*\bid=[\"\']root[\"\'][^>]*data-duration=)[\"\'][^\"\']+[\"\']',
+                 lambda match: match[1] + f'"{total:g}"', out, count=1)
     if script:
         out = re.sub(r"</body>", script + "\n</body>", out, count=1) if "</body>" in out else out + script
     return out
@@ -343,11 +378,11 @@ def build_system(row: dict[str, Any], extra: str, background: str = "", seconds:
     w, h = SIZES.get(res, SIZES["portrait"])
     pal = PALETTE.get(stream, PALETTE["regulab"])
     return SYSTEM.format(lang=html_lang, resolution=res, w=w, h=h, gsap=GSAP,
-                         seconds=(seconds if seconds else int(row.get("seconds") or 12)),
+                         seconds=(seconds if seconds else motion_styles.duration(row)),
                          source_line=row.get("source_line") or "Sumber: lihat kapsyen",
                          voice=voice_line(stream, language_of(row)),
                          language=language,
-                         extra=("WAN'S OWN INSTRUCTIONS:\n" + extra) if extra else "",
+                         extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "") + motion_styles.prompt(row, seconds),
                          background=BACKGROUND.format(path=background) if background else "", **pal)
 
 
@@ -413,6 +448,8 @@ def cli_env() -> dict[str, str]:
 def write_project(folder: Path, html: str, poses: set[str] | None = None) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "index.html").write_text(html, encoding="utf-8")
+    (folder / "assets").mkdir(exist_ok=True)
+    shutil.copyfile(motion_styles.LOGO, folder / "assets" / motion_styles.LOGO.name)
     for pose in poses or ():
         src = MASCOT_DIR / f"{pose}.webp"
         if src.is_file():
@@ -453,6 +490,31 @@ def render(folder: Path, cli: str, resolution: str, runner: Any = subprocess.run
                 "--output", str(out)], cwd=str(folder), capture_output=True, text=True, timeout=timeout, env=cli_env())
     if p.returncode != 0 or not out.exists():
         raise RuntimeError("render failed: " + ((p.stderr or p.stdout or "")[-800:]).strip())
+    return out
+
+
+def mix_music(video: Path, scenes: list[dict[str, Any]], seconds: float, runner: Any = subprocess.run) -> Path:
+    """Keep the rendered video; mux original v8 melody + recorded stems, with explicit speech ducking and fades."""
+    music = motion_styles.RULES / "music-v8.mp3"
+    voiced = [sc for sc in scenes if sc.get("audio")]
+    folder = video.parent.parent if video.parent.name == "renders" else video.parent
+    out = video.with_name("motion-mixed.mp4")
+    cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(video), "-stream_loop", "-1", "-i", str(music)]
+    for sc in voiced:
+        cmd += ["-i", str(folder / sc["audio"])]
+    active = "+".join(f"between(t,{sc['start']:g},{sc['start'] + sc['audio_s']:g})" for sc in voiced) or "0"
+    filters = [f"[1:a]atrim=duration={seconds:g},asetpts=PTS-STARTPTS,"
+               f"volume='if(gt({active},0),0.16,0.27)':eval=frame,afade=t=in:d=0.2,"
+               f"afade=t=out:st={max(0, seconds - 1.15):g}:d=1.15[music]"]
+    for i, sc in enumerate(voiced):
+        filters.append(f"[{i + 2}:a]adelay={round(sc['start'] * 1000)}:all=1[v{i}]")
+    inputs = "[music]" + "".join(f"[v{i}]" for i in range(len(voiced)))
+    filters.append(f"{inputs}amix=inputs={len(voiced) + 1}:normalize=0,alimiter=limit=0.95:level=0[a]")
+    cmd += ["-filter_complex", ";".join(filters), "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac",
+            "-b:a", "160k", "-t", f"{seconds:g}", "-movflags", "+faststart", str(out)]
+    result = runner(cmd, capture_output=True, text=True, timeout=180)
+    if result.returncode != 0 or not out.is_file():
+        raise RuntimeError("Music mix failed: " + (result.stderr or "no output")[-400:])
     return out
 
 
@@ -521,9 +583,10 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         # the voice first (Wan, 24 Oct 2026): the writer plans the scenes, each narration is recorded, and the film is
         # written to those exact times; with the voice off the plan still fixes the scenes and nothing is recorded
         plan = plan_scenes(llm, row, settings.get("prompt") or "", title, text, style=style)
-        want_mascot = bool(row.get("mascot", "wave")) and (row.get("mascot") or "wave") in MOUTH
+        want_mascot = bool(row.get("mascot")) and row.get("mascot") in MOUTH
         scenes, total, voice_note = voice_scenes(plan["scenes"], language_of(row), str(row.get("voice") or "male"), folder,
                                                  speak=speak, runner=runner)
+        scenes, total = fit_scenes(scenes, motion_styles.duration(row))
         w, h = SIZES.get(row.get("resolution") or "portrait", SIZES["portrait"])
         system = build_system(row, settings.get("prompt") or "", bg_path, seconds=total, presenter=want_mascot)
         fixed = ("SCENES, FIXED: the voice is already recorded to these times. One .clip per scene with EXACTLY this id, "
@@ -547,8 +610,12 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         if report["errors"]:
             # render anyway in best-effort mode: a lint error is often cosmetic; the row keeps the report either way
             log.warning("%s: %d check error(s) remain; rendering best-effort", row["id"], len(report["errors"]))
-        style_line = f"{style[0]}: {len(style[1])} characters read" if style[1] else ""
+        style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]
         video = render(folder, settings["cli"], row.get("resolution") or "portrait", runner)
+        meta = probe(video, runner)
+        if not 0 < meta["duration_s"] <= 60.5 or abs(meta["duration_s"] - total) > .5:
+            raise ValueError("Rendered duration does not match selected duration; choose 30/60s or narrow the topic")
+        video = mix_music(video, scenes, total, runner)
         data = video.read_bytes()
         path = f"motion/{row['id']}.mp4"
         url = db.upload_generated(store, path, data, "video/mp4")
@@ -559,9 +626,9 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         store.table(TABLE).update({
             "status": "done", "title": str(out.get("title") or "")[:160], "html": html, "check_report": report,
             "video_path": path, "video_url": url, "poster_url": poster_url, "bytes": len(data),
-            **probe(video, runner),
+            **meta,
             "model": getattr(llm, "last_model", "") or "", "error": "",
-            "style_note": " · ".join(x for x in (style_line, bg_note, voice_note) if x),
+            "style_note": " · ".join(x for x in (style_line, bg_note, voice_note, "original synthesized melody v8; faded and speech-ducked") if x),
             "script": [{k: sc.get(k) for k in ("id", "kicker", "heading", "lines", "narration", "mascot", "start", "duration")}
                        for sc in scenes],
         }).eq("id", row["id"]).execute()

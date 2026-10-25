@@ -15,9 +15,10 @@
     "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a subject matte, break the frame with a supplied transparent cutout (product, logo, sticker or a still cutout photo of the subject) instead of the live footage. If no cutout asset exists either, use L04 Floating Device Frame with a punch-in rather than faking the break."
   },
   "H01": {
-    "readiness": "fallback",
-    "adapter": "concept",
-    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no transcript is available, ask for the headline text or transcribe the first 5 seconds locally before writing it. If brand fonts are missing, use Inter Black / Space Grotesk Bold."
+    "readiness": "ready",
+    "adapter": "native-text",
+    "scope": "authored-heading-only",
+    "reason": "Native scale-overshoot animation of an existing first-scene authored heading (up to 5 words); no generated headline, footage shake or blur. Missing heading skips the effect."
   },
   "C01": {
     "readiness": "fallback",
@@ -35,9 +36,10 @@
     "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the opening has no natural pause, place the interrupt on the first breath between sentences. Inverted flashes are skipped when the user requests photosensitivity-safe output."
   },
   "H03": {
-    "readiness": "fallback",
-    "adapter": "concept",
-    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the speaker never poses or answers a question, ask the user for the question text instead of inventing one."
+    "readiness": "ready",
+    "adapter": "native-text",
+    "scope": "authored-heading-only",
+    "reason": "Native visual word stagger of an existing opening question heading; never invents a question or word-aligned captions. No footage dim/wipe. Conflicting opening cues are skipped."
   },
   "H04": {
     "readiness": "fallback",
@@ -210,9 +212,10 @@
     "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without a real capture of the interface, do not build a mock UI and present it as the product. Ask for a screenshot or recording; until then, explain the feature with V07 Callout Bubble on the speaker, clearly without showing an interface."
   },
   "V01": {
-    "readiness": "fallback",
-    "adapter": "concept",
-    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If no title is supplied and the transcript has no clear chapter phrasing, ask for the section name rather than inventing one. Without brand fonts use Space Grotesk Bold."
+    "readiness": "ready",
+    "adapter": "native-text",
+    "scope": "authored-heading-only",
+    "reason": "Native masked rise of an existing short authored section heading; no extra heading, chapter claim or source-footage scrim. Uses the next non-overlapping eligible scene."
   },
   "V02": {
     "readiness": "fallback",
@@ -220,9 +223,10 @@
     "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. If the script contains no explicit numbers, skip this beat \u2014 do not create rankings or figures to fill it. Without SFX the visual pop works alone."
   },
   "V03": {
-    "readiness": "fallback",
-    "adapter": "concept",
-    "reason": "Native source-specific technique not implemented; original qualitative concept diagram instead. Without word-level timing, align the spotlight to the sentence and verify by listening. If no phrase is clearly emphasised, ask which one to use rather than choosing arbitrarily."
+    "readiness": "ready",
+    "adapter": "native-text",
+    "scope": "authored-heading-only",
+    "reason": "Native outlined scale-in of an existing short authored heading; no arbitrary keyword selection, background blur/dim or word-sync claim. Uses the next non-overlapping eligible scene."
   },
   "V04": {
     "readiness": "fallback",

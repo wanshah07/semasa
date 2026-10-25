@@ -175,10 +175,15 @@ def inject(document: str, report: dict, scenes: list[dict], total: float, *, des
     """Worker-owned deterministic layer: consumes files, never asks the writer to simulate them."""
     if not report["effects"]:
         return document
+    from . import native_text
+
+    document = native_text.inject(document, report, scenes, total)
+    selected = [p for p in report["effects"] if p["id"] not in native_text.NATIVE_IDS]
+    if not selected:
+        return document
     first = scenes[0]
     end = min(float(first["duration"]), total)
-    # One composition panel avoids overlapping a stack of selected effects.
-    selected = report["effects"]
+    # Legacy asset adaptations retain their single prepared panel.
     primary = next((p for p in selected if p["readiness"] == "manualasset"), selected[0])
     source = next(a for a in report["assets"] if a["path"] == primary["asset"])
     fallback = [p["id"] for p in selected if p["readiness"] == "fallback"]

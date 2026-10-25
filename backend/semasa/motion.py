@@ -689,8 +689,11 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         html = clean_html(out.get("html"))
         poses = {sc.get("mascot") or "wave" for sc in scenes} if want_mascot else set()
         def composed(raw):
-            return motion_assets.inject(inject_layers(raw, scenes, total, w, h, want_mascot), asset_plan, scenes, total,
-                                        design=motion_styles.design(row))
+            document = motion_assets.inject(inject_layers(raw, scenes, total, w, h, want_mascot), asset_plan, scenes, total,
+                                            design=motion_styles.design(row))
+            # Composition resolves conditional native cues, including skipped/conflicting selections.
+            (folder / "asset-plan.json").write_text(json.dumps(asset_plan, ensure_ascii=False, indent=2))
+            return document
         write_project(folder, composed(html), poses)
         report = check(folder, settings["cli"], runner)
         if not report["ok"] and report["errors"]:

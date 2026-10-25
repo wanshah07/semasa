@@ -70,6 +70,27 @@ def test_mime_spoof_rejected(tmp_path):
         )
 
 
+def test_worker_persists_resolved_native_schedule(tmp_path):
+    store = Store()
+    row = _row(store, seconds=30, voice="off", mascot="", language="en", options={"effects": ["H01"]})
+    script = {**SCRIPT, "scenes": [{**SCRIPT["scenes"][0], "heading": "Keep food safe"}]}
+    document = GOOD.replace("</div>", "<h1>Keep food safe</h1></div>", 1)
+    assert motion.process(
+        store,
+        FakeLLM([script, {"html": document}]),
+        row,
+        {"prompt": "", "cli": motion.CLI_VERSION},
+        runner=_runner(),
+        workdir=tmp_path,
+        now=NOW,
+    )
+    folder = tmp_path / row["id"][:8]
+    plan = json.loads((folder / "asset-plan.json").read_text())
+    assert plan["effects"][0]["readiness"] == "ready"
+    assert plan["effects"][0]["cue"]["scene_id"] == "s1"
+    assert 'data-native-effect="H01"' in (folder / "index.html").read_text()
+
+
 def test_worker_consumes_prepared_assets_and_reports_fallback(tmp_path):
     store = Store()
     row = _row(store, seconds=30, voice="off", mascot="", language="en", options={"effects": ["B04", "M03", "P03"]})

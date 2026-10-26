@@ -152,6 +152,29 @@ export function holdersOf(posts, stream, date, slot, skipId = null) {
   return posts.filter((p) => holds(p) && p.id !== skipId && (p.stream || "regulab") === stream && p.date === date && p.slot === slot);
 }
 
+/* ---- Releasing booked slots (Wan, 26 Oct 2026: "button untuk clear semua book slot, dan dari video motion pun boleh select slot atau
+   override slot book"). A draft holds its slot and so does an approved post; both can be released by the page (an approved post goes
+   back to draft, the database does that itself when its date or slot changes, and needs Wan's approval again). A post the publisher
+   has scheduled or sent is never released from here. */
+export const RELEASABLE = ["draft", "approved"];
+export const LOCKED = ["scheduled", "posted"];
+
+/** What taking date+slot for a stream would do to its holders: `release` can be let go, `locked` makes the slot untakeable. */
+export function overrideCheck({ posts, stream, date, slot }) {
+  const held = holdersOf(posts, stream, date, slot);
+  const release = held.filter((p) => RELEASABLE.includes(p.status));
+  const locked = held.filter((p) => LOCKED.includes(p.status));
+  return { free: !held.length, release, locked, ok: !locked.length };
+}
+
+/** Every position of one stream that the page may release: [{id, status, date, slot, hook}], and how many are locked in. */
+export function clearPlan(posts, stream) {
+  const mine = posts.filter((p) => holds(p) && (p.stream || "regulab") === stream);
+  const release = mine.filter((p) => RELEASABLE.includes(p.status));
+  return { release, drafts: release.filter((p) => p.status === "draft").length, approved: release.filter((p) => p.status === "approved").length,
+    locked: mine.filter((p) => LOCKED.includes(p.status)).length };
+}
+
 /** May `post` be moved to date+slot? {ok, why?, note?}. `why` is a refusal; `note` is a warning that does not block
     (the rota is a plan, never a block). The database refuses the same moves, so this is the polite version. */
 export function moveCheck({ post, date, slot, posts, brand, now = Date.now(), leadMin = 30 }) {

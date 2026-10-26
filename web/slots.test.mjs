@@ -1,7 +1,7 @@
 /* web/src/lib/slots.js, the page's half of the position rules (the worker's half is ideas.next_free_position). */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { captionKey, captionKeys, clashes, coverage, duplicatesOf, fmtLeft, holdersOf, isPastDue, moveCheck, nextFreeSlot, offRota, onRota, postsOn, purgeLeftMs, refOf, slotsOf } from "./src/lib/slots.js";
+import { captionKey, captionKeys, clashes, coverage, duplicatesOf, fmtLeft, holdersOf, isPastDue, moveCheck, nextFreeSlot, offRota, onRota, overrideCheck, clearPlan, postsOn, purgeLeftMs, refOf, slotsOf } from "./src/lib/slots.js";
 
 const BRAND = {
   regulab: { slots: ["13:00", "08:00", "21:00"],
@@ -128,4 +128,27 @@ t("moveCheck: free future slot of the lane ok; locked, same, taken, past, off-da
   assert.equal(mv({ slot: "13:00" }, [live("r", { date: "2026-09-30", slot: "13:00", status: "rejected" })]).ok, true);
   assert.equal(mv({ slot: "13:00" }, [live("l", { date: "2026-09-30", slot: "13:00", stream: "linkedin" })]).ok, true);
 });
+
+t("overrideCheck: a draft or an approved holder can be released, a scheduled or posted one locks the slot, rejected holds nothing", () => {
+  const ps = [{ id: "d", stream: "regulab", status: "draft", date: "2026-10-30", slot: "08:00" }, { id: "a", stream: "regulab", status: "approved", date: "2026-10-30", slot: "13:00" },
+    { id: "s", stream: "regulab", status: "scheduled", date: "2026-10-30", slot: "21:00" }, { id: "r", stream: "regulab", status: "rejected", date: "2026-10-31", slot: "08:00" },
+    { id: "l", stream: "linkedin", status: "draft", date: "2026-10-30", slot: "08:00" }];
+  const c = (date, slot, stream = "regulab") => overrideCheck({ posts: ps, stream, date, slot });
+  assert.deepEqual([c("2026-10-30", "08:00").free, c("2026-10-30", "08:00").ok, c("2026-10-30", "08:00").release.map((p) => p.id)], [false, true, ["d"]]);
+  assert.deepEqual(c("2026-10-30", "13:00").release.map((p) => p.id), ["a"]);
+  assert.deepEqual([c("2026-10-30", "21:00").ok, c("2026-10-30", "21:00").locked.map((p) => p.id), c("2026-10-30", "21:00").release.length], [false, ["s"], 0]);
+  assert.equal(c("2026-10-31", "08:00").free, true, "a rejected post holds nothing");
+  assert.deepEqual(c("2026-10-30", "08:00", "linkedin").release.map((p) => p.id), ["l"], "the other stream's slot is its own");
+});
+
+t("clearPlan: drafts and approved are released, scheduled and posted are counted as kept, a post with no position is ignored", () => {
+  const ps = [{ id: "d1", status: "draft", date: "2026-10-30", slot: "08:00" }, { id: "d2", stream: "regulab", status: "draft", date: "2026-10-31", slot: "08:00" },
+    { id: "a", status: "approved", date: "2026-11-01", slot: "08:00" }, { id: "s", status: "scheduled", date: "2026-11-02", slot: "08:00" },
+    { id: "p", status: "posted", date: "2026-10-20", slot: "08:00" }, { id: "n", status: "draft", date: null, slot: null }, { id: "r", status: "rejected", date: "2026-11-03", slot: "08:00" },
+    { id: "l", stream: "linkedin", status: "draft", date: "2026-10-30", slot: "06:00" }];
+  const plan = clearPlan(ps, "regulab");
+  assert.deepEqual([plan.drafts, plan.approved, plan.locked, plan.release.map((p) => p.id).sort()], [2, 1, 2, ["a", "d1", "d2"]]);
+  assert.equal(clearPlan(ps, "linkedin").release.length, 1);
+});
+
 console.log(`${n} slot tests pass`);

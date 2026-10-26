@@ -84,7 +84,7 @@ export function pickPosition({ film, posts, brand, post, now = Date.now() }) {
 }
 
 /** The arguments of semasa_queue_motion, with the page's own scan of the caption each platform will carry. */
-export function queueArgs({ film, channels, captions, date, slot, brand, post, indo, approve = false }) {
+export function queueArgs({ film, channels, captions, date, slot, brand, post, indo, approve = false, override = false }) {
   const lang = postLang(film);
   const text = { [lang]: Object.fromEntries(channels.map((c) => [c, String(captions?.[c] || "").trim()])) };
   const draft = { stream: film.stream || "regulab", lang, channels, text, date, slot, domain: post?.domain || null,
@@ -95,5 +95,6 @@ export function queueArgs({ film, channels, captions, date, slot, brand, post, i
     p_motion: film.id, p_channels: channels, p_lang: lang, p_hook: String(film.title || "").trim(), p_text: text,
     p_citation: post?.citation || "", p_date: date, p_slot: slot, p_flags: flags, p_hard: hardCount(flags),
     p_approve: !!approve && hardCount(flags) === 0,        // Wan's own Approve click, taken only when nothing blocks
+    p_override: !!override,                                // take the slot from the draft or approved post that holds it (supabase/054)
   };
 }

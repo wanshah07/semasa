@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, CalendarPlus, MoveRight } from "lucide-react";
+import { AlertTriangle, CalendarPlus, CalendarX, MoveRight } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
+import { releaseSlots } from "../lib/releaseSlots";
 import { useLang } from "../lib/i18n";
-import { clashes, coverage, isPastDue, moveCheck, nextFreeSlot, offRota, refOf, takenSet } from "../lib/slots";
+import { clashes, clearPlan, coverage, isPastDue, moveCheck, nextFreeSlot, offRota, refOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
 import ScheduleMap from "./ScheduleMap";
 import Button from "./ui/Button";
@@ -25,6 +26,23 @@ export default function ScheduleView({ posts, brand, onOpen, onNewIdea, onToast,
   const clash = clashes(mine).filter((c) => c.date >= days[0].date);
   const gaps = days.reduce((n, d) => n + d.cells.filter((c) => c.gap).length, 0);
   const name = (p) => refOf(p, brand) || p.id.slice(0, 6);
+  const plan = useMemo(() => clearPlan(posts, stream), [posts, stream]);
+
+  // Clear every booked slot of this stream (Wan, 26 Oct 2026: "make sure ada button untuk clear semua book slot"): lib/releaseSlots.js
+  async function clearAll() {
+    if (!plan.release.length) return;
+    const ok = window.confirm(t(
+      "Lepaskan {d} draf dan {a} post yang sudah diluluskan daripada slot mereka? Post yang diluluskan kembali menjadi draf dan perlu diluluskan semula. {k} post yang sudah dijadualkan atau disiarkan tidak disentuh.",
+      "Release {d} draft(s) and {a} approved post(s) from their slots? An approved post goes back to draft and needs approving again. {k} post(s) already scheduled or sent are not touched.",
+      { d: plan.drafts, a: plan.approved, k: plan.locked }));
+    if (!ok) return;
+    setBusy(true);
+    const { error, freed, stuck } = await releaseSlots(stream);
+    setBusy(false);
+    if (error) return onToast(errText(error), "danger");
+    onToast(t("{f} slot dilepaskan{s}.", "{f} slot(s) released{s}.", { f: freed, s: stuck ? t("; {n} tidak dapat dilepaskan", "; {n} could not be released", { n: stuck }) : "" }), stuck ? "warn" : "ok");
+    onChanged();
+  }
 
   async function bumpAll() {
     if (!late.length) return;
@@ -96,6 +114,10 @@ export default function ScheduleView({ posts, brand, onOpen, onNewIdea, onToast,
         <b className="text-[12px]">{t("Butiran dan pembetulan untuk:", "Details and fixes for:")}</b>
         <Segmented value={stream} onChange={setStream} options={[["regulab", "ws.regulab"], ["linkedin", "LinkedIn"]]} />
         <span className="text-[12px] text-muted">{t("{g} slot kosong dalam 21 hari", "{g} empty slot(s) in the next 21 days", { g: gaps })}</span>
+        <Button size="sm" variant="ghost" className="ml-auto" disabled={busy || !plan.release.length} onClick={clearAll} data-clear-slots
+          title={t("Lepaskan semua draf dan post diluluskan daripada slot mereka", "Release every draft and approved post from its slot")}>
+          <CalendarX size={12} /> {t("Kosongkan semua slot ditempah ({n})", "Clear all booked slots ({n})", { n: plan.release.length })}
+        </Button>
       </div>
 
       {late.length > 0 && (

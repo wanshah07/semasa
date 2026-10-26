@@ -1,0 +1,30 @@
+{
+  "approved_designs": {
+    "BrightPhotoDiagramEditorial": {
+      "status": "render-tested short visual primitive",
+      "template": "templates/BrightPhotoDiagramEditorial.html",
+      "production_equivalence": "not a full project migration"
+    },
+    "ContinuousLine": {
+      "status": "render-tested short visual primitive",
+      "template": "templates/ContinuousLine.html",
+      "production_equivalence": "not a full project migration"
+    }
+  },
+  "catalog_effects": {
+    "distinct_codes": 99,
+    "support": "catalog-preserved only; no blanket native implementation claim"
+  },
+  "independent_axes": [
+    "design",
+    "recipe",
+    "effects",
+    "language",
+    "channel",
+    "mode",
+    "duration",
+    "voice_gender",
+    "soundtrack",
+    "rights_status"
+  ]
+}

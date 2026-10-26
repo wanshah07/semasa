@@ -62,6 +62,10 @@ READ_PAD = 1.0                          # seconds a silent scene holds after the
 SILENT_MIN = 4.0                        # and never shorter than this
 PHOTOS = 3                              # Unsplash pictures looked for per film
 MAX_FIX = 2                             # rewrites the writer gets for a layout the check rejects, before the safe layout
+# Wan's own skill, 25 Oct 2026 ("add this skill in the system, and in claude code"): also a Claude Code project skill at
+# .claude/skills/ws-regulab-motion; its contract and the template of the chosen design go to the writer as a reference
+SKILL = Path(__file__).resolve().parents[2] / ".claude" / "skills" / "ws-regulab-motion"
+SKILL_TEMPLATES = {"bright-editorial": "BrightPhotoDiagramEditorial.html", "continuous-line": "ContinuousLine.html"}
 STYLE_MAX = 9_000                      # characters of a style repo handed to the writer
 STYLE_FILES = ("SKILL.md", "skills/SKILL.md", "STYLE.md", "DESIGN.md", "frame.md", "FRAME.md", "AGENTS.md", "CLAUDE.md")
 SIZES = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1080)}
@@ -535,6 +539,19 @@ def hydrate_evidence(store: Any, row: dict[str, Any]) -> dict[str, Any]:
     return {**row, "source_url": row.get("source_url") or evidence.get("source_url") or "", "options": options}
 
 
+def skill_context(row: dict[str, Any]) -> str:
+    """The ws-regulab-motion skill's production contract and the template of the chosen design, as a reference for the
+    writer. Empty when the skill folder is not there. The row's fixed scenes and the current policy win over it."""
+    try:
+        contract = (SKILL / "references" / "contract.md").read_text(encoding="utf-8")
+        template = (SKILL / "templates" / SKILL_TEMPLATES[motion_styles.design(row)]).read_text(encoding="utf-8")
+    except (OSError, KeyError):
+        return ""
+    return ("WAN'S SKILL ws-regulab-motion (approved production contract and the template of this design: a short visual "
+            "regression composition, not a script to copy). Where it differs from SCENES, FIXED or CURRENT WAN MOTION POLICY "
+            "above, those win:\n" + contract + "\nTEMPLATE (" + SKILL_TEMPLATES[motion_styles.design(row)] + "):\n" + template)
+
+
 def build_user(row: dict[str, Any], src_title: str, src_text: str, findings: list[dict[str, Any]] | None = None,
                previous: str = "", style: tuple[str, str] = ("", "")) -> str:
     parts = [f"BRIEF: {row.get('brief') or '(none)'}"]
@@ -556,6 +573,9 @@ def build_user(row: dict[str, Any], src_title: str, src_text: str, findings: lis
                  "same type, colours, composition and motion vocabulary, with this brief's words and times; never reuse its "
                  "words, evidence or media; obey current policy rather than stale sample captions/audio settings):\n" +
                  (motion_styles.RULES / "designs" / reference).read_text())
+    skill = skill_context(row)
+    if skill:
+        parts.append(skill)
     if style[1]:
         parts.append(f"STYLE REFERENCE (the motion repo {style[0]}): follow its visual language, scene patterns, pacing, type "
                      "and palette ideas. It is a reference, not a dependency: use none of its files, media, fonts or scripts, "

@@ -320,3 +320,18 @@ def test_a_writer_that_answers_nothing_still_ends_in_the_safe_layout_film(tmp_pa
                           runner=_runner(), workdir=tmp_path, now=NOW)
     got = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
     assert got["status"] == "done" and "safe layout used" in got["style_note"]
+
+
+def test_wans_ws_regulab_motion_skill_is_installed_for_claude_code_and_reaches_the_writer():
+    skill = motion.SKILL
+    assert (skill / "SKILL.md").is_file(), "a Claude Code project skill: .claude/skills/<name>/SKILL.md"
+    head = (skill / "SKILL.md").read_text().split("---")[1]
+    assert "name: ws-regulab-motion" in head and "user-invocable: true" in head
+    for rel in ("references/contract.md", "references/catalog.json", "templates/BrightPhotoDiagramEditorial.html",
+                "templates/ContinuousLine.html", "assets/official-logo-transparent.png", "scripts/resolve.py"):
+        assert (skill / rel).is_file(), rel
+    one = motion.skill_context({"options": {"design": "bright-editorial"}})
+    assert "Production contract" in one and "BrightPhotoDiagramEditorial.html" in one and "ContinuousLine.html" not in one
+    two = motion.skill_context({"options": {"design": "continuous-line"}})
+    assert "ContinuousLine.html" in two and "those win" in two
+    assert "WAN'S SKILL ws-regulab-motion" in motion.build_user({"brief": "b"}, "", "")

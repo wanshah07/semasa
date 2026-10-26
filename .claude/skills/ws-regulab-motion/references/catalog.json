@@ -1,0 +1,916 @@
+{
+  "section_order": [
+    "Featured Effects",
+    "Hooks",
+    "Captions",
+    "Layouts",
+    "Proof",
+    "Visual Beats",
+    "Animated B-Roll",
+    "Signature Effects",
+    "Motion Pace",
+    "Sound",
+    "Colour & Finish"
+  ],
+  "occurrences": [
+    {
+      "section": "Featured Effects",
+      "code": "X01",
+      "title": "Orbit Cards",
+      "source_offset": 30,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Featured Effects",
+      "code": "X02",
+      "title": "Infinite Content Wall",
+      "source_offset": 4904,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Featured Effects",
+      "code": "X03",
+      "title": "Frame Break",
+      "source_offset": 9344,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Featured Effects",
+      "code": "H01",
+      "title": "Headline Slam",
+      "source_offset": 13985,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Hooks",
+      "code": "C01",
+      "title": "Karaoke Follow",
+      "source_offset": 17690,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "P01",
+      "title": "Screenshot Punch",
+      "source_offset": 22896,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "H01",
+      "title": "Headline Slam",
+      "source_offset": 27811,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "H02",
+      "title": "Pattern Interrupt",
+      "source_offset": 31516,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "H03",
+      "title": "Question First",
+      "source_offset": 34507,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "H04",
+      "title": "Result Before Process",
+      "source_offset": 37712,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "H05",
+      "title": "Countdown Hook",
+      "source_offset": 40883,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "H06",
+      "title": "Split Reveal",
+      "source_offset": 43825,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "H06",
+      "title": "Split Reveal",
+      "source_offset": 46828,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "H08",
+      "title": "Scroll Stop Flash",
+      "source_offset": 49833,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "H09",
+      "title": "Contrarian Hook",
+      "source_offset": 52638,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "H10",
+      "title": "Cinematic Cold Open",
+      "source_offset": 55620,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "C01",
+      "title": "Karaoke Follow",
+      "source_offset": 58804,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "C02",
+      "title": "Pop Word Captions",
+      "source_offset": 64011,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "C03",
+      "title": "Typewriter Subtitles",
+      "source_offset": 69089,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "C04",
+      "title": "Highlight Sweep",
+      "source_offset": 74339,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "C05",
+      "title": "Stacked Captions",
+      "source_offset": 79343,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "C06",
+      "title": "Editorial Lower Thirds",
+      "source_offset": 84276,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "C07",
+      "title": "Explosive Keywords",
+      "source_offset": 88940,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "C08",
+      "title": "Subtitle Capsules",
+      "source_offset": 93645,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "C09",
+      "title": "Monospace Terminal Captions",
+      "source_offset": 98499,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Captions",
+      "code": "C10",
+      "title": "Bilingual Caption Flow",
+      "source_offset": 103425,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Layouts",
+      "code": "L01",
+      "title": "Vertical Split Screen",
+      "source_offset": 108236,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Layouts",
+      "code": "L02",
+      "title": "Picture-in-Picture Focus",
+      "source_offset": 112520,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Layouts",
+      "code": "L03",
+      "title": "Triple Stack",
+      "source_offset": 116853,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Layouts",
+      "code": "L04",
+      "title": "Floating Device Frame",
+      "source_offset": 120980,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Layouts",
+      "code": "L05",
+      "title": "Editorial Sidebar",
+      "source_offset": 125164,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Layouts",
+      "code": "L06",
+      "title": "Center Spotlight",
+      "source_offset": 129280,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Layouts",
+      "code": "L07",
+      "title": "Grid Conversation",
+      "source_offset": 133273,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Layouts",
+      "code": "L08",
+      "title": "Cinematic Letterbox",
+      "source_offset": 137343,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Layouts",
+      "code": "L09",
+      "title": "Collage Canvas",
+      "source_offset": 141427,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Proof",
+      "code": "L10",
+      "title": "Adaptive Proof Panel",
+      "source_offset": 145587,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Proof",
+      "code": "P01",
+      "title": "Screenshot Punch",
+      "source_offset": 150078,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Proof",
+      "code": "P02",
+      "title": "Comment Spotlight",
+      "source_offset": 154980,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Proof",
+      "code": "P03",
+      "title": "Metrics Count-Up",
+      "source_offset": 159476,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Proof",
+      "code": "P04",
+      "title": "Before and After Wipe",
+      "source_offset": 163812,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Proof",
+      "code": "P05",
+      "title": "Search-to-Result",
+      "source_offset": 168348,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Proof",
+      "code": "P06",
+      "title": "Receipt Stack",
+      "source_offset": 172679,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Proof",
+      "code": "P07",
+      "title": "Annotation Marker",
+      "source_offset": 177270,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Proof",
+      "code": "P08",
+      "title": "Timeline Evidence",
+      "source_offset": 181463,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Proof",
+      "code": "P09",
+      "title": "Quote Card Reveal",
+      "source_offset": 185330,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Proof",
+      "code": "P10",
+      "title": "App UI Breakdown",
+      "source_offset": 189113,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Visual Beats",
+      "code": "V01",
+      "title": "Kinetic Section Title",
+      "source_offset": 193517,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Visual Beats",
+      "code": "V02",
+      "title": "Number Burst",
+      "source_offset": 197050,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Visual Beats",
+      "code": "V03",
+      "title": "Keyword Spotlight",
+      "source_offset": 200745,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Visual Beats",
+      "code": "V04",
+      "title": "List Cascade",
+      "source_offset": 204107,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Visual Beats",
+      "code": "V05",
+      "title": "Comparison Collision",
+      "source_offset": 207708,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Visual Beats",
+      "code": "V06",
+      "title": "Progress Journey",
+      "source_offset": 211465,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Visual Beats",
+      "code": "V07",
+      "title": "Callout Bubble",
+      "source_offset": 214898,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Visual Beats",
+      "code": "V08",
+      "title": "Shape Morph",
+      "source_offset": 218547,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Visual Beats",
+      "code": "V09",
+      "title": "Data Visualization Beat",
+      "source_offset": 222149,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Visual Beats",
+      "code": "V10",
+      "title": "Statement Reveal",
+      "source_offset": 225864,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Animated B-Roll",
+      "code": "B01",
+      "title": "Browser Flythrough",
+      "source_offset": 229382,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Animated B-Roll",
+      "code": "B02",
+      "title": "Floating Screenshot Cards",
+      "source_offset": 234266,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Animated B-Roll",
+      "code": "B03",
+      "title": "Device Showcase",
+      "source_offset": 238365,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Animated B-Roll",
+      "code": "B04",
+      "title": "Explainer Icon Flow",
+      "source_offset": 242408,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Animated B-Roll",
+      "code": "B05",
+      "title": "Parallax Photo Depth",
+      "source_offset": 246425,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Animated B-Roll",
+      "code": "B06",
+      "title": "Product Cutout Reveal",
+      "source_offset": 250422,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Animated B-Roll",
+      "code": "B07",
+      "title": "Animated Map Journey",
+      "source_offset": 254460,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Animated B-Roll",
+      "code": "B08",
+      "title": "Abstract Motion Canvas",
+      "source_offset": 258604,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Animated B-Roll",
+      "code": "B09",
+      "title": "Document Flyover",
+      "source_offset": 262267,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Animated B-Roll",
+      "code": "B10",
+      "title": "Interface Component Breakdown",
+      "source_offset": 266205,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Signature Effects",
+      "code": "X01",
+      "title": "Orbit Cards",
+      "source_offset": 270271,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Signature Effects",
+      "code": "X02",
+      "title": "Infinite Content Wall",
+      "source_offset": 275144,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Signature Effects",
+      "code": "X03",
+      "title": "Frame Break",
+      "source_offset": 279582,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Signature Effects",
+      "code": "X04",
+      "title": "UI World",
+      "source_offset": 284217,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Signature Effects",
+      "code": "X05",
+      "title": "Infinite Zoom Tunnel",
+      "source_offset": 288711,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Signature Effects",
+      "code": "X06",
+      "title": "Magnetic Mosaic",
+      "source_offset": 292697,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Signature Effects",
+      "code": "X07",
+      "title": "Reality Portal",
+      "source_offset": 296337,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Signature Effects",
+      "code": "X08",
+      "title": "Clone Echo",
+      "source_offset": 300653,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Signature Effects",
+      "code": "X09",
+      "title": "Cinematic Carousel",
+      "source_offset": 304774,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Signature Effects",
+      "code": "X10",
+      "title": "Blueprint Universe",
+      "source_offset": 308712,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Motion Pace",
+      "code": "M01",
+      "title": "Snap Zoom",
+      "source_offset": 312880,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Motion Pace",
+      "code": "M02",
+      "title": "Whip Transition",
+      "source_offset": 317092,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "M03",
+      "title": "Slow Cinematic Push",
+      "source_offset": 320901,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "M04",
+      "title": "Freeze Beat",
+      "source_offset": 324437,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "M05",
+      "title": "Rhythm Cuts",
+      "source_offset": 328013,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "M06",
+      "title": "Speed Ramp",
+      "source_offset": 331698,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "M07",
+      "title": "Subtle Camera Shake",
+      "source_offset": 335760,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "M08",
+      "title": "Seamless Match Cut",
+      "source_offset": 339222,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "M09",
+      "title": "Mask Swipe",
+      "source_offset": 342883,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "M10",
+      "title": "Stutter Motion",
+      "source_offset": 346326,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "S01",
+      "title": "Impact Hit",
+      "source_offset": 349845,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "S02",
+      "title": "Cinematic Whoosh",
+      "source_offset": 353855,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "S03",
+      "title": "Tension Riser",
+      "source_offset": 357882,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "S04",
+      "title": "Keyboard Ticks",
+      "source_offset": 361755,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "S05",
+      "title": "Silence Drop",
+      "source_offset": 365507,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "S06",
+      "title": "Beat Synchronization",
+      "source_offset": 368896,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "S07",
+      "title": "Subtle Foley Accents",
+      "source_offset": 372798,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "S08",
+      "title": "Dynamic Voice Ducking",
+      "source_offset": 376606,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "S09",
+      "title": "Transition Bass Pulse",
+      "source_offset": 380148,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Sound",
+      "code": "S10",
+      "title": "Outro Audio Resolve",
+      "source_offset": 383830,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Colour & Finish",
+      "code": "F01",
+      "title": "Clean Creator Grade",
+      "source_offset": 387720,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Colour & Finish",
+      "code": "F02",
+      "title": "Warm Editorial",
+      "source_offset": 393886,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Colour & Finish",
+      "code": "F03",
+      "title": "Cool Technology",
+      "source_offset": 399794,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Colour & Finish",
+      "code": "F04",
+      "title": "Cinematic Teal Shadows",
+      "source_offset": 406099,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Colour & Finish",
+      "code": "F05",
+      "title": "Modern Monochrome",
+      "source_offset": 412038,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Colour & Finish",
+      "code": "F06",
+      "title": "Bold Pop Colour",
+      "source_offset": 417672,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Colour & Finish",
+      "code": "F07",
+      "title": "Soft Pastel Film",
+      "source_offset": 423760,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Colour & Finish",
+      "code": "F08",
+      "title": "Film Grain & Bloom",
+      "source_offset": 429107,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Colour & Finish",
+      "code": "F09",
+      "title": "Analog Tape Texture",
+      "source_offset": 434061,
+      "support": "catalog-only; not implemented by this skill"
+    },
+    {
+      "section": "Colour & Finish",
+      "code": "F10",
+      "title": "Premium Commercial Finish",
+      "source_offset": 439445,
+      "support": "catalog-only; not implemented by this skill"
+    }
+  ],
+  "unique_codes": [
+    "B01",
+    "B02",
+    "B03",
+    "B04",
+    "B05",
+    "B06",
+    "B07",
+    "B08",
+    "B09",
+    "B10",
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "C05",
+    "C06",
+    "C07",
+    "C08",
+    "C09",
+    "C10",
+    "F01",
+    "F02",
+    "F03",
+    "F04",
+    "F05",
+    "F06",
+    "F07",
+    "F08",
+    "F09",
+    "F10",
+    "H01",
+    "H02",
+    "H03",
+    "H04",
+    "H05",
+    "H06",
+    "H08",
+    "H09",
+    "H10",
+    "L01",
+    "L02",
+    "L03",
+    "L04",
+    "L05",
+    "L06",
+    "L07",
+    "L08",
+    "L09",
+    "L10",
+    "M01",
+    "M02",
+    "M03",
+    "M04",
+    "M05",
+    "M06",
+    "M07",
+    "M08",
+    "M09",
+    "M10",
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P08",
+    "P09",
+    "P10",
+    "S01",
+    "S02",
+    "S03",
+    "S04",
+    "S05",
+    "S06",
+    "S07",
+    "S08",
+    "S09",
+    "S10",
+    "V01",
+    "V02",
+    "V03",
+    "V04",
+    "V05",
+    "V06",
+    "V07",
+    "V08",
+    "V09",
+    "V10",
+    "X01",
+    "X02",
+    "X03",
+    "X04",
+    "X05",
+    "X06",
+    "X07",
+    "X08",
+    "X09",
+    "X10"
+  ],
+  "occurrence_count": 106,
+  "unique_effect_count": 99,
+  "missing_codes": [
+    "H07"
+  ],
+  "warning": "106 source occurrences; 99 distinct codes; repeated H06 retained, no invented H07. Featured Effects repeats later section entries.",
+  "complete_recipes": [
+    {
+      "source_section": "Viral Talking Head",
+      "body_title": "Viral Talking Head",
+      "source_offset": 18,
+      "warning": null
+    },
+    {
+      "source_section": "SaaS Product Demo",
+      "body_title": "SaaS Product Demo",
+      "source_offset": 33779,
+      "warning": null
+    },
+    {
+      "source_section": "Cinematic Brand Film",
+      "body_title": "Cinematic Brand Film",
+      "source_offset": 64925,
+      "warning": null
+    },
+    {
+      "source_section": "Financial Education Reel",
+      "body_title": "Financial Education Reel",
+      "source_offset": 97290,
+      "warning": null
+    },
+    {
+      "source_section": "E-Book Launch Trailer",
+      "body_title": "E-book Launch Trailer",
+      "source_offset": 124087,
+      "warning": null
+    },
+    {
+      "source_section": "Tutorial/Screen Recording",
+      "body_title": "Tutorial / Screen Recording",
+      "source_offset": 149635,
+      "warning": null
+    },
+    {
+      "source_section": "Client Testimonial",
+      "body_title": "Tutorial / Screen Recording",
+      "source_offset": 177797,
+      "warning": "Duplicates Tutorial body; not a distinct testimonial recipe"
+    },
+    {
+      "source_section": "High Energy Promo",
+      "body_title": "High-Energy Promo",
+      "source_offset": 205960,
+      "warning": null
+    }
+  ]
+}

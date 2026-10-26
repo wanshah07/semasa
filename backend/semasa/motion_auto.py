@@ -20,6 +20,7 @@ import hashlib
 import re
 from typing import Any
 
+from . import motion_concepts
 from .motion_styles import EFFECT_LIBRARY
 
 NAMES = {e["id"]: e["name"] for e in EFFECT_LIBRARY["effects"]}
@@ -33,13 +34,13 @@ SOUND = "needs a licensed sound-effect file; the library has none"
 POLICY = "breaks a house rule (transparent captions, nothing over the text, or a clean brand look)"
 HEAVY = "layers that can hide text; not used while no-overlap is enforced"
 UNAVAILABLE = {
-    **dict.fromkeys(["X01", "X02", "X03", "X04", "X07", "X08", "L01", "L02", "L03", "L04", "L07", "M01", "M06", "M10",
-                     "C01", "F01", "F04", "H04"], FOOTAGE),
-    **dict.fromkeys(["P01", "P02", "P04", "P05", "P06", "P07", "P10", "B01", "B02", "B03", "B07", "B09", "B10",
-                     "B06", "V07", "L10"], CAPTURE),
+    # the styles that need footage or a capture are drawn as Wan's own "original qualitative concept diagram" (motion_concepts),
+    # so none of them is skipped for that reason any more
+    **dict.fromkeys([], FOOTAGE),
+    **dict.fromkeys([], CAPTURE),
     **dict.fromkeys(["S01", "S02", "S03", "S04", "S06", "S07", "S09", "M05"], SOUND),
     **dict.fromkeys(["C08", "F08", "F09", "L08"], POLICY),
-    **dict.fromkeys(["X05", "X09", "L09"], HEAVY),
+    **dict.fromkeys([], HEAVY),
 }
 NATIVE_AUDIO = {"S05": "the music drops to near-silence for a breath before the Solusi scene (voiced films)",
                 "S08": "the music ducks under every spoken line (always on in the mix)",
@@ -97,22 +98,27 @@ RECIPES: dict[str, tuple[str, str, str]] = {
     "F07": ("*", "", "photos lifted into a soft pastel floor with lower contrast"),
     "F10": ("*", "", "photos with clean neutral whites and crisp micro-contrast"),
 }
+RECIPES.update(motion_concepts.RECIPES)
 NATIVE_TEXT = {"H01", "H03", "V01", "V03"}
+# the styles that make the film stop and look (Wan, 26 Oct 2026: "use the wow styles"): they are placed first
+WOW = {"H02", "H05", "H06", "H08", "H10", "X05", "X06", "X08", "X10", "M04", "M07", "L06", "V08", "V09", "P03", "P08", "C07",
+       "B04", "P04", "P05", "L04", "X03"}
+CONCEPT = motion_concepts.CONCEPT_CODES
 # the styles the worker's own layout (motion_layout.compose) builds, so a film that falls back to it still shows them; the chooser
 # prefers these (Wan, 26 Oct 2026: "make sure the styles are included, not using layman safe layout only")
 BUILDABLE = {"H02", "H05", "H06", "H08", "H10", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10", "L05", "L06", "P03",
              "P08", "P09", "V02", "V04", "V05", "V06", "V08", "V09", "V10", "B04", "B05", "B08", "X06", "X10", "M02", "M03",
-             "M04", "M07", "M08", "M09", "F02", "F03", "F05", "F06", "F07", "F10"}
+             "M04", "M07", "M08", "M09", "F02", "F03", "F05", "F06", "F07", "F10", *motion_concepts.CONCEPT_CODES}
 # styles that take over the scene's lines: a scene gets at most one of them
-LINE_STYLES = {"L05", "V05", "B04", "V09", "P08"}
+LINE_STYLES = {"L05", "V05", "B04", "V09", "P08", *motion_concepts.MULTI_CODES}
 PHOTO_STYLES = {"L05", "L06", "X06"}                 # how a scene treats its photo: one way each
 FAMILY_LIMIT = {"H": 1, "M": 2, "L": 1, "F": 1, "C": 1, "X": 1}      # per scene; other families may take two
 PER_SCENE = 8
 MIN_STYLES = 15                      # Wan, 26 Oct 2026: "at least 15 styles from 99 styles apply to the motion video"
 # and then "push to use as many styles from 99 as you can": every eligible style is added, up to PER_SCENE in a scene
-CAPTION = ("C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10")
+CAPTION = ("C01", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10")
 TRANSITION = ("M02", "M08", "M09")
-FINISH = ("F02", "F03", "F05", "F06", "F07", "F10")
+FINISH = ("F01", "F02", "F03", "F04", "F05", "F06", "F07", "F10")
 FINISH_SCENE_BOOST = {"F05": r"\b(recall|ban|banned|warning|danger|cancel|tarik|larang|amaran|bahaya|palsu|fake)\b",
                       "F06": r"\b(tips?|easy|quick|mudah|cepat|launch|baru|new|promo)\b",
                       "F03": r"\b(tech|digital|data|ai|system|sistem|software|lab|science|sains)\b",
@@ -153,6 +159,7 @@ def _holds(needs: str, sc: dict[str, Any], ctx: dict[str, Any]) -> bool:
             "%": any(re.search(r"\d\s?%", ln) for ln in (sc.get("lines") or [])),
             "N": any(not re.fullmatch(r"(?:19|20)\d{2}", n) for n in re.findall(r"(?<![\d.,])\d{2,7}(?![\d.,])", on_screen)),
             "L": bool(sc.get("lines")),
+            "T": bool(sc.get("words")),
             "W": len((sc.get("heading") or "").split()) >= 3,
             "E": bool(re.search(r"[“”\"]", on_screen)) or ctx["study"],
             "V": ctx["voiced"],
@@ -218,7 +225,8 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
                 continue
             if not _holds(needs, sc, ctx):
                 continue
-            score = 10 + (6 if needs else 0) + (3 if code in NATIVE_TEXT else 0) + (4 if code in BUILDABLE else 0)
+            score = (10 + (6 if needs else 0) + (3 if code in NATIVE_TEXT else 0) + (4 if code in BUILDABLE else 0)
+                     + (5 if code in WOW else 0) - (2 if code in CONCEPT else 0))
             if code == "V03" and len((sc.get("heading") or "").split()) > 3:
                 continue
             if code == "V01" and len((sc.get("heading") or "").split()) > 4:
@@ -267,6 +275,10 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
             return False
         if code in PHOTO_STYLES and any(c in PHOTO_STYLES for c in have):
             return False
+        if code in motion_concepts.KIND and any(c in motion_concepts.KIND for c in have):
+            return False                                 # one concept diagram a scene: each takes a block of the column
+        if code in {"M01", "M06"} and any(c in {"M01", "M06", "L06", "X06"} for c in have):
+            return False                                 # one movement of the photo
         if code == "V06" and any(c in {"L05", "V05"} for c in have):
             return False
         if code in {"L05", "V05"} and "V06" in have:
@@ -308,7 +320,10 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
     unavailable = dict(UNAVAILABLE)
     unavailable.update({c: "not needed by this film's words, or it suits a different scene" for c in NAMES
                         if c not in applied and c not in unavailable})
+    ev = (row.get("options") or {}).get("evidence") or {}
     return {"scenes": out, "video": video, "assigned": assigned, "native": native, "audio": audio, "study": study,
+            "evidence_url": str(ev.get("source_url") or row.get("source_url") or ""),
+            "concept": sorted(set(assigned) & CONCEPT),
             "unavailable": unavailable, "considered": len(NAMES), "applied": len(applied)}
 
 

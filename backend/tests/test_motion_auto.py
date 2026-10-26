@@ -536,7 +536,7 @@ def test_by_default_the_worker_composes_the_film_and_the_writer_is_not_asked(tmp
     assert got["status"] == "done" and "composed by the worker" in got["style_note"]
     assert "writer_attempts" not in got["check_report"], "no writer layout was asked for or rejected"
     built = got["check_report"]["layout"]["built"]
-    assert len(built) >= 8 and {"V09", "P08"} & set(built), built
+    assert len(built) >= 8 and {"V09", "P08", "P03", "V02"} & set(built), built
 
 
 def test_markup_in_the_script_is_words_only_on_the_film_and_in_the_voice():
@@ -557,3 +557,48 @@ def test_no_flash_darkens_the_film_before_its_moment():
     # the paper film (26 Oct 2026) was a darker teal until its M04 scene: a fromTo applies its start value at once
     html, _ = _rich([dict(s) for s in FILM], plan={"scenes": {"s2": ["M04"]}, "video": {}})
     assert 'tl.fromTo("#flash",{opacity:.35},{opacity:0,duration:.4,ease:"power2.out",immediateRender:false}' in html
+
+
+def _kinds_film(codes, lines=("Syarikat kekal peduli", "Label dan tuntutan patuh", "Semak sebelum lancar")):
+    scenes = [{"id": f"s{i + 1}", "role": "fact", "start": i * 5, "duration": 5, "heading": "Notifikasi bukan kelulusan",
+               "lines": list(lines)} for i in range(len(codes))]
+    plan = {"scenes": {f"s{i + 1}": [c] for i, c in enumerate(codes)}, "video": {}, "evidence_url": "https://pubmed.ncbi.nlm.nih.gov/42919945/"}
+    outro = {"id": "brand-outro", "start": len(codes) * 5, "duration": 3, "heading": "x"}
+    return motion_layout.compose(scenes=scenes + [outro], total=len(codes) * 5 + 3, w=1080, h=1920, lang="bm", plan=plan,
+                                 palette=motion.PALETTE["regulab"], gsap=motion.GSAP, html_lang="ms", resolution="portrait")
+
+
+def test_styles_that_need_footage_are_drawn_as_concept_diagrams_and_say_so():
+    # Wan, 26 Oct 2026: "use style that identify as concept fallback"
+    codes = ["B01", "L04", "P04", "P05", "L07", "P01", "B07", "X08", "X02", "L10", "X05", "P07"]
+    html, rep = _kinds_film(codes)
+    assert set(rep["concept"]) == set(codes), (rep["concept"], rep["not_built"])
+    assert "pubmed.ncbi.nlm.nih.gov" in html, "the browser frame shows the source's own host, nothing invented"
+    body = html.split('<div id="root"')[1]
+    assert "border-radius:50%" not in body
+    assert all(c in motion_auto.CONCEPT for c in rep["concept"])
+
+
+def test_a_concept_diagram_is_not_drawn_when_a_word_would_be_split_in_half():
+    html, rep = _kinds_film(["P04", "B07", "L07"], lines=("Bertanggungjawabkeseluruhannya sepenuhnya", "Label tuntutan", "Semak"))
+    assert rep["concept"] == [] and sorted(rep["not_built"]) == ["B07", "L07", "P04"]
+
+
+def test_the_chooser_uses_wow_and_concept_styles_and_none_is_skipped_for_lack_of_footage():
+    plan = motion_auto.choose(ROW, [dict(s) for s in FILM], voiced=True, lang="bm")
+    assert plan["concept"], "a film includes concept renditions"
+    assert not any("footage" in why or "capture" in why for why in plan["unavailable"].values())
+    assert motion_auto.WOW & {c for codes in plan["scenes"].values() for c in codes}
+
+
+def test_karaoke_captions_turn_each_word_dark_as_the_voice_reaches_it():
+    narration = "Notifikasi bukan kelulusan produk dan syarikat kekal bertanggungjawab sepenuhnya"
+    words = narration.split()
+    sc = {"id": "s1", "role": "hook", "start": 0, "duration": 8, "heading": "Notifikasi", "lines": [], "narration": narration,
+          "audio": "a.mp3", "audio_s": 6, "words": [[i * 0.5, i * 0.5 + 0.4, w] for i, w in enumerate(words)]}
+    plan = {"scenes": {"s1": ["C01"]}, "video": {}}
+    html, rep = motion_layout.compose(scenes=[sc, {"id": "brand-outro", "start": 8, "duration": 3, "heading": "x"}], total=11,
+                                      w=1080, h=1920, lang="bm", plan=plan, palette=motion.PALETTE["regulab"], gsap=motion.GSAP,
+                                      html_lang="ms", resolution="portrait")
+    assert "C01" in rep["built"] and html.count('class="kk"') == len(words)
+    assert 'tl.fromTo("#s1-kk2",{opacity:.4},{opacity:1,duration:.08},1;' in html.replace("1);", "1;")

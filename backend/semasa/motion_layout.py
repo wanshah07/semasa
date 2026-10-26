@@ -24,7 +24,7 @@ import html as html_mod
 import re
 from typing import Any
 
-from . import motion_auto
+from . import motion_auto, motion_concepts
 
 # the ambient background of every scene (Wan, 26 Oct 2026: "ambient yellow green background, not too dark"): the reference films'
 # soft diagonal gradient moved from mint to a light yellow-green, with the line grid on top of it (see `grid-all`)
@@ -38,7 +38,9 @@ GAP = 0.028                       # between blocks, as a fraction of the frame w
 WIDE = 0.62                       # estimated average glyph width / font size for a bold heading (system sans, never narrower)
 BODY = 0.56
 MIN_PX = 44                       # on a 1080-wide frame (the contract's floor)
-FILTERS = {"F02": "sepia(.16) saturate(1.05) brightness(1.02)", "F03": "saturate(.88) contrast(1.06) brightness(1.02)",
+FILTERS = {"F01": "contrast(1.05) saturate(1.12) brightness(1.03)",
+           "F04": "contrast(1.1) saturate(.95) hue-rotate(-14deg) brightness(.98)",
+           "F02": "sepia(.16) saturate(1.05) brightness(1.02)", "F03": "saturate(.88) contrast(1.06) brightness(1.02)",
            "F05": "grayscale(1) contrast(1.15)", "F06": "saturate(1.35) contrast(1.08)",
            "F07": "saturate(.86) contrast(.93) brightness(1.06)", "F10": "contrast(1.06) saturate(1.04)"}
 BUILT = motion_auto.BUILDABLE
@@ -116,7 +118,7 @@ def rgba(colour: str, alpha: float) -> str:
 NUM = re.compile(r"\d[\d.,]*%?")
 YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
 PCT = re.compile(r"(\d+(?:[.,]\d+)?)\s?%")
-CAPTIONS = {"C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10"}
+CAPTIONS = {"C01", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10"}
 TRANSITIONS = {"M02", "M08", "M09"}
 TAGS = {"bm": ("KAJIAN RUJUKAN", "FAKTA"), "both": ("KAJIAN RUJUKAN", "FAKTA"), "en": ("SOURCE STUDY", "FACT")}
 
@@ -209,6 +211,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         f".l.en{{color:{accent};font-weight:600;}}",
         f".l.mono{{font-family:{mono};font-weight:600;}}",
         ".wd{display:inline-block;white-space:nowrap;}",
+        ".kk{display:inline-block;}",
         f".mut{{opacity:.6;font-weight:500;}} .str{{font-weight:800;color:{ink};}}",
         ".num{display:inline-block;}",
         f".kw{{position:relative;display:inline-block;isolation:isolate;}} "
@@ -297,6 +300,12 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     def text_h(text: str, px: float, factor: float, width: float, lh: float = 1.2) -> float:
         return wrap_lines(text or " ", px, width, factor) * px * lh
 
+    ev = plan.get("evidence_url") or ""
+    cctx = motion_concepts.Ctx(scale, box_w, gap, fs_d, pad_card, motion_concepts.host_of(ev), text_h)
+    css.extend(motion_concepts.css(cctx, accent, rgba))
+    concept_used: list[str] = []
+    last_heading = plain(teaching[-1].get("heading")) if teaching else ""
+
     for idx, sc in enumerate(teaching):
         sid, start, dur = sc["id"], float(sc["start"]), float(sc["duration"])
         first = idx == 0
@@ -311,13 +320,25 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         photo = sc.get("photo")
         is_typed = cap_s in {"C03", "C09"}
         role = sc.get("role") or ""
+        # a concept rendition of a style that needs footage or a capture (it takes its lines off the plain list)
+        ccode = next((c for c in eff if c in motion_concepts.KIND), None)
+        cblock = None
+        base_lines = list(lines)
+        if ccode:
+            kind = motion_concepts.KIND[ccode]
+            teaser = last_heading if idx < len(teaching) - 1 else ""
+            cblock = motion_concepts.build(kind, sid, cctx, heading, lines, teaser=teaser)
+            if cblock:
+                lines = lines[min(motion_concepts.CONSUME.get(kind, 1), len(lines)):]
+        use_concept = cblock is not None
         # what the scene's own words can carry: percentages for a chart, years for a timeline, figures to count up
         pct_rows = [(ln, m) for ln in lines for m in [PCT.search(ln)] if m][:3] if "V09" in eff else []
         yrs = [(ln, YEAR.search(ln).group(0)) for ln in lines if YEAR.search(ln)] if "P08" in eff else []
         events = sorted({y: ln for ln, y in yrs}.items())[:4] if len({y for _, y in yrs}) >= 2 else []
         quote = next((ln for ln in lines if re.search(r"[“”\"]", ln)), "") if "P09" in eff and not study else ""
         photo_h = (h * 0.32 if h >= w else h * 0.36) if photo else 0
-        extra_blocks = ("V06" in eff) + bool(study and "P09" in eff) + ("V08" in eff) + bool(pct_rows or events or quote)
+        extra_blocks = ("V06" in eff) + bool(study and "P09" in eff) + ("V08" in eff) + bool(pct_rows or events or quote) \
+            + use_concept
         if photo and extra_blocks:
             photo_h *= max(0.55, 1 - 0.16 * extra_blocks)
         photo_w = min(box_w, photo_h * 0.8)
@@ -382,7 +403,12 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 inner = box_w - 2 * pad_card - 8
                 extra += sum(text_h(ln, px_l, BODY, inner, 1.18) for ln in rest) + len(rest) * 2 * pad_card \
                     + (len(rest) - 1) * arrow_h + gap
+            if use_concept and cblock:
+                extra += cblock.height + gap
             sizes = fit(texts, box_w, box_h, extra + gap * (len(texts) + 1), scale) if texts else []
+            if not sizes and use_concept and (lines or texts):
+                use_concept, cblock, lines = False, None, list(base_lines)     # words outrank a concept diagram
+                continue
             if side:
                 panel_w = box_w * 0.56 - 2 * pad_card
                 side_sizes = fit([(ln, px_l * 0.9, BODY * (box_w * 0.56) / max(panel_w, 1)) for ln in lines], panel_w,
@@ -524,6 +550,10 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                          f'<div class="tt">{esc(quote.strip(chr(34) + "“”"))}</div></div>')
             applied.add("P09")
             lines = [ln for ln in lines if ln != quote]
+        if use_concept and cblock:
+            block.append(cblock.html)
+            applied.add(ccode)
+            concept_used.append(ccode)
         rest_sizes = ls[1:] if cards else ls
         if flow:
             inner_boxes = []
@@ -570,12 +600,24 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                      + "".join(block) + extras + "</div>")
         if narrated and sc.get("audio") and str(sc.get("narration") or "").strip():
             lane_h = h * LANE[1]
-            for k, (text, a, b) in enumerate(caption_chunks(sc)):
+            chunks = caption_chunks(sc)
+            timed = sc.get("words") or []
+            karaoke = cap_s == "C01" and len(timed) == len(str(sc.get("narration")).split())
+            for k, (text, a, b) in enumerate(chunks):
                 size = 52 * scale
                 while size > MIN_PX * scale and wrap_lines(text, size, box_w, BODY) * size * 1.3 > lane_h:
                     size -= 2 * scale
+                inner = esc(text)
+                if karaoke:
+                    off = 0 if k == 0 else len(chunks[0][0].split())
+                    inner = " ".join(f'<span class="kk" id="{sid}-kk{off + j}">{esc(wd)}</span>'
+                                     for j, wd in enumerate(text.split()))
+                    for j in range(len(text.split())):
+                        tw.append(f'tl.fromTo("#{sid}-kk{off + j}",{{opacity:.4}},{{opacity:1,duration:.08}},'
+                                  f'{start + float(timed[off + j][0]):g});')
+                    applied.add("C01")
                 parts.append(f'<div class="clip cap" id="{sid}-c{k}" data-start="{a:g}" data-duration="{b - a:g}" '
-                             f'style="font-size:{size:.0f}px;">{esc(text)}</div>')
+                             f'style="font-size:{size:.0f}px;">{inner}</div>')
                 tw.append(f'tl.fromTo("#{sid}-c{k}",{{opacity:0}},{{opacity:1,duration:.18,ease:"power1.out"}},{a:g});')
                 tw.append(f'tl.to("#{sid}-c{k}",{{opacity:0,duration:.12}},{max(a, b - .14):g});')
         t0, t1 = start, start + dur
@@ -623,6 +665,10 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 dy = y0 if not dx else 0
                 tw.append(f'tl.fromTo("#{sid}-h",{{opacity:{opening},x:{dx:.0f},y:{dy:.0f}}},{{opacity:1,x:0,y:0,'
                           f'duration:{enter + .1:g},ease:"power3.out"}},{th:g});')
+            if "M10" in eff:
+                applied.add("M10")
+                stut = f"{-14 * scale:.0f}"
+                tw.append(f'tl.fromTo("#{sid}-h",{{x:{stut},opacity:0}},{{x:0,opacity:1,duration:.45,ease:"steps(4)"}},{th:g});')
             if "M07" in eff:
                 applied.add("M07")
                 jolt = ",".join(f"{{x:{x * scale:.0f},duration:.05}}" for x in (-16, 12, -7, 3, 0))
@@ -656,6 +702,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             tw.append(f'tl.fromTo("#{sid}-tll",{{scaleX:0}},{{scaleX:1,duration:.9,ease:"power2.inOut"}},{tl_start:g});')
             tw.append(f'tl.fromTo(".{sid}-te",{{opacity:0,y:{y0:.0f}}},{{opacity:1,y:0,duration:.4,stagger:.3}},'
                       f'{tl_start + .2:g});')
+        if use_concept and cblock:
+            tw.extend(cblock.tweens(tl_start))
         if (study and "P09" in eff) or quote:
             tw.append(f'tl.fromTo("#{sid}-pub",{{opacity:0,y:{y0:.0f}}},{{opacity:1,y:0,duration:.5,ease:"power2.out"}},{tl_start:g});')
         if is_typed and lines:
@@ -703,6 +751,12 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                           f'{t0 + .1 + lead:g});')
                 tw.append(f'tl.fromTo("#{sid}-photo",{{scale:1.45}},{{scale:{zoom},duration:{dur:g},ease:"power2.out"}},'
                           f'{t0 + lead:g});')
+            elif "M01" in eff:
+                applied.add("M01")
+                tw.append(f'tl.fromTo("#{sid}-photo",{{scale:1.35}},{{scale:{zoom},duration:.35,ease:"power4.out"}},{t0:g});')
+            elif "M06" in eff:
+                applied.add("M06")
+                tw.append(f'tl.fromTo("#{sid}-photo",{{scale:1}},{{scale:1.12,duration:{dur:g},ease:"power3.in"}},{t0:g});')
             elif "X06" in eff:
                 applied.add("X06")
                 far = f"{220 * scale:.0f}"
@@ -730,6 +784,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     chosen = {c for cs in plan.get("scenes", {}).values() for c in cs} | {v for v in video.values()}
     report = {"layout": "safe-layout", "built": sorted(chosen & applied),
               "not_built": sorted(chosen - applied - motion_auto.NATIVE_TEXT),
+              "concept": sorted(set(concept_used) | ({"C01"} & applied) | ({"M01", "M06", "M10", "F01", "F04"} & applied)),
               "dropped_lines": dropped, "caption": caption, "transition": transition}
     return page, report
 

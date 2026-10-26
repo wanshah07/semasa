@@ -3,6 +3,7 @@ import { ListChecks, Loader2, Play, Trash2 } from "lucide-react";
 import { useLang } from "../lib/i18n";
 import { FORMAT_WORDS, LANGUAGES, VOICES, defaultLanguage, formOf, formatOf, motionLabel, selectedSeconds } from "../lib/motion";
 import { designOptions } from "../lib/motionStyles";
+import MotionAmbient from "./MotionAmbient";
 import MotionEffectLibrary from "./MotionEffectLibrary";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
@@ -44,6 +45,7 @@ function QueueCard({ row, defaults, client, user, busy, onStart, onRemove }) {
           <Segmented value={form.language || defaultLanguage(row.stream)} onChange={(v) => set({ language: v, voice: v !== "en" && form.voice === "kitten" ? "female" : form.voice })} options={LANGUAGES} /></div>
         <div><Label>{t("Suara", "Voice")}</Label>
           <Segmented value={form.voice} onChange={(v) => set({ voice: v })} options={VOICES.map(([k, bm, en]) => [k, L ? en : bm])} /></div>
+        <div className="md:col-span-2"><MotionAmbient value={form.ambient} onChange={(v) => set({ ambient: v })} /></div>
         <label className="block"><Label>{t("Reka bentuk", "Design")}</Label>
           <Select value={form.design} onChange={(v) => set({ design: v })} className="w-full" options={designOptions.map((d) => [d.id, d.name])} /></label>
         {isGimmick ? null : (

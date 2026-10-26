@@ -126,7 +126,8 @@ def test_narration_becomes_two_subtitle_chunks_in_their_own_lane():
     chunks = motion_layout.caption_chunks(sc)
     assert len(chunks) == 2 and " ".join(c[0] for c in chunks) == narration
     assert chunks[0][1] == 7.0 and chunks[0][2] == chunks[1][1] and chunks[1][2] == 13.6
-    assert chunks[1][1] == pytest.approx(7.0 + 0.4 * 6), "the second chunk starts at the word the voice reaches"
+    assert chunks[0][0].endswith("."), "a subtitle ends at the end of a sentence, not in the middle of a phrase"
+    assert chunks[1][1] == pytest.approx(7.0 + 0.4 * 3), "the second chunk starts at the word the voice reaches"
     html, _ = _compose([dict(s) for s in FILM[:1]] + [sc, dict(FILM[2]), dict(FILM[3])], narrated=True)
     assert html.count('class="clip cap"') == 2 and "top:1498px" in html, "the subtitle lane sits below the column"
     silent, _ = _compose([dict(s) for s in FILM])
@@ -406,13 +407,13 @@ def test_a_native_heading_effect_leaves_the_heading_on_screen_after_its_entrance
 
 def test_the_safe_layout_background_is_the_reference_gradient_and_never_a_circle():
     html, _ = _compose([dict(s) for s in FILM])
-    assert "linear-gradient(145deg,#dff0c2,#fbf7da 70%)" in html and 'id="grad2"' in html
+    assert "linear-gradient(145deg,#e0f5e9,#fff9ed 70%)" in html and 'id="grad2"' in html
     assert 'id="grid-all"' in html, "the line grid is behind every scene"
     assert 'class="bg"' not in html and 'id="bg' not in html and ".bg{" not in html, "no circles behind the text"
     line, _ = motion_layout.compose(scenes=[dict(s) for s in FILM], total=31, w=1080, h=1920, lang="bm",
                                     plan={"scenes": {}, "video": {}}, palette=motion.PALETTE["regulab"], gsap=motion.GSAP,
                                     html_lang="ms", resolution="portrait", design="continuous-line")
-    assert "linear-gradient(150deg,#e2f0c6,#fbf8de)" in line
+    assert "linear-gradient(150deg,#e4f4e8,#fcf9ed)" in line
 
 
 @pytest.mark.parametrize("voiced", [True, False])
@@ -602,3 +603,58 @@ def test_karaoke_captions_turn_each_word_dark_as_the_voice_reaches_it():
                                       html_lang="ms", resolution="portrait")
     assert "C01" in rep["built"] and html.count('class="kk"') == len(words)
     assert 'tl.fromTo("#s1-kk2",{opacity:.4},{opacity:1,duration:.08},1;' in html.replace("1);", "1;")
+
+
+def test_the_ambient_colour_is_wans_choice_and_mint_is_the_default():
+    # Wan, 26 Oct 2026: "tone color like attachment 3 is preferable (remain the line), let me choose the ambient colour"
+    scenes = [dict(s) for s in FILM]
+    for name, (a, b, *_rest) in motion_layout.AMBIENTS.items():
+        html, rep = motion_layout.compose(scenes=scenes + [{"id": "brand-outro", "start": 28, "duration": 3, "heading": "x"}],
+                                          total=31, w=1080, h=1920, lang="bm", plan={"scenes": {}, "video": {}},
+                                          palette=motion.PALETTE["regulab"], gsap=motion.GSAP, html_lang="ms",
+                                          resolution="portrait", ambient=name)
+        assert f"linear-gradient(145deg,{a},{b} 70%)" in html and rep["ambient"] == name and 'id="grid-all"' in html
+    html, rep = _compose([dict(s) for s in FILM])
+    assert rep["ambient"] == "mint"
+    html, rep = motion_layout.compose(scenes=[dict(s) for s in FILM], total=31, w=1080, h=1920, lang="bm",
+                                      plan={"scenes": {}, "video": {}}, palette=motion.PALETTE["regulab"], gsap=motion.GSAP,
+                                      html_lang="ms", resolution="portrait", ambient="not-a-colour")
+    assert rep["ambient"] == "mint", "an unknown colour falls back to the reference"
+
+
+def test_the_first_scene_opens_with_a_hook_chip_chosen_by_the_topic():
+    # Wan, 26 Oct 2026: "do not forget the hook ... Did you know, Warning, Breaking News"
+    assert motion_auto.hook_of("NPRA tarik balik produk kosmetik yang berbahaya") == "warn"
+    assert motion_auto.hook_of("Garis panduan baharu berkuat kuasa mulai Januari") == "news"
+    assert motion_auto.hook_of("Notifikasi bukan kelulusan produk") == "know"
+    for kind, bm, en in (("know", "TAHUKAH ANDA?", "DID YOU KNOW?"), ("warn", "AMARAN", "WARNING"),
+                         ("news", "BERITA TERKINI", "BREAKING NEWS")):
+        for lang, want in (("bm", bm), ("en", en)):
+            scenes = [dict(s) for s in FILM]
+            outro = {"id": "brand-outro", "start": 28, "duration": 3, "heading": "x"}
+            html, rep = motion_layout.compose(scenes=scenes + [outro], total=31, w=1080, h=1920, lang=lang,
+                                              plan={"scenes": {}, "video": {}, "hook": kind},
+                                              palette=motion.PALETTE["regulab"], gsap=motion.GSAP, html_lang="ms",
+                                              resolution="portrait")
+            assert rep["hook"] == kind and html.count('class="hook"') == 1 and f">{want}<" in html
+    plan = motion_auto.choose(ROW, [dict(s) for s in FILM], voiced=True, lang="bm")
+    assert plan["hook"] in motion_layout.HOOKS
+
+
+def test_a_photo_has_no_border_line_and_its_edges_fade():
+    scenes = [dict(s) for s in FILM]
+    motion_auto.assign_photos(scenes, [{"path": f"assets/photo-{i}.jpg", "credit": "x"} for i in (1, 2, 3)])
+    html, _ = _rich(scenes)
+    body = html.split('<div id="root"')[1]
+    assert "box-shadow:0 0 0" not in body and "mask-image:linear-gradient" in html, "no ring; the edges fade"
+    assert ".ph{" in html and "border-radius" not in html.split(".ph{")[1].split("}")[0]
+
+
+def test_every_list_of_two_or_more_lines_is_numbered_like_attachment_two():
+    scenes = [{"id": "s1", "role": "fact", "start": 0, "duration": 8, "heading": "Fakta penting",
+               "lines": ["Satu perkara", "Dua perkara"]}]
+    outro = {"id": "brand-outro", "start": 8, "duration": 3, "heading": "x"}
+    html, _ = motion_layout.compose(scenes=scenes + [outro], total=11, w=1080, h=1920, lang="bm",
+                                    plan={"scenes": {}, "video": {}}, palette=motion.PALETTE["regulab"],
+                                    gsap=motion.GSAP, html_lang="ms", resolution="portrait")
+    assert html.count('class="bd s1-bd"') == 2 and ">1</span>" in html and ">2</span>" in html

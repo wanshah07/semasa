@@ -6,6 +6,7 @@ import { useSettings, useTable } from "../lib/hooks";
 import { timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
 import { LANGUAGES, RESOLUTIONS, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults } from "../lib/motion";
+import MotionAmbient from "./MotionAmbient";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
 import MotionEffectLibrary from "./MotionEffectLibrary";
 import MotionQueue from "./MotionQueue";
@@ -41,6 +42,7 @@ export default function MotionLab({ user, onToast }) {
   const [styleRepoId, setStyleRepoId] = useState("");
   const [style, setStyle] = useState("bright-education");
   const [design, setDesign] = useState("bright-editorial");
+  const [ambient, setAmbient] = useState("mint");
   const [effects, setEffects] = useState(['B04']);
   const [effectMode, setEffectMode] = useState('auto');
   const [assets, setAssets] = useState([]);
@@ -57,14 +59,14 @@ export default function MotionLab({ user, onToast }) {
   useEffect(() => {
     const d = motionDefaults(settings);
     if (!settings.motion?.defaults) return;
-    setLanguage(d.language || defaultLanguage(stream)); setLangTouched(!!d.language); setVoice(d.voice); setStyle(validStyle(d.style)); setDesign(d.design);
+    setLanguage(d.language || defaultLanguage(stream)); setLangTouched(!!d.language); setVoice(d.voice); setStyle(validStyle(d.style)); setDesign(d.design); setAmbient(d.ambient || "mint");
     setEffects(d.effects); setEffectMode(d.effectMode || 'auto');
     setResolution(d.resolution); setMode(d.mode); setSeconds(d.seconds); setAiBackground(!!d.aiBackground); setStyleRepoId(d.styleRepoId || "");
   }, [defaultsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const saveDefaults = async () => {
     setBusy("defaults");
     try {
-      await save("motion", withDefaults(settings.motion, { language: langTouched ? language : "", voice, resolution, seconds, aiBackground, styleRepoId, style, mode, design, effects, effectMode }));
+      await save("motion", withDefaults(settings.motion, { language: langTouched ? language : "", voice, resolution, seconds, aiBackground, styleRepoId, style, mode, design, ambient, effects, effectMode }));
       onToast?.(t("Disimpan sebagai cara lalai: setiap idea atau draf yang dijadikan video motion ikut tetapan ini.", "Saved as the default way: every idea or draft made into a motion video follows these settings."), "ok");
     } catch (e) { onToast?.(/0 rows|motion/i.test(e.message) ? t("Jalankan supabase/043_motion.sql dahulu.", "Run supabase/043_motion.sql first.") : e.message, "error"); } finally { setBusy(""); }
   };
@@ -77,7 +79,7 @@ export default function MotionLab({ user, onToast }) {
 
   const add = async () => {
     if (assetsBusy) return;
-    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, style, mode, design, effects, effectMode, assetMode, assets }, user?.id || null);
+    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, style, mode, design, ambient, effects, effectMode, assetMode, assets }, user?.id || null);
     if (built.error === "empty") return onToast?.(t("Tulis idea atau tampal pautan.", "Write an idea or paste a link."), "warn");
     if (built.error === "url") return onToast?.(t("Pautan perlu bermula dengan https://", "The link must start with https://"), "warn");
     setBusy("add");
@@ -159,6 +161,7 @@ export default function MotionLab({ user, onToast }) {
             placeholder={t("Cth: Tiga perkara tentang PFAS dalam kosmetik yang SME perlu tahu sebelum 2027", "E.g. Three things about PFAS in cosmetics an SME must know before 2027")} /></label>
         <label className="block"><Label hint={t("pilihan: bot baca halaman itu", "optional: the bot reads that page")}>{t("Pautan", "Link")}</Label>
           <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" inputMode="url" /></label>
+        <MotionAmbient value={ambient} onChange={setAmbient} />
         <label className="block" data-motion-design><Label>Design variant (preserved)</Label>
           <select aria-label="Design variant" value={design} onChange={e => setDesign(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
             {designOptions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}

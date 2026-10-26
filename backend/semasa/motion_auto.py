@@ -184,6 +184,18 @@ def assign_photos(scenes: list[dict[str, Any]], photos: list[dict[str, Any]]) ->
             sc["photo"], sc["photo_credit"] = p["path"], p.get("credit", "")
 
 
+WARN = re.compile(r"\b(recall|banned?|warning|danger(?:ous)?|fake|counterfeit|seiz(?:ed|ure)|cancell?ed|prohibited|illegal|"
+                  r"toxic|tarik balik|ditarik|larang|dilarang|amaran|bahaya|palsu|haram|batal|dibatalkan|rampas|racun)\b", re.I)
+NEWS = re.compile(r"\b(new|latest|announc\w*|circular|notice|guideline|effective|takes effect|from \d{1,2} \w+|2026|"
+                  r"baharu|terkini|umum\w*|pekeliling|notis|garis panduan|berkuat kuasa|mulai|kini)\b", re.I)
+
+
+def hook_of(text: str) -> str:
+    """Which attention hook opens the film (Wan, 26 Oct 2026): a danger or a recall is a Warning, a new rule or notice is Breaking
+    News, anything else is Did you know."""
+    return "warn" if WARN.search(text) else "news" if NEWS.search(text) else "know"
+
+
 def study_of(row: dict[str, Any]) -> dict[str, str] | None:
     """The publication a film rests on, from what the idea carries and nothing else: the journal, the paper's title and a
     reference taken from its address. None when the source is not a paper (a news item is not drawn as a study)."""
@@ -323,6 +335,7 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
     ev = (row.get("options") or {}).get("evidence") or {}
     return {"scenes": out, "video": video, "assigned": assigned, "native": native, "audio": audio, "study": study,
             "evidence_url": str(ev.get("source_url") or row.get("source_url") or ""),
+            "hook": hook_of(ctx["all_text"]),
             "concept": sorted(set(assigned) & CONCEPT),
             "unavailable": unavailable, "considered": len(NAMES), "applied": len(applied)}
 

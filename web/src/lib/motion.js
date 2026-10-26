@@ -19,13 +19,18 @@ const langOf = (v, stream) => (LANGUAGES.some(([k]) => k === v) ? v : defaultLan
 export const VOICES = [["kitten", "VoiceStudio KittenTTS (EN)", "VoiceStudio KittenTTS (EN)"], ["male", "Lelaki", "Male"], ["female", "Perempuan", "Female"], ["off", "Tiada suara", "No voice"]];
 const voiceOf = (v) => (VOICES.some(([k]) => k === v) ? v : "kitten");
 export const designOf = v => v === 'continuous-line' ? v : 'bright-editorial';
+/* The ambient colour behind every scene, chosen per film (Wan, 26 Oct 2026: "let me choose the background ambient colour in
+   semasa"). Mint is the reference films' own tone and the default; the worker (motion_layout.AMBIENTS) has the same five. */
+export const AMBIENTS = [['mint', 'Mint (rujukan)', 'Mint (reference)', '#e0f5e9'], ['lime', 'Kuning-hijau', 'Yellow-green', '#dff0c2'],
+  ['cream', 'Krim', 'Cream', '#fdf0d3'], ['sky', 'Langit', 'Sky', '#dcecf7'], ['blush', 'Merah jambu lembut', 'Soft blush', '#fbe3e6']];
+export const ambientOf = v => AMBIENTS.some(a => a[0] === v) ? v : 'mint';
 export function resolveLanguageVoice(language, voice, stream) {
   const lang = langOf(language, stream);
   const chosen = voiceOf(voice);
   return { language: lang, voice: chosen === 'kitten' && lang !== 'en' ? 'female' : chosen };
 }
 const evidenceOf = source => ({...Object.fromEntries(['source_url', 'reference_urls', 'source_name', 'source_title', 'angle', 'domain', 'citations', 'source_summary', 'trend_id', 'idea_id', 'id'].filter(k => source?.[k] != null).map(k => [k, source[k]])), ...(source?.brief?.source ? {structured_source:source.brief.source} : {})});
-const motionOptions = d => ({ style: styleOf(d.style), mode: modeOf(d.mode), design: designOf(d.design), effects:validEffects(d.effects), effect_mode:d.effectMode === 'manual' ? 'manual' : 'auto', asset_mode:assetModeOf(d.assetMode), assets:d.assets || [], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true} });
+const motionOptions = d => ({ style: styleOf(d.style), mode: modeOf(d.mode), design: designOf(d.design), ambient: ambientOf(d.ambient), effects:validEffects(d.effects), effect_mode:d.effectMode === 'manual' ? 'manual' : 'auto', asset_mode:assetModeOf(d.assetMode), assets:d.assets || [], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true} });
 export function motionVariantMatches(existing, wanted) {
   // a row still waiting for Wan's choice of styles is that idea's video, whatever he has set on it so far
   if (wanted && existing.status === 'waiting' && existing.idea_id && existing.idea_id === wanted.idea_id) return true;
@@ -57,16 +62,16 @@ export const selectedSeconds = (seconds, mode) => modeOf(mode) === "teaser" && N
 
 /* Wan's saved way of making a motion video (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"):
    settings.motion.defaults, saved from the Motion form, read whenever an idea or a post draft is made into a video. */
-export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "kitten", design: "bright-editorial", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "portrait", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
+export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "kitten", design: "bright-editorial", ambient: "mint", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "portrait", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
 /** The saved defaults over the built-in ones; an empty language means "the stream's own". */
 export function motionDefaults(settings) {
   const d = (settings || {}).motion?.defaults;
   const merged = { ...MOTION_DEFAULTS, ...(d && typeof d === "object" ? d : {}) };
-  return { ...merged, ...resolveLanguageVoice(merged.language, merged.voice), design: designOf(merged.design), mode: modeOf(merged.mode), seconds: selectedSeconds(merged.seconds, merged.mode) };
+  return { ...merged, ...resolveLanguageVoice(merged.language, merged.voice), design: designOf(merged.design), ambient: ambientOf(merged.ambient), mode: modeOf(merged.mode), seconds: selectedSeconds(merged.seconds, merged.mode) };
 }
 /** settings.motion with the form saved as the defaults; everything else in it (the prompt) untouched. */
 export function withDefaults(motionSettings, form) {
-  const d = { effects:validEffects(form.effects), effectMode:form.effectMode === 'manual' ? 'manual' : 'auto', assetMode:'auto', ...resolveLanguageVoice(form.language, form.voice), design: designOf(form.design), previewMusic: "user-reel", style: styleOf(form.style), mode: modeOf(form.mode), resolution: RESOLUTIONS[form.resolution] ? form.resolution : "portrait",
+  const d = { effects:validEffects(form.effects), effectMode:form.effectMode === 'manual' ? 'manual' : 'auto', assetMode:'auto', ...resolveLanguageVoice(form.language, form.voice), design: designOf(form.design), ambient: ambientOf(form.ambient), previewMusic: "user-reel", style: styleOf(form.style), mode: modeOf(form.mode), resolution: RESOLUTIONS[form.resolution] ? form.resolution : "portrait",
     seconds: selectedSeconds(form.seconds, form.mode), aiBackground: !!form.aiBackground, styleRepoId: form.styleRepoId || "" };
   return { ...(motionSettings || {}), defaults: d };
 }
@@ -74,7 +79,7 @@ export function withDefaults(motionSettings, form) {
 export const freshUrl = (url, stamp) => (url ? `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(stamp || "")}` : url);
 
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. */
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "kitten", design = "bright-editorial", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[] } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "kitten", design = "bright-editorial", ambient = "mint", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[] } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
@@ -84,7 +89,7 @@ export function motionRow({ brief = "", url = "", stream = "regulab", resolution
     row: {
       brief: b.slice(0, 2000), source_url: u, stream: st, language: langOf(language, st),
       resolution: RESOLUTIONS[resolution] ? resolution : "portrait", seconds: selectedSeconds(seconds, mode), status: "pending",
-      options: motionOptions({style, mode, design, effects, effectMode, assetMode, assets}), style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
+      options: motionOptions({style, mode, design, ambient, effects, effectMode, assetMode, assets}), style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
       ...resolveLanguageVoice(language, voice, st), mascot: "",
     },
   };
@@ -157,7 +162,7 @@ export function formOf(row, defaults = null) {
   const d = { ...MOTION_DEFAULTS, ...(defaults || {}) };
   const o = row?.options || {};
   return { language: row?.language || d.language, voice: row?.voice || d.voice, mode: modeOf(o.mode || d.mode),
-    seconds: Number(row?.seconds) || d.seconds, design: designOf(o.design || d.design), style: styleOf(o.style || d.style),
+    seconds: Number(row?.seconds) || d.seconds, design: designOf(o.design || d.design), ambient: ambientOf(o.ambient || d.ambient), style: styleOf(o.style || d.style),
     effectMode: o.effect_mode === 'manual' ? 'manual' : 'auto', effects: validEffects(o.effects || d.effects),
     assets: o.assets || [], aiBackground: !!row?.ai_background, styleRepoId: row?.style_repo_id || "" };
 }

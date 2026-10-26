@@ -5,9 +5,11 @@ import { useLang } from "../lib/i18n";
 import { useSettings, useTable } from "../lib/hooks";
 import { timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
-import { LANGUAGES, RESOLUTIONS, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, styleRepos, withDefaults } from "../lib/motion";
+import { LANGUAGES, RESOLUTIONS, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults } from "../lib/motion";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
 import MotionEffectLibrary from "./MotionEffectLibrary";
+import MotionQueue from "./MotionQueue";
+import { effectGroups } from "../lib/motionEffects";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
@@ -18,7 +20,7 @@ import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
    The card plays the video. Nothing is posted from here: the file is used like a Kanvas design. Wan's own skill/prompt text
    lives in Tetapan (settings.motion.prompt) and is added to every brief. */
 
-const STATUS_CLS = { pending: "bg-warn/15 text-warn", working: "bg-accent/15 text-accent", done: "bg-ok/15 text-ok", error: "bg-danger/15 text-danger" };
+const STATUS_CLS = { waiting: "bg-accent/15 text-accent", pending: "bg-warn/15 text-warn", working: "bg-accent/15 text-accent", done: "bg-ok/15 text-ok", error: "bg-danger/15 text-danger" };
 
 export default function MotionLab({ user, onToast }) {
   const { t, lang } = useLang();
@@ -108,6 +110,30 @@ export default function MotionLab({ user, onToast }) {
       motions.reload();
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
   };
+  // the queue: a row made from an idea or a draft waits until Wan has chosen its styles, then goes to the worker
+  const startOne = async (r, form) => {
+    setBusy(r.id);
+    try {
+      const { error } = await supabase.from(TABLES.motions).update(startFields(r, form)).eq("id", r.id);
+      if (error) throw new Error(errText(error));
+      onToast?.(t("Dimulakan: bot tulis komposisi, semak dan render MP4. Biasanya 2 hingga 5 minit.", "Started: the bot writes the composition, checks it and renders the MP4. Usually 2 to 5 minutes."), "ok");
+      motions.reload();
+    } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
+  };
+  const startAll = async () => {
+    const waiting = motions.rows.filter((r) => r.status === "waiting");
+    if (!waiting.length) return;
+    setBusy("all");
+    try {
+      for (const r of waiting) {
+        const { error } = await supabase.from(TABLES.motions).update(startFields(r, formOf(r, motionDefaults(settings)))).eq("id", r.id);
+        if (error) throw new Error(errText(error));
+      }
+      onToast?.(t("{n} video dimulakan dengan cara lalai.", "{n} videos started with the default way.", { n: waiting.length }), "ok");
+      motions.reload();
+    } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
+  };
+  const effectName = Object.fromEntries(effectGroups().flatMap((g) => g.effects).map((e) => [e.id, e.name]));
   const remove = async (r) => {
     setBusy(r.id);
     try {
@@ -211,11 +237,14 @@ export default function MotionLab({ user, onToast }) {
         )}
       </Card>
 
+      <MotionQueue rows={motions.rows.filter((r) => r.status === "waiting")} defaults={motionDefaults(settings)} client={supabase} user={user}
+        busy={busy} onStart={startOne} onStartAll={startAll} onRemove={remove} />
+
       <div className="mt-6 grid gap-4 md:grid-cols-2 [&>*]:min-w-0">
-        {!motions.loading && !motions.error && !motions.rows.length && (
+        {!motions.loading && !motions.error && !motions.rows.some((r) => r.status !== "waiting") && (
           <p className="rounded-card border border-dashed border-line p-8 text-center text-sm text-muted md:col-span-2">{t("Belum ada video motion.", "No motion videos yet.")}</p>
         )}
-        {motions.rows.map((r) => {
+        {motions.rows.filter((r) => r.status !== "waiting").map((r) => {
           const items = checkItems(r);
           return (
             <Card key={r.id} className="p-4" data-motion-row>
@@ -231,6 +260,10 @@ export default function MotionLab({ user, onToast }) {
               )}
               {r.brief && r.title && <p className="mt-2 text-xs text-muted">{r.brief}</p>}
               {r.error && <p className="mt-2 rounded-tile bg-danger/10 p-2 text-xs text-danger">{r.error}</p>}
+              {r.check_report?.auto_effects && <details className="mt-2 text-xs" data-motion-applied>
+                <summary className="cursor-pointer text-muted">{t("{n} gaya dipakai ikut kesesuaian", "{n} styles applied for fit", { n: r.check_report.auto_effects.applied })}</summary>
+                <p className="mt-1">{[...new Set([...Object.values(r.check_report.auto_effects.scenes || {}).flat(), ...Object.values(r.check_report.auto_effects.video || {}), ...(r.check_report.auto_effects.audio || [])])]
+                  .map((id) => `${id} ${effectName[id] || ""}`.trim()).join(" · ")}</p></details>}
               {r.check_report?.asset_plan && <details className="mt-2 text-xs">
                 <summary className="cursor-pointer text-muted">Prepared assets & actual effect readiness</summary>
                 <ul className="mt-1 space-y-1">{r.check_report.asset_plan.effects.map(e => <li key={e.id}><b>{e.id} · {e.readiness}</b> — {e.reason}</li>)}</ul>

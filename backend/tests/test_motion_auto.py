@@ -445,3 +445,14 @@ def test_each_film_is_one_of_wans_four_formats_and_the_writer_gets_that_formats_
     context = motion.format_context(row)
     assert f"FORMAT SKILL ws-regulab-motion-{key}" in context and "NEVER circles" in context and "15 of the 99" in context
     assert "FORMAT SKILL" in motion.build_user({"brief": "b", **row}, "", "")
+
+
+def test_the_worker_leaves_a_waiting_row_alone_until_wan_starts_it():
+    # the queue (Wan, 26 Oct 2026): an idea made into a video waits for its styles; only 'pending' is claimed
+    from test_motion import Store, _row
+    store = Store()
+    waiting = _row(store, status="waiting")
+    pending = _row(store, status="pending")
+    claimed = [r["id"] for r in motion.claim(store)]
+    assert claimed == [pending["id"]]
+    assert store.table(motion.TABLE).select("*").eq("id", waiting["id"]).execute().data[0]["status"] == "waiting"

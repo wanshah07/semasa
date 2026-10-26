@@ -15,6 +15,7 @@ const nl = (s) => esc(s).replace(/\n/g, "<br>");
 
 const WORDS = {
   bm: {
+    none: "Tiada",
     quotation: "SEBUT HARGA", invoice: "INVOIS", tax_invoice: "INVOIS CUKAI", receipt: "RESIT", issuer: "PENGELUAR", recipient: "PENERIMA",
     bill_to: "DIBIL KEPADA", received_from: "DITERIMA DARIPADA", issue_date: "TARIKH KELUAR", due_date: "TARIKH AKHIR", valid_until: "SAH SEHINGGA",
     payment_date: "TARIKH BAYARAN", description: "KETERANGAN PERKHIDMATAN", qty: "KUANTITI", rate: "KADAR", amount: "JUMLAH", subtotal: "SUBJUMLAH",
@@ -26,6 +27,7 @@ const WORDS = {
     page_note: "Dokumen ini dijana oleh sistem dan sah tanpa tandatangan.", scan: "Imbas untuk melihat dalam talian",
   },
   en: {
+    none: "None",
     quotation: "QUOTATION", invoice: "INVOICE", tax_invoice: "TAX INVOICE", receipt: "RECEIPT", issuer: "ISSUER", recipient: "RECIPIENT",
     bill_to: "BILL TO", received_from: "RECEIVED FROM", issue_date: "ISSUE DATE", due_date: "DUE DATE", valid_until: "VALID UNTIL",
     payment_date: "PAYMENT DATE", description: "DESCRIPTION OF SERVICES", qty: "QTY", rate: "RATE", amount: "AMOUNT", subtotal: "SUBTOTAL",
@@ -95,9 +97,9 @@ export function documentHtml(doc, settings = {}, opts = {}) {
   if (kind === "receipt") {
     leftBlocks.push(`<div class="card">
         <div class="lbl">${W.payment_received}</div>
-        <div class="kv"><span>${W.for_invoice}</span><b>${esc(parent || "—")}</b></div>
+        <div class="kv"><span>${W.for_invoice}</span><b>${esc(parent || W.none)}</b></div>
         <div class="kv"><span>${W.payment_date}</span><b>${esc(fmtDate(doc?.payment?.date || doc?.issue_date))}</b></div>
-        <div class="kv"><span>${W.method}</span><b>${esc(doc?.payment?.method || "—")}</b></div>
+        <div class="kv"><span>${W.method}</span><b>${esc(doc?.payment?.method || W.none)}</b></div>
         ${doc?.payment?.reference ? `<div class="kv"><span>${W.reference}</span><b>${esc(doc.payment.reference)}</b></div>` : ""}
       </div>`);
   }
@@ -200,7 +202,7 @@ td.a { font-weight: 800; color: ${INK.green}; font-size: 11.5pt; white-space: no
 </style></head><body><div class="page">
   <div class="top">
     <div class="brand">${logo}${qr}</div>
-    <div class="titlebox"><div class="k">${title}</div><div class="num">${esc(number || "—")}</div></div>
+    <div class="titlebox"><div class="k">${title}</div><div class="num">${esc(number || W.none)}</div></div>
   </div>
   <div class="rule"></div>
   <div class="parties">
@@ -224,7 +226,7 @@ td.a { font-weight: 800; color: ${INK.green}; font-size: 11.5pt; white-space: no
     </div>
   </div>
   <table class="items"><thead><tr><th class="n">#</th><th>${W.description}</th><th class="q">${W.qty}</th><th class="r">${W.rate} (${esc(cur)})</th><th class="a">${W.amount}</th></tr></thead>
-    <tbody>${items || `<tr><td colspan="5" class="d" style="color:${INK.muted}">—</td></tr>`}</tbody></table>
+    <tbody>${items || `<tr><td colspan="5" class="d" style="color:${INK.muted}">${W.none}</td></tr>`}</tbody></table>
   <div class="below">
     <div class="left">${leftBlocks.join("")}${co.signatory ? `<div class="prepared">${W.prepared}: <b>${esc(co.signatory)}</b></div>` : ""}</div>
     <div class="totals">

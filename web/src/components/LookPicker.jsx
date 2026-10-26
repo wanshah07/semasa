@@ -183,9 +183,9 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
         <div className="mt-3">
           <p className="flex items-center gap-1.5 text-[11px] text-muted">
             {all.busy && <Loader2 size={11} className="animate-spin" />}
-            {sample ? t("Contoh sahaja: bot menulis slaid sebenar kemudian, dalam reka bentuk ini.",
-              "A sample only: the bot writes the real slides later, in this design.")
-              : t("Pratonton setiap slaid, dilukis dengan kod yang sama seperti bot.", "Every slide previewed, drawn by the same code as the bot.")}
+            {sample ? t("Contoh sahaja: Semasa menulis slaid sebenar kemudian, dalam reka bentuk ini.",
+              "A sample only: Semasa writes the real slides later, in this design.")
+              : t("Pratonton setiap slaid, dilukis dengan kod yang sama seperti Semasa.", "Every slide previewed, drawn by the same code as Semasa.")}
             {bgChosen && !bgUrl && ` ${t("Gambar latar belum siap: pratonton tanpa gambar.", "The background is not ready: previewed without it.")}`}
           </p>
           <div className="mt-1.5 flex gap-2 overflow-x-auto pb-1" style={{ scrollSnapType: "x mandatory" }}>

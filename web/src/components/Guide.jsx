@@ -39,8 +39,8 @@ export default function Guide({ open, onClose, settings = {}, brand }) {
       <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
         <div className="space-y-2">
           <h4 className="text-sm font-semibold">1 · Aliran kerja · The flow</h4>
-          <Pair bm="Isu semasa, Regulatori atau Penerbitan Terkini → Jadikan idea → bot menulis draf dan gambar → anda semak di tab Post → Luluskan. Hanya post yang anda luluskan akan dihantar."
-            en="Current issues, Regulatory or Latest publication → Make an idea → the bot writes the draft and pictures → you check it in Posts → Approve. Only posts you approve are ever sent." />
+          <Pair bm="Isu semasa, Regulatori atau Penerbitan Terkini → Jadikan idea → Semasa menulis draf dan gambar → anda semak di tab Post → Luluskan. Hanya post yang anda luluskan akan dihantar."
+            en="Current issues, Regulatory or Latest publication → Make an idea → Semasa writes the draft and pictures → you check it in Posts → Approve. Only posts you approve are ever sent." />
         </div>
 
         <div className={sec}>
@@ -67,8 +67,8 @@ export default function Guide({ open, onClose, settings = {}, brand }) {
 
         <div className={sec}>
           <h4 className="text-sm font-semibold">4 · Draf yang tak kena · A draft that is not right</h4>
-          <Pair bm="Tulis semula dengan nota: bot menulis semula perkataan sahaja, slaid dan gambar kekal. Tolak & ganti: bot menulis pengganti untuk slot yang sama, boleh guna gambar yang sama. Sejarah menyimpan setiap versi lama."
-            en="Revise with a note: the bot rewrites the words only; slides and pictures stay. Reject & replace: the bot writes a replacement for the same slot and can reuse the same pictures. History keeps every older version." />
+          <Pair bm="Tulis semula dengan nota: Semasa menulis semula perkataan sahaja, slaid dan gambar kekal. Tolak & ganti: Semasa menulis pengganti untuk slot yang sama, boleh guna gambar yang sama. Sejarah menyimpan setiap versi lama."
+            en="Revise with a note: Semasa rewrites the words only; slides and pictures stay. Reject & replace: Semasa writes a replacement for the same slot and can reuse the same pictures. History keeps every older version." />
           <Pair bm={`Post yang ditolak dipadam sendiri ${PURGE_HOURS} jam selepas ditolak. Pulihkan sebelum itu jika perlu.`}
             en={`A rejected post deletes itself ${PURGE_HOURS} hours after it was rejected. Restore it before then if you need it.`} />
         </div>
@@ -89,7 +89,7 @@ export default function Guide({ open, onClose, settings = {}, brand }) {
           <h4 className="text-sm font-semibold">7 · Auto-isi slot kosong · Filling empty slots</h4>
           <p className={`rounded-tile p-2 text-[12.5px] ${auto ? "bg-accent/10 text-ink" : "bg-surface-2 text-muted"}`}>
             {auto
-              ? `HIDUP: setiap larian bot menulis idea untuk slot kosong ${settings.autofill?.days_ahead || 3} hari ke depan. Semuanya draf. · ON: each bot run writes ideas for the empty slots of the next ${settings.autofill?.days_ahead || 3} days. All of them stay drafts.`
+              ? `HIDUP: setiap larian Semasa menulis idea untuk slot kosong ${settings.autofill?.days_ahead || 3} hari ke depan. Semuanya draf. · ON: each Semasa run writes ideas for the empty slots of the next ${settings.autofill?.days_ahead || 3} days. All of them stay drafts.`
               : "MATI: tiada idea ditulis tanpa klik anda. Hidupkan di Tetapan. · OFF: no idea is written without your click. Switch it on in Settings."}
           </p>
         </div>

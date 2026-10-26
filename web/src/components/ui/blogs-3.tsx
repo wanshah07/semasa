@@ -94,7 +94,7 @@ const blogs: BlogType[] = [
     title: "The Future of UI Animation",
     href: "#",
     description:
-      "From motion guidelines to advanced prototyping—discover where UI animation is headed in 2025.",
+      "From motion guidelines to advanced prototyping: discover where UI animation is headed in 2025.",
     image: "https://images.unsplash.com/photo-1716703373020-17ff360924ee?auto=format&fit=crop&w=800&q=80",
     createdAt: "2025-04-15",
     author: "Chloe Ramirez",
@@ -134,7 +134,7 @@ const blogs: BlogType[] = [
     title: "Designing With AI Tools",
     href: "#",
     description:
-      "A practical look at how AI tools are shaping UI/UX workflows—from ideation to final delivery.",
+      "A practical look at how AI tools are shaping UI/UX workflows, from ideation to final delivery.",
     image: "https://images.unsplash.com/photo-1761123261084-53c40fe1e607?auto=format&fit=crop&w=800&q=80",
     createdAt: "2025-02-28",
     author: "Olivia Brooks",

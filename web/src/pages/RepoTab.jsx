@@ -131,7 +131,7 @@ export default function RepoTab({ settings, save, onToast, user }) {
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
                 {DIMS.map((d) => {
-                  const dim = r.dims?.[d] || { state: "none", label: "—", detail: "" };
+                  const dim = r.dims?.[d] || { state: "none", label: t("Tiada", "None"), detail: "" };
                   const Icon = DIM_ICON[d];
                   return (
                     <button key={d} type="button" onClick={() => setOpen(isOpen ? null : r.full_name)} title={dim.detail || ""}
@@ -209,14 +209,14 @@ function Details({ r, t }) {
         <p className="mb-1 text-[11px] uppercase tracking-widest text-muted">{t("Pull request terbuka", "Open pull requests")}</p>
         {(r.open_prs || []).length ? (r.open_prs || []).map((p) => (
           <p key={p.number} className="truncate"><a href={p.url} target="_blank" rel="noreferrer" className="hover:underline">#{p.number} {p.title}</a>
-            <span className={`ml-1 rounded-pill px-1.5 text-[10px] ${STATE_CLS[p.ci === "green" ? "ok" : p.ci === "red" ? "bad" : p.ci === "running" ? "warn" : "none"]}`}>{p.draft ? "draft · " : ""}{p.ci || "—"}</span></p>
+            <span className={`ml-1 rounded-pill px-1.5 text-[10px] ${STATE_CLS[p.ci === "green" ? "ok" : p.ci === "red" ? "bad" : p.ci === "running" ? "warn" : "none"]}`}>{p.draft ? "draft · " : ""}{p.ci || t("Tiada", "None")}</span></p>
         )) : <p className="text-muted">{t("tiada", "none")}</p>}
       </div>
       <div>
         <p className="mb-1 text-[11px] uppercase tracking-widest text-muted">{t("Aliran kerja", "Workflows")}</p>
         {(r.workflows || []).length ? (r.workflows || []).map((w) => (
           <p key={w.path} className="truncate">{w.last?.url ? <a href={w.last.url} target="_blank" rel="noreferrer" className="hover:underline">{w.name}</a> : w.name}
-            <span className="ml-1 text-xs text-muted">{w.cron ? `⏱ ${w.cron} · ` : ""}{w.last?.conclusion || w.last?.status || "—"}</span></p>
+            <span className="ml-1 text-xs text-muted">{w.cron ? `⏱ ${w.cron} · ` : ""}{w.last?.conclusion || w.last?.status || t("Tiada", "None")}</span></p>
         )) : <p className="text-muted">{t("tiada", "none")}</p>}
       </div>
       <div>

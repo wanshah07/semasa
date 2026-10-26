@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ImageIcon, Loader2, Sparkles, X } from "lucide-react";
+import { Check, ImageIcon, ImagePlus, Loader2, X } from "lucide-react";
 import { useLang } from "../lib/i18n";
 import { GROUNDS } from "../lib/cards/library";
 import { GROUND_STYLES, GROUND_SUFFIX } from "../lib/groundStyles";
@@ -105,7 +105,7 @@ export default function BackgroundPicker({ open, onClose, target, current, nSlid
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" size="sm" disabled={busy || !prompt.trim()}
                 onClick={async () => { const ok = await onGenerate?.(/no words|no text/i.test(prompt) ? prompt.trim() : prompt.trim() + GROUND_SUFFIX); if (ok) setPrompt(""); }}>
-                {busy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {t("Jana gambar", "Generate picture")}</Button>
+                {busy ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />} {t("Jana gambar", "Generate picture")}</Button>
               <span className="text-[11px] text-muted">{t("Mengambil kira-kira seminit. Ia muncul di tab Gambar bila siap.",
                 "Takes about a minute. It appears under Pictures when it is ready.")}
                 {" "}{t("Gambar cerah: tulisan gelap secara automatik.", "A light picture gets dark words automatically.")}</span>

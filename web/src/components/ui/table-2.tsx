@@ -36,6 +36,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/table-2-utils/avatar";
+import { tr } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/table-2-utils/checkbox";
@@ -103,7 +104,7 @@ const statusTone: Record<string, { variant: "default" | "secondary" | "destructi
 };
 
 const fmt = (n: number, cur: string) => `${cur} ${new Intl.NumberFormat("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0)}`;
-const fmtDate = (iso: string | null | undefined) => (iso && /^\d{4}-\d{2}-\d{2}/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : iso || "—");
+const fmtDate = (iso: string | null | undefined) => (iso && /^\d{4}-\d{2}-\d{2}/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : iso || tr("Tiada", "None"));
 
 function SortIcon({ sorted }: { sorted: false | "asc" | "desc" }) {
   if (sorted === "asc") return <ArrowUp className="size-3.5" aria-hidden="true" />;
@@ -205,7 +206,7 @@ export default function DocumentsTable({ rows, words, onAction, onBulk, pageSize
       accessorKey: "reference",
       enableSorting: false,
       header: () => <span className={headLabel}>{words.columns.reference}</span>,
-      cell: ({ row }) => <span className="block max-w-[140px] truncate text-sm text-muted-foreground">{row.original.reference || "—"}</span>,
+      cell: ({ row }) => <span className="block max-w-[140px] truncate text-sm text-muted-foreground">{row.original.reference || tr("Tiada", "None")}</span>,
     },
     {
       accessorKey: "issue_date",
@@ -231,7 +232,7 @@ export default function DocumentsTable({ rows, words, onAction, onBulk, pageSize
       ),
       cell: ({ row }) => (
         <span className={cn("text-sm tabular-nums", row.original.effective === "overdue" ? "font-semibold text-destructive" : "text-muted-foreground")}>
-          {row.original.kind === "receipt" ? "—" : fmtDate(row.original.due_date)}
+          {row.original.kind === "receipt" ? tr("Tiada", "None") : fmtDate(row.original.due_date)}
         </span>
       ),
     },

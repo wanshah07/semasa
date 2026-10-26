@@ -11,7 +11,7 @@ import { Label, Segmented, Select } from "./ui/Field";
 
 /* The queue (Wan, 26 Oct 2026: "when I click Idea to be motion video, it will queue to motion video for me to choose styles for
    motion video"). An idea or a draft made into a video waits here as `waiting`; the worker ignores it until Wan presses Mula,
-   which sends the styles he chose (or Auto: the bot picks at least 15 of the 99 for each film) and sets it `pending`. */
+   which sends the styles he chose (or Auto: Semasa picks at least 15 of the 99 for each film) and sets it `pending`. */
 
 function QueueCard({ row, defaults, client, user, busy, onStart, onRemove }) {
   const { t, lang } = useLang();
@@ -58,7 +58,7 @@ function QueueCard({ row, defaults, client, user, busy, onStart, onRemove }) {
       <details className="rounded-tile border border-line p-3" data-motion-queue-styles onToggle={(e) => setOpen(e.currentTarget.open)}>
         <summary className="cursor-pointer text-sm">
           {form.effectMode === "auto"
-            ? t("Gaya: Auto · bot pilih sekurang-kurangnya 15 daripada 99 ikut setiap babak", "Styles: Auto · the bot picks at least 15 of the 99 for each scene")
+            ? t("Gaya: Auto · Semasa pilih sekurang-kurangnya 15 daripada 99 ikut setiap babak", "Styles: Auto · Semasa picks at least 15 of the 99 for each scene")
             : t("Gaya: pilihan anda · {n}", "Styles: your choice · {n}", { n: form.effects.length })}
         </summary>
         {open && <div className="mt-3">

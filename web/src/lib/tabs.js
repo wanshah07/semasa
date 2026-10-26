@@ -1,4 +1,4 @@
-import { BarChart3, Brain, Clapperboard, Contact, Cpu, CreditCard, Droplets, GitBranch, ScanLine, FileText, HelpCircle, LayoutDashboard, LayoutTemplate, Lightbulb, ListChecks, MessageSquare, PenTool, Radio, Receipt, Settings, Sparkles } from "lucide-react";
+import { BarChart3, Brain, Clapperboard, Contact, Cpu, CreditCard, Droplets, GitBranch, ScanLine, FileText, HelpCircle, LayoutDashboard, LayoutTemplate, Lightbulb, ListChecks, MessageSquare, PenTool, Radio, Receipt, Settings, ImagePlus } from "lucide-react";
 
 /* Every tab, once: the header's tab row and the sidebar both read this list, so the two can never disagree.
    `group` places a tab in the sidebar: "" (top), "create", "business", "reference" or "bottom". */
@@ -9,7 +9,7 @@ export function tabsOf(t) {
     { id: "idea", label: t("Idea", "Ideas"), icon: Lightbulb, group: "" },
     { id: "post", label: t("Post", "Posts"), icon: FileText, group: "" },
     { id: "prestasi", label: t("Prestasi", "Performance"), icon: BarChart3, group: "" },
-    { id: "media", label: t("Makmal media", "Media lab"), icon: Sparkles, group: "create" },
+    { id: "media", label: t("Makmal media", "Media lab"), icon: ImagePlus, group: "create" },
     { id: "design", label: t("Reka bentuk", "Design"), icon: LayoutTemplate, group: "create" },
     { id: "wangian", label: t("Wangian", "Fragrance"), icon: Droplets, group: "create" },
     { id: "kanvas", label: "Kanvas", icon: PenTool, group: "create" },

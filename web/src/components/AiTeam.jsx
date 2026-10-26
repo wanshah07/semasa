@@ -48,8 +48,8 @@ export default function AiTeam({ statusRows, usageRows, state, team, save, onToa
                 {!compact && (
                   <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
                     <dt className="text-muted">{t("Gerbang", "Gateway")}</dt><dd className="truncate">{r?.name || c.slug}{r?.base_url ? <span className="text-muted"> · {r.base_url.replace(/^https?:\/\//, "")}</span> : ""}</dd>
-                    <dt className="text-muted">{t("Model", "Model")}</dt><dd className="truncate font-medium">{order?.model || r?.model || "—"}</dd>
-                    <dt className="text-muted">{t("Kelajuan", "Speed")}</dt><dd>{fmtMs(order?.speed_ms ?? r?.chat_ms ?? r?.latency_ms)}{order?.why ? <span className="text-muted"> · {order.why}</span> : ""}</dd>
+                    <dt className="text-muted">{t("Model", "Model")}</dt><dd className="truncate font-medium">{order?.model || r?.model || t("Tiada", "None")}</dd>
+                    <dt className="text-muted">{t("Kelajuan", "Speed")}</dt><dd>{fmtMs(order?.speed_ms ?? r?.chat_ms ?? r?.latency_ms) || t("Tiada", "None")}{order?.why ? <span className="text-muted"> · {order.why}</span> : ""}</dd>
                     {r?.checked_at && <><dt className="text-muted">{t("Disemak", "Checked")}</dt><dd>{timeAgo(r.checked_at)}</dd></>}
                     {skipped && <><dt className="text-danger">{t("Dilangkau", "Skipped")}</dt><dd className="text-danger">{skipped.why}</dd></>}
                     {!r && <><dt className="text-muted">{t("Kunci", "Key")}</dt><dd className="text-muted">{t("belum ditetapkan di Tetapan → Tetapan AI", "not set in Tetapan → AI settings")}</dd></>}
@@ -108,7 +108,7 @@ function JobPins({ cards, state, team, save, onToast }) {
               )}
               {(job === "reader" || job === "motion") && d.why && d.chosen && <p className="text-[11px] text-muted">{d.why}{d.backup ? ` · ${t("sandaran", "backup")}: ${d.backup.name || d.backup.slug}` : ""}</p>}
               {(job === "reader" || job === "motion") && d.order.length > 1 && (
-                <ol className="mt-1 text-[11px] text-muted">{d.order.map((o, i) => <li key={o.slug}>{i + 1}. {o.name} · {o.model || "—"} · {o.why}</li>)}</ol>
+                <ol className="mt-1 text-[11px] text-muted">{d.order.map((o, i) => <li key={o.slug}>{i + 1}. {o.name} · {o.model || t("Tiada", "None")} · {o.why}</li>)}</ol>
               )}
               {(job === "reader" || job === "motion") && d.skipped.map((o) => <p key={o.slug} className="mt-1 text-[11px] text-danger">{o.why}</p>)}
               <div className="mt-2 flex flex-wrap items-center gap-2">

@@ -39,7 +39,7 @@ export default function ResitTab({ user, onToast }) {
   const missing = /semasa_receipts/.test(rowsT.error || "");
   const sum = useMemo(() => receiptsSummary(rowsT.rows, day), [rowsT.rows, day]);
   const groups = useMemo(() => byMonth(rowsT.rows.filter((r) => !filter || r.category === filter)), [rowsT.rows, filter]);
-  const monthName = (k) => (/^\d{4}-\d{2}$/.test(k) ? `${(L ? MONTHS_EN : MONTHS_BM)[Number(k.slice(5, 7)) - 1]} ${k.slice(0, 4)}` : k);
+  const monthName = (k) => (k === "none" ? t("Tiada tarikh", "No date") : /^\d{4}-\d{2}$/.test(k) ? `${(L ? MONTHS_EN : MONTHS_BM)[Number(k.slice(5, 7)) - 1]} ${k.slice(0, 4)}` : k);
   const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { onToast(e.message || String(e), "danger"); } };
 
   const snap = guard(async (file) => {
@@ -145,7 +145,7 @@ export default function ResitTab({ user, onToast }) {
                     <p className="truncate font-medium">{r.vendor || t("(belum dibaca)", "(not read yet)")}</p>
                     <span className={`shrink-0 rounded-pill px-2 py-0.5 text-[10px] ${STATUS_TONE[r.status]}`}>{w(STATUS_WORDS, r.status)}</span>
                   </div>
-                  <p className="font-mono text-sm tabular-nums">{r.total != null ? money(r.total, { currency: r.currency || "MYR" }) : "—"}{r.doc_date ? <span className="ml-2 text-xs text-muted">{fmtDate(r.doc_date)}</span> : null}</p>
+                  <p className="font-mono text-sm tabular-nums">{r.total != null ? money(r.total, { currency: r.currency || "MYR" }) : t("Tiada", "None")}{r.doc_date ? <span className="ml-2 text-xs text-muted">{fmtDate(r.doc_date)}</span> : null}</p>
                   <p className="text-xs text-muted">{w(CATEGORY_WORDS, r.category || "lain")}{r.payment_method && r.payment_method !== "unknown" ? ` · ${r.payment_method}` : ""}{r.confidence != null && r.confidence < 0.6 ? ` · ${t("kurang pasti", "unsure")}` : ""}</p>
                   {r.summary && <p className="mt-1 line-clamp-2 text-xs text-ink/80">{r.summary}</p>}
                   {r.error && <p className="mt-1 [overflow-wrap:anywhere] text-[11px] text-danger">{r.error}</p>}
@@ -176,8 +176,8 @@ export default function ResitTab({ user, onToast }) {
             <label><Label>{t("Jumlah", "Total")}</Label><Input type="number" step="0.01" min="0" value={editing.total} onChange={(e) => setEditing({ ...editing, total: e.target.value })} /></label>
             <label><Label>{t("Mata wang", "Currency")}</Label><Input value={editing.currency || "MYR"} maxLength={3} onChange={(e) => setEditing({ ...editing, currency: e.target.value })} /></label>
             <label><Label>{t("Cukai (SST)", "Tax (SST)")}</Label><Input type="number" step="0.01" min="0" value={editing.tax} onChange={(e) => setEditing({ ...editing, tax: e.target.value })} /></label>
-            <label><Label>{t("Cara bayar", "Payment method")}</Label><Select className="w-full" value={editing.payment_method || "unknown"} onChange={(v) => setEditing({ ...editing, payment_method: v })} options={[["unknown", "—"], ["cash", t("Tunai", "Cash")], ["card", t("Kad", "Card")], ["ewallet", "e-Wallet"], ["transfer", t("Pindahan", "Transfer")]]} /></label>
-            <label className="sm:col-span-2"><Label>{t("Langganan berkaitan", "Related subscription")}</Label><Select className="w-full" value={editing.subscription_id} onChange={(v) => setEditing({ ...editing, subscription_id: v })} options={[["", "—"], ...subsT.rows.map((s) => [s.id, `${s.vendor} · ${s.name}`])]} /></label>
+            <label><Label>{t("Cara bayar", "Payment method")}</Label><Select className="w-full" value={editing.payment_method || "unknown"} onChange={(v) => setEditing({ ...editing, payment_method: v })} options={[["unknown", t("Tiada", "None")], ["cash", t("Tunai", "Cash")], ["card", t("Kad", "Card")], ["ewallet", "e-Wallet"], ["transfer", t("Pindahan", "Transfer")]]} /></label>
+            <label className="sm:col-span-2"><Label>{t("Langganan berkaitan", "Related subscription")}</Label><Select className="w-full" value={editing.subscription_id} onChange={(v) => setEditing({ ...editing, subscription_id: v })} options={[["", t("Tiada", "None")], ...subsT.rows.map((s) => [s.id, `${s.vendor} · ${s.name}`])]} /></label>
             <label className="sm:col-span-2"><Label>{t("Ringkasan", "Summary")}</Label><TextArea rows={2} value={editing.summary || ""} onChange={(e) => setEditing({ ...editing, summary: e.target.value })} /></label>
             {Array.isArray(editing.items) && editing.items.length ? <div className="rounded-tile border border-line p-3 text-xs sm:col-span-2">
               <p className="mb-1 text-[11px] uppercase tracking-widest text-muted">{t("Butiran yang dibaca", "Items read")}</p>

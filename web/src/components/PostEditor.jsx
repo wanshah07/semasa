@@ -390,7 +390,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
         <label><Label>{t("Tarikh (MYT)", "Date (MYT)")}</Label><Input id={`date-${post.id}`} type="date" value={date || ""} disabled={locked} onChange={(e) => setDate(e.target.value)} className="w-44" /></label>
         <label><Label>Slot</Label><Select value={slot && !slots.includes(slot) ? "other" : slot || ""} disabled={locked}
           onChange={(v) => setSlot(v === "other" ? (slot && !slots.includes(slot) ? slot : "10:00") : v)}
-          options={[["", "—"], ...slots.map((s) => [s, s]), ["other", t("Masa lain…", "Another time…")]]} /></label>
+          options={[["", t("Tiada", "None")], ...slots.map((s) => [s, s]), ["other", t("Masa lain…", "Another time…")]]} /></label>
         {slot && !slots.includes(slot) && (
           <label><Label>{t("Masa (MYT)", "Time (MYT)")}</Label><Input type="time" value={slot} disabled={locked} onChange={(e) => setSlot(e.target.value)} className="w-32" /></label>
         )}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, Bot, Check, ChevronDown, Clock, FileDown, FileSpreadsheet, FileText, Image as ImageIcon, Inbox, Loader2,
-  Megaphone, Pencil, Plus, RotateCcw, Search, Sparkles, Trash2, X } from "lucide-react";
+  Megaphone, Pencil, Plus, RotateCcw, Search, FolderPlus, Trash2, X } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { timeAgo } from "../lib/format";
@@ -99,11 +99,11 @@ export default function FaqTab({ faqs, settings, brand, user, onToast, onPost })
           <h1 className="mt-2 text-4xl leading-tight">{t("Soalan lazim, satu tempat.", "Frequently asked questions, in one place.")}</h1>
           <p className="mt-3 max-w-2xl text-sm text-muted">
             {lang === "en" ? (<>
-              Paste your own questions (and answers), drop a screenshot or PDF on the <b>AI bar</b>, press <b>Make an FAQ</b> on an issue, or accept candidates the bot has gathered.
+              Paste your own questions (and answers), drop a screenshot or PDF on the <b>AI bar</b>, press <b>Make an FAQ</b> on an issue, or accept candidates Semasa has gathered.
               The AI rewrites them in BM and English, removes names and personal details, and picks a category. Every
               question is copied to the Semasa Google Sheet, and every category can be exported as a PDF, poster or Excel file.
             </>) : (<>
-              Tampal soalan (dan jawapan) sendiri, letak tangkapan skrin atau PDF pada <b>Bar AI</b>, tekan <b>Jadikan FAQ</b> pada isu, atau terima calon yang dikumpul bot.
+              Tampal soalan (dan jawapan) sendiri, letak tangkapan skrin atau PDF pada <b>Bar AI</b>, tekan <b>Jadikan FAQ</b> pada isu, atau terima calon yang dikumpul Semasa.
               AI menulis semula dalam BM dan English, membuang nama dan maklumat peribadi, dan memilih kategori. Setiap
               soalan disalin ke Google Sheet Semasa, dan setiap kategori boleh dieksport sebagai PDF, poster atau Excel.
             </>)}
@@ -181,7 +181,7 @@ export default function FaqTab({ faqs, settings, brand, user, onToast, onPost })
         <details className="mt-4 rounded-card border border-line bg-surface p-3">
           <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
             <Inbox size={14} /> {t("Calon daripada sumber", "Candidates from sources")} · {candidates.length}
-            <span className="text-[11px] font-normal text-muted">{t("dikumpul oleh bot; tiada apa ditulis semula sehingga anda terima", "gathered by the bot; nothing is rewritten until you accept")}</span>
+            <span className="text-[11px] font-normal text-muted">{t("dikumpul oleh Semasa; tiada apa ditulis semula sehingga anda terima", "gathered by Semasa; nothing is rewritten until you accept")}</span>
           </summary>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" onClick={() => update(candidates.map((r) => r.id), { status: "new" }, t("{n} calon dihantar ke AI.", ["{n} candidate sent to the AI.", "{n} candidates sent to the AI."], { n: candidates.length }))}>
@@ -215,11 +215,11 @@ export default function FaqTab({ faqs, settings, brand, user, onToast, onPost })
                 {r.status === "working" ? <Loader2 size={12} className="animate-spin text-accent" />
                   : r.status === "error" ? <AlertTriangle size={12} className="text-danger" /> : <Clock size={12} className="text-warn" />}
                 <span className="min-w-0 flex-1 truncate">{r.raw_question}</span>
-                <span className="text-muted">{r.status === "working" ? t("AI sedang menulis", "AI is writing") : r.status === "error" ? t("Gagal", "Failed") : t("Menunggu bot", "Waiting for the bot")} · {timeAgo(r.created_at)}</span>
+                <span className="text-muted">{r.status === "working" ? t("AI sedang menulis", "AI is writing") : r.status === "error" ? t("Gagal", "Failed") : t("Menunggu Semasa", "Waiting for Semasa")} · {timeAgo(r.created_at)}</span>
                 {r.status === "error" && <Button size="sm" variant="soft" onClick={() => update([r.id], { status: "new", error: null }, t("Dihantar semula.", "Sent again."))}><RotateCcw size={11} /> {t("Cuba lagi", "Try again")}</Button>}
                 {r.status !== "working" && <button type="button" aria-label={t("Padam", "Delete")} onClick={() => remove(r.id)} className="text-muted hover:text-danger"><Trash2 size={12} /></button>}
                 {r.error && <p className="w-full [overflow-wrap:anywhere] text-danger">{r.error}</p>}
-                {late && <p className="w-full text-ink">{t("Bot belum bermula: jadual GitHub kadang-kadang lewat. Mulakan di", "The bot has not started: GitHub's schedule is sometimes late. Start it at")}{" "}
+                {late && <p className="w-full text-ink">{t("Semasa belum bermula: jadual GitHub kadang-kadang lewat. Mulakan di", "Semasa has not started: GitHub's schedule is sometimes late. Start it at")}{" "}
                   <a href={WORKER_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-accent underline">GitHub → Generate media → Run workflow</a>.</p>}
               </div>
             );
@@ -320,7 +320,7 @@ function FaqItem({ r, view, catLabel, compact, busy, onTag, onEdit, onDelete, on
       {(r.tags || []).length > 0 && <p className="mt-2 flex flex-wrap gap-1">{r.tags.map((g) => (
         <button type="button" key={g} onClick={() => onTag(g)} className="rounded-pill border border-line px-2 py-0.5 text-[10px] text-muted hover:text-ink">#{g}</button>))}</p>}
       <div className="mt-3 flex flex-wrap gap-2">
-        {onPost && <Button size="sm" variant="soft" onClick={onPost} title={t("Hantar soalan ini ke bot sebagai idea post", "Send this question to the bot as a post idea")}>
+        {onPost && <Button size="sm" variant="soft" onClick={onPost} title={t("Hantar soalan ini sebagai idea post", "Send this question as a post idea")}>
           <Megaphone size={11} /> {t("Jadikan post", "Make a post")}</Button>}
         <Button size="sm" variant="ghost" onClick={onEdit}><Pencil size={11} /> {t("Sunting", "Edit")}</Button>
         <Button size="sm" variant="ghost" disabled={!!busy} onClick={onCard}>
@@ -365,7 +365,7 @@ function FaqItem({ r, view, catLabel, compact, busy, onTag, onEdit, onDelete, on
 const PREVIEW = 4;         // questions a closed card shows before "see all"
 
 /* The dashboard: one card per category, its questions inside it, the bot's own categories marked. A category with
-   nothing in it yet is left out, except the bot's newest, so a category it just opened is visible at once. A search
+   nothing in it yet is left out, except Semasa's newest, so a category it just opened is visible at once. A search
    (or a picked category) keeps only the cards with matches. An opened card spans the row and lists every question. */
 function CategoryCards({ cats, rows, view, searching, only, open, setOpen, onSub, renderItem }) {
   const { t } = useLang();
@@ -404,8 +404,8 @@ function CategoryCards({ cats, rows, view, searching, only, open, setOpen, onSub
                 <span className="font-display text-2xl tabular-nums">{s.n}</span>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
-                {c.auto && <span className="inline-flex items-center gap-1 rounded-pill bg-accent/10 px-2 py-0.5 text-accent"><Sparkles size={10} /> {t("dicipta bot", "made by the bot")}</span>}
-                {c.gone && <span className="rounded-pill bg-warn/10 px-2 py-0.5 text-warn">{t("kategori dipadam: bot akan menyusun semula", "category deleted: the bot will re-sort it")}</span>}
+                {c.auto && <span className="inline-flex items-center gap-1 rounded-pill bg-accent/10 px-2 py-0.5 text-accent"><FolderPlus size={10} /> {t("dicipta Semasa", "made by Semasa")}</span>}
+                {c.gone && <span className="rounded-pill bg-warn/10 px-2 py-0.5 text-warn">{t("kategori dipadam: Semasa akan menyusun semula", "category deleted: Semasa will re-sort it")}</span>}
                 {s.check > 0 && <span className="inline-flex items-center gap-1 rounded-pill bg-warn/10 px-2 py-0.5 text-warn"><AlertTriangle size={10} /> {t("{n} perlu semakan", "{n} to check", { n: s.check })}</span>}
                 {!s.n && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-muted">{t("belum ada soalan", "no questions yet")}</span>}
               </div>
@@ -470,7 +470,7 @@ function EditFaq({ row, cats, onClose, onToast, onDone }) {
           <label className="block"><Label>{t("Kategori", "Category")}</Label>
             <Select value={f.category} onChange={(v) => setF((x) => ({ ...x, category: v, subcategory: "" }))} options={cats.map((c) => [c.key, lang === "en" ? c.en : c.bm])} className="w-full" aria-label={t("Kategori", "Category")} /></label>
           <label className="block"><Label>{t("Subkategori", "Subcategory")}</Label>
-            <Select value={f.subcategory} onChange={set("subcategory")} options={[["", "—"], ...subs.map((s) => [s, s]), ...(f.subcategory && !subs.includes(f.subcategory) ? [[f.subcategory, f.subcategory]] : [])]} className="w-full" aria-label={t("Subkategori", "Subcategory")} /></label>
+            <Select value={f.subcategory} onChange={set("subcategory")} options={[["", t("Tiada", "None")], ...subs.map((s) => [s, s]), ...(f.subcategory && !subs.includes(f.subcategory) ? [[f.subcategory, f.subcategory]] : [])]} className="w-full" aria-label={t("Subkategori", "Subcategory")} /></label>
         </div>
         <label className="block"><Label hint={t("pengawal selia / instrumen sahaja, bukan media sosial", "regulator / instrument only, not social media")}>{t("Sumber rasmi", "Official source")}</Label><Input value={f.instrument} onChange={set("instrument")} /></label>
         <label className="block"><Label hint={t("dipisah dengan koma, maksimum 5", "comma-separated, up to 5")}>{t("Tag", "Tags")}</Label><Input value={f.tags} onChange={set("tags")} /></label>

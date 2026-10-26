@@ -20,8 +20,8 @@ const LATE_MIN = 20;
 
 // label is [Malay, English], read through t() at render so it follows the language switch
 const STATUS = {
-  new: { icon: Clock, label: ["Menunggu bot", "Waiting for the bot"], cls: "text-warn bg-warn/10" },
-  working: { icon: Loader2, label: ["Bot sedang menulis", "The bot is writing"], cls: "text-accent bg-accent/10", spin: true },
+  new: { icon: Clock, label: ["Menunggu Semasa", "Waiting for Semasa"], cls: "text-warn bg-warn/10" },
+  working: { icon: Loader2, label: ["Semasa sedang menulis", "Semasa is writing"], cls: "text-accent bg-accent/10", spin: true },
   drafted: { icon: CheckCircle2, label: ["Draf siap", "Draft ready"], cls: "text-ok bg-ok/10" },
   error: { icon: AlertTriangle, label: ["Gagal", "Failed"], cls: "text-danger bg-danger/10" },
   rejected: { icon: XCircle, label: ["Ditolak", "Rejected"], cls: "text-muted bg-surface-2" },
@@ -78,13 +78,13 @@ function IdeaEdit({ r, brand, onSave, onCancel }) {
     <div className="mt-2 w-full space-y-2 rounded-tile border border-line p-2">
       <Input value={f.source_title} onChange={set("source_title")} maxLength={500} aria-label={t("Isu / tajuk", "Issue / title")} />
       <TextArea rows={2} value={f.note} onChange={set("note")} maxLength={1500}
-        placeholder={t("Nota untuk bot (pilihan)", "A note for the bot (optional)")} />
+        placeholder={t("Nota untuk Semasa (pilihan)", "A note for Semasa (optional)")} />
       <div className="flex flex-wrap gap-2">
         {r.stream === "linkedin"
           ? <Select value={f.angle} onChange={set("angle")} aria-label={t("Sudut", "Angle")}
-              options={[["", t("Bot pilih", "Bot chooses")], ...angles.map(([k, v]) => [k, `${k} · ${v}`])]} />
+              options={[["", t("Semasa pilih", "Semasa chooses")], ...angles.map(([k, v]) => [k, `${k} · ${v}`])]} />
           : <Select value={f.domain} onChange={set("domain")} aria-label="Domain"
-              options={[["", t("Bot pilih", "Bot chooses")], ...domains]} />}
+              options={[["", t("Semasa pilih", "Semasa chooses")], ...domains]} />}
         <Select value={f.make_media} onChange={set("make_media")} aria-label="Media"
           options={[["image", t("Imej", "Image")], ["video", "Video"], ["none", t("Tiada media", "No media")]]} />
       </div>
@@ -128,12 +128,12 @@ function LateNote({ r }) {
   if (!(r.status === "new" && Date.now() - new Date(r.updated_at || r.created_at).getTime() > LATE_MIN * 60_000)) return null;
   return (
     <p className="mt-2 rounded-tile bg-warn/10 p-2 text-[12px] text-ink">
-      {t("Bot belum bermula: jadual GitHub kadang-kadang lewat atau terlepas. Mulakan sekarang di",
-        "The bot has not started: GitHub's schedule sometimes runs late or is skipped. Start it now at")}{" "}
+      {t("Semasa belum bermula: jadual GitHub kadang-kadang lewat atau terlepas. Mulakan sekarang di",
+        "Semasa has not started: GitHub's schedule sometimes runs late or is skipped. Start it now at")}{" "}
       <a href={WORKER_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-accent underline">
         GitHub → Generate media → Run workflow</a>.{" "}
-      {t("Token penghantaran dalam Vault (004, 009) membangunkan bot serta-merta.",
-        "The dispatch token in Vault (004, 009) wakes the bot at once.")}
+      {t("Token penghantaran dalam Vault (004, 009) membangunkan Semasa serta-merta.",
+        "The dispatch token in Vault (004, 009) wakes Semasa at once.")}
     </p>
   );
 }
@@ -214,11 +214,11 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
         <Button size="sm" variant="soft" onClick={() => openPost(r.brief.post_id)}><FileText size={12} /> {t("Buka draf", "Open draft")}</Button>
       )}
       {(r.status === "error" || r.status === "rejected") && (
-        <Button size="sm" variant="soft" onClick={() => update(r.id, { status: "new", error: null }, t("Dihantar semula ke bot.", "Sent back to the bot."))}>
+        <Button size="sm" variant="soft" onClick={() => update(r.id, { status: "new", error: null }, t("Dihantar semula untuk ditulis.", "Sent back to be written."))}>
           <RotateCcw size={12} /> {t("Cuba lagi", "Try again")}</Button>
       )}
       {r.status === "error" && (
-        <NoteRetry r={r} onSave={(note) => update(r.id, { note, status: "new", error: null }, t("Nota disimpan, dihantar semula ke bot.", "Note saved, sent back to the bot."))} />
+        <NoteRetry r={r} onSave={(note) => update(r.id, { note, status: "new", error: null }, t("Nota disimpan, dihantar semula untuk ditulis.", "Note saved, sent back to be written."))} />
       )}
       {(r.status === "new" || r.status === "error") && editing !== r.id && (
         <Button size="sm" variant="ghost" onClick={() => setEditing(r.id)}><Pencil size={12} /> {t("Ubah", "Edit")}</Button>
@@ -251,13 +251,13 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
           <p className="mt-3 max-w-2xl text-sm text-muted">
             {lang === "en" ? (
               <>
-                Press <b>Make an idea</b> on any issue, or write your own. The bot reads the source, writes a draft in the
+                Press <b>Make an idea</b> on any issue, or write your own. Semasa reads the source, writes a draft in the
                 ws.regulab or LinkedIn voice, checks the Studio rules and generates a picture. The draft waits for your approval
                 in the Posts tab.
               </>
             ) : (
               <>
-                Tekan <b>Jadikan idea</b> pada mana-mana isu, atau tulis sendiri. Bot membaca sumber, menulis draf ikut suara
+                Tekan <b>Jadikan idea</b> pada mana-mana isu, atau tulis sendiri. Semasa membaca sumber, menulis draf ikut suara
                 ws.regulab atau LinkedIn, menyemak peraturan Studio, dan menjana gambar. Draf menunggu kelulusan anda di tab Post.
               </>
             )}
@@ -340,7 +340,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
                 {r.note && <p className="mt-1 [overflow-wrap:anywhere] text-sm text-muted">“{r.note}”</p>}
                 {src && (
                   <p className="mt-2 [overflow-wrap:anywhere] text-[11px] text-muted">
-                    {src.ok ? t("Bot membaca sumber penuh.", "The bot read the full source.")
+                    {src.ok ? t("Semasa membaca sumber penuh.", "Semasa read the full source.")
                       : t("Ditulis daripada tajuk sahaja: {why}.", "Written from the headline only: {why}.",
                         { why: src.why || t("artikel tidak dapat dibaca", "the article could not be read") })}
                   </p>

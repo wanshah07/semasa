@@ -99,18 +99,18 @@ export default function GenerationGallery({ rows, user, onRequeue, onRemove, onT
                     : row.prompt}</p>
                   {row.mode === "recreate" && (
                     <details className="mt-2 text-[12px] text-muted">
-                      <summary className="cursor-pointer">{row.reference_read ? t("Apa yang bot baca pada rujukan", "What the bot read in the reference")
+                      <summary className="cursor-pointer">{row.reference_read ? t("Apa yang Semasa baca pada rujukan", "What Semasa read in the reference")
                         : t("Rujukan belum dibaca", "Reference not read yet")}</summary>
                       <p className="mt-1">{row.reference_read || (row.status === "done"
                         ? t("Tiada model penglihatan (VISION_MODEL): dijana daripada gambar dan prompt sahaja.",
                           "No vision model (VISION_MODEL): generated from the image and prompt only.")
-                        : t("Bot membacanya apabila kerja ini bermula.", "The bot reads it when this job starts."))}</p>
+                        : t("Semasa membacanya apabila kerja ini bermula.", "Semasa reads it when this job starts."))}</p>
                     </details>
                   )}
                   {(row.idea_id || row.post_id) && <p className="mt-1 text-[11px] text-accent">{t("Aliran A · untuk draf post", "Flow A · for a draft post")}</p>}
                   {row.error && <p className="mt-2 rounded-tile bg-danger/5 p-2 text-[11px] text-danger [overflow-wrap:anywhere]">{row.error}</p>}
                   <div className="mt-3 flex items-center justify-between text-[11px] text-muted">
-                    <span>{row.provider || "—"}{row.model ? ` · ${row.model}` : ""}{row.attempts ? ` · ${t("cubaan {n}", "attempt {n}", { n: row.attempts })}` : ""}</span>
+                    <span>{row.provider || t("Tiada", "None")}{row.model ? ` · ${row.model}` : ""}{row.attempts ? ` · ${t("cubaan {n}", "attempt {n}", { n: row.attempts })}` : ""}</span>
                     {mine && (
                       <span className="flex items-center gap-1">
                         {row.status === "error" && (

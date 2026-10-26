@@ -21,8 +21,8 @@ export default function CanvaHandoff({ open, onClose, slides, urls, stream, size
     <Modal open={open} onClose={onClose} title={t("Bina semula dalam Canva", "Rebuild in Canva")}>
       <div className="space-y-3">
         <p className="text-[12px] text-muted">
-          {t("Semasa melukis kad ini sendiri, percuma. Pilihan kedua: bot membinanya dalam Canva (folder Carousel Studio) dan menghantar halamannya kembali ke sini. Anda tidak perlu buka Canva. Dalam chat Claude yang ada penyambung Canva, tulis: \"Rebuild the next carousel post in Canva\". Arahan di bawah ialah salinan yang sama, kalau mahu tampal sendiri.",
-            "Semasa draws this card itself, free. The second choice: the bot builds it in Canva (the Carousel Studio folder) and sends the pages back here. You do not open Canva. In a Claude chat that has the Canva connector, write: \"Rebuild the next carousel post in Canva\". The brief below is the same thing, if you would rather paste it yourself.")}
+          {t("Semasa melukis kad ini sendiri, percuma. Pilihan kedua: Semasa membinanya dalam Canva (folder Carousel Studio) dan menghantar halamannya kembali ke sini. Anda tidak perlu buka Canva. Dalam chat Claude yang ada penyambung Canva, tulis: \"Rebuild the next carousel post in Canva\". Arahan di bawah ialah salinan yang sama, kalau mahu tampal sendiri.",
+            "Semasa draws this card itself, free. The second choice: Semasa builds it in Canva (the Carousel Studio folder) and sends the pages back here. You do not open Canva. In a Claude chat that has the Canva connector, write: \"Rebuild the next carousel post in Canva\". The brief below is the same thing, if you would rather paste it yourself.")}
         </p>
         <textarea id="canva-brief" readOnly value={text} rows={14} onFocus={(e) => e.target.select()}
           className="w-full resize-y rounded-tile border border-line bg-surface-2 p-2 font-mono text-[11px] leading-relaxed" aria-label={t("Arahan untuk Canva", "Brief for Canva")} />

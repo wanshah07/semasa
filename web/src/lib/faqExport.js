@@ -17,7 +17,7 @@ export function faqCategories(settings) {
     .map((c) => {
       const subs = (c.subs || []).map(String).filter((s) => s.trim());
       const out = { key: String(c.key).trim(), bm: String(c.bm || c.key), en: String(c.en || c.key), subs };
-      if (c.auto) Object.assign(out, { auto: true, auto_at: c.auto_at || null });   // made by the bot (faq_sort.py)
+      if (c.auto) Object.assign(out, { auto: true, auto_at: c.auto_at || null });   // made by Semasa (faq_sort.py)
       const autoSubs = (c.auto_subs || []).map(String).filter((s) => subs.includes(s));
       if (autoSubs.length) out.auto_subs = autoSubs;
       return out;

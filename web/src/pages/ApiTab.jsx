@@ -23,7 +23,7 @@ const VERDICT = {
   down: { cls: "bg-danger/15 text-danger", icon: XCircle, bm: "Tidak sampai", en: "Unreachable" },
   nokey: { cls: "bg-surface-2 text-muted", icon: KeyRound, bm: "Tiada kunci", en: "No key" },
   stale: { cls: "bg-warn/15 text-warn", icon: Timer, bm: "Belum disemak 13 jam", en: "Not checked in 13 h" },
-  none: { cls: "bg-surface-2 text-muted", icon: Cpu, bm: "—", en: "—" },
+  none: { cls: "bg-surface-2 text-muted", icon: Cpu, bm: "Tiada", en: "None" },
 };
 const COLOURS = ["rgb(var(--c-accent))", "rgb(var(--c-ok))", "rgb(var(--c-warn))", "rgb(var(--c-danger))", "rgb(var(--c-muted))"];
 
@@ -87,9 +87,9 @@ export default function ApiTab({ settings, save, onToast }) {
                 <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${V.cls}`}><V.icon size={12} /> {V[L]}</span>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-                <Stat label={t("Kunci", "Key")} value={r.key_set ? `…${r.key_last4}` : "—"} hint={r.key_ok === false ? t("ditolak", "refused") : r.key_ok ? t("diterima", "accepted") : t("belum ditanya", "not asked")} />
-                <Stat label={t("Model", "Model")} value={r.model || "—"} hint={r.model_listed === true ? t("dalam senarai", "listed") : r.model_listed === false ? t("TIADA dalam senarai", "NOT listed") : ""} warn={r.model_listed === false} />
-                <Stat label={t("Masa jawab", "Latency")} value={r.chat_ms != null ? `${r.chat_ms} ms` : r.latency_ms != null ? `${r.latency_ms} ms` : "—"} hint={r.http ? `HTTP ${r.http}` : ""} />
+                <Stat label={t("Kunci", "Key")} value={r.key_set ? `…${r.key_last4}` : t("Tiada", "None")} hint={r.key_ok === false ? t("ditolak", "refused") : r.key_ok ? t("diterima", "accepted") : t("belum ditanya", "not asked")} />
+                <Stat label={t("Model", "Model")} value={r.model || t("Tiada", "None")} hint={r.model_listed === true ? t("dalam senarai", "listed") : r.model_listed === false ? t("TIADA dalam senarai", "NOT listed") : ""} warn={r.model_listed === false} />
+                <Stat label={t("Masa jawab", "Latency")} value={r.chat_ms != null ? `${r.chat_ms} ms` : r.latency_ms != null ? `${r.latency_ms} ms` : t("Tiada", "None")} hint={r.http ? `HTTP ${r.http}` : ""} />
                 <Stat label={t("Token {d} hari", "Tokens {d} days", { d: days })} value={fmtTokens(u.tokens)} hint={t("{n} panggilan, {f} gagal", "{n} calls, {f} failed", { n: u.calls, f: u.failed })} warn={u.failed > 0} />
               </div>
               {r.balance && Object.keys(r.balance).length > 1 && (

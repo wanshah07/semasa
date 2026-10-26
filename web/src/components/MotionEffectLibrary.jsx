@@ -3,7 +3,7 @@ import { ASSET_TYPES, effectGroups, effectPolicy, resolveEffects, toggleEffect }
 import { uploadMotionAsset } from '../lib/motionAssetStorage';
 import { Input, Select } from './ui/Field';
 
-const readiness = {ready:'Native adaptation',autoasset:'Bot asset ready',manualasset:'Needs sourced screenshot',fallback:'Concept fallback only'};
+const readiness = {ready:'Native adaptation',autoasset:'Semasa asset ready',manualasset:'Needs sourced screenshot',fallback:'Concept fallback only'};
 
 /** Illustrations deliberately do not claim to be previews of source-video effects. */
 function Thumbnail({ id, section }) {
@@ -49,7 +49,7 @@ export default function MotionEffectLibrary({ brief, mode, effects, effectMode, 
         {['auto','manual'].map(v=><button type="button" key={v} aria-pressed={effectMode===v} onClick={()=>{if(v==='manual')onEffects(selected);onEffectMode(v);}} className={`rounded-pill border px-4 py-2 text-xs ${effectMode===v?'border-accent bg-accent/10':'border-line'}`}>{v==='auto'?'Auto · recommended':'Manual'}</button>)}
       </div>
     </div>
-    <p className="text-xs text-muted">Auto: when the film is made, the bot picks at least 15 of the 99 styles, scene by scene, for what each scene says and shows (Hook → Fact → Why → Solution), and lists the ones applied on the finished video. Styles that need footage, a screenshot or a sound file the film does not have are left out. Manual: only the cards you add. Design and attachment-style choices stay independent.</p>
+    <p className="text-xs text-muted">Auto: when the film is made, Semasa picks at least 15 of the 99 styles, scene by scene, for what each scene says and shows (Hook → Fact → Why → Solution), and lists the ones applied on the finished video. Styles that need footage, a screenshot or a sound file the film does not have are left out. Manual: only the cards you add. Design and attachment-style choices stay independent.</p>
     <div aria-label="Selected effects" aria-live="polite" className="rounded-tile bg-surface-2 p-3">
       <p className="mb-2 text-xs">{effectMode==='auto'?'Auto · at least 15 chosen when the film is made':'Selected'}{effectMode==='auto'?'':` · ${selected.length} effects`}</p>
       <div className="flex flex-wrap gap-2">{effectMode==='auto'?null:selected.map(id=><button type="button" key={id} onClick={()=>toggle(id)} aria-label={`Remove ${entries[id]?.name}`} className="rounded-pill border border-accent px-3 py-1 text-xs">{id} · {entries[id]?.name} ×</button>)}{effectMode!=='auto'&&!selected.length&&<span className="text-xs text-muted">No additional effects; the complete video recipe is still used.</span>}</div>
@@ -57,7 +57,7 @@ export default function MotionEffectLibrary({ brief, mode, effects, effectMode, 
     </div>
     <details className="rounded-tile border border-line p-3">
       <summary className="cursor-pointer text-sm">Optional manual assets · {assets.length}/8</summary>
-      <p className="my-3 text-xs text-muted">The bot creates a neutral original vector without uploads. Attach your own image, screenshot, video, audio, PDF or text (20 MB each). Images can be used in supported screenshot adapters; video/audio/documents are retained as references only, not edited or presented as proof. Uploads require the private motion-assets bucket migration; no public reference bucket fallback.</p>
+      <p className="my-3 text-xs text-muted">Semasa creates a neutral original vector without uploads. Attach your own image, screenshot, video, audio, PDF or text (20 MB each). Images can be used in supported screenshot adapters; video/audio/documents are retained as references only, not edited or presented as proof. Uploads require the private motion-assets bucket migration; no public reference bucket fallback.</p>
       <div className="grid gap-2 sm:grid-cols-2">
         <Select aria-label="Asset role" value={role} onChange={setRole} options={[["reference","Reference"],["screenshot","Authentic screenshot"]]} />
         <Select aria-label="Asset rights" value={rights} onChange={setRights} options={[["","Confirm rights…"],["self-owned","I own this asset"],["licensed","I hold a license"]]} />

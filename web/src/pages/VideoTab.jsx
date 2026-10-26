@@ -67,10 +67,10 @@ export default function VideoTab({ user, gens, brand, onToast, openPost }) {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Video</p>
         <h1 className="mt-2 text-4xl leading-tight">{t("Video panjang jadi klip pendek.", "A long video becomes short clips.")}</h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
-          {t("Tampal pautan YouTube (cth: ceramah agama). Bot baca transkrip dan cadang 3 hingga 6 klip pendek. Anda sahkan hak guna video, "
-            + "ubah klip, kemudian luluskan: bot potong klip 9:16 dengan kapsyen dan tulis draf post. Tiada apa diterbitkan tanpa kelulusan anda di tab Post.",
-          "Paste a YouTube link (e.g. a religious talk). The bot reads the transcript and proposes 3 to 6 short clips. You confirm you may use "
-            + "the video, edit a clip, then approve: the bot cuts a 9:16 clip with captions and writes a draft post. Nothing is published without your approval in the Posts tab.")}
+          {t("Tampal pautan YouTube (cth: ceramah agama). Semasa baca transkrip dan cadang 3 hingga 6 klip pendek. Anda sahkan hak guna video, "
+            + "ubah klip, kemudian luluskan: Semasa potong klip 9:16 dengan kapsyen dan tulis draf post. Tiada apa diterbitkan tanpa kelulusan anda di tab Post.",
+          "Paste a YouTube link (e.g. a religious talk). Semasa reads the transcript and proposes 3 to 6 short clips. You confirm you may use "
+            + "the video, edit a clip, then approve: Semasa cuts a 9:16 clip with captions and writes a draft post. Nothing is published without your approval in the Posts tab.")}
         </p>
       </motion.div>
       {videos.error === "setup" ? (
@@ -117,7 +117,7 @@ function AddVideo({ user, brand, onToast, onAdded }) {
     });
     setBusy(false);
     if (error) return onToast(errText(error), "danger");
-    onToast(t("Dihantar. Bot baca video dan cadang klip dalam beberapa minit.", "Sent. The bot reads the video and proposes clips within a few minutes."), "ok");
+    onToast(t("Dihantar. Semasa baca video dan cadang klip dalam beberapa minit.", "Sent. Semasa reads the video and proposes clips within a few minutes."), "ok");
     setUrl(""); setNote(""); setPaste(""); onAdded();
   }
 
@@ -130,15 +130,15 @@ function AddVideo({ user, brand, onToast, onAdded }) {
         <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
         {stream === "regulab"
           ? <label className="block"><Label>Domain</Label><Select value={domain} onChange={setDomain} className="w-full"
-              options={[["", t("Bot pilih", "Bot chooses")], ...Object.entries(brand.regulab.domains || {})]} /></label>
+              options={[["", t("Semasa pilih", "Semasa chooses")], ...Object.entries(brand.regulab.domains || {})]} /></label>
           : <label className="block"><Label>{t("Sudut", "Angle")}</Label><Select value={angle} onChange={setAngle} className="w-full"
-              options={[["", t("Bot pilih", "Bot chooses")], ...Object.entries(brand.linkedin.angles || {}).map(([k, v]) => [k, `${k} · ${v}`])]} /></label>}
+              options={[["", t("Semasa pilih", "Semasa chooses")], ...Object.entries(brand.linkedin.angles || {}).map(([k, v]) => [k, `${k} · ${v}`])]} /></label>}
       </div>
       <label className="block"><Label hint={t("pilihan", "optional")}>{t("Apa yang anda mahu daripada video ini", "What you want from this video")}</Label>
         <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1500}
           placeholder={t("Cth: bahagian tentang makanan syubhah dan sijil halal", "E.g. the part about doubtful food and halal certificates")} /></label>
       <details className="rounded-tile bg-surface-2/50 p-3 text-sm">
-        <summary className="cursor-pointer font-medium">{t("Tampal transkrip sendiri (jika YouTube menolak bot)", "Paste the transcript yourself (if YouTube refuses the bot)")}</summary>
+        <summary className="cursor-pointer font-medium">{t("Tampal transkrip sendiri (jika YouTube menolak Semasa)", "Paste the transcript yourself (if YouTube refuses Semasa)")}</summary>
         <p className="mt-2 text-[12px] text-muted">{t("Di YouTube: buka huraian → Tunjukkan transkrip → pilih semua → salin, dan tampal di sini dengan masanya sekali.",
           "On YouTube: open the description → Show transcript → select all → copy, and paste it here with its times.")}</p>
         <TextArea rows={5} value={paste} onChange={(e) => setPaste(e.target.value)} className="mt-2" placeholder={"0:00\nAssalamualaikum…\n0:05\n…"} />
@@ -151,7 +151,7 @@ function AddVideo({ user, brand, onToast, onAdded }) {
 }
 
 const statusChip = (t, s) => ({
-  new: [t("Menunggu bot", "Waiting for the bot"), "text-warn bg-warn/10", true],
+  new: [t("Menunggu Semasa", "Waiting for Semasa"), "text-warn bg-warn/10", true],
   working: [t("Membaca", "Reading"), "text-accent bg-accent/10", true],
   ready: [t("Klip dicadang", "Clips proposed"), "text-ok bg-ok/10", false],
   error: [t("Gagal", "Failed"), "text-danger bg-danger/10", false],
@@ -319,7 +319,7 @@ function ClipCard({ v, c, ytid, user, brand, onToast, jobs, save, openPost, relo
     if (error) {
       return onToast(/mode_check/.test(errText(error)) ? t("Klip belum disediakan: jalankan supabase/011_video.sql.", "Clips are not set up: run supabase/011_video.sql.") : errText(error), "danger");
     }
-    onToast(t("Diluluskan. Bot potong klip dan tulis draf post dalam beberapa minit.", "Approved. The bot cuts the clip and writes a draft post within a few minutes."), "ok");
+    onToast(t("Diluluskan. Semasa potong klip dan tulis draf post dalam beberapa minit.", "Approved. Semasa cuts the clip and writes a draft post within a few minutes."), "ok");
     reloadGens();
   }
 
@@ -368,7 +368,7 @@ function ClipCard({ v, c, ytid, user, brand, onToast, jobs, save, openPost, relo
         <div className="mt-4 rounded-tile bg-surface-2/50 p-3">
           {(latest.status === "pending" || latest.status === "processing") && (
             <p className="flex items-center gap-1.5 text-[12px] text-muted"><Loader2 size={12} className="animate-spin" />
-              {t("Bot sedang memotong klip ini (beberapa minit).", "The bot is cutting this clip (a few minutes).")}</p>
+              {t("Semasa sedang memotong klip ini (beberapa minit).", "Semasa is cutting this clip (a few minutes).")}</p>
           )}
           {latest.status === "error" && <p className="[overflow-wrap:anywhere] text-[12px] text-danger">{latest.error}</p>}
           {latest.status === "done" && latest.generated_media_url && (

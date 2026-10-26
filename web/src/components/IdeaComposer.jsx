@@ -134,13 +134,13 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
         : errText(error), "danger");
     }
     onToast(format === "carousel"
-      ? t("Idea dihantar. Bot akan tulis draf dan slaid, jana gambar, kemudian lukis slaid.",
-        "Idea sent. The bot will write the draft and slides, generate a picture, then draw the slides.")
+      ? t("Idea dihantar. Semasa akan tulis draf dan slaid, jana gambar, kemudian lukis slaid.",
+        "Idea sent. Semasa will write the draft and slides, generate a picture, then draw the slides.")
       : format === "poster"
-        ? t("Idea dihantar. Bot akan tulis draf dan kata-kata poster, jana gambar, kemudian lukis poster 4:5.",
-          "Idea sent. The bot will write the draft and the poster's words, generate a picture, then draw a 4:5 poster.")
-        : t("Idea dihantar. Bot akan baca sumber, tulis draf dan jana gambar.",
-        "Idea sent. The bot will read the source, write the draft and generate a picture."), "ok");
+        ? t("Idea dihantar. Semasa akan tulis draf dan kata-kata poster, jana gambar, kemudian lukis poster 4:5.",
+          "Idea sent. Semasa will write the draft and the poster's words, generate a picture, then draw a 4:5 poster.")
+        : t("Idea dihantar. Semasa akan baca sumber, tulis draf dan jana gambar.",
+        "Idea sent. Semasa will read the source, write the draft and generate a picture."), "ok");
     onDone?.();
     onClose();
   }
@@ -154,13 +154,13 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
       <form onSubmit={submit} className="space-y-3">
         {position && <p className="rounded-tile bg-accent/10 p-2 text-[12px]">{stream === position.stream
           ? t("Untuk slot {d} {s} MYT.", "For the {d} {s} MYT slot.", { d: position.date, s: position.slot })
-          : t("Aliran lain dipilih: bot memilih slot kosong seterusnya.", "Another stream chosen: the bot picks the next free slot.")}</p>}
+          : t("Aliran lain dipilih: Semasa memilih slot kosong seterusnya.", "Another stream chosen: Semasa picks the next free slot.")}</p>}
         {trend ? (
           <p className="rounded-tile bg-surface-2 p-3 text-sm [overflow-wrap:anywhere]">{trend.title}<span className="block text-[11px] text-muted">{trend.source}</span>
-            {trend.faq && <span className="mt-1 block text-[11px] text-muted">{t("Bot tulis post daripada jawapan FAQ ini.", "The bot writes the post from this FAQ answer.")}</span>}
+            {trend.faq && <span className="mt-1 block text-[11px] text-muted">{t("Semasa tulis post daripada jawapan FAQ ini.", "Semasa writes the post from this FAQ answer.")}</span>}
             {trend.watch && <span className="mt-1 block text-[11px] text-muted">{trend.section === "publication"
-              ? t("Bot baca kertas ini dan memetik pengarang, jurnal, tahun dan DOI.", "The bot reads this paper and cites its authors, journal, year and DOI.")
-              : t("Bot baca notis ini dan memetik pengawal selia serta rujukannya.", "The bot reads this notice and cites the regulator and its reference.")}</span>}</p>
+              ? t("Semasa baca kertas ini dan memetik pengarang, jurnal, tahun dan DOI.", "Semasa reads this paper and cites its authors, journal, year and DOI.")
+              : t("Semasa baca notis ini dan memetik pengawal selia serta rujukannya.", "Semasa reads this notice and cites the regulator and its reference.")}</span>}</p>
         ) : (
           <>
             <label className="block"><Label>{t("Isu / tajuk", "Issue / title")}</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} required={!outputMotion} /></label>
@@ -169,10 +169,10 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
         )}
         <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
         {stream === "regulab"
-          ? <label className="block"><Label hint={t("kosong = bot pilih", "empty = the bot chooses")}>Domain</Label>
-              <Select value={domain} onChange={setDomain} options={[["", t("Bot pilih", "Bot chooses")], ...domains]} className="w-full" /></label>
-          : <label className="block"><Label hint={t("kosong = bot pilih", "empty = the bot chooses")}>{t("Sudut", "Angle")}</Label>
-              <Select value={angle} onChange={setAngle} options={[["", t("Bot pilih", "Bot chooses")], ...angles.map(([k, v]) => [k, `${k} · ${v}`])]} className="w-full" /></label>}
+          ? <label className="block"><Label hint={t("kosong = Semasa pilih", "empty = Semasa chooses")}>Domain</Label>
+              <Select value={domain} onChange={setDomain} options={[["", t("Semasa pilih", "Semasa chooses")], ...domains]} className="w-full" /></label>
+          : <label className="block"><Label hint={t("kosong = Semasa pilih", "empty = Semasa chooses")}>{t("Sudut", "Angle")}</Label>
+              <Select value={angle} onChange={setAngle} options={[["", t("Semasa pilih", "Semasa chooses")], ...angles.map(([k, v]) => [k, `${k} · ${v}`])]} className="w-full" /></label>}
         <label className="flex items-center gap-2"><input type="checkbox" checked={outputMotion} onChange={e => setOutputMotion(e.target.checked)} />Motion only · no post/image draft</label>
         {outputMotion && <Select value={motionLanguage} onChange={setMotionLanguage} options={LANGUAGES} />}
         <div><Label>Media</Label><Segmented value={media} onChange={setMedia} options={[["image", t("Imej", "Image")], ["video", "Video"], ["none", t("Tiada", "None")]]} /></div>
@@ -182,12 +182,12 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
             options={[["post", t("Post", "Post")], ["carousel", t("Carousel (slaid/PPT)", "Carousel (slides/PPT)")], ["poster", "Poster"]]} />
           <span className="mt-1 block text-[11px] text-muted">
             {format === "carousel"
-              ? t("Bot tulis 5 hingga 7 slaid, kemudian lukis sendiri ({size}, tanpa AI, percuma).",
-                "The bot writes 5 to 7 slides, then draws them itself ({size}, no AI, free).",
+              ? t("Semasa tulis 5 hingga 7 slaid, kemudian lukis sendiri ({size}, tanpa AI, percuma).",
+                "Semasa writes 5 to 7 slides, then draws them itself ({size}, no AI, free).",
                 { size: stream === "linkedin" ? "1080×1350" : "1080×1080" })
               : format === "poster"
-                ? t("Bot tulis satu poster (tajuk dan hingga lima poin, sumber di kaki), kemudian lukis 1080×1350.",
-                  "The bot writes one poster (a headline and up to five points, the source at the foot), then draws it at 1080×1350.")
+                ? t("Semasa tulis satu poster (tajuk dan hingga lima poin, sumber di kaki), kemudian lukis 1080×1350.",
+                  "Semasa writes one poster (a headline and up to five points, the source at the foot), then draws it at 1080×1350.")
                 : t("Kapsyen dan satu gambar.", "A caption and one picture.")}
             {format !== "post" && media === "image" ? t(" Gambar post jadi latar.", " The post picture becomes the background.") : ""}
           </span>
@@ -206,7 +206,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
             placeholder={t("Cth: fokus pada kesan kepada pengeluar kosmetik PKS; sebut Garis Panduan NPRA",
               "E.g. focus on the impact on SME cosmetic manufacturers; mention the NPRA Guidelines")} /></label>
         <div>
-          <Label hint={t("pilihan · gambar anda sendiri; bot baca dan cipta semula", "optional · your own pictures; the bot reads and recreates them")}>
+          <Label hint={t("pilihan · gambar anda sendiri; Semasa baca dan cipta semula", "optional · your own pictures; Semasa reads and recreates them")}>
             {t("Rujukan", "References")}
           </Label>
           <div className="flex flex-wrap gap-2">
@@ -223,14 +223,14 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
           </div>
           {!refs.length && media !== "none" && (
             <p className="mt-1 text-[11px] text-muted">
-              {t("Tanpa rujukan: bot baca gambar pada halaman berita dan lukis gambar baharu (tidak disalin), atau lukis daripada draf.",
-                "No reference: the bot reads the picture on the news page and draws a new one (not copied), or draws from the draft.")}
+              {t("Tanpa rujukan: Semasa baca gambar pada halaman berita dan lukis gambar baharu (tidak disalin), atau lukis daripada draf.",
+                "No reference: Semasa reads the picture on the news page and draws a new one (not copied), or draws from the draft.")}
             </p>
           )}
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="ghost" onClick={cancel} disabled={uploading > 0}>{t("Batal", "Cancel")}</Button>
-          <Button type="submit" disabled={busy || uploading > 0}>{uploading ? t("Memuat naik…", "Uploading…") : busy ? t("Menghantar…", "Sending…") : t("Hantar ke bot", "Send to the bot")}</Button>
+          <Button type="submit" disabled={busy || uploading > 0}>{uploading ? t("Memuat naik…", "Uploading…") : busy ? t("Menghantar…", "Sending…") : t("Hantar untuk ditulis", "Send to be written")}</Button>
         </div>
       </form>
     </Modal>

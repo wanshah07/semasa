@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Bot, Check, Loader2, RotateCcw, Sparkles } from "lucide-react";
+import { Bot, Check, ImagePlus, Loader2, Plus, RotateCcw } from "lucide-react";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import { Label, TextArea } from "./ui/Field";
@@ -81,11 +81,11 @@ export default function WanshahPanel({ user, gens, settings, saveSetting, onToas
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 font-display text-xl"><Bot size={18} className="text-accent" /> Wanshah</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            {t("Maskot robot 3D untuk semua kad. Bot lukis empat pose guna penjana imej di Tetapan → AI; anda pilih dan tekan Guna, dan pose lama diganti. Tekan Asal untuk kembalikan.",
-              "The 3D robot mascot for every card. The bot draws four poses with the image provider in Settings → AI; you pick and press Use, and the old pose is replaced. Press Original to put it back.")}
+            {t("Maskot robot 3D untuk semua kad. Semasa lukis empat pose guna penjana imej di Tetapan → AI; anda pilih dan tekan Guna, dan pose lama diganti. Tekan Asal untuk kembalikan.",
+              "The 3D robot mascot for every card. Semasa draws four poses with the image provider in Settings → AI; you pick and press Use, and the old pose is replaced. Press Original to put it back.")}
           </p>
         </div>
-        <Button onClick={() => generate()} disabled={busy === "gen"}>{busy === "gen" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {t("Jana Wanshah", "Generate Wanshah")}</Button>
+        <Button onClick={() => generate()} disabled={busy === "gen"}>{busy === "gen" ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} />} {t("Jana Wanshah", "Generate Wanshah")}</Button>
       </div>
       <label className="mt-4 block"><Label>{t("Rupa (satu atau dua ayat; kosong = rupa biasa)", "Look (a sentence or two; empty = the default look)")}</Label>
         <TextArea rows={2} value={look} onChange={(e) => setLook(e.target.value)} placeholder={DEFAULT_LOOK} /></label>
@@ -119,7 +119,7 @@ export default function WanshahPanel({ user, gens, settings, saveSetting, onToas
                 </div>
               )}
               <div className="mt-2 flex flex-wrap gap-1">
-                <Button size="sm" variant="ghost" disabled={busy === "gen"} onClick={() => generate(p.k)}><Sparkles size={12} /> {t("Lagi", "More")}</Button>
+                <Button size="sm" variant="ghost" disabled={busy === "gen"} onClick={() => generate(p.k)}><Plus size={12} /> {t("Lagi", "More")}</Button>
                 {poses[p.k] && <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => reset(p.k)}><RotateCcw size={12} /> {t("Asal", "Original")}</Button>}
               </div>
             </div>

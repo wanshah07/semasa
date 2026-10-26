@@ -129,6 +129,9 @@ THE FILM: exactly the scenes under SCENES, FIXED (Hook, Fakta, Kenapa, Solusi: o
 then the worker's closing card{source_clause}. No scene label (HOOK, FAKTA, KENAPA, SOLUSI) is ever shown on screen. Motion: eases
 power3.out / power2.inOut, 0.4 to 0.8 s entrances, staggered lines, a slow background drift, punchy but readable; every scene
 stays on screen for its fixed time.
+BACKGROUND: only a soft diagonal gradient (Design 1: background:#fff9ed linear-gradient(145deg,#e0f5e9,#fff9ed 70%);
+Design 2: linear-gradient(150deg,#e4f4e8,#fcf9ed)), which may drift slowly. Never circles, blobs, bokeh, dots or other
+decorative shapes in the background (Wan, 26 Oct 2026).
 LOOK: the approved reference film under "APPROVED DESIGN VISUAL REFERENCE" is the target. Match its type, colours, composition and
 vocabulary: a heading at the top, ONE visual in the middle that fits the scene (a photo in an arch frame, a small diagram, a
 card, a comparison, a list), the narration as short transparent subtitles in their own lane below. Do not copy its words,
@@ -540,6 +543,27 @@ def hydrate_evidence(store: Any, row: dict[str, Any]) -> dict[str, Any]:
     return {**row, "source_url": row.get("source_url") or evidence.get("source_url") or "", "options": options}
 
 
+def format_of(row: dict[str, Any]) -> str:
+    """Which of Wan's four approved formats this film is: gimmick (10 s teaser), preview (continuous line), malay (BM or
+    BM + English words) or english (the new style). Each has its own skill folder with the reference video."""
+    if motion_styles.duration(row) == 10:
+        return "gimmick"
+    if motion_styles.design(row) == "continuous-line":
+        return "preview"
+    return "malay" if language_of(row) in {"bm", "both"} else "english"
+
+
+def format_context(row: dict[str, Any]) -> str:
+    """The chosen format skill's spec (its SKILL.md without the front matter), for the writer."""
+    key = format_of(row)
+    try:
+        body = (SKILL.parent / f"ws-regulab-motion-{key}" / "SKILL.md").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    body = body.split("---", 2)[-1].strip()
+    return f"FORMAT SKILL ws-regulab-motion-{key} (the approved reference film of this format; match it):\n{body}"
+
+
 def skill_context(row: dict[str, Any]) -> str:
     """The ws-regulab-motion skill's production contract and the template of the chosen design, as a reference for the
     writer. Empty when the skill folder is not there. The row's fixed scenes and the current policy win over it."""
@@ -574,9 +598,9 @@ def build_user(row: dict[str, Any], src_title: str, src_text: str, findings: lis
                  "same type, colours, composition and motion vocabulary, with this brief's words and times; never reuse its "
                  "words, evidence or media; obey current policy rather than stale sample captions/audio settings):\n" +
                  (motion_styles.RULES / "designs" / reference).read_text())
-    skill = skill_context(row)
-    if skill:
-        parts.append(skill)
+    for block in (format_context(row), skill_context(row)):
+        if block:
+            parts.append(block)
     if style[1]:
         parts.append(f"STYLE REFERENCE (the motion repo {style[0]}): follow its visual language, scene patterns, pacing, type "
                      "and palette ideas. It is a reference, not a dependency: use none of its files, media, fonts or scripts, "
@@ -898,7 +922,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                         writer_error or [f.get("code") for f in report["errors"]][:4])
             page, layout = motion_layout.compose(scenes=scenes, total=total, w=w, h=h, lang=lang,
                                                  plan=auto or {"scenes": {}, "video": {}}, palette=PALETTE["regulab"],
-                                                 gsap=GSAP, html_lang=LANGUAGE[lang][0],
+                                                 gsap=GSAP, html_lang=LANGUAGE[lang][0], design=motion_styles.design(row),
                                                  resolution=row.get("resolution") or "portrait")
             first = [f.get("code") for f in report["errors"]][:4]
             report = checked(page)

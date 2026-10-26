@@ -26,6 +26,10 @@ from typing import Any
 
 from . import motion_auto
 
+GRADIENT = {"bright-editorial": "background:#fff9ed linear-gradient(145deg,#e0f5e9,#fff9ed 70%);",
+            "continuous-line": "background:#fcf9ed linear-gradient(150deg,#e4f4e8,#fcf9ed);"}
+GRADIENT_ALT = {"bright-editorial": "linear-gradient(215deg,#e0f5e9,#fff9ed 70%)",
+                "continuous-line": "linear-gradient(210deg,#e4f4e8,#fcf9ed)"}
 SAFE = {"left": 0.08, "right": 0.14, "top": 0.13, "bottom": 0.23}
 LANE = (0.78, 0.115)              # the subtitle lane of a narrated film: top and height as fractions of the frame
 GAP = 0.028                       # between blocks, as a fraction of the frame width
@@ -35,7 +39,7 @@ MIN_PX = 44                       # on a 1080-wide frame (the contract's floor)
 FILTERS = {"F02": "sepia(.16) saturate(1.05) brightness(1.02)", "F03": "saturate(.88) contrast(1.06) brightness(1.02)",
            "F05": "grayscale(1) contrast(1.15)", "F06": "saturate(1.35) contrast(1.08)",
            "F07": "saturate(.86) contrast(.93) brightness(1.06)", "F10": "contrast(1.06) saturate(1.04)"}
-BUILT = {"H02", "H08", "C02", "C04", "C05", "C06", "V04", "V08", "B05", "B08", "M02", "M03", "M08", "M09",
+BUILT = {"H02", "H08", "C02", "C04", "C05", "C06", "V04", "B05", "M02", "M03", "M08", "M09",
          "F02", "F03", "F05", "F06", "F07", "F10"}
 
 
@@ -92,7 +96,9 @@ def esc(s: str) -> str:
 
 
 def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang: str, plan: dict[str, Any],
-            palette: dict[str, str], gsap: str, html_lang: str, resolution: str) -> tuple[str, dict[str, Any]]:
+            palette: dict[str, str], gsap: str, html_lang: str, resolution: str,
+            design: str = "bright-editorial") -> tuple[str, dict[str, Any]]:
+    design = design if design in GRADIENT else "bright-editorial"
     scale = w / 1080
     box_w = w * (1 - SAFE["left"] - SAFE["right"])
     teaching = [s for s in scenes if s.get("id") != "brand-outro"]
@@ -107,9 +113,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     css = [
         f"html,body{{margin:0;width:{w}px;height:{h}px;overflow:hidden;background:{palette['ground']};}}",
         f'body{{font-family:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:{palette["ink"]};}}',
-        f"#root{{position:absolute;left:0;top:0;width:{w}px;height:{h}px;overflow:hidden;"
-        f"background:linear-gradient(160deg,{palette['ground']} 0%,{palette['accent2']} 100%);}}",
-        ".bg{position:absolute;border-radius:50%;opacity:.14;}",
+        f"#root{{position:absolute;left:0;top:0;width:{w}px;height:{h}px;overflow:hidden;{GRADIENT[design]}}}",
         f".sc{{position:absolute;left:{w * SAFE['left']:.0f}px;top:{h * SAFE['top']:.0f}px;width:{box_w:.0f}px;"
         f"height:{box_h:.0f}px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;"
         f"gap:{gap:.0f}px;overflow:hidden;}}",
@@ -132,17 +136,12 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         "pointer-events:none;z-index:30;}",
     ]
     parts, tw = [], []
-    bgs = [(0.86, 0.04, 0.36), (0.02, 0.02, 0.24)]            # in the top corners only, never behind the text or the subtitles
-    for i, (fx, fy, fr) in enumerate(bgs):
-        size = w * fr
-        parts.append(f'<div class="bg" id="bg{i}" style="left:{w * fx - size / 2:.0f}px;top:{h * fy - size / 2:.0f}px;'
-                     f'width:{size:.0f}px;height:{size:.0f}px;'
-                     f'background:{palette["accent"] if i != 1 else palette["accent2"]};"></div>')
-        tw.append(f'tl.to("#bg{i}",{{x:{(-1) ** i * 40 * scale:.0f},y:{(-1) ** (i + 1) * 30 * scale:.0f},'
-                  f'duration:{total:g},ease:"none"}},0);')
-    picked = {c for cs in plan.get("scenes", {}).values() for c in cs}
-    if {"V08", "B08"} & picked:
-        tw.append(f'tl.to("#bg0",{{rotation:90,scale:1.12,duration:{total:g},ease:"none"}},0);')
+    # the background is a soft diagonal gradient and nothing else (Wan, 26 Oct 2026: "I don't want circles in the background
+    # but more like gradient"): the reference films' own gradients, with a second one that fades in and out for slow movement
+    parts.append(f'<div id="grad2" style="position:absolute;left:0;top:0;width:{w}px;height:{h}px;opacity:0;'
+                 f'background:{GRADIENT_ALT[design]};"></div>')
+    tw.append(f'tl.to("#grad2",{{opacity:.65,duration:{total / 2:g},ease:"sine.inOut"}},0);')
+    tw.append(f'tl.to("#grad2",{{opacity:0,duration:{total / 2:g},ease:"sine.inOut"}},{total / 2:g});')
     parts.append('<div class="flash" id="flash"></div>')
     for idx, sc in enumerate(teaching):
         sid, start, dur = sc["id"], float(sc["start"]), float(sc["duration"])

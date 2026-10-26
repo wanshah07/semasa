@@ -6,6 +6,8 @@ argument-hint: "[topic] [design] [en|ms-MY] [voice|silent|gimmick]"
 ---
 # Approved WS Regulab motion
 
+Four format skills sit beside this one, each with its approved reference video: `ws-regulab-motion-english` (English new style), `ws-regulab-motion-malay` (Malay voiced), `ws-regulab-motion-preview` (continuous line) and `ws-regulab-motion-gimmick` (10 s single scene). Pick the one that matches the request; this skill's contract applies to all of them. At least 15 of the 99 styles apply to every film.
+
 Use for video creation, motion explainers, short reels, bilingual/silent variants, and footage editing in the previously aligned WS style. This is a Claude Code skill, not a claim of Claude.ai account synchronization. Read `references/contract.md` and `references/sources.md` before authoring. The current request's explicit overrides win; do not overwrite either approved design.
 
 ## Prerequisites
@@ -31,7 +33,7 @@ Resolve and validate settings using `scripts/resolve.py`; save the resolved mani
 Replace `SKILL_DIR` with the directory containing this SKILL.md. `smoke.py` defaults to the existing server renderer; laptop users supply `--hyperframes /path/to/already-installed/bin/hyperframes.mjs` and must provision its browser dependencies. Never rerun old full build scripts in protected approved output folders: copy/adapt into a fresh output directory first.
 
 ## Reject before presenting
-- REJECT repeated generic bottle arches, empty decorative circles standing in for products, repeated headlines across all frames, tiny bottom captions, slide-only drafts, and a tiny final “Follow” logo. Never call these approved-template output.
+- REJECT any circle, blob or decorative shape in the background (gradient only, 26 Oct 2026), repeated generic bottle arches, empty decorative circles standing in for products, repeated headlines across all frames, tiny bottom captions, slide-only drafts, and a tiny final “Follow” logo. Never call these approved-template output.
 - REJECT invented charts/results/quotes/testimonials/chat/screenshots; use retrieved evidence and authentic assets. Meaningful conceptual diagrams are allowed, clearly not quantitative data. A source citation is not proof of a product claim.
 - REJECT unreadable typography or headline/photo collisions. Preview 540×960, final 1080×1920, 9:16. Center text or use one deliberate grid; reserve platform UI margins. Captions stay transparent, stable, 2–4 words when supported by actual ASR, no capsule boxes. A generated full-sentence reading layer is not ASR karaoke.
 - REJECT recurring WS/Label Literacy headers and page numbers on teaching scenes. Long WS videos end with a separate centered official alpha-logo page held ≥3.3s. EN exact CTA: “Follow us for more”; BM: “Jangan lupa follow kami untuk tips seterusnya.” Personal LinkedIn uses avatar + exact “Ts. ChM. Muhammad” + “Follow me for more”, NO WS logo. Gimmick: ONE persistent composition, curious truthful question/partial reveal, “Stay tuned. Follow us for more” inside it; no explanation pages or separate long outro.

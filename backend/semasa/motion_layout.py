@@ -807,6 +807,10 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 applied.add("C07")
                 est = max(len(x) for x in heading.split()) * hs * WIDE
                 burst = min(2.3, max(1.2, box_w * 0.96 / max(est, 1)))
+                # a word that grows about its own centre must stay inside the frame wherever the line puts it: the growth on
+                # each side (about half the extra width) may not exceed the margin between the column and the frame edge
+                key_w = len(heading.split()[key]) * hs * WIDE
+                burst = max(1.08, min(burst, 1 + 2 * (w * SAFE["left"]) * 0.9 / max(key_w, 1)))
                 tw.append(f'tl.fromTo("#{sid}-k7",{{scale:{burst:.2f},opacity:0}},{{scale:1,opacity:1,duration:.5,ease:"back.out(1.6)"}},'
                           f'{th:g});')
                 tw.append(f'tl.fromTo(".{sid}-ow",{{opacity:0}},{{opacity:1,duration:.3,ease:"power1.out"}},{th + .55:g});')

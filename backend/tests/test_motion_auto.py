@@ -456,3 +456,63 @@ def test_the_worker_leaves_a_waiting_row_alone_until_wan_starts_it():
     claimed = [r["id"] for r in motion.claim(store)]
     assert claimed == [pending["id"]]
     assert store.table(motion.TABLE).select("*").eq("id", waiting["id"]).execute().data[0]["status"] == "waiting"
+
+
+RICH_PLAN = {"scenes": {"s1": ["H05", "L06", "M07", "B05"], "s2": ["V05", "V02", "X10"], "s3": ["B04", "X06", "B08"],
+                        "s4": ["V06", "M04", "V10", "H06"]},
+             "video": {"captions": "C07", "transition": "M09", "finish": "F02"}}
+
+
+def _rich(scenes, plan=None, size=(1080, 1920)):
+    return motion_layout.compose(scenes=scenes + [{"id": "brand-outro", "start": 28, "duration": 3, "heading": "x"}],
+                                 total=31, w=size[0], h=size[1], lang="bm", plan=plan or RICH_PLAN,
+                                 palette=motion.PALETTE["regulab"], gsap=motion.GSAP, html_lang="ms", resolution="portrait")
+
+
+def test_the_safe_layout_builds_the_styles_the_film_was_given_not_just_the_plain_column():
+    scenes = [dict(s) for s in FILM]
+    motion_auto.assign_photos(scenes, [{"path": f"assets/photo-{i}.jpg", "credit": "x"} for i in (1, 2, 3)])
+    scenes[1]["lines"] = ["Syarikat kekal peduli 100% keselamatan", "Label dan tuntutan mesti patuh"]
+    html, rep = _rich(scenes)
+    assert rep["not_built"] == [], "every style in the plan has a builder"
+    wanted = {"H05", "H06", "L06", "M04", "M07", "V02", "V05", "V06", "V10", "B04", "B05", "B08", "X06", "X10", "C07"}
+    assert wanted <= set(rep["built"])
+    for marker in ('id="s1-cd"', 'id="s4-pa"', 'class="k7"', 'class="trk"', 'class="bd s3-bd"', 'class="gridx"',
+                   'class="ln s3-ln"', 'class="cards"', 'class="tl s3-t"', 'class="mut"'):
+        assert marker in html, marker
+    assert "border-radius:50%" not in html.split('<div id="root"')[1], "no circle is drawn behind anything"
+
+
+def test_option_cards_stand_down_when_a_word_would_break_in_half():
+    scenes = [dict(s) for s in FILM]
+    scenes[1]["lines"] = ["Bertanggungjawabkeseluruhannya sepenuhnya", "Label dan tuntutan"]
+    html, _ = _rich(scenes)
+    assert 'class="cards"' not in html.split('<div id="root"')[1]
+
+
+def test_the_chooser_prefers_styles_the_worker_can_build():
+    assert motion_auto.BUILDABLE <= set(motion_auto.RECIPES)
+    plan = motion_auto.choose(ROW, [dict(s) for s in FILM], voiced=True, lang="bm")
+    shown = set(plan["assigned"]) - motion_layout.BUILT
+    assert len(shown) <= 3, f"almost everything chosen should be buildable, not {sorted(shown)}"
+
+
+def test_the_rich_layout_has_no_overlap_in_a_real_browser(tmp_path):
+    from semasa import motion_probe
+    if not motion_probe.chrome_path():
+        pytest.skip("no Chrome here")
+    import shutil
+    scenes = [dict(s) for s in FILM]
+    for i, sc in enumerate(scenes):
+        sc["start"], sc["duration"] = 7.0 * i, 7.0
+    motion_auto.assign_photos(scenes, [{"path": "p.jpg", "credit": "x"} for _ in range(3)])
+    html, _ = _rich(scenes)
+    (tmp_path / "index.html").write_text(html)
+    from PIL import Image
+    Image.new("RGB", (60, 60), "#234").save(tmp_path / "p.jpg")
+    try:
+        found = motion_probe.overlaps(tmp_path, 1080, 1920, 31)
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+    real = [f for f in found if f["code"] != "probe_unavailable"]
+    assert not real, real

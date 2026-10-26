@@ -896,12 +896,19 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         layout_note, layout = "", {}
         out: dict[str, Any] = {}
         html = ""
+        tries: list[dict[str, Any]] = []          # what the writer's own layouts were rejected for (26 Oct 2026: "try again")
+
+        def note_try(markup: str, rep: dict[str, Any]) -> None:
+            tries.append({"n": len(tries) + 1, "chars": len(markup), "ok": not rep["errors"],
+                          "errors": [{"code": e.get("code"), "message": str(e.get("message"))[:220]} for e in rep["errors"][:8]]})
+
         try:
             out = ask_writer(llm, system, build_user(row, title, text, style=style) + "\n\n" + fixed)
             if not isinstance(out, dict):
                 raise RuntimeError("the writer gave no answer")
             html = clean_html(out.get("html"))
             report = checked(html)
+            note_try(html, report)
             # whatever the check rejects goes back to the writer (twice) with the findings, never to Wan
             for _ in range(MAX_FIX):
                 if not report["errors"]:
@@ -912,6 +919,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                     break
                 html = clean_html(again.get("html"))
                 report = checked(html)
+                note_try(html, report)
             writer_error = ""
         except Exception as exc:  # noqa: BLE001 - the safe layout still makes the film
             writer_error = f"{type(exc).__name__}: {str(exc)[:160]}"
@@ -925,11 +933,13 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                                                  gsap=GSAP, html_lang=LANGUAGE[lang][0], design=motion_styles.design(row),
                                                  resolution=row.get("resolution") or "portrait")
             first = [f.get("code") for f in report["errors"]][:4]
+            rejected = html[:6000]
             report = checked(page)
             html = page
             out.setdefault("title", plan.get("title"))
             why = f" (the writer's own layout failed: {', '.join(map(str, first))})" if first else ""
             layout_note = "safe layout used" + why
+            report["rejected_html"] = rejected
             leftover = motion_layout.layout_findings(report["errors"])
             if leftover:
                 raise RuntimeError("text overlap remains even in the safe layout: " +
@@ -945,6 +955,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             report["auto_effects"] = auto
         if layout:
             report["layout"] = layout
+        if tries:
+            report["writer_attempts"] = tries
         report["photos"] = [{k: p[k] for k in ("id", "credit", "page", "alt")} for p in photos]
         report["pace"] = pace_note
         style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]

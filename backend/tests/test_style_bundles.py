@@ -65,7 +65,8 @@ def test_worker_passes_complete_bundle_to_both_writers_and_saves_actual_plan(tmp
     llm = FakeLLM([script, {"html": GOOD}])
     assert motion.process(store, llm, row, {"prompt": "", "cli": motion.CLI_VERSION},
                           runner=_runner(), workdir=tmp_path, now=NOW)
-    assert all("COMPLETE STYLES.DOCX RECIPE" in system for system, _ in llm.asked)
+    assert all("COMPLETE STYLES.DOCX RECIPE" in system for system, _ in llm.asked
+               if not system.startswith("You write the caption"))
     folder = tmp_path / row["id"][:8]
     plan = json.loads((folder / "recipe-plan.json").read_text())
     assert plan["recipe_id"] == "styles-editorial-explainer"

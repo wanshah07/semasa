@@ -5,7 +5,7 @@ import { useLang } from "../lib/i18n";
 import { useSettings, useTable } from "../lib/hooks";
 import { timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
-import { LANGUAGES, RESOLUTIONS, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults } from "../lib/motion";
+import { LANGUAGES, RESOLUTIONS, RESOLUTION_CHOICES, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults } from "../lib/motion";
 import MotionAmbient from "./MotionAmbient";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
 import MotionEffectLibrary from "./MotionEffectLibrary";
@@ -38,7 +38,7 @@ export default function MotionLab({ user, onToast }) {
   const [langTouched, setLangTouched] = useState(false);
   const setStream = (v) => { setStreamOnly(v); if (!langTouched) setLanguage(defaultLanguage(v)); };
   const pickLanguage = (v) => { setLanguage(v); setLangTouched(true); };
-  const [resolution, setResolution] = useState("portrait");
+  const [resolution, setResolution] = useState("auto");      // auto: the size of the platform the film is for (lib/platformFormat.js)
   const [seconds, setSeconds] = useState(SECONDS.default);
   const [mode, setMode] = useState("explainer");
   const [styleRepoId, setStyleRepoId] = useState("");
@@ -188,7 +188,7 @@ export default function MotionLab({ user, onToast }) {
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block"><Label>{t("Saiz", "Size")}</Label><Select value={resolution} onChange={setResolution} className="w-full"
-            options={Object.entries(RESOLUTIONS).map(([k, v]) => [k, w([v.bm, v.en])])} /></label>
+            options={Object.entries(RESOLUTION_CHOICES).map(([k, v]) => [k, w([v.bm, v.en])])} /></label>
           <label className="block"><Label>{t("Mod", "Mode")}</Label>
             <Select value={mode} onChange={v => { setMode(v); setSeconds(v === "teaser" ? 10 : selectedSeconds(seconds, v)); }}
               options={[["explainer", "Explainer · Hook / Fact / Why / Solution"], ["teaser", "Gimmick / teaser only · not an explainer"]]} /></label>

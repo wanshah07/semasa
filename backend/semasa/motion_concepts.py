@@ -86,6 +86,7 @@ class Ctx(NamedTuple):
     pad: float
     host: str                                   # the source's host, when the idea has one
     text_h: Callable[..., float]
+    brand: str = "ws.regulab"                   # what a browser frame shows when the idea has no host; empty on LinkedIn
 
 
 def esc(s: Any) -> str:
@@ -225,7 +226,7 @@ def build(kind: str, sid: str, c: Ctx, heading: str, lines: list[str], teaser: s
         h = th(key, fs, .56, w * .62 - 2 * pad) + 14 * s + 2 * pad * 2.4 + pad
         return Block(f'<div class="cb dev" id="{uid}"><i class="nt"></i><div class="cbt">{esc(key)}</div></div>', h, fade)
     if kind == "browser":
-        addr = c.host or "ws.regulab"
+        addr = c.host or c.brand or "source"
         h = th(addr, fs, .56, w - 5 * pad) + pad + th(key, fs, .56, w - 2 * pad) + 2 * pad + 8 * s
         return Block(f'<div class="cb brw" id="{uid}"><div class="bar"><i class="sq"></i><i class="sq"></i><i class="sq"></i>'
                      f'<div class="ad">{esc(addr)}</div></div><div class="bd2 cbt">{esc(key)}</div></div>', h, fade)

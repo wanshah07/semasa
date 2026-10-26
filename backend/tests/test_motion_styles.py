@@ -77,7 +77,8 @@ def test_worker_consumes_recipe_and_enforces_selected_duration(tmp_path):
     llm = FakeLLM([SCRIPT, {"html": GOOD}])
     assert motion.process(store, llm, row, {"prompt": "", "cli": motion.CLI_VERSION},
                           runner=_runner(), workdir=tmp_path, now=NOW, speak=fake_speak)
-    assert all("Financial Education Reel" in system + user for system, user in llm.asked)
+    assert all("Financial Education Reel" in system + user for system, user in llm.asked
+               if not system.startswith("You write the caption"))
     index = (tmp_path / row["id"][:8] / "index.html").read_text()
     assert f'data-duration="{FITTED["total"]:g}"' in index and "official-logo-transparent.png" in index
     assert 0 < FITTED["total"] <= 70, "as long as the information needs, never more than 70 s"

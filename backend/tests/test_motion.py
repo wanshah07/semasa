@@ -209,7 +209,8 @@ def test_a_failed_check_goes_back_to_the_writer(tmp_path):
         return _runner()(cmd, **kw)
     cfg = {"prompt": "", "cli": "0.8.188"}
     assert motion.process(store, llm, {**r, "attempts": 1}, cfg, runner=runner, workdir=tmp_path, now=NOW)
-    assert len(llm.asked) == 3 and "THE CHECK FAILED" in llm.asked[2][1] and "[x] fix me" in llm.asked[2][1]
+    asked = [a for a in llm.asked if not a[0].startswith("You write the caption")]       # the film's captions are asked last
+    assert len(asked) == 3 and "THE CHECK FAILED" in asked[2][1] and "[x] fix me" in asked[2][1]
     assert ">Hai</h1>" in store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]["html"]
 
 

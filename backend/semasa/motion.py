@@ -45,6 +45,7 @@ from . import (
     fetch,
     motion_assets,
     motion_auto,
+    motion_captions,
     motion_layout,
     motion_probe,
     motion_styles,
@@ -83,6 +84,15 @@ SKILL_TEMPLATES = {"bright-editorial": "BrightPhotoDiagramEditorial.html", "cont
 STYLE_MAX = 9_000                      # characters of a style repo handed to the writer
 STYLE_FILES = ("SKILL.md", "skills/SKILL.md", "STYLE.md", "DESIGN.md", "frame.md", "FRAME.md", "AGENTS.md", "CLAUDE.md")
 SIZES = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1080)}
+# the format follows the platform (Wan, 26 Oct 2026: "Video format also follow the platform format automatically"):
+# ws.regulab posts on Instagram and Facebook Reels and on Threads, which are upright 9:16; the LinkedIn feed shows 1:1 best
+PLATFORM_SIZE = {"regulab": "portrait", "linkedin": "square"}
+
+
+def size_of(row: dict[str, Any]) -> str:
+    """The film's size: the row's own when it names one, else (blank or "auto") the one its stream's platforms take."""
+    res = str(row.get("resolution") or "").strip().lower()
+    return res if res in SIZES else PLATFORM_SIZE.get(row.get("stream") or "regulab", "portrait")
 GSAP = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"
 PALETTE = {"regulab": {"ground": "#e5f6ed", "ink": "#143e35", "accent": "#287b65", "accent2": "#fff7e6"},
            "linkedin": {"ground": "#111827", "ink": "#f9fafb", "accent": "#34d399", "accent2": "#f472b6"}}
@@ -262,7 +272,7 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
     if len(scenes) < count:
         raise RuntimeError(f"the writer planned {len(scenes)} scenes instead of {count}")
     lang = language_of(row)
-    speak_as = (lambda text: antislop.clean(malaysian(text))) if lang in {"bm", "both"} else antislop.clean
+    speak_as = speaker(lang)
     recipe_plan = motion_styles.complete_plan(row)
     clean = []
     for i, sc in enumerate(scenes[:count]):
@@ -377,6 +387,11 @@ def malaysian(text: str) -> str:
         bm = INDO_TO_BM[m.group(1).lower()]
         return bm[:1].upper() + bm[1:] if m.group(1)[:1].isupper() else bm
     return _INDO_RX.sub(swap, text)
+
+
+def speaker(lang: str) -> Any:
+    """The edit every word the film shows or says goes through: Malaysian Malay for a Malay film, then the anti-slop edits."""
+    return (lambda text: antislop.clean(malaysian(text))) if lang in {"bm", "both"} else antislop.clean
 
 
 class NarrationTooLong(ValueError):
@@ -651,8 +666,8 @@ def language_of(row: dict[str, Any]) -> str:
 def build_system(row: dict[str, Any], extra: str, background: str = "", seconds: float | None = None) -> str:
     stream = row.get("stream") or "regulab"
     html_lang, language = LANGUAGE[language_of(row)]
-    res = row.get("resolution") or "portrait"
-    w, h = SIZES.get(res, SIZES["portrait"])
+    res = size_of(row)
+    w, h = SIZES[res]
     pal = PALETTE["regulab"]
     return SYSTEM.format(lang=html_lang, resolution=res, w=w, h=h, gsap=GSAP,
                          seconds=(seconds if seconds else motion_styles.duration(row)),
@@ -1115,7 +1130,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                 log.info("%s: the narration is too long for %gs; cut a sentence and recorded again", row["id"], cap)
         voice_note += kitten_fallback
         pace_note = ("narrated: brisk" if voiced else f"silent: paced for reading at {READ_WPS:g} words a second")
-        w, h = SIZES.get(row.get("resolution") or "portrait", SIZES["portrait"])
+        w, h = SIZES[size_of(row)]
         own, own_note = idea_pictures(store, row, folder, get=own_get)
         photos, photo_note = fetch_photos(plan.get("photo_query") or "", folder, max(0, PHOTOS - len(own)), search=photo_search,
                                           get=photo_get)
@@ -1232,7 +1247,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                 page, layout = motion_layout.compose(scenes=scenes, total=total, w=w, h=h, lang=lang,
                                                      plan=auto or {"scenes": {}, "video": {}}, palette=PALETTE["regulab"],
                                                      gsap=GSAP, html_lang=LANGUAGE[lang][0], design=motion_styles.design(row),
-                                                     resolution=row.get("resolution") or "portrait",
+                                                     resolution=size_of(row), stream=row.get("stream") or "regulab",
                                                      ambient=str((row.get("options") or {}).get("ambient") or "mint"))
                 report = checked(page)
                 html = page
@@ -1277,7 +1292,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         report["photos"] = [{k: p[k] for k in ("id", "credit", "page", "alt")} for p in photos]
         report["pace"] = pace_note
         style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]
-        video = render(folder, settings["cli"], row.get("resolution") or "portrait", runner)
+        video = render(folder, settings["cli"], size_of(row), runner)
         meta = probe(video, runner)
         if not 0 < meta["duration_s"] <= FILM_MAX + .5 or abs(meta["duration_s"] - total) > .5:
             raise ValueError("Rendered duration does not match selected duration; choose 30/60s or narrow the topic")
@@ -1297,11 +1312,13 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             social_bytes = small.stat().st_size
             social_url = db.upload_generated(store, f"motion/{row['id']}-social.mp4", small.read_bytes(), "video/mp4")
         credits = "; ".join(dict.fromkeys(p["credit"] for p in photos if p["credit"]))
+        captions = motion_captions.write(llm, row, scenes, str(out.get("title") or ""), lang=lang,
+                                         voice=voice_line(row.get("stream") or "regulab", lang), speak_as=speaker(lang))
         store.table(TABLE).update({
             "status": "done", "title": str(out.get("title") or "")[:160],
             "html": (folder / 'index.html').read_text() if asset_plan['effects'] else html, "check_report": report,
             "video_path": path, "video_url": url, "poster_url": poster_url, "bytes": len(data),
-            "social_url": social_url, "social_bytes": social_bytes,
+            "social_url": social_url, "social_bytes": social_bytes, "captions": captions,
             **meta,
             "model": getattr(llm, "last_model", "") or "", "error": "",
             "style_note": " · ".join(x for x in (style_line, bg_note, voice_note, pace_note, photo_note,

@@ -12,8 +12,9 @@ const rules = readFileSync(new URL("../rules/compliance.json", here), "utf8");
 writeFileSync(join(dir, "compliance.js"), readFileSync(new URL("src/lib/compliance.js", here), "utf8")
   .replace(/^import RULES from .*$/m, `const RULES = ${rules};`));
 copyFileSync(new URL("src/lib/slots.js", here), join(dir, "slots.js"));
+copyFileSync(new URL("src/lib/platformFormat.js", here), join(dir, "platformFormat.js"));
 copyFileSync(new URL("src/lib/motionQueue.js", here), join(dir, "motionQueue.js"));
-const { CHANNEL_LABEL, canQueue, channelsFor, inMotionList, pickPosition, postLang, queueArgs, startingCaptions } =
+const { CHANNEL_LABEL, canQueue, channelsFor, filmFormat, fitCaption, inMotionList, pickPosition, postLang, queueArgs, startingCaptions } =
   await import(pathToFileURL(join(dir, "motionQueue.js")).href);
 
 const BRAND = { regulab: { slots: ["08:00", "13:00", "21:00"], schedule: {} }, linkedin: { slots: ["06:00"] } };
@@ -88,6 +89,40 @@ t("approve is Wan's own click and is taken only when nothing blocks", () => {
   assert.equal(queueArgs({ film, channels: ["instagram"], captions: { instagram: CAP }, date: "2026-10-27", slot: "13:00", brand: BRAND }).p_approve, false);
   const blocked = queueArgs({ film, channels: ["threads"], captions: { threads: "" }, date: "2026-10-27", slot: "13:00", brand: BRAND, approve: true });
   assert.equal(blocked.p_hard, 1); assert.equal(blocked.p_approve, false);
+});
+
+const LONG = "Senarai ketoksikan memberitahu kita apa yang berlaku. Peta AOP mula memberitahu kita bagaimana ia berlaku.\n\n"
+  + "Itulah sebabnya ulasan kritikal ini menarik perhatian saya. Ia menggunakan pendekatan PRISMA-ScR. ".repeat(12) + "\n\n#kosmetik #npra #toksikologi";
+
+t("a caption is fitted to its platform: the 1,553-character caption of 26 Oct no longer lands on Threads", () => {
+  for (const [p, [max, tags]] of Object.entries({ instagram: [2200, 8], facebook: [63206, 3], threads: [500, 1] })) {
+    const out = fitCaption(LONG, "regulab", p);
+    assert.ok(out.length <= max, p);
+    assert.ok(out.split(/\s+/).filter((w) => w.startsWith("#")).length <= tags, p);
+  }
+  const th = fitCaption(LONG, "regulab", "threads");
+  assert.ok(th.startsWith("Senarai ketoksikan") && th.split("\n\n")[0].endsWith(".") && th.endsWith("#kosmetik"));
+  assert.equal(fitCaption("Pendek sahaja.", "regulab", "threads"), "Pendek sahaja.");
+  assert.ok(fitCaption("x".repeat(4000), "linkedin", "linkedin").length <= 3000, "no space to cut at: still inside the limit");
+});
+
+t("each platform starts from its own caption: the worker's, else the draft's, always inside the limits", () => {
+  const written = { ...film, captions: { instagram: "Satu.\n\n#a", facebook: "Dua.", threads: "Tiga." } };
+  assert.deepEqual(startingCaptions({ film: written, post: null, channels: ["instagram", "facebook", "threads"] }),
+    { instagram: "Satu.\n\n#a", facebook: "Dua.", threads: "Tiga." });
+  const draft = { text: { bm: { instagram: LONG } } };           // an older film: only the draft, one long caption for every platform
+  const got = startingCaptions({ film, post: draft, channels: ["instagram", "facebook", "threads"] });
+  assert.ok(got.threads.length <= 500 && got.instagram.length <= 2200 && got.facebook.length <= 63206);
+  assert.ok(got.threads.length < got.facebook.length || got.threads === got.facebook, "Threads is the shortest");
+  const li = startingCaptions({ film: { stream: "linkedin", language: "en", captions: { linkedin: "I read the instrument." } }, post: null, channels: ["linkedin"] });
+  assert.deepEqual(li, { linkedin: "I read the instrument." });
+});
+
+t("a film is checked against the format of its platform", () => {
+  assert.deepEqual(filmFormat({ stream: "regulab", resolution: "portrait" }), { want: "portrait", ok: true });
+  assert.deepEqual(filmFormat({ stream: "linkedin", resolution: "portrait" }), { want: "square", ok: false });
+  assert.equal(filmFormat({ stream: "linkedin", resolution: "square" }).ok, true);
+  assert.equal(filmFormat({ stream: "linkedin" }).ok, true, "a row with no size follows the platform");
 });
 
 console.log(`${n} motion queue cases pass`);

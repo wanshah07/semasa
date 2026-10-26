@@ -221,7 +221,8 @@ def label_of(line: str, token: str) -> str:
 
 def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang: str, plan: dict[str, Any],
             palette: dict[str, str], gsap: str, html_lang: str, resolution: str,
-            design: str = "bright-editorial", ambient: str = DEFAULT_AMBIENT) -> tuple[str, dict[str, Any]]:
+            design: str = "bright-editorial", ambient: str = DEFAULT_AMBIENT,
+            stream: str = "regulab") -> tuple[str, dict[str, Any]]:
     design = design if design in GRADIENT else "bright-editorial"
     ambient = ambient if ambient in AMBIENTS else DEFAULT_AMBIENT
     grad_main, grad_alt = gradients(design, ambient)
@@ -375,7 +376,9 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         return wrap_lines(text or " ", px, width, factor) * px * lh
 
     ev = plan.get("evidence_url") or ""
-    cctx = motion_concepts.Ctx(scale, box_w, gap, 54 * scale, pad_card, motion_concepts.host_of(ev), text_h)   # the facts, larger
+    # the facts, larger; the LinkedIn stream shows no brand
+    cctx = motion_concepts.Ctx(scale, box_w, gap, 54 * scale, pad_card, motion_concepts.host_of(ev), text_h,
+                               "" if stream == "linkedin" else "ws.regulab")
     css.extend(motion_concepts.css(cctx, accent, rgba))
     concept_used: list[str] = []
     last_heading = plain(teaching[-1].get("heading")) if teaching else ""

@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Loader2, Send } from "lucide-react";
+import { CheckCircle2, Loader2, RefreshCw, Send } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
-import { fmtBytes } from "../lib/motion";
-import { CHANNEL_LABEL, canQueue, channelsFor, pickPosition, postLang, queueArgs, startingCaptions } from "../lib/motionQueue";
+import { LANGUAGES, RESOLUTIONS, fmtBytes, remakeFields } from "../lib/motion";
+import { CHANNEL_LABEL, canQueue, channelsFor, filmFormat, pickPosition, postLang, queueArgs, startingCaptions } from "../lib/motionQueue";
 import { myt, slotsOf, takenSet } from "../lib/slots";
 import Button from "./ui/Button";
-import { Input, Label, Select, TextArea } from "./ui/Field";
+import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
 
 /* A finished film to the platforms Wan picks (Wan, 26 Oct 2026: "allow me to choose which platform to post, so from the video can
    directly post or queue to post to platform, once post automatically the video compress and into post queue and remove from
    motion list"). One click writes the film as a video and a DRAFT post (semasa_queue_motion, supabase/051) on the chosen
    platforms, at the chosen date and slot, and the film leaves the Motion list. Approve & queue is Wan's own Approve click
    (taken only when the page's scan finds nothing blocking); Save as draft leaves it for the Posts tab. Either way the publisher
-   scans the post again and sends the film as a video at its slot. */
+   scans the post again and sends the film as a video at its slot.
+   Each platform's caption is set for it: the worker wrote one per platform with the film (in the film's language, inside that
+   platform's limits). The film's format follows its platform (9:16 for ws.regulab, 1:1 for LinkedIn), and the version buttons make
+   the film again in English, Malay or both (Wan, 26 Oct 2026: "tambah button english or malay or mixed version and redo"). */
 
 export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
   const { t } = useLang();
@@ -27,7 +30,10 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
   const [captions, setCaptions] = useState({});
   const [date, setDate] = useState("");
   const [slot, setSlot] = useState("");
+  const [version, setVersion] = useState(film.language || "en");     // the language the film would be made again in
+  const [redoing, setRedoing] = useState(false);
   const stream = film.stream || "regulab";
+  const format = filmFormat(film);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -81,6 +87,24 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(false); }
   };
 
+  // Redo: the same idea made again in the chosen language, in its platform's format, with fresh captions. It goes back to the worker
+  // (a few minutes) and the film stays in the Motion list; this panel closes because the file it holds is being replaced.
+  const redo = async () => {
+    setRedoing(true);
+    try {
+      const { error } = await supabase.from(TABLES.motions).update(remakeFields(film, version)).eq("id", film.id).is("queued_post_id", null);
+      if (error) throw new Error(errText(error));
+      const lang = (LANGUAGES.find(([k]) => k === version) || [])[1] || version;
+      onToast?.(t("Dibuat semula dalam {l}, dalam saiz {s}: beberapa minit. Kapsyen ditulis semula bersama filem.",
+        "Making it again in {l}, in the {s} size: a few minutes. The captions are written again with the film.", { l: lang, s: RESOLUTIONS[format.want]?.en?.split(" (")[0] }), "ok");
+      setOpen(false);
+      onQueued?.();
+    } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setRedoing(false); }
+  };
+  const changed = version !== (film.language || "en");
+  const versionName = (LANGUAGES.find(([k]) => k === version) || [])[1] || version;
+  const written = Object.keys(film.captions || {}).length > 0;
+
   if (!canQueue(film)) return null;
   if (!open) {
     return <Button size="sm" variant="ghost" onClick={() => setOpen(true)} data-motion-post><Send size={12} /> {t("Siarkan / beratur", "Post / queue")}</Button>;
@@ -93,6 +117,21 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
       </div>
       <p className="mt-1 text-xs text-muted">{t("Pilih platform, semak kapsyen dan slot. Filem dimampatkan, dimasukkan ke giliran Post dan keluar daripada senarai Motion. Lulus & beratur terus menjadualkannya; Simpan sebagai draf menunggu anda lulus di tab Post.",
         "Pick the platforms, check the captions and the slot. The film is compressed, put in the Posts queue and leaves the Motion list. Approve & queue schedules it at once; Save as draft waits for your approval in the Posts tab.")}</p>
+      <div className="mt-3 rounded-tile border border-line bg-surface p-2" data-motion-version>
+        <Label hint={t("filem dibuat semula, kapsyen ditulis semula bersamanya", "the film is made again and its captions are written again with it")}>{t("Versi", "Version")}</Label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented value={version} onChange={setVersion} options={LANGUAGES} />
+          <Button size="sm" variant={changed || !format.ok ? "primary" : "ghost"} disabled={redoing || (!changed && format.ok)} onClick={redo} data-motion-redo>
+            {redoing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} {t("Buat semula: {l}", "Redo: {l}", { l: versionName })}
+          </Button>
+        </div>
+        {!format.ok && <p className="mt-1.5 text-xs text-warn">{t("Filem ini {a}, tetapi {p} paling sesuai dengan {b}. Buat semula menukarnya ke saiz platform.",
+          "This film is {a}, but {p} takes {b} best. Redo changes it to the platform's size.",
+          { a: RESOLUTIONS[film.resolution]?.en?.split(" (")[0] || film.resolution, b: RESOLUTIONS[format.want]?.en?.split(" (")[0], p: stream === "linkedin" ? "LinkedIn" : "ws.regulab" })}</p>}
+        <p className="mt-1.5 text-[11px] text-muted">{format.ok ? t("Saiz filem: {s}, ikut platform.", "Film size: {s}, following the platform.", { s: RESOLUTIONS[format.want]?.en?.split(" (")[0] }) : ""}
+          {" "}{written ? t("Kapsyen setiap platform ditulis bersama filem ini, dalam had platform itu.", "Each platform's caption was written with this film, inside that platform's limit.")
+            : t("Filem ini dibuat sebelum kapsyen ditulis ikut platform: ia bermula daripada draf idea, dipotong ikut had setiap platform.", "This film was made before captions were written per platform: they start from the idea's draft, cut to each platform's limit.")}</p>
+      </div>
       {loading ? <p className="mt-3 flex items-center gap-2 text-xs text-muted"><Loader2 size={12} className="animate-spin" /> {t("Membaca…", "Reading…")}</p> : (
         <div className="mt-3 space-y-3">
           <div>
@@ -107,7 +146,7 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
           </div>
           {channels.map((c) => (
             <label key={c} className="block">
-              <Label hint={`${(captions[c] || "").length} ${t("aksara", "chars")}`}>{t("Kapsyen", "Caption")} · {CHANNEL_LABEL[c]} · {postLang(film).toUpperCase()}</Label>
+              <Label hint={`${(captions[c] || "").length} ${t("aksara", "chars")}`}>{t("Kapsyen", "Caption")} · {CHANNEL_LABEL[c]} · {film.language === "both" ? "BM + EN" : postLang(film).toUpperCase()}</Label>
               <TextArea rows={3} value={captions[c] || ""} onChange={(e) => setCaptions((cur) => ({ ...cur, [c]: e.target.value }))} />
             </label>
           ))}

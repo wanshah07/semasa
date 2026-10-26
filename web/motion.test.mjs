@@ -116,3 +116,25 @@ assert.equal(motionRow2({ brief: "x y", ambient: "sky" }).row.options.ambient, "
 assert.equal(formOf2({ options: { ambient: "cream" } }).ambient, "cream");
 assert.equal(startFields2({ stream: "regulab" }, { ...formOf2({ options: {} }), ambient: "blush" }).options.ambient, "blush");
 console.log("motion ambient colour: ok");
+
+/* the format follows the platform; a film is remade in another language in its platform's size (Wan, 26 Oct 2026) */
+import { RESOLUTION_CHOICES, derivedSize, formSize, remakeFields, RESOLUTIONS as RES2 } from "./src/lib/motion.js";
+assert.deepEqual(Object.keys(RESOLUTION_CHOICES), ["auto", "portrait", "square", "landscape"], "automatic first");
+assert.equal(formSize("auto", "regulab"), "portrait"); assert.equal(formSize("auto", "linkedin"), "square");
+assert.equal(formSize("landscape", "linkedin"), "landscape", "an explicit choice in the form stands");
+assert.equal(formSize("portrait", "linkedin"), "portrait");
+assert.equal(derivedSize("portrait", "linkedin"), "square", "the old saved default follows the platform");
+assert.equal(derivedSize("landscape", "regulab"), "landscape", "a saved explicit choice is kept");
+assert.equal(derivedSize(undefined, "linkedin"), "square");
+assert.equal(motionRow({ brief: "x", stream: "linkedin" }).row.resolution, "square");
+assert.equal(motionRow({ brief: "x", stream: "regulab", resolution: "auto" }).row.resolution, "portrait");
+const li = motionFromIdea({ id: "i2", stream: "linkedin", source_title: "ISO 24444", source_summary: "SPF in vivo" }, "u1");
+assert.equal(li.stream, "linkedin"); assert.equal(li.resolution, "square"); assert.equal(li.language, "en");
+assert.equal(motionDefaults({ motion: { defaults: { resolution: "portrait" } } }).resolution, "auto", "the old default means automatic now");
+assert.equal(motionDefaults({ motion: { defaults: { resolution: "square" } } }).resolution, "square");
+const mk = remakeFields({ stream: "linkedin", voice: "kitten" }, "bm");
+assert.deepEqual([mk.status, mk.attempts, mk.language, mk.resolution, mk.voice, mk.error], ["pending", 0, "bm", "square", "female", ""]);
+assert.deepEqual(mk.captions, {}, "the captions are written again with the film");
+assert.equal(remakeFields({ stream: "regulab", voice: "auto" }, "both").resolution, "portrait");
+assert.equal(Object.keys(RES2).length, 3);
+console.log("motion platform format and remake: ok");

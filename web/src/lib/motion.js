@@ -3,12 +3,24 @@
 
 import { styleOf } from "./motionStyles.js";
 import { validEffects, assetModeOf } from './motionEffects.js';
+import { sizeFor } from "./platformFormat.js";
 
 export const RESOLUTIONS = {
-  portrait: { w: 1080, h: 1920, bm: "Menegak 9:16 (Reels, TikTok, Shorts)", en: "Portrait 9:16 (Reels, TikTok, Shorts)" },
-  square: { w: 1080, h: 1080, bm: "Segi empat 1:1 (Instagram, LinkedIn)", en: "Square 1:1 (Instagram, LinkedIn)" },
+  portrait: { w: 1080, h: 1920, bm: "Menegak 9:16 (Reels Instagram dan Facebook, Threads)", en: "Portrait 9:16 (Instagram and Facebook Reels, Threads)" },
+  square: { w: 1080, h: 1080, bm: "Segi empat 1:1 (suapan LinkedIn)", en: "Square 1:1 (the LinkedIn feed)" },
   landscape: { w: 1920, h: 1080, bm: "Melintang 16:9 (YouTube, LinkedIn)", en: "Landscape 16:9 (YouTube, LinkedIn)" },
 };
+/** The Size select: automatic first, which is the default (the size of the platform the film is for). */
+export const RESOLUTION_CHOICES = { auto: { bm: "Automatik: ikut platform (9:16 ws.regulab, 1:1 LinkedIn)", en: "Automatic: follows the platform (9:16 ws.regulab, 1:1 LinkedIn)" }, ...RESOLUTIONS };
+/** The size of a film made from the Motion form: "auto" (or nothing valid) is the platform's, anything else is Wan's own choice. */
+export const formSize = (resolution, stream) => (RESOLUTIONS[resolution] ? resolution : sizeFor(stream));
+/** The size of a film made from an idea or a draft: Wan's saved choice when it is not the old default (portrait), else the platform's. */
+export const derivedSize = (resolution, stream) => (RESOLUTIONS[resolution] && resolution !== "portrait" ? resolution : sizeFor(stream));
+/** What to write on a finished film to make it again in another language, in the size of its platform, with fresh captions. */
+export function remakeFields(film, language) {
+  const stream = film?.stream === "linkedin" ? "linkedin" : "regulab";
+  return { status: "pending", attempts: 0, error: "", captions: {}, ...resolveLanguageVoice(language, film?.voice, stream), resolution: sizeFor(stream) };
+}
 export const SECONDS = { min: 30, max: 60, default: 30 };
 /* the words on screen (Wan, 24 Oct 2026: "choice for english, malay, or english + malay version") */
 export const LANGUAGES = [["bm", "Bahasa Malaysia"], ["en", "English"], ["both", "BM + English"]];
@@ -62,16 +74,16 @@ export const selectedSeconds = (seconds, mode) => modeOf(mode) === "teaser" && N
 
 /* Wan's saved way of making a motion video (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"):
    settings.motion.defaults, saved from the Motion form, read whenever an idea or a post draft is made into a video. */
-export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "auto", design: "bright-editorial", ambient: "mint", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "portrait", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
+export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "auto", design: "bright-editorial", ambient: "mint", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "auto", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
 /** The saved defaults over the built-in ones; an empty language means "the stream's own". */
 export function motionDefaults(settings) {
   const d = (settings || {}).motion?.defaults;
   const merged = { ...MOTION_DEFAULTS, ...(d && typeof d === "object" ? d : {}) };
-  return { ...merged, ...resolveLanguageVoice(merged.language, merged.voice), design: designOf(merged.design), ambient: ambientOf(merged.ambient), mode: modeOf(merged.mode), seconds: selectedSeconds(merged.seconds, merged.mode) };
+  return { ...merged, resolution: RESOLUTIONS[merged.resolution] && merged.resolution !== "portrait" ? merged.resolution : "auto", ...resolveLanguageVoice(merged.language, merged.voice), design: designOf(merged.design), ambient: ambientOf(merged.ambient), mode: modeOf(merged.mode), seconds: selectedSeconds(merged.seconds, merged.mode) };
 }
 /** settings.motion with the form saved as the defaults; everything else in it (the prompt) untouched. */
 export function withDefaults(motionSettings, form) {
-  const d = { effects:validEffects(form.effects), effectMode:form.effectMode === 'manual' ? 'manual' : 'auto', assetMode:'auto', ...resolveLanguageVoice(form.language, form.voice), design: designOf(form.design), ambient: ambientOf(form.ambient), previewMusic: "user-reel", style: styleOf(form.style), mode: modeOf(form.mode), resolution: RESOLUTIONS[form.resolution] ? form.resolution : "portrait",
+  const d = { effects:validEffects(form.effects), effectMode:form.effectMode === 'manual' ? 'manual' : 'auto', assetMode:'auto', ...resolveLanguageVoice(form.language, form.voice), design: designOf(form.design), ambient: ambientOf(form.ambient), previewMusic: "user-reel", style: styleOf(form.style), mode: modeOf(form.mode), resolution: RESOLUTIONS[form.resolution] ? form.resolution : "auto",
     seconds: selectedSeconds(form.seconds, form.mode), aiBackground: !!form.aiBackground, styleRepoId: form.styleRepoId || "" };
   return { ...(motionSettings || {}), defaults: d };
 }
@@ -79,7 +91,7 @@ export function withDefaults(motionSettings, form) {
 export const freshUrl = (url, stamp) => (url ? `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(stamp || "")}` : url);
 
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. */
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "auto", design = "bright-editorial", ambient = "mint", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[] } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "auto", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "auto", design = "bright-editorial", ambient = "mint", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[] } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
@@ -88,7 +100,7 @@ export function motionRow({ brief = "", url = "", stream = "regulab", resolution
   return {
     row: {
       brief: b.slice(0, 2000), source_url: u, stream: st, language: langOf(language, st),
-      resolution: RESOLUTIONS[resolution] ? resolution : "portrait", seconds: selectedSeconds(seconds, mode), status: "pending",
+      resolution: formSize(resolution, st), seconds: selectedSeconds(seconds, mode), status: "pending",
       options: motionOptions({style, mode, design, ambient, effects, effectMode, assetMode, assets}), style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
       ...resolveLanguageVoice(language, voice, st), mascot: "",
     },
@@ -133,7 +145,7 @@ export function motionFromIdea(idea, userId = null, defaults = null, language = 
   const url = /^https?:\/\/\S+$/.test(String(idea?.source_url || "")) ? idea.source_url : "";
   if (!brief && !url) return null;
   const stream = idea?.stream === "linkedin" ? "linkedin" : "regulab";
-  return { brief, source_url: url, stream, language: langOf(d.language, stream), resolution: RESOLUTIONS[d.resolution] ? d.resolution : "portrait",
+  return { brief, source_url: url, stream, language: langOf(d.language, stream), resolution: derivedSize(d.resolution, stream),
     seconds: selectedSeconds(d.seconds, d.mode), status: "waiting", idea_id: idea.id || null, ai_background: !!d.aiBackground,
     options: { ...motionOptions(d), evidence: evidenceOf(idea) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: "", created_by: userId };
 }
@@ -151,7 +163,7 @@ export function motionFromPost(post, userId = null, defaults = null, language = 
   const brief = (fromSlides || caption).slice(0, 1900);
   if (!brief) return null;
   const stream = post?.stream === "linkedin" ? "linkedin" : "regulab";
-  return { brief, source_url: post?.source_url || "", stream, language: d.language || lang, resolution: RESOLUTIONS[d.resolution] ? d.resolution : "portrait",
+  return { brief, source_url: post?.source_url || "", stream, language: d.language || lang, resolution: derivedSize(d.resolution, stream),
     seconds: selectedSeconds(d.seconds, d.mode), status: "waiting", idea_id: post?.idea_id || null, ai_background: !!d.aiBackground,
     options: { ...motionOptions(d), evidence: evidenceOf(post) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: "", created_by: userId };
 }

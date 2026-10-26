@@ -96,6 +96,11 @@ RECIPES: dict[str, tuple[str, str, str]] = {
     "F10": ("*", "", "photos with clean neutral whites and crisp micro-contrast"),
 }
 NATIVE_TEXT = {"H01", "H03", "V01", "V03"}
+# the styles the worker's own layout (motion_layout.compose) builds, so a film that falls back to it still shows them; the chooser
+# prefers these (Wan, 26 Oct 2026: "make sure the styles are included, not using layman safe layout only")
+BUILDABLE = {"H02", "H05", "H06", "H08", "H10", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10", "L06", "V02", "V04", "V05",
+             "V06", "V10", "B04", "B05", "B08", "X06", "X10", "M02", "M03", "M04", "M07", "M08", "M09",
+             "F02", "F03", "F05", "F06", "F07", "F10"}
 MIN_STYLES = 15                      # Wan, 26 Oct 2026: "at least 15 styles from 99 styles apply to the motion video"
 CAPTION = ("C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10")
 TRANSITION = ("M02", "M08", "M09")
@@ -180,7 +185,7 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
                 continue
             if not _holds(needs, sc, ctx):
                 continue
-            score = 10 + (6 if needs else 0) + (3 if code in NATIVE_TEXT else 0)
+            score = 10 + (6 if needs else 0) + (3 if code in NATIVE_TEXT else 0) + (4 if code in BUILDABLE else 0)
             if code == "V03" and len((sc.get("heading") or "").split()) > 3:
                 continue
             if code == "V01" and len((sc.get("heading") or "").split()) > 4:

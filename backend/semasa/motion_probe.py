@@ -39,6 +39,16 @@ JS = r"""
     }
     return true;
   };
+  const clipped = (el, r) => {            // what a viewer sees of a box: cut by every ancestor that hides its overflow
+    let x1 = r.left, y1 = r.top, x2 = r.right, y2 = r.bottom;
+    for (let e = el.parentElement; e && e !== document.documentElement; e = e.parentElement) {
+      const cs = getComputedStyle(e);
+      if (cs.overflow === 'visible' && cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+      const b = e.getBoundingClientRect();
+      x1 = Math.max(x1, b.left); y1 = Math.max(y1, b.top); x2 = Math.min(x2, b.right); y2 = Math.min(y2, b.bottom);
+    }
+    return {left: x1, top: y1, width: Math.max(0, x2 - x1), height: Math.max(0, y2 - y1)};
+  };
   const boxes = [];
   const label = el => (el.id || el.className || el.tagName).toString().slice(0, 40);
   document.querySelectorAll('#root *').forEach(el => {
@@ -55,7 +65,7 @@ JS = r"""
       }
     }
     if (!own.length && getComputedStyle(el).backgroundImage.includes('url(')) {
-      const r = el.getBoundingClientRect();
+      const r = clipped(el, el.getBoundingClientRect());
       if (r.width > 20 && r.height > 20) {
         boxes.push({owner: el, name: label(el), kind: 'photo', x: r.left, y: r.top, w: r.width, h: r.height, text: ''});
       }

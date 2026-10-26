@@ -235,7 +235,7 @@ def build_script_system(row: dict[str, Any], extra: str, count: int = 4) -> str:
     return SCRIPT_SYSTEM.format(length=length, count=count, kickers=" · ".join(motion_auto.LABELS[lang][:count]),
                                 flow=FLOW if count > 1 else FLOW_TEASER, pace=pace, voice=voice_line(stream, lang),
                                 extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "") + motion_styles.prompt(row)
-                                + "\n" + antislop.PROMPT_FILM)
+                                + antislop.prompt_block(film=True))
 
 
 def words_on_screen(sc: dict[str, Any]) -> int:
@@ -1066,6 +1066,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             own_get: Any = None) -> bool:
     now = now or datetime.now(UTC)
     folder = (workdir or Path(tempfile.mkdtemp(prefix="motion-"))) / str(row["id"])[:8]
+    antislop.begin(antislop.load(store))
     try:
         motion_styles.validate_export(row)
         row = hydrate_evidence(store, row)
@@ -1310,6 +1311,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                 "id", "role", "kicker", "heading", "lines", "narration", "start", "duration", "photo")}
                        for sc in scenes],
         }).eq("id", row["id"]).execute()
+        antislop.finish(store, "film", row["id"])
         db.log_event(store, "info", "media", "motion.done", f"Motion siap: {(out.get('title') or row.get('brief') or '')[:80]}",
                      ref_table=TABLE, ref_id=row["id"])
         return True

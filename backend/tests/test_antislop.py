@@ -58,3 +58,68 @@ def test_the_plan_of_a_film_is_cleaned_too():
                 {"heading": f"Fakta — penting {i}", "lines": ["Tips dan obat"], "narration": ""} for i in range(4)]}
     plan = motion.plan_scenes(LLM(), {"voice": "off", "language": "bm"}, "", "", "")
     assert plan["scenes"][0]["heading"] == "Fakta, penting 0" and plan["scenes"][0]["lines"] == ["Tip dan ubat"]
+
+
+class _Log:
+    """A store that keeps what is inserted into the anti-slop log."""
+    def __init__(self):
+        self.rows = []
+
+    def table(self, name):
+        log = self
+
+        class T:
+            def insert(self, row):
+                log.rows.append((name, row))
+                return self
+
+            def execute(self):
+                return self
+        return T()
+
+
+def test_the_levels_decide_what_a_writer_is_told_and_what_is_edited():
+    dirty = "Let's dive in. Fakta — penting. In order to lulus, semak label."
+    try:
+        antislop.begin({"level": "full"})
+        assert "NOT A MODEL" in antislop.prompt_block() and "owner's own voice" in antislop.prompt_block(film=True)
+        assert antislop.clean(dirty) == "Fakta, penting. To lulus, semak label."
+        antislop.begin({"level": "clean"})
+        assert antislop.prompt_block() == "" and antislop.clean(dirty) == "Fakta, penting. To lulus, semak label."
+        antislop.begin({"level": "off"})
+        assert antislop.prompt_block() == "" and antislop.clean(dirty) == dirty, "off is the control: nothing is edited"
+        assert antislop.level_of({"level": "nonsense"}) == "full" and antislop.level_of(None) == "full"
+        assert antislop.level_of("clean") == "clean"
+    finally:
+        antislop.begin(None)
+
+
+def test_every_output_is_scored_before_and_after_the_edits_and_logged_with_its_level():
+    store = _Log()
+    try:
+        antislop.begin({"level": "clean"})
+        antislop.clean("Fakta — satu. Harap membantu.")
+        antislop.clean("Bersih sahaja.")
+        antislop.finish(store, "post", "p1")
+        (table, row), = store.rows
+        assert table == "semasa_antislop_log" and row["kind"] == "post" and row["ref"] == "p1" and row["level"] == "clean"
+        assert row["chars"] == len("Fakta — satu. Harap membantu.") + len("Bersih sahaja.")
+        assert row["raw_hits"] >= 2 and row["final_hits"] == 0, "a dash and a closer were in it; both were edited out"
+        antislop.finish(store, "post", "p2")
+        assert len(store.rows) == 1, "nothing written since the last output, so no empty row"
+        antislop.begin({"level": "off"})
+        antislop.clean("Fakta — satu.")
+        antislop.finish(store, "film", "f1")
+        assert store.rows[-1][1]["level"] == "off" and store.rows[-1][1]["final_hits"] == store.rows[-1][1]["raw_hits"] == 1
+    finally:
+        antislop.begin(None)
+
+
+def test_a_missing_log_table_never_breaks_a_post():
+    class Broken:
+        def table(self, name):
+            raise RuntimeError("no such table")
+    antislop.begin({"level": "full"})
+    antislop.clean("Fakta — satu.")
+    antislop.finish(Broken(), "post", "p1")
+    antislop.begin(None)

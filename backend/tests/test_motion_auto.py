@@ -890,3 +890,20 @@ def test_the_big_number_the_pictures_the_3d_tilt_and_the_footnote_reference():
     assert "rotationY:-16" in html and "B05" in rep["built"], "the photo tilts in 3D"
     body = html.split('<div id="root"')[1]
     assert body.index('class="stat"') < body.index('class="pub s1-pub"'), "the facts come first, the reference closes the column"
+
+
+def test_a_picture_shrinks_before_a_supporting_line_leaves_the_screen():
+    lines = ["Bukti dipetakan kepada laluan hasil buruk yang diketahui", "Setiap bahan dinilai mengikut kajian yang diterbitkan",
+             "Data terkini menunjukkan risiko kepada kulit sensitif"]
+    plan = {"scenes": {"s1": []}, "video": {}}
+
+    def built(n):
+        sc = [{"id": "s1", "role": "explain", "start": 0, "duration": 12, "kicker": "x", "audio": "a.mp3", "audio_s": 10,
+               "heading": "Kenapa bahan ini dikaji dengan teliti oleh pengawal selia?", "lines": lines[:n],
+               "photo": "assets/p.jpg", "narration": "x"}]
+        html, rep = _rich(sc, plan)
+        return rep["dropped_lines"], int(re.search(r'id="s1-ph"[^>]*height:(\d+)px', html).group(1))
+
+    (none, h1), (none2, h2), (none3, h3) = built(1), built(2), built(3)
+    assert none == none2 == none3 == [], "film 77dcdef0 of 26 Oct lost its second line here; now the picture gives way"
+    assert h1 > h2 > h3 > 0, "the more lines, the smaller the picture"

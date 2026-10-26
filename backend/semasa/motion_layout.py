@@ -51,6 +51,7 @@ GRADIENT = {d: gradients(d, DEFAULT_AMBIENT)[0] for d in ("bright-editorial", "c
 GRADIENT_ALT = {d: gradients(d, DEFAULT_AMBIENT)[1] for d in ("bright-editorial", "continuous-line")}
 SAFE = {"left": 0.08, "right": 0.14, "top": 0.13, "bottom": 0.23}
 LIST_TWO = 5                      # a counted list of this many lines or more is set in two columns
+PHOTO_MIN = 0.16                  # the smallest a picture is shrunk to (share of the frame height) to keep every line on screen
 LIST_MIN = 4                      # lines from which a scene is a counted list: all of them shown, nothing else beside them
 LANE = (0.78, 0.115)              # the subtitle lane of a narrated film: top and height as fractions of the frame
 GAP = 0.028                       # between blocks, as a fraction of the frame width
@@ -533,6 +534,11 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                     continue
             if sizes or (not lines and not texts):
                 break
+            if photo and not side and photo_h > PHOTO_MIN * h:
+                # the picture shrinks before any line leaves the screen (Wan, 26 Oct 2026: "ikut kesesuaian, if line many shrink")
+                photo_h = max(PHOTO_MIN * h, photo_h * 0.82)
+                photo_w = box_w if h >= w else min(box_w, photo_h * 1.6)
+                continue
             if lines:
                 dropped.append(f"{sid}: {lines.pop()[:40]}")
                 continue

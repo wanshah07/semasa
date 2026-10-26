@@ -22,6 +22,19 @@ with the MIT licence beside the core. `CLAUDE.md` loads them for any session in 
 **3. The page's own words.** The em dashes in text a person reads (the card warnings, two Billing selects, the Fragrance description, the
 error line) are plain punctuation now.
 
+## Levels, to see whether it is better (Wan, 26 Oct 2026: "can buat berperingkat so we know if anti slop better or not")
+
+`settings.antislop.level` is set in Tetapan (card "Anti slop berperingkat") and read by the worker before every post and film:
+- `off`: the writers are not told the rules and nothing is edited. This is the control.
+- `clean`: the machine edits only (`clean()`), the writers are not told the rules.
+- `full`: the rules in every writer's prompt and the machine edits. The default, and what ran from 26 Oct.
+
+Every post and film is scored by `antislop.hits()` (each edit `clean()` would make plus each tell that needs a person), once as the writer
+wrote it and once after the edits, and one row goes to `semasa_antislop_log` (`supabase/052`) with the level in force. The card shows, per
+level, outputs and slop per 1,000 characters written and left. Read it only once two levels have at least 10 outputs each: the three
+levels run one after another on different ideas, so a small count is noise. The numbers count patterns, not quality; read a few of the
+actual captions beside them before deciding.
+
 ## Where Wan's own voice outranks the filter
 
 The skill says so itself (R-37: the owner's voice sample wins, and the conflict is named, not settled silently). These stay:

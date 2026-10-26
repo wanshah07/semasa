@@ -353,7 +353,7 @@ def propose(llm: Any, video: dict[str, Any], segs: list[dict[str, Any]], duratio
     body, cut = transcript_text(segs)
     stream = video.get("stream") or "regulab"
     system = PROPOSE.format(min=MIN_CLIP, max=MAX_CLIP, voice=VOICE.get(stream, VOICE["regulab"]))
-    system += "\n\n" + antislop.PROMPT
+    system += antislop.prompt_block()
     details = (f"TITLE: {video.get('title') or ''}\nCHANNEL: {video.get('channel') or ''}\n"
                f"DURATION: {fmt_ts(duration or 0)}\nWAN'S NOTE: {video.get('note') or '(none)'}\n"
                + ("NOTE: the transcript below is cut short; choose from what is there.\n" if cut else ""))

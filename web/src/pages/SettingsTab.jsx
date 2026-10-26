@@ -6,6 +6,7 @@ import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { BUILT_IN_INDO } from "../lib/compliance";
 import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
+import { LEVELS, levelOf, summarise, verdict } from "../lib/antislop";
 import { opensAt, publishingOn } from "../lib/publishing";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -133,6 +134,7 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
       <FaqCategories settings={settings} save={save} onToast={onToast} />
       <HalalExecutiveFaq settings={settings} save={save} onToast={onToast} />
       <MotionPrompt settings={settings} save={save} onToast={onToast} />
+      <AntislopLevels settings={settings} save={save} onToast={onToast} />
     </main>
   );
 }
@@ -315,6 +317,78 @@ function MotionPrompt({ settings, save, onToast }) {
       <TextArea rows={6} value={text} onChange={(e) => setText(e.target.value)} maxLength={6000}
         placeholder={t("Cth: Mula dengan hook 3 patah perkataan, satu nombor besar setiap babak, tutup dengan nama instrumen.", "E.g. Open with a three-word hook, one big number a scene, close on the instrument's name.")} />
       <Button size="sm" onClick={submit} disabled={busy}><Save size={12} /> {t("Simpan", "Save")}</Button>
+    </Card>
+  );
+}
+
+/* Anti slop in levels (supabase/052, backend/semasa/antislop.py). The worker reads the level before every post and film it writes and
+   keeps the slop it found, before and after its own edits. Run each level for a while, then read the table: the level with the least
+   slop left per 1,000 characters, once it has enough outputs, is the better one. */
+function AntislopLevels({ settings, save, onToast }) {
+  const { t } = useLang();
+  const live = levelOf(settings.antislop);
+  const [level, setLevel] = useState(live);
+  const [rows, setRows] = useState([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setLevel(live); }, [live]);
+  useEffect(() => {
+    let on = true;
+    supabase.from(TABLES.antislopLog).select("level,chars,raw_hits,final_hits").order("at", { ascending: false }).limit(1000)
+      .then(({ data }) => { if (on) setRows(data || []); });
+    return () => { on = false; };
+  }, []);
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await save("antislop", { level });
+      onToast(t("Disimpan: post dan filem seterusnya ditulis pada aras ini.", "Saved: the next posts and films are written at this level."), "ok");
+    } catch (e) { onToast(/0 rows/i.test(e.message) ? t("Jalankan supabase/052_antislop_levels.sql dahulu.", "Run supabase/052_antislop_levels.sql first.") : e.message, "danger"); }
+    setBusy(false);
+  };
+  const names = {
+    off: t("Mati: tiada peraturan, tiada suntingan (kawalan)", "Off: no rules, no edits (the control)"),
+    clean: t("Bersih: suntingan mesin sahaja", "Clean: the machine edits only"),
+    full: t("Penuh: peraturan kepada penulis + suntingan mesin", "Full: the rules to the writers + the machine edits"),
+  };
+  const summary = summarise(rows), v = verdict(summary);
+  const num = (x) => (x === null ? "-" : x.toFixed(2));
+  return (
+    <Card className="space-y-3 p-5" data-antislop-levels>
+      <div>
+        <h3 className="text-lg">{t("Anti slop berperingkat", "Anti slop in levels")}</h3>
+        <p className="mt-1 text-[12px] text-muted">{t("Pilih satu aras dan biarkan ia menulis beberapa post dan filem. Pekerja menyimpan berapa banyak slop yang ditemuinya sebelum dan selepas suntingannya, jadi jadual di bawah menunjukkan aras mana yang lebih baik.",
+          "Pick a level and let it write some posts and films. The worker keeps how much slop it found before and after its own edits, so the table below shows which level is better.")}</p>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block"><Label>{t("Aras sekarang", "Level now")}</Label>
+          <Select value={level} onChange={setLevel} options={LEVELS.map((l) => [l, names[l]])} /></label>
+        <Button size="sm" onClick={submit} disabled={busy || level === live}><Save size={12} /> {t("Simpan", "Save")}</Button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-[12.5px]">
+          <thead className="text-muted"><tr>
+            <th className="py-1 pr-3 font-medium">{t("Aras", "Level")}</th>
+            <th className="py-1 pr-3 font-medium">{t("Hasil", "Outputs")}</th>
+            <th className="py-1 pr-3 font-medium">{t("Slop ditulis / 1,000 aksara", "Slop written / 1,000 chars")}</th>
+            <th className="py-1 font-medium">{t("Slop tinggal / 1,000 aksara", "Slop left / 1,000 chars")}</th>
+          </tr></thead>
+          <tbody>
+            {summary.map((s) => (
+              <tr key={s.level} className={`border-t border-line ${v.best === s.level ? "font-medium text-accent" : ""}`}>
+                <td className="py-1.5 pr-3">{s.level}{s.level === live ? ` · ${t("sekarang", "now")}` : ""}</td>
+                <td className="py-1.5 pr-3">{s.outputs}{!s.enough && s.outputs > 0 ? ` · ${t("belum cukup", "too few yet")}` : ""}</td>
+                <td className="py-1.5 pr-3">{num(s.rawPer1k)}</td>
+                <td className="py-1.5">{num(s.finalPer1k)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11.5px] text-muted">{v.ready
+        ? t(`Setakat ini aras "${v.best}" meninggalkan slop paling sedikit.`, `So far the "${v.best}" level leaves the least slop.`)
+        : t("Belum cukup untuk dibandingkan: perlukan sekurang-kurangnya 10 hasil pada dua aras.", "Not enough to compare yet: it needs at least 10 outputs on two levels.")}
+        {" "}{t("Slop ditulis = apa yang penulis hasilkan; slop tinggal = selepas suntingan mesin (hanya yang perlu mata manusia).",
+          "Slop written = what the writer produced; slop left = after the machine edits (only what needs a person's eye).")}</p>
     </Card>
   );
 }

@@ -12,6 +12,14 @@ Three pieces, one idea each:
            attribution), read from rules/compliance.json so the page's own scan and this module name the same tells; they
            are warnings in the post editor, never a block
 
+Levels (Wan, 26 Oct 2026: "can buat berperingkat so we know if anti slop better or not"), set in Tetapan, read by the worker:
+  off    nothing: the writers are not told the rules and nothing is edited (the control to compare against)
+  clean  the machine edits only, the writers are not told the rules
+  full   the rules in every writer's prompt AND the machine edits (the default)
+Every text the worker writes is scored before and after the edits (hits: the edits clean() makes plus the tells that need
+a person), and each output's score goes to semasa_antislop_log with the level in force, so the three levels can be compared
+on real output.
+
 Wan's own voice outranks the filter (the skill's own rule, R-37): the film hooks (Tahukah anda, Amaran, Berita terkini, Did
 you know, Warning, Breaking news), the casual connecting sentences between scenes and the closing line stay as he asked.
 """
@@ -19,6 +27,7 @@ you know, Warning, Breaking news), the casual connecting sentences between scene
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from . import compliance
 
@@ -43,6 +52,55 @@ PROMPT_FILM = PROMPT + """
 - A film keeps its hook (Tahukah anda / Amaran / Berita terkini; Did you know / Warning / Breaking news) and the short
   connecting sentences between scenes: those are the owner's own voice, not slop."""
 
+LEVELS = ("off", "clean", "full")
+DEFAULT_LEVEL = "full"
+_state: dict[str, Any] = {"level": DEFAULT_LEVEL, "chars": 0, "raw": 0, "final": 0}
+LOG = "semasa_antislop_log"
+
+
+def level_of(value: Any) -> str:
+    """The level a stored setting names: {"level": "clean"} or "clean"; anything unknown is the default."""
+    v = (value.get("level") if isinstance(value, dict) else value)
+    return v if v in LEVELS else DEFAULT_LEVEL
+
+
+def level() -> str:
+    return _state["level"]
+
+
+def load(store: Any) -> Any:
+    """The `antislop` setting from the database; the default when it cannot be read."""
+    try:
+        rows = store.table("semasa_settings").select("value").eq("key", "antislop").execute().data or []
+        return (rows[0].get("value") if rows else None) or {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def begin(setting: Any = None) -> str:
+    """Start one output (a post, a film): take the level from the setting and zero the score."""
+    _state.update(level=level_of(setting), chars=0, raw=0, final=0)
+    return _state["level"]
+
+
+def prompt_block(film: bool = False) -> str:
+    """What is added to a writer's system prompt: the rules at level full, nothing otherwise."""
+    return ("\n\n" + (PROMPT_FILM if film else PROMPT)) if _state["level"] == "full" else ""
+
+
+def finish(store: Any, kind: str, ref: Any) -> None:
+    """Write the score of the output just made (never raises; a missing table only means no score is kept)."""
+    row = {"kind": kind, "ref": str(ref or ""), "level": _state["level"], "chars": _state["chars"],
+           "raw_hits": _state["raw"], "final_hits": _state["final"]}
+    _state.update(chars=0, raw=0, final=0)
+    if not row["chars"]:
+        return
+    try:
+        store.table(LOG).insert(row).execute()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 _EMOJI = r"[\U0001F000-\U0001FAFF☀-➿⭐⬆✅❌‼⁉️‍]"
 _LINE_EMOJI = re.compile(rf"(?m)^[ \t]*(?:{_EMOJI})+[ \t]*")
 _DASH = re.compile(r"\s*(?:—|--+| – )\s*")
@@ -65,11 +123,28 @@ def _as_cased(match: re.Match[str], to: str) -> str:
     return to[:1].upper() + to[1:] if match.group(0)[:1].isupper() else to
 
 
+def hits(text: str) -> int:
+    """How much slop `text` holds: every edit clean() would make plus every tell that needs a person."""
+    if not text:
+        return 0
+    n = len(_DASH.findall(text)) + len(_LINE_EMOJI.findall(text)) + len(_OPENER.findall(text)) + len(_LEAD_INS.findall(text))
+    n += sum(len(rx.findall(text)) for rx, _ in _FILLERS) + len(_CLOSER.findall(text))
+    return n + len(tells(text))
+
+
 def clean(text: str) -> str:
-    """`text` with the machine-safe slop taken out. Nothing is added, no number or name is changed, and a text with none of
-    these in it comes back as it was."""
+    """`text` with the machine-safe slop taken out (at level off it is only counted). Nothing is added, no number or name is
+    changed, and a text with none of these in it comes back as it was."""
     if not text:
         return text
+    out = text if _state["level"] == "off" else _clean(text)
+    _state["chars"] += len(text)
+    _state["raw"] += hits(text)
+    _state["final"] += hits(out)
+    return out
+
+
+def _clean(text: str) -> str:
     out = _DASH.sub(", ", text)
     out = re.sub(r",\s*([.,;:!?])", r"\1", out)                       # ", ." left by a dash at the end of a clause
     out = re.sub(r"(?m)^[ \t]*,\s*", "", out)                         # a dash that opened a line

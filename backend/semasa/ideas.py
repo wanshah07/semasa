@@ -314,7 +314,7 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
         system = LINKEDIN_SYSTEM % "; ".join(f"{k} = {v}" for k, v in sorted(angles.items()))
     else:
         system = REGULAB_SYSTEM % DOMAINS
-    system += "\n\n" + antislop.PROMPT
+    system += antislop.prompt_block()
     from . import watch
     issuer = watch.is_issuer(idea.get("source_name"))
     lines = [
@@ -485,6 +485,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         raise IdeaError(f"this news already has a {earlier['status']} post for this stream "
                         f"({earlier.get('hook') or earlier.get('date') or earlier['id']}), so it is not written again. "
                         "For a follow-up, add a note saying what the new post should say, then Cuba lagi.")
+    antislop.begin(settings.get("antislop"))
     brand = settings.get("brand") or {}
     indo_extra = (settings.get("bahasa") or {}).get("indo")
     stream = idea.get("stream") or "regulab"
@@ -561,6 +562,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         has_jobs = False
         store.table(db.IDEAS).update({"brief": {**brief0, "partial_post_id": post_id}}) \
             .eq("id", idea["id"]).execute()
+    antislop.finish(store, "post", post_id)
 
     chosen = my_designs.for_idea(store, idea)      # the idea's look, or the default "My design" when it asked for none
     jobs = [] if has_jobs or kept else media_jobs(idea, source, out, post_id)
@@ -641,6 +643,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
         raise IdeaError(llm.why_off())
     if post.get("status") != "draft":
         raise IdeaError("only a draft is rewritten: put the post back to draft first, then ask again")
+    antislop.begin(settings.get("antislop"))
     stream = post.get("stream") or "regulab"
     lang = post.get("lang") or ("en" if stream == "linkedin" else "bm")
     brand = settings.get("brand") or {}
@@ -650,7 +653,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
         system = LINKEDIN_SYSTEM % "; ".join(f"{k} = {v}" for k, v in sorted(angles.items()))
     else:
         system = REGULAB_SYSTEM % DOMAINS
-    system += "\n\n" + antislop.PROMPT + compliance.avoid_line(indo_extra) + writer_block(settings.get("writer"), stream)
+    system += antislop.prompt_block() + compliance.avoid_line(indo_extra) + writer_block(settings.get("writer"), stream)
     plat = "linkedin" if stream == "linkedin" else "instagram"
     caption = ((post.get("text") or {}).get(lang) or {}).get(plat) or ""
     user = REVISE_ASK % (str(post.get("revise_note") or "").strip()[:800], post.get("hook") or "", post.get("citation") or "",
@@ -679,6 +682,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
            .execute().data or [])
     if not got:
         raise IdeaError("the post changed while it was being rewritten (approved, or edited): nothing was written")
+    antislop.finish(store, "post", post["id"])
     db.log_event(store, "info", "post", "post.revised", f"Ditulis semula dengan nota: {update['hook'][:80]}",
                  ref_table="semasa_posts", ref_id=post["id"])
 

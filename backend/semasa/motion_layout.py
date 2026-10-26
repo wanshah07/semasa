@@ -144,7 +144,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     box_h = h * ((LANE[0] - 0.02 if narrated else 1 - SAFE["bottom"]) - SAFE["top"])
     gap = w * GAP
     video = plan.get("video") or {}
-    caption = video.get("captions") if video.get("captions") in {"C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10"} else "C05"
+    captions = {"C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10"}
+    caption = video.get("captions") if video.get("captions") in captions else "C05"
     transition = video.get("transition") or "M09"
     finish = FILTERS.get(video.get("finish") or "", FILTERS["F07"])
     accent, ink = palette["accent"], palette["ink"]
@@ -186,8 +187,9 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         f".flash{{position:absolute;left:0;top:0;width:{w}px;height:{h}px;background:{accent};opacity:0;"
         "pointer-events:none;z-index:30;}",
         f".fx{{position:absolute;left:0;top:0;width:{w}px;height:{h}px;overflow:hidden;pointer-events:none;}}",
-        f".gridx{{position:absolute;inset:0;background-image:repeating-linear-gradient(0deg,{rgba(accent, .11)} 0 2px,transparent 2px "
-        f"{72 * scale:.0f}px),repeating-linear-gradient(90deg,{rgba(accent, .11)} 0 2px,transparent 2px {72 * scale:.0f}px);}}",
+        f".gridx{{position:absolute;inset:0;background-image:"
+        f"repeating-linear-gradient(0deg,{rgba(accent, .11)} 0 2px,transparent 2px {72 * scale:.0f}px),"
+        f"repeating-linear-gradient(90deg,{rgba(accent, .11)} 0 2px,transparent 2px {72 * scale:.0f}px);}}",
         f".ln{{position:absolute;left:-12%;width:76%;height:{max(2, 3 * scale):.0f}px;background:{rgba(accent, .22)};"
         "transform:rotate(-16deg);}",
         ".pl{position:absolute;top:0;width:50.5%;height:100%;background:#eef8f1;z-index:6;}",
@@ -203,7 +205,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         f".stp{{position:relative;box-sizing:border-box;width:100%;padding-left:{step_pad:.0f}px;min-height:{bd:.0f}px;}}",
         f".bd{{position:absolute;left:0;top:0;width:{bd:.0f}px;height:{bd:.0f}px;border-radius:50%;background:{accent};"
         f"color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:{46 * scale:.0f}px;}}",
-        f".cn{{position:absolute;left:{bd / 2 - 1.5 * scale:.0f}px;top:{bd:.0f}px;bottom:-{gap:.0f}px;width:{max(3, 4 * scale):.0f}px;"
+        f".cn{{position:absolute;left:{bd / 2 - 1.5 * scale:.0f}px;top:{bd:.0f}px;bottom:-{gap:.0f}px;"
+        f"width:{max(3, 4 * scale):.0f}px;"
         f"background:{rgba(accent, .45)};transform-origin:50% 0;}}",
     ]
     parts, tw = [], []
@@ -231,7 +234,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         if lead and dur < 3.6:
             lead = min(lead, 0.4)
 
-        def column(lines_now: list[str]) -> tuple[list[tuple[str, float, float]], bool, bool, bool]:
+        def column(lines_now: list[str], eff: set[str] = eff, heading: str = heading, px_h: float = px_h, px_l: float = px_l,
+                   is_typed: bool = is_typed) -> tuple[list[tuple[str, float, float]], bool, bool, bool]:
             # two option cards need every word of the pair to fit a half-width card: a word wider than that would break mid-word
             longest = max((len(x) for ln in lines_now[:2] for x in ln.split()), default=0)
             cards = ("V05" in eff and len(lines_now) >= 2
@@ -302,7 +306,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         if caption == "C06" and lines and "H10" not in eff:
             block.append(f'<div class="rule" id="{sid}-r"></div>')
 
-        def para(ln: str, size: float, j: int, klass: str) -> str:
+        def para(ln: str, size: float, j: int, klass: str, sid: str = sid, eff: set[str] = eff, steps: bool = steps,
+                 numbers: bool = numbers, is_typed: bool = is_typed) -> str:
             en = lang == "both" and " / " in ln
             primary, _, secondary = ln.partition(" / ") if en else (ln, "", "")
             marker = '<span class="dot"></span>' if ("V04" in eff and not steps) else ""
@@ -339,7 +344,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         if "H06" in eff:
             extras += f'<div class="pl" id="{sid}-pa" style="left:0"></div><div class="pl" id="{sid}-pb" style="right:0"></div>'
         if "H05" in eff:
-            extras += f'<div class="cd" id="{sid}-cd">' + "".join(f'<span id="{sid}-cd{n}">{n}</span>' for n in (3, 2, 1)) + "</div>"
+            digits = "".join(f'<span id="{sid}-cd{n}">{n}</span>' for n in (3, 2, 1))
+            extras += f'<div class="cd" id="{sid}-cd">{digits}</div>'
         fx = ""
         if "X10" in eff:
             fx += f'<div class="gridx" id="{sid}-gx"></div>'
@@ -391,8 +397,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                           f'ease:"back.out(1.5)",stagger:.07}},{th:g});')
             elif "M07" in eff:
                 tw.append(f'tl.fromTo("#{sid}-h",{{opacity:0}},{{opacity:1,duration:.12}},{th:g});')
-                tw.append(f'tl.to("#{sid}-h",{{keyframes:[{{x:{-16 * scale:.0f},duration:.05}},{{x:{12 * scale:.0f},duration:.05}},'
-                          f'{{x:{-7 * scale:.0f},duration:.05}},{{x:{3 * scale:.0f},duration:.05}},{{x:0,duration:.05}}]}},{th + .1:g});')
+                jolt = ",".join(f"{{x:{x * scale:.0f},duration:.05}}" for x in (-16, 12, -7, 3, 0))
+                tw.append(f'tl.to("#{sid}-h",{{keyframes:[{jolt}]}},{th + .1:g});')
             else:
                 dy = y0 if not dx else 0
                 tw.append(f'tl.fromTo("#{sid}-h",{{opacity:{opening},x:{dx:.0f},y:{dy:.0f}}},{{opacity:1,x:0,y:0,'
@@ -408,8 +414,9 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         tl_start = t0 + .35 + lead
         gap_in = 0.5 if not sc.get("narration") else 0.35
         if cards:
-            tw.append(f'tl.fromTo(".{sid}-cd0",{{opacity:0,x:{-box_w * .5:.0f}}},{{opacity:1,x:0,duration:.6,ease:"power3.out"}},{tl_start:g});')
-            tw.append(f'tl.fromTo(".{sid}-cd1",{{opacity:0,x:{box_w * .5:.0f}}},{{opacity:1,x:0,duration:.6,ease:"power3.out"}},{tl_start:g});')
+            for k, side in ((0, -1), (1, 1)):
+                tw.append(f'tl.fromTo(".{sid}-cd{k}",{{opacity:0,x:{side * box_w * .5:.0f}}},'
+                          f'{{opacity:1,x:0,duration:.6,ease:"power3.out"}},{tl_start:g});')
         if is_typed and lines:
             chars = sum(len(re.sub(r"\s", "", ln.partition(" / ")[0])) for ln in lines)
             per = max(0.012, min(0.045, min(3.0, dur * .6) / max(chars, 1)))
@@ -419,12 +426,14 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                       f'stagger:{gap_in:g}}},{tl_start:g});')
         if steps:
             tw.append(f'tl.fromTo(".{sid}-bd",{{scale:0}},{{scale:1,duration:.4,ease:"back.out(2)",stagger:{gap_in:g}}},{tl_start:g});')
-            tw.append(f'tl.fromTo(".{sid}-cn",{{scaleY:0}},{{scaleY:1,duration:.4,ease:"power2.out",stagger:{gap_in:g}}},{tl_start + .2:g});')
+            tw.append(f'tl.fromTo(".{sid}-cn",{{scaleY:0}},{{scaleY:1,duration:.4,ease:"power2.out",stagger:{gap_in:g}}},'
+                      f'{tl_start + .2:g});')
         if track:
             for k in range(len(lines)):
                 tw.append(f'tl.to("#{sid}-f{k}",{{scaleX:1,duration:.5,ease:"power2.out"}},{tl_start + k * gap_in:g});')
         if numbers:
-            tw.append(f'tl.fromTo(".{sid}-n",{{scale:0}},{{scale:1,duration:.5,ease:"back.out(2.4)",stagger:.18}},{tl_start + .3:g});')
+            tw.append(f'tl.fromTo(".{sid}-n",{{scale:0}},{{scale:1,duration:.5,ease:"back.out(2.4)",stagger:.18}},'
+                      f'{tl_start + .3:g});')
         if caption == "C06" and lines and "H10" not in eff:
             tw.append(f'tl.fromTo("#{sid}-r",{{scaleX:0}},{{scaleX:1,duration:.5,ease:"power2.out"}},{t0 + .3 + lead:g});')
         if photo:
@@ -432,12 +441,15 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             if lead:
                 tw.append(f'tl.fromTo("#{sid}-ph",{{opacity:0}},{{opacity:1,duration:.35}},{t0 + lead:g});')
             if "L06" in eff:
-                tw.append(f'tl.fromTo("#{sid}-ph",{{scale:1.16,opacity:0}},{{scale:1,opacity:1,duration:.7,ease:"power3.out"}},{t0 + .1 + lead:g});')
-                tw.append(f'tl.fromTo("#{sid}-photo",{{scale:1.45}},{{scale:{zoom},duration:{dur:g},ease:"power2.out"}},{t0 + lead:g});')
+                tw.append(f'tl.fromTo("#{sid}-ph",{{scale:1.16,opacity:0}},{{scale:1,opacity:1,duration:.7,ease:"power3.out"}},'
+                          f'{t0 + .1 + lead:g});')
+                tw.append(f'tl.fromTo("#{sid}-photo",{{scale:1.45}},{{scale:{zoom},duration:{dur:g},ease:"power2.out"}},'
+                          f'{t0 + lead:g});')
             elif "X06" in eff:
-                tw.append(f'tl.fromTo(".{sid}-t",{{x:(i)=>[-1,1,0][i%3]*{220 * scale:.0f},y:(i)=>[1,-1,0][Math.floor(i/3)%3]*{220 * scale:.0f},'
-                          f'rotation:(i)=>(i%2?1:-1)*20,opacity:0}},{{x:0,y:0,rotation:0,opacity:1,duration:.7,ease:"back.out(1.3)",'
-                          f'stagger:.05}},{t0 + .1 + lead:g});')
+                far = f"{220 * scale:.0f}"
+                tw.append(f'tl.fromTo(".{sid}-t",{{x:(i)=>[-1,1,0][i%3]*{far},y:(i)=>[1,-1,0][Math.floor(i/3)%3]*{far},'
+                          f'rotation:(i)=>(i%2?1:-1)*20,opacity:0}},{{x:0,y:0,rotation:0,opacity:1,duration:.7,'
+                          f'ease:"back.out(1.3)",stagger:.05}},{t0 + .1 + lead:g});')
             else:
                 tw.append(f'tl.fromTo("#{sid}-photo",{{scale:1}},{{scale:{zoom},duration:{dur:g},ease:"none"}},{t0:g});')
             if "B05" in eff and "X06" not in eff and "L06" not in eff:

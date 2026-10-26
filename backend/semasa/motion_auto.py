@@ -98,8 +98,8 @@ RECIPES: dict[str, tuple[str, str, str]] = {
 NATIVE_TEXT = {"H01", "H03", "V01", "V03"}
 # the styles the worker's own layout (motion_layout.compose) builds, so a film that falls back to it still shows them; the chooser
 # prefers these (Wan, 26 Oct 2026: "make sure the styles are included, not using layman safe layout only")
-BUILDABLE = {"H02", "H05", "H06", "H08", "H10", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10", "L06", "V02", "V04", "V05",
-             "V06", "V10", "B04", "B05", "B08", "X06", "X10", "M02", "M03", "M04", "M07", "M08", "M09",
+BUILDABLE = {"H02", "H05", "H06", "H08", "H10", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10", "L06", "V02", "V04",
+             "V05", "V06", "V10", "B04", "B05", "B08", "X06", "X10", "M02", "M03", "M04", "M07", "M08", "M09",
              "F02", "F03", "F05", "F06", "F07", "F10"}
 MIN_STYLES = 15                      # Wan, 26 Oct 2026: "at least 15 styles from 99 styles apply to the motion video"
 CAPTION = ("C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10")

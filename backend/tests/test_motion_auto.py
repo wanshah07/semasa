@@ -465,8 +465,8 @@ RICH_PLAN = {"scenes": {"s1": ["H05", "L06", "M07", "B05"], "s2": ["V05", "V02",
 
 def _rich(scenes, plan=None, size=(1080, 1920)):
     return motion_layout.compose(scenes=scenes + [{"id": "brand-outro", "start": 28, "duration": 3, "heading": "x"}],
-                                 total=31, w=size[0], h=size[1], lang="bm", plan=plan or RICH_PLAN, palette=motion.PALETTE["regulab"],
-                                 gsap=motion.GSAP, html_lang="ms", resolution="portrait")
+                                 total=31, w=size[0], h=size[1], lang="bm", plan=plan or RICH_PLAN,
+                                 palette=motion.PALETTE["regulab"], gsap=motion.GSAP, html_lang="ms", resolution="portrait")
 
 
 def test_the_safe_layout_builds_the_styles_the_film_was_given_not_just_the_plain_column():
@@ -475,9 +475,10 @@ def test_the_safe_layout_builds_the_styles_the_film_was_given_not_just_the_plain
     scenes[1]["lines"] = ["Syarikat kekal peduli 100% keselamatan", "Label dan tuntutan mesti patuh"]
     html, rep = _rich(scenes)
     assert rep["not_built"] == [], "every style in the plan has a builder"
-    assert {"H05", "H06", "L06", "M04", "M07", "V02", "V05", "V06", "V10", "B04", "B05", "B08", "X06", "X10", "C07"} <= set(rep["built"])
-    for marker in ('id="s1-cd"', 'id="s4-pa"', 'class="k7"', 'class="trk"', 'class="bd s3-bd"', 'class="gridx"', 'class="ln s3-ln"',
-                   'class="cards"', 'class="tl s3-t"', 'class="mut"'):
+    wanted = {"H05", "H06", "L06", "M04", "M07", "V02", "V05", "V06", "V10", "B04", "B05", "B08", "X06", "X10", "C07"}
+    assert wanted <= set(rep["built"])
+    for marker in ('id="s1-cd"', 'id="s4-pa"', 'class="k7"', 'class="trk"', 'class="bd s3-bd"', 'class="gridx"',
+                   'class="ln s3-ln"', 'class="cards"', 'class="tl s3-t"', 'class="mut"'):
         assert marker in html, marker
     assert "border-radius:50%" not in html.split('<div id="root"')[1], "no circle is drawn behind anything"
 

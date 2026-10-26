@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Loader2, RefreshCw, Send } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
-import { LANGUAGES, RESOLUTIONS, fmtBytes, remakeFields } from "../lib/motion";
+import { STREAMS } from "../lib/brand";
+import { LANGUAGES, RESOLUTIONS, fmtBytes, remakeFields, streamOf } from "../lib/motion";
+import { sizeFor } from "../lib/platformFormat";
 import { CHANNEL_LABEL, canQueue, channelsFor, filmFormat, pickPosition, postLang, queueArgs, startingCaptions } from "../lib/motionQueue";
 import { myt, slotsOf, takenSet } from "../lib/slots";
 import Button from "./ui/Button";
@@ -31,6 +33,7 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
   const [date, setDate] = useState("");
   const [slot, setSlot] = useState("");
   const [version, setVersion] = useState(film.language || "en");     // the language the film would be made again in
+  const [streamPick, setStreamPick] = useState(streamOf(film.stream));     // the stream the film would be made again for
   const [redoing, setRedoing] = useState(false);
   const stream = film.stream || "regulab";
   const format = filmFormat(film);
@@ -92,16 +95,20 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
   const redo = async () => {
     setRedoing(true);
     try {
-      const { error } = await supabase.from(TABLES.motions).update(remakeFields(film, version)).eq("id", film.id).is("queued_post_id", null);
+      const { error } = await supabase.from(TABLES.motions).update(remakeFields(film, version, streamPick)).eq("id", film.id).is("queued_post_id", null);
       if (error) throw new Error(errText(error));
       const lang = (LANGUAGES.find(([k]) => k === version) || [])[1] || version;
-      onToast?.(t("Dibuat semula dalam {l}, dalam saiz {s}: beberapa minit. Kapsyen ditulis semula bersama filem.",
-        "Making it again in {l}, in the {s} size: a few minutes. The captions are written again with the film.", { l: lang, s: RESOLUTIONS[format.want]?.en?.split(" (")[0] }), "ok");
+      onToast?.(t("Dibuat semula untuk {p} dalam {l}, dalam saiz {s}: beberapa minit. Kapsyen ditulis semula bersama filem.",
+        "Making it again for {p} in {l}, in the {s} size: a few minutes. The captions are written again with the film.",
+        { p: streamPick === "linkedin" ? "LinkedIn" : "ws.regulab", l: lang, s: RESOLUTIONS[sizeFor(streamPick)]?.en?.split(" (")[0] }), "ok");
       setOpen(false);
       onQueued?.();
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setRedoing(false); }
   };
-  const changed = version !== (film.language || "en");
+  const switching = streamPick !== streamOf(film.stream);
+  const changed = switching || version !== (film.language || "en");
+  // a switch suggests the stream's own language (LinkedIn is Wan's English byline, ws.regulab speaks BM); the buttons still decide
+  const pickStream = (s) => { setStreamPick(s); if (s === "linkedin" && version === "bm") setVersion("en"); else if (s === "regulab" && version === "en") setVersion("bm"); };
   const versionName = (LANGUAGES.find(([k]) => k === version) || [])[1] || version;
   const written = Object.keys(film.captions || {}).length > 0;
 
@@ -118,13 +125,23 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
       <p className="mt-1 text-xs text-muted">{t("Pilih platform, semak kapsyen dan slot. Filem dimampatkan, dimasukkan ke giliran Post dan keluar daripada senarai Motion. Lulus & beratur terus menjadualkannya; Simpan sebagai draf menunggu anda lulus di tab Post.",
         "Pick the platforms, check the captions and the slot. The film is compressed, put in the Posts queue and leaves the Motion list. Approve & queue schedules it at once; Save as draft waits for your approval in the Posts tab.")}</p>
       <div className="mt-3 rounded-tile border border-line bg-surface p-2" data-motion-version>
-        <Label hint={t("filem dibuat semula, kapsyen ditulis semula bersamanya", "the film is made again and its captions are written again with it")}>{t("Versi", "Version")}</Label>
+        <Label hint={t("filem dibuat semula, kapsyen ditulis semula bersamanya", "the film is made again and its captions are written again with it")}>{t("Untuk dan versi", "For and version")}</Label>
         <div className="flex flex-wrap items-center gap-2">
+          <Segmented value={streamPick} onChange={pickStream} options={STREAMS} />
           <Segmented value={version} onChange={setVersion} options={LANGUAGES} />
+        </div>
+        <div className="mt-2">
           <Button size="sm" variant={changed || !format.ok ? "primary" : "ghost"} disabled={redoing || (!changed && format.ok)} onClick={redo} data-motion-redo>
-            {redoing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} {t("Buat semula: {l}", "Redo: {l}", { l: versionName })}
+            {redoing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} {switching
+              ? t("Buat semula untuk {p}: {l}", "Redo for {p}: {l}", { p: streamPick === "linkedin" ? "LinkedIn" : "ws.regulab", l: versionName })
+              : t("Buat semula: {l}", "Redo: {l}", { l: versionName })}
           </Button>
         </div>
+        {switching && <p className="mt-1.5 text-xs text-muted">{streamPick === "linkedin"
+          ? t("Untuk LinkedIn: suara anda sendiri, saiz 1:1, ikon dan nama anda di kad penutup, dan kapsyen LinkedIn.",
+            "For LinkedIn: your own voice, the 1:1 size, your icon and name on the closing card, and a LinkedIn caption.")
+          : t("Untuk ws.regulab: suara jenama, saiz 9:16, logo di kad penutup, dan kapsyen Instagram, Facebook dan Threads.",
+            "For ws.regulab: the brand's voice, the 9:16 size, the logo on the closing card, and Instagram, Facebook and Threads captions.")}</p>}
         {!format.ok && <p className="mt-1.5 text-xs text-warn">{t("Filem ini {a}, tetapi {p} paling sesuai dengan {b}. Buat semula menukarnya ke saiz platform.",
           "This film is {a}, but {p} takes {b} best. Redo changes it to the platform's size.",
           { a: RESOLUTIONS[film.resolution]?.en?.split(" (")[0] || film.resolution, b: RESOLUTIONS[format.want]?.en?.split(" (")[0], p: stream === "linkedin" ? "LinkedIn" : "ws.regulab" })}</p>}

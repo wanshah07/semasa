@@ -138,3 +138,22 @@ assert.deepEqual(mk.captions, {}, "the captions are written again with the film"
 assert.equal(remakeFields({ stream: "regulab", voice: "auto" }, "both").resolution, "portrait");
 assert.equal(Object.keys(RES2).length, 3);
 console.log("motion platform format and remake: ok");
+
+/* a ws.regulab film can be switched to LinkedIn, and back (Wan, 26 Oct 2026) */
+import { STREAM_CHOICES, streamOf } from "./src/lib/motion.js";
+assert.deepEqual(STREAM_CHOICES.map(([k]) => k), ["regulab", "linkedin"]);
+assert.equal(streamOf("linkedin"), "linkedin"); assert.equal(streamOf("x"), "regulab");
+const toLi = remakeFields({ stream: "regulab", voice: "male", language: "bm" }, "en", "linkedin");
+assert.deepEqual([toLi.stream, toLi.language, toLi.resolution, toLi.status, toLi.attempts, toLi.voice], ["linkedin", "en", "square", "pending", 0, "male"]);
+assert.deepEqual(toLi.captions, {}, "the captions are written again for the new stream");
+const back = remakeFields({ stream: "linkedin", voice: "kitten" }, "bm", "regulab");
+assert.deepEqual([back.stream, back.resolution, back.voice], ["regulab", "portrait", "female"], "a BM film cannot keep the English-only voice");
+assert.equal(remakeFields({ stream: "linkedin" }, "en").stream, "linkedin", "no stream given: the film's own");
+const waitingRow = { stream: "regulab", options: {}, language: "bm" };
+const sf = formOf(waitingRow);
+assert.equal(sf.stream, "regulab");
+assert.equal(startFields(waitingRow, sf).stream, undefined, "unchanged: nothing about the stream is written");
+const swFields = startFields(waitingRow, { ...sf, stream: "linkedin", language: "en" });
+assert.deepEqual([swFields.stream, swFields.resolution, swFields.language], ["linkedin", "square", "en"]);
+assert.equal(startFields({ stream: "linkedin" }, { ...formOf({ stream: "linkedin" }), stream: "regulab" }).resolution, "portrait");
+console.log("motion stream switch: ok");

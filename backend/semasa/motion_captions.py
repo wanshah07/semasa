@@ -45,6 +45,9 @@ For each platform write its own caption (never the same text twice; each is shap
 RULES (every one is checked before anything is posted):
 - Only facts that are in the script. Never invent a number, name, date, clause, quote or source.
 - No call to action ("follow", "click", "comment below", "DM us"), no website or link, no mention of Reddit, YouTube or TikTok.
+- Explain like a chemist telling a friend (the same way on every platform): the fact first, the rule or study that decides
+  it named once as a source (never a blog or a news site), then what it means in one plain sentence, with the number or
+  limit when the script has it. Precise and calm, no hype, no fear.
 - Say the point itself in plain words a shopkeeper understands: the actual fact, number, name or step from the script. Never send
   the reader away to find it ("check the guideline", "find out more", "cari sendiri", "rujuk NPRA"). Write like a person talking,
   not a report.

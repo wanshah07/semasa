@@ -125,4 +125,11 @@ t("a film is checked against the format of its platform", () => {
   assert.equal(filmFormat({ stream: "linkedin" }).ok, true, "a row with no size follows the platform");
 });
 
+t("a booked slot can be taken from a draft or an approved post: the queue call carries p_override only when asked", () => {
+  const base = { film, channels: ["instagram"], captions: { instagram: CAP }, date: "2026-10-27", slot: "13:00", brand: BRAND };
+  assert.equal(queueArgs(base).p_override, false);
+  assert.equal(queueArgs({ ...base, override: true }).p_override, true);
+  assert.equal(queueArgs({ ...base, override: true, approve: true }).p_approve, true, "overriding a slot is not approving");
+});
+
 console.log(`${n} motion queue cases pass`);

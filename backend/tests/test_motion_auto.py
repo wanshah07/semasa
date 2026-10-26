@@ -308,6 +308,20 @@ def test_a_probe_finding_counts_as_a_layout_finding_and_an_unavailable_probe_doe
     assert motion_layout.layout_findings(unavailable) == []
 
 
+def test_a_writer_that_answers_nothing_still_ends_in_the_safe_layout_film(tmp_path, monkeypatch):
+    # run 37 (26 Oct 2026): the writer's JSON was unparsable twice, chat_json gave None and the fallback crashed on it
+    from test_motion import NOW, FakeLLM, Store, _row, _runner, fake_speak
+    monkeypatch.setattr(motion.voice_mod, "speak", fake_speak)
+    store = Store()
+    row = _row(store, language="bm", voice="male")
+    plan = {"title": "t", "photo_query": "lab", "scenes": [{"heading": f"Tajuk {i}", "lines": [], "narration": "Satu dua tiga."}
+                                                          for i in range(4)]}
+    assert motion.process(store, FakeLLM([plan, None, None]), {**row, "attempts": 1}, {"prompt": "", "cli": "0.8.188"},
+                          runner=_runner(), workdir=tmp_path, now=NOW)
+    got = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
+    assert got["status"] == "done" and "safe layout used" in got["style_note"]
+
+
 def test_wans_ws_regulab_motion_skill_is_installed_for_claude_code_and_reaches_the_writer():
     skill = motion.SKILL
     assert (skill / "SKILL.md").is_file(), "a Claude Code project skill: .claude/skills/<name>/SKILL.md"

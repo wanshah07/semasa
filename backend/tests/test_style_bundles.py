@@ -42,7 +42,7 @@ def test_each_bundle_has_valid_effects_and_all_tracks(key):
         assert all(code in effects and not effects[code]["conflict"] for code in track["codes"])
     plan = styles.complete_plan(row)
     assert plan["design"] == "continuous-line" and plan["stages"][-1]["start"] == 57
-    assert plan["cta"] == "Jangan lupa follow kami untuk tips seterusnya"
+    assert plan["cta"] == "Jangan lupa follow kami untuk tip seterusnya"
     assert "one growing" in styles.prompt(row)
 
 

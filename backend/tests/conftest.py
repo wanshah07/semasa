@@ -32,3 +32,19 @@ def writer_on(request, monkeypatch):
         monkeypatch.delenv("MOTION_WRITER", raising=False)
     else:
         monkeypatch.setenv("MOTION_WRITER", "1")
+
+
+FITTED: dict = {}      # the length the last film was fitted to: the fake ffprobe answers with it (a film is as long as it needs)
+
+
+@pytest.fixture(autouse=True)
+def remember_the_fitted_length(monkeypatch):
+    from semasa import motion
+    real = motion.fit_scenes
+
+    def fit(*a, **k):
+        out = real(*a, **k)
+        FITTED["total"] = out[1]
+        return out
+    monkeypatch.setattr(motion, "fit_scenes", fit)
+    FITTED.clear()

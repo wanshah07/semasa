@@ -50,6 +50,7 @@ def gradients(design: str, ambient: str) -> tuple[str, str]:
 GRADIENT = {d: gradients(d, DEFAULT_AMBIENT)[0] for d in ("bright-editorial", "continuous-line")}
 GRADIENT_ALT = {d: gradients(d, DEFAULT_AMBIENT)[1] for d in ("bright-editorial", "continuous-line")}
 SAFE = {"left": 0.08, "right": 0.14, "top": 0.13, "bottom": 0.23}
+LIST_MIN = 4                      # lines from which a scene is a counted list: all of them shown, nothing else beside them
 LANE = (0.78, 0.115)              # the subtitle lane of a narrated film: top and height as fractions of the frame
 GAP = 0.028                       # between blocks, as a fraction of the frame width
 WIDE = 0.62                       # estimated average glyph width / font size for a bold heading (system sans, never narrower)
@@ -266,6 +267,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         f".cap{{position:absolute;left:{w * SAFE['left']:.0f}px;top:{h * LANE[0]:.0f}px;width:{box_w:.0f}px;"
         f"height:{h * LANE[1]:.0f}px;display:flex;align-items:center;justify-content:center;text-align:center;"
         f"font-weight:500;line-height:1.3;color:{ink};overflow-wrap:anywhere;}}",
+        ".cp{display:block;max-width:100%;}",
         ".ph>div{position:absolute;inset:0;background-size:cover;background-position:center;}",
         ".tl{position:absolute;width:33.4%;height:33.4%;background-size:300% 300%;display:block;}",
         f".h{{margin:0;font-weight:800;line-height:1.12;color:{ink};overflow-wrap:anywhere;max-width:100%;}}",
@@ -387,10 +389,15 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         heading = plain(sc.get("heading"))
         photo = sc.get("photo")
         photo2 = sc.get("photo2")
+        # a counted list ("6 kategori"): every item is shown, so no picture, concept diagram or big number shares its column
+        # (Wan, 26 Oct 2026: "sebut 6 kategori, tapi takde tulis dan perincikan")
+        listing = len(sc.get("lines") or []) >= LIST_MIN
+        if listing:
+            photo = photo2 = None
         is_typed = cap_s in {"C03", "C09"}
         role = sc.get("role") or ""
         # a concept rendition of a style that needs footage or a capture (it takes its lines off the plain list)
-        ccode = next((c for c in eff if c in motion_concepts.KIND), None)
+        ccode = next((c for c in eff if c in motion_concepts.KIND), None) if not listing else None
         cblock = None
         base_lines = list(lines)
         if ccode:
@@ -402,7 +409,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         use_concept = cblock is not None
         # a big number (P03): the first whole number a line prints, set large and counted up to; only a figure the words give
         stat, after_concept = None, list(lines)
-        if "P03" in eff:
+        if "P03" in eff and not listing:
             for ln in lines:
                 m = STAT.search(ln)
                 if m and not PCT.search(ln) and not YEAR.fullmatch(m.group(0)):
@@ -740,8 +747,10 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                         tw.append(f'tl.fromTo("#{sid}-kk{off + j}",{{opacity:.4}},{{opacity:1,duration:.08}},'
                                   f'{start + float(timed[off + j][0]):g});')
                     applied.add("C01")
+                # ONE child: the lane is a flex box, and every inline span of a karaoke subtitle would otherwise be a flex item
+                # of its own, squeezed into letter fragments ("Okay sekaran kit tengo faktanya", Wan, 26 Oct 2026)
                 parts.append(f'<div class="clip cap" id="{sid}-c{k}" data-start="{a:g}" data-duration="{b - a:g}" '
-                             f'style="font-size:{size:.0f}px;">{inner}</div>')
+                             f'style="font-size:{size:.0f}px;"><span class="cp">{inner}</span></div>')
                 tw.append(f'tl.fromTo("#{sid}-c{k}",{{opacity:0}},{{opacity:1,duration:.18,ease:"power1.out"}},{a:g});')
                 tw.append(f'tl.to("#{sid}-c{k}",{{opacity:0,duration:.12}},{max(a, b - .14):g});')
         t0, t1 = start, start + dur

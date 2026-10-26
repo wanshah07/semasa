@@ -54,7 +54,7 @@ def design(row: dict[str, Any]) -> str:
 def cta(row: dict[str, Any]) -> str:
     if duration(row) == 10:
         return "Stay tuned. Follow us for more"
-    return "Jangan lupa follow kami untuk tips seterusnya" if row.get("language") in {"bm", "both"} else "Follow us for more"
+    return "Jangan lupa follow kami untuk tip seterusnya" if row.get("language") in {"bm", "both"} else "Follow us for more"
 
 
 def validate_export(row: dict[str, Any]) -> None:

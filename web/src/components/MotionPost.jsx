@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Send } from "lucide-react";
+import { CheckCircle2, Loader2, Send } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { fmtBytes } from "../lib/motion";
@@ -11,8 +11,9 @@ import { Input, Label, Select, TextArea } from "./ui/Field";
 /* A finished film to the platforms Wan picks (Wan, 26 Oct 2026: "allow me to choose which platform to post, so from the video can
    directly post or queue to post to platform, once post automatically the video compress and into post queue and remove from
    motion list"). One click writes the film as a video and a DRAFT post (semasa_queue_motion, supabase/051) on the chosen
-   platforms, at the chosen date and slot, and the film leaves the Motion list. The gate stays Wan's Approve click in the Posts
-   tab; the publisher scans the post again and sends the film as a video at its slot. */
+   platforms, at the chosen date and slot, and the film leaves the Motion list. Approve & queue is Wan's own Approve click
+   (taken only when the page's scan finds nothing blocking); Save as draft leaves it for the Posts tab. Either way the publisher
+   scans the post again and sends the film as a video at its slot. */
 
 export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
   const { t } = useLang();
@@ -64,15 +65,18 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
     ? queueArgs({ film, channels, captions, date, slot, brand, post, indo }) : null), [open, film, channels, captions, date, slot, brand, post, indo]);
   const hard = (args?.p_flags || []).filter((f) => f.hard);
 
-  const queue = async () => {
+  const queue = async (approve) => {
     if (!args) return;
     setBusy(true);
     try {
-      const { error } = await supabase.rpc("semasa_queue_motion", args);
+      const { error } = await supabase.rpc("semasa_queue_motion", { ...args, p_approve: !!approve && args.p_hard === 0 });
       if (error) throw new Error(errText(error));
-      onToast?.(t("Masuk giliran Post sebagai draf pada {d} {s} ({c}). Luluskan di tab Post; filem ini sudah keluar daripada senarai Motion.",
-        "In the Posts queue as a draft on {d} {s} ({c}). Approve it in the Posts tab; the film has left the Motion list.",
-        { d: date, s: slot, c: channels.map((c) => CHANNEL_LABEL[c]).join(", ") }), "ok");
+      const where = { d: date, s: slot, c: channels.map((c) => CHANNEL_LABEL[c]).join(", ") };
+      onToast?.(approve && args.p_hard === 0
+        ? t("Diluluskan dan masuk giliran: disiarkan pada {d} {s} ({c}). Filem ini sudah keluar daripada senarai Motion.",
+          "Approved and queued: it posts on {d} {s} ({c}). The film has left the Motion list.", where)
+        : t("Masuk giliran Post sebagai draf pada {d} {s} ({c}). Luluskan di tab Post; filem ini sudah keluar daripada senarai Motion.",
+          "In the Posts queue as a draft on {d} {s} ({c}). Approve it in the Posts tab; the film has left the Motion list.", where), "ok");
       onQueued?.();
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(false); }
   };
@@ -87,8 +91,8 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
         <p className="text-sm font-medium">{t("Siarkan filem ini", "Post this film")}</p>
         <button type="button" className="text-xs text-muted hover:text-ink" onClick={() => setOpen(false)}>{t("Tutup", "Close")}</button>
       </div>
-      <p className="mt-1 text-xs text-muted">{t("Pilih platform, semak kapsyen dan slot. Filem dimampatkan, dimasukkan ke giliran Post sebagai draf dan keluar daripada senarai Motion. Anda luluskan di tab Post.",
-        "Pick the platforms, check the captions and the slot. The film is compressed, put in the Posts queue as a draft and leaves the Motion list. You approve it in the Posts tab.")}</p>
+      <p className="mt-1 text-xs text-muted">{t("Pilih platform, semak kapsyen dan slot. Filem dimampatkan, dimasukkan ke giliran Post dan keluar daripada senarai Motion. Lulus & beratur terus menjadualkannya; Simpan sebagai draf menunggu anda lulus di tab Post.",
+        "Pick the platforms, check the captions and the slot. The film is compressed, put in the Posts queue and leaves the Motion list. Approve & queue schedules it at once; Save as draft waits for your approval in the Posts tab.")}</p>
       {loading ? <p className="mt-3 flex items-center gap-2 text-xs text-muted"><Loader2 size={12} className="animate-spin" /> {t("Membaca…", "Reading…")}</p> : (
         <div className="mt-3 space-y-3">
           <div>
@@ -127,9 +131,17 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
               ? t("Fail: salinan termampat {a} (asal {b}).", "File: the compressed copy, {a} (original {b}).", { a: fmtBytes(film.social_bytes), b: fmtBytes(film.bytes) })
               : t("Fail: video asal {b} (filem ini dibuat sebelum salinan termampat wujud; Buat semula jika mahu).", "File: the original video, {b} (made before the compressed copy existed; Make again if you want one).", { b: fmtBytes(film.bytes) })}
           </p>
-          <Button size="sm" disabled={busy || !ready} onClick={queue}>
-            {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} {t("Masukkan ke giliran siaran", "Put in the post queue")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={busy || !ready || hard.length > 0} onClick={() => queue(true)} data-motion-approve
+              title={hard.length ? t("Betulkan kapsyen dahulu", "Fix the captions first") : ""}>
+              {busy ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} {t("Lulus & beratur", "Approve & queue")}
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy || !ready} onClick={() => queue(false)}>
+              <Send size={12} /> {t("Simpan sebagai draf", "Save as draft")}
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted">{t("Lulus & beratur ialah klik lulus anda: filem disiarkan pada slot itu ke platform yang dipilih.",
+            "Approve & queue is your own Approve click: the film posts at that slot on the platforms you picked.")}</p>
         </div>
       )}
     </div>

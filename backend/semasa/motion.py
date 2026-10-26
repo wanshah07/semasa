@@ -56,6 +56,8 @@ SCRIPT_TOKENS = 6_000
 SCENE_GAP = 0.2                         # seconds of air between two narrated scenes
 SCENE_MIN = 1.8                         # a narrated scene is never shorter than this, whatever the voice says
 VOICE_PAD = 0.3                         # a narrated scene stays up this long after its last word
+FILM_MAX = 70.0                         # a film is as long as its information needs, never more than this (Wan, 26 Oct 2026)
+LINES_MAX = 6                           # a counted list names every item; an ordinary scene has two lines
 NARRATED_WPS = 2.6                      # words a second the script asks for when a voice reads it (the voice runs ~2.9)
 READ_WPS = 1.4                          # words a second a silent film allows the eye, heading and lines together
 READ_PAD = 1.0                          # seconds a silent scene holds after the eye has finished
@@ -155,7 +157,7 @@ SCRIPT_SYSTEM = """You plan a short motion-graphics video. Answer with ONE JSON 
 "narration": "<what is SAID over this scene>"}}]}}. Nothing else.
 
 Plan EXACTLY {count} teaching scene(s), in this order, with these kickers: {kickers}. {flow}
-The worker adds its own 3-second outro: plan about {seconds:g} seconds INCLUDING it.
+The worker adds its own 3-second outro. {length}
 {pace}
 VOICE: {voice}
 {extra}"""
@@ -167,10 +169,16 @@ HOOK_RULE = ("THE HOOK: the first scene opens with an attention hook, the first 
              "'Berita terkini: ...' (a new rule or notice); in English 'Did you know...?', 'Warning: ...' or "
              "'Breaking news: ...'. Pick the one the topic is.")
 CONNECT_RULE = ("CONNECTORS: no scene starts cold and none ends hanging. Every scene after the first begins its narration "
-                "with a short connecting sentence that points back and forward ('Okay, sekarang kita tengok faktanya.', "
+                "with a short connecting sentence that points back and forward ('Okay, sekarang kita tengok fakta sebenar.', "
                 "'Jadi kenapa ni penting?', 'Jom kita bincang apa yang patut buat.'; English 'Now, here is the fact.', "
                 "'So why does this matter?', 'Let's talk about what to do.'), and the last sentence of a scene leads "
                 "into the next one.")
+MALAY_RULE = ("LANGUAGE: Bahasa Malaysia as written and spoken in MALAYSIA, never Indonesian: boleh (not bisa), ubat (not obat), "
+              "syarikat (not perusahaan), kualiti (not kualitas), pembungkusan (not kemasan), maklumat (not informasi), "
+              "kesan (not dampak), kerana (not karena), sahaja (not aja), tip (not tips); no '-nya' like 'faktanya'.")
+LIST_RULE = ("COUNTED LISTS: when the hook or a heading names a number of things ('6 kategori', '3 perkara'), the very next "
+             "scene's lines NAME EVERY ONE of them, one per line, up to 6 lines, each a few words, and the narration says "
+             "them. A count you do not spell out is a broken promise to the viewer.")
 LINES_RULE = ("LINES: each on-screen line is ONE complete point of its own. Never split one sentence over two lines, never end a "
               "line with a comma, and never leave a line that only makes sense with the next one. Write every number as digits "
               "('6 kategori', not 'enam kategori'): the film draws numbers large and counts them up.")
@@ -181,13 +189,16 @@ CASUAL_RULE = ("TONE: casual, as a friend explaining to a friend, so the viewer 
                "simple words straight after it.")
 FLOW = ("Hook = one curiosity line that makes this reader stop; Fakta = the one thing that is true, from the brief; "
         "Kenapa = why it matters to this reader; Solusi = the one thing to do next. Connected, complete sentences, never "
-        "isolated labels.\n" + HOOK_RULE + "\n" + CONNECT_RULE + "\n" + LINES_RULE + "\n" + NARRATION_RULE)
+        "isolated labels.\n" + HOOK_RULE + "\n" + CONNECT_RULE + "\n" + LINES_RULE + "\n" + LIST_RULE + "\n" + NARRATION_RULE
+        + "\n" + MALAY_RULE)
 FLOW_TEASER = "ONE scene: a curiosity hook only.\n" + HOOK_RULE
-PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, about {words} words in all (about "
+PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, at most {words} words in all and fewer "
+               "when the information is simple (about "
                f"{NARRATED_WPS} words a second), never reading the headings word for word, no URL, no handle, no hashtag; "
                "never invent a fee, date, number or clause the brief did not give. The on-screen lines are {lines}; "
-               "each heading at most 8 words, at most 2 lines a scene.\nNARRATION LANGUAGE: {language}. Every spoken word of "
-               "every narration is in {language}; a product name may stay as it is.\n" + CASUAL_RULE)
+               "each heading at most 8 words, at most 2 lines a scene (a counted list may have up to 6).\n"
+               "NARRATION LANGUAGE: {language}. Every spoken word of every narration is in {language}; "
+               "a product name may stay as it is.\n" + CASUAL_RULE)
 PACE_SILENT = ("There is NO narrator: leave every narration empty \"\". The viewer READS, slowly: at most {budget} words in all "
                "on screen across the scenes (headings and lines together, both languages counted), each heading at most 7 words, "
                "at most 2 short lines a scene, complete connected sentences in the lines. The on-screen lines are {lines}.")
@@ -196,7 +207,7 @@ PACE_SILENT = ("There is NO narrator: leave every narration empty \"\". The view
 def build_script_system(row: dict[str, Any], extra: str, count: int = 4) -> str:
     stream = row.get("stream") or "regulab"
     lang = language_of(row)
-    seconds = motion_styles.duration(row)
+    seconds = motion_styles.duration(row) if motion_styles.duration(row) == 10 else FILM_MAX - 8
     spoken = {"bm": "Bahasa Malaysia (Malaysian, never Indonesian)", "en": "English", "both": "Bahasa Malaysia"}[lang]
     lines = {"bm": "in Bahasa Malaysia", "en": "in English",
              "both": "in Bahasa Malaysia with the English line after it, in the same string, separated by ' / '"}[lang]
@@ -205,7 +216,10 @@ def build_script_system(row: dict[str, Any], extra: str, count: int = 4) -> str:
         pace = PACE_SILENT.format(budget=max(8, int(teaching * 1.25)), lines=lines)
     else:
         pace = PACE_VOICED.format(language=spoken, words=max(1, int(teaching * NARRATED_WPS)), lines=lines)
-    return SCRIPT_SYSTEM.format(seconds=seconds, count=count, kickers=" · ".join(motion_auto.LABELS[lang][:count]),
+    length = (f"Plan about {seconds:g} seconds INCLUDING it." if count == 1 else
+              f"There is NO fixed length: make the film as long as the information needs to be delivered in full, and not a "
+              f"second longer; never more than {FILM_MAX:g} seconds including the outro.")
+    return SCRIPT_SYSTEM.format(length=length, count=count, kickers=" · ".join(motion_auto.LABELS[lang][:count]),
                                 flow=FLOW if count > 1 else FLOW_TEASER, pace=pace, voice=voice_line(stream, lang),
                                 extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "") + motion_styles.prompt(row))
 
@@ -234,14 +248,16 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
     if len(scenes) < count:
         raise RuntimeError(f"the writer planned {len(scenes)} scenes instead of {count}")
     lang = language_of(row)
+    speak_as = malaysian if lang in {"bm", "both"} else (lambda text: text)
     recipe_plan = motion_styles.complete_plan(row)
     clean = []
     for i, sc in enumerate(scenes[:count]):
         clean.append({"id": f"s{i + 1}", "kicker": motion_auto.LABELS[lang][i] if not teaser else "",
                       "role": motion_auto.ROLES[i] if not teaser else "hook",
-                      "heading": motion_layout.plain(sc.get("heading"))[:160],
-                      "lines": [motion_layout.plain(x)[:200] for x in (sc.get("lines") or []) if motion_layout.plain(x)][:2],
-                      "narration": motion_layout.plain(sc.get("narration"))[:600]})
+                      "heading": speak_as(motion_layout.plain(sc.get("heading"))[:160]),
+                      "lines": [speak_as(motion_layout.plain(x)[:200]) for x in (sc.get("lines") or [])
+                                if motion_layout.plain(x)][:LINES_MAX],
+                      "narration": speak_as(motion_layout.plain(sc.get("narration"))[:600])})
     if recipe_plan:
         for sc, stage in zip(clean, recipe_plan["stages"], strict=False):
             sc["role"] = stage["role"]
@@ -322,6 +338,30 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
 
 # effects whose frames move or scale a word, so a measured overflow takes them off first
 MOVING_EFFECTS = {"C07", "M07", "M10", "B05", "V02", "M04", "M03", "X06"}
+
+
+
+# Bahasa Malaysia as it is spoken and written in Malaysia, never Indonesian (Wan, 26 Oct 2026: "jangan guna indonesian
+# language"). The writer is told; whatever still gets through is put right here, whole words only, capital kept.
+INDO_TO_BM = {
+    "faktanya": "fakta sebenar", "tips": "tip", "bisa": "boleh", "kemasan": "pembungkusan", "obat": "ubat",
+    "perusahaan": "syarikat", "kualitas": "kualiti", "informasi": "maklumat", "dampak": "kesan", "pemerintah": "kerajaan",
+    "regulasi": "peraturan", "karena": "kerana", "banget": "sangat", "nggak": "tidak", "gimana": "bagaimana", "udah": "sudah",
+    "aja": "sahaja", "ijin": "kebenaran", "kosmetika": "kosmetik", "konsumen": "pengguna", "efek": "kesan",
+    "penelitian": "kajian", "peneliti": "penyelidik", "kesehatan": "kesihatan", "keamanan": "keselamatan", "aman": "selamat",
+    "harus": "mesti", "gratis": "percuma", "mengandung": "mengandungi", "memiliki": "mempunyai", "mengkonsumsi": "mengambil",
+    "kendala": "kekangan", "silakan": "sila", "mau": "nak", "bahan baku": "bahan mentah", "hasilnya": "hasilnya",
+}
+INDO_TO_BM.pop("hasilnya")           # valid in Malay too: kept out of the table on purpose
+_INDO_RX = re.compile(r"(?<![\w])(" + "|".join(sorted(map(re.escape, INDO_TO_BM), key=len, reverse=True)) + r")(?![\w])", re.I)
+
+
+def malaysian(text: str) -> str:
+    """The same words with every Indonesian one swapped for the Malaysian one (the first letter's case is kept)."""
+    def swap(m: re.Match[str]) -> str:
+        bm = INDO_TO_BM[m.group(1).lower()]
+        return bm[:1].upper() + bm[1:] if m.group(1)[:1].isupper() else bm
+    return _INDO_RX.sub(swap, text)
 
 
 class NarrationTooLong(ValueError):
@@ -413,8 +453,10 @@ def trim_for_reading(scenes: list[dict[str, Any]], seconds: float) -> list[dict[
     return scenes
 
 
-def fit_scenes(scenes: list[dict[str, Any]], seconds: float) -> tuple[list[dict[str, Any]], float]:
-    """Fit pauses, never speech. Reserve 3s for the final CTA; fail with actionable scope advice."""
+def fit_scenes(scenes: list[dict[str, Any]], seconds: float, stretch: bool = True) -> tuple[list[dict[str, Any]], float]:
+    """Fit pauses, never speech. Reserve 3s for the final CTA; fail with actionable scope advice. With `stretch` the scenes
+    share out whatever time is left up to `seconds`; without it `seconds` is only the ceiling and the film is as long as its
+    speech and its reading need (Wan, 26 Oct 2026: "tak perlu fix 30 saat, jangan lebih 70 saat")."""
     has_outro = scenes[-1].get("id") == "brand-outro"
     teaching = scenes[:-1] if has_outro else scenes
     outro = scenes[-1] if has_outro else {}
@@ -433,14 +475,14 @@ def fit_scenes(scenes: list[dict[str, Any]], seconds: float) -> tuple[list[dict[
             need = sum(floors)
     if not teaching or need > available or available <= 0:
         raise NarrationTooLong(need, available)
-    slack = (available - sum(floors)) / len(teaching)
+    slack = (available - sum(floors)) / len(teaching) if stretch else 0.0
     start = 0.0
     for sc, floor in zip(teaching, floors, strict=True):
         sc.update(start=round(start, 3), duration=round(floor + slack, 3))
         start += floor + slack
     if has_outro:
-        outro.update(start=available, duration=outro_seconds)
-    return scenes, seconds
+        outro.update(start=round(start, 3), duration=outro_seconds)
+    return scenes, (seconds if stretch else round(start + outro_seconds, 2))
 
 
 def plan_text(scenes: list[dict[str, Any]]) -> str:
@@ -1007,17 +1049,18 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             scenes, total, voice_note = voice_scenes([dict(sc) for sc in plan["scenes"]], lang, choice, folder,
                                                      speak=speak, runner=runner)
             voiced = any(sc.get("audio") for sc in scenes)
+            teaser = motion_styles.duration(row) == 10
+            cap = 10.0 if teaser else FILM_MAX
             if not voiced:
-                scenes = trim_for_reading(scenes, motion_styles.duration(row))
+                scenes = trim_for_reading(scenes, cap)
             try:
-                scenes, total = fit_scenes(scenes, motion_styles.duration(row))
+                scenes, total = fit_scenes(scenes, cap, stretch=teaser)
                 break
             except ValueError as exc:
                 gap = (exc.need - exc.available) if isinstance(exc, NarrationTooLong) else 0.0
                 if not voiced or attempt == 5 or not shorten_narration(plan["scenes"], scenes, gap):
                     raise
-                log.info("%s: the narration is too long for %gs; cut a sentence and recorded again", row["id"],
-                         motion_styles.duration(row))
+                log.info("%s: the narration is too long for %gs; cut a sentence and recorded again", row["id"], cap)
         voice_note += kitten_fallback
         pace_note = ("narrated: brisk" if voiced else f"silent: paced for reading at {READ_WPS:g} words a second")
         w, h = SIZES.get(row.get("resolution") or "portrait", SIZES["portrait"])
@@ -1184,7 +1227,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]
         video = render(folder, settings["cli"], row.get("resolution") or "portrait", runner)
         meta = probe(video, runner)
-        if not 0 < meta["duration_s"] <= 60.5 or abs(meta["duration_s"] - total) > .5:
+        if not 0 < meta["duration_s"] <= FILM_MAX + .5 or abs(meta["duration_s"] - total) > .5:
             raise ValueError("Rendered duration does not match selected duration; choose 30/60s or narrow the topic")
         solution = next((sc for sc in scenes if sc.get("role") == "solution"), None)
         drop = (max(0.0, float(solution["start"]) - 0.6), float(solution["start"])) if voiced and solution else None

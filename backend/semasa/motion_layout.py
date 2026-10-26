@@ -104,16 +104,33 @@ def rgba(colour: str, alpha: float) -> str:
 
 
 NUM = re.compile(r"\d[\d.,]*%?")
+YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
+PCT = re.compile(r"(\d+(?:[.,]\d+)?)\s?%")
+CAPTIONS = {"C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10"}
+TRANSITIONS = {"M02", "M08", "M09"}
+TAGS = {"bm": ("KAJIAN RUJUKAN", "FAKTA"), "both": ("KAJIAN RUJUKAN", "FAKTA"), "en": ("SOURCE STUDY", "FACT")}
 
 
-def inline(text: str, sid: str, numbers: bool) -> str:
-    """Escaped text; with `numbers` every figure is its own inline-block so it can pop (V02)."""
-    if not numbers:
+def inline(text: str, sid: str, numbers: bool, counts: list[tuple[str, int]] | None = None) -> str:
+    """Escaped text. With `numbers` every figure is its own inline-block so it can pop (V02); with `counts` a plain whole number
+    gets an id and is recorded so it can count up to the number printed (P03): nothing is counted that is not in the words."""
+    if not numbers and counts is None:
         return esc(text)
     out, last = [], 0
     for m in NUM.finditer(text):
         out.append(esc(text[last:m.start()]))
-        out.append(f'<span class="num {sid}-n">{esc(m.group(0))}</span>')
+        token = m.group(0)
+        body, pct = (token[:-1], "%") if token.endswith("%") else (token, "")
+        body = body.rstrip(".,")
+        tail = token[len(body) + len(pct):] if not pct else ""
+        cls = "num " + f"{sid}-n" if numbers else "num"
+        countable = body.isdigit() and 2 <= int(body) <= 9_999_999 and not (len(body) == 4 and YEAR.fullmatch(body))
+        if counts is not None and countable:
+            uid = f"{sid}-cu{len(counts)}"
+            counts.append((uid, int(body)))
+            out.append(f'<span class="{cls}">' + f'<span id="{uid}">{body}</span>{pct}{esc(tail)}</span>')
+        else:
+            out.append(f'<span class="{cls}">{esc(token)}</span>')
         last = m.end()
     out.append(esc(text[last:]))
     return "".join(out)
@@ -125,12 +142,16 @@ def typed(text: str, sid: str) -> str:
                     for word in text.split())
 
 
-def quiet(text: str, sid: str, numbers: bool) -> str:
+def quiet(text: str, sid: str, numbers: bool, counts: list[tuple[str, int]] | None = None) -> str:
     """V10: the sentence in muted type, its last two words in full colour."""
     words = text.split()
     head, tail = " ".join(words[:-2]), " ".join(words[-2:])
-    return (f'<span class="mut">{inline(head, sid, numbers)}</span> ' if head else "") + \
-        f'<span class="str">{inline(tail, sid, numbers)}</span>'
+    return (f'<span class="mut">{inline(head, sid, numbers, counts)}</span> ' if head else "") + \
+        f'<span class="str">{inline(tail, sid, numbers, counts)}</span>'
+
+
+def label_of(line: str, token: str) -> str:
+    return re.sub(r"\s{2,}", " ", line.replace(token, " ")).strip(" :-–—,.;")
 
 
 def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang: str, plan: dict[str, Any],
@@ -144,10 +165,10 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     box_h = h * ((LANE[0] - 0.02 if narrated else 1 - SAFE["bottom"]) - SAFE["top"])
     gap = w * GAP
     video = plan.get("video") or {}
-    captions = {"C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10"}
-    caption = video.get("captions") if video.get("captions") in captions else "C05"
+    caption = video.get("captions") if video.get("captions") in CAPTIONS else "C05"
     transition = video.get("transition") or "M09"
-    finish = FILTERS.get(video.get("finish") or "", FILTERS["F07"])
+    finish_code = video.get("finish") if video.get("finish") in FILTERS else "F07"
+    study = plan.get("study") or None
     accent, ink = palette["accent"], palette["ink"]
     bd = 84 * scale                                   # the numbered badge of B04
     step_pad = bd + 22 * scale
@@ -155,7 +176,10 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     card_w = (box_w - gap) / 2 - 2 * pad_card
     trk_h = max(10, 16 * scale)
     rule_h = max(3, 5 * scale)
+    fs_d = 46 * scale                                 # the type of every data block: above the 44px floor
+    arrow_h = 30 * scale
     dropped: list[str] = []
+    applied: set[str] = set()
     mono = "ui-monospace,Menlo,Consolas,monospace"
     css = [
         f"html,body{{margin:0;width:{w}px;height:{h}px;overflow:hidden;background:{palette['ground']};}}",
@@ -208,6 +232,43 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         f".cn{{position:absolute;left:{bd / 2 - 1.5 * scale:.0f}px;top:{bd:.0f}px;bottom:-{gap:.0f}px;"
         f"width:{max(3, 4 * scale):.0f}px;"
         f"background:{rgba(accent, .45)};transform-origin:50% 0;}}",
+        # data blocks: a chart, a timeline, a flow diagram, the study card, a side panel and a small morphing shape
+        f".chart{{flex:none;width:100%;display:flex;flex-direction:column;gap:{gap * .5:.0f}px;}}",
+        f".cl{{display:flex;justify-content:space-between;align-items:baseline;gap:{gap:.0f}px;font-size:{fs_d:.0f}px;"
+        "font-weight:600;line-height:1.2;}",
+        ".ct{flex:1;min-width:0;overflow-wrap:anywhere;}",
+        f".cv{{white-space:nowrap;color:{accent};font-weight:800;}}",
+        f".ctk{{height:{max(14, 22 * scale):.0f}px;margin-top:{10 * scale:.0f}px;background:{rgba(accent, .16)};"
+        f"border-radius:{12 * scale:.0f}px;overflow:hidden;}}",
+        f".ctk i{{display:block;height:100%;background:{accent};transform-origin:0 50%;border-radius:{12 * scale:.0f}px;}}",
+        f".tlw{{flex:none;position:relative;display:flex;width:100%;"
+        f"border-top:{max(3, 4 * scale):.0f}px solid {rgba(accent, .3)};"
+        f"padding-top:{26 * scale:.0f}px;}}",
+        f".tll{{position:absolute;left:0;top:-{max(3, 4 * scale):.0f}px;width:100%;height:{max(3, 4 * scale):.0f}px;"
+        f"background:{accent};transform-origin:0 50%;}}",
+        f".te{{position:relative;flex:1;min-width:0;padding-right:{gap * .5:.0f}px;font-size:{fs_d:.0f}px;line-height:1.2;}}",
+        f".te::before{{content:\"\";position:absolute;left:0;top:-{38 * scale:.0f}px;"
+        f"width:{16 * scale:.0f}px;height:{16 * scale:.0f}px;"
+        f"background:{accent};transform:rotate(45deg);}}",
+        f".te b{{display:block;font-size:{fs_d * 1.15:.0f}px;font-weight:800;color:{accent};}}",
+        ".fl{flex:none;width:100%;display:flex;flex-direction:column;align-items:center;gap:0;}",
+        f".fb{{box-sizing:border-box;width:100%;padding:{pad_card:.0f}px;border-radius:{20 * scale:.0f}px;"
+        f"background:rgba(255,255,255,.74);border:{max(2, 3 * scale):.0f}px solid {rgba(accent, .55)};}}",
+        f".ar{{flex:none;width:0;height:0;border-left:{16 * scale:.0f}px solid transparent;"
+        f"border-right:{16 * scale:.0f}px solid transparent;"
+        f"border-top:{arrow_h * .75:.0f}px solid {accent};margin:{arrow_h * .125:.0f}px 0;}}",
+        f".pub{{flex:none;box-sizing:border-box;width:100%;padding:{pad_card:.0f}px {pad_card * 1.2:.0f}px;"
+        f"border-radius:{20 * scale:.0f}px;background:rgba(255,255,255,.78);"
+        f"border:{max(2, 3 * scale):.0f}px solid {rgba(accent, .5)};"
+        f"border-left:{max(8, 12 * scale):.0f}px solid {accent};font-size:{fs_d:.0f}px;line-height:1.22;}}",
+        f".pub .tag{{font-weight:800;color:{accent};letter-spacing:.06em;}}",
+        ".pub .jn{font-weight:800;} .pub .tt{font-weight:500;} .pub .rf{opacity:.65;font-weight:600;}",
+        f".qm{{font-size:{110 * scale:.0f}px;line-height:1;height:{110 * scale:.0f}px;font-weight:800;color:{accent};}}",
+        f".row{{flex:none;display:flex;gap:{gap:.0f}px;width:100%;align-items:center;}}",
+        f".pnlx{{flex:1;min-width:0;box-sizing:border-box;padding:{pad_card:.0f}px;border-radius:{24 * scale:.0f}px;"
+        f"background:rgba(255,255,255,.74);border:{max(2, 3 * scale):.0f}px solid {rgba(accent, .45)};}}",
+        f".mph{{flex:none;align-self:flex-start;width:{110 * scale:.0f}px;height:{110 * scale:.0f}px;background:{accent};"
+        "clip-path:polygon(0 0,100% 0,100% 100%,0 100%);}",
     ]
     parts, tw = [], []
     # the background is a soft diagonal gradient and nothing else (Wan, 26 Oct 2026: "I don't want circles in the background
@@ -217,122 +278,249 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     tw.append(f'tl.to("#grad2",{{opacity:.65,duration:{total / 2:g},ease:"sine.inOut"}},0);')
     tw.append(f'tl.to("#grad2",{{opacity:0,duration:{total / 2:g},ease:"sine.inOut"}},{total / 2:g});')
     parts.append('<div class="flash" id="flash"></div>')
+
+    def text_h(text: str, px: float, factor: float, width: float, lh: float = 1.2) -> float:
+        return wrap_lines(text or " ", px, width, factor) * px * lh
+
     for idx, sc in enumerate(teaching):
         sid, start, dur = sc["id"], float(sc["start"]), float(sc["duration"])
         first = idx == 0
         eff = set(plan.get("scenes", {}).get(sid, []))
+        # this scene's own looks (the plan gives each scene a caption style, a finish and the hand-over that leaves it)
+        cap_s = next((c for c in eff if c in CAPTIONS), caption)
+        prev_eff = set(plan.get("scenes", {}).get(teaching[idx - 1]["id"], [])) if idx else eff
+        trn_s = next((c for c in prev_eff if c in TRANSITIONS), transition)
+        fin_s = next((c for c in eff if c in FILTERS), finish_code)
         lines = [x for x in (sc.get("lines") or []) if str(x).strip()]
         heading = str(sc.get("heading") or "").strip()
         photo = sc.get("photo")
+        is_typed = cap_s in {"C03", "C09"}
+        role = sc.get("role") or ""
+        # what the scene's own words can carry: percentages for a chart, years for a timeline, figures to count up
+        pct_rows = [(ln, m) for ln in lines for m in [PCT.search(ln)] if m][:3] if "V09" in eff else []
+        yrs = [(ln, YEAR.search(ln).group(0)) for ln in lines if YEAR.search(ln)] if "P08" in eff else []
+        events = sorted({y: ln for ln, y in yrs}.items())[:4] if len({y for _, y in yrs}) >= 2 else []
+        quote = next((ln for ln in lines if re.search(r"[“”\"]", ln)), "") if "P09" in eff and not study else ""
         photo_h = (h * 0.32 if h >= w else h * 0.36) if photo else 0
+        extra_blocks = ("V06" in eff) + bool(study and "P09" in eff) + ("V08" in eff) + bool(pct_rows or events or quote)
+        if photo and extra_blocks:
+            photo_h *= max(0.55, 1 - 0.16 * extra_blocks)
         photo_w = min(box_w, photo_h * 0.8)
         px_h = (104 if len(heading.split()) <= 4 else 88 if len(heading.split()) <= 7 else 72 if len(heading.split()) <= 11
                 else 60) * scale
         px_l = 50 * scale
-        is_typed = caption in {"C03", "C09"}
         lead = (1.1 if "H05" in eff else 0.8 if "H10" in eff else 0.4 if "M04" in eff else 0.3 if "H06" in eff else 0.0)
         if lead and dur < 3.6:
             lead = min(lead, 0.4)
 
         def column(lines_now: list[str], eff: set[str] = eff, heading: str = heading, px_h: float = px_h, px_l: float = px_l,
-                   is_typed: bool = is_typed) -> tuple[list[tuple[str, float, float]], bool, bool, bool]:
-            # two option cards need every word of the pair to fit a half-width card: a word wider than that would break mid-word
+                   is_typed: bool = is_typed, cap_s: str = cap_s, role: str = role, photo: Any = photo,
+                   pct_rows: list = pct_rows, events: list = events) -> dict[str, Any]:
             longest = max((len(x) for ln in lines_now[:2] for x in ln.split()), default=0)
-            cards = ("V05" in eff and len(lines_now) >= 2
+            side = "L05" in eff and bool(photo) and bool(lines_now)
+            cards = (not side and "V05" in eff and len(lines_now) >= 2
                      and longest * MIN_PX * scale * BODY * 1.05 <= card_w)
-            steps = "B04" in eff and not cards and bool(lines_now)
-            track = "V06" in eff and len(lines_now) >= 2 and not cards
-            rest = lines_now[2:] if cards else lines_now
-            f = BODY * box_w / (box_w - step_pad) if steps else (0.62 if is_typed and caption == "C09" else BODY)
-            out = ([(heading, px_h, WIDE)] if heading else [])
+            consumed = not side and not cards and not pct_rows and not events
+            flow = consumed and "B04" in eff and role == "solution" and len(lines_now) >= 2
+            steps = consumed and "B04" in eff and not flow and bool(lines_now)
+            track = "V06" in eff and len(lines_now) >= 2 and not cards and not side
+            if side or pct_rows or events:
+                rest = [ln for ln in lines_now if not (events and YEAR.search(ln))
+                        and not any(ln == r for r, _ in pct_rows)] if not side else []
+            else:
+                rest = lines_now[2:] if cards else lines_now
+            f = BODY * box_w / (box_w - step_pad) if steps else (0.62 if is_typed and cap_s == "C09" else BODY)
+            if flow:
+                f = BODY * box_w / max(box_w - 2 * pad_card - 8, 1)
+            texts = ([(heading, px_h, WIDE)] if heading else [])
             if cards:
-                out.append((max(lines_now[:2], key=len), px_l * 0.9, BODY * box_w / max(card_w, 1)))
-            return out + [(ln, px_l, f) for ln in rest], cards, steps, track
+                texts.append((max(lines_now[:2], key=len), px_l * 0.9, BODY * box_w / max(card_w, 1)))
+            texts += [(ln, px_l, f) for ln in rest]
+            return {"texts": texts, "cards": cards, "steps": steps, "track": track, "flow": flow, "side": side, "rest": rest}
 
         while True:
-            texts, cards, steps, track = column(lines)
-            rule = ("H10" in eff or (caption == "C06" and bool(lines))) and bool(heading or lines)
-            extra = (photo_h + gap if photo else 0) + (trk_h + gap if track else 0) + (rule_h + gap if rule else 0) \
+            col = column(lines)
+            texts, rest = col["texts"], col["rest"]
+            cards, steps, track, flow, side = (col[k] for k in ("cards", "steps", "track", "flow", "side"))
+            rule = ("H10" in eff or (cap_s == "C06" and bool(lines))) and bool(heading or lines)
+            extra = (photo_h + gap if photo and not side else 0) + (trk_h + gap if track else 0) + (rule_h + gap if rule else 0) \
                 + (2 * pad_card if cards else 0)
+            if "V08" in eff:
+                extra += 110 * scale + gap
+            if study and "P09" in eff:
+                lab = TAGS.get(lang, TAGS["bm"])[0]
+                inner = box_w - 2 * pad_card * 1.2 - 14 * scale
+                extra += (text_h(lab, fs_d, BODY, inner, 1.22) + text_h(study["journal"], fs_d, 0.6, inner, 1.22)
+                          + text_h(study["title"], fs_d, BODY, inner, 1.22) + text_h(study["ref"], fs_d, BODY, inner, 1.22)
+                          + 2 * pad_card + gap) if (study["journal"] or study["title"]) else 0
+            if quote:
+                extra += text_h(quote, fs_d, BODY, box_w - 2 * pad_card * 1.2, 1.22) + 110 * scale + 2 * pad_card + gap
+            if pct_rows:
+                vw = max(len(m.group(0)) for _, m in pct_rows) * fs_d * 0.66 + gap
+                bar = max(14, 22 * scale) + 10 * scale + gap * .5
+                extra += sum(text_h(label_of(ln, m.group(0)), fs_d, BODY, box_w - vw) + bar for ln, m in pct_rows) + gap
+            if events:
+                cw = box_w / len(events) - gap * .5
+                tallest = max(text_h(label_of(ln, y), fs_d, BODY, cw) for y, ln in events)
+                extra += tallest + fs_d * 1.4 + 26 * scale + gap + 20 * scale
+            if flow:
+                inner = box_w - 2 * pad_card - 8
+                extra += sum(text_h(ln, px_l, BODY, inner, 1.18) for ln in rest) + len(rest) * 2 * pad_card \
+                    + (len(rest) - 1) * arrow_h + gap
             sizes = fit(texts, box_w, box_h, extra + gap * (len(texts) + 1), scale) if texts else []
-            if sizes or not lines:
+            if side:
+                panel_w = box_w * 0.56 - 2 * pad_card
+                side_sizes = fit([(ln, px_l * 0.9, BODY * (box_w * 0.56) / max(panel_w, 1)) for ln in lines], panel_w,
+                                 photo_h - 2 * pad_card, 0, scale)
+                if not side_sizes:
+                    eff.discard("L05")                    # the sidebar cannot hold these lines beside the photo: plain column
+                    continue
+                sizes = fit(texts[:1], box_w, box_h, photo_h + gap * 3, scale) if texts else [0]
+                if texts and not sizes:
+                    sizes = [MIN_PX * scale]
+            if sizes or (not lines and not texts):
                 break
-            dropped.append(f"{sid}: {lines.pop()[:40]}")
+            if lines:
+                dropped.append(f"{sid}: {lines.pop()[:40]}")
+                continue
+            break
         if texts and not sizes:
             sizes = [MIN_PX * scale] * len(texts)
         hs = sizes[0] if heading and sizes else px_h
         ls = sizes[1:] if heading else sizes
         block, photo_html = [], ""
+        counts: list[tuple[str, int]] | None = [] if "P03" in eff else None
+        numbers = "V02" in eff
         if photo:
             ring = f"box-shadow:0 0 0 {max(3, 5 * scale):.0f}px {accent};" if "L06" in eff else ""
-            arch = f"{photo_w / 2:.0f}px {photo_w / 2:.0f}px {28 * scale:.0f}px {28 * scale:.0f}px"
+            pw = min(box_w * 0.42, photo_h * 0.8) if side else photo_w
+            arch = f"{pw / 2:.0f}px {pw / 2:.0f}px {28 * scale:.0f}px {28 * scale:.0f}px"
+            filt = FILTERS[fin_s]
             if "X06" in eff:
                 inner = "".join(f'<i class="tl {sid}-t" style="left:{c * 100 / 3:.3f}%;top:{r * 100 / 3:.3f}%;'
                                 f'background-image:url({photo});background-position:{c * 50}% {r * 50}%;"></i>'
                                 for r in range(3) for c in range(3))
-                inner = f'<div id="{sid}-photo" style="filter:{finish};">{inner}</div>'
+                inner = f'<div id="{sid}-photo" style="filter:{filt};">{inner}</div>'
             else:
-                inner = f'<div id="{sid}-photo" style="background-image:url({photo});filter:{finish};"></div>'
-            photo_html = (f'<div class="ph" id="{sid}-ph" style="width:{photo_w:.0f}px;height:{photo_h:.0f}px;'
+                inner = f'<div id="{sid}-photo" style="background-image:url({photo});filter:{filt};"></div>'
+            photo_html = (f'<div class="ph" id="{sid}-ph" style="width:{pw:.0f}px;height:{photo_h:.0f}px;'
                           f'border-radius:{arch};{ring}">{inner}</div>')
-        numbers = "V02" in eff
+            applied.add(fin_s)
+        if "V08" in eff:
+            block.append(f'<div class="mph" id="{sid}-mph"></div>')
+            applied.add("V08")
         if rule and "H10" in eff:
             block.append(f'<div class="rule" id="{sid}-r0"></div>')
+            applied.add("H10")
+        key_done = key7_done = False
         if heading:
             words = heading.split()
             style = f"font-size:{hs:.0f}px;" + ('font-family:Georgia,"Times New Roman",serif;' if "H10" in eff else "")
             # the key word is an inline-block: only one that fits the column whole may be wrapped, or it would break inside
             fits = [j for j in range(len(words)) if len(words[j]) * hs * WIDE * 1.08 <= box_w * 0.92]
             key = max(fits, key=lambda j: len(words[j])) if fits else -1
-            if caption == "C04" and len(words) > 2 and key >= 0:
+            if cap_s == "C04" and len(words) > 2 and key >= 0:
                 words[key] = f'<span class="kw">{esc(words[key])}<i id="{sid}-kw"></i></span>'
                 body = " ".join(esc(x) if "<span" not in x else x for x in words)
-            elif caption == "C07" and len(words) > 1 and key >= 0:
+                key_done = True
+            elif cap_s == "C07" and len(words) > 1 and key >= 0:
                 # the key word bursts alone: the other words arrive only once it has settled, so nothing is ever crossed
                 words = [f'<span class="ow {sid}-ow">{esc(x)}</span>' if j != key else
                          f'<span class="k7" id="{sid}-k7">{esc(x)}</span>' for j, x in enumerate(words)]
                 body = " ".join(words)
-            elif caption == "C02":
-                body = " ".join(f'<span class="w {sid}-w" style="display:inline-block;">{inline(x, sid, numbers)}</span>'
+                key7_done = True
+            elif cap_s == "C02":
+                body = " ".join(f'<span class="w {sid}-w" style="display:inline-block;">{inline(x, sid, numbers, counts)}</span>'
                                 for x in words)
             else:
-                body = inline(heading, sid, numbers)
+                body = inline(heading, sid, numbers, counts)
             block.append(f'<h2 class="h" id="{sid}-h" style="{style}">{body}</h2>')
-        if photo_html:
+        if photo_html and not side:
             block.append(photo_html)
         if track:
             block.append(f'<div class="trk" id="{sid}-trk">' + "".join(
                 f'<span class="sg"><b id="{sid}-f{k}"></b></span>' for k in range(len(lines))) + "</div>")
-        if caption == "C06" and lines and "H10" not in eff:
+            applied.add("V06")
+        if cap_s == "C06" and lines and "H10" not in eff:
             block.append(f'<div class="rule" id="{sid}-r"></div>')
 
         def para(ln: str, size: float, j: int, klass: str, sid: str = sid, eff: set[str] = eff, steps: bool = steps,
-                 numbers: bool = numbers, is_typed: bool = is_typed) -> str:
+                 numbers: bool = numbers, is_typed: bool = is_typed, cap_s: str = cap_s, counts: Any = counts) -> str:
             en = lang == "both" and " / " in ln
             primary, _, secondary = ln.partition(" / ") if en else (ln, "", "")
             marker = '<span class="dot"></span>' if ("V04" in eff and not steps) else ""
             if is_typed:
                 inner_html = typed(primary, sid)
             elif "V10" in eff:
-                inner_html = quiet(primary, sid, numbers)
+                inner_html = quiet(primary, sid, numbers, counts)
             else:
-                inner_html = inline(primary, sid, numbers)
-            mono_cls = " mono" if caption == "C09" else ""
+                inner_html = inline(primary, sid, numbers, counts)
+            mono_cls = " mono" if cap_s == "C09" else ""
             out = f'<p class="l{mono_cls} {klass}" id="{sid}-l{j}" style="font-size:{size:.0f}px;">{marker}{inner_html}</p>'
             if secondary:
                 out += (f'<p class="l en {klass}" id="{sid}-e{j}" style="font-size:{size * .82:.0f}px;">'
-                        f'{inline(secondary, sid, numbers)}</p>')
+                        f'{inline(secondary, sid, numbers, counts)}</p>')
             return out
 
         lcls = f"{sid}-lt" if is_typed else f"{sid}-l"
         shown = 0
-        if cards:
+        # a style that takes over the lines draws them its own way
+        if side:
+            sz = (min(ls) if ls else 0) or px_l * .9
+            panel_w = box_w * 0.56 - 2 * pad_card
+            side_sizes = fit([(ln, px_l * 0.9, BODY * (box_w * 0.56) / max(panel_w, 1)) for ln in lines], panel_w,
+                             photo_h - 2 * pad_card, 0, scale)
+            ps = "".join(para(ln, side_sizes[j] if j < len(side_sizes) else MIN_PX * scale, j, lcls)
+                         for j, ln in enumerate(lines))
+            block.append(f'<div class="row" id="{sid}-row">{photo_html}<div class="pnlx" id="{sid}-pnl">{ps}</div></div>')
+            applied.add("L05")
+            shown = len(lines)
+            del sz
+        elif cards:
             sz = ls[0] if ls else MIN_PX * scale
             block.append(f'<div class="cards" id="{sid}-cards">' + "".join(
                 f'<div class="card {sid}-cd{k}">{para(lines[k], sz, k, lcls)}</div>' for k in (0, 1)) + "</div>")
+            applied.add("V05")
             shown = 2
+        if pct_rows:
+            vw = max(len(m.group(0)) for _, m in pct_rows)
+            rows_html = ""
+            for k, (ln, m) in enumerate(pct_rows):
+                rows_html += (f'<div class="cr {sid}-cr"><div class="cl"><span class="ct">{esc(label_of(ln, m.group(0)))}</span>'
+                              f'<b class="cv">{esc(m.group(0).replace(" ", ""))}</b></div>'
+                              f'<div class="ctk"><i id="{sid}-cf{k}"></i></div></div>')
+            del vw
+            block.append(f'<div class="chart" id="{sid}-chart">{rows_html}</div>')
+            applied.add("V09")
+        if events:
+            cols = "".join(f'<div class="te {sid}-te"><b>{esc(y)}</b>{esc(label_of(ln, y))}</div>' for y, ln in events)
+            block.append(f'<div class="tlw" id="{sid}-tlw"><i class="tll" id="{sid}-tll"></i>{cols}</div>')
+            applied.add("P08")
+        if study and "P09" in eff and (study["journal"] or study["title"]):
+            tag = TAGS.get(lang, TAGS["bm"])[0]
+            block.append(f'<div class="pub {sid}-pub" id="{sid}-pub"><div class="tag">{esc(tag)}</div>'
+                         + (f'<div class="jn">{esc(study["journal"])}</div>' if study["journal"] else "")
+                         + (f'<div class="tt">{esc(study["title"])}</div>' if study["title"] else "")
+                         + (f'<div class="rf">{esc(study["source"] + " · " if study["source"] else "")}{esc(study["ref"])}</div>'
+                            if study["ref"] else "") + "</div>")
+            applied.add("P09")
+        elif quote:
+            block.append(f'<div class="pub {sid}-pub" id="{sid}-pub"><div class="qm">“</div>'
+                         f'<div class="tt">{esc(quote.strip(chr(34) + "“”"))}</div></div>')
+            applied.add("P09")
+            lines = [ln for ln in lines if ln != quote]
         rest_sizes = ls[1:] if cards else ls
-        for j, ln in enumerate(lines[shown:], start=shown):
+        if flow:
+            inner_boxes = []
+            for j, ln in enumerate(rest):
+                size = rest_sizes[j] if j < len(rest_sizes) else MIN_PX * scale
+                inner_boxes.append(f'<div class="fb {sid}-l" id="{sid}-s{j}">{para(ln, size, j, f"{sid}-lx")}</div>')
+            block.append(f'<div class="fl" id="{sid}-flow">' + f'<i class="ar {sid}-ar"></i>'.join(inner_boxes) + "</div>")
+            applied.add("B04")
+            tail_lines: list[str] = []
+        else:
+            tail_lines = rest if (pct_rows or events or side) else lines[shown:]
+        for j, ln in enumerate(tail_lines, start=shown):
             size = rest_sizes[j - shown] if j - shown < len(rest_sizes) else MIN_PX * scale
             if steps:
                 last = j == len(lines) - 1
@@ -340,17 +528,27 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                              + ("" if last else f'<i class="cn {sid}-cn"></i>') + para(ln, size, j, f"{sid}-lx") + "</div>")
             else:
                 block.append(para(ln, size, j, lcls))
+        if steps:
+            applied.add("B04")
+        if "V04" in eff and not steps and (tail_lines or cards or side):
+            applied.add("V04")
+        if "V10" in eff and not is_typed and (tail_lines or cards or side):
+            applied.add("V10")
         extras = ""
         if "H06" in eff:
             extras += f'<div class="pl" id="{sid}-pa" style="left:0"></div><div class="pl" id="{sid}-pb" style="right:0"></div>'
+            applied.add("H06")
         if "H05" in eff:
             digits = "".join(f'<span id="{sid}-cd{n}">{n}</span>' for n in (3, 2, 1))
             extras += f'<div class="cd" id="{sid}-cd">{digits}</div>'
+            applied.add("H05")
         fx = ""
         if "X10" in eff:
             fx += f'<div class="gridx" id="{sid}-gx"></div>'
+            applied.add("X10")
         if "B08" in eff:
             fx += "".join(f'<div class="ln {sid}-ln" style="top:{pos}%;"></div>' for pos in (24, 50, 76))
+            applied.add("B08")
         if fx:
             parts.append(f'<div class="clip fx" id="{sid}-fx" data-start="{start:g}" data-duration="{dur:g}">{fx}</div>')
         parts.append(f'<div class="clip sc" id="{sid}" data-start="{start:g}" data-duration="{dur:g}">'
@@ -366,8 +564,9 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 tw.append(f'tl.fromTo("#{sid}-c{k}",{{opacity:0}},{{opacity:1,duration:.18,ease:"power1.out"}},{a:g});')
                 tw.append(f'tl.to("#{sid}-c{k}",{{opacity:0,duration:.12}},{max(a, b - .14):g});')
         t0, t1 = start, start + dur
-        enter = 0.45 if transition != "M02" else 0.28
-        dx = {"M09": 70, "M02": 150, "M08": 0}.get(transition, 70) * scale
+        enter = 0.45 if trn_s != "M02" else 0.28
+        dx = {"M09": 70, "M02": 150, "M08": 0}.get(trn_s, 70) * scale
+        applied.add(trn_s)
         y0 = 26 * scale
         opening = ".35" if first and not lead else "0"
         th = t0 + .05 + lead
@@ -382,7 +581,15 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             tw.append(f'tl.fromTo("#{sid}-pb",{{xPercent:0}},{{xPercent:101,duration:.5,ease:"power3.inOut"}},{t0 + .1:g});')
         if "H10" in eff:
             tw.append(f'tl.fromTo("#{sid}-r0",{{scaleX:0}},{{scaleX:1,duration:.7,ease:"power2.out"}},{t0 + .05:g});')
+        if "V08" in eff:
+            sq, tri, dia = ("polygon(0 0,100% 0,100% 100%,0 100%)", "polygon(50% 0,50% 0,100% 100%,0 100%)",
+                            "polygon(50% 0,100% 50%,50% 100%,0 50%)")
+            tw.append(f'tl.fromTo("#{sid}-mph",{{clipPath:"{sq}",opacity:0}},{{clipPath:"{sq}",opacity:1,duration:.3}},'
+                      f'{t0 + lead:g});')
+            tw.append(f'tl.to("#{sid}-mph",{{clipPath:"{tri}",duration:.6,ease:"power2.inOut"}},{t0 + lead + .5:g});')
+            tw.append(f'tl.to("#{sid}-mph",{{clipPath:"{dia}",duration:.6,ease:"power2.inOut"}},{t0 + lead + 1.3:g});')
         if "M04" in eff:
+            applied.add("M04")
             tw.append(f'tl.fromTo("#flash",{{opacity:.35}},{{opacity:0,duration:.4,ease:"power2.out"}},{t0:g});')
             if heading:
                 tw.append(f'tl.fromTo("#{sid}-h",{{scale:1.07}},{{scale:1,duration:.35,ease:"power2.out"}},{t0 + lead:g});')
@@ -392,20 +599,23 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         if "B08" in eff:
             tw.append(f'tl.fromTo(".{sid}-ln",{{x:{-w * .06:.0f}}},{{x:{w * .16:.0f},duration:{dur:g},ease:"none"}},{t0:g});')
         if heading:
-            if caption == "C02":
+            if cap_s == "C02":
+                applied.add("C02")
                 tw.append(f'tl.fromTo(".{sid}-w",{{opacity:{opening},scale:.82,y:{y0:.0f}}},{{opacity:1,scale:1,y:0,duration:.4,'
                           f'ease:"back.out(1.5)",stagger:.07}},{th:g});')
-            elif "M07" in eff:
-                tw.append(f'tl.fromTo("#{sid}-h",{{opacity:0}},{{opacity:1,duration:.12}},{th:g});')
-                jolt = ",".join(f"{{x:{x * scale:.0f},duration:.05}}" for x in (-16, 12, -7, 3, 0))
-                tw.append(f'tl.to("#{sid}-h",{{keyframes:[{jolt}]}},{th + .1:g});')
             else:
                 dy = y0 if not dx else 0
                 tw.append(f'tl.fromTo("#{sid}-h",{{opacity:{opening},x:{dx:.0f},y:{dy:.0f}}},{{opacity:1,x:0,y:0,'
                           f'duration:{enter + .1:g},ease:"power3.out"}},{th:g});')
-            if f'id="{sid}-kw"' in "".join(block):
+            if "M07" in eff:
+                applied.add("M07")
+                jolt = ",".join(f"{{x:{x * scale:.0f},duration:.05}}" for x in (-16, 12, -7, 3, 0))
+                tw.append(f'tl.to("#{sid}-h",{{keyframes:[{jolt}]}},{th + enter + .2:g});')
+            if key_done:
+                applied.add("C04")
                 tw.append(f'tl.fromTo("#{sid}-kw",{{scaleX:0}},{{scaleX:1,duration:.6,ease:"power2.inOut"}},{th + .45:g});')
-            if f'id="{sid}-k7"' in "".join(block):
+            if key7_done:
+                applied.add("C07")
                 est = max(len(x) for x in heading.split()) * hs * WIDE
                 burst = min(2.3, max(1.2, box_w * 0.96 / max(est, 1)))
                 tw.append(f'tl.fromTo("#{sid}-k7",{{scale:{burst:.2f},opacity:0}},{{scale:1,opacity:1,duration:.5,ease:"back.out(1.6)"}},'
@@ -413,17 +623,36 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 tw.append(f'tl.fromTo(".{sid}-ow",{{opacity:0}},{{opacity:1,duration:.3,ease:"power1.out"}},{th + .55:g});')
         tl_start = t0 + .35 + lead
         gap_in = 0.5 if not sc.get("narration") else 0.35
+        if side:
+            tw.append(f'tl.fromTo("#{sid}-pnl",{{opacity:0,x:{box_w * .3:.0f}}},'
+                      f'{{opacity:1,x:0,duration:.6,ease:"power3.out"}},{tl_start:g});')
         if cards:
-            for k, side in ((0, -1), (1, 1)):
-                tw.append(f'tl.fromTo(".{sid}-cd{k}",{{opacity:0,x:{side * box_w * .5:.0f}}},'
+            for k, side_x in ((0, -1), (1, 1)):
+                tw.append(f'tl.fromTo(".{sid}-cd{k}",{{opacity:0,x:{side_x * box_w * .5:.0f}}},'
                           f'{{opacity:1,x:0,duration:.6,ease:"power3.out"}},{tl_start:g});')
+        if pct_rows:
+            tw.append(f'tl.fromTo(".{sid}-cr",{{opacity:0,y:{y0:.0f}}},{{opacity:1,y:0,duration:.4,stagger:.25}},{tl_start:g});')
+            for k, (_ln, m) in enumerate(pct_rows):
+                pct = min(100.0, float(m.group(1).replace(",", ".")))
+                tw.append(f'tl.fromTo("#{sid}-cf{k}",{{scaleX:0}},{{scaleX:{pct / 100:.3f},duration:.9,ease:"power2.out"}},'
+                          f'{tl_start + .25 * k + .2:g});')
+        if events:
+            tw.append(f'tl.fromTo("#{sid}-tll",{{scaleX:0}},{{scaleX:1,duration:.9,ease:"power2.inOut"}},{tl_start:g});')
+            tw.append(f'tl.fromTo(".{sid}-te",{{opacity:0,y:{y0:.0f}}},{{opacity:1,y:0,duration:.4,stagger:.3}},'
+                      f'{tl_start + .2:g});')
+        if (study and "P09" in eff) or quote:
+            tw.append(f'tl.fromTo("#{sid}-pub",{{opacity:0,y:{y0:.0f}}},{{opacity:1,y:0,duration:.5,ease:"power2.out"}},{tl_start:g});')
         if is_typed and lines:
+            applied.add(cap_s)
             chars = sum(len(re.sub(r"\s", "", ln.partition(" / ")[0])) for ln in lines)
             per = max(0.012, min(0.045, min(3.0, dur * .6) / max(chars, 1)))
             tw.append(f'tl.fromTo(".{sid}-ch",{{opacity:0}},{{opacity:1,duration:.01,stagger:{per:.3f}}},{tl_start:g});')
-        elif lines[shown:]:
+        elif tail_lines or flow or (cards and lines[2:]):
             tw.append(f'tl.fromTo(".{sid}-l",{{opacity:0,y:{y0:.0f}}},{{opacity:1,y:0,duration:.5,ease:"power2.out",'
                       f'stagger:{gap_in:g}}},{tl_start:g});')
+        if flow:
+            tw.append(f'tl.fromTo(".{sid}-ar",{{opacity:0,scaleY:0}},{{opacity:1,scaleY:1,duration:.3,stagger:{gap_in:g}}},'
+                      f'{tl_start + .2:g});')
         if steps:
             tw.append(f'tl.fromTo(".{sid}-bd",{{scale:0}},{{scale:1,duration:.4,ease:"back.out(2)",stagger:{gap_in:g}}},{tl_start:g});')
             tw.append(f'tl.fromTo(".{sid}-cn",{{scaleY:0}},{{scaleY:1,duration:.4,ease:"power2.out",stagger:{gap_in:g}}},'
@@ -432,20 +661,34 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             for k in range(len(lines)):
                 tw.append(f'tl.to("#{sid}-f{k}",{{scaleX:1,duration:.5,ease:"power2.out"}},{tl_start + k * gap_in:g});')
         if numbers:
-            tw.append(f'tl.fromTo(".{sid}-n",{{scale:0}},{{scale:1,duration:.5,ease:"back.out(2.4)",stagger:.18}},'
+            applied.add("V02")
+            tw.append(f'tl.fromTo(".{sid}-n",{{scale:.4,opacity:0}},{{scale:1,opacity:1,duration:.4,ease:"power3.out",stagger:.15}},'
                       f'{tl_start + .3:g});')
-        if caption == "C06" and lines and "H10" not in eff:
+        for uid, value in (counts or []):
+            applied.add("P03")
+            tw.append(f'tl.fromTo("#{uid}",{{textContent:0}},{{textContent:{value},duration:1.1,ease:"power2.out",'
+                      f'snap:{{textContent:1}}}},{tl_start + .3:g});')
+        if cap_s == "C06" and lines and "H10" not in eff:
+            applied.add("C06")
             tw.append(f'tl.fromTo("#{sid}-r",{{scaleX:0}},{{scaleX:1,duration:.5,ease:"power2.out"}},{t0 + .3 + lead:g});')
+        if cap_s == "C05" and (lines or heading):
+            applied.add("C05")
+        if cap_s == "C10" and any(" / " in ln for ln in lines) and lang == "both":
+            applied.add("C10")
         if photo:
             zoom = 1.07 if ({"M03", "B05"} & eff) else 1.03
+            if {"M03", "B05"} & eff:
+                applied.update({"M03", "B05"} & eff)
             if lead:
                 tw.append(f'tl.fromTo("#{sid}-ph",{{opacity:0}},{{opacity:1,duration:.35}},{t0 + lead:g});')
-            if "L06" in eff:
+            if "L06" in eff and not side:
+                applied.add("L06")
                 tw.append(f'tl.fromTo("#{sid}-ph",{{scale:1.16,opacity:0}},{{scale:1,opacity:1,duration:.7,ease:"power3.out"}},'
                           f'{t0 + .1 + lead:g});')
                 tw.append(f'tl.fromTo("#{sid}-photo",{{scale:1.45}},{{scale:{zoom},duration:{dur:g},ease:"power2.out"}},'
                           f'{t0 + lead:g});')
             elif "X06" in eff:
+                applied.add("X06")
                 far = f"{220 * scale:.0f}"
                 tw.append(f'tl.fromTo(".{sid}-t",{{x:(i)=>[-1,1,0][i%3]*{far},y:(i)=>[1,-1,0][Math.floor(i/3)%3]*{far},'
                           f'rotation:(i)=>(i%2?1:-1)*20,opacity:0}},{{x:0,y:0,rotation:0,opacity:1,duration:.7,'
@@ -459,6 +702,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         if "X10" in eff or "B08" in eff:
             tw.append(f'tl.to("#{sid}-fx",{{opacity:0,duration:{fade:g},ease:"power1.in"}},{t1 - fade:g});')
         if first and {"H02", "H08"} & eff:
+            applied.update({"H02", "H08"} & eff)
             tw.append('tl.fromTo("#flash",{opacity:.85},{opacity:0,duration:.22,ease:"power2.out"},0.04);')
     page = (f'<!doctype html>\n<html lang="{html_lang}" data-resolution="{resolution}">\n<head>\n<meta charset="utf-8">\n'
             f'<meta name="viewport" content="width={w}, height={h}">\n<script src="{gsap}"></script>\n'
@@ -468,8 +712,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             + "\n".join(tw) + '\nwindow.__timelines = window.__timelines || {};\nwindow.__timelines["main"] = tl;\ntl.seek(0);\n'
             "</script>\n</body>\n</html>\n")
     chosen = {c for cs in plan.get("scenes", {}).values() for c in cs} | {v for v in video.values()}
-    report = {"layout": "safe-layout", "built": sorted(chosen & BUILT),
-              "not_built": sorted(chosen - BUILT - motion_auto.NATIVE_TEXT),
+    report = {"layout": "safe-layout", "built": sorted(chosen & applied),
+              "not_built": sorted(chosen - applied - motion_auto.NATIVE_TEXT),
               "dropped_lines": dropped, "caption": caption, "transition": transition}
     return page, report
 

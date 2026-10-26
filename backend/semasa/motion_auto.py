@@ -35,8 +35,8 @@ HEAVY = "layers that can hide text; not used while no-overlap is enforced"
 UNAVAILABLE = {
     **dict.fromkeys(["X01", "X02", "X03", "X04", "X07", "X08", "L01", "L02", "L03", "L04", "L07", "M01", "M06", "M10",
                      "C01", "F01", "F04", "H04"], FOOTAGE),
-    **dict.fromkeys(["P01", "P02", "P03", "P04", "P05", "P06", "P07", "P10", "B01", "B02", "B03", "B07", "B09", "B10",
-                     "B06", "V07", "V09", "L10"], CAPTURE),
+    **dict.fromkeys(["P01", "P02", "P04", "P05", "P06", "P07", "P10", "B01", "B02", "B03", "B07", "B09", "B10",
+                     "B06", "V07", "L10"], CAPTURE),
     **dict.fromkeys(["S01", "S02", "S03", "S04", "S06", "S07", "S09", "M05"], SOUND),
     **dict.fromkeys(["C08", "F08", "F09", "L08"], POLICY),
     **dict.fromkeys(["X05", "X09", "L09"], HEAVY),
@@ -58,25 +58,27 @@ RECIPES: dict[str, tuple[str, str, str]] = {
     "H09": ("h", "m", "the common belief is struck through, the correct claim takes its place"),
     "H10": ("h", "S", "a calm 0.8 s pause with a thin rule, then the title in elegant type"),
     "C02": ("*", "V", "lines pop in one to three words at a time with a small overshoot"),
-    "C03": ("*", "", "short lines type on character by character with a blinking caret"),
-    "C04": ("*", "", "an accent block sweeps behind one key word per line"),
+    "C03": ("*", "L", "short lines type on character by character with a blinking caret"),
+    "C04": ("*", "W", "an accent block sweeps behind one key word per line"),
     "C05": ("*", "", "lines stack in two or three short rows that rise one after another"),
-    "C06": ("*", "S", "calm sentence-case lines under a thin accent rule, crossfading softly"),
-    "C07": ("*", "V", "one key word per scene bursts to several times its size, then settles"),
-    "C09": ("*", "t", "lines print word by word in a monospace block with a blinking cursor"),
-    "C10": ("*", "b", "the Malay line big, the English line smaller and in the second accent colour"),
-    "L05": ("fws", "p", "the text panel slides in beside the photo, the photo stays in its own frame"),
+    "C06": ("*", "SL", "calm sentence-case lines under a thin accent rule, crossfading softly"),
+    "C07": ("*", "VW", "one key word per scene bursts to several times its size, then settles"),
+    "C09": ("*", "tL", "lines print word by word in a monospace block with a blinking cursor"),
+    "C10": ("*", "bL", "the Malay line big, the English line smaller and in the second accent colour"),
+    "L05": ("fws", "pl", "the text panel slides in beside the photo, the photo stays in its own frame"),
     "L06": ("hw", "p", "the photo contracts into a sharp central frame with a thin accent ring"),
-    "P08": ("fws", "d", "a timeline draws across and the years pop on, each with its own label"),
-    "P09": ("fw", "Q", "the quoted words sit on a card behind large quote marks, revealed line by line"),
+    "P03": ("fws", "N", "the figures in the words count up from zero to the number printed (never one that is not in the words)"),
+    "P08": ("fws", "D", "a timeline draws across and the years pop on, each with its own label"),
+    "P09": ("fw", "E", "the publication the film rests on (journal, title, reference), or the quoted words, sit on a card"),
     "V01": ("fws", "", "a short chapter title rises out of a mask line (the worker does this itself)"),
     "V02": ("fws", "n", "the numbers in the words burst on one after another with a staggered pop"),
     "V03": ("fws", "", "one short heading is framed by a highlight outline (the worker does this itself)"),
     "V04": ("fs", "l", "list items slide in one by one with numbered markers; earlier ones dim"),
     "V05": ("w", "c", "two option cards fly in from opposite edges and settle side by side"),
-    "V06": ("ws", "l", "a progress track with labelled steps fills from one to the next"),
-    "V08": ("fw", "", "a bold shape morphs between a circle, square and triangle behind the text"),
-    "V10": ("ws", "S", "the sentence appears phrase by phrase in muted type, the last key words in full colour"),
+    "V06": ("wsf", "l", "a progress track with labelled steps fills from one to the next"),
+    "V08": ("fwh", "", "a small bold shape morphs between a square, a triangle and a diamond above the text"),
+    "V09": ("fws", "%", "a bar chart draws each percentage written in the words, the bar as long as the figure says"),
+    "V10": ("ws", "SL", "the sentence appears phrase by phrase in muted type, the last key words in full colour"),
     "B04": ("fws", "l", "an icon pops in for each step with connectors drawn between them"),
     "B05": ("hws", "p", "the photo drifts slowly in two layers (a slow pan and a slower zoom) for depth"),
     "B08": ("fw", "", "circles, grids and lines drift calmly behind the text to picture the idea"),
@@ -98,10 +100,16 @@ RECIPES: dict[str, tuple[str, str, str]] = {
 NATIVE_TEXT = {"H01", "H03", "V01", "V03"}
 # the styles the worker's own layout (motion_layout.compose) builds, so a film that falls back to it still shows them; the chooser
 # prefers these (Wan, 26 Oct 2026: "make sure the styles are included, not using layman safe layout only")
-BUILDABLE = {"H02", "H05", "H06", "H08", "H10", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10", "L06", "V02", "V04",
-             "V05", "V06", "V10", "B04", "B05", "B08", "X06", "X10", "M02", "M03", "M04", "M07", "M08", "M09",
-             "F02", "F03", "F05", "F06", "F07", "F10"}
+BUILDABLE = {"H02", "H05", "H06", "H08", "H10", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10", "L05", "L06", "P03",
+             "P08", "P09", "V02", "V04", "V05", "V06", "V08", "V09", "V10", "B04", "B05", "B08", "X06", "X10", "M02", "M03",
+             "M04", "M07", "M08", "M09", "F02", "F03", "F05", "F06", "F07", "F10"}
+# styles that take over the scene's lines: a scene gets at most one of them
+LINE_STYLES = {"L05", "V05", "B04", "V09", "P08"}
+PHOTO_STYLES = {"L05", "L06", "X06"}                 # how a scene treats its photo: one way each
+FAMILY_LIMIT = {"H": 1, "M": 2, "L": 1, "F": 1, "C": 1, "X": 1}      # per scene; other families may take two
+PER_SCENE = 8
 MIN_STYLES = 15                      # Wan, 26 Oct 2026: "at least 15 styles from 99 styles apply to the motion video"
+# and then "push to use as many styles from 99 as you can": every eligible style is added, up to PER_SCENE in a scene
 CAPTION = ("C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10")
 TRANSITION = ("M02", "M08", "M09")
 FINISH = ("F02", "F03", "F05", "F06", "F07", "F10")
@@ -141,6 +149,12 @@ def _holds(needs: str, sc: dict[str, Any], ctx: dict[str, Any]) -> bool:
             "q": on_screen.strip().endswith("?"),
             "b": ctx["lang"] == "both",
             "d": len(set(re.findall(r"\b(?:19|20)\d{2}\b", ctx["all_text"]))) >= 2,
+            "D": len({y for ln in (sc.get("lines") or []) for y in re.findall(r"\b(?:19|20)\d{2}\b", ln)}) >= 2,
+            "%": any(re.search(r"\d\s?%", ln) for ln in (sc.get("lines") or [])),
+            "N": any(not re.fullmatch(r"(?:19|20)\d{2}", n) for n in re.findall(r"(?<![\d.,])\d{2,7}(?![\d.,])", on_screen)),
+            "L": bool(sc.get("lines")),
+            "W": len((sc.get("heading") or "").split()) >= 3,
+            "E": bool(re.search(r"[“”\"]", on_screen)) or ctx["study"],
             "V": ctx["voiced"],
             "S": not ctx["voiced"],
             "Q": bool(re.search(r"[“”\"]", on_screen)),
@@ -163,13 +177,32 @@ def assign_photos(scenes: list[dict[str, Any]], photos: list[dict[str, Any]]) ->
             sc["photo"], sc["photo_credit"] = p["path"], p.get("credit", "")
 
 
+def study_of(row: dict[str, Any]) -> dict[str, str] | None:
+    """The publication a film rests on, from what the idea carries and nothing else: the journal, the paper's title and a
+    reference taken from its address. None when the source is not a paper (a news item is not drawn as a study)."""
+    ev = (row.get("options") or {}).get("evidence") or {}
+    url = str(ev.get("source_url") or row.get("source_url") or "")
+    name = str(ev.get("source_name") or "")
+    paper = re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)|doi\.org/(10\.\S+)|ncbi\.nlm\.nih\.gov/pmc/articles/(PMC\d+)", url)
+    if not paper and not name.lower().startswith(("pubmed", "pmc")):
+        return None
+    ref = ("PMID " + paper.group(1)) if paper and paper.group(1) else ("DOI " + paper.group(2)) if paper and paper.group(2) \
+        else paper.group(3) if paper and paper.group(3) else ""
+    journal = name.split("·", 1)[1].strip() if "·" in name else ("" if name.lower().startswith("pubmed") else name)
+    title = str(ev.get("source_title") or "").strip()
+    if not (journal or title or ref):
+        return None
+    source = "PubMed" if "pubmed" in url + name.lower() else ""
+    return {"journal": journal[:90], "title": title[:160], "ref": ref[:60], "source": source}
+
+
 def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, lang: str,
            stream: str = "regulab") -> dict[str, Any]:
     """Assign effects to a film's teaching scenes. Returns {scenes: {id: [codes]}, video: {...}, assigned, native,
     unavailable, notes}. Needs scenes with kicker/heading/lines/narration (and photo, set by assign_photos)."""
     seed = str(row.get("id") or row.get("brief") or "x")
     teaching = [s for s in scenes if s.get("id") != "brand-outro"]
-    ctx = {"brief": str(row.get("brief") or ""), "lang": lang, "voiced": voiced,
+    ctx = {"brief": str(row.get("brief") or ""), "lang": lang, "voiced": voiced, "study": bool(study_of(row)),
            "all_text": " ".join(words_of(s) for s in teaching) + " " + str(row.get("brief") or "")}
     out: dict[str, list[str]] = {}
     used: set[str] = set()
@@ -195,50 +228,87 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
             cands.append((-(score), _tiebreak(seed + sc.get("id", ""), code), code))
         return [c[2] for c in sorted(cands)]
 
+    # film-wide looks, one per scene so a film shows several of them: a caption style per scene, a finish per scene, and a
+    # different transition at each hand-over
+    cap_by: dict[str, str] = {}
+    fin_by: dict[str, str] = {}
+    trans_by: dict[str, str] = {}
+    boost = [(0 if re.search(rx, ctx["all_text"], re.I) else 1, _tiebreak(seed, c), c) for c, rx in FINISH_SCENE_BOOST.items()]
     for i, sc in enumerate(teaching):
         letter = "hfws"[min(i, 3)]
-        picks: list[str] = []
-        for code in ranked(letter, sc):
-            if code in used or any(p[0] == code[0] for p in picks):
-                continue                                 # a style once per film, and one of each family per scene
-            picks.append(code)
-            used.add(code)
-            if len(picks) >= 4:
-                break
-        out[sc["id"]] = picks
-    caption = next(iter(ranked("f", teaching[min(1, len(teaching) - 1)], list(CAPTION))), "C05")
-    transition = next(iter(ranked("w", teaching[min(2, len(teaching) - 1)], list(TRANSITION))), "M09")
-    boost = [(0 if re.search(rx, ctx["all_text"], re.I) else 1, _tiebreak(seed, c), c) for c, rx in FINISH_SCENE_BOOST.items()]
-    finish = "F07" if all(b[0] for b in boost) else min(boost)[2]
+        for pool, bag in ((CAPTION, cap_by), (FINISH, fin_by), (TRANSITION, trans_by)):
+            if (pool is TRANSITION and i == len(teaching) - 1) or (pool is FINISH and not sc.get("photo")):
+                continue
+            order = [c for c in ranked(letter, sc, list(pool)) if c not in bag.values()] or ranked(letter, sc, list(pool))
+            if pool is FINISH and i == 0 and not all(b[0] for b in boost):
+                order = [min(boost)[2], *order]
+            if order:
+                bag[sc["id"]] = order[0]
+    first = teaching[0]["id"] if teaching else ""
+    finish = next(iter(fin_by.values()), "F07")
     if stream == "linkedin" and finish == "F07":
         finish = "F10"
-    video = {"captions": caption, "transition": transition, "finish": finish}
+        if fin_by:
+            fin_by[next(iter(fin_by))] = finish
+    video = {"captions": cap_by.get(first) or "C05", "transition": trans_by.get(first) or "M09", "finish": finish}
     audio = ["S08", "S10"] + (["S05"] if voiced else [])
+    used.update(cap_by.values())
+    used.update(fin_by.values())
+    used.update(trans_by.values())
+
+    def room(sid: str, code: str) -> bool:
+        """May this scene take `code`: under its cap, its family not full, and only one style that takes over its lines."""
+        have = out[sid]
+        if len(have) >= PER_SCENE or code in used:
+            return False
+        if sum(1 for c in have if c[0] == code[0]) >= FAMILY_LIMIT.get(code[0], 2):
+            return False
+        if code in LINE_STYLES and any(c in LINE_STYLES for c in have):
+            return False
+        if code in PHOTO_STYLES and any(c in PHOTO_STYLES for c in have):
+            return False
+        if code == "V06" and any(c in {"L05", "V05"} for c in have):
+            return False
+        if code in {"L05", "V05"} and "V06" in have:
+            return False
+        if code == "V10" and cap_by.get(sid) in {"C03", "C09"}:
+            return False                                 # typed lines are drawn letter by letter; a quiet statement cannot be
+        return True
+
+    for i, sc in enumerate(teaching):
+        letter = "hfws"[min(i, 3)]
+        out[sc["id"]] = [cap_by[sc["id"]], *([fin_by[sc["id"]]] if sc["id"] in fin_by else []),
+                         *([trans_by[sc["id"]]] if sc["id"] in trans_by else [])]
+        for code in ranked(letter, sc):
+            if len(out[sc["id"]]) >= 7:
+                break
+            if room(sc["id"], code):
+                out[sc["id"]].append(code)
+                used.add(code)
 
     def count() -> int:
         return len({*(c for codes in out.values() for c in codes), *video.values(), *audio})
 
-    # the floor: when the films' own words and photos suit fewer than MIN_STYLES styles, the next most suitable are added, the
-    # family rule relaxed, scene by scene, until there are enough or nothing else is eligible
-    for _ in range(MIN_STYLES * 2):
-        if count() >= MIN_STYLES:
-            break
+    # the floor, and then everything else that is eligible: Wan, 26 Oct 2026: "push to use as many styles from 99 styles as
+    # you can". The next most suitable style goes to the scene it suits until nothing eligible is left or the cap is reached
+    for _ in range(PER_SCENE * 4):
         added = False
         for i, sc in enumerate(teaching):
-            spare = [c for c in ranked("hfws"[min(i, 3)], sc) if c not in used]
-            if spare and count() < MIN_STYLES:
+            spare = [c for c in ranked("hfws"[min(i, 3)], sc) if room(sc["id"], c)]
+            if spare:
                 out[sc["id"]].append(spare[0])
                 used.add(spare[0])
                 added = True
         if not added:
             break
+    study = study_of(row)
     native = sorted({c for codes in out.values() for c in codes if c in NATIVE_TEXT})
     assigned = sorted({*(c for codes in out.values() for c in codes), *video.values()} - NATIVE_TEXT)
     applied = set(assigned) | set(native) | set(audio)
     unavailable = dict(UNAVAILABLE)
     unavailable.update({c: "not needed by this film's words, or it suits a different scene" for c in NAMES
                         if c not in applied and c not in unavailable})
-    return {"scenes": out, "video": video, "assigned": assigned, "native": native, "audio": audio,
+    return {"scenes": out, "video": video, "assigned": assigned, "native": native, "audio": audio, "study": study,
             "unavailable": unavailable, "considered": len(NAMES), "applied": len(applied)}
 
 

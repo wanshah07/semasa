@@ -516,3 +516,23 @@ def test_the_rich_layout_has_no_overlap_in_a_real_browser(tmp_path):
         shutil.rmtree(tmp_path, ignore_errors=True)
     real = [f for f in found if f["code"] != "probe_unavailable"]
     assert not real, real
+
+
+@pytest.mark.composed
+def test_by_default_the_worker_composes_the_film_and_the_writer_is_not_asked(tmp_path, monkeypatch):
+    # 26 Oct 2026: the writer's own layouts failed content_overlap on every try; the film is built by motion_layout
+    from test_motion import NOW, FakeLLM, Store, _row, _runner, fake_speak
+    monkeypatch.setattr(motion.voice_mod, "speak", fake_speak)
+    store = Store()
+    row = _row(store, language="bm", voice="male")
+    plan = {"title": "t", "photo_query": "lab", "scenes": [
+        {"heading": f"Tajuk {i}", "lines": ["Denda 50% kes", "Sejak 2018 dan 2026 syarat baharu"],
+         "narration": "Satu dua tiga empat lima enam."} for i in range(4)]}
+    llm = FakeLLM([plan])
+    assert motion.process(store, llm, {**row, "attempts": 1}, {"prompt": "", "cli": "0.8.188"},
+                          runner=_runner(), workdir=tmp_path, now=NOW)
+    got = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
+    assert got["status"] == "done" and "composed by the worker" in got["style_note"]
+    assert "writer_attempts" not in got["check_report"], "no writer layout was asked for or rejected"
+    built = got["check_report"]["layout"]["built"]
+    assert len(built) >= 8 and {"V09", "P08"} & set(built), built

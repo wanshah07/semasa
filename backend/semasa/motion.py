@@ -534,7 +534,8 @@ def hydrate_evidence(store: Any, row: dict[str, Any]) -> dict[str, Any]:
         try:
             origins = store.table("semasa_ideas").select("*").eq("id", row["idea_id"]).execute().data or []
             if origins:
-                for key in ("source_url", "reference_urls", "source_name", "source_summary", "citations", "angle", "domain"):
+                for key in ("source_url", "reference_urls", "source_name", "source_title", "source_summary", "citations", "angle",
+                            "domain"):
                     if origins[0].get(key) is not None:
                         evidence.setdefault(key, origins[0][key])
         except Exception as exc:  # noqa: BLE001
@@ -783,6 +784,10 @@ def claim(store: Any, limit: int = 3) -> list[dict[str, Any]]:
     return out
 
 
+class _ComposedByWorker(Exception):
+    """Not an error: the worker builds this film itself, so the writer is not asked."""
+
+
 def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any], *, runner: Any = subprocess.run,
             workdir: Path | None = None, now: datetime | None = None, gh: GitHub | None = None,
             picture_provider: Any = None, speak: Any = None, photo_search: Any = None, photo_get: Any = None) -> bool:
@@ -902,7 +907,13 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             tries.append({"n": len(tries) + 1, "chars": len(markup), "ok": not rep["errors"],
                           "errors": [{"code": e.get("code"), "message": str(e.get("message"))[:220]} for e in rep["errors"][:8]]})
 
+        # The worker composes the film itself unless MOTION_WRITER=1 (26 Oct 2026). The AI writer's own layouts failed
+        # HyperFrames' content_overlap on every try of both test films (it places text by coordinates and draws circles Wan
+        # does not want), and each try costs minutes; motion_layout builds 40 of the 99 styles in a column that cannot overlap.
+        compose_only = os.environ.get("MOTION_WRITER", "") != "1"
         try:
+            if compose_only:
+                raise _ComposedByWorker()
             out = ask_writer(llm, system, build_user(row, title, text, style=style) + "\n\n" + fixed)
             if not isinstance(out, dict):
                 raise RuntimeError("the writer gave no answer")
@@ -921,13 +932,17 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                 report = checked(html)
                 note_try(html, report)
             writer_error = ""
+        except _ComposedByWorker:
+            writer_error = ""
+            report = {"ok": False, "errors": [{"code": "composed_by_worker", "message": "built by the worker"}], "warnings": []}
         except Exception as exc:  # noqa: BLE001 - the safe layout still makes the film
             writer_error = f"{type(exc).__name__}: {str(exc)[:160]}"
             out = out if isinstance(out, dict) else {}          # a writer that answered nothing (run 37, 26 Oct 2026)
             report = {"ok": False, "errors": [{"code": "writer_failed", "message": writer_error}], "warnings": []}
-        if writer_error or motion_layout.layout_findings(report["errors"]):
-            log.warning("%s: writer layout rejected (%s); using the safe layout", row["id"],
-                        writer_error or [f.get("code") for f in report["errors"]][:4])
+        if compose_only or writer_error or motion_layout.layout_findings(report["errors"]):
+            if not compose_only:
+                log.warning("%s: writer layout rejected (%s); using the safe layout", row["id"],
+                            writer_error or [f.get("code") for f in report["errors"]][:4])
             page, layout = motion_layout.compose(scenes=scenes, total=total, w=w, h=h, lang=lang,
                                                  plan=auto or {"scenes": {}, "video": {}}, palette=PALETTE["regulab"],
                                                  gsap=GSAP, html_lang=LANGUAGE[lang][0], design=motion_styles.design(row),
@@ -937,8 +952,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             report = checked(page)
             html = page
             out.setdefault("title", plan.get("title"))
-            why = f" (the writer's own layout failed: {', '.join(map(str, first))})" if first else ""
-            layout_note = "safe layout used" + why
+            why = f" (the writer's own layout failed: {', '.join(map(str, first))})" if first and not compose_only else ""
+            layout_note = ("composed by the worker" if compose_only else "safe layout used") + why
             report["rejected_html"] = rejected
             leftover = motion_layout.layout_findings(report["errors"])
             if leftover:

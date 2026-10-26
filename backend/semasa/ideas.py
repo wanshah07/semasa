@@ -26,7 +26,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from . import compliance, db, my_designs, slides
+from . import antislop, compliance, db, my_designs, slides
 from .fetch import get
 from .llm import LLM
 from .log import get_logger
@@ -314,6 +314,7 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
         system = LINKEDIN_SYSTEM % "; ".join(f"{k} = {v}" for k, v in sorted(angles.items()))
     else:
         system = REGULAB_SYSTEM % DOMAINS
+    system += "\n\n" + antislop.PROMPT
     from . import watch
     issuer = watch.is_issuer(idea.get("source_name"))
     lines = [
@@ -350,11 +351,11 @@ def normalise_text(raw: Any, stream: str, lang: str) -> dict[str, dict[str, str]
     for lg in ("bm", "en"):
         inner = raw.get(lg)
         if isinstance(inner, dict):
-            kept = {p: str(inner[p]).strip() for p in plats if isinstance(inner.get(p), str) and inner[p].strip()}
+            kept = {p: antislop.clean(str(inner[p]).strip()) for p in plats if isinstance(inner.get(p), str) and inner[p].strip()}
             if kept:
                 out[lg] = kept
         elif isinstance(inner, str) and inner.strip() and len(plats) == 1:
-            out[lg] = {plats[0]: inner.strip()}
+            out[lg] = {plats[0]: antislop.clean(inner.strip())}
     return out
 
 
@@ -649,7 +650,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
         system = LINKEDIN_SYSTEM % "; ".join(f"{k} = {v}" for k, v in sorted(angles.items()))
     else:
         system = REGULAB_SYSTEM % DOMAINS
-    system += compliance.avoid_line(indo_extra) + writer_block(settings.get("writer"), stream)
+    system += "\n\n" + antislop.PROMPT + compliance.avoid_line(indo_extra) + writer_block(settings.get("writer"), stream)
     plat = "linkedin" if stream == "linkedin" else "instagram"
     caption = ((post.get("text") or {}).get(lang) or {}).get(plat) or ""
     user = REVISE_ASK % (str(post.get("revise_note") or "").strip()[:800], post.get("hook") or "", post.get("citation") or "",

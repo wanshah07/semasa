@@ -2093,5 +2093,83 @@
   "expect": {
    "hard": 1
   }
+ },
+ {
+  "name": "an empty AI word only warns",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Unlock the seamless potential.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Unlock the seamless potential.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Unlock the seamless potential."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0,
+   "soft_contains": [
+    "empty AI vocabulary"
+   ]
+  }
+ },
+ {
+  "name": "a fake-candid opener only warns",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Honestly? Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Honestly? Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Honestly? Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0,
+   "soft_contains": [
+    "fake-candid"
+   ]
+  }
+ },
+ {
+  "name": "bukan sekadar X, malah Y only warns",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Ia bukan sekadar borang, malah satu keputusan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Ia bukan sekadar borang, malah satu keputusan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan. Ia bukan sekadar borang, malah satu keputusan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0,
+   "soft_contains": [
+    "bukan sekadar"
+   ]
+  }
  }
 ]

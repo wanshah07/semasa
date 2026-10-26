@@ -39,7 +39,7 @@ from typing import Any
 import requests
 from PIL import Image, ImageFilter
 
-from . import db
+from . import antislop, db
 from .log import get_logger
 from .providers import Generated
 from .providers.common import fetch_reference
@@ -177,8 +177,9 @@ def write_concepts(llm: Any, p: dict[str, Any], ref: dict[str, Any] | None = Non
     if ref:
         reference = (f"REFERENCE AD WAN LIKES (take its layout and mood, never its artwork or brand): layout {ref['layout']}; "
                      f"mood: {ref['mood']}; typography: {ref['type']}\nMake the FIRST design follow this reference.\n")
-    out = llm.chat_json(CONCEPT_SYSTEM, CONCEPT_PROMPT.format(n=n, product=product_text(p), reference=reference,
-                                                              side_word="chosen side"), max_tokens=2600)
+    out = llm.chat_json(CONCEPT_SYSTEM + "\n\n" + antislop.PROMPT,
+                        CONCEPT_PROMPT.format(n=n, product=product_text(p), reference=reference, side_word="chosen side"),
+                        max_tokens=2600)
     designs = [d for d in (clean_concept(c, p) for c in ((out or {}).get("designs") or [])) if d]
     if not designs:
         raise FragranceError("the writer did not answer with any usable design; try again")

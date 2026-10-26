@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import compliance, slides
+from . import antislop, compliance, slides
 from .llm import LLM
 from .log import get_logger
 
@@ -66,7 +66,7 @@ def write(llm: LLM, brief: str, design: str, stream: str) -> tuple[list[dict[str
         raise slides.SlideError("the writer is off, so the words cannot be written from the idea: "
                                 + (llm.why_off() if llm else "no writer") + ". Write the words yourself instead.")
     system = (f"You write the words for a social-media artwork. {VOICE.get(stream, VOICE['regulab'])}\n\n{COMMON}\n\n"
-              f"Answer with ONE JSON object only. {SHAPE[design]}")
+              f"Answer with ONE JSON object only. {SHAPE[design]}\n\n{antislop.PROMPT}")
     out = llm.chat_json(system, f"BRIEF (Wan's idea or prompt):\n{brief.strip()[:4000]}", max_tokens=2500)
     if not isinstance(out, dict):
         raise slides.SlideError("the writer did not answer (see the run log); press Retry, or write the words yourself")

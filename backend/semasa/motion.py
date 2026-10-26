@@ -837,6 +837,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             writer_error = ""
         except Exception as exc:  # noqa: BLE001 - the safe layout still makes the film
             writer_error = f"{type(exc).__name__}: {str(exc)[:160]}"
+            out = out if isinstance(out, dict) else {}          # a writer that answered nothing (run 37, 26 Oct 2026)
             report = {"ok": False, "errors": [{"code": "writer_failed", "message": writer_error}], "warnings": []}
         if writer_error or motion_layout.layout_findings(report["errors"]):
             log.warning("%s: writer layout rejected (%s); using the safe layout", row["id"],

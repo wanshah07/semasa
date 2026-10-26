@@ -18,7 +18,7 @@ For source footage: preserve voice, expression and meaning, continuing original 
 
 ## Branding, layout, assets
 Mint/cream, deep teal, readable hierarchy; center or deliberate consistent grid. Preview 540×960, master 1080×1920. Keep critical copy away from platform top/bottom/right UI. No repeated WS/Label Literacy headers, pages or mascot unless explicitly requested. Real product/texture stock with preserved photographer/photo-page/license/download URLs/hash, no implied ownership/endorsement or product test. Actual alpha logo, original proportions/tagline, no threshold destruction of antialiasing.
-Long WS outro: independent final page ≥3.3 seconds, centered official logo. English visible/spoken “Follow us for more”. BM visible/spoken “Jangan lupa follow kami untuk tips seterusnya.” Do not speak brand name. LinkedIn: avatar, “Ts. ChM. Muhammad”, “Follow me for more”; no WS logo. Gimmick: “Stay tuned. Follow us for more” inside the same scene, not long outro.
+Long WS outro: independent final page ≥3.3 seconds, centered official logo. English visible/spoken “Follow us for more”. BM visible/spoken “Jangan lupa follow kami untuk tips seterusnya.” Do not speak brand name. LinkedIn: avatar, “Ts. ChM. Muhammad”, “Follow me for more”; no WS logo. Gimmick: “Stay tuned” inside the same scene, not long outro.
 
 ## Sound, rights and QA
 Approved original synthesized piano is a reusable cleared dependency with provenance. Gentle audible bed, fades, ducked under voice. Preserve note pitch. The v17 reference uses reel soundtrack/music gain ×.45 versus v16; its rights remain unverified/private-preview-only, not a portable/public default. Do not auto-download or package raw reel audio. Source preference alone does not mean its render route exists.

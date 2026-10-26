@@ -88,4 +88,4 @@ def test_teaser_plan_has_one_persistent_stage_not_four_pages():
     row = {"seconds": 10, "options": {"style": "styles-blueprint-explainer", "mode": "teaser"}}
     plan = styles.complete_plan(row)
     assert len(plan["stages"]) == 1 and plan["stages"][0]["end"] == 10
-    assert plan["cta"] == "Stay tuned. Follow us for more."
+    assert plan["cta"] == "Stay tuned"

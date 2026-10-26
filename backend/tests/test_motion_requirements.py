@@ -37,7 +37,7 @@ def test_gimmick_is_one_persistent_scene():
     plan = motion.plan_scenes(FakeLLM([SCRIPT]), row, "", "", "")
     assert len(plan["scenes"]) == 1
     assert plan["scenes"][0]["id"] != "brand-outro"
-    assert "Stay tuned. Follow us for more" in plan["scenes"][0]["heading"]
+    assert "Stay tuned" in plan["scenes"][0]["heading"]
     assert "no standalone" in motion_styles.prompt(row)
 
 

@@ -235,7 +235,7 @@ export default function ChatTab() {
 
   return (
     <main className="mx-auto flex min-h-[calc(100vh-8rem)] max-w-page flex-col px-4 pb-10 pt-10 sm:px-6">
-      <p className="text-center text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t("Sembang AI", "AI chat")}</p>
+      <p className="text-center text-[13px] font-semibold text-accent">{t("Sembang AI", "AI chat")}</p>
       <button type="button" onClick={checkModel} disabled={busy}
         className="mx-auto mt-2 text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-50">
         {t("Uji model terpilih: baca gambar dan guna alat", "Test the selected model: pictures and tools")}

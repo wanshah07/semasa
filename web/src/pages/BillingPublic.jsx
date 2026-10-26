@@ -64,7 +64,7 @@ export default function BillingPublic({ token }) {
     <main className="min-h-screen bg-bg">
       <div className="mx-auto flex max-w-[900px] flex-wrap items-center justify-between gap-3 px-4 py-4">
         <div>
-          <div className="text-[11px] uppercase tracking-widest text-muted">{data.company?.name}</div>
+          <div className="text-xs font-medium text-muted">{data.company?.name}</div>
           <h1 className="font-display text-lg">{kindLabel(d.kind, lang)} {d.number}</h1>
           <div className="mt-1 flex items-center gap-2 text-sm">
             <span className={`rounded-pill px-2 py-0.5 text-xs font-medium ${tone}`}>{statusLabel(st, lang)}</span>

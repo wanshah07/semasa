@@ -43,7 +43,7 @@ export default function AiTeam({ statusRows, usageRows, state, team, save, onToa
                   {reader.backup?.slug === c.slug && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted">{t("sandaran", "backup")}</span>}
                 </div>
                 <div className={`mt-1 flex flex-wrap gap-1 ${compact ? "justify-center" : ""}`}>
-                  {c.does.map((d) => <span key={d} className="rounded-pill bg-surface-2 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted">{w(DOES[d])}</span>)}
+                  {c.does.map((d) => <span key={d} className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">{w(DOES[d])}</span>)}
                 </div>
                 {!compact && (
                   <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
@@ -100,7 +100,7 @@ function JobPins({ cards, state, team, save, onToast }) {
           const models = pinnedCard ? modelsFor(pinnedCard.row, job) : [];
           return (
             <div key={job} className="rounded-tile bg-surface-2/60 p-3" data-ai-job={job}>
-              <p className="text-[11px] uppercase tracking-widest text-muted">{JOBS[job][L]}</p>
+              <p className="text-xs font-medium text-muted">{JOBS[job][L]}</p>
               {job === "reader" || job === "motion" ? (
                 <p className="mt-1 text-sm">{d.chosen ? <><span className="font-medium">{d.chosen.name}</span> · {d.chosen.model}</> : <span className="text-muted">{d.why || t("tiada robot teks dengan kunci", "no text robot with a key")}</span>}</p>
               ) : (

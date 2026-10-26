@@ -30,6 +30,8 @@
 }
 
 @layer components {
+  /* the icon set's line ends and corners (src/lib/iconSet.js says why) */
+  .semasa-icon { stroke-linecap: square; stroke-linejoin: miter; }
   .glass {
     background: rgb(var(--c-surface) / 0.72);
     backdrop-filter: blur(var(--blur));

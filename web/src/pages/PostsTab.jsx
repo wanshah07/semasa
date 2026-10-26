@@ -79,7 +79,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Post</p>
+        <p className="text-[13px] font-semibold text-accent">Post</p>
         <h1 className="mt-2 text-4xl leading-tight">{t("Satu pintu: kelulusan anda.", "One gate: your approval.")}</h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
           {t("Setiap draf disemak dengan peraturan yang sama seperti Studio (tiada CTA, tiada laman web dalam kapsyen, "

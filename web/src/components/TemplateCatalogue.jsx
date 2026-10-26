@@ -78,7 +78,7 @@ export default function TemplateCatalogue({ value, onPick, stream = "regulab", d
     <div className="space-y-2">
       {groups.map(([g, name]) => (
         <div key={g}>
-          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted">{name}</p>
+          <p className="text-[11.5px] font-semibold text-muted">{name}</p>
           <div role="radiogroup" aria-label={name} className="mt-1 flex gap-2 overflow-x-auto pb-1" style={{ scrollSnapType: "x mandatory" }}>
             {TEMPLATES.filter((x) => x.group === g).map((x) => (
               <button key={x.k} type="button" role="radio" aria-checked={value === x.k} disabled={disabled} onClick={() => onPick(value === x.k ? "" : x.k)}

@@ -67,7 +67,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
     <AuroraBackground className="mb-2 h-auto w-full items-stretch justify-start overflow-hidden rounded-card border border-line/80 bg-surface text-ink dark:bg-surface">
       <motion.div {...fadeUp} className="flex flex-wrap items-end justify-between gap-4 p-6 sm:p-8">
         <div>
-          <p className="text-[11px] uppercase tracking-widest text-muted">{dayNames()[dowOf(today)]} · {fmtDate(today)} · {now.time} MYT</p>
+          <p className="text-xs font-medium text-muted">{dayNames()[dowOf(today)]} · {fmtDate(today)} · {now.time} MYT</p>
           <h1 className="mt-1 font-display text-3xl sm:text-4xl">{greet}, {name}.</h1>
           <p className="mt-2 max-w-2xl text-sm text-ink/80">
             {/* domainsOn is null when the rota names nothing for this weekday, which means "posts, any domain", not "no posting day" */}

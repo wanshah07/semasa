@@ -246,7 +246,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show" className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t("Aliran A", "Flow A")}</p>
+          <p className="text-[13px] font-semibold text-accent">{t("Aliran A", "Flow A")}</p>
           <h1 className="mt-2 text-4xl leading-tight">{t("Isu → idea → draf.", "Issue → idea → draft.")}</h1>
           <p className="mt-3 max-w-2xl text-sm text-muted">
             {lang === "en" ? (

@@ -43,7 +43,7 @@ The skill says so itself (R-37: the owner's voice sample wins, and the conflict 
 - the closing line of a film (`motion_styles.cta`), even though "follow kami" is a call to action elsewhere. Rule 7 of the post rules still
   bans a call to action in a caption.
 
-## Findings (the skill's "after" mode). 1, 2 and 5 fixed on 26 Oct 2026 (Wan: "fix 1, 2 and 5, create in english version")
+## Findings (the skill's "after" mode). All five fixed on 26 Oct 2026 (Wan: "fix 1, 2 and 5, create in english version", then "fix 3 and 4")
 
 Priority follows the skill: Hard Gate is HIGH, Purpose-Gate MEDIUM, Quality Locks LOW.
 
@@ -54,10 +54,17 @@ Priority follows the skill: Hard Gate is HIGH, Purpose-Gate MEDIUM, Quality Lock
 2. FIXED, MEDIUM, R-04: the Sparkles icon on "generate" buttons and tab icons is replaced by an icon that names what the button makes:
    ImagePlus (Jana gambar, Jana Wanshah, the Media lab tab and its log icon), Plus (More poses), Clapperboard (Buat video motion), Eye
    (Needs a look), FolderPlus (category made by Semasa), FileQuestion (the FAQ AI bar).
-3. OPEN, MEDIUM, R-04: 56 files import the same thin-stroke Lucide set. It is the default icon-set look. Changing it is a design decision, not a clean-up.
-4. OPEN, MEDIUM, R-06: 60 uppercase labels carry wide tracking. Check each against the brand's own type direction.
+3. FIXED, MEDIUM, R-04: the icon set is now a decision made once, in `web/src/lib/iconSet.js` (a `LucideProvider` around the page, and the
+   `.semasa-icon` rule in `index.css`). The glyphs stay Lucide's because they are the relevant ones; what changed is how they are drawn: a 1.5
+   stroke instead of the library's 2, square line ends and mitred corners (the strokes of a technical drawing, the register of a regulatory
+   tool, not the rounded consumer-app look). An icon that sets its own `strokeWidth` keeps it. To go back, delete the `ICON_SET` spread in
+   `main.jsx`. Checked in Chromium: 44 icons on the first screen carry the set. `web/icons.test.mjs` holds it.
+4. FIXED, MEDIUM, R-06: no label is set in wide-tracked capitals any more (76 class strings in 39 files). Labels, table headers, chips and
+   the page eyebrow are sentence case in the body face, told apart by size, weight and colour: muted labels are 12px medium, the eyebrow
+   above each page title is 13px semibold in the accent colour, chips keep their pill and lose the caps. Language codes (BM, EN) stay in
+   capitals because they are codes, with no tracking. The FAQ export's HTML eyebrow lost its .18em tracking; the exported poster's own
+   eyebrow is capitals without tracking and stays. Printed billing documents keep their own capitalised document words ("INVOIS").
 5. FIXED, LOW, R-16: the generic "Bot" label (140 lines of page text, Malay and English) now names the system, "Semasa" ("Semasa tulis ...",
    "Semasa writes ..."), and three buttons say what happens instead ("Hantar untuk ditulis / Send to be written"). Stored values named `bot`
    (`category_by`, the Log actor filter) and the worker's Malay log titles ("Bot menambah ...", matched by `LogTab`) are data and did not change.
 
-Reply with the numbers to fix.

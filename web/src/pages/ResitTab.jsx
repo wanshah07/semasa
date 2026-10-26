@@ -113,7 +113,7 @@ export default function ResitTab({ user, onToast }) {
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {tiles.map((s) => (
           <Card key={s.label} className={`p-4 ${s.tone === "danger" ? "border-danger/40" : s.tone === "warn" ? "border-warn/40" : ""}`}>
-            <div className="flex items-center justify-between"><span className="text-[11px] uppercase tracking-widest text-muted">{s.label}</span><s.icon size={16} className="text-muted" /></div>
+            <div className="flex items-center justify-between"><span className="text-xs font-medium text-muted">{s.label}</span><s.icon size={16} className="text-muted" /></div>
             <p className={`mt-2 font-display text-2xl tabular-nums ${s.tone === "danger" ? "text-danger" : ""}`}>{s.value}</p>
             <p className="mt-0.5 text-xs text-muted">{s.hint}</p>
           </Card>
@@ -180,7 +180,7 @@ export default function ResitTab({ user, onToast }) {
             <label className="sm:col-span-2"><Label>{t("Langganan berkaitan", "Related subscription")}</Label><Select className="w-full" value={editing.subscription_id} onChange={(v) => setEditing({ ...editing, subscription_id: v })} options={[["", t("Tiada", "None")], ...subsT.rows.map((s) => [s.id, `${s.vendor} · ${s.name}`])]} /></label>
             <label className="sm:col-span-2"><Label>{t("Ringkasan", "Summary")}</Label><TextArea rows={2} value={editing.summary || ""} onChange={(e) => setEditing({ ...editing, summary: e.target.value })} /></label>
             {Array.isArray(editing.items) && editing.items.length ? <div className="rounded-tile border border-line p-3 text-xs sm:col-span-2">
-              <p className="mb-1 text-[11px] uppercase tracking-widest text-muted">{t("Butiran yang dibaca", "Items read")}</p>
+              <p className="mb-1 text-xs font-medium text-muted">{t("Butiran yang dibaca", "Items read")}</p>
               <ul className="space-y-0.5">{editing.items.map((it, i) => <li key={i} className="flex justify-between gap-2"><span className="truncate">{it.qty && it.qty !== 1 ? `${it.qty} × ` : ""}{it.name}</span><span className="font-mono tabular-nums">{it.price != null ? money(it.price) : ""}</span></li>)}</ul>
             </div> : null}
             <label className="sm:col-span-2"><Label>{t("Nota", "Notes")}</Label><Input value={editing.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></label>

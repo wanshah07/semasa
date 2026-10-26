@@ -22,7 +22,7 @@ export default function FilterBar({ query, setQuery, category, setCategory, lang
       </div>
       <div className="flex flex-wrap gap-1.5">
         <button onClick={() => setCategory("")}
-          className={`rounded-pill px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${category === "" ? "bg-ink text-bg" : "bg-surface-2 text-muted"}`}>
+          className={`rounded-pill px-3 py-1 text-xs font-semibold ${category === ""? "bg-ink text-bg": "bg-surface-2 text-muted"}`}>
           {t("Semua", "All")} {counts.all ? `· ${counts.all}` : ""}
         </button>
         {CATEGORIES.filter((c) => counts[c]).map((c) => (

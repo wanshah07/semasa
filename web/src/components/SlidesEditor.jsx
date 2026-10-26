@@ -119,7 +119,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
         {rows.map((r, i) => (
           <li key={i} className="rounded-tile bg-surface-2/60 p-2.5">
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-accent">{kindOf(t, i, n)}</span>
+              <span className="text-[13px] font-semibold text-accent">{kindOf(t, i, n)}</span>
               {!locked && (
                 <span className="flex gap-1">
                   <button type="button" aria-label={t("Naik", "Move up")} disabled={i === 0} onClick={() => move(i, -1)} className="rounded p-1 text-muted hover:text-ink disabled:opacity-30"><ArrowUp size={13} /></button>
@@ -260,7 +260,7 @@ function SpeakerPhotos({ r, set, locked, user, onToast }) {
   };
   return (
     <div className="min-w-0 sm:col-span-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{t("Gambar penceramah", "Speaker photos")}</p>
+      <p className="text-xs font-semibold text-muted">{t("Gambar penceramah", "Speaker photos")}</p>
       <ul className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
         {speakers.map((sp, idx) => {
           const tok = photoAt(r.photos, idx), url = tok ? photoUrl(tok) : "";
@@ -313,7 +313,7 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, str
     <div className="mt-2 grid gap-2 rounded-tile border border-line bg-surface p-2.5 sm:grid-cols-2">
       <div className="min-w-0 sm:col-span-2">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{t("Teks dan maskot pada kad", "Text and mascot on the card")}</p>
+          <p className="text-xs font-semibold text-muted">{t("Teks dan maskot pada kad", "Text and mascot on the card")}</p>
           <Button type="button" size="sm" variant={compact ? "primary" : "soft"} disabled={locked}
             onClick={() => set(compact ? Object.fromEntries(Object.keys(COMPACT).map((k) => [k, ""])) : COMPACT)}
             title={t("Teks 80%, fon sempit, maskot lebih kecil: lebih banyak ruang untuk gambar", "Text 80%, narrow face, smaller mascot: more room for the picture")}>

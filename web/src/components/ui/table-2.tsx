@@ -112,8 +112,8 @@ function SortIcon({ sorted }: { sorted: false | "asc" | "desc" }) {
   return <ChevronsUpDown className="size-3.5 text-muted-foreground/60" aria-hidden="true" />;
 }
 
-const headLabel = "text-xs font-semibold tracking-wider text-muted-foreground uppercase";
-const sortButton = "-mx-1 inline-flex items-center gap-1 rounded-md px-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase transition-colors hover:text-foreground";
+const headLabel = "text-xs font-semibold text-muted-foreground";
+const sortButton = "-mx-1 inline-flex items-center gap-1 rounded-md px-1 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground";
 
 /** Which row actions a document offers, by kind and derived status. The page enforces the same rules on the writes. */
 export function actionsFor(row: DocRow): DocAction[] {
@@ -177,7 +177,7 @@ export default function DocumentsTable({ rows, words, onAction, onBulk, pageSize
       cell: ({ row }) => (
         <button type="button" onClick={() => onAction("view", row.original)} className="text-left">
           <span className="block font-mono text-xs text-foreground">{row.original.number || <span className="text-muted-foreground">{words.statuses.draft}</span>}</span>
-          <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">{words.kinds[row.original.kind]}</span>
+          <span className="block text-[11px] font-medium text-muted-foreground">{words.kinds[row.original.kind]}</span>
         </button>
       ),
     },
@@ -327,12 +327,12 @@ export default function DocumentsTable({ rows, words, onAction, onBulk, pageSize
     <section className="w-full text-foreground" data-testid="documents-table">
       <div className="flex items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">{words.company}</p>
+          <p className="text-[11px] font-semibold text-muted-foreground">{words.company}</p>
           <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground">{words.title}</h2>
           <p className="text-sm text-muted-foreground">{words.subtitle}</p>
         </div>
         <div className="flex flex-col items-end gap-0.5">
-          <span className="text-[10px] tracking-widest text-muted-foreground uppercase">{words.outstanding}</span>
+          <span className="text-[11px] font-medium text-muted-foreground">{words.outstanding}</span>
           <span className="text-lg font-semibold text-foreground tabular-nums">{fmt(outstanding, cur)}</span>
         </div>
       </div>
@@ -417,7 +417,7 @@ export default function DocumentsTable({ rows, words, onAction, onBulk, pageSize
         </Table>
 
         <div className="flex items-center justify-between gap-4 border-t border-border bg-muted/20 px-4 py-2.5">
-          <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">{words.docs(totalCount)}</p>
+          <p className="text-xs font-semibold text-muted-foreground">{words.docs(totalCount)}</p>
           <div className="flex items-center gap-1.5">
             <Button variant="outline" size="icon" className="size-7" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} aria-label="Previous page">
               <ChevronLeft className="size-3.5" aria-hidden="true" />

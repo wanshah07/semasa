@@ -184,7 +184,7 @@ export function NotchedProjectCard({
           {tags.map((t, i) => (
             <li
               key={`${t}-${i}`}
-              className="rounded-md bg-secondary px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-secondary-foreground"
+              className="rounded-md bg-secondary px-2 py-1 text-[11px] font-semibold text-secondary-foreground"
             >
               {t}
             </li>

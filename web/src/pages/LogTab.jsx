@@ -197,7 +197,7 @@ export default function LogTab({ log, onOpen }) {
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Log</p>
+        <p className="text-[13px] font-semibold text-accent">Log</p>
         <h1 className="mt-2 text-4xl leading-tight">{t("Apa berlaku, bila, dan oleh siapa.", "What happened, when, and who did it.")}</h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
           {t("Pangkalan data menulis setiap baris pada saat sesuatu berubah: scrape, idea, draf, media, FAQ, kelulusan, penerbit "
@@ -219,7 +219,7 @@ export default function LogTab({ log, onOpen }) {
       <section aria-label={t("Hari ini", "Today")} className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         {tiles.map(([id, label, n, sub]) => (
           <Card key={id} className="p-3">
-            <p className="text-[11px] uppercase tracking-wide text-muted">{label} · {t("hari ini", "today")}</p>
+            <p className="text-xs font-medium text-muted">{label} · {t("hari ini", "today")}</p>
             <p className="mt-1 font-display text-2xl">{n}</p>
             <p className="text-[11px] text-muted">{sub}</p>
           </Card>

@@ -556,7 +556,7 @@ function Editor({ doc, clients, projects, counters, cfg, onChange, onClose, onSa
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="block"><Label>{t("Diskaun (MYR)", "Discount (MYR)")}</Label><Input type="number" min="0" step="0.01" value={d.discount || ""} onChange={(e) => onChange({ ...d, discount: e.target.value })} /></label>
             <label className="block"><Label>{t("Cukai %", "Tax %")}</Label><Input type="number" min="0" step="0.01" value={d.tax_rate ?? 0} onChange={(e) => onChange({ ...d, tax_rate: e.target.value })} /></label>
-            <div className="rounded-tile bg-surface-2 p-3 text-right"><div className="text-[11px] uppercase tracking-widest text-muted">{t("Jumlah", "Total")}</div><div className="font-display text-xl tabular-nums">{money(totals.total, { currency: d.currency || "MYR" })}</div></div>
+            <div className="rounded-tile bg-surface-2 p-3 text-right"><div className="text-xs font-medium text-muted">{t("Jumlah", "Total")}</div><div className="font-display text-xl tabular-nums">{money(totals.total, { currency: d.currency || "MYR" })}</div></div>
           </div>
           <label className="block"><Label>{t("Terma & syarat", "Terms & conditions")}</Label><TextArea rows={4} value={d.terms || ""} onChange={(e) => onChange({ ...d, terms: e.target.value })} /></label>
           <label className="block"><Label>{t("Nota (dicetak)", "Notes (printed)")}</Label><TextArea rows={2} value={d.notes || ""} onChange={(e) => onChange({ ...d, notes: e.target.value })} /></label>
@@ -593,7 +593,7 @@ function Viewer({ doc: d, html, events, outbox, onClose, onAction, onRetry, t, l
         <Preview html={html} tall />
         <div className="space-y-4 text-sm">
           <div className="rounded-tile border border-line p-3">
-            <div className="text-[11px] uppercase tracking-widest text-muted">{t("Jumlah", "Total")}</div>
+            <div className="text-xs font-medium text-muted">{t("Jumlah", "Total")}</div>
             <div className="font-display text-2xl tabular-nums">{money(d.total, { currency: d.currency || "MYR" })}</div>
             <div className="mt-1 text-xs text-muted">{t("Dikeluarkan", "Issued")} {fmtDate(d.issue_date)}{d.due_date ? ` · ${d.kind === "quotation" ? t("sah sehingga", "valid until") : t("akhir", "due")} ${fmtDate(d.due_date)}` : ""}</div>
             {d.client?.email && <div className="mt-1 text-xs text-muted">{d.client.email}</div>}

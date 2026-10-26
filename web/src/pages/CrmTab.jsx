@@ -219,7 +219,7 @@ export default function CrmTab({ user, settings, save, onToast }) {
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {tiles.map((s) => (
           <Card key={s.label} className={`p-4 ${s.tone === "danger" ? "border-danger/40" : s.tone === "warn" ? "border-warn/40" : ""}`}>
-            <div className="flex items-center justify-between"><span className="text-[11px] uppercase tracking-widest text-muted">{s.label}</span><s.icon size={16} className="text-muted" /></div>
+            <div className="flex items-center justify-between"><span className="text-xs font-medium text-muted">{s.label}</span><s.icon size={16} className="text-muted" /></div>
             <p className={`mt-2 font-display text-2xl tabular-nums ${s.tone === "danger" ? "text-danger" : ""}`}>{s.value}</p>
             <p className="mt-0.5 text-xs text-muted">{s.hint}</p>
           </Card>
@@ -237,7 +237,7 @@ export default function CrmTab({ user, settings, save, onToast }) {
           </div>
           <Card className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-left text-[11px] uppercase tracking-widest text-muted">
+              <thead className="text-left text-xs font-medium text-muted">
                 <tr><th className="px-4 py-3">{t("Kenalan", "Contact")}</th><th className="px-3 py-3">{t("Peringkat", "Stage")}</th><th className="px-3 py-3">{t("E-mel pemasaran", "Marketing e-mail")}</th>
                   <th className="px-3 py-3">{t("Susulan", "Follow-up")}</th><th className="px-3 py-3">{t("Terakhir", "Last contact")}</th><th className="px-3 py-3" /></tr>
               </thead>
@@ -370,7 +370,7 @@ function CampaignList({ campaigns, contacts, outbox, t, w, onEdit, onStatus, onD
   return (
     <Card className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="text-left text-[11px] uppercase tracking-widest text-muted">
+        <thead className="text-left text-xs font-medium text-muted">
           <tr><th className="px-4 py-3">{t("Kempen", "Campaign")}</th><th className="px-3 py-3">{t("Jenis", "Kind")}</th><th className="px-3 py-3">{t("Penerima", "Audience")}</th>
             <th className="px-3 py-3">{t("Bila", "When")}</th><th className="px-3 py-3">{t("Status", "Status")}</th><th className="px-3 py-3">{t("Dihantar", "Sent")}</th><th className="px-3 py-3" /></tr>
         </thead>
@@ -424,14 +424,14 @@ function CampaignComposer({ form, setForm, contacts, allTags, busy, testTo, t, w
       {!wa && <label className="block"><Label>{t("Subjek", "Subject")} <span className="font-normal opacity-70">{"{{name}} {{company}}"}</span></Label><Input value={form.subject} onChange={set("subject")} /></label>}
       <label className="block"><Label>{wa ? t("Mesej (teks biasa; {{name}} {{company}} diisi; had 4,000 aksara)", "Message (plain text; {{name}} {{company}} filled in; 4,000 characters at most)") : t("Kandungan (teks atau HTML; perenggan dipisah baris kosong)", "Body (text or HTML; paragraphs separated by a blank line)")}</Label><TextArea rows={8} value={form.body} onChange={set("body")} /></label>
       <div className="rounded-tile border border-line bg-surface-2/60 p-3 text-sm">
-        <p className="mb-1 text-[11px] uppercase tracking-widest text-muted">{t("Pratonton untuk {n}", "Preview for {n}", { n: sample.name })}</p>
+        <p className="mb-1 text-xs font-medium text-muted">{t("Pratonton untuk {n}", "Preview for {n}", { n: sample.name })}</p>
         {!wa && <p className="font-medium">{merge(form.subject, sample) || t("Tiada", "None")}</p>}
         <div className="prose prose-sm mt-1 max-w-none text-ink/90" dangerouslySetInnerHTML={{ __html: /<[a-z][^>]*>/i.test(form.body) ? merge(form.body, sample) : merge(form.body, sample).split(/\n\s*\n/).map((p) => `<p>${p.replace(/</g, "&lt;").replace(/\n/g, "<br>")}</p>`).join("") }} />
         <p className="mt-2 border-t border-line pt-2 text-[11px] text-muted">{wa ? t("+ baris 'Balas STOP' dan pautan berhenti melanggan di bawah setiap mesej. Meta hanya membenarkan teks bebas dalam 24 jam selepas orang itu menulis kepada anda; di luar itu API menolak dan papan blast (klik satu persatu) adalah jalannya.", "+ a 'Reply STOP' line and the unsubscribe link under every message. Meta allows free text only within 24 hours of the person writing to you; outside that the API refuses and the blast board (click one by one) is the way.")
           : t("+ nota PDPA dan pautan berhenti melanggan ditambah oleh pekerja di bawah setiap e-mel.", "+ the PDPA line and the unsubscribe link, added by the worker under every e-mail.")}</p>
       </div>
       <div className="rounded-tile border border-line p-3">
-        <p className="mb-2 text-[11px] uppercase tracking-widest text-muted">{t("Penerima", "Audience")} · <span className="normal-case tracking-normal">{t("{n} akan menerima daripada {m} yang dinamakan", "{n} will receive of {m} named", { n: aud.send.length, m: aud.named.length })}</span></p>
+        <p className="mb-2 text-xs font-medium text-muted">{t("Penerima", "Audience")} · <span>{t("{n} akan menerima daripada {m} yang dinamakan", "{n} will receive of {m} named", { n: aud.send.length, m: aud.named.length })}</span></p>
         <div className="flex flex-wrap gap-1">{STAGES.map((s) => <button type="button" key={s} onClick={() => toggle("stages", s)} className={`rounded-pill px-3 py-1 text-xs ${(form.audience?.stages || []).includes(s) ? "bg-ink text-surface" : "bg-surface-2 text-muted"}`}>{w(STAGE_WORDS, s)}</button>)}</div>
         {allTags.length ? <div className="mt-2 flex flex-wrap gap-1">{allTags.map((x) => <button type="button" key={x} onClick={() => toggle("tags", x)} className={`rounded-pill px-3 py-1 text-xs ${(form.audience?.tags || []).includes(x) ? "bg-ink text-surface" : "bg-surface-2 text-muted"}`}>#{x}</button>)}</div> : null}
         <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">

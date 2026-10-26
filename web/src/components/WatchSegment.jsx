@@ -109,7 +109,7 @@ function Competitors({ setting, saveSetting, onToast }) {
 function Pill({ active, onClick, children }) {
   return (
     <button type="button" onClick={onClick}
-      className={`rounded-pill px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${active ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>
+      className={`rounded-pill px-3 py-1 text-xs font-semibold ${active ? "bg-ink text-bg": "bg-surface-2 text-muted hover:text-ink"}`}>
       {children}
     </button>
   );
@@ -199,7 +199,7 @@ function WatchCard({ row, onIdea, onHide, onRemove, busy, domainLabel }) {
           {row.summary && <p className="mt-2 text-sm leading-relaxed text-muted [overflow-wrap:anywhere]">{row.summary}</p>}
           {row.why && (
             <p className="mt-3 rounded-tile bg-surface-2 p-2.5 text-[13px] leading-relaxed text-ink [overflow-wrap:anywhere]">
-              <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted">{t("Kenapa penting", "Why it matters")}</span>
+              <span className="block text-[11px] font-semibold text-muted">{t("Kenapa penting", "Why it matters")}</span>
               {row.why}
             </p>
           )}

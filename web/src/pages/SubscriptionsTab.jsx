@@ -108,7 +108,7 @@ export default function SubscriptionsTab({ user, onToast }) {
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {tiles.map((s) => (
           <Card key={s.label} className={`p-4 ${s.tone === "danger" ? "border-danger/40" : ""}`}>
-            <div className="flex items-center justify-between"><span className="text-[11px] uppercase tracking-widest text-muted">{s.label}</span><s.icon size={16} className="text-muted" /></div>
+            <div className="flex items-center justify-between"><span className="text-xs font-medium text-muted">{s.label}</span><s.icon size={16} className="text-muted" /></div>
             <p className={`mt-2 font-display text-2xl tabular-nums ${s.tone === "danger" ? "text-danger" : ""}`}>{s.value}</p>
             <p className="mt-0.5 text-xs text-muted">{s.hint}</p>
           </Card>
@@ -117,7 +117,7 @@ export default function SubscriptionsTab({ user, onToast }) {
 
       <Card className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="text-left text-[11px] uppercase tracking-widest text-muted">
+          <thead className="text-left text-xs font-medium text-muted">
             <tr>
               <th className="px-4 py-3">{t("Langganan", "Subscription")}</th>
               <th className="px-3 py-3">{t("Jumlah", "Amount")}</th>

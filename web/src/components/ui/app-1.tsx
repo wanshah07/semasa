@@ -70,7 +70,7 @@ export function App1({ stats, series, projects, activity, words, aside, formatVa
         {stats.map((stat) => (
           <Card key={stat.label} className={cn(stat.tone === "danger" && "border-danger/40", stat.tone === "ok" && "border-ok/40")}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-[11px] font-normal uppercase tracking-widest text-muted">{stat.label}</CardTitle>
+              <CardTitle className="text-xs font-normal text-muted">{stat.label}</CardTitle>
               <stat.icon aria-hidden className="size-4 text-muted" />
             </CardHeader>
             <CardContent>

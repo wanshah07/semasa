@@ -101,3 +101,7 @@ ruff check backend
 ```
 
 Regression suites include `motionRequirements.test.mjs`, `motionEntrypoints.test.mjs` and `backend/tests/test_motion_requirements.py`. The latter inspects actual prompt/build paths and worker project output with external boundaries stubbed, not synthetic claims of live renders.
+
+
+## Wan's skill `ws-regulab-motion` (25 Oct 2026)
+Installed twice, one source of truth: `.claude/skills/ws-regulab-motion/` is a Claude Code **project skill** (open this repo in Claude Code and run `/ws-regulab-motion ...`; on a laptop, copy the folder to `~/.claude/skills/`), and the motion worker (`motion.skill_context`) hands its `references/contract.md` and the template of the chosen design to the writer on every film, below the fixed scenes and the current policy, which win where they differ. The skill's own scripts (`resolve.py`, `smoke.py`, `test_contract.py`) are unchanged and need Pillow, PyYAML and a local HyperFrames; their defaults point at the server they were built on.

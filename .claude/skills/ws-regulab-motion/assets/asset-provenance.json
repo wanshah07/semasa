@@ -1,0 +1,32 @@
+[
+  {
+    "file": "assets/bottle.jpg",
+    "source": "/opt/data/outputs/motion-v15/assets/bottle.jpg",
+    "sha256": "66c37bf5f8f2decec799f6279b465cd61afe4e232f208ebe07cbed765f08b30a"
+  },
+  {
+    "file": "assets/official-logo-transparent.png",
+    "source": "/opt/data/outputs/motion-v6/brand-assets/official-logo-transparent.png",
+    "sha256": "1f9beb25b2a686311af9fa85053794301fba4e5b3402579925340714c4ffeda0"
+  },
+  {
+    "file": "assets/gsap.min.js",
+    "source": "/opt/data/outputs/motion-v15/assets/gsap.min.js",
+    "sha256": "c174bfce53a729418d57a8ad8625e7247c793a22fef8e2851e3cfa3de9cd8280"
+  },
+  {
+    "file": "references/Styles.txt",
+    "source": "/opt/data/outputs/styles-new/Styles.txt",
+    "sha256": "cdfc72f16a205a486dbd4b93d9695a358d8eedce121537481fe217efba4c6910"
+  },
+  {
+    "file": "references/complete-motion.txt",
+    "source": "/opt/data/outputs/motion-styles/attachment-text.txt",
+    "sha256": "be4a030c11b14c839ffe0f167b0650b533bdf654c03db1bf4dcf077aa673be9b"
+  },
+  {
+    "file": "references/LICENSES.md",
+    "source": "/opt/data/outputs/motion-v15/LICENSES.md",
+    "sha256": "f8f8383075e66a2421cb847fc2c1a06c72f7a81d94ea0b63402b30573518588c"
+  }
+]

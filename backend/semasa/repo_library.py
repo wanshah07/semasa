@@ -36,8 +36,9 @@ from .repos import GitHub
 log = logging.getLogger("semasa.repo_library")
 TABLE = "semasa_repo_library"
 SETTINGS_KEY = "repo_library"
-DEFAULT_CATEGORIES = ["motion", "video", "suara", "imej", "kemahiran-ai", "scraper", "regulatori", "web", "data", "automasi",
-                      "alatan", "lain"]
+DEFAULT_CATEGORIES = ["motion", "video", "suara", "muzik", "imej", "3d", "kemahiran-ai", "agen-ai", "mcp", "scraper", "pelayar",
+                      "regulatori", "dokumen", "web", "frontend", "api", "data", "analitik", "automasi", "pemasaran",
+                      "keselamatan", "devops", "terjemahan", "alatan", "lain"]
 MAX_ATTEMPTS = 3
 README_MAX = 12_000
 MANIFEST_MAX = 4_000
@@ -68,21 +69,29 @@ STALE_DAYS = 730
 
 SYSTEM = """You read a GitHub repository for a Malaysian regulatory-affairs consultancy's content system (Semasa) and file it.
 You are given its metadata, README, root files, manifests and workflow names. Nothing was run. Answer with ONE JSON object:
-{"summary_bm": "<2 to 3 sentences in Malaysian Malay (never Indonesian): what it is, what it produces, who it is for>",
+{"summary_bm": "<2 to 3 sentences in Malaysian Malay (never Indonesian): what it is, what it does, who it is for>",
  "summary_en": "<the same in English>",
  "category": "<one of: {categories}>",
  "tags": ["<3 to 6 short lowercase tags>"],
- "use_for": "<one or two sentences: how Semasa or Wan could use it (social video, cards, scraping, voice-over, ...), or 'none'>",
+ "functions": ["<3 to 8 short lines: each thing the repo can do>"],
+ "use_for": "<one or two sentences: how Semasa, Wan's consultancy work or his other systems could use it, or 'none'>",
  "how_to_run": "<the install and run steps the README gives, as one short paragraph; say which OS, runtime and keys it needs>",
  "safety": "safe" | "caution" | "avoid",
  "safety_reasons": ["<each concrete thing you saw that supports the verdict: a licence missing, an install that pipes to a
    shell, a postinstall hook, telemetry, a login to a third-party account, secrets asked for, an archived or unmaintained repo;
    or 'nothing of concern seen'>"]}
-Rules: category "motion" is motion graphics / animated video made from code (HTML, GSAP, Remotion, HyperFrames, AE clones);
-"video" is video editing, cutting, dubbing or generation; "suara" is speech, voice cloning, TTS, transcription; "imej" is image
-generation or editing; "kemahiran-ai" is agent skills, prompts, MCP servers, plugins for coding agents; "scraper" is scraping or
-data collection; "regulatori" is regulatory, halal, cosmetics or pharma content; "web" is a site or web app; "data" is datasets
-or databases; "automasi" is workflows, bots, schedulers; "alatan" is a developer tool or library; "lain" is anything else.
+Rules for category (file by what the repo DOES, whatever it is; "motion" is only one of many): "motion" is motion graphics /
+animated video made from code (HTML, GSAP, Remotion, HyperFrames); "video" is video editing, cutting, dubbing or generation;
+"suara" is speech, voice cloning, TTS, transcription; "muzik" is music and sound effects; "imej" is image generation or editing;
+"3d" is 3D, CAD, models; "kemahiran-ai" is agent skills, prompts, plugins for coding agents; "agen-ai" is AI agents, LLM apps,
+RAG, chatbots; "mcp" is MCP servers and connectors; "scraper" is scraping or data collection; "pelayar" is browser automation
+and testing; "regulatori" is regulatory, halal, cosmetics or pharma content; "dokumen" is PDF, OCR, Word, Excel, slides;
+"web" is a site or web app; "frontend" is UI components and design systems; "api" is a backend, server or API framework;
+"data" is datasets or databases; "analitik" is analytics, charts, dashboards; "automasi" is workflows, bots, schedulers;
+"pemasaran" is social media, SEO, email, CRM; "keselamatan" is security tooling; "devops" is CI/CD, hosting, deployment;
+"terjemahan" is translation and language; "alatan" is a developer tool or library; "lain" is anything else.
+"functions" lists what the repo can DO, one short concrete line each (3 to 8), taken from the README, never invented.
+"use_for" says how Semasa, Wan's regulatory consultancy work or his other systems could use it, or 'none'.
 Be concrete and short. Never invent a feature the README does not state. If the README is empty, say so and file by the files."""
 
 
@@ -229,6 +238,7 @@ def clean(out: dict[str, Any], cats: list[str], flags: list[dict[str, Any]]) -> 
         "summary_bm": str(out.get("summary_bm") or "").strip()[:1200],
         "summary_en": str(out.get("summary_en") or "").strip()[:1200],
         "category": cat, "tags": tags,
+        "functions": [str(f).strip()[:160] for f in (out.get("functions") or []) if str(f).strip()][:8],
         "use_for": str(out.get("use_for") or "").strip()[:600],
         "how_to_run": str(out.get("how_to_run") or "").strip()[:1200],
         "safety": safety, "safety_flags": all_flags,

@@ -31,6 +31,7 @@ import { resolveLook, useDesigns } from "../lib/designs";
 import { renderSeedPreview } from "../lib/kanvasBuild";
 import DesignLibrary from "../components/DesignLibrary";
 import CanvaHandoff from "../components/CanvaHandoff";
+import { canDeleteDesign, ownsDesign } from "../lib/designDelete";
 
 /* The Design tab (Wan, 25 Sep 2026: "add design section - to create poster, single card and carousel for post" and
    "the slide can create based on upload and prompt/idea provided"). The page only registers a job: the worker
@@ -500,7 +501,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
 
       <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
-      <DesignResults lockedBy={lockedBy} rows={results} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} onCanvas={onCanvas} />
+      <DesignResults lockedBy={lockedBy} posts={posts?.rows || []} rows={results} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} onCanvas={onCanvas} />
       <DesignLibrary />
     </main>
   );
@@ -610,7 +611,15 @@ function ReviewPanel({ row, mine, onToast, gens }) {
   );
 }
 
-function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy = () => null }) {
+/** The confirm for deleting a design: a draft post that uses it is named, since that post loses the picture. */
+function deleteQuestion(row, posts, t) {
+  const n = posts.filter((p) => p.status === "draft" && (p.media_ids || []).includes(row.id)).length;
+  return n
+    ? t("Padam reka bentuk ini? {n} draf post menggunakannya dan akan hilang gambar ini.", "Delete this design? {n} draft post(s) use it and will lose this picture.", { n })
+    : t("Padam reka bentuk ini?", "Delete this design?");
+}
+
+function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy = () => null, posts = [] }) {
   const { t } = useLang();
   const [canva, setCanva] = useState(null);                  // the design row being handed to Canva
   if (!rows.length) {
@@ -627,7 +636,8 @@ function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy 
         const urls = m.slide_urls || (r.generated_media_url ? [r.generated_media_url] : []);
         const hard = (m.flags || []).filter((f) => f.hard);
         const soft = (m.flags || []).filter((f) => !f.hard);
-        const mine = user && r.created_by === user.id;
+        const mine = ownsDesign(r, user);
+        const canDel = canDeleteDesign(r, user);
         const Icon = r.status === "done" ? CheckCircle2 : r.status === "error" ? AlertTriangle : r.status === "processing" ? Loader2 : Clock;
         return (
           <Card key={r.id} className="min-w-0 overflow-hidden">
@@ -676,15 +686,15 @@ function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy 
                     title={t("Bina semula sebagai reka bentuk Canva yang boleh disunting", "Rebuild as an editable Canva design")}>
                     <Palette size={11} /> {t("Bina semula dalam Canva", "Rebuild in Canva")}</button>
                 )}
-                {mine && (
+                {(mine || canDel) && (
                   <span className="ml-auto flex gap-1">
-                    {r.status === "error" && <Button size="sm" variant="soft" title={t("Cuba lagi", "Try again")}
+                    {mine && r.status === "error" && <Button size="sm" variant="soft" title={t("Cuba lagi", "Try again")}
                       onClick={() => guard(async () => { await gens.requeue(r.id); onToast(t("Dimasukkan semula ke giliran.", "Put back in the queue."), "ok"); })}><RotateCcw size={12} /></Button>}
                     {lockedBy(r.id) && <span className="self-center text-[11px] text-muted"
                       title={t("Kembalikan post itu ke draf untuk memadam reka bentuk ini.", "Put that post back to draft to delete this design.")}>
                       {t("Dalam post yang diluluskan", "In an approved post")}</span>}
-                    {r.status !== "processing" && !lockedBy(r.id) && <Button size="sm" variant="danger" title={t("Padam", "Delete")}
-                      onClick={() => guard(async () => { if (window.confirm(t("Padam reka bentuk ini?", "Delete this design?"))) { await gens.remove(r); onToast(t("Dipadam.", "Deleted."), "info"); } })}><Trash2 size={12} /> {t("Padam", "Delete")}</Button>}
+                    {canDel && r.status !== "processing" && !lockedBy(r.id) && <Button size="sm" variant="danger" title={t("Padam", "Delete")}
+                      onClick={() => guard(async () => { if (window.confirm(deleteQuestion(r, posts, t))) { await gens.remove(r); onToast(t("Dipadam.", "Deleted."), "info"); } })}><Trash2 size={12} /> {t("Padam", "Delete")}</Button>}
                   </span>
                 )}
               </div>

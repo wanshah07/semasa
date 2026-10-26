@@ -182,3 +182,16 @@ def test_load_settings_keeps_lain_last_and_defaults_when_empty():
     assert rl.load_settings(store)["categories"][-1] == "lain"
     store.tables["semasa_settings"] = [{"key": "repo_library", "value": {"categories": ["Motion", "voice"]}}]
     assert rl.load_settings(store)["categories"] == ["motion", "voice", "lain"]
+
+
+def test_the_library_takes_every_kind_of_function_and_keeps_what_the_repo_can_do():
+    # Wan, 26 Oct 2026: "the repo library only for style motion video, I want put all function repo"
+    for cat in ("agen-ai", "mcp", "api", "dokumen", "keselamatan", "devops", "pemasaran", "pelayar"):
+        assert cat in rl.DEFAULT_CATEGORIES
+    assert rl.DEFAULT_CATEGORIES[-1] == "lain" and len(set(rl.DEFAULT_CATEGORIES)) == len(rl.DEFAULT_CATEGORIES)
+    lines = [" Runs a RAG chat over PDFs ", "", "Exports answers"] + ["x"] * 10
+    out = rl.clean({"category": "agen-ai", "safety": "safe", "functions": lines}, rl.DEFAULT_CATEGORIES, [])
+    assert out["category"] == "agen-ai" and out["functions"][:2] == ["Runs a RAG chat over PDFs", "Exports answers"]
+    assert len(out["functions"]) == 8, "at most eight lines"
+    assert rl.clean({"category": "agen-ai"}, rl.DEFAULT_CATEGORIES, [])["functions"] == []
+    assert "motion graphics" in rl.SYSTEM and "agen-ai" in rl.SYSTEM and "functions" in rl.SYSTEM

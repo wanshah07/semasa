@@ -106,8 +106,23 @@ def test_worker_consumes_prepared_assets_and_reports_fallback(tmp_path):
     folder = tmp_path / row["id"][:8]
     index = (folder / "index.html").read_text()
     assert 'src="assets/concept.svg"' in index
-    assert "Adapted P03" in index
+    assert "Concept illustration" in index and "Adapted" not in index, "no effect codes on a film"
     saved = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
     assert saved["check_report"]["asset_plan"]["effects"][2]["readiness"] == "fallback"
     assert saved["html"] == index
     assert json.loads((folder / "asset-plan.json").read_text())["mode"] == "auto"
+
+
+@pytest.mark.composed
+def test_the_worker_composed_film_takes_no_fixed_panel_over_its_first_scene(tmp_path):
+    """Wan, 26 Oct 2026: a BM + English film failed with `text_overlap remains even in the safe layout: "Adapted P05, V09, B07,
+    B..." (DIV) and "Serum yang berkesan guna" cross`. The legacy asset panel was laid over the first scene at a fixed place."""
+    store = Store()
+    row = _row(store, seconds=30, voice="off", mascot="", language="both",
+               options={"effects": ["P05", "V09", "B07", "B04", "M03", "P03"], "effect_mode": "manual"})
+    assert motion.process(store, FakeLLM([SCRIPT]), row, {"prompt": "", "cli": motion.CLI_VERSION}, runner=_runner(),
+                          workdir=tmp_path, now=NOW)
+    index = (tmp_path / row["id"][:8] / "index.html").read_text()
+    assert "effect-panel" not in index and "Adapted" not in index and "concept only" not in index
+    saved = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
+    assert saved["status"] == "done"

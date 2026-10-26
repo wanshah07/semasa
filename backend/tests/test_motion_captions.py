@@ -215,3 +215,12 @@ def test_both_streams_explain_the_way_wan_does_on_linkedin():
     for stream in ("regulab", "linkedin"):
         motion_captions.write(Spy(), {"stream": stream}, SCENES, "T", lang="en", voice="v", speak_as=motion.speaker("en"))
     assert all("chemist telling a friend" in " ".join(s.split()) for s in seen) and len(seen) == 2
+
+
+def test_a_source_that_is_not_a_web_page_is_not_fetched(monkeypatch):
+    """The 26 Oct run log: an idea from OneDrive has source_url onedrive://..., and requests answered "No connection adapters"."""
+    calls = []
+    monkeypatch.setattr(motion.fetch, "get", lambda url, timeout=25: calls.append(url))
+    assert motion.source_words("onedrive://176A24AC!s2b#r24") == ("", "")
+    assert motion.source_words("") == ("", "") and motion.source_words(None) == ("", "")
+    assert calls == [], "nothing was fetched"

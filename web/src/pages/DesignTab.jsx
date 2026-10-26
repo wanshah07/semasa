@@ -684,7 +684,7 @@ function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy 
                       title={t("Kembalikan post itu ke draf untuk memadam reka bentuk ini.", "Put that post back to draft to delete this design.")}>
                       {t("Dalam post yang diluluskan", "In an approved post")}</span>}
                     {r.status !== "processing" && !lockedBy(r.id) && <Button size="sm" variant="danger" title={t("Padam", "Delete")}
-                      onClick={() => guard(async () => { if (window.confirm(t("Padam reka bentuk ini?", "Delete this design?"))) { await gens.remove(r); onToast(t("Dipadam.", "Deleted."), "info"); } })}><Trash2 size={12} /></Button>}
+                      onClick={() => guard(async () => { if (window.confirm(t("Padam reka bentuk ini?", "Delete this design?"))) { await gens.remove(r); onToast(t("Dipadam.", "Deleted."), "info"); } })}><Trash2 size={12} /> {t("Padam", "Delete")}</Button>}
                   </span>
                 )}
               </div>

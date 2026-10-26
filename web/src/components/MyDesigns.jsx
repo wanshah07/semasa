@@ -279,6 +279,7 @@ export default function MyDesigns({ onToast = () => {}, user = null }) {
     } catch (e) { fail(e); }
   }
   async function remove(id) {
+    if (!window.confirm(t("Padam reka bentuk ini? Draf yang sudah dilukis tidak berubah.", "Delete this design? Drafts already drawn do not change."))) return;
     try {
       await saveDesigns(designs.filter((x) => x.id !== id));
       if (defaultId === id) await setDefault("");
@@ -313,7 +314,7 @@ export default function MyDesigns({ onToast = () => {}, user = null }) {
                 </span>
                 {defaultId !== d.id && ready && <button type="button" onClick={() => setDefault(d.id).catch(fail)} className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline"><Star size={11} /> {t("Jadikan lalai", "Make default")}</button>}
                 <button type="button" onClick={() => setEditing(d)} className="text-[11px] text-accent hover:underline">{t("Ubah", "Edit")}</button>
-                <button type="button" onClick={() => remove(d.id)} aria-label={t("Buang", "Remove")} className="text-muted hover:text-danger"><Trash2 size={13} /></button>
+                <button type="button" onClick={() => remove(d.id)} aria-label={t("Padam reka bentuk", "Delete design")} className="inline-flex items-center gap-1 text-[11px] text-danger hover:underline" data-design-delete><Trash2 size={12} /> {t("Padam", "Delete")}</button>
               </div>
             );
           })}

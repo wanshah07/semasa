@@ -657,8 +657,8 @@ def load_settings(store: Any) -> dict[str, Any]:
 
 def source_words(url: str, timeout: int = 25) -> tuple[str, str]:
     """(title, text) of the page a brief points at, trimmed; ('', '') when it cannot be read."""
-    if not url:
-        return "", ""
+    if not re.match(r"https?://", url or "", re.I):
+        return "", ""             # no link, or not a web page (an idea from OneDrive: onedrive://...): nothing to fetch
     try:
         from .brain import page_text
         r = fetch.get(url, timeout=timeout)
@@ -1239,7 +1239,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
 
         def composed(raw: str) -> str:
             document = motion_assets.inject(inject_layers(raw, scenes, total, w, h, stream, name), asset_plan, scenes, total,
-                                            design=motion_styles.design(row))
+                                            design=motion_styles.design(row), panel=os.environ.get("MOTION_WRITER", "") == "1")
             # Composition resolves conditional native cues, including skipped/conflicting selections.
             (folder / "asset-plan.json").write_text(json.dumps(asset_plan, ensure_ascii=False, indent=2))
             return document

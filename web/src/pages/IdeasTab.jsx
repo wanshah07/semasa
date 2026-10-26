@@ -237,9 +237,14 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
         : <span className="inline-flex items-center gap-1" data-idea-motion-make>
             <Button size="sm" variant="ghost" disabled={motionBusy === r.id} onClick={() => makeMotion(r)} title={t("Jadikan video motion pendek", "Make a short motion video")}><Clapperboard size={12} /> {t("Video motion", "Motion video")}</Button>
           </span>)}
-      {r.status !== "working" && !published.has(r.id) && (
-        <Button size="sm" variant="danger" onClick={() => remove(r.id)} title={t("Padam idea", "Delete idea")}><Trash2 size={12} /></Button>
-      )}
+      {/* always shown and named (Wan, 26 Oct 2026: "for idea and post, add button delete in table or in card"); it was an icon that
+          disappeared for an idea being written or one whose post is approved or out, which the database keeps (supabase/019) */}
+      <Button size="sm" variant="danger" disabled={r.status === "working" || published.has(r.id)} data-idea-delete onClick={() => remove(r.id)}
+        title={r.status === "working" ? t("Sedang ditulis: tunggu hingga siap", "Being written: wait until it is done")
+          : published.has(r.id) ? t("Post daripada idea ini sudah diluluskan atau disiarkan, jadi idea dikekalkan", "A post from this idea is approved or sent, so the idea is kept")
+          : t("Padam idea ini", "Delete this idea")}>
+        <Trash2 size={12} /> {t("Padam", "Delete")}
+      </Button>
     </>
   );
   return (

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><script src="assets/gsap.min.js"></script>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:540px;height:960px;overflow:hidden;color:#244f40;font-family:Arial,sans-serif}#root{position:relative;width:540px;height:960px;overflow:hidden;background:linear-gradient(145deg,#e4f4e8,#fcf9ed)}#viewport{position:absolute;inset:0;overflow:hidden;mask-image:linear-gradient(transparent 8%,black 15%,black 73%,transparent 81%)}#world{position:absolute;left:0;top:0;width:540px;height:1500px}.title{font:35px Georgia,serif;fill:#244f40;text-anchor:middle;paint-order:stroke fill;stroke:#f1f8ed;stroke-width:9px;stroke-linejoin:round}.label{font:27px Arial,sans-serif;fill:#244f40;text-anchor:middle;paint-order:stroke fill;stroke:#f1f8ed;stroke-width:9px}#outro{position:absolute;inset:0;visibility:hidden;display:flex;align-items:center;justify-content:center;flex-direction:column;background:linear-gradient(145deg,#e4f4e8,#fcf9ed)}#logo{width:410px;height:auto}#cta{font-size:29px;margin-top:44px}
+</style><body><main id="root" data-composition-id="main" data-duration="8" data-start="0" data-width="540" data-height="960" data-fps="24">
+<div id="hook" style="position:absolute;left:48px;top:146px;width:420px;text-align:center;font:35px/1.2 Georgia,serif">One ingredient isn’t<br>the whole formula.</div>
+<div id="viewport" style="mask-image:linear-gradient(transparent 28%,black 35%,black 73%,transparent 81%)"><div id="world"><svg viewBox="0 0 540 1500" width="540" height="1500">
+<path id="thread" d="M270 280 C170 350 350 430 270 510 C180 620 350 740 270 860 C190 970 350 1100 270 1210" fill="none" stroke="#629679" stroke-width="4"/>
+
+<g id="ingredient"><path d="M270 405 C250 435 233 450 233 474 A37 37 0 0 0 307 474 C307 450 290 435 270 405Z" fill="#d6eada" stroke="#629679" stroke-width="2"/><text class="label" x="270" y="559">ingredient</text></g>
+<g id="formula"><path d="M270 820 Q180 775 120 845 M270 820 Q360 775 420 845 M120 845 Q140 970 270 990 Q400 970 420 845" fill="none" stroke="#b7a174" stroke-width="2"/><path d="M240 826 L240 850 L220 866 L220 946 Q270 960 320 946 L320 866 L300 850 L300 826Z M240 826 L300 826 M233 892 H307 M233 910 H288" fill="#f4f2df" stroke="#629679" stroke-width="2"/><text class="label" x="270" y="1045">formula</text></g>
+<circle id="pen" r="7" cx="270" cy="280" fill="#ab8d57" stroke="#fcf9ed" stroke-width="3"/></svg></div></div>
+<section id="outro"><img id="logo" src="assets/official-logo-transparent.png" alt="WS Regulab Solutions, Trusted.Proven.Clarity."><div id="cta">Follow us for more</div></section></main>
+<script>
+const p=document.getElementById('thread'),len=p.getTotalLength(),pen={v:0};
+gsap.set(p,{strokeDasharray:len,strokeDashoffset:len});
+function draw(){const q=p.getPointAtLength(len*pen.v);gsap.set(p,{strokeDashoffset:len*(1-pen.v)});gsap.set('#pen',{attr:{cx:q.x,cy:q.y}});}
+const tl=gsap.timeline({paused:true});
+tl.fromTo('#hook',{opacity:0},{opacity:1,duration:.4},0);
+tl.to(pen,{v:1,duration:4.5,ease:'power1.inOut',onUpdate:draw},.1);
+tl.to('#world',{y:-365,duration:2.8,ease:'power1.inOut'},1.6);
+tl.set('#viewport',{visibility:'hidden'},4.666666666666667);
+tl.set('#hook',{visibility:'hidden'},4.666666666666667);
+tl.set('#outro',{visibility:'visible'},4.666666666666667);
+tl.fromTo('#logo',{y:12},{y:0,duration:.4,ease:'power2.out'},4.666666666666667);
+tl.set('#cta',{opacity:1},4.666666666666667);
+tl.to({}, {duration:.01},7.99);window.__timelines={main:tl};tl.seek(0);
+</script></body></html>

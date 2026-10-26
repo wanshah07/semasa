@@ -113,7 +113,7 @@ BUILDABLE = {"H02", "H05", "H06", "H08", "H10", "C02", "C03", "C04", "C05", "C06
 LINE_STYLES = {"L05", "V05", "B04", "V09", "P08", *motion_concepts.MULTI_CODES}
 PHOTO_STYLES = {"L05", "L06", "X06"}                 # how a scene treats its photo: one way each
 FAMILY_LIMIT = {"H": 1, "M": 2, "L": 1, "F": 1, "C": 1, "X": 1}      # per scene; other families may take two
-PER_SCENE = 8
+PER_SCENE = 10
 MIN_STYLES = 15                      # Wan, 26 Oct 2026: "at least 15 styles from 99 styles apply to the motion video"
 # and then "push to use as many styles from 99 as you can": every eligible style is added, up to PER_SCENE in a scene
 CAPTION = ("C01", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10")
@@ -172,16 +172,26 @@ def _holds(needs: str, sc: dict[str, Any], ctx: dict[str, Any]) -> bool:
     return True
 
 
+PAIR_ORDER = (2, 0, 3, 1)             # which scenes take a second picture beside the first, when there are more than four
+
+
 def assign_photos(scenes: list[dict[str, Any]], photos: list[dict[str, Any]]) -> None:
-    """Hook, Kenapa and Solusi carry a photo when there are three; Hook and Solusi with two; the Hook alone with one. The
-    Fakta scene stays words and shapes: it is the one most likely to carry a number or a rule, and a picture is no proof."""
-    slots = {3: (0, 2, 3), 2: (0, 3), 1: (0,)}.get(min(len(photos), 3), ())
-    for i, sc in enumerate(s for s in scenes if s.get("id") != "brand-outro"):
-        sc.pop("photo", None)
-        sc.pop("photo_credit", None)
-        if i in slots:
-            p = photos[slots.index(i)]
-            sc["photo"], sc["photo_credit"] = p["path"], p.get("credit", "")
+    """More pictures (Wan, 26 Oct 2026: "banyakkan lagi gambar"): every scene carries one, the Fakta scene too (a picture is only
+    ever an illustration, never the evidence); with spare pictures the Kenapa scene, then the Hook, the Solusi and the Fakta,
+    show two side by side. With fewer pictures the Hook, then the Solusi, the Kenapa and the Fakta take them in that order."""
+    teaching = [s for s in scenes if s.get("id") != "brand-outro"]
+    first = {1: (0,), 2: (0, 3), 3: (0, 2, 3)}.get(len(photos), (0, 1, 2, 3))
+    for sc in teaching:
+        for key in ("photo", "photo2", "photo_credit"):
+            sc.pop(key, None)
+    for n, i in enumerate(first[:len(photos)]):
+        if i < len(teaching):
+            teaching[i]["photo"], teaching[i]["photo_credit"] = photos[n]["path"], photos[n].get("credit", "")
+    for n, p in enumerate(photos[len(first):]):
+        i = PAIR_ORDER[n % len(PAIR_ORDER)]
+        if i < len(teaching) and teaching[i].get("photo") and not teaching[i].get("photo2"):
+            teaching[i]["photo2"] = p["path"]
+            teaching[i]["photo_credit"] = "; ".join(x for x in (teaching[i].get("photo_credit"), p.get("credit", "")) if x)
 
 
 WARN = re.compile(r"\b(recall|banned?|warning|danger(?:ous)?|fake|counterfeit|seiz(?:ed|ure)|cancell?ed|prohibited|illegal|"
@@ -246,7 +256,7 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
             if not _holds(needs, sc, ctx):
                 continue
             score = (10 + (6 if needs else 0) + (3 if code in NATIVE_TEXT else 0) + (4 if code in BUILDABLE else 0)
-                     + (5 if code in WOW else 0) - (2 if code in CONCEPT else 0))
+                     + (5 if code in WOW else 0) + (3 if code in CONCEPT else 0))
             if code == "V03" and len((sc.get("heading") or "").split()) > 3:
                 continue
             if code == "V01" and len((sc.get("heading") or "").split()) > 4:
@@ -311,8 +321,11 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
         letter = "hfws"[min(i, 3)]
         out[sc["id"]] = [cap_by[sc["id"]], *([fin_by[sc["id"]]] if sc["id"] in fin_by else []),
                          *([trans_by[sc["id"]]] if sc["id"] in trans_by else [])]
-        for code in ranked(letter, sc):
-            if len(out[sc["id"]]) >= 7:
+        candidates = ranked(letter, sc)
+        # a concept diagram first (Wan, 26 Oct 2026: "make sure automation masukkan semua style terutama concept fallback"): every
+        # scene that can carry one does, then the rest in rank order
+        for code in [c for c in candidates if c in motion_concepts.KIND][:1] + candidates:
+            if len(out[sc["id"]]) >= 9:
                 break
             if room(sc["id"], code):
                 out[sc["id"]].append(code)

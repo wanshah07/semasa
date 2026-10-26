@@ -63,10 +63,17 @@ def test_the_choice_is_stable_for_a_row_and_varies_between_rows():
     assert len(picks) > 1, "twelve different films do not all look the same"
 
 
-def test_a_photo_style_needs_a_photo_and_the_fact_scene_stays_words():
+def test_every_scene_carries_a_picture_and_spare_pictures_make_pairs():
+    # Wan, 26 Oct 2026: "banyakkan lagi gambar"
     scenes = [dict(s) for s in FILM]
-    motion_auto.assign_photos(scenes, [{"path": f"assets/photo-{i}.jpg", "credit": f"P{i} / Unsplash"} for i in (1, 2, 3)])
-    assert [bool(s.get("photo")) for s in scenes] == [True, False, True, True]
+    photos = [{"path": f"assets/photo-{i}.jpg", "credit": f"P{i} / Unsplash"} for i in range(1, 7)]
+    motion_auto.assign_photos(scenes, photos)
+    assert all(s.get("photo") for s in scenes), "the Fakta scene has one too: a picture is an illustration, never evidence"
+    pairs = [s["id"] for s in scenes if s.get("photo2")]
+    assert pairs == ["s1", "s3"], "spare pictures pair up the Kenapa scene, then the Hook"
+    assert "P5 / Unsplash" in scenes[2]["photo_credit"] and "P1 / Unsplash" in scenes[0]["photo_credit"]
+    motion_auto.assign_photos(scenes, photos[:3])
+    assert [bool(s.get("photo")) for s in scenes] == [True, False, True, True] and not any(s.get("photo2") for s in scenes)
     plan = motion_auto.choose(ROW, scenes, voiced=True, lang="bm")
     assert not {"M03", "B05", "L05", "L06", "X06"} & set(plan["scenes"]["s2"]), "no photo, no photo style"
     motion_auto.assign_photos(scenes, [{"path": "assets/photo-1.jpg"}])
@@ -199,7 +206,7 @@ def test_photos_come_from_unsplash_resized_credited_and_a_failure_never_stops_th
     asked = []
     photos, note = motion.fetch_photos("science lab", tmp_path, search=lambda q, o: asked.append((q, o)) or list(results),
                                        get=lambda p: _jpeg())
-    assert asked == [("science lab", "landscape")] and len(photos) == 3 and note.startswith("photos: 3 from Unsplash")
+    assert asked == [("science lab", "landscape")] and len(photos) == 5 and note.startswith("photos: 5 from Unsplash")
     assert photos[0] == {"path": "assets/photo-1.jpg", "id": "p0", "credit": "Aina 0 / Unsplash",
                          "page": "https://unsplash.com/photos/p0", "alt": "lab"}
     with Image.open(tmp_path / "assets" / "photo-3.jpg") as im:
@@ -235,8 +242,8 @@ def test_narration_that_does_not_fit_is_cut_and_recorded_again_never_rushed_neve
     from test_motion import GOOD, NOW, FakeLLM, Store, _row, _runner, fake_speak
     monkeypatch.setattr(motion.voice_mod, "speak", fake_speak)
     sentences = " ".join(f"Satu dua tiga empat lima{i}." for i in range(4))          # 20 words = 8 s a scene
-    plan = {"title": "t", "photo_query": "lab", "scenes": [{"heading": f"Tajuk {i}", "lines": [], "narration": sentences}
-                                                          for i in range(4)]}
+    plan = {"title": "t", "photo_query": "lab", "scenes": [{"heading": f"Satu dua tiga empat lima{i}", "lines": [],
+                                                           "narration": sentences} for i in range(4)]}
     store = Store()
     row = _row(store, language="bm", voice="male")
     assert motion.process(store, FakeLLM([plan, {"html": GOOD}]), {**row, "attempts": 1}, {"prompt": "", "cli": "0.8.188"},
@@ -681,3 +688,47 @@ def test_the_hook_chip_matches_the_words_the_film_opens_with():
     assert motion_auto.hook_of("", "Amaran: produk ini ditarik balik") == "warn"
     assert motion_auto.hook_of("", "Berita terkini: garis panduan baharu") == "news"
     assert motion_auto.hook_of("produk ditarik balik", "") == "warn"
+
+
+def test_every_fact_on_screen_is_also_said():
+    # Wan, 26 Oct 2026: "part fakta yang dijumpai dibesarkan dan dimasukkan dalam audio"
+    from test_motion import FakeLLM, Store, _row
+    row = _row(Store(), language="bm", voice="male")
+    plan = {"title": "t", "photo_query": "lab", "scenes": [
+        {"heading": "Ulasan PRISMA petakan 6 kategori bahan.", "lines": ["Pengawet dan penapis UV.", "Pewangi dan surfaktan."],
+         "narration": "Okay, sekarang kita tengok faktanya. Ulasan PRISMA petakan 6 kategori bahan."},
+        {"heading": "Kenapa", "lines": [], "narration": "Ia kekal lama dalam alam."},
+        {"heading": "Semak label", "lines": [], "narration": "Semak label dahulu."},
+        {"heading": "Selesai", "lines": [], "narration": "Itu sahaja."}]}
+    first = motion.plan_scenes(FakeLLM([plan]), row, "", "", "")["scenes"][0]["narration"]
+    assert "Pengawet dan penapis UV." in first and "Pewangi dan surfaktan." in first
+    assert first.count("Ulasan PRISMA") == 1, "what the narration already says is not said twice"
+
+
+def test_the_voice_alternates_from_one_film_to_the_next_in_the_queue():
+    # Wan, 26 Oct 2026: "bukan suara laki perempuan dalam satu video, maksudnya selang seli untuk video queue"
+    from test_motion import Store
+    store = Store()
+    first = {"id": "a", "voice": "auto"}
+    assert motion.alternate_voice(store, first) == "male", "with no earlier film the queue starts male"
+    done = {"status": "done"}
+    store.table(motion.TABLE).insert({"id": "x1", "voice": "male", "updated_at": "2026-10-26T01:00:00Z", **done}).execute()
+    assert motion.alternate_voice(store, {"id": "b", "voice": "auto"}) == "female"
+    store.table(motion.TABLE).insert({"id": "x2", "voice": "female", "updated_at": "2026-10-26T02:00:00Z", **done}).execute()
+    assert motion.alternate_voice(store, {"id": "c", "voice": "auto"}) == "male"
+
+
+def test_the_big_number_the_pictures_the_3d_tilt_and_the_footnote_reference():
+    scenes = [{"id": "s1", "role": "fact", "start": 0, "duration": 8, "heading": "Apa kajian jumpa",
+               "lines": ["6 kategori bahan dikaji", "Pengawet dan penapis UV"], "photo": "a.jpg", "photo2": "b.jpg"}]
+    plan = {"scenes": {"s1": ["P03", "B05", "P09"]}, "video": {},
+            "study": {"journal": "Archives of toxicology", "title": "Mechanistic pathways of cosmetic ingredient toxicity",
+                      "ref": "PMID 42919945", "source": "PubMed"}}
+    outro = {"id": "brand-outro", "start": 8, "duration": 3, "heading": "x"}
+    html, rep = motion_layout.compose(scenes=scenes + [outro], total=11, w=1080, h=1920, lang="bm", plan=plan,
+                                      palette=motion.PALETTE["regulab"], gsap=motion.GSAP, html_lang="ms", resolution="portrait")
+    assert 'id="s1-stn">6</b><span>kategori bahan dikaji</span>' in html and "P03" in rep["built"]
+    assert 'class="pair"' in html and 'id="s1-ph2"' in html, "two pictures side by side"
+    assert "rotationY:-16" in html and "B05" in rep["built"], "the photo tilts in 3D"
+    body = html.split('<div id="root"')[1]
+    assert body.index('class="stat"') < body.index('class="pub s1-pub"'), "the facts come first, the reference closes the column"

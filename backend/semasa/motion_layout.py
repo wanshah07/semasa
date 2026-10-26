@@ -163,6 +163,7 @@ def rgba(colour: str, alpha: float) -> str:
 
 NUM = re.compile(r"\d[\d.,]*%?")
 YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
+STAT = re.compile(r"(?<![\d.,])\d{1,7}(?![\d.,])")
 PCT = re.compile(r"(\d+(?:[.,]\d+)?)\s?%")
 CAPTIONS = {"C01", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10"}
 TRANSITIONS = {"M02", "M08", "M09"}
@@ -242,6 +243,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     trk_h = max(10, 16 * scale)
     rule_h = max(3, 5 * scale)
     fs_d = 46 * scale                                 # the type of every data block: above the 44px floor
+    fs_p = 34 * scale                                 # the reference footnote
     arrow_h = 30 * scale
     dropped: list[str] = []
     applied: set[str] = set()
@@ -333,14 +335,20 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         f".ar{{flex:none;width:0;height:0;border-left:{16 * scale:.0f}px solid transparent;"
         f"border-right:{16 * scale:.0f}px solid transparent;"
         f"border-top:{arrow_h * .75:.0f}px solid {accent};margin:{arrow_h * .125:.0f}px 0;}}",
-        f".pub{{flex:none;box-sizing:border-box;width:100%;padding:{pad_card:.0f}px {pad_card * 1.2:.0f}px;"
-        f"border-radius:{20 * scale:.0f}px;background:rgba(255,255,255,.78);"
-        f"border:{max(2, 3 * scale):.0f}px solid {rgba(accent, .5)};"
-        f"border-left:{max(8, 12 * scale):.0f}px solid {accent};font-size:{fs_d:.0f}px;line-height:1.22;}}",
+        # the reference is a footnote (Wan, 26 Oct 2026: "part rujukan boleh kecilkan"): the facts above it are the film
+        f".pub{{flex:none;box-sizing:border-box;width:100%;padding:{pad_card * .55:.0f}px {pad_card * .9:.0f}px;"
+        f"border-radius:{14 * scale:.0f}px;background:rgba(255,255,255,.7);"
+        f"border:{max(2, 2 * scale):.0f}px solid {rgba(accent, .4)};"
+        f"border-left:{max(6, 9 * scale):.0f}px solid {accent};font-size:{fs_p:.0f}px;line-height:1.2;}}",
         f".pub .tag{{font-weight:800;color:{accent};letter-spacing:.06em;}}",
         ".pub .jn{font-weight:800;} .pub .tt{font-weight:500;} .pub .rf{opacity:.65;font-weight:600;}",
-        f".qm{{font-size:{110 * scale:.0f}px;line-height:1;height:{110 * scale:.0f}px;font-weight:800;color:{accent};}}",
+        f".qm{{font-size:{110 * scale:.0f}px;line-height:1;height:{110 * scale:.0f}px;margin-bottom:{10 * scale:.0f}px;"
+        f"font-weight:800;color:{accent};}}",
         f".row{{flex:none;display:flex;gap:{gap:.0f}px;width:100%;align-items:center;}}",
+        f".pair{{flex:none;display:flex;gap:{gap * .6:.0f}px;width:100%;justify-content:center;}}",
+        f".stat{{flex:none;display:flex;align-items:center;gap:{gap:.0f}px;width:100%;}}",
+        f".stat b{{flex:none;font-size:{150 * scale:.0f}px;font-weight:800;color:{accent};line-height:1;}}",
+        f".stat span{{flex:1;min-width:0;font-size:{54 * scale:.0f}px;font-weight:700;line-height:1.15;overflow-wrap:anywhere;}}",
         f".pnlx{{flex:1;min-width:0;box-sizing:border-box;padding:{pad_card:.0f}px;border-radius:{24 * scale:.0f}px;"
         f"background:rgba(255,255,255,.74);border:{max(2, 3 * scale):.0f}px solid {rgba(accent, .45)};}}",
         f".mph{{flex:none;align-self:flex-start;width:{110 * scale:.0f}px;height:{110 * scale:.0f}px;background:{accent};"
@@ -361,7 +369,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         return wrap_lines(text or " ", px, width, factor) * px * lh
 
     ev = plan.get("evidence_url") or ""
-    cctx = motion_concepts.Ctx(scale, box_w, gap, fs_d, pad_card, motion_concepts.host_of(ev), text_h)
+    cctx = motion_concepts.Ctx(scale, box_w, gap, 54 * scale, pad_card, motion_concepts.host_of(ev), text_h)   # the facts, larger
     css.extend(motion_concepts.css(cctx, accent, rgba))
     concept_used: list[str] = []
     last_heading = plain(teaching[-1].get("heading")) if teaching else ""
@@ -378,6 +386,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         lines = [plain(x) for x in (sc.get("lines") or []) if plain(x)]
         heading = plain(sc.get("heading"))
         photo = sc.get("photo")
+        photo2 = sc.get("photo2")
         is_typed = cap_s in {"C03", "C09"}
         role = sc.get("role") or ""
         # a concept rendition of a style that needs footage or a capture (it takes its lines off the plain list)
@@ -391,6 +400,16 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             if cblock:
                 lines = lines[min(motion_concepts.CONSUME.get(kind, 1), len(lines)):]
         use_concept = cblock is not None
+        # a big number (P03): the first whole number a line prints, set large and counted up to; only a figure the words give
+        stat, after_concept = None, list(lines)
+        if "P03" in eff:
+            for ln in lines:
+                m = STAT.search(ln)
+                if m and not PCT.search(ln) and not YEAR.fullmatch(m.group(0)):
+                    stat = (ln, m.group(0), label_of(ln, m.group(0)))
+                    break
+        if stat:
+            lines = [x for x in lines if x != stat[0]]
         # what the scene's own words can carry: percentages for a chart, years for a timeline, figures to count up
         pct_rows = [(ln, m) for ln in lines for m in [PCT.search(ln)] if m][:3] if "V09" in eff else []
         yrs = [(ln, YEAR.search(ln).group(0)) for ln in lines if YEAR.search(ln)] if "P08" in eff else []
@@ -449,13 +468,13 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             if "V08" in eff:
                 extra += 110 * scale + gap
             if study and "P09" in eff:
-                lab = TAGS.get(lang, TAGS["bm"])[0]
-                inner = box_w - 2 * pad_card * 1.2 - 14 * scale
-                extra += (text_h(lab, fs_d, BODY, inner, 1.22) + text_h(study["journal"], fs_d, 0.6, inner, 1.22)
-                          + text_h(study["title"], fs_d, BODY, inner, 1.22) + text_h(study["ref"], fs_d, BODY, inner, 1.22)
-                          + 2 * pad_card + gap) if (study["journal"] or study["title"]) else 0
+                lab = TAGS.get(lang, TAGS["bm"])[0] + " · " + study["journal"]
+                inner = box_w - 2 * pad_card * 0.9 - 12 * scale
+                extra += (text_h(lab, fs_p, 0.6, inner, 1.2) + text_h(study["title"], fs_p, BODY, inner, 1.2)
+                          + text_h(study["ref"], fs_p, BODY, inner, 1.2)
+                          + 1.1 * pad_card + gap) if (study["journal"] or study["title"]) else 0
             if quote:
-                extra += text_h(quote, fs_d, BODY, box_w - 2 * pad_card * 1.2, 1.22) + 110 * scale + 2 * pad_card + gap
+                extra += text_h(quote, fs_d, BODY, box_w - 2 * pad_card * 1.2, 1.22) + 122 * scale + 2 * pad_card + gap
             if pct_rows:
                 vw = max(len(m.group(0)) for _, m in pct_rows) * fs_d * 0.66 + gap
                 bar = max(14, 22 * scale) + 10 * scale + gap * .5
@@ -470,6 +489,9 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                     + (len(rest) - 1) * arrow_h + gap
             if use_concept and cblock:
                 extra += cblock.height + gap
+            if stat:
+                numw = len(stat[1]) * 150 * scale * 0.62 + gap
+                extra += max(150 * scale, text_h(stat[2], 54 * scale, BODY, max(box_w - numw, 1), 1.15)) + gap
             if steps:
                 extra += len(rest) * 34 * scale
             if hook_kind:
@@ -477,6 +499,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             sizes = fit(texts, box_w, box_h, extra + gap * (len(texts) + 1), scale) if texts else []
             if not sizes and use_concept and (lines or texts):
                 use_concept, cblock, lines = False, None, list(base_lines)     # words outrank a concept diagram
+                if stat:
+                    lines = [x for x in lines if x != stat[0]]
                 continue
             if side:
                 panel_w = box_w * 0.56 - 2 * pad_card
@@ -493,6 +517,9 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 break
             if lines:
                 dropped.append(f"{sid}: {lines.pop()[:40]}")
+                continue
+            if stat:
+                stat, lines = None, list(after_concept)           # the big number goes before the words do
                 continue
             spare = next((c for c in ("P09", "V08", "V06") if c in eff), None)
             if spare:
@@ -525,6 +552,13 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 inner = f'<div id="{sid}-photo" style="background-image:url({photo});filter:{filt};"></div>'
             photo_html = (f'<div class="ph" id="{sid}-ph" style="width:{pw:.0f}px;height:{photo_h:.0f}px;'
                           f'">{inner}</div>')
+            if photo2 and not side:
+                half = (box_w - gap * .6) / 2
+                inner2 = f'<div id="{sid}-photo2" style="background-image:url({photo2});filter:{filt};"></div>'
+                photo_html = (f'<div class="pair" id="{sid}-pair"><div class="ph" id="{sid}-ph" '
+                              f'style="width:{half:.0f}px;height:{photo_h:.0f}px;">{inner}</div>'
+                              f'<div class="ph" id="{sid}-ph2" style="width:{half:.0f}px;height:{photo_h:.0f}px;">'
+                              f'{inner2}</div></div>')
             applied.add(fin_s)
         if "V08" in eff:
             block.append(f'<div class="mph" id="{sid}-mph"></div>')
@@ -586,6 +620,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                         f'{inline(secondary, sid, numbers, counts)}</p>')
             return out
 
+        pub_html = ""
         lcls = f"{sid}-lt" if is_typed else f"{sid}-l"
         shown = 0
         # a style that takes over the lines draws them its own way
@@ -620,13 +655,17 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             cols = "".join(f'<div class="te {sid}-te"><b>{esc(y)}</b>{esc(label_of(ln, y))}</div>' for y, ln in events)
             block.append(f'<div class="tlw" id="{sid}-tlw"><i class="tll" id="{sid}-tll"></i>{cols}</div>')
             applied.add("P08")
+        if stat:
+            block.append(f'<div class="stat" id="{sid}-stat"><b id="{sid}-stn">{esc(stat[1])}</b>'
+                         f'<span>{esc(stat[2])}</span></div>')
+            applied.add("P03")
         if study and "P09" in eff and (study["journal"] or study["title"]):
             tag = TAGS.get(lang, TAGS["bm"])[0]
-            block.append(f'<div class="pub {sid}-pub" id="{sid}-pub"><div class="tag">{esc(tag)}</div>'
-                         + (f'<div class="jn">{esc(study["journal"])}</div>' if study["journal"] else "")
-                         + (f'<div class="tt">{esc(study["title"])}</div>' if study["title"] else "")
-                         + (f'<div class="rf">{esc(study["source"] + " · " if study["source"] else "")}{esc(study["ref"])}</div>'
-                            if study["ref"] else "") + "</div>")
+            pub_html = (f'<div class="pub {sid}-pub" id="{sid}-pub"><div><span class="tag">{esc(tag)}</span>'
+                        + (f' · <span class="jn">{esc(study["journal"])}</span>' if study["journal"] else "") + "</div>"
+                        + (f'<div class="tt">{esc(study["title"])}</div>' if study["title"] else "")
+                        + (f'<div class="rf">{esc(study["source"] + " · " if study["source"] else "")}{esc(study["ref"])}</div>'
+                           if study["ref"] else "") + "</div>")
             applied.add("P09")
         elif quote:
             block.append(f'<div class="pub {sid}-pub" id="{sid}-pub"><div class="qm">“</div>'
@@ -656,6 +695,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                              + ("" if last else f'<i class="cn {sid}-cn"></i>') + para(ln, size, j, f"{sid}-lx") + "</div>")
             else:
                 block.append(para(ln, size, j, lcls))
+        if pub_html:
+            block.append(pub_html)                       # the reference closes the column, under the facts
         if steps and "B04" in eff:
             applied.add("B04")
         if "V04" in eff and not steps and (tail_lines or cards or side):
@@ -790,6 +831,10 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                       f'{tl_start + .2:g});')
         if use_concept and cblock:
             tw.extend(cblock.tweens(tl_start))
+        if stat:
+            tw.append(f'tl.fromTo("#{sid}-stat",{{opacity:0,y:{y0:.0f}}},{{opacity:1,y:0,duration:.5,ease:"power2.out"}},{tl_start:g});')
+            tw.append(f'tl.fromTo("#{sid}-stn",{{textContent:0}},{{textContent:{int(stat[1])},duration:1.2,ease:"power2.out",'
+                      f'snap:{{textContent:1}}}},{tl_start + .2:g});')
         if (study and "P09" in eff) or quote:
             tw.append(f'tl.fromTo("#{sid}-pub",{{opacity:0,y:{y0:.0f}}},{{opacity:1,y:0,duration:.5,ease:"power2.out"}},{tl_start:g});')
         if is_typed and lines:
@@ -853,6 +898,14 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 tw.append(f'tl.fromTo("#{sid}-photo",{{scale:1}},{{scale:{zoom},duration:{dur:g},ease:"none"}},{t0:g});')
             if "B05" in eff and "X06" not in eff and "L06" not in eff:
                 tw.append(f'tl.fromTo("#{sid}-photo",{{xPercent:-2.5}},{{xPercent:2.5,duration:{dur:g},ease:"none"}},{t0:g});')
+            if "B05" in eff:
+                # the photo tilts in 3D and settles (Wan: "3D image")
+                tw.append(f'tl.fromTo("#{sid}-photo",{{transformPerspective:900,rotationY:-16,rotationX:7}},'
+                          f'{{rotationY:0,rotationX:0,duration:1.1,ease:"power3.out"}},{t0 + lead:g});')
+            if photo2 and not side:
+                tw.append(f'tl.fromTo("#{sid}-ph2",{{opacity:0,y:{y0:.0f}}},{{opacity:1,y:0,duration:.6,ease:"power2.out"}},'
+                          f'{t0 + .3 + lead:g});')
+                tw.append(f'tl.fromTo("#{sid}-photo2",{{scale:1}},{{scale:{zoom},duration:{dur:g},ease:"none"}},{t0:g});')
         fade = min(0.3, dur / 6)
         tw.append(f'tl.to("#{sid}",{{opacity:0,duration:{fade:g},ease:"power1.in"}},{t1 - fade:g});')
         if "X10" in eff or "B08" in eff:

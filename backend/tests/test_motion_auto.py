@@ -167,10 +167,10 @@ def test_a_silent_film_is_paced_for_reading_and_a_narrated_one_is_brisk():
 def test_the_script_prompt_asks_for_the_flow_and_the_pace_that_matches_the_voice():
     voiced = motion.build_script_system({"stream": "regulab", "seconds": 30, "language": "bm", "voice": "male"}, "")
     assert "HOOK · FAKTA · KENAPA · SOLUSI" in voiced and "EXACTLY 4 teaching scene" in voiced and "BRISK" in voiced
-    assert "70 words" in voiced and "photo_query" in voiced
+    assert "at most 153 words" in voiced and "photo_query" in voiced
     silent = motion.build_script_system({"stream": "regulab", "seconds": 30, "language": "en", "voice": "off"}, "")
     assert "HOOK · FACT · WHY · SOLUTION" in silent and "NO narrator" in silent and "READS, slowly" in silent
-    assert "at most 33 words" in silent
+    assert "at most 73 words" in silent
     teaser = motion.build_script_system({"stream": "regulab", "seconds": 10, "voice": "off"}, "", 1)
     assert "EXACTLY 1 teaching scene" in teaser
 
@@ -283,7 +283,7 @@ def test_the_silence_drop_ducks_the_music_before_the_solusi_scene(tmp_path):
 def test_narration_that_does_not_fit_is_cut_and_recorded_again_never_rushed_never_failed(tmp_path, monkeypatch):
     from test_motion import GOOD, NOW, FakeLLM, Store, _row, _runner, fake_speak
     monkeypatch.setattr(motion.voice_mod, "speak", fake_speak)
-    sentences = " ".join(f"Satu dua tiga empat lima{i}." for i in range(4))          # 20 words = 8 s a scene
+    sentences = " ".join(f"Satu dua tiga empat lima{i}." for i in range(10))          # 50 words = 20 s a scene: 80 s, over 70
     plan = {"title": "t", "photo_query": "lab", "scenes": [{"heading": f"Satu dua tiga empat lima{i}", "lines": [],
                                                            "narration": sentences} for i in range(4)]}
     store = Store()
@@ -293,7 +293,7 @@ def test_narration_that_does_not_fit_is_cut_and_recorded_again_never_rushed_neve
     got = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
     assert got["status"] == "done"
     spoken = [sc["narration"] for sc in got["script"][:4]]
-    assert all(spoken) and sum(sc.count(".") for sc in spoken) < 16, "sentences were dropped, no scene emptied"
+    assert all(spoken) and sum(sc.count(".") for sc in spoken) < 40, "sentences were dropped, no scene emptied"
 
 
 def test_shorten_narration_drops_a_sentence_then_a_quarter_of_the_words():
@@ -305,10 +305,45 @@ def test_shorten_narration_drops_a_sentence_then_a_quarter_of_the_words():
     assert not motion.shorten_narration(plan, [{"id": "s1"}]), "nothing recorded, nothing to cut"
 
 
+class _ScriptLLM:
+    def __init__(self, answers):
+        self.answers, self.asked = answers, []
+
+    def chat_json(self, system, user, **kw):
+        self.asked.append(user)
+        return self.answers.pop(0)
+
+
+def test_indonesian_words_are_swapped_for_the_malaysian_ones_whole_words_only_and_the_plan_says_so():
+    assert motion.malaysian("Faktanya, tips ini bisa bantu kualitas obat dalam kemasan.") == \
+        "Fakta sebenar, tip ini boleh bantu kualiti ubat dalam pembungkusan."
+    assert motion.malaysian("Tips untuk bahan baku aman") == "Tip untuk bahan mentah selamat"
+    assert motion.malaysian("hasilnya karena biasa") == "hasilnya kerana biasa"
+    assert motion.malaysian("amanah dan bisakah") == "amanah dan bisakah", "a longer word that merely starts the same is left"
+    scenes = [{"heading": f"Tips penting {i}", "lines": ["Obat dan kemasan"] if i == 1 else [], "narration": "Okay faktanya."}
+              for i in range(1, 5)]
+    llm = _ScriptLLM([{"title": "t", "photo_query": "q", "scenes": scenes}])
+    plan = motion.plan_scenes(llm, {"voice": "off", "language": "bm"}, "", "", "")
+    assert plan["scenes"][0]["heading"] == "Tip penting 1" and plan["scenes"][0]["lines"] == ["Ubat dan pembungkusan"]
+    assert motion.build_script_system({"language": "bm", "seconds": 30}, "").count("never Indonesian") >= 1
+
+
+def test_a_counted_list_keeps_up_to_six_lines_and_an_ordinary_scene_still_has_the_writer_s_own_count():
+    six = ["Pengawet", "Penapis UV", "Nanopartikel", "Pewangi", "Surfaktan", "Pewarna", "Terlebih satu"]
+    scenes = [{"heading": "Tahukah anda 6 kategori", "lines": [], "narration": "Tahukah anda 6 kategori."},
+              {"heading": "Enam kategori bahan", "lines": six, "narration": "Ini dia."},
+              {"heading": "Kenapa", "lines": ["a"], "narration": "Jadi?"},
+              {"heading": "Solusi", "lines": [], "narration": "Jom."}]
+    llm = _ScriptLLM([{"title": "t", "photo_query": "q", "scenes": scenes}])
+    plan = motion.plan_scenes(llm, {"voice": "off", "language": "bm"}, "", "", "")
+    assert plan["scenes"][1]["lines"] == six[:6]
+    assert "NAME EVERY ONE" in motion.build_script_system({"language": "bm", "seconds": 30}, "")
+
+
 def test_a_sized_cut_takes_the_writers_sentences_first_and_keeps_the_facts_spoken():
-    plan = [{"id": "s1", "narration": "Hook kecil. Cerita panjang pertama. Cerita panjang kedua. Fakta utama di skrin.",
-             "fill": ["Fakta utama di skrin."]},
-            {"id": "s2", "narration": "Satu dua tiga. Empat lima enam.", "fill": []}]
+    plan = [{"id": "s1", "heading": "Fakta utama di skrin", "lines": [],
+             "narration": "Hook kecil. Cerita panjang pertama. Cerita panjang kedua. Fakta utama di skrin."},
+            {"id": "s2", "heading": "Tajuk dua", "lines": [], "narration": "Satu dua tiga. Empat lima enam."}]
     timed = [{"id": "s1", "audio": "x", "audio_s": 12.0}, {"id": "s2", "audio": "y", "audio_s": 4.0}]
     assert motion.shorten_narration(plan, timed, over=5.0)
     assert "Fakta utama di skrin." in plan[0]["narration"], "the fact stays"
@@ -316,11 +351,23 @@ def test_a_sized_cut_takes_the_writers_sentences_first_and_keeps_the_facts_spoke
     assert plan[1]["narration"], "no scene is emptied"
 
 
-def test_a_sized_cut_reaches_the_facts_only_when_nothing_else_is_left():
-    plan = [{"id": "s1", "narration": "Fakta satu. Fakta dua.", "fill": ["Fakta satu.", "Fakta dua."]}]
+def test_a_sized_cut_reaches_the_heading_only_when_nothing_else_is_left_and_never_empties_a_scene():
+    plan = [{"id": "s1", "heading": "Fakta satu penting", "lines": ["Fakta dua utama"],
+             "narration": "Fakta satu penting. Fakta dua utama."}]
     timed = [{"id": "s1", "audio": "x", "audio_s": 8.0}]
-    assert motion.shorten_narration(plan, timed, over=3.0)
-    assert plan[0]["narration"] == "Fakta satu."
+    assert motion.shorten_narration(plan, timed, over=30.0)
+    assert plan[0]["narration"] == "Fakta satu penting.", "the line goes first, the heading's fact is the last sentence left"
+
+
+def test_the_plan_is_cut_to_the_speech_budget_before_anything_is_recorded_and_the_heading_survives():
+    scenes = [{"id": f"s{i}", "heading": f"Fakta nombor{i} yang penting", "lines": [f"Baris sokongan{i} untuk penonton"],
+               "narration": f"Okay jom tengok. Cerita tambahan panjang {i}. Fakta nombor{i} yang penting. "
+                            f"Baris sokongan{i} untuk penonton."} for i in range(1, 5)]
+    cut = motion.trim_to_budget(scenes, 40)
+    assert cut > 0 and sum(len(sc["narration"].split()) for sc in scenes) <= 40
+    for i, sc in enumerate(scenes, 1):
+        assert f"Fakta nombor{i} yang penting." in sc["narration"], "every heading is still said"
+    assert motion.trim_to_budget(scenes, 400) == 0
 
 
 def test_the_fit_error_carries_the_gap():
@@ -545,6 +592,27 @@ def _rich(scenes, plan=None, size=(1080, 1920)):
                                  palette=motion.PALETTE["regulab"], gsap=motion.GSAP, html_lang="ms", resolution="portrait")
 
 
+def test_a_subtitle_is_one_flex_child_so_karaoke_words_are_never_squeezed_into_letters():
+    words = "Okay sekarang kita tengok fakta sebenar dia hari ini".split()
+    scenes = [{"id": "s1", "role": "hook", "start": 0, "duration": 8, "kicker": "x", "heading": "Fakta", "lines": [],
+               "audio": "a.mp3", "narration": " ".join(words), "audio_s": 7,
+               "words": [[i * 0.5, i * 0.5 + 0.4] for i in range(len(words))]}]
+    html, rep = _rich(scenes, {"scenes": {"s1": ["C01"]}, "video": {"captions": "C01"}})
+    assert "C01" in rep["built"] and 'class="kk"' in html
+    for cap in re.findall(r'<div class="clip cap"[^>]*>(.*?)</div>', html, flags=re.S):
+        assert cap.startswith('<span class="cp">') and cap.endswith("</span>") and cap.count('<span class="cp">') == 1
+    assert ".cp{display:block" in html
+
+
+def test_a_counted_list_shows_every_item_and_gives_up_the_picture_for_it():
+    six = ["Pengawet", "Penapis UV", "Nanopartikel", "Pewangi", "Surfaktan", "Pewarna"]
+    scenes = [{"id": "s1", "role": "fact", "start": 0, "duration": 14, "kicker": "x", "heading": "Enam kategori yang dikaji",
+               "lines": six, "photo": "p.jpg", "photo2": "p.jpg"}]
+    html, rep = _rich(scenes, {"scenes": {"s1": ["B05", "P03", "L06"]}, "video": {}})
+    assert rep["dropped_lines"] == [] and all(f">{x}<" in html or f">{x}</span>" in html for x in six)
+    assert 'id="s1-ph"' not in html and 'id="s1-pair"' not in html, "the list has the column to itself"
+
+
 def test_a_key_word_burst_never_grows_a_word_past_the_margin():
     scenes = [{"id": "s1", "role": "hook", "start": 0, "duration": 8, "kicker": "x",
                "heading": "Enam kategori bahan kosmetik dikaji", "lines": []}]
@@ -748,13 +816,13 @@ def test_a_narration_that_is_only_a_connecting_sentence_gets_the_scene_s_own_wor
     row = _row(Store(), language="bm", voice="male")
     plan = {"title": "t", "photo_query": "lab", "scenes": [
         {"heading": "Ulasan PRISMA petakan enam kategori bahan.", "lines": ["Pengawet dan penapis UV."],
-         "narration": "Okay, sekarang kita tengok faktanya."},
+         "narration": "Okay, sekarang kita tengok fakta sebenar."},
         {"heading": "Tiga perkara", "lines": ["satu"], "narration": "Hai. Tiga perkara tentang PFAS."},
         {"heading": "Kenapa", "lines": [], "narration": "Ia kekal lama dalam alam."},
         {"heading": "Semak label", "lines": [], "narration": "Semak label dahulu."}]}
     got = motion.plan_scenes(FakeLLM([plan]), row, "", "", "")
     first, second = got["scenes"][0]["narration"], got["scenes"][1]["narration"]
-    assert first.startswith("Okay, sekarang kita tengok faktanya.") and "Ulasan PRISMA petakan enam kategori bahan." in first
+    assert first.startswith("Okay, sekarang kita tengok fakta sebenar.") and "Ulasan PRISMA petakan enam kategori bahan." in first
     assert second == "Hai. Tiga perkara tentang PFAS.", "a narration that already says its heading is left alone"
 
 
@@ -772,7 +840,7 @@ def test_every_fact_on_screen_is_also_said():
     row = _row(Store(), language="bm", voice="male")
     plan = {"title": "t", "photo_query": "lab", "scenes": [
         {"heading": "Ulasan PRISMA petakan 6 kategori bahan.", "lines": ["Pengawet dan penapis UV.", "Pewangi dan surfaktan."],
-         "narration": "Okay, sekarang kita tengok faktanya. Ulasan PRISMA petakan 6 kategori bahan."},
+         "narration": "Okay, sekarang kita tengok fakta sebenar. Ulasan PRISMA petakan 6 kategori bahan."},
         {"heading": "Kenapa", "lines": [], "narration": "Ia kekal lama dalam alam."},
         {"heading": "Semak label", "lines": [], "narration": "Semak label dahulu."},
         {"heading": "Selesai", "lines": [], "narration": "Itu sahaja."}]}

@@ -1,5 +1,6 @@
 """Attachment recipes consumed by the real worker (CLI/TTS boundaries stubbed)."""
 import pytest
+from conftest import FITTED
 from test_motion import GOOD, NOW, SCRIPT, FakeLLM, Store, _row, _runner, fake_speak
 
 from semasa import motion
@@ -64,7 +65,7 @@ def test_worker_rejects_rendered_duration_mismatch(tmp_path):
     row = _row(store, seconds=60, voice="off", language="en")
     assert not motion.process(store, FakeLLM([SCRIPT, {"html": GOOD}]), row,
                               {"prompt": "", "cli": motion.CLI_VERSION},
-                              runner=_runner(), workdir=tmp_path, now=NOW)
+                              runner=_runner(probe_seconds=5.0), workdir=tmp_path, now=NOW)
     saved = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
     assert "duration" in saved["error"].lower()
 
@@ -78,11 +79,12 @@ def test_worker_consumes_recipe_and_enforces_selected_duration(tmp_path):
                           runner=_runner(), workdir=tmp_path, now=NOW, speak=fake_speak)
     assert all("Financial Education Reel" in system + user for system, user in llm.asked)
     index = (tmp_path / row["id"][:8] / "index.html").read_text()
-    assert 'data-duration="30"' in index and "official-logo-transparent.png" in index
+    assert f'data-duration="{FITTED["total"]:g}"' in index and "official-logo-transparent.png" in index
+    assert 0 < FITTED["total"] <= 70, "as long as the information needs, never more than 70 s"
     assert "Follow us for more" in index and "mascot-wave" not in index
     saved = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
     assert saved["script"][-1]["narration"] == "Follow us for more"
-    assert saved["script"][-1]["start"] == 27
+    assert saved["script"][-1]["start"] == round(FITTED["total"] - 3, 2)
 
 
 def test_narration_that_cannot_fit_fails_instead_of_speeding_or_overrunning(tmp_path):

@@ -151,8 +151,8 @@ export default function MotionLab({ user, onToast }) {
     <section className="mt-10" data-motion>
       <div className="mb-3">
         <h2 className="flex items-center gap-2 font-display text-2xl"><Clapperboard size={18} className="text-accent" /> {t("Motion", "Motion")}</h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted">{t("Video grafik gerak daripada idea atau pautan. Bot tulis komposisi HTML (kontrak HyperFrames), semak, render MP4 di pelayan dan paparkan di sini. Bila siap, pilih platform dan masukkan ke giliran Post sebagai draf; anda luluskan di tab Post.",
-          "A motion-graphics video from an idea or a link. The bot writes the HTML composition (the HyperFrames contract), checks it, renders the MP4 on the runner and shows it here. When it is done, pick the platforms and put it in the Posts queue as a draft; you approve it in the Posts tab.")}</p>
+        <p className="mt-1 max-w-2xl text-sm text-muted">{t("Video grafik gerak daripada idea atau pautan. Bot tulis komposisi HTML (kontrak HyperFrames), semak, render MP4 di pelayan dan paparkan di sini. Bila siap, pilih platform, kemudian Lulus & beratur atau simpan sebagai draf di giliran Post.",
+          "A motion-graphics video from an idea or a link. The bot writes the HTML composition (the HyperFrames contract), checks it, renders the MP4 on the runner and shows it here. When it is done, pick the platforms, then Approve & queue or save it as a draft in the Posts queue.")}</p>
       </div>
       {missing && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual belum ada: jalankan supabase/043_motion.sql sekali.", "The table is not there yet: run supabase/043_motion.sql once.")}</p>}
       {motions.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{motions.error}</p>}
@@ -176,7 +176,7 @@ export default function MotionLab({ user, onToast }) {
           onEffects={setEffects} onEffectMode={setEffectMode} assets={assets} onAssets={setAssets}
           client={supabase} user={user} onBusy={setAssetsBusy} />
         <p className="text-xs text-muted" data-motion-audio-rights>Preferred preview music: supplied reel (rights unverified, private preview only, v17 quiet mix). Public export: cleared/self-owned piano; alternatively add licensed platform audio yourself. Reel audio is not bundled or downloaded automatically; unavailable preview source does not block the cleared export.</p>
-        <p className="text-xs text-muted">{recipeOf(style).name} · Hook → Fact → Why → Solution. 30s by default; optional 60s for fuller publication context. 10s is only an explicitly selected gimmick/teaser, never an explainer. Long explainers include a separate 3s outro; 10s gimmicks stay in one continuous composition. Missing real footage/captures/data disables unsuitable recipes; charts and counters are omitted without verified data.</p>
+        <p className="text-xs text-muted">{recipeOf(style).name} · Hook → Fact → Why → Solution. As long as the information needs, never more than 70s. 10s is only an explicitly selected gimmick/teaser, never an explainer. Long explainers include a separate 3s outro; 10s gimmicks stay in one continuous composition. Missing real footage/captures/data disables unsuitable recipes; charts and counters are omitted without verified data.</p>
         <label className="block" data-motion-style><Label hint={t("repo motion dari kotak di bawah; setiap satu gaya yang berbeza", "a motion repo from the box below; each one a different look")}>{t("Gaya (repo motion)", "Style (motion repo)")}</Label>
           <Select value={styleRepoId} onChange={setStyleRepoId} className="w-full"
             options={[["", t("Gaya lalai Semasa", "Semasa's default look")], ...styles.map((r) => [r.id, `${r.name || r.full_name}${r.status !== "done" ? ` · ${t("belum dibaca", "not read yet")}` : ""}${r.safety === "avoid" ? ` · ${t("elakkan", "avoid")}` : ""}`])]} /></label>
@@ -193,7 +193,7 @@ export default function MotionLab({ user, onToast }) {
             <Select value={mode} onChange={v => { setMode(v); setSeconds(v === "teaser" ? 10 : selectedSeconds(seconds, v)); }}
               options={[["explainer", "Explainer · Hook / Fact / Why / Solution"], ["teaser", "Gimmick / teaser only · not an explainer"]]} /></label>
           <label className="block"><Label>{t("Saat", "Seconds")}</Label>
-            <Select value={String(seconds)} onChange={setSeconds} options={mode === "teaser" ? [["10", "10s · one persistent gimmick scene"], ["30", "30s"], ["60", "60s"]] : [["30", "30s · default"], ["60", "60s"]]} /></label>
+            <Select value={String(seconds)} onChange={setSeconds} options={mode === "teaser" ? [["10", "10s · one persistent gimmick scene"], ["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]] : [["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]]} /></label>
         </div>
         <div className="grid gap-4 md:grid-cols-2" data-motion-voice>
           <div><Label hint={t("suara Edge neural: Osman / Yasmin (BM), Andrew / Ava (EN)", "VoiceStudio KittenTTS: English preset, configured worker required; BM/both automatically uses native Edge female +15%")}>{t("Suara", "Voice")}</Label>

@@ -82,4 +82,12 @@ t("an empty caption or one over a platform's limit blocks approval, and only on 
   assert.equal(ig.p_hard, 0);
 });
 
+t("approve is Wan's own click and is taken only when nothing blocks", () => {
+  const ok = queueArgs({ film, channels: ["instagram"], captions: { instagram: CAP }, date: "2026-10-27", slot: "13:00", brand: BRAND, approve: true });
+  assert.equal(ok.p_approve, true);
+  assert.equal(queueArgs({ film, channels: ["instagram"], captions: { instagram: CAP }, date: "2026-10-27", slot: "13:00", brand: BRAND }).p_approve, false);
+  const blocked = queueArgs({ film, channels: ["threads"], captions: { threads: "" }, date: "2026-10-27", slot: "13:00", brand: BRAND, approve: true });
+  assert.equal(blocked.p_hard, 1); assert.equal(blocked.p_approve, false);
+});
+
 console.log(`${n} motion queue cases pass`);

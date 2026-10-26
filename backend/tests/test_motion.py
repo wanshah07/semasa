@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from conftest import FITTED
 from fakestore import FakeStore
 
 from semasa import motion
@@ -83,7 +84,7 @@ def test_clean_html_strips_fences_and_refuses_media_or_random():
         raise AssertionError("accepted " + bad[:40])
 
 
-def _runner(check_json=None, render_ok=True, calls=None):
+def _runner(check_json=None, render_ok=True, calls=None, probe_seconds=None):
     calls = calls if calls is not None else []
 
     def run(cmd, cwd=None, capture_output=True, text=True, timeout=None, env=None):
@@ -102,7 +103,9 @@ def _runner(check_json=None, render_ok=True, calls=None):
             Path(cmd[-1]).write_bytes(b"\xff\xd8jpg")
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         if cmd[0] == "ffprobe":
-            meta = {"streams": [{"width": 1080, "height": 1920}], "format": {"duration": "30.0"}}
+            # a render is as long as the film was fitted to (it is as long as its information needs, up to 70 s)
+            seconds = probe_seconds if probe_seconds is not None else FITTED.get("total", 30.0)
+            meta = {"streams": [{"width": 1080, "height": 1920}], "format": {"duration": str(seconds)}}
             return SimpleNamespace(returncode=0, stdout=json.dumps(meta), stderr="")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
     return run
@@ -164,7 +167,7 @@ def test_process_writes_checks_renders_and_stores_the_video(tmp_path):
     got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
     assert got["status"] == "done" and got["title"] == "PFAS: tiga perkara"
     assert got["video_url"] == f"https://cdn/motion/{r['id']}.mp4"
-    assert got["poster_url"].endswith(".jpg") and got["width"] == 1080 and got["duration_s"] == 30.0 and got["model"] == "m1"
+    assert got["poster_url"].endswith(".jpg") and got["width"] == 1080 and 0 < got["duration_s"] <= 70 and got["model"] == "m1"
     assert ">Hai</h1>" in got["html"] and got["check_report"]["ok"] is True and got["bytes"] > 0
     assert [sc["kicker"] for sc in got["script"]] == ["HOOK", "FAKTA", "KENAPA", "SOLUSI", ""], "the flow, labelled by the worker"
     assert "Guna font besar." in llm.asked[1][0] and "BRIEF: Tiga perkara" in llm.asked[1][1]
@@ -369,7 +372,8 @@ def test_the_voice_is_put_into_the_film_after_the_writer_and_no_presenter_is_eve
 
 def test_the_script_prompt_speaks_the_films_language_and_both_means_two_lines():
     s = motion.build_script_system({"stream": "regulab", "seconds": 20, "language": "both"}, "Sebut nama produk.")
-    assert "about 30 seconds" in s and "70 words" in s and "Bahasa Malaysia with the English line" in s
+    assert "NO fixed length" in s and "never more than 70 seconds" in s and "at most 153 words" in s
+    assert "Bahasa Malaysia with the English line" in s
     assert "WAN'S OWN INSTRUCTIONS:\nSebut nama produk." in s and "ws.regulab" in s
     assert "English" in motion.build_script_system({"stream": "linkedin", "seconds": 8}, "")
     # an English film for ws.regulab: the brand line no longer says "speaking Bahasa Malaysia" (24 Oct 2026, Malay narration)

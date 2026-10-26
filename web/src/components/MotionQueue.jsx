@@ -23,7 +23,7 @@ function QueueCard({ row, defaults, client, user, busy, onStart, onRemove }) {
   const format = formatOf(form);
   const isGimmick = format === "gimmick";
   /* Gimmick or full content (Wan, 26 Oct 2026: "make sure we can choose gimmick or full content for idea"): the first thing on every
-     card, because it decides everything after it: one scene of 10 s, or the four-scene film of 30 or 60 s. */
+     card, because it decides everything after it: one scene of 10 s, or the four-scene film, as long as its information needs and never more than 70 s. */
   const chooseKind = (v) => set(v === "gimmick" ? { mode: "teaser", seconds: 10 }
     : { mode: "explainer", seconds: selectedSeconds(form.seconds, "explainer") === 60 ? 60 : 30 });
   return (
@@ -49,10 +49,10 @@ function QueueCard({ row, defaults, client, user, busy, onStart, onRemove }) {
         <label className="block"><Label>{t("Reka bentuk", "Design")}</Label>
           <Select value={form.design} onChange={(v) => set({ design: v })} className="w-full" options={designOptions.map((d) => [d.id, d.name])} /></label>
         {isGimmick ? null : (
-          <label className="block"><Label>{t("Panjang kandungan penuh", "Full content length")}</Label>
-            <Select value={String(selectedSeconds(form.seconds, "explainer"))} className="w-full"
-              onChange={(v) => set({ mode: "explainer", seconds: Number(v) })}
-              options={[["30", "30s"], ["60", "60s"]]} /></label>
+          <div><Label>{t("Panjang kandungan penuh", "Full content length")}</Label>
+            <p className="rounded-tile bg-surface-2 px-3 py-2 text-xs text-muted" data-motion-length>
+              {t("Ikut maklumat: video sepanjang yang diperlukan untuk maklumat sampai, tidak lebih 70 saat.",
+                "As long as the information needs: the video runs as long as it takes to deliver it, never more than 70 seconds.")}</p></div>
         )}
       </div>
       <details className="rounded-tile border border-line p-3" data-motion-queue-styles onToggle={(e) => setOpen(e.currentTarget.open)}>

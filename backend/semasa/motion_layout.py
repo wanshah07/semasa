@@ -277,14 +277,17 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         if heading:
             words = heading.split()
             style = f"font-size:{hs:.0f}px;" + ('font-family:Georgia,"Times New Roman",serif;' if "H10" in eff else "")
-            if caption == "C04" and len(words) > 2:
-                key = max(range(len(words)), key=lambda j: len(words[j]))
+            # the key word is an inline-block: only one that fits the column whole may be wrapped, or it would break inside
+            fits = [j for j in range(len(words)) if len(words[j]) * hs * WIDE * 1.08 <= box_w * 0.92]
+            key = max(fits, key=lambda j: len(words[j])) if fits else -1
+            if caption == "C04" and len(words) > 2 and key >= 0:
                 words[key] = f'<span class="kw">{esc(words[key])}<i id="{sid}-kw"></i></span>'
                 body = " ".join(esc(x) if "<span" not in x else x for x in words)
-            elif caption == "C07" and len(words) > 1:
-                key = max(range(len(words)), key=lambda j: len(words[j]))
-                words[key] = f'<span class="k7" id="{sid}-k7">{esc(words[key])}</span>'
-                body = " ".join(esc(x) if "<span" not in x else x for x in words)
+            elif caption == "C07" and len(words) > 1 and key >= 0:
+                # the key word bursts alone: the other words arrive only once it has settled, so nothing is ever crossed
+                words = [f'<span class="ow {sid}-ow">{esc(x)}</span>' if j != key else
+                         f'<span class="k7" id="{sid}-k7">{esc(x)}</span>' for j, x in enumerate(words)]
+                body = " ".join(words)
             elif caption == "C02":
                 body = " ".join(f'<span class="w {sid}-w" style="display:inline-block;">{inline(x, sid, numbers)}</span>'
                                 for x in words)
@@ -394,11 +397,14 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 dy = y0 if not dx else 0
                 tw.append(f'tl.fromTo("#{sid}-h",{{opacity:{opening},x:{dx:.0f},y:{dy:.0f}}},{{opacity:1,x:0,y:0,'
                           f'duration:{enter + .1:g},ease:"power3.out"}},{th:g});')
-            if caption == "C04" and len(heading.split()) > 2:
+            if f'id="{sid}-kw"' in "".join(block):
                 tw.append(f'tl.fromTo("#{sid}-kw",{{scaleX:0}},{{scaleX:1,duration:.6,ease:"power2.inOut"}},{th + .45:g});')
-            if caption == "C07" and len(heading.split()) > 1:
-                tw.append(f'tl.fromTo("#{sid}-k7",{{scale:2.3,opacity:0}},{{scale:1,opacity:1,duration:.55,ease:"back.out(1.6)"}},'
-                          f'{th + .2:g});')
+            if f'id="{sid}-k7"' in "".join(block):
+                est = max(len(x) for x in heading.split()) * hs * WIDE
+                burst = min(2.3, max(1.2, box_w * 0.96 / max(est, 1)))
+                tw.append(f'tl.fromTo("#{sid}-k7",{{scale:{burst:.2f},opacity:0}},{{scale:1,opacity:1,duration:.5,ease:"back.out(1.6)"}},'
+                          f'{th:g});')
+                tw.append(f'tl.fromTo(".{sid}-ow",{{opacity:0}},{{opacity:1,duration:.3,ease:"power1.out"}},{th + .55:g});')
         tl_start = t0 + .35 + lead
         gap_in = 0.5 if not sc.get("narration") else 0.35
         if cards:

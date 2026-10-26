@@ -335,3 +335,113 @@ def test_wans_ws_regulab_motion_skill_is_installed_for_claude_code_and_reaches_t
     two = motion.skill_context({"options": {"design": "continuous-line"}})
     assert "ContinuousLine.html" in two and "those win" in two
     assert "WAN'S SKILL ws-regulab-motion" in motion.build_user({"brief": "b"}, "", "")
+
+
+def test_the_writer_may_answer_with_plain_html_a_fenced_file_or_the_old_json():
+    from test_motion import GOOD
+    plain = "<!-- title: Notifikasi bukan kelulusan -->\n" + GOOD + "\nThat is all."
+    got = motion.parse_writer(plain)
+    assert got["title"] == "Notifikasi bukan kelulusan"
+    assert got["html"].startswith("<!doctype") and got["html"].endswith("</html>")
+    fenced = motion.parse_writer("```html\n" + GOOD + "\n```")
+    assert fenced["html"] == GOOD and fenced["title"] == ""
+    old = motion.parse_writer('{"title": "T", "html": ' + __import__("json").dumps(GOOD) + "}")
+    assert old["title"] == "T" and old["html"] == GOOD
+    assert motion.parse_writer("sorry, I cannot") == {} and motion.parse_writer(None) == {}
+    assert motion.clean_html(plain and got["html"]) == GOOD
+
+
+def test_ask_writer_prefers_plain_text_and_falls_back_to_json():
+    from test_motion import GOOD
+
+    class TextLLM:
+        def chat_text(self, system, user, *, max_tokens):
+            return "<!-- title: X -->" + GOOD
+
+    class JsonLLM:
+        def chat_json(self, system, user, *, max_tokens):
+            return {"title": "J", "html": GOOD}
+
+    class Silent:
+        def chat_text(self, system, user, *, max_tokens):
+            return None
+    assert motion.ask_writer(TextLLM(), "s", "u")["title"] == "X"
+    assert motion.ask_writer(JsonLLM(), "s", "u")["title"] == "J"
+    assert motion.ask_writer(Silent(), "s", "u") is None
+
+
+def test_llm_chat_text_asks_each_writer_once_and_returns_the_first_real_answer(monkeypatch):
+    from types import SimpleNamespace
+
+    import requests
+
+    from semasa import llm as llm_mod
+    bot = llm_mod.LLM.__new__(llm_mod.LLM)
+    bot.s = SimpleNamespace(timeout=5)
+    bot.calls, bot.failures, bot.last_model = 0, 0, ""
+    bot.answers, bot.misses = {"primary": 0, "backup": 0}, {"primary": 0, "backup": 0}
+    bot._writers = lambda model, backup: [("primary", "openai", "b1", "k", "m1"), ("backup", "openai", "b2", "k", "m2")]
+    replies = iter([requests.Timeout("slow"), "<html>ok</html>"])
+
+    def call(system, user, max_tokens, model, **kw):
+        r = next(replies)
+        if isinstance(r, Exception):
+            raise r
+        return r
+    bot._call = call
+    assert bot.chat_text("s", "u", max_tokens=10) == "<html>ok</html>"
+    assert bot.last_model == "m2" and bot.misses["primary"] == 1 and bot.answers["backup"] == 1
+    bot._call = lambda *a, **k: ""
+    assert bot.chat_text("s", "u", max_tokens=10) is None and bot.failures == 1
+
+
+def test_a_native_heading_effect_leaves_the_heading_on_screen_after_its_entrance():
+    from semasa import native_text
+    doc = '<html><body><div id="root"><div id="s1"><h2>Keep food safe</h2></div></div></body></html>'
+    scenes = [{"id": "s1", "heading": "Keep food safe", "start": 0, "duration": 6}]
+    report = {"effects": [{"id": "H01"}]}
+    out = native_text.inject(doc, report, scenes, 30)
+    assert "native-H01" in out and "opacity:0,duration:.18" not in out
+
+
+def test_the_safe_layout_background_is_the_reference_gradient_and_never_a_circle():
+    html, _ = _compose([dict(s) for s in FILM])
+    assert "linear-gradient(145deg,#e0f5e9,#fff9ed 70%)" in html and 'id="grad2"' in html
+    assert 'class="bg"' not in html and 'id="bg' not in html and ".bg{" not in html, "no circles behind the text"
+    line, _ = motion_layout.compose(scenes=[dict(s) for s in FILM], total=31, w=1080, h=1920, lang="bm",
+                                    plan={"scenes": {}, "video": {}}, palette=motion.PALETTE["regulab"], gsap=motion.GSAP,
+                                    html_lang="ms", resolution="portrait", design="continuous-line")
+    assert "linear-gradient(150deg,#e4f4e8,#fcf9ed)" in line
+
+
+@pytest.mark.parametrize("voiced", [True, False])
+@pytest.mark.parametrize("photos", [0, 1, 3])
+@pytest.mark.parametrize("lang", ["bm", "en", "both"])
+@pytest.mark.parametrize("lines", [0, 2])
+def test_every_film_gets_at_least_fifteen_of_the_99_styles(voiced, photos, lang, lines):
+    # Wan, 26 Oct 2026: "make sure at least 15 styles from 99 styles apply to the motion video"
+    film = [scene(1, "Is it approved?", ["a b"] * lines), scene(2, "Notification is not approval", ["x y", "z w"][:lines]),
+            scene(3, "A wrong label means recall", ["one"] * lines),
+            scene(4, "Check before launch", ["list a", "list b"][:lines])]
+    motion_auto.assign_photos(film, [{"path": f"p{i}.jpg"} for i in range(photos)])
+    plan = motion_auto.choose(ROW, film, voiced=voiced, lang=lang)
+    assert plan["applied"] >= motion_auto.MIN_STYLES == 15
+    seen = {c for codes in plan["scenes"].values() for c in codes} | set(plan["video"].values()) | set(plan["audio"])
+    assert len(seen) == plan["applied"], "the count is the styles actually assigned, none twice"
+
+
+@pytest.mark.parametrize("row, key", [
+    ({"seconds": 10, "options": {"mode": "teaser"}, "language": "bm"}, "gimmick"),
+    ({"options": {"design": "continuous-line"}, "language": "en"}, "preview"),
+    ({"language": "bm"}, "malay"), ({"language": "both"}, "malay"), ({"language": "en"}, "english"),
+])
+def test_each_film_is_one_of_wans_four_formats_and_the_writer_gets_that_formats_skill(row, key):
+    assert motion.format_of(row) == key
+    skill = motion.SKILL.parent / f"ws-regulab-motion-{key}"
+    assert (skill / "SKILL.md").is_file() and (skill / "reference" / "reference.mp4").is_file()
+    assert (skill / "reference" / "contact-sheet.jpg").is_file()
+    head = (skill / "SKILL.md").read_text().split("---")[1]
+    assert f"name: ws-regulab-motion-{key}" in head and "user-invocable: true" in head
+    context = motion.format_context(row)
+    assert f"FORMAT SKILL ws-regulab-motion-{key}" in context and "NEVER circles" in context and "15 of the 99" in context
+    assert "FORMAT SKILL" in motion.build_user({"brief": "b", **row}, "", "")

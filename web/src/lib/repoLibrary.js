@@ -1,11 +1,15 @@
 /* Pustaka repo (Wan, 23 Oct 2026): the library of repositories Wan adds by link, read and filed by the worker
    (backend/semasa/repo_library.py, semasa_repo_library). Pure functions, tested in repoLibrary.test.mjs. */
 
-export const CATEGORIES = ["motion", "video", "suara", "imej", "kemahiran-ai", "scraper", "regulatori", "web", "data", "automasi", "alatan", "lain"];
+export const CATEGORIES = ["motion", "video", "suara", "muzik", "imej", "3d", "kemahiran-ai", "agen-ai", "mcp", "scraper", "pelayar", "regulatori", "dokumen",
+  "web", "frontend", "api", "data", "analitik", "automasi", "pemasaran", "keselamatan", "devops", "terjemahan", "alatan", "lain"];
 export const CATEGORY_WORDS = {
-  motion: ["Motion", "Motion"], video: ["Video", "Video"], suara: ["Suara", "Voice"], imej: ["Imej", "Image"],
-  "kemahiran-ai": ["Kemahiran AI", "AI skills"], scraper: ["Scraper", "Scraper"], regulatori: ["Regulatori", "Regulatory"],
-  web: ["Web", "Web"], data: ["Data", "Data"], automasi: ["Automasi", "Automation"], alatan: ["Alatan", "Tooling"], lain: ["Lain", "Other"],
+  motion: ["Motion", "Motion"], video: ["Video", "Video"], suara: ["Suara", "Voice"], muzik: ["Muzik", "Music"], imej: ["Imej", "Image"],
+  "3d": ["3D", "3D"], "kemahiran-ai": ["Kemahiran AI", "AI skills"], "agen-ai": ["Ejen AI", "AI agents"], mcp: ["MCP", "MCP"],
+  scraper: ["Scraper", "Scraper"], pelayar: ["Pelayar", "Browser"], regulatori: ["Regulatori", "Regulatory"], dokumen: ["Dokumen", "Documents"],
+  web: ["Web", "Web"], frontend: ["Antara muka", "Front end"], api: ["API", "API"], data: ["Data", "Data"], analitik: ["Analitik", "Analytics"],
+  automasi: ["Automasi", "Automation"], pemasaran: ["Pemasaran", "Marketing"], keselamatan: ["Keselamatan", "Security"], devops: ["DevOps", "DevOps"],
+  terjemahan: ["Terjemahan", "Translation"], alatan: ["Alatan", "Tooling"], lain: ["Lain", "Other"],
 };
 export const SAFETY_WORDS = {
   safe: ["Selamat", "Safe"], caution: ["Berhati-hati", "Caution"], avoid: ["Elakkan", "Avoid"], unknown: ["Belum disemak", "Not checked"],

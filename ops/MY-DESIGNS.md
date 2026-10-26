@@ -72,3 +72,11 @@ A design from a reference carries `layouts` (`{place: layout}`); `studio.js` `no
 in through `designCloneSeed.js layoutToSeed` and paint the layers (the worker serves those two modules, `studio_cards.LIB_MODULES`).
 `web/src/lib/designs.js` is the page's side (context, `resolveLook`). Tests: `designs.test.mjs`, `cards.test.mjs`,
 `tests/test_my_designs.py`, `tests/test_studio_cards.py`, `design_fidelity.test.mjs`.
+
+## Deleting a design that sits in a draft post (26 Oct 2026)
+
+Wan: *"make sure design in draft can be deleted"*. All 71 pictures in draft posts were made by the worker, so `created_by` is null, and
+the delete policy (002) only let the creator delete: neither the page nor the database allowed it. `supabase/056` lets an uploader delete
+a picture with no owner (and their own), and an AFTER DELETE trigger takes the id out of every DRAFT post's `media_ids`. The lock on an
+approved, scheduled or posted post (`semasa_media_gate`) is untouched. The page follows the same rule in `lib/designDelete.js`
+(`canDeleteDesign`), and the confirm names how many draft posts lose the picture.

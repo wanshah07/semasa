@@ -9,6 +9,7 @@ import Card from "./ui/Card";
 import { providersOf } from "./MediaUploader";
 import { ShimmerProgress } from "@/components/ui/progress-styled";
 import { UnsplashResults, isUnsplash } from "./Unsplash";
+import { canDeleteDesign, ownsDesign } from "../lib/designDelete";
 
 // A job that failed for want of a key is retried on the runner's default (Cloudflare once its secrets are set),
 // not on the provider that has no key: on 25 Sep 2026 three jobs sat pinned to Replicate/OpenAI and every Retry
@@ -77,7 +78,8 @@ export default function GenerationGallery({ rows, user, onRequeue, onRemove, onT
           const STATUS = statusOf(t);
           const st = STATUS[row.status] || STATUS.pending;
           const Icon = st.icon;
-          const mine = user && row.created_by === user.id;
+          const mine = ownsDesign(row, user);
+          const canDel = canDeleteDesign(row, user);
           return (
             <motion.div key={row.id} variants={pop} layout exit="exit" className="min-w-0">
               <Card className="overflow-hidden">
@@ -109,16 +111,16 @@ export default function GenerationGallery({ rows, user, onRequeue, onRemove, onT
                   )}
                   {(row.idea_id || row.post_id) && <p className="mt-1 text-[11px] text-accent">{t("Aliran A · untuk draf post", "Flow A · for a draft post")}</p>}
                   {row.error && <p className="mt-2 rounded-tile bg-danger/5 p-2 text-[11px] text-danger [overflow-wrap:anywhere]">{row.error}</p>}
-                  <div className="mt-3 flex items-center justify-between text-[11px] text-muted">
-                    <span>{row.provider || t("Tiada", "None")}{row.model ? ` · ${row.model}` : ""}{row.attempts ? ` · ${t("cubaan {n}", "attempt {n}", { n: row.attempts })}` : ""}</span>
-                    {mine && (
-                      <span className="flex items-center gap-1">
-                        {row.status === "error" && (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{row.provider || t("Tiada", "None")}{row.model ? ` · ${row.model}` : ""}{row.attempts ? ` · ${t("cubaan {n}", "attempt {n}", { n: row.attempts })}` : ""}</span>
+                    {(mine || canDel) && (
+                      <span className="flex flex-wrap items-center gap-1">
+                        {mine && row.status === "error" && (
                           <Retry row={row} onRequeue={onRequeue} />
                         )}
                         {locked.has(row.id) && <span title={t("Kembalikan post itu ke draf untuk memadam gambar ini.", "Put that post back to draft to delete this picture.")}>
                           {t("Dalam post yang diluluskan", "In an approved post")}</span>}
-                        {row.status !== "processing" && !locked.has(row.id) && (
+                        {canDel && row.status !== "processing" && !locked.has(row.id) && (
                           <Button size="sm" variant="danger" onClick={() => onRemove(row)} title={t("Padam", "Delete")}><Trash2 size={12} /> {t("Padam", "Delete")}</Button>
                         )}
                       </span>

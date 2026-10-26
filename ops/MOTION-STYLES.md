@@ -175,3 +175,21 @@ Wan's notes on the paper film, in order, and what the worker does now:
 - **The "Adapted P05, V09, B07, B..." overlap.** `motion_assets.inject` laid a legacy asset panel (a picture and a caption) over the first scene at a fixed place, 12% from the left and 48% from the top. The worker's own layout builds every style in the flow, so the panel landed on the first scene's words: the overlap check rejected the film ("text overlap remains even in the safe layout") on every retry (five Motion runs failed in a row on 26 Oct), and its caption printed effect codes and "concept only, not evidence" on the film. The worker-composed film now takes no panel (`panel=False`); the AI-writer path keeps it with the caption "Concept illustration · not evidence", never the codes. A test composes a film with six non-native effects and fails without the fix.
 - **A web source that is not a web page** (an idea from OneDrive has `onedrive://...`) is no longer fetched: `source_words` returns nothing without a request, instead of an error line in the log.
 - **Delete is a named button.** Posts: a Delete button on every card and table row of the Posts list (it was one icon at the foot of the editor). A draft or rejected post goes at once; an approved one goes back to draft first (the database refuses to delete it otherwise) after a confirm; one scheduled or sent, or already delivered to a channel, is disabled with the reason. Ideas: the icon is now a named button, always shown, disabled with the reason while an idea is being written or when its post is approved or out (the database keeps those, supabase/019). Designs: "Padam / Delete" on each design card and on each saved design (which now also asks first).
+
+## Eleventh round (26 Oct 2026): overlap and overflow, measured
+
+Wan: *"check overlap and overflood text and bug, fix them"*. A stress run rendered 288 films (short, long, English; portrait, square,
+1:1.25 and landscape; silent and narrated; both streams; three style plans; with and without pictures) through the same browser probe
+the worker uses, with the kind of text that breaks layouts: an 80-letter chemical name, a 60-letter reference, a five-line scene, a
+figure such as `1,234,567.89`. 36 failed, only on the long set. Four faults, all fixed, each with a test that fails without the fix:
+
+- **A subtitle taller than its lane at the readable floor ran off the frame.** `split_to_fit` cuts it at the middle word (whole words,
+  times shared by length) until it fits; nothing is dropped.
+- **Karaoke word ids repeated from the third subtitle on** (the offset was the first subtitle's word count, whatever the index), so
+  the highlight of a later subtitle fired on an earlier one's words. The offset is the running count now.
+- **A typed word is one `nowrap` box**, so a 60-letter token left the frame. A word over 14 letters is several pieces with no space
+  between them, so it wraps between pieces.
+- **A chart row took a label of any length**, and a two-line label pushed the chart into the subtitle lane. A percentage line whose
+  label needs more than one line stays an ordinary line.
+
+Result: 288 of 288 clean. This was the same failure class as the "text overlap remains even in the safe layout" runs of 26 Oct.

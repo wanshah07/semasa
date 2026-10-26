@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { canonicalUrl, categoriesOf, filterRows, flagsOf, groupByCategory, librarySummary, parseRepoUrl } from "./src/lib/repoLibrary.js";
+import { CATEGORIES, CATEGORY_WORDS, canonicalUrl, categoriesOf, filterRows, flagsOf, groupByCategory, librarySummary, parseRepoUrl } from "./src/lib/repoLibrary.js";
 
 assert.equal(parseRepoUrl("https://github.com/blixvip/MotionClone"), "blixvip/MotionClone");
 assert.equal(parseRepoUrl(" https://github.com/debpalash/VoiceStudio.git "), "debpalash/VoiceStudio");
@@ -29,4 +29,7 @@ assert.deepEqual(filterRows(rows, { safety: "avoid" }).map((r) => r.id), [3]);
 assert.deepEqual(librarySummary(rows), { total: 4, done: 2, pending: 1, avoid: 1, caution: 1 });
 assert.deepEqual(flagsOf({ safety_flags: [{ severity: "caution" }, { severity: "avoid" }, { severity: "safe" }] }).map((f) => f.severity), ["avoid", "caution", "safe"]);
 assert.deepEqual(flagsOf(null), []);
+assert.ok(CATEGORIES.length >= 20 && CATEGORIES.at(-1) === "lain", "the library takes every kind of function, not only video");
+for (const c of CATEGORIES) assert.ok(Array.isArray(CATEGORY_WORDS[c]) && CATEGORY_WORDS[c].length === 2, `category ${c} has a BM and an EN word`);
+for (const c of ["agen-ai", "mcp", "api", "dokumen", "keselamatan", "devops"]) assert.ok(CATEGORIES.includes(c), `${c} is offered`);
 console.log("repoLibrary.test.mjs: ok");

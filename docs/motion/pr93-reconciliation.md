@@ -25,7 +25,7 @@ English Wayne `en-SG-WayneNeural`, Malay Osman `ms-MY-OsmanNeural`, normal tempo
 - Full current working-tree backend: **862 passed, 19 skipped**, 77.70s. Skips: unconfigured Chrome routes and missing optional openpyxl. Log: `/opt/data/outputs/semasa-voice-alignment/reconcile-backend.log`.
 - Skill contract: **8 passed** after installing PyYAML in the existing scratch virtualenv. Initial attempt could not import yaml; no repository dependency was silently changed.
 - Full `npm test` and production build passed after `npm ci` restored missing local dependencies. Initial test attempt failed because local `fflate` was absent. Existing fflate chunk and bundle-size warnings remain.
-- npm audit reports 7 dependency vulnerabilities (4 moderate, 3 high); package/lockfiles are unchanged from main. No unrelated dependency upgrade was forced. Audit: `/opt/data/outputs/semasa-voice-alignment/reconcile-npm-audit.json`.
+- npm audit reports 7 dependency vulnerabilities (4 moderate, 3 high); dependency declarations and lockfile are unchanged from main (PR93 only extends the package test script). No unrelated dependency upgrade was forced. Audit: `/opt/data/outputs/semasa-voice-alignment/reconcile-npm-audit.json`.
 - Ruff backend/smoke and `git diff --check` pass. Exact pushed-head CI must be read separately after this commit; earlier CI for `684f080` does not verify this correction.
 
 No production database write, migration, private upload, paid provider request, Claude CLI/model call, clone, avatar resource job, deployment or merge was performed. Optional deployment configuration gates remain distinct from the generated-film acceptance gate above.

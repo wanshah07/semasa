@@ -20,6 +20,11 @@ function QueueCard({ row, defaults, client, user, busy, onStart, onRemove }) {
   const [open, setOpen] = useState(false);          // the 99 cards are drawn only when asked for: a long queue stays light
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const format = formatOf(form);
+  const isGimmick = format === "gimmick";
+  /* Gimmick or full content (Wan, 26 Oct 2026: "make sure we can choose gimmick or full content for idea"): the first thing on every
+     card, because it decides everything after it: one scene of 10 s, or the four-scene film of 30 or 60 s. */
+  const chooseKind = (v) => set(v === "gimmick" ? { mode: "teaser", seconds: 10 }
+    : { mode: "explainer", seconds: selectedSeconds(form.seconds, "explainer") === 60 ? 60 : 30 });
   return (
     <Card className="space-y-3 p-4" data-motion-queue-row>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -29,6 +34,11 @@ function QueueCard({ row, defaults, client, user, busy, onStart, onRemove }) {
         </div>
         <span className="rounded-pill bg-accent/15 px-2 py-0.5 text-[11px] text-accent">{t("Pilih gaya", "Choose styles")}</span>
       </div>
+      <div data-motion-queue-kind>
+        <Label>{t("Jenis video", "Kind of video")}</Label>
+        <Segmented value={isGimmick ? "gimmick" : "full"} onChange={chooseKind}
+          options={[["gimmick", t("Gimik · 10s, satu babak", "Gimmick · 10s, one scene")], ["full", t("Kandungan penuh · 4 babak", "Full content · 4 scenes")]]} />
+      </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div><Label>{t("Bahasa", "Language")}</Label>
           <Segmented value={form.language || defaultLanguage(row.stream)} onChange={(v) => set({ language: v, voice: v !== "en" && form.voice === "kitten" ? "female" : form.voice })} options={LANGUAGES} /></div>
@@ -36,10 +46,12 @@ function QueueCard({ row, defaults, client, user, busy, onStart, onRemove }) {
           <Segmented value={form.voice} onChange={(v) => set({ voice: v })} options={VOICES.map(([k, bm, en]) => [k, L ? en : bm])} /></div>
         <label className="block"><Label>{t("Reka bentuk", "Design")}</Label>
           <Select value={form.design} onChange={(v) => set({ design: v })} className="w-full" options={designOptions.map((d) => [d.id, d.name])} /></label>
-        <label className="block"><Label>{t("Mod dan saat", "Mode and seconds")}</Label>
-          <Select value={`${form.mode}:${selectedSeconds(form.seconds, form.mode)}`} className="w-full"
-            onChange={(v) => { const [mode, s] = v.split(":"); set({ mode, seconds: Number(s) }); }}
-            options={[["explainer:30", "Explainer · 30s"], ["explainer:60", "Explainer · 60s"], ["teaser:10", "Gimmick · 10s (one scene)"]]} /></label>
+        {isGimmick ? null : (
+          <label className="block"><Label>{t("Panjang kandungan penuh", "Full content length")}</Label>
+            <Select value={String(selectedSeconds(form.seconds, "explainer"))} className="w-full"
+              onChange={(v) => set({ mode: "explainer", seconds: Number(v) })}
+              options={[["30", "30s"], ["60", "60s"]]} /></label>
+        )}
       </div>
       <details className="rounded-tile border border-line p-3" data-motion-queue-styles onToggle={(e) => setOpen(e.currentTarget.open)}>
         <summary className="cursor-pointer text-sm">

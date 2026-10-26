@@ -613,6 +613,20 @@ def test_a_counted_list_shows_every_item_and_gives_up_the_picture_for_it():
     assert 'id="s1-ph"' not in html and 'id="s1-pair"' not in html, "the list has the column to itself"
 
 
+def test_a_six_item_list_under_a_hook_and_a_long_heading_keeps_all_six_in_two_columns():
+    six = ["Pengawet", "Penapis UV", "Nanozarah", "Pewangi", "Surfaktan", "Pewarna"]
+    scenes = [{"id": "s1", "role": "hook", "start": 0, "duration": 14, "kicker": "x", "audio": "a.mp3", "audio_s": 12,
+               "heading": "Tahukah anda ada 6 kategori bahan kosmetik yang dikaji untuk kesan toksik?", "lines": six,
+               "narration": "Tahukah anda ada 6 kategori bahan kosmetik yang dikaji untuk kesan toksik?"}]
+    plan = {"scenes": {"s1": []}, "video": {}, "hook": "know"}
+    html, rep = _rich(scenes, plan)
+    assert rep["dropped_lines"] == [], "all six are on the film (the real film of 26 Oct dropped Pewarna)"
+    assert 'class="stg"' in html and html.count('class="stp ') == 6
+    four = scenes[0] | {"lines": six[:4]}
+    html4, rep4 = _rich([four], plan)
+    assert rep4["dropped_lines"] == [] and 'class="stg"' not in html4, "four or fewer stay in one column"
+
+
 def test_a_key_word_burst_never_grows_a_word_past_the_margin():
     scenes = [{"id": "s1", "role": "hook", "start": 0, "duration": 8, "kicker": "x",
                "heading": "Enam kategori bahan kosmetik dikaji", "lines": []}]

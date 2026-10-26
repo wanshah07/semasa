@@ -1,4 +1,10 @@
-from semasa import motion_layout
+from semasa import motion_layout, motion_styles
+
+
+def test_recipe_does_not_claim_estimates_are_actual_sentence_alignment():
+    plan = motion_styles.complete_plan({'options':{'style':'styles-editorial-explainer'}})
+    assert 'estimated' in plan['caption_timing']
+    assert 'word' in plan['caption_timing']
 
 
 def test_actual_word_captions_are_small_and_follow_recording():

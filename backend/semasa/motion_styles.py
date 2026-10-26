@@ -99,7 +99,7 @@ def complete_plan(row: dict[str, Any], seconds: float | None = None) -> dict[str
                        "instruction": "Standalone official alpha logo and exact language CTA only."})
     return {"recipe_id": recipe["id"], "source": recipe["source"], "design": design(row), "seconds": total,
             "required_assets": recipe["required_assets"], "tracks": recipe["tracks"], "stages": stages,
-            "cta": cta(row), "caption_timing": "actual sentence spans; no invented word timestamps",
+            "cta": cta(row), "caption_timing": "actual word boundaries when supplied; otherwise estimated phrases",
             "proof_policy": "source-backed text or explicit uncertainty, never synthetic evidence"}
 
 

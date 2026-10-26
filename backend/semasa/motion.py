@@ -65,7 +65,7 @@ MAX_HTML = 60_000
 WRITER_TOKENS = 20_000
 SCRIPT_TOKENS = 6_000
 # pace (Wan, 25 Oct 2026: "for video without any audio make it slow so user can read ... with narrator make it faster rate"):
-# a narrated film is brisk, a silent one is paced for reading
+# a narrated film uses the latest approved normal voice rate; a silent one is paced for reading
 SCENE_GAP = 0.2                         # seconds of air between two narrated scenes
 SCENE_MIN = 1.8                         # a narrated scene is never shorter than this, whatever the voice says
 VOICE_PAD = 0.3                         # a narrated scene stays up this long after its last word

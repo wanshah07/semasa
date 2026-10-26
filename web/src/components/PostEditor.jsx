@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CalendarClock, Check, Eraser, ImagePlus, Info, RotateCcw, Save, Trash2, UploadCloud, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
-import { LIMITS, charLen, hardCount, normaliseSlides, platformsFor, scan, scanMedia, stripPromo } from "../lib/compliance";
+import { LIMITS, charLen, hardCount, normaliseSlides, platformsOf, scan, scanMedia, stripPromo } from "../lib/compliance";
 import { dueMs, duplicatesOf, nextFreeSlot, refOf, slotsOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
 import PostWorkflow from "./PostWorkflow";
@@ -80,7 +80,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   useEffect(() => { setLook(lastLook()); }, [post.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reg = brand.regulab;
-  const plats = platformsFor(post.stream);
+  const plats = platformsOf(post);                   // only the platforms this post was queued to (a Motion film), else its stream's
   const locked = post.status === "scheduled" || post.status === "posted";
   const chosen = mediaIds.map((id) => mediaById[id]).filter(Boolean);
   // a chosen picture opens in place, a slide set opens its slides one after another (never a blank new tab)

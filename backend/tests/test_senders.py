@@ -294,3 +294,38 @@ def test_mcp_opening_and_listing_get_one_more_try_on_a_502_but_the_post_never_do
     with pytest.raises(senders.SendError) as e:
         senders.LinkedInMCP("ck", "urn:li:person:X", session=s).post("t", [])
     assert e.value.kind == "refused" and len(s.calls) == 4
+
+
+def test_buffer_video_is_one_video_asset_a_reel_when_upright():
+    s = Session(Resp(body=OK_POST), Resp(body=OK_POST), Resp(body=OK_POST))
+    b = senders.Buffer("k", "org", session=s)
+    film = {"url": "https://x/f.mp4", "thumbnail": "https://x/f.jpg", "vertical": True}
+    b.create_video("ig1", "instagram", "Kapsyen", film, "2026-10-03T00:00:00+00:00")
+    b.create_video("fb1", "facebook", "Kapsyen", {**film, "vertical": False}, None)
+    b.create_video("th1", "threads", "t", {"url": "https://x/f.mp4"}, None)
+    ig, fb, th = (c[2]["json"]["variables"]["input"] for c in s.calls)
+    assert ig["assets"] == [{"video": {"url": "https://x/f.mp4", "thumbnailUrl": "https://x/f.jpg"}}]
+    assert ig["metadata"] == {"instagram": {"type": "reel", "shouldShareToFeed": True}} and ig["mode"] == "customScheduled"
+    assert fb["metadata"] == {"facebook": {"type": "post"}} and fb["mode"] == "shareNow"
+    assert "metadata" not in th and th["assets"] == [{"video": {"url": "https://x/f.mp4"}}]
+
+
+def test_linkedin_video_is_handed_over_first_and_posted_once():
+    s = Session(
+        Resp(body={"items": [{"id": "ca_1"}]}),
+        Resp(body={"successful": True, "data": {"video_urn": "urn:li:video:C4E10AQ-x_1"}}),
+        Resp(body={"successful": True, "data": {"x_restli_id": "urn:li:share:55"}}),
+    )
+    res = senders.LinkedIn("key", "urn:li:person:X", session=s).post_video("Hello", "https://x/f.mp4")
+    assert res.urn == "urn:li:share:55"
+    assert s.calls[1][1].endswith("/LINKEDIN_UPLOAD_VIDEO")
+    assert s.calls[1][2]["json"]["arguments"] == {"video_url": "https://x/f.mp4"}
+    assert s.calls[2][1].endswith("/LINKEDIN_CREATE_VIDEO_POST")
+    assert s.calls[2][2]["json"]["arguments"]["video_urn"] == "urn:li:video:C4E10AQ-x_1"
+
+
+def test_linkedin_video_that_is_not_taken_never_reaches_the_post_call():
+    s = Session(Resp(body={"items": [{"id": "ca_1"}]}), Resp(body={"successful": False, "error": "video too large"}))
+    with pytest.raises(senders.SendError):
+        senders.LinkedIn("key", "urn:li:person:X", session=s).post_video("Hello", "https://x/f.mp4")
+    assert not any(c[1].endswith("LINKEDIN_CREATE_VIDEO_POST") for c in s.calls)

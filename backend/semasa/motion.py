@@ -863,6 +863,25 @@ def mix_music(video: Path, scenes: list[dict[str, Any]], seconds: float, runner:
     return out
 
 
+def social_copy(video: Path, runner: Any = subprocess.run) -> Path | None:
+    """The copy a platform takes without a fuss (Wan, 26 Oct 2026: "the video compress and into post queue"): H.264 High in
+    yuv420p at 30 fps, AAC stereo at 44.1 kHz, the bitrate capped at 4.5 Mbps (a 60 s film stays under 35 MB), the index at
+    the front for streaming. None when it cannot be made: the film keeps its own file and the row says so."""
+    out = video.with_name("motion-social.mp4")
+    try:
+        result = runner(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-c:v", "libx264", "-preset", "medium", "-crf", "25",
+                         "-maxrate", "4500k", "-bufsize", "9000k", "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", "30",
+                         "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2", "-movflags", "+faststart", str(out)],
+                        capture_output=True, text=True, timeout=600)
+        if result.returncode != 0 or not out.is_file() or out.stat().st_size == 0:
+            log.warning("social copy not made: %s", (getattr(result, "stderr", "") or "no output")[-200:])
+            return None
+        return out
+    except Exception as exc:  # noqa: BLE001 - the film is done without it
+        log.warning("social copy not made: %s", str(exc)[:160])
+        return None
+
+
 def poster(video: Path, runner: Any = subprocess.run) -> bytes | None:
     """The frame at 0.5 s as JPEG (ffmpeg on the runner), or None."""
     out = video.with_suffix(".jpg")
@@ -1177,11 +1196,17 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         jpg = poster(video, runner)
         if jpg:
             poster_url = db.upload_generated(store, f"motion/{row['id']}.jpg", jpg, "image/jpeg")
+        social_url, social_bytes = "", 0
+        small = social_copy(video, runner)
+        if small:
+            social_bytes = small.stat().st_size
+            social_url = db.upload_generated(store, f"motion/{row['id']}-social.mp4", small.read_bytes(), "video/mp4")
         credits = "; ".join(dict.fromkeys(p["credit"] for p in photos if p["credit"]))
         store.table(TABLE).update({
             "status": "done", "title": str(out.get("title") or "")[:160],
             "html": (folder / 'index.html').read_text() if asset_plan['effects'] else html, "check_report": report,
             "video_path": path, "video_url": url, "poster_url": poster_url, "bytes": len(data),
+            "social_url": social_url, "social_bytes": social_bytes,
             **meta,
             "model": getattr(llm, "last_model", "") or "", "error": "",
             "style_note": " · ".join(x for x in (style_line, bg_note, voice_note, pace_note, photo_note,

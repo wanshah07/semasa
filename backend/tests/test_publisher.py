@@ -314,3 +314,71 @@ def test_the_switch_opens_by_itself_at_enabled_from_and_pause_wins():
                                        datetime(2026, 10, 3, tzinfo=UTC))
     assert not publisher.publishing_on({"publishing": {"enabled_from": "2026-10-02 12:00"}},  # no zone: never
                                        datetime(2026, 10, 3, tzinfo=UTC))
+
+
+# --- a Motion film queued to chosen platforms (Wan, 26 Oct 2026) ----------------------------------------------------
+
+VIDEO = {"id": "m1", "status": "done", "type": "video", "mode": "clip", "generated_media_url": "https://cdn/film.mp4",
+         "meta": {"poster_url": "https://cdn/film.jpg", "width": 1080, "height": 1920}}
+
+
+class VideoBuffer(FakeBuffer):
+    def create_video(self, channel_id, service, text, video, due_at):
+        pid = f"{len(self.created) + 1:024x}"
+        p = {"id": pid, "status": "sending" if due_at is None else self.status, "dueAt": due_at, "text": text,
+             "channelId": channel_id}
+        self.created.append({"channel": channel_id, "service": service, "text": text, "video": video, "due_at": due_at})
+        self.store[pid] = p
+        return p
+
+
+class VideoLinkedIn(FakeLinkedIn):
+    def post_video(self, text, video_url):
+        self.sent.append((text, video_url))
+        return senders.LinkedInResult(urn="urn:li:share:77", url="u")
+
+
+def _film(post):
+    store = _live(post)
+    store.tables["media_generations"][0].update(VIDEO)
+    return store
+
+
+def test_a_film_goes_only_to_the_platforms_it_was_queued_to_as_a_video_never_as_a_picture():
+    store, buf = _film(_post(channels=["instagram", "threads"])), VideoBuffer()
+    c = publisher.run(store, NOW, clients={"buffer": buf})
+    assert c["scheduled"] == 2 and {x["service"] for x in buf.created} == {"instagram", "threads"}
+    assert all(x["video"] == {"url": "https://cdn/film.mp4", "thumbnail": "https://cdn/film.jpg", "vertical": True}
+               for x in buf.created)
+    p = store.tables["semasa_posts"][0]
+    assert set(p["published"]) == {"instagram", "threads"} and p["status"] == "scheduled", "done when the CHOSEN ones are"
+    publisher.run(store, NOW, clients={"buffer": buf})
+    assert len(buf.created) == 2
+
+
+def test_a_film_post_with_no_channels_chosen_goes_to_all_three():
+    store, buf = _film(_post()), VideoBuffer()
+    publisher.run(store, NOW, clients={"buffer": buf})
+    assert {x["service"] for x in buf.created} == {"instagram", "facebook", "threads"}
+
+
+def test_a_film_to_linkedin_posts_as_a_native_video_once():
+    store, li = _film(_li(date="2026-09-24", slot="06:00")), VideoLinkedIn()
+    publisher.run(store, datetime(2026, 9, 24, 11, 20, tzinfo=UTC), clients={"linkedin": li})
+    p = store.tables["semasa_posts"][0]
+    assert li.sent == [(CAP, "https://cdn/film.mp4")] and p["published"]["linkedin"]["route"] == "composio+video"
+    publisher.run(store, datetime(2026, 9, 24, 11, 40, tzinfo=UTC), clients={"linkedin": li})
+    assert len(li.sent) == 1
+
+
+def test_a_picture_post_is_still_sent_as_pictures():
+    store, buf = _live(_post()), VideoBuffer()
+    publisher.run(store, NOW, clients={"buffer": buf})
+    assert all("video" not in x and x["pictures"] == ["https://cdn/m1.png"] for x in buf.created)
+
+
+def test_the_channels_of_a_post_never_widen_what_settings_switched_off():
+    settings = {"channels": {"buffer": {"enabled": {"threads": False}}}}
+    assert publisher.post_channels(settings, {"stream": "regulab", "channels": ["instagram", "threads"]}) == ["instagram"]
+    assert publisher.post_channels(settings, {"stream": "regulab", "channels": ["linkedin"]}) == ["instagram", "facebook"]
+    assert publisher.post_channels(settings, {"stream": "regulab"}) == ["instagram", "facebook"]

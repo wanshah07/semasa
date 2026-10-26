@@ -36,6 +36,8 @@ TRANSIENT = re.compile(
 BUFFER_URL = os.environ.get("BUFFER_API_URL", "https://api.buffer.com")
 COMPOSIO_URL = os.environ.get("COMPOSIO_BASE_URL", "https://backend.composio.dev")
 LINKEDIN_TOOL = "LINKEDIN_CREATE_LINKED_IN_POST"
+LINKEDIN_VIDEO_UPLOAD = "LINKEDIN_UPLOAD_VIDEO"       # a public MP4 address -> an urn:li:video once LinkedIn has it ready
+LINKEDIN_VIDEO_POST = "LINKEDIN_CREATE_VIDEO_POST"    # that urn + the words -> a native video post
 
 
 class SendError(Exception):
@@ -107,6 +109,29 @@ class Buffer:
             inp["metadata"] = {"facebook": {"type": "post"}}
         elif service == "instagram":
             inp["metadata"] = {"instagram": {"type": "post", "shouldShareToFeed": False}}
+        return self._create_post(inp)
+
+    def create_video(self, channel_id: str, service: str, text: str, video: dict[str, Any],
+                     due_at: str | None) -> dict[str, Any]:
+        """A post whose one asset is a video (Wan, 26 Oct 2026: a Motion film queued to a platform). `video` is
+        {url, thumbnail, vertical}: a vertical film is a Reel on Facebook and Instagram (Instagram's Reels also show in the
+        feed), anything else a plain post. Threads takes the video as it is."""
+        asset: dict[str, Any] = {"url": video["url"]}
+        if video.get("thumbnail"):
+            asset["thumbnailUrl"] = video["thumbnail"]
+        inp: dict[str, Any] = {"channelId": channel_id, "text": text, "schedulingType": "automatic",
+                               "saveToDraft": False, "mode": "customScheduled" if due_at else "shareNow",
+                               "assets": [{"video": asset}]}
+        if due_at:
+            inp["dueAt"] = due_at
+        reel = bool(video.get("vertical"))
+        if service == "facebook":
+            inp["metadata"] = {"facebook": {"type": "reel" if reel else "post"}}
+        elif service == "instagram":
+            inp["metadata"] = {"instagram": {"type": "reel" if reel else "post", "shouldShareToFeed": True}}
+        return self._create_post(inp)
+
+    def _create_post(self, inp: dict[str, Any]) -> dict[str, Any]:
         data = self._gql(
             "mutation($input: CreatePostInput!) { createPost(input: $input) { __typename "
             f"... on PostActionSuccess {{ post {{ {_POST_FIELDS} }} }} ... on MutationError {{ message }} }} }}",
@@ -273,6 +298,32 @@ class LinkedIn:
         return LinkedInResult(urn=urn, url=f"https://www.linkedin.com/feed/update/{urn}/")
 
 
+    def post_video(self, text: str, video_url: str) -> LinkedInResult:
+        """A native video post: LinkedIn takes the public MP4 address and has the video ready (nothing posts yet, so a
+        failure here may be tried again), then the post itself goes once and is never retried (it may have landed)."""
+        up = self._call("POST", f"/api/v3.1/tools/execute/{LINKEDIN_VIDEO_UPLOAD}",
+                        json={"connected_account_id": self.account(), "arguments": {"video_url": video_url}})
+        if not up.get("successful"):
+            msg = str(up.get("error") or "no reason given")
+            raise SendError(classify(msg), f"LinkedIn did not take the video: {msg}")
+        urn = _video_urn(up.get("data"))
+        if not urn:
+            raise SendError("refused", f"LinkedIn answered the video upload without a video id: {str(up.get('data'))[:300]}")
+        try:
+            body = self._call("POST", f"/api/v3.1/tools/execute/{LINKEDIN_VIDEO_POST}",
+                              json={"connected_account_id": self.account(),
+                                    "arguments": {"video_urn": urn, "commentary": text, "visibility": "PUBLIC"}})
+        except SendError as exc:
+            raise SendError("refused", f"LinkedIn refused or unconfirmed: {exc.message}") from exc
+        if not body.get("successful"):
+            msg = str(body.get("error") or "no reason given")
+            raise SendError("refused", f"LinkedIn refused: {msg}")
+        post = _share_urn(body.get("data"))
+        if not post:
+            raise SendError("refused", f"LinkedIn answered without a post id: {str(body.get('data'))[:300]}")
+        return LinkedInResult(urn=post, url=f"https://www.linkedin.com/feed/update/{post}/")
+
+
 # --- Composio For You (LinkedIn over MCP) --------------------------------------------------------------------------
 #
 # Wan, 30 Sep 2026: the LinkedIn connection lives in Composio's FOR YOU workspace (the one ws.regulab Studio and
@@ -328,6 +379,25 @@ except Exception as _e:
     _r = {{"err": f"{{type(_e).__name__}}: {{_e}}", "res": None}}
 print("{mark}" + json.dumps(_r, default=str))
 """
+
+
+_VIDEO_URN = re.compile(r"urn:li:video:[A-Za-z0-9_-]+")
+
+
+def _video_urn(obj: Any) -> str:
+    """The urn:li:video an upload answered with, wherever the answer nested it."""
+    import json
+    m = _VIDEO_URN.search(json.dumps(obj, default=str))
+    return m.group(0) if m else ""
+
+
+def _share_urn(obj: Any) -> str:
+    """The post's urn in a video post's answer: the first urn that is not the video's own."""
+    import json
+    for m in re.finditer(r"urn:li:[A-Za-z]+:[A-Za-z0-9_-]+", json.dumps(obj, default=str)):
+        if ":video:" not in m.group(0):
+            return m.group(0)
+    return ""
 
 
 def _b64(obj: Any) -> str:
@@ -547,3 +617,31 @@ class LinkedInMCP(ComposioMCP):
         if not urn:
             raise SendError("refused", f"LinkedIn answered without a post id: {str(res)[:300]}")
         return LinkedInResult(urn=urn, url=f"https://www.linkedin.com/feed/update/{urn}/")
+
+    def post_video(self, text: str, video_url: str) -> LinkedInResult:
+        """The video route of `post` (see LinkedIn.post_video): upload first, which may be tried again, then the post once."""
+        acct = self.account()
+        account = f", account={acct!r}"
+        up = self._cell(_POST_CELL.format(args=_b64({"video_url": video_url}), tool=LINKEDIN_VIDEO_UPLOAD, account=account,
+                                          mark=_MARK), "Semasa: hand LinkedIn the video")
+        res = up.get("res")
+        if up.get("err") or (isinstance(res, dict) and res.get("successful") is False):
+            msg = up.get("err") or (res or {}).get("error") or "no reason given"
+            raise SendError(classify(str(msg)), f"LinkedIn did not take the video: {msg}")
+        urn = _video_urn(res)
+        if not urn:
+            raise SendError("refused", f"LinkedIn answered the video upload without a video id: {str(res)[:300]}")
+        args = {"video_urn": urn, "commentary": text, "visibility": "PUBLIC"}
+        try:
+            r = self._cell(_POST_CELL.format(args=_b64(args), tool=LINKEDIN_VIDEO_POST, account=account, mark=_MARK),
+                           "Semasa: post the video to LinkedIn")
+        except SendError as exc:
+            raise SendError("refused", f"LinkedIn refused or unconfirmed: {exc.message}") from exc
+        res = r.get("res")
+        if r.get("err") or (isinstance(res, dict) and res.get("successful") is False):
+            msg = r.get("err") or (res or {}).get("error") or "no reason given"
+            raise SendError("refused", f"LinkedIn refused: {msg}")
+        post = _share_urn(res)
+        if not post:
+            raise SendError("refused", f"LinkedIn answered without a post id: {str(res)[:300]}")
+        return LinkedInResult(urn=post, url=f"https://www.linkedin.com/feed/update/{post}/")

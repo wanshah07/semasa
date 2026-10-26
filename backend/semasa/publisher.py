@@ -81,8 +81,19 @@ def scan_entry(m: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
+def video_of(m: dict[str, Any]) -> dict[str, Any] | None:
+    """A video media row as the senders take it: its address, its poster and whether it stands upright (a Reel)."""
+    if m.get("type") != "video" or not m.get("generated_media_url"):
+        return None
+    meta = m.get("meta") or {}
+    return {"url": m["generated_media_url"], "thumbnail": meta.get("poster_url") or "",
+            "vertical": int(meta.get("height") or 0) > int(meta.get("width") or 0) > 0}
+
+
 def pictures_of(m: dict[str, Any]) -> list[str]:
-    """The addresses a media row sends: every slide of a carousel, in order, else its one file."""
+    """The addresses a media row sends: every slide of a carousel, in order, else its one file. A video is not a picture."""
+    if m.get("type") == "video":
+        return []
     if m.get("mode") == "slides":
         return [u for u in ((m.get("meta") or {}).get("slide_urls") or []) if u]
     return [m["generated_media_url"]] if m.get("generated_media_url") else []
@@ -141,6 +152,12 @@ def buffer_channels(settings: dict[str, Any], stream: str) -> list[str]:
     return [p for p in plats if enabled.get(p, True) is not False]
 
 
+def post_channels(settings: dict[str, Any], post: dict[str, Any]) -> list[str]:
+    """The platforms this post goes to: its stream's switched-on channels, narrowed to the ones Wan chose for it when it
+    was queued to some of them (a Motion film), never widened."""
+    return [p for p in buffer_channels(settings, post.get("stream") or "regulab") if p in compliance.platforms_of(post)]
+
+
 def _parse(ts: Any) -> datetime | None:
     if not ts:
         return None
@@ -190,14 +207,15 @@ def _record(bp: dict[str, Any], mode: str, route: str, now: datetime) -> dict[st
 
 
 def _send_buffer(client: Any, view: _BufferView, channel_id: str, channel: str, text: str, pictures: list[str],
-                 alt: str, due: datetime, now: datetime) -> dict[str, Any]:
+                 alt: str, due: datetime, now: datetime, video: dict[str, Any] | None = None) -> dict[str, Any]:
     """One channel of one post into Buffer. Returns the record for `published`; raises SendError."""
     share_now = due <= now + SHARE_NOW_WITHIN
     due_iso = None if share_now else due.isoformat()
     mode = "shareNow" if share_now else "customScheduled"
     for attempt in (1, 2):
         try:
-            bp = client.create(channel_id, channel, text, pictures, alt, due_iso)
+            bp = (client.create_video(channel_id, channel, text, video, due_iso) if video
+                  else client.create(channel_id, channel, text, pictures, alt, due_iso))
         except senders.SendError as exc:
             if exc.kind != "transient" or attempt == 2:
                 raise
@@ -263,13 +281,16 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
         errors = {k: v for k, v in (post.get("errors") or {}).items() if k != "scan"}
         changed = False
         pictures = [u for m in media for u in pictures_of(m)]
+        video = next((v for v in (video_of(m) for m in media) if v), None)      # a post's video stands alone (no pictures)
         alt = " ".join(str((m.get("meta") or {}).get("alt") or "") for m in media).strip()
-        channels = buffer_channels(settings, stream)
+        channels = post_channels(settings, post)
         for channel in channels:
             if published.get(channel):
                 continue
             text = compliance.text_of(post, channel, lang)
             payload = {"channel": channel, "due_at": due.isoformat(), "text": text, "media": pictures}
+            if video:
+                payload["video"] = video["url"]
             fp = fingerprint(payload)
             if hard:
                 counts["blocked"] += 1
@@ -323,14 +344,15 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
                     counts["error"] += 1
                     write_log(store, post["id"], channel, "error", {"fingerprint": fp, "why": msg})
                     continue
-                write_log(store, post["id"], channel, "sending", {"fingerprint": fp, "pictures": len(pictures)})
+                write_log(store, post["id"], channel, "sending",
+                          {"fingerprint": fp, "pictures": len(pictures), **({"video": video["url"]} if video else {})})
                 try:
                     # No automatic retry here: a timeout or 5xx from Composio does not prove the post never landed,
                     # and LinkedIn/Composio give us no safe way to check or an idempotency key. Resending blindly
                     # risked a duplicate LinkedIn post. The "sending" log line just above, with no matching "sent"
                     # line, is exactly what the guard at the top of this branch checks on the NEXT run: it stops and
                     # asks a human to check LinkedIn rather than silently sending again.
-                    res = client.post(text, pictures)
+                    res = client.post_video(text, video["url"]) if video else client.post(text, pictures)
                 except senders.SendError as exc:
                     errors[channel] = {"fingerprint": fp, "message": exc.message, "kind": exc.kind,
                                        "at": now.isoformat()}
@@ -339,7 +361,7 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
                     write_log(store, post["id"], channel, "error", {"fingerprint": fp, "why": exc.message})
                     continue
                 published[channel] = {"id": res.urn, "url": res.url, "status": "sent", "at": now.isoformat(),
-                                      "route": "composio+image" if pictures else "composio"}
+                                      "route": "composio+video" if video else "composio+image" if pictures else "composio"}
                 errors.pop(channel, None)
                 changed = True
                 li_today += 1
@@ -357,7 +379,7 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
                     write_log(store, post["id"], channel, "error",
                               {"fingerprint": fp, "why": f"no Buffer channel id for {channel} in settings"})
                 continue
-            if channel == "instagram" and not pictures:
+            if channel == "instagram" and not pictures and not video:
                 errors[channel] = {"fingerprint": fp, "message": "Instagram needs a picture and this post has none",
                                    "at": now.isoformat()}
                 changed = True
@@ -372,7 +394,7 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
                     store.table(db.POSTS).update({"published": published}).eq("id", post["id"]).execute()
                     write_log(store, post["id"], channel, "adopted", {"fingerprint": fp, "buffer_id": found.get("id")})
                 else:
-                    rec = _send_buffer(client, view, channel_id, channel, text, pictures, alt, due, now)
+                    rec = _send_buffer(client, view, channel_id, channel, text, pictures, alt, due, now, video)
                     published[channel] = rec
                     action = "sent" if rec.get("status") == "sent" else "scheduled"
                     counts[action] += 1
@@ -418,7 +440,7 @@ def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settin
     """Read back every Buffer post whose moment has passed and write down what the network actually did (Studio's
     reconcileBuffer): `sent` or `error`, and a post whose every channel is sent becomes `posted`."""
     counts.setdefault("confirmed", 0)
-    rows = (store.table(db.POSTS).select("id,status,stream,published,errors").in_("status", ["approved", "scheduled"])
+    rows = (store.table(db.POSTS).select("id,status,stream,channels,published,errors").in_("status", ["approved", "scheduled"])
             .execute().data or [])
     for post in rows:
         published = dict(post.get("published") or {})
@@ -452,7 +474,7 @@ def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settin
         if not changed:
             continue
         patch: dict[str, Any] = {"published": published, "errors": errors}
-        channels = buffer_channels(settings, post.get("stream") or "regulab")
+        channels = post_channels(settings, post)
         if all((published.get(c) or {}).get("status") == "sent" for c in channels):
             patch["status"] = "posted"
         store.table(db.POSTS).update(patch).eq("id", post["id"]).execute()

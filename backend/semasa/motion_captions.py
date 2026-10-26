@@ -45,10 +45,42 @@ For each platform write its own caption (never the same text twice; each is shap
 RULES (every one is checked before anything is posted):
 - Only facts that are in the script. Never invent a number, name, date, clause, quote or source.
 - No call to action ("follow", "click", "comment below", "DM us"), no website or link, no mention of Reddit, YouTube or TikTok.
+- Say the point itself in plain words a shopkeeper understands: the actual fact, number, name or step from the script. Never send
+  the reader away to find it ("check the guideline", "find out more", "cari sendiri", "rujuk NPRA"). Write like a person talking,
+  not a report.
 - The hashtags go on the last line, at most the number given for the platform, none inside a sentence.
 - Never go over a platform's character limit.
 
 Answer with ONE JSON object only: {{"captions": {{{shape}}}}}{extra}"""
+
+
+# Wan, 26 Oct 2026: "keluarkan isi penting bukan suruh user cari sendiri". A film and a caption SAY the point; they never
+# send the viewer to look it up. Naming the source of a rule is fine ("under the 2026 Directive"); handing over the job of
+# finding it is not.
+HAND_OFF = re.compile(
+    r"\b(?:find out more|look (?:it|this|that|them) up|learn more|read more|do your own research|google it|search (?:for|online)|"
+    r"(?:check|visit|see|refer to|consult) (?:the|their|our|your) (?:website|guideline|guidelines|regulation|regulations|"
+    r"official|npra|portal|jakim)|"
+    r"cari sendiri|semak sendiri|baca sendiri|rujuk (?:garis panduan|laman|portal|npra|jakim|kepada)|layari|"
+    r"lawati (?:laman|portal)|"
+    r"(?:untuk )?maklumat (?:lanjut|lanjutan|lebih lanjut)|cari maklumat|dapatkan maklumat)\b", re.I)
+
+
+def hand_off(text: str) -> bool:
+    """True when `text` sends the reader or viewer away to find the information instead of giving it."""
+    return bool(HAND_OFF.search(text or ""))
+
+
+def without_hand_offs(text: str) -> str:
+    """`text` with every sentence that sends the reader away taken out (paragraph breaks and the hashtag line are kept)."""
+    out = []
+    for para in str(text or "").split("\n"):
+        if para.strip().startswith("#"):
+            out.append(para)
+            continue
+        kept = [s for s in re.split(r"(?<=[.!?])\s+", para) if s and not hand_off(s)]
+        out.append(" ".join(kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
 
 
 def hashtags_split(text: str) -> tuple[str, list[str]]:
@@ -147,7 +179,8 @@ def write(llm: Any, row: dict[str, Any], scenes: list[dict[str, Any]], title: st
         result = {}
         for p in plats:
             text = got.get(p)
-            result[p] = fit(speak_as(text.strip()), stream, p) if isinstance(text, str) and text.strip() else fallback[p]
+            clean = without_hand_offs(text) if isinstance(text, str) else ""
+            result[p] = fit(speak_as(clean), stream, p) if clean else fallback[p]
         return result
     except Exception as exc:  # noqa: BLE001 - the film is done without them
         log.warning("film captions fell back to the script: %s", str(exc)[:160])

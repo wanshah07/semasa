@@ -71,8 +71,10 @@ def test_the_film_takes_the_format_of_its_platform():
 
 
 def test_a_linkedin_film_closes_in_wans_own_voice_not_the_brands():
-    assert motion_styles.cta({"stream": "linkedin", "language": "en", "seconds": 30}) == "Follow me for more"
-    assert motion_styles.cta({"stream": "linkedin", "language": "bm", "seconds": 30}) == "Ikuti saya untuk tip seterusnya"
+    assert motion_styles.cta({"stream": "linkedin", "language": "en", "seconds": 30}) == "Follow me for more info"
+    assert motion_styles.cta({"stream": "linkedin", "language": "bm", "seconds": 30}) == "Ikuti saya untuk maklumat lanjut"
+    teaser = {"stream": "linkedin", "language": "en", "seconds": 10, "options": {"mode": "teaser"}}
+    assert motion_styles.cta(teaser) == "Stay tuned. Follow me for more info"
     assert motion_styles.cta({"stream": "regulab", "language": "en", "seconds": 30}) == "Follow us for more"
 
 
@@ -101,3 +103,96 @@ def test_a_linkedin_film_shows_no_ws_regulab_name_in_a_browser_frame():
                                      stream=stream)[0]
     assert "ws.regulab" in built("regulab"), "the frame names the brand on its own stream (so this test sees the frame)"
     assert "ws.regulab" not in built("linkedin")
+
+
+def test_a_linkedin_film_closes_on_wans_icon_and_name_never_the_brand_logo(tmp_path):
+    outro = {"id": "brand-outro", "heading": "Follow me for more info", "start": 20, "duration": 3}
+    li = motion.closing_card(outro, 1080, "linkedin", "Ts. ChM Muhammad Ridzuan")
+    assert "assets/wan-icon.png" in li and "Ts. ChM Muhammad Ridzuan" in li and "Follow me for more info" in li
+    assert "official-logo" not in li and "ws.regulab" not in li
+    assert 'id="wan-brand-final"' in li and 'data-start="20"' in li
+    reg = motion.closing_card({**outro, "heading": "Follow us for more"}, 1080)
+    assert "official-logo-transparent.png" in reg and "wan-icon" not in reg
+    assert "Ts. ChM" in motion.closing_card(outro, 1080, "linkedin"), "no name given: the default byline"
+    html = motion.inject_layers('<div id="root" data-duration="1"></div>', [outro], 23, 1080, 1080, "linkedin", "Wan")
+    assert "wan-icon.png" in html and ">Wan<" in html
+    motion.write_project(tmp_path / "li", "<html></html>", "linkedin")
+    motion.write_project(tmp_path / "rg", "<html></html>")
+    assert (tmp_path / "li" / "assets" / "wan-icon.png").stat().st_size > 1000
+    assert not (tmp_path / "li" / "assets" / "official-logo-transparent.png").exists()
+    assert (tmp_path / "rg" / "assets" / "official-logo-transparent.png").exists()
+
+
+def test_the_byline_comes_from_the_brand_settings_with_a_default():
+    store = Store()
+    assert motion.byline(store) == motion.LINKEDIN_NAME
+    store.tables["semasa_settings"] = [{"key": "brand", "value": {"linkedin": {"name": "Ts. ChM Muhammad"}}}]
+    assert motion.byline(store) == "Ts. ChM Muhammad"
+
+
+def test_the_detector_knows_sending_the_viewer_away_from_saying_the_point():
+    for away in ("Check the guideline for the limit.", "Find out more on the NPRA website.", "Cari sendiri di laman NPRA.",
+                 "Rujuk garis panduan untuk maklumat lanjut.", "Please visit the official portal.", "Semak sendiri ya."):
+        assert motion_captions.hand_off(away), away
+    for point in ("The limit is 0.5% and the label must say so.", "Semak label dahulu sebelum jual.",
+                  "Under the 2026 Directive, every label carries the warning.", "Check the source before deciding.",
+                  "Notifikasi bukan kelulusan produk."):
+        assert not motion_captions.hand_off(point), point
+    assert motion_captions.without_hand_offs("Had ialah 0.5%. Cari sendiri di laman NPRA. Label mesti jelas.\n\n#kosmetik") == \
+        "Had ialah 0.5%. Label mesti jelas.\n\n#kosmetik"
+
+
+def _script_with(narration, lines=("satu",)):
+    return {"title": "t", "photo_query": "q", "scenes": [
+        {"heading": f"Tajuk {i}", "lines": list(lines), "narration": narration if i == 2 else "Satu dua tiga."}
+        for i in range(4)]}
+
+
+def test_a_script_that_sends_the_viewer_away_is_asked_again_with_the_offending_words():
+    away = _script_with("Had ialah 0.5%. Untuk maklumat lanjut, cari sendiri di laman NPRA.")
+    good = _script_with("Had ialah 0.5%. Label mesti menyebutnya.")
+    llm = FakeLLM([away, good])
+    plan = motion.plan_scenes(llm, {"voice": "off", "language": "bm", "stream": "regulab"}, "", "", "")
+    assert len(llm.asked) == 2 and "SENT THE VIEWER AWAY" in llm.asked[1][1] and "cari sendiri" in llm.asked[1][1]
+    assert plan["scenes"][2]["narration"] == "" or "cari sendiri" not in plan["scenes"][2]["narration"]
+    voiced = motion.plan_scenes(FakeLLM([good]), {"voice": "male", "language": "bm", "stream": "regulab"}, "", "", "")
+    assert "Had ialah 0.5%" in voiced["scenes"][2]["narration"]
+
+
+def test_a_second_plan_that_still_sends_away_is_cleaned_not_refused_and_a_failed_second_ask_keeps_the_first():
+    away = _script_with("Had ialah 0.5%. Cari sendiri di laman NPRA.", lines=("Rujuk garis panduan", "Had 0.5%"))
+    plan = motion.plan_scenes(FakeLLM([away, away]), {"voice": "male", "language": "bm"}, "", "", "")
+    scene = plan["scenes"][2]
+    assert "cari sendiri" not in scene["narration"].lower() and "Had ialah 0.5%" in scene["narration"]
+    assert scene["lines"] == ["Had 0.5%"], "the line that only sends away is dropped, the one with the fact stays"
+    kept = motion.plan_scenes(FakeLLM([away]), {"voice": "male", "language": "bm"}, "", "", "")      # the retry answers nothing
+    assert len(kept["scenes"]) == 5
+
+
+def test_the_writers_are_told_to_say_the_point():
+    system = motion.build_script_system({"language": "en", "stream": "linkedin", "seconds": 30}, "")
+    assert "SAY THE POINT" in system and "NEVER send the viewer away" in system and "shopkeeper" in system
+    llm = FakeLLM([{"captions": {"linkedin": "Check the guideline for the limit. The limit is 0.5%."}}])
+    got = motion_captions.write(llm, {"stream": "linkedin"}, SCENES, "T", lang="en", voice="v",
+                                speak_as=motion.speaker("en"))
+    assert got["linkedin"] == "The limit is 0.5%." and "send the reader away" in " ".join(llm.asked[0][0].split())
+
+
+def test_finished_films_without_captions_are_given_them_from_their_saved_script():
+    store = Store()
+    script = [{"id": "s1", "heading": "Enam kategori", "lines": ["Pengawet"], "narration": "Enam kategori."},
+              {"id": "brand-outro", "heading": "Ikuti saya", "lines": []}]
+    bare = _row(store, status="done", script=script, title="Enam kategori", captions={}, language="bm")
+    has = _row(store, status="done", script=script, captions={"threads": "Sudah ada."}, language="bm")
+    queued = _row(store, status="done", script=script, captions={}, queued_post_id="p1", language="bm")
+    old = _row(store, status="done", captions={}, language="bm")                  # no saved script: nothing to write from
+    llm = FakeLLM([{"captions": {"instagram": "Satu.", "facebook": "Dua.", "threads": "Tiga."}}])
+    assert motion.backfill_captions(store, llm) == 1
+    rows = {r["id"]: r for r in store.table(motion.TABLE).select("*").execute().data}
+    assert rows[bare["id"]]["captions"] == {"instagram": "Satu.", "facebook": "Dua.", "threads": "Tiga."}
+    assert rows[has["id"]]["captions"] == {"threads": "Sudah ada."}, "captions already written are never overwritten"
+    assert rows[queued["id"]]["captions"] == {} and rows[old["id"]]["captions"] == {}
+    assert len(llm.asked) == 1
+    assert motion.backfill_captions(store, llm) == 0 and len(llm.asked) == 1, "done once, not again"
+    assert motion.backfill_captions(store, None) == 0
+    assert motion.run(store, FakeLLM([]), now=NOW) == {"claimed": 0, "done": 0, "failed": 0}

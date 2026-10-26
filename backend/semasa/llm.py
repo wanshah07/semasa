@@ -203,6 +203,30 @@ class LLM:
         self.failures += 1
         return None
 
+    def chat_text(self, system: str, user: str | list[dict[str, Any]], *, max_tokens: int = 1500, model: str | None = None,
+                  backup: bool = True) -> str | None:
+        """The answer as plain text, one try per writer (rootsys, then the backup); None when neither gave any. For answers
+        that are not JSON, such as a whole HTML file, where wrapping the file in a JSON string is what breaks it."""
+        for label, provider, base, key, use_model in self._writers(model, backup):
+            self.calls += 1
+            try:
+                text = self._call(system, user, max_tokens, use_model, provider=provider, base=base, key=key)
+            except requests.Timeout:
+                log.warning("LLM timeout after %ss (%s)", self.s.timeout, label)
+                self.misses[label] += 1
+                continue
+            except (requests.RequestException, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+                log.warning("LLM error (%s): %s", label, str(exc)[:200])
+                self.misses[label] += 1
+                continue
+            if text and text.strip():
+                self.last_model = use_model
+                self.answers[label] += 1
+                return text
+            self.misses[label] += 1
+        self.failures += 1
+        return None
+
     def _ask(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, retries: int, provider: str,
              base: str, key: str, model: str) -> dict[str, Any] | None:
         for attempt in range(retries + 1):

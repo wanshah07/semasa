@@ -335,3 +335,70 @@ def test_wans_ws_regulab_motion_skill_is_installed_for_claude_code_and_reaches_t
     two = motion.skill_context({"options": {"design": "continuous-line"}})
     assert "ContinuousLine.html" in two and "those win" in two
     assert "WAN'S SKILL ws-regulab-motion" in motion.build_user({"brief": "b"}, "", "")
+
+
+def test_the_writer_may_answer_with_plain_html_a_fenced_file_or_the_old_json():
+    from test_motion import GOOD
+    plain = "<!-- title: Notifikasi bukan kelulusan -->\n" + GOOD + "\nThat is all."
+    got = motion.parse_writer(plain)
+    assert got["title"] == "Notifikasi bukan kelulusan"
+    assert got["html"].startswith("<!doctype") and got["html"].endswith("</html>")
+    fenced = motion.parse_writer("```html\n" + GOOD + "\n```")
+    assert fenced["html"] == GOOD and fenced["title"] == ""
+    old = motion.parse_writer('{"title": "T", "html": ' + __import__("json").dumps(GOOD) + "}")
+    assert old["title"] == "T" and old["html"] == GOOD
+    assert motion.parse_writer("sorry, I cannot") == {} and motion.parse_writer(None) == {}
+    assert motion.clean_html(plain and got["html"]) == GOOD
+
+
+def test_ask_writer_prefers_plain_text_and_falls_back_to_json():
+    from test_motion import GOOD
+
+    class TextLLM:
+        def chat_text(self, system, user, *, max_tokens):
+            return "<!-- title: X -->" + GOOD
+
+    class JsonLLM:
+        def chat_json(self, system, user, *, max_tokens):
+            return {"title": "J", "html": GOOD}
+
+    class Silent:
+        def chat_text(self, system, user, *, max_tokens):
+            return None
+    assert motion.ask_writer(TextLLM(), "s", "u")["title"] == "X"
+    assert motion.ask_writer(JsonLLM(), "s", "u")["title"] == "J"
+    assert motion.ask_writer(Silent(), "s", "u") is None
+
+
+def test_llm_chat_text_asks_each_writer_once_and_returns_the_first_real_answer(monkeypatch):
+    from types import SimpleNamespace
+
+    import requests
+
+    from semasa import llm as llm_mod
+    bot = llm_mod.LLM.__new__(llm_mod.LLM)
+    bot.s = SimpleNamespace(timeout=5)
+    bot.calls, bot.failures, bot.last_model = 0, 0, ""
+    bot.answers, bot.misses = {"primary": 0, "backup": 0}, {"primary": 0, "backup": 0}
+    bot._writers = lambda model, backup: [("primary", "openai", "b1", "k", "m1"), ("backup", "openai", "b2", "k", "m2")]
+    replies = iter([requests.Timeout("slow"), "<html>ok</html>"])
+
+    def call(system, user, max_tokens, model, **kw):
+        r = next(replies)
+        if isinstance(r, Exception):
+            raise r
+        return r
+    bot._call = call
+    assert bot.chat_text("s", "u", max_tokens=10) == "<html>ok</html>"
+    assert bot.last_model == "m2" and bot.misses["primary"] == 1 and bot.answers["backup"] == 1
+    bot._call = lambda *a, **k: ""
+    assert bot.chat_text("s", "u", max_tokens=10) is None and bot.failures == 1
+
+
+def test_a_native_heading_effect_leaves_the_heading_on_screen_after_its_entrance():
+    from semasa import native_text
+    doc = '<html><body><div id="root"><div id="s1"><h2>Keep food safe</h2></div></div></body></html>'
+    scenes = [{"id": "s1", "heading": "Keep food safe", "start": 0, "duration": 6}]
+    report = {"effects": [{"id": "H01"}]}
+    out = native_text.inject(doc, report, scenes, 30)
+    assert "native-H01" in out and "opacity:0,duration:.18" not in out

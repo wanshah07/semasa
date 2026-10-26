@@ -49,7 +49,7 @@ def test_build_system_carries_size_seconds_voice_and_wans_prompt():
     assert "Bahasa Malaysia" in s and "WAN'S OWN INSTRUCTIONS:\nGuna warna hijau." in s and motion.GSAP in s
     s2 = motion.build_system({"stream": "linkedin", "resolution": "landscape", "seconds": 8}, "")
     assert "width=1920, height=1080" in s2 and "English" in s2 and "WAN'S OWN" not in s2
-    assert "gsap.timeline({ paused: true })" in s2 and '{"title":' in s2, "literal braces survive the format"
+    assert "gsap.timeline({ paused: true })" in s2 and "<!-- title:" in s2, "literal braces survive the format"
 
 
 def test_the_language_is_the_rows_choice_and_falls_back_to_the_stream():

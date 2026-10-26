@@ -132,7 +132,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         "pointer-events:none;z-index:30;}",
     ]
     parts, tw = [], []
-    bgs = [(0.66, 0.74, 0.55), (0.04, 0.84, 0.34), (0.8, 0.06, 0.26)]
+    bgs = [(0.86, 0.04, 0.36), (0.02, 0.02, 0.24)]            # in the top corners only, never behind the text or the subtitles
     for i, (fx, fy, fr) in enumerate(bgs):
         size = w * fr
         parts.append(f'<div class="bg" id="bg{i}" style="left:{w * fx - size / 2:.0f}px;top:{h * fy - size / 2:.0f}px;'

@@ -103,8 +103,9 @@ def voice_line(stream: str, lang: str) -> str:
     return table.get(stream, table["regulab"])
 
 SYSTEM = """You write a short motion-graphics video as ONE self-contained HTML file for HyperFrames (HTML rendered to video by
-seeking a paused GSAP timeline frame by frame). Answer with ONE JSON object: {{"title": "<short title>", "html": "<the whole
-index.html as a string>"}}. Nothing else.
+seeking a paused GSAP timeline frame by frame). Answer with the whole index.html and NOTHING else: no JSON, no markdown
+fence, no commentary. Its very first line is an HTML comment with the film's title, <!-- title: the short title -->, and
+the file follows it, starting <!doctype html> and ending </html>.
 
 THE CONTRACT (a render fails or looks wrong if any is broken):
 1. The file starts with <!doctype html>, <html lang="{lang}" data-resolution="{resolution}">, a <meta name="viewport"
@@ -703,6 +704,39 @@ def probe(video: Path, runner: Any = subprocess.run) -> dict[str, Any]:
 
 # --- the worker ----------------------------------------------------------------------------------------------------------
 
+def parse_writer(text: Any) -> dict[str, Any]:
+    """{"title", "html"} from what the writer sent: a plain HTML file (the format asked for, with a title comment first), or,
+    when it answered the old way anyway, a JSON object holding the file. {} when there is no file in it."""
+    if isinstance(text, dict):
+        return text
+    s = str(text or "")
+    low = s.lower()
+    i = low.find("<!doctype")
+    if i < 0:
+        i = low.find("<html")
+    if i < 0:
+        return {}
+    j = low.rfind("</html>")
+    title = re.search(r"<!--\s*title:\s*(.*?)\s*-->", s[:i + 400], re.S)
+    if s[:i].lstrip().startswith("{") and "\"html\"" in s[:i]:
+        from .llm import _parse_json
+        try:
+            data = _parse_json(s)
+            return data if isinstance(data, dict) else {}
+        except ValueError:
+            pass
+    return {"title": (title.group(1) if title else "")[:160], "html": s[i:(j + 7 if j > i else len(s))]}
+
+
+def ask_writer(llm: Any, system: str, user: str) -> dict[str, Any] | None:
+    """One answer from the writer as {"title", "html"}. Plain text when the LLM can give it (HTML inside a JSON string broke
+    on 25 Oct 2026: the writer's answer was unparsable three times running), the JSON route otherwise."""
+    if hasattr(llm, "chat_text"):
+        text = llm.chat_text(system, user, max_tokens=WRITER_TOKENS)
+        return parse_writer(text) if text else None
+    return llm.chat_json(system, user, max_tokens=WRITER_TOKENS)
+
+
 def clean_html(html: Any) -> str:
     s = str(html or "").strip()
     s = re.sub(r"^```(?:html)?\s*|\s*```$", "", s)
@@ -839,7 +873,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         out: dict[str, Any] = {}
         html = ""
         try:
-            out = llm.chat_json(system, build_user(row, title, text, style=style) + "\n\n" + fixed, max_tokens=WRITER_TOKENS)
+            out = ask_writer(llm, system, build_user(row, title, text, style=style) + "\n\n" + fixed)
             if not isinstance(out, dict):
                 raise RuntimeError("the writer gave no answer")
             html = clean_html(out.get("html"))
@@ -848,8 +882,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             for _ in range(MAX_FIX):
                 if not report["errors"]:
                     break
-                again = llm.chat_json(system, build_user(row, title, text, report["errors"], html, style=style) + "\n\n" + fixed,
-                                      max_tokens=WRITER_TOKENS)
+                again = ask_writer(llm, system, build_user(row, title, text, report["errors"], html, style=style)
+                                   + "\n\n" + fixed)
                 if not isinstance(again, dict) or not again.get("html"):
                     break
                 html = clean_html(again.get("html"))

@@ -22,3 +22,13 @@ def no_network(monkeypatch):
     def refuse(*a, **k):
         raise AssertionError(f"a test tried to reach the network: {a[:2]}")
     monkeypatch.setattr(requests.Session, "request", refuse)
+
+
+@pytest.fixture(autouse=True)
+def writer_on(request, monkeypatch):
+    """Most motion tests were written for the AI writer's path. The worker composes films itself by default (26 Oct 2026),
+    so those tests switch the writer back on; a test marked `composed` runs the default path."""
+    if "composed" in request.keywords:
+        monkeypatch.delenv("MOTION_WRITER", raising=False)
+    else:
+        monkeypatch.setenv("MOTION_WRITER", "1")

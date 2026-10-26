@@ -8,4 +8,5 @@ select = ["E", "F", "W", "I", "B", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = ["composed: runs the motion worker on its default path, where the worker composes the film itself and the AI writer is not asked"]
 pythonpath = ["."]

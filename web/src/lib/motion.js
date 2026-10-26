@@ -24,7 +24,7 @@ export function resolveLanguageVoice(language, voice, stream) {
   const chosen = voiceOf(voice);
   return { language: lang, voice: chosen === 'kitten' && lang !== 'en' ? 'female' : chosen };
 }
-const evidenceOf = source => ({...Object.fromEntries(['source_url', 'reference_urls', 'source_name', 'angle', 'domain', 'citations', 'source_summary', 'trend_id', 'idea_id', 'id'].filter(k => source?.[k] != null).map(k => [k, source[k]])), ...(source?.brief?.source ? {structured_source:source.brief.source} : {})});
+const evidenceOf = source => ({...Object.fromEntries(['source_url', 'reference_urls', 'source_name', 'source_title', 'angle', 'domain', 'citations', 'source_summary', 'trend_id', 'idea_id', 'id'].filter(k => source?.[k] != null).map(k => [k, source[k]])), ...(source?.brief?.source ? {structured_source:source.brief.source} : {})});
 const motionOptions = d => ({ style: styleOf(d.style), mode: modeOf(d.mode), design: designOf(d.design), effects:validEffects(d.effects), effect_mode:d.effectMode === 'manual' ? 'manual' : 'auto', asset_mode:assetModeOf(d.assetMode), assets:d.assets || [], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true} });
 export function motionVariantMatches(existing, wanted) {
   // a row still waiting for Wan's choice of styles is that idea's video, whatever he has set on it so far

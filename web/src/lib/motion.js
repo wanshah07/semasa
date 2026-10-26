@@ -16,10 +16,14 @@ export const RESOLUTION_CHOICES = { auto: { bm: "Automatik: ikut platform (9:16 
 export const formSize = (resolution, stream) => (RESOLUTIONS[resolution] ? resolution : sizeFor(stream));
 /** The size of a film made from an idea or a draft: Wan's saved choice when it is not the old default (portrait), else the platform's. */
 export const derivedSize = (resolution, stream) => (RESOLUTIONS[resolution] && resolution !== "portrait" ? resolution : sizeFor(stream));
-/** What to write on a finished film to make it again in another language, in the size of its platform, with fresh captions. */
-export function remakeFields(film, language) {
-  const stream = film?.stream === "linkedin" ? "linkedin" : "regulab";
-  return { status: "pending", attempts: 0, error: "", captions: {}, ...resolveLanguageVoice(language, film?.voice, stream), resolution: sizeFor(stream) };
+/** The two streams a film can be for (Wan, 26 Oct 2026: a ws.regulab film can be switched to LinkedIn, and back). */
+export const STREAM_CHOICES = [["regulab", "ws.regulab"], ["linkedin", "LinkedIn"]];
+export const streamOf = (s) => (s === "linkedin" ? "linkedin" : "regulab");
+/** What to write on a finished film to make it again in another language and/or for the other stream: the voice, the size and the
+    closing card of that stream, with fresh captions. The film's own idea and brief stay as they are. */
+export function remakeFields(film, language, stream) {
+  const st = streamOf(stream || film?.stream);
+  return { status: "pending", attempts: 0, error: "", captions: {}, stream: st, ...resolveLanguageVoice(language, film?.voice, st), resolution: sizeFor(st) };
 }
 export const SECONDS = { min: 30, max: 60, default: 30 };
 /* the words on screen (Wan, 24 Oct 2026: "choice for english, malay, or english + malay version") */
@@ -173,16 +177,17 @@ export function motionFromPost(post, userId = null, defaults = null, language = 
 export function formOf(row, defaults = null) {
   const d = { ...MOTION_DEFAULTS, ...(defaults || {}) };
   const o = row?.options || {};
-  return { language: row?.language || d.language, voice: row?.voice || d.voice, mode: modeOf(o.mode || d.mode),
+  return { stream: streamOf(row?.stream), language: row?.language || d.language, voice: row?.voice || d.voice, mode: modeOf(o.mode || d.mode),
     seconds: Number(row?.seconds) || d.seconds, design: designOf(o.design || d.design), ambient: ambientOf(o.ambient || d.ambient), style: styleOf(o.style || d.style),
     effectMode: o.effect_mode === 'manual' ? 'manual' : 'auto', effects: validEffects(o.effects || d.effects),
     assets: o.assets || [], aiBackground: !!row?.ai_background, styleRepoId: row?.style_repo_id || "" };
 }
 export function startFields(row, form) {
-  const stream = row?.stream === "linkedin" ? "linkedin" : "regulab";
+  const was = streamOf(row?.stream);
+  const stream = streamOf(form?.stream || was);                 // the card can switch the film to the other stream before it starts
   const d = { ...MOTION_DEFAULTS, ...form };
   const assets = Array.isArray(d.assets) ? d.assets : [];
-  return { ...resolveLanguageVoice(d.language, d.voice, stream), seconds: selectedSeconds(d.seconds, d.mode),
+  return { ...(stream !== was ? { stream, resolution: sizeFor(stream) } : {}), ...resolveLanguageVoice(d.language, d.voice, stream), seconds: selectedSeconds(d.seconds, d.mode),
     ai_background: !!d.aiBackground, style_repo_id: d.styleRepoId || null,
     options: { ...motionOptions({ ...d, assets, assetMode: assets.length ? 'mixed' : 'auto' }), evidence: row?.options?.evidence || {} },
     status: "pending", attempts: 0, error: "" };

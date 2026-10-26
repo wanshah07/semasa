@@ -213,14 +213,19 @@ LAYMAN_RULE = ("SAY THE POINT (Wan, 26 Oct 2026: 'keluarkan isi penting bukan su
                "'semak sendiri', 'rujuk garis panduan', 'untuk maklumat lanjut'. Naming where a rule comes from is fine ('under "
                "the 2026 directive'); replacing the rule with its name is not. Sound like a person talking to someone they want "
                "to help: no stiff list-speak, no 'comprehensive overview', no jargon left unexplained.")
+EXPLAIN_RULE = ("HOW TO EXPLAIN (one way for every stream, the way Wan explains on LinkedIn): like a chemist telling a "
+                "friend. Lead with the fact itself. Say once, in a few words, which rule or study decides it, as a source "
+                "('under the 2026 directive', 'Annex III entry 5', 'ISO 24444'; never a blog or a news site). Then say in one "
+                "plain sentence what it means for the viewer, and give the number, limit or deadline when the brief has it. "
+                "Precise, calm, no hype, no fear, no filler, no claim that cannot be sourced.")
 CASUAL_RULE = ("TONE: casual, as a friend explaining to a friend, so the viewer UNDERSTANDS: short plain sentences, "
                "everyday words ('korang', 'jom', 'senang cerita', 'maksudnya'), and every technical term said once in "
                "simple words straight after it.")
 FLOW = ("Hook = one curiosity line that makes this reader stop; Fakta = the one thing that is true, from the brief; "
         "Kenapa = why it matters to this reader; Solusi = the one thing to do next. Connected, complete sentences, never "
-        "isolated labels.\n" + LAYMAN_RULE + "\n" + HOOK_RULE + "\n" + CONNECT_RULE + "\n" + LINES_RULE + "\n" + LIST_RULE
-        + "\n" + NARRATION_RULE + "\n" + MALAY_RULE)
-FLOW_TEASER = "ONE scene: a curiosity hook only.\n" + HOOK_RULE + "\n" + LAYMAN_RULE
+        "isolated labels.\n" + LAYMAN_RULE + "\n" + EXPLAIN_RULE + "\n" + HOOK_RULE + "\n" + CONNECT_RULE + "\n" + LINES_RULE
+        + "\n" + LIST_RULE + "\n" + NARRATION_RULE + "\n" + MALAY_RULE)
+FLOW_TEASER = "ONE scene: a curiosity hook only.\n" + HOOK_RULE + "\n" + LAYMAN_RULE + "\n" + EXPLAIN_RULE
 PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, at most {words} words in all and fewer "
                "when the information is simple (about "
                f"{NARRATED_WPS} words a second), saying each heading's fact and each line in plain spoken words (those words "

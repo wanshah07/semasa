@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ListChecks, Loader2, Play, Trash2 } from "lucide-react";
+import { STREAMS } from "../lib/brand";
 import { useLang } from "../lib/i18n";
 import { FORMAT_WORDS, LANGUAGES, VOICES, defaultLanguage, formOf, formatOf, motionLabel, selectedSeconds } from "../lib/motion";
 import { designOptions } from "../lib/motionStyles";
@@ -31,7 +32,7 @@ function QueueCard({ row, defaults, client, user, busy, onStart, onRemove }) {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="line-clamp-2 font-display text-lg">{motionLabel(row) || t("(tiada tajuk)", "(untitled)")}</p>
-          <p className="truncate text-xs text-muted">{row.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · {row.seconds}s · {t("Format", "Format")}: {FORMAT_WORDS[format][L]}</p>
+          <p className="truncate text-xs text-muted">{form.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · {row.seconds}s · {t("Format", "Format")}: {FORMAT_WORDS[format][L]}</p>
         </div>
         <span className="rounded-pill bg-accent/15 px-2 py-0.5 text-[11px] text-accent">{t("Pilih gaya", "Choose styles")}</span>
       </div>
@@ -40,9 +41,13 @@ function QueueCard({ row, defaults, client, user, busy, onStart, onRemove }) {
         <Segmented value={isGimmick ? "gimmick" : "full"} onChange={chooseKind}
           options={[["gimmick", t("Gimik · 10s, satu babak", "Gimmick · 10s, one scene")], ["full", t("Kandungan penuh · 4 babak", "Full content · 4 scenes")]]} />
       </div>
+      <div data-motion-queue-stream>
+        <Label hint={t("LinkedIn: suara anda, saiz 1:1, ikon dan nama anda di kad penutup", "LinkedIn: your voice, the 1:1 size, your icon and name on the closing card")}>{t("Untuk", "For")}</Label>
+        <Segmented value={form.stream} onChange={(s) => set({ stream: s, ...(s === "linkedin" && form.language === "bm" ? { language: "en" } : {}), ...(s === "regulab" && form.language === "en" ? { language: "bm" } : {}) })} options={STREAMS} />
+      </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div><Label>{t("Bahasa", "Language")}</Label>
-          <Segmented value={form.language || defaultLanguage(row.stream)} onChange={(v) => set({ language: v, voice: v !== "en" && form.voice === "kitten" ? "female" : form.voice })} options={LANGUAGES} /></div>
+          <Segmented value={form.language || defaultLanguage(form.stream)} onChange={(v) => set({ language: v, voice: v !== "en" && form.voice === "kitten" ? "female" : form.voice })} options={LANGUAGES} /></div>
         <div><Label>{t("Suara", "Voice")}</Label>
           <Segmented value={form.voice} onChange={(v) => set({ voice: v })} options={VOICES.map(([k, bm, en]) => [k, L ? en : bm])} /></div>
         <div className="md:col-span-2"><MotionAmbient value={form.ambient} onChange={(v) => set({ ambient: v })} /></div>

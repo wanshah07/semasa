@@ -196,3 +196,22 @@ def test_finished_films_without_captions_are_given_them_from_their_saved_script(
     assert motion.backfill_captions(store, llm) == 0 and len(llm.asked) == 1, "done once, not again"
     assert motion.backfill_captions(store, None) == 0
     assert motion.run(store, FakeLLM([]), now=NOW) == {"claimed": 0, "done": 0, "failed": 0}
+
+
+def test_both_streams_explain_the_way_wan_does_on_linkedin():
+    """Wan, 26 Oct 2026: the way LinkedIn explains (the fact first, the deciding rule named once, what it means in plain words)
+    applies to the ws.regulab films too."""
+    for stream, lang in (("regulab", "bm"), ("regulab", "en"), ("linkedin", "en")):
+        system = motion.build_script_system({"language": lang, "stream": stream, "seconds": 30}, "")
+        assert "HOW TO EXPLAIN" in system and "never a blog or a news site" in system, (stream, lang)
+    row = {"language": "en", "stream": "regulab", "seconds": 10, "options": {"mode": "teaser"}}
+    teaser = motion.build_script_system(row, "", 1)
+    assert "HOW TO EXPLAIN" in teaser
+    seen = []
+
+    class Spy:
+        def chat_json(self, system, user, **k):
+            seen.append(system)
+    for stream in ("regulab", "linkedin"):
+        motion_captions.write(Spy(), {"stream": stream}, SCENES, "T", lang="en", voice="v", speak_as=motion.speaker("en"))
+    assert all("chemist telling a friend" in " ".join(s.split()) for s in seen) and len(seen) == 2

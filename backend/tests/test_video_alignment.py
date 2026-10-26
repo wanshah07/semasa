@@ -7,9 +7,9 @@ from semasa import motion, motion_styles
 def test_gimmick_is_always_ten_seconds():
     assert motion_styles.duration({'seconds':60,'options':{'mode':'teaser'}}) == 10
     row = {'seconds':10,'options':{'mode':'teaser'}}
-    assert motion_styles.cta(row) == 'Stay tuned'
-    assert 'Show and speak Stay tuned only' in motion_styles.prompt(row)
-    assert motion_styles.video_format_policy.POLICY['cta']['gimmick'] == 'Stay tuned'
+    assert motion_styles.cta(row) == 'Stay tuned. Follow us for more.'
+    assert 'Show and speak Stay tuned. Follow us for more.' in motion_styles.prompt(row)
+    assert motion_styles.video_format_policy.POLICY['cta']['gimmick'] == 'Stay tuned. Follow us for more.'
 
 
 def test_personal_cta_is_not_corporate():

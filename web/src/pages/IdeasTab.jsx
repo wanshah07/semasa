@@ -169,7 +169,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
     const { error } = await supabase.from(TABLES.motions).insert(row);
     setMotionBusy("");
     if (error) return onToast(errText(error), "danger");
-    onToast(t("Video motion dihantar: tengok di Video → Motion dalam 2 hingga 5 minit.", "Motion video sent: see it in Video → Motion in 2 to 5 minutes."), "ok");
+    onToast(t("Masuk giliran video: pilih gaya di Video → Motion, kemudian tekan Mula.", "In the video queue: choose the styles in Video → Motion, then press Start."), "ok");
     motionsT.reload();
   }
   // every shown idea at once, with the saved way (Wan, 24 Oct 2026: "apply to all idea if I need")
@@ -178,12 +178,12 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
   async function makeMotionAll() {
     const rows = motionable().map((r) => motionFromIdea(r, user?.id || null, mDefaults, langFor(r)));
     if (!rows.length) return onToast(t("Tiada idea yang belum ada video motion dalam senarai ini.", "No shown idea is without a motion video."), "warn");
-    if (!window.confirm(t("Buat {n} video untuk idea dimuatkan dan ditapis sahaja, bukan semua idea tersimpan?", "Make {n} motion videos from filtered loaded ideas only? This is not every saved idea. Each about 2 to 5 minutes.", { n: rows.length }))) return;
+    if (!window.confirm(t("Masukkan {n} idea ke giliran video (idea dimuatkan dan ditapis sahaja)? Anda pilih gaya dahulu.", "Put {n} ideas in the video queue (the filtered, loaded ideas only)? You choose the styles first.", { n: rows.length }))) return;
     setMotionBusy("all");
     const { error } = await supabase.from(TABLES.motions).insert(rows);
     setMotionBusy("");
     if (error) return onToast(errText(error), "danger");
-    onToast(t("{n} video motion dihantar: tengok di Video → Motion.", "{n} motion videos sent: see Video → Motion.", { n: rows.length }), "ok");
+    onToast(t("{n} idea masuk giliran video: pilih gaya di Video → Motion.", "{n} ideas in the video queue: choose the styles in Video → Motion.", { n: rows.length }), "ok");
     motionsT.reload();
   }
   async function update(id, patch, msg) {

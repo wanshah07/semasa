@@ -40,7 +40,7 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
     setBusy(false);
     if (error) return onToast(errText(error), "danger");
     setMotionSent(true);
-    onToast(t("Video motion dihantar: tengok di Video → Motion dalam 2 hingga 5 minit.", "Motion video sent: see it in Video → Motion in 2 to 5 minutes."), "ok");
+    onToast(t("Masuk giliran video: pilih gaya di Video → Motion, kemudian tekan Mula.", "In the video queue: choose the styles in Video → Motion, then press Start."), "ok");
   }
   const has021 = "versions" in post && "revise_state" in post;
   const versions = Array.isArray(post.versions) ? post.versions : [];
@@ -154,7 +154,7 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
           <select value={langChosen} onChange={(e) => setMotionLang(e.target.value)} aria-label={t("Bahasa video", "Video language")} disabled={motionSent}
             className="rounded-pill border border-line bg-surface px-2 py-1.5 text-xs">{LANGUAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
           <Button size="sm" variant="ghost" disabled={busy || motionSent || dirty || !post.id} onClick={makeMotion} title={t("Jadikan video motion pendek daripada draf ini", "Make a short motion video from this draft")}>
-            <Clapperboard size={12} /> {motionSent ? t("Video motion dihantar", "Motion video sent") : t("Video motion", "Motion video")}</Button>
+            <Clapperboard size={12} /> {motionSent ? t("Dalam giliran video", "In the video queue") : t("Video motion", "Motion video")}</Button>
         </div>
       )}
 

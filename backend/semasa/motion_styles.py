@@ -55,7 +55,7 @@ def design(row: dict[str, Any]) -> str:
 
 def cta(row: dict[str, Any]) -> str:
     if duration(row) == 10:
-        return "Stay tuned"
+        return "Stay tuned. Follow us for more."
     if row.get("stream") == "linkedin":
         return "Follow me for more"
     return "Jangan lupa follow kami untuk tips seterusnya." if row.get("language") in {"bm", "both"} else "Follow us for more"
@@ -124,7 +124,7 @@ def prompt(row: dict[str, Any], seconds: float | None = None) -> str:
     schedule = "\n".join(f"{i + 1}. {b['code']} {b['name']} [{b['layer']}]: {b['start']:.3f}–{b['end']:.3f}s"
                          for i, b in enumerate(beats(recipe, total)))
     ending = ("Gimmick: ONE persistent continuous composition, curiosity hook only, no multi-pages, no standalone "
-              "logo/CTA page. Show and speak Stay tuned only in that same persistent scene."
+              "logo/CTA page. Show and speak Stay tuned. Follow us for more. in that same persistent scene."
               if teaser else f"Final page only: official supplied transparent-alpha PNG logo centered, full tagline preserved, "
               f"no deformation, no branding on teaching scenes. Visible and spoken CTA exactly: {cta(row)}. "
               f"Reserve final {OUTRO_SECONDS}s; never speak the brand.")

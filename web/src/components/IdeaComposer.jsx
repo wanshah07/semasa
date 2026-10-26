@@ -114,7 +114,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
       const { error } = await supabase.from(TABLES.motions).insert(motion);
       setBusy(false);
       if (error) return onToast(errText(error), "danger");
-      onToast("Motion queued directly; no post or image draft created.", "ok");
+      onToast("In the video queue: choose the styles in Video → Motion, then press Start. No post or image draft created.", "ok");
       onDone?.(); onClose(); return;
     }
     if (format === "carousel") row.make_slides = true;

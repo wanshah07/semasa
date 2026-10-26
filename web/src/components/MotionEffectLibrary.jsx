@@ -49,10 +49,10 @@ export default function MotionEffectLibrary({ brief, mode, effects, effectMode, 
         {['auto','manual'].map(v=><button type="button" key={v} aria-pressed={effectMode===v} onClick={()=>{if(v==='manual')onEffects(selected);onEffectMode(v);}} className={`rounded-pill border px-4 py-2 text-xs ${effectMode===v?'border-accent bg-accent/10':'border-line'}`}>{v==='auto'?'Auto · recommended':'Manual'}</button>)}
       </div>
     </div>
-    <p className="text-xs text-muted">Auto assembles a small compatible effect recipe from your idea, video mode and available assets, within the complete Hook → Fact → Why → Solution video. Manual lets you add/remove any card. It never stacks all 99 effects. Existing design and attachment-style choices remain independent.</p>
+    <p className="text-xs text-muted">Auto: when the film is made, the bot picks at least 15 of the 99 styles, scene by scene, for what each scene says and shows (Hook → Fact → Why → Solution), and lists the ones applied on the finished video. Styles that need footage, a screenshot or a sound file the film does not have are left out. Manual: only the cards you add. Design and attachment-style choices stay independent.</p>
     <div aria-label="Selected effects" aria-live="polite" className="rounded-tile bg-surface-2 p-3">
-      <p className="mb-2 text-xs">{effectMode==='auto'?'Recommended':'Selected'} · {selected.length} effects</p>
-      <div className="flex flex-wrap gap-2">{selected.map(id=><button type="button" key={id} onClick={()=>toggle(id)} aria-label={`Remove ${entries[id]?.name}`} className="rounded-pill border border-accent px-3 py-1 text-xs">{id} · {entries[id]?.name} ×</button>)}{!selected.length&&<span className="text-xs text-muted">No additional effects; the complete video recipe is still used.</span>}</div>
+      <p className="mb-2 text-xs">{effectMode==='auto'?'Auto · at least 15 chosen when the film is made':'Selected'}{effectMode==='auto'?'':` · ${selected.length} effects`}</p>
+      <div className="flex flex-wrap gap-2">{effectMode==='auto'?null:selected.map(id=><button type="button" key={id} onClick={()=>toggle(id)} aria-label={`Remove ${entries[id]?.name}`} className="rounded-pill border border-accent px-3 py-1 text-xs">{id} · {entries[id]?.name} ×</button>)}{effectMode!=='auto'&&!selected.length&&<span className="text-xs text-muted">No additional effects; the complete video recipe is still used.</span>}</div>
       {selected.some(id=>effectPolicy[id].readiness==='fallback')&&<p className="mt-2 text-xs text-warn">Some selections are concept-only adaptations, not implemented source effects. See each card's limitation.</p>}
     </div>
     <details className="rounded-tile border border-line p-3">

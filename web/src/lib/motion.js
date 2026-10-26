@@ -28,6 +28,8 @@ export function resolveLanguageVoice(language, voice, stream) {
 const evidenceOf = source => ({...Object.fromEntries(['source_url', 'reference_urls', 'source_name', 'angle', 'domain', 'citations', 'source_summary', 'trend_id', 'idea_id', 'id'].filter(k => source?.[k] != null).map(k => [k, source[k]])), ...(source?.brief?.source ? {structured_source:source.brief.source} : {})});
 const motionOptions = d => ({ style: styleOf(d.style), mode: modeOf(d.mode), design: designOf(d.design), effects:validEffects(d.effects), effect_mode:d.effectMode === 'manual' ? 'manual' : 'auto', asset_mode:assetModeOf(d.assetMode), assets:d.assets || [], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true} });
 export function motionVariantMatches(existing, wanted) {
+  // Waiting rows represent the idea until the user starts them.
+  if (wanted && existing.status === 'waiting' && existing.idea_id && existing.idea_id === wanted.idea_id) return true;
   return !!wanted &&
     !!existing.options?.mute_all === !!wanted.options?.mute_all &&
     JSON.stringify(existing.options?.personal_avatar || null) === JSON.stringify(wanted.options?.personal_avatar || null) &&
@@ -45,7 +47,7 @@ export function motionVariantMatches(existing, wanted) {
     resolveLanguageVoice(existing.language, existing.voice).voice === wanted.voice;
 }
 export const STATUS_WORDS = {
-  pending: ["Menunggu", "Waiting"], working: ["Sedang dibuat", "Being made"], done: ["Siap", "Done"], error: ["Ralat", "Error"],
+  waiting: ["Pilih gaya", "Choose styles"], pending: ["Menunggu", "Waiting"], working: ["Sedang dibuat", "Being made"], done: ["Siap", "Done"], error: ["Ralat", "Error"],
 };
 
 /** Clamp the seconds a brief asks for to what the table accepts. */
@@ -133,7 +135,7 @@ export function motionFromIdea(idea, userId = null, defaults = null, language = 
   if (!brief && !url) return null;
   const stream = idea?.stream === "linkedin" ? "linkedin" : "regulab";
   return applyFormat({ brief, source_url: url, stream, language: langOf(d.language, stream), resolution: RESOLUTIONS[d.resolution] ? d.resolution : "portrait",
-    seconds: selectedSeconds(d.seconds, d.mode), status: "pending", idea_id: idea.id || null, ai_background: !!d.aiBackground,
+    seconds: selectedSeconds(d.seconds, d.mode), status: "waiting", idea_id: idea.id || null, ai_background: !!d.aiBackground,
     options: { ...motionOptions(d), evidence: evidenceOf(idea) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: "", created_by: userId }, d);
 }
 
@@ -152,6 +154,44 @@ export function motionFromPost(post, userId = null, defaults = null, language = 
   if (!brief) return null;
   const stream = post?.stream === "linkedin" ? "linkedin" : "regulab";
   return applyFormat({ brief, source_url: post?.source_url || "", stream, language: d.language || lang, resolution: RESOLUTIONS[d.resolution] ? d.resolution : "portrait",
-    seconds: selectedSeconds(d.seconds, d.mode), status: "pending", idea_id: post?.idea_id || null, ai_background: !!d.aiBackground,
+    seconds: selectedSeconds(d.seconds, d.mode), status: "waiting", idea_id: post?.idea_id || null, ai_background: !!d.aiBackground,
     options: { ...motionOptions(d), evidence: evidenceOf(post) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: "", created_by: userId }, d);
 }
+
+/* The queue (Wan, 26 Oct 2026): an idea or a draft made into a video waits for him to choose its styles. These two turn the
+   waiting row into the form's values and the form's values into the update that sends it to the worker. */
+export function formOf(row, defaults = null) {
+  const d = { ...MOTION_DEFAULTS, ...(defaults || {}) };
+  const o = row?.options || {};
+  return { ...resolveFormat({...d, ...o, format:o.format, language:row?.language || d.language, voice:row?.voice || d.voice,
+      seconds:row?.seconds || d.seconds, resolution:row?.resolution || d.resolution,
+      muteAll:o.mute_all ?? d.muteAll, personalAvatar:o.personal_avatar ?? d.personalAvatar}, row?.stream),
+    language: row?.language || d.language, voice: row?.voice || d.voice, mode: modeOf(o.mode || d.mode),
+    seconds: Number(row?.seconds) || d.seconds, design: designOf(o.design || d.design), style: styleOf(o.style || d.style),
+    effectMode: o.effect_mode === 'manual' ? 'manual' : 'auto', effects: validEffects(o.effects || d.effects),
+    assets: o.assets || [], aiBackground: !!row?.ai_background, styleRepoId: row?.style_repo_id || "" };
+}
+export function startFields(row, form) {
+  const stream = row?.stream === "linkedin" ? "linkedin" : "regulab";
+  const d = { ...MOTION_DEFAULTS, ...form };
+  // Queue controls may change mode/language independently of the saved format.
+  if (d.mode === 'teaser') d.format = 'gimmick';
+  else if (d.format === 'gimmick') d.format = d.voice === 'off' ? 'silent-first' : d.language === 'en' ? 'english-voiced' : 'malay-voiced';
+  else if (['english-voiced','malay-voiced'].includes(d.format)) d.format = d.language === 'en' ? 'english-voiced' : 'malay-voiced';
+  const assets = Array.isArray(d.assets) ? d.assets : [];
+  return applyFormat({ ...resolveLanguageVoice(d.language, d.voice, stream), stream,
+    ai_background: !!d.aiBackground, style_repo_id: d.styleRepoId || null,
+    options: { ...row?.options, ...motionOptions({ ...d, assets, assetMode: assets.length ? 'mixed' : 'auto' }), evidence: row?.options?.evidence || {} },
+    status: "pending", attempts: 0, error: "" }, d);
+}
+
+/** Which of Wan's four approved formats a film comes out as: the worker's own rule (motion.format_of), for the queue to show. */
+export function formatOf(form) {
+  if (modeOf(form?.mode) === "teaser" && Number(form?.seconds) === 10) return "gimmick";
+  if (designOf(form?.design) === "continuous-line") return "preview";
+  return ["bm", "both"].includes(form?.language) ? "malay" : "english";
+}
+export const FORMAT_WORDS = {
+  english: ["Gaya baharu English", "English new style"], malay: ["Malay bersuara", "Malay voiced"],
+  preview: ["Pratonton garisan berterusan", "Preview (continuous line)"], gimmick: ["Gimik 10 saat", "10 s gimmick"],
+};

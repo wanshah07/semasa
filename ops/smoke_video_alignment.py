@@ -30,7 +30,7 @@ def main():
         shutil.copyfile(args.gsap, folder / 'gsap.min.js')
         if fmt == 'gimmick':
             scenes = [{'id':'s1', 'start':0, 'duration':10,
-                       'heading':'What does your packaging actually tell you? Stay tuned',
+                       'heading':'What does your packaging actually tell you? Stay tuned. Follow us for more.',
                        'narration':'', 'lines':[]}]
         else:
             texts = ['What does your packaging actually tell you?',

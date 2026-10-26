@@ -907,3 +907,31 @@ def test_a_picture_shrinks_before_a_supporting_line_leaves_the_screen():
     (none, h1), (none2, h2), (none3, h3) = built(1), built(2), built(3)
     assert none == none2 == none3 == [], "film 77dcdef0 of 26 Oct lost its second line here; now the picture gives way"
     assert h1 > h2 > h3 > 0, "the more lines, the smaller the picture"
+
+
+def test_a_subtitle_that_cannot_fit_is_split_never_cut_and_never_runs_off_the_frame():
+    # Wan, 26 Oct 2026: "check overlap and overflood text": a long reference in the narration used to run off the frame
+    chunks = [("satu dua tiga empat lima enam tujuh lapan", 0.0, 8.0), ("pendek", 8.0, 9.0)]
+    out = motion_layout.split_to_fit(chunks, lambda x: len(x) <= 12)
+    assert " ".join(c[0] for c in out) == "satu dua tiga empat lima enam tujuh lapan pendek", "every word is kept, in order"
+    assert all(len(c[0]) <= 12 or len(c[0].split()) == 1 for c in out)
+    assert out[0][1] == 0.0 and out[-1][2] == 9.0 and all(a < b for _, a, b in out)
+    assert all(out[i][2] == out[i + 1][1] for i in range(len(out) - 1)), "the times join up"
+    assert motion_layout.split_to_fit([("x" * 90, 0.0, 2.0)], lambda x: False) == [("x" * 90, 0.0, 2.0)], "one word cannot be split"
+
+
+def test_karaoke_ids_are_unique_when_a_narration_has_three_or_four_subtitles():
+    words = " ".join(f"kata{i}" for i in range(30)).split()
+    scenes = [{"id": "s1", "role": "hook", "start": 0, "duration": 14, "kicker": "x", "heading": "Fakta", "lines": [],
+               "audio": "a.mp3", "narration": " ".join(words), "audio_s": 13,
+               "words": [[i * 0.4, i * 0.4 + 0.3] for i in range(len(words))]}]
+    html, _ = _rich(scenes, {"scenes": {"s1": ["C01"]}, "video": {"captions": "C01"}})
+    ids = re.findall(r'id="(s1-kk\d+)"', html)
+    assert len(ids) == len(set(ids)) == 30, "each word has its own id: a later subtitle used to reuse the first one's"
+
+
+def test_a_long_unbroken_word_in_typed_text_can_wrap_between_pieces():
+    out = motion_layout.typed("a" * 40 + " ok", "s9")
+    assert out.count('class="wd"') == 4, "40 letters = three pieces of 14, 14 and 12, then 'ok'"
+    assert "</span></span><span class=\"wd\">" in out, "no space between the pieces of one word"
+    assert " <span class=\"wd\"><span class=\"ch s9-ch\">o" in out, "words are still separated by a space"

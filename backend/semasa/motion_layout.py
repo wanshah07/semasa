@@ -57,6 +57,7 @@ LANE = (0.78, 0.115)              # the subtitle lane of a narrated film: top an
 GAP = 0.028                       # between blocks, as a fraction of the frame width
 WIDE = 0.62                       # estimated average glyph width / font size for a bold heading (system sans, never narrower)
 BODY = 0.56
+TYPED_PIECE = 14                  # letters in one unbreakable piece of a typed word
 MIN_PX = 44                       # on a 1080-wide frame (the contract's floor)
 FILTERS = {"F01": "contrast(1.05) saturate(1.12) brightness(1.03)",
            "F04": "contrast(1.1) saturate(.95) hue-rotate(-14deg) brightness(.98)",
@@ -143,6 +144,23 @@ def caption_chunks(sc: dict[str, Any]) -> list[tuple[str, float, float]]:
     return [(" ".join(words[bounds[i]:bounds[i + 1]]), times[i], times[i + 1]) for i in range(len(bounds) - 1)]
 
 
+def split_to_fit(chunks: list[tuple[str, float, float]], fits: Any) -> list[tuple[str, float, float]]:
+    """Subtitles that would not fit the lane even at the readable floor, cut in two at the middle word (the time shared by the
+    characters on each side) until each fits or is one word. Whole words are kept: nothing is dropped, so the viewer reads
+    everything the voice says (a long reference or a ministry's full name used to run off the frame)."""
+    out: list[tuple[str, float, float]] = []
+    for text, a, b in chunks:
+        words = text.split()
+        if len(words) < 2 or fits(text):
+            out.append((text, a, b))
+            continue
+        mid = len(words) // 2
+        first, rest = " ".join(words[:mid]), " ".join(words[mid:])
+        t = a + (b - a) * (len(first) + 1) / (len(text) + 1)
+        out += split_to_fit([(first, a, t), (rest, t, b)], fits)
+    return out
+
+
 def esc(s: str) -> str:
     return html_mod.escape(str(s), quote=False)
 
@@ -203,8 +221,11 @@ def inline(text: str, sid: str, numbers: bool, counts: list[tuple[str, int]] | N
 
 def typed(text: str, sid: str) -> str:
     """Every character in its own span (C03/C09): words stay whole, so wrapping is the same as plain text."""
-    return " ".join('<span class="wd">' + "".join(f'<span class="ch {sid}-ch">{esc(c)}</span>' for c in word) + "</span>"
-                    for word in text.split())
+    def chars(part: str) -> str:
+        return '<span class="wd">' + "".join(f'<span class="ch {sid}-ch">{esc(c)}</span>' for c in part) + "</span>"
+    # a word longer than a line (a URL, a reference number, a chemical name) is several .wd pieces with no space between them,
+    # so it can wrap between pieces; one nowrap box of 60 letters ran off the frame
+    return " ".join("".join(chars(word[i:i + TYPED_PIECE]) for i in range(0, len(word), TYPED_PIECE)) for word in text.split())
 
 
 def quiet(text: str, sid: str, numbers: bool, counts: list[tuple[str, int]] | None = None) -> str:
@@ -425,7 +446,9 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         if stat:
             lines = [x for x in lines if x != stat[0]]
         # what the scene's own words can carry: percentages for a chart, years for a timeline, figures to count up
-        pct_rows = [(ln, m) for ln in lines for m in [PCT.search(ln)] if m][:3] if "V09" in eff else []
+        pct_rows = [(ln, m) for ln in lines for m in [PCT.search(ln)]
+                    if m and wrap_lines(label_of(ln, m.group(0)), fs_d, box_w - gap - len(m.group(0)) * fs_d * 0.62, BODY) == 1
+                    ][:3] if "V09" in eff else []             # a label that needs two lines stays an ordinary line
         yrs = [(ln, YEAR.search(ln).group(0)) for ln in lines if YEAR.search(ln)] if "P08" in eff else []
         events = sorted({y: ln for ln, y in yrs}.items())[:4] if len({y for _, y in yrs}) >= 2 else []
         quote = next((ln for ln in lines if re.search(r"[“”\"]", ln)), "") if "P09" in eff and not study else ""
@@ -759,13 +782,16 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             chunks = caption_chunks(sc)
             timed = sc.get("words") or []
             karaoke = cap_s == "C01" and len(timed) == len(str(sc.get("narration")).split())
+            floor_px = MIN_PX * scale
+            chunks = split_to_fit(
+                chunks, lambda x, fp=floor_px, bw=box_w, lh=lane_h: wrap_lines(x, fp, bw, BODY) * fp * 1.3 <= lh)
             for k, (text, a, b) in enumerate(chunks):
                 size = 52 * scale
                 while size > MIN_PX * scale and wrap_lines(text, size, box_w, BODY) * size * 1.3 > lane_h:
                     size -= 2 * scale
                 inner = esc(text)
                 if karaoke:
-                    off = 0 if k == 0 else len(chunks[0][0].split())
+                    off = sum(len(c[0].split()) for c in chunks[:k])   # the words before this subtitle, whatever the count
                     inner = " ".join(f'<span class="kk" id="{sid}-kk{off + j}">{esc(wd)}</span>'
                                      for j, wd in enumerate(text.split()))
                     for j in range(len(text.split())):

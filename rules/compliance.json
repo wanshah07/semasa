@@ -211,6 +211,72 @@
    "re": "—",
    "flags": "",
    "label": "em dash"
+  },
+  {
+   "re": "\\b(unlock|elevate|empower|delve|showcase|testament to|seamless(ly)?|cutting-edge|game-changer|next-level|revolutionary)\\b",
+   "flags": "i",
+   "label": "AI tell: empty AI vocabulary. Say what it does.",
+   "tell": true
+  },
+  {
+   "re": "in today'?s fast-paced|ever-evolving|a new era of|pivotal moment|marking a (new|pivotal)",
+   "flags": "i",
+   "label": "AI tell: significance inflation",
+   "tell": true
+  },
+  {
+   "re": "\\b(era baharu|pengubah permainan|kelas dunia|tanpa had|perjalanan anda)\\b",
+   "flags": "i",
+   "label": "AI tell: empty marketing words (BM)",
+   "tell": true
+  },
+  {
+   "re": "(\\bhonestly\\?|let'?s be honest|here'?s the thing|real talk|jujurnya\\?)",
+   "flags": "i",
+   "label": "AI tell: a fake-candid opener",
+   "tell": true
+  },
+  {
+   "re": "(let'?s dive in|here'?s what you need to know|without further ado)",
+   "flags": "i",
+   "label": "AI tell: announcing instead of saying",
+   "tell": true
+  },
+  {
+   "re": "(i hope this helps|let me know if you|would you like me to|harap (ini )?membantu|semoga (ini )?bermanfaat)",
+   "flags": "i",
+   "label": "AI tell: a chatbot closer",
+   "tell": true
+  },
+  {
+   "re": "not (just|only) [^.\\n]{1,70}, (it'?s|it is|but)\\b",
+   "flags": "i",
+   "label": "AI tell: 'not just X, it's Y'",
+   "tell": true
+  },
+  {
+   "re": "bukan sekadar [^.\\n]{1,80}, (malah|tetapi juga|namun juga)",
+   "flags": "i",
+   "label": "AI tell: 'bukan sekadar X, malah Y'",
+   "tell": true
+  },
+  {
+   "re": "\\b(experts|analysts|industry observers) (say|believe|agree)\\b|\\bpakar (berkata|percaya|bersetuju)\\b",
+   "flags": "i",
+   "label": "AI tell: an unnamed authority",
+   "tell": true
+  },
+  {
+   "re": "\\b(the future (looks|is) bright|exciting times (lie|are) ahead)\\b|masa depan (yang )?cerah",
+   "flags": "i",
+   "label": "AI tell: a generic upbeat ending",
+   "tell": true
+  },
+  {
+   "re": "\\b[A-Z]{4,}( [A-Z]{4,}){2,}\\b",
+   "flags": "",
+   "label": "AI tell: a clause in ALL CAPS",
+   "tell": true
   }
  ],
  "social_src": {

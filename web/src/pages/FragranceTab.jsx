@@ -150,7 +150,7 @@ function Gallery({ rows }) {
       const at = m.saved_at || r.updated_at || r.created_at;
       return {
         title: [p.name, c.title].filter(Boolean).join(" · ") || t("Reka bentuk", "Design"),
-        description: [c.headline, c.tagline].filter(Boolean).join(" — ") || c.why || p.notes || "",
+        description: [c.headline, c.tagline].filter(Boolean).join(". ") || c.why || p.notes || "",
         author: p.brand || "Valorith",
         createdAt: at ? new Intl.DateTimeFormat(lang === "en" ? "en-GB" : "ms-MY", { timeZone: "Asia/Kuala_Lumpur",
           day: "numeric", month: "short", year: "numeric" }).format(new Date(at)) : "",

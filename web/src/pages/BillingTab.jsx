@@ -518,13 +518,13 @@ function Editor({ doc, clients, projects, counters, cfg, onChange, onClose, onSa
           <div className="rounded-tile border border-line p-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <Label>{t("Pelanggan", "Client")}</Label>
-              <Select value={d.client_id || ""} onChange={pick} options={[["", t("— pilih daripada senarai —", "— pick from the list —")], ...clients.map((c) => [c.id, c.name])]} />
+              <Select value={d.client_id || ""} onChange={pick} options={[["", t("Pilih daripada senarai", "Pick from the list")], ...clients.map((c) => [c.id, c.name])]} />
             </div>
             {d.client_id && (
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <Label>{t("Projek", "Project")}</Label>
                 <Select value={d.project_id || ""} onChange={(v) => onChange({ ...d, project_id: v || null, reference: d.reference || projects.find((p) => p.id === v)?.reference || "" })}
-                  options={[["", t("— tiada projek —", "— no project —")], ...myProjects.map((p) => [p.id, p.name])]} />
+                  options={[["", t("Tiada projek", "No project")], ...myProjects.map((p) => [p.id, p.name])]} />
                 {!myProjects.length && <span className="text-xs text-muted">{t("Pelanggan ini belum ada projek: tambah dalam Projek.", "This client has no project yet: add one under Projects.")}</span>}
               </div>
             )}

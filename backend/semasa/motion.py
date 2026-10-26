@@ -37,7 +37,19 @@ from typing import Any
 
 from PIL import Image
 
-from . import ai_config, api_status, db, fetch, motion_assets, motion_auto, motion_layout, motion_probe, motion_styles, unsplash
+from . import (
+    ai_config,
+    antislop,
+    api_status,
+    db,
+    fetch,
+    motion_assets,
+    motion_auto,
+    motion_layout,
+    motion_probe,
+    motion_styles,
+    unsplash,
+)
 from . import voice as voice_mod
 from .llm import LLM
 from .repos import GitHub
@@ -222,7 +234,8 @@ def build_script_system(row: dict[str, Any], extra: str, count: int = 4) -> str:
               f"second longer; never more than {FILM_MAX:g} seconds including the outro.")
     return SCRIPT_SYSTEM.format(length=length, count=count, kickers=" · ".join(motion_auto.LABELS[lang][:count]),
                                 flow=FLOW if count > 1 else FLOW_TEASER, pace=pace, voice=voice_line(stream, lang),
-                                extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "") + motion_styles.prompt(row))
+                                extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "") + motion_styles.prompt(row)
+                                + "\n" + antislop.PROMPT_FILM)
 
 
 def words_on_screen(sc: dict[str, Any]) -> int:
@@ -249,7 +262,7 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
     if len(scenes) < count:
         raise RuntimeError(f"the writer planned {len(scenes)} scenes instead of {count}")
     lang = language_of(row)
-    speak_as = malaysian if lang in {"bm", "both"} else (lambda text: text)
+    speak_as = (lambda text: antislop.clean(malaysian(text))) if lang in {"bm", "both"} else antislop.clean
     recipe_plan = motion_styles.complete_plan(row)
     clean = []
     for i, sc in enumerate(scenes[:count]):

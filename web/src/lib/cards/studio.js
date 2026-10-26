@@ -799,7 +799,7 @@ async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   /* Reserve room for the source line drawn just below this check -- it is pinned to the
      card's own bottom margin regardless of how far the content above it flowed, so a
      bubble or panel that merely cleared the canvas could still run into it unseen. */
-  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card — shorten a line.");
+  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
   /* The measuring pass wants the layout, not a picture: it is handed no canvas and returns
      only where the content ended, which is what centreShift needs. */
   return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.88), warn, y } : { warn, y };
@@ -1218,7 +1218,7 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   }
 
   gSourceLine(ctx, W, H, M, u, spec.chip_label || (spec.footnote ? "Sumber" : ""), spec.footnote || "", false);
-  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card — shorten a line.");
+  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
   return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y } : { warn, y };
 }
 
@@ -1252,7 +1252,7 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   const t = spec.template, u = W / 1080, M = Math.round(74 * u), maxW = W - M * 2;
   const items = (spec.items || []).filter(x => String(x || "").trim());
   const bg = spec.bg ? await loadImg(spec.bg) : null;
-  if (!bg) warn.push("This design is built on a picture and none is chosen — pick one under Background.");
+  if (!bg) warn.push("This design is built on a picture and none is chosen: pick one under Background.");
   const TS = textScale(spec);              // SEMASA: the person's own text size for this slide (100% = the template's)
   const HEAD_PX = Math.round(72 * u * TS), HEAD_LH = Math.round(84 * u * TS);
   const LEAD_PX = Math.round(32 * u * TS), LEAD_LH = Math.round(45 * u * TS);
@@ -1318,7 +1318,7 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   /* Always over a photograph here, so the mark is always knocked out. */
   await drawBrandMark(ctx, spec, W, u, M, { top: 56, h: 34, knockout: true, textFill: "rgba(255,255,255,.88)" });
   gSourceLine(ctx, W, H, M, u, spec.chip_label || (spec.footnote ? "Sumber" : ""), spec.footnote || "", t !== "p_fact");
-  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card — shorten a line.");
+  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
   return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y } : { warn, y };
 }
 /* ======================= COPIED FROM STUDIO (end) ========================= */
@@ -1450,7 +1450,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
   let bg = null;
   if (fam === "p") {
     bg = spec.bg ? await loadImg(spec.bg) : null;
-    if (!bg) warn.push("This design is built on a picture and none is chosen — pick one under Background.");
+    if (!bg) warn.push("This design is built on a picture and none is chosen: pick one under Background.");
     dark = true; ink = "#FFFFFF"; muted = "rgba(255,255,255,.78)";
   } else if (fam === "g") {
     dark = inkWhite(spec);
@@ -1678,7 +1678,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
       const pitch = Math.min(Math.round(112 * u), Math.floor(room / speakers.length));
       const d = Math.round(pitch * 0.84), namePx = Math.min(Math.round(27 * u * TS), Math.round(pitch * 0.3)), whPx = Math.round(namePx * 0.96);
       const tx = M + d + Math.round(26 * u), tw = colR - tx - Math.round(30 * u);
-      if (pitch < Math.round(66 * u)) warn.push("The speakers are fuller than the card — fewer speakers or a taller card.");
+      if (pitch < Math.round(66 * u)) warn.push("The speakers are fuller than the card: use fewer speakers or a taller card.");
       const y0 = foot - pitch * speakers.length;
       speakers.forEach((sp, i) => {
         const ry = y0 + i * pitch, cy = ry + d / 2;
@@ -1704,7 +1704,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
         ctx.fillStyle = ink; nl.forEach((l) => { ctx.fillText(l, tx, ty); ty += lhN; });
         if (sp.where) { ctx.font = "400 " + whPx + "px " + G_BODY; ctx.fillStyle = ink; ctx.fillText(stripEmph(sp.where).toUpperCase(), tx, ty + Math.round(4 * u)); }
       });
-      if (y0 < topEnd + Math.round(20 * u)) warn.push("The slide is fuller than the card — shorten the headline or the topic.");
+      if (y0 < topEnd + Math.round(20 * u)) warn.push("The slide is fuller than the card: shorten the headline or the topic.");
     }
     if (dt.day || dt.lines.length || spec.chip_label) {
       const w = W - M - colR;
@@ -1724,7 +1724,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
       ctx.font = "700 " + dPx + "px " + G_HEAD; ctx.fillStyle = ink; ctx.textBaseline = "top";
       for (const l of dt.lines) for (const piece of gWrap(ctx, stripEmph(l).toUpperCase(), w)) { ctx.fillText(piece, colR, dy); dy += Math.round(dPx * 1.35); }
       if (spec.chip_label) { ctx.font = "600 " + Math.round(dPx * 0.92) + "px " + G_HEAD; ctx.fillStyle = muted; ctx.fillText(stripEmph(spec.chip_label).toUpperCase(), colR, dy + Math.round(dPx * 0.5)); }
-      if (dy - 0 < topEnd) warn.push("The slide is fuller than the card — shorten the headline or the topic.");
+      if (dy - 0 < topEnd) warn.push("The slide is fuller than the card: shorten the headline or the topic.");
     }
     y = warn.length ? H : Math.min(topEnd, H - Math.round(160 * u));
   } else if (t === "e_stat") {
@@ -1802,7 +1802,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
 
   if (fam !== "e") await drawBrandMark(ctx, spec, W, u, M, { top: 56, h: 34, knockout: dark, textFill: dark ? "rgba(255,255,255,.62)" : "rgba(21,23,27,.5)" });
   gSourceLine(ctx, W, H, M, u, t === "e_event" ? (spec.footnote ? "Sumber" : "") : (spec.chip_label || (spec.footnote ? "Sumber" : "")), spec.footnote || "", fam === "e" ? inkWhite(spec) : dark || t === "p_split");
-  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card — shorten a line.");
+  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
   return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y } : { warn, y };
 }
 

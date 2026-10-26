@@ -42,7 +42,7 @@ export const BUCKETS = { reference: "semasa-reference", generated: "semasa-gener
 /** Surface a PostgREST/Storage error as one readable line. */
 export function errText(error) {
   if (!error) return "";
-  const text = [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+  const text = [error.message, error.details, error.hint].filter(Boolean).join(". ");
   // an upstream outage (Cloudflare/Supabase 5xx) comes back as a whole HTML error page: say it in one line, never print the page
   if (isOutage(error)) {
     return tr("Pelayan Supabase tidak menjawab seketika (ralat 5xx). Cuba lagi sebentar; fail anda tidak hilang.",

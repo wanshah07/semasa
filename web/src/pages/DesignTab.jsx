@@ -302,7 +302,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t("Reka bentuk", "Design")}</p>
+        <p className="text-[13px] font-semibold text-accent">{t("Reka bentuk", "Design")}</p>
         <h1 className="mt-2 text-4xl leading-tight">{t("Poster, kad dan carousel untuk post.", "Posters, cards and carousels for posts.")}</h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
           {t("Beri idea atau prompt dan Semasa tulis perkataannya, atau tulis sendiri. Pilih latar: kertas jenama, gambar anda, "
@@ -530,7 +530,7 @@ function SlideRows({ rows, setRows, design }) {
       {rows.map((r, i) => (
         <div key={i} className="rounded-tile bg-surface-2/60 p-3">
           <div className="mb-1.5 flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-accent">
+            <span className="text-[13px] font-semibold text-accent">
               {many ? (i === 0 ? t("Kulit", "Cover") : t("Slaid {n}", "Slide {n}", { n: i + 1 })) : t("Tajuk dan poin", "Headline and points")}</span>
             {many && rows.length > 1 && (
               <button type="button" aria-label={t("Buang slaid", "Remove slide")} onClick={() => setRows(rows.filter((_, j) => j !== i))}

@@ -31,7 +31,7 @@ function Preview({ doc, t }) {
       <p className="font-display text-lg leading-snug">{doc.title}</p>
       {doc.sections.map((s) => (
         <div key={s.key}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">{s.heading}</p>
+          <p className="text-xs font-semibold text-muted">{s.heading}</p>
           {s.kind === "table" ? (
             <div className="mt-1 overflow-x-auto"><table className="w-full border-collapse text-xs">
               <thead><tr>{s.columns.map((c) => <th key={c} className="border border-line bg-surface-2 px-2 py-1 text-left">{c}</th>)}</tr></thead>
@@ -42,7 +42,7 @@ function Preview({ doc, t }) {
         </div>
       ))}
       {[[doc.generic.to_confirm, doc.to_confirm], [doc.generic.conflicts, doc.conflicts], [doc.generic.source_check, doc.source_check?.length ? [doc.source_check.join(", ")] : []], [doc.generic.flags, doc.flags]].map(([h, list]) => list?.length > 0 && (
-        <div key={h}><p className="text-xs font-semibold uppercase tracking-wide text-muted">{h}</p><ul className="mt-1 list-disc space-y-0.5 pl-5">{list.map((b, i) => <li key={i}>{marked(b)}</li>)}</ul></div>
+        <div key={h}><p className="text-xs font-semibold text-muted">{h}</p><ul className="mt-1 list-disc space-y-0.5 pl-5">{list.map((b, i) => <li key={i}>{marked(b)}</li>)}</ul></div>
       ))}
       <p className="text-[11px] text-muted">{doc.disclaimer}</p>
     </div>
@@ -81,7 +81,7 @@ export default function DocumentsPanel({ onToast }) {
   if (!docs.rows.length) return null;
   return (
     <Card className="mb-6 p-4">
-      <p className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-muted"><FileText size={13} /> {t("Dokumen", "Documents")} · {docs.rows.length}</p>
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted"><FileText size={13} /> {t("Dokumen", "Documents")} · {docs.rows.length}</p>
       <ul className="divide-y divide-line/60">
         {docs.rows.map((r) => {
           const langs = docLangs(r);

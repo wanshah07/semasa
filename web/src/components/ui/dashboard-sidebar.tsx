@@ -376,7 +376,7 @@ export function SidebarNav({
           <div key={idx} className="flex flex-col gap-0.5">
             {group.heading && collapsed && idx > 0 && <div aria-hidden="true" className="mx-auto mb-1 h-px w-6 bg-border" />}
             {group.heading && !collapsed && (
-              <span className="px-2.5 mb-1 text-[11px] font-semibold tracking-wider text-muted-foreground/50 uppercase">
+              <span className="px-2.5 mb-1 text-xs font-semibold text-muted-foreground/50">
                 {group.heading}
               </span>
             )}

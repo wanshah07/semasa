@@ -42,7 +42,7 @@ export function TableFrame({ children, label }) {
 export const THEAD = "hidden md:table-header-group";
 export const TBODY = "block md:table-row-group";
 export const TR = "block border-b border-line/60 px-2 py-2 last:border-b-0 md:table-row md:p-0";
-export const TH = "border-b border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted";
+export const TH = "border-b border-line px-3 py-2 text-xs font-semibold text-muted";
 export const TD = "block min-w-0 px-2 py-1 md:table-cell md:border-b md:border-line/60 md:px-3 md:py-2 md:align-top "
-  + "max-md:before:mb-0.5 max-md:before:block max-md:before:text-[10px] max-md:before:font-semibold max-md:before:uppercase "
-  + "max-md:before:tracking-wide max-md:before:text-muted max-md:before:content-[attr(data-label)]";
+  + "max-md:before:mb-0.5 max-md:before:block max-md:before:text-[11px] max-md:before:font-semibold "
+  + "max-md:before:text-muted max-md:before:content-[attr(data-label)]";

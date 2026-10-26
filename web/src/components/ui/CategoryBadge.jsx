@@ -8,7 +8,7 @@ export default function CategoryBadge({ category, active = false, onClick, size 
   return (
     <Tag
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-pill font-semibold tracking-wide uppercase transition ${pad}`}
+      className={`inline-flex items-center gap-1.5 rounded-pill font-semibold transition ${pad}`}
       style={{
         color: active ? `rgb(var(--c-accent-ink))` : `rgb(${c})`,
         background: active ? `rgb(${c})` : `rgb(${c} / 0.12)`,

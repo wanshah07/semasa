@@ -97,7 +97,7 @@ export default function RepoTab({ settings, save, onToast, user }) {
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {tiles.map((s) => (
           <Card key={s.label} className="p-4">
-            <div className="flex items-center justify-between"><span className="text-[11px] uppercase tracking-widest text-muted">{s.label}</span><s.icon size={16} className={s.cls || "text-muted"} /></div>
+            <div className="flex items-center justify-between"><span className="text-xs font-medium text-muted">{s.label}</span><s.icon size={16} className={s.cls || "text-muted"} /></div>
             <p className="mt-2 font-display text-2xl tabular-nums">{s.value}</p>
             <p className="mt-0.5 text-xs text-muted">{s.hint}</p>
           </Card>
@@ -136,7 +136,7 @@ export default function RepoTab({ settings, save, onToast, user }) {
                   return (
                     <button key={d} type="button" onClick={() => setOpen(isOpen ? null : r.full_name)} title={dim.detail || ""}
                       className={`rounded-tile p-2 text-left ${STATE_CLS[dim.state] || STATE_CLS.none}`}>
-                      <p className="flex items-center gap-1 text-[10px] uppercase tracking-widest opacity-80"><Icon size={11} /> {DIM_WORDS[d][L]}</p>
+                      <p className="flex items-center gap-1 text-[11px] font-medium opacity-80"><Icon size={11} /> {DIM_WORDS[d][L]}</p>
                       <p className="mt-0.5 truncate text-sm font-medium">{dim.label}</p>
                     </button>
                   );
@@ -157,7 +157,7 @@ export default function RepoTab({ settings, save, onToast, user }) {
           <h2 className="mb-2 flex items-center gap-2 text-sm font-medium"><CalendarClock size={14} className="text-accent" /> {t("Semua jadual (cron) di pejabat", "Every schedule (cron) in the office")}</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-[11px] uppercase tracking-widest text-muted"><th className="py-1 pr-3">Repo</th><th className="py-1 pr-3">{t("Aliran kerja", "Workflow")}</th><th className="py-1 pr-3">Cron (UTC)</th><th className="py-1 pr-3">{t("Larian terakhir", "Last run")}</th><th className="py-1"></th></tr></thead>
+              <thead><tr className="text-left text-xs font-medium text-muted"><th className="py-1 pr-3">Repo</th><th className="py-1 pr-3">{t("Aliran kerja", "Workflow")}</th><th className="py-1 pr-3">Cron (UTC)</th><th className="py-1 pr-3">{t("Larian terakhir", "Last run")}</th><th className="py-1"></th></tr></thead>
               <tbody>
                 {sched.map((s) => (
                   <tr key={`${s.full_name}/${s.name}`} className="border-t border-line/60">
@@ -197,7 +197,7 @@ function Ring({ value, label, tone = "ok" }) {
         <circle cx="21" cy="21" r={r} fill="none" stroke={colour} strokeWidth="4" strokeLinecap="round" strokeDasharray={`${(v / 100) * c} ${c}`} transform="rotate(-90 21 21)" />
         <text x="21" y="24" textAnchor="middle" fontSize="10" fill="currentColor">{v}</text>
       </svg>
-      <span className="text-[10px] uppercase tracking-widest text-muted">{label}</span>
+      <span className="text-[11px] font-medium text-muted">{label}</span>
     </div>
   );
 }
@@ -206,21 +206,21 @@ function Details({ r, t }) {
   return (
     <div className="mt-3 grid gap-3 border-t border-line/60 pt-3 text-sm md:grid-cols-3">
       <div>
-        <p className="mb-1 text-[11px] uppercase tracking-widest text-muted">{t("Pull request terbuka", "Open pull requests")}</p>
+        <p className="mb-1 text-xs font-medium text-muted">{t("Pull request terbuka", "Open pull requests")}</p>
         {(r.open_prs || []).length ? (r.open_prs || []).map((p) => (
           <p key={p.number} className="truncate"><a href={p.url} target="_blank" rel="noreferrer" className="hover:underline">#{p.number} {p.title}</a>
             <span className={`ml-1 rounded-pill px-1.5 text-[10px] ${STATE_CLS[p.ci === "green" ? "ok" : p.ci === "red" ? "bad" : p.ci === "running" ? "warn" : "none"]}`}>{p.draft ? "draft · " : ""}{p.ci || t("Tiada", "None")}</span></p>
         )) : <p className="text-muted">{t("tiada", "none")}</p>}
       </div>
       <div>
-        <p className="mb-1 text-[11px] uppercase tracking-widest text-muted">{t("Aliran kerja", "Workflows")}</p>
+        <p className="mb-1 text-xs font-medium text-muted">{t("Aliran kerja", "Workflows")}</p>
         {(r.workflows || []).length ? (r.workflows || []).map((w) => (
           <p key={w.path} className="truncate">{w.last?.url ? <a href={w.last.url} target="_blank" rel="noreferrer" className="hover:underline">{w.name}</a> : w.name}
             <span className="ml-1 text-xs text-muted">{w.cron ? `⏱ ${w.cron} · ` : ""}{w.last?.conclusion || w.last?.status || t("Tiada", "None")}</span></p>
         )) : <p className="text-muted">{t("tiada", "none")}</p>}
       </div>
       <div>
-        <p className="mb-1 text-[11px] uppercase tracking-widest text-muted">{t("Isu terbuka", "Open issues")}</p>
+        <p className="mb-1 text-xs font-medium text-muted">{t("Isu terbuka", "Open issues")}</p>
         {(r.issues || []).length ? (r.issues || []).map((i) => (
           <p key={i.number} className="truncate"><a href={i.url} target="_blank" rel="noreferrer" className="hover:underline">#{i.number} {i.title}</a></p>
         )) : <p className="text-muted">{t("tiada", "none")}</p>}

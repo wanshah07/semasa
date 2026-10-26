@@ -71,7 +71,7 @@ export default function CanvasTab({ user, onToast, seed, clearSeed }) {
   }
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t("Kanvas · penyunting reka bentuk", "Kanvas · design editor")}</p>
+      <p className="text-[13px] font-semibold text-accent">{t("Kanvas · penyunting reka bentuk", "Kanvas · design editor")}</p>
       <h1 className="mt-2 text-4xl leading-tight">{t("Reka seperti Canva, di dalam Semasa.", "Design like Canva, inside Semasa.")}</h1>
       <p className="mt-3 max-w-2xl text-sm text-muted">
         {t("Pilih saiz, tambah teks, bentuk dan gambar, seret, ubah saiz dan warna, kemudian simpan atau muat turun PNG. Reka bentuk Wangian boleh dibuka di sini dengan setiap lapisan boleh diubah.",

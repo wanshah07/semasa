@@ -123,7 +123,7 @@ function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, s
           <div className="mx-auto max-w-page px-4 pb-8 pt-12 sm:px-6 sm:pt-16">
             <motion.div variants={fadeUp} initial="hidden" animate="show">
               {segTabs}
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{eyebrow}</p>
+              <p className="text-[13px] font-semibold text-accent">{eyebrow}</p>
               <h1 className="mt-2 max-w-3xl text-4xl leading-[1.05] sm:text-5xl">{headline}</h1>
               <p className="mt-4 max-w-2xl text-sm text-muted sm:text-base">{blurb}</p>
             </motion.div>
@@ -171,7 +171,7 @@ function IsuHeadlines({ trends, onToast, onIdea, onFaq, segTabs }) {
         <div className="mx-auto max-w-page px-4 pb-8 pt-12 sm:px-6 sm:pt-16">
           <motion.div variants={fadeUp} initial="hidden" animate="show">
             {segTabs}
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t("Isu semasa Malaysia", "Current issues in Malaysia")}</p>
+            <p className="text-[13px] font-semibold text-accent">{t("Isu semasa Malaysia", "Current issues in Malaysia")}</p>
             <h1 className="mt-2 max-w-3xl text-4xl leading-[1.05] sm:text-5xl">
               {t("Apa yang orang Malaysia baca dan cari, sekarang.", "What Malaysians are reading and searching for, right now.")}
             </h1>
@@ -232,7 +232,7 @@ function MediaTab({ user, gens, prompts, posts, onToast }) {
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t("Aliran B · makmal media", "Flow B · media lab")}</p>
+        <p className="text-[13px] font-semibold text-accent">{t("Aliran B · makmal media", "Flow B · media lab")}</p>
         <h1 className="mt-2 text-4xl leading-tight">
           {t("Prompt atau rujukan masuk, imej atau video keluar.", "A prompt or a reference goes in, an image or a video comes out.")}
         </h1>

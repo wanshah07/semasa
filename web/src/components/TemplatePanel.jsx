@@ -100,7 +100,7 @@ export default function TemplatePanel({ templates, onAdd, onUse, onToast }) {
   return (
     <Card className="mb-6 p-4">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-muted"><LayoutTemplate size={13} /> {t("Templat dokumen", "Document templates")} · {templates.rows.length}</p>
+        <p className="flex items-center gap-1.5 text-xs font-medium text-muted"><LayoutTemplate size={13} /> {t("Templat dokumen", "Document templates")} · {templates.rows.length}</p>
         <Button size="sm" variant="soft" className="ml-auto" onClick={onAdd}><FilePlus2 size={13} /> {t("Tambah rujukan", "Add a reference")}</Button>
       </div>
       {missing && <p className="mb-2 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual templat belum ada: jalankan supabase/038_doc_templates.sql sekali (selepas 037).", "The templates table is not there yet: run supabase/038_doc_templates.sql once (after 037).")}</p>}

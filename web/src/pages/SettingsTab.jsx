@@ -62,7 +62,7 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
   return (
     <main className="mx-auto max-w-page space-y-5 px-4 pb-20 pt-10 sm:px-6">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t("Tetapan", "Settings")}</p>
+        <p className="text-[13px] font-semibold text-accent">{t("Tetapan", "Settings")}</p>
         <h1 className="mt-2 text-4xl leading-tight">{t("Slot dan giliran mingguan.", "Slots and the weekly rota.")}</h1>
       </div>
 

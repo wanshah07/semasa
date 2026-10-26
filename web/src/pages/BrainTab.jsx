@@ -192,7 +192,7 @@ export default function BrainTab({ user, settings, save, onToast }) {
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {tiles.map((s) => (
           <Card key={s.label} className={`p-4 ${s.tone === "danger" ? "border-danger/40" : s.tone === "warn" ? "border-warn/40" : ""}`}>
-            <div className="flex items-center justify-between"><span className="text-[11px] uppercase tracking-widest text-muted">{s.label}</span><s.icon size={16} className="text-muted" /></div>
+            <div className="flex items-center justify-between"><span className="text-xs font-medium text-muted">{s.label}</span><s.icon size={16} className="text-muted" /></div>
             <p className={`mt-2 font-display text-2xl tabular-nums ${s.tone === "danger" ? "text-danger" : ""}`}>{s.value}</p>
             <p className="mt-0.5 text-xs text-muted">{s.hint}</p>
           </Card>
@@ -224,12 +224,12 @@ export default function BrainTab({ user, settings, save, onToast }) {
       {/* the inbox: what is being read and what could not be */}
       {inbox.length > 0 && (
         <Card className="mb-6 p-4">
-          <p className="mb-2 text-[11px] uppercase tracking-widest text-muted">{t("Peti masuk", "Inbox")}</p>
+          <p className="mb-2 text-xs font-medium text-muted">{t("Peti masuk", "Inbox")}</p>
           <ul className="divide-y divide-line/60">
             {inbox.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
                 <span className={`rounded-pill px-2 py-0.5 text-[11px] ${STATUS_TONE[r.status] || ""}`}>{w(STATUS_WORDS, r.status)}</span>
-                <span className="text-[11px] uppercase tracking-wide text-muted">{w(SOURCE_WORDS, r.source_kind)}</span>
+                <span className="text-xs font-medium text-muted">{w(SOURCE_WORDS, r.source_kind)}</span>
                 <span className="min-w-0 flex-1 truncate">{inboxLabel(r) || t("Tiada", "None")}{r.url && isWalled(r.url) ? <span className="ml-1 text-[11px] text-warn">{t("(perlu log masuk)", "(needs a login)")}</span> : null}</span>
                 {r.status === "done" && <span className="text-xs text-muted">{t("{n} entri", "{n} entries", { n: r.entries })}{r.model ? ` · ${r.model}` : ""}</span>}
                 <span className="text-xs text-muted">{timeAgo(r.updated_at || r.created_at)}</span>

@@ -64,7 +64,7 @@ export default function VideoTab({ user, gens, brand, onToast, openPost }) {
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Video</p>
+        <p className="text-[13px] font-semibold text-accent">Video</p>
         <h1 className="mt-2 text-4xl leading-tight">{t("Video panjang jadi klip pendek.", "A long video becomes short clips.")}</h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
           {t("Tampal pautan YouTube (cth: ceramah agama). Semasa baca transkrip dan cadang 3 hingga 6 klip pendek. Anda sahkan hak guna video, "

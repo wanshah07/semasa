@@ -88,7 +88,7 @@ export function pdfHtml(rows, { label, lang = "bm", website = "", cats = [] }) {
 @page { size: A4; margin: 18mm 16mm 20mm; }
 body { font: 10.5pt/1.5 Inter, system-ui, sans-serif; color: #1c1917; margin: 0; }
 header { border-bottom: 2px solid #b0792a; padding-bottom: 8pt; margin-bottom: 14pt; }
-.eyebrow { color: #b0792a; font: 600 8pt Inter; letter-spacing: .18em; text-transform: uppercase; margin: 0; }
+.eyebrow { color: #b0792a; font: 600 9pt Inter; margin: 0; }
 h1 { font: 600 22pt/1.15 Fraunces, Georgia, serif; margin: 4pt 0 0; }
 .meta { color: #78716c; font-size: 8.5pt; margin: 4pt 0 0; }
 h2 { font: 600 13pt Fraunces, Georgia, serif; color: #b0792a; margin: 16pt 0 6pt; break-after: avoid; }

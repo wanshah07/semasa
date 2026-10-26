@@ -64,7 +64,7 @@ export default function FragranceTab({ user, gens, onToast, onCanvas }) {
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t("Wangian · reka bentuk iklan", "Fragrance · ad designs")}</p>
+        <p className="text-[13px] font-semibold text-accent">{t("Wangian · reka bentuk iklan", "Fragrance · ad designs")}</p>
         <h1 className="mt-2 text-4xl leading-tight">{t("Reka bentuk baharu, dengan botol kita.", "New designs, with our bottle in them.")}</h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
           {t("Pilih wangian, cari tiga konsep (dari nota wangian, atau dari iklan rujukan yang anda muat naik), pilih satu. "

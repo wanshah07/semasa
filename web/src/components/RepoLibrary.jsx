@@ -105,7 +105,7 @@ export default function RepoLibrary({ settings, user, onToast }) {
 
       {groups.map((g) => (
         <div key={g.category} className="mb-6" data-repo-category={g.category}>
-          <h3 className="mb-2 text-[11px] uppercase tracking-widest text-muted">{w(CATEGORY_WORDS[g.category] || g.category)} · {g.rows.length}</h3>
+          <h3 className="mb-2 text-xs font-medium text-muted">{w(CATEGORY_WORDS[g.category] || g.category)} · {g.rows.length}</h3>
           <div className="grid gap-3 md:grid-cols-2 [&>*]:min-w-0">
             {g.rows.map((r) => {
               const S = SAFETY_ICON[r.safety] || ShieldCheck;

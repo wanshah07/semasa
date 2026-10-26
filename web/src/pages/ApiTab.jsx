@@ -97,7 +97,7 @@ export default function ApiTab({ settings, save, onToast }) {
               )}
               {r.error && <p className="mt-2 rounded-tile bg-danger/10 p-2 text-xs text-danger">{r.error}</p>}
               <div className="mt-3">
-                <p className="mb-1 text-[11px] uppercase tracking-widest text-muted">{t("Model disenaraikan", "Models listed")} · {models.length}</p>
+                <p className="mb-1 text-xs font-medium text-muted">{t("Model disenaraikan", "Models listed")} · {models.length}</p>
                 {models.length ? (
                   <div className="flex flex-wrap gap-1">
                     {shown.map((m) => <span key={m} className={`rounded-pill px-2 py-0.5 text-[11px] ${m === r.model ? "bg-accent/15 text-accent" : u.models[m] ? "bg-ok/10 text-ok" : "bg-surface-2 text-muted"}`} title={u.models[m] ? `${fmtTokens(u.models[m])} tokens` : ""}>{m}</span>)}
@@ -148,7 +148,7 @@ export default function ApiTab({ settings, save, onToast }) {
 function Stat({ label, value, hint, warn }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-widest text-muted">{label}</p>
+      <p className="text-[11px] font-medium text-muted">{label}</p>
       <p className="truncate font-medium tabular-nums" title={String(value)}>{value}</p>
       {hint && <p className={`text-[11px] ${warn ? "text-danger" : "text-muted"}`}>{hint}</p>}
     </div>

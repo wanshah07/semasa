@@ -81,7 +81,7 @@ export default function PrestasiTab({ posts, go }) {
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {tiles.map((s) => (
           <Card key={s.label} className="p-4">
-            <div className="flex items-center justify-between"><span className="text-[11px] uppercase tracking-widest text-muted">{s.label}</span><s.icon size={16} className="text-muted" /></div>
+            <div className="flex items-center justify-between"><span className="text-xs font-medium text-muted">{s.label}</span><s.icon size={16} className="text-muted" /></div>
             <p className="mt-2 font-display text-2xl tabular-nums">{s.value}</p>
             <p className="mt-0.5 text-xs text-muted">{s.hint}</p>
           </Card>
@@ -161,7 +161,7 @@ export default function PrestasiTab({ posts, go }) {
                 <Stat label={t("Balasan", "Replies")} value={fmt(inspect.replies)} />
                 <Stat label={t("Penglibatan", "Engagement")} value={`${inspect.engagement}%`} />
               </div>
-              <p className="mt-3 text-[11px] uppercase tracking-widest text-muted">{t("{n} post", "{n} posts", { n: inspect.posts })}</p>
+              <p className="mt-3 text-xs font-medium text-muted">{t("{n} post", "{n} posts", { n: inspect.posts })}</p>
               <ol className="mt-1 flex flex-col gap-1">
                 {ranked(inspect.rows).slice(0, 6).map((r) => (
                   <li key={r.id} className="flex items-center justify-between gap-2 text-xs">
@@ -191,7 +191,7 @@ export default function PrestasiTab({ posts, go }) {
 
       <Card className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="text-left text-[11px] uppercase tracking-widest text-muted">
+          <thead className="text-left text-xs font-medium text-muted">
             <tr>
               <th className="px-4 py-3">{t("Post", "Post")}</th>
               <th className="px-3 py-3">{t("Saluran", "Channel")}</th>
@@ -262,7 +262,7 @@ function RowCells({ dow, cells, picked, best, setPicked, label }) {
 function Stat({ label, value }) {
   return (
     <div className="rounded-tile bg-surface-2/60 p-2">
-      <p className="[overflow-wrap:anywhere] text-[10px] uppercase tracking-widest text-muted">{label}</p>
+      <p className="[overflow-wrap:anywhere] text-[11px] font-medium text-muted">{label}</p>
       <p className="font-display text-lg tabular-nums">{value}</p>
     </div>
   );

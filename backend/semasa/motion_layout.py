@@ -423,7 +423,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                      and longest * MIN_PX * scale * BODY * 1.05 <= card_w)
             consumed = not side and not cards and not pct_rows and not events
             flow = consumed and "B04" in eff and role == "solution" and len(lines_now) >= 2
-            steps = consumed and not flow and bool(lines_now) and ("B04" in eff or len(lines_now) >= 2)
+            steps = consumed and not flow and len(lines_now) >= 2
             track = "V06" in eff and len(lines_now) >= 2 and not cards and not side
             if side or pct_rows or events:
                 rest = [ln for ln in lines_now if not (events and YEAR.search(ln))

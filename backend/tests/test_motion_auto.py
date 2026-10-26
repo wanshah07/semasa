@@ -658,3 +658,26 @@ def test_every_list_of_two_or_more_lines_is_numbered_like_attachment_two():
                                     plan={"scenes": {}, "video": {}}, palette=motion.PALETTE["regulab"],
                                     gsap=motion.GSAP, html_lang="ms", resolution="portrait")
     assert html.count('class="bd s1-bd"') == 2 and ">1</span>" in html and ">2</span>" in html
+
+
+def test_a_narration_that_is_only_a_connecting_sentence_gets_the_scene_s_own_words_added():
+    from test_motion import FakeLLM, Store, _row
+    row = _row(Store(), language="bm", voice="male")
+    plan = {"title": "t", "photo_query": "lab", "scenes": [
+        {"heading": "Ulasan PRISMA petakan enam kategori bahan.", "lines": ["Pengawet dan penapis UV."],
+         "narration": "Okay, sekarang kita tengok faktanya."},
+        {"heading": "Tiga perkara", "lines": ["satu"], "narration": "Hai. Tiga perkara tentang PFAS."},
+        {"heading": "Kenapa", "lines": [], "narration": "Ia kekal lama dalam alam."},
+        {"heading": "Semak label", "lines": [], "narration": "Semak label dahulu."}]}
+    got = motion.plan_scenes(FakeLLM([plan]), row, "", "", "")
+    first, second = got["scenes"][0]["narration"], got["scenes"][1]["narration"]
+    assert first.startswith("Okay, sekarang kita tengok faktanya.") and "Ulasan PRISMA petakan enam kategori bahan." in first
+    assert second == "Hai. Tiga perkara tentang PFAS.", "a narration that already says its heading is left alone"
+
+
+def test_the_hook_chip_matches_the_words_the_film_opens_with():
+    # the paper film (26 Oct 2026) opened 'Tahukah anda...' under an AMARAN chip because a later scene said 'amaran'
+    assert motion_auto.hook_of("amaran pada pembungkusan", "Tahukah anda satu bahan boleh tunjuk kesan?") == "know"
+    assert motion_auto.hook_of("", "Amaran: produk ini ditarik balik") == "warn"
+    assert motion_auto.hook_of("", "Berita terkini: garis panduan baharu") == "news"
+    assert motion_auto.hook_of("produk ditarik balik", "") == "warn"

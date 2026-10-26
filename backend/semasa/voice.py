@@ -1,9 +1,8 @@
 """A voice for the motion videos (Wan, 24 Oct 2026: "add mascot looks like talking, and make sure got voice or audio").
 
-Microsoft Edge's neural voices through `edge-tts`: free, no key, Malay (ms-MY Osman / Yasmin) and English (Andrew / Ava),
-and every word comes back with its time, which is what makes the mascot's mouth move on the words. It runs on the GitHub
-runner (speech.platform.bing.com); from a proxied session it may fail on TLS, so the worker treats a voice that cannot be
-made as "no voice" and still makes the film.
+Microsoft Edge's neural voices through `edge-tts`: free, no key, Malay (ms-MY Osman / Yasmin) and English (Wayne / Ava),
+Actual WordBoundary events are requested explicitly; absent alignment is reported as estimated phrase timing.
+A requested narration failure blocks the film rather than masquerading as silent-first. Provider fallback is disclosed.
 
 VoiceStudio KittenTTS is an optional English-only adapter to an already-installed local worker. It requires
 VOICESTUDIO_PYTHON and VOICESTUDIO_ROOT, cached model weights and VoiceStudio's services.tts_backend API.
@@ -21,19 +20,17 @@ from pathlib import Path
 from typing import Any
 
 from .log import get_logger
+from .video_format_policy import POLICY
 
 log = get_logger("semasa.voice")
 
 VOICES = {
-    "bm": {"male": "ms-MY-OsmanNeural", "female": "ms-MY-YasminNeural"},
-    "en": {"male": "en-US-AndrewMultilingualNeural", "female": "en-US-AvaMultilingualNeural"},
+    "bm": {"male": POLICY["voices"]["bm"]["id"], "female": "ms-MY-YasminNeural"},
+    "en": {"male": POLICY["voices"]["en"]["id"], "female": "en-US-AvaMultilingualNeural"},
 }
-# a narrated film is brisk (Wan, 25 Oct 2026: "for video with narrator make it faster rate"): English x1.15, Malay x1.25. The
-# speed is applied AFTER the recording, with ffmpeg's pitch-keeping atempo: on GitHub's runner the service answered "No audio
-# was received" for every request that carried a rate or a boundary setting (25 Oct 2026, three runs), while the plain call
-# that the first voiced films used (24 Oct) still works.
-TEMPO_EN = 1.15
-TEMPO_BM = 1.25
+# Latest approved stock samples supersede the older brisk rates: normal rate, unchanged pitch.
+TEMPO_EN = 1.0
+TEMPO_BM = 1.0
 
 
 def tempo_for(voice: str) -> float:
@@ -66,21 +63,18 @@ def spread(text: str, start: float, end: float) -> list[tuple[float, float, str]
 
 
 async def _synth(text: str, voice: str, out: Path) -> list[tuple[float, float, str]]:
-    """The plain call: no rate, no boundary setting. Word times from whatever boundary events the service sends."""
+    """Normal stock voice; only actual WordBoundary events qualify as word alignment."""
     import edge_tts
     words: list[tuple[float, float, str]] = []
     with out.open("wb") as f:
-        async for chunk in edge_tts.Communicate(text, voice).stream():
+        async for chunk in edge_tts.Communicate(text, voice, boundary="WordBoundary").stream():
             kind = chunk["type"]
             if kind == "audio":
                 f.write(chunk["data"])
-            elif kind in ("WordBoundary", "SentenceBoundary"):
+            elif kind == "WordBoundary":
                 start = chunk["offset"] / 10_000_000
                 end = start + chunk["duration"] / 10_000_000
-                if kind == "WordBoundary":
-                    words.append((round(start, 3), round(end, 3), str(chunk.get("text") or "")))
-                else:
-                    words.extend(spread(str(chunk.get("text") or ""), start, end))
+                words.append((round(start, 3), round(end, 3), str(chunk.get("text") or "")))
     return words
 
 
@@ -115,7 +109,9 @@ def fallback(text: str, voice: str, out: Path, runner: Any, edge_error: Exceptio
         fast.replace(out)
     if not out.exists() or out.stat().st_size < 1000:
         raise RuntimeError("no audio from Google either")
-    return {"duration": duration_of(out, runner), "words": [], "provider": "google"}
+    return {"duration": duration_of(out, runner), "words": [], "provider": "google",
+            "voice_id": "google-ms" if voice.startswith("ms-MY-") else "google-en",
+            "requested_voice": voice, "timing_source": "estimated-phrase"}
 
 
 def speak(text: str, voice: str, out: Path, runner: Any = subprocess.run) -> dict[str, Any]:
@@ -162,4 +158,6 @@ def speak(text: str, voice: str, out: Path, runner: Any = subprocess.run) -> dic
     if not out.exists() or out.stat().st_size < 1000:
         raise RuntimeError(f"no audio from {voice}")
     dur = duration_of(out, runner) or (words[-1][1] + 0.3 if words else 0.0)
-    return {"duration": dur, "words": [list(w) for w in words]}
+    return {"duration": dur, "words": [list(w) for w in words],
+            "provider": "kitten" if voice == "kitten" else "edge", "voice_id": voice,
+            "timing_source": "actual-word" if words else "estimated-phrase"}

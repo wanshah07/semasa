@@ -25,6 +25,7 @@ import html as html_mod
 import io
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -37,7 +38,19 @@ from typing import Any
 
 from PIL import Image
 
-from . import ai_config, api_status, db, fetch, motion_assets, motion_auto, motion_layout, motion_probe, motion_styles, unsplash
+from . import (
+    ai_config,
+    api_status,
+    db,
+    fetch,
+    motion_assets,
+    motion_auto,
+    motion_layout,
+    motion_probe,
+    motion_styles,
+    unsplash,
+    video_format_policy,
+)
 from . import voice as voice_mod
 from .llm import LLM
 from .repos import GitHub
@@ -159,7 +172,7 @@ VOICE: {voice}
 FLOW = ("Hook = one curiosity line that makes this reader stop; Fakta = the one thing that is true, from the brief; Kenapa = "
         "why it matters to this reader; Solusi = the one thing to do next. Connected, complete sentences, never isolated labels.")
 FLOW_TEASER = "ONE scene: a curiosity hook only."
-PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, about {words} words in all (about "
+PACE_VOICED = ("Narration is spoken {language}: plain, warm, moderate short sentences, about {words} words in all (about "
                f"{NARRATED_WPS} words a second), never reading the headings word for word, no URL, no handle, no hashtag; "
                "never invent a fee, date, number or clause the brief did not give. The on-screen lines are {lines}; "
                "each heading at most 8 words, at most 2 lines a scene.\nNARRATION LANGUAGE: {language}. Every spoken word of "
@@ -232,14 +245,15 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
             clean[0]["narration"] + " " + motion_styles.cta(row)).strip()
         return {**meta, "scenes": clean}
     clean.append({"id": "brand-outro", "kicker": "", "heading": motion_styles.cta(row), "lines": [],
-                  "narration": motion_styles.cta(row), **({"role": "Outro"} if recipe_plan else {})})
+                  "narration": "" if row.get("voice") == "off" else motion_styles.cta(row),
+                  **({"role": "Outro"} if recipe_plan else {})})
     return {**meta, "scenes": clean}
 
 
 def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folder: Path, *, speak: Any = None,
                  runner: Any = subprocess.run) -> tuple[list[dict[str, Any]], float, str]:
     """Record each scene's narration and fix the timeline to it: (scenes with start/duration/audio/words, total seconds,
-    note). With choice 'off', or when the voice cannot be made, the scenes are timed evenly and carry no audio."""
+    note). With choice 'off', scenes use reading dwell. Requested narration failure raises instead of silently muting."""
     if choice == "kitten" and language != "en":
         raise ValueError("VoiceStudio KittenTTS supports English only; pick English or an Edge voice")
     speak = speak or voice_mod.speak
@@ -253,16 +267,17 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
             rel = f"assets/voice-{i + 1}.mp3"
             try:
                 got = speak(sc["narration"], name, folder / rel, runner)
+                if not math.isfinite(float(got.get("duration") or 0)) or float(got.get("duration") or 0) <= 0:
+                    raise RuntimeError("requested narration returned no audio duration")
                 sc["audio"], sc["words"], sc["audio_s"] = rel, got["words"], got["duration"]
+                sc["voice_provider"] = got.get("provider", "unreported")
+                sc["voice_id"] = got.get("voice_id", name)
+                sc["timing_source"] = got.get("timing_source", "estimated-phrase")
                 if got.get("provider") == "google" and "Google" not in note:
                     note += " (Edge gave no audio, so Google's voice was used)"
                 dur = float(got["duration"]) + VOICE_PAD
-            except Exception as exc:  # noqa: BLE001 - a scene without its voice is still a scene
-                if choice == "kitten":
-                    raise RuntimeError(str(exc)) from exc
-                log.warning("voice not made for scene %d: %s", i + 1, str(exc)[:160])
-                note = f"voice failed ({str(exc)[:80]})"
-                name = ""
+            except Exception as exc:  # noqa: BLE001 - never ship failed narration as silent success
+                raise RuntimeError(f"voice failed for scene {i + 1}: {exc}") from exc
         sc["duration"] = round(max(SCENE_MIN, dur), 2) if dur else reading_seconds(sc)
         t += sc["duration"] + SCENE_GAP
     total = round(t - SCENE_GAP, 2)
@@ -357,19 +372,38 @@ def audio_layer(scenes: list[dict[str, Any]]) -> str:
                      for sc in scenes if sc.get("audio"))
 
 
-def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int, h: int) -> str:
+def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int, h: int,
+                  *, brand: dict[str, str] | None = None) -> str:
     """Put the voice clips and the closing logo page into the film, inside the root composition."""
     markup = audio_layer(scenes)
+    for sc in scenes:
+        if not sc.get('audio') or sc.get('id') == 'brand-outro':
+            continue
+        for i, (text, a, b) in enumerate(motion_layout.caption_chunks(sc)):
+            if b <= a:
+                continue
+            source = sc.get('timing_source') or 'estimated-phrase'
+            markup += (f'<div class="clip wan-caption" id="wan-caption-{sc["id"]}-{i}" '
+                       f'data-start="{a:g}" data-duration="{b-a:g}" data-timing-source="{source}" '
+                       f'style="position:absolute;left:8%;top:78%;width:78%;height:11.5%;z-index:80;'
+                       f'display:flex;align-items:center;justify-content:center;text-align:center;'
+                       f'font:500 {w * 52 / 1080:g}px/1.3 Inter,system-ui,sans-serif;color:#143e35;'
+                       f'background:transparent;overflow-wrap:anywhere;">{html_mod.escape(text)}</div>')
     m = re.search(r"<div\b[^>]*\bid=[\"']root[\"'][^>]*>", html)
     if not m:
         raise ValueError("the composition has no #root")
     if any(sc.get("id") == "brand-outro" for sc in scenes):
+        personal = (brand or {}).get("profile") == "linkedin-personal"
+        image = (brand or {}).get("avatar") if personal else "assets/official-logo-transparent.png"
+        if not image:
+            raise ValueError("Personal avatar unconfigured; never substitute the WS logo")
+        identity = ('<div style="color:#143e35;font-size:48px">Ts. ChM. Muhammad</div>' if personal else '')
         start = scenes[-1]["start"]
         ending_duration = scenes[-1]["duration"]
         markup += (f'<div class="clip" id="wan-brand-final" data-start="{start:g}" data-duration="{ending_duration:g}" '
                    f'style="position:absolute;inset:0;z-index:100;background:#e5f6ed;display:flex;flex-direction:column;'
                    f'align-items:center;justify-content:center;gap:{w * .04:g}px;">'
-                   f'<img src="assets/official-logo-transparent.png" alt="" style="width:64%;height:auto;object-fit:contain;">'
+                   f'<img src="{image}" alt="" style="width:64%;height:auto;object-fit:contain;">{identity}'
                    f'<div style="color:#143e35;font-family:Inter,system-ui,sans-serif;font-size:{w * .05:g}px;'
                    f'text-align:center;">{html_mod.escape(scenes[-1]["heading"])}</div></div>')
     out = html[:m.end()] + "\n" + markup + "\n" + html[m.end():]
@@ -459,7 +493,8 @@ def build_system(row: dict[str, Any], extra: str, background: str = "", seconds:
     return SYSTEM.format(lang=html_lang, resolution=res, w=w, h=h, gsap=GSAP,
                          seconds=(seconds if seconds else motion_styles.duration(row)),
                          source_clause=(f'; the source line "{row["source_line"]}" goes in small type on the last teaching scene'
-                                        if row.get("source_line") else ""),
+                                        if row.get("source_line") and (row.get('options') or {}).get(
+                                            'legally_required_attribution') is True else ""),
                          voice=voice_line(stream, language_of(row)),
                          language=language,
                          extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "")
@@ -640,6 +675,17 @@ def check(folder: Path, cli: str, runner: Any = subprocess.run, timeout: int = 3
     return {"ok": bool(data.get("ok")) and not errors, "errors": errors, "warnings": warnings[:20]}
 
 
+def make_preview(video: Path, runner: Any = subprocess.run) -> Path:
+    """Half-size preview retaining the actual mixed audio; default portrait 540×960."""
+    out = video.with_name('motion-preview.mp4')
+    result = runner(['ffmpeg', '-v', 'error', '-y', '-i', str(video), '-vf', 'scale=iw/2:ih/2',
+                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy',
+                     '-movflags', '+faststart', str(out)], capture_output=True, text=True, timeout=180)
+    if result.returncode != 0 or not out.is_file():
+        raise RuntimeError('Preview encode failed: ' + (result.stderr or 'no output')[-300:])
+    return out
+
+
 def render(folder: Path, cli: str, resolution: str, runner: Any = subprocess.run, timeout: int = 900) -> Path:
     out = folder / "renders" / "motion.mp4"
     p = runner([*_npx(cli), "render", ".", "--fps", "30", "--quality", "looks", "--resolution", resolution, "--quiet",
@@ -731,6 +777,10 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
     now = now or datetime.now(UTC)
     folder = (workdir or Path(tempfile.mkdtemp(prefix="motion-"))) / str(row["id"])[:8]
     try:
+        row = video_format_policy.normalize(row)
+        brand = video_format_policy.prepare_brand(store, row, folder)
+        if row['options']['mute_all']:
+            row = {**row, 'voice':'off'}
         motion_styles.validate_export(row)
         row = hydrate_evidence(store, row)
         asset_plan = motion_assets.prepare(
@@ -749,7 +799,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         lang = language_of(row)
         choice = str(row.get("voice") or "male")
         if choice == "kitten" and lang != "en":
-            choice = "female"
+            choice = "male"
         kitten_fallback = ""
         if choice == "kitten" and speak is None and not voice_mod.kitten_ready():
             # no VoiceStudio worker on this machine (GitHub's runner never has one): narrate with the Edge male voice and
@@ -757,6 +807,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             # A worker that IS configured and then fails still fails loudly, below.
             choice = "male"
             kitten_fallback = " (KittenTTS is not set up on this runner, so an Edge voice was used)"
+        scenes, total, voiced = [], 0.0, False
         for attempt in range(6):
             scenes, total, voice_note = voice_scenes([dict(sc) for sc in plan["scenes"]], lang, choice, folder,
                                                      speak=speak, runner=runner)
@@ -772,7 +823,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                 log.info("%s: the narration is too long for %gs; cut a sentence and recorded again", row["id"],
                          motion_styles.duration(row))
         voice_note += kitten_fallback
-        pace_note = ("narrated: brisk" if voiced else f"silent: paced for reading at {READ_WPS:g} words a second")
+        pace_note = ("narrated: normal rate, pitch unchanged" if voiced else
+                     f"silent: paced for reading at {READ_WPS:g} words a second")
         w, h = SIZES.get(row.get("resolution") or "portrait", SIZES["portrait"])
         photos, photo_note = fetch_photos(plan.get("photo_query") or "", folder, search=photo_search, get=photo_get)
         motion_auto.assign_photos(scenes, photos)
@@ -796,7 +848,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         if voiced:
             subs = [f"- {sc['id']}: " + " | ".join(f'"{text}" {a:g}-{b:g}s' for text, a, b in motion_layout.caption_chunks(sc))
                     for sc in scenes if sc.get("audio") and sc.get("id") != "brand-outro"]
-            fixed += ("\nSUBTITLES (the format of Wan's approved reference films): the narration as short transparent subtitles, "
+            fixed += ("\nWORKER-OWNED SUBTITLES: DO NOT author any subtitle or narration-copy elements. The worker injects "
+                      "these transparent captions after composition. Reserve their lane; these timings are not writer text. "
                       "centred, in a lane of their own from 78% to 89.5% of the frame height, 52px (1080-wide), no box, "
                       "capsule or scrim, each chunk visible exactly for its times. The scene's own content stops at 76% "
                       "of the frame height, so a subtitle never meets other text:\n"
@@ -818,7 +871,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                 json.dumps(recipe_plan, ensure_ascii=False)
 
         def composed(raw: str) -> str:
-            document = motion_assets.inject(inject_layers(raw, scenes, total, w, h), asset_plan, scenes, total,
+            document = motion_assets.inject(inject_layers(raw, scenes, total, w, h, brand=brand), asset_plan, scenes, total,
                                             design=motion_styles.design(row))
             # Composition resolves conditional native cues, including skipped/conflicting selections.
             (folder / "asset-plan.json").write_text(json.dumps(asset_plan, ensure_ascii=False, indent=2))
@@ -862,10 +915,13 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         if writer_error or motion_layout.layout_findings(report["errors"]):
             log.warning("%s: writer layout rejected (%s); using the safe layout", row["id"],
                         writer_error or [f.get("code") for f in report["errors"]][:4])
+            if motion_styles.design(row) == 'continuous-line':
+                raise ValueError('Continuous Line composition unavailable: retry with a valid persistent SVG world; '
+                                 'the editorial-card fallback would replace the approved design')
             page, layout = motion_layout.compose(scenes=scenes, total=total, w=w, h=h, lang=lang,
                                                  plan=auto or {"scenes": {}, "video": {}}, palette=PALETTE["regulab"],
                                                  gsap=GSAP, html_lang=LANGUAGE[lang][0],
-                                                 resolution=row.get("resolution") or "portrait")
+                                                 resolution=row.get("resolution") or "portrait", worker_captions=True)
             first = [f.get("code") for f in report["errors"]][:4]
             report = checked(page)
             html = page
@@ -889,6 +945,20 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             report["layout"] = layout
         report["photos"] = [{k: p[k] for k in ("id", "credit", "page", "alt")} for p in photos]
         report["pace"] = pace_note
+        report['video_policy'] = {**row['options'], 'voice':row['voice'], 'language':lang,
+                                  'seconds':total, 'brand':brand}
+        report['voice_scenes'] = [{k:sc.get(k) for k in
+                                  ('id','voice_provider','voice_id','timing_source','audio_s','words')}
+                                 for sc in scenes if sc.get('audio')]
+        evidence = row['options'].get('evidence') or {}
+        provenance = {'photos':report['photos'], 'stock_is_evidence':False,
+                      'photo_license':'Unsplash License; verify applicable attribution requirements',
+                      'evidence':{k:evidence[k] for k in
+                                  ('source_url','reference_urls','source_name','citations') if k in evidence}}
+        sidecar = json.dumps(provenance, ensure_ascii=False, indent=2).encode()
+        (folder / 'PROVENANCE.json').write_bytes(sidecar)
+        report['provenance_url'] = db.upload_generated(
+            store, f"motion/{row['id']}-provenance.json", sidecar, 'application/json')
         style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]
         video = render(folder, settings["cli"], row.get("resolution") or "portrait", runner)
         meta = probe(video, runner)
@@ -896,7 +966,11 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             raise ValueError("Rendered duration does not match selected duration; choose 30/60s or narrow the topic")
         solution = next((sc for sc in scenes if sc.get("role") == "solution"), None)
         drop = (max(0.0, float(solution["start"]) - 0.6), float(solution["start"])) if voiced and solution else None
-        video = mix_music(video, scenes, total, runner, drop)
+        if not row['options']['mute_all']:
+            video = mix_music(video, scenes, total, runner, drop)
+        preview = make_preview(video, runner)
+        preview_url = db.upload_generated(store, f"motion/{row['id']}-preview.mp4", preview.read_bytes(), "video/mp4")
+        report['preview'] = {'url':preview_url, 'width':w // 2, 'height':h // 2}
         data = video.read_bytes()
         path = f"motion/{row['id']}.mp4"
         url = db.upload_generated(store, path, data, "video/mp4")
@@ -907,12 +981,13 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         credits = "; ".join(dict.fromkeys(p["credit"] for p in photos))
         store.table(TABLE).update({
             "status": "done", "title": str(out.get("title") or "")[:160],
-            "html": (folder / 'index.html').read_text() if asset_plan['effects'] else html, "check_report": report,
+            "html": (folder / 'index.html').read_text(), "check_report": report,
             "video_path": path, "video_url": url, "poster_url": poster_url, "bytes": len(data),
             **meta,
             "model": getattr(llm, "last_model", "") or "", "error": "",
             "style_note": " · ".join(x for x in (style_line, bg_note, voice_note, pace_note, photo_note,
                                                f"photo credit: {credits}" if credits else "", layout_note,
+                                               "all audio muted" if row['options']['mute_all'] else
                                                "approved self-owned piano; faded/ducked; music x0.45, voice x0.9") if x),
             "script": [{k: sc.get(k) for k in (
                 "id", "role", "kicker", "heading", "lines", "narration", "start", "duration", "photo")}

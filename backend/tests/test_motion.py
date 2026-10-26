@@ -166,7 +166,7 @@ def test_process_writes_checks_renders_and_stores_the_video(tmp_path):
     assert got["video_url"] == f"https://cdn/motion/{r['id']}.mp4"
     assert got["poster_url"].endswith(".jpg") and got["width"] == 1080 and got["duration_s"] == 30.0 and got["model"] == "m1"
     assert ">Hai</h1>" in got["html"] and got["check_report"]["ok"] is True and got["bytes"] > 0
-    assert [sc["kicker"] for sc in got["script"]] == ["HOOK", "FAKTA", "KENAPA", "SOLUSI", ""], "the flow, labelled by the worker"
+    assert [sc["kicker"] for sc in got["script"]] == ["HOOK", "FACT", "WHY", "SOLUTION", ""], "the flow, labelled by the worker"
     assert "Guna font besar." in llm.asked[1][0] and "BRIEF: Tiga perkara" in llm.asked[1][1]
     assert "SCENES, FIXED" in llm.asked[1][1] and 'data-start="0"' in llm.asked[1][1], "the film is written to the recorded times"
     assert [c[3] if len(c) > 3 else c[0] for c in calls][:2] == ["check", "render"]
@@ -176,7 +176,7 @@ def test_process_writes_checks_renders_and_stores_the_video(tmp_path):
     assets = tmp_path / r["id"][:8] / "assets"
     assert (assets / "voice-2.mp3").exists() and not list(assets.glob("mascot-*"))
     assert got["script"][0]["narration"] == "Hai. Tiga perkara tentang PFAS." and got["script"][1]["start"] > 0
-    assert "voice: ms-MY-OsmanNeural" in got["style_note"]
+    assert "voice: en-SG-WayneNeural" in got["style_note"]
     assert store.bucket.files[f"motion/{r['id']}.mp4"][1] == "video/mp4"
 
 
@@ -348,8 +348,8 @@ def test_voice_scenes_times_the_film_to_the_recording_and_off_means_silence(tmp_
     # a voice that fails never stops the film
     def broken(text, voice, out, runner=None):
         raise RuntimeError("TLS")
-    quiet, _, n = motion.voice_scenes([dict(s) for s in scenes], "en", "male", tmp_path, speak=broken)
-    assert n.startswith("voice failed") and all(not s["audio"] for s in quiet)
+    with pytest.raises(RuntimeError, match="TLS"):
+        motion.voice_scenes([dict(s) for s in scenes], "en", "male", tmp_path, speak=broken)
 
 
 def test_the_voice_is_put_into_the_film_after_the_writer_and_no_presenter_is_ever_added():
@@ -379,5 +379,5 @@ def test_the_script_prompt_speaks_the_films_language_and_both_means_two_lines():
     assert "speaking Bahasa Malaysia" in bm and "speaking English" not in bm
     assert "speaking warm, plain English" in motion.build_system({"stream": "regulab", "seconds": 10, "language": "en"}, "")
     assert motion.voice_mod.voice_for("both", "female") == "ms-MY-YasminNeural"
-    assert motion.voice_mod.voice_for("en", "male") == "en-US-AndrewMultilingualNeural"
+    assert motion.voice_mod.voice_for("en", "male") == "en-SG-WayneNeural"
     assert motion.voice_mod.voice_for("en", "en-GB-RyanNeural") == "en-GB-RyanNeural"

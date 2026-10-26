@@ -15,7 +15,7 @@ assert.equal(row.mascot, '');
 assert.equal(row.options.style, 'bright-education');
 assert.equal(row.seconds, 30);
 assert.equal(row.language, 'en');
-assert.equal(row.voice, 'kitten');
+assert.equal(row.voice, 'male');
 assert.equal(catalog.length, 8);
 assert.equal(recipeOf('wrong').id, 'bright-education');
 assert.equal(recipeOf('saas-product-demo').id, 'bright-education');

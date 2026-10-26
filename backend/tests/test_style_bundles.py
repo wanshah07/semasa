@@ -42,7 +42,7 @@ def test_each_bundle_has_valid_effects_and_all_tracks(key):
         assert all(code in effects and not effects[code]["conflict"] for code in track["codes"])
     plan = styles.complete_plan(row)
     assert plan["design"] == "continuous-line" and plan["stages"][-1]["start"] == 57
-    assert plan["cta"] == "Jangan lupa follow kami untuk tips seterusnya"
+    assert plan["cta"] == "Jangan lupa follow kami untuk tips seterusnya."
     assert "one growing" in styles.prompt(row)
 
 
@@ -88,4 +88,4 @@ def test_teaser_plan_has_one_persistent_stage_not_four_pages():
     row = {"seconds": 10, "options": {"style": "styles-blueprint-explainer", "mode": "teaser"}}
     plan = styles.complete_plan(row)
     assert len(plan["stages"]) == 1 and plan["stages"][0]["end"] == 10
-    assert plan["cta"] == "Stay tuned. Follow us for more"
+    assert plan["cta"] == "Stay tuned. Follow us for more."

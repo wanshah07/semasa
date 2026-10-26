@@ -16,6 +16,8 @@ SUPPORTED = {"bright-education", "financial-education-reel"} | {
 }
 OUTRO_SECONDS = 3
 LOGO = RULES / "official-logo-transparent.png"
+# Wan's own icon: the closing card of a LinkedIn film (his byline), in place of the brand logo
+WAN_ICON = RULES / "wan-icon.png"
 DESIGNS = {
     "bright-editorial": "Design 1 — Original Bright Photo / Diagram / Editorial: preserve the approved v9–v15 family. "
                         "Bright mint/cream, editorial type, real licensed photos with provenance when provided, "
@@ -53,10 +55,11 @@ def design(row: dict[str, Any]) -> str:
 
 def cta(row: dict[str, Any]) -> str:
     if duration(row) == 10:
-        return "Stay tuned. Follow us for more"
+        who = "me for more info" if row.get("stream") == "linkedin" else "us for more"
+        return f"Stay tuned. Follow {who}"
     bm = row.get("language") in {"bm", "both"}
-    if row.get("stream") == "linkedin":
-        return "Ikuti saya untuk tip seterusnya" if bm else "Follow me for more"       # Wan's own byline, never "us"
+    if row.get("stream") == "linkedin":        # Wan's own byline, never "us" (Wan, 26 Oct 2026: "Follow me for more info")
+        return "Ikuti saya untuk maklumat lanjut" if bm else "Follow me for more info"
     return "Jangan lupa follow kami untuk tip seterusnya" if bm else "Follow us for more"
 
 

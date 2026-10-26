@@ -206,14 +206,21 @@ LINES_RULE = ("LINES: each on-screen line is ONE complete point of its own. Neve
               "('6 kategori', not 'enam kategori'): the film draws numbers large and counts them up.")
 NARRATION_RULE = ("NARRATION: every narration SAYS what its heading and lines show, in full. A connecting sentence comes in "
                   "addition to the content, never instead of it.")
+LAYMAN_RULE = ("SAY THE POINT (Wan, 26 Oct 2026: 'keluarkan isi penting bukan suruh user cari sendiri'): the film itself "
+               "delivers the important information. Every scene states the actual fact, number, name, limit or step from the "
+               "brief, in plain words a shopkeeper understands, and says what it means for them. NEVER send the viewer away to "
+               "find it: no 'check the guideline', 'refer to NPRA', 'visit the website', 'find out more', 'cari sendiri', "
+               "'semak sendiri', 'rujuk garis panduan', 'untuk maklumat lanjut'. Naming where a rule comes from is fine ('under "
+               "the 2026 directive'); replacing the rule with its name is not. Sound like a person talking to someone they want "
+               "to help: no stiff list-speak, no 'comprehensive overview', no jargon left unexplained.")
 CASUAL_RULE = ("TONE: casual, as a friend explaining to a friend, so the viewer UNDERSTANDS: short plain sentences, "
                "everyday words ('korang', 'jom', 'senang cerita', 'maksudnya'), and every technical term said once in "
                "simple words straight after it.")
 FLOW = ("Hook = one curiosity line that makes this reader stop; Fakta = the one thing that is true, from the brief; "
         "Kenapa = why it matters to this reader; Solusi = the one thing to do next. Connected, complete sentences, never "
-        "isolated labels.\n" + HOOK_RULE + "\n" + CONNECT_RULE + "\n" + LINES_RULE + "\n" + LIST_RULE + "\n" + NARRATION_RULE
-        + "\n" + MALAY_RULE)
-FLOW_TEASER = "ONE scene: a curiosity hook only.\n" + HOOK_RULE
+        "isolated labels.\n" + LAYMAN_RULE + "\n" + HOOK_RULE + "\n" + CONNECT_RULE + "\n" + LINES_RULE + "\n" + LIST_RULE
+        + "\n" + NARRATION_RULE + "\n" + MALAY_RULE)
+FLOW_TEASER = "ONE scene: a curiosity hook only.\n" + HOOK_RULE + "\n" + LAYMAN_RULE
 PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, at most {words} words in all and fewer "
                "when the information is simple (about "
                f"{NARRATED_WPS} words a second), saying each heading's fact and each line in plain spoken words (those words "
@@ -260,15 +267,27 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
     count = 1 if teaser else 4
     system = build_script_system(row, extra, count)
     user = build_user(row, src_title, src_text, style=style)
+    first: tuple[Any, list[Any]] | None = None
     for ask in range(2):
         out = llm.chat_json(system, user, max_tokens=SCRIPT_TOKENS)
         scenes = [sc for sc in ((out or {}).get("scenes") or [])
                   if isinstance(sc, dict) and (sc.get("heading") or sc.get("narration"))]
+        if (not isinstance(out, dict) or not scenes) and first:
+            out, scenes = first                  # the second ask gave nothing: the first plan stands
+            break
         if not isinstance(out, dict) or not scenes:
             raise RuntimeError("the writer gave no script")
-        if len(scenes) >= count or ask:
+        first = (out, scenes)
+        sends_away = [x for sc in scenes for x in (sc.get("narration"), sc.get("heading"), *(sc.get("lines") or []))
+                      if isinstance(x, str) and motion_captions.hand_off(x)]
+        if (len(scenes) >= count and not sends_away) or ask:
             break
-        user += f"\n\nYOUR LAST PLAN HAD {len(scenes)} SCENES. Plan exactly {count}, with the kickers given."
+        if len(scenes) < count:
+            user += f"\n\nYOUR LAST PLAN HAD {len(scenes)} SCENES. Plan exactly {count}, with the kickers given."
+        else:
+            user += ("\n\nYOUR LAST PLAN SENT THE VIEWER AWAY to look the information up instead of saying it. Write it again "
+                     "with the actual facts said in plain words. These were the offending words: "
+                     + " | ".join(s[:120] for s in sends_away[:4]))
     if len(scenes) < count:
         raise RuntimeError(f"the writer planned {len(scenes)} scenes instead of {count}")
     lang = language_of(row)
@@ -280,8 +299,8 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
                       "role": motion_auto.ROLES[i] if not teaser else "hook",
                       "heading": speak_as(motion_layout.plain(sc.get("heading"))[:160]),
                       "lines": [speak_as(motion_layout.plain(x)[:200]) for x in (sc.get("lines") or [])
-                                if motion_layout.plain(x)][:LINES_MAX],
-                      "narration": speak_as(motion_layout.plain(sc.get("narration"))[:600])})
+                                if motion_layout.plain(x) and not motion_captions.hand_off(motion_layout.plain(x))][:LINES_MAX],
+                      "narration": speak_as(motion_captions.without_hand_offs(motion_layout.plain(sc.get("narration")))[:600])})
     if recipe_plan:
         for sc, stage in zip(clean, recipe_plan["stages"], strict=False):
             sc["role"] = stage["role"]
@@ -570,21 +589,52 @@ def audio_layer(scenes: list[dict[str, Any]]) -> str:
                      for sc in scenes if sc.get("audio"))
 
 
-def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int, h: int) -> str:
+# the byline on a LinkedIn film's closing card, unless settings.brand.linkedin.name says otherwise
+LINKEDIN_NAME = "Ts. ChM Muhammad Ridzuan"
+
+
+def byline(store: Any) -> str:
+    """The name on the closing card of a LinkedIn film: Wan's own byline from the brand settings."""
+    try:
+        rows = store.table(db.SETTINGS).select("value").eq("key", "brand").execute().data or []
+        name = str((((rows[0].get("value") or {}).get("linkedin") or {}).get("name")) or "").strip() if rows else ""
+    except Exception:  # noqa: BLE001 - the card has a default
+        name = ""
+    return name or LINKEDIN_NAME
+
+
+def closing_card(scene: dict[str, Any], w: int, stream: str = "regulab", name: str = "") -> str:
+    """The closing page: the ws.regulab logo and the follow line, or on the LinkedIn stream Wan's own icon, his name and the
+    follow line (Wan, 26 Oct 2026: "for linkedn post replace CTA from WS Regulab logo to my icon, add Ts. ChM Muhammad and
+    Follow me for more info"). That stream carries no ws.regulab identity at all."""
+    cta = html_mod.escape(scene["heading"])
+    head = (f'<div class="clip" id="wan-brand-final" data-start="{scene["start"]:g}" data-duration="{scene["duration"]:g}" '
+            f'style="position:absolute;inset:0;z-index:100;')
+    if stream == "linkedin":
+        return (head + f'background:#f5f7fb;display:flex;flex-direction:column;align-items:center;justify-content:center;'
+                f'gap:{w * .03:g}px;">'
+                f'<img src="assets/{motion_styles.WAN_ICON.name}" alt="" style="width:50%;max-height:50%;height:auto;'
+                f'object-fit:contain;">'
+                f'<div style="color:#111827;font-family:Inter,system-ui,sans-serif;font-weight:700;font-size:{w * .05:g}px;'
+                f'text-align:center;">{html_mod.escape(name or LINKEDIN_NAME)}</div>'
+                f'<div style="color:#0f5d4a;font-family:Inter,system-ui,sans-serif;font-size:{w * .046:g}px;'
+                f'text-align:center;">{cta}</div></div>')
+    return (head + f'background:#e5f6ed;display:flex;flex-direction:column;'
+            f'align-items:center;justify-content:center;gap:{w * .04:g}px;">'
+            f'<img src="assets/official-logo-transparent.png" alt="" style="width:64%;height:auto;object-fit:contain;">'
+            f'<div style="color:#143e35;font-family:Inter,system-ui,sans-serif;font-size:{w * .05:g}px;'
+            f'text-align:center;">{cta}</div></div>')
+
+
+def inject_layers(html: str, scenes: list[dict[str, Any]], total: float, w: int, h: int, stream: str = "regulab",
+                  name: str = "") -> str:
     """Put the voice clips and the closing logo page into the film, inside the root composition."""
     markup = audio_layer(scenes)
     m = re.search(r"<div\b[^>]*\bid=[\"']root[\"'][^>]*>", html)
     if not m:
         raise ValueError("the composition has no #root")
     if any(sc.get("id") == "brand-outro" for sc in scenes):
-        start = scenes[-1]["start"]
-        ending_duration = scenes[-1]["duration"]
-        markup += (f'<div class="clip" id="wan-brand-final" data-start="{start:g}" data-duration="{ending_duration:g}" '
-                   f'style="position:absolute;inset:0;z-index:100;background:#e5f6ed;display:flex;flex-direction:column;'
-                   f'align-items:center;justify-content:center;gap:{w * .04:g}px;">'
-                   f'<img src="assets/official-logo-transparent.png" alt="" style="width:64%;height:auto;object-fit:contain;">'
-                   f'<div style="color:#143e35;font-family:Inter,system-ui,sans-serif;font-size:{w * .05:g}px;'
-                   f'text-align:center;">{html_mod.escape(scenes[-1]["heading"])}</div></div>')
+        markup += closing_card(scenes[-1], w, stream, name)
     out = html[:m.end()] + "\n" + markup + "\n" + html[m.end():]
     return re.sub(r'(<div\b[^>]*\bid=[\"\']root[\"\'][^>]*data-duration=)[\"\'][^\"\']+[\"\']',
                   lambda match: match[1] + f'"{total:g}"', out, count=1)
@@ -902,11 +952,13 @@ def cli_env() -> dict[str, str]:
     return env
 
 
-def write_project(folder: Path, html: str) -> None:
+def write_project(folder: Path, html: str, stream: str = "regulab") -> None:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "index.html").write_text(html, encoding="utf-8")
     (folder / "assets").mkdir(exist_ok=True)
-    shutil.copyfile(motion_styles.LOGO, folder / "assets" / motion_styles.LOGO.name)
+    # LinkedIn: Wan's icon, never the brand logo
+    keep = motion_styles.WAN_ICON if stream == "linkedin" else motion_styles.LOGO
+    shutil.copyfile(keep, folder / "assets" / keep.name)
     (folder / "hyperframes.json").write_text(json.dumps({
         "$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
         "paths": {"blocks": "compositions", "components": "compositions/components", "assets": "assets"},
@@ -1177,15 +1229,18 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             fixed += "\nACTUAL COMPLETE RECIPE PLAN (these fixed times override the initial stage windows):\n" + \
                 json.dumps(recipe_plan, ensure_ascii=False)
 
+        stream = row.get("stream") or "regulab"
+        name = byline(store) if stream == "linkedin" else ""
+
         def composed(raw: str) -> str:
-            document = motion_assets.inject(inject_layers(raw, scenes, total, w, h), asset_plan, scenes, total,
+            document = motion_assets.inject(inject_layers(raw, scenes, total, w, h, stream, name), asset_plan, scenes, total,
                                             design=motion_styles.design(row))
             # Composition resolves conditional native cues, including skipped/conflicting selections.
             (folder / "asset-plan.json").write_text(json.dumps(asset_plan, ensure_ascii=False, indent=2))
             return document
 
         def checked(raw: str) -> dict[str, Any]:
-            write_project(folder, composed(raw))
+            write_project(folder, composed(raw), stream)
             rep = check(folder, settings["cli"], runner)
             # HyperFrames' own check missed a photo squeezed onto a heading (25 Oct 2026): the worker measures the film too
             found = motion_probe.overlaps(folder, w, h, total)
@@ -1343,12 +1398,42 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             shutil.rmtree(folder.parent, ignore_errors=True)
 
 
+BACKFILL = 8              # films given their captions in one run: each is one writer call
+
+
+def backfill_captions(store: Any, llm: Any, limit: int = BACKFILL) -> int:
+    """Captions for finished films that were made before the worker wrote them (Wan, 26 Oct 2026: "make sure all the video
+    ready with the caption"): from the film's own saved script, so nothing is rendered again. Films already queued are left."""
+    if llm is None:
+        return 0
+    try:
+        rows = (store.table(TABLE).select("id,stream,language,title,brief,script,captions").eq("status", "done")
+                .is_("queued_post_id", "null").order("updated_at", desc=True).limit(60).execute().data) or []
+    except Exception as exc:  # noqa: BLE001 - a missing column only means there is nothing to fill yet
+        log.info("captions not backfilled (%s)", str(exc)[:120])
+        return 0
+    antislop.begin(antislop.load(store))
+    made = 0
+    for r in rows:
+        if made >= limit:
+            break
+        if r.get("captions") or not r.get("script"):
+            continue
+        lang, stream = language_of(r), r.get("stream") or "regulab"
+        caps = motion_captions.write(llm, r, r["script"], str(r.get("title") or r.get("brief") or ""), lang=lang,
+                                     voice=voice_line(stream, lang), speak_as=speaker(lang))
+        store.table(TABLE).update({"captions": caps}).eq("id", r["id"]).eq("status", "done").execute()
+        made += 1
+    return made
+
+
 def run(store: Any, llm: Any, *, runner: Any = subprocess.run, now: datetime | None = None,
         gh: GitHub | None = None) -> dict[str, int]:
     settings = load_settings(store)
     rows = claim(store)
     done = sum(process(store, llm, r, settings, runner=runner, now=now, gh=gh) for r in rows)
-    return {"claimed": len(rows), "done": done, "failed": len(rows) - done}
+    captions = backfill_captions(store, llm)
+    return {"claimed": len(rows), "done": done, "failed": len(rows) - done, **({"captions": captions} if captions else {})}
 
 
 def main() -> int:

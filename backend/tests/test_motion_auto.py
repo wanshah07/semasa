@@ -3,12 +3,13 @@ that fits how the film is heard (narrated: brisk; silent: slow enough to read)."
 
 import io
 import json
+import re
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
-from semasa import motion, motion_auto, motion_layout
+from semasa import db, motion, motion_auto, motion_layout
 from semasa.motion_styles import EFFECT_LIBRARY
 
 ROW = {"id": "r1", "brief": "label myth vs fact in cosmetics", "language": "bm"}
@@ -221,6 +222,25 @@ def test_photos_come_from_unsplash_resized_credited_and_a_failure_never_stops_th
     assert motion.fetch_photos("", tmp_path / "d", search=lambda q, o: results)[0] == [], "no search words, no photos"
 
 
+def test_the_idea_own_pictures_come_first_slides_and_video_are_left_out_and_unsplash_fills_the_rest(tmp_path):
+    from fakestore import FakeStore
+    store = FakeStore()
+    store.table(db.POSTS).insert({"id": "p1", "idea_id": "i1", "media_ids": ["m2"]}).execute()
+    for mid, kind, mode, url in (("m1", "image", "prompt", "https://x/one.jpg"), ("m2", "image", "recreate", "https://x/two.jpg"),
+                                 ("m3", "image", "slides", "https://x/slide.jpg"), ("m4", "video", "prompt", "https://x/v.mp4")):
+        store.table(db.MEDIA).insert({"id": mid, "idea_id": "i1" if mid != "m2" else None, "status": "done", "type": kind,
+                                      "mode": mode, "generated_media_url": url, "meta": {"alt": mid},
+                                      "created_at": f"2026-10-26T0{mid[1]}:00:00Z"}).execute()
+    store.table(db.MEDIA).insert({"id": "m5", "idea_id": "i1", "status": "pending", "type": "image", "mode": "prompt",
+                                  "generated_media_url": "", "meta": {}, "created_at": "2026-10-26T09:00:00Z"}).execute()
+    got = []
+    own, note = motion.idea_pictures(store, {"idea_id": "i1"}, tmp_path, get=lambda u: got.append(u) or _jpeg((900, 1200)))
+    assert [p["id"] for p in own] == ["m1", "m2"] and sorted(got) == ["https://x/one.jpg", "https://x/two.jpg"]
+    assert own[0]["path"] == "assets/idea-1.jpg" and own[0]["credit"] == "" and "2 drawn" in note
+    assert motion.idea_pictures(store, {}, tmp_path)[0] == [], "a film with no idea has none"
+    assert motion.idea_pictures(store, {"idea_id": "i1"}, tmp_path, 1, get=lambda u: _jpeg())[0][0]["id"] == "m1"
+
+
 def test_the_silence_drop_ducks_the_music_before_the_solusi_scene(tmp_path):
     seen = []
 
@@ -261,6 +281,31 @@ def test_shorten_narration_drops_a_sentence_then_a_quarter_of_the_words():
     timed[0]["audio_s"] = 1.0
     assert motion.shorten_narration(plan, timed) and plan[1]["narration"] == "a b c d e f."
     assert not motion.shorten_narration(plan, [{"id": "s1"}]), "nothing recorded, nothing to cut"
+
+
+def test_a_sized_cut_takes_the_writers_sentences_first_and_keeps_the_facts_spoken():
+    plan = [{"id": "s1", "narration": "Hook kecil. Cerita panjang pertama. Cerita panjang kedua. Fakta utama di skrin.",
+             "fill": ["Fakta utama di skrin."]},
+            {"id": "s2", "narration": "Satu dua tiga. Empat lima enam.", "fill": []}]
+    timed = [{"id": "s1", "audio": "x", "audio_s": 12.0}, {"id": "s2", "audio": "y", "audio_s": 4.0}]
+    assert motion.shorten_narration(plan, timed, over=5.0)
+    assert "Fakta utama di skrin." in plan[0]["narration"], "the fact stays"
+    assert "Cerita panjang kedua." not in plan[0]["narration"] and "Cerita panjang pertama." not in plan[0]["narration"]
+    assert plan[1]["narration"], "no scene is emptied"
+
+
+def test_a_sized_cut_reaches_the_facts_only_when_nothing_else_is_left():
+    plan = [{"id": "s1", "narration": "Fakta satu. Fakta dua.", "fill": ["Fakta satu.", "Fakta dua."]}]
+    timed = [{"id": "s1", "audio": "x", "audio_s": 8.0}]
+    assert motion.shorten_narration(plan, timed, over=3.0)
+    assert plan[0]["narration"] == "Fakta satu."
+
+
+def test_the_fit_error_carries_the_gap():
+    scenes = [{"id": "s1", "audio": "x", "audio_s": 30.0, "narration": "a"}, {"id": "brand-outro", "heading": "x", "lines": []}]
+    with pytest.raises(motion.NarrationTooLong) as err:
+        motion.fit_scenes(scenes, 30)
+    assert err.value.need > err.value.available
 
 
 def test_a_silent_film_may_be_read_a_quarter_faster_but_no_more_and_the_error_names_the_numbers():
@@ -476,6 +521,15 @@ def _rich(scenes, plan=None, size=(1080, 1920)):
     return motion_layout.compose(scenes=scenes + [{"id": "brand-outro", "start": 28, "duration": 3, "heading": "x"}],
                                  total=31, w=size[0], h=size[1], lang="bm", plan=plan or RICH_PLAN,
                                  palette=motion.PALETTE["regulab"], gsap=motion.GSAP, html_lang="ms", resolution="portrait")
+
+
+def test_a_key_word_burst_never_grows_a_word_past_the_margin():
+    scenes = [{"id": "s1", "role": "hook", "start": 0, "duration": 8, "kicker": "x",
+               "heading": "Enam kategori bahan kosmetik dikaji", "lines": []}]
+    html, rep = _rich(scenes, {"scenes": {"s1": ["C07"]}, "video": {}})
+    assert "C07" in rep["built"]
+    scale = float(re.search(r'#s1-k7",\{scale:([0-9.]+)', html).group(1))
+    assert 1.08 <= scale < 1.5, "the old floor of 1.2 to 2.3 pushed an edge word out of the frame"
 
 
 def test_the_safe_layout_builds_the_styles_the_film_was_given_not_just_the_plain_column():

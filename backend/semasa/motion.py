@@ -60,7 +60,7 @@ NARRATED_WPS = 2.6                      # words a second the script asks for whe
 READ_WPS = 1.4                          # words a second a silent film allows the eye, heading and lines together
 READ_PAD = 1.0                          # seconds a silent scene holds after the eye has finished
 SILENT_MIN = 4.0                        # and never shorter than this
-PHOTOS = 6                              # Unsplash pictures looked for per film: one a scene and a second beside some
+PHOTOS = 8                              # pictures per film: the idea's own first, Unsplash for the rest; one a scene, then pairs
 MAX_FIX = 2                             # rewrites the writer gets for a layout the check rejects, before the safe layout
 # Wan's own skill, 25 Oct 2026 ("add this skill in the system, and in claude code"): also a Claude Code project skill at
 # .claude/skills/ws-regulab-motion; its contract and the template of the chosen design go to the writer as a reference
@@ -258,7 +258,9 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
                     missing.append(part)
                     said |= words
             if missing:
+                missing = [x if x.rstrip()[-1:] in ".!?" else x.rstrip() + "." for x in missing]   # each is one sentence
                 sc["narration"] = " ".join(f"{sc['narration']} {' '.join(missing)}".split())[:700]
+                sc["fill"] = missing          # what the screen shows and the writer left unsaid: the last thing cut
     meta = {"title": str(out.get("title") or "")[:160],
             "photo_query": " ".join(str(out.get("photo_query") or "").split())[:80]}
     if teaser:
@@ -318,15 +320,70 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
     return scenes, total, note
 
 
-def shorten_narration(plan_scenes: list[dict[str, Any]], timed: list[dict[str, Any]]) -> bool:
-    """The film's speech does not fit: drop the last sentence of the longest narrated scene (or, with one sentence, its last
-    quarter of words). True when something was cut. Speech is cut, never rushed (Wan, 25 Oct 2026)."""
+# effects whose frames move or scale a word, so a measured overflow takes them off first
+MOVING_EFFECTS = {"C07", "M07", "M10", "B05", "V02", "M04", "M03", "X06"}
+
+
+class NarrationTooLong(ValueError):
+    """The recorded speech does not fit the film; `need` and `available` are seconds, so the cut can be sized to the gap."""
+
+    def __init__(self, need: float, available: float):
+        self.need, self.available = need, available
+        super().__init__(f"Narration cannot fit this duration including the outro (needs {need:.1f}s, has {available:.1f}s); "
+                         "choose 30/60s or a narrower micro-topic")
+
+
+def _norm(text: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
+
+
+def _sentences(text: str) -> list[str]:
+    return [x for x in re.split(r"(?<=[.!?])\s+", text.strip()) if x]
+
+
+def shorten_narration(plan_scenes: list[dict[str, Any]], timed: list[dict[str, Any]], over: float = 0.0) -> bool:
+    """The film's speech does not fit: cut sentences until the estimated saving covers `over` seconds (with a margin), so one
+    new recording is usually enough. The writer's own sentences go first, longest scene first; the words that put the
+    scene's heading and lines on the air (`fill`) go last, because the facts must be spoken (Wan, 26 Oct 2026). With no gap
+    given, one sentence of the longest scene goes (or, with one sentence, its last quarter of words). Speech is cut, never
+    rushed (Wan, 25 Oct 2026). True when something was cut."""
     teaching = [sc for sc in timed if sc.get("id") != "brand-outro" and sc.get("audio")]
     if not teaching:
         return False
+    by_id = {sc["id"]: sc for sc in plan_scenes}
+    if over > 0:
+        want = over * 1.08 + 0.2
+        cut = 0.0
+        for protected in (False, True):
+            while cut < want:
+                pick: tuple[dict[str, Any], int, float] | None = None      # (scene, sentence index, estimated seconds)
+                for sc in teaching:
+                    target = by_id.get(sc["id"])
+                    sents = _sentences(target["narration"]) if target else []
+                    if len(sents) < 2:
+                        continue
+                    fill = [_norm(x) for x in target.get("fill") or [] if _norm(x)]
+                    words = max(1, len(target["narration"].split()))
+                    index = next((i for i in range(len(sents) - 1, -1, -1)
+                                  if any(f in _norm(sents[i]) for f in fill) == protected), None)
+                    if index is None:
+                        continue
+                    if pick is None or float(sc.get("audio_s") or 0) > float(pick[0].get("audio_s") or 0):
+                        pick = (sc, index, float(sc.get("audio_s") or 0) * len(sents[index].split()) / words)
+                if pick is None:
+                    break
+                sc, index, sec = pick
+                target = by_id[sc["id"]]
+                sents = _sentences(target["narration"])
+                del sents[index]
+                target["narration"] = " ".join(sents)
+                sc["audio_s"] = max(0.0, float(sc.get("audio_s") or 0) - sec)     # the estimate the next pick works from
+                cut += sec
+        if cut > 0:
+            return True
     longest = max(teaching, key=lambda sc: float(sc.get("audio_s") or 0))
-    target = next(sc for sc in plan_scenes if sc["id"] == longest["id"])
-    sentences = re.split(r"(?<=[.!?])\s+", target["narration"].strip())
+    target = by_id[longest["id"]]
+    sentences = _sentences(target["narration"])
     if len(sentences) > 1:
         target["narration"] = " ".join(sentences[:-1])
         return True
@@ -375,8 +432,7 @@ def fit_scenes(scenes: list[dict[str, Any]], seconds: float) -> tuple[list[dict[
             floors = [f if sc.get("audio") else f * room / quiet for f, sc in zip(floors, teaching, strict=True)]
             need = sum(floors)
     if not teaching or need > available or available <= 0:
-        raise ValueError(f"Narration cannot fit this duration including the outro (needs {need:.1f}s, has {available:.1f}s); "
-                         "choose 30/60s or a narrower micro-topic")
+        raise NarrationTooLong(need, available)
     slack = (available - sum(floors)) / len(teaching)
     start = 0.0
     for sc, floor in zip(teaching, floors, strict=True):
@@ -540,12 +596,71 @@ def make_background(store: Any, row: dict[str, Any], folder: Path, provider: Any
         return "", f"background not made: {str(exc)[:120]}"
 
 
+def idea_pictures(store: Any, row: dict[str, Any], folder: Path, count: int = PHOTOS, *,
+                  get: Any = None) -> tuple[list[dict[str, Any]], str]:
+    """The pictures Semasa drew for THIS idea (Wan, 26 Oct 2026: "use the image that generated specifically for that idea if I
+    select the motion"): every finished still on the idea's media jobs and on the drafts made from it, oldest first. A carousel's
+    slides are left out (they are words on a card, not a picture to put words over), and so is video. ([], note) when the film
+    has no idea or the idea has none; a picture that cannot be read is skipped, never fatal."""
+    idea_id = row.get("idea_id")
+    if not idea_id:
+        return [], ""
+    get = get or (lambda url: fetch_bytes(url))
+    try:
+        ids: list[str] = []
+        for post in store.table(db.POSTS).select("media_ids").eq("idea_id", idea_id).execute().data or []:
+            ids += [str(i) for i in (post.get("media_ids") or [])]
+        rows = store.table(db.MEDIA).select("id,status,type,mode,generated_media_url,created_at,meta").eq(
+            "idea_id", idea_id).order("created_at").execute().data or []
+        if ids:
+            rows += store.table(db.MEDIA).select("id,status,type,mode,generated_media_url,created_at,meta").in_(
+                "id", ids).execute().data or []
+        seen: set[str] = set()
+        usable = []
+        for m in rows:
+            if m["id"] in seen or m.get("status") != "done" or not m.get("generated_media_url"):
+                continue
+            seen.add(m["id"])
+            if (m.get("type") or "image") == "image" and m.get("mode") != "slides" and not (m.get("meta") or {}).get("design"):
+                usable.append(m)
+        out = []
+        (folder / "assets").mkdir(parents=True, exist_ok=True)
+        for m in usable:
+            if len(out) >= count:
+                break
+            try:
+                im = Image.open(io.BytesIO(get(m["generated_media_url"]))).convert("RGB")
+            except Exception as exc:  # noqa: BLE001 - one unreadable picture is not a reason to lose the others
+                log.warning("idea picture %s not read: %s", m["id"], str(exc)[:120])
+                continue
+            im.thumbnail((1600, 1600))
+            rel = f"assets/idea-{len(out) + 1}.jpg"
+            im.save(folder / rel, "JPEG", quality=88)
+            out.append({"path": rel, "id": m["id"], "credit": "", "page": "", "alt": str((m.get("meta") or {}).get("alt") or "")})
+        return out, (f"idea pictures: {len(out)} drawn for this idea" if out else "idea pictures: none on this idea yet")
+    except Exception as exc:  # noqa: BLE001 - the film is still made, with Unsplash alone, and says so
+        log.warning("idea pictures not read: %s", str(exc)[:200])
+        return [], f"idea pictures not read: {str(exc)[:120]}"
+
+
+def fetch_bytes(url: str) -> bytes:
+    """A public picture's bytes (Semasa's own storage), 12 MB at most."""
+    import requests
+    r = requests.get(url, timeout=40)
+    r.raise_for_status()
+    if len(r.content) > 12_000_000:
+        raise ValueError("picture larger than 12 MB")
+    return r.content
+
+
 def fetch_photos(query: str, folder: Path, count: int = PHOTOS, *, search: Any = None,
                  get: Any = None) -> tuple[list[dict[str, Any]], str]:
     """Unsplash pictures for the film (Wan, 25 Oct 2026: "make sure have image from unsplashed"): the writer's own search
     words, `count` photos saved as assets/photo-N.jpg (1600 px, JPEG), the download reported to Unsplash as its API rules
     ask, the photographer kept for the credit. ([], note) when it cannot be done: the film is made without them and says so.
     The photos are illustration only: never the product, never proof."""
+    if count <= 0:
+        return [], ""
     search = search or unsplash.search
     get = get or unsplash.fetch
     try:
@@ -835,7 +950,8 @@ class _ComposedByWorker(Exception):
 
 def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any], *, runner: Any = subprocess.run,
             workdir: Path | None = None, now: datetime | None = None, gh: GitHub | None = None,
-            picture_provider: Any = None, speak: Any = None, photo_search: Any = None, photo_get: Any = None) -> bool:
+            picture_provider: Any = None, speak: Any = None, photo_search: Any = None, photo_get: Any = None,
+            own_get: Any = None) -> bool:
     now = now or datetime.now(UTC)
     folder = (workdir or Path(tempfile.mkdtemp(prefix="motion-"))) / str(row["id"])[:8]
     try:
@@ -877,15 +993,19 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             try:
                 scenes, total = fit_scenes(scenes, motion_styles.duration(row))
                 break
-            except ValueError:
-                if not voiced or attempt == 5 or not shorten_narration(plan["scenes"], scenes):
+            except ValueError as exc:
+                gap = (exc.need - exc.available) if isinstance(exc, NarrationTooLong) else 0.0
+                if not voiced or attempt == 5 or not shorten_narration(plan["scenes"], scenes, gap):
                     raise
                 log.info("%s: the narration is too long for %gs; cut a sentence and recorded again", row["id"],
                          motion_styles.duration(row))
         voice_note += kitten_fallback
         pace_note = ("narrated: brisk" if voiced else f"silent: paced for reading at {READ_WPS:g} words a second")
         w, h = SIZES.get(row.get("resolution") or "portrait", SIZES["portrait"])
-        photos, photo_note = fetch_photos(plan.get("photo_query") or "", folder, search=photo_search, get=photo_get)
+        own, own_note = idea_pictures(store, row, folder, get=own_get)
+        photos, photo_note = fetch_photos(plan.get("photo_query") or "", folder, max(0, PHOTOS - len(own)), search=photo_search,
+                                          get=photo_get)
+        photos, photo_note = [*own, *photos], " · ".join(x for x in (own_note, photo_note) if x)
         motion_auto.assign_photos(scenes, photos)
         auto = None
         if motion_assets.is_auto(row):
@@ -991,18 +1111,37 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             if not compose_only:
                 log.warning("%s: writer layout rejected (%s); using the safe layout", row["id"],
                             writer_error or [f.get("code") for f in report["errors"]][:4])
-            page, layout = motion_layout.compose(scenes=scenes, total=total, w=w, h=h, lang=lang,
-                                                 plan=auto or {"scenes": {}, "video": {}}, palette=PALETTE["regulab"],
-                                                 gsap=GSAP, html_lang=LANGUAGE[lang][0], design=motion_styles.design(row),
-                                                 resolution=row.get("resolution") or "portrait",
-                                                 ambient=str((row.get("options") or {}).get("ambient") or "mint"))
             first = [f.get("code") for f in report["errors"]][:4]
             rejected = html[:6000]
-            report = checked(page)
-            html = page
+            calmed: list[str] = []
+            for round_ in range(3):
+                page, layout = motion_layout.compose(scenes=scenes, total=total, w=w, h=h, lang=lang,
+                                                     plan=auto or {"scenes": {}, "video": {}}, palette=PALETTE["regulab"],
+                                                     gsap=GSAP, html_lang=LANGUAGE[lang][0], design=motion_styles.design(row),
+                                                     resolution=row.get("resolution") or "portrait",
+                                                     ambient=str((row.get("options") or {}).get("ambient") or "mint"))
+                report = checked(page)
+                html = page
+                bad = motion_layout.layout_findings(report["errors"])
+                if not bad or not auto or round_ == 2:
+                    break
+                # a moving effect carried a word past the frame (the real film of 26 Oct 2026: a C07 burst on "kategori"):
+                # the scenes named in the findings lose their moving effects, then all their styles, and the film is made again
+                hit = {m.group(1) for f in bad for m in re.finditer(r"\b(s\d+)-", f"{f.get('message')}")}
+                hit |= {m.group(1) for f in bad for m in re.finditer(r"\b(s\d+)\b", f"{f.get('message')}")}
+                hit &= set(auto["scenes"])
+                if not hit:
+                    break
+                for sid in hit:
+                    auto["scenes"][sid] = ([c for c in auto["scenes"][sid] if c not in MOVING_EFFECTS] if round_ == 0
+                                           else [])
+                calmed += sorted(hit)
+                log.info("%s: %s measured outside its box; styles with motion taken off, composed again", row["id"], sorted(hit))
+            if calmed:
+                layout_note = f"calmed {', '.join(sorted(set(calmed)))} after a measured overflow; "
             out.setdefault("title", plan.get("title"))
             why = f" (the writer's own layout failed: {', '.join(map(str, first))})" if first and not compose_only else ""
-            layout_note = ("composed by the worker" if compose_only else "safe layout used") + why
+            layout_note = layout_note + ("composed by the worker" if compose_only else "safe layout used") + why
             report["rejected_html"] = rejected
             leftover = motion_layout.layout_findings(report["errors"])
             if leftover:
@@ -1038,7 +1177,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         jpg = poster(video, runner)
         if jpg:
             poster_url = db.upload_generated(store, f"motion/{row['id']}.jpg", jpg, "image/jpeg")
-        credits = "; ".join(dict.fromkeys(p["credit"] for p in photos))
+        credits = "; ".join(dict.fromkeys(p["credit"] for p in photos if p["credit"]))
         store.table(TABLE).update({
             "status": "done", "title": str(out.get("title") or "")[:160],
             "html": (folder / 'index.html').read_text() if asset_plan['effects'] else html, "check_report": report,

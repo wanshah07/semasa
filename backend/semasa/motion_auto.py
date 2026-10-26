@@ -190,9 +190,17 @@ NEWS = re.compile(r"\b(new|latest|announc\w*|circular|notice|guideline|effective
                   r"baharu|terkini|umum\w*|pekeliling|notis|garis panduan|berkuat kuasa|mulai|kini)\b", re.I)
 
 
-def hook_of(text: str) -> str:
-    """Which attention hook opens the film (Wan, 26 Oct 2026): a danger or a recall is a Warning, a new rule or notice is Breaking
-    News, anything else is Did you know."""
+OPENING = (("know", re.compile(r"^\W*(tahukah anda|did you know)", re.I)), ("warn", re.compile(r"^\W*(amaran|warning)", re.I)),
+           ("news", re.compile(r"^\W*(berita terkini|breaking news)", re.I)))
+
+
+def hook_of(text: str, opening: str = "") -> str:
+    """Which attention hook opens the film (Wan, 26 Oct 2026): the one the film's own first words already are ('Tahukah anda...',
+    'Amaran: ...', 'Berita terkini: ...'); failing that, by the topic: a danger or a recall is a Warning, a new rule or notice is
+    Breaking News, anything else is Did you know."""
+    for kind, rx in OPENING:
+        if rx.search(opening or ""):
+            return kind
     return "warn" if WARN.search(text) else "news" if NEWS.search(text) else "know"
 
 
@@ -335,7 +343,8 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
     ev = (row.get("options") or {}).get("evidence") or {}
     return {"scenes": out, "video": video, "assigned": assigned, "native": native, "audio": audio, "study": study,
             "evidence_url": str(ev.get("source_url") or row.get("source_url") or ""),
-            "hook": hook_of(ctx["all_text"]),
+            "hook": hook_of((str(row.get("brief") or "") + " " + (words_of(teaching[0]) if teaching else "")),
+                            str((teaching[0].get("narration") or teaching[0].get("heading") or "") if teaching else "")),
             "concept": sorted(set(assigned) & CONCEPT),
             "unavailable": unavailable, "considered": len(NAMES), "applied": len(applied)}
 

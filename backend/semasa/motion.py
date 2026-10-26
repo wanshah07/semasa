@@ -219,9 +219,9 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
     for i, sc in enumerate(scenes[:count]):
         clean.append({"id": f"s{i + 1}", "kicker": motion_auto.LABELS[lang][i] if not teaser else "",
                       "role": motion_auto.ROLES[i] if not teaser else "hook",
-                      "heading": str(sc.get("heading") or "")[:160],
-                      "lines": [str(x)[:200] for x in (sc.get("lines") or []) if str(x).strip()][:2],
-                      "narration": " ".join(str(sc.get("narration") or "").split())[:600]})
+                      "heading": motion_layout.plain(sc.get("heading"))[:160],
+                      "lines": [motion_layout.plain(x)[:200] for x in (sc.get("lines") or []) if motion_layout.plain(x)][:2],
+                      "narration": motion_layout.plain(sc.get("narration"))[:600]})
     if recipe_plan:
         for sc, stage in zip(clean, recipe_plan["stages"], strict=False):
             sc["role"] = stage["role"]

@@ -26,10 +26,12 @@ from typing import Any
 
 from . import motion_auto
 
-GRADIENT = {"bright-editorial": "background:#fff9ed linear-gradient(145deg,#e0f5e9,#fff9ed 70%);",
-            "continuous-line": "background:#fcf9ed linear-gradient(150deg,#e4f4e8,#fcf9ed);"}
-GRADIENT_ALT = {"bright-editorial": "linear-gradient(215deg,#e0f5e9,#fff9ed 70%)",
-                "continuous-line": "linear-gradient(210deg,#e4f4e8,#fcf9ed)"}
+# the ambient background of every scene (Wan, 26 Oct 2026: "ambient yellow green background, not too dark"): the reference films'
+# soft diagonal gradient moved from mint to a light yellow-green, with the line grid on top of it (see `grid-all`)
+GRADIENT = {"bright-editorial": "background:#fbf7da linear-gradient(145deg,#dff0c2,#fbf7da 70%);",
+            "continuous-line": "background:#fbf8de linear-gradient(150deg,#e2f0c6,#fbf8de);"}
+GRADIENT_ALT = {"bright-editorial": "linear-gradient(215deg,#e6f3cb,#fbf7da 70%)",
+                "continuous-line": "linear-gradient(210deg,#e6f2cd,#fbf8de)"}
 SAFE = {"left": 0.08, "right": 0.14, "top": 0.13, "bottom": 0.23}
 LANE = (0.78, 0.115)              # the subtitle lane of a narrated film: top and height as fractions of the frame
 GAP = 0.028                       # between blocks, as a fraction of the frame width
@@ -92,6 +94,14 @@ def caption_chunks(sc: dict[str, Any]) -> list[tuple[str, float, float]]:
 
 def esc(s: str) -> str:
     return html_mod.escape(str(s), quote=False)
+
+
+def plain(text: Any) -> str:
+    """Words only: the script writer sometimes answers with markup (`<br>`, `<span class="accent">`), which would be drawn as
+    letters on the film and read aloud by the voice. Line breaks become spaces and every tag goes."""
+    out = re.sub(r"<\s*br\s*/?\s*>", " ", str(text or ""), flags=re.I)
+    out = re.sub(r"</?\s*[a-zA-Z][^>]*>", "", out)
+    return " ".join(html_mod.unescape(out).split())
 
 
 def rgba(colour: str, alpha: float) -> str:
@@ -214,6 +224,9 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         f".gridx{{position:absolute;inset:0;background-image:"
         f"repeating-linear-gradient(0deg,{rgba(accent, .11)} 0 2px,transparent 2px {72 * scale:.0f}px),"
         f"repeating-linear-gradient(90deg,{rgba(accent, .11)} 0 2px,transparent 2px {72 * scale:.0f}px);}}",
+        f".gridx.strong{{background-image:"
+        f"repeating-linear-gradient(0deg,{rgba(accent, .2)} 0 2px,transparent 2px {72 * scale:.0f}px),"
+        f"repeating-linear-gradient(90deg,{rgba(accent, .2)} 0 2px,transparent 2px {72 * scale:.0f}px);}}",
         f".ln{{position:absolute;left:-12%;width:76%;height:{max(2, 3 * scale):.0f}px;background:{rgba(accent, .22)};"
         "transform:rotate(-16deg);}",
         ".pl{position:absolute;top:0;width:50.5%;height:100%;background:#eef8f1;z-index:6;}",
@@ -277,6 +290,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                  f'background:{GRADIENT_ALT[design]};"></div>')
     tw.append(f'tl.to("#grad2",{{opacity:.65,duration:{total / 2:g},ease:"sine.inOut"}},0);')
     tw.append(f'tl.to("#grad2",{{opacity:0,duration:{total / 2:g},ease:"sine.inOut"}},{total / 2:g});')
+    # the line grid sits behind every scene, the same in all of them (Wan, 26 Oct 2026: "all scene ... have line background")
+    parts.append('<div class="gridx" id="grid-all"></div>')
     parts.append('<div class="flash" id="flash"></div>')
 
     def text_h(text: str, px: float, factor: float, width: float, lh: float = 1.2) -> float:
@@ -291,8 +306,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         prev_eff = set(plan.get("scenes", {}).get(teaching[idx - 1]["id"], [])) if idx else eff
         trn_s = next((c for c in prev_eff if c in TRANSITIONS), transition)
         fin_s = next((c for c in eff if c in FILTERS), finish_code)
-        lines = [x for x in (sc.get("lines") or []) if str(x).strip()]
-        heading = str(sc.get("heading") or "").strip()
+        lines = [plain(x) for x in (sc.get("lines") or []) if plain(x)]
+        heading = plain(sc.get("heading"))
         photo = sc.get("photo")
         is_typed = cap_s in {"C03", "C09"}
         role = sc.get("role") or ""
@@ -544,7 +559,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             applied.add("H05")
         fx = ""
         if "X10" in eff:
-            fx += f'<div class="gridx" id="{sid}-gx"></div>'
+            fx += f'<div class="gridx strong" id="{sid}-gx"></div>'
             applied.add("X10")
         if "B08" in eff:
             fx += "".join(f'<div class="ln {sid}-ln" style="top:{pos}%;"></div>' for pos in (24, 50, 76))
@@ -590,7 +605,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             tw.append(f'tl.to("#{sid}-mph",{{clipPath:"{dia}",duration:.6,ease:"power2.inOut"}},{t0 + lead + 1.3:g});')
         if "M04" in eff:
             applied.add("M04")
-            tw.append(f'tl.fromTo("#flash",{{opacity:.35}},{{opacity:0,duration:.4,ease:"power2.out"}},{t0:g});')
+            tw.append(f'tl.fromTo("#flash",{{opacity:.35}},{{opacity:0,duration:.4,ease:"power2.out",immediateRender:false}},'
+                      f'{t0:g});')
             if heading:
                 tw.append(f'tl.fromTo("#{sid}-h",{{scale:1.07}},{{scale:1,duration:.35,ease:"power2.out"}},{t0 + lead:g});')
         if "X10" in eff:

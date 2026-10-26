@@ -406,12 +406,13 @@ def test_a_native_heading_effect_leaves_the_heading_on_screen_after_its_entrance
 
 def test_the_safe_layout_background_is_the_reference_gradient_and_never_a_circle():
     html, _ = _compose([dict(s) for s in FILM])
-    assert "linear-gradient(145deg,#e0f5e9,#fff9ed 70%)" in html and 'id="grad2"' in html
+    assert "linear-gradient(145deg,#dff0c2,#fbf7da 70%)" in html and 'id="grad2"' in html
+    assert 'id="grid-all"' in html, "the line grid is behind every scene"
     assert 'class="bg"' not in html and 'id="bg' not in html and ".bg{" not in html, "no circles behind the text"
     line, _ = motion_layout.compose(scenes=[dict(s) for s in FILM], total=31, w=1080, h=1920, lang="bm",
                                     plan={"scenes": {}, "video": {}}, palette=motion.PALETTE["regulab"], gsap=motion.GSAP,
                                     html_lang="ms", resolution="portrait", design="continuous-line")
-    assert "linear-gradient(150deg,#e4f4e8,#fcf9ed)" in line
+    assert "linear-gradient(150deg,#e2f0c6,#fbf8de)" in line
 
 
 @pytest.mark.parametrize("voiced", [True, False])
@@ -536,3 +537,23 @@ def test_by_default_the_worker_composes_the_film_and_the_writer_is_not_asked(tmp
     assert "writer_attempts" not in got["check_report"], "no writer layout was asked for or rejected"
     built = got["check_report"]["layout"]["built"]
     assert len(built) >= 8 and {"V09", "P08"} & set(built), built
+
+
+def test_markup_in_the_script_is_words_only_on_the_film_and_in_the_voice():
+    # the paper film (26 Oct 2026) drew '<br><span class="accent">' as letters, and the narration would have been read aloud
+    assert motion_layout.plain('Six groups.<br><span class="accent">One safety map?</span>') == "Six groups. One safety map?"
+    assert motion_layout.plain("R&amp;D <b>fast</b>  ok") == "R&D fast ok"
+    scenes = [{"id": "s1", "role": "hook", "start": 0, "duration": 6,
+               "heading": 'Mechanism<br><span class="accent">matters</span>', "lines": ["<i>one</i> line"]}]
+    outro = {"id": "brand-outro", "start": 6, "duration": 3, "heading": "x"}
+    html, _ = motion_layout.compose(scenes=scenes + [outro], total=9, w=1080, h=1920, lang="en",
+                                    plan={"scenes": {}, "video": {}}, palette=motion.PALETTE["regulab"],
+                                    gsap=motion.GSAP, html_lang="en", resolution="portrait")
+    body = html.split('<div id="root"')[1]
+    assert "&lt;" not in body and "<br>" not in body and "Mechanism matters" in body and "one line" in body
+
+
+def test_no_flash_darkens_the_film_before_its_moment():
+    # the paper film (26 Oct 2026) was a darker teal until its M04 scene: a fromTo applies its start value at once
+    html, _ = _rich([dict(s) for s in FILM], plan={"scenes": {"s2": ["M04"]}, "video": {}})
+    assert 'tl.fromTo("#flash",{opacity:.35},{opacity:0,duration:.4,ease:"power2.out",immediateRender:false}' in html

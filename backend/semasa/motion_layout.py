@@ -50,6 +50,7 @@ def gradients(design: str, ambient: str) -> tuple[str, str]:
 GRADIENT = {d: gradients(d, DEFAULT_AMBIENT)[0] for d in ("bright-editorial", "continuous-line")}
 GRADIENT_ALT = {d: gradients(d, DEFAULT_AMBIENT)[1] for d in ("bright-editorial", "continuous-line")}
 SAFE = {"left": 0.08, "right": 0.14, "top": 0.13, "bottom": 0.23}
+LIST_TWO = 5                      # a counted list of this many lines or more is set in two columns
 LIST_MIN = 4                      # lines from which a scene is a counted list: all of them shown, nothing else beside them
 LANE = (0.78, 0.115)              # the subtitle lane of a narrated film: top and height as fractions of the frame
 GAP = 0.028                       # between blocks, as a fraction of the frame width
@@ -307,6 +308,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         f".card{{flex:1;min-width:0;box-sizing:border-box;padding:{pad_card:.0f}px;border-radius:{24 * scale:.0f}px;"
         f"background:rgba(255,255,255,.72);border:{max(2, 3 * scale):.0f}px solid {rgba(accent, .45)};}}",
         f".stp{{position:relative;box-sizing:border-box;width:100%;padding-left:{step_pad:.0f}px;min-height:{bd:.0f}px;}}",
+        f".stg{{display:grid;grid-template-columns:1fr 1fr;gap:{gap:.0f}px {gap:.0f}px;width:100%;}}",
+        ".stg .cn{display:none;}",
         f".bd{{position:absolute;left:0;top:0;width:{bd:.0f}px;height:{bd:.0f}px;border-radius:50%;background:{accent};"
         f"color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:{46 * scale:.0f}px;}}",
         f".cn{{position:absolute;left:{bd / 2 - 1.5 * scale:.0f}px;top:{bd:.0f}px;bottom:-{gap:.0f}px;"
@@ -442,7 +445,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
 
         def column(lines_now: list[str], eff: set[str] = eff, heading: str = heading, px_h: float = px_h, px_l: float = px_l,
                    is_typed: bool = is_typed, cap_s: str = cap_s, role: str = role, photo: Any = photo,
-                   pct_rows: list = pct_rows, events: list = events) -> dict[str, Any]:
+                   pct_rows: list = pct_rows, events: list = events, listing: bool = listing) -> dict[str, Any]:
             longest = max((len(x) for ln in lines_now[:2] for x in ln.split()), default=0)
             side = "L05" in eff and bool(photo) and bool(lines_now)
             cards = (not side and "V05" in eff and len(lines_now) >= 2
@@ -450,25 +453,33 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             consumed = not side and not cards and not pct_rows and not events
             flow = consumed and "B04" in eff and role == "solution" and len(lines_now) >= 2
             steps = consumed and not flow and len(lines_now) >= 2
+            two = steps and listing and len(lines_now) >= LIST_TWO          # a long counted list sits in two columns
             track = "V06" in eff and len(lines_now) >= 2 and not cards and not side
             if side or pct_rows or events:
                 rest = [ln for ln in lines_now if not (events and YEAR.search(ln))
                         and not any(ln == r for r, _ in pct_rows)] if not side else []
             else:
                 rest = lines_now[2:] if cards else lines_now
-            f = BODY * box_w / (box_w - step_pad) if steps else (0.62 if is_typed and cap_s == "C09" else BODY)
+            half_w = (box_w - gap) / 2 - step_pad
+            f = (BODY * box_w / max(half_w, 1) if two else BODY * box_w / (box_w - step_pad) if steps
+                 else (0.62 if is_typed and cap_s == "C09" else BODY))
             if flow:
                 f = BODY * box_w / max(box_w - 2 * pad_card - 8, 1)
             texts = ([(heading, px_h, WIDE)] if heading else [])
             if cards:
                 texts.append((max(lines_now[:2], key=len), px_l * 0.9, BODY * box_w / max(card_w, 1)))
-            texts += [(ln, px_l, f) for ln in rest]
-            return {"texts": texts, "cards": cards, "steps": steps, "track": track, "flow": flow, "side": side, "rest": rest}
+            if two:                      # one block per row: the longer of the pair sets the row's height and type size
+                texts += [(max(rest[i:i + 2], key=len), px_l, f) for i in range(0, len(rest), 2)]
+            else:
+                texts += [(ln, px_l, f) for ln in rest]
+            return {"texts": texts, "cards": cards, "steps": steps, "track": track, "flow": flow, "side": side, "rest": rest,
+                    "two": two}
 
         while True:
             col = column(lines)
             texts, rest = col["texts"], col["rest"]
             cards, steps, track, flow, side = (col[k] for k in ("cards", "steps", "track", "flow", "side"))
+            two = col["two"]
             rule = ("H10" in eff or (cap_s == "C06" and bool(lines))) and bool(heading or lines)
             extra = (photo_h + gap if photo and not side else 0) + (trk_h + gap if track else 0) + (rule_h + gap if rule else 0) \
                 + (2 * pad_card if cards else 0)
@@ -500,7 +511,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 numw = len(stat[1]) * 150 * scale * 0.62 + gap
                 extra += max(150 * scale, text_h(stat[2], 54 * scale, BODY, max(box_w - numw, 1), 1.15)) + gap
             if steps:
-                extra += len(rest) * 34 * scale
+                extra += (-(-len(rest) // 2) if two else len(rest)) * 34 * scale
             if hook_kind:
                 extra += 60 * scale * 1.1 + 28 * scale + gap
             sizes = fit(texts, box_w, box_h, extra + gap * (len(texts) + 1), scale) if texts else []
@@ -694,14 +705,19 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             tail_lines: list[str] = []
         else:
             tail_lines = rest if (pct_rows or events or side) else lines[shown:]
+        grid: list[str] = []
         for j, ln in enumerate(tail_lines, start=shown):
-            size = rest_sizes[j - shown] if j - shown < len(rest_sizes) else MIN_PX * scale
+            at = (j - shown) // 2 if two else j - shown
+            size = rest_sizes[at] if at < len(rest_sizes) else MIN_PX * scale
             if steps:
                 last = j == len(lines) - 1
-                block.append(f'<div class="stp {sid}-l" id="{sid}-s{j}"><span class="bd {sid}-bd">{j + 1}</span>'
-                             + ("" if last else f'<i class="cn {sid}-cn"></i>') + para(ln, size, j, f"{sid}-lx") + "</div>")
+                item = (f'<div class="stp {sid}-l" id="{sid}-s{j}"><span class="bd {sid}-bd">{j + 1}</span>'
+                        + ("" if last else f'<i class="cn {sid}-cn"></i>') + para(ln, size, j, f"{sid}-lx") + "</div>")
+                (grid if two else block).append(item)
             else:
                 block.append(para(ln, size, j, lcls))
+        if grid:
+            block.append(f'<div class="stg" id="{sid}-stg">' + "".join(grid) + "</div>")
         if pub_html:
             block.append(pub_html)                       # the reference closes the column, under the facts
         if steps and "B04" in eff:

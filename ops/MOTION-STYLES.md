@@ -121,3 +121,15 @@ Wan: "use the wow styles from 99 styles, and use style that identify as concept 
 - `check_report.layout.concept` lists every concept rendition that was drawn, so one is never mistaken for the real technique. Only the styles that break a house rule (C08 F08 F09 L08) or need a sound file (S01-S09 but S05 S08 S10) are still not used.
 - **Wow first:** the chooser scores WOW styles (openers H02 H05 H06 H08 H10, X05 X06 X08 X10, M04 M07, L06, V08 V09 P03 P08, C07, B04, P04 P05, L04 X03) above the rest. Across 40 random films 56 different styles were drawn (was 37) with no overlap.
 - **Background of every scene:** a light yellow-green gradient (`#dff0c2` to `#fbf7da`) with the line grid, so every scene shares one look; X10 adds a stronger grid spreading in.
+
+## The look, 26 Oct 2026 (second round)
+Wan's notes on the paper film, in order, and what the worker does now:
+- **No outline text** (the X08 echo): the echo is filled type at three strengths. Readability beats the effect.
+- **A hook opens the film** ("Did you know", "Warning", "Breaking news"): a chip at the top of scene 1 (`TAHUKAH ANDA?` / `AMARAN` / `BERITA TERKINI`, or the English words in an English film), picked by the topic (`motion_auto.hook_of`: danger, recall, ban → Warning; new rule or notice → Breaking news; else Did you know). The script prompt asks the writer to say the same words first.
+- **Casual, explained, connected narration:** the script prompt now asks for a friend-to-friend tone, every technical term explained in plain words, and a connecting sentence at the start of every scene after the first and at the end of every scene, so none starts cold or ends hanging. Subtitles are cut at the end of a sentence or phrase, about nine words at a time, never in the middle of one.
+- **The number style of attachment 2:** any list of two or more lines is a numbered list (the circled number, a connector between), whatever other styles the scene has.
+- **Tone:** the default ambient colour is the mint of the closing card with the line grid kept; Wan chooses it per film (Mint, Yellow-green, Cream, Sky, Soft blush) in the Motion form and on each queued idea (`options.ambient`; `motion_layout.AMBIENTS`).
+- **Photos:** no border line, bigger (the photo takes the room the words leave, up to about half the frame) and the edges fade into the background.
+- **Not empty:** a silent film uses the room a subtitle lane would have had; the type starts large and `fit` brings it down to what the column holds; a sparse scene is set larger; the blocks of a scene spread evenly over its box. A word is never split across two lines: the type is capped so the longest word fits.
+- **More concept diagrams:** a floating-card stack, a three-card row, a carousel, a receipt, a news-ticker strip and a checklist join the device, browser, wipe, search, chat, document, callout, marker, route, wall, echo, tunnel and frame.
+- **The overlap probe also measures** words that sit outside their scene's box.

@@ -72,6 +72,19 @@ JS = r"""
     }
   });
   const found = [];
+  document.querySelectorAll('#root .sc').forEach(sc => {
+    // visible words below the scene's own box are cut off or sit in the next lane (a hidden, scaled element does not count)
+    if (!seen(sc)) return;
+    const box = sc.getBoundingClientRect();
+    let over = 0;
+    for (const b of boxes) {
+      if (b.kind === 'text' && sc.contains(b.owner)) over = Math.max(over, b.y + b.h - box.bottom, box.top - b.y);
+    }
+    if (over > 3) {
+      found.push({code: 'container_overflow',
+                  message: `${label(sc)} has words ${Math.round(over)}px outside its box at ${t.toFixed(1)}s`});
+    }
+  });
   for (const b of boxes) {
     if (b.kind === 'text' && (b.x < -2 || b.y < -2 || b.x + b.w > W + 2 || b.y + b.h > H + 2)) {
       found.push({code: 'text_off_frame', message: `"${b.text}" (${b.name}) leaves the frame at ${t.toFixed(1)}s`});

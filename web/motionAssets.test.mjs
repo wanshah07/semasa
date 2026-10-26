@@ -41,5 +41,5 @@ assert.equal(withDefaults({}, {effectMode:'manual',effects:['P01']}).defaults.ef
 const source = await import('node:fs/promises');
 const ui = await source.readFile(new URL('./src/components/MotionLab.jsx',import.meta.url),'utf8');
 assert.ok(ui.includes('<MotionEffectLibrary'));
-assert.ok(ui.includes('design, effects, effectMode, assetMode, assets'));
+assert.ok(ui.includes('design, ambient, effects, effectMode, assetMode, assets'));
 console.log('motion assets: catalog groups, validation, recommendations, selection and entrypoint contracts passed');

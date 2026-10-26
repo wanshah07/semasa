@@ -160,14 +160,29 @@ The worker adds its own 3-second outro: plan about {seconds:g} seconds INCLUDING
 VOICE: {voice}
 {extra}"""
 
-FLOW = ("Hook = one curiosity line that makes this reader stop; Fakta = the one thing that is true, from the brief; Kenapa = "
-        "why it matters to this reader; Solusi = the one thing to do next. Connected, complete sentences, never isolated labels.")
-FLOW_TEASER = "ONE scene: a curiosity hook only."
+# Wan, 26 Oct 2026: "do not forget the hook for starting to attract people to watch the video such as Did you know,
+# Warning, Breaking News ... bercakap casual, explain bagi faham dan setiap scene tu ada ayat penyambung ... not hanging"
+HOOK_RULE = ("THE HOOK: the first scene opens with an attention hook, the first words SAID and the first words READ: "
+             "'Tahukah anda...?' (a surprising fact), 'Amaran: ...' (a recall, a ban, a danger) or "
+             "'Berita terkini: ...' (a new rule or notice); in English 'Did you know...?', 'Warning: ...' or "
+             "'Breaking news: ...'. Pick the one the topic is.")
+CONNECT_RULE = ("CONNECTORS: no scene starts cold and none ends hanging. Every scene after the first begins its narration "
+                "with a short connecting sentence that points back and forward ('Okay, sekarang kita tengok faktanya.', "
+                "'Jadi kenapa ni penting?', 'Jom kita bincang apa yang patut buat.'; English 'Now, here is the fact.', "
+                "'So why does this matter?', 'Let's talk about what to do.'), and the last sentence of a scene leads "
+                "into the next one.")
+CASUAL_RULE = ("TONE: casual, as a friend explaining to a friend, so the viewer UNDERSTANDS: short plain sentences, "
+               "everyday words ('korang', 'jom', 'senang cerita', 'maksudnya'), and every technical term said once in "
+               "simple words straight after it.")
+FLOW = ("Hook = one curiosity line that makes this reader stop; Fakta = the one thing that is true, from the brief; "
+        "Kenapa = why it matters to this reader; Solusi = the one thing to do next. Connected, complete sentences, never "
+        "isolated labels.\n" + HOOK_RULE + "\n" + CONNECT_RULE)
+FLOW_TEASER = "ONE scene: a curiosity hook only.\n" + HOOK_RULE
 PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, about {words} words in all (about "
                f"{NARRATED_WPS} words a second), never reading the headings word for word, no URL, no handle, no hashtag; "
                "never invent a fee, date, number or clause the brief did not give. The on-screen lines are {lines}; "
                "each heading at most 8 words, at most 2 lines a scene.\nNARRATION LANGUAGE: {language}. Every spoken word of "
-               "every narration is in {language}; a product name may stay as it is.")
+               "every narration is in {language}; a product name may stay as it is.\n" + CASUAL_RULE)
 PACE_SILENT = ("There is NO narrator: leave every narration empty \"\". The viewer READS, slowly: at most {budget} words in all "
                "on screen across the scenes (headings and lines together, both languages counted), each heading at most 7 words, "
                "at most 2 short lines a scene, complete connected sentences in the lines. The on-screen lines are {lines}.")
@@ -946,7 +961,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             page, layout = motion_layout.compose(scenes=scenes, total=total, w=w, h=h, lang=lang,
                                                  plan=auto or {"scenes": {}, "video": {}}, palette=PALETTE["regulab"],
                                                  gsap=GSAP, html_lang=LANGUAGE[lang][0], design=motion_styles.design(row),
-                                                 resolution=row.get("resolution") or "portrait")
+                                                 resolution=row.get("resolution") or "portrait",
+                                                 ambient=str((row.get("options") or {}).get("ambient") or "mint"))
             first = [f.get("code") for f in report["errors"]][:4]
             rejected = html[:6000]
             report = checked(page)

@@ -26,12 +26,29 @@ from typing import Any
 
 from . import motion_auto, motion_concepts
 
-# the ambient background of every scene (Wan, 26 Oct 2026: "ambient yellow green background, not too dark"): the reference films'
-# soft diagonal gradient moved from mint to a light yellow-green, with the line grid on top of it (see `grid-all`)
-GRADIENT = {"bright-editorial": "background:#fbf7da linear-gradient(145deg,#dff0c2,#fbf7da 70%);",
-            "continuous-line": "background:#fbf8de linear-gradient(150deg,#e2f0c6,#fbf8de);"}
-GRADIENT_ALT = {"bright-editorial": "linear-gradient(215deg,#e6f3cb,#fbf7da 70%)",
-                "continuous-line": "linear-gradient(210deg,#e6f2cd,#fbf8de)"}
+# the ambient background of every scene, chosen per film (Wan, 26 Oct 2026: "tone color like attachment 3 is preferable (remain
+# the line), let me choose the background ambient colour in semasa"): the reference films' soft mint-to-cream diagonal is the
+# default; the others are the same gradient in another light tone. The line grid sits on top of each (see `grid-all`).
+AMBIENTS = {
+    "mint": ("#e0f5e9", "#fff9ed", "#e4f4e8", "#fcf9ed", "Mint (rujukan)", "Mint (reference)"),
+    "lime": ("#dff0c2", "#fbf7da", "#e2f0c6", "#fbf8de", "Kuning-hijau", "Yellow-green"),
+    "cream": ("#fdf0d3", "#fffaf0", "#fdf1d8", "#fffaf0", "Krim", "Cream"),
+    "sky": ("#dcecf7", "#f6fbff", "#dfedf7", "#f6fbff", "Langit", "Sky"),
+    "blush": ("#fbe3e6", "#fff8f3", "#fbe6e8", "#fff8f3", "Merah jambu lembut", "Soft blush"),
+}
+DEFAULT_AMBIENT = "mint"
+
+
+def gradients(design: str, ambient: str) -> tuple[str, str]:
+    """The film's background rule and the second gradient that fades in and out over it."""
+    a, b, a2, b2 = AMBIENTS.get(ambient, AMBIENTS[DEFAULT_AMBIENT])[:4]
+    if design == "continuous-line":
+        return f"background:{b2} linear-gradient(150deg,{a2},{b2});", f"linear-gradient(210deg,{a2},{b2})"
+    return f"background:{b} linear-gradient(145deg,{a},{b} 70%);", f"linear-gradient(215deg,{a},{b} 70%)"
+
+
+GRADIENT = {d: gradients(d, DEFAULT_AMBIENT)[0] for d in ("bright-editorial", "continuous-line")}
+GRADIENT_ALT = {d: gradients(d, DEFAULT_AMBIENT)[1] for d in ("bright-editorial", "continuous-line")}
 SAFE = {"left": 0.08, "right": 0.14, "top": 0.13, "bottom": 0.23}
 LANE = (0.78, 0.115)              # the subtitle lane of a narrated film: top and height as fractions of the frame
 GAP = 0.028                       # between blocks, as a fraction of the frame width
@@ -47,13 +64,16 @@ BUILT = motion_auto.BUILDABLE
 
 
 def wrap_lines(text: str, px: float, width: float, factor: float) -> int:
-    """How many lines `text` takes at `px` in a column `width` wide (greedy by word, estimated glyph width)."""
+    """How many lines `text` takes at `px` in a column `width` wide (greedy by word, estimated glyph width). A token wider than
+    the column is broken inside (overflow-wrap) and takes as many lines as it needs."""
     n, cur = 1, 0.0
     space = px * factor * 0.5
     for word in text.split():
         wpx = len(word) * px * factor
-        if wpx > width:                                   # a token wider than the column breaks inside (overflow-wrap)
-            wpx = width
+        if wpx > width:
+            n += (1 if cur else 0) + int(-(-wpx // width)) - 1
+            cur = wpx - (int(-(-wpx // width)) - 1) * width
+            continue
         if cur and cur + space + wpx > width:
             n += 1
             cur = wpx
@@ -64,34 +84,60 @@ def wrap_lines(text: str, px: float, width: float, factor: float) -> int:
 
 def fit(blocks: list[tuple[str, float, float]], width: float, height: float, fixed: float, scale: float) -> list[float]:
     """Font sizes (px) for text blocks [(text, first_px, factor)] so the column plus `fixed` pixels of other blocks fits
-    `height`. Every size scales together and never goes under the readable floor; the caller drops lines if it cannot."""
+    `height`. Every size scales together and never goes under the readable floor; a block is also never set so large that its
+    longest word would be split across two lines. The caller drops lines if it cannot fit."""
     floor = MIN_PX * scale
+    caps = [width / (max((len(x) for x in t.split()), default=1) * f * 1.04) for t, _, f in blocks]
     k = 1.0
     while True:
-        sizes = [max(floor, px * k) for _, px, _ in blocks]
+        sizes = [max(floor, min(px * k, cap)) for (_, px, _), cap in zip(blocks, caps, strict=True)]
         used = fixed + sum(wrap_lines(t, s, width, f) * s * 1.18 + s * 0.35 for (t, _, f), s in zip(blocks, sizes, strict=True))
         if used <= height or all(s <= floor + 0.01 for s in sizes):
             return sizes if used <= height else []
         k *= 0.94
 
 
+def phrase_cuts(words: list[str], k: int) -> list[int]:
+    """Where to cut `words` into k subtitles: near equal parts, but after a comma, full stop or similar when one is within four
+    words, so a subtitle never ends in the middle of a phrase (Wan, 26 Oct 2026: "not hanging")."""
+    n, cuts = len(words), []
+    for i in range(1, k):
+        ideal = round(n * i / k)
+        lo = max((cuts[-1] if cuts else 0) + 2, ideal - 4)
+        hi = min(n - 2, ideal + 4)
+        best, best_score = None, 99.0
+        for j in range(lo, hi + 1):
+            if re.search(r"[,.;:!?…—–]$", words[j - 1]):
+                score = abs(j - ideal) - (2 if re.search(r"[.!?…]$", words[j - 1]) else 0)
+                if score < best_score:
+                    best, best_score = j, score
+        cut = best if best is not None else max(lo, min(hi, ideal))
+        if (not cuts or cut > cuts[-1]) and 0 < cut < n:
+            cuts.append(cut)
+    return cuts
+
+
 def caption_chunks(sc: dict[str, Any]) -> list[tuple[str, float, float]]:
-    """The narration as two subtitle chunks (the references show two short lines at a time), timed to the recording: the
-    second starts at the word the voice reaches half-way, from the real word times when the service gave them."""
+    """The narration as short subtitles (the references show two short lines at a time), about nine words each, cut at a
+    phrase boundary where there is one and timed to the recording: each starts at the word the voice reaches, from the real
+    word times when the service gave them."""
     words = str(sc.get("narration") or "").split()
     start, span = float(sc["start"]), float(sc.get("audio_s") or sc["duration"])
     end = start + float(sc["duration"])
     if len(words) < 6:
         return [(" ".join(words), start, end)]
-    mid = len(words) // 2
+    k = min(4, max(2, -(-len(words) // 9)))
+    cuts = phrase_cuts(words, k)
     timed = sc.get("words") or []
-    if len(timed) == len(words):
-        cut = start + float(timed[mid][0])
-    else:
-        total = sum(len(w) + 1 for w in words)
-        cut = start + span * sum(len(w) + 1 for w in words[:mid]) / total
-    cut = min(max(cut, start + 0.6), end - 0.4)
-    return [(" ".join(words[:mid]), start, cut), (" ".join(words[mid:]), cut, end)]
+    weights = [len(w) + 1 for w in words]
+    total = sum(weights)
+    bounds = [0, *cuts, len(words)]
+    times = [start]
+    for cut in cuts:
+        t = start + (float(timed[cut][0]) if len(timed) == len(words) else span * sum(weights[:cut]) / total)
+        times.append(min(max(t, times[-1] + 0.5), end - 0.4 * (len(bounds) - len(times) - 1)))
+    times.append(end)
+    return [(" ".join(words[bounds[i]:bounds[i + 1]]), times[i], times[i + 1]) for i in range(len(bounds) - 1)]
 
 
 def esc(s: str) -> str:
@@ -120,6 +166,9 @@ YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
 PCT = re.compile(r"(\d+(?:[.,]\d+)?)\s?%")
 CAPTIONS = {"C01", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10"}
 TRANSITIONS = {"M02", "M08", "M09"}
+# the hook chip that opens the first scene (Wan, 26 Oct 2026: "do not forget the hook ... Did you know, Warning, Breaking News")
+HOOKS = {"know": ("TAHUKAH ANDA?", "DID YOU KNOW?", None), "warn": ("AMARAN", "WARNING", "#c0392b"),
+         "news": ("BERITA TERKINI", "BREAKING NEWS", "#1d5fbf")}
 TAGS = {"bm": ("KAJIAN RUJUKAN", "FAKTA"), "both": ("KAJIAN RUJUKAN", "FAKTA"), "en": ("SOURCE STUDY", "FACT")}
 
 
@@ -168,13 +217,17 @@ def label_of(line: str, token: str) -> str:
 
 def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang: str, plan: dict[str, Any],
             palette: dict[str, str], gsap: str, html_lang: str, resolution: str,
-            design: str = "bright-editorial") -> tuple[str, dict[str, Any]]:
+            design: str = "bright-editorial", ambient: str = DEFAULT_AMBIENT) -> tuple[str, dict[str, Any]]:
     design = design if design in GRADIENT else "bright-editorial"
+    ambient = ambient if ambient in AMBIENTS else DEFAULT_AMBIENT
+    grad_main, grad_alt = gradients(design, ambient)
     scale = w / 1080
     box_w = w * (1 - SAFE["left"] - SAFE["right"])
     teaching = [s for s in scenes if s.get("id") != "brand-outro"]
     narrated = any(s.get("audio") for s in teaching)
-    box_h = h * ((LANE[0] - 0.02 if narrated else 1 - SAFE["bottom"]) - SAFE["top"])
+    # a silent film has no subtitle lane, so its column takes the room (Wan: "jangan bagi window terlalu kosong")
+    top_frac = SAFE["top"] if narrated else 0.11
+    box_h = h * ((LANE[0] - 0.02 if narrated else 0.85) - top_frac)
     gap = w * GAP
     video = plan.get("video") or {}
     caption = video.get("captions") if video.get("captions") in CAPTIONS else "C05"
@@ -196,11 +249,18 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     css = [
         f"html,body{{margin:0;width:{w}px;height:{h}px;overflow:hidden;background:{palette['ground']};}}",
         f'body{{font-family:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:{ink};}}',
-        f"#root{{position:absolute;left:0;top:0;width:{w}px;height:{h}px;overflow:hidden;{GRADIENT[design]}}}",
-        f".sc{{position:absolute;left:{w * SAFE['left']:.0f}px;top:{h * SAFE['top']:.0f}px;width:{box_w:.0f}px;"
-        f"height:{box_h:.0f}px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;"
+        f"#root{{position:absolute;left:0;top:0;width:{w}px;height:{h}px;overflow:hidden;{grad_main}}}",
+        f".sc{{position:absolute;left:{w * SAFE['left']:.0f}px;top:{h * top_frac:.0f}px;width:{box_w:.0f}px;"
+        f"height:{box_h:.0f}px;display:flex;flex-direction:column;justify-content:space-evenly;align-items:flex-start;"
         f"gap:{gap:.0f}px;overflow:hidden;}}",
-        ".ph{position:relative;align-self:center;overflow:hidden;flex:none;}",
+        # a photo has no border line: bigger, and its edges fade into the background (Wan, 26 Oct 2026)
+        ".ph{position:relative;align-self:center;overflow:hidden;flex:none;"
+        "-webkit-mask-image:linear-gradient(to right,transparent,#000 14%,#000 86%,transparent),"
+        "linear-gradient(to bottom,transparent,#000 16%,#000 84%,transparent);-webkit-mask-composite:source-in;"
+        "mask-image:linear-gradient(to right,transparent,#000 14%,#000 86%,transparent),"
+        "linear-gradient(to bottom,transparent,#000 16%,#000 84%,transparent);mask-composite:intersect;}",
+        f".hook{{flex:none;align-self:flex-start;color:#fff;font-weight:800;letter-spacing:.05em;line-height:1.1;"
+        f"padding:{14 * scale:.0f}px {30 * scale:.0f}px;border-radius:{14 * scale:.0f}px;font-size:{60 * scale:.0f}px;}}",
         f".cap{{position:absolute;left:{w * SAFE['left']:.0f}px;top:{h * LANE[0]:.0f}px;width:{box_w:.0f}px;"
         f"height:{h * LANE[1]:.0f}px;display:flex;align-items:center;justify-content:center;text-align:center;"
         f"font-weight:500;line-height:1.3;color:{ink};overflow-wrap:anywhere;}}",
@@ -290,7 +350,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     # the background is a soft diagonal gradient and nothing else (Wan, 26 Oct 2026: "I don't want circles in the background
     # but more like gradient"): the reference films' own gradients, with a second one that fades in and out for slow movement
     parts.append(f'<div id="grad2" style="position:absolute;left:0;top:0;width:{w}px;height:{h}px;opacity:0;'
-                 f'background:{GRADIENT_ALT[design]};"></div>')
+                 f'background:{grad_alt};"></div>')
     tw.append(f'tl.to("#grad2",{{opacity:.65,duration:{total / 2:g},ease:"sine.inOut"}},0);')
     tw.append(f'tl.to("#grad2",{{opacity:0,duration:{total / 2:g},ease:"sine.inOut"}},{total / 2:g});')
     # the line grid sits behind every scene, the same in all of them (Wan, 26 Oct 2026: "all scene ... have line background")
@@ -336,15 +396,20 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         yrs = [(ln, YEAR.search(ln).group(0)) for ln in lines if YEAR.search(ln)] if "P08" in eff else []
         events = sorted({y: ln for ln, y in yrs}.items())[:4] if len({y for _, y in yrs}) >= 2 else []
         quote = next((ln for ln in lines if re.search(r"[“”\"]", ln)), "") if "P09" in eff and not study else ""
-        photo_h = (h * 0.32 if h >= w else h * 0.36) if photo else 0
+        photo_h = (h * 0.34 if h >= w else h * 0.40) if photo else 0
         extra_blocks = ("V06" in eff) + bool(study and "P09" in eff) + ("V08" in eff) + bool(pct_rows or events or quote) \
             + use_concept
         if photo and extra_blocks:
             photo_h *= max(0.55, 1 - 0.16 * extra_blocks)
-        photo_w = min(box_w, photo_h * 0.8)
-        px_h = (104 if len(heading.split()) <= 4 else 88 if len(heading.split()) <= 7 else 72 if len(heading.split()) <= 11
-                else 60) * scale
-        px_l = 50 * scale
+        photo_w = box_w if h >= w else min(box_w, photo_h * 1.6)
+        # the type starts large and `fit` brings it down to what the column holds, so a short scene fills the window
+        # (Wan, 26 Oct 2026: "jangan bagi window terlalu kosong") and a long one still fits
+        px_h = (128 if len(heading.split()) <= 4 else 108 if len(heading.split()) <= 7 else 88 if len(heading.split()) <= 11
+                else 66) * scale
+        px_l = 62 * scale
+        if not photo and len((heading + " " + " ".join(lines)).split()) <= 14:
+            px_h, px_l = px_h * 1.25, px_l * 1.2                      # a sparse scene is set larger, so the window is not empty
+        hook_kind = plan.get("hook") if idx == 0 and plan.get("hook") in HOOKS else None
         lead = (1.1 if "H05" in eff else 0.8 if "H10" in eff else 0.4 if "M04" in eff else 0.3 if "H06" in eff else 0.0)
         if lead and dur < 3.6:
             lead = min(lead, 0.4)
@@ -358,7 +423,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                      and longest * MIN_PX * scale * BODY * 1.05 <= card_w)
             consumed = not side and not cards and not pct_rows and not events
             flow = consumed and "B04" in eff and role == "solution" and len(lines_now) >= 2
-            steps = consumed and "B04" in eff and not flow and bool(lines_now)
+            steps = consumed and not flow and bool(lines_now) and ("B04" in eff or len(lines_now) >= 2)
             track = "V06" in eff and len(lines_now) >= 2 and not cards and not side
             if side or pct_rows or events:
                 rest = [ln for ln in lines_now if not (events and YEAR.search(ln))
@@ -405,6 +470,10 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                     + (len(rest) - 1) * arrow_h + gap
             if use_concept and cblock:
                 extra += cblock.height + gap
+            if steps:
+                extra += len(rest) * 34 * scale
+            if hook_kind:
+                extra += 60 * scale * 1.1 + 28 * scale + gap
             sizes = fit(texts, box_w, box_h, extra + gap * (len(texts) + 1), scale) if texts else []
             if not sizes and use_concept and (lines or texts):
                 use_concept, cblock, lines = False, None, list(base_lines)     # words outrank a concept diagram
@@ -416,26 +485,36 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 if not side_sizes:
                     eff.discard("L05")                    # the sidebar cannot hold these lines beside the photo: plain column
                     continue
-                sizes = fit(texts[:1], box_w, box_h, photo_h + gap * 3, scale) if texts else [0]
+                sizes = fit(texts[:1], box_w, box_h, photo_h + gap + extra + gap * 2, scale) if texts else [0]
                 if texts and not sizes:
-                    sizes = [MIN_PX * scale]
+                    eff.discard("L05")                    # photo, panel and the other blocks together do not fit: plain column
+                    continue
             if sizes or (not lines and not texts):
                 break
             if lines:
                 dropped.append(f"{sid}: {lines.pop()[:40]}")
                 continue
+            spare = next((c for c in ("P09", "V08", "V06") if c in eff), None)
+            if spare:
+                eff.discard(spare)                        # an extra block that cannot fit goes before the heading shrinks
+                continue
             break
         if texts and not sizes:
             sizes = [MIN_PX * scale] * len(texts)
+        if photo and not side and texts and sizes:
+            # the photo takes the room the words leave, up to about half the frame (Wan: "make it bigger", "not too empty")
+            used = extra + gap * (len(texts) + 1) + sum(wrap_lines(t, s, box_w, f) * s * 1.18 + s * 0.35
+                                                         for (t, _, f), s in zip(texts, sizes, strict=True))
+            room = h * (0.5 if h >= w else 0.56) - photo_h
+            if box_h - used > 0 and room > 0:
+                photo_h += min((box_h - used) * 0.92, room)
         hs = sizes[0] if heading and sizes else px_h
         ls = sizes[1:] if heading else sizes
         block, photo_html = [], ""
         counts: list[tuple[str, int]] | None = [] if "P03" in eff else None
         numbers = "V02" in eff
         if photo:
-            ring = f"box-shadow:0 0 0 {max(3, 5 * scale):.0f}px {accent};" if "L06" in eff else ""
             pw = min(box_w * 0.42, photo_h * 0.8) if side else photo_w
-            arch = f"{pw / 2:.0f}px {pw / 2:.0f}px {28 * scale:.0f}px {28 * scale:.0f}px"
             filt = FILTERS[fin_s]
             if "X06" in eff:
                 inner = "".join(f'<i class="tl {sid}-t" style="left:{c * 100 / 3:.3f}%;top:{r * 100 / 3:.3f}%;'
@@ -445,7 +524,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             else:
                 inner = f'<div id="{sid}-photo" style="background-image:url({photo});filter:{filt};"></div>'
             photo_html = (f'<div class="ph" id="{sid}-ph" style="width:{pw:.0f}px;height:{photo_h:.0f}px;'
-                          f'border-radius:{arch};{ring}">{inner}</div>')
+                          f'">{inner}</div>')
             applied.add(fin_s)
         if "V08" in eff:
             block.append(f'<div class="mph" id="{sid}-mph"></div>')
@@ -453,6 +532,10 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         if rule and "H10" in eff:
             block.append(f'<div class="rule" id="{sid}-r0"></div>')
             applied.add("H10")
+        if hook_kind:
+            bm_label, en_label, colour = HOOKS[hook_kind]
+            block.append(f'<div class="hook" id="{sid}-hook" style="background:{colour or accent}">'
+                         f'{esc(en_label if lang == "en" else bm_label)}</div>')
         key_done = key7_done = False
         if heading:
             words = heading.split()
@@ -573,7 +656,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                              + ("" if last else f'<i class="cn {sid}-cn"></i>') + para(ln, size, j, f"{sid}-lx") + "</div>")
             else:
                 block.append(para(ln, size, j, lcls))
-        if steps:
+        if steps and "B04" in eff:
             applied.add("B04")
         if "V04" in eff and not steps and (tail_lines or cards or side):
             applied.add("V04")
@@ -633,6 +716,9 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 at = t0 + i * 0.36
                 tw.append(f'tl.fromTo("#{sid}-cd{n}",{{opacity:0,scale:2.2}},{{opacity:1,scale:1,duration:.2,ease:"power3.out"}},{at:g});')
                 tw.append(f'tl.to("#{sid}-cd{n}",{{opacity:0,scale:.8,duration:.1}},{at + .26:g});')
+        if hook_kind:
+            tw.append(f'tl.fromTo("#{sid}-hook",{{opacity:0,scale:.6}},{{opacity:1,scale:1,duration:.45,ease:"back.out(2)"}},'
+                      f'{t0 + lead + .02:g});')
         if "H06" in eff:
             tw.append(f'tl.fromTo("#{sid}-pa",{{xPercent:0}},{{xPercent:-101,duration:.5,ease:"power3.inOut"}},{t0 + .1:g});')
             tw.append(f'tl.fromTo("#{sid}-pb",{{xPercent:0}},{{xPercent:101,duration:.5,ease:"power3.inOut"}},{t0 + .1:g});')
@@ -785,6 +871,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     report = {"layout": "safe-layout", "built": sorted(chosen & applied),
               "not_built": sorted(chosen - applied - motion_auto.NATIVE_TEXT),
               "concept": sorted(set(concept_used) | ({"C01"} & applied) | ({"M01", "M06", "M10", "F01", "F04"} & applied)),
+              "hook": plan.get("hook") if plan.get("hook") in HOOKS else "", "ambient": ambient,
               "dropped_lines": dropped, "caption": caption, "transition": transition}
     return page, report
 

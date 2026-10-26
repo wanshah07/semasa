@@ -19,10 +19,10 @@ from typing import Any, NamedTuple
 # style code -> the kind of concept diagram that stands in for it
 KIND = {
     "L01": "split", "L02": "pip", "L03": "stack", "L04": "device", "L07": "chat", "L09": "wall", "L10": "callout",
-    "X01": "stack", "X02": "wall", "X03": "frame", "X04": "browser", "X05": "tunnel", "X07": "frame", "X08": "echo",
-    "X09": "stack",
-    "P01": "doc", "P02": "callout", "P04": "wipe", "P05": "search", "P06": "stack", "P07": "mark", "P10": "device",
-    "B01": "browser", "B02": "stack", "B03": "device", "B06": "frame", "B07": "route", "B09": "doc", "B10": "browser",
+    "X01": "orbit", "X02": "ticker", "X03": "frame", "X04": "browser", "X05": "tunnel", "X07": "frame", "X08": "echo",
+    "X09": "carousel",
+    "P01": "doc", "P02": "callout", "P04": "wipe", "P05": "search", "P06": "receipt", "P07": "mark", "P10": "device",
+    "B01": "browser", "B02": "float", "B03": "device", "B06": "frame", "B07": "route", "B09": "checklist", "B10": "browser",
     "V07": "callout", "H04": "teaser",
 }
 # and the ones that are a movement or a look, not a block
@@ -39,27 +39,27 @@ RECIPES: dict[str, tuple[str, str, str]] = {
     "L07": ("fws", "l", "concept of a grid conversation: the lines as chat bubbles, left and right"),
     "L09": ("w", "W", "concept of a collage canvas: the scene's own key words as tiles"),
     "L10": ("s", "L", "concept of an adaptive proof panel: the key line in a callout (it is never presented as proof)"),
-    "X01": ("fw", "l", "concept of orbit cards: the lines as cards that step in one after another"),
-    "X02": ("w", "W", "concept of an infinite content wall: the scene's key words as a wall of tiles"),
+    "X01": ("fw", "l", "concept of orbit cards: up to three lines as three cards side by side"),
+    "X02": ("w", "L", "concept of an infinite content wall: a news-ticker strip carrying the key line"),
     "X03": ("hw", "", "concept of a frame break: the key line in a frame with its corners broken open"),
     "X04": ("f", "L", "concept of a UI world: the key line in a browser-style frame"),
     "X05": ("h", "", "concept of an infinite zoom tunnel: nested frames around the key line, pulsing inward"),
     "X07": ("hw", "", "concept of a reality portal: the key line in a doorway-shaped frame"),
     "X08": ("h", "W", "concept of a clone echo: the heading repeated three times, fainter each time"),
-    "X09": ("ws", "l", "concept of a cinematic carousel: the lines as cards that slide in one after another"),
+    "X09": ("ws", "L", "concept of a cinematic carousel: a card with arrows and position squares, sliding in"),
     "P01": ("fw", "L", "concept of a screenshot punch: the key line on a document sheet with the line highlighted"),
     "P02": ("fw", "L", "concept of a comment spotlight: the key line in a speech bubble"),
     "P04": ("fw", "l", "concept of a before-and-after wipe: two lines side by side, the second wiped in"),
     "P05": ("hf", "", "concept of search-to-result: the heading typed into a search bar, the first line as the result"),
-    "P06": ("fw", "l", "concept of a receipt stack: the lines as slips, one under the other"),
+    "P06": ("fw", "l", "concept of a receipt stack: the lines as rows of a slip with a tick each"),
     "P07": ("fw", "L", "concept of an annotation marker: the key line with a marker stroke drawn across it"),
     "P10": ("fs", "L", "concept of an app UI breakdown: the key line in a phone-shaped frame"),
     "B01": ("fs", "", "concept of a browser flythrough: a browser frame showing the source's own address"),
-    "B02": ("fw", "l", "concept of floating screenshot cards: the lines as cards, one under the other"),
+    "B02": ("fw", "l", "concept of floating screenshot cards: the lines as cards that float left and right"),
     "B03": ("s", "L", "concept of a device showcase: the key line inside a phone-shaped frame"),
     "B06": ("fws", "", "concept of a product cut-out reveal: the key line in a frame that lifts into place"),
     "B07": ("sw", "l", "concept of an animated map journey: a route with a stop for each line"),
-    "B09": ("fw", "L", "concept of a document flyover: a sheet of text bars with the key line highlighted"),
+    "B09": ("fw", "l", "concept of a document flyover: a sheet with the lines as a checklist"),
     "B10": ("s", "L", "concept of an interface component breakdown: a browser frame holding the key line"),
     "V07": ("fw", "L", "concept of a callout bubble: the key line in a speech bubble"),
     "H04": ("h", "", "concept of result before process: the film's last heading shown first, as a teaser"),
@@ -73,8 +73,8 @@ RECIPES: dict[str, tuple[str, str, str]] = {
 
 
 # how many of the scene's lines a concept diagram shows (and so takes off the plain list); a kind not listed shows one
-CONSUME = {"stack": 3, "split": 2, "pip": 2, "wipe": 2, "chat": 3, "route": 3, "wall": 0, "echo": 0, "teaser": 0, "search": 0,
-           "tunnel": 1}
+CONSUME = {"orbit": 3, "receipt": 3, "float": 3, "checklist": 3, "carousel": 1, "ticker": 1, "stack": 3, "split": 2,
+           "pip": 2, "wipe": 2, "chat": 3, "route": 3, "wall": 0, "echo": 0, "teaser": 0, "search": 0, "tunnel": 1}
 MULTI_CODES = {c for c, k in KIND.items() if CONSUME.get(k, 1) >= 2}
 
 
@@ -141,7 +141,7 @@ def css(c: Ctx, accent: str, rgba: Callable[[str, float], str]) -> list[str]:
         f".wall>div{{border:{soft};border-radius:{16 * s:.0f}px;{paper}padding:{pad * .7:.0f}px;text-align:center;"
         "font-weight:700;"
         f"overflow-wrap:anywhere;}}",
-        f".ech{{font-weight:800;line-height:1.1;color:transparent;-webkit-text-stroke:{max(2, 3 * s):.0f}px {accent};}}",
+        f".ech{{font-weight:800;line-height:1.1;color:{accent};}}",
         ".tun{display:flex;justify-content:center;}",
         f".tun>div{{border:{soft};border-radius:{24 * s:.0f}px;padding:{pad * .8:.0f}px;}}",
         f".tun>div>div{{border:{soft};border-radius:{20 * s:.0f}px;padding:{pad * .8:.0f}px;{paper}text-align:center;}}",
@@ -155,6 +155,29 @@ def css(c: Ctx, accent: str, rgba: Callable[[str, float], str]) -> list[str]:
         f".rte>div::before{{content:\"\";position:absolute;left:0;top:-{44 * s:.0f}px;width:{22 * s:.0f}px;height:{22 * s:.0f}px;"
         f"background:{accent};border-radius:{4 * s:.0f}px;}}",
         f".tz{{border:{ring};border-radius:{20 * s:.0f}px;{paper}padding:{pad:.0f}px;}} .tz b{{color:{accent};}}",
+        f".flt>div{{width:86%;border:{soft};border-radius:{20 * s:.0f}px;{paper}padding:{pad:.0f}px;"
+        f"margin-bottom:{c.gap * .4:.0f}px;}}",
+        ".flt>div:nth-child(even){margin-left:auto;}",
+        f".orb{{display:flex;gap:{c.gap * .6:.0f}px;}} .orb>div{{flex:1;min-width:0;border:{soft};border-radius:{20 * s:.0f}px;"
+        f"{paper}padding:{pad * .8:.0f}px;text-align:center;overflow-wrap:anywhere;}}",
+        f".car{{display:flex;align-items:center;gap:{c.gap * .5:.0f}px;}} .car .chv{{flex:none;font-weight:800;color:{accent};"
+        f"font-size:{fs * 1.5:.0f}px;line-height:1;}} .car .cd2{{flex:1;min-width:0;border:{ring};border-radius:{24 * s:.0f}px;"
+        f"{paper}padding:{pad:.0f}px;text-align:center;}}",
+        f".cars{{display:flex;justify-content:center;gap:{12 * s:.0f}px;margin-top:{16 * s:.0f}px;}}",
+        f".cars i{{width:{18 * s:.0f}px;"
+        f"height:{18 * s:.0f}px;background:{rgba(accent, .3)};border-radius:{4 * s:.0f}px;}} .cars i.on{{background:{accent};}}",
+        f".rcp{{border-left:{soft};border-right:{soft};{paper}padding:{pad:.0f}px {pad * 1.2:.0f}px;}}",
+        f".rcp .rw{{display:flex;gap:{c.gap * .4:.0f}px;padding:{8 * s:.0f}px 0;border-bottom:{max(2, 3 * s):.0f}px dashed "
+        f"{rgba(accent, .4)};}}",
+        f".rcp .rw b{{color:{accent};flex:none;}} .rcp .rw span{{flex:1;min-width:0;overflow-wrap:anywhere;}}",
+        f".tkr{{display:flex;align-items:center;gap:{c.gap * .6:.0f}px;background:{accent};color:#fff;"
+        f"border-radius:{14 * s:.0f}px;"
+        f"padding:{pad * .7:.0f}px {pad:.0f}px;}} .tkr b{{flex:none;background:#fff;color:{accent};border-radius:{8 * s:.0f}px;"
+        f"padding:{4 * s:.0f}px {14 * s:.0f}px;}} .tkr span{{flex:1;min-width:0;overflow-wrap:anywhere;}}",
+        f".chk{{border:{soft};border-radius:{14 * s:.0f}px;{paper}padding:{pad:.0f}px;}}",
+        f".chk .rw{{display:flex;gap:{c.gap * .5:.0f}px;padding:{6 * s:.0f}px 0;}}",
+        f".chk .bx{{flex:none;width:{40 * s:.0f}px;height:{40 * s:.0f}px;border:{ring};border-radius:{8 * s:.0f}px;"
+        f"color:{accent};font-weight:800;text-align:center;line-height:{36 * s:.0f}px;}} .chk .rw span{{flex:1;min-width:0;}}",
     ]
 
 
@@ -180,9 +203,13 @@ def build(kind: str, sid: str, c: Ctx, heading: str, lines: list[str], teaser: s
               "split": (w - c.gap) / 2 - 2 * pad, "wipe": (w - c.gap) / 2 - 2 * pad, "pip": (w - c.gap) * .37 - 2 * pad,
               "chat": w * .78 - 2.4 * pad, "route": w / 3 - c.gap * .4, "callout": w - 2.4 * pad, "mark": w - 2.4 * pad,
               "doc": w - 2 * pad, "frame": w - 2.4 * pad, "tunnel": w - 6 * pad, "teaser": w - 2 * pad,
-              "search": w - 3 * pad - 40 * c.scale, "echo": w, "wall": (w - c.gap * .5) / 2 - 1.4 * pad}.get(kind, w)
+              "search": w - 3 * pad - 40 * c.scale, "echo": w, "wall": (w - c.gap * .5) / 2 - 1.4 * pad,
+              "float": w * .86 - 2 * pad, "orbit": (w - c.gap * 1.2) / 3 - 1.6 * pad, "carousel": w - 2 * pad - 2 * fs * 1.1,
+              "receipt": w - 2.4 * pad - 3 * fs, "ticker": w - 2 * pad - 5 * fs,
+              "checklist": w - 2 * pad - 40 * c.scale - c.gap * .5}.get(kind, w)
     shown = {"split": lines[:2], "wipe": lines[:2], "pip": lines[:2], "stack": lines[:3], "chat": lines[:3], "route": lines[:3],
-             "search": [heading or key, key], "teaser": [teaser], "echo": [heading or key], "wall": []}.get(kind, [key])
+             "search": [heading or key, key], "teaser": [teaser], "echo": [heading or key], "wall": [],
+             "float": lines[:3], "orbit": lines[:3], "receipt": lines[:3], "checklist": lines[:3]}.get(kind, [key])
     if not whole(shown, fs, narrow):
         return None
     th = c.text_h
@@ -297,6 +324,47 @@ def build(kind: str, sid: str, c: Ctx, heading: str, lines: list[str], teaser: s
         inner = "".join(f'<div class="{sid}-rs">{esc(t)}</div>' for t in use)
         return Block(f'<div class="cb rte" id="{uid}">{inner}</div>', h, lambda at: [
             f'tl.fromTo(".{sid}-rs",{{opacity:0,y:{20 * s:.0f}}},{{opacity:1,y:0,duration:.4,stagger:.3}},{at:g});'])
+    if kind == "float":
+        use = lines[:3]
+        h = sum(th(t, fs, .56, w * .86 - 2 * pad) + 2 * pad + c.gap * .4 + 6 * s for t in use)
+        inner = "".join(f"<div class=\"{sid}-fc\">{esc(t)}</div>" for t in use)
+        return Block(f'<div class="cb flt" id="{uid}">{inner}</div>', h, lambda at: [
+            f'tl.fromTo(".{sid}-fc",{{opacity:0,y:{40 * s:.0f}}},{{opacity:1,y:0,duration:.5,ease:"power3.out",stagger:.25}},'
+            f'{at:g});'])
+    if kind == "orbit":
+        use = lines[:3]
+        if len(use) < 2:
+            return None
+        cw = (w - c.gap * 1.2) / len(use) - 1.6 * pad
+        h = max(th(t, fs, .56, cw) for t in use) + 1.6 * pad + 8 * s
+        inner = "".join(f"<div class=\"{sid}-oc\">{esc(t)}</div>" for t in use)
+        return Block(f'<div class="cb orb" id="{uid}">{inner}</div>', h, lambda at: [
+            f'tl.fromTo(".{sid}-oc",{{opacity:0,scale:.6}},{{opacity:1,scale:1,duration:.45,ease:"power3.out",stagger:.18}},'
+            f'{at:g});'])
+    if kind == "carousel":
+        dots = "".join(f'<i class="{"on" if i == 0 else ""}"></i>' for i in range(min(3, max(2, len(lines) or 2))))
+        h = th(key, fs, .56, w - 2 * pad - 2 * fs * 1.1) + 2 * pad + 18 * s + 16 * s + 8 * s
+        return Block(f'<div id="{uid}" class="cb"><div class="car"><span class="chv">‹</span><div class="cd2">{esc(key)}</div>'
+                     f'<span class="chv">›</span></div><div class="cars">{dots}</div></div>', h, lambda at: [
+            f'tl.fromTo("#{uid}",{{opacity:0,x:{120 * s:.0f}}},{{opacity:1,x:0,duration:.6,ease:"power3.out"}},{at:g});'])
+    if kind == "receipt":
+        use = lines[:3]
+        h = sum(th(t, fs, .56, w - 2.4 * pad - 3 * fs) + 16 * s + 3 * s for t in use) + 2 * pad
+        rows = "".join(f'<div class="rw {sid}-rr"><span>{esc(t)}</span><b>✓</b></div>' for t in use)
+        return Block(f'<div class="cb rcp" id="{uid}">{rows}</div>', h, lambda at: [
+            f'tl.fromTo(".{sid}-rr",{{opacity:0,y:{-30 * s:.0f}}},{{opacity:1,y:0,duration:.4,ease:"power2.out",stagger:.3}},'
+            f'{at:g});'])
+    if kind == "ticker":
+        h = th(key, fs, .56, w - 2 * pad - 5 * fs) + 1.4 * pad + 8 * s
+        return Block(f'<div class="cb tkr" id="{uid}"><b>▸</b><span>{esc(key)}</span></div>', h, lambda at: [
+            f'tl.fromTo("#{uid}",{{opacity:0,x:{-160 * s:.0f}}},{{opacity:1,x:0,duration:.5,ease:"power3.out"}},{at:g});'])
+    if kind == "checklist":
+        use = lines[:3]
+        h = sum(th(t, fs, .56, w - 2 * pad - 40 * s - c.gap * .5) + 12 * s for t in use) + 2 * pad + 8 * s
+        rows = "".join(f'<div class="rw {sid}-ck"><i class="bx">✓</i><span>{esc(t)}</span></div>' for t in use)
+        return Block(f'<div class="cb chk" id="{uid}">{rows}</div>', h, lambda at: [
+            f'tl.fromTo(".{sid}-ck",{{opacity:0,x:{-50 * s:.0f}}},{{opacity:1,x:0,duration:.4,ease:"power2.out",stagger:.3}},'
+            f'{at:g});'])
     if kind == "teaser":
         if not teaser:
             return None

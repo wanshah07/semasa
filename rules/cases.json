@@ -2044,5 +2044,54 @@
   "expect": {
    "hard": 1
   }
+ },
+ {
+  "name": "a post queued to one platform is judged on that platform only",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "channels": [
+    "instagram"
+   ],
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "v1",
+     "type": "video"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "a post queued to two platforms still needs both captions",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "channels": [
+    "instagram",
+    "threads"
+   ],
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "v1",
+     "type": "video"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 1
+  }
  }
 ]

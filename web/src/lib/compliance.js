@@ -34,6 +34,13 @@ function brandMarkRe(brand) {
 }
 
 export function platformsFor(stream) { return RULES.platforms[stream] || RULES.platforms.regulab; }
+/** The platforms THIS post goes to: the ones chosen (`channels`, a Motion film queued to some of them), else every platform
+    of its stream. A name the stream does not have is ignored, and an empty choice means all. */
+export function platformsOf(post) {
+  const plats = platformsFor(post.stream || "regulab");
+  const picked = Array.isArray(post.channels) ? plats.filter((p) => post.channels.includes(p)) : [];
+  return picked.length ? picked : plats;
+}
 export function langOf(post) { return post.lang || RULES.default_lang[post.stream || "regulab"] || "bm"; }
 /** Language is the OUTER key and platform the inner one: text[lang][plat]. */
 export function textOf(post, plat, lang) { return String(((post.text || {})[lang] || {})[plat] || ""); }
@@ -164,7 +171,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   const burl = brandUrlRe(brand);
   const limits = RULES.limits[stream] || {};
 
-  for (const p of platformsFor(stream)) {
+  for (const p of platformsOf(post)) {
     const where = `Caption (${p})`;
     const t = textOf(post, p, lang);
     if (!t) { add(true, where, "empty"); continue; }
@@ -191,7 +198,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   }
 
   const other = lang === "bm" ? "en" : "bm";
-  for (const p of platformsFor(stream)) {
+  for (const p of platformsOf(post)) {
     const t = textOf(post, p, other);
     if (!t) continue;
     const tag = other === "bm" ? "BM" : "EN";
@@ -256,7 +263,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     const body = textOf(post, "facebook", lang) + textOf(post, "instagram", lang);
     if (!/diwartakan/i.test(body)) add(true, "Post", "fatwa: gazette warning missing (diwartakan)");
   }
-  if (stream === "regulab" && platformsFor(stream).includes("instagram") && !(post.media || []).length)
+  if (stream === "regulab" && platformsOf(post).includes("instagram") && !(post.media || []).length)
     add(true, "Post", "instagram needs an image");
   if (stream === "regulab" && schedule && post.date && post.domain) {
     const dow = dowOf(post.date);

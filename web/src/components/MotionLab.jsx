@@ -10,6 +10,8 @@ import MotionAmbient from "./MotionAmbient";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
 import MotionEffectLibrary from "./MotionEffectLibrary";
 import MotionQueue from "./MotionQueue";
+import MotionPost from "./MotionPost";
+import { inMotionList } from "../lib/motionQueue";
 import { effectGroups } from "../lib/motionEffects";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
@@ -149,8 +151,8 @@ export default function MotionLab({ user, onToast }) {
     <section className="mt-10" data-motion>
       <div className="mb-3">
         <h2 className="flex items-center gap-2 font-display text-2xl"><Clapperboard size={18} className="text-accent" /> {t("Motion", "Motion")}</h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted">{t("Video grafik gerak daripada idea atau pautan. Bot tulis komposisi HTML (kontrak HyperFrames), semak, render MP4 di pelayan dan paparkan di sini. Tiada apa disiarkan: fail ini untuk anda guna.",
-          "A motion-graphics video from an idea or a link. The bot writes the HTML composition (the HyperFrames contract), checks it, renders the MP4 on the runner and shows it here. Nothing is posted: the file is yours to use.")}</p>
+        <p className="mt-1 max-w-2xl text-sm text-muted">{t("Video grafik gerak daripada idea atau pautan. Bot tulis komposisi HTML (kontrak HyperFrames), semak, render MP4 di pelayan dan paparkan di sini. Bila siap, pilih platform dan masukkan ke giliran Post sebagai draf; anda luluskan di tab Post.",
+          "A motion-graphics video from an idea or a link. The bot writes the HTML composition (the HyperFrames contract), checks it, renders the MP4 on the runner and shows it here. When it is done, pick the platforms and put it in the Posts queue as a draft; you approve it in the Posts tab.")}</p>
       </div>
       {missing && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual belum ada: jalankan supabase/043_motion.sql sekali.", "The table is not there yet: run supabase/043_motion.sql once.")}</p>}
       {motions.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{motions.error}</p>}
@@ -244,10 +246,10 @@ export default function MotionLab({ user, onToast }) {
         busy={busy} onStart={startOne} onStartAll={startAll} onRemove={remove} />
 
       <div className="mt-6 grid gap-4 md:grid-cols-2 [&>*]:min-w-0">
-        {!motions.loading && !motions.error && !motions.rows.some((r) => r.status !== "waiting") && (
+        {!motions.loading && !motions.error && !motions.rows.some((r) => r.status !== "waiting" && inMotionList(r)) && (
           <p className="rounded-card border border-dashed border-line p-8 text-center text-sm text-muted md:col-span-2">{t("Belum ada video motion.", "No motion videos yet.")}</p>
         )}
-        {motions.rows.filter((r) => r.status !== "waiting").map((r) => {
+        {motions.rows.filter((r) => r.status !== "waiting" && inMotionList(r)).map((r) => {
           const items = checkItems(r);
           return (
             <Card key={r.id} className="p-4" data-motion-row>
@@ -280,6 +282,7 @@ export default function MotionLab({ user, onToast }) {
                 {r.status === "done" && r.video_url && <a className="inline-flex items-center gap-1 rounded-pill bg-surface-2 px-3 py-1.5 text-xs hover:bg-line" href={freshUrl(r.video_url, r.updated_at)} download target="_blank" rel="noreferrer"><Download size={12} /> MP4{r.bytes ? ` · ${fmtBytes(r.bytes)}` : ""}</a>}
                 <Button size="sm" variant="ghost" disabled={busy === r.id || r.status === "working"} onClick={() => patch(r, { status: "pending", attempts: 0, error: "" })}><RefreshCw size={12} /> {t("Buat semula", "Make again")}</Button>
                 <Button size="sm" variant="ghost" disabled={busy === r.id} onClick={() => remove(r)}><Trash2 size={12} /> {t("Buang", "Remove")}</Button>
+                <MotionPost film={r} brand={settings.brand || {}} indo={settings.bahasa?.indo} onQueued={motions.reload} onToast={onToast} />
                 <span className="ml-auto text-[11px] text-muted">{r.created_at ? timeAgo(r.created_at) : ""}</span>
               </div>
             </Card>

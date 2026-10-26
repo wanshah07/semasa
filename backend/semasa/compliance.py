@@ -65,6 +65,17 @@ def platforms_for(stream: str) -> list[str]:
     return RULES["platforms"].get(stream, RULES["platforms"]["regulab"])
 
 
+def platforms_of(post: dict[str, Any]) -> list[str]:
+    """The platforms THIS post goes to: the ones Wan chose (`channels`, a Motion film queued to some of them), else every
+    platform of its stream. A name the stream does not have is ignored, and an empty choice means all."""
+    plats = platforms_for(post.get("stream") or "regulab")
+    chosen = post.get("channels")
+    if isinstance(chosen, list) and chosen:
+        picked = [p for p in plats if p in chosen]
+        return picked or plats
+    return plats
+
+
 def lang_of(post: dict[str, Any]) -> str:
     return post.get("lang") or RULES["default_lang"].get(post.get("stream") or "regulab", "bm")
 
@@ -227,7 +238,7 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
     lang = lang_of(post)
     burl = brand_url_re(brand)
     limits = RULES["limits"].get(stream, {})
-    for p in platforms_for(stream):
+    for p in platforms_of(post):
         where = f"Caption ({p})"
         t = text_of(post, p, lang)
         if not t:
@@ -272,7 +283,7 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
 
     # The other language is not sent, so its problems warn; they block the moment it is switched.
     other = "en" if lang == "bm" else "bm"
-    for p in platforms_for(stream):
+    for p in platforms_of(post):
         t = text_of(post, p, other)
         if not t:
             continue
@@ -355,7 +366,7 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
         body = text_of(post, "facebook", lang) + text_of(post, "instagram", lang)
         if not re.search(r"diwartakan", body, re.I):
             add(True, "Post", "fatwa: gazette warning missing (diwartakan)")
-    if stream == "regulab" and "instagram" in platforms_for(stream) and not (post.get("media") or []):
+    if stream == "regulab" and "instagram" in platforms_of(post) and not (post.get("media") or []):
         add(True, "Post", "instagram needs an image")
     if stream == "regulab" and schedule and post.get("date") and post.get("domain"):
         dow = dow_of(str(post["date"]))

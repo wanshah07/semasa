@@ -4,7 +4,7 @@ import { AlertTriangle, ShieldOff, Timer } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { useLang } from "../lib/i18n";
 import { opensAt, publishingOn } from "../lib/publishing";
-import { hardCount, langOf, scan, scanMedia, textOf, platformsFor } from "../lib/compliance";
+import { hardCount, langOf, scan, scanMedia, textOf, platformsOf } from "../lib/compliance";
 import PostEditor from "../components/PostEditor";
 import IdeaComposer from "../components/IdeaComposer";
 import ScheduleView from "../components/ScheduleView";
@@ -65,11 +65,11 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
   const opens = opensAt(publishing);
   const summary = (p) => {
     const lang = langOf(p);
-    const first = textOf(p, platformsFor(p.stream)[0], lang);
+    const first = textOf(p, platformsOf(p)[0], lang);
     const pics = (p.media_ids || []).map((id) => mediaById[id]).filter((m) => m && m.status === "done");
     return {
       pics, label: (tabsOf(t).find(([v]) => v === bucketOf(p)) || [null, p.status])[1],
-      forText: `${p.stream === "linkedin" ? "LinkedIn" : "ws.regulab"}${p.domain ? ` · ${p.domain}` : ""}${p.angle ? ` · ${p.angle}` : ""}${p.pillar ? ` · ${p.pillar}` : ""}`,
+      forText: `${p.stream === "linkedin" ? "LinkedIn" : "ws.regulab"}${p.domain ? ` · ${p.domain}` : ""}${p.angle ? ` · ${p.angle}` : ""}${p.pillar ? ` · ${p.pillar}` : ""}${(p.channels || []).length ? ` · ${p.channels.join(" + ")}` : ""}`,
       hook: p.hook || first.split("\n")[0] || t("(tiada kapsyen)", "(no caption)"),
       hard: hardCount(scan({ ...p, media: pics.map(scanMedia) }, brand.regulab, brand.regulab.schedule, settings.bahasa?.indo)),
       ref: refOf(p, brand), late: isPastDue(p), purge: purgeLeftMs(p),

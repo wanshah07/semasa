@@ -241,6 +241,28 @@ def test_the_idea_own_pictures_come_first_slides_and_video_are_left_out_and_unsp
     assert motion.idea_pictures(store, {"idea_id": "i1"}, tmp_path, 1, get=lambda u: _jpeg())[0][0]["id"] == "m1"
 
 
+def test_the_social_copy_is_h264_yuv420p_with_a_capped_bitrate_and_none_when_it_cannot_be_made(tmp_path):
+    seen = []
+
+    def runner(cmd, **kw):
+        seen.append(cmd)
+        Path(cmd[-1]).write_bytes(b"x" * 10)
+        return type("R", (), {"returncode": 0, "stderr": ""})()
+    video = tmp_path / "motion-mixed.mp4"
+    video.write_bytes(b"v")
+    out = motion.social_copy(video, runner)
+    cmd = seen[0]
+    assert out == tmp_path / "motion-social.mp4" and out.read_bytes() == b"x" * 10
+    wanted = (("-c:v", "libx264"), ("-pix_fmt", "yuv420p"), ("-maxrate", "4500k"), ("-c:a", "aac"), ("-movflags", "+faststart"))
+    for flag, value in wanted:
+        assert cmd[cmd.index(flag) + 1] == value
+
+    def broken(cmd, **kw):
+        return type("R", (), {"returncode": 1, "stderr": "boom"})()
+    assert motion.social_copy(video, broken) is None
+    assert motion.social_copy(video, lambda *a, **k: (_ for _ in ()).throw(OSError("no ffmpeg"))) is None
+
+
 def test_the_silence_drop_ducks_the_music_before_the_solusi_scene(tmp_path):
     seen = []
 

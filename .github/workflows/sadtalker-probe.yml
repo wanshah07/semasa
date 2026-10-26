@@ -1,0 +1,110 @@
+name: SadTalker probe
+
+# Wan, 26 Oct 2026: "for sadtalker using my photo with transparent background". SadTalker (OpenTalker/SadTalker) animates one photo
+# to a speech recording. It is built for a GPU and the runner has a CPU only, so before anything is wired into the film this runs it
+# once, on the real runner, with Wan's green-screen cut-out and eight seconds of Malay speech, and writes down what it cost: install
+# time, model download, seconds of compute per second of video, and the keyed result over the film's gradient (artifact).
+# Manual only: it never runs on a schedule and nothing here touches the store.
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "Seconds of speech to animate"
+        default: "8"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Tools and a Malay test recording
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          pip install -q gTTS
+          python - <<'PY'
+          from gtts import gTTS
+          text = ("Notifikasi NPRA bukan kelulusan produk. Syarikat kekal bertanggungjawab ke atas keselamatan, label dan tuntutan. "
+                  "Semak senarai bahan dan label sebelum anda melancarkan produk.")
+          gTTS(text, lang="ms").save("speech.mp3")
+          PY
+          ffmpeg -v error -y -i speech.mp3 -t "${{ inputs.seconds }}" -ar 16000 -ac 1 speech.wav
+          ffprobe -v error -show_entries format=duration -of csv=p=0 speech.wav
+          nproc; free -g | head -2
+      - name: Install SadTalker
+        run: |
+          date +%s > t_install_start
+          git clone --depth 1 https://github.com/OpenTalker/SadTalker.git
+          git -C SadTalker log -1 --format='SadTalker %H %cd'
+          python -m venv st-venv
+          . st-venv/bin/activate
+          pip install -q --upgrade pip wheel "setuptools<70"
+          pip install -q torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cpu
+          pip install -q numpy==1.23.4 scipy==1.10.1 scikit-image==0.19.3 face_alignment==1.3.5 imageio==2.19.3 imageio-ffmpeg==0.4.7 \
+            librosa==0.9.2 numba resampy==0.3.1 pydub==0.25.1 kornia==0.6.8 tqdm yacs==0.1.8 pyyaml joblib==1.1.0 \
+            facexlib==0.3.0 basicsr==1.4.2 safetensors av gfpgan
+          python -c "import torch, numpy; print('torch', torch.__version__, 'numpy', numpy.__version__)"
+          date +%s > t_install_end
+      - name: Models
+        run: |
+          date +%s > t_models_start
+          cd SadTalker
+          mkdir -p checkpoints gfpgan/weights
+          B=https://github.com/OpenTalker/SadTalker/releases/download/v0.0.2-rc
+          wget -nv -nc "$B/mapping_00109-model.pth.tar" -O checkpoints/mapping_00109-model.pth.tar
+          wget -nv -nc "$B/mapping_00229-model.pth.tar" -O checkpoints/mapping_00229-model.pth.tar
+          wget -nv -nc "$B/SadTalker_V0.0.2_256.safetensors" -O checkpoints/SadTalker_V0.0.2_256.safetensors
+          F=https://github.com/xinntao/facexlib/releases/download/v0.1.0
+          wget -nv -nc "$F/alignment_WFLW_4HG.pth" -O gfpgan/weights/alignment_WFLW_4HG.pth
+          wget -nv -nc "$F/detection_Resnet50_Final.pth" -O gfpgan/weights/detection_Resnet50_Final.pth
+          du -sh checkpoints gfpgan/weights
+          date +%s > ../t_models_end
+      - name: Animate (CPU)
+        run: |
+          . st-venv/bin/activate
+          cd SadTalker
+          date +%s > ../t_run_start
+          python inference.py --driven_audio ../speech.wav --source_image ../rules/motion/presenter/wan-greenscreen.png \
+            --result_dir ../out --still --preprocess crop --size 256 --batch_size 1 --cpu 2>&1 | tail -40
+          date +%s > ../t_run_end
+          find ../out -name '*.mp4' -exec ls -la {} \;
+      - name: Key the green out and put the presenter on the film's gradient
+        run: |
+          RAW=$(find out -name '*.mp4' | head -1)
+          cp "$RAW" presenter-raw.mp4
+          ffprobe -v error -show_entries stream=width,height,r_frame_rate,duration -of compact presenter-raw.mp4
+          # the film's own background, then the presenter keyed over it, as it would sit in a film
+          ffmpeg -v error -y -f lavfi -i "color=c=0xfff9ed:s=540x540:d=1" -i presenter-raw.mp4 -filter_complex \
+            "[1:v]colorkey=0x00FF00:0.32:0.12,scale=420:420[p];[0:v]loop=loop=-1:size=1,format=yuv420p[bg];[bg][p]overlay=60:60:shortest=1" \
+            -c:v libx264 -pix_fmt yuv420p presenter-keyed.mp4
+          ffmpeg -v error -y -ss 2 -i presenter-keyed.mp4 -frames:v 1 keyed-frame.png
+          python - <<'PY'
+          import subprocess
+          t = {k: int(open(f"t_{k}").read()) for k in ("install_start", "install_end", "models_start", "models_end", "run_start", "run_end")}
+          dur = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "presenter-raw.mp4"]))
+          run = t["run_end"] - t["run_start"]
+          rows = [("install", t["install_end"] - t["install_start"]), ("models", t["models_end"] - t["models_start"]), ("animate", run)]
+          out = ["## SadTalker probe", "", f"video made: {dur:.1f} s", ""] + [f"- {k}: {v} s" for k, v in rows]
+          out.append(f"- compute per second of video: {run / dur:.1f} s")
+          out.append(f"- so a 30 s film would need about {30 * run / dur / 60:.0f} min of animation")
+          open("summary.md", "w").write("\n".join(out) + "\n")
+          print("\n".join(out))
+          PY
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sadtalker-probe
+          path: |
+            presenter-raw.mp4
+            presenter-keyed.mp4
+            keyed-frame.png
+            summary.md
+          if-no-files-found: warn

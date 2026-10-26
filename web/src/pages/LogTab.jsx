@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, ChevronDown, Cpu, Download, ExternalLink, FileText, HelpCircle, Info, Lightbulb, Radio, Search,
-  Send, Settings, Sparkles, XCircle } from "lucide-react";
+  Send, Settings, ImagePlus, XCircle } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { download } from "../lib/faqExport";
 import { currentLang, tr, useLang } from "../lib/i18n";
@@ -14,7 +14,7 @@ import { Input, Segmented, Select } from "../components/ui/Field";
 
 export const AREAS = {
   scrape: { label: "Scrape", en: "Scrape", icon: Radio }, idea: { label: "Idea", en: "Ideas", icon: Lightbulb },
-  post: { label: "Post", en: "Posts", icon: FileText }, media: { label: "Media", en: "Media", icon: Sparkles },
+  post: { label: "Post", en: "Posts", icon: FileText }, media: { label: "Media", en: "Media", icon: ImagePlus },
   faq: { label: "FAQ", en: "FAQ", icon: HelpCircle }, publish: { label: "Penerbit", en: "Publisher", icon: Send },
   settings: { label: "Tetapan", en: "Settings", icon: Settings }, system: { label: "Sistem", en: "System", icon: Cpu },
   metrics: { label: "Prestasi", en: "Performance", icon: Radio }, repos: { label: "Repo", en: "Repos", icon: Cpu }, api: { label: "API", en: "API", icon: Cpu },
@@ -76,10 +76,10 @@ const TITLE_EN = [
   [/^Google Sheet dikemas kini: (\d+) soalan/, (m) => `Google Sheet updated: ${m[1]} question${m[1] === "1" ? "" : "s"}`],
   [/^Google Sheet gagal dikemas kini: /, "Google Sheet update failed: "],
   [/^Log gagal disalin ke Google Sheet: /, "Log could not be copied to the Google Sheet: "],
-  [/^Bot menambah subkategori: /, "The bot added subcategories: "],
+  [/^Bot menambah subkategori: /, "Semasa added subcategories: "],
   [/^Susunan automatik FAQ gagal: AI tidak menjawab dengan betul; cuba semula dalam 3 jam/,
     "Automatic FAQ sorting failed: the AI did not answer properly; trying again in 3 hours"],
-  [/^Bot menyusun (\d+) FAQ(?:: (.*?))?(?:; kategori baharu: (.*))?$/, (m) => `The bot sorted ${m[1]} FAQ${m[1] === "1" ? "" : "s"}${
+  [/^Bot menyusun (\d+) FAQ(?:: (.*?))?(?:; kategori baharu: (.*))?$/, (m) => `Semasa sorted ${m[1]} FAQ${m[1] === "1" ? "" : "s"}${
     m[2] ? `: ${m[2].replace(/(^|, )(\d+) ke /g, "$1$2 to ")}` : ""}${m[3] ? `; new categories: ${m[3]}` : ""}`],
   [/^Cubaan kering: (\S+) akan menghantar /, (m) => `Dry run: ${m[1]} would send `], [/^Dihantar ke /, "Sent to "],
   [/^Disekat \(/, "Blocked ("], [/^Ralat penerbit \(/, "Publisher error ("],
@@ -135,7 +135,7 @@ export function toCsv(rows) {
   const head = currentLang() === "en" ? ["Time (MYT)", "Level", "Area", "Event", "Title", "By", "Reference", "Details"]
     : ["Masa (MYT)", "Tahap", "Bahagian", "Peristiwa", "Tajuk", "Oleh", "Rujukan", "Butiran"];
   const lines = rows.map((r) => [`${mytDay(r.at)} ${clock(r.at)}`, r.level, AREAS[r.area] ? areaLabel(AREAS[r.area]) : r.area,
-    r.event, titleOf(r.title), r.actor ? tr("Anda", "You") : "Bot", r.ref_id || "", JSON.stringify(r.detail || {})].map(q).join(","));
+    r.event, titleOf(r.title), r.actor ? tr("Anda", "You") : "Semasa", r.ref_id || "", JSON.stringify(r.detail || {})].map(q).join(","));
   return "﻿" + [head.map(q).join(","), ...lines].join("\r\n");
 }
 
@@ -232,7 +232,7 @@ export default function LogTab({ log, onOpen }) {
           <Select value={level} onChange={setLevel} aria-label={t("Tahap", "Level")}
             options={[["all", t("Semua tahap", "All levels")], ["warn", t("Amaran & ralat", "Warnings & errors")], ["error", t("Ralat sahaja", "Errors only")]]} />
           <Select value={actor} onChange={setActor} aria-label={t("Oleh", "By")}
-            options={[["all", t("Semua", "Everyone")], ["me", t("Tindakan anda", "Your actions")], ["bot", t("Tindakan bot", "Bot actions")]]} />
+            options={[["all", t("Semua", "Everyone")], ["me", t("Tindakan anda", "Your actions")], ["bot", t("Tindakan Semasa", "Semasa actions")]]} />
           <label className="relative min-w-0 flex-1 basis-48">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("Cari dalam log…", "Search the log…")} className="pl-9"
@@ -282,7 +282,7 @@ export default function LogTab({ log, onOpen }) {
                         {titleOf(r.title, lang)}
                         {details.length > 0 && <ChevronDown size={12} className={`ml-1 inline transition ${isOpen ? "rotate-180" : ""}`} />}
                       </button>
-                      <span className={`shrink-0 rounded-pill px-2 py-0.5 text-[10px] ${r.actor ? "bg-accent/10 text-accent" : "bg-surface-2 text-muted"}`}>{r.actor ? t("Anda", "You") : "Bot"}</span>
+                      <span className={`shrink-0 rounded-pill px-2 py-0.5 text-[10px] ${r.actor ? "bg-accent/10 text-accent" : "bg-surface-2 text-muted"}`}>{r.actor ? t("Anda", "You") : "Semasa"}</span>
                       {target && onOpen && (
                         <button type="button" onClick={() => onOpen(target)} className="shrink-0 text-[11px] text-accent hover:underline" aria-label={t("Buka {x}", "Open {x}", { x: titleOf(r.title, lang) })}>
                           <ExternalLink size={12} /></button>

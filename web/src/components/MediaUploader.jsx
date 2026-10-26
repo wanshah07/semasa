@@ -23,7 +23,7 @@ const UNSPLASH = "unsplash";
 
 /* Flow B. Two ways in:
      Prompt sahaja   words only → an image (or a still, then a video)
-     Rujukan         a picture of yours → the bot READS it (describes it), then recreates it
+     Rujukan         a picture of yours → Semasa READS it (describes it), then recreates it
                      with your words as the changes
    Tick "Simpan prompt" to keep the words (and the reference) in the library for next time.
    Everything after the insert is the runner's; this component's job ends at the row. */
@@ -147,8 +147,8 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
         <div>
           <h3 className="text-lg">{t("Jana imej atau video", "Generate an image or video")}</h3>
           <p className="mt-1 text-sm text-muted">
-            {t("Tulis prompt sahaja, atau muat naik rujukan: bot membacanya dan mencipta semula.",
-              "Write a prompt only, or upload a reference: the bot reads it and recreates it.")}</p>
+            {t("Tulis prompt sahaja, atau muat naik rujukan: Semasa membacanya dan mencipta semula.",
+              "Write a prompt only, or upload a reference: Semasa reads it and recreates it.")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Segmented value={mode} onChange={chooseMode} options={[["prompt", t("Prompt sahaja", "Prompt only")], ["recreate", t("Rujukan + prompt", "Reference + prompt")]]} />

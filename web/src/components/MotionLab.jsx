@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Clapperboard, Download, FolderGit2, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Clapperboard, Download, FolderGit2, Loader2, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { useSettings, useTable } from "../lib/hooks";
@@ -89,7 +89,7 @@ export default function MotionLab({ user, onToast }) {
       const { error } = await supabase.from(TABLES.motions).insert(built.row);
       if (error) throw new Error(errText(error));
       setBrief(""); setUrl(""); setAssets([]);
-      onToast?.(t("Dihantar: bot tulis komposisi, semak dan render MP4. Biasanya 2 hingga 5 minit.", "Sent: the bot writes the composition, checks it and renders the MP4. Usually 2 to 5 minutes."), "ok");
+      onToast?.(t("Dihantar: Semasa tulis komposisi, semak dan render MP4. Biasanya 2 hingga 5 minit.", "Sent: Semasa writes the composition, checks it and renders the MP4. Usually 2 to 5 minutes."), "ok");
       motions.reload();
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
   };
@@ -102,7 +102,7 @@ export default function MotionLab({ user, onToast }) {
       if (error) throw new Error(/duplicate|unique/i.test(errText(error)) ? t("Repo ini sudah ada dalam pustaka: pilih ia di senarai gaya.", "This repo is already in the library: pick it in the style list.") : errText(error));
       setRepoUrl("");
       if (data?.id) setStyleRepoId(data.id);
-      onToast?.(t("Repo motion ditambah ke Pustaka repo; bot membacanya sebentar lagi, dan ia sudah boleh dipilih sebagai gaya.", "Motion repo added to the repo library; the bot reads it shortly, and it can already be chosen as the style."), "ok");
+      onToast?.(t("Repo motion ditambah ke Pustaka repo; Semasa membacanya sebentar lagi, dan ia sudah boleh dipilih sebagai gaya.", "Motion repo added to the repo library; Semasa reads it shortly, and it can already be chosen as the style."), "ok");
       libT.reload();
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
   };
@@ -120,7 +120,7 @@ export default function MotionLab({ user, onToast }) {
     try {
       const { error } = await supabase.from(TABLES.motions).update(startFields(r, form)).eq("id", r.id);
       if (error) throw new Error(errText(error));
-      onToast?.(t("Dimulakan: bot tulis komposisi, semak dan render MP4. Biasanya 2 hingga 5 minit.", "Started: the bot writes the composition, checks it and renders the MP4. Usually 2 to 5 minutes."), "ok");
+      onToast?.(t("Dimulakan: Semasa tulis komposisi, semak dan render MP4. Biasanya 2 hingga 5 minit.", "Started: Semasa writes the composition, checks it and renders the MP4. Usually 2 to 5 minutes."), "ok");
       motions.reload();
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
   };
@@ -151,8 +151,8 @@ export default function MotionLab({ user, onToast }) {
     <section className="mt-10" data-motion>
       <div className="mb-3">
         <h2 className="flex items-center gap-2 font-display text-2xl"><Clapperboard size={18} className="text-accent" /> {t("Motion", "Motion")}</h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted">{t("Video grafik gerak daripada idea atau pautan. Bot tulis komposisi HTML (kontrak HyperFrames), semak, render MP4 di pelayan dan paparkan di sini. Bila siap, pilih platform, kemudian Lulus & beratur atau simpan sebagai draf di giliran Post.",
-          "A motion-graphics video from an idea or a link. The bot writes the HTML composition (the HyperFrames contract), checks it, renders the MP4 on the runner and shows it here. When it is done, pick the platforms, then Approve & queue or save it as a draft in the Posts queue.")}</p>
+        <p className="mt-1 max-w-2xl text-sm text-muted">{t("Video grafik gerak daripada idea atau pautan. Semasa tulis komposisi HTML (kontrak HyperFrames), semak, render MP4 di pelayan dan paparkan di sini. Bila siap, pilih platform, kemudian Lulus & beratur atau simpan sebagai draf di giliran Post.",
+          "A motion-graphics video from an idea or a link. Semasa writes the HTML composition (the HyperFrames contract), checks it, renders the MP4 on the runner and shows it here. When it is done, pick the platforms, then Approve & queue or save it as a draft in the Posts queue.")}</p>
       </div>
       {missing && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual belum ada: jalankan supabase/043_motion.sql sekali.", "The table is not there yet: run supabase/043_motion.sql once.")}</p>}
       {motions.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{motions.error}</p>}
@@ -161,7 +161,7 @@ export default function MotionLab({ user, onToast }) {
         <label className="block"><Label hint={t("idea, hook, atau 3 perkara yang video perlu sampaikan", "the idea, the hook, or the 3 things the video must say")}>{t("Idea", "Idea")}</Label>
           <TextArea rows={3} value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={2000}
             placeholder={t("Cth: Tiga perkara tentang PFAS dalam kosmetik yang SME perlu tahu sebelum 2027", "E.g. Three things about PFAS in cosmetics an SME must know before 2027")} /></label>
-        <label className="block"><Label hint={t("pilihan: bot baca halaman itu", "optional: the bot reads that page")}>{t("Pautan", "Link")}</Label>
+        <label className="block"><Label hint={t("pilihan: Semasa baca halaman itu", "optional: Semasa reads that page")}>{t("Pautan", "Link")}</Label>
           <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" inputMode="url" /></label>
         <MotionAmbient value={ambient} onChange={setAmbient} />
         <label className="block" data-motion-design><Label>Design variant (preserved)</Label>
@@ -207,7 +207,7 @@ export default function MotionLab({ user, onToast }) {
               "One picture drawn by the Image generation slot (KiosAPI if that is what you set) and placed under the composition. It spends picture credits; if it cannot be made the video is still made.")}</span></span>
         </label>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={add} disabled={busy === "add" || assetsBusy}>{busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {t("Buat video motion", "Make the motion video")}</Button>
+          <Button onClick={add} disabled={busy === "add" || assetsBusy}>{busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Clapperboard size={14} />} {t("Buat video motion", "Make the motion video")}</Button>
           <Button variant="ghost" size="sm" onClick={saveDefaults} disabled={busy === "defaults"} title={t("Bahasa, suara, saiz, saat, gaya dan latar: dipakai bila idea atau draf dijadikan video", "Language, voice, size, seconds, style and background: used when an idea or draft is made into a video")}
             data-motion-save-defaults>{busy === "defaults" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {t("Simpan sebagai cara lalai", "Save as the default way")}</Button>
           {settings.motion?.defaults && <span className="text-[11px] text-muted">{t("Cara lalai tersimpan: idea dan draf ikutnya.", "Default way saved: ideas and drafts follow it.")}</span>}
@@ -217,8 +217,8 @@ export default function MotionLab({ user, onToast }) {
       <Card className="mt-4 space-y-3 p-5" data-motion-repos>
         <div>
           <h3 className="flex items-center gap-2 font-display text-lg"><FolderGit2 size={16} className="text-accent" /> {t("Repo motion", "Motion repos")}</h3>
-          <p className="mt-1 text-sm text-muted">{t("Setiap repo satu gaya: bot baca ia (Pustaka repo), semak keselamatan dan ringkaskan; kemudian ia boleh dipilih sebagai Gaya di atas. Seberapa banyak yang anda mahu.",
-            "Each repo is one look: the bot reads it (Pustaka repo), checks it for safety and summarises it; then it can be chosen as the Style above. Add as many as you like.")}</p>
+          <p className="mt-1 text-sm text-muted">{t("Setiap repo satu gaya: Semasa baca ia (Pustaka repo), semak keselamatan dan ringkaskan; kemudian ia boleh dipilih sebagai Gaya di atas. Seberapa banyak yang anda mahu.",
+            "Each repo is one look: Semasa reads it (Pustaka repo), checks it for safety and summarises it; then it can be chosen as the Style above. Add as many as you like.")}</p>
         </div>
         <div className="flex items-end gap-2">
           <label className="block min-w-0 flex-1"><Label>{t("Tambah repo motion", "Add a motion repo")}</Label>
@@ -271,7 +271,7 @@ export default function MotionLab({ user, onToast }) {
                   .map((id) => `${id} ${effectName[id] || ""}`.trim()).join(" · ")}</p></details>}
               {r.check_report?.asset_plan && <details className="mt-2 text-xs">
                 <summary className="cursor-pointer text-muted">Prepared assets & actual effect readiness</summary>
-                <ul className="mt-1 space-y-1">{r.check_report.asset_plan.effects.map(e => <li key={e.id}><b>{e.id} · {e.readiness}</b> — {e.reason}</li>)}</ul>
+                <ul className="mt-1 space-y-1">{r.check_report.asset_plan.effects.map(e => <li key={e.id}><b>{e.id} · {e.readiness}</b>: {e.reason}</li>)}</ul>
                 {r.check_report.asset_plan.notes.map((note,i)=><p key={i} className="mt-1 text-muted">{note}</p>)}
               </details>}
               {items.length > 0 && (

@@ -305,9 +305,9 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t("Reka bentuk", "Design")}</p>
         <h1 className="mt-2 text-4xl leading-tight">{t("Poster, kad dan carousel untuk post.", "Posters, cards and carousels for posts.")}</h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
-          {t("Beri idea atau prompt dan bot tulis perkataannya, atau tulis sendiri. Pilih latar: kertas jenama, gambar anda, "
+          {t("Beri idea atau prompt dan Semasa tulis perkataannya, atau tulis sendiri. Pilih latar: kertas jenama, gambar anda, "
             + "atau gambar AI. Lukisan dibuat tanpa AI dan percuma; peraturan post (tiada CTA, tiada URL, tiada sumber media sosial) berlaku pada setiap perkataan.",
-          "Give an idea or a prompt and the bot writes the words, or write them yourself. Pick a background: brand paper, your "
+          "Give an idea or a prompt and Semasa writes the words, or write them yourself. Pick a background: brand paper, your "
             + "own picture, or an AI picture. The drawing is made without AI and is free; the post rules (no CTA, no URL, no social source) apply to every word.")}
         </p>
       </motion.div>
@@ -324,7 +324,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
               <SizePicker value={format} onChange={setFormat} /></div>
             <label className="block"><Label hint={t("pilihan · isi borang daripada post sedia ada", "optional · fill the form from an existing post")}>{t("Daripada post", "From a post")}</Label>
               <Select value={fromPost} onChange={usePost} className="w-full" aria-label={t("Daripada post", "From a post")}
-                options={[["", "—"], ...usable.slice(0, 150).map((p) => [p.id, `${p.date || "—"} · ${(p.hook || "").slice(0, 60) || p.id.slice(0, 8)}`])]} /></label>
+                options={[["", t("Tiada", "None")], ...usable.slice(0, 150).map((p) => [p.id, `${p.date || t("Tiada", "None")} · ${(p.hook || "").slice(0, 60) || p.id.slice(0, 8)}`])]} /></label>
           </div>
           <div className="min-w-0 space-y-4">
             <div className="rounded-tile border border-dashed border-line p-3">
@@ -445,18 +445,18 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
               <Input value={citation} onChange={(e) => setCitation(e.target.value)} maxLength={300} placeholder="NPRA, Guidelines for Control of Cosmetic Products in Malaysia" /></label>
             <label className="block"><Label hint={t("pilihan · ditambah pada gambar post draf itu", "optional · added to that draft post's pictures")}>{t("Lampirkan pada post", "Attach to a post")}</Label>
               <Select value={attach} onChange={setAttach} className="w-full" aria-label={t("Lampirkan pada post", "Attach to a post")}
-                options={[["", t("Tidak", "No")], ...drafts.slice(0, 150).map((p) => [p.id, `${p.date || "—"} · ${(p.hook || "").slice(0, 60) || p.id.slice(0, 8)}`])]} /></label>
+                options={[["", t("Tidak", "No")], ...drafts.slice(0, 150).map((p) => [p.id, `${p.date || t("Tiada", "None")} · ${(p.hook || "").slice(0, 60) || p.id.slice(0, 8)}`])]} /></label>
           </div>
         </div>
 
         <div className="mt-5 border-t border-line pt-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Label>{t("Perkataan", "Words")}</Label>
-            <Segmented value={words} onChange={setWords} options={[["ai", t("Bot tulis daripada idea", "The bot writes from an idea")], ["own", t("Saya tulis sendiri", "I write them")]]} />
+            <Segmented value={words} onChange={setWords} options={[["ai", t("Semasa tulis daripada idea", "Semasa writes from an idea")], ["own", t("Saya tulis sendiri", "I write them")]]} />
           </div>
           {words === "ai" ? (
-            <label className="mt-2 block"><Label hint={design === "carousel" ? t("bot tulis 5 hingga 7 slaid", "the bot writes 5 to 7 slides")
-              : t("bot tulis satu tajuk dan hingga {n} poin", "the bot writes one headline and up to {n} points", { n: MAX_POINTS[design] })}>
+            <label className="mt-2 block"><Label hint={design === "carousel" ? t("Semasa tulis 5 hingga 7 slaid", "Semasa writes 5 to 7 slides")
+              : t("Semasa tulis satu tajuk dan hingga {n} poin", "Semasa writes one headline and up to {n} points", { n: MAX_POINTS[design] })}>
               {t("Idea atau prompt", "Idea or prompt")}</Label>
               <TextArea rows={5} value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={4000}
                 placeholder={t("Cth: pemegang sijil halal tidak boleh sembunyikan nama pengilang OEM; fakta daripada MPPHM 2020",
@@ -575,7 +575,7 @@ function ReviewPanel({ row, mine, onToast, gens }) {
     <div className="mt-3 rounded-tile bg-surface-2/70 p-3 text-[12px]">
       <p className="flex items-center gap-2 font-semibold">
         {m.style_ref?.url && <img src={m.style_ref.url} alt="" className="h-9 w-9 shrink-0 rounded object-cover" />}
-        {m.flow === "canva" ? t("Dibina dalam Canva oleh bot", "Built in Canva by the bot") : t("Semakan rujukan", "Reference review")}
+        {m.flow === "canva" ? t("Dibina dalam Canva oleh Semasa", "Built in Canva by Semasa") : t("Semakan rujukan", "Reference review")}
         {m.look_chosen && <span className="rounded-pill bg-surface px-2 py-0.5 text-[10px] font-normal text-muted">{t("reka bentuk", "design")}: {m.look_chosen}</span>}
       </p>
       {rv.unread ? <p className="mt-1.5 text-warn [overflow-wrap:anywhere]">{t("Rujukan tidak dibaca", "Reference not read")}: {rv.unread}</p> : (
@@ -586,7 +586,7 @@ function ReviewPanel({ row, mine, onToast, gens }) {
           {rv.brands?.length > 0 && <p className="mt-1 text-muted [overflow-wrap:anywhere]">{t("Jenama dalam rujukan (tidak disalin)", "Brands in the reference (not copied)")}: {rv.brands.join(", ")}</p>}
         </>
       )}
-      {(m.revisions || []).length > 0 && <p className="mt-1 text-muted [overflow-wrap:anywhere]">{t("Diubah {n} kali · nota terakhir", ["Changed {n} time · last note", "Changed {n} times · last note"], { n: m.revisions.length })}: {m.revisions[m.revisions.length - 1].note || "—"}</p>}
+      {(m.revisions || []).length > 0 && <p className="mt-1 text-muted [overflow-wrap:anywhere]">{t("Diubah {n} kali · nota terakhir", ["Changed {n} time · last note", "Changed {n} times · last note"], { n: m.revisions.length })}: {m.revisions[m.revisions.length - 1].note || t("Tiada", "None")}</p>}
       {m.saved && <p className="mt-2 inline-flex items-center gap-1 font-semibold text-ok"><CheckCircle2 size={12} /> {t("Disimpan", "Saved")}</p>}
       {mine && waiting && (
         <div className="mt-2.5 space-y-2">

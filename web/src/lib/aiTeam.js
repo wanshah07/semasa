@@ -84,4 +84,4 @@ export function robotsFor(cards, job) {
   return cards.filter((c) => c.does.includes(need) || (job === "image_reader" && c.does.includes("read")));
 }
 
-export const fmtMs = (ms) => (ms == null ? "—" : ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`);
+export const fmtMs = (ms) => (ms == null ? "" : ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`);

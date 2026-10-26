@@ -183,15 +183,15 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
             title={t("Pilih daripada gambar post, foto Wan, Unsplash atau jana gambar baharu", "Choose from the post's pictures, Wan's photos, Unsplash, or generate a new one")}>
             <ImageIcon size={12} /> {t("Pilih latar…", "Choose background…")}</Button>}
           <Button type="button" size="sm" disabled={busy || !n || !!blocked} onClick={onRender}
-            title={t("Simpan post ini, kemudian bot melukis slaid", "Save this post, then the bot draws the slides")}>
+            title={t("Simpan post ini, kemudian Semasa melukis slaid", "Save this post, then Semasa draws the slides")}>
             <Layers size={12} /> {t("Jana slaid", "Generate slides")}</Button>
         </div>
       )}
 
       {latest && (latest.status === "pending" || latest.status === "processing") && (
         <p className="mt-3 flex items-center gap-1.5 text-[12px] text-muted"><Loader2 size={12} className="animate-spin" />
-          {t("Bot sedang melukis {n} slaid; ia masuk ke post ini sendiri selagi post ini draf.",
-            ["The bot is drawing {n} slide; it comes into this post by itself while it is a draft.", "The bot is drawing {n} slides; they come into this post by themselves while it is a draft."],
+          {t("Semasa sedang melukis {n} slaid; ia masuk ke post ini sendiri selagi post ini draf.",
+            ["Semasa is drawing {n} slide; it comes into this post by itself while it is a draft.", "Semasa is drawing {n} slides; they come into this post by themselves while it is a draft."],
             { n: latest.meta?.slides?.length || "" })}</p>
       )}
       {latest && latest.status === "error" && (

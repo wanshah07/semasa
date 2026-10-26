@@ -88,7 +88,7 @@ export default function BillingTab({ user, settings, save, onToast }) {
   const overviewActivity = useMemo(() => eventsT.rows.slice(0, 12).map((ev) => {
     const d = docs.find((x) => x.id === ev.doc_id);
     const who = d?.client?.name || t("(tiada pelanggan)", "(no client)");
-    return { id: ev.id, person: { name: who, initials: initialsOf(who) }, action: `${d?.number || "—"} · ${eventLabel(ev, t)}`, time: stampMYT(ev.at), onClick: d ? () => setViewing(d) : undefined };
+    return { id: ev.id, person: { name: who, initials: initialsOf(who) }, action: `${d?.number || t("Tiada", "None")} · ${eventLabel(ev, t)}`, time: stampMYT(ev.at), onClick: d ? () => setViewing(d) : undefined };
   }), [eventsT.rows, docs, t]);
   const site = `${window.location.origin}${window.location.pathname}`;
   const base = `${import.meta.env.BASE_URL}cards/`;
@@ -463,7 +463,7 @@ function ClientFields({ c, onChange, t, lang }) {
       <label className="block"><Label>{t("Poskod", "Postcode")}</Label><Input value={c.postcode || ""} onChange={set("postcode")} /></label>
       <label className="block"><Label>{t("Bandar", "City")}</Label><Input value={c.city || ""} onChange={set("city")} /></label>
       <label className="block"><Label>{t("Negeri", "State")}</Label>
-        <Select value={c.state || ""} onChange={(v) => onChange({ ...c, state: v })} options={[["", "—"], ...STATES.map((s) => [s, s])]} className="w-full" /></label>
+        <Select value={c.state || ""} onChange={(v) => onChange({ ...c, state: v })} options={[["", t("Tiada", "None")], ...STATES.map((s) => [s, s])]} className="w-full" /></label>
       <label className="block"><Label>{t("Negara", "Country")}</Label><Input value={c.country || "Malaysia"} onChange={set("country")} /></label>
       {"lang" in c && <label className="block"><Label>{t("Bahasa dokumen", "Document language")}</Label>
         <Select value={c.lang || "en"} onChange={(v) => onChange({ ...c, lang: v })} options={[["en", "English"], ["bm", "Bahasa Malaysia"]]} className="w-full" /></label>}
@@ -737,7 +737,7 @@ function ProjectsModal({ projects, clients, docs, today, onClose, onSave, onDele
   const [clientId, setClientId] = useState("");
   const [open, setOpen] = useState("");
   const list = projects.filter((p) => !clientId || p.client_id === clientId);
-  const clientName = (id) => clients.find((c) => c.id === id)?.name || "—";
+  const clientName = (id) => clients.find((c) => c.id === id)?.name || t("Tiada", "None");
   const L = lang === "en" ? "en" : "bm";
   const statusTone = { lead: "bg-surface-2 text-muted", active: "bg-accent/10 text-accent", on_hold: "bg-warn/10 text-warn", done: "bg-ok/10 text-ok", cancelled: "bg-danger/10 text-danger" };
   const set = (k) => (e) => setEditing({ ...editing, [k]: e.target.value });
@@ -857,7 +857,7 @@ function ProjectStages({ project, docs, today, t, lang }) {
           <TimelineIndicator>{s.done && <Check size={12} />}</TimelineIndicator>
           <TimelineSeparator />
           <TimelineHeader>
-            <TimelineDate>{s.date ? fmtDate(s.date) : "—"}</TimelineDate>
+            <TimelineDate>{s.date ? fmtDate(s.date) : t("Tiada", "None")}</TimelineDate>
             <TimelineTitle className="text-xs">{s.title}</TimelineTitle>
           </TimelineHeader>
           {s.content && <TimelineContent className="text-[11px] leading-snug">{s.content}</TimelineContent>}

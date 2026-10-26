@@ -143,7 +143,7 @@ export default function SubscriptionsTab({ user, onToast }) {
                     {s.amount_myr != null && s.currency !== "MYR" && <div className="text-xs text-muted">≈ {money(s.amount_myr, { currency: "MYR" })}</div>}
                   </td>
                   <td className="px-3 py-3">{w(CYCLE_WORDS, s.cycle)}</td>
-                  <td className="px-3 py-3 tabular-nums">{s.next_payment ? fmtDate(s.next_payment) : "—"}
+                  <td className="px-3 py-3 tabular-nums">{s.next_payment ? fmtDate(s.next_payment) : t("Tiada", "None")}
                     {s.last_paid && <div className="text-xs text-muted">{t("dibayar", "paid")} {fmtDate(s.last_paid)}</div>}</td>
                   <td className="px-3 py-3"><span className={`rounded-pill px-2 py-0.5 text-[11px] ${st.cls}`}>{L ? st.en : st.bm}</span></td>
                   <td className="px-3 py-3 text-xs text-muted">{s.auto_pay ? t("Auto", "Auto") : t("Manual", "Manual")}{s.payment_method ? ` · ${s.payment_method}` : ""}</td>

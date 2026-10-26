@@ -294,8 +294,8 @@ function PasteLink({ section, user, onToast, onAdded }) {
       <p className="mt-2 text-[11px] text-muted">{pub
         ? t("PubMed atau DOI paling tepat: pengarang, jurnal, tahun dan abstrak diambil terus dari PubMed. Laman jurnal juga boleh.",
           "PubMed or a DOI works best: authors, journal, year and abstract come straight from PubMed. A journal page works too.")
-        : t("Laman atau PDF pengawal selia (NPRA, JAKIM, KKM, HSA, EU, UK…): bot baca teks dan menamakan pengawal selia sebagai sumber.",
-          "A regulator's page or PDF (NPRA, JAKIM, KKM, HSA, EU, UK…): the bot reads its text and names the regulator as the source.")}</p>
+        : t("Laman atau PDF pengawal selia (NPRA, JAKIM, KKM, HSA, EU, UK…): Semasa baca teks dan menamakan pengawal selia sebagai sumber.",
+          "A regulator's page or PDF (NPRA, JAKIM, KKM, HSA, EU, UK…): Semasa reads its text and names the regulator as the source.")}</p>
     </form>
   );
 }

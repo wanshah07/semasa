@@ -253,8 +253,8 @@ export default function CrmTab({ user, settings, save, onToast }) {
                     <td className="px-3 py-3 text-xs">{k.unsubscribed_at ? <span className="text-danger">{t("Berhenti melanggan", "Unsubscribed")} {fmtDate(k.unsubscribed_at.slice(0, 10))}</span>
                       : k.consent ? <span className="text-ok">{t("Ya", "Yes")}{k.consent_source ? ` · ${k.consent_source}` : ""}</span>
                       : <span className="text-muted">{t("Tiada kebenaran", "No consent")}</span>}</td>
-                    <td className="px-3 py-3 text-xs">{k.next_action ? <span className={k.next_action_at && k.next_action_at <= day ? "text-warn" : ""}>{k.next_action}{k.next_action_at ? ` · ${fmtDate(k.next_action_at)}` : ""}</span> : <span className="text-muted">—</span>}</td>
-                    <td className="px-3 py-3 text-xs text-muted">{k.last_contact_at ? stampMYT(k.last_contact_at) : "—"}</td>
+                    <td className="px-3 py-3 text-xs">{k.next_action ? <span className={k.next_action_at && k.next_action_at <= day ? "text-warn" : ""}>{k.next_action}{k.next_action_at ? ` · ${fmtDate(k.next_action_at)}` : ""}</span> : <span className="text-muted">{t("Tiada", "None")}</span>}</td>
+                    <td className="px-3 py-3 text-xs text-muted">{k.last_contact_at ? stampMYT(k.last_contact_at) : t("Tiada", "None")}</td>
                     <td className="px-3 py-3"><div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                       <Button size="sm" variant="ghost" onClick={() => setEditing({ ...blankContact(), ...k, next_action_at: k.next_action_at || "" })} title={t("Sunting", "Edit")}><Pencil size={13} /></Button>
                       <Button size="sm" variant="ghost" onClick={() => removeContact(k)} title={t("Padam", "Delete")}><Trash2 size={13} /></Button>
@@ -335,7 +335,7 @@ function ContactForm({ form, setForm, onSave, busy, t, w, allTags }) {
 function ContactRecord({ k, activities, outbox, campaigns, t, w, onAdd, onEdit, onDeleteRow }) {
   const [kind, setKind] = useState("note");
   const [title, setTitle] = useState("");
-  const nameOf = (id) => campaigns.find((c) => c.id === id)?.name || "—";
+  const nameOf = (id) => campaigns.find((c) => c.id === id)?.name || t("Tiada", "None");
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2 text-sm">
@@ -385,7 +385,7 @@ function CampaignList({ campaigns, contacts, outbox, t, w, onEdit, onStatus, onD
                 <td className="px-3 py-3 text-xs"><span className="mr-1 inline-flex items-center gap-1">{c.channel === "whatsapp" ? <><MessageCircle size={12} /> WhatsApp</> : <><Mail size={12} /> E-mel</>}</span><br />{c.kind === "welcome" ? t("Alu-aluan (automatik)", "Welcome (automatic)") : t("Siaran", "Broadcast")}</td>
                 <td className="px-3 py-3 text-xs">{t("{n} daripada {m}", "{n} of {m}", { n: aud.send.length, m: aud.named.length })}
                   <div className="text-muted">{[(c.audience?.stages || []).map((s) => w(STAGE_WORDS, s)).join("/"), (c.audience?.tags || []).join("/"), c.audience?.lang].filter(Boolean).join(" · ") || t("semua yang bersetuju", "everyone consenting")}</div></td>
-                <td className="px-3 py-3 text-xs">{c.send_at ? stampMYT(c.send_at) : "—"}</td>
+                <td className="px-3 py-3 text-xs">{c.send_at ? stampMYT(c.send_at) : t("Tiada", "None")}</td>
                 <td className="px-3 py-3"><span className={`rounded-pill px-2 py-0.5 text-[11px] ${c.status === "sent" ? "bg-ok/10 text-ok" : c.status === "paused" ? "bg-warn/10 text-warn" : c.status === "draft" ? "bg-surface-2 text-muted" : "bg-accent/10 text-accent"}`}>{w(STATUS_WORDS, c.status)}</span></td>
                 <td className="px-3 py-3 text-xs tabular-nums">{c.sent_count}{c.error_count ? <span className="text-danger"> · {c.error_count} {t("gagal", "failed")}</span> : null}{pending ? <span className="text-muted"> · {pending} {t("menunggu", "waiting")}</span> : null}</td>
                 <td className="px-3 py-3"><div className="flex justify-end gap-1">
@@ -425,7 +425,7 @@ function CampaignComposer({ form, setForm, contacts, allTags, busy, testTo, t, w
       <label className="block"><Label>{wa ? t("Mesej (teks biasa; {{name}} {{company}} diisi; had 4,000 aksara)", "Message (plain text; {{name}} {{company}} filled in; 4,000 characters at most)") : t("Kandungan (teks atau HTML; perenggan dipisah baris kosong)", "Body (text or HTML; paragraphs separated by a blank line)")}</Label><TextArea rows={8} value={form.body} onChange={set("body")} /></label>
       <div className="rounded-tile border border-line bg-surface-2/60 p-3 text-sm">
         <p className="mb-1 text-[11px] uppercase tracking-widest text-muted">{t("Pratonton untuk {n}", "Preview for {n}", { n: sample.name })}</p>
-        {!wa && <p className="font-medium">{merge(form.subject, sample) || "—"}</p>}
+        {!wa && <p className="font-medium">{merge(form.subject, sample) || t("Tiada", "None")}</p>}
         <div className="prose prose-sm mt-1 max-w-none text-ink/90" dangerouslySetInnerHTML={{ __html: /<[a-z][^>]*>/i.test(form.body) ? merge(form.body, sample) : merge(form.body, sample).split(/\n\s*\n/).map((p) => `<p>${p.replace(/</g, "&lt;").replace(/\n/g, "<br>")}</p>`).join("") }} />
         <p className="mt-2 border-t border-line pt-2 text-[11px] text-muted">{wa ? t("+ baris 'Balas STOP' dan pautan berhenti melanggan di bawah setiap mesej. Meta hanya membenarkan teks bebas dalam 24 jam selepas orang itu menulis kepada anda; di luar itu API menolak dan papan blast (klik satu persatu) adalah jalannya.", "+ a 'Reply STOP' line and the unsubscribe link under every message. Meta allows free text only within 24 hours of the person writing to you; outside that the API refuses and the blast board (click one by one) is the way.")
           : t("+ nota PDPA dan pautan berhenti melanggan ditambah oleh pekerja di bawah setiap e-mel.", "+ the PDPA line and the unsubscribe link, added by the worker under every e-mail.")}</p>

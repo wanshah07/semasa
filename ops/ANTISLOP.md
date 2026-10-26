@@ -43,16 +43,21 @@ The skill says so itself (R-37: the owner's voice sample wins, and the conflict 
 - the closing line of a film (`motion_styles.cta`), even though "follow kami" is a call to action elsewhere. Rule 7 of the post rules still
   bans a call to action in a caption.
 
-## Findings for Wan to choose from (the skill's "after" mode: nothing below was changed)
+## Findings (the skill's "after" mode). 1, 2 and 5 fixed on 26 Oct 2026 (Wan: "fix 1, 2 and 5, create in english version")
 
 Priority follows the skill: Hard Gate is HIGH, Purpose-Gate MEDIUM, Quality Locks LOW.
 
-1. HIGH, R-02: 43 `"—"` characters stand in for an empty value in tables and selects (a dash for "none"). The rule is "no em dash in any text";
-   a placeholder is the usual exception, so this is Wan's call. Fix: an empty cell, or "Tiada".
-2. MEDIUM, R-04: the Sparkles icon marks "generate" buttons in 7 files (10 places): BackgroundPicker, WanshahPanel, MotionLab, BrainTab, FaqTab,
-   FaqAiBar, LogTab. Sparkle is on the skill's generic AI icon list. Fix: an icon that says what the button makes (an image, a pen), or text only.
-3. MEDIUM, R-04: 56 files import the same thin-stroke Lucide set. It is the default icon-set look. Changing it is a design decision, not a clean-up.
-4. MEDIUM, R-06: 60 uppercase labels carry wide tracking. Check each against the brand's own type direction.
-5. LOW, R-16: 25 places call the writer "Bot" ("Bot tulis ...", "Bot baca ..."). Plain, but it is a label that could be the thing it does.
+1. FIXED, HIGH, R-02: the em dash that stood in for an empty value in tables, selects and printed documents is now "Tiada" / "None" (a
+   bilingual pair in the page, `W.none` in the printed billing documents). Two pure helpers return an empty string and the caller says
+   "Tiada / None" (`fmtMs`, `sizeLabel`); receipts with no date group under "Tiada tarikh / No date". Em dashes inside code comments and the
+   `[,;:–—]` character class in `fromCaption.js` (a real splitter, not text) stay.
+2. FIXED, MEDIUM, R-04: the Sparkles icon on "generate" buttons and tab icons is replaced by an icon that names what the button makes:
+   ImagePlus (Jana gambar, Jana Wanshah, the Media lab tab and its log icon), Plus (More poses), Clapperboard (Buat video motion), Eye
+   (Needs a look), FolderPlus (category made by Semasa), FileQuestion (the FAQ AI bar).
+3. OPEN, MEDIUM, R-04: 56 files import the same thin-stroke Lucide set. It is the default icon-set look. Changing it is a design decision, not a clean-up.
+4. OPEN, MEDIUM, R-06: 60 uppercase labels carry wide tracking. Check each against the brand's own type direction.
+5. FIXED, LOW, R-16: the generic "Bot" label (140 lines of page text, Malay and English) now names the system, "Semasa" ("Semasa tulis ...",
+   "Semasa writes ..."), and three buttons say what happens instead ("Hantar untuk ditulis / Send to be written"). Stored values named `bot`
+   (`category_by`, the Log actor filter) and the worker's Malay log titles ("Bot menambah ...", matched by `LogTab`) are data and did not change.
 
 Reply with the numbers to fix.

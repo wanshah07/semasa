@@ -65,11 +65,11 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
   async function askRevise() {
     if (!has021) return need021();
     if (!note.trim()) return onToast(t("Tulis nota: apa yang patut berubah.", "Write a note: what should change."), "warn");
-    if (dirty) return onToast(t("Simpan suntingan anda dahulu: bot menulis semula perkataan yang disimpan.",
-      "Save your edits first: the bot rewrites the saved words."), "warn");
+    if (dirty) return onToast(t("Simpan suntingan anda dahulu: Semasa menulis semula perkataan yang disimpan.",
+      "Save your edits first: Semasa rewrites the saved words."), "warn");
     if (await update({ revise_note: note.trim().slice(0, 800), revise_state: "new", revise_error: null },
-      t("Dihantar. Bot menulis semula post ini dengan nota anda; perkataan lama disimpan dalam Sejarah.",
-        "Sent. The bot rewrites this post with your note; the old words are kept in History."))) setNote("");
+      t("Dihantar. Semasa menulis semula post ini dengan nota anda; perkataan lama disimpan dalam Sejarah.",
+        "Sent. Semasa rewrites this post with your note; the old words are kept in History."))) setNote("");
   }
 
   async function reject() {
@@ -129,11 +129,11 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
     <div className="space-y-3">
       {post.status === "draft" && !locked && (
         <div className="rounded-tile border border-line p-3">
-          <Label hint={t("bot menulis semula perkataan sahaja; slaid, reka bentuk dan gambar kekal", "the bot rewrites the words only; slides, designs and pictures stay")}>
+          <Label hint={t("Semasa menulis semula perkataan sahaja; slaid, reka bentuk dan gambar kekal", "Semasa rewrites the words only; slides, designs and pictures stay")}>
             <PenLine size={12} className="mr-1 inline" />{t("Tulis semula dengan nota", "Revise with a note")}</Label>
           {state === "new" || state === "working" ? (
             <p className="flex items-center gap-2 text-[12px] text-muted"><Loader2 size={13} className="animate-spin" />
-              {t("Bot sedang menulis semula: \"{n}\"", "The bot is rewriting: \"{n}\"", { n: post.revise_note || "" })}</p>
+              {t("Semasa sedang menulis semula: \"{n}\"", "Semasa is rewriting: \"{n}\"", { n: post.revise_note || "" })}</p>
           ) : (
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={800} disabled={busy}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bot, Check, FileSpreadsheet, FileText, Loader2, Paperclip, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Bot, Check, FileSpreadsheet, FileText, Loader2, FileQuestion, Paperclip, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { acceptKind, extractFaqs, legacyWhy, prepareInputs } from "../lib/faqAi";
@@ -108,7 +108,7 @@ export default function FaqAiBar({ rows, user, onToast, onDone }) {
       onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
       onDrop={(e) => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer?.files); }}>
       <div className="flex flex-wrap items-center gap-2">
-        <Sparkles size={14} className="text-accent" />
+        <FileQuestion size={14} className="text-accent" />
         <h2 className="text-sm font-semibold">{t("Bar AI", "AI bar")}</h2>
         <span className="text-[11px] text-muted">{t("tampal tangkapan skrin (Ctrl+V), seret gambar, PDF, Word, Excel atau CSV; AI mengasingkan soalan dan jawapan", "paste a screenshot (Ctrl+V), drop a picture, PDF, Word, Excel or CSV file; the AI separates the questions and answers")}</span>
       </div>

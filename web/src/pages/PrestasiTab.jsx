@@ -218,10 +218,10 @@ export default function PrestasiTab({ posts, go }) {
                   <td className="px-3 py-3">{CHANNEL_WORDS[r.channel] || r.channel}</td>
                   <td className="px-3 py-3 text-xs tabular-nums">{stampMYT(r.sent_at)}{s ? <div className="text-muted">{dayWords[s.dow]} · {WINDOWS[s.win]}</div> : null}</td>
                   <td className="px-3 py-3 text-right tabular-nums">{fmt(viewsOf(r))}{r.reach != null && <div className="text-xs text-muted">{t("jangkauan", "reach")} {r.reach}</div>}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{r.reactions ?? "—"}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{r.comments ?? "—"}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{(r.shares ?? 0) + (r.reposts ?? 0) || "—"}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{r.engagement != null ? `${r.engagement}%` : "—"}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{r.reactions ?? t("Tiada", "None")}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{r.comments ?? t("Tiada", "None")}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{(r.shares ?? 0) + (r.reposts ?? 0) || t("Tiada", "None")}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{r.engagement != null ? `${r.engagement}%` : t("Tiada", "None")}</td>
                 </tr>
               );
             })}
@@ -233,7 +233,7 @@ export default function PrestasiTab({ posts, go }) {
       <p className="mt-4 text-[11px] text-muted">
         {t("Sumber: Buffer (Facebook paparan, Instagram tontonan + jangkauan, Threads tontonan). LinkedIn tiada angka: sambungan hanya boleh menyiar, bukan membaca. Bacaan terakhir: {at}.",
           "Source: Buffer (Facebook impressions, Instagram views + reach, Threads views). LinkedIn has no figures: the connection can post but not read. Last read: {at}.",
-          { at: lastRead ? stampMYT(lastRead) : "—" })}
+          { at: lastRead ? stampMYT(lastRead) : t("Tiada", "None") })}
       </p>
     </main>
   );

@@ -180,8 +180,8 @@ function WriterSettings({ settings, save, onToast }) {
   return (
     <Card className="p-5">
       <h2 className="flex items-center gap-2 text-lg"><ScrollText size={16} /> {t("Gaya penulisan", "Writing style")}</h2>
-      <p className="mt-1 text-[12px] text-muted">{t("Dibaca oleh setiap penulis bot. Ia menambah pada peraturan, tidak pernah menarik balik mana-mana semakan.",
-        "Read by every writer in the bot. It adds to the rules and never switches a check off.")}</p>
+      <p className="mt-1 text-[12px] text-muted">{t("Dibaca oleh setiap penulis Semasa. Ia menambah pada peraturan, tidak pernah menarik balik mana-mana semakan.",
+        "Read by every writer in Semasa. It adds to the rules and never switches a check off.")}</p>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <div className="space-y-2">
           <p className="text-sm font-medium">ws.regulab</p>
@@ -224,8 +224,8 @@ function AutofillSettings({ settings, save, onToast }) {
     setBusy(true);
     try {
       await save("autofill", { enabled: f.enabled, days_ahead: Number(f.days), per_run: Number(f.per), streams: f.streams });
-      onToast(f.enabled ? t("Auto-isi dihidupkan. Larian bot seterusnya menulis idea untuk slot kosong; semuanya draf.",
-        "Autofill is on. The next bot run writes ideas for empty slots; all of them stay drafts.")
+      onToast(f.enabled ? t("Auto-isi dihidupkan. Larian Semasa seterusnya menulis idea untuk slot kosong; semuanya draf.",
+        "Autofill is on. The next Semasa run writes ideas for empty slots; all of them stay drafts.")
         : t("Auto-isi dimatikan.", "Autofill is off."), "ok");
     } catch (e) {
       onToast(/0 rows/.test(e.message) ? t("Jalankan supabase/022_studio_extras.sql dahulu.", "Run supabase/022_studio_extras.sql first.") : e.message, "danger");
@@ -237,8 +237,8 @@ function AutofillSettings({ settings, save, onToast }) {
   return (
     <Card className="p-5">
       <h2 className="flex items-center gap-2 text-lg"><FlaskConical size={16} /> {t("Auto-isi slot kosong", "Fill empty slots")}</h2>
-      <p className="mt-1 text-[12px] text-muted">{t("Seperti penulis malam Studio. Mati: tiada idea ditulis tanpa klik anda. Hidup: setiap larian bot menulis idea untuk slot kosong beberapa hari ke depan, daripada suapan Regulatori dan Penerbitan Terkini, ikut rota. Semuanya kekal draf sehingga anda luluskan.",
-        "Like Studio's nightly drafter. Off: no idea is written without your click. On: each bot run writes ideas for the empty slots of the next few days, from the Regulatory and Latest publication feed, following the rota. Every one stays a draft until you approve it.")}</p>
+      <p className="mt-1 text-[12px] text-muted">{t("Seperti penulis malam Studio. Mati: tiada idea ditulis tanpa klik anda. Hidup: setiap larian Semasa menulis idea untuk slot kosong beberapa hari ke depan, daripada suapan Regulatori dan Penerbitan Terkini, ikut rota. Semuanya kekal draf sehingga anda luluskan.",
+        "Like Studio's nightly drafter. Off: no idea is written without your click. On: each Semasa run writes ideas for the empty slots of the next few days, from the Regulatory and Latest publication feed, following the rota. Every one stays a draft until you approve it.")}</p>
       <label className="mt-3 flex items-center gap-2 text-sm">
         <input type="checkbox" checked={f.enabled} onChange={(e) => setF((x) => ({ ...x, enabled: e.target.checked }))} />
         {t("Hidupkan auto-isi", "Switch autofill on")}</label>
@@ -458,17 +458,17 @@ function FaqCategories({ settings, save, onToast }) {
       <div>
         <h3 className="text-lg">{t("Kategori FAQ", "FAQ categories")}</h3>
         <p className="mt-1 text-[12px] text-muted">{lang === "en" ? (<>The AI picks one category and one subcategory from this list. Subcategories are separated by commas.
-          The bot can also add categories (when at least 2 questions fit one) and subcategories of its own, marked
-          <b> ✦ made by the bot</b>, and re-sorts the questions in Other whenever this list changes. A bot category or
+          Semasa can also add categories (when at least 2 questions fit one) and subcategories of its own, marked
+          <b> ✦ made by Semasa</b>, and re-sorts the questions in Other whenever this list changes. A Semasa category or
           subcategory you remove is never made again. Questions you placed yourself are never moved.</>) : (<>AI memilih satu kategori dan satu subkategori daripada senarai ini. Subkategori dipisah dengan koma.
-          Bot juga boleh menambah kategori (bila sekurang-kurangnya 2 soalan sesuai dengannya) dan subkategori sendiri, ditanda
-          <b> ✦ dicipta bot</b>, dan menyusun semula soalan dalam Lain-lain setiap kali senarai ini berubah. Kategori atau
-          subkategori bot yang anda buang tidak akan dicipta semula. Soalan yang anda letak sendiri tidak akan dialih.</>)}</p>
+          Semasa juga boleh menambah kategori (bila sekurang-kurangnya 2 soalan sesuai dengannya) dan subkategori sendiri, ditanda
+          <b> ✦ dicipta Semasa</b>, dan menyusun semula soalan dalam Lain-lain setiap kali senarai ini berubah. Kategori atau
+          subkategori Semasa yang anda buang tidak akan dicipta semula. Soalan yang anda letak sendiri tidak akan dialih.</>)}</p>
       </div>
       {rows.map((r, i) => (
         <div key={i} className="grid gap-2 rounded-tile bg-surface-2/60 p-2.5 sm:grid-cols-[1fr_1fr_2fr_auto]">
           {(r.auto || (r.auto_subs || []).length > 0) && (
-            <p className="text-[10px] text-accent sm:col-span-4">✦ {r.auto ? t("Kategori dicipta bot", "Category made by the bot") : t("Subkategori dicipta bot", "Subcategory made by the bot")}
+            <p className="text-[10px] text-accent sm:col-span-4">✦ {r.auto ? t("Kategori dicipta Semasa", "Category made by Semasa") : t("Subkategori dicipta Semasa", "Subcategory made by Semasa")}
               {(r.auto_subs || []).length > 0 && `: ${r.auto_subs.join(", ")}`}</p>
           )}
           <Input value={r.bm} onChange={(e) => set(i, "bm", e.target.value)} placeholder={t("Nama (BM)", "Name (BM)")} aria-label={t("Nama kategori BM", "Category name (BM)")} />
@@ -566,12 +566,12 @@ function MireldTrial({ settings, save, onToast }) {
     setBusy(true);
     try {
       await save("llm_trial", { ...v, scrape: true, media: true, requested_at: new Date().toISOString() });
-      onToast(t("Percubaan dimulakan: scrape seterusnya dan kerja bot seterusnya akan tanya Mireld dahulu.",
-        "Trial set: the next scrape and the bot's next job will ask Mireld first."), "ok");
+      onToast(t("Percubaan dimulakan: scrape seterusnya dan kerja Semasa seterusnya akan tanya Mireld dahulu.",
+        "Trial set: the next scrape and Semasa's next job will ask Mireld first."), "ok");
     } catch (e) {
       onToast(/not found/.test(e.message)
-        ? t("Suis ini dibuat oleh bot pada larian pertamanya selepas kemas kini ini (dalam 15 minit). Cuba lagi selepas itu.",
-          "The bot makes this switch on its first run after this update (within 15 minutes). Try again after that.")
+        ? t("Suis ini dibuat oleh Semasa pada larian pertamanya selepas kemas kini ini (dalam 15 minit). Cuba lagi selepas itu.",
+          "Semasa makes this switch on its first run after this update (within 15 minutes). Try again after that.")
         : e.message, "danger");
     }
     setBusy(false);
@@ -603,18 +603,18 @@ function MireldTrial({ settings, save, onToast }) {
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-lg"><FlaskConical size={17} /> {t("Cuba Mireld untuk satu larian", "Try Mireld for one run")}</h3>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            {t("Scrape seterusnya dan kerja bot seterusnya bertanya Mireld dahulu: ringkasan berita, draf, dan bacaan gambar. rootsys menjawab apa yang Mireld tidak dapat, jadi tiada kerja hilang. Keputusan muncul di sini dan percubaan berhenti sendiri.",
-              "The next scrape and the bot's next job ask Mireld first: the news summaries, the drafts, and the read of a picture. rootsys answers what Mireld cannot, so no work is lost. The result appears here and the trial switches itself off.")}</p>
+            {t("Scrape seterusnya dan kerja Semasa seterusnya bertanya Mireld dahulu: ringkasan berita, draf, dan bacaan gambar. rootsys menjawab apa yang Mireld tidak dapat, jadi tiada kerja hilang. Keputusan muncul di sini dan percubaan berhenti sendiri.",
+              "The next scrape and Semasa's next job ask Mireld first: the news summaries, the drafts, and the read of a picture. rootsys answers what Mireld cannot, so no work is lost. The result appears here and the trial switches itself off.")}</p>
         </div>
         <Button onClick={start} disabled={busy || waiting || !row}>{waiting ? t("Menunggu larian…", "Waiting for a run…") : t("Cuba sekali", "Try once")}</Button>
       </div>
-      {!row && <p className="text-[12px] text-muted">{t("Suis ini muncul selepas bot berjalan sekali dengan kemas kini ini.", "This switch appears after the bot has run once with this update.")}</p>}
-      {waiting && <p className="text-[12px] text-muted">{t("Menunggu: {p}. Scrape berjalan tiga kali sehari (untuk cepat: GitHub → Actions → Scrape isu semasa → Run workflow); bahagian bot berjalan pada kerja seterusnya yang bertanya penulis.",
-        "Waiting for: {p}. A scrape runs three times a day (to hurry it: GitHub → Actions → Scrape isu semasa → Run workflow); the bot's part runs on its next job that asks the writer.",
-        { p: [v.scrape === true && "scrape", v.media === true && t("kerja bot", "bot job")].filter(Boolean).join(", ") })}</p>}
+      {!row && <p className="text-[12px] text-muted">{t("Suis ini muncul selepas Semasa berjalan sekali dengan kemas kini ini.", "This switch appears after Semasa has run once with this update.")}</p>}
+      {waiting && <p className="text-[12px] text-muted">{t("Menunggu: {p}. Scrape berjalan tiga kali sehari (untuk cepat: GitHub → Actions → Scrape isu semasa → Run workflow); bahagian Semasa berjalan pada kerja seterusnya yang bertanya penulis.",
+        "Waiting for: {p}. A scrape runs three times a day (to hurry it: GitHub → Actions → Scrape isu semasa → Run workflow); Semasa's part runs on its next job that asks the writer.",
+        { p: [v.scrape === true && "scrape", v.media === true && t("kerja Semasa", "Semasa job")].filter(Boolean).join(", ") })}</p>}
       <div className="grid gap-3 md:grid-cols-2">
         <Result label="Scrape" r={v.scrape_result} />
-        <Result label={t("Kerja bot", "Bot job")} r={v.media_result} />
+        <Result label={t("Kerja Semasa", "Semasa job")} r={v.media_result} />
       </div>
     </Card>
   );
@@ -675,7 +675,7 @@ function GithubNow({ slot, github, overridden }) {
     <div className="rounded-tile border border-line bg-surface px-2.5 py-1.5 text-[11px] text-muted" data-github-now={slot}>
       <p className="break-words"><span className="font-medium text-ink">{t("Dalam GitHub", "In GitHub")}:</span>{" "}
         {githubFacts(slot, g, t).filter(Boolean).join(" · ")}</p>
-      {fb && <p className="break-words">{t("Sandaran", "Backup")}: {hostPath(fb.base_url)} · {fb.model || "—"} · {fb.key ? `${t("kunci", "key")} ${fb.key}` : t("tiada kunci", "no key")}</p>}
+      {fb && <p className="break-words">{t("Sandaran", "Backup")}: {hostPath(fb.base_url)} · {fb.model || t("Tiada", "None")} · {fb.key ? `${t("kunci", "key")} ${fb.key}` : t("tiada kunci", "no key")}</p>}
       {g.blocked && <p className="text-danger">{g.blocked}</p>}
       {fb?.blocked && <p className="text-danger">{fb.blocked}</p>}
       <p>{t("Dibaca oleh larian {w}, {at}.", "Read by the {w} run, {at}.", { w: g.from, at: stampMYT(g.at) })}{" "}

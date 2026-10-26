@@ -58,7 +58,7 @@ export function sizeLabel(id, fallback) {
   const s = sizeOf(id);
   if (s) return `${s.name} · ${s.w}×${s.h}`;
   if (fallback?.length === 2) return `${fallback[0]}×${fallback[1]}`;
-  return "—";
+  return "";
 }
 
 /** What a job stores: the preset id, the pixels, and the name shown on its card. */

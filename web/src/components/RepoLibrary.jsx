@@ -43,7 +43,7 @@ export default function RepoLibrary({ settings, user, onToast }) {
       const { error } = await supabase.from(TABLES.repoLibrary).insert({ url: canonicalUrl(url), full_name: full, note: note.trim(), status: "pending", created_by: user?.id || null });
       if (error) throw new Error(/duplicate|unique/i.test(errText(error)) ? t("Repo ini sudah ada dalam pustaka.", "This repo is already in the library.") : errText(error));
       setUrl(""); setNote("");
-      onToast?.(t("Ditambah: bot membaca {r} sebentar lagi.", "Added: the bot reads {r} shortly.", { r: full }), "ok");
+      onToast?.(t("Ditambah: Semasa membaca {r} sebentar lagi.", "Added: Semasa reads {r} shortly.", { r: full }), "ok");
       libT.reload();
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
   };
@@ -70,8 +70,8 @@ export default function RepoLibrary({ settings, user, onToast }) {
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 font-display text-2xl"><BookOpen size={18} className="text-accent" /> {t("Pustaka repo", "Repo library")}</h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted">{t("Tampal pautan GitHub: bot membaca repo itu (tidak pernah dijalankan), semak keselamatan, tulis ringkasan dan failkan ikut kategori. Semakan ialah bacaan, bukan audit.",
-            "Paste a GitHub link: the bot reads the repo (never runs it), checks it for safety, writes a summary and files it by category. The check is a reading, not an audit.")}</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted">{t("Tampal pautan GitHub: Semasa membaca repo itu (tidak pernah dijalankan), semak keselamatan, tulis ringkasan dan failkan ikut kategori. Semakan ialah bacaan, bukan audit.",
+            "Paste a GitHub link: Semasa reads the repo (never runs it), checks it for safety, writes a summary and files it by category. The check is a reading, not an audit.")}</p>
         </div>
         <p className="text-xs text-muted">{sum.total} {t("repo", "repos")} · {sum.done} {t("siap", "done")}{sum.pending ? ` · ${sum.pending} ${t("menunggu", "waiting")}` : ""}{sum.avoid ? ` · ${sum.avoid} ${t("elakkan", "avoid")}` : ""}</p>
       </div>

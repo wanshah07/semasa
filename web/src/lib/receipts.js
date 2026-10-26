@@ -28,7 +28,7 @@ const r2 = (n) => Math.round(n * 100) / 100;
 export function byMonth(rows) {
   const map = new Map();
   for (const r of rows || []) {
-    const k = monthOf(r) || "—";
+    const k = monthOf(r) || "none";
     if (!map.has(k)) map.set(k, { month: k, rows: [], total: 0, byCategory: {}, foreign: 0, unread: 0 });
     const g = map.get(k);
     g.rows.push(r);

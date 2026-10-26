@@ -237,10 +237,10 @@ function MediaTab({ user, gens, prompts, posts, onToast }) {
           {t("Prompt atau rujukan masuk, imej atau video keluar.", "A prompt or a reference goes in, an image or a video comes out.")}
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
-          {t("Tulis prompt sahaja, atau muat naik gambar rujukan: bot membacanya dahulu, kemudian mencipta semula mengikut "
+          {t("Tulis prompt sahaja, atau muat naik gambar rujukan: Semasa membacanya dahulu, kemudian mencipta semula mengikut "
             + "arahan anda. Simpan prompt yang baik ke pustaka untuk diguna semula. GitHub Actions menjalankan penjanaan; "
             + "status bertukar secara langsung.",
-          "Write a prompt on its own, or upload a reference picture: the bot reads it first, then recreates it following "
+          "Write a prompt on its own, or upload a reference picture: Semasa reads it first, then recreates it following "
             + "your instructions. Save a good prompt to the library to use it again. GitHub Actions runs the generation; "
             + "the status updates live.")}
         </p>

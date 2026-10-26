@@ -428,7 +428,7 @@ function Job({ r, mine, gens, onToast, onCanvas, perfumes = [] }) {
                 {x.method === "cutout" && <p className="text-ok">{t("Botol dan label ialah gambar sebenar anda: tepat.", "The bottle and label are your real photo: exact.")}</p>}
                 {x.method === "ai_edit" && (x.label ? (x.label.ok
                   ? <p className="text-ok">{t("Label dibaca: {reads}", "Label reads: {reads}", { reads: x.label.reads })}</p>
-                  : <p className="text-danger [overflow-wrap:anywhere]">{t("Label SALAH: AI menulis \"{reads}\". Tiada: {missing}.", "Label WRONG: the AI wrote \"{reads}\". Missing: {missing}.", { reads: x.label.reads || "—", missing: (x.label.missing || []).join(", ") || "—" })}
+                  : <p className="text-danger [overflow-wrap:anywhere]">{t("Label SALAH: AI menulis \"{reads}\". Tiada: {missing}.", "Label WRONG: the AI wrote \"{reads}\". Missing: {missing}.", { reads: x.label.reads || t("Tiada", "None"), missing: (x.label.missing || []).join(", ") || t("Tiada", "None") })}
                     {x.label.attempts > 1 ? ` ${t("(dilukis 2 kali)", "(drawn twice)")}` : ""}</p>)
                   : <p className="text-warn">{t("Label belum disemak oleh AI: semak sendiri.", "The label was not checked: check it yourself.")}</p>)}
                 {mine && step === "pick" && !working && (() => {

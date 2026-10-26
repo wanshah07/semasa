@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, BookOpen, Brain, ChevronDown, Clipboard, Download, FileText, FileUp, HelpCircle, ListChecks, Pencil, Pin, PinOff, Plus, RefreshCw, ScrollText, Search, Sparkles, Terminal, Trash2, Wand2 } from "lucide-react";
+import { AlertTriangle, BookOpen, Brain, ChevronDown, Clipboard, Download, Eye, FileText, FileUp, HelpCircle, ListChecks, Pencil, Pin, PinOff, Plus, RefreshCw, ScrollText, Search, Terminal, Trash2, Wand2 } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
@@ -161,7 +161,7 @@ export default function BrainTab({ user, settings, save, onToast }) {
     { label: t("Entri", "Entries"), value: String(sum.total), icon: Brain, hint: t("{n} dipin", "{n} pinned", { n: sum.pinned }) },
     { label: t("Menunggu AI", "Waiting for the AI"), value: String(sum.waiting), icon: RefreshCw, hint: sum.failed ? t("{n} gagal", "{n} failed", { n: sum.failed }) : t("tiada yang gagal", "none failed"), tone: sum.failed ? "danger" : "" },
     { label: t("Perlu teks", "Needs the text"), value: String(sum.needsText), icon: AlertTriangle, hint: t("pautan atau fail yang mesin tak boleh baca", "links or files a machine cannot read"), tone: sum.needsText ? "warn" : "" },
-    { label: t("Perlu semakan", "Needs a look"), value: String(sum.lowConfidence), icon: Sparkles, hint: t("AI kurang pasti", "the AI was unsure"), tone: sum.lowConfidence ? "warn" : "" },
+    { label: t("Perlu semakan", "Needs a look"), value: String(sum.lowConfidence), icon: Eye, hint: t("AI kurang pasti", "the AI was unsure"), tone: sum.lowConfidence ? "warn" : "" },
   ];
   const set = (k, v) => setFilter((f) => ({ ...f, [k]: v }));
   const picked = entries.filter((e) => pick[e.id]);
@@ -230,7 +230,7 @@ export default function BrainTab({ user, settings, save, onToast }) {
               <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
                 <span className={`rounded-pill px-2 py-0.5 text-[11px] ${STATUS_TONE[r.status] || ""}`}>{w(STATUS_WORDS, r.status)}</span>
                 <span className="text-[11px] uppercase tracking-wide text-muted">{w(SOURCE_WORDS, r.source_kind)}</span>
-                <span className="min-w-0 flex-1 truncate">{inboxLabel(r) || "—"}{r.url && isWalled(r.url) ? <span className="ml-1 text-[11px] text-warn">{t("(perlu log masuk)", "(needs a login)")}</span> : null}</span>
+                <span className="min-w-0 flex-1 truncate">{inboxLabel(r) || t("Tiada", "None")}{r.url && isWalled(r.url) ? <span className="ml-1 text-[11px] text-warn">{t("(perlu log masuk)", "(needs a login)")}</span> : null}</span>
                 {r.status === "done" && <span className="text-xs text-muted">{t("{n} entri", "{n} entries", { n: r.entries })}{r.model ? ` · ${r.model}` : ""}</span>}
                 <span className="text-xs text-muted">{timeAgo(r.updated_at || r.created_at)}</span>
                 <span className="flex gap-1">

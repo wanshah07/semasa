@@ -917,7 +917,8 @@ def test_a_subtitle_that_cannot_fit_is_split_never_cut_and_never_runs_off_the_fr
     assert all(len(c[0]) <= 12 or len(c[0].split()) == 1 for c in out)
     assert out[0][1] == 0.0 and out[-1][2] == 9.0 and all(a < b for _, a, b in out)
     assert all(out[i][2] == out[i + 1][1] for i in range(len(out) - 1)), "the times join up"
-    assert motion_layout.split_to_fit([("x" * 90, 0.0, 2.0)], lambda x: False) == [("x" * 90, 0.0, 2.0)], "one word cannot be split"
+    one = [("x" * 90, 0.0, 2.0)]
+    assert motion_layout.split_to_fit(one, lambda x: False) == one, "one word cannot be split"
 
 
 def test_karaoke_ids_are_unique_when_a_narration_has_three_or_four_subtitles():

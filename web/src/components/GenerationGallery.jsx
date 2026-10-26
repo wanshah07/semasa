@@ -119,7 +119,7 @@ export default function GenerationGallery({ rows, user, onRequeue, onRemove, onT
                         {locked.has(row.id) && <span title={t("Kembalikan post itu ke draf untuk memadam gambar ini.", "Put that post back to draft to delete this picture.")}>
                           {t("Dalam post yang diluluskan", "In an approved post")}</span>}
                         {row.status !== "processing" && !locked.has(row.id) && (
-                          <Button size="sm" variant="danger" onClick={() => onRemove(row)} title={t("Padam", "Delete")}><Trash2 size={12} /></Button>
+                          <Button size="sm" variant="danger" onClick={() => onRemove(row)} title={t("Padam", "Delete")}><Trash2 size={12} /> {t("Padam", "Delete")}</Button>
                         )}
                       </span>
                     )}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, ShieldOff, Timer } from "lucide-react";
+import { AlertTriangle, ShieldOff, Timer, Trash2 } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { useLang } from "../lib/i18n";
 import { opensAt, publishingOn } from "../lib/publishing";
@@ -8,7 +8,10 @@ import { hardCount, langOf, scan, scanMedia, textOf, platformsOf } from "../lib/
 import PostEditor from "../components/PostEditor";
 import IdeaComposer from "../components/IdeaComposer";
 import ScheduleView from "../components/ScheduleView";
+import { TABLES, errText, supabase } from "../lib/SupabaseClient";
+import { deleteCheck } from "../lib/postDelete";
 import { fmtLeft, isPastDue, purgeLeftMs, refOf } from "../lib/slots";
+import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import ViewToggle, { TBODY, TD, TH, THEAD, TR, TableFrame, useView } from "../components/ViewToggle";
 
@@ -63,6 +66,42 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
   const publishing = settings.publishing || {};
   const live = publishingOn(publishing);
   const opens = opensAt(publishing);
+  // Delete from the list (Wan, 26 Oct 2026: "for idea and post, add button delete in table or in card"). The editor had the only one,
+  // an icon at its foot. A draft or a rejected post goes at once; an approved one goes back to draft first (the database refuses to
+  // delete it otherwise); one the publisher has scheduled or sent, or one already delivered to a channel, cannot be deleted here.
+  const [deleting, setDeleting] = useState("");
+  async function removePost(p) {
+    const chk = deleteCheck(p);
+    if (!chk.ok) return;
+    const ask = chk.backToDraft
+      ? t("Padam post ini? Ia sudah diluluskan: ia dikembalikan ke draf dahulu dan kelulusan hilang.", "Delete this post? It is approved: it goes back to draft first and the approval is lost.")
+      : t("Padam post ini? Ia tidak boleh dikembalikan.", "Delete this post? This cannot be undone.");
+    if (!window.confirm(ask)) return;
+    setDeleting(p.id);
+    try {
+      if (chk.backToDraft) {
+        const back = await supabase.from(TABLES.posts).update({ status: "draft" }).eq("id", p.id).eq("status", "approved").select("id");
+        if (back.error) throw new Error(errText(back.error));
+        if (!(back.data || []).length) throw new Error(t("Post ini berubah sementara itu: tidak dipadam.", "This post changed meanwhile: not deleted."));
+      }
+      const { error } = await supabase.from(TABLES.posts).delete().eq("id", p.id).in("status", ["draft", "rejected"]);
+      if (error) throw new Error(errText(error));
+      if (focusId === p.id) setFocusId(null);
+      onToast(t("Post dipadam.", "Post deleted."), "info");
+      posts.reload(); media.reload();
+    } catch (e) { onToast(e.message || String(e), "danger"); } finally { setDeleting(""); }
+  }
+  const deleteButton = (p) => {
+    const chk = deleteCheck(p);
+    return (
+      <Button size="sm" variant="danger" disabled={!chk.ok || deleting === p.id} data-post-delete
+        title={chk.ok ? t("Padam post ini", "Delete this post") : t(chk.why[0], chk.why[1])}
+        onClick={(e) => { e.stopPropagation(); removePost(p); }}>
+        <Trash2 size={12} /> {t("Padam", "Delete")}
+      </Button>
+    );
+  };
+
   const summary = (p) => {
     const lang = langOf(p);
     const first = textOf(p, platformsOf(p)[0], lang);
@@ -166,6 +205,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
                 <th className={TH}>{t("Untuk", "For")}</th>
                 <th className={`${TH} w-[36%]`}>{t("Cangkuk", "Hook")}</th>
                 <th className={TH}>{t("Semakan", "Checks")}</th>
+                <th className={TH}><span className="sr-only">{t("Tindakan", "Actions")}</span></th>
               </tr>
             </thead>
             <tbody className={TBODY}>
@@ -184,6 +224,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
                       <span className="line-clamp-2">{s.hook}</span></button></td>
                     <td className={`${TD} whitespace-nowrap text-[12px] ${s.hard ? "text-danger" : "text-ok"}`} data-label={t("Semakan", "Checks")}>
                       {s.hard ? `■ ${t("{n} sekatan", "{n} blocking", { n: s.hard })}` : t("✓ lulus", "✓ passed")}</td>
+                    <td className={TD} data-label={t("Tindakan", "Actions")}>{deleteButton(p)}</td>
                   </tr>
                 );
               })}
@@ -210,6 +251,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
                     <span className="mt-1 line-clamp-2 block [overflow-wrap:anywhere] font-display text-[16px] leading-snug">{s.hook}</span>
                   </span>
                 </button>
+                <div className="mt-2 flex justify-end">{deleteButton(p)}</div>
               </Card>
             );
           })}

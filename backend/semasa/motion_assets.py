@@ -163,15 +163,19 @@ def prepare(row: dict, folder: Path, *, download: Any = None) -> dict:
     return report
 
 
-def inject(document: str, report: dict, scenes: list[dict], total: float, *, design: str = "bright-editorial") -> str:
-    """Worker-owned deterministic layer: consumes files, never asks the writer to simulate them."""
+def inject(document: str, report: dict, scenes: list[dict], total: float, *, design: str = "bright-editorial",
+           panel: bool = True) -> str:
+    """Worker-owned deterministic layer: consumes files, never asks the writer to simulate them. `panel` is the legacy
+    asset panel (a picture and a caption laid over the first scene at a fixed place): the worker's own layout builds those
+    styles in the flow and never takes it, because it landed on top of the first scene's words and failed the film with a
+    text overlap (Wan, 26 Oct 2026, a BM + English film), and its caption named effect codes on screen."""
     if not report["effects"]:
         return document
     from . import native_text
 
     document = native_text.inject(document, report, scenes, total)
     selected = [p for p in report["effects"] if p["id"] not in native_text.NATIVE_IDS]
-    if not selected:
+    if not selected or not panel:
         return document
     first = scenes[0]
     end = min(float(first["duration"]), total)
@@ -180,7 +184,7 @@ def inject(document: str, report: dict, scenes: list[dict], total: float, *, des
     source = next(a for a in report["assets"] if a["path"] == primary["asset"])
     fallback = [p["id"] for p in selected if p["readiness"] == "fallback"]
     label = (
-        ("Adapted " + ", ".join(fallback) + ": concept only, not evidence")
+        "Concept illustration · not evidence"          # never the effect codes: a viewer cannot read "P05, V09, B07"
         if fallback
         else (
             ("Source: " + source["source"] + " · " + source["attribution"])

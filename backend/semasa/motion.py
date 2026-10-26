@@ -255,6 +255,19 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
     return {**meta, "scenes": clean}
 
 
+def alternate_voice(store: Any, row: dict[str, Any]) -> str:
+    """The voice of an `auto` film (Wan, 26 Oct 2026: "selang seli untuk video queue"): the opposite of the voice the most recent other
+    film was read in, so the queue alternates male, female, male... one voice to a film. With no earlier film it is male."""
+    last = ""
+    try:
+        rows = (store.table(TABLE).select("voice,updated_at").neq("id", row["id"]).in_("voice", ["male", "female"])
+                .order("updated_at", desc=True).limit(1).execute().data) or []
+        last = rows[0].get("voice") or "" if rows else ""
+    except Exception as exc:  # noqa: BLE001 - no history is not a reason to fail a film
+        log.info("alternating voice: no history (%s)", str(exc)[:100])
+    return "female" if last == "male" else "male"
+
+
 def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folder: Path, *, speak: Any = None,
                  runner: Any = subprocess.run) -> tuple[list[dict[str, Any]], float, str]:
     """Record each scene's narration and fix the timeline to it: (scenes with start/duration/audio/words, total seconds,
@@ -826,6 +839,9 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         plan = plan_scenes(llm, row, settings.get("prompt") or "", title, text, style=style)
         lang = language_of(row)
         choice = str(row.get("voice") or "male")
+        if choice == "auto":
+            choice = alternate_voice(store, row)
+            store.table(TABLE).update({"voice": choice}).eq("id", row["id"]).execute()   # the next film alternates from this one
         if choice == "kitten" and lang != "en":
             choice = "female"
         kitten_fallback = ""

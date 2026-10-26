@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { motionRow, motionFromIdea, motionFromPost, motionDefaults, withDefaults } from './src/lib/motion.js';
 for (const language of ['en', 'bm', 'both']) {
-  const expected = language === 'en' ? 'kitten' : 'female';
+  const expected = 'auto';   // the voice alternates film by film (Wan, 26 Oct 2026)
   assert.equal(motionRow({brief:'x', language}).row.voice, expected);
   assert.equal(motionFromIdea({id:'i',source_title:'x'}, null, null, language).voice, expected);
   assert.equal(motionFromPost({id:'p',text:{en:{facebook:'x'}}}, null, null, language).voice, expected);

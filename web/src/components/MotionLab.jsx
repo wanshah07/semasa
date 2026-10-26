@@ -49,7 +49,7 @@ export default function MotionLab({ user, onToast }) {
   const [assetsBusy, setAssetsBusy] = useState(false);
   const assetMode = assets.length ? 'mixed' : 'auto';
   const [aiBackground, setAiBackground] = useState(false);
-  const [voice, setVoice] = useState("kitten");
+  const [voice, setVoice] = useState("auto");
   const [repoUrl, setRepoUrl] = useState("");
   const [busy, setBusy] = useState("");
   // Wan's saved way (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"): the form opens on it, and

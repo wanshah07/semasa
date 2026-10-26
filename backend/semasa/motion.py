@@ -171,12 +171,16 @@ CONNECT_RULE = ("CONNECTORS: no scene starts cold and none ends hanging. Every s
                 "'Jadi kenapa ni penting?', 'Jom kita bincang apa yang patut buat.'; English 'Now, here is the fact.', "
                 "'So why does this matter?', 'Let's talk about what to do.'), and the last sentence of a scene leads "
                 "into the next one.")
+LINES_RULE = ("LINES: each on-screen line is ONE complete point of its own. Never split one sentence over two lines, never end a "
+              "line with a comma, and never leave a line that only makes sense with the next one.")
+NARRATION_RULE = ("NARRATION: every narration SAYS what its heading and lines show, in full. A connecting sentence comes in "
+                  "addition to the content, never instead of it.")
 CASUAL_RULE = ("TONE: casual, as a friend explaining to a friend, so the viewer UNDERSTANDS: short plain sentences, "
                "everyday words ('korang', 'jom', 'senang cerita', 'maksudnya'), and every technical term said once in "
                "simple words straight after it.")
 FLOW = ("Hook = one curiosity line that makes this reader stop; Fakta = the one thing that is true, from the brief; "
         "Kenapa = why it matters to this reader; Solusi = the one thing to do next. Connected, complete sentences, never "
-        "isolated labels.\n" + HOOK_RULE + "\n" + CONNECT_RULE)
+        "isolated labels.\n" + HOOK_RULE + "\n" + CONNECT_RULE + "\n" + LINES_RULE + "\n" + NARRATION_RULE)
 FLOW_TEASER = "ONE scene: a curiosity hook only.\n" + HOOK_RULE
 PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, about {words} words in all (about "
                f"{NARRATED_WPS} words a second), never reading the headings word for word, no URL, no handle, no hashtag; "
@@ -243,6 +247,13 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
     if row.get("voice") == "off":
         for sc in clean:
             sc["narration"] = ""
+    else:
+        for sc in clean:                  # a narration that is only a connecting sentence says nothing: add what the scene shows
+            shown = " ".join([sc["heading"].rstrip(" .") + ".", *sc["lines"]])
+            said = {x.lower().strip(".,;:!?") for x in sc["narration"].split() if len(x) >= 5}
+            seen = {x.lower().strip(".,;:!?") for x in shown.split() if len(x) >= 5}
+            if len(sc["narration"].split()) < 14 and not said & seen:
+                sc["narration"] = " ".join(f"{sc['narration']} {shown}".split())[:600]
     meta = {"title": str(out.get("title") or "")[:160],
             "photo_query": " ".join(str(out.get("photo_query") or "").split())[:80]}
     if teaser:

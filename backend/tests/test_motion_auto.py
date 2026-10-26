@@ -124,11 +124,11 @@ def test_narration_becomes_two_subtitle_chunks_in_their_own_lane():
     sc = scene(2, "Notifikasi bukan kelulusan", narration=narration, audio="assets/voice-2.mp3", audio_s=6.0, start=7.0,
                duration=6.6, words=[[i * 0.4, i * 0.4 + 0.3, w] for i, w in enumerate(narration.split())])
     chunks = motion_layout.caption_chunks(sc)
-    assert len(chunks) == 2 and " ".join(c[0] for c in chunks) == narration
-    assert chunks[0][1] == 7.0 and chunks[0][2] == chunks[1][1] and chunks[1][2] == 13.6
-    assert chunks[1][1] == pytest.approx(7.0 + 0.4 * 6), "the second chunk starts at the word the voice reaches"
+    assert " ".join(c[0] for c in chunks) == narration
+    assert chunks[0][1] == 7.0 and chunks[-1][2] == 13.0
+    assert all(7 <= a < b <= 13 for _,a,b in chunks), "unproven old word times use estimated phrases"
     html, _ = _compose([dict(s) for s in FILM[:1]] + [sc, dict(FILM[2]), dict(FILM[3])], narrated=True)
-    assert html.count('class="clip cap"') == 2 and "top:1498px" in html, "the subtitle lane sits below the column"
+    assert html.count('class="clip cap"') == len(chunks) and "top:1498px" in html, "the subtitle lane sits below the column"
     silent, _ = _compose([dict(s) for s in FILM])
     assert 'class="clip cap"' not in silent, "a silent film reads its lines, there is nothing to subtitle"
 
@@ -150,14 +150,14 @@ def test_a_silent_film_is_paced_for_reading_and_a_narrated_one_is_brisk():
     assert sum(motion.reading_seconds(s) for s in trimmed[:-1]) <= 27, "lines are dropped before the pace is rushed"
     fit, total = motion.fit_scenes(trimmed, 30)
     assert total == 30 and all(s["duration"] >= motion.reading_seconds(s) for s in fit[:-1])
-    assert motion.voice_mod.tempo_for("en-US-AndrewMultilingualNeural") == 1.15
-    assert motion.voice_mod.tempo_for("ms-MY-OsmanNeural") == 1.25
+    assert motion.voice_mod.tempo_for("en-US-AndrewMultilingualNeural") == 1.0
+    assert motion.voice_mod.tempo_for("ms-MY-OsmanNeural") == 1.0
     assert (motion.SCENE_GAP, motion.VOICE_PAD) == (0.2, 0.3)
 
 
 def test_the_script_prompt_asks_for_the_flow_and_the_pace_that_matches_the_voice():
     voiced = motion.build_script_system({"stream": "regulab", "seconds": 30, "language": "bm", "voice": "male"}, "")
-    assert "HOOK · FAKTA · KENAPA · SOLUSI" in voiced and "EXACTLY 4 teaching scene" in voiced and "BRISK" in voiced
+    assert "HOOK · FAKTA · KENAPA · SOLUSI" in voiced and "EXACTLY 4 teaching scene" in voiced and "moderate" in voiced
     assert "70 words" in voiced and "photo_query" in voiced
     silent = motion.build_script_system({"stream": "regulab", "seconds": 30, "language": "en", "voice": "off"}, "")
     assert "HOOK · FACT · WHY · SOLUTION" in silent and "NO narrator" in silent and "READS, slowly" in silent

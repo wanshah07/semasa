@@ -6,6 +6,8 @@ import math
 from pathlib import Path
 from typing import Any
 
+from . import video_format_policy
+
 RULES = Path(__file__).resolve().parents[2] / "rules" / "motion"
 CATALOG = json.loads((RULES / "recipes.json").read_text())
 BRIGHT = {**CATALOG[3], "id": "bright-education", "name": "Bright education (Financial Education motifs)"}
@@ -32,7 +34,7 @@ def duration(row: dict[str, Any]) -> float:
     try:
         value = float(row.get("seconds", 30))
         options = row.get("options") or {}
-        if isinstance(options, dict) and options.get("mode") == "teaser" and value == 10:
+        if isinstance(options, dict) and options.get("mode") == "teaser":
             return 10
         return 60 if math.isfinite(value) and value > 30 else 30
     except (TypeError, ValueError):
@@ -53,8 +55,10 @@ def design(row: dict[str, Any]) -> str:
 
 def cta(row: dict[str, Any]) -> str:
     if duration(row) == 10:
-        return "Stay tuned. Follow us for more"
-    return "Jangan lupa follow kami untuk tips seterusnya" if row.get("language") in {"bm", "both"} else "Follow us for more"
+        return "Stay tuned. Follow us for more."
+    if row.get("stream") == "linkedin":
+        return "Follow me for more"
+    return "Jangan lupa follow kami untuk tips seterusnya." if row.get("language") in {"bm", "both"} else "Follow us for more"
 
 
 def validate_export(row: dict[str, Any]) -> None:
@@ -95,7 +99,7 @@ def complete_plan(row: dict[str, Any], seconds: float | None = None) -> dict[str
                        "instruction": "Standalone official alpha logo and exact language CTA only."})
     return {"recipe_id": recipe["id"], "source": recipe["source"], "design": design(row), "seconds": total,
             "required_assets": recipe["required_assets"], "tracks": recipe["tracks"], "stages": stages,
-            "cta": cta(row), "caption_timing": "actual sentence spans; no invented word timestamps",
+            "cta": cta(row), "caption_timing": "actual word boundaries when supplied; otherwise estimated phrases",
             "proof_policy": "source-backed text or explicit uncertainty, never synthetic evidence"}
 
 
@@ -120,7 +124,7 @@ def prompt(row: dict[str, Any], seconds: float | None = None) -> str:
     schedule = "\n".join(f"{i + 1}. {b['code']} {b['name']} [{b['layer']}]: {b['start']:.3f}–{b['end']:.3f}s"
                          for i, b in enumerate(beats(recipe, total)))
     ending = ("Gimmick: ONE persistent continuous composition, curiosity hook only, no multi-pages, no standalone "
-              "logo/CTA page. Show and speak Stay tuned. Follow us for more in that same persistent scene."
+              "logo/CTA page. Show and speak Stay tuned. Follow us for more. in that same persistent scene."
               if teaser else f"Final page only: official supplied transparent-alpha PNG logo centered, full tagline preserved, "
               f"no deformation, no branding on teaching scenes. Visible and spoken CTA exactly: {cta(row)}. "
               f"Reserve final {OUTRO_SECONDS}s; never speak the brand.")
@@ -131,13 +135,14 @@ Use HyperFrames + GSAP, not Claude CLI or Claude model calls. Remotion optional,
 Default 30s explainer, optional 60s. Total {total:g}s including ending. 10s ONLY explicit gimmick/teaser, never an explainer.
 Explain with Hook -> Fact -> Why -> Solution: strong curiosity hook, connected complete casual sentences, not isolated labels.
 Use English or Malaysian Malay, never Indonesian. BM narration uses pembungkusan rather than the mispronounced label.
-Voice on/off is independent: English VoiceStudio KittenTTS (Edge male when no VoiceStudio worker); BM/both native ms-MY
-Edge, never mislabeled VoiceStudio. Narrated films are BRISK (25 Oct 2026: English x1.15, Malay x1.25, short gaps).
+Voice on/off is independent: stock Microsoft Edge en-SG-WayneNeural (English) and ms-MY-OsmanNeural (Malaysian Malay),
+normal rate +0%, pitch +0Hz, moderate conversational pacing. Explicit female/Kitten/provider overrides remain optional.
+BM + English uses Osman as the primary narrator with bilingual visible text, not two voice tracks. No cloning.
 Silent is a separately written, SLOW reading-paced narrative, not a muted voice transcript: about 1.4 words per second
 counting ALL visible heading/lines (both languages counted), complete connected sentences. Leave narration empty in silent mode.
 Do not accelerate/truncate speech to fit; request 30/60s or narrower topic when needed. Preserve uploaded original speech.
 Flow of every explainer: Hook, Fakta, Kenapa, Solusi. Format of the approved reference films: heading on top, the visual in
-the middle (arch photo or diagram), narration as two-line transparent subtitles below, no presenter.
+the middle (arch photo or diagram), narration as transparent captions below, no presenter.
 Bright mint/cream, deep teal, no mascot. No repeated brand header or page counters.
 Subtitles transparent: no background box, capsule, pill or scrim. Center consistently or align an explicit grid.
 Minimum 4.5:1 contrast, phone readable; avoid top 12%, bottom 22%, right 12%. Never invent word timestamps.
@@ -152,6 +157,7 @@ Reference schedule (not mandatory irrelevant effects):
 {schedule}
 {complete_prompt(row, total)}
 {ending}
+{video_format_policy.prompt(row)}
 Only licensed/self-owned approved piano is the default, not reel audio. Subtle fade in/out and speech ducking.
 Approved v17 relative mix: music 0.45 of v16 (~7dB lower), voice 0.9. Reel rights unknown: private approval only;
 block public export unless license confirmed, or export without reel audio and add through the user's platform route.

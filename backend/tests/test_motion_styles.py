@@ -81,7 +81,7 @@ def test_worker_consumes_recipe_and_enforces_selected_duration(tmp_path):
     assert 'data-duration="30"' in index and "official-logo-transparent.png" in index
     assert "Follow us for more" in index and "mascot-wave" not in index
     saved = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
-    assert saved["script"][-1]["narration"] == "Follow us for more"
+    assert saved["script"][-1]["narration"] == ""
     assert saved["script"][-1]["start"] == 27
 
 
@@ -116,4 +116,4 @@ def test_kitten_without_a_voicestudio_worker_falls_back_to_edge_and_says_so(tmp_
                           runner=_runner(), workdir=tmp_path, now=NOW)
     got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
     assert got["status"] == "done"
-    assert "en-US-AndrewMultilingualNeural" in got["style_note"] and "KittenTTS is not set up" in got["style_note"]
+    assert "en-SG-WayneNeural" in got["style_note"] and "KittenTTS is not set up" in got["style_note"]

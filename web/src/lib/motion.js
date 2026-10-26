@@ -1,6 +1,7 @@
 /* Motion (Wan, 23 Oct 2026): a motion-graphics video from an idea or a link, written by the AI as a HyperFrames composition
    and rendered on the runner (backend/semasa/motion.py, semasa_motions). Pure helpers, tested in motion.test.mjs. */
 
+import { applyFormat, resolveFormat } from './videoFormatPolicy.js';
 import { styleOf } from "./motionStyles.js";
 import { validEffects, assetModeOf } from './motionEffects.js';
 
@@ -16,20 +17,24 @@ export const LANGUAGES = [["bm", "Bahasa Malaysia"], ["en", "English"], ["both",
 export const defaultLanguage = () => "en";
 const langOf = (v, stream) => (LANGUAGES.some(([k]) => k === v) ? v : defaultLanguage(stream));
 /* the voice (Wan, 24 Oct 2026); the talking mascot was removed on 25 Oct 2026: "remove mascot usage" */
-export const VOICES = [["kitten", "VoiceStudio KittenTTS (EN)", "VoiceStudio KittenTTS (EN)"], ["male", "Lelaki", "Male"], ["female", "Perempuan", "Female"], ["off", "Tiada suara", "No voice"]];
-const voiceOf = (v) => (VOICES.some(([k]) => k === v) ? v : "kitten");
+export const VOICES = [["kitten", "VoiceStudio KittenTTS (EN)", "VoiceStudio KittenTTS (EN)"], ["male", "Lelaki · Wayne EN / Osman BM", "Male · Wayne EN / Osman BM"], ["female", "Perempuan", "Female"], ["off", "Tiada suara", "No voice"]];
+const voiceOf = (v) => (VOICES.some(([k]) => k === v) ? v : "male");
 export const designOf = v => v === 'continuous-line' ? v : 'bright-editorial';
 export function resolveLanguageVoice(language, voice, stream) {
   const lang = langOf(language, stream);
   const chosen = voiceOf(voice);
-  return { language: lang, voice: chosen === 'kitten' && lang !== 'en' ? 'female' : chosen };
+  return { language: lang, voice: chosen === 'kitten' && lang !== 'en' ? 'male' : chosen };
 }
 const evidenceOf = source => ({...Object.fromEntries(['source_url', 'reference_urls', 'source_name', 'angle', 'domain', 'citations', 'source_summary', 'trend_id', 'idea_id', 'id'].filter(k => source?.[k] != null).map(k => [k, source[k]])), ...(source?.brief?.source ? {structured_source:source.brief.source} : {})});
 const motionOptions = d => ({ style: styleOf(d.style), mode: modeOf(d.mode), design: designOf(d.design), effects:validEffects(d.effects), effect_mode:d.effectMode === 'manual' ? 'manual' : 'auto', asset_mode:assetModeOf(d.assetMode), assets:d.assets || [], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true} });
 export function motionVariantMatches(existing, wanted) {
-  // a row still waiting for Wan's choice of styles is that idea's video, whatever he has set on it so far
+  // Waiting rows represent the idea until the user starts them.
   if (wanted && existing.status === 'waiting' && existing.idea_id && existing.idea_id === wanted.idea_id) return true;
-  return !!wanted && ['pending', 'working', 'done'].includes(existing.status) &&
+  return !!wanted &&
+    !!existing.options?.mute_all === !!wanted.options?.mute_all &&
+    JSON.stringify(existing.options?.personal_avatar || null) === JSON.stringify(wanted.options?.personal_avatar || null) &&
+    (existing.options?.format || resolveFormat({...existing, ...existing.options}).format) === wanted.options?.format &&
+    ['pending', 'working', 'done'].includes(existing.status) &&
     existing.idea_id === wanted.idea_id && existing.language === wanted.language &&
     designOf(existing.options?.design) === designOf(wanted.options?.design) &&
     styleOf(existing.options?.style) === styleOf(wanted.options?.style) &&
@@ -53,40 +58,40 @@ export function clampSeconds(v) {
   return n > 30 ? 60 : 30;
 }
 export const modeOf = (v) => v === "teaser" ? "teaser" : "explainer";
-export const selectedSeconds = (seconds, mode) => modeOf(mode) === "teaser" && Number(seconds) === 10 ? 10 : clampSeconds(seconds);
+export const selectedSeconds = (seconds, mode) => modeOf(mode) === "teaser" ? 10 : clampSeconds(seconds);
 
 /* Wan's saved way of making a motion video (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"):
    settings.motion.defaults, saved from the Motion form, read whenever an idea or a post draft is made into a video. */
-export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "kitten", design: "bright-editorial", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "portrait", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
+export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "male", design: "bright-editorial", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "portrait", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
 /** The saved defaults over the built-in ones; an empty language means "the stream's own". */
 export function motionDefaults(settings) {
   const d = (settings || {}).motion?.defaults;
   const merged = { ...MOTION_DEFAULTS, ...(d && typeof d === "object" ? d : {}) };
-  return { ...merged, ...resolveLanguageVoice(merged.language, merged.voice), design: designOf(merged.design), mode: modeOf(merged.mode), seconds: selectedSeconds(merged.seconds, merged.mode) };
+  return { ...merged, ...resolveFormat(merged), design: designOf(merged.design) };
 }
 /** settings.motion with the form saved as the defaults; everything else in it (the prompt) untouched. */
 export function withDefaults(motionSettings, form) {
   const d = { effects:validEffects(form.effects), effectMode:form.effectMode === 'manual' ? 'manual' : 'auto', assetMode:'auto', ...resolveLanguageVoice(form.language, form.voice), design: designOf(form.design), previewMusic: "user-reel", style: styleOf(form.style), mode: modeOf(form.mode), resolution: RESOLUTIONS[form.resolution] ? form.resolution : "portrait",
     seconds: selectedSeconds(form.seconds, form.mode), aiBackground: !!form.aiBackground, styleRepoId: form.styleRepoId || "" };
-  return { ...(motionSettings || {}), defaults: d };
+  return { ...(motionSettings || {}), defaults: {...d, ...resolveFormat(form)} };
 }
 /** A cache-busting address for a video that was remade under the same path (the browser kept the first MP4 otherwise). */
 export const freshUrl = (url, stamp) => (url ? `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(stamp || "")}` : url);
 
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. */
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "kitten", design = "bright-editorial", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[] } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "portrait", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "male", design = "bright-editorial", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[], format, muteAll=false, personalAvatar=null } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
   if (u && !/^https?:\/\/\S+$/.test(u)) return { error: "url" };
   const st = stream === "linkedin" ? "linkedin" : "regulab";
   return {
-    row: {
+    row: applyFormat({
       brief: b.slice(0, 2000), source_url: u, stream: st, language: langOf(language, st),
       resolution: RESOLUTIONS[resolution] ? resolution : "portrait", seconds: selectedSeconds(seconds, mode), status: "pending",
       options: motionOptions({style, mode, design, effects, effectMode, assetMode, assets}), style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
       ...resolveLanguageVoice(language, voice, st), mascot: "",
-    },
+    }, {format, mode, language, voice, resolution, seconds, muteAll, personalAvatar}),
   };
 }
 
@@ -121,6 +126,7 @@ export function motionRepoRow(url, userId = null) {
     null for an idea with nothing to say. A vertical explainer, 30 s, is the default: the idea becomes one scroll-stopping clip. */
 export function motionFromIdea(idea, userId = null, defaults = null, language = "") {
   const d = { ...MOTION_DEFAULTS, ...(defaults || {}), ...(LANGUAGES.some(([k]) => k === language) ? { language } : {}) };
+  if (LANGUAGES.some(([k]) => k === language) && !['silent-first','gimmick'].includes(d.format)) d.format = language === 'en' ? 'english-voiced' : 'malay-voiced';
   const title = String(idea?.source_title || "").trim();
   const note = String(idea?.note || "").trim();
   const summary = String(idea?.source_summary || idea?.brief?.source?.summary || "").trim();
@@ -128,15 +134,16 @@ export function motionFromIdea(idea, userId = null, defaults = null, language = 
   const url = /^https?:\/\/\S+$/.test(String(idea?.source_url || "")) ? idea.source_url : "";
   if (!brief && !url) return null;
   const stream = idea?.stream === "linkedin" ? "linkedin" : "regulab";
-  return { brief, source_url: url, stream, language: langOf(d.language, stream), resolution: RESOLUTIONS[d.resolution] ? d.resolution : "portrait",
+  return applyFormat({ brief, source_url: url, stream, language: langOf(d.language, stream), resolution: RESOLUTIONS[d.resolution] ? d.resolution : "portrait",
     seconds: selectedSeconds(d.seconds, d.mode), status: "waiting", idea_id: idea.id || null, ai_background: !!d.aiBackground,
-    options: { ...motionOptions(d), evidence: evidenceOf(idea) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: "", created_by: userId };
+    options: { ...motionOptions(d), evidence: evidenceOf(idea) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: "", created_by: userId }, d);
 }
 
 /** The motion row for a post draft (Wan, 24 Oct 2026: "make sure all draft idea have option to be motion"): the slides' titles and
     points when the post has them, else its caption in the post's own language; the post's language and stream carry over. */
 export function motionFromPost(post, userId = null, defaults = null, language = "") {
   const d = { ...MOTION_DEFAULTS, ...(defaults || {}), ...(LANGUAGES.some(([k]) => k === language) ? { language } : {}) };
+  if (LANGUAGES.some(([k]) => k === language) && !['silent-first','gimmick'].includes(d.format)) d.format = language === 'en' ? 'english-voiced' : 'malay-voiced';
   const lang = ["en", "bm"].includes(post?.lang) ? post.lang : (post?.text?.en ? "en" : "bm");
   const slides = Array.isArray(post?.slides) ? post.slides : [];
   const fromSlides = slides.map((s) => [String(s?.title || "").trim(), ...(Array.isArray(s?.points) ? s.points : []).map((p) => `- ${String(p || "").trim()}`)]
@@ -146,9 +153,9 @@ export function motionFromPost(post, userId = null, defaults = null, language = 
   const brief = (fromSlides || caption).slice(0, 1900);
   if (!brief) return null;
   const stream = post?.stream === "linkedin" ? "linkedin" : "regulab";
-  return { brief, source_url: post?.source_url || "", stream, language: d.language || lang, resolution: RESOLUTIONS[d.resolution] ? d.resolution : "portrait",
+  return applyFormat({ brief, source_url: post?.source_url || "", stream, language: d.language || lang, resolution: RESOLUTIONS[d.resolution] ? d.resolution : "portrait",
     seconds: selectedSeconds(d.seconds, d.mode), status: "waiting", idea_id: post?.idea_id || null, ai_background: !!d.aiBackground,
-    options: { ...motionOptions(d), evidence: evidenceOf(post) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: "", created_by: userId };
+    options: { ...motionOptions(d), evidence: evidenceOf(post) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: "", created_by: userId }, d);
 }
 
 /* The queue (Wan, 26 Oct 2026): an idea or a draft made into a video waits for him to choose its styles. These two turn the
@@ -156,7 +163,10 @@ export function motionFromPost(post, userId = null, defaults = null, language = 
 export function formOf(row, defaults = null) {
   const d = { ...MOTION_DEFAULTS, ...(defaults || {}) };
   const o = row?.options || {};
-  return { language: row?.language || d.language, voice: row?.voice || d.voice, mode: modeOf(o.mode || d.mode),
+  return { ...resolveFormat({...d, ...o, format:o.format, language:row?.language || d.language, voice:row?.voice || d.voice,
+      seconds:row?.seconds || d.seconds, resolution:row?.resolution || d.resolution,
+      muteAll:o.mute_all ?? d.muteAll, personalAvatar:o.personal_avatar ?? d.personalAvatar}, row?.stream),
+    language: row?.language || d.language, voice: row?.voice || d.voice, mode: modeOf(o.mode || d.mode),
     seconds: Number(row?.seconds) || d.seconds, design: designOf(o.design || d.design), style: styleOf(o.style || d.style),
     effectMode: o.effect_mode === 'manual' ? 'manual' : 'auto', effects: validEffects(o.effects || d.effects),
     assets: o.assets || [], aiBackground: !!row?.ai_background, styleRepoId: row?.style_repo_id || "" };
@@ -164,11 +174,15 @@ export function formOf(row, defaults = null) {
 export function startFields(row, form) {
   const stream = row?.stream === "linkedin" ? "linkedin" : "regulab";
   const d = { ...MOTION_DEFAULTS, ...form };
+  // Queue controls may change mode/language independently of the saved format.
+  if (d.mode === 'teaser') d.format = 'gimmick';
+  else if (d.format === 'gimmick') d.format = d.voice === 'off' ? 'silent-first' : d.language === 'en' ? 'english-voiced' : 'malay-voiced';
+  else if (['english-voiced','malay-voiced'].includes(d.format)) d.format = d.language === 'en' ? 'english-voiced' : 'malay-voiced';
   const assets = Array.isArray(d.assets) ? d.assets : [];
-  return { ...resolveLanguageVoice(d.language, d.voice, stream), seconds: selectedSeconds(d.seconds, d.mode),
+  return applyFormat({ ...resolveLanguageVoice(d.language, d.voice, stream), stream,
     ai_background: !!d.aiBackground, style_repo_id: d.styleRepoId || null,
-    options: { ...motionOptions({ ...d, assets, assetMode: assets.length ? 'mixed' : 'auto' }), evidence: row?.options?.evidence || {} },
-    status: "pending", attempts: 0, error: "" };
+    options: { ...row?.options, ...motionOptions({ ...d, assets, assetMode: assets.length ? 'mixed' : 'auto' }), evidence: row?.options?.evidence || {} },
+    status: "pending", attempts: 0, error: "" }, d);
 }
 
 /** Which of Wan's four approved formats a film comes out as: the worker's own rule (motion.format_of), for the queue to show. */

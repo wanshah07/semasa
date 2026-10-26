@@ -30,7 +30,7 @@ def resolve(settings):
         raise ValueError('Unverified reel audio is private-preview-only')
     if c['rights_status'] != 'cleared' and not c['preview_only']: raise ValueError('No uncleared public export')
     if c['mode'] == 'gimmick':
-        c.update(cta='Stay tuned. Follow us for more',outro_seconds=0)
+        c.update(cta='Stay tuned. Follow us for more.',outro_seconds=0)
     elif c['channel'] == 'linkedin':
         c.update(cta='Follow me for more',identity='Ts. ChM. Muhammad',logo=None)
     else:

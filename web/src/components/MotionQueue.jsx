@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ListChecks, Loader2, Play, Trash2 } from "lucide-react";
 import { useLang } from "../lib/i18n";
 import { FORMAT_WORDS, LANGUAGES, VOICES, defaultLanguage, formOf, formatOf, motionLabel, selectedSeconds } from "../lib/motion";
+import { VIDEO_FORMATS, selectFormat } from "../lib/videoFormatPolicy";
 import { designOptions } from "../lib/motionStyles";
 import MotionEffectLibrary from "./MotionEffectLibrary";
 import Card from "./ui/Card";
@@ -29,9 +30,12 @@ function QueueCard({ row, defaults, client, user, busy, onStart, onRemove }) {
         </div>
         <span className="rounded-pill bg-accent/15 px-2 py-0.5 text-[11px] text-accent">{t("Pilih gaya", "Choose styles")}</span>
       </div>
+      <label className="block" data-video-format><Label>Video format</Label>
+        <Select value={form.format} onChange={(value) => set(selectFormat(form, value, row.stream))}
+          options={VIDEO_FORMATS.map(f => [f.id, f.name])} /></label>
       <div className="grid gap-3 md:grid-cols-2">
         <div><Label>{t("Bahasa", "Language")}</Label>
-          <Segmented value={form.language || defaultLanguage(row.stream)} onChange={(v) => set({ language: v, voice: v !== "en" && form.voice === "kitten" ? "female" : form.voice })} options={LANGUAGES} /></div>
+          <Segmented value={form.language || defaultLanguage(row.stream)} onChange={(v) => set({ language: v, voice: v !== "en" && form.voice === "kitten" ? "male" : form.voice })} options={LANGUAGES} /></div>
         <div><Label>{t("Suara", "Voice")}</Label>
           <Segmented value={form.voice} onChange={(v) => set({ voice: v })} options={VOICES.map(([k, bm, en]) => [k, L ? en : bm])} /></div>
         <label className="block"><Label>{t("Reka bentuk", "Design")}</Label>

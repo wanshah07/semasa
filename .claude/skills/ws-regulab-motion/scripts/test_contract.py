@@ -21,7 +21,7 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(c['identity'],'Ts. ChM. Muhammad');self.assertIsNone(c['logo'])
     def test_explicit_gimmick(self):
         c=resolve({'mode':'gimmick','duration':10});self.assertEqual(c['outro_seconds'],0)
-        self.assertEqual(c['cta'],'Stay tuned. Follow us for more')
+        self.assertEqual(c['cta'],'Stay tuned. Follow us for more.')
     def test_rejected_bad_defaults(self):
         for bad in ({'duration':10},{'mode':'gimmick','duration':30},{'mode':'gimmick','duration':10,'compositions':7},
                     {'placeholder_assets':True},{'slide_only':True},{'language':'id'},

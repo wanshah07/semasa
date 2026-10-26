@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { motionRow, motionFromIdea, motionFromPost, motionDefaults, withDefaults } from './src/lib/motion.js';
 for (const language of ['en', 'bm', 'both']) {
-  const expected = language === 'en' ? 'kitten' : 'female';
+  const expected = 'male';
   assert.equal(motionRow({brief:'x', language}).row.voice, expected);
   assert.equal(motionFromIdea({id:'i',source_title:'x'}, null, null, language).voice, expected);
   assert.equal(motionFromPost({id:'p',text:{en:{facebook:'x'}}}, null, null, language).voice, expected);
 }
 const defaults = withDefaults({}, {design:'continuous-line', language:'bm', voice:'kitten'}).defaults;
-assert.equal(defaults.voice, 'female');
+assert.equal(defaults.voice, 'male');
 assert.equal(motionDefaults({motion:{defaults}}).design, 'continuous-line');
 for (const row of [motionRow({brief:'x',design:'continuous-line'}).row,
   motionFromIdea({id:'i',source_title:'x'},null,defaults),

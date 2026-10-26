@@ -73,22 +73,31 @@ def fit(blocks: list[tuple[str, float, float]], width: float, height: float, fix
 
 
 def caption_chunks(sc: dict[str, Any]) -> list[tuple[str, float, float]]:
-    """The narration as two subtitle chunks (the references show two short lines at a time), timed to the recording: the
-    second starts at the word the voice reaches half-way, from the real word times when the service gave them."""
+    """2–4-word actual-boundary groups, otherwise honestly estimated phrase captions.
+
+    Historical sentence-spread `words` without actual-word provenance are never alignment.
+    """
     words = str(sc.get("narration") or "").split()
-    start, span = float(sc["start"]), float(sc.get("audio_s") or sc["duration"])
-    end = start + float(sc["duration"])
-    if len(words) < 6:
-        return [(" ".join(words), start, end)]
-    mid = len(words) // 2
+    if not words:
+        return []
+    start = float(sc["start"])
+    span = float(sc.get("audio_s") or sc["duration"])
     timed = sc.get("words") or []
-    if len(timed) == len(words):
-        cut = start + float(timed[mid][0])
-    else:
-        total = sum(len(w) + 1 for w in words)
-        cut = start + span * sum(len(w) + 1 for w in words[:mid]) / total
-    cut = min(max(cut, start + 0.6), end - 0.4)
-    return [(" ".join(words[:mid]), start, cut), (" ".join(words[mid:]), cut, end)]
+    if sc.get("timing_source") == "actual-word" and timed:
+        groups = [timed[i:i + 4] for i in range(0, len(timed), 4)]
+        if len(groups) > 1 and len(groups[-1]) == 1:
+            groups[-1].insert(0, groups[-2].pop())
+        return [(" ".join(str(w[2]) for w in group), round(start + float(group[0][0]), 3),
+                 round(start + min(span, float(group[-1][1])), 3)) for group in groups]
+    # Phrase timing is proportional, not karaoke, and explicitly reported as estimated.
+    groups = [words[i:i + 6] for i in range(0, len(words), 6)]
+    total = sum(len(w) + 1 for w in words)
+    used, out = 0, []
+    for group in groups:
+        end = used + sum(len(w) + 1 for w in group)
+        out.append((" ".join(group), round(start + span * used / total, 3), round(start + span * end / total, 3)))
+        used = end
+    return out
 
 
 def esc(s: str) -> str:
@@ -97,7 +106,7 @@ def esc(s: str) -> str:
 
 def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang: str, plan: dict[str, Any],
             palette: dict[str, str], gsap: str, html_lang: str, resolution: str,
-            design: str = "bright-editorial") -> tuple[str, dict[str, Any]]:
+            design: str = "bright-editorial", worker_captions: bool = False) -> tuple[str, dict[str, Any]]:
     design = design if design in GRADIENT else "bright-editorial"
     scale = w / 1080
     box_w = w * (1 - SAFE["left"] - SAFE["right"])
@@ -197,7 +206,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                              f'style="font-size:{size * .82:.0f}px;">{esc(secondary)}</p>')
         parts.append(f'<div class="clip sc" id="{sid}" data-start="{start:g}" data-duration="{dur:g}">'
                      + "".join(block) + "</div>")
-        if narrated and sc.get("audio") and str(sc.get("narration") or "").strip():
+        if not worker_captions and narrated and sc.get("audio") and str(sc.get("narration") or "").strip():
             lane_h = h * LANE[1]
             for k, (text, a, b) in enumerate(caption_chunks(sc)):
                 size = 52 * scale

@@ -284,9 +284,9 @@ def test_shorten_narration_drops_a_sentence_then_a_quarter_of_the_words():
 
 
 def test_a_sized_cut_takes_the_writers_sentences_first_and_keeps_the_facts_spoken():
-    plan = [{"id": "s1", "narration": "Hook kecil. Cerita panjang pertama. Cerita panjang kedua. Fakta utama di skrin.",
-             "fill": ["Fakta utama di skrin."]},
-            {"id": "s2", "narration": "Satu dua tiga. Empat lima enam.", "fill": []}]
+    plan = [{"id": "s1", "heading": "Fakta utama di skrin", "lines": [],
+             "narration": "Hook kecil. Cerita panjang pertama. Cerita panjang kedua. Fakta utama di skrin."},
+            {"id": "s2", "heading": "Tajuk dua", "lines": [], "narration": "Satu dua tiga. Empat lima enam."}]
     timed = [{"id": "s1", "audio": "x", "audio_s": 12.0}, {"id": "s2", "audio": "y", "audio_s": 4.0}]
     assert motion.shorten_narration(plan, timed, over=5.0)
     assert "Fakta utama di skrin." in plan[0]["narration"], "the fact stays"
@@ -294,11 +294,23 @@ def test_a_sized_cut_takes_the_writers_sentences_first_and_keeps_the_facts_spoke
     assert plan[1]["narration"], "no scene is emptied"
 
 
-def test_a_sized_cut_reaches_the_facts_only_when_nothing_else_is_left():
-    plan = [{"id": "s1", "narration": "Fakta satu. Fakta dua.", "fill": ["Fakta satu.", "Fakta dua."]}]
+def test_a_sized_cut_reaches_the_heading_only_when_nothing_else_is_left_and_never_empties_a_scene():
+    plan = [{"id": "s1", "heading": "Fakta satu penting", "lines": ["Fakta dua utama"],
+             "narration": "Fakta satu penting. Fakta dua utama."}]
     timed = [{"id": "s1", "audio": "x", "audio_s": 8.0}]
-    assert motion.shorten_narration(plan, timed, over=3.0)
-    assert plan[0]["narration"] == "Fakta satu."
+    assert motion.shorten_narration(plan, timed, over=30.0)
+    assert plan[0]["narration"] == "Fakta satu penting.", "the line goes first, the heading's fact is the last sentence left"
+
+
+def test_the_plan_is_cut_to_the_speech_budget_before_anything_is_recorded_and_the_heading_survives():
+    scenes = [{"id": f"s{i}", "heading": f"Fakta nombor{i} yang penting", "lines": [f"Baris sokongan{i} untuk penonton"],
+               "narration": f"Okay jom tengok. Cerita tambahan panjang {i}. Fakta nombor{i} yang penting. "
+                            f"Baris sokongan{i} untuk penonton."} for i in range(1, 5)]
+    cut = motion.trim_to_budget(scenes, 40)
+    assert cut > 0 and sum(len(sc["narration"].split()) for sc in scenes) <= 40
+    for i, sc in enumerate(scenes, 1):
+        assert f"Fakta nombor{i} yang penting." in sc["narration"], "every heading is still said"
+    assert motion.trim_to_budget(scenes, 400) == 0
 
 
 def test_the_fit_error_carries_the_gap():

@@ -184,7 +184,8 @@ FLOW = ("Hook = one curiosity line that makes this reader stop; Fakta = the one 
         "isolated labels.\n" + HOOK_RULE + "\n" + CONNECT_RULE + "\n" + LINES_RULE + "\n" + NARRATION_RULE)
 FLOW_TEASER = "ONE scene: a curiosity hook only.\n" + HOOK_RULE
 PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, about {words} words in all (about "
-               f"{NARRATED_WPS} words a second), never reading the headings word for word, no URL, no handle, no hashtag; "
+               f"{NARRATED_WPS} words a second), saying each heading's fact and each line in plain spoken words (those words "
+               "are part of the count), no URL, no handle, no hashtag; "
                "never invent a fee, date, number or clause the brief did not give. The on-screen lines are {lines}; "
                "each heading at most 8 words, at most 2 lines a scene.\nNARRATION LANGUAGE: {language}. Every spoken word of "
                "every narration is in {language}; a product name may stay as it is.\n" + CASUAL_RULE)
@@ -260,7 +261,8 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
             if missing:
                 missing = [x if x.rstrip()[-1:] in ".!?" else x.rstrip() + "." for x in missing]   # each is one sentence
                 sc["narration"] = " ".join(f"{sc['narration']} {' '.join(missing)}".split())[:700]
-                sc["fill"] = missing          # what the screen shows and the writer left unsaid: the last thing cut
+        if not teaser:                    # the facts are said, so the speech must still fit the film: cut before it is recorded
+            trim_to_budget(clean, int((motion_styles.duration(row) - SPEECH_RESERVE) * SPEECH_WPS))
     meta = {"title": str(out.get("title") or "")[:160],
             "photo_query": " ".join(str(out.get("photo_query") or "").split())[:80]}
     if teaser:
@@ -333,6 +335,10 @@ class NarrationTooLong(ValueError):
                          "choose 30/60s or a narrower micro-topic")
 
 
+SPEECH_WPS = 2.7                        # words a second the plan is cut to before it is recorded (the voice runs ~2.9)
+SPEECH_RESERVE = 3.6                    # seconds of a narrated film that are not teaching speech: the outro and the gaps
+
+
 def _norm(text: str) -> str:
     return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
 
@@ -341,45 +347,77 @@ def _sentences(text: str) -> list[str]:
     return [x for x in re.split(r"(?<=[.!?])\s+", text.strip()) if x]
 
 
+def _says(sentence: str, part: str) -> bool:
+    """Does this sentence put `part` (a heading or a line) on the air? At least 60% of the part's longer words are in it."""
+    words = {w for w in _norm(part).split() if len(w) >= 5} or set(_norm(part).split())
+    return bool(words) and len(words & set(_norm(sentence).split())) >= 0.6 * len(words)
+
+
+def _rank(sc: dict[str, Any], sentence: str, index: int) -> int:
+    """What a sentence is worth keeping: 3 says the heading (the fact, cut last), 2 is the opening connector or hook,
+    1 says a supporting line, 0 is anything else the writer added (cut first)."""
+    if sc.get("heading") and _says(sentence, sc["heading"]):
+        return 3
+    if any(_says(sentence, ln) for ln in sc.get("lines") or []):
+        return 1
+    return 2 if index == 0 else 0
+
+
+def _cut(plan: dict[str, dict[str, Any]], ids: list[str], weight: Any, want: float) -> float:
+    """Drop sentences, the least worth keeping first and from the scene that has the most to give, until `want` of weight is
+    gone or only one sentence is left in every scene. Returns the weight cut."""
+    cut = 0.0
+    for rank in (0, 1, 2, 3):
+        while cut < want:
+            pick: tuple[str, int, float] | None = None
+            for sid in ids:
+                sents = _sentences(plan[sid]["narration"])
+                if len(sents) < 2:
+                    continue
+                at = [i for i in range(len(sents)) if _rank(plan[sid], sents[i], i) == rank]
+                total = sum(weight(sid, x, sents) for x in sents)
+                if at and (pick is None or total > pick[2]):
+                    pick = (sid, at[-1], total)
+            if pick is None:
+                break
+            sid, i, _ = pick
+            sents = _sentences(plan[sid]["narration"])
+            cut += weight(sid, sents[i], sents)
+            plan[sid]["narration"] = " ".join(sents[:i] + sents[i + 1:])
+            weight(sid, sents[i], sents, drop=True)
+    return cut
+
+
+def trim_to_budget(scenes: list[dict[str, Any]], budget_words: int) -> int:
+    """The plan says too many words for the film (the facts are now spoken as well): cut sentences by their worth until it
+    fits, before anything is recorded. Returns the words cut."""
+    by_id = {sc["id"]: sc for sc in scenes}
+    total = sum(len(sc["narration"].split()) for sc in scenes)
+    if total <= budget_words:
+        return 0
+    return int(_cut(by_id, list(by_id), lambda sid, x, sents, drop=False: len(x.split()), total - budget_words))
+
+
 def shorten_narration(plan_scenes: list[dict[str, Any]], timed: list[dict[str, Any]], over: float = 0.0) -> bool:
-    """The film's speech does not fit: cut sentences until the estimated saving covers `over` seconds (with a margin), so one
-    new recording is usually enough. The writer's own sentences go first, longest scene first; the words that put the
-    scene's heading and lines on the air (`fill`) go last, because the facts must be spoken (Wan, 26 Oct 2026). With no gap
-    given, one sentence of the longest scene goes (or, with one sentence, its last quarter of words). Speech is cut, never
-    rushed (Wan, 25 Oct 2026). True when something was cut."""
+    """The recorded speech does not fit: cut sentences until the estimated saving covers `over` seconds (with a margin), so one
+    new recording is usually enough. What goes first is what the writer added; the sentences that say a line, the opening
+    connector and finally the heading's own fact follow (Wan, 26 Oct 2026: the facts must be spoken). With no gap given, one
+    sentence of the longest scene goes (or, with one sentence, its last quarter of words). Speech is cut, never rushed
+    (Wan, 25 Oct 2026). True when something was cut."""
     teaching = [sc for sc in timed if sc.get("id") != "brand-outro" and sc.get("audio")]
     if not teaching:
         return False
     by_id = {sc["id"]: sc for sc in plan_scenes}
     if over > 0:
-        want = over * 1.08 + 0.2
-        cut = 0.0
-        for protected in (False, True):
-            while cut < want:
-                pick: tuple[dict[str, Any], int, float] | None = None      # (scene, sentence index, estimated seconds)
-                for sc in teaching:
-                    target = by_id.get(sc["id"])
-                    sents = _sentences(target["narration"]) if target else []
-                    if len(sents) < 2:
-                        continue
-                    fill = [_norm(x) for x in target.get("fill") or [] if _norm(x)]
-                    words = max(1, len(target["narration"].split()))
-                    index = next((i for i in range(len(sents) - 1, -1, -1)
-                                  if any(f in _norm(sents[i]) for f in fill) == protected), None)
-                    if index is None:
-                        continue
-                    if pick is None or float(sc.get("audio_s") or 0) > float(pick[0].get("audio_s") or 0):
-                        pick = (sc, index, float(sc.get("audio_s") or 0) * len(sents[index].split()) / words)
-                if pick is None:
-                    break
-                sc, index, sec = pick
-                target = by_id[sc["id"]]
-                sents = _sentences(target["narration"])
-                del sents[index]
-                target["narration"] = " ".join(sents)
-                sc["audio_s"] = max(0.0, float(sc.get("audio_s") or 0) - sec)     # the estimate the next pick works from
-                cut += sec
-        if cut > 0:
+        audio = {sc["id"]: float(sc.get("audio_s") or 0) for sc in teaching}
+
+        def seconds(sid: str, sentence: str, sents: list[str], drop: bool = False) -> float:
+            words = max(1, len(by_id[sid]["narration"].split()) + (len(sentence.split()) if drop else 0))
+            sec = audio[sid] * len(sentence.split()) / words
+            if drop:
+                audio[sid] = max(0.0, audio[sid] - sec)       # the estimate the next pick works from
+            return sec
+        if _cut(by_id, [sc["id"] for sc in teaching if sc["id"] in by_id], seconds, over * 1.08 + 0.2) > 0:
             return True
     longest = max(teaching, key=lambda sc: float(sc.get("audio_s") or 0))
     target = by_id[longest["id"]]

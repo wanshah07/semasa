@@ -150,8 +150,10 @@ def css(c: Ctx, accent: str, rgba: Callable[[str, float], str]) -> list[str]:
         f".frm i{{position:absolute;width:{44 * s:.0f}px;height:{44 * s:.0f}px;border:{ring};}}",
         ".frm i.a{left:-4px;top:-4px;border-right:0;border-bottom:0;}",
         ".frm i.b{right:-4px;bottom:-4px;border-left:0;border-top:0;}",
+        f".mapbg{{position:absolute;left:0;top:-{70 * s:.0f}px;width:100%;height:calc(100% + {70 * s:.0f}px);z-index:0;}}",
+        f".mapbg polygon{{fill:{rgba(accent, .13)};stroke:{rgba(accent, .35)};stroke-width:.4;}}",
         f".rte{{position:relative;display:flex;border-top:{max(4, 5 * s):.0f}px dashed {accent};padding-top:{30 * s:.0f}px;}}",
-        f".rte>div{{flex:1;min-width:0;position:relative;padding-right:{c.gap * .4:.0f}px;}}",
+        f".rte>div{{flex:1;min-width:0;position:relative;z-index:1;padding-right:{c.gap * .4:.0f}px;}}",
         f".rte>div::before{{content:\"\";position:absolute;left:0;top:-{44 * s:.0f}px;width:{22 * s:.0f}px;height:{22 * s:.0f}px;"
         f"background:{accent};border-radius:{4 * s:.0f}px;}}",
         f".tz{{border:{ring};border-radius:{20 * s:.0f}px;{paper}padding:{pad:.0f}px;}} .tz b{{color:{accent};}}",
@@ -322,7 +324,10 @@ def build(kind: str, sid: str, c: Ctx, heading: str, lines: list[str], teaser: s
         cw = w / len(use) - c.gap * .4
         h = max(th(t, fs, .56, cw) for t in use) + 30 * s + 44 * s
         inner = "".join(f'<div class="{sid}-rs">{esc(t)}</div>' for t in use)
-        return Block(f'<div class="cb rte" id="{uid}">{inner}</div>', h, lambda at: [
+        land = ('<svg class="mapbg" viewBox="0 0 100 40" preserveAspectRatio="none">'
+                '<polygon points="1,24 9,9 24,6 33,15 28,30 12,36"/>'
+                '<polygon points="40,12 52,5 66,9 70,22 58,32 44,28"/><polygon points="74,20 86,8 98,12 96,30 82,36"/></svg>')
+        return Block(f'<div class="cb rte mapp" id="{uid}">{land}{inner}</div>', h + 24 * s, lambda at: [
             f'tl.fromTo(".{sid}-rs",{{opacity:0,y:{20 * s:.0f}}},{{opacity:1,y:0,duration:.4,stagger:.3}},{at:g});'])
     if kind == "float":
         use = lines[:3]

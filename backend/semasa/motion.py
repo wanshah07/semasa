@@ -60,7 +60,7 @@ NARRATED_WPS = 2.6                      # words a second the script asks for whe
 READ_WPS = 1.4                          # words a second a silent film allows the eye, heading and lines together
 READ_PAD = 1.0                          # seconds a silent scene holds after the eye has finished
 SILENT_MIN = 4.0                        # and never shorter than this
-PHOTOS = 3                              # Unsplash pictures looked for per film
+PHOTOS = 6                              # Unsplash pictures looked for per film: one a scene and a second beside some
 MAX_FIX = 2                             # rewrites the writer gets for a layout the check rejects, before the safe layout
 # Wan's own skill, 25 Oct 2026 ("add this skill in the system, and in claude code"): also a Claude Code project skill at
 # .claude/skills/ws-regulab-motion; its contract and the template of the chosen design go to the writer as a reference
@@ -172,7 +172,8 @@ CONNECT_RULE = ("CONNECTORS: no scene starts cold and none ends hanging. Every s
                 "'So why does this matter?', 'Let's talk about what to do.'), and the last sentence of a scene leads "
                 "into the next one.")
 LINES_RULE = ("LINES: each on-screen line is ONE complete point of its own. Never split one sentence over two lines, never end a "
-              "line with a comma, and never leave a line that only makes sense with the next one.")
+              "line with a comma, and never leave a line that only makes sense with the next one. Write every number as digits "
+              "('6 kategori', not 'enam kategori'): the film draws numbers large and counts them up.")
 NARRATION_RULE = ("NARRATION: every narration SAYS what its heading and lines show, in full. A connecting sentence comes in "
                   "addition to the content, never instead of it.")
 CASUAL_RULE = ("TONE: casual, as a friend explaining to a friend, so the viewer UNDERSTANDS: short plain sentences, "
@@ -248,12 +249,16 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
         for sc in clean:
             sc["narration"] = ""
     else:
-        for sc in clean:                  # a narration that is only a connecting sentence says nothing: add what the scene shows
-            shown = " ".join([sc["heading"].rstrip(" .") + ".", *sc["lines"]])
-            said = {x.lower().strip(".,;:!?") for x in sc["narration"].split() if len(x) >= 5}
-            seen = {x.lower().strip(".,;:!?") for x in shown.split() if len(x) >= 5}
-            if len(sc["narration"].split()) < 14 and not said & seen:
-                sc["narration"] = " ".join(f"{sc['narration']} {shown}".split())[:600]
+        for sc in clean:                  # a narration must SAY what the scene shows: each heading and line that it does not
+            said = {x.lower().strip(".,;:!?") for x in sc["narration"].split() if len(x) >= 5}   # cover is added to it
+            missing = []
+            for part in [sc["heading"].rstrip(" .") + ".", *sc["lines"]]:
+                words = {x.lower().strip(".,;:!?") for x in part.split() if len(x) >= 5}
+                if words and not words & said:
+                    missing.append(part)
+                    said |= words
+            if missing:
+                sc["narration"] = " ".join(f"{sc['narration']} {' '.join(missing)}".split())[:700]
     meta = {"title": str(out.get("title") or "")[:160],
             "photo_query": " ".join(str(out.get("photo_query") or "").split())[:80]}
     if teaser:
@@ -267,8 +272,9 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
 
 
 def alternate_voice(store: Any, row: dict[str, Any]) -> str:
-    """The voice of an `auto` film (Wan, 26 Oct 2026: "selang seli untuk video queue"): the opposite of the voice the most recent other
-    film was read in, so the queue alternates male, female, male... one voice to a film. With no earlier film it is male."""
+    """The voice of an `auto` film (Wan, 26 Oct 2026: "selang seli untuk video queue"): the opposite of the voice the most
+    recent other film was read in, so the queue alternates male, female, male... one voice to a film. With no earlier film it
+    is male."""
     last = ""
     try:
         rows = (store.table(TABLE).select("voice,updated_at").neq("id", row["id"]).in_("voice", ["male", "female"])

@@ -96,6 +96,7 @@ RECIPES: dict[str, tuple[str, str, str]] = {
     "F10": ("*", "", "photos with clean neutral whites and crisp micro-contrast"),
 }
 NATIVE_TEXT = {"H01", "H03", "V01", "V03"}
+MIN_STYLES = 15                      # Wan, 26 Oct 2026: "at least 15 styles from 99 styles apply to the motion video"
 CAPTION = ("C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10")
 TRANSITION = ("M02", "M08", "M09")
 FINISH = ("F02", "F03", "F05", "F06", "F07", "F10")
@@ -197,7 +198,7 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
                 continue                                 # a style once per film, and one of each family per scene
             picks.append(code)
             used.add(code)
-            if len(picks) >= 3:
+            if len(picks) >= 4:
                 break
         out[sc["id"]] = picks
     caption = next(iter(ranked("f", teaching[min(1, len(teaching) - 1)], list(CAPTION))), "C05")
@@ -207,15 +208,33 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
     if stream == "linkedin" and finish == "F07":
         finish = "F10"
     video = {"captions": caption, "transition": transition, "finish": finish}
-    native = sorted({c for codes in out.values() for c in codes if c in NATIVE_TEXT})
     audio = ["S08", "S10"] + (["S05"] if voiced else [])
+
+    def count() -> int:
+        return len({*(c for codes in out.values() for c in codes), *video.values(), *audio})
+
+    # the floor: when the films' own words and photos suit fewer than MIN_STYLES styles, the next most suitable are added, the
+    # family rule relaxed, scene by scene, until there are enough or nothing else is eligible
+    for _ in range(MIN_STYLES * 2):
+        if count() >= MIN_STYLES:
+            break
+        added = False
+        for i, sc in enumerate(teaching):
+            spare = [c for c in ranked("hfws"[min(i, 3)], sc) if c not in used]
+            if spare and count() < MIN_STYLES:
+                out[sc["id"]].append(spare[0])
+                used.add(spare[0])
+                added = True
+        if not added:
+            break
+    native = sorted({c for codes in out.values() for c in codes if c in NATIVE_TEXT})
     assigned = sorted({*(c for codes in out.values() for c in codes), *video.values()} - NATIVE_TEXT)
     applied = set(assigned) | set(native) | set(audio)
     unavailable = dict(UNAVAILABLE)
     unavailable.update({c: "not needed by this film's words, or it suits a different scene" for c in NAMES
                         if c not in applied and c not in unavailable})
     return {"scenes": out, "video": video, "assigned": assigned, "native": native, "audio": audio,
-            "unavailable": unavailable, "considered": len(NAMES)}
+            "unavailable": unavailable, "considered": len(NAMES), "applied": len(applied)}
 
 
 def prompt_block(plan: dict[str, Any], scenes: list[dict[str, Any]]) -> str:

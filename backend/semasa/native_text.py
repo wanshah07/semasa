@@ -89,7 +89,8 @@ def inject(document: str, report: dict, scenes: list[dict], total: float) -> str
                 commands.append(
                     f'tl.fromTo({selector},{{scale:.9,opacity:0}},{{scale:1,opacity:1,duration:{enter:g},ease:"expo.out"}},{start:g});'
                 )
-            commands.append(f"tl.to({selector},{{opacity:0,duration:.18}},{start + duration - 0.18:g});")
+            # the heading STAYS after its entrance: it used to fade out at the end of the cue, and a silent film lost its
+            # heading two seconds into a scene that was meant to be read (run 40, 26 Oct 2026)
             effect.update(
                 readiness="ready",
                 adapter="native-text",

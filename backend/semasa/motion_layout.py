@@ -24,7 +24,7 @@ import html as html_mod
 import re
 from typing import Any
 
-from . import motion_auto, motion_concepts
+from . import motion_auto, motion_concepts, motion_visuals
 
 # the ambient background of every scene, chosen per film (Wan, 26 Oct 2026: "tone color like attachment 3 is preferable (remain
 # the line), let me choose the background ambient colour in semasa"): the reference films' soft mint-to-cream diagonal is the
@@ -401,7 +401,12 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     cctx = motion_concepts.Ctx(scale, box_w, gap, 54 * scale, pad_card, motion_concepts.host_of(ev), text_h,
                                "" if stream == "linkedin" else "ws.regulab")
     css.extend(motion_concepts.css(cctx, accent, rgba))
+    # the pictures of the facts (map, ring, columns, clipping ...): drawn from the scene's own words and the idea's own source
+    vctx = motion_visuals.VCtx(scale, box_w, gap, 54 * scale, pad_card, text_h, "en" if lang == "en" else "bm", plan.get("news"),
+                               accent, rgba, h)
+    css.extend(motion_visuals.css(vctx))
     concept_used: list[str] = []
+    visual_used: list[str] = []
     last_heading = plain(teaching[-1].get("heading")) if teaching else ""
 
     for idx, sc in enumerate(teaching):
@@ -424,10 +429,21 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             photo = photo2 = None
         is_typed = cap_s in {"C03", "C09"}
         role = sc.get("role") or ""
+        base_lines = list(lines)
+        # a picture of the facts (one a scene, built first: it reads the scene's own lines, which a concept diagram would take
+        # off the list): it takes off the plain list the lines it draws
+        vcode = next((c for c in eff if c in motion_visuals.CODES), None) if not listing else None
+        vblock, vtake = None, []
+        if vcode:
+            built = motion_visuals.build(vcode, sid, vctx, heading, lines)
+            if built:
+                vblock, vtake = built
+                lines = [x for x in lines if x not in vtake]
+        use_visual = vblock is not None
         # a concept rendition of a style that needs footage or a capture (it takes its lines off the plain list)
         ccode = next((c for c in eff if c in motion_concepts.KIND), None) if not listing else None
         cblock = None
-        base_lines = list(lines)
+        kind = ""
         if ccode:
             kind = motion_concepts.KIND[ccode]
             teaser = last_heading if idx < len(teaching) - 1 else ""
@@ -534,6 +550,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                     + (len(rest) - 1) * arrow_h + gap
             if use_concept and cblock:
                 extra += cblock.height + gap
+            if use_visual and vblock:
+                extra += vblock.height + gap
             if stat:
                 numw = len(stat[1]) * 150 * scale * 0.62 + gap
                 extra += max(150 * scale, text_h(stat[2], 54 * scale, BODY, max(box_w - numw, 1), 1.15)) + gap
@@ -543,7 +561,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 extra += 60 * scale * 1.1 + 28 * scale + gap
             sizes = fit(texts, box_w, box_h, extra + gap * (len(texts) + 1), scale) if texts else []
             if not sizes and use_concept and (lines or texts):
-                use_concept, cblock, lines = False, None, list(base_lines)     # words outrank a concept diagram
+                use_concept, cblock = False, None                              # words outrank a concept diagram
+                lines = [x for x in base_lines if x not in vtake] if use_visual else list(base_lines)
                 if stat:
                     lines = [x for x in lines if x != stat[0]]
                 continue
@@ -564,6 +583,17 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 # the picture shrinks before any line leaves the screen (Wan, 26 Oct 2026: "ikut kesesuaian, if line many shrink")
                 photo_h = max(PHOTO_MIN * h, photo_h * 0.82)
                 photo_w = box_w if h >= w else min(box_w, photo_h * 1.6)
+                continue
+            if photo and use_visual and not side:
+                # a stock photo only illustrates; the map, ring or chart of the scene's own facts is the information, so the
+                # photo goes before the picture of the facts does (the film is laid out again for the styles this costs)
+                photo = photo2 = None
+                continue
+            if not sizes and use_visual and (lines or texts):
+                use_visual, vblock = False, None                                 # words outrank a picture of the facts
+                lines = list(base_lines[min(motion_concepts.CONSUME.get(kind, 1), len(base_lines)) if use_concept else 0:])
+                if stat:
+                    lines = [x for x in lines if x != stat[0]]
                 continue
             if lines:
                 dropped.append(f"{sid}: {lines.pop()[:40]}")
@@ -726,6 +756,10 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             block.append(cblock.html)
             applied.add(ccode)
             concept_used.append(ccode)
+        if use_visual and vblock:
+            block.append(vblock.html)
+            applied.add(vcode)
+            visual_used.append(vcode)
         rest_sizes = ls[1:] if cards else ls
         if flow:
             inner_boxes = []
@@ -875,7 +909,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                           f'{th:g});')
                 tw.append(f'tl.fromTo(".{sid}-ow",{{opacity:0}},{{opacity:1,duration:.3,ease:"power1.out"}},{th + .55:g});')
         tl_start = t0 + .35 + lead
-        gap_in = 0.5 if not sc.get("narration") else 0.35
+        gap_in = 0.4 if not sc.get("narration") else 0.35
         if side:
             tw.append(f'tl.fromTo("#{sid}-pnl",{{opacity:0,x:{box_w * .3:.0f}}},'
                       f'{{opacity:1,x:0,duration:.6,ease:"power3.out"}},{tl_start:g});')
@@ -895,6 +929,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                       f'{tl_start + .2:g});')
         if use_concept and cblock:
             tw.extend(cblock.tweens(tl_start))
+        if use_visual and vblock:
+            tw.extend(vblock.tweens(tl_start + (.15 if use_concept else 0)))
         if stat:
             tw.append(f'tl.fromTo("#{sid}-stat",{{opacity:0,y:{y0:.0f}}},{{opacity:1,y:0,duration:.5,ease:"power2.out"}},{tl_start:g});')
             tw.append(f'tl.fromTo("#{sid}-stn",{{textContent:0}},{{textContent:{int(stat[1])},duration:1.2,ease:"power2.out",'
@@ -987,10 +1023,37 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
     chosen = {c for cs in plan.get("scenes", {}).values() for c in cs} | {v for v in video.values()}
     report = {"layout": "safe-layout", "built": sorted(chosen & applied),
               "not_built": sorted(chosen - applied - motion_auto.NATIVE_TEXT),
+              "visual": sorted(set(visual_used)),
               "concept": sorted(set(concept_used) | ({"C01"} & applied) | ({"M01", "M06", "M10", "F01", "F04"} & applied)),
               "hook": plan.get("hook") if plan.get("hook") in HOOKS else "", "ambient": ambient,
               "dropped_lines": dropped, "caption": caption, "transition": transition}
     return page, report
+
+
+def styled(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, lang: str, stream: str,
+           compose_args: dict[str, Any], floor: int = motion_auto.MIN_STYLES) -> dict[str, Any]:
+    """The styles of a film, counted by what the layout really draws (Wan, 27 Oct 2026: "add at least 25 styles in the video").
+
+    The chooser assigns every style that suits a scene, but the layout cannot always draw one (a caption style that needs room it
+    does not have, a card pair whose words are too long): such a style is named in the report as not built, and it is no use
+    to the viewer. So the film is laid out once to see which styles it really shows; if fewer than `floor`, the styles the
+    layout could not draw are left out and the chooser is asked again, which fills their places with styles that fit. At most
+    four rounds, and the best of them stands. The plan carries `drawn` (the number the viewer sees: built, native, audio) and
+    `not_drawn`."""
+    exclude: set[str] = set()
+    best: dict[str, Any] | None = None
+    for _ in range(4):
+        plan = motion_auto.choose(row, scenes, voiced=voiced, lang=lang, stream=stream, exclude=exclude)
+        _, report = compose(scenes=scenes, plan=plan, **compose_args)
+        drawn = len(set(report["built"]) | set(plan["native"]) | set(plan["audio"]))
+        plan["drawn"], plan["not_drawn"] = drawn, report["not_built"]
+        if best is None or drawn > best["drawn"]:
+            best = plan
+        if drawn >= floor or not report["not_built"]:
+            break
+        exclude |= set(report["not_built"])
+    assert best is not None
+    return best
 
 
 def layout_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:

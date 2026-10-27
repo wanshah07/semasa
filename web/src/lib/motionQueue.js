@@ -2,7 +2,7 @@
    the video can directly post or queue to post to platform ... remove from motion list"). The film becomes a DRAFT post in the
    Posts queue through semasa_queue_motion (supabase/051): the single gate stays Wan's Approve click there, and the publisher scans
    the post again before it sends. No imports beyond the scanners, the slots and platformFormat.js, so web/motionQueue.test.mjs runs this under Node as it is. */
-import { LIMITS, hardCount, platformsFor, scan } from "./compliance.js";
+import { LIMITS, hardCount, platformsFor, readsMalay, scan } from "./compliance.js";
 import { sizeFor } from "./platformFormat.js";
 import { nextFreeSlot } from "./slots.js";
 
@@ -13,7 +13,8 @@ export const CHANNEL_LABEL = { facebook: "Facebook", instagram: "Instagram", thr
 export const channelsFor = (film) => platformsFor(film?.stream || "regulab");
 
 /** The language of the post a film becomes: what the film says, and for a bilingual film the stream's own. */
-export const postLang = (film) => (film?.language === "en" ? "en" : film?.language === "bm" ? "bm" : film?.stream === "linkedin" ? "en" : "bm");
+// the LinkedIn stream is English whatever language the film is in (Wan, 27 Oct 2026: "untuk linkedn post, make sure the caption is in english")
+export const postLang = (film) => (film?.stream === "linkedin" ? "en" : film?.language === "en" ? "en" : film?.language === "bm" ? "bm" : "bm");
 
 /** A film that is done, has its file and has not been queued yet: the only kind that can be queued. */
 export const canQueue = (film) => !!film && film.status === "done" && !!film.video_url && !film.queued_post_id;
@@ -64,11 +65,13 @@ export function startingCaptions({ film, post, channels }) {
   const first = (o) => Object.values(o || {}).find((v) => typeof v === "string" && v.trim()) || "";
   const fallback = first(text[lang]) || first(text.bm) || first(text.en) || String(film?.title || film?.brief || "").trim();
   const written = (film && film.captions) || {};
+  // LinkedIn is English (Wan, 27 Oct 2026): a caption or a draft that reads as Malay is never offered for it, however it got there
+  const english = (c, v) => (stream === "linkedin" && readsMalay(v) ? "" : String(v || "").trim());
   return Object.fromEntries(channels.map((c) => {
-    const own = String(written[c] || "").trim();
+    const own = english(c, written[c]);
     if (own) return [c, fitCaption(own, stream, c)];
-    const draft = ((text[lang] || {})[c] || "").trim();
-    return [c, fitCaption(cut(draft || fallback, SOFT[c] || 900), stream, c)];
+    const draft = english(c, (text[lang] || {})[c]);
+    return [c, fitCaption(cut(draft || english(c, fallback), SOFT[c] || 900), stream, c)];
   }));
 }
 

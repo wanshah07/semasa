@@ -2171,5 +2171,39 @@
     "bukan sekadar"
    ]
   }
+ },
+ {
+  "name": "a LinkedIn caption written in Malay blocks",
+  "post": {
+   "stream": "linkedin",
+   "lang": "en",
+   "text": {
+    "en": {
+     "linkedin": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan dan syarikat akan bertanggungjawab untuk semua tuntutan yang dibuat pada label."
+    }
+   }
+  },
+  "expect": {
+   "contains": [
+    "reads as Bahasa Malaysia"
+   ]
+  }
+ },
+ {
+  "name": "an English LinkedIn caption is not mistaken for Malay",
+  "post": {
+   "stream": "linkedin",
+   "lang": "en",
+   "text": {
+    "en": {
+     "linkedin": "A cosmetic notification is not an approval. NPRA reviews the file after the product is on sale, and the company stays responsible for every claim on the label under Annex III."
+    }
+   }
+  },
+  "expect": {
+   "not_contains": [
+    "reads as Bahasa Malaysia"
+   ]
+  }
  }
 ]

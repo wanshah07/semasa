@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from semasa import db, motion, motion_auto, motion_layout
+from semasa import db, motion, motion_auto, motion_layout, motion_visuals
 from semasa.motion_styles import EFFECT_LIBRARY
 
 ROW = {"id": "r1", "brief": "label myth vs fact in cosmetics", "language": "bm"}
@@ -31,10 +31,11 @@ def test_every_one_of_the_99_effects_is_accounted_for():
     ids = {e["id"] for e in EFFECT_LIBRARY["effects"]}
     assert len(ids) == plan["considered"] == 99
     handled = set(plan["assigned"]) | set(plan["native"]) | set(plan["audio"]) | set(plan["unavailable"])
-    assert handled == ids, "no effect is silently dropped: each is used or named with a reason"
+    assert handled - motion_visuals.CODES == ids, "no effect is silently dropped: each is used or named with a reason"
+    assert set(plan["visual"]) <= motion_visuals.CODES, "the extra picture styles are reported apart from the 99"
     assert not set(plan["assigned"]) & set(plan["unavailable"]) or all(
         plan["unavailable"][c] for c in set(plan["assigned"]) & set(plan["unavailable"]))
-    assert set(motion_auto.RECIPES) <= ids and set(motion_auto.UNAVAILABLE) <= ids
+    assert set(motion_auto.RECIPES) - motion_visuals.CODES <= ids and set(motion_auto.UNAVAILABLE) <= ids
     assert not set(motion_auto.RECIPES) & set(motion_auto.UNAVAILABLE), "an effect is built or refused, never both"
 
 
@@ -169,8 +170,8 @@ def test_the_script_prompt_asks_for_the_flow_and_the_pace_that_matches_the_voice
     assert "HOOK · FAKTA · KENAPA · SOLUSI" in voiced and "EXACTLY 4 teaching scene" in voiced and "BRISK" in voiced
     assert "at most 153 words" in voiced and "photo_query" in voiced
     silent = motion.build_script_system({"stream": "regulab", "seconds": 30, "language": "en", "voice": "off"}, "")
-    assert "HOOK · FACT · WHY · SOLUTION" in silent and "NO narrator" in silent and "READS, slowly" in silent
-    assert "at most 73 words" in silent
+    assert "HOOK · FACT · WHY · SOLUTION" in silent and "NO narrator" in silent and "never wait for the next fact" in silent
+    assert "up to 135 words" in silent and "TWO TO FOUR short lines" in silent
     teaser = motion.build_script_system({"stream": "regulab", "seconds": 10, "voice": "off"}, "", 1)
     assert "EXACTLY 1 teaching scene" in teaser
 
@@ -381,10 +382,16 @@ def test_a_silent_film_may_be_read_a_quarter_faster_but_no_more_and_the_error_na
     def quiet(n):
         return [{"id": f"s{i}", "kicker": "", "heading": "satu dua tiga empat lima enam tujuh", "lines": ["a b c d e f"]}
                 for i in range(n)] + [{"id": "brand-outro", "heading": "Follow", "lines": [], "narration": ""}]
-    fit, total = motion.fit_scenes(quiet(3), 30)       # 3 x 10.29 s = 30.9 s needed, 27 available: read 13% faster
+    fit, total = motion.fit_scenes(quiet(6), 30)       # 6 x 5.5 s = 33 s needed, 27 available: read 18% faster
     assert total == 30 and fit[0]["duration"] < motion.reading_seconds(fit[0])
     with pytest.raises(ValueError, match=r"needs \d+\.\ds, has 27\.0s"):
-        motion.fit_scenes(quiet(4), 30)               # 41 s of reading in 27 s is not "a quarter faster"
+        motion.fit_scenes(quiet(7), 30)               # 38.5 s of reading in 27 s is not "a quarter faster"
+
+
+def test_a_silent_scene_is_read_at_a_quick_readers_pace_not_held_for_ten_seconds():
+    # Wan, 27 Oct 2026: "for video without audio, make sure the rate is faster ... the user need to wait for the next info"
+    scene13 = {"id": "s1", "heading": "satu dua tiga empat lima enam tujuh", "lines": ["a b c d e f"]}
+    assert motion.reading_seconds(scene13) == 5.5 and motion.READ_WPS >= 2.5, "a 13-word scene stood for 10.3 s before"
 
 
 PAGE = """<!doctype html><html><head><style>
@@ -541,14 +548,16 @@ def test_the_safe_layout_background_is_the_reference_gradient_and_never_a_circle
 @pytest.mark.parametrize("photos", [0, 1, 3])
 @pytest.mark.parametrize("lang", ["bm", "en", "both"])
 @pytest.mark.parametrize("lines", [0, 2])
-def test_every_film_gets_at_least_fifteen_of_the_99_styles(voiced, photos, lang, lines):
-    # Wan, 26 Oct 2026: "make sure at least 15 styles from 99 styles apply to the motion video"
+def test_every_film_gets_at_least_twenty_five_styles(voiced, photos, lang, lines):
+    # Wan, 26 Oct 2026: "at least 15 styles from 99", then on 27 Oct 2026: "add at least 25 styles in the video". A film with
+    # nothing but headings (no lines, no pictures) has little to attach a style to, so its floor is the 20 a bare film can show
     film = [scene(1, "Is it approved?", ["a b"] * lines), scene(2, "Notification is not approval", ["x y", "z w"][:lines]),
             scene(3, "A wrong label means recall", ["one"] * lines),
             scene(4, "Check before launch", ["list a", "list b"][:lines])]
     motion_auto.assign_photos(film, [{"path": f"p{i}.jpg"} for i in range(photos)])
     plan = motion_auto.choose(ROW, film, voiced=voiced, lang=lang)
-    assert plan["applied"] >= motion_auto.MIN_STYLES == 15
+    assert motion_auto.MIN_STYLES == 25
+    assert plan["applied"] >= (motion_auto.MIN_STYLES if lines else 20)
     seen = {c for codes in plan["scenes"].values() for c in codes} | set(plan["video"].values()) | set(plan["audio"])
     assert len(seen) == plan["applied"], "the count is the styles actually assigned, none twice"
 

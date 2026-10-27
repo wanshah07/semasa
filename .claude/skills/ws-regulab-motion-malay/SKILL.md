@@ -24,5 +24,5 @@ Reference: `reference/reference.mp4` (27.1 s, 540x960, 24 fps, voiced) and `refe
 - Photos are real stock (Unsplash, credited in the row), in their own frame, never behind text; illustration only, never proof.
 - Text never overlaps: every block has its own region; the subtitle lane is separate from the content.
 - At least 15 of the 99 styles apply to every film (the worker chooses them per scene for fit; `ws-regulab-motion` holds the catalogue).
-- Silent films are slow (about 1.4 words a second); narrated films are brisk.
+- Silent films are read at a quick reader's pace (about 2.6 words a second, a new fact every 3 to 4 seconds); narrated films are brisk.
 - The base skill `ws-regulab-motion` (contract, catalogues, templates) applies on top of this format spec.

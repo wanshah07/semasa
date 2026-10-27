@@ -137,7 +137,10 @@ export default function MotionLab({ user, onToast }) {
       motions.reload();
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
   };
-  const effectName = Object.fromEntries(effectGroups().flatMap((g) => g.effects).map((e) => [e.id, e.name]));
+  // the picture styles beyond the 99 (backend/semasa/motion_visuals.py): map, people, ring, trend line, columns, clipping, calendar
+  const effectName = { G01: "Map Locator", G02: "People Pictogram", G03: "Donut Gauge", G04: "Trend Line", G05: "Column Chart",
+    G06: "News Clipping (Keratan Akhbar)", G07: "Calendar Date",
+    ...Object.fromEntries(effectGroups().flatMap((g) => g.effects).map((e) => [e.id, e.name])) };
   const remove = async (r) => {
     setBusy(r.id);
     try {
@@ -266,7 +269,7 @@ export default function MotionLab({ user, onToast }) {
               {r.brief && r.title && <p className="mt-2 text-xs text-muted">{r.brief}</p>}
               {r.error && <p className="mt-2 rounded-tile bg-danger/10 p-2 text-xs text-danger">{r.error}</p>}
               {r.check_report?.auto_effects && <details className="mt-2 text-xs" data-motion-applied>
-                <summary className="cursor-pointer text-muted">{t("{n} gaya dipakai ikut kesesuaian", "{n} styles applied for fit", { n: r.check_report.auto_effects.applied })}</summary>
+                <summary className="cursor-pointer text-muted">{t("{n} gaya dilukis dalam video (sasaran 25)", "{n} styles drawn in the film (target 25)", { n: r.check_report.auto_effects.drawn ?? r.check_report.auto_effects.applied })}</summary>
                 <p className="mt-1">{[...new Set([...Object.values(r.check_report.auto_effects.scenes || {}).flat(), ...Object.values(r.check_report.auto_effects.video || {}), ...(r.check_report.auto_effects.audio || [])])]
                   .map((id) => `${id} ${effectName[id] || ""}`.trim()).join(" · ")}</p></details>}
               {r.check_report?.asset_plan && <details className="mt-2 text-xs">

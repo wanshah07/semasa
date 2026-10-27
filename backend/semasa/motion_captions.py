@@ -165,13 +165,20 @@ def write(llm: Any, row: dict[str, Any], scenes: list[dict[str, Any]], title: st
     stream = row.get("stream") or "regulab"
     plats = platforms_of(stream)
     fallback = from_script(title, scenes, stream)
+    if stream == "linkedin" and lang != "en":
+        # Wan, 27 Oct 2026: "untuk linkedn post, make sure the caption is in english". The LinkedIn stream is a named chemist
+        # writing English to peers whatever language the film itself is in: the caption is written in English from the script,
+        # and when the writer is not there a script in Malay is not offered as an English caption (the page starts from the
+        # idea's own English draft instead)
+        lang, speak_as = "en", antislop.clean
+        fallback = dict.fromkeys(plats, "")
     try:
         limits = compliance.RULES["limits"].get(stream) or {}
         spec = "\n".join(
             f"- {p}: {STYLE.get(p, '')} Under {min(SOFT.get(p, 900), int(limits.get(p, {}).get('max') or 9999))} "
             f"characters, at most {limits.get(p, {}).get('hashtags', 0)} hashtag(s)." for p in plats)
         language = {"bm": "Bahasa Malaysia (Malaysian, never Indonesian: boleh not bisa, ubat not obat, syarikat not perusahaan)",
-                    "en": "English",
+                    "en": "English (if the script below is in another language, write the English of the same facts)",
                     "both": "BOTH: the Bahasa Malaysia text first, then the English text, each about half the length"}[lang]
         system = SYSTEM.format(voice=voice, language=language, platforms=spec,
                                shape=", ".join(f'"{p}": "..."' for p in plats), extra=antislop.prompt_block())

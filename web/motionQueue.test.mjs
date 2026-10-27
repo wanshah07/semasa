@@ -35,6 +35,19 @@ t("the post's language follows the film, and a bilingual film the stream", () =>
   assert.equal(postLang({ language: "en", stream: "regulab" }), "en");
   assert.equal(postLang({ language: "both", stream: "regulab" }), "bm");
   assert.equal(postLang({ language: "both", stream: "linkedin" }), "en");
+  assert.equal(postLang({ language: "bm", stream: "linkedin" }), "en", "LinkedIn is English whatever the film's language");
+});
+
+t("a LinkedIn caption that reads as Malay is never offered, so the post starts from English or nothing", () => {
+  const MALAY = "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan dan syarikat akan bertanggungjawab untuk semua tuntutan.";
+  const ENGLISH = "A cosmetic notification is not an approval. NPRA reviews the file after the product is on sale.";
+  const bmFilm = { stream: "linkedin", language: "bm", title: "Tajuk", captions: { linkedin: MALAY } };
+  assert.equal(startingCaptions({ film: bmFilm, post: { text: { bm: { linkedin: MALAY } } }, channels: ["linkedin"] }).linkedin, "");
+  assert.equal(startingCaptions({ film: bmFilm, post: { text: { en: { linkedin: ENGLISH } } }, channels: ["linkedin"] }).linkedin, ENGLISH,
+    "the idea's own English draft is the start when the film's caption is Malay");
+  assert.equal(startingCaptions({ film: { ...bmFilm, captions: { linkedin: ENGLISH } }, post: null, channels: ["linkedin"] }).linkedin, ENGLISH);
+  assert.equal(startingCaptions({ film: { ...bmFilm, stream: "regulab", captions: { instagram: MALAY } }, post: null, channels: ["instagram"] }).instagram,
+    MALAY, "ws.regulab keeps its Malay");
 });
 
 t("only a finished film that has not been queued can be queued, and a queued film leaves the Motion list", () => {

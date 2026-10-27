@@ -27,7 +27,7 @@ def test_design_consumed_by_both_prompts(design, label):
 def test_bm_and_silent_policy_and_cta():
     row = {"language": "bm", "voice": "off"}
     prompt = motion.build_script_system(row, "")
-    assert "reading-paced" in prompt and "1.4 words" in prompt and "READS, slowly" in prompt
+    assert "NO narrator" in prompt and "never wait for the next fact" in prompt
     plan = motion.plan_scenes(FakeLLM([SCRIPT]), row, "", "", "")
     assert plan["scenes"][-1]["narration"] == "Jangan lupa follow kami untuk tip seterusnya"
 
@@ -42,7 +42,7 @@ def test_gimmick_is_one_persistent_scene():
 
 
 def test_silent_overfull_reading_fails():
-    scenes = [{"id": "s1", "heading": "word " * 80, "lines": [], "narration": ""},
+    scenes = [{"id": "s1", "heading": "word " * 130, "lines": [], "narration": ""},
               {"id": "brand-outro", "heading": "Follow us for more", "lines": []}]
     with pytest.raises(ValueError, match="30/60"):
         motion.fit_scenes(scenes, 30)

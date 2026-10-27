@@ -346,7 +346,8 @@ def test_voice_scenes_times_the_film_to_the_recording_and_off_means_silence(tmp_
     assert note == "voice: ms-MY-YasminNeural" and got[0]["audio"] == "assets/voice-1.mp3" and got[1]["audio"] == ""
     assert got[0]["start"] == 0 and got[0]["duration"] == 1.9                 # 4 words x 0.4 + the short pad
     assert got[1]["start"] == 2.1 and got[1]["duration"] == motion.SILENT_MIN    # nothing to read: the reading floor
-    assert got[2]["start"] == 6.3 and total == round(6.3 + got[2]["duration"], 2)
+    after = round(2.1 + motion.SILENT_MIN + motion.SCENE_GAP, 2)
+    assert got[2]["start"] == after and total == round(after + got[2]["duration"], 2)
     off, total_off, note_off = motion.voice_scenes([dict(s) for s in scenes], "bm", "off", tmp_path, speak=fake_speak)
     assert note_off == "no voice" and all(not s["audio"] for s in off) and total_off > 0
     # a voice that fails never stops the film

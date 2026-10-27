@@ -224,3 +224,34 @@ def test_a_source_that_is_not_a_web_page_is_not_fetched(monkeypatch):
     assert motion.source_words("onedrive://176A24AC!s2b#r24") == ("", "")
     assert motion.source_words("") == ("", "") and motion.source_words(None) == ("", "")
     assert calls == [], "nothing was fetched"
+
+
+def test_a_linkedin_caption_is_written_in_english_whatever_language_the_film_is_in():
+    # Wan, 27 Oct 2026: "untuk linkedn post, make sure the caption is in english"
+    llm = FakeLLM([{"captions": {"linkedin": "A cosmetic notification is not an approval."}}])
+    got = motion_captions.write(llm, {"stream": "linkedin"}, SCENES, "Notifikasi", lang="bm", voice="a named chemist",
+                                speak_as=motion.speaker("bm"))
+    assert got == {"linkedin": "A cosmetic notification is not an approval."}
+    system, _ = llm.asked[0]
+    assert "LANGUAGE: English" in system and "Malaysian, never Indonesian" not in system, "the writer is told English, not Malay"
+    # no writer: a Malay script is never offered as an English caption
+    assert motion_captions.write(None, {"stream": "linkedin"}, SCENES, "Notifikasi", lang="bm", voice="x",
+                                 speak_as=motion.speaker("bm")) == {"linkedin": ""}
+    # ws.regulab keeps its Malay script as the fallback
+    assert motion_captions.write(None, {"stream": "regulab"}, SCENES, "Notifikasi", lang="bm", voice="x",
+                                 speak_as=motion.speaker("bm"))["instagram"].startswith("Notifikasi")
+
+
+def test_a_linkedin_caption_written_in_malay_is_written_again_in_english(tmp_path):
+    from test_motion import Store, _row
+    store = Store()
+    malay = ("Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan dan syarikat akan "
+             "bertanggungjawab untuk semua tuntutan.")
+    r = _row(store, status="done", stream="linkedin", language="bm")
+    fields = {"status": "done", "script": SCENES, "captions": {"linkedin": malay}}
+    store.table(motion.TABLE).update(fields).eq("id", r["id"]).execute()
+    llm = FakeLLM([{"captions": {"linkedin": "A cosmetic notification is not an approval."}}])
+    assert motion.backfill_captions(store, llm) == 1
+    row = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
+    assert row["captions"] == {"linkedin": "A cosmetic notification is not an approval."}
+    assert motion.backfill_captions(store, FakeLLM([])) == 0, "an English caption is left alone"

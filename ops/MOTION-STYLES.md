@@ -193,3 +193,43 @@ figure such as `1,234,567.89`. 36 failed, only on the long set. Four faults, all
   label needs more than one line stays an ordinary line.
 
 Result: 288 of 288 clean. This was the same failure class as the "text overlap remains even in the safe layout" runs of 26 Oct.
+
+## Twelfth round (27 Oct 2026): English LinkedIn, faster silent films, pictures of the facts, 25 styles
+
+Wan: *"untuk linkedn post, make sure the caption is in english, for video without audio make sure the rate is faster or you can add
+more info ... for both videos flow, make sure add map, figure, chart, keratan akhbar if applicable ... besides add at least 25 styles
+in the video"*.
+
+- **A LinkedIn caption is English, whatever language the film is in.** The worker writes it in English from the script
+  (`motion_captions.write`; with no writer a Malay script is never offered as an English caption). The page starts a LinkedIn post
+  in English (`postLang`), ignores a caption or a draft that reads as Malay (`startingCaptions`), and the shared scan has a new
+  blocking rule `not_english` in `rules/compliance.json` (five Malay function words in one caption), tested in both scanners. A
+  LinkedIn caption written in Malay before this is written again in English by the hourly backfill.
+- **Silent films are read at 2.6 words a second** (was 1.4: a 13-word scene stood for 10 s), hold 0.5 s (was 1.0) and never under
+  2.8 s (was 4.0), and the script asks for more in each scene: up to 2.3 words per second of film, TWO TO FOUR short lines a scene,
+  each a complete fact, so something new appears every 3 to 4 seconds. A scene is no longer 10 s of waiting for the next line.
+- **Seven picture styles beyond the 99** (`motion_visuals.py`, codes G01 to G07). Each is drawn from the scene's own words or the
+  idea's own source and from nothing else; a scene without the data gets none (a chart of figures that are not there would be an
+  invented proof):
+
+  | code | picture | what in the words triggers it |
+  |---|---|---|
+  | G01 | outline map, named countries filled, numbered pins | two or more places, or one that is not Malaysia, or ASEAN / EU (Malaysia alone is every film's setting) |
+  | G02 | row of people, as many filled as the ratio | "3 daripada 10" (y up to 12) or a percentage |
+  | G03 | ring that fills, number counting up | a percentage |
+  | G04 | trend line through years and figures | three or more lines each with a year and a figure |
+  | G05 | columns as tall as the figures | two to four lines with figures (a percentage or a year line goes to the chart or timeline) |
+  | G06 | newspaper clipping: outlet and the source's own headline | the idea's source is a news page (not a paper, an official site, a video, a forum or Wan's files); never an aggregator on LinkedIn |
+  | G07 | calendar tile(s) | a date: "1 Januari 2027", "March 5, 2027", "2027-01-01", "1/1/2027" (day first), "Jun 2028" |
+
+  The outlines are Natural Earth 1:50m (public domain), simplified to 213 KB by `ops/build_motion_geo.py` into `rules/motion/geo.json`.
+  A scene takes at most one picture; a ring or a row of people is not given beside a bar chart of the same percentage, nor columns
+  beside the count-up, nor a trend line beside the timeline. Each is one block of the scene's column with a height the layout budgets,
+  built before the concept diagram so it reads the lines; it is dropped, after the photo has shrunk, when the words would not fit
+  (words outrank pictures). A short frame (1:1, landscape) gets a shorter map with its legend beside it.
+- **25 styles, counted by what is drawn.** The chooser assigned 20 to 35 styles, but the layout could not draw all of them (13 to 24
+  appeared; the rest were named `not_built`). `motion_layout.styled` lays the film out once, and when fewer than 25 styles are really
+  drawn (built, native, audio) it asks the chooser again with the styles that were not drawn left out, up to four rounds, and keeps
+  the best. The film's `style_note` and the Motion card say how many were drawn, and when it is under 25 why (no pictures: the
+  photo styles had nothing to hold). With pictures it is 25 to 30; a film with no pictures at all (Unsplash's hourly limit, an idea
+  with none) cannot reach 25, and says so rather than counting what it did not draw.

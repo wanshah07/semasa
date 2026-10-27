@@ -20,10 +20,12 @@ import hashlib
 import re
 from typing import Any
 
-from . import motion_concepts
+from . import motion_concepts, motion_visuals
 from .motion_styles import EFFECT_LIBRARY
 
 NAMES = {e["id"]: e["name"] for e in EFFECT_LIBRARY["effects"]}
+LIBRARY_COUNT = len(NAMES)              # the 99 of Wan's catalogue; the visual styles below are extras and are reported as such
+NAMES.update(motion_visuals.NAMES)
 ROLES = ("hook", "fact", "why", "solution")
 LABELS = {"bm": ("HOOK", "FAKTA", "KENAPA", "SOLUSI"), "both": ("HOOK", "FAKTA", "KENAPA", "SOLUSI"),
           "en": ("HOOK", "FACT", "WHY", "SOLUTION")}
@@ -99,22 +101,25 @@ RECIPES: dict[str, tuple[str, str, str]] = {
     "F10": ("*", "", "photos with clean neutral whites and crisp micro-contrast"),
 }
 RECIPES.update(motion_concepts.RECIPES)
+RECIPES.update(motion_visuals.RECIPES)
+VISUAL = motion_visuals.CODES
 NATIVE_TEXT = {"H01", "H03", "V01", "V03"}
 # the styles that make the film stop and look (Wan, 26 Oct 2026: "use the wow styles"): they are placed first
 WOW = {"H02", "H05", "H06", "H08", "H10", "X05", "X06", "X08", "X10", "M04", "M07", "L06", "V08", "V09", "P03", "P08", "C07",
-       "B04", "P04", "P05", "L04", "X03"}
+       "B04", "P04", "P05", "L04", "X03", *motion_visuals.CODES}
 CONCEPT = motion_concepts.CONCEPT_CODES
 # the styles the worker's own layout (motion_layout.compose) builds, so a film that falls back to it still shows them; the chooser
 # prefers these (Wan, 26 Oct 2026: "make sure the styles are included, not using layman safe layout only")
 BUILDABLE = {"H02", "H05", "H06", "H08", "H10", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10", "L05", "L06", "P03",
              "P08", "P09", "V02", "V04", "V05", "V06", "V08", "V09", "V10", "B04", "B05", "B08", "X06", "X10", "M02", "M03",
-             "M04", "M07", "M08", "M09", "F02", "F03", "F05", "F06", "F07", "F10", *motion_concepts.CONCEPT_CODES}
+             "M04", "M07", "M08", "M09", "F02", "F03", "F05", "F06", "F07", "F10", *motion_concepts.CONCEPT_CODES,
+             *motion_visuals.CODES}
 # styles that take over the scene's lines: a scene gets at most one of them
 LINE_STYLES = {"L05", "V05", "B04", "V09", "P08", *motion_concepts.MULTI_CODES}
 PHOTO_STYLES = {"L05", "L06", "X06"}                 # how a scene treats its photo: one way each
 FAMILY_LIMIT = {"H": 1, "M": 2, "L": 1, "F": 1, "C": 1, "X": 1}      # per scene; other families may take two
 PER_SCENE = 10
-MIN_STYLES = 15                      # Wan, 26 Oct 2026: "at least 15 styles from 99 styles apply to the motion video"
+MIN_STYLES = 25                      # Wan, 27 Oct 2026: "add at least 25 styles in the video" (26 Oct it was 15)
 # and then "push to use as many styles from 99 as you can": every eligible style is added, up to PER_SCENE in a scene
 CAPTION = ("C01", "C02", "C03", "C04", "C05", "C06", "C07", "C09", "C10")
 TRANSITION = ("M02", "M08", "M09")
@@ -146,6 +151,10 @@ def _holds(needs: str, sc: dict[str, Any], ctx: dict[str, Any]) -> bool:
     text = words_of(sc)
     on_screen = " ".join([sc.get("heading", ""), *(sc.get("lines") or [])])
     for n in needs:
+        if n in "GRYKJZ":                               # the visual styles read the scene's own words (motion_visuals)
+            if not motion_visuals.needs(n, sc.get("heading") or "", sc.get("lines") or [], ctx["news"]):
+                return False
+            continue
         ok = {
             "p": bool(sc.get("photo")),
             "n": bool(re.search(r"\d", on_screen)),
@@ -234,12 +243,14 @@ def study_of(row: dict[str, Any]) -> dict[str, str] | None:
 
 
 def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, lang: str,
-           stream: str = "regulab") -> dict[str, Any]:
+           stream: str = "regulab", exclude: frozenset[str] | set[str] = frozenset()) -> dict[str, Any]:
     """Assign effects to a film's teaching scenes. Returns {scenes: {id: [codes]}, video: {...}, assigned, native,
-    unavailable, notes}. Needs scenes with kicker/heading/lines/narration (and photo, set by assign_photos)."""
+    unavailable, notes}. Needs scenes with kicker/heading/lines/narration (and photo, set by assign_photos). `exclude` is the
+    styles the layout could not draw for this film (motion_layout.styled): they are not offered a second time."""
     seed = str(row.get("id") or row.get("brief") or "x")
     teaching = [s for s in scenes if s.get("id") != "brand-outro"]
     ctx = {"brief": str(row.get("brief") or ""), "lang": lang, "voiced": voiced, "study": bool(study_of(row)),
+           "news": motion_visuals.news_of(row, stream),
            "all_text": " ".join(words_of(s) for s in teaching) + " " + str(row.get("brief") or "")}
     out: dict[str, list[str]] = {}
     used: set[str] = set()
@@ -247,7 +258,7 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
     def ranked(role_letter: str, sc: dict[str, Any], pool: list[str] | None = None) -> list[str]:
         cands = []
         for code, (roles, needs, _how) in RECIPES.items():
-            if pool is not None and code not in pool:
+            if code in exclude or (pool is not None and code not in pool):
                 continue
             if pool is None and (code in CAPTION or code in TRANSITION or code in FINISH):
                 continue
@@ -256,7 +267,8 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
             if not _holds(needs, sc, ctx):
                 continue
             score = (10 + (6 if needs else 0) + (3 if code in NATIVE_TEXT else 0) + (4 if code in BUILDABLE else 0)
-                     + (5 if code in WOW else 0) + (3 if code in CONCEPT else 0))
+                     + (5 if code in WOW else 0) + (3 if code in CONCEPT else 0)
+                     + {"G01": 3, "G06": 2}.get(code, 0))              # the map and the clipping Wan asked for by name
             if code == "V03" and len((sc.get("heading") or "").split()) > 3:
                 continue
             if code == "V01" and len((sc.get("heading") or "").split()) > 4:
@@ -307,6 +319,13 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
             return False
         if code in motion_concepts.KIND and any(c in motion_concepts.KIND for c in have):
             return False                                 # one concept diagram a scene: each takes a block of the column
+        if code in VISUAL and any(c in VISUAL for c in have):
+            return False                                 # one picture of the facts a scene (map, ring, columns, clipping, ...)
+        # a visual that takes the lines a chart or a timeline already draws is not given beside it
+        clash = {"G02": {"V09"}, "G03": {"V09"}, "V09": {"G02", "G03"}, "G05": {"P03"}, "P03": {"G05"},
+                 "G04": {"P08"}, "P08": {"G04"}}
+        if clash.get(code, set()) & set(have):
+            return False
         if code in {"M01", "M06"} and any(c in {"M01", "M06", "L06", "X06"} for c in have):
             return False                                 # one movement of the photo
         if code == "V06" and any(c in {"L05", "V05"} for c in have):
@@ -324,7 +343,8 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
         candidates = ranked(letter, sc)
         # a concept diagram first (Wan, 26 Oct 2026: "make sure automation masukkan semua style terutama concept fallback"): every
         # scene that can carry one does, then the rest in rank order
-        for code in [c for c in candidates if c in motion_concepts.KIND][:1] + candidates:
+        pictures = [c for c in candidates if c in VISUAL][:1]
+        for code in [c for c in candidates if c in motion_concepts.KIND][:1] + pictures + candidates:
             if len(out[sc["id"]]) >= 9:
                 break
             if room(sc["id"], code):
@@ -352,14 +372,14 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
     applied = set(assigned) | set(native) | set(audio)
     unavailable = dict(UNAVAILABLE)
     unavailable.update({c: "not needed by this film's words, or it suits a different scene" for c in NAMES
-                        if c not in applied and c not in unavailable})
+                        if c not in applied and c not in unavailable and c not in VISUAL})
     ev = (row.get("options") or {}).get("evidence") or {}
     return {"scenes": out, "video": video, "assigned": assigned, "native": native, "audio": audio, "study": study,
             "evidence_url": str(ev.get("source_url") or row.get("source_url") or ""),
             "hook": hook_of((str(row.get("brief") or "") + " " + (words_of(teaching[0]) if teaching else "")),
                             str((teaching[0].get("narration") or teaching[0].get("heading") or "") if teaching else "")),
-            "concept": sorted(set(assigned) & CONCEPT),
-            "unavailable": unavailable, "considered": len(NAMES), "applied": len(applied)}
+            "concept": sorted(set(assigned) & CONCEPT), "visual": sorted(set(assigned) & VISUAL), "news": ctx["news"],
+            "unavailable": unavailable, "considered": LIBRARY_COUNT, "applied": len(applied)}
 
 
 def prompt_block(plan: dict[str, Any], scenes: list[dict[str, Any]]) -> str:

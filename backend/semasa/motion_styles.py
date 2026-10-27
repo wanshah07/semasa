@@ -139,8 +139,9 @@ Explain with Hook -> Fact -> Why -> Solution: strong curiosity hook, connected c
 Use English or Malaysian Malay, never Indonesian. BM narration uses pembungkusan rather than the mispronounced label.
 Voice on/off is independent: English VoiceStudio KittenTTS (Edge male when no VoiceStudio worker); BM/both native ms-MY
 Edge, never mislabeled VoiceStudio. Narrated films are BRISK (25 Oct 2026: English x1.15, Malay x1.25, short gaps).
-Silent is a separately written, SLOW reading-paced narrative, not a muted voice transcript: about 1.4 words per second
-counting ALL visible heading/lines (both languages counted), complete connected sentences. Leave narration empty in silent mode.
+Silent is a separately written, BRISK reading-paced narrative, not a muted voice transcript: about 2.6 words per second
+counting ALL visible heading/lines (both languages counted), complete connected sentences, a new fact every 3 to 4 seconds so the
+viewer never waits (27 Oct 2026). Leave narration empty in silent mode.
 Do not accelerate/truncate speech to fit; request 30/60s or narrower topic when needed. Preserve uploaded original speech.
 Flow of every explainer: Hook, Fakta, Kenapa, Solusi. Format of the approved reference films: heading on top, the visual in
 the middle (arch photo or diagram), narration as two-line transparent subtitles below, no presenter.

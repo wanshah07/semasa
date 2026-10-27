@@ -41,6 +41,7 @@ from . import (
     ai_config,
     antislop,
     api_status,
+    compliance,
     db,
     fetch,
     motion_assets,
@@ -72,9 +73,12 @@ VOICE_PAD = 0.3                         # a narrated scene stays up this long af
 FILM_MAX = 70.0                         # a film is as long as its information needs, never more than this (Wan, 26 Oct 2026)
 LINES_MAX = 6                           # a counted list names every item; an ordinary scene has two lines
 NARRATED_WPS = 2.6                      # words a second the script asks for when a voice reads it (the voice runs ~2.9)
-READ_WPS = 1.4                          # words a second a silent film allows the eye, heading and lines together
-READ_PAD = 1.0                          # seconds a silent scene holds after the eye has finished
-SILENT_MIN = 4.0                        # and never shorter than this
+READ_WPS = 2.6                          # words a second a silent film allows the eye, heading and lines together
+READ_PAD = 0.5                          # seconds a silent scene holds after the eye has finished
+SILENT_MIN = 2.8                        # and never shorter than this
+# 27 Oct 2026, Wan: "for video without audio, make sure the rate is faster or you can add more info as for now the flow like
+# user need to wait for the next info": a silent scene was read at 1.4 words a second with a second's hold and a 4 s floor, so a
+# 13-word scene stood for 10 s. It is 2.6 words a second now (a quick reader), and the script carries more facts a scene
 PHOTOS = 8                              # pictures per film: the idea's own first, Unsplash for the rest; one a scene, then pairs
 MAX_FIX = 2                             # rewrites the writer gets for a layout the check rejects, before the safe layout
 # Wan's own skill, 25 Oct 2026 ("add this skill in the system, and in claude code"): also a Claude Code project skill at
@@ -234,9 +238,13 @@ PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentenc
                "each heading at most 8 words, at most 2 lines a scene (a counted list may have up to 6).\n"
                "NARRATION LANGUAGE: {language}. Every spoken word of every narration is in {language}; "
                "a product name may stay as it is.\n" + CASUAL_RULE)
-PACE_SILENT = ("There is NO narrator: leave every narration empty \"\". The viewer READS, slowly: at most {budget} words in all "
-               "on screen across the scenes (headings and lines together, both languages counted), each heading at most 7 words, "
-               "at most 2 short lines a scene, complete connected sentences in the lines. The on-screen lines are {lines}.")
+PACE_SILENT = (
+    "There is NO narrator: leave every narration empty \"\". The viewer READS, and must never wait for the next fact: "
+    "something new appears every 3 to 4 seconds. Use up to {budget} words in all on screen across the scenes (headings and "
+    "lines together, both languages counted), each heading at most 8 words, TWO TO FOUR short lines a scene, each line one "
+    "complete fact (a number, a name, a rule, a date, a step or a reason) in about 12 words, never filler or a repeat of "
+    "the heading. Put the figures, the places, the dates and the source's own headline in the lines so the scene can show "
+    "them as a chart, a map, a calendar or a news clipping. The on-screen lines are {lines}.")
 
 
 def build_script_system(row: dict[str, Any], extra: str, count: int = 4) -> str:
@@ -248,7 +256,7 @@ def build_script_system(row: dict[str, Any], extra: str, count: int = 4) -> str:
              "both": "in Bahasa Malaysia with the English line after it, in the same string, separated by ' / '"}[lang]
     teaching = max(1.0, seconds - 3)
     if row.get("voice") == "off":
-        pace = PACE_SILENT.format(budget=max(8, int(teaching * 1.25)), lines=lines)
+        pace = PACE_SILENT.format(budget=max(12, int(teaching * 2.3)), lines=lines)
     else:
         pace = PACE_VOICED.format(language=spoken, words=max(1, int(teaching * NARRATED_WPS)), lines=lines)
     length = (f"Plan about {seconds:g} seconds INCLUDING it." if count == 1 else
@@ -336,6 +344,21 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
     clean.append({"id": "brand-outro", "kicker": "", "heading": motion_styles.cta(row), "lines": [],
                   "narration": motion_styles.cta(row), **({"role": "Outro"} if recipe_plan else {})})
     return {**meta, "scenes": clean}
+
+
+def styles_note(auto: dict[str, Any] | None, photos: list[Any]) -> str:
+    """How many styles the film really shows (Wan, 27 Oct 2026: "at least 25 styles in the video"), and when it is under 25 the
+    plain reason: most of what is left needs a picture, and Unsplash gave none (its hourly limit) or the idea carried none."""
+    if not auto:
+        return ""
+    drawn = int(auto.get("drawn") or auto.get("applied") or 0)
+    extra = len(auto.get("visual") or [])
+    note = f"{drawn} styles drawn" + (f" ({extra} picture styles: map, chart, clipping...)" if extra else "")
+    if drawn < motion_auto.MIN_STYLES:
+        note += f", under {motion_auto.MIN_STYLES}"
+        if not photos:
+            note += ": no pictures, so the photo styles had nothing to hold"
+    return note
 
 
 def alternate_voice(store: Any, row: dict[str, Any]) -> str:
@@ -1188,6 +1211,12 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         voice_note += kitten_fallback
         pace_note = ("narrated: brisk" if voiced else f"silent: paced for reading at {READ_WPS:g} words a second")
         w, h = SIZES[size_of(row)]
+
+        def layout_args() -> dict[str, Any]:
+            """Everything motion_layout.compose needs except the scenes and the plan (the same for the dry run and the film)."""
+            return dict(total=total, w=w, h=h, lang=lang, palette=PALETTE["regulab"], gsap=GSAP, html_lang=LANGUAGE[lang][0],
+                        design=motion_styles.design(row), resolution=size_of(row), stream=row.get("stream") or "regulab",
+                        ambient=str((row.get("options") or {}).get("ambient") or "mint"))
         own, own_note = idea_pictures(store, row, folder, get=own_get)
         photos, photo_note = fetch_photos(plan.get("photo_query") or "", folder, max(0, PHOTOS - len(own)), search=photo_search,
                                           get=photo_get)
@@ -1195,7 +1224,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         motion_auto.assign_photos(scenes, photos)
         auto = None
         if motion_assets.is_auto(row):
-            auto = motion_auto.choose(row, scenes, voiced=voiced, lang=lang, stream=row.get("stream") or "regulab")
+            auto = motion_layout.styled(row, scenes, voiced=voiced, lang=lang, stream=row.get("stream") or "regulab",
+                                        compose_args=layout_args())
             asset_plan["effects"] = [*asset_plan["effects"], *motion_auto.effect_rows(auto)]
         system = build_system(row, settings.get("prompt") or "", bg_path, seconds=total)
         fixed = ("SCENES, FIXED: the voice is already recorded to these times. One .clip per scene with EXACTLY this id, "
@@ -1304,11 +1334,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             rejected = html[:6000]
             calmed: list[str] = []
             for round_ in range(3):
-                page, layout = motion_layout.compose(scenes=scenes, total=total, w=w, h=h, lang=lang,
-                                                     plan=auto or {"scenes": {}, "video": {}}, palette=PALETTE["regulab"],
-                                                     gsap=GSAP, html_lang=LANGUAGE[lang][0], design=motion_styles.design(row),
-                                                     resolution=size_of(row), stream=row.get("stream") or "regulab",
-                                                     ambient=str((row.get("options") or {}).get("ambient") or "mint"))
+                page, layout = motion_layout.compose(scenes=scenes, plan=auto or {"scenes": {}, "video": {}}, **layout_args())
                 report = checked(page)
                 html = page
                 bad = motion_layout.layout_findings(report["errors"])
@@ -1382,6 +1408,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             **meta,
             "model": getattr(llm, "last_model", "") or "", "error": "",
             "style_note": " · ".join(x for x in (style_line, bg_note, voice_note, pace_note, photo_note,
+                                               styles_note(auto, photos),
                                                f"photo credit: {credits}" if credits else "", layout_note,
                                                "approved self-owned piano; faded/ducked; music x0.45, voice x0.9") if x),
             "script": [{k: sc.get(k) for k in (
@@ -1422,9 +1449,12 @@ def backfill_captions(store: Any, llm: Any, limit: int = BACKFILL) -> int:
     for r in rows:
         if made >= limit:
             break
-        if r.get("captions") or not r.get("script"):
-            continue
         lang, stream = language_of(r), r.get("stream") or "regulab"
+        have = r.get("captions") or {}
+        # a LinkedIn caption written in Malay before 27 Oct 2026 is written again in English (Wan, 27 Oct 2026)
+        malay = stream == "linkedin" and bool(compliance.NOT_ENGLISH.search(str(have.get("linkedin") or "")))
+        if (have and not malay) or not r.get("script"):
+            continue
         caps = motion_captions.write(llm, r, r["script"], str(r.get("title") or r.get("brief") or ""), lang=lang,
                                      voice=voice_line(stream, lang), speak_as=speaker(lang))
         store.table(TABLE).update({"captions": caps}).eq("id", r["id"]).eq("status", "done").execute()

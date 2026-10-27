@@ -11,6 +11,9 @@ const SOFT = RULES.soft.map((r) => [rx(r), r.label]);
 const SOCIAL_SRC = rx(RULES.social_src);
 const AGGREGATOR = rx(RULES.aggregator);
 const ANY_URL = rx(RULES.any_url);
+const NOT_ENGLISH = rx(RULES.not_english);
+/** True when `text` reads as Bahasa Malaysia (a LinkedIn caption must not: rules/compliance.json `not_english`). */
+export const readsMalay = (text) => NOT_ENGLISH.test(String(text || ""));
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -194,6 +197,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
       if (hit) add(true, where, `cites "${hit[0]}", a blog or news aggregator. On LinkedIn cite the instrument, not where you read it.`);
       const mark = brandMarkRe(brand);
       if (mark && mark.test(t)) add(true, where, "a ws.regulab mark on LinkedIn. That stream is Wan's own byline.");
+      if (NOT_ENGLISH.test(t)) add(true, where, "reads as Bahasa Malaysia. The LinkedIn stream is English: write the caption in English.");
     }
   }
 

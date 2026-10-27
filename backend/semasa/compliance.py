@@ -34,6 +34,7 @@ SOFT = [(_rx(r), r["label"]) for r in RULES["soft"]]
 SOCIAL_SRC = _rx(RULES["social_src"])
 AGGREGATOR = _rx(RULES["aggregator"])
 ANY_URL = _rx(RULES["any_url"])
+NOT_ENGLISH = _rx(RULES["not_english"])
 
 
 def _esc(s: str) -> str:
@@ -280,6 +281,8 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
             mark = brand_mark_re(brand)
             if mark and mark.search(t):
                 add(True, where, "a ws.regulab mark on LinkedIn. That stream is Wan's own byline.")
+            if NOT_ENGLISH.search(t):
+                add(True, where, "reads as Bahasa Malaysia. The LinkedIn stream is English: write the caption in English.")
 
     # The other language is not sent, so its problems warn; they block the moment it is switched.
     other = "en" if lang == "bm" else "bm"

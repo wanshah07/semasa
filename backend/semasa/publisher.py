@@ -24,7 +24,9 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import compliance, db, guard, senders
+import requests
+
+from . import compliance, db, guard, postiz, publishing, senders
 from .config import SupabaseSettings
 from .log import get_logger
 from .studio_link import when_utc
@@ -32,7 +34,7 @@ from .studio_link import when_utc
 log = get_logger("semasa.publisher")
 
 MYT = timedelta(hours=8)
-LATE_GRACE = timedelta(minutes=45)    # Studio's LATE_GRACE_MS: a slot long past is never fired automatically
+LATE_GRACE = timedelta(minutes=45)  # Studio's LATE_GRACE_MS: a slot long past is never fired automatically
 LOOKAHEAD = timedelta(days=14)
 
 
@@ -52,14 +54,23 @@ def load_settings(store: Any) -> dict[str, Any]:
 
 
 def logged(store: Any, post_id: str, channel: str, action: str, fp: str) -> bool:
-    rows = (store.table(db.PUBLISH_LOG).select("detail").eq("post_id", post_id).eq("channel", channel)
-            .eq("action", action).order("at", desc=True).limit(20).execute().data or [])
+    rows = (
+        store.table(db.PUBLISH_LOG)
+        .select("detail")
+        .eq("post_id", post_id)
+        .eq("channel", channel)
+        .eq("action", action)
+        .order("at", desc=True)
+        .limit(20)
+        .execute()
+        .data
+        or []
+    )
     return any((r.get("detail") or {}).get("fingerprint") == fp for r in rows)
 
 
 def write_log(store: Any, post_id: str, channel: str, action: str, detail: dict[str, Any]) -> None:
-    store.table(db.PUBLISH_LOG).insert({"post_id": post_id, "channel": channel, "action": action,
-                                        "detail": detail}).execute()
+    store.table(db.PUBLISH_LOG).insert({"post_id": post_id, "channel": channel, "action": action, "detail": detail}).execute()
 
 
 def media_for(store: Any, ids: list[str]) -> list[dict[str, Any]]:
@@ -86,8 +97,11 @@ def video_of(m: dict[str, Any]) -> dict[str, Any] | None:
     if m.get("type") != "video" or not m.get("generated_media_url"):
         return None
     meta = m.get("meta") or {}
-    return {"url": m["generated_media_url"], "thumbnail": meta.get("poster_url") or "",
-            "vertical": int(meta.get("height") or 0) > int(meta.get("width") or 0) > 0}
+    return {
+        "url": m["generated_media_url"],
+        "thumbnail": meta.get("poster_url") or "",
+        "vertical": int(meta.get("height") or 0) > int(meta.get("width") or 0) > 0,
+    }
 
 
 def pictures_of(m: dict[str, Any]) -> list[str]:
@@ -131,15 +145,18 @@ def make_clients(settings: dict[str, Any]) -> dict[str, Any]:
     cfg = settings.get("channels") or {}
     out: dict[str, Any] = {}
     buf, li = cfg.get("buffer") or {}, cfg.get("linkedin") or {}
+    pz = cfg.get("postiz") or {}
+    if os.environ.get("POSTIZ_API_KEY") and os.environ.get("POSTIZ_BASE_URL") and pz.get("enabled") is True:
+        out["postiz"] = postiz.Postiz(os.environ["POSTIZ_API_KEY"], os.environ["POSTIZ_BASE_URL"])
     if os.environ.get("BUFFER_API_KEY") and buf.get("organizationId"):
         out["buffer"] = senders.Buffer(os.environ["BUFFER_API_KEY"], buf["organizationId"])
     if os.environ.get("COMPOSIO_CONSUMER_KEY") and li.get("author"):
         # For You (the workspace that holds Wan's LinkedIn connection): wins over a Platform key if both are set
-        out["linkedin"] = senders.LinkedInMCP(os.environ["COMPOSIO_CONSUMER_KEY"], li["author"],
-                                              account_id=li.get("foryou_account_id") or None)
+        out["linkedin"] = senders.LinkedInMCP(
+            os.environ["COMPOSIO_CONSUMER_KEY"], li["author"], account_id=li.get("foryou_account_id") or None
+        )
     elif os.environ.get("COMPOSIO_API_KEY") and li.get("author"):
-        out["linkedin"] = senders.LinkedIn(os.environ["COMPOSIO_API_KEY"], li["author"],
-                                           account_id=li.get("account_id") or None)
+        out["linkedin"] = senders.LinkedIn(os.environ["COMPOSIO_API_KEY"], li["author"], account_id=li.get("account_id") or None)
     return out
 
 
@@ -164,7 +181,7 @@ def _parse(ts: Any) -> datetime | None:
     try:
         dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
     except ValueError:
-        return when_utc(str(ts))            # Studio's own display stamps ("2026-09-28 06:43 MYT" and friends)
+        return when_utc(str(ts))  # Studio's own display stamps ("2026-09-28 06:43 MYT" and friends)
     return dt if dt.tzinfo else None
 
 
@@ -187,12 +204,17 @@ class _BufferView:
     def find(self, channel_id: str, text: str, due: datetime) -> dict[str, Any] | None:
         if channel_id not in self.cache:
             self.cache[channel_id] = self.client.posts(
-                [channel_id], (self.now - timedelta(days=3)).isoformat(), (self.now + LOOKAHEAD + timedelta(days=2)).isoformat())
+                [channel_id], (self.now - timedelta(days=3)).isoformat(), (self.now + LOOKAHEAD + timedelta(days=2)).isoformat()
+            )
         key = senders.text_key(text)
         for p in self.cache[channel_id]:
             at = _parse(p.get("dueAt"))
-            if (p.get("status") not in ("error", "draft") and senders.text_key(p.get("text", "")) == key
-                    and at and abs(at - due) <= timedelta(hours=36)):
+            if (
+                p.get("status") not in ("error", "draft")
+                and senders.text_key(p.get("text", "")) == key
+                and at
+                and abs(at - due) <= timedelta(hours=36)
+            ):
                 return p
         return None
 
@@ -201,27 +223,47 @@ class _BufferView:
 
 
 def _record(bp: dict[str, Any], mode: str, route: str, now: datetime) -> dict[str, Any]:
-    return {"id": bp.get("id"), "status": bp.get("status"), "dueAt": bp.get("dueAt"), "mode": mode,
-            "route": route, "at": now.isoformat(), **({"url": bp["externalLink"]} if bp.get("externalLink") else {}),
-            **({"unconfirmed": True} if bp.get("unconfirmed") else {})}
+    return {
+        "id": bp.get("id"),
+        "status": bp.get("status"),
+        "dueAt": bp.get("dueAt"),
+        "mode": mode,
+        "route": route,
+        "at": now.isoformat(),
+        **({"url": bp["externalLink"]} if bp.get("externalLink") else {}),
+        **({"unconfirmed": True} if bp.get("unconfirmed") else {}),
+    }
 
 
-def _send_buffer(client: Any, view: _BufferView, channel_id: str, channel: str, text: str, pictures: list[str],
-                 alt: str, due: datetime, now: datetime, video: dict[str, Any] | None = None) -> dict[str, Any]:
+def _send_buffer(
+    client: Any,
+    view: _BufferView,
+    channel_id: str,
+    channel: str,
+    text: str,
+    pictures: list[str],
+    alt: str,
+    due: datetime,
+    now: datetime,
+    video: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """One channel of one post into Buffer. Returns the record for `published`; raises SendError."""
     share_now = due <= now + SHARE_NOW_WITHIN
     due_iso = None if share_now else due.isoformat()
     mode = "shareNow" if share_now else "customScheduled"
     for attempt in (1, 2):
         try:
-            bp = (client.create_video(channel_id, channel, text, video, due_iso) if video
-                  else client.create(channel_id, channel, text, pictures, alt, due_iso))
+            bp = (
+                client.create_video(channel_id, channel, text, video, due_iso)
+                if video
+                else client.create(channel_id, channel, text, pictures, alt, due_iso)
+            )
         except senders.SendError as exc:
             if exc.kind != "transient" or attempt == 2:
                 raise
-            view.cache.pop(channel_id, None)        # the pre-attempt cache cannot show a post made just now:
+            view.cache.pop(channel_id, None)  # the pre-attempt cache cannot show a post made just now:
             found = view.find(channel_id, text, due)  # force a fresh read before deciding to retry
-            if found is not None:                   # the first try did land after all
+            if found is not None:  # the first try did land after all
                 return _record(found, mode, "buffer-adopted", now)
             continue
         if share_now:
@@ -230,12 +272,64 @@ def _send_buffer(client: Any, view: _BufferView, channel_id: str, channel: str, 
             if fin.get("status") == "error":
                 kind = senders.classify(err)
                 if kind == "transient" and attempt == 1:
-                    continue                                    # Studio's TRANSIENT_SEND: one identical retry
+                    continue  # Studio's TRANSIENT_SEND: one identical retry
                 raise senders.SendError(kind, f"{channel}: {err or 'Buffer reported an error'}")
             bp = {**bp, **fin}
         view.add(channel_id, bp)
         return _record(bp, mode, "buffer", now)
     raise senders.SendError("refused", "unreachable")
+
+
+def _postiz_package(
+    post: dict[str, Any], channel: str, text: str, integration_id: str, due: datetime, media: list[dict[str, Any]], fetch: Any
+) -> publishing.ContentPackage:
+    assets = []
+    for row in media:
+        urls = pictures_of(row) if row.get("type") != "video" else [row["generated_media_url"]]
+        sums = (row.get("meta") or {}).get("sha256")
+        for i, url in enumerate(urls):
+            try:
+                response = fetch(url, timeout=60)
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                raise postiz.PostizError(f"could not fetch approved media {row['id']}: {exc}") from exc
+            data = response.content
+            actual = hashlib.sha256(data).hexdigest()
+            expected = sums[i] if isinstance(sums, list) and i < len(sums) else sums
+            if expected and expected != actual:
+                raise postiz.MediaValidationError(f"media {row['id']} changed after approval")
+            mime = (row.get("meta") or {}).get("content_type") or ("video/mp4" if row.get("type") == "video" else "image/jpeg")
+            assets.append(
+                publishing.MediaAsset(
+                    f"{row['id']}:{i}", url, mime, data, actual, len(data), (row.get("meta") or {}).get("seconds")
+                )
+            )
+    key = f"{post['id']}:{channel}:{publishing.approval_token(post, media, {channel: integration_id})}"
+    return publishing.ContentPackage(
+        post["id"],
+        text,
+        channel,
+        integration_id,
+        due.isoformat(),
+        "Asia/Kuala_Lumpur",
+        key,
+        tuple(assets),
+        tuple(a.asset_id for a in assets),
+    )
+
+
+def _send_postiz(client: Any, package: publishing.ContentPackage, now: datetime) -> dict[str, Any]:
+    found = client.find_by_key(package.idempotency_key, package.scheduled_at)
+    result = found or client.publish(package)
+    return {
+        "id": result.post_id,
+        "status": result.status,
+        "dueAt": result.due_at,
+        "route": "postiz",
+        "at": now.isoformat(),
+        **({"url": result.url} if result.url else {}),
+        **({"confirmed_at": now.isoformat()} if result.status in ("sent", "error") else {}),
+    }
 
 
 def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None = None) -> dict[str, int]:
@@ -247,14 +341,34 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
     bufcfg = (settings.get("channels") or {}).get("buffer") or {}
     if clients is None:
         clients = make_clients(settings) if enabled else {}
-    counts = {"considered": 0, "dry_run": 0, "blocked": 0, "error": 0, "overdue": 0,
-              "scheduled": 0, "sent": 0, "adopted": 0, "waiting": 0, "not_yet": 0}
+    counts = {
+        "considered": 0,
+        "dry_run": 0,
+        "blocked": 0,
+        "error": 0,
+        "overdue": 0,
+        "scheduled": 0,
+        "sent": 0,
+        "adopted": 0,
+        "waiting": 0,
+        "not_yet": 0,
+    }
     view = _BufferView(clients["buffer"], now) if clients.get("buffer") else None
     li_cap = max(1, len((brand.get("linkedin") or {}).get("slots") or ["06:00"]))
     li_today: int | None = None
 
-    posts = (db.read_with_retry(store.table(db.POSTS).select("*").eq("status", "approved").not_.is_("date", "null")
-             .not_.is_("slot", "null").order("date").order("slot")).data or [])
+    posts = (
+        db.read_with_retry(
+            store.table(db.POSTS)
+            .select("*")
+            .eq("status", "approved")
+            .not_.is_("date", "null")
+            .not_.is_("slot", "null")
+            .order("date")
+            .order("slot")
+        ).data
+        or []
+    )
     live = guard.load_live(store, db.POSTS, myt_date(now)) if posts else []
     for post in posts:
         due = due_utc(post["date"], post["slot"])
@@ -264,8 +378,9 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
         stream = post.get("stream") or "regulab"
         media = media_for(store, list(post.get("media_ids") or []))
         scan_post = {**post, "media": [scan_entry(m) for m in media if m.get("status") == "done"]}
-        flags = compliance.scan(scan_post, brand=reg, schedule=reg.get("schedule"),
-                                indo_extra=(settings.get("bahasa") or {}).get("indo"))
+        flags = compliance.scan(
+            scan_post, brand=reg, schedule=reg.get("schedule"), indo_extra=(settings.get("bahasa") or {}).get("indo")
+        )
         hard = [f"{f['where']}: {f['msg']}" for f in flags if f["hard"]]
         not_ready = [m["id"] for m in media if m.get("status") != "done" or not m.get("generated_media_url")]
         if not_ready:
@@ -281,9 +396,15 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
         errors = {k: v for k, v in (post.get("errors") or {}).items() if k != "scan"}
         changed = False
         pictures = [u for m in media for u in pictures_of(m)]
-        video = next((v for v in (video_of(m) for m in media) if v), None)      # a post's video stands alone (no pictures)
+        video = next((v for v in (video_of(m) for m in media) if v), None)  # a post's video stands alone (no pictures)
         alt = " ".join(str((m.get("meta") or {}).get("alt") or "") for m in media).strip()
         channels = post_channels(settings, post)
+        route = publishing.provider_for(post, settings)
+        account_ids = (
+            {c: ((settings.get("channels") or {}).get("postiz") or {}).get(c) for c in channels} if route == "postiz" else {}
+        )
+        if enabled and route == "postiz" and not publishing.approval_valid(post, media, account_ids):
+            hard.append("approval is missing or stale for this exact provider, content, media, accounts and schedule")
         for channel in channels:
             if published.get(channel):
                 continue
@@ -301,51 +422,151 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
             if late:
                 counts["overdue"] += 1
                 if not logged(store, post["id"], channel, "blocked", fp):
-                    write_log(store, post["id"], channel, "blocked",
-                              {"fingerprint": fp, "why": [f"overdue: its slot was {post['date']} {post['slot']} MYT; "
-                                                          "move it to a new slot"]})
+                    write_log(
+                        store,
+                        post["id"],
+                        channel,
+                        "blocked",
+                        {
+                            "fingerprint": fp,
+                            "why": [f"overdue: its slot was {post['date']} {post['slot']} MYT; move it to a new slot"],
+                        },
+                    )
                 continue
             if not enabled:
                 counts["dry_run"] += 1
                 if not logged(store, post["id"], channel, "dry_run", fp):
-                    write_log(store, post["id"], channel, "dry_run",
-                              {"fingerprint": fp, "would_send": payload, "chars": len(payload["text"])})
+                    write_log(
+                        store,
+                        post["id"],
+                        channel,
+                        "dry_run",
+                        {"fingerprint": fp, "would_send": payload, "chars": len(payload["text"])},
+                    )
                 continue
             prior = errors.get(channel)
+            if route != "postiz" and isinstance(prior, dict) and (prior.get("outcome") == "unknown" or prior.get("unconfirmed")):
+                continue  # legacy providers have no reliable readback: never retry ambiguous sends
             if isinstance(prior, dict) and prior.get("fingerprint") == fp:
-                continue                                   # refused before with these exact words; an edit sends again
+                continue  # refused before with these exact words; an edit sends again
+            if route == "postiz":
+                client = clients.get("postiz")
+                if client is None:
+                    counts["error"] += 1
+                    write_log(
+                        store,
+                        post["id"],
+                        channel,
+                        "error",
+                        {
+                            "fingerprint": fp,
+                            "why": (
+                                "Postiz is selected but its API key, base URL or enabled setting is missing; "
+                                "no backup was selected"
+                            ),
+                        },
+                    )
+                    continue
+                integration_id = account_ids.get(channel)
+                if not integration_id:
+                    counts["error"] += 1
+                    write_log(
+                        store, post["id"], channel, "error", {"fingerprint": fp, "why": f"no Postiz integration id for {channel}"}
+                    )
+                    continue
+                try:
+                    package = _postiz_package(post, channel, text, integration_id, due, media, requests.get)
+                    rec = _send_postiz(client, package, now)
+                    published[channel] = rec
+                    errors.pop(channel, None)
+                    changed = True
+                    counts["sent" if rec["status"] == "sent" else "scheduled"] += 1
+                    store.table(db.POSTS).update({"published": published}).eq("id", post["id"]).execute()
+                    write_log(
+                        store,
+                        post["id"],
+                        channel,
+                        "sent" if rec["status"] == "sent" else "scheduled",
+                        {"fingerprint": fp, "postiz_id": rec["id"], "readback": True},
+                    )
+                except postiz.UnknownOutcome as exc:
+                    errors[channel] = {
+                        "fingerprint": fp,
+                        "message": str(exc),
+                        "outcome": "unknown",
+                        "unconfirmed": True,
+                        "at": now.isoformat(),
+                    }
+                    changed = True
+                    counts["error"] += 1
+                    write_log(store, post["id"], channel, "error", {"fingerprint": fp, "why": str(exc), "outcome": "unknown"})
+                except (postiz.PostizError, ValueError) as exc:
+                    errors[channel] = {
+                        "fingerprint": fp,
+                        "message": str(exc),
+                        "outcome": "refused",
+                        "remote_accepted": False,
+                        "at": now.isoformat(),
+                    }
+                    changed = True
+                    counts["error"] += 1
+                    write_log(store, post["id"], channel, "error", {"fingerprint": fp, "why": str(exc), "outcome": "refused"})
+                continue
             client = clients.get("linkedin" if stream == "linkedin" else "buffer")
             if client is None:
                 counts["error"] += 1
                 if not logged(store, post["id"], channel, "error", fp):
-                    write_log(store, post["id"], channel, "error",
-                              {"fingerprint": fp, "why": f"publishing is on, but no {channel} sender is set up (its "
-                                                         "secret or its settings are missing); nothing was sent"})
+                    write_log(
+                        store,
+                        post["id"],
+                        channel,
+                        "error",
+                        {
+                            "fingerprint": fp,
+                            "why": f"publishing is on, but no {channel} sender is set up (its "
+                            "secret or its settings are missing); nothing was sent",
+                        },
+                    )
                 continue
 
             if stream == "linkedin":
                 if due > now:
-                    counts["not_yet"] += 1                 # LinkedIn has no queue: it goes at its slot, never before
+                    counts["not_yet"] += 1  # LinkedIn has no queue: it goes at its slot, never before
                     continue
                 if li_today is None:
                     li_today = linkedin_sent_on(store, myt_date(now))
                 if li_today >= li_cap:
                     counts["waiting"] += 1
                     if not logged(store, post["id"], channel, "wait", fp):
-                        write_log(store, post["id"], channel, "wait", {"fingerprint": fp, "why": (
-                            f"LinkedIn's daily cap ({li_cap}) is used; a post whose day has passed is not sent")})
+                        write_log(
+                            store,
+                            post["id"],
+                            channel,
+                            "wait",
+                            {
+                                "fingerprint": fp,
+                                "why": (f"LinkedIn's daily cap ({li_cap}) is used; a post whose day has passed is not sent"),
+                            },
+                        )
                     continue
                 if logged(store, post["id"], channel, "sending", fp) and not logged(store, post["id"], channel, "sent", fp):
                     # an earlier run began this send and never recorded the answer: it may be on LinkedIn already
-                    msg = ("An earlier run started sending this and never heard back. Check LinkedIn; if it is not "
-                           "there, edit the post and approve it again to send it.")
+                    msg = (
+                        "An earlier run started sending this and never heard back. Check LinkedIn; if it is not "
+                        "there, edit the post and approve it again to send it."
+                    )
                     errors[channel] = {"fingerprint": fp, "message": msg, "unconfirmed": True, "at": now.isoformat()}
                     changed = True
                     counts["error"] += 1
                     write_log(store, post["id"], channel, "error", {"fingerprint": fp, "why": msg})
                     continue
-                write_log(store, post["id"], channel, "sending",
-                          {"fingerprint": fp, "pictures": len(pictures), **({"video": video["url"]} if video else {})})
+                write_log(
+                    store,
+                    post["id"],
+                    channel,
+                    "sending",
+                    {"fingerprint": fp, "pictures": len(pictures), **({"video": video["url"]} if video else {})},
+                )
                 try:
                     # No automatic retry here: a timeout or 5xx from Composio does not prove the post never landed,
                     # and LinkedIn/Composio give us no safe way to check or an idempotency key. Resending blindly
@@ -354,14 +575,18 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
                     # asks a human to check LinkedIn rather than silently sending again.
                     res = client.post_video(text, video["url"]) if video else client.post(text, pictures)
                 except senders.SendError as exc:
-                    errors[channel] = {"fingerprint": fp, "message": exc.message, "kind": exc.kind,
-                                       "at": now.isoformat()}
+                    errors[channel] = {"fingerprint": fp, "message": exc.message, "kind": exc.kind, "at": now.isoformat()}
                     changed = True
                     counts["error"] += 1
                     write_log(store, post["id"], channel, "error", {"fingerprint": fp, "why": exc.message})
                     continue
-                published[channel] = {"id": res.urn, "url": res.url, "status": "sent", "at": now.isoformat(),
-                                      "route": "composio+video" if video else "composio+image" if pictures else "composio"}
+                published[channel] = {
+                    "id": res.urn,
+                    "url": res.url,
+                    "status": "sent",
+                    "at": now.isoformat(),
+                    "route": "composio+video" if video else "composio+image" if pictures else "composio",
+                }
                 errors.pop(channel, None)
                 changed = True
                 li_today += 1
@@ -376,12 +601,20 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
             if not channel_id:
                 counts["error"] += 1
                 if not logged(store, post["id"], channel, "error", fp):
-                    write_log(store, post["id"], channel, "error",
-                              {"fingerprint": fp, "why": f"no Buffer channel id for {channel} in settings"})
+                    write_log(
+                        store,
+                        post["id"],
+                        channel,
+                        "error",
+                        {"fingerprint": fp, "why": f"no Buffer channel id for {channel} in settings"},
+                    )
                 continue
             if channel == "instagram" and not pictures and not video:
-                errors[channel] = {"fingerprint": fp, "message": "Instagram needs a picture and this post has none",
-                                   "at": now.isoformat()}
+                errors[channel] = {
+                    "fingerprint": fp,
+                    "message": "Instagram needs a picture and this post has none",
+                    "at": now.isoformat(),
+                }
                 changed = True
                 counts["error"] += 1
                 write_log(store, post["id"], channel, "error", {"fingerprint": fp, "why": errors[channel]["message"]})
@@ -401,13 +634,18 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
                     # persist 'published' BEFORE the log line (same reasoning as the LinkedIn branch above): if the
                     # save below this loop never runs, the next run must still see this channel as already handled
                     store.table(db.POSTS).update({"published": published}).eq("id", post["id"]).execute()
-                    write_log(store, post["id"], channel, action,
-                              {"fingerprint": fp, "buffer_id": rec.get("id"), "due_at": due.isoformat()})
+                    write_log(
+                        store,
+                        post["id"],
+                        channel,
+                        action,
+                        {"fingerprint": fp, "buffer_id": rec.get("id"), "due_at": due.isoformat()},
+                    )
                 errors.pop(channel, None)
                 changed = True
             except senders.SendError as exc:
                 if exc.kind == "full":
-                    counts["waiting"] += 1               # Buffer's plan cap: a wait, never an error
+                    counts["waiting"] += 1  # Buffer's plan cap: a wait, never an error
                     if not logged(store, post["id"], channel, "wait", fp):
                         write_log(store, post["id"], channel, "wait", {"fingerprint": fp, "why": exc.message})
                     continue
@@ -433,15 +671,65 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
 
     if enabled and clients.get("buffer"):
         tally(store, clients["buffer"], now, counts, settings)
+    if enabled and clients.get("postiz"):
+        tally_postiz(store, clients["postiz"], now, counts, settings)
     return counts
+
+
+def tally_postiz(store: Any, client: Any, now: datetime, counts: dict[str, int], settings: dict[str, Any]) -> None:
+    counts.setdefault("confirmed", 0)
+    rows = store.table(db.POSTS).select("*").in_("status", ["approved", "scheduled"]).execute().data or []
+    for post in rows:
+        if publishing.provider_for(post, settings) != "postiz":
+            continue
+        published = dict(post.get("published") or {})
+        errors = dict(post.get("errors") or {})
+        changed = False
+        for channel, rec in list(published.items()):
+            if not isinstance(rec, dict) or rec.get("route") != "postiz" or rec.get("status") in ("sent", "error"):
+                continue
+            due = _parse(rec.get("dueAt"))
+            if due and due > now - timedelta(minutes=5):
+                continue
+            try:
+                result = client.readback(
+                    postiz.Result(str(rec["id"]), rec.get("status", "scheduled"), rec["dueAt"]), rec["dueAt"]
+                )
+            except postiz.PostizError:
+                continue
+            published[channel] = {
+                **rec,
+                "status": result.status,
+                "confirmed_at": now.isoformat(),
+                **({"url": result.url} if result.url else {}),
+            }
+            if result.status == "error":
+                errors[channel] = {"message": "Postiz readback reported a publishing error", "at": now.isoformat()}
+            else:
+                errors.pop(channel, None)
+            write_log(store, post["id"], channel, "confirmed", {"postiz_id": rec["id"], "status": result.status})
+            counts["confirmed"] += 1
+            changed = True
+        if changed:
+            patch: dict[str, Any] = {"published": published, "errors": errors}
+            channels = post_channels(settings, post)
+            if all((published.get(c) or {}).get("status") == "sent" for c in channels):
+                patch["status"] = "posted"
+            store.table(db.POSTS).update(patch).eq("id", post["id"]).execute()
 
 
 def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settings: dict[str, Any]) -> None:
     """Read back every Buffer post whose moment has passed and write down what the network actually did (Studio's
     reconcileBuffer): `sent` or `error`, and a post whose every channel is sent becomes `posted`."""
     counts.setdefault("confirmed", 0)
-    rows = (store.table(db.POSTS).select("id,status,stream,channels,published,errors").in_("status", ["approved", "scheduled"])
-            .execute().data or [])
+    rows = (
+        store.table(db.POSTS)
+        .select("id,status,stream,channels,published,errors")
+        .in_("status", ["approved", "scheduled"])
+        .execute()
+        .data
+        or []
+    )
     for post in rows:
         published = dict(post.get("published") or {})
         errors = dict(post.get("errors") or {})
@@ -461,8 +749,12 @@ def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settin
             status = got.get("status")
             if status not in ("sent", "error"):
                 continue
-            published[ch] = {**rec, "status": status, **({"url": got["externalLink"]} if got.get("externalLink") else {}),
-                             "confirmed_at": now.isoformat()}
+            published[ch] = {
+                **rec,
+                "status": status,
+                **({"url": got["externalLink"]} if got.get("externalLink") else {}),
+                "confirmed_at": now.isoformat(),
+            }
             if status == "error":
                 msg = (got.get("error") or {}).get("message") or "Buffer reported an error"
                 errors[ch] = {"message": f"{ch}: {msg}", "at": now.isoformat()}
@@ -485,8 +777,9 @@ def main() -> int:
     counts = run(store)
     log.info("publisher: %s", counts)
     from . import archive, sheet
-    archived = archive.run(store)                     # before the sheet, so today's archive rows go with it
-    archived += "; " + archive.purge_rejected(store)   # rejected 72 hours ago (021)
+
+    archived = archive.run(store)  # before the sheet, so today's archive rows go with it
+    archived += "; " + archive.purge_rejected(store)  # rejected 72 hours ago (021)
     log.info(archived)
     log.info(sheet.sync_log(store))
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")

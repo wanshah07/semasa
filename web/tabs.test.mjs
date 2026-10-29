@@ -19,7 +19,8 @@ t("every tab except the default (isu) has its own branch, so none falls through 
   assert.deepEqual(missing, []);
 });
 t("every page component that is imported is used", () => {
-  const pages = [...src.matchAll(/^import (\w+Tab) from "\.\/pages\//gm)].map((m) => m[1]);
+  // a page is imported with the first chunk, or lazily (loaded when its tab is first shown); both count
+  const pages = [...src.matchAll(/^(?:import (\w+Tab) from "|const (\w+Tab) = lazy\(\(\) => import\(")\.\/pages\//gm)].map((m) => m[1] || m[2]);
   assert.ok(pages.length > 10);
   assert.deepEqual(pages.filter((p) => !src.includes(`<${p} `) && !src.includes(`<${p}\n`)), []);
 });

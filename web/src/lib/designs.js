@@ -2,11 +2,10 @@
    whole story); the list lives in semasa_settings.designs and is offered through one context, so the look picker, the post
    editor, the idea composer and the Design tab all read the same list without passing it down. A look value is a plain look
    ("classic", "grid", "era", "photo") or "d:<id>" for a design. Pure helpers here; App.jsx supplies the context value. */
-import { createContext, useContext } from "react";
 import { normDesign } from "./cards/studio.js";
+import { DesignsContext, useDesigns } from "./designsContext.js";
 
-export const DesignsContext = createContext({ designs: [], defaultId: "", ready: false, saveDesigns: null, setDefault: null });
-export const useDesigns = () => useContext(DesignsContext);
+export { DesignsContext, useDesigns };
 
 const TOKEN = /^d:([a-z0-9_]{4,24})$/;
 export const designToken = (id) => `d:${id}`;

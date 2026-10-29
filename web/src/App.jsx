@@ -10,42 +10,46 @@ import { useCanUpload, useGenerations, useSession, useSettings, useTable, useToa
 import { canLeave } from "./lib/leaveGuard";
 import FilterBar from "./components/FilterBar";
 import Gate from "./components/Gate";
-import IdeaComposer from "./components/IdeaComposer";
-import PromptLibrary from "./components/PromptLibrary";
-import DesignTab from "./pages/DesignTab";
-import { DesignsContext } from "./lib/designs";
-import FaqTab from "./pages/FaqTab";
-import FragranceTab from "./pages/FragranceTab";
-// the editor carries Fabric.js: loaded only when the Kanvas tab opens, so every other tab stays as light as before
-const CanvasTab = lazy(() => import("./pages/CanvasTab"));
-import LogTab from "./pages/LogTab";
-import IdeasTab from "./pages/IdeasTab";
-import PostsTab from "./pages/PostsTab";
-import SettingsTab from "./pages/SettingsTab";
-import GenerationGallery from "./components/GenerationGallery";
-import VideoTab from "./pages/VideoTab";
-import ChatTab from "./pages/ChatTab";
-import BillingTab from "./pages/BillingTab";
-import BillingPublic from "./pages/BillingPublic";
-import HomeTab from "./pages/HomeTab";
-import SubscriptionsTab from "./pages/SubscriptionsTab";
-import CrmTab from "./pages/CrmTab";
-import CrmUnsubscribe from "./pages/CrmUnsubscribe";
-import ResitTab from "./pages/ResitTab";
-import BrainTab from "./pages/BrainTab";
-import PrestasiTab from "./pages/PrestasiTab";
-import RepoTab from "./pages/RepoTab";
-import ApiTab from "./pages/ApiTab";
-import WatchSegment, { watchIdea } from "./components/WatchSegment";
+import { DesignsContext } from "./lib/designsContext";
+import { watchIdea } from "./lib/watchIdea";
 import Header from "./components/Header";
 import AppSidebar from "./components/AppSidebar";
-import MasonryGrid from "./components/MasonryGrid";
-import TrendTable from "./components/TrendTable";
 import ViewToggle, { useView } from "./components/ViewToggle";
-import MediaUploader from "./components/MediaUploader";
 import Toasts from "./components/Toast";
 import Button from "./components/ui/Button";
 import Guide from "./components/Guide";
+/* Every tab and every heavy panel is loaded when it is first shown, not with the page. The first screen is the sign-in card
+   (or the headlines), and on a phone on a slow connection it used to wait for one 768 KB script carrying every tab, the card
+   renderer, the motion rules and the office writers. Only Gate, Header, the sidebar and the hooks stay in the first chunk. */
+const IdeaComposer = lazy(() => import("./components/IdeaComposer"));
+const PromptLibrary = lazy(() => import("./components/PromptLibrary"));
+const GenerationGallery = lazy(() => import("./components/GenerationGallery"));
+const MediaUploader = lazy(() => import("./components/MediaUploader"));
+const WatchSegment = lazy(() => import("./components/WatchSegment"));
+const MasonryGrid = lazy(() => import("./components/MasonryGrid"));
+const TrendTable = lazy(() => import("./components/TrendTable"));
+const DesignTab = lazy(() => import("./pages/DesignTab"));
+const FaqTab = lazy(() => import("./pages/FaqTab"));
+const FragranceTab = lazy(() => import("./pages/FragranceTab"));
+// the editor carries Fabric.js: loaded only when the Kanvas tab opens
+const CanvasTab = lazy(() => import("./pages/CanvasTab"));
+const LogTab = lazy(() => import("./pages/LogTab"));
+const IdeasTab = lazy(() => import("./pages/IdeasTab"));
+const PostsTab = lazy(() => import("./pages/PostsTab"));
+const SettingsTab = lazy(() => import("./pages/SettingsTab"));
+const VideoTab = lazy(() => import("./pages/VideoTab"));
+const ChatTab = lazy(() => import("./pages/ChatTab"));
+const BillingTab = lazy(() => import("./pages/BillingTab"));
+const BillingPublic = lazy(() => import("./pages/BillingPublic"));
+const HomeTab = lazy(() => import("./pages/HomeTab"));
+const SubscriptionsTab = lazy(() => import("./pages/SubscriptionsTab"));
+const CrmTab = lazy(() => import("./pages/CrmTab"));
+const CrmUnsubscribe = lazy(() => import("./pages/CrmUnsubscribe"));
+const ResitTab = lazy(() => import("./pages/ResitTab"));
+const BrainTab = lazy(() => import("./pages/BrainTab"));
+const PrestasiTab = lazy(() => import("./pages/PrestasiTab"));
+const RepoTab = lazy(() => import("./pages/RepoTab"));
+const ApiTab = lazy(() => import("./pages/ApiTab"));
 import { setWanshah } from "./lib/cards/library";
 import { approvedPoses } from "./lib/wanshah";
 
@@ -70,6 +74,9 @@ function Unconfigured() {
     </main>
   );
 }
+
+/** What stands in a tab's place while its code arrives (a moment on wifi, a second or two on a slow phone). */
+const Waiting = () => <main className="grid min-h-[40vh] place-items-center text-sm text-muted" aria-busy="true">…</main>;
 
 const SEGMENTS = ["isu", "regulatory", "publication", "reddit", "youtube", "folder", "myra"];
 
@@ -131,8 +138,10 @@ function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, s
         </section>
         {allowed ? (
           <main className="mx-auto max-w-page px-4 pb-20 sm:px-6">
-            <WatchSegment section={seg} watch={watch} setting={["reddit", "youtube", "folder", "myra"].includes(seg) ? settings.sources : settings.watch} saveSetting={save} brand={brand} user={user}
-              onIdea={onIdea ? (r) => onIdea(watchIdea(r, brand)) : undefined} onToast={onToast} />
+            <Suspense fallback={<Waiting />}>
+              <WatchSegment section={seg} watch={watch} setting={["reddit", "youtube", "folder", "myra"].includes(seg) ? settings.sources : settings.watch} saveSetting={save} brand={brand} user={user}
+                onIdea={onIdea ? (r) => onIdea(watchIdea(r, brand)) : undefined} onToast={onToast} />
+            </Suspense>
           </main>
         ) : gateNode}
       </>
@@ -211,9 +220,11 @@ function IsuHeadlines({ trends, onToast, onIdea, onFaq, segTabs }) {
         {trends.error && <p className="my-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{trends.error}</p>}
         <div className="mt-4 flex justify-end"><ViewToggle view={view} setView={setView} /></div>
         <div className="mt-3">
-          {view === "table"
-            ? <TrendTable rows={filtered} loading={trends.loading} onCategory={(c) => setCategory(c)} onIdea={onIdea} onFaq={onFaq} />
-            : <MasonryGrid rows={filtered} loading={trends.loading} onCategory={(c) => setCategory(c)} onIdea={onIdea} onFaq={onFaq} />}
+          <Suspense fallback={<Waiting />}>
+            {view === "table"
+              ? <TrendTable rows={filtered} loading={trends.loading} onCategory={(c) => setCategory(c)} onIdea={onIdea} onFaq={onFaq} />
+              : <MasonryGrid rows={filtered} loading={trends.loading} onCategory={(c) => setCategory(c)} onIdea={onIdea} onFaq={onFaq} />}
+          </Suspense>
         </div>
       </main>
     </>
@@ -381,8 +392,8 @@ export default function App() {
   const gate = (node) => <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6"><Gate user={user} ready={ready} canUpload={canUpload} onToast={push}>{node}</Gate></main>;
 
   // a client's "view online" link: the paper and nothing else, no sign-in, no menu
-  if (pubToken && configured) return <BillingPublic token={pubToken} />;
-  if (unsubToken && configured) return <CrmUnsubscribe token={unsubToken} />;
+  if (pubToken && configured) return <Suspense fallback={<Waiting />}><BillingPublic token={pubToken} /></Suspense>;
+  if (unsubToken && configured) return <Suspense fallback={<Waiting />}><CrmUnsubscribe token={unsubToken} /></Suspense>;
 
   let body;
   if (!configured) body = <Unconfigured />;
@@ -395,8 +406,7 @@ export default function App() {
     onCanvas={(seed) => { setCanvasSeed(seed); go("kanvas"); }} /> : gate(null);
   else if (tab === "wangian") body = allowed ? <FragranceTab user={user} gens={gens} onToast={push}
     onCanvas={(seed) => { setCanvasSeed(seed); go("kanvas"); }} /> : gate(null);
-  else if (tab === "kanvas") body = allowed ? <Suspense fallback={<main className="grid min-h-[40vh] place-items-center text-sm text-muted">Kanvas…</main>}>
-    <CanvasTab user={user} onToast={push} seed={canvasSeed} clearSeed={clearSeed} /></Suspense> : gate(null);
+  else if (tab === "kanvas") body = allowed ? <CanvasTab user={user} onToast={push} seed={canvasSeed} clearSeed={clearSeed} /> : gate(null);
   else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push}
     openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
@@ -425,10 +435,12 @@ export default function App() {
       <Header tab={tab} setTab={go} user={user} sidebar navMode={navMode} onToggleSidebar={toggleNav}
         onGuide={allowed ? () => setGuideOpen(true) : undefined} />
       {allowed && <Guide open={guideOpen} onClose={() => setGuideOpen(false)} settings={settings} brand={brand} />}
-      {body}
+      <Suspense fallback={<Waiting />}>{body}</Suspense>
       {allowed && (
-        <IdeaComposer open={Boolean(ideaFrom)} onClose={() => setIdeaFrom(null)} trend={ideaFrom} user={user} brand={brand}
-          onToast={push} onDone={() => ideas.reload()} />
+        <Suspense fallback={null}>
+          <IdeaComposer open={Boolean(ideaFrom)} onClose={() => setIdeaFrom(null)} trend={ideaFrom} user={user} brand={brand}
+            onToast={push} onDone={() => ideas.reload()} />
+        </Suspense>
       )}
       <footer className="border-t border-line py-8 text-center text-[11px] text-muted">
         {t("Semasa · sumber berita kekal milik penerbit masing-masing · dikemas kini setiap 8 jam · "

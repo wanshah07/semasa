@@ -242,6 +242,20 @@ def test_the_tally_marks_a_fired_post_posted_and_names_a_failed_channel():
     assert all(p["published"][c]["status"] == "sent" for c in p["published"] if c != first)
 
 
+def test_the_tally_never_calls_a_post_posted_when_every_channel_is_switched_off():
+    # Buffer errored on one channel; with all three channels then switched off in settings the tally has no channel
+    # left to judge, and all([]) must not promote a post Buffer still holds
+    store, buf = _live(_post()), FakeBuffer()
+    publisher.run(store, NOW, clients={"buffer": buf})
+    for i, p in enumerate(buf.store.values()):
+        p["status"] = "error" if i == 0 else "sent"
+        p["error"] = {"message": "rejected"} if i == 0 else None
+    off = {**CHANNELS, "buffer": {**CHANNELS["buffer"], "enabled": {"facebook": False, "instagram": False, "threads": False}}}
+    store.tables["semasa_settings"][-1]["value"] = off
+    publisher.run(store, datetime(2026, 9, 25, 1, 0, tzinfo=UTC), clients={"buffer": buf})
+    assert store.tables["semasa_posts"][0]["status"] == "scheduled"
+
+
 def test_studio_scheduled_posts_are_tallied_too():
     rec = {"id": "b" * 24, "status": "scheduled", "dueAt": "2026-09-24T00:00:00+00:00"}
     imported = _post(id="s1", status="scheduled", published={c: rec for c in ("facebook", "instagram", "threads")})

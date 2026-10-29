@@ -65,14 +65,19 @@ async function pdfjs() {
 
 async function pdfItems(file, name) {
   const lib = await pdfjs();
+  // isEvalSupported off: a font program inside a PDF is never run through `new Function` (the pdf.js advisory
+  // GHSA-hq66-cqwq-w95j is exactly that); text extraction does not need it
+  const task = lib.getDocument({ data: new Uint8Array(await readAs(file, "readAsArrayBuffer")), isEvalSupported: false });
   let doc;
   try {
-    doc = await lib.getDocument({ data: new Uint8Array(await readAs(file, "readAsArrayBuffer")) }).promise;
+    doc = await task.promise;
   } catch (e) {
     if (e?.name === "PasswordException") return [{ name, skipped: "PDF dilindungi kata laluan; buka dan simpan tanpa kata laluan / the PDF is password-protected: save a copy without the password" }];
     throw e;
   }
-  try { return await pdfPages(doc, name); } finally { try { await doc.destroy(); } catch { /* already gone */ } }
+  // the loading TASK owns the worker: pdf.js 6 has no destroy() on the document itself, so `doc.destroy()` threw into
+  // its catch and left a worker alive for every PDF read
+  try { return await pdfPages(doc, name); } finally { try { await task.destroy(); } catch { /* already gone */ } }
 }
 
 async function pdfPages(doc, name) {

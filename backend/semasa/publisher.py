@@ -475,7 +475,8 @@ def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settin
             continue
         patch: dict[str, Any] = {"published": published, "errors": errors}
         channels = post_channels(settings, post)
-        if all((published.get(c) or {}).get("status") == "sent" for c in channels):
+        # `all([])` is True: a post whose every channel was since switched off in settings must not read as posted
+        if channels and all((published.get(c) or {}).get("status") == "sent" for c in channels):
             patch["status"] = "posted"
         store.table(db.POSTS).update(patch).eq("id", post["id"]).execute()
 

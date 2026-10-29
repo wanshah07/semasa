@@ -43,6 +43,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SEMASA_SHEET_URL: ${{ secrets.SEMASA_SHEET_URL }}
           SEMASA_SHEET_TOKEN: ${{ secrets.SEMASA_SHEET_TOKEN }}
+          POSTIZ_API_KEY: ${{ secrets.POSTIZ_API_KEY }}
+          POSTIZ_BASE_URL: ${{ secrets.POSTIZ_BASE_URL }}
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
           COMPOSIO_CONSUMER_KEY: ${{ secrets.COMPOSIO_CONSUMER_KEY }}

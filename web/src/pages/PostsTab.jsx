@@ -5,6 +5,7 @@ import { fadeUp } from "../design/motion";
 import { useLang } from "../lib/i18n";
 import { opensAt, publishingOn } from "../lib/publishing";
 import { hardCount, langOf, scan, scanMedia, textOf, platformsOf } from "../lib/compliance";
+import { approvalToken, providerFor } from "../lib/providerApproval";
 import PostEditor from "../components/PostEditor";
 import IdeaComposer from "../components/IdeaComposer";
 import ScheduleView from "../components/ScheduleView";
@@ -66,6 +67,14 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
   const publishing = settings.publishing || {};
   const live = publishingOn(publishing);
   const opens = opensAt(publishing);
+  async function approve(post, draft) {
+    const provider = providerFor({ ...post, ...draft }, settings);
+    if (provider !== "postiz") return draft;
+    const mediaRows = (draft.media_ids || []).map((id) => mediaById[id]).filter(Boolean);
+    const accounts = Object.fromEntries(platformsOf({ ...post, ...draft }).map((c) => [c, settings.channels?.postiz?.[c] || null]));
+    const approval_token = await approvalToken({ ...post, ...draft, provider }, mediaRows, accounts);
+    return { ...draft, provider, approval_token };
+  }
   // Delete from the list (Wan, 26 Oct 2026: "for idea and post, add button delete in table or in card"). The editor had the only one,
   // an icon at its foot. A draft or a rejected post goes at once; an approved one goes back to draft first (the database refuses to
   // delete it otherwise); one the publisher has scheduled or sent, or one already delivered to a channel, cannot be deleted here.
@@ -190,7 +199,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
       {shown.filter((p) => p.id === focusId).map((p) => (
         <Card key={p.id} id="post-editor" className="mt-4 scroll-mt-32 p-4 ring-2 ring-accent/40">
           <PostEditor post={p} posts={posts.rows} mediaById={mediaById} mediaRows={media.rows} log={log.rows} brand={brand} user={user}
-            indoExtra={settings.bahasa?.indo}
+            indoExtra={settings.bahasa?.indo} settings={settings} onApprove={approve}
             onToast={onToast} onChanged={() => { posts.reload(); media.reload(); }} onClose={() => setFocusId(null)} />
         </Card>
       ))}

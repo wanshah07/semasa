@@ -70,10 +70,19 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
 
 const ChartTooltip = RechartsPrimitive.Tooltip;
 
+/* recharts 3 no longer exposes what a Tooltip or Legend hands its `content` element as a props type (its Tooltip props
+   are "read from context"), so the item shapes are named here: what recharts actually passes at runtime. */
+type TooltipItem = { dataKey?: string | number; name?: string | number; value?: number | string; color?: string; payload?: Record<string, unknown> & { fill?: string } };
+type LegendItem = { dataKey?: string | number; value?: string | number; color?: string };
+
 const ChartTooltipContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-    React.ComponentProps<"div"> & { hideLabel?: boolean; hideIndicator?: boolean; indicator?: "line" | "dot" | "dashed"; nameKey?: string; labelKey?: string }
+  React.ComponentProps<"div"> & {
+    active?: boolean; payload?: TooltipItem[]; label?: unknown;
+    labelFormatter?: (label: React.ReactNode, payload: TooltipItem[]) => React.ReactNode;
+    formatter?: (value: TooltipItem["value"], name: TooltipItem["name"], item: TooltipItem, index: number, payload: TooltipItem["payload"]) => React.ReactNode;
+    labelClassName?: string; hideLabel?: boolean; hideIndicator?: boolean; indicator?: "line" | "dot" | "dashed"; nameKey?: string; labelKey?: string;
+  }
 >(({ active, payload, className, indicator = "dot", hideLabel = false, hideIndicator = false, label, labelFormatter, labelClassName, formatter, color, nameKey, labelKey }, ref) => {
   const { config } = useChart();
   const tooltipLabel = React.useMemo(() => {
@@ -134,7 +143,7 @@ const ChartLegend = RechartsPrimitive.Legend;
 
 const ChartLegendContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div"> & Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & { hideIcon?: boolean; nameKey?: string }
+  React.ComponentProps<"div"> & { payload?: LegendItem[]; verticalAlign?: "top" | "middle" | "bottom"; hideIcon?: boolean; nameKey?: string }
 >(({ className, hideIcon = false, payload, verticalAlign = "bottom", nameKey }, ref) => {
   const { config } = useChart();
   if (!payload?.length) return null;

@@ -349,7 +349,11 @@ def main() -> int:
     rows = run(store, settings, timeout=int(os.environ.get("LLM_TIMEOUT") or 30), media=media, github=LLMSettings.load(), cfg=cfg)
     # the probe just measured every robot: decide the order now, so the API tab shows the team the next run will use
     from . import ai_team
-    ai_team.route(store, LLMSettings.load(), cfg)
+    live = ai_team.LIVE if ai_team.live_enabled() else None
+    github = LLMSettings.load()
+    ai_team.route(store, github, cfg, live=live)
+    if (cfg or {}).get("motion"):                      # the motion writer has its own slot and its own decision
+        ai_team.route(store, github, cfg, job="motion", live=live)
     for r in rows:
         print(
             f"{r['name']}: reachable={r.get('reachable')} key_ok={r.get('key_ok')} chat_ok={r.get('chat_ok')} "

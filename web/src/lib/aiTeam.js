@@ -52,7 +52,8 @@ export function teamCards(statusRows, usageRows = [], now = Date.now()) {
 /** What the router decided, from settings.ai_team_state: {chosen, backup, order, skipped, pin, why, at} for a job. */
 export function decisionOf(state, job = "reader") {
   const s = (state || {})[job] || {};
-  return { chosen: s.chosen || null, backup: s.backup || null, order: s.order || [], skipped: s.skipped || [], pin: s.pin || null, why: s.why || "", at: (state || {}).at || "" };
+  return { chosen: s.chosen || null, backup: s.backup || null, order: s.order || [], skipped: s.skipped || [], pin: s.pin || null, why: s.why || "", at: (state || {}).at || "",
+    live: s.live || null };
 }
 
 /** The pin to save for a job, or null for auto. */
@@ -61,11 +62,32 @@ export function pinFor(team, job) {
   return p && p.gateway ? { gateway: p.gateway, model: p.model || "" } : null;
 }
 
-/** settings.ai_team with one job's pin changed; everything else untouched. */
-export function withPin(team, job, pin) {
+/** settings.ai_team with one job's pin changed; everything else untouched. `changed_at` says when, so the page can tell a decision
+    made before the change (the worker has not looked yet) from one made after it (supabase/057 wakes the worker at once). */
+export function withPin(team, job, pin, now = new Date()) {
   const pins = { ...((team || {}).pins || {}) };
   pins[job] = pin && pin.gateway ? { gateway: pin.gateway, model: pin.model || "" } : null;
-  return { ...(team || {}), pins };
+  return { ...(team || {}), pins, changed_at: now.toISOString() };
+}
+
+/** True while a saved pin has not been decided on yet: the last decision is older than the change (and the change is recent,
+    so a worker that never wakes does not leave "testing" on the page for ever). */
+export function decisionPending(team, state, now = Date.now()) {
+  const changed = Date.parse((team || {}).changed_at || "");
+  if (!Number.isFinite(changed) || now - changed > 15 * 60_000) return false;
+  const decided = Date.parse((state || {}).at || "");
+  return !Number.isFinite(decided) || decided < changed;
+}
+
+/** What the live check said about a job's chosen or pinned model, as short words for the card: [{ok, text}]. */
+export function liveLines(live, job) {
+  const out = [];
+  for (const [key, a] of Object.entries(live?.answers || {})) {
+    const [slug, model] = key.split("|");
+    out.push({ ok: !!a.ok, text: `${model} · ${slug}: ${a.ok ? `${a.ms ?? "?"} ms` : (a.error || "no answer")}` });
+  }
+  for (const [slug, model] of Object.entries(live?.found || {})) out.push({ ok: true, text: `${slug}: ${model} (found)`, found: true });
+  return out;
 }
 
 /** The models a robot may be pinned to for a job: what its probe listed, the configured one first; image models for the

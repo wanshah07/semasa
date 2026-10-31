@@ -25,6 +25,13 @@ def no_network(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_live_ai_questions(monkeypatch):
+    """The AI team router asks gateways a live five-token question at decision time (semasa.ai_team.Live). A test that wants it
+    passes its own stand-in to route(); the real one never runs under test."""
+    monkeypatch.setenv("AI_TEAM_LIVE", "0")
+
+
+@pytest.fixture(autouse=True)
 def writer_on(request, monkeypatch):
     """Most motion tests were written for the AI writer's path. The worker composes films itself by default (26 Oct 2026),
     so those tests switch the writer back on; a test marked `composed` runs the default path."""

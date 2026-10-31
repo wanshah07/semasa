@@ -26,11 +26,22 @@ was "400 This model is not supported on the Chat Completions endpoint" (screensh
 settings.ai_team (written by the page) = {"pins": {"reader": {"gateway": slug, "model": name} | null,
                                                     "image_gen": {...} | null, "image_reader": {...} | null}}
 A pin is a preference, not a lock: the system still switches when the pinned robot is unhealthy.
+
+LIVE CHECKS (Wan, 31 Oct 2026: "why I cannot change the model, make sure for auto model search is live"). The probe asks each
+gateway ONE model every 6 hours, so a gateway whose probe model had a bad hour (rootsys answering 502 on kimi-k3.1-pro) was
+written off as down, and a pin to ANOTHER of its models (glm-5.3) was thrown away without ever being tried: Wan changed the
+model and the text writer stayed on Mireld's kimi-k3. So the router now checks live, a five-token question at decision time:
+  * a pinned model is asked itself; if it answers, the pin stands whatever the 6-hourly probe of another model said;
+  * Auto, when a gateway's configured model is not known to work, SEARCHES the gateway's live /models list: the models that
+    answered its recent calls first (fastest first), then the rest of the chat models, up to LIVE_TRIES; the first that
+    answers is used, and the decision says which and why.
+Answers are remembered LIVE_TTL minutes in ai_team_state.live so every worker run does not repeat the questions.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import os
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -46,6 +57,9 @@ STATE_KEY = "ai_team_state"
 USAGE_WINDOW = timedelta(hours=48)
 PROBE_FRESH = timedelta(hours=13)          # the probe runs every 6 h; older than this says nothing about now
 MIN_CALLS = 3                              # fewer measured calls than this: trust the probe, not the average
+LIVE_TTL = timedelta(minutes=10)           # a live answer is trusted this long (runs are frequent; a question is not free)
+LIVE_TRIES = 3                             # models asked per gateway in one search
+LIVE_TIMEOUT = 12                          # seconds a live question may take
 
 # slug (api_status.slug_of) -> the robot. A host nobody named here is a "guest" robot with no mascot of its own.
 ROBOTS: dict[str, dict[str, Any]] = {
@@ -103,12 +117,14 @@ def health(store: Any, now: datetime | None = None) -> dict[str, dict[str, Any]]
                 "error": r.get("error") or "", "calls": 0, "failed": 0, "avg_ms": None, "_ms": [],
             }
         since = (now - USAGE_WINDOW).isoformat()
-        for u in store.table(db.API_USAGE).select("gateway,ms,ok,created_at").gte("created_at", since).execute().data or []:
+        for u in store.table(db.API_USAGE).select("gateway,model,ms,ok,created_at").gte("created_at", since).execute().data or []:
             h = out.setdefault(u["gateway"], {"probe_ok": None, "probe_ms": None, "probe_at": None, "fresh": False,
                                               "error": "", "calls": 0, "failed": 0, "avg_ms": None, "_ms": []})
             h["calls"] += 1
             if u.get("ok"):
                 h["_ms"].append(int(u.get("ms") or 0))
+                if u.get("model") and u.get("area") != "probe":
+                    h.setdefault("_by_model", {}).setdefault(u["model"], []).append(int(u.get("ms") or 0))
             else:
                 h["failed"] += 1
     except Exception as exc:  # noqa: BLE001 - with nothing measured the fixed order stands
@@ -116,6 +132,9 @@ def health(store: Any, now: datetime | None = None) -> dict[str, dict[str, Any]]
     for h in out.values():
         ms = h.pop("_ms")
         h["avg_ms"] = int(sum(ms) / len(ms)) if ms else None
+        # the models that answered this gateway's real calls, fastest first: the live search asks these before the rest
+        by_model = h.pop("_by_model", {})
+        h["models_ok"] = sorted(by_model, key=lambda m: sum(by_model[m]) / len(by_model[m]))
     return out
 
 
@@ -125,6 +144,109 @@ def _parse(s: Any) -> datetime | None:
         return d if d.tzinfo else d.replace(tzinfo=UTC)
     except (TypeError, ValueError):
         return None
+
+
+# --- asking a gateway live ------------------------------------------------------------------------------------------------
+
+class Live:
+    """The two live questions: does THIS model answer a five-token question right now, and which models does the gateway list
+    right now. Tests pass a stand-in; the real one is `LIVE`, used by the runners (`llm_for`) and the API workflow."""
+
+    def chat(self, c: dict[str, Any], model: str, timeout: int = LIVE_TIMEOUT) -> tuple[bool, int | None, str]:
+        from . import api_status
+        gw = {"provider": c["provider"], "base_url": c["base_url"], "key": c["key"], "model": model}
+        ok, ms, _usage, err = api_status._chat(gw, timeout)
+        return ok, ms, err
+
+    def models(self, c: dict[str, Any], timeout: int = LIVE_TIMEOUT) -> list[str]:
+        from . import api_status
+        gw = {"provider": c["provider"], "base_url": c["base_url"], "key": c["key"]}
+        return api_status._models(gw, timeout)[0]
+
+
+LIVE = Live()
+
+
+def live_enabled() -> bool:
+    """On by default; AI_TEAM_LIVE=0 turns the questions off (a run that must not spend a call, or an offline test)."""
+    return os.environ.get("AI_TEAM_LIVE", "1") != "0"
+
+
+def text_models(listed: list[str]) -> list[str]:
+    """The listed models that can write text, in a steady order: the ones that draw, hear or embed are left out."""
+    skip = re.compile(r"embed|whisper|tts|speech|moderation|rerank|transcri", re.I)
+    return [m for m in listed if not IMAGE_MODEL_RE.search(m) and not skip.search(m)]
+
+
+def _remembered(old: dict[str, Any], slug: str, model: str, now: datetime) -> dict[str, Any] | None:
+    r = (old.get("live") or {}).get(f"{slug}|{model}")
+    at = _parse((r or {}).get("at"))
+    return r if r and at and now - at <= LIVE_TTL else None
+
+
+def live_verify(cands: list[dict[str, Any]], hl: dict[str, dict[str, Any]], pin: dict[str, Any] | None, live: Any,
+                old_state: dict[str, Any], now: datetime) -> dict[str, Any]:
+    """Ask the gateways live (see the module doc) and correct `cands` and `hl` with what they said. Returns the record the API
+    tab shows: {"answers": {"slug|model": {ok, ms, error, at}}, "found": {slug: model}, "searched": {slug: [models tried]}}."""
+    answers: dict[str, dict[str, Any]] = {}
+    found: dict[str, str] = {}
+    searched: dict[str, list[str]] = {}
+
+    def ask(c: dict[str, Any], model: str) -> dict[str, Any]:
+        key = f"{c['slug']}|{model}"
+        if key not in answers:
+            r = _remembered(old_state, c["slug"], model, now)
+            if r is None:
+                ok, ms, err = live.chat(c, model)
+                r = {"ok": bool(ok), "ms": ms, "error": "" if ok else str(err or "")[:160], "at": now.isoformat()}
+            answers[key] = r
+        return answers[key]
+
+    def settle(c: dict[str, Any], r: dict[str, Any], note: str = "") -> None:
+        h = hl.setdefault(c["slug"], {"calls": 0, "failed": 0, "avg_ms": None, "models_ok": []})
+        h.update(probe_ok=r["ok"], probe_ms=r["ms"], probe_at=r["at"], fresh=True,
+                 error=("" if r["ok"] else (note + r["error"])))
+
+    pinned = (pin or {}).get("gateway")
+    for c in cands:
+        if c["blocked"]:
+            continue
+        h = hl.get(c["slug"]) or {}
+        down = (h.get("fresh") and h.get("probe_ok") is False) or (
+            h.get("calls", 0) >= MIN_CALLS and h.get("failed", 0) * 2 > h["calls"])
+        if pinned and c["slug"] == pinned and (pin or {}).get("model"):
+            # Wan chose this model: ask it itself, and let the answer outrank the probe of whatever model the probe asked
+            c["model"] = pin["model"]
+            r = ask(c, pin["model"])
+            settle(c, r, f"pinned model {pin['model']} answered ")
+            if r["ok"]:
+                h = hl[c["slug"]]
+                h["calls"], h["failed"] = 0, 0                    # a model that answers now is not "down" for an old failed run
+            continue
+        if not (down or not h.get("fresh")):
+            continue                                              # known to work: no question needed
+        tried: list[str] = []
+        pool = [m for m in [c["model"], *h.get("models_ok", [])] if m]
+        for attempt in range(LIVE_TRIES):
+            if attempt == len(pool):
+                pool += [m for m in text_models(live.models(c)) if m not in pool]          # then the gateway's own live list
+            if attempt >= len(pool):
+                break
+            model = pool[attempt]
+            tried.append(model)
+            r = ask(c, model)
+            if r["ok"]:
+                if model != c["model"]:
+                    found[c["slug"]] = model
+                    c["found"] = model
+                    c["model"] = model
+                settle(c, r)
+                h = hl[c["slug"]]
+                h["calls"], h["failed"] = 0, 0
+                break
+            settle(c, r)
+        searched[c["slug"]] = tried
+    return {"answers": answers, "found": found, "searched": searched}
 
 
 # --- the decision ---------------------------------------------------------------------------------------------------
@@ -179,6 +301,8 @@ def order(cands: list[dict[str, Any]], hl: dict[str, dict[str, Any]], pin: dict[
             else (f"{measured} ms" if measured is not None else "not measured yet")
     pinned = (pin or {}).get("gateway")
     for c in usable:
+        if c.get("found"):
+            c["why"] = f"{c['found']} found by a live search · {c['why']}"
         if pinned and c["slug"] == pinned:
             if (pin or {}).get("model"):
                 c["model"] = pin["model"]
@@ -194,7 +318,7 @@ def order(cands: list[dict[str, Any]], hl: dict[str, dict[str, Any]], pin: dict[
 
 
 def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: datetime | None = None,
-          job: str = "reader") -> LLMSettings:
+          job: str = "reader", live: Any = None) -> LLMSettings:
     """LLMSettings with the fastest healthy text robot as the primary and the next as the backup; the picture reader as
     ai_config decides it. Records the decision in settings.ai_team_state. With nothing measured the configured order
     stands, so a store that cannot be read changes nothing."""
@@ -205,7 +329,15 @@ def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
     pin = pins.get(job)
     if not pin and job == "motion" and cands and cands[0]["source"] == "motion":
         pin = {"gateway": cands[0]["slug"], "model": ""}        # Wan's own motion API goes first while it is healthy
-    ranked = order(cands, health(store, now), pin)
+    hl = health(store, now)
+    now_at = now or datetime.now(UTC)
+    asked: dict[str, Any] = {}
+    if live is not None:
+        try:
+            asked = live_verify(cands, hl, pin, live, _read_state(store), now_at)
+        except Exception as exc:  # noqa: BLE001 - a live question that breaks leaves the measured order as it was
+            log.warning("AI team live check failed (%s); the measured order stands", str(exc)[:160])
+    ranked = order(cands, hl, pin)
     skipped = [c for c in cands if c["blocked"]]
     state: dict[str, Any] = {
         "at": (now or datetime.now(UTC)).isoformat(),
@@ -215,8 +347,14 @@ def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
             "skipped": [{"slug": c["slug"], "robot": c["robot"], "name": c["name"], "model": c["model"], "why": c["blocked"]}
                         for c in skipped],
             "pin": pin,
+            "live": {"found": asked.get("found") or {}, "searched": asked.get("searched") or {},
+                     "answers": {k: {"ok": v["ok"], "ms": v["ms"], "error": v["error"]}
+                                 for k, v in (asked.get("answers") or {}).items()}} if asked else None,
         },
     }
+    if asked:
+        state["live"] = {**{k: v for k, v in (_read_state(store).get("live") or {}).items()
+                            if _parse(v.get("at")) and now_at - _parse(v["at"]) <= LIVE_TTL}, **asked["answers"]}
     if not ranked:
         state[job]["chosen"] = None
         state[job]["why"] = "no text robot has a usable key" + (": " + skipped[0]["blocked"] if skipped else "")
@@ -257,6 +395,14 @@ def route_media(store: Any, s: MediaSettings) -> MediaSettings:
     if s.provider == "replicate" and pin.get("gateway") in ("", None, "replicate"):
         return dataclasses.replace(s, replicate_t2i_model=pin["model"])
     return s
+
+
+def _read_state(store: Any) -> dict[str, Any]:
+    try:
+        old = store.table(db.SETTINGS).select("value").eq("key", STATE_KEY).execute().data or []
+        return (old[0].get("value") or {}) if old else {}
+    except Exception:  # noqa: BLE001 - no record is no memory
+        return {}
 
 
 def _record(store: Any, state: dict[str, Any]) -> None:

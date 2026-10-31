@@ -246,3 +246,119 @@ def test_the_motion_job_asks_the_motion_api_first_then_the_team():
     _probe(store, "kiosapi", chat_ok=False, chat_ms=50, error="402 overage")
     store.tables[db.API_STATUS] = [r for r in store.tables[db.API_STATUS] if not (r["slug"] == "kiosapi" and r["chat_ok"])]
     assert ai_team.route(store, _github(), cfg, NOW, job="motion").base_url == "https://api.mireld.my/v1"
+
+
+class FakeLive:
+    """A stand-in for ai_team.Live: `works` is {(slug, model): ms}; any other model answers 502. Counts every question."""
+
+    def __init__(self, works, listed=None):
+        self.works, self.listed, self.asked, self.listings = works, listed or {}, [], 0
+
+    def chat(self, c, model, timeout=12):
+        self.asked.append((c["slug"], model))
+        ms = self.works.get((c["slug"], model))
+        return (True, ms, "") if ms is not None else (False, 40, "502 Service temporarily unavailable")
+
+    def models(self, c, timeout=12):
+        self.listings += 1
+        return self.listed.get(c["slug"], [])
+
+
+def _pin(store, job, gateway, model=""):
+    store.tables[db.SETTINGS] = [{"key": "ai_team", "value": {"pins": {job: {"gateway": gateway, "model": model}}}}]
+
+
+def test_a_pinned_model_is_asked_itself_and_beats_the_probe_of_another_model():
+    # Wan, 31 Oct 2026: "why I cannot change the model". rootsys's probe model (kimi-k3.1-pro) answered 502, so the router wrote
+    # the whole gateway off and the pin to glm-5.3 on it was thrown away without a single question.
+    store = FakeStore()
+    _probe(store, "rootsys", chat_ok=False, chat_ms=40, error="502 Service temporarily unavailable")
+    _probe(store, "mireld", chat_ms=20510)
+    _pin(store, "reader", "rootsys", "glm-5.3")
+    live = FakeLive({("rootsys", "glm-5.3"): 900})
+    s = ai_team.route(store, _github(), {}, NOW, live=live)
+    assert s.base_url == "https://rootsys.cloud/v1" and s.model == "glm-5.3", "the pinned model is the one that writes"
+    assert live.asked == [("rootsys", "glm-5.3")], "only the pinned model was asked: nothing else was needed"
+    st = _state(store)["reader"]
+    assert st["chosen"]["model"] == "glm-5.3" and st["why"].startswith("pinned") and "900 ms" in st["why"]
+    assert st["live"]["answers"]["rootsys|glm-5.3"]["ok"] is True
+
+
+def test_a_pinned_model_that_does_not_answer_live_is_switched_away_from_and_says_why():
+    store = FakeStore()
+    _probe(store, "rootsys", chat_ms=300)
+    _probe(store, "mireld", chat_ms=2000)
+    _pin(store, "reader", "rootsys", "glm-5.3")
+    live = FakeLive({})
+    s = ai_team.route(store, _github(), {}, NOW, live=live)
+    assert s.base_url == "https://api.mireld.my/v1", "the pinned robot is skipped, the next one writes"
+    why = [o["why"] for o in _state(store)["reader"]["order"] if o["slug"] == "rootsys"][0]
+    assert "pinned model glm-5.3 answered 502" in why and "switched away" in why
+
+
+def test_auto_searches_the_live_model_list_when_the_configured_model_is_down():
+    # Wan: "make sure for auto model search is live"
+    store = FakeStore()
+    _probe(store, "rootsys", chat_ok=False, chat_ms=40, error="502")
+    _probe(store, "mireld", chat_ms=5000)
+    _usage(store, "rootsys", 800, ok=True, n=2)
+    store.tables[db.API_USAGE][0].update(model="glm-5.3", area="scrape")
+    store.tables[db.API_USAGE][1].update(model="glm-5.3", area="scrape")
+    listed = {"rootsys": ["glm-5.3", "text-embedding-3", "gpt-image-2", "kimi-k3.1-pro"]}
+    live = FakeLive({("rootsys", "glm-5.3"): 700}, listed=listed)
+    s = ai_team.route(store, _github(model="kimi-k3.1-pro"), {}, NOW, live=live)
+    assert s.base_url == "https://rootsys.cloud/v1" and s.model == "glm-5.3", "a working model was found live, not given up on"
+    assert live.asked == [("rootsys", "kimi-k3.1-pro"), ("rootsys", "glm-5.3")], "the configured model, then what answered before"
+    st = _state(store)["reader"]
+    assert st["live"]["found"] == {"rootsys": "glm-5.3"} and "found by a live search" in st["why"]
+
+
+def test_auto_goes_to_the_gateways_own_list_when_nothing_has_answered_before_and_skips_pictures_and_embeddings():
+    store = FakeStore()
+    _probe(store, "rootsys", chat_ok=False, chat_ms=40, error="502")
+    _probe(store, "mireld", chat_ms=5000)
+    listed = {"rootsys": ["gpt-image-2", "text-embedding-3", "glm-5.2", "glm-5.3"]}
+    live = FakeLive({("rootsys", "glm-5.3"): 650}, listed=listed)
+    s = ai_team.route(store, _github(model="kimi-k3.1-pro"), {}, NOW, live=live)
+    assert live.listings == 1 and s.model == "glm-5.3"
+    assert [m for _, m in live.asked] == ["kimi-k3.1-pro", "glm-5.2", "glm-5.3"], "never a picture or embedding model, at most 3"
+    assert _state(store)["reader"]["live"]["searched"]["rootsys"] == ["kimi-k3.1-pro", "glm-5.2", "glm-5.3"]
+
+
+def test_a_gateway_known_to_work_is_not_asked_and_an_answer_is_remembered_for_ten_minutes():
+    store = FakeStore()
+    _probe(store, "rootsys", chat_ms=300)
+    _probe(store, "mireld", chat_ms=2000)
+    live = FakeLive({})
+    ai_team.route(store, _github(), {}, NOW, live=live)
+    assert live.asked == [], "a fresh, healthy probe needs no live question"
+    # now rootsys is down: the first decision asks, the second (5 minutes later) reuses the answers
+    store2 = FakeStore()
+    _probe(store2, "rootsys", chat_ok=False, chat_ms=40, error="502")
+    _probe(store2, "mireld", chat_ms=2000)
+    live2 = FakeLive({})
+    ai_team.route(store2, _github(model="kimi-k3.1-pro"), {}, NOW, live=live2)
+    first = len(live2.asked)
+    assert first >= 1
+    ai_team.route(store2, _github(model="kimi-k3.1-pro"), {}, NOW + timedelta(minutes=5), live=live2)
+    assert len(live2.asked) == first, "the same questions are not asked again inside ten minutes"
+    ai_team.route(store2, _github(model="kimi-k3.1-pro"), {}, NOW + timedelta(minutes=11), live=live2)
+    assert len(live2.asked) > first, "after ten minutes they are asked again"
+
+
+def test_a_live_check_that_breaks_never_breaks_the_decision():
+    class Broken(FakeLive):
+        def chat(self, c, model, timeout=12):
+            raise RuntimeError("socket on fire")
+
+    store = FakeStore()
+    _probe(store, "rootsys", chat_ok=False, chat_ms=40, error="502")
+    _probe(store, "mireld", chat_ms=2000)
+    s = ai_team.route(store, _github(), {}, NOW, live=Broken({}))
+    assert s.base_url == "https://api.mireld.my/v1", "the measured order stands"
+
+
+def test_live_questions_are_off_under_test_and_on_otherwise(monkeypatch):
+    assert ai_team.live_enabled() is False
+    monkeypatch.delenv("AI_TEAM_LIVE")
+    assert ai_team.live_enabled() is True

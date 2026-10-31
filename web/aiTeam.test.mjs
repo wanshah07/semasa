@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { decisionOf, modelsFor, pinFor, robotOf, robotsFor, stateOf, teamCards, withPin } from "./src/lib/aiTeam.js";
+import { decisionOf, decisionPending, liveLines, modelsFor, pinFor, robotOf, robotsFor, stateOf, teamCards, withPin } from "./src/lib/aiTeam.js";
 
 const NOW = Date.parse("2026-10-23T06:00:00Z");
 const row = (slug, over = {}) => ({ slug, key_set: true, reachable: true, key_ok: true, chat_ok: true, checked_at: "2026-10-23T05:00:00Z", models: [], ...over });
@@ -33,15 +33,15 @@ assert.equal(cards[2].state, "standby");
 const state = { at: "2026-10-23T05:40:00Z", reader: { chosen: { slug: "mireld", name: "Wanshah 2", model: "m" }, order: [{ slug: "mireld" }], skipped: [{ slug: "kiosapi", why: "paints" }], why: "600 ms" } };
 assert.equal(decisionOf(state).chosen.slug, "mireld");
 assert.equal(decisionOf(state).at, "2026-10-23T05:40:00Z");
-assert.deepEqual(decisionOf(null), { chosen: null, backup: null, order: [], skipped: [], pin: null, why: "", at: "" });
+assert.deepEqual(decisionOf(null), { chosen: null, backup: null, order: [], skipped: [], pin: null, why: "", at: "", live: null });
 assert.deepEqual(decisionOf(state, "image_gen").order, []);
 
 // pins
 assert.equal(pinFor(null, "reader"), null);
 assert.deepEqual(pinFor({ pins: { reader: { gateway: "mireld", model: "x" } } }, "reader"), { gateway: "mireld", model: "x" });
 assert.equal(pinFor({ pins: { reader: { gateway: "" } } }, "reader"), null);
-const team = withPin({ pins: { image_gen: { gateway: "kiosapi", model: "gpt-image-2" } }, other: 1 }, "reader", { gateway: "rootsys" });
-assert.deepEqual(team, { pins: { image_gen: { gateway: "kiosapi", model: "gpt-image-2" }, reader: { gateway: "rootsys", model: "" } }, other: 1 });
+const team = withPin({ pins: { image_gen: { gateway: "kiosapi", model: "gpt-image-2" } }, other: 1 }, "reader", { gateway: "rootsys" }, new Date("2026-10-31T14:00:00Z"));
+assert.deepEqual(team, { pins: { image_gen: { gateway: "kiosapi", model: "gpt-image-2" }, reader: { gateway: "rootsys", model: "" } }, other: 1, changed_at: "2026-10-31T14:00:00.000Z" });
 assert.equal(withPin(team, "reader", null).pins.reader, null);
 assert.deepEqual(withPin(team, "reader", null).pins.image_gen, { gateway: "kiosapi", model: "gpt-image-2" }, "another job's pin is untouched");
 
@@ -59,4 +59,21 @@ assert.deepEqual(robotsFor(three, "motion").map((c) => c.robot), ["W1", "W3", "W
 assert.deepEqual(robotsFor(three, "image_gen").map((c) => c.robot), ["W3"]);
 assert.deepEqual(robotsFor(three, "image_reader").map((c) => c.robot), ["W1", "W3", "W2"]);
 
+
+// Wan, 31 Oct 2026: "why I cannot change the model": a saved pin says when it changed, and the page waits for a decision made after it
+const pinned = withPin({ pins: {} }, "reader", { gateway: "rootsys", model: "glm-5.3" }, new Date("2026-10-31T14:00:00Z"));
+assert.equal(pinned.changed_at, "2026-10-31T14:00:00.000Z");
+assert.deepEqual(pinFor(pinned, "reader"), { gateway: "rootsys", model: "glm-5.3" });
+const at = (m) => Date.parse("2026-10-31T14:00:00Z") + m * 60_000;
+assert.equal(decisionPending(pinned, { at: "2026-10-31T13:55:00Z" }, at(1)), true, "decided before the change: still testing");
+assert.equal(decisionPending(pinned, { at: "2026-10-31T14:01:00Z" }, at(2)), false, "decided after the change: done");
+assert.equal(decisionPending(pinned, {}, at(2)), true, "never decided: testing");
+assert.equal(decisionPending(pinned, { at: "2026-10-31T13:55:00Z" }, at(20)), false, "a worker that never woke does not leave 'testing' for ever");
+assert.equal(decisionPending({ pins: {} }, { at: "x" }, at(1)), false, "no change recorded: nothing pending");
+const lines = liveLines({ answers: { "rootsys|glm-5.3": { ok: true, ms: 910, error: "" }, "rootsys|kimi-k3.1-pro": { ok: false, ms: 40, error: "502 Service temporarily unavailable" } }, found: { rootsys: "glm-5.3" } });
+assert.deepEqual(lines.map((l) => l.ok), [true, false, true]);
+assert.match(lines[0].text, /glm-5\.3 · rootsys: 910 ms/);
+assert.match(lines[1].text, /502/);
+assert.equal(lines[2].found, true);
+assert.deepEqual(liveLines(null), []);
 console.log("aiTeam.test.mjs: ok");

@@ -7,6 +7,9 @@ name: API status
 on:
   schedule:
     - cron: "40 */6 * * *"
+  # a pin saved on the API tab (supabase/057): probe, ask the pinned model live and record the decision at once
+  repository_dispatch:
+    types: [ai_team_changed]
   workflow_dispatch:
 
 concurrency:

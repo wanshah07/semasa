@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import { Pin, PinOff, Zap } from "lucide-react";
+import { Loader2, Pin, PinOff, RefreshCw, Zap } from "lucide-react";
 import Robot3D from "./Robot3D";
 import { useLang } from "../lib/i18n";
 import { stampMYT, timeAgo } from "../lib/format";
-import { DOES, JOBS, decisionOf, fmtMs, modelsFor, pinFor, robotsFor, teamCards, withPin } from "../lib/aiTeam";
+import { DOES, JOBS, decisionOf, decisionPending, fmtMs, liveLines, modelsFor, pinFor, robotsFor, teamCards, withPin } from "../lib/aiTeam";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 import { Select } from "./ui/Field";
@@ -74,14 +74,25 @@ function JobPins({ cards, state, team, save, onToast }) {
   const [busy, setBusy] = useState("");
   const jobs = ["reader", "motion", "image_gen", "image_reader"];
   const canSave = typeof save === "function";
+  const pending = decisionPending(team, state);
+
+  // "Test live": the same pins saved again with a new time, which wakes the worker (supabase/057) to ask the gateways and decide
+  const retest = async () => {
+    if (!canSave) return;
+    setBusy("retest");
+    try {
+      await save("ai_team", withPin(team, "reader", pinFor(team, "reader")));
+      onToast?.(t("Gerbang ditanya sekarang: keputusan baharu dalam kira-kira seminit.", "The gateways are being asked now: the new decision shows in about a minute."), "ok");
+    } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
+  };
 
   const setPin = async (job, pin) => {
     if (!canSave) return;
     setBusy(job);
     try {
       await save("ai_team", withPin(team, job, pin));
-      onToast?.(pin ? t("Disemat: larian seterusnya cuba {r} dahulu (masih bertukar jika ia rosak).", "Pinned: the next run tries {r} first (it still switches if it is down).", { r: pin.gateway })
-        : t("Auto: pengarah pilih robot terpantas yang sihat.", "Auto: the router picks the fastest healthy robot."), "ok");
+      onToast?.(pin ? t("Disemat: {r} diuji terus sebentar lagi, keputusannya muncul di sini dalam kira-kira seminit (masih bertukar jika ia rosak).", "Pinned: {r} is tested live in a moment, the decision shows here in about a minute (it still switches if it is down).", { r: pin.gateway })
+        : t("Auto: model dicari terus pada setiap gerbang, dan pengarah pilih robot terpantas yang sihat.", "Auto: the models are searched live on each gateway and the router picks the fastest healthy robot."), "ok");
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
   };
 
@@ -89,7 +100,11 @@ function JobPins({ cards, state, team, save, onToast }) {
     <Card className="p-4 sm:col-span-2 xl:col-span-3" data-ai-pins>
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-medium">{t("Siapa buat apa", "Who does what")}</h2>
-        <span className="text-[11px] text-muted">{state?.at ? `${t("diputuskan", "decided")} ${stampMYT(state.at)}` : t("belum diputuskan: larian seterusnya menulisnya", "not decided yet: the next run writes it")}</span>
+        <span className="flex items-center gap-2 text-[11px] text-muted" data-ai-decided>
+          {pending && <span className="inline-flex items-center gap-1 text-accent" data-ai-testing><Loader2 size={11} className="animate-spin" />{t("menguji model yang dipilih terus…", "testing your choice live…")}</span>}
+          {state?.at ? `${t("diputuskan", "decided")} ${stampMYT(state.at)}` : t("belum diputuskan: larian seterusnya menulisnya", "not decided yet: the next run writes it")}
+          <Button size="sm" variant="ghost" disabled={!canSave || !!busy} onClick={retest} title={t("Tanya gerbang sekarang dan putuskan semula", "Ask the gateways now and decide again")}><RefreshCw size={11} /> {t("Uji terus", "Test live")}</Button>
+        </span>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {jobs.map((job) => {
@@ -97,7 +112,9 @@ function JobPins({ cards, state, team, save, onToast }) {
           const pin = pinFor(team, job);
           const choices = robotsFor(cards, job);
           const pinnedCard = choices.find((c) => c.slug === pin?.gateway);
-          const models = pinnedCard ? modelsFor(pinnedCard.row, job) : [];
+          const listed = pinnedCard ? modelsFor(pinnedCard.row, job) : [];
+          const models = pin?.model && !listed.includes(pin.model) ? [pin.model, ...listed] : listed;     // a chosen model stays choosable whatever the list says
+          const live = liveLines(d.live, job);
           return (
             <div key={job} className="rounded-tile bg-surface-2/60 p-3" data-ai-job={job}>
               <p className="text-xs font-medium text-muted">{JOBS[job][L]}</p>
@@ -111,6 +128,10 @@ function JobPins({ cards, state, team, save, onToast }) {
                 <ol className="mt-1 text-[11px] text-muted">{d.order.map((o, i) => <li key={o.slug}>{i + 1}. {o.name} · {o.model || t("Tiada", "None")} · {o.why}</li>)}</ol>
               )}
               {(job === "reader" || job === "motion") && d.skipped.map((o) => <p key={o.slug} className="mt-1 text-[11px] text-danger">{o.why}</p>)}
+              {(job === "reader" || job === "motion") && live.length > 0 && (
+                <ul className="mt-1 text-[11px]" data-ai-live>{live.map((l, i) => <li key={i} className={l.ok ? "text-ok" : "text-danger"}>{l.found ? t("dicari terus: ", "found live: ") : t("ujian terus: ", "live test: ")}{l.text}</li>)}</ul>
+              )}
+              {(job === "reader" || job === "motion") && !pin && <p className="mt-1 text-[11px] text-muted">{t("Auto: jika model sesebuah gerbang tidak menjawab, senarai modelnya dicari terus dan yang menjawab dipakai. Semat robot untuk memilih model sendiri.", "Auto: when a gateway's model does not answer, its model list is searched live and one that answers is used. Pin a robot to choose the model yourself.")}</p>}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Select value={pin?.gateway || ""} disabled={!canSave || busy === job}
                   onChange={(v) => setPin(job, v ? { gateway: v, model: "" } : null)}

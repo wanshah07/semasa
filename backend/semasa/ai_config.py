@@ -100,7 +100,7 @@ def llm_for(store: Any, github: LLMSettings | None = None, job: str = "reader") 
     runner can forget the router the way the Routine prompts forgot BUFFER_FULL."""
     from . import ai_team
     github = github or LLMSettings.load()
-    return ai_team.route(store, github, read(store), job=job)
+    return ai_team.route(store, github, read(store), job=job, live=ai_team.LIVE if ai_team.live_enabled() else None)
 
 
 def media_for(store: Any, github: MediaSettings | None = None, cfg: dict[str, dict[str, Any]] | None = None) -> MediaSettings:

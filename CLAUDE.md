@@ -11,3 +11,23 @@ do not ask it again here.
 - Wan's own voice outranks the filter (R-37): the film hooks, the connecting sentences between scenes and the closing line stay.
 - Malaysian Malay only, never Indonesian (`motion.malaysian`, `compliance.json` `indo`).
 - No em dash in anything a person reads. No fabricated number, name, quote or claim.
+
+## Hooks and captions
+
+`.claude/skills/hook-bank/SKILL.md` holds 25 fill-in-the-blank hook shapes in five groups
+(CURIOSITY, TRANSFORM, VULNERABLE, BOLD, RELATABLE). Load it when drafting a caption, a
+carousel or a LinkedIn first line. The `hook` field in `backend/semasa/ideas.py` prompts is
+what it feeds.
+
+Pick the group by how much the post asserts: CURIOSITY and RELATABLE assert nothing,
+BOLD asserts an opinion, TRANSFORM asserts a result, VULNERABLE asserts something about the
+author. The higher the assertion, the higher the evidence bar, and rule 4 above already
+forbids any invented fact.
+
+Two hard limits that come from this repo's own rules, not from the format:
+
+- A hook may not promise a figure, a duration, an approval or a cure. Blanks stay abstract
+  until the source in `rules/` supports a specific.
+- A VULNERABLE hook is first person about a named human. Never render one under a company
+  identity; Semasa's public voice is the company.
+

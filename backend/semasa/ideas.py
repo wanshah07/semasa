@@ -42,6 +42,56 @@ CATEGORY_TO_DOMAIN = {"kosmetik": "kosmetik", "halal": "halal_my", "makanan": "m
 ANY_DAY_DOMAINS = {"kajian_kes"}
 DOMAINS = ["kosmetik", "makanan", "halal_my", "farmaseutikal", "fatwa", "kajian_kes", "sains_kosmetik"]
 ANGLES = list("ABCDEFG")
+
+# The 25 hook shapes (docs/hook-bank, .claude/skills/hook-bank). The writer is given the shapes for
+# the stream's family and told to arrive at its first line through one of them, so a draft leads with a
+# shape that earns attention instead of a restated headline. The shapes are scaffolds only: every rule
+# above still binds, and a blank is never filled with a figure, a duration, an approval or a cure.
+HOOK_FAMILIES = {
+    "curiosity": ["Takde sapa cakap pasal ___ tapi ni sebab aku ___",
+                  "Aku ignore ___ berbulan2. Pastu aku try dan ___",
+                  "Benda pasal ___ yg takde sapa bagitau kau: ___",
+                  "Ni apa sebenarnya jadi bila kau ___",
+                  "Aku wish ada org bagitau aku ___ sebelum aku start ___"],
+    "transform": ["6 bulan lepas aku x boleh ___. Hari ni aku ___",
+                  "Aku dulu fikir ___ mustahil sampai la ___",
+                  "Hari aku stop buat ___, everything changed",
+                  "Before ___ vs After ___: ni apa yg berubah",
+                  "Aku dari ___ ke ___ sbb buat SATU benda ni je"],
+    "vulnerable": ["Aku takut nak share ___ tapi ni kenapa penting",
+                   "Kegagalan terbesar aku dgn ___ ajar aku ___",
+                   "Aku almost give up bila ___ tapi lepas tu ___",
+                   "Takde sapa nampak part mana aku ___",
+                   "Aku struggle ___ bulan dgn ___ sebelum aku figured out ___"],
+    "bold": ["Semua org ckp ___ tapi realitinya ___",
+             "Stop buat ___ kalau kau nak ___",
+             "___ dah mati. Ni apa yg actually works skrg",
+             "Sebab sebenar kenapa kau masih x ___ lagi",
+             "Hot take: ___ x penting mana pun compared to ___"],
+    "relatable": ["POV: kau ___ tapi ___",
+                  "Feeling tu bila kau dah ___ tapi masih ___",
+                  "Aku: esok la aku ___. Also aku: ___",
+                  "Cuba nak ___ sambil ___ be like",
+                  "Org lain: ___. Aku: masih figuring out ___"],
+}
+# Order matters: a brand account opens with recognition and only earns the assertive families later.
+HOOK_ORDER = ("relatable", "curiosity", "bold", "transform")
+# Wang's own voice is first person about a named human, so it never runs on the company account.
+HOOK_FAMILY_OFF_BRAND = {"vulnerable"}
+
+
+def hook_block(family: str | None, stream: str) -> str:
+    """The shapes the writer may lead with. Only the shape is given; the words are the writer's."""
+    if family not in HOOK_FAMILIES:
+        return ""
+    if stream != "linkedin" and family in HOOK_FAMILY_OFF_BRAND:
+        return ""                       # a company does not confess in the first person
+    shapes = "\n".join(f"- {s}" for s in HOOK_FAMILIES[family])
+    return ("\n\nHOOK SHAPE (optional, and the rules above outrank it). If the story fits one of these shapes, "
+            "write the hook as that shape with the blanks filled from the SOURCE. Use at most one. If none fits, "
+            "write your own first line and ignore this block entirely. Never fill a blank with a figure, a duration, "
+            "an approval or a cure the SOURCE does not give, and never keep the underscores in the finished hook.\n"
+            f"Shapes for this post ({family}):\n{shapes}")
 SOURCE_TEXT_MAX = 6000
 
 
@@ -336,7 +386,9 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
     else:
         lines.append("SOURCE: only the headline and summary above could be read "
                      f"({source.get('why') or 'no article'}). Use only the facts they give; leave out any specific they do not.")
-    return system + avoid + writer_block(writer, stream) + pillar_line(writer, stream, idea.get("domain")), "\n\n".join(lines)
+    family = str(idea.get("hook_family") or "").strip().lower() or None
+    return (system + avoid + writer_block(writer, stream) + pillar_line(writer, stream, idea.get("domain"))
+            + hook_block(family, stream), "\n\n".join(lines))
 
 
 def normalise_text(raw: Any, stream: str, lang: str) -> dict[str, dict[str, str]]:

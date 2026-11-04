@@ -23,7 +23,7 @@ const PLAT_LABEL = { instagram: "Instagram", facebook: "Facebook", threads: "Thr
    the position, the pictures, and the same checks the publisher will run — live, as you type.
    Approve is offered only when nothing blocks. Changing an approved post sends it back to
    draft (the database does that, not this page), so what was approved is what goes out. */
-export default function PostEditor({ post, posts = [], mediaById, mediaRows, log, brand, user, indoExtra, onToast, onChanged, onClose }) {
+export default function PostEditor({ post, posts = [], mediaById, mediaRows, log, brand, user, indoExtra, settings, onApprove, onToast, onChanged, onClose }) {
   const { t } = useLang();
   const [text, setText] = useState(post.text || {});
   const [lang, setLang] = useState(post.lang || (post.stream === "linkedin" ? "en" : "bm"));
@@ -31,6 +31,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   const [citation, setCitation] = useState(post.citation || "");
   const [date, setDate] = useState(post.date || "");
   const [slot, setSlot] = useState(post.slot || "");
+  const [provider, setProvider] = useState(post.provider || "");
   const [mediaIds, setMediaIds] = useState(post.media_ids || []);
   const [slideRows, setSlideRows] = useState(toRows(post.slides));
   // the set's background: the last drawing's, else Studio's default for this domain or angle (Wan's own photographs)
@@ -190,7 +191,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
     onChanged();
   }
 
-  const content = () => ({ text, lang, citation, date: date || null, slot: slot || null, media_ids: mediaIds,
+  const content = () => ({ text, lang, citation, date: date || null, slot: slot || null, provider: provider || null, media_ids: mediaIds,
     ...(hasSlides ? { slides } : {}), flags, hard_flags: hard });
   // the decision record rides on the same write, only once 021 has added the column (a row read before it has no key)
   const decided = (action, note = "") => ("decisions" in post ? { decisions: withDecision(post, action, note) } : {});
@@ -387,6 +388,9 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
         <Input value={citation} disabled={locked} onChange={(e) => setCitation(e.target.value)} /></label>
 
       <div className="flex flex-wrap items-end gap-3">
+        <label><Label>{t("Penerbit", "Publishing provider")}</Label><Select value={provider} disabled={locked}
+          onChange={setProvider} options={[["", t("Lalai (Postiz apabila dikonfigurasi)", "Default (Postiz when configured)")],
+            ["postiz", "Postiz"], ...(post.stream === "linkedin" ? [["composio", "Composio (backup)"]] : [["buffer", "Buffer (backup)"]])]} /></label>
         <label><Label>{t("Tarikh (MYT)", "Date (MYT)")}</Label><Input id={`date-${post.id}`} type="date" value={date || ""} disabled={locked} onChange={(e) => setDate(e.target.value)} className="w-44" /></label>
         <label><Label>Slot</Label><Select value={slot && !slots.includes(slot) ? "other" : slot || ""} disabled={locked}
           onChange={(v) => setSlot(v === "other" ? (slot && !slots.includes(slot) ? slot : "10:00") : v)}
@@ -522,7 +526,10 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
           title={clash.length && movedPosition ? t("Slot itu sudah dipegang: pilih slot lain", "That slot is already held: choose another") : ""}
           onClick={() => write(content(), t("Disimpan.", "Saved."))}><Save size={13} /> {t("Simpan", "Save")}</Button>}
         {post.status !== "approved" && !locked && (
-          <Button disabled={busy || blocking > 0 || !date || !slot} onClick={() => write({ ...content(), status: "approved", ...decided("approved") }, t("Diluluskan.", "Approved."))}
+          <Button disabled={busy || blocking > 0 || !date || !slot} onClick={async () => {
+            try { await write({ ...await onApprove(post, { ...content(), status: "approved" }), ...decided("approved") }, t("Diluluskan.", "Approved.")); }
+            catch (e) { onToast(e.message || String(e), "danger"); }
+          }}
             title={blocking ? t("Selesaikan perkara bertanda ■ dahulu", "Resolve the items marked ■ first")
               : !date || !slot ? t("Pilih tarikh dan slot", "Choose a date and slot") : ""}>
             <Check size={13} /> {t("Luluskan", "Approve")}

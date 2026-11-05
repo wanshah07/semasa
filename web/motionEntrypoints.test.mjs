@@ -5,7 +5,7 @@ assert.ok(composer.includes('outputMotion'));
 assert.ok(composer.includes('TABLES.motions).insert'));
 assert.ok(composer.includes('motionFromIdea'));
 const ideas = readFileSync('src/pages/IdeasTab.jsx','utf8');
-assert.ok(ideas.includes('filtered loaded ideas'));
+assert.ok(ideas.includes('Motion video for the ideas shown'));
 assert.ok(ideas.includes('mDefaults, langFor(r)'));
 const post = readFileSync('src/components/PostWorkflow.jsx','utf8');
 assert.ok(post.includes('if (dirty || !post.id)'));

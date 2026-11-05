@@ -271,7 +271,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="ghost" size="sm" onClick={makeMotionAll} disabled={motionBusy === "all"} data-ideas-motion-all
             title={t("Video motion untuk setiap idea yang dipapar dan belum ada video, ikut cara lalai yang disimpan di Video → Motion", "A motion video for every shown idea without one, the default way saved in Video → Motion")}>
-            {motionBusy === "all" ? <Loader2 size={12} className="animate-spin" /> : <Clapperboard size={12} />} {t("Motion idea dimuatkan/ditapis", "Motion for filtered loaded ideas")}</Button>
+            {motionBusy === "all" ? <Loader2 size={12} className="animate-spin" /> : <Clapperboard size={12} />} {t("Video motion untuk idea yang dipapar", "Motion video for the ideas shown")}</Button>
           <Button onClick={() => setComposer(true)}><Plus size={14} /> {t("Idea baharu", "New idea")}</Button>
         </div>
       </motion.div>

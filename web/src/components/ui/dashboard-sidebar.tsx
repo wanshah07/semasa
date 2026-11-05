@@ -371,7 +371,7 @@ export function SidebarNav({
       <WorkspaceSwitcher selected={activeWorkspace} onSelect={onWorkspaceSelect} workspaces={workspaces} plan={plan}
         onCreate={onCreateWorkspace} />
 
-      <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] flex flex-col gap-4 mt-2">
+      <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] flex flex-col gap-2.5 mt-1">
         {groups.map((group, idx) => (
           <div key={idx} className="flex flex-col gap-0.5">
             {group.heading && collapsed && idx > 0 && <div aria-hidden="true" className="mx-auto mb-1 h-px w-6 bg-border" />}

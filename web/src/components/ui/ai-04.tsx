@@ -313,6 +313,7 @@ export default function Ai04({
             onChange={handleTextareaChange}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
+            aria-label={placeholder}
             value={prompt}
           />
 
@@ -320,6 +321,7 @@ export default function Ai04({
             <div className="flex items-end gap-0.5 sm:gap-1">
               <input
                 className="sr-only"
+                aria-label={L.attach}
                 multiple
                 onChange={handleFileSelect}
                 ref={fileInputRef}

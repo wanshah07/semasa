@@ -203,7 +203,7 @@ export default function BrainTab({ user, settings, save, onToast }) {
       <Card className={`mb-6 p-4 transition ${over ? "border-accent ring-2 ring-accent/30" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
         <TextArea rows={4} value={text} onChange={(e) => setText(e.target.value)} onPaste={onPaste} disabled={busy === "drop"}
-          placeholder={t("Tampal teks atau pautan di sini (satu pautan setiap baris). Anda juga boleh tampal tangkap layar, atau seret fail ke kotak ini.",
+          aria-label={t("Teks atau pautan", "Text or links")} placeholder={t("Tampal teks atau pautan di sini (satu pautan setiap baris). Anda juga boleh tampal tangkap layar, atau seret fail ke kotak ini.",
             "Paste text or links here (one link per line). You can also paste a screenshot, or drag files onto this box.")} />
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input ref={fileRef} type="file" multiple accept="image/*,.pdf,.docx,.xlsx,.csv,.tsv,.txt,.md,.json" className="hidden" onChange={(e) => drop(Array.from(e.target.files || []))} />
@@ -214,7 +214,8 @@ export default function BrainTab({ user, settings, save, onToast }) {
             <input type="checkbox" checked={scrape} onChange={(e) => setScrape(e.target.checked)} /> {t("Scrape pautan", "Scrape the links")}
           </label>
           <Input className="min-w-[12rem] flex-1" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)}
-            placeholder={t("Nota anda untuk AI (pilihan): untuk klien mana, kenapa penting…", "Your note for the AI (optional): which client, why it matters…")} />
+            placeholder={t("Nota anda untuk AI (pilihan): untuk klien mana, kenapa penting…", "Your note for the AI (optional): which client, why it matters…")}
+            aria-label={t("Nota untuk AI", "Note for the AI")} />
           <Button disabled={busy === "drop" || (!text.trim())} onClick={() => drop([])}><Brain size={14} /> {busy === "drop" ? t("Menghantar…", "Sending…") : t("Hantar ke Otak", "Send to the brain")}</Button>
         </div>
         <p className="mt-2 text-[11px] text-muted">{t("Pautan Instagram, Facebook, Threads, TikTok, LinkedIn dan X selalunya hanya dipaparkan kepada pelayar yang log masuk: jika mesin tak nampak, anda akan diberitahu dan boleh tampal kapsyen atau muat naik tangkap layar. PDF imbasan: muat naik halamannya sebagai gambar.",
@@ -251,7 +252,7 @@ export default function BrainTab({ user, settings, save, onToast }) {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[14rem] flex-1">
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <Input className="!pl-9" value={filter.q} onChange={(e) => set("q", e.target.value)} placeholder={t("Cari tajuk, isi, soalan, tag…", "Search title, body, question, tags…")} />
+          <Input className="!pl-9" value={filter.q} onChange={(e) => set("q", e.target.value)} placeholder={t("Cari tajuk, isi, soalan, tag…", "Search title, body, question, tags…")} aria-label={t("Cari", "Search")} />
         </div>
         <Select value={filter.category} onChange={(v) => set("category", v)} aria-label={t("Kategori", "Category")} options={[["", t("Semua kategori", "All categories")], ...cats.map((c) => [c, `${c}${sum.byCategory[c] ? ` (${sum.byCategory[c]})` : ""}`])]} />
         <button type="button" aria-pressed={filter.pinned} onClick={() => set("pinned", !filter.pinned)}

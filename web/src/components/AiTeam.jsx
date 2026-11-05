@@ -133,11 +133,11 @@ function JobPins({ cards, state, team, save, onToast }) {
               )}
               {(job === "reader" || job === "motion") && !pin && <p className="mt-1 text-[11px] text-muted">{t("Auto: jika model sesebuah gerbang tidak menjawab, senarai modelnya dicari terus dan yang menjawab dipakai. Semat robot untuk memilih model sendiri.", "Auto: when a gateway's model does not answer, its model list is searched live and one that answers is used. Pin a robot to choose the model yourself.")}</p>}
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Select value={pin?.gateway || ""} disabled={!canSave || busy === job}
+                <Select value={pin?.gateway || ""} disabled={!canSave || busy === job} aria-label={t("Gerbang", "Gateway")}
                   onChange={(v) => setPin(job, v ? { gateway: v, model: "" } : null)}
                   options={[["", t("Auto (terpantas)", "Auto (fastest)")], ...choices.map((c) => [c.slug, `${c.name} · ${c.row?.name || c.slug}`])]} />
                 {pin && (
-                  <Select value={pin.model || ""} disabled={!canSave || busy === job} onChange={(v) => setPin(job, { ...pin, model: v })}
+                  <Select value={pin.model || ""} disabled={!canSave || busy === job} aria-label={t("Model", "Model")} onChange={(v) => setPin(job, { ...pin, model: v })}
                     options={[["", t("model lalai", "default model")], ...models.map((m) => [m, m])]} />
                 )}
                 {pin

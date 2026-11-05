@@ -314,7 +314,7 @@ function MotionPrompt({ settings, save, onToast }) {
         <p className="mt-1 text-[12px] text-muted">{t("Arahan anda sendiri untuk video motion (gaya, rentak, warna, apa yang mesti ada). Kontrak HyperFrames (komposisi HTML, garis masa GSAP, tiada media luar) sudah ada dalam pekerja; tulis di sini apa yang anda mahu di atasnya.",
           "Your own instructions for motion videos (style, pace, colours, what must appear). The HyperFrames contract (HTML composition, GSAP timeline, no outside media) is already in the worker; write here what you want on top of it.")}</p>
       </div>
-      <TextArea rows={6} value={text} onChange={(e) => setText(e.target.value)} maxLength={6000}
+      <TextArea rows={6} value={text} onChange={(e) => setText(e.target.value)} maxLength={6000} aria-label={t("Kemahiran motion", "Motion skill")}
         placeholder={t("Cth: Mula dengan hook 3 patah perkataan, satu nombor besar setiap babak, tutup dengan nama instrumen.", "E.g. Open with a three-word hook, one big number a scene, close on the instrument's name.")} />
       <Button size="sm" onClick={submit} disabled={busy}><Save size={12} /> {t("Simpan", "Save")}</Button>
     </Card>

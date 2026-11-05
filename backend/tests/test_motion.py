@@ -385,5 +385,5 @@ def test_the_script_prompt_speaks_the_films_language_and_both_means_two_lines():
     assert "speaking Bahasa Malaysia" in bm and "speaking English" not in bm
     assert "speaking warm, plain English" in motion.build_system({"stream": "regulab", "seconds": 10, "language": "en"}, "")
     assert motion.voice_mod.voice_for("both", "female") == "ms-MY-YasminNeural"
-    assert motion.voice_mod.voice_for("en", "male") == "en-US-AndrewMultilingualNeural"
+    assert motion.voice_mod.voice_for("en", "male") == "en-SG-WayneNeural"
     assert motion.voice_mod.voice_for("en", "en-GB-RyanNeural") == "en-GB-RyanNeural"

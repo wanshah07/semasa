@@ -199,7 +199,7 @@ export default function MotionLab({ user, onToast }) {
             <Select value={String(seconds)} onChange={setSeconds} options={mode === "teaser" ? [["10", "10s · one persistent gimmick scene"], ["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]] : [["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]]} /></label>
         </div>
         <div className="grid gap-4 md:grid-cols-2" data-motion-voice>
-          <div><Label hint={t("suara Edge neural: Osman / Yasmin (BM), Andrew / Ava (EN)", "VoiceStudio KittenTTS: English preset, configured worker required; BM/both automatically uses native Edge female +15%")}>{t("Suara", "Voice")}</Label>
+          <div><Label hint={t("suara Edge neural: Osman / Yasmin (BM), Wayne / Ava (EN)", "VoiceStudio KittenTTS: English preset, configured worker required; BM/both automatically uses native Edge female +15%")}>{t("Suara", "Voice")}</Label>
             <Segmented value={voice} onChange={setVoice} options={VOICES.map(([k, bm, en]) => [k, L ? en : bm])} /></div>
           <p className="text-[12px] text-muted md:pt-6">{t("Setiap video: Hook, Fakta, Kenapa, Solusi, gambar Unsplash, gaya dipilih ikut kesesuaian. Dengan suara: lebih laju. Tanpa suara: perlahan supaya boleh dibaca.", "Every video: Hook, Fact, Why, Solution, Unsplash photos, styles chosen for fit. With a voice: brisk. Without: slow enough to read.")}</p>
         </div>

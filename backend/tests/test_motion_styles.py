@@ -119,4 +119,4 @@ def test_kitten_without_a_voicestudio_worker_falls_back_to_edge_and_says_so(tmp_
                           runner=_runner(), workdir=tmp_path, now=NOW)
     got = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
     assert got["status"] == "done"
-    assert "en-US-AndrewMultilingualNeural" in got["style_note"] and "KittenTTS is not set up" in got["style_note"]
+    assert "en-SG-WayneNeural" in got["style_note"] and "KittenTTS is not set up" in got["style_note"]

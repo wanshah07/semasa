@@ -1,6 +1,6 @@
 """A voice for the motion videos (Wan, 24 Oct 2026: "add mascot looks like talking, and make sure got voice or audio").
 
-Microsoft Edge's neural voices through `edge-tts`: free, no key, Malay (ms-MY Osman / Yasmin) and English (Andrew / Ava),
+Microsoft Edge's neural voices through `edge-tts`: free, no key, Malay (ms-MY Osman / Yasmin) and English (Wayne / Ava),
 and every word comes back with its time, which is what makes the mascot's mouth move on the words. It runs on the GitHub
 runner (speech.platform.bing.com); from a proxied session it may fail on TLS, so the worker treats a voice that cannot be
 made as "no voice" and still makes the film.
@@ -26,7 +26,8 @@ log = get_logger("semasa.voice")
 
 VOICES = {
     "bm": {"male": "ms-MY-OsmanNeural", "female": "ms-MY-YasminNeural"},
-    "en": {"male": "en-US-AndrewMultilingualNeural", "female": "en-US-AvaMultilingualNeural"},
+    # English male is Edge's stock Singapore voice (Wan, approved 26 Oct 2026, PR #93: Wayne EN, Osman BM)
+    "en": {"male": "en-SG-WayneNeural", "female": "en-US-AvaMultilingualNeural"},
 }
 # a narrated film is brisk (Wan, 25 Oct 2026: "for video with narrator make it faster rate"): English x1.15, Malay x1.25. The
 # speed is applied AFTER the recording, with ffmpeg's pitch-keeping atempo: on GitHub's runner the service answered "No audio

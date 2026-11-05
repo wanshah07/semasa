@@ -4,7 +4,7 @@ import { useLang } from "../../lib/i18n";
 export function Label({ children, hint }) {
   return (
     <span className="mb-1 block text-xs font-medium text-muted">
-      {children}{hint && <span className="ml-1 font-normal opacity-80">· {hint}</span>}
+      {children}{hint && <span className="ml-1 font-normal opacity-90">· {hint}</span>}
     </span>
   );
 }

@@ -12,14 +12,15 @@
   --c-surface-2:  242 248 253;   /* #F2F8FD */
   --c-line:       226 236 246;
   --c-ink:         16  34  47;   /* #10222F */
-  --c-muted:      100 116 139;
+  --c-muted:       91 107 130;   /* #5B6B82: 5.1:1 on surface-2 (100 116 139 read 4.45, under AA) */
   --c-accent:      63 166 238;   /* #3FA6EE */
-  --c-accent-ink: 255 255 255;
+  --c-accent-ink:  16  34  47;   /* ink on the sky-blue fill: white on #3FA6EE read 2.7:1 */
+  --c-accent-text: 23 105 170;   /* #1769AA: the accent as TEXT on bg/surface (5.7:1); fills keep --c-accent */
   --c-warm:       255 194 206;   /* #FFC2CE */
   --c-gold:       201 162  75;   /* #C9A24B */
-  --c-ok:          22 163  74;
-  --c-warn:       217 119   6;
-  --c-danger:     220  38  38;
+  --c-ok:          21 128  61;   /* text-ok/warn/danger are read as 11-12 px text on white and on their own 10% tints: these are the
+  --c-warn:       180  83   9;      darkest shades that still read as green/amber/red and pass 4.5:1 on white (the old 22 163 74 read 2.9) */
+  --c-danger:     185  28  28;
 
   /* type */
   --font-display: "Fraunces", Georgia, serif;
@@ -44,19 +45,21 @@
 
 /* category colours — one place, read by <CategoryBadge> */
 :root {
-  --cat-kosmetik: 236 72 153;
-  --cat-halal: 22 163 74;
-  --cat-makanan: 234 88 12;
-  --cat-farmaseutikal: 124 58 237;
-  --cat-kesihatan: 220 38 38;
-  --cat-ekonomi: 202 138 4;
-  --cat-politik: 37 99 235;
-  --cat-jenayah: 71 85 105;
-  --cat-sosial: 13 148 136;
-  --cat-teknologi: 79 70 229;
-  --cat-hiburan: 219 39 119;
-  --cat-sukan: 5 150 105;
-  --cat-pendidikan: 2 132 199;
-  --cat-alam_sekitar: 101 163 13;
-  --cat-lain: 100 116 139;
+  /* each is drawn as 11 px text on its own 10% tint, so every value is the 700 shade (4.5:1 or better on white);
+     the noir theme lightens them again below */
+  --cat-kosmetik: 190 24 93;
+  --cat-halal: 21 128 61;
+  --cat-makanan: 194 65 12;
+  --cat-farmaseutikal: 109 40 217;
+  --cat-kesihatan: 185 28 28;
+  --cat-ekonomi: 161 98 7;
+  --cat-politik: 29 78 216;
+  --cat-jenayah: 51 65 85;
+  --cat-sosial: 15 118 110;
+  --cat-teknologi: 67 56 202;
+  --cat-hiburan: 190 24 93;
+  --cat-sukan: 4 120 87;
+  --cat-pendidikan: 3 105 161;
+  --cat-alam_sekitar: 77 124 15;
+  --cat-lain: 71 85 105;
 }

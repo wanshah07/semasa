@@ -63,6 +63,9 @@ export default {
       // shadcn's bg-muted is a pale surface, not the grey Semasa writes text in: backgrounds only, so text-muted is
       // exactly what it always was
       backgroundColor: { muted: { DEFAULT: c("surface-2"), foreground: c("muted") } },
+      // the accent as TEXT: sky blue on white read 2.7:1, so `text-accent` reads --c-accent-text (one step darker, 5.7:1) while
+      // bg-accent, border-accent, ring-accent and the hero gradient keep the brand colour
+      textColor: { accent: c("accent-text") },
       keyframes: {
         "accordion-down": { from: { height: "0" }, to: { height: "var(--radix-accordion-content-height)" } },
         "accordion-up": { from: { height: "var(--radix-accordion-content-height)" }, to: { height: "0" } },

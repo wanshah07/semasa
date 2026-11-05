@@ -18,7 +18,7 @@
   --c-accent-text: 23 105 170;   /* #1769AA: the accent as TEXT on bg/surface (5.7:1); fills keep --c-accent */
   --c-warm:       255 194 206;   /* #FFC2CE */
   --c-gold:       201 162  75;   /* #C9A24B */
-  --c-ok:          21 128  61;   /* text-ok/warn/danger are read as 11-12 px text on white and on their own 10% tints: these are the
+  --c-ok:          22 101  52;   /* text-ok/warn/danger are read as 11-12 px text on white and on their own 10% tints: these are the
   --c-warn:       180  83   9;      darkest shades that still read as green/amber/red and pass 4.5:1 on white (the old 22 163 74 read 2.9) */
   --c-danger:     185  28  28;
 
@@ -48,11 +48,11 @@
   /* each is drawn as 11 px text on its own 10% tint, so every value is the 700 shade (4.5:1 or better on white);
      the noir theme lightens them again below */
   --cat-kosmetik: 190 24 93;
-  --cat-halal: 21 128 61;
+  --cat-halal: 22 101 52;
   --cat-makanan: 194 65 12;
   --cat-farmaseutikal: 109 40 217;
   --cat-kesihatan: 185 28 28;
-  --cat-ekonomi: 161 98 7;
+  --cat-ekonomi: 133 77 14;
   --cat-politik: 29 78 216;
   --cat-jenayah: 51 65 85;
   --cat-sosial: 15 118 110;

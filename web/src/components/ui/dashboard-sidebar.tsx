@@ -291,7 +291,7 @@ function NavItem({
              </kbd>
           )}
           {hasBadge && (
-            <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-medium rounded-full bg-primary/10 text-primary">
+            <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-medium rounded-full bg-primary/10 text-accent">
               {item.badge}
             </span>
           )}

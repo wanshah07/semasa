@@ -28,7 +28,7 @@ export function Input({ className = "", ...rest }) {
 
 export function Segmented({ value, onChange, options }) {
   return (
-    <div className="inline-flex rounded-pill bg-surface-2 p-1 text-xs" role="radiogroup">
+    <div className="inline-flex max-w-full flex-wrap rounded-pill bg-surface-2 p-1 text-xs" role="radiogroup">
       {options.map(([v, l]) => (
         <button type="button" key={v} role="radio" aria-checked={value === v} onClick={() => onChange(v)}
           className={`rounded-pill px-3 py-1.5 ${value === v ? "bg-surface text-ink shadow-card" : "text-muted"}`}>{l}</button>

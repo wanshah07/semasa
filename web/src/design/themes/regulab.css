@@ -5,9 +5,10 @@
   --c-surface-2:  244 238 228;
   --c-line:       230 221 206;
   --c-ink:         28  25  23;
-  --c-muted:      120 113 108;
+  --c-muted:      105  98  93;   /* 120 113 108 read 4.3:1 on the paper surface-2 */
   --c-accent:     176 121  42;
-  --c-accent-ink: 255 255 255;
+  --c-accent-ink:  28  25  23;   /* ink on the gold fill: white on it read 3.3:1 */
+  --c-accent-text: 142  95  26;  /* the gold as text, 4.6:1 on the paper */
   --c-warm:       246 206 160;
   --c-gold:       201 162  75;
   --r-card: 12px;

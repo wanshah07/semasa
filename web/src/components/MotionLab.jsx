@@ -167,8 +167,8 @@ export default function MotionLab({ user, onToast }) {
         <label className="block"><Label hint={t("pilihan: Semasa baca halaman itu", "optional: Semasa reads that page")}>{t("Pautan", "Link")}</Label>
           <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" inputMode="url" /></label>
         <MotionAmbient value={ambient} onChange={setAmbient} />
-        <label className="block" data-motion-design><Label>Design variant (preserved)</Label>
-          <select aria-label="Design variant" value={design} onChange={e => setDesign(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
+        <label className="block" data-motion-design><Label>{t("Varian reka bentuk (dikekalkan)", "Design variant (preserved)")}</Label>
+          <select aria-label={t("Varian reka bentuk", "Design variant")} value={design} onChange={e => setDesign(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
             {designOptions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select></label>
         <label className="block" data-motion-recipe><Label>{t("Gaya lampiran", "Attachment style")}</Label>
@@ -194,9 +194,9 @@ export default function MotionLab({ user, onToast }) {
             options={Object.entries(RESOLUTION_CHOICES).map(([k, v]) => [k, w([v.bm, v.en])])} /></label>
           <label className="block"><Label>{t("Mod", "Mode")}</Label>
             <Select value={mode} onChange={v => { setMode(v); setSeconds(v === "teaser" ? 10 : selectedSeconds(seconds, v)); }}
-              options={[["explainer", "Explainer · Hook / Fact / Why / Solution"], ["teaser", "Gimmick / teaser only · not an explainer"]]} /></label>
+              options={[["explainer", t("Penerang · Hook / Fakta / Kenapa / Solusi", "Explainer · Hook / Fact / Why / Solution")], ["teaser", t("Gimik / teaser sahaja · bukan penerang", "Gimmick / teaser only · not an explainer")]]} /></label>
           <label className="block"><Label>{t("Saat", "Seconds")}</Label>
-            <Select value={String(seconds)} onChange={setSeconds} options={mode === "teaser" ? [["10", "10s · one persistent gimmick scene"], ["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]] : [["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]]} /></label>
+            <Select value={String(seconds)} onChange={setSeconds} options={mode === "teaser" ? [["10", t("10s · satu babak gimik kekal", "10s · one persistent gimmick scene")], ["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]] : [["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]]} /></label>
         </div>
         <div className="grid gap-4 md:grid-cols-2" data-motion-voice>
           <div><Label hint={t("suara Edge neural: Osman / Yasmin (BM), Wayne / Ava (EN)", "VoiceStudio KittenTTS: English preset, configured worker required; BM/both automatically uses native Edge female +15%")}>{t("Suara", "Voice")}</Label>

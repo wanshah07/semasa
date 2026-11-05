@@ -229,7 +229,7 @@ export default function CrmTab({ user, settings, save, onToast }) {
       {view === "contacts" ? (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <Input className="max-w-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Cari nama, syarikat, e-mel, tag…", "Search name, company, e-mail, tag…")} />
+            <Input className="max-w-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Cari nama, syarikat, e-mel, tag…", "Search name, company, e-mail, tag…")} aria-label={t("Cari kenalan", "Search contacts")} />
             <div className="flex flex-wrap gap-1">
               <button type="button" onClick={() => setStage("")} className={`rounded-pill px-3 py-1 text-xs ${!stage ? "bg-ink text-surface" : "bg-surface-2 text-muted"}`}>{t("Semua", "All")} ({contactsT.rows.length})</button>
               {STAGES.map((s) => <button type="button" key={s} onClick={() => setStage(s)} className={`rounded-pill px-3 py-1 text-xs ${stage === s ? "bg-ink text-surface" : STAGE_TONE[s]}`}>{w(STAGE_WORDS, s)} ({sum.byStage[s] || 0})</button>)}

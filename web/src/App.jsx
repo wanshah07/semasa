@@ -431,18 +431,20 @@ export default function App() {
     <DesignsContext.Provider value={designsCtx}>
     <div id="top" className="min-h-screen lg:flex">
       <AppSidebar tab={tab} setTab={go} user={user} counts={allowed ? counts : {}} mode={navMode} />
-      <div className="min-w-0 flex-1">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
       <Header tab={tab} setTab={go} user={user} sidebar navMode={navMode} onToggleSidebar={toggleNav}
         onGuide={allowed ? () => setGuideOpen(true) : undefined} />
       {allowed && <Guide open={guideOpen} onClose={() => setGuideOpen(false)} settings={settings} brand={brand} />}
-      <Suspense fallback={<Waiting />}>{body}</Suspense>
+      <div className="flex-1">
+        <Suspense fallback={<Waiting />}>{body}</Suspense>
+      </div>
       {allowed && (
         <Suspense fallback={null}>
           <IdeaComposer open={Boolean(ideaFrom)} onClose={() => setIdeaFrom(null)} trend={ideaFrom} user={user} brand={brand}
             onToast={push} onDone={() => ideas.reload()} />
         </Suspense>
       )}
-      <footer className="border-t border-line py-8 text-center text-[11px] text-muted">
+      <footer className="mt-auto border-t border-line py-8 text-center text-[11px] text-muted">
         {t("Semasa · sumber berita kekal milik penerbit masing-masing · dikemas kini setiap 8 jam · "
           + "isu yang tidak dijadikan idea hilang selepas 48 jam",
         "Semasa · news sources remain the property of their publishers · updated every 8 hours · "

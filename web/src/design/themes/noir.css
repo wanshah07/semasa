@@ -7,7 +7,11 @@
   --c-ink:        237 244 250;
   --c-muted:      148 163 184;
   --c-accent:      72 152 216;   /* #4898D8 */
-  --c-accent-ink: 255 255 255;
+  --c-accent-ink:  11  22  32;   /* the dark bg on the accent fill: white on #4898D8 read 3.1:1 */
+  --c-accent-text: 72 152 216;   /* on the dark surfaces the accent itself reads 5.2:1 */
+  --c-ok:          74 222 128;   /* the light theme's 700 shades vanish on a dark surface: 400s here */
+  --c-warn:       251 146  60;
+  --c-danger:     248 113 113;
   --c-warm:       255 194 206;
   --c-gold:       201 162  75;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
@@ -15,4 +19,20 @@
   --hero-gradient: radial-gradient(1200px 500px at 10% -10%, rgb(var(--c-accent) / 0.22), transparent 60%),
                    radial-gradient(800px 400px at 90% 0%, rgb(var(--c-gold) / 0.16), transparent 60%);
   color-scheme: dark;
+  /* category colours: the 400 shades, read as text on a 10% tint over the dark surface */
+  --cat-kosmetik: 244 114 182;
+  --cat-halal: 74 222 128;
+  --cat-makanan: 251 146 60;
+  --cat-farmaseutikal: 167 139 250;
+  --cat-kesihatan: 248 113 113;
+  --cat-ekonomi: 250 204 21;
+  --cat-politik: 96 165 250;
+  --cat-jenayah: 148 163 184;
+  --cat-sosial: 45 212 191;
+  --cat-teknologi: 129 140 248;
+  --cat-hiburan: 244 114 182;
+  --cat-sukan: 52 211 153;
+  --cat-pendidikan: 56 189 248;
+  --cat-alam_sekitar: 163 230 53;
+  --cat-lain: 148 163 184;
 }

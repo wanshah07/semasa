@@ -291,7 +291,7 @@ function NavItem({
              </kbd>
           )}
           {hasBadge && (
-            <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-medium rounded-full bg-primary/10 text-primary">
+            <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-medium rounded-full bg-primary/10 text-accent">
               {item.badge}
             </span>
           )}
@@ -371,12 +371,12 @@ export function SidebarNav({
       <WorkspaceSwitcher selected={activeWorkspace} onSelect={onWorkspaceSelect} workspaces={workspaces} plan={plan}
         onCreate={onCreateWorkspace} />
 
-      <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] flex flex-col gap-4 mt-2">
+      <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] flex flex-col gap-2.5 mt-1">
         {groups.map((group, idx) => (
           <div key={idx} className="flex flex-col gap-0.5">
             {group.heading && collapsed && idx > 0 && <div aria-hidden="true" className="mx-auto mb-1 h-px w-6 bg-border" />}
             {group.heading && !collapsed && (
-              <span className="px-2.5 mb-1 text-xs font-semibold text-muted-foreground/50">
+              <span className="px-2.5 mb-1 text-xs font-semibold text-muted-foreground/80">
                 {group.heading}
               </span>
             )}

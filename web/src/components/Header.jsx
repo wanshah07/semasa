@@ -26,7 +26,7 @@ export default function Header({ tab, setTab, user, sidebar = false, navMode = "
             </button>
           );
         })()}
-        <a href="#top" className={`flex items-center gap-2 ${sidebar ? "lg:hidden" : ""}`}>
+        <a href="#top" aria-label="Semasa" className={`flex items-center gap-2 ${sidebar ? "lg:hidden" : ""}`}>
           <span className="grid h-8 w-8 place-items-center rounded-tile bg-ink text-bg">
             <span className="h-3 w-3 rounded-full border-2 border-accent" />
           </span>

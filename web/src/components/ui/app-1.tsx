@@ -98,7 +98,7 @@ export function App1({ stats, series, projects, activity, words, aside, formatVa
                 </defs>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
                 <XAxis dataKey="week" tickLine={false} axisLine={false} tickMargin={8} />
-                <YAxis tickLine={false} axisLine={false} width={44} tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} />
+                <YAxis tickLine={false} axisLine={false} width={44} allowDecimals={false} tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} />
                 <ChartTooltip content={<ChartTooltipContent formatter={(v, name) => (
                   <div className="flex flex-1 items-center justify-between gap-3">
                     <span className="text-muted">{config[String(name)]?.label || String(name)}</span>

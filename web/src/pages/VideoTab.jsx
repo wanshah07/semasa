@@ -141,7 +141,8 @@ function AddVideo({ user, brand, onToast, onAdded }) {
         <summary className="cursor-pointer font-medium">{t("Tampal transkrip sendiri (jika YouTube menolak Semasa)", "Paste the transcript yourself (if YouTube refuses Semasa)")}</summary>
         <p className="mt-2 text-[12px] text-muted">{t("Di YouTube: buka huraian → Tunjukkan transkrip → pilih semua → salin, dan tampal di sini dengan masanya sekali.",
           "On YouTube: open the description → Show transcript → select all → copy, and paste it here with its times.")}</p>
-        <TextArea rows={5} value={paste} onChange={(e) => setPaste(e.target.value)} className="mt-2" placeholder={"0:00\nAssalamualaikum…\n0:05\n…"} />
+        <TextArea rows={5} value={paste} onChange={(e) => setPaste(e.target.value)} className="mt-2" placeholder={"0:00\nAssalamualaikum…\n0:05\n…"}
+          aria-label={t("Transkrip", "Transcript")} />
       </details>
       <div className="flex justify-end">
         <Button type="submit" disabled={busy || !valid}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Clapperboard size={14} />} {t("Baca video", "Read the video")}</Button>

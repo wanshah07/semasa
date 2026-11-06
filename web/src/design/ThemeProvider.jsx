@@ -3,34 +3,45 @@ import "./tokens.css";
 import "./themes/facerinna.css";
 import "./themes/noir.css";
 import "./themes/regulab.css";
+import { AUTO, THEME_IDS, readPick, resolveTheme, writePick } from "./themeChoice";
 
-/* Add a theme: write themes/<name>.css, import it above, add its name here. That is the whole procedure. */
+/* Add a theme: write themes/<name>.css, import it above, add its name here and to THEME_IDS in themeChoice.js and the
+   inline script in index.html. */
 export const THEMES = [
   { id: "facerinna", label: "Facerinna" },
   { id: "noir", label: "Noir" },
   { id: "regulab", label: "Regulab" },
 ];
 
-const KEY = "semasa.theme";
-const ThemeCtx = createContext({ theme: "facerinna", setTheme: () => {} });
+const QUERY = "(prefers-color-scheme: dark)";
+const ThemeCtx = createContext({ theme: "facerinna", pick: AUTO, setTheme: () => {} });
 
-function readSaved() {
-  try {
-    const t = localStorage.getItem(KEY);
-    return THEMES.some((x) => x.id === t) ? t : "facerinna";
-  } catch {
-    return "facerinna";
-  }
-}
+const store = () => (typeof localStorage === "undefined" ? null : localStorage);
+const deviceDark = () => typeof matchMedia === "function" && matchMedia(QUERY).matches;
 
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(readSaved);
+  const [pick, setPick] = useState(() => (store() ? readPick(store()) : AUTO));
+  const [dark, setDark] = useState(deviceDark);
+
+  // follow the device live: turning dark mode on in the phone's settings changes the app without a reload
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    try { localStorage.setItem(KEY, theme); } catch { /* private mode: fine */ }
-  }, [theme]);
-  const setTheme = useCallback((t) => setThemeState(THEMES.some((x) => x.id === t) ? t : "facerinna"), []);
-  const value = useMemo(() => ({ theme, setTheme }), [theme, setTheme]);
+    if (typeof matchMedia !== "function") return undefined;
+    const mq = matchMedia(QUERY);
+    const on = (e) => setDark(e.matches);
+    setDark(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+
+  const theme = resolveTheme(pick, dark);
+  useEffect(() => { document.documentElement.setAttribute("data-theme", theme); }, [theme]);
+
+  const setTheme = useCallback((t) => {
+    const next = THEME_IDS.includes(t) ? t : AUTO;
+    setPick(next);
+    if (store()) writePick(store(), next);
+  }, []);
+  const value = useMemo(() => ({ theme, pick, setTheme }), [theme, pick, setTheme]);
   return <ThemeCtx.Provider value={value}>{children}</ThemeCtx.Provider>;
 }
 

@@ -316,7 +316,8 @@ def writer_block(writer: dict[str, Any] | None, stream: str) -> str:
 
 
 def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str, Any],
-                  avoid: str = "", writer: dict[str, Any] | None = None) -> tuple[str, str]:
+                  avoid: str = "", writer: dict[str, Any] | None = None,
+                  bank: hook_bank.Bank | None = None) -> tuple[str, str]:
     stream = idea.get("stream") or "regulab"
     if stream == "linkedin":
         angles = (brand.get("linkedin") or {}).get("angles") or {}
@@ -347,7 +348,7 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
                      f"({source.get('why') or 'no article'}). Use only the facts they give; leave out any specific they do not.")
     family = str(idea.get("hook_family") or "").strip().lower() or None
     return (system + avoid + writer_block(writer, stream) + pillar_line(writer, stream, idea.get("domain"))
-            + hook_block(family, stream), "\n\n".join(lines))
+            + hook_block(family, stream, bank), "\n\n".join(lines))
 
 
 def normalise_text(raw: Any, stream: str, lang: str) -> dict[str, dict[str, str]]:
@@ -502,7 +503,9 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     stream = idea.get("stream") or "regulab"
     lang = "en" if stream == "linkedin" else "bm"
     source = faq_source(idea) or stored_source(idea) or read_source(idea.get("source_url"))
-    system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra), writer=settings.get("writer"))
+    bank = hook_bank.pick(store, idea, settings)        # a hook style made from screenshots, or None: the built-in 25
+    system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra), writer=settings.get("writer"),
+                                 bank=bank)
     fmt = format_of(idea)
     want_slides = fmt == "carousel"
     want_poster = fmt == "poster"
@@ -531,16 +534,17 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         raise IdeaError(f"the writer judged this headline no fit for {stream}: {str(out.get('why_not') or '')[:300]}. "
                         "Add a note saying what you want from it, then Cuba lagi.")
     family = str(idea.get("hook_family") or "").strip().lower() or None
-    shape = hook_bank.declared(out, stream, family)
+    shape = hook_bank.declared(out, stream, family, bank)
     if shape is None:
-        # every post leads with one of the 25 hook shapes (Wan, 6 Nov 2026): one more ask, then the idea fails with a reason
-        again = llm.chat_json(system, user + hook_bank.asks_again(stream, family),
+        # every post leads with one of the hook shapes (Wan, 6 Nov 2026): one more ask, then the idea fails with a reason
+        again = llm.chat_json(system, user + hook_bank.asks_again(stream, family, bank),
                               max_tokens=5000 if (want_slides or want_poster) else 3500)
-        if again and again.get("fit") is not False and hook_bank.declared(again, stream, family):
+        if again and again.get("fit") is not False and hook_bank.declared(again, stream, family, bank):
             out = again
-            shape = hook_bank.declared(out, stream, family)
+            shape = hook_bank.declared(out, stream, family, bank)
     if shape is None:
-        raise IdeaError("the writer did not build the hook on one of the 25 hook shapes (asked twice): press Cuba lagi")
+        which = f"the shapes of the hook style {bank.name!r}" if bank else "the 25 hook shapes"
+        raise IdeaError(f"the writer did not build the hook on one of {which} (asked twice): press Cuba lagi")
     text = normalise_text(out.get("text"), stream, lang)
     if not text.get(lang):
         raise IdeaError(f"the writer returned no {lang.upper()} caption")
@@ -595,9 +599,10 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         jobs.append(poster_job(idea, post, post_id, poster, bg="post_image" if jobs or kept else "none", chosen=chosen))
     if jobs:
         store.table(db.MEDIA).insert(jobs).execute()
+    caption = (text.get(lang) or {}).get("linkedin" if stream == "linkedin" else "instagram", "")
     brief = {"source": {k: source.get(k) for k in ("ok", "why", "url", "title", "image")},
-             "hook_shape": shape, "hook_in_caption": hook_bank.lead_matches(post["hook"], (text.get(lang) or {}).get(
-                 "linkedin" if stream == "linkedin" else "instagram", "")),
+             "hook_shape": shape, **({"hook_style": bank.id} if bank else {}),
+             "hook_in_caption": hook_bank.lead_matches(post["hook"], caption),
              "post_id": post_id, "media_jobs": len(jobs), "written_at": datetime.now(UTC).isoformat(),
              "model": getattr(llm, "last_model", "") or llm.s.model}
     if look_of(idea) != "classic":
@@ -677,8 +682,15 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
         system = LINKEDIN_SYSTEM % "; ".join(f"{k} = {v}" for k, v in sorted(angles.items()))
     else:
         system = REGULAB_SYSTEM % DOMAINS
+    idea = {}
+    if post.get("idea_id"):
+        try:
+            idea = (store.table(db.IDEAS).select("id,brief").eq("id", post["idea_id"]).limit(1).execute().data or [{}])[0]
+        except Exception:  # noqa: BLE001 - the revision still works, with the default style
+            idea = {}
+    bank = hook_bank.pick(store, idea, settings)
     system += (antislop.prompt_block() + compliance.avoid_line(indo_extra) + writer_block(settings.get("writer"), stream)
-               + hook_bank.block(None, stream))
+               + hook_bank.block(None, stream, bank))
     plat = "linkedin" if stream == "linkedin" else "instagram"
     caption = ((post.get("text") or {}).get(lang) or {}).get(plat) or ""
     user = REVISE_ASK % (str(post.get("revise_note") or "").strip()[:800], post.get("hook") or "", post.get("citation") or "",
@@ -686,12 +698,13 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
     out = llm.chat_json(system, user, max_tokens=3500)
     if not out:
         raise IdeaError("the writer did not answer (see the run log); ask again")
-    if hook_bank.declared(out, stream) is None:
-        again = llm.chat_json(system, user + hook_bank.asks_again(stream), max_tokens=3500)
-        if again and hook_bank.declared(again, stream):
+    if hook_bank.declared(out, stream, None, bank) is None:
+        again = llm.chat_json(system, user + hook_bank.asks_again(stream, None, bank), max_tokens=3500)
+        if again and hook_bank.declared(again, stream, None, bank):
             out = again
         else:
-            raise IdeaError("the writer did not build the hook on one of the 25 hook shapes (asked twice); the post is unchanged")
+            which = f"the shapes of the hook style {bank.name!r}" if bank else "the 25 hook shapes"
+            raise IdeaError(f"the writer did not build the hook on one of {which} (asked twice); the post is unchanged")
     text = normalise_text(out.get("text"), stream, lang)
     if not text.get(lang):
         raise IdeaError(f"the writer returned no {lang.upper()} caption; the post is unchanged")

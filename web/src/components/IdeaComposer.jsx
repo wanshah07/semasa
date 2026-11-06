@@ -3,7 +3,8 @@ import { ImagePlus, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { CATEGORY_TO_DOMAIN, STREAMS } from "../lib/brand";
 import { useLang } from "../lib/i18n";
-import { useSettings } from "../lib/hooks";
+import { useSettings, useTable } from "../lib/hooks";
+import { pickOptions, withHookStyle } from "../lib/hookStyles";
 import { LANGUAGES, motionDefaults, motionFromIdea } from "../lib/motion";
 import { IMAGE_TYPES, refusal, removeReference, uploadReference } from "../lib/storage";
 import LookPicker from "./LookPicker";
@@ -38,6 +39,8 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   const [lookBlocked, setLookBlocked] = useState(null);
   const [domain, setDomain] = useState("");
   const [angle, setAngle] = useState("");
+  const [hookStyle, setHookStyle] = useState("");     // "" = follow the default chosen in Tetapan; "builtin" or a style id
+  const hookStyles = useTable(TABLES.hookStyles, { enabled: open, order: "created_at", limit: 50, realtime: false, everyMs: 120_000 });
   const [note, setNote] = useState("");
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
@@ -53,7 +56,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     setStream(position?.stream || (trend?.watch ? trend.stream || "regulab" : "regulab")); setMedia("image");
     setOutputMotion(false); setMotionLanguage(motionDefaults(motionSettings).language);
     setFormat(trend?.watch ? "carousel" : "post"); setLook(null);
-    setAngle(trend?.watch ? trend.angle || "" : ""); setNote(""); setRefs([]);
+    setAngle(trend?.watch ? trend.angle || "" : ""); setNote(""); setRefs([]); setHookStyle("");
     setDomain(trend ? (trend.faq || trend.watch ? trend.domain : CATEGORY_TO_DOMAIN[trend.category]) || ""
       : position?.domain || "");
     setTitle(trend?.title || ""); setUrl(trend?.url || "");
@@ -122,6 +125,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     const brief = {};
     if (drawn) brief.look = look;                       // always said, "classic" included: an explicit choice beats the default design
     if (format === "poster") brief.format = "poster";
+    if (hookStyle) Object.assign(brief, withHookStyle({}, hookStyle));   // the style this idea's hook is built on (backend hook_bank.pick)
     // the worker keeps this slot while it is still ahead and free (backend ideas.asked_position), else the next free
     if (position?.date && position?.slot && stream === position.stream) brief.position = { date: position.date, slot: position.slot };
     if (Object.keys(brief).length) row.brief = brief;
@@ -173,6 +177,8 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
               <Select value={domain} onChange={setDomain} options={[["", t("Semasa pilih", "Semasa chooses")], ...domains]} className="w-full" /></label>
           : <label className="block"><Label hint={t("kosong = Semasa pilih", "empty = Semasa chooses")}>{t("Sudut", "Angle")}</Label>
               <Select value={angle} onChange={setAngle} options={[["", t("Semasa pilih", "Semasa chooses")], ...angles.map(([k, v]) => [k, `${k} · ${v}`])]} className="w-full" /></label>}
+        <label className="block" data-hook-pick><Label hint={t("setiap post bermula dengan salah satu bentuknya", "every post opens on one of its shapes")}>{t("Gaya hook", "Hook style")}</Label>
+          <Select value={hookStyle} onChange={setHookStyle} options={pickOptions(hookStyles.rows || [], t, motionSettings?.hook_style)} className="w-full" /></label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={outputMotion} onChange={e => setOutputMotion(e.target.checked)} />Motion only · no post/image draft</label>
         {outputMotion && <Select value={motionLanguage} onChange={setMotionLanguage} options={LANGUAGES} />}
         <div><Label>Media</Label><Segmented value={media} onChange={setMedia} options={[["image", t("Imej", "Image")], ["video", "Video"], ["none", t("Tiada", "None")]]} /></div>

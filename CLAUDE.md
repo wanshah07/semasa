@@ -32,6 +32,10 @@ VULNERABLE is withheld on the company stream by `OFF_BRAND`: first-person confes
 Wan, never to ws.regulab. `hook_family` on an idea narrows the shapes to one family; it no longer
 decides whether a shape is used.
 
+A **hook style** made from screenshots (`ops/HOOK-STYLES.md`, `hook_styles.py`, `semasa_hook_styles`) replaces the built-in 25 and
+their default guidance while it is selected (the default in `settings.hook_style`, or `brief.hook_style` on one idea): the same
+requirement applies to ITS numbered shapes, and its instruction can never lift a rule (`hook_styles.LIFT` drops the sentences that try).
+
 Pick the group by how much the post asserts: CURIOSITY and RELATABLE assert nothing,
 BOLD asserts an opinion, TRANSFORM asserts a result, VULNERABLE asserts something about the
 author. The higher the assertion, the higher the evidence bar, and rule 4 above already

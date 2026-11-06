@@ -354,6 +354,13 @@ def main() -> int:
     ai_team.route(store, github, cfg, live=live)
     if (cfg or {}).get("motion"):                      # the motion writer has its own slot and its own decision
         ai_team.route(store, github, cfg, job="motion", live=live)
+    try:                                    # Wan's ChatGPT login for Motion pictures: refresh it, record that it works
+        from . import chatgpt_login
+        login = chatgpt_login.Login(store)
+        if login.connected():
+            print(login.check())
+    except Exception as exc:  # noqa: BLE001 - the check is a courtesy; the API tab's other rows must still be written
+        log.info("ChatGPT login not checked: %s", str(exc)[:120])
     for r in rows:
         print(
             f"{r['name']}: reachable={r.get('reachable')} key_ok={r.get('key_ok')} chat_ok={r.get('chat_ok')} "

@@ -3,10 +3,23 @@
 Motion draws one picture per scene of a film's storyboard through Wan's ChatGPT login, in the film's own style. A scene whose
 picture cannot be drawn keeps its Unsplash photo (or none): the film is always made.
 
-## Connect (once)
+## Connect (once): a link and a one-time code (059)
+1. Motion tab, **ChatGPT pictures for every scene**, press **Log in with ChatGPT**.
+2. About a minute later the card shows a code and the link `auth.openai.com/codex/device`. Open the link, sign in with ChatGPT and
+   type the code. The card copies it for you.
+3. The card links itself when you approve; nothing to paste. The code lives 15 minutes; **New code** replaces it, **Cancel**
+   stops. After 15 minutes the card says it expired and offers a new one.
+
+How: the page calls `semasa_chatgpt_device_start()`, the database wakes the **ChatGPT login** workflow (repository_dispatch
+`chatgpt_login`, the same Vault token as 042 and 057), `semasa.chatgpt_device` gets the code from OpenAI (the Codex CLI's own
+`codex login --device-auth` endpoints), writes it on the row, polls every 5 s and, on approval, saves the tokens in the row 058
+keeps. A browser page cannot call auth.openai.com, which is why a run does it. The page never sees a token or the private device
+id. The first minute is the workflow starting; a request nobody picks up for 2.5 minutes shows "The worker has not started".
+
+### Or paste auth.json (058)
 1. On your own computer run `codex login` and choose **Sign in with ChatGPT**.
 2. Open `~/.codex/auth.json` and copy all of it.
-3. Motion tab, **ChatGPT pictures for every scene**, paste it, **Connect ChatGPT**.
+3. Same card, **Or paste auth.json**, paste it, **Connect ChatGPT**.
 
 `supabase/058_chatgpt_login.sql` must have been run once. The tokens are kept in `semasa_chatgpt_auth`, which no page policy can
 read; the page only ever sees a status. Only the worker (service role) reads them. An API key sitting beside the tokens in the

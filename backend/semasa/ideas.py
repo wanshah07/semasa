@@ -26,7 +26,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from . import antislop, compliance, db, my_designs, slides
+from . import antislop, compliance, db, hook_bank, my_designs, slides
 from .fetch import get
 from .llm import LLM
 from .log import get_logger
@@ -43,55 +43,12 @@ ANY_DAY_DOMAINS = {"kajian_kes"}
 DOMAINS = ["kosmetik", "makanan", "halal_my", "farmaseutikal", "fatwa", "kajian_kes", "sains_kosmetik"]
 ANGLES = list("ABCDEFG")
 
-# The 25 hook shapes (docs/hook-bank, .claude/skills/hook-bank). The writer is given the shapes for
-# the stream's family and told to arrive at its first line through one of them, so a draft leads with a
-# shape that earns attention instead of a restated headline. The shapes are scaffolds only: every rule
-# above still binds, and a blank is never filled with a figure, a duration, an approval or a cure.
-HOOK_FAMILIES = {
-    "curiosity": ["Takde sapa cakap pasal ___ tapi ni sebab aku ___",
-                  "Aku ignore ___ berbulan2. Pastu aku try dan ___",
-                  "Benda pasal ___ yg takde sapa bagitau kau: ___",
-                  "Ni apa sebenarnya jadi bila kau ___",
-                  "Aku wish ada org bagitau aku ___ sebelum aku start ___"],
-    "transform": ["6 bulan lepas aku x boleh ___. Hari ni aku ___",
-                  "Aku dulu fikir ___ mustahil sampai la ___",
-                  "Hari aku stop buat ___, everything changed",
-                  "Before ___ vs After ___: ni apa yg berubah",
-                  "Aku dari ___ ke ___ sbb buat SATU benda ni je"],
-    "vulnerable": ["Aku takut nak share ___ tapi ni kenapa penting",
-                   "Kegagalan terbesar aku dgn ___ ajar aku ___",
-                   "Aku almost give up bila ___ tapi lepas tu ___",
-                   "Takde sapa nampak part mana aku ___",
-                   "Aku struggle ___ bulan dgn ___ sebelum aku figured out ___"],
-    "bold": ["Semua org ckp ___ tapi realitinya ___",
-             "Stop buat ___ kalau kau nak ___",
-             "___ dah mati. Ni apa yg actually works skrg",
-             "Sebab sebenar kenapa kau masih x ___ lagi",
-             "Hot take: ___ x penting mana pun compared to ___"],
-    "relatable": ["POV: kau ___ tapi ___",
-                  "Feeling tu bila kau dah ___ tapi masih ___",
-                  "Aku: esok la aku ___. Also aku: ___",
-                  "Cuba nak ___ sambil ___ be like",
-                  "Org lain: ___. Aku: masih figuring out ___"],
-}
-# Order matters: a brand account opens with recognition and only earns the assertive families later.
-HOOK_ORDER = ("relatable", "curiosity", "bold", "transform")
-# Wang's own voice is first person about a named human, so it never runs on the company account.
-HOOK_FAMILY_OFF_BRAND = {"vulnerable"}
-
-
-def hook_block(family: str | None, stream: str) -> str:
-    """The shapes the writer may lead with. Only the shape is given; the words are the writer's."""
-    if family not in HOOK_FAMILIES:
-        return ""
-    if stream != "linkedin" and family in HOOK_FAMILY_OFF_BRAND:
-        return ""                       # a company does not confess in the first person
-    shapes = "\n".join(f"- {s}" for s in HOOK_FAMILIES[family])
-    return ("\n\nHOOK SHAPE (optional, and the rules above outrank it). If the story fits one of these shapes, "
-            "write the hook as that shape with the blanks filled from the SOURCE. Use at most one. If none fits, "
-            "write your own first line and ignore this block entirely. Never fill a blank with a figure, a duration, "
-            "an approval or a cure the SOURCE does not give, and never keep the underscores in the finished hook.\n"
-            f"Shapes for this post ({family}):\n{shapes}")
+# The 25 hook shapes (docs/hook-bank, .claude/skills/hook-bank) live in hook_bank.py and are REQUIRED: the first line of every
+# post is built on one of them (Wan, 6 Nov 2026: "make sure 25 hook tu wajib dalam ayat"). Re-exported for the tests and the page.
+HOOK_FAMILIES = hook_bank.FAMILIES
+HOOK_ORDER = hook_bank.ORDER
+HOOK_FAMILY_OFF_BRAND = hook_bank.OFF_BRAND
+hook_block = hook_bank.block
 SOURCE_TEXT_MAX = 6000
 
 
@@ -220,7 +177,8 @@ Rules. Breaking any of them blocks the post, so follow them exactly:
    fact out.
 
 Answer with ONE JSON object:
-{"fit": true or false, "why_not": "", "hook": "the first line", "domain": one of %s,
+{"fit": true or false, "why_not": "", "hook": "the first line", "hook_shape": the number of the hook shape it is built on,
+ "domain": one of %s,
  "citation": "...", "text": {"bm": {"instagram": "...", "facebook": "...", "threads": "..."},
                              "en": {"instagram": "...", "facebook": "...", "threads": "..."}},
  "visual_prompt": "an English description of one illustrative picture: no words, no logos, no real people",
@@ -245,7 +203,8 @@ Rules. Breaking any blocks the post:
 Angles: %s
 
 Answer with ONE JSON object:
-{"fit": true or false, "why_not": "", "hook": "the first line", "angle": one letter from the list,
+{"fit": true or false, "why_not": "", "hook": "the first line", "hook_shape": the number of the hook shape it is built on,
+ "angle": one letter from the list,
  "citation": "...", "text": {"en": {"linkedin": "..."}, "bm": {"linkedin": "the same post in Malaysian Malay"}},
  "visual_prompt": "an English description of one illustrative picture: no words, no logos, no real people",
  "alt": "short alt text in English"}
@@ -571,6 +530,17 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     if out.get("fit") is False:
         raise IdeaError(f"the writer judged this headline no fit for {stream}: {str(out.get('why_not') or '')[:300]}. "
                         "Add a note saying what you want from it, then Cuba lagi.")
+    family = str(idea.get("hook_family") or "").strip().lower() or None
+    shape = hook_bank.declared(out, stream, family)
+    if shape is None:
+        # every post leads with one of the 25 hook shapes (Wan, 6 Nov 2026): one more ask, then the idea fails with a reason
+        again = llm.chat_json(system, user + hook_bank.asks_again(stream, family),
+                              max_tokens=5000 if (want_slides or want_poster) else 3500)
+        if again and again.get("fit") is not False and hook_bank.declared(again, stream, family):
+            out = again
+            shape = hook_bank.declared(out, stream, family)
+    if shape is None:
+        raise IdeaError("the writer did not build the hook on one of the 25 hook shapes (asked twice): press Cuba lagi")
     text = normalise_text(out.get("text"), stream, lang)
     if not text.get(lang):
         raise IdeaError(f"the writer returned no {lang.upper()} caption")
@@ -626,6 +596,8 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     if jobs:
         store.table(db.MEDIA).insert(jobs).execute()
     brief = {"source": {k: source.get(k) for k in ("ok", "why", "url", "title", "image")},
+             "hook_shape": shape, "hook_in_caption": hook_bank.lead_matches(post["hook"], (text.get(lang) or {}).get(
+                 "linkedin" if stream == "linkedin" else "instagram", "")),
              "post_id": post_id, "media_jobs": len(jobs), "written_at": datetime.now(UTC).isoformat(),
              "model": getattr(llm, "last_model", "") or llm.s.model}
     if look_of(idea) != "classic":
@@ -705,7 +677,8 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
         system = LINKEDIN_SYSTEM % "; ".join(f"{k} = {v}" for k, v in sorted(angles.items()))
     else:
         system = REGULAB_SYSTEM % DOMAINS
-    system += antislop.prompt_block() + compliance.avoid_line(indo_extra) + writer_block(settings.get("writer"), stream)
+    system += (antislop.prompt_block() + compliance.avoid_line(indo_extra) + writer_block(settings.get("writer"), stream)
+               + hook_bank.block(None, stream))
     plat = "linkedin" if stream == "linkedin" else "instagram"
     caption = ((post.get("text") or {}).get(lang) or {}).get(plat) or ""
     user = REVISE_ASK % (str(post.get("revise_note") or "").strip()[:800], post.get("hook") or "", post.get("citation") or "",
@@ -713,6 +686,12 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
     out = llm.chat_json(system, user, max_tokens=3500)
     if not out:
         raise IdeaError("the writer did not answer (see the run log); ask again")
+    if hook_bank.declared(out, stream) is None:
+        again = llm.chat_json(system, user + hook_bank.asks_again(stream), max_tokens=3500)
+        if again and hook_bank.declared(again, stream):
+            out = again
+        else:
+            raise IdeaError("the writer did not build the hook on one of the 25 hook shapes (asked twice); the post is unchanged")
     text = normalise_text(out.get("text"), stream, lang)
     if not text.get(lang):
         raise IdeaError(f"the writer returned no {lang.upper()} caption; the post is unchanged")

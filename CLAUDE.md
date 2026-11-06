@@ -15,14 +15,22 @@ do not ask it again here.
 ## Hooks and captions
 
 `.claude/skills/hook-bank/SKILL.md` holds 25 fill-in-the-blank hook shapes in five groups
-(CURIOSITY, TRANSFORM, VULNERABLE, BOLD, RELATABLE). `backend/semasa/ideas.py` carries the
-same 25 in `HOOK_FAMILIES` and hands the family set to the writer through `hook_block()`
-when an idea names `hook_family`. If the bank changes, both copies change: the markdown is the
+(CURIOSITY, TRANSFORM, VULNERABLE, BOLD, RELATABLE). `backend/semasa/hook_bank.py` carries the
+same 25 (re-exported by `ideas.py` as `HOOK_FAMILIES`) and **every post's first line must be built
+on one of them** (Wan, 6 Nov 2026: "25 hook tu wajib dalam ayat"). The writer is always given the
+shapes its stream may use, numbered 1 to 25 in series order, and must say which in `"hook_shape"`.
+An answer without a usable number (or with blanks left in the hook) is asked for once more; a second
+miss fails the idea with a reason, so no post leaves without a shape. The same holds for "revise
+with a note". The number and whether the caption opens with the hook are kept on the idea's `brief`
+(`hook_shape`, `hook_in_caption`). If the bank changes, both copies change: the markdown is the
 reference, the constant is what the writer actually sees.
 
-The writer is told the shapes are optional and the rules above outrank them, and it is told to
-drop the underscores. VULNERABLE is withheld on the company stream by
-`HOOK_FAMILY_OFF_BRAND`: first-person confession belongs to Wan, never to ws.regulab.
+The shapes are Malaysian Malay. A Malay post uses a shape as written; an English post (LinkedIn)
+translates it faithfully. The rules above still outrank the shapes, and when no shape can be filled
+without inventing a fact the writer takes a RELATABLE or CURIOSITY shape, which assert nothing.
+VULNERABLE is withheld on the company stream by `OFF_BRAND`: first-person confession belongs to
+Wan, never to ws.regulab. `hook_family` on an idea narrows the shapes to one family; it no longer
+decides whether a shape is used.
 
 Pick the group by how much the post asserts: CURIOSITY and RELATABLE assert nothing,
 BOLD asserts an opinion, TRANSFORM asserts a result, VULNERABLE asserts something about the

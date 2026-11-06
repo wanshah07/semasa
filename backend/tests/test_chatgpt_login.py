@@ -332,7 +332,7 @@ def test_no_login_and_switched_off_draw_nothing(tmp_path):
 def test_a_scene_that_fails_keeps_the_others_and_says_so(tmp_path):
     lg = FakeLogin(CFG, errors=[None, cl.ChatGPTError("picture came back empty"), None, None])
     drawn, note = draw(tmp_path, lg)
-    assert list(drawn) == ["s1", "s3", "s4"] and "3 of 4" in note and "s2: picture came back empty" in note
+    assert list(drawn) == ["s1", "s3", "s4"] and "3 of 4" in note and "s2 (ChatGPT): picture came back empty" in note
 
 
 def test_a_limit_or_a_refused_login_stops_the_rest_of_the_film(tmp_path):
@@ -359,7 +359,7 @@ def test_a_picture_that_is_not_a_picture_is_a_note_not_a_crash(tmp_path):
         def draw(self, prompt, *, size, model):
             return b"not an image at all" * 200
     drawn, note = draw(tmp_path, Junk(CFG), scenes=SCENES[:1])
-    assert drawn == {} and "s1:" in note
+    assert drawn == {} and "s1 (ChatGPT):" in note
 
 
 def test_pin_replaces_the_scene_photo_and_drops_the_pair_partner():

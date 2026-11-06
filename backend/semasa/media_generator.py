@@ -650,7 +650,7 @@ def main() -> int:
     ai_config.record_github(store, "media", github_llm, github_media)   # shown under Settings → AI settings
     s = ai_config.media_for(store, github_media, cfg)
     api_status.attach(store, "media")
-    llm = LLM(ai_config.llm_for(store, github_llm))
+    llm = LLM(ai_config.llm_for(store, github_llm, job="ideas"))    # the ideas job may use Gemini (gemini_keys.py)
     from . import faq, ideas, trial
     trial_on = trial.start(store, llm, "media")         # the page's "Try Mireld for one run": Mireld is asked first
 

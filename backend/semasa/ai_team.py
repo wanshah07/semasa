@@ -68,6 +68,8 @@ ROBOTS: dict[str, dict[str, Any]] = {
     # KiosAPI serves chat models too (Wan's reader slot runs gpt-5.6-sol there), so it may write text; what it may NOT do is
     # answer a chat question with an image model, which cannot_write_text() refuses by the model's name.
     "kiosapi": {"robot": "W3", "name": "Wanshah 3", "tone": "kios", "does": ["read", "write", "read_image", "make_image"]},
+    # Gemini (Wan, 6 Nov 2026): several keys picked automatically (gemini_keys.py); only the jobs Wan allows ever see it
+    "gemini": {"robot": "W4", "name": "Wanshah 4", "tone": "guest", "does": ["read", "write", "read_image", "make_image"]},
 }
 # a model that draws, not one that talks: never a text writer whatever slot it was typed into
 IMAGE_MODEL_RE = re.compile(r"image|dall-?e|flux|stable-?diffusion|sdxl|imagen|seedream|sora|veo|kling|wan2|hunyuan", re.I)
@@ -161,7 +163,7 @@ class Live:
     def models(self, c: dict[str, Any], timeout: int = LIVE_TIMEOUT) -> list[str]:
         from . import api_status
         gw = {"provider": c["provider"], "base_url": c["base_url"], "key": c["key"]}
-        return api_status._models(gw, timeout)[0]
+        return [m.removeprefix("models/") for m in api_status._models(gw, timeout)[0]]     # Gemini lists "models/gemini-..."
 
 
 LIVE = Live()
@@ -325,11 +327,21 @@ def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
     from . import ai_config
     base = ai_config.llm_settings(github, cfg)                 # the page's picture reader and vision model, as before
     cands = candidates(github, cfg, job)
+    gem_seed: dict[str, Any] | None = None
+    try:                          # Gemini joins the team for the jobs Wan allows, with the key it picks (gemini_keys.py)
+        from . import gemini_keys
+        gem, gem_seed = gemini_keys.candidate(store, job, live, now or datetime.now(UTC))
+        if gem and not any(c["slug"] == "gemini" for c in cands):
+            cands.append(gem)
+    except Exception as exc:  # noqa: BLE001 - Gemini is an extra: the team without it is the team as it was
+        log.info("Gemini not considered (%s)", str(exc)[:120])
     pins = read_pins(store)
     pin = pins.get(job)
     if not pin and job == "motion" and cands and cands[0]["source"] == "motion":
         pin = {"gateway": cands[0]["slug"], "model": ""}        # Wan's own motion API goes first while it is healthy
     hl = health(store, now)
+    if gem_seed:                              # the key's own check already answered: the live question is not asked twice
+        hl["gemini"] = {**hl.get("gemini", {"calls": 0, "failed": 0, "avg_ms": None, "models_ok": []}), **gem_seed}
     now_at = now or datetime.now(UTC)
     asked: dict[str, Any] = {}
     if live is not None:

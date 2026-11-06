@@ -6,6 +6,7 @@ import { useSettings, useTable } from "../lib/hooks";
 import { timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
 import { LANGUAGES, RESOLUTIONS, RESOLUTION_CHOICES, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults } from "../lib/motion";
+import ChatGptLogin from "./ChatGptLogin";
 import MotionAmbient from "./MotionAmbient";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
 import MotionEffectLibrary from "./MotionEffectLibrary";
@@ -159,6 +160,8 @@ export default function MotionLab({ user, onToast }) {
       </div>
       {missing && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual belum ada: jalankan supabase/043_motion.sql sekali.", "The table is not there yet: run supabase/043_motion.sql once.")}</p>}
       {motions.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{motions.error}</p>}
+
+      <ChatGptLogin onToast={onToast} />
 
       <Card className="space-y-4 p-5">
         <label className="block"><Label hint={t("idea, hook, atau 3 perkara yang video perlu sampaikan", "the idea, the hook, or the 3 things the video must say")}>{t("Idea", "Idea")}</Label>

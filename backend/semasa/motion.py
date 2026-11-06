@@ -47,6 +47,7 @@ from . import (
     motion_assets,
     motion_auto,
     motion_captions,
+    motion_gpt_images,
     motion_layout,
     motion_probe,
     motion_styles,
@@ -1158,7 +1159,7 @@ class _ComposedByWorker(Exception):
 def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any], *, runner: Any = subprocess.run,
             workdir: Path | None = None, now: datetime | None = None, gh: GitHub | None = None,
             picture_provider: Any = None, speak: Any = None, photo_search: Any = None, photo_get: Any = None,
-            own_get: Any = None) -> bool:
+            own_get: Any = None, gpt_login: Any = None) -> bool:
     now = now or datetime.now(UTC)
     folder = (workdir or Path(tempfile.mkdtemp(prefix="motion-"))) / str(row["id"])[:8]
     antislop.begin(antislop.load(store))
@@ -1222,6 +1223,16 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                                           get=photo_get)
         photos, photo_note = [*own, *photos], " · ".join(x for x in (own_note, photo_note) if x)
         motion_auto.assign_photos(scenes, photos)
+        # a picture drawn for each scene from the storyboard and the styles, through Wan's ChatGPT login (Wan, 5 Nov 2026);
+        # a scene it does not draw keeps the photo above, and a film without the login is made exactly as before
+        drawn, gpt_note = motion_gpt_images.draw_scenes(
+            store, row, scenes, folder, design=motion_styles.design(row), palette=PALETTE["regulab"],
+            ambient=str((row.get("options") or {}).get("ambient") or "mint"), resolution=size_of(row), style_name=style[0],
+            login=gpt_login)
+        if drawn:
+            motion_gpt_images.pin(scenes, drawn)
+            photos = [*drawn.values(), *motion_gpt_images.used(scenes, photos)]
+        photo_note = " · ".join(x for x in (photo_note, gpt_note) if x)
         auto = None
         if motion_assets.is_auto(row):
             auto = motion_layout.styled(row, scenes, voiced=voiced, lang=lang, stream=row.get("stream") or "regulab",

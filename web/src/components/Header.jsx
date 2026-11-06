@@ -8,7 +8,8 @@ import Button from "./ui/Button";
 /* `sidebar`: the sidebar is showing on a wide screen (App.jsx), so the tabs and the logo live there and the header
    keeps only the language, the theme and the switch between a pinned sidebar and one that hides itself (`navMode`). */
 export default function Header({ tab, setTab, user, sidebar = false, navMode = "auto", onToggleSidebar, onGuide }) {
-  const { theme, setTheme } = useTheme();
+  const { theme, pick, setTheme } = useTheme();
+  const shown = THEMES.find((x) => x.id === theme)?.label;
   const { lang, setLang, t } = useLang();
   const tabs = tabsOf(t);
   return (
@@ -57,9 +58,13 @@ export default function Header({ tab, setTab, user, sidebar = false, navMode = "
           </div>
           <label className="flex items-center gap-1.5 rounded-pill border border-line bg-surface px-2.5 py-1.5 text-xs text-muted">
             <Palette size={13} className="hidden xl:block" />
-            <select value={theme} onChange={(e) => setTheme(e.target.value)}
+            <select value={pick} onChange={(e) => setTheme(e.target.value)} data-theme-pick
+              title={pick === "auto" ? t(`Ikut peranti: ${shown}`, `Follows the device: ${shown}`) : shown}
               className="bg-transparent text-ink outline-none" aria-label={t("Tema", "Theme")}>
-              {THEMES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+              {/* the device's light or dark setting decides until a theme is picked; this option hands it back. The theme it
+                  resolves to goes in the title, not the option: a longer option widened the select past a 390 px phone. */}
+              <option value="auto">{t("Ikut peranti", "Follow device")}</option>
+              {THEMES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
             </select>
           </label>
           {onGuide && (

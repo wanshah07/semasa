@@ -67,6 +67,7 @@ COMMANDS = [
     ("kesihatan", "Masalah watchdog / open problems"),
     ("bil", "Invois belum dibayar / unpaid invoices"),
     ("idea", "Teks atau link jadi idea / text or a link as an idea"),
+    ("menu", "Menu butang / the button menu"),
     ("help", "Senarai arahan / the commands"),
 ]
 HELP = ("Semasa di Telegram 🤖\n\n" + "\n".join(f"/{c} — {d}" for c, d in COMMANDS) +
@@ -523,6 +524,12 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
         bot.send(chat, f"💡 Idea {STREAM_WORDS[stream]} dihantar: {idea.get('source_title') or ''}\n"
                        "Semasa akan baca dan tulis draf; anda akan terima draf di sini untuk diluluskan.", reply_to=mid)
         return "idea made"
+    if kind == "menu":
+        if rest in tt.NEEDS_TOPIC:
+            bot.send(chat, tt.ask_topic(store, rest))
+            return f"menu asks {rest}"
+        fake = {**row, "payload": {"message": {"message_id": mid, "chat": {"id": chat}, "text": f"/{rest}"}}}
+        return handle_message(store, bot, link, fake, lambda: None, datetime.now(UTC))
     if kind == "pin":
         bot.drop_buttons(chat, mid)
         bot.send(chat, tt.set_pin(store, rest), reply_to=mid)
@@ -552,7 +559,14 @@ def handle_message(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, An
     msg = row["payload"].get("message") or {}
     chat, mid = int(msg["chat"]["id"]), int(msg.get("message_id") or 0)
     text = str(msg.get("text") or msg.get("caption") or "").strip()
+    asked = tt.take_pending(store, text)                               # a topic the menu asked for
+    if asked:
+        text = asked
     cmd = text.split()[0].split("@")[0].lower().lstrip("/") if text.startswith("/") else ""
+    if cmd in ("start", "menu"):
+        text_, buttons = tt.menu_reply(link, SITE)
+        bot.send(chat, text_, buttons)
+        return "menu"
     if not cmd and text:
         fixed = tt.take_correction(store, link["user_id"], text)        # after 👎: this message is the correction
         if fixed:
@@ -593,7 +607,7 @@ def handle_message(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, An
             log.info("report file not sent (%s)", str(exc)[:120])
         tt.log_turn(store, link["user_id"], text, body)
         return "report"
-    if cmd in ("start", "help", "mula", "bantuan"):
+    if cmd in ("help", "mula", "bantuan"):
         bot.send(chat, HELP)
         return "help"
     if cmd in ("draf", "drafts", "draft"):

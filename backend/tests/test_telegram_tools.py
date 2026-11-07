@@ -156,3 +156,25 @@ def test_the_command_menu_follows_the_code(monkeypatch):
     assert len(cmds) == 1 and [c["command"] for c in cmds[0]["commands"]][:3] == ["robot", "draf", "poster"]
     tb.ensure_webhook(st, bot, NOW)
     assert len([1 for m, _ in bot.calls if m == "setMyCommands"]) == 1, "unchanged: not sent again"
+
+
+def test_start_shows_the_menu_by_segment_and_a_topic_button_asks_then_uses_the_next_message():
+    st, bot = team_store(**{tb.INBOX: [msg(1, "/start")]}), Bot()
+    run(st, bot)
+    m = bot.sent()[0]
+    datas = [b.get("callback_data") or b.get("url") for row in m["reply_markup"]["inline_keyboard"] for b in row]
+    assert "menu:draf" in datas and "menu:poster" in datas and "menu:robot" in datas and datas[-1].endswith("/")
+    st.tables[tb.INBOX].append(tap(2, "menu:poster"))
+    run(st, bot)
+    assert bot.sent()[-1]["text"].startswith("🎨 Topik")
+    st.tables[tb.INBOX].append(msg(3, "amaran label krim pemutih"))
+    run(st, bot)
+    idea = st.tables[db.IDEAS][0]
+    assert idea["brief"]["format"] == "poster" and idea["source_title"] == "amaran label krim pemutih"
+    assert not tt.chat_state(st).get("pending"), "asked once"
+
+
+def test_a_menu_button_that_needs_no_words_runs_at_once():
+    st, bot = team_store(**{tb.INBOX: [tap(1, "menu:status")]}), Bot()
+    run(st, bot)
+    assert bot.sent()[0]["text"].startswith("Semasa sekarang")

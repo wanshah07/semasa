@@ -293,6 +293,14 @@ def check_telegram(store: Any, now: datetime) -> list[dict[str, str]]:
         out.append(problem("Telegram", "the bot is not connected to Semasa's webhook",
                            "Run the Telegram workflow (Actions → Telegram → Run workflow); check TELEGRAM_BOT_TOKEN."))
     err_at = state.get("last_error_at")
+    # Telegram keeps the LAST error in getWebhookInfo for ever, even once deliveries work again (7 Nov 2026: a 404 from 11:06
+    # was still reported at 21:18 after ten messages had been answered). A message handled after the error is proof it cleared.
+    if state.get("last_error") and isinstance(err_at, (int, float)):
+        after = datetime.fromtimestamp(err_at, UTC).isoformat()
+        healed = _rows(store, "semasa_telegram_inbox", lambda q: q.select("id").eq("status", "done").gt("created_at", after)
+                       .limit(1))
+        if healed:
+            err_at = None
     redeploy = ("Re-run the \"Deploy functions\" workflow (Actions → Deploy functions → Run workflow): it sets the function's "
                 "TELEGRAM_WEBHOOK_SECRET from the current bot token and deploys semasa-telegram.")
     if state.get("last_error") and isinstance(err_at, (int, float)) and now.timestamp() - err_at < LOOKBACK_HOURS * 3600:

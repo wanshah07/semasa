@@ -47,6 +47,19 @@ CLIENT_VERSION = "0.99.0"
 # not supported when using Codex with a ChatGPT account"). The account's list, when it answers, always comes first.
 FALLBACK_MODELS = ("gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.2", "gpt-5.1-codex", "gpt-5.1", "gpt-5-codex")
 MODEL_TRIES = 4
+# ChatGPT's own list carries entries that are not writing models (7 Nov 2026: the first live pick was "codex-auto-review", a code
+# reviewer, and it was then saved as the model for storyboards and chat). Only a gpt-* slug is a candidate, and never a reviewer.
+NOT_A_WRITER = re.compile(r"review|embed|moderation|realtime|audio|tts|transcribe|image|search", re.I)
+
+
+def writer_candidates(listed: list[str]) -> list[str]:
+    """The models worth asking, best first: the known fallbacks the account lists, then its other gpt-* writers, then the rest of
+    the fallbacks (the list may be stale or unreadable). A slug that is not a writer is never asked."""
+    ok = [m for m in listed if isinstance(m, str) and m.startswith("gpt-") and not NOT_A_WRITER.search(m)]
+    out = [m for m in FALLBACK_MODELS if m in ok] + [m for m in ok if m not in FALLBACK_MODELS] + list(FALLBACK_MODELS)
+    return list(dict.fromkeys(out))
+
+
 MODEL_REFUSED = re.compile(r"model_not_found|model is not supported|not supported when using codex|unknown model|"
                            r"does not exist|invalid model", re.I)
 
@@ -361,7 +374,7 @@ class Login:
             first = exc
         listed = self.models()
         tried = [model]
-        for m in [*listed, *FALLBACK_MODELS]:
+        for m in writer_candidates(listed):
             if m in tried or len(tried) > MODEL_TRIES:
                 continue
             tried.append(m)

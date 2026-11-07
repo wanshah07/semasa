@@ -46,7 +46,11 @@ create trigger semasa_motions_storyboard_guard before update on public.semasa_mo
 -- 2 · the page: approve (optionally with edits) or ask for a new storyboard -------------------------------------------------
 -- p_action: 'approve' | 'rewrite'. p_storyboard: the edited storyboard, or null to approve the saved one unchanged. The worker
 -- checks an edited storyboard again before it uses it (counts, word limits, banned words), so an edit cannot slip a rule.
-create or replace function public.semasa_motion_storyboard_decide(p_motion uuid, p_action text, p_storyboard jsonb default null)
+-- p_written: the storyboard's written_at (epoch seconds) as Wan was shown it. A decision made on an older storyboard (an old
+-- Telegram message, a page not yet refreshed after "Tulis semula") is refused with 'changed', never applied to the newer one.
+drop function if exists public.semasa_motion_storyboard_decide(uuid, text, jsonb);
+create or replace function public.semasa_motion_storyboard_decide(p_motion uuid, p_action text, p_storyboard jsonb default null,
+                                                                  p_written bigint default null)
 returns text
 language plpgsql security definer set search_path = public as $$
 declare
@@ -61,6 +65,10 @@ begin
   end if;
   if m.status <> 'review' then
     return 'status:' || m.status;
+  end if;
+  if p_written is null or m.storyboard is null or (m.storyboard ->> 'written_at') is null
+     or floor(extract(epoch from (m.storyboard ->> 'written_at')::timestamptz))::bigint <> p_written then
+    return 'changed';
   end if;
   if p_action = 'approve' then
     if coalesce(p_storyboard, m.storyboard) is null then
@@ -83,11 +91,13 @@ begin
   end if;
   return 'bad_action';
 end $$;
-revoke execute on function public.semasa_motion_storyboard_decide(uuid, text, jsonb) from public, anon;
-grant execute on function public.semasa_motion_storyboard_decide(uuid, text, jsonb) to authenticated;
+revoke execute on function public.semasa_motion_storyboard_decide(uuid, text, jsonb, bigint) from public, anon;
+grant execute on function public.semasa_motion_storyboard_decide(uuid, text, jsonb, bigint) to authenticated;
 
 -- 3 · Telegram: the same decision, for the one linked Telegram account only (service role only) -----------------------------
-create or replace function public.semasa_telegram_motion_decide(p_motion uuid, p_action text, p_telegram_user_id bigint)
+drop function if exists public.semasa_telegram_motion_decide(uuid, text, bigint);
+create or replace function public.semasa_telegram_motion_decide(p_motion uuid, p_action text, p_telegram_user_id bigint,
+                                                                p_written bigint)
 returns text
 language plpgsql security definer set search_path = public as $$
 declare
@@ -100,10 +110,10 @@ begin
   end if;
   -- act as Wan's own login for this transaction only, so the approval is stamped with his account exactly as a page click is
   perform set_config('request.jwt.claims', jsonb_build_object('sub', l.user_id, 'role', 'authenticated')::text, true);
-  v := public.semasa_motion_storyboard_decide(p_motion, p_action, null);
+  v := public.semasa_motion_storyboard_decide(p_motion, p_action, null, p_written);
   perform set_config('request.jwt.claims', '', true);
   return v;
 end $$;
-revoke execute on function public.semasa_telegram_motion_decide(uuid, text, bigint) from public, anon, authenticated;
+revoke execute on function public.semasa_telegram_motion_decide(uuid, text, bigint, bigint) from public, anon, authenticated;
 
 notify pgrst, 'reload schema';

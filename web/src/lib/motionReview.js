@@ -93,6 +93,13 @@ export function withEdits(sb, edits = {}) {
   return out;
 }
 
+/** The storyboard's written_at in whole seconds, sent with every decision so it only ever applies to the storyboard shown
+ *  (supabase/071 answers 'changed' when the worker has written a newer one since). */
+export function writtenEpoch(sb) {
+  const t = Date.parse(sb?.written_at || "");
+  return Number.isFinite(t) ? Math.floor(t / 1000) : null;
+}
+
 /** True when any edit differs from what was saved. */
 export function changed(sb, edits = {}) {
   return JSON.stringify(withEdits(sb, edits)) !== JSON.stringify(sb);
@@ -114,6 +121,7 @@ export const DECIDE_WORDS = {
   gone: ["Video itu sudah tiada.", "That film is gone."],
   no_storyboard: ["Tiada storyboard untuk diluluskan.", "There is no storyboard to approve."],
   bad_storyboard: ["Storyboard itu rosak: tekan Tulis semula.", "That storyboard is broken: press Write again."],
+  changed: ["Storyboard sudah diganti dengan yang baharu: semak versi terkini dahulu.", "The storyboard was replaced by a newer one: read the latest first."],
 };
 export function decideWords(res, action, L = 0) {
   if (res === "ok") return DECIDE_WORDS[action === "approve" ? "ok" : "rewrite"][L];

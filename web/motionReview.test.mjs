@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { canContinue, changed, continueFields, decideWords, hasStoryboardColumns, isReview, remakeFields, scenesOf, withEdits } from "./src/lib/motionReview.js";
+import { canContinue, changed, continueFields, decideWords, hasStoryboardColumns, isReview, remakeFields, scenesOf, withEdits, writtenEpoch } from "./src/lib/motionReview.js";
 import { STATUS_WORDS, motionTrack } from "./src/lib/motion.js";
 
 // Wan, 7 Nov 2026: "make sure all storyboard appear and approve before proceed for motion creation"
@@ -63,5 +63,9 @@ assert.ok(!canContinue(withCols));
 assert.deepEqual(continueFields(), { status: "pending", attempts: 0, error: "" });
 assert.match(decideWords("ok", "approve", 0), /Diluluskan/); assert.match(decideWords("ok", "rewrite", 1), /new storyboard/);
 assert.match(decideWords("status:pending", "approve", 1), /no longer waiting/);
+
+// every decision names the storyboard it was made on (071 refuses one made on an older storyboard)
+assert.equal(writtenEpoch(explainer), 1794013200); assert.equal(writtenEpoch({}), null); assert.equal(writtenEpoch(null), null);
+assert.match(decideWords("changed", "approve", 0), /diganti/);
 
 console.log("motionReview: ok");

@@ -187,7 +187,9 @@ def test_the_storyboard_reaches_telegram_once_with_approve_and_rewrite_buttons()
     p = [p for m, p in bot.calls if m == "sendMessage"][0]
     assert "Tiga perkara" in p["text"] and "A lab bench" in p["text"] and "selepas anda luluskan" in p["text"]
     data = [b.get("callback_data") for row in p["reply_markup"]["inline_keyboard"] for b in row]
-    assert f"sbok:{r['id']}" in data and f"sbre:{r['id']}" in data
+    epoch = motion_review.written_epoch(r["storyboard"])
+    assert epoch and f"sbok:{r['id']}:{epoch}" in data and f"sbre:{r['id']}:{epoch}" in data
+    assert all(len(d.encode()) <= 64 for d in data if d), "Telegram's 64-byte callback limit"
 
 
 def test_a_tap_on_approve_goes_through_the_database_decision_as_the_linked_account():
@@ -199,10 +201,11 @@ def test_a_tap_on_approve_goes_through_the_database_decision_as_the_linked_accou
             return SimpleNamespace(execute=lambda: SimpleNamespace(data="ok"))
     store = S(semasa_motions=[], semasa_settings=[], semasa_telegram_link=[LINK])
     bot = Bot()
-    row = {"id": 1, "payload": {"callback_query": {"data": "sbok:m-1", "message": {"message_id": 7, "chat": {"id": 111}}}}}
+    row = {"id": 1, "payload": {"callback_query": {"data": "sbok:m-1:1762477200", "message": {"message_id": 7,
+                                                                                         "chat": {"id": 111}}}}}
     assert tb.handle_callback(store, bot, LINK, row) == "storyboard approve: ok"
     assert store.rpcs == [("semasa_telegram_motion_decide", {"p_motion": "m-1", "p_action": "approve",
-                                                              "p_telegram_user_id": 111})]
+                                                              "p_telegram_user_id": 111, "p_written": 1762477200})]
     assert any("Diluluskan" in p.get("text", "") for m, p in bot.calls if m == "sendMessage")
 
 
@@ -212,7 +215,8 @@ def test_071_keeps_every_status_adds_review_and_guards_done():
     statuses = re.search(r"check \(status in \(([^)]*)\)\)", SQL).group(1)
     assert all(f"'{s}'" in statuses for s in ("waiting", "pending", "working", "review", "done", "error"))
     assert "new.status = 'done' and old.status is distinct from 'done' and new.storyboard_approved_at is null" in SQL
-    assert ("revoke execute on function public.semasa_telegram_motion_decide(uuid, text, bigint) "
+    assert ("revoke execute on function public.semasa_telegram_motion_decide(uuid, text, bigint, bigint) "
             "from public, anon, authenticated") in SQL
-    assert "grant execute on function public.semasa_motion_storyboard_decide(uuid, text, jsonb) to authenticated" in SQL
+    assert "grant execute on function public.semasa_motion_storyboard_decide(uuid, text, jsonb, bigint) to authenticated" in SQL
+    assert "return 'changed'" in SQL, "a decision on an older storyboard is refused, never applied to the newer one"
     assert "semasa_is_uploader()" in SQL and "if m.status <> 'review'" in SQL

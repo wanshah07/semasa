@@ -118,9 +118,20 @@ def telegram_text(row: dict[str, Any], sb: dict[str, Any], limit: int = 3900) ->
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def telegram_buttons(motion_id: str, site: str) -> list[list[dict[str, str]]]:
-    return [[{"text": "✅ Luluskan storyboard", "callback_data": f"sbok:{motion_id}"}],
-            [{"text": "🔁 Tulis semula", "callback_data": f"sbre:{motion_id}"},
+def written_epoch(sb: dict[str, Any] | None) -> int | None:
+    """The storyboard's written_at in whole seconds: what a decision names, so it can only ever apply to this storyboard."""
+    try:
+        return int(datetime.fromisoformat(str((sb or {}).get("written_at"))).timestamp())
+    except (TypeError, ValueError):
+        return None
+
+
+def telegram_buttons(motion_id: str, site: str, written: int | None = None) -> list[list[dict[str, str]]]:
+    """✅ and 🔁 name the film AND the storyboard (`<id>:<written epoch>`, 52 bytes of Telegram's 64): an old message's button,
+    tapped after "Tulis semula", is refused rather than approving the newer storyboard nobody has read."""
+    tag = f"{motion_id}:{written if written is not None else 0}"
+    return [[{"text": "✅ Luluskan storyboard", "callback_data": f"sbok:{tag}"}],
+            [{"text": "🔁 Tulis semula", "callback_data": f"sbre:{tag}"},
              {"text": "✏️ Ubah di Semasa", "url": f"{site.rstrip('/')}/#video"}]]
 
 
@@ -135,7 +146,8 @@ def telegram_notify(store: Any, row: dict[str, Any], bot: Any = None, link: dict
     if not bot or not link:
         return False
     sb = row["storyboard"]
-    bot.send(int(link["chat_id"]), telegram_text(row, sb), buttons=telegram_buttons(str(row["id"]), SITE_URL))
+    bot.send(int(link["chat_id"]), telegram_text(row, sb),
+             buttons=telegram_buttons(str(row["id"]), SITE_URL, written_epoch(sb)))
     st = tt.chat_state(store)
     sent = [x for x in (st.get("storyboards_sent") or []) if isinstance(x, str)]
     sent.append(sent_key(row["id"], sb))
@@ -166,6 +178,7 @@ DECIDE_WORDS = {
     "not_linked": "Akaun Telegram ini tidak disambung.",
     "gone": "Video itu sudah tiada.",
     "no_storyboard": "Tiada storyboard untuk diluluskan.",
+    "changed": "Storyboard ini sudah diganti dengan yang baharu. Semak mesej terbaharu (atau Semasa → Video) dahulu.",
 }
 
 

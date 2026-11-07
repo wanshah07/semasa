@@ -546,8 +546,10 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
     if kind in ("sbok", "sbre"):
         # a Motion storyboard (Wan, 7 Nov 2026: approved before a picture is drawn), through the page's own decision (071)
         action = "approve" if kind == "sbok" else "rewrite"
+        motion_id, _, written = rest.partition(":")
         try:
-            args = {"p_motion": rest, "p_action": action, "p_telegram_user_id": link["telegram_user_id"]}
+            args = {"p_motion": motion_id, "p_action": action, "p_telegram_user_id": link["telegram_user_id"],
+                    "p_written": int(written) if written.isdigit() else None}
             res = str(store.rpc("semasa_telegram_motion_decide", args).execute().data or "")
         except Exception as exc:  # noqa: BLE001 - shown to Wan as it is
             res = (getattr(exc, "message", None) or str(exc)).replace("semasa: ", "")[:300]

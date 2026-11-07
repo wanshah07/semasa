@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CheckCircle2, Pencil, RefreshCw } from "lucide-react";
 import { errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
-import { changed, decideWords, scenesOf, withEdits } from "../lib/motionReview";
+import { changed, decideWords, scenesOf, withEdits, writtenEpoch } from "../lib/motionReview";
 import Button from "./ui/Button";
 import { Input, TextArea } from "./ui/Field";
 
@@ -29,7 +29,7 @@ export default function MotionStoryboardReview({ film, onDone, onToast }) {
     setBusy(action);
     try {
       const body = action === "approve" && editing && changed(sb, edits) ? withEdits(sb, edits) : null;
-      const { data, error } = await supabase.rpc("semasa_motion_storyboard_decide", { p_motion: film.id, p_action: action, p_storyboard: body });
+      const { data, error } = await supabase.rpc("semasa_motion_storyboard_decide", { p_motion: film.id, p_action: action, p_storyboard: body, p_written: writtenEpoch(sb) });
       if (error) throw new Error(errText(error));
       onToast?.(decideWords(data, action, L), data === "ok" ? "ok" : "error");
       if (data === "ok") { setEditing(false); setEdits({}); }

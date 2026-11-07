@@ -12,6 +12,7 @@ import Card from "../components/ui/Card";
 import { Segmented } from "../components/ui/Field";
 import AiTeam from "../components/AiTeam";
 import GeminiKeys from "../components/GeminiKeys";
+import { AiSettings, MireldTrial } from "./SettingsTab";
 
 /* API: the AI gateways (rootsys = Afiq's, Mireld), their keys, their models and the tokens we spend (Wan, 9 Oct 2026: "track
    status of token from mireld and afiq API including their models"). Status rows come from semasa_api_status (the probe, every
@@ -72,6 +73,12 @@ export default function ApiTab({ settings, save, onToast }) {
 
       <section className="mb-6" data-gemini-section>
         <GeminiKeys settings={settings} save={save} onToast={onToast} />
+      </section>
+
+      {/* moved here from Tetapan (Wan, 7 Nov 2026: "API in setting" goes to its segment): the workers' keys and endpoints, and one Mireld run */}
+      <section className="mb-6 space-y-5" data-ai-settings>
+        <AiSettings onToast={onToast} github={{ scrape: settings?.ai_github_scrape, media: settings?.ai_github_media }} />
+        <MireldTrial settings={settings || {}} save={save} onToast={onToast} />
       </section>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-2">

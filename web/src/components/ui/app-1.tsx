@@ -46,6 +46,8 @@ type Props = {
   words: OverviewWords;
   /** Drawn beside the chart (the Bil tab puts the aging bar here). */
   aside?: React.ReactNode;
+  /** Drawn under the chart, in the chart's column (the home dashboard's smaller charts fill the room the aside leaves). */
+  below?: React.ReactNode;
   /** The tooltip's number format (money). */
   formatValue?: (n: number) => string;
   /** The point fields to draw; default invoiced (line) and paid (area). */
@@ -57,7 +59,7 @@ type Props = {
   className?: string;
 };
 
-export function App1({ stats, series, projects, activity, words, aside, formatValue, keys, header, show, className }: Props) {
+export function App1({ stats, series, projects, activity, words, aside, below, formatValue, keys, header, show, className }: Props) {
   const on = { chart: show?.chart !== false, projects: show?.projects !== false, activity: show?.activity !== false };
   const k: OverviewKeys = keys || { line: "invoiced", area: "paid" };
   const config: ChartConfig = {
@@ -84,7 +86,8 @@ export function App1({ stats, series, projects, activity, words, aside, formatVa
         ))}
       </div>
 
-      {(on.chart || aside) && <div className={cn("grid gap-4 [&>*]:min-w-0", on.chart && aside && "lg:grid-cols-[3fr_2fr]", !on.chart && aside && "lg:grid-cols-2")}>
+      {(on.chart || aside || below) && <div className={cn("grid gap-4 [&>*]:min-w-0", (on.chart || below) && aside && "lg:grid-cols-[3fr_2fr]", !on.chart && !below && aside && "lg:grid-cols-2")}>
+        {(on.chart || below) && <div className="flex min-w-0 flex-col gap-4">
         {on.chart && <Card>
           <CardHeader>
             <CardTitle>{words.chartTitle}</CardTitle>
@@ -116,6 +119,8 @@ export function App1({ stats, series, projects, activity, words, aside, formatVa
             </ChartContainer>
           </CardContent>
         </Card>}
+        {below}
+        </div>}
         {aside}
       </div>}
 

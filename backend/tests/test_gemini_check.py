@@ -284,3 +284,25 @@ def test_a_refusal_or_a_quota_answer_stops_the_walk_because_it_is_the_keys_own()
     gemini_check.run(s, live, NOW)
     assert [m for _, m in live.asked] == ["gemini-flash-latest", "gemini-3.8-flash"]
     assert row(s, 1)["status"] == "limited"
+
+
+# ---- a busy model (503 high demand, a hang) -----------------------------------------------------------------------------------
+
+BUSY = ('503 [{ "error": { "code": 503, "message": "This model is currently experiencing high demand. '
+        'Spikes in demand are usually temporary. Please try again later." } }]')
+BUSY_MODELS = {"text": ["gemini-3.6-flash", "gemini-2.5-flash"], "text_pick": "gemini-3.6-flash"}
+
+
+def test_with_auto_a_busy_model_hands_the_job_to_a_stable_flash_on_the_same_key():
+    s = store(key(1), settings={"model": "auto"}, models=BUSY_MODELS)
+    live = Live(**{"AIza-secret-1": {"chat": {"gemini-3.6-flash": (False, 30000, BUSY)}}})
+    cand, _seed = gemini_keys.candidate(s, "motion", live, NOW)
+    assert cand and cand["model"] == "gemini-2.5-flash" and cand["gemini_key"] == "k1"
+    assert live.asked == [("AIza-secret-1", "gemini-3.6-flash"), ("AIza-secret-1", "gemini-2.5-flash")]
+
+
+def test_a_model_wan_pinned_is_never_swapped_for_another():
+    s = store(key(1), settings={"model": "gemini-3.6-flash"}, models=BUSY_MODELS)
+    live = Live(**{"AIza-secret-1": {"chat": {"gemini-3.6-flash": (False, 30000, BUSY)}}})
+    cand, _seed = gemini_keys.candidate(s, "motion", live, NOW)
+    assert cand is None and live.asked == [("AIza-secret-1", "gemini-3.6-flash")]

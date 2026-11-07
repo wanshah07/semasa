@@ -195,6 +195,18 @@ def allowed(store: Any, job: str) -> bool:
     return bool(s["enabled"]) and job in s["jobs"]
 
 
+def backup_model(store: Any, busy: str) -> str:
+    """The text model to ask when `busy` answered 503 or hung: a stable 2.5 Flash when the key lists one, else the next
+    ranked one; "" when nothing else is listed."""
+    from . import gemini_check
+    listed = [str(m).removeprefix("models/") for m in load_models(store)["text"]]
+    order = gemini_check.text_candidates(listed, wanted_gone=busy)
+    for prefer in ("gemini-2.5-flash", "gemini-flash-latest"):
+        if prefer in order and prefer != busy:
+            return prefer
+    return next((m for m in order if m != busy), "")
+
+
 def candidate(store: Any, job: str, live: Any, now: datetime) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """(the AI-team candidate, the health the key's own check already proved) for this job, or (None, None) when Gemini is off,
     not allowed for the job, or has no usable key. The key is the one pick() chose; it goes only to the Gemini host. When every
@@ -204,12 +216,22 @@ def candidate(store: Any, job: str, live: Any, now: datetime) -> tuple[dict[str,
         return None, None
     s = load_settings(store)
     gone: list[str] = []
+    chosen = {"model": s["model"]}
 
     def ask(row: dict[str, Any]) -> tuple[bool, int | None, str]:
         c = {"slug": "gemini", "provider": "openai", "base_url": BASE, "key": row["api_key"]}
-        ok, ms, err = live.chat(c, s["model"])
+        ok, ms, err = live.chat(c, chosen["model"])
         if not ok and classify(err) == "model":
             gone.append(str(err))
+        if not ok and classify(err) == "retry" and s.get("model_setting", "auto") == "auto":
+            # Google's "high demand" 503s and hangs are about ONE model at that moment (7 Nov 2026: 3.6-flash answered in 1 s,
+            # hung 30 s an hour later, then 503): with Auto, the next model is asked once, a stable 2.5 Flash first
+            alt = backup_model(store, chosen["model"])
+            if alt:
+                ok2, ms2, err2 = live.chat(c, alt)
+                if ok2:
+                    chosen["model"] = alt
+                    return ok2, ms2, err2
         return ok, ms, err
 
     row, ms = pick(store, now, ask if live is not None else None)
@@ -217,12 +239,13 @@ def candidate(store: Any, job: str, live: Any, now: datetime) -> tuple[dict[str,
         from . import gemini_check
         if gemini_check.refresh_models(store, live, now, gone[0]):
             s = load_settings(store)
+            chosen["model"] = s["model"]          # the model the refreshed list resolves to, not the gone one
             row, ms = pick(store, now, ask)
     if row is None:
         return None, None
     from . import ai_team
     cand = {"source": "gemini", "slug": "gemini", "provider": "openai", "base_url": BASE, "key": row["api_key"],
-            "model": s["model"], "blocked": ai_team.cannot_write_text(BASE, s["model"]), "gemini_key": row["id"],
+            "model": chosen["model"], "blocked": ai_team.cannot_write_text(BASE, s["model"]), "gemini_key": row["id"],
             **ai_team.robot_of(BASE)}
     seed = {"probe_ok": True, "probe_ms": ms, "probe_at": now.isoformat(), "fresh": True, "error": ""} if ms is not None else None
     return cand, seed

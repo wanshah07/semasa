@@ -218,6 +218,9 @@ function NavItem({
   const hasChildren = !!item.children;
   const hasBadge = item.badge !== undefined && item.badge !== '';
   const [isOpen, setIsOpen] = useState(() => !!item.children?.some(c => c.id === activeId));   // before any return: hooks keep their order
+  const holdsActive = !!item.children?.some(c => c.id === activeId);
+  // moving to a page of another group (from the page's own tabs, a link or the address) opens that group too
+  React.useEffect(() => { if (holdsActive) setIsOpen(true); }, [holdsActive]);
 
   if (collapsed) {
     // icons only: a group with children opens to its first child, since there is no room to list them

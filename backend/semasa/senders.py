@@ -116,9 +116,9 @@ class Buffer:
         """A post whose one asset is a video (Wan, 26 Oct 2026: a Motion film queued to a platform). `video` is
         {url, thumbnail, vertical}: a vertical film is a Reel on Facebook and Instagram (Instagram's Reels also show in the
         feed), anything else a plain post. Threads takes the video as it is."""
+        # Buffer refuses a video asset carrying thumbnailUrl ("Video thumbnailUrl is not supported", 10 posts on 6 Nov 2026):
+        # the network takes its own cover frame
         asset: dict[str, Any] = {"url": video["url"]}
-        if video.get("thumbnail"):
-            asset["thumbnailUrl"] = video["thumbnail"]
         inp: dict[str, Any] = {"channelId": channel_id, "text": text, "schedulingType": "automatic",
                                "saveToDraft": False, "mode": "customScheduled" if due_at else "shareNow",
                                "assets": [{"video": asset}]}

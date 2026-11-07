@@ -304,7 +304,8 @@ def test_buffer_video_is_one_video_asset_a_reel_when_upright():
     b.create_video("fb1", "facebook", "Kapsyen", {**film, "vertical": False}, None)
     b.create_video("th1", "threads", "t", {"url": "https://x/f.mp4"}, None)
     ig, fb, th = (c[2]["json"]["variables"]["input"] for c in s.calls)
-    assert ig["assets"] == [{"video": {"url": "https://x/f.mp4", "thumbnailUrl": "https://x/f.jpg"}}]
+    # no thumbnailUrl: Buffer refuses a video asset carrying one ("Video thumbnailUrl is not supported", 6 Nov 2026)
+    assert ig["assets"] == [{"video": {"url": "https://x/f.mp4"}}]
     assert ig["metadata"] == {"instagram": {"type": "reel", "shouldShareToFeed": True}} and ig["mode"] == "customScheduled"
     assert fb["metadata"] == {"facebook": {"type": "post"}} and fb["mode"] == "shareNow"
     assert "metadata" not in th and th["assets"] == [{"video": {"url": "https://x/f.mp4"}}]

@@ -13,6 +13,7 @@ import {
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import { Input, Label, TextArea } from "../components/ui/Field";
+import { WriterSettings } from "./SettingsTab";
 
 /* Gaya penulisan (Wan, 11 Oct 2026, Phase 4: "writing style bank, asing dan boleh pilih; aku upload link post viral, AI analyse
    dan terjemah jadi gaya penulisan"). Apart from the hook: how the whole caption reads. Wan adds viral posts (links, pasted text,
@@ -122,6 +123,9 @@ export default function WritingStylesTab({ settings, save, onToast }) {
         <p className="mt-1 max-w-2xl text-sm text-muted">{t("Asing daripada hook: gaya penulisan menentukan bagaimana seluruh kapsyen dibaca (suara, rentak, panjang ayat, struktur, penutup). Tambah post viral yang anda suka dan bot menterjemahkannya menjadi gaya, atau tulis sendiri. Pilih satu sebagai lalai, atau pilih untuk satu idea sahaja.",
           "Apart from the hook: a writing style decides how the whole caption reads (voice, rhythm, sentence length, structure, ending). Add viral posts you like and the bot turns them into a style, or write one yourself. Choose one as the default, or for one idea only.")}</p>
       </motion.div>
+
+      {/* the house style every writer reads (voice, never-list, hashtags, fatwa line), moved here from Tetapan (Wan, 7 Nov 2026) */}
+      <WriterSettings settings={settings || {}} save={save} onToast={onToast} />
 
       {missing ? <Card className="p-5 text-sm text-muted">{migrate}</Card> : (
         <Card className="space-y-4 p-5" data-writing-styles>

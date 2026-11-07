@@ -75,7 +75,7 @@ export function recentActivity(rows, n = 12) {
 /* Which widgets the home dashboard shows (Wan, 7 Nov 2026: the dashboard configuration panel; supabase/065 settings.dashboard).
    The setting keeps the HIDDEN ones, so a widget added later shows by default instead of vanishing until it is ticked. The
    headline tiles are permanent: a dashboard with nothing on it is not a choice worth offering. */
-export const DASHBOARD_WIDGETS = ["stats", "chart", "queue", "activity", "ai", "subs"];
+export const DASHBOARD_WIDGETS = ["stats", "chart", "charts", "queue", "activity", "ai", "subs"];
 export const PERMANENT_WIDGETS = ["stats"];
 export function visibleWidgets(setting) {
   const hidden = new Set(Array.isArray(setting?.hidden) ? setting.hidden : []);
@@ -84,4 +84,55 @@ export function visibleWidgets(setting) {
 export function hiddenFrom(visible) {
   const on = new Set(visible || []);
   return DASHBOARD_WIDGETS.filter((id) => !on.has(id) && !PERMANENT_WIDGETS.includes(id));
+}
+
+/* More graphs on Papan (Wan, 7 Nov 2026: "can add more graph in overview"). Each reads rows the page already holds. */
+
+/** Ideas by status, the order a pipeline reads in; a status with no idea is left out. */
+export const IDEA_STATES = ["new", "working", "drafted", "error", "rejected"];
+export function ideaStatusCounts(ideas) {
+  const n = {};
+  for (const i of ideas || []) n[i.status] = (n[i.status] || 0) + 1;
+  return IDEA_STATES.filter((k) => n[k]).map((k) => ({ status: k, n: n[k] }));
+}
+
+/** Per channel, the posts sent and the publisher errors in the last `days` days (semasa_publish_log). */
+export function sentByChannel(log, today, days = 30) {
+  const from = addDays(today, -(days - 1));
+  const by = {};
+  for (const r of log || []) {
+    if (!r.at || !r.channel || !["sent", "error"].includes(r.action)) continue;
+    if (mytDate(Date.parse(r.at)) < from) continue;
+    const c = (by[r.channel] ||= { channel: r.channel, sent: 0, error: 0 });
+    c[r.action === "sent" ? "sent" : "error"]++;
+  }
+  return Object.values(by).sort((a, b) => b.sent + b.error - (a.sent + a.error) || a.channel.localeCompare(b.channel));
+}
+
+/** AI tokens a day for the last `days` days (semasa_api_usage), every day present, and the calls that failed. */
+export function tokensByDay(usage, today, days = 14) {
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) out.push({ date: addDays(today, -i), tokens: 0, calls: 0, failed: 0 });
+  const by = Object.fromEntries(out.map((d) => [d.date, d]));
+  for (const u of usage || []) {
+    if (!u.created_at) continue;
+    const d = by[mytDate(Date.parse(u.created_at))];
+    if (!d) continue;
+    d.tokens += Number(u.total_tokens) || 0;
+    d.calls++;
+    if (u.ok === false) d.failed++;
+  }
+  return out;
+}
+
+/** Posts written in the last `days` days by what they are about: a ws.regulab post by its domain, a LinkedIn post as one. */
+export function postsByTopic(posts, today, days = 30) {
+  const from = addDays(today, -(days - 1));
+  const n = {};
+  for (const p of posts || []) {
+    if (!p.created_at || p.status === "rejected" || mytDate(Date.parse(p.created_at)) < from) continue;
+    const k = p.stream === "linkedin" ? "linkedin" : p.domain || "other";
+    n[k] = (n[k] || 0) + 1;
+  }
+  return Object.entries(n).map(([topic, count]) => ({ topic, n: count })).sort((a, b) => b.n - a.n || a.topic.localeCompare(b.topic));
 }

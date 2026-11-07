@@ -82,11 +82,23 @@ def _chatgpt(login: Any, system: str, user: str) -> tuple[str, str]:
     if not cfg or not cfg.get("enabled"):
         return "", ""
     try:
-        return login.write(system, user, model=cfg["model"]), ""
+        text = login.write(system, user, model=cfg["model"])
     except chatgpt_login.ChatGPTError as exc:
+        _mark(login, False, str(exc))
         return "", f"ChatGPT: {str(exc)[:100]}"
     except Exception as exc:  # noqa: BLE001 - a storyboard never stops a film
+        _mark(login, False, str(exc))
         return "", f"ChatGPT: {str(exc)[:100]}"
+    _mark(login, True)        # a real call answered: the login is proven, not only its token refreshed (Wan, 7 Nov 2026)
+    return text, ""
+
+
+def _mark(login: Any, ok: bool, message: str = "") -> None:
+    """Record on the login whether a real ChatGPT call answered; a bookkeeping failure never stops a film."""
+    try:
+        login.ok() if ok else login.failed(message)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _gemini(store: Any, gemini_llm: Any, system: str, user: str) -> tuple[Any, str]:

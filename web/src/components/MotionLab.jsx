@@ -6,7 +6,6 @@ import { useSettings, useTable } from "../lib/hooks";
 import { stampMYT, timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
 import { LANGUAGES, RESOLUTIONS, RESOLUTION_CHOICES, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults, plannedShots, motionTrack } from "../lib/motion";
-import ChatGptLogin from "./ChatGptLogin";
 import MotionAmbient from "./MotionAmbient";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
 import MotionEffectLibrary from "./MotionEffectLibrary";
@@ -223,7 +222,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
         <p className="mt-1 max-w-2xl text-sm text-muted">{t("Video grafik gerak daripada idea atau pautan. Semasa tulis komposisi HTML (kontrak HyperFrames), semak, render MP4 di pelayan dan simpan dalam Pustaka video.",
           "A motion-graphics video from an idea or a link. Semasa writes the HTML composition (the HyperFrames contract), checks it, renders the MP4 on the runner and keeps it in the Video library.")}</p>
       </div>
-      <ChatGptLogin onToast={onToast} />
+      <p className="mb-3 text-xs text-muted" data-chatgpt-moved>{t("Log masuk ChatGPT (gambar setiap babak) kini di Technology → API.", "The ChatGPT login (a picture for each scene) is now under Technology → API.")} <a href="#api" className="text-accent hover:underline">{t("Buka", "Open")}</a></p>
 
       <Card className="space-y-4 p-5">
         <label className="block"><Label hint={t("idea, hook, atau 3 perkara yang video perlu sampaikan", "the idea, the hook, or the 3 things the video must say")}>{t("Idea", "Idea")}</Label>

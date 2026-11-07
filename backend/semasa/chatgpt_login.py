@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -40,15 +41,23 @@ DEFAULT_MODEL = "gpt-5"
 INSTRUCTIONS = ("You are an image generator. Call the image_generation tool exactly once, using the user's message as the "
                 "picture request, then stop. Never answer with text.")
 SIZES = {"portrait": "1024x1536", "landscape": "1536x1024", "square": "1024x1024"}
+MODELS = RESPONSES.rsplit("/", 1)[0] + "/models"   # the models this ChatGPT account may use with Codex (the CLI asks the same)
+CLIENT_VERSION = "0.99.0"
+# Tried in this order when the saved model is refused and the account's own list cannot be read (7 Nov 2026: "The 'gpt-5' model is
+# not supported when using Codex with a ChatGPT account"). The account's list, when it answers, always comes first.
+FALLBACK_MODELS = ("gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.2", "gpt-5.1-codex", "gpt-5.1", "gpt-5-codex")
+MODEL_TRIES = 4
+MODEL_REFUSED = re.compile(r"model_not_found|model is not supported|not supported when using codex|unknown model|"
+                           r"does not exist|invalid model", re.I)
 
 
 class ChatGPTError(RuntimeError):
     """A ChatGPT call that did not give a picture. `limit`: the plan's allowance is used up (stop asking for this film).
     `auth`: the login itself is refused (Wan has to log in again)."""
 
-    def __init__(self, message: str, *, limit: bool = False, auth: bool = False):
+    def __init__(self, message: str, *, limit: bool = False, auth: bool = False, model: bool = False):
         super().__init__(message)
-        self.limit, self.auth = limit, auth
+        self.limit, self.auth, self.model = limit, auth, model
 
 
 def claims(token: str) -> dict[str, Any]:
@@ -222,7 +231,7 @@ class Login:
         r = self.row(fresh=force) or {}
         tokens = dict((r.get("auth") or {}).get("tokens") or {})
         if not tokens.get("refresh_token"):
-            raise ChatGPTError("ChatGPT is not connected: paste auth.json in the Motion tab", auth=True)
+            raise ChatGPTError("ChatGPT is not connected: log in on Technology → API", auth=True)
         end = expiry(str(tokens.get("access_token") or ""))
         if not end and r.get("access_expires_at"):
             try:
@@ -302,6 +311,8 @@ class Login:
             if code == 200:
                 return read(resp.iter_lines(decode_unicode=True))
             text = _clip(getattr(resp, "text", ""))
+            if code in (400, 404) and MODEL_REFUSED.search(text):
+                raise ChatGPTError(f"ChatGPT refused the model ({code}): {text}", model=True)
             if code == 401 and not renewed:
                 renewed = True
                 self.refresh(force=True)
@@ -317,14 +328,99 @@ class Login:
                 raise ChatGPTError(f"ChatGPT refused the login ({code}): {text}", auth=True)
             raise ChatGPTError(f"ChatGPT answered {code}: {text}", limit=(code == 429 or _is_limit(text)))
 
+    # ---- which model this account may use
+    def models(self) -> list[str]:
+        """The models the account may use with Codex, as ChatGPT lists them ([] when the list cannot be read)."""
+        try:
+            access, account = self.refresh()
+            resp = self.http.get(MODELS, params={"client_version": CLIENT_VERSION}, timeout=20, headers={
+                "Authorization": f"Bearer {access}", "chatgpt-account-id": account, "originator": "codex_cli_rs",
+                "User-Agent": "codex_cli_rs/0.0 (semasa)", "Accept": "application/json"})
+            if resp.status_code != 200:
+                return []
+            body = resp.json()
+        except Exception as exc:  # noqa: BLE001 - the fallback list still applies
+            log.info("ChatGPT models not listed (%s)", _clip(exc, 120))
+            return []
+        items = body.get("models") if isinstance(body, dict) else body
+        out = []
+        for m in items or []:
+            slug = m.get("slug") or m.get("id") if isinstance(m, dict) else m
+            if isinstance(slug, str) and slug and slug not in out:
+                out.append(slug)
+        return out
+
+    def _with_model(self, call: Any, model: str) -> Any:
+        """`call(model)`, and when ChatGPT refuses that model, the next ones the account allows (its own list first, then
+        FALLBACK_MODELS), at most MODEL_TRIES. The first that answers is saved as the model, so the next call starts there."""
+        try:
+            return call(model)
+        except ChatGPTError as exc:
+            if not exc.model:
+                raise
+            first = exc
+        listed = self.models()
+        tried = [model]
+        for m in [*listed, *FALLBACK_MODELS]:
+            if m in tried or len(tried) > MODEL_TRIES:
+                continue
+            tried.append(m)
+            try:
+                out = call(m)
+            except ChatGPTError as exc:
+                if exc.model:
+                    continue
+                raise
+            self._save({"model": m})
+            if self._row is not None:
+                self._row["model"] = m
+            log.info("ChatGPT: %s is refused for this account; %s answered and is saved", model, m)
+            return out
+        lists = f"; the account lists {', '.join(listed[:8])}" if listed else ""
+        raise ChatGPTError(f"{first} Tried {', '.join(tried)}{lists}", model=True)
+
     def draw(self, prompt: str, *, size: str = "1024x1024", model: str = DEFAULT_MODEL, timeout: int = 300) -> bytes:
         """One picture's bytes (PNG or JPEG, whatever ChatGPT sends). Variants run only after a 400 that names what it did not
-        accept: the sized forced-tool call first, then without a forced tool, then with the bare tool."""
-        return self._run(lambda v: self._body(prompt, model, size, v), read_stream, timeout, 2)
+        accept: the sized forced-tool call first, then without a forced tool, then with the bare tool. A refused model is
+        replaced by one the account allows (_with_model)."""
+        return self._with_model(lambda m: self._run(lambda v: self._body(prompt, m, size, v), read_stream, timeout, 2), model)
 
     def write(self, system: str, user: str, *, model: str = DEFAULT_MODEL, timeout: int = 180) -> str:
         """Words from ChatGPT through the same login (Wan, 7 Nov 2026: the storyboard "from chatgpt and gemini"): the same
         streamed Responses call with no tools, the answer read off the text events. Raises ChatGPTError, like draw()."""
-        body = {"model": model, "instructions": system, "store": False, "stream": True,
-                "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": user}]}]}
-        return self._run(lambda _v: body, read_text_stream, timeout, 0)
+        def call(m: str) -> str:
+            body = {"model": m, "instructions": system, "store": False, "stream": True,
+                    "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": user}]}]}
+            return self._run(lambda _v: body, read_text_stream, timeout, 0)
+        return self._with_model(call, model)
+
+    def probe_row(self) -> dict[str, Any]:
+        """ChatGPT as a robot on the API page (Wanshah 5): the login refreshed, the account's model list, and one short real
+        answer from the saved model (or the first one the account allows, which is then saved)."""
+        s = self.settings() or {}
+        row: dict[str, Any] = {"slug": "chatgpt", "name": "ChatGPT (Wanshah 5)", "role": "primary",
+                               "base_url": RESPONSES.rsplit("/", 1)[0],
+                               "key_set": self.connected(), "key_last4": "", "model": s.get("model") or DEFAULT_MODEL,
+                               "checked_at": self.now().isoformat(), "models": [], "balance": {}, "error": "", "reachable": False,
+                               "key_ok": None, "chat_ok": False}
+        if not self.connected():
+            row["error"] = "not connected: paste auth.json on the API page"
+            return row
+        started = time.monotonic()
+        try:
+            self.refresh()
+            row.update(key_ok=True, reachable=True)
+        except ChatGPTError as exc:
+            row.update(key_ok=False if exc.auth else None, error=_clip(exc, 300))
+            return row
+        row["models"] = self.models()
+        row["latency_ms"] = int((time.monotonic() - started) * 1000)
+        t0 = time.monotonic()
+        try:
+            got = self.write("Answer with the single word OK.", "Say OK.", model=row["model"], timeout=60)
+            row.update(chat_ok=bool(str(got).strip()), chat_ms=int((time.monotonic() - t0) * 1000),
+                       model=str((self._row or {}).get("model") or row["model"]))
+        except ChatGPTError as exc:
+            row["error"] = _clip(exc, 300)
+        row["model_listed"] = (row["model"] in row["models"]) if row["models"] else None
+        return row

@@ -123,5 +123,7 @@ export function toRow(s) {
     payment_method: String(s.payment_method || "").trim(), category: CATEGORIES.includes(s.category) ? s.category : "other",
     account_ref: String(s.account_ref || "").trim(), url: String(s.url || "").trim(), notes: String(s.notes || "").trim(),
     source: String(s.source || "manual").trim() || "manual",
+    // 066: which business pays it (null = personal); only sent when the row carries the column
+    ...("business_id" in s ? { business_id: s.business_id || null } : {}),
   };
 }

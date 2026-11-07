@@ -4,12 +4,15 @@ import { useLang } from "../lib/i18n";
 import { useTable } from "../lib/hooks";
 import { CATEGORY_WORDS } from "../lib/receipts";
 import { cashFlowPeriods, moneyMovements, monthNet, mytDate } from "../lib/money";
+import { PERSONAL, businessList, ofBusiness } from "../lib/businesses";
+import { useView } from "../components/ViewToggle";
 import GlassWorkspace from "@/components/ui/adjustable-glass-dashboard";
 
 /* Ringkasan wang (Wan, 7 Nov 2026: the pasted glass dashboard, placed in Business as "Ringkasan wang (Disyorkan)"). The page
    reads three tables Semasa already keeps and hands the arithmetic to lib/money.js: money in = invoices marked paid, money out
    = purchase receipts plus subscription payments no receipt covers. Nothing here writes to the database; the glass setting
-   Wan adjusts is kept in this browser only. Phase 3 splits it per business. */
+   Wan adjusts is kept in this browser only. A picker above it (supabase/066) shows every business together, one business, or
+   personal (receipts and bills that belong to no business). */
 const GLASS_KEY = "semasa.money.glass";
 const MONTHS = { bm: ["Jan", "Feb", "Mac", "Apr", "Mei", "Jun", "Jul", "Ogo", "Sep", "Okt", "Nov", "Dis"], en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] };
 const KIND = { income: "income", makan: "food", perjalanan: "travel", pengangkutan: "travel", bekalan: "shopping", langganan: "bills", utiliti: "bills" };
@@ -41,8 +44,19 @@ export default function MoneyTab({ user }) {
   const docsT = useTable(TABLES.billingDocs, { enabled: true, limit: 3000, realtime: false });
   const rcptT = useTable(TABLES.receipts, { enabled: true, order: "doc_date", limit: 3000, realtime: false });
   const subsT = useTable(TABLES.subscriptions, { enabled: true, limit: 500, realtime: false });
+  const bizT = useTable(TABLES.businesses, { enabled: true, order: "sort", ascending: true, limit: 50, realtime: false });
+  const businesses = useMemo(() => businessList(bizT.rows), [bizT.rows]);
+  const hasBusinesses = !bizT.error && bizT.rows.length > 0;
+  // whose books (supabase/066): every business together, one business, or personal (receipts and bills with no business)
+  const [pickRaw, setPick] = useView("money.business", "all");
+  const pick = !hasBusinesses ? "all" : pickRaw === "all" || pickRaw === PERSONAL || businesses.some((b) => b.id === pickRaw) ? pickRaw : "all";
   const today = mytDate(new Date().toISOString());
-  const moves = useMemo(() => moneyMovements({ docs: docsT.rows, receipts: rcptT.rows, subs: subsT.rows }, today), [docsT.rows, rcptT.rows, subsT.rows, today]);
+  const moves = useMemo(() => moneyMovements({
+    docs: pick === PERSONAL ? [] : ofBusiness(docsT.rows, pick),
+    receipts: pick === "all" ? rcptT.rows : rcptT.rows.filter((r) => (r.business_id || PERSONAL) === pick),
+    subs: pick === "all" ? subsT.rows : subsT.rows.filter((r) => (r.business_id || PERSONAL) === pick),
+  }, today), [docsT.rows, rcptT.rows, subsT.rows, today, pick]);
+  const pickName = pick === "all" ? t("Semua perniagaan", "All businesses") : pick === PERSONAL ? t("Peribadi", "Personal") : businesses.find((b) => b.id === pick)?.name || pick;
   const day = (d) => `${d.slice(8, 10)} ${MONTHS[L][Number(d.slice(5, 7)) - 1]}`;
   const periods = useMemo(() => cashFlowPeriods(moves, today, {
     week: t("Minggu", "Week"), month: t("30 hari", "30 days"), year: t("Tahun", "Year"), months: MONTHS[L], day,
@@ -58,6 +72,14 @@ export default function MoneyTab({ user }) {
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-6 sm:px-6" data-money>
       {missing.length > 0 && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{missing.join(" · ")}</p>}
+      {hasBusinesses && (
+        <div role="tablist" aria-label={t("Buku siapa", "Whose books")} className="mb-4 flex flex-wrap gap-1.5" data-business-picker>
+          {[["all", t("Semua", "All")], ...businesses.map((b) => [b.id, b.name]), [PERSONAL, t("Peribadi", "Personal")]].map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={id === pick} onClick={() => setPick(id)} data-business={id}
+              className={`rounded-pill px-3 py-1 text-xs font-medium ${id === pick ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>{label}</button>
+          ))}
+        </div>
+      )}
       <GlassWorkspace
         className="rounded-card"
         style={{ ...PALETTE, minHeight: "calc(100svh - 160px)" }}
@@ -79,8 +101,8 @@ export default function MoneyTab({ user }) {
         showNotifications={false}
         glass={savedGlass()}
         onGlassChange={(g) => { try { window.localStorage.setItem(GLASS_KEY, JSON.stringify(g)); } catch { /* private window */ } }}
-        labels={L === "en" ? { personal: "All businesses (split by company in phase 3)", balance: "Net this month", workspace: "Your money, from Semasa's own tables", welcome: "Hello, {name}." } : {
-          personal: "Semua perniagaan (dipecah ikut syarikat dalam fasa 3)", adjust: "Laras kaca", overview: "Ringkasan", activity: "Aktiviti", savings: "Simpanan", reports: "Laporan",
+        labels={L === "en" ? { personal: pickName, balance: "Net this month", workspace: "Your money, from Semasa's own tables", welcome: "Hello, {name}." } : {
+          personal: pickName, adjust: "Laras kaca", overview: "Ringkasan", activity: "Aktiviti", savings: "Simpanan", reports: "Laporan",
           welcome: "Hai, {name}.", workspace: "Wang anda, daripada jadual Semasa sendiri", savingsTitle: "Simpanan & matlamat", exportCsv: "Eksport CSV",
           balance: "Bersih bulan ini", viewAccount: "Lihat aktiviti", cashFlow: "Aliran tunai", moneyIn: "Wang masuk", moneyOut: "Wang keluar",
           recent: "Aktiviti terkini", viewAll: "Lihat semua", savingsGoals: "Matlamat simpanan", active: "aktif", transactions: "Transaksi",

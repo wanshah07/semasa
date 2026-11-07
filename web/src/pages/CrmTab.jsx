@@ -10,6 +10,8 @@ import { fmtDate } from "../lib/billing";
 import { ACTIVITY_KINDS, STAGES, STAGE_WORDS, audienceOf, blankCampaign, blankContact, campaignRow, contactRow, crmSummary,
   mailable, merge, parseTags, validateCampaign, validateContact, waLink } from "../lib/crm";
 import Button from "../components/ui/Button";
+import { DEFAULT_BUSINESS, businessList, ofBusiness } from "../lib/businesses";
+import { useView } from "../components/ViewToggle";
 import Card from "../components/ui/Card";
 import { Input, Label, Modal, Segmented, Select, TextArea } from "../components/ui/Field";
 
@@ -35,6 +37,16 @@ export default function CrmTab({ user, settings, save, onToast }) {
   const activitiesT = useTable(TABLES.crmActivities, { enabled: true, order: "at", limit: 3000 });
   const [view, setView] = useState("contacts");
   const [stage, setStage] = useState("");
+  // businesses (supabase/066; Wan: "CRM can combine for all business but I can choose for which company")
+  const bizT = useTable(TABLES.businesses, { enabled: true, order: "sort", ascending: true, limit: 50, realtime: false });
+  const businesses = useMemo(() => businessList(bizT.rows), [bizT.rows]);
+  const hasBusinesses = !bizT.error && bizT.rows.length > 0;
+  const [pickRaw, setPick] = useView("crm.business", "all");
+  const pick = pickRaw === "all" || businesses.some((b) => b.id === pickRaw) ? pickRaw : "all";
+  const contacts = useMemo(() => ofBusiness(contactsT.rows, pick), [contactsT.rows, pick]);
+  const campaigns = useMemo(() => ofBusiness(campaignsT.rows, pick), [campaignsT.rows, pick]);
+  const bizName = (id) => businesses.find((b) => b.id === (id || DEFAULT_BUSINESS))?.name || id;
+  const withBiz = (row) => (hasBusinesses ? { business_id: pick === "all" ? DEFAULT_BUSINESS : pick, ...row } : row);
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState(null);         // a contact in the form
   const [open, setOpen] = useState(null);               // a contact's record (activities)
@@ -44,11 +56,11 @@ export default function CrmTab({ user, settings, save, onToast }) {
   const [busy, setBusy] = useState("");
   const day = today();
   const missing = /semasa_crm_/.test(contactsT.error || "");
-  const sum = useMemo(() => crmSummary(contactsT.rows, outboxT.rows, day), [contactsT.rows, outboxT.rows, day]);
-  const list = useMemo(() => contactsT.rows
+  const sum = useMemo(() => crmSummary(contacts, outboxT.rows, day), [contacts, outboxT.rows, day]);
+  const list = useMemo(() => contacts
     .filter((k) => !stage || k.stage === stage)
-    .filter((k) => !q || `${k.name} ${k.company} ${k.email} ${k.phone} ${(k.tags || []).join(" ")}`.toLowerCase().includes(q.toLowerCase())), [contactsT.rows, stage, q]);
-  const allTags = useMemo(() => [...new Set(contactsT.rows.flatMap((k) => k.tags || []))].sort(), [contactsT.rows]);
+    .filter((k) => !q || `${k.name} ${k.company} ${k.email} ${k.phone} ${(k.tags || []).join(" ")}`.toLowerCase().includes(q.toLowerCase())), [contacts, stage, q]);
+  const allTags = useMemo(() => [...new Set(contacts.flatMap((k) => k.tags || []))].sort(), [contacts]);
   const crmCfg = settings?.crm || {};
   const waApi = Boolean(crmCfg.whatsapp_phone_number_id);
   const testTo = crmCfg.test_to || settings?.billing?.company?.email || user?.email || "";
@@ -201,15 +213,23 @@ export default function CrmTab({ user, settings, save, onToast }) {
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show" className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl">CRM</h1>
+          <h1 className="font-display text-3xl">CRM{pick !== "all" ? <span className="text-muted"> · {bizName(pick)}</span> : null}</h1>
+          {businesses.length > 1 && (
+            <div role="tablist" aria-label={t("Syarikat", "Business")} className="mt-2 flex flex-wrap gap-1.5" data-business-picker>
+              {[["all", t("Semua syarikat", "All businesses")], ...businesses.map((b) => [b.id, b.name])].map(([id, name]) => (
+                <button key={id} type="button" role="tab" aria-selected={id === pick} onClick={() => setPick(id)} data-business={id}
+                  className={`rounded-pill px-3 py-1 text-xs font-medium ${id === pick ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>{name}</button>
+              ))}
+            </div>
+          )}
           <p className="mt-1 max-w-2xl text-sm text-muted">{t("Kenalan, peringkat, apa yang berlaku, dan kempen e-mel yang keluar sendiri dari Gmail anda kepada mereka yang bersetuju. Setiap e-mel pemasaran membawa pautan berhenti melanggan (PDPA 2010).",
             "Contacts, stages, what happened, and e-mail campaigns that go out by themselves from your Gmail to the people who agreed. Every marketing e-mail carries an unsubscribe link (PDPA 2010).")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Segmented value={view} onChange={setView} options={[["contacts", t("Kenalan", "Contacts")], ["campaigns", t("Kempen", "Campaigns")]]} />
           {view === "contacts"
-            ? <Button onClick={() => setEditing(blankContact())}><UserPlus size={14} /> {t("Kenalan", "Contact")}</Button>
-            : <Button onClick={() => setComposing(blankCampaign())}><Plus size={14} /> {t("Kempen", "Campaign")}</Button>}
+            ? <Button onClick={() => setEditing(withBiz(blankContact()))}><UserPlus size={14} /> {t("Kenalan", "Contact")}</Button>
+            : <Button onClick={() => setComposing(withBiz(blankCampaign()))}><Plus size={14} /> {t("Kempen", "Campaign")}</Button>}
         </div>
       </motion.div>
 
@@ -231,7 +251,7 @@ export default function CrmTab({ user, settings, save, onToast }) {
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <Input className="max-w-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Cari nama, syarikat, e-mel, tag…", "Search name, company, e-mail, tag…")} aria-label={t("Cari kenalan", "Search contacts")} />
             <div className="flex flex-wrap gap-1">
-              <button type="button" onClick={() => setStage("")} className={`rounded-pill px-3 py-1 text-xs ${!stage ? "bg-ink text-surface" : "bg-surface-2 text-muted"}`}>{t("Semua", "All")} ({contactsT.rows.length})</button>
+              <button type="button" onClick={() => setStage("")} className={`rounded-pill px-3 py-1 text-xs ${!stage ? "bg-ink text-surface" : "bg-surface-2 text-muted"}`}>{t("Semua", "All")} ({contacts.length})</button>
               {STAGES.map((s) => <button type="button" key={s} onClick={() => setStage(s)} className={`rounded-pill px-3 py-1 text-xs ${stage === s ? "bg-ink text-surface" : STAGE_TONE[s]}`}>{w(STAGE_WORDS, s)} ({sum.byStage[s] || 0})</button>)}
             </div>
           </div>
@@ -277,13 +297,14 @@ export default function CrmTab({ user, settings, save, onToast }) {
               : <span className="flex items-center gap-1"><Input className="w-56" value={waId} onChange={(e) => setWaId(e.target.value)} placeholder={t("Phone number ID dari Meta", "Phone number ID from Meta")} />
                 <Button size="sm" onClick={saveWaId}>{t("Simpan", "Save")}</Button><Button size="sm" variant="ghost" onClick={() => setWaId(null)}>{t("Batal", "Cancel")}</Button></span>)}
           </div>
-          <CampaignList campaigns={campaignsT.rows} contacts={contactsT.rows} outbox={outboxT.rows} t={t} w={w} onEdit={(c) => setComposing({ ...blankCampaign(), ...c, send_at: c.send_at ? toLocalInput(c.send_at) : "" })}
+          <CampaignList campaigns={campaigns} contacts={contactsT.rows} outbox={outboxT.rows} t={t} w={w} onEdit={(c) => setComposing({ ...blankCampaign(), ...c, send_at: c.send_at ? toLocalInput(c.send_at) : "" })}
             onStatus={setCampaignStatus} onDelete={removeCampaign} onBoard={(c) => setBoard(c)} />
         </>
       )}
 
       <Modal open={Boolean(editing)} onClose={() => setEditing(null)} title={editing?.id ? t("Sunting kenalan", "Edit contact") : t("Kenalan baharu", "New contact")}>
-        {editing && <ContactForm form={editing} setForm={setEditing} onSave={() => saveContact(editing)} busy={busy === "contact"} t={t} w={w} allTags={allTags} />}
+        {editing && <ContactForm form={editing} setForm={setEditing} onSave={() => saveContact(editing)} busy={busy === "contact"} t={t} w={w} allTags={allTags}
+          businesses={hasBusinesses && businesses.length > 1 ? businesses : null} />}
       </Modal>
       <Modal open={Boolean(open)} onClose={() => setOpen(null)} title={open?.name || ""}>
         {open && <ContactRecord k={contactsT.rows.find((x) => x.id === open.id) || open} activities={activitiesT.rows.filter((a) => a.contact_id === open.id)} outbox={outboxT.rows.filter((o) => o.contact_id === open.id && !o.is_test)}
@@ -295,6 +316,7 @@ export default function CrmTab({ user, settings, save, onToast }) {
       </Modal>
       <Modal open={Boolean(composing)} onClose={() => setComposing(null)} title={composing?.id ? t("Sunting kempen", "Edit campaign") : t("Kempen baharu", "New campaign")}>
         {composing && <CampaignComposer form={composing} setForm={setComposing} contacts={contactsT.rows} allTags={allTags} busy={busy} testTo={testTo} t={t} w={w}
+          businesses={hasBusinesses && businesses.length > 1 ? businesses : null}
           onSave={() => saveCampaign(composing, () => { setComposing(null); onToast(t("Disimpan sebagai draf.", "Saved as a draft."), "ok"); })}
           onTest={() => testSend(composing)} onQueue={() => queueCampaign(composing)} />}
       </Modal>
@@ -304,10 +326,12 @@ export default function CrmTab({ user, settings, save, onToast }) {
 
 const toLocalInput = (iso) => { const d = new Date(new Date(iso).getTime() + 8 * 3600_000); return d.toISOString().slice(0, 16); };   // the picker shows Malaysia time
 
-function ContactForm({ form, setForm, onSave, busy, t, w, allTags }) {
+function ContactForm({ form, setForm, onSave, busy, t, w, allTags, businesses }) {
   const set = (k) => (e) => setForm({ ...form, [k]: e?.target ? (e.target.type === "checkbox" ? e.target.checked : e.target.value) : e });
   return (
     <form className="grid gap-3 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); onSave(); }}>
+      {businesses && <label className="sm:col-span-2"><Label>{t("Syarikat (kenalan ini dengan)", "Business (this contact is with)")}</Label>
+        <Select className="w-full" value={form.business_id || DEFAULT_BUSINESS} onChange={set("business_id")} options={businesses.map((b) => [b.id, b.name])} /></label>}
       <label><Label>{t("Nama", "Name")}</Label><Input value={form.name} onChange={set("name")} /></label>
       <label><Label>{t("Syarikat", "Company")}</Label><Input value={form.company} onChange={set("company")} /></label>
       <label><Label>E-mel</Label><Input type="email" value={form.email} onChange={set("email")} /></label>
@@ -407,7 +431,7 @@ function CampaignList({ campaigns, contacts, outbox, t, w, onEdit, onStatus, onD
   );
 }
 
-function CampaignComposer({ form, setForm, contacts, allTags, busy, testTo, t, w, onSave, onTest, onQueue }) {
+function CampaignComposer({ form, setForm, contacts, allTags, busy, testTo, t, w, onSave, onTest, onQueue, businesses }) {
   const set = (k) => (e) => setForm({ ...form, [k]: e?.target ? e.target.value : e });
   const aud = audienceOf(form, contacts);
   const sample = aud.send[0] || contacts[0] || { name: "Aisyah", company: "Marosia Maison" };
@@ -417,6 +441,9 @@ function CampaignComposer({ form, setForm, contacts, allTags, busy, testTo, t, w
   return (
     <div className="space-y-3">
       <Segmented value={form.channel || "email"} onChange={(v) => setForm({ ...form, channel: v })} options={[["email", "E-mel"], ["whatsapp", "WhatsApp"]]} />
+      {businesses && <label className="block"><Label>{t("Syarikat (kempen ini sampai kepada kenalannya sahaja)", "Business (this campaign reaches its contacts only)")}</Label>
+        <Select className="w-full" value={form.business_id || DEFAULT_BUSINESS} onChange={set("business_id")} disabled={locked || ["sending", "scheduled"].includes(form.status)}
+          options={businesses.map((b) => [b.id, b.name])} /></label>}
       <div className="grid gap-3 sm:grid-cols-2">
         <label><Label>{t("Nama kempen", "Campaign name")}</Label><Input value={form.name} onChange={set("name")} placeholder={t("Promo Notifikasi Oktober", "October notification promo")} /></label>
         <label><Label>{t("Jenis", "Kind")}</Label><Select className="w-full" value={form.kind} onChange={set("kind")} options={[["broadcast", t("Siaran sekali pada masa yang ditetapkan", "Broadcast once at a set time")], ["welcome", t("Alu-aluan: automatik kepada setiap kenalan baharu yang bersetuju", "Welcome: automatic to every new consenting contact")]]} /></label>

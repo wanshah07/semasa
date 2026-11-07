@@ -52,6 +52,7 @@ const RepoTab = lazy(() => import("./pages/RepoTab"));
 const OfficeTab = lazy(() => import("./pages/OfficeTab"));
 const MoneyTab = lazy(() => import("./pages/MoneyTab"));
 const TechOverviewTab = lazy(() => import("./pages/TechOverviewTab"));
+const BusinessesTab = lazy(() => import("./pages/BusinessesTab"));
 const ApiTab = lazy(() => import("./pages/ApiTab"));
 import { setWanshah } from "./lib/cards/library";
 import { approvedPoses } from "./lib/wanshah";
@@ -271,7 +272,7 @@ function MediaTab({ user, gens, prompts, onToast, go }) {
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "video", "video-lib", "motion-skills", "chat", "otak", "wang", "bil", "langganan", "crm", "resit", "faq", "log", "tech", "office", "repo", "api", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "bil-valorith", "video", "video-lib", "motion-skills", "chat", "otak", "wang", "bil", "langganan", "crm", "syarikat", "resit", "faq", "log", "tech", "office", "repo", "api", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 // #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)
@@ -403,6 +404,8 @@ export default function App() {
   else if (tab === "otak") body = allowed ? <BrainTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "wang") body = allowed ? <MoneyTab user={user} /> : gate(null);
   else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
+  else if (tab === "bil-valorith") body = allowed ? <BillingTab key="valorith" lockBusiness="valorith" user={user} settings={settings} save={save} onToast={push} /> : gate(null);
+  else if (tab === "syarikat") body = allowed ? <BusinessesTab settings={settings} onToast={push} go={go} /> : gate(null);
   else if (tab === "langganan") body = allowed ? <SubscriptionsTab user={user} onToast={push} /> : gate(null);
   else if (tab === "resit") body = allowed ? <ResitTab user={user} onToast={push} /> : gate(null);
   else if (tab === "crm") body = allowed ? <CrmTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);

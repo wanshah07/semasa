@@ -10,6 +10,7 @@ import { fmtDate, money } from "../lib/billing";
 import { removeReference, shrinkPhoto, uploadReference } from "../lib/storage";
 import { markPaid } from "../lib/subscriptions";
 import { CATEGORIES, CATEGORY_WORDS, STATUS_WORDS, byMonth, fileLabel, receiptRow, receiptsSummary, validateReceipt } from "../lib/receipts";
+import BusinessSelect from "../components/BusinessSelect";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Modal, Select, TextArea } from "../components/ui/Field";
@@ -177,6 +178,7 @@ export default function ResitTab({ user, onToast }) {
             <label><Label>{t("Mata wang", "Currency")}</Label><Input value={editing.currency || "MYR"} maxLength={3} onChange={(e) => setEditing({ ...editing, currency: e.target.value })} /></label>
             <label><Label>{t("Cukai (SST)", "Tax (SST)")}</Label><Input type="number" step="0.01" min="0" value={editing.tax} onChange={(e) => setEditing({ ...editing, tax: e.target.value })} /></label>
             <label><Label>{t("Cara bayar", "Payment method")}</Label><Select className="w-full" value={editing.payment_method || "unknown"} onChange={(v) => setEditing({ ...editing, payment_method: v })} options={[["unknown", t("Tiada", "None")], ["cash", t("Tunai", "Cash")], ["card", t("Kad", "Card")], ["ewallet", "e-Wallet"], ["transfer", t("Pindahan", "Transfer")]]} /></label>
+            <BusinessSelect className="sm:col-span-2" value={editing.business_id} onChange={(v) => setEditing({ ...editing, business_id: v })} />
             <label className="sm:col-span-2"><Label>{t("Langganan berkaitan", "Related subscription")}</Label><Select className="w-full" value={editing.subscription_id} onChange={(v) => setEditing({ ...editing, subscription_id: v })} options={[["", t("Tiada", "None")], ...subsT.rows.map((s) => [s.id, `${s.vendor} · ${s.name}`])]} /></label>
             <label className="sm:col-span-2"><Label>{t("Ringkasan", "Summary")}</Label><TextArea rows={2} value={editing.summary || ""} onChange={(e) => setEditing({ ...editing, summary: e.target.value })} /></label>
             {Array.isArray(editing.items) && editing.items.length ? <div className="rounded-tile border border-line p-3 text-xs sm:col-span-2">

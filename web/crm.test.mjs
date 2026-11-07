@@ -78,4 +78,16 @@ t("summary", () => {
   assert.equal(s.actionsDue, 1); assert.equal(s.sent30, 1); assert.equal(s.failed, 1);
 });
 
+// 066: a campaign reaches its own business's contacts only; the business travels in the rows the page writes
+{
+  const ks = [{ id: "a", stage: "client", consent: true, email: "a@x.my", business_id: "wsregulab" },
+    { id: "b", stage: "client", consent: true, email: "b@x.my", business_id: "valorith" },
+    { id: "c", stage: "client", consent: true, email: "c@x.my" }];
+  assert.deepEqual(audienceOf({ business_id: "valorith" }, ks).send.map((k) => k.id), ["b"]);
+  assert.deepEqual(audienceOf({ business_id: "wsregulab" }, ks).send.map((k) => k.id), ["a", "c"], "a contact from before 066 is WS REGULAB's");
+  assert.deepEqual(audienceOf({}, ks).send.map((k) => k.id), ["a", "b", "c"], "before 066 nothing is filtered");
+  assert.equal(contactRow({ name: "X", business_id: "valorith" }).business_id, "valorith");
+  assert.equal("business_id" in contactRow({ name: "X" }), false, "no business, no column (the table may not have it yet)");
+  assert.equal(campaignRow({ name: "C", business_id: "valorith" }).business_id, "valorith");
+}
 console.log(`crm: ${n} checks passed`);

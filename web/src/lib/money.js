@@ -5,7 +5,7 @@
    - money OUT is a purchase receipt that has been read (semasa_receipts), on its own date, plus a subscription's last payment
      when no receipt was filed for it that month (so a bill is never counted twice). The next 30 days of subscriptions are pending;
    - only ringgit is summed: a foreign figure with no ringgit amount is left out rather than converted at a guessed rate.
-   Phase 3 splits this per business (WS REGULAB, VALORITH); today it is the one set of books Semasa holds. */
+   The page (pages/MoneyTab.jsx) hands in only the rows of the business it shows (supabase/066 business_id). */
 import { isOpenInvoice } from "./billing.js";
 import { amountMYR as receiptMYR } from "./receipts.js";
 import { amountMYR as subMYR } from "./subscriptions.js";

@@ -177,3 +177,54 @@ def test_a_bucket_that_refuses_pdfs_says_which_sql_to_run(monkeypatch):
     else:  # pragma: no cover
         raise AssertionError("a refused upload must not pass")
     assert store.tables[db.BILLING_DOCS][0].get("pdf_url") is None
+
+
+# ---- businesses (supabase/066): each document is worded and sent under its own business ------------------------------------
+
+def test_a_valorith_document_is_worded_with_valorith_and_never_claims_a_from_the_gmail_cannot_send_as():
+    company = {**SETTINGS["company"], "name": "Valorith", "email": "hello@valorith.my", "signatory": "Wan"}
+    valorith = {**SETTINGS, "company": company,
+                "email": {**(SETTINGS.get("email") or {}), "cc_self": True}}
+    row = {"id": "o1", "doc_id": "d1", "action": "send", "to_email": "buyer@shop.my", "cc": [], "subject": "", "body": "",
+           "status": "pending", "attempts": 0, "meta": {}}
+    store = _store(**{db.BILLING_DOCS: [_doc(business_id="valorith")], db.BILLING_OUTBOX: [row]})
+    sender = FakeSender()
+    sender.expect = "info@kkmhalalconsultant.com"          # the one Gmail connection
+    seen = []
+
+    def render(st, d, cfg, now):
+        seen.append(cfg["company"]["name"])
+        return "https://x/a.pdf", "a.pdf"
+    counts = billing.process_outbox(store, SETTINGS, sender, NOW, businesses={"valorith": valorith}, render=render)
+    assert counts == {"sent": 1, "error": 0}
+    mail = sender.sent[0]
+    assert seen == ["Valorith"], "the PDF is drawn with Valorith's letterhead"
+    assert "Valorith" in mail["subject"]
+    assert mail["from_email"] == "", "Gmail cannot send as hello@valorith.my, so no From is claimed"
+    assert mail["cc"] == ["hello@valorith.my"], "the copy goes to the business's own address"
+
+
+def test_a_document_with_no_business_settings_falls_back_to_the_shared_settings():
+    assert billing.settings_for({"business_id": "new"}, {"new": {}}, SETTINGS) is SETTINGS
+    assert billing.settings_for({}, {}, SETTINGS) is SETTINGS
+    own = {"company": {"name": "V"}}
+    assert billing.settings_for({"business_id": "valorith"}, {"valorith": own}, SETTINGS) == own
+
+
+def test_each_business_keeps_its_own_reminder_rules():
+    docs = [_doc(id="ws", status="sent", due_date="2026-09-30"),
+            _doc(id="val", status="sent", due_date="2026-09-30", business_id="valorith")]
+    store = _store(**{db.BILLING_DOCS: docs, db.BILLING_OUTBOX: []})
+    off = {**SETTINGS, "email": {"auto_reminders": False}}
+    counts = billing.sweep(store, SETTINGS, NOW, businesses={"valorith": off})
+    assert counts == {"reminders": 1, "expired": 0}
+    assert [o["doc_id"] for o in store.tables[db.BILLING_OUTBOX]] == ["ws"]
+
+
+def test_only_ws_regulab_papers_carry_the_ws_regulab_logo():
+    assert billing.logo_for({}, SETTINGS).endswith("/cards/logo-ink.png")
+    assert billing.logo_for({"business_id": "wsregulab"}, SETTINGS).endswith("/cards/logo-ink.png")
+    assert billing.logo_for({"business_id": "valorith"}, SETTINGS) == "", "no logo set: the company name is written instead"
+    own = {"company": {"logo_url": "https://cdn.example/valorith.png"}}
+    assert billing.logo_for({"business_id": "valorith"}, own) == "https://cdn.example/valorith.png"
+    assert billing.logo_for({"business_id": "valorith"}, {"company": {"logo_url": "javascript:alert(1)"}}) == ""

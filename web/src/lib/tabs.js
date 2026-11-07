@@ -28,10 +28,12 @@ export function tabsOf(t) {
     { id: "design-lib", label: t("Pustaka poster", "Poster library"), icon: LayoutGrid, segment: "poster" },
 
     { id: "wangian", label: t("Wangian", "Fragrance"), icon: Droplets, segment: "valorith" },
+    { id: "bil-valorith", label: t("Bil Valorith", "Valorith billing"), icon: Receipt, segment: "valorith" },
 
     { id: "wang", label: t("Ringkasan wang", "Money overview"), icon: Wallet, segment: "business" },
     { id: "bil", label: t("Bil & Resit", "Billing"), icon: Receipt, segment: "business" },
     { id: "crm", label: "CRM", icon: Contact, segment: "business" },
+    { id: "syarikat", label: t("Syarikat", "Businesses"), icon: Building2, segment: "business" },
 
     { id: "tech", label: t("Ringkasan", "Overview"), icon: Server, segment: "technology" },
     { id: "office", label: t("Repo pejabat", "Office repos"), icon: Building2, segment: "technology" },

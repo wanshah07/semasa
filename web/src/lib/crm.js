@@ -42,8 +42,10 @@ export function audienceOf(campaign, contacts) {
   const stages = Array.isArray(a.stages) ? a.stages : [];
   const tags = Array.isArray(a.tags) ? a.tags : [];
   const lang = a.lang || "";
+  // 066: a campaign reaches its own business's contacts only (the database's semasa_crm_queue keeps the same rule)
   const named = (contacts || []).filter((k) =>
-    (!stages.length || stages.includes(k.stage))
+    (!campaign?.business_id || (k.business_id || "wsregulab") === campaign.business_id)
+    && (!stages.length || stages.includes(k.stage))
     && (!tags.length || tags.some((t) => (k.tags || []).includes(t)))
     && (!lang || k.lang === lang));
   const send = named.filter((k) => reachable(k, channel));
@@ -126,6 +128,7 @@ export function contactRow(k) {
     tags: Array.isArray(k.tags) ? k.tags : parseTags(k.tags), lang: k.lang === "en" ? "en" : "bm", consent: Boolean(k.consent),
     consent_source: String(k.consent_source || "").trim(), notes: String(k.notes || "").trim(),
     next_action: String(k.next_action || "").trim(), next_action_at: k.next_action_at || null,
+    ...(k.business_id ? { business_id: String(k.business_id) } : {}),      // 066: which business the contact is with
   };
 }
 export function campaignRow(c) {
@@ -135,5 +138,6 @@ export function campaignRow(c) {
     body: String(c.body || ""), lang: c.lang === "en" ? "en" : "bm",
     audience: { stages: (c.audience?.stages || []).filter((s) => STAGES.includes(s)), tags: c.audience?.tags || [], lang: c.audience?.lang || "" },
     send_at: c.kind === "welcome" ? null : sendAtIso(c.send_at),
+    ...(c.business_id ? { business_id: String(c.business_id) } : {}),      // 066: whose contacts it goes to
   };
 }

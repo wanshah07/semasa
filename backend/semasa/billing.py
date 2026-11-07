@@ -56,6 +56,25 @@ def load_settings(store: Any) -> dict[str, Any]:
     return (rows[0].get("value") if rows else None) or {}
 
 
+def load_businesses(store: Any) -> dict[str, dict[str, Any]]:
+    """Each business's own billing settings (supabase/066 semasa_businesses.billing), by id. Empty before 066 is applied,
+    in which case every document falls back to the one settings.billing row, exactly as before."""
+    try:
+        rows = store.table(db.BUSINESSES).select("id,billing").execute().data or []
+    except Exception as exc:  # noqa: BLE001
+        log.info("businesses could not be read (before supabase/066?): %s", str(exc)[:160])
+        return {}
+    return {str(r["id"]): r.get("billing") or {} for r in rows if r.get("id")}
+
+
+def settings_for(doc: dict[str, Any] | None, businesses: dict[str, dict[str, Any]] | None,
+                 fallback: dict[str, Any]) -> dict[str, Any]:
+    """The settings a document is rendered, worded and sent under: its business's own, else the shared settings.billing
+    (the same rule as the database's semasa_billing_settings_for)."""
+    own = (businesses or {}).get(str((doc or {}).get("business_id") or "wsregulab")) or {}
+    return own or fallback
+
+
 def today_myt(now: datetime | None = None) -> date:
     now = now or datetime.now(UTC)
     return (now + timedelta(hours=8)).date()
@@ -124,12 +143,22 @@ def _serve_bill(route: Any) -> None:
     return _serve(route)                       # /cards/* (fonts, logo), anything else 404
 
 
+def logo_for(doc: dict[str, Any], settings: dict[str, Any]) -> str:
+    """The mark at the top of the paper: the business's own logo_url when it has one; WS REGULAB's logo only on WS REGULAB's
+    papers; otherwise "" and the template writes the company name instead (web/src/lib/billingDoc.js). Never another
+    business's logo: a Valorith invoice under the ws.regulab mark would be a document from the wrong company."""
+    own = str((settings.get("company") or {}).get("logo_url") or "").strip()
+    if own.startswith("https://"):
+        return own
+    return f"{ORIGIN}/cards/logo-ink.png" if str(doc.get("business_id") or "wsregulab") == "wsregulab" else ""
+
+
 def render_pdf(doc: dict[str, Any], settings: dict[str, Any], *, link: str = "", lang: str | None = None) -> bytes:
     """A4 PDF bytes of the document, drawn by the page's own template in headless Chrome."""
     if not all((LIB / m[1:]).is_file() for m in MODULES) or not (ASSETS / "fonts.css").is_file():
         raise SendError("refused", "the billing template files are missing from this checkout (web/src/lib/billing*.js)")
     from playwright.sync_api import sync_playwright
-    opts = {"lang": lang or doc.get("lang") or "en", "logoUrl": f"{ORIGIN}/cards/logo-ink.png",
+    opts = {"lang": lang or doc.get("lang") or "en", "logoUrl": logo_for(doc, settings),
             "fontsCss": f"{ORIGIN}/cards/fonts.css"}
     if link:
         opts["qr"] = qr_data_url(link)
@@ -412,14 +441,15 @@ def _fail(store: Any, row: dict[str, Any], doc: dict[str, Any] | None, exc: Exce
 
 
 def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None, now: datetime,
-                   render: Any = ensure_pdf) -> dict[str, int]:
+                   render: Any = ensure_pdf, businesses: dict[str, dict[str, Any]] | None = None) -> dict[str, int]:
     counts = {"sent": 0, "error": 0}
-    co = settings.get("company") or {}
-    email = settings.get("email") or {}
-    offsets = _ints(email.get("reminder_days")) or DEFAULT_OFFSETS
     for row in claim(store):
         doc_rows = store.table(db.BILLING_DOCS).select("*").eq("id", row["doc_id"]).execute().data or []
         doc = doc_rows[0] if doc_rows else None
+        cfg = settings_for(doc, businesses, settings)        # each business sends under its own letterhead and terms
+        co = cfg.get("company") or {}
+        email = cfg.get("email") or {}
+        offsets = _ints(email.get("reminder_days")) or DEFAULT_OFFSETS
         sent_attempted = False
         try:
             if not doc:
@@ -437,9 +467,9 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
                 counts["sent"] += 1
                 continue
             link = public_link(doc["token"])
-            url, _path = render(store, doc, settings, now)
+            url, _path = render(store, doc, cfg, now)
             attachment = sender.upload_pdf(url, file_name(doc))
-            subject, html = email_words(doc, row["action"], settings, link)
+            subject, html = email_words(doc, row["action"], cfg, link)
             subject = row.get("subject") or subject
             if row.get("body"):
                 html = row["body"] if "<" in row["body"] else "<p>" + row["body"].replace("\n", "<br>") + "</p>"
@@ -447,8 +477,13 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
             me = str(co.get("email") or "")
             if email.get("cc_self") and me and me not in cc and me.lower() != str(row["to_email"]).lower():
                 cc.append(me)
+            # one Gmail connection sends for every business: name a different From only when it IS that connection,
+            # because Gmail refuses (or rewrites) a From that is not an alias of the account sending
+            expect = str(getattr(sender, "expect", "") or "")
+            from_email = me if (not expect or me.lower() == expect.lower()) else ""
             sent_attempted = True                 # from here on, a failure cannot be assumed to mean nothing sent
-            result = sender.send(to=row["to_email"], cc=cc, subject=subject, html=html, attachment=attachment, from_email=me)
+            result = sender.send(to=row["to_email"], cc=cc, subject=subject, html=html, attachment=attachment,
+                                 from_email=from_email)
             patch: dict[str, Any] = {}
             if row["action"] == "send":
                 patch["sent_at"] = now.isoformat()
@@ -484,11 +519,10 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
 
 
 # ---- the daily sweep: reminders and expiry -----------------------------------------------------------------------------
-def sweep(store: Any, settings: dict[str, Any], now: datetime) -> dict[str, int]:
+def sweep(store: Any, settings: dict[str, Any], now: datetime,
+          businesses: dict[str, dict[str, Any]] | None = None) -> dict[str, int]:
     counts = {"reminders": 0, "expired": 0}
     today = today_myt(now)
-    email = settings.get("email") or {}
-    offsets = _ints(email.get("reminder_days")) or DEFAULT_OFFSETS
     docs = store.table(db.BILLING_DOCS).select("*").in_("status", list(OPEN)).execute().data or []
     pending = store.table(db.BILLING_OUTBOX).select("doc_id,action").in_("status", ["pending", "working"]).execute().data or []
     queued = {(p["doc_id"], p["action"]) for p in pending}
@@ -498,6 +532,8 @@ def sweep(store: Any, settings: dict[str, Any], now: datetime) -> dict[str, int]
             events(store, d["id"], "expired", {"valid_until": d["due_date"]})
             counts["expired"] += 1
             continue
+        email = settings_for(d, businesses, settings).get("email") or {}       # each business's own reminder rules
+        offsets = _ints(email.get("reminder_days")) or DEFAULT_OFFSETS
         if not email.get("auto_reminders", True):
             continue
         offset = next_reminder(d, offsets, today)
@@ -519,11 +555,14 @@ def make_sender(settings: dict[str, Any]) -> GmailMCP | None:
 
 def run(store: Any, now: datetime | None = None, sender: GmailMCP | None = None, sweep_too: bool = True) -> dict[str, int]:
     now = now or datetime.now(UTC)
-    settings = load_settings(store)
+    businesses = load_businesses(store)
+    # the shared settings, or WS REGULAB's own once 066 holds them: its company e-mail is the one Gmail connection
+    settings = settings_for({"business_id": "wsregulab"}, businesses, load_settings(store))
     counts: dict[str, int] = {}
     if sweep_too:
-        counts.update(sweep(store, settings, now))
-    counts.update(process_outbox(store, settings, sender if sender is not None else make_sender(settings), now))
+        counts.update(sweep(store, settings, now, businesses))
+    sender = sender if sender is not None else make_sender(settings)
+    counts.update(process_outbox(store, settings, sender, now, businesses=businesses))
     return counts
 
 

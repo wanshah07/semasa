@@ -1,3 +1,4 @@
+import { logoFor } from "../lib/businesses";
 import { useEffect, useMemo, useState } from "react";
 import { Download, Printer } from "lucide-react";
 import { useLang } from "../lib/i18n";
@@ -31,7 +32,8 @@ export default function BillingPublic({ token }) {
     const abs = (p) => new URL(p, window.location.href).href;
     const site = `${window.location.origin}${window.location.pathname}`;
     return documentHtml(data.doc, { company: data.company || {}, bank: data.bank || {} },
-      { logoUrl: abs(`${base}logo-ink.png`), fontsCss: abs(`${base}fonts.css`), qr: qrDataUrl(publicLink(token, site)) });
+      // 066 says which business issued it: only WS REGULAB's papers carry the ws.regulab mark (older answers carry no business)
+      { logoUrl: logoFor(data.business, { company: data.company || {} }, abs(`${base}logo-ink.png`)), fontsCss: abs(`${base}fonts.css`), qr: qrDataUrl(publicLink(token, site)) });
   }, [data, token, base]);
 
   function print() {

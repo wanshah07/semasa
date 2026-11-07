@@ -26,6 +26,7 @@ export const TABLES = {
   billingOutbox: "semasa_billing_outbox", billingCounters: "semasa_billing_counters",
   subscriptions: "semasa_subscriptions",                      // Langganan (supabase/030_subscriptions.sql)
   receipts: "semasa_receipts",                                // Resit (supabase/033_receipts.sql)
+  businesses: "semasa_businesses",                            // Syarikat: WS REGULAB, VALORITH, … (supabase/066_businesses.sql)
   brainInbox: "semasa_brain_inbox", brainEntries: "semasa_brain_entries",   // Otak AI (supabase/036_brain.sql)
   brainDocs: "semasa_brain_docs", docTemplates: "semasa_doc_templates",                            // documents drafted from the brain and the FAQ (supabase/037_brain_docs.sql)
   postMetrics: "semasa_post_metrics",                         // Prestasi (supabase/034_post_metrics.sql)

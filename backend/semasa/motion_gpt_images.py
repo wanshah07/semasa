@@ -8,6 +8,8 @@ colour, the style repo's name, and the platform's tone (ws.regulab or LinkedIn).
 the style chooser frames it like any photograph (an arch, a side-by-side, a full-bleed ground) and Unsplash keeps every scene
 this module did not draw.
 
+Gemini (gemini_images.py, Wan's key pool) draws a scene ChatGPT could not, or every scene when ChatGPT is not connected.
+
 Nothing here may stop a film. Not connected, switched off, a login ChatGPT refuses, the plan's allowance used up, a scene whose
 picture comes back empty: each is a note in the film's report and the scene keeps what it had. The picture is illustration, never
 evidence, so every prompt forbids words, logos, packaging, faces and anything that reads as a before-and-after or a cure.
@@ -22,12 +24,13 @@ from typing import Any
 
 from PIL import Image
 
-from . import chatgpt_login
+from . import chatgpt_login, gemini_images
 from .log import get_logger
 
 log = get_logger("semasa.motion.gpt")
 
 BUDGET_S = 480                    # all the pictures of one film together: the film is rendered after, and the job has 30 minutes
+LABEL = {"chatgpt": "ChatGPT", "gemini": "Gemini"}
 MIN_SIDE = 256              # a picture smaller than this on either side is not a picture
 
 LOOK = {
@@ -100,43 +103,72 @@ def save(data: bytes, folder: Path, name: str) -> str:
 
 def draw_scenes(store: Any, row: dict[str, Any], scenes: list[dict[str, Any]], folder: Path, *, design: str,
                 palette: dict[str, str], ambient: str, resolution: str, style_name: str = "", login: Any = None,
-                clock: Any = None) -> tuple[dict[str, dict[str, Any]], str]:
+                clock: Any = None, gemini: Any = None) -> tuple[dict[str, dict[str, Any]], str]:
     """({scene id: photo} for the scenes drawn, note). A photo is {path, id, credit, page, alt, generated} like the others, so the
-    film's report and credits treat it the same way. ({}, note) when nothing was drawn, and the note says why."""
+    film's report and credits treat it the same way. ({}, note) when nothing was drawn, and the note says why.
+
+    Each scene is drawn by ChatGPT (Wan's login) and, when that fails or is not connected, by Gemini (his key pool,
+    gemini_images.py).
+    A provider whose allowance is used up or whose login is refused is not asked again for the rest of the film."""
     login = login or chatgpt_login.Login(store)
+    drawer = gemini if gemini is not None else gemini_images.Drawer(store)
     cfg = login.settings()
-    if cfg is None:
-        return {}, ""                                     # not connected: not worth a line in every film's report
-    if not cfg["enabled"]:
+    chatgpt_on = bool(cfg and cfg["enabled"])
+    gemini_on = bool(drawer.ready())
+    if cfg is None and not gemini_on:
+        return {}, ""                                     # nothing connected: not worth a line in every film's report
+    if not chatgpt_on and not gemini_on:
         return {}, "ChatGPT pictures: switched off"
     clock = clock or time.monotonic
     started = clock()
-    todo = storyboard(scenes, cfg["max_images"])
+    todo = storyboard(scenes, cfg["max_images"] if cfg else drawer.max_images())
+    active = [name for name, on in (("chatgpt", chatgpt_on), ("gemini", gemini_on)) if on]
+    tripped: set[str] = set()
     out: dict[str, dict[str, Any]] = {}
+    by: dict[str, int] = {"chatgpt": 0, "gemini": 0}
     problems: list[str] = []
     for sc in todo:
         if clock() - started > BUDGET_S:
             problems.append("out of time for the rest")
             break
+        if all(name in tripped for name in active):
+            break
         sid = str(sc.get("id") or len(out))
         prompt = scene_prompt(row, sc, design=design, palette=palette, ambient=ambient, style_name=style_name)
-        try:
-            data = login.draw(prompt, size=size_for(resolution), model=cfg["model"])
-            rel = save(data, folder, f"scene-{sid}")
-        except chatgpt_login.ChatGPTError as exc:
-            problems.append(f"{sid}: {exc}")
-            login.failed(str(exc))
-            if exc.limit or exc.auth:
-                break                                      # the allowance or the login is the same for every scene
-            continue
-        except Exception as exc:  # noqa: BLE001 - one unreadable picture never stops the film
-            problems.append(f"{sid}: {str(exc)[:120]}")
-            continue
-        out[sid] = {"path": rel, "id": f"chatgpt-{sid}", "credit": "", "page": "", "generated": True,
-                    "alt": str(sc.get("heading") or "")[:140]}
-    if out:
+        for name in active:
+            if name in tripped:
+                continue
+            try:
+                if name == "chatgpt":
+                    data = login.draw(prompt, size=size_for(resolution), model=cfg["model"])
+                else:
+                    data = drawer.draw(prompt, resolution=resolution)
+                rel = save(data, folder, f"scene-{sid}")
+            except chatgpt_login.ChatGPTError as exc:
+                problems.append(f"{sid} (ChatGPT): {exc}")
+                login.failed(str(exc))
+                if exc.limit or exc.auth:
+                    tripped.add("chatgpt")                  # the allowance or the login is the same for every scene
+                continue
+            except gemini_images.GeminiError as exc:
+                problems.append(f"{sid} (Gemini): {exc}")
+                if exc.limit:
+                    tripped.add("gemini")
+                continue
+            except Exception as exc:  # noqa: BLE001 - one unreadable picture never stops the film
+                problems.append(f"{sid} ({LABEL[name]}): {str(exc)[:120]}")
+                continue
+            by[name] += 1
+            out[sid] = {"path": rel, "id": f"{name}-{sid}", "credit": "", "page": "", "generated": True,
+                        "alt": str(sc.get("heading") or "")[:140]}
+            break
+    if by["chatgpt"]:
         login.ok()
-    note = f"ChatGPT pictures: {len(out)} of {len(todo)} scenes drawn" + (f" ({'; '.join(problems)[:300]})" if problems else "")
+    tail = f" ({'; '.join(problems)[:300]})" if problems else ""
+    if gemini_on:
+        note = (f"Pictures: {len(out)} of {len(todo)} scenes drawn (ChatGPT {by['chatgpt']}, Gemini {by['gemini']})" + tail)
+    else:
+        note = f"ChatGPT pictures: {len(out)} of {len(todo)} scenes drawn" + tail
     return out, note
 
 

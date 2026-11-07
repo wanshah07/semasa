@@ -128,6 +128,39 @@ def read_stream(lines: Any) -> bytes:
     return data
 
 
+def read_text_stream(lines: Any) -> str:
+    """The words of a Responses event stream: the text deltas, or failing that the final `response.completed` message. An error
+    event, or a stream with no words, raises."""
+    deltas: list[str] = []
+    final = ""
+    for raw in lines:
+        line = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw or "")
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if not data or data == "[DONE]":
+            continue
+        try:
+            ev = json.loads(data)
+        except ValueError:
+            continue
+        kind = str(ev.get("type") or "")
+        if kind in ("response.failed", "error"):
+            msg = _event_error(ev)
+            raise ChatGPTError(msg, limit=_is_limit(msg))
+        if kind == "response.output_text.delta":
+            deltas.append(str(ev.get("delta") or ""))
+        elif kind == "response.completed":
+            for out in (ev.get("response") or {}).get("output") or []:
+                for part in out.get("content") or []:
+                    if part.get("type") == "output_text" and part.get("text"):
+                        final += str(part["text"])
+    text = ("".join(deltas) or final).strip()
+    if not text:
+        raise ChatGPTError("ChatGPT answered without words")
+    return text
+
+
 _LIMIT_WORDS = ("usage limit", "rate limit", "rate_limit", "too many", "quota", "limit reached", "try again in")
 
 
@@ -247,9 +280,9 @@ class Login:
             body["tool_choice"] = {"type": "image_generation"}
         return body
 
-    def draw(self, prompt: str, *, size: str = "1024x1024", model: str = DEFAULT_MODEL, timeout: int = 300) -> bytes:
-        """One picture's bytes (PNG or JPEG, whatever ChatGPT sends). Variants run only after a 400 that names what it did not
-        accept: the sized forced-tool call first, then without a forced tool, then with the bare tool."""
+    def _run(self, body_for: Any, read: Any, timeout: int, last_variant: int) -> Any:
+        """One streamed call to the Codex backend, with the refresh-once on 401, one retry on a server error and the body variants
+        after a 400 that names what it did not accept. `body_for(variant)` makes the request body, `read(lines)` the answer."""
         variant, renewed, retried = 0, False, False
         while True:
             access, account = self.refresh()
@@ -258,8 +291,7 @@ class Login:
                        "User-Agent": "codex_cli_rs/0.0 (semasa)", "Accept": "text/event-stream",
                        "Content-Type": "application/json", "session_id": str(uuid.uuid4())}
             try:
-                resp = self.http.post(RESPONSES, headers=headers, json=self._body(prompt, model, size, variant),
-                                      stream=True, timeout=(20, timeout))
+                resp = self.http.post(RESPONSES, headers=headers, json=body_for(variant), stream=True, timeout=(20, timeout))
             except requests.RequestException as exc:
                 if retried:
                     raise ChatGPTError(f"ChatGPT could not be reached: {_clip(exc, 160)}") from exc
@@ -268,13 +300,13 @@ class Login:
                 continue
             code = resp.status_code
             if code == 200:
-                return read_stream(resp.iter_lines(decode_unicode=True))
+                return read(resp.iter_lines(decode_unicode=True))
             text = _clip(getattr(resp, "text", ""))
             if code == 401 and not renewed:
                 renewed = True
                 self.refresh(force=True)
                 continue
-            if code == 400 and variant < 2:
+            if code == 400 and variant < last_variant:
                 variant += 1
                 continue
             if code in (500, 502, 503, 504) and not retried:
@@ -284,3 +316,15 @@ class Login:
             if code in (401, 403):
                 raise ChatGPTError(f"ChatGPT refused the login ({code}): {text}", auth=True)
             raise ChatGPTError(f"ChatGPT answered {code}: {text}", limit=(code == 429 or _is_limit(text)))
+
+    def draw(self, prompt: str, *, size: str = "1024x1024", model: str = DEFAULT_MODEL, timeout: int = 300) -> bytes:
+        """One picture's bytes (PNG or JPEG, whatever ChatGPT sends). Variants run only after a 400 that names what it did not
+        accept: the sized forced-tool call first, then without a forced tool, then with the bare tool."""
+        return self._run(lambda v: self._body(prompt, model, size, v), read_stream, timeout, 2)
+
+    def write(self, system: str, user: str, *, model: str = DEFAULT_MODEL, timeout: int = 180) -> str:
+        """Words from ChatGPT through the same login (Wan, 7 Nov 2026: the storyboard "from chatgpt and gemini"): the same
+        streamed Responses call with no tools, the answer read off the text events. Raises ChatGPTError, like draw()."""
+        body = {"model": model, "instructions": system, "store": False, "stream": True,
+                "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": user}]}]}
+        return self._run(lambda _v: body, read_text_stream, timeout, 0)

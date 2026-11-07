@@ -66,6 +66,26 @@ export const STATUS_WORDS = {
   waiting: ["Pilih gaya", "Choose styles"], pending: ["Menunggu", "Waiting"], working: ["Sedang dibuat", "Being made"], done: ["Siap", "Done"], error: ["Ralat", "Error"],
 };
 
+/** The stages a film goes through (Wan, 7 Nov 2026: Scrape > Idea > Motion (storyboard) > Motion (Picture) > Motion), written on the
+ *  row by the worker as `stage` (supabase/063). The status is unchanged; this says what a WORKING film is doing now. */
+export const STAGES = [
+  ["storyboard", ["Papan cerita", "Storyboard"]], ["pictures", ["Gambar", "Pictures"]], ["film", ["Filem", "Film"]],
+];
+
+/** The three steps with where the film is: [{id, words, state: "done" | "active" | "todo"}]. A finished film has all three done;
+ *  a film with no stage yet (waiting, or an older one) has none active. */
+export function stageSteps(row) {
+  const at = row?.status === "done" ? STAGES.length : STAGES.findIndex(([id]) => id === (row?.stage || ""));
+  const on = row?.status === "working" || row?.status === "done";
+  return STAGES.map(([id, words], i) => ({ id, words, state: !on || at < 0 ? "todo" : i < at ? "done" : i === at ? (row.status === "done" ? "done" : "active") : "todo" }));
+}
+
+/** What the storyboard planned, from the row's script: one entry per scene that carries a hook shape or a written shot. */
+export function plannedShots(row) {
+  return (Array.isArray(row?.script) ? row.script : []).filter((sc) => sc && (sc.shot || sc.hook_shape))
+    .map((sc) => ({ id: String(sc.id || ""), heading: String(sc.heading || ""), shot: String(sc.shot || ""), mood: String(sc.mood || ""), hookShape: sc.hook_shape || null }));
+}
+
 /** Clamp the seconds a brief asks for to what the table accepts. */
 export function clampSeconds(v) {
   if (v === "" || v == null) return SECONDS.default;

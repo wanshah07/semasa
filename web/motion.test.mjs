@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { FORMAT_WORDS, LANGUAGES, defaultLanguage, formOf, formatOf, freshUrl, motionDefaults, motionFromIdea, motionFromPost, motionVariantMatches, startFields, STATUS_WORDS, withDefaults, RESOLUTIONS, SECONDS, checkItems, clampSeconds, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "./src/lib/motion.js";
+import { FORMAT_WORDS, LANGUAGES, defaultLanguage, formOf, formatOf, freshUrl, motionDefaults, motionFromIdea, motionFromPost, motionVariantMatches, startFields, STATUS_WORDS, STAGES, plannedShots, stageSteps, withDefaults, RESOLUTIONS, SECONDS, checkItems, clampSeconds, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "./src/lib/motion.js";
 
 assert.equal(clampSeconds("abc"), SECONDS.default);
 assert.equal(clampSeconds(1), SECONDS.min);
@@ -157,3 +157,20 @@ const swFields = startFields(waitingRow, { ...sf, stream: "linkedin", language: 
 assert.deepEqual([swFields.stream, swFields.resolution, swFields.language], ["linkedin", "square", "en"]);
 assert.equal(startFields({ stream: "linkedin" }, { ...formOf({ stream: "linkedin" }), stream: "regulab" }).resolution, "portrait");
 console.log("motion stream switch: ok");
+
+// the stages a film goes through (063): the status is unchanged, the stage says what a working film is doing
+assert.deepEqual(STAGES.map(([id]) => id), ["storyboard", "pictures", "film"]);
+const states = (row) => stageSteps(row).map((x) => x.state);
+assert.deepEqual(states({ status: "working", stage: "storyboard" }), ["active", "todo", "todo"]);
+assert.deepEqual(states({ status: "working", stage: "pictures" }), ["done", "active", "todo"]);
+assert.deepEqual(states({ status: "working", stage: "film" }), ["done", "done", "active"]);
+assert.deepEqual(states({ status: "done", stage: "done" }), ["done", "done", "done"]);
+assert.deepEqual(states({ status: "done" }), ["done", "done", "done"], "a finished film made before stages existed");
+assert.deepEqual(states({ status: "pending", stage: "" }), ["todo", "todo", "todo"]);
+assert.deepEqual(states({ status: "working" }), ["todo", "todo", "todo"], "working but no stage yet: nothing active");
+assert.deepEqual(states({ status: "pending", stage: "pictures" }), ["todo", "todo", "todo"], "a film waiting again is in no stage");
+assert.deepEqual(states(undefined), ["todo", "todo", "todo"]);
+assert.deepEqual(plannedShots({ script: [{ id: "s1", heading: "H", hook_shape: 17, shot: "a shelf", mood: "calm" }, { id: "s2", heading: "x" }, null] }),
+  [{ id: "s1", heading: "H", shot: "a shelf", mood: "calm", hookShape: 17 }]);
+assert.deepEqual(plannedShots({ script: "junk" }), []);
+assert.deepEqual(plannedShots(undefined), []);

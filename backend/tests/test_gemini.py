@@ -398,7 +398,14 @@ class Gemini:
         return png(300)
 
 
+class NoFlare:
+    """Cloudflare not set up: the chain these tests were written for has two makers."""
+    def ready(self):
+        return False
+
+
 def chain(tmp_path, gpt, gem, **kw):
+    kw.setdefault("cloudflare", NoFlare())
     return motion_gpt_images.draw_scenes(None, ROW, SCENES, tmp_path, design="bright-editorial", palette=PAL, ambient="mint",
                                          resolution="portrait", login=gpt, gemini=gem, **kw)
 

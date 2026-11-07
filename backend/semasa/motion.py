@@ -51,6 +51,7 @@ from . import (
     motion_gpt_images,
     motion_layout,
     motion_probe,
+    motion_storyboard,
     motion_styles,
     unsplash,
 )
@@ -1155,6 +1156,22 @@ def clean_html(html: Any) -> str:
     return s[:MAX_HTML]
 
 
+def set_stage(store: Any, row: dict[str, Any], name: str, **more: Any) -> None:
+    """Say which stage a film is in (Wan, 7 Nov 2026: Scrape > Idea > Motion (storyboard) > Motion (Picture) > Motion):
+    storyboard, pictures, film. The Motion tab shows it beside the status. Never raises: a stage that cannot be written (the
+    column is from supabase/063) must not stop a film."""
+    try:
+        store.table(TABLE).update({"stage": name, **more}).eq("id", row["id"]).execute()
+    except Exception as exc:  # noqa: BLE001
+        log.info("motion stage not written (%s)", str(exc)[:100])
+
+
+def script_of(scenes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The scenes as kept on the row: what the storyboard planned, so the tab can show it before the film exists."""
+    keys = ("id", "role", "kicker", "heading", "lines", "narration", "hook_shape", "shot", "mood")
+    return [{k: sc.get(k) for k in keys if sc.get(k) not in (None, "", [])} for sc in scenes]
+
+
 def claim(store: Any, limit: int = 3) -> list[dict[str, Any]]:
     q = store.table(TABLE).select("*").eq("status", "pending").order("created_at").limit(limit)
     out = []
@@ -1174,7 +1191,7 @@ class _ComposedByWorker(Exception):
 def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any], *, runner: Any = subprocess.run,
             workdir: Path | None = None, now: datetime | None = None, gh: GitHub | None = None,
             picture_provider: Any = None, speak: Any = None, photo_search: Any = None, photo_get: Any = None,
-            own_get: Any = None, gpt_login: Any = None, gemini: Any = None) -> bool:
+            own_get: Any = None, gpt_login: Any = None, gemini: Any = None, cloudflare: Any = None) -> bool:
     now = now or datetime.now(UTC)
     folder = (workdir or Path(tempfile.mkdtemp(prefix="motion-"))) / str(row["id"])[:8]
     antislop.begin(antislop.load(store))
@@ -1194,7 +1211,20 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         # the voice first (Wan, 24 Oct 2026): the writer plans the scenes, each narration is recorded, and the film is
         # written to those exact times; with the voice off the plan still fixes the scenes and nothing is recorded
         bank = hook_bank.pick_for_idea(store, row.get("idea_id"))     # Wan's own hook style, or None: the built-in 25
+        set_stage(store, row, "storyboard")
         plan = plan_scenes(llm, row, settings.get("prompt") or "", title, text, style=style, bank=bank)
+        # the storyboard: an AI (ChatGPT, then Gemini, then the film's writer) writes the shot of each scene's picture, but only
+        # when some picture maker will draw it (Wan, 7 Nov 2026); a scene without a shot keeps the template request
+        sb_note = ""
+        if motion_gpt_images.ready(store, login=gpt_login, gemini=gemini, cloudflare=cloudflare):
+            stream_name = "linkedin" if row.get("stream") == "linkedin" else "regulab"
+            design_name = motion_styles.design(row)
+            shots, sb_note = motion_storyboard.write(
+                store, row, plan["scenes"], login=gpt_login, llm=llm, design=design_name,
+                look=motion_gpt_images.LOOK.get(design_name, motion_gpt_images.LOOK["bright-editorial"]),
+                tone=motion_gpt_images.TONE[stream_name])
+            motion_storyboard.apply(plan["scenes"], shots)
+        set_stage(store, row, "pictures", script=script_of(plan["scenes"]))
         lang = language_of(row)
         choice = str(row.get("voice") or "male")
         if choice == "auto":
@@ -1244,11 +1274,12 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         drawn, gpt_note = motion_gpt_images.draw_scenes(
             store, row, scenes, folder, design=motion_styles.design(row), palette=PALETTE["regulab"],
             ambient=str((row.get("options") or {}).get("ambient") or "mint"), resolution=size_of(row), style_name=style[0],
-            login=gpt_login, gemini=gemini)
+            login=gpt_login, gemini=gemini, cloudflare=cloudflare)
         if drawn:
             motion_gpt_images.pin(scenes, drawn)
             photos = [*drawn.values(), *motion_gpt_images.used(scenes, photos)]
-        photo_note = " · ".join(x for x in (photo_note, gpt_note) if x)
+        photo_note = " · ".join(x for x in (sb_note, photo_note, gpt_note) if x)
+        set_stage(store, row, "film")
         auto = None
         if motion_assets.is_auto(row):
             auto = motion_layout.styled(row, scenes, voiced=voiced, lang=lang, stream=row.get("stream") or "regulab",
@@ -1441,17 +1472,19 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                                                f"photo credit: {credits}" if credits else "", layout_note,
                                                "approved self-owned piano; faded/ducked; music x0.45, voice x0.9") if x),
             "script": [{k: sc.get(k) for k in (
-                "id", "role", "kicker", "heading", "lines", "narration", "start", "duration", "photo")}
+                "id", "role", "kicker", "heading", "lines", "narration", "start", "duration", "photo", "shot", "mood")}
                        for sc in scenes],
         }).eq("id", row["id"]).execute()
         antislop.finish(store, "film", row["id"])
         db.log_event(store, "info", "media", "motion.done", f"Motion siap: {(out.get('title') or row.get('brief') or '')[:80]}",
                      ref_table=TABLE, ref_id=row["id"])
+        set_stage(store, row, "done")
         return True
     except Exception as exc:  # noqa: BLE001 - the row records it
         err = f"{type(exc).__name__}: {str(exc)[:600]}"
         final = int(row.get("attempts") or 0) >= MAX_ATTEMPTS or isinstance(exc, ValueError)
         store.table(TABLE).update({"status": "error" if final else "pending", "error": err}).eq("id", row["id"]).execute()
+        set_stage(store, row, "")                  # a film waiting to run again is in no stage
         log.warning("%s: %s", row["id"], err)
         return False
     finally:

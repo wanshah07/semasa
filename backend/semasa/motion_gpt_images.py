@@ -8,7 +8,9 @@ colour, the style repo's name, and the platform's tone (ws.regulab or LinkedIn).
 the style chooser frames it like any photograph (an arch, a side-by-side, a full-bleed ground) and Unsplash keeps every scene
 this module did not draw.
 
-Gemini (gemini_images.py, Wan's key pool) draws a scene ChatGPT could not, or every scene when ChatGPT is not connected.
+Gemini (gemini_images.py, Wan's key pool) draws a scene ChatGPT could not, or every scene when ChatGPT is not connected, and
+Cloudflare Workers AI (cloudflare_images.py, the free FLUX allowance) draws a scene neither could. When the storyboard
+(motion_storyboard.py) has written a SHOT for a scene, that shot is what is drawn.
 
 Nothing here may stop a film. Not connected, switched off, a login ChatGPT refuses, the plan's allowance used up, a scene whose
 picture comes back empty: each is a note in the film's report and the scene keeps what it had. The picture is illustration, never
@@ -24,13 +26,13 @@ from typing import Any
 
 from PIL import Image
 
-from . import chatgpt_login, gemini_images
+from . import chatgpt_login, cloudflare_images, gemini_images
 from .log import get_logger
 
 log = get_logger("semasa.motion.gpt")
 
 BUDGET_S = 480                    # all the pictures of one film together: the film is rendered after, and the job has 30 minutes
-LABEL = {"chatgpt": "ChatGPT", "gemini": "Gemini"}
+LABEL = {"chatgpt": "ChatGPT", "gemini": "Gemini", "cloudflare": "Cloudflare"}
 MIN_SIDE = 256              # a picture smaller than this on either side is not a picture
 
 LOOK = {
@@ -54,6 +56,16 @@ NEVER = ("No text, no letters, no numbers, no logos, no brand names, no packagin
          "It is an illustration of the topic and never evidence of anything.")
 
 
+def ready(store: Any, *, login: Any = None, gemini: Any = None, cloudflare: Any = None) -> bool:
+    """Whether any picture maker can draw now (ChatGPT connected and on, a usable Gemini key, or Cloudflare set up): the
+    storyboard is only worth writing when something will draw it."""
+    cfg = (login or chatgpt_login.Login(store)).settings()
+    if cfg and cfg.get("enabled"):
+        return True
+    return bool((gemini if gemini is not None else gemini_images.Drawer(store)).ready()
+                or (cloudflare if cloudflare is not None else cloudflare_images.Drawer(store)).ready())
+
+
 def size_for(resolution: str) -> str:
     return chatgpt_login.SIZES.get(resolution, "1024x1024")
 
@@ -66,11 +78,14 @@ def scene_prompt(row: dict[str, Any], sc: dict[str, Any], *, design: str, palett
     told = " ".join(str(sc.get("narration") or "").split())
     role = ROLE.get(str(sc.get("role") or "").lower(), "a clear, specific image of the scene's subject")
     brief = " ".join(str(row.get("brief") or "").split())[:240]
+    shot = " ".join(str(sc.get("shot") or "").split())[:340]      # the storyboard shot written for this scene, if any
+    mood = " ".join(str(sc.get("mood") or "").split())[:80]
     parts = [
         f"A picture for one scene of a short explainer video. Scene: {' '.join(said.split())[:260]}.",
         f"What the narrator says over it: {told[:300]}." if told else "",
         f"The film's topic: {brief}." if brief else "",
-        f"Show {role}.",
+        f"Directed shot (draw this): {shot}." if shot else f"Show {role}.",
+        f"Mood: {mood}." if shot and mood else "",
         f"Look: {LOOK.get(design, LOOK['bright-editorial'])}.",
         f"Palette: ground {palette.get('ground', '#e5f6ed')}, ink {palette.get('ink', '#143e35')}, "
         f"accent {palette.get('accent', '#287b65')}"
@@ -103,29 +118,31 @@ def save(data: bytes, folder: Path, name: str) -> str:
 
 def draw_scenes(store: Any, row: dict[str, Any], scenes: list[dict[str, Any]], folder: Path, *, design: str,
                 palette: dict[str, str], ambient: str, resolution: str, style_name: str = "", login: Any = None,
-                clock: Any = None, gemini: Any = None) -> tuple[dict[str, dict[str, Any]], str]:
+                clock: Any = None, gemini: Any = None, cloudflare: Any = None) -> tuple[dict[str, dict[str, Any]], str]:
     """({scene id: photo} for the scenes drawn, note). A photo is {path, id, credit, page, alt, generated} like the others, so the
     film's report and credits treat it the same way. ({}, note) when nothing was drawn, and the note says why.
 
     Each scene is drawn by ChatGPT (Wan's login) and, when that fails or is not connected, by Gemini (his key pool,
-    gemini_images.py).
+    gemini_images.py), and when that fails too, by Cloudflare Workers AI (cloudflare_images.py).
     A provider whose allowance is used up or whose login is refused is not asked again for the rest of the film."""
     login = login or chatgpt_login.Login(store)
     drawer = gemini if gemini is not None else gemini_images.Drawer(store)
     cfg = login.settings()
     chatgpt_on = bool(cfg and cfg["enabled"])
     gemini_on = bool(drawer.ready())
-    if cfg is None and not gemini_on:
+    flare = cloudflare if cloudflare is not None else cloudflare_images.Drawer(store)
+    flare_on = bool(flare.ready())
+    if cfg is None and not gemini_on and not flare_on:
         return {}, ""                                     # nothing connected: not worth a line in every film's report
-    if not chatgpt_on and not gemini_on:
+    if not chatgpt_on and not gemini_on and not flare_on:
         return {}, "ChatGPT pictures: switched off"
     clock = clock or time.monotonic
     started = clock()
     todo = storyboard(scenes, cfg["max_images"] if cfg else drawer.max_images())
-    active = [name for name, on in (("chatgpt", chatgpt_on), ("gemini", gemini_on)) if on]
+    active = [name for name, on in (("chatgpt", chatgpt_on), ("gemini", gemini_on), ("cloudflare", flare_on)) if on]
     tripped: set[str] = set()
     out: dict[str, dict[str, Any]] = {}
-    by: dict[str, int] = {"chatgpt": 0, "gemini": 0}
+    by: dict[str, int] = {"chatgpt": 0, "gemini": 0, "cloudflare": 0}
     problems: list[str] = []
     for sc in todo:
         if clock() - started > BUDGET_S:
@@ -141,8 +158,10 @@ def draw_scenes(store: Any, row: dict[str, Any], scenes: list[dict[str, Any]], f
             try:
                 if name == "chatgpt":
                     data = login.draw(prompt, size=size_for(resolution), model=cfg["model"])
-                else:
+                elif name == "gemini":
                     data = drawer.draw(prompt, resolution=resolution)
+                else:
+                    data = flare.draw(prompt, resolution=resolution)
                 rel = save(data, folder, f"scene-{sid}")
             except chatgpt_login.ChatGPTError as exc:
                 problems.append(f"{sid} (ChatGPT): {exc}")
@@ -155,6 +174,11 @@ def draw_scenes(store: Any, row: dict[str, Any], scenes: list[dict[str, Any]], f
                 if exc.limit:
                     tripped.add("gemini")
                 continue
+            except cloudflare_images.CloudflareError as exc:
+                problems.append(f"{sid} (Cloudflare): {exc}")
+                if exc.limit:
+                    tripped.add("cloudflare")
+                continue
             except Exception as exc:  # noqa: BLE001 - one unreadable picture never stops the film
                 problems.append(f"{sid} ({LABEL[name]}): {str(exc)[:120]}")
                 continue
@@ -165,7 +189,10 @@ def draw_scenes(store: Any, row: dict[str, Any], scenes: list[dict[str, Any]], f
     if by["chatgpt"]:
         login.ok()
     tail = f" ({'; '.join(problems)[:300]})" if problems else ""
-    if gemini_on:
+    if flare_on:
+        note = (f"Pictures: {len(out)} of {len(todo)} scenes drawn "
+                f"(ChatGPT {by['chatgpt']}, Gemini {by['gemini']}, Cloudflare {by['cloudflare']})" + tail)
+    elif gemini_on:
         note = (f"Pictures: {len(out)} of {len(todo)} scenes drawn (ChatGPT {by['chatgpt']}, Gemini {by['gemini']})" + tail)
     else:
         note = f"ChatGPT pictures: {len(out)} of {len(todo)} scenes drawn" + tail

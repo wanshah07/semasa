@@ -64,7 +64,9 @@ export function withEdits(sb, edits = {}) {
       const s = pick(k, "said"); if (s !== undefined) sc.narration = s;
       const p = pick(k, "shot"); if (p !== undefined) sc.shot = p;
     });
-    if (out.plan?.scenes?.[0]) out.plan.hook = out.plan.scenes[0].heading;
+    // the hook is scene 1's heading; a teaser's heading also carries " · <call to action>", which is the film's own (the worker
+    // puts it back), so it is not part of the hook
+    if (out.plan?.scenes?.[0] && pick("e0", "heading") !== undefined) out.plan.hook = str(out.plan.scenes[0].heading).split(" · ")[0];
     return out;
   }
   const b = out.sb || {};

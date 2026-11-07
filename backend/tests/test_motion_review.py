@@ -220,3 +220,71 @@ def test_071_keeps_every_status_adds_review_and_guards_done():
     assert "grant execute on function public.semasa_motion_storyboard_decide(uuid, text, jsonb, bigint) to authenticated" in SQL
     assert "return 'changed'" in SQL, "a decision on an older storyboard is refused, never applied to the newer one"
     assert "semasa_is_uploader()" in SQL and "if m.status <> 'review'" in SQL
+
+
+# ---- found by the bug sweep (7 Nov 2026) ---------------------------------------------------------------------------------
+
+def test_a_template_storyboard_that_passed_passes_again_after_the_approval_even_when_speak_adds_a_word():
+    def adds(t):
+        return t.replace("faktanya", "fakta sebenar")                          # what malaysian() does to one word
+    hook = "Takde sapa cakap pasal kabus pagi tapi faktanya ni sebab aku balik"  # 12 words before, 13 after
+    first = {**STORY, "hook": hook}
+    with pytest.raises(motion_templates.StoryboardError, match="1 to 12 words, not 13"):
+        motion_templates.validate_story(first, lang="bm", stream="regulab", speak=adds)
+    short = {**STORY, "hook": "Takde sapa cakap pasal kabus tapi faktanya ni sebab aku balik"}
+    sb = motion_templates.validate_story(short, lang="bm", stream="regulab", speak=adds)
+    assert motion_templates.validate_story(sb, lang="bm", stream="regulab", speak=adds) == sb, "stable on the re-check"
+
+
+def test_an_approved_showcase_keeps_wans_own_product_words():
+    from test_motion_templates import PRODUCTS, SHOW
+    mine = [{**PRODUCTS[0], "name": "Serum Cahaya", "benefits": "lembap, cerah"}, PRODUCTS[1]]
+    sb = motion_templates.validate_showcase(SHOW, mine, lang="bm", stream="regulab")
+    assert sb["products"][0]["name"] == "Serum Cahaya"
+    edited = {**sb, "products": [{**sb["products"][0], "name": "Serum Cahaya Plus", "benefits": ["Untuk kulit kusam"]},
+                                 sb["products"][1]]}
+    again = motion_templates.validate_showcase(edited, mine, lang="bm", stream="regulab", approved=True)
+    assert again["products"][0]["name"] == "Serum Cahaya Plus" and again["products"][0]["benefits"] == ["Untuk kulit kusam"]
+
+
+def test_a_passing_database_fault_is_retried_never_parked_as_071_missing(tmp_path):
+    class Flaky(Store):
+        def table(self, name):
+            q = super().table(name)
+            real = q.update
+
+            def update(fields):
+                if fields.get("status") == "review":
+                    raise RuntimeError("502 Bad Gateway")
+                return real(fields)
+            q.update = update
+            return q
+    store = Flaky()
+    r = _row(store)
+    assert not motion.process(store, FakeLLM([SCRIPT]), {**r, "attempts": 1}, SETTINGS, runner=_runner(), workdir=tmp_path,
+                              now=NOW)
+    got = saved(store, r)
+    assert got["status"] == "pending" and "071" not in got["error"] and "502" in got["error"]
+
+
+def test_a_bounced_storyboard_is_stamped_anew_and_telegram_is_told_why(tmp_path):
+    store, told = Store(), []
+    r = _row(store)
+    motion.process(store, FakeLLM([SCRIPT]), {**r, "attempts": 1}, SETTINGS, runner=_runner(), workdir=tmp_path, now=NOW)
+    before = saved(store, r)["storyboard"]["written_at"]
+    row = {**saved(store, r), "storyboard": {**saved(store, r)["storyboard"], "written_at": "2026-01-01T00:00:00+00:00"}}
+    motion_review.send_back(store, row, "scene 2 has no heading", notify=lambda s, x: told.append(x))
+    got = saved(store, r)
+    assert got["storyboard"]["written_at"] not in ("2026-01-01T00:00:00+00:00",) and before
+    assert told and "scene 2 has no heading" in told[0]["error"]
+    assert "scene 2 has no heading" in motion_review.telegram_text(told[0], told[0]["storyboard"])
+
+
+def test_a_teasers_call_to_action_cannot_be_edited_away():
+    row = {"seconds": 10, "voice": "off", "stream": "regulab", "language": "bm", "options": {"mode": "teaser"}}
+    if motion.motion_styles.duration(row) != 10:
+        pytest.skip("this row shape is not a teaser here")
+    cta = motion.motion_styles.cta(row)
+    sb = {"kind": "explainer", "plan": {"scenes": [{"id": "s1", "heading": "Hook baharu", "lines": [], "narration": ""}]}}
+    out = motion.approved_plan(row, sb)
+    assert out["scenes"][0]["heading"] == f"Hook baharu · {cta}" and out["hook"] == "Hook baharu"

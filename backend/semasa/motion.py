@@ -405,6 +405,8 @@ def approved_plan(row: dict[str, Any], saved: dict[str, Any]) -> dict[str, Any]:
     if voiced and not teaser:             # an edit can make the speech longer: cut before it is recorded, as plan_scenes does
         trim_to_budget([sc for sc in clean if sc.get("id") != "brand-outro"], int((FILM_MAX - SPEECH_RESERVE) * SPEECH_WPS))
     hook = clean[0]["heading"].split(" · ")[0] if teaser else clean[0]["heading"]
+    if teaser:                            # the teaser's call to action is the film's own, never edited away
+        clean[0]["heading"] = f"{hook} · {motion_styles.cta(row)}"
     return {**plan, "hook": hook, "scenes": clean}
 
 
@@ -1272,8 +1274,6 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             return template_film(store, llm, row, settings, folder, runner=runner, gpt_login=gpt_login, gemini=gemini,
                                  cloudflare=cloudflare, gemini_llm=gemini_llm, photo_search=photo_search, photo_get=photo_get,
                                  own_get=own_get)
-        if llm is None:
-            raise RuntimeError("no AI writer: set a reader key in Tetapan → Tetapan AI")
         title, text = source_words(row.get("source_url") or "")
         style = style_words(store, gh, row)
         # the voice first (Wan, 24 Oct 2026): the writer plans the scenes, each narration is recorded, and the film is
@@ -1281,6 +1281,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         bank = hook_bank.pick_for_idea(store, row.get("idea_id"))     # Wan's own hook style, or None: the built-in 25
         saved = motion_review.approved(row, "explainer")
         if saved is None:
+            if llm is None:           # only the storyboard needs the writer: an approved film is composed by the worker itself
+                raise RuntimeError("no AI writer: set a reader key in Tetapan → Tetapan AI")
             set_stage(store, row, "storyboard")
             # Wan's writing style (Phase 4) shapes the script's voice; every rule in the script prompt still outranks it
             voice_style = writing_styles.block(writing_styles.pick_for_idea(store, row.get("idea_id")), film=True)
@@ -1611,7 +1613,8 @@ def template_film(store: Any, llm: Any, row: dict[str, Any], settings: dict[str,
         sb = (motion_templates.validate_story(saved.get("sb"), lang=lang, stream=row.get("stream") or "regulab", bank=bank,
                                               speak=speak) if kind == "story"
               else motion_templates.validate_showcase(saved.get("sb"), products, lang=lang,
-                                                      stream=row.get("stream") or "regulab", bank=bank, speak=speak))
+                                                      stream=row.get("stream") or "regulab", bank=bank, speak=speak,
+                                                      approved=True))
     except motion_templates.StoryboardError as exc:
         motion_review.send_back(store, row, str(exc))
         return True

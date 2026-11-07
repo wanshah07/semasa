@@ -47,7 +47,9 @@ def hold(store: Any, row: dict[str, Any], kind: str, body: dict[str, Any], note:
         store.table(TABLE).update({"status": REVIEW, "storyboard": saved, "storyboard_approved_at": None,
                                    "storyboard_approved_by": None, "error": "", "stage": "storyboard"}) \
             .eq("id", row["id"]).execute()
-    except Exception as exc:  # noqa: BLE001 - only a missing column or status is expected here
+    except Exception as exc:  # noqa: BLE001 - see below
+        if not not_applied(exc):
+            raise                 # a passing database or network fault: the film is retried, the storyboard written again
         log.warning("%s: storyboard not held (%s)", row["id"], str(exc)[:200])
         store.table(TABLE).update({"status": "waiting", "error": NOT_APPLIED}).eq("id", row["id"]).execute()
         return False
@@ -59,11 +61,25 @@ def hold(store: Any, row: dict[str, Any], kind: str, body: dict[str, Any], note:
     return True
 
 
-def send_back(store: Any, row: dict[str, Any], reason: str) -> None:
-    """An approved storyboard that fails its checks: back to 'review' with the reason, the approval taken off."""
-    store.table(TABLE).update({"status": REVIEW, "storyboard_approved_at": None, "storyboard_approved_by": None,
-                               "error": f"Storyboard needs a fix before the film is made: {reason}"[:600],
-                               "stage": "storyboard"}).eq("id", row["id"]).execute()
+def not_applied(exc: Exception) -> bool:
+    """Is this the database refusing 'review' or the storyboard columns, i.e. 071 not applied yet? Anything else is not."""
+    text = str(getattr(exc, "message", "") or exc).lower()
+    return ("semasa_motions_status_check" in text or "storyboard" in text) and (
+        "check constraint" in text or "column" in text or "schema cache" in text or "does not exist" in text)
+
+
+def send_back(store: Any, row: dict[str, Any], reason: str, *, notify: Any = None) -> None:
+    """An approved storyboard that fails its checks: back to 'review' with the reason, the approval taken off. It is stamped
+    as a new storyboard, so an old button cannot approve it again and Telegram is told (with the reason)."""
+    error = f"Storyboard needs a fix before the film is made: {reason}"[:600]
+    sb = {**(row.get("storyboard") or {}), "written_at": datetime.now(UTC).isoformat(timespec="seconds")}
+    store.table(TABLE).update({"status": REVIEW, "storyboard": sb, "storyboard_approved_at": None,
+                               "storyboard_approved_by": None, "error": error, "stage": "storyboard"}) \
+        .eq("id", row["id"]).execute()
+    try:
+        (notify or telegram_notify)(store, {**row, "storyboard": sb, "error": error})
+    except Exception as exc:  # noqa: BLE001 - the page shows it either way
+        log.info("%s: bounced storyboard not sent to Telegram (%s)", row["id"], str(exc)[:160])
 
 
 # ---- the storyboard as words (the Telegram message and the page share the same shape) ---------------------------------------
@@ -103,6 +119,8 @@ def title_of(row: dict[str, Any], sb: dict[str, Any]) -> str:
 def telegram_text(row: dict[str, Any], sb: dict[str, Any], limit: int = 3900) -> str:
     kind = {"explainer": "Penerangan", "showcase": "Pameran produk", "story": "Cerita foto"}.get(sb.get("kind"), "")
     parts = [f"🎞 Storyboard untuk diluluskan ({kind})", title_of(row, sb)[:160], ""]
+    if row.get("error"):
+        parts[2:2] = [f"⚠️ {str(row['error'])[:300]}", ""]
     for sc in scenes_of(sb):
         block = [f"▪️ {sc['label']}: {sc['heading']}".strip()]
         block += [f"   • {x}" for x in sc["lines"] if x]
@@ -165,7 +183,7 @@ def due(store: Any) -> list[dict[str, Any]]:
     from . import telegram_tools as tt
     sent = set(tt.chat_state(store).get("storyboards_sent") or [])
     try:
-        rows = store.table(TABLE).select("id,brief,title,status,storyboard").eq("status", REVIEW).execute().data or []
+        rows = store.table(TABLE).select("id,brief,title,status,storyboard,error").eq("status", REVIEW).execute().data or []
     except Exception as exc:  # noqa: BLE001 - before 071 there is no 'review' to find
         log.info("no storyboards read (%s)", str(exc)[:120])
         return []
@@ -173,7 +191,7 @@ def due(store: Any) -> list[dict[str, Any]]:
 
 
 DECIDE_WORDS = {
-    "ok": "✅ Diluluskan. Semasa mula buat gambar dan video sekarang; saya hantar bila siap.",
+    "ok": "✅ Diluluskan. Semasa mula buat gambar dan video sekarang (Semasa → Video).",
     "rewrite": "🔁 Storyboard baharu sedang ditulis. Saya hantar di sini untuk diluluskan.",
     "not_linked": "Akaun Telegram ini tidak disambung.",
     "gone": "Video itu sudah tiada.",

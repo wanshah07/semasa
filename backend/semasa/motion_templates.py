@@ -194,13 +194,16 @@ def _words(value: Any) -> str:
 
 
 def _line(data: dict[str, Any], key: str, most: int, *, least: int = 1, speak: Callable[[str], str]) -> str:
+    """The field as the film will show it. The words are counted AFTER `speak` (Malaysian BM and the anti-slop edits can add or
+    remove a word), so a storyboard that passed once passes again when it is checked after Wan's approval."""
     text = _words(data.get(key))
-    n = len(text.split())
-    if not least <= n <= most:
-        raise StoryboardError(f'"{key}" must be {least} to {most} words, not {n}')
     if FORBIDDEN.search(text):
         raise StoryboardError(f'"{key}" carries a link, a handle, a hashtag or an emoji')
-    return speak(text)
+    said = _words(speak(text))
+    n = len(said.split())
+    if not least <= n <= most:
+        raise StoryboardError(f'"{key}" must be {least} to {most} words, not {n}')
+    return said
 
 
 def _accent(value: Any, where: str) -> str:
@@ -229,9 +232,10 @@ def _hook(data: dict[str, Any], stream: str, bank: Any, speak: Callable[[str], s
 
 
 def validate_showcase(data: Any, products: list[dict[str, Any]], *, lang: str, stream: str, bank: Any = None,
-                      speak: Callable[[str], str] = str) -> dict[str, Any]:
+                      speak: Callable[[str], str] = str, approved: bool = False) -> dict[str, Any]:
     """The showcase storyboard, checked field by field; raises StoryboardError with the first reason it is not usable. What the
-    user wrote for a product (its name, its benefits) wins over the writer's."""
+    user wrote for a product (its name, its benefits) wins over the writer's. `approved`: this is the storyboard Wan approved
+    (supabase/071), which already carries those words, so its own words (his edits included) are kept and only checked."""
     if not isinstance(data, dict) or not data:
         raise StoryboardError("the answer was not one JSON object")
     hook, shape = _hook(data, stream, bank, speak)
@@ -247,8 +251,9 @@ def validate_showcase(data: Any, products: list[dict[str, Any]], *, lang: str, s
     for i, (item, given) in enumerate(zip(items, products, strict=True)):
         if not isinstance(item, dict):
             raise StoryboardError(f"product {i + 1} is not an object")
-        name = _words(given.get("name")) or _line(item, "name", 6, speak=speak)
-        mine = _words(given.get("benefits"))
+        name = (_line(item, "name", 6, speak=speak) if approved
+                else (_words(given.get("name")) or _line(item, "name", 6, speak=speak)))
+        mine = "" if approved else _words(given.get("benefits"))
         if mine:
             benefits = [x.strip() for x in re.split(r"\s*[·|,;]\s*", mine) if x.strip()][:3]
         else:

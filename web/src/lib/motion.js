@@ -50,7 +50,7 @@ const motionOptions = d => ({ style: styleOf(d.style), mode: modeOf(d.mode), des
 export function motionVariantMatches(existing, wanted) {
   // a row still waiting for Wan's choice of styles is that idea's video, whatever he has set on it so far
   if (wanted && existing.status === 'waiting' && existing.idea_id && existing.idea_id === wanted.idea_id) return true;
-  return !!wanted && ['pending', 'working', 'done'].includes(existing.status) &&
+  return !!wanted && ['pending', 'working', 'review', 'done'].includes(existing.status) &&
     existing.idea_id === wanted.idea_id && existing.language === wanted.language &&
     designOf(existing.options?.design) === designOf(wanted.options?.design) &&
     styleOf(existing.options?.style) === styleOf(wanted.options?.style) &&

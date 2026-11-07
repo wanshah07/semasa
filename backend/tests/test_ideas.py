@@ -92,7 +92,7 @@ def test_process_idea_writes_a_scanned_draft_and_queues_media(monkeypatch):
     monkeypatch.setattr(ideas, "read_source", lambda url: {"ok": False, "why": "no link", "image": None})
     store = _store()
     cap = "Notifikasi kosmetik bukan kelulusan. Hubungi kami."
-    llm = FakeLLM({"fit": True, "hook": "h", "domain": "kosmetik", "citation": "NPRA",
+    llm = FakeLLM({"fit": True, "hook": "h", "hook_shape": 21, "domain": "kosmetik", "citation": "NPRA",
                    "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}},
                    "visual_prompt": "botol di rak", "alt": "botol"})
     idea = {"id": "i1", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "image"}
@@ -134,7 +134,7 @@ def test_the_tabung_reaches_the_writer_and_the_scan(monkeypatch):
     store = _store()
     cap = "Kilang boleh memakai bahan ini dengan selamat."
     text = {"bm": {"instagram": cap, "facebook": cap, "threads": cap}}
-    llm = FakeLLM({"fit": True, "hook": "h", "citation": "NPRA", "text": text})
+    llm = FakeLLM({"fit": True, "hook": "h", "hook_shape": 21, "citation": "NPRA", "text": text})
     settings = {**ideas.load_settings(store), "bahasa": {"indo": [{"indo": "memakai", "bm": "menggunakan"}]}}
     ideas.process_idea(store, llm, {"id": "i1", "stream": "regulab", "make_media": "none"}, settings)
     assert '"memakai" (write "menggunakan")' in llm.seen[0][0]
@@ -160,7 +160,7 @@ def test_a_retry_after_a_failure_part_way_finishes_the_same_draft(monkeypatch):
     monkeypatch.setattr(ideas, "read_source", lambda url: {"ok": False, "why": "no link", "image": None})
     store = _store()
     cap = "Notifikasi kosmetik bukan kelulusan produk."
-    llm = FakeLLM({"fit": True, "hook": "h", "domain": "kosmetik", "citation": "NPRA",
+    llm = FakeLLM({"fit": True, "hook": "h", "hook_shape": 21, "domain": "kosmetik", "citation": "NPRA",
                    "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}},
                    "visual_prompt": "botol di rak", "alt": "botol"})
     idea = {"id": "i1", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "image"}
@@ -215,7 +215,7 @@ def _revise_store(**post):
 def test_revise_rewrites_the_words_keeps_slides_and_history():
     store = _revise_store()
     new = "Ramai sangka notifikasi itu kelulusan. Ia hanya pemberitahuan kepada NPRA."
-    llm = FakeLLM({"fit": True, "hook": "Baru", "citation": "NPRA, Garis Panduan Kawalan Kosmetik",
+    llm = FakeLLM({"fit": True, "hook": "Baru", "hook_shape": 22, "citation": "NPRA, Garis Panduan Kawalan Kosmetik",
                    "text": {"bm": {"instagram": new, "facebook": new, "threads": new}},
                    "slides": [{"title": "Jangan tukar", "points": []}]})
     assert ideas.revise_posts(store, llm) == "Revise: 1/1 rewritten"
@@ -234,7 +234,7 @@ def test_revise_rewrites_the_words_keeps_slides_and_history():
 
 def test_revise_never_touches_an_approved_post():
     store = _revise_store(status="approved")
-    llm = FakeLLM({"fit": True, "hook": "x", "text": {"bm": {"instagram": "y"}}})
+    llm = FakeLLM({"fit": True, "hook": "x", "hook_shape": 22, "text": {"bm": {"instagram": "y"}}})
     ideas.revise_posts(store, llm)
     p = store.tables["semasa_posts"][0]
     assert p["hook"] == "Lama" and p["revise_state"] == "error" and "only a draft" in p["revise_error"]
@@ -243,7 +243,8 @@ def test_revise_never_touches_an_approved_post():
 
 def test_revise_keeps_the_post_when_the_writer_returns_nothing():
     store = _revise_store()
-    ideas.revise_posts(store, FakeLLM({"fit": True, "hook": "x", "text": {"en": {"linkedin": "wrong language"}}}))
+    ideas.revise_posts(store, FakeLLM({"fit": True, "hook": "x", "hook_shape": 22,
+                                       "text": {"en": {"linkedin": "wrong language"}}}))
     p = store.tables["semasa_posts"][0]
     assert p["hook"] == "Lama" and p["revise_state"] == "error" and "no BM caption" in p["revise_error"]
     assert p["versions"] == []
@@ -255,7 +256,7 @@ def test_revise_picks_up_a_stale_claim_and_skips_other_runs_claims():
                  updated_at=datetime.now(UTC).isoformat())
     store.tables["semasa_posts"].append(fresh)
     new = "Ramai sangka notifikasi itu kelulusan. Ia hanya pemberitahuan kepada NPRA."
-    ideas.revise_posts(store, FakeLLM({"fit": True, "hook": "Baru", "text": {"bm": {"instagram": new}}}))
+    ideas.revise_posts(store, FakeLLM({"fit": True, "hook": "Baru", "hook_shape": 22, "text": {"bm": {"instagram": new}}}))
     p1, p2 = store.tables["semasa_posts"]
     assert p1["hook"] == "Baru" and p2["hook"] == "Lama" and p2["revise_state"] == "working"
 
@@ -285,7 +286,7 @@ def test_a_replacement_keeps_its_slot_and_the_rejected_drafts_pictures(monkeypat
         {"id": "m2", "status": "error", "generated_media_url": None, "type": "image", "mode": "prompt", "meta": {}},
         {"id": "m3", "status": "done", "generated_media_url": "https://x/s.jpg", "type": "image", "mode": "slides", "meta": {}}]
     cap = "Notifikasi kosmetik ialah pemberitahuan kepada NPRA, bukan kelulusan produk."
-    llm = FakeLLM({"fit": True, "hook": "h", "domain": "kosmetik", "citation": "NPRA",
+    llm = FakeLLM({"fit": True, "hook": "h", "hook_shape": 21, "domain": "kosmetik", "citation": "NPRA",
                    "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}}, "visual_prompt": "x"})
     idea = {"id": "i9", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "none",
             "note": "Pengganti draf yang ditolak", "status": "working",
@@ -323,7 +324,7 @@ def test_the_writers_pillar_is_kept_only_from_the_list(monkeypatch):
     for said, kept in (("mitos", "mitos"), ("invented", None)):
         store = _store()
         store.tables["semasa_settings"].append({"key": "writer", "value": WRITER})
-        llm = FakeLLM({"fit": True, "hook": "h", "domain": "kosmetik", "pillar": said, "citation": "NPRA",
+        llm = FakeLLM({"fit": True, "hook": "h", "hook_shape": 21, "domain": "kosmetik", "pillar": said, "citation": "NPRA",
                        "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}}})
         idea = {"id": "i1", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "none",
                 "status": "working"}

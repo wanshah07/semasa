@@ -1,0 +1,39 @@
+name: Hook learning
+
+# Which hook shapes earn views and interaction (Wan, 7 Nov 2026). Runs daily after metrics.yml (05:10 UTC) has refreshed the figures:
+# backend/semasa/hook_learning.py ranks the shapes on the last 60 days of real results and writes settings.hook_learning, which the
+# writers read as a hint (never a rule). It reads figures and writes that one setting; it posts nothing and changes no post.
+on:
+  schedule:
+    - cron: "40 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: hook-learning
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  learn:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Rank the hook shapes
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m semasa.hook_learning

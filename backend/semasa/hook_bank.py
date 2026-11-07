@@ -96,7 +96,7 @@ DEFAULT_GUIDANCE = ("Write a Malay post's hook as the shape is written; write an
                     "fact, take a RELATABLE or CURIOSITY shape: they assert nothing and always fit.")
 
 
-def block(family: str | None, stream: str, bank: Bank | None = None) -> str:
+def block(family: str | None, stream: str, bank: Bank | None = None, hint: str = "") -> str:
     """The required-hook block appended to the writer's system prompt, after the house style, so it can never lift a rule. A style
     made from screenshots replaces the default guidance with its own instruction; the requirement and the guardrails stay."""
     rows = allowed(stream, family, bank)
@@ -117,10 +117,10 @@ def block(family: str | None, stream: str, bank: Bank | None = None) -> str:
             "SOURCE does not give, never keep the underscores in the finished hook, and never copy an example sentence. "
             "If no shape can be filled without inventing a fact, take the shape that asserts the least. "
             "The hook is the caption's own first line, not a title above it.\n"
-            "Shapes you may use:\n" + "\n".join(lines))
+            + (f"{hint}\n" if hint else "") + "Shapes you may use:\n" + "\n".join(lines))
 
 
-def film_block(stream: str, bank: Bank | None = None) -> str:
+def film_block(stream: str, bank: Bank | None = None, hint: str = "") -> str:
     """The required-hook block for a Motion film's script (Wan, 7 Nov 2026: "do 1,2,3", the third being that the film's hook scene
     also uses the 25 shapes instead of Tahukah anda / Amaran / Berita terkini). Same shapes, same stream rule, same guardrails as
     block(); the hook is the first scene's heading, which is also the first words said, and "hook_shape" / "hook" sit beside
@@ -146,7 +146,7 @@ def film_block(stream: str, bank: Bank | None = None) -> str:
             "underscores, never copy an example sentence, and never open with "
             "'Tahukah anda', 'Amaran' or 'Berita terkini' in place of a shape. If no shape can be filled without inventing a "
             "fact, take the shape that asserts the least.\n"
-            "Shapes you may use:\n" + "\n".join(lines))
+            + (f"{hint}\n" if hint else "") + "Shapes you may use:\n" + "\n".join(lines))
 
 
 def pick_for_idea(store: Any, idea_id: Any) -> Bank | None:
@@ -207,6 +207,22 @@ def lead_matches(hook: str, text: str) -> bool:
         return re.sub(r"[\W_]+", " ", s.lower()).strip()
     h, t = norm(hook), norm(text)
     return bool(h) and t.startswith(h[: max(12, min(len(h), 60))])
+
+
+def cover(items: list[dict[str, Any]], hook: str, words: int = 12) -> tuple[list[dict[str, Any]], str]:
+    """The cover slide (or the poster) wears the hook (Wan, 7 Nov 2026: "make sure all apply the 25 hooks"). The first item's
+    title is the hook the caption opens with: kept when the writer already did that, set to the hook when it did not and the hook
+    is no longer than `words`, and left alone ("too_long") when the hook cannot fit a headline.
+    Returns (items, "kept" | "set" | "too_long" | "")."""
+    clean = " ".join(str(hook or "").split())
+    if not items or not clean or "_" in clean:
+        return items, ""
+    title = str(items[0].get("title") or "")
+    if lead_matches(clean, title.replace("*", "")) or lead_matches(title.replace("*", ""), clean):
+        return items, "kept"
+    if len(clean.split()) > words:
+        return items, "too_long"
+    return [{**items[0], "title": clean}, *items[1:]], "set"
 
 
 # ---- a style made from screenshots (hook_styles.py) ------------------------------------------------------------------------

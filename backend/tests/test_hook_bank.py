@@ -175,3 +175,29 @@ def test_a_revision_is_held_to_it_too_and_an_unfit_answer_is_never_asked_again(m
                  "text": {"bm": {"instagram": "Cuba nak jelaskan notifikasi sambil minum kopi be like."}}})
     ideas.revise_one(store, again, post, ideas.load_settings(store))
     assert store.tables["semasa_posts"][0]["hook"].startswith("Cuba nak jelaskan")
+
+
+# ---- the cover slide and the poster wear the hook (7 Nov 2026) --------------------------------------------------------------
+
+def test_a_cover_that_already_opens_with_the_hook_is_kept_and_one_that_does_not_is_set_to_it():
+    hook = "Stop buat label sendiri kalau nak produk selamat"
+    kept = [{"title": "Stop buat *label* sendiri kalau nak produk selamat", "points": []}, {"title": "Fakta", "points": ["a"]}]
+    assert hook_bank.cover(kept, hook) == (kept, "kept")
+    other = [{"title": "Tentang label", "points": ["x"]}, {"title": "Fakta", "points": ["a"]}]
+    got, state = hook_bank.cover(other, hook)
+    assert state == "set" and got[0] == {"title": hook, "points": ["x"]} and got[1] == other[1], "the rest is untouched"
+    assert other[0]["title"] == "Tentang label", "the input is not changed"
+
+
+def test_a_hook_too_long_for_a_headline_or_with_blanks_left_leaves_the_cover_alone():
+    items = [{"title": "Tentang label", "points": []}]
+    long_hook = " ".join(["perkataan"] * 14)
+    assert hook_bank.cover(items, long_hook) == (items, "too_long")
+    assert hook_bank.cover(items, "Stop buat ___ kalau nak ___") == (items, "")
+    assert hook_bank.cover(items, "") == (items, "") and hook_bank.cover([], "Hook") == ([], "")
+
+
+def test_the_slide_and_poster_rules_ask_for_the_hook_on_the_cover():
+    for stream in ("regulab", "linkedin"):
+        assert "headline IS the hook" in ideas.SLIDES_RULES[stream]
+        assert "same hook shape you filled" in ideas.POSTER_RULES[stream]

@@ -45,6 +45,7 @@ from . import (
     db,
     fetch,
     hook_bank,
+    hook_learning,
     motion_assets,
     motion_auto,
     motion_captions,
@@ -251,7 +252,8 @@ PACE_SILENT = (
     "them as a chart, a map, a calendar or a news clipping. The on-screen lines are {lines}.")
 
 
-def build_script_system(row: dict[str, Any], extra: str, count: int = 4, bank: hook_bank.Bank | None = None) -> str:
+def build_script_system(row: dict[str, Any], extra: str, count: int = 4, bank: hook_bank.Bank | None = None,
+                        hint: str = "") -> str:
     stream = row.get("stream") or "regulab"
     lang = language_of(row)
     seconds = motion_styles.duration(row) if motion_styles.duration(row) == 10 else FILM_MAX - 8
@@ -267,7 +269,7 @@ def build_script_system(row: dict[str, Any], extra: str, count: int = 4, bank: h
               f"There is NO fixed length: make the film as long as the information needs to be delivered in full, and not a "
               f"second longer; never more than {FILM_MAX:g} seconds including the outro.")
     return SCRIPT_SYSTEM.format(length=length, count=count, kickers=" · ".join(motion_auto.LABELS[lang][:count]),
-                                flow=(FLOW if count > 1 else FLOW_TEASER) + "\n" + hook_bank.film_block(stream, bank),
+                                flow=(FLOW if count > 1 else FLOW_TEASER) + "\n" + hook_bank.film_block(stream, bank, hint),
                                 pace=pace, voice=voice_line(stream, lang),
                                 extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "") + motion_styles.prompt(row)
                                 + antislop.prompt_block(film=True))
@@ -278,12 +280,12 @@ def words_on_screen(sc: dict[str, Any]) -> int:
 
 
 def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_text: str,
-                style: tuple[str, str] = ("", ""), bank: hook_bank.Bank | None = None) -> dict[str, Any]:
+                style: tuple[str, str] = ("", ""), bank: hook_bank.Bank | None = None, hint: str = "") -> dict[str, Any]:
     """The writer's plan: title, photo search words and EXACTLY four scenes (Hook, Fakta, Kenapa, Solusi; one in a 10 s
     teaser) with on-screen words and narration. Asked a second time when the count is wrong; raises when it gives none."""
     teaser = motion_styles.duration(row) == 10
     count = 1 if teaser else 4
-    system = build_script_system(row, extra, count, bank)
+    system = build_script_system(row, extra, count, bank, hint)
     user = build_user(row, src_title, src_text, style=style)
     stream = row.get("stream") or "regulab"
     first: tuple[Any, list[Any]] | None = None
@@ -1212,7 +1214,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         # written to those exact times; with the voice off the plan still fixes the scenes and nothing is recorded
         bank = hook_bank.pick_for_idea(store, row.get("idea_id"))     # Wan's own hook style, or None: the built-in 25
         set_stage(store, row, "storyboard")
-        plan = plan_scenes(llm, row, settings.get("prompt") or "", title, text, style=style, bank=bank)
+        plan = plan_scenes(llm, row, settings.get("prompt") or "", title, text, style=style, bank=bank,
+                           hint=hook_learning.hint(store, bank))
         # the storyboard: an AI (ChatGPT, then Gemini, then the film's writer) writes the shot of each scene's picture, but only
         # when some picture maker will draw it (Wan, 7 Nov 2026); a scene without a shot keeps the template request
         sb_note = ""

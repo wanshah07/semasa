@@ -152,6 +152,15 @@ export async function addMemory(note) {
   if (error) throw new Error(error.message);
 }
 
+/** Changes a note's words (Memori & Arahan). Its source stays: an auto note Wan corrected is still shown as one the chat found. */
+export async function updateMemory(id, note) {
+  const n = String(note || "").replace(/\s+/g, " ").trim();
+  if (n.length < 3 || n.length > 500) throw new Error("Nota mesti 3 hingga 500 aksara / a note is 3 to 500 characters");
+  const { data, error } = await supabase.from("semasa_chat_memory").update({ note: n }).eq("id", id).select("id");
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("Nota tidak dijumpai / note not found");
+}
+
 export async function deleteMemory(id) {
   const { error } = await supabase.from("semasa_chat_memory").delete().eq("id", id);
   if (error) throw new Error(error.message);

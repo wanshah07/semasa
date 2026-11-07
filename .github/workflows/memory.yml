@@ -1,0 +1,49 @@
+name: Memory from chats
+
+# "Generate memory from chats" (Wan, 7 Nov 2026, the Memori & Arahan page). Once a day, after the Malaysian day has ended,
+# backend/semasa/memory_auto.py reads what Wan wrote in the AI chat and on Telegram in the last day and saves at most 5 lasting
+# facts or preferences he stated as notes (semasa_chat_memory, source 'chat'), which the chat sends with every call. It reads
+# nothing when Wan turns the switch off (settings.ai_memory.auto_memory). It writes notes and its own bookmark, and nothing else.
+on:
+  schedule:
+    - cron: "35 16 * * *"         # 00:35 MYT
+  workflow_dispatch:
+
+concurrency:
+  group: memory
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  memory:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Learn from the day's chats
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_ALLOWED_HOSTS: ${{ vars.LLM_ALLOWED_HOSTS }}
+          LLM_FALLBACK_BASE_URL: ${{ vars.LLM_FALLBACK_BASE_URL }}
+          LLM_FALLBACK_MODEL: ${{ vars.LLM_FALLBACK_MODEL }}
+          LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
+          LLM_FALLBACK_ALLOWED_HOSTS: ${{ vars.LLM_FALLBACK_ALLOWED_HOSTS }}
+        run: python -m semasa.memory_auto

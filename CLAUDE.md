@@ -122,3 +122,19 @@ Two hard limits that come from this repo's own rules, not from the format:
   - **Approve keeps the gate**: `semasa_telegram_decide` runs the update as Wan's own login (`request.jwt.claims`, transaction-local), so `semasa_posts_gate` stamps approved_by/at and `_v3` refuses a taken slot or duplicate words as for the page; only the version Wan was shown (`semasa_telegram_sent.version`) is approved; the publisher's own hard checks run first and the fresh flags are saved with it (`semasa_posts_approve_clean` needs hard_flags = 0). Proved on 7 Nov 2026 in a rolled-back run against the live gate.
   - Group messages for the FAQ come from the inbox now (getUpdates answers 409 once a webhook is set; faq_sources still reads it before then). The watchdog's alerts also go to Telegram, and `check_telegram` reports a broken webhook or Wan's messages unanswered for 30 minutes.
 - **Each business sends from its own Gmail** (Wan, 7 Nov 2026: "for valorith change to muhammad.ridzuan22222@gmail.com"). `billing.make_senders` gives WS REGULAB's sender and `sender_for(email)`: a business whose company e-mail is connected in Composio sends from that inbox with its own From; until it is, its mail goes from WS REGULAB's inbox with no From claimed, and the health report says so (`check_business_gmail`). `GmailMCP.account()` takes one inbox connected twice (a reconnect leaves the old link active: info@ was on `gmail_smock-upgang` and `gmail_prissy-stingo`) as one inbox, Composio's default first, else the lowest id. Before this, that duplicate refused every WS REGULAB send and CRM mail ("expected exactly 1"). CRM still sends from WS REGULAB's inbox only.
+
+## Dokumen and Memori & Arahan (7 Nov 2026)
+
+- **Dokumen** (`#dokumen`, Rujukan): the repo's own Markdown (CLAUDE.md, every README, `rules/`, `ops/`, `docs/`, `.claude/skills/`,
+  `supabase/**`), bundled at build time (`web/src/lib/repoDocsFiles.js`, `import.meta.glob` with `?raw`, one lazy chunk per file) and
+  drawn with the chat's Markdown reader (no HTML passes through). `backup/`, `node_modules`, `dist` and files over 400 KB are never
+  shown. `pages.yml` now rebuilds on any `**/*.md` push with the full history, so a merged change appears by itself and each file
+  carries its last-commit date (`web/vite.repoDocs.js`). `repoDocs.test.mjs` fails when a .md file the rules accept is missed by the glob.
+- **Memori & Arahan** (`#memori`, Dashboard, beside Sembang AI): `settings.ai_instructions` {text, updated_at} (max 4,000) and
+  `settings.ai_memory` {search_chats, auto_memory} (both on by default; rows made by `supabase/070_ai_memory.sql`, since the browser
+  can update a setting but never add one), plus list / add / edit / delete of the signed-in user's `semasa_chat_memory` notes
+  (policy from 025). The chat sends the instructions after its own rules, never above them; `search_chats` adds the read-only
+  `search_chats` tool (other threads, Telegram's included); off, the chat sees only the current thread and is told so.
+- **Memory from chats**: `backend/semasa/memory_auto.py` (`memory.yml`, 00:35 MYT) reads only Wan's own messages of the last day,
+  asks the AI team for at most 5 lasting facts or preferences, drops secrets, e-mail addresses and long numbers, skips near-repeats
+  and the 40-note ceiling, and saves them with source `chat` (shown as "auto"). Its bookmark is `settings.memory_auto`.

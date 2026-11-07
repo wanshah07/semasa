@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import repoDocs from "./vite.repoDocs.js";
 
 // Relative asset paths ("./assets/…"), so the SAME build works at
 // https://wanshah07.github.io/semasa/ and at a custom domain's root
@@ -9,7 +10,8 @@ import react from "@vitejs/plugin-react";
 // no client-side router (tabs are #hash), which is what makes "./" safe here.
 // VITE_BASE, still set by pages.yml, is deliberately ignored.
 export default defineConfig({
-  plugins: [react()],
+  // repoDocs: size and last-changed date of the repo's .md files, for Rujukan → Dokumen (src/lib/repoDocsFiles.js)
+  plugins: [react(), repoDocs({ root: fileURLToPath(new URL("..", import.meta.url)) })],
   base: "./",
   // "@/components/ui/…": the path a shadcn component is written against (components.json)
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },

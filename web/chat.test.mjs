@@ -4,6 +4,7 @@ import {
   DB_TABLES, FAQ_CATEGORIES, LIMITS, MEMORY, SYSTEM, TEST_IMAGE, TOOLS, buildMessages, planFaq, shapeFaq, buildSystem, checkFetchUrl, checkReport, cleanNote, htmlToText,
   MODEL_PREFERENCE, cleanModelId, isPrivateIp, modelNote, parseArgs, planFold, planQuery, rankModels, resolveModel, shapeRows, summaryMessages,
   userAskedToRemember, whoIs, foldDelta, lastQuestion, sseEvents,
+  CHAT_SEARCH_OFF, CHAT_SEARCH_RULE, INSTRUCTIONS_HEAD, INSTRUCTIONS_MAX, cleanInstructions, memorySettings, planChatSearch, shapeChatHits, toolsFor,
 } from "../supabase/functions/semasa-chat/logic.js";
 
 let n = 0;
@@ -547,3 +548,59 @@ await run("search_faq answer: ranked by hits, answers clipped, secret-looking fi
   assert.equal(out[1].instrument, "MPPHM 2020");
   assert.ok(/search_faq/.test(buildSystem({ tools: true })));
 });
+
+/* ---------- Memori & Arahan (Wan, 7 Nov 2026): his instructions, and the "Search and reference chats" switch ---------- */
+await run("Wan's instructions are sent after the function's own rules and the tools, and are headed as never outranking them", async () => {
+  const sys = buildSystem({ now: NOW, instructions: "Sentiasa beri jadual ringkas di hujung.", notes: [{ note: "Wan guna Buffer" }] });
+  const rules = sys.indexOf(SYSTEM), tools = sys.indexOf("fetch_url"), head = sys.indexOf(INSTRUCTIONS_HEAD), notes = sys.indexOf("Nota kekal");
+  assert.ok(rules === 0 && tools > rules && head > tools && notes > head, "rules, tools, then Wan's instructions, then the notes");
+  assert.ok(sys.includes(`${INSTRUCTIONS_HEAD}\nSentiasa beri jadual ringkas di hujung.`));
+  assert.ok(/peraturan di atas yang diikut/.test(INSTRUCTIONS_HEAD), "a clash goes to the rules, never to the instructions");
+});
+await run("empty instructions add no heading; long ones are cut at 4000 and control characters dropped", async () => {
+  assert.ok(!buildSystem({ now: NOW, instructions: "  \n " }).includes(INSTRUCTIONS_HEAD));
+  assert.equal(cleanInstructions("x".repeat(INSTRUCTIONS_MAX + 50)).length, INSTRUCTIONS_MAX);
+  assert.equal(cleanInstructions(" satu\r\n\n\n\ndua\u0007 "), "satu\n\ndua");
+});
+await run("memorySettings: both switches are on until Wan turns one off, and junk rows change nothing", async () => {
+  assert.deepEqual(memorySettings([]), { instructions: "", searchChats: true, autoMemory: true });
+  assert.deepEqual(memorySettings([{ key: "ai_memory", value: { search_chats: false, auto_memory: false } }, { key: "ai_instructions", value: { text: " Jawab pendek. " } }]),
+    { instructions: "Jawab pendek.", searchChats: false, autoMemory: false });
+  assert.deepEqual(memorySettings([{ key: "ai_memory", value: "nope" }, null, { key: "ai_instructions", value: [1] }]), { instructions: "", searchChats: true, autoMemory: true });
+});
+await run("search_chats is offered only while the switch is on, and with it off the chat is told it sees only this conversation", async () => {
+  assert.deepEqual(toolsFor({ searchChats: false }).map((x) => x.function.name), TOOLS.map((x) => x.function.name));
+  assert.deepEqual(toolsFor({ searchChats: true }).map((x) => x.function.name).slice(-1), ["search_chats"]);
+  const on = buildSystem({ now: NOW, searchChats: true }), off = buildSystem({ now: NOW, searchChats: false });
+  assert.ok(on.includes(CHAT_SEARCH_RULE) && !on.includes(CHAT_SEARCH_OFF));
+  assert.ok(off.includes(CHAT_SEARCH_OFF) && !off.includes(CHAT_SEARCH_RULE));
+  assert.ok(!JSON.stringify(toolsFor({ searchChats: true })).match(/insert|update|delete|drop/i), "the new tool reads only");
+});
+await run("planChatSearch: three-letter words, at most five, one ilike per word on the message text", async () => {
+  const p = planChatSearch('{"query":"Label SPF, (halal) ok"}');
+  assert.ok(p.ok && p.words.join(" ") === "label spf halal" && p.limit === 40);
+  assert.equal(p.or, "content.ilike.*label*,content.ilike.*spf*,content.ilike.*halal*");
+  assert.equal(planChatSearch({ query: "a b" }).ok, false);
+  assert.equal(planChatSearch({ query: "satu dua tiga empat lima enam tujuh" }).words.length, 5);
+});
+await run("shapeChatHits: best matches first, at most 8, a window around the hit, titled and dated, Wan or AI", async () => {
+  const long = "x ".repeat(300) + "notifikasi kosmetik perlu SPF" + " y".repeat(300);
+  const rows = [
+    { thread_id: "a", role: "assistant", content: "Tentang SPF sahaja", created_at: "2026-11-01T02:00:00Z" },
+    { thread_id: "b", role: "user", content: long, created_at: "2026-11-05T02:00:00Z" },
+    { thread_id: "a", role: "user", content: "tiada kaitan", created_at: "2026-11-06T02:00:00Z" },
+    ...Array.from({ length: 12 }, (_, i) => ({ thread_id: "c", role: "user", content: `spf ${i}`, created_at: "2026-10-01T00:00:00Z" })),
+  ];
+  const out = shapeChatHits(rows, { a: "Label", b: "Telegram" }, ["notifikasi", "spf"]);
+  assert.equal(out.length, 8);
+  assert.deepEqual([out[0].conversation, out[0].by, out[0].date], ["Telegram", "Wan", "2026-11-05"]);
+  assert.ok(out[0].text.includes("notifikasi kosmetik perlu SPF") && out[0].text.length <= 402 && out[0].text.startsWith("…"));
+  assert.ok(!out.some((h) => h.text === "tiada kaitan"), "a turn that hits no word is not an excerpt");
+  assert.equal(out.find((h) => h.conversation === "(tanpa tajuk)")?.by, "Wan");
+});
+await run("the page and the function clean the instructions the same way and share the 4000 limit", async () => {
+  const page = await import("./src/lib/aiMemory.js");
+  assert.equal(page.INSTRUCTIONS_MAX, INSTRUCTIONS_MAX);
+  for (const x of ["", "  a\r\nb  ", "x".repeat(5000), "satu\n\n\n\ndua\u0001"]) assert.equal(page.cleanInstructions(x), cleanInstructions(x));
+});
+console.log("memory settings: ok");

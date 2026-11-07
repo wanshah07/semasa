@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from conftest import FITTED
 from fakestore import FakeStore
+from hooked import hooked
 
 from semasa import motion
 
@@ -129,7 +130,7 @@ class FakeLLM:
 
     def chat_json(self, system, user, **kw):
         self.asked.append((system, user))
-        return self.answers.pop(0) if self.answers else None
+        return hooked(self.answers.pop(0)) if self.answers else None
 
 
 class Bucket:

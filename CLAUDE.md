@@ -36,6 +36,14 @@ A **hook style** made from screenshots (`ops/HOOK-STYLES.md`, `hook_styles.py`, 
 their default guidance while it is selected (the default in `settings.hook_style`, or `brief.hook_style` on one idea): the same
 requirement applies to ITS numbered shapes, and its instruction can never lift a rule (`hook_styles.LIFT` drops the sentences that try).
 
+**Motion's hook scene uses the shapes too** (Wan, 7 Nov 2026: "do 1,2,3"): it no longer opens with Tahukah anda / Amaran / Berita
+terkini. The film's script prompt carries `hook_bank.film_block` (the stream's shapes, or the selected hook style via
+`hook_bank.pick_for_idea`) and asks for `hook_shape` + `hook`; a script without a usable shape is asked again once, and a second miss
+fails the film with a reason (Redo). Scene 1's heading is made equal to the hook (up to 14 words), the shape is kept on scene 1, the
+plan, `check_report.hook` and the style note, and `hook_first_said` records whether the narrator's first words are the hook. A film
+built on a shape draws no TAHUKAH ANDA / AMARAN / BERITA TERKINI chip (`motion_auto.choose` sets `hook` to ""); a film with no shape
+(an older one) still does.
+
 Pick the group by how much the post asserts: CURIOSITY and RELATABLE assert nothing,
 BOLD asserts an opinion, TRANSFORM asserts a result, VULNERABLE asserts something about the
 author. The higher the assertion, the higher the evidence bar, and rule 4 above already

@@ -1,5 +1,7 @@
 """antislop.py: the machine-safe edits, the tells that need a person, and where the rules are handed to the writers."""
 
+from hooked import hooked
+
 from semasa import antislop, ideas, motion
 
 
@@ -54,8 +56,8 @@ def test_new_ai_written_captions_come_out_clean_and_the_shape_is_unchanged():
 def test_the_plan_of_a_film_is_cleaned_too():
     class LLM:
         def chat_json(self, system, user, **kw):
-            return {"title": "t", "photo_query": "q", "scenes": [
-                {"heading": f"Fakta — penting {i}", "lines": ["Tips dan obat"], "narration": ""} for i in range(4)]}
+            return hooked({"title": "t", "photo_query": "q", "scenes": [
+                {"heading": f"Fakta — penting {i}", "lines": ["Tips dan obat"], "narration": ""} for i in range(4)]})
     plan = motion.plan_scenes(LLM(), {"voice": "off", "language": "bm"}, "", "", "")
     assert plan["scenes"][0]["heading"] == "Fakta, penting 0" and plan["scenes"][0]["lines"] == ["Tip dan ubat"]
 

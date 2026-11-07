@@ -120,6 +120,54 @@ def block(family: str | None, stream: str, bank: Bank | None = None) -> str:
             "Shapes you may use:\n" + "\n".join(lines))
 
 
+def film_block(stream: str, bank: Bank | None = None) -> str:
+    """The required-hook block for a Motion film's script (Wan, 7 Nov 2026: "do 1,2,3", the third being that the film's hook scene
+    also uses the 25 shapes instead of Tahukah anda / Amaran / Berita terkini). Same shapes, same stream rule, same guardrails as
+    block(); the hook is the first scene's heading, which is also the first words said, and "hook_shape" / "hook" sit beside
+    "title" in the script's JSON."""
+    rows = allowed(stream, None, bank)
+    lines, last = [], ""
+    for n, fam, shape in rows:
+        if fam != last:
+            lines.append(f"{fam.upper()}:")
+            last = fam
+        lines.append(f"  {n}. {shape}")
+    custom = bool(bank and bank.instruction.strip())
+    guidance = (f"HOOK STYLE \"{bank.name}\" (Wan's own, it replaces the default guidance): {bank.instruction.strip()} "
+                "Write the hook in the film's own language: a shape in another language is translated faithfully, keeping its "
+                "structure and what each blank is for.") if custom else DEFAULT_GUIDANCE
+    return ("THE HOOK (REQUIRED, and every rule above outranks it). Scene 1's heading is a hook built on exactly one of the "
+            "numbered shapes below, the blanks filled from the BRIEF; its words are the first words read and, when there is a "
+            "narrator, the first words said. Put that shape's number in \"hook_shape\" and the finished hook line in \"hook\", "
+            "equal to scene 1's heading. A script without one is rejected. The hook may run to 14 words, "
+            f"the one exception to the short heading limit. {guidance} "
+            "Choose the shape that fits the story best. "
+            "Never fill a blank with a figure, a duration, an approval or a cure the BRIEF does not give, never keep the "
+            "underscores, never copy an example sentence, and never open with "
+            "'Tahukah anda', 'Amaran' or 'Berita terkini' in place of a shape. If no shape can be filled without inventing a "
+            "fact, take the shape that asserts the least.\n"
+            "Shapes you may use:\n" + "\n".join(lines))
+
+
+def pick_for_idea(store: Any, idea_id: Any) -> Bank | None:
+    """The hook style for a film made from an idea: the idea's own choice (brief.hook_style), else Wan's default
+    (settings.hook_style), else None, the built-in 25. Never raises: a film is still written when nothing can be read."""
+    idea: dict[str, Any] | None = None
+    if idea_id:
+        try:
+            rows = store.table("semasa_ideas").select("brief").eq("id", idea_id).execute().data or []
+            idea = rows[0] if rows else None
+        except Exception as exc:  # noqa: BLE001
+            log.info("hook style: idea %s not read (%s)", idea_id, str(exc)[:100])
+    settings: dict[str, Any] = {}
+    try:
+        rows = store.table("semasa_settings").select("value").eq("key", "hook_style").execute().data or []
+        settings = {"hook_style": (rows[0].get("value") or {}) if rows else {}}
+    except Exception as exc:  # noqa: BLE001
+        log.info("hook style: default not read (%s)", str(exc)[:100])
+    return pick(store, idea, settings)
+
+
 def declared(out: Any, stream: str, family: str | None = None, bank: Bank | None = None) -> int | None:
     """The shape number the writer declared, when it is one this stream may use and the hook has no blanks left; else None."""
     if not isinstance(out, dict):
@@ -142,6 +190,14 @@ def asks_again(stream: str, family: str | None = None, bank: Bank | None = None)
     return ("\n\nYOUR LAST ANSWER DID NOT USE A HOOK SHAPE. Answer again in the same JSON, with \"hook_shape\" set to the number "
             f"of ONE shape from the list ({ok}), the hook built on it with every blank filled and no underscores left, and the "
             "caption's first line equal to that hook.")
+
+
+def film_asks_again(stream: str, bank: Bank | None = None) -> str:
+    """The second ask for a film script whose first answer named no usable shape."""
+    ok = ", ".join(str(r[0]) for r in allowed(stream, None, bank))
+    return ("\n\nYOUR LAST SCRIPT DID NOT USE A HOOK SHAPE. Answer again in the same JSON, with \"hook_shape\" set to the number "
+            f"of ONE shape from the list ({ok}), \"hook\" the finished hook line with every blank filled and no underscores "
+            "left, and scene 1's heading equal to that hook.")
 
 
 def lead_matches(hook: str, text: str) -> bool:

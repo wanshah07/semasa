@@ -44,6 +44,7 @@ from . import (
     compliance,
     db,
     fetch,
+    hook_bank,
     motion_assets,
     motion_auto,
     motion_captions,
@@ -179,7 +180,9 @@ clause that the brief did not give; finish on the standalone brand outro. Write 
 
 
 SCRIPT_SYSTEM = """You plan a short motion-graphics video. Answer with ONE JSON object:
-{{"title": "<short title>", "photo_query": "<2 to 4 plain English words that find a stock photo of the topic: no brand, no name>",
+{{"title": "<short title>", "hook_shape": <the number of the hook shape scene 1 is built on>,
+"hook": "<the finished hook line, equal to scene 1's heading>",
+"photo_query": "<2 to 4 plain English words that find a stock photo of the topic: no brand, no name>",
 "scenes": [{{"kicker": "<the label>", "heading": "<the line, big>", "lines": ["<short supporting line>", "..."],
 "narration": "<what is SAID over this scene>"}}]}}. Nothing else.
 
@@ -191,10 +194,9 @@ VOICE: {voice}
 
 # Wan, 26 Oct 2026: "do not forget the hook for starting to attract people to watch the video such as Did you know,
 # Warning, Breaking News ... bercakap casual, explain bagi faham dan setiap scene tu ada ayat penyambung ... not hanging"
-HOOK_RULE = ("THE HOOK: the first scene opens with an attention hook, the first words SAID and the first words READ: "
-             "'Tahukah anda...?' (a surprising fact), 'Amaran: ...' (a recall, a ban, a danger) or "
-             "'Berita terkini: ...' (a new rule or notice); in English 'Did you know...?', 'Warning: ...' or "
-             "'Breaking news: ...'. Pick the one the topic is.")
+# Wan, 7 Nov 2026 ("do 1,2,3"): the hook scene is built on one of the 25 hook shapes now (hook_bank.film_block, appended to the
+# script prompt per film), so 'Tahukah anda' / 'Amaran' / 'Berita terkini' are no longer what the first words are. The hook chip
+# that used to carry them is drawn only when a film has no shape (hook_of in motion_auto.py).
 CONNECT_RULE = ("CONNECTORS: no scene starts cold and none ends hanging. Every scene after the first begins its narration "
                 "with a short connecting sentence that points back and forward ('Okay, sekarang kita tengok fakta sebenar.', "
                 "'Jadi kenapa ni penting?', 'Jom kita bincang apa yang patut buat.'; English 'Now, here is the fact.', "
@@ -228,9 +230,9 @@ CASUAL_RULE = ("TONE: casual, as a friend explaining to a friend, so the viewer 
                "simple words straight after it.")
 FLOW = ("Hook = one curiosity line that makes this reader stop; Fakta = the one thing that is true, from the brief; "
         "Kenapa = why it matters to this reader; Solusi = the one thing to do next. Connected, complete sentences, never "
-        "isolated labels.\n" + LAYMAN_RULE + "\n" + EXPLAIN_RULE + "\n" + HOOK_RULE + "\n" + CONNECT_RULE + "\n" + LINES_RULE
+        "isolated labels.\n" + LAYMAN_RULE + "\n" + EXPLAIN_RULE + "\n" + CONNECT_RULE + "\n" + LINES_RULE
         + "\n" + LIST_RULE + "\n" + NARRATION_RULE + "\n" + MALAY_RULE)
-FLOW_TEASER = "ONE scene: a curiosity hook only.\n" + HOOK_RULE + "\n" + LAYMAN_RULE + "\n" + EXPLAIN_RULE
+FLOW_TEASER = "ONE scene: a curiosity hook only.\n" + LAYMAN_RULE + "\n" + EXPLAIN_RULE
 PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, at most {words} words in all and fewer "
                "when the information is simple (about "
                f"{NARRATED_WPS} words a second), saying each heading's fact and each line in plain spoken words (those words "
@@ -248,7 +250,7 @@ PACE_SILENT = (
     "them as a chart, a map, a calendar or a news clipping. The on-screen lines are {lines}.")
 
 
-def build_script_system(row: dict[str, Any], extra: str, count: int = 4) -> str:
+def build_script_system(row: dict[str, Any], extra: str, count: int = 4, bank: hook_bank.Bank | None = None) -> str:
     stream = row.get("stream") or "regulab"
     lang = language_of(row)
     seconds = motion_styles.duration(row) if motion_styles.duration(row) == 10 else FILM_MAX - 8
@@ -264,7 +266,8 @@ def build_script_system(row: dict[str, Any], extra: str, count: int = 4) -> str:
               f"There is NO fixed length: make the film as long as the information needs to be delivered in full, and not a "
               f"second longer; never more than {FILM_MAX:g} seconds including the outro.")
     return SCRIPT_SYSTEM.format(length=length, count=count, kickers=" · ".join(motion_auto.LABELS[lang][:count]),
-                                flow=FLOW if count > 1 else FLOW_TEASER, pace=pace, voice=voice_line(stream, lang),
+                                flow=(FLOW if count > 1 else FLOW_TEASER) + "\n" + hook_bank.film_block(stream, bank),
+                                pace=pace, voice=voice_line(stream, lang),
                                 extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "") + motion_styles.prompt(row)
                                 + antislop.prompt_block(film=True))
 
@@ -274,13 +277,14 @@ def words_on_screen(sc: dict[str, Any]) -> int:
 
 
 def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_text: str,
-                style: tuple[str, str] = ("", "")) -> dict[str, Any]:
+                style: tuple[str, str] = ("", ""), bank: hook_bank.Bank | None = None) -> dict[str, Any]:
     """The writer's plan: title, photo search words and EXACTLY four scenes (Hook, Fakta, Kenapa, Solusi; one in a 10 s
     teaser) with on-screen words and narration. Asked a second time when the count is wrong; raises when it gives none."""
     teaser = motion_styles.duration(row) == 10
     count = 1 if teaser else 4
-    system = build_script_system(row, extra, count)
+    system = build_script_system(row, extra, count, bank)
     user = build_user(row, src_title, src_text, style=style)
+    stream = row.get("stream") or "regulab"
     first: tuple[Any, list[Any]] | None = None
     for ask in range(2):
         out = llm.chat_json(system, user, max_tokens=SCRIPT_TOKENS)
@@ -294,8 +298,11 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
         first = (out, scenes)
         sends_away = [x for sc in scenes for x in (sc.get("narration"), sc.get("heading"), *(sc.get("lines") or []))
                       if isinstance(x, str) and motion_captions.hand_off(x)]
-        if (len(scenes) >= count and not sends_away) or ask:
+        unhooked = hook_bank.declared(out, stream, None, bank) is None
+        if (len(scenes) >= count and not sends_away and not unhooked) or ask:
             break
+        if unhooked:
+            user += hook_bank.film_asks_again(stream, bank)
         if len(scenes) < count:
             user += f"\n\nYOUR LAST PLAN HAD {len(scenes)} SCENES. Plan exactly {count}, with the kickers given."
         else:
@@ -304,6 +311,9 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
                      + " | ".join(s[:120] for s in sends_away[:4]))
     if len(scenes) < count:
         raise RuntimeError(f"the writer planned {len(scenes)} scenes instead of {count}")
+    shape = hook_bank.declared(out, stream, None, bank)
+    if shape is None:       # Wan, 7 Nov 2026: the hook scene is built on one of the shapes, never left to the writer's mood
+        raise RuntimeError("the writer used no hook shape twice, so the film was not made: press Redo, or pick another style")
     lang = language_of(row)
     speak_as = speaker(lang)
     recipe_plan = motion_styles.complete_plan(row)
@@ -318,6 +328,10 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
     if recipe_plan:
         for sc, stage in zip(clean, recipe_plan["stages"], strict=False):
             sc["role"] = stage["role"]
+    # the hook IS scene 1's heading, and when there is a narrator the first words said: made so here, never left to the writer
+    hook = speak_as(motion_layout.plain(out.get("hook")))[:200].strip()
+    clean[0]["heading"], clean[0]["hook_shape"] = hook, shape
+    clean[0]["hook_first_said"] = bool(clean[0]["narration"]) and hook_bank.lead_matches(hook, clean[0]["narration"])
     if row.get("voice") == "off":
         for sc in clean:
             sc["narration"] = ""
@@ -336,7 +350,8 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
         if not teaser:                    # the facts are said, so the speech must still fit the film: cut before it is recorded
             trim_to_budget(clean, int((FILM_MAX - SPEECH_RESERVE) * SPEECH_WPS))
     meta = {"title": str(out.get("title") or "")[:160],
-            "photo_query": " ".join(str(out.get("photo_query") or "").split())[:80]}
+            "photo_query": " ".join(str(out.get("photo_query") or "").split())[:80],
+            "hook_shape": shape, "hook": hook, **({"hook_style": bank.id} if bank else {})}
     if teaser:
         clean[0]["heading"] += " · " + motion_styles.cta(row)
         clean[0]["narration"] = "" if row.get("voice") == "off" else (
@@ -1178,7 +1193,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             bg_path, bg_note = make_background(store, row, folder, provider=picture_provider)
         # the voice first (Wan, 24 Oct 2026): the writer plans the scenes, each narration is recorded, and the film is
         # written to those exact times; with the voice off the plan still fixes the scenes and nothing is recorded
-        plan = plan_scenes(llm, row, settings.get("prompt") or "", title, text, style=style)
+        bank = hook_bank.pick_for_idea(store, row.get("idea_id"))     # Wan's own hook style, or None: the built-in 25
+        plan = plan_scenes(llm, row, settings.get("prompt") or "", title, text, style=style, bank=bank)
         lang = language_of(row)
         choice = str(row.get("voice") or "male")
         if choice == "auto":
@@ -1388,6 +1404,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             report["writer_attempts"] = tries
         report["photos"] = [{k: p[k] for k in ("id", "credit", "page", "alt")} for p in photos]
         report["pace"] = pace_note
+        report["hook"] = {"shape": plan.get("hook_shape"), "line": plan.get("hook"), **({"style": bank.id} if bank else {})}
         style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]
         video = render(folder, settings["cli"], size_of(row), runner)
         meta = probe(video, runner)
@@ -1419,6 +1436,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             **meta,
             "model": getattr(llm, "last_model", "") or "", "error": "",
             "style_note": " · ".join(x for x in (style_line, bg_note, voice_note, pace_note, photo_note,
+                                               f"hook shape {plan.get('hook_shape')}" + (f" ({bank.name})" if bank else ""),
                                                styles_note(auto, photos),
                                                f"photo credit: {credits}" if credits else "", layout_note,
                                                "approved self-owned piano; faded/ducked; music x0.45, voice x0.9") if x),

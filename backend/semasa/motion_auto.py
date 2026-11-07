@@ -376,8 +376,11 @@ def choose(row: dict[str, Any], scenes: list[dict[str, Any]], *, voiced: bool, l
     ev = (row.get("options") or {}).get("evidence") or {}
     return {"scenes": out, "video": video, "assigned": assigned, "native": native, "audio": audio, "study": study,
             "evidence_url": str(ev.get("source_url") or row.get("source_url") or ""),
-            "hook": hook_of((str(row.get("brief") or "") + " " + (words_of(teaching[0]) if teaching else "")),
-                            str((teaching[0].get("narration") or teaching[0].get("heading") or "") if teaching else "")),
+            # a film whose first scene is built on one of the 25 hook shapes (Wan, 7 Nov 2026) carries no TAHUKAH ANDA / AMARAN /
+            # BERITA TERKINI chip: the shape is the hook, and a chip above it would say it twice
+            "hook": "" if teaching and teaching[0].get("hook_shape") else hook_of(
+                (str(row.get("brief") or "") + " " + (words_of(teaching[0]) if teaching else "")),
+                str((teaching[0].get("narration") or teaching[0].get("heading") or "") if teaching else "")),
             "concept": sorted(set(assigned) & CONCEPT), "visual": sorted(set(assigned) & VISUAL), "news": ctx["news"],
             "unavailable": unavailable, "considered": LIBRARY_COUNT, "applied": len(applied)}
 

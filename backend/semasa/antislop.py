@@ -20,8 +20,8 @@ Every text the worker writes is scored before and after the edits (hits: the edi
 a person), and each output's score goes to semasa_antislop_log with the level in force, so the three levels can be compared
 on real output.
 
-Wan's own voice outranks the filter (the skill's own rule, R-37): the film hooks (Tahukah anda, Amaran, Berita terkini, Did
-you know, Warning, Breaking news), the casual connecting sentences between scenes and the closing line stay as he asked.
+Wan's own voice outranks the filter (the skill's own rule, R-37): the film's hook line (built on one of the 25 hook
+shapes), the casual connecting sentences between scenes and the closing line stay as he asked.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ PROMPT = """WRITE LIKE A PERSON, NOT A MODEL (the anti-slop rules; they apply to
 - Keep a voice: plain, specific, a little warm. Cold and sterile text is as obvious as padded text."""
 
 PROMPT_FILM = PROMPT + """
-- A film keeps its hook (Tahukah anda / Amaran / Berita terkini; Did you know / Warning / Breaking news) and the short
+- A film keeps its hook line (built on one of the 25 hook shapes) and the short
   connecting sentences between scenes: those are the owner's own voice, not slop."""
 
 LEVELS = ("off", "clean", "full")

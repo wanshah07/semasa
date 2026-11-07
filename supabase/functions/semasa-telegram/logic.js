@@ -65,3 +65,51 @@ export function inboxRow(update, kind, owner) {
     note: status === "skipped" && (kind === "private" || kind === "callback") ? "not the linked account" : null,
   };
 }
+
+/* Fast answers (Wan, 7 Nov 2026: "make sure telegram answer more fast"). A plain question from the linked account is answered
+   here, in the webhook, with the AI chat's own gateway (its secrets are this project's Edge Function secrets), instead of waking
+   the GitHub worker (30-60 s). Only when nothing else must happen first: no command, no link (a link becomes an idea on a tap),
+   no topic the menu is waiting for, no correction after 👎, and Wan's /robot pin is Auto or names this same gateway. Anything
+   else, or a gateway that fails or is slow, goes to the worker exactly as before. */
+export function fastEligible({ kind, text, owner, state, pin, gwName }) {
+  if (kind !== "private" || !owner) return false;
+  const t = String(text || "").trim();
+  if (!t || t.startsWith("/") || /https?:\/\//i.test(t) || /^[A-Fa-f0-9]{8}$/.test(t)) return false;
+  if (state?.pending || state?.await_note) return false;
+  if (pin && pin.gateway && String(pin.gateway).toLowerCase() !== String(gwName || "").toLowerCase()) return false;
+  return true;
+}
+
+export const FAST_SYSTEM = "You are Semasa's assistant on Telegram for Wan (Registered Chemist, regulatory affairs specialist, owner of " +
+  "WS REGULAB). Answer briefly, in the language he writes: Malaysian Bahasa Malaysia (never Bahasa Indonesia) or English. Plain " +
+  "text, no markdown. You cannot approve, post or change anything yourself: name the command that does it (/menu, /draf, /poster, " +
+  "/karusel, /motion, /laporan, /robot, /ingat). On regulations, never invent a number, date, limit or reference; say what should be " +
+  "checked and where (NPRA, ACD, EC 1223/2009). Follow WAN'S STANDING NOTES.";
+
+export function fastMessages({ text, notes, turns, snapshot, gwName, model }) {
+  const me = `You are answering through ${gwName} running the model ${model || "its default model"}. If Wan asks which model or ` +
+    "robot you are, say exactly that and nothing else about your origin.";
+  const known = "WAN'S STANDING NOTES (always follow)\n" + ((notes || []).map((n) => `- ${n}`).join("\n") || "(none)") +
+    (snapshot ? `\n\nSNAPSHOT\n${snapshot}` : "") +
+    "\n\nEARLIER\n" + ((turns || []).map(([q, a]) => `Wan: ${q}\nSemasa: ${a}`).join("\n") || "(none)");
+  return [{ role: "system", content: `${FAST_SYSTEM} ${me}` },
+    { role: "user", content: `${known}\n\nWAN ASKS\n${String(text).slice(0, 3000)}` }];
+}
+
+/** Pairs (question, answer) from a thread's messages, oldest first. */
+export function turnsOf(rows, n = 8) {
+  const out = []; let q = null;
+  for (const r of rows || []) {
+    if (r.role === "user") q = String(r.content || "").slice(0, 600);
+    else if (q !== null) { out.push([q, String(r.content || "").slice(0, 800)]); q = null; }
+  }
+  return out.slice(-n);
+}
+
+export function fastReply(chatId, replyTo, answer, who, rowId) {
+  return {
+    method: "sendMessage", chat_id: chatId, text: (String(answer).trim() + (who ? `\n\n— ${who}` : "")).slice(0, 4000),
+    reply_parameters: { message_id: replyTo, allow_sending_without_reply: true },
+    reply_markup: { inline_keyboard: [[{ text: "👍", callback_data: `fb:up:${rowId}` }, { text: "👎 perlu baiki", callback_data: `fb:down:${rowId}` }]] },
+  };
+}

@@ -36,6 +36,7 @@ from typing import Any
 import requests
 
 from . import billing, compliance, db
+from . import telegram_tools as tt
 from .log import get_logger
 
 log = get_logger("semasa.telegram_bot")
@@ -52,13 +53,21 @@ PER_RUN = 30                     # inbox rows a run
 PUSH_PER_RUN = 5                 # new drafts pushed a run
 MSG_MAX = 3900                   # Telegram's limit is 4096
 COMMANDS = [
+    ("robot", "Robot AI: siapa menulis, pilih model / pick the model"),
     ("draf", "Draf menunggu kelulusan / drafts to approve"),
+    ("poster", "Buat poster daripada topik/link / make a poster"),
+    ("karusel", "Buat karusel / make a carousel"),
+    ("motion", "Buat video motion / make a motion video"),
+    ("laporan", "Tulis laporan / write a report"),
+    ("ingat", "Simpan nota tetap / remember a standing note"),
+    ("memori", "Lihat nota tetap / the standing notes"),
     ("jadual", "Jadual 7 hari / the next 7 days"),
     ("status", "Ringkasan Semasa / Semasa at a glance"),
     ("ralat", "Ralat dan idea gagal / errors and failed ideas"),
     ("kesihatan", "Masalah watchdog / open problems"),
     ("bil", "Invois belum dibayar / unpaid invoices"),
     ("idea", "Teks atau link jadi idea / text or a link as an idea"),
+    ("menu", "Menu butang / the button menu"),
     ("help", "Senarai arahan / the commands"),
 ]
 HELP = ("Semasa di Telegram 🤖\n\n" + "\n".join(f"/{c} — {d}" for c, d in COMMANDS) +
@@ -109,6 +118,19 @@ class Bot:
     def photo(self, chat: int, url: str, caption: str = "") -> None:
         self.call("sendPhoto", chat_id=chat, photo=url, caption=caption[:1000])
 
+    def document(self, chat: int, name: str, data: bytes, caption: str = "") -> None:
+        r = self.http.post(TG.format(token=self.token, method="sendDocument"), data={"chat_id": chat, "caption": caption[:1000]},
+                           files={"document": (name, data, "text/markdown")}, timeout=60)
+        try:
+            ok = r.json().get("ok")
+        except ValueError:
+            ok = False
+        if not ok:
+            raise TelegramError(f"sendDocument: HTTP {getattr(r, 'status_code', '?')}")
+
+    def video(self, chat: int, url: str, caption: str = "") -> None:
+        self.call("sendVideo", chat_id=chat, video=url, caption=caption[:1000], supports_streaming=True)
+
     def drop_buttons(self, chat: int, message_id: int) -> None:
         try:
             self.call("editMessageReplyMarkup", chat_id=chat, message_id=message_id, reply_markup={"inline_keyboard": []})
@@ -149,12 +171,15 @@ def ensure_webhook(store: Any, bot: Bot, now: datetime) -> dict[str, Any]:
     if want and info.get("url") != want:
         bot.call("setWebhook", url=want, secret_token=webhook_secret(bot.token),
                  allowed_updates=["message", "callback_query"], max_connections=10)
-        bot.call("setMyCommands", commands=[{"command": c, "description": d[:256]} for c, d in COMMANDS])
         info = bot.call("getWebhookInfo") or {}
         changed = True
+    names = ",".join(c for c, _ in COMMANDS)
+    rows = store.table(db.SETTINGS).select("value").eq("key", STATE_KEY).execute().data or []
+    if changed or ((rows[0].get("value") or {}) if rows else {}).get("commands") != names:   # the menu follows the code
+        bot.call("setMyCommands", commands=[{"command": c, "description": d[:256]} for c, d in COMMANDS])
     state = {"username": me.get("username"), "webhook": info.get("url") or "", "pending": info.get("pending_update_count", 0),
              "last_error": info.get("last_error_message") or "", "last_error_at": info.get("last_error_date"),
-             "checked_at": now.isoformat(), "set_now": changed}
+             "checked_at": now.isoformat(), "set_now": changed, "commands": names}
     save_state(store, state)
     return state
 
@@ -367,8 +392,9 @@ SYSTEM = ("You are Semasa's assistant on Telegram for Wan (Registered Chemist, r
           "REGULAB). Semasa is his content and business system: ideas → drafts → his approval → the publisher posts to "
           "ws.regulab (Facebook, Instagram, Threads) and his LinkedIn; billing; FAQ; watchdog. Answer briefly, in the "
           "language he writes: Malaysian Bahasa Malaysia (never Bahasa Indonesia) or English. Plain text, no markdown. "
-          "Use the SNAPSHOT for facts about Semasa; it is current. You cannot approve, post, delete or change anything: say "
-          "which command (/draf, /jadual, /status, /ralat, /kesihatan, /bil, /idea) or which page does it. On regulations, "
+          "Use the SNAPSHOT for facts about Semasa; it is current. You cannot approve, post, delete or change anything "
+          "yourself: say which command does it (/draf to approve, /poster, /karusel, /motion, /laporan, /idea, /robot to pick "
+          "the model, /jadual, /status, /ralat, /kesihatan, /bil, /ingat to save a note). On regulations, "
           "never invent a number, date, limit or reference; say what should be checked and where.")
 
 
@@ -384,18 +410,42 @@ def history(store: Any, row_id: int, n: int = 6) -> list[tuple[str, str]]:
     return out
 
 
-def answer(store: Any, llm: Any, row: dict[str, Any], text: str, now: datetime) -> str:
-    if llm is None:
-        return "AI tidak tersedia sekarang. Cuba /status atau /draf."
+def context(store: Any, link: dict[str, Any] | None, row: dict[str, Any], now: datetime) -> tuple[str, str]:
+    """(who I am, what I know): the robot the router chose, Wan's standing notes, the snapshot and the last turns."""
+    t = tt.team(store)
+    chosen = t.get("chosen") or {}
+    me = (f"You are answering through {chosen.get('name')} running the model {chosen.get('model')}, chosen by Semasa's AI team "
+          "router. If Wan asks which model or robot you are, say exactly that and nothing else about your origin."
+          if chosen else "If Wan asks which model you are, say that Semasa's AI team router chose it and /robot shows which.")
+    notes = tt.notes(store, link["user_id"]) if link else []
+    turns = (tt.recent_turns(store, link["user_id"]) if link else []) or history(store, row["id"])
     snap = status_text(store, now) + "\n\n" + schedule_text(store, now)[:1500] + "\n\n" + health_text(store)[:800]
-    turns = "\n".join(f"Wan: {q}\nSemasa: {a}" for q, a in history(store, row["id"]))
-    user = f"SNAPSHOT\n{snap}\n\nEARLIER\n{turns or '(none)'}\n\nWAN ASKS\n{text[:3000]}"
+    known = ("WAN'S STANDING NOTES (always follow)\n" + ("\n".join(f"- {n['note']}" for n in notes) or "(none)") +
+             f"\n\nSNAPSHOT\n{snap}\n\nEARLIER\n" + ("\n".join(f"Wan: {q}\nSemasa: {a}" for q, a in turns) or "(none)"))
+    return me, known
+
+
+def answer(store: Any, llm: Any, row: dict[str, Any], text: str, now: datetime,
+           link: dict[str, Any] | None = None) -> tuple[str, str]:
+    """(the answer, the robot and model that wrote it)."""
+    if llm is None:
+        return "AI tidak tersedia sekarang. Cuba /status atau /draf.", ""
+    me, known = context(store, link, row, now)
     try:
-        got = llm.chat_text(SYSTEM, user, max_tokens=900)
+        got, who = tt.ask(llm, SYSTEM + " " + me, f"{known}\n\nWAN ASKS\n{text[:3000]}")
     except Exception as exc:  # noqa: BLE001
         log.warning("answer failed: %s", str(exc)[:160])
-        got = None
-    return str(got or "").strip() or "Maaf, AI tidak menjawab. Cuba lagi sebentar."
+        got, who = "", ""
+    return (got or "Maaf, AI tidak menjawab. Cuba lagi sebentar."), who
+
+
+def report(store: Any, llm: Any, link: dict[str, Any], row: dict[str, Any], topic: str, now: datetime) -> tuple[str, str]:
+    """(the report in Markdown, who wrote it) for /laporan."""
+    if llm is None:
+        return "", ""
+    _me, known = context(store, link, row, now)
+    got, who = tt.ask(llm, tt.REPORT_SYSTEM, f"{known}\n\nREPORT REQUEST\n{topic[:3000]}", max_tokens=3000)
+    return got, who
 
 
 # ---- one inbox row --------------------------------------------------------------------------------------------------------
@@ -474,6 +524,29 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
         bot.send(chat, f"💡 Idea {STREAM_WORDS[stream]} dihantar: {idea.get('source_title') or ''}\n"
                        "Semasa akan baca dan tulis draf; anda akan terima draf di sini untuk diluluskan.", reply_to=mid)
         return "idea made"
+    if kind == "menu":
+        if rest in tt.NEEDS_TOPIC:
+            bot.send(chat, tt.ask_topic(store, rest))
+            return f"menu asks {rest}"
+        fake = {**row, "payload": {"message": {"message_id": mid, "chat": {"id": chat}, "text": f"/{rest}"}}}
+        return handle_message(store, bot, link, fake, lambda: None, datetime.now(UTC))
+    if kind == "pin":
+        bot.drop_buttons(chat, mid)
+        bot.send(chat, tt.set_pin(store, rest), reply_to=mid)
+        return f"pin {rest}"
+    if kind == "forget":
+        bot.drop_buttons(chat, mid)
+        bot.send(chat, tt.forget(store, link["user_id"], rest), reply_to=mid)
+        return "forgot a note"
+    if kind == "fb":
+        what, _, src = rest.partition(":")
+        bot.drop_buttons(chat, mid)
+        bot.send(chat, tt.on_feedback(store, what, src), reply_to=mid)
+        return f"feedback {what}"
+    if kind == "mgo":
+        bot.drop_buttons(chat, mid)
+        bot.send(chat, tt.start_motion(store, rest), reply_to=mid)
+        return "motion started"
     if kind == "retry":
         upd = store.table(db.IDEAS).update({"status": "new", "error": None}).eq("id", rest).eq("status", "error").execute().data
         bot.drop_buttons(chat, mid)
@@ -486,8 +559,55 @@ def handle_message(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, An
     msg = row["payload"].get("message") or {}
     chat, mid = int(msg["chat"]["id"]), int(msg.get("message_id") or 0)
     text = str(msg.get("text") or msg.get("caption") or "").strip()
+    asked = tt.take_pending(store, text)                               # a topic the menu asked for
+    if asked:
+        text = asked
     cmd = text.split()[0].split("@")[0].lower().lstrip("/") if text.startswith("/") else ""
-    if cmd in ("start", "help", "mula", "bantuan"):
+    if cmd in ("start", "menu"):
+        text_, buttons = tt.menu_reply(link, SITE)
+        bot.send(chat, text_, buttons)
+        return "menu"
+    if not cmd and text:
+        fixed = tt.take_correction(store, link["user_id"], text)        # after 👎: this message is the correction
+        if fixed:
+            bot.send(chat, fixed, reply_to=mid)
+            return "correction saved"
+    if cmd in ("robot", "bot", "model", "ai", "robots"):
+        text_, buttons = tt.robot_reply(store)
+        bot.send(chat, text_, buttons)
+        return "robots"
+    if cmd in ("ingat", "remember"):
+        bot.send(chat, tt.remember(store, link["user_id"], re.sub(r"^/\w+(@\w+)?", "", text).strip()), reply_to=mid)
+        return "remembered"
+    if cmd in ("memori", "memory", "nota"):
+        text_, buttons = tt.memory_reply(store, link["user_id"])
+        bot.send(chat, text_, buttons or None)
+        return "memory"
+    if cmd in ("poster", "karusel", "carousel"):
+        bot.send(chat, tt.make_poster(store, link, text, cmd), reply_to=mid)
+        return f"{cmd} idea"
+    if cmd in ("motion", "video"):
+        text_, buttons, _mid = tt.make_motion(store, link, text, cmd)
+        bot.send(chat, text_, buttons or None, reply_to=mid)
+        return "motion queued" if _mid else "motion asked"
+    if cmd in ("laporan", "report"):
+        topic = re.sub(r"^/\w+(@\w+)?", "", text).strip()
+        if not topic:
+            bot.send(chat, "Tulis /laporan diikuti topik. Contoh: /laporan prestasi post minggu ini dan apa perlu ditambah baik")
+            return "report asked"
+        body, who = report(store, llm_factory(), link, row, topic, now)
+        if not body:
+            bot.send(chat, "Maaf, laporan tidak dapat ditulis sekarang. Cuba lagi sebentar.", reply_to=mid)
+            return "report failed"
+        name, data = tt.report_file(topic, body, now)
+        bot.send(chat, body[:3500] + ("\n…" if len(body) > 3500 else "") + (f"\n\n— {who}" if who else ""), reply_to=mid)
+        try:
+            bot.document(chat, name, data, f"📄 {topic[:200]}")
+        except Exception as exc:  # noqa: BLE001 - the text above already carries the report
+            log.info("report file not sent (%s)", str(exc)[:120])
+        tt.log_turn(store, link["user_id"], text, body)
+        return "report"
+    if cmd in ("help", "mula", "bantuan"):
         bot.send(chat, HELP)
         return "help"
     if cmd in ("draf", "drafts", "draft"):
@@ -521,8 +641,9 @@ def handle_message(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, An
     if not text:
         bot.send(chat, "Hantar teks atau link. Gambar dan fail belum dibaca di sini.")
         return "no text"
-    reply = answer(store, llm_factory(), row, text, now)
-    bot.send(chat, reply, reply_to=mid)
+    reply, who = answer(store, llm_factory(), row, text, now, link)
+    bot.send(chat, reply + (f"\n\n— {who}" if who else ""), tt.feedback_buttons(row["id"]), reply_to=mid)
+    tt.log_turn(store, link["user_id"], text, reply)
     return "answered: " + reply[:800]
 
 
@@ -628,7 +749,27 @@ def run(store: Any, bot: Bot | None = None, now: datetime | None = None, llm_fac
             .eq("id", row["id"]).execute()
     if push:
         out["pushed"] = push_new_drafts(store, bot, link)
+        out["videos"] = push_videos(store, bot, link, now)
     return out
+
+
+def push_videos(store: Any, bot: Bot, link: dict[str, Any], now: datetime) -> int:
+    """Films asked for on Telegram (/motion), sent back once they are done."""
+    st = tt.chat_state(store)
+    sent = list(st.get("videos_sent") or [])
+    n = 0
+    for v in tt.due_motion_videos(store, str(st.get("videos_since") or link.get("linked_at") or "")):
+        if v["id"] in sent:
+            continue
+        try:
+            bot.video(int(link["chat_id"]), v["video_url"], f"🎬 {(v.get('title') or v.get('brief') or '')[:200]}")
+            sent.append(v["id"])
+            n += 1
+        except Exception as exc:  # noqa: BLE001
+            log.info("video %s not sent (%s)", v["id"], str(exc)[:120])
+    if n:
+        tt.save_chat_state(store, {**tt.chat_state(store), "videos_sent": sent[-50:]})
+    return n
 
 
 def main() -> int:

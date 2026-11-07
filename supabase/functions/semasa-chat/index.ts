@@ -39,11 +39,21 @@
 //       - remember: only when Wan's own message asks for it; a web page cannot make the chat write a note.
 //       - Whatever a page, a search or a table returns is handed to the model as UNTRUSTED data.
 //     Optional secret BRAVE_API_KEY turns on search_web; without it that tool says it is not installed.
+//
+// 7 Nov 2026 (Wan: "for AI Chat, allow me to choose all model accross all 5 bots"): the chat and its Test button can use any of the
+// five Wanshah robots, not only the gateway in these secrets. The keys stay where they already live (logic.js assembleTeam): these
+// secrets, the page's AI slots (semasa_ai_secrets), semasa_gemini_keys and semasa_chatgpt_auth, the last three read with the service
+// role that Supabase gives every function (SUPABASE_SERVICE_ROLE_KEY). That client reads and writes ONLY those key stores; every
+// tool and every conversation row still goes through the caller's own login. A key goes only to its own robot's address, and none
+// is ever part of an answer. {action:"models"} now also returns `robots` (each with its live state and models, or why it cannot be
+// used) and `auto`; `chat` and `check` take {robot, model}.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { cleanLayout, designMessages, keepWords, refineMessages } from "./design.js";
 import { faqMessages, parseFaqItems } from "./faq.js";
 import { firstJson } from "./faq.js";
 import {
+  CHATGPT_CLIENT_ID, CHATGPT_RESPONSES, CHATGPT_TOKEN_URL, assembleTeam, chatgptAccount, chatgptNeedsRefresh, foldResponses, geminiKeyPatch, geminiOutcome,
+  refreshedTokens, resolveChoice, responsesBody, tokenExpiry,
   MEMORY, SYSTEM, planFaq, rankModels, shapeFaq, resolveModel, TEST_IMAGE, TOOLS, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
   OWN_HOSTS, RATE, allow, foldDelta, gatewayConfig, withInstructions, htmlToText, isPrivateIp, lastQuestion, parseArgs, planFold, planQuery, rateKind, readerMessage, readerCandidates, raceCandidates, summariseFailures, READER_BUDGET_MS,
   shapeRows, sseEvents, summaryMessages, userAskedToRemember, whoIs,
@@ -73,6 +83,7 @@ let modelCache: { at: number; ids: string[] | null } = { at: 0, ids: null };   /
 const MAX_BODY = 40_000_000;                                   // bytes: six pictures of 4 MB plus text; anything more is not a request
 let lastReaderWin = "";                                        // the reader model that answered last on this instance: tried first next time
 const hits = new Map<string, number[]>();                      // recent calls per user and kind (logic.js allow)
+const liveModels = new Map<string, { at: number; ids: string[] | null }>();   // each robot's own /models answer, kept five minutes
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -96,20 +107,21 @@ Deno.serve(async (req) => {
   if (allowed !== true) return json({ error: "this account is not a Semasa user" }, 403);
 
   const gw = gatewayConfig((k: string) => Deno.env.get(k));
-  if (gw.error) return json({ error: gw.error }, 503);
   const { key, base, model: envModel } = gw;
-  if (!key) return json({ error: `${gw.keyName} is not set on the function` }, 503);
-  type Gate = { name: string; base: string; key: string; repeatSystem: boolean };
+  // the function's own gateway is what the readers (FAQ bar, Design) use; the chat can do without it when another robot has a key
+  const primaryErr = gw.error ? gw.error : !key ? `${gw.keyName} is not set on the function` : !/^https:\/\//.test(base) ? `${gw.baseName} must be https` : "";
+  // the service role reads the robots' key stores and nothing else (see the header); a function without it offers only its secrets
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const admin = serviceKey ? createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
+  type Gate = { name: string; base: string; key: string; repeatSystem: boolean; slug?: string; kind?: string; keys?: { id: string; key: string; row: any }[] };
   const primary: Gate = { name: gw.name, base, key, repeatSystem: gw.repeatSystem };
   const outboundFor = (g: Gate, p: any) => (g.repeatSystem && p?.messages ? { ...p, messages: withInstructions(p.messages) } : p);
-  const outbound = (p: any) => outboundFor(primary, p);
   // When the neutral AI_* secrets carry the main gateway and a Mireld key is still set, Mireld is the reader's last-resort candidate.
   const mireldKey = gw.keyName === "AI_API_KEY" ? (Deno.env.get("MIRELD_API_KEY") || "") : "";
   const mireldBase = Deno.env.get("MIRELD_BASE_URL") || "https://api.mireld.my/v1";
   const backup: Gate | null = mireldKey && /^https:\/\//.test(mireldBase) ? { name: "Mireld", base: mireldBase, key: mireldKey, repeatSystem: false } : null;
   const backupModel = Deno.env.get("MIRELD_MODEL") || "claude-sonnet-5.5";
   let model = envModel || "claude-sonnet-5.5";            // the default; the page may ask for another (below)
-  if (!/^https:\/\//.test(base)) return json({ error: `${gw.baseName} must be https` }, 500);
   const uid = who.user.id;
 
   let body: any;
@@ -119,6 +131,9 @@ Deno.serve(async (req) => {
     body = JSON.parse(raw);
   } catch { return json({ error: "body is not JSON" }, 400); }
   if (!body || typeof body !== "object") return json({ error: "body is not JSON" }, 400);
+  const action = String(body.action || "chat");
+  const usesTeam = action === "chat" || action === "models" || (action === "check" && (!!body.robot || !!primaryErr));
+  if (primaryErr && !usesTeam) return json({ error: primaryErr }, 503);
 
   // ---- rate guard: a flood from one login is slowed, never the whole function
   const kind = rateKind(String(body.action || "chat"));
@@ -145,7 +160,8 @@ Deno.serve(async (req) => {
     return null;
   }
   let modelIds: string[] | null = null;
-  if (body?.model || body?.action === "models" || (!envModel && gw.name !== "Mireld")) modelIds = await listModelIds();
+  if (!primaryErr && !usesTeam && (body?.model || (!envModel && gw.name !== "Mireld"))) modelIds = await listModelIds();
+  else if (!primaryErr && action === "chat" && !envModel && gw.name !== "Mireld") modelIds = await listModelIds();   // the summary's model
   const ranked = rankModels(modelIds, envModel || "claude-sonnet-5.5");
   const defaultModel = envModel || ranked.recommended || "claude-sonnet-5.5";
   const picked = resolveModel(body?.model, modelIds, defaultModel);
@@ -232,6 +248,113 @@ Deno.serve(async (req) => {
     return { ok: false, status: sum.status, content: "", err: sum.err || (empty ? "no answer" : ""), model: lastCand.model, tried: race.tried, failures: race.failures };
   }
   const readerError = (r: Read & { tried: string[]; failures?: any[] }) => readerMessage({ ...r, gateway: gw.name });
+
+  // ---- the five robots (Wan, 7 Nov 2026) ------------------------------------------------------------------------------------------
+  /** A robot's own model list, asked with its own key at its own address, kept five minutes. `cachedOnly` answers from the cache and
+      never calls out (a chat turn should not wait on four model lists; the picker already asked). */
+  async function robotModels(slug: string, g: any, cachedOnly: boolean): Promise<string[] | null | undefined> {
+    const c = liveModels.get(slug);
+    if (c && Date.now() - c.at < 300000) return c.ids;
+    if (cachedOnly) return undefined;
+    const k = g.key || g.keys?.[0]?.key;
+    if (!k) return null;
+    const l = await upstream(g.base, k, "/models", { method: "GET" }, 8000).catch(() => null);
+    const ids = l?.ok && Array.isArray(l.data?.data) ? l.data.data.map((m: any) => String(m?.id || "")).filter(Boolean) : null;
+    liveModels.set(slug, { at: Date.now(), ids });
+    return ids;
+  }
+
+  /** Everything the picker needs, and the keys behind it (logic.js assembleTeam). The probe rows and settings are read with the
+      caller's login; the four key stores with the service role. A store that cannot be read (a migration not applied) is empty, and
+      the robot that needs it says why. */
+  async function loadTeam(mode: "live" | "cached") {
+    const [st, sets] = await Promise.all([
+      db.from("semasa_api_status").select("slug,base_url,key_set,key_ok,reachable,chat_ok,chat_ms,latency_ms,checked_at,models,model,error"),
+      db.from("semasa_settings").select("key,value").in("key", ["gemini", "gemini_models"]),
+    ]);
+    const setting = (k: string) => ((sets.data || []).find((r: any) => r.key === k)?.value) || {};
+    let slots: any[] = [], gemKeys: any[] = [], gpt: any = null;
+    if (admin) {
+      const [cfg, sec, gk, ga] = await Promise.all([
+        admin.from("semasa_ai_config").select("slot,provider,base_url,model,key_host"),
+        admin.from("semasa_ai_secrets").select("slot,api_key"),
+        admin.from("semasa_gemini_keys").select("id,api_key,enabled,status,cooldown_until,last_used_at,last_ok_at,calls,failures"),
+        admin.from("semasa_chatgpt_auth").select("auth,model,checked_at,last_ok_at,last_error,last_error_at").eq("id", "main").maybeSingle(),
+      ]);
+      const keyOf = new Map((sec.data || []).map((r: any) => [r.slot, r.api_key]));
+      slots = (cfg.data || []).map((r: any) => ({ ...r, api_key: keyOf.get(r.slot) || "" }));
+      gemKeys = gk.data || [];
+      gpt = ga.data || null;
+    }
+    const input = { env: (k: string) => Deno.env.get(k), slots, status: st.data || [], serviceRole: !!admin,
+      gemini: { settings: setting("gemini"), models: setting("gemini_models"), keys: gemKeys }, chatgpt: { row: gpt } };
+    let team = assembleTeam(input);
+    const live: Record<string, string[] | null> = {};
+    // a robot the probe never listed (the function's own gateway on another host) is asked even in "cached" mode: without a list
+    // and with no model set, it would have nothing to offer
+    const probed = new Set((st.data || []).filter((r: any) => Array.isArray(r.models) && r.models.length).map((r: any) => r.slug));
+    await Promise.all(Object.entries(team.gates).filter(([, g]: any) => g.kind === "openai").map(async ([slug, g]) => {
+      const ids = await robotModels(slug, g, mode === "cached" && probed.has(slug));
+      if (ids !== undefined) live[slug] = ids;
+    }));
+    if (Object.keys(live).length) team = assembleTeam({ ...input, live });
+    return team;
+  }
+
+  /** The Gate a robot is called through: its own address and key (Gemini: the least recently used usable key first). */
+  function gateOf(team: any, slug: string): Gate | null {
+    const g = team.gates[slug];
+    const r = team.robots.find((x: any) => x.slug === slug);
+    if (!g || !r) return null;
+    return { name: `${r.name} (${r.provider})`, base: g.base, key: g.key || g.keys?.[0]?.key || "", repeatSystem: !!g.repeatSystem, slug, kind: g.kind, keys: g.keys };
+  }
+
+  // ---- ChatGPT: Wan's login (chatgpt_login.py, the same rules) -------------------------------------------------------------------
+  // A refresh token works ONCE. So the new pair is written back the moment it arrives, and the write only lands if the row still holds
+  // the token that was spent (another writer, the worker or a new login pasted in the Motion tab, may have changed it meanwhile; then
+  // the row's own tokens are the ones to use). A refresh that is refused after another writer already refreshed is not an error: the
+  // row is read again and its newer token used. No token ever appears in an answer or an error.
+  async function gptRow() {
+    if (!admin) throw new Error("the function cannot read the ChatGPT login (no service role)");
+    const { data, error } = await admin.from("semasa_chatgpt_auth").select("auth").eq("id", "main").maybeSingle();
+    if (error) throw new Error(`the ChatGPT login could not be read (${String(error.message).slice(0, 100)})`);
+    const tokens = data?.auth?.tokens || {};
+    if (!tokens.refresh_token) throw new Error("ChatGPT is not connected: paste auth.json in the Motion tab");
+    return tokens;
+  }
+  async function gptAccess(force: boolean): Promise<{ access: string; account: string }> {
+    const tokens = await gptRow();
+    if (!force && !chatgptNeedsRefresh(tokens)) return { access: String(tokens.access_token), account: chatgptAccount(tokens) };
+    const used = String(tokens.refresh_token);
+    const res = await fetch(CHATGPT_TOKEN_URL, {
+      method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(30000),
+      body: JSON.stringify({ client_id: CHATGPT_CLIENT_ID, grant_type: "refresh_token", refresh_token: used, scope: "openid profile email" }),
+    }).catch(() => null);
+    if (!res || !res.ok) {
+      const newer = await gptRow().catch(() => null);
+      if (newer && newer.refresh_token !== used && newer.access_token) return { access: String(newer.access_token), account: chatgptAccount(newer) };
+      let code = ""; try { code = String((await res?.json())?.error || "").slice(0, 60); } catch { /* not JSON */ }
+      const msg = `ChatGPT refused the saved login (${res ? res.status : "no answer"}${code ? `, ${code}` : ""}): log in again with \`codex login\` and paste auth.json in the Motion tab`;
+      if (res) await admin!.from("semasa_chatgpt_auth").update({ last_error: msg, last_error_at: new Date().toISOString() }).eq("id", "main");
+      throw new Error(msg);
+    }
+    const body: any = await res.json().catch(() => ({}));
+    if (!body?.access_token) throw new Error("ChatGPT's refresh answer had no access token");
+    const next = refreshedTokens(tokens, body);
+    const ends = tokenExpiry(next.access_token);
+    for (let i = 0; i < 3; i++) {
+      const { data, error } = await admin!.from("semasa_chatgpt_auth")
+        .update({ auth: { tokens: next }, access_expires_at: ends ? new Date(ends).toISOString() : null, updated_at: new Date().toISOString() })
+        .eq("id", "main").eq("auth->tokens->>refresh_token", used).select("id");
+      if (!error) {
+        if (Array.isArray(data) && data.length) return { access: String(next.access_token), account: chatgptAccount(next) };
+        const newer = await gptRow();                 // someone saved another login meanwhile: theirs stands, ours is dropped
+        return { access: String(newer.access_token || ""), account: chatgptAccount(newer) };
+      }
+      await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+    }
+    throw new Error("the refreshed ChatGPT login could not be saved, so the old one no longer works: paste auth.json in the Motion tab again");
+  }
 
   // ---- tools -------------------------------------------------------------------------------------------
   async function addressesOk(host: string): Promise<string | null> {
@@ -330,16 +453,33 @@ Deno.serve(async (req) => {
 
   try {
     // ---- models: what the page's picker offers (Wan, 1 Oct 2026) ------------------------------------------
+    // Every robot with its state and models, or why it cannot be used (7 Nov 2026), and what Auto would pick. `models`, `default`
+    // and `gateway` describe Auto's robot, so a page from before this still shows a working picker.
     if (body?.action === "models") {
-      if (!modelIds) return json({ models: [], recommended: ranked.recommended, default: defaultModel, listed: false, gateway: gw.name });
-      return json({ models: ranked.models, recommended: ranked.recommended, default: defaultModel, listed: true, gateway: gw.name });
+      const team = await loadTeam("live");
+      const auto = resolveChoice(team.robots, {});
+      const first = team.robots.find((r: any) => r.slug === auto.slug);
+      return json({ robots: team.robots, auto: { slug: auto.slug, model: auto.model, name: first?.name || "", chain: auto.chain },
+        models: first?.models || [], recommended: auto.model, default: auto.model, listed: !!first, gateway: first ? `${first.name} (${first.provider})` : gw.name });
     }
 
     // ---- check: models, picture reading, tool calling -------------------------------------------------
     if (body?.action === "check") {
+      // the robot the page has selected (7 Nov 2026), else the function's own gateway as before
+      let cBase = gw.base, cKey = gw.key, cName = gw.name;          // read off gw: `base` and `key` are re-bound below for this block
+      if (usesTeam) {
+        const team = await loadTeam("cached");
+        const c = resolveChoice(team.robots, { robot: body?.robot, model: body?.model });
+        const r = team.robots.find((x: any) => x.slug === c.slug);
+        const g = c.slug ? gateOf(team, c.slug) : null;
+        if (!g || !r) return json({ error: "no robot can be tested: " + team.robots.map((x: any) => `${x.name}: ${x.why || x.state_why || "ok"}`).join("; ") }, 503);
+        if (g.kind === "chatgpt") return json({ error: "the Test button asks the OpenAI dialect; ChatGPT (Wanshah 5) answers in the chat itself, reads pictures and has no tools there" }, 400);
+        cBase = g.base; cKey = g.key; cName = g.name; model = c.model;
+      }
+      const base = cBase, key = cKey;
       let ids: string[] | null = null;
       const list = await upstream(base, key, "/models", { method: "GET" }, 20000).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
-      if (list.ok && Array.isArray(list.data?.data)) ids = list.data.data.map((m: any) => String(m?.id || "")).filter(Boolean);
+      if (list.ok && Array.isArray(list.data?.data)) ids = list.data.data.map((m: any) => String(m?.id || "").replace(/^models\//, "")).filter(Boolean);
       const t0 = Date.now();
       const probe = await upstream(base, key, "/chat/completions", {
         method: "POST",
@@ -363,7 +503,7 @@ Deno.serve(async (req) => {
       }).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
       const tools = tp.ok ? { calls: Array.isArray(tp.data?.choices?.[0]?.message?.tool_calls) && tp.data.choices[0].message.tool_calls.length > 0 }
         : { error: `HTTP ${tp.status}: ${String(tp.data?.error?.message || tp.text).slice(0, 160)}` };
-      return json({ ...checkReport(model, ids, image, tools), base_url: base, gateway: gw.name, image_ms: imageMs, list_status: list.status, search_configured: !!Deno.env.get("BRAVE_API_KEY") });
+      return json({ ...checkReport(model, ids, image, tools), base_url: base, gateway: cName, image_ms: imageMs, list_status: list.status, search_configured: !!Deno.env.get("BRAVE_API_KEY") });
     }
 
     // ---- faq_extract: the FAQ page's AI bar (Wan, 1 Oct 2026) -------------------------------------------
@@ -420,6 +560,16 @@ Deno.serve(async (req) => {
     if (!userText && !regenerate) return json({ error: Array.isArray(body?.messages) ? "this page is an old version: reload it" : "empty message" }, 400);
     if (regenerate && !body?.thread_id) return json({ error: "nothing to answer again: no conversation" }, 400);
 
+    // Which robot answers (7 Nov 2026): Wan's own pick, or Auto. Decided before anything is written, so a message no robot can answer
+    // is refused with every robot's reason instead of being saved without a reply.
+    const team = await loadTeam("cached");
+    const choice: any = resolveChoice(team.robots, { robot: body?.robot, model: body?.model });
+    const chain = choice.chain.map((c: any) => ({ model: String(c.model || ""), gate: gateOf(team, c.slug) })).filter((c: any) => c.gate && c.model);
+    if (!chain.length) return json({ error: "no robot can answer: " + team.robots.map((x: any) => `${x.name}: ${x.why || x.state_why || "?"}`).join("; ") }, 503);
+    let link = 0;
+    let gate: Gate = chain[0].gate;
+    model = chain[0].model;
+
     let threadId: string | null = body?.thread_id ? String(body.thread_id) : null;
     let thread: any = null;
     if (threadId) {
@@ -444,8 +594,11 @@ Deno.serve(async (req) => {
     }
     const plan = planFold(stored);
     let summary: string = thread.summary || "";
-    if (plan.fold.length) {
-      const r = await upstream(base, key, "/chat/completions", { method: "POST", body: JSON.stringify(outbound({ model, max_tokens: 1800, temperature: 0.2, messages: summaryMessages(summary, plan.fold) })) }).catch(() => null);
+    // the summary is written in the Chat Completions dialect: by the chosen robot, or the function's own gateway when ChatGPT answers
+    const foldGate = gate.kind !== "chatgpt" ? gate : (!primaryErr ? primary : null);
+    const foldModel = gate.kind !== "chatgpt" ? model : defaultModel;
+    if (plan.fold.length && foldGate) {
+      const r = await upstream(foldGate.base, foldGate.key, "/chat/completions", { method: "POST", body: JSON.stringify(outboundFor(foldGate, { model: foldModel, max_tokens: 1800, temperature: 0.2, messages: summaryMessages(summary, plan.fold) })) }).catch(() => null);
       const t = r?.ok ? asText(r.data).trim() : "";
       if (t) {
         summary = t.slice(0, 12000);
@@ -460,7 +613,8 @@ Deno.serve(async (req) => {
       if (saved.error) return json({ error: `could not save your message (${String(saved.error.message).slice(0, 100)})` }, 500);
     }
 
-    let toolsOn = body?.tools !== false;
+    const wantTools = body?.tools !== false;
+    let toolsOn = wantTools && gate.kind !== "chatgpt";             // ChatGPT here answers in another dialect, without the tools
     const system = buildSystem({ notes: noteRows || [], summary, now: new Date(), tools: toolsOn });
     const recent = plan.recent.map((m: any) => ({ role: m.role, text: m.content }));
     const history = regenerate && recent.length && recent[recent.length - 1].role === "user" ? recent : [...recent, { role: "user", text: userText }];
@@ -468,18 +622,20 @@ Deno.serve(async (req) => {
     const msgs: any[] = built.messages;
 
     // one upstream call, streamed or not, answered in one shape: { ok, status, content, toolCalls, model, err }
-    type Turn = { ok: boolean; status: number; content: string; toolCalls: { id: string; name: string; arguments: string }[]; model: string; err: string };
-    async function turn(payload: any, onText: (t: string) => void): Promise<Turn> {
-      const path = base.replace(/\/+$/, "") + "/chat/completions";
+    type Call = { id: string; name: string; arguments: string; extra_content?: any };
+    type Turn = { ok: boolean; status: number; content: string; toolCalls: Call[]; model: string; err: string };
+    const callsOf = (m: any): Call[] => (Array.isArray(m?.tool_calls) ? m.tool_calls : []).map((c: any) => ({ id: String(c?.id || ""), name: String(c?.function?.name || ""),
+      arguments: typeof c?.function?.arguments === "string" ? c.function.arguments : JSON.stringify(c?.function?.arguments || {}),
+      ...(c?.extra_content ? { extra_content: c.extra_content } : {}) }));
+    async function turn(payload: any, onText: (t: string) => void, g: Gate): Promise<Turn> {
+      const path = g.base.replace(/\/+$/, "") + "/chat/completions";
       if (!wantStream) {
-        const r = await upstream(base, key, "/chat/completions", { method: "POST", body: JSON.stringify(outbound(payload)) });
+        const r = await upstream(g.base, g.key, "/chat/completions", { method: "POST", body: JSON.stringify(outboundFor(g, payload)) });
         if (!r.ok) return { ok: false, status: r.status, content: "", toolCalls: [], model: "", err: String(r.data?.error?.message || r.text).slice(0, 200) };
-        const m = r.data?.choices?.[0]?.message;
-        const calls = (Array.isArray(m?.tool_calls) ? m.tool_calls : []).map((c: any) => ({ id: String(c?.id || ""), name: String(c?.function?.name || ""), arguments: typeof c?.function?.arguments === "string" ? c.function.arguments : JSON.stringify(c?.function?.arguments || {}) }));
-        return { ok: true, status: r.status, content: asText(r.data), toolCalls: calls, model: String(r.data?.model || ""), err: "" };
+        return { ok: true, status: r.status, content: asText(r.data), toolCalls: callsOf(r.data?.choices?.[0]?.message), model: String(r.data?.model || ""), err: "" };
       }
-      const res = await fetch(path, { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify(outbound({ ...payload, stream: true })), signal: AbortSignal.timeout(110000) });
+      const res = await fetch(path, { method: "POST", headers: { authorization: `Bearer ${g.key}`, "content-type": "application/json", accept: "text/event-stream" },
+        body: JSON.stringify(outboundFor(g, { ...payload, stream: true })), signal: AbortSignal.timeout(110000) });
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => "");
         let j: any = null; try { j = JSON.parse(text); } catch { /* not JSON */ }
@@ -488,11 +644,9 @@ Deno.serve(async (req) => {
       const type = res.headers.get("content-type") || "";
       if (!/event-stream/.test(type)) {                       // a gateway that ignores stream:true answers one JSON: read it as such
         const j: any = await res.json().catch(() => null);
-        const m = j?.choices?.[0]?.message;
-        const calls = (Array.isArray(m?.tool_calls) ? m.tool_calls : []).map((c: any) => ({ id: String(c?.id || ""), name: String(c?.function?.name || ""), arguments: typeof c?.function?.arguments === "string" ? c.function.arguments : JSON.stringify(c?.function?.arguments || {}) }));
         const content = asText(j);
         if (content) onText(content);
-        return { ok: true, status: res.status, content, toolCalls: calls, model: String(j?.model || ""), err: "" };
+        return { ok: true, status: res.status, content, toolCalls: callsOf(j?.choices?.[0]?.message), model: String(j?.model || ""), err: "" };
       }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
@@ -516,24 +670,97 @@ Deno.serve(async (req) => {
       return { ok: true, status: res.status, content: acc.content, toolCalls: acc.toolCalls.filter((c: any) => c.name), model: acc.model, err: "" };
     }
 
+    // ChatGPT (Wanshah 5): the Codex Responses endpoint with Wan's login, streamed (it only answers streamed); a 401 refreshes once
+    async function chatgptTurn(payload: any, onText: (t: string) => void): Promise<Turn> {
+      const fail = (status: number, err: string): Turn => ({ ok: false, status, content: "", toolCalls: [], model: "", err: err.replace(/\s+/g, " ").slice(0, 200) });
+      let renewed = false;
+      for (;;) {
+        let tok: { access: string; account: string };
+        try { tok = await gptAccess(renewed); } catch (e) { return fail(401, String(e instanceof Error ? e.message : e)); }
+        let res: Response;
+        try {
+          res = await fetch(CHATGPT_RESPONSES, { method: "POST", signal: AbortSignal.timeout(110000), body: JSON.stringify(responsesBody(payload.messages, payload.model)),
+            headers: { authorization: `Bearer ${tok.access}`, "chatgpt-account-id": tok.account, "OpenAI-Beta": "responses=experimental", originator: "codex_cli_rs",
+              "user-agent": "codex_cli_rs/0.0 (semasa)", accept: "text/event-stream", "content-type": "application/json", session_id: crypto.randomUUID() } });
+        } catch (e) { return fail(0, /abort|time/i.test(String(e)) ? "the model did not answer in time" : "ChatGPT could not be reached"); }
+        if (res.status === 401 && !renewed) { renewed = true; try { await res.body?.cancel(); } catch { /* closed */ } continue; }
+        if (!res.ok || !res.body) {
+          const text = await res.text().catch(() => "");
+          let j: any = null; try { j = JSON.parse(text); } catch { /* not JSON */ }
+          return fail(res.status, String(j?.error?.message || j?.detail || text || `HTTP ${res.status}`));
+        }
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = "", acc: any = null;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const { events, rest } = sseEvents(buf);
+          buf = rest;
+          for (const ev of events) {
+            let j: any = null; try { j = JSON.parse(ev); } catch { continue; }
+            const before = acc?.content || "";
+            acc = foldResponses(acc, j);
+            if (acc.error) return fail(502, acc.error);
+            if (acc.content.length > before.length) onText(acc.content.slice(before.length));
+          }
+        }
+        const content = acc?.content || acc?.final || "";
+        if (!acc?.content && content) onText(content);
+        return { ok: true, status: 200, content, toolCalls: [], model: acc?.model || payload.model, err: "" };
+      }
+    }
+
+    // one call on one robot. Gemini moves to its next usable key when Google refuses or rate-limits THIS key before a word is out, and
+    // every Gemini call is recorded on its key the way the worker records it (gemini_keys.note), so the least-used rule stays true.
+    async function callOn(g: Gate, payload: any, onText: (t: string) => void): Promise<Turn> {
+      if (g.kind === "chatgpt") return await chatgptTurn(payload, onText);
+      if (g.slug !== "gemini" || !g.keys?.length) return await turn(payload, onText, g);
+      let r: Turn = { ok: false, status: 0, content: "", toolCalls: [], model: "", err: "no Gemini key" };
+      let said = false;
+      const watch = (t: string) => { said = true; onText(t); };
+      for (const k of g.keys.slice(0, 3)) {
+        r = await turn(payload, watch, { ...g, key: k.key });
+        if (admin) await admin.from("semasa_gemini_keys").update(geminiKeyPatch(k.row, r.ok, r.status, r.err)).eq("id", k.id).then(() => {}, () => {});
+        if (r.ok || said || !["bad", "limited"].includes(geminiOutcome(r.status, r.err))) break;
+      }
+      return r;
+    }
+
     // the whole exchange, with `emit` telling the page what is happening (a no-op when not streaming)
     async function runChat(emit: (o: any) => void) {
       const used: string[] = [];
-      let memorySaved = false, toolsNote = "";
-      let final = "", shown = "", lastModel = model;
+      const switched: string[] = [];
+      let memorySaved = false, toolsNote = wantTools && !toolsOn ? "tools_unsupported" : "";
+      let final = "", shown = "", lastModel = model, said = false;
+      const onText = (t: string) => { said = true; emit({ type: "delta", text: t }); };
       for (let round = 0; round < 5 && !final; round++) {
         const withTools = toolsOn && round < 4;
         const payload = { model, messages: msgs, max_tokens: 2400, temperature: 0.3, ...(withTools ? { tools: TOOLS, tool_choice: "auto" } : {}) };
-        let r = await turn(payload, (t) => emit({ type: "delta", text: t }));
-        if (!r.ok && withTools && r.status === 400) {      // this model/gateway does not take tools: answer without them, and say so
+        let r = await callOn(gate, payload, onText);
+        if (!r.ok && withTools && r.status === 400 && !said) {      // this model/gateway does not take tools: answer without them, and say so
           toolsOn = false; toolsNote = "tools_unsupported";
-          r = await turn({ model, messages: msgs, max_tokens: 2400, temperature: 0.3 }, (t) => emit({ type: "delta", text: t }));
+          r = await callOn(gate, { model, messages: msgs, max_tokens: 2400, temperature: 0.3 }, onText);
         }
-        if (!r.ok) throw new Error(`the model answered HTTP ${r.status}: ${r.err}`);
+        // Auto only: a robot that failed before saying anything hands the question to the next one (Wan's own pick is never swapped)
+        if (!r.ok && choice.auto && round === 0 && !said && link < chain.length - 1) {
+          switched.push(`${gate.name} ${model}: ${r.status ? `HTTP ${r.status}: ` : ""}${r.err}`.slice(0, 200));
+          link++;
+          gate = chain[link].gate; model = chain[link].model;
+          toolsOn = wantTools && gate.kind !== "chatgpt";
+          if (wantTools && !toolsOn) toolsNote = "tools_unsupported";
+          msgs[0] = { role: "system", content: buildSystem({ notes: noteRows || [], summary, now: new Date(), tools: toolsOn }) };
+          emit({ type: "status", tool: "switch", detail: `${gate.name} · ${model}` });
+          round--;
+          continue;
+        }
+        if (!r.ok) throw new Error(`${gate.name} ${model} answered HTTP ${r.status}: ${r.err}`);
         if (r.model) lastModel = r.model;
         if (r.toolCalls.length && withTools) {
           if (r.content.trim()) shown += (shown ? "\n\n" : "") + r.content.trim();
-          msgs.push({ role: "assistant", content: r.content || null, tool_calls: r.toolCalls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.arguments } })) });
+          msgs.push({ role: "assistant", content: r.content || null, tool_calls: r.toolCalls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.arguments },
+            ...(c.extra_content ? { extra_content: c.extra_content } : {}) })) });
           for (const c of r.toolCalls.slice(0, 3)) {
             const name = c.name, args = parseArgs(c.arguments);
             emit({ type: "status", tool: name, detail: String(args.url || args.query || args.table || "").slice(0, 120) });
@@ -557,8 +784,11 @@ Deno.serve(async (req) => {
       }
       if (!final) throw new Error("the model kept calling tools and never answered");
       await db.from("semasa_chat_messages").insert({ thread_id: threadId, user_id: uid, role: "assistant", content: final, tools: used.length ? [...new Set(used)] : null });
-      return { text: final, thread_id: threadId, model: lastModel, tools: [...new Set(used)], memory_saved: memorySaved, notice: toolsNote || undefined, sent: built.sent,
-        ...(picked.changed ? { model_changed: { asked: picked.asked, used: model } } : {}) };
+      const robot = team.robots.find((x: any) => x.slug === gate.slug);
+      return { text: final, thread_id: threadId, model: lastModel, robot: robot ? { slug: robot.slug, name: robot.name, provider: robot.provider } : null, auto: choice.auto,
+        tools: [...new Set(used)], memory_saved: memorySaved, notice: toolsNote || undefined, sent: built.sent,
+        ...(switched.length ? { switched } : {}),
+        ...(choice.changed ? { model_changed: { asked: choice.asked, used: `${gate.name} ${model}`, why: choice.why || "" } } : {}) };
     }
 
     if (!wantStream) return json(await runChat(() => {}));
@@ -566,7 +796,7 @@ Deno.serve(async (req) => {
     const stream = new ReadableStream({
       async start(controller) {
         const emit = (o: any) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`)); } catch { /* the page went away */ } };
-        emit({ type: "start", thread_id: threadId, model });
+        emit({ type: "start", thread_id: threadId, model, robot: gate.name });
         try {
           emit({ type: "done", ...(await runChat(emit)) });
         } catch (e) {

@@ -410,6 +410,8 @@ export function foldDelta(acc, chunk) {
     while (a.toolCalls.length <= i) a.toolCalls.push({ id: "", name: "", arguments: "" });
     const slot = a.toolCalls[i];
     if (tc.id) slot.id = String(tc.id);
+    // Gemini's thinking models put a thought signature here and refuse the next round if it is not sent back with the call
+    if (tc.extra_content && typeof tc.extra_content === "object") slot.extra_content = tc.extra_content;
     if (tc.function?.name) slot.name += String(tc.function.name);
     if (typeof tc.function?.arguments === "string") slot.arguments += tc.function.arguments;
   }
@@ -615,4 +617,315 @@ export function pickFallback(ids, failed) {
   const bad = modelNorm(failed);
   const hit = models.find((m) => modelNorm(m.id) !== bad);
   return hit ? hit.id : "";
+}
+
+/* ===== Every robot in the chat's picker (Wan, 7 Nov 2026: "for AI Chat, allow me to choose all model accross all 5 bots") ========
+   The chat used to talk to ONE gateway, the one in the function's own secrets. The five robots keep their keys in four places, and
+   the function can reach all but one of them:
+     * the function's secrets: AI_API_KEY + AI_BASE_URL (rootsys today) and MIRELD_API_KEY (Mireld);
+     * the page's AI slots (semasa_ai_secrets, supabase/016 + 044): each key bound to the host it was typed in for (key_host);
+     * semasa_gemini_keys (061): Wanshah 4's keys, picked least recently used, the same rule as backend/semasa/gemini_keys.py;
+     * semasa_chatgpt_auth (058): Wan's ChatGPT login, a single-use refresh token that must be written back at once.
+   GitHub's secrets (LLM_API_KEY and the rest) are NOT readable from Supabase, so a robot whose only key is there is listed as
+   unavailable with that reason rather than shown as if it worked. The service role reads these tables inside the function; a key
+   never leaves it: `assembleTeam` returns the page's view (`robots`) and the keys (`gates`) as two separate objects, and only the
+   first is ever sent back. */
+
+export const CHAT_ROBOTS = {
+  rootsys: { robot: "W1", name: "Wanshah 1", provider: "rootsys (Afiq)", host: "rootsys.cloud", kind: "openai" },
+  mireld: { robot: "W2", name: "Wanshah 2", provider: "Mireld", host: "api.mireld.my", kind: "openai" },
+  kiosapi: { robot: "W3", name: "Wanshah 3", provider: "KiosAPI", host: "kiosapi.com", kind: "openai" },
+  gemini: { robot: "W4", name: "Wanshah 4", provider: "Gemini", host: "generativelanguage.googleapis.com", kind: "openai" },
+  chatgpt: { robot: "W5", name: "Wanshah 5", provider: "ChatGPT", host: "chatgpt.com", kind: "chatgpt" },
+};
+export const ROBOT_ORDER = ["rootsys", "mireld", "kiosapi", "gemini", "chatgpt"];
+// fixed addresses: these two robots' keys are only ever sent here, whatever a row says
+export const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai";
+export const CHATGPT_RESPONSES = "https://chatgpt.com/backend-api/codex/responses";
+export const CHATGPT_TOKEN_URL = "https://auth.openai.com/oauth/token";
+export const CHATGPT_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";   // the Codex CLI's public client id (chatgpt_login.py), not a secret
+export const CHATGPT_SKEW_MS = 5 * 60_000;                          // refresh when less than this is left on the access token
+const PROBE_FRESH_MS = 13 * 3600_000;                               // the probe runs every 6 h; older says nothing about now
+const SLOW_MS = 15_000;                                             // a robot this slow to answer five tokens is not Auto's first pick
+const ROBOT_HOST_SLUG = Object.fromEntries(Object.entries(CHAT_ROBOTS).map(([slug, r]) => [r.host, slug]));
+
+/** An OpenAI-compatible base address a key may be sent to: https, no login, the standard port, a real public host name. The same
+    checks as fetch_url (checkFetchUrl), so a slot typed with an internal address can never make the function call inside its network.
+    Returns { ok, base, host } (base without a trailing slash, query or fragment) or { ok:false, why }. */
+export function safeBase(raw) {
+  const c = checkFetchUrl(raw);
+  if (!c.ok) return { ok: false, why: c.why };
+  const u = new URL(c.url);
+  u.search = "";
+  return { ok: true, base: u.toString().replace(/\/+$/, ""), host: c.host };
+}
+
+/** Whether a page slot's key belongs where the slot points (backend/semasa/ai_config.py key_host for the OpenAI dialect): the key
+    was typed in for exactly this host. A slot whose address was changed later without the key keeps a stale key_host and fails. */
+export function slotKeyFits(slot) {
+  const b = safeBase(slot?.base_url);
+  return !!(b.ok && slot?.api_key && String(slot.key_host || "").toLowerCase() === b.host);
+}
+
+function jwtClaims(token) {
+  try {
+    const part = String(token || "").split(".")[1];
+    const b64 = part.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (part.length % 4)) % 4);
+    return JSON.parse(atob(b64));
+  } catch { return {}; }
+}
+
+/** When the ChatGPT access token ends, in ms, from its own claims (null when unreadable). */
+export const tokenExpiry = (token) => { const e = jwtClaims(token).exp; return typeof e === "number" ? e * 1000 : null; };
+
+/** The account id the Codex backend wants in `chatgpt-account-id`: saved with the login, else read off the tokens. */
+export function chatgptAccount(tokens) {
+  if (tokens?.account_id) return String(tokens.account_id);
+  for (const k of ["id_token", "access_token"]) {
+    const info = jwtClaims(tokens?.[k])["https://api.openai.com/auth"];
+    if (info && info.chatgpt_account_id) return String(info.chatgpt_account_id);
+  }
+  return "";
+}
+
+/** True when the access token must be refreshed before use: missing, unreadable, or ending within the skew. */
+export function chatgptNeedsRefresh(tokens, now = Date.now(), skew = CHATGPT_SKEW_MS) {
+  if (!tokens?.access_token) return true;
+  const end = tokenExpiry(tokens.access_token);
+  return !end || end - now <= skew;
+}
+
+/** The tokens to save after a refresh answer: the new access/id token, and the new refresh token (the old one is now spent; a
+    server that sends none keeps the old one, as chatgpt_login.py does). */
+export function refreshedTokens(old, body) {
+  const t = { ...(old || {}) };
+  for (const k of ["access_token", "id_token"]) if (body?.[k]) t[k] = String(body[k]);
+  t.refresh_token = String(body?.refresh_token || old?.refresh_token || "");
+  return t;
+}
+
+/** Gemini keys that may be tried now, least recently used first: enabled, not refused, not resting (gemini_keys.usable). */
+export function usableGeminiKeys(rows, now = Date.now()) {
+  const at = (s) => { const v = Date.parse(s || ""); return Number.isFinite(v) ? v : 0; };
+  return (Array.isArray(rows) ? rows : [])
+    .filter((r) => r && r.api_key && r.enabled !== false && r.status !== "bad" && !(at(r.cooldown_until) > now))
+    .sort((a, b) => at(a.last_used_at) - at(b.last_used_at) || (Number(a.failures) || 0) - (Number(b.failures) || 0));
+}
+
+/** What a Gemini answer says about the KEY (gemini_keys.classify): "bad" (Google refuses it), "limited" (quota or rate used up),
+    "model" (the model is gone: the key is fine) or "retry" (a hiccup). */
+export function geminiOutcome(status, message) {
+  const text = `${Number(status) || ""} ${String(message || "")}`;
+  const limited = /\b429\b|resource_exhausted|quota|rate.?limit|too many requests|exceeded/i.test(text);
+  const bad = /\b(400|401|403)\b.*(api key|api_key|permission|unauthori|invalid|expired|denied)|api key not valid|api_key_invalid|permission_denied|unauthenticated|key.*(revoked|disabled|suspended)/i.test(text);
+  if (bad && !limited) return "bad";
+  if (limited) return "limited";
+  if (/\b404\b|no longer available|is not found|not found for api version|model.{0,40}(does not exist|deprecated|retired)/i.test(text)) return "model";
+  return "retry";
+}
+
+/** The row patch that records a Gemini call on its key, the same marks the worker writes (gemini_keys.note): ok clears a rest;
+    limited rests 30 min, a hiccup 2 min, a refused key stays off until Wan switches it on. The error is clipped, never a key. */
+export function geminiKeyPatch(row, ok, status, message, now = Date.now()) {
+  const stamp = new Date(now).toISOString();
+  const calls = (Number(row?.calls) || 0) + 1;
+  if (ok) return { status: "ok", last_ok_at: stamp, last_used_at: stamp, cooldown_until: null, last_error: null, last_error_at: null, calls, updated_at: stamp };
+  const kind = geminiOutcome(status, message);
+  const err = String(message || `HTTP ${status}`).replace(/\s+/g, " ").slice(0, 300);
+  if (kind === "model") return { last_used_at: stamp, last_error: err, last_error_at: stamp, calls, updated_at: stamp };
+  const patch = { last_used_at: stamp, last_error: err, last_error_at: stamp, calls, failures: (Number(row?.failures) || 0) + 1, updated_at: stamp };
+  if (kind !== "retry") patch.status = kind;
+  patch.cooldown_until = kind === "bad" ? null : new Date(now + (kind === "limited" ? 30 : 2) * 60_000).toISOString();
+  return patch;
+}
+
+/** A robot's state from its probe row (semasa_api_status): ok, down (with why), stale (not checked in 13 h) or unknown. */
+export function probeState(row, now = Date.now()) {
+  if (!row) return { state: "unknown", why: "not checked by the API probe yet", speed_ms: null };
+  const at = Date.parse(row.checked_at || "");
+  const speed = row.chat_ms ?? row.latency_ms ?? null;
+  if (row.key_ok === false) return { state: "down", why: row.error || "the key was refused", speed_ms: speed };
+  if (row.reachable === false) return { state: "down", why: row.error || "not reachable", speed_ms: speed };
+  if (row.chat_ok === false) return { state: "down", why: row.error || "the test question failed", speed_ms: speed };
+  if (!Number.isFinite(at) || now - at > PROBE_FRESH_MS) return { state: "stale", why: "the last probe is older than 13 hours", speed_ms: speed };
+  return { state: "ok", why: "", speed_ms: speed };
+}
+
+/** The ChatGPT login's state from its row: down when the last error is newer than the last proof, ok when proven in 13 h. */
+export function chatgptState(row, now = Date.now()) {
+  const t = (s) => { const v = Date.parse(s || ""); return Number.isFinite(v) ? v : 0; };
+  const proof = Math.max(t(row?.checked_at), t(row?.last_ok_at));
+  if (row?.last_error && t(row.last_error_at) > proof) return { state: "down", why: String(row.last_error).slice(0, 200), speed_ms: null };
+  if (proof && now - proof <= PROBE_FRESH_MS) return { state: "ok", why: "", speed_ms: null };
+  return { state: "unknown", why: "the login has not been checked in 13 hours", speed_ms: null };
+}
+
+/** The robots the chat can offer, and the keys behind them, from everything the function read (see the block comment above).
+    `input` = { env (getter or object), slots: [{slot, provider, base_url, model, key_host, api_key}], status: semasa_api_status rows,
+    gemini: { settings, models, keys }, chatgpt: { row } | null, serviceRole: bool, live: { slug: [model ids] | null }, now }.
+    Returns { robots: [the page's view, no key in it], gates: { slug: { kind, base, key | keys, repeatSystem, from } } }. */
+export function assembleTeam(input = {}) {
+  const now = input.now ?? Date.now();
+  const get = (k) => String((typeof input.env === "function" ? input.env(k) : input.env?.[k]) || "").trim();
+  const status = Object.fromEntries((input.status || []).filter((r) => r?.slug).map((r) => [r.slug, r]));
+  const live = input.live || {};
+  const gates = {}, extra = [], why = {};
+  const meta = (slug) => CHAT_ROBOTS[slug] || null;
+
+  const addOpenAi = (base, key, model, from, repeatFlag) => {
+    const b = safeBase(base);
+    if (!b.ok || !key) return;
+    let slug = ROBOT_HOST_SLUG[b.host];
+    if (slug === "gemini" || slug === "chatgpt") return;              // those two have their own stores and fixed addresses
+    if (!slug) {                                                       // the function's own gateway on a host none of the five use
+      slug = b.host.replace(/[^a-z0-9]+/g, "-");
+      if (!extra.includes(slug)) extra.push(slug);
+    }
+    if (gates[slug]) return;                                           // the first key found for a robot wins (secrets before slots)
+    gates[slug] = { kind: "openai", base: b.base, host: b.host, key, model: cleanModelId(model), from,
+      repeatSystem: repeatFlag === "1" ? true : repeatFlag === "0" ? false : /rootsys/.test(b.host) };
+  };
+
+  // 1. the function's own secrets: the main gateway, and Mireld when it stays set beside the neutral AI_* names
+  const gw = gatewayConfig(get);
+  if (!gw.error && gw.key) addOpenAi(gw.base, gw.key, gw.model, `${gw.keyName} secret`, get("AI_REPEAT_SYSTEM"));
+  if (gw.keyName === "AI_API_KEY" && get("MIRELD_API_KEY")) addOpenAi(get("MIRELD_BASE_URL") || "https://api.mireld.my/v1", get("MIRELD_API_KEY"), get("MIRELD_MODEL"), "MIRELD_API_KEY secret", "");
+  // 2. the page's AI slots: only a key typed in for the host its slot points at, and only for a robot's own host
+  for (const s of input.slots || []) {
+    if (!s || (s.provider && s.provider !== "openai")) continue;
+    if (!slotKeyFits(s)) continue;
+    const b = safeBase(s.base_url);
+    if (!ROBOT_HOST_SLUG[b.host]) continue;
+    addOpenAi(s.base_url, s.api_key, s.model, `page AI slot "${s.slot}"`, "");
+  }
+  // 3. Gemini: the keys Wan added, least recently used first
+  const gs = input.gemini?.settings || {};
+  const gm = input.gemini?.models || {};
+  const gemModel = cleanModelId(gs.model && gs.model !== "auto" ? gs.model : (gm.text_pick || "gemini-flash-latest"));
+  const gemKeys = usableGeminiKeys(input.gemini?.keys, now);
+  if (!input.serviceRole) why.gemini = "the function cannot read the Gemini keys (no service role)";
+  else if (gs.enabled === false) why.gemini = "Gemini is switched off in its settings (API tab)";
+  else if (!(input.gemini?.keys || []).length) why.gemini = "no Gemini key has been added (API tab)";
+  else if (!gemKeys.length) why.gemini = "every Gemini key is refused, resting after a rate limit, or switched off";
+  else gates.gemini = { kind: "openai", base: GEMINI_BASE, host: CHAT_ROBOTS.gemini.host, keys: gemKeys.map((r) => ({ id: r.id, key: r.api_key, row: r })),
+    model: gemModel, from: `Gemini keys (${gemKeys.length} usable)`, repeatSystem: false };
+  // 4. ChatGPT: Wan's own login
+  const row = input.chatgpt?.row || null;
+  if (!input.serviceRole) why.chatgpt = "the function cannot read the ChatGPT login (no service role)";
+  else if (!row?.auth?.tokens?.refresh_token) why.chatgpt = "ChatGPT is not connected: paste auth.json in the Motion tab";
+  else gates.chatgpt = { kind: "chatgpt", base: CHATGPT_RESPONSES, host: CHAT_ROBOTS.chatgpt.host, model: cleanModelId(row.model) || "gpt-5", from: "ChatGPT login" };
+
+  for (const slug of ["rootsys", "mireld", "kiosapi"]) {
+    if (gates[slug] || why[slug]) continue;
+    why[slug] = status[slug]?.key_set
+      ? "its key is only in GitHub's secrets, which Supabase cannot read: save it in a page AI slot (API tab) or as a function secret"
+      : "no key for it: save one in a page AI slot (API tab) or as a function secret";
+  }
+
+  const robots = [...ROBOT_ORDER, ...extra].map((slug) => {
+    const m = meta(slug) || { robot: "W?", name: gw.name || slug, provider: gw.name || slug, host: gates[slug]?.host || slug, kind: "openai" };
+    const g = gates[slug];
+    const health = slug === "chatgpt" ? chatgptState(row, now) : probeState(status[slug], now);
+    const configured = g?.model || cleanModelId(status[slug]?.model);
+    let ids = slug === "chatgpt" ? [configured] : (Array.isArray(live[slug]) ? live[slug] : status[slug]?.models || []);
+    ids = ids.map((x) => String(x || "").replace(/^models\//, ""));
+    const ranked = rankModels(ids.length ? ids : [configured].filter(Boolean), configured || "");
+    const models = ranked.models.map((x) => (slug === "gemini" ? { ...x, note_en: GEMINI_NOTE[1], note_bm: GEMINI_NOTE[0] } : x));
+    const enabled = !!g && models.length > 0;
+    // the robot's default: the strongest model it lists (MODEL_PREFERENCE), else the one configured for it (rankModels decides both)
+    const def = slug === "chatgpt" ? configured : ranked.recommended;
+    return {
+      slug, robot: m.robot, name: m.name, provider: m.provider, kind: m.kind,
+      enabled, why: enabled ? "" : (why[slug] || (g ? "no model listed and none configured" : "not available")),
+      state: health.state, state_why: health.why, speed_ms: health.speed_ms,
+      key_from: g?.from || "", tools: m.kind !== "chatgpt", listed_live: Array.isArray(live[slug]),
+      models: enabled ? models : [], default_model: enabled ? def : "",
+      ...(slug === "gemini" ? { private_note: GEMINI_NOTE } : {}),
+    };
+  });
+  return { robots, gates };
+}
+const GEMINI_NOTE = ["Kunci Gemini percuma mungkin membenarkan Google menggunakan apa yang dihantar; Auto tidak memilihnya.",
+  "A free Gemini key may let Google use what it is sent; Auto never picks it."];
+
+/** Auto (Wan's "the best that works"): the same idea as the backend router (ai_team.order), healthy first and fast before slow,
+    then the strongest model (MODEL_PREFERENCE), then the fastest. Gemini is never Auto's choice (a free key may let Google use what
+    it is sent: gemini_keys.py keeps it off every job Wan has not allowed), and ChatGPT, which answers without tools here, comes after
+    every robot that has them. Returns the robots to try in order, each with its model: [{slug, model}]. */
+export function pickAuto(robots) {
+  const rank = (m) => { const i = MODEL_PREFERENCE.findIndex((p) => modelNorm(p) === modelNorm(m)); return i < 0 ? 99 : i; };
+  const health = (r) => (r.state === "ok" ? 0 : r.state === "down" ? 2 : 1);
+  return (robots || []).filter((r) => r.enabled && r.slug !== "gemini")
+    .map((r) => ({ r, key: [health(r), r.tools ? 0 : 1, r.speed_ms != null && r.speed_ms > SLOW_MS ? 1 : 0, rank(r.default_model), r.speed_ms ?? 1e9] }))
+    .sort((a, b) => { for (let i = 0; i < a.key.length; i++) if (a.key[i] !== b.key[i]) return a.key[i] - b.key[i]; return 0; })
+    .map(({ r }) => ({ slug: r.slug, model: r.default_model }));
+}
+
+/** Which robot and model answer a chat call. `req` = { robot, model } from the page: robot "" or "auto" is Auto; a bare model (an
+    older page) is looked for on every robot. A robot that cannot be used, or a model it does not list, falls back to Auto (or the
+    robot's own default) with `changed` and the reason, so the page can say what happened. `chain` is what to try, in order: Auto
+    may move on to the next robot when one fails before it has said anything; Wan's own pick is never swapped for another robot. */
+export function resolveChoice(robots, req = {}) {
+  const list = robots || [];
+  const auto = (extra = {}) => { const chain = pickAuto(list); return { auto: true, chain, slug: chain[0]?.slug || "", model: chain[0]?.model || "", changed: false, ...extra }; };
+  const wantRobot = String(req.robot || "").trim();
+  const wantModel = cleanModelId(req.model);
+  if (!wantRobot || wantRobot === "auto") {
+    if (!wantModel) return auto();
+    const hit = list.find((r) => r.enabled && r.models.some((m) => m.id === wantModel));
+    return hit ? { auto: false, chain: [{ slug: hit.slug, model: wantModel }], slug: hit.slug, model: wantModel, changed: false }
+      : auto({ changed: true, asked: wantModel, why: "no robot lists that model" });
+  }
+  const r = list.find((x) => x.slug === wantRobot);
+  if (!r || !r.enabled) return auto({ changed: true, asked: `${wantRobot}${wantModel ? ":" + wantModel : ""}`, why: r?.why || "that robot is not known" });
+  const picked = resolveModel(wantModel, r.listed_live || r.slug === "chatgpt" ? r.models.map((m) => m.id) : null, r.default_model);
+  const model = r.models.some((m) => m.id === picked.model) || !r.listed_live ? picked.model : r.default_model;
+  const changed = picked.changed || (wantModel && model !== wantModel);
+  return { auto: false, chain: [{ slug: r.slug, model }], slug: r.slug, model, changed: !!changed,
+    ...(changed ? { asked: `${r.slug}:${wantModel}`, why: `${r.name} does not list ${wantModel}` } : {}) };
+}
+
+/** The page's picker value, "slug|model" ("" = Auto; a bare model from an older page has no slug). */
+export function parseChoice(value) {
+  const s = String(value || "");
+  const i = s.indexOf("|");
+  return i < 0 ? { robot: "", model: s } : { robot: s.slice(0, i), model: s.slice(i + 1) };
+}
+
+/* ===== ChatGPT through the Codex Responses endpoint (chatgpt_login.py `write`) =================================================
+   Not the Chat Completions dialect: the system message is `instructions`, each turn is an input item, and the stream is typed events
+   (response.output_text.delta, response.completed, response.failed). Tools are not sent: the chat's tools are function calls in the
+   other dialect, so ChatGPT answers from what it is given and the page says it answered without tools. */
+export function responsesBody(messages, model) {
+  const list = Array.isArray(messages) ? messages : [];
+  const instructions = list.filter((m) => m?.role === "system" && typeof m.content === "string").map((m) => m.content).join("\n\n");
+  const input = [];
+  for (const m of list) {
+    if (m?.role === "user") {
+      const parts = typeof m.content === "string" ? [{ type: "input_text", text: m.content }]
+        : (Array.isArray(m.content) ? m.content : []).map((p) => (p?.type === "image_url" ? { type: "input_image", image_url: String(p.image_url?.url || "") }
+          : { type: "input_text", text: String(p?.text || "") })).filter((p) => (p.type === "input_text" ? p.text : p.image_url));
+      if (parts.length) input.push({ type: "message", role: "user", content: parts });
+    } else if (m?.role === "assistant" && typeof m.content === "string" && m.content.trim()) {
+      input.push({ type: "message", role: "assistant", content: [{ type: "output_text", text: m.content }] });
+    }
+  }
+  return { model: cleanModelId(model) || "gpt-5", instructions: instructions || SYSTEM, input, store: false, stream: true };
+}
+
+/** Fold one Responses stream event into { content, final, error, model }. Pure, like foldDelta. */
+export function foldResponses(acc, ev) {
+  const a = acc || { content: "", final: "", error: "", model: "" };
+  const kind = String(ev?.type || "");
+  if (ev?.response?.model && !a.model) a.model = String(ev.response.model);
+  if (kind === "response.output_text.delta") a.content += String(ev.delta || "");
+  else if (kind === "response.completed") {
+    let text = "";
+    for (const out of ev.response?.output || []) for (const p of out?.content || []) if (p?.type === "output_text" && p.text) text += String(p.text);
+    a.final = text;
+  } else if (kind === "response.failed" || kind === "error") {
+    const e = ev.response?.error || ev.error || {};
+    a.error = String((typeof e === "object" ? e.message || e.code : e) || ev.message || "the ChatGPT call failed").replace(/\s+/g, " ").slice(0, 200);
+  }
+  return a;
 }

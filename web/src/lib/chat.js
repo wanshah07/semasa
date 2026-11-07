@@ -30,14 +30,23 @@ export async function prepareFiles(files, onProgress = () => {}) {
 export { explain };
 
 const shape = (data, threadId) => ({ connected: true, text: data.text, threadId: data.thread_id || threadId, tools: data.tools || [], memorySaved: data.memory_saved === true,
-  notice: data.notice, model: data.model || "", modelChanged: data.model_changed || null });
+  notice: data.notice, model: data.model || "", modelChanged: data.model_changed || null, robot: data.robot || null, switched: data.switched || [] });
+
+/** The picker's value as the function takes it: "slug|model" is one robot's model (7 Nov 2026, every model of all five robots), a bare
+    model is what an older page saved, "" is Auto. Same rule as logic.js parseChoice. */
+export function splitChoice(value) {
+  const s = String(value || "");
+  const i = s.indexOf("|");
+  return i < 0 ? { robot: "", model: s } : { robot: s.slice(0, i), model: s.slice(i + 1) };
+}
+const choiceBody = (value) => { const c = splitChoice(value); return { ...(c.robot ? { robot: c.robot } : {}), ...(c.model ? { model: c.model } : {}) }; };
 
 /** One turn. `threadId` is null for a new conversation; the function creates it and answers with its id. With `onDelta` the answer is
     streamed (each piece of text as it arrives; `onStatus` names a tool as it runs); `signal` stops it. `regenerate` answers the last
     question of the thread again instead of sending `text`. */
 export async function askAI({ text = "", files = [], threadId = null, model = "", regenerate = false, onDelta = null, onStatus = null, signal = null, onProgress = () => {} }) {
   if (!supabase) return { connected: false, text: "" };
-  const body = { action: "chat", thread_id: threadId, text, files: regenerate ? [] : await prepareFiles(files, onProgress), ...(model ? { model } : {}), ...(regenerate ? { regenerate: true } : {}) };
+  const body = { action: "chat", thread_id: threadId, text, files: regenerate ? [] : await prepareFiles(files, onProgress), ...choiceBody(model), ...(regenerate ? { regenerate: true } : {}) };
   if (onDelta) {
     const streamed = await streamChat(body, { onDelta, onStatus, signal });
     if (streamed) return shape(streamed, threadId);
@@ -160,7 +169,7 @@ export async function deleteMemory(id) {
 /** The "check" action: is the model listed, and does it read a picture. Used from the chat tab's check button. */
 export async function checkAI(model = "") {
   if (!supabase) return { error: "not configured" };
-  const { data, error } = await supabase.functions.invoke(FUNCTION, { body: { action: "check", ...(model ? { model } : {}) } });
+  const { data, error } = await supabase.functions.invoke(FUNCTION, { body: { action: "check", ...choiceBody(model) } });
   if (error) {
     const why = await explain(error);
     return { error: why.missing ? "function belum dipasang / not deployed" : why.message };
@@ -169,7 +178,8 @@ export async function checkAI(model = "") {
 }
 
 /** The chat models the function offers, best default first: { models: [{id, recommended, family, note_en, note_bm}], recommended,
-    default, listed }. null when the function is not deployed or answers an old shape (the page then hides the picker). */
+    default, listed }, and since 7 Nov 2026 `robots` (all five, each with state, speed, models, or `why` it cannot be used) and `auto`
+    ({slug, model, name}). null when the function is not deployed or answers an old shape (the page then hides the picker). */
 export async function listModels() {
   if (!supabase) return null;
   const { data, error } = await supabase.functions.invoke(FUNCTION, { body: { action: "models" } });
@@ -178,7 +188,7 @@ export async function listModels() {
 }
 
 const MODEL_KEY = "semasa.chat.model";
-/** The model this browser chose; "" means Auto (the function's own default, the recommended one). */
+/** The model this browser chose ("slug|model", or a bare model from before 7 Nov 2026); "" means Auto. */
 export const savedModel = () => { try { return localStorage.getItem(MODEL_KEY) || ""; } catch { return ""; } };
 export const saveModel = (id) => { try { if (id) localStorage.setItem(MODEL_KEY, id); else localStorage.removeItem(MODEL_KEY); } catch { /* private mode: not remembered */ } };
 

@@ -3,7 +3,7 @@ import { IconBulb, IconCheck, IconCopy, IconFileText, IconHistory, IconPencil, I
 import Ai04 from "@/components/ui/ai-04";
 import Markdown from "../components/Markdown";
 import { addMemory, askAI, checkAI, deleteMemory, deleteThread, listMemory, listModels, listThreads, loadLatestThread, loadMessages, renameThread,
-  saveModel, saveStream, savedModel, savedStream } from "../lib/chat";
+  saveModel, saveStream, savedModel, savedStream, splitChoice } from "../lib/chat";
 import { parseMarkdown, plainText } from "../lib/markdown";
 import { stampMYT, timeAgo } from "../lib/format";
 import { useLang } from "../lib/i18n";
@@ -21,7 +21,14 @@ import { useLang } from "../lib/i18n";
    - attachments: pictures, PDF (text pages; scanned pages as pictures), Word, Excel, CSV and text, read in the browser by the
      FAQ bar's readers, and a tool line under each answer says what the model read or looked up. */
 const toolLabel = (n, t) => ({ fetch_url: t("baca laman web", "read a web page"), search_web: t("cari web", "web search"),
-  query_semasa: t("data Semasa", "Semasa data"), remember: t("nota disimpan", "note saved") }[n] || n);
+  query_semasa: t("data Semasa", "Semasa data"), remember: t("nota disimpan", "note saved"),
+  switch: t("Auto menukar robot", "Auto switched robot") }[n] || n);
+
+// a robot's live state in words, from the 6-hourly probe (or the ChatGPT login's own check)
+const stateWord = (r, t) => ({ ok: t("sihat", "healthy"), down: t("bermasalah", "down"), stale: t("belum disemak 13 jam", "not checked in 13 h"),
+  unknown: t("belum diuji", "not tested") }[r.state] || r.state);
+const speedOf = (ms) => (ms == null ? "" : ms >= 1000 ? ` · ${(ms / 1000).toFixed(1)} s` : ` · ${ms} ms`);
+const robotLabel = (r, t) => `${r.name} · ${r.provider} · ${r.enabled ? `${stateWord(r, t)}${speedOf(r.speed_ms)}` : t("tidak boleh digunakan", "cannot be used")}`;
 
 export default function ChatTab() {
   const { t } = useLang();
@@ -57,10 +64,20 @@ export default function ChatTab() {
     listModels().then((m) => {
       if (!live || !m) return;
       setModels(m);
-      // a model chosen earlier that Mireld no longer lists would only be refused: go back to Auto and say so
+      // a choice made earlier that its robot no longer offers would only be refused: go back to Auto and say so. A bare model saved
+      // before 7 Nov 2026 is moved onto the robot that lists it.
       const kept = savedModel();
       const gwn = m.gateway || "Mireld";
-      if (kept && m.listed && !m.models.some((x) => x.id === kept)) {
+      if (kept && Array.isArray(m.robots)) {
+        const c = splitChoice(kept);
+        const hit = c.robot ? m.robots.find((r) => r.slug === c.robot && r.enabled && r.models.some((x) => x.id === c.model))
+          : m.robots.find((r) => r.enabled && r.models.some((x) => x.id === c.model));
+        if (hit && !c.robot) { saveModel(`${hit.slug}|${c.model}`); setModel(`${hit.slug}|${c.model}`); }
+        else if (!hit) {
+          saveModel(""); setModel("");
+          note(t(`Pilihan anda (${c.model || c.robot}) tidak dapat digunakan lagi; guna Auto (${m.auto?.model || m.default}).`, `Your choice (${c.model || c.robot}) can no longer be used; using Auto (${m.auto?.model || m.default}).`));
+        }
+      } else if (kept && m.listed && !m.models.some((x) => x.id === kept)) {
         saveModel(""); setModel("");
         note(t(`Model pilihan anda (${kept}) tiada lagi dalam senarai ${gwn}; guna Auto (${m.default}).`, `Your chosen model (${kept}) is no longer in ${gwn}'s list; using Auto (${m.default}).`));
       }
@@ -68,8 +85,12 @@ export default function ChatTab() {
     return () => { live = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const chooseModel = (id) => { setModel(id); saveModel(id); };
-  const shownModel = model || models?.default || "";
-  const modelNote = models?.models.find((x) => x.id === shownModel);
+  const robots = Array.isArray(models?.robots) ? models.robots : null;            // null: an older function with one gateway
+  const choice = splitChoice(model);
+  const chosenRobot = robots ? robots.find((r) => r.slug === (choice.robot || models.auto?.slug)) : null;
+  const shownModel = robots ? (choice.robot ? choice.model : models.auto?.model || "") : (model || models?.default || "");
+  const modelNote = (chosenRobot ? chosenRobot.models : models?.models || []).find((x) => x.id === shownModel);
+  const unusable = robots ? robots.filter((r) => !r.enabled) : [];
   const [notes, setNotes] = useState([]);
   const [showNotes, setShowNotes] = useState(false);
   const [draftNote, setDraftNote] = useState("");
@@ -145,9 +166,11 @@ export default function ChatTab() {
         return;
       }
       if (res.threadId) setThreadId(res.threadId);
-      settle({ text: res.text, tools: res.tools, model: res.model, at: new Date().toISOString() });
+      settle({ text: res.text, tools: res.tools, model: res.robot ? `${res.model} · ${res.robot.name}` : res.model, at: new Date().toISOString() });
       if (res.memorySaved) refreshNotes();
-      if (res.modelChanged) note(t(`Model ${res.modelChanged.asked} tidak ada di ${models?.gateway || "Mireld"}; dijawab oleh ${res.modelChanged.used}.`, `Model ${res.modelChanged.asked} is not at ${models?.gateway || "Mireld"}; answered by ${res.modelChanged.used}.`));
+      if (res.modelChanged?.why) note(t(`Pilihan ${res.modelChanged.asked} tidak dapat digunakan (${res.modelChanged.why}); dijawab oleh ${res.modelChanged.used}.`, `${res.modelChanged.asked} could not be used (${res.modelChanged.why}); answered by ${res.modelChanged.used}.`));
+      else if (res.modelChanged) note(t(`Model ${res.modelChanged.asked} tidak ada di ${models?.gateway || "Mireld"}; dijawab oleh ${res.modelChanged.used}.`, `Model ${res.modelChanged.asked} is not at ${models?.gateway || "Mireld"}; answered by ${res.modelChanged.used}.`));
+      if (res.switched?.length) note(t(`Auto beralih kerana robot pertama gagal: ${res.switched.join("; ")}`, `Auto moved on because the first robot failed: ${res.switched.join("; ")}`));
       if (res.notice === "tools_unsupported") note(t("Model ini tidak menerima alat (web, pangkalan data); dijawab tanpa alat.", "This model does not accept tools (web, database); answered without them."));
       refreshThreads();
     } catch (e) {
@@ -174,7 +197,7 @@ export default function ChatTab() {
   // "Semak model": is the model listed at Mireld, and does it really read a picture (it is asked the colour of a red square).
   async function checkModel() {
     setBusy(true);
-    const r = await checkAI(model);
+    const r = await checkAI(robots && !model ? "auto|" : model);         // Auto tests the robot Auto would use
     let line;
     if (r.error) line = t(`Semakan gagal: ${r.error}`, `Check failed: ${r.error}`);
     else {
@@ -192,7 +215,7 @@ export default function ChatTab() {
         : tl.error ? t(`tiada alat: ${tl.error}`, `no tools: ${tl.error}`) : t("alat tidak pasti", "tools unclear");
       const search = r.search_configured ? t("carian web aktif", "web search on") : t("carian web belum dipasang (BRAVE_API_KEY)", "web search not installed (BRAVE_API_KEY)");
       const speed = r.image_ms ? t(`; jawab gambar dalam ${(r.image_ms / 1000).toFixed(1)} s`, `; the picture test took ${(r.image_ms / 1000).toFixed(1)} s`) : "";
-      line = `${r.model}: ${listed}; ${reads}; ${tools}${speed}; ${search}.`;
+      line = `${r.gateway ? `${r.gateway} · ` : ""}${r.model}: ${listed}; ${reads}; ${tools}${speed}; ${search}.`;
     }
     note(line);
     setBusy(false);
@@ -240,7 +263,40 @@ export default function ChatTab() {
         className="mx-auto mt-2 text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-50">
         {t("Uji model terpilih: baca gambar dan guna alat", "Test the selected model: pictures and tools")}
       </button>
-      {models && models.models.length > 0 && (
+      {robots && (
+        <div className="mx-auto mt-2 flex max-w-2xl flex-col items-center gap-1 text-[11px] text-muted">
+          <label className="flex items-center gap-1.5">
+            <span>{t("Model AI", "AI model")}</span>
+            <select value={model} onChange={(e) => chooseModel(e.target.value)} disabled={busy} aria-label={t("Pilih robot dan model AI", "Choose the AI robot and model")}
+              className="max-w-[20rem] rounded-pill border border-line bg-surface px-2.5 py-1 text-[11px] text-ink outline-none focus:border-accent">
+              <option value="">{t("Auto", "Auto")}{models.auto?.model ? ` · ${models.auto.model} (${models.auto.name})` : ` · ${t("tiada robot sedia", "no robot ready")}`}</option>
+              {robots.map((r) => (
+                <optgroup key={r.slug} label={robotLabel(r, t)}>
+                  {r.enabled
+                    ? r.models.map((m) => <option key={m.id} value={`${r.slug}|${m.id}`}>{m.id}{m.id === r.default_model ? ` ★ ${t("disyorkan", "recommended")}` : ""}</option>)
+                    : <option value={`${r.slug}|`} disabled>{r.why}</option>}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          {chosenRobot && (
+            <span className="max-w-xl text-center">
+              {!choice.robot ? `${t("Auto memilih robot sihat yang pantas dengan model terkuat", "Auto picks a healthy, fast robot with the strongest model")}: ` : ""}
+              {chosenRobot.name} ({chosenRobot.provider}): {stateWord(chosenRobot, t)}{speedOf(chosenRobot.speed_ms)}
+              {chosenRobot.state_why ? ` · ${chosenRobot.state_why}` : ""}
+              {!chosenRobot.tools ? ` · ${t("tanpa alat (web, data Semasa)", "no tools (web, Semasa data)")}` : ""}
+              {chosenRobot.private_note ? ` · ${t(chosenRobot.private_note[0], chosenRobot.private_note[1])}` : ""}
+              {modelNote ? ` · ${t(modelNote.note_bm, modelNote.note_en)}` : ""}
+            </span>
+          )}
+          {unusable.length > 0 && (
+            <span className="max-w-xl text-center opacity-80">
+              {t("Tidak tersedia", "Not available")}: {unusable.map((r) => `${r.name} (${r.provider}): ${r.why}`).join("; ")}
+            </span>
+          )}
+        </div>
+      )}
+      {!robots && models && models.models.length > 0 && (
         <div className="mx-auto mt-2 flex max-w-2xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted">
           <label className="flex items-center gap-1.5">
             <span>{t("Model AI", "AI model")}</span>

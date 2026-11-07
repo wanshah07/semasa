@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 import pytest
+from hooked import hooked
 from PIL import Image
 
 from semasa import db, motion, motion_auto, motion_layout, motion_visuals
@@ -183,7 +184,7 @@ def test_the_plan_is_asked_again_when_it_has_the_wrong_number_of_scenes():
 
         def chat_json(self, system, user, **kw):
             self.asked.append(user)
-            return self.answers.pop(0)
+            return hooked(self.answers.pop(0))
     one = {"title": "t", "scenes": [{"heading": "h", "narration": "n"}]}
     four = {"title": "t", "photo_query": "  science lab ",
             "scenes": [{"heading": f"h{i}", "narration": "n"} for i in range(4)]}
@@ -312,7 +313,7 @@ class _ScriptLLM:
 
     def chat_json(self, system, user, **kw):
         self.asked.append(user)
-        return self.answers.pop(0)
+        return hooked(self.answers.pop(0))
 
 
 def test_indonesian_words_are_swapped_for_the_malaysian_ones_whole_words_only_and_the_plan_says_so():

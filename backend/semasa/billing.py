@@ -267,13 +267,28 @@ def _dig(obj: Any, key: str) -> Any:
     return None
 
 
-class GmailMCP(ComposioMCP):
-    """Wan's Gmail (info@kkmhalalconsultant.com) through Composio For You: attach the PDF, send once."""
+def _mail(acct: dict[str, Any]) -> str:
+    return str((acct.get("user_info") or {}).get("email", "")).strip().lower()
 
-    def __init__(self, consumer_key: str, session: Any = None, account_id: str | None = None, expect: str = ""):
+
+def _mailbox(live: list[dict[str, Any]], email: str) -> dict[str, Any] | None:
+    """The connection for `email`. One inbox connected twice (a reconnect in Composio leaves the old link active too) is
+    still one inbox, so either link sends the same mail: take Composio's default, else the lowest id, the same one every run."""
+    mine = [a for a in live if email and _mail(a) == email.strip().lower()]
+    return sorted(mine, key=lambda a: (not a.get("is_default"), str(a.get("id"))))[0] if mine else None
+
+
+class GmailMCP(ComposioMCP):
+    """A Gmail inbox through Composio For You: attach the PDF, send once. `expect` is the address it must send from;
+    `fallback` is the address used when `expect` is not connected (Valorith's mail goes from info@ until its own Gmail is)."""
+
+    def __init__(self, consumer_key: str, session: Any = None, account_id: str | None = None, expect: str = "",
+                 fallback: str = ""):
         super().__init__(consumer_key, session=session)
         self.account_id = account_id
         self.expect = expect          # the address the connection must be, when the settings name one
+        self.fallback = fallback
+        self.address = ""             # the address actually sending, once account() has picked the connection
 
     def account(self) -> str:
         if self.account_id:
@@ -282,13 +297,21 @@ class GmailMCP(ComposioMCP):
                                               {"toolkits": [{"name": "gmail", "action": "list"}]}))
         accts = (((body.get("data") or {}).get("results") or {}).get("gmail") or {}).get("accounts") or []
         live = [a for a in accts if str(a.get("status", "")).lower() == "active"]
-        if self.expect:
-            mine = [a for a in live if str((a.get("user_info") or {}).get("email", "")).lower() == self.expect.lower()]
-            live = mine or live
-        if len(live) != 1:
-            raise SendError("refused", f"Composio For You: expected exactly 1 active Gmail connection, found {len(live)}")
-        self.account_id = live[0]["id"]
+        chosen = _mailbox(live, self.expect) or _mailbox(live, self.fallback)
+        if chosen is None:
+            if len(live) != 1:
+                named = " or ".join(x for x in (self.expect, self.fallback) if x)
+                raise SendError("refused", f"Composio For You: expected exactly 1 active Gmail connection"
+                                           f"{' for ' + named if named else ''}, found {len(live)}")
+            chosen = live[0]
+        self.account_id = chosen["id"]
+        self.address = _mail(chosen)
         return self.account_id
+
+    def mailbox(self) -> str:
+        """The address this sender really sends from (asks Composio once)."""
+        self.account()
+        return self.address
 
     def upload_pdf(self, url: str, name: str) -> dict[str, str]:
         r = self._cell(_PDF_CELL.format(spec=_b64([url, name]), mark=_MARK), "Semasa: attach the billing PDF")
@@ -441,8 +464,12 @@ def _fail(store: Any, row: dict[str, Any], doc: dict[str, Any] | None, exc: Exce
 
 
 def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None, now: datetime,
-                   render: Any = ensure_pdf, businesses: dict[str, dict[str, Any]] | None = None) -> dict[str, int]:
+                   render: Any = ensure_pdf, businesses: dict[str, dict[str, Any]] | None = None,
+                   sender_for: Any = None) -> dict[str, int]:
+    """`sender_for(email)` gives the Gmail sender of one business's own address (make_senders); without it every business
+    sends through `sender`."""
     counts = {"sent": 0, "error": 0}
+    default = sender
     for row in claim(store):
         doc_rows = store.table(db.BILLING_DOCS).select("*").eq("id", row["doc_id"]).execute().data or []
         doc = doc_rows[0] if doc_rows else None
@@ -450,6 +477,7 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
         co = cfg.get("company") or {}
         email = cfg.get("email") or {}
         offsets = _ints(email.get("reminder_days")) or DEFAULT_OFFSETS
+        sender = sender_for(str(co.get("email") or "")) if sender_for else default
         sent_attempted = False
         try:
             if not doc:
@@ -477,10 +505,11 @@ def process_outbox(store: Any, settings: dict[str, Any], sender: GmailMCP | None
             me = str(co.get("email") or "")
             if email.get("cc_self") and me and me not in cc and me.lower() != str(row["to_email"]).lower():
                 cc.append(me)
-            # one Gmail connection sends for every business: name a different From only when it IS that connection,
-            # because Gmail refuses (or rewrites) a From that is not an alias of the account sending
-            expect = str(getattr(sender, "expect", "") or "")
-            from_email = me if (not expect or me.lower() == expect.lower()) else ""
+            # each business sends from its own Gmail when it is connected, else from WS REGULAB's: name the business's
+            # address as From only when it IS the inbox sending, because Gmail refuses (or rewrites) a From that is not
+            # an alias of the account sending
+            sending = sender.mailbox() if hasattr(sender, "mailbox") else str(getattr(sender, "expect", "") or "")
+            from_email = me if (not sending or me.lower() == sending.lower()) else ""
             sent_attempted = True                 # from here on, a failure cannot be assumed to mean nothing sent
             result = sender.send(to=row["to_email"], cc=cc, subject=subject, html=html, attachment=attachment,
                                  from_email=from_email)
@@ -553,6 +582,25 @@ def make_sender(settings: dict[str, Any]) -> GmailMCP | None:
     return GmailMCP(key, session=requests.Session(), expect=str((settings.get("company") or {}).get("email") or ""))
 
 
+def make_senders(settings: dict[str, Any]) -> tuple[GmailMCP | None, Any]:
+    """WS REGULAB's sender, and `sender_for(email)`: the sender of one business's own address (Wan, 7 Nov 2026: Valorith
+    sends from muhammad.ridzuan22222@gmail.com), falling back to WS REGULAB's inbox while that address is not connected."""
+    default = make_sender(settings)
+    if default is None:
+        return None, None
+    ws = default.expect
+    made: dict[str, GmailMCP] = {}
+
+    def sender_for(email: str) -> GmailMCP:
+        e = email.strip().lower()
+        if not e or e == ws.strip().lower():
+            return default
+        if e not in made:
+            made[e] = GmailMCP(default.key, session=requests.Session(), expect=e, fallback=ws)
+        return made[e]
+    return default, sender_for
+
+
 def run(store: Any, now: datetime | None = None, sender: GmailMCP | None = None, sweep_too: bool = True) -> dict[str, int]:
     now = now or datetime.now(UTC)
     businesses = load_businesses(store)
@@ -561,8 +609,10 @@ def run(store: Any, now: datetime | None = None, sender: GmailMCP | None = None,
     counts: dict[str, int] = {}
     if sweep_too:
         counts.update(sweep(store, settings, now, businesses))
-    sender = sender if sender is not None else make_sender(settings)
-    counts.update(process_outbox(store, settings, sender, now, businesses=businesses))
+    sender_for = None
+    if sender is None:
+        sender, sender_for = make_senders(settings)
+    counts.update(process_outbox(store, settings, sender, now, businesses=businesses, sender_for=sender_for))
     return counts
 
 

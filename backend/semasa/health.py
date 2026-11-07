@@ -17,7 +17,7 @@ WHAT IT FIXES BY ITSELF (only what cannot do harm):
 
 WHAT IT ONLY REPORTS (it needs Wan, or an account outside Semasa): a workflow that failed, an AI gateway that is down or refusing
 its key, Gemini keys that all fail, the ChatGPT login about to expire or failing, a LinkedIn account LinkedIn has restricted,
-the Gmail connection itself, a billing e-mail that failed.
+the Gmail connection itself, a business whose own Gmail is not connected yet, a billing e-mail that failed.
 
 It writes settings.health_state (the last report, for the page) and one semasa_log line a run. It never sends anything but the
 report, and the report goes only to Wan's own address.
@@ -239,6 +239,29 @@ def check_gmail(sender: Any) -> list[dict[str, str]]:
                         "Reconnect Gmail in Composio; quotations and invoices cannot be e-mailed until then.")]
 
 
+def check_business_gmail(businesses: dict[str, dict[str, Any]], ws_email: str, sender_for: Any) -> list[dict[str, str]]:
+    """A business with an address of its own (Valorith: muhammad.ridzuan22222@gmail.com) sends from that Gmail once it is
+    connected in Composio, and from WS REGULAB's inbox until then. Only listed here, never used to send."""
+    if sender_for is None:
+        return []
+    out = []
+    for bid, cfg in sorted((businesses or {}).items()):
+        co = (cfg or {}).get("company") or {}
+        email, name = str(co.get("email") or "").strip(), str(co.get("name") or bid)
+        if not email or email.lower() == ws_email.strip().lower():
+            continue
+        try:
+            got = str(sender_for(email).mailbox() or "")
+        except Exception as exc:  # noqa: BLE001
+            out.append(problem("Billing", f"{name}'s Gmail could not be checked: {str(getattr(exc, 'message', exc))[:160]}"))
+            continue
+        if got.lower() != email.lower():
+            out.append(problem("Billing", f"{name}'s Gmail ({email}) is not connected in Composio: its quotations and invoices "
+                                          f"go out from {got or 'the WS REGULAB inbox'}",
+                               f"Connect {email} in Composio (Gmail) so {name}'s mail goes from its own address."))
+    return out
+
+
 # ---- the report -----------------------------------------------------------------------------------------------------------
 
 def fingerprint(problems: list[dict[str, str]]) -> str:
@@ -293,13 +316,18 @@ def save_state(store: Any, state: dict[str, Any]) -> None:
         log.warning("health state not saved (%s)", str(exc)[:120])
 
 
-def run(store: Any, now: datetime | None = None, sender: Any = None, session: Any = None, fix: bool = True) -> dict[str, Any]:
+def run(store: Any, now: datetime | None = None, sender: Any = None, session: Any = None, fix: bool = True,
+        sender_for: Any = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
-    settings = billing.settings_for({"business_id": "wsregulab"}, billing.load_businesses(store), billing.load_settings(store))
-    sender = sender if sender is not None else billing.make_sender(settings)
+    businesses = billing.load_businesses(store)
+    settings = billing.settings_for({"business_id": "wsregulab"}, businesses, billing.load_settings(store))
+    if sender is None:
+        sender, sender_for = billing.make_senders(settings)
+    ws_email = str((settings.get("company") or {}).get("email") or "")
     fixed = (fix_known_publisher_errors(store) + retry_transient_ideas(store, now)) if fix else []
     problems = (check_workflows(now, session) + check_gateways(store) + check_gemini(store) + check_chatgpt(store, now)
-                + check_publisher(store) + check_billing(store, now) + check_gmail(sender))
+                + check_publisher(store) + check_billing(store, now) + check_gmail(sender)
+                + check_business_gmail(businesses, ws_email, sender_for))
     state = load_state(store)
     kind = should_send(problems, fixed, state, now)
     sent = ""

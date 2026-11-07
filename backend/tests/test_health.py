@@ -134,3 +134,21 @@ def test_failed_workflows_are_read_from_github_and_cancelled_ones_are_not_proble
     assert len(got) == 1 and got[0]["what"].startswith("Publish: 2 run(s) failed")
     assert health.fingerprint(got) == health.fingerprint([{**got[0], "what": got[0]["what"].replace("runs/1", "runs/9")}]), \
         "a new run address alone is not a new problem"
+
+
+def test_a_business_whose_own_gmail_is_not_connected_is_reported_and_a_connected_one_is_not():
+    val = {"valorith": {"company": {"name": "Valorith", "email": "muhammad.ridzuan22222@gmail.com"}},
+           "wsregulab": {"company": {"name": "WS Regulab", "email": "info@kkmhalalconsultant.com"}}}
+
+    class Box:
+        def __init__(self, address):
+            self.address = address
+
+        def mailbox(self):
+            return self.address
+    connected = health.check_business_gmail(val, "info@kkmhalalconsultant.com", lambda e: Box(e))
+    assert connected == [], "WS REGULAB is the default inbox, Valorith's own is connected"
+    missing = health.check_business_gmail(val, "info@kkmhalalconsultant.com", lambda e: Box("info@kkmhalalconsultant.com"))
+    assert len(missing) == 1 and "Valorith's Gmail (muhammad.ridzuan22222@gmail.com) is not connected" in missing[0]["what"]
+    assert "go out from info@kkmhalalconsultant.com" in missing[0]["what"]
+    assert health.check_business_gmail(val, "info@kkmhalalconsultant.com", None) == [], "no Composio key: check_gmail says so"

@@ -60,7 +60,7 @@ export default function OfficeTab({ settings, save, onToast }) {
 
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
-      <motion.div {...fadeUp} className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <motion.div variants={fadeUp} initial="hidden" animate="show" className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl">{t("Repo pejabat", "Office repos")}</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">{t("Setiap repositori pejabat dalam enam dimensi: kod, pull request, CI, isu, jadual dan deploy. Dibaca dari GitHub setiap 6 jam.",

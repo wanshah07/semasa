@@ -266,6 +266,39 @@ def test_stage_is_written_and_never_stops_a_film():
     motion.set_stage(Broken(), {"id": "m1"}, "film")
 
 
+def test_each_stage_stamps_when_it_began_and_a_new_run_starts_clean():
+    s = FakeStore(**{motion.TABLE: [{"id": "m1", "stage": "", "stage_times": {"film": "2026-01-01T00:00:00+00:00"}}]})
+    row = {"id": "m1", "stage_times": {"film": "2026-01-01T00:00:00+00:00"}}
+    motion.set_stage(s, row, "storyboard")
+    motion.set_stage(s, row, "pictures")
+    motion.set_stage(s, row, "")                                  # waiting to run again: the stamps stay
+    stored = s.tables[motion.TABLE][0]
+    assert stored["stage"] == "" and set(stored["stage_times"]) == {"storyboard", "pictures"}, "the old run's film stamp is gone"
+    assert stored["stage_times"]["storyboard"] <= stored["stage_times"]["pictures"]
+
+
+def test_before_064_the_stage_is_still_written_without_its_times():
+    written = []
+
+    class Old:
+        def table(self, name):
+            return self
+
+        def update(self, fields):
+            self.fields = fields
+            return self
+
+        def eq(self, *a):
+            return self
+
+        def execute(self):
+            if "stage_times" in self.fields:
+                raise RuntimeError("column semasa_motions.stage_times does not exist")
+            written.append(self.fields)
+    motion.set_stage(Old(), {"id": "m1"}, "film")
+    assert written == [{"stage": "film"}]
+
+
 def test_the_script_kept_on_the_row_carries_the_shape_and_the_shots_but_no_empty_fields():
     scenes = [{"id": "s1", "role": "hook", "heading": "H", "lines": [], "narration": "", "hook_shape": 17, "shot": "a shot",
                "mood": ""}]

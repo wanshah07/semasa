@@ -2,7 +2,7 @@
    Current issues page, so a tab with no branch does not fail: it quietly shows Current issues. That is how Resit showed the
    wrong page. Reads the source, so it needs no browser. `npm test`. */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { segmentOf, segmentsOf, tabsOf } from "./src/lib/tabs.js";
 
 let n = 0;
@@ -41,8 +41,8 @@ t("Wan's layout of 11 Oct 2026: which pages sit together", () => {
   assert.deepEqual(["video", "video-lib", "motion-skills"].map(where), ["video", "video", "video"]);
   assert.deepEqual(["design", "design-lib"].map(where), ["poster", "poster"]);
   assert.equal(where("wangian"), "valorith");
-  assert.deepEqual(["bil", "crm"].map(where), ["business", "business"]);
-  assert.deepEqual(["office", "repo", "api"].map(where), ["technology", "technology", "technology"]);
+  assert.deepEqual(["wang", "bil", "crm"].map(where), ["business", "business", "business"]);
+  assert.deepEqual(["tech", "office", "repo", "api"].map(where), ["technology", "technology", "technology", "technology"]);
   assert.deepEqual(["resit", "langganan"].map(where), ["personal", "personal"]);
   assert.equal(where("tetapan"), undefined);
 });
@@ -70,6 +70,12 @@ t("Create phase 2 (11 Oct 2026): the three libraries are compact tiles, 8 across
 t("image and video generation are apart: each page fixes its own kind", () => {
   assert.ok(src.includes('only="image"'));
   assert.ok(readFileSync(new URL("./src/pages/VideoTab.jsx", import.meta.url), "utf8").includes('only="video"'));
+});
+
+t("no page spreads a variants object onto an element: {...fadeUp} passes hidden={…} and the browser hides the header", () => {
+  const dir = new URL("./src/pages/", import.meta.url);
+  const bad = readdirSync(dir).filter((f) => readFileSync(new URL(f, dir), "utf8").includes("{...fadeUp}"));
+  assert.deepEqual(bad, []);
 });
 
 console.log(`tabs.test.mjs: ${n} groups OK`);

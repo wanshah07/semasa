@@ -52,10 +52,13 @@ type Props = {
   keys?: OverviewKeys;
   /** Drawn above the stat tiles (the home dashboard's hero band). */
   header?: React.ReactNode;
+  /** Which blocks to draw (the home dashboard lets Wan hide some, pages/HomeTab.jsx); every block shows when omitted. */
+  show?: { chart?: boolean; projects?: boolean; activity?: boolean };
   className?: string;
 };
 
-export function App1({ stats, series, projects, activity, words, aside, formatValue, keys, header, className }: Props) {
+export function App1({ stats, series, projects, activity, words, aside, formatValue, keys, header, show, className }: Props) {
+  const on = { chart: show?.chart !== false, projects: show?.projects !== false, activity: show?.activity !== false };
   const k: OverviewKeys = keys || { line: "invoiced", area: "paid" };
   const config: ChartConfig = {
     [k.line]: { label: words.invoiced, theme: { light: "#C9A24B", dark: "#B38B2D" } },   // --c-gold; darker step under noir
@@ -81,8 +84,8 @@ export function App1({ stats, series, projects, activity, words, aside, formatVa
         ))}
       </div>
 
-      <div className={cn("grid gap-4 [&>*]:min-w-0", aside && "lg:grid-cols-[3fr_2fr]")}>
-        <Card>
+      {(on.chart || aside) && <div className={cn("grid gap-4 [&>*]:min-w-0", on.chart && aside && "lg:grid-cols-[3fr_2fr]", !on.chart && aside && "lg:grid-cols-2")}>
+        {on.chart && <Card>
           <CardHeader>
             <CardTitle>{words.chartTitle}</CardTitle>
             <CardDescription>{words.chartDescription}</CardDescription>
@@ -112,12 +115,12 @@ export function App1({ stats, series, projects, activity, words, aside, formatVa
               </AreaChart>
             </ChartContainer>
           </CardContent>
-        </Card>
+        </Card>}
         {aside}
-      </div>
+      </div>}
 
-      <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
-        <Card>
+      {(on.projects || on.activity) && <div className={cn("grid gap-4 [&>*]:min-w-0", on.projects && on.activity && "lg:grid-cols-2")}>
+        {on.projects && <Card>
           <CardHeader>
             <CardTitle>{words.projectsTitle}</CardTitle>
             <CardDescription>{words.projectsDescription}</CardDescription>
@@ -150,9 +153,9 @@ export function App1({ stats, series, projects, activity, words, aside, formatVa
             ))}
             {!projects.length && <p className="text-xs text-muted">{words.noProjects}</p>}
           </CardContent>
-        </Card>
+        </Card>}
 
-        <Card>
+        {on.activity && <Card>
           <CardHeader>
             <CardTitle>{words.activityTitle}</CardTitle>
             <CardDescription>{words.activityDescription}</CardDescription>
@@ -176,8 +179,8 @@ export function App1({ stats, series, projects, activity, words, aside, formatVa
               {!activity.length && <li className="text-xs text-muted">{words.noActivity}</li>}
             </ol>
           </CardContent>
-        </Card>
-      </div>
+        </Card>}
+      </div>}
     </div>
   );
 }

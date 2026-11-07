@@ -50,6 +50,8 @@ const BrainTab = lazy(() => import("./pages/BrainTab"));
 const PrestasiTab = lazy(() => import("./pages/PrestasiTab"));
 const RepoTab = lazy(() => import("./pages/RepoTab"));
 const OfficeTab = lazy(() => import("./pages/OfficeTab"));
+const MoneyTab = lazy(() => import("./pages/MoneyTab"));
+const TechOverviewTab = lazy(() => import("./pages/TechOverviewTab"));
 const ApiTab = lazy(() => import("./pages/ApiTab"));
 import { setWanshah } from "./lib/cards/library";
 import { approvedPoses } from "./lib/wanshah";
@@ -269,7 +271,7 @@ function MediaTab({ user, gens, prompts, onToast, go }) {
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "video", "video-lib", "motion-skills", "chat", "otak", "bil", "langganan", "crm", "resit", "faq", "log", "office", "repo", "api", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "video", "video-lib", "motion-skills", "chat", "otak", "wang", "bil", "langganan", "crm", "resit", "faq", "log", "tech", "office", "repo", "api", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 // #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)
@@ -399,15 +401,17 @@ export default function App() {
   else if (tab === "motion-skills") body = allowed ? <MotionSkillsTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
   else if (tab === "otak") body = allowed ? <BrainTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
+  else if (tab === "wang") body = allowed ? <MoneyTab user={user} /> : gate(null);
   else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "langganan") body = allowed ? <SubscriptionsTab user={user} onToast={push} /> : gate(null);
   else if (tab === "resit") body = allowed ? <ResitTab user={user} onToast={push} /> : gate(null);
   else if (tab === "crm") body = allowed ? <CrmTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
+  else if (tab === "tech") body = allowed ? <TechOverviewTab go={go} /> : gate(null);
   else if (tab === "office") body = allowed ? <OfficeTab settings={settings} save={save} onToast={push} user={user} /> : gate(null);
   else if (tab === "repo") body = allowed ? <RepoTab settings={settings} save={save} onToast={push} user={user} /> : gate(null);
   else if (tab === "api") body = allowed ? <ApiTab settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "prestasi") body = allowed ? <PrestasiTab posts={posts} go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
-  else if (tab === "papan") body = allowed ? <HomeTab ideas={ideas} posts={posts} log={log} activity={activity} brand={brand} user={user} settings={settings}
+  else if (tab === "papan") body = allowed ? <HomeTab ideas={ideas} posts={posts} log={log} activity={activity} brand={brand} user={user} settings={settings} save={save} onToast={push}
     go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}
     onPost={(r) => setIdeaFrom(faqIdea(r))} /> : gate(null);

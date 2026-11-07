@@ -71,3 +71,17 @@ export function nextInQueue(posts, today, n = 6) {
 export function recentActivity(rows, n = 12) {
   return (rows || []).slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, n);
 }
+
+/* Which widgets the home dashboard shows (Wan, 7 Nov 2026: the dashboard configuration panel; supabase/065 settings.dashboard).
+   The setting keeps the HIDDEN ones, so a widget added later shows by default instead of vanishing until it is ticked. The
+   headline tiles are permanent: a dashboard with nothing on it is not a choice worth offering. */
+export const DASHBOARD_WIDGETS = ["stats", "chart", "queue", "activity", "ai", "subs"];
+export const PERMANENT_WIDGETS = ["stats"];
+export function visibleWidgets(setting) {
+  const hidden = new Set(Array.isArray(setting?.hidden) ? setting.hidden : []);
+  return DASHBOARD_WIDGETS.filter((id) => PERMANENT_WIDGETS.includes(id) || !hidden.has(id));
+}
+export function hiddenFrom(visible) {
+  const on = new Set(visible || []);
+  return DASHBOARD_WIDGETS.filter((id) => !on.has(id) && !PERMANENT_WIDGETS.includes(id));
+}

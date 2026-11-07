@@ -1,6 +1,6 @@
 /* Papan: the home dashboard's numbers (lib/dashboard.js). `npm test`. */
 import assert from "node:assert/strict";
-import { mondayOf, mytDate, nextInQueue, recentActivity, systemStats, weeklyPosts } from "./src/lib/dashboard.js";
+import { DASHBOARD_WIDGETS, hiddenFrom, mondayOf, mytDate, nextInQueue, recentActivity, systemStats, visibleWidgets, weeklyPosts } from "./src/lib/dashboard.js";
 
 let n = 0;
 const t = (name, fn) => { try { fn(); n++; } catch (e) { console.error("FAIL:", name); throw e; } };
@@ -56,6 +56,14 @@ t("next in queue: from today, soonest first, scheduled before approved before dr
 t("recent activity: newest first, trimmed", () => {
   const rows = [{ id: 1, at: "2026-10-09T01:00:00Z" }, { id: 2, at: "2026-10-09T03:00:00Z" }, { id: 3, at: "2026-10-08T03:00:00Z" }];
   assert.deepEqual(recentActivity(rows, 2).map((r) => r.id), [2, 1]);
+});
+
+t("the dashboard layout keeps the hidden widgets, so a new widget shows by default and the tiles never go", () => {
+  assert.deepEqual(visibleWidgets(undefined), DASHBOARD_WIDGETS);
+  assert.deepEqual(visibleWidgets({ hidden: ["chart", "subs", "stats", "gone"] }), ["stats", "queue", "activity", "ai"]);
+  assert.deepEqual(hiddenFrom(["stats", "queue"]), ["chart", "activity", "ai", "subs"]);
+  assert.deepEqual(hiddenFrom([]), ["chart", "queue", "activity", "ai", "subs"], "the tiles cannot be hidden");
+  assert.deepEqual(visibleWidgets({ hidden: hiddenFrom(["queue"]) }), ["stats", "queue"]);
 });
 
 console.log(`dashboard: ${n} checks passed`);

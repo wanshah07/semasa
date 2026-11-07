@@ -172,7 +172,7 @@ export default function BrainTab({ user, settings, save, onToast }) {
 
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
-      <motion.div {...fadeUp} className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <motion.div variants={fadeUp} initial="hidden" animate="show" className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl">{t("Otak AI", "AI brain")}</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">{t("Letak apa sahaja: teks, gambar, fail, pautan media sosial atau halaman untuk di-scrape. AI membacanya dan memfailkannya sebagai nota, FAQ, skill, prompt, rujukan atau senarai semak, lengkap dengan kategori dan tag.",

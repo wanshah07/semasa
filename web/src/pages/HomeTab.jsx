@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CalendarClock, CreditCard, FileText, Lightbulb, Send, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarClock, CreditCard, FileText, LayoutGrid, Lightbulb, Send, Wallet } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { TABLES } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
@@ -10,7 +10,7 @@ import { dayNames } from "../lib/brand";
 import { fmtDate, money, summary } from "../lib/billing";
 import { domainsOn, dowOf, myt, refOf, slotsOf } from "../lib/slots";
 import { subsSummary, upcoming } from "../lib/subscriptions";
-import { POST_PROGRESS, nextInQueue, recentActivity, systemStats, weeklyPosts } from "../lib/dashboard";
+import { POST_PROGRESS, hiddenFrom, nextInQueue, recentActivity, systemStats, visibleWidgets, weeklyPosts } from "../lib/dashboard";
 import { AREAS, titleOf } from "./LogTab";
 import { CYCLE_WORDS } from "./SubscriptionsTab";
 import App1 from "@/components/ui/app-1";
@@ -18,6 +18,8 @@ import { AuroraBackground } from "@/components/ui/aurora-background";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/app-1-utils/card";
 import Button from "../components/ui/Button";
 import AiTeam from "../components/AiTeam";
+import { Modal } from "../components/ui/Field";
+import { DashboardLayoutConfigurator } from "@/components/ui/dashboard-configuration";
 
 /* Papan: the whole system on one page (Wan, 9 Oct 2026: "yes whole system dashboard"). Everything is computed from
    rows the page already loads (ideas, posts, the publish log, the log, the Bil documents and the subscriptions) with
@@ -29,7 +31,7 @@ const DOMAIN_WORDS = {
   fatwa: "Fatwa", farmaseutikal: ["Farmaseutikal", "Pharma"], makanan: ["Makanan", "Food"],
 };
 
-export default function HomeTab({ ideas, posts, log, activity, brand, go, user, settings }) {
+export default function HomeTab({ ideas, posts, log, activity, brand, go, user, settings, save, onToast }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? 1 : 0;
   const w = (v) => (Array.isArray(v) ? v[L] : v);
@@ -49,6 +51,29 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
   const todaysDomains = domainsOn(brand, today);
   const hour = Number(now.time.slice(0, 2));
   const greet = hour < 12 ? t("Selamat pagi", "Good morning") : hour < 19 ? t("Selamat petang", "Good afternoon") : t("Selamat malam", "Good evening");
+  // which widgets show (supabase/065 settings.dashboard): kept here as well, so a tick shows at once and a failed save says why
+  const [visible, setVisible] = useState(() => visibleWidgets(settings?.dashboard));
+  const layoutKey = JSON.stringify(settings?.dashboard?.hidden || []);
+  useEffect(() => { setVisible(visibleWidgets(settings?.dashboard)); }, [layoutKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [arranging, setArranging] = useState(false);
+  const shows = (id) => visible.includes(id);
+  async function keepLayout(next) {
+    const prev = visible;
+    setVisible(visibleWidgets({ hidden: hiddenFrom(next) }));
+    try { await save?.("dashboard", { ...(settings?.dashboard || {}), hidden: hiddenFrom(next) }); }
+    catch (e) {
+      setVisible(prev);
+      onToast?.(/not found/.test(e.message) ? t("Jalankan supabase/065_dashboard_layout.sql sekali dahulu.", "Run supabase/065_dashboard_layout.sql once first.") : e.message, "danger");
+    }
+  }
+  const widgetList = [
+    { id: "stats", title: t("Angka utama", "Headline figures"), description: t("Idea baharu, draf menunggu, disiar minggu ini, belum dijelaskan. Sentiasa dipapar.", "New ideas, drafts waiting, published this week, outstanding. Always shown."), isPermanent: true },
+    { id: "chart", title: t("Ditulis lawan disiar", "Drafted against published"), description: t("Carta lapan minggu.", "The eight-week chart.") },
+    { id: "queue", title: t("Seterusnya dalam giliran", "Next in the queue"), description: t("Post terdekat dan tahap alirannya.", "The nearest posts and how far along they are.") },
+    { id: "activity", title: t("Aktiviti sistem", "System activity"), description: t("Log terkini: scrape, idea, post, penerbit.", "The latest log lines: scrape, ideas, posts, publisher.") },
+    { id: "ai", title: t("Pasukan AI", "AI team"), description: t("Robot yang menulis sekarang dan status setiap gerbang.", "Which robot writes now and each gateway's state.") },
+    { id: "subs", title: t("Langganan akan datang", "Upcoming subscriptions"), description: t("Bil 30 hari seterusnya.", "Bills in the next 30 days.") },
+  ];
   const name = (user?.user_metadata?.full_name || user?.email || "Wan").split(/[\s@]/)[0];
 
   const projects = queue.map((p) => ({
@@ -65,7 +90,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
 
   const header = (
     <AuroraBackground className="mb-2 h-auto w-full items-stretch justify-start overflow-hidden rounded-card border border-line/80 bg-surface text-ink dark:bg-surface">
-      <motion.div {...fadeUp} className="flex flex-wrap items-end justify-between gap-4 p-6 sm:p-8">
+      <motion.div variants={fadeUp} initial="hidden" animate="show" className="flex flex-wrap items-end justify-between gap-4 p-6 sm:p-8">
         <div>
           <p className="text-xs font-medium text-muted">{dayNames()[dowOf(today)]} · {fmtDate(today)} · {now.time} MYT</p>
           <h1 className="mt-1 font-display text-3xl sm:text-4xl">{greet}, {name}.</h1>
@@ -81,14 +106,15 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
           <Button variant="ghost" onClick={() => go("idea")}><Lightbulb size={14} /> {t("Idea", "Ideas")} {stats.ideasNew ? `(${stats.ideasNew})` : ""}</Button>
           <Button variant="ghost" onClick={() => go("post")}><FileText size={14} /> {t("Post", "Posts")} {stats.drafts ? `(${stats.drafts})` : ""}</Button>
           <Button onClick={() => go("isu")}>{t("Isu semasa", "Current issues")}</Button>
+          <Button variant="ghost" onClick={() => setArranging(true)} data-arrange-dashboard><LayoutGrid size={14} /> {t("Susun papan", "Arrange")}</Button>
         </div>
       </motion.div>
     </AuroraBackground>
   );
 
-  const aside = (
-    <>
-    <Card className="mb-4" data-ai-team>
+  const aside = (shows("ai") || shows("subs")) ? (
+    <div>
+    {shows("ai") && <Card className={shows("subs") ? "mb-4" : ""} data-ai-team>
       <CardHeader>
         <CardTitle>{t("Pasukan AI", "AI team")}</CardTitle>
         <CardDescription>{settings?.ai_team_state?.reader?.chosen
@@ -99,8 +125,8 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
         <AiTeam statusRows={apiT.rows} usageRows={usageT.rows} state={settings?.ai_team_state} team={settings?.ai_team} compact />
         <Button size="sm" variant="ghost" className="mt-3" onClick={() => go("api")}>{t("Tab API", "API tab")}</Button>
       </CardContent>
-    </Card>
-    <Card>
+    </Card>}
+    {shows("subs") && <Card data-subs-widget>
       <CardHeader>
         <CardTitle>{t("Langganan akan datang", "Upcoming subscriptions")}</CardTitle>
         <CardDescription>{t("30 hari seterusnya · {m} sebulan (anggaran)", "Next 30 days · {m} a month (estimate)", { m: money(subs.monthly, { currency: "MYR" }) })}</CardDescription>
@@ -125,9 +151,9 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
         </ol>
         <Button size="sm" variant="ghost" className="mt-3" onClick={() => go("langganan")}><CreditCard size={13} /> {t("Semua langganan", "All subscriptions")}</Button>
       </CardContent>
-    </Card>
-    </>
-  );
+    </Card>}
+    </div>
+  ) : null;
 
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-6 sm:px-6">
@@ -148,6 +174,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
         projects={projects}
         activity={activityRows}
         aside={aside}
+        show={{ chart: shows("chart"), projects: shows("queue"), activity: shows("activity") }}
         words={{
           chartTitle: t("Ditulis lawan disiar", "Drafted against published"), chartDescription: t("Lapan minggu terakhir: post yang ditulis dan post yang sampai ke saluran", "The last eight weeks: posts written and posts that reached a channel"),
           invoiced: t("Ditulis", "Drafted"), paid: t("Disiar", "Published"),
@@ -158,6 +185,12 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
         }}
       />
       <p className="mt-4 flex items-center gap-2 text-[11px] text-muted"><CalendarClock size={12} /> {t("Angka dikira dari jadual langsung; muat semula setiap 90 saat.", "Figures come from the live tables and refresh every 90 seconds.")}</p>
+      <Modal open={arranging} onClose={() => setArranging(false)} title={t("Susun papan", "Arrange the dashboard")}>
+        <DashboardLayoutConfigurator className="max-w-none border-0 shadow-none" availableWidgets={widgetList} visibleWidgetIds={visible}
+          onVisibilityChange={keepLayout} onLayoutReset={() => keepLayout(widgetList.map((x) => x.id))}
+          words={{ title: t("Konfigurasi papan", "Dashboard configuration"), description: t("Pilih widget yang dipapar. Disimpan untuk setiap peranti.", "Choose which widgets show. Saved for every device."),
+            visibility: t("Widget yang dipapar", "Widget visibility"), reset: t("Pulihkan susun atur asal", "Reset layout to default") }} />
+      </Modal>
     </main>
   );
 }

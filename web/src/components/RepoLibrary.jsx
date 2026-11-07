@@ -117,6 +117,7 @@ export default function RepoLibrary({ settings, user, onToast }) {
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <a href={r.html_url || r.url} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-1.5 font-display text-lg hover:underline"><span className="[overflow-wrap:anywhere]">{r.name || r.full_name || r.url}</span><ExternalLink size={12} className="shrink-0 text-muted" /></a>
+                      {(r.html_url || r.url) && <a href={r.html_url || r.url} target="_blank" rel="noreferrer" className="block text-xs text-accent hover:underline [overflow-wrap:anywhere]" data-repo-link>{String(r.html_url || r.url).replace(/^https?:\/\//, "")}</a>}
                       <p className="text-xs text-muted [overflow-wrap:anywhere]">{r.full_name}{r.language ? ` · ${r.language}` : ""}{r.license ? ` · ${r.license}` : r.status === "done" ? ` · ${t("tiada lesen", "no licence")}` : ""}{r.stars ? <> · <Star size={10} className="inline" /> {r.stars}</> : ""}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-1">

@@ -376,6 +376,10 @@ def main() -> int:
         login = chatgpt_login.Login(store)
         if login.connected():
             print(login.check())
+            row = login.probe_row()                 # ChatGPT as Wanshah 5 on the API page: its models and one real answer
+            store.table(db.API_STATUS).upsert(row, on_conflict="slug").execute()
+            print(f"ChatGPT: chat_ok={row.get('chat_ok')} model={row.get('model')} models={len(row['models'])} "
+                  f"{row.get('error') or ''}")
     except Exception as exc:  # noqa: BLE001 - the check is a courtesy; the API tab's other rows must still be written
         log.info("ChatGPT login not checked: %s", str(exc)[:120])
     for r in rows:

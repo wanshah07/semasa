@@ -42,4 +42,5 @@ jobs:
           COMPOSIO_CONSUMER_KEY: ${{ secrets.COMPOSIO_CONSUMER_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
           HEALTH_EMAIL: ${{ vars.HEALTH_EMAIL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: python -m semasa.health

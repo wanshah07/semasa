@@ -45,6 +45,17 @@ jobs:
         with:
           version: latest
 
+      # The Telegram webhook's secret header, derived from the bot token exactly as telegram_bot.webhook_secret does, so
+      # there is no second secret to keep. Skipped (with a notice) while TELEGRAM_BOT_TOKEN is not set.
+      - name: Telegram webhook secret
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then echo "::notice::TELEGRAM_BOT_TOKEN not set: the Telegram webhook stays off"; exit 0; fi
+          secret=$(printf %s "semasa-telegram-webhook" | openssl dgst -sha256 -hmac "$TELEGRAM_BOT_TOKEN" -r | cut -d' ' -f1)
+          echo "::add-mask::$secret"
+          supabase secrets set "TELEGRAM_WEBHOOK_SECRET=$secret" --project-ref "$PROJECT_REF"
+
       - name: Deploy each function
         run: |
           set -e
@@ -55,7 +66,9 @@ jobs:
             [ -f "$dir/index.ts" ] || continue
             found=1
             echo "::group::deploy $name"
-            supabase functions deploy "$name" --project-ref "$PROJECT_REF" --use-api
+            # Telegram's webhook carries no Supabase login: its secret header is the gate (semasa-telegram/index.ts)
+            if [ "$name" = "semasa-telegram" ]; then extra="--no-verify-jwt"; else extra=""; fi
+            supabase functions deploy "$name" --project-ref "$PROJECT_REF" --use-api $extra
             echo "::endgroup::"
           done
           [ "$found" = 1 ] || { echo "::error::no functions found under supabase/functions/"; exit 1; }

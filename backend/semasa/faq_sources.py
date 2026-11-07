@@ -10,7 +10,8 @@ checked by the run's own source table, which reports every failure):
                                      answer 429), so a Reddit candidate carries the QUESTION only
   forum.lowyat.net              403  bot-blocked at the origin: not a source
   Telegram groups               a BOT Wan adds to the group (TELEGRAM_BOT_TOKEN), read with the official
-                                Bot API. Transparent: the members see the bot join. Question-shaped
+                                Bot API (the webhook's inbox since supabase/069; getUpdates before it).
+                                Transparent: the members see the bot join. Question-shaped
                                 messages become candidates, and replies to them become their answer.
                                 No sender name, username or phone number is ever stored.
 A source that fails is reported and skipped; it never stops the scrape.
@@ -163,7 +164,42 @@ def apply_replies(store: Any, replies: list[dict[str, Any]]) -> int:
     return touched
 
 
+class WebhookActive(RuntimeError):
+    """getUpdates answers 409 once the bot has a webhook (supabase/069): group messages then arrive in the inbox."""
+
+
+TG_INBOX = "semasa_telegram_inbox"
+
+
+def telegram_inbox(store: Any) -> int:
+    """Group messages the webhook stored (semasa-telegram Edge Function, supabase/069), read once and marked done."""
+    from datetime import UTC, datetime
+    try:
+        rows = store.table(TG_INBOX).select("id,payload").eq("kind", "group").eq("status", "new").order("id") \
+            .limit(1000).execute().data or []
+    except Exception as exc:  # noqa: BLE001 - before supabase/069 there is no inbox
+        log.info("no Telegram inbox yet (%s)", str(exc)[:120])
+        return 0
+    if not rows:
+        return 0
+    questions, replies = parse_telegram([r["payload"] for r in rows])
+    n = insert_candidates(store, questions) + apply_replies(store, replies)
+    store.table(TG_INBOX).update({"status": "done", "done_at": datetime.now(UTC).isoformat()}) \
+        .in_("id", [r["id"] for r in rows]).execute()
+    return n
+
+
 def telegram(store: Any, token: str, *, timeout: int = 25) -> int:
+    """Group questions and their answers: from the webhook's inbox, and from getUpdates while no webhook is set yet
+    (Telegram refuses getUpdates once one is, which is then not a failure)."""
+    n = telegram_inbox(store)
+    try:
+        return n + telegram_updates(store, token, timeout=timeout)
+    except WebhookActive:
+        return n
+
+
+def telegram_updates(store: Any, token: str, *, timeout: int = 25) -> int:
     """Read the bot's waiting updates, store candidates and answers, then confirm them (the offset), so the
     next run starts after them. Telegram keeps unconfirmed updates for 24 hours: the 8-hourly scrape is inside."""
     import requests
@@ -193,6 +229,8 @@ def telegram(store: Any, token: str, *, timeout: int = 25) -> int:
         r = requests.get(TG_API.format(token=token, method="getUpdates"), params=params, timeout=timeout)
         body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
         if not body.get("ok"):
+            if body.get("error_code") == 409 or r.status_code == 409:
+                raise WebhookActive("the bot has a webhook")
             why = body.get("description") or f"HTTP {r.status_code}"
             raise RuntimeError(f"Telegram refused getUpdates: {why}")
         page = body.get("result") or []

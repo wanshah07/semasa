@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -242,3 +242,14 @@ def test_failed_workflows_are_asked_for_by_status_and_paged_past_the_newest_hund
     got = health.check_workflows(NOW, S())
     assert asked == [("failure", 1), ("failure", 2), ("timed_out", 1), ("startup_failure", 1)]
     assert got[0]["what"].startswith("Publish: 107 run(s) failed in 24 h")
+
+
+def test_a_telegram_webhook_error_older_than_an_answered_message_is_not_a_problem():
+    # Telegram reports its LAST webhook error for ever; ten messages answered after it prove the webhook works
+    bot = {"webhook": "https://x/functions/v1/semasa-telegram", "last_error": "Wrong response from the webhook: 404 Not Found",
+           "last_error_at": int(NOW.timestamp()) - 3600}
+    st = store(**{db.SETTINGS: [{"key": "telegram_bot", "value": bot}], "semasa_telegram_inbox": []})
+    assert any("could not deliver" in p["what"] for p in health.check_telegram(st, NOW))
+    st.tables["semasa_telegram_inbox"].append({"id": 1, "kind": "private", "status": "done",
+                                               "created_at": (NOW - timedelta(minutes=10)).isoformat()})
+    assert not any("could not deliver" in p["what"] for p in health.check_telegram(st, NOW))

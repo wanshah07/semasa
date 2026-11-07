@@ -481,3 +481,16 @@ def test_chatgpt_is_a_robot_on_the_api_page():
 def test_the_default_model_is_one_a_chatgpt_account_accepts():
     # 7 Nov 2026: "The 'gpt-5' model is not supported when using Codex with a ChatGPT account"
     assert cl.DEFAULT_MODEL == "gpt-5.5" == cl.FALLBACK_MODELS[0]
+
+
+def test_a_reviewer_in_the_accounts_list_is_never_picked_as_the_writer():
+    # 7 Nov 2026: the account listed "codex-auto-review" first, so a refused gpt-5 was replaced by a code reviewer
+    got = cl.writer_candidates(["codex-auto-review", "gpt-5.5-codex-mini", "gpt-5.4", "text-embedding-3", "gpt-image-2"])
+    assert got[:3] == ["gpt-5.4", "gpt-5.5-codex-mini", "gpt-5.5"], "listed fallbacks, the other gpt writers, then the fallbacks"
+    assert not {"codex-auto-review", "text-embedding-3", "gpt-image-2"} & set(got)
+    assert "codex-auto-review" not in cl.writer_candidates(["codex-auto-review", "gpt-5.4"])
+    st = store()
+    http = Http2(Resp(400, text=REFUSED), Resp(200, lines=words("OK")), listed=["codex-auto-review", "gpt-5.4"])
+    assert login(st, http).write("sys", "user", model="gpt-5") == "OK"
+    assert [kw["json"]["model"] for _, kw in http.calls] == ["gpt-5", "gpt-5.4"]
+    assert st.tables[cl.TABLE][0]["model"] == "gpt-5.4"

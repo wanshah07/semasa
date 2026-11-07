@@ -18,6 +18,8 @@ import ViewToggle, { useView } from "./components/ViewToggle";
 import Toasts from "./components/Toast";
 import Button from "./components/ui/Button";
 import Guide from "./components/Guide";
+import MobileTabBar from "./components/MobileTabBar";
+import InstallHint from "./components/InstallHint";
 /* Every tab and every heavy panel is loaded when it is first shown, not with the page. The first screen is the sign-in card
    (or the headlines), and on a phone on a slow connection it used to wait for one 768 KB script carrying every tab, the card
    renderer, the motion rules and the office writers. Only Gate, Header, the sidebar and the hooks stay in the first chunk. */
@@ -360,6 +362,7 @@ export default function App() {
   }), [settings, save]);
   const brand = useMemo(() => brandOf(settings), [settings]);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);       // the phone's slide-over menu (AppSidebar's MobileDrawer)
 
   function go(next) {
     setTab(next); window.location.hash = next === "papan" ? "" : next;
@@ -431,11 +434,12 @@ export default function App() {
 
   return (
     <DesignsContext.Provider value={designsCtx}>
-    <div id="top" className="min-h-screen lg:flex">
-      <AppSidebar tab={tab} setTab={go} user={user} counts={allowed ? counts : {}} mode={navMode} onToggleMode={toggleNav} />
+    <div id="top" className="app-shell min-h-screen lg:flex">
+      <AppSidebar tab={tab} setTab={go} user={user} counts={allowed ? counts : {}} mode={navMode} onToggleMode={toggleNav}
+        drawerOpen={menuOpen} onCloseDrawer={() => setMenuOpen(false)} />
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
       <Header tab={tab} setTab={go} user={user} sidebar navMode={navMode} onToggleSidebar={toggleNav}
-        onGuide={allowed ? () => setGuideOpen(true) : undefined} />
+        onGuide={allowed ? () => setGuideOpen(true) : undefined} onMenu={() => setMenuOpen(true)} />
       {allowed && <Guide open={guideOpen} onClose={() => setGuideOpen(false)} settings={settings} brand={brand} />}
       <div className="flex-1">
         {allowed && configured && <SegmentBar tab={tab} setTab={go} />}
@@ -454,6 +458,9 @@ export default function App() {
           + "issues not turned into an idea disappear after 48 hours")}
       </footer>
       </div>
+      {/* phone and installed-app shortcuts: only once signed in, so the sign-in screen stays one card */}
+      {allowed && configured && <MobileTabBar tab={tab} setTab={go} />}
+      <InstallHint />
       <Toasts toasts={toasts} />
     </div>
     </DesignsContext.Provider>

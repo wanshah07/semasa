@@ -325,7 +325,8 @@ export default function ChatTab() {
               <li ref={end} aria-hidden />
             </ol>
           )}
-          <div className={empty ? "my-auto pt-10" : "sticky bottom-0 mt-6 bg-bg/90 pb-2 pt-3 backdrop-blur"}>
+          {/* the box sits on the phone's bottom bar, not under it (--tabbar-h is 0 on a wide screen; index.css) */}
+          <div className={empty ? "my-auto pt-10" : "sticky mt-6 bg-bg/90 pb-2 pt-3 backdrop-blur"} style={empty ? undefined : { bottom: "var(--tabbar-h, 0px)" }}>
             {busy && (
               <div className="mx-auto mb-2 flex max-w-2xl items-center justify-between gap-3 text-[11px] text-muted">
                 <span className="truncate">{status || t("Sedang menjawab…", "Answering…")}</span>

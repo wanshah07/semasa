@@ -239,7 +239,7 @@ def test_an_idea_that_asks_for_slides_gets_them_and_one_slide_job(monkeypatch):
     monkeypatch.setattr(ideas, "read_source", lambda url: {"ok": False, "why": "x", "image": None})
     cap = "Notifikasi kosmetik bukan kelulusan produk."
     store = FakeStore(semasa_settings=[], semasa_posts=[], media_generations=[], semasa_ideas=[])
-    llm = FakeLLM({"fit": True, "hook": "h", "hook_shape": 21, "domain": "kosmetik", "citation": "NPRA",
+    llm = FakeLLM({"fit": True, "hook": "Notifikasi bukan kelulusan", "hook_shape": 21, "domain": "kosmetik", "citation": "NPRA",
                    "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}},
                    "visual_prompt": "botol", "alt": "botol", "slides": GOOD + [{"title": "", "points": []}]})
     idea = {"id": "i1", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "image",

@@ -26,7 +26,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from . import antislop, compliance, db, hook_bank, my_designs, slides
+from . import antislop, compliance, db, hook_bank, hook_learning, my_designs, slides
 from .fetch import get
 from .llm import LLM
 from .log import get_logger
@@ -216,7 +216,8 @@ SLIDES_RULES = {
 
 SLIDES WANTED. Also return "slides": a carousel of 5 to 7 slides in Malaysian Malay, drawn as 1080x1080 cards:
 [{"title": "...", "points": ["...", "..."]}, ...]
-- Slide 1 is the cover: a headline of at most 9 words, "points" empty or one short line.
+- Slide 1 is the cover: its headline IS the hook (the same hook shape you filled for the caption's first line, no underscores,
+  no figure the SOURCE does not give), at most 12 words, "points" empty or one short line.
 - Each middle slide carries ONE fact: a title of at most 8 words and at most 3 points of at most 20 words each.
 - The last slide is the takeaway, stated plainly. It is NOT a call to action.
 - Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
@@ -227,7 +228,8 @@ SLIDES WANTED. Also return "slides": a carousel of 5 to 7 slides in Malaysian Ma
 
 SLIDES WANTED. Also return "slides": a carousel of 5 to 7 slides in English, drawn as 1080x1350 cards:
 [{"title": "...", "points": ["...", "..."]}, ...]
-- Slide 1 is the cover: a headline of at most 10 words, "points" empty or one short line.
+- Slide 1 is the cover: its headline IS the hook (the same hook shape you filled for the caption's first line, no underscores,
+  no figure the SOURCE does not give), at most 12 words, "points" empty or one short line.
 - Each middle slide carries ONE idea: a title of at most 9 words and at most 3 points of at most 22 words each.
 - The last slide is the takeaway. Never a question, never a call to action.
 - Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
@@ -239,14 +241,16 @@ SLIDES WANTED. Also return "slides": a carousel of 5 to 7 slides in English, dra
 POSTER_RULES = {
     "regulab": """
 
-POSTER WANTED. Also return "poster": ONE 4:5 poster in Malaysian Malay: {"title": "a headline of at most 10 words",
-"points": [up to 5 points of at most 22 words each]}. Mark the one key word of the title with *asterisks*. The same
+POSTER WANTED. Also return "poster": ONE 4:5 poster in Malaysian Malay: {"title": "the hook: the same hook shape you filled
+for the caption's first line, at most 12 words", "points": [up to 5 points of at most 22 words each]}. Mark the one key word
+of the title with *asterisks*. The same
 rules apply to every word: no call to action, no URL, no fact the SOURCE does not give.
 The citation is drawn at its foot automatically.""",
     "linkedin": """
 
-POSTER WANTED. Also return "poster": ONE 4:5 poster in English: {"title": "a headline of at most 10 words",
-"points": [up to 5 points of at most 22 words each]}. Mark the one key word of the title with *asterisks*. No
+POSTER WANTED. Also return "poster": ONE 4:5 poster in English: {"title": "the hook: the same hook shape you filled
+for the caption's first line, at most 12 words", "points": [up to 5 points of at most 22 words each]}. Mark the one key word
+of the title with *asterisks*. No
 company identity, no URL, no blog or aggregator, no fact the SOURCE does not give. The
 citation is drawn at its foot automatically.""",
 }
@@ -317,7 +321,7 @@ def writer_block(writer: dict[str, Any] | None, stream: str) -> str:
 
 def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str, Any],
                   avoid: str = "", writer: dict[str, Any] | None = None,
-                  bank: hook_bank.Bank | None = None) -> tuple[str, str]:
+                  bank: hook_bank.Bank | None = None, hint: str = "") -> tuple[str, str]:
     stream = idea.get("stream") or "regulab"
     if stream == "linkedin":
         angles = (brand.get("linkedin") or {}).get("angles") or {}
@@ -348,7 +352,7 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
                      f"({source.get('why') or 'no article'}). Use only the facts they give; leave out any specific they do not.")
     family = str(idea.get("hook_family") or "").strip().lower() or None
     return (system + avoid + writer_block(writer, stream) + pillar_line(writer, stream, idea.get("domain"))
-            + hook_block(family, stream, bank), "\n\n".join(lines))
+            + hook_block(family, stream, bank, hint), "\n\n".join(lines))
 
 
 def normalise_text(raw: Any, stream: str, lang: str) -> dict[str, dict[str, str]]:
@@ -504,8 +508,9 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     lang = "en" if stream == "linkedin" else "bm"
     source = faq_source(idea) or stored_source(idea) or read_source(idea.get("source_url"))
     bank = hook_bank.pick(store, idea, settings)        # a hook style made from screenshots, or None: the built-in 25
+    hint = hook_learning.hint(store, bank)              # what has earned views and interaction so far (a hint, never a rule)
     system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra), writer=settings.get("writer"),
-                                 bank=bank)
+                                 bank=bank, hint=hint)
     fmt = format_of(idea)
     want_slides = fmt == "carousel"
     want_poster = fmt == "poster"
@@ -561,13 +566,14 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     pillar = str(out.get("pillar") or "").strip()
     if pillar and pillar in pillars_for(settings.get("writer"), stream, domain or None):
         post["pillar"] = pillar          # only with a pillar list, which only exists once 021 (and its column) ran
+    cover_state = ""                     # whether the cover or poster headline is the hook: set, kept or too_long
     kept = kept_media(store, brief0)
     if kept:
         post["media_ids"] = kept         # Reject & replace kept the rejected draft's own pictures (Studio did the same)
     if want_slides:
         # only when asked: the column arrives with 006_slides.sql, and an idea that never asked
         # for slides must still be written on a database that has not run it
-        post["slides"] = slides.normalise(out.get("slides"))
+        post["slides"], cover_state = hook_bank.cover(slides.normalise(out.get("slides")), post["hook"])
     reg = brand.get("regulab") or {}
     if kept:
         from . import publisher
@@ -595,6 +601,8 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     if want_slides and post.get("slides") and not has_jobs:
         jobs.append(slide_job(idea, post, post_id, bg="post_image" if jobs or kept else "none", chosen=chosen))
     poster = slides.normalise([out.get("poster")] if isinstance(out.get("poster"), dict) else [])[:1] if want_poster else []
+    if poster:
+        poster, cover_state = hook_bank.cover(poster, post["hook"])
     if poster and not has_jobs:
         jobs.append(poster_job(idea, post, post_id, poster, bg="post_image" if jobs or kept else "none", chosen=chosen))
     if jobs:
@@ -603,6 +611,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     brief = {"source": {k: source.get(k) for k in ("ok", "why", "url", "title", "image")},
              "hook_shape": shape, **({"hook_style": bank.id} if bank else {}),
              "hook_in_caption": hook_bank.lead_matches(post["hook"], caption),
+             **({"hook_on_cover": cover_state} if cover_state else {}),
              "post_id": post_id, "media_jobs": len(jobs), "written_at": datetime.now(UTC).isoformat(),
              "model": getattr(llm, "last_model", "") or llm.s.model}
     if look_of(idea) != "classic":
@@ -690,7 +699,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
             idea = {}
     bank = hook_bank.pick(store, idea, settings)
     system += (antislop.prompt_block() + compliance.avoid_line(indo_extra) + writer_block(settings.get("writer"), stream)
-               + hook_bank.block(None, stream, bank))
+               + hook_bank.block(None, stream, bank, hook_learning.hint(store, bank)))
     plat = "linkedin" if stream == "linkedin" else "instagram"
     caption = ((post.get("text") or {}).get(lang) or {}).get(plat) or ""
     user = REVISE_ASK % (str(post.get("revise_note") or "").strip()[:800], post.get("hook") or "", post.get("citation") or "",

@@ -44,6 +44,12 @@ plan, `check_report.hook` and the style note, and `hook_first_said` records whet
 built on a shape draws no TAHUKAH ANDA / AMARAN / BERITA TERKINI chip (`motion_auto.choose` sets `hook` to ""); a film with no shape
 (an older one) still does.
 
+**Hooks learn from results** (Wan, 7 Nov 2026, `ops/HOOK-LEARNING.md`): `hook_learning.py` (daily, `hook-learning.yml`) ranks the shapes on the
+last 60 days of views and interaction (post metrics joined to `brief.hook_shape` or a film's `check_report.hook.shape`) and every writer
+(post, revise, film) gets the top three as a HINT in the required-hook block, after the rules, never a rule: a shape needs 3 results, unranked
+shapes keep being tried, no hook text is quoted, and `settings.hook_learning_on` turns it off. The cover slide and the poster headline wear the
+hook too (`hook_bank.cover`).
+
 Pick the group by how much the post asserts: CURIOSITY and RELATABLE assert nothing,
 BOLD asserts an opinion, TRANSFORM asserts a result, VULNERABLE asserts something about the
 author. The higher the assertion, the higher the evidence bar, and rule 4 above already

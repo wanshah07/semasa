@@ -149,7 +149,7 @@ def _chat(gw: dict[str, Any], timeout: int) -> tuple[bool, int | None, dict[str,
         return False, None, {}, str(exc)[:200]
     ms = int((time.monotonic() - t0) * 1000)
     if r.status_code >= 400:
-        return False, ms, {}, f"{r.status_code} {r.text[:160]}"
+        return False, ms, {}, f"{r.status_code} {r.text[:260]}"
     try:
         return True, ms, usage_of(r.json()), ""
     except ValueError:

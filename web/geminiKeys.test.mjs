@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { DEFAULTS, JOB_CHOICES, keyProblem, keyState, restMinutes, settingsOf, toggleJob, usableCount, validKey } from "./src/lib/geminiKeys.js";
+import { AUTO, DEFAULTS, FALLBACK_TEXT, JOB_CHOICES, effectiveModel, keyProblem, keyState, modelOptions, modelsOf, restMinutes, settingsOf, toggleJob, usableCount, validKey } from "./src/lib/geminiKeys.js";
 
 const NOW = Date.parse("2026-11-06T12:00:00Z");
 const at = (m) => new Date(NOW + m * 60000).toISOString();
@@ -60,3 +60,24 @@ assert.equal(usableCount(rows, NOW), 2);
 assert.equal(usableCount([], NOW), 0);
 assert.equal(usableCount(undefined, NOW), 0);
 console.log("geminiKeys.test.mjs: ok");
+
+// the models: "auto" follows what the keys list and what answered; Wan's own choice holds while it can
+assert.equal(DEFAULTS.model, AUTO); assert.equal(DEFAULTS.image_model, AUTO);
+assert.deepEqual(modelsOf(undefined), { text: [], image: [], textPick: "", imagePick: "", unavailable: [], at: null, from: "" });
+assert.deepEqual(modelsOf({ text: ["a", 1, "", "b"], text_pick: "b", unavailable: ["a"], at: "t", from: "Key 1" }),
+  { text: ["a", "b"], image: [], textPick: "b", imagePick: "", unavailable: ["a"], at: "t", from: "Key 1" });
+const listed = ["gemini-3-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
+assert.equal(effectiveModel("auto", listed, "gemini-3-flash", FALLBACK_TEXT), "gemini-3-flash");
+assert.equal(effectiveModel("auto", [], "", FALLBACK_TEXT), FALLBACK_TEXT, "nothing found yet: Google's own alias");
+assert.equal(effectiveModel("gemini-2.5-pro", listed, "gemini-3-flash", FALLBACK_TEXT), "gemini-2.5-pro", "his choice holds while listed");
+assert.equal(effectiveModel("gemini-1.5-flash", listed, "gemini-3-flash", FALLBACK_TEXT), "gemini-3-flash", "no longer listed");
+assert.equal(effectiveModel("gemini-2.5-flash", listed, "gemini-3-flash", FALLBACK_TEXT, ["gemini-2.5-flash"]), "gemini-3-flash", "found gone");
+assert.equal(effectiveModel("gemini-x", [], "", FALLBACK_TEXT), "gemini-x", "nothing listed yet: his choice is trusted");
+const opts = modelOptions(listed, "gemini-1.5-flash", "gemini-3-flash", ["gemini-2.5-flash"], 1);
+assert.deepEqual(opts.map((o) => o.value), ["auto", ...listed, "gemini-1.5-flash"]);
+assert.match(opts[0].label, /Auto \(recommended\): now gemini-3-flash/);
+assert.match(opts[2].label, /gemini-2.5-flash \(not available to your keys\)/);
+assert.match(opts.at(-1).label, /not in your keys' list/);
+assert.match(modelOptions([], "auto", "", [], 0)[0].label, /Auto \(disyorkan\): kini \?/);
+assert.equal(modelOptions(listed, "auto", "x").length, 4, "auto adds no extra row");
+assert.equal(modelOptions([], "gemini-x", "x").at(-1).label, "gemini-x", "nothing listed: no 'not in list' scare");

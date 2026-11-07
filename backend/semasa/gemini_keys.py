@@ -32,26 +32,67 @@ SETTINGS_KEY = "gemini"
 HOST = "generativelanguage.googleapis.com"
 BASE = f"https://{HOST}/v1beta/openai"          # the OpenAI-compatible chat endpoint (text and pictures read)
 NATIVE = f"https://{HOST}/v1beta"               # the native endpoint (a picture is made here)
-DEFAULTS: dict[str, Any] = {"enabled": True, "model": "gemini-2.5-flash", "image_model": "gemini-2.5-flash-image",
+AUTO = "auto"                                    # the model setting that follows what the keys can use (Wan, 7 Nov 2026)
+MODELS_KEY = "gemini_models"                     # written by gemini_check.py: the models listed, and the ones that answered
+FALLBACK_TEXT = "gemini-flash-latest"            # Google's own alias, which always points at a model new users can call
+FALLBACK_IMAGE = "gemini-2.5-flash-image"
+DEFAULTS: dict[str, Any] = {"enabled": True, "model": AUTO, "image_model": AUTO,
                             "images": True, "max_images": 6, "jobs": ["motion", "ideas"]}
 JOBS = ("reader", "motion", "ideas")             # the router's jobs; "reader" is every other worker (brain, receipts, scrape ...)
 FRESH = timedelta(minutes=10)                    # a key that answered this recently is not asked again
 COOLDOWN = {"limited": timedelta(minutes=30), "retry": timedelta(minutes=2)}
 TRIES = 3                                        # keys asked in one decision
 
+# the MODEL is gone or not offered to this account (Wan, 7 Nov 2026: "models/gemini-2.5-flash is no longer available to new
+# users"):
+# the key is fine, so it is neither refused nor rested; the check finds a model that answers
+MODEL_GONE = re.compile(r"\b404\b|no longer available|is not found|not found for api version|not supported for generatecontent|"
+                        r"model.{0,40}(does not exist|deprecated|retired)", re.I)
+SUGGESTED = re.compile(r"(?:use|try|switch to)\s+models/([A-Za-z0-9._-]+)", re.I)
 LIMITED = re.compile(r"\b429\b|resource_exhausted|quota|rate.?limit|too many requests|exceeded", re.I)
 BAD = re.compile(r"\b(400|401|403)\b.*(api key|api_key|permission|unauthori|invalid|expired|denied)|api key not valid|"
                  r"api_key_invalid|permission_denied|unauthenticated|key.*(revoked|disabled|suspended)", re.I)
 
 
 def classify(error: Any) -> str:
-    """"bad" (Google refuses the key), "limited" (its quota or rate is used up), or "retry" (anything else: a hiccup)."""
+    """"bad" (Google refuses the key), "limited" (its quota or rate is used up), "model" (the model is gone or not offered to this
+    account: the key is fine), or "retry" (anything else: a hiccup)."""
     text = str(error or "")
     if BAD.search(text) and not LIMITED.search(text):
         return "bad"
     if LIMITED.search(text):
         return "limited"
+    if MODEL_GONE.search(text):
+        return "model"
     return "retry"
+
+
+def suggested_model(error: Any) -> str:
+    """The model Google's own refusal points at ("Please update your code to use models/gemini-..."), or ""."""
+    m = SUGGESTED.search(str(error or ""))
+    return m.group(1).rstrip(".,;:") if m else ""
+
+
+def load_models(store: Any) -> dict[str, Any]:
+    """What gemini_check.py last found: {text, image, text_pick, image_pick, at, from}; empty before the first check."""
+    try:
+        rows = store.table(db.SETTINGS).select("value").eq("key", MODELS_KEY).execute().data or []
+        value = (rows[0].get("value") or {}) if rows else {}
+    except Exception as exc:  # noqa: BLE001
+        log.info("gemini models not read (%s)", str(exc)[:100])
+        value = {}
+    return {"text": list(value.get("text") or []), "image": list(value.get("image") or []),
+            "text_pick": str(value.get("text_pick") or ""), "image_pick": str(value.get("image_pick") or ""),
+            "unavailable": list(value.get("unavailable") or []), "at": value.get("at"), "from": value.get("from")}
+
+
+def resolve(setting: Any, listed: list[str], pick: str, fallback: str, unavailable: list[str] | None = None) -> str:
+    """The model to call: Wan's own choice while the keys still list it (or nothing is listed yet) and the last check did not find
+    it gone, otherwise the one that last answered, otherwise Google's alias. "auto" is always the last two."""
+    chosen = str(setting or "").strip()
+    if chosen and chosen != AUTO and (not listed or chosen in listed) and chosen not in (unavailable or []):
+        return chosen
+    return pick or fallback
 
 
 def load_settings(store: Any) -> dict[str, Any]:
@@ -65,6 +106,10 @@ def load_settings(store: Any) -> dict[str, Any]:
     out = {**DEFAULTS, **{k: v for k, v in value.items() if k in DEFAULTS and v is not None and v != ""}}
     out["jobs"] = [j for j in (out.get("jobs") or []) if j in JOBS]
     out["max_images"] = max(1, min(8, int(out.get("max_images") or 6)))
+    found = load_models(store)
+    out["model_setting"], out["image_model_setting"] = out["model"], out["image_model"]       # Wan's choice, "auto" or a name
+    out["model"] = resolve(out["model"], found["text"], found["text_pick"], FALLBACK_TEXT, found["unavailable"])
+    out["image_model"] = resolve(out["image_model"], found["image"], found["image_pick"], FALLBACK_IMAGE, found["unavailable"])
     return out
 
 
@@ -101,13 +146,17 @@ def usable(rows: list[dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
 
 def note(store: Any, row: dict[str, Any], ok: bool, error: Any = "", now: datetime | None = None) -> str:
     """Records what a key just did: ok clears its cooldown; a failure marks it by kind. Returns the kind ("ok", "bad", "limited",
-    "retry"). Never raises: a status line lost must not lose a post."""
+    "model", "retry"). Never raises: a status line lost must not lose a post."""
     now = now or datetime.now(UTC)
     stamp = now.isoformat()
     if ok:
         patch: dict[str, Any] = {"status": "ok", "last_ok_at": stamp, "last_used_at": stamp, "cooldown_until": None,
                                  "last_error": None, "last_error_at": None, "calls": int(row.get("calls") or 0) + 1}
         kind = "ok"
+    elif classify(error) == "model":
+        kind = "model"            # the model is gone, not the key: say so, leave its status and cooldown alone
+        patch = {"last_used_at": stamp, "last_error": " ".join(str(error or "").split())[:300], "last_error_at": stamp,
+                 "calls": int(row.get("calls") or 0) + 1}
     else:
         kind = classify(error)
         patch = {"last_used_at": stamp, "last_error": " ".join(str(error or "").split())[:300], "last_error_at": stamp,
@@ -146,16 +195,27 @@ def allowed(store: Any, job: str) -> bool:
 
 def candidate(store: Any, job: str, live: Any, now: datetime) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """(the AI-team candidate, the health the key's own check already proved) for this job, or (None, None) when Gemini is off,
-    not allowed for the job, or has no usable key. The key is the one pick() chose; it goes only to the Gemini host."""
+    not allowed for the job, or has no usable key. The key is the one pick() chose; it goes only to the Gemini host. When every
+    key answers "that model is gone", the models are looked up again once (gemini_check.refresh_models) and the pick is
+    retried."""
     if not allowed(store, job):
         return None, None
     s = load_settings(store)
+    gone: list[str] = []
 
     def ask(row: dict[str, Any]) -> tuple[bool, int | None, str]:
         c = {"slug": "gemini", "provider": "openai", "base_url": BASE, "key": row["api_key"]}
-        return live.chat(c, s["model"])
+        ok, ms, err = live.chat(c, s["model"])
+        if not ok and classify(err) == "model":
+            gone.append(str(err))
+        return ok, ms, err
 
     row, ms = pick(store, now, ask if live is not None else None)
+    if row is None and gone and live is not None:
+        from . import gemini_check
+        if gemini_check.refresh_models(store, live, now, gone[0]):
+            s = load_settings(store)
+            row, ms = pick(store, now, ask)
     if row is None:
         return None, None
     from . import ai_team

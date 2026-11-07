@@ -30,6 +30,8 @@ from .log import get_logger
 log = get_logger("semasa.gemini_check")
 
 ASK_LIMIT = 4                      # models asked per key when the wanted one is gone
+CHECK_TIMEOUT = 45                 # seconds a check question may take: the newer models answer slowly (the 12 s of a routine
+#                                    probe timed out on the first real check, 7 Nov 2026)
 NOT_TEXT = re.compile(r"image|tts|embed|live|audio|robotics|computer|native|thinking|aqa|vision|learnlm|imagen|veo", re.I)
 PREVIEW = re.compile(r"preview|exp|beta", re.I)
 VERSION = re.compile(r"^gemini-(\d+(?:\.\d+)?)-(flash|pro)(-lite)?(?:-(.+))?$")
@@ -76,14 +78,14 @@ def read_lists(keys: list[dict[str, Any]], live: Any) -> tuple[list[str], list[s
         c = {"slug": "gemini", "provider": "openai", "base_url": gemini_keys.NATIVE, "key": row["api_key"]}
         native = []
         try:
-            native = live.native_models(c) if hasattr(live, "native_models") else []
+            native = live.native_models(c, timeout=CHECK_TIMEOUT) if hasattr(live, "native_models") else []
         except Exception as exc:  # noqa: BLE001
             log.info("gemini native models not read: %s", str(exc)[:100])
         if native:
             can = [m["name"] for m in native if "generateContent" in (m.get("methods") or [])]
         else:
             try:
-                can = live.models({**c, "base_url": gemini_keys.BASE})
+                can = live.models({**c, "base_url": gemini_keys.BASE}, timeout=CHECK_TIMEOUT)
             except Exception as exc:  # noqa: BLE001
                 can = []
                 log.info("gemini models not listed: %s", str(exc)[:100])
@@ -118,7 +120,7 @@ def find_working(row: dict[str, Any], live: Any, first: str, listed: list[str],
     when none answered, and the error says why. Every model found gone is appended to `gone`."""
     gone = gone if gone is not None else []
     c = {"slug": "gemini", "provider": "openai", "base_url": gemini_keys.BASE, "key": row["api_key"]}
-    ok, ms, err = live.chat(c, first)
+    ok, ms, err = live.chat(c, first, timeout=CHECK_TIMEOUT)
     if ok:
         return first, ms, ""
     if gemini_keys.classify(err) != "model":
@@ -129,7 +131,7 @@ def find_working(row: dict[str, Any], live: Any, first: str, listed: list[str],
         if alt in tried:
             continue
         tried.add(alt)
-        ok, ms, err2 = live.chat(c, alt)
+        ok, ms, err2 = live.chat(c, alt, timeout=CHECK_TIMEOUT)
         if ok:
             return alt, ms, ""
         if gemini_keys.classify(err2) != "model":

@@ -80,6 +80,10 @@
 @media (max-width: 1023.98px) {
   html[data-tabbar] { --tabbar-h: calc(3.5rem + env(safe-area-inset-bottom, 0px)); }
 }
+/* while the phone keyboard is open (pages/ChatTab.jsx sets data-kb from the visual viewport; lib/viewport.js), the bottom bar
+   would sit under the keys: it steps aside and gives its height back, so the chat column reaches the keyboard's top edge */
+html[data-kb] { --tabbar-h: 0px; }
+html[data-kb] .mobile-tabbar { display: none; }
 .app-shell {
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);

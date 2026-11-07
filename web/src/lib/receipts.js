@@ -73,6 +73,8 @@ export function receiptRow(r) {
     currency: (String(r.currency || "MYR").trim().toUpperCase() || "MYR").slice(0, 3), category: CATEGORIES.includes(r.category) ? r.category : "lain",
     payment_method: String(r.payment_method || "").trim(), summary: String(r.summary || "").trim(), notes: String(r.notes || "").trim(),
     subscription_id: r.subscription_id || null,
+    // 066: which business paid it (null = personal); only sent when the row carries the column, so a page before 066 still saves
+    ...("business_id" in r ? { business_id: r.business_id || null } : {}),
   };
 }
 

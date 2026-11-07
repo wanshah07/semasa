@@ -27,6 +27,7 @@ GENERATED_BUCKET = "semasa-generated"
 CLIENTS = "semasa_clients"
 PROJECTS = "semasa_projects"
 BILLING_DOCS = "semasa_billing_docs"
+BUSINESSES = "semasa_businesses"            # supabase/066: one row per business, each with its own billing settings
 BILLING_EVENTS = "semasa_billing_events"
 BILLING_OUTBOX = "semasa_billing_outbox"
 SUBSCRIPTIONS = "semasa_subscriptions"

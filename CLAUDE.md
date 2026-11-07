@@ -85,3 +85,14 @@ Two hard limits that come from this repo's own rules, not from the format:
 - **DashboardLayoutConfigurator** (`components/ui/dashboard-configuration.tsx`): Papan → "Susun papan"; `settings.dashboard.hidden` (supabase/065). The headline tiles are permanent.
 - `components/ui` holds both Semasa's `Button.jsx`/`Card.jsx` and shadcn's `button.tsx`: on a case-insensitive disk `@/components/ui/button` finds `Button.jsx` first, so a pasted component imports `@/components/ui/button.tsx` explicitly and takes Card from `@/components/ui/app-1-utils/card`.
 - Never spread a variants object onto an element (`<motion.div {...fadeUp}>`): it passes `hidden={…}` and the browser hides the element. Nine page headers were invisible this way; `tabs.test.mjs` now fails on it.
+
+## Businesses (Phase 3, 7 Nov 2026)
+
+- `semasa_businesses` (supabase/066): one row per business, `billing` in the shape `settings.billing` has always had. **WS REGULAB** (`wsregulab`, seeded from `settings.billing`) and **VALORITH** (`valorith`, prefixes VAL-QT / VAL-INV / VAL-RPT, no bank, auto-send off). More are added in Perniagaan → **Syarikat**; a business is never deleted, only switched off, and WS REGULAB cannot be switched off.
+- `business_id` is NOT NULL (default `wsregulab`) on clients, projects, billing documents, CRM contacts and campaigns, so every row from before 066 is WS REGULAB's. On receipts and subscriptions it is NULLABLE: null = personal.
+- Numbering is per business: `semasa_billing_counters` key `(business_id, prefix, year)`; `semasa_billing_issue` reads `semasa_billing_settings_for(business)` (own billing, else `settings.billing`) and refuses a number another business already holds. An issued document cannot change business (guard trigger).
+- **Bil & Resit** shows one business at a time (picker remembered as `semasa.view.billing.business`; Syarikat's "Bil & tetapan" sets it). **Bil Valorith** (`#bil-valorith`, Valorith segment beside Wangian) is the same page with `lockBusiness="valorith"`. Settings save to the business row; a prefix another business uses is refused.
+- The paper's logo: WS REGULAB's logo only on WS REGULAB's papers; another business uses its own `company.logo_url` (https) or prints its name (`lib/businesses.js logoFor`, the same rule in `backend/semasa/billing.py logo_for`).
+- E-mail: one Gmail connection sends for every business. `billing.py` claims the business's address as From only when it is the connected account; otherwise the mail goes from the account and the signature names the business.
+- **CRM** combines every business with a picker (all / one); a contact and a campaign each belong to one business, and `semasa_crm_queue` sends a campaign only to its own business's contacts. **Ringkasan wang** picks all / a business / personal.
+- Before 066 is applied every page still works as one business (WS REGULAB, `settings.billing`), with no pickers.

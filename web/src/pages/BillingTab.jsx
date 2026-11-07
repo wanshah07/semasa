@@ -14,6 +14,8 @@ import {
 } from "../lib/billing";
 import { documentHtml, pagesHtml } from "../lib/billingDoc";
 import { qrDataUrl } from "../lib/qr";
+import { DEFAULT_BUSINESS, billingOf, businessList, logoFor, ofBusiness, prefixClashes } from "../lib/businesses";
+import { useView } from "../components/ViewToggle";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Segmented, Select, TextArea } from "../components/ui/Field";
@@ -39,7 +41,10 @@ const BLANK_CLIENT = { name: "", reg_no: "", attention: "", email: "", phone: ""
 const initialsOf = (name) => String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?";
 const nowIso = () => new Date().toISOString();
 
-export default function BillingTab({ user, settings, save, onToast }) {
+/* Businesses (supabase/066; Wan, 11 Oct 2026: WS REGULAB and VALORITH apart, each with its own billing). The page shows ONE
+   business at a time: its documents, clients, projects, counters, letterhead and settings. `lockBusiness` fixes it (the
+   Valorith segment's own Bil page); otherwise a picker at the top switches, remembered in this browser. */
+export default function BillingTab({ user, settings, save, onToast, lockBusiness = "" }) {
   const { t, lang } = useLang();
   const docsT = useTable(TABLES.billingDocs, { enabled: true, limit: 2000 });
   const clientsT = useTable(TABLES.clients, { enabled: true, order: "name", ascending: true, limit: 2000, realtime: false });
@@ -47,13 +52,24 @@ export default function BillingTab({ user, settings, save, onToast }) {
   const countersT = useTable(TABLES.billingCounters, { enabled: true, order: "year", limit: 50, realtime: false });
   const eventsT = useTable(TABLES.billingEvents, { enabled: true, order: "at", limit: 400 });
   const outboxT = useTable(TABLES.billingOutbox, { enabled: true, order: "created_at", limit: 200 });
-  const cfg = useMemo(() => billingSettings(settings?.billing), [settings]);
+  const bizT = useTable(TABLES.businesses, { enabled: true, order: "sort", ascending: true, limit: 50, realtime: false });
+  const businesses = useMemo(() => businessList(bizT.rows), [bizT.rows]);
+  const hasBusinesses = !bizT.error && bizT.rows.length > 0;           // false before supabase/066 is applied
+  const [bizPick, setBizPick] = useView("billing.business", DEFAULT_BUSINESS);
+  const biz = lockBusiness || (businesses.some((b) => b.id === bizPick) ? bizPick : businesses[0].id);
+  const business = businesses.find((b) => b.id === biz) || businesses[0];
+  const cfg = useMemo(() => billingSettings(billingOf(business, settings?.billing)), [business, settings]);
   const ready = settings && typeof settings.billing === "object" && settings.billing !== null;
   const notSetUp = /semasa_billing|semasa_clients/.test(docsT.error || clientsT.error || "");
   const today = isoDate();
-  const docs = docsT.rows;
-  const clients = clientsT.rows;
-  const projects = projectsT.rows;
+  const docs = useMemo(() => ofBusiness(docsT.rows, biz), [docsT.rows, biz]);
+  const clients = useMemo(() => ofBusiness(clientsT.rows, biz), [clientsT.rows, biz]);
+  const projects = useMemo(() => ofBusiness(projectsT.rows, biz), [projectsT.rows, biz]);
+  const counters = useMemo(() => ofBusiness(countersT.rows, biz), [countersT.rows, biz]);
+  const docIds = useMemo(() => new Set(docs.map((d) => d.id)), [docs]);
+  const events = useMemo(() => eventsT.rows.filter((ev) => docIds.has(ev.doc_id)), [eventsT.rows, docIds]);
+  const outbox = useMemo(() => outboxT.rows.filter((o) => docIds.has(o.doc_id)), [outboxT.rows, docIds]);
+  const logoUrlOf = (base0) => logoFor(biz, cfg, new URL(`${base0}logo-ink.png`, window.location.href).href);
   const projectName = (id) => projects.find((p) => p.id === id)?.name || "";
 
   const [kind, setKind] = useState("all");
@@ -67,7 +83,7 @@ export default function BillingTab({ user, settings, save, onToast }) {
   const [busy, setBusy] = useState("");
   const [printing, setPrinting] = useState("");        // html being printed through the hidden frame
 
-  const reload = useCallback(() => { docsT.reload(); eventsT.reload(); outboxT.reload(); countersT.reload(); }, [docsT, eventsT, outboxT, countersT]);
+  const reload = useCallback(() => { docsT.reload(); eventsT.reload(); outboxT.reload(); countersT.reload(); clientsT.reload(); projectsT.reload(); }, [docsT, eventsT, outboxT, countersT, clientsT, projectsT]);
   const sum = useMemo(() => summary(docs, today), [docs, today]);
   const weekly = useMemo(() => weeklySeries(docs, today, 8), [docs, today]);
   const overviewProjects = useMemo(() => projects
@@ -85,16 +101,16 @@ export default function BillingTab({ user, settings, save, onToast }) {
       return { id: p.id, name: p.name, description: desc, progress: projectProgress(p, docs, today), status: PROJECT_STATUS[p.status]?.[L] || p.status, badge,
         due: p.end_date ? fmtDate(p.end_date) : "", team: client ? [{ name: client.name, initials: initialsOf(client.name) }] : [], onClick: () => setProjectsOpen(true) };
     }), [projects, docs, clients, today, lang, t]);
-  const overviewActivity = useMemo(() => eventsT.rows.slice(0, 12).map((ev) => {
+  const overviewActivity = useMemo(() => events.slice(0, 12).map((ev) => {
     const d = docs.find((x) => x.id === ev.doc_id);
     const who = d?.client?.name || t("(tiada pelanggan)", "(no client)");
     return { id: ev.id, person: { name: who, initials: initialsOf(who) }, action: `${d?.number || t("Tiada", "None")} · ${eventLabel(ev, t)}`, time: stampMYT(ev.at), onClick: d ? () => setViewing(d) : undefined };
-  }), [eventsT.rows, docs, t]);
+  }), [events, docs, t]);
   const site = `${window.location.origin}${window.location.pathname}`;
   const base = `${import.meta.env.BASE_URL}cards/`;
   const abs = (p) => new URL(p, window.location.href).href;
-  const htmlOf = useCallback((d) => documentHtml({ ...d, project: projectName(d.project_id), parent_number: docs.find((x) => x.id === d.parent_id)?.number || "" }, cfg, { logoUrl: abs(`${base}logo-ink.png`), fontsCss: abs(`${base}fonts.css`),
-    qr: d.token ? qrDataUrl(publicLink(d.token, site)) : "" }), [cfg, base, site, projects, docs]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const htmlOf = useCallback((d) => documentHtml({ ...d, project: projectName(d.project_id), parent_number: docs.find((x) => x.id === d.parent_id)?.number || "" }, cfg, { logoUrl: logoUrlOf(base), fontsCss: abs(`${base}fonts.css`),
+    qr: d.token ? qrDataUrl(publicLink(d.token, site)) : "" }), [cfg, base, site, projects, docs, biz]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- words for the table ---------------------------------------------------------------------------------------------------
   const words = useMemo(() => ({
@@ -139,6 +155,8 @@ export default function BillingTab({ user, settings, save, onToast }) {
       meta, created_by: user?.id || null });
     if (error) throw new Error(errText(error));
   }
+  // a new row belongs to the business on screen (a converted paper to its parent's); before 066 the column does not exist
+  function bizField(parent) { return hasBusinesses ? { business_id: parent?.business_id || biz } : {}; }
   function guard(fn) {
     return async (...a) => {
       setBusy("1");
@@ -171,7 +189,7 @@ export default function BillingTab({ user, settings, save, onToast }) {
     let id = d.id;
     if (id) await patchDoc(id, row);
     else {
-      const { data, error } = await supabase.from(TABLES.billingDocs).insert({ ...row, created_by: user?.id || null }).select("*");
+      const { data, error } = await supabase.from(TABLES.billingDocs).insert({ ...row, ...bizField(), created_by: user?.id || null }).select("*");
       if (error) throw new Error(errText(error));
       id = data[0].id;
     }
@@ -194,7 +212,7 @@ export default function BillingTab({ user, settings, save, onToast }) {
   async function upsertClient(c, id) {
     const row = { name: c.name, reg_no: c.reg_no || "", attention: c.attention || "", email: c.email || "", phone: c.phone || "", address: c.address || "",
       postcode: c.postcode || "", city: c.city || "", state: c.state || "", country: c.country || "Malaysia", lang: c.lang === "bm" ? "bm" : "en", notes: c.notes || "" };
-    const q = id ? supabase.from(TABLES.clients).update(row).eq("id", id) : supabase.from(TABLES.clients).insert({ ...row, created_by: user?.id || null });
+    const q = id ? supabase.from(TABLES.clients).update(row).eq("id", id) : supabase.from(TABLES.clients).insert({ ...row, ...bizField(), created_by: user?.id || null });
     const { error } = await q;
     if (error) throw new Error(errText(error));
     clientsT.reload();
@@ -214,7 +232,7 @@ export default function BillingTab({ user, settings, save, onToast }) {
       case "paid": setPaying({ docs: [d] }); return;
       case "convert": {
         const draft = invoiceFromQuotation(d, cfg, today);
-        const { data, error } = await supabase.from(TABLES.billingDocs).insert({ ...draft, created_by: user?.id || null }).select("*");
+        const { data, error } = await supabase.from(TABLES.billingDocs).insert({ ...draft, ...bizField(d), created_by: user?.id || null }).select("*");
         if (error) throw new Error(errText(error));
         if (OPEN.includes(d.status) || d.status === "accepted") { await patchDoc(d.id, { status: "converted" }); await logEvent(d.id, "converted", { invoice_id: data[0].id }); }
         setEditing({ ...data[0] });
@@ -240,7 +258,7 @@ export default function BillingTab({ user, settings, save, onToast }) {
 
   const bulk = guard(async (action, list) => {
     const ds = list.map((r) => docs.find((x) => x.id === r.id)).filter(Boolean);
-    if (action === "download") return printHtml(pagesHtml(ds.map((d) => ({ ...d, project: projectName(d.project_id) })), cfg, (d) => ({ logoUrl: abs(`${base}logo-ink.png`), fontsCss: abs(`${base}fonts.css`), qr: d.token ? qrDataUrl(publicLink(d.token, site)) : "" })));
+    if (action === "download") return printHtml(pagesHtml(ds.map((d) => ({ ...d, project: projectName(d.project_id) })), cfg, (d) => ({ logoUrl: logoUrlOf(base), fontsCss: abs(`${base}fonts.css`), qr: d.token ? qrDataUrl(publicLink(d.token, site)) : "" })));
     if (action === "paid") return setPaying({ docs: ds });
     if (action === "reminder") {
       let n = 0;
@@ -271,7 +289,7 @@ export default function BillingTab({ user, settings, save, onToast }) {
       await patchDoc(inv.id, { status: "paid", paid_at: new Date(`${date}T12:00:00+08:00`).toISOString(), payment });
       await logEvent(inv.id, "paid", payment);
       const draft = receiptFromInvoice(inv, payment, cfg, today);
-      const { data, error } = await supabase.from(TABLES.billingDocs).insert({ ...draft, created_by: user?.id || null }).select("*");
+      const { data, error } = await supabase.from(TABLES.billingDocs).insert({ ...draft, ...bizField(inv), created_by: user?.id || null }).select("*");
       if (error) throw new Error(errText(error));
       const { data: number, error: e2 } = await supabase.rpc("semasa_billing_issue", { p_id: data[0].id });
       if (e2) throw new Error(errText(e2));
@@ -301,16 +319,27 @@ export default function BillingTab({ user, settings, save, onToast }) {
     );
   }
 
-  const pendingMail = outboxT.rows.filter((o) => ["pending", "working"].includes(o.status)).length;
-  const failedMail = outboxT.rows.filter((o) => o.status === "error").length;
+  const pendingMail = outbox.filter((o) => ["pending", "working"].includes(o.status)).length;
+  const failedMail = outbox.filter((o) => o.status === "error").length;
 
   return (
     <main className="mx-auto max-w-page space-y-6 px-4 pb-20 pt-8 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show" className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl">{t("Bil & Resit", "Billing")}</h1>
-          <p className="mt-1 text-sm text-muted">{t("Sebut harga → invois → resit. Nombor diberi oleh pangkalan data semasa dikeluarkan; e-mel dihantar oleh pekerja dari Gmail {e}.",
-            "Quotation → invoice → receipt. Numbers are allocated by the database on issue; e-mail is sent by the worker from Gmail {e}.", { e: cfg.company.email || "" })}</p>
+          <h1 className="font-display text-2xl">{t("Bil & Resit", "Billing")}{businesses.length > 1 || lockBusiness ? <span className="text-muted"> · {business.name}</span> : null}</h1>
+          {!lockBusiness && businesses.length > 1 && (
+            <div role="tablist" aria-label={t("Syarikat", "Business")} className="mt-2 flex flex-wrap gap-1.5" data-business-picker>
+              {businesses.map((b) => (
+                <button key={b.id} type="button" role="tab" aria-selected={b.id === biz} onClick={() => setBizPick(b.id)} data-business={b.id}
+                  className={`rounded-pill px-3 py-1 text-xs font-medium ${b.id === biz ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>{b.name}</button>
+              ))}
+            </div>
+          )}
+          <p className="mt-1 text-sm text-muted">{cfg.company.email
+            ? t("Sebut harga → invois → resit. Nombor diberi oleh pangkalan data semasa dikeluarkan; e-mel dihantar oleh pekerja dari Gmail {e}.",
+              "Quotation → invoice → receipt. Numbers are allocated by the database on issue; e-mail is sent by the worker from Gmail {e}.", { e: cfg.company.email })
+            : t("Sebut harga → invois → resit. Nombor diberi oleh pangkalan data semasa dikeluarkan; e-mel dihantar oleh pekerja dari akaun Gmail yang disambung (isi e-mel syarikat ini di Tetapan).",
+              "Quotation → invoice → receipt. Numbers are allocated by the database on issue; e-mail is sent by the worker from the connected Gmail account (fill in this business's e-mail in Settings).")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => newDraft("quotation")}><Plus size={14} /> {t("Sebut harga", "Quotation")}</Button>
@@ -357,7 +386,7 @@ export default function BillingTab({ user, settings, save, onToast }) {
       <DocumentsTable rows={rows} words={words} onAction={act} onBulk={bulk}
         emptyHint={docs.length ? undefined : t("Belum ada dokumen. Mulakan dengan + Sebut harga atau + Invois.", "No documents yet. Start with + Quotation or + Invoice.")} />
 
-      {editing && <Editor doc={editing} clients={clients} projects={projects} counters={countersT.rows} cfg={cfg} onChange={setEditing} onClose={() => setEditing(null)}
+      {editing && <Editor doc={editing} clients={clients} projects={projects} counters={counters} cfg={cfg} logoUrl={logoUrlOf(import.meta.env.BASE_URL + "cards/")} onChange={setEditing} onClose={() => setEditing(null)}
         onSave={(opts) => saveDraft(editing, opts)} busy={!!busy} t={t} lang={lang} today={today} />}
       {viewing && <Viewer doc={docs.find((x) => x.id === viewing.id) || viewing} html={htmlOf(docs.find((x) => x.id === viewing.id) || viewing)} events={eventsT.rows.filter((e) => e.doc_id === viewing.id)}
         outbox={outboxT.rows.filter((o) => o.doc_id === viewing.id)} onClose={() => setViewing(null)} onAction={(a) => act(a, { id: viewing.id })} onRetry={guard(async (o) => {
@@ -375,18 +404,26 @@ export default function BillingTab({ user, settings, save, onToast }) {
         onSave={guard(async (p) => {
           const row = { client_id: p.client_id, name: p.name.trim(), details: p.details || "", status: p.status || "active", start_date: p.start_date || null,
             end_date: p.end_date || null, budget: p.budget === "" || p.budget == null ? null : Number(p.budget), reference: p.reference || "", notes: p.notes || "" };
-          const q = p.id ? supabase.from(TABLES.projects).update(row).eq("id", p.id) : supabase.from(TABLES.projects).insert({ ...row, created_by: user?.id || null });
+          const q = p.id ? supabase.from(TABLES.projects).update(row).eq("id", p.id) : supabase.from(TABLES.projects).insert({ ...row, ...bizField(), created_by: user?.id || null });
           const { error } = await q; if (error) throw new Error(errText(error)); projectsT.reload();
         })}
         onDelete={guard(async (p) => {
           if (!window.confirm(t("Padam projek {n}? Dokumennya kekal, tanpa projek.", "Delete project {n}? Its documents stay, without a project.", { n: p.name }))) return;
           const { error } = await supabase.from(TABLES.projects).delete().eq("id", p.id); if (error) throw new Error(errText(error)); projectsT.reload();
         })} />}
-      {settingsOpen && <SettingsModal cfg={cfg} counters={countersT.rows} onClose={() => setSettingsOpen(false)} busy={!!busy} t={t}
-        onSave={guard(async (v, counters) => {
-          await save("billing", v);
-          for (const c of counters || []) {
-            const { error } = await supabase.from(TABLES.billingCounters).upsert({ prefix: c.prefix, year: Number(c.year), last: Number(c.last) || 0 }, { onConflict: "prefix,year" });
+      {settingsOpen && <SettingsModal cfg={cfg} counters={counters} onClose={() => setSettingsOpen(false)} busy={!!busy} t={t} businessName={business.name}
+        onSave={guard(async (v, nextCounters) => {
+          const clash = prefixClashes(businesses, biz, v.prefix);
+          if (clash.length) throw new Error(t("Awalan {p} sudah digunakan oleh {b}: setiap syarikat perlu awalan sendiri.", "Prefix {p} is already used by {b}: each business needs its own.",
+            { p: clash.map((c) => c.prefix).join(", "), b: clash[0].business }));
+          if (hasBusinesses) {
+            const { error } = await supabase.from(TABLES.businesses).update({ billing: v }).eq("id", biz);
+            if (error) throw new Error(errText(error));
+            bizT.reload();
+          } else await save("billing", v);
+          for (const c of nextCounters || []) {
+            const row = { prefix: c.prefix, year: Number(c.year), last: Number(c.last) || 0, ...(hasBusinesses ? { business_id: biz } : {}) };
+            const { error } = await supabase.from(TABLES.billingCounters).upsert(row, { onConflict: hasBusinesses ? "business_id,prefix,year" : "prefix,year" });
             if (error) throw new Error(errText(error));
           }
           onToast(t("Tetapan disimpan.", "Settings saved."), "ok"); setSettingsOpen(false);
@@ -471,7 +508,7 @@ function ClientFields({ c, onChange, t, lang }) {
   );
 }
 
-function Editor({ doc, clients, projects, counters, cfg, onChange, onClose, onSave, busy, t, lang, today }) {
+function Editor({ doc, clients, projects, counters, cfg, logoUrl, onChange, onClose, onSave, busy, t, lang, today }) {
   const d = doc;
   const totals = calcTotals(d.items, { tax_rate: d.tax_rate, discount: d.discount });
   const problems = validateDoc({ ...d, items: d.items.filter((it) => String(it.description || "").trim()) }, lang);
@@ -564,7 +601,7 @@ function Editor({ doc, clients, projects, counters, cfg, onChange, onClose, onSa
         </div>
         <div className="hidden lg:block">
           <Label>{t("Pratonton (kertas A4 sebenar)", "Preview (the real A4 paper)")}</Label>
-          <Preview html={documentHtml({ ...d, status: "draft", number: "" }, cfg, { logoUrl: new URL(`${import.meta.env.BASE_URL}cards/logo-ink.png`, window.location.href).href,
+          <Preview html={documentHtml({ ...d, status: "draft", number: "" }, cfg, { logoUrl,
             fontsCss: new URL(`${import.meta.env.BASE_URL}cards/fonts.css`, window.location.href).href })} />
         </div>
       </div>
@@ -887,7 +924,7 @@ function DocHistory({ doc: d, events, t }) {
   );
 }
 
-function SettingsModal({ cfg, counters, onClose, onSave, busy, t }) {
+function SettingsModal({ cfg, counters, onClose, onSave, busy, t, businessName = "" }) {
   const [v, setV] = useState(cfg);
   const year = Number(isoDate().slice(0, 4));
   const [cnt, setCnt] = useState(() => KINDS.map((k) => {
@@ -897,7 +934,7 @@ function SettingsModal({ cfg, counters, onClose, onSave, busy, t }) {
   const set = (sec, k) => (e) => setV({ ...v, [sec]: { ...v[sec], [k]: e.target.value } });
   const field = (sec, k, label, props = {}) => <label className="block"><Label>{label}</Label><Input value={v[sec][k] ?? ""} onChange={set(sec, k)} {...props} /></label>;
   return (
-    <Sheet title={t("Tetapan Bil", "Billing settings")} onClose={onClose} width="max-w-4xl"
+    <Sheet title={`${t("Tetapan Bil", "Billing settings")}${businessName ? ` · ${businessName}` : ""}`} onClose={onClose} width="max-w-4xl"
       actions={<Button size="sm" disabled={busy} onClick={() => onSave({ ...v, tax_rate: Number(v.tax_rate) || 0, email: { ...v.email, reminder_days: String(v.email.reminder_days).split(/[,\s]+/).map(Number).filter(Number.isFinite) } },
         cnt.map((c) => ({ prefix: v.prefix[c.kind], year: c.year, last: c.last })))}><Check size={14} /> {t("Simpan", "Save")}</Button>}>
       <div className="grid gap-6 lg:grid-cols-2">
@@ -912,6 +949,7 @@ function SettingsModal({ cfg, counters, onClose, onSave, busy, t }) {
           <label className="block"><Label>{t("Alamat (dicetak pada kertas)", "Address (printed)")}</Label><TextArea rows={2} value={v.company.address || ""} onChange={set("company", "address")} /></label>
           <div className="grid gap-3 sm:grid-cols-2">{field("company", "sst_no", t("No. SST (jika berdaftar: invois menjadi INVOIS CUKAI)", "SST no. (if registered: invoices become TAX INVOICE)"))}{field("company", "tin", "TIN (e-Invois)")}</div>
           {field("company", "signatory", t("Disediakan oleh (nama)", "Prepared by (name)"))}
+          {field("company", "logo_url", t("Logo (alamat https; kosong = nama syarikat ditulis)", "Logo (https address; empty = the company name is written)"), { placeholder: "https://…", inputMode: "url" })}
           <h4 className="pt-2 text-sm font-medium">{t("Bank (pada invois)", "Bank (on invoices)")}</h4>
           {field("bank", "name", t("Nama bank", "Bank name"))}
           {field("bank", "account_name", t("Nama akaun", "Account name"))}

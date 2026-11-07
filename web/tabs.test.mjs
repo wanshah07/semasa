@@ -40,8 +40,8 @@ t("Wan's layout of 11 Oct 2026: which pages sit together", () => {
   assert.deepEqual(["media", "media-lib"].map(where), ["image", "image"]);
   assert.deepEqual(["video", "video-lib", "motion-skills"].map(where), ["video", "video", "video"]);
   assert.deepEqual(["design", "design-lib"].map(where), ["poster", "poster"]);
-  assert.equal(where("wangian"), "valorith");
-  assert.deepEqual(["wang", "bil", "crm"].map(where), ["business", "business", "business"]);
+  assert.deepEqual(["wangian", "bil-valorith"].map(where), ["valorith", "valorith"]);
+  assert.deepEqual(["wang", "bil", "crm", "syarikat"].map(where), ["business", "business", "business", "business"]);
   assert.deepEqual(["tech", "office", "repo", "api"].map(where), ["technology", "technology", "technology", "technology"]);
   assert.deepEqual(["resit", "langganan"].map(where), ["personal", "personal"]);
   assert.equal(where("tetapan"), undefined);

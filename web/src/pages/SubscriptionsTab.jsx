@@ -7,6 +7,7 @@ import { useLang } from "../lib/i18n";
 import { useTable } from "../lib/hooks";
 import { fmtDate, money } from "../lib/billing";
 import { CATEGORIES, CYCLES, STATUSES, blankSubscription, markPaid, standing, subsSummary, toRow, validateSubscription } from "../lib/subscriptions";
+import BusinessSelect from "../components/BusinessSelect";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Modal, Select, TextArea } from "../components/ui/Field";
@@ -183,6 +184,7 @@ function SubscriptionForm({ form, setForm, onSave, busy, t, w }) {
       <label><Label>{t("Terakhir dibayar", "Last paid")}</Label><Input type="date" value={form.last_paid} onChange={set("last_paid")} /></label>
       <label><Label>{t("Status", "Status")}</Label><Select className="w-full" value={form.status} onChange={set("status")} options={STATUSES.map((s) => [s, w(STATUS_WORDS, s)])} /></label>
       <label><Label>{t("Kategori", "Category")}</Label><Select className="w-full" value={form.category} onChange={set("category")} options={CATEGORIES.map((c) => [c, w(CATEGORY_WORDS, c)])} /></label>
+      <BusinessSelect value={form.business_id} onChange={(v) => setForm({ ...form, business_id: v })} />
       <label><Label>{t("Cara bayar", "Payment method")}</Label><Input value={form.payment_method} onChange={set("payment_method")} placeholder="Visa ...5742" /></label>
       <label><Label>{t("Rujukan akaun", "Account reference")}</Label><Input value={form.account_ref} onChange={set("account_ref")} /></label>
       <label className="sm:col-span-2"><Label>{t("Pautan bayar / urus", "Pay / manage link")}</Label><Input value={form.url} onChange={set("url")} placeholder="https://" /></label>

@@ -229,8 +229,8 @@ export function layoutToSeed(layout, words, { width, height, name, pictureUrl = 
     }
   }
   if (onReference) {
-    if (patches.some((p) => p && p.onPhoto)) notes.push(t("Perkataan lama di atas gambar ditampal dengan warna purata: alihkan atau padam tampalan itu di Kanvas jika kelihatan.", "Old words over a photograph are patched with the average colour: move or delete that patch in Kanvas if it shows."));
-  } else if (main && !pictureUrl && fullBleed(main)) notes.push(t("Gambar latar rujukan diganti dengan warna dan kecerunan yang serupa: tambah gambar anda sendiri di Kanvas.", "The reference's background photo is replaced by a similar colour and gradient: add your own picture in Kanvas."));
+    if (patches.some((p) => p && p.onPhoto)) notes.push(t("Perkataan lama di atas gambar ditampal dengan warna purata: semak pratonton jika tampalan kelihatan.", "Old words over a photograph are patched with the average colour: check the preview if a patch shows."));
+  } else if (main && !pictureUrl && fullBleed(main)) notes.push(t("Gambar latar rujukan diganti dengan warna dan kecerunan yang serupa: muat naik gambar anda sendiri sebagai latar.", "The reference's background photo is replaced by a similar colour and gradient: upload your own picture as the background."));
   else if (photos.some((p) => !fullBleed(p)) && !pictureUrl) notes.push(t("Kawasan gambar dibiarkan sebagai ruang kosong untuk anda ganti.", "Picture areas are left as empty boxes for you to replace."));
   return { seed: { width: W, height: H, name: name || t("Reka bentuk daripada rujukan", "Design from a reference"), layers, bgColor: bg.color, source: onReference ? "design-clone-ref" : "design-clone" }, notes };
 }

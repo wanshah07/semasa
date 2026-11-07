@@ -20,7 +20,7 @@ import { Segmented } from "../components/ui/Field";
    writes nothing. LinkedIn has no figures (the connection cannot read them), and the page says so. */
 
 const today = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
-const CHANNEL_WORDS = { threads: "Threads", instagram: "Instagram", facebook: "Facebook" };
+const CHANNEL_WORDS = { threads: "Threads", instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn" };
 const DAY_WORDS = { bm: ["Ahd", "Isn", "Sel", "Rab", "Kha", "Jum", "Sab"], en: DAYS };
 const fmt = (n) => (n >= 10000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n || 0)));
 
@@ -60,17 +60,23 @@ export default function PrestasiTab({ posts, go }) {
       <motion.div {...fadeUp} className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl">{t("Prestasi", "Performance")}</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted">{t("Apa yang setiap post buat di saluran: tontonan, penglibatan, balasan, post terbaik dan tetingkap siaran terbaik, dalam waktu Malaysia. Angka dibaca dari Buffer sekali sehari.",
-            "What every post did on its channel: views, engagement, replies, the peak post and the best publishing window, in Malaysia time. Figures are read from Buffer once a day.")}</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted">{t("Apa yang setiap post buat di saluran: tontonan, penglibatan, balasan, 3 post puncak dan tetingkap siaran terbaik, dalam waktu Malaysia. Angka dibaca dari Buffer sekali sehari.",
+            "What every post did on its channel: views, engagement, replies, the top 3 posts and the best publishing window, in Malaysia time. Figures are read from Buffer once a day.")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Segmented value={channel} onChange={(v) => { setChannel(v); setPicked(null); }}
-            options={[["", t("Semua", "All")], ...CHANNELS.map((c) => [c, CHANNEL_WORDS[c]])]} />
           <Segmented value={String(days)} onChange={(v) => { setDays(Number(v)); setPicked(null); }}
             options={[["7", t("7 hari", "7 days")], ["30", t("30 hari", "30 days")], ["90", t("90 hari", "90 days")]]} />
         </div>
       </motion.div>
 
+      <div role="tablist" aria-label={t("Platform", "Platform")} data-platform-tabs className="mb-5 flex gap-1.5 overflow-x-auto">
+        {[["", t("Semua", "All")], ...CHANNELS.map((c) => [c, CHANNEL_WORDS[c]]), ["linkedin", "LinkedIn"]].map(([v, label]) => (
+          <button key={v || "all"} type="button" role="tab" aria-selected={channel === v} onClick={() => { setChannel(v); setPicked(null); }}
+            className={`shrink-0 rounded-pill px-4 py-2 text-sm font-medium transition ${channel === v ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>{label}</button>
+        ))}
+      </div>
+      {channel === "linkedin" && <p className="mb-4 rounded-tile bg-surface-2 p-3 text-sm text-muted">{t("LinkedIn tiada angka: sambungan hanya boleh menyiar, bukan membaca tontonan atau interaksi. Bila LinkedIn boleh dibaca, tab ini akan terisi sendiri.",
+        "LinkedIn has no figures: the connection can post but cannot read views or interactions. When LinkedIn becomes readable this tab fills by itself.")}</p>}
       {missing && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual belum ada: jalankan supabase/034_post_metrics.sql sekali, kemudian larian Metrics di GitHub.", "The table is not there yet: run supabase/034_post_metrics.sql once, then the Metrics workflow on GitHub.")}</p>}
       {metricsT.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{metricsT.error}</p>}
       {!metricsT.loading && !metricsT.error && !metricsT.rows.length && (
@@ -109,22 +115,27 @@ export default function PrestasiTab({ posts, go }) {
             </ResponsiveContainer>
           </div>
         </Card>
-        <Card className="p-4">
-          <h2 className="flex items-center gap-2 text-sm font-medium"><Trophy size={14} className="text-gold" /> {t("Post puncak", "Peak post")}</h2>
-          {o.peak ? (
-            <div className="mt-2">
-              <p className="line-clamp-4 text-sm">{nameOf(o.peak)}</p>
-              <p className="mt-2 text-xs text-muted">{CHANNEL_WORDS[o.peak.channel] || o.peak.channel} · {stampMYT(o.peak.sent_at)}</p>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                <Stat label={t("Tontonan", "Views")} value={fmt(viewsOf(o.peak))} />
-                <Stat label={t("Interaksi", "Interactions")} value={fmt(interactionsOf(o.peak))} />
-                <Stat label={t("Balasan", "Replies")} value={fmt(o.peak.comments || 0)} />
-              </div>
-              <div className="mt-3 flex gap-2">
-                {o.peak.url && <a className="text-xs text-accent underline" href={o.peak.url} target="_blank" rel="noreferrer">{t("Buka post", "Open post")}</a>}
-                {o.peak.post_id && go && <button type="button" className="text-xs text-accent underline" onClick={() => go("post", o.peak.post_id)}>{t("Lihat dalam Post", "See in Posts")}</button>}
-              </div>
-            </div>
+        <Card className="p-4" data-peak-posts>
+          <h2 className="flex items-center gap-2 text-sm font-medium"><Trophy size={14} className="text-gold" /> {t("3 post puncak", "Top 3 posts")}</h2>
+          {top.length ? (
+            <ol className="mt-2 space-y-3">
+              {top.slice(0, 3).map((r, i) => (
+                <li key={r.id} className="flex gap-3 border-t border-line/60 pt-3 first:border-t-0 first:pt-0">
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-gold/15 text-xs font-semibold text-gold">{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-sm">{nameOf(r)}</p>
+                    <p className="mt-0.5 text-xs text-muted">{CHANNEL_WORDS[r.channel] || r.channel} · {stampMYT(r.sent_at)}</p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                      <span><b className="tabular-nums">{fmt(viewsOf(r))}</b> <span className="text-muted">{t("tontonan", "views")}</span></span>
+                      <span><b className="tabular-nums">{fmt(interactionsOf(r))}</b> <span className="text-muted">{t("interaksi", "interactions")}</span></span>
+                      <span><b className="tabular-nums">{fmt(r.comments || 0)}</b> <span className="text-muted">{t("balasan", "replies")}</span></span>
+                      {r.url && <a className="text-accent underline" href={r.url} target="_blank" rel="noreferrer">{t("Buka post", "Open post")}</a>}
+                      {r.post_id && go && <button type="button" className="text-accent underline" onClick={() => go("post", r.post_id)}>{t("Lihat dalam Post", "See in Posts")}</button>}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
           ) : <p className="mt-2 text-sm text-muted">{t("Tiada post dalam julat ini.", "No post in this range.")}</p>}
         </Card>
       </div>

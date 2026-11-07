@@ -3,7 +3,7 @@ import { LogOut } from "lucide-react";
 import { SidebarNav } from "@/components/ui/dashboard-sidebar";
 import { supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
-import { tabsOf } from "../lib/tabs";
+import { segmentOf, segmentsOf, tabsOf } from "../lib/tabs";
 
 const OPEN_MS = 120;    // a cursor passing on its way to the page does not open it
 const CLOSE_MS = 300;   // a cursor slipping off the edge for a moment does not close it
@@ -16,7 +16,7 @@ const CLOSE_MS = 300;   // a cursor slipping off the edge for a moment does not 
    left of the header:
    - pinned: the full menu always shows beside the page;
    - auto:   a 60 px rail of icons; pointing at it (or tabbing into it) slides the full menu out OVER the page, and it
-             slides back when the pointer leaves or a tab is chosen. The page never moves, so Kanvas keeps its width. */
+             slides back when the pointer leaves or a tab is chosen. The page never moves. */
 export default function AppSidebar({ tab, setTab, user, counts = {}, mode = "auto" }) {
   const { t } = useLang();
   const [peek, setPeek] = useState(false);
@@ -27,22 +27,25 @@ export default function AppSidebar({ tab, setTab, user, counts = {}, mode = "aut
   const later = (v, ms) => { clearTimeout(timer.current); timer.current = setTimeout(() => setPeek(v), ms); };
 
   const tabs = tabsOf(t);
-  const item = (x) => ({ id: x.id, title: x.label, icon: x.icon, ...(counts[x.id] ? { badge: counts[x.id] } : {}) });
-  const groups = [
-    { items: tabs.filter((x) => x.group === "").map(item) },
-    { heading: t("Cipta", "Create"), items: tabs.filter((x) => x.group === "create").map(item) },
-    { heading: t("Perniagaan", "Business"), items: tabs.filter((x) => x.group === "business").map(item) },
-    { heading: t("Rujukan", "Reference"), items: tabs.filter((x) => x.group === "reference").map(item) },
-  ];
-  const bottom = [...tabs.filter((x) => x.group === "bottom").map(item),
+  // the menu lists SEGMENTS (Wan, 11 Oct 2026); a segment opens its first page, and its other pages show as tabs above the page
+  const segs = segmentsOf(t);
+  const countOf = (seg) => seg.pages.reduce((n, p) => n + (counts[p.id] || 0), 0);
+  const segItem = (seg) => ({ id: `seg:${seg.id}`, title: seg.label, icon: seg.icon, ...(countOf(seg) ? { badge: countOf(seg) } : {}) });
+  const item = (x) => ({ id: x.id, title: x.label, icon: x.icon });
+  const groups = [{ items: segs.map(segItem) }];
+  const here = segmentOf(t, tab);
+  const bottom = [...tabs.filter((x) => x.segment === "").map(item),
     ...(user ? [{ id: "logout", title: t("Keluar", "Sign out"), icon: LogOut }] : [])];
   const choose = (id) => {
     if (id === "logout") return supabase.auth.signOut();
-    setTab(id);
+    if (id.startsWith("seg:")) {
+      const seg = segs.find((x) => `seg:${x.id}` === id);
+      if (seg && here?.id !== seg.id) setTab(seg.pages[0].id);     // already inside it: the tabs above the page do the rest
+    } else setTab(id);
     if (auto) { clearTimeout(timer.current); setPeek(false); }
   };
   const nav = (collapsed, cls) => (
-    <SidebarNav className={cls} label={t("Menu utama", "Main menu")} activeId={tab} groups={groups} bottomItems={bottom}
+    <SidebarNav className={cls} label={t("Menu utama", "Main menu")} activeId={here ? `seg:${here.id}` : tab} groups={groups} bottomItems={bottom}
       workspaces={["Semasa"]} plan={user?.email || t("Makmal kandungan ws.regulab", "ws.regulab content lab")}
       collapsed={collapsed} onSelect={choose} />
   );

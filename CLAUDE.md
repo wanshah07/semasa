@@ -62,3 +62,10 @@ Two hard limits that come from this repo's own rules, not from the format:
 - A VULNERABLE hook is first person about a named human. Never render one under a company
   identity; Semasa's public voice is the company.
 
+
+## Navigation (Phase 1, 11 Oct 2026)
+
+- The sidebar lists **segments**, not pages (`web/src/lib/tabs.js`: `tabsOf` is the one list of pages, each with a `segment`; `segmentsOf` / `segmentOf` group them). A segment opens its first page and a tab row (`components/SegmentBar.jsx`) shows the others. A page keeps its own hash (`#post`, `#office`…), so old links work. `tabs.test.mjs` fails if a page is in two segments or none.
+- **Kanvas is removed** (page, `canvasSeed.js`, `leaveGuard.js`, every "Edit in Kanvas" button). Design's rebuild/inspire flow now ends in **Download PNG** (`renderSeedPreview` at full size). `kanvasBuild.js` stays only because that preview uses it.
+- **Office repos** (`pages/OfficeTab.jsx`, the health board) and **Repo library** (`pages/RepoTab.jsx`, pasted links) are two pages in Technology.
+- Pages fill the width: `--page-max` is `min(100%, 1920px)`.

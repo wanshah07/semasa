@@ -412,3 +412,67 @@ def test_a_film_without_the_login_is_made_exactly_as_before(tmp_path, monkeypatc
                           runner=_runner(), workdir=tmp_path, now=NOW)
     got = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data[0]
     assert got["status"] == "done" and "ChatGPT" not in got["style_note"]
+
+
+# ---- a refused model (7 Nov 2026: "The 'gpt-5' model is not supported when using Codex with a ChatGPT account") ---------------
+
+REFUSED = ('{"detail":"The \'gpt-5\' model is not supported when using Codex with a ChatGPT account.","error":{"type":'
+           '"invalid_request_error","code":"model_not_found"}}')
+
+
+def words(text):
+    return sse({"type": "response.output_text.delta", "delta": text}, {"type": "response.completed", "response": {}})
+
+
+class Http2(Http):
+    """Http plus get() for the account's model list."""
+
+    def __init__(self, *answers, listed=None):
+        super().__init__(*answers)
+        self.listed, self.gets = listed, []
+
+    def get(self, url, **kw):
+        self.gets.append((url, kw))
+        if self.listed is None:
+            return Resp(404, text="no list")
+        return Resp(200, body={"models": [{"slug": m} for m in self.listed]})
+
+
+def test_a_refused_model_moves_to_one_the_account_lists_and_is_saved():
+    st = store()
+    http = Http2(Resp(400, text=REFUSED), Resp(200, lines=words("OK")), listed=["gpt-5.5", "gpt-5.4"])
+    assert login(st, http).write("sys", "user", model="gpt-5") == "OK"
+    assert [kw["json"]["model"] for _, kw in http.calls] == ["gpt-5", "gpt-5.5"]
+    assert st.tables[cl.TABLE][0]["model"] == "gpt-5.5", "the next call starts on the model that answered"
+    assert http.gets[0][0].endswith("/backend-api/codex/models")
+
+
+def test_with_no_list_the_fallbacks_are_tried_and_a_picture_is_drawn():
+    st, png = store(), picture()
+    http = Http2(Resp(400, text=REFUSED), Resp(400, text=REFUSED.replace("gpt-5", "gpt-5.5")), Resp(200, lines=done_event(png)))
+    assert login(st, http).draw("a lab", model="gpt-5") == png
+    assert [kw["json"]["model"] for _, kw in http.calls] == ["gpt-5", "gpt-5.5", "gpt-5.4"]
+    assert st.tables[cl.TABLE][0]["model"] == "gpt-5.4"
+
+
+def test_every_model_refused_says_which_were_tried_and_another_error_is_not_retried_as_a_model():
+    st = store()
+    http = Http2(*[Resp(400, text=REFUSED) for _ in range(6)], listed=[])
+    with pytest.raises(cl.ChatGPTError) as e:
+        login(st, http).write("s", "u", model="gpt-5")
+    assert e.value.model and "Tried gpt-5, gpt-5.5, gpt-5.4, gpt-5.3-codex, gpt-5.2-codex" in str(e.value)
+    assert len(http.calls) == 1 + cl.MODEL_TRIES
+    http2 = Http2(Resp(429, text="usage limit reached"))
+    with pytest.raises(cl.ChatGPTError) as e2:
+        login(store(), http2).write("s", "u")
+    assert e2.value.limit and not e2.value.model and len(http2.calls) == 1
+
+
+def test_chatgpt_is_a_robot_on_the_api_page():
+    st = store()
+    http = Http2(Resp(400, text=REFUSED), Resp(200, lines=words("OK")), listed=["gpt-5.5"])
+    row = login(st, http).probe_row()
+    assert row["slug"] == "chatgpt" and row["name"] == "ChatGPT (Wanshah 5)"
+    assert row["chat_ok"] and row["key_ok"] and row["model"] == "gpt-5.5" and row["models"] == ["gpt-5.5"] and row["model_listed"]
+    off = cl.Login(FakeStore(**{cl.TABLE: []}), http=Http2(), sleep=lambda s: None, now=lambda: NOW).probe_row()
+    assert not off["chat_ok"] and "not connected" in off["error"]

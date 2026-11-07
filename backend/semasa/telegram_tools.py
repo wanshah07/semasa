@@ -324,3 +324,58 @@ def due_motion_videos(store: Any, since: str) -> list[dict[str, Any]]:
     rows = store.table(MOTIONS).select("id,title,brief,video_url,status,options,updated_at").eq("status", "done") \
         .gte("updated_at", since).execute().data or []
     return [r for r in rows if (r.get("options") or {}).get("via") == "telegram" and r.get("video_url")]
+
+
+# ---- the main menu (Wan, 7 Nov 2026: "add button like this in telegram as per segment") -------------------------------------
+
+# (label, action): an action that needs no words runs at once; one that needs a topic asks for it (pending) and the next
+# message Wan sends is that topic.
+MENU = [
+    ("Kandungan", [("📝 Draf untuk lulus", "draf"), ("🗓 Jadual 7 hari", "jadual"), ("💡 Idea baharu", "idea")]),
+    ("Cipta", [("🎨 Poster", "poster"), ("🖼 Karusel", "karusel"), ("🎬 Motion", "motion"), ("📄 Laporan", "laporan")]),
+    ("Sistem", [("🤖 Robot AI", "robot"), ("🩺 Kesihatan", "kesihatan"), ("❗ Ralat", "ralat"), ("📊 Status", "status")]),
+    ("Bisnes & memori", [("💰 Bil", "bil"), ("🧠 Memori", "memori"), ("✍️ Ingat sesuatu", "ingat")]),
+]
+NEEDS_TOPIC = {
+    "idea": "💡 Hantar link atau tulis idea:",
+    "poster": "🎨 Topik atau link untuk poster:",
+    "karusel": "🖼 Topik atau link untuk karusel:",
+    "motion": "🎬 Idea atau link untuk video motion:",
+    "laporan": "📄 Laporan tentang apa?",
+    "ingat": "✍️ Apa yang perlu saya ingat untuk semua jawapan?",
+}
+
+
+def menu_reply(link: dict[str, Any] | None, site: str) -> tuple[str, list[list[dict[str, str]]]]:
+    name = (link or {}).get("username") or "Wan"
+    text = (f"Hai {name} 👋 Semasa di sini.\n\nPilih di bawah, atau terus taip soalan. Saya ingat nota anda dan belajar daripada "
+            "👍/👎 di bawah setiap jawapan.\n\n/menu bila-bila masa untuk menu ini.")
+    buttons: list[list[dict[str, str]]] = []
+    for _group, items in MENU:
+        row: list[dict[str, str]] = []
+        for label, action in items:
+            row.append({"text": label, "callback_data": f"menu:{action}"})
+            if len(row) == 2:
+                buttons.append(row)
+                row = []
+        if row:
+            buttons.append(row)
+    buttons.append([{"text": "🔗 Buka Semasa", "url": site.rstrip("/") + "/"}])
+    return text, buttons
+
+
+def ask_topic(store: Any, action: str) -> str:
+    save_chat_state(store, {**chat_state(store), "pending": action})
+    return NEEDS_TOPIC[action]
+
+
+def take_pending(store: Any, text: str) -> str | None:
+    """A topic Wan was asked for from the menu: the plain message becomes "/<action> <text>". None when nothing waits."""
+    st = chat_state(store)
+    action = st.get("pending")
+    if not action or not text or text.startswith("/"):
+        if action and text.startswith("/"):
+            save_chat_state(store, {**st, "pending": None})        # a command instead of the topic: the question is dropped
+        return None
+    save_chat_state(store, {**st, "pending": None})
+    return f"/{action} {text}"

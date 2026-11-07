@@ -1174,7 +1174,7 @@ class _ComposedByWorker(Exception):
 def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any], *, runner: Any = subprocess.run,
             workdir: Path | None = None, now: datetime | None = None, gh: GitHub | None = None,
             picture_provider: Any = None, speak: Any = None, photo_search: Any = None, photo_get: Any = None,
-            own_get: Any = None, gpt_login: Any = None) -> bool:
+            own_get: Any = None, gpt_login: Any = None, gemini: Any = None) -> bool:
     now = now or datetime.now(UTC)
     folder = (workdir or Path(tempfile.mkdtemp(prefix="motion-"))) / str(row["id"])[:8]
     antislop.begin(antislop.load(store))
@@ -1244,7 +1244,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         drawn, gpt_note = motion_gpt_images.draw_scenes(
             store, row, scenes, folder, design=motion_styles.design(row), palette=PALETTE["regulab"],
             ambient=str((row.get("options") or {}).get("ambient") or "mint"), resolution=size_of(row), style_name=style[0],
-            login=gpt_login)
+            login=gpt_login, gemini=gemini)
         if drawn:
             motion_gpt_images.pin(scenes, drawn)
             photos = [*drawn.values(), *motion_gpt_images.used(scenes, photos)]

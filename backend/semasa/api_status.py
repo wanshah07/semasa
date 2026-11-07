@@ -36,6 +36,7 @@ NAMES = {
     "api.openai.com": ("openai", "OpenAI"),
     "api.anthropic.com": ("anthropic", "Anthropic"),
     "kiosapi.com": ("kiosapi", "KiosAPI (Wanshah 3)"),
+    "generativelanguage.googleapis.com": ("gemini", "Gemini (Wanshah 4)"),
 }
 IMAGE_ROLES = ("image",)       # a picture maker: list its models and accept the key, never ask it a chat question
 BALANCE_PATHS = (
@@ -258,9 +259,10 @@ def team(settings: LLMSettings, media: MediaSettings | None = None, github: LLMS
 
 
 def run(store: Any, settings: LLMSettings, timeout: int = 30, media: MediaSettings | None = None,
-        github: LLMSettings | None = None, cfg: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        github: LLMSettings | None = None, cfg: dict[str, Any] | None = None,
+        extra: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     rows = []
-    for gw in team(settings, media, github, cfg):
+    for gw in [*team(settings, media, github, cfg), *(extra or [])]:
         row = probe(gw, timeout)
         rows.append(row)
         store.table(db.API_STATUS).upsert(row, on_conflict="slug").execute()
@@ -346,7 +348,16 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 - the image slot is optional to the probe
         log.info("media settings not loaded (%s); the picture maker is not probed", str(exc)[:120])
         media = None
-    rows = run(store, settings, timeout=int(os.environ.get("LLM_TIMEOUT") or 30), media=media, github=LLMSettings.load(), cfg=cfg)
+    extra: list[dict[str, Any]] = []
+    try:                                    # Gemini's next key, probed like any robot (supabase/061 may not be applied)
+        from . import gemini_keys
+        gem = gemini_keys.gateway(store)
+        if gem:
+            extra.append(gem)
+    except Exception as exc:  # noqa: BLE001 - the other robots are probed all the same
+        log.info("Gemini not probed: %s", str(exc)[:120])
+    rows = run(store, settings, timeout=int(os.environ.get("LLM_TIMEOUT") or 30), media=media, github=LLMSettings.load(), cfg=cfg,
+               extra=extra)
     # the probe just measured every robot: decide the order now, so the API tab shows the team the next run will use
     from . import ai_team
     live = ai_team.LIVE if ai_team.live_enabled() else None

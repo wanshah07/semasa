@@ -139,12 +139,16 @@ def _chat(gw: dict[str, Any], timeout: int) -> tuple[bool, int | None, dict[str,
                 timeout=timeout,
             )
         else:
-            r = requests.post(
-                f"{gw['base_url']}/chat/completions",
-                headers={"Authorization": f"Bearer {gw['key']}"},
-                json={"model": gw["model"], "max_tokens": 5, "messages": [{"role": "user", "content": "Say OK"}]},
-                timeout=timeout,
-            )
+            body: dict[str, Any] = {"model": gw["model"], "max_tokens": 5, "messages": [{"role": "user", "content": "Say OK"}]}
+            # Gemini 3.x Flash thinks before it answers on Google's OpenAI-compatible endpoint; a five-token question needs none
+            if "generativelanguage.googleapis.com" in str(gw.get("base_url") or ""):
+                body["reasoning_effort"] = "low"
+            r = requests.post(f"{gw['base_url']}/chat/completions", headers={"Authorization": f"Bearer {gw['key']}"},
+                              json=body, timeout=timeout)
+            if r.status_code == 400 and "reasoning" in r.text.lower() and "reasoning_effort" in body:
+                body.pop("reasoning_effort")           # a model that does not take the field is asked plainly
+                r = requests.post(f"{gw['base_url']}/chat/completions", headers={"Authorization": f"Bearer {gw['key']}"},
+                                  json=body, timeout=timeout)
     except requests.RequestException as exc:
         return False, None, {}, str(exc)[:200]
     ms = int((time.monotonic() - t0) * 1000)
@@ -214,7 +218,9 @@ def probe(gw: dict[str, Any], timeout: int = 30) -> dict[str, Any]:
         key_ok=None if http is None else http not in (401, 403),
         error=err,
     )
-    row["model_listed"] = (gw["model"] in models) if models and gw["model"] else None
+    # Google lists "models/gemini-3.6-flash" while the workers ask for "gemini-3.6-flash": compare without the prefix
+    listed = {str(m).removeprefix("models/") for m in models or []}
+    row["model_listed"] = (str(gw["model"]).removeprefix("models/") in listed) if models and gw["model"] else None
     if gw["role"] in IMAGE_ROLES:
         # a painter is "up" when it lists models with the key accepted; its chat endpoint is not its job
         row.update(chat_ok=bool(row["key_ok"]) and bool(models), chat_ms=ms)

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { LogOut } from "lucide-react";
+import { LogOut, Pin, PinOff } from "lucide-react";
 import { SidebarNav } from "@/components/ui/dashboard-sidebar";
 import { supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
@@ -17,7 +17,7 @@ const CLOSE_MS = 300;   // a cursor slipping off the edge for a moment does not 
    - pinned: the full menu always shows beside the page;
    - auto:   a 60 px rail of icons; pointing at it (or tabbing into it) slides the full menu out OVER the page, and it
              slides back when the pointer leaves or a tab is chosen. The page never moves. */
-export default function AppSidebar({ tab, setTab, user, counts = {}, mode = "auto" }) {
+export default function AppSidebar({ tab, setTab, user, counts = {}, mode = "auto", onToggleMode }) {
   const { t } = useLang();
   const [peek, setPeek] = useState(false);
   const timer = useRef(null);
@@ -30,14 +30,21 @@ export default function AppSidebar({ tab, setTab, user, counts = {}, mode = "aut
   // the menu lists SEGMENTS (Wan, 11 Oct 2026); a segment opens its first page, and its other pages show as tabs above the page
   const segs = segmentsOf(t);
   const countOf = (seg) => seg.pages.reduce((n, p) => n + (counts[p.id] || 0), 0);
-  const segItem = (seg) => ({ id: `seg:${seg.id}`, title: seg.label, icon: seg.icon, ...(countOf(seg) ? { badge: countOf(seg) } : {}) });
+  // a segment with more than one page lists its pages under it (Wan, 7 Nov 2026: "add subtopic for sidebar"); the group holding
+  // the page in view opens by itself, and a one-page segment stays a single row
+  const segItem = (seg) => ({ id: `seg:${seg.id}`, title: seg.label, icon: seg.icon, ...(countOf(seg) ? { badge: countOf(seg) } : {}),
+    ...(seg.pages.length > 1 ? { children: seg.pages.map((p) => ({ id: p.id, title: p.label, icon: p.icon, ...(counts[p.id] ? { badge: counts[p.id] } : {}) })) } : {}) });
   const item = (x) => ({ id: x.id, title: x.label, icon: x.icon });
   const groups = [{ items: segs.map(segItem) }];
   const here = segmentOf(t, tab);
-  const bottom = [...tabs.filter((x) => x.segment === "").map(item),
+  // auto-hide on or paused (pinned), from inside the menu as well as the button beside the header
+  const modeItem = onToggleMode ? [{ id: "navmode", title: auto ? t("Pin menu (jeda auto-sembunyi)", "Pin the menu (pause auto-hide)") : t("Auto-sembunyi menu", "Auto-hide the menu"),
+    icon: auto ? Pin : PinOff }] : [];
+  const bottom = [...modeItem, ...tabs.filter((x) => x.segment === "").map(item),
     ...(user ? [{ id: "logout", title: t("Keluar", "Sign out"), icon: LogOut }] : [])];
   const choose = (id) => {
     if (id === "logout") return supabase.auth.signOut();
+    if (id === "navmode") { clearTimeout(timer.current); setPeek(false); return onToggleMode?.(); }
     if (id.startsWith("seg:")) {
       const seg = segs.find((x) => `seg:${x.id}` === id);
       if (seg && here?.id !== seg.id) setTab(seg.pages[0].id);     // already inside it: the tabs above the page do the rest
@@ -45,7 +52,7 @@ export default function AppSidebar({ tab, setTab, user, counts = {}, mode = "aut
     if (auto) { clearTimeout(timer.current); setPeek(false); }
   };
   const nav = (collapsed, cls) => (
-    <SidebarNav className={cls} label={t("Menu utama", "Main menu")} activeId={here ? `seg:${here.id}` : tab} groups={groups} bottomItems={bottom}
+    <SidebarNav className={cls} label={t("Menu utama", "Main menu")} activeId={here && here.pages.length === 1 ? `seg:${here.id}` : tab} groups={groups} bottomItems={bottom}
       workspaces={["Semasa"]} plan={user?.email || t("Makmal kandungan ws.regulab", "ws.regulab content lab")}
       collapsed={collapsed} onSelect={choose} />
   );

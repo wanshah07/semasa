@@ -60,10 +60,34 @@ t("recent activity: newest first, trimmed", () => {
 
 t("the dashboard layout keeps the hidden widgets, so a new widget shows by default and the tiles never go", () => {
   assert.deepEqual(visibleWidgets(undefined), DASHBOARD_WIDGETS);
-  assert.deepEqual(visibleWidgets({ hidden: ["chart", "subs", "stats", "gone"] }), ["stats", "queue", "activity", "ai"]);
-  assert.deepEqual(hiddenFrom(["stats", "queue"]), ["chart", "activity", "ai", "subs"]);
-  assert.deepEqual(hiddenFrom([]), ["chart", "queue", "activity", "ai", "subs"], "the tiles cannot be hidden");
+  assert.deepEqual(visibleWidgets({ hidden: ["chart", "subs", "stats", "gone"] }), ["stats", "charts", "queue", "activity", "ai"], "a widget added later (charts) shows for a layout saved before it");
+  assert.deepEqual(hiddenFrom(["stats", "queue"]), ["chart", "charts", "activity", "ai", "subs"]);
+  assert.deepEqual(hiddenFrom([]), ["chart", "charts", "queue", "activity", "ai", "subs"], "the tiles cannot be hidden");
   assert.deepEqual(visibleWidgets({ hidden: hiddenFrom(["queue"]) }), ["stats", "queue"]);
 });
 
 console.log(`dashboard: ${n} checks passed`);
+
+// ---- more graphs (Wan, 7 Nov 2026) ----
+import { ideaStatusCounts, postsByTopic, sentByChannel, tokensByDay } from "./src/lib/dashboard.js";
+{
+  const assert2 = (await import("node:assert/strict")).default;
+  assert2.deepEqual(ideaStatusCounts([{ status: "error" }, { status: "new" }, { status: "error" }, { status: "odd" }]), [{ status: "new", n: 1 }, { status: "error", n: 2 }]);
+  const log = [
+    { channel: "instagram", action: "sent", at: "2026-11-06T02:00:00Z" }, { channel: "instagram", action: "error", at: "2026-11-06T03:00:00Z" },
+    { channel: "facebook", action: "sent", at: "2026-11-05T02:00:00Z" }, { channel: "facebook", action: "sent", at: "2026-09-01T02:00:00Z" },
+    { channel: "threads", action: "queued", at: "2026-11-06T02:00:00Z" }, { action: "sent", at: "2026-11-06T02:00:00Z" },
+  ];
+  assert2.deepEqual(sentByChannel(log, "2026-11-07", 30), [{ channel: "instagram", sent: 1, error: 1 }, { channel: "facebook", sent: 1, error: 0 }],
+    "only sent and error lines in the window, with a channel");
+  const tk = tokensByDay([{ created_at: "2026-11-06T17:30:00Z", total_tokens: 100, ok: true }, { created_at: "2026-11-07T01:00:00Z", total_tokens: 50, ok: false },
+    { created_at: "2026-10-01T00:00:00Z", total_tokens: 999 }], "2026-11-07", 3);
+  assert2.deepEqual(tk.map((d) => d.date), ["2026-11-05", "2026-11-06", "2026-11-07"]);
+  assert2.deepEqual(tk[2], { date: "2026-11-07", tokens: 150, calls: 2, failed: 1 }, "17:30Z on the 6th is 01:30 MYT on the 7th");
+  assert2.equal(tk[0].tokens, 0, "a quiet day is still drawn");
+  const topics = postsByTopic([{ stream: "regulab", domain: "kosmetik", created_at: "2026-11-01T00:00:00Z" }, { stream: "linkedin", created_at: "2026-11-02T00:00:00Z" },
+    { stream: "regulab", domain: "kosmetik", created_at: "2026-11-03T00:00:00Z" }, { stream: "regulab", domain: "halal_my", status: "rejected", created_at: "2026-11-03T00:00:00Z" },
+    { stream: "regulab", created_at: "2026-11-04T00:00:00Z" }, { stream: "regulab", domain: "fatwa", created_at: "2026-08-01T00:00:00Z" }], "2026-11-07", 30);
+  assert2.deepEqual(topics, [{ topic: "kosmetik", n: 2 }, { topic: "linkedin", n: 1 }, { topic: "other", n: 1 }]);
+  console.log("dashboard graphs: 5 checks passed");
+}

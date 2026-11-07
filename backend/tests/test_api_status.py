@@ -233,3 +233,35 @@ def test_prune_drops_old_usage():
     )
     api_status.prune(store, datetime(2026, 10, 9, tzinfo=UTC))
     assert len(store.tables[db.API_USAGE]) == 1
+
+
+def test_gemini_model_is_listed_despite_googles_models_prefix_and_is_asked_to_think_little(monkeypatch):
+    """7 Nov 2026: the probe said gemini-3.6-flash was NOT listed while Google lists it as models/gemini-3.6-flash."""
+    seen = {}
+
+    class R:
+        def __init__(self, status, body):
+            self.status_code, self._b, self.text = status, body, str(body)
+
+        def json(self):
+            return self._b
+
+    def fake_get(url, headers=None, timeout=None, **_):
+        if url.endswith("/models"):
+            return R(200, {"data": [{"id": "models/gemini-3.6-flash"}, {"id": "models/gemini-2.5-flash"}]})
+        return R(404, {})
+
+    def fake_post(url, headers=None, json=None, timeout=None, **_):
+        seen.setdefault("bodies", []).append(dict(json))
+        if json.get("reasoning_effort"):
+            return R(400, {"error": "Unknown name reasoning_effort"})
+        return R(200, {"choices": [{"message": {"content": "OK"}}]})
+
+    monkeypatch.setattr(api_status.requests, "get", fake_get)
+    monkeypatch.setattr(api_status.requests, "post", fake_post)
+    row = api_status.probe({"slug": "gemini", "name": "Gemini", "role": "primary", "provider": "openai", "key": "AIza-1234",
+                            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "model": "gemini-3.6-flash"})
+    assert row["model_listed"] is True
+    assert seen["bodies"][0]["reasoning_effort"] == "low" and "reasoning_effort" not in seen["bodies"][1], \
+        "a model that refuses the field is asked again plainly"
+    assert row["chat_ok"] is True

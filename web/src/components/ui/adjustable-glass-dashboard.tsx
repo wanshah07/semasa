@@ -896,7 +896,7 @@ export default function GlassWorkspace({
                       {chart}
                     </section>
                   </div>
-                  <div className="gw-lower-grid">
+                  <div className={`gw-lower-grid${goals.length > 0 ? "" : " gw-lower-single"}`}>
                     <section className="gw-panel gw-reveal">
                       <div className="gw-panel-title">
                         <h2>{L.recent}</h2>
@@ -1476,7 +1476,8 @@ const styles = `
 }
 .gw-workspace {
   position: relative;
-  width: min(1280px, 100%);
+  /* fills its frame (Wan, 7 Nov 2026: "make the money overview fill up the gap"); the pasted demo capped it at 1280 px */
+  width: 100%;
   margin: auto;
 }
 .gw-glass {
@@ -1868,6 +1869,9 @@ const styles = `
   display: grid;
   grid-template-columns: 1.3fr 1fr;
   gap: 16px;
+}
+.gw-lower-grid.gw-lower-single {
+  grid-template-columns: 1fr;
 }
 .gw-text-button {
   display: flex;

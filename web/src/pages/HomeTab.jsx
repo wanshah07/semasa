@@ -20,6 +20,7 @@ import Button from "../components/ui/Button";
 import AiTeam from "../components/AiTeam";
 import { Modal } from "../components/ui/Field";
 import { DashboardLayoutConfigurator } from "@/components/ui/dashboard-configuration";
+import HomeCharts from "../components/HomeCharts";
 
 /* Papan: the whole system on one page (Wan, 9 Oct 2026: "yes whole system dashboard"). Everything is computed from
    rows the page already loads (ideas, posts, the publish log, the log, the Bil documents and the subscriptions) with
@@ -38,7 +39,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
   const docsT = useTable(TABLES.billingDocs, { enabled: true, limit: 2000, realtime: false });
   const subsT = useTable(TABLES.subscriptions, { enabled: true, order: "next_payment", ascending: true, limit: 500, realtime: false });
   const apiT = useTable(TABLES.apiStatus, { enabled: true, order: "role", ascending: true, limit: 20, realtime: false, everyMs: 300_000 });
-  const usageT = useTable(TABLES.apiUsage, { enabled: true, order: "created_at", limit: 300, realtime: false, everyMs: 300_000 });
+  const usageT = useTable(TABLES.apiUsage, { enabled: true, order: "created_at", limit: 2000, realtime: false, everyMs: 300_000 });   // 14 days for the tokens chart
   const now = myt();
   const today = now.date;
   const stats = useMemo(() => systemStats({ ideas: ideas.rows, posts: posts.rows, log: log.rows, today }), [ideas.rows, posts.rows, log.rows, today]);
@@ -69,6 +70,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
   const widgetList = [
     { id: "stats", title: t("Angka utama", "Headline figures"), description: t("Idea baharu, draf menunggu, disiar minggu ini, belum dijelaskan. Sentiasa dipapar.", "New ideas, drafts waiting, published this week, outstanding. Always shown."), isPermanent: true },
     { id: "chart", title: t("Ditulis lawan disiar", "Drafted against published"), description: t("Carta lapan minggu.", "The eight-week chart.") },
+    { id: "charts", title: t("Carta ringkas", "More charts"), description: t("Idea ikut status, siaran ikut saluran, token AI sehari, post ikut topik.", "Ideas by status, posts by channel, AI tokens a day, posts by topic.") },
     { id: "queue", title: t("Seterusnya dalam giliran", "Next in the queue"), description: t("Post terdekat dan tahap alirannya.", "The nearest posts and how far along they are.") },
     { id: "activity", title: t("Aktiviti sistem", "System activity"), description: t("Log terkini: scrape, idea, post, penerbit.", "The latest log lines: scrape, ideas, posts, publisher.") },
     { id: "ai", title: t("Pasukan AI", "AI team"), description: t("Robot yang menulis sekarang dan status setiap gerbang.", "Which robot writes now and each gateway's state.") },
@@ -174,6 +176,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
         projects={projects}
         activity={activityRows}
         aside={aside}
+        below={shows("charts") ? <HomeCharts className="grid gap-4 sm:grid-cols-2" ideas={ideas.rows} posts={posts.rows} log={log.rows} usage={usageT.rows} today={today} /> : null}
         show={{ chart: shows("chart"), projects: shows("queue"), activity: shows("activity") }}
         words={{
           chartTitle: t("Ditulis lawan disiar", "Drafted against published"), chartDescription: t("Lapan minggu terakhir: post yang ditulis dan post yang sampai ke saluran", "The last eight weeks: posts written and posts that reached a channel"),

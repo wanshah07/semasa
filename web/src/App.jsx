@@ -432,7 +432,7 @@ export default function App() {
   return (
     <DesignsContext.Provider value={designsCtx}>
     <div id="top" className="min-h-screen lg:flex">
-      <AppSidebar tab={tab} setTab={go} user={user} counts={allowed ? counts : {}} mode={navMode} />
+      <AppSidebar tab={tab} setTab={go} user={user} counts={allowed ? counts : {}} mode={navMode} onToggleMode={toggleNav} />
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
       <Header tab={tab} setTab={go} user={user} sidebar navMode={navMode} onToggleSidebar={toggleNav}
         onGuide={allowed ? () => setGuideOpen(true) : undefined} />

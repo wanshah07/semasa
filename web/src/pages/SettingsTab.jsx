@@ -79,9 +79,6 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
         </div>
       </Card>
 
-      <AiSettings onToast={onToast} github={{ scrape: settings.ai_github_scrape, media: settings.ai_github_media }} />
-
-      <MireldTrial settings={settings} save={save} onToast={onToast} />
 
       <Card className="grid gap-4 p-5 sm:grid-cols-2">
         <label className="block"><Label hint={t("HH:MM, dipisah koma", "HH:MM, comma-separated")}>{t("Slot ws.regulab (MYT)", "ws.regulab slots (MYT)")}</Label>
@@ -125,13 +122,13 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
 
       <Button onClick={submit} disabled={busy}><Save size={14} /> {t("Simpan tetapan", "Save settings")}</Button>
 
-      <WriterSettings settings={settings} save={save} onToast={onToast} />
-
       <Card className="p-5 text-sm" data-moved-hooks>
-        <p className="text-muted">{t("Gaya hook dan pembelajaran hook kini di Kandungan → ", "Hook styles and hook learning now live in Content → ")}
+        <p className="text-muted">{t("Dipindahkan ke halaman masing-masing: gaya hook dan pembelajaran hook ke Kandungan → ", "Moved to their own pages: hook styles and hook learning to Content → ")}
           <a href="#hooks" className="font-medium text-accent underline">{t("Bank hook", "Hooks bank")}</a>
-          {t("; gaya penulisan di Kandungan → ", "; writing styles in Content → ")}
-          <a href="#gaya" className="font-medium text-accent underline">{t("Gaya penulisan", "Writing styles")}</a>.</p>
+          {t("; gaya rumah (suara, larangan, hashtag) dan gaya penulisan ke Kandungan → ", "; the house style (voice, never-list, hashtags) and writing styles to Content → ")}
+          <a href="#gaya" className="font-medium text-accent underline">{t("Gaya penulisan", "Writing styles")}</a>
+          {t("; tetapan AI dan percubaan Mireld ke Teknologi → ", "; AI settings and the Mireld trial to Technology → ")}
+          <a href="#api" className="font-medium text-accent underline">API</a>.</p>
       </Card>
 
       <AutofillSettings settings={settings} save={save} onToast={onToast} />
@@ -153,7 +150,7 @@ const tagsOf = (s) => [...new Set(String(s || "").split(/[\s,]+/).map((x) => x.t
 /* Studio's writer settings (supabase/021 seeded them from Studio itself): the voice each stream writes in, what it must
    never write, its hashtags and the fatwa gazette line. Every writer in the worker reads them (ideas.writer_block);
    they add to the rules and can never lift one, so nothing typed here can switch a check off. */
-function WriterSettings({ settings, save, onToast }) {
+export function WriterSettings({ settings, save, onToast }) {
   const { t } = useLang();
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -174,7 +171,7 @@ function WriterSettings({ settings, save, onToast }) {
       linkedin: { ...((w || {}).linkedin || {}), voice: f.lVoice.trim(), never: listOf(f.lNever), hashtags: tagsOf(f.lTags) },
     };
     setBusy(true);
-    try { await save("writer", next); onToast(t("Gaya penulisan disimpan. Draf seterusnya ikut ini.", "Writing style saved. The next drafts follow it."), "ok"); } catch (e) {
+    try { await save("writer", next); onToast(t("Gaya rumah disimpan. Draf seterusnya ikut ini.", "House style saved. The next drafts follow it."), "ok"); } catch (e) {
       onToast(/0 rows/.test(e.message) ? t("Jalankan supabase/021_studio_workflow.sql dahulu.", "Run supabase/021_studio_workflow.sql first.") : e.message, "danger");
     }
     setBusy(false);
@@ -185,7 +182,7 @@ function WriterSettings({ settings, save, onToast }) {
   const pillars = Object.entries(w?.regulab?.pillars || {});
   return (
     <Card className="p-5">
-      <h2 className="flex items-center gap-2 text-lg"><ScrollText size={16} /> {t("Gaya penulisan", "Writing style")}</h2>
+      <h2 className="flex items-center gap-2 text-lg"><ScrollText size={16} /> {t("Gaya rumah (setiap penulis)", "House style (every writer)")}</h2>
       <p className="mt-1 text-[12px] text-muted">{t("Dibaca oleh setiap penulis Semasa. Ia menambah pada peraturan, tidak pernah menarik balik mana-mana semakan.",
         "Read by every writer in Semasa. It adds to the rules and never switches a check off.")}</p>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -206,7 +203,7 @@ function WriterSettings({ settings, save, onToast }) {
           <label className="block"><Label hint={t("pilihan", "optional")}>Hashtag</Label><Input value={f.lTags} onChange={set("lTags")} /></label>
         </div>
       </div>
-      <Button className="mt-4" onClick={submit} disabled={busy}><Save size={14} /> {t("Simpan gaya penulisan", "Save writing style")}</Button>
+      <Button className="mt-4" onClick={submit} disabled={busy}><Save size={14} /> {t("Simpan gaya rumah", "Save house style")}</Button>
     </Card>
   );
 }
@@ -532,7 +529,7 @@ function IndoTabung({ settings, save, onToast }) {
    next worker run that has something to ask each ask Mireld FIRST: summaries, drafts, and the read of a picture.
    rootsys answers whatever Mireld cannot, so nothing is lost. Each part then reports here and switches itself off
    (backend/semasa/trial.py). The row is made by the worker, which the browser cannot do. */
-function MireldTrial({ settings, save, onToast }) {
+export function MireldTrial({ settings, save, onToast }) {
   const { t } = useLang();
   const [busy, setBusy] = useState(false);
   const row = settings.llm_trial;
@@ -664,7 +661,7 @@ function GithubNow({ slot, github, overridden }) {
 
 const blankAi = (slot) => ({ provider: slot === "image_gen" ? "cloudflare" : "openai", base_url: "", model: "", edit_model: "", key: "" });
 
-function AiSettings({ onToast, github }) {
+export function AiSettings({ onToast, github }) {
   const { t } = useLang();
   const [rows, setRows] = useState({});
   const [forms, setForms] = useState({});

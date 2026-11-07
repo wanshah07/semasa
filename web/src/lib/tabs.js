@@ -1,5 +1,5 @@
 import { Anchor, BarChart3, Brain, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
-  LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, Radio, PenLine, Receipt, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
+  Layers, LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, Radio, PenLine, Receipt, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
 
 /* Every page, once: the header's tab row on a phone, the sidebar and the sub-tab bar all read this list, so they can never
    disagree. A page's `id` is its address (#post, #office…) and does not change when it moves between segments.
@@ -41,6 +41,7 @@ export function tabsOf(t) {
     { id: "office", label: t("Repo pejabat", "Office repos"), icon: Building2, segment: "technology" },
     { id: "repo", label: t("Pustaka repo", "Repo library"), icon: GitBranch, segment: "technology" },
     { id: "api", label: "API", icon: Cpu, segment: "technology" },
+    { id: "stack", label: t("Senarai teknologi", "Technology list"), icon: Layers, segment: "technology" },
 
     { id: "resit", label: t("Pembelian", "Purchases"), icon: ScanLine, segment: "personal" },
     { id: "langganan", label: t("Langganan", "Subscriptions"), icon: CreditCard, segment: "personal" },

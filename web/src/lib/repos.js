@@ -73,7 +73,9 @@ export function parseRepoList(text) {
   const seen = new Set();
   const out = [];
   for (const line of String(text || "").split(/[\n,]/)) {
-    const s = line.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "").replace(/\/$/, "");
+    // owner/name, or any GitHub address of the repo (www., a /tree/main or /issues tail, .git): only owner/name is kept
+    const url = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)/i.exec(line.trim());
+    const s = (url ? `${url[1]}/${url[2]}` : line.trim()).replace(/\.git$/, "").replace(/\/$/, "");
     if (!/^[\w.-]+\/[\w.-]+$/.test(s) || seen.has(s.toLowerCase())) continue;
     seen.add(s.toLowerCase());
     out.push(s);

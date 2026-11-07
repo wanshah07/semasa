@@ -30,8 +30,9 @@ from .log import get_logger
 log = get_logger("semasa.gemini_check")
 
 ASK_LIMIT = 4                      # models asked per key when the wanted one is gone
-CHECK_TIMEOUT = 45                 # seconds a check question may take: the newer models answer slowly (the 12 s of a routine
+CHECK_TIMEOUT = 45                 # seconds the first question may take: the newer models answer slowly (the 12 s of a routine
 #                                    probe timed out on the first real check, 7 Nov 2026)
+NEXT_TIMEOUT = 25                  # seconds each further model may take once the first did not answer
 NOT_TEXT = re.compile(r"image|tts|embed|live|audio|robotics|computer|native|thinking|aqa|vision|learnlm|imagen|veo", re.I)
 PREVIEW = re.compile(r"preview|exp|beta", re.I)
 VERSION = re.compile(r"^gemini-(\d+(?:\.\d+)?)-(flash|pro)(-lite)?(?:-(.+))?$")
@@ -98,7 +99,7 @@ def read_lists(keys: list[dict[str, Any]], live: Any) -> tuple[list[str], list[s
 
 def _note(store: Any, row: dict[str, Any], text: str, now: datetime) -> None:
     try:
-        patch = {"checked_at": now.isoformat(), "check_note": text[:300]}
+        patch = {"checked_at": now.isoformat(), "check_note": text[:600]}
         store.table(gemini_keys.TABLE).update(patch).eq("id", row["id"]).execute()
     except Exception as exc:  # noqa: BLE001 - a note lost is not a reason to stop the check
         log.info("gemini check note not saved: %s", str(exc)[:100])
@@ -114,31 +115,39 @@ def _write_models(store: Any, text: list[str], image: list[str], text_pick: str,
         log.info("gemini models not saved: %s", str(exc)[:100])
 
 
-def find_working(row: dict[str, Any], live: Any, first: str, listed: list[str],
-                 gone: list[str] | None = None) -> tuple[str, int | None, str]:
-    """Asks `first`; when it is gone, the next candidates in turn. (the model that answered, ms, the last error); the model is ""
-    when none answered, and the error says why. Every model found gone is appended to `gone`."""
+def find_working(row: dict[str, Any], live: Any, first: str, listed: list[str], gone: list[str] | None = None,
+                 trail: list[str] | None = None) -> tuple[str, int | None, str]:
+    """Asks `first`, then the next candidates in turn while a model is gone OR gives no answer in time (a slow or hung model says
+    nothing about the key or about the others). It stops on what is the KEY's own: refused or out of quota. Returns (the model
+    that
+    answered, ms, the last error); the model is "" when none answered. Every model found gone is appended to `gone`, and what
+    happened to each model asked to `trail`, which the key's note shows so Wan can see which one answers."""
     gone = gone if gone is not None else []
+    trail = trail if trail is not None else []
     c = {"slug": "gemini", "provider": "openai", "base_url": gemini_keys.BASE, "key": row["api_key"]}
-    ok, ms, err = live.chat(c, first, timeout=CHECK_TIMEOUT)
-    if ok:
-        return first, ms, ""
-    if gemini_keys.classify(err) != "model":
-        return "", ms, str(err)
-    gone.append(first)
-    tried = {first}
-    for alt in text_candidates(listed, wanted_gone=first, suggestion=gemini_keys.suggested_model(err))[:ASK_LIMIT]:
-        if alt in tried:
+    tried: list[str] = []
+    queue = [first]
+    err, ms = "", None
+    while queue and len(tried) <= ASK_LIMIT:
+        model = queue.pop(0)
+        if model in tried:
             continue
-        tried.add(alt)
-        ok, ms, err2 = live.chat(c, alt, timeout=CHECK_TIMEOUT)
+        tried.append(model)
+        ok, ms, err = live.chat(c, model, timeout=CHECK_TIMEOUT if len(tried) == 1 else NEXT_TIMEOUT)
         if ok:
-            return alt, ms, ""
-        if gemini_keys.classify(err2) != "model":
-            return "", ms, str(err2)
-        gone.append(alt)
-        err = err2
-    return "", None, str(err)
+            trail.append(f"{model} answered in {ms} ms")
+            return model, ms, ""
+        kind = gemini_keys.classify(err)
+        if kind == "model":
+            gone.append(model)
+            trail.append(f"{model} is gone")
+        elif kind == "retry":
+            trail.append(f"{model} gave no answer in time")
+        else:                                                   # refused or out of quota: the key's own, not the model's
+            return "", ms, str(err)
+        if len(tried) == 1:
+            queue = text_candidates(listed, wanted_gone=first, suggestion=gemini_keys.suggested_model(err))[:ASK_LIMIT]
+    return "", ms, str(err)
 
 
 def run(store: Any, live: Any = None, now: datetime | None = None) -> str:
@@ -155,7 +164,9 @@ def run(store: Any, live: Any = None, now: datetime | None = None) -> str:
     gone: list[str] = []
     kinds: list[str] = []
     for row in rows:
-        model, ms, err = find_working(row, live, chosen or wanted, text, gone)
+        trail: list[str] = []
+        model, ms, err = find_working(row, live, chosen or wanted, text, gone, trail)
+        tried = f" Tried: {'; '.join(trail)}." if len(trail) > 1 else ""
         if model and not chosen:
             chosen = model
         kind = gemini_keys.note(store, row, bool(model), err, now)
@@ -166,12 +177,13 @@ def run(store: Any, live: Any = None, now: datetime | None = None) -> str:
             pic = (f"picture model {image_now} is in this key's list" if image_now in image else
                    f"picture model {image_now} is NOT in this key's list: pictures will look for another" if image else
                    "no picture model is in this key's list" if text else "the model list could not be read")
-            _note(store, row, f"{moved}answered in {ms} ms ({model}); {pic}", now)
+            _note(store, row, f"{moved}answered in {ms} ms ({model}); {pic}.{tried}", now)
         else:
             why = {"bad": "Google refused this key: check that it is a Google AI Studio key and that it is not restricted",
                    "limited": "the key's quota or rate limit is used up: it rests, then is tried again",
                    "model": "no text model this key lists answered: pick one on the card, or try again later"}
-            _note(store, row, why.get(kind, "Google did not answer: it is tried again"), now)
+            default = "no model answered in time: Google is slow or unreachable, it is tried again"
+            _note(store, row, why.get(kind, default) + (f".{tried}" if tried else ""), now)
     if text or image or chosen:
         raw = settings["model_setting"]
         # the pick is what auto follows: the model that answered when Wan's own choice is auto or is gone or silent

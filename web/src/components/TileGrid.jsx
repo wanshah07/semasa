@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Clapperboard, Clock, ImageOff, Loader2, Play } from "lucide-react";
+import { AlertTriangle, Clapperboard, Clock, ImageOff, Loader2, PenLine, Play } from "lucide-react";
 import { useLang } from "../lib/i18n";
 import { Modal } from "./ui/Field";
 
@@ -14,6 +14,7 @@ const BADGE = {
   waiting: { Icon: Clock, cls: "bg-accent/90 text-white", bm: "Beratur", en: "Queued" },
   processing: { Icon: Loader2, cls: "bg-accent/90 text-white", spin: true, bm: "Menjana", en: "Generating" },
   working: { Icon: Loader2, cls: "bg-accent/90 text-white", spin: true, bm: "Menjana", en: "Generating" },
+  review: { Icon: PenLine, cls: "bg-warn/90 text-white", bm: "Perlu kelulusan", en: "Needs approval" },   // supabase/071
   error: { Icon: AlertTriangle, cls: "bg-danger/90 text-white", bm: "Gagal", en: "Failed" },
 };
 

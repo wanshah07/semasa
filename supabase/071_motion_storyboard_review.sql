@@ -13,6 +13,16 @@
 --     and so a new approval.
 --
 -- Safe to re-run. Keeps every earlier status (043 + 049's 'waiting') and adds 'review'.
+--
+-- ORDER: apply only after the storyboard-approval code is on main. The guard below refuses 'done' without an approval, and the
+-- worker from before that code never asks for one, so a film it is rendering would be refused at its last write. This file
+-- therefore refuses to run while any film is 'working': wait for it to finish (a few minutes) and run it again.
+do $$
+begin
+  if exists (select 1 from public.semasa_motions where status = 'working') then
+    raise exception 'semasa: a Motion film is being made right now; run 071 again once it has finished (Semasa → Video)';
+  end if;
+end $$;
 
 alter table public.semasa_motions drop constraint if exists semasa_motions_status_check;
 alter table public.semasa_motions add constraint semasa_motions_status_check

@@ -65,8 +65,9 @@ export default function MotionStoryboardReview({ film, onDone, onToast }) {
           </li>
         ))}
       </ol>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button size="sm" disabled={!!busy} onClick={() => decide("approve")} data-storyboard-approve>
+      {/* the decision stays in reach on a long storyboard and on a phone */}
+      <div className="sticky bottom-0 -mx-3 mt-3 flex flex-wrap gap-2 border-t border-line bg-surface/95 px-3 py-2 backdrop-blur">
+        <Button disabled={!!busy} onClick={() => decide("approve")} data-storyboard-approve>
           <CheckCircle2 size={12} /> {editing && changed(sb, edits) ? t("Luluskan dengan suntingan", "Approve with my edits") : t("Luluskan", "Approve")}</Button>
         <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => { setEditing((v) => !v); setEdits({}); }} data-storyboard-edit>
           <Pencil size={12} /> {editing ? t("Batal suntingan", "Cancel edits") : t("Ubah perkataan", "Edit the words")}</Button>

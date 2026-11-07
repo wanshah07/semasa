@@ -231,6 +231,15 @@ export default function MotionLab({ user, onToast, view = "make" }) {
       {missing && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual belum ada: jalankan supabase/043_motion.sql sekali.", "The table is not there yet: run supabase/043_motion.sql once.")}</p>}
       {motions.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{motions.error}</p>}
 
+      {view === "make" && films.some(isReview) && (
+        <div className="mb-6 space-y-3" data-motion-review-list>
+          <h2 className="flex items-center gap-2 font-display text-2xl">{t("Menunggu kelulusan anda", "Waiting for your approval")}
+            <span className="rounded-pill bg-warn/15 px-2 py-0.5 text-xs text-warn">{films.filter(isReview).length}</span></h2>
+          <p className="text-sm text-muted">{t("Baca setiap babak, ubah jika perlu, kemudian luluskan. Gambar dan video hanya dibuat selepas itu.",
+            "Read every scene, edit if needed, then approve. Pictures and the film are made only after that.")}</p>
+          {films.filter(isReview).map((r) => <div key={r.id}>{rowCard(r)}</div>)}
+        </div>
+      )}
       {view === "make" && (
         <>
       <div className="mb-3">

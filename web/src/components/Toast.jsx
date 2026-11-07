@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 
 export default function Toasts({ toasts }) {
-  const tone = { info: "bg-ink text-bg", ok: "bg-ok text-white", warn: "bg-warn text-white", danger: "bg-danger text-white" };
+  const tone = { info: "bg-ink text-bg", ok: "bg-ok text-white", warn: "bg-warn text-white", danger: "bg-danger text-white", error: "bg-danger text-white" };
   return (
     <div className="toast-stack pointer-events-none fixed left-1/2 z-50 flex w-full max-w-md -translate-x-1/2 flex-col items-center gap-2 px-4" role="status" aria-live="polite">
       <AnimatePresence>

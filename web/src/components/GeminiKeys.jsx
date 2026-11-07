@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Eye, EyeOff, KeyRound, Loader2, Plus, Power, Save, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, Plus, Power, RefreshCw, Save, Sparkles, Trash2 } from "lucide-react";
 import { errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { timeAgo } from "../lib/format";
 import {
-  JOB_CHOICES, MAX_KEYS, STATE_CLS, STATE_WORDS, keyState, restMinutes, settingsOf, toggleJob, usableCount, validKey,
+  JOB_CHOICES, MAX_KEYS, STATE_CLS, STATE_WORDS, keyProblem, keyState, restMinutes, settingsOf, toggleJob, usableCount,
 } from "../lib/geminiKeys";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
@@ -27,6 +27,9 @@ export default function GeminiKeys({ settings, save, onToast }) {
   const [sure, setSure] = useState("");
   const [form, setForm] = useState(settingsOf(settings?.gemini));
   const [now, setNow] = useState(Date.now());
+  const [saveMsg, setSaveMsg] = useState(null);   // the settings save, said where the button is
+  const [msg, setMsg] = useState(null);           // {kind: "ok" | "err" | "info", text}: stays until the next action, unlike a toast
+  const [waitUntil, setWaitUntil] = useState(0);  // after an add or a check the card asks again every few seconds until this moment
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc("semasa_gemini_keys_list");
@@ -41,6 +44,11 @@ export default function GeminiKeys({ settings, save, onToast }) {
   }, [onToast]);
 
   useEffect(() => { load(); const id = setInterval(load, 60_000); return () => clearInterval(id); }, [load]);
+  useEffect(() => {                          // a key was just added or a check asked for: its answer arrives in about a minute
+    if (waitUntil <= Date.now()) return undefined;
+    const id = setInterval(() => { load(); if (Date.now() > waitUntil) setWaitUntil(0); }, 8000);
+    return () => clearInterval(id);
+  }, [waitUntil, load]);
   const saved = JSON.stringify(settingsOf(settings?.gemini));
   useEffect(() => { setForm(JSON.parse(saved)); }, [saved]);
 
@@ -48,27 +56,63 @@ export default function GeminiKeys({ settings, save, onToast }) {
     setBusy(name + (args.p_id || ""));
     const { data, error } = await supabase.rpc(name, args);
     setBusy("");
-    if (error) { onToast?.(errText(error), "danger"); return false; }
+    if (error) {
+      const text = errText(error);
+      setMsg({ kind: "err", text });
+      onToast?.(text, "danger");
+      return false;
+    }
     setRows(Array.isArray(data) ? data : rows);
     if (done) onToast?.(done, "ok");
     return true;
   }
 
   async function add() {
-    if (!validKey(key)) return onToast?.(t("Itu tidak kelihatan seperti kunci Google AI Studio (20 hingga 120 huruf, nombor, - dan _, tanpa ruang).", "That does not look like a Google AI Studio key (20 to 120 letters, digits, - and _, no spaces)."), "warn");
-    if (await rpc("semasa_gemini_key_add", { p_label: label.trim(), p_key: key.trim() },
-      t("Kunci ditambah. Ia diuji pada panggilan pertama.", "Key added. It is tried on its first call."))) { setKey(""); setLabel(""); setShow(false); }
+    const bad = keyProblem(key);
+    if (bad) { setMsg({ kind: "err", text: bad[L] }); return; }
+    setMsg({ kind: "info", text: t("Menambah kunci…", "Adding the key…") });
+    if (await rpc("semasa_gemini_key_add", { p_label: label.trim(), p_key: key.trim() })) {
+      const hint = `…${key.trim().slice(-4)}`;
+      setKey(""); setLabel(""); setShow(false);
+      setMsg({ kind: "ok", text: t(`Kunci ${hint} disimpan. Ia sedang diuji: keputusan muncul di bawah dalam kira-kira satu minit.`,
+        `Key ${hint} saved. It is being tested now: the result appears below in about a minute.`) });
+      setWaitUntil(Date.now() + 4 * 60_000);
+    }
+  }
+
+  async function checkNow() {
+    setMsg({ kind: "info", text: t("Meminta semakan…", "Asking for a check…") });
+    if (await rpc("semasa_gemini_keys_check", {})) {
+      setMsg({ kind: "ok", text: t("Setiap kunci yang dihidupkan sedang ditanya: keputusan muncul di bawah dalam kira-kira satu minit.",
+        "Every switched-on key is being asked: the results appear below in about a minute.") });
+      setWaitUntil(Date.now() + 4 * 60_000);
+    }
+  }
+
+  async function toggle(r) {
+    setMsg(null);
+    if (await rpc("semasa_gemini_key_set", { p_id: r.id, p_enabled: !r.enabled }) && !r.enabled) {
+      setMsg({ kind: "ok", text: t("Kunci dihidupkan dan sedang diuji semula.", "Key switched on and being tested again.") });
+      setWaitUntil(Date.now() + 4 * 60_000);
+    }
   }
 
   async function remove(r) {
     if (sure !== r.id) { setSure(r.id); setTimeout(() => setSure(""), 6000); return; }
     setSure("");
+    setMsg(null);
     await rpc("semasa_gemini_key_delete", { p_id: r.id }, t("Kunci dipadam.", "Key deleted."));
   }
 
   async function saveSettings(next) {
-    try { await save("gemini", next); onToast?.(t("Disimpan. Larian seterusnya menggunakannya.", "Saved. The next run uses it."), "ok"); } catch (e) {
-      onToast?.(/0 rows/.test(e.message) ? t("Jalankan supabase/061_gemini_keys.sql dahulu.", "Run supabase/061_gemini_keys.sql first.") : e.message, "danger");
+    try {
+      await save("gemini", next);
+      setSaveMsg({ kind: "ok", text: t("Disimpan. Larian seterusnya menggunakannya.", "Saved. The next run uses it.") });
+      onToast?.(t("Disimpan.", "Saved."), "ok");
+    } catch (e) {
+      const text = /0 rows/.test(e.message) ? t("Jalankan supabase/061_gemini_keys.sql dahulu.", "Run supabase/061_gemini_keys.sql first.") : e.message;
+      setSaveMsg({ kind: "err", text });
+      onToast?.(text, "danger");
     }
   }
 
@@ -105,10 +149,21 @@ export default function GeminiKeys({ settings, save, onToast }) {
                 <span className="text-xs text-muted">{r.last_ok_at ? `${t("berjaya", "worked")} ${timeAgo(r.last_ok_at)}` : t("belum berjaya", "not worked yet")} · {r.calls} {t("panggilan", "calls")}</span>
                 <span className="ml-auto flex items-center gap-2">
                   <Button size="sm" variant={r.enabled ? "ghost" : "primary"} disabled={busy === `semasa_gemini_key_set${r.id}`}
-                    onClick={() => rpc("semasa_gemini_key_set", { p_id: r.id, p_enabled: !r.enabled })}><Power size={12} /> {r.enabled ? t("Matikan", "Switch off") : t("Hidupkan", "Switch on")}</Button>
+                    onClick={() => toggle(r)}><Power size={12} /> {r.enabled ? t("Matikan", "Switch off") : t("Hidupkan", "Switch on")}</Button>
                   <Button size="sm" variant="danger" onClick={() => remove(r)} disabled={busy === `semasa_gemini_key_delete${r.id}`}><Trash2 size={12} /> {sure === r.id ? t("Pasti? Klik lagi", "Sure? Click again") : t("Padam", "Delete")}</Button>
                 </span>
               </div>
+              {r.check_note && (
+                <p className={`mt-1 break-words text-xs ${st === "ok" ? "text-ok" : "text-muted"}`} data-gemini-note>
+                  {r.checked_at ? `${t("diuji", "tested")} ${timeAgo(r.checked_at)}: ` : ""}{r.check_note}
+                </p>
+              )}
+              {!r.check_note && st === "new" && r.enabled && (
+                <p className="mt-1 flex items-center gap-1 text-xs text-muted" data-gemini-pending>
+                  {waitUntil > now ? <Loader2 size={12} className="animate-spin" /> : null}
+                  {waitUntil > now ? t("Sedang diuji…", "Being tested…") : t("Belum diuji. Tekan Check now.", "Not tested yet. Press Check now.")}
+                </p>
+              )}
               {r.last_error && st !== "ok" && <p className="mt-1 break-words text-xs text-danger" data-gemini-error>{r.last_error}</p>}
             </li>
           );
@@ -116,7 +171,14 @@ export default function GeminiKeys({ settings, save, onToast }) {
         {rows === null && <li className="flex items-center gap-2 text-xs text-muted"><Loader2 size={13} className="animate-spin" /> {t("Memuatkan…", "Loading…")}</li>}
         {rows && !rows.length && <li className="text-xs text-muted" data-gemini-empty>{t("Belum ada kunci. Tambah satu di bawah.", "No keys yet. Add one below.")}</li>}
       </ul>
-      {rows?.length > 0 && <p className="text-xs text-muted" data-gemini-count>{usable} {t("daripada", "of")} {rows.length} {t("kunci boleh digunakan sekarang.", "keys can be used now.")}</p>}
+      {rows?.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-xs text-muted" data-gemini-count>{usable} {t("daripada", "of")} {rows.length} {t("kunci boleh digunakan sekarang.", "keys can be used now.")}</p>
+          <Button size="sm" variant="ghost" onClick={checkNow} disabled={busy === "semasa_gemini_keys_check"} data-gemini-check>
+            {busy === "semasa_gemini_keys_check" ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} {t("Semak sekarang", "Check now")}
+          </Button>
+        </div>
+      )}
 
       <div className="space-y-2 rounded-tile border border-dashed border-line p-3" data-gemini-add>
         <p className="text-sm font-medium">{t("Tambah kunci", "Add a key")}</p>
@@ -129,9 +191,16 @@ export default function GeminiKeys({ settings, save, onToast }) {
                 placeholder="AIza…" aria-label="API key" className="font-mono" />
               <Button type="button" size="sm" variant="ghost" onClick={() => setShow(!show)} aria-label={show ? t("Sembunyi", "Hide") : t("Tunjuk", "Show")}>{show ? <EyeOff size={13} /> : <Eye size={13} />}</Button>
             </span></label>
-          <div className="flex items-end"><Button size="sm" onClick={add} disabled={busy === "semasa_gemini_key_add" || !key.trim() || (rows?.length || 0) >= MAX_KEYS}>
+          <div className="flex items-end"><Button size="sm" onClick={add} disabled={busy === "semasa_gemini_key_add" || (rows?.length || 0) >= MAX_KEYS}>
             {busy === "semasa_gemini_key_add" ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {t("Tambah", "Add")}</Button></div>
         </div>
+        {msg && (
+          <p role="status" data-gemini-msg={msg.kind}
+            className={`flex items-start gap-2 rounded-tile p-2 text-xs ${msg.kind === "err" ? "bg-danger/10 text-danger" : msg.kind === "ok" ? "bg-ok/10 text-ok" : "bg-surface-2 text-muted"}`}>
+            {msg.kind === "err" ? <AlertTriangle size={14} className="mt-px shrink-0" /> : msg.kind === "ok" ? <CheckCircle2 size={14} className="mt-px shrink-0" /> : <Loader2 size={14} className="mt-px shrink-0 animate-spin" />}
+            <span className="break-words">{msg.text}</span>
+          </p>
+        )}
         <p className="text-[11.5px] text-muted">{t(`Sehingga ${MAX_KEYS} kunci. Kunci percuma mungkin membenarkan Google menggunakan apa yang dihantar untuk memperbaik produknya: kerana itu Gemini hanya digunakan untuk kerja yang anda tanda di bawah.`,
           `Up to ${MAX_KEYS} keys. A free key may let Google use what is sent to improve its products, which is why Gemini only does the jobs you tick below.`)}</p>
       </div>
@@ -157,6 +226,7 @@ export default function GeminiKeys({ settings, save, onToast }) {
               {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
           <Button size="sm" onClick={() => saveSettings(form)} data-gemini-save><Save size={13} /> {t("Simpan", "Save")}</Button>
         </div>
+        {saveMsg && <p role="status" data-gemini-saved={saveMsg.kind} className={`text-xs ${saveMsg.kind === "err" ? "text-danger" : "text-ok"}`}>{saveMsg.text}</p>}
         <p className="text-[11.5px] text-muted">{t("Jika model tidak wujud, pasukan AI mencari model yang menjawab daripada senarai kunci itu sendiri; lukisan gambar mencari model gambar.", "If a model does not exist, the AI team searches the key's own list for one that answers; the picture call looks for an image model.")}</p>
       </div>
     </Card>

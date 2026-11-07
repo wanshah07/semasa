@@ -1,0 +1,39 @@
+name: Gemini check
+
+# Asks every switched-on Gemini key whether it answers (Wan, 7 Nov 2026). A new key, a key switched on (supabase/062) and the "Check
+# now" button on the API tab wake this with repository_dispatch 'gemini_check'; backend/semasa/gemini_check.py lists each key's
+# models, asks a five-token question and writes the result on the key's row. It posts nothing and draws nothing.
+on:
+  repository_dispatch:
+    types: [gemini_check]
+  workflow_dispatch:
+
+concurrency:
+  group: gemini-check
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Ask each key
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m semasa.gemini_check

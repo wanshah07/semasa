@@ -5,10 +5,20 @@ it picks a ChatGPT login or an AI-team robot. Run `supabase/061_gemini_keys.sql`
 
 ## Add a key
 1. aistudio.google.com → Get API key → copy it.
-2. API tab → **Gemini keys**: type an optional name, paste the key, **Add**. The key is stored in `semasa_gemini_keys`, which no page
+2. API tab → **Gemini keys**: type an optional name, paste the key, **Add**. A refused key (empty, a space inside, too short, a character a key
+   never has) says why under the form and stays there; so does anything the database says. Keys may hold letters, digits, `.` `_` `~` `-`
+   (Google's newer keys have a dot), 20 to 200 characters. The key is stored in `semasa_gemini_keys`, which no page
    policy can read: the page only shows a hint (`…last4`), a status and the last error, never the key. Up to 10 keys; a repeated key
    is not added twice.
 3. Switch a key off, rename it or delete it (two clicks) from the same card.
+
+## Is the key live? (062)
+A new key, a key switched on and the **Check now** button wake the **Gemini check** workflow (`gemini_check`, `backend/semasa/gemini_check.py`).
+It asks every switched-on key: lists its models, asks a five-token question, and writes the answer on the key's row, shown on the card
+as the status, "tested N min ago" and a note (for example "answered in 640 ms (gemini-2.5-flash); picture model gemini-2.5-flash-image is
+in this key's list"). A model name that does not exist does not condemn a key: another Flash model from the key's list is tried and the
+note says to set it. A pictures call is never made by the check (it spends quota). The result appears in about a minute and the card
+asks again every few seconds meanwhile. An explicit check lets a key that was refused recover if it now answers.
 
 ## How a key is picked (`backend/semasa/gemini_keys.py`)
 Usable = switched on, not refused by Google (`bad`), not resting. Tried least recently used first, so the load and the free quota

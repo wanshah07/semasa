@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { DEFAULTS, JOB_CHOICES, keyState, restMinutes, settingsOf, toggleJob, usableCount, validKey } from "./src/lib/geminiKeys.js";
+import { DEFAULTS, JOB_CHOICES, keyProblem, keyState, restMinutes, settingsOf, toggleJob, usableCount, validKey } from "./src/lib/geminiKeys.js";
 
 const NOW = Date.parse("2026-11-06T12:00:00Z");
 const at = (m) => new Date(NOW + m * 60000).toISOString();
@@ -23,8 +23,21 @@ assert.deepEqual(JOB_CHOICES.map(([k]) => k), ["motion", "ideas", "reader"]);
 
 // a pasted key: the same rule as the database
 assert.equal(validKey("AIzaSyD-0123456789abcdefghijklmnopqrstu"), true);
-for (const bad of ["", "short", "has space in it 12345678901234567890", "a".repeat(121), "key/with/slash/12345678901234567890", null, undefined]) assert.equal(validKey(bad), false, String(bad));
+for (const bad of ["", "short", "has space in it 12345678901234567890", "a".repeat(201), "key/with/slash/12345678901234567890", null, undefined]) assert.equal(validKey(bad), false, String(bad));
 assert.equal(validKey("  AIzaSyD-0123456789abcdefghijklmnopqrstu  "), true, "surrounding spaces are trimmed");
+assert.equal(validKey("AQ.Ab8RN6Kx0123456789abcdefghijklmnopqrstuvwx"), true, "Google's newer keys hold a dot");
+assert.equal(validKey("a".repeat(200)), true);
+
+// why a key is refused: one reason, in both languages, and null when it is fine
+assert.equal(keyProblem("AQ.Ab8RN6Kx0123456789abcdefghijklmnopqrstuvwx"), null);
+assert.match(keyProblem("")[1], /Paste the API key/);
+assert.match(keyProblem("AIza abc def 1234567890123456")[0], /ruang/);
+assert.match(keyProblem("AIza\nabc1234567890123456789")[1], /line break/);
+assert.match(keyProblem("short")[1], /too short \(5 characters/);
+assert.match(keyProblem("a".repeat(201))[1], /too long \(201/);
+assert.match(keyProblem("key/with/slash/12345678901234567890")[1], /characters a key never has: \//);
+assert.equal(keyProblem(" AIzaSyD-0123456789abcdefghijklmnopqrstu "), null);
+for (const bad of ["", "short", "a".repeat(201), "x/y/z/12345678901234567890"]) assert.ok(keyProblem(bad), bad);
 
 // a key's state
 assert.equal(keyState(null, NOW), "off");

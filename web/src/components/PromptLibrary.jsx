@@ -6,7 +6,7 @@ import Button from "./ui/Button";
 import Card from "./ui/Card";
 
 /* Flow B's "keep the prompt": saved words (and their reference) to use again. */
-export default function PromptLibrary({ prompts, onUse, onToast }) {
+export default function PromptLibrary({ prompts, onUse, onToast, type = "" }) {
   const { t } = useLang();
   async function remove(p) {
     const { error } = await supabase.from(TABLES.prompts).delete().eq("id", p.id);
@@ -18,12 +18,13 @@ export default function PromptLibrary({ prompts, onUse, onToast }) {
       if (!e && !(users || []).length) await supabase.storage.from(BUCKETS.reference).remove([p.reference_path]);
     }
   }
+  const rows = type ? prompts.rows.filter((p) => (p.type || "image") === type) : prompts.rows;
   return (
     <Card className="p-5">
       <h3 className="text-lg">{t("Pustaka prompt", "Prompt library")}</h3>
-      {!prompts.rows.length && <p className="mt-2 text-sm text-muted">{t("Belum ada. Tandakan “Simpan prompt” semasa menjana.", "None yet. Tick “Save prompt” when generating.")}</p>}
+      {!rows.length && <p className="mt-2 text-sm text-muted">{t("Belum ada. Tandakan “Simpan prompt” semasa menjana.", "None yet. Tick “Save prompt” when generating.")}</p>}
       <ul className="mt-3 space-y-2">
-        {prompts.rows.map((p) => (
+        {rows.map((p) => (
           <li key={p.id} className="flex items-start gap-3 rounded-tile border border-line p-2">
             {p.reference_url
               ? <img src={p.reference_url} alt="" className="h-12 w-12 shrink-0 rounded-tile object-cover" />

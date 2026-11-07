@@ -27,12 +27,13 @@ const UNSPLASH = "unsplash";
                      with your words as the changes
    Tick "Simpan prompt" to keep the words (and the reference) in the library for next time.
    Everything after the insert is the runner's; this component's job ends at the row. */
-export default function MediaUploader({ user, onToast, onQueued, preset, onPresetUsed }) {
+export default function MediaUploader({ user, onToast, onQueued, preset, onPresetUsed, only = "" }) {
   const { t } = useLang();
   const [mode, setMode] = useState("prompt");
   const [file, setFile] = useState(null);
   const [savedRef, setSavedRef] = useState(null);     // {url, path} from a library prompt
-  const [type, setType] = useState("image");
+  // `only` fixes the page to one kind (Wan, 11 Oct 2026: image and video generation apart): the type switch goes, and a prompt of the other kind is not offered
+  const [type, setType] = useState(only || "image");
   const [provider, setProvider] = useState("");
   const [orientation, setOrientation] = useState("squarish");
   const [prompt, setPrompt] = useState("");
@@ -48,12 +49,12 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
 
   useEffect(() => {
     if (!preset) return;
-    setPrompt(preset.prompt || ""); setType(preset.type || "image"); setFile(null);
+    setPrompt(preset.prompt || ""); setType(only || preset.type || "image"); setFile(null);
     if (preset.reference_url) { setMode("recreate"); setSavedRef({ url: preset.reference_url, path: preset.reference_path }); }
     else { setMode("prompt"); setSavedRef(null); }
     setKeep(false); setFromPrompt({ id: preset.id, uses: preset.uses || 0, prompt: (preset.prompt || "").trim() });
     onPresetUsed?.();
-  }, [preset, onPresetUsed]);
+  }, [preset, onPresetUsed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const take = useCallback((f) => {
     if (!f) return;
@@ -66,7 +67,7 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
   // a search is words only and a still picture: choosing Unsplash sets both, leaving either unchooses Unsplash
   const chooseProvider = (v) => { setProvider(v); if (v === UNSPLASH) { setMode("prompt"); setType("image"); } };
   const chooseMode = (v) => { setMode(v); if (v === "recreate" && unsplash) setProvider(""); };
-  const chooseType = (v) => { setType(v); if (v === "video" && unsplash) setProvider(""); };
+  const chooseType = (v) => { if (only) return; setType(v); if (v === "video" && unsplash) setProvider(""); };
   const needsRef = mode === "recreate";
   const hasRef = Boolean(file || savedRef);
   const cfVideo = provider === "cloudflare" && type === "video";   // Cloudflare's free neurons draw pictures only
@@ -145,21 +146,21 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
     <Card as="form" onSubmit={submit} className="p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg">{t("Jana imej atau video", "Generate an image or video")}</h3>
+          <h3 className="text-lg">{only === "video" ? t("Jana video AI", "Generate an AI video") : only === "image" ? t("Jana imej", "Generate an image") : t("Jana imej atau video", "Generate an image or video")}</h3>
           <p className="mt-1 text-sm text-muted">
             {t("Tulis prompt sahaja, atau muat naik rujukan: Semasa membacanya dan mencipta semula.",
               "Write a prompt only, or upload a reference: Semasa reads it and recreates it.")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Segmented value={mode} onChange={chooseMode} options={[["prompt", t("Prompt sahaja", "Prompt only")], ["recreate", t("Rujukan + prompt", "Reference + prompt")]]} />
-          <div className="flex rounded-pill bg-surface-2 p-1 text-xs">
+          {!only && <div className="flex rounded-pill bg-surface-2 p-1 text-xs">
             {[["image", ImageIcon, t("Imej", "Image")], ["video", Film, "Video"]].map(([v, Icon, l]) => (
               <button type="button" key={v} onClick={() => chooseType(v)}
                 className={`flex items-center gap-1 rounded-pill px-3 py-1.5 ${type === v ? "bg-surface text-ink shadow-card" : "text-muted"}`}>
                 <Icon size={13} /> {l}
               </button>
             ))}
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -214,7 +215,7 @@ export default function MediaUploader({ user, onToast, onQueued, preset, onPrese
         <select value={provider} onChange={(e) => chooseProvider(e.target.value)} aria-label={t("Penyedia", "Provider")}
           className="max-w-full rounded-pill border border-line bg-surface px-3 py-2 text-xs text-ink outline-none">
           {providersOf(t).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-          <option value={UNSPLASH}>{t("Unsplash (cari foto percuma)", "Unsplash (search free photos)")}</option>
+          {only !== "video" && <option value={UNSPLASH}>{t("Unsplash (cari foto percuma)", "Unsplash (search free photos)")}</option>}
         </select>
         {unsplash && (
           <Select value={orientation} onChange={setOrientation} aria-label={t("Orientasi", "Orientation")}

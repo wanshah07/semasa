@@ -23,7 +23,6 @@ import Guide from "./components/Guide";
    renderer, the motion rules and the office writers. Only Gate, Header, the sidebar and the hooks stay in the first chunk. */
 const IdeaComposer = lazy(() => import("./components/IdeaComposer"));
 const PromptLibrary = lazy(() => import("./components/PromptLibrary"));
-const GenerationGallery = lazy(() => import("./components/GenerationGallery"));
 const MediaUploader = lazy(() => import("./components/MediaUploader"));
 const WatchSegment = lazy(() => import("./components/WatchSegment"));
 const MasonryGrid = lazy(() => import("./components/MasonryGrid"));
@@ -36,6 +35,9 @@ const IdeasTab = lazy(() => import("./pages/IdeasTab"));
 const PostsTab = lazy(() => import("./pages/PostsTab"));
 const SettingsTab = lazy(() => import("./pages/SettingsTab"));
 const VideoTab = lazy(() => import("./pages/VideoTab"));
+const ImageLibraryTab = lazy(() => import("./pages/ImageLibraryTab"));
+const VideoLibraryTab = lazy(() => import("./pages/VideoLibraryTab"));
+const MotionSkillsTab = lazy(() => import("./pages/MotionSkillsTab"));
 const ChatTab = lazy(() => import("./pages/ChatTab"));
 const BillingTab = lazy(() => import("./pages/BillingTab"));
 const BillingPublic = lazy(() => import("./pages/BillingPublic"));
@@ -230,21 +232,19 @@ function IsuHeadlines({ trends, onToast, onIdea, onFaq, segTabs }) {
   );
 }
 
-function MediaTab({ user, gens, prompts, posts, onToast }) {
-  // a picture inside an approved, scheduled or posted post cannot be deleted (supabase/017: the database refuses it)
-  const locked = new Set((posts?.rows || []).filter((p) => ["approved", "scheduled", "posted"].includes(p.status)).flatMap((p) => p.media_ids || []));
+/* Generate image (Wan, 11 Oct 2026: image and video apart, each with a library). The form and the prompt library only; what
+   it makes is in the Image library page, and a video is made on Generate video. */
+function MediaTab({ user, gens, prompts, onToast, go }) {
   const { t } = useLang();
   const [preset, setPreset] = useState(null);
   const clearPreset = useCallback(() => setPreset(null), []);
-  async function guard(fn) {
-    try { await fn(); } catch (e) { onToast(e.message, "danger"); }
-  }
+  const running = gens.rows.filter((r) => r.mode !== "fragrance" && r.type !== "video" && !r.meta?.design && ["pending", "processing"].includes(r.status)).length;
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show">
-        <p className="text-[13px] font-semibold text-accent">{t("Aliran B · makmal media", "Flow B · media lab")}</p>
+        <p className="text-[13px] font-semibold text-accent">{t("Imej", "Image")}</p>
         <h1 className="mt-2 text-4xl leading-tight">
-          {t("Prompt atau rujukan masuk, imej atau video keluar.", "A prompt or a reference goes in, an image or a video comes out.")}
+          {t("Prompt atau rujukan masuk, imej keluar.", "A prompt or a reference goes in, an image comes out.")}
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
           {t("Tulis prompt sahaja, atau muat naik gambar rujukan: Semasa membacanya dahulu, kemudian mencipta semula mengikut "
@@ -254,26 +254,22 @@ function MediaTab({ user, gens, prompts, posts, onToast }) {
             + "your instructions. Save a good prompt to the library to use it again. GitHub Actions runs the generation; "
             + "the status updates live.")}
         </p>
+        <p className="mt-2 text-sm text-muted">{t("Hasil ada di", "Results are in")}{" "}
+          <button type="button" className="text-accent underline" onClick={() => go("media-lib")}>{t("Pustaka imej", "the Image library")}</button>
+          {running > 0 ? ` · ${t("{n} sedang dijana", "{n} generating", { n: running })}` : ""}</p>
       </motion.div>
       <div className="mt-8 grid gap-5 lg:grid-cols-[1fr_380px]">
-        <MediaUploader user={user} onToast={onToast} onQueued={() => { gens.reload(); prompts.reload(); }}
+        <MediaUploader user={user} onToast={onToast} only="image" onQueued={() => { gens.reload(); prompts.reload(); }}
           preset={preset} onPresetUsed={clearPreset} />
-        <PromptLibrary prompts={prompts} onToast={onToast} onUse={(p) => { setPreset(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+        <PromptLibrary prompts={prompts} type="image" onToast={onToast} onUse={(p) => { setPreset(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       </div>
       <p className="mt-3 text-[11px] text-muted">{t("Mahu foto sebenar? Pilih Unsplash dalam menu penyedia: foto yang dipilih jadi gambar biasa (gambar post, latar slaid atau latar reka bentuk), dan jurugambar dikreditkan.",
         "Want a real photo? Choose Unsplash in the provider menu: the chosen photo becomes an ordinary picture (a post picture, a slide background or a design background), and the photographer is credited.")}</p>
-      <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
-      {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
-      <GenerationGallery rows={gens.rows.filter((r) => r.mode !== "fragrance")} user={user} onToast={onToast} locked={locked}
-        onRequeue={(id, provider) => guard(async () => { await gens.requeue(id, provider); onToast(t("Dimasukkan semula ke giliran.", "Put back in the queue."), "ok"); })}
-        onRemove={(row) => guard(async () => { if (window.confirm(t("Padam kerja ini?", "Delete this job?"))) {
-          await gens.remove(row); onToast(t("Dipadam.", "Deleted."), "info");
-        } })} />
     </main>
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "prestasi", "media", "design", "wangian", "video", "chat", "otak", "bil", "langganan", "crm", "resit", "faq", "log", "office", "repo", "api", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "video", "video-lib", "motion-skills", "chat", "otak", "bil", "langganan", "crm", "resit", "faq", "log", "office", "repo", "api", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 // #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)
@@ -392,11 +388,15 @@ export default function App() {
     openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
   else if (tab === "post") body = allowed ? <PostsTab posts={posts} media={gens} log={log} brand={brand} user={user}
     settings={settings} onToast={push} focusId={focusPost} setFocusId={setFocusPost} /> : gate(null);
-  else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} posts={posts} onToast={push} /> : gate(null);
-  else if (tab === "design") body = allowed ? <DesignTab user={user} gens={gens} posts={posts} brand={brand} settings={settings} saveSetting={save} onToast={push} /> : gate(null);
+  else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} onToast={push} go={go} /> : gate(null);
+  else if (tab === "media-lib") body = allowed ? <ImageLibraryTab user={user} gens={gens} posts={posts} onToast={push} go={go} /> : gate(null);
+  else if (tab === "design") body = allowed ? <DesignTab user={user} gens={gens} posts={posts} brand={brand} settings={settings} saveSetting={save} onToast={push} go={go} /> : gate(null);
+  else if (tab === "design-lib") body = allowed ? <DesignTab view="library" user={user} gens={gens} posts={posts} brand={brand} settings={settings} saveSetting={save} onToast={push} go={go} /> : gate(null);
   else if (tab === "wangian") body = allowed ? <FragranceTab user={user} gens={gens} onToast={push} /> : gate(null);
-  else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push}
+  else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push} prompts={prompts} go={go}
     openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
+  else if (tab === "video-lib") body = allowed ? <VideoLibraryTab user={user} gens={gens} posts={posts} onToast={push} go={go} /> : gate(null);
+  else if (tab === "motion-skills") body = allowed ? <MotionSkillsTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
   else if (tab === "otak") body = allowed ? <BrainTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);

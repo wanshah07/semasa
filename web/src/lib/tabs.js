@@ -1,5 +1,5 @@
-import { BarChart3, Brain, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, GitBranch, HelpCircle, ImagePlus, LayoutDashboard,
-  LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, Radio, Receipt, ScanLine, Server, Settings, UserRound, Wrench } from "lucide-react";
+import { BarChart3, Brain, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
+  LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, Radio, Receipt, ScanLine, Server, Settings, Sparkles, UserRound } from "lucide-react";
 
 /* Every page, once: the header's tab row on a phone, the sidebar and the sub-tab bar all read this list, so they can never
    disagree. A page's `id` is its address (#post, #office…) and does not change when it moves between segments.
@@ -17,9 +17,15 @@ export function tabsOf(t) {
 
     { id: "prestasi", label: t("Prestasi", "Performance"), icon: BarChart3, segment: "performance" },
 
-    { id: "media", label: t("Makmal media", "Media lab"), icon: ImagePlus, segment: "create" },
-    { id: "design", label: t("Reka bentuk", "Design"), icon: LayoutTemplate, segment: "create" },
-    { id: "video", label: "Video", icon: Clapperboard, segment: "create" },
+    { id: "media", label: t("Jana imej", "Generate image"), icon: ImagePlus, segment: "image" },
+    { id: "media-lib", label: t("Pustaka imej", "Image library"), icon: Images, segment: "image" },
+
+    { id: "video", label: t("Jana video", "Generate video"), icon: Clapperboard, segment: "video" },
+    { id: "video-lib", label: t("Pustaka video", "Video library"), icon: Film, segment: "video" },
+    { id: "motion-skills", label: t("Kemahiran motion", "Motion skills"), icon: Sparkles, segment: "video" },
+
+    { id: "design", label: t("Jana poster", "Generate poster"), icon: LayoutTemplate, segment: "poster" },
+    { id: "design-lib", label: t("Pustaka poster", "Poster library"), icon: LayoutGrid, segment: "poster" },
 
     { id: "wangian", label: t("Wangian", "Fragrance"), icon: Droplets, segment: "valorith" },
 
@@ -49,7 +55,9 @@ export function segmentsOf(t) {
     seg("dashboard", t("Papan", "Dashboard"), LayoutDashboard),
     seg("content", t("Kandungan", "Content"), Newspaper),
     seg("performance", t("Prestasi", "Performance"), BarChart3),
-    seg("create", t("Cipta", "Create"), Wrench),
+    seg("image", t("Imej", "Image"), ImagePlus),
+    seg("video", "Video", Clapperboard),
+    seg("poster", "Poster", LayoutTemplate),
     seg("valorith", "Valorith", Droplets),
     seg("business", t("Perniagaan", "Business"), Receipt),
     seg("technology", t("Teknologi", "Technology"), Server),

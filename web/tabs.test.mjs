@@ -37,6 +37,9 @@ t("Wan's layout of 11 Oct 2026: which pages sit together", () => {
   assert.deepEqual(["papan", "chat", "otak"].map(where), ["dashboard", "dashboard", "dashboard"]);
   assert.deepEqual(["isu", "idea", "post"].map(where), ["content", "content", "content"]);
   assert.equal(where("prestasi"), "performance");
+  assert.deepEqual(["media", "media-lib"].map(where), ["image", "image"]);
+  assert.deepEqual(["video", "video-lib", "motion-skills"].map(where), ["video", "video", "video"]);
+  assert.deepEqual(["design", "design-lib"].map(where), ["poster", "poster"]);
   assert.equal(where("wangian"), "valorith");
   assert.deepEqual(["bil", "crm"].map(where), ["business", "business"]);
   assert.deepEqual(["office", "repo", "api"].map(where), ["technology", "technology", "technology"]);
@@ -52,6 +55,21 @@ t("Office repos and Repo library are two pages", () => {
   const office = readFileSync(new URL("./src/pages/OfficeTab.jsx", import.meta.url), "utf8");
   const repo = readFileSync(new URL("./src/pages/RepoTab.jsx", import.meta.url), "utf8");
   assert.ok(!office.includes("RepoLibrary") && repo.includes("RepoLibrary") && !repo.includes("officeSummary"));
+});
+
+t("Create phase 2 (11 Oct 2026): the three libraries are compact tiles, 8 across, and the motion skills are one page", () => {
+  const tile = readFileSync(new URL("./src/components/TileGrid.jsx", import.meta.url), "utf8");
+  assert.match(tile, /TILES_PER_ROW = "[^"]*xl:grid-cols-8"/);
+  for (const f of ["ImageLibraryTab", "VideoLibraryTab"]) assert.ok(readFileSync(new URL(`./src/pages/${f}.jsx`, import.meta.url), "utf8").includes("<TileGrid"), f);
+  assert.ok(readFileSync(new URL("./src/pages/DesignTab.jsx", import.meta.url), "utf8").includes("<TileGrid"));
+  assert.ok(readFileSync(new URL("./src/components/MotionLab.jsx", import.meta.url), "utf8").includes("<TileGrid"));
+  const skills = readFileSync(new URL("./src/pages/MotionSkillsTab.jsx", import.meta.url), "utf8");
+  assert.ok(skills.includes("<MotionSkill ") && skills.includes('view="skills"'));
+  assert.ok(!readFileSync(new URL("./src/pages/SettingsTab.jsx", import.meta.url), "utf8").includes("MotionPrompt"), "the skill box lives in one place");
+});
+t("image and video generation are apart: each page fixes its own kind", () => {
+  assert.ok(src.includes('only="image"'));
+  assert.ok(readFileSync(new URL("./src/pages/VideoTab.jsx", import.meta.url), "utf8").includes('only="video"'));
 });
 
 console.log(`tabs.test.mjs: ${n} groups OK`);

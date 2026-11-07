@@ -26,7 +26,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from . import antislop, compliance, db, hook_bank, hook_learning, my_designs, slides
+from . import antislop, compliance, db, hook_bank, hook_learning, my_designs, slides, writing_styles
 from .fetch import get
 from .llm import LLM
 from .log import get_logger
@@ -321,7 +321,7 @@ def writer_block(writer: dict[str, Any] | None, stream: str) -> str:
 
 def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str, Any],
                   avoid: str = "", writer: dict[str, Any] | None = None,
-                  bank: hook_bank.Bank | None = None, hint: str = "") -> tuple[str, str]:
+                  bank: hook_bank.Bank | None = None, hint: str = "", style_block: str = "") -> tuple[str, str]:
     stream = idea.get("stream") or "regulab"
     if stream == "linkedin":
         angles = (brand.get("linkedin") or {}).get("angles") or {}
@@ -352,7 +352,7 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
                      f"({source.get('why') or 'no article'}). Use only the facts they give; leave out any specific they do not.")
     family = str(idea.get("hook_family") or "").strip().lower() or None
     return (system + avoid + writer_block(writer, stream) + pillar_line(writer, stream, idea.get("domain"))
-            + hook_block(family, stream, bank, hint), "\n\n".join(lines))
+            + style_block + hook_block(family, stream, bank, hint), "\n\n".join(lines))
 
 
 def normalise_text(raw: Any, stream: str, lang: str) -> dict[str, dict[str, str]]:
@@ -509,8 +509,9 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     source = faq_source(idea) or stored_source(idea) or read_source(idea.get("source_url"))
     bank = hook_bank.pick(store, idea, settings)        # a hook style made from screenshots, or None: the built-in 25
     hint = hook_learning.hint(store, bank)              # what has earned views and interaction so far (a hint, never a rule)
+    style = writing_styles.pick(store, idea, settings)  # Wan's writing style (the voice of the caption), or None: house style
     system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra), writer=settings.get("writer"),
-                                 bank=bank, hint=hint)
+                                 bank=bank, hint=hint, style_block=writing_styles.block(style))
     fmt = format_of(idea)
     want_slides = fmt == "carousel"
     want_poster = fmt == "poster"
@@ -699,6 +700,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
             idea = {}
     bank = hook_bank.pick(store, idea, settings)
     system += (antislop.prompt_block() + compliance.avoid_line(indo_extra) + writer_block(settings.get("writer"), stream)
+               + writing_styles.block(writing_styles.pick(store, idea, settings))
                + hook_bank.block(None, stream, bank, hook_learning.hint(store, bank)))
     plat = "linkedin" if stream == "linkedin" else "instagram"
     caption = ((post.get("text") or {}).get(lang) or {}).get(plat) or ""

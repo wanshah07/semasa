@@ -55,6 +55,7 @@ from . import (
     motion_storyboard,
     motion_styles,
     unsplash,
+    writing_styles,
 )
 from . import voice as voice_mod
 from .llm import LLM
@@ -1235,7 +1236,9 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         # written to those exact times; with the voice off the plan still fixes the scenes and nothing is recorded
         bank = hook_bank.pick_for_idea(store, row.get("idea_id"))     # Wan's own hook style, or None: the built-in 25
         set_stage(store, row, "storyboard")
-        plan = plan_scenes(llm, row, settings.get("prompt") or "", title, text, style=style, bank=bank,
+        # Wan's writing style (Phase 4) shapes the script's voice; every rule in the script prompt still outranks it
+        voice_style = writing_styles.block(writing_styles.pick_for_idea(store, row.get("idea_id")), film=True)
+        plan = plan_scenes(llm, row, (settings.get("prompt") or "") + voice_style, title, text, style=style, bank=bank,
                            hint=hook_learning.hint(store, bank))
         # the storyboard: an AI (ChatGPT, then Gemini, then the film's writer) writes the shot of each scene's picture, but only
         # when some picture maker will draw it (Wan, 7 Nov 2026); a scene without a shot keeps the template request

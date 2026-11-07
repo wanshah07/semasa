@@ -38,5 +38,7 @@ assert.deepEqual(sch.map((x) => [x.name, x.verdict]), [["Publish", "bad"], ["cre
 assert.deepEqual(parseRepoList("wanshah07/semasa\nhttps://github.com/wanshah07/argus/\n wanshah07/semasa , bad line, w/x.git"),
   ["wanshah07/semasa", "wanshah07/argus", "w/x"]);
 assert.deepEqual(parseRepoList(""), []);
+assert.deepEqual(parseRepoList("https://www.github.com/wanshah07/kpi-system/tree/main\ngithub.com/wanshah07/argus-cards.git\nhttps://github.com/OpenTalker/SadTalker/issues/12"),
+  ["wanshah07/kpi-system", "wanshah07/argus-cards", "OpenTalker/SadTalker"], "any GitHub address of a repo registers as owner/name");
 
 console.log("repos.test.mjs: 20 checks OK");

@@ -63,6 +63,8 @@ def saved_models(s):
     return next(r["value"] for r in s.tables[db.SETTINGS] if r["key"] == gemini_keys.MODELS_KEY)
 
 
+LISTED_NEW = native("gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-flash-latest",
+                    "gemini-3.1-flash-image")
 LISTED = native("gemini-2.5-flash", "gemini-3-flash", "gemini-flash-latest", "gemini-2.5-pro", "gemini-2.5-flash-image",
                 "gemini-embedding-001", "imagen-4.0-generate-001", "gemma-3-27b-it")
 
@@ -244,15 +246,41 @@ def test_refreshing_never_raises_and_says_false_when_nothing_changed():
     assert gemini_check.refresh_models(FakeStore(), Live(), NOW) is False
 
 
+HUNG = (False, None, "HTTPSConnectionPool(host='generativelanguage.googleapis.com'): Read timed out. (read timeout=45)")
+
+
 def test_the_check_waits_long_enough_for_a_slow_model_and_a_timeout_is_not_a_rate_limit():
     s = store(key(1))
-    slow = {"native": LISTED, "chat": {"*": (False, None, "HTTPSConnectionPool(host='generativelanguage.googleapis.com'): "
-                                                          "Read timed out. (read timeout=45)")}}
-    live = Live(**{"AIza-secret-1": slow})
+    live = Live(**{"AIza-secret-1": {"native": LISTED, "chat": {"*": HUNG}}})
     out = gemini_check.run(s, live, NOW)
     r = row(s, 1)
-    assert set(live.timeouts) == {gemini_check.CHECK_TIMEOUT} and gemini_check.CHECK_TIMEOUT >= 30
+    assert live.timeouts[0] == gemini_check.CHECK_TIMEOUT >= 30
+    assert set(live.timeouts[1:]) == {gemini_check.NEXT_TIMEOUT}, "each further model gets a shorter wait"
     assert r["status"] == "new", "Google being slow says nothing about the key: it is not marked limited or refused"
-    assert r["cooldown_until"] is not None and "did not answer" in r["check_note"]
+    assert r["cooldown_until"] is not None and "no model answered in time" in r["check_note"]
+    assert "Tried: gemini-flash-latest gave no answer in time" in r["check_note"]
     assert out.startswith("0 of 1")
     assert gemini_keys.classify(r["last_error"]) == "retry"
+
+
+def test_a_model_that_hangs_does_not_stop_the_next_one_from_being_asked():
+    s = store(key(1))
+    chat = {"gemini-flash-latest": HUNG, "gemini-3.8-flash": HUNG, "*": (True, 900, "")}
+    live = Live(**{"AIza-secret-1": {"native": LISTED_NEW, "chat": chat}})
+    out = gemini_check.run(s, live, NOW)
+    r = row(s, 1)
+    assert r["status"] == "ok" and "with gemini-3.7-flash" in out
+    assert [m for _, m in live.asked][:3] == ["gemini-flash-latest", "gemini-3.8-flash", "gemini-3.7-flash"]
+    assert ("Tried: gemini-flash-latest gave no answer in time; gemini-3.8-flash gave no answer in time; "
+            "gemini-3.7-flash answered in 900 ms") in r["check_note"]
+    assert saved_models(s)["text_pick"] == "gemini-3.7-flash"
+    assert gemini_keys.load_settings(s)["model"] == "gemini-3.7-flash", "every worker now calls the model that answered"
+
+
+def test_a_refusal_or_a_quota_answer_stops_the_walk_because_it_is_the_keys_own():
+    s = store(key(1))
+    chat = {"gemini-flash-latest": HUNG, "gemini-3.8-flash": (False, 40, "429 RESOURCE_EXHAUSTED: quota"), "*": (True, 1, "")}
+    live = Live(**{"AIza-secret-1": {"native": LISTED_NEW, "chat": chat}})
+    gemini_check.run(s, live, NOW)
+    assert [m for _, m in live.asked] == ["gemini-flash-latest", "gemini-3.8-flash"]
+    assert row(s, 1)["status"] == "limited"

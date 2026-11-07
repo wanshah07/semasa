@@ -35,7 +35,7 @@ t("every page except Settings sits in exactly one segment, and every segment pag
 t("Wan's layout of 11 Oct 2026: which pages sit together", () => {
   const where = (id) => segmentOf((bm) => bm, id)?.id;
   assert.deepEqual(["papan", "chat", "otak"].map(where), ["dashboard", "dashboard", "dashboard"]);
-  assert.deepEqual(["isu", "idea", "post"].map(where), ["content", "content", "content"]);
+  assert.deepEqual(["isu", "idea", "post", "hooks", "gaya"].map(where), ["content", "content", "content", "content", "content"]);
   assert.equal(where("prestasi"), "performance");
   assert.deepEqual(["media", "media-lib"].map(where), ["image", "image"]);
   assert.deepEqual(["video", "video-lib", "motion-skills"].map(where), ["video", "video", "video"]);

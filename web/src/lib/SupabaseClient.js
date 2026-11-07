@@ -34,6 +34,7 @@ export const TABLES = {
   repoLibrary: "semasa_repo_library",                         // Pustaka repo (supabase/042_repo_library.sql)
   motions: "semasa_motions",                                  // Motion (supabase/043_motion.sql)
   hookStyles: "semasa_hook_styles",                           // Gaya hook daripada tangkapan skrin (supabase/060_hook_styles.sql)
+  writingStyles: "semasa_writing_styles",                     // Gaya penulisan daripada post viral (supabase/067_hook_bank_writing_styles.sql)
   antislopLog: "semasa_antislop_log",                         // Anti slop in levels (supabase/052_antislop_levels.sql)
   // CRM (supabase/031_crm.sql)
   crmContacts: "semasa_crm_contacts", crmCampaigns: "semasa_crm_campaigns", crmOutbox: "semasa_crm_outbox", crmActivities: "semasa_crm_activities",

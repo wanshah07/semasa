@@ -9,8 +9,6 @@ import { useLang } from "../lib/i18n";
 import { LEVELS, levelOf, summarise, verdict } from "../lib/antislop";
 import { opensAt, publishingOn } from "../lib/publishing";
 import Button from "../components/ui/Button";
-import HookLearning from "../components/HookLearning";
-import HookStyles from "../components/HookStyles";
 import Card from "../components/ui/Card";
 import { Input, Label, Select } from "../components/ui/Field";
 
@@ -129,8 +127,12 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
 
       <WriterSettings settings={settings} save={save} onToast={onToast} />
 
-      <HookStyles settings={settings} save={save} onToast={onToast} />
-      <HookLearning settings={settings} save={save} onToast={onToast} />
+      <Card className="p-5 text-sm" data-moved-hooks>
+        <p className="text-muted">{t("Gaya hook dan pembelajaran hook kini di Kandungan → ", "Hook styles and hook learning now live in Content → ")}
+          <a href="#hooks" className="font-medium text-accent underline">{t("Bank hook", "Hooks bank")}</a>
+          {t("; gaya penulisan di Kandungan → ", "; writing styles in Content → ")}
+          <a href="#gaya" className="font-medium text-accent underline">{t("Gaya penulisan", "Writing styles")}</a>.</p>
+      </Card>
 
       <AutofillSettings settings={settings} save={save} onToast={onToast} />
 

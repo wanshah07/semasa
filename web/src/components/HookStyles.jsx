@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronUp, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2, Upload, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, Loader2, PenLine, Plus, RefreshCw, Save, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useTable } from "../lib/hooks";
 import { useLang } from "../lib/i18n";
@@ -7,6 +7,7 @@ import { removeReference, uploadReference } from "../lib/storage";
 import {
   BUILTIN, MAX_IMAGES, STATUS_CLS, STATUS_WORDS, activeId, filesRefusal, isBusy, isReady, shapesToText, summaryLine, textToShapes,
 } from "../lib/hookStyles";
+import { FAMILY_WORDS, SERIES, builtinCopy, builtinNumbered, quickShape } from "../lib/hookBank";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 import { Input, Label, TextArea } from "./ui/Field";
@@ -15,7 +16,10 @@ import { Input, Label, TextArea } from "./ui/Field";
    hook and instruction to replace current instruction when select"). Wan adds screenshots of hooks he likes; the bot reads them
    and writes an instruction and fill-in-the-blank shapes (supabase/060, backend/semasa/hook_styles.py). The style he selects as
    the default, or on one idea, REPLACES the built-in 25 and their default guidance: the writer must build every post's first line
-   on one of its shapes. */
+   on one of its shapes.
+   Phase 4 (Wan, 11 Oct 2026: "hooks bank boleh edit, add, apply"): a set can also be written by hand (source "manual",
+   supabase/067), or started as a copy of the built-in 25 ("Salin untuk diubah"); every ready set is edited, added to (one shape
+   at a time or many) and applied the same way. The 25 themselves stay as they are: they are the worker's fallback. */
 
 export default function HookStyles({ settings, save, onToast }) {
   const { t, lang } = useLang();
@@ -30,6 +34,11 @@ export default function HookStyles({ settings, save, onToast }) {
   const [busy, setBusy] = useState("");
   const [open, setOpen] = useState("");
   const [sure, setSure] = useState("");
+  const [mode, setMode] = useState("screens");            // how a new set is made: "screens" (the bot) or "manual"
+  const [showBuiltin, setShowBuiltin] = useState(false);
+  const [mName, setMName] = useState("");
+  const [mInstruction, setMInstruction] = useState("");
+  const [mShapes, setMShapes] = useState("");
   const fileRef = useRef(null);
   const timers = useRef([]);
 
@@ -62,6 +71,33 @@ export default function HookStyles({ settings, save, onToast }) {
       onToast(/hook_styles|PGRST205|42P01/.test(e.message) ? t("Jalankan supabase/060_hook_styles.sql sekali dahulu.", "Run supabase/060_hook_styles.sql once first.") : e.message, "danger");
     }
     setBusy("");
+  }
+
+  async function addManual() {
+    const parsed = textToShapes(mShapes);
+    if (parsed.shapes.length < 3) return onToast(t("Perlu sekurang-kurangnya 3 bentuk, setiap satu dengan ___.", "At least 3 shapes are needed, each with a ___."), "warn");
+    if (!uid) return onToast(t("Log masuk dahulu.", "Sign in first."), "warn");
+    setBusy("manual");
+    const { error } = await supabase.from(TABLES.hookStyles).insert({ name: mName.trim().slice(0, 60) || t("Set hook saya", "My hook set"), source: "manual", status: "ready",
+      images: [], created_by: uid, instruction: mInstruction.trim().slice(0, 2000), shapes: parsed.shapes });
+    setBusy("");
+    if (error) return onToast(/source|PGRST204|column/.test(errText(error)) ? t("Jalankan supabase/067_hook_bank_writing_styles.sql sekali dahulu.", "Run supabase/067_hook_bank_writing_styles.sql once first.") : errText(error), "danger");
+    if (parsed.bad.length) onToast(t(`${parsed.bad.length} baris tanpa ___ dibuang.`, `${parsed.bad.length} line(s) without a ___ were dropped.`), "warn");
+    setMName(""); setMInstruction(""); setMShapes("");
+    rows.reload?.();
+    onToast(t("Set hook disimpan. Tekan \"Guna sebagai lalai\" untuk memakainya.", "Hook set saved. Press \"Use as default\" to apply it."), "ok");
+  }
+
+  async function copyBuiltin() {
+    if (!uid) return onToast(t("Log masuk dahulu.", "Sign in first."), "warn");
+    setBusy("copy");
+    const n = styles.filter((s) => /^Bank hook saya/.test(s.name || "")).length;
+    const { data, error } = await supabase.from(TABLES.hookStyles).insert(builtinCopy(n ? `Bank hook saya ${n + 1}` : "Bank hook saya", uid)).select("id");
+    setBusy("");
+    if (error) return onToast(/source|PGRST204|column/.test(errText(error)) ? t("Jalankan supabase/067_hook_bank_writing_styles.sql sekali dahulu.", "Run supabase/067_hook_bank_writing_styles.sql once first.") : errText(error), "danger");
+    rows.reload?.();
+    if (data?.[0]?.id) setOpen(data[0].id);
+    onToast(t("25 bentuk disalin. Ubah, tambah, kemudian tekan \"Guna sebagai lalai\".", "The 25 are copied. Edit, add, then press \"Use as default\"."), "ok");
   }
 
   async function choose(id) {
@@ -108,10 +144,10 @@ export default function HookStyles({ settings, save, onToast }) {
   return (
     <Card className="space-y-4 p-5" data-hook-styles>
       <div>
-        <h2 className="flex items-center gap-2 text-lg"><Sparkles size={16} /> {t("Gaya hook daripada tangkapan skrin", "Hook styles from screenshots")}</h2>
+        <h2 className="flex items-center gap-2 text-lg"><Sparkles size={16} /> {t("Set hook", "Hook sets")}</h2>
         <p className="mt-1 max-w-2xl text-[12px] text-muted">
-          {t("Tambah tangkapan skrin hook yang anda suka. Bot membacanya dan menulis arahan serta bentuk hook (___ untuk setiap butiran). Gaya yang dipilih menggantikan 25 bentuk terbina: setiap post mesti bermula dengan salah satu bentuknya. Peraturan lain tetap mengatasi gaya.",
-            "Add screenshots of hooks you like. The bot reads them and writes an instruction and hook shapes (___ for every specific). The style you select replaces the built-in 25: every post must open on one of its shapes. The standing rules still outrank any style.")}
+          {t("Set yang dipakai menentukan baris pertama setiap post: penulis mesti membina hook atas salah satu bentuknya (___ untuk setiap butiran). Salin 25 bentuk terbina untuk diubah, tulis set sendiri, atau biar bot membuatnya daripada tangkapan skrin. Peraturan lain tetap mengatasi mana-mana set.",
+            "The set in use decides every post's first line: the writer must build the hook on one of its shapes (___ for every specific). Copy the built-in 25 to edit, write a set yourself, or let the bot make one from screenshots. The standing rules still outrank any set.")}
         </p>
       </div>
 
@@ -119,11 +155,29 @@ export default function HookStyles({ settings, save, onToast }) {
         <li className="flex flex-wrap items-center gap-2 rounded-tile border border-line p-3 text-sm" data-hook-style="builtin">
           <span className="font-medium">{t("25 bentuk terbina", "The built-in 25")}</span>
           <span className="text-xs text-muted">{t("lima kumpulan, panduan lalai", "five groups, the default guidance")}</span>
-          <span className="ml-auto">
+          <span className="ml-auto flex flex-wrap items-center gap-2">
             {current === BUILTIN
               ? <span className="inline-flex items-center gap-1 rounded-pill bg-ok/15 px-2 py-0.5 text-xs text-ok"><Check size={12} /> {t("Dipakai", "In use")}</span>
               : <Button size="sm" variant="soft" onClick={() => choose("")} disabled={busy === "use-"}>{t("Guna ini", "Use this")}</Button>}
+            <Button size="sm" variant="soft" onClick={copyBuiltin} disabled={busy === "copy"} data-hook-copy>
+              {busy === "copy" ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />} {t("Salin untuk diubah", "Copy to edit")}</Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowBuiltin(!showBuiltin)} data-hook-show-builtin>
+              {showBuiltin ? <ChevronUp size={13} /> : <ChevronDown size={13} />} {showBuiltin ? t("Sembunyi", "Hide") : t("Lihat 25", "See the 25")}</Button>
           </span>
+          {showBuiltin && (
+            <div className="mt-2 grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-3" data-hook-builtin-list>
+              {SERIES.map((fam) => (
+                <div key={fam} className="min-w-0 rounded-tile bg-surface-2 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">{FAMILY_WORDS[fam][L]}{fam === "vulnerable" ? ` · ${t("LinkedIn sahaja", "LinkedIn only")}` : ""}</p>
+                  <ol className="mt-1 space-y-1 text-[12.5px]">
+                    {builtinNumbered().filter((r) => r.family === fam).map((r) => (
+                      <li key={r.n} className="flex gap-2"><span className="w-5 shrink-0 text-right font-mono text-muted">{r.n}</span><span className="min-w-0 break-words">{r.text}</span></li>
+                    ))}
+                  </ol>
+                </div>
+              ))}
+            </div>
+          )}
         </li>
         {styles.map((s) => (
           <StyleRow key={s.id} s={s} L={L} t={t} inUse={current === s.id} open={open === s.id} sure={sure === s.id} busy={busy}
@@ -134,7 +188,28 @@ export default function HookStyles({ settings, save, onToast }) {
       </ul>
 
       <div className="space-y-2 rounded-tile border border-dashed border-line p-3" data-hook-add>
-        <p className="text-sm font-medium">{t("Tambah gaya", "Add a style")}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-medium">{t("Tambah set hook", "Add a hook set")}</p>
+          <div role="tablist" className="ml-auto flex gap-1.5">
+            {[["screens", t("Daripada tangkapan skrin", "From screenshots"), Upload], ["manual", t("Tulis sendiri", "Write it myself"), PenLine]].map(([id, label, Icon]) => (
+              <button key={id} type="button" role="tab" aria-selected={mode === id} onClick={() => setMode(id)} data-hook-mode={id}
+                className={`inline-flex items-center gap-1 rounded-pill px-3 py-1 text-xs font-medium ${mode === id ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}><Icon size={12} /> {label}</button>
+            ))}
+          </div>
+        </div>
+        {mode === "manual" ? (
+          <div className="space-y-2" data-hook-manual>
+            <label className="block"><Label>{t("Nama", "Name")}</Label>
+              <Input value={mName} onChange={(e) => setMName(e.target.value)} maxLength={60} placeholder={t("Cth: Hook regulatori santai", "E.g. Casual regulatory hooks")} /></label>
+            <label className="block"><Label hint={t("pilihan; menggantikan panduan lalai penulis", "optional; replaces the writer's default guidance")}>{t("Arahan", "Instruction")}</Label>
+              <TextArea rows={3} value={mInstruction} onChange={(e) => setMInstruction(e.target.value)} maxLength={2000} /></label>
+            <label className="block"><Label hint={t("sekurang-kurangnya 3; satu setiap baris, ___ untuk butiran; boleh tulis \"bold | ...\"", "at least 3; one a line, ___ for a specific; you may write \"bold | ...\"")}>{t("Bentuk hook", "Hook shapes")}</Label>
+              <TextArea rows={6} value={mShapes} onChange={(e) => setMShapes(e.target.value)} spellCheck={false} className="font-mono text-xs" data-hook-manual-shapes
+                placeholder={"bold | Semua org ckp ___ tapi realitinya ___\ncuriosity | Ni apa jadi bila kau ___\nPOV: kau ___ tapi ___"} /></label>
+            <Button size="sm" onClick={addManual} disabled={busy === "manual" || !mShapes.trim()} data-hook-manual-save>
+              {busy === "manual" ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {t("Simpan set hook", "Save the hook set")}</Button>
+          </div>
+        ) : (<>
         <label className="block"><Label hint={t("pilihan: bot beri nama jika kosong", "optional: the bot names it if empty")}>{t("Nama", "Name")}</Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder={t("Cth: Pengakuan santai", "E.g. Casual admission")} /></label>
         <label className="block"><Label hint={t(`sehingga ${MAX_IMAGES}; PNG, JPG, WEBP`, `up to ${MAX_IMAGES}; PNG, JPG, WEBP`)}>{t("Tangkapan skrin hook", "Hook screenshots")}</Label>
@@ -155,6 +230,7 @@ export default function HookStyles({ settings, save, onToast }) {
           {busy === "add" ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {t("Analisis dan buat gaya", "Analyse and make the style")}
         </Button>
         <p className="flex items-start gap-1 text-[11.5px] text-muted"><Upload size={12} className="mt-0.5 shrink-0" /> {t("Bentuk hook ialah corak, bukan ayat orang lain: bot menggantikan setiap butiran dengan ___ dan tidak menyalin ayat contoh. Tangkapan skrin disimpan dalam folder anda sahaja.", "A shape is a pattern, not somebody else's sentence: the bot turns every specific into ___ and never copies an example. The screenshots stay in your own folder only.")}</p>
+        </>)}
       </div>
     </Card>
   );
@@ -165,6 +241,13 @@ function StyleRow({ s, L, t, inUse, open, sure, busy, onOpen, onUse, onRetry, on
   const [instruction, setInstruction] = useState(s.instruction || "");
   const [shapes, setShapes] = useState(shapesToText(s.shapes));
   const [saving, setSaving] = useState(false);
+  const [one, setOne] = useState("");
+  const addOne = () => {
+    const line = quickShape(one);
+    if (!line) return onWarn(t("Bentuk perlu ada ___ untuk butiran, dan sedikit perkataan tetap.", "A shape needs a ___ for a specific, and a few fixed words."));
+    setShapes((shapes.trim() ? `${shapes.trimEnd()}\n` : "") + line);
+    setOne("");
+  };
   // a row the bot has just finished fills the editor; an edit in progress is never overwritten by a poll
   const sig = JSON.stringify([s.name, s.instruction, s.shapes, s.status]);
   const seen = useRef(sig);
@@ -191,6 +274,7 @@ function StyleRow({ s, L, t, inUse, open, sure, busy, onOpen, onUse, onRetry, on
     <li className="rounded-tile border border-line p-3 text-sm" data-hook-style={s.id} data-status={s.status}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{s.name || t("Gaya tanpa nama", "Unnamed style")}</span>
+        <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted" data-hook-source={s.source || "screenshots"}>{s.source === "manual" ? t("tulis sendiri", "hand-written") : t("tangkapan skrin", "screenshots")}</span>
         <span className={`rounded-pill px-2 py-0.5 text-xs ${STATUS_CLS[s.status] || ""}`}>
           {isBusy(s) && <Loader2 size={11} className="mr-1 inline animate-spin" />}{(STATUS_WORDS[s.status] || [s.status, s.status])[L]}
         </span>
@@ -198,7 +282,7 @@ function StyleRow({ s, L, t, inUse, open, sure, busy, onOpen, onUse, onRetry, on
         <span className="ml-auto flex flex-wrap items-center gap-2">
           {inUse && <span className="inline-flex items-center gap-1 rounded-pill bg-ok/15 px-2 py-0.5 text-xs text-ok"><Check size={12} /> {t("Dipakai", "In use")}</span>}
           {isReady(s) && !inUse && <Button size="sm" variant="soft" onClick={onUse} disabled={busy === `use-${s.id}`}>{t("Guna sebagai lalai", "Use as default")}</Button>}
-          {s.status === "error" && <Button size="sm" variant="soft" onClick={onRetry} disabled={busy === `retry-${s.id}`}><RefreshCw size={12} /> {t("Cuba lagi", "Try again")}</Button>}
+          {s.status === "error" && s.source !== "manual" && <Button size="sm" variant="soft" onClick={onRetry} disabled={busy === `retry-${s.id}`}><RefreshCw size={12} /> {t("Cuba lagi", "Try again")}</Button>}
           {s.status === "ready" && <Button size="sm" variant="ghost" onClick={onOpen} aria-label={t("Ubah", "Edit")}>{open ? <ChevronUp size={13} /> : <ChevronDown size={13} />} {t("Ubah", "Edit")}</Button>}
           <Button size="sm" variant="danger" onClick={onDelete} disabled={busy === `del-${s.id}`}><Trash2 size={12} /> {sure ? t("Pasti? Klik lagi", "Sure? Click again") : t("Padam", "Delete")}</Button>
         </span>
@@ -211,7 +295,13 @@ function StyleRow({ s, L, t, inUse, open, sure, busy, onOpen, onUse, onRetry, on
           <label className="block"><Label hint={t("menggantikan panduan lalai penulis", "replaces the writer's default guidance")}>{t("Arahan gaya", "Style instruction")}</Label>
             <TextArea rows={5} value={instruction} onChange={(e) => setInstruction(e.target.value)} maxLength={2000} /></label>
           <label className="block"><Label hint={t("satu bentuk setiap baris, ___ untuk butiran; boleh tulis \"bold | ...\"", "one shape a line, ___ for a specific; you may write \"bold | ...\"")}>{t("Bentuk hook", "Hook shapes")}</Label>
-            <TextArea rows={8} value={shapes} onChange={(e) => setShapes(e.target.value)} spellCheck={false} className="font-mono text-xs" /></label>
+            <TextArea rows={8} value={shapes} onChange={(e) => setShapes(e.target.value)} spellCheck={false} className="font-mono text-xs" data-hook-shapes /></label>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input value={one} onChange={(e) => setOne(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addOne(); } }}
+              placeholder={t("Tambah satu bentuk: bold | Stop buat ___ kalau ___", "Add one shape: bold | Stop doing ___ if ___")} className="min-w-0 flex-1" data-hook-one />
+            <Button size="sm" variant="soft" onClick={addOne} data-hook-one-add><Plus size={12} /> {t("Tambah", "Add")}</Button>
+          </div>
+          <p className="text-[11.5px] text-muted">{t("Nombor bentuk ikut susunan baris. Tekan Simpan untuk memakai perubahan.", "Shapes are numbered in line order. Press Save to apply the changes.")}</p>
           <Button size="sm" onClick={saveEdit} disabled={saving}>{saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {t("Simpan gaya", "Save style")}</Button>
         </div>
       )}

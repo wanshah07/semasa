@@ -1,0 +1,55 @@
+name: Writing styles
+
+# Writing styles (Wan, 11 Oct 2026, Phase 4): viral posts added on the Gaya penulisan page (links, pasted text, screenshots) are read
+# and turned into a writing style the caption writer follows while it is chosen (backend/semasa/writing_styles.py). Woken by the
+# database within seconds of a new style (supabase/067, repository_dispatch 'writing_style'); the schedule is the net for a
+# dispatch GitHub dropped. One schedule, in the repo that owns the job.
+on:
+  repository_dispatch:
+    types: [writing_style]
+  schedule:
+    - cron: "50 3 * * *"          # 11:50 MYT
+  workflow_dispatch:
+
+concurrency:
+  group: writing-styles
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  writing:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Read the posts and write the styles
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          VISION_MODEL: ${{ vars.VISION_MODEL }}
+          LLM_FALLBACK_BASE_URL: ${{ vars.LLM_FALLBACK_BASE_URL }}
+          LLM_FALLBACK_MODEL: ${{ vars.LLM_FALLBACK_MODEL }}
+          LLM_ALLOWED_HOSTS: ${{ vars.LLM_ALLOWED_HOSTS }}
+          LLM_FALLBACK_ALLOWED_HOSTS: ${{ vars.LLM_FALLBACK_ALLOWED_HOSTS }}
+          LLM_TIMEOUT: ${{ vars.LLM_TIMEOUT }}
+        run: python -m semasa.writing_styles

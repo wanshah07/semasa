@@ -1,5 +1,5 @@
-import { BarChart3, Brain, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
-  LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, Radio, Receipt, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
+import { Anchor, BarChart3, Brain, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
+  LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, Radio, PenLine, Receipt, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
 
 /* Every page, once: the header's tab row on a phone, the sidebar and the sub-tab bar all read this list, so they can never
    disagree. A page's `id` is its address (#post, #office…) and does not change when it moves between segments.
@@ -14,6 +14,8 @@ export function tabsOf(t) {
     { id: "isu", label: t("Isu semasa", "Current issues"), icon: Radio, segment: "content" },
     { id: "idea", label: t("Bank idea", "Ideas bank"), icon: Lightbulb, segment: "content" },
     { id: "post", label: t("Bank post", "Post bank"), icon: FileText, segment: "content" },
+    { id: "hooks", label: t("Bank hook", "Hooks bank"), icon: Anchor, segment: "content" },
+    { id: "gaya", label: t("Gaya penulisan", "Writing styles"), icon: PenLine, segment: "content" },
 
     { id: "prestasi", label: t("Prestasi", "Performance"), icon: BarChart3, segment: "performance" },
 

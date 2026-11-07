@@ -3,7 +3,7 @@
    wrong page. Reads the source, so it needs no browser. `npm test`. */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { tabsOf } from "./src/lib/tabs.js";
+import { segmentOf, segmentsOf, tabsOf } from "./src/lib/tabs.js";
 
 let n = 0;
 const t = (name, fn) => { try { fn(); n++; } catch (e) { console.error("FAIL:", name); throw e; } };
@@ -23,6 +23,35 @@ t("every page component that is imported is used", () => {
   const pages = [...src.matchAll(/^(?:import (\w+Tab) from "|const (\w+Tab) = lazy\(\(\) => import\(")\.\/pages\//gm)].map((m) => m[1] || m[2]);
   assert.ok(pages.length > 10);
   assert.deepEqual(pages.filter((p) => !src.includes(`<${p} `) && !src.includes(`<${p}\n`)), []);
+});
+
+t("every page except Settings sits in exactly one segment, and every segment page exists", () => {
+  const segs = segmentsOf((bm) => bm);
+  const inSeg = segs.flatMap((s) => s.pages.map((p) => p.id));
+  assert.equal(new Set(inSeg).size, inSeg.length, "a page is in two segments");
+  assert.deepEqual([...inSeg].sort(), menu.filter((id) => id !== "tetapan").sort());
+  assert.ok(segs.every((s) => s.pages.length > 0), "an empty segment would be a dead sidebar row");
+});
+t("Wan's layout of 11 Oct 2026: which pages sit together", () => {
+  const where = (id) => segmentOf((bm) => bm, id)?.id;
+  assert.deepEqual(["papan", "chat", "otak"].map(where), ["dashboard", "dashboard", "dashboard"]);
+  assert.deepEqual(["isu", "idea", "post"].map(where), ["content", "content", "content"]);
+  assert.equal(where("prestasi"), "performance");
+  assert.equal(where("wangian"), "valorith");
+  assert.deepEqual(["bil", "crm"].map(where), ["business", "business"]);
+  assert.deepEqual(["office", "repo", "api"].map(where), ["technology", "technology", "technology"]);
+  assert.deepEqual(["resit", "langganan"].map(where), ["personal", "personal"]);
+  assert.equal(where("tetapan"), undefined);
+});
+t("Kanvas is gone from the menu, the routes and the app", () => {
+  assert.ok(!menu.includes("kanvas") && !ids.includes("kanvas"));
+  assert.ok(!/CanvasTab|canvasSeed|kanvas"/.test(src));
+});
+t("Office repos and Repo library are two pages", () => {
+  assert.ok(menu.includes("office") && menu.includes("repo"));
+  const office = readFileSync(new URL("./src/pages/OfficeTab.jsx", import.meta.url), "utf8");
+  const repo = readFileSync(new URL("./src/pages/RepoTab.jsx", import.meta.url), "utf8");
+  assert.ok(!office.includes("RepoLibrary") && repo.includes("RepoLibrary") && !repo.includes("officeSummary"));
 });
 
 console.log(`tabs.test.mjs: ${n} groups OK`);

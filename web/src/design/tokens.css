@@ -37,7 +37,7 @@
   --blur: 14px;
 
   /* layout + motion */
-  --page-max: 1280px;
+  --page-max: min(100%, 1920px);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --hero-gradient: radial-gradient(1200px 500px at 10% -10%, rgb(var(--c-accent) / 0.16), transparent 60%),
                    radial-gradient(800px 400px at 90% 0%, rgb(var(--c-warm) / 0.35), transparent 60%);

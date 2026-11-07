@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, Clock, ExternalLink, Eye, ImagePlus, LayoutTemplate, Loader2, Palette, PenTool, Pencil, Plus, RotateCcw,
+import { AlertTriangle, CheckCircle2, Clock, Download, ExternalLink, Eye, ImagePlus, LayoutTemplate, Loader2, Palette, Pencil, Plus, RotateCcw,
   Save, Trash2, Wand2, X } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { STREAMS } from "../lib/brand";
@@ -45,7 +45,7 @@ const blankSlide = () => ({ title: "", points: "" });
 const defaultSize = (design, stream) => (design === "poster" ? "portrait" : design === "card" ? "square"
   : stream === "linkedin" ? "portrait" : "square");
 
-export default function DesignTab({ user, gens, posts, brand, settings, saveSetting, onToast, onCanvas }) {
+export default function DesignTab({ user, gens, posts, brand, settings, saveSetting, onToast }) {
   const { t } = useLang();
   const { designs: myDesigns, defaultId, ready: designsReady, saveDesigns, setDefault } = useDesigns();
   const [design, setDesign] = useState("poster");
@@ -76,7 +76,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
   const [styleFile, setStyleFile] = useState(null);
   const [autoLook, setAutoLook] = useState(true);
   // how the reference is used (Wan, 1 Oct 2026: "upload design, then ai render similarly, only context is different"):
-  // inspire = the worker draws an original design in its mood (as before); rebuild = its layout is rebuilt as editable Kanvas layers
+  // inspire = the worker draws an original design in its mood (as before); rebuild = its layout is rebuilt and drawn as a PNG
   const [refMode, setRefMode] = useState("inspire");
   // rebuild on the reference picture itself (only the words change: "almost 100% serupa") or as rebuilt layers (every shape editable)
   const [refBase, setRefBase] = useState("original");
@@ -136,8 +136,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
   }
 
   // Rebuild: the AI reads the reference ONCE as a layout (no picture is made); the words are then checked here against the post rules,
-  // the result is drawn as a preview, a refine pass compares that preview with the reference, and the design opens in Kanvas as layers,
-  // every piece movable. `mode` "inspire" asks for an ORIGINAL composition in the reference's visual language instead.
+  // the result is drawn as a preview, a refine pass compares that preview with the reference, and the design is drawn in full and downloaded as a PNG. `mode` "inspire" asks for an ORIGINAL composition in the reference's visual language instead.
   async function startClone(mode = "clone") {
     setBusy(mode === "inspire" ? "inspire" : "clone");
     try {
@@ -171,7 +170,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
     }
   }
 
-  // layout + words → the seed Kanvas draws, the same for the preview and for opening (so what is shown is what opens)
+  // layout + words → the seed that is drawn, the same for the preview and for the download (so what is shown is what is saved)
   async function seedFor(review, layout, w) {
     const [W, H] = review.size;
     const name = styleFile?.name ? styleFile.name.replace(/\.[^.]+$/, "") : "";
@@ -231,11 +230,21 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
     }
   }
 
-  async function openInKanvas(review, layout, w) {
-    const { seed, notes } = await seedFor(review, layout, w);
-    notes.slice(0, 3).forEach((n) => onToast(n, "info"));
-    setCloneReview(null);
-    onCanvas?.({ ...seed, sizeId: review.base === "original" ? null : format });
+  // "Download PNG": the design is drawn in full size, from the same seed the preview used, and saved as a picture
+  async function downloadClone(review, layout, w) {
+    try {
+      const { seed, notes } = await seedFor(review, layout, w);
+      notes.slice(0, 3).forEach((n) => onToast(n, "info"));
+      const { dataUrl } = await renderSeedPreview(seed, { maxSide: Math.max(seed.width, seed.height), quality: 0.95 });
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `${(seed.name || "reka-bentuk").replace(/[^\w-]+/g, "-").slice(0, 40) || "reka-bentuk"}.jpg`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setCloneReview(null);
+      onToast(t("Reka bentuk dimuat turun.", "Design downloaded."), "ok");
+    } catch (err) {
+      onToast(err.message || String(err), "danger");
+    }
   }
 
   function closeReview() {
@@ -381,10 +390,10 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
               {rebuild && <p className="mt-2 text-[11px] text-accent">{design === "carousel"
                 ? t("Bina semula untuk satu gambar sahaja: pilih Poster atau Kad tunggal.", "Rebuild makes one picture: choose Poster or Single card.")
                 : refBase === "original"
-                  ? t("Gambar rujukan kekal sebagai latar (saiz ikut rujukan): perkataan lama, logo dan wajah ditampal dengan warna di belakangnya, perkataan baharu diletakkan di tempat yang sama, kemudian AI banding pratonton dengan rujukan dan betulkan kedudukan. Semuanya lapisan boleh sunting di Kanvas.",
-                    "The reference picture stays as the background (the size follows the reference): the old words, logos and faces are patched in the colour behind them, the new words go in the same places, then the AI compares the preview with the reference and corrects the placing. Everything is an editable layer in Kanvas.")
-                  : t("AI baca susun atur rujukan (latar, bentuk, kawasan gambar, setiap blok teks) dan ia dibina semula sebagai lapisan boleh sunting di Kanvas dengan perkataan anda, kemudian banding pratonton dengan rujukan dan betulkan. Logo, nama jenama, laman web, CTA dan wajah orang tidak disalin.",
-                    "The AI reads the reference's layout (background, shapes, picture areas, every text block) and it is rebuilt as editable layers in Kanvas with your words, then compares the preview with the reference and corrects it. Logos, brand names, websites, calls to action and people's faces are not copied.")}</p>}
+                  ? t("Gambar rujukan kekal sebagai latar (saiz ikut rujukan): perkataan lama, logo dan wajah ditampal dengan warna di belakangnya, perkataan baharu diletakkan di tempat yang sama, kemudian AI banding pratonton dengan rujukan dan betulkan kedudukan. Hasilnya gambar PNG yang boleh dimuat turun.",
+                    "The reference picture stays as the background (the size follows the reference): the old words, logos and faces are patched in the colour behind them, the new words go in the same places, then the AI compares the preview with the reference and corrects the placing. The result is a PNG picture you can download.")
+                  : t("AI baca susun atur rujukan (latar, bentuk, kawasan gambar, setiap blok teks) dan ia dibina semula dengan perkataan anda sebagai gambar PNG yang boleh dimuat turun, kemudian banding pratonton dengan rujukan dan betulkan. Logo, nama jenama, laman web, CTA dan wajah orang tidak disalin.",
+                    "The AI reads the reference's layout (background, shapes, picture areas, every text block) and it is rebuilt with your words as a PNG picture you can download, then compares the preview with the reference and corrects it. Logos, brand names, websites, calls to action and people's faces are not copied.")}</p>}
               <p className={`mt-2 text-[11px] text-muted ${rebuild ? "hidden" : ""}`}>{t("AI baca rujukan: apa yang baik, apa yang mesti diubah (CTA, laman web, logo jenama lain), dan buat reka bentuk asli, bukan salinan. Pratonton menunggu anda tekan Simpan; yang tidak disimpan dipadam selepas 7 hari.",
                 "The AI reads the reference: what works, what must change (a CTA, a website, another brand's logo), and makes an original design, not a copy. The preview waits for your Save; one not saved is deleted after 7 days.")}</p>
             </div>
@@ -487,21 +496,21 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
           <span className="text-xs text-muted">{sizeLabel(format)} · {rebuild ? t("AI baca susun atur sekali; selebihnya tanpa AI", "the AI reads the layout once; the rest is drawn without AI") : t("dilukis tanpa AI, percuma", "drawn without AI, free")}</span>
           {styleFile && refMode === "inspire" && design !== "carousel" && (
             <Button type="button" variant="soft" disabled={!!busy || !wordsOk} onClick={() => startClone("inspire")}
-              title={t("AI gubah reka bentuk asli dalam gaya rujukan (warna, jenis huruf, suasana) dan buka terus di Kanvas, tanpa menunggu pekerja.", "The AI composes an original design in the reference's style (colours, type, mood) and opens it in Kanvas at once, with no worker queue.")}>
-              {busy === "inspire" ? <Loader2 size={14} className="animate-spin" /> : <PenTool size={14} />} {t("Jana di Kanvas (serta-merta)", "Make it in Kanvas (now)")}</Button>
+              title={t("AI gubah reka bentuk asli dalam gaya rujukan (warna, jenis huruf, suasana) dan siap serta-merta sebagai PNG, tanpa menunggu pekerja.", "The AI composes an original design in the reference's style (colours, type, mood) and finishes it at once as a PNG, with no worker queue.")}>
+              {busy === "inspire" ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} {t("Jana serta-merta", "Make it now")}</Button>
           )}
           <Button type="submit" disabled={!!busy || !ready}>
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} {rebuild ? t("Bina semula di Kanvas", "Rebuild in Kanvas") : t("Jana reka bentuk", "Make the design")}</Button>
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} {rebuild ? t("Bina semula", "Rebuild") : t("Jana reka bentuk", "Make the design")}</Button>
         </div>
       </Card>
 
       {cloneReview && <CloneReview data={cloneReview} stream={stream} brand={brand} onClose={closeReview} onToast={onToast}
         onPreview={(layout, w) => previewOf(cloneReview, layout, w)} onRefine={(layout, w) => refineOnce(cloneReview, layout, w)}
-        onOpen={(layout, w) => openInKanvas(cloneReview, layout, w)} />}
+        onOpen={(layout, w) => downloadClone(cloneReview, layout, w)} />}
 
       <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
-      <DesignResults lockedBy={lockedBy} posts={posts?.rows || []} rows={results} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} onCanvas={onCanvas} />
+      <DesignResults lockedBy={lockedBy} posts={posts?.rows || []} rows={results} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} />
       <DesignLibrary />
     </main>
   );
@@ -619,7 +628,7 @@ function deleteQuestion(row, posts, t) {
     : t("Padam reka bentuk ini?", "Delete this design?");
 }
 
-function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy = () => null, posts = [] }) {
+function DesignResults({ rows, user, gens, onToast, designs, lockedBy = () => null, posts = [] }) {
   const { t } = useLang();
   const [canva, setCanva] = useState(null);                  // the design row being handed to Canva
   if (!rows.length) {
@@ -672,13 +681,6 @@ function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy 
               {r.error && <p className="mt-2 [overflow-wrap:anywhere] rounded-tile bg-danger/5 p-2 text-[11px] text-danger">{r.error}</p>}
               {m.style_ref && <ReviewPanel row={r} mine={mine} onToast={onToast} gens={gens} />}
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                {urls[0] && onCanvas && r.status === "done" && (
-                  // a drawn design is one flat picture: it opens as the background, with room to add text and pictures on top
-                  <button type="button" onClick={() => { const [w, h] = m.size?.length === 2 ? m.size : pxOf(m.format); onCanvas({ width: w, height: h, sizeId: m.format || null,
-                    name: (m.slides?.[0]?.title || m.brief || t("Reka bentuk", "Design")).replace(/\*/g, "").slice(0, 60), source: "design", sourceId: r.id,
-                    layers: [{ kind: "image", role: "bg", url: urls[0], cover: true, name: t("Reka bentuk", "Design") }] }); }}
-                    className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline"><PenTool size={11} /> {t("Ubah dalam Kanvas", "Edit in Kanvas")}</button>
-                )}
                 {urls[0] && <a href={urls[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">
                   <ExternalLink size={11} /> {t("Buka fail", "Open file")}</a>}
                 {urls[0] && r.status === "done" && m.flow !== "canva" && Array.isArray(m.slides) && m.slides.length > 0 && (
@@ -710,7 +712,7 @@ function DesignResults({ rows, user, gens, onToast, designs, onCanvas, lockedBy 
   );
 }
 
-/* The words of a rebuilt design, checked before it opens in Kanvas (Wan, 1 Oct 2026). The AI wrote them for each text block when it was
+/* The words of a rebuilt design, checked before it is made (Wan, 1 Oct 2026). The AI wrote them for each text block when it was
    given an idea, or they are Wan's own; either way every word goes through the same post rules as a post's artwork, and a hard flag
    stops the design opening until it is fixed here. Only the blocks the reference has are offered: a reference with no small label has
    no Label field, because a field with nowhere to go would be a lie. */
@@ -725,7 +727,7 @@ function CloneReview({ data, stream, brand, onClose, onOpen, onPreview, onRefine
     brand?.regulab).filter((f) => f.where.startsWith("Design") || f.where === "Source"), [stream, w.source, w.headline, w.eyebrow, w.points, brand]); // eslint-disable-line react-hooks/exhaustive-deps
   const blocked = flags.some((f) => f.hard) || !w.headline.trim();
   const ptLimit = Math.max(slots.points.length, 1);
-  // the preview: what Kanvas will open, drawn here first; redrawn (after a pause) when the words or the layout change
+  // the preview: what the download will be, drawn here first; redrawn (after a pause) when the words or the layout change
   const [preview, setPreview] = useState("");
   const [busy, setBusy] = useState("");                 // "" | "preview" | "refine"
   const [passes, setPasses] = useState(0);
@@ -786,7 +788,7 @@ function CloneReview({ data, stream, brand, onClose, onOpen, onPreview, onRefine
     refine().then((r) => { if (r.stop) auto.current = false; });
   }, [preview, fit, busy]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <Modal open onClose={onClose} title={data.mode === "inspire" ? t("Reka bentuk diilhamkan: semak sebelum dibuka", "Inspired design: check before it opens") : t("Semak perkataan sebelum dibina", "Check the words before it is rebuilt")}>
+    <Modal open onClose={onClose} title={data.mode === "inspire" ? t("Reka bentuk diilhamkan: semak sebelum siap", "Inspired design: check before it is made") : t("Semak perkataan sebelum dibina", "Check the words before it is rebuilt")}>
       <div className="space-y-3">
         <div className="relative overflow-hidden rounded-tile border border-line bg-surface-2">
           {preview ? <img src={preview} alt={t("Pratonton", "Preview")} className="mx-auto max-h-[22rem] w-auto" />
@@ -803,7 +805,7 @@ function CloneReview({ data, stream, brand, onClose, onOpen, onPreview, onRefine
             <RotateCcw size={11} /> {t("Halusi lagi (AI banding)", "Refine again (AI compares)")}</button>}
         </div>
         {verdict && <p className="text-[12px] text-muted">{verdict}</p>}
-        {fit && fit.score < 85 && fit.worst.length > 0 && <p className="text-[12px] text-warn">{t("Paling berbeza: {where}. Betulkan di Kanvas atau halusi lagi.", "Furthest from the reference: {where}. Fix it in Kanvas or refine again.",
+        {fit && fit.score < 85 && fit.worst.length > 0 && <p className="text-[12px] text-warn">{t("Paling berbeza: {where}. Halusi lagi atau betulkan perkataan.", "Furthest from the reference: {where}. Refine again or adjust the words.",
           { where: fit.worst.slice(0, 3).map((c) => `${Math.round((c.x + c.w / 2) * 100)}%→, ${Math.round((c.y + c.h / 2) * 100)}%↓`).join(" · ") })}</p>}
         {data.snap && (data.snap.changes.length > 0 || data.snap.kept.length > 0) && (
           <p className="text-[12px] text-muted">{t("{n} warna disukat terus daripada piksel rujukan.", "{n} colour(s) measured straight from the reference's pixels.", { n: data.snap.changes.length })}
@@ -835,7 +837,7 @@ function CloneReview({ data, stream, brand, onClose, onOpen, onPreview, onRefine
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>{t("Batal", "Cancel")}</Button>
           <Button type="button" disabled={blocked || !!busy} onClick={() => onOpen(layout, wordsOut())}>
-            <PenTool size={14} /> {t("Buka di Kanvas", "Open in Kanvas")}</Button>
+            <Download size={14} /> {t("Muat turun PNG", "Download PNG")}</Button>
         </div>
       </div>
     </Modal>

@@ -7,13 +7,13 @@ import { FAQ_CATEGORY_TO_DOMAIN, FAQ_SOURCE, brandOf } from "./lib/brand";
 import { stampMYT } from "./lib/format";
 import { currentLang, useLang } from "./lib/i18n";
 import { useCanUpload, useGenerations, useSession, useSettings, useTable, useToasts, useTrends } from "./lib/hooks";
-import { canLeave } from "./lib/leaveGuard";
 import FilterBar from "./components/FilterBar";
 import Gate from "./components/Gate";
 import { DesignsContext } from "./lib/designsContext";
 import { watchIdea } from "./lib/watchIdea";
 import Header from "./components/Header";
 import AppSidebar from "./components/AppSidebar";
+import SegmentBar from "./components/SegmentBar";
 import ViewToggle, { useView } from "./components/ViewToggle";
 import Toasts from "./components/Toast";
 import Button from "./components/ui/Button";
@@ -31,8 +31,6 @@ const TrendTable = lazy(() => import("./components/TrendTable"));
 const DesignTab = lazy(() => import("./pages/DesignTab"));
 const FaqTab = lazy(() => import("./pages/FaqTab"));
 const FragranceTab = lazy(() => import("./pages/FragranceTab"));
-// the editor carries Fabric.js: loaded only when the Kanvas tab opens
-const CanvasTab = lazy(() => import("./pages/CanvasTab"));
 const LogTab = lazy(() => import("./pages/LogTab"));
 const IdeasTab = lazy(() => import("./pages/IdeasTab"));
 const PostsTab = lazy(() => import("./pages/PostsTab"));
@@ -49,6 +47,7 @@ const ResitTab = lazy(() => import("./pages/ResitTab"));
 const BrainTab = lazy(() => import("./pages/BrainTab"));
 const PrestasiTab = lazy(() => import("./pages/PrestasiTab"));
 const RepoTab = lazy(() => import("./pages/RepoTab"));
+const OfficeTab = lazy(() => import("./pages/OfficeTab"));
 const ApiTab = lazy(() => import("./pages/ApiTab"));
 import { setWanshah } from "./lib/cards/library";
 import { approvedPoses } from "./lib/wanshah";
@@ -274,7 +273,7 @@ function MediaTab({ user, gens, prompts, posts, onToast }) {
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "prestasi", "media", "design", "wangian", "kanvas", "video", "chat", "otak", "bil", "langganan", "crm", "resit", "faq", "log", "repo", "api", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "prestasi", "media", "design", "wangian", "video", "chat", "otak", "bil", "langganan", "crm", "resit", "faq", "log", "office", "repo", "api", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 // #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)
@@ -290,8 +289,6 @@ export default function App() {
   const [pubToken, setPubToken] = useState(() => (PUBLIC_DOC.exec(window.location.hash.replace("#", "")) || [])[1] || "");
   const [unsubToken, setUnsubToken] = useState(() => (UNSUB.exec(window.location.hash.replace("#", "")) || [])[1] || "");
   const [focusPost, setFocusPost] = useState(null);
-  const [canvasSeed, setCanvasSeed] = useState(null);         // a design sent to Kanvas from Wangian or Design
-  const clearSeed = useCallback(() => setCanvasSeed(null), []);
   // follow the address bar too: Back/Forward and a pasted #post link switch the tab
   useEffect(() => {
     const onHash = () => {
@@ -299,12 +296,7 @@ export default function App() {
       setPubToken((PUBLIC_DOC.exec(h) || [])[1] || "");
       setUnsubToken((UNSUB.exec(h) || [])[1] || "");
       const next = TAB_IDS.includes(h) ? h : "papan";
-      // the browser's Back/Forward: ask before unsaved Kanvas work goes, and put the address back if the answer is no
-      setTab((cur) => {
-        if (next === cur) return cur;
-        if (!canLeave()) { window.history.replaceState(null, "", cur === "papan" ? "#" : `#${cur}`); return cur; }
-        return next;
-      });
+      setTab(next);
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -368,7 +360,6 @@ export default function App() {
   const [guideOpen, setGuideOpen] = useState(false);
 
   function go(next) {
-    if (next !== tab && !canLeave()) return;          // unsaved Kanvas work: ask first
     setTab(next); window.location.hash = next === "papan" ? "" : next;
   }
   // the sidebar on wide screens: auto (a rail of icons that slides open on hover) unless Wan pins it. Auto is the
@@ -402,11 +393,8 @@ export default function App() {
   else if (tab === "post") body = allowed ? <PostsTab posts={posts} media={gens} log={log} brand={brand} user={user}
     settings={settings} onToast={push} focusId={focusPost} setFocusId={setFocusPost} /> : gate(null);
   else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} posts={posts} onToast={push} /> : gate(null);
-  else if (tab === "design") body = allowed ? <DesignTab user={user} gens={gens} posts={posts} brand={brand} settings={settings} saveSetting={save} onToast={push}
-    onCanvas={(seed) => { setCanvasSeed(seed); go("kanvas"); }} /> : gate(null);
-  else if (tab === "wangian") body = allowed ? <FragranceTab user={user} gens={gens} onToast={push}
-    onCanvas={(seed) => { setCanvasSeed(seed); go("kanvas"); }} /> : gate(null);
-  else if (tab === "kanvas") body = allowed ? <CanvasTab user={user} onToast={push} seed={canvasSeed} clearSeed={clearSeed} /> : gate(null);
+  else if (tab === "design") body = allowed ? <DesignTab user={user} gens={gens} posts={posts} brand={brand} settings={settings} saveSetting={save} onToast={push} /> : gate(null);
+  else if (tab === "wangian") body = allowed ? <FragranceTab user={user} gens={gens} onToast={push} /> : gate(null);
   else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push}
     openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
@@ -415,6 +403,7 @@ export default function App() {
   else if (tab === "langganan") body = allowed ? <SubscriptionsTab user={user} onToast={push} /> : gate(null);
   else if (tab === "resit") body = allowed ? <ResitTab user={user} onToast={push} /> : gate(null);
   else if (tab === "crm") body = allowed ? <CrmTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
+  else if (tab === "office") body = allowed ? <OfficeTab settings={settings} save={save} onToast={push} user={user} /> : gate(null);
   else if (tab === "repo") body = allowed ? <RepoTab settings={settings} save={save} onToast={push} user={user} /> : gate(null);
   else if (tab === "api") body = allowed ? <ApiTab settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "prestasi") body = allowed ? <PrestasiTab posts={posts} go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
@@ -436,6 +425,7 @@ export default function App() {
         onGuide={allowed ? () => setGuideOpen(true) : undefined} />
       {allowed && <Guide open={guideOpen} onClose={() => setGuideOpen(false)} settings={settings} brand={brand} />}
       <div className="flex-1">
+        {allowed && configured && <SegmentBar tab={tab} setTab={go} />}
         <Suspense fallback={<Waiting />}>{body}</Suspense>
       </div>
       {allowed && (

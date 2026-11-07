@@ -69,3 +69,9 @@ Two hard limits that come from this repo's own rules, not from the format:
 - **Kanvas is removed** (page, `canvasSeed.js`, `leaveGuard.js`, every "Edit in Kanvas" button). Design's rebuild/inspire flow now ends in **Download PNG** (`renderSeedPreview` at full size). `kanvasBuild.js` stays only because that preview uses it.
 - **Office repos** (`pages/OfficeTab.jsx`, the health board) and **Repo library** (`pages/RepoTab.jsx`, pasted links) are two pages in Technology.
 - Pages fill the width: `--page-max` is `min(100%, 1920px)`.
+
+## Create, split in three (Phase 2, 11 Oct 2026)
+
+- Three segments, each with a **generate** page and a **library** page: Image (`media`, `media-lib`), Video (`video`, `video-lib`, `motion-skills`), Poster (`design`, `design-lib`). Libraries are `components/TileGrid.jsx`: square tiles, 8 across from 1280 px, click opens the page's own full card in a dialog (retry, delete, post, download all kept).
+- Image and video generation are apart: `MediaUploader` takes `only="image" | "video"`. Generate video is one page with three ways (Motion, AI video, YouTube clips; the choice is remembered). `MotionLab` and `DesignTab` take `view` (`make` / `library` / `skills`) so one component holds the state and each page draws its share.
+- The motion skill box moved from Tetapan to **Motion skills** (`components/MotionSkill.jsx`), beside the motion repos, and takes a `.md` / `.txt` upload (fills the box, saved only on Save). The effect library and per-film pictures stay in the Motion form: they are choices for one film.

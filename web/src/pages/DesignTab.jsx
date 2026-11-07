@@ -30,6 +30,8 @@ import { newDesignId } from "../lib/designs";
 import { resolveLook, useDesigns } from "../lib/designs";
 import { renderSeedPreview } from "../lib/kanvasBuild";
 import DesignLibrary from "../components/DesignLibrary";
+import TileGrid from "../components/TileGrid";
+import { thumbOf } from "../lib/genActions";
 import CanvaHandoff from "../components/CanvaHandoff";
 import { canDeleteDesign, ownsDesign } from "../lib/designDelete";
 
@@ -45,7 +47,10 @@ const blankSlide = () => ({ title: "", points: "" });
 const defaultSize = (design, stream) => (design === "poster" ? "portrait" : design === "card" ? "square"
   : stream === "linkedin" ? "portrait" : "square");
 
-export default function DesignTab({ user, gens, posts, brand, settings, saveSetting, onToast }) {
+/* `view` (Wan, 11 Oct 2026: "Design change to Poster, split to poster generate and library"): "make" is the form, "library" is
+   the finished posters as compact tiles (components/TileGrid.jsx) over the grounds and mascot poses. One component, so a
+   poster's card and its rules are the same wherever it is opened. */
+export default function DesignTab({ user, gens, posts, brand, settings, saveSetting, onToast, view = "make", go }) {
   const { t } = useLang();
   const { designs: myDesigns, defaultId, ready: designsReady, saveDesigns, setDefault } = useDesigns();
   const [design, setDesign] = useState("poster");
@@ -309,11 +314,33 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
   const lockedBy = (id) => (posts?.rows || []).find((p) => ["approved", "scheduled", "posted"].includes(p.status) && (p.media_ids || []).includes(id));
   const designs = [["poster", "Poster"], ["card", t("Kad tunggal", "Single card")], ["carousel", "Carousel"]];
 
+  if (view === "library") {
+    return (
+      <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
+        <motion.div variants={fadeUp} initial="hidden" animate="show" className="mb-5">
+          <p className="text-[13px] font-semibold text-accent">Poster</p>
+          <h1 className="mt-2 text-4xl leading-tight">{t("Pustaka poster", "Poster library")}</h1>
+          <p className="mt-2 max-w-2xl text-sm text-muted">{t("Setiap poster, kad dan carousel yang sudah dijana. Klik satu untuk buka kad penuh: lampirkan pada post, bina semula dalam Canva, muat turun, padam.",
+            "Every poster, card and carousel made. Click one to open the full card: attach it to a post, rebuild it in Canva, download, delete.")}
+          {go && <> <button type="button" className="text-accent underline" onClick={() => go("design")}>{t("Jana poster baharu", "Generate a new poster")}</button></>}</p>
+        </motion.div>
+        {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
+        <TileGrid items={results.map((r) => ({ id: r.id, kind: "image", src: thumbOf(r), status: r.status === "done" ? "" : r.status,
+          label: (r.meta?.slides?.[0]?.title || r.meta?.brief || t("Poster", "Poster")).replace(/\*/g, ""),
+          sub: `${designs.find(([k]) => k === r.meta?.design)?.[1] || r.meta?.design} · ${timeAgo(r.created_at)}` }))}
+          detail={(it) => { const r = results.find((x) => x.id === it.id); return r
+            ? <DesignResults lockedBy={lockedBy} posts={posts?.rows || []} rows={[r]} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} /> : null; }}
+          empty={t("Belum ada poster. Jana satu dahulu.", "No posters yet. Generate one first.")} />
+        <DesignLibrary />
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show">
-        <p className="text-[13px] font-semibold text-accent">{t("Reka bentuk", "Design")}</p>
-        <h1 className="mt-2 text-4xl leading-tight">{t("Poster, kad dan carousel untuk post.", "Posters, cards and carousels for posts.")}</h1>
+        <p className="text-[13px] font-semibold text-accent">Poster</p>
+        <h1 className="mt-2 text-4xl leading-tight">{t("Jana poster, kad dan carousel untuk post.", "Generate posters, cards and carousels for posts.")}</h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
           {t("Beri idea atau prompt dan Semasa tulis perkataannya, atau tulis sendiri. Pilih latar: kertas jenama, gambar anda, "
             + "atau gambar AI. Lukisan dibuat tanpa AI dan percuma; peraturan post (tiada CTA, tiada URL, tiada sumber media sosial) berlaku pada setiap perkataan.",
@@ -508,10 +535,9 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
         onPreview={(layout, w) => previewOf(cloneReview, layout, w)} onRefine={(layout, w) => refineOnce(cloneReview, layout, w)}
         onOpen={(layout, w) => downloadClone(cloneReview, layout, w)} />}
 
-      <h2 className="mb-4 mt-12 text-xl">{t("Hasil", "Results")}</h2>
-      {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
-      <DesignResults lockedBy={lockedBy} posts={posts?.rows || []} rows={results} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} />
-      <DesignLibrary />
+      {go && <p className="mt-6 text-sm text-muted">{t("Hasil ada di", "Results are in")}{" "}
+        <button type="button" className="text-accent underline" onClick={() => go("design-lib")}>{t("Pustaka poster", "the Poster library")}</button>
+        {results.some((r) => ["pending", "processing"].includes(r.status)) ? ` · ${t("{n} sedang dijana", "{n} generating", { n: results.filter((r) => ["pending", "processing"].includes(r.status)).length })}` : ""}</p>}
     </main>
   );
 }

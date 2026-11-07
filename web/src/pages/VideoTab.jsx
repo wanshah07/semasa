@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Clapperboard, ExternalLink, FileText, Loader2, Plus, RotateCcw, Scissors, ShieldCheck,
   Trash2 } from "lucide-react";
@@ -12,6 +12,9 @@ import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Segmented, Select, TextArea } from "../components/ui/Field";
 import MotionLab from "../components/MotionLab";
+import MediaUploader from "../components/MediaUploader";
+import PromptLibrary from "../components/PromptLibrary";
+import { useView } from "../components/ViewToggle";
 
 /* The Video tab (Wan, 26 Sep 2026: "add segment that can cut, edit video for short video such as youtube video (ceramah
    agama) to able act idea and post, allow me to paste youtube page to you scrape, once approve can cut edit and create
@@ -58,38 +61,75 @@ function useVideos(enabled) {
   return { rows, error, loading, reload: load };
 }
 
-export default function VideoTab({ user, gens, brand, onToast, openPost }) {
+/* Generate video (Wan, 11 Oct 2026: "combine video generation and Motion, and do separate library"). One page, three ways to
+   make a video, switched by the row of buttons (the choice is remembered in this browser): Motion (an idea or a link becomes a
+   motion-graphics film), AI video (a prompt, or a reference picture and a prompt, becomes a clip) and YouTube clips (a long video
+   becomes short ones). Everything they make lands in the Video library page, and Motion's skills (Wan's own instructions,
+   motion repos, uploads) are on their own page beside it. */
+const MODES = ["motion", "ai", "clips"];
+
+export default function VideoTab({ user, gens, brand, onToast, openPost, prompts, go }) {
   const { t } = useLang();
-  const videos = useVideos(true);
+  const [raw, setMode] = useView("video.mode", "motion");
+  const mode = MODES.includes(raw) ? raw : "motion";
+  const videos = useVideos(mode === "clips");
+  const [preset, setPreset] = useState(null);
+  const clearPreset = useCallback(() => setPreset(null), []);
+  const running = (gens?.rows || []).filter((r) => r.type === "video" && ["pending", "processing"].includes(r.status)).length;
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
-      <motion.div variants={fadeUp} initial="hidden" animate="show">
-        <p className="text-[13px] font-semibold text-accent">Video</p>
-        <h1 className="mt-2 text-4xl leading-tight">{t("Video panjang jadi klip pendek.", "A long video becomes short clips.")}</h1>
-        <p className="mt-3 max-w-2xl text-sm text-muted">
-          {t("Tampal pautan YouTube (cth: ceramah agama). Semasa baca transkrip dan cadang 3 hingga 6 klip pendek. Anda sahkan hak guna video, "
-            + "ubah klip, kemudian luluskan: Semasa potong klip 9:16 dengan kapsyen dan tulis draf post. Tiada apa diterbitkan tanpa kelulusan anda di tab Post.",
-          "Paste a YouTube link (e.g. a religious talk). Semasa reads the transcript and proposes 3 to 6 short clips. You confirm you may use "
-            + "the video, edit a clip, then approve: Semasa cuts a 9:16 clip with captions and writes a draft post. Nothing is published without your approval in the Posts tab.")}
-        </p>
+      <motion.div variants={fadeUp} initial="hidden" animate="show" className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[13px] font-semibold text-accent">Video</p>
+          <h1 className="mt-2 text-4xl leading-tight">{t("Jana video.", "Generate video.")}</h1>
+        </div>
+        <Segmented value={mode} onChange={setMode} options={[["motion", t("Motion (idea → filem)", "Motion (idea → film)")],
+          ["ai", t("Video AI (prompt → klip)", "AI video (prompt → clip)")], ["clips", t("Klip YouTube", "YouTube clips")]]} />
       </motion.div>
-      {videos.error === "setup" ? (
-        <p className="mt-8 rounded-tile bg-warn/10 p-4 text-sm text-warn">{t("Video belum disediakan dalam pangkalan data: jalankan supabase/011_video.sql sekali di Supabase SQL editor.",
-          "Video is not set up in the database yet: run supabase/011_video.sql once in the Supabase SQL editor.")}</p>
-      ) : (
+      {go && <p className="mt-3 text-sm text-muted">{t("Semua hasil ada di", "Everything made is in")}{" "}
+        <button type="button" className="text-accent underline" onClick={() => go("video-lib")}>{t("Pustaka video", "the Video library")}</button>
+        {running > 0 ? ` · ${t("{n} klip AI sedang dijana", "{n} AI clips generating", { n: running })}` : ""}</p>}
+
+      {mode === "motion" && <MotionLab user={user} onToast={onToast} view="make" />}
+
+      {mode === "ai" && (
         <>
-          <AddVideo user={user} brand={brand} onToast={onToast} onAdded={videos.reload} />
-          {videos.error && <p className="mt-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{videos.error}</p>}
-          <div className="mt-8 space-y-6">
-            {videos.loading && <p className="text-sm text-muted">{t("Memuatkan…", "Loading…")}</p>}
-            {!videos.loading && !videos.rows.length && (
-              <p className="rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">{t("Belum ada video. Tampal pautan di atas.", "No videos yet. Paste a link above.")}</p>
-            )}
-            {videos.rows.map((v) => <VideoCard key={v.id} v={v} user={user} gens={gens} brand={brand} onToast={onToast} reload={videos.reload} openPost={openPost} />)}
+          <p className="mt-3 max-w-2xl text-sm text-muted">{t("Tulis prompt, atau muat naik gambar rujukan: Semasa membacanya dan menjana klip video. GitHub Actions menjalankan penjanaan.",
+            "Write a prompt, or upload a reference picture: Semasa reads it and generates a video clip. GitHub Actions runs the generation.")}</p>
+          <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_380px]">
+            <MediaUploader user={user} onToast={onToast} only="video" onQueued={() => { gens.reload(); prompts?.reload(); }}
+              preset={preset} onPresetUsed={clearPreset} />
+            {prompts && <PromptLibrary prompts={prompts} type="video" onToast={onToast} onUse={(p) => { setPreset(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} />}
           </div>
         </>
       )}
-      <MotionLab user={user} onToast={onToast} />
+
+      {mode === "clips" && (
+        <>
+          <p className="mt-3 max-w-2xl text-sm text-muted">
+            {t("Tampal pautan YouTube (cth: ceramah agama). Semasa baca transkrip dan cadang 3 hingga 6 klip pendek. Anda sahkan hak guna video, "
+              + "ubah klip, kemudian luluskan: Semasa potong klip 9:16 dengan kapsyen dan tulis draf post. Tiada apa diterbitkan tanpa kelulusan anda di tab Post.",
+            "Paste a YouTube link (e.g. a religious talk). Semasa reads the transcript and proposes 3 to 6 short clips. You confirm you may use "
+              + "the video, edit a clip, then approve: Semasa cuts a 9:16 clip with captions and writes a draft post. Nothing is published without your approval in the Posts tab.")}
+          </p>
+          {videos.error === "setup" ? (
+            <p className="mt-8 rounded-tile bg-warn/10 p-4 text-sm text-warn">{t("Video belum disediakan dalam pangkalan data: jalankan supabase/011_video.sql sekali di Supabase SQL editor.",
+              "Video is not set up in the database yet: run supabase/011_video.sql once in the Supabase SQL editor.")}</p>
+          ) : (
+            <>
+              <AddVideo user={user} brand={brand} onToast={onToast} onAdded={videos.reload} />
+              {videos.error && <p className="mt-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{videos.error}</p>}
+              <div className="mt-8 space-y-6">
+                {videos.loading && <p className="text-sm text-muted">{t("Memuatkan…", "Loading…")}</p>}
+                {!videos.loading && !videos.rows.length && (
+                  <p className="rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">{t("Belum ada video. Tampal pautan di atas.", "No videos yet. Paste a link above.")}</p>
+                )}
+                {videos.rows.map((v) => <VideoCard key={v.id} v={v} user={user} gens={gens} brand={brand} onToast={onToast} reload={videos.reload} openPost={openPost} />)}
+              </div>
+            </>
+          )}
+        </>
+      )}
     </main>
   );
 }

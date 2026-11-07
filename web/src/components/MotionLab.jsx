@@ -12,6 +12,7 @@ import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from ".
 import MotionEffectLibrary from "./MotionEffectLibrary";
 import MotionQueue from "./MotionQueue";
 import MotionPost from "./MotionPost";
+import TileGrid from "./TileGrid";
 import { inMotionList } from "../lib/motionQueue";
 import { effectGroups } from "../lib/motionEffects";
 import Card from "./ui/Card";
@@ -26,7 +27,10 @@ import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
 
 const STATUS_CLS = { waiting: "bg-accent/15 text-accent", pending: "bg-warn/15 text-warn", working: "bg-accent/15 text-accent", done: "bg-ok/15 text-ok", error: "bg-danger/15 text-danger" };
 
-export default function MotionLab({ user, onToast }) {
+/* `view` (Wan, 11 Oct 2026: video generation and Motion together, a library of its own, the skills in one place):
+   "make" is the form and the queue, "library" is the finished films as compact tiles (components/TileGrid.jsx), "skills" is
+   the motion repos. One component holds the state and each page draws its share, so a rule is never written twice. */
+export default function MotionLab({ user, onToast, view = "make" }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? 1 : 0;
   const w = (v) => (Array.isArray(v) ? v[L] : v);
@@ -151,114 +155,13 @@ export default function MotionLab({ user, onToast }) {
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
   };
 
-  return (
-    <section className="mt-10" data-motion>
-      <div className="mb-3">
-        <h2 className="flex items-center gap-2 font-display text-2xl"><Clapperboard size={18} className="text-accent" /> {t("Motion", "Motion")}</h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted">{t("Video grafik gerak daripada idea atau pautan. Semasa tulis komposisi HTML (kontrak HyperFrames), semak, render MP4 di pelayan dan paparkan di sini. Bila siap, pilih platform, kemudian Lulus & beratur atau simpan sebagai draf di giliran Post.",
-          "A motion-graphics video from an idea or a link. Semasa writes the HTML composition (the HyperFrames contract), checks it, renders the MP4 on the runner and shows it here. When it is done, pick the platforms, then Approve & queue or save it as a draft in the Posts queue.")}</p>
-      </div>
-      {missing && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual belum ada: jalankan supabase/043_motion.sql sekali.", "The table is not there yet: run supabase/043_motion.sql once.")}</p>}
-      {motions.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{motions.error}</p>}
+  const films = motions.rows.filter((r) => r.status !== "waiting" && inMotionList(r));
 
-      <ChatGptLogin onToast={onToast} />
-
-      <Card className="space-y-4 p-5">
-        <label className="block"><Label hint={t("idea, hook, atau 3 perkara yang video perlu sampaikan", "the idea, the hook, or the 3 things the video must say")}>{t("Idea", "Idea")}</Label>
-          <TextArea rows={3} value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={2000}
-            placeholder={t("Cth: Tiga perkara tentang PFAS dalam kosmetik yang SME perlu tahu sebelum 2027", "E.g. Three things about PFAS in cosmetics an SME must know before 2027")} /></label>
-        <label className="block"><Label hint={t("pilihan: Semasa baca halaman itu", "optional: Semasa reads that page")}>{t("Pautan", "Link")}</Label>
-          <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" inputMode="url" /></label>
-        <MotionAmbient value={ambient} onChange={setAmbient} />
-        <label className="block" data-motion-design><Label>{t("Varian reka bentuk (dikekalkan)", "Design variant (preserved)")}</Label>
-          <select aria-label={t("Varian reka bentuk", "Design variant")} value={design} onChange={e => setDesign(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
-            {designOptions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select></label>
-        <label className="block" data-motion-recipe><Label>{t("Gaya lampiran", "Attachment style")}</Label>
-          <select aria-label="Attachment style" value={style} onChange={e => setStyle(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
-            {recipeOptions().map(r => <option key={r.id} value={r.id} disabled={!r.available}>{r.name}{!r.available ? ` · ${r.reason}` : ""}</option>)}
-          </select></label>
-        <MotionEffectLibrary brief={brief} mode={mode} effects={effects} effectMode={effectMode}
-          onEffects={setEffects} onEffectMode={setEffectMode} assets={assets} onAssets={setAssets}
-          client={supabase} user={user} onBusy={setAssetsBusy} />
-        <p className="text-xs text-muted" data-motion-audio-rights>Preferred preview music: supplied reel (rights unverified, private preview only, v17 quiet mix). Public export: cleared/self-owned piano; alternatively add licensed platform audio yourself. Reel audio is not bundled or downloaded automatically; unavailable preview source does not block the cleared export.</p>
-        <p className="text-xs text-muted">{recipeOf(style).name} · Hook → Fact → Why → Solution. As long as the information needs, never more than 70s. 10s is only an explicitly selected gimmick/teaser, never an explainer. Long explainers include a separate 3s outro; 10s gimmicks stay in one continuous composition. Missing real footage/captures/data disables unsuitable recipes; charts and counters are omitted without verified data.</p>
-        <label className="block" data-motion-style><Label hint={t("repo motion dari kotak di bawah; setiap satu gaya yang berbeza", "a motion repo from the box below; each one a different look")}>{t("Gaya (repo motion)", "Style (motion repo)")}</Label>
-          <Select value={styleRepoId} onChange={setStyleRepoId} className="w-full"
-            options={[["", t("Gaya lalai Semasa", "Semasa's default look")], ...styles.map((r) => [r.id, `${r.name || r.full_name}${r.status !== "done" ? ` · ${t("belum dibaca", "not read yet")}` : ""}${r.safety === "avoid" ? ` · ${t("elakkan", "avoid")}` : ""}`])]} /></label>
-        {styleRepoId && styleOf(styleRepoId)?.summary_bm && <p className="text-xs text-muted">{L ? styleOf(styleRepoId).summary_en || styleOf(styleRepoId).summary_bm : styleOf(styleRepoId).summary_bm}</p>}
-        <div className="grid gap-4 md:grid-cols-2">
-          <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
-          <div data-motion-language><Label hint={t("perkataan di skrin; BM + English letak kedua-dua baris", "the words on screen; BM + English puts both lines up")}>{t("Bahasa", "Language")}</Label>
-            <Segmented value={language} onChange={pickLanguage} options={LANGUAGES} /></div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block"><Label>{t("Saiz", "Size")}</Label><Select value={resolution} onChange={setResolution} className="w-full"
-            options={Object.entries(RESOLUTION_CHOICES).map(([k, v]) => [k, w([v.bm, v.en])])} /></label>
-          <label className="block"><Label>{t("Mod", "Mode")}</Label>
-            <Select value={mode} onChange={v => { setMode(v); setSeconds(v === "teaser" ? 10 : selectedSeconds(seconds, v)); }}
-              options={[["explainer", t("Penerang · Hook / Fakta / Kenapa / Solusi", "Explainer · Hook / Fact / Why / Solution")], ["teaser", t("Gimik / teaser sahaja · bukan penerang", "Gimmick / teaser only · not an explainer")]]} /></label>
-          <label className="block"><Label>{t("Saat", "Seconds")}</Label>
-            <Select value={String(seconds)} onChange={setSeconds} options={mode === "teaser" ? [["10", t("10s · satu babak gimik kekal", "10s · one persistent gimmick scene")], ["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]] : [["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]]} /></label>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2" data-motion-voice>
-          <div><Label hint={t("suara Edge neural: Osman / Yasmin (BM), Wayne / Ava (EN)", "VoiceStudio KittenTTS: English preset, configured worker required; BM/both automatically uses native Edge female +15%")}>{t("Suara", "Voice")}</Label>
-            <Segmented value={voice} onChange={setVoice} options={VOICES.map(([k, bm, en]) => [k, L ? en : bm])} /></div>
-          <p className="text-[12px] text-muted md:pt-6">{t("Setiap video: Hook, Fakta, Kenapa, Solusi, gambar Unsplash, gaya dipilih ikut kesesuaian. Dengan suara: lebih laju. Tanpa suara: perlahan supaya boleh dibaca.", "Every video: Hook, Fact, Why, Solution, Unsplash photos, styles chosen for fit. With a voice: brisk. Without: slow enough to read.")}</p>
-        </div>
-        <label className="flex items-start gap-2 text-sm" data-motion-bg>
-          <input type="checkbox" className="mt-1" checked={aiBackground} onChange={(e) => setAiBackground(e.target.checked)} />
-          <span>{t("Latar gambar AI", "AI background picture")}
-            <span className="block text-[12px] text-muted">{t("Satu gambar dilukis oleh slot Penjana gambar (KiosAPI jika itu yang anda tetapkan) dan diletak di bawah komposisi. Menggunakan kredit gambar; tiada gambar = video tetap dibuat.",
-              "One picture drawn by the Image generation slot (KiosAPI if that is what you set) and placed under the composition. It spends picture credits; if it cannot be made the video is still made.")}</span></span>
-        </label>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={add} disabled={busy === "add" || assetsBusy}>{busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Clapperboard size={14} />} {t("Buat video motion", "Make the motion video")}</Button>
-          <Button variant="ghost" size="sm" onClick={saveDefaults} disabled={busy === "defaults"} title={t("Bahasa, suara, saiz, saat, gaya dan latar: dipakai bila idea atau draf dijadikan video", "Language, voice, size, seconds, style and background: used when an idea or draft is made into a video")}
-            data-motion-save-defaults>{busy === "defaults" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {t("Simpan sebagai cara lalai", "Save as the default way")}</Button>
-          {settings.motion?.defaults && <span className="text-[11px] text-muted">{t("Cara lalai tersimpan: idea dan draf ikutnya.", "Default way saved: ideas and drafts follow it.")}</span>}
-        </div>
-      </Card>
-
-      <Card className="mt-4 space-y-3 p-5" data-motion-repos>
-        <div>
-          <h3 className="flex items-center gap-2 font-display text-lg"><FolderGit2 size={16} className="text-accent" /> {t("Repo motion", "Motion repos")}</h3>
-          <p className="mt-1 text-sm text-muted">{t("Setiap repo satu gaya: Semasa baca ia (Pustaka repo), semak keselamatan dan ringkaskan; kemudian ia boleh dipilih sebagai Gaya di atas. Seberapa banyak yang anda mahu.",
-            "Each repo is one look: Semasa reads it (Pustaka repo), checks it for safety and summarises it; then it can be chosen as the Style above. Add as many as you like.")}</p>
-        </div>
-        <div className="flex items-end gap-2">
-          <label className="block min-w-0 flex-1"><Label>{t("Tambah repo motion", "Add a motion repo")}</Label>
-            <Input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/owner/nama" inputMode="url" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRepo())} /></label>
-          <Button variant="ghost" size="sm" className="mb-0.5" onClick={addRepo} disabled={busy === "repo" || !repoUrl.trim()}>{busy === "repo" ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} {t("Tambah", "Add")}</Button>
-        </div>
-        {!styles.length && <p className="text-xs text-muted">{t("Belum ada repo motion. Cth: https://github.com/heygen-com/hyperframes", "No motion repos yet. E.g. https://github.com/heygen-com/hyperframes")}</p>}
-        {styles.length > 0 && (
-          <ul className="divide-y divide-line">
-            {styles.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center gap-2 py-2 text-sm" data-motion-repo>
-                <button type="button" className={`truncate text-left font-medium hover:underline ${styleRepoId === r.id ? "text-accent" : ""}`} onClick={() => setStyleRepoId(r.id)} title={t("Guna sebagai gaya", "Use as the style")}>{r.name || r.full_name}</button>
-                <a className="truncate text-xs text-muted hover:underline" href={r.url} target="_blank" rel="noreferrer">{r.full_name}</a>
-                <span className={`rounded-pill px-2 py-0.5 text-[11px] ${r.status === "done" ? (r.safety === "avoid" ? "bg-danger/15 text-danger" : r.safety === "caution" ? "bg-warn/15 text-warn" : "bg-ok/15 text-ok") : "bg-surface-2 text-muted"}`}>
-                  {r.status !== "done" ? t("belum dibaca", "not read yet") : r.safety === "avoid" ? t("elakkan", "avoid") : r.safety === "caution" ? t("berhati-hati", "caution") : t("selamat", "safe")}</span>
-                {styleRepoId === r.id && <span className="text-[11px] text-accent">{t("dipilih", "chosen")}</span>}
-                {(L ? r.summary_en || r.summary_bm : r.summary_bm) && <p className="w-full text-xs text-muted">{L ? r.summary_en || r.summary_bm : r.summary_bm}</p>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-
-      <MotionQueue rows={motions.rows.filter((r) => r.status === "waiting")} defaults={motionDefaults(settings)} client={supabase} user={user}
-        busy={busy} onStart={startOne} onStartAll={startAll} onRemove={remove} />
-
-      <div className="mt-6 grid gap-4 md:grid-cols-2 [&>*]:min-w-0">
-        {!motions.loading && !motions.error && !motions.rows.some((r) => r.status !== "waiting" && inMotionList(r)) && (
-          <p className="rounded-card border border-dashed border-line p-8 text-center text-sm text-muted md:col-span-2">{t("Belum ada video motion.", "No motion videos yet.")}</p>
-        )}
-        {motions.rows.filter((r) => r.status !== "waiting" && inMotionList(r)).map((r) => {
+  // one finished or running film, as a full card (the library opens it in a dialog)
+  const rowCard = (r) => {
           const items = checkItems(r);
           return (
-            <Card key={r.id} className="p-4" data-motion-row>
+            <Card className="p-4" data-motion-row>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-display text-lg">{motionLabel(r) || t("(tiada tajuk)", "(untitled)")}</p>
@@ -313,8 +216,122 @@ export default function MotionLab({ user, onToast }) {
               </div>
             </Card>
           );
-        })}
+  };
+
+  return (
+    <section className={view === "make" ? "mt-6" : ""} data-motion data-motion-view={view}>
+      {missing && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual belum ada: jalankan supabase/043_motion.sql sekali.", "The table is not there yet: run supabase/043_motion.sql once.")}</p>}
+      {motions.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{motions.error}</p>}
+
+      {view === "make" && (
+        <>
+      <div className="mb-3">
+        <h2 className="flex items-center gap-2 font-display text-2xl"><Clapperboard size={18} className="text-accent" /> {t("Motion", "Motion")}</h2>
+        <p className="mt-1 max-w-2xl text-sm text-muted">{t("Video grafik gerak daripada idea atau pautan. Semasa tulis komposisi HTML (kontrak HyperFrames), semak, render MP4 di pelayan dan simpan dalam Pustaka video.",
+          "A motion-graphics video from an idea or a link. Semasa writes the HTML composition (the HyperFrames contract), checks it, renders the MP4 on the runner and keeps it in the Video library.")}</p>
       </div>
+      <ChatGptLogin onToast={onToast} />
+
+      <Card className="space-y-4 p-5">
+        <label className="block"><Label hint={t("idea, hook, atau 3 perkara yang video perlu sampaikan", "the idea, the hook, or the 3 things the video must say")}>{t("Idea", "Idea")}</Label>
+          <TextArea rows={3} value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={2000}
+            placeholder={t("Cth: Tiga perkara tentang PFAS dalam kosmetik yang SME perlu tahu sebelum 2027", "E.g. Three things about PFAS in cosmetics an SME must know before 2027")} /></label>
+        <label className="block"><Label hint={t("pilihan: Semasa baca halaman itu", "optional: Semasa reads that page")}>{t("Pautan", "Link")}</Label>
+          <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" inputMode="url" /></label>
+        <MotionAmbient value={ambient} onChange={setAmbient} />
+        <label className="block" data-motion-design><Label>{t("Varian reka bentuk (dikekalkan)", "Design variant (preserved)")}</Label>
+          <select aria-label={t("Varian reka bentuk", "Design variant")} value={design} onChange={e => setDesign(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
+            {designOptions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select></label>
+        <label className="block" data-motion-recipe><Label>{t("Gaya lampiran", "Attachment style")}</Label>
+          <select aria-label="Attachment style" value={style} onChange={e => setStyle(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
+            {recipeOptions().map(r => <option key={r.id} value={r.id} disabled={!r.available}>{r.name}{!r.available ? ` · ${r.reason}` : ""}</option>)}
+          </select></label>
+        <MotionEffectLibrary brief={brief} mode={mode} effects={effects} effectMode={effectMode}
+          onEffects={setEffects} onEffectMode={setEffectMode} assets={assets} onAssets={setAssets}
+          client={supabase} user={user} onBusy={setAssetsBusy} />
+        <p className="text-xs text-muted" data-motion-audio-rights>Preferred preview music: supplied reel (rights unverified, private preview only, v17 quiet mix). Public export: cleared/self-owned piano; alternatively add licensed platform audio yourself. Reel audio is not bundled or downloaded automatically; unavailable preview source does not block the cleared export.</p>
+        <p className="text-xs text-muted">{recipeOf(style).name} · Hook → Fact → Why → Solution. As long as the information needs, never more than 70s. 10s is only an explicitly selected gimmick/teaser, never an explainer. Long explainers include a separate 3s outro; 10s gimmicks stay in one continuous composition. Missing real footage/captures/data disables unsuitable recipes; charts and counters are omitted without verified data.</p>
+        <label className="block" data-motion-style><Label hint={t("repo motion dari halaman Kemahiran motion; setiap satu gaya yang berbeza", "a motion repo from the Motion skills page; each one a different look")}>{t("Gaya (repo motion)", "Style (motion repo)")}</Label>
+          <Select value={styleRepoId} onChange={setStyleRepoId} className="w-full"
+            options={[["", t("Gaya lalai Semasa", "Semasa's default look")], ...styles.map((r) => [r.id, `${r.name || r.full_name}${r.status !== "done" ? ` · ${t("belum dibaca", "not read yet")}` : ""}${r.safety === "avoid" ? ` · ${t("elakkan", "avoid")}` : ""}`])]} /></label>
+        {styleRepoId && styleOf(styleRepoId)?.summary_bm && <p className="text-xs text-muted">{L ? styleOf(styleRepoId).summary_en || styleOf(styleRepoId).summary_bm : styleOf(styleRepoId).summary_bm}</p>}
+        <div className="grid gap-4 md:grid-cols-2">
+          <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
+          <div data-motion-language><Label hint={t("perkataan di skrin; BM + English letak kedua-dua baris", "the words on screen; BM + English puts both lines up")}>{t("Bahasa", "Language")}</Label>
+            <Segmented value={language} onChange={pickLanguage} options={LANGUAGES} /></div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block"><Label>{t("Saiz", "Size")}</Label><Select value={resolution} onChange={setResolution} className="w-full"
+            options={Object.entries(RESOLUTION_CHOICES).map(([k, v]) => [k, w([v.bm, v.en])])} /></label>
+          <label className="block"><Label>{t("Mod", "Mode")}</Label>
+            <Select value={mode} onChange={v => { setMode(v); setSeconds(v === "teaser" ? 10 : selectedSeconds(seconds, v)); }}
+              options={[["explainer", t("Penerang · Hook / Fakta / Kenapa / Solusi", "Explainer · Hook / Fact / Why / Solution")], ["teaser", t("Gimik / teaser sahaja · bukan penerang", "Gimmick / teaser only · not an explainer")]]} /></label>
+          <label className="block"><Label>{t("Saat", "Seconds")}</Label>
+            <Select value={String(seconds)} onChange={setSeconds} options={mode === "teaser" ? [["10", t("10s · satu babak gimik kekal", "10s · one persistent gimmick scene")], ["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]] : [["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]]} /></label>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2" data-motion-voice>
+          <div><Label hint={t("suara Edge neural: Osman / Yasmin (BM), Wayne / Ava (EN)", "VoiceStudio KittenTTS: English preset, configured worker required; BM/both automatically uses native Edge female +15%")}>{t("Suara", "Voice")}</Label>
+            <Segmented value={voice} onChange={setVoice} options={VOICES.map(([k, bm, en]) => [k, L ? en : bm])} /></div>
+          <p className="text-[12px] text-muted md:pt-6">{t("Setiap video: Hook, Fakta, Kenapa, Solusi, gambar Unsplash, gaya dipilih ikut kesesuaian. Dengan suara: lebih laju. Tanpa suara: perlahan supaya boleh dibaca.", "Every video: Hook, Fact, Why, Solution, Unsplash photos, styles chosen for fit. With a voice: brisk. Without: slow enough to read.")}</p>
+        </div>
+        <label className="flex items-start gap-2 text-sm" data-motion-bg>
+          <input type="checkbox" className="mt-1" checked={aiBackground} onChange={(e) => setAiBackground(e.target.checked)} />
+          <span>{t("Latar gambar AI", "AI background picture")}
+            <span className="block text-[12px] text-muted">{t("Satu gambar dilukis oleh slot Penjana gambar (KiosAPI jika itu yang anda tetapkan) dan diletak di bawah komposisi. Menggunakan kredit gambar; tiada gambar = video tetap dibuat.",
+              "One picture drawn by the Image generation slot (KiosAPI if that is what you set) and placed under the composition. It spends picture credits; if it cannot be made the video is still made.")}</span></span>
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={add} disabled={busy === "add" || assetsBusy}>{busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Clapperboard size={14} />} {t("Buat video motion", "Make the motion video")}</Button>
+          <Button variant="ghost" size="sm" onClick={saveDefaults} disabled={busy === "defaults"} title={t("Bahasa, suara, saiz, saat, gaya dan latar: dipakai bila idea atau draf dijadikan video", "Language, voice, size, seconds, style and background: used when an idea or draft is made into a video")}
+            data-motion-save-defaults>{busy === "defaults" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {t("Simpan sebagai cara lalai", "Save as the default way")}</Button>
+          {settings.motion?.defaults && <span className="text-[11px] text-muted">{t("Cara lalai tersimpan: idea dan draf ikutnya.", "Default way saved: ideas and drafts follow it.")}</span>}
+        </div>
+      </Card>
+
+      <MotionQueue rows={motions.rows.filter((r) => r.status === "waiting")} defaults={motionDefaults(settings)} client={supabase} user={user}
+        busy={busy} onStart={startOne} onStartAll={startAll} onRemove={remove} />
+
+        </>
+      )}
+      {view === "skills" && (
+        <>
+      <Card className="space-y-3 p-5" data-motion-repos>
+        <div>
+          <h3 className="flex items-center gap-2 font-display text-lg"><FolderGit2 size={16} className="text-accent" /> {t("Repo motion", "Motion repos")}</h3>
+          <p className="mt-1 text-sm text-muted">{t("Setiap repo satu gaya: Semasa baca ia (Pustaka repo), semak keselamatan dan ringkaskan; kemudian ia boleh dipilih sebagai Gaya di atas. Seberapa banyak yang anda mahu.",
+            "Each repo is one look: Semasa reads it (Pustaka repo), checks it for safety and summarises it; then it can be chosen as the Style above. Add as many as you like.")}</p>
+        </div>
+        <div className="flex items-end gap-2">
+          <label className="block min-w-0 flex-1"><Label>{t("Tambah repo motion", "Add a motion repo")}</Label>
+            <Input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/owner/nama" inputMode="url" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRepo())} /></label>
+          <Button variant="ghost" size="sm" className="mb-0.5" onClick={addRepo} disabled={busy === "repo" || !repoUrl.trim()}>{busy === "repo" ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} {t("Tambah", "Add")}</Button>
+        </div>
+        {!styles.length && <p className="text-xs text-muted">{t("Belum ada repo motion. Cth: https://github.com/heygen-com/hyperframes", "No motion repos yet. E.g. https://github.com/heygen-com/hyperframes")}</p>}
+        {styles.length > 0 && (
+          <ul className="divide-y divide-line">
+            {styles.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-2 py-2 text-sm" data-motion-repo>
+                <button type="button" className={`truncate text-left font-medium hover:underline ${styleRepoId === r.id ? "text-accent" : ""}`} onClick={view === "make" ? () => setStyleRepoId(r.id) : undefined} title={t("Guna sebagai gaya", "Use as the style")}>{r.name || r.full_name}</button>
+                <a className="truncate text-xs text-muted hover:underline" href={r.url} target="_blank" rel="noreferrer">{r.full_name}</a>
+                <span className={`rounded-pill px-2 py-0.5 text-[11px] ${r.status === "done" ? (r.safety === "avoid" ? "bg-danger/15 text-danger" : r.safety === "caution" ? "bg-warn/15 text-warn" : "bg-ok/15 text-ok") : "bg-surface-2 text-muted"}`}>
+                  {r.status !== "done" ? t("belum dibaca", "not read yet") : r.safety === "avoid" ? t("elakkan", "avoid") : r.safety === "caution" ? t("berhati-hati", "caution") : t("selamat", "safe")}</span>
+                {view === "make" && styleRepoId === r.id && <span className="text-[11px] text-accent">{t("dipilih", "chosen")}</span>}
+                {(L ? r.summary_en || r.summary_bm : r.summary_bm) && <p className="w-full text-xs text-muted">{L ? r.summary_en || r.summary_bm : r.summary_bm}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+        </>
+      )}
+      {view === "library" && (
+        <TileGrid items={films.map((r) => ({ id: r.id, kind: "video", src: r.status === "done" && r.video_url ? freshUrl(r.video_url, r.updated_at) : "", status: r.status,
+          label: motionLabel(r) || t("(tiada tajuk)", "(untitled)"), sub: `${r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · ${r.created_at ? timeAgo(r.created_at) : ""}` }))}
+          detail={(it) => { const r = films.find((x) => x.id === it.id); return r ? rowCard(r) : null; }}
+          empty={t("Belum ada video motion.", "No motion videos yet.")} />
+      )}
     </section>
   );
 }

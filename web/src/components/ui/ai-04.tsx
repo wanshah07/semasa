@@ -15,7 +15,11 @@
      broken. "Paste from Clipboard" pastes. "Import from URL" (1 Oct 2026) asks for an address and puts it in the box,
      so the chat's own web tool reads it;
    - the three switches can be seeded (`defaultSettings`) and reported as they change (`onSettingsChange`), so the page
-     can keep "Streaming" and "Show history" as real settings rather than per-submit flags. */
+     can keep "Streaming" and "Show history" as real settings rather than per-submit flags;
+   - on a phone (7 Nov 2026, the mobile pass): the box grows with the words up to about five lines and scrolls inside after
+     that, so a long question never pushes the Send button off the screen; Enter sends only where there is a keyboard with a
+     Shift key to hold (a fine pointer) — with a finger, Enter is a new line and the arrow button sends, as every phone chat
+     does; `onFocusChange` tells the page the keyboard is probably coming, so it can keep the box above it. */
 
 import {
   IconAdjustmentsHorizontal,
@@ -35,7 +39,7 @@ import {
   IconTemplate,
   IconX,
 } from "@tabler/icons-react";
-import { type ComponentType, useRef, useState } from "react";
+import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/ai-04-utils/button";
 import {
@@ -122,6 +126,7 @@ export default function Ai04({
   busy = false,
   defaultSettings,
   onSettingsChange,
+  onFocusChange,
 }: {
   onSubmit?: (prompt: string, extra: { files: File[]; settings: Ai04Settings }) => void;
   title?: string | null;
@@ -133,6 +138,8 @@ export default function Ai04({
   busy?: boolean;
   defaultSettings?: Partial<Ai04Settings>;
   onSettingsChange?: (s: Ai04Settings) => void;
+  /** the box took or lost focus (a phone's keyboard follows it) */
+  onFocusChange?: (focused: boolean) => void;
 }) {
   const L = { ...LABELS, ...labelsIn };
   const [prompt, setPrompt] = useState("");
@@ -140,6 +147,19 @@ export default function Ai04({
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  // a finger has no Shift key: Enter is a new line there and only the button sends
+  const enterSends = useMemo(() => { try { return !window.matchMedia("(pointer: coarse)").matches; } catch { return true; } }, []);
+  // the box follows its words up to ~5 lines, then scrolls inside: the page under it never grows
+  useEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const line = parseFloat(getComputedStyle(el).lineHeight) || 24;
+    const max = Math.round(line * 5 + 4);
+    const h = Math.min(el.scrollHeight, max);
+    el.style.height = `${h}px`;
+    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+  }, [prompt]);
 
   const [settings, setSettings] = useState<Ai04Settings>({
     autoComplete: true,
@@ -229,7 +249,7 @@ export default function Ai04({
     setPrompt(e.target.value);
   };
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && enterSends) {
       e.preventDefault();
       submitPrompt();
     }
@@ -309,9 +329,13 @@ export default function Ai04({
           )}
           <Textarea
             ref={textRef}
-            className="max-h-[12.5rem] min-h-12 resize-none rounded-none border-none !bg-transparent p-0 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="min-h-[2.75rem] resize-none rounded-none border-none !bg-transparent p-0 text-sm leading-6 shadow-none focus-visible:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+            rows={1}
             onChange={handleTextareaChange}
             onKeyDown={handleKeyDown}
+            onFocus={() => onFocusChange?.(true)}
+            onBlur={() => onFocusChange?.(false)}
+            enterKeyHint={enterSends ? "send" : "enter"}
             placeholder={placeholder}
             aria-label={placeholder}
             value={prompt}

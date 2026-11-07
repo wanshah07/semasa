@@ -3,7 +3,7 @@ import { flagWords } from "../lib/complianceBm";
 import { AlertTriangle, CalendarClock, Check, Eraser, ImagePlus, Info, RotateCcw, Save, Trash2, UploadCloud, X, XCircle } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { LIMITS, charLen, hardCount, normaliseSlides, platformsOf, scan, scanMedia, stripPromo } from "../lib/compliance";
-import { dueMs, duplicatesOf, nextFreeSlot, refOf, slotsOf, takenSet } from "../lib/slots";
+import { dueMs, duplicatesOf, handedOver, nextFreeSlot, refOf, slotGone, slotsOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
 import PostWorkflow from "./PostWorkflow";
 import { stampMYT } from "../lib/format";
@@ -84,6 +84,12 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   const reg = brand.regulab;
   const plats = platformsOf(post);                   // only the platforms this post was queued to (a Motion film), else its stream's
   const locked = post.status === "scheduled" || post.status === "posted";
+  // a channel already in Buffer or LinkedIn: Buffer keeps that slot, those pictures and those words whatever the page does, so
+  // the position, pictures, language and the captions already sent are frozen (supabase/072 refuses the same writes)
+  const inBuffer = handedOver(post);
+  const frozen = locked || inBuffer;
+  const sentPlats = Object.keys(post.published || {});
+  const capFrozen = (p) => locked || (inBuffer && view === lang && sentPlats.includes(p));
   const chosen = mediaIds.map((id) => mediaById[id]).filter(Boolean);
   // a chosen picture opens in place, a slide set opens its slides one after another (never a blank new tab)
   const lbStart = {};
@@ -146,10 +152,9 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   const gone = checked ? mediaIds.filter((id) => !mediaState.rows.some((m) => m.id === id)) : [];
   const unready = checked ? mediaState.rows.filter((m) => mediaIds.includes(m.id) && (m.status !== "done" || !m.generated_media_url)) : [];
   const hard = hardCount(flags);
-  // a slot more than 45 minutes gone is never sent (publisher.py LATE_GRACE): approving it would only read "✓ checks
-  // passed" while nothing goes out. A page-only block, not saved in hard_flags, because it depends on the clock.
-  const past = ["draft", "approved", "rejected"].includes(post.status) && !!(date && slot)
-    && Date.parse(`${date}T${slot}:00+08:00`) < Date.now() - 45 * 60_000;
+  // a slot the publisher will no longer send (publisher.py: ws.regulab 45 minutes late, LinkedIn past li_send_day): approving
+  // it would only read "✓ checks passed" while nothing goes out. A page-only block, not saved in hard_flags (it is the clock).
+  const past = ["draft", "approved", "rejected"].includes(post.status) && slotGone(post.stream, date, slot);
   // one post to a slot, and the same words never twice (Wan, 3 Oct 2026): both block approval here, the database refuses a
   // browser's write that does either (supabase/026) and the publisher never sends the second (guard.py)
   const clash = date && slot ? posts.filter((p) => p.id !== post.id && (p.stream || "regulab") === (post.stream || "regulab")
@@ -159,8 +164,11 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   const shownFlags = !date || !slot
     ? [...flags, { hard: false, where: t("Kedudukan", "Position"), msg: t("belum ada tarikh dan slot: penerbit melangkau post tanpanya",
       "no date and slot yet: the publisher skips a post without one") }]
-    : past ? [...flags, { hard: true, where: t("Kedudukan", "Position"), msg: t("slot ini sudah lepas: penerbit tidak menghantar post yang lewat lebih 45 minit. Pilih tarikh atau slot baharu.",
-      "this slot has passed: the publisher never sends a post more than 45 minutes late. Pick a new date or slot.") }]
+    : past ? [...flags, { hard: true, where: t("Kedudukan", "Position"), msg: post.stream === "linkedin"
+      ? t("slot ini sudah lepas: penerbit tidak menghantar post LinkedIn selepas harinya (slot selepas 19:20 dihantar pada 06:20 esoknya). Pilih tarikh atau slot baharu.",
+        "this slot has passed: the publisher never sends a LinkedIn post after its day (a slot after 19:20 goes at 06:20 the next day). Pick a new date or slot.")
+      : t("slot ini sudah lepas: penerbit tidak menghantar post yang lewat lebih 45 minit. Pilih tarikh atau slot baharu.",
+        "this slot has passed: the publisher never sends a post more than 45 minutes late. Pick a new date or slot.") }]
       : [...flags];
   if (clash.length && !locked) shownFlags.push({ hard: true, where: t("Kedudukan", "Position"), msg: t(
     "slot ini sudah dipegang oleh: {h}. Satu slot, satu post: pindahkan salah satu.",
@@ -367,7 +375,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       <div className="flex flex-wrap items-center gap-3">
         <Segmented value={view} onChange={setView} options={[["bm", "BM"], ["en", "EN"]]} />
         <span className="text-xs text-muted">{t("Bahasa yang dihantar:", "Language sent:")}</span>
-        <Select value={lang} onChange={setLang} options={[["bm", "BM"], ["en", "EN"]]} disabled={locked} aria-label={t("Bahasa dihantar", "Language sent")} />
+        <Select value={lang} onChange={setLang} options={[["bm", "BM"], ["en", "EN"]]} disabled={frozen} aria-label={t("Bahasa dihantar", "Language sent")} />
         {onClose && <button type="button" onClick={onClose} className="ml-auto text-sm text-muted hover:text-ink" aria-label={t("Tutup", "Close")}><X size={16} /></button>}
       </div>
 
@@ -378,7 +386,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
           <label key={p} className="block">
             <Label hint={`${charLen(v)}${lim ? ` / ${lim.max}` : ""} ${t("aksara", "characters")}${
               view !== lang ? ` · ${t("tidak dihantar", "not sent")}` : ""}`}>{PLAT_LABEL[p]}</Label>
-            <TextArea id={`cap-${post.id}-${p}`} rows={p === "threads" ? 4 : 7} value={v} disabled={locked} onChange={(e) => setCaption(view, p, e.target.value)}
+            <TextArea id={`cap-${post.id}-${p}`} rows={p === "threads" ? 4 : 7} value={v} disabled={capFrozen(p)} onChange={(e) => setCaption(view, p, e.target.value)}
               className={lim && charLen(v) > lim.max ? "border-danger" : ""} />
           </label>
         );
@@ -389,16 +397,22 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
         <Input value={citation} disabled={locked} onChange={(e) => setCitation(e.target.value)} /></label>
 
       <div className="flex flex-wrap items-end gap-3">
-        <label><Label>{t("Tarikh (MYT)", "Date (MYT)")}</Label><Input id={`date-${post.id}`} type="date" value={date || ""} disabled={locked} onChange={(e) => setDate(e.target.value)} className="w-44" /></label>
-        <label><Label>Slot</Label><Select value={slot && !slots.includes(slot) ? "other" : slot || ""} disabled={locked}
+        <label><Label>{t("Tarikh (MYT)", "Date (MYT)")}</Label><Input id={`date-${post.id}`} type="date" value={date || ""} disabled={frozen} onChange={(e) => setDate(e.target.value)} className="w-44" /></label>
+        <label><Label>Slot</Label><Select value={slot && !slots.includes(slot) ? "other" : slot || ""} disabled={frozen}
           onChange={(v) => setSlot(v === "other" ? (slot && !slots.includes(slot) ? slot : "10:00") : v)}
           options={[["", t("Tiada", "None")], ...slots.map((s) => [s, s]), ["other", t("Masa lain…", "Another time…")]]} /></label>
         {slot && !slots.includes(slot) && (
-          <label><Label>{t("Masa (MYT)", "Time (MYT)")}</Label><Input type="time" value={slot} disabled={locked} onChange={(e) => setSlot(e.target.value)} className="w-32" /></label>
+          <label><Label>{t("Masa (MYT)", "Time (MYT)")}</Label><Input type="time" value={slot} disabled={frozen} onChange={(e) => setSlot(e.target.value)} className="w-32" /></label>
         )}
-        {!locked && <Button type="button" size="sm" variant="ghost" onClick={takeNextFree}><CalendarClock size={12} /> {t("Slot kosong seterusnya", "Next free slot")}</Button>}
+        {!frozen && <Button type="button" size="sm" variant="ghost" onClick={takeNextFree}><CalendarClock size={12} /> {t("Slot kosong seterusnya", "Next free slot")}</Button>}
         {date && slot && <span className="self-center text-[11px] text-muted">{refOf({ ...post, date, slot }, brand)}</span>}
       </div>
+      {inBuffer && !locked && (
+        <p className="-mt-2 flex items-start gap-1.5 text-[12px] text-muted"><Info size={12} className="mt-0.5 shrink-0" />
+          {t("Sudah diserahkan kepada Buffer atau LinkedIn: {c}. Buffer memegang slot, gambar dan kapsyen itu, jadi tarikh, slot, gambar, bahasa dan kapsyen saluran itu dikunci, dan post ini tidak boleh dikembalikan ke draf, ditolak atau dilepaskan slotnya. Kapsyen saluran yang belum dihantar masih boleh diubah.",
+            "Already handed to Buffer or LinkedIn: {c}. Buffer holds that slot, those pictures and that caption, so the date, slot, pictures, language and those channels' captions are locked, and this post cannot go back to draft, be rejected or have its slot released. The captions of channels not sent yet can still be changed.",
+            { c: sentPlats.map((c) => PLAT_LABEL[c] || c).join(", ") })}</p>
+      )}
       {clash.length > 0 && !locked && (
         <p className="-mt-2 text-[12px] text-danger">{t("Slot ini sudah dipegang oleh: {h}. Satu slot, satu post: ia tidak boleh diluluskan sehingga salah satu dipindah.",
           "This slot is already held by: {h}. One post to a slot: it cannot be approved until one of the two moves.", { h: clash.map((p) => p.hook || p.id.slice(0, 8)).join(" · ") })}</p>
@@ -421,13 +435,13 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
                 : <button type="button" onClick={() => lbStart[m.id] !== undefined && lb.open(lbStart[m.id])} className="block cursor-zoom-in"
                   title={t("Klik untuk melihat besar", "Click to view large")}>
                   <img src={m.generated_media_url || m.reference_url} alt={m.meta?.alt || ""} className="h-36 w-36 rounded-tile object-cover sm:h-32 sm:w-32 lg:h-24 lg:w-24" /></button>}
-              {!locked && <button type="button" aria-label={t("Buang gambar", "Remove picture")} onClick={() => setMediaIds((ids) => ids.filter((x) => x !== m.id))}
+              {!frozen && <button type="button" aria-label={t("Buang gambar", "Remove picture")} onClick={() => setMediaIds((ids) => ids.filter((x) => x !== m.id))}
                 className="absolute -right-1 -top-1 rounded-full bg-ink p-0.5 text-bg"><X size={11} /></button>}
             </span>
           ))}
           {!chosen.length && <span className="text-xs text-muted">{t("Belum ada gambar dipilih.", "No picture chosen yet.")}</span>}
         </div>
-        {!locked && candidates.length > 0 && (
+        {!frozen && candidates.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-[11px] text-muted">{t("Tambah:", "Add:")}</span>
             {candidates.map((m) => (
@@ -442,13 +456,13 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
         {pending.length > 0 && <p className="mt-1 text-[11px] text-muted">
           {t("{n} gambar sedang dijana; ia masuk ke sini sendiri selagi post ini draf.",
             "{n} pictures being generated; they come in here by themselves while this post is a draft.", { n: pending.length })}</p>}
-        {!locked && (
+        {!frozen && (
           <div className="mt-2 flex gap-2">
             <Input value={newPic} onChange={(e) => setNewPic(e.target.value)} placeholder={t("Jana gambar lain: terangkan gambarnya…", "Generate another picture: describe it…")} />
             <Button type="button" size="sm" variant="soft" onClick={queuePicture} disabled={!newPic.trim() || busy}><ImagePlus size={12} /> {t("Jana", "Generate")}</Button>
           </div>
         )}
-        {!locked && (
+        {!frozen && (
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
             <Input value={ownAlt} onChange={(e) => setOwnAlt(e.target.value)} maxLength={300}
               placeholder={t("Teks alt untuk gambar anda (pilihan)", "Alt text for your picture (optional)")} />
@@ -458,7 +472,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
               <UploadCloud size={12} /> {t("Muat naik gambar sendiri", "Upload your own picture")}</Button>
           </div>
         )}
-        {!locked && (
+        {!frozen && (
           <div className="mt-2">
             <UnsplashSearch user={user} postId={post.id} ideaId={post.idea_id} stream={post.stream} onToast={onToast} onQueued={onChanged} compact />
             {unsplashOpen.map((m) => (
@@ -470,7 +484,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       </div>
 
       {hasSlides ? (
-        <div id={`slides-${post.id}`}><SlidesEditor post={post} rows={slideRows} setRows={setSlideRows} locked={locked} jobs={slideJobs}
+        <div id={`slides-${post.id}`}><SlidesEditor post={post} rows={slideRows} setRows={setSlideRows} locked={frozen} jobs={slideJobs}
           attachedIds={mediaIds} bg={bg} setBg={setBg} bgOptions={bgOptions} busy={busy}
           onRender={renderSlides} onUse={chooseSet} look={look} fit={fit} setFit={setFit}
           setLook={(k) => { setLook(k); if (isStudioLook(k) && bg === "none" && defaultGround(post)) setBg(defaultGround(post)); }}
@@ -534,11 +548,11 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
         {!locked && <Button variant="ghost" disabled={busy || (clash.length > 0 && movedPosition)}
           title={clash.length && movedPosition ? t("Slot itu sudah dipegang: pilih slot lain", "That slot is already held: choose another") : ""}
           onClick={() => write(content(), t("Disimpan.", "Saved."))}><Save size={13} /> {t("Simpan", "Save")}</Button>}
-        {(post.status === "draft" || post.status === "approved") && !locked && (
+        {(post.status === "draft" || post.status === "approved") && !frozen && (
           <Button variant="ghost" disabled={busy} aria-expanded={rejecting} onClick={() => setRejecting((x) => !x)}>
             <XCircle size={13} /> {t("Tolak…", "Reject…")}</Button>
         )}
-        {post.status === "approved" && <Button variant="soft" disabled={busy} onClick={() => write({ status: "draft", ...decided("back to draft") }, t("Kembali ke draf.", "Back to draft."))}>
+        {post.status === "approved" && !inBuffer && <Button variant="soft" disabled={busy} onClick={() => write({ status: "draft", ...decided("back to draft") }, t("Kembali ke draf.", "Back to draft."))}>
           <RotateCcw size={13} /> {t("Kembali ke draf", "Back to draft")}</Button>}
         {post.status === "rejected" && <Button variant="soft" disabled={busy} onClick={restore}>
           {t("Pulihkan", "Restore")}</Button>}
@@ -550,7 +564,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
         )}
       </div>}
 
-      <PostWorkflow post={post} dirty={dirty} locked={locked} mediaById={mediaById} lastLook={look} user={user}
+      <PostWorkflow post={post} dirty={dirty} locked={frozen} mediaById={mediaById} lastLook={look} user={user}
         onToast={onToast} onChanged={onChanged} rejecting={rejecting} onRejecting={setRejecting} />
 
       {myLog.length > 0 && (

@@ -149,7 +149,27 @@ def test_linkedin_bad_picture_and_missing_urn_are_refusals():
 
 def test_text_key_ignores_spacing():
     assert senders.text_key("A  b\n\nc") == senders.text_key("A b c")
-    assert json.dumps(senders.text_key("x" * 300)).count("x") == 100
+
+
+def test_text_key_is_the_whole_caption_not_its_first_hundred_letters():
+    # two posts that open with the same 100 letters are different posts: one must never be taken for the other in Buffer
+    head = "x" * 100
+    assert json.dumps(senders.text_key("x" * 300)).count("x") == 300
+    assert senders.text_key(head + " produk A") != senders.text_key(head + " produk B")
+
+
+def test_linkedin_a_5xx_on_the_post_call_is_a_refusal_never_retried_but_before_it_is_transient():
+    # the post call went out: a 503 does not prove it never landed, so the publisher must not send it again
+    s = Session(Resp(status=503))
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedIn("k", "urn:li:person:X", session=s, account_id="c").post("t", [])
+    assert e.value.kind == "refused" and "unconfirmed" in e.value.message
+    # a picture that cannot be fetched fails before anything is posted: transient, the next run may try again
+    import requests
+    s = Session(requests.ConnectionError("down"))
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedIn("k", "urn:li:person:X", session=s, account_id="c").post("t", ["https://x/1.jpg"])
+    assert e.value.kind == "transient" and len(s.calls) == 1
 
 
 # --- LinkedIn through Composio For You (MCP + consumer key) ---------------------------------------------------------

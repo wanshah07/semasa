@@ -282,6 +282,7 @@ def test_linkedin_waits_for_its_slot_then_posts_with_its_card():
 def test_linkedin_daily_cap_and_a_missed_day_is_never_sent():
     # earlier posts of the day carry their own words: the same words twice are blocked (guard.py), not capped
     posted = [_li(id=f"x{i}", status="posted", published={"linkedin": {"at": "2026-09-24T00:00:00+00:00"}},
+                  updated_at="2026-09-24T00:00:05+00:00",
                   text={"en": {"linkedin": f"Earlier post number {i} of the day, about something else entirely."}})
               for i in range(2)]
     store, li = _live(_li(date="2026-09-24", slot="06:00"), extra_posts=posted), FakeLinkedIn()
@@ -306,18 +307,30 @@ def test_linkedin_is_never_sent_twice_after_an_unanswered_attempt():
     assert ok.sent == [] and store2.tables["semasa_posts"][0]["errors"]["linkedin"]["unconfirmed"]
 
 
-def test_a_transient_linkedin_error_never_auto_retries_within_the_same_run():
-    # publisher.py#330: a timeout/5xx from Composio does not prove the post never went out, so resending it
-    # immediately within the same run risked a duplicate LinkedIn post; it must surface as an error instead
-    # and rely on the "sending"-without-"sent" guard (tested above) for the NEXT run to catch it
+def test_a_transient_linkedin_error_is_never_retried_in_the_same_run_but_is_by_the_next():
+    # By the senders' contract a TRANSIENT LinkedIn failure happened before the post call (account lookup, picture
+    # fetch/upload): nothing can be on LinkedIn. It is not retried within the run, it closes its "sending" line (so the
+    # unanswered-attempt guard does not fire) and the next run sends it. A failure after the post call is a refusal.
     store = _live(_li(date="2026-09-24", slot="06:00"))
     li = FakeLinkedIn(fail="transient")
     c = publisher.run(store, NOW, clients={"linkedin": li})
-    assert li.sent == [] and c["sent"] == 0 and c["error"] == 1
-    assert store.tables["semasa_posts"][0]["errors"]["linkedin"]["kind"] == "transient"
-    sending = [r for r in store.tables["semasa_publish_log"] if r["action"] == "sending"]
-    sent = [r for r in store.tables["semasa_publish_log"] if r["action"] == "sent"]
-    assert len(sending) == 1 and len(sent) == 0            # exactly one post() call was ever made, and it failed
+    assert li.sent == [] and c["sent"] == 0 and c["retry"] == 1 and c["error"] == 0
+    rec = store.tables["semasa_posts"][0]["errors"]["linkedin"]
+    assert rec["kind"] == "transient" and rec["attempts"] == 1 and rec["retry"] is True
+    log = store.tables["semasa_publish_log"]
+    assert [r["action"] for r in log] == ["sending", "error"] and log[1]["detail"]["before_post"] is True
+    li.fail = None
+    c = publisher.run(store, datetime(2026, 9, 24, 3, 20, tzinfo=UTC), clients={"linkedin": li})
+    p = store.tables["semasa_posts"][0]
+    assert len(li.sent) == 1 and c["sent"] == 1 and p["status"] == "posted" and "linkedin" not in p["errors"]
+
+
+def test_a_linkedin_refusal_is_final_for_those_words():
+    store, li = _live(_li(date="2026-09-24", slot="06:00")), FakeLinkedIn(fail="refused")
+    publisher.run(store, NOW, clients={"linkedin": li})
+    li.fail = None
+    c = publisher.run(store, datetime(2026, 9, 24, 3, 20, tzinfo=UTC), clients={"linkedin": li})
+    assert li.sent == [] and c["sent"] == 0 and store.tables["semasa_posts"][0]["errors"]["linkedin"]["kind"] == "refused"
 
 
 def test_the_switch_opens_by_itself_at_enabled_from_and_pause_wins():
@@ -396,3 +409,235 @@ def test_the_channels_of_a_post_never_widen_what_settings_switched_off():
     assert publisher.post_channels(settings, {"stream": "regulab", "channels": ["instagram", "threads"]}) == ["instagram"]
     assert publisher.post_channels(settings, {"stream": "regulab", "channels": ["linkedin"]}) == ["instagram", "facebook"]
     assert publisher.post_channels(settings, {"stream": "regulab"}) == ["instagram", "facebook"]
+
+
+# --- review fixes, 7 Nov 2026 (scratchpad bugA t1-t3) -----------------------------------------------------------------
+
+class Outage(FakeBuffer):
+    """Buffer down (503) on create, or on the posts listing, until `down` is cleared."""
+
+    def __init__(self, where="create", **kw):
+        super().__init__(**kw)
+        self.down, self.where = True, where
+
+    def create(self, *a, **k):
+        if self.down and self.where == "create":
+            raise senders.SendError("transient", "Buffer answered 503")
+        return super().create(*a, **k)
+
+    def posts(self, *a):
+        if self.down and self.where == "posts":
+            raise senders.SendError("transient", "Buffer rate limit (429)")
+        return super().posts(*a)
+
+
+def test_a_transient_buffer_outage_is_retried_by_the_next_run_not_parked_for_ever():
+    for where in ("create", "posts"):
+        store, buf = _live(_post()), Outage(where)
+        c = publisher.run(store, NOW, clients={"buffer": buf})
+        p = store.tables["semasa_posts"][0]
+        assert c["retry"] == 3 and c["error"] == 0 and p["status"] == "approved", where
+        assert {k: v["attempts"] for k, v in p["errors"].items() if k in CHANNELS["buffer"]["enabled"]} == \
+            {"facebook": 1, "instagram": 1, "threads": 1}
+        buf.down = False
+        publisher.run(store, NOW, clients={"buffer": buf})
+        p = store.tables["semasa_posts"][0]
+        assert p["status"] == "scheduled" and len(buf.created) == 3, where
+        assert not any(k in p["errors"] for k in ("facebook", "instagram", "threads"))
+
+
+def test_a_transient_failure_gives_up_after_five_runs_and_says_so():
+    store, buf = _live(_post()), Outage()
+    for _ in range(publisher.TRANSIENT_GIVE_UP):
+        publisher.run(store, NOW, clients={"buffer": buf})
+    rec = store.tables["semasa_posts"][0]["errors"]["threads"]
+    assert rec["attempts"] == 5 and rec["gave_up"] is True and "5 runs" in rec["message"]
+    buf.down = False
+    c = publisher.run(store, NOW, clients={"buffer": buf})       # final now: Wan edits and approves to send again
+    assert len(buf.created) == 0 and c["retry"] == 0
+
+
+def test_a_transient_error_parked_by_the_old_publisher_is_tried_again():
+    # before this fix a transient failure was stored with its fingerprint and skipped for ever; such a record has no
+    # `attempts`, and the channel must now be retried instead of staying parked
+    store, buf = _live(_post()), Outage()
+    publisher.run(store, NOW, clients={"buffer": buf})
+    p = store.tables["semasa_posts"][0]
+    for ch in ("facebook", "instagram", "threads"):
+        p["errors"][ch] = {k: v for k, v in p["errors"][ch].items() if k not in ("attempts", "retry")}
+    buf.down = False
+    publisher.run(store, NOW, clients={"buffer": buf})
+    assert store.tables["semasa_posts"][0]["status"] == "scheduled" and len(buf.created) == 3
+
+
+PREFIX = "KENYATAAN MEDIA KKM: Notifikasi kosmetik bukan kelulusan produk dan NPRA menyemak dokumen selepas pa"
+
+
+def test_a_different_post_with_the_same_opening_is_never_adopted():
+    assert len(PREFIX) == 100
+    a = PREFIX + "sar. Produk A dibatalkan kerana mengandungi merkuri."
+    b = PREFIX + "sar. Produk B dibatalkan kerana mengandungi hidrokuinon dan tretinoin."
+    existing = [{"id": f"{i:x}" * 24, "status": "scheduled", "dueAt": "2026-09-25T00:00:00+00:00", "text": a,
+                 "channelId": ch} for i, ch in enumerate(("fb1", "ig1", "th1"), 10)]
+    store = _live(_post(text={"bm": {"instagram": b, "facebook": b, "threads": b}}))
+    buf = FakeBuffer(existing=existing)
+    c = publisher.run(store, NOW, clients={"buffer": buf})
+    p = store.tables["semasa_posts"][0]
+    assert c["adopted"] == 0 and c["scheduled"] == 3 and len(buf.created) == 3
+    assert all(r["route"] == "buffer" for r in p["published"].values())
+
+
+def test_the_same_words_at_another_time_are_not_adopted():
+    # same caption, but Buffer holds it 13 hours away from this post's slot: not this post's channel
+    other = {"id": "c" * 24, "status": "scheduled", "dueAt": "2026-09-25T13:00:00+00:00", "text": CAP, "channelId": "fb1"}
+    store, buf = _live(_post()), FakeBuffer(existing=[other])
+    c = publisher.run(store, NOW, clients={"buffer": buf})
+    assert c["adopted"] == 0 and {x["service"] for x in buf.created} == {"facebook", "instagram", "threads"}
+
+
+def test_a_buffer_post_another_post_already_records_is_not_adopted():
+    # another post (since moved to 13:00 in Semasa) still records that Buffer post as its own Facebook channel
+    rec = {"id": "d" * 24, "status": "scheduled", "dueAt": "2026-09-25T00:00:00+00:00"}
+    holder = _post(id="p0", status="scheduled", date="2026-09-25", slot="13:00",
+                   text={"bm": {"instagram": "x", "facebook": "x", "threads": "x"}}, published={"facebook": rec})
+    store = _live(_post(), extra_posts=[holder])
+    buf = FakeBuffer(existing=[{**rec, "text": CAP, "channelId": "fb1"}])
+    c = publisher.run(store, NOW, clients={"buffer": buf})
+    p = store.tables["semasa_posts"][0]
+    assert c["adopted"] == 0 and c["scheduled"] == 3
+    assert p["published"]["facebook"]["id"] != "d" * 24
+
+
+class EditedMidRun(FakeBuffer):
+    """Wan edits the post in the page (back to draft, updated_at moves) while the run is sending its first channel."""
+
+    def __init__(self, store, **kw):
+        super().__init__(**kw)
+        self.db = store
+
+    def create(self, *a, **k):
+        out = super().create(*a, **k)
+        if len(self.created) == 1:
+            row = self.db.tables["semasa_posts"][0]
+            row.update(status="draft", updated_at="2026-09-24T02:00:30+00:00")
+        return out
+
+
+def test_a_post_changed_while_the_run_sends_it_is_left_alone_and_keeps_what_buffer_holds():
+    store = _live(_post(updated_at="2026-09-24T01:00:00+00:00"))
+    buf = EditedMidRun(store)
+    c = publisher.run(store, NOW, clients={"buffer": buf})
+    p = store.tables["semasa_posts"][0]
+    assert len(buf.created) == 1 and c["changed"] == 1               # the second channel was not sent
+    assert p["status"] == "draft"                                    # the run's final write never overwrote the edit
+    assert list(p["published"]) == [buf.created[0]["service"]]       # and the channel Buffer holds is recorded
+
+
+def test_a_post_changed_since_the_run_read_it_is_not_sent():
+    store, buf = _live(_post(updated_at="2026-09-24T01:00:00+00:00")), FakeBuffer()
+    real = publisher.media_for
+
+    def media_then_edit(st, ids):
+        st.tables["semasa_posts"][0]["updated_at"] = "2026-09-24T02:00:10+00:00"     # saved in the page meanwhile
+        return real(st, ids)
+
+    publisher.media_for = media_then_edit
+    try:
+        c = publisher.run(store, NOW, clients={"buffer": buf})
+    finally:
+        publisher.media_for = real
+    assert buf.created == [] and c["changed"] == 1
+    c = publisher.run(store, NOW, clients={"buffer": buf})          # the next run reads the new version and sends it
+    assert len(buf.created) == 3 and store.tables["semasa_posts"][0]["status"] == "scheduled"
+
+
+def test_a_missed_final_write_is_healed_by_the_next_run():
+    # every channel is in Buffer but the status write missed its pin: the next run promotes it with nothing to send
+    rec = {"id": "e" * 24, "status": "scheduled", "dueAt": "2026-09-25T00:00:00+00:00"}
+    store, buf = _live(_post(published={c: rec for c in ("facebook", "instagram", "threads")})), FakeBuffer()
+    publisher.run(store, NOW, clients={"buffer": buf})
+    assert store.tables["semasa_posts"][0]["status"] == "scheduled" and buf.created == []
+
+
+def test_one_post_that_crashes_never_stops_the_others_or_the_tally():
+    bad = _post(id="bad", date="2026-09-25", slot="8h00",
+                text={"bm": {k: "Satu post lain yang rosak slotnya, dengan perkataan berbeza." for k in
+                             ("instagram", "facebook", "threads")}})
+    store, buf = _live(_post(), extra_posts=[bad]), FakeBuffer()
+    store.tables["semasa_posts"].reverse()                           # the broken one is read first
+    tallied = []
+    real = publisher.tally
+    publisher.tally = lambda *a, **k: tallied.append(1)
+    try:
+        c = publisher.run(store, NOW, clients={"buffer": buf})
+    finally:
+        publisher.tally = real
+    assert c["failed"] == 1 and c["scheduled"] == 3 and tallied == [1]
+
+
+class ConfirmDown(FakeBuffer):
+    def confirm(self, pid):
+        raise senders.SendError("transient", "Buffer unreachable: read timed out")
+
+
+def test_a_share_now_whose_read_back_fails_is_recorded_unconfirmed_and_never_sent_twice():
+    store, buf = _live(_post(date="2026-09-24", slot="10:00")), ConfirmDown()
+    c = publisher.run(store, NOW, clients={"buffer": buf})
+    p = store.tables["semasa_posts"][0]
+    assert c["error"] == 0 and len(buf.created) == 3
+    assert all(r["unconfirmed"] is True and r["id"] for r in p["published"].values())
+    publisher.run(store, NOW, clients={"buffer": buf})
+    assert len(buf.created) == 3                                     # recorded: never created a second time
+    for bp in buf.store.values():
+        bp["status"] = "sent"
+    publisher.run(store, datetime(2026, 9, 24, 3, 0, tzinfo=UTC), clients={"buffer": buf})
+    assert store.tables["semasa_posts"][0]["status"] == "posted"     # the tally settled it
+
+
+def test_the_linkedin_cap_counts_today_even_past_the_1000_row_read_limit():
+    old = [_li(id=f"o{i}", status="posted", date="2026-08-01", published={"linkedin": {"at": "2026-08-01T00:00:00+00:00"}},
+               updated_at="2026-08-02T00:00:00+00:00", text={"en": {"linkedin": f"Old post {i} about another thing."}})
+           for i in range(8)]
+    today = [_li(id=f"t{i}", status="posted", published={"linkedin": {"at": "2026-09-24T00:10:00+00:00"}},
+                 updated_at="2026-09-24T00:10:01+00:00", text={"en": {"linkedin": f"Today's post {i}, unrelated words."}})
+             for i in range(2)]
+    store = _live(_li(date="2026-09-24", slot="06:00"), extra_posts=old + today)
+    store.max_rows = 5                                               # PostgREST's cap, shrunk: the old posts fill it
+    assert publisher.linkedin_sent_on(store, publisher.myt_date(NOW)) == 2
+
+
+def test_a_linkedin_slot_after_the_last_run_goes_at_the_first_run_next_day_not_overdue():
+    en = "Cosmetic notification is not product approval. The regulator reviews the file after the product reaches the market."
+    store = _live(_li(date="2026-09-24", slot="20:00", text={"en": {"linkedin": en}}, media_ids=[]))
+    store.tables["semasa_settings"][1]["value"] = {"linkedin": {"slots": ["20:00"]}}
+    li = FakeLinkedIn()
+    for h in (3, 11):                                                # 11:20 and 19:20 MYT: not yet
+        assert publisher.run(store, datetime(2026, 9, 24, h, 20, tzinfo=UTC), clients={"linkedin": li})["not_yet"] == 1
+    c = publisher.run(store, datetime(2026, 9, 24, 22, 20, tzinfo=UTC), clients={"linkedin": li})   # 06:20 next day
+    assert c["sent"] == 1 and c["overdue"] == 0 and store.tables["semasa_posts"][0]["status"] == "posted"
+    # one day later still is overdue, as before
+    late = _live(_li(date="2026-09-23", slot="20:00", text={"en": {"linkedin": en}}, media_ids=[]))
+    assert publisher.run(late, datetime(2026, 9, 24, 22, 20, tzinfo=UTC), clients={"linkedin": li})["overdue"] == 1
+
+
+def test_li_send_day():
+    from datetime import date
+    d = publisher.due_utc
+    assert publisher.li_send_day(d("2026-09-24", "06:00")) == date(2026, 9, 24)
+    assert publisher.li_send_day(d("2026-09-24", "19:20")) == date(2026, 9, 24)
+    assert publisher.li_send_day(d("2026-09-24", "19:21")) == date(2026, 9, 25)
+    assert publisher.li_send_day(d("2026-09-24", "23:59")) == date(2026, 9, 25)
+
+
+def test_a_half_sent_post_moved_afterwards_does_not_send_the_rest_at_the_new_slot():
+    # scratchpad bugA t3: Facebook went to Buffer for 25 Sep 08:00, then the post was moved to 26 Sep 13:00 and approved
+    # again. Buffer still holds 25 Sep 08:00: the other channels must not go out at the new slot.
+    store, buf = _live(_post()), FakeBuffer(fail={"threads": ["full"], "instagram": ["full"]})
+    publisher.run(store, NOW, clients={"buffer": buf})
+    p = store.tables["semasa_posts"][0]
+    assert list(p["published"]) == ["facebook"]
+    p.update(date="2026-09-26", slot="13:00", status="approved")
+    c = publisher.run(store, NOW, clients={"buffer": buf})
+    p = store.tables["semasa_posts"][0]
+    assert len(buf.created) == 1 and c["blocked"] == 2
+    assert "facebook 2026-09-25 08:00" in " ".join(p["errors"]["scan"])

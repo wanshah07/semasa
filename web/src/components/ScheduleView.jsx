@@ -81,6 +81,8 @@ export default function ScheduleView({ posts, brand, onOpen, onNewIdea, onToast,
       const by = (chk.by || []).map((x) => x.hook || String(x.id).slice(0, 8)).join(" · ");
       const why = {
         status: t("Post ini sudah dijadualkan atau diterbitkan: Buffer memegang masanya, jadi ia tidak boleh dipindah di sini.", "This post is already scheduled or posted: Buffer holds its time, so it cannot be moved here."),
+        published: t("Sebahagian post ini sudah diserahkan kepada Buffer atau LinkedIn pada slot ini: Buffer memegang masanya, jadi ia tidak boleh dipindah di sini.",
+          "Part of this post is already handed to Buffer or LinkedIn for this slot: Buffer holds its time, so it cannot be moved here."),
         same: t("Post ini memang di slot itu.", "This post is already on that slot."),
         slot: t("{s} bukan salah satu slot lorong ini.", "{s} is not one of this lane's slots.", { s: slot }),
         day: t("Lorong ini tidak menerbitkan pada {d}.", "This lane does not post on {d}.", { d: date }),

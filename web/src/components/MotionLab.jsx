@@ -3,9 +3,9 @@ import { AlertTriangle, Clapperboard, Download, FolderGit2, Loader2, Plus, Refre
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { useSettings, useTable } from "../lib/hooks";
-import { timeAgo } from "../lib/format";
+import { stampMYT, timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
-import { LANGUAGES, RESOLUTIONS, RESOLUTION_CHOICES, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults, plannedShots, stageSteps } from "../lib/motion";
+import { LANGUAGES, RESOLUTIONS, RESOLUTION_CHOICES, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults, plannedShots, motionTrack } from "../lib/motion";
 import ChatGptLogin from "./ChatGptLogin";
 import MotionAmbient from "./MotionAmbient";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
@@ -13,6 +13,7 @@ import MotionEffectLibrary from "./MotionEffectLibrary";
 import MotionQueue from "./MotionQueue";
 import MotionPost from "./MotionPost";
 import TileGrid from "./TileGrid";
+import { OrderTracking } from "@/components/ui/order-tracking";
 import { inMotionList } from "../lib/motionQueue";
 import { effectGroups } from "../lib/motionEffects";
 import Card from "./ui/Card";
@@ -169,15 +170,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
                 </div>
                 <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${STATUS_CLS[r.status] || ""}`}>{r.status === "working" && <Loader2 size={10} className="animate-spin" />}{w(STATUS_WORDS[r.status] || [r.status, r.status])}</span>
               </div>
-              {(r.status === "working" || r.status === "done") && stageSteps(r).some((x) => x.state !== "todo") && (
-                <ol className="mt-2 flex flex-wrap items-center gap-1 text-[11px]" data-motion-stages>
-                  {stageSteps(r).map((x, i) => (
-                    <li key={x.id} data-stage={x.id} data-state={x.state} className={`flex items-center gap-1 rounded-pill px-2 py-0.5 ${x.state === "active" ? "bg-accent/15 text-accent" : x.state === "done" ? "bg-ok/10 text-ok" : "bg-surface-2 text-muted"}`}>
-                      {x.state === "active" ? <Loader2 size={10} className="animate-spin" /> : null}{i + 1}. {w(x.words)}
-                    </li>
-                  ))}
-                </ol>
-              )}
+              <OrderTracking className="mt-3 max-w-none" data-motion-stages steps={motionTrack(r, { L, stamp: stampMYT })} />
               {plannedShots(r).length > 0 && (
                 <details className="mt-2 text-xs" data-motion-storyboard>
                   <summary className="cursor-pointer text-muted">{t("Papan cerita: {n} babak dirancang", "Storyboard: {n} scenes planned", { n: plannedShots(r).length })}</summary>

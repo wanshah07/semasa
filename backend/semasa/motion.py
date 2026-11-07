@@ -1161,9 +1161,30 @@ def clean_html(html: Any) -> str:
 def set_stage(store: Any, row: dict[str, Any], name: str, **more: Any) -> None:
     """Say which stage a film is in (Wan, 7 Nov 2026: Scrape > Idea > Motion (storyboard) > Motion (Picture) > Motion):
     storyboard, pictures, film. The Motion tab shows it beside the status. Never raises: a stage that cannot be written (the
-    column is from supabase/063) must not stop a film."""
+    column is from supabase/063) must not stop a film.
+
+    Each stage also stamps when it began in `stage_times` (supabase/064; Wan, 7 Nov 2026: a tracker "idea > storyboard >
+    motion" with times). A new run starts at the storyboard, so that stage clears the old stamps; "" (a film waiting to run
+    again) leaves them as evidence of where the last run stopped. Before 064 is applied the column is missing: the stage is
+    still written, without the times."""
+    fields: dict[str, Any] = {"stage": name, **more}
+    if name:
+        times = {} if name == "storyboard" else dict(row.get("stage_times") or {})
+        times[name] = datetime.now(UTC).isoformat(timespec="seconds")
+        fields["stage_times"] = times
     try:
-        store.table(TABLE).update({"stage": name, **more}).eq("id", row["id"]).execute()
+        store.table(TABLE).update(fields).eq("id", row["id"]).execute()
+        if "stage_times" in fields:
+            row["stage_times"] = fields["stage_times"]
+        return
+    except Exception as exc:  # noqa: BLE001
+        if "stage_times" not in fields:
+            log.info("motion stage not written (%s)", str(exc)[:100])
+            return
+        log.info("motion stage times not written, trying the stage alone (%s)", str(exc)[:100])
+    fields.pop("stage_times", None)
+    try:
+        store.table(TABLE).update(fields).eq("id", row["id"]).execute()
     except Exception as exc:  # noqa: BLE001
         log.info("motion stage not written (%s)", str(exc)[:100])
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { FORMAT_WORDS, LANGUAGES, defaultLanguage, formOf, formatOf, freshUrl, motionDefaults, motionFromIdea, motionFromPost, motionVariantMatches, startFields, STATUS_WORDS, STAGES, plannedShots, stageSteps, withDefaults, RESOLUTIONS, SECONDS, checkItems, clampSeconds, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "./src/lib/motion.js";
+import { FORMAT_WORDS, LANGUAGES, defaultLanguage, formOf, formatOf, freshUrl, motionDefaults, motionFromIdea, motionFromPost, motionVariantMatches, startFields, STATUS_WORDS, STAGES, motionTrack, plannedShots, stageSteps, withDefaults, RESOLUTIONS, SECONDS, checkItems, clampSeconds, fmtBytes, motionLabel, motionRepoRow, motionRow, styleRepos } from "./src/lib/motion.js";
 
 assert.equal(clampSeconds("abc"), SECONDS.default);
 assert.equal(clampSeconds(1), SECONDS.min);
@@ -173,4 +173,22 @@ assert.deepEqual(states(undefined), ["todo", "todo", "todo"]);
 assert.deepEqual(plannedShots({ script: [{ id: "s1", heading: "H", hook_shape: 17, shot: "a shelf", mood: "calm" }, { id: "s2", heading: "x" }, null] }),
   [{ id: "s1", heading: "H", shot: "a shelf", mood: "calm", hookShape: 17 }]);
 assert.deepEqual(plannedShots({ script: "junk" }), []);
+
+// the tracker (064): Idea -> Storyboard -> Pictures -> Film, each with when it began
+const track = (row) => motionTrack(row, { L: 1, stamp: (iso) => (iso ? `@${iso}` : "") });
+const shape = (row) => track(row).map((x) => (x.isFailed ? "x" : x.isCompleted ? "v" : x.isActive ? ">" : "."));
+assert.deepEqual(track({}).map((x) => x.name), ["Idea", "Storyboard", "Pictures", "Film"]);
+assert.deepEqual(shape({ status: "waiting", created_at: "t0" }), ["v", ".", ".", "."]);
+assert.equal(track({ status: "waiting" })[1].timestamp, "Queued: choose the styles first");
+assert.deepEqual(shape({ status: "working", stage: "pictures", stage_times: { storyboard: "t1", pictures: "t2" } }), ["v", "v", ">", "."]);
+assert.deepEqual(track({ status: "working", stage: "pictures", stage_times: { storyboard: "t1", pictures: "t2" } }).map((x) => x.timestamp),
+  ["", "@t1", "@t2", "Waiting"]);
+assert.equal(track({ status: "working", stage: "film" })[3].timestamp, "Running now", "a stage with no stamp yet (before 064) still says it runs");
+assert.deepEqual(shape({ status: "done", stage: "done", stage_times: { done: "t9" }, updated_at: "u" }), ["v", "v", "v", "v"]);
+assert.equal(track({ status: "done", stage_times: { done: "t9" }, updated_at: "u" })[3].timestamp, "@t9");
+assert.equal(track({ status: "done", updated_at: "u" })[3].timestamp, "@u", "an older film: its last change is when it finished");
+assert.deepEqual(shape({ status: "error", stage: "", stage_times: { storyboard: "t1", pictures: "t2" } }), ["v", "v", "x", "."], "failed at the last stage it stamped");
+assert.deepEqual(shape({ status: "error" }), ["v", "x", ".", "."], "no stamps: the failure is shown at the first stage");
+assert.equal(motionTrack({}, { L: 0 })[1].name, "Papan cerita");
+console.log("motion tracker: ok");
 assert.deepEqual(plannedShots(undefined), []);

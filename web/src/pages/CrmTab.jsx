@@ -199,7 +199,7 @@ export default function CrmTab({ user, settings, save, onToast }) {
 
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
-      <motion.div {...fadeUp} className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <motion.div variants={fadeUp} initial="hidden" animate="show" className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl">CRM</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">{t("Kenalan, peringkat, apa yang berlaku, dan kempen e-mel yang keluar sendiri dari Gmail anda kepada mereka yang bersetuju. Setiap e-mel pemasaran membawa pautan berhenti melanggan (PDPA 2010).",

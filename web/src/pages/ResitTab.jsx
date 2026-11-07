@@ -93,7 +93,7 @@ export default function ResitTab({ user, onToast }) {
 
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
-      <motion.div {...fadeUp} className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <motion.div variants={fadeUp} initial="hidden" animate="show" className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl">{t("Resit belian", "Purchase receipts")}</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">{t("Snap resit; gambar masuk Google Drive (Semasa/Resit/tahun/bulan), AI baca kedai, tarikh, jumlah dan butiran, dan susun ikut bulan dan kategori. Betulkan mana-mana medan jika pembaca tersilap.",

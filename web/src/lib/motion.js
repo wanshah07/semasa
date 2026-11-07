@@ -80,6 +80,42 @@ export function stageSteps(row) {
   return STAGES.map(([id, words], i) => ({ id, words, state: !on || at < 0 ? "todo" : i < at ? "done" : i === at ? (row.status === "done" ? "done" : "active") : "todo" }));
 }
 
+/* The process as a tracker (Wan, 7 Nov 2026: "status proses macam (idea>storyboard>motion)"; components/ui/order-tracking.tsx):
+   Idea -> Storyboard -> Pictures -> Film, each with the moment it began. The idea is the row itself (created_at); the three
+   stages read stage_times (supabase/064, written by the worker's set_stage). A run that failed is marked at the last stage it
+   stamped. Pure: `stamp` turns an ISO time into words (the page passes stampMYT), `L` picks the language (0 BM, 1 EN). */
+const TRACK_WORDS = {
+  idea: ["Idea", "Idea"], storyboard: ["Papan cerita", "Storyboard"], pictures: ["Gambar", "Pictures"], film: ["Filem", "Film"],
+  running: ["Sedang berjalan", "Running now"], waiting: ["Menunggu", "Waiting"], queued: ["Beratur: pilih gaya dahulu", "Queued: choose the styles first"],
+  failed: ["Gagal di sini", "Stopped here"],
+};
+export function motionTrack(row, { L = 0, stamp = (iso) => iso || "" } = {}) {
+  const w = (k) => TRACK_WORDS[k][L ? 1 : 0];
+  const order = ["storyboard", "pictures", "film"];
+  const times = row?.stage_times && typeof row.stage_times === "object" ? row.stage_times : {};
+  const status = row?.status || "";
+  const done = status === "done";
+  const failed = status === "error";
+  const at = done ? order.length : order.indexOf(row?.stage || "");
+  const lastStamped = order.reduce((k, id, i) => (times[id] ? i : k), -1);
+  const failAt = failed ? Math.max(lastStamped, 0) : -1;
+  const steps = [{ id: "idea", name: w("idea"), timestamp: stamp(row?.created_at), isCompleted: true }];
+  order.forEach((id, i) => {
+    const isFailed = i === failAt;
+    const isCompleted = done || (failed ? i < failAt : at > i);
+    const isActive = status === "working" && at === i;
+    let when;
+    if (isFailed) when = `${w("failed")}${times[id] ? ` · ${stamp(times[id])}` : ""}`;
+    else if (id === "film" && done) when = stamp(times.done || times.film || row?.updated_at);
+    else if ((isCompleted || isActive) && times[id]) when = stamp(times[id]);
+    else if (isActive) when = w("running");
+    else if (isCompleted) when = "";
+    else when = status === "waiting" && i === 0 ? w("queued") : w("waiting");
+    steps.push({ id, name: w(id), timestamp: when, isCompleted, isActive, isFailed });
+  });
+  return steps;
+}
+
 /** What the storyboard planned, from the row's script: one entry per scene that carries a hook shape or a written shot. */
 export function plannedShots(row) {
   return (Array.isArray(row?.script) ? row.script : []).filter((sc) => sc && (sc.shot || sc.hook_shape))

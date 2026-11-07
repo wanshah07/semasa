@@ -12,6 +12,7 @@ import Card from "../components/ui/Card";
 import { Segmented } from "../components/ui/Field";
 import AiTeam from "../components/AiTeam";
 import GeminiKeys from "../components/GeminiKeys";
+import ChatGptLogin from "../components/ChatGptLogin";
 import { AiSettings, MireldTrial } from "./SettingsTab";
 
 /* API: the AI gateways (rootsys = Afiq's, Mireld), their keys, their models and the tokens we spend (Wan, 9 Oct 2026: "track
@@ -73,6 +74,11 @@ export default function ApiTab({ settings, save, onToast }) {
 
       <section className="mb-6" data-gemini-section>
         <GeminiKeys settings={settings} save={save} onToast={onToast} />
+      </section>
+
+      {/* ChatGPT beside the other robots (Wan, 7 Nov 2026: "for chatgpt put together in API, same with others"); Motion uses it from here */}
+      <section className="mb-6" data-chatgpt-section>
+        <ChatGptLogin onToast={onToast} />
       </section>
 
       {/* moved here from Tetapan (Wan, 7 Nov 2026: "API in setting" goes to its segment): the workers' keys and endpoints, and one Mireld run */}

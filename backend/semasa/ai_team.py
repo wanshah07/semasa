@@ -70,6 +70,8 @@ ROBOTS: dict[str, dict[str, Any]] = {
     "kiosapi": {"robot": "W3", "name": "Wanshah 3", "tone": "kios", "does": ["read", "write", "read_image", "make_image"]},
     # Gemini (Wan, 6 Nov 2026): several keys picked automatically (gemini_keys.py); only the jobs Wan allows ever see it
     "gemini": {"robot": "W4", "name": "Wanshah 4", "tone": "guest", "does": ["read", "write", "read_image", "make_image"]},
+    # ChatGPT (Wan, 7 Nov 2026: "add bot for chatgpt"): Wan's own ChatGPT login (chatgpt_login.py), not an API key
+    "chatgpt": {"robot": "W5", "name": "Wanshah 5", "tone": "guest", "does": ["read", "write", "read_image", "make_image"]},
 }
 # a model that draws, not one that talks: never a text writer whatever slot it was typed into
 IMAGE_MODEL_RE = re.compile(r"image|dall-?e|flux|stable-?diffusion|sdxl|imagen|seedream|sora|veo|kling|wan2|hunyuan", re.I)

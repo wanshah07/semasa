@@ -20,7 +20,8 @@ WHAT IT FIXES BY ITSELF (only what cannot do harm):
 
 WHAT IT ONLY REPORTS (it needs Wan, or an account outside Semasa): a workflow that failed, an AI gateway that is down or refusing
 its key, Gemini keys that all fail, the ChatGPT login about to expire or failing, a LinkedIn account LinkedIn has restricted,
-the Gmail connection itself, a business whose own Gmail is not connected yet, a billing e-mail that failed.
+the Gmail connection itself, a business whose own Gmail is not connected yet, a billing e-mail that failed, the
+Telegram bot's webhook and messages it left unanswered. The alerts go to Telegram too once the bot is linked.
 
 It writes settings.health_state (the last report, for the page) and one semasa_log line a run. It never sends anything but the
 report, and the report goes only to Wan's own address.
@@ -265,6 +266,35 @@ def check_business_gmail(businesses: dict[str, dict[str, Any]], ws_email: str, s
     return out
 
 
+def check_telegram(store: Any, now: datetime) -> list[dict[str, str]]:
+    """The Telegram bot (telegram_bot.py, supabase/069): Telegram's own word on the webhook, and messages from Wan that no
+    run has answered. Silent until the bot has been connected once (settings.telegram_bot)."""
+    rows = _rows(store, db.SETTINGS, lambda q: q.select("value").eq("key", "telegram_bot"))
+    state = (rows[0].get("value") or {}) if rows else {}
+    if not state:
+        return []
+    out = []
+    if not state.get("webhook"):
+        out.append(problem("Telegram", "the bot is not connected to Semasa's webhook",
+                           "Run the Telegram workflow (Actions → Telegram → Run workflow); check TELEGRAM_BOT_TOKEN."))
+    err_at = state.get("last_error_at")
+    if state.get("last_error") and isinstance(err_at, (int, float)) and now.timestamp() - err_at < LOOKBACK_HOURS * 3600:
+        out.append(problem("Telegram", f"Telegram could not deliver to Semasa: {state['last_error']}",
+                           "Check that the semasa-telegram function is deployed (Actions → Deploy functions)."))
+    since = (now - timedelta(minutes=30)).isoformat()
+    stuck = _rows(store, "semasa_telegram_inbox", lambda q: q.select("id").in_("kind", ["private", "callback"])
+                  .in_("status", ["new", "working"]).lt("created_at", since))
+    if stuck:
+        out.append(problem("Telegram", f"{len(stuck)} message(s) from Wan not answered for 30 minutes",
+                           "The Telegram workflow was not woken: check the vault dispatch token and Actions."))
+    return out
+
+
+def as_text(body: str) -> str:
+    """The e-mail's lines as plain text, for Telegram."""
+    return html.unescape(re.sub(r"<[^>]+>", "", body.replace("</p>", "\n"))).strip()
+
+
 # ---- the report -----------------------------------------------------------------------------------------------------------
 
 def key_of(p: dict[str, str]) -> str:
@@ -363,7 +393,7 @@ def save_state(store: Any, state: dict[str, Any]) -> None:
 
 
 def run(store: Any, now: datetime | None = None, sender: Any = None, session: Any = None, fix: bool = True,
-        sender_for: Any = None) -> dict[str, Any]:
+        sender_for: Any = None, notify_telegram: bool = True) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     businesses = billing.load_businesses(store)
     settings = billing.settings_for({"business_id": "wsregulab"}, businesses, billing.load_settings(store))
@@ -373,7 +403,7 @@ def run(store: Any, now: datetime | None = None, sender: Any = None, session: An
     fixed = (fix_known_publisher_errors(store) + retry_transient_ideas(store, now)) if fix else []
     problems = (check_workflows(now, session) + check_gateways(store) + check_gemini(store) + check_chatgpt(store, now)
                 + check_publisher(store) + check_billing(store, now) + check_gmail(sender)
-                + check_business_gmail(businesses, ws_email, sender_for))
+                + check_business_gmail(businesses, ws_email, sender_for) + check_telegram(store, now))
     state = load_state(store)
     kind = should_send(problems, fixed, state, now)
     sent = ""
@@ -391,6 +421,10 @@ def run(store: Any, now: datetime | None = None, sender: Any = None, session: An
         except Exception as exc:  # noqa: BLE001 - the report is still kept below and shown on the page
             log.warning("the health report was not e-mailed (%s)", str(getattr(exc, "message", exc))[:200])
             problems.append(problem("Billing", f"the health report itself could not be e-mailed: {str(exc)[:160]}"))
+    if kind in ("attention", "fixed") and notify_telegram:
+        from . import telegram_bot  # the same lines on Telegram, when the bot is linked (quietly nothing otherwise)
+        subject, body = render(problems, fixed, now, kind, state)
+        telegram_bot.notify(store, f"🩺 {subject}\n\n" + as_text(body))
     if not kind:
         state["open"] = now_open
     state.update({"at": now.isoformat(), "problems": problems, "fixed": fixed, "emailed": sent, "kind": kind})

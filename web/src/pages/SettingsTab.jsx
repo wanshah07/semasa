@@ -10,6 +10,7 @@ import { LEVELS, levelOf, summarise, verdict } from "../lib/antislop";
 import { opensAt, publishingOn } from "../lib/publishing";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
+import TelegramCard from "../components/TelegramCard";
 import { Input, Label, Select } from "../components/ui/Field";
 
 const SLOT = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -130,6 +131,8 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
           {t("; tetapan AI dan percubaan Mireld ke Teknologi → ", "; AI settings and the Mireld trial to Technology → ")}
           <a href="#api" className="font-medium text-accent underline">API</a>.</p>
       </Card>
+
+      <TelegramCard onToast={onToast} />
 
       <AutofillSettings settings={settings} save={save} onToast={onToast} />
 

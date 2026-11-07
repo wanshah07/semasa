@@ -35,6 +35,15 @@ function routeOf(request, scope) {
   return "static";
 }
 
+/** Whether a navigation's answer may become the offline copy of the app. Only a real page of this site: an OK, same-origin
+    answer whose content type is HTML. Opening manifest.webmanifest, an icon or a JSON file in the browser is a navigation too,
+    and saving that as the shell left the installed app opening a file instead of itself with no signal. Pure (pwa.test.mjs). */
+function isShellPage(res) {
+  if (!res || !res.ok || res.type !== "basic") return false;
+  const type = (res.headers && typeof res.headers.get === "function" && res.headers.get("content-type")) || "";
+  return /\btext\/html\b/i.test(type);
+}
+
 async function trim(cache, max) {
   const keys = await cache.keys();
   for (let i = 0; i < keys.length - max; i++) await cache.delete(keys[i]);
@@ -45,8 +54,8 @@ async function navigate(request) {
   const index = new URL("./", self.registration.scope).href;
   try {
     const res = await fetch(request, { cache: "no-cache" });
-    // keep the newest index.html as the offline copy (only a real page: a 404 or an opaque answer is not kept)
-    if (res.ok && res.type === "basic") shell.put(index, res.clone());
+    // keep the newest index.html as the offline copy (only a real HTML page: a 404, an opaque answer or a file is not kept)
+    if (isShellPage(res)) shell.put(index, res.clone());
     return res;
   } catch (err) {
     const hit = (await shell.match(index)) || (await shell.match(new URL("./index.html", self.registration.scope).href));

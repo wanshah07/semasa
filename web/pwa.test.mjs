@@ -129,7 +129,7 @@ t("index.html carries the iOS tags and links the manifest relatively", () => {
 // the worker template, run without a `self`: only its functions are defined
 const swSrc = readFileSync(new URL("./pwa/sw.js", import.meta.url), "utf8");
 const ctx = vm.createContext({ URL });
-vm.runInContext(`${swSrc}\nthis.routeOf = routeOf;`, ctx);
+vm.runInContext(`${swSrc}\nthis.routeOf = routeOf;\nthis.isShellPage = isShellPage;`, ctx);
 const SCOPE = "https://socialmedia.kkmhalalconsultant.com/";
 const req = (url, extra = {}) => ({ url, method: "GET", mode: "cors", ...extra });
 t("the worker never answers Supabase, auth, storage, other sites or anything but a GET", () => {
@@ -153,6 +153,19 @@ t("the worker: pages are network-first navigations, hashed files cache-first, th
   assert.equal(ctx.routeOf(req(`${SCOPE}assets/index-abc.js`), SCOPE), "asset");
   assert.equal(ctx.routeOf(req(`${SCOPE}manifest.webmanifest`), SCOPE), "static");
   assert.equal(ctx.routeOf(req(`${SCOPE}icons/icon-192.png`), SCOPE), "static");
+});
+t("only a real HTML page becomes the offline app: opening the manifest, an icon or a 404 never replaces it", () => {
+  const res = (type, extra = {}) => ({ ok: true, type: "basic", headers: new Map([["content-type", type]]), ...extra });
+  assert.equal(ctx.isShellPage(res("text/html; charset=utf-8")), true);
+  assert.equal(ctx.isShellPage(res("TEXT/HTML")), true);
+  assert.equal(ctx.isShellPage(res("application/manifest+json")), false, "manifest.webmanifest opened in the browser");
+  assert.equal(ctx.isShellPage(res("image/png")), false);
+  assert.equal(ctx.isShellPage(res("application/json")), false);
+  assert.equal(ctx.isShellPage(res("")), false, "no content type is not a page");
+  assert.equal(ctx.isShellPage(res("text/html", { ok: false, status: 404 })), false);
+  assert.equal(ctx.isShellPage(res("text/html", { type: "opaque" })), false);
+  assert.equal(ctx.isShellPage(null), false);
+  assert.match(swSrc, /if \(isShellPage\(res\)\) shell\.put\(index, res\.clone\(\)\);/, "navigate() saves the shell through the check");
 });
 t("under /semasa/ (github.io) the worker keeps to its own folder", () => {
   const s = "https://wanshah07.github.io/semasa/";

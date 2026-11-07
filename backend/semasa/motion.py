@@ -31,7 +31,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import UTC, datetime
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,14 @@ TABLE = "semasa_motions"
 SETTINGS_KEY = "motion"
 CLI_VERSION = "0.8.188"
 MAX_ATTEMPTS = 2
+# The queue (7 Nov 2026 review): the job has 30 minutes (motion.yml timeout-minutes). It used to mark three films 'working' at
+# once and make them one after another, so a job killed at minute 30 left the films it had not reached 'working' for ever (the
+# page disables "Buat semula" while a film is working). Now one film is claimed at a time, no new one after CLAIM_BUDGET_S, and a
+# film 'working' with no write for STALE_AFTER (every stage writes the row) is put back in the queue at the start of a run, or
+# ends in 'error' once it has had MAX_ATTEMPTS.
+CLAIM_BUDGET_S = 18 * 60
+STALE_AFTER = timedelta(minutes=45)
+CLAIM_MAX = 20                          # films a run takes at most, whatever the clock says (a net, never reached in practice)
 MAX_HTML = 60_000
 # the whole film is one JSON answer, and a thinking model reasons first: 7000 was eaten by reasoning alone on 24 Oct 2026
 WRITER_TOKENS = 20_000
@@ -1240,10 +1249,17 @@ def script_of(scenes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{k: sc.get(k) for k in keys if sc.get(k) not in (None, "", [])} for sc in scenes]
 
 
-def claim(store: Any, limit: int = 3) -> list[dict[str, Any]]:
-    q = store.table(TABLE).select("*").eq("status", "pending").order("created_at").limit(limit)
-    out = []
+def claim(store: Any, limit: int = 1, skip: Any = ()) -> list[dict[str, Any]]:
+    """Mark the oldest `limit` pending films 'working' and hand them over (attempts counted at the claim). `skip`: ids this run
+    has already made, so a film that failed and went back to 'pending' waits for the next run instead of being retried at once."""
+    skip = set(skip or ())
+    q = store.table(TABLE).select("*").eq("status", "pending").order("created_at").limit(limit + len(skip))
+    out: list[dict[str, Any]] = []
     for r in q.execute().data or []:
+        if len(out) >= limit:
+            break
+        if r["id"] in skip:
+            continue
         attempts = int(r.get("attempts") or 0) + 1
         got = store.table(TABLE).update({"status": "working", "attempts": attempts, "error": ""}) \
             .eq("id", r["id"]).eq("status", "pending").execute().data
@@ -1708,12 +1724,32 @@ def backfill_captions(store: Any, llm: Any, limit: int = BACKFILL) -> int:
 
 
 def run(store: Any, llm: Any, *, runner: Any = subprocess.run, now: datetime | None = None,
-        gh: GitHub | None = None) -> dict[str, int]:
+        gh: GitHub | None = None, clock: Any = time.monotonic, budget_s: float = CLAIM_BUDGET_S) -> dict[str, int]:
     settings = load_settings(store)
-    rows = claim(store)
-    done = sum(process(store, llm, r, settings, runner=runner, now=now, gh=gh) for r in rows)
+    requeued = requeue_stale(store, now)
+    started = clock()
+    seen: list[str] = []
+    done = 0
+    # one film at a time: a film is only 'working' while it is really being made, and none is started after the budget, so the
+    # job's own time limit never kills a film it had claimed but not reached
+    while len(seen) < CLAIM_MAX and clock() - started < budget_s:
+        rows = claim(store, 1, skip=seen)
+        if not rows:
+            break
+        seen.append(rows[0]["id"])
+        done += bool(process(store, llm, rows[0], settings, runner=runner, now=now, gh=gh))
     captions = backfill_captions(store, llm)
-    return {"claimed": len(rows), "done": done, "failed": len(rows) - done, **({"captions": captions} if captions else {})}
+    return {"claimed": len(seen), "done": done, "failed": len(seen) - done, **({"requeued": requeued} if requeued else {}),
+            **({"captions": captions} if captions else {})}
+
+
+def requeue_stale(store: Any, now: datetime | None = None) -> int:
+    """Films left 'working' by a runner that died (the job's 30-minute limit, a cancel): back to 'pending', or to 'error' once
+    they have had MAX_ATTEMPTS (a film that kills its runner every time must not starve the queue). Stamped by updated_at, which
+    every stage write moves, so a film that is still being made is never touched. Never raises (db.requeue_stale)."""
+    cutoff = ((now or datetime.now(UTC)) - STALE_AFTER).isoformat()
+    return db.requeue_stale(store, TABLE, working="working", back="pending", cutoff=cutoff, max_attempts=MAX_ATTEMPTS,
+                            what="film")
 
 
 def main() -> int:

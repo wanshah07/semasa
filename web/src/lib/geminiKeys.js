@@ -3,7 +3,10 @@
    switches are settings.gemini. The worker (backend/semasa/gemini_keys.py) picks the key; this file only says what each looks like.
    Pure helpers, tested in geminiKeys.test.mjs; DEFAULTS mirror the backend's. */
 
-export const DEFAULTS = { enabled: true, model: "gemini-2.5-flash", image_model: "gemini-2.5-flash-image", images: true, max_images: 6, jobs: ["motion", "ideas"] };
+export const AUTO = "auto";
+export const FALLBACK_TEXT = "gemini-flash-latest";
+export const FALLBACK_IMAGE = "gemini-2.5-flash-image";
+export const DEFAULTS = { enabled: true, model: AUTO, image_model: AUTO, images: true, max_images: 6, jobs: ["motion", "ideas"] };
 export const MAX_KEYS = 10;
 export const JOB_CHOICES = [
   ["motion", ["Skrip dan penulis Motion", "Motion script and writer"]],
@@ -66,3 +69,36 @@ export function restMinutes(row, now = Date.now()) {
 
 /** The keys Semasa can use right now (on, not refused, not resting). */
 export const usableCount = (rows, now = Date.now()) => (rows || []).filter((r) => ["ok", "new"].includes(keyState(r, now))).length;
+
+
+/** What the last check found (settings.gemini_models, written by backend/semasa/gemini_check.py). Empty before the first check. */
+export function modelsOf(raw) {
+  const v = raw && typeof raw === "object" ? raw : {};
+  const list = (x) => (Array.isArray(x) ? x.filter((m) => typeof m === "string" && m) : []);
+  return { text: list(v.text), image: list(v.image), textPick: String(v.text_pick || ""), imagePick: String(v.image_pick || ""),
+    unavailable: list(v.unavailable), at: v.at || null, from: v.from || "" };
+}
+
+/** The model a worker calls: the same rule as the backend's gemini_keys.resolve. Wan's choice while the keys list it and the last
+ *  check did not find it gone; otherwise what last answered; otherwise Google's own alias. */
+export function effectiveModel(setting, listed, pick, fallback, unavailable = []) {
+  const chosen = String(setting || "").trim();
+  if (chosen && chosen !== AUTO && (!listed.length || listed.includes(chosen)) && !unavailable.includes(chosen)) return chosen;
+  return pick || fallback;
+}
+
+/** The menu for one model setting: Auto first (naming what it uses now), then every model the keys list, then Wan's saved choice if
+ *  the keys do not list it any more. [{value, label}] */
+export function modelOptions(listed, chosen, effective, unavailable = [], L = 0) {
+  const now = effective || "?";
+  const out = [{ value: AUTO, label: L ? `Auto (recommended): now ${now}` : `Auto (disyorkan): kini ${now}` }];
+  for (const m of listed) {
+    const gone = unavailable.includes(m);
+    out.push({ value: m, label: m + (gone ? (L ? " (not available to your keys)" : " (tidak tersedia untuk kunci anda)") : "") });
+  }
+  const c = String(chosen || "").trim();
+  if (c && c !== AUTO && !listed.includes(c)) {
+    out.push({ value: c, label: c + (listed.length ? (L ? " (not in your keys' list)" : " (tiada dalam senarai kunci anda)") : "") });
+  }
+  return out;
+}

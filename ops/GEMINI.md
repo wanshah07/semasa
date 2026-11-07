@@ -20,6 +20,19 @@ in this key's list"). A model name that does not exist does not condemn a key: a
 note says to set it. A pictures call is never made by the check (it spends quota). The result appears in about a minute and the card
 asks again every few seconds meanwhile. An explicit check lets a key that was refused recover if it now answers.
 
+## Models: Auto, or your own choice (7 Nov 2026)
+Google retires models for new accounts (the first real check said *models/gemini-2.5-flash is no longer available to new users*). So the
+text and picture model settings are **Auto** by default, and the card has a menu for each:
+* **Auto** follows the keys: the Gemini check lists the models every switched-on key can use, ranks the text ones (stable before preview,
+  newest first, Flash before Pro, lite last; Google's own suggestion in its refusal and the `gemini-flash-latest` alias are tried first),
+  and keeps the first that really answers. The best picture-capable model is kept for pictures. Both are written to
+  `settings.gemini_models` and every worker uses them.
+* **Your own choice** from the menu (every model the keys list) is kept while the keys still list it and the last check did not find it
+  gone. A model that is gone is replaced by the working one without touching your saved choice, and the menu says "not available to
+  your keys".
+* A model that is gone is **never the key's fault**: the key is not marked resting or refused. A worker that meets "model gone" on every
+  key asks for the models once and tries again.
+
 ## How a key is picked (`backend/semasa/gemini_keys.py`)
 Usable = switched on, not refused by Google (`bad`), not resting. Tried least recently used first, so the load and the free quota
 spread over all keys. A key that answered in the last ten minutes is used without another question; any other gets a five-token

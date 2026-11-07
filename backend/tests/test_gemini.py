@@ -118,12 +118,17 @@ def test_without_a_question_the_first_usable_key_is_taken():
 
 
 def test_settings_default_and_are_cleaned():
-    assert gemini_keys.load_settings(FakeStore()) == {**gemini_keys.DEFAULTS, "jobs": ["motion", "ideas"]}
+    base = gemini_keys.load_settings(FakeStore())
+    assert {k: base[k] for k in gemini_keys.DEFAULTS if k not in ("model", "image_model")} == {
+        **{k: v for k, v in gemini_keys.DEFAULTS.items() if k not in ("model", "image_model")}, "jobs": ["motion", "ideas"]}
+    assert base["model_setting"] == base["image_model_setting"] == "auto"
+    assert base["model"] == gemini_keys.FALLBACK_TEXT, "auto, nothing listed yet"
+    assert base["image_model"] == gemini_keys.FALLBACK_IMAGE
     got = gemini_keys.load_settings(store(settings={"jobs": ["reader", "weird", "motion"], "max_images": 99,
                                                     "model": "gemini-x", "enabled": False}))
     assert got["jobs"] == ["reader", "motion"] and got["max_images"] == 8 and got["model"] == "gemini-x"
     assert got["enabled"] is False
-    assert gemini_keys.load_settings(store(settings={"model": ""}))["model"] == "gemini-2.5-flash"
+    assert gemini_keys.load_settings(store(settings={"model": ""}))["model"] == gemini_keys.FALLBACK_TEXT
 
 
 # ---- the AI team -------------------------------------------------------------------------------------------------------------
@@ -161,7 +166,7 @@ def test_gemini_is_a_candidate_only_for_the_jobs_wan_allows():
         assert (cand is not None) is expect, job
     cand, _ = gemini_keys.candidate(st, "motion", None, NOW)
     assert cand["slug"] == "gemini" and cand["robot"] == "W4" and cand["name"] == "Wanshah 4"
-    assert cand["base_url"] == gemini_keys.BASE and cand["key"] == "AIza-secret-1" and cand["model"] == "gemini-2.5-flash"
+    assert cand["base_url"] == gemini_keys.BASE and cand["key"] == "AIza-secret-1" and cand["model"] == gemini_keys.FALLBACK_TEXT
     wide = store(key(1), settings={"jobs": ["reader", "motion", "ideas"]})
     assert gemini_keys.candidate(wide, "reader", None, NOW)[0] is not None
     assert gemini_keys.candidate(store(key(1), settings={"enabled": False}), "motion", None, NOW) == (None, None)
@@ -179,7 +184,7 @@ def test_the_motion_job_can_route_to_gemini_and_a_reader_job_never_does(monkeypa
     st.tables[db.API_STATUS] = slow()
     live = Live()
     got = ai_team.route(st, github(), {}, NOW, job="motion", live=live)
-    assert got.base_url == gemini_keys.BASE and got.api_key == "AIza-secret-1" and got.model == "gemini-2.5-flash"
+    assert got.base_url == gemini_keys.BASE and got.api_key == "AIza-secret-1" and got.model == gemini_keys.FALLBACK_TEXT
     assert got.fallback_base_url in ("https://rootsys.cloud/v1", "https://api.mireld.my/v1")
     state = [r for r in st.tables[db.SETTINGS] if r["key"] == ai_team.STATE_KEY][0]["value"]["motion"]
     assert state["chosen"]["robot"] == "W4" and [o["slug"] for o in state["order"]][0] == "gemini"

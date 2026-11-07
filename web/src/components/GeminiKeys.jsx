@@ -4,7 +4,8 @@ import { errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { timeAgo } from "../lib/format";
 import {
-  JOB_CHOICES, MAX_KEYS, STATE_CLS, STATE_WORDS, keyProblem, keyState, restMinutes, settingsOf, toggleJob, usableCount,
+  FALLBACK_IMAGE, FALLBACK_TEXT, JOB_CHOICES, MAX_KEYS, STATE_CLS, STATE_WORDS, effectiveModel, keyProblem, keyState, modelOptions,
+  modelsOf, restMinutes, settingsOf, toggleJob, usableCount,
 } from "../lib/geminiKeys";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
@@ -49,6 +50,9 @@ export default function GeminiKeys({ settings, save, onToast }) {
     const id = setInterval(() => { load(); if (Date.now() > waitUntil) setWaitUntil(0); }, 8000);
     return () => clearInterval(id);
   }, [waitUntil, load]);
+  const found = modelsOf(settings?.gemini_models);
+  const textNow = effectiveModel(form.model, found.text, found.textPick, FALLBACK_TEXT, found.unavailable);
+  const imageNow = effectiveModel(form.image_model, found.image, found.imagePick, FALLBACK_IMAGE, found.unavailable);
   const saved = JSON.stringify(settingsOf(settings?.gemini));
   useEffect(() => { setForm(JSON.parse(saved)); }, [saved]);
 
@@ -219,15 +223,31 @@ export default function GeminiKeys({ settings, save, onToast }) {
         </fieldset>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.images} onChange={(e) => setForm({ ...form, images: e.target.checked })} /> {t("Lukis gambar babak Motion (selepas ChatGPT)", "Draw Motion scene pictures (after ChatGPT)")}</label>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="block"><Label>{t("Model teks", "Text model")}</Label><Input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className="w-52" aria-label="Text model" /></label>
-          <label className="block"><Label>{t("Model gambar", "Image model")}</Label><Input value={form.image_model} onChange={(e) => setForm({ ...form, image_model: e.target.value })} className="w-60" aria-label="Image model" /></label>
+          <label className="block"><Label>{t("Model teks", "Text model")}</Label>
+            <select value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} data-gemini-model
+              className="max-w-[18rem] rounded-pill border border-line bg-surface px-3 py-2 text-xs" aria-label="Text model">
+              {modelOptions(found.text, form.model, textNow, found.unavailable, L).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select></label>
+          <label className="block"><Label>{t("Model gambar", "Image model")}</Label>
+            <select value={form.image_model} onChange={(e) => setForm({ ...form, image_model: e.target.value })} data-gemini-image-model
+              className="max-w-[18rem] rounded-pill border border-line bg-surface px-3 py-2 text-xs" aria-label="Image model">
+              {modelOptions(found.image, form.image_model, imageNow, found.unavailable, L).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select></label>
           <label className="block"><Label>{t("Gambar paling banyak (tanpa ChatGPT)", "Most pictures (without ChatGPT)")}</Label>
             <select value={form.max_images} onChange={(e) => setForm({ ...form, max_images: Number(e.target.value) })} className="rounded-pill border border-line bg-surface px-3 py-2 text-xs" aria-label="Most pictures">
               {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
           <Button size="sm" onClick={() => saveSettings(form)} data-gemini-save><Save size={13} /> {t("Simpan", "Save")}</Button>
         </div>
         {saveMsg && <p role="status" data-gemini-saved={saveMsg.kind} className={`text-xs ${saveMsg.kind === "err" ? "text-danger" : "text-ok"}`}>{saveMsg.text}</p>}
-        <p className="text-[11.5px] text-muted">{t("Jika model tidak wujud, pasukan AI mencari model yang menjawab daripada senarai kunci itu sendiri; lukisan gambar mencari model gambar.", "If a model does not exist, the AI team searches the key's own list for one that answers; the picture call looks for an image model.")}</p>
+        <p className="text-[11.5px] text-muted" data-gemini-models-info>
+          {found.at
+            ? t(`Model ditemui: ${found.text.length} teks, ${found.image.length} gambar (daripada kunci ${found.from || "?"}, ${timeAgo(found.at)}). Sekarang digunakan: ${textNow} untuk teks, ${imageNow} untuk gambar.`,
+              `Models found: ${found.text.length} text, ${found.image.length} picture (from key ${found.from || "?"}, ${timeAgo(found.at)}). Used now: ${textNow} for text, ${imageNow} for pictures.`)
+            : t("Senarai model belum dibaca: tekan Semak sekarang. Sehingga itu Auto menggunakan alias Google sendiri.",
+              "The models have not been listed yet: press Check now. Until then Auto uses Google's own alias.")}
+          {" "}{t("Dengan Auto, model yang sudah tiada diganti sendiri oleh yang menjawab. Pilihan anda dikekalkan selagi kunci menyenaraikannya dan ia menjawab.",
+            "With Auto, a model that is gone is replaced by one that answers. Your own choice is kept while the keys list it and it answers.")}
+        </p>
       </div>
     </Card>
   );

@@ -166,6 +166,22 @@ class Live:
         return [m.removeprefix("models/") for m in api_status._models(gw, timeout)[0]]     # Gemini lists "models/gemini-..."
 
 
+    def native_models(self, c: dict[str, Any], timeout: int = LIVE_TIMEOUT) -> list[dict[str, Any]]:
+        """Gemini's own model list: [{name, methods}], which says what each model can DO (generateContent draws a picture, an
+        embedding model cannot). [] when it cannot be read."""
+        import requests
+        try:
+            r = requests.get(f"{c['base_url']}/models", headers={"x-goog-api-key": c["key"]}, params={"pageSize": 200},
+                             timeout=timeout)
+            if r.status_code != 200:
+                return []
+            return [{"name": str(m.get("name") or "").removeprefix("models/"),
+                     "methods": list(m.get("supportedGenerationMethods") or [])}
+                    for m in r.json().get("models") or [] if isinstance(m, dict)]
+        except (requests.RequestException, ValueError):
+            return []
+
+
 LIVE = Live()
 
 

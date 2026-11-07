@@ -8,5 +8,6 @@ select = ["E", "F", "W", "I", "B", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-markers = ["composed: runs the motion worker on its default path, where the worker composes the film itself and the AI writer is not asked"]
+markers = ["composed: runs the motion worker on its default path, where the worker composes the film itself and the AI writer is not asked",
+           "storyboard_gate: runs the motion worker without the test stand-in that approves each storyboard (supabase/071)"]
 pythonpath = ["."]

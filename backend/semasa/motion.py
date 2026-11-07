@@ -52,6 +52,7 @@ from . import (
     motion_gpt_images,
     motion_layout,
     motion_probe,
+    motion_review,
     motion_storyboard,
     motion_styles,
     motion_templates,
@@ -365,6 +366,48 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
     clean.append({"id": "brand-outro", "kicker": "", "heading": motion_styles.cta(row), "lines": [],
                   "narration": motion_styles.cta(row), **({"role": "Outro"} if recipe_plan else {})})
     return {**meta, "scenes": clean}
+
+
+def approved_plan(row: dict[str, Any], saved: dict[str, Any]) -> dict[str, Any]:
+    """The plan Wan approved (supabase/071), every word checked again the way plan_scenes checks the writer's: an edit in the
+    page cannot add a scene, empty one, or send the viewer away to look something up. Raises StoryboardNeedsFix with the
+    reason, which puts the film back for review rather than making it."""
+    fix = motion_review.StoryboardNeedsFix
+    plan = saved.get("plan")
+    if not isinstance(plan, dict) or not isinstance(plan.get("scenes"), list):
+        raise fix("the saved storyboard has no scenes")
+    teaser = motion_styles.duration(row) == 10
+    count = 1 if teaser else 4
+    scenes = [sc for sc in plan["scenes"] if isinstance(sc, dict)]
+    body = [sc for sc in scenes if sc.get("id") != "brand-outro"]
+    if len(body) != count or len(scenes) != len(plan["scenes"]):
+        raise fix(f"it has {len(body)} scenes; this film needs {count}")
+    speak_as = speaker(language_of(row))
+    voiced = row.get("voice") != "off"
+    clean = []
+    for i, sc in enumerate(scenes):
+        if sc.get("id") == "brand-outro":         # the closing line is the film's own, never edited: kept exactly as planned
+            clean.append(dict(sc))
+            continue
+        heading = speak_as(motion_layout.plain(sc.get("heading")))[:240]
+        lines = [speak_as(motion_layout.plain(x))[:200] for x in (sc.get("lines") or []) if motion_layout.plain(x)][:LINES_MAX]
+        if not heading:
+            raise fix(f"scene {i + 1} has no heading")
+        for words in (heading, *lines):
+            if motion_captions.hand_off(words):
+                raise fix(f'scene {i + 1} sends the viewer away to look it up ("{words[:80]}"): say the fact instead')
+        if i == 0 and re.search(r"_{2,}", heading):
+            raise fix("the hook still has a blank (___) in it")
+        narration = (speak_as(motion_captions.without_hand_offs(motion_layout.plain(sc.get("narration"))))[:700]
+                     if voiced else "")
+        clean.append({**sc, "heading": heading, "lines": lines, "narration": narration,
+                      **({"shot": motion_layout.plain(sc.get("shot"))[:600]} if sc.get("shot") else {})})
+    if voiced and not teaser:             # an edit can make the speech longer: cut before it is recorded, as plan_scenes does
+        trim_to_budget([sc for sc in clean if sc.get("id") != "brand-outro"], int((FILM_MAX - SPEECH_RESERVE) * SPEECH_WPS))
+    hook = clean[0]["heading"].split(" · ")[0] if teaser else clean[0]["heading"]
+    if teaser:                            # the teaser's call to action is the film's own, never edited away
+        clean[0]["heading"] = f"{hook} · {motion_styles.cta(row)}"
+    return {**plan, "hook": hook, "scenes": clean}
 
 
 def styles_note(auto: dict[str, Any] | None, photos: list[Any]) -> str:
@@ -1231,34 +1274,44 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             return template_film(store, llm, row, settings, folder, runner=runner, gpt_login=gpt_login, gemini=gemini,
                                  cloudflare=cloudflare, gemini_llm=gemini_llm, photo_search=photo_search, photo_get=photo_get,
                                  own_get=own_get)
-        if llm is None:
-            raise RuntimeError("no AI writer: set a reader key in Tetapan → Tetapan AI")
         title, text = source_words(row.get("source_url") or "")
         style = style_words(store, gh, row)
-        bg_path, bg_note = ("", "")
-        if row.get("ai_background"):
-            folder.mkdir(parents=True, exist_ok=True)
-            bg_path, bg_note = make_background(store, row, folder, provider=picture_provider)
         # the voice first (Wan, 24 Oct 2026): the writer plans the scenes, each narration is recorded, and the film is
         # written to those exact times; with the voice off the plan still fixes the scenes and nothing is recorded
         bank = hook_bank.pick_for_idea(store, row.get("idea_id"))     # Wan's own hook style, or None: the built-in 25
-        set_stage(store, row, "storyboard")
-        # Wan's writing style (Phase 4) shapes the script's voice; every rule in the script prompt still outranks it
-        voice_style = writing_styles.block(writing_styles.pick_for_idea(store, row.get("idea_id")), film=True)
-        plan = plan_scenes(llm, row, (settings.get("prompt") or "") + voice_style, title, text, style=style, bank=bank,
-                           hint=hook_learning.hint(store, bank))
-        # the storyboard: an AI (ChatGPT, then Gemini, then the film's writer) writes the shot of each scene's picture, but only
-        # when some picture maker will draw it (Wan, 7 Nov 2026); a scene without a shot keeps the template request
-        sb_note = ""
-        if motion_gpt_images.ready(store, login=gpt_login, gemini=gemini, cloudflare=cloudflare):
-            stream_name = "linkedin" if row.get("stream") == "linkedin" else "regulab"
-            design_name = motion_styles.design(row)
-            shots, sb_note = motion_storyboard.write(
-                store, row, plan["scenes"], login=gpt_login, llm=llm, design=design_name,
-                look=motion_gpt_images.LOOK.get(design_name, motion_gpt_images.LOOK["bright-editorial"]),
-                tone=motion_gpt_images.TONE[stream_name])
-            motion_storyboard.apply(plan["scenes"], shots)
+        saved = motion_review.approved(row, "explainer")
+        if saved is None:
+            if llm is None:           # only the storyboard needs the writer: an approved film is composed by the worker itself
+                raise RuntimeError("no AI writer: set a reader key in Tetapan → Tetapan AI")
+            set_stage(store, row, "storyboard")
+            # Wan's writing style (Phase 4) shapes the script's voice; every rule in the script prompt still outranks it
+            voice_style = writing_styles.block(writing_styles.pick_for_idea(store, row.get("idea_id")), film=True)
+            plan = plan_scenes(llm, row, (settings.get("prompt") or "") + voice_style, title, text, style=style, bank=bank,
+                               hint=hook_learning.hint(store, bank))
+            # the storyboard: an AI (ChatGPT, then Gemini, then the film's writer) writes the shot of each scene's picture, but
+            # only when some picture maker will draw it (Wan, 7 Nov 2026); a scene without a shot keeps the template request
+            sb_note = ""
+            if motion_gpt_images.ready(store, login=gpt_login, gemini=gemini, cloudflare=cloudflare):
+                stream_name = "linkedin" if row.get("stream") == "linkedin" else "regulab"
+                design_name = motion_styles.design(row)
+                shots, sb_note = motion_storyboard.write(
+                    store, row, plan["scenes"], login=gpt_login, llm=llm, design=design_name,
+                    look=motion_gpt_images.LOOK.get(design_name, motion_gpt_images.LOOK["bright-editorial"]),
+                    tone=motion_gpt_images.TONE[stream_name])
+                motion_storyboard.apply(plan["scenes"], shots)
+            # Wan, 7 Nov 2026: every storyboard is shown and approved before a picture is drawn or a frame rendered
+            return motion_review.hold(store, row, "explainer", {"plan": plan}, sb_note)
+        try:
+            plan = approved_plan(row, saved)
+        except motion_review.StoryboardNeedsFix as exc:
+            motion_review.send_back(store, row, str(exc))
+            return True
+        sb_note = str(saved.get("note") or "")
         set_stage(store, row, "pictures", script=script_of(plan["scenes"]))
+        bg_path, bg_note = ("", "")
+        if row.get("ai_background"):              # drawn only after the storyboard is approved: it spends credits
+            folder.mkdir(parents=True, exist_ok=True)
+            bg_path, bg_note = make_background(store, row, folder, provider=picture_provider)
         lang = language_of(row)
         choice = str(row.get("voice") or "male")
         if choice == "auto":
@@ -1548,9 +1601,24 @@ def template_film(store: Any, llm: Any, row: dict[str, Any], settings: dict[str,
             get=own_get)
         brand = motion_templates.brand_of(store, row, folder, get=own_get)
     bank = hook_bank.pick_for_idea(store, row.get("idea_id"))
-    set_stage(store, row, "storyboard")
-    sb, sb_note = motion_templates.write_storyboard(store, row, kind, products, brand, bank=bank, speak=speak,
-                                                    gemini_llm=gemini_llm, login=login, llm=llm)
+    saved = motion_review.approved(row, kind)
+    if saved is None:
+        set_stage(store, row, "storyboard")
+        sb, sb_note = motion_templates.write_storyboard(store, row, kind, products, brand, bank=bank, speak=speak,
+                                                        gemini_llm=gemini_llm, login=login, llm=llm)
+        # Wan, 7 Nov 2026: shown and approved before a picture is drawn or a frame rendered
+        return motion_review.hold(store, row, kind, {"sb": sb}, sb_note)
+    try:
+        # the approved storyboard, checked again with the same rules: an edit in the page cannot slip one
+        sb = (motion_templates.validate_story(saved.get("sb"), lang=lang, stream=row.get("stream") or "regulab", bank=bank,
+                                              speak=speak) if kind == "story"
+              else motion_templates.validate_showcase(saved.get("sb"), products, lang=lang,
+                                                      stream=row.get("stream") or "regulab", bank=bank, speak=speak,
+                                                      approved=True))
+    except motion_templates.StoryboardError as exc:
+        motion_review.send_back(store, row, str(exc))
+        return True
+    sb_note = str(saved.get("note") or "")
     script = motion_templates.script_of(kind, sb, lang)
     set_stage(store, row, "pictures", script=script)
     paths, source, pic_note = motion_templates.draw(store, row, kind, sb, folder, login=login, gemini=gemini,

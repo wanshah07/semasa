@@ -55,3 +55,30 @@ def remember_the_fitted_length(monkeypatch):
         return out
     monkeypatch.setattr(motion, "fit_scenes", fit)
     FITTED.clear()
+
+
+@pytest.fixture(autouse=True)
+def storyboard_approved(request, monkeypatch):
+    """Every film now stops at its storyboard until Wan approves it (supabase/071, semasa/motion_review.py). Most motion tests
+    were written for a whole film, so this stand-in plays Wan: when a run stops at 'review' it approves the saved storyboard,
+    unchanged, and runs the worker again, exactly as the page's Approve does (the row keeps the caller's attempts). A test
+    marked `storyboard_gate` runs the worker as it is and sees the stop."""
+    if "storyboard_gate" in request.keywords:
+        return
+    from semasa import motion
+    real = motion.process
+
+    def process(store, llm, row, settings, **k):
+        out = real(store, llm, row, settings, **k)
+        try:
+            got = store.table(motion.TABLE).select("*").eq("id", row["id"]).execute().data or []
+        except Exception:  # noqa: BLE001 - a fake store without the row: nothing to approve
+            return out
+        if not got or got[0].get("status") != "review" or not got[0].get("storyboard"):
+            return out
+        stamp = "2026-11-07T00:00:00+00:00"
+        store.table(motion.TABLE).update({"status": "pending", "storyboard_approved_at": stamp}).eq("id", row["id"]).execute()
+        again = {**row, "storyboard": got[0]["storyboard"], "storyboard_approved_at": stamp, "status": "working",
+                 "stage_times": got[0].get("stage_times") or row.get("stage_times")}
+        return real(store, llm, again, settings, **k)
+    monkeypatch.setattr(motion, "process", process)

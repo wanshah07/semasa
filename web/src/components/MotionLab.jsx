@@ -12,6 +12,8 @@ import MotionEffectLibrary from "./MotionEffectLibrary";
 import MotionProducts from "./MotionProducts";
 import { TEMPLATES, TEMPLATE_LANGUAGES, templateLabel, templateRow } from "../lib/motionTemplates";
 import MotionQueue from "./MotionQueue";
+import MotionStoryboardReview from "./MotionStoryboardReview";
+import { canContinue, continueFields, isReview, remakeFields } from "../lib/motionReview";
 import MotionPost from "./MotionPost";
 import TileGrid from "./TileGrid";
 import { OrderTracking } from "@/components/ui/order-tracking";
@@ -27,7 +29,7 @@ import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
    The card plays the video. Nothing is posted from here: the file is used like a Kanvas design. Wan's own skill/prompt text
    lives in Tetapan (settings.motion.prompt) and is added to every brief. */
 
-const STATUS_CLS = { waiting: "bg-accent/15 text-accent", pending: "bg-warn/15 text-warn", working: "bg-accent/15 text-accent", done: "bg-ok/15 text-ok", error: "bg-danger/15 text-danger" };
+const STATUS_CLS = { waiting: "bg-accent/15 text-accent", pending: "bg-warn/15 text-warn", working: "bg-accent/15 text-accent", review: "bg-warn/15 text-warn", done: "bg-ok/15 text-ok", error: "bg-danger/15 text-danger" };
 
 /* `view` (Wan, 11 Oct 2026: video generation and Motion together, a library of its own, the skills in one place):
    "make" is the form and the queue, "library" is the finished films as compact tiles (components/TileGrid.jsx), "skills" is
@@ -182,7 +184,8 @@ export default function MotionLab({ user, onToast, view = "make" }) {
                 <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${STATUS_CLS[r.status] || ""}`}>{r.status === "working" && <Loader2 size={10} className="animate-spin" />}{w(STATUS_WORDS[r.status] || [r.status, r.status])}</span>
               </div>
               <OrderTracking className="mt-3 max-w-none" data-motion-stages steps={motionTrack(r, { L, stamp: stampMYT })} />
-              {plannedShots(r).length > 0 && (
+              {isReview(r) && <MotionStoryboardReview film={r} onDone={motions.reload} onToast={onToast} />}
+              {!isReview(r) && plannedShots(r).length > 0 && (
                 <details className="mt-2 text-xs" data-motion-storyboard>
                   <summary className="cursor-pointer text-muted">{t("Papan cerita: {n} babak dirancang", "Storyboard: {n} scenes planned", { n: plannedShots(r).length })}</summary>
                   <ul className="mt-1 space-y-1">
@@ -213,7 +216,8 @@ export default function MotionLab({ user, onToast, view = "make" }) {
               )}
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {r.status === "done" && r.video_url && <a className="inline-flex items-center gap-1 rounded-pill bg-surface-2 px-3 py-1.5 text-xs hover:bg-line" href={freshUrl(r.video_url, r.updated_at)} download target="_blank" rel="noreferrer"><Download size={12} /> MP4{r.bytes ? ` · ${fmtBytes(r.bytes)}` : ""}</a>}
-                <Button size="sm" variant="ghost" disabled={busy === r.id || r.status === "working"} onClick={() => patch(r, { status: "pending", attempts: 0, error: "" })}><RefreshCw size={12} /> {t("Buat semula", "Make again")}</Button>
+                <Button size="sm" variant="ghost" disabled={busy === r.id || r.status === "working"} onClick={() => patch(r, remakeFields(r))} title={t("Storyboard baharu, perlu diluluskan semula", "A new storyboard, to approve again")}><RefreshCw size={12} /> {t("Buat semula", "Make again")}</Button>
+                {canContinue(r) && <Button size="sm" variant="ghost" disabled={busy === r.id} onClick={() => patch(r, continueFields())} data-motion-continue><RefreshCw size={12} /> {t("Cuba lagi (storyboard sama)", "Try again (same storyboard)")}</Button>}
                 <Button size="sm" variant="ghost" disabled={busy === r.id} onClick={() => remove(r)}><Trash2 size={12} /> {t("Buang", "Remove")}</Button>
                 <MotionPost film={r} brand={settings.brand || {}} indo={settings.bahasa?.indo} onQueued={motions.reload} onToast={onToast} />
                 <span className="ml-auto text-[11px] text-muted">{r.created_at ? timeAgo(r.created_at) : ""}</span>
@@ -227,6 +231,15 @@ export default function MotionLab({ user, onToast, view = "make" }) {
       {missing && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual belum ada: jalankan supabase/043_motion.sql sekali.", "The table is not there yet: run supabase/043_motion.sql once.")}</p>}
       {motions.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{motions.error}</p>}
 
+      {view === "make" && films.some(isReview) && (
+        <div className="mb-6 space-y-3" data-motion-review-list>
+          <h2 className="flex items-center gap-2 font-display text-2xl">{t("Menunggu kelulusan anda", "Waiting for your approval")}
+            <span className="rounded-pill bg-warn/15 px-2 py-0.5 text-xs text-warn">{films.filter(isReview).length}</span></h2>
+          <p className="text-sm text-muted">{t("Baca setiap babak, ubah jika perlu, kemudian luluskan. Gambar dan video hanya dibuat selepas itu.",
+            "Read every scene, edit if needed, then approve. Pictures and the film are made only after that.")}</p>
+          {films.filter(isReview).map((r) => <div key={r.id}>{rowCard(r)}</div>)}
+        </div>
+      )}
       {view === "make" && (
         <>
       <div className="mb-3">

@@ -45,3 +45,26 @@ assert.equal(instantReply("callback", tap(999), { linked: true, owner: false }).
 assert.equal(instantReply("group", group, { linked: true, owner: false }), null, "the bot never talks in a group");
 
 console.log("telegram: ok");
+
+// ---- fast answers in the webhook (Wan, 7 Nov 2026: "make sure telegram answer more fast") ----
+import { fastEligible, fastMessages, fastReply, turnsOf } from "../supabase/functions/semasa-telegram/logic.js";
+const base = { kind: "private", owner: true, state: {}, pin: null, gwName: "Mireld" };
+assert.equal(fastEligible({ ...base, text: "apa beza notifikasi dan pendaftaran?" }), true);
+assert.equal(fastEligible({ ...base, text: "/draf" }), false, "a command goes to the worker");
+assert.equal(fastEligible({ ...base, text: "baca ini https://npra.gov.my/x" }), false, "a link becomes an idea on a tap");
+assert.equal(fastEligible({ ...base, text: "AB12CD34" }), false, "a link code is never answered by the AI");
+assert.equal(fastEligible({ ...base, text: "topik saya", state: { pending: "poster" } }), false, "the menu is waiting for a topic");
+assert.equal(fastEligible({ ...base, text: "ringkas lagi", state: { await_note: 5 } }), false, "a correction after 👎");
+assert.equal(fastEligible({ ...base, text: "hai", pin: { gateway: "rootsys", model: "glm-5.3" } }), false, "pinned elsewhere: the worker uses the pin");
+assert.equal(fastEligible({ ...base, text: "hai", pin: { gateway: "mireld", model: "kimi-k3" } }), true);
+assert.equal(fastEligible({ ...base, text: "hai", owner: false }), false);
+const msgs = fastMessages({ text: "model apa?", notes: ["jawab ringkas"], turns: [["test", "ok"]], snapshot: "Draf menunggu: 3", gwName: "Mireld", model: "kimi-k3" });
+assert.match(msgs[0].content, /never Bahasa Indonesia/);
+assert.match(msgs[0].content, /through Mireld running the model kimi-k3/);
+assert.match(msgs[1].content, /- jawab ringkas/);
+assert.match(msgs[1].content, /Wan: test\nSemasa: ok/);
+assert.deepEqual(turnsOf([{ role: "user", content: "a" }, { role: "assistant", content: "b" }, { role: "user", content: "c" }]), [["a", "b"]]);
+const fr = fastReply(111, 5, "Jawapan", "Mireld · kimi-k3", 42);
+assert.equal(fr.text, "Jawapan\n\n— Mireld · kimi-k3");
+assert.deepEqual(fr.reply_markup.inline_keyboard[0].map((b) => b.callback_data), ["fb:up:42", "fb:down:42"]);
+console.log("telegram fast: ok");

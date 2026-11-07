@@ -54,6 +54,7 @@ from . import (
     motion_probe,
     motion_storyboard,
     motion_styles,
+    motion_templates,
     unsplash,
     writing_styles,
 )
@@ -1215,7 +1216,8 @@ class _ComposedByWorker(Exception):
 def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any], *, runner: Any = subprocess.run,
             workdir: Path | None = None, now: datetime | None = None, gh: GitHub | None = None,
             picture_provider: Any = None, speak: Any = None, photo_search: Any = None, photo_get: Any = None,
-            own_get: Any = None, gpt_login: Any = None, gemini: Any = None, cloudflare: Any = None) -> bool:
+            own_get: Any = None, gpt_login: Any = None, gemini: Any = None, cloudflare: Any = None,
+            gemini_llm: Any = None) -> bool:
     now = now or datetime.now(UTC)
     folder = (workdir or Path(tempfile.mkdtemp(prefix="motion-"))) / str(row["id"])[:8]
     antislop.begin(antislop.load(store))
@@ -1224,6 +1226,11 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         row = hydrate_evidence(store, row)
         asset_plan = motion_assets.prepare(
             row, folder, download=lambda path: store.storage.from_(motion_assets.BUCKET).download(path))
+        if motion_templates.template_of(row):
+            # a product showcase or a photo story (Wan, 7 Nov 2026): the same queue, stages, render and storage, its own page
+            return template_film(store, llm, row, settings, folder, runner=runner, gpt_login=gpt_login, gemini=gemini,
+                                 cloudflare=cloudflare, gemini_llm=gemini_llm, photo_search=photo_search, photo_get=photo_get,
+                                 own_get=own_get)
         if llm is None:
             raise RuntimeError("no AI writer: set a reader key in Tetapan → Tetapan AI")
         title, text = source_words(row.get("source_url") or "")
@@ -1517,6 +1524,87 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
     finally:
         if workdir is None:
             shutil.rmtree(folder.parent, ignore_errors=True)
+
+
+def template_film(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any], folder: Path, *,
+                  runner: Any = subprocess.run, gpt_login: Any = None, gemini: Any = None, cloudflare: Any = None,
+                  gemini_llm: Any = None, photo_search: Any = None, photo_get: Any = None, own_get: Any = None) -> bool:
+    """A film made from a template (motion_templates.py): the storyboard by Gemini first, the pictures by ChatGPT, Cloudflare
+    or Gemini (Unsplash for what none drew), the user's own product pictures, and a page laid out by code. Silent, upright,
+    about 20 seconds, with the approved piano under it like every other film. Raises on a failure; process() records it."""
+    kind = motion_templates.template_of(row)
+    lang = motion_templates.lang_of(row)
+    speak = speaker(lang)
+    login = gpt_login if gpt_login is not None else motion_gpt_images.chatgpt_login.Login(store)
+    folder.mkdir(parents=True, exist_ok=True)
+    products: list[dict[str, Any]] = []
+    pictures: list[str] = []
+    brand: dict[str, Any] = {}
+    if kind == "showcase":
+        # the user's own pictures are read first: a showcase whose product photo is missing must fail before anything is spent
+        products = motion_templates.products_of(row)
+        pictures = motion_templates.product_pictures(
+            store, row, products, folder, download=lambda path: store.storage.from_(motion_assets.BUCKET).download(path),
+            get=own_get)
+        brand = motion_templates.brand_of(store, row, folder, get=own_get)
+    bank = hook_bank.pick_for_idea(store, row.get("idea_id"))
+    set_stage(store, row, "storyboard")
+    sb, sb_note = motion_templates.write_storyboard(store, row, kind, products, brand, bank=bank, speak=speak,
+                                                    gemini_llm=gemini_llm, login=login, llm=llm)
+    script = motion_templates.script_of(kind, sb, lang)
+    set_stage(store, row, "pictures", script=script)
+    paths, source, pic_note = motion_templates.draw(store, row, kind, sb, folder, login=login, gemini=gemini,
+                                                    cloudflare=cloudflare, search=photo_search, get=photo_get)
+    set_stage(store, row, "film")
+    motion_templates.copy_fonts(folder)
+    if kind == "showcase":
+        html, total = motion_templates.compose_showcase(sb, pictures, paths.get("bg", ""), brand, lang=lang,
+                                                        ai_background=source.get("bg") == "ai")
+        title = sb["title"]
+    else:
+        photos = [paths.get(f"p{i + 1}", "") for i in range(motion_templates.STORY_SCENES)]
+        html, total = motion_templates.compose_story(sb, photos, lang=lang, footer=motion_templates.story_footer(source, lang))
+        title = sb["title"]
+    write_project(folder, html, row.get("stream") or "regulab")
+    # HyperFrames' own check is kept as the film's notes; the page is laid out by code, so nothing goes back to a writer, and
+    # the overlap probe is not run: a caption over a photograph is this design, under its own scrim
+    report = check(folder, settings["cli"], runner)
+    report.update(template=kind, storyboard=sb_note, pictures=pic_note,
+                  hook={"shape": sb.get("hook_shape"), "line": sb.get("hook"), **({"style": bank.id} if bank else {})},
+                  photos=[{"id": k, "source": v, "credit": source.get(f"{k}:credit", "")}
+                          for k, v in source.items() if ":" not in k])
+    if kind == "showcase":
+        report["brand"] = {"business_id": brand.get("id"), "name": brand.get("name"), "logo": bool(brand.get("logo"))}
+    video = render(folder, settings["cli"], "portrait", runner)
+    meta = probe(video, runner)
+    if not 0 < meta["duration_s"] <= FILM_MAX + .5 or abs(meta["duration_s"] - total) > .5:
+        raise ValueError(f"Rendered duration {meta['duration_s']}s does not match the template's {total:g}s")
+    video = mix_music(video, [], total, runner)
+    data = video.read_bytes()
+    path = f"motion/{row['id']}.mp4"
+    url = db.upload_generated(store, path, data, "video/mp4")
+    jpg = poster(video, runner)
+    poster_url = db.upload_generated(store, f"motion/{row['id']}.jpg", jpg, "image/jpeg") if jpg else ""
+    social_url, social_bytes = "", 0
+    small = social_copy(video, runner)
+    if small:
+        social_bytes = small.stat().st_size
+        social_url = db.upload_generated(store, f"motion/{row['id']}-social.mp4", small.read_bytes(), "video/mp4")
+    captions = motion_captions.write(llm, row, script, title, lang=lang, voice=voice_line(row.get("stream") or "regulab", lang),
+                                     speak_as=speak)
+    words = {"showcase": "Template: product showcase", "story": "Template: photo story"}[kind]
+    store.table(TABLE).update({
+        "status": "done", "title": title[:160], "html": html, "check_report": report, "video_path": path, "video_url": url,
+        "poster_url": poster_url, "bytes": len(data), "social_url": social_url, "social_bytes": social_bytes,
+        "captions": captions, **meta, "model": getattr(llm, "last_model", "") or "", "error": "",
+        "style_note": " · ".join(x for x in (words, sb_note, pic_note, f"hook shape {sb.get('hook_shape')}",
+                                           "silent: words paced for reading", "approved self-owned piano") if x),
+        "script": script,
+    }).eq("id", row["id"]).execute()
+    antislop.finish(store, "film", row["id"])
+    db.log_event(store, "info", "media", "motion.done", f"Motion siap: {title[:80]}", ref_table=TABLE, ref_id=row["id"])
+    set_stage(store, row, "done")
+    return True
 
 
 BACKFILL = 8              # films given their captions in one run: each is one writer call

@@ -9,6 +9,8 @@ import { LANGUAGES, RESOLUTIONS, RESOLUTION_CHOICES, SECONDS, STATUS_WORDS, VOIC
 import MotionAmbient from "./MotionAmbient";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
 import MotionEffectLibrary from "./MotionEffectLibrary";
+import MotionProducts from "./MotionProducts";
+import { TEMPLATES, TEMPLATE_LANGUAGES, templateLabel, templateRow } from "../lib/motionTemplates";
 import MotionQueue from "./MotionQueue";
 import MotionPost from "./MotionPost";
 import TileGrid from "./TileGrid";
@@ -57,6 +59,12 @@ export default function MotionLab({ user, onToast, view = "make" }) {
   const assetMode = assets.length ? 'mixed' : 'auto';
   const [aiBackground, setAiBackground] = useState(false);
   const [voice, setVoice] = useState("auto");
+  // the film template (Wan, 7 Nov 2026): the explainer as before, a product showcase or a photo story (lib/motionTemplates.js)
+  const [template, setTemplate] = useState("explainer");
+  const [products, setProducts] = useState([]);
+  const [businessId, setBusinessId] = useState("wsregulab");
+  const [tagline, setTagline] = useState("");
+  const isTemplate = template !== "explainer";
   const [repoUrl, setRepoUrl] = useState("");
   const [busy, setBusy] = useState("");
   // Wan's saved way (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"): the form opens on it, and
@@ -86,14 +94,18 @@ export default function MotionLab({ user, onToast, view = "make" }) {
 
   const add = async () => {
     if (assetsBusy) return;
-    const built = motionRow({ brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, style, mode, design, ambient, effects, effectMode, assetMode, assets }, user?.id || null);
+    const form = { brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, style, mode, design, ambient, effects, effectMode, assetMode, assets };
+    const built = isTemplate ? templateRow({ ...form, template, products, businessId, tagline }, user?.id || null) : motionRow(form, user?.id || null);
+    if (built.error === "products:none") return onToast?.(t("Tambah sekurang-kurangnya satu produk dengan gambarnya.", "Add at least one product with its picture."), "warn");
+    if (built.error === "products:picture") return onToast?.(t("Setiap produk perlu gambarnya sendiri.", "Every product needs its own picture."), "warn");
+    if (built.error === "products:many") return onToast?.(t("Paling banyak 5 produk.", "5 products at most."), "warn");
     if (built.error === "empty") return onToast?.(t("Tulis idea atau tampal pautan.", "Write an idea or paste a link."), "warn");
     if (built.error === "url") return onToast?.(t("Pautan perlu bermula dengan https://", "The link must start with https://"), "warn");
     setBusy("add");
     try {
       const { error } = await supabase.from(TABLES.motions).insert(built.row);
       if (error) throw new Error(errText(error));
-      setBrief(""); setUrl(""); setAssets([]);
+      setBrief(""); setUrl(""); setAssets([]); setProducts([]);
       onToast?.(t("Dihantar: Semasa tulis komposisi, semak dan render MP4. Biasanya 2 hingga 5 minit.", "Sent: Semasa writes the composition, checks it and renders the MP4. Usually 2 to 5 minutes."), "ok");
       motions.reload();
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
@@ -165,7 +177,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-display text-lg">{motionLabel(r) || t("(tiada tajuk)", "(untitled)")}</p>
-                  <p className="truncate text-xs text-muted">{r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · {(LANGUAGES.find(([k]) => k === (r.language || defaultLanguage(r.stream))) || [])[1]} · {w([RESOLUTIONS[r.resolution]?.bm, RESOLUTIONS[r.resolution]?.en]) || r.resolution} · {r.seconds}s{r.voice && r.voice !== "off" ? ` · ${t("suara", "voice")}` : ""}{r.model ? ` · ${r.model}` : ""}{r.style_repo_id ? ` · ${t("gaya", "style")}: ${styleOf(r.style_repo_id)?.name || styleOf(r.style_repo_id)?.full_name || (r.style_note || "").split(":")[0] || "repo"}` : ""}</p>
+                  <p className="truncate text-xs text-muted">{templateLabel(r, L) ? `${templateLabel(r, L)} · ` : ""}{r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"} · {(LANGUAGES.find(([k]) => k === (r.language || defaultLanguage(r.stream))) || [])[1]} · {w([RESOLUTIONS[r.resolution]?.bm, RESOLUTIONS[r.resolution]?.en]) || r.resolution} · {r.seconds}s{r.voice && r.voice !== "off" ? ` · ${t("suara", "voice")}` : ""}{r.model ? ` · ${r.model}` : ""}{r.style_repo_id ? ` · ${t("gaya", "style")}: ${styleOf(r.style_repo_id)?.name || styleOf(r.style_repo_id)?.full_name || (r.style_note || "").split(":")[0] || "repo"}` : ""}</p>
                 </div>
                 <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${STATUS_CLS[r.status] || ""}`}>{r.status === "working" && <Loader2 size={10} className="animate-spin" />}{w(STATUS_WORDS[r.status] || [r.status, r.status])}</span>
               </div>
@@ -225,11 +237,24 @@ export default function MotionLab({ user, onToast, view = "make" }) {
       <p className="mb-3 text-xs text-muted" data-chatgpt-moved>{t("Log masuk ChatGPT (gambar setiap babak) kini di Technology → API.", "The ChatGPT login (a picture for each scene) is now under Technology → API.")} <a href="#api" className="text-accent hover:underline">{t("Buka", "Open")}</a></p>
 
       <Card className="space-y-4 p-5">
-        <label className="block"><Label hint={t("idea, hook, atau 3 perkara yang video perlu sampaikan", "the idea, the hook, or the 3 things the video must say")}>{t("Idea", "Idea")}</Label>
+        <div data-motion-template><Label hint={t("Papan cerita oleh Gemini dahulu; gambar oleh ChatGPT atau Cloudflare", "Storyboard by Gemini first; pictures by ChatGPT or Cloudflare")}>{t("Templat filem", "Film template")}</Label>
+          <Segmented value={template} onChange={(v) => { setTemplate(v); if (v !== "explainer" && language === "both") setLanguage("bm"); }} options={TEMPLATES.map((x) => [x.id, L ? x.en : x.bm])} />
+          <p className="mt-1 text-[12px] text-muted">{(() => { const x = TEMPLATES.find((y) => y.id === template); return L ? x.descEn : x.descBm; })()}</p></div>
+        <label className="block"><Label hint={isTemplate ? (template === "showcase" ? t("pilihan: apa yang produk ini bawa, untuk siapa", "optional: what these products bring, and for whom") : t("topik cerita lima foto", "the topic of the five-photo story")) : t("idea, hook, atau 3 perkara yang video perlu sampaikan", "the idea, the hook, or the 3 things the video must say")}>{t("Idea", "Idea")}</Label>
           <TextArea rows={3} value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={2000}
             placeholder={t("Cth: Tiga perkara tentang PFAS dalam kosmetik yang SME perlu tahu sebelum 2027", "E.g. Three things about PFAS in cosmetics an SME must know before 2027")} /></label>
         <label className="block"><Label hint={t("pilihan: Semasa baca halaman itu", "optional: Semasa reads that page")}>{t("Pautan", "Link")}</Label>
           <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" inputMode="url" /></label>
+        {template === "showcase" && <MotionProducts products={products} onProducts={setProducts} businessId={businessId} onBusiness={setBusinessId}
+          tagline={tagline} onTagline={setTagline} client={supabase} user={user} onBusy={setAssetsBusy} />}
+        {isTemplate && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
+            <div data-motion-language><Label hint={t("templat: satu bahasa di skrin", "templates: one language on screen")}>{t("Bahasa", "Language")}</Label>
+              <Segmented value={language === "en" ? "en" : "bm"} onChange={pickLanguage} options={TEMPLATE_LANGUAGES} /></div>
+          </div>
+        )}
+        {!isTemplate && (<>
         <MotionAmbient value={ambient} onChange={setAmbient} />
         <label className="block" data-motion-design><Label>{t("Varian reka bentuk (dikekalkan)", "Design variant (preserved)")}</Label>
           <select aria-label={t("Varian reka bentuk", "Design variant")} value={design} onChange={e => setDesign(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
@@ -273,6 +298,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
             <span className="block text-[12px] text-muted">{t("Satu gambar dilukis oleh slot Penjana gambar (KiosAPI jika itu yang anda tetapkan) dan diletak di bawah komposisi. Menggunakan kredit gambar; tiada gambar = video tetap dibuat.",
               "One picture drawn by the Image generation slot (KiosAPI if that is what you set) and placed under the composition. It spends picture credits; if it cannot be made the video is still made.")}</span></span>
         </label>
+        </>)}
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={add} disabled={busy === "add" || assetsBusy}>{busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Clapperboard size={14} />} {t("Buat video motion", "Make the motion video")}</Button>
           <Button variant="ghost" size="sm" onClick={saveDefaults} disabled={busy === "defaults"} title={t("Bahasa, suara, saiz, saat, gaya dan latar: dipakai bila idea atau draf dijadikan video", "Language, voice, size, seconds, style and background: used when an idea or draft is made into a video")}

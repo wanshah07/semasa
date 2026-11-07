@@ -40,7 +40,7 @@ class Bot:
             return {"message_id": self.n}
         return True
 
-    send, photo, drop_buttons = tb.Bot.send, tb.Bot.photo, tb.Bot.drop_buttons
+    send, photo, video, drop_buttons = tb.Bot.send, tb.Bot.photo, tb.Bot.video, tb.Bot.drop_buttons
 
     def sent(self):
         return [p for m, p in self.calls if m == "sendMessage"]

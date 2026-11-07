@@ -54,6 +54,34 @@ supabase secrets set AI_API_KEY=<the rootsys key> AI_BASE_URL=https://rootsys.cl
   losers are cancelled the moment one wins.
 - The page names the gateway it is really using (`rootsys`, `Mireld`, or the host) in its notes and in the "reader did not answer" text.
 
+## Every model of all five robots (7 Nov 2026)
+
+Wan: *"for AI Chat, allow me to choose all model accross all 5 bots"*. The chat's model picker lists each robot with its live state
+(from `semasa_api_status`, the 6-hourly probe) and every chat model it can be called with, plus **Auto**. Nothing new has to be set:
+the function reads each robot's key where it already lives (`logic.js assembleTeam`).
+
+| Robot | Key the function uses | Notes |
+|---|---|---|
+| Wanshah 1, rootsys | `AI_API_KEY` + `AI_BASE_URL` secret, else a page AI slot whose key was saved for `rootsys.cloud` | instructions repeated in the user turn |
+| Wanshah 2, Mireld | `MIRELD_API_KEY` secret, else a page AI slot for `api.mireld.my` | |
+| Wanshah 3, KiosAPI | a page AI slot (reader, motion, picture reader or picture maker) saved for `kiosapi.com` | image models are not offered to the chat |
+| Wanshah 4, Gemini | `semasa_gemini_keys`, least recently used usable key first; a refused or rate-limited key hands over to the next | Auto never picks it: a free key may let Google use what it is sent |
+| Wanshah 5, ChatGPT | Wan's login in `semasa_chatgpt_auth` (Motion tab) | Codex Responses endpoint; no tools in the chat |
+
+- The last three are read with `SUPABASE_SERVICE_ROLE_KEY`, which Supabase gives every function. That client touches only the key
+  stores (and writes back a Gemini key's status and ChatGPT's refreshed tokens); tools and conversation rows stay on the caller's login.
+- **A key goes only to its own robot.** A slot's key is used only when it was typed in for the host the slot points at (`key_host`),
+  only for one of the robots' own hosts, and only over https to a public name (the `fetch_url` checks). Gemini and ChatGPT keys go to
+  their fixed addresses only. No key, token or refresh token is ever part of an answer: the page gets `robots`, the keys stay in `gates`.
+- **GitHub's secrets cannot be read from Supabase.** A robot whose only key is a GitHub secret (the workers' `LLM_*`) is listed as
+  unavailable with that reason. To make it pickable, save its key in a page AI slot (Technology, API) or set it as a function secret.
+- **ChatGPT's login**: a refresh token works once, so the new pair is written back at once, and only if the row still holds the spent
+  token (a login pasted meanwhile, or the worker's refresh, wins). A refresh refused because another writer already refreshed reads
+  the row again and uses the newer token. A refused login is written on the row as `last_error`, which the Motion card shows.
+- **Auto** mirrors the backend router: healthy robots first, robots with tools before ChatGPT, a robot slower than 15 s after the rest,
+  then the strongest model (`MODEL_PREFERENCE`), then the fastest. If Auto's robot fails before it has said anything, the next one
+  answers and the page says so. A robot Wan picked himself is never swapped for another.
+
 ## Memory, web and data (1 Oct 2026)
 
 Run `supabase/025_chat_memory.sql` once, then deploy the function again. Nothing else changes for the page.

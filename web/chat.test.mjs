@@ -604,3 +604,165 @@ await run("the page and the function clean the instructions the same way and sha
   for (const x of ["", "  a\r\nb  ", "x".repeat(5000), "satu\n\n\n\ndua\u0001"]) assert.equal(page.cleanInstructions(x), cleanInstructions(x));
 });
 console.log("memory settings: ok");
+// ---- every robot in the chat's picker (Wan, 7 Nov 2026: "for AI Chat, allow me to choose all model accross all 5 bots") ----------
+import {
+  CHAT_ROBOTS, GEMINI_BASE, ROBOT_ORDER, assembleTeam, chatgptAccount, chatgptNeedsRefresh, chatgptState, foldResponses, geminiKeyPatch, geminiOutcome,
+  parseChoice, pickAuto, probeState, refreshedTokens, resolveChoice, responsesBody, safeBase, slotKeyFits, tokenExpiry, usableGeminiKeys,
+} from "../supabase/functions/semasa-chat/logic.js";
+
+const T_NOW = Date.parse("2026-11-07T08:00:00Z");
+const fresh = new Date(T_NOW - 3600_000).toISOString();
+const jwt = (claims) => `h.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.s`;
+const statusRow = (slug, extra = {}) => ({ slug, key_set: true, key_ok: true, reachable: true, chat_ok: true, chat_ms: 900, checked_at: fresh, models: [], model: "", ...extra });
+const teamInput = (over = {}) => ({
+  now: T_NOW, serviceRole: true,
+  env: { AI_API_KEY: "sk-rootsys-SECRET", AI_BASE_URL: "https://rootsys.cloud/v1", AI_MODEL: "glm-5.3-flashx", MIRELD_API_KEY: "sk-mireld-SECRET" },
+  slots: [
+    { slot: "reader", provider: "openai", base_url: "https://kiosapi.com/v1", model: "gpt-5.6-sol", key_host: "kiosapi.com", api_key: "kk-kios-SECRET" },
+    { slot: "motion", provider: "openai", base_url: "https://evil.example.com/v1", model: "x", key_host: "evil.example.com", api_key: "kk-evil-SECRET" },
+  ],
+  status: [statusRow("rootsys", { models: ["glm-5.3-flashx", "kimi-k3"], chat_ms: 1200 }), statusRow("mireld", { models: ["claude-sonnet-5.5", "claude-opus-5.5"], chat_ms: 2500 }),
+    statusRow("kiosapi", { models: ["gpt-5.6-sol", "gpt-image-2"], chat_ms: 600 }), statusRow("gemini", { models: ["models/gemini-3.6-flash"], chat_ms: 400 })],
+  gemini: { settings: { enabled: true, model: "auto" }, models: { text_pick: "gemini-3.6-flash" }, keys: [
+    { id: "g1", api_key: "AIza-old-SECRET", enabled: true, status: "ok", last_used_at: "2026-11-07T07:00:00Z" },
+    { id: "g2", api_key: "AIza-new-SECRET", enabled: true, status: "new", last_used_at: null },
+    { id: "g3", api_key: "AIza-bad-SECRET", enabled: true, status: "bad" },
+    { id: "g4", api_key: "AIza-rest-SECRET", enabled: true, status: "limited", cooldown_until: "2026-11-07T09:00:00Z" }] },
+  chatgpt: { row: { auth: { tokens: { refresh_token: "rt-SECRET", access_token: "at-SECRET" } }, model: "gpt-5", checked_at: fresh } },
+  ...over,
+});
+
+await run("five robots, each key from where it already lives; a key the page cannot see never leaves the function", async () => {
+  assert.deepEqual(ROBOT_ORDER, ["rootsys", "mireld", "kiosapi", "gemini", "chatgpt"]);
+  assert.equal(CHAT_ROBOTS.chatgpt.robot, "W5");
+  const { robots, gates } = assembleTeam(teamInput());
+  assert.deepEqual(robots.map((r) => [r.slug, r.enabled]), [["rootsys", true], ["mireld", true], ["kiosapi", true], ["gemini", true], ["chatgpt", true]]);
+  assert.equal(gates.rootsys.key, "sk-rootsys-SECRET"); assert.equal(gates.rootsys.base, "https://rootsys.cloud/v1"); assert.equal(gates.rootsys.repeatSystem, true);
+  assert.equal(gates.mireld.base, "https://api.mireld.my/v1");
+  assert.equal(gates.kiosapi.key, "kk-kios-SECRET"); assert.equal(gates.kiosapi.from, 'page AI slot "reader"');
+  assert.equal(gates.gemini.base, GEMINI_BASE);
+  assert.deepEqual(gates.gemini.keys.map((k) => k.id), ["g2", "g1"], "least recently used first; refused and resting keys left out");
+  assert.ok(!Object.values(gates).some((g) => /evil/.test(g.base)), "a slot on a host none of the robots use is never called");
+  const page = JSON.stringify(robots);
+  assert.ok(!/SECRET/.test(page), "the page's view carries no key, refresh token or access token");
+  assert.deepEqual(robots.find((r) => r.slug === "kiosapi").models.map((m) => m.id), ["gpt-5.6-sol"], "an image model is not offered to the chat");
+  assert.deepEqual(robots.find((r) => r.slug === "gemini").models.map((m) => m.id), ["gemini-3.6-flash"], "Google's models/ prefix is dropped");
+  assert.equal(robots.find((r) => r.slug === "mireld").default_model, "claude-sonnet-5.5");
+  assert.equal(robots.find((r) => r.slug === "chatgpt").tools, false);
+});
+
+await run("a robot that cannot be called is listed with the reason, not pretended", async () => {
+  const { robots, gates } = assembleTeam(teamInput({ env: { AI_API_KEY: "k", AI_BASE_URL: "https://rootsys.cloud/v1" }, slots: [], chatgpt: { row: null },
+    gemini: { settings: { enabled: true }, keys: [{ id: "g3", api_key: "AIza-bad-SECRET", status: "bad" }] } }));
+  const why = Object.fromEntries(robots.map((r) => [r.slug, r.why]));
+  assert.ok(!gates.kiosapi && /GitHub's secrets, which Supabase cannot read/.test(why.kiosapi));
+  assert.ok(/refused, resting/.test(why.gemini));
+  assert.ok(/not connected: paste auth.json/.test(why.chatgpt));
+  assert.deepEqual(robots.find((r) => r.slug === "kiosapi").models, []);
+  const off = assembleTeam(teamInput({ serviceRole: false })).robots;
+  assert.ok(/no service role/.test(off.find((r) => r.slug === "gemini").why) && /no service role/.test(off.find((r) => r.slug === "chatgpt").why));
+  assert.ok(/switched off/.test(assembleTeam(teamInput({ gemini: { settings: { enabled: false }, keys: [{ id: "a", api_key: "k" }] } })).robots.find((r) => r.slug === "gemini").why));
+});
+
+await run("a page slot's key goes only to the host it was typed in for, and never to an internal address", async () => {
+  assert.equal(slotKeyFits({ base_url: "https://kiosapi.com/v1", key_host: "kiosapi.com", api_key: "k" }), true);
+  assert.equal(slotKeyFits({ base_url: "https://kiosapi.com/v1", key_host: "rootsys.cloud", api_key: "k" }), false, "endpoint changed after the key: not used");
+  assert.equal(slotKeyFits({ base_url: "http://kiosapi.com/v1", key_host: "kiosapi.com", api_key: "k" }), false);
+  for (const bad of ["https://localhost/v1", "https://10.0.0.1/v1", "https://user:pw@kiosapi.com/v1", "https://kiosapi.com:8443/v1", "https://x.supabase.co/v1"]) {
+    assert.equal(safeBase(bad).ok, false, bad);
+  }
+  assert.equal(safeBase("https://kiosapi.com/v1/?a=1#x").base, "https://kiosapi.com/v1");
+});
+
+await run("the function's own gateway on another host is still offered, as a guest robot", async () => {
+  const { robots, gates } = assembleTeam(teamInput({ env: { AI_API_KEY: "k", AI_BASE_URL: "https://gw.example.org/v1", AI_MODEL: "m-1" }, slots: [], status: [] }));
+  const guest = robots.find((r) => r.slug === "gw-example-org");
+  assert.ok(guest && guest.enabled && guest.default_model === "m-1" && gates["gw-example-org"].key === "k");
+});
+
+await run("Auto: healthy, with tools, not slow, strongest model, fastest; never Gemini; ChatGPT after every robot with tools", async () => {
+  const { robots } = assembleTeam(teamInput());
+  assert.deepEqual(pickAuto(robots).map((c) => c.slug), ["mireld", "rootsys", "kiosapi", "chatgpt"]);
+  const downMireld = assembleTeam(teamInput({ status: teamInput().status.map((r) => (r.slug === "mireld" ? { ...r, chat_ok: false, error: "502" } : r)) })).robots;
+  assert.deepEqual(pickAuto(downMireld).map((c) => c.slug), ["rootsys", "kiosapi", "chatgpt", "mireld"], "a robot that is down is tried last");
+  const slow = assembleTeam(teamInput({ status: teamInput().status.map((r) => (r.slug === "mireld" ? { ...r, chat_ms: 40000 } : r)) })).robots;
+  assert.equal(pickAuto(slow)[0].slug, "rootsys", "a 40 s robot is passed over for a fast one");
+  assert.ok(!pickAuto(robots).some((c) => c.slug === "gemini"));
+});
+
+await run("the picker's choice: Wan's own pick stands alone; anything that cannot be used falls back to Auto and says why", async () => {
+  const { robots } = assembleTeam(teamInput());
+  const own = resolveChoice(robots, { robot: "rootsys", model: "kimi-k3" });
+  assert.deepEqual([own.auto, own.slug, own.model, own.changed, own.chain.length], [false, "rootsys", "kimi-k3", false, 1]);
+  const auto = resolveChoice(robots, {});
+  assert.ok(auto.auto && auto.slug === "mireld" && auto.chain.length === 4);
+  const off = resolveChoice(assembleTeam(teamInput({ chatgpt: { row: null } })).robots, { robot: "chatgpt", model: "gpt-5" });
+  assert.ok(off.auto && off.changed && /not connected/.test(off.why));
+  const legacy = resolveChoice(robots, { model: "claude-opus-5.5" });
+  assert.deepEqual([legacy.slug, legacy.model, legacy.auto], ["mireld", "claude-opus-5.5", false], "a bare model from an older page finds its robot");
+  const live = assembleTeam(teamInput({ live: { mireld: ["claude-sonnet-5.5"] } })).robots;
+  const gone = resolveChoice(live, { robot: "mireld", model: "claude-opus-5.5" });
+  assert.deepEqual([gone.model, gone.changed], ["claude-sonnet-5.5", true], "a model the live list no longer has: the robot's default, and say so");
+  assert.deepEqual(parseChoice("gemini|gemini-3.6-flash"), { robot: "gemini", model: "gemini-3.6-flash" });
+  assert.deepEqual(parseChoice("claude-sonnet-5.5"), { robot: "", model: "claude-sonnet-5.5" });
+});
+
+await run("live states: the probe for the four gateways, the login's own check for ChatGPT", async () => {
+  assert.equal(probeState(null).state, "unknown");
+  assert.equal(probeState(statusRow("x", { key_ok: false, error: "401" }), T_NOW).why, "401");
+  assert.equal(probeState(statusRow("x", { checked_at: "2026-11-06T00:00:00Z" }), T_NOW).state, "stale");
+  assert.deepEqual(probeState(statusRow("x"), T_NOW), { state: "ok", why: "", speed_ms: 900 });
+  assert.equal(chatgptState({ checked_at: fresh, last_error: "refused", last_error_at: new Date(T_NOW - 60_000).toISOString() }, T_NOW).state, "down");
+  assert.equal(chatgptState({ checked_at: fresh }, T_NOW).state, "ok");
+});
+
+await run("ChatGPT's Responses body: instructions from the system message, turns as input items, pictures as input_image", async () => {
+  const b = responsesBody([{ role: "system", content: "RULES" }, { role: "user", content: "hai" }, { role: "assistant", content: "ok" },
+    { role: "user", content: [{ type: "text", text: "lihat" }, { type: "image_url", image_url: { url: TEST_IMAGE } }] }, { role: "tool", content: "x" }], "gpt-5");
+  assert.equal(b.instructions, "RULES"); assert.equal(b.stream, true); assert.equal(b.store, false); assert.ok(!("tools" in b));
+  assert.deepEqual(b.input.map((i) => i.role), ["user", "assistant", "user"]);
+  assert.deepEqual(b.input[1].content, [{ type: "output_text", text: "ok" }]);
+  assert.deepEqual(b.input[2].content, [{ type: "input_text", text: "lihat" }, { type: "input_image", image_url: TEST_IMAGE }]);
+  let a = foldResponses(null, { type: "response.created", response: { model: "gpt-5" } });
+  a = foldResponses(a, { type: "response.output_text.delta", delta: "Hel" });
+  a = foldResponses(a, { type: "response.output_text.delta", delta: "lo" });
+  a = foldResponses(a, { type: "response.completed", response: { output: [{ content: [{ type: "output_text", text: "Hello" }] }] } });
+  assert.deepEqual([a.content, a.final, a.model, a.error], ["Hello", "Hello", "gpt-5", ""]);
+  assert.match(foldResponses(null, { type: "response.failed", response: { error: { message: "usage limit reached" } } }).error, /usage limit/);
+});
+
+await run("ChatGPT login: refresh before the token ends, the spent refresh token replaced, the account read off the token", async () => {
+  const ends = (s) => jwt({ exp: Math.floor((T_NOW + s * 1000) / 1000), "https://api.openai.com/auth": { chatgpt_account_id: "acct-1" } });
+  assert.equal(chatgptNeedsRefresh({ access_token: ends(3600) }, T_NOW), false);
+  assert.equal(chatgptNeedsRefresh({ access_token: ends(60) }, T_NOW), true, "inside the five-minute skew");
+  assert.equal(chatgptNeedsRefresh({ access_token: "not-a-jwt" }, T_NOW), true);
+  assert.equal(chatgptNeedsRefresh({}, T_NOW), true);
+  assert.equal(tokenExpiry(ends(3600)), T_NOW + 3600_000);
+  assert.equal(chatgptAccount({ access_token: ends(10) }), "acct-1");
+  assert.equal(chatgptAccount({ account_id: "saved", access_token: ends(10) }), "saved");
+  const next = refreshedTokens({ refresh_token: "old", access_token: "a0", account_id: "x" }, { access_token: "a1", refresh_token: "new" });
+  assert.deepEqual(next, { refresh_token: "new", access_token: "a1", account_id: "x" });
+  assert.equal(refreshedTokens({ refresh_token: "old" }, { access_token: "a1" }).refresh_token, "old", "no new one sent: the old one is kept");
+});
+
+await run("Gemini keys: the same marks the worker writes (refused, rate-limited, model gone, hiccup)", async () => {
+  assert.equal(geminiOutcome(400, "API key not valid. Please pass a valid API key."), "bad");
+  assert.equal(geminiOutcome(429, "Resource has been exhausted (e.g. check quota)."), "limited");
+  assert.equal(geminiOutcome(404, "models/gemini-2.5-flash is no longer available to new users"), "model");
+  assert.equal(geminiOutcome(503, "The model is overloaded"), "retry");
+  const lim = geminiKeyPatch({ calls: 2, failures: 1 }, false, 429, "quota", T_NOW);
+  assert.deepEqual([lim.status, lim.calls, lim.failures, lim.cooldown_until], ["limited", 3, 2, new Date(T_NOW + 30 * 60_000).toISOString()]);
+  const bad = geminiKeyPatch({}, false, 403, "PERMISSION_DENIED", T_NOW);
+  assert.deepEqual([bad.status, bad.cooldown_until], ["bad", null]);
+  const hic = geminiKeyPatch({}, false, 503, "overloaded", T_NOW);
+  assert.ok(!("status" in hic) && hic.cooldown_until === new Date(T_NOW + 2 * 60_000).toISOString(), "a hiccup rests the key but keeps its status");
+  assert.ok(!("failures" in geminiKeyPatch({}, false, 404, "is not found", T_NOW)), "a gone model is not the key's fault");
+  assert.equal(geminiKeyPatch({}, true, 200, "", T_NOW).status, "ok");
+  assert.deepEqual(usableGeminiKeys([{ id: "a", api_key: "k", enabled: false }, { id: "b", api_key: "k2" }], T_NOW).map((r) => r.id), ["b"]);
+});
+
+await run("a tool call's extra_content (Gemini's thought signature) is kept through the stream", async () => {
+  let a = foldDelta(null, { choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "fetch_url", arguments: "{}" }, extra_content: { google: { thought_signature: "sig" } } }] } }] });
+  assert.deepEqual(a.toolCalls[0].extra_content, { google: { thought_signature: "sig" } });
+});
+console.log("all robots: ok");

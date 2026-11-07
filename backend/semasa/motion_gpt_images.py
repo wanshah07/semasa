@@ -33,6 +33,7 @@ log = get_logger("semasa.motion.gpt")
 
 BUDGET_S = 480                    # all the pictures of one film together: the film is rendered after, and the job has 30 minutes
 LABEL = {"chatgpt": "ChatGPT", "gemini": "Gemini", "cloudflare": "Cloudflare"}
+ORDER = ("chatgpt", "gemini", "cloudflare")             # who draws a scene first, for an explainer film
 MIN_SIDE = 256              # a picture smaller than this on either side is not a picture
 
 LOOK = {
@@ -118,13 +119,17 @@ def save(data: bytes, folder: Path, name: str) -> str:
 
 def draw_scenes(store: Any, row: dict[str, Any], scenes: list[dict[str, Any]], folder: Path, *, design: str,
                 palette: dict[str, str], ambient: str, resolution: str, style_name: str = "", login: Any = None,
-                clock: Any = None, gemini: Any = None, cloudflare: Any = None) -> tuple[dict[str, dict[str, Any]], str]:
+                clock: Any = None, gemini: Any = None, cloudflare: Any = None, order: tuple[str, ...] = ORDER,
+                prompt_of: Any = None) -> tuple[dict[str, dict[str, Any]], str]:
     """({scene id: photo} for the scenes drawn, note). A photo is {path, id, credit, page, alt, generated} like the others, so the
     film's report and credits treat it the same way. ({}, note) when nothing was drawn, and the note says why.
 
     Each scene is drawn by ChatGPT (Wan's login) and, when that fails or is not connected, by Gemini (his key pool,
     gemini_images.py), and when that fails too, by Cloudflare Workers AI (cloudflare_images.py).
-    A provider whose allowance is used up or whose login is refused is not asked again for the rest of the film."""
+    A provider whose allowance is used up or whose login is refused is not asked again for the rest of the film.
+
+    `order` changes who is asked first (the film templates ask ChatGPT, then Cloudflare, then Gemini: Wan, 7 Nov 2026, "picture
+    from chatgpt or cloudflare"), and `prompt_of(scene)` gives a scene's whole picture request when the caller wrote its own."""
     login = login or chatgpt_login.Login(store)
     drawer = gemini if gemini is not None else gemini_images.Drawer(store)
     cfg = login.settings()
@@ -139,7 +144,8 @@ def draw_scenes(store: Any, row: dict[str, Any], scenes: list[dict[str, Any]], f
     clock = clock or time.monotonic
     started = clock()
     todo = storyboard(scenes, cfg["max_images"] if cfg else drawer.max_images())
-    active = [name for name, on in (("chatgpt", chatgpt_on), ("gemini", gemini_on), ("cloudflare", flare_on)) if on]
+    on = {"chatgpt": chatgpt_on, "gemini": gemini_on, "cloudflare": flare_on}
+    active = [name for name in dict.fromkeys(order) if on.get(name)]
     tripped: set[str] = set()
     out: dict[str, dict[str, Any]] = {}
     by: dict[str, int] = {"chatgpt": 0, "gemini": 0, "cloudflare": 0}
@@ -151,7 +157,8 @@ def draw_scenes(store: Any, row: dict[str, Any], scenes: list[dict[str, Any]], f
         if all(name in tripped for name in active):
             break
         sid = str(sc.get("id") or len(out))
-        prompt = scene_prompt(row, sc, design=design, palette=palette, ambient=ambient, style_name=style_name)
+        prompt = (prompt_of(sc) if prompt_of else
+                  scene_prompt(row, sc, design=design, palette=palette, ambient=ambient, style_name=style_name))
         for name in active:
             if name in tripped:
                 continue

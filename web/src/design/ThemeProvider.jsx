@@ -4,6 +4,7 @@ import "./themes/facerinna.css";
 import "./themes/noir.css";
 import "./themes/regulab.css";
 import { AUTO, THEME_IDS, readPick, resolveTheme, writePick } from "./themeChoice";
+import { syncThemeColor } from "../lib/pwa";
 
 /* Add a theme: write themes/<name>.css, import it above, add its name here and to THEME_IDS in themeChoice.js and the
    inline script in index.html. */
@@ -34,7 +35,10 @@ export function ThemeProvider({ children }) {
   }, []);
 
   const theme = resolveTheme(pick, dark);
-  useEffect(() => { document.documentElement.setAttribute("data-theme", theme); }, [theme]);
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    syncThemeColor();   // the iPhone status bar follows the theme's own background (lib/pwa.js)
+  }, [theme]);
 
   const setTheme = useCallback((t) => {
     const next = THEME_IDS.includes(t) ? t : AUTO;

@@ -71,3 +71,48 @@
 @keyframes r3-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 @keyframes r3-wave { 0%, 100% { transform: translate3d(0,0,0) rotateX(0deg); } 50% { transform: translate3d(0,0,0) rotateX(-18deg); } }
 @media (prefers-reduced-motion: reduce) { .r3-rig, .r3-bob, .r3-arm-l, .r3-blink, .r3-pulse { animation: none; } .r3-rig { transform: rotateX(-6deg) rotateY(-22deg); } }
+
+/* ───────── Phone and the installed iPhone app (src/lib/pwa.js, components/MobileTabBar.jsx, InstallHint.jsx) ─────────
+   index.html sets viewport-fit=cover, so the page runs under the notch and the home indicator; these give the room back.
+   --tabbar-h is the bottom bar's height plus the home indicator while the bar is on screen (MobileTabBar sets
+   data-tabbar on <html>), and 0 on a wide screen, so everything that sits at the bottom reads one number. */
+:root { --tabbar-h: 0px; }
+@media (max-width: 1023.98px) {
+  html[data-tabbar] { --tabbar-h: calc(3.5rem + env(safe-area-inset-bottom, 0px)); }
+}
+.app-shell {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: var(--tabbar-h);
+}
+.app-header { padding-top: env(safe-area-inset-top, 0px); }
+.mobile-tabbar {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+.toast-stack { bottom: calc(max(var(--tabbar-h), env(safe-area-inset-bottom, 0px)) + 1.25rem); }
+.install-hint { bottom: calc(max(var(--tabbar-h), env(safe-area-inset-bottom, 0px)) + 0.75rem); }
+.drawer-panel {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+/* the pasted sidebar is drawn for a mouse (33 px rows, 260 px wide); in the phone menu it fills the panel and every row is
+   a thumb-sized target */
+[data-sidebar="drawer"] nav[aria-label] { width: 100%; }
+[data-sidebar="drawer"] [data-nav] { min-height: 44px; }
+@media (max-width: 1023.98px) {
+  /* iOS zooms the whole page into any field whose text is under 16 px and leaves it zoomed; 16 px stops that. Checkboxes,
+     radios, sliders and file pickers carry no text. !important because the fields' own text-xs / text-sm are classes,
+     which outrank an element selector. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  select,
+  textarea { font-size: 16px !important; }
+  /* at 16 px a select is as wide as its longest option ("Penerang · Hook / Fakta / Kenapa / Solusi") and pushed Generate
+     video past a 375 px phone; capped, it shrinks to its column and the chosen option is cut, not the page */
+  select { max-width: 100%; }
+  /* ...and the label around it is a grid or flex item, whose automatic minimum width is the select's longest option, so
+     the label may shrink too */
+  label:has(select) { min-width: 0; max-width: 100%; }
+}

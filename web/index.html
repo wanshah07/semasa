@@ -2,11 +2,23 @@
 <html lang="ms" data-theme="facerinna">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: the page reaches the iPhone's rounded corners and notch; index.css pads it back with the safe-area insets -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <title>Semasa</title>
     <meta name="description" content="Isu semasa Malaysia, dikemas kini setiap dua jam, dan makmal media AI." />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <!-- Home Screen app (Safari → Share → Add to Home Screen). Paths are relative, like vite.config's base, so they hold at
+         /semasa/ and at the custom domain. The status bar stays "default" (dark text on the page colour): "black-translucent"
+         would put white clock digits over the light themes. theme-color is updated to the chosen theme by lib/pwa.js. -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png" />
+    <meta name="theme-color" content="#FBFDFF" />
+    <meta name="application-name" content="Semasa" />
+    <meta name="apple-mobile-web-app-title" content="Semasa" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- the fonts arrive without holding the first paint: fetched as a print sheet, switched to all once loaded (the system

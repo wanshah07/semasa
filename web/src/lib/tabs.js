@@ -1,5 +1,5 @@
-import { Anchor, BarChart3, Brain, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
-  Layers, LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, Radio, PenLine, Receipt, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
+import { Anchor, BarChart3, BookOpenText, Brain, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
+  Layers, LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, NotebookPen, Radio, PenLine, Receipt, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
 
 /* Every page, once: the header's tab row on a phone, the sidebar and the sub-tab bar all read this list, so they can never
    disagree. A page's `id` is its address (#post, #office…) and does not change when it moves between segments.
@@ -9,6 +9,8 @@ export function tabsOf(t) {
   return [
     { id: "papan", label: t("Papan", "Dashboard"), icon: LayoutDashboard, segment: "dashboard" },
     { id: "chat", label: t("Sembang AI", "AI chat"), icon: MessageSquare, segment: "dashboard" },
+    // beside the chat whose answers it shapes (its instructions, its memory, its two switches), not in Tetapan with the workers
+    { id: "memori", label: t("Memori & Arahan", "Memory & instructions"), icon: NotebookPen, segment: "dashboard" },
     { id: "otak", label: t("Otak AI", "AI brain"), icon: Brain, segment: "dashboard" },
 
     { id: "isu", label: t("Isu semasa", "Current issues"), icon: Radio, segment: "content" },
@@ -48,6 +50,7 @@ export function tabsOf(t) {
 
     { id: "faq", label: "FAQ", icon: HelpCircle, segment: "reference" },
     { id: "log", label: "Log", icon: ListChecks, segment: "reference" },
+    { id: "dokumen", label: t("Dokumen", "Documents"), icon: BookOpenText, segment: "reference" },
 
     { id: "tetapan", label: t("Tetapan", "Settings"), icon: Settings, segment: "" },
   ];

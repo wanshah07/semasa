@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import repoDocs from "./vite.repoDocs.js";
 
 // Relative asset paths ("./assets/…"), so the SAME build works at
 // https://wanshah07.github.io/semasa/ and at a custom domain's root
@@ -46,7 +47,8 @@ function semasaServiceWorker() {
 }
 
 export default defineConfig({
-  plugins: [react(), semasaServiceWorker()],
+  // repoDocs: size and last-changed date of the repo's .md files, for Rujukan → Dokumen (src/lib/repoDocsFiles.js)
+  plugins: [react(), semasaServiceWorker(), repoDocs({ root: fileURLToPath(new URL("..", import.meta.url)) })],
   base: "./",
   // "@/components/ui/…": the path a shadcn component is written against (components.json)
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },

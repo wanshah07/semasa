@@ -115,6 +115,23 @@ Everything a page, a search or a table returns is handed to the model marked as 
 contain instructions aimed at the model. The check button now also says whether the model accepts tools and whether
 web search is installed. If Mireld rejects tools the chat still answers, without them, and says so.
 
+## Instructions and memory switches (7 Nov 2026, the Memori & Arahan page)
+
+Run `supabase/070_ai_memory.sql` once (it makes the two settings rows the page saves into), then deploy the function again.
+
+- `settings.ai_instructions.text` (up to 4,000 characters) is sent after the function's own rules and the tool rules, headed as
+  Wan's standing instructions that give way to the rules when the two clash. It shapes the voice and the work; it cannot lift a
+  rule about facts, the language or posts.
+- `settings.ai_memory.search_chats` (on unless turned off) adds the read-only tool `search_chats`: up to 8 excerpts from Wan's
+  OTHER conversations (the Telegram thread included), through his own login, marked as old excerpts and not instructions. Off,
+  the tool is not offered, a call to it is refused, and the model is told it sees only the conversation it is in.
+- `settings.ai_memory.auto_memory` belongs to the nightly job (`backend/semasa/memory_auto.py`, `memory.yml`, 00:35 MYT): it
+  reads Wan's own messages of the day (never the assistant's), keeps at most 5 lasting facts or preferences as notes with source
+  `chat`, drops anything that looks like a secret or another person's contact details, and never passes the 40-note ceiling.
+
+The pure half (`memorySettings`, `cleanInstructions`, `toolsFor`, `planChatSearch`, `shapeChatHits`) is in `logic.js` and tested
+in `web/chat.test.mjs`.
+
 ## Streaming, answering again, attachments (`chat`, 1 Oct 2026, "almost similar with claude")
 
 - `{action:"chat", stream:true}` answers as **Server-Sent Events**: `data: {"type":"start"}` then `{"type":"status","tool","detail"}` as

@@ -139,3 +139,18 @@ Two hard limits that come from this repo's own rules, not from the format:
   - **Fast answers:** a plain question from the linked account is answered inside the webhook (`semasa-telegram`, `fastAnswer`) with the AI chat's own gateway secrets (`gatewayConfig` from `semasa-chat/logic.js`), in seconds, instead of waking the GitHub worker. Only when nothing else must happen first (`fastEligible`: no command, no link, no pending topic, no 👎 correction waiting, and the /robot pin is Auto or this same gateway); a gateway error or anything past 22 s goes to the worker as before. The answer carries the same footer and 👍/👎 buttons, and the turn is kept in the Telegram thread.
 - **ChatGPT on the API page as Wanshah 5** (Wan, 7 Nov 2026: "check chatgpt and move to api"). The login card moved from Motion to Technology → API. A model the account refuses ("The 'gpt-5' model is not supported when using Codex with a ChatGPT account", `model_not_found`) is replaced in `Login._with_model`: the account's own list (`/backend-api/codex/models`) first, then `FALLBACK_MODELS`, at most `MODEL_TRIES`; the first that answers is saved as the row's model. The 6-hourly API check writes a `semasa_api_status` row `chatgpt` (`probe_row`: login refreshed, models listed, one real "OK" answer). Repo library cards show the original link as text.
 - **AI chat: every model of all five robots** (Wan, 7 Nov 2026: "for AI Chat, allow me to choose all model accross all 5 bots"). The picker groups each robot's chat models with its live state (`semasa_api_status`) plus Auto; `semasa-chat` reads each key where it already lives (function secrets, the page's AI slots by `key_host`, `semasa_gemini_keys`, `semasa_chatgpt_auth`) with the service role, sends it only to that robot's host and never back to the page. A robot whose key is only a GitHub secret is listed unavailable with that reason. Auto never picks Gemini (free-key privacy) and puts ChatGPT (no tools in the chat) after the robots with tools. See `supabase/functions/semasa-chat/README.md`.
+## Dokumen and Memori & Arahan (7 Nov 2026)
+
+- **Dokumen** (`#dokumen`, Rujukan): the repo's own Markdown (CLAUDE.md, every README, `rules/`, `ops/`, `docs/`, `.claude/skills/`,
+  `supabase/**`), bundled at build time (`web/src/lib/repoDocsFiles.js`, `import.meta.glob` with `?raw`, one lazy chunk per file) and
+  drawn with the chat's Markdown reader (no HTML passes through). `backup/`, `node_modules`, `dist` and files over 400 KB are never
+  shown. `pages.yml` now rebuilds on any `**/*.md` push with the full history, so a merged change appears by itself and each file
+  carries its last-commit date (`web/vite.repoDocs.js`). `repoDocs.test.mjs` fails when a .md file the rules accept is missed by the glob.
+- **Memori & Arahan** (`#memori`, Dashboard, beside Sembang AI): `settings.ai_instructions` {text, updated_at} (max 4,000) and
+  `settings.ai_memory` {search_chats, auto_memory} (both on by default; rows made by `supabase/070_ai_memory.sql`, since the browser
+  can update a setting but never add one), plus list / add / edit / delete of the signed-in user's `semasa_chat_memory` notes
+  (policy from 025). The chat sends the instructions after its own rules, never above them; `search_chats` adds the read-only
+  `search_chats` tool (other threads, Telegram's included); off, the chat sees only the current thread and is told so.
+- **Memory from chats**: `backend/semasa/memory_auto.py` (`memory.yml`, 00:35 MYT) reads only Wan's own messages of the last day,
+  asks the AI team for at most 5 lasting facts or preferences, drops secrets, e-mail addresses and long numbers, skips near-repeats
+  and the 40-note ceiling, and saves them with source `chat` (shown as "auto"). Its bookmark is `settings.memory_auto`.

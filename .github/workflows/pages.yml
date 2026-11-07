@@ -3,7 +3,8 @@ name: Deploy site
 on:
   push:
     branches: [main]
-    paths: ["web/**", ".github/workflows/pages.yml"]
+    # "**/*.md": Rujukan → Dokumen bundles the repo's Markdown, so a merged change to CLAUDE.md, rules/ or ops/ redeploys it too
+    paths: ["web/**", "**/*.md", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -24,6 +25,8 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # the whole history: each document's "last changed" date comes from git (web/vite.repoDocs.js)
       - uses: actions/setup-node@v4
         with:
           node-version: 20

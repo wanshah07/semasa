@@ -61,7 +61,7 @@ def test_a_publisher_error_from_a_fixed_bug_is_cleared_and_a_linkedin_restrictio
     assert len(state["fixed"]) == 2 and all("tried again at its slot" in x for x in state["fixed"])
     whats = " | ".join(p["what"] for p in state["problems"])
     assert "LinkedIn refuses 1 post(s)" in whats and "Instagram needs a picture" in whats
-    assert out["emailed"] and out["kind"] == "problem"
+    assert out["emailed"] and out["kind"] == "attention"
 
 
 def test_an_idea_the_writer_did_not_answer_is_retried_but_a_no_fit_idea_is_not():
@@ -84,23 +84,26 @@ def test_the_same_problems_are_not_emailed_twice_but_the_morning_summary_always_
     st = store(**{db.API_STATUS: [{"slug": "gemini", "name": "Gemini", "role": "primary", "key_set": True, "key_ok": True,
                                    "reachable": True, "chat_ok": False, "model": "gemini-3.6-flash", "error": "Read timed out"}]})
     s = Sender()
-    assert health.run(st, NOW, sender=s)["kind"] == "problem"
+    assert health.run(st, NOW, sender=s)["kind"] == "attention"
     assert health.run(st, NOW, sender=s)["kind"] == "", "nothing new: no second e-mail"
     assert len(s.sent) == 1 and s.sent[0]["to"] == "info@kkmhalalconsultant.com"
-    assert "1 masalah" in s.sent[0]["subject"] and "did not answer" in s.sent[0]["html"]
+    assert s.sent[0]["subject"] == "Semasa watchdog: needs attention"
+    assert s.sent[0]["html"].startswith("<p>PROBLEM: AI: Gemini: listed its models but its model gemini-3.6-flash did not answer")
     assert health.run(st, MORNING, sender=s)["kind"] == "summary"
     assert health.run(st, MORNING, sender=s)["kind"] == "", "one summary a day"
-    assert len(s.sent) == 2
+    assert len(s.sent) == 2 and s.sent[1]["subject"] == "Semasa watchdog: daily check, 1 need attention"
+    assert "PROBLEM (since 2026-11-07T09:30:00Z)" in s.sent[1]["html"], "the daily check says how long it has been open"
 
 
 def test_a_dead_gmail_connection_is_a_problem_and_a_clean_system_says_all_is_well_once_a_day():
     st = store()
     out = health.run(st, NOW, sender=Sender(fail_account=True))
     state = next(r for r in st.tables[db.SETTINGS] if r["key"] == health.STATE_KEY)["value"]
-    assert any("Gmail connection did not answer" in p["what"] for p in state["problems"]) and out["kind"] == "problem"
+    assert any("Gmail connection did not answer" in p["what"] for p in state["problems"]) and out["kind"] == "attention"
     st2, s = store(), Sender()
     assert health.run(st2, NOW, sender=s)["kind"] == "", "a clean system at 17:30 sends nothing"
-    assert health.run(st2, MORNING, sender=s)["kind"] == "summary" and "semua berjalan baik" in s.sent[0]["subject"]
+    assert health.run(st2, MORNING, sender=s)["kind"] == "summary"
+    assert s.sent[0]["subject"] == "Semasa watchdog: daily check, all working"
 
 
 def test_a_report_that_cannot_be_sent_is_kept_and_says_so():
@@ -108,7 +111,7 @@ def test_a_report_that_cannot_be_sent_is_kept_and_says_so():
     out = health.run(st, NOW, sender=Sender(fail_send=True))
     state = next(r for r in st.tables[db.SETTINGS] if r["key"] == health.STATE_KEY)["value"]
     assert not out["emailed"] and any("could not be e-mailed" in p["what"] for p in state["problems"])
-    assert "emailed_fingerprint" not in state, "it tries again next run"
+    assert "emailed_fingerprint" not in state and not state.get("open"), "it tries again next run"
 
 
 def test_failed_workflows_are_read_from_github_and_cancelled_ones_are_not_problems(monkeypatch):
@@ -152,3 +155,18 @@ def test_a_business_whose_own_gmail_is_not_connected_is_reported_and_a_connected
     assert len(missing) == 1 and "Valorith's Gmail (muhammad.ridzuan22222@gmail.com) is not connected" in missing[0]["what"]
     assert "go out from info@kkmhalalconsultant.com" in missing[0]["what"]
     assert health.check_business_gmail(val, "info@kkmhalalconsultant.com", None) == [], "no Composio key: check_gmail says so"
+
+
+def test_a_problem_that_clears_says_fixed_with_the_moment_it_started_in_the_watchdogs_plain_words():
+    down = {"slug": "gemini", "name": "Gemini", "role": "primary", "key_set": True, "key_ok": True, "reachable": True,
+            "chat_ok": False, "model": "gemini-3.6-flash", "error": "Read timed out"}
+    st, s = store(**{db.API_STATUS: [down]}), Sender()
+    health.run(st, NOW, sender=s)
+    st.tables[db.API_STATUS][0].update(chat_ok=True, error="")
+    later = datetime(2026, 11, 7, 13, 17, tzinfo=UTC)
+    assert health.run(st, later, sender=s)["kind"] == "fixed"
+    mail = s.sent[-1]
+    assert mail["subject"] == "Semasa watchdog: all working again"
+    assert "FIXED: " in mail["html"] and "is working again (problem started 2026-11-07T09:30:00Z)" in mail["html"]
+    assert mail["html"].rstrip().endswith("<p>Semasa → Log shows every check.</p>")
+    assert health.run(st, later, sender=s)["kind"] == "", "said once"

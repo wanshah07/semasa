@@ -202,7 +202,7 @@ def test_a_link_becomes_an_idea_only_on_wans_tap(monkeypatch):
     idea = st.tables[db.IDEAS][0]
     assert idea["source_url"] == "https://www.npra.gov.my/notis/123" and idea["stream"] == "linkedin"
     assert idea["note"] == "fokus pada amaran label" and idea["created_by"] == "u-wan" and idea["status"] == "new"
-    assert idea["brief"] == {"via": "telegram"} and idea["source_title"] == "NPRA: Amaran label baharu"
+    assert idea["brief"] == {"via": "telegram", "telegram_inbox_id": 1} and idea["source_title"] == "NPRA: Amaran label baharu"
 
 
 def test_a_failed_idea_can_be_tried_again_from_ralat():
@@ -263,3 +263,124 @@ def test_the_watchdog_reports_unanswered_messages_and_a_broken_webhook():
     assert "the bot is not connected to Semasa's webhook" in whats
     assert "1 message(s) from Wan not answered for 30 minutes" in whats
     assert health.check_telegram(store(), NOW) == [], "silent until the bot has been connected once"
+
+
+# ---- the 7 Nov 2026 review's fixes ---------------------------------------------------------------------------------------
+
+def test_a_tap_on_an_older_preview_never_decides_the_newer_version():
+    # /draf twice: the second preview (message 702) overwrote the version kept; a tap on the first (701) is refused and
+    # the current preview is sent again, whatever the version
+    st = store(**{db.POSTS: [post("p1")], tb.SENT: [{"post_id": "p1", "version": "2026-11-07T10:00:00.123456+00:00",
+                                                     "chat_id": CHAT, "message_id": 702}],
+                  tb.INBOX: [tap(1, "ok:p1", message_id=701), tap(2, "no:p1", message_id=701)]})
+    bot = Bot()
+    tb.run(st, bot=bot, now=NOW, webhook=False, push=False)
+    assert st.rpcs == [] and st.tables[db.POSTS][0]["status"] == "draft", "neither approved nor rejected from an old message"
+    texts = [m["text"] for m in bot.sent()]
+    assert sum("pratonton lama" in t for t in texts) == 2 and sum(t.startswith("📝 Draf") for t in texts) == 2
+    assert inbox(st)[1]["note"] == "old preview"
+    newest = st.tables[tb.SENT][0]["message_id"]
+    st.tables[tb.INBOX].append(tap(3, "ok:p1", message_id=newest))
+    tb.run(st, bot=bot, now=NOW, webhook=False, push=False)
+    assert st.tables[db.POSTS][0]["status"] == "approved", "the newest preview's button works"
+
+
+def test_a_double_tap_on_an_idea_button_makes_one_idea(monkeypatch):
+    monkeypatch.setattr(tb, "page_title", lambda url: "NPRA: notis")
+    st = store(**{tb.INBOX: [msg(1, "https://www.npra.gov.my/notis/9")]})
+    bot = Bot()
+    tb.run(st, bot=bot, now=NOW, webhook=False, push=False)
+    st.tables[tb.INBOX] += [tap(2, "idea:r:1"), tap(3, "idea:r:1"), tap(4, "idea:l:1")]
+    tb.run(st, bot=bot, now=NOW, webhook=False, push=False)
+    assert len(st.tables[db.IDEAS]) == 1 and st.tables[db.IDEAS][0]["stream"] == "regulab"
+    assert inbox(st)[3]["note"] == inbox(st)[4]["note"] == "idea already made"
+    assert "sudah dihantar" in bot.sent()[-1]["text"]
+
+
+class Boom:
+    """A requests session whose network fails the way urllib3 says it: with the URL, and so the token, in the message."""
+    def post(self, url, **_kw):
+        import requests
+        raise requests.ConnectionError(f"HTTPSConnectionPool(host='api.telegram.org', port=443): Max retries exceeded with "
+                                       f"url: {url.split('api.telegram.org')[1]} (Caused by NameResolutionError)")
+
+
+def test_a_network_error_never_carries_the_bot_token():
+    real = tb.Bot("123456:SECRETtoken_x-1", session=Boom())
+    for go in (lambda: real.send(CHAT, "hai"), lambda: real.document(CHAT, "a.md", b"x"), lambda: real.video(CHAT, "https://v")):
+        try:
+            go()
+            raise AssertionError("it should have failed")
+        except tb.TelegramError as exc:
+            assert "SECRETtoken" not in str(exc) and "123456:" not in str(exc) and "ConnectionError" in str(exc)
+    assert tb.scrub("x /bot123456:SECRETtoken_x-1/sendMessage y") == "x /bot***/sendMessage y", "the backstop alone too"
+
+
+def test_the_runs_own_error_note_and_message_are_scrubbed(monkeypatch):
+    bot = Bot()
+    bot.token = "123456:SECRETtoken"
+
+    def boom(*_a, **_k):
+        raise RuntimeError("Max retries exceeded with url: /bot123456:SECRETtoken/sendPhoto")
+    monkeypatch.setattr(tb, "status_text", boom)
+    st = store(**{tb.INBOX: [msg(1, "/status")]})
+    tb.run(st, bot=bot, now=NOW, webhook=False, push=False)
+    assert "SECRETtoken" not in inbox(st)[1]["note"] and inbox(st)[1]["status"] == "error"
+    assert all("SECRETtoken" not in m["text"] for m in bot.sent())
+
+
+def test_a_new_bot_token_sets_the_webhook_again_and_only_a_fingerprint_is_kept(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://x.supabase.co")
+    st, bot = store(), Bot()
+    tb.run(st, bot=bot, now=NOW, push=False)
+    state = next(r for r in st.tables[db.SETTINGS] if r["key"] == "telegram_bot")["value"]
+    assert state["secret_fp"] == tb.secret_fingerprint(tb.webhook_secret("123:ABC"))
+    assert tb.webhook_secret("123:ABC") not in str(state), "never the secret itself"
+    bot.token = "123:NEW"                                   # the same address, a rotated token
+    tb.run(st, bot=bot, now=NOW, push=False)
+    sets = [p for m, p in bot.calls if m == "setWebhook"]
+    assert len(sets) == 2 and sets[1]["secret_token"] == tb.webhook_secret("123:NEW")
+    tb.run(st, bot=bot, now=NOW, push=False)
+    assert len([1 for m, _ in bot.calls if m == "setWebhook"]) == 2, "not again while the token stays"
+
+
+def test_the_watchdog_says_to_rerun_deploy_functions_when_telegram_is_refused():
+    st = store(**{db.SETTINGS: [{"key": "telegram_bot", "value": {
+        "webhook": "https://x/functions/v1/semasa-telegram", "last_error": "Wrong response from the webhook: 403 Forbidden",
+        "last_error_at": NOW.timestamp() - 60}}]})
+    got = health.check_telegram(st, NOW)
+    assert len(got) == 1 and "Deploy functions" in got[0]["todo"] and "secret does not match" in got[0]["todo"]
+
+
+def test_a_past_or_undated_draft_is_never_approved_from_telegram():
+    late = post("p1", date="2026-11-07", slot="13:00")        # 05:00 UTC: seven hours before NOW
+    st = store(**{db.POSTS: [late], tb.SENT: [{"post_id": "p1", "version": late["updated_at"], "chat_id": CHAT,
+                                               "message_id": 700}], tb.INBOX: [tap(1, "ok:p1")]})
+    bot = Bot()
+    tb.run(st, bot=bot, now=NOW, webhook=False, push=False)
+    assert st.rpcs == [] and st.tables[db.POSTS][0]["status"] == "draft"
+    assert "sudah lepas lebih 45 minit" in bot.sent()[-1]["text"] and "Pindahkan" in bot.sent()[-1]["text"]
+    undated = post("p2", date=None, slot=None)
+    st = store(**{db.POSTS: [undated], tb.SENT: [{"post_id": "p2", "version": undated["updated_at"], "chat_id": CHAT}],
+                  tb.INBOX: [tap(1, "ok:p2")]})
+    tb.run(st, bot=Bot(), now=NOW, webhook=False, push=False)
+    assert st.rpcs == [] and st.tables[db.POSTS][0]["status"] == "draft"
+    # within the grace (40 minutes past) it still goes through the gate, like the page
+    near = post("p3", date="2026-11-07", slot="19:20")        # 11:20 UTC
+    st = store(**{db.POSTS: [near], tb.SENT: [{"post_id": "p3", "version": near["updated_at"], "chat_id": CHAT,
+                                               "message_id": 700}], tb.INBOX: [tap(1, "ok:p3")]})
+    tb.run(st, bot=Bot(), now=NOW, webhook=False, push=False)
+    assert st.tables[db.POSTS][0]["status"] == "approved"
+
+
+def test_draf_lists_only_drafts_whose_slot_is_ahead_and_says_how_many_are_past():
+    st = store(**{db.POSTS: [post("old", date="2026-11-01", slot="08:00"), post("p1"), post("nodate", date=None, slot=None)],
+                  tb.INBOX: [msg(1, "/draf")]})
+    bot = Bot()
+    tb.run(st, bot=bot, now=NOW, webhook=False, push=False)
+    texts = [m["text"] for m in bot.sent()]
+    assert [r["post_id"] for r in st.tables[tb.SENT]] == ["p1", "nodate"], "soonest first, the undated last, the past one not"
+    undated = next(m for m in bot.sent() if "tiada tarikh" in m["text"])
+    assert [b["callback_data"] for b in undated["reply_markup"]["inline_keyboard"][0]] == ["no:nodate"], "no ✅ without a slot"
+    assert "1 draf lagi slotnya sudah lepas" in texts[-1]
+    assert [p["id"] for p in tb.drafts(st, 50, NOW)] == ["p1", "nodate"]

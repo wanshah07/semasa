@@ -69,6 +69,6 @@ export const STATE_WORDS = {
 export const STATE_CLS = { none: "bg-muted/15 text-muted", idle: "bg-warn/15 text-warn", ready: "bg-accent/15 text-accent", ok: "bg-ok/15 text-ok", off: "bg-muted/15 text-muted", error: "bg-danger/15 text-danger" };
 
 export const MAX_IMAGES = [1, 2, 3, 4, 5, 6, 7, 8];
-export const DEFAULT_MODEL = "gpt-5";
+export const DEFAULT_MODEL = "gpt-5.5";   // "gpt-5" is refused for a ChatGPT account (Codex)
 /** The model field: letters, digits and . _ : - (the database checks the same). */
 export const validModel = (m) => /^[A-Za-z0-9._:-]{1,64}$/.test(String(m || "").trim());

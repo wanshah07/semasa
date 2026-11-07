@@ -476,3 +476,8 @@ def test_chatgpt_is_a_robot_on_the_api_page():
     assert row["chat_ok"] and row["key_ok"] and row["model"] == "gpt-5.5" and row["models"] == ["gpt-5.5"] and row["model_listed"]
     off = cl.Login(FakeStore(**{cl.TABLE: []}), http=Http2(), sleep=lambda s: None, now=lambda: NOW).probe_row()
     assert not off["chat_ok"] and "not connected" in off["error"]
+
+
+def test_the_default_model_is_one_a_chatgpt_account_accepts():
+    # 7 Nov 2026: "The 'gpt-5' model is not supported when using Codex with a ChatGPT account"
+    assert cl.DEFAULT_MODEL == "gpt-5.5" == cl.FALLBACK_MODELS[0]

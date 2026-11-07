@@ -37,7 +37,7 @@ ISSUER = "https://auth.openai.com"
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"          # the Codex CLI's public client: the login Wan made with `codex login`
 RESPONSES = "https://chatgpt.com/backend-api/codex/responses"
 SKEW = timedelta(minutes=5)                          # refresh when the access token has less than this left
-DEFAULT_MODEL = "gpt-5"
+DEFAULT_MODEL = "gpt-5.5"               # "gpt-5" is refused for a ChatGPT account (Codex); FALLBACK_MODELS[0]
 INSTRUCTIONS = ("You are an image generator. Call the image_generation tool exactly once, using the user's message as the "
                 "picture request, then stop. Never answer with text.")
 SIZES = {"portrait": "1024x1536", "landscape": "1536x1024", "square": "1024x1024"}

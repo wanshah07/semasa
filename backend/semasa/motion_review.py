@@ -154,10 +154,9 @@ def telegram_buttons(motion_id: str, site: str, written: int | None = None) -> l
 
 
 def telegram_notify(store: Any, row: dict[str, Any], bot: Any = None, link: dict[str, Any] | None = None) -> bool:
-    """The storyboard on Telegram with its buttons, remembered as sent (settings.telegram_chat.storyboards_sent) so the
-    Telegram worker's own push never sends it twice. False, quietly, when no bot token or no linked account."""
+    """The storyboard on Telegram with its buttons, remembered as sent (settings.telegram_storyboards) so the Telegram
+    worker's own push never sends it twice. False, quietly, when no bot token or no linked account."""
     from . import telegram_bot
-    from . import telegram_tools as tt
     from .billing import SITE_URL
     bot = bot or telegram_bot.make_bot()
     link = link or (telegram_bot.link_of(store) if bot else None)
@@ -166,11 +165,30 @@ def telegram_notify(store: Any, row: dict[str, Any], bot: Any = None, link: dict
     sb = row["storyboard"]
     bot.send(int(link["chat_id"]), telegram_text(row, sb),
              buttons=telegram_buttons(str(row["id"]), SITE_URL, written_epoch(sb)))
-    st = tt.chat_state(store)
-    sent = [x for x in (st.get("storyboards_sent") or []) if isinstance(x, str)]
-    sent.append(sent_key(row["id"], sb))
-    tt.save_chat_state(store, {**st, "storyboards_sent": sent[-50:]})
+    remember_sent(store, sent_key(row["id"], sb))
     return True
+
+
+SENT_KEY = "telegram_storyboards"      # its own settings row: {sent: [...]}. It used to sit inside telegram_chat, which three
+                                       # writers rewrote whole, so a key written by one could be lost to another's stale copy.
+
+
+def sent_keys(store: Any) -> list[str]:
+    """The storyboards already on Telegram. Until telegram_storyboards exists, the old list in telegram_chat is read instead
+    (once: the first write here carries it over)."""
+    from . import db
+    rows = store.table(db.SETTINGS).select("key,value").in_("key", [SENT_KEY, "telegram_chat"]).execute().data or []
+    by = {r.get("key"): (r.get("value") or {}) for r in rows}
+    got = (by[SENT_KEY].get("sent") if SENT_KEY in by else by.get("telegram_chat", {}).get("storyboards_sent")) or []
+    return [x for x in got if isinstance(x, str)]
+
+
+def remember_sent(store: Any, key: str) -> None:
+    from . import db
+    sent = sent_keys(store)                  # read immediately before the write
+    if key not in sent:
+        sent.append(key)
+    store.table(db.SETTINGS).upsert({"key": SENT_KEY, "value": {"sent": sent[-50:]}}, on_conflict="key").execute()
 
 
 def sent_key(motion_id: Any, sb: dict[str, Any]) -> str:
@@ -180,8 +198,7 @@ def sent_key(motion_id: Any, sb: dict[str, Any]) -> str:
 
 def due(store: Any) -> list[dict[str, Any]]:
     """Films waiting on a storyboard not yet sent to Telegram (the net for a send the motion worker could not make)."""
-    from . import telegram_tools as tt
-    sent = set(tt.chat_state(store).get("storyboards_sent") or [])
+    sent = set(sent_keys(store))
     try:
         rows = store.table(TABLE).select("id,brief,title,status,storyboard,error").eq("status", REVIEW).execute().data or []
     except Exception as exc:  # noqa: BLE001 - before 071 there is no 'review' to find

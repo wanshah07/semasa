@@ -640,6 +640,20 @@ export function raceCandidates(cands, attempt, { staggerMs = 25000, budgetMs = 1
 /** The reader's whole time budget: one for all candidates together, under the platform's 150 s request limit. */
 export const READER_BUDGET_MS = 138000;
 
+/** The chat's budget under the same 150 s, with room left to send the error event; Auto hands a question to the next robot only
+    when at least SWITCH_MIN_MS of it remains, and no single call may run past it. */
+export const CHAT_BUDGET_MS = 140000;
+export const SWITCH_MIN_MS = 25000;
+export const TURN_MAX_MS = 110000;
+export const switchAllowed = (elapsedMs) => CHAT_BUDGET_MS - (Number(elapsedMs) || 0) >= SWITCH_MIN_MS;
+export const turnTimeoutMs = (elapsedMs) => Math.max(5000, Math.min(TURN_MAX_MS, CHAT_BUDGET_MS - (Number(elapsedMs) || 0)));
+
+/** A fetch that threw (time-out, DNS, refused connection), as the short reason the page and the failover read. */
+export function netError(e) {
+  const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  return /abort|time/i.test(msg) ? "the model did not answer in time" : `the robot could not be reached (${msg.slice(0, 160)})`;
+}
+
 /** One { status, err } to show for a set of failures: "gateway down" only when every one was (nothing else could have helped), "too
     slow" when any one timed out (a faster model might), else the last. */
 export function summariseFailures(failures) {
@@ -711,6 +725,9 @@ export const ROBOT_ORDER = ["rootsys", "mireld", "kiosapi", "gemini", "chatgpt"]
 export const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai";
 export const CHATGPT_RESPONSES = "https://chatgpt.com/backend-api/codex/responses";
 export const CHATGPT_TOKEN_URL = "https://auth.openai.com/oauth/token";
+/** The model a ChatGPT login uses when none is saved: "gpt-5" is refused for a ChatGPT account through Codex (7 Nov 2026), and
+    this matches chatgpt_login.DEFAULT_MODEL and the page's chatgptLogin.DEFAULT_MODEL. */
+export const CHATGPT_DEFAULT_MODEL = "gpt-5.5";
 export const CHATGPT_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";   // the Codex CLI's public client id (chatgpt_login.py), not a secret
 export const CHATGPT_SKEW_MS = 5 * 60_000;                          // refresh when less than this is left on the access token
 const PROBE_FRESH_MS = 13 * 3600_000;                               // the probe runs every 6 h; older says nothing about now
@@ -881,7 +898,7 @@ export function assembleTeam(input = {}) {
   const row = input.chatgpt?.row || null;
   if (!input.serviceRole) why.chatgpt = "the function cannot read the ChatGPT login (no service role)";
   else if (!row?.auth?.tokens?.refresh_token) why.chatgpt = "ChatGPT is not connected: paste auth.json in the Motion tab";
-  else gates.chatgpt = { kind: "chatgpt", base: CHATGPT_RESPONSES, host: CHAT_ROBOTS.chatgpt.host, model: cleanModelId(row.model) || "gpt-5", from: "ChatGPT login" };
+  else gates.chatgpt = { kind: "chatgpt", base: CHATGPT_RESPONSES, host: CHAT_ROBOTS.chatgpt.host, model: cleanModelId(row.model) || CHATGPT_DEFAULT_MODEL, from: "ChatGPT login" };
 
   for (const slug of ["rootsys", "mireld", "kiosapi"]) {
     if (gates[slug] || why[slug]) continue;
@@ -978,7 +995,7 @@ export function responsesBody(messages, model) {
       input.push({ type: "message", role: "assistant", content: [{ type: "output_text", text: m.content }] });
     }
   }
-  return { model: cleanModelId(model) || "gpt-5", instructions: instructions || SYSTEM, input, store: false, stream: true };
+  return { model: cleanModelId(model) || CHATGPT_DEFAULT_MODEL, instructions: instructions || SYSTEM, input, store: false, stream: true };
 }
 
 /** Fold one Responses stream event into { content, final, error, model }. Pure, like foldDelta. */

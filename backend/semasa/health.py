@@ -141,22 +141,37 @@ def retry_transient_ideas(store: Any, now: datetime) -> list[str]:
 
 # ---- what it reports ------------------------------------------------------------------------------------------------------
 
+WORKFLOW_FAILED = ("failure", "timed_out", "startup_failure")
+WORKFLOW_PAGES = 3                    # per status, 100 runs a page: far more failures than a day ever has
+
+
 def check_workflows(now: datetime, session: Any = None) -> list[dict[str, str]]:
-    """Workflow runs of this repository that failed in the last LOOKBACK_HOURS (GitHub's own API, the run's GITHUB_TOKEN)."""
+    """Workflow runs of this repository that failed in the last LOOKBACK_HOURS (GitHub's own API, the run's GITHUB_TOKEN).
+
+    Asked for the failed runs only (`status` = each failed conclusion), page by page: the newest 100 runs of every kind covered
+    about 3.5 hours of this repository's day, not the 24 hours this claims."""
     repo, token = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_TOKEN", "")
     if not repo or not token:
         return []
     since = (now - timedelta(hours=LOOKBACK_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
     s = session or requests
+    runs: dict[str, dict[str, Any]] = {}
     try:
-        r = s.get(f"https://api.github.com/repos/{repo}/actions/runs", params={"created": f">={since}", "per_page": 100},
-                  headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}, timeout=30)
-        runs = (r.json() or {}).get("workflow_runs") or [] if r.status_code == 200 else []
+        for status in WORKFLOW_FAILED:
+            for page in range(1, WORKFLOW_PAGES + 1):
+                r = s.get(f"https://api.github.com/repos/{repo}/actions/runs",
+                          params={"created": f">={since}", "status": status, "per_page": 100, "page": page},
+                          headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}, timeout=30)
+                got = ((r.json() or {}).get("workflow_runs") or []) if r.status_code == 200 else []
+                for run in got:
+                    runs.setdefault(str(run.get("id") or run.get("html_url") or len(runs)), run)
+                if len(got) < 100:
+                    break
     except Exception as exc:  # noqa: BLE001
         return [problem("GitHub", f"the workflow runs could not be read ({type(exc).__name__})")]
     bad: dict[str, list[str]] = {}
-    for run in runs:
-        if run.get("conclusion") in ("failure", "timed_out", "startup_failure"):
+    for run in runs.values():
+        if run.get("conclusion") in WORKFLOW_FAILED and str(run.get("created_at") or since) >= since:
             bad.setdefault(str(run.get("name") or "?"), []).append(str(run.get("html_url") or ""))
     return [problem("GitHub", f"{name}: {len(urls)} run(s) failed in 24 h. Latest: {urls[0]}",
                     "Open the run's log; a code fix is needed if it fails again.") for name, urls in sorted(bad.items())]
@@ -278,9 +293,12 @@ def check_telegram(store: Any, now: datetime) -> list[dict[str, str]]:
         out.append(problem("Telegram", "the bot is not connected to Semasa's webhook",
                            "Run the Telegram workflow (Actions → Telegram → Run workflow); check TELEGRAM_BOT_TOKEN."))
     err_at = state.get("last_error_at")
+    redeploy = ("Re-run the \"Deploy functions\" workflow (Actions → Deploy functions → Run workflow): it sets the function's "
+                "TELEGRAM_WEBHOOK_SECRET from the current bot token and deploys semasa-telegram.")
     if state.get("last_error") and isinstance(err_at, (int, float)) and now.timestamp() - err_at < LOOKBACK_HOURS * 3600:
+        refused = re.search(r"\b40[13]\b|forbidden|unauthori", str(state["last_error"]), re.I)
         out.append(problem("Telegram", f"Telegram could not deliver to Semasa: {state['last_error']}",
-                           "Check that the semasa-telegram function is deployed (Actions → Deploy functions)."))
+                           ("The webhook's secret does not match (the bot token changed?). " if refused else "") + redeploy))
     since = (now - timedelta(minutes=30)).isoformat()
     stuck = _rows(store, "semasa_telegram_inbox", lambda q: q.select("id").in_("kind", ["private", "callback"])
                   .in_("status", ["new", "working"]).lt("created_at", since))
@@ -409,22 +427,30 @@ def run(store: Any, now: datetime | None = None, sender: Any = None, session: An
     sent = ""
     to = recipient(settings)
     _new, _cleared, now_open = changes(problems, state, now)
+    # rendered ONCE, against the open set as it was before this run, so the e-mail and Telegram carry the same new and
+    # cleared lines (rendering Telegram's copy after state["open"] moved on left it with nothing new and nothing cleared)
+    subject, body = render(problems, fixed, now, kind, state) if kind else ("", "")
+    mail_error = ""
     if kind and sender is not None and to:
-        subject, body = render(problems, fixed, now, kind, state)
         try:
             sender.send(to=to, cc=[], subject=subject, html=body, attachment=None)
             sent = to
-            state["open"] = now_open             # only once Wan has been told: a failed e-mail says it again next run
-            state["emailed_fingerprint"] = fingerprint(problems)
-            if kind == "summary":
-                state["summary_at"] = now.isoformat()
         except Exception as exc:  # noqa: BLE001 - the report is still kept below and shown on the page
+            mail_error = str(exc)[:160]
             log.warning("the health report was not e-mailed (%s)", str(getattr(exc, "message", exc))[:200])
-            problems.append(problem("Billing", f"the health report itself could not be e-mailed: {str(exc)[:160]}"))
+            problems.append(problem("Billing", f"the health report itself could not be e-mailed: {mail_error}"))
+    told = False
     if kind in ("attention", "fixed") and notify_telegram:
         from . import telegram_bot  # the same lines on Telegram, when the bot is linked (quietly nothing otherwise)
-        subject, body = render(problems, fixed, now, kind, state)
-        telegram_bot.notify(store, f"🩺 {subject}\n\n" + as_text(body))
+        extra = ("\n\nThe e-mail copy could not be sent: " + mail_error) if mail_error else (
+            "" if sent else "\n\n(No e-mail copy: no sender or no address.)")
+        told = bool(telegram_bot.notify(store, f"🩺 {subject}\n\n" + as_text(body) + extra))
+    if sent or told:                             # only once Wan has been told, by either: if neither went, say it again
+        state["open"] = now_open
+    if sent:
+        state["emailed_fingerprint"] = fingerprint(problems)
+        if kind == "summary":
+            state["summary_at"] = now.isoformat()
     if not kind:
         state["open"] = now_open
     state.update({"at": now.isoformat(), "problems": problems, "fixed": fixed, "emailed": sent, "kind": kind})

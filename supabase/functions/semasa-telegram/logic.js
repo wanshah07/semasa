@@ -70,9 +70,12 @@ export function inboxRow(update, kind, owner) {
    here, in the webhook, with the AI chat's own gateway (its secrets are this project's Edge Function secrets), instead of waking
    the GitHub worker (30-60 s). Only when nothing else must happen first: no command, no link (a link becomes an idea on a tap),
    no topic the menu is waiting for, no correction after 👎, and Wan's /robot pin is Auto or names this same gateway. Anything
-   else, or a gateway that fails or is slow, goes to the worker exactly as before. */
-export function fastEligible({ kind, text, owner, state, pin, gwName }) {
-  if (kind !== "private" || !owner) return false;
+   else, or a gateway that fails or is slow, goes to the worker exactly as before.
+   `busy`: a message or tap of his the worker has not finished yet (inbox new/working). pending and await_note are written by
+   the worker 30-60 s after a menu tap or a 👎, so until it is done they cannot be trusted: the message waits its turn, else it
+   is answered as a question and the NEXT one is misfiled as the topic or the correction. */
+export function fastEligible({ kind, text, owner, state, pin, gwName, busy = false }) {
+  if (kind !== "private" || !owner || busy) return false;
   const t = String(text || "").trim();
   if (!t || t.startsWith("/") || /https?:\/\//i.test(t) || /^[A-Fa-f0-9]{8}$/.test(t)) return false;
   if (state?.pending || state?.await_note) return false;
@@ -94,6 +97,15 @@ export function fastMessages({ text, notes, turns, snapshot, gwName, model }) {
     "\n\nEARLIER\n" + ((turns || []).map(([q, a]) => `Wan: ${q}\nSemasa: ${a}`).join("\n") || "(none)");
   return [{ role: "system", content: `${FAST_SYSTEM} ${me}` },
     { role: "user", content: `${known}\n\nWAN ASKS\n${String(text).slice(0, 3000)}` }];
+}
+
+/** How far back an unfinished inbox row still holds the fast path: a row stuck longer (a run that died) is the watchdog's to
+ *  report (30 minutes), and must not turn fast answers off for good. */
+export const BUSY_WINDOW_MS = 15 * 60_000;
+
+/** Wan's standing notes for the prompt: the NEWEST `max` rows (read newest first), put back in the order they were written. */
+export function newestNotes(rowsNewestFirst, max = 40) {
+  return (rowsNewestFirst || []).slice(0, max).reverse().map((n) => n.note);
 }
 
 /** Pairs (question, answer) from a thread's messages, oldest first. */

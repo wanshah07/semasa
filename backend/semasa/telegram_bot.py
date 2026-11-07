@@ -52,6 +52,8 @@ URL_RE = re.compile(r"https?://[^\s<>\"']+")
 PER_RUN = 30                     # inbox rows a run
 PUSH_PER_RUN = 5                 # new drafts pushed a run
 MSG_MAX = 3900                   # Telegram's limit is 4096
+MYT = timedelta(hours=8)
+LATE_GRACE = timedelta(minutes=45)   # publisher.LATE_GRACE and the page's PostEditor: a slot more than 45 min gone never sends
 COMMANDS = [
     ("robot", "Robot AI: siapa menulis, pilih model / pick the model"),
     ("draf", "Draf menunggu kelulusan / drafts to approve"),
@@ -80,10 +82,26 @@ class TelegramError(RuntimeError):
     pass
 
 
+TOKEN_RE = re.compile(r"bot\d+:[A-Za-z0-9_-]+")
+
+
+def scrub(text: Any, token: str = "") -> str:
+    """Never let the bot token reach a log, the inbox or a message: a requests error names the URL, /bot<TOKEN>/<method>."""
+    out = str(text)
+    if token:
+        out = out.replace(token, "***")
+    return TOKEN_RE.sub("bot***", out)
+
+
 def webhook_secret(token: str) -> str:
     """The X-Telegram-Bot-Api-Secret-Token, derived from the bot token so there is no second secret to keep.
     functions.yml computes the same value for the Edge Function (openssl dgst -sha256 -hmac)."""
     return hmac.new(token.encode(), LABEL, hashlib.sha256).hexdigest()
+
+
+def secret_fingerprint(secret: str) -> str:
+    """A short sha256 of the webhook secret, stored so a changed bot token is noticed. Never the secret itself."""
+    return hashlib.sha256(secret.encode()).hexdigest()[:12]
 
 
 def function_url() -> str:
@@ -95,8 +113,14 @@ class Bot:
     def __init__(self, token: str, session: Any = None):
         self.token, self.http = token, session or requests.Session()
 
+    def _post(self, method: str, timeout: int, **kw: Any) -> Any:
+        try:
+            return self.http.post(TG.format(token=self.token, method=method), timeout=timeout, **kw)
+        except requests.RequestException as exc:   # its message carries the URL, and so the token
+            raise TelegramError(f"{method}: {type(exc).__name__}: {scrub(exc, self.token)}") from None
+
     def call(self, method: str, **params: Any) -> Any:
-        r = self.http.post(TG.format(token=self.token, method=method), json=params, timeout=30)
+        r = self._post(method, 30, json=params)
         try:
             body = r.json()
         except ValueError:
@@ -119,8 +143,8 @@ class Bot:
         self.call("sendPhoto", chat_id=chat, photo=url, caption=caption[:1000])
 
     def document(self, chat: int, name: str, data: bytes, caption: str = "") -> None:
-        r = self.http.post(TG.format(token=self.token, method="sendDocument"), data={"chat_id": chat, "caption": caption[:1000]},
-                           files={"document": (name, data, "text/markdown")}, timeout=60)
+        r = self._post("sendDocument", 60, data={"chat_id": chat, "caption": caption[:1000]},
+                       files={"document": (name, data, "text/markdown")})
         try:
             ok = r.json().get("ok")
         except ValueError:
@@ -167,19 +191,25 @@ def ensure_webhook(store: Any, bot: Bot, now: datetime) -> dict[str, Any]:
     want = function_url()
     me = bot.call("getMe") or {}
     info = bot.call("getWebhookInfo") or {}
+    rows = store.table(db.SETTINGS).select("value").eq("key", STATE_KEY).execute().data or []
+    before = (rows[0].get("value") or {}) if rows else {}
+    secret = webhook_secret(bot.token)
+    fp = secret_fingerprint(secret)
+    # a new bot token derives a new secret: Telegram must be told it, even though the address is the same (and the
+    # Edge Function's TELEGRAM_WEBHOOK_SECRET follows when "Deploy functions" runs again: the watchdog says so)
     changed = False
-    if want and info.get("url") != want:
-        bot.call("setWebhook", url=want, secret_token=webhook_secret(bot.token),
+    if want and (info.get("url") != want or before.get("secret_fp") != fp):
+        bot.call("setWebhook", url=want, secret_token=secret,
                  allowed_updates=["message", "callback_query"], max_connections=10)
         info = bot.call("getWebhookInfo") or {}
         changed = True
     names = ",".join(c for c, _ in COMMANDS)
-    rows = store.table(db.SETTINGS).select("value").eq("key", STATE_KEY).execute().data or []
-    if changed or ((rows[0].get("value") or {}) if rows else {}).get("commands") != names:   # the menu follows the code
+    if changed or before.get("commands") != names:   # the menu follows the code
         bot.call("setMyCommands", commands=[{"command": c, "description": d[:256]} for c, d in COMMANDS])
     state = {"username": me.get("username"), "webhook": info.get("url") or "", "pending": info.get("pending_update_count", 0),
              "last_error": info.get("last_error_message") or "", "last_error_at": info.get("last_error_date"),
-             "checked_at": now.isoformat(), "set_now": changed, "commands": names}
+             "checked_at": now.isoformat(), "set_now": changed, "commands": names,
+             "secret_fp": fp if (changed or before.get("secret_fp") == fp) else before.get("secret_fp")}
     save_state(store, state)
     return state
 
@@ -202,8 +232,35 @@ def _where(post: dict[str, Any]) -> str:
     return " · ".join(b for b in bits if b)
 
 
-def scan(store: Any, post: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
-    """(the compliance flags to save with an approval, what stops it): the publisher's own hard checks."""
+def slot_utc(post: dict[str, Any]) -> datetime | None:
+    """The post's slot as a UTC moment (date and slot are Malaysia time), or None when either is missing or unreadable."""
+    try:
+        y, m, d = (int(x) for x in str(post.get("date") or "")[:10].split("-"))
+        hh, mm = (int(x) for x in str(post.get("slot") or "").split(":")[:2])
+        return datetime(y, m, d, hh, mm, tzinfo=UTC) - MYT
+    except (TypeError, ValueError):
+        return None
+
+
+def slot_past(post: dict[str, Any], now: datetime) -> bool:
+    due = slot_utc(post)
+    return due is not None and due < now - LATE_GRACE
+
+
+def position_problem(post: dict[str, Any], now: datetime) -> str:
+    """The page's position checks (PostEditor): a post with no date and slot, or whose slot is more than 45 minutes gone, is
+    never sent by the publisher, so it is not approved here either. Wan moves it in Semasa first."""
+    if slot_utc(post) is None:
+        return "tiada tarikh atau slot: pilih tarikh dan slot di Semasa (tab Post) dahulu"
+    if slot_past(post, now):
+        return (f"slot {post.get('date')} {post.get('slot')} MYT sudah lepas lebih 45 minit: penerbit tidak akan "
+                "menghantarnya. Pindahkan ke slot baharu di Semasa (tab Post → Jadual → Pindah semua)")
+    return ""
+
+
+def scan(store: Any, post: dict[str, Any], now: datetime | None = None) -> tuple[list[dict[str, Any]], list[str]]:
+    """(the compliance flags to save with an approval, what stops it): the publisher's own hard checks, plus the page's
+    position checks (which depend on the clock, so they stop the approval but are never saved as flags)."""
     from .publisher import load_settings, media_for, scan_entry
     settings = load_settings(store)
     reg = (settings.get("brand") or {}).get("regulab") or {}
@@ -215,14 +272,17 @@ def scan(store: Any, post: dict[str, Any]) -> tuple[list[dict[str, Any]], list[s
         hard.append("gambar belum siap dijana")
     if len(media) < len(post.get("media_ids") or []):
         hard.append("gambar yang dilampirkan sudah dipadam")
+    where = position_problem(post, now or datetime.now(UTC))
+    if where:
+        hard.insert(0, where)
     return flags, hard
 
 
-def blockers(store: Any, post: dict[str, Any]) -> list[str]:
-    return scan(store, post)[1]
+def blockers(store: Any, post: dict[str, Any], now: datetime | None = None) -> list[str]:
+    return scan(store, post, now)[1]
 
 
-def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any]) -> None:
+def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datetime | None = None) -> None:
     from .publisher import media_for, pictures_of
     media = media_for(store, list(post.get("media_ids") or []))
     pics = [u for m in media for u in pictures_of(m)]
@@ -231,7 +291,7 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any]) -> None:
             bot.photo(chat, pics[0], f"📝 {_where(post)}" + (f" · {len(pics)} gambar" if len(pics) > 1 else ""))
         except TelegramError as exc:
             log.info("picture not sent (%s)", exc)
-    hard = blockers(store, post)
+    hard = blockers(store, post, now)
     text = f"📝 Draf · {_where(post)}\n\n{_caption(post)[:3000]}"
     if post.get("citation"):
         text += f"\n\nSumber: {str(post['citation'])[:300]}"
@@ -247,8 +307,16 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any]) -> None:
                               "sent_at": datetime.now(UTC).isoformat()}, on_conflict="post_id").execute()
 
 
-def drafts(store: Any, limit: int = 5) -> list[dict[str, Any]]:
-    rows = store.table(db.POSTS).select("*").eq("status", "draft").execute().data or []
+def draft_rows(store: Any) -> list[dict[str, Any]]:
+    return store.table(db.POSTS).select("*").eq("status", "draft").execute().data or []
+
+
+def drafts(store: Any, limit: int = 5, now: datetime | None = None,
+           rows: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Drafts Wan can still approve, soonest slot first: one whose slot is more than 45 minutes gone is left out (the
+    publisher would never send it; /draf says how many and where to move them). A draft with no date yet comes last."""
+    now = now or datetime.now(UTC)
+    rows = [p for p in (draft_rows(store) if rows is None else rows) if not slot_past(p, now)]
     rows.sort(key=lambda p: (str(p.get("date") or "9999"), str(p.get("slot") or "")))
     return rows[:limit]
 
@@ -382,8 +450,19 @@ def make_idea(store: Any, link: dict[str, Any], source: dict[str, Any], stream: 
     title = (page_title(urls[0]) if urls else "") or note[:200] or (urls[0] if urls else "")
     row = {"source_title": title[:300], "source_url": urls[0] if urls else None, "source_name": "Telegram",
            "stream": stream, "make_media": "image", "note": note[:2000], "reference_urls": urls[1:8],
-           "status": "new", "created_by": link["user_id"], "brief": {"via": "telegram"}}
+           "status": "new", "created_by": link["user_id"], "brief": {"via": "telegram", "telegram_inbox_id": source["id"]}}
     return (store.table(db.IDEAS).insert(row).execute().data or [row])[0]
+
+
+def idea_from(store: Any, source_id: Any) -> dict[str, Any] | None:
+    """The idea already made from this Telegram message (brief.telegram_inbox_id), so a double tap makes one idea, not two.
+    Runs are one at a time (telegram.yml's concurrency group), so reading first is enough."""
+    try:
+        got = store.table(db.IDEAS).select("id,source_title,stream").contains("brief", {"telegram_inbox_id": source_id}) \
+            .limit(1).execute().data or []
+    except Exception as exc:  # noqa: BLE001 - unreadable: say so rather than risk a second idea
+        raise TelegramError(f"ideas not read ({str(exc)[:120]})") from None
+    return got[0] if got else None
 
 
 # ---- questions ------------------------------------------------------------------------------------------------------------
@@ -457,17 +536,28 @@ DECIDE_WORDS = {
 }
 
 
-def decide(store: Any, bot: Bot, link: dict[str, Any], chat: int, message_id: int, post_id: str, action: str) -> str:
+def decide(store: Any, bot: Bot, link: dict[str, Any], chat: int, message_id: int, post_id: str, action: str,
+           now: datetime | None = None) -> str:
+    now = now or datetime.now(UTC)
     rows = store.table(db.POSTS).select("*").eq("id", post_id).execute().data or []
     if not rows:
         bot.send(chat, DECIDE_WORDS["gone"], reply_to=message_id)
         return "gone"
     post = rows[0]
-    sent = store.table(SENT).select("version").eq("post_id", post_id).execute().data or []
+    sent = store.table(SENT).select("version,message_id").eq("post_id", post_id).execute().data or []
     version = sent[0]["version"] if sent else None
+    # the version kept is the one in the NEWEST preview (every resend overwrites it): a tap on an older message would decide
+    # a version that message never showed, so it is refused and the current preview is sent again
+    shown_in = int((sent[0].get("message_id") or 0) if sent else 0)
+    if post.get("status") == "draft" and shown_in and message_id and int(message_id) != shown_in:
+        bot.drop_buttons(chat, message_id)
+        bot.send(chat, "Ini pratonton lama: ada pratonton lebih baharu untuk draf ini. Tiada apa diubah. Ini versi terkini:",
+                 reply_to=message_id)
+        send_draft(store, bot, chat, post, now)
+        return "old preview"
     flags: list[dict[str, Any]] = []
     if action == "approve":
-        flags, hard = scan(store, post)
+        flags, hard = scan(store, post, now)
         if hard:
             bot.send(chat, "⚠️ Belum boleh diluluskan:\n• " + "\n• ".join(hard[:6]), reply_to=message_id)
             return "blocked"
@@ -491,7 +581,7 @@ def decide(store: Any, bot: Bot, link: dict[str, Any], chat: int, message_id: in
     if res == "changed":
         bot.drop_buttons(chat, message_id)
         bot.send(chat, "Draf ini telah berubah sejak dihantar. Ini versi terkini:", reply_to=message_id)
-        send_draft(store, bot, chat, post)
+        send_draft(store, bot, chat, post, now)
         return "changed"
     if res.startswith("status:"):
         bot.drop_buttons(chat, message_id)
@@ -501,14 +591,15 @@ def decide(store: Any, bot: Bot, link: dict[str, Any], chat: int, message_id: in
     return res
 
 
-def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, Any]) -> str:
+def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, Any], now: datetime | None = None) -> str:
+    now = now or datetime.now(UTC)
     cq = row["payload"]["callback_query"]
     data = str(cq.get("data") or "")
     msg = cq.get("message") or {}
     chat, mid = int(msg.get("chat", {}).get("id") or link["chat_id"]), int(msg.get("message_id") or 0)
     kind, _, rest = data.partition(":")
     if kind in ("ok", "no"):
-        return decide(store, bot, link, chat, mid, rest, "approve" if kind == "ok" else "reject")
+        return decide(store, bot, link, chat, mid, rest, "approve" if kind == "ok" else "reject", now)
     if kind == "idea":
         choice, _, src = rest.partition(":")
         bot.drop_buttons(chat, mid)
@@ -519,6 +610,11 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
         if not got or int(got[0].get("from_id") or 0) != int(link["telegram_user_id"]):
             bot.send(chat, "Mesej asal tidak dijumpai.", reply_to=mid)
             return "idea source missing"
+        made = idea_from(store, got[0]["id"])
+        if made:                          # a second tap on the same message (or on the other stream's button)
+            bot.send(chat, f"💡 Idea ini sudah dihantar ({STREAM_WORDS.get(made.get('stream'), made.get('stream') or '')}): "
+                           f"{made.get('source_title') or ''}", reply_to=mid)
+            return "idea already made"
         stream = "linkedin" if choice == "l" else "regulab"
         idea = make_idea(store, link, got[0], stream)
         bot.send(chat, f"💡 Idea {STREAM_WORDS[stream]} dihantar: {idea.get('source_title') or ''}\n"
@@ -529,7 +625,7 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
             bot.send(chat, tt.ask_topic(store, rest))
             return f"menu asks {rest}"
         fake = {**row, "payload": {"message": {"message_id": mid, "chat": {"id": chat}, "text": f"/{rest}"}}}
-        return handle_message(store, bot, link, fake, lambda: None, datetime.now(UTC))
+        return handle_message(store, bot, link, fake, lambda: None, now)
     if kind == "pin":
         bot.drop_buttons(chat, mid)
         bot.send(chat, tt.set_pin(store, rest), reply_to=mid)
@@ -625,12 +721,19 @@ def handle_message(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, An
         bot.send(chat, HELP)
         return "help"
     if cmd in ("draf", "drafts", "draft"):
-        rows = drafts(store)
-        if not rows:
+        every = draft_rows(store)
+        rows = drafts(store, now=now, rows=every)
+        late = sum(1 for p in every if slot_past(p, now))
+        if not rows and not late:
             bot.send(chat, "Tiada draf menunggu kelulusan. 👍")
         for p in rows:
-            send_draft(store, bot, chat, p)
-        return f"{len(rows)} draft(s)"
+            send_draft(store, bot, chat, p, now)
+        if late:
+            bot.send(chat, f"⏰ {late} draf lagi slotnya sudah lepas lebih 45 minit, jadi tidak boleh diluluskan di sini: "
+                           "penerbit tidak menghantar post yang lewat. Pindahkan ke slot baharu di Semasa (tab Post → Jadual → "
+                           "Pindah semua), kemudian /draf semula.",
+                     [[{"text": "🔗 Buka di Semasa", "url": f"{SITE.rstrip('/')}/#posts"}]])
+        return f"{len(rows)} draft(s)" + (f", {late} past their slot" if late else "")
     if cmd in ("jadual", "schedule"):
         bot.send(chat, schedule_text(store, now))
         return "schedule"
@@ -672,11 +775,12 @@ def claim(store: Any) -> list[dict[str, Any]]:
     return out
 
 
-def push_new_drafts(store: Any, bot: Bot, link: dict[str, Any]) -> int:
+def push_new_drafts(store: Any, bot: Bot, link: dict[str, Any], now: datetime | None = None) -> int:
     """Drafts written since the last push, once their pictures are ready: each lands in Telegram with its buttons."""
     known = {r["post_id"] for r in store.table(SENT).select("post_id").execute().data or []}
     linked_at = str(link.get("linked_at") or "")
-    todo = [p for p in drafts(store, 50) if p["id"] not in known and str(p.get("created_at") or "") >= linked_at]
+    now = now or datetime.now(UTC)
+    todo = [p for p in drafts(store, 50, now) if p["id"] not in known and str(p.get("created_at") or "") >= linked_at]
     n = 0
     from .publisher import media_for
     for p in todo:
@@ -686,7 +790,7 @@ def push_new_drafts(store: Any, bot: Bot, link: dict[str, Any]) -> int:
         if any(m.get("status") not in ("done", "error") for m in media):
             continue                      # still drawing: it goes on a later run, with its picture
         try:
-            send_draft(store, bot, int(link["chat_id"]), p)
+            send_draft(store, bot, int(link["chat_id"]), p, now)
             n += 1
         except Exception as exc:  # noqa: BLE001
             log.warning("draft %s not pushed: %s", p["id"], str(exc)[:160])
@@ -730,8 +834,8 @@ def run(store: Any, bot: Bot | None = None, now: datetime | None = None, llm_fac
         try:
             out["webhook"] = ensure_webhook(store, bot, now).get("webhook")
         except Exception as exc:  # noqa: BLE001 - the watchdog reads settings.telegram_bot and reports it
-            log.warning("webhook check failed: %s", exc)
-            out["webhook_error"] = str(exc)[:200]
+            log.warning("webhook check failed: %s", scrub(exc, getattr(bot, "token", "")))
+            out["webhook_error"] = scrub(exc, getattr(bot, "token", ""))[:200]
     link = link_of(store)
     if not link:
         out["note"] = "no Telegram account linked yet (Tetapan → Telegram)"
@@ -747,22 +851,23 @@ def run(store: Any, bot: Bot | None = None, now: datetime | None = None, llm_fac
             if int(row.get("from_id") or 0) != int(link["telegram_user_id"]):
                 note, status = "not the linked account", "skipped"
             elif row["kind"] == "callback":
-                note, status = handle_callback(store, bot, link, row), "done"
+                note, status = handle_callback(store, bot, link, row, now), "done"
             else:
                 note, status = handle_message(store, bot, link, row, llm, now), "done"
             out["handled"] += 1
         except Exception as exc:  # noqa: BLE001 - one bad message never stops the others
-            log.warning("telegram row %s failed: %s", row["id"], exc)
-            note, status = f"{type(exc).__name__}: {str(exc)[:300]}", "error"
+            why = scrub(exc, getattr(bot, "token", ""))                # a backstop: Bot already scrubs its own errors
+            log.warning("telegram row %s failed: %s", row["id"], why)
+            note, status = f"{type(exc).__name__}: {why[:300]}", "error"
             out["errors"] += 1
             try:
-                bot.send(int(link["chat_id"]), f"⚠️ Semasa tersangkut pada mesej itu: {str(exc)[:200]}")
+                bot.send(int(link["chat_id"]), f"⚠️ Semasa tersangkut pada mesej itu: {why[:200]}")
             except Exception:  # noqa: BLE001
                 pass
         store.table(INBOX).update({"status": status, "note": str(note)[:1000], "done_at": now.isoformat()}) \
             .eq("id", row["id"]).execute()
     if push:
-        out["pushed"] = push_new_drafts(store, bot, link)
+        out["pushed"] = push_new_drafts(store, bot, link, now)
         out["videos"] = push_videos(store, bot, link, now)
         out["storyboards"] = push_storyboards(store, bot, link)
     return out
@@ -795,7 +900,7 @@ def push_videos(store: Any, bot: Bot, link: dict[str, Any], now: datetime) -> in
         except Exception as exc:  # noqa: BLE001
             log.info("video %s not sent (%s)", v["id"], str(exc)[:120])
     if n:
-        tt.save_chat_state(store, {**tt.chat_state(store), "videos_sent": sent[-50:]})
+        tt.save_chat_state(store, {"videos_sent": sent[-50:]})
     return n
 
 

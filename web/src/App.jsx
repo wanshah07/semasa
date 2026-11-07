@@ -354,7 +354,7 @@ export default function App() {
         unchecked ? "(Jawapan ini ditulis AI dan belum disemak: jangan tambah fakta khusus yang tiada di sini.)" : ""].filter(Boolean).join("\n\n"),
     };
   }
-  const { settings, save } = useSettings(allowed);
+  const { settings, save, loading: settingsLoading, error: settingsError } = useSettings(allowed);
   useEffect(() => { setWanshah(approvedPoses(settings.wanshah)); }, [settings.wanshah]);   // Wanshah (supabase/040) replaces the poses in place
   // My designs (supabase/027): the saved text-free designs and the default, offered to every look picker through one context
   const designsCtx = useMemo(() => ({
@@ -409,7 +409,7 @@ export default function App() {
   else if (tab === "video-lib") body = allowed ? <VideoLibraryTab user={user} gens={gens} posts={posts} onToast={push} go={go} /> : gate(null);
   else if (tab === "motion-skills") body = allowed ? <MotionSkillsTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
-  else if (tab === "memori") body = allowed ? <MemoryTab settings={settings} save={save} onToast={push} /> : gate(null);
+  else if (tab === "memori") body = allowed ? <MemoryTab settings={settings} settingsLoading={settingsLoading} settingsError={settingsError} save={save} onToast={push} /> : gate(null);
   else if (tab === "otak") body = allowed ? <BrainTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "wang") body = allowed ? <MoneyTab user={user} /> : gate(null);
   else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
@@ -455,16 +455,18 @@ export default function App() {
             onToast={push} onDone={() => ideas.reload()} />
         </Suspense>
       )}
-      <footer className="mt-auto border-t border-line py-8 text-center text-[11px] text-muted">
+      {/* the news footer belongs to the issues page; on every other page it was a line about something not on screen */}
+      {tab === "isu" && <footer className="mt-auto border-t border-line py-8 text-center text-[11px] text-muted">
         {t("Semasa · sumber berita kekal milik penerbit masing-masing · dikemas kini setiap 8 jam · "
           + "isu yang tidak dijadikan idea hilang selepas 48 jam",
         "Semasa · news sources remain the property of their publishers · updated every 8 hours · "
           + "issues not turned into an idea disappear after 48 hours")}
-      </footer>
+      </footer>}
       </div>
       {/* phone and installed-app shortcuts: only once signed in, so the sign-in screen stays one card */}
       {allowed && configured && <MobileTabBar tab={tab} setTab={go} />}
-      <InstallHint />
+      {/* the install hint on the home page only (also the sign-in screen, which is the home address), under any open dialog */}
+      {tab === "papan" && <InstallHint />}
       <Toasts toasts={toasts} />
     </div>
     </DesignsContext.Provider>

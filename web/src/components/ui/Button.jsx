@@ -6,7 +6,7 @@ const styles = {
 };
 
 export default function Button({ variant = "primary", size = "md", className = "", children, ...rest }) {
-  const pad = size === "sm" ? "px-3 py-1.5 text-xs" : size === "lg" ? "px-6 py-3 text-base" : "px-4 py-2 text-sm";
+  const pad = size === "sm" ? "min-h-[44px] px-3 py-1.5 text-xs lg:min-h-0" : size === "lg" ? "px-6 py-3 text-base" : "px-4 py-2 text-sm";
   return (
     <button
       className={`inline-flex items-center gap-2 rounded-pill font-medium transition duration-200 ease-out

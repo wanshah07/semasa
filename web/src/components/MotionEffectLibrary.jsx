@@ -71,6 +71,11 @@ export default function MotionEffectLibrary({ brief, mode, effects, effectMode, 
       {error&&<p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
       <ul className="mt-2 space-y-2 text-xs">{assets.map(a=><li key={a.path} className="flex justify-between gap-2"><span className="break-all">{a.path.split('/').pop()} · {a.mime} · {a.role}</span><button type="button" disabled={uploading} onClick={()=>onAssets(assets.filter(v=>v.path!==a.path))}>{t('Tanggalkan','Detach')}</button></li>)}</ul>
     </details>
+    {/* the 99 cards are a choice only in Manual: under Auto they fold away (a tall grid of cards nobody needs to read), and
+        they open by themselves the moment Manual is chosen; a card added while folded open switches to Manual as before */}
+    <details open={effectMode!=='auto'} className="rounded-tile border border-line p-3" data-motion-effect-grid>
+      <summary className="cursor-pointer text-sm">{effectMode==='auto'?t('Lihat 99 gaya (pilih sendiri)','Browse the 99 styles (pick your own)'):t('99 gaya','The 99 styles')}</summary>
+      <div className="mt-3 space-y-4">
     <div className="flex flex-wrap gap-2">
       <Input aria-label={t('Cari kesan','Search effects')} placeholder={t('Cari nama, ID atau huraian…','Search name, ID or description…')} value={query} onChange={e=>setQuery(e.target.value)} className="min-w-0 flex-1" />
       <Select aria-label={t('Kategori kesan','Effect category')} value={category} onChange={setCategory} options={[["",t('Semua bahagian asal','All original sections')],...all.map(g=>[g.title,g.title])]} />
@@ -91,6 +96,8 @@ export default function MotionEffectLibrary({ brief, mode, effects, effectMode, 
         </div>
       </section>)}
     </div>
-    <p className="text-[10px] text-muted">{t('Susunan dan nama bahagian dokumen asal dikekalkan: 99 kesan unik, 106 kemunculan (termasuk Featured Effects dan pendua H06 asal). Ilustrasi bukan demo rakaman. Kebanyakan kesan penyuntingan sumber kini memakai konsep sahaja, dan dilaporkan begitu.','Original document order and section names preserved: 99 unique effects, 106 occurrences (including Featured Effects and the original H06 duplicate). Thumbnails are illustrative, not recorded demos. Most source-editing effects currently use an explicitly reported concept fallback.')}</p>
+      </div>
+    </details>
+    <p className="text-[10px] text-muted">{t('Susunan dan nama bahagian dokumen asal dikekalkan: 99 kesan unik, 106 kemunculan (termasuk bahagian “Featured Effects” dan pendua H06 asal). Ilustrasi bukan demo rakaman. Kebanyakan kesan penyuntingan sumber kini memakai konsep sahaja, dan dilaporkan begitu.','Original document order and section names preserved: 99 unique effects, 106 occurrences (including Featured Effects and the original H06 duplicate). Thumbnails are illustrative, not recorded demos. Most source-editing effects currently use an explicitly reported concept fallback.')}</p>
   </section>;
 }

@@ -53,4 +53,21 @@ t("the migration seeds WS REGULAB from the old settings and keeps its counters g
   assert.match(sql, /semasa_receipts\s+add column if not exists business_id text references/, "receipts may belong to no business");
 });
 
+t("073: billing settings (bank details) are read by a Semasa uploader only, and the public link and issue still work", () => {
+  const sql = readFileSync(new URL("../supabase/073_billing_settings_guard.sql", import.meta.url), "utf8");
+  const fn = sql.slice(sql.indexOf("create or replace function public.semasa_billing_settings_for"));
+  assert.match(fn, /semasa_billing_settings_for\(p_business text\) returns jsonb/, "the same signature as 066");
+  assert.match(fn, /security invoker/, "inside a definer caller (semasa_billing_public for anon, semasa_billing_issue) current_user is its owner");
+  assert.match(fn, /if current_user in \('anon', 'authenticated'\)/);
+  assert.match(fn, /not coalesce\(public\.semasa_is_uploader\(\), false\)/);
+  assert.match(fn, /raise exception 'semasa: sign in first'/);
+  assert.match(fn, /coalesce\(auth\.role\(\), ''\) <> 'service_role'/, "the service role (no auth.uid()) is never refused");
+  // the same answer as 066: the business's own billing, else the old shared settings, else {}
+  const body = (s) => s.slice(s.indexOf("coalesce(\n"), s.indexOf("'{}'::jsonb);") + 13).replace(/\s+/g, " ");
+  const old = readFileSync(new URL("../supabase/066_businesses.sql", import.meta.url), "utf8");
+  assert.equal(body(fn), body(old.slice(old.indexOf("create or replace function public.semasa_billing_settings_for"))));
+  assert.match(fn, /revoke all on function public\.semasa_billing_settings_for\(text\) from public, anon;/);
+  assert.ok(!/\bdrop\b|\bdelete from\b|\btruncate\b|\balter table\b/i.test(sql.replace(/^--.*$/gm, "")), "it changes this one function only");
+});
+
 console.log(`businesses: ${n} checks passed`);

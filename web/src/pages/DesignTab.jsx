@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flagWords } from "../lib/complianceBm";
 import { motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Clock, Download, ExternalLink, Eye, ImagePlus, LayoutTemplate, Loader2, Palette, Pencil, Plus, RotateCcw,
   Save, Trash2, Wand2, X } from "lucide-react";
@@ -51,7 +52,7 @@ const defaultSize = (design, stream) => (design === "poster" ? "portrait" : desi
    the finished posters as compact tiles (components/TileGrid.jsx) over the grounds and mascot poses. One component, so a
    poster's card and its rules are the same wherever it is opened. */
 export default function DesignTab({ user, gens, posts, brand, settings, saveSetting, onToast, view = "make", go }) {
-  const { t } = useLang();
+  const { t, lang: uiLang } = useLang();
   const { designs: myDesigns, defaultId, ready: designsReady, saveDesigns, setDefault } = useDesigns();
   const [design, setDesign] = useState("poster");
   const [stream, setStream] = useState("regulab");
@@ -505,7 +506,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
             <ul className="mt-3 space-y-1 text-[12px]">
               {flags.map((f, i) => (
                 <li key={i} className={`flex items-start gap-1.5 [overflow-wrap:anywhere] ${f.hard ? "text-danger" : "text-warn"}`}>
-                  <AlertTriangle size={12} className="mt-0.5 shrink-0" /> <span><b>{f.where}</b>: {f.msg}</span></li>
+                  <AlertTriangle size={12} className="mt-0.5 shrink-0" /> <span><b>{flagWords(f, uiLang).where}</b>: {flagWords(f, uiLang).msg}</span></li>
               ))}
             </ul>
           )}
@@ -655,7 +656,7 @@ function deleteQuestion(row, posts, t) {
 }
 
 function DesignResults({ rows, user, gens, onToast, designs, lockedBy = () => null, posts = [] }) {
-  const { t } = useLang();
+  const { t, lang: uiLang } = useLang();
   const [canva, setCanva] = useState(null);                  // the design row being handed to Canva
   if (!rows.length) {
     return <p className="rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">
@@ -702,8 +703,8 @@ function DesignResults({ rows, user, gens, onToast, designs, lockedBy = () => nu
               {m.stream && <p className="mt-1 text-[11px] text-muted">{m.stream === "linkedin" ? "LinkedIn" : "ws.regulab"}
                 {urls.length > 1 ? ` · ${t("{n} slaid", "{n} slides", { n: urls.length })}` : ""}{r.post_id ? ` · ${t("dilampirkan pada post", "attached to a post")}` : ""}</p>}
               {m.bg_missing && <p className="mt-2 text-[11px] text-warn">{t("Gambar latar belum siap, jadi dilukis atas kertas.", "The background picture was not ready, so it was drawn on paper.")}</p>}
-              {hard.length > 0 && <ul className="mt-2 space-y-1 text-[11px] text-danger">{hard.map((f, i) => <li key={i} className="[overflow-wrap:anywhere]"><b>{f.where}</b>: {f.msg}</li>)}</ul>}
-              {soft.length > 0 && <ul className="mt-2 space-y-1 text-[11px] text-warn">{soft.map((f, i) => <li key={i} className="[overflow-wrap:anywhere]"><b>{f.where}</b>: {f.msg}</li>)}</ul>}
+              {hard.length > 0 && <ul className="mt-2 space-y-1 text-[11px] text-danger">{hard.map((f, i) => <li key={i} className="[overflow-wrap:anywhere]"><b>{flagWords(f, uiLang).where}</b>: {flagWords(f, uiLang).msg}</li>)}</ul>}
+              {soft.length > 0 && <ul className="mt-2 space-y-1 text-[11px] text-warn">{soft.map((f, i) => <li key={i} className="[overflow-wrap:anywhere]"><b>{flagWords(f, uiLang).where}</b>: {flagWords(f, uiLang).msg}</li>)}</ul>}
               {r.error && <p className="mt-2 [overflow-wrap:anywhere] rounded-tile bg-danger/5 p-2 text-[11px] text-danger">{r.error}</p>}
               {m.style_ref && <ReviewPanel row={r} mine={mine} onToast={onToast} gens={gens} />}
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -743,7 +744,7 @@ function DesignResults({ rows, user, gens, onToast, designs, lockedBy = () => nu
    stops the design opening until it is fixed here. Only the blocks the reference has are offered: a reference with no small label has
    no Label field, because a field with nowhere to go would be a lie. */
 function CloneReview({ data, stream, brand, onClose, onOpen, onPreview, onRefine, onToast }) {
-  const { t } = useLang();
+  const { t, lang: uiLang } = useLang();
   const [layout, setLayout] = useState(data.layout);
   const slots = useMemo(() => slotsOf(layout), [layout]);
   const [w, setW] = useState({ eyebrow: data.words.eyebrow || "", headline: data.words.headline || "", points: (data.words.points || []).join("\n"), source: data.words.source || "" });
@@ -856,7 +857,7 @@ function CloneReview({ data, stream, brand, onClose, onOpen, onPreview, onRefine
           <ul className="space-y-1 text-[12px]">
             {flags.map((f, i) => (
               <li key={i} className={`flex items-start gap-1.5 [overflow-wrap:anywhere] ${f.hard ? "text-danger" : "text-warn"}`}>
-                <AlertTriangle size={12} className="mt-0.5 shrink-0" /> <span><b>{f.where}</b>: {f.msg}</span></li>
+                <AlertTriangle size={12} className="mt-0.5 shrink-0" /> <span><b>{flagWords(f, uiLang).where}</b>: {flagWords(f, uiLang).msg}</span></li>
             ))}
           </ul>
         )}

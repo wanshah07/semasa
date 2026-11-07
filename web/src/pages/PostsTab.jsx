@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, ShieldOff, Timer, Trash2 } from "lucide-react";
+import { AlertTriangle, Briefcase, Megaphone, ShieldOff, Timer, Trash2 } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { useLang } from "../lib/i18n";
 import { opensAt, publishingOn } from "../lib/publishing";
@@ -11,6 +11,7 @@ import ScheduleView from "../components/ScheduleView";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { deleteCheck } from "../lib/postDelete";
 import { fmtLeft, isPastDue, purgeLeftMs, refOf } from "../lib/slots";
+import { fmtDate } from "../lib/billing";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import ViewToggle, { TBODY, TD, TH, THEAD, TR, TableFrame, useView } from "../components/ViewToggle";
@@ -23,9 +24,21 @@ const bucketOf = (p) => (p.status === "posted" && p.archived_at ? "archived" : p
 const TONE = { draft: "bg-surface-2 text-muted", approved: "bg-ok/10 text-ok", scheduled: "bg-accent/10 text-accent",
   posted: "bg-ink text-bg", archived: "bg-surface-2 text-muted", rejected: "bg-surface-2 text-muted line-through" };
 
-function Thumb({ pic, small }) {
+/** The caption after its hook, on one line: the card shows the hook as its title and these words under it. */
+function previewOf(caption, hook) {
+  let c = String(caption || "").trim();
+  const h = String(hook || "").trim();
+  if (h && c.startsWith(h)) c = c.slice(h.length).replace(/^[\s.,:;!?…—–-]+/, "");   // the hook's own full stop goes with it
+  return c.replace(/\s+/g, " ").trim();
+}
+
+function Thumb({ pic, small, stream }) {
   const size = small ? "h-12 w-12" : "h-16 w-16";
-  if (!pic) return <span className={`${size} block shrink-0 rounded-tile bg-surface-2`} />;
+  // no picture yet: the stream's mark, so a card still says at a glance which voice it is in
+  if (!pic) {
+    const Icon = stream === "linkedin" ? Briefcase : Megaphone;
+    return <span className={`${size} flex shrink-0 items-center justify-center rounded-tile bg-surface-2 text-muted`} aria-hidden="true"><Icon size={small ? 16 : 20} /></span>;
+  }
   return pic.type === "video"
     ? <video src={pic.generated_media_url} className={`${size} shrink-0 rounded-tile bg-black object-cover`} muted />
     : <img src={pic.generated_media_url} alt="" className={`${size} shrink-0 rounded-tile object-cover`} />;
@@ -91,8 +104,17 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
       posts.reload(); media.reload();
     } catch (e) { onToast(e.message || String(e), "danger"); } finally { setDeleting(""); }
   }
-  const deleteButton = (p) => {
+  const deleteButton = (p, { icon = false } = {}) => {
     const chk = deleteCheck(p);
+    if (icon) return (
+      <button type="button" disabled={!chk.ok || deleting === p.id} data-post-delete
+        aria-label={t("Padam post ini", "Delete this post")}
+        title={chk.ok ? t("Padam post ini", "Delete this post") : t(chk.why[0], chk.why[1])}
+        onClick={(e) => { e.stopPropagation(); removePost(p); }}
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-pill text-muted transition hover:bg-danger/10 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 lg:h-8 lg:w-8">
+        <Trash2 size={15} />
+      </button>
+    );
     return (
       <Button size="sm" variant="danger" disabled={!chk.ok || deleting === p.id} data-post-delete
         title={chk.ok ? t("Padam post ini", "Delete this post") : t(chk.why[0], chk.why[1])}
@@ -108,8 +130,11 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
     const pics = (p.media_ids || []).map((id) => mediaById[id]).filter((m) => m && m.status === "done");
     return {
       pics, label: (tabsOf(t).find(([v]) => v === bucketOf(p)) || [null, p.status])[1],
-      forText: `${p.stream === "linkedin" ? "LinkedIn" : "ws.regulab"}${p.domain ? ` · ${p.domain}` : ""}${p.angle ? ` · ${p.angle}` : ""}${p.pillar ? ` · ${p.pillar}` : ""}${(p.channels || []).length ? ` · ${p.channels.join(" + ")}` : ""}`,
+      // LinkedIn has one channel, itself: naming it again read "LinkedIn · A · linkedin"
+      forText: `${p.stream === "linkedin" ? "LinkedIn" : "ws.regulab"}${p.domain ? ` · ${p.domain}` : ""}${p.angle ? ` · ${p.angle}` : ""}${p.pillar ? ` · ${p.pillar}` : ""}${p.stream !== "linkedin" && (p.channels || []).length ? ` · ${p.channels.join(" + ")}` : ""}`,
       hook: p.hook || first.split("\n")[0] || t("(tiada kapsyen)", "(no caption)"),
+      preview: previewOf(first, p.hook || first.split("\n")[0]),
+      when: p.date ? `${fmtDate(p.date)} ${p.slot || ""} MYT`.replace("  ", " ") : "",
       hard: hardCount(scan({ ...p, media: pics.map(scanMedia) }, brand.regulab, brand.regulab.schedule, settings.bahasa?.indo)),
       ref: refOf(p, brand), late: isPastDue(p), purge: purgeLeftMs(p),
     };
@@ -119,8 +144,8 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show">
         <p className="text-[13px] font-semibold text-accent">Post</p>
-        <h1 className="mt-2 text-4xl leading-tight">{t("Satu pintu: kelulusan anda.", "One gate: your approval.")}</h1>
-        <p className="mt-3 max-w-2xl text-sm text-muted">
+        <h1 className="mt-2 text-3xl leading-tight sm:text-4xl">{t("Satu pintu: kelulusan anda.", "One gate: your approval.")}</h1>
+        <p className="mt-3 hidden max-w-2xl text-sm text-muted sm:block">
           {t("Setiap draf disemak dengan peraturan yang sama seperti Studio (tiada CTA, tiada laman web dalam kapsyen, "
             + "tiada sumber media sosial, BM Malaysia). Hanya post yang anda luluskan akan dihantar.",
           "Every draft is checked against the same rules as Studio (no CTA, no website in a caption, "
@@ -152,10 +177,11 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
       )}
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-2 text-xs">
+        {/* one row that scrolls sideways on a phone (seven 44 px pills wrapped to two rows above the list) */}
+        <div className="-mx-4 flex w-[calc(100%+2rem)] gap-2 overflow-x-auto px-4 text-xs sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0">
           {tabsOf(t).map(([v, l]) => (
             <button key={v} onClick={() => setStatus(v)} aria-pressed={status === v}
-              className={`rounded-pill px-3 py-1.5 ${status === v ? "bg-ink text-bg" : "bg-surface-2 text-muted"}`}>
+              className={`min-h-[44px] shrink-0 whitespace-nowrap rounded-pill px-3 py-1.5 lg:min-h-0 ${status === v ? "bg-ink text-bg" : "bg-surface-2 text-muted"}`}>
               {l} {counts[v] ? `· ${counts[v]}` : ""}
             </button>
           ))}
@@ -213,9 +239,9 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
                 const s = summary(p);
                 return (
                   <tr key={p.id} onClick={() => setFocusId(p.id)} className={`${TR} cursor-pointer hover:bg-surface-2/50 ${focusId === p.id ? "bg-accent/5" : ""}`}>
-                    <td className={TD} data-label={t("Gambar", "Picture")}><Thumb pic={s.pics[0]} small /></td>
+                    <td className={TD} data-label={t("Gambar", "Picture")}><Thumb pic={s.pics[0]} small stream={p.stream} /></td>
                     <td className={TD} data-label="Status"><span className={`whitespace-nowrap rounded-pill px-2 py-0.5 text-[11px] ${TONE[bucketOf(p)]}`}>{s.label}</span></td>
-                    <td className={`${TD} whitespace-nowrap text-[12px] text-muted`} data-label={t("Slot", "Slot")}>{p.date ? `${p.date} ${p.slot || ""}` : t("tiada slot", "no slot")}
+                    <td className={`${TD} whitespace-nowrap text-[12px] text-muted`} data-label={t("Slot", "Slot")}>{p.date ? `${fmtDate(p.date)} ${p.slot || ""}` : t("tiada slot", "no slot")}
                       {s.ref && <span className="block text-[10.5px]">{s.ref}</span>}
                       {s.late && <span className="block text-danger">{t("slot sudah lepas", "slot passed")}</span>}
                       {s.purge !== null && <span className="block">{t("dipadam dalam {x}", "deleted in {x}", { x: fmtLeft(s.purge) })}</span>}</td>
@@ -224,7 +250,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
                       <span className="line-clamp-2">{s.hook}</span></button></td>
                     <td className={`${TD} whitespace-nowrap text-[12px] ${s.hard ? "text-danger" : "text-ok"}`} data-label={t("Semakan", "Checks")}>
                       {s.hard ? `■ ${t("{n} sekatan", "{n} blocking", { n: s.hard })}` : t("✓ lulus", "✓ passed")}</td>
-                    <td className={TD} data-label={t("Tindakan", "Actions")}>{deleteButton(p)}</td>
+                    <td className={TD} data-label={t("Tindakan", "Actions")}>{deleteButton(p, { icon: true })}</td>
                   </tr>
                 );
               })}
@@ -236,22 +262,23 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
           {shown.filter((p) => p.id !== focusId).map((p) => {
             const s = summary(p);
             return (
-              <Card key={p.id} className="min-w-0 p-4">
-                <button type="button" className="flex w-full items-start gap-3 text-left" onClick={() => setFocusId(p.id)}>
-                  <Thumb pic={s.pics[0]} />
+              <Card key={p.id} className="flex min-w-0 items-start gap-1 p-4">
+                <button type="button" className="flex min-w-0 flex-1 items-start gap-3 text-left" onClick={() => setFocusId(p.id)}>
+                  <Thumb pic={s.pics[0]} stream={p.stream} />
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
                       <span className={`rounded-pill px-2 py-0.5 ${TONE[bucketOf(p)]}`}>{s.label}</span>
                       <span>{s.forText}</span>
-                      <span>{p.date ? `${p.date} ${p.slot || ""} MYT` : t("tiada slot", "no slot")}{s.ref ? ` · ${s.ref}` : ""}</span>
+                      <span>{s.when || t("tiada slot", "no slot")}{s.ref ? ` · ${s.ref}` : ""}</span>
                       {s.late && <span className="flex items-center gap-1 text-danger"><AlertTriangle size={11} /> {t("slot sudah lepas", "slot passed")}</span>}
                       {s.purge !== null && <span className="flex items-center gap-1"><Timer size={11} /> {t("dipadam dalam {x}", "deleted in {x}", { x: fmtLeft(s.purge) })}</span>}
                       <span className={s.hard ? "text-danger" : "text-ok"}>{s.hard ? `■ ${t("{n} sekatan", "{n} blocking", { n: s.hard })}` : t("✓ semakan lulus", "✓ checks passed")}</span>
                     </span>
-                    <span className="mt-1 line-clamp-2 block [overflow-wrap:anywhere] font-display text-[16px] leading-snug">{s.hook}</span>
+                    <span className="mt-1 line-clamp-2 [overflow-wrap:anywhere] font-display text-[16px] leading-snug">{s.hook}</span>
+                    {s.preview && <span className="mt-1 line-clamp-2 [overflow-wrap:anywhere] text-sm text-muted">{s.preview}</span>}
                   </span>
                 </button>
-                <div className="mt-2 flex justify-end">{deleteButton(p)}</div>
+                {deleteButton(p, { icon: true })}
               </Card>
             );
           })}

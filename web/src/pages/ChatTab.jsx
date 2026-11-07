@@ -92,6 +92,7 @@ export default function ChatTab() {
   const modelNote = (chosenRobot ? chosenRobot.models : models?.models || []).find((x) => x.id === shownModel);
   const unusable = robots ? robots.filter((r) => !r.enabled) : [];
   const [notes, setNotes] = useState([]);
+  const [notesErr, setNotesErr] = useState("");     // a failed read of the notes, said as such (never shown as "no notes yet")
   const [showNotes, setShowNotes] = useState(false);
   const [draftNote, setDraftNote] = useState("");
   const note = (text) => setMessages((m) => [...m, { role: "note", text, at: new Date().toISOString() }]);
@@ -102,13 +103,15 @@ export default function ChatTab() {
     (async () => {
       const { thread, messages: old } = await loadLatestThread();
       if (live && thread) { setThreadId(thread.id); setMessages(old); }
-      const [n, th] = await Promise.all([listMemory(), listThreads()]);
-      if (live) { setNotes(n); setThreads(th); }
+      const [n, th] = await Promise.all([listMemory().catch((e) => { if (live) setNotesErr(String(e?.message || e)); return null; }), listThreads()]);
+      if (live) { if (n) { setNotes(n); setNotesErr(""); } setThreads(th); }
     })();
     return () => { live = false; };
   }, []);
 
-  async function refreshNotes() { setNotes(await listMemory()); }
+  async function refreshNotes() {
+    try { setNotes(await listMemory()); setNotesErr(""); } catch (e) { setNotesErr(String(e?.message || e)); }
+  }
   async function refreshThreads() { setThreads(await listThreads()); }
   async function pin() {
     try { await addMemory(draftNote); setDraftNote(""); await refreshNotes(); }
@@ -315,14 +318,14 @@ export default function ChatTab() {
           )}
         </div>
       )}
-      <div className="mx-auto mt-1 flex items-center gap-3 text-[11px] text-muted">
-        <button type="button" onClick={() => setShowHistory((v) => !v)} className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-accent">
+      <div className="mx-auto mt-1 flex flex-wrap items-center justify-center gap-2 text-[11px] text-muted">
+        <button type="button" onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory} className="inline-flex min-h-[44px] items-center gap-1 rounded-pill border border-line px-3 hover:border-accent hover:text-accent lg:min-h-[30px]">
           <IconHistory size={12} /> {t(`Sejarah (${threads.length})`, `History (${threads.length})`)}
         </button>
-        <button type="button" onClick={() => setShowNotes((v) => !v)} className="underline decoration-dotted underline-offset-2 hover:text-accent">
+        <button type="button" onClick={() => setShowNotes((v) => !v)} aria-expanded={showNotes} className="inline-flex min-h-[44px] items-center gap-1 rounded-pill border border-line px-3 hover:border-accent hover:text-accent lg:min-h-[30px]">
           {t(`Ingatan kekal (${notes.length})`, `Pinned memory (${notes.length})`)}
         </button>
-        <button type="button" onClick={fresh} disabled={busy || messages.length === 0} className="underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-50">
+        <button type="button" onClick={fresh} disabled={busy || messages.length === 0} className="inline-flex min-h-[44px] items-center gap-1 rounded-pill border border-line px-3 hover:border-accent hover:text-accent lg:min-h-[30px] disabled:opacity-50">
           {t("Sembang baharu", "New conversation")}
         </button>
       </div>
@@ -337,7 +340,8 @@ export default function ChatTab() {
                 <button type="button" onClick={() => unpin(n.id)} className="shrink-0 text-warn underline" aria-label={t("Padam nota", "Delete note")}>{t("padam", "delete")}</button>
               </li>
             ))}
-            {notes.length === 0 && <li className="opacity-60">{t("Belum ada nota.", "No notes yet.")}</li>}
+            {notesErr && <li className="text-danger" data-chat-notes-error>{t("Nota tidak dapat dibaca", "The notes could not be read")}: {notesErr}</li>}
+            {!notesErr && notes.length === 0 && <li className="opacity-60">{t("Belum ada nota.", "No notes yet.")}</li>}
           </ul>
           <div className="mt-2 flex gap-2">
             <input value={draftNote} onChange={(e) => setDraftNote(e.target.value)} maxLength={500} placeholder={t("Nota baharu", "New note")}

@@ -147,9 +147,12 @@ export async function deleteThread(id) {
   if (error) throw new Error(error.message);
 }
 
+/** Wan's notes, oldest first. A read that fails THROWS: an empty list would read as "no notes yet" and let a note past the
+    40-note ceiling and the duplicate check, which both count what this returns. */
 export async function listMemory() {
   if (!supabase) return [];
-  const { data } = await supabase.from("semasa_chat_memory").select("id,note,source,created_at").order("created_at", { ascending: true }).limit(100);
+  const { data, error } = await supabase.from("semasa_chat_memory").select("id,note,source,created_at").order("created_at", { ascending: true }).limit(100);
+  if (error) throw new Error(error.message || String(error));
   return data || [];
 }
 

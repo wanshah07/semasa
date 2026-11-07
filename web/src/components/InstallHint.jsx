@@ -14,7 +14,7 @@ export default function InstallHint() {
   const close = () => { writeDismissed(store()); setShow(false); };
   return (
     <aside role="note" data-install-hint aria-label="Pasang Semasa di iPhone"
-      className="install-hint fixed inset-x-3 z-50 mx-auto max-w-md rounded-card border border-line bg-surface p-4 pr-14 shadow-lift">
+      className="install-hint fixed inset-x-3 z-[45] mx-auto max-w-md rounded-card border border-line bg-surface p-4 pr-14 shadow-lift">
       <p className="text-sm font-semibold text-ink">Pasang Semasa di iPhone</p>
       <p className="mt-1 text-sm text-ink">
         Tekan <Share size={15} className="inline align-[-2px]" aria-label="Kongsi" /> <b>Kongsi</b> di bar Safari, kemudian pilih <b>Tambah ke Skrin Utama</b>.

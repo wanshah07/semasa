@@ -65,7 +65,7 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
     <main className="mx-auto max-w-page space-y-5 px-4 pb-20 pt-10 sm:px-6">
       <div>
         <p className="text-[13px] font-semibold text-accent">{t("Tetapan", "Settings")}</p>
-        <h1 className="mt-2 text-4xl leading-tight">{t("Slot dan giliran mingguan.", "Slots and the weekly rota.")}</h1>
+        <h1 className="mt-2 text-3xl leading-tight sm:text-4xl">{t("Slot dan giliran mingguan.", "Slots and the weekly rota.")}</h1>
       </div>
 
       <Card className="flex items-start gap-3 p-5">
@@ -108,26 +108,34 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
         </div>
       </Card>
 
-      <Card className="overflow-x-auto p-5">
+      <Card className="relative p-5">
         <Label hint={t("hari tanpa domain = tiada post ws.regulab", "a day with no domain = no ws.regulab post")}>{t("Giliran ws.regulab", "ws.regulab rota")}</Label>
-        <table className="mt-2 w-full min-w-[640px] text-left text-xs">
-          <thead>
-            <tr><th className="py-1 pr-2 font-medium text-muted">{t("Hari", "Day")}</th>
-              {domains.map(([k, l]) => <th key={k} className="px-1 py-1 font-medium text-muted" title={l}>{k}</th>)}</tr>
-          </thead>
-          <tbody>
-            {[1, 2, 3, 4, 5, 6, 0].map((d) => (
-              <tr key={d} className="border-t border-line/70">
-                <td className="py-1.5 pr-2">{days[d]}</td>
-                {domains.map(([k]) => (
-                  <td key={k} className="px-1 py-1.5">
-                    <input type="checkbox" aria-label={`${days[d]} ${k}`} checked={(rota[d] || []).includes(k)} onChange={() => toggle(d, k)} />
-                  </td>
+        <p className="mt-1 text-[11px] text-muted sm:hidden">{t("Leret ke kanan untuk semua domain →", "Swipe right for every domain →")}</p>
+        <div className="relative mt-2">
+          <div className="overflow-x-auto" data-rota-scroll>
+            <table className="w-full min-w-[640px] text-left text-xs">
+              <thead>
+                {/* the domain's name on screen, its key as the tooltip (a key such as halal_my read as a code, not a column) */}
+                <tr><th className="sticky left-0 z-[1] bg-surface py-1 pr-2 align-bottom font-medium text-muted">{t("Hari", "Day")}</th>
+                  {domains.map(([k, l]) => <th key={k} className="max-w-[7.5rem] px-1 py-1 align-bottom font-medium leading-tight text-muted" title={k}>{l || k}</th>)}</tr>
+              </thead>
+              <tbody>
+                {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+                  <tr key={d} className="border-t border-line/70">
+                    <td className="sticky left-0 z-[1] bg-surface py-1.5 pr-2">{days[d]}</td>
+                    {domains.map(([k, l]) => (
+                      <td key={k} className="px-1 py-1.5">
+                        <input type="checkbox" aria-label={`${days[d]} ${l || k}`} title={k} checked={(rota[d] || []).includes(k)} onChange={() => toggle(d, k)} />
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              </tbody>
+            </table>
+          </div>
+          {/* the right edge fades on a phone, so a cut-off column reads as "more this way" */}
+          <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-surface to-transparent sm:hidden" />
+        </div>
       </Card>
 
       <Button onClick={submit} disabled={busy}><Save size={14} /> {t("Simpan tetapan", "Save settings")}</Button>

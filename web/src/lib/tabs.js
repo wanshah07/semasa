@@ -77,3 +77,18 @@ export function segmentsOf(t) {
 export function segmentOf(t, tabId) {
   return segmentsOf(t).find((s) => s.pages.some((p) => p.id === tabId)) || null;
 }
+
+/** The phone's bottom bar (components/MobileTabBar.jsx): the five places Wan opens most, one thumb tap away; everything
+    else is in the menu. `match` lists the pages that light a button up as well as its own, so Video stays lit on the
+    video library. Labels are short: five have to fit in 375 px. */
+export function mobileTabsOf(t) {
+  const byId = Object.fromEntries(tabsOf(t).map((p) => [p.id, p]));
+  const item = (id, label, match = []) => ({ id, label, icon: byId[id].icon, match: [id, ...match] });
+  return [
+    item("papan", t("Papan", "Home")),
+    item("idea", "Idea"),
+    item("post", "Post"),
+    item("video", "Video", ["video-lib", "motion-skills"]),
+    item("chat", t("Sembang", "Chat")),
+  ];
+}

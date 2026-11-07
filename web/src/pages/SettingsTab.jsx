@@ -8,6 +8,7 @@ import { stampMYT } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import { LEVELS, levelOf, summarise, verdict } from "../lib/antislop";
 import { opensAt, publishingOn } from "../lib/publishing";
+import { LAST_RUN_MYT, PUBLISH_RUNS_MYT, lateLinkedInSlots } from "../lib/slots";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import TelegramCard from "../components/TelegramCard";
@@ -85,7 +86,15 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
         <label className="block"><Label hint={t("HH:MM, dipisah koma", "HH:MM, comma-separated")}>{t("Slot ws.regulab (MYT)", "ws.regulab slots (MYT)")}</Label>
           <Input value={regSlots} onChange={(e) => setRegSlots(e.target.value)} /></label>
         <label className="block"><Label hint={t("HH:MM, dipisah koma", "HH:MM, comma-separated")}>{t("Slot LinkedIn (MYT)", "LinkedIn slots (MYT)")}</Label>
-          <Input value={liSlots} onChange={(e) => setLiSlots(e.target.value)} /></label>
+          <Input value={liSlots} onChange={(e) => setLiSlots(e.target.value)} />
+          {/* LinkedIn has no queue: the publisher posts at its first run at or after the slot (publisher.py li_send_day) */}
+          {lateLinkedInSlots(parseSlots(liSlots).filter((x) => SLOT.test(x))).length > 0 && (
+            <span className="mt-1 block text-[12px] text-warn">{t(
+              "{s}: selepas larian terakhir penerbit hari itu ({last} MYT), jadi ia dihantar pada larian pertama esoknya ({first}). Penerbit berjalan pada {runs}.",
+              "{s}: after the publisher's last run of the day ({last} MYT), so it goes out at the first run of the next day ({first}). The publisher runs at {runs}.",
+              { s: lateLinkedInSlots(parseSlots(liSlots).filter((x) => SLOT.test(x))).join(", "), last: LAST_RUN_MYT, first: PUBLISH_RUNS_MYT[0],
+                runs: PUBLISH_RUNS_MYT.join(" · ") })}</span>
+          )}</label>
         <div className="sm:col-span-2">
           <Label>{t("Hari LinkedIn", "LinkedIn days")}</Label>
           <div className="flex flex-wrap gap-3 text-sm">

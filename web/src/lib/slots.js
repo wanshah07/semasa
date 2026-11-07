@@ -6,6 +6,9 @@
 export const LATE_GRACE_MIN = 45;                  // publisher.py: a slot more than 45 minutes gone is never sent
 export const PURGE_HOURS = 72;                     // backend/semasa/archive.py REJECT_PURGE
 export const ANY_DAY_DOMAINS = ["kajian_kes"];     // rules/compliance.json rota_any_day: a case study is a format
+// the publisher's runs (publish.yml cron, supabase/009 semasa_publish), Malaysia time; backend/semasa/publisher.py PUBLISH_RUNS_MYT
+export const PUBLISH_RUNS_MYT = ["06:20", "11:20", "19:20"];
+export const LAST_RUN_MYT = PUBLISH_RUNS_MYT[PUBLISH_RUNS_MYT.length - 1];
 const DEFAULT_SLOTS = { regulab: ["08:00", "13:00", "21:00"], linkedin: ["06:00"] };
 const MYT_MS = 8 * 3600_000;
 
@@ -162,24 +165,30 @@ export const LOCKED = ["scheduled", "posted"];
 /** What taking date+slot for a stream would do to its holders: `release` can be let go, `locked` makes the slot untakeable. */
 export function overrideCheck({ posts, stream, date, slot }) {
   const held = holdersOf(posts, stream, date, slot);
-  const release = held.filter((p) => RELEASABLE.includes(p.status));
-  const locked = held.filter((p) => LOCKED.includes(p.status));
+  const release = held.filter((p) => RELEASABLE.includes(p.status) && !handedOver(p));
+  const locked = held.filter((p) => LOCKED.includes(p.status) || handedOver(p));
   return { free: !held.length, release, locked, ok: !locked.length };
 }
 
 /** Every position of one stream that the page may release: [{id, status, date, slot, hook}], and how many are locked in. */
 export function clearPlan(posts, stream) {
   const mine = posts.filter((p) => holds(p) && (p.stream || "regulab") === stream);
-  const release = mine.filter((p) => RELEASABLE.includes(p.status));
+  const release = mine.filter((p) => RELEASABLE.includes(p.status) && !handedOver(p));
   return { release, drafts: release.filter((p) => p.status === "draft").length, approved: release.filter((p) => p.status === "approved").length,
-    locked: mine.filter((p) => LOCKED.includes(p.status)).length };
+    locked: mine.filter((p) => LOCKED.includes(p.status) || handedOver(p)).length };
 }
+
+/** Has the publisher already handed any channel of this post to Buffer or LinkedIn? Then Buffer holds its time and its
+    words: its date, slot, pictures, language and sent captions are locked, and it cannot be released, sent back to draft
+    or rejected from the page (supabase/072_posts_published_lock.sql refuses the same writes). */
+export const handedOver = (p) => !!(p && p.published && typeof p.published === "object" && Object.keys(p.published).length);
 
 /** May `post` be moved to date+slot? {ok, why?, note?}. `why` is a refusal; `note` is a warning that does not block
     (the rota is a plan, never a block). The database refuses the same moves, so this is the polite version. */
 export function moveCheck({ post, date, slot, posts, brand, now = Date.now(), leadMin = 30 }) {
   const stream = post.stream || "regulab";
   if (!["draft", "approved"].includes(post.status)) return { ok: false, why: "status" };
+  if (handedOver(post)) return { ok: false, why: "published" };
   if (post.date === date && post.slot === slot) return { ok: false, why: "same" };
   if (!slotsOf(brand, stream).includes(slot)) return { ok: false, why: "slot" };
   if (!postsOn(brand, stream, date)) return { ok: false, why: "day" };
@@ -197,9 +206,25 @@ export function offRota(posts, brand, now = Date.now()) {
     && p.date && p.date >= today && p.domain && !onRota(brand, p.date, p.domain));
 }
 
-/** A draft or approved post whose slot went by more than 45 minutes ago: the publisher will never send it. */
+/** The Malaysian day a LinkedIn post may still be sent on (publisher.py li_send_day). LinkedIn has no queue: a post goes at
+    the first publisher run at or after its slot. A slot later than the day's last run (19:20 MYT) is therefore sent at the
+    first run of the NEXT day (06:20); on any later day it is overdue. */
+export const liSendDay = (date, slot) => (slot > LAST_RUN_MYT ? addDays(date, 1) : date);
+
+/** Will the publisher refuse this position as gone by? ws.regulab: more than 45 minutes past its slot. LinkedIn: past the day
+    it may still be sent on (liSendDay). The same rule as publisher.py, so the page and the publisher agree. */
+export function slotGone(stream, date, slot, now = Date.now()) {
+  if (!date || !slot) return false;
+  if ((stream || "regulab") === "linkedin") return myt(now).date > liSendDay(date, slot);
+  return dueMs(date, slot) < +now - LATE_GRACE_MIN * 60_000;
+}
+
+/** A draft or approved post whose slot is gone by the publisher's rule (slotGone): it will never be sent by itself. */
 export const isPastDue = (p, now = Date.now()) => ["draft", "approved"].includes(p.status) && !!(p.date && p.slot)
-  && dueMs(p.date, p.slot) < +now - LATE_GRACE_MIN * 60_000;
+  && slotGone(p.stream, p.date, p.slot, now);
+
+/** LinkedIn slots later than the publisher's last run of the day: they go at the first run of the next day (Settings warns). */
+export const lateLinkedInSlots = (slots) => (slots || []).filter((s) => s > LAST_RUN_MYT);
 
 /** Milliseconds until a rejected post is deleted, or null when it never will be by the clock (no stamp: never purged,
     or a delivery record kept as evidence). May be negative: due at the next publisher run. */

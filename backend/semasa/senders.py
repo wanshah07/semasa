@@ -58,9 +58,10 @@ def classify(message: str) -> str:
 
 
 def text_key(text: str) -> str:
-    """How a caption is recognised in Buffer: its first 100 letters, whitespace squeezed (Studio's tally matched on the
-    first hundred letters too)."""
-    return re.sub(r"\s+", " ", str(text or "")).strip()[:100]
+    """How a caption is recognised in Buffer: ALL of it, whitespace squeezed. Studio's tally matched the first hundred
+    letters only, and two different posts that open the same way (a series, a regulator's standard first line) then read
+    as one: the second was "adopted" onto the first one's Buffer post and never sent."""
+    return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
 # --- Buffer --------------------------------------------------------------------------------------------------------
@@ -285,8 +286,13 @@ class LinkedIn:
         args: dict[str, Any] = {"author": self.author, "commentary": text, "visibility": "PUBLIC"}
         if images:
             args["images"] = images
-        body = self._call("POST", f"/api/v3.1/tools/execute/{LINKEDIN_TOOL}",
-                          json={"connected_account_id": self.account(), "arguments": args})
+        acct = self.account()                   # before the post call: a failure here cannot have posted anything
+        try:
+            body = self._call("POST", f"/api/v3.1/tools/execute/{LINKEDIN_TOOL}",
+                              json={"connected_account_id": acct, "arguments": args})
+        except SendError as exc:
+            # the post call went out: a timeout or 5xx does not prove it never landed, so never let the publisher retry
+            raise SendError("refused", f"LinkedIn refused or unconfirmed: {exc.message}") from exc
         if not body.get("successful"):
             msg = str(body.get("error") or "no reason given")
             raise SendError(classify(msg), f"LinkedIn refused: {msg}")

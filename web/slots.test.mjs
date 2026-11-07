@@ -1,7 +1,7 @@
 /* web/src/lib/slots.js, the page's half of the position rules (the worker's half is ideas.next_free_position). */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { captionKey, captionKeys, clashes, coverage, duplicatesOf, fmtLeft, holdersOf, isPastDue, moveCheck, nextFreeSlot, offRota, onRota, overrideCheck, clearPlan, postsOn, purgeLeftMs, refOf, slotsOf } from "./src/lib/slots.js";
+import { captionKey, captionKeys, clashes, coverage, duplicatesOf, fmtLeft, handedOver, holdersOf, isPastDue, lateLinkedInSlots, liSendDay, moveCheck, nextFreeSlot, offRota, onRota, overrideCheck, clearPlan, postsOn, purgeLeftMs, refOf, slotGone, slotsOf } from "./src/lib/slots.js";
 
 const BRAND = {
   regulab: { slots: ["13:00", "08:00", "21:00"],
@@ -149,6 +149,35 @@ t("clearPlan: drafts and approved are released, scheduled and posted are counted
   const plan = clearPlan(ps, "regulab");
   assert.deepEqual([plan.drafts, plan.approved, plan.locked, plan.release.map((p) => p.id).sort()], [2, 1, 2, ["a", "d1", "d2"]]);
   assert.equal(clearPlan(ps, "linkedin").release.length, 1);
+});
+
+t("LinkedIn lateness is the publisher's: a slot after the last run (19:20) goes at 06:20 the next day, never called overdue", () => {
+  assert.equal(liSendDay("2026-09-24", "06:00"), "2026-09-24");
+  assert.equal(liSendDay("2026-09-24", "19:20"), "2026-09-24");
+  assert.equal(liSendDay("2026-09-24", "20:00"), "2026-09-25");
+  const at = (iso) => Date.parse(iso);
+  const li = (date, slot) => ({ stream: "linkedin", status: "approved", date, slot });
+  // 06:20 MYT on 25 Sep: yesterday 20:00 is still to be sent, yesterday 06:00 is gone
+  assert.equal(isPastDue(li("2026-09-24", "20:00"), at("2026-09-24T22:20:00Z")), false);
+  assert.equal(isPastDue(li("2026-09-24", "06:00"), at("2026-09-24T22:20:00Z")), true);
+  assert.equal(isPastDue(li("2026-09-24", "20:00"), at("2026-09-25T22:20:00Z")), true);       // a day later still: overdue
+  // the same day, hours after its slot: LinkedIn still sends it that day (cap permitting); ws.regulab has 45 minutes
+  assert.equal(slotGone("linkedin", "2026-09-24", "06:00", NOW), false);
+  assert.equal(slotGone("regulab", "2026-09-24", "06:00", NOW), true);
+  assert.deepEqual(lateLinkedInSlots(["06:00", "19:00", "19:21", "21:30"]), ["19:21", "21:30"]);
+});
+
+t("a post with a channel already in Buffer or LinkedIn cannot be moved or released by the page", () => {
+  const rec = { facebook: { id: "a".repeat(24), status: "scheduled", dueAt: "2026-09-30T05:00:00Z" } };
+  assert.equal(handedOver({ published: {} }), false);
+  assert.equal(handedOver({ published: null }), false);
+  assert.equal(handedOver({ published: rec }), true);
+  const me = live("me", { status: "approved", date: "2026-09-30", slot: "13:00", published: rec });
+  assert.equal(moveCheck({ post: me, date: "2026-09-30", slot: "21:00", posts: [], brand: BRAND, now: NOW }).why, "published");
+  const o = overrideCheck({ posts: [me], stream: "regulab", date: "2026-09-30", slot: "13:00" });
+  assert.deepEqual([o.ok, o.release.length, o.locked.map((p) => p.id)], [false, 0, ["me"]]);
+  const plan = clearPlan([me, live("d", { status: "draft", date: "2026-10-01", slot: "08:00" })], "regulab");
+  assert.deepEqual([plan.release.map((p) => p.id), plan.approved, plan.locked], [["d"], 0, 1]);
 });
 
 console.log(`${n} slot tests pass`);

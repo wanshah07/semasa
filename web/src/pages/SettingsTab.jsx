@@ -9,6 +9,7 @@ import { useLang } from "../lib/i18n";
 import { LEVELS, levelOf, summarise, verdict } from "../lib/antislop";
 import { opensAt, publishingOn } from "../lib/publishing";
 import Button from "../components/ui/Button";
+import HookStyles from "../components/HookStyles";
 import Card from "../components/ui/Card";
 import { Input, Label, Select, TextArea } from "../components/ui/Field";
 
@@ -126,6 +127,8 @@ export default function SettingsTab({ settings, brand, save, onToast }) {
       <Button onClick={submit} disabled={busy}><Save size={14} /> {t("Simpan tetapan", "Save settings")}</Button>
 
       <WriterSettings settings={settings} save={save} onToast={onToast} />
+
+      <HookStyles settings={settings} save={save} onToast={onToast} />
 
       <AutofillSettings settings={settings} save={save} onToast={onToast} />
 

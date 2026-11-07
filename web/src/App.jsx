@@ -354,7 +354,7 @@ export default function App() {
         unchecked ? "(Jawapan ini ditulis AI dan belum disemak: jangan tambah fakta khusus yang tiada di sini.)" : ""].filter(Boolean).join("\n\n"),
     };
   }
-  const { settings, save } = useSettings(allowed);
+  const { settings, save, loading: settingsLoading, error: settingsError } = useSettings(allowed);
   useEffect(() => { setWanshah(approvedPoses(settings.wanshah)); }, [settings.wanshah]);   // Wanshah (supabase/040) replaces the poses in place
   // My designs (supabase/027): the saved text-free designs and the default, offered to every look picker through one context
   const designsCtx = useMemo(() => ({
@@ -409,7 +409,7 @@ export default function App() {
   else if (tab === "video-lib") body = allowed ? <VideoLibraryTab user={user} gens={gens} posts={posts} onToast={push} go={go} /> : gate(null);
   else if (tab === "motion-skills") body = allowed ? <MotionSkillsTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
-  else if (tab === "memori") body = allowed ? <MemoryTab settings={settings} save={save} onToast={push} /> : gate(null);
+  else if (tab === "memori") body = allowed ? <MemoryTab settings={settings} settingsLoading={settingsLoading} settingsError={settingsError} save={save} onToast={push} /> : gate(null);
   else if (tab === "otak") body = allowed ? <BrainTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "wang") body = allowed ? <MoneyTab user={user} /> : gate(null);
   else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);

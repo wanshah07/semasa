@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Check, Loader2, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { useLang } from "../lib/i18n";
 import { timeAgo } from "../lib/format";
-import { INSTRUCTIONS_KEY, INSTRUCTIONS_MAX, MEMORY_KEY, NOTE_MAX, NOTES_MAX, cleanInstructions, filterNotes, hasRows, instructionsOf,
-  instructionsValue, isAuto, memoryOf, noteProblem } from "../lib/aiMemory";
+import { INSTRUCTIONS_KEY, INSTRUCTIONS_MAX, MEMORY_KEY, NOTE_MAX, NOTES_MAX, cleanInstructions, filterNotes, instructionsOf,
+  instructionsValue, isAuto, memoryOf, noteProblem, settingsState } from "../lib/aiMemory";
 import { addMemory, deleteMemory, listMemory, updateMemory } from "../lib/chat";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
@@ -19,11 +19,13 @@ import { Input, Segmented, TextArea } from "../components/ui/Field";
    This page is where Wan sees, adds, edits and deletes them, writes the instructions the chat always follows, and holds the two
    switches. The nightly job (backend/semasa/memory_auto.py, memory.yml) adds notes from his own messages while "Generate memory
    from chats" is on; each one is marked auto here. */
-export default function MemoryTab({ settings, save, onToast }) {
+export default function MemoryTab({ settings, save, onToast, settingsLoading = false, settingsError = "" }) {
   const { t } = useLang();
   const saved = instructionsOf(settings);
   const sw = memoryOf(settings);
-  const ready = hasRows(settings);
+  // "missing" only once the settings were read without an error: a slow or failed read is not a reason to run 070
+  const state = settingsState(settings, { loading: settingsLoading, error: settingsError });
+  const ready = state === "ready";
   const [text, setText] = useState(saved.text);
   const [busy, setBusy] = useState("");
   const [notes, setNotes] = useState(null);       // null while the first read is on its way
@@ -33,12 +35,15 @@ export default function MemoryTab({ settings, save, onToast }) {
   const [sure, setSure] = useState("");
   const [q, setQ] = useState("");
   const [who, setWho] = useState("all");
+  // one note action at a time, held in a ref: `busy` is state, so a second Enter in the same moment still sees it empty
+  const lock = useRef(false);
 
   useEffect(() => { setText(saved.text); }, [saved.text]);
   useEffect(() => { refresh(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function refresh() {
-    try { setNotes(await listMemory()); setNoteErr(""); } catch (e) { setNoteErr(String(e?.message || e)); setNotes([]); }
+    // a failed read keeps what was shown and says why; it never turns into "no notes yet"
+    try { setNotes(await listMemory()); setNoteErr(""); } catch (e) { setNoteErr(String(e?.message || e)); setNotes((n) => n || []); }
   }
 
   const migrate = t("Jalankan supabase/070_ai_memory.sql sekali dahulu.", "Run supabase/070_ai_memory.sql once first.");
@@ -67,30 +72,52 @@ export default function MemoryTab({ settings, save, onToast }) {
     setBusy("");
   }
 
-  async function add() {
-    const p = noteProblem(draft, notes || []);
-    if (p) return onToast(why(p), "warn");
-    setBusy("add");
-    try { await addMemory(draft); setDraft(""); await refresh(); onToast(t("Nota disimpan.", "Note saved."), "ok"); }
+  /** Runs one note action at a time; a second press while one is on its way does nothing. */
+  async function once(tag, fn) {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(tag);
+    try { await fn(); }
     catch (e) { onToast(String(e?.message || e), "danger"); }
-    setBusy("");
+    finally { lock.current = false; setBusy(""); }
+  }
+
+  /** The notes as the database has them now (another tab, the chat's "remember" or the nightly job may have added one since
+      this page read them): the duplicate check and the 40-note ceiling are judged against this, never the page's copy. */
+  async function freshNotes() {
+    const rows = await listMemory();
+    setNotes(rows); setNoteErr("");
+    return rows;
+  }
+
+  async function add() {
+    const quick = noteProblem(draft, []);
+    if (quick) return onToast(why(quick), "warn");
+    const note = draft;
+    await once("add", async () => {
+      const p = noteProblem(note, await freshNotes());
+      if (p) return onToast(why(p), "warn");
+      await addMemory(note); setDraft(""); await refresh(); onToast(t("Nota disimpan.", "Note saved."), "ok");
+    });
   }
 
   async function saveEdit() {
-    const p = noteProblem(edit.note, notes || [], edit.id);
-    if (p) return onToast(why(p), "warn");
-    setBusy(`edit-${edit.id}`);
-    try { await updateMemory(edit.id, edit.note); setEdit(null); await refresh(); }
-    catch (e) { onToast(String(e?.message || e), "danger"); }
-    setBusy("");
+    if (!edit) return;
+    const { id, note } = edit;
+    const quick = noteProblem(note, [], id);
+    if (quick) return onToast(why(quick), "warn");
+    await once(`edit-${id}`, async () => {
+      const p = noteProblem(note, await freshNotes(), id);
+      if (p) return onToast(why(p), "warn");
+      await updateMemory(id, note); setEdit(null); await refresh();
+    });
   }
 
   async function remove(id) {
+    if (lock.current) return;
     if (sure !== id) { setSure(id); setTimeout(() => setSure((s) => (s === id ? "" : s)), 6000); return; }
-    setSure(""); setBusy(`del-${id}`);
-    try { await deleteMemory(id); await refresh(); }
-    catch (e) { onToast(String(e?.message || e), "danger"); }
-    setBusy("");
+    setSure("");
+    await once(`del-${id}`, async () => { await deleteMemory(id); await refresh(); });
   }
 
   const shown = useMemo(() => filterNotes(notes || [], q, who), [notes, q, who]);
@@ -105,7 +132,9 @@ export default function MemoryTab({ settings, save, onToast }) {
           "Apa yang Sembang AI dan bot Telegram sentiasa tahu tentang anda, dan cara anda mahu mereka menjawab. Peraturan Semasa (fakta bersumber, BM Malaysia, peraturan post) sentiasa didahulukan.",
           "What the AI chat and the Telegram bot always know about you, and how you want them to answer. Semasa's own rules (sourced facts, Malaysian Malay, the post rules) always come first.")}</p>
       </motion.div>
-      {!ready && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn" data-memory-migrate>{migrate} {t("Sehingga itu, kedua-dua suis dikira hidup dan arahan tidak dapat disimpan.", "Until then both switches count as on and the instructions cannot be saved.")}</p>}
+      {state === "missing" && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn" data-memory-migrate>{migrate} {t("Sehingga itu, kedua-dua suis dikira hidup dan arahan tidak dapat disimpan.", "Until then both switches count as on and the instructions cannot be saved.")}</p>}
+      {state === "loading" && <p className="mb-4 flex items-center gap-2 text-sm text-muted" data-memory-settings-loading><Loader2 size={14} className="animate-spin" /> {t("Membaca tetapan…", "Reading the settings…")}</p>}
+      {state === "error" && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger" data-memory-settings-error>{t("Tetapan tidak dapat dibaca", "The settings could not be read")}: {settingsError}</p>}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="space-y-3 p-4" data-memory-instructions>
@@ -155,7 +184,7 @@ export default function MemoryTab({ settings, save, onToast }) {
           </label>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row" data-memory-add>
-          <Input value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={NOTE_MAX} onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+          <Input value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={NOTE_MAX} onKeyDown={(e) => { if (e.key === "Enter" && !e.repeat && !busy) add(); }}
             placeholder={t("Nota baharu, contoh: Wan mahu rujukan NPRA ditulis penuh.", "A new note, e.g. Wan wants NPRA references written out in full.")} />
           <Button size="sm" onClick={add} disabled={draft.trim().length < 3 || !!busy} className="shrink-0 justify-center">
             {busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} {t("Tambah", "Add")}
@@ -163,7 +192,7 @@ export default function MemoryTab({ settings, save, onToast }) {
         </div>
         {noteErr && <p className="rounded-tile bg-danger/10 p-3 text-sm text-danger">{noteErr}</p>}
         {notes == null && <p className="flex items-center gap-2 text-sm text-muted"><Loader2 size={14} className="animate-spin" /> {t("Membaca…", "Reading…")}</p>}
-        {notes != null && shown.length === 0 && <p className="text-sm text-muted">{(notes || []).length ? t("Tiada nota sepadan.", "No note matches.") : t("Belum ada nota.", "No notes yet.")}</p>}
+        {notes != null && !noteErr && shown.length === 0 && <p className="text-sm text-muted">{(notes || []).length ? t("Tiada nota sepadan.", "No note matches.") : t("Belum ada nota.", "No notes yet.")}</p>}
         <ul className="divide-y divide-line/60">
           {shown.map((r) => (
             <li key={r.id} className="flex flex-col gap-2 py-2 sm:flex-row sm:items-start" data-memory-note>
@@ -185,7 +214,7 @@ export default function MemoryTab({ settings, save, onToast }) {
                 ) : (
                   <button type="button" onClick={() => setEdit({ id: r.id, note: r.note })} disabled={!!busy} className="inline-flex items-center gap-0.5 underline" aria-label={t("Ubah nota", "Edit note")}><Pencil size={12} /> {t("ubah", "edit")}</button>
                 )}
-                <button type="button" onClick={() => remove(r.id)} disabled={busy === `del-${r.id}`} className="inline-flex items-center gap-0.5 text-warn underline" aria-label={t("Padam nota", "Delete note")}>
+                <button type="button" onClick={() => remove(r.id)} disabled={!!busy} className="inline-flex items-center gap-0.5 text-warn underline" aria-label={t("Padam nota", "Delete note")}>
                   <Trash2 size={12} /> {sure === r.id ? t("pasti?", "sure?") : t("padam", "delete")}
                 </button>
               </div>

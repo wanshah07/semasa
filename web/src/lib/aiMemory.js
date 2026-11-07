@@ -37,6 +37,16 @@ export function memoryOf(settings) {
 /** Whether the settings rows exist yet: before supabase/070 runs a save finds no row, and the page says which file to run. */
 export const hasRows = (settings) => !!settings && INSTRUCTIONS_KEY in settings && MEMORY_KEY in settings;
 
+/** What the page can say about the settings rows: "ready" (both rows are there), "loading" (the first read is on its way),
+    "error" (the read failed, so nothing is known about the rows) or "missing" (read, and a row is not there: run supabase/070).
+    Only "missing" is a reason to send Wan to the SQL file; a slow or failed read is not. `loading`/`error` are useSettings'. */
+export function settingsState(settings, { loading = false, error = "" } = {}) {
+  if (hasRows(settings)) return "ready";
+  if (loading) return "loading";
+  if (error) return "error";
+  return "missing";
+}
+
 export function instructionsValue(text, now = new Date()) {
   return { text: cleanInstructions(text), updated_at: now.toISOString() };
 }

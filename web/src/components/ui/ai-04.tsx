@@ -333,7 +333,7 @@ export default function Ai04({
                 <DropdownMenuTrigger asChild>
                   <Button
                     aria-label={L.add}
-                    className="ml-[-2px] rounded-md"
+                    className="ml-[-2px] h-11 w-11 rounded-md sm:h-8 sm:w-8"
                     size="icon-sm"
                     type="button"
                     variant="ghost"
@@ -397,7 +397,7 @@ export default function Ai04({
                 <DropdownMenuTrigger asChild>
                   <Button
                     aria-label={L.adjust}
-                    className="rounded-md"
+                    className="h-11 w-11 rounded-md sm:h-8 sm:w-8"
                     size="icon-sm"
                     type="button"
                     variant="ghost"
@@ -436,7 +436,7 @@ export default function Ai04({
             <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
               <Button
                 aria-label={L.send}
-                className="rounded-md"
+                className="h-11 w-11 rounded-md sm:h-8 sm:w-8"
                 disabled={!prompt.trim() || busy}
                 size="icon-sm"
                 type="submit"

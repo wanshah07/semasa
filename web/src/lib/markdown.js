@@ -58,11 +58,24 @@ export function inline(src) {
   return out;
 }
 
+/** A paragraph's lines → one string for inline(): kept as newlines (each drawn as a <br>), or joined with spaces. */
+function joinLines(lines, opts) {
+  if (opts?.softBreak !== "space") return lines.join("\n");
+  let out = "";
+  lines.forEach((l, k) => {
+    if (k === lines.length - 1) { out += l; return; }
+    if (/ {2,}$/.test(l)) out += `${l.replace(/ +$/, "")}\n`;
+    else if (/\\$/.test(l) && !/\\\\$/.test(l)) out += `${l.slice(0, -1)}\n`;
+    else out += `${l.replace(/\s+$/, "")} `;
+  });
+  return out;
+}
+
 const cells = (row) => row.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
 const isSep = (row) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(row);
 
 /** Lines of a list (the item lines and their continuation / nested lines) → items, one level of nesting. */
-function listItems(lines, ordered) {
+function listItems(lines, ordered, opts) {
   const items = [];
   const re = ordered ? /^(\s*)(\d+)[.)]\s+(.*)$/ : /^(\s*)[-*+]\s+(.*)$/;
   let cur = null;
@@ -70,14 +83,16 @@ function listItems(lines, ordered) {
     const m = l.match(re);
     const indent = m ? m[1].length : 99;
     if (m && indent <= 1) { cur = { text: ordered ? m[3] : m[2], sub: [] }; items.push(cur); continue; }
+    // soft-wrapped item: an indented line straight after it that starts no list of its own is more of the same sentence
+    if (cur && opts?.softBreak === "space" && !cur.sub.length && !/^\s*([-*+]|\d+[.)])\s+/.test(l)) { cur.text += ` ${l.trim()}`; continue; }
     if (cur) cur.sub.push(l.replace(/^\s{1,4}/, ""));
   }
-  return items.map((it) => ({ c: inline(it.text), children: it.sub.length ? blocks(it.sub) : [] }));
+  return items.map((it) => ({ c: inline(it.text), children: it.sub.length ? blocks(it.sub, opts) : [] }));
 }
 
 /** Lines → blocks: [{ t: "h", n, c } | { t: "p", c } | { t: "code", lang, s } | { t: "ul"|"ol", items } | { t: "quote", children } |
     { t: "table", head, rows } | { t: "hr" }] */
-export function blocks(lines) {
+export function blocks(lines, opts = {}) {
   const out = [];
   let i = 0;
   while (i < lines.length) {
@@ -98,7 +113,7 @@ export function blocks(lines) {
     if (/^\s*>/.test(l)) {
       const q = [];
       while (i < lines.length && /^\s*>/.test(lines[i])) q.push(lines[i++].replace(/^\s*>\s?/, ""));
-      out.push({ t: "quote", children: blocks(q) });
+      out.push({ t: "quote", children: blocks(q, opts) });
       continue;
     }
     if (l.includes("|") && i + 1 < lines.length && isSep(lines[i + 1])) {
@@ -117,18 +132,21 @@ export function blocks(lines) {
         if (lines[i].trim()) buf.push(lines[i]);
         i++;
       }
-      out.push({ t: ul ? "ul" : "ol", items: listItems(buf, ol) });
+      out.push({ t: ul ? "ul" : "ol", items: listItems(buf, ol, opts) });
       continue;
     }
     const p = [];
     while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|\s*```|\s*>|\s{0,1}[-*+]\s+|\s{0,1}\d+[.)]\s+)/.test(lines[i]) && !(lines[i].includes("|") && i + 1 < lines.length && isSep(lines[i + 1]))) p.push(lines[i++]);
-    if (p.length) out.push({ t: "p", c: inline(p.join("\n")) });
+    if (p.length) out.push({ t: "p", c: inline(joinLines(p, opts)) });
     else i++;
   }
   return out;
 }
 
-export const parseMarkdown = (text) => blocks(String(text ?? "").replace(/\r\n?/g, "\n").split("\n"));
+/** opts.softBreak: "br" (the default, for the chat: a model's single newline is a line it meant) or "space" (for Rujukan →
+    Dokumen: the repo's .md files are hard-wrapped at ~120 columns, so a newline inside a paragraph is only the wrap, as in
+    CommonMark; a line ending in two spaces or a backslash still breaks). */
+export const parseMarkdown = (text, opts = {}) => blocks(String(text ?? "").replace(/\r\n?/g, "\n").split("\n"), opts);
 
 /** The text with no marks at all (for the copy button and for a thread's title). */
 export function plainText(nodes) {

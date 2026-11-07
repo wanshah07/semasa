@@ -61,4 +61,16 @@ t("empty and odd input is fine", () => {
   assert.equal(parseMarkdown("a * b * c")[0].c.length, 1, "spaced asterisks are not emphasis");
 });
 
+t("softBreak: \"space\" (Rujukan → Dokumen) joins a hard-wrapped paragraph and list item; the chat default keeps a <br>", () => {
+  const src = "A rule written\nacross two lines.\nHard break here  \nnext line.\n\n- an item that\n  wraps on\n  - a nested one";
+  const chat = parseMarkdown(src);
+  assert.equal(chat[0].c.filter((x) => x.t === "br").length, 3, "the chat still draws every newline");
+  const doc = parseMarkdown(src, { softBreak: "space" });
+  assert.equal(doc[0].c.filter((x) => x.t === "br").length, 1, "only the two-space line end breaks");
+  assert.equal(doc[0].c[0].s, "A rule written across two lines. Hard break here");
+  assert.equal(doc[1].items[0].c[0].s, "an item that wraps on");
+  assert.equal(doc[1].items[0].children[0].t, "ul", "a nested list is still a nested list");
+  assert.equal(parseMarkdown("a\\\nb", { softBreak: "space" })[0].c.filter((x) => x.t === "br").length, 1, "a backslash line end breaks");
+});
+
 console.log(`markdown: ${n} ok`);

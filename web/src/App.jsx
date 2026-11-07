@@ -455,16 +455,18 @@ export default function App() {
             onToast={push} onDone={() => ideas.reload()} />
         </Suspense>
       )}
-      <footer className="mt-auto border-t border-line py-8 text-center text-[11px] text-muted">
+      {/* the news footer belongs to the issues page; on every other page it was a line about something not on screen */}
+      {tab === "isu" && <footer className="mt-auto border-t border-line py-8 text-center text-[11px] text-muted">
         {t("Semasa · sumber berita kekal milik penerbit masing-masing · dikemas kini setiap 8 jam · "
           + "isu yang tidak dijadikan idea hilang selepas 48 jam",
         "Semasa · news sources remain the property of their publishers · updated every 8 hours · "
           + "issues not turned into an idea disappear after 48 hours")}
-      </footer>
+      </footer>}
       </div>
       {/* phone and installed-app shortcuts: only once signed in, so the sign-in screen stays one card */}
       {allowed && configured && <MobileTabBar tab={tab} setTab={go} />}
-      <InstallHint />
+      {/* the install hint on the home page only (also the sign-in screen, which is the home address), under any open dialog */}
+      {tab === "papan" && <InstallHint />}
       <Toasts toasts={toasts} />
     </div>
     </DesignsContext.Provider>

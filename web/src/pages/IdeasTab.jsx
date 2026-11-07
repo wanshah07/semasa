@@ -123,17 +123,24 @@ function SourcePills({ r }) {
   );
 }
 
-function LateNote({ r }) {
+const isLate = (r) => r.status === "new" && Date.now() - new Date(r.updated_at || r.created_at).getTime() > LATE_MIN * 60_000;
+
+/* One banner above the list when any shown idea has waited too long (it used to repeat inside every late card). */
+function LateNote({ n }) {
   const { t } = useLang();
-  if (!(r.status === "new" && Date.now() - new Date(r.updated_at || r.created_at).getTime() > LATE_MIN * 60_000)) return null;
+  if (!n) return null;
   return (
-    <p className="mt-2 rounded-tile bg-warn/10 p-2 text-[12px] text-ink">
-      {t("Semasa belum bermula: jadual GitHub kadang-kadang lewat atau terlepas. Mulakan sekarang di",
-        "Semasa has not started: GitHub's schedule sometimes runs late or is skipped. Start it now at")}{" "}
-      <a href={WORKER_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-accent underline">
-        GitHub → Generate media → Run workflow</a>.{" "}
-      {t("Token penghantaran dalam Vault (004, 009) membangunkan Semasa serta-merta.",
-        "The dispatch token in Vault (004, 009) wakes Semasa at once.")}
+    <p className="mt-4 flex items-start gap-2 rounded-tile border border-warn/40 bg-warn/10 p-3 text-[12px] text-ink" data-ideas-late={n}>
+      <Clock size={14} className="mt-0.5 shrink-0 text-warn" />
+      <span>
+        <b>{t("{n} idea menunggu lebih {m} minit.", ["{n} idea waiting over {m} minutes.", "{n} ideas waiting over {m} minutes."], { n, m: LATE_MIN })}</b>{" "}
+        {t("Semasa belum bermula: jadual GitHub kadang-kadang lewat atau terlepas. Mulakan sekarang di",
+          "Semasa has not started: GitHub's schedule sometimes runs late or is skipped. Start it now at")}{" "}
+        <a href={WORKER_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-accent underline">
+          GitHub → Generate media → Run workflow</a>.{" "}
+        {t("Token penghantaran dalam Vault (004, 009) membangunkan Semasa serta-merta.",
+          "The dispatch token in Vault (004, 009) wakes Semasa at once.")}
+      </span>
     </p>
   );
 }
@@ -205,9 +212,10 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
     && (!needle || [r.source_title, r.note, r.source_name, r.source_url, r.domain, r.angle].some((x) => String(x || "").toLowerCase().includes(needle))));
   const count = (k) => ideas.rows.filter((r) => ({ open: r.status !== "rejected", waiting: r.status === "new" || r.status === "working",
     error: r.status === "error", drafted: r.status === "drafted", rejected: r.status === "rejected" })[k]).length;
-  const forText = (r) => `${r.stream === "linkedin" ? "LinkedIn" : "ws.regulab"}${r.domain ? ` · ${r.domain}` : ""}${r.angle ? ` · ${r.angle}` : ""} · ${
-    { image: t("imej", "image"), video: "video", none: t("tiada media", "no media") }[r.make_media] || r.make_media}${
-    r.brief?.format === "poster" ? " · poster" : r.make_slides || r.brief?.format === "carousel" ? " · carousel" : ""}`;
+  // an idea with no make_media used to print "· undefined": every part is dropped when it is empty
+  const forText = (r) => [r.stream === "linkedin" ? "LinkedIn" : "ws.regulab", r.domain, r.angle,
+    { image: t("imej", "image"), video: "video", none: t("tiada media", "no media") }[r.make_media] || r.make_media,
+    r.brief?.format === "poster" ? "poster" : r.make_slides || r.brief?.format === "carousel" ? "carousel" : ""].filter(Boolean).join(" · ");
   const actions = (r) => (
     <>
       {r.status === "drafted" && r.brief?.post_id && (
@@ -231,7 +239,11 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
         <Button size="sm" variant="ghost" onClick={() => update(r.id, { status: "rejected" }, t("Ditolak.", "Rejected."))}>
           {t("Tolak", "Reject")}</Button>
       )}
-      {r.status !== "rejected" && r.status !== "working" && <select value={langFor(r)} onChange={e => setMotionLang(m => ({...m, [r.id]:e.target.value}))} aria-label="Motion language variant" className="rounded-pill border border-line bg-surface px-2 py-1.5 text-xs">{LANGUAGES.map(([k,l]) => <option key={k} value={k}>{l}</option>)}</select>}
+      {r.status !== "rejected" && r.status !== "working" && (
+        <label className="inline-flex items-center gap-1.5 text-[11px] text-muted">
+          <Clapperboard size={12} className="shrink-0" /> {t("Bahasa video", "Video language")}
+          <select value={langFor(r)} onChange={e => setMotionLang(m => ({...m, [r.id]:e.target.value}))} className="min-h-[44px] rounded-pill border border-line bg-surface px-2 py-1.5 text-xs text-ink lg:min-h-0">{LANGUAGES.map(([k,l]) => <option key={k} value={k}>{l}</option>)}</select>
+        </label>)}
       {r.status !== "rejected" && r.status !== "working" && (motionOf(r.id)
         ? <span className="inline-flex items-center gap-1 rounded-pill bg-surface-2 px-3 py-1.5 text-xs text-muted" data-idea-motion={motionOf(r.id).status}><Clapperboard size={12} /> {t("Motion", "Motion")}: {({ pending: t("menunggu", "waiting"), working: t("dibuat", "being made"), done: t("siap", "done"), error: t("ralat", "error") })[motionOf(r.id).status] || motionOf(r.id).status}</span>
         : <span className="inline-flex items-center gap-1" data-idea-motion-make>
@@ -252,8 +264,8 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
       <motion.div variants={fadeUp} initial="hidden" animate="show" className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[13px] font-semibold text-accent">{t("Aliran A", "Flow A")}</p>
-          <h1 className="mt-2 text-4xl leading-tight">{t("Isu → idea → draf.", "Issue → idea → draft.")}</h1>
-          <p className="mt-3 max-w-2xl text-sm text-muted">
+          <h1 className="mt-2 text-3xl leading-tight sm:text-4xl">{t("Isu → idea → draf.", "Issue → idea → draft.")}</h1>
+          <p className="mt-3 hidden max-w-2xl text-sm text-muted sm:block">
             {lang === "en" ? (
               <>
                 Press <b>Make an idea</b> on any issue, or write your own. Semasa reads the source, writes a draft in the
@@ -276,11 +288,12 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
         </div>
       </motion.div>
       <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-2 text-xs">
+        {/* one row that scrolls sideways on a phone, as in Post */}
+        <div className="-mx-4 flex w-[calc(100%+2rem)] gap-2 overflow-x-auto px-4 text-xs sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0">
           {[["open", t("Aktif", "Active")], ["waiting", t("Menunggu", "Waiting")], ["error", t("Gagal", "Failed")],
             ["drafted", t("Draf siap", "Drafted")], ["rejected", t("Ditolak", "Rejected")]].map(([v, l]) => (
             <button key={v} onClick={() => setFilter(v)} aria-pressed={filter === v}
-              className={`rounded-pill px-3 py-1.5 ${filter === v ? "bg-ink text-bg" : "bg-surface-2 text-muted"}`}>{l}{count(v) ? ` · ${count(v)}` : ""}</button>
+              className={`min-h-[44px] shrink-0 whitespace-nowrap rounded-pill px-3 py-1.5 lg:min-h-0 ${filter === v ? "bg-ink text-bg" : "bg-surface-2 text-muted"}`}>{l}{count(v) ? ` · ${count(v)}` : ""}</button>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -297,6 +310,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
         </div>
       </div>
       {ideas.error && <p className="mt-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{ideas.error}</p>}
+      <LateNote n={shown.filter(isLate).length} />
       {!shown.length && !ideas.loading && (
         <p className="mt-4 rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">{t("Tiada idea di sini.", "No ideas here.")}</p>
       )}
@@ -321,7 +335,6 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
                     {r.note && <p className="mt-1 line-clamp-2 text-[12px] text-muted">“{r.note}”</p>}
                     {r.error && <p className="mt-1 text-[12px] text-danger">{r.error}</p>}
                     <SourcePills r={r} />
-                    <LateNote r={r} />
                   </td>
                   <td className={`${TD} text-[12px] text-muted`} data-label={t("Untuk", "For")}>{forText(r)}</td>
                   <td className={`${TD} whitespace-nowrap text-[12px] text-muted`} data-label={t("Masa", "When")}>{timeAgo(r.created_at)}</td>
@@ -352,7 +365,6 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
                 )}
                 <SourcePills r={r} />
                 {r.error && <p className="mt-2 [overflow-wrap:anywhere] rounded-tile bg-danger/5 p-2 text-[12px] text-danger">{r.error}</p>}
-                <LateNote r={r} />
                 <div className="mt-3 flex flex-wrap gap-2">{actions(r)}</div>
               </Card>
             );

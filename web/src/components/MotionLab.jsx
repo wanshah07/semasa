@@ -34,6 +34,22 @@ const STATUS_CLS = { waiting: "bg-accent/15 text-accent", pending: "bg-warn/15 t
 /* `view` (Wan, 11 Oct 2026: video generation and Motion together, a library of its own, the skills in one place):
    "make" is the form and the queue, "library" is the finished films as compact tiles (components/TileGrid.jsx), "skills" is
    the motion repos. One component holds the state and each page draws its share, so a rule is never written twice. */
+/* Malay names for the design variants and the attachment-style choices whose names lib/motionStyles.js writes in English
+   (the recipe catalogue's own names are the source document's titles and stay as they are). */
+const DESIGN_BM = {
+  "bright-editorial": "Reka bentuk 1 · Foto / Rajah / Editorial cerah asal",
+  "continuous-line": "Reka bentuk 2 · Garis berterusan (v17 diluluskan)",
+};
+const RECIPE_BM = {
+  auto: "Auto · adaptasi pendidikan yang sesuai",
+  "bright-education": "Pendidikan cerah (motif Pendidikan Kewangan)",
+};
+const REASON_BM = {
+  "Source duplicates Tutorial / Screen Recording; no testimonial recipe supplied": "Sumber menduplikasi Tutorial / Rakaman Skrin; tiada resipi testimoni dibekalkan",
+  "Uploaded-footage editing unavailable; needs original video, real captures and timing": "Suntingan rakaman yang dimuat naik belum ada; perlukan video asal, tangkapan sebenar dan pemasaan",
+  "Needs uploaded assets not yet supported by this form": "Perlukan aset muat naik yang belum disokong borang ini",
+};
+
 export default function MotionLab({ user, onToast, view = "make" }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? 1 : 0;
@@ -206,7 +222,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
                 <p className="mt-1">{[...new Set([...Object.values(r.check_report.auto_effects.scenes || {}).flat(), ...Object.values(r.check_report.auto_effects.video || {}), ...(r.check_report.auto_effects.audio || [])])]
                   .map((id) => `${id} ${effectName[id] || ""}`.trim()).join(" · ")}</p></details>}
               {r.check_report?.asset_plan && <details className="mt-2 text-xs">
-                <summary className="cursor-pointer text-muted">Prepared assets & actual effect readiness</summary>
+                <summary className="cursor-pointer text-muted">{t("Aset disediakan & kesediaan sebenar kesan", "Prepared assets & actual effect readiness")}</summary>
                 <ul className="mt-1 space-y-1">{r.check_report.asset_plan.effects.map(e => <li key={e.id}><b>{e.id} · {e.readiness}</b>: {e.reason}</li>)}</ul>
                 {r.check_report.asset_plan.notes.map((note,i)=><p key={i} className="mt-1 text-muted">{note}</p>)}
               </details>}
@@ -271,17 +287,19 @@ export default function MotionLab({ user, onToast, view = "make" }) {
         <MotionAmbient value={ambient} onChange={setAmbient} />
         <label className="block" data-motion-design><Label>{t("Varian reka bentuk (dikekalkan)", "Design variant (preserved)")}</Label>
           <select aria-label={t("Varian reka bentuk", "Design variant")} value={design} onChange={e => setDesign(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
-            {designOptions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            {designOptions.map(d => <option key={d.id} value={d.id}>{L ? d.name : DESIGN_BM[d.id] || d.name}</option>)}
           </select></label>
         <label className="block" data-motion-recipe><Label>{t("Gaya lampiran", "Attachment style")}</Label>
-          <select aria-label="Attachment style" value={style} onChange={e => setStyle(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
-            {recipeOptions().map(r => <option key={r.id} value={r.id} disabled={!r.available}>{r.name}{!r.available ? ` · ${r.reason}` : ""}</option>)}
+          <select aria-label={t("Gaya lampiran", "Attachment style")} value={style} onChange={e => setStyle(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
+            {recipeOptions().map(r => <option key={r.id} value={r.id} disabled={!r.available}>{L ? r.name : RECIPE_BM[r.id] || r.name}{!r.available ? ` · ${L ? r.reason : REASON_BM[r.reason] || r.reason}` : ""}</option>)}
           </select></label>
         <MotionEffectLibrary brief={brief} mode={mode} effects={effects} effectMode={effectMode}
           onEffects={setEffects} onEffectMode={setEffectMode} assets={assets} onAssets={setAssets}
           client={supabase} user={user} onBusy={setAssetsBusy} />
-        <p className="text-xs text-muted" data-motion-audio-rights>Preferred preview music: supplied reel (rights unverified, private preview only, v17 quiet mix). Public export: cleared/self-owned piano; alternatively add licensed platform audio yourself. Reel audio is not bundled or downloaded automatically; unavailable preview source does not block the cleared export.</p>
-        <p className="text-xs text-muted">{recipeOf(style).name} · Hook → Fact → Why → Solution. As long as the information needs, never more than 70s. 10s is only an explicitly selected gimmick/teaser, never an explainer. Long explainers include a separate 3s outro; 10s gimmicks stay in one continuous composition. Missing real footage/captures/data disables unsuitable recipes; charts and counters are omitted without verified data.</p>
+        <p className="text-xs text-muted" data-motion-audio-rights>{t("Muzik pratonton pilihan: reel yang dibekalkan (hak belum disahkan, pratonton peribadi sahaja, campuran perlahan v17). Eksport awam: piano yang haknya jelas atau milik sendiri; atau tambah sendiri audio platform yang berlesen. Audio reel tidak dibundel atau dimuat turun secara automatik; sumber pratonton yang tiada tidak menyekat eksport yang haknya jelas.",
+          "Preferred preview music: supplied reel (rights unverified, private preview only, v17 quiet mix). Public export: cleared/self-owned piano; alternatively add licensed platform audio yourself. Reel audio is not bundled or downloaded automatically; unavailable preview source does not block the cleared export.")}</p>
+        <p className="text-xs text-muted">{L ? recipeOf(style).name : RECIPE_BM[recipeOf(style).id] || recipeOf(style).name} · {t("Hook → Fakta → Kenapa → Solusi. Sepanjang yang maklumat perlukan, tidak lebih 70 saat. 10 saat hanya untuk gimik/teaser yang dipilih khusus, bukan penerang. Penerang panjang ada penutup 3 saat yang berasingan; gimik 10 saat kekal dalam satu komposisi berterusan. Tanpa rakaman, tangkapan skrin atau data sebenar, resipi yang tidak sesuai dimatikan; carta dan pembilang ditinggalkan tanpa data yang disahkan.",
+          "Hook → Fact → Why → Solution. As long as the information needs, never more than 70s. 10s is only an explicitly selected gimmick/teaser, never an explainer. Long explainers include a separate 3s outro; 10s gimmicks stay in one continuous composition. Missing real footage/captures/data disables unsuitable recipes; charts and counters are omitted without verified data.")}</p>
         <label className="block" data-motion-style><Label hint={t("repo motion dari halaman Kemahiran motion; setiap satu gaya yang berbeza", "a motion repo from the Motion skills page; each one a different look")}>{t("Gaya (repo motion)", "Style (motion repo)")}</Label>
           <Select value={styleRepoId} onChange={setStyleRepoId} className="w-full"
             options={[["", t("Gaya lalai Semasa", "Semasa's default look")], ...styles.map((r) => [r.id, `${r.name || r.full_name}${r.status !== "done" ? ` · ${t("belum dibaca", "not read yet")}` : ""}${r.safety === "avoid" ? ` · ${t("elakkan", "avoid")}` : ""}`])]} /></label>

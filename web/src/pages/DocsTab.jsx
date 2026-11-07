@@ -64,7 +64,7 @@ export default function DocsTab() {
 
   const found = useMemo(() => searchDocs(DOCS, q, texts), [q, texts]);
   const groups = useMemo(() => groupDocs(found), [found]);
-  const tree = useMemo(() => (text != null ? parseMarkdown(text) : null), [text]);
+  const tree = useMemo(() => (text != null ? parseMarkdown(text, { softBreak: "space" }) : null), [text]);   // the repo's .md files are hard-wrapped: a newline is the wrap, not a break
   const outline = useMemo(() => (tree ? outlineOf(tree) : []), [tree]);
 
   function open(p) {

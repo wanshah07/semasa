@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { flagWords } from "../lib/complianceBm";
 import { CalendarX, CheckCircle2, Loader2, RefreshCw, Send } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
@@ -28,7 +29,7 @@ const streamOfChannel = (c) => (c === "linkedin" ? "linkedin" : "regulab");
    same transaction (supabase/054), and a link clears every booked slot of the stream. */
 
 export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
-  const { t } = useLang();
+  const { t, lang: uiLang } = useLang();
   const all = channelsFor(film);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -243,7 +244,7 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
           </button>
           {hard.length > 0 && (
             <ul className="space-y-0.5 rounded-tile bg-danger/10 p-2 text-xs text-danger">
-              {hard.map((f, i) => <li key={i}><b>{f.where}</b> · {f.msg}</li>)}
+              {hard.map((f, i) => <li key={i}><b>{flagWords(f, uiLang).where}</b> · {flagWords(f, uiLang).msg}</li>)}
               <li className="text-muted">{t("Boleh masuk giliran sebagai draf; betulkan di tab Post sebelum diluluskan.", "It can still be queued as a draft; fix it in the Posts tab before approving.")}</li>
             </ul>
           )}

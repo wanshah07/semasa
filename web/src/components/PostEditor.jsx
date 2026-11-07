@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CalendarClock, Check, Eraser, ImagePlus, Info, RotateCcw, Save, Trash2, UploadCloud, X } from "lucide-react";
+import { flagWords } from "../lib/complianceBm";
+import { AlertTriangle, CalendarClock, Check, Eraser, ImagePlus, Info, RotateCcw, Save, Trash2, UploadCloud, X, XCircle } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { LIMITS, charLen, hardCount, normaliseSlides, platformsOf, scan, scanMedia, stripPromo } from "../lib/compliance";
 import { dueMs, duplicatesOf, nextFreeSlot, refOf, slotsOf, takenSet } from "../lib/slots";
@@ -24,7 +25,7 @@ const PLAT_LABEL = { instagram: "Instagram", facebook: "Facebook", threads: "Thr
    Approve is offered only when nothing blocks. Changing an approved post sends it back to
    draft (the database does that, not this page), so what was approved is what goes out. */
 export default function PostEditor({ post, posts = [], mediaById, mediaRows, log, brand, user, indoExtra, onToast, onChanged, onClose }) {
-  const { t } = useLang();
+  const { t, lang: uiLang } = useLang();
   const [text, setText] = useState(post.text || {});
   const [lang, setLang] = useState(post.lang || (post.stream === "linkedin" ? "en" : "bm"));
   const [view, setView] = useState(post.lang || (post.stream === "linkedin" ? "en" : "bm"));
@@ -49,6 +50,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   const [fit, setFit] = useState(() => (mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design && m.meta?.look !== "canva")
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta?.fit) !== false);
   const [lookBlocked, setLookBlocked] = useState(null);
+  const [rejecting, setRejecting] = useState(false);   // the Reject… form (drawn by PostWorkflow), opened from the action bar
   const [busy, setBusy] = useState(false);
   const [newPic, setNewPic] = useState("");
   const [ownAlt, setOwnAlt] = useState("");
@@ -490,7 +492,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
         <ul className="mt-2 space-y-1 text-[12px]">
           {shownFlags.map((f, i) => (
             <li key={i} className={f.hard ? "text-danger" : "text-muted"}>
-              {f.hard ? "■" : "□"} <b>{f.where}</b>: {f.msg}
+              {f.hard ? "■" : "□"} <b>{flagWords(f, uiLang).where}</b>: {flagWords(f, uiLang).msg}
               {!locked && fixTarget(f.where) && <button type="button" className="ml-1 underline decoration-dotted hover:text-ink"
                 onClick={() => jump(f.where)}>{t("Betulkan →", "Fix →")}</button>}
             </li>
@@ -517,10 +519,11 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
         </p>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {!locked && <Button variant="ghost" disabled={busy || (clash.length > 0 && movedPosition)}
-          title={clash.length && movedPosition ? t("Slot itu sudah dipegang: pilih slot lain", "That slot is already held: choose another") : ""}
-          onClick={() => write(content(), t("Disimpan.", "Saved."))}><Save size={13} /> {t("Simpan", "Save")}</Button>}
+      {/* the decisions in one row: Approve, Save and Reject… together, Delete apart on the right. On a phone the row stays on
+          screen above the bottom tab bar while the caption scrolls (--tabbar-h is 0 on a wide screen; index.css), and the
+          words drop their icons so the four fit one line of a 390 px screen. */}
+      {!locked && <div data-post-actions className="sticky z-10 -mx-4 flex flex-wrap items-center border-t border-line bg-surface/95 px-4 py-2 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none gap-1.5 [&>button]:min-h-[44px] [&>button]:px-3 sm:gap-2 sm:[&>button]:min-h-0 sm:[&>button]:px-4 [&>button:not([data-icon-only])>svg]:hidden sm:[&>button:not([data-icon-only])>svg]:inline"
+        style={{ bottom: "var(--tabbar-h, 0px)" }}>
         {post.status !== "approved" && !locked && (
           <Button disabled={busy || blocking > 0 || !date || !slot} onClick={() => write({ ...content(), status: "approved", ...decided("approved") }, t("Diluluskan.", "Approved."))}
             title={blocking ? t("Selesaikan perkara bertanda ■ dahulu", "Resolve the items marked ■ first")
@@ -528,20 +531,27 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
             <Check size={13} /> {t("Luluskan", "Approve")}
           </Button>
         )}
+        {!locked && <Button variant="ghost" disabled={busy || (clash.length > 0 && movedPosition)}
+          title={clash.length && movedPosition ? t("Slot itu sudah dipegang: pilih slot lain", "That slot is already held: choose another") : ""}
+          onClick={() => write(content(), t("Disimpan.", "Saved."))}><Save size={13} /> {t("Simpan", "Save")}</Button>}
+        {(post.status === "draft" || post.status === "approved") && !locked && (
+          <Button variant="ghost" disabled={busy} aria-expanded={rejecting} onClick={() => setRejecting((x) => !x)}>
+            <XCircle size={13} /> {t("Tolak…", "Reject…")}</Button>
+        )}
         {post.status === "approved" && <Button variant="soft" disabled={busy} onClick={() => write({ status: "draft", ...decided("back to draft") }, t("Kembali ke draf.", "Back to draft."))}>
           <RotateCcw size={13} /> {t("Kembali ke draf", "Back to draft")}</Button>}
         {post.status === "rejected" && <Button variant="soft" disabled={busy} onClick={restore}>
           {t("Pulihkan", "Restore")}</Button>}
         {(post.status === "draft" || post.status === "rejected") && (
-          <Button variant="danger" disabled={busy} onClick={async () => {
+          <Button variant="danger" className="ml-auto" data-icon-only disabled={busy} aria-label={t("Padam post ini", "Delete this post")} title={t("Padam post ini", "Delete this post")} onClick={async () => {
             const { error } = await supabase.from(TABLES.posts).delete().eq("id", post.id);
             if (error) onToast(errText(error), "danger"); else { onToast(t("Dipadam.", "Deleted."), "info"); onChanged(); onClose?.(); }
           }}><Trash2 size={13} /></Button>
         )}
-      </div>
+      </div>}
 
       <PostWorkflow post={post} dirty={dirty} locked={locked} mediaById={mediaById} lastLook={look} user={user}
-        onToast={onToast} onChanged={onChanged} />
+        onToast={onToast} onChanged={onChanged} rejecting={rejecting} onRejecting={setRejecting} />
 
       {myLog.length > 0 && (
         <div>

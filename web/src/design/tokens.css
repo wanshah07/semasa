@@ -18,8 +18,10 @@
   --c-accent-text: 23 105 170;   /* #1769AA: the accent as TEXT on bg/surface (5.7:1); fills keep --c-accent */
   --c-warm:       255 194 206;   /* #FFC2CE */
   --c-gold:       201 162  75;   /* #C9A24B */
-  --c-ok:          22 101  52;   /* text-ok/warn/danger are read as 11-12 px text on white and on their own 10% tints: these are the
-  --c-warn:       180  83   9;      darkest shades that still read as green/amber/red and pass 4.5:1 on white (the old 22 163 74 read 2.9) */
+  /* text-ok/warn/danger are read as 11-12 px text on white and on their own 10% tints: these are the darkest shades
+     that still read as green/amber/red and pass 4.5:1 on white (the old 22 163 74 read 2.9) */
+  --c-ok:          22 101  52;
+  --c-warn:       180  83   9;
   --c-danger:     185  28  28;
 
   /* type */

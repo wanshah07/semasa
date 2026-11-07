@@ -105,9 +105,10 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="ghost" onClick={() => go("idea")}><Lightbulb size={14} /> {t("Idea", "Ideas")} {stats.ideasNew ? `(${stats.ideasNew})` : ""}</Button>
-          <Button variant="ghost" onClick={() => go("post")}><FileText size={14} /> {t("Post", "Posts")} {stats.drafts ? `(${stats.drafts})` : ""}</Button>
-          <Button onClick={() => go("isu")}>{t("Isu semasa", "Current issues")}</Button>
+          {/* one primary: the drafts waiting for approval when there are any (the gate is the day's real work), else the ideas */}
+          <Button variant={stats.drafts ? "ghost" : "primary"} onClick={() => go("idea")}><Lightbulb size={14} /> {t("Idea", "Ideas")} {stats.ideasNew ? `(${stats.ideasNew})` : ""}</Button>
+          <Button variant={stats.drafts ? "primary" : "ghost"} onClick={() => go("post")}><FileText size={14} /> {t("Post", "Posts")} {stats.drafts ? `(${stats.drafts})` : ""}</Button>
+          <Button variant="ghost" onClick={() => go("isu")}>{t("Isu semasa", "Current issues")}</Button>
           <Button variant="ghost" onClick={() => setArranging(true)} data-arrange-dashboard><LayoutGrid size={14} /> {t("Susun papan", "Arrange")}</Button>
         </div>
       </motion.div>
@@ -121,7 +122,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
         <CardTitle>{t("Pasukan AI", "AI team")}</CardTitle>
         <CardDescription>{settings?.ai_team_state?.reader?.chosen
           ? t("{r} menulis sekarang · {m}", "{r} writes now · {m}", { r: settings.ai_team_state.reader.chosen.name, m: settings.ai_team_state.reader.chosen.model })
-          : t("Tiga robot Wanshah; pengarah pilih yang terpantas.", "Three Wanshah robots; the router picks the fastest.")}</CardDescription>
+          : t("Robot Wanshah; pengarah pilih yang terpantas.", "Wanshah's robots; the router picks the fastest.")}</CardDescription>
       </CardHeader>
       <CardContent>
         <AiTeam statusRows={apiT.rows} usageRows={usageT.rows} state={settings?.ai_team_state} team={settings?.ai_team} compact />

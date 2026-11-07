@@ -16,10 +16,15 @@ const NEED_021 = /versions|decisions|revise_|rejected_at|column/i;
    Better than Studio in three ways: a revise keeps the slides and their designs (Studio wrote the card again), a
    replacement keeps the rejected draft's own photographs instead of paying for new ones, and restoring an old version
    keeps the words it replaces, so no rewrite can ever lose what Wan wrote. */
-export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook, onToast, onChanged, user }) {
+/* `rejecting` + `onRejecting` (optional): the editor's action bar holds the Reject… button beside Approve and Save, and opens
+   the form here; without them this component draws its own button, as before. */
+export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook, onToast, onChanged, user, rejecting: rejectingProp, onRejecting }) {
   const { t } = useLang();
   const [note, setNote] = useState("");
-  const [rejecting, setRejecting] = useState(false);
+  const [rejectingOwn, setRejectingOwn] = useState(false);
+  const controlled = typeof onRejecting === "function";
+  const rejecting = controlled ? Boolean(rejectingProp) : rejectingOwn;
+  const setRejecting = controlled ? onRejecting : setRejectingOwn;
   const [why, setWhy] = useState("");
   const [replace, setReplace] = useState(true);
   const [keepPics, setKeepPics] = useState(true);
@@ -160,7 +165,8 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
 
       {(post.status === "draft" || post.status === "approved") && !locked && (
         rejecting ? (
-          <div className="rounded-tile border border-danger/40 p-3">
+          <div className="scroll-mt-32 rounded-tile border border-danger/40 p-3" data-post-reject-form
+            ref={(el) => { if (el && controlled) el.scrollIntoView({ behavior: "smooth", block: "nearest" }); }}>
             <Label>{t("Tolak post ini", "Reject this post")}</Label>
             <Input value={why} onChange={(e) => setWhy(e.target.value)} maxLength={400} disabled={busy}
               placeholder={t("Sebab (pilihan, dibaca oleh penulis pengganti)", "Reason (optional, read by the replacement's writer)")} />
@@ -177,7 +183,7 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => setRejecting(false)}>{t("Batal", "Cancel")}</Button>
             </div>
           </div>
-        ) : (
+        ) : controlled ? null : (
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => setRejecting(true)}><XCircle size={12} /> {t("Tolak…", "Reject…")}</Button>
         )
       )}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { flagWords } from "../lib/complianceBm";
 import { motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Clapperboard, ExternalLink, FileText, Loader2, Plus, RotateCcw, Scissors, ShieldCheck,
   Trash2 } from "lucide-react";
@@ -81,7 +82,7 @@ export default function VideoTab({ user, gens, brand, onToast, openPost, prompts
       <motion.div variants={fadeUp} initial="hidden" animate="show" className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[13px] font-semibold text-accent">Video</p>
-          <h1 className="mt-2 text-4xl leading-tight">{t("Jana video.", "Generate video.")}</h1>
+          <h1 className="mt-2 text-3xl leading-tight sm:text-4xl">{t("Jana video.", "Generate video.")}</h1>
         </div>
         <Segmented value={mode} onChange={setMode} options={[["motion", t("Motion (idea → filem)", "Motion (idea → film)")],
           ["ai", t("Video AI (prompt → klip)", "AI video (prompt → clip)")], ["clips", t("Klip YouTube", "YouTube clips")]]} />
@@ -314,7 +315,7 @@ function Rights({ v, patch }) {
 }
 
 function ClipCard({ v, c, ytid, user, brand, onToast, jobs, save, openPost, reloadGens }) {
-  const { t } = useLang();
+  const { t, lang: uiLang } = useLang();
   const [start, setStart] = useState(fmtTs(c.start));
   const [end, setEnd] = useState(fmtTs(c.end));
   const [hook, setHook] = useState(c.hook || "");
@@ -390,7 +391,7 @@ function ClipCard({ v, c, ytid, user, brand, onToast, jobs, save, openPost, relo
         <TextArea rows={5} value={caption} onChange={(ev) => setCaption(ev.target.value)} maxLength={2200} /></label>
       {flags.length > 0 && (
         <ul className="mt-2 space-y-1 text-[12px]">
-          {flags.map((f, k) => <li key={k} className={`[overflow-wrap:anywhere] ${f.hard ? "text-danger" : "text-warn"}`}>{f.hard ? "■" : "□"} <b>{f.where}</b>: {f.msg}</li>)}
+          {flags.map((f, k) => <li key={k} className={`[overflow-wrap:anywhere] ${f.hard ? "text-danger" : "text-warn"}`}>{f.hard ? "■" : "□"} <b>{flagWords(f, uiLang).where}</b>: {flagWords(f, uiLang).msg}</li>)}
         </ul>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-3 text-[12px]">

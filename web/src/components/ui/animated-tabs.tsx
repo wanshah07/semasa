@@ -43,7 +43,7 @@ const AnimatedTabs = ({ tabs = defaultTabs, defaultTab, className, value, onChan
 
   return (
     <div className={cn("flex w-full max-w-lg flex-col gap-y-1", className)}>
-      <div role="tablist" aria-label={rest["aria-label"]} className="flex flex-wrap gap-1 rounded-pill bg-surface-2 p-1">
+      <div role="tablist" aria-label={rest["aria-label"]} className="flex flex-nowrap gap-1 rounded-pill bg-surface-2 p-1 sm:flex-wrap">
         {tabs.map((tab) => (
           <button
             key={tab.id}

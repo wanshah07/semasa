@@ -26,7 +26,7 @@ export default function AiTeam({ statusRows, usageRows, state, team, save, onToa
   const chosen = reader.chosen?.slug;
 
   return (
-    <div className={compact ? "grid gap-3 grid-cols-1 min-[480px]:grid-cols-3" : "grid gap-4 sm:grid-cols-2 xl:grid-cols-3"}>
+    <div className={compact ? "grid gap-3 grid-cols-2 min-[480px]:grid-cols-3" : "grid gap-4 sm:grid-cols-2 xl:grid-cols-3"}>
       {cards.map((c) => {
         const order = reader.order.find((o) => o.slug === c.slug);
         const skipped = reader.skipped.find((o) => o.slug === c.slug);

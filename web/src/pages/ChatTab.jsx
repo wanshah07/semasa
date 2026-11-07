@@ -318,14 +318,14 @@ export default function ChatTab() {
           )}
         </div>
       )}
-      <div className="mx-auto mt-1 flex items-center gap-3 text-[11px] text-muted">
-        <button type="button" onClick={() => setShowHistory((v) => !v)} className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-accent">
+      <div className="mx-auto mt-1 flex flex-wrap items-center justify-center gap-2 text-[11px] text-muted">
+        <button type="button" onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory} className="inline-flex min-h-[44px] items-center gap-1 rounded-pill border border-line px-3 hover:border-accent hover:text-accent lg:min-h-[30px]">
           <IconHistory size={12} /> {t(`Sejarah (${threads.length})`, `History (${threads.length})`)}
         </button>
-        <button type="button" onClick={() => setShowNotes((v) => !v)} className="underline decoration-dotted underline-offset-2 hover:text-accent">
+        <button type="button" onClick={() => setShowNotes((v) => !v)} aria-expanded={showNotes} className="inline-flex min-h-[44px] items-center gap-1 rounded-pill border border-line px-3 hover:border-accent hover:text-accent lg:min-h-[30px]">
           {t(`Ingatan kekal (${notes.length})`, `Pinned memory (${notes.length})`)}
         </button>
-        <button type="button" onClick={fresh} disabled={busy || messages.length === 0} className="underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-50">
+        <button type="button" onClick={fresh} disabled={busy || messages.length === 0} className="inline-flex min-h-[44px] items-center gap-1 rounded-pill border border-line px-3 hover:border-accent hover:text-accent lg:min-h-[30px] disabled:opacity-50">
           {t("Sembang baharu", "New conversation")}
         </button>
       </div>

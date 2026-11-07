@@ -63,7 +63,8 @@ export function motionVariantMatches(existing, wanted) {
     resolveLanguageVoice(existing.language, existing.voice).voice === wanted.voice;
 }
 export const STATUS_WORDS = {
-  waiting: ["Pilih gaya", "Choose styles"], pending: ["Menunggu", "Waiting"], working: ["Sedang dibuat", "Being made"], done: ["Siap", "Done"], error: ["Ralat", "Error"],
+  waiting: ["Pilih gaya", "Choose styles"], pending: ["Menunggu", "Waiting"], working: ["Sedang dibuat", "Being made"],
+  review: ["Luluskan storyboard", "Approve the storyboard"], done: ["Siap", "Done"], error: ["Ralat", "Error"],
 };
 
 /** The stages a film goes through (Wan, 7 Nov 2026: Scrape > Idea > Motion (storyboard) > Motion (Picture) > Motion), written on the
@@ -87,7 +88,7 @@ export function stageSteps(row) {
 const TRACK_WORDS = {
   idea: ["Idea", "Idea"], storyboard: ["Papan cerita", "Storyboard"], pictures: ["Gambar", "Pictures"], film: ["Filem", "Film"],
   running: ["Sedang berjalan", "Running now"], waiting: ["Menunggu", "Waiting"], queued: ["Beratur: pilih gaya dahulu", "Queued: choose the styles first"],
-  failed: ["Gagal di sini", "Stopped here"],
+  failed: ["Gagal di sini", "Stopped here"], review: ["Menunggu kelulusan anda", "Waiting for your approval"],
 };
 export function motionTrack(row, { L = 0, stamp = (iso) => iso || "" } = {}) {
   const w = (k) => TRACK_WORDS[k][L ? 1 : 0];
@@ -103,9 +104,11 @@ export function motionTrack(row, { L = 0, stamp = (iso) => iso || "" } = {}) {
   order.forEach((id, i) => {
     const isFailed = i === failAt;
     const isCompleted = done || (failed ? i < failAt : at > i);
-    const isActive = status === "working" && at === i;
+    // a storyboard waiting for Wan (supabase/071) is the step in hand: nothing after it starts until he approves it
+    const isActive = (status === "working" && at === i) || (status === "review" && i === 0);
     let when;
-    if (isFailed) when = `${w("failed")}${times[id] ? ` · ${stamp(times[id])}` : ""}`;
+    if (status === "review" && i === 0) when = `${w("review")}${times[id] ? ` · ${stamp(times[id])}` : ""}`;
+    else if (isFailed) when = `${w("failed")}${times[id] ? ` · ${stamp(times[id])}` : ""}`;
     else if (id === "film" && done) when = stamp(times.done || times.film || row?.updated_at);
     else if ((isCompleted || isActive) && times[id]) when = stamp(times[id]);
     else if (isActive) when = w("running");

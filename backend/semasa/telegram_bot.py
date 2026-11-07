@@ -35,7 +35,7 @@ from typing import Any
 
 import requests
 
-from . import billing, compliance, db
+from . import billing, compliance, db, motion_review
 from . import telegram_tools as tt
 from .log import get_logger
 
@@ -543,6 +543,18 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
         bot.drop_buttons(chat, mid)
         bot.send(chat, tt.on_feedback(store, what, src), reply_to=mid)
         return f"feedback {what}"
+    if kind in ("sbok", "sbre"):
+        # a Motion storyboard (Wan, 7 Nov 2026: approved before a picture is drawn), through the page's own decision (071)
+        action = "approve" if kind == "sbok" else "rewrite"
+        try:
+            args = {"p_motion": rest, "p_action": action, "p_telegram_user_id": link["telegram_user_id"]}
+            res = str(store.rpc("semasa_telegram_motion_decide", args).execute().data or "")
+        except Exception as exc:  # noqa: BLE001 - shown to Wan as it is
+            res = (getattr(exc, "message", None) or str(exc)).replace("semasa: ", "")[:300]
+        if res == "ok" or res.startswith("status:"):
+            bot.drop_buttons(chat, mid)
+        bot.send(chat, motion_review.decide_words(res, action), reply_to=mid)
+        return f"storyboard {action}: {res}"
     if kind == "mgo":
         bot.drop_buttons(chat, mid)
         bot.send(chat, tt.start_motion(store, rest), reply_to=mid)
@@ -750,7 +762,20 @@ def run(store: Any, bot: Bot | None = None, now: datetime | None = None, llm_fac
     if push:
         out["pushed"] = push_new_drafts(store, bot, link)
         out["videos"] = push_videos(store, bot, link, now)
+        out["storyboards"] = push_storyboards(store, bot, link)
     return out
+
+
+def push_storyboards(store: Any, bot: Bot, link: dict[str, Any]) -> int:
+    """Motion storyboards waiting on Wan that never reached Telegram (the motion worker sends each itself; this is the net)."""
+    n = 0
+    for r in motion_review.due(store):
+        try:
+            if motion_review.telegram_notify(store, r, bot=bot, link=link):
+                n += 1
+        except Exception as exc:  # noqa: BLE001
+            log.info("storyboard %s not sent (%s)", r["id"], str(exc)[:120])
+    return n
 
 
 def push_videos(store: Any, bot: Bot, link: dict[str, Any], now: datetime) -> int:

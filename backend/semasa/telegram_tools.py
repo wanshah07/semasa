@@ -303,7 +303,8 @@ def make_motion(store: Any, link: dict[str, Any], text: str, command: str) -> tu
 
 def start_motion(store: Any, motion_id: str) -> str:
     got = store.table(MOTIONS).update({"status": "pending"}).eq("id", motion_id).eq("status", "waiting").execute().data
-    return ("▶️ Motion dimulakan. Saya hantar videonya di sini bila siap." if got
+    return ("▶️ Motion dimulakan. Saya hantar storyboard di sini dahulu untuk anda luluskan; gambar dan video dibuat "
+            "selepas itu." if got
             else "Motion itu sudah bermula atau tiada lagi dalam barisan.")
 
 

@@ -1,5 +1,5 @@
-import { Anchor, BarChart3, Brain, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
-  Layers, LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, Radio, PenLine, Receipt, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
+import { Anchor, BarChart3, BookOpenText, Brain, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
+  Layers, LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, NotebookPen, Radio, PenLine, Receipt, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
 
 /* Every page, once: the header's tab row on a phone, the sidebar and the sub-tab bar all read this list, so they can never
    disagree. A page's `id` is its address (#post, #office…) and does not change when it moves between segments.
@@ -9,6 +9,8 @@ export function tabsOf(t) {
   return [
     { id: "papan", label: t("Papan", "Dashboard"), icon: LayoutDashboard, segment: "dashboard" },
     { id: "chat", label: t("Sembang AI", "AI chat"), icon: MessageSquare, segment: "dashboard" },
+    // beside the chat whose answers it shapes (its instructions, its memory, its two switches), not in Tetapan with the workers
+    { id: "memori", label: t("Memori & Arahan", "Memory & instructions"), icon: NotebookPen, segment: "dashboard" },
     { id: "otak", label: t("Otak AI", "AI brain"), icon: Brain, segment: "dashboard" },
 
     { id: "isu", label: t("Isu semasa", "Current issues"), icon: Radio, segment: "content" },
@@ -48,6 +50,7 @@ export function tabsOf(t) {
 
     { id: "faq", label: "FAQ", icon: HelpCircle, segment: "reference" },
     { id: "log", label: "Log", icon: ListChecks, segment: "reference" },
+    { id: "dokumen", label: t("Dokumen", "Documents"), icon: BookOpenText, segment: "reference" },
 
     { id: "tetapan", label: t("Tetapan", "Settings"), icon: Settings, segment: "" },
   ];
@@ -76,4 +79,19 @@ export function segmentsOf(t) {
 /** The segment a page sits in (null for Settings, which stands alone at the bottom). */
 export function segmentOf(t, tabId) {
   return segmentsOf(t).find((s) => s.pages.some((p) => p.id === tabId)) || null;
+}
+
+/** The phone's bottom bar (components/MobileTabBar.jsx): the five places Wan opens most, one thumb tap away; everything
+    else is in the menu. `match` lists the pages that light a button up as well as its own, so Video stays lit on the
+    video library. Labels are short: five have to fit in 375 px. */
+export function mobileTabsOf(t) {
+  const byId = Object.fromEntries(tabsOf(t).map((p) => [p.id, p]));
+  const item = (id, label, match = []) => ({ id, label, icon: byId[id].icon, match: [id, ...match] });
+  return [
+    item("papan", t("Papan", "Home")),
+    item("idea", "Idea"),
+    item("post", "Post"),
+    item("video", "Video", ["video-lib", "motion-skills"]),
+    item("chat", t("Sembang", "Chat")),
+  ];
 }

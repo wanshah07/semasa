@@ -15,11 +15,12 @@ function Inline({ nodes }) {
   });
 }
 
-function Block({ b }) {
+function Block({ b, id }) {
   if (b.t === "p") return <p className="my-1.5 leading-relaxed [overflow-wrap:anywhere]"><Inline nodes={b.c} /></p>;
   if (b.t === "h") {
     const cls = b.n === 1 ? "mt-3 text-base font-semibold" : b.n === 2 ? "mt-3 text-[15px] font-semibold" : "mt-2 text-sm font-semibold";
-    return b.n === 1 ? <h3 className={cls}><Inline nodes={b.c} /></h3> : b.n === 2 ? <h4 className={cls}><Inline nodes={b.c} /></h4> : <h5 className={cls}><Inline nodes={b.c} /></h5>;
+    const Tag = b.n === 1 ? "h3" : b.n === 2 ? "h4" : "h5";
+    return <Tag id={id} className={`${cls}${id ? " scroll-mt-24" : ""}`}><Inline nodes={b.c} /></Tag>;
   }
   if (b.t === "code") return <pre className="my-2 overflow-x-auto rounded-tile bg-ink px-3 py-2 font-mono text-[12px] leading-relaxed text-bg"><code>{b.s}</code></pre>;
   if (b.t === "ul" || b.t === "ol") {
@@ -38,7 +39,10 @@ function Block({ b }) {
   return null;
 }
 
-export default function Markdown({ text }) {
-  const tree = useMemo(() => parseMarkdown(text), [text]);
-  return <div className="text-sm">{tree.map((b, i) => <Block key={i} b={b} />)}</div>;
+/** `tree` (already parsed) saves parsing twice when the caller needs it too; `headingIds` gives the top-level headings their anchors,
+    in order (the Dokumen page's outline, lib/repoDocs.js outlineOf). */
+export default function Markdown({ text, tree: given = null, headingIds = null, className = "text-sm" }) {
+  const parsed = useMemo(() => given || parseMarkdown(text), [given, text]);
+  let h = 0;
+  return <div className={className}>{parsed.map((b, i) => <Block key={i} b={b} id={b.t === "h" && headingIds ? headingIds[h++] : undefined} />)}</div>;
 }

@@ -18,6 +18,8 @@ import ViewToggle, { useView } from "./components/ViewToggle";
 import Toasts from "./components/Toast";
 import Button from "./components/ui/Button";
 import Guide from "./components/Guide";
+import MobileTabBar from "./components/MobileTabBar";
+import InstallHint from "./components/InstallHint";
 /* Every tab and every heavy panel is loaded when it is first shown, not with the page. The first screen is the sign-in card
    (or the headlines), and on a phone on a slow connection it used to wait for one 768 KB script carrying every tab, the card
    renderer, the motion rules and the office writers. Only Gate, Header, the sidebar and the hooks stay in the first chunk. */
@@ -57,6 +59,8 @@ const HooksTab = lazy(() => import("./pages/HooksTab"));
 const WritingStylesTab = lazy(() => import("./pages/WritingStylesTab"));
 const StackTab = lazy(() => import("./pages/StackTab"));
 const ApiTab = lazy(() => import("./pages/ApiTab"));
+const MemoryTab = lazy(() => import("./pages/MemoryTab"));
+const DocsTab = lazy(() => import("./pages/DocsTab"));
 import { setWanshah } from "./lib/cards/library";
 import { approvedPoses } from "./lib/wanshah";
 
@@ -275,7 +279,7 @@ function MediaTab({ user, gens, prompts, onToast, go }) {
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "hooks", "gaya", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "bil-valorith", "video", "video-lib", "motion-skills", "chat", "otak", "wang", "bil", "langganan", "crm", "syarikat", "resit", "faq", "log", "tech", "office", "repo", "api", "stack", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "hooks", "gaya", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "bil-valorith", "video", "video-lib", "motion-skills", "chat", "memori", "otak", "wang", "bil", "langganan", "crm", "syarikat", "resit", "faq", "log", "dokumen", "tech", "office", "repo", "api", "stack", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 // #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)
@@ -360,6 +364,7 @@ export default function App() {
   }), [settings, save]);
   const brand = useMemo(() => brandOf(settings), [settings]);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);       // the phone's slide-over menu (AppSidebar's MobileDrawer)
 
   function go(next) {
     setTab(next); window.location.hash = next === "papan" ? "" : next;
@@ -404,6 +409,7 @@ export default function App() {
   else if (tab === "video-lib") body = allowed ? <VideoLibraryTab user={user} gens={gens} posts={posts} onToast={push} go={go} /> : gate(null);
   else if (tab === "motion-skills") body = allowed ? <MotionSkillsTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
+  else if (tab === "memori") body = allowed ? <MemoryTab settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "otak") body = allowed ? <BrainTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "wang") body = allowed ? <MoneyTab user={user} /> : gate(null);
   else if (tab === "bil") body = allowed ? <BillingTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
@@ -425,17 +431,19 @@ export default function App() {
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}
     onPost={(r) => setIdeaFrom(faqIdea(r))} /> : gate(null);
   else if (tab === "log") body = allowed ? <LogTab log={activity} onOpen={(to) => { if (to.postId) setFocusPost(to.postId); go(to.tab); }} /> : gate(null);
+  else if (tab === "dokumen") body = allowed ? <DocsTab /> : gate(null);
   else if (tab === "tetapan") body = allowed ? <SettingsTab settings={settings} brand={brand} save={save} onToast={push} /> : gate(null);
   else body = <IsuTab trends={trends} onToast={push} onIdea={allowed ? setIdeaFrom : undefined} onFaq={allowed ? faqFrom : undefined}
     allowed={allowed} gateNode={allowed ? null : gate(null)} settings={settings} save={save} brand={brand} user={user} />;
 
   return (
     <DesignsContext.Provider value={designsCtx}>
-    <div id="top" className="min-h-screen lg:flex">
-      <AppSidebar tab={tab} setTab={go} user={user} counts={allowed ? counts : {}} mode={navMode} onToggleMode={toggleNav} />
+    <div id="top" className="app-shell min-h-screen lg:flex">
+      <AppSidebar tab={tab} setTab={go} user={user} counts={allowed ? counts : {}} mode={navMode} onToggleMode={toggleNav}
+        drawerOpen={menuOpen} onCloseDrawer={() => setMenuOpen(false)} />
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
       <Header tab={tab} setTab={go} user={user} sidebar navMode={navMode} onToggleSidebar={toggleNav}
-        onGuide={allowed ? () => setGuideOpen(true) : undefined} />
+        onGuide={allowed ? () => setGuideOpen(true) : undefined} onMenu={() => setMenuOpen(true)} />
       {allowed && <Guide open={guideOpen} onClose={() => setGuideOpen(false)} settings={settings} brand={brand} />}
       <div className="flex-1">
         {allowed && configured && <SegmentBar tab={tab} setTab={go} />}
@@ -454,6 +462,9 @@ export default function App() {
           + "issues not turned into an idea disappear after 48 hours")}
       </footer>
       </div>
+      {/* phone and installed-app shortcuts: only once signed in, so the sign-in screen stays one card */}
+      {allowed && configured && <MobileTabBar tab={tab} setTab={go} />}
+      <InstallHint />
       <Toasts toasts={toasts} />
     </div>
     </DesignsContext.Provider>

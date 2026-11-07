@@ -1,11 +1,14 @@
 """Health report (Wan, 7 Nov 2026: "check if can send notification email for any update or problem but you must fix them
 automatically and send the report"). `python -m semasa.health`, every 6 hours (health.yml).
 
-Each run looks at the whole system, puts right what is safe to put right by itself, and e-mails Wan a report through the same
-Gmail connection the invoices use (billing.GmailMCP via Composio):
+Each run looks at the whole system, puts right what is safe to put right by itself, and e-mails Wan a short watchdog note
+from WS REGULAB's Gmail (info@, billing.GmailMCP via Composio), one line a problem (Wan, 7 Nov 2026, like the Halal
+Practitioners Hub watchdog):
 
-  * when there is a problem it has not reported yet (the set of problems changed since the last e-mail), and
-  * once a day at the morning run (SUMMARY_HOUR_UTC), problems or not, so silence never means "the report broke".
+  * "Semasa watchdog: needs attention" with PROBLEM: lines when a problem starts,
+  * "Semasa watchdog: all working again" with FIXED: lines (and when it started) when it clears, or FIXED BY SEMASA: for
+    what it put right itself, and
+  * a daily check at the morning run (SUMMARY_HOUR_UTC), problems or not, so silence never means "the watchdog broke".
 
 WHAT IT FIXES BY ITSELF (only what cannot do harm):
   * a publisher error left by a bug that is fixed in the code (KNOWN_FIXED): the channel's error is cleared so the publisher
@@ -17,7 +20,7 @@ WHAT IT FIXES BY ITSELF (only what cannot do harm):
 
 WHAT IT ONLY REPORTS (it needs Wan, or an account outside Semasa): a workflow that failed, an AI gateway that is down or refusing
 its key, Gemini keys that all fail, the ChatGPT login about to expire or failing, a LinkedIn account LinkedIn has restricted,
-the Gmail connection itself, a billing e-mail that failed.
+the Gmail connection itself, a business whose own Gmail is not connected yet, a billing e-mail that failed.
 
 It writes settings.health_state (the last report, for the page) and one semasa_log line a run. It never sends anything but the
 report, and the report goes only to Wan's own address.
@@ -239,42 +242,108 @@ def check_gmail(sender: Any) -> list[dict[str, str]]:
                         "Reconnect Gmail in Composio; quotations and invoices cannot be e-mailed until then.")]
 
 
+def check_business_gmail(businesses: dict[str, dict[str, Any]], ws_email: str, sender_for: Any) -> list[dict[str, str]]:
+    """A business with an address of its own (Valorith: muhammad.ridzuan22222@gmail.com) sends from that Gmail once it is
+    connected in Composio, and from WS REGULAB's inbox until then. Only listed here, never used to send."""
+    if sender_for is None:
+        return []
+    out = []
+    for bid, cfg in sorted((businesses or {}).items()):
+        co = (cfg or {}).get("company") or {}
+        email, name = str(co.get("email") or "").strip(), str(co.get("name") or bid)
+        if not email or email.lower() == ws_email.strip().lower():
+            continue
+        try:
+            got = str(sender_for(email).mailbox() or "")
+        except Exception as exc:  # noqa: BLE001
+            out.append(problem("Billing", f"{name}'s Gmail could not be checked: {str(getattr(exc, 'message', exc))[:160]}"))
+            continue
+        if got.lower() != email.lower():
+            out.append(problem("Billing", f"{name}'s Gmail ({email}) is not connected in Composio: its quotations and invoices "
+                                          f"go out from {got or 'the WS REGULAB inbox'}",
+                               f"Connect {email} in Composio (Gmail) so {name}'s mail goes from its own address."))
+    return out
+
+
 # ---- the report -----------------------------------------------------------------------------------------------------------
 
+def key_of(p: dict[str, str]) -> str:
+    """One problem's identity across runs: a run's address changes every run, so it is left out."""
+    return p["area"] + "|" + URL.sub("", p["what"])[:120]
+
+
 def fingerprint(problems: list[dict[str, str]]) -> str:
-    keys = sorted(p["area"] + "|" + URL.sub("", p["what"])[:120] for p in problems)
+    keys = sorted(key_of(p) for p in problems)
     return hashlib.sha256(json.dumps(keys).encode()).hexdigest()[:16]
 
 
+def stamp(now: datetime) -> str:
+    return now.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def changes(problems: list[dict[str, str]], state: dict[str, Any], now: datetime) -> tuple[list, list, dict[str, Any]]:
+    """(new problems, cleared problems, the open set to keep). A problem keeps the moment it was first seen ("since")."""
+    was = state.get("open") or {}
+    now_open: dict[str, Any] = {}
+    new = []
+    for p in problems:
+        k = key_of(p)
+        if k in now_open:
+            continue
+        since = (was.get(k) or {}).get("since") or stamp(now)
+        now_open[k] = {"area": p["area"], "what": p["what"], "todo": p.get("todo", ""), "since": since}
+        if k not in was:
+            new.append({**p, "since": since})
+    cleared = [{**v, "key": k} for k, v in was.items() if k not in now_open]
+    return new, cleared, now_open
+
+
 def should_send(problems: list[dict[str, str]], fixed: list[str], state: dict[str, Any], now: datetime) -> str:
-    """"" (no e-mail), "problem" (something new to say) or "summary" (the daily one)."""
-    if (problems or fixed) and fingerprint(problems) != state.get("emailed_fingerprint"):
-        return "problem"
+    """"" (no e-mail), "attention" (a new problem), "fixed" (a problem cleared, or Semasa fixed something itself) or
+    "summary" (the daily one, so silence never means the watchdog broke)."""
+    new, cleared, _open = changes(problems, state, now)
+    if new:
+        return "attention"
+    if cleared or fixed:
+        return "fixed"
     last = _parse(state.get("summary_at"))
     if now.hour // 6 == SUMMARY_HOUR_UTC // 6 and (last is None or last.date() < now.date()):
         return "summary"
     return ""
 
 
-def render(problems: list[dict[str, str]], fixed: list[str], now: datetime, kind: str) -> tuple[str, str]:
-    myt = (now + timedelta(hours=8)).strftime("%d/%m/%Y %H:%M")
-    head = (f"Semasa: {len(problems)} masalah, {len(fixed)} dibaiki sendiri" if problems or fixed
-            else "Semasa: semua berjalan baik")
-    subject = f"{head} ({myt} MYT)" + (" · ringkasan harian" if kind == "summary" else "")
+def _sentence(*bits: str) -> str:
+    return " ".join(b.strip().rstrip(".") + "." for b in bits if b and b.strip())
+
+
+def render(problems: list[dict[str, str]], fixed: list[str], now: datetime, kind: str,
+           state: dict[str, Any] | None = None) -> tuple[str, str]:
+    """Short and plain, like a watchdog (Wan, 7 Nov 2026, showing the Halal Practitioners Hub's): one line a problem,
+    PROBLEM when it starts, FIXED when it clears with the moment it started."""
+    new, cleared, now_open = changes(problems, state or {}, now)
+    left = len(now_open)
+    if kind == "attention":
+        subject = "Semasa watchdog: needs attention"
+    elif kind == "fixed":
+        subject = "Semasa watchdog: " + (f"fixed, {left} still need attention" if left else "all working again")
+    else:
+        subject = "Semasa watchdog: daily check, " + (f"{left} need attention" if left else "all working")
     esc = html.escape
-    parts = [f"<p>Laporan kesihatan Semasa, {esc(myt)} MYT.</p>"]
-    if fixed:
-        parts.append("<h3>Dibaiki sendiri</h3><ul>" + "".join(f"<li>{esc(x)}</li>" for x in fixed) + "</ul>")
-    if problems:
-        parts.append("<h3>Perlu perhatian anda</h3><ul>" + "".join(
-            f"<li><b>{esc(p['area'])}</b>: {esc(p['what'])}" + (f"<br><i>{esc(p['todo'])}</i>" if p.get("todo") else "") + "</li>"
-            for p in problems) + "</ul>")
-    if not problems and not fixed:
-        parts.append("<p>Tiada masalah ditemui: aliran kerja, gerbang AI, penerbit, bil dan Gmail semuanya baik.</p>")
-    parts.append("<p style=\"color:#888;font-size:12px\">Dihantar oleh Semasa (laporan kesihatan, setiap 6 jam). "
-                 "Masalah yang sama "
-                 "tidak dihantar dua kali; ringkasan dihantar sekali sehari.</p>")
-    return subject, "\n".join(parts)
+    lines = []
+    shown = new if kind == "attention" else (list(now_open.values()) if kind == "summary" else [])
+    for p in shown:
+        head = "PROBLEM" if kind == "attention" else f"PROBLEM (since {p['since']})"
+        lines.append(f"{head}: " + _sentence(f"{p['area']}: {p['what']}", p.get("todo", "")))
+    for c in cleared:
+        lines.append(f"FIXED: {c['area']} is working again (problem started {c['since']}). It was: " + _sentence(c["what"]))
+    for x in fixed:
+        lines.append("FIXED BY SEMASA: " + _sentence(x))
+    if kind == "attention" and left > len(new):
+        lines.append(f"Still open from before: {left - len(new)}.")
+    if kind == "summary" and not left:
+        lines.append("All working: workflows, AI gateways, Gemini, ChatGPT, publisher, billing and Gmail.")
+    lines.append("Semasa → Log shows every check.")
+    return subject, "\n".join(f"<p>{esc(x)}</p>" for x in lines)
 
 
 def recipient(settings: dict[str, Any]) -> str:
@@ -293,28 +362,37 @@ def save_state(store: Any, state: dict[str, Any]) -> None:
         log.warning("health state not saved (%s)", str(exc)[:120])
 
 
-def run(store: Any, now: datetime | None = None, sender: Any = None, session: Any = None, fix: bool = True) -> dict[str, Any]:
+def run(store: Any, now: datetime | None = None, sender: Any = None, session: Any = None, fix: bool = True,
+        sender_for: Any = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
-    settings = billing.settings_for({"business_id": "wsregulab"}, billing.load_businesses(store), billing.load_settings(store))
-    sender = sender if sender is not None else billing.make_sender(settings)
+    businesses = billing.load_businesses(store)
+    settings = billing.settings_for({"business_id": "wsregulab"}, businesses, billing.load_settings(store))
+    if sender is None:
+        sender, sender_for = billing.make_senders(settings)
+    ws_email = str((settings.get("company") or {}).get("email") or "")
     fixed = (fix_known_publisher_errors(store) + retry_transient_ideas(store, now)) if fix else []
     problems = (check_workflows(now, session) + check_gateways(store) + check_gemini(store) + check_chatgpt(store, now)
-                + check_publisher(store) + check_billing(store, now) + check_gmail(sender))
+                + check_publisher(store) + check_billing(store, now) + check_gmail(sender)
+                + check_business_gmail(businesses, ws_email, sender_for))
     state = load_state(store)
     kind = should_send(problems, fixed, state, now)
     sent = ""
     to = recipient(settings)
+    _new, _cleared, now_open = changes(problems, state, now)
     if kind and sender is not None and to:
-        subject, body = render(problems, fixed, now, kind)
+        subject, body = render(problems, fixed, now, kind, state)
         try:
             sender.send(to=to, cc=[], subject=subject, html=body, attachment=None)
             sent = to
+            state["open"] = now_open             # only once Wan has been told: a failed e-mail says it again next run
             state["emailed_fingerprint"] = fingerprint(problems)
             if kind == "summary":
                 state["summary_at"] = now.isoformat()
         except Exception as exc:  # noqa: BLE001 - the report is still kept below and shown on the page
             log.warning("the health report was not e-mailed (%s)", str(getattr(exc, "message", exc))[:200])
             problems.append(problem("Billing", f"the health report itself could not be e-mailed: {str(exc)[:160]}"))
+    if not kind:
+        state["open"] = now_open
     state.update({"at": now.isoformat(), "problems": problems, "fixed": fixed, "emailed": sent, "kind": kind})
     save_state(store, state)
     try:

@@ -228,3 +228,77 @@ def test_only_ws_regulab_papers_carry_the_ws_regulab_logo():
     own = {"company": {"logo_url": "https://cdn.example/valorith.png"}}
     assert billing.logo_for({"business_id": "valorith"}, own) == "https://cdn.example/valorith.png"
     assert billing.logo_for({"business_id": "valorith"}, {"company": {"logo_url": "javascript:alert(1)"}}) == ""
+
+
+# ---- each business from its own Gmail (Wan, 7 Nov 2026: "for valorith change to muhammad.ridzuan22222@gmail.com") ----------
+
+VALORITH_MAIL = "muhammad.ridzuan22222@gmail.com"
+
+
+def _acct(id_, email, default=False):
+    return {"id": id_, "status": "active", "is_default": default, "user_info": {"email": email}}
+
+
+def _gmail(accounts, **kw):
+    g = billing.GmailMCP("ck", **kw)
+    g._tool = lambda name, args: {"data": {"results": {"gmail": {"accounts": accounts}}}}
+    return g
+
+
+# what Composio held on 7 Nov 2026: the Valorith inbox (the default) and info@ connected twice
+LIVE = [_acct("gmail_snag-ulling", VALORITH_MAIL, default=True), _acct("gmail_smock-upgang", "info@kkmhalalconsultant.com"),
+        _acct("gmail_prissy-stingo", "info@kkmhalalconsultant.com")]
+
+
+def test_one_inbox_connected_twice_is_still_one_inbox_and_the_same_link_is_taken_every_run():
+    g = _gmail(LIVE, expect="info@kkmhalalconsultant.com")
+    assert g.account() == "gmail_prissy-stingo", "the lowest id when neither duplicate is the default"
+    assert g.mailbox() == "info@kkmhalalconsultant.com"
+    dup_default = [_acct("b", "info@kkmhalalconsultant.com"), _acct("a", "INFO@kkmhalalconsultant.com", default=True)]
+    assert _gmail(dup_default, expect="info@kkmhalalconsultant.com").account() == "a", "Composio's default first"
+
+
+def test_a_business_sends_from_its_own_inbox_and_from_ws_regulabs_until_its_own_is_connected():
+    own = _gmail(LIVE, expect=VALORITH_MAIL, fallback="info@kkmhalalconsultant.com")
+    assert own.account() == "gmail_snag-ulling" and own.mailbox() == VALORITH_MAIL
+    without = [a for a in LIVE if a["id"] != "gmail_snag-ulling"]
+    fb = _gmail(without, expect=VALORITH_MAIL, fallback="info@kkmhalalconsultant.com")
+    assert fb.mailbox() == "info@kkmhalalconsultant.com", "never an arbitrary inbox: the named fallback"
+    stranger = [_acct("x", "a@b.my"), _acct("y", "c@d.my")]
+    try:
+        _gmail(stranger, expect=VALORITH_MAIL, fallback="info@kkmhalalconsultant.com").account()
+        raise AssertionError("two unknown inboxes must be refused, not guessed")
+    except SendError as exc:
+        assert VALORITH_MAIL in exc.message and "found 2" in exc.message
+    assert _gmail([_acct("z", "only@one.my")]).account() == "z", "no address named and one inbox: as before"
+
+
+class MailboxSender(FakeSender):
+    def __init__(self, address):
+        super().__init__()
+        self.address = address
+
+    def mailbox(self):
+        return self.address
+
+
+def test_the_outbox_sends_each_business_through_its_own_sender_with_its_own_from():
+    valorith = {**SETTINGS, "company": {**SETTINGS["company"], "name": "Valorith", "email": VALORITH_MAIL},
+                "email": {**SETTINGS["email"], "cc_self": True}}
+    rows = [{"id": f"o{i}", "doc_id": d, "action": "send", "to_email": "buyer@shop.my", "cc": [], "subject": "", "body": "",
+             "status": "pending", "attempts": 0, "meta": {}} for i, d in enumerate(["ws", "val", "val2"])]
+    docs = [_doc(id="ws"), _doc(id="val", business_id="valorith"), _doc(id="val2", business_id="valorith")]
+    store = _store(**{db.BILLING_DOCS: docs, db.BILLING_OUTBOX: rows})
+    ws, val = MailboxSender("info@kkmhalalconsultant.com"), MailboxSender(VALORITH_MAIL)
+    asked = []
+
+    def sender_for(email):
+        asked.append(email)
+        return ws if email == "info@kkmhalalconsultant.com" else val
+    counts = billing.process_outbox(store, SETTINGS, ws, NOW, businesses={"valorith": valorith}, render=_render,
+                                    sender_for=sender_for)
+    assert counts == {"sent": 3, "error": 0}
+    assert len(ws.sent) == 1 and ws.sent[0]["from_email"] == "info@kkmhalalconsultant.com"
+    assert len(val.sent) == 2 and all(m["from_email"] == VALORITH_MAIL for m in val.sent), "From is the inbox sending"
+    assert all(m["cc"] == [VALORITH_MAIL] for m in val.sent), "cc_self as before: a copy in Valorith's own inbox"
+    assert asked == ["info@kkmhalalconsultant.com", VALORITH_MAIL, VALORITH_MAIL]

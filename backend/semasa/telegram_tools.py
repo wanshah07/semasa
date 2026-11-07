@@ -31,9 +31,9 @@ MEMORY = "semasa_chat_memory"
 THREADS = "semasa_chat_threads"
 MESSAGES = "semasa_chat_messages"
 MOTIONS = "semasa_motions"
-CHAT_KEY = "telegram_chat"              # settings row: {thread_id, await_note}
+CHAT_KEY = "telegram_chat"              # settings row: {thread_id, await_note, pending, likes, videos_sent}
 THREAD_TITLE = "Telegram"
-NOTES_MAX = 30
+NOTES_MAX = 40                          # the AI chat's own ceiling (semasa-chat logic.js MEMORY.notes): the newest 40
 HISTORY_TURNS = 8
 URL_RE = re.compile(r"https?://[^\s<>\"']+")
 # robots that write text through the router; ChatGPT draws Motion's pictures and writes its storyboard, it is not a pin here
@@ -47,8 +47,12 @@ def chat_state(store: Any) -> dict[str, Any]:
     return dict(rows[0].get("value") or {}) if rows else {}
 
 
-def save_chat_state(store: Any, value: dict[str, Any]) -> None:
-    store.table(db.SETTINGS).upsert({"key": CHAT_KEY, "value": value}, on_conflict="key").execute()
+def save_chat_state(store: Any, changes: dict[str, Any]) -> None:
+    """Write ONLY the keys a caller owns, merged onto a fresh read taken immediately before the write.
+
+    The row has several writers (this worker, the webhook's thread_id, earlier the motion worker), and writing back a whole
+    copy read minutes before put back stale values of the keys someone else had changed meanwhile."""
+    store.table(db.SETTINGS).upsert({"key": CHAT_KEY, "value": {**chat_state(store), **changes}}, on_conflict="key").execute()
 
 
 # ---- the robots -----------------------------------------------------------------------------------------------------------
@@ -161,8 +165,11 @@ def ask(llm: Any, system: str, user: str, max_tokens: int = 900) -> tuple[str, s
 # ---- memory: Wan's standing notes and the conversation ----------------------------------------------------------------------
 
 def notes(store: Any, user_id: str) -> list[dict[str, Any]]:
-    return store.table(MEMORY).select("id,note,source,created_at").eq("user_id", user_id).order("created_at") \
+    """Wan's standing notes: the NEWEST NOTES_MAX, oldest first (reading ascending with a limit kept the oldest and dropped
+    every note added after the ceiling)."""
+    rows = store.table(MEMORY).select("id,note,source,created_at").eq("user_id", user_id).order("created_at", desc=True) \
         .limit(NOTES_MAX).execute().data or []
+    return list(reversed(rows))
 
 
 def remember(store: Any, user_id: str, note: str, source: str = "user") -> str:
@@ -198,7 +205,7 @@ def thread_id(store: Any, user_id: str) -> str:
         if got:
             return st["thread_id"]
     row = (store.table(THREADS).insert({"user_id": user_id, "title": THREAD_TITLE}).execute().data or [{}])[0]
-    save_chat_state(store, {**st, "thread_id": row.get("id")})
+    save_chat_state(store, {"thread_id": row.get("id")})
     return str(row.get("id") or "")
 
 
@@ -241,11 +248,10 @@ def feedback_buttons(row_id: int) -> list[list[dict[str, str]]]:
 
 
 def on_feedback(store: Any, kind: str, row_id: str) -> str:
-    st = chat_state(store)
     if kind == "up":
-        save_chat_state(store, {**st, "likes": int(st.get("likes") or 0) + 1})
+        save_chat_state(store, {"likes": int(chat_state(store).get("likes") or 0) + 1})
         return "👍 Terima kasih, saya teruskan cara ini."
-    save_chat_state(store, {**st, "await_note": row_id})
+    save_chat_state(store, {"await_note": row_id})
     return ("👎 Apa patut saya ubah? Balas dengan satu ayat (contoh: \"jawab lebih ringkas\" atau "
             "\"sentiasa beri rujukan NPRA\"). Saya simpan sebagai nota tetap untuk semua jawapan seterusnya.")
 
@@ -255,7 +261,7 @@ def take_correction(store: Any, user_id: str, text: str) -> str | None:
     st = chat_state(store)
     if not st.get("await_note") or text.startswith("/"):
         return None
-    save_chat_state(store, {**st, "await_note": None})
+    save_chat_state(store, {"await_note": None})
     return remember(store, user_id, f"Pembetulan Wan: {text}", source="chat").replace("🧠 Diingat", "🧠 Pembetulan diingat")
 
 
@@ -366,7 +372,7 @@ def menu_reply(link: dict[str, Any] | None, site: str) -> tuple[str, list[list[d
 
 
 def ask_topic(store: Any, action: str) -> str:
-    save_chat_state(store, {**chat_state(store), "pending": action})
+    save_chat_state(store, {"pending": action})
     return NEEDS_TOPIC[action]
 
 
@@ -376,7 +382,7 @@ def take_pending(store: Any, text: str) -> str | None:
     action = st.get("pending")
     if not action or not text or text.startswith("/"):
         if action and text.startswith("/"):
-            save_chat_state(store, {**st, "pending": None})        # a command instead of the topic: the question is dropped
+            save_chat_state(store, {"pending": None})        # a command instead of the topic: the question is dropped
         return None
-    save_chat_state(store, {**st, "pending": None})
+    save_chat_state(store, {"pending": None})
     return f"/{action} {text}"

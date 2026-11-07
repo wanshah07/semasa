@@ -288,3 +288,17 @@ def test_a_teasers_call_to_action_cannot_be_edited_away():
     sb = {"kind": "explainer", "plan": {"scenes": [{"id": "s1", "heading": "Hook baharu", "lines": [], "narration": ""}]}}
     out = motion.approved_plan(row, sb)
     assert out["scenes"][0]["heading"] == f"Hook baharu · {cta}" and out["hook"] == "Hook baharu"
+
+
+def test_the_storyboards_sent_list_has_its_own_settings_row_and_the_old_one_is_read_once():
+    from semasa import telegram_tools as tt
+    store = FakeStore(semasa_motions=[], semasa_telegram_link=[LINK],
+                      semasa_settings=[{"key": "telegram_chat", "value": {"thread_id": "t-1", "storyboards_sent": ["old@x"]}}])
+    r = _review(store)
+    assert motion_review.sent_keys(store) == ["old@x"], "before the new row exists, the old list counts"
+    assert tb.push_storyboards(store, Bot(), LINK) == 1
+    row = next(x for x in store.tables["semasa_settings"] if x["key"] == motion_review.SENT_KEY)["value"]
+    assert row["sent"] == ["old@x", motion_review.sent_key(r["id"], r["storyboard"])]
+    assert tt.chat_state(store) == {"thread_id": "t-1", "storyboards_sent": ["old@x"]}, "telegram_chat is not rewritten"
+    tt.save_chat_state(store, {"pending": "poster"})   # the Telegram worker's own write cannot lose the list any more
+    assert motion_review.due(store) == []

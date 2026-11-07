@@ -81,6 +81,9 @@ class Query:
         return self
 
     def contains(self, c, vals):
+        if isinstance(vals, dict):               # jsonb @> {...}: every key given, with that value
+            self.filters.append(lambda r: isinstance(r.get(c), dict) and all(r[c].get(k) == v for k, v in vals.items()))
+            return self
         vals = list(vals)
         self.filters.append(lambda r: isinstance(r.get(c), list) and all(v in r.get(c) for v in vals))
         return self

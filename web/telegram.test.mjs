@@ -68,3 +68,16 @@ const fr = fastReply(111, 5, "Jawapan", "Mireld · kimi-k3", 42);
 assert.equal(fr.text, "Jawapan\n\n— Mireld · kimi-k3");
 assert.deepEqual(fr.reply_markup.inline_keyboard[0].map((b) => b.callback_data), ["fb:up:42", "fb:down:42"]);
 console.log("telegram fast: ok");
+
+// ---- 7 Nov 2026 review ----
+import { BUSY_WINDOW_MS, newestNotes } from "../supabase/functions/semasa-telegram/logic.js";
+// a 👎 or a menu tap the worker has not finished: the next message waits for it, never answered as a question
+assert.equal(fastEligible({ ...base, text: "jawab lebih ringkas", busy: true }), false);
+assert.equal(fastEligible({ ...base, text: "jawab lebih ringkas", busy: false }), true);
+assert.ok(BUSY_WINDOW_MS >= 5 * 60_000 && BUSY_WINDOW_MS < 30 * 60_000, "shorter than the watchdog's 30 minutes");
+// the newest 40 notes (read newest first), in the order they were written
+const rows = Array.from({ length: 45 }, (_, i) => ({ note: `n${44 - i}` }));
+const kept = newestNotes(rows, 40);
+assert.equal(kept.length, 40);
+assert.deepEqual([kept[0], kept[39]], ["n5", "n44"]);
+console.log("telegram review: ok");

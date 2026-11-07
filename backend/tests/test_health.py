@@ -170,3 +170,75 @@ def test_a_problem_that_clears_says_fixed_with_the_moment_it_started_in_the_watc
     assert "FIXED: " in mail["html"] and "is working again (problem started 2026-11-07T09:30:00Z)" in mail["html"]
     assert mail["html"].rstrip().endswith("<p>Semasa → Log shows every check.</p>")
     assert health.run(st, later, sender=s)["kind"] == "", "said once"
+
+
+def _gemini_down():
+    return {"slug": "gemini", "name": "Gemini", "role": "primary", "key_set": True, "key_ok": True, "reachable": True,
+            "chat_ok": False, "model": "gemini-3.6-flash", "error": "Read timed out"}
+
+
+def test_the_telegram_copy_carries_the_new_problem_and_is_rendered_before_the_state_moves(monkeypatch):
+    from semasa import telegram_bot
+    told = []
+    monkeypatch.setattr(telegram_bot, "notify", lambda store, text, bot=None: told.append(text) or True)
+    st, s = store(**{db.API_STATUS: [_gemini_down()]}), Sender()
+    health.run(st, NOW, sender=s)
+    assert "PROBLEM: " in told[0] and "Gemini" in told[0] and "PROBLEM: " in s.sent[0]["html"]
+    st.tables[db.API_STATUS][0].update(chat_ok=True, error="")
+    health.run(st, datetime(2026, 11, 7, 13, 17, tzinfo=UTC), sender=s)
+    assert "FIXED: " in told[1] and "problem started 2026-11-07T09:30:00Z" in told[1]
+
+
+def test_with_no_email_a_telegram_alert_is_enough_and_is_not_repeated(monkeypatch):
+    from semasa import telegram_bot
+    told = []
+    monkeypatch.setattr(telegram_bot, "notify", lambda store, text, bot=None: told.append(text) or True)
+    st = store(**{db.API_STATUS: [_gemini_down()], db.SETTINGS: []})       # no company address: no e-mail at all
+    assert health.run(st, NOW, sender=Sender())["kind"] == "attention" and len(told) == 1
+    assert "No e-mail copy" in told[0]
+    assert health.run(st, NOW, sender=Sender())["kind"] == "", "Wan was told on Telegram: not every run again"
+    assert len(told) == 1
+
+
+def test_a_failed_email_still_goes_to_telegram_once_and_neither_means_try_again(monkeypatch):
+    from semasa import telegram_bot
+    told = []
+    monkeypatch.setattr(telegram_bot, "notify", lambda store, text, bot=None: told.append(text) or True)
+    st = store(**{db.API_STATUS: [_gemini_down()]})
+    health.run(st, NOW, sender=Sender(fail_send=True))
+    assert len(told) == 1 and "e-mail copy could not be sent" in told[0]
+    assert health.run(st, NOW, sender=Sender(fail_send=True))["kind"] == ""
+    monkeypatch.setattr(telegram_bot, "notify", lambda store, text, bot=None: False)
+    st2 = store(**{db.API_STATUS: [_gemini_down()]})
+    health.run(st2, NOW, sender=Sender(fail_send=True))
+    assert health.run(st2, NOW, sender=Sender(fail_send=True))["kind"] == "attention", "nobody was told: it says it again"
+
+
+def test_failed_workflows_are_asked_for_by_status_and_paged_past_the_newest_hundred(monkeypatch):
+    monkeypatch.setenv("GITHUB_REPOSITORY", "wanshah07/semasa")
+    monkeypatch.setenv("GITHUB_TOKEN", "t")
+    asked = []
+
+    class R:
+        status_code = 200
+
+        def __init__(self, runs):
+            self.runs = runs
+
+        def json(self):
+            return {"workflow_runs": self.runs}
+
+    class S:
+        def get(self, url, **kw):
+            p = kw["params"]
+            asked.append((p["status"], p["page"]))
+            if p["status"] != "failure":
+                return R([])
+            n = 100 if p["page"] == 1 else 7               # a busy day: more than one page of failures
+            return R([{"id": p["page"] * 1000 + i, "name": "Publish", "conclusion": "failure",
+                       "html_url": f"https://github.com/x/runs/{p['page']}-{i}", "created_at": "2026-11-07T01:00:00Z"}
+                      for i in range(n)])
+
+    got = health.check_workflows(NOW, S())
+    assert asked == [("failure", 1), ("failure", 2), ("timed_out", 1), ("startup_failure", 1)]
+    assert got[0]["what"].startswith("Publish: 107 run(s) failed in 24 h")

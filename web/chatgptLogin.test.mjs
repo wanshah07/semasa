@@ -68,3 +68,10 @@ assert.equal(validModel(""), false);
 assert.equal(validModel("bad model"), false);
 assert.equal(validModel("a".repeat(65)), false);
 console.log("chatgptLogin.test.mjs: ok");
+
+// the default for a new login (7 Nov 2026: "gpt-5" is refused for a ChatGPT account through Codex)
+import { DEFAULT_MODEL } from "./src/lib/chatgptLogin.js";
+import { CHATGPT_DEFAULT_MODEL } from "../supabase/functions/semasa-chat/logic.js";
+assert.equal(DEFAULT_MODEL, "gpt-5.5");
+assert.equal(CHATGPT_DEFAULT_MODEL, DEFAULT_MODEL, "the page and the chat function agree");
+console.log("chatgpt default model: ok");

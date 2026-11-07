@@ -766,3 +766,23 @@ await run("a tool call's extra_content (Gemini's thought signature) is kept thro
   assert.deepEqual(a.toolCalls[0].extra_content, { google: { thought_signature: "sig" } });
 });
 console.log("all robots: ok");
+
+// ---- 7 Nov 2026 review: a gateway that cannot be reached is an answer, and the 150 s budget is watched ----
+{
+  const L = await import("../supabase/functions/semasa-chat/logic.js");
+  // a saved login with no model asks ChatGPT for one it accepts ("gpt-5" is refused for a ChatGPT account through Codex)
+  const { gates } = L.assembleTeam(teamInput({ chatgpt: { row: { auth: { tokens: { refresh_token: "rt-SECRET", access_token: "at-SECRET" } }, model: "", checked_at: fresh } } }));
+  assert.equal(gates.chatgpt.model, "gpt-5.5");
+  assert.equal(L.responsesBody([{ role: "user", content: "hai" }], "").model, "gpt-5.5");
+  // the failover sees a network failure as a failure: it never throws past it
+  assert.equal(L.netError(new DOMException("signal timed out", "TimeoutError")), "the model did not answer in time");
+  assert.match(L.netError(new TypeError("error sending request: dns error: failed to lookup address")), /could not be reached \(TypeError: error sending request/);
+  // a switch to the next robot only while it still has room to answer; no call runs past the budget
+  assert.equal(L.switchAllowed(10_000), true);
+  assert.equal(L.switchAllowed(L.CHAT_BUDGET_MS - L.SWITCH_MIN_MS + 1), false, "too late: an error event instead of being cut off");
+  assert.equal(L.turnTimeoutMs(0), L.TURN_MAX_MS);
+  assert.equal(L.turnTimeoutMs(100_000), L.CHAT_BUDGET_MS - 100_000);
+  assert.equal(L.turnTimeoutMs(200_000), 5000);
+  assert.ok(L.CHAT_BUDGET_MS < 150_000);
+  console.log("chat budget: ok");
+}

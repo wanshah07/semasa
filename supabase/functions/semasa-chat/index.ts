@@ -56,6 +56,7 @@ import { cleanLayout, designMessages, keepWords, refineMessages } from "./design
 import { faqMessages, parseFaqItems } from "./faq.js";
 import { firstJson } from "./faq.js";
 import {
+  CHAT_BUDGET_MS, netError, switchAllowed, turnTimeoutMs,
   CHATGPT_CLIENT_ID, CHATGPT_RESPONSES, CHATGPT_TOKEN_URL, assembleTeam, chatgptAccount, chatgptNeedsRefresh, foldResponses, geminiKeyPatch, geminiOutcome,
   refreshedTokens, resolveChoice, responsesBody, tokenExpiry,
   MEMORY, SYSTEM, planFaq, rankModels, shapeFaq, resolveModel, TEST_IMAGE, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
@@ -66,16 +67,22 @@ import {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "content-type": "application/json" } });
 
+/** One call to a gateway. Never throws: a time-out, a DNS failure or a refused connection comes back as { ok: false, status: 0 }
+    like any refusal, so the callers' failover (Auto's next robot, Gemini's next key) sees it instead of being jumped over. */
 async function upstream(base: string, key: string, path: string, init: RequestInit = {}, ms = 55000) {
-  const res = await fetch(base.replace(/\/+$/, "") + path, {
-    ...init,
-    headers: { ...(init.headers || {}), authorization: `Bearer ${key}`, "content-type": "application/json" },
-    signal: AbortSignal.timeout(ms),
-  });
-  const text = await res.text();
-  let data: any = null;
-  try { data = JSON.parse(text); } catch { /* not JSON */ }
-  return { ok: res.ok, status: res.status, data, text };
+  try {
+    const res = await fetch(base.replace(/\/+$/, "") + path, {
+      ...init,
+      headers: { ...(init.headers || {}), authorization: `Bearer ${key}`, "content-type": "application/json" },
+      signal: AbortSignal.timeout(ms),
+    });
+    const text = await res.text();
+    let data: any = null;
+    try { data = JSON.parse(text); } catch { /* not JSON */ }
+    return { ok: res.ok, status: res.status, data, text };
+  } catch (e) {
+    return { ok: false, status: 0, data: null, text: netError(e) };
+  }
 }
 
 const asText = (d: any) => {
@@ -90,6 +97,7 @@ const hits = new Map<string, number[]>();                      // recent calls p
 const liveModels = new Map<string, { at: number; ids: string[] | null }>();   // each robot's own /models answer, kept five minutes
 
 Deno.serve(async (req) => {
+  const reqStart = Date.now();                                  // the platform ends a request at 150 s, streaming or not
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
@@ -654,45 +662,57 @@ Deno.serve(async (req) => {
       ...(c?.extra_content ? { extra_content: c.extra_content } : {}) }));
     async function turn(payload: any, onText: (t: string) => void, g: Gate): Promise<Turn> {
       const path = g.base.replace(/\/+$/, "") + "/chat/completions";
+      const ms = turnTimeoutMs(Date.now() - reqStart);         // never past the platform's budget, so an error can still be sent
       if (!wantStream) {
-        const r = await upstream(g.base, g.key, "/chat/completions", { method: "POST", body: JSON.stringify(outboundFor(g, payload)) });
+        const r = await upstream(g.base, g.key, "/chat/completions", { method: "POST", body: JSON.stringify(outboundFor(g, payload)) }, ms);
         if (!r.ok) return { ok: false, status: r.status, content: "", toolCalls: [], model: "", err: String(r.data?.error?.message || r.text).slice(0, 200) };
         return { ok: true, status: r.status, content: asText(r.data), toolCalls: callsOf(r.data?.choices?.[0]?.message), model: String(r.data?.model || ""), err: "" };
       }
-      const res = await fetch(path, { method: "POST", headers: { authorization: `Bearer ${g.key}`, "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify(outboundFor(g, { ...payload, stream: true })), signal: AbortSignal.timeout(110000) });
-      if (!res.ok || !res.body) {
-        const text = await res.text().catch(() => "");
-        let j: any = null; try { j = JSON.parse(text); } catch { /* not JSON */ }
-        return { ok: false, status: res.status, content: "", toolCalls: [], model: "", err: String(j?.error?.message || text).slice(0, 200) };
+      // a time-out, DNS failure or refused connection is an answer like any other ({ ok: false, status: 0 }), so Auto can hand the
+      // question to the next robot and Gemini can try its next key; a stream that breaks after words are out still fails as one
+      let res: Response;
+      try {
+        res = await fetch(path, { method: "POST", headers: { authorization: `Bearer ${g.key}`, "content-type": "application/json", accept: "text/event-stream" },
+          body: JSON.stringify(outboundFor(g, { ...payload, stream: true })), signal: AbortSignal.timeout(ms) });
+      } catch (e) {
+        return { ok: false, status: 0, content: "", toolCalls: [], model: "", err: netError(e) };
       }
-      const type = res.headers.get("content-type") || "";
-      if (!/event-stream/.test(type)) {                       // a gateway that ignores stream:true answers one JSON: read it as such
-        const j: any = await res.json().catch(() => null);
-        const content = asText(j);
-        if (content) onText(content);
-        return { ok: true, status: res.status, content, toolCalls: callsOf(j?.choices?.[0]?.message), model: String(j?.model || ""), err: "" };
-      }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "", acc: any = null;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const { events, rest } = sseEvents(buf);
-        buf = rest;
-        for (const ev of events) {
-          if (ev.trim() === "[DONE]") continue;
-          let chunk: any = null; try { chunk = JSON.parse(ev); } catch { continue; }
-          if (chunk?.error) return { ok: false, status: 502, content: "", toolCalls: [], model: "", err: String(chunk.error?.message || chunk.error).slice(0, 200) };
-          const before = acc?.content || "";
-          acc = foldDelta(acc, chunk);
-          if (acc.content.length > before.length) onText(acc.content.slice(before.length));
+      try {
+        if (!res.ok || !res.body) {
+          const text = await res.text().catch(() => "");
+          let j: any = null; try { j = JSON.parse(text); } catch { /* not JSON */ }
+          return { ok: false, status: res.status, content: "", toolCalls: [], model: "", err: String(j?.error?.message || text).slice(0, 200) };
         }
+        const type = res.headers.get("content-type") || "";
+        if (!/event-stream/.test(type)) {                       // a gateway that ignores stream:true answers one JSON: read it as such
+          const j: any = await res.json().catch(() => null);
+          const content = asText(j);
+          if (content) onText(content);
+          return { ok: true, status: res.status, content, toolCalls: callsOf(j?.choices?.[0]?.message), model: String(j?.model || ""), err: "" };
+        }
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = "", acc: any = null;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const { events, rest } = sseEvents(buf);
+          buf = rest;
+          for (const ev of events) {
+            if (ev.trim() === "[DONE]") continue;
+            let chunk: any = null; try { chunk = JSON.parse(ev); } catch { continue; }
+            if (chunk?.error) return { ok: false, status: 502, content: "", toolCalls: [], model: "", err: String(chunk.error?.message || chunk.error).slice(0, 200) };
+            const before = acc?.content || "";
+            acc = foldDelta(acc, chunk);
+            if (acc.content.length > before.length) onText(acc.content.slice(before.length));
+          }
+        }
+        acc = acc || { content: "", toolCalls: [], finish: null, model: "" };
+        return { ok: true, status: res.status, content: acc.content, toolCalls: acc.toolCalls.filter((c: any) => c.name), model: acc.model, err: "" };
+      } catch (e) {                                            // the stream broke (time-out, reset) while it was being read
+        return { ok: false, status: 0, content: "", toolCalls: [], model: "", err: netError(e) };
       }
-      acc = acc || { content: "", toolCalls: [], finish: null, model: "" };
-      return { ok: true, status: res.status, content: acc.content, toolCalls: acc.toolCalls.filter((c: any) => c.name), model: acc.model, err: "" };
     }
 
     // ChatGPT (Wanshah 5): the Codex Responses endpoint with Wan's login, streamed (it only answers streamed); a 401 refreshes once
@@ -770,6 +790,10 @@ Deno.serve(async (req) => {
         }
         // Auto only: a robot that failed before saying anything hands the question to the next one (Wan's own pick is never swapped)
         if (!r.ok && choice.auto && round === 0 && !said && link < chain.length - 1) {
+          // too little of the platform's 150 s left for the next robot to answer: say so now, rather than be cut off mid-call
+          if (!switchAllowed(Date.now() - reqStart)) {
+            throw new Error(`${gate.name} ${model} failed (${r.status ? `HTTP ${r.status}: ` : ""}${r.err}) and there is no time left to ask another robot: send it again`);
+          }
           switched.push(`${gate.name} ${model}: ${r.status ? `HTTP ${r.status}: ` : ""}${r.err}`.slice(0, 200));
           link++;
           gate = chain[link].gate; model = chain[link].model;

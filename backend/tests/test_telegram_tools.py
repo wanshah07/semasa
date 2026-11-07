@@ -90,6 +90,8 @@ def test_a_thumbs_down_turns_the_next_message_into_a_standing_note_that_every_an
     assert "- caption ws.regulab maksimum 120 patah perkataan" in llm.asked[-1][1]
     assert "- Pembetulan Wan: jawab lebih ringkas" in llm.asked[-1][1]
     assert "Wan: terangkan notifikasi" in llm.asked[-1][1], "the earlier turns come from the shared thread"
+    for i, r in enumerate(st.tables[tt.MEMORY]):   # the database stamps created_at on insert; the fake does not
+        r.setdefault("created_at", f"2026-11-07T10:00:0{i}+00:00")
     st.tables[tb.INBOX].append(msg(6, "/memori"))
     run(st, bot)
     m = bot.sent()[-1]
@@ -178,3 +180,23 @@ def test_a_menu_button_that_needs_no_words_runs_at_once():
     st, bot = team_store(**{tb.INBOX: [tap(1, "menu:status")]}), Bot()
     run(st, bot)
     assert bot.sent()[0]["text"].startswith("Semasa sekarang")
+
+
+def test_the_newest_forty_notes_are_read_oldest_first():
+    rows = [{"id": f"n{i}", "user_id": "u-wan", "note": f"nota {i}", "source": "user",
+             "created_at": f"2026-11-{1 + i // 24:02d}T{i % 24:02d}:00:00+00:00"} for i in range(45)]
+    st = team_store(**{tt.MEMORY: rows})
+    got = [r["note"] for r in tt.notes(st, "u-wan")]
+    assert len(got) == tt.NOTES_MAX == 40
+    assert got[0] == "nota 5" and got[-1] == "nota 44", "the five oldest drop out, never the newest"
+
+
+def test_a_chat_state_write_keeps_keys_another_writer_set_meanwhile():
+    st = team_store()
+    tt.save_chat_state(st, {"thread_id": "t-1", "pending": "poster"})
+    stale = tt.chat_state(st)                      # read by one writer...
+    tt.save_chat_state(st, {"videos_sent": ["v1"]})  # ...while another writes its own key
+    assert stale.get("videos_sent") is None
+    tt.take_pending(st, "kulit sensitif")          # the first writer clears only what it owns
+    st_now = tt.chat_state(st)
+    assert st_now == {"thread_id": "t-1", "pending": None, "videos_sent": ["v1"]}

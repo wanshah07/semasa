@@ -47,6 +47,9 @@ jobs:
 
       # The Telegram webhook's secret header, derived from the bot token exactly as telegram_bot.webhook_secret does, so
       # there is no second secret to keep. Skipped (with a notice) while TELEGRAM_BOT_TOKEN is not set.
+      # A NEW bot token means a new secret: the Telegram worker re-sends it to Telegram by itself (it keeps a fingerprint in
+      # settings.telegram_bot.secret_fp), but this function only learns it when this workflow runs again. Run it by hand
+      # (Actions → Deploy functions → Run workflow) after changing TELEGRAM_BOT_TOKEN; the watchdog says so if it is missed.
       - name: Telegram webhook secret
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

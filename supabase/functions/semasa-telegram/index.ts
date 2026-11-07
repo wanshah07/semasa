@@ -10,17 +10,18 @@
 //
 // Deployed with --no-verify-jwt (Telegram sends no Supabase login); the secret header is the gate.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { fastEligible, fastMessages, fastReply, inboxRow, instantReply, kindOf, linkCode, sameSecret, turnsOf } from "./logic.js";
-import { gatewayConfig, withInstructions } from "../semasa-chat/logic.js";
+import { BUSY_WINDOW_MS, fastEligible, fastMessages, fastReply, inboxRow, instantReply, kindOf, linkCode, newestNotes, sameSecret, turnsOf } from "./logic.js";
+import { MEMORY, gatewayConfig, withInstructions } from "../semasa-chat/logic.js";
 
 const FAST_MS = 22000;        // Telegram waits for the webhook's answer; past this the worker answers instead
 
 /** A plain question answered here with the AI chat's gateway: the answer, or null to hand it to the worker. */
-async function fastAnswer(db: any, link: any, text: string, pin: any, state: any) {
+async function fastAnswer(db: any, link: any, text: string, pin: any, state: any, busy: boolean) {
   const gw = gatewayConfig((k: string) => Deno.env.get(k));
-  if (gw.error || !gw.key || !gw.model || !fastEligible({ kind: "private", text, owner: true, state, pin, gwName: gw.name })) return null;
+  if (gw.error || !gw.key || !gw.model || !fastEligible({ kind: "private", text, owner: true, state, pin, gwName: gw.name, busy })) return null;
   const [notesQ, msgsQ, draftsQ] = await Promise.all([
-    db.from("semasa_chat_memory").select("note").eq("user_id", link.user_id).order("created_at").limit(30),
+    // the newest notes, as the AI chat allows them (MEMORY.notes); ascending with a limit kept the oldest ones
+    db.from("semasa_chat_memory").select("note").eq("user_id", link.user_id).order("created_at", { ascending: false }).limit(MEMORY.notes),
     state?.thread_id ? db.from("semasa_chat_messages").select("role,content,id").eq("thread_id", state.thread_id).order("id", { ascending: false }).limit(16)
       : Promise.resolve({ data: [] }),
     db.from("semasa_posts").select("status").in("status", ["draft", "approved", "scheduled"]),
@@ -28,7 +29,7 @@ async function fastAnswer(db: any, link: any, text: string, pin: any, state: any
   const posts = draftsQ.data || [];
   const count = (s: string) => posts.filter((p: any) => p.status === s).length;
   const snapshot = `Draf menunggu: ${count("draft")} · Diluluskan: ${count("approved")} · Dijadualkan: ${count("scheduled")}`;
-  let messages = fastMessages({ text, notes: (notesQ.data || []).map((n: any) => n.note), turns: turnsOf((msgsQ.data || []).reverse()),
+  let messages = fastMessages({ text, notes: newestNotes(notesQ.data || [], MEMORY.notes), turns: turnsOf((msgsQ.data || []).reverse()),
     snapshot, gwName: gw.name, model: gw.model });
   if (gw.repeatSystem) messages = withInstructions(messages);
   try {
@@ -52,7 +53,12 @@ async function logTurn(db: any, link: any, state: any, question: string, answer:
   if (!tid) {
     const { data } = await db.from("semasa_chat_threads").insert({ user_id: link.user_id, title: "Telegram" }).select("id").single();
     tid = data?.id;
-    if (tid) await db.from("semasa_settings").upsert({ key: "telegram_chat", value: { ...(state || {}), thread_id: tid } }, { onConflict: "key" });
+    if (tid) {
+      // only thread_id is ours: merged onto a fresh read taken now, never onto the copy read before the model answered (the
+      // worker writes pending, await_note, likes and videos_sent to the same row in the meantime)
+      const { data: fresh } = await db.from("semasa_settings").select("value").eq("key", "telegram_chat").maybeSingle();
+      await db.from("semasa_settings").upsert({ key: "telegram_chat", value: { ...(fresh?.value || {}), thread_id: tid } }, { onConflict: "key" });
+    }
   }
   if (tid) await db.from("semasa_chat_messages").insert([{ thread_id: tid, user_id: link.user_id, role: "user", content: question },
     { thread_id: tid, user_id: link.user_id, role: "assistant", content: answer }]);
@@ -104,12 +110,17 @@ Deno.serve(async (req) => {
 
   // a plain question from Wan: answered here in seconds when it can be, else the worker answers (30-60 s)
   if (kind === "private" && owner && fastEligible({ kind, text: update.message?.text, owner, state: {}, pin: null, gwName: "" })) {
-    const [{ data: st }, { data: team }] = await Promise.all([
+    const [{ data: st }, { data: team }, { data: waiting }] = await Promise.all([
       db.from("semasa_settings").select("value").eq("key", "telegram_chat").maybeSingle(),
       db.from("semasa_settings").select("value").eq("key", "ai_team").maybeSingle(),
+      // anything of his the worker has not finished (a 👎 or a menu tap whose pending/await_note is not written yet)
+      db.from("semasa_telegram_inbox").select("id").eq("chat_id", update.message.chat.id).in("kind", ["private", "callback"])
+        .in("status", ["new", "working"]).gte("created_at", new Date(Date.now() - BUSY_WINDOW_MS).toISOString()).limit(1),
     ]);
     const state = st?.value || {};
-    const fast = await fastAnswer(db, link, String(update.message.text), team?.value?.pins?.reader || null, state);
+    // unreadable counts as busy: the worker then answers in order, as it did before the fast path
+    const busy = waiting == null || waiting.length > 0;
+    const fast = await fastAnswer(db, link, String(update.message.text), team?.value?.pins?.reader || null, state, busy);
     if (fast) {
       const { data: saved } = await db.from("semasa_telegram_inbox").upsert(
         { ...inboxRow(update, kind, owner), status: "done", note: `answered (fast, ${fast.who}): ${fast.answer.slice(0, 700)}`,

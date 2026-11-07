@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { AUTO, DEFAULTS, FALLBACK_TEXT, JOB_CHOICES, effectiveModel, keyProblem, keyState, modelOptions, modelsOf, restMinutes, settingsOf, toggleJob, usableCount, validKey } from "./src/lib/geminiKeys.js";
+import { AUTO, DEFAULTS, FALLBACK_TEXT, JOB_CHOICES, STATE_WORDS, effectiveModel, keyProblem, keyState, modelOptions, modelsOf, restMinutes, settingsOf, toggleJob, usableCount, validKey } from "./src/lib/geminiKeys.js";
 
 const NOW = Date.parse("2026-11-06T12:00:00Z");
 const at = (m) => new Date(NOW + m * 60000).toISOString();
@@ -81,3 +81,5 @@ assert.match(opts.at(-1).label, /not in your keys' list/);
 assert.match(modelOptions([], "auto", "", [], 0)[0].label, /Auto \(disyorkan\): kini \?/);
 assert.equal(modelOptions(listed, "auto", "x").length, 4, "auto adds no extra row");
 assert.equal(modelOptions([], "gemini-x", "x").at(-1).label, "gemini-x", "nothing listed: no 'not in list' scare");
+
+assert.equal(STATE_WORDS.resting[1], "Resting (will retry)", "a rest is not always a rate limit");

@@ -56,7 +56,7 @@ export function keyState(row, now = Date.now()) {
 }
 
 export const STATE_WORDS = {
-  off: ["Dimatikan", "Switched off"], bad: ["Ditolak Google", "Refused by Google"], resting: ["Berehat (had kadar)", "Resting (rate limit)"],
+  off: ["Dimatikan", "Switched off"], bad: ["Ditolak Google", "Refused by Google"], resting: ["Berehat (cuba semula)", "Resting (will retry)"],
   ok: ["Berfungsi", "Working"], new: ["Belum diuji", "Not tried yet"],
 };
 export const STATE_CLS = { off: "bg-surface-2 text-muted", bad: "bg-danger/15 text-danger", resting: "bg-warn/15 text-warn", ok: "bg-ok/15 text-ok", new: "bg-accent/15 text-accent" };

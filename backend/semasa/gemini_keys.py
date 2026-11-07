@@ -161,7 +161,9 @@ def note(store: Any, row: dict[str, Any], ok: bool, error: Any = "", now: dateti
         kind = classify(error)
         patch = {"last_used_at": stamp, "last_error": " ".join(str(error or "").split())[:300], "last_error_at": stamp,
                  "failures": int(row.get("failures") or 0) + 1, "calls": int(row.get("calls") or 0) + 1}
-        patch["status"] = "bad" if kind == "bad" else "limited"
+        # a slow or unreachable Google (kind "retry") says nothing about the key: it rests two minutes but keeps its status
+        if kind != "retry":
+            patch["status"] = "bad" if kind == "bad" else "limited"
         patch["cooldown_until"] = None if kind == "bad" else (now + COOLDOWN[kind]).isoformat()
     try:
         store.table(TABLE).update({**patch, "updated_at": stamp}).eq("id", row["id"]).execute()

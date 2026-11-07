@@ -28,7 +28,7 @@ class Live:
     """Per key: native (the model list), models (the OpenAI-style list) and chat {model: (ok, ms, error)} with "*" for the rest.
     `asked` records (key, model) of every question."""
     def __init__(self, **per_key):
-        self.per_key, self.asked = per_key, []
+        self.per_key, self.asked, self.timeouts = per_key, [], []
 
     def native_models(self, c, timeout=0):
         return self.per_key.get(c["key"], {}).get("native", [])
@@ -38,6 +38,7 @@ class Live:
 
     def chat(self, c, model, timeout=0):
         self.asked.append((c["key"], model))
+        self.timeouts.append(timeout)
         got = self.per_key.get(c["key"], {}).get("chat", {})
         return got.get(model) or got.get("*") or (True, 400, "")
 
@@ -241,3 +242,17 @@ def test_refreshing_never_raises_and_says_false_when_nothing_changed():
     s = store(key(1))
     assert gemini_check.refresh_models(s, Broken(), NOW) in (True, False)
     assert gemini_check.refresh_models(FakeStore(), Live(), NOW) is False
+
+
+def test_the_check_waits_long_enough_for_a_slow_model_and_a_timeout_is_not_a_rate_limit():
+    s = store(key(1))
+    slow = {"native": LISTED, "chat": {"*": (False, None, "HTTPSConnectionPool(host='generativelanguage.googleapis.com'): "
+                                                          "Read timed out. (read timeout=45)")}}
+    live = Live(**{"AIza-secret-1": slow})
+    out = gemini_check.run(s, live, NOW)
+    r = row(s, 1)
+    assert set(live.timeouts) == {gemini_check.CHECK_TIMEOUT} and gemini_check.CHECK_TIMEOUT >= 30
+    assert r["status"] == "new", "Google being slow says nothing about the key: it is not marked limited or refused"
+    assert r["cooldown_until"] is not None and "did not answer" in r["check_note"]
+    assert out.startswith("0 of 1")
+    assert gemini_keys.classify(r["last_error"]) == "retry"

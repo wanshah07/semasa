@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
-import { CATEGORY_TO_DOMAIN, STREAMS } from "../lib/brand";
+import { CATEGORY_TO_DOMAIN } from "../lib/brand";
+import { BOTH, ideaRows, streamOptions, streamsOf } from "../lib/ideaPair";
 import { useLang } from "../lib/i18n";
 import { useSettings, useTable } from "../lib/hooks";
 import { pickOptions, withHookStyle } from "../lib/hookStyles";
@@ -103,27 +104,27 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
         "The Photo design is drawn on the post's picture: choose Media Image, or another design."), "warn");
     }
     setBusy(true);
-    const row = {
+    const common = {
       // an FAQ or a regulator's notice is not a headline: trend_id points at isu_semasa_trends only
       trend_id: trend && !trend.faq && !trend.watch ? trend.id ?? null : null,
       source_title: title.trim(), source_url: url.trim() || null,
       source_name: trend?.source ?? null, source_summary: trend?.summary ?? null,
-      stream, make_media: media, note: note.trim(),
-      domain: stream === "regulab" ? domain || null : null,
-      angle: stream === "linkedin" ? angle || null : null,
+      make_media: media, note: note.trim(),
       reference_urls: refs.map((r) => r.url), status: "new", created_by: user.id,
     };
     // sent only when asked: the column arrives with supabase/006_slides.sql
     if (outputMotion) {
-      const motion = motionFromIdea({...row, citations: trend?.citations, brief: {source: trend || {}}}, user.id, motionDefaults(motionSettings), motionLanguage);
-      if (!motion) { setBusy(false); return onToast("Add an idea or valid source URL.", "warn"); }
-      const { error } = await supabase.from(TABLES.motions).insert(motion);
+      // one film per stream: LinkedIn's is always English (langOf), ws.regulab's follows the language picked here
+      const motions = streamsOf(stream).map((s) => motionFromIdea({ ...common, stream: s, citations: trend?.citations, brief: { source: trend || {} } },
+        user.id, motionDefaults(motionSettings), motionLanguage));
+      if (motions.some((m) => !m)) { setBusy(false); return onToast("Add an idea or valid source URL.", "warn"); }
+      const { error } = await supabase.from(TABLES.motions).insert(motions);
       setBusy(false);
       if (error) return onToast(errText(error), "danger");
       onToast("In the video queue: choose the styles in Video → Motion, then press Start. No post or image draft created.", "ok");
       onDone?.(); onClose(); return;
     }
-    if (format === "carousel") row.make_slides = true;
+    if (format === "carousel") common.make_slides = true;
     // the look and a poster ride in the idea's brief until the bot writes the draft (backend: ideas.look_of, format_of)
     const brief = {};
     if (drawn) brief.look = look;                       // always said, "classic" included: an explicit choice beats the default design
@@ -131,15 +132,21 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     if (hookStyle) Object.assign(brief, withHookStyle({}, hookStyle));   // the style this idea's hook is built on (backend hook_bank.pick)
     if (writingStyle) Object.assign(brief, withWritingStyle({}, writingStyle));   // how the caption reads (backend writing_styles.pick)
     // the worker keeps this slot while it is still ahead and free (backend ideas.asked_position), else the next free
-    if (position?.date && position?.slot && stream === position.stream) brief.position = { date: position.date, slot: position.slot };
-    if (Object.keys(brief).length) row.brief = brief;
-    const { error } = await supabase.from(TABLES.ideas).insert(row);
+    // both streams: two ideas in ONE insert, so a refusal leaves neither half behind (src/lib/ideaPair.js)
+    const rows = ideaRows(common, { choice: stream, domain, angle, brief, position,
+      pairId: both ? (globalThis.crypto?.randomUUID?.() || `p${Date.now()}`) : "" });
+    const { error } = await supabase.from(TABLES.ideas).insert(rows);
     setBusy(false);
     if (error) {
       return onToast(/make_slides/.test(errText(error))
         ? t("Slaid belum disediakan dalam pangkalan data: jalankan supabase/006_slides.sql sekali, kemudian cuba lagi.",
           "Slides are not set up in the database yet: run supabase/006_slides.sql once, then try again.")
         : errText(error), "danger");
+    }
+    if (both) {
+      onToast(t("Dua idea dihantar: satu untuk ws.regulab (BM), satu untuk LinkedIn (English). Setiap satu ditulis, dilukis dan dijadualkan di aliran sendiri; anda lulus setiap satu.",
+        "Two ideas sent: one for ws.regulab (BM), one for LinkedIn (English). Each is written, drawn and scheduled on its own stream; you approve each."), "ok");
+      onDone?.(); onClose(); return;
     }
     onToast(format === "carousel"
       ? t("Idea dihantar. Semasa akan tulis draf dan slaid, jana gambar, kemudian lukis slaid.",
@@ -155,7 +162,9 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
 
   const domains = Object.entries(brand.regulab.domains || {});
   const angles = Object.entries(brand.linkedin.angles || {});
-  const posterSample = sampleSlides(title, stream).slice(0, 1);
+  const both = stream === BOTH;
+  const previewStream = both ? "regulab" : stream;       // the design preview is drawn once; each stream's own idea is drawn at its own size
+  const posterSample = sampleSlides(title, previewStream).slice(0, 1);
   return (
     <Modal open={open} onClose={cancel} title={trend?.faq ? t("Jadikan post daripada FAQ", "Make a post from an FAQ")
       : trend ? t("Jadikan idea", "Make an idea") : t("Idea baharu", "New idea")}>
@@ -175,11 +184,15 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
             <label className="block"><Label hint={t("pilihan", "optional")}>{t("Pautan sumber", "Source link")}</Label><Input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" /></label>
           </>
         )}
-        <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
-        {stream === "regulab"
-          ? <label className="block"><Label hint={t("kosong = Semasa pilih", "empty = Semasa chooses")}>Domain</Label>
-              <Select value={domain} onChange={setDomain} options={[["", t("Semasa pilih", "Semasa chooses")], ...domains]} className="w-full" /></label>
-          : <label className="block"><Label hint={t("kosong = Semasa pilih", "empty = Semasa chooses")}>{t("Sudut", "Angle")}</Label>
+        <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={streamOptions(t("Kedua-duanya", "Both"))} />
+          {both && <span className="mt-1 block text-[11px] text-muted" data-both-note>
+            {t("Dua idea, bukan satu post dihantar dua kali: ws.regulab ditulis dalam BM, LinkedIn dalam bahasa Inggeris suara Wan, masing-masing dengan media dan saiz platformnya sendiri, dan masuk slot aliran masing-masing. Setiap satu masih perlu anda lulus.",
+              "Two ideas, not one post sent twice: ws.regulab is written in BM, LinkedIn in Wan's English voice, each with its own media at its own platform size, queued on its own stream's slots. Each still needs your Approve.")}</span>}</div>
+        {(stream === "regulab" || both)
+          && <label className="block"><Label hint={t("kosong = Semasa pilih", "empty = Semasa chooses")}>Domain</Label>
+              <Select value={domain} onChange={setDomain} options={[["", t("Semasa pilih", "Semasa chooses")], ...domains]} className="w-full" /></label>}
+        {(stream === "linkedin" || both)
+          && <label className="block"><Label hint={t("kosong = Semasa pilih", "empty = Semasa chooses")}>{t("Sudut", "Angle")}</Label>
               <Select value={angle} onChange={setAngle} options={[["", t("Semasa pilih", "Semasa chooses")], ...angles.map(([k, v]) => [k, `${k} · ${v}`])]} className="w-full" /></label>}
         <label className="block" data-hook-pick><Label hint={t("setiap post bermula dengan salah satu bentuknya", "every post opens on one of its shapes")}>{t("Gaya hook", "Hook style")}</Label>
           <Select value={hookStyle} onChange={setHookStyle} options={pickOptions(hookStyles.rows || [], t, motionSettings?.hook_style)} className="w-full" /></label>
@@ -208,10 +221,10 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
         </div>
         {!outputMotion && format !== "post" && (
           <div className="rounded-tile bg-surface-2/40 p-2.5">
-            <LookPicker value={look} onChange={setLook} sample stream={stream}
-              slides={format === "poster" ? posterSample : sampleSlides(title, stream)}
+            <LookPicker value={look} onChange={setLook} sample stream={previewStream}
+              slides={format === "poster" ? posterSample : sampleSlides(title, previewStream)}
               size={format === "poster" ? [1080, 1350] : null}
-              eyebrow={stream === "regulab" ? (brand.regulab.domains || {})[domain] || "" : (brand.linkedin.angles || {})[angle] || ""}
+              eyebrow={previewStream === "regulab" ? (brand.regulab.domains || {})[domain] || "" : (brand.linkedin.angles || {})[angle] || ""}
               bgChosen={media === "image"} onBlocked={setLookBlocked} />
           </div>
         )}

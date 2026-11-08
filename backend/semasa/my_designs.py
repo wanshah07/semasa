@@ -21,7 +21,7 @@ from .log import get_logger
 log = get_logger("semasa.my_designs")
 
 ID_RE = re.compile(r"^d:([a-z0-9_]{4,24})$")
-FAMILIES = ("grid", "era", "photo")
+FAMILIES = ("grid", "era", "photo", "image")
 KEYS = ("look", "cover", "middle", "closing", "single", "accent", "paper", "bg", "scrim", "mascot", "eyebrow")
 
 

@@ -152,15 +152,20 @@ def test_the_idea_carries_its_look_to_the_slide_job():
     post = {"slides": SLIDES, "stream": "regulab", "citation": "", "domain": "kosmetik", "angle": None}
     assert ideas.slide_job(idea, post, "p1")["meta"]["look"] == "grid"
     assert ideas.slide_job(idea, post, "p1")["meta"]["fit"] is True            # a Studio look fits each slide by default
-    assert ideas.slide_job({"id": "i2", "brief": {}}, post, "p1")["meta"]["fit"] is False
+    classic = {"id": "i2", "brief": {"look": "classic"}}                    # Semasa's own look, chosen
+    assert ideas.slide_job(classic, post, "p1")["meta"]["fit"] is False
+    assert ideas.look_of({"id": "i2", "brief": {}}) == "image"             # no choice: the default look, a picture ON the slide
     # no picture made: a Studio look is drawn on Studio's ground for the domain; Semasa's own look stays on paper
     assert ideas.slide_job(idea, post, "p1")["meta"]["bg"] == "lib:g_makmal02"
     assert ideas.slide_job(idea, post, "p1", bg="post_image")["meta"]["bg"] == "post_image"
-    assert ideas.slide_job({"id": "i2", "brief": {}}, post, "p1")["meta"]["bg"] == "none"
+    assert ideas.slide_job({"id": "i2", "brief": {"look": "classic"}}, post, "p1")["meta"]["bg"] == "none"
+    # the Image look puts the picture ON the slide: with none made, a stock ground is never placed in a phone or a print
+    assert ideas.slide_job({"id": "i3", "brief": {"look": "image"}}, post, "p1")["meta"]["bg"] == "none"
     li = {**post, "stream": "linkedin", "domain": None, "angle": "E"}
     assert ideas.slide_job(idea, li, "p1")["meta"]["bg"] == "lib:g_gudang01"
-    for brief in ({}, None, {"look": "neon"}, "not a dict"):
-        assert ideas.look_of({"brief": brief}) == "classic"
+    for brief in ({}, None, "not a dict"):
+        assert ideas.look_of({"brief": brief}) == "image"                      # nothing chosen: the default look
+    assert ideas.look_of({"brief": {"look": "neon"}}) == "classic"            # a name nobody knows: the safe drawing
 
 
 class _Route:
@@ -197,7 +202,7 @@ browser = pytest.mark.skipif(not os.environ.get("SEMASA_CHROME"), reason="set SE
 
 
 @browser
-@pytest.mark.parametrize("stream,size", [("regulab", (1080, 1080)), ("linkedin", (1080, 1350))])
+@pytest.mark.parametrize("stream,size", [("regulab", (1080, 1350)), ("linkedin", (1080, 1350))])
 def test_grid_and_era_draw_every_slide_at_the_streams_size(stream, size):
     for look in ("grid", "era"):
         pics = studio_cards.render(SLIDES, look=look, stream=stream, eyebrow="Kosmetik", source="NPRA")
@@ -290,19 +295,23 @@ SHAPES = {
     "p_stat": {"points": ["245", "hari"]},
     "p_list": {"points": ["Surat | Pengeluar asal.", "INCI | Setiap bahan.", "Label | Betul."]},
     "p_split": {"lead": "Nombor hanya bukti.", "points": ["Semak maklumat", "Bukan ujian"]},
+    "i_title": {"lead": "Anda tidak lewat.", "eyebrow": "NPRA"},
+    "i_note": {"lead": "Atau guna ia untuk mempercepat semakan.", "points": ["Semoga membantu."]},
+    "i_hero": {"lead": "Nombor hanya bukti.", "points": ["245 hari", "Semak maklumat"]},
+    "i_step": {"eyebrow": "Langkah 5", "lead": "Satu arahan.", "points": ["Pilih Produk Baharu", "Isi maklumat"]},
 }
 
 
 @browser
-@pytest.mark.parametrize("stream,size", [("regulab", (1080, 1080)), ("linkedin", (1080, 1350))])
+@pytest.mark.parametrize("stream,size", [("regulab", (1080, 1350)), ("linkedin", (1080, 1350))])
 def test_every_template_draws_at_the_streams_size_without_a_warning(stream, size):
     assert set(SHAPES) == {t["k"] for t in cards_library.catalogue()["templates"]}, "a template with no sample here is untested"
     ground = _jpeg(900, 1100)
     for k, shape in SHAPES.items():
-        look = {"g": "grid", "e": "era", "p": "photo"}[k[0]]
+        look = {"g": "grid", "e": "era", "p": "photo", "i": "image"}[k[0]]
         slide = {"title": "Semak *dahulu*", "template": k, **shape}
         pics = studio_cards.render([slide], look=look, stream=stream, eyebrow="Kosmetik", source="NPRA",
-                                   ground=ground if look == "photo" else None, mascots=cards_library.mascots())
+                                   ground=ground if look in ("photo", "image") else None, mascots=cards_library.mascots())
         assert Image.open(io.BytesIO(pics[0])).size == size, k
 
 
@@ -348,7 +357,7 @@ def test_a_light_ground_keeps_dark_ink_and_no_scrim_unless_a_scrim_was_chosen():
 @browser
 def test_a_light_ground_is_light_under_every_grid_and_era_design_and_every_size():
     """A carousel slide and a single card go through the same designs: none of them may grey a pale picture out."""
-    for stream, size in (("regulab", (1080, 1080)), ("linkedin", (1080, 1350))):
+    for stream, size in (("regulab", (1080, 1350)), ("linkedin", (1080, 1350))):
         for k, shape in SHAPES.items():
             if k[0] == "p":
                 continue                                    # the Photo family is a dark photograph by design

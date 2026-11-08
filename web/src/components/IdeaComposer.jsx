@@ -9,6 +9,7 @@ import { pickOptions, withHookStyle } from "../lib/hookStyles";
 import { pickOptions as writingOptions, withWritingStyle } from "../lib/writingStyles";
 import { LANGUAGES, motionDefaults, motionFromIdea } from "../lib/motion";
 import { IMAGE_TYPES, refusal, removeReference, uploadReference } from "../lib/storage";
+import { startLook } from "../lib/lookChoice";
 import LookPicker from "./LookPicker";
 import { useDesigns } from "../lib/designs";
 import Button from "./ui/Button";
@@ -35,9 +36,9 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   const { settings: motionSettings } = useSettings(true);
   const [format, setFormat] = useState("post");   // post | carousel | poster (backend: ideas.format_of)
   // the slide design: what Wan picked, else the DEFAULT of My designs (chosen in the same place as Semasa, Grid, Info ERA and Photo)
-  const { designs, defaultId } = useDesigns();
+  const { designs, defaultId, hiddenLooks } = useDesigns();
   const [lookPick, setLook] = useState(null);
-  const look = lookPick ?? (defaultId && designs.some((d) => d.id === defaultId) ? `d:${defaultId}` : "classic");
+  const look = lookPick ?? startLook({ designs, defaultId, hidden: hiddenLooks });
   const [lookBlocked, setLookBlocked] = useState(null);
   const [domain, setDomain] = useState("");
   const [angle, setAngle] = useState("");

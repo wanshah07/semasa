@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, Palette, Plus, ZoomIn } from "lucide-react";
+import { AlertTriangle, Loader2, Palette, Plus, RotateCcw, X, ZoomIn } from "lucide-react";
 import { LOOKS, ensureFonts, isStudioLook, renderSlides, setLogo } from "../lib/cards/studio";
 import { GROUNDS } from "../lib/cards/library";
 import { resolveLook, useDesigns } from "../lib/designs";
+import { hide, offered, restore } from "../lib/lookChoice";
 import { useLang } from "../lib/i18n";
 import ImageLightbox, { useLightbox } from "./ImageLightbox";
 
@@ -81,7 +82,7 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   citation = "", bgUrl = "", bgChosen = false, size = null, full = true, onBlocked, disabled = false, mascots = [],
   fit = false, onFit = null }) {
   const { t, lang } = useLang();
-  const { designs, defaultId } = useDesigns();
+  const { designs, defaultId, hiddenLooks, setHiddenLooks } = useDesigns();
   const chosen = resolveLook(value, designs);                    // "d:<id>" is one of My designs: its family, colours and layouts
   const sample = givenSample || !given.length;
   const slides = given.length ? given : sampleWords(stream);
@@ -94,7 +95,13 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const grid = usePreview(cover, { ...opts, look: "grid" }, true);
   const era = usePreview(cover, { ...opts, look: "era" }, true);
   const photo = usePreview(cover, { ...opts, look: "photo" }, true);
-  const tiles = { grid, era, photo };
+  const image = usePreview(cover, { ...opts, look: "image" }, true);
+  const tiles = { grid, era, photo, image };
+  // a design can be removed from the choices (hidden, never deleted: old drafts still re-render) and brought back
+  const shownLooks = offered(LOOKS, hiddenLooks);
+  const hiddenList = LOOKS.filter((l) => !shownLooks.includes(l));
+  const canHide = !disabled && !!setHiddenLooks && shownLooks.length > 1;
+  const hideLook = (k) => { setHiddenLooks(hide(hiddenLooks, k, LOOKS.map((l) => l.k))); if (value === k) onChange(shownLooks.find((l) => l.k !== k)?.k || "image"); };
   const dBg = chosen.design?.bg && chosen.design.bg.startsWith("lib:") ? GROUNDS.find((x) => `lib:${x.k}` === chosen.design.bg)?.url : "";
   const all = usePreview(slides, { ...opts, look: chosen.look, bg: bgUrl || dBg || "", ...(chosen.design ? { design: chosen.design } : {}) },
     full && isStudioLook(chosen.look));
@@ -116,13 +123,14 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
       <p className="flex items-center gap-1.5 text-[12px] font-medium"><Palette size={13} /> {t("Reka bentuk slaid", "Slide design")}
         {sample && <span className="font-normal text-muted">· {t("pratonton dengan contoh perkataan", "preview with sample words")}</span>}</p>
       <div role="radiogroup" aria-label={t("Reka bentuk slaid", "Slide design")} className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-2">
-        {LOOKS.map((l) => {
+        {shownLooks.map((l) => {
           const on = value === l.k;
           const tile = tiles[l.k];
           const pic = tile?.pics?.[0];
           const needs = l.k === "photo" && !bgChosen;
           return (
-            <button type="button" key={l.k} role="radio" aria-checked={on} disabled={disabled}
+            <div key={l.k} className="relative min-w-0">
+            <button type="button" role="radio" aria-checked={on} disabled={disabled}
               onClick={() => onChange(l.k)} title={hint(l)}
               className={`min-w-0 overflow-hidden rounded-tile border text-left transition ${on ? "border-accent ring-2 ring-accent/30" : "border-line hover:border-ink/30"} disabled:opacity-50`}>
               <div className="relative w-full bg-surface-2" style={{ aspectRatio: ratio }}>
@@ -146,6 +154,13 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
                 <div className="mt-1 line-clamp-2 text-[12px] leading-snug text-muted lg:text-[10.5px]">{hint(l)}</div>
               </div>
             </button>
+            {canHide && (
+              <button type="button" onClick={() => hideLook(l.k)} data-remove-look={l.k}
+                aria-label={t("Buang {n} daripada pilihan", "Remove {n} from the choices", { n: name(l) })}
+                title={t("Buang daripada pilihan (boleh dipulihkan)", "Remove from the choices (can be restored)")}
+                className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-ink/70 text-bg hover:bg-danger"><X size={14} /></button>
+            )}
+            </div>
           );
         })}
         {designs.map((d) => {
@@ -163,6 +178,16 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
           </button>
         )}
       </div>
+
+      {hiddenList.length > 0 && !disabled && setHiddenLooks && (
+        <p className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-muted" data-hidden-looks>
+          {t("Dibuang daripada pilihan:", "Removed from the choices:")}
+          {hiddenList.map((l) => (
+            <button type="button" key={l.k} onClick={() => setHiddenLooks(restore(hiddenLooks, l.k))}
+              className="inline-flex items-center gap-1 rounded-pill border border-line px-2 py-0.5 text-ink hover:border-accent"><RotateCcw size={11} /> {name(l)}</button>
+          ))}
+        </p>
+      )}
 
       {onFit && isStudioLook(chosen.look) && (
         <label className="mt-2 flex cursor-pointer items-start gap-2 text-[12px]">

@@ -31,7 +31,7 @@ LIB = ROOT / "web" / "src" / "lib"
 LIB_MODULES = ("/designCloneSeed.js", "/fonts.js")
 ASSETS = ROOT / "web" / "public" / "cards"
 ORIGIN = "https://cards.semasa.invalid"
-LOOKS = ("grid", "era", "photo")
+LOOKS = ("grid", "era", "photo", "image")
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8"></head><body>
 <script type="module">import * as C from "/studio.js"; window.__cards = C; window.__ready = true;</script>

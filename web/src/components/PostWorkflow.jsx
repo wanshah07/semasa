@@ -100,7 +100,7 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
     const brief = { replaces: post.id };
     if (post.date && post.slot && dueMs(post.date, post.slot) > Date.now() + 30 * 60_000) brief.position = { date: post.date, slot: post.slot };
     if (keep.length) brief.keep_media_ids = keep;
-    if (lastLook && lastLook !== "classic") brief.look = lastLook;
+    if (lastLook) brief.look = lastLook;               // "classic" included: the default look is no longer Semasa's own
     const row = {
       trend_id: src.trend_id ?? null, source_title: (src.source_title || post.hook || t("Post ditolak", "Rejected post")).slice(0, 500),
       source_url: src.source_url ?? null, source_name: src.source_name ?? null, source_summary: src.source_summary ?? null,

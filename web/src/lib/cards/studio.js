@@ -83,8 +83,9 @@ const CARD_GROUPS = [
   { k: "grid", name: "Grid", hint: "Cream graph paper, ultra-bold headline, raised panels. The calm house look.", cover: "g_title", fact: "g_title", close: "g_title" },
   { k: "era", name: "Info ERA", hint: "Kraft paper, marker highlights, red alert blocks, hand-drawn arrows. Loud explainer.", cover: "e_hook", fact: "e_explain", close: "e_explain" },
   { k: "photo", name: "Photo", hint: "Your own photograph behind the words, on every slide.", cover: "p_title", fact: "p_fact", close: "p_quote" },
+  { k: "image", name: "Image", hint: "Your picture ON the slide: a panel, a taped print, a tipped poster or a phone screen.", cover: "i_hero", fact: "i_note", close: "i_title" },
 ];
-function groupOf(tpl) { return ERA_TPL[tpl] ? "era" : PHOTO_TPL[tpl] ? "photo" : "grid"; }
+function groupOf(tpl) { return ERA_TPL[tpl] ? "era" : PHOTO_TPL[tpl] ? "photo" : PIC_TPL[tpl] ? "image" : "grid"; }
 function groupDef(k) { return CARD_GROUPS.find(g => g.k === k) || CARD_GROUPS[0]; }
 
 /* Which templates can carry the character. g_table stays "no character" -- it is the dark
@@ -1839,6 +1840,241 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
 
 /* The looks Wan chooses from. "classic" is Semasa's own Pillow drawing (backend/semasa/slides.py); the other three
    are Studio's groups above, in Studio's own order: Grid first, as the house look. */
+/* ===================== the Picture family ====================================
+   Wan, 8 Nov 2026, with four reference slides: "create another separate slide design which have image on the slide, and create
+   more slide like attached". Grid, ERA and Photo draw a picture only as a GROUND behind the words; here the picture is part of
+   the slide, placed the way each reference places it, and Semasa and Grid stay as they are. Four templates, one per reference:
+     i_title  a calm cream title slide: serif headline centred, a small blue label, a hand-drawn arrow to the next slide; the
+              picture (when there is one) is a rounded panel above the headline
+     i_note   crumpled paper and monospaced capitals, paragraph by paragraph, with the picture taped on as a small print
+     i_hero   a product poster: the picture tipped on the left, a big two-tone headline on the right, a stat pill under it
+     i_step   a how-to step on graph paper: "step 5" in handwriting, the picture inside a phone, the same picture again as a
+              tilted before print, hand-lettered labels and arrows
+   The picture is the slide's own (spec.bg, the post's picture or the one chosen): a slide with no picture is still complete,
+   it simply has no panel. Words keep the ordinary fields (eyebrow, title, lead, items, note, footnote) so nothing about the
+   writer changes. Fonts are the ones already loaded for the other families (Poppins, Instrument Sans, JetBrains Mono, Caveat,
+   Playfair Display). No ctx.filter anywhere (iPhone Safari before 18 has none). */
+const PIC_TPL = { i_title: 1, i_note: 1, i_hero: 1, i_step: 1 };
+const PIC_PAL = { cream: "#F3ECE0", ink: "#15110E", muted: "#5F574D", blue: "#2F6BE0", mono: "#2E4B47", orange: "#F28A24", paper: "#F4F4F2" };
+const PIC_SERIF = '"Playfair Display", Georgia, "Times New Roman", serif';
+
+function picRng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+/* Crumpled paper without an image file: a pale base, many faint triangular facets in slightly lighter and darker greys, and a few
+   long creases. Seeded, so the same slide always draws the same paper. */
+function picCrumple(ctx, W, H) {
+  ctx.fillStyle = PIC_PAL.paper; ctx.fillRect(0, 0, W, H);
+  const rnd = picRng(7), step = Math.round(W / 7);
+  for (let gy = -1; gy < H / step + 1; gy++) for (let gx = -1; gx < W / step + 1; gx++) {
+    const x = gx * step + (rnd() - 0.5) * step * 0.6, y = gy * step + (rnd() - 0.5) * step * 0.6;
+    const p = (dx, dy) => [x + dx * step * (0.7 + rnd() * 0.6), y + dy * step * (0.7 + rnd() * 0.6)];
+    const a = p(0, 0), b = p(1, 0.2), c = p(0.3, 1);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.closePath();
+    const light = rnd() > 0.5;
+    ctx.fillStyle = light ? "rgba(255,255,255," + (0.18 + rnd() * 0.22) + ")" : "rgba(120,124,128," + (0.04 + rnd() * 0.07) + ")";
+    ctx.fill();
+  }
+  ctx.lineCap = "round";
+  for (let i = 0; i < 9; i++) {
+    const x1 = rnd() * W, y1 = rnd() * H, a = rnd() * Math.PI, len = (0.3 + rnd() * 0.5) * W;
+    ctx.strokeStyle = "rgba(90,94,98," + (0.07 + rnd() * 0.07) + ")"; ctx.lineWidth = 2 + rnd() * 2;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 + Math.cos(a) * len, y1 + Math.sin(a) * len); ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x1 + 3, y1 + 3); ctx.lineTo(x1 + 3 + Math.cos(a) * len, y1 + 3 + Math.sin(a) * len); ctx.stroke();
+  }
+}
+/* A picture cropped to a rounded box. zoom > 1 and fx/fy (0..1) choose a different part of the same picture, so "before" is not
+   a copy of "after". */
+function picInBox(ctx, im, x, y, w, h, r, zoom, fx, fy) {
+  ctx.save(); gRound(ctx, x, y, w, h, r); ctx.clip();
+  const z = zoom || 1, s = Math.max(w / im.width, h / im.height) * z, dw = im.width * s, dh = im.height * s;
+  const ox = Math.min(0, Math.max(w - dw, (w - dw) * (fx == null ? 0.5 : fx))), oy = Math.min(0, Math.max(h - dh, (h - dh) * (fy == null ? 0.5 : fy)));
+  ctx.drawImage(im, x + ox, y + oy, dw, dh); ctx.restore();
+}
+/* A hand-drawn arrow: a marker line that wobbles a little, drawn twice, with an open head. Pointing along (x1,y1) -> (x2,y2). */
+function picArrow(ctx, x1, y1, x2, y2, colour, lw, bend) {
+  ctx.save(); ctx.strokeStyle = colour; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len, ny = dx / len, b = (bend == null ? 0.12 : bend) * len;
+  for (let k = 0; k < 2; k++) {
+    ctx.lineWidth = lw * (k ? 0.6 : 1); const o = k ? lw * 0.7 : 0;
+    ctx.beginPath(); ctx.moveTo(x1 + nx * o, y1 + ny * o);
+    ctx.quadraticCurveTo(mx + nx * (b + o), my + ny * (b + o), x2 + nx * o, y2 + ny * o); ctx.stroke();
+  }
+  const ang = Math.atan2(y2 - (my + ny * b), x2 - (mx + nx * b)), hl = lw * 4.2;
+  ctx.lineWidth = lw; ctx.beginPath();
+  ctx.moveTo(x2 - Math.cos(ang - 0.5) * hl, y2 - Math.sin(ang - 0.5) * hl); ctx.lineTo(x2, y2);
+  ctx.lineTo(x2 - Math.cos(ang + 0.5) * hl, y2 - Math.sin(ang + 0.5) * hl); ctx.stroke();
+  ctx.restore();
+}
+/* A white print with a wider foot, tipped by `rot`, picture inside. */
+function picPolaroid(ctx, im, x, y, w, rot, zoom, fx, fy) {
+  const pad = Math.round(w * 0.05), foot = Math.round(w * 0.16), h = w + foot - pad;
+  ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.rotate(rot); ctx.translate(-w / 2, -h / 2);
+  ctx.shadowColor = "rgba(20,16,12,.28)"; ctx.shadowBlur = Math.round(w * 0.06); ctx.shadowOffsetY = Math.round(w * 0.025);
+  ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, w, h); ctx.shadowColor = "transparent";
+  if (im) picInBox(ctx, im, pad, pad, w - pad * 2, w - pad * 2, 0, zoom, fx, fy);
+  else { ctx.fillStyle = "#E4DED3"; ctx.fillRect(pad, pad, w - pad * 2, w - pad * 2); }
+  ctx.restore();
+  return h;
+}
+/* A strip of translucent tape across a corner. */
+function picTape(ctx, cx, cy, w, h, rot) {
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot);
+  ctx.fillStyle = "rgba(246,231,126,.72)"; ctx.fillRect(-w / 2, -h / 2, w, h);
+  ctx.strokeStyle = "rgba(120,100,20,.18)"; ctx.lineWidth = 1.5; ctx.strokeRect(-w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+/* A phone outline with the picture as its screen. */
+function picPhone(ctx, im, x, y, w, h) {
+  const r = Math.round(w * 0.14), b = Math.max(6, Math.round(w * 0.028));
+  ctx.save();
+  ctx.shadowColor = "rgba(20,16,12,.25)"; ctx.shadowBlur = Math.round(w * 0.07); ctx.shadowOffsetY = Math.round(w * 0.03);
+  ctx.fillStyle = "#FFFFFF"; gRound(ctx, x, y, w, h, r); ctx.fill(); ctx.shadowColor = "transparent";
+  if (im) picInBox(ctx, im, x + b, y + b, w - b * 2, h - b * 2, r - b, 1, 0.5, 0.35);
+  else { ctx.fillStyle = "#ECE7DD"; gRound(ctx, x + b, y + b, w - b * 2, h - b * 2, r - b); ctx.fill(); }
+  ctx.strokeStyle = "#15110E"; ctx.lineWidth = b; gRound(ctx, x + b / 2, y + b / 2, w - b, h - b, r - b / 2); ctx.stroke();
+  ctx.fillStyle = "#15110E"; gRound(ctx, x + w * 0.36, y + b * 1.8, w * 0.28, b * 2.4, b * 1.2); ctx.fill();
+  ctx.restore();
+}
+function picBolt(ctx, x, y, s, colour) {
+  ctx.save(); ctx.fillStyle = colour; ctx.beginPath();
+  ctx.moveTo(x + s * 0.62, y); ctx.lineTo(x + s * 0.12, y + s * 0.58); ctx.lineTo(x + s * 0.44, y + s * 0.58);
+  ctx.lineTo(x + s * 0.3, y + s); ctx.lineTo(x + s * 0.9, y + s * 0.38); ctx.lineTo(x + s * 0.56, y + s * 0.38); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+/* The largest size, down from px0 in steps of 4 and never below pxMin, at which `text` wraps to a block no taller than maxH. */
+function picFit(ctx, text, maxW, maxH, px0, pxMin, lhK, weight, family) {
+  let px = px0, lines = [];
+  for (; ; px -= 4) {
+    ctx.font = weight + " " + px + "px " + family; lines = gWrap(ctx, text, maxW);
+    if (lines.length * Math.round(px * lhK) <= maxH || px <= pxMin) break;
+  }
+  return { px, lh: Math.round(px * lhK), lines, h: lines.length * Math.round(px * lhK) };
+}
+function picCentered(ctx, lines, cx, y, lh) { ctx.textAlign = "center"; ctx.textBaseline = "top"; for (const l of lines) { ctx.fillText(l, cx, y); y += lh; } ctx.textAlign = "left"; return y; }
+
+async function renderPicCard(spec) {
+  const [W, H] = sizeOf(spec);
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const ctx = styleCtx(c.getContext("2d"), spec);
+  try { await document.fonts.ready; } catch (e) { }
+  return picCardPaint(ctx, spec, W, H, c);
+}
+async function picCardPaint(ctx, spec, W, H, canvasOut) {
+  const warn = [];
+  const t = spec.template, u = W / 1080, M = Math.round(74 * u), maxW = W - M * 2, TS = textScale(spec);
+  const im = spec.bg ? await loadImg(spec.bg) : null;
+  const foot = Math.round((spec.footnote || spec.chip_label ? 96 : 46) * u), floor = H - M - foot;
+  const title = stripEmph(spec.title || ""), lead = String(spec.lead || "").trim();
+  const items = (spec.items || []).map((x) => String(x || "").trim()).filter(Boolean);
+  let y = 0;
+  ctx.textBaseline = "top";
+  if (t === "i_title") {
+    ctx.fillStyle = PIC_PAL.cream; ctx.fillRect(0, 0, W, H);
+    await drawBrandMark(ctx, spec, W, u, M, { top: 56, h: 34, textFill: "rgba(21,17,14,.6)" });
+    let top = Math.round(150 * u);
+    if (im) { const ph = Math.round(H * 0.3); picInBox(ctx, im, M, top, maxW, ph, Math.round(40 * u), 1, 0.5, 0.45); top += ph + Math.round(56 * u); }
+    const arrowRoom = spec.footnote ? 0 : Math.round(130 * u);
+    const label = String(spec.eyebrow || "").toUpperCase(), labelH = label ? Math.round(56 * u) : 0;
+    const head = picFit(ctx, title, maxW * 0.92, (floor - arrowRoom - top - labelH) * 0.62, Math.round(104 * u * TS), Math.round(56 * u), 1.08, 700, PIC_SERIF);
+    const leadPx = Math.round(38 * u * TS); ctx.font = "500 " + leadPx + "px " + G_BODY;
+    const leadText = [lead, ...items].filter(Boolean).join("\n");
+    const leadLines = leadText ? gWrap(ctx, leadText, maxW * 0.8) : [], leadLh = Math.round(leadPx * 1.32);
+    const block = labelH + head.h + (leadLines.length ? Math.round(34 * u) + leadLines.length * leadLh : 0);
+    y = im ? top : top + Math.max(0, Math.round((floor - arrowRoom - top - block) / 2));
+    if (label) {
+      ctx.save(); ctx.font = "700 " + Math.round(23 * u) + "px " + G_HEAD; try { ctx.letterSpacing = Math.round(4 * u) + "px"; } catch (e) { }
+      ctx.fillStyle = PIC_PAL.blue; ctx.textAlign = "center"; ctx.fillText(label, W / 2, y); ctx.restore(); y += labelH;
+    }
+    ctx.font = "700 " + head.px + "px " + PIC_SERIF; ctx.fillStyle = PIC_PAL.ink; y = picCentered(ctx, head.lines, W / 2, y, head.lh);
+    if (leadLines.length) { y += Math.round(34 * u); ctx.font = "500 " + leadPx + "px " + G_BODY; ctx.fillStyle = PIC_PAL.ink; y = picCentered(ctx, leadLines, W / 2, y, leadLh); }
+    if (arrowRoom) picArrow(ctx, W / 2 - Math.round(120 * u), floor - Math.round(30 * u), W / 2 + Math.round(120 * u), floor - Math.round(44 * u), PIC_PAL.blue, Math.round(7 * u), -0.06);
+  } else if (t === "i_note") {
+    picCrumple(ctx, W, H);
+    await drawBrandMark(ctx, spec, W, u, M, { top: 64, h: 40, textFill: "rgba(46,75,71,.8)" });
+    const paras = [title, lead, ...items].filter(Boolean).map((p) => p.toUpperCase());
+    const photoW = im ? Math.round(W * 0.36) : 0, photoH = im ? photoW + Math.round(photoW * 0.12) : 0;
+    const top = Math.round(210 * u), roomH = floor - top - (im ? photoH + Math.round(40 * u) : 0);
+    let px = Math.round(44 * u * TS), lines = [], lh = 0, gap = 0;
+    for (; ; px -= 2) {
+      ctx.font = "500 " + px + "px " + G_MONO; try { ctx.letterSpacing = Math.round(px * 0.06) + "px"; } catch (e) { }
+      lh = Math.round(px * 1.5); gap = Math.round(px * 0.9); lines = paras.map((p) => gWrap(ctx, p, maxW));
+      const h = lines.reduce((a, l) => a + l.length * lh, 0) + gap * Math.max(0, lines.length - 1);
+      if (h <= roomH || px <= Math.round(28 * u)) { y = top + h; break; }
+    }
+    ctx.fillStyle = PIC_PAL.mono; let yy = top;
+    for (const block of lines) { for (const l of block) { ctx.fillText(l, M, yy); yy += lh; } yy += gap; }
+    try { ctx.letterSpacing = "0px"; } catch (e) { }
+    if (im) {
+      const px0 = W - M - photoW - Math.round(10 * u), py0 = Math.min(H - Math.round(150 * u) - photoH, Math.max(y + Math.round(40 * u), Math.round(H * 0.6)));
+      picPolaroid(ctx, im, px0, py0, photoW, 0.045, 1, 0.5, 0.5);
+      picTape(ctx, px0 + photoW * 0.5, py0 + Math.round(8 * u), Math.round(photoW * 0.34), Math.round(30 * u), -0.05);
+      y = Math.max(y, Math.min(py0 + photoH, H - Math.round(150 * u)));
+    }
+  } else if (t === "i_hero") {
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#FFFFFF"); g.addColorStop(0.55, "#FCF6EE"); g.addColorStop(1, "#FBE8D2");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.save(); ctx.strokeStyle = PIC_PAL.orange; ctx.lineWidth = Math.round(86 * u);
+    ctx.beginPath(); ctx.arc(W * 0.62, H + Math.round(40 * u), Math.round(330 * u), Math.PI, Math.PI * 2); ctx.stroke(); ctx.restore();
+    // the picture, tipped, bleeding off the left edge
+    const pw = Math.round(W * 0.5), ph = Math.round(H * 0.6), px0 = -Math.round(W * 0.07), py0 = Math.round(H * 0.22);
+    ctx.save(); ctx.translate(px0 + pw / 2, py0 + ph / 2); ctx.rotate(-0.1); ctx.translate(-pw / 2, -ph / 2);
+    ctx.shadowColor = "rgba(40,20,0,.3)"; ctx.shadowBlur = Math.round(40 * u); ctx.shadowOffsetY = Math.round(16 * u);
+    if (im) { ctx.fillStyle = "#fff"; gRound(ctx, 0, 0, pw, ph, Math.round(46 * u)); ctx.fill(); ctx.shadowColor = "transparent"; picInBox(ctx, im, 0, 0, pw, ph, Math.round(46 * u), 1, 0.5, 0.5); }
+    else { ctx.fillStyle = "rgba(242,138,36,.18)"; gRound(ctx, 0, 0, pw, ph, Math.round(46 * u)); ctx.fill(); }
+    ctx.restore();
+    await drawBrandMark(ctx, spec, W, u, M, { top: 58, h: 36, textFill: "rgba(21,17,14,.6)" });
+    if (spec.eyebrow && spec.stream === "linkedin") { ctx.font = "700 " + Math.round(24 * u) + "px " + G_MONO; ctx.fillStyle = PIC_PAL.muted; ctx.fillText(String(spec.eyebrow), M, Math.round(58 * u)); }
+    if (spec.note) { ctx.font = "500 " + Math.round(24 * u) + "px " + G_MONO; ctx.fillStyle = PIC_PAL.muted; ctx.textAlign = "right"; ctx.fillText(String(spec.note).split("\n")[0], W - M, Math.round(58 * u)); ctx.textAlign = "left"; }
+    const x0 = Math.round(W * 0.51), colW = W - M - x0;
+    const accentTitle = /\*[^*]+\*/.test(spec.title || "") ? String(spec.title) : String(spec.title || "").replace(/^(\S+(?:\s+\S+)?)/, "*$1*");
+    let hpx = Math.round(112 * u * TS), lines;
+    for (; ; hpx -= 4) {
+      ctx.font = "800 " + hpx + "px " + G_HEAD; lines = gWrap(ctx, stripEmph(accentTitle), colW);
+      const widest = Math.max(0, ...stripEmph(accentTitle).split(/\s+/).map((w) => ctx.measureText(w).width));      // never break a word in two
+      if ((widest <= colW && lines.length * Math.round(hpx * 1.0) <= Math.round(H * 0.4)) || hpx <= Math.round(40 * u)) break;
+    }
+    y = Math.round(160 * u);
+    y = gHeadline(ctx, accentTitle, x0, y, colW, hpx, Math.round(hpx * 1.02), PIC_PAL.ink, PIC_PAL.orange);
+    const stat = items.length && items[0].length <= 14 && /\d/.test(items[0]) ? items[0] : "";
+    const heroText = [lead, ...(stat ? items.slice(1) : items)].filter(Boolean).join("\n");
+    if (heroText) { y += Math.round(28 * u); y = gPara(ctx, heroText, x0, y, colW, Math.round(34 * u * TS), Math.round(46 * u * TS), PIC_PAL.ink, 500); }
+    if (stat) {
+      const spx = Math.round(40 * u); ctx.font = "800 " + spx + "px " + G_HEAD;
+      const pw2 = Math.min(colW, Math.round(ctx.measureText(stat).width + 150 * u)), ph2 = Math.round(88 * u), py2 = Math.max(y + Math.round(44 * u), Math.round(H * 0.7));
+      ctx.save(); ctx.shadowColor = "rgba(150,70,0,.25)"; ctx.shadowBlur = Math.round(18 * u); ctx.shadowOffsetY = Math.round(8 * u);
+      ctx.fillStyle = PIC_PAL.orange; gRound(ctx, x0, py2, pw2, ph2, Math.round(20 * u)); ctx.fill(); ctx.restore();
+      ctx.fillStyle = "#FFFFFF"; ctx.font = "800 " + spx + "px " + G_HEAD; ctx.fillText(stat, x0 + Math.round(26 * u), py2 + Math.round((ph2 - spx) / 2) - Math.round(spx * 0.06));
+      picBolt(ctx, x0 + pw2 - Math.round(96 * u), py2 - Math.round(20 * u), Math.round(110 * u), "#2A1606");
+      y = Math.max(y, py2 + ph2);
+    }
+  } else { // i_step
+    gPaper(ctx, W, H, false);
+    const label = String(spec.eyebrow || "").trim() || (spec.stream === "linkedin" ? "step" : "langkah");
+    const phW = Math.round(W * 0.46), labelMax = W - M - phW - M;           // the label stays left of the phone
+    let lpx = Math.round(130 * u); ctx.font = "700 italic " + lpx + "px " + G_MARK;
+    while (ctx.measureText(label).width > labelMax && lpx > Math.round(60 * u)) { lpx -= 4; ctx.font = "700 italic " + lpx + "px " + G_MARK; }
+    ctx.fillStyle = PIC_PAL.ink; ctx.fillText(label, M, Math.round(96 * u));
+    const colW = Math.round(W * 0.4), ty = Math.round(250 * u);
+    const head = picFit(ctx, title, colW, Math.round(H * 0.3), Math.round(44 * u * TS), Math.round(28 * u), 1.28, 700, G_BODY);
+    ctx.font = "700 " + head.px + "px " + G_BODY; ctx.fillStyle = PIC_PAL.ink; ctx.textAlign = "left";
+    y = ty; for (const l of head.lines) { ctx.fillText(l, M, y); y += head.lh; }
+    const stepText = [lead, ...items].filter(Boolean).join("\n");
+    if (stepText) { y += Math.round(16 * u); y = gPara(ctx, stepText, M, y, colW, Math.round(28 * u * TS), Math.round(38 * u * TS), PIC_PAL.muted, 500); }
+    const phw = Math.round(W * 0.46), phh = Math.round(H * 0.66), phx = W - M - phw + Math.round(20 * u), phy = Math.round(H * 0.05);
+    picPhone(ctx, im, phx, phy, phw, phh);
+    const after = spec.stream === "linkedin" ? "after" : "selepas", before = spec.stream === "linkedin" ? "before" : "sebelum";
+    const lx = M + Math.round(colW * 0.35), ly = Math.max(y + Math.round(40 * u), Math.round(H * 0.4));
+    ctx.font = "700 italic " + Math.round(58 * u) + "px " + G_MARK; ctx.fillStyle = PIC_PAL.ink; ctx.fillText(after, lx, ly);
+    picArrow(ctx, lx + Math.round(150 * u), ly + Math.round(30 * u), phx - Math.round(10 * u), ly + Math.round(80 * u), PIC_PAL.ink, Math.round(4 * u), 0.2);
+    const polW = Math.round(W * 0.3), polY = Math.min(floor - Math.round(polW * 1.25), Math.round(H * 0.56));
+    const polH = picPolaroid(ctx, im, M, polY, polW, -0.05, 1.8, 0.2, 0.4);
+    ctx.font = "700 italic " + Math.round(54 * u) + "px " + G_MARK; ctx.fillStyle = PIC_PAL.ink; ctx.fillText(before, M + Math.round(polW * 0.3), polY + polH + Math.round(14 * u));
+    y = Math.max(y, polY + polH + Math.round(70 * u));
+  }
+  gSourceLine(ctx, W, H, M, u, spec.chip_label || (spec.footnote ? "Sumber" : ""), spec.footnote || "", false);
+  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
+  return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y } : { warn, y };
+}
 export const LOOKS = [
   { k: "classic", bm: "Semasa", en: "Semasa", hintBm: "Reka bentuk asal Semasa: kertas krim, tajuk serif, nombor slaid.",
     hintEn: "Semasa's own drawing: cream paper, serif headline, slide numbers." },
@@ -1848,13 +2084,15 @@ export const LOOKS = [
     hintEn: "Studio: kraft paper, marker highlights, red blocks. A loud explainer." },
   { k: "photo", bm: "Foto", en: "Photo", hintBm: "Studio: gambar anda di belakang perkataan, pada setiap slaid. Perlu gambar latar.",
     hintEn: "Studio: your picture behind the words, on every slide. Needs a background picture." },
+  { k: "image", bm: "Gambar", en: "Image", hintBm: "Gambar anda DI ATAS slaid: panel, cetakan bertampal, poster condong atau skrin telefon. Slaid tanpa gambar tetap lengkap.",
+    hintEn: "Your picture ON the slide: a panel, a taped print, a tipped poster or a phone screen. A slide with no picture is still complete." },
 ];
 /** A template key as a short readable name ("e_myth" → "ERA · Myth vs fact"), for hand-offs and logs. */
 export const templateLabel = (k) => ({ g_title: "Grid · Title", g_stat: "Grid · Number", g_bars: "Grid · Bars", g_rows: "Grid · Numbered", g_table: "Grid · Table",
   g_check: "Grid · Checklist", g_myth: "Grid · Myth vs fact", g_steps: "Grid · Steps", e_hook: "ERA · Hook", e_explain: "ERA · Explainer", e_flow: "ERA · Flow",
   e_vs: "ERA · Versus", e_myth: "ERA · Myth vs fact", e_check: "ERA · Checklist", e_stat: "ERA · Figure", e_event: "ERA · Event poster", p_title: "Photo · Title", p_fact: "Photo · Fact",
   p_quote: "Photo · Quote", p_stat: "Photo · Figure", p_list: "Photo · List", p_split: "Photo · Split" }[k] || String(k || ""));
-export const STUDIO_LOOKS = ["grid", "era", "photo"];
+export const STUDIO_LOOKS = ["grid", "era", "photo", "image"];
 /** The family palettes, for the Canva hand-off brief: one copy of the hex codes, the ones the renderer draws with. */
 export const PALETTES = { grid: GRID_PAL, era: ERA_PAL };
 export const isStudioLook = (k) => STUDIO_LOOKS.includes(k);
@@ -1876,7 +2114,7 @@ function asLines(points) {
    Unset fields fall back to the look's own choices: cover, middle and closing slides take the templates Studio's
    groups name (CARD_GROUPS); the source line is drawn on the closing slide, Semasa's rule; the eyebrow on every
    slide, Studio's. o.mascots = [{k, url}] are the poses on offer (none offered = no mascot anywhere). */
-export const TEMPLATE_KEYS = [...Object.keys(GRID_TPL), ...Object.keys(ERA_TPL), ...Object.keys(PHOTO_TPL), ...Object.keys(MORE_TPL)];
+export const TEMPLATE_KEYS = [...Object.keys(GRID_TPL), ...Object.keys(ERA_TPL), ...Object.keys(PHOTO_TPL), ...Object.keys(PIC_TPL), ...Object.keys(MORE_TPL)];
 export const takesMascot = (t) => !!MASCOT_TPL[t];
 /** Which templates draw each pose by default: asked of pickMascotFor itself, the renderer's own rule, so the Design
     tab's library can never disagree with a render (Studio's mascotDutyMap). {poseKey: [template, ...]} */
@@ -1937,6 +2175,12 @@ export function fitTemplate(look, s, i, n, pts) {
     if (check || steps) return "e_check";
     if (piped && pts.length <= 3) return "e_explain";
     return "";
+  }
+  if (look === "image") {
+    if (figure) return "i_hero";
+    if (steps && pts.length <= 4) return "i_step";
+    if (last) return "";
+    return pts.length >= 2 ? "i_step" : "i_note";
   }
   if (look === "photo") {
     if (figure) return "p_stat";
@@ -2177,6 +2421,11 @@ export function specsFor(slides, o = {}) {
       spec = { ...base, template: chosen, lead: lead0, items: pts };
     } else if (look === "grid") {
       spec = { ...base, template: "g_title", lead: withLead(asLines(pts)) };
+    } else if (look === "image") {
+      // a cover with a picture is the poster; one without is the calm title. Middle slides are notes (words) or steps (a picture to show).
+      // every point is kept: the painter turns a short figure into the stat pill and draws the rest as lines
+      const tpl = (i === 0 || n === 1) ? (base.bg ? "i_hero" : "i_title") : last ? "i_title" : (base.bg && pts.length >= 2 && pts.length <= 4) ? "i_step" : "i_note";
+      spec = { ...base, template: tpl, lead: lead0, items: pts };
     } else if (look === "era") {
       if (i === 0 && n > 1 && pts.length <= 4) spec = { ...base, template: "e_hook", lead: lead0 || pts[0] || "", items: lead0 ? pts : pts.slice(1) };
       else if (pts.length && pts.length <= 3) spec = { ...base, template: "e_explain", lead: lead0, items: pts };
@@ -2209,12 +2458,13 @@ function renderSpec(spec) {
   return next;
 }
 async function renderSpecNow(spec) {
-  if (spec.bg && spec.template[0] !== "p" && await groundIsLight(spec)) spec = { ...spec, scrim: "none", _light: true };
+  if (spec.bg && spec.template[0] !== "p" && spec.template[0] !== "i" && await groundIsLight(spec)) spec = { ...spec, scrim: "none", _light: true };
   if (spec.template === "c_ref") return renderRefCard(spec);
   if (MORE_TPL[spec.template]) return renderMoreCard(spec);
   if (GRID_TPL[spec.template]) return renderGridCard(spec);
   if (ERA_TPL[spec.template]) return renderEraCard(spec);
   if (PHOTO_TPL[spec.template]) return renderPhotoCard(spec);
+  if (PIC_TPL[spec.template]) return renderPicCard(spec);
   throw new Error("unknown card template " + spec.template);
 }
 

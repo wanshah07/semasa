@@ -1,3 +1,4 @@
+import { hiddenOf } from "./lib/lookChoice";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { RefreshCw } from "lucide-react";
@@ -360,7 +361,11 @@ export default function App() {
   const designsCtx = useMemo(() => ({
     designs: Array.isArray(settings.designs) ? settings.designs.filter((d) => d && typeof d === "object" && d.id) : [],
     defaultId: String(settings.default_design?.id || ""), ready: Array.isArray(settings.designs),
-    saveDesigns: (list) => save("designs", list), setDefault: (id) => save("default_design", id ? { id } : {}),
+    saveDesigns: (list) => save("designs", list),
+    // default_design carries the default saved design AND the built-in looks Wan removed from the picker (lib/lookChoice.js)
+    setDefault: (id) => { const next = { ...(settings.default_design || {}) }; if (id) next.id = id; else delete next.id; return save("default_design", next); },
+    hiddenLooks: hiddenOf(settings.default_design?.hidden),
+    setHiddenLooks: (list) => save("default_design", { ...(settings.default_design || {}), hidden: hiddenOf(list) }),
   }), [settings, save]);
   const brand = useMemo(() => brandOf(settings), [settings]);
   const [guideOpen, setGuideOpen] = useState(false);

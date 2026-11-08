@@ -38,6 +38,10 @@ const SHAPE = {
   p_list: { photo: true, title: "Empat *dokumen* wajib", lead: "", points: ["Surat kebenaran pengilang | Daripada pengeluar asal.", "Senarai penuh INCI | Setiap bahan.", "Artwork label siap | Bahasa yang betul."] },
   p_split: { photo: true, title: "Notifikasi bukan kelulusan", lead: "Nombor hanya bukti pemberitahuan diterima.", points: ["Semak maklumat produk", "Bukan ujian formula"] },
   p_title: { photo: true },
+  i_title: { photo: true, title: "Peringatan lembut untuk bila anda rasa ketinggalan", lead: "Anda tidak lewat. Anda di garisan masa sendiri.", eyebrow: "NPRA" },
+  i_note: { photo: true, title: "Kalau pensijilan halal belum sesuai, cuba notifikasi dahulu", lead: "Atau guna ia untuk mempercepat semakan anda.", points: ["Semoga membantu."] },
+  i_hero: { photo: true, title: "Notifikasi Bukan Kelulusan", lead: "Nombor hanya bukti pemberitahuan diterima.", points: ["245 hari", "Semak maklumat produk"] },
+  i_step: { photo: true, title: "Buka portal dan tekan Hantar Notifikasi", lead: "", eyebrow: "Langkah 5", points: ["Pilih Produk Baharu", "Isi maklumat pengilang"] },
   p_fact: { photo: true, lead: "", points: ["Surat kebenaran pengilang", "Senarai penuh INCI", "Artwork label siap"] },
   p_quote: { photo: true, title: "Notifikasi bukan kelulusan.", lead: "Cosmetic Guidelines Malaysia, NPRA" },
 };
@@ -72,7 +76,7 @@ export default function TemplateCatalogue({ value, onPick, stream = "regulab", d
     })();
     return () => { live = false; };
   }, [stream]);
-  const groups = [["grid", "Grid"], ["era", "Info ERA"], ["photo", t("Foto", "Photo")]];
+  const groups = [["grid", "Grid"], ["era", "Info ERA"], ["photo", t("Foto", "Photo")], ["image", t("Gambar", "Image")]];
   const ratio = stream === "linkedin" ? "1080 / 1350" : "1 / 1";
   return (
     <div className="space-y-2">

@@ -92,7 +92,7 @@ def test_the_jobs_carry_the_snapshot_the_look_and_the_designs_background():
     poster = ideas.poster_job(idea, post, "p1", [{"title": "x"}], "none", chosen=chosen)["meta"]
     assert poster["design"] == "poster" and poster["design_pack"]["single"] == "e_stat" and poster["look"] == "era"
     plain = ideas.slide_job(idea, post, "p1", "none")["meta"]
-    assert "design_pack" not in plain and plain["look"] == "classic"
+    assert "design_pack" not in plain and plain["look"] == "image"
 
 
 def test_a_design_made_from_a_reference_carries_its_layouts_within_bounds():

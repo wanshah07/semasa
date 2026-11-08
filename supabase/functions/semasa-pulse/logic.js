@@ -26,12 +26,21 @@ export function sameSecret(got, want) {
   return diff === 0;
 }
 
-/** The Gemini model a pulse asks: the cheapest of GEMINI_CHEAP that the robot lists, else the configured one. */
+/** The Gemini model a pulse asks: the one the chat is configured with when the robot lists it (or lists nothing), because that is
+    the one proved to answer; only when it is not listed, the cheapest of GEMINI_CHEAP that is. 8 Nov 2026: the first live pulse took
+    gemini-2.5-flash-lite because it was LISTED, and Google answered 404 "no longer available to new users" for this project:
+    a model in the list is not a model that answers. */
 export function geminiModel(listed, configured) {
   const ids = new Set((Array.isArray(listed) ? listed : []).map((x) => cleanModelId(String(x || "").replace(/^models\//, ""))));
+  const cfg = cleanModelId(String(configured || "").replace(/^models\//, ""));
+  if (cfg && (!ids.size || ids.has(cfg))) return cfg;
   for (const m of GEMINI_CHEAP) if (ids.has(m)) return m;
-  return cleanModelId(configured) || GEMINI_CHEAP[0];
+  return cfg || GEMINI_CHEAP[0];
 }
+
+/** A picture maker's model: it is listed, never asked a chat question (api_status.py does the same for role "image"; 8 Nov 2026:
+    the first live pulse asked gpt-image-2 a chat question and KiosAPI answered 400 "not supported on the Chat Completions endpoint"). */
+export const IMAGE_MODEL_RE = /image|dall-?e|imagine|sora|flux|stable-?diffusion|midjourney/i;
 
 /** What to probe, from assembleTeam's answer and the current status rows.
     { probes: [{slug, kind, base, key, keyId, keyRow, model, chat}], chatgpt: {slug, row, gate} | null, unreachable: [slug] }.
@@ -51,7 +60,8 @@ export function pulsePlan(team, statusRows = []) {
     if (!key || !g.base) continue;
     let model = cleanModelId(g.model) || cleanModelId(row?.model) || "";
     if (slug === "gemini") model = geminiModel(row?.models, model);
-    probes.push({ slug, kind: "openai", base: g.base, key, keyId, keyRow, model, chat: !!model, from: g.from || "" });
+    const listOnly = row?.role === "image" || IMAGE_MODEL_RE.test(model);
+    probes.push({ slug, kind: "openai", base: g.base, key, keyId, keyRow, model, chat: !!model && !listOnly, listOnly, from: g.from || "" });
   }
   for (const r of team?.robots || []) {
     if (r?.slug && !r.enabled && /GitHub's secrets/i.test(String(r.why || ""))) unreachable.push(r.slug);
@@ -97,7 +107,27 @@ export function statusRow(probe, m, prev = null, now = new Date()) {
   if (m.chatOk) keyOk = true;
   const named = models.map((x) => String(x).replace(/^models\//, ""));
   const modelListed = models.length && probe.model ? named.includes(String(probe.model).replace(/^models\//, "")) : null;
-  const error = clip(m.listError || "", 200) || clip(m.chatError || "", 300);
+  // a picture maker is judged by its model list alone (api_status.py): the list answering is its "chat_ok"
+  const listOnly = !!probe.listOnly;
+  const listOk = http !== null && http >= 200 && http < 300;
+  // a chat that only TIMED OUT while the list answered is a slow gateway, not a dead one: the 8 s cap is shorter than the 6-hourly
+  // probe's 30 s, so the row keeps the last full answer and says slow, instead of marking a working robot down every 5 minutes
+  const slow = !!probe.chat && !listOnly && m.chatOk !== true && !(Number(m.chatHttp) > 0) && http === 200
+    && /time|abort|slow/i.test(String(m.chatError || ""));
+  let chatOk = probe.chat ? m.chatOk === true : false;
+  let chatMs = Number.isFinite(m.chatMs) ? m.chatMs : null;
+  let error = clip(m.listError || "", 200) || clip(m.chatError || "", 300);
+  if (listOnly) {
+    chatOk = listOk;
+    chatMs = Number.isFinite(prev?.chat_ms) ? prev.chat_ms : null;
+    error = clip(m.listError || "", 200);
+  } else if (slow) {
+    chatOk = prev?.chat_ok === true;
+    chatMs = Number.isFinite(prev?.chat_ms) ? prev.chat_ms : null;
+    error = `slow: no answer within ${PULSE_TIMEOUT_MS / 1000} s (the 6-hourly check waits longer)`;
+  } else if (!probe.chat) {
+    error = error || "no model configured";
+  }
   return {
     slug: probe.slug,
     name: prev?.name || NAMES[probe.slug] || (meta ? meta.provider : probe.slug),
@@ -111,11 +141,11 @@ export function statusRow(probe, m, prev = null, now = new Date()) {
     http,
     latency_ms: Number.isFinite(m.listMs) ? m.listMs : null,
     key_ok: keyOk,
-    chat_ok: probe.chat ? m.chatOk === true : false,
-    chat_ms: Number.isFinite(m.chatMs) ? m.chatMs : null,
+    chat_ok: chatOk,
+    chat_ms: chatMs,
     models,
     balance: prev?.balance && typeof prev.balance === "object" ? prev.balance : {},
-    error: probe.chat ? error : (error || "no model configured"),
+    error,
     checked_at: now.toISOString(),
   };
 }

@@ -14,16 +14,19 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { BUSY_WINDOW_MS, fastEligible, fastGatesFor, fastMessages, fastReply, inboxRow, instantReply, kindOf, linkCode, newestNotes, sameSecret, turnsOf } from "./logic.js";
 import { MEMORY, answerText, assembleTeam, chatRequest, errorText, pickWorkers, readTeamInput, switchable } from "../semasa-chat/logic.js";
 
-const FAST_MS = 22000;        // Telegram waits for the webhook's answer; past this the worker answers instead
+import { FAST_TOTAL_MS, tryFastGates } from "./fast.js";
+import { fastCommand, fastCommandOf } from "./commands.js";
 const FAST_TRIES = 2;         // gates tried inside that budget before the worker takes over (8 Nov 2026)
 
 /** A plain question answered here with the AI chat's team: the answer, or null to hand it to the worker.
     8 Nov 2026 (Wan: "if the model not live, auto change to other model"): up to two fast healthy gates from the same team the chat
     uses (semasa-chat/logic.js assembleTeam, read with this function's service role; never Gemini, never ChatGPT), fastest first by the
-    probe's state and speed, inside the 22 s Telegram allows; a gate that is not live (switchable) hands on to the next, a refusal on
-    content or an empty budget hands the question to the worker as before. A key goes only to its own gate's host. */
+    probe's state and speed, inside one 15 s budget that includes context reads; each model gets at most 7 s so a slow first
+    gate leaves time for its backup. A refusal on content or an empty budget hands the question to the worker as before.
+    A key goes only to its own gate's host. */
 async function fastAnswer(db: any, link: any, text: string, pin: any, state: any, busy: boolean) {
   if (!fastEligible({ kind: "private", text, owner: true, state, pin, gwName: pin?.gateway || "", busy })) return null;
+  const deadline = Date.now() + FAST_TOTAL_MS;
   const input = await readTeamInput(db, db, (k: string) => Deno.env.get(k), { log: (m: string) => console.warn("team store not read:", m) });
   const tries = fastGatesFor(assembleTeam(input), pin, pickWorkers, FAST_TRIES);
   if (!tries.length) return null;
@@ -37,27 +40,13 @@ async function fastAnswer(db: any, link: any, text: string, pin: any, state: any
   const posts = draftsQ.data || [];
   const count = (s: string) => posts.filter((p: any) => p.status === s).length;
   const snapshot = `Draf menunggu: ${count("draft")} · Diluluskan: ${count("approved")} · Dijadualkan: ${count("scheduled")}`;
-  const started = Date.now();
-  for (const t of tries) {
-    const left = FAST_MS - (Date.now() - started);
-    if (left < 4000) return null;                                  // too little of Telegram's patience left: the worker answers
-    const messages = fastMessages({ text, notes: newestNotes(notesQ.data || [], MEMORY.notes), turns: turnsOf((msgsQ.data || []).reverse()),
-      snapshot, gwName: t.name, model: t.model });
-    const rq = chatRequest(t.gate, { model: t.model, messages, max_tokens: 900, temperature: 0.3 });
-    try {
-      const res = await fetch(rq.url, { method: "POST", signal: AbortSignal.timeout(left), headers: rq.headers, body: rq.body });
-      const j = await res.json().catch(() => null);
-      if (!res.ok) {
-        if (switchable(res.status, errorText(j))) continue;        // not live: the next gate
-        return null;                                               // a refusal on content: the worker, as before
-      }
-      const answer = String(answerText(t.gate, j) || "").trim();
-      if (answer) return { answer, who: `${t.name} · ${j?.model || t.model}` };
-    } catch {
-      continue;                                                    // a time-out or an unreachable host: the next gate
-    }
-  }
-  return null;
+  return await tryFastGates(tries, {
+    deadline,
+    messagesFor: (t: any) => fastMessages({ text, notes: newestNotes(notesQ.data || [], MEMORY.notes),
+      turns: turnsOf((msgsQ.data || []).slice().reverse()), snapshot, gwName: t.name, model: t.model }),
+    requestFor: (t: any, messages: any) => chatRequest(t.gate, { model: t.model, messages, max_tokens: 600, temperature: 0.3 }),
+    answerText, errorText, switchable,
+  });
 }
 
 /** Keep the exchange in the AI chat page's Telegram thread, as the worker does (telegram_tools.log_turn). */
@@ -81,6 +70,7 @@ const ok = (body: unknown = { ok: true }) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
 Deno.serve(async (req) => {
+  const receivedAt = Date.now();
   if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
   const secret = Deno.env.get("TELEGRAM_WEBHOOK_SECRET") || "";
   if (!sameSecret(req.headers.get("x-telegram-bot-api-secret-token") || "", secret)) {
@@ -101,6 +91,8 @@ Deno.serve(async (req) => {
   const { data: link } = await db.from("semasa_telegram_link").select("telegram_user_id,user_id").eq("id", 1).maybeSingle();
   const from = update?.callback_query?.from?.id ?? update?.message?.from?.id ?? null;
   let owner = !!link && Number(link.telegram_user_id) === Number(from);
+  const probe = req.headers.get("x-semasa-probe") === "latency-v1";
+  if (probe && !fastCommandOf(update, { kind, owner })) return ok({ probe: true, inline: false });
 
   // the one-time code from Semasa → Settings → Telegram links this account (only in a private chat)
   if (kind === "private") {
@@ -121,6 +113,33 @@ Deno.serve(async (req) => {
     }
   }
 
+  const command = fastCommandOf(update, { kind, owner });
+  if (command) {
+    try {
+      const [stateQ, waitingQ] = await Promise.all([
+        db.from("semasa_settings").select("value").eq("key", "telegram_chat").maybeSingle(),
+        db.from("semasa_telegram_inbox").select("id").eq("chat_id", update.message.chat.id)
+          .in("kind", ["private", "callback"]).in("status", ["new", "working"])
+          .gte("created_at", new Date(Date.now() - BUSY_WINDOW_MS).toISOString()).limit(1),
+      ]);
+      const busy = !!waitingQ.error || !Array.isArray(waitingQ.data) || waitingQ.data.length > 0;
+      const reply = !stateQ.error && stateQ.data?.value
+        ? await fastCommand(db, update, link, { busy, state: stateQ.data.value, site: Deno.env.get("SEMASA_SITE_URL") || undefined }) : null;
+      if (reply) {
+        const { data: saved, error } = await db.from("semasa_telegram_inbox").upsert({
+          ...inboxRow(update, kind, owner), status: "done", note: `answered (command: ${command})`,
+          payload: { ...update, semasa_timing: { path: "command", elapsed_ms: Date.now() - receivedAt } },
+          done_at: new Date().toISOString(),
+        }, { onConflict: "update_id", ignoreDuplicates: true }).select("id").maybeSingle();
+        if (!error) return saved?.id ? ok(reply) : ok();
+      }
+    } catch {
+      // A failed read falls back to the ordered worker; never pretend missing data means zero.
+    }
+  }
+
+  if (probe) return ok({ probe: true, inline: false });
+
   // a plain question from Wan: answered here in seconds when it can be, else the worker answers (30-60 s)
   if (kind === "private" && owner && fastEligible({ kind, text: update.message?.text, owner, state: {}, pin: null, gwName: "" })) {
     const [{ data: st }, { data: team }, { data: waiting }] = await Promise.all([
@@ -137,6 +156,7 @@ Deno.serve(async (req) => {
     if (fast) {
       const { data: saved } = await db.from("semasa_telegram_inbox").upsert(
         { ...inboxRow(update, kind, owner), status: "done", note: `answered (fast, ${fast.who}): ${fast.answer.slice(0, 700)}`,
+          payload: { ...update, semasa_timing: { path: "model", elapsed_ms: Date.now() - receivedAt, attempts: fast.attempts } },
           done_at: new Date().toISOString() }, { onConflict: "update_id", ignoreDuplicates: true }).select("id").maybeSingle();
       try { await logTurn(db, link, state, String(update.message.text), fast.answer); } catch (e) { console.error("turn not kept", String(e)); }
       return ok(fastReply(update.message.chat.id, update.message.message_id, fast.answer, fast.who, saved?.id ?? 0));

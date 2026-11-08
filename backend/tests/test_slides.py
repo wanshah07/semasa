@@ -114,6 +114,44 @@ def test_a_ground_is_drawn_under_a_scrim():
         slides.render(GOOD[:1], ground=b"not a picture")
 
 
+def _busy_photo(size=(1080, 1350)):
+    """A sharp, contrasty picture: black and white blocks 24 px wide, the worst case for words laid over it."""
+    photo = Image.new("RGB", size, (0, 0, 0))
+    px = photo.load()
+    for y in range(size[1]):
+        for x in range(size[0]):
+            if ((x // 24) + (y // 24)) % 2:
+                px[x, y] = (255, 255, 255)
+    return photo
+
+
+def _edge_energy(img: Image.Image) -> float:
+    """Mean absolute difference between neighbouring pixels (luminance): high where a picture has hard edges."""
+    g = img.convert("L")
+    w, h = g.size
+    a, b = g.crop((0, 0, w - 1, h)).tobytes(), g.crop((1, 0, w, h)).tobytes()
+    return sum(abs(x - y) for x, y in zip(a, b, strict=True)) / len(a)
+
+
+def test_a_photo_ground_is_blurred_and_flattened_so_words_stay_clear():
+    """Wan, 8 Nov 2026: a photo used as a background is made blur / lower contrast so the wording stays clear to read."""
+    photo = _busy_photo()
+    soft = slides.soften_ground(photo)
+    lum = lambda im: sorted(im.convert("L").tobytes())                        # noqa: E731
+    assert _edge_energy(soft) < _edge_energy(photo) * 0.4                      # the hard edges are gone
+    assert lum(soft)[-1] - lum(soft)[0] < (lum(photo)[-1] - lum(photo)[0]) * 0.9   # and the tonal range is narrower
+    assert soft.size == photo.size and soft.mode == "RGB"
+
+
+def test_the_rendered_slide_over_a_busy_photo_has_no_hard_edges_behind_the_words():
+    buf = io.BytesIO()
+    _busy_photo().save(buf, "PNG")
+    out = _img(slides.render(GOOD[:1], ground=buf.getvalue())[0])
+    # the foot of the slide holds no text: what is there is the softened picture under the scrim
+    foot = out.crop((0, out.height - 140, out.width, out.height - 60))
+    assert _edge_energy(foot) < 0.8                       # 1.6 without the softening, 0.2 with it
+
+
 def test_a_light_ground_keeps_dark_ink_and_stays_light():
     photo = Image.new("RGB", (1600, 900), (236, 222, 238))
     buf = io.BytesIO()

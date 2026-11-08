@@ -223,7 +223,10 @@ export default function ChatTab() {
       const res = await askAI({ text, files, threadId, model, regenerate, signal: abort.current.signal,
         onProgress: (p) => setStatus(t(`Membaca lampiran ${p}`, `Reading attachment ${p}`)),
         onDelta: streaming ? (piece) => { setStatus(""); grow(piece); } : null,
-        onStatus: (ev) => setStatus(`${toolLabel(ev.tool, t)}${ev.detail ? `: ${ev.detail}` : ""}`) });
+        // a robot that was not live handed the question on (Auto's chain, or Wan's own pick since 8 Nov 2026): say where and why
+        onStatus: (ev) => setStatus(ev.tool === "switch" && ev.reason
+          ? t(`Bertukar ke ${ev.detail} kerana ${ev.reason}`, `Switched to ${ev.detail} because ${ev.reason}`)
+          : `${toolLabel(ev.tool, t)}${ev.detail ? `: ${ev.detail}` : ""}`) });
       if (!res.connected) {
         settle({ role: "note", text: t("AI belum disambungkan. Mesej anda disimpan di skrin ini sahaja.", "The AI is not connected yet. Your message is kept on this screen only.") });
         return;
@@ -233,7 +236,11 @@ export default function ChatTab() {
       if (res.memorySaved) refreshNotes();
       if (res.modelChanged?.why) note(t(`Pilihan ${res.modelChanged.asked} tidak dapat digunakan (${res.modelChanged.why}); dijawab oleh ${res.modelChanged.used}.`, `${res.modelChanged.asked} could not be used (${res.modelChanged.why}); answered by ${res.modelChanged.used}.`));
       else if (res.modelChanged) note(t(`Model ${res.modelChanged.asked} tidak ada di ${models?.gateway || "Mireld"}; dijawab oleh ${res.modelChanged.used}.`, `Model ${res.modelChanged.asked} is not at ${models?.gateway || "Mireld"}; answered by ${res.modelChanged.used}.`));
-      if (res.switched?.length) note(t(`Auto beralih kerana robot pertama gagal: ${res.switched.join("; ")}`, `Auto moved on because the first robot failed: ${res.switched.join("; ")}`));
+      if (res.switched?.length) {
+        const to = res.robot ? `${res.robot.name} · ${res.model}` : res.model;
+        note(res.auto ? t(`Auto beralih kerana robot pertama gagal: ${res.switched.join("; ")}`, `Auto moved on because the first robot failed: ${res.switched.join("; ")}`)
+          : t(`Bertukar ke ${to} kerana robot pilihan anda tidak hidup: ${res.switched.join("; ")}`, `Switched to ${to} because your pick was not live: ${res.switched.join("; ")}`));
+      }
       if (res.notice === "tools_unsupported") note(t("Model ini tidak menerima alat (web, pangkalan data); dijawab tanpa alat.", "This model does not accept tools (web, database); answered without them."));
       refreshThreads();
     } catch (e) {

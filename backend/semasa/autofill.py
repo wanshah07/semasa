@@ -108,6 +108,20 @@ def candidates(store: Any, now: datetime | None = None) -> list[dict[str, Any]]:
     return [r for r in rows if r["url"] not in spent]
 
 
+def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> list[dict[str, Any]]:
+    """Put newer, regulator-facing items first without inventing a viral score."""
+    now = now or datetime.now(UTC)
+    def key(item: dict[str, Any]) -> tuple[int, float]:
+        title = f"{item.get('title') or ''} {item.get('summary') or ''}".lower()
+        timely = int(any(word in title for word in ("recall", "regulator", "npra", "jakim", "hsa", "efsa", "update", "warning")))
+        try:
+            age = -datetime.fromisoformat(str(item.get("created_at")).replace("Z", "+00:00")).timestamp()
+        except (TypeError, ValueError):
+            age = float("inf")
+        return (-timely, age)
+    return sorted(pool, key=key)
+
+
 def pick(pool: list[dict[str, Any]], stream: str, allow: list[str] | None, day: str) -> dict[str, Any] | None:
     """An urgent file for THIS date first (Studio's `urgent post/DDMMYY` override), then the first item that fits."""
     for x in pool:
@@ -130,7 +144,7 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
     if not cfg["enabled"]:
         return "Autofill: off (switch it on in Settings)"
     try:
-        pool = candidates(store, now)
+        pool = rank_candidates(candidates(store, now), now)
         brand = settings.get("brand") or {}
         made, empty = 0, 0
         for stream in cfg["streams"]:
@@ -161,7 +175,8 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                     # no note: the writer reads a note as Wan's words, and a note also lifts the already-published
                     # guard (ideas.process_idea). What this idea is for rides in the brief, shown as a pill.
                     "note": "",
-                    "brief": {"position": {"date": date, "slot": slot}, "auto": True, "watch_id": item["id"]},
+                    "brief": {"position": {"date": date, "slot": slot}, "auto": True, "watch_id": item["id"],
+                              "hook_required": True, "story_mode": True, "source_priority": "current"},
                 }).execute()
                 made += 1
         if made:

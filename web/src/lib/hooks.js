@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BUCKETS, TABLES, TABLES_UPLOADERS, errText, supabase } from "./SupabaseClient";
+import { liveName } from "./liveChannel";
 import { tr } from "./i18n";
 
 /** Auth session, kept live. */
@@ -103,7 +104,7 @@ export function useGenerations({ limit = 300, enabled = true, need = "" } = {}) 
   useEffect(() => {
     if (!supabase || !enabled) return undefined;
     load();
-    const channel = supabase.channel("media_generations_live")
+    const channel = supabase.channel(liveName("media_generations_live"))
       .on("postgres_changes", { event: "*", schema: "public", table: TABLES.media }, () => loadRef.current?.())
       .subscribe();
     const id = setInterval(() => loadRef.current?.(), 60_000);
@@ -170,7 +171,7 @@ export function useTable(table, { enabled = true, select = "*", order = "created
     load();
     let channel = null;
     if (realtime) {
-      channel = supabase.channel(`${table}_live`)
+      channel = supabase.channel(liveName(`${table}_live`))
         .on("postgres_changes", { event: "*", schema: "public", table }, () => loadRef.current?.())
         .subscribe();
     }

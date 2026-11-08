@@ -9,6 +9,7 @@ import { platformsFor, scan } from "../lib/compliance";
 import { stampMYT, timeAgo } from "../lib/format";
 import { useLang } from "../lib/i18n";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
+import { liveName } from "../lib/liveChannel";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Segmented, Select, TextArea } from "../components/ui/Field";
@@ -54,7 +55,7 @@ function useVideos(enabled) {
   useEffect(() => {
     if (!supabase || !enabled) return undefined;
     load();
-    const ch = supabase.channel("semasa_videos_live")
+    const ch = supabase.channel(liveName("semasa_videos_live"))
       .on("postgres_changes", { event: "*", schema: "public", table: VIDEO_TABLE }, () => load()).subscribe();
     const id = setInterval(() => { if (!document.hidden) load(); }, 60_000);
     return () => { supabase.removeChannel(ch); clearInterval(id); };

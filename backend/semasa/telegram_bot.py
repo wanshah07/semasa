@@ -188,6 +188,12 @@ def save_state(store: Any, value: dict[str, Any]) -> None:
 def ensure_webhook(store: Any, bot: Bot, now: datetime) -> dict[str, Any]:
     """Point Telegram at the Edge Function (once, and again whenever it has drifted), name the commands, and keep what
     Telegram says about the webhook in settings.telegram_bot for the page and the watchdog."""
+    if os.environ.get("SEMASA_TELEGRAM_TRANSPORT", "").strip().lower() == "hermes":
+        me = bot.call("getMe") or {}
+        state = {"username": me.get("username"), "transport": "hermes", "webhook": "",
+                 "checked_at": now.isoformat(), "set_now": False, "last_error": ""}
+        save_state(store, state)
+        return state
     want = function_url()
     me = bot.call("getMe") or {}
     info = bot.call("getWebhookInfo") or {}

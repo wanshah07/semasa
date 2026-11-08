@@ -289,7 +289,7 @@ def check_telegram(store: Any, now: datetime) -> list[dict[str, str]]:
     if not state:
         return []
     out = []
-    if not state.get("webhook"):
+    if not state.get("webhook") and state.get("transport") != "hermes":
         out.append(problem("Telegram", "the bot is not connected to Semasa's webhook",
                            "Run the Telegram workflow (Actions → Telegram → Run workflow); check TELEGRAM_BOT_TOKEN."))
     err_at = state.get("last_error_at")

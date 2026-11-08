@@ -693,7 +693,8 @@ await run("Auto: healthy, with tools, not slow, strongest model, fastest; never 
 await run("the picker's choice: Wan's own pick stands alone; anything that cannot be used falls back to Auto and says why", async () => {
   const { robots } = assembleTeam(teamInput());
   const own = resolveChoice(robots, { robot: "rootsys", model: "kimi-k3" });
-  assert.deepEqual([own.auto, own.slug, own.model, own.changed, own.chain.length], [false, "rootsys", "kimi-k3", false, 1]);
+  assert.deepEqual([own.auto, own.slug, own.model, own.changed], [false, "rootsys", "kimi-k3", false]);
+  assert.deepEqual(own.chain.map((c) => c.slug), ["rootsys", "mireld", "kiosapi", "chatgpt"], "Wan's pick first, then Auto's chain without it (8 Nov 2026)");
   const auto = resolveChoice(robots, {});
   assert.ok(auto.auto && auto.slug === "mireld" && auto.chain.length === 4);
   const off = resolveChoice(assembleTeam(teamInput({ chatgpt: { row: null } })).robots, { robot: "chatgpt", model: "gpt-5" });
@@ -785,4 +786,154 @@ console.log("all robots: ok");
   assert.equal(L.turnTimeoutMs(200_000), 5000);
   assert.ok(L.CHAT_BUDGET_MS < 150_000);
   console.log("chat budget: ok");
+}
+
+
+// ---- 8 Nov 2026: fail over everywhere, and the owner's extra providers (Wan: "if the model not live, auto change to other model") ----
+{
+  const L = await import("../supabase/functions/semasa-chat/logic.js");
+  const T = await import("../supabase/functions/semasa-telegram/logic.js");
+  const fs = await import("node:fs");
+  const providers = [
+    { id: "zeta", name: "Zeta AI", dialect: "openai", base_url: "https://api.zeta.example/v1", model: "zeta-1", key_host: "api.zeta.example", enabled: true, jobs: [], api_key: "zk-SECRET" },
+    { id: "anthro", name: "Anthropic direct", dialect: "anthropic", base_url: "https://api.anthropic.com", model: "claude-sonnet-5.5", key_host: "api.anthropic.com", enabled: true, jobs: ["chat", "reader"], api_key: "sk-ant-SECRET" },
+    { id: "moved", name: "Moved", dialect: "openai", base_url: "https://b.example/v1", model: "m", key_host: "a.example", enabled: true, jobs: null, api_key: "mk-SECRET" },
+    { id: "off", name: "Off", dialect: "openai", base_url: "https://off.example/v1", model: "m", key_host: "off.example", enabled: false, api_key: "ok-SECRET" },
+    { id: "nokey", name: "No key", dialect: "openai", base_url: "https://nokey.example/v1", model: "m", key_host: "nokey.example", enabled: true, api_key: "" },
+    { id: "mireld", name: "Shadow", dialect: "openai", base_url: "https://api.mireld.my/v1", model: "m", key_host: "api.mireld.my", enabled: true, api_key: "shadow-SECRET" },
+    { id: "intern", name: "Inside", dialect: "openai", base_url: "https://10.0.0.5/v1", model: "m", key_host: "10.0.0.5", enabled: true, api_key: "ik-SECRET" },
+  ];
+  await run("providers become robots W6.. in id order; a key goes only to the host it was saved for; the five built-ins keep their names", async () => {
+    const { robots, gates } = L.assembleTeam(teamInput({ providers, status: [...teamInput().status, statusRow("zeta", { models: ["zeta-1", "zeta-mini"], chat_ms: 300 })] }));
+    const by = Object.fromEntries(robots.map((r) => [r.slug, r]));
+    assert.deepEqual(["anthro", "intern", "mireld-provider", "moved", "nokey", "zeta"].map((s) => by[s]?.robot), ["W6", "W7", "W8", "W9", "W10", "W11"], "W6.. in id order, enabled rows only");
+    assert.ok(!by.off, "a disabled provider is not listed");
+    assert.equal(gates.zeta.key, "zk-SECRET"); assert.equal(gates.zeta.host, "api.zeta.example"); assert.equal(gates.zeta.kind, "openai");
+    assert.equal(gates.anthro.kind, "anthropic"); assert.equal(gates.anthro.base, "https://api.anthropic.com"); assert.equal(by.anthro.dialect, "anthropic"); assert.equal(by.anthro.tools, true);
+    assert.deepEqual(by.anthro.jobs, ["chat", "reader"]);
+    assert.ok(!gates.moved && /saved for "a.example", not for b.example/.test(by.moved.why), "key_host must equal the base host (slotKeyFits)");
+    assert.ok(!gates.nokey && /no key saved/.test(by.nokey.why));
+    assert.ok(!gates.intern && /address is refused/.test(by.intern.why), "safeBase: never an internal address");
+    assert.equal(gates.mireld.key, "sk-mireld-SECRET", "a provider named like a built-in never shadows it");
+    assert.ok(/built-in robots/.test(by["mireld-provider"].why));
+    assert.equal(by.zeta.state, "ok"); assert.equal(by.zeta.speed_ms, 300); assert.deepEqual(by.zeta.models.map((m) => m.id), ["zeta-1", "zeta-mini"]);
+    assert.equal(by.anthro.state, "unknown"); assert.match(by.anthro.state_why, /not checked by the API probe yet/);
+    assert.deepEqual(by.anthro.models.map((m) => m.id), ["claude-sonnet-5.5"], "no probe row: the configured model is offered");
+    assert.ok(!/SECRET/.test(JSON.stringify(robots)), "no provider key in the page's view");
+    assert.deepEqual(L.providerRobots(null), []); assert.deepEqual(L.providerRobots([{ id: "BAD ID!", enabled: true }]), []);
+  });
+  await run("Auto and the workers: a provider is in the chain, Gemini never, ChatGPT only in the chat; down or stale sorts last, never out", async () => {
+    const stale = statusRow("zeta", { models: ["zeta-1"], chat_ms: 100, checked_at: "2026-11-05T00:00:00Z" });
+    const { robots } = L.assembleTeam(teamInput({ providers, status: [...teamInput().status, stale] }));
+    const auto = L.pickAuto(robots).map((c) => c.slug);
+    assert.ok(auto.includes("anthro") && auto.includes("zeta") && !auto.includes("gemini"));
+    assert.equal(auto.indexOf("zeta"), auto.length - 1, "a stale probe row sorts the robot last, it does not hide it");
+    const readers = L.pickWorkers(robots, { job: "reader" }).map((c) => c.slug);
+    assert.ok(!readers.includes("chatgpt") && !readers.includes("gemini"));
+    assert.ok(readers.includes("kiosapi") && readers.includes("rootsys") && readers.includes("mireld") && readers.includes("anthro") && readers.includes("zeta"), "slots and providers are candidates");
+    const fast = L.pickWorkers(robots, { job: "telegram", fast: true }).map((c) => c.slug);
+    assert.deepEqual(fast.slice(0, 2), ["kiosapi", "rootsys"], "fastest healthy first (600 ms, 1200 ms)");
+    assert.equal(fast[fast.length - 1], "zeta", "stale last");
+    assert.ok(!fast.includes("anthro"), "a provider whose jobs name chat and reader only is not a Telegram worker");
+    const down = L.assembleTeam(teamInput({ providers, status: [...teamInput().status, { ...stale, checked_at: fresh, chat_ok: false, error: "502" }] })).robots;
+    const d = L.pickAuto(down).map((c) => c.slug);
+    assert.equal(d[d.length - 1], "zeta", "chat_ok=false sorts last, never skipped");
+    assert.equal(L.robotDoes({ jobs: [] }, "x"), true); assert.equal(L.robotDoes({ jobs: ["chat"] }, "reader"), false); assert.equal(L.robotDoes({}, "chat"), true);
+  });
+  await run("a manual pick fails over before any text, never after, and a refusal on content is not switched", async () => {
+    const { robots } = L.assembleTeam(teamInput({ providers }));
+    const own = L.resolveChoice(robots, { robot: "kiosapi", model: "gpt-5.6-sol" });
+    assert.equal(own.auto, false); assert.equal(own.chain[0].slug, "kiosapi");
+    assert.ok(own.chain.length > 1 && !own.chain.slice(1).some((c) => c.slug === "kiosapi" || c.slug === "gemini"), "then Auto's chain, without the pick and without Gemini");
+    const legacy = L.resolveChoice(robots, { model: "claude-opus-5.5" });
+    assert.equal(legacy.chain[0].slug, "mireld"); assert.ok(legacy.chain.length > 1, "a bare model from an older page also gets the chain");
+    // the rule index.ts applies at the first link (switchable): the robot is not live
+    for (const [st, err] of [[0, "the robot could not be reached (TypeError: dns)"], [0, "the model did not answer in time"], [429, "rate limit"], [500, "boom"], [502, ""], [503, "overloaded"],
+      [401, "invalid api key"], [403, "forbidden"], [404, "model not found"], [400, "model_not_found: gpt-9 does not exist"], [400, "The model `x` does not exist"], [400, "insufficient_quota"]]) {
+      assert.equal(L.switchable(st, err), true, `${st} ${err}`);
+    }
+    // this question's problem: another robot gets the same refusal
+    for (const [st, err] of [[400, "content_policy_violation: the request was flagged"], [400, "This model's maximum context length is 8192 tokens, your messages resulted in 9000"],
+      [400, "invalid_request_error: messages[2].content is required"], [413, "payload too large"], [422, "bad schema"]]) {
+      assert.equal(L.switchable(st, err), false, `${st} ${err}`);
+    }
+    assert.equal(L.switchable(503, "down", true), false, "never after text is out");
+    const src = fs.readFileSync(new URL("../supabase/functions/semasa-chat/index.ts", import.meta.url), "utf8");
+    assert.ok(!/!r\.ok && choice\.auto && round === 0/.test(src), "index.ts no longer limits the switch to Auto");
+    assert.match(src, /switchable\(r\.status, r\.err, said\)/, "index.ts switches by the rule, before text only");
+    assert.match(src, /tool: "switch", detail: `\$\{gate\.name\} · \$\{model\}`, reason/, "the page is told where and why");
+    assert.match(src, /pickWorkers\(team\.robots, \{ job: "reader" \}\)/, "readerCall draws its candidates from the team");
+    assert.match(src, /const foldLinks = chain\.filter/, "the summary uses the chain");
+  });
+  await run("the Anthropic dialect: system top-level, tools as tool_use/tool_result, pictures as image blocks, the stream folded to the same shape", async () => {
+    const body = L.anthropicBody({ model: "claude-sonnet-5.5", max_tokens: 100, temperature: 0.2, tool_choice: "auto",
+      tools: [{ type: "function", function: { name: "fetch_url", description: "d", parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } } }],
+      messages: [{ role: "system", content: "RULES" }, { role: "user", content: [{ type: "text", text: "lihat" }, { type: "image_url", image_url: { url: TEST_IMAGE } }] },
+        { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "fetch_url", arguments: "{\"url\":\"https://x\"}" } }] },
+        { role: "tool", tool_call_id: "c1", content: "PAGE" }, { role: "assistant", content: "ok" }, { role: "user", content: "lagi" }] });
+    assert.equal(body.system, "RULES"); assert.equal(body.stream, true); assert.equal(body.max_tokens, 100); assert.equal(body.model, "claude-sonnet-5.5");
+    assert.deepEqual(body.tools, [{ name: "fetch_url", description: "d", input_schema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } }]);
+    assert.ok(!("tool_choice" in body), "auto is Anthropic's default");
+    assert.deepEqual(body.messages.map((m) => m.role), ["user", "assistant", "user", "assistant", "user"]);
+    assert.equal(body.messages[0].content[1].type, "image"); assert.equal(body.messages[0].content[1].source.type, "base64"); assert.equal(body.messages[0].content[1].source.media_type, "image/png");
+    assert.deepEqual(body.messages[1].content, [{ type: "tool_use", id: "c1", name: "fetch_url", input: { url: "https://x" } }]);
+    assert.deepEqual(body.messages[2].content, [{ type: "tool_result", tool_use_id: "c1", content: "PAGE" }]);
+    let a = L.foldAnthropic(null, { type: "message_start", message: { model: "claude-sonnet-5.5" } });
+    a = L.foldAnthropic(a, { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } });
+    a = L.foldAnthropic(a, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hel" } });
+    a = L.foldAnthropic(a, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "lo" } });
+    a = L.foldAnthropic(a, { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "tu1", name: "fetch_url", input: {} } });
+    a = L.foldAnthropic(a, { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: "{\"url\":" } });
+    a = L.foldAnthropic(a, { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: "\"https://x\"}" } });
+    a = L.foldAnthropic(a, { type: "message_delta", delta: { stop_reason: "tool_use" } });
+    assert.equal(a.content, "Hello"); assert.equal(a.model, "claude-sonnet-5.5"); assert.equal(a.finish, "tool_calls");
+    assert.deepEqual(a.toolCalls.filter((c) => c.name), [{ id: "tu1", name: "fetch_url", arguments: "{\"url\":\"https://x\"}" }]);
+    assert.match(L.foldAnthropic(null, { type: "error", error: { type: "overloaded_error", message: "Overloaded" } }).error, /Overloaded/);
+    const whole = L.anthropicAnswer({ model: "m", stop_reason: "end_turn", content: [{ type: "text", text: "merah" }] });
+    assert.deepEqual([whole.content, whole.toolCalls, whole.finish], ["merah", [], "end_turn"]);
+    assert.equal(L.answerText({ kind: "anthropic" }, { content: [{ type: "text", text: "x" }] }), "x");
+    assert.equal(L.answerText({ kind: "openai" }, { choices: [{ message: { content: "y" } }] }), "y");
+    // the request: the key in x-api-key for Anthropic, Bearer for OpenAI, and the rootsys repeat only for OpenAI
+    const ar = L.chatRequest({ kind: "anthropic", base: "https://api.anthropic.com/", key: "sk-ant-SECRET" }, { model: "m", messages: [{ role: "user", content: "hi" }] }, { stream: true });
+    assert.equal(ar.url, "https://api.anthropic.com/v1/messages"); assert.equal(ar.headers["x-api-key"], "sk-ant-SECRET"); assert.equal(ar.headers["anthropic-version"], "2023-06-01"); assert.ok(!ar.headers.authorization);
+    assert.equal(JSON.parse(ar.body).stream, true);
+    const or = L.chatRequest({ kind: "openai", base: "https://rootsys.cloud/v1", key: "k", repeatSystem: true }, { model: "m", messages: [{ role: "system", content: "S" }, { role: "user", content: "hi" }] });
+    assert.equal(or.url, "https://rootsys.cloud/v1/chat/completions"); assert.equal(or.headers.authorization, "Bearer k");
+    assert.match(JSON.parse(or.body).messages[1].content, /^INSTRUCTIONS/); assert.ok(!("stream" in JSON.parse(or.body)));
+    assert.equal(L.modelsRequest({ kind: "anthropic", base: "https://api.anthropic.com", key: "k" }).url, "https://api.anthropic.com/v1/models");
+    assert.equal(L.modelsRequest({ kind: "openai", base: "https://api.mireld.my/v1", key: "k" }).url, "https://api.mireld.my/v1/models");
+    assert.equal(L.errorText({ error: { message: "m" } }), "m"); assert.equal(L.errorText(null, "raw"), "raw");
+  });
+  await run("readTeamInput: the exact tables and columns, and a table not yet applied leaves the five built-ins as they were", async () => {
+    const asked = [];
+    const mk = (fail) => ({ from: (table) => ({ select: (cols) => { asked.push([table, cols]); const q = Promise.resolve(fail.includes(table) ? { data: null, error: { message: `relation "${table}" does not exist` } } : { data: [], error: null });
+      q.in = () => q; q.eq = () => q; q.maybeSingle = () => q; return q; } }) });
+    const logs = [];
+    const input = await L.readTeamInput(mk(["semasa_ai_providers", "semasa_ai_provider_secrets"]), mk(["semasa_ai_providers", "semasa_ai_provider_secrets"]), {}, { log: (m) => logs.push(m) });
+    const tables = Object.fromEntries(asked);
+    assert.equal(tables.semasa_ai_providers, "id,name,dialect,base_url,model,key_host,enabled,jobs");
+    assert.equal(tables.semasa_ai_provider_secrets, "id,api_key");
+    assert.equal(tables.semasa_api_status, "slug,base_url,key_set,key_ok,reachable,chat_ok,chat_ms,latency_ms,checked_at,models,model,error");
+    assert.deepEqual(input.providers, []); assert.equal(logs.length, 2); assert.match(logs[0], /semasa_ai_providers/);
+    const team = L.assembleTeam({ ...teamInput(), providers: input.providers });
+    assert.deepEqual(team.robots.map((r) => r.slug), ["rootsys", "mireld", "kiosapi", "gemini", "chatgpt"]);
+    const none = await L.readTeamInput(mk([]), null, {});
+    assert.equal(none.serviceRole, false); assert.deepEqual(none.providers, []);
+  });
+  await run("Telegram fastAnswer: up to two fast healthy gates from the team, never Gemini or ChatGPT; a pin narrows to its robot", async () => {
+    const team = L.assembleTeam(teamInput({ providers, status: [...teamInput().status, statusRow("zeta", { models: ["zeta-1"], chat_ms: 100, jobs: [] })] }));
+    const tries = T.fastGatesFor(team, null, L.pickWorkers);
+    assert.equal(tries.length, 2);
+    assert.deepEqual(tries.map((x) => x.slug), ["zeta", "kiosapi"], "fastest healthy first: 100 ms, then 600 ms");
+    assert.equal(tries[0].gate.key, "zk-SECRET"); assert.equal(tries[0].gate.host, "api.zeta.example"); assert.equal(tries[0].model, "zeta-1");
+    assert.match(tries[1].name, /Wanshah 3 \(KiosAPI\)/);
+    const pinned = T.fastGatesFor(team, { gateway: "Mireld" }, L.pickWorkers);
+    assert.deepEqual(pinned.map((x) => x.slug), ["mireld"], "a pin on a gateway: only that robot");
+    assert.deepEqual(T.fastGatesFor(team, { gateway: "Something else" }, L.pickWorkers), [], "a pin on an unknown gateway: the worker answers");
+    assert.ok(!T.fastGatesFor(team, null, L.pickWorkers, 99).some((x) => x.slug === "gemini" || x.slug === "chatgpt"));
+    const src = fs.readFileSync(new URL("../supabase/functions/semasa-telegram/index.ts", import.meta.url), "utf8");
+    assert.match(src, /const FAST_TRIES = 2;/); assert.match(src, /fastGatesFor\(assembleTeam\(input\), pin, pickWorkers, FAST_TRIES\)/);
+    assert.match(src, /if \(switchable\(res\.status, errorText\(j\)\)\) continue;/, "a gate that is not live hands on to the next");
+  });
+  console.log("edge failover: ok");
 }

@@ -83,6 +83,26 @@ export function fastEligible({ kind, text, owner, state, pin, gwName, busy = fal
   return true;
 }
 
+/** 8 Nov 2026: the fast answer draws on the whole AI team (semasa-chat/logic.js assembleTeam: the function's secrets, the page's
+    slots, the owner's providers, Mireld), not one gateway. The gates to try, at most `max`, fastest healthy first (pickWorkers: the
+    probe's state and chat_ms; a stale or down robot last, never left out), never Gemini (free-key privacy) and never ChatGPT (another
+    dialect). With a /robot pin that names a gateway, only the robot whose name, provider or slug matches it is tried; a pin on
+    anything else leaves the worker to answer, as before. Returns [{ slug, name, model, gate }]. */
+export function fastGatesFor(team, pin, pick, max = 2) {
+  const robots = team?.robots || [], gates = team?.gates || {};
+  const want = pin && pin.gateway ? String(pin.gateway).toLowerCase() : "";
+  const matches = (r) => !want || [r.slug, r.name, r.provider].some((x) => String(x || "").toLowerCase() === want);
+  const out = [];
+  for (const c of pick(robots, { job: "telegram", fast: true })) {
+    const r = robots.find((x) => x.slug === c.slug);
+    const g = gates[c.slug];
+    if (!r || !g || !matches(r)) continue;
+    out.push({ slug: r.slug, name: `${r.name} (${r.provider})`, model: c.model || g.model, gate: { ...g, key: g.key || g.keys?.[0]?.key || "" } });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 export const FAST_SYSTEM = "You are Semasa's assistant on Telegram for Wan (Registered Chemist, regulatory affairs specialist, owner of " +
   "WS REGULAB). Answer briefly, in the language he writes: Malaysian Bahasa Malaysia (never Bahasa Indonesia) or English. Plain " +
   "text, no markdown. You cannot approve, post or change anything yourself: name the command that does it (/menu, /draf, /poster, " +

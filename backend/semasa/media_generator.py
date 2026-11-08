@@ -174,13 +174,21 @@ def has_credentials(name: str, s: MediaSettings, store: Any = None) -> bool:
     return False
 
 
+# Wan, 8 Nov 2026: "for image generate make cloudflare > KioskAPI > ChatGPT > Gemini". KiosAPI is the OpenAI-dialect gateway
+# ("openai" here). Replicate is not in his list, so it comes last. A picture row carries the provider Tetapan stamped on it when
+# it was queued ("openai"), which is a default and not a choice, so the order below is used unless the row says its provider
+# was picked (meta.provider_explicit).
+IMAGE_PRIORITY = ("cloudflare", "openai", "chatgpt", "gemini", "replicate")
+
+
 def provider_chain(s: MediaSettings, first: str, *, kind: str = "image", needs_edit: bool = False,
-                   store: Any = None) -> list[str]:
+                   store: Any = None, explicit: bool = True) -> list[str]:
     """Provider names in the order a row tries them: the one it was given first (always, so an explicit choice that
     cannot do the job still says so), then Tetapan's default, then the rest that have credentials and can take the job
-    (a video needs a video provider, a reference picture an edit model). Each name once."""
-    out = [first]
-    for name in (s.provider, "cloudflare", "openai", "replicate", "gemini", "chatgpt"):
+    (a video needs a video provider, a reference picture an edit model). Each name once. `explicit` False: the row's provider
+    was only a default, so IMAGE_PRIORITY alone decides the order (the providers without credentials are left out)."""
+    out = [first] if explicit else []
+    for name in (*IMAGE_PRIORITY, s.provider):
         name = (name or "").lower()
         if not name or name in out or name not in PROVIDER_CAPS:
             continue
@@ -189,7 +197,7 @@ def provider_chain(s: MediaSettings, first: str, *, kind: str = "image", needs_e
             continue
         if has_credentials(name, s, store):
             out.append(name)
-    return out
+    return out or [first]               # nobody has credentials: the default is named, so the error says what is missing
 
 
 def get_provider(providers: dict[str, Provider], name: str, s: MediaSettings, store: Any = None,
@@ -479,7 +487,7 @@ def reference_ground(store: Any, row_id: str, meta: dict[str, Any], s: MediaSett
         return None, None
     try:
         gen, _used, _tried = generate_with_failover(
-            {}, provider_chain(s, s.provider, store=store), s, store, lambda p: p.generate_from_text(prompt, {}))
+            {}, provider_chain(s, s.provider, store=store, explicit=False), s, store, lambda p: p.generate_from_text(prompt, {}))
     except Exception as exc:  # noqa: BLE001 - the words still get drawn, on paper, and the card says why
         meta["bg_missing"] = f"the background picture could not be made ({str(exc)[:160]}): drawn on paper"
         return None, None
@@ -756,6 +764,8 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
     kind = row.get("type") or "image"
     mode = row.get("mode") or "recreate"
     name = (row.get("provider") or s.provider).lower()
+    # a provider the row names that does not exist is never "just a default": it is reported, as before
+    explicit = bool((row.get("meta") or {}).get("provider_explicit")) or name not in PROVIDER_CAPS
     options = dict((row.get("meta") or {}).get("options") or {})
     flow_a = (row.get("meta") or {}).get("flow") == "A"
     extra: dict[str, Any] = {}
@@ -768,6 +778,10 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
                 raise ProviderError("reference must be an image (PNG, JPG, WEBP or GIF); put text in the prompt instead")
         elif not (row.get("prompt") or "").strip():
             raise ProviderError("a words-only job needs a prompt")
+        needs_edit = mode == "recreate" and not flow_a
+        names = provider_chain(s, name, kind=kind, needs_edit=needs_edit, store=store, explicit=explicit)
+        if not explicit:
+            name = names[0] if names else name        # Wan's order (IMAGE_PRIORITY), not the default Tetapan stamped on the row
         provider = get_provider(providers, name, s, store, deadline)
         if kind == "video" and not getattr(provider, "video", True):
             # stopped before the still is drawn: a picture made for a video nobody can make is spent for nothing
@@ -782,8 +796,6 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
                                     "set VISION_MODEL to a model that sees pictures, or add a prompt")
         prompt = compose_prompt(row, read)
         log.info("%s: %s/%s via %s — %s", row_id, mode, kind, name, prompt[:80])
-        needs_edit = mode == "recreate" and not flow_a
-        names = provider_chain(s, name, kind=kind, needs_edit=needs_edit, store=store)
 
         def draw(provider: Provider) -> Generated:
             if needs_edit:

@@ -607,7 +607,7 @@ console.log("memory settings: ok");
 // ---- every robot in the chat's picker (Wan, 7 Nov 2026: "for AI Chat, allow me to choose all model accross all 5 bots") ----------
 import {
   CHAT_ROBOTS, GEMINI_BASE, ROBOT_ORDER, assembleTeam, chatgptAccount, chatgptNeedsRefresh, chatgptState, foldResponses, geminiKeyPatch, geminiOutcome,
-  parseChoice, pickAuto, probeState, refreshedTokens, resolveChoice, responsesBody, safeBase, slotKeyFits, tokenExpiry, usableGeminiKeys,
+  ROBOT_PRIORITY, parseChoice, pickAuto, probeState, refreshedTokens, resolveChoice, responsesBody, safeBase, slotKeyFits, tokenExpiry, usableGeminiKeys,
 } from "../supabase/functions/semasa-chat/logic.js";
 
 const T_NOW = Date.parse("2026-11-07T08:00:00Z");
@@ -680,13 +680,14 @@ await run("the function's own gateway on another host is still offered, as a gue
   assert.ok(guest && guest.enabled && guest.default_model === "m-1" && gates["gw-example-org"].key === "k");
 });
 
-await run("Auto: healthy, with tools, not slow, strongest model, fastest; never Gemini; ChatGPT after every robot with tools", async () => {
+await run("Auto: healthy, with tools, then Wan's priority (rootsys, Mireld, KiosAPI, ChatGPT); never Gemini; ChatGPT after every robot with tools", async () => {
   const { robots } = assembleTeam(teamInput());
-  assert.deepEqual(pickAuto(robots).map((c) => c.slug), ["mireld", "rootsys", "kiosapi", "chatgpt"]);
-  const downMireld = assembleTeam(teamInput({ status: teamInput().status.map((r) => (r.slug === "mireld" ? { ...r, chat_ok: false, error: "502" } : r)) })).robots;
-  assert.deepEqual(pickAuto(downMireld).map((c) => c.slug), ["rootsys", "kiosapi", "chatgpt", "mireld"], "a robot that is down is tried last");
+  assert.deepEqual(pickAuto(robots).map((c) => c.slug), ["rootsys", "mireld", "kiosapi", "chatgpt"]);
+  assert.deepEqual(ROBOT_PRIORITY, ["rootsys", "mireld", "kiosapi", "chatgpt", "gemini"]);
+  const downRoot = assembleTeam(teamInput({ status: teamInput().status.map((r) => (r.slug === "rootsys" ? { ...r, chat_ok: false, error: "502" } : r)) })).robots;
+  assert.deepEqual(pickAuto(downRoot).map((c) => c.slug), ["mireld", "kiosapi", "chatgpt", "rootsys"], "a robot that is down is tried last, the rest keep Wan's order");
   const slow = assembleTeam(teamInput({ status: teamInput().status.map((r) => (r.slug === "mireld" ? { ...r, chat_ms: 40000 } : r)) })).robots;
-  assert.equal(pickAuto(slow)[0].slug, "rootsys", "a 40 s robot is passed over for a fast one");
+  assert.deepEqual(pickAuto(slow).map((c) => c.slug), ["rootsys", "mireld", "kiosapi", "chatgpt"], "a slow robot keeps its place in Wan's order");
   assert.ok(!pickAuto(robots).some((c) => c.slug === "gemini"));
 });
 
@@ -696,7 +697,7 @@ await run("the picker's choice: Wan's own pick stands alone; anything that canno
   assert.deepEqual([own.auto, own.slug, own.model, own.changed], [false, "rootsys", "kimi-k3", false]);
   assert.deepEqual(own.chain.map((c) => c.slug), ["rootsys", "mireld", "kiosapi", "chatgpt"], "Wan's pick first, then Auto's chain without it (8 Nov 2026)");
   const auto = resolveChoice(robots, {});
-  assert.ok(auto.auto && auto.slug === "mireld" && auto.chain.length === 4);
+  assert.ok(auto.auto && auto.slug === "rootsys" && auto.chain.length === 4);
   const off = resolveChoice(assembleTeam(teamInput({ chatgpt: { row: null } })).robots, { robot: "chatgpt", model: "gpt-5" });
   assert.ok(off.auto && off.changed && /not connected/.test(off.why));
   const legacy = resolveChoice(robots, { model: "claude-opus-5.5" });

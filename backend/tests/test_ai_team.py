@@ -52,30 +52,41 @@ def test_nothing_measured_keeps_the_configured_order():
     assert st["backup"]["name"] == "Wanshah 2"
 
 
-def test_the_fastest_measured_robot_writes_first():
+def test_wans_priority_decides_who_writes_first_whatever_the_speed():
+    """Wan, 8 Nov 2026: Rootsys > Mireld > KioskAPI > ChatGPT > Gemini. A slower robot higher up still goes first."""
     store = FakeStore()
     _probe(store, "rootsys", chat_ms=2400)
     _probe(store, "mireld", chat_ms=600)
     s = ai_team.route(store, _github(), {}, NOW)
-    assert s.base_url == "https://api.mireld.my/v1" and s.api_key == "mk-1" and s.model == "claude-sonnet-5.5"
-    assert s.fallback_base_url == "https://rootsys.cloud/v1" and s.fallback_key == "sk-root"
-    assert _state(store)["reader"]["chosen"]["slug"] == "mireld"
+    assert s.base_url == "https://rootsys.cloud/v1" and s.api_key == "sk-root"
+    assert s.fallback_base_url == "https://api.mireld.my/v1" and s.fallback_key == "mk-1"
+    assert s.fallback_model == "claude-sonnet-5.5"
+    assert _state(store)["reader"]["chosen"]["slug"] == "rootsys"
+    ranks = [ai_team.priority_rank(x) for x in ("rootsys", "mireld", "kiosapi", "chatgpt", "gemini", "anything-else")]
+    assert ranks == [0, 1, 2, 3, 4, 5]
 
 
-def test_measured_calls_beat_the_probe_once_there_are_enough():
+def test_a_robot_that_fails_most_of_its_real_calls_loses_its_place_and_two_failures_are_not_enough():
     store = FakeStore()
     _probe(store, "rootsys", chat_ms=300)
     _probe(store, "mireld", chat_ms=900)
-    _usage(store, "rootsys", 9000, n=3)          # slow in real work
+    _usage(store, "rootsys", 9000, ok=False, n=3)          # failing in real work
     _usage(store, "mireld", 1000, n=3)
     s = ai_team.route(store, _github(), {}, NOW)
-    assert s.base_url == "https://api.mireld.my/v1"
-    # two calls are not enough to overrule the probe
+    assert s.base_url == "https://api.mireld.my/v1" and s.fallback_base_url == "https://rootsys.cloud/v1"
+    # two failed calls are not enough to overrule the probe
     store2 = FakeStore()
     _probe(store2, "rootsys", chat_ms=300)
     _probe(store2, "mireld", chat_ms=900)
-    _usage(store2, "rootsys", 9000, n=2)
+    _usage(store2, "rootsys", 9000, ok=False, n=2)
     assert ai_team.route(store2, _github(), {}, NOW).base_url == "https://rootsys.cloud/v1"
+    # being slow is not being down: Wan's order stands
+    store3 = FakeStore()
+    _probe(store3, "rootsys", chat_ms=300)
+    _probe(store3, "mireld", chat_ms=900)
+    _usage(store3, "rootsys", 9000, n=3)
+    _usage(store3, "mireld", 1000, n=3)
+    assert ai_team.route(store3, _github(), {}, NOW).base_url == "https://rootsys.cloud/v1"
 
 
 def test_a_robot_the_probe_found_down_goes_last_but_is_still_a_backup():
@@ -146,8 +157,10 @@ def test_the_pages_reader_key_is_a_candidate_with_its_own_key():
     cfg = {"reader": {"slot": "reader", "provider": "openai", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini",
                       "api_key": "sk-page", "key_host": "api.openai.com"}}
     s = ai_team.route(store, _github(), cfg, NOW)
-    assert s.base_url == "https://api.openai.com/v1" and s.api_key == "sk-page" and s.vision_model == "gpt-4o-mini"
-    assert s.fallback_base_url == "https://rootsys.cloud/v1"
+    assert s.base_url == "https://rootsys.cloud/v1", "Wan's order: rootsys first, a robot he has not ranked after the ranked ones"
+    assert s.fallback_base_url == "https://api.mireld.my/v1", "the backup is the next of Wan's order, Mireld"
+    page = next(x for x in s.chain if x["slug"] == "openai")
+    assert page["key"] == "sk-page" and page["model"] == "gpt-4o-mini", "the page's key is still its own candidate"
     # a key saved for another host is not carried to this one
     cfg["reader"]["key_host"] = "evil.example"
     assert ai_team.route(store, _github(), cfg, NOW).base_url == "https://rootsys.cloud/v1"
@@ -184,7 +197,7 @@ def test_llm_for_and_media_for_go_through_the_router(monkeypatch):
     _probe(store, "mireld", chat_ms=100)
     _probe(store, "rootsys", chat_ms=900)
     monkeypatch.setattr(LLMSettings, "load", classmethod(lambda cls: _github()))
-    assert ai_config.llm_for(store).base_url == "https://api.mireld.my/v1"
+    assert ai_config.llm_for(store).base_url == "https://rootsys.cloud/v1", "Wan's order, not the faster Mireld"
     pin = {"image_gen": {"gateway": "kiosapi", "model": "gpt-image-2"}}
     store.tables[db.SETTINGS] = [{"key": "ai_team", "value": {"pins": pin}}]
     m = _media(openai_base_url="https://kiosapi.com/v1")
@@ -213,7 +226,7 @@ def test_the_probe_lists_the_painter_without_a_chat_question(monkeypatch):
     assert row["chat_ok"] is True and row["model_listed"] is True and row["error"] == "" and posted == []
 
 
-def test_kiosapi_may_write_text_with_a_text_model_and_is_judged_by_speed():
+def test_kiosapi_may_write_text_with_a_text_model_and_takes_its_place_in_wans_order():
     """Wan's reader slot is kiosapi.com + gpt-5.6-sol: a chat model on a gateway that also draws pictures. Judging by the host
     skipped his own text model; the model's name is what decides."""
     store = FakeStore()
@@ -222,9 +235,11 @@ def test_kiosapi_may_write_text_with_a_text_model_and_is_judged_by_speed():
     cfg = {"reader": {"slot": "reader", "provider": "openai", "base_url": "https://kiosapi.com/v1", "model": "gpt-5.6-sol",
                       "api_key": "kk-1", "key_host": "kiosapi.com"}}
     s = ai_team.route(store, _github(), cfg, NOW)
-    assert s.base_url == "https://kiosapi.com/v1" and s.model == "gpt-5.6-sol" and s.api_key == "kk-1"
+    assert s.base_url == "https://rootsys.cloud/v1", "rootsys and Mireld come before KiosAPI"
+    kios = next(x for x in s.chain if x["slug"] == "kiosapi")
+    assert kios["model"] == "gpt-5.6-sol" and kios["key"] == "kk-1" and kios["robot"] == "W3"
     st = _state(store)["reader"]
-    assert st["chosen"]["robot"] == "W3" and st["skipped"] == []
+    assert [o["slug"] for o in st["order"]] == ["rootsys", "mireld", "kiosapi"] and st["skipped"] == []
 
 
 def test_the_motion_job_asks_the_motion_api_first_then_the_team():
@@ -236,16 +251,16 @@ def test_the_motion_job_asks_the_motion_api_first_then_the_team():
                       "api_key": "kk-1", "key_host": "kiosapi.com"}}
     s = ai_team.route(store, _github(), cfg, NOW, job="motion")
     assert s.base_url == "https://kiosapi.com/v1" and s.model == "gpt-5.6-sol", "its own API first even though slower"
-    assert s.fallback_base_url == "https://api.mireld.my/v1", "the fastest of the team is the backup"
+    assert s.fallback_base_url == "https://rootsys.cloud/v1", "after it, Wan's order: rootsys then Mireld"
     st = _state(store)["motion"]
-    assert st["chosen"]["slug"] == "kiosapi" and [o["slug"] for o in st["order"]] == ["kiosapi", "mireld", "rootsys"]
+    assert st["chosen"]["slug"] == "kiosapi" and [o["slug"] for o in st["order"]] == ["kiosapi", "rootsys", "mireld"]
     # the reader job ignores the motion slot
-    assert ai_team.route(store, _github(), cfg, NOW).base_url == "https://api.mireld.my/v1"
-    assert _state(store)["reader"]["order"][0]["slug"] == "mireld"
+    assert ai_team.route(store, _github(), cfg, NOW).base_url == "https://rootsys.cloud/v1"
+    assert _state(store)["reader"]["order"][0]["slug"] == "rootsys"
     # the motion API down: the team answers
     _probe(store, "kiosapi", chat_ok=False, chat_ms=50, error="402 overage")
     store.tables[db.API_STATUS] = [r for r in store.tables[db.API_STATUS] if not (r["slug"] == "kiosapi" and r["chat_ok"])]
-    assert ai_team.route(store, _github(), cfg, NOW, job="motion").base_url == "https://api.mireld.my/v1"
+    assert ai_team.route(store, _github(), cfg, NOW, job="motion").base_url == "https://rootsys.cloud/v1"
 
 
 class FakeLive:

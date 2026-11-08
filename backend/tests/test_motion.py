@@ -170,7 +170,7 @@ def test_process_writes_checks_renders_and_stores_the_video(tmp_path):
     assert got["video_url"] == f"https://cdn/motion/{r['id']}.mp4"
     assert got["poster_url"].endswith(".jpg") and got["width"] == 1080 and 0 < got["duration_s"] <= 70 and got["model"] == "m1"
     assert ">Hai</h1>" in got["html"] and got["check_report"]["ok"] is True and got["bytes"] > 0
-    assert [sc["kicker"] for sc in got["script"]] == ["HOOK", "FAKTA", "KENAPA", "SOLUSI", ""], "the flow, labelled by the worker"
+    assert [sc["kicker"] for sc in got["script"]] == ["HOOK", "CERITA & FAKTA", "TERLEPAS", "CTA", ""], "the flow"
     assert "Guna font besar." in llm.asked[1][0] and "BRIEF: Tiga perkara" in llm.asked[1][1]
     assert "SCENES, FIXED" in llm.asked[1][1] and 'data-start="0"' in llm.asked[1][1], "the film is written to the recorded times"
     assert [c[3] if len(c) > 3 else c[0] for c in calls][:2] == ["check", "render"]

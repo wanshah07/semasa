@@ -33,7 +33,8 @@ def store(*rows, keys=None, **tables):
 
 
 def slow(*slugs):
-    return [{"slug": s, "chat_ok": True, "chat_ms": 9000, "error": "", "checked_at": (NOW - timedelta(hours=1)).isoformat()}
+    """The robots probed an hour ago and DOWN (Wan's order, 8 Nov 2026, puts a provider after the five he ranked)."""
+    return [{"slug": s, "chat_ok": False, "chat_ms": 9000, "error": "502", "checked_at": (NOW - timedelta(hours=1)).isoformat()}
             for s in slugs]
 
 
@@ -98,7 +99,7 @@ def test_an_image_model_on_a_provider_is_named_as_skipped_not_dropped():
 
 # ---- the router --------------------------------------------------------------------------------------------------------------
 
-def test_the_router_writes_with_an_anthropic_provider_when_it_is_the_fastest_and_carries_the_dialect():
+def test_the_router_writes_with_an_anthropic_provider_when_the_ranked_robots_are_down_and_carries_the_dialect():
     st = store(provider())
     st.tables[db.API_STATUS] = slow("rootsys", "mireld") + [{"slug": "claude", "chat_ok": True, "chat_ms": 400, "error": "",
                                                               "checked_at": (NOW - timedelta(hours=1)).isoformat()}]

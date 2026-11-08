@@ -168,10 +168,11 @@ def test_a_silent_film_is_paced_for_reading_and_a_narrated_one_is_brisk():
 
 def test_the_script_prompt_asks_for_the_flow_and_the_pace_that_matches_the_voice():
     voiced = motion.build_script_system({"stream": "regulab", "seconds": 30, "language": "bm", "voice": "male"}, "")
-    assert "HOOK · FAKTA · KENAPA · SOLUSI" in voiced and "EXACTLY 4 teaching scene" in voiced and "BRISK" in voiced
+    assert "HOOK · CERITA & FAKTA · TERLEPAS · CTA" in voiced and "EXACTLY 4 teaching scene" in voiced and "BRISK" in voiced
     assert "at most 153 words" in voiced and "photo_query" in voiced
     silent = motion.build_script_system({"stream": "regulab", "seconds": 30, "language": "en", "voice": "off"}, "")
-    assert "HOOK · FACT · WHY · SOLUTION" in silent and "NO narrator" in silent and "never wait for the next fact" in silent
+    assert "HOOK · STORY & FACT · MISSED OUT · CTA" in silent and "NO narrator" in silent
+    assert "never wait for the next fact" in silent
     assert "up to 135 words" in silent and "TWO TO FOUR short lines" in silent
     teaser = motion.build_script_system({"stream": "regulab", "seconds": 10, "voice": "off"}, "", 1)
     assert "EXACTLY 1 teaching scene" in teaser
@@ -191,11 +192,11 @@ def test_the_plan_is_asked_again_when_it_has_the_wrong_number_of_scenes():
     llm = LLM([one, four])
     plan = motion.plan_scenes(llm, {"voice": "male", "language": "en"}, "", "", "")
     assert len(llm.asked) == 2 and "YOUR LAST PLAN HAD 1 SCENES" in llm.asked[1]
-    assert [s["kicker"] for s in plan["scenes"]] == ["HOOK", "FACT", "WHY", "SOLUTION", ""]
+    assert [s["kicker"] for s in plan["scenes"]] == ["HOOK", "STORY & FACT", "MISSED OUT", "CTA", ""]
     assert plan["photo_query"] == "science lab" and plan["scenes"][-1]["id"] == "brand-outro"
     assert not any("mascot" in s for s in plan["scenes"]), "no presenter in the plan"
     silent = motion.plan_scenes(LLM([four]), {"voice": "off", "language": "bm"}, "", "", "")
-    assert all(s["narration"] == "" for s in silent["scenes"][:4]) and silent["scenes"][3]["kicker"] == "SOLUSI"
+    assert all(s["narration"] == "" for s in silent["scenes"][:4]) and silent["scenes"][3]["kicker"] == "CTA"
 
 
 def _jpeg(size=(2400, 1600)):
@@ -946,3 +947,19 @@ def test_a_long_unbroken_word_in_typed_text_can_wrap_between_pieces():
     assert out.count('class="wd"') == 4, "40 letters = three pieces of 14, 14 and 12, then 'ok'"
     assert "</span></span><span class=\"wd\">" in out, "no space between the pieces of one word"
     assert " <span class=\"wd\"><span class=\"ch s9-ch\">o" in out, "words are still separated by a space"
+
+
+def test_the_script_prompt_asks_for_hook_then_story_and_fact_then_what_was_missed_then_a_follow_cta():
+    """Wan, 8 Nov 2026: hook + layman story and fact + what missed out + CTA, in that order, one job a scene."""
+    from semasa import motion_captions
+    for lang in ("bm", "en"):
+        sys_prompt = motion.build_script_system({"stream": "regulab", "seconds": 30, "language": lang, "voice": "male"}, "")
+        a, b, c, d = (sys_prompt.index(x) for x in ("1. HOOK", "2. CERITA & FAKTA", "3. TERLEPAS", "4. CTA"))
+        assert a < b < c < d, "the four parts, in order"
+        assert "ONE scene" in sys_prompt and "ACTUAL fact inside" in sys_prompt, "story and fact are one scene"
+        assert "Never invent a number, date, clause or case" in sys_prompt, "the missed-out scene may not make things up"
+        assert "FOLLOW is the only ask" in sys_prompt and "never ask the viewer to comment, share, save" in sys_prompt
+    # the CTA the prompt models, and the closing card's own, are neither compliance CTAs nor 'go and find out' hand-offs
+    for line in ("ikuti kami untuk tip macam ni", "follow for more like this", "Follow us for more",
+                 "Ikuti saya untuk tip seterusnya"):
+        assert not motion_captions.hand_off(line), line

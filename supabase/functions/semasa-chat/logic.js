@@ -946,16 +946,20 @@ export function assembleTeam(input = {}) {
 const GEMINI_NOTE = ["Kunci Gemini percuma mungkin membenarkan Google menggunakan apa yang dihantar; Auto tidak memilihnya.",
   "A free Gemini key may let Google use what it is sent; Auto never picks it."];
 
-/** Auto (Wan's "the best that works"): the same idea as the backend router (ai_team.order), healthy first and fast before slow,
-    then the strongest model (MODEL_PREFERENCE), then the fastest. Gemini is never Auto's choice (a free key may let Google use what
+/** Auto (Wan's "the best that works"): the same idea as the backend router (ai_team.order), healthy first, then Wan's robot
+    priority (rootsys, Mireld, KiosAPI, ChatGPT, Gemini: ROBOT_PRIORITY), then fast before slow, then the strongest model
+    (MODEL_PREFERENCE), then the fastest. Gemini is never Auto's choice (a free key may let Google use what
     it is sent: gemini_keys.py keeps it off every job Wan has not allowed), and ChatGPT, which answers without tools here, comes after
     every robot that has them. Returns the robots to try in order, each with its model: [{slug, model}]. */
+export const ROBOT_PRIORITY = ["rootsys", "mireld", "kiosapi", "chatgpt", "gemini"];     // Wan, 8 Nov 2026 (ai_team.PRIORITY)
+export const robotRank = (slug) => { const i = ROBOT_PRIORITY.indexOf(slug); return i < 0 ? ROBOT_PRIORITY.length : i; };
+
 export function pickAuto(robots, { exclude = [], job = "chat" } = {}) {
   const rank = (m) => { const i = MODEL_PREFERENCE.findIndex((p) => modelNorm(p) === modelNorm(m)); return i < 0 ? 99 : i; };
   const health = (r) => (r.state === "ok" ? 0 : r.state === "down" ? 2 : 1);
   const out = new Set(["gemini", ...exclude]);
   return (robots || []).filter((r) => r.enabled && !out.has(r.slug) && robotDoes(r, job))
-    .map((r) => ({ r, key: [health(r), r.tools ? 0 : 1, r.speed_ms != null && r.speed_ms > SLOW_MS ? 1 : 0, rank(r.default_model), r.speed_ms ?? 1e9] }))
+    .map((r) => ({ r, key: [health(r), r.tools ? 0 : 1, robotRank(r.slug), r.speed_ms != null && r.speed_ms > SLOW_MS ? 1 : 0, rank(r.default_model), r.speed_ms ?? 1e9] }))
     .sort((a, b) => { for (let i = 0; i < a.key.length; i++) if (a.key[i] !== b.key[i]) return a.key[i] - b.key[i]; return 0; })
     .map(({ r }) => ({ slug: r.slug, model: r.default_model }));
 }

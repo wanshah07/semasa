@@ -49,8 +49,8 @@ TONE = {
 ROLE = {
     "hook": "an arresting establishing image that makes a viewer stop scrolling",
     "fact": "an objective, documentary-style still life of the subject (a bench, a shelf, a document, an instrument)",
-    "why": "a clear visual metaphor for why it matters",
-    "solution": "a calm, reassuring image of a situation resolved and in order",
+    "why": "a clear visual metaphor for the one detail most people overlook",
+    "solution": "a calm, welcoming image of a situation in order that invites the viewer to come back for more",
 }
 NEVER = ("No text, no letters, no numbers, no logos, no brand names, no packaging or product labels, no watermarks. "
          "No recognisable real person and no clear faces. No before-and-after, no medical or cure imagery, no warning signs. "

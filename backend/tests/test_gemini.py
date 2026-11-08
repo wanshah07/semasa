@@ -147,8 +147,9 @@ class Live:
 
 
 def slow():
-    """rootsys and Mireld probed an hour ago and measured slow, so a healthy Gemini is the fastest robot."""
-    return [{"slug": s, "chat_ok": True, "chat_ms": 5000, "error": "", "checked_at": (NOW - timedelta(hours=1)).isoformat()}
+    """rootsys and Mireld probed an hour ago and DOWN, so a healthy Gemini is the first robot that can write (Wan's order,
+    8 Nov 2026, puts it last, so only the others being down brings it forward)."""
+    return [{"slug": s, "chat_ok": False, "chat_ms": 5000, "error": "502", "checked_at": (NOW - timedelta(hours=1)).isoformat()}
             for s in ("rootsys", "mireld")]
 
 
@@ -179,10 +180,10 @@ def test_the_key_goes_only_to_the_gemini_host():
 
 
 def test_the_motion_job_can_route_to_gemini_and_a_reader_job_never_does(monkeypatch):
-    # make Gemini the fastest robot: rootsys and Mireld are measured slow
+    # Gemini is last in Wan's order: it writes the motion job only when rootsys and Mireld are down
     st = store(key(1))
     st.tables[db.API_STATUS] = slow()
-    live = Live()
+    live = Live(works=lambda k: k.startswith("AIza"))          # the live question also finds rootsys and Mireld down
     got = ai_team.route(st, github(), {}, NOW, job="motion", live=live)
     assert got.base_url == gemini_keys.BASE and got.api_key == "AIza-secret-1" and got.model == gemini_keys.FALLBACK_TEXT
     assert got.fallback_base_url in ("https://rootsys.cloud/v1", "https://api.mireld.my/v1")

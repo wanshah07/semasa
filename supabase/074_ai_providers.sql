@@ -13,9 +13,10 @@
 -- gemini (061, several keys) and chatgpt (Wan's login). Those ids are refused here. Gemini is NOT a dialect here: its keys go on
 -- the Gemini card, where they are picked automatically.
 --
--- jobs: which of the router's jobs may use the robot (backend/semasa/ai_team.py): reader (every worker: scrape, Otak AI, receipts,
--- billing, CRM), ideas (the idea writer and picture reader), motion (the Motion writer), chat (the AI chat page and Telegram's fast
--- answers: the edge functions read this table and the secret with the service role). Default: all four.
+-- jobs: which jobs may use the robot. The worker's router (backend/semasa/ai_team.py): reader (every worker: scrape, Otak AI, receipts,
+-- billing, CRM), ideas (the idea writer and picture reader), motion (the Motion writer). The edge functions (service role, reading
+-- this table and the secret): chat (the AI chat page and its Auto), telegram (Telegram's fast answers), and reader again for FAQ
+-- extraction and design. NULL or an empty list means EVERY job. Default: all five.
 --
 -- SAFE IN A SHARED PROJECT (KPI): two new tables and two functions, all prefixed semasa_. Re-runnable.
 
@@ -28,7 +29,7 @@ create table if not exists public.semasa_ai_providers (
   key_hint    text,                                                     -- "…abcd": enough to recognise the key, never to use it
   key_host    text,                                                     -- the host the key was entered for
   enabled     boolean not null default true,
-  jobs        text[] not null default '{reader,ideas,motion,chat}',
+  jobs        text[] not null default '{chat,reader,ideas,motion,telegram}',
   notes       text,
   created_by  uuid references auth.users (id) on delete set null,
   created_at  timestamptz not null default now(),
@@ -73,7 +74,7 @@ declare
   v_base    text := nullif(btrim(coalesce(p_base_url, '')), '');
   v_model   text := btrim(coalesce(p_model, ''));
   v_key     text := nullif(btrim(coalesce(p_api_key, '')), '');
-  v_jobs    text[] := coalesce(p_jobs, '{reader,ideas,motion,chat}'::text[]);
+  v_jobs    text[] := coalesce(p_jobs, '{chat,reader,ideas,motion,telegram}'::text[]);
   v_notes   text := nullif(left(btrim(coalesce(p_notes, '')), 400), '');
   v_host    text;
   v_old     public.semasa_ai_providers;
@@ -106,10 +107,13 @@ begin
     raise exception 'the endpoint must start with https://';
   end if;
   foreach j in array v_jobs loop
-    if j not in ('reader', 'ideas', 'motion', 'chat') then
-      raise exception 'unknown job % (reader, ideas, motion, chat)', j;
+    if j not in ('chat', 'reader', 'ideas', 'motion', 'telegram') then
+      raise exception 'unknown job % (chat, reader, ideas, motion, telegram)', j;
     end if;
   end loop;
+  if cardinality(v_jobs) = 0 then
+    v_jobs := '{chat,reader,ideas,motion,telegram}'::text[];      -- an empty list means every job, as the edge functions read it
+  end if;
   if v_key is not null then
     if v_key ~ '\s' or length(v_key) < 8 then
       raise exception 'that does not look like an API key (no spaces, at least 8 characters)';

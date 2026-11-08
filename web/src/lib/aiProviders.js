@@ -8,11 +8,13 @@ import { stateOf } from "./aiTeam.js";
 export const RESERVED = ["rootsys", "mireld", "kiosapi", "gemini", "chatgpt"];
 export const DIALECTS = [["openai", ["OpenAI-compatible (KiosAPI, OpenAI, gateway lain)", "OpenAI-compatible (KiosAPI, OpenAI, another gateway)"]],
   ["anthropic", ["Anthropic (Claude)", "Anthropic (Claude)"]]];
+// null or an empty list in the database means EVERY job (the edge functions' rule); the form always saves an explicit list
 export const JOB_CHOICES = [
-  ["reader", ["Semua kerja penulis (imbasan, Otak AI, resit, bil, CRM)", "Every writer job (scrape, Otak AI, receipts, billing, CRM)"]],
+  ["chat", ["Sembang AI (termasuk Auto)", "AI chat (Auto included)"]],
+  ["reader", ["Kerja penulis: imbasan, Otak AI, resit, bil, CRM, FAQ, reka bentuk", "Writer jobs: scrape, Otak AI, receipts, billing, CRM, FAQ, design"]],
   ["ideas", ["Penulis idea dan pembaca gambar", "Idea writer and picture reader"]],
   ["motion", ["Penulis Motion", "Motion writer"]],
-  ["chat", ["Sembang AI dan Telegram", "AI chat and Telegram"]],
+  ["telegram", ["Jawapan pantas Telegram", "Telegram fast answers"]],
 ];
 export const ALL_JOBS = JOB_CHOICES.map(([k]) => k);
 export const ID_RE = /^[a-z0-9-]{2,24}$/;
@@ -22,7 +24,13 @@ export const MAX_PROVIDERS = 20;
 export function formOf(row) {
   if (!row) return { id: "", name: "", dialect: "openai", base_url: "", model: "", api_key: "", enabled: true, jobs: [...ALL_JOBS], notes: "" };
   return { id: row.id, name: row.name || "", dialect: row.dialect || "openai", base_url: row.base_url || "", model: row.model || "", api_key: "",
-    enabled: row.enabled !== false, jobs: Array.isArray(row.jobs) ? row.jobs.filter((j) => ALL_JOBS.includes(j)) : [...ALL_JOBS], notes: row.notes || "" };
+    enabled: row.enabled !== false, jobs: jobsOf(row.jobs), notes: row.notes || "" };
+}
+
+/** The jobs a row allows: null or an empty list is every job. */
+export function jobsOf(jobs) {
+  const list = Array.isArray(jobs) ? jobs.filter((j) => ALL_JOBS.includes(j)) : [];
+  return list.length ? ALL_JOBS.filter((j) => list.includes(j)) : [...ALL_JOBS];
 }
 
 /** A slug suggested from a name: "KiosAPI 2" -> "kiosapi-2". */

@@ -21,7 +21,7 @@ def github(**kw):
 def provider(pid="claude", **over):
     row = {"id": pid, "name": "Claude", "dialect": "anthropic", "base_url": "https://api.anthropic.com",
            "model": "claude-sonnet-5.5", "key_hint": "…1234", "key_host": "api.anthropic.com", "enabled": True,
-           "jobs": ["reader", "ideas", "motion", "chat"], "created_at": "2026-11-08T01:00:00+00:00"}
+           "jobs": ["chat", "reader", "ideas", "motion", "telegram"], "created_at": "2026-11-08T01:00:00+00:00"}
     row.update(over)
     return row
 
@@ -73,6 +73,9 @@ def test_a_provider_is_a_candidate_for_its_jobs_only():
     assert [c["slug"] for c in ai_providers.candidates(st, "motion")] == ["claude"]
     assert ai_providers.candidates(st, "reader") == []
     assert ai_providers.candidates(st, "ideas") == []
+    # null or an empty list means every job, as the edge functions read it
+    assert [c["slug"] for c in ai_providers.candidates(store(provider(jobs=None)), "motion")] == ["claude"]
+    assert [c["slug"] for c in ai_providers.candidates(store(provider(jobs=[])), "reader")] == ["claude"]
 
 
 def test_a_reserved_id_or_a_missing_table_gives_no_robot():

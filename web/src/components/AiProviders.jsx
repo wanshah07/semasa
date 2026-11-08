@@ -6,8 +6,8 @@ import { useTable } from "../lib/hooks";
 import { timeAgo } from "../lib/format";
 import { fmtMs } from "../lib/aiTeam";
 import {
-  DIALECTS, DOT_CLS, JOB_CHOICES, MAX_PROVIDERS, STATE_CLS, STATE_WORDS, formOf, formProblem, hostOf, keyWillDrop, numbered, providerState,
-  rpcArgs, slugOf, toggleJob,
+  DIALECTS, DOT_CLS, JOB_CHOICES, MAX_PROVIDERS, STATE_CLS, STATE_WORDS, formOf, formProblem, hostOf, jobsOf, keyWillDrop, numbered,
+  providerState, rpcArgs, slugOf, toggleJob,
 } from "../lib/aiProviders";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
@@ -92,8 +92,8 @@ export default function AiProviders({ statusRows = [], usageRows = [], onToast }
     <div>
       <h3 className="flex items-center gap-2 text-lg"><Bot size={16} className="text-accent" /> {t("Penyedia AI tambahan (Wanshah 6, 7, …)", "Extra AI providers (Wanshah 6, 7, …)")}</h3>
       <p className="mt-1 max-w-2xl text-[12px] text-muted">
-        {t("Tambah kunci Anthropic (Claude), kunci KiosAPI kedua atau mana-mana gerbang serasi OpenAI. Setiap satu menjadi robot yang boleh dipilih oleh penghala (paling pantas dan sihat, atau yang anda pin), disemak oleh pemeriksa API, dipin dari Telegram dan digunakan oleh Sembang AI untuk kerja yang anda tanda. Kunci dihantar hanya ke hos ia disimpan untuk; tukar endpoint tanpa kunci baharu dan kunci lama digugurkan. Kunci Gemini pergi ke kad Gemini.",
-          "Add an Anthropic (Claude) key, a second KiosAPI key or any OpenAI-compatible gateway. Each becomes a robot the router may pick (fastest and healthy, or the one you pin), the API check probes, Telegram can pin and the AI chat can use, for the jobs you tick. A key is sent only to the host it was saved for; move the endpoint without a new key and the old key is dropped. A Gemini key goes on the Gemini card.")}
+        {t("Tambah kunci Anthropic (Claude), kunci KiosAPI kedua atau mana-mana gerbang serasi OpenAI. Setiap satu menjadi robot yang boleh dipilih oleh penghala (paling pantas dan sihat, atau yang anda pin), disemak oleh pemeriksa API, dipin dari Telegram dan digunakan oleh Sembang AI untuk kerja yang anda tanda. Kunci dihantar hanya ke hos ia disimpan untuk; tukar endpoint tanpa kunci baharu dan kunci lama digugurkan. Dialek anthropic (Claude) berfungsi di mana-mana: penghala, Sembang AI (dengan alat), Telegram. Kunci Gemini pergi ke kad Gemini.",
+          "Add an Anthropic (Claude) key, a second KiosAPI key or any OpenAI-compatible gateway. Each becomes a robot the router may pick (fastest and healthy, or the one you pin), the API check probes, Telegram can pin and the AI chat can use, for the jobs you tick. A key is sent only to the host it was saved for; move the endpoint without a new key and the old key is dropped. The anthropic dialect (Claude) works everywhere: the router, the AI chat (tools on), Telegram. A Gemini key goes on the Gemini card.")}
       </p>
     </div>
   );
@@ -141,9 +141,8 @@ export default function AiProviders({ statusRows = [], usageRows = [], onToast }
                 <dd className="flex items-center gap-1"><KeyRound size={11} className="text-muted" />{r.key_hint ? <code>{r.key_hint}</code> : <span className="text-warn">{t("tiada: sunting dan tampal kunci", "none: edit and paste a key")}</span>}
                   {r.key_host && hostOf(r.base_url) !== String(r.key_host).toLowerCase() && <span className="text-warn"> · {t("terikat kepada", "bound to")} {r.key_host}</span>}</dd>
                 <dt className="text-muted">{t("Kerja", "Jobs")}</dt>
-                <dd className="flex flex-wrap gap-1">{JOB_CHOICES.filter(([k]) => (r.jobs || []).includes(k)).map(([k, words]) => (
-                  <span key={k} className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px]" data-job={k}>{w(words).split(" (")[0]}</span>))}
-                  {!(r.jobs || []).length && <span className="text-warn">{t("tiada kerja ditanda", "no job ticked")}</span>}</dd>
+                <dd className="flex flex-wrap gap-1">{JOB_CHOICES.filter(([k]) => jobsOf(r.jobs).includes(k)).map(([k, words]) => (
+                  <span key={k} className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px]" data-job={k}>{w(words).split(/[:(]/)[0].trim()}</span>))}</dd>
                 {s && <><dt className="text-muted">{t("Semakan", "Check")}</dt>
                   <dd>{s.chat_ok ? `OK · ${fmtMs(s.chat_ms)}` : (s.error || t("gagal", "failed"))}{s.checked_at ? ` · ${timeAgo(s.checked_at)}` : ""}{s.models?.length ? ` · ${s.models.length} ${t("model", "models")}` : ""}</dd></>}
                 {r.notes && <><dt className="text-muted">{t("Nota", "Notes")}</dt><dd className="break-words">{r.notes}</dd></>}

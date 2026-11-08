@@ -1,19 +1,21 @@
 import assert from "node:assert/strict";
 import {
-  ALL_JOBS, DIALECTS, JOB_CHOICES, RESERVED, STATE_WORDS, formOf, formProblem, hostOf, keyWillDrop, numbered, providerState, rpcArgs, slugOf, toggleJob,
+  ALL_JOBS, DIALECTS, JOB_CHOICES, RESERVED, STATE_WORDS, formOf, formProblem, hostOf, jobsOf, keyWillDrop, numbered, providerState, rpcArgs, slugOf, toggleJob,
 } from "./src/lib/aiProviders.js";
 import { themeFor, THEMES } from "./src/lib/robots.js";
 
 const NOW = Date.parse("2026-11-08T06:00:00Z");
 const row = (over = {}) => ({ id: "claude", name: "Claude", dialect: "anthropic", base_url: "https://api.anthropic.com", model: "claude-sonnet-4-5",
-  key_hint: "…1234", key_host: "api.anthropic.com", enabled: true, jobs: ["reader", "ideas", "motion", "chat"], created_at: "2026-11-08T01:00:00Z", ...over });
+  key_hint: "…1234", key_host: "api.anthropic.com", enabled: true, jobs: ["chat", "reader", "ideas", "motion", "telegram"], created_at: "2026-11-08T01:00:00Z", ...over });
 const status = (over = {}) => ({ slug: "claude", key_set: true, reachable: true, key_ok: true, chat_ok: true, checked_at: "2026-11-08T05:00:00Z", role: "provider", ...over });
 
 // the shape mirrors the database
 assert.deepEqual(RESERVED, ["rootsys", "mireld", "kiosapi", "gemini", "chatgpt"]);
-assert.deepEqual(ALL_JOBS, ["reader", "ideas", "motion", "chat"]);
+assert.deepEqual(ALL_JOBS, ["chat", "reader", "ideas", "motion", "telegram"], "the edge functions' and the worker's jobs together");
 assert.deepEqual(DIALECTS.map(([k]) => k), ["openai", "anthropic"], "gemini is not a dialect here: its keys go on the Gemini card");
-assert.equal(JOB_CHOICES.length, 4);
+assert.equal(JOB_CHOICES.length, 5);
+assert.deepEqual(jobsOf(null), ALL_JOBS, "null means every job"); assert.deepEqual(jobsOf([]), ALL_JOBS, "so does an empty list");
+assert.deepEqual(jobsOf(["telegram", "bogus", "chat"]), ["chat", "telegram"]);
 
 // the form
 assert.deepEqual(formOf(null).jobs, ALL_JOBS);
@@ -27,7 +29,7 @@ assert.equal(slugOf("x".repeat(40)).length, 24);
 assert.equal(hostOf("https://API.Anthropic.com/v1/"), "api.anthropic.com");
 assert.equal(hostOf("http://kiosapi.com/v1"), "", "https only");
 assert.equal(hostOf(""), "");
-assert.deepEqual(toggleJob(["chat", "reader"], "motion", true), ["reader", "motion", "chat"]);
+assert.deepEqual(toggleJob(["chat", "reader"], "motion", true), ["chat", "reader", "motion"]);
 assert.deepEqual(toggleJob(["reader", "motion"], "reader", false), ["motion"]);
 
 // what cannot be saved, and why (the same checks the database makes)
@@ -58,7 +60,7 @@ assert.equal(keyWillDrop(good, null), false);
 // the RPC arguments
 assert.deepEqual(rpcArgs({ ...good, id: " Claude ", base_url: "https://api.anthropic.com//", api_key: "", notes: " ", jobs: ["chat", "reader"] }), {
   p_id: "claude", p_name: "Claude", p_dialect: "anthropic", p_base_url: "https://api.anthropic.com", p_model: "claude-sonnet-4-5", p_api_key: null,
-  p_enabled: true, p_jobs: ["reader", "chat"], p_notes: null });
+  p_enabled: true, p_jobs: ["chat", "reader"], p_notes: null });
 assert.equal(rpcArgs({ ...good, enabled: false }).p_enabled, false);
 assert.equal(rpcArgs(good).p_api_key, "sk-ant-12345678");
 

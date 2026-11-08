@@ -22,7 +22,7 @@ log = get_logger("semasa.ai_providers")
 TABLE = "semasa_ai_providers"
 SECRETS = "semasa_ai_provider_secrets"
 RESERVED = ("rootsys", "mireld", "kiosapi", "gemini", "chatgpt")       # the built-in robots: W1..W5
-JOBS = ("reader", "ideas", "motion", "chat")                           # chat is the edge functions' (AI chat page, Telegram)
+JOBS = ("chat", "reader", "ideas", "motion", "telegram")     # chat, telegram: the edge functions; null/empty = every job
 FIRST_ROBOT = 6                                                        # the first provider is Wanshah 6
 ROLE = "provider"                                                      # semasa_api_status.role for a provider's row
 
@@ -80,7 +80,7 @@ def candidates(store: Any, job: str, rows: list[dict[str, Any]] | None = None) -
     robots_by = robots(load(store) if rows is None else rows)
     out = []
     for r in enabled(store, rows):
-        if job not in (r.get("jobs") or []):
+        if r.get("jobs") and job not in r["jobs"]:          # null or an empty list means every job (the edge functions' rule)
             continue
         model = r.get("model") or ""
         out.append({"source": "provider", "slug": r["id"], "provider": r["provider"], "base_url": r["base_url"],

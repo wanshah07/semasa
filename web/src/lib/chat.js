@@ -30,7 +30,7 @@ export async function prepareFiles(files, onProgress = () => {}) {
 export { explain };
 
 const shape = (data, threadId) => ({ connected: true, text: data.text, threadId: data.thread_id || threadId, tools: data.tools || [], memorySaved: data.memory_saved === true,
-  notice: data.notice, model: data.model || "", modelChanged: data.model_changed || null, robot: data.robot || null, switched: data.switched || [] });
+  notice: data.notice, model: data.model || "", modelChanged: data.model_changed || null, robot: data.robot || null, switched: data.switched || [], auto: data.auto !== false });
 
 /** The picker's value as the function takes it: "slug|model" is one robot's model (7 Nov 2026, every model of all five robots), a bare
     model is what an older page saved, "" is Auto. Same rule as logic.js parseChoice. */

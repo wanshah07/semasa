@@ -51,16 +51,25 @@
 //   headed as Wan's standing instructions that never outrank them; settings.ai_memory.search_chats adds search_chats (his other
 //   conversations, the Telegram thread included, through his own login), and when it is off the chat sees only the conversation
 //   it is in and is told so. supabase/070_ai_memory.sql seeds both rows; before it runs, both switches read on.
+// 8 Nov 2026 (Wan: "if the model not live, auto change to other model"): every call site fails over. A MANUAL robot pick that fails
+//   before any text (nothing reached, time-out, 429, 5xx, refused key, model not there: logic.js switchable) continues down Auto's chain
+//   and the page is told (status `switch` with the reason); a refusal on content is not switched. The summary (fold) uses the chain; the
+//   readers (faq_extract, design_clone, design_refine) race candidates from the whole team except Gemini and ChatGPT; `check` tests any
+//   robot, a provider included. The owner's EXTRA PROVIDERS (semasa_ai_providers + semasa_ai_provider_secrets, supabase/074; dialect
+//   'openai' or 'anthropic') join the team as W6.. (logic.js providerRobots): the key goes only to the host it was saved for, an Anthropic
+//   gate is spoken to at /v1/messages (logic.js anthropicBody / foldAnthropic, tools translated to tool_use / tool_result). A probe row
+//   that is stale or says down sorts the robot LAST, never out.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { cleanLayout, designMessages, keepWords, refineMessages } from "./design.js";
 import { faqMessages, parseFaqItems } from "./faq.js";
 import { firstJson } from "./faq.js";
 import {
   CHAT_BUDGET_MS, netError, switchAllowed, turnTimeoutMs,
+  anthropicAnswer, answerText, chatRequest, errorText, foldAnthropic, modelsRequest, pickWorkers, readTeamInput, switchable,
   CHATGPT_CLIENT_ID, CHATGPT_RESPONSES, CHATGPT_TOKEN_URL, assembleTeam, chatgptAccount, chatgptNeedsRefresh, foldResponses, geminiKeyPatch, geminiOutcome,
   refreshedTokens, resolveChoice, responsesBody, tokenExpiry,
   MEMORY, SYSTEM, planFaq, rankModels, shapeFaq, resolveModel, TEST_IMAGE, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
-  OWN_HOSTS, RATE, allow, foldDelta, gatewayConfig, withInstructions, htmlToText, isPrivateIp, lastQuestion, parseArgs, planFold, planQuery, rateKind, readerMessage, readerCandidates, raceCandidates, summariseFailures, READER_BUDGET_MS,
+  OWN_HOSTS, RATE, allow, foldDelta, gatewayConfig, htmlToText, isPrivateIp, lastQuestion, parseArgs, planFold, planQuery, rateKind, readerMessage, readerCandidates, raceCandidates, summariseFailures, READER_BUDGET_MS,
   shapeRows, sseEvents, summaryMessages, userAskedToRemember, whoIs, memorySettings, planChatSearch, shapeChatHits, toolsFor,
 } from "./logic.js";
 
@@ -89,6 +98,21 @@ const asText = (d: any) => {
   const c = d?.choices?.[0]?.message?.content;
   return typeof c === "string" ? c : Array.isArray(c) ? c.map((p: any) => p?.text || "").join("") : "";
 };
+
+/** One complete (not streamed) call on a gate in ITS dialect (logic.js chatRequest / modelsRequest). Never throws. */
+async function gateFetch(req: { url: string; headers: Record<string, string>; body?: string }, ms = 55000, method = "POST") {
+  try {
+    const res = await fetch(req.url, { method, headers: req.headers, ...(req.body ? { body: req.body } : {}), signal: AbortSignal.timeout(ms) });
+    const text = await res.text();
+    let data: any = null;
+    try { data = JSON.parse(text); } catch { /* not JSON */ }
+    return { ok: res.ok, status: res.status, data, text };
+  } catch (e) {
+    return { ok: false, status: 0, data: null, text: netError(e) };
+  }
+}
+/** A gate's model ids from its list answer (OpenAI `data[]` or Anthropic `data[]`, both with `id`). */
+const idsOf = (d: any) => (Array.isArray(d?.data) ? d.data.map((m: any) => String(m?.id || "").replace(/^models\//, "")).filter(Boolean) : null);
 
 let modelCache: { at: number; ids: string[] | null } = { at: 0, ids: null };   // Mireld's model list, kept five minutes
 const MAX_BODY = 40_000_000;                                   // bytes: six pictures of 4 MB plus text; anything more is not a request
@@ -126,8 +150,7 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const admin = serviceKey ? createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
   type Gate = { name: string; base: string; key: string; repeatSystem: boolean; slug?: string; kind?: string; keys?: { id: string; key: string; row: any }[] };
-  const primary: Gate = { name: gw.name, base, key, repeatSystem: gw.repeatSystem };
-  const outboundFor = (g: Gate, p: any) => (g.repeatSystem && p?.messages ? { ...p, messages: withInstructions(p.messages) } : p);
+  const primary: Gate = { name: gw.name, base, key, repeatSystem: gw.repeatSystem, kind: "openai" };
   // When the neutral AI_* secrets carry the main gateway and a Mireld key is still set, Mireld is the reader's last-resort candidate.
   const mireldKey = gw.keyName === "AI_API_KEY" ? (Deno.env.get("MIRELD_API_KEY") || "") : "";
   const mireldBase = Deno.env.get("MIRELD_BASE_URL") || "https://api.mireld.my/v1";
@@ -144,7 +167,9 @@ Deno.serve(async (req) => {
   } catch { return json({ error: "body is not JSON" }, 400); }
   if (!body || typeof body !== "object") return json({ error: "body is not JSON" }, 400);
   const action = String(body.action || "chat");
-  const usesTeam = action === "chat" || action === "models" || (action === "check" && (!!body.robot || !!primaryErr));
+  // the readers draw on the whole team too (8 Nov 2026), so a missing gateway secret no longer refuses them when another robot has a key
+  const readerAction = action === "faq_extract" || action === "design_clone" || action === "design_refine";
+  const usesTeam = action === "chat" || action === "models" || readerAction || (action === "check" && (!!body.robot || !!primaryErr));
   if (primaryErr && !usesTeam) return json({ error: primaryErr }, 503);
 
   // ---- rate guard: a flood from one login is slowed, never the whole function
@@ -172,7 +197,7 @@ Deno.serve(async (req) => {
     return null;
   }
   let modelIds: string[] | null = null;
-  if (!primaryErr && !usesTeam && (body?.model || (!envModel && gw.name !== "Mireld"))) modelIds = await listModelIds();
+  if (!primaryErr && (!usesTeam || readerAction) && (body?.model || (!envModel && gw.name !== "Mireld"))) modelIds = await listModelIds();
   else if (!primaryErr && action === "chat" && !envModel && gw.name !== "Mireld") modelIds = await listModelIds();   // the summary's model
   const ranked = rankModels(modelIds, envModel || "claude-sonnet-5.5");
   const defaultModel = envModel || ranked.recommended || "claude-sonnet-5.5";
@@ -192,20 +217,19 @@ Deno.serve(async (req) => {
     let idleTimer = setTimeout(() => ctl.abort(), 60000);
     const poke = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => ctl.abort(), 60000); };
     try {
-      const res = await fetch(g.base.replace(/\/+$/, "") + "/chat/completions", {
-        method: "POST", headers: { authorization: `Bearer ${g.key}`, "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify(outboundFor(g, { ...payload, stream: true })), signal: ctl.signal,
-      });
+      const rq = chatRequest(g, payload, { stream: true });           // the gate's own dialect (OpenAI, or a provider's Anthropic)
+      const res = await fetch(rq.url, { method: "POST", headers: rq.headers, body: rq.body, signal: ctl.signal });
       const type = res.headers.get("content-type") || "";
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => "");
         let j: any = null; try { j = JSON.parse(text); } catch { /* not JSON */ }
-        return { ok: false, status: res.status, content: "", err: String(j?.error?.message || text).slice(0, 200) };
+        return { ok: false, status: res.status, content: "", err: errorText(j, text) };
       }
       if (!/event-stream/.test(type)) {                      // a gateway that ignores stream:true answers one JSON
         const j: any = await res.json().catch(() => null);
-        return { ok: true, status: res.status, content: asText(j), err: "" };
+        return { ok: true, status: res.status, content: answerText(g, j), err: "" };
       }
+      const fold = g.kind === "anthropic" ? foldAnthropic : foldDelta;
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "", acc: any = null;
@@ -219,8 +243,9 @@ Deno.serve(async (req) => {
         for (const ev of events) {
           if (ev.trim() === "[DONE]") continue;
           let chunk: any = null; try { chunk = JSON.parse(ev); } catch { continue; }
-          if (chunk?.error) return { ok: false, status: Number(chunk.error?.code) || 502, content: "", err: String(chunk.error?.message || chunk.error).slice(0, 200) };
-          acc = foldDelta(acc, chunk);
+          if (chunk?.error && chunk?.type !== "error") return { ok: false, status: Number(chunk.error?.code) || 502, content: "", err: String(chunk.error?.message || chunk.error).slice(0, 200) };
+          acc = fold(acc, chunk);
+          if (acc?.error) return { ok: false, status: 502, content: "", err: acc.error };
         }
       }
       return { ok: true, status: res.status, content: acc?.content || "", err: "" };
@@ -237,11 +262,30 @@ Deno.serve(async (req) => {
       (a layout that really parses) wins while the others are cancelled. When the main gateway is the neutral AI_* one and a Mireld key
       is still set, Mireld is the last candidate. One 138 s budget covers all of it, under the platform's 150 s. */
   async function readerCall(payload: any, accept: (content: string) => boolean = () => true): Promise<Read & { model: string; tried: string[]; failures: any[] }> {
-    const ids = await listModelIds();
     type Cand = { gate: Gate; model: string };
-    const cands: Cand[] = readerCandidates(ids, model, lastReaderWin).map((m) => ({ gate: primary, model: m }));
-    if (!cands.length) cands.push({ gate: primary, model });                  // nothing known: the chosen model, as before
-    if (backup) cands.push({ gate: backup, model: backupModel });
+    const cands: Cand[] = [];
+    if (!primaryErr) {
+      const ids = await listModelIds();
+      cands.push(...readerCandidates(ids, model, lastReaderWin).map((m) => ({ gate: primary, model: m })));
+      if (!cands.length) cands.push({ gate: primary, model });                // nothing known: the chosen model, as before
+    }
+    // 8 Nov 2026: the rest of the team after the function's own gateway: page slots, the owner's providers, Mireld. Never Gemini
+    // (free-key privacy) or ChatGPT (another dialect); a robot that is down or stale is last, not skipped. One model each, the best
+    // picture reader it lists, else its default. The same hedged race and the same budget cover all of them.
+    try {
+      const team = await loadTeam("cached");
+      const seen = new Set(cands.map((c) => c.gate.base.replace(/\/+$/, "")));
+      for (const c of pickWorkers(team.robots, { job: "reader" })) {
+        const g = gateOf(team, c.slug);
+        if (!g || seen.has(g.base.replace(/\/+$/, ""))) continue;
+        seen.add(g.base.replace(/\/+$/, ""));
+        const r = team.robots.find((x: any) => x.slug === c.slug);
+        const m = readerCandidates(r?.models?.map((x: any) => x.id) || [], c.model, "", 1)[0] || c.model;
+        if (m) cands.push({ gate: g, model: m });
+      }
+    } catch (e) { console.warn("reader team not read", String(e)); }
+    if (backup && !cands.some((c) => c.gate.base.replace(/\/+$/, "") === backup.base.replace(/\/+$/, ""))) cands.push({ gate: backup, model: backupModel });
+    if (!cands.length) return { ok: false, status: 503, content: "", err: "no robot can read: no key for any gateway", model, tried: [], failures: [] };
     const startedAt = Date.now();
     const label = (c: Cand) => (c.gate === primary ? c.model : `${c.gate.name}:${c.model}`);
     const race = await raceCandidates(cands, async (c: Cand, signal: AbortSignal) => {
@@ -270,8 +314,8 @@ Deno.serve(async (req) => {
     if (cachedOnly) return undefined;
     const k = g.key || g.keys?.[0]?.key;
     if (!k) return null;
-    const l = await upstream(g.base, k, "/models", { method: "GET" }, 8000).catch(() => null);
-    const ids = l?.ok && Array.isArray(l.data?.data) ? l.data.data.map((m: any) => String(m?.id || "")).filter(Boolean) : null;
+    const l = await gateFetch(modelsRequest({ ...g, key: k }), 8000, "GET");
+    const ids = l.ok ? idsOf(l.data) : null;
     liveModels.set(slug, { at: Date.now(), ids });
     return ids;
   }
@@ -279,37 +323,23 @@ Deno.serve(async (req) => {
   /** Everything the picker needs, and the keys behind it (logic.js assembleTeam). The probe rows and settings are read with the
       caller's login; the four key stores with the service role. A store that cannot be read (a migration not applied) is empty, and
       the robot that needs it says why. */
+  let teamCache: any = null;                                     // one read per request: the chat, its summary and the readers share it
   async function loadTeam(mode: "live" | "cached") {
-    const [st, sets] = await Promise.all([
-      db.from("semasa_api_status").select("slug,base_url,key_set,key_ok,reachable,chat_ok,chat_ms,latency_ms,checked_at,models,model,error"),
-      db.from("semasa_settings").select("key,value").in("key", ["gemini", "gemini_models"]),
-    ]);
-    const setting = (k: string) => ((sets.data || []).find((r: any) => r.key === k)?.value) || {};
-    let slots: any[] = [], gemKeys: any[] = [], gpt: any = null;
-    if (admin) {
-      const [cfg, sec, gk, ga] = await Promise.all([
-        admin.from("semasa_ai_config").select("slot,provider,base_url,model,key_host"),
-        admin.from("semasa_ai_secrets").select("slot,api_key"),
-        admin.from("semasa_gemini_keys").select("id,api_key,enabled,status,cooldown_until,last_used_at,last_ok_at,calls,failures"),
-        admin.from("semasa_chatgpt_auth").select("auth,model,checked_at,last_ok_at,last_error,last_error_at").eq("id", "main").maybeSingle(),
-      ]);
-      const keyOf = new Map((sec.data || []).map((r: any) => [r.slot, r.api_key]));
-      slots = (cfg.data || []).map((r: any) => ({ ...r, api_key: keyOf.get(r.slot) || "" }));
-      gemKeys = gk.data || [];
-      gpt = ga.data || null;
-    }
-    const input = { env: (k: string) => Deno.env.get(k), slots, status: st.data || [], serviceRole: !!admin,
-      gemini: { settings: setting("gemini"), models: setting("gemini_models"), keys: gemKeys }, chatgpt: { row: gpt } };
+    if (teamCache && mode === "cached") return teamCache;
+    // logic.js readTeamInput names every table and column both functions read (the owner's providers, supabase/074, included); a
+    // store that cannot be read is logged and empty, so the five built-ins carry on without it
+    const input = await readTeamInput(db, admin, (k: string) => Deno.env.get(k));
     let team = assembleTeam(input);
     const live: Record<string, string[] | null> = {};
-    // a robot the probe never listed (the function's own gateway on another host) is asked even in "cached" mode: without a list
-    // and with no model set, it would have nothing to offer
-    const probed = new Set((st.data || []).filter((r: any) => Array.isArray(r.models) && r.models.length).map((r: any) => r.slug));
-    await Promise.all(Object.entries(team.gates).filter(([, g]: any) => g.kind === "openai").map(async ([slug, g]) => {
+    // a robot the probe never listed (the function's own gateway on another host, a provider) is asked even in "cached" mode:
+    // without a list and with no model set, it would have nothing to offer
+    const probed = new Set((input.status || []).filter((r: any) => Array.isArray(r.models) && r.models.length).map((r: any) => r.slug));
+    await Promise.all(Object.entries(team.gates).filter(([, g]: any) => g.kind === "openai" || g.kind === "anthropic").map(async ([slug, g]) => {
       const ids = await robotModels(slug, g, mode === "cached" && probed.has(slug));
       if (ids !== undefined) live[slug] = ids;
     }));
     if (Object.keys(live).length) team = assembleTeam({ ...input, live });
+    teamCache = team;
     return team;
   }
 
@@ -496,7 +526,7 @@ Deno.serve(async (req) => {
     // ---- check: models, picture reading, tool calling -------------------------------------------------
     if (body?.action === "check") {
       // the robot the page has selected (7 Nov 2026), else the function's own gateway as before
-      let cBase = gw.base, cKey = gw.key, cName = gw.name;          // read off gw: `base` and `key` are re-bound below for this block
+      let cGate: Gate = primary, cName = gw.name;                   // the function's own gateway unless the page picked a robot
       if (usesTeam) {
         const team = await loadTeam("cached");
         const c = resolveChoice(team.robots, { robot: body?.robot, model: body?.model });
@@ -504,36 +534,29 @@ Deno.serve(async (req) => {
         const g = c.slug ? gateOf(team, c.slug) : null;
         if (!g || !r) return json({ error: "no robot can be tested: " + team.robots.map((x: any) => `${x.name}: ${x.why || x.state_why || "ok"}`).join("; ") }, 503);
         if (g.kind === "chatgpt") return json({ error: "the Test button asks the OpenAI dialect; ChatGPT (Wanshah 5) answers in the chat itself, reads pictures and has no tools there" }, 400);
-        cBase = g.base; cKey = g.key; cName = g.name; model = c.model;
+        cGate = g; cName = g.name; model = c.model;
       }
-      const base = cBase, key = cKey;
-      let ids: string[] | null = null;
-      const list = await upstream(base, key, "/models", { method: "GET" }, 20000).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
-      if (list.ok && Array.isArray(list.data?.data)) ids = list.data.data.map((m: any) => String(m?.id || "").replace(/^models\//, "")).filter(Boolean);
+      // the gate's own dialect (a provider with dialect 'anthropic' is asked at /v1/messages, 8 Nov 2026); the key stays in its header
+      const list = await gateFetch(modelsRequest(cGate), 20000, "GET");
+      const ids: string[] | null = list.ok ? idsOf(list.data) : null;
       const t0 = Date.now();
-      const probe = await upstream(base, key, "/chat/completions", {
-        method: "POST",
-        body: JSON.stringify({
-          model, max_tokens: 20, temperature: 0,
-          messages: [{ role: "user", content: [
-            { type: "text", text: "What colour is this image? Answer with one word." },
-            { type: "image_url", image_url: { url: TEST_IMAGE } }] }],
-        }),
-      }).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
+      const probe = await gateFetch(chatRequest(cGate, {
+        model, max_tokens: 20, temperature: 0,
+        messages: [{ role: "user", content: [
+          { type: "text", text: "What colour is this image? Answer with one word." },
+          { type: "image_url", image_url: { url: TEST_IMAGE } }] }],
+      }));
       const imageMs = Date.now() - t0;
-      const image = probe.ok ? { answer: asText(probe.data) }
-        : { error: `HTTP ${probe.status}: ${String(probe.data?.error?.message || probe.text).slice(0, 160)}` };
-      const tp = await upstream(base, key, "/chat/completions", {
-        method: "POST",
-        body: JSON.stringify({
-          model, max_tokens: 60, temperature: 0, tool_choice: "auto",
-          tools: [{ type: "function", function: { name: "ping", description: "Reply to the user by calling this.", parameters: { type: "object", properties: { word: { type: "string" } }, required: ["word"] } } }],
-          messages: [{ role: "user", content: "Call the ping tool with word = hello. Do not answer in text." }],
-        }),
-      }).catch((e) => ({ ok: false, status: 0, data: null, text: String(e) }));
-      const tools = tp.ok ? { calls: Array.isArray(tp.data?.choices?.[0]?.message?.tool_calls) && tp.data.choices[0].message.tool_calls.length > 0 }
-        : { error: `HTTP ${tp.status}: ${String(tp.data?.error?.message || tp.text).slice(0, 160)}` };
-      return json({ ...checkReport(model, ids, image, tools), base_url: base, gateway: cName, image_ms: imageMs, list_status: list.status, search_configured: !!Deno.env.get("BRAVE_API_KEY") });
+      const image = probe.ok ? { answer: answerText(cGate, probe.data) }
+        : { error: `HTTP ${probe.status}: ${errorText(probe.data, probe.text).slice(0, 160)}` };
+      const tp = await gateFetch(chatRequest(cGate, {
+        model, max_tokens: 60, temperature: 0, tool_choice: "auto",
+        tools: [{ type: "function", function: { name: "ping", description: "Reply to the user by calling this.", parameters: { type: "object", properties: { word: { type: "string" } }, required: ["word"] } } }],
+        messages: [{ role: "user", content: "Call the ping tool with word = hello. Do not answer in text." }],
+      }));
+      const calls = cGate.kind === "anthropic" ? anthropicAnswer(tp.data).toolCalls.length : (Array.isArray(tp.data?.choices?.[0]?.message?.tool_calls) ? tp.data.choices[0].message.tool_calls.length : 0);
+      const tools = tp.ok ? { calls: calls > 0 } : { error: `HTTP ${tp.status}: ${errorText(tp.data, tp.text).slice(0, 160)}` };
+      return json({ ...checkReport(model, ids, image, tools), base_url: cGate.base, gateway: cName, dialect: cGate.kind || "openai", image_ms: imageMs, list_status: list.status, search_configured: !!Deno.env.get("BRAVE_API_KEY") });
     }
 
     // ---- faq_extract: the FAQ page's AI bar (Wan, 1 Oct 2026) -------------------------------------------
@@ -624,15 +647,21 @@ Deno.serve(async (req) => {
     }
     const plan = planFold(stored);
     let summary: string = thread.summary || "";
-    // the summary is written in the Chat Completions dialect: by the chosen robot, or the function's own gateway when ChatGPT answers
-    const foldGate = gate.kind !== "chatgpt" ? gate : (!primaryErr ? primary : null);
-    const foldModel = gate.kind !== "chatgpt" ? model : defaultModel;
-    if (plan.fold.length && foldGate) {
-      const r = await upstream(foldGate.base, foldGate.key, "/chat/completions", { method: "POST", body: JSON.stringify(outboundFor(foldGate, { model: foldModel, max_tokens: 1800, temperature: 0.2, messages: summaryMessages(summary, plan.fold) })) }).catch(() => null);
-      const t = r?.ok ? asText(r.data).trim() : "";
-      if (t) {
-        summary = t.slice(0, 12000);
-        await db.from("semasa_chat_threads").update({ summary, summarized_upto: plan.upto }).eq("id", threadId);
+    // the summary is written by the chain, not only the chosen gate (8 Nov 2026): the chosen robot first, then the next links that
+    // speak a completions dialect (never ChatGPT, whose Responses dialect has no place here); a link that fails before text hands on
+    if (plan.fold.length) {
+      const foldLinks = chain.filter((c: any) => c.gate.kind !== "chatgpt").slice(0, 3);
+      if (!foldLinks.length && !primaryErr) foldLinks.push({ gate: primary, model: defaultModel });
+      for (const c of foldLinks) {
+        if (!switchAllowed(Date.now() - reqStart)) break;
+        const r = await gateFetch(chatRequest(c.gate, { model: c.model, max_tokens: 1800, temperature: 0.2, messages: summaryMessages(summary, plan.fold) }), 40000);
+        const t = r.ok ? answerText(c.gate, r.data).trim() : "";
+        if (t) {
+          summary = t.slice(0, 12000);
+          await db.from("semasa_chat_threads").update({ summary, summarized_upto: plan.upto }).eq("id", threadId);
+          break;
+        }
+        if (!switchable(r.status, errorText(r.data, r.text))) break;
       }
     }
     const { data: noteRows } = await db.from("semasa_chat_memory").select("id,note").order("created_at", { ascending: true }).limit(MEMORY.notes * 2);
@@ -660,20 +689,24 @@ Deno.serve(async (req) => {
     const callsOf = (m: any): Call[] => (Array.isArray(m?.tool_calls) ? m.tool_calls : []).map((c: any) => ({ id: String(c?.id || ""), name: String(c?.function?.name || ""),
       arguments: typeof c?.function?.arguments === "string" ? c.function.arguments : JSON.stringify(c?.function?.arguments || {}),
       ...(c?.extra_content ? { extra_content: c.extra_content } : {}) }));
+    // a complete answer in the gate's dialect, as a Turn
+    const wholeTurn = (g: Gate, j: any, status: number): Turn => (g.kind === "anthropic"
+      ? (() => { const a = anthropicAnswer(j); return { ok: true, status, content: a.content, toolCalls: a.toolCalls, model: a.model, err: "" }; })()
+      : { ok: true, status, content: asText(j), toolCalls: callsOf(j?.choices?.[0]?.message), model: String(j?.model || ""), err: "" });
     async function turn(payload: any, onText: (t: string) => void, g: Gate): Promise<Turn> {
-      const path = g.base.replace(/\/+$/, "") + "/chat/completions";
       const ms = turnTimeoutMs(Date.now() - reqStart);         // never past the platform's budget, so an error can still be sent
+      // the gate's own dialect: OpenAI completions, or a provider's Anthropic Messages (logic.js chatRequest); the key only in its header
       if (!wantStream) {
-        const r = await upstream(g.base, g.key, "/chat/completions", { method: "POST", body: JSON.stringify(outboundFor(g, payload)) }, ms);
-        if (!r.ok) return { ok: false, status: r.status, content: "", toolCalls: [], model: "", err: String(r.data?.error?.message || r.text).slice(0, 200) };
-        return { ok: true, status: r.status, content: asText(r.data), toolCalls: callsOf(r.data?.choices?.[0]?.message), model: String(r.data?.model || ""), err: "" };
+        const r = await gateFetch(chatRequest(g, payload), ms);
+        if (!r.ok) return { ok: false, status: r.status, content: "", toolCalls: [], model: "", err: errorText(r.data, r.text) };
+        return wholeTurn(g, r.data, r.status);
       }
       // a time-out, DNS failure or refused connection is an answer like any other ({ ok: false, status: 0 }), so Auto can hand the
       // question to the next robot and Gemini can try its next key; a stream that breaks after words are out still fails as one
       let res: Response;
       try {
-        res = await fetch(path, { method: "POST", headers: { authorization: `Bearer ${g.key}`, "content-type": "application/json", accept: "text/event-stream" },
-          body: JSON.stringify(outboundFor(g, { ...payload, stream: true })), signal: AbortSignal.timeout(ms) });
+        const rq = chatRequest(g, payload, { stream: true });
+        res = await fetch(rq.url, { method: "POST", headers: rq.headers, body: rq.body, signal: AbortSignal.timeout(ms) });
       } catch (e) {
         return { ok: false, status: 0, content: "", toolCalls: [], model: "", err: netError(e) };
       }
@@ -681,15 +714,16 @@ Deno.serve(async (req) => {
         if (!res.ok || !res.body) {
           const text = await res.text().catch(() => "");
           let j: any = null; try { j = JSON.parse(text); } catch { /* not JSON */ }
-          return { ok: false, status: res.status, content: "", toolCalls: [], model: "", err: String(j?.error?.message || text).slice(0, 200) };
+          return { ok: false, status: res.status, content: "", toolCalls: [], model: "", err: errorText(j, text) };
         }
         const type = res.headers.get("content-type") || "";
         if (!/event-stream/.test(type)) {                       // a gateway that ignores stream:true answers one JSON: read it as such
           const j: any = await res.json().catch(() => null);
-          const content = asText(j);
-          if (content) onText(content);
-          return { ok: true, status: res.status, content, toolCalls: callsOf(j?.choices?.[0]?.message), model: String(j?.model || ""), err: "" };
+          const t = wholeTurn(g, j, res.status);
+          if (t.content) onText(t.content);
+          return t;
         }
+        const fold = g.kind === "anthropic" ? foldAnthropic : foldDelta;
         const reader = res.body.getReader();
         const dec = new TextDecoder();
         let buf = "", acc: any = null;
@@ -702,9 +736,10 @@ Deno.serve(async (req) => {
           for (const ev of events) {
             if (ev.trim() === "[DONE]") continue;
             let chunk: any = null; try { chunk = JSON.parse(ev); } catch { continue; }
-            if (chunk?.error) return { ok: false, status: 502, content: "", toolCalls: [], model: "", err: String(chunk.error?.message || chunk.error).slice(0, 200) };
+            if (chunk?.error && chunk?.type !== "error") return { ok: false, status: 502, content: "", toolCalls: [], model: "", err: String(chunk.error?.message || chunk.error).slice(0, 200) };
             const before = acc?.content || "";
-            acc = foldDelta(acc, chunk);
+            acc = fold(acc, chunk);
+            if (acc.error) return { ok: false, status: 502, content: "", toolCalls: [], model: "", err: acc.error };
             if (acc.content.length > before.length) onText(acc.content.slice(before.length));
           }
         }
@@ -784,23 +819,27 @@ Deno.serve(async (req) => {
         const withTools = toolsOn && round < 4;
         const payload = { model, messages: msgs, max_tokens: 2400, temperature: 0.3, ...(withTools ? { tools: toolsFor(prefs), tool_choice: "auto" } : {}) };
         let r = await callOn(gate, payload, onText);
-        if (!r.ok && withTools && r.status === 400 && !said) {      // this model/gateway does not take tools: answer without them, and say so
+        if (!r.ok && withTools && r.status === 400 && !said && !switchable(r.status, r.err)) {      // this model/gateway does not take tools: answer without them, and say so
           toolsOn = false; toolsNote = "tools_unsupported";
           r = await callOn(gate, { model, messages: msgs, max_tokens: 2400, temperature: 0.3 }, onText);
         }
-        // Auto only: a robot that failed before saying anything hands the question to the next one (Wan's own pick is never swapped)
-        if (!r.ok && choice.auto && round === 0 && !said && link < chain.length - 1) {
+        // A robot that failed before saying anything hands the question to the next link: Auto's chain, and since 8 Nov 2026 Wan's own
+        // pick too (Wan: "if the model not live, auto change to other model"). Only a robot that is NOT LIVE is switched (logic.js
+        // switchable: nothing reached, time-out, 429, 5xx, a refused key, a model that is not there); a refusal on content (a 400
+        // content policy, a context too long) is this question's problem and is reported, not re-asked elsewhere.
+        if (!r.ok && round === 0 && !said && link < chain.length - 1 && switchable(r.status, r.err, said)) {
           // too little of the platform's 150 s left for the next robot to answer: say so now, rather than be cut off mid-call
           if (!switchAllowed(Date.now() - reqStart)) {
             throw new Error(`${gate.name} ${model} failed (${r.status ? `HTTP ${r.status}: ` : ""}${r.err}) and there is no time left to ask another robot: send it again`);
           }
-          switched.push(`${gate.name} ${model}: ${r.status ? `HTTP ${r.status}: ` : ""}${r.err}`.slice(0, 200));
+          const reason = `${r.status ? `HTTP ${r.status}: ` : ""}${r.err}`.slice(0, 160);
+          switched.push(`${gate.name} ${model}: ${reason}`.slice(0, 200));
           link++;
           gate = chain[link].gate; model = chain[link].model;
           toolsOn = wantTools && gate.kind !== "chatgpt";
           if (wantTools && !toolsOn) toolsNote = "tools_unsupported";
           msgs[0] = { role: "system", content: buildSystem({ notes: noteRows || [], summary, now: new Date(), tools: toolsOn, instructions: prefs.instructions, searchChats: prefs.searchChats }) };
-          emit({ type: "status", tool: "switch", detail: `${gate.name} · ${model}` });
+          emit({ type: "status", tool: "switch", detail: `${gate.name} · ${model}`, reason, auto: !!choice.auto, from: switched[switched.length - 1] });
           round--;
           continue;
         }

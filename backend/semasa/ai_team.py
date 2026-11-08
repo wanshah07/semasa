@@ -60,6 +60,9 @@ MIN_CALLS = 3                              # fewer measured calls than this: tru
 LIVE_TTL = timedelta(minutes=10)           # a live answer is trusted this long (runs are frequent; a question is not free)
 LIVE_TRIES = 3                             # models asked per gateway in one search
 LIVE_TIMEOUT = 12                          # seconds a live question may take
+# usage rows that are CHECKS, not work: the 6-hourly probe and the 5-minute edge-function pulse. They are left out of the
+# calls / avg_ms / models_ok ranking (the probe's verdict reaches health() through semasa_api_status instead).
+CHECK_AREAS = ("probe", "pulse")
 
 # slug (api_status.slug_of) -> the robot. A host nobody named here is a "guest" robot with no mascot of its own.
 ROBOTS: dict[str, dict[str, Any]] = {
@@ -121,13 +124,16 @@ def health(store: Any, now: datetime | None = None) -> dict[str, dict[str, Any]]
                 "error": r.get("error") or "", "calls": 0, "failed": 0, "avg_ms": None, "_ms": [],
             }
         since = (now - USAGE_WINDOW).isoformat()
-        for u in store.table(db.API_USAGE).select("gateway,model,ms,ok,created_at").gte("created_at", since).execute().data or []:
+        usage = store.table(db.API_USAGE).select("gateway,model,ms,ok,created_at,area").gte("created_at", since).execute()
+        for u in usage.data or []:
+            if u.get("area") in CHECK_AREAS:
+                continue          # a five-token check says nothing about real work, and 12 pulses an hour would drown it
             h = out.setdefault(u["gateway"], {"probe_ok": None, "probe_ms": None, "probe_at": None, "fresh": False,
                                               "error": "", "calls": 0, "failed": 0, "avg_ms": None, "_ms": []})
             h["calls"] += 1
             if u.get("ok"):
                 h["_ms"].append(int(u.get("ms") or 0))
-                if u.get("model") and u.get("area") != "probe":
+                if u.get("model"):
                     h.setdefault("_by_model", {}).setdefault(u["model"], []).append(int(u.get("ms") or 0))
             else:
                 h["failed"] += 1
@@ -337,13 +343,17 @@ def order(cands: list[dict[str, Any]], hl: dict[str, dict[str, Any]], pin: dict[
     return usable
 
 
-def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: datetime | None = None,
-          job: str = "reader", live: Any = None) -> LLMSettings:
-    """LLMSettings with the fastest healthy text robot as the primary and the next as the backup; the picture reader as
-    ai_config decides it. Records the decision in settings.ai_team_state. With nothing measured the configured order
-    stands, so a store that cannot be read changes nothing."""
-    from . import ai_config
-    base = ai_config.llm_settings(github, cfg)                 # the page's picture reader and vision model, as before
+def chain(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: datetime | None = None,
+          job: str = "reader", live: Any = None, details: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """The FULL ranked chain for this job: every usable text robot `candidates()` lists (plus Gemini when the job is one
+    Wan allows it, gemini_keys.allowed), healthy first, the pinned one first while it is healthy, a down one last and
+    still in the list; every dialect, so an Anthropic robot is a link too. Each link carries {slug, provider, base_url,
+    key, model, vision_model, ...}; `vision_model` is the robot's own model when it reads pictures, else "", so llm.py
+    never sends a picture to a model that cannot see. Records the decision in settings.ai_team_state, exactly as
+    route() always did. `details`, when given, is filled with {"skipped": [...], "state": {...}} for route().
+
+    This consumes candidates() and gemini_keys.candidate() as they are: a robot added to either is a link here with no
+    change to this function. (Feature C, 8 Nov 2026: every backend AI call falls over to another live robot.)"""
     cands = candidates(github, cfg, job)
     gem_seed: dict[str, Any] | None = None
     try:                          # Gemini joins the team for the jobs Wan allows, with the key it picks (gemini_keys.py)
@@ -368,9 +378,11 @@ def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
         except Exception as exc:  # noqa: BLE001 - a live question that breaks leaves the measured order as it was
             log.warning("AI team live check failed (%s); the measured order stands", str(exc)[:160])
     ranked = order(cands, hl, pin)
+    for c in ranked:
+        c["vision_model"] = c["model"] if "read_image" in (c.get("does") or []) else ""
     skipped = [c for c in cands if c["blocked"]]
     state: dict[str, Any] = {
-        "at": (now or datetime.now(UTC)).isoformat(),
+        "at": now_at.isoformat(),
         job: {
             "order": [{k: c.get(k) for k in ("slug", "robot", "name", "model", "source", "healthy", "speed_ms", "why", "pinned")}
                       for c in ranked],
@@ -385,31 +397,53 @@ def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
     if asked:
         state["live"] = {**{k: v for k, v in (_read_state(store).get("live") or {}).items()
                             if _parse(v.get("at")) and now_at - _parse(v["at"]) <= LIVE_TTL}, **asked["answers"]}
-    if not ranked:
+    if ranked:
+        first = ranked[0]
+        second = next((c for c in ranked[1:] if c["provider"] == "openai"), None)   # the OpenAI-dialect backup in the settings
+        state[job]["chosen"] = {"slug": first["slug"], "robot": first["robot"], "name": first["name"], "model": first["model"]}
+        state[job]["why"] = first["why"]
+        state[job]["backup"] = {"slug": second["slug"], "robot": second["robot"], "name": second["name"],
+                                "model": second["model"]} if second else None
+        state[job]["chain"] = [c["slug"] for c in ranked]
+    else:
         state[job]["chosen"] = None
         state[job]["why"] = "no text robot has a usable key" + (": " + skipped[0]["blocked"] if skipped else "")
-        _record(store, state)
+    _record(store, state)
+    if details is not None:
+        details.update(skipped=skipped, state=state)
+    return ranked
+
+
+def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: datetime | None = None,
+          job: str = "reader", live: Any = None) -> LLMSettings:
+    """LLMSettings with the fastest healthy text robot as the primary, the next OpenAI-dialect one as the backup, and the
+    WHOLE ranked list in `chain` (llm.LLM walks it); the picture reader as ai_config decides it. With nothing measured the
+    configured order stands, so a store that cannot be read changes nothing."""
+    from . import ai_config
+    base = ai_config.llm_settings(github, cfg)                 # the page's picture reader and vision model, as before
+    details: dict[str, Any] = {}
+    ranked = chain(store, github, cfg, now, job, live, details)
+    skipped = details.get("skipped") or []
+    if not ranked:
         # keep what ai_config made, minus a reader that cannot write text: llm.py then says why_off() honestly
         if skipped and host_of(base.base_url) == host_of(skipped[0]["base_url"]):
             base = dataclasses.replace(base, blocked=skipped[0]["blocked"])
         return base
     first = ranked[0]
     second = next((c for c in ranked[1:] if c["provider"] == "openai"), None)   # the backup speaks the OpenAI dialect only
-    state[job]["chosen"] = {"slug": first["slug"], "robot": first["robot"], "name": first["name"], "model": first["model"]}
-    state[job]["why"] = first["why"]
-    state[job]["backup"] = {"slug": second["slug"], "robot": second["robot"], "name": second["name"],
-                                 "model": second["model"]} if second else None
-    _record(store, state)
+    links = tuple({k: c.get(k) for k in ("slug", "provider", "base_url", "key", "model", "vision_model", "robot", "name")}
+                  for c in ranked)
     change: dict[str, Any] = dict(provider=first["provider"], base_url=first["base_url"], api_key=first["key"],
                                   model=first["model"], blocked="",
                                   fallback_base_url=second["base_url"] if second else "",
                                   fallback_key=second["key"] if second else None,
-                                  fallback_model=second["model"] if second else "", fallback_blocked="")
+                                  fallback_model=second["model"] if second else "", fallback_blocked="",
+                                  chain=links)
     # a writer that moved host or model reads pictures with its own model unless the page set a picture reader
     if not base.vision_reader_model and (host_of(first["base_url"]) != host_of(base.base_url) or first["model"] != base.model):
         change["vision_model"] = first["model"]
-    log.info("AI team: %s (%s, %s) writes%s", first["name"], first["slug"], first["model"],
-             f"; {second['name']} is the backup" if second else "")
+    log.info("AI team: %s (%s, %s) writes; the chain is %s", first["name"], first["slug"], first["model"],
+             " > ".join(c["slug"] for c in ranked))
     return dataclasses.replace(base, **change)
 
 

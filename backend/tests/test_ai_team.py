@@ -32,9 +32,9 @@ def _probe(store, slug, *, chat_ok=True, chat_ms=800, age_h=1, error=""):
                                                         "checked_at": (NOW - timedelta(hours=age_h)).isoformat()})
 
 
-def _usage(store, slug, ms, ok=True, n=1, age_h=1):
+def _usage(store, slug, ms, ok=True, n=1, age_h=1, area="scrape"):
     for _ in range(n):
-        store.tables.setdefault(db.API_USAGE, []).append({"gateway": slug, "ms": ms, "ok": ok,
+        store.tables.setdefault(db.API_USAGE, []).append({"gateway": slug, "ms": ms, "ok": ok, "area": area,
                                                            "created_at": (NOW - timedelta(hours=age_h)).isoformat()})
 
 
@@ -362,3 +362,85 @@ def test_live_questions_are_off_under_test_and_on_otherwise(monkeypatch):
     assert ai_team.live_enabled() is False
     monkeypatch.delenv("AI_TEAM_LIVE")
     assert ai_team.live_enabled() is True
+
+
+def test_probe_and_pulse_rows_are_checks_not_work_and_never_rank_a_robot():
+    """The 5-minute edge-function pulse writes a usage row every time it asks; 576 five-token answers in 48 h would make a
+    gateway read as fast (or as failing) whatever its real work did."""
+    store = FakeStore()
+    _probe(store, "rootsys", chat_ms=300)
+    _probe(store, "mireld", chat_ms=900)
+    _usage(store, "rootsys", 50, ok=False, n=20, area="pulse")      # a pulse that kept failing
+    _usage(store, "mireld", 10, ok=True, n=20, area="pulse")         # a pulse that answered fast
+    _usage(store, "mireld", 10, ok=True, n=3, area="probe")
+    hl = ai_team.health(store, NOW)
+    assert hl["rootsys"]["calls"] == 0 and hl["mireld"]["calls"] == 0 and hl["mireld"]["models_ok"] == []
+    assert ai_team.route(store, _github(), {}, NOW).base_url == "https://rootsys.cloud/v1", "the probe decides, as before"
+
+
+# --- the full chain (feature C, 8 Nov 2026: every backend AI call falls over to another live robot) -------------------
+
+def _kios_reader():
+    return {"reader": {"slot": "reader", "provider": "openai", "base_url": "https://kiosapi.com/v1", "model": "gpt-5.6-sol",
+                       "api_key": "kk-1", "key_host": "kiosapi.com"}}
+
+
+def test_chain_is_the_whole_team_healthy_pin_first_and_a_down_robot_last():
+    store = FakeStore()
+    _probe(store, "rootsys", chat_ms=300)
+    _probe(store, "kiosapi", chat_ms=2000)
+    _probe(store, "mireld", chat_ok=False, chat_ms=10, error="502")
+    _pin(store, "reader", "kiosapi", "gpt-5.6-sol")
+    links = ai_team.chain(store, _github(), _kios_reader(), NOW)
+    assert [c["slug"] for c in links] == ["kiosapi", "rootsys", "mireld"]
+    assert links[0]["pinned"] and links[0]["healthy"] and not links[-1]["healthy"]
+    assert links[0]["vision_model"] == "gpt-5.6-sol", "KiosAPI reads pictures with its own model"
+    assert links[1]["vision_model"] == "" and links[2]["vision_model"] == "", "rootsys and Mireld are text robots here"
+    assert all(c["key"] for c in links)
+    st = _state(store)["reader"]
+    assert st["chain"] == ["kiosapi", "rootsys", "mireld"] and st["chosen"]["slug"] == "kiosapi"
+
+
+def test_route_carries_the_chain_and_keeps_its_two_writer_shape():
+    store = FakeStore()
+    _probe(store, "rootsys", chat_ms=300)
+    _probe(store, "kiosapi", chat_ms=2000)
+    _probe(store, "mireld", chat_ms=900)
+    s = ai_team.route(store, _github(), _kios_reader(), NOW)
+    assert s.base_url == "https://rootsys.cloud/v1" and s.fallback_base_url == "https://api.mireld.my/v1"
+    assert [c["slug"] for c in s.chain] == ["rootsys", "mireld", "kiosapi"]
+    assert s.chain[0]["key"] == "sk-root" and s.chain[2]["key"] == "kk-1"
+    from semasa.llm import LLM
+    assert [x["label"] for x in LLM(s).links] == ["primary", "backup", "kiosapi"]
+
+
+def test_chain_excludes_gemini_for_the_reader_and_includes_it_for_an_allowed_job():
+    from semasa import gemini_keys
+    store = FakeStore(**{gemini_keys.TABLE: [{"id": "g1", "api_key": "AIza-1", "enabled": True, "status": "new",
+                                               "cooldown_until": None, "last_ok_at": None, "calls": 0, "failures": 0}]})
+    _probe(store, "rootsys", chat_ms=300)
+    _probe(store, "mireld", chat_ms=900)
+    assert "gemini" not in [c["slug"] for c in ai_team.chain(store, _github(), {}, NOW)], "reader is not a Gemini job"
+    links = ai_team.chain(store, _github(), {}, NOW, job="ideas")
+    assert [c["slug"] for c in links][-1] == "gemini" and links[-1]["key"] == "AIza-1"
+    assert links[-1]["vision_model"] == links[-1]["model"], "Gemini reads pictures"
+    assert links[-1]["base_url"] == gemini_keys.BASE, "the key goes to Google's host only"
+
+
+def test_chain_keeps_an_anthropic_robot_as_a_link_where_route_cannot_make_it_the_backup():
+    store = FakeStore()
+    _probe(store, "mireld", chat_ms=100)
+    _probe(store, "anthropic", chat_ms=900)
+    g = _github(provider="anthropic", base_url="https://api.anthropic.com", model="claude-haiku-4-5")
+    links = ai_team.chain(store, g, {}, NOW)
+    assert [(c["slug"], c["provider"]) for c in links] == [("mireld", "openai"), ("anthropic", "anthropic")]
+    s = ai_team.route(store, g, {}, NOW)
+    assert s.fallback_base_url == "" and [c["slug"] for c in s.chain] == ["mireld", "anthropic"]
+
+
+def test_chain_with_no_usable_robot_is_empty_and_says_why():
+    store = FakeStore()
+    cfg = {"reader": {"slot": "reader", "provider": "openai", "base_url": "https://kiosapi.com/v1", "model": "gpt-image-2",
+                      "api_key": "kk-1", "key_host": "kiosapi.com"}}
+    assert ai_team.chain(store, _github(api_key=None, fallback_key=None), cfg, NOW) == []
+    assert "image model" in _state(store)["reader"]["why"]

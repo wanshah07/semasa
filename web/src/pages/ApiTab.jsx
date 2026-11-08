@@ -12,6 +12,7 @@ import Card from "../components/ui/Card";
 import { Segmented } from "../components/ui/Field";
 import AiTeam from "../components/AiTeam";
 import GeminiKeys from "../components/GeminiKeys";
+import AiProviders from "../components/AiProviders";
 import ChatGptLogin from "../components/ChatGptLogin";
 import { AiSettings, MireldTrial } from "./SettingsTab";
 
@@ -35,6 +36,8 @@ export default function ApiTab({ settings, save, onToast }) {
   const L = lang === "en" ? "en" : "bm";
   const statusT = useTable(TABLES.apiStatus, { enabled: true, order: "role", ascending: true, limit: 20, realtime: false, everyMs: 300_000 });
   const usageT = useTable(TABLES.apiUsage, { enabled: true, order: "created_at", limit: 5000, realtime: false, everyMs: 300_000 });
+  // the providers Wan added (supabase/074): read here so the AI team cards number them W6, W7, ... (realtime: the table is published)
+  const providersT = useTable(TABLES.aiProviders, { enabled: true, order: "created_at", ascending: true, limit: 50, everyMs: 120_000 });
   const [days, setDays] = useState(30);
   const [showAll, setShowAll] = useState({});
   const byGw = useMemo(() => usageByGateway(usageT.rows, days), [usageT.rows, days]);
@@ -69,7 +72,7 @@ export default function ApiTab({ settings, save, onToast }) {
 
       <section className="mb-6" data-ai-team>
         <h2 className="mb-2 flex items-center gap-2 text-sm font-medium"><Cpu size={14} className="text-accent" /> {t("Pasukan AI", "AI team")}</h2>
-        <AiTeam statusRows={statusT.rows} usageRows={usageT.rows} state={settings?.ai_team_state} team={settings?.ai_team} save={save} onToast={onToast} />
+        <AiTeam statusRows={statusT.rows} usageRows={usageT.rows} state={settings?.ai_team_state} team={settings?.ai_team} save={save} onToast={onToast} providers={providersT.rows} />
       </section>
 
       <section className="mb-6" data-gemini-section>
@@ -84,6 +87,8 @@ export default function ApiTab({ settings, save, onToast }) {
       {/* moved here from Tetapan (Wan, 7 Nov 2026: "API in setting" goes to its segment): the workers' keys and endpoints, and one Mireld run */}
       <section className="mb-6 space-y-5" data-ai-settings>
         <AiSettings onToast={onToast} github={{ scrape: settings?.ai_github_scrape, media: settings?.ai_github_media }} />
+        {/* extra providers under the AI slots: Anthropic, a second KiosAPI key, any OpenAI-compatible gateway, as robots W6, W7, ... */}
+        <AiProviders statusRows={statusT.rows} usageRows={usageT.rows} onToast={onToast} />
         <MireldTrial settings={settings || {}} save={save} onToast={onToast} />
       </section>
 

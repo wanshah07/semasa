@@ -76,4 +76,20 @@ assert.match(lines[0].text, /glm-5\.3 · rootsys: 910 ms/);
 assert.match(lines[1].text, /502/);
 assert.equal(lines[2].found, true);
 assert.deepEqual(liveLines(null), []);
+// providers Wan added (supabase/074) join as W6, W7, ... in creation order, after every built-in and guest card
+import { FIRST_PROVIDER_ROBOT, robotsWith } from "./src/lib/aiTeam.js";
+const provs = [{ id: "kios2", name: "KiosAPI 2", created_at: "2026-11-08T02:00:00Z" }, { id: "claude", name: "Claude", created_at: "2026-11-08T01:00:00Z", enabled: false }];
+assert.equal(FIRST_PROVIDER_ROBOT, 6);
+assert.deepEqual(Object.entries(robotsWith(provs)).filter(([, r]) => r.added).map(([s, r]) => [s, r.robot, r.name, r.tone, r.enabled]),
+  [["claude", "W6", "Claude", "provider", false], ["kios2", "W7", "KiosAPI 2", "provider", true]], "oldest first; a switched-off one keeps its number");
+assert.equal(robotsWith(provs).rootsys.robot, "W1", "the built-ins are untouched");
+assert.equal(robotsWith([{ id: "gemini", name: "x" }]).gemini.robot, "W4", "a reserved id cannot replace a built-in");
+assert.deepEqual(robotsWith(null), { ...robotsWith([]) });
+assert.equal(robotOf("claude", null, provs).robot, "W6");
+assert.equal(robotOf("claude", { name: "Claude" }).robot, "W?", "without the providers list it is a guest, as before");
+const withProv = teamCards([row("mireld"), row("claude", { role: "provider", base_url: "https://api.anthropic.com" }), row("openai", { base_url: "https://api.openai.com/v1" })], [], NOW, provs);
+assert.deepEqual(withProv.map((c) => c.slug), ["rootsys", "kiosapi", "mireld", "openai", "claude", "kios2"], "built-ins, guests, then the providers");
+assert.equal(withProv[4].robot, "W6"); assert.equal(withProv[4].state, "standby");
+assert.equal(withProv[5].robot, "W7"); assert.equal(withProv[5].state, "offline", "a provider the probe has not reached is an offline W7");
+assert.deepEqual(teamCards([row("mireld")], [], NOW).map((c) => c.slug), ["rootsys", "kiosapi", "mireld"], "no providers: as before");
 console.log("aiTeam.test.mjs: ok");

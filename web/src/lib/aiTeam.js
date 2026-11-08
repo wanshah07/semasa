@@ -14,6 +14,19 @@ export const ROBOTS = {
 };
 // shown in this order, like halal-executive: Wanshah 1, then 3, then 2
 export const ORDER = ["rootsys", "kiosapi", "mireld"];
+export const FIRST_PROVIDER_ROBOT = 6;   // the first provider Wan adds on the API tab is Wanshah 6 (backend ai_providers.FIRST_ROBOT)
+
+/** ROBOTS plus the providers Wan added (semasa_ai_providers rows, supabase/074) as W6, W7, ... in creation order, each keyed by
+    its id. The backend numbers them the same way (every row, on or off, so a switched-off provider keeps its number). */
+export function robotsWith(providers) {
+  const out = { ...ROBOTS };
+  const rows = [...(providers || [])].filter((p) => p && p.id && !ROBOTS[p.id])
+    .sort((a, b) => `${a.created_at || ""}${a.id}`.localeCompare(`${b.created_at || ""}${b.id}`));
+  rows.forEach((p, n) => {
+    out[p.id] = { robot: `W${FIRST_PROVIDER_ROBOT + n}`, name: p.name || p.id, tone: "provider", does: ["read", "write"], added: true, enabled: p.enabled !== false };
+  });
+  return out;
+}
 export const DOES = {
   read: ["Baca", "Read"], write: ["Tulis", "Write"], read_image: ["Baca gambar", "Read image"], make_image: ["Buat gambar", "Make image"],
 };
@@ -23,9 +36,10 @@ export const JOBS = {
 const ACTIVE_MS = 3 * 3600_000;
 const STALE_MS = 13 * 3600_000;
 
-/** A robot for a status row's slug: the named three, else a guest robot named after the host. */
-export function robotOf(slug, row) {
-  if (ROBOTS[slug]) return { slug, ...ROBOTS[slug] };
+/** A robot for a status row's slug: the named five, a provider Wan added, else a guest robot named after the host. */
+export function robotOf(slug, row, providers) {
+  const table = providers ? robotsWith(providers) : ROBOTS;
+  if (table[slug]) return { slug, ...table[slug] };
   const host = (row?.base_url || slug || "").replace(/^https?:\/\//, "").split("/")[0];
   return { slug, robot: "W?", name: row?.name || host || slug, tone: "guest", does: row?.role === "image" ? ["make_image"] : ["read", "write"] };
 }
@@ -42,13 +56,15 @@ export function stateOf(row, usageRows = [], now = Date.now()) {
 }
 
 /** Every robot the page should draw: the three named ones always (a missing row is an offline robot with no key), plus any
-    other gateway the probe wrote. */
-export function teamCards(statusRows, usageRows = [], now = Date.now()) {
+    other gateway the probe wrote, plus every provider Wan added (a provider the probe has not reached yet is an offline W6). */
+export function teamCards(statusRows, usageRows = [], now = Date.now(), providers = []) {
   const bySlug = Object.fromEntries((statusRows || []).map((r) => [r.slug, r]));
-  const slugs = [...ORDER, ...Object.keys(bySlug).filter((s) => !ORDER.includes(s)).sort()];
+  const table = robotsWith(providers);
+  const added = Object.keys(table).filter((s) => table[s].added);
+  const slugs = [...ORDER, ...Object.keys(bySlug).filter((s) => !ORDER.includes(s) && !added.includes(s)).sort(), ...added];
   return slugs.map((slug) => {
     const row = bySlug[slug] || null;
-    const r = robotOf(slug, row);
+    const r = robotOf(slug, row, providers);
     return { ...r, row, state: stateOf(row, usageRows, now), configured: !!row?.key_set };
   });
 }

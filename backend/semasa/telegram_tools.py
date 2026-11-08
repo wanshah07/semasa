@@ -36,8 +36,19 @@ THREAD_TITLE = "Telegram"
 NOTES_MAX = 40                          # the AI chat's own ceiling (semasa-chat logic.js MEMORY.notes): the newest 40
 HISTORY_TURNS = 8
 URL_RE = re.compile(r"https?://[^\s<>\"']+")
-# robots that write text through the router; ChatGPT draws Motion's pictures and writes its storyboard, it is not a pin here
+# robots that write text through the router; ChatGPT draws Motion's pictures and writes its storyboard, it is not a pin here.
+# The providers Wan added on the API tab (ai_providers.py) join at call time: pinnable(store).
 PINNABLE = ("rootsys", "mireld", "kiosapi", "gemini")
+
+
+def pinnable(store: Any) -> tuple[str, ...]:
+    """PINNABLE plus every enabled provider's slug, read now (a provider switched off a minute ago is no longer a button)."""
+    from . import ai_providers
+    try:
+        return PINNABLE + tuple(s for s in ai_providers.slugs(store) if s not in PINNABLE)
+    except Exception as exc:  # noqa: BLE001 - the built-in four still pin
+        log.info("providers not read for /robot (%s)", str(exc)[:100])
+        return PINNABLE
 
 
 # ---- settings row for the conversation ------------------------------------------------------------------------------------
@@ -64,7 +75,9 @@ def _settings(store: Any, key: str) -> dict[str, Any]:
 
 def team(store: Any) -> dict[str, Any]:
     """{rows: [robot rows], chosen: {...} | None, pin: {...} | None} from the API check and the router's last decision."""
-    from .ai_team import ROBOTS
+    from .ai_team import robots
+    ROBOTS = robots(store)                               # the built-in five plus Wan's providers (W6, W7, ...)
+    pins_ok = pinnable(store)
     status = store.table(db.API_STATUS).select("slug,name,model,chat_ok,chat_ms,checked_at,role,error").execute().data or []
     state = _settings(store, "ai_team_state")
     pins = (_settings(store, "ai_team").get("pins") or {})
@@ -75,7 +88,7 @@ def team(store: Any) -> dict[str, Any]:
         r = ROBOTS.get(s["slug"], {"robot": "W?", "name": s.get("name") or s["slug"]})
         rows.append({"slug": s["slug"], "robot": r["robot"], "name": r["name"], "model": s.get("model") or "",
                      "ok": bool(s.get("chat_ok")), "ms": s.get("chat_ms"), "error": str(s.get("error") or "")[:120],
-                     "pinnable": s["slug"] in PINNABLE})
+                     "pinnable": s["slug"] in pins_ok})
     rows.sort(key=lambda r: r["robot"])
     reader = state.get("reader") or {}
     return {"rows": rows, "chosen": reader.get("chosen"), "pin": pins.get("reader"), "why": reader.get("why") or ""}

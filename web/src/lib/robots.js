@@ -7,6 +7,8 @@ export const THEMES = {
   afiq: { shell: ["#2bd18a", "#0b6b3a", "#063d22"], visor: ["#0c2b1d", "#04140c"], eye: "#7dffc4", glow: "#29f0a0", accent: "#c9a227", label: "W1", name: "Wanshah 1" },
   mireld: { shell: ["#7fb2ff", "#2a5fc4", "#15306b"], visor: ["#0f1d3a", "#060c1c"], eye: "#9fe0ff", glow: "#5cc8ff", accent: "#f0b429", label: "W2", name: "Wanshah 2" },
   kios: { shell: ["#c58bff", "#7a3fd1", "#3d1a7a"], visor: ["#25103f", "#10061f"], eye: "#f1d4ff", glow: "#d08cff", accent: "#f0b429", label: "W3", name: "Wanshah 3" },
+  // a provider Wan added on the API tab (Wanshah 6, 7, ...): the same robot in copper, so an added robot reads as one family
+  provider: { shell: ["#f2a65a", "#b85c1e", "#5a2a0c"], visor: ["#2b1608", "#140903"], eye: "#ffe0b8", glow: "#ffb46b", accent: "#c9a227", label: "W6", name: "Wanshah 6" },
   // a gateway nobody named (OpenAI, Anthropic, a host Wan typed in): the same robot in slate
   guest: { shell: ["#b8c2cc", "#5f6b78", "#2e3640"], visor: ["#1e2530", "#0c1016"], eye: "#e6edf3", glow: "#c3ccd6", accent: "#c9a227", label: "W?", name: "Wanshah" },
 };
@@ -40,3 +42,9 @@ export const glassFor = (visor) => `linear-gradient(180deg,${visor[0]},${visor[1
 export const METAL = { front: "linear-gradient(90deg,#8a96a3,#e8edf2,#6b7785)", back: "#5b6672", right: "#6b7785", left: "#aab4bf", top: "#e8edf2", bottom: "#4b5560" };
 export const GREY = { front: "#7b8088", back: "#4b5059", right: "#5a5f68", left: "#8b9098", top: "#a0a5ad", bottom: "#3a3e45" };
 export const GREY_GLASS = "linear-gradient(180deg,#3f444c,#23262b)";
+
+/** The theme for a tone, falling back to the guest slate for a tone nobody named; `label` (W6, W7, ...) overrides the badge. */
+export function themeFor(tone, label) {
+  const t = THEMES[tone] || THEMES.guest;
+  return label ? { ...t, label } : t;
+}

@@ -31,6 +31,7 @@ export const TABLES = {
   brainDocs: "semasa_brain_docs", docTemplates: "semasa_doc_templates",                            // documents drafted from the brain and the FAQ (supabase/037_brain_docs.sql)
   postMetrics: "semasa_post_metrics",                         // Prestasi (supabase/034_post_metrics.sql)
   repos: "semasa_repos", apiStatus: "semasa_api_status", apiUsage: "semasa_api_usage",   // Repo + API (supabase/035_repos_api.sql)
+  aiProviders: "semasa_ai_providers",                         // extra AI providers Wan adds on the API tab (supabase/074_ai_providers.sql)
   repoLibrary: "semasa_repo_library",                         // Pustaka repo (supabase/042_repo_library.sql)
   techItems: "semasa_tech_items",                             // Senarai teknologi: tambahan Wan (supabase/068_tech_items.sql)
   motions: "semasa_motions",                                  // Motion (supabase/043_motion.sql)

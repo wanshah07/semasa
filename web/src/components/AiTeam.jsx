@@ -17,11 +17,11 @@ import { Select } from "./ui/Field";
 const STATE_CLS = { active: "bg-ok/15 text-ok", standby: "bg-warn/15 text-warn", offline: "bg-danger/15 text-danger" };
 const STATE_WORDS = { active: ["Aktif", "Active"], standby: ["Sedia", "Standby"], offline: ["Luar talian", "Offline"] };
 
-export default function AiTeam({ statusRows, usageRows, state, team, save, onToast, compact = false }) {
+export default function AiTeam({ statusRows, usageRows, state, team, save, onToast, compact = false, providers = [] }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? 1 : 0;
   const w = (v) => (Array.isArray(v) ? v[L] : v);
-  const cards = useMemo(() => teamCards(statusRows, usageRows), [statusRows, usageRows]);
+  const cards = useMemo(() => teamCards(statusRows, usageRows, Date.now(), providers), [statusRows, usageRows, providers]);
   const reader = decisionOf(state, "reader");
   const chosen = reader.chosen?.slug;
 

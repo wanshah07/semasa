@@ -41,7 +41,6 @@ export default function ApiTab({ settings, save, onToast }) {
   // the providers Wan added (supabase/074): read here so the AI team cards number them W6, W7, ... (realtime: the table is published)
   const providersT = useTable(TABLES.aiProviders, { enabled: true, order: "created_at", ascending: true, limit: 50, everyMs: 120_000 });
   const [days, setDays] = useState(30);
-  const [showAll, setShowAll] = useState({});
   const byGw = useMemo(() => usageByGateway(usageT.rows, days), [usageT.rows, days]);
   const byDay = useMemo(() => usageByDay(usageT.rows, days), [usageT.rows, days]);
   const byArea = useMemo(() => usageByArea(usageT.rows, days), [usageT.rows, days]);
@@ -101,8 +100,6 @@ export default function ApiTab({ settings, save, onToast }) {
           const V = VERDICT[v] || VERDICT.none;
           const u = byGw[r.slug] || { calls: 0, failed: 0, tokens: 0, prompt: 0, completion: 0, ms: 0, models: {} };
           const models = orderedModels(r);
-          const all = showAll[r.slug];
-          const shown = all ? models : models.slice(0, 12);
           return (
             <Card key={r.slug} className="p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -125,9 +122,8 @@ export default function ApiTab({ settings, save, onToast }) {
               <div className="mt-3">
                 <p className="mb-1 text-xs font-medium text-muted">{t("Model disenaraikan", "Models listed")} · {models.length}</p>
                 {models.length ? (
-                  <div className="flex flex-wrap gap-1">
-                    {shown.map((m) => <span key={m} className={`rounded-pill px-2 py-0.5 text-[11px] ${m === r.model ? "bg-accent/15 text-accent" : u.models[m] ? "bg-ok/10 text-ok" : "bg-surface-2 text-muted"}`} title={u.models[m] ? `${fmtTokens(u.models[m])} tokens` : ""}>{m}</span>)}
-                    {models.length > 12 && <button type="button" className="rounded-pill px-2 py-0.5 text-[11px] text-accent hover:underline" onClick={() => setShowAll((s) => ({ ...s, [r.slug]: !all }))}>{all ? t("kurang", "fewer") : t("+{n} lagi", "+{n} more", { n: models.length - 12 })}</button>}
+                  <div className={`flex flex-wrap gap-1 ${models.length > 24 ? "max-h-44 overflow-y-auto pr-1" : ""}`} data-model-list={r.slug}>
+                    {models.map((m) => <span key={m} className={`rounded-pill px-2 py-0.5 text-[11px] ${m === r.model ? "bg-accent/15 text-accent" : u.models[m] ? "bg-ok/10 text-ok" : "bg-surface-2 text-muted"}`} title={u.models[m] ? `${fmtTokens(u.models[m])} tokens` : ""}>{m}</span>)}
                   </div>
                 ) : <p className="text-xs text-muted">{t("Gerbang tidak menyenaraikan model (atau kunci ditolak).", "The gateway lists no models (or the key was refused).")}</p>}
               </div>

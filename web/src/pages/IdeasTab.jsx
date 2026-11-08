@@ -110,12 +110,15 @@ function SourcePills({ r }) {
   const host = hostOf(r.source_url);
   const pos = r.brief?.position;
   const pill = "inline-flex max-w-full items-center gap-1 truncate rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted";
-  if (!host && !r.source_name && !r.brief?.replaces && !pos && !r.brief?.auto) return null;
+  const pair = r.brief?.pair ? r.brief.pair_stream : "";    // made together with the other stream's idea (IdeaComposer "Both")
+  if (!host && !r.source_name && !r.brief?.replaces && !pos && !r.brief?.auto && !pair) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
       {host && <a href={r.source_url} target="_blank" rel="noopener noreferrer" className={`${pill} hover:text-ink`} title={r.source_url}>
         <ExternalLink size={10} className="shrink-0" /> {host}</a>}
       {r.source_name && hostOf(`https://${r.source_name}`) !== host && <span className={pill}>{r.source_name}</span>}
+      {pair && <span className={`${pill} text-accent`} data-idea-pair={pair}>
+        {t("Berpasangan dengan idea {s}", "Paired with the {s} idea", { s: pair === "linkedin" ? "LinkedIn" : "ws.regulab" })}</span>}
       {r.brief?.auto && <span className={`${pill} text-accent`}>{t("Auto-isi slot kosong", "Auto-filled empty slot")}</span>}
       {r.brief?.replaces && <span className={`${pill} text-warn`}>{t("Pengganti draf ditolak", "Replaces a rejected draft")}</span>}
       {pos?.date && <span className={pill}><CalendarClock size={10} className="shrink-0" /> {t("Untuk {d} {s}", "For {d} {s}", { d: pos.date, s: pos.slot })}</span>}

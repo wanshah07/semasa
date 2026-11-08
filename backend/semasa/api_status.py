@@ -39,6 +39,7 @@ NAMES = {
     "generativelanguage.googleapis.com": ("gemini", "Gemini (Wanshah 4)"),
 }
 IMAGE_ROLES = ("image",)       # a picture maker: list its models and accept the key, never ask it a chat question
+PROVIDER_ROLE = "provider"     # a robot Wan added on the API tab (ai_providers.py): probed like any text robot
 BALANCE_PATHS = (
     "/dashboard/billing/credit_grants",
     "/dashboard/billing/subscription",
@@ -50,10 +51,27 @@ BALANCE_PATHS = (
 )
 
 
+# host -> (slug, name) of the providers Wan added (supabase/074), filled by remember_providers() when a run loads them, so the
+# usage sink files a provider's calls under the provider's own slug (the row the API tab draws) and not under its bare host
+PROVIDER_HOSTS: dict[str, tuple[str, str]] = {}
+
+
+def remember_providers(rows: list[dict[str, Any]]) -> None:
+    """Name the hosts of Wan's providers for slug_of. A built-in host (NAMES) keeps its own slug: a second key for kiosapi.com
+    is a robot of its own in the router, but its usage is counted with KiosAPI's."""
+    PROVIDER_HOSTS.clear()
+    for r in rows or []:
+        host = host_of(r.get("base_url")).lower()
+        if host and host not in NAMES and host not in PROVIDER_HOSTS:
+            PROVIDER_HOSTS[host] = (str(r.get("id")), str(r.get("name") or r.get("id")))
+
+
 def slug_of(base_url: str) -> tuple[str, str]:
     host = host_of(base_url).lower()
     if host in NAMES:
         return NAMES[host]
+    if host in PROVIDER_HOSTS:
+        return PROVIDER_HOSTS[host]
     return host.replace(".", "-") or "unknown", host or "unknown"
 
 
@@ -362,6 +380,13 @@ def main() -> int:
             extra.append(gem)
     except Exception as exc:  # noqa: BLE001 - the other robots are probed all the same
         log.info("Gemini not probed: %s", str(exc)[:120])
+    try:                                    # the providers Wan added (074 may not be applied): one row each, role "provider"
+        from . import ai_providers
+        provs = ai_providers.load(store)
+        remember_providers(provs)
+        extra += ai_providers.gateways(store, provs)
+    except Exception as exc:  # noqa: BLE001
+        log.info("AI providers not probed: %s", str(exc)[:120])
     rows = run(store, settings, timeout=int(os.environ.get("LLM_TIMEOUT") or 30), media=media, github=LLMSettings.load(), cfg=cfg,
                extra=extra)
     # the probe just measured every robot: decide the order now, so the API tab shows the team the next run will use

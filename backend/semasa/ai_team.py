@@ -73,6 +73,8 @@ ROBOTS: dict[str, dict[str, Any]] = {
     # ChatGPT (Wan, 7 Nov 2026: "add bot for chatgpt"): Wan's own ChatGPT login (chatgpt_login.py), not an API key
     "chatgpt": {"robot": "W5", "name": "Wanshah 5", "tone": "guest", "does": ["read", "write", "read_image", "make_image"]},
 }
+# Providers Wan adds on the API tab (ai_providers.py, supabase/074) follow as W6, W7, ... in creation order: robots() merges them.
+PROVIDER_TONE = "provider"
 # a model that draws, not one that talks: never a text writer whatever slot it was typed into
 IMAGE_MODEL_RE = re.compile(r"image|dall-?e|flux|stable-?diffusion|sdxl|imagen|seedream|sora|veo|kling|wan2|hunyuan", re.I)
 
@@ -86,6 +88,12 @@ def robot_of(base_url: str) -> dict[str, Any]:
     slug = slug_of(base_url)
     return {"slug": slug, **ROBOTS.get(slug, {"robot": "W?", "name": host_of(base_url) or slug, "tone": "guest",
                                              "does": ["read", "write"]})}
+
+
+def robots(store: Any) -> dict[str, dict[str, Any]]:
+    """ROBOTS plus every provider Wan added (W6, W7, ...), keyed by slug: the table Telegram and the page read names from."""
+    from . import ai_providers
+    return {**ROBOTS, **ai_providers.robots(ai_providers.load(store))}
 
 
 def cannot_write_text(base_url: str, model: str) -> str:
@@ -271,10 +279,12 @@ def live_verify(cands: list[dict[str, Any]], hl: dict[str, dict[str, Any]], pin:
 
 # --- the decision ---------------------------------------------------------------------------------------------------
 
-def candidates(github: LLMSettings, cfg: dict[str, dict[str, Any]], job: str = "reader") -> list[dict[str, Any]]:
+def candidates(github: LLMSettings, cfg: dict[str, dict[str, Any]], job: str = "reader",
+               providers: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """Every text gateway a key exists for, each host once: for the motion job the page's own motion slot first, then the
-    page's reader slot, GitHub's primary, GitHub's backup. `skipped` names the ones that cannot write text."""
-    from . import ai_config
+    page's reader slot, GitHub's primary, GitHub's backup, then every provider Wan added (`providers`, the rows
+    ai_providers.load returns) whose `jobs` allow this job. `skipped` names the ones that cannot write text."""
+    from . import ai_config, ai_providers
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
 
@@ -303,6 +313,10 @@ def candidates(github: LLMSettings, cfg: dict[str, dict[str, Any]], job: str = "
     add("github", github.provider, github.base_url, github.api_key, github.model, github.blocked)
     if github.fallback_key:
         add("backup", "openai", github.fallback_base_url, github.fallback_key, github.fallback_model, github.fallback_blocked)
+    for c in ai_providers.candidates(None, job, providers or []):
+        if c["slug"] not in seen:                      # a provider is its own robot even on a host a built-in also uses
+            seen.add(c["slug"])
+            out.append(c)
     return out
 
 
@@ -344,7 +358,14 @@ def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
     stands, so a store that cannot be read changes nothing."""
     from . import ai_config
     base = ai_config.llm_settings(github, cfg)                 # the page's picture reader and vision model, as before
-    cands = candidates(github, cfg, job)
+    providers: list[dict[str, Any]] = []
+    try:                          # the providers Wan added on the API tab (supabase/074): robots W6, W7, ... for their jobs
+        from . import ai_providers, api_status
+        providers = ai_providers.load(store)
+        api_status.remember_providers(providers)           # so their usage rows carry the provider's slug, not its host
+    except Exception as exc:  # noqa: BLE001 - no providers is the team as it was
+        log.info("AI providers not considered (%s)", str(exc)[:120])
+    cands = candidates(github, cfg, job, providers)
     gem_seed: dict[str, Any] | None = None
     try:                          # Gemini joins the team for the jobs Wan allows, with the key it picks (gemini_keys.py)
         from . import gemini_keys

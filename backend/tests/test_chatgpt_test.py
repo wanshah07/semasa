@@ -21,7 +21,7 @@ class Login:
 
     def read_image(self, system, prompt, data, mime, *, model, timeout):
         self.asked.append("read")
-        assert mime == "image/png" and Image.open(io.BytesIO(data)).size == (800, 400)
+        assert mime == "image/png" and Image.open(io.BytesIO(data)).size == (800, 460)
         return self.read
 
     def draw(self, prompt, *, model, timeout):
@@ -35,7 +35,7 @@ class Login:
 
 def test_the_test_picture_is_a_real_png_with_the_things_a_reader_must_name():
     img = Image.open(io.BytesIO(ct.test_picture())).convert("RGB")
-    assert img.size == (800, 400)
+    assert img.size == (800, 460)
     assert img.getpixel((160, 180)) == (220, 30, 30) and img.getpixel((420, 180)) == (30, 60, 220)
 
 

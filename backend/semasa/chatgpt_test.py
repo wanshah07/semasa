@@ -26,7 +26,7 @@ TEXT_ON_PICTURE = "WS 4821"
 
 def test_picture() -> bytes:
     """A picture with three things a reader must get right: a red circle, a blue square and the text WS 4821."""
-    img = Image.new("RGB", (800, 400), "white")
+    img = Image.new("RGB", (800, 460), "white")
     d = ImageDraw.Draw(img)
     d.ellipse((60, 80, 260, 280), fill=(220, 30, 30))
     d.rectangle((320, 80, 520, 280), fill=(30, 60, 220))
@@ -34,7 +34,7 @@ def test_picture() -> bytes:
         font = ImageFont.load_default(size=70)
     except TypeError:                       # an older Pillow has one fixed size
         font = ImageFont.load_default()
-    d.text((560, 150), TEXT_ON_PICTURE, fill="black", font=font)
+    d.text((60, 320), TEXT_ON_PICTURE, fill="black", font=font)
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return buf.getvalue()

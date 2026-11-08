@@ -555,3 +555,47 @@ def test_chatgpt_joins_the_team_only_for_the_worker_jobs_while_connected_enabled
     assert cl.candidate(st, "reader", NOW) is not None, "an old refusal is re-tried: the next probe decides"
     st.tables[db.API_STATUS][0].update(checked_at=(NOW - timedelta(hours=2)).isoformat(), error="timeout")
     assert cl.candidate(st, "reader", NOW) is not None, "only a refused MODEL keeps it out, not a slow answer"
+
+
+# ---- the image tool refusing a complexity level (8 Nov 2026, live: Complexity 'medium' is not supported) -------------------
+
+def complexity_failed(level):
+    msg = f"Complexity '{level}' is not supported for this image model."
+    return sse({"type": "response.failed", "response": {"error": {"message": msg}}})
+
+
+class Picky(Http2):
+    """An image tool that only accepts one complexity level; every other one is refused by name, as the live backend does."""
+
+    def __init__(self, ok_level, png):
+        super().__init__(listed=[])
+        self.ok_level, self.png = ok_level, png
+
+    def post(self, url, **kw):
+        self.calls.append((url, kw))
+        level = kw["json"]["tools"][0].get("complexity") or "medium"
+        if level == self.ok_level:
+            return Resp(200, lines=done_event(self.png))
+        return Resp(200, lines=complexity_failed(level))
+
+    def levels(self):
+        return [kw["json"]["tools"][0].get("complexity") for _, kw in self.calls]
+
+
+def test_a_refused_complexity_is_retried_at_the_next_level_and_remembered_for_the_next_picture():
+    png = picture()
+    http = Picky("low", png)
+    lg = login(store(model="gpt-6.1-sol"), http)
+    assert lg.draw("a lab", model="gpt-6.1-sol") == png
+    assert http.levels() == [None, "low"], "the default is refused by name, then low is asked"
+    assert lg.draw("another", model="gpt-6.1-sol") == png
+    assert http.levels() == [None, "low", "low"], "the next picture starts at the level that worked"
+
+
+def test_when_no_complexity_level_works_the_model_is_treated_as_refused_and_says_what_was_tried():
+    http = Picky("never", picture())
+    with pytest.raises(cl.ChatGPTError) as e:
+        login(store(model="gpt-6.1-sol"), http).draw("a lab", model="gpt-6.1-sol")
+    assert e.value.model and "Tried" in str(e.value)
+    assert {"low", "high"} <= {lv for lv in http.levels() if lv}, "every other level was asked"
+    assert len(http.calls) <= (1 + cl.MODEL_TRIES) * 3 + 3, "a bounded number of rejected requests"

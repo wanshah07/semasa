@@ -27,6 +27,7 @@ jobs:
       - name: Install
         run: pip install -r requirements.txt
       - name: Write, read and draw through ChatGPT
+        shell: bash
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

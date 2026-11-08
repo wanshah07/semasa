@@ -64,6 +64,11 @@ def writer_candidates(listed: list[str]) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+# The image tool refuses a setting it does not offer for the image model behind the chosen model (8 Nov 2026, gpt-6.1-sol:
+# "Complexity 'medium' is not supported for this image model."). The default is refused, so the other levels are asked in turn.
+COMPLEXITY_REFUSED = re.compile(r"complexity '([\w-]+)' is not supported", re.I)
+COMPLEXITIES = ("low", "high", "medium")
+
 MODEL_REFUSED = re.compile(r"model_not_found|model is not supported|not supported when using codex|unknown model|"
                            r"does not exist|invalid model", re.I)
 
@@ -295,10 +300,12 @@ class Login:
         return "ChatGPT login: accepted"
 
     # ---- a picture
-    def _body(self, prompt: str, model: str, size: str, variant: int) -> dict[str, Any]:
+    def _body(self, prompt: str, model: str, size: str, variant: int, complexity: str | None = None) -> dict[str, Any]:
         tool: dict[str, Any] = {"type": "image_generation"}
         if variant == 0:
             tool["size"] = size
+        if complexity:
+            tool["complexity"] = complexity
         body = {"model": model, "instructions": INSTRUCTIONS, "store": False, "stream": True,
                 "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": prompt}]}],
                 "tools": [tool], "parallel_tool_calls": False}
@@ -414,8 +421,37 @@ class Login:
     def draw(self, prompt: str, *, size: str = "1024x1024", model: str = DEFAULT_MODEL, timeout: int = 300) -> bytes:
         """One picture's bytes (PNG or JPEG, whatever ChatGPT sends). Variants run only after a 400 that names what it did not
         accept: the sized forced-tool call first, then without a forced tool, then with the bare tool. A refused model is
-        replaced by one the account allows (_with_model)."""
-        return self._with_model(lambda m: self._run(lambda v: self._body(prompt, m, size, v), read_stream, timeout, 2), model)
+        replaced by one the account allows (_with_model). When the image tool refuses a complexity level ("Complexity 'medium' is
+        not supported for this image model"), the other levels are asked in turn, and the one that works is remembered for this
+        login; when none works the model is treated as refused so the account's next model is tried."""
+        def one(m: str, complexity: str | None) -> bytes:
+            return self._run(lambda v: self._body(prompt, m, size, v, complexity), read_stream, timeout, 2)
+
+        def call(m: str) -> bytes:
+            first = getattr(self, "complexity", None)
+            try:
+                return one(m, first)
+            except ChatGPTError as exc:
+                seen = COMPLEXITY_REFUSED.search(str(exc))
+                if not seen:
+                    raise
+                refused, err = {seen.group(1).lower()}, exc
+            for level in COMPLEXITIES:
+                if level in refused:
+                    continue
+                try:
+                    out = one(m, level)
+                except ChatGPTError as exc2:
+                    again = COMPLEXITY_REFUSED.search(str(exc2))
+                    if not again:
+                        raise
+                    refused.add(again.group(1).lower())
+                    err = exc2
+                    continue
+                self.complexity = level
+                return out
+            raise ChatGPTError(f"{err} Tried complexity {', '.join(sorted(refused))}.", model=True)
+        return self._with_model(call, model)
 
     def write(self, system: str, user: str, *, model: str = DEFAULT_MODEL, timeout: int = 180) -> str:
         """Words from ChatGPT through the same login (Wan, 7 Nov 2026: the storyboard "from chatgpt and gemini"): the same

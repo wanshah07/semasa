@@ -10,6 +10,8 @@ name: Deploy functions
 # runners does not matter here; the Mireld call happens later, from inside Supabase.
 #
 # JWT verification stays ON (the default). The function also checks auth.getUser + semasa_is_uploader() itself.
+# Two exceptions are deployed --no-verify-jwt because their callers carry no Supabase login and each has a secret header as
+# its gate: semasa-telegram (Telegram's webhook) and semasa-pulse (the database clock, supabase/075_api_pulse.sql).
 
 on:
   push:
@@ -59,6 +61,16 @@ jobs:
           echo "::add-mask::$secret"
           supabase secrets set "TELEGRAM_WEBHOOK_SECRET=$secret" --project-ref "$PROJECT_REF" --yes   # no terminal to confirm on
 
+      # The API pulse's shared secret: the same value Wan put in the Vault secret `semasa_pulse_secret` (supabase/075_api_pulse.sql),
+      # typed into the GitHub secret PULSE_SECRET. Skipped (with a notice) while it is not set: the clock then gets 401 and only the
+      # page's "Semak sekarang" (a signed-in uploader) can run the pulse.
+      - name: Pulse secret
+        env:
+          PULSE_SECRET: ${{ secrets.PULSE_SECRET }}
+        run: |
+          if [ -z "$PULSE_SECRET" ]; then echo "::notice::PULSE_SECRET not set: the 5-minute API pulse from the clock stays off"; exit 0; fi
+          supabase secrets set "PULSE_SECRET=$PULSE_SECRET" --project-ref "$PROJECT_REF" --yes   # no terminal to confirm on
+
       - name: Deploy each function
         run: |
           set -e
@@ -69,8 +81,9 @@ jobs:
             [ -f "$dir/index.ts" ] || continue
             found=1
             echo "::group::deploy $name"
-            # Telegram's webhook carries no Supabase login: its secret header is the gate (semasa-telegram/index.ts)
-            if [ "$name" = "semasa-telegram" ]; then extra="--no-verify-jwt"; else extra=""; fi
+            # Telegram's webhook and the database clock carry no Supabase login: a secret header is each one's gate
+            # (semasa-telegram/index.ts, semasa-pulse/index.ts; the pulse still checks an uploader's JWT itself when one is sent)
+            case "$name" in semasa-telegram|semasa-pulse) extra="--no-verify-jwt" ;; *) extra="" ;; esac
             supabase functions deploy "$name" --project-ref "$PROJECT_REF" --use-api --yes $extra
             echo "::endgroup::"
           done

@@ -20,8 +20,8 @@ export const SOURCE_WORDS = {
 // Outside services, by the credential each worker reads. `env`: the secret names in .github/workflows; `store`: a key held in
 // the database instead (Wan pastes it on a page); `probe`: the semasa_api_status slug whose models belong to this entry.
 export const CODE_APIS = [
-  { id: "supabase", name: "Supabase", env: ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_ACCESS_TOKEN"], url: "https://supabase.com", docs: "https://supabase.com/docs",
-    used: ["Pangkalan data, storan fail dan log masuk; setiap pekerja dan halaman. Token akses menghantar Edge Functions.", "Database, file storage and sign-in; every worker and page. The access token deploys the Edge Functions."] },
+  { id: "supabase", name: "Supabase", env: ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_ACCESS_TOKEN", "PULSE_SECRET"], url: "https://supabase.com", docs: "https://supabase.com/docs",
+    used: ["Pangkalan data, storan fail dan log masuk; setiap pekerja dan halaman. Token akses menghantar Edge Functions; PULSE_SECRET ialah rahsia jam denyut API (sama dengan Vault semasa_pulse_secret).", "Database, file storage and sign-in; every worker and page. The access token deploys the Edge Functions; PULSE_SECRET is the API pulse clock's secret (the same value as Vault semasa_pulse_secret)."] },
   { id: "llm", name: "Gerbang AI (penulis utama dan sandaran)", env: ["LLM_API_KEY", "LLM_FALLBACK_API_KEY"], url: "", docs: "",
     used: ["Kunci penulis utama dan sandaran; gerbang dan model yang diperiksa disenaraikan di bawah.", "The primary and backup writers' keys; the gateways and models the probe reads are listed below."] },
   { id: "openai", name: "OpenAI", env: ["OPENAI_API_KEY"], url: "https://platform.openai.com", docs: "https://platform.openai.com/docs",

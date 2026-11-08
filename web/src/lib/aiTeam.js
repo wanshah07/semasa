@@ -37,7 +37,7 @@ export function stateOf(row, usageRows = [], now = Date.now()) {
   if (row.checked_at && now - new Date(row.checked_at).getTime() > STALE_MS) return "offline";
   if (!row.reachable || row.key_ok === false) return "offline";
   if (row.chat_ok === false) return "offline";
-  const last = (usageRows || []).reduce((m, u) => (u.gateway === row.slug && u.ok && u.area !== "probe" ? Math.max(m, new Date(u.created_at).getTime()) : m), 0);
+  const last = (usageRows || []).reduce((m, u) => (u.gateway === row.slug && u.ok && u.area !== "probe" && u.area !== "pulse" ? Math.max(m, new Date(u.created_at).getTime()) : m), 0);
   return now - last < ACTIVE_MS ? "active" : "standby";
 }
 

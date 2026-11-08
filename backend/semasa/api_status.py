@@ -37,6 +37,7 @@ NAMES = {
     "api.anthropic.com": ("anthropic", "Anthropic"),
     "kiosapi.com": ("kiosapi", "KiosAPI (Wanshah 3)"),
     "generativelanguage.googleapis.com": ("gemini", "Gemini (Wanshah 4)"),
+    "chatgpt.com": ("chatgpt", "ChatGPT (Wanshah 5)"),       # Wan's login: its usage rows count with the probe's "chatgpt" row
 }
 IMAGE_ROLES = ("image",)       # a picture maker: list its models and accept the key, never ask it a chat question
 PROVIDER_ROLE = "provider"     # a robot Wan added on the API tab (ai_providers.py): probed like any text robot

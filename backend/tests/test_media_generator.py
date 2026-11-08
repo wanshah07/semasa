@@ -164,3 +164,65 @@ def test_an_http_error_is_read_by_its_status():
         e.response = type("R", (), {"status_code": code})()
         return e
     assert [media_generator.error_kind(err(c)) for c in (429, 503, 401, 404)] == ["limit", "unavailable", "auth", "model"]
+
+
+# ---- ChatGPT draws too (Wan, 8 Nov 2026) ---------------------------------------------------------------------------------
+
+def test_chatgpt_is_a_picture_provider_that_takes_words_only_and_is_the_last_resort():
+    from fakestore import FakeStore
+
+    from semasa import chatgpt_login as cl
+    tokens = {"access_token": "a", "refresh_token": "r"}
+    on = FakeStore(**{cl.TABLE: [{"id": "main", "auth": {"tokens": tokens}, "enabled": True}]})
+    assert media_generator.has_credentials("chatgpt", _settings(), on)
+    assert not media_generator.has_credentials("chatgpt", _settings(), FakeStore(**{cl.TABLE: []}))
+    assert not media_generator.has_credentials("chatgpt", _settings(), None)
+    s = _settings()
+    assert media_generator.provider_chain(s, "cloudflare", store=on)[-1] == "chatgpt"
+    assert "chatgpt" not in media_generator.provider_chain(s, "cloudflare", needs_edit=True, store=on), "no reference picture"
+    assert "chatgpt" not in media_generator.provider_chain(s, "cloudflare", kind="video", store=on)
+
+
+def test_when_the_others_cannot_draw_chatgpt_does_and_the_row_says_so(monkeypatch):
+    writes, _ = _patch_db(monkeypatch)
+    cf = Fake("cloudflare", exc=ProviderError("the free 10,000 neurons for today are used up"))
+    gpt = Fake("chatgpt", result=Generated(b"\x89PNG....", "image/png", "gpt-5.5", {}))
+    s = _settings(openai_key=None)
+    monkeypatch.setattr(media_generator, "has_credentials", lambda name, s, store=None: name in ("cloudflare", "chatgpt"))
+    assert media_generator.process_row(None, dict(ROW), s, {"cloudflare": cf, "chatgpt": gpt}) is True
+    w = writes["m1"]
+    assert w["status"] == "done" and w["provider"] == "chatgpt" and w["meta"]["failover"][0]["provider"] == "cloudflare"
+
+
+def test_the_chatgpt_provider_maps_its_errors_to_failover_kinds_and_sizes_the_picture():
+    from semasa import chatgpt_login as cl
+
+    class Login:
+        def __init__(self, exc=None):
+            self.exc, self.sizes = exc, []
+
+        def connected(self):
+            return True
+
+        def settings(self):
+            return {"model": "gpt-5.5"}
+
+        def draw(self, prompt, size):
+            self.sizes.append(size)
+            if self.exc:
+                raise self.exc
+            return b"\x89PNG\r\n\x1a\n" + b"0" * 50
+
+    p = media_generator.ChatGPTImageProvider.__new__(media_generator.ChatGPTImageProvider)
+    p.login = Login()
+    out = p.generate_from_text("a lab", {"resolution": "portrait"})
+    assert out.content_type == "image/png" and out.model == "gpt-5.5" and p.login.sizes == [cl.SIZES["portrait"]]
+    for exc, kind in ((cl.ChatGPTError("usage limit", limit=True), "limit"), (cl.ChatGPTError("login", auth=True), "auth"),
+                      (cl.ChatGPTError("model", model=True), "model"), (cl.ChatGPTError("boom"), "unavailable")):
+        p.login = Login(exc)
+        with pytest.raises(ProviderError) as e:
+            p.generate_from_text("a lab", {})
+        assert e.value.kind == kind
+    with pytest.raises(ProviderError) as e2:
+        p.generate("edit", "http://x/y.png", "p", {})
+    assert e2.value.kind == "request"

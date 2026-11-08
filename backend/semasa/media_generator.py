@@ -79,6 +79,10 @@ def make_provider(name: str, s: MediaSettings, store: Any = None) -> Provider:
         if store is None:
             raise ProviderError("Gemini pictures need the store (its keys live there)", kind="request")
         return GeminiImageProvider(store)
+    if name == "chatgpt":
+        if store is None:
+            raise ProviderError("ChatGPT pictures need the store (the login lives there)", kind="request")
+        return ChatGPTImageProvider(store)
     raise ProviderError(f"unknown provider {name!r}", kind="request")
 
 
@@ -93,6 +97,7 @@ PROVIDER_CAPS: dict[str, dict[str, bool]] = {      # what each provider can take
     "openai": {"video": True, "edits": True},
     "replicate": {"video": True, "edits": True},
     "gemini": {"video": False, "edits": False},
+    "chatgpt": {"video": False, "edits": False},
 }
 FAILOVER_KINDS = ("transient", "auth", "limit", "unavailable", "model")
 _CONTENT_RE = re.compile(r"safety|content[_ ]?policy|moderation|nsfw|sensitive|flagged|violat|disallowed|inappropriate|"
@@ -156,6 +161,16 @@ def has_credentials(name: str, s: MediaSettings, store: Any = None) -> bool:
         except Exception as exc:  # noqa: BLE001 - a Gemini that cannot be read is a Gemini that is not there
             log.info("Gemini pictures not considered (%s)", str(exc)[:120])
             return False
+    if name == "chatgpt":
+        if store is None:
+            return False
+        try:
+            from . import chatgpt_login
+            login = chatgpt_login.Login(store)
+            return login.connected() and bool((login.settings() or {}).get("enabled", True))
+        except Exception as exc:  # noqa: BLE001 - a login that cannot be read is a login that is not there
+            log.info("ChatGPT pictures not considered (%s)", str(exc)[:120])
+            return False
     return False
 
 
@@ -165,7 +180,7 @@ def provider_chain(s: MediaSettings, first: str, *, kind: str = "image", needs_e
     cannot do the job still says so), then Tetapan's default, then the rest that have credentials and can take the job
     (a video needs a video provider, a reference picture an edit model). Each name once."""
     out = [first]
-    for name in (s.provider, "cloudflare", "openai", "replicate", "gemini"):
+    for name in (s.provider, "cloudflare", "openai", "replicate", "gemini", "chatgpt"):
         name = (name or "").lower()
         if not name or name in out or name not in PROVIDER_CAPS:
             continue
@@ -181,7 +196,7 @@ def get_provider(providers: dict[str, Provider], name: str, s: MediaSettings, st
                  deadline: float | None = None) -> Provider:
     if name not in providers:
         # two arguments for the three providers that always took two (callers and tests stand in for make_provider that way)
-        providers[name] = make_provider(name, s, store) if name == "gemini" else make_provider(name, s)
+        providers[name] = make_provider(name, s, store) if name in ("gemini", "chatgpt") else make_provider(name, s)
     provider = providers[name]
     if hasattr(provider, "deadline"):
         provider.deadline = deadline        # waits end, and the paid job is cancelled, before GitHub kills the run
@@ -213,6 +228,36 @@ class GeminiImageProvider:
         except GeminiError as exc:
             raise ProviderError(str(exc), kind="limit" if exc.limit else "unavailable") from exc
         return Generated(data, content_type_of(data), self.drawer.model, {"gemini_model": self.drawer.model})
+
+
+class ChatGPTImageProvider:
+    """Wan's ChatGPT login as a picture provider (chatgpt_login.Login.draw): words only, like Gemini."""
+
+    name = "chatgpt"
+    video = False
+    edits = False
+
+    def __init__(self, store: Any):
+        from . import chatgpt_login
+        self.login = chatgpt_login.Login(store)
+        if not self.login.connected():
+            raise ProviderError("ChatGPT is not connected: log in on the API page", kind="auth")
+
+    def generate(self, kind: str, reference_url: str, prompt: str, options: dict[str, Any]) -> Generated:
+        raise ProviderError("ChatGPT draws from words only here: a reference picture goes to Cloudflare, OpenAI or Replicate",
+                            kind="request")
+
+    def generate_from_text(self, prompt: str, options: dict[str, Any]) -> Generated:
+        from . import chatgpt_login as cgl
+        from .providers.cloudflare import content_type_of
+        size = cgl.SIZES.get(str(options.get("resolution") or "square"), cgl.SIZES["square"])
+        try:
+            data = self.login.draw(prompt, size=size)
+        except cgl.ChatGPTError as exc:
+            kind = "limit" if exc.limit else "auth" if exc.auth else "model" if exc.model else "unavailable"
+            raise ProviderError(str(exc), kind=kind) from exc
+        model = str((self.login.settings() or {}).get("model") or cgl.DEFAULT_MODEL)
+        return Generated(data, content_type_of(data), model, {"chatgpt_model": model})
 
 
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif")

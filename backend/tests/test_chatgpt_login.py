@@ -494,3 +494,64 @@ def test_a_reviewer_in_the_accounts_list_is_never_picked_as_the_writer():
     assert login(st, http).write("sys", "user", model="gpt-5") == "OK"
     assert [kw["json"]["model"] for _, kw in http.calls] == ["gpt-5", "gpt-5.4"]
     assert st.tables[cl.TABLE][0]["model"] == "gpt-5.4"
+
+
+# ---- ChatGPT reads, writes and draws for the whole team (Wan, 8 Nov 2026) ------------------------------------------------------
+
+class Versioned(Http2):
+    """A model list that shows the writers only to a newer Codex client."""
+
+    def __init__(self, *answers, writers_from="2.0.0"):
+        super().__init__(*answers, listed=[])
+        self.versions, self.writers_from = [], writers_from
+
+    def get(self, url, **kw):
+        v = kw["params"]["client_version"]
+        self.versions.append(v)
+        listed = ["gpt-5.5", "codex-auto-review"] if v == self.writers_from else ["codex-auto-review"]
+        return Resp(200, body={"models": [{"slug": m} for m in listed]})
+
+
+def test_a_list_with_no_writer_is_asked_again_with_newer_client_versions():
+    lg = login(store(), Versioned())
+    assert lg.models() == ["gpt-5.5", "codex-auto-review"]
+    assert lg.http.versions == ["0.99.0", "1.0.0", "1.5.0", "2.0.0"], "it stops at the first list with a writer"
+    assert lg.client_version == "2.0.0"
+
+
+def test_a_list_that_never_shows_a_writer_is_the_first_list_and_an_unreadable_one_is_asked_once():
+    lg = login(store(), Versioned(writers_from="9.9.9"))
+    assert lg.models() == ["codex-auto-review"] and lg.http.versions == list(cl.CLIENT_VERSIONS)
+    broken = Http2(listed=None)
+    assert login(store(), broken).models() == []
+    assert len(broken.gets) == 1, "a list that cannot be read is not retried per version"
+
+
+def test_a_picture_is_read_with_the_question_beside_it():
+    http = Http2(Resp(200, lines=words('{"what": "a jar"}')))
+    out = login(store(model="gpt-5.5"), http).read_image("sys", "What is it?", b"\x89PNG-bytes", "image/png", model="gpt-5.5")
+    assert out == '{"what": "a jar"}'
+    body = http.calls[0][1]["json"]
+    assert body["instructions"] == "sys" and "tools" not in body
+    parts = body["input"][0]["content"]
+    assert parts[0] == {"type": "input_text", "text": "What is it?"}
+    uri = "data:image/png;base64," + base64.b64encode(b"\x89PNG-bytes").decode()
+    assert parts[1]["type"] == "input_image" and parts[1]["image_url"] == uri
+
+
+def test_chatgpt_joins_the_team_only_for_the_worker_jobs_while_connected_enabled_and_not_refused():
+    from semasa import db
+    st = store(model="gpt-5.5")
+    c = cl.candidate(st, "reader", NOW)
+    assert c["slug"] == "chatgpt" and c["provider"] == "chatgpt" and c["model"] == "gpt-5.5" and c["robot"] == "W5"
+    assert isinstance(c["key"], cl.Login) and "read_image" in c["does"] and "make_image" in c["does"]
+    assert cl.candidate(st, "chat", NOW) is None, "chat and Telegram reach it through the edge functions"
+    assert cl.candidate(store(enabled=False), "reader", NOW) is None
+    assert cl.candidate(FakeStore(**{cl.TABLE: []}), "reader", NOW) is None
+    st.tables.setdefault(db.API_STATUS, []).append({"slug": "chatgpt", "chat_ok": False, "error": REFUSED,
+                                                    "checked_at": (NOW - timedelta(hours=2)).isoformat()})
+    assert cl.candidate(st, "reader", NOW) is None, "a model refusal seen two hours ago keeps it out of the chain"
+    st.tables[db.API_STATUS][0]["checked_at"] = (NOW - timedelta(hours=20)).isoformat()
+    assert cl.candidate(st, "reader", NOW) is not None, "an old refusal is re-tried: the next probe decides"
+    st.tables[db.API_STATUS][0].update(checked_at=(NOW - timedelta(hours=2)).isoformat(), error="timeout")
+    assert cl.candidate(st, "reader", NOW) is not None, "only a refused MODEL keeps it out, not a slow answer"

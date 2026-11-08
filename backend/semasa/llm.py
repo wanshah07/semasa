@@ -453,6 +453,8 @@ class LLM:
         try:
             if provider == "anthropic":
                 out = self._anthropic(system, user, max_tokens, model, base, key or "")
+            elif provider == "chatgpt":
+                out = self._chatgpt(system, user, model, key)       # `key` is Wan's ChatGPT Login (chatgpt_login.candidate)
             else:
                 out = self._openai(system, user, max_tokens, model, base, key or "")
         except Exception as exc:
@@ -461,6 +463,28 @@ class LLM:
             raise
         _record_usage({"base": base, "model": model, "ok": True, "ms": int((time.monotonic() - t0) * 1000), **_LAST_USAGE})
         return out
+
+    def _chatgpt(self, system: str, user: str | list[dict[str, Any]], model: str, login: Any) -> str:
+        """Words (or a picture and a question) through Wan's ChatGPT login (feature: ChatGPT writes and reads). A ChatGPT
+        refusal of any kind is "no answer" to the chain, so the next link is asked; the picture is read from the same data URI
+        image_parts() builds, so the callers do not know which robot answers."""
+        from . import chatgpt_login as cgl
+        if login is None or not hasattr(login, "write"):
+            raise requests.RequestException("ChatGPT is not connected")
+        user = with_instructions(system, user)
+        try:
+            if isinstance(user, list):
+                text = "\n".join(str(p.get("text") or "") for p in user if p.get("type") == "text")
+                img = next((p for p in user if p.get("type") == "image_url"), None)
+                url = str(((img or {}).get("image_url") or {}).get("url") or "")
+                if not url.startswith("data:") or ";base64," not in url:
+                    return login.write(system, text, model=model, timeout=self.s.timeout)
+                head, b64 = url.split(";base64,", 1)
+                return login.read_image(system, text, base64.b64decode(b64), head[5:] or "image/jpeg", model=model,
+                                        timeout=self.s.timeout)
+            return login.write(system, user, model=model, timeout=self.s.timeout)
+        except cgl.ChatGPTError as exc:
+            raise requests.RequestException(f"ChatGPT: {exc}") from exc
 
     def _openai(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str, base: str,
                 key: str) -> str:

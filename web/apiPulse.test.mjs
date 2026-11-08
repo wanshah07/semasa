@@ -66,12 +66,15 @@ t("a gate with no model configured and none in its row is listed but not asked a
   assert.equal(k.chat, false); assert.equal(k.model, "");
   const k2 = pulsePlan(team, status).probes.find((p) => p.slug === "kiosapi");
   assert.equal(k2.model, "gpt-image-2", "the row's model is used when the gate names none");
+  assert.equal(k2.chat, false, "KiosAPI is a picture maker (role image, an image model): listed, never asked a chat question");
+  assert.equal(k2.listOnly, true);
 });
-t("Gemini is probed on ONE key (the one the chat would use next) and its cheapest listed model", () => {
+t("Gemini is probed on ONE key (the one the chat would use next) and the model the chat is configured with", () => {
   const g = pulsePlan(team, status).probes.find((p) => p.slug === "gemini");
   assert.equal(g.key, "AIza-first"); assert.equal(g.keyId, "k1"); assert.equal(g.keyRow.calls, 3);
-  assert.equal(g.model, "gemini-2.5-flash-lite", "flash-lite is listed, so the 3 Pro the chat is configured with is never billed for a pulse");
-  assert.equal(geminiModel(["models/gemini-2.5-flash"], "gemini-3-pro"), "gemini-2.5-flash");
+  assert.notEqual(g.model, "gemini-2.5-flash-lite", "a model that is merely LISTED can be one Google no longer serves to this project (live 404, 8 Nov 2026)");
+  assert.equal(geminiModel(["models/gemini-2.5-flash-lite", "models/gemini-3-pro"], "gemini-3-pro"), "gemini-3-pro", "the configured model wins when it is listed");
+  assert.equal(geminiModel(["models/gemini-2.5-flash"], "gemini-3-pro"), "gemini-2.5-flash", "only when it is NOT listed does the cheapest listed one stand in");
   assert.equal(geminiModel([], "gemini-3-pro"), "gemini-3-pro", "with no list the configured model stands");
   assert.equal(geminiModel(null, ""), GEMINI_CHEAP[0]);
   assert.ok(chatBody(g).reasoning_effort === "low", "Gemini is told not to think over a five-token question");
@@ -107,9 +110,25 @@ t("a refused key reads key_ok false and down; a time-out reads unreachable; the 
   assert.equal(out.reachable, false); assert.equal(out.key_ok, null); assert.equal(out.http, null);
   assert.equal(stateAfter(out, NOW.getTime()), "down");
 });
-t("a model that is listed but does not answer reads reachable, key ok from the list, chat failed", () => {
-  const row = statusRow(root, { listHttp: 200, listMs: 300, listed: ["glm-5.3-flashx"], listError: "", chatOk: false, chatMs: 8000, chatHttp: 0, chatError: "timed out" }, prevRoot, NOW);
-  assert.equal(row.reachable, true); assert.equal(row.key_ok, true); assert.equal(row.chat_ok, false); assert.equal(row.error, "timed out");
+t("a model that is listed but refuses reads reachable, key ok from the list, chat failed", () => {
+  const row = statusRow(root, { listHttp: 200, listMs: 300, listed: ["glm-5.3-flashx"], listError: "", chatOk: false, chatMs: 400, chatHttp: 400, chatError: "400 model not found" }, prevRoot, NOW);
+  assert.equal(row.reachable, true); assert.equal(row.key_ok, true); assert.equal(row.chat_ok, false); assert.equal(row.error, "400 model not found");
+});
+t("a chat that only timed out while the list answered is SLOW, not down: the last full answer is kept", () => {
+  const prev = { ...prevRoot, chat_ok: true, chat_ms: 19000 };
+  const row = statusRow(root, { listHttp: 200, listMs: 300, listed: ["glm-5.3-flashx"], listError: "", chatOk: false, chatMs: 8000, chatHttp: 0, chatError: "timed out" }, prev, NOW);
+  assert.equal(row.chat_ok, true); assert.equal(row.chat_ms, 19000); assert.match(row.error, /^slow: no answer within 8 s/);
+  const never = statusRow(root, { listHttp: 200, listMs: 300, listed: ["x"], listError: "", chatOk: false, chatMs: 8000, chatHttp: 0, chatError: "timed out" }, { ...prevRoot, chat_ok: false }, NOW);
+  assert.equal(never.chat_ok, false, "a robot that was already down does not turn up because one answer was slow");
+  const dead = statusRow(root, { listHttp: null, listMs: null, listed: null, listError: "timed out", chatOk: false, chatMs: 8000, chatHttp: 0, chatError: "timed out" }, prev, NOW);
+  assert.equal(dead.chat_ok, false, "when the LIST does not answer either, the gateway is down");
+});
+t("a picture maker is judged by its model list alone and its error is the list's", () => {
+  const k = { slug: "kiosapi", base: "https://kiosapi.com/v1", key: "k", model: "gpt-image-2", chat: false, listOnly: true };
+  const up = statusRow(k, { listHttp: 200, listMs: 250, listed: ["gpt-image-2"], listError: "", chatOk: false, chatMs: null, chatHttp: 0, chatError: "" }, { name: "KiosAPI (Wanshah 3)", role: "image", chat_ms: 757 }, NOW);
+  assert.equal(up.chat_ok, true); assert.equal(up.chat_ms, 757); assert.equal(up.error, ""); assert.equal(up.role, "image");
+  const down = statusRow(k, { listHttp: 401, listMs: 250, listed: null, listError: "401 bad key", chatOk: false, chatMs: null, chatHttp: 0, chatError: "" }, null, NOW);
+  assert.equal(down.chat_ok, false); assert.equal(down.error, "401 bad key");
 });
 t("a first row for a robot the probe never wrote gets the probe's names and role pulse", () => {
   const row = statusRow({ slug: "kiosapi", base: "https://kiosapi.com/v1", key: "k", model: "", chat: false }, { listHttp: 200, listMs: 200, listed: ["gpt-image-2"], listError: "", chatOk: false, chatMs: null, chatHttp: 0, chatError: "" }, null, NOW);

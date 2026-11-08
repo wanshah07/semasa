@@ -6,19 +6,27 @@
 //   2. links Wan's Telegram account when he sends the one-time code from the page (semasa_telegram_claim);
 //   3. stores the update in semasa_telegram_inbox (the database wakes the "Telegram" workflow for his messages and taps);
 //   4. answers at once with a method in the response body ("typing…", "Sedang diproses…"), so it never holds the bot token.
-// It never approves, writes an idea or calls a model: backend/semasa/telegram_bot.py does, for the linked account only.
+// It never approves or writes an idea: backend/semasa/telegram_bot.py does, for the linked account only. The one model call it makes
+// is the fast answer below (7 Nov 2026), and since 8 Nov 2026 that draws on the whole AI team and fails over to a second robot.
 //
 // Deployed with --no-verify-jwt (Telegram sends no Supabase login); the secret header is the gate.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BUSY_WINDOW_MS, fastEligible, fastMessages, fastReply, inboxRow, instantReply, kindOf, linkCode, newestNotes, sameSecret, turnsOf } from "./logic.js";
-import { MEMORY, gatewayConfig, withInstructions } from "../semasa-chat/logic.js";
+import { BUSY_WINDOW_MS, fastEligible, fastGatesFor, fastMessages, fastReply, inboxRow, instantReply, kindOf, linkCode, newestNotes, sameSecret, turnsOf } from "./logic.js";
+import { MEMORY, answerText, assembleTeam, chatRequest, errorText, pickWorkers, readTeamInput, switchable } from "../semasa-chat/logic.js";
 
 const FAST_MS = 22000;        // Telegram waits for the webhook's answer; past this the worker answers instead
+const FAST_TRIES = 2;         // gates tried inside that budget before the worker takes over (8 Nov 2026)
 
-/** A plain question answered here with the AI chat's gateway: the answer, or null to hand it to the worker. */
+/** A plain question answered here with the AI chat's team: the answer, or null to hand it to the worker.
+    8 Nov 2026 (Wan: "if the model not live, auto change to other model"): up to two fast healthy gates from the same team the chat
+    uses (semasa-chat/logic.js assembleTeam, read with this function's service role; never Gemini, never ChatGPT), fastest first by the
+    probe's state and speed, inside the 22 s Telegram allows; a gate that is not live (switchable) hands on to the next, a refusal on
+    content or an empty budget hands the question to the worker as before. A key goes only to its own gate's host. */
 async function fastAnswer(db: any, link: any, text: string, pin: any, state: any, busy: boolean) {
-  const gw = gatewayConfig((k: string) => Deno.env.get(k));
-  if (gw.error || !gw.key || !gw.model || !fastEligible({ kind: "private", text, owner: true, state, pin, gwName: gw.name, busy })) return null;
+  if (!fastEligible({ kind: "private", text, owner: true, state, pin, gwName: pin?.gateway || "", busy })) return null;
+  const input = await readTeamInput(db, db, (k: string) => Deno.env.get(k), { log: (m: string) => console.warn("team store not read:", m) });
+  const tries = fastGatesFor(assembleTeam(input), pin, pickWorkers, FAST_TRIES);
+  if (!tries.length) return null;
   const [notesQ, msgsQ, draftsQ] = await Promise.all([
     // the newest notes, as the AI chat allows them (MEMORY.notes); ascending with a limit kept the oldest ones
     db.from("semasa_chat_memory").select("note").eq("user_id", link.user_id).order("created_at", { ascending: false }).limit(MEMORY.notes),
@@ -29,22 +37,27 @@ async function fastAnswer(db: any, link: any, text: string, pin: any, state: any
   const posts = draftsQ.data || [];
   const count = (s: string) => posts.filter((p: any) => p.status === s).length;
   const snapshot = `Draf menunggu: ${count("draft")} · Diluluskan: ${count("approved")} · Dijadualkan: ${count("scheduled")}`;
-  let messages = fastMessages({ text, notes: newestNotes(notesQ.data || [], MEMORY.notes), turns: turnsOf((msgsQ.data || []).reverse()),
-    snapshot, gwName: gw.name, model: gw.model });
-  if (gw.repeatSystem) messages = withInstructions(messages);
-  try {
-    const res = await fetch(gw.base.replace(/\/+$/, "") + "/chat/completions", {
-      method: "POST", signal: AbortSignal.timeout(FAST_MS),
-      headers: { authorization: `Bearer ${gw.key}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: gw.model, messages, max_tokens: 900, temperature: 0.3 }),
-    });
-    if (!res.ok) return null;
-    const j = await res.json();
-    const answer = String(j?.choices?.[0]?.message?.content || "").trim();
-    return answer ? { answer, who: `${gw.name} · ${j?.model || gw.model}` } : null;
-  } catch {
-    return null;
+  const started = Date.now();
+  for (const t of tries) {
+    const left = FAST_MS - (Date.now() - started);
+    if (left < 4000) return null;                                  // too little of Telegram's patience left: the worker answers
+    const messages = fastMessages({ text, notes: newestNotes(notesQ.data || [], MEMORY.notes), turns: turnsOf((msgsQ.data || []).reverse()),
+      snapshot, gwName: t.name, model: t.model });
+    const rq = chatRequest(t.gate, { model: t.model, messages, max_tokens: 900, temperature: 0.3 });
+    try {
+      const res = await fetch(rq.url, { method: "POST", signal: AbortSignal.timeout(left), headers: rq.headers, body: rq.body });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (switchable(res.status, errorText(j))) continue;        // not live: the next gate
+        return null;                                               // a refusal on content: the worker, as before
+      }
+      const answer = String(answerText(t.gate, j) || "").trim();
+      if (answer) return { answer, who: `${t.name} · ${j?.model || t.model}` };
+    } catch {
+      continue;                                                    // a time-out or an unreachable host: the next gate
+    }
   }
+  return null;
 }
 
 /** Keep the exchange in the AI chat page's Telegram thread, as the worker does (telegram_tools.log_turn). */

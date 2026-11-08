@@ -1,7 +1,7 @@
 // The Telegram webhook's decisions (supabase/functions/semasa-telegram/logic.js): only Telegram with our secret gets in,
 // only the linked account wakes the worker, a one-time code is recognised, and the instant reply never needs the bot token.
 import assert from "node:assert/strict";
-import { inboxRow, instantReply, kindOf, linkCode, sameSecret } from "../supabase/functions/semasa-telegram/logic.js";
+import { fastGatesFor, inboxRow, instantReply, kindOf, linkCode, sameSecret } from "../supabase/functions/semasa-telegram/logic.js";
 
 const priv = (text, from = 111) => ({ update_id: 1, message: { message_id: 5, chat: { id: from, type: "private" }, from: { id: from }, text } });
 const group = { update_id: 2, message: { message_id: 6, chat: { id: -100, type: "supergroup", title: "Halal" }, from: { id: 7 }, text: "Soalan?" } };
@@ -81,3 +81,26 @@ const kept = newestNotes(rows, 40);
 assert.equal(kept.length, 40);
 assert.deepEqual([kept[0], kept[39]], ["n5", "n44"]);
 console.log("telegram review: ok");
+
+
+// 8 Nov 2026: the fast answer tries up to two gates from the AI team, fastest healthy first, never Gemini or ChatGPT
+{
+  const robots = [
+    { slug: "rootsys", name: "Wanshah 1", provider: "rootsys (Afiq)", enabled: true, state: "ok", speed_ms: 1200 },
+    { slug: "kiosapi", name: "Wanshah 3", provider: "KiosAPI", enabled: true, state: "ok", speed_ms: 600 },
+    { slug: "zeta", name: "Zeta", provider: "Zeta", enabled: true, state: "stale", speed_ms: 50 },
+    { slug: "gemini", name: "Wanshah 4", provider: "Gemini", enabled: true, state: "ok", speed_ms: 10 },
+  ];
+  const gates = { rootsys: { kind: "openai", base: "https://rootsys.cloud/v1", key: "a", model: "glm" }, kiosapi: { kind: "openai", base: "https://kiosapi.com/v1", key: "b", model: "gpt" },
+    zeta: { kind: "openai", base: "https://z.example/v1", key: "c", model: "z" }, gemini: { kind: "openai", base: "https://generativelanguage.googleapis.com/v1beta/openai", keys: [{ key: "g" }], model: "gem" } };
+  // the picker the real function passes (semasa-chat/logic.js pickWorkers) is stubbed with the order it would give: healthy fastest first, stale last, no Gemini
+  const pick = () => [{ slug: "kiosapi", model: "gpt" }, { slug: "rootsys", model: "glm" }, { slug: "zeta", model: "z" }];
+  const two = fastGatesFor({ robots, gates }, null, pick);
+  assert.deepEqual(two.map((x) => x.slug), ["kiosapi", "rootsys"], "two gates, the stale one left for the worker");
+  assert.equal(two[0].gate.key, "b"); assert.equal(two[0].name, "Wanshah 3 (KiosAPI)"); assert.equal(two[0].model, "gpt");
+  assert.deepEqual(fastGatesFor({ robots, gates }, { gateway: "rootsys (Afiq)" }, pick).map((x) => x.slug), ["rootsys"], "a pinned gateway narrows to its robot");
+  assert.deepEqual(fastGatesFor({ robots, gates }, { gateway: "Wanshah 4" }, pick), [], "a pin on Gemini: the worker answers, the webhook never calls it");
+  assert.deepEqual(fastGatesFor({ robots, gates: {} }, null, pick), [], "no gate behind a robot: nothing to try");
+  assert.deepEqual(fastGatesFor(null, null, pick), []);
+}
+console.log("telegram: ok");

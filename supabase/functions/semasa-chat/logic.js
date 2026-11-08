@@ -900,6 +900,18 @@ export function assembleTeam(input = {}) {
   else if (!row?.auth?.tokens?.refresh_token) why.chatgpt = "ChatGPT is not connected: paste auth.json in the Motion tab";
   else gates.chatgpt = { kind: "chatgpt", base: CHATGPT_RESPONSES, host: CHAT_ROBOTS.chatgpt.host, model: cleanModelId(row.model) || CHATGPT_DEFAULT_MODEL, from: "ChatGPT login" };
 
+  // 5. the owner's extra providers (semasa_ai_providers + semasa_ai_provider_secrets, 8 Nov 2026): one robot each, W6.. in id order.
+  // The key is sent only when key_host names the host base_url points at (slotKeyFits) and the address passes safeBase; a provider
+  // whose id is one of the five built-ins is listed but never shadows them. `jobs` (text[]) is carried for the callers to read.
+  const provMeta = {};
+  for (const p of providerRobots(input.providers)) {
+    provMeta[p.slug] = p.meta;
+    if (!extra.includes(p.slug)) extra.push(p.slug);
+    if (p.why) { why[p.slug] = p.why; continue; }
+    if (gates[p.slug]) continue;
+    gates[p.slug] = p.gate;
+  }
+
   for (const slug of ["rootsys", "mireld", "kiosapi"]) {
     if (gates[slug] || why[slug]) continue;
     why[slug] = status[slug]?.key_set
@@ -908,7 +920,7 @@ export function assembleTeam(input = {}) {
   }
 
   const robots = [...ROBOT_ORDER, ...extra].map((slug) => {
-    const m = meta(slug) || { robot: "W?", name: gw.name || slug, provider: gw.name || slug, host: gates[slug]?.host || slug, kind: "openai" };
+    const m = meta(slug) || provMeta[slug] || { robot: "W?", name: gw.name || slug, provider: gw.name || slug, host: gates[slug]?.host || slug, kind: "openai" };
     const g = gates[slug];
     const health = slug === "chatgpt" ? chatgptState(row, now) : probeState(status[slug], now);
     const configured = g?.model || cleanModelId(status[slug]?.model);
@@ -923,7 +935,8 @@ export function assembleTeam(input = {}) {
       slug, robot: m.robot, name: m.name, provider: m.provider, kind: m.kind,
       enabled, why: enabled ? "" : (why[slug] || (g ? "no model listed and none configured" : "not available")),
       state: health.state, state_why: health.why, speed_ms: health.speed_ms,
-      key_from: g?.from || "", tools: m.kind !== "chatgpt", listed_live: Array.isArray(live[slug]),
+      key_from: g?.from || "", tools: m.kind !== "chatgpt", listed_live: Array.isArray(live[slug]), dialect: g?.kind === "anthropic" ? "anthropic" : m.kind,
+      ...(provMeta[slug] ? { jobs: provMeta[slug].jobs, provider_row: true } : {}),
       models: enabled ? models : [], default_model: enabled ? def : "",
       ...(slug === "gemini" ? { private_note: GEMINI_NOTE } : {}),
     };
@@ -937,10 +950,11 @@ const GEMINI_NOTE = ["Kunci Gemini percuma mungkin membenarkan Google menggunaka
     then the strongest model (MODEL_PREFERENCE), then the fastest. Gemini is never Auto's choice (a free key may let Google use what
     it is sent: gemini_keys.py keeps it off every job Wan has not allowed), and ChatGPT, which answers without tools here, comes after
     every robot that has them. Returns the robots to try in order, each with its model: [{slug, model}]. */
-export function pickAuto(robots) {
+export function pickAuto(robots, { exclude = [], job = "chat" } = {}) {
   const rank = (m) => { const i = MODEL_PREFERENCE.findIndex((p) => modelNorm(p) === modelNorm(m)); return i < 0 ? 99 : i; };
   const health = (r) => (r.state === "ok" ? 0 : r.state === "down" ? 2 : 1);
-  return (robots || []).filter((r) => r.enabled && r.slug !== "gemini")
+  const out = new Set(["gemini", ...exclude]);
+  return (robots || []).filter((r) => r.enabled && !out.has(r.slug) && robotDoes(r, job))
     .map((r) => ({ r, key: [health(r), r.tools ? 0 : 1, r.speed_ms != null && r.speed_ms > SLOW_MS ? 1 : 0, rank(r.default_model), r.speed_ms ?? 1e9] }))
     .sort((a, b) => { for (let i = 0; i < a.key.length; i++) if (a.key[i] !== b.key[i]) return a.key[i] - b.key[i]; return 0; })
     .map(({ r }) => ({ slug: r.slug, model: r.default_model }));
@@ -949,7 +963,8 @@ export function pickAuto(robots) {
 /** Which robot and model answer a chat call. `req` = { robot, model } from the page: robot "" or "auto" is Auto; a bare model (an
     older page) is looked for on every robot. A robot that cannot be used, or a model it does not list, falls back to Auto (or the
     robot's own default) with `changed` and the reason, so the page can say what happened. `chain` is what to try, in order: Auto
-    may move on to the next robot when one fails before it has said anything; Wan's own pick is never swapped for another robot. */
+    may move on to the next robot when one fails before it has said anything, and so may Wan's own pick since 8 Nov 2026 (a robot
+   that is not live is not a choice); a refusal on content (switchable) is never switched. */
 export function resolveChoice(robots, req = {}) {
   const list = robots || [];
   const auto = (extra = {}) => { const chain = pickAuto(list); return { auto: true, chain, slug: chain[0]?.slug || "", model: chain[0]?.model || "", changed: false, ...extra }; };
@@ -958,7 +973,7 @@ export function resolveChoice(robots, req = {}) {
   if (!wantRobot || wantRobot === "auto") {
     if (!wantModel) return auto();
     const hit = list.find((r) => r.enabled && r.models.some((m) => m.id === wantModel));
-    return hit ? { auto: false, chain: [{ slug: hit.slug, model: wantModel }], slug: hit.slug, model: wantModel, changed: false }
+    return hit ? { auto: false, chain: [{ slug: hit.slug, model: wantModel }, ...pickAuto(list, { exclude: [hit.slug] })], slug: hit.slug, model: wantModel, changed: false }
       : auto({ changed: true, asked: wantModel, why: "no robot lists that model" });
   }
   const r = list.find((x) => x.slug === wantRobot);
@@ -966,7 +981,10 @@ export function resolveChoice(robots, req = {}) {
   const picked = resolveModel(wantModel, r.listed_live || r.slug === "chatgpt" ? r.models.map((m) => m.id) : null, r.default_model);
   const model = r.models.some((m) => m.id === picked.model) || !r.listed_live ? picked.model : r.default_model;
   const changed = picked.changed || (wantModel && model !== wantModel);
-  return { auto: false, chain: [{ slug: r.slug, model }], slug: r.slug, model, changed: !!changed,
+  // Wan's pick is the first link; if it fails before a word is out, Auto's chain carries on without it (Wan, 8 Nov 2026:
+  // "if the model not live, auto change to other model"). index.ts tells the page every time it moves on.
+  const rest = pickAuto(list, { exclude: [r.slug] });
+  return { auto: false, chain: [{ slug: r.slug, model }, ...rest], slug: r.slug, model, changed: !!changed,
     ...(changed ? { asked: `${r.slug}:${wantModel}`, why: `${r.name} does not list ${wantModel}` } : {}) };
 }
 
@@ -1013,4 +1031,214 @@ export function foldResponses(acc, ev) {
     a.error = String((typeof e === "object" ? e.message || e.code : e) || ev.message || "the ChatGPT call failed").replace(/\s+/g, " ").slice(0, 200);
   }
   return a;
+}
+
+
+/* ===== 8 Nov 2026: fail over everywhere, and the owner's extra providers (Wan: "if the model not live, auto change to other model") ====
+   Every call site of both functions (the chat, its summary, the readers, the Telegram fast answer) now draws from ONE team and moves
+   on when a robot is not live. The extra providers come from two tables the page writes (supabase/074, written alongside this):
+     semasa_ai_providers        (id text, name, dialect 'openai'|'anthropic', base_url, model, key_host, enabled bool, jobs text[])
+     semasa_ai_provider_secrets (id text, api_key)   -- service role only
+   readTeamInput reads them (and the five built-ins' stores) so both functions read the same columns; a table that is not applied yet
+   fails that one select, is logged, and the five built-ins carry on. */
+
+/** Is this robot for this job? A provider row's `jobs` (text[]) limits it; an empty list, or a built-in robot, does every job. */
+export function robotDoes(robot, job) {
+  const jobs = Array.isArray(robot?.jobs) ? robot.jobs.map((j) => String(j || "").toLowerCase()) : [];
+  return !jobs.length || !job || jobs.includes(String(job).toLowerCase());
+}
+
+/** The owner's providers as robots: [{ slug, meta: {robot, name, provider, host, kind, jobs}, gate | why }], enabled rows only,
+    labelled W6.. in id order. The key goes only to the host it was saved for (the same slotKeyFits rule as a page slot). */
+export function providerRobots(rows) {
+  const list = (Array.isArray(rows) ? rows : []).filter((r) => r && r.id && r.enabled !== false)
+    .map((r) => ({ ...r, id: String(r.id).trim().toLowerCase() })).filter((r) => /^[a-z0-9][a-z0-9_-]{0,39}$/.test(r.id))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const out = [];
+  list.forEach((r, i) => {
+    const dialect = String(r.dialect || "openai").toLowerCase() === "anthropic" ? "anthropic" : "openai";
+    const b = safeBase(r.base_url);
+    const name = String(r.name || r.id).trim().slice(0, 60) || r.id;
+    const meta = { robot: `W${6 + i}`, name, provider: name, host: b.ok ? b.host : String(r.base_url || "").slice(0, 60), kind: dialect, jobs: Array.isArray(r.jobs) ? r.jobs : [] };
+    if (CHAT_ROBOTS[r.id]) { out.push({ slug: r.id + "-provider", meta, why: `its id "${r.id}" is one of the five built-in robots: give the provider another id` }); return; }
+    if (!b.ok) { out.push({ slug: r.id, meta, why: `its address is refused (${b.why})` }); return; }
+    if (!r.api_key) { out.push({ slug: r.id, meta, why: "no key saved for it (API tab → providers)" }); return; }
+    if (!slotKeyFits({ base_url: r.base_url, key_host: r.key_host, api_key: r.api_key })) { out.push({ slug: r.id, meta, why: `its key was saved for "${r.key_host || "?"}", not for ${b.host}: save the key again` }); return; }
+    out.push({ slug: r.id, meta, gate: { kind: dialect, base: b.base, host: b.host, key: r.api_key, model: cleanModelId(r.model), from: `provider "${name}"`, repeatSystem: false, jobs: meta.jobs } });
+  });
+  return out;
+}
+
+/** Should a failed call hand the question to the next robot? Only before any text is out, and only when the ROBOT is not live:
+    nothing reached (0), a time-out (408), a throttle (429), any 5xx, a refused or missing key (401/403), a model that is not there
+    (404, or a 400 naming the model), or words to that effect. A refusal on CONTENT (a 400 content policy, a context too long) is
+    this question's problem, and another robot gets the same question: not switched. */
+export function switchable(status, message, said = false) {
+  if (said) return false;
+  const st = Number(status) || 0;
+  const msg = String(message || "");
+  if (st === 0 || st === 401 || st === 403 || st === 404 || st === 408 || st === 425 || st === 429 || st >= 500) return true;
+  if (/model[_ ]not[_ ]found|unknown model|invalid model|model .{0,60}(not (found|exist|available|supported)|does not exist|is not available)|no such model|not a valid model/i.test(msg)) return true;
+  if (st === 400 && /deadline|time(?:d)? ?out|overload|unavailable|capacity|try again|temporar|rate.?limit|quota|insufficient_quota|billing|credit/i.test(msg)) return true;
+  return false;
+}
+
+/** Robots to ask when a job must simply be done (the readers, the Telegram fast answer): healthy first, down last, never Gemini,
+    never ChatGPT (another dialect, no tools), only robots for the job, fastest (probe chat_ms) before the strongest model when
+    `fast` is set. A stale or down robot is sorted last, never skipped: a stale probe row must not hide a working robot. */
+export function pickWorkers(robots, { job = "chat", fast = false, exclude = [] } = {}) {
+  const chain = pickAuto(robots, { exclude: ["chatgpt", ...exclude], job });
+  if (!fast) return chain;
+  const by = Object.fromEntries((robots || []).map((r) => [r.slug, r]));
+  const health = (r) => (r.state === "ok" ? 0 : r.state === "down" ? 2 : 1);
+  return chain.map((c) => ({ c, r: by[c.slug] })).sort((a, b) => health(a.r) - health(b.r) || (a.r.speed_ms ?? 1e9) - (b.r.speed_ms ?? 1e9)).map((x) => x.c);
+}
+
+/* ---- the Anthropic Messages dialect (a provider with dialect 'anthropic') ----------------------------------------------------
+   POST {base}/v1/messages, x-api-key + anthropic-version 2023-06-01; the system message is top-level `system`; tools are
+   {name, description, input_schema}; the assistant's calls are tool_use blocks and the results tool_result blocks in a user turn;
+   a picture is an image block. The stream is typed events: message_start, content_block_start/delta/stop, message_delta, error. */
+export const ANTHROPIC_VERSION = "2023-06-01";
+
+function anthropicPart(p) {
+  if (p?.type === "image_url") {
+    const url = String(p.image_url?.url || "");
+    const m = url.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+    if (m) return { type: "image", source: { type: "base64", media_type: m[1].toLowerCase(), data: m[2] } };
+    return url ? { type: "image", source: { type: "url", url } } : null;
+  }
+  const text = typeof p === "string" ? p : String(p?.text || "");
+  return text ? { type: "text", text } : null;
+}
+
+/** The OpenAI-shaped payload the functions build, as an Anthropic Messages body. Pure. */
+export function anthropicBody(payload, { stream = true } = {}) {
+  const list = Array.isArray(payload?.messages) ? payload.messages : [];
+  const system = list.filter((m) => m?.role === "system" && typeof m.content === "string" && m.content.trim()).map((m) => m.content).join("\n\n");
+  const messages = [];
+  const push = (role, content) => {
+    const last = messages[messages.length - 1];
+    if (last && last.role === role) last.content.push(...content); else messages.push({ role, content: [...content] });
+  };
+  for (const m of list) {
+    if (m?.role === "user") {
+      const parts = (typeof m.content === "string" ? [m.content] : Array.isArray(m.content) ? m.content : []).map(anthropicPart).filter(Boolean);
+      if (parts.length) push("user", parts);
+    } else if (m?.role === "assistant") {
+      const parts = [];
+      if (typeof m.content === "string" && m.content.trim()) parts.push({ type: "text", text: m.content });
+      for (const c of Array.isArray(m.tool_calls) ? m.tool_calls : []) {
+        let input = {}; try { input = JSON.parse(c?.function?.arguments || "{}") || {}; } catch { input = {}; }
+        parts.push({ type: "tool_use", id: String(c?.id || ""), name: String(c?.function?.name || ""), input });
+      }
+      if (parts.length) push("assistant", parts);
+    } else if (m?.role === "tool") {
+      push("user", [{ type: "tool_result", tool_use_id: String(m.tool_call_id || ""), content: String(m.content ?? "") }]);
+    }
+  }
+  if (messages.length && messages[0].role !== "user") messages.unshift({ role: "user", content: [{ type: "text", text: "(continue)" }] });
+  const body = { model: cleanModelId(payload?.model), max_tokens: Number(payload?.max_tokens) || 2400, messages, stream };
+  if (system) body.system = system;
+  if (payload?.temperature != null) body.temperature = payload.temperature;
+  const tools = (Array.isArray(payload?.tools) ? payload.tools : []).filter((t) => t?.type === "function" && t.function?.name)
+    .map((t) => ({ name: t.function.name, description: String(t.function.description || ""), input_schema: t.function.parameters || { type: "object", properties: {} } }));
+  if (tools.length) { body.tools = tools; if (payload.tool_choice === "required") body.tool_choice = { type: "any" }; }
+  return body;
+}
+
+/** Fold one Anthropic stream event into the same accumulator foldDelta builds ({ content, toolCalls, finish, model }), plus
+    `error`. Pure. */
+export function foldAnthropic(acc, ev) {
+  const a = acc || { content: "", toolCalls: [], finish: null, model: "", error: "" };
+  const kind = String(ev?.type || "");
+  if (kind === "message_start") { if (ev.message?.model && !a.model) a.model = String(ev.message.model); return a; }
+  if (kind === "content_block_start") {
+    const b = ev.content_block || {};
+    if (b.type === "tool_use") { const i = Number(ev.index) || a.toolCalls.length; while (a.toolCalls.length <= i) a.toolCalls.push({ id: "", name: "", arguments: "" }); a.toolCalls[i] = { id: String(b.id || ""), name: String(b.name || ""), arguments: "" }; }
+    else if (b.type === "text" && b.text) a.content += String(b.text);
+    return a;
+  }
+  if (kind === "content_block_delta") {
+    const d = ev.delta || {};
+    if (d.type === "text_delta") a.content += String(d.text || "");
+    else if (d.type === "input_json_delta") { const i = Number(ev.index) || 0; while (a.toolCalls.length <= i) a.toolCalls.push({ id: "", name: "", arguments: "" }); a.toolCalls[i].arguments += String(d.partial_json || ""); }
+    return a;
+  }
+  if (kind === "message_delta") { if (ev.delta?.stop_reason) a.finish = ev.delta.stop_reason === "tool_use" ? "tool_calls" : String(ev.delta.stop_reason); return a; }
+  if (kind === "error") { const e = ev.error || {}; a.error = String(e.message || e.type || "the Anthropic call failed").replace(/\s+/g, " ").slice(0, 200); return a; }
+  return a;
+}
+
+/** A complete (not streamed) Anthropic answer in the OpenAI accumulator shape; tool calls carry their arguments as JSON text. */
+export function anthropicAnswer(json) {
+  const a = { content: "", toolCalls: [], finish: json?.stop_reason === "tool_use" ? "tool_calls" : (json?.stop_reason ? String(json.stop_reason) : null), model: String(json?.model || "") };
+  for (const b of Array.isArray(json?.content) ? json.content : []) {
+    if (b?.type === "text") a.content += String(b.text || "");
+    else if (b?.type === "tool_use") a.toolCalls.push({ id: String(b.id || ""), name: String(b.name || ""), arguments: JSON.stringify(b.input ?? {}) });
+  }
+  a.toolCalls = a.toolCalls.filter((c) => c.name);
+  return a;
+}
+
+/** The text of a complete answer in either dialect. */
+export function answerText(gate, json) {
+  if (gate?.kind === "anthropic") return anthropicAnswer(json).content;
+  const c = json?.choices?.[0]?.message?.content;
+  return typeof c === "string" ? c : Array.isArray(c) ? c.map((p) => p?.text || "").join("") : "";
+}
+
+/** The error message in a gateway's refusal body, either dialect. */
+export const errorText = (data, fallback = "") => String(data?.error?.message || data?.error?.type || data?.message || fallback || "").slice(0, 200);
+
+/** The HTTP request for a chat call on a gate: { url, headers, body }. `gate` is { kind, base, key, repeatSystem }. The key goes
+    in the header the dialect reads, and nowhere else; the repeat-system rule (rootsys) applies to the OpenAI dialect only. */
+export function chatRequest(gate, payload, { stream = false } = {}) {
+  const base = String(gate?.base || "").replace(/\/+$/, "");
+  if (gate?.kind === "anthropic") {
+    return { url: `${base}/v1/messages`, headers: { "x-api-key": String(gate.key || ""), "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json", ...(stream ? { accept: "text/event-stream" } : {}) },
+      body: JSON.stringify(anthropicBody(payload, { stream })) };
+  }
+  const p = gate?.repeatSystem && payload?.messages ? { ...payload, messages: withInstructions(payload.messages) } : payload;
+  return { url: `${base}/chat/completions`, headers: { authorization: `Bearer ${gate?.key || ""}`, "content-type": "application/json", ...(stream ? { accept: "text/event-stream" } : {}) },
+    body: JSON.stringify(stream ? { ...p, stream: true } : p) };
+}
+
+/** The HTTP request that lists a gate's models: { url, headers }. */
+export function modelsRequest(gate) {
+  const base = String(gate?.base || "").replace(/\/+$/, "");
+  if (gate?.kind === "anthropic") return { url: `${base}/v1/models`, headers: { "x-api-key": String(gate.key || ""), "anthropic-version": ANTHROPIC_VERSION } };
+  return { url: `${base}/models`, headers: { authorization: `Bearer ${gate?.key || ""}` } };
+}
+
+/** Everything assembleTeam needs, read from the database. `db` reads with the caller's login (probe rows, settings) and `admin`
+    (service role, may be null) the key stores. One failed select never fails the team: it is logged and that store is empty, so a
+    table not yet applied (semasa_ai_providers, supabase/074) leaves the five built-ins exactly as they were. */
+export async function readTeamInput(db, admin, env, { log = (m) => console.warn(m) } = {}) {
+  const safe = async (label, q) => {
+    try { const { data, error } = await q; if (error) { log(`${label}: ${String(error.message || error).slice(0, 160)}`); return null; } return data; }
+    catch (e) { log(`${label}: ${String(e?.message || e).slice(0, 160)}`); return null; }
+  };
+  const [st, sets] = await Promise.all([
+    safe("semasa_api_status", db.from("semasa_api_status").select("slug,base_url,key_set,key_ok,reachable,chat_ok,chat_ms,latency_ms,checked_at,models,model,error")),
+    safe("semasa_settings", db.from("semasa_settings").select("key,value").in("key", ["gemini", "gemini_models"])),
+  ]);
+  const setting = (k) => ((sets || []).find((r) => r.key === k)?.value) || {};
+  let slots = [], gemKeys = [], gpt = null, providers = [];
+  if (admin) {
+    const [cfg, sec, gk, ga, pr, ps] = await Promise.all([
+      safe("semasa_ai_config", admin.from("semasa_ai_config").select("slot,provider,base_url,model,key_host")),
+      safe("semasa_ai_secrets", admin.from("semasa_ai_secrets").select("slot,api_key")),
+      safe("semasa_gemini_keys", admin.from("semasa_gemini_keys").select("id,api_key,enabled,status,cooldown_until,last_used_at,last_ok_at,calls,failures")),
+      safe("semasa_chatgpt_auth", admin.from("semasa_chatgpt_auth").select("auth,model,checked_at,last_ok_at,last_error,last_error_at").eq("id", "main").maybeSingle()),
+      safe("semasa_ai_providers", admin.from("semasa_ai_providers").select("id,name,dialect,base_url,model,key_host,enabled,jobs").eq("enabled", true)),
+      safe("semasa_ai_provider_secrets", admin.from("semasa_ai_provider_secrets").select("id,api_key")),
+    ]);
+    const keyOf = new Map((sec || []).map((r) => [r.slot, r.api_key]));
+    slots = (cfg || []).map((r) => ({ ...r, api_key: keyOf.get(r.slot) || "" }));
+    gemKeys = gk || [];
+    gpt = ga || null;
+    const pkey = new Map((ps || []).map((r) => [String(r.id), r.api_key]));
+    providers = (pr || []).map((r) => ({ ...r, api_key: pkey.get(String(r.id)) || "" }));
+  }
+  return { env, slots, status: st || [], serviceRole: !!admin, gemini: { settings: setting("gemini"), models: setting("gemini_models"), keys: gemKeys }, chatgpt: { row: gpt }, providers };
 }

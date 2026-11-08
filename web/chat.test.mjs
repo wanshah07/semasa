@@ -934,7 +934,18 @@ console.log("all robots: ok");
     assert.ok(!T.fastGatesFor(team, null, L.pickWorkers, 99).some((x) => x.slug === "gemini" || x.slug === "chatgpt"));
     const src = fs.readFileSync(new URL("../supabase/functions/semasa-telegram/index.ts", import.meta.url), "utf8");
     assert.match(src, /const FAST_TRIES = 2;/); assert.match(src, /fastGatesFor\(assembleTeam\(input\), pin, pickWorkers, FAST_TRIES\)/);
-    assert.match(src, /if \(switchable\(res\.status, errorText\(j\)\)\) continue;/, "a gate that is not live hands on to the next");
+    const { tryFastGates } = await import("../supabase/functions/semasa-telegram/fast.js");
+    let calls = 0;
+    const answered = await tryFastGates(tries, {
+      deadline: Date.now() + 15000, messagesFor: () => [{ role: "user", content: "Reply OK" }],
+      requestFor: (t, messages) => L.chatRequest(t.gate, { model: t.model, messages }),
+      answerText: L.answerText, errorText: L.errorText, switchable: L.switchable,
+      fetchImpl: async () => ++calls === 1
+        ? { ok: false, status: 503, json: async () => ({ error: { message: "unavailable" } }) }
+        : { ok: true, json: async () => ({ choices: [{ message: { content: "OK" } }] }) },
+    });
+    assert.equal(calls, 2, "a gate that is not live hands on to the next");
+    assert.equal(answered.answer, "OK");
   });
   console.log("edge failover: ok");
 }

@@ -11,6 +11,12 @@ on:
   schedule:
     - cron: "5 0-14/2 * * *"      # 08:05 to 22:05 MYT, every 2 hours
   workflow_dispatch:
+    inputs:
+      latency_probe:
+        description: "Measure read-only webhook replies without sending Telegram messages"
+        type: boolean
+        required: false
+        default: false
   push:                           # connect the webhook as soon as a change to the bot is merged
     branches: [main]
     paths: ["backend/semasa/telegram_bot.py", ".github/workflows/telegram.yml"]
@@ -58,4 +64,9 @@ jobs:
           LLM_TIMEOUT: ${{ vars.LLM_TIMEOUT }}
           SEMASA_SITE_URL: ${{ vars.SEMASA_SITE_URL }}
           SEMASA_TELEGRAM_TRANSPORT: ${{ vars.SEMASA_TELEGRAM_TRANSPORT }}
-        run: python -m semasa.telegram_bot
+        run: |
+          if [ "${{ inputs.latency_probe }}" = "true" ]; then
+            python -m semasa.telegram_latency_probe
+          else
+            python -m semasa.telegram_bot
+          fi

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlparse
 
 
@@ -100,6 +101,10 @@ class LLMSettings:
     vision_base_url: str = ""
     vision_key: str | None = None
     vision_reader_model: str = ""
+    # The AI team's FULL ranked chain (semasa.ai_team.chain): every gateway with a usable key, healthy first, each
+    # {"slug", "provider", "base_url", "key", "model", "vision_model"}. The primary and backup above are its first two
+    # links, kept so every caller that reads them still works. Empty: llm.LLM builds a two-link chain from those two.
+    chain: tuple[dict[str, Any], ...] = ()
 
     @classmethod
     def load(cls) -> LLMSettings:

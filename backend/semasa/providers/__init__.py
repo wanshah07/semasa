@@ -34,7 +34,14 @@ class Provider(Protocol):
 
 
 class ProviderError(RuntimeError):
-    """A refusal or failure that a retry with the same inputs will not change."""
+    """A refusal or failure that a retry with the same inputs will not change AT THIS PROVIDER. `kind`, when a provider
+    says it, tells media_generator whether another provider may do the job instead ("transient", "auth", "limit",
+    "unavailable", "model") or would refuse it too ("content", "request"); "" lets media_generator.error_kind read the
+    message."""
+
+    def __init__(self, message: str = "", *, kind: str = ""):
+        super().__init__(message)
+        self.kind = kind
 
 
 class OutOfTime(TimeoutError):

@@ -15,8 +15,10 @@ Dialects:
 
 `probe()` asks the endpoint who it is, before a run spends anything on it.
 
-Two writers: rootsys (LLM_*) and, when LLM_FALLBACK_API_KEY is set, a backup (Mireld by default) asked only when
-rootsys gives no usable answer. Each key goes only to its own host.
+A CHAIN of writers (feature C, 8 Nov 2026): the AI team's full ranked list (`LLMSettings.chain`, from ai_team.chain through
+ai_config.llm_for), or, without one, rootsys (LLM_*) and the backup LLM_FALLBACK_API_KEY switches on (Mireld by default).
+A call walks the chain until a link answers: a timeout, a 5xx, a 429, a model the gateway does not serve or an empty answer
+moves to the next link; a refusal that is the request's own fault stops. Each key goes only to its own host.
 """
 
 from __future__ import annotations
@@ -71,35 +73,117 @@ def _usage_from(j: Any) -> dict[str, int]:
     return {"prompt_tokens": p, "completion_tokens": c, "total_tokens": int(u.get("total_tokens") or (p + c))}
 
 
+# How a refused call is read (feature C, 8 Nov 2026: "when the chosen model/robot is not live, EVERY backend AI call falls
+# over to another live one"). A gateway that times out, answers 5xx or 429, or gives nothing parsable is one link's problem:
+# the next link is asked. A 400 that is the REQUEST's own fault (the content, a context too long) would get the same answer
+# from every gateway, so the chain stops there; a 400 that is about the MODEL ("not supported", "does not exist") is this
+# link's problem and the next one is asked. A 400 nobody can read gets exactly one more link, not the whole chain.
+MODEL_FAULT_RE = re.compile(r"model|not supported|unsupported|does not exist|not found|deprecated|no longer|unknown engine|"
+                            r"response_format|reasoning", re.I)
+REQUEST_FAULT_RE = re.compile(r"context[_ ]length|too long|maximum context|max(imum)? tokens|token limit|content[_ ]?policy|"
+                              r"content management|safety|moderation|violat|prompt is too|invalid image|image too", re.I)
+_OK, _MISS, _STOP, _UNSURE = "ok", "miss", "stop", "unsure"
+
+
+def classify_http(status: int | str, body: str) -> str:
+    """What a refused HTTP answer means for the CHAIN: _MISS (ask the next link), _STOP (every link would say the same) or
+    _UNSURE (a 400 nobody can read: one more link, then stop)."""
+    try:
+        code = int(status)
+    except (TypeError, ValueError):
+        return _MISS
+    if code == 400:
+        if MODEL_FAULT_RE.search(body or ""):
+            return _MISS
+        if REQUEST_FAULT_RE.search(body or ""):
+            return _STOP
+        return _UNSURE
+    if code == 413 or (code == 422 and REQUEST_FAULT_RE.search(body or "")):
+        return _STOP
+    return _MISS
+
+
 class LLM:
-    def __init__(self, settings: LLMSettings | None = None):
+    """One writer over a CHAIN of gateways. `settings.chain` (from ai_team.chain through ai_config.llm_for) is the AI team's
+    full ranked list; without it the primary and the backup in the settings are a two-link chain, exactly as before. A call
+    walks the chain, healthy links first, at most MAX_LINKS links and inside a time budget, and records which link
+    answered (`last_model`, `last_gateway`) and every miss (per label, and through the usage sink for api_usage)."""
+
+    PRIMARY_DOWN_AFTER = 2       # misses in a row that put a link to the back of the order for the rest of the run
+    MAX_LINKS = 4                # links one call may ask
+    TRIAL_MISS_LIMIT = 3
+    prefer_backup = False        # class defaults: a stand-in built with __new__ (tests) still has them
+    budget_s: float | None = None
+
+    def __init__(self, settings: LLMSettings | None = None, chain: list[dict[str, Any]] | None = None):
         self.s = settings or LLMSettings.load()
         self.calls = 0
         self.failures = 0
-        self.backup_answers = 0        # answers that came from the backup writer
+        self.backup_answers = 0        # answers that came from a link other than the first ("the backup writer")
         self.last_model = ""           # the model behind the last answer, for the record on the draft
+        self.last_gateway = ""         # the gateway (base URL) behind the last answer
         # A one-run trial (semasa.trial, the page's "Try Mireld" button): the backup is asked FIRST and rootsys only
         # when it gives nothing, so the run shows what Mireld can do while still finishing its work.
         self.prefer_backup = False
-        self.answers = {"primary": 0, "backup": 0}         # usable answers, per writer
-        self.misses = {"primary": 0, "backup": 0}          # asked and got nothing usable, per writer
+        self.answers = {"primary": 0, "backup": 0}         # usable answers, per link label
+        self.misses = {"primary": 0, "backup": 0}          # asked and got nothing usable, per link label
         self.vision = {"primary": 0, "backup": 0, "backup_missed": 0}
         self.trial_stopped = ""                             # why the trial stopped asking the backup first, if it did
         self._backup_run = 0                                # consecutive misses of the backup while it goes first
         # rootsys down for the run (2 Oct 2026, run 48): every batch spent 3 x 60s on rootsys before the backup answered,
         # four batches ate the 25-minute job limit and the run was cancelled with 90 new items unsummarised. After
-        # PRIMARY_DOWN_AFTER calls in a row where rootsys gave nothing, the backup goes first for the rest of the run and
-        # rootsys is only asked once, as a last resort, when the backup also gives nothing.
-        self._primary_run = 0                               # consecutive calls where rootsys gave nothing usable
+        # PRIMARY_DOWN_AFTER calls in a row where a link gave nothing it goes to the BACK of the order for the rest of
+        # the run (a per-link cool-off) and is asked once, as a last resort, only when every other link gave nothing too.
+        self._miss_run: dict[str, int] = {}
+        self.links = self._links(chain)
+        # the whole chain may take this long for one answer; the first link is always asked, a later one is skipped when
+        # the budget is spent (a 4-link chain of 60 s timeouts must not hold a batch for ten minutes)
+        self.budget_s = float(self.s.timeout) * 5
 
-    PRIMARY_DOWN_AFTER = 2
+    # --- the chain ---------------------------------------------------------------------
 
-    # --- which writer ---------------------------------------------------------------
+    def _links(self, chain: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+        """[{label, slug, provider, base_url, key, model, vision_model}] in the AI team's order. Labels: the settings'
+        primary is "primary", its backup "backup" (trial.py and the scrape summary count by those), the rest by slug."""
+        given = list(chain if chain is not None else (getattr(self.s, "chain", ()) or ()))
+        out: list[dict[str, Any]] = []
+        if given:
+            for c in given:
+                if not c.get("base_url") or not c.get("key") or c.get("blocked"):
+                    continue
+                base = str(c["base_url"]).rstrip("/")
+                if base == (self.s.base_url or "").rstrip("/") and not any(x["label"] == "primary" for x in out):
+                    label, vision = "primary", (self.s.vision_model or c.get("model") or "")
+                elif base == (self.s.fallback_base_url or "").rstrip("/") and not any(x["label"] == "backup" for x in out):
+                    label, vision = "backup", c.get("vision_model") or ""
+                else:
+                    label, vision = str(c.get("slug") or base), c.get("vision_model") or ""
+                out.append({"label": label, "slug": c.get("slug") or label, "provider": c.get("provider") or "openai",
+                            "base_url": base, "key": c["key"], "model": c.get("model") or "", "vision_model": vision})
+            if out:
+                return out
+        if self.primary_ok:
+            out.append({"label": "primary", "slug": "primary", "provider": self.s.provider, "base_url": self.s.base_url,
+                        "key": self.s.api_key or "", "model": self.s.model,
+                        "vision_model": self.s.vision_model or self.s.model})
+        if self.backup_ok:
+            # nothing says the backup's model can see, and a text model would describe a picture it never saw
+            out.append({"label": "backup", "slug": "backup", "provider": "openai", "base_url": self.s.fallback_base_url,
+                        "key": self.s.fallback_key or "", "model": self.s.fallback_model, "vision_model": ""})
+        return out
+
+    def _down(self, label: str) -> bool:
+        """This link has missed PRIMARY_DOWN_AFTER times in a row AND another link is still standing: with nobody else to
+        ask, a link is never written off (a run without a backup keeps asking rootsys, as before)."""
+        runs = getattr(self, "_miss_run", {})
+        if runs.get(label, 0) < self.PRIMARY_DOWN_AFTER:
+            return False
+        return any(runs.get(x["label"], 0) < self.PRIMARY_DOWN_AFTER for x in getattr(self, "links", ()) if x["label"] != label)
 
     @property
     def primary_down(self) -> bool:
-        """rootsys has given nothing for PRIMARY_DOWN_AFTER calls in a row and a backup exists to carry the run."""
-        return self._primary_run >= self.PRIMARY_DOWN_AFTER and self.backup_ok
+        """The first link has given nothing for PRIMARY_DOWN_AFTER calls in a row and another link carries the run."""
+        return self._down("primary")
 
     @property
     def primary_ok(self) -> bool:
@@ -111,15 +195,16 @@ class LLM:
 
     @property
     def configured(self) -> bool:
-        return self.primary_ok or self.backup_ok
+        """Read from the SETTINGS, so a caller that swaps `llm.s` (tests do) gets the answer for what it swapped in."""
+        return self.primary_ok or self.backup_ok or bool(getattr(self.s, "chain", ()))
 
     @property
     def can_see(self) -> bool:
-        """Something can READ a picture: the writer, or a picture reader of its own set in the page (which works even
-        when the writer is off)."""
+        """Something can READ a picture: a link with a vision model, or a picture reader of its own set in the page (which
+        works even when the writer is off)."""
         own = bool(getattr(self.s, "vision_key", None) and getattr(self.s, "vision_base_url", "")
                    and getattr(self.s, "vision_reader_model", ""))
-        return self.configured or own
+        return own or any(x.get("vision_model") for x in getattr(self, "links", ()))
 
     def why_off(self) -> str:
         """For the page: why the writer did not run."""
@@ -129,19 +214,28 @@ class LLM:
             return f"no LLM_API_KEY, and the backup is off: {self.s.fallback_blocked}"
         return "no LLM key: set the LLM_API_KEY secret (the writer needs it)"
 
+    def _ordered(self, backup: bool) -> list[dict[str, Any]]:
+        """The links in the order this call asks them: standing links first (the chain's own order), links in cool-off
+        last; in a trial the backup first. `backup=False`: the first link only."""
+        links = list(getattr(self, "links", ()))
+        if not backup:
+            links = links[:1]
+        up = [x for x in links if not self._down(x["label"])]
+        down = [x for x in links if self._down(x["label"])]
+        order = up + down
+        if getattr(self, "prefer_backup", False):
+            # the trial asks the backup first whatever its run so far: its third miss in a row is what ENDS the trial
+            b = next((x for x in order if x["label"] == "backup"), None)
+            if b is not None:
+                order.remove(b)
+                order.insert(0, b)
+        return order
+
     def _writers(self, model: str | None, backup: bool) -> list[tuple[str, str, str, str, str]]:
-        """(label, provider, base_url, key, model) in the order they are asked. The backup speaks the OpenAI dialect
-        and gets its own key only: the rootsys key never leaves for Mireld, nor Mireld's for rootsys."""
-        out = []
-        if self.primary_ok:
-            out.append(("primary", self.s.provider, self.s.base_url, self.s.api_key or "", model or self.s.model))
-        if backup and self.backup_ok:
-            b = ("backup", "openai", self.s.fallback_base_url, self.s.fallback_key or "", self.s.fallback_model)
-            if self.prefer_backup or (self.primary_down and self.primary_ok and out):
-                out.insert(0, b)
-            else:
-                out.append(b)
-        return out
+        """(label, provider, base_url, key, model) in the order they are asked. Each key goes only to its own host. An
+        explicit `model` names a model on the FIRST link (the settings' primary); the other links use their own."""
+        return [(x["label"], x["provider"], x["base_url"], x["key"],
+                 (model or x["model"]) if x["label"] == "primary" else x["model"]) for x in self._ordered(backup)]
 
     # --- public -----------------------------------------------------------------
 
@@ -164,145 +258,164 @@ class LLM:
         backup = ok and self.backup_answers > 0
         log.info("LLM probe %s: %s model=%s base=%s", "OK" if ok else "FAILED",
                  "the BACKUP answered" if backup else f"provider={self.s.provider}",
-                 self.last_model or self.s.model, self.s.fallback_base_url if backup else self.s.base_url)
+                 self.last_model or self.s.model, self.last_gateway or self.s.base_url)
         return ok
 
     def chat_json(self, system: str, user: str | list[dict[str, Any]], *, max_tokens: int = 1500, retries: int = 2,
                   model: str | None = None, backup: bool = True) -> dict[str, Any] | None:
-        """`user` is a string, or a list of content parts (see `image_parts`). rootsys first; the backup only when
-        rootsys gave nothing usable, with one retry of its own."""
-        writers = self._writers(model, backup)
-        if not writers:
-            return None
-        for n, (label, provider, base, key, use_model) in enumerate(writers):
-            if label == "backup" and n > 0:
-                log.warning("LLM: rootsys gave no usable answer; asking the backup (%s, %s)", base, use_model)
-            elif label == "primary" and n > 0:
-                log.warning("LLM: the backup gave no usable answer; rootsys is asked once as a last resort"
-                            if self.primary_down else "LLM trial: the backup gave no usable answer; rootsys answers instead")
-            # a primary asked AFTER the backup because it is down is a last resort: one try, not 3 x 60s of waiting
-            tries = (0 if (n > 0 and self.primary_down) else retries) if label == "primary" else 1
-            data = self._ask(system, user, max_tokens, tries, provider, base, key, use_model)
-            if data is not None:
-                self.last_model = use_model
-                self.answers[label] += 1
-                if label == "backup":
-                    self.backup_answers += 1
-                    self._backup_run = 0
-                else:
-                    self._primary_run = 0
-                return data
-            self.misses[label] += 1
-            if label == "primary":
-                self._primary_run += 1
-                if self._primary_run == self.PRIMARY_DOWN_AFTER and self.backup_ok:
-                    log.warning("LLM: rootsys has given nothing %d calls in a row; the backup goes first for the rest of the run",
-                                self._primary_run)
-            if label == "backup" and n == 0:
-                self._trial_miss()
-        self.failures += 1
-        return None
+        """`user` is a string, or a list of content parts (see `image_parts`). The chain is walked in order: the first
+        link with `retries` retries, every later link with one, a link in cool-off asked once as a last resort."""
+        return self._walk(system, user, max_tokens, retries, model, backup, _parse_object)
 
     def chat_text(self, system: str, user: str | list[dict[str, Any]], *, max_tokens: int = 1500, model: str | None = None,
                   backup: bool = True) -> str | None:
-        """The answer as plain text, one try per writer (rootsys, then the backup); None when neither gave any. For answers
-        that are not JSON, such as a whole HTML file, where wrapping the file in a JSON string is what breaks it."""
-        for label, provider, base, key, use_model in self._writers(model, backup):
-            self.calls += 1
-            try:
-                text = self._call(system, user, max_tokens, use_model, provider=provider, base=base, key=key)
-            except requests.Timeout:
-                log.warning("LLM timeout after %ss (%s)", self.s.timeout, label)
-                self.misses[label] += 1
-                continue
-            except (requests.RequestException, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
-                log.warning("LLM error (%s): %s", label, str(exc)[:200])
-                self.misses[label] += 1
-                continue
-            if text and text.strip():
-                self.last_model = use_model
-                self.answers[label] += 1
-                return text
-            self.misses[label] += 1
+        """The answer as plain text, one try per link; None when none gave any. For answers that are not JSON, such as a
+        whole HTML file, where wrapping the file in a JSON string is what breaks it."""
+        return self._walk(system, user, max_tokens, 0, model, backup, _parse_text)
+
+    def _walk(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, retries: int, model: str | None,
+              backup: bool, parse: Callable[[str], Any]) -> Any:
+        writers = self._writers(model, backup)
+        if not writers:
+            return None
+        t0 = time.monotonic()
+        budget = getattr(self, "budget_s", None)
+        unsure_used = False
+        for n, (label, provider, base, key, use_model) in enumerate(writers[: self.MAX_LINKS]):
+            if n > 0:
+                if budget is not None and time.monotonic() - t0 >= budget:
+                    log.warning("LLM: %d link(s) gave nothing and the %.0fs budget is spent; %s is not asked", n, budget, label)
+                    break
+                log.warning("LLM: %s gave no usable answer; asking %s (%s, %s)", writers[n - 1][0], label, base, use_model)
+            last_resort = n > 0 and self._down(label)
+            tries = 0 if last_resort else (retries if label == "primary" else min(retries, 1))
+            data, verdict = self._ask(system, user, max_tokens, tries, provider, base, key, use_model, parse)
+            if data is not None:
+                self._note_answer(label, use_model, base)
+                return data
+            self._note_miss(label, n == 0)
+            if verdict == _STOP:
+                log.warning("LLM: the request itself was refused (%s); no other link is asked", label)
+                break
+            if verdict == _UNSURE:
+                if unsure_used:
+                    break
+                unsure_used = True                 # a 400 nobody can read: one more link, then stop
         self.failures += 1
         return None
 
+    def _note_answer(self, label: str, model: str, base: str) -> None:
+        self.last_model = model
+        self.last_gateway = base
+        self.answers[label] = self.answers.get(label, 0) + 1
+        runs = self.__dict__.setdefault("_miss_run", {})
+        runs[label] = 0
+        if label != "primary":
+            self.backup_answers = getattr(self, "backup_answers", 0) + 1
+            if label == "backup":
+                self._backup_run = 0
+
+    def _note_miss(self, label: str, first: bool) -> None:
+        self.misses[label] = self.misses.get(label, 0) + 1
+        runs = self.__dict__.setdefault("_miss_run", {})
+        runs[label] = runs.get(label, 0) + 1
+        if runs[label] == self.PRIMARY_DOWN_AFTER and self._down(label):
+            log.warning("LLM: %s has given nothing %d calls in a row; it goes to the back of the chain for the rest of the run",
+                        label, runs[label])
+        if label == "backup" and first:
+            self._trial_miss()
+
     def _ask(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, retries: int, provider: str,
-             base: str, key: str, model: str) -> dict[str, Any] | None:
+             base: str, key: str, model: str, parse: Callable[[str], Any] | None = None) -> tuple[Any, str]:
+        """(answer, verdict): the parsed answer and _OK, or None and why the chain should go on (_MISS), stop (_STOP) or
+        allow one more link (_UNSURE)."""
+        parse = parse or _parse_object
+        verdict = _MISS
         for attempt in range(retries + 1):
             self.calls += 1
             try:
                 text = self._call(system, user, max_tokens, model, provider=provider, base=base, key=key)
                 try:
-                    data = _parse_json(text)
+                    data = parse(text)
                 except ValueError as exc:
                     # say WHAT came back, or a parse failure is undiagnosable from the log
                     log.warning("LLM answer not parsable (%s); it starts: %r", exc, (text or "")[:200])
                     data = None
-                if isinstance(data, dict):
-                    return data
                 if data is not None:
-                    log.warning("LLM answered non-object JSON (%s): %r", type(data).__name__, (text or "")[:200])
+                    return data, _OK
             except requests.Timeout:
                 log.warning("LLM timeout after %ss (attempt %d)", self.s.timeout, attempt + 1)
             except requests.HTTPError as exc:
                 status = exc.response.status_code if exc.response is not None else "?"
                 body = (exc.response.text[:300] if exc.response is not None else "")
                 log.warning("LLM HTTP %s: %s", status, body)
-                if status in (400, 401, 403, 404):
+                if status in (400, 401, 403, 404, 413, 422):
+                    verdict = classify_http(status, body)
                     break  # not going to change on retry
             except (requests.RequestException, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
                 # IndexError / TypeError: a 200 whose "choices" is empty or null (a content filter's usual answer) is
-                # "no answer", so the backup is asked, never a crash of the whole run
+                # "no answer", so the next link is asked, never a crash of the whole run
                 log.warning("LLM error: %s", exc)
             if attempt < retries:
                 time.sleep(2 * (attempt + 1))
-        return None
+        return None, verdict
 
     # --- dialects ---------------------------------------------------------------
 
     def describe_image(self, system: str, prompt: str, data: bytes, mime: str, *,
                        max_tokens: int = 900) -> dict[str, Any] | None:
-        """The READ step: one picture and a question to VISION_MODEL. None when the key,
-        the gateway or the model will not take a picture — the caller records that the
-        reference was not read rather than pretending it was. rootsys only: nothing says the
-        backup's model can see, and a text model would describe a picture it never saw.
+        """The READ step: one picture and a question. None when no key, gateway or model will take a picture — the caller
+        records that the reference was not read rather than pretending it was.
 
-        A picture reader set in the page (its own endpoint, key and model) is asked first; the writer's endpoint reads
-        the picture only when that reader gives nothing."""
+        A picture reader set in the page (its own endpoint, key and model) is asked first; then every link of the chain
+        that has a vision model (the first link's VISION_MODEL; another robot's own model when that robot reads pictures),
+        in the chain's order. A link with no vision model is never sent a picture: a text model would describe a picture
+        it never saw."""
         if getattr(self.s, "vision_key", None) and getattr(self.s, "vision_base_url", "") and \
                 getattr(self.s, "vision_reader_model", ""):
             provider = self.s.vision_provider or "openai"
-            out = self._ask(system, image_parts(provider, prompt, data, mime), max_tokens, 1, provider,
-                            self.s.vision_base_url, self.s.vision_key or "", self.s.vision_reader_model)
+            out, _ = self._ask(system, image_parts(provider, prompt, data, mime), max_tokens, 1, provider,
+                               self.s.vision_base_url, self.s.vision_key or "", self.s.vision_reader_model)
             if out is not None:
                 self.last_model = self.s.vision_reader_model
+                self.last_gateway = self.s.vision_base_url
                 self.vision["reader"] = self.vision.get("reader", 0) + 1
                 return out
-            log.warning("the picture reader set in the page gave nothing; the writer's endpoint reads it instead")
-        if self.prefer_backup and self.backup_ok:
-            # the trial: can the backup's model SEE? Asked once, with its own key; rootsys reads it if not.
-            out = self._ask(system, image_parts("openai", prompt, data, mime), max_tokens, 1, "openai",
-                            self.s.fallback_base_url, self.s.fallback_key or "", self.s.fallback_model)
+            log.warning("the picture reader set in the page gave nothing; the writer's chain reads it instead")
+        order = self._ordered(True)
+        if getattr(self, "prefer_backup", False):
+            # the trial: can the backup's model SEE? Asked once, with its own key, before the rest of the chain.
+            b = next((x for x in order if x["label"] == "backup"), None)
+            if b is not None and not b.get("vision_model"):
+                order = [{**b, "vision_model": b["model"], "_trial": True}] + [x for x in order if x is not b]
+        t0 = time.monotonic()
+        budget = getattr(self, "budget_s", None)
+        asked = 0
+        for x in order:
+            vm = x.get("vision_model")
+            if not vm:
+                continue
+            if asked and budget is not None and time.monotonic() - t0 >= budget:
+                log.warning("LLM: the picture read budget is spent; %s is not asked", x["label"])
+                break
+            if asked >= self.MAX_LINKS:
+                break
+            asked += 1
+            out, verdict = self._ask(system, image_parts(x["provider"], prompt, data, mime), max_tokens, 1, x["provider"],
+                                     x["base_url"], x["key"], vm)
             if out is not None:
-                self.last_model = self.s.fallback_model
-                self.vision["backup"] += 1
-                self.answers["backup"] += 1
-                self.backup_answers += 1
+                self._note_answer(x["label"], vm, x["base_url"])
+                self.vision[x["label"]] = self.vision.get(x["label"], 0) + 1
                 return out
-            self.vision["backup_missed"] += 1
-            log.warning("LLM trial: the backup did not read the picture; rootsys reads it instead")
-            self._trial_miss()
-        if not self.primary_ok:
-            return None
-        parts = image_parts(self.s.provider, prompt, data, mime)
-        out = self.chat_json(system, parts, max_tokens=max_tokens, retries=1,
-                             model=self.s.vision_model or self.s.model, backup=False)
-        if out is not None:
-            self.vision["primary"] += 1
-        return out
-
-    TRIAL_MISS_LIMIT = 3
+            if x.get("_trial"):
+                self.vision["backup_missed"] += 1
+                log.warning("LLM trial: the backup did not read the picture; the chain reads it instead")
+                self._trial_miss()
+            else:
+                log.warning("LLM: %s (%s) did not read the picture; the next link with a vision model is asked", x["label"], vm)
+            if verdict == _STOP:
+                break
+        return None
 
     def _trial_miss(self) -> None:
         """A backup that keeps failing while it goes first would cost every call a timeout. After three in a row the
@@ -503,3 +616,18 @@ def _parse_json(text: str) -> Any:
             except json.JSONDecodeError as exc:
                 last = exc
     raise ValueError(f"not a JSON object ({last})")
+
+
+def _parse_object(text: str) -> dict[str, Any] | None:
+    """A JSON OBJECT, or None for JSON of another shape (logged); ValueError for no JSON at all."""
+    data = _parse_json(text)
+    if isinstance(data, dict):
+        return data
+    log.warning("LLM answered non-object JSON (%s): %r", type(data).__name__, (text or "")[:200])
+    return None
+
+
+def _parse_text(text: str) -> str:
+    if not text or not text.strip():
+        raise ValueError("empty answer")
+    return text

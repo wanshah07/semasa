@@ -29,10 +29,13 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import re
 import sys
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
+
+import requests
 
 from . import api_status, db
 from .config import LLMSettings, MediaSettings, SupabaseSettings
@@ -62,7 +65,7 @@ FLOW_A_GUARD = (
 )
 
 
-def make_provider(name: str, s: MediaSettings) -> Provider:
+def make_provider(name: str, s: MediaSettings, store: Any = None) -> Provider:
     if name == "replicate":
         from .providers.replicate import ReplicateProvider
         return ReplicateProvider(s)
@@ -72,7 +75,144 @@ def make_provider(name: str, s: MediaSettings) -> Provider:
     if name == "cloudflare":
         from .providers.cloudflare import CloudflareProvider
         return CloudflareProvider(s)
-    raise ProviderError(f"unknown provider {name!r}")
+    if name == "gemini":
+        if store is None:
+            raise ProviderError("Gemini pictures need the store (its keys live there)", kind="request")
+        return GeminiImageProvider(store)
+    raise ProviderError(f"unknown provider {name!r}", kind="request")
+
+
+# --- image provider failover (feature C, 8 Nov 2026) -----------------------------------------------------------------
+# The provider a row was given (or Tetapan's default) goes first. When it cannot do the job for a reason that is ITS
+# problem (down, out of neurons or credits, a refused key, a model it no longer serves), the next provider with
+# credentials takes the row; a refusal about the picture itself (safety, a bad prompt) is final, because every provider
+# would say the same and a retry elsewhere only spends more. The row's meta records which provider actually drew.
+
+PROVIDER_CAPS: dict[str, dict[str, bool]] = {      # what each provider can take, known without constructing it
+    "cloudflare": {"video": False, "edits": True},
+    "openai": {"video": True, "edits": True},
+    "replicate": {"video": True, "edits": True},
+    "gemini": {"video": False, "edits": False},
+}
+FAILOVER_KINDS = ("transient", "auth", "limit", "unavailable", "model")
+_CONTENT_RE = re.compile(r"safety|content[_ ]?policy|moderation|nsfw|sensitive|flagged|violat|disallowed|inappropriate|"
+                         r"prohibited", re.I)
+_AUTH_RE = re.compile(r"refused the (key|token)|\bnot set\b|must both be set|unauthori[sz]ed|invalid api key|api key not valid|"
+                      r"forbidden|\b40[13]\b", re.I)
+_LIMIT_RE = re.compile(r"used up|quota|rate.?limit|limit reached|too many requests|insufficient|billing|\bcredits?\b|paid plan|"
+                       r"overage|capacity|\b429\b|exhausted|every gemini key failed|no gemini key|switched off", re.I)
+_UNAVAILABLE_RE = re.compile(r"\b50[0234]\b|unavailable|overloaded|timed? ?out|timeout|could not reach|connection|"
+                             r"without (a picture|image data)|no bytes|returned no|internal error|bad gateway", re.I)
+_MODEL_RE = re.compile(r"model|not supported|unsupported|does not exist|not found|deprecated", re.I)
+
+
+def error_kind(exc: BaseException) -> str:
+    """What a provider's failure means for the ROW: one of FAILOVER_KINDS (another provider may draw it), "content" or
+    "request" (every provider would refuse: final), or "time" (the run is out of time)."""
+    kind = getattr(exc, "kind", "")
+    if kind:
+        return kind
+    if isinstance(exc, OutOfTime):
+        return "time"
+    if isinstance(exc, (requests.Timeout, requests.ConnectionError, TimeoutError, ConnectionError)):
+        return "transient"
+    if isinstance(exc, requests.HTTPError):
+        code = getattr(getattr(exc, "response", None), "status_code", None) or 0
+        if code == 429:
+            return "limit"
+        if code >= 500:
+            return "unavailable"
+        if code in (401, 403):
+            return "auth"
+        if code == 404:
+            return "model"
+    text = str(exc)
+    if _CONTENT_RE.search(text):
+        return "content"
+    if _AUTH_RE.search(text):
+        return "auth"
+    if _LIMIT_RE.search(text):
+        return "limit"
+    if _UNAVAILABLE_RE.search(text):
+        return "unavailable"
+    if _MODEL_RE.search(text):
+        return "model"
+    return "request"
+
+
+def has_credentials(name: str, s: MediaSettings, store: Any = None) -> bool:
+    if name == "cloudflare":
+        return bool(s.cloudflare_account_id and s.cloudflare_token)
+    if name == "openai":
+        return bool(s.openai_key)
+    if name == "replicate":
+        return bool(s.replicate_token)
+    if name == "gemini":
+        if store is None:
+            return False
+        try:
+            from .gemini_images import Drawer
+            return Drawer(store).ready()         # switched on for pictures (settings.gemini.images) and a usable key
+        except Exception as exc:  # noqa: BLE001 - a Gemini that cannot be read is a Gemini that is not there
+            log.info("Gemini pictures not considered (%s)", str(exc)[:120])
+            return False
+    return False
+
+
+def provider_chain(s: MediaSettings, first: str, *, kind: str = "image", needs_edit: bool = False,
+                   store: Any = None) -> list[str]:
+    """Provider names in the order a row tries them: the one it was given first (always, so an explicit choice that
+    cannot do the job still says so), then Tetapan's default, then the rest that have credentials and can take the job
+    (a video needs a video provider, a reference picture an edit model). Each name once."""
+    out = [first]
+    for name in (s.provider, "cloudflare", "openai", "replicate", "gemini"):
+        name = (name or "").lower()
+        if not name or name in out or name not in PROVIDER_CAPS:
+            continue
+        caps = PROVIDER_CAPS[name]
+        if (kind == "video" and not caps["video"]) or (needs_edit and not caps["edits"]):
+            continue
+        if has_credentials(name, s, store):
+            out.append(name)
+    return out
+
+
+def get_provider(providers: dict[str, Provider], name: str, s: MediaSettings, store: Any = None,
+                 deadline: float | None = None) -> Provider:
+    if name not in providers:
+        # two arguments for the three providers that always took two (callers and tests stand in for make_provider that way)
+        providers[name] = make_provider(name, s, store) if name == "gemini" else make_provider(name, s)
+    provider = providers[name]
+    if hasattr(provider, "deadline"):
+        provider.deadline = deadline        # waits end, and the paid job is cancelled, before GitHub kills the run
+    return provider
+
+
+class GeminiImageProvider:
+    """Gemini's native image model as a picture provider (semasa.gemini_images.Drawer picks the key): words only."""
+
+    name = "gemini"
+    video = False
+    edits = False
+
+    def __init__(self, store: Any):
+        from .gemini_images import Drawer
+        self.drawer = Drawer(store)
+        if not self.drawer.ready():
+            raise ProviderError("Gemini pictures are off, or no Gemini key can be used right now", kind="limit")
+
+    def generate(self, kind: str, reference_url: str, prompt: str, options: dict[str, Any]) -> Generated:
+        raise ProviderError("Gemini draws from words only here: a reference picture goes to Cloudflare, OpenAI or Replicate",
+                            kind="request")
+
+    def generate_from_text(self, prompt: str, options: dict[str, Any]) -> Generated:
+        from .gemini_images import GeminiError
+        from .providers.cloudflare import content_type_of
+        try:
+            data = self.drawer.draw(prompt, resolution=str(options.get("resolution") or "square"))
+        except GeminiError as exc:
+            raise ProviderError(str(exc), kind="limit" if exc.limit else "unavailable") from exc
+        return Generated(data, content_type_of(data), self.drawer.model, {"gemini_model": self.drawer.model})
 
 
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
@@ -293,7 +433,8 @@ def reference_ground(store: Any, row_id: str, meta: dict[str, Any], s: MediaSett
         meta["bg_missing"] = "the reference was not read, so there was no background to make: drawn on paper"
         return None, None
     try:
-        gen = make_provider(s.provider, s).generate_from_text(prompt, {})
+        gen, _used, _tried = generate_with_failover(
+            {}, provider_chain(s, s.provider, store=store), s, store, lambda p: p.generate_from_text(prompt, {}))
     except Exception as exc:  # noqa: BLE001 - the words still get drawn, on paper, and the card says why
         meta["bg_missing"] = f"the background picture could not be made ({str(exc)[:160]}): drawn on paper"
         return None, None
@@ -499,6 +640,32 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         return False
 
 
+def generate_with_failover(providers: dict[str, Provider], names: list[str], s: MediaSettings, store: Any, draw: Any, *,
+                           deadline: float | None = None, row_id: str = "") -> tuple[Generated, str, list[dict[str, Any]]]:
+    """Run `draw(provider)` on the providers named, in order, moving to the next when the failure is the provider's own
+    (error_kind in FAILOVER_KINDS). Returns (picture, the provider that drew it, [{provider, why, kind}] for those that
+    could not). The last failure is raised, carrying `also_failed` with the ones before it; a refusal about the picture
+    itself is raised at once, because the next provider would refuse it too."""
+    tried: list[dict[str, Any]] = []
+    for i, name in enumerate(names):
+        try:
+            provider = get_provider(providers, name, s, store, deadline)
+            return draw(provider), name, tried
+        except OutOfTime:
+            raise
+        except Exception as exc:  # noqa: BLE001 - classified below: the next provider, or the row's error
+            kind = error_kind(exc)
+            if kind in FAILOVER_KINDS and i < len(names) - 1:
+                tried.append({"provider": name, "why": str(exc)[:200], "kind": kind})
+                log.warning("%s: %s could not draw it (%s: %s); %s is asked instead", row_id or "picture", name, kind,
+                            str(exc)[:120], names[i + 1])
+                continue
+            if tried:
+                exc.also_failed = tried          # type: ignore[attr-defined]
+            raise
+    raise ProviderError("no picture provider is configured", kind="request")
+
+
 def locked_by_post(store: Any, media_id: str) -> dict[str, Any] | None:
     """The approved, scheduled or posted post this picture is already in. A job redrawn after that (a Design
     "render again" queued while the post was a draft, then the post approved before the runner got to it) would change
@@ -556,14 +723,10 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
                 raise ProviderError("reference must be an image (PNG, JPG, WEBP or GIF); put text in the prompt instead")
         elif not (row.get("prompt") or "").strip():
             raise ProviderError("a words-only job needs a prompt")
-        if name not in providers:
-            providers[name] = make_provider(name, s)
-        provider = providers[name]
-        if hasattr(provider, "deadline"):
-            provider.deadline = deadline        # waits end, and the paid job is cancelled, before GitHub kills the run
+        provider = get_provider(providers, name, s, store, deadline)
         if kind == "video" and not getattr(provider, "video", True):
             # stopped before the still is drawn: a picture made for a video nobody can make is spent for nothing
-            raise ProviderError(f"{name} makes pictures only: choose Replicate or OpenAI for a video")
+            raise ProviderError(f"{name} makes pictures only: choose Replicate or OpenAI for a video", kind="request")
 
         read = read_reference(llm, row["reference_url"]) if mode == "recreate" else None
         if mode == "recreate":
@@ -574,35 +737,40 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
                                     "set VISION_MODEL to a model that sees pictures, or add a prompt")
         prompt = compose_prompt(row, read)
         log.info("%s: %s/%s via %s — %s", row_id, mode, kind, name, prompt[:80])
+        needs_edit = mode == "recreate" and not flow_a
+        names = provider_chain(s, name, kind=kind, needs_edit=needs_edit, store=store)
 
-        if mode == "recreate" and not flow_a:
-            gen = provider.generate(kind, row["reference_url"], prompt, options)
-        else:
+        def draw(provider: Provider) -> Generated:
+            if needs_edit:
+                return provider.generate(kind, row["reference_url"], prompt, options)
             kept = (row.get("meta") or {}) if kind == "video" else {}
             if kept.get("still_url"):
                 # the still a failed try already paid for: only the video half is tried again
                 still_url, still_path = kept["still_url"], kept.get("still_path")
                 extra.update(still_url=still_url, still_path=still_path)
-                gen = provider.generate("video", still_url, (row.get("prompt") or prompt), options)
-            else:
-                still = provider.generate_from_text(prompt, options)
-                if kind == "video":
-                    still_url, still_path = _store(store, row_id, still, "-still")
-                    extra.update(still_url=still_url, still_path=still_path)
-                    try:
-                        store.table(db.MEDIA).update({"meta": {**(row.get("meta") or {}), "still_url": still_url,
-                                                               "still_path": still_path}}).eq("id", row_id).execute()
-                    except Exception as exc:  # noqa: BLE001 - a retry then draws the still again, as before
-                        log.warning("%s: still not recorded (%s)", row_id, str(exc)[:160])
-                    gen = provider.generate("video", still_url, (row.get("prompt") or prompt), options)
-                else:
-                    gen = still
+                return provider.generate("video", still_url, (row.get("prompt") or prompt), options)
+            still = provider.generate_from_text(prompt, options)
+            if kind != "video":
+                return still
+            still_url, still_path = _store(store, row_id, still, "-still")
+            extra.update(still_url=still_url, still_path=still_path)
+            try:
+                store.table(db.MEDIA).update({"meta": {**(row.get("meta") or {}), "still_url": still_url,
+                                                       "still_path": still_path}}).eq("id", row_id).execute()
+            except Exception as exc:  # noqa: BLE001 - a retry then draws the still again, as before
+                log.warning("%s: still not recorded (%s)", row_id, str(exc)[:160])
+            return provider.generate("video", still_url, (row.get("prompt") or prompt), options)
+
+        gen, name, tried = generate_with_failover(providers, names, s, store, draw, deadline=deadline, row_id=row_id)
         if not gen.data:
             raise ProviderError("provider returned no bytes")
         url, path = _store(store, row_id, gen)
         meta = {**(row.get("meta") or {}), **gen.meta, **extra, "bytes": len(gen.data),
                 "sha256": hashlib.sha256(gen.data).hexdigest(), "content_type": gen.content_type,
-                "generated_path": path, "final_prompt": prompt, "finished_at": datetime.now(UTC).isoformat()}
+                "generated_path": path, "final_prompt": prompt, "finished_at": datetime.now(UTC).isoformat(),
+                "provider": name}
+        if tried:
+            meta["failover"] = tried              # who was asked first and why it could not, for the page
         db.finish_media(store, row_id, status="done", generated_media_url=url, provider=name, model=gen.model,
                         error=None, meta=meta, reference_read=_read_text(read))
         if row.get("post_id"):
@@ -619,6 +787,9 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
         final = isinstance(exc, ProviderError) or attempts >= s.max_attempts
         status = "error" if final else "pending"
         msg = f"{type(exc).__name__}: {str(exc)[:600]}"
+        also = getattr(exc, "also_failed", None)
+        if also:
+            msg += " | also failed: " + "; ".join(f"{t['provider']}: {t['why'][:120]}" for t in also)[:600]
         log.error("%s: %s (attempt %d, → %s)", row_id, msg, attempts, status)
         # The row keeps the provider it was GIVEN: writing the runner's default here pinned every later Retry to it,
         # so three jobs kept asking Replicate for a key it never had after Cloudflare became the default (25 Sep 2026)

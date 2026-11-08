@@ -57,4 +57,5 @@ jobs:
           LLM_FALLBACK_ALLOWED_HOSTS: ${{ vars.LLM_FALLBACK_ALLOWED_HOSTS }}
           LLM_TIMEOUT: ${{ vars.LLM_TIMEOUT }}
           SEMASA_SITE_URL: ${{ vars.SEMASA_SITE_URL }}
+          SEMASA_TELEGRAM_TRANSPORT: ${{ vars.SEMASA_TELEGRAM_TRANSPORT }}
         run: python -m semasa.telegram_bot

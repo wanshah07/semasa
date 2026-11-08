@@ -115,6 +115,18 @@ def test_the_webhook_secret_is_the_one_functions_yml_computes_with_openssl():
     assert tb.webhook_secret("123:ABC") == "02d79f9c1aadfd875893f77b0516ce432f90079137590c406a346f8e504ad4bf"
 
 
+def test_hermes_transport_never_reclaims_webhook_or_command_menu(monkeypatch):
+    monkeypatch.setenv("SEMASA_TELEGRAM_TRANSPORT", "hermes")
+    monkeypatch.setenv("SUPABASE_URL", "https://x.supabase.co")
+    st, bot = store(), Bot()
+    state = tb.ensure_webhook(st, bot, NOW)
+    assert not any(m in ("setWebhook", "deleteWebhook", "setMyCommands") for m, _ in bot.calls)
+    assert state["transport"] == "hermes"
+    assert state["username"] == "semasa_bot"
+    saved = next(r for r in st.tables[db.SETTINGS] if r["key"] == "telegram_bot")["value"]
+    assert saved["transport"] == "hermes"
+
+
 def test_the_webhook_is_pointed_at_semasa_once_and_the_commands_are_named(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://x.supabase.co")
     st, bot = store(), Bot()

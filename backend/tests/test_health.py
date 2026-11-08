@@ -244,6 +244,15 @@ def test_failed_workflows_are_asked_for_by_status_and_paged_past_the_newest_hund
     assert got[0]["what"].startswith("Publish: 107 run(s) failed in 24 h")
 
 
+def test_hermes_transport_does_not_need_a_semasa_webhook():
+    bot = {"transport": "hermes", "webhook": "", "last_error": ""}
+    st = store(**{db.SETTINGS: [{"key": "telegram_bot", "value": bot}], "semasa_telegram_inbox": []})
+    assert health.check_telegram(st, NOW) == []
+    st.tables["semasa_telegram_inbox"].append({"id": 1, "kind": "private", "status": "new",
+                                               "created_at": (NOW - timedelta(minutes=40)).isoformat()})
+    assert any("not answered" in p["what"] for p in health.check_telegram(st, NOW))
+
+
 def test_a_telegram_webhook_error_older_than_an_answered_message_is_not_a_problem():
     # Telegram reports its LAST webhook error for ever; ten messages answered after it prove the webhook works
     bot = {"webhook": "https://x/functions/v1/semasa-telegram", "last_error": "Wrong response from the webhook: 404 Not Found",

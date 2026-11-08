@@ -416,7 +416,8 @@ function ClipCard({ v, c, ytid, user, brand, onToast, jobs, save, openPost, relo
           {latest.status === "done" && latest.generated_media_url && (
             <div className="flex flex-col gap-3 sm:flex-row">
               <video src={latest.generated_media_url} poster={latest.meta?.poster_url || undefined} controls playsInline
-                className="aspect-[9/16] w-full max-w-[280px] rounded-tile bg-black object-contain sm:w-48" />
+                style={{ aspectRatio: `${latest.meta?.width || 1080} / ${latest.meta?.height || 1920}` }}
+                className="w-full max-w-[280px] rounded-tile bg-black object-contain sm:w-48" />
               <div className="min-w-0 text-[12px]">
                 <p className="flex items-center gap-1.5 text-ok"><CheckCircle2 size={13} /> {t("Klip siap", "Clip ready")} · {latest.meta?.seconds} s · {Math.round((latest.meta?.bytes || 0) / 1e6)} MB</p>
                 {latest.post_id && <Button size="sm" variant="soft" className="mt-2" onClick={() => openPost?.(latest.post_id)}>

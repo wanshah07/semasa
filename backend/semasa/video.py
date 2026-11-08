@@ -10,9 +10,10 @@ captions; for a link to a video file with none of those, Cloudflare's Whisper (t
 use). The writer then proposes 3 to 6 clips of 15 to 90 seconds, each a complete thought.
 
 CUT (a media job, mode "clip"). Only after Wan has said he may use the video (rights: his own, the owner's permission,
-or a Creative Commons licence). The worker fetches just that stretch, makes a 1080x1920 short (the picture fitted over
-a blurred copy of itself, or cropped to fill), burns in the captions and the clip's opening line, stores it, and writes
-a DRAFT post carrying it. Nothing is published here: the post goes through the same gate as every other.
+or a Creative Commons licence). The worker fetches just that stretch, makes a short (1080x1920 for ws.regulab,
+1080x1080 for LinkedIn; the picture fitted over a blurred copy of itself, or cropped to fill), burns in the captions
+and the clip's opening line, stores it, and writes a DRAFT post carrying it. Nothing is published here: the post goes
+through the same gate as every other.
 
 Rules the writer is held to: a clip never changes what the speaker meant, carries the conditions of any ruling it
 states, and is credited to the speaker; the caption carries no call to action, no URL, and never names YouTube.
@@ -45,7 +46,14 @@ VIDEOS = "semasa_videos"
 MIN_CLIP, MAX_CLIP = 15, 90
 MAX_SOURCE_S = 4 * 3600
 MAX_OUT_BYTES = 48 * 1024 * 1024          # the semasa-generated bucket takes 50 MB a file
-W, H = 1080, 1920
+W, H = 1080, 1920                         # ws.regulab (Instagram / Facebook Reels, Threads): upright 9:16
+# the clip's size follows the platform it is for (Wan, 8 Nov 2026: "make sure the layout size suits each social platform"): the
+# same table as a Motion film (motion.PLATFORM_SIZE): LinkedIn shows a 1:1 video best, and it was being given 9:16
+SIZES = {"regulab": (1080, 1920), "linkedin": (1080, 1080)}
+
+
+def size_of(stream: str | None) -> tuple[int, int]:
+    return SIZES["linkedin" if stream == "linkedin" else "regulab"]
 FONTS = Path(__file__).resolve().parent / "fonts"
 LOGO = Path(__file__).resolve().parents[2] / "web" / "public" / "cards" / "logo.png"
 STALE = timedelta(minutes=30)
@@ -492,20 +500,24 @@ STYLE_FORMAT = ("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColou
                 "MarginR, MarginV, Encoding")
 
 
-def build_ass(segs: list[dict[str, Any]], start: float, end: float, hook: str, captions: bool = True) -> str:
+def build_ass(segs: list[dict[str, Any]], start: float, end: float, hook: str, captions: bool = True,
+              size: tuple[int, int] = (W, H)) -> str:
     """The clip's words as subtitles (lower third, white on a black outline) and its opening line in a box at the top
-    for the whole clip. Times are relative to the clip."""
+    for the whole clip. Times are relative to the clip. `size` is the clip's own frame: the margins that keep the words
+    clear of the platform's buttons are set for 1920 high and scaled to the frame."""
+    w, h = size
+    cap_v, hook_v = round(300 * h / H), round(230 * h / H)
     head = f"""[Script Info]
 ScriptType: v4.00+
-PlayResX: {W}
-PlayResY: {H}
+PlayResX: {w}
+PlayResY: {h}
 WrapStyle: 0
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 {STYLE_FORMAT}
-Style: Cap,Inter,62,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,5,0,2,90,90,300,1
-Style: Hook,Inter,66,&H00FFFFFF,&H00FFFFFF,&H00000000,&HB4101418,0,0,0,0,100,100,0,0,3,22,0,8,90,90,230,1
+Style: Cap,Inter,62,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,5,0,2,90,90,{cap_v},1
+Style: Hook,Inter,66,&H00FFFFFF,&H00FFFFFF,&H00000000,&HB4101418,0,0,0,0,100,100,0,0,3,22,0,8,90,90,{hook_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -536,14 +548,16 @@ def caption_fonts(work: Path) -> Path:
     return d
 
 
-def filter_graph(frame: str, ass: Path, logo: Path | None, fonts: Path = FONTS) -> str:
+def filter_graph(frame: str, ass: Path, logo: Path | None, fonts: Path = FONTS, size: tuple[int, int] = (W, H)) -> str:
     """fit: the whole picture across the width over a blurred, darkened copy of itself (a talk filmed wide keeps the
-    speaker AND the room); fill: cropped to 9:16 from the centre (a speaker filmed close)."""
+    speaker AND the room); fill: cropped to the frame from the centre (a speaker filmed close). `size` is the platform's
+    frame (9:16 for ws.regulab, 1:1 for LinkedIn)."""
+    w, h = size
     if frame == "fill":
-        base = f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[base]"
+        base = f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1[base]"
     else:
-        base = (f"[0:v]split[a][b];[a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
-                f"gblur=sigma=28,eq=brightness=-0.12[bg];[b]scale={W}:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[base]")
+        base = (f"[0:v]split[a][b];[a]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},"
+                f"gblur=sigma=28,eq=brightness=-0.12[bg];[b]scale={w}:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[base]")
     subs = f"[base]subtitles=filename='{_escape_filter_path(ass)}':fontsdir='{_escape_filter_path(fonts)}'[sub]"
     if logo:
         return f"{base};{subs};[1:v]scale=300:-1[lg];[sub][lg]overlay=70:80[v]"
@@ -574,7 +588,8 @@ def render(src: Path, out: Path, *, start_in_file: float, dur: float, ass_text: 
            "-i", str(src)]
     if logo:
         cmd += ["-i", str(logo)]
-    cmd += ["-filter_complex", filter_graph(frame, ass, logo, caption_fonts(work)), "-map", "[v]", "-map", "0:a?",
+    graph = filter_graph(frame, ass, logo, caption_fonts(work), size_of(stream))
+    cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "0:a?",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), "-maxrate", maxrate, "-bufsize", "6M",
             "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
             "-movflags", "+faststart", str(out)]
@@ -622,7 +637,8 @@ def process_clip(store: Any, row: dict[str, Any], max_attempts: int) -> bool:
         if start is None or end is None or not (3 <= end - start <= MAX_CLIP):
             raise VideoError(f"a clip is 3 to {MAX_CLIP} seconds; this one is {fmt_ts(start or 0)} to {fmt_ts(end or 0)}")
         segs = video.get("transcript") or []
-        ass = build_ass(segs, start, end, str(meta.get("hook") or ""), bool(meta.get("captions", True)))
+        size = size_of(video.get("stream"))
+        ass = build_ass(segs, start, end, str(meta.get("hook") or ""), bool(meta.get("captions", True)), size)
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             src, offset = fetch_section(video, start, end, work)
@@ -643,8 +659,9 @@ def process_clip(store: Any, row: dict[str, Any], max_attempts: int) -> bool:
             url = db.upload_generated(store, f"{day}/{row_id}-clip.mp4", data, "video/mp4")
             poster_url = db.upload_generated(store, f"{day}/{row_id}-clip.jpg", poster.read_bytes(), "image/jpeg") \
                 if poster.exists() else None
-        meta.update(bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), poster_url=poster_url, width=W, height=H,
-                    seconds=round(end - start, 2), content_type="video/mp4", finished_at=datetime.now(UTC).isoformat())
+        meta.update(bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), poster_url=poster_url,
+                    width=size[0], height=size[1], seconds=round(end - start, 2), content_type="video/mp4",
+                    finished_at=datetime.now(UTC).isoformat())
         # the draft first, the clip marked done last: done first, a failure writing the draft flipped a finished clip
         # back to pending, and its retry wrote a second draft
         post_id = row.get("post_id") or write_post(store, row, video, meta)

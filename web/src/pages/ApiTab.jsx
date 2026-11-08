@@ -11,6 +11,7 @@ import { fmtTokens, orderedModels, usageByArea, usageByDay, usageByGateway, verd
 import Card from "../components/ui/Card";
 import { Segmented } from "../components/ui/Field";
 import AiTeam from "../components/AiTeam";
+import ApiPulse from "../components/ApiPulse";
 import GeminiKeys from "../components/GeminiKeys";
 import AiProviders from "../components/AiProviders";
 import ChatGptLogin from "../components/ChatGptLogin";
@@ -34,7 +35,8 @@ const COLOURS = ["rgb(var(--c-accent))", "rgb(var(--c-ok))", "rgb(var(--c-warn))
 export default function ApiTab({ settings, save, onToast }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? "en" : "bm";
-  const statusT = useTable(TABLES.apiStatus, { enabled: true, order: "role", ascending: true, limit: 20, realtime: false, everyMs: 300_000 });
+  // realtime: the 5-minute pulse (supabase/075, semasa-pulse) rewrites these rows and every robot card redraws as the row lands
+  const statusT = useTable(TABLES.apiStatus, { enabled: true, order: "role", ascending: true, limit: 20, realtime: true, everyMs: 60_000 });
   const usageT = useTable(TABLES.apiUsage, { enabled: true, order: "created_at", limit: 5000, realtime: false, everyMs: 300_000 });
   // the providers Wan added (supabase/074): read here so the AI team cards number them W6, W7, ... (realtime: the table is published)
   const providersT = useTable(TABLES.aiProviders, { enabled: true, order: "created_at", ascending: true, limit: 50, everyMs: 120_000 });
@@ -54,8 +56,8 @@ export default function ApiTab({ settings, save, onToast }) {
       <motion.div variants={fadeUp} initial="hidden" animate="show" className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl">API</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted">{t("Gerbang AI (rootsys milik Afiq, Mireld): hidup atau tidak, kunci diterima atau tidak, model yang disenaraikan, dan token yang kita belanja. Disemak setiap 6 jam; penggunaan ditulis oleh setiap larian.",
-            "The AI gateways (Afiq's rootsys, Mireld): up or not, key accepted or not, the models each lists, and the tokens we spend. Checked every 6 hours; usage is written by every run.")}</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted">{t("Gerbang AI (rootsys milik Afiq, Mireld): hidup atau tidak, kunci diterima atau tidak, model yang disenaraikan, dan token yang kita belanja. Disemak penuh setiap 6 jam dan didenyut setiap 5 minit; penggunaan ditulis oleh setiap larian.",
+            "The AI gateways (Afiq's rootsys, Mireld): up or not, key accepted or not, the models each lists, and the tokens we spend. Checked in full every 6 hours and pulsed every 5 minutes; usage is written by every run.")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {lastCheck && <span className="text-xs text-muted"><RefreshCw size={12} className="mr-1 inline" />{t("disemak", "checked")} {timeAgo(lastCheck)}</span>}
@@ -72,6 +74,7 @@ export default function ApiTab({ settings, save, onToast }) {
 
       <section className="mb-6" data-ai-team>
         <h2 className="mb-2 flex items-center gap-2 text-sm font-medium"><Cpu size={14} className="text-accent" /> {t("Pasukan AI", "AI team")}</h2>
+        <div className="mb-3"><ApiPulse onToast={onToast} /></div>
         <AiTeam statusRows={statusT.rows} usageRows={usageT.rows} state={settings?.ai_team_state} team={settings?.ai_team} save={save} onToast={onToast} providers={providersT.rows} />
       </section>
 

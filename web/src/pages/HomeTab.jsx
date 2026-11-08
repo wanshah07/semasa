@@ -38,7 +38,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
   const w = (v) => (Array.isArray(v) ? v[L] : v);
   const docsT = useTable(TABLES.billingDocs, { enabled: true, limit: 2000, realtime: false });
   const subsT = useTable(TABLES.subscriptions, { enabled: true, order: "next_payment", ascending: true, limit: 500, realtime: false });
-  const apiT = useTable(TABLES.apiStatus, { enabled: true, order: "role", ascending: true, limit: 20, realtime: false, everyMs: 300_000 });
+  const apiT = useTable(TABLES.apiStatus, { enabled: true, order: "role", ascending: true, limit: 20, realtime: true, everyMs: 60_000 });   // the 5-minute pulse rewrites these rows
   const usageT = useTable(TABLES.apiUsage, { enabled: true, order: "created_at", limit: 2000, realtime: false, everyMs: 300_000 });   // 14 days for the tokens chart
   const now = myt();
   const today = now.date;

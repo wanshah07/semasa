@@ -21,7 +21,7 @@ const MARK = { ok: ["✓", "text-emerald-300"], bad: ["✗", "text-rose-300"], r
 
 export default function TechOverviewTab({ go }) {
   const { t } = useLang();
-  const apiT = useTable(TABLES.apiStatus, { enabled: true, order: "role", ascending: true, limit: 20, realtime: false, everyMs: 300_000 });
+  const apiT = useTable(TABLES.apiStatus, { enabled: true, order: "role", ascending: true, limit: 20, realtime: true, everyMs: 60_000 });   // the 5-minute pulse rewrites these rows
   const reposT = useTable(TABLES.repos, { enabled: true, order: "full_name", ascending: true, limit: 100, realtime: false, everyMs: 300_000 });
   const gw = useMemo(() => gateways(apiT.rows), [apiT.rows]);
   const runs = useMemo(() => latestRuns(reposT.rows, 11), [reposT.rows]);

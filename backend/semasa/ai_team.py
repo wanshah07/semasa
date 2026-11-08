@@ -63,6 +63,17 @@ LIVE_TIMEOUT = 12                          # seconds a live question may take
 # usage rows that are CHECKS, not work: the 6-hourly probe and the 5-minute edge-function pulse. They are left out of the
 # calls / avg_ms / models_ok ranking (the probe's verdict reaches health() through semasa_api_status instead).
 CHECK_AREAS = ("probe", "pulse")
+# Wan, 8 Nov 2026: "make the robot priority like this - Rootsys > Mireld > KioskAPI > ChatGPT > Gemini for reasoning, read, write,
+# read image". Among the robots that are healthy, this order decides who is asked first; speed only breaks a tie between robots
+# Wan has not ranked (the providers he adds). A down robot is still last and the chain still falls over down the list. Gemini
+# stays off every job Wan has not allowed it for (gemini_keys.allowed), whatever its place here.
+PRIORITY = ("rootsys", "mireld", "kiosapi", "chatgpt", "gemini")
+
+
+def priority_rank(slug: str) -> int:
+    """0 for the first of PRIORITY ... 4 for the last; a robot Wan has not ranked comes after all of them."""
+    return PRIORITY.index(slug) if slug in PRIORITY else len(PRIORITY)
+
 
 # slug (api_status.slug_of) -> the robot. A host nobody named here is a "guest" robot with no mascot of its own.
 ROBOTS: dict[str, dict[str, Any]] = {
@@ -327,7 +338,8 @@ def candidates(github: LLMSettings, cfg: dict[str, dict[str, Any]], job: str = "
 
 
 def order(cands: list[dict[str, Any]], hl: dict[str, dict[str, Any]], pin: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """The usable candidates, fastest first; the pinned one first while healthy; an unhealthy one last. Each carries `why`."""
+    """The usable candidates: the healthy ones first, the pinned one first while healthy, then Wan's priority (PRIORITY), then the
+    fastest; an unhealthy one last. Each carries `why`."""
     usable = [c for c in cands if not c["blocked"]]
     for c in usable:
         h = hl.get(c["slug"]) or {}
@@ -353,6 +365,7 @@ def order(cands: list[dict[str, Any]], hl: dict[str, dict[str, Any]], pin: dict[
                 c["why"] = "pinned but " + c["why"] + " · switched away"
     usable.sort(key=lambda c: (0 if c["healthy"] else 1,
                                0 if (c.get("pinned") and c["healthy"]) else 1,
+                               priority_rank(c["slug"]),
                                c["speed_ms"] if c["speed_ms"] is not None else 10**9))
     return usable
 

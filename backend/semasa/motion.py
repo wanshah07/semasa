@@ -170,7 +170,7 @@ THE CONTRACT (a render fails or looks wrong if any is broken):
 8. Frame 0 already shows the title (it is the social thumbnail): do not enter from an empty frame.
 
 THE FILM: exactly the scenes under SCENES, FIXED (Hook, Fakta, Kenapa, Solusi: one idea each, short lines, numbers big),
-then the worker's closing card{source_clause}. No scene label (HOOK, FAKTA, KENAPA, SOLUSI) is ever shown on screen. Motion: eases
+then the worker's closing card{source_clause}. No scene label is shown on screen. Motion: eases
 power3.out / power2.inOut, 0.4 to 0.8 s entrances, staggered lines, a slow background drift, punchy but readable; every scene
 stays on screen for its fixed time.
 BACKGROUND: only a soft diagonal gradient (Design 1: background:#fff9ed linear-gradient(145deg,#e0f5e9,#fff9ed 70%);
@@ -242,9 +242,27 @@ EXPLAIN_RULE = ("HOW TO EXPLAIN (one way for every stream, the way Wan explains 
 CASUAL_RULE = ("TONE: casual, as a friend explaining to a friend, so the viewer UNDERSTANDS: short plain sentences, "
                "everyday words ('korang', 'jom', 'senang cerita', 'maksudnya'), and every technical term said once in "
                "simple words straight after it.")
-FLOW = ("Hook = one curiosity line that makes this reader stop; Fakta = the one thing that is true, from the brief; "
-        "Kenapa = why it matters to this reader; Solusi = the one thing to do next. Connected, complete sentences, never "
-        "isolated labels.\n" + LAYMAN_RULE + "\n" + EXPLAIN_RULE + "\n" + CONNECT_RULE + "\n" + LINES_RULE
+# Wan, 8 Nov 2026: "rebuild prompt for motion, make sure hook + layman story and fact + what missed out + CTA". Four scenes keep
+# their internal roles (hook, fact, why, solution: motion_auto.ROLES) and now do these jobs. The CTA is a FOLLOW invitation only,
+# worded so it passes the same checks as everything else: rules/compliance.json bans asking for a comment, a share, a save, a link
+# or a eligibility check, and motion_captions.HAND_OFF rejects 'for more info' (it sends the viewer away).
+STRUCTURE_RULE = (
+    "THE FILM'S FOUR PARTS, in this order, each scene doing only its own job:\n"
+    "1. HOOK: built on the hook shape below; the one line that makes this viewer stop.\n"
+    "2. CERITA & FAKTA (story and fact): tell it as a small true story a shopkeeper recognises (who did what, what happened, "
+    "what was found) in plain everyday words, and put the ACTUAL fact inside it: the number, limit, name, rule, date or step "
+    "from the brief, with the rule or study that decides it named once as a source, and what it means for them. Story and fact "
+    "are ONE scene: the fact is never dropped for the story, and the story is never dropped for the fact.\n"
+    "3. TERLEPAS (what was missed out): the one thing most people overlook or get wrong here: the catch, the exception, the "
+    "common mistake, the detail the headline skipped. Take it from the brief; if the brief gives none, say the single most "
+    "likely mistake a reader makes with the fact in scene 2. Never invent a number, date, clause or case to fill it.\n"
+    "4. CTA: the one thing to do next, said in a sentence, then ONE short invitation to follow for more like this ('ikuti kami "
+    "untuk tip macam ni', 'follow for more like this'). FOLLOW is the only ask: never ask the viewer to comment, share, save, "
+    "DM, click, visit, call or 'check eligibility' ('semak kelayakan'), never give a link, a website, a handle or a phone "
+    "number, and never write 'for more info' or 'untuk maklumat lanjut' (that sends the viewer away). The closing card the "
+    "worker adds says 'follow' in its own words, so lead into it and do not repeat them.")
+FLOW = (STRUCTURE_RULE + " Connected, complete sentences, never isolated labels.\n" + LAYMAN_RULE + "\n" + EXPLAIN_RULE
+        + "\n" + CONNECT_RULE + "\n" + LINES_RULE
         + "\n" + LIST_RULE + "\n" + NARRATION_RULE + "\n" + MALAY_RULE)
 FLOW_TEASER = "ONE scene: a curiosity hook only.\n" + LAYMAN_RULE + "\n" + EXPLAIN_RULE
 PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, at most {words} words in all and fewer "

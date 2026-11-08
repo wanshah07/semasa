@@ -27,8 +27,11 @@ NAMES = {e["id"]: e["name"] for e in EFFECT_LIBRARY["effects"]}
 LIBRARY_COUNT = len(NAMES)              # the 99 of Wan's catalogue; the visual styles below are extras and are reported as such
 NAMES.update(motion_visuals.NAMES)
 ROLES = ("hook", "fact", "why", "solution")
-LABELS = {"bm": ("HOOK", "FAKTA", "KENAPA", "SOLUSI"), "both": ("HOOK", "FAKTA", "KENAPA", "SOLUSI"),
-          "en": ("HOOK", "FACT", "WHY", "SOLUTION")}
+# Wan, 8 Nov 2026: "make sure hook + layman story and fact + what missed out + CTA". ROLES stay the internal keys the layout, the
+# report and the picture prompts already use (fact = story + fact, why = what was missed out, solution = the CTA scene); the
+# labels only tell the writer what each scene is for. They are never drawn on screen.
+LABELS = {"bm": ("HOOK", "CERITA & FAKTA", "TERLEPAS", "CTA"), "both": ("HOOK", "CERITA & FAKTA", "TERLEPAS", "CTA"),
+          "en": ("HOOK", "STORY & FACT", "MISSED OUT", "CTA")}
 
 FOOTAGE = "needs a filmed speaker or source footage; Semasa films have none"
 CAPTURE = "needs a real screenshot, screen capture or verified data; it would have to be invented"

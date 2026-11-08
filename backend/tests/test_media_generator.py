@@ -226,3 +226,35 @@ def test_the_chatgpt_provider_maps_its_errors_to_failover_kinds_and_sizes_the_pi
     with pytest.raises(ProviderError) as e2:
         p.generate("edit", "http://x/y.png", "p", {})
     assert e2.value.kind == "request"
+
+
+# ---- Wan's picture order (8 Nov 2026): Cloudflare > KioskAPI > ChatGPT > Gemini -----------------------------------------------
+
+def test_the_picture_order_is_cloudflare_kiosapi_chatgpt_gemini_and_a_picked_provider_goes_first(monkeypatch):
+    monkeypatch.setattr(media_generator, "has_credentials", lambda name, s, store=None: True)
+    s = _settings()
+    order = ["cloudflare", "openai", "chatgpt", "gemini", "replicate"]
+    assert media_generator.provider_chain(s, "openai", explicit=False) == order
+    picked = media_generator.provider_chain(s, "gemini", explicit=True)
+    assert picked == ["gemini", "cloudflare", "openai", "chatgpt", "replicate"]
+    video = media_generator.provider_chain(s, "gemini", kind="video", explicit=False)
+    assert video == ["openai", "replicate"], "only video makers"
+
+
+def test_a_row_stamped_with_the_default_provider_is_drawn_by_cloudflare_first(monkeypatch):
+    writes, _ = _patch_db(monkeypatch)
+    cf, oai = Fake("cloudflare", result=PIC), Fake("openai", result=PIC)
+    row = {**ROW, "provider": "openai"}                     # what Tetapan stamped when the row was queued
+    assert media_generator.process_row(None, row, _settings(), {"cloudflare": cf, "openai": oai}) is True
+    assert writes["m1"]["provider"] == "cloudflare" and cf.calls and oai.calls == []
+
+
+def test_a_provider_the_row_says_was_picked_keeps_its_place_and_an_unknown_one_is_still_reported(monkeypatch):
+    writes, _ = _patch_db(monkeypatch)
+    cf, oai = Fake("cloudflare", result=PIC), Fake("openai", result=PIC)
+    row = {**ROW, "provider": "openai", "meta": {"provider_explicit": True}}
+    assert media_generator.process_row(None, row, _settings(), {"cloudflare": cf, "openai": oai}) is True
+    assert writes["m1"]["provider"] == "openai" and oai.calls and cf.calls == []
+    row2 = {**ROW, "id": "m2", "provider": "nope"}
+    assert media_generator.process_row(None, row2, _settings(), {"cloudflare": cf}) is False
+    assert "unknown provider" in writes["m2"]["error"]

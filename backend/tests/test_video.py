@@ -160,6 +160,21 @@ def test_a_clip_is_cut_to_a_captioned_9_16_short(talk, tmp_path, frame):
     assert out.stat().st_size < video.MAX_OUT_BYTES
 
 
+def test_a_linkedin_clip_is_square_and_its_margins_follow_the_frame(talk, tmp_path):
+    """LinkedIn shows a 1:1 video best: the clip is 1080x1080, the captions are laid out for that frame, and the job
+    records the size so the page previews what was cut."""
+    assert video.size_of("linkedin") == (1080, 1080) and video.size_of("regulab") == (1080, 1920)
+    assert video.size_of(None) == (1080, 1920)
+    ass = video.build_ass(SEGS, 10, 30, "Hook", True, video.size_of("linkedin"))
+    assert "PlayResX: 1080" in ass and "PlayResY: 1080" in ass
+    assert ",90,90,169,1" in ass and ",90,90,129,1" in ass     # 300 and 230 scaled by 1080/1920
+    assert ",90,90,300,1" in video.build_ass(SEGS, 10, 30, "Hook")
+    out = tmp_path / "sq.mp4"
+    video.render(talk, out, start_in_file=10, dur=6, ass_text=ass, frame="fit", stream="linkedin")
+    p = subprocess.run([video.ffmpeg(), "-hide_banner", "-i", str(out)], capture_output=True, text=True)
+    assert "1080x1080" in p.stderr and "1080x1920" not in p.stderr
+
+
 def test_captions_really_reach_the_picture(talk, tmp_path):
     """The same frame with and without the words must differ: a silent libass or font failure would not."""
     frames = []
@@ -194,6 +209,7 @@ def test_an_approved_clip_is_cut_stored_and_becomes_a_draft_post(talk, monkeypat
     job = store.tables["media_generations"][0]
     assert job["status"] == "done" and job["generated_media_url"].endswith("-clip.mp4") and job["meta"]["poster_url"]
     assert sorted(got.values()) == ["image/jpeg", "video/mp4"]
+    assert (job["meta"]["width"], job["meta"]["height"]) == (1080, 1920)
     post = next(p for p in store.tables["semasa_posts"] if p["id"] != "p9")
     assert post["status"] == "draft" and post["media_ids"] == ["c1"] and post["citation"].startswith("Ustaz A")
     assert post["text"]["bm"]["instagram"].startswith("Ustaz A menerangkan") and job["post_id"] == post["id"]

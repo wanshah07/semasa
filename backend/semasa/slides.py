@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 from . import compliance
 
@@ -213,6 +213,19 @@ def ground_is_light(photo: Image.Image) -> bool:
     return vals[int(len(vals) * 0.4)] >= LIGHT_LUMA
 
 
+GROUND_BLUR = 70           # the blur radius is the shorter side divided by this: 1080 px gives about 15
+GROUND_CONTRAST = 0.72     # 1.0 is the picture as it is; lower pulls it toward flat grey
+
+
+def soften_ground(photo: Image.Image) -> Image.Image:
+    """A photograph under words is blurred and flattened first (Wan, 8 Nov 2026: "for any slide design which using photo as
+    background, make the photo blur or less contrast so the wording still clear to read"): a sharp, contrasty picture puts edges
+    and highlights across the letters even under a scrim. The same idea as coverSoft in web/src/lib/cards/studio.js."""
+    radius = max(2.0, min(photo.size) / GROUND_BLUR)
+    soft = photo.filter(ImageFilter.GaussianBlur(radius))
+    return ImageEnhance.Contrast(soft).enhance(GROUND_CONTRAST)
+
+
 def background(size: tuple[int, int], ground: bytes | None) -> tuple[Image.Image, bool]:
     """(canvas, on_ground). A ground is a photograph under a dark scrim, so white ink reads on it, unless it is a LIGHT
     picture: then it keeps dark ink under a faint white veil (Wan, 4 Oct 2026: the same background on every kind of post)."""
@@ -220,7 +233,7 @@ def background(size: tuple[int, int], ground: bytes | None) -> tuple[Image.Image
     if ground:
         try:
             from .images import open_upright
-            photo = cover_fit(open_upright(ground), size)
+            photo = soften_ground(cover_fit(open_upright(ground), size))
         except Exception as exc:  # noqa: BLE001 - a bad ground is reported, never drawn half
             raise SlideError(f"the background picture could not be opened ({type(exc).__name__})") from exc
         if ground_is_light(photo):

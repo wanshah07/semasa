@@ -285,6 +285,35 @@ function coverDraw(ctx, im, W, H) {
   const s = Math.max(W / im.width, H / im.height), w = im.width * s, h = im.height * s;
   ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
 }
+/* A photograph used as a BACKGROUND is softened before the words go on it (Wan, 8 Nov 2026: "for any slide design which using photo
+   as background, make the photo blur or less contrast so the wording still clear to read"). A sharp, contrasty photo under a
+   scrim still fights the type: edges and highlights cross the letters. Two cheap changes: blur it, and pull it toward a flat
+   tone (a veil: mid-grey over a dark ground, white over a light one), which lowers its contrast without a filter API.
+   The blur is made by drawing the picture small and back up in halving steps with smoothing on, NOT with ctx.filter, which
+   iPhone Safari before 18 does not have. It only runs where a photo is the ground UNDER words; the hero photo of p_fact and
+   p_split (words sit below it, not on it) is a design choice and stays sharp: those two call paintBg/photo with a shorter height. Pure canvas, so web/cards.test.mjs can see it. */
+export const SOFT = { blurDivisor: 50, veilDark: "rgba(118,124,130,.34)", veilLight: "rgba(255,255,255,.22)" };
+function coverSoft(ctx, im, w, h, light) {
+  const f = Math.max(2, Math.round(Math.min(w, h) / SOFT.blurDivisor));      // 1080 px → 12: a blur radius of roughly a hundredth of the card
+  const tw = Math.max(8, Math.round(w / f)), th = Math.max(8, Math.round(h / f));
+  const mk = (cw, ch) => { const c = document.createElement("canvas"); c.width = cw; c.height = ch; return c; };
+  let cur = mk(tw, th);
+  const g0 = cur.getContext("2d"); g0.imageSmoothingEnabled = true; g0.imageSmoothingQuality = "high";
+  coverDraw(g0, im, tw, th);                                                  // cover-crop straight to the small size
+  // back up in doubling steps: each step smooths again, so the result is a soft blur and not visible blocks
+  let cw = tw, ch = th;
+  while (cw < w) {
+    const nw = Math.min(w, cw * 2), nh = Math.min(h, ch * 2);
+    const nxt = mk(nw, nh), g = nxt.getContext("2d");
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+    g.drawImage(cur, 0, 0, cw, ch, 0, 0, nw, nh);
+    cur = nxt; cw = nw; ch = nh;
+  }
+  ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(cur, 0, 0, cw, ch, 0, 0, w, h);
+  ctx.fillStyle = light ? SOFT.veilLight : SOFT.veilDark; ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+}
 /* How much of the ground the words are allowed to cover. Light keeps a design readable as a
    design; heavy is the old behaviour, for a busy photograph. */
 /* The ramp used to start at .10-.44 and only get dark at the foot, which is where a photo
@@ -356,7 +385,7 @@ async function drawGround(ctx, spec, W, H) {
   let img = null;
   try { img = await loadImg(spec.bg); } catch (e) { return false; }
   if (!img) return false;
-  coverDraw(ctx, img, W, H);
+  coverSoft(ctx, img, W, H, !!spec._light);
   const sc = SCRIM[spec.scrim] || SCRIM.medium;
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, `rgba(9,24,30,${sc[0]})`); g.addColorStop(0.42, `rgba(9,24,30,${sc[1]})`); g.addColorStop(1, `rgba(9,24,30,${sc[2]})`);
@@ -1258,7 +1287,7 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   const LEAD_PX = Math.round(32 * u * TS), LEAD_LH = Math.round(45 * u * TS);
   const paintBg = (x, y, w, h) => {
     ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.translate(x, y);
-    if (bg) coverDraw(ctx, bg, w, h);
+    if (bg) { if (h >= H) coverSoft(ctx, bg, w, h, false); else coverDraw(ctx, bg, w, h); }   // full-bleed = a background under words: softened; a hero panel (words below it) stays sharp
     else {
       const g = ctx.createLinearGradient(0, 0, 0, h);
       g.addColorStop(0, "#2B323A"); g.addColorStop(1, "#11151A");
@@ -1464,7 +1493,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
   }
   const photo = (x, y, w, h) => {
     ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.translate(x, y);
-    if (bg) coverDraw(ctx, bg, w, h);
+    if (bg) { if (h >= H) coverSoft(ctx, bg, w, h, false); else coverDraw(ctx, bg, w, h); }
     else { const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#2B323A"); g.addColorStop(1, "#11151A"); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h); }
     ctx.restore();
   };

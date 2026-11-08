@@ -195,3 +195,67 @@ def test_a_blocked_or_keyless_link_in_the_chain_is_dropped():
 ])
 def test_classify_http(status, body, verdict):
     assert llm_mod.classify_http(status, body) == verdict
+
+
+# ---- ChatGPT as a link of the chain (Wan, 8 Nov 2026: ChatGPT writes and reads) ------------------------------------------
+
+class FakeLogin:
+    """Stands in for chatgpt_login.Login: remembers what it was asked, answers or raises."""
+
+    def __init__(self, text='{"ok": "gpt"}', exc=None):
+        self.text, self.exc, self.calls = text, exc, []
+
+    def write(self, system, user, *, model, timeout):
+        self.calls.append(("write", user, model))
+        if self.exc:
+            raise self.exc
+        return self.text
+
+    def read_image(self, system, prompt, data, mime, *, model, timeout):
+        self.calls.append(("read", prompt, data, mime, model))
+        if self.exc:
+            raise self.exc
+        return self.text
+
+
+def _gpt(login, vision="gpt-5.5"):
+    return {"slug": "chatgpt", "provider": "chatgpt", "base_url": "https://chatgpt.com/backend-api/codex", "key": login,
+            "model": "gpt-5.5", "vision_model": vision}
+
+
+def test_chatgpt_writes_as_a_link_and_the_other_gateways_are_not_asked(quiet):
+    sent = _posts(quiet, lambda url, m: Resp(200, '{"ok": "other"}'))
+    login = FakeLogin()
+    w = _writer(chain=[_gpt(login), *_chain()])
+    assert w.chat_json("sys", "hello") == {"ok": "gpt"}
+    assert login.calls[0][0] == "write" and "hello" in login.calls[0][1] and login.calls[0][2] == "gpt-5.5"
+    assert sent == [] and w.last_model == "gpt-5.5" and w.last_gateway == "https://chatgpt.com/backend-api/codex"
+
+
+def test_a_chatgpt_refusal_is_no_answer_and_the_next_gateway_writes(quiet):
+    from semasa.chatgpt_login import ChatGPTError
+    sent = _posts(quiet, lambda url, m: Resp(200, '{"ok": "other"}'))
+    login = FakeLogin(exc=ChatGPTError("ChatGPT refused the model (400)", model=True))
+    w = _writer(chain=[_gpt(login), *_chain()])
+    assert w.chat_json("sys", "hello") == {"ok": "other"}
+    assert sent and sent[0][0] == "rootsys.cloud", "the key of one robot goes only to its own host"
+    assert all("Bearer" not in str(c) for c in login.calls)
+
+
+def test_chatgpt_reads_a_picture_when_it_is_the_link_with_vision(quiet):
+    sent = _posts(quiet, lambda url, m: Resp(200, '{"ok": "other"}'))
+    login = FakeLogin(text='{"seen": "a jar"}')
+    w = _writer(chain=[_gpt(login), *_chain()])
+    assert w.can_see
+    assert w.describe_image("sys", "What is it?", b"\x89PNG-bytes", "image/png") == {"seen": "a jar"}
+    kind, prompt, data, mime, model = login.calls[0]
+    assert kind == "read" and data == b"\x89PNG-bytes" and mime == "image/png" and model == "gpt-5.5"
+    assert "What is it?" in prompt and sent == []
+
+
+def test_a_chatgpt_link_without_vision_is_never_sent_a_picture(quiet):
+    sent = _posts(quiet, lambda url, m: Resp(200, '{"seen": "from mireld"}'))
+    login = FakeLogin()
+    w = _writer(chain=[_gpt(login, vision=""), *_chain()])
+    assert w.describe_image("sys", "What is it?", b"x", "image/png") == {"seen": "from mireld"}
+    assert login.calls == [] and sent and sent[0][0] == "rootsys.cloud", "the primary reads it with VISION_MODEL, as before"

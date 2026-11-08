@@ -384,6 +384,13 @@ def chain(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
             cands.append(gem)
     except Exception as exc:  # noqa: BLE001 - Gemini is an extra: the team without it is the team as it was
         log.info("Gemini not considered (%s)", str(exc)[:120])
+    try:                          # Wan's ChatGPT login writes and reads pictures for the worker jobs (chatgpt_login.candidate)
+        from . import chatgpt_login
+        cg = chatgpt_login.candidate(store, job, now)
+        if cg and not any(c["slug"] == "chatgpt" for c in cands):
+            cands.append(cg)
+    except Exception as exc:  # noqa: BLE001 - ChatGPT is an extra: the team without it is the team as it was
+        log.info("ChatGPT not considered (%s)", str(exc)[:120])
     pins = read_pins(store)
     pin = pins.get(job)
     if not pin and job == "motion" and cands and cands[0]["source"] == "motion":

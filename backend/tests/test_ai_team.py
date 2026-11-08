@@ -444,3 +444,22 @@ def test_chain_with_no_usable_robot_is_empty_and_says_why():
                       "api_key": "kk-1", "key_host": "kiosapi.com"}}
     assert ai_team.chain(store, _github(api_key=None, fallback_key=None), cfg, NOW) == []
     assert "image model" in _state(store)["reader"]["why"]
+
+
+def test_chatgpt_joins_the_chain_for_a_worker_job_with_its_login_as_the_key_and_a_refused_model_keeps_it_out():
+    from semasa import chatgpt_login as cl
+    store = FakeStore(**{cl.TABLE: [{"id": "main", "auth": {"tokens": {"access_token": "a", "refresh_token": "r"}},
+                                     "enabled": True, "model": "gpt-5.5"}]})
+    links = ai_team.chain(store, _github(), {}, NOW, job="ideas")
+    gpt = next(c for c in links if c["slug"] == "chatgpt")
+    assert gpt["provider"] == "chatgpt" and isinstance(gpt["key"], cl.Login) and gpt["vision_model"] == "gpt-5.5"
+    s = ai_team.route(store, _github(), {}, NOW, job="ideas")
+    assert any(x["slug"] == "chatgpt" and x["provider"] == "chatgpt" for x in s.chain)
+    refused = FakeStore(**{cl.TABLE: store.tables[cl.TABLE]})
+    refused.tables[db.API_STATUS] = [{"slug": "chatgpt", "chat_ok": False, "checked_at": (NOW - timedelta(hours=1)).isoformat(),
+                                      "error": "ChatGPT refused the model (400): The 'gpt-5.5' model is not supported when using "
+                                               "Codex with a ChatGPT account."}]
+    assert not any(c["slug"] == "chatgpt" for c in ai_team.chain(refused, _github(), {}, NOW, job="ideas"))
+    assert any(c["slug"] == "chatgpt" for c in ai_team.chain(store, _github(), {}, NOW, job="reader")), "the reader job too"
+    chat = ai_team.chain(store, _github(), {}, NOW, job="chat")
+    assert not any(c["slug"] == "chatgpt" for c in chat), "chat is the edge function's"

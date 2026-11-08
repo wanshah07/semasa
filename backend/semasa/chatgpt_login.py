@@ -43,6 +43,10 @@ INSTRUCTIONS = ("You are an image generator. Call the image_generation tool exac
 SIZES = {"portrait": "1024x1536", "landscape": "1536x1024", "square": "1024x1024"}
 MODELS = RESPONSES.rsplit("/", 1)[0] + "/models"   # the models this ChatGPT account may use with Codex (the CLI asks the same)
 CLIENT_VERSION = "0.99.0"
+# The model list is filtered by the Codex client version asked for: a newer model is hidden from an older client. 8 Nov 2026: a
+# fresh login listed only "codex-auto-review" at 0.99.0 while every gpt-* writer was refused. When the first list has no
+# writer, the same GET is repeated with newer versions (a plain GET, nothing is spent) and the first list with a writer wins.
+CLIENT_VERSIONS = (CLIENT_VERSION, "1.0.0", "1.5.0", "2.0.0", "5.0.0")
 # Tried in this order when the saved model is refused and the account's own list cannot be read (7 Nov 2026: "The 'gpt-5' model is
 # not supported when using Codex with a ChatGPT account"). The account's list, when it answers, always comes first.
 FALLBACK_MODELS = ("gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.2", "gpt-5.1-codex", "gpt-5.1", "gpt-5-codex")
@@ -343,10 +347,25 @@ class Login:
 
     # ---- which model this account may use
     def models(self) -> list[str]:
-        """The models the account may use with Codex, as ChatGPT lists them ([] when the list cannot be read)."""
+        """The models the account may use with Codex, as ChatGPT lists them ([] when the list cannot be read). When the list
+        has no writing model, newer client versions are asked too (CLIENT_VERSIONS): the first list with a writer is the answer,
+        else the first list that came back."""
+        first: list[str] = []
+        for version in CLIENT_VERSIONS:
+            got = self._models_for(version)
+            if got and not first:
+                first = got
+            if any(m.startswith("gpt-") and not NOT_A_WRITER.search(m) for m in got):
+                self.client_version = version
+                return got
+            if not got and not first and version == CLIENT_VERSIONS[0]:
+                return []                       # the list cannot be read at all: asking again with another version will not help
+        return first
+
+    def _models_for(self, version: str) -> list[str]:
         try:
             access, account = self.refresh()
-            resp = self.http.get(MODELS, params={"client_version": CLIENT_VERSION}, timeout=20, headers={
+            resp = self.http.get(MODELS, params={"client_version": version}, timeout=20, headers={
                 "Authorization": f"Bearer {access}", "chatgpt-account-id": account, "originator": "codex_cli_rs",
                 "User-Agent": "codex_cli_rs/0.0 (semasa)", "Accept": "application/json"})
             if resp.status_code != 200:
@@ -356,7 +375,7 @@ class Login:
             log.info("ChatGPT models not listed (%s)", _clip(exc, 120))
             return []
         items = body.get("models") if isinstance(body, dict) else body
-        out = []
+        out: list[str] = []
         for m in items or []:
             slug = m.get("slug") or m.get("id") if isinstance(m, dict) else m
             if isinstance(slug, str) and slug and slug not in out:
@@ -407,6 +426,19 @@ class Login:
             return self._run(lambda _v: body, read_text_stream, timeout, 0)
         return self._with_model(call, model)
 
+    def read_image(self, system: str, prompt: str, data: bytes, mime: str = "image/jpeg", *, model: str = DEFAULT_MODEL,
+                   timeout: int = 180) -> str:
+        """What ChatGPT says about one picture (Wan, 8 Nov 2026: "ChatGPT also can read ... read image"): the same streamed
+        Responses call as write(), with the picture inline as an `input_image` data URI beside the question."""
+        uri = f"data:{mime or 'image/jpeg'};base64,{base64.b64encode(data).decode('ascii')}"
+
+        def call(m: str) -> str:
+            body = {"model": m, "instructions": system, "store": False, "stream": True,
+                    "input": [{"type": "message", "role": "user", "content": [
+                        {"type": "input_text", "text": prompt}, {"type": "input_image", "image_url": uri}]}]}
+            return self._run(lambda _v: body, read_text_stream, timeout, 0)
+        return self._with_model(call, model)
+
     def probe_row(self) -> dict[str, Any]:
         """ChatGPT as a robot on the API page (Wanshah 5): the login refreshed, the account's model list, and one short real
         answer from the saved model (or the first one the account allows, which is then saved)."""
@@ -437,3 +469,42 @@ class Login:
             row["error"] = _clip(exc, 300)
         row["model_listed"] = (row["model"] in row["models"]) if row["models"] else None
         return row
+
+
+# --- ChatGPT as a robot of the AI team (Wan, 8 Nov 2026: "make the chatgpt also can read, writing, read and generate image") ---
+# the worker jobs it may serve; chat and Telegram reach it through the edge functions
+TEAM_JOBS = ("reader", "ideas", "motion")
+# a refusal seen this recently keeps it out of the chain (the next probe re-opens it)
+REFUSED_STALE = timedelta(hours=13)
+
+
+def candidate(store: Any, job: str, now: datetime | None = None) -> dict[str, Any] | None:
+    """The AI-team candidate for Wan's ChatGPT login, or None: not connected, switched off, not a job it serves, or its last
+    check (semasa_api_status) says the account refuses its model. Its `key` IS the Login: llm.py asks ChatGPT through it, so
+    the tokens never leave this module."""
+    if job not in TEAM_JOBS:
+        return None
+    try:
+        login = Login(store)
+        if not login.connected():
+            return None
+        s = login.settings() or {}
+        if not s.get("enabled", True):
+            return None
+        from . import db
+        rows = store.table(db.API_STATUS).select("chat_ok,checked_at,error").eq("slug", "chatgpt").execute().data or []
+    except Exception as exc:  # noqa: BLE001 - ChatGPT is an extra: the team without it is the team as it was
+        log.info("ChatGPT not considered (%s)", _clip(exc, 120))
+        return None
+    if rows and rows[0].get("chat_ok") is False and MODEL_REFUSED.search(str(rows[0].get("error") or "")):
+        at = rows[0].get("checked_at")
+        try:
+            when = datetime.fromisoformat(str(at).replace("Z", "+00:00")) if at else None
+        except ValueError:
+            when = None
+        if when is not None and ((now or datetime.now(UTC)) - when) < REFUSED_STALE:
+            return None
+    model = str(s.get("model") or DEFAULT_MODEL)
+    return {"source": "chatgpt", "slug": "chatgpt", "provider": "chatgpt", "base_url": RESPONSES.rsplit("/", 1)[0], "key": login,
+            "model": model, "blocked": "", "robot": "W5", "name": "Wanshah 5", "tone": "guest",
+            "does": ["read", "write", "read_image", "make_image"]}

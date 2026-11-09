@@ -299,7 +299,7 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, str
   const tpl = templateOf(r.template);
   const uses = (f) => !tpl || tpl.uses.includes(f);
   const note = tpl ? noteLabel(r.template, t) : t("Nota / belon (pilihan)", "Note / bubble (optional)");
-  const groups = [["grid", "Grid"], ["era", "Info ERA"], ["photo", t("Foto", "Photo")]];
+  const groups = [["grid", "Grid"], ["era", "Info ERA"], ["photo", t("Foto", "Photo")], ["image", t("Gambar", "Image")]];
   const tplOptions = [["", t("Ikut reka bentuk set (auto)", "As the set's design (auto)")],
     ...groups.flatMap(([g, name]) => TEMPLATES.filter((x) => x.group === g).map((x) => [x.k, `${name} · ${lang === "bm" ? x.name.split(" · ")[1] : x.en.split(" · ")[1]}`]))];
   const mascotOk = !r.template || takesMascot(r.template);

@@ -615,8 +615,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
              **({"hook_on_cover": cover_state} if cover_state else {}),
              "post_id": post_id, "media_jobs": len(jobs), "written_at": datetime.now(UTC).isoformat(),
              "model": getattr(llm, "last_model", "") or llm.s.model}
-    if look_of(idea) != "classic":
-        brief["look"] = look_of(idea)      # the carousel look Wan chose on the idea (Studio's designs), kept
+    brief["look"] = look_of(idea)          # the carousel look: Wan's choice on the idea, else the default; "classic" is kept too
     if fmt != "post":
         brief["format"] = fmt              # carousel or poster, kept for the page
     for k in ("position", "replaces", "keep_media_ids"):
@@ -754,7 +753,7 @@ def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str 
         bg = saved["bg"]                       # the saved design's own background, when the post has no picture of its own
     elif bg == "none" and saved and saved.get("bg_prompt"):
         bg, review = "from_ref", {"background": saved["bg_prompt"]}      # a design from a reference: an ORIGINAL picture
-    elif bg == "none" and studio_cards.is_studio_look(look) and not (saved and saved.get("layouts")):
+    elif bg == "none" and studio_cards.is_studio_look(look) and look != "image" and not (saved and saved.get("layouts")):
         bg = cards_library.default_ground(post.get("stream") or "regulab", post.get("domain"), post.get("angle")) or "none"
     return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
             "prompt": "", "created_by": idea.get("created_by"),
@@ -781,13 +780,16 @@ def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: 
                      **({"review": review} if review else {}), **({"design_pack": saved} if saved else {})}}
 
 
-LOOKS = ("classic", "grid", "era", "photo")
+LOOKS = ("classic", "grid", "era", "photo", "image")
+DEFAULT_LOOK = "image"          # Wan, 8 Nov 2026: the Image look (a picture ON the slide) is the default for new posts
 
 
 def look_of(idea: dict[str, Any]) -> str:
     """The carousel look chosen on the idea, carried in its brief ({"look": ...}) until the bot writes the draft:
-    Semasa's own drawing ("classic") or one of ws.regulab Studio's designs. Anything else is "classic"."""
-    look = str(((idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}).get("look") or "classic")
+    Semasa's own drawing ("classic") or one of ws.regulab Studio's designs. No choice is the default look ("image");
+    a name nobody knows is "classic", the drawing that never needs a picture or the browser."""
+    raw = ((idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}).get("look")
+    look = str(raw or DEFAULT_LOOK)
     return look if look in LOOKS or my_designs.token(look) else "classic"
 
 

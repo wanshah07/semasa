@@ -35,6 +35,7 @@ import TileGrid from "../components/TileGrid";
 import { thumbOf } from "../lib/genActions";
 import CanvaHandoff from "../components/CanvaHandoff";
 import { canDeleteDesign, ownsDesign } from "../lib/designDelete";
+import { startLook } from "../lib/lookChoice";
 
 /* The Design tab (Wan, 25 Sep 2026: "add design section - to create poster, single card and carousel for post" and
    "the slide can create based on upload and prompt/idea provided"). The page only registers a job: the worker
@@ -53,7 +54,7 @@ const defaultSize = (design, stream) => (design === "poster" ? "portrait" : desi
    poster's card and its rules are the same wherever it is opened. */
 export default function DesignTab({ user, gens, posts, brand, settings, saveSetting, onToast, view = "make", go }) {
   const { t, lang: uiLang } = useLang();
-  const { designs: myDesigns, defaultId, ready: designsReady, saveDesigns, setDefault } = useDesigns();
+  const { designs: myDesigns, defaultId, ready: designsReady, saveDesigns, setDefault, hiddenLooks } = useDesigns();
   const [design, setDesign] = useState("poster");
   const [stream, setStream] = useState("regulab");
   const [format, setFormat] = useState("portrait");
@@ -75,7 +76,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
   const [lookPick, setLook] = useState(null);
   const [mdStatus, setMdStatus] = useState({ steps: [], error: "", done: null });          // the progress of "Save as my design"
   const zoom = useLightbox(mdStatus.done ? [{ url: mdStatus.done.image, title: t("Rujukan", "Reference") }, { url: mdStatus.done.render, title: t("Lukisan kita", "Our drawing") }] : []);
-  const look = lookPick ?? (defaultId && myDesigns.some((d) => d.id === defaultId) ? `d:${defaultId}` : "classic");
+  const look = lookPick ?? startLook({ designs: myDesigns, defaultId, hidden: hiddenLooks });
   const [fit, setFit] = useState(true);                      // fit the design to each slide (studio.js fitTemplate)
   // a reference to take ideas from (Wan, 26 Sep 2026: "upload reference and AI will review > render and get
   // confirmation to save the design"): read by the worker, drawn, and kept only when Wan presses Simpan

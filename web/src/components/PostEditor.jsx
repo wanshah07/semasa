@@ -15,6 +15,7 @@ import { GROUNDS, bgUrlOf, defaultGround } from "../lib/cards/library";
 import { isStudioLook } from "../lib/cards/studio";
 import { lookValueOf, resolveLook, useDesigns } from "../lib/designs";
 import { UnsplashCredit, UnsplashResults, UnsplashSearch, isUnsplash } from "./Unsplash";
+import { startLook } from "../lib/lookChoice";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
 
@@ -39,11 +40,11 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta?.bg) || "none");
   // the carousel's look: the one its last drawing used, Semasa's own drawing when there is none
   // (a set the Canva bot built is not a look this page can draw, so it is skipped here)
-  const { designs, defaultId } = useDesigns();
+  const { designs, defaultId, hiddenLooks } = useDesigns();
   const lastMeta = () => mediaRows.filter((m) => m.mode === "slides" && m.post_id === post.id && !m.meta?.design && m.meta?.look !== "canva")
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.meta;
   // a design the last drawing used comes back as that design; a post never drawn starts on the DEFAULT of My designs (else Semasa's own drawing)
-  const lastLook = () => (lastMeta() ? lookValueOf(lastMeta(), designs) : (defaultId && designs.some((d) => d.id === defaultId) ? `d:${defaultId}` : "classic"));
+  const lastLook = () => (lastMeta() ? lookValueOf(lastMeta(), designs) : startLook({ designs, defaultId, hidden: hiddenLooks }));
   const [look, setLook] = useState(lastLook);
   // "fit the design to each slide": on unless the last drawing was explicitly made with it off (a drawing from before
   // the option existed carries no flag, and gets the varied designs when it is drawn again)

@@ -478,3 +478,48 @@ def test_chatgpt_joins_the_chain_for_a_worker_job_with_its_login_as_the_key_and_
     assert any(c["slug"] == "chatgpt" for c in ai_team.chain(store, _github(), {}, NOW, job="reader")), "the reader job too"
     chat = ai_team.chain(store, _github(), {}, NOW, job="chat")
     assert not any(c["slug"] == "chatgpt" for c in chat), "chat is the edge function's"
+
+
+# ------------------------------------------- a robot's own default model (Wan, 9 Nov 2026: "allow me to adjust model mireld")
+def _chosen(store, models):
+    store.tables.setdefault(db.SETTINGS, []).append({"key": ai_team.SETTINGS_KEY, "value": {"pins": {}, "models": models}})
+
+
+def test_the_chosen_default_model_replaces_the_configured_one_in_the_chain():
+    store = FakeStore()
+    _chosen(store, {"mireld": "claude-fable-5.1"})
+    links = ai_team.chain(store, _github(), {}, NOW)
+    by = {c["slug"]: c for c in links}
+    assert by["mireld"]["model"] == "claude-fable-5.1"
+    assert by["rootsys"]["model"] == "gpt-4.1-mini", "a robot with no choice keeps its configured model"
+
+
+def test_no_choice_or_a_blank_one_changes_nothing():
+    store = FakeStore()
+    _chosen(store, {"mireld": "  ", "rootsys": 5})
+    assert ai_team.read_models(store) == {}
+    by = {c["slug"]: c for c in ai_team.chain(store, _github(), {}, NOW)}
+    assert by["mireld"]["model"] == "claude-sonnet-5.5"
+
+
+def test_a_block_that_was_about_the_old_model_goes_with_it_but_a_host_block_stays():
+    image_block = ai_team.cannot_write_text("x", "gpt-image-2")
+    cands = [{"slug": "kiosapi", "base_url": "https://kiosapi.com/v1", "model": "gpt-image-2", "blocked": image_block},
+             {"slug": "mireld", "base_url": "https://api.mireld.my/v1", "model": "kimi-k3", "blocked": "host not allowed"}]
+    out = ai_team.apply_models(cands, {"kiosapi": "gpt-5.6-sol", "mireld": "claude-fable-5.1"})
+    assert out[0]["model"] == "gpt-5.6-sol" and out[0]["blocked"] == ""
+    assert out[1]["model"] == "claude-fable-5.1" and out[1]["blocked"] == "host not allowed"
+
+
+def test_the_probe_asks_the_chosen_model(monkeypatch):
+    store = FakeStore()
+    _chosen(store, {"mireld": "claude-fable-5.1"})
+    asked = []
+
+    def fake_probe(gw, timeout):
+        asked.append((gw["slug"], gw["model"]))
+        return {"slug": gw["slug"], "name": gw["slug"], "model": gw["model"], "reachable": True, "key_ok": True, "chat_ok": True,
+                "chat_ms": 100, "checked_at": NOW.isoformat(), "models": [], "error": ""}
+    monkeypatch.setattr(api_status, "probe", fake_probe)
+    api_status.run(store, _github(), github=_github(), cfg={})
+    assert ("mireld", "claude-fable-5.1") in asked

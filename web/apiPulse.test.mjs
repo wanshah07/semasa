@@ -56,6 +56,13 @@ t("every openai gate the edge holds a key for is probed, once, at its own addres
   assert.ok(plan.chatgpt, "ChatGPT is in the plan from the login state");
   assert.equal(plan.chatgpt.row.model, "gpt-5.5");
 });
+t("the model Wan chose as a robot's own default is the one the pulse asks (settings.ai_team.models)", () => {
+  const root = (models) => pulsePlan(team, status, models).probes.find((p) => p.slug === "rootsys");
+  assert.equal(root({ rootsys: "kimi-k3" }).model, "kimi-k3");
+  assert.equal(root({}).model, "glm-5.3-flashx", "nothing chosen: the configured model, as before");
+  assert.equal(root(undefined).model, "glm-5.3-flashx");
+  assert.equal(root({ mireld: "claude-fable-5.1" }).model, "glm-5.3-flashx", "another robot's choice does not move this one");
+});
 t("a robot whose key is only a GitHub secret is left to api.yml and named", () => {
   assert.deepEqual(pulsePlan(team, status).unreachable, ["mireld"]);
   assert.deepEqual(pulsePlan({ gates: {}, robots: [] }, []).unreachable, []);

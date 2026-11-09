@@ -45,7 +45,7 @@ export const IMAGE_MODEL_RE = /image|dall-?e|imagine|sora|flux|stable-?diffusion
 /** What to probe, from assembleTeam's answer and the current status rows.
     { probes: [{slug, kind, base, key, keyId, keyRow, model, chat}], chatgpt: {slug, row, gate} | null, unreachable: [slug] }.
     `chat` is false when no model is known for the robot (api_status.py says "no model configured" for that). */
-export function pulsePlan(team, statusRows = []) {
+export function pulsePlan(team, statusRows = [], models = {}) {
   const status = Object.fromEntries((statusRows || []).filter((r) => r?.slug).map((r) => [r.slug, r]));
   const probes = [], unreachable = [];
   for (const [slug, g] of Object.entries(team?.gates || {})) {
@@ -58,7 +58,8 @@ export function pulsePlan(team, statusRows = []) {
       key = k.key; keyId = k.id ?? null; keyRow = k.row || null;
     }
     if (!key || !g.base) continue;
-    let model = cleanModelId(g.model) || cleanModelId(row?.model) || "";
+    // the model Wan chose as this robot's own default (settings.ai_team.models) beats the configured one (9 Nov 2026, Mireld)
+    let model = cleanModelId(models?.[slug]) || cleanModelId(g.model) || cleanModelId(row?.model) || "";
     if (slug === "gemini") model = geminiModel(row?.models, model);
     const listOnly = row?.role === "image" || IMAGE_MODEL_RE.test(model);
     probes.push({ slug, kind: "openai", base: g.base, key, keyId, keyRow, model, chat: !!model && !listOnly, listOnly, from: g.from || "" });

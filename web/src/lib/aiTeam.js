@@ -90,6 +90,22 @@ export function withPin(team, job, pin, now = new Date()) {
   return { ...(team || {}), pins, changed_at: now.toISOString() };
 }
 
+/** The model Wan chose as a robot's own default (settings.ai_team.models[slug]), or "" when he chose none: the one its probe asks and
+    its jobs use unless a pin names another (9 Nov 2026: "allow me to adjust model mireld"). */
+export function modelOverride(team, slug) {
+  const m = (team || {}).models?.[slug];
+  return typeof m === "string" ? m : "";
+}
+
+/** settings.ai_team with one robot's default model set (empty clears it); pins and the other robots are untouched. `changed_at` wakes
+    the worker the same way a pin does (supabase/057), so the new decision shows within a minute. */
+export function withModel(team, slug, model, now = new Date()) {
+  const models = { ...((team || {}).models || {}) };
+  const m = String(model || "").trim();
+  if (m) models[slug] = m; else delete models[slug];
+  return { ...(team || {}), models, changed_at: now.toISOString() };
+}
+
 /** True while a saved pin has not been decided on yet: the last decision is older than the change (and the change is recent,
     so a worker that never wakes does not leave "testing" on the page for ever). */
 export function decisionPending(team, state, now = Date.now()) {

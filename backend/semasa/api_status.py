@@ -287,7 +287,9 @@ def run(store: Any, settings: LLMSettings, timeout: int = 30, media: MediaSettin
         github: LLMSettings | None = None, cfg: dict[str, Any] | None = None,
         extra: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     rows = []
-    for gw in [*team(settings, media, github, cfg), *(extra or [])]:
+    from . import ai_team
+    chosen = ai_team.read_models(store)
+    for gw in ai_team.apply_models([*team(settings, media, github, cfg), *(extra or [])], chosen):
         row = probe(gw, timeout)
         rows.append(row)
         store.table(db.API_STATUS).upsert(row, on_conflict="slug").execute()

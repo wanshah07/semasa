@@ -210,9 +210,13 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
             options={[["post", t("Post", "Post")], ["carousel", t("Carousel (slaid/PPT)", "Carousel (slides/PPT)")], ["poster", "Poster"]]} />
           <span className="mt-1 block text-[11px] text-muted">
             {format === "carousel"
-              ? t("Semasa tulis 5 hingga 7 slaid, kemudian lukis sendiri ({size}, tanpa AI, percuma).",
-                "Semasa writes 5 to 7 slides, then draws them itself ({size}, no AI, free).",
-                { size: stream === "linkedin" ? "1080×1350" : "1080×1080" })
+              ? look === "threads"
+                ? t("Semasa tulis 2 hingga 5 halaman, kemudian lukis teks + gambar sendiri ({size}, tanpa AI, percuma).",
+                  "Semasa writes 2 to 5 pages, then draws the text + picture set itself ({size}, no AI, free).",
+                  { size: stream === "linkedin" ? "1080×1350" : "1080×1080" })
+                : t("Semasa tulis 5 hingga 7 slaid, kemudian lukis sendiri ({size}, tanpa AI, percuma).",
+                  "Semasa writes 5 to 7 slides, then draws them itself ({size}, no AI, free).",
+                  { size: stream === "linkedin" ? "1080×1350" : "1080×1080" })
               : format === "poster"
                 ? t("Semasa tulis satu poster (tajuk dan hingga lima poin, sumber di kaki), kemudian lukis 1080×1350.",
                   "Semasa writes one poster (a headline and up to five points, the source at the foot), then draws it at 1080×1350.")
@@ -226,7 +230,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
               slides={format === "poster" ? posterSample : sampleSlides(title, previewStream)}
               size={format === "poster" ? [1080, 1350] : null}
               eyebrow={previewStream === "regulab" ? (brand.regulab.domains || {})[domain] || "" : (brand.linkedin.angles || {})[angle] || ""}
-              bgChosen={media === "image"} onBlocked={setLookBlocked} />
+              bgChosen={media === "image"} threads={format === "carousel"} onBlocked={setLookBlocked} />
           </div>
         )}
         <label className="block"><Label hint={t("pilihan", "optional")}>{t("Apa yang anda mahu daripada isu ini", "What you want from this issue")}</Label>

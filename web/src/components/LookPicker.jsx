@@ -4,13 +4,20 @@ import { LOOKS, ensureFonts, isStudioLook, renderSlides, setLogo } from "../lib/
 import { GROUNDS } from "../lib/cards/library";
 import { resolveLook, useDesigns } from "../lib/designs";
 import { hide, offered, restore } from "../lib/lookChoice";
+import { THREADS, THREADS_LOOK, isThreads, threadsProblems, threadsSample } from "../lib/threadsSlides";
 import { useLang } from "../lib/i18n";
 import ImageLightbox, { useLightbox } from "./ImageLightbox";
+import ThreadsStrip, { ThreadsPage } from "./ThreadsPreview";
 
 /* Pick how a carousel (or a single card) is drawn (Wan, 26 Sep 2026: "copy the code design that already in ws.regulab
    studio, so we can choose the design"). Semasa's own drawing, or one of Studio's three: Grid, Info ERA, Photo.
    Studio's looks are previewed here with the SAME file the worker draws with (web/src/lib/cards/studio.js), so a
-   slide the preview calls too full is the slide the worker would refuse: the parent is told, and blocks Generate. */
+   slide the preview calls too full is the slide the worker would refuse: the parent is told, and blocks Generate.
+
+   `threads` (Wan, 9 Nov 2026) adds one more entry, Threads-style: 2 to 5 pages of short text over a picture, drawn by the worker
+   with its own code (backend/semasa/threads_slides.py). A caller that makes a carousel passes it; the post editor does not, so a
+   post's own slides are never offered a design they would not be drawn in. Its preview is a light CSS one (ThreadsPreview.jsx),
+   and the page count, the points, the length and the size are checked here with the worker's own numbers (lib/threadsSlides.js). */
 
 const BASE = `${import.meta.env.BASE_URL}cards/`;
 const NO_PICTURE = "This design is built on a picture";
@@ -80,7 +87,7 @@ function DesignTile({ d, opts, cover, ratio, on, onPick, disabled, defaultId }) 
 
 export default function LookPicker({ value, onChange, slides: given, sample: givenSample = false, stream = "regulab", eyebrow = "",
   citation = "", bgUrl = "", bgChosen = false, size = null, full = true, onBlocked, disabled = false, mascots = [],
-  fit = false, onFit = null }) {
+  fit = false, onFit = null, threads = false }) {
   const { t, lang } = useLang();
   const { designs, defaultId, hiddenLooks, setHiddenLooks } = useDesigns();
   const chosen = resolveLook(value, designs);                    // "d:<id>" is one of My designs: its family, colours and layouts
@@ -98,10 +105,17 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const image = usePreview(cover, { ...opts, look: "image" }, true);
   const tiles = { grid, era, photo, image };
   // a design can be removed from the choices (hidden, never deleted: old drafts still re-render) and brought back
-  const shownLooks = offered(LOOKS, hiddenLooks);
-  const hiddenList = LOOKS.filter((l) => !shownLooks.includes(l));
-  const canHide = !disabled && !!setHiddenLooks && shownLooks.length > 1;
-  const hideLook = (k) => { setHiddenLooks(hide(hiddenLooks, k, LOOKS.map((l) => l.k))); if (value === k) onChange(shownLooks.find((l) => l.k !== k)?.k || "image"); };
+  const studioShown = offered(LOOKS, hiddenLooks);
+  const shownLooks = threads ? [...studioShown, THREADS_LOOK] : studioShown;     // Threads-style is never hidden, and never counted as the last look left
+  const hiddenList = LOOKS.filter((l) => !studioShown.includes(l));
+  const canHide = !disabled && !!setHiddenLooks && studioShown.length > 1;
+  const hideLook = (k) => { setHiddenLooks(hide(hiddenLooks, k, LOOKS.map((l) => l.k))); if (value === k) onChange(studioShown.find((l) => l.k !== k)?.k || "image"); };
+  // Threads-style: its own words check, size check and light preview (the worker draws the real pages)
+  const onThreads = threads && isThreads(chosen.look);
+  const tRatio = Array.isArray(size) ? ratio : "1080 / 1350";                    // the idea flow draws it 4:5 whatever the stream
+  const tShown = sample ? (slides.length >= THREADS.minPages ? slides.slice(0, THREADS.maxPages) : threadsSample(stream)) : slides.slice(0, THREADS.maxPages);
+  const tProblems = useMemo(() => (onThreads ? threadsProblems(sample ? threadsSample(stream) : slides, Array.isArray(size) ? size : null) : []),
+    [onThreads, sample, stream, JSON.stringify(slides), JSON.stringify(size)]); // eslint-disable-line react-hooks/exhaustive-deps
   const dBg = chosen.design?.bg && chosen.design.bg.startsWith("lib:") ? GROUNDS.find((x) => `lib:${x.k}` === chosen.design.bg)?.url : "";
   const all = usePreview(slides, { ...opts, look: chosen.look, bg: bgUrl || dBg || "", ...(chosen.design ? { design: chosen.design } : {}) },
     full && isStudioLook(chosen.look));
@@ -112,7 +126,8 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
     warn: (p.warn || []).filter((w) => !(bgChosen && w.startsWith(NO_PICTURE))) })).filter((p) => p.warn.length),
   [all.pics, bgChosen]);
   const photoNeedsPicture = chosen.look === "photo" && !bgChosen && !chosen.design?.bg;
-  const blocked = photoNeedsPicture ? "photo" : isStudioLook(chosen.look) && !sample && problems.length ? "full" : null;
+  const blocked = photoNeedsPicture ? "photo" : onThreads ? (tProblems.length ? "threads" : null)
+    : isStudioLook(chosen.look) && !sample && problems.length ? "full" : null;
   useEffect(() => { onBlocked?.(blocked); }, [blocked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const name = (l) => (lang === "bm" ? l.bm : l.en);
@@ -128,13 +143,16 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
           const tile = tiles[l.k];
           const pic = tile?.pics?.[0];
           const needs = l.k === "photo" && !bgChosen;
+          const isT = l.k === THREADS_LOOK.k;
           return (
             <div key={l.k} className="relative min-w-0">
             <button type="button" role="radio" aria-checked={on} disabled={disabled}
               onClick={() => onChange(l.k)} title={hint(l)}
               className={`min-w-0 overflow-hidden rounded-tile border text-left transition ${on ? "border-accent ring-2 ring-accent/30" : "border-line hover:border-ink/30"} disabled:opacity-50`}>
-              <div className="relative w-full bg-surface-2" style={{ aspectRatio: ratio }}>
-                {l.k === "classic" ? (
+              <div className="relative w-full bg-surface-2" style={{ aspectRatio: isT ? tRatio : ratio }}>
+                {isT ? (
+                  <ThreadsPage page={tShown[0]} index={0} total={tShown.length} ratio={tRatio} label={eyebrow} />
+                ) : l.k === "classic" ? (
                   <div className="flex h-full w-full flex-col justify-center gap-1 bg-[#FAF7F2] p-3">
                     <span className="h-1.5 w-8 rounded bg-[#B0792A]" />
                     <span className="line-clamp-3 [overflow-wrap:anywhere] font-serif text-2xl font-semibold leading-tight text-[#1C1917] lg:text-[13px]">
@@ -154,7 +172,7 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
                 <div className="mt-1 line-clamp-2 text-[12px] leading-snug text-muted lg:text-[10.5px]">{hint(l)}</div>
               </div>
             </button>
-            {canHide && (
+            {canHide && !isT && (
               <button type="button" onClick={() => hideLook(l.k)} data-remove-look={l.k}
                 aria-label={t("Buang {n} daripada pilihan", "Remove {n} from the choices", { n: name(l) })}
                 title={t("Buang daripada pilihan (boleh dipulihkan)", "Remove from the choices (can be restored)")}
@@ -232,6 +250,24 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
               <span>{t("Terlalu penuh untuk reka bentuk ini: slaid {n}. Pendekkan, pecahkan kepada dua slaid, atau pilih reka bentuk lain. Tiada perkataan dipotong.",
                 "Too full for this design: slide {n}. Shorten it, split it into two slides, or pick another design. No word is ever cut.",
                 { n: problems.map((p) => p.n).join(", ") })}</span></p>
+          )}
+        </div>
+      )}
+      {onThreads && (
+        <div className="mt-3" data-threads-preview>
+          <p className="text-[12px] text-muted" data-threads-rule>
+            {t("Set Threads: {a} hingga {b} halaman, setiap satu teks pendek dengan gambar di bawahnya. Tiada perkataan dilukis di atas gambar dan tiada yang dipotong.",
+              "A Threads-style set is {a} to {b} pages, each a short piece of text with a picture under it. No word is drawn over the picture and none is cut.",
+              { a: THREADS.minPages, b: THREADS.maxPages })}
+            {sample && ` ${t("Contoh sahaja: Semasa menulis halaman sebenar kemudian, dalam reka bentuk ini.", "A sample only: Semasa writes the real pages later, in this design.")}`}
+          </p>
+          <ThreadsStrip slides={tShown} ratio={tRatio} label={eyebrow} />
+          {tProblems.length > 0 && (
+            <ul role="alert" className="mt-1 space-y-0.5 text-[12px] text-danger">
+              {tProblems.map((p, i) => (
+                <li key={i} className="flex items-start gap-1.5"><AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>{t(p.bm, p.en)}</span></li>
+              ))}
+            </ul>
           )}
         </div>
       )}

@@ -287,7 +287,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
       if (bg === "from_ref") bgValue = "from_ref";           // an original background in the reference's mood (worker)
       if (bg === "library") bgValue = `lib:${libPick}`;     // one of Wan's own photographs (web/public/cards/grounds)
       const rl = resolveLook(look, myDesigns);                  // "d:<id>": a saved design rides on the job as a snapshot
-      const meta = { flow: "design", design, format, ...sizeMeta(format), stream, bg: bgValue === "none" && rl.pack?.bg ? rl.pack.bg : bgValue,
+      const meta = { flow: "design", design: rl.look === "threads" ? "threads" : design, format, ...sizeMeta(format), stream, bg: bgValue === "none" && rl.pack?.bg ? rl.pack.bg : bgValue,
         look: styleUp && autoLook ? "auto" : rl.look, fit: fit && rl.look !== "classic", ...(rl.pack && !(styleUp && autoLook) ? { design_pack: rl.pack, design_id: rl.id } : {}),
         eyebrow: eyebrow.trim(), citation: citation.trim(),
         ...(styleUp ? { style_ref: { url: styleUp.url, path: styleUp.path, name: styleFile.name } } : {}),
@@ -518,7 +518,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
             "The AI picks the design from the reference; the choice below is only a preview.")}</p>}
           <LookPicker value={look} onChange={setLook} slides={previewSlides} sample={sampleWords} stream={stream}
             eyebrow={eyebrow.trim()} citation={citation.trim()} bgUrl={previewBg} bgChosen={bg !== "none"} mascots={MASCOTS}
-            size={pxOf(format)} onBlocked={setLookBlocked} fit={fit} onFit={setFit} />
+            size={pxOf(format)} threads={design === "carousel"} onBlocked={setLookBlocked} fit={fit} onFit={setFit} />
         </div>}
 
         <div className="mt-5 flex flex-wrap items-center justify-end gap-3">

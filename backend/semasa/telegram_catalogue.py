@@ -314,6 +314,53 @@ def take_answer(store: Any, link: dict[str, Any], kind: str, text: str,
     return reply, [_back("c:home", "⬅ Menu")]
 
 
+def carousel_options(post_id: str) -> tuple[str, list[list[dict[str, str]]]]:
+    return ("🖼 Carousel\n\nChoose the slide design first:", [
+        [{"text": "Threads", "callback_data": f"c:pcpick:{post_id}:threads"}],
+        [{"text": "Grid", "callback_data": f"c:pcpick:{post_id}:grid"},
+         {"text": "Info ERA", "callback_data": f"c:pcpick:{post_id}:era"}],
+        [{"text": "Photo", "callback_data": f"c:pcpick:{post_id}:photo"},
+         {"text": "Image", "callback_data": f"c:pcpick:{post_id}:image"}],
+        _back("c:post", "⬅ Post")])
+
+
+def picture_options(post_id: str, look: str) -> tuple[str, list[list[dict[str, str]]]]:
+    return (f"🖼 Carousel · {look}\n\nChoose the picture source:", [
+        [{"text": "📷 Use the post picture", "callback_data": f"c:pcgo:{post_id}:{look}:post"}],
+        [{"text": "🎨 Original paper/illustration", "callback_data": f"c:pcgo:{post_id}:{look}:none"}],
+        _back("c:post", "⬅ Post")])
+
+
+def single_options(post_id: str) -> tuple[str, list[list[dict[str, str]]]]:
+    return ("🎨 Single card\n\nChoose the slide design:", [
+        [{"text": "Semasa", "callback_data": f"c:scpick:{post_id}:classic"}],
+        [{"text": "Grid", "callback_data": f"c:scpick:{post_id}:grid"},
+         {"text": "Info ERA", "callback_data": f"c:scpick:{post_id}:era"}],
+        [{"text": "Photo", "callback_data": f"c:scpick:{post_id}:photo"},
+         {"text": "Image", "callback_data": f"c:scpick:{post_id}:image"}],
+        _back("c:post", "⬅ Post")])
+
+
+def single_picture_options(post_id: str, look: str) -> tuple[str, list[list[dict[str, str]]]]:
+    return (f"🎨 Single card · {look}\n\nChoose the picture source:", [
+        [{"text": "📷 Use the post picture", "callback_data": f"c:scgo:{post_id}:{look}:post"}],
+        [{"text": "🎨 Original paper/illustration", "callback_data": f"c:scgo:{post_id}:{look}:none"}],
+        _back("c:post", "⬅ Post")])
+
+
+def requeue_single(store: Any, post_id: str, look: str, picture: str) -> str:
+    rows = store.table(db.MEDIA).select("id,meta,status").eq("post_id", post_id).eq("mode", "slides") \
+        .order("created_at", desc=True).limit(1).execute().data or []
+    if not rows:
+        return "No single-card render is attached to that post yet. Open Semasa and generate the card first."
+    row = rows[0]
+    meta = dict(row.get("meta") or {})
+    meta.update(look=look, bg="post_image" if picture == "post" else "none", design="card", format="portrait")
+    store.table(db.MEDIA).update({"status": "pending", "attempts": 0, "error": None, "meta": meta}).eq("id", row["id"]).execute()
+    return ("🎨 Single card queued with the selected design and picture source. "
+            "The updated card will appear here when Semasa finishes.")
+
+
 # ---- Post: carousel and motion from a draft (the card and the edit are in telegram_bot.py) -------------------------------------
 
 def _caption_of(post: dict[str, Any]) -> str:
@@ -337,7 +384,7 @@ def _words_of_post(post: dict[str, Any]) -> str:
     return ("\n\n".join(parts) or _caption_of(post))[:1900]
 
 
-def make_carousel(store: Any, link: dict[str, Any], post: dict[str, Any]) -> str:
+def make_carousel(store: Any, link: dict[str, Any], post: dict[str, Any], look: str = "image", picture: str = "post") -> str:
     """A carousel version of a draft: a NEW idea on the same source with make_slides, written by the idea worker like any
     carousel (its slides and pictures are media jobs, its caption goes through the same hook and citation rules). The draft it
     comes from is not touched."""
@@ -362,6 +409,7 @@ def make_carousel(store: Any, link: dict[str, Any], post: dict[str, Any]) -> str
                     f"Draft hook: {post.get('hook') or ''} Draft caption: {caption[:600]}")[:2000],
            "status": "new", "created_by": link["user_id"],
            "brief": {"via": "telegram", "catalogue": "post", "format": "carousel", "from_post": post["id"],
+                     "look": look, "picture": picture,
                      "hook_required": True, "source_required": True, "requirements": REQUIREMENTS}}
     store.table(db.IDEAS).insert(row).execute()
     return ("🖼 Carousel sent to the writer. It comes back as a new draft with its slides and pictures; the draft you "

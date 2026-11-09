@@ -323,12 +323,14 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
         text += "\n\n⚠️ Approval blocked:\n• " + "\n• ".join(hard[:6])
         buttons = [[{"text": "✏️ Edit", "callback_data": f"c:pe:{post['id']}"},
                     {"text": "🖼 Carousel", "callback_data": f"c:pc:{post['id']}"}],
-                   [{"text": "🎬 Motion", "callback_data": f"c:pm:{post['id']}"}],
+                   [{"text": "🎨 Single card", "callback_data": f"c:sc:{post['id']}"},
+                    {"text": "🎬 Motion", "callback_data": f"c:pm:{post['id']}"}],
                    [{"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
     else:
         buttons = [[{"text": "✏️ Edit", "callback_data": f"c:pe:{post['id']}"},
                     {"text": "🖼 Carousel", "callback_data": f"c:pc:{post['id']}"}],
-                   [{"text": "🎬 Motion", "callback_data": f"c:pm:{post['id']}"}],
+                   [{"text": "🎨 Single card", "callback_data": f"c:sc:{post['id']}"},
+                    {"text": "🎬 Motion", "callback_data": f"c:pm:{post['id']}"}],
                    [{"text": "✅ Approve", "callback_data": f"ok:{post['id']}"},
                     {"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
     mid = bot.send(chat, text, buttons)
@@ -649,9 +651,34 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
             return "catalogue edit asked"
         elif rest.startswith("pc:"):
             post_id = rest.split(":", 1)[1]
+            text_, buttons = cat.carousel_options(post_id)
+            bot.send(chat, text_, buttons, reply_to=mid)
+            return "catalogue carousel options"
+        elif rest.startswith("pcpick:"):
+            _, post_id, look = rest.split(":", 2)
+            text_, buttons = cat.picture_options(post_id, look)
+            bot.send(chat, text_, buttons, reply_to=mid)
+            return "catalogue carousel picture"
+        elif rest.startswith("pcgo:"):
+            _, post_id, look, picture = rest.split(":", 3)
             posts = store.table(db.POSTS).select("*").eq("id", post_id).limit(1).execute().data or []
-            bot.send(chat, cat.make_carousel(store, link, posts[0]) if posts else "That draft was not found.", reply_to=mid)
-            return "catalogue carousel"
+            reply = cat.make_carousel(store, link, posts[0], look, picture) if posts else "That draft was not found."
+            bot.send(chat, reply, reply_to=mid)
+            return "catalogue carousel queued"
+        elif rest.startswith("sc:"):
+            post_id = rest.split(":", 1)[1]
+            text_, buttons = cat.single_options(post_id)
+            bot.send(chat, text_, buttons, reply_to=mid)
+            return "catalogue single card options"
+        elif rest.startswith("scpick:"):
+            _, post_id, look = rest.split(":", 2)
+            text_, buttons = cat.single_picture_options(post_id, look)
+            bot.send(chat, text_, buttons, reply_to=mid)
+            return "catalogue single card picture"
+        elif rest.startswith("scgo:"):
+            _, post_id, look, picture = rest.split(":", 3)
+            bot.send(chat, cat.requeue_single(store, post_id, look, picture), reply_to=mid)
+            return "catalogue single card queued"
         elif rest.startswith("pm:"):
             post_id = rest.split(":", 1)[1]
             posts = store.table(db.POSTS).select("*").eq("id", post_id).limit(1).execute().data or []

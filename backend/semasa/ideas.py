@@ -764,14 +764,16 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
     db.log_event(store, "info", "post", "post.revised", f"Ditulis semula dengan nota: {update['hook'][:80]}",
                  ref_table="semasa_posts", ref_id=post["id"])
 
-
 def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str = "none",
               chosen: tuple[str, dict[str, Any] | None] | None = None) -> dict[str, Any]:
-    """One render job for the whole carousel, carrying a snapshot of the words. Queued after the
-    picture jobs, so a picture made in the same run can be the slides' background. With no picture, a Studio look is
-    drawn on Studio's default ground for the domain or angle (Wan's own photographs), as Studio did."""
+    """One render job for the whole carousel, carrying its text, design and picture choice."""
     from . import cards_library, studio_cards
     look, saved = chosen or (look_of(idea), None)
+    requested_picture = str(((idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}).get("picture") or "")
+    if requested_picture == "none":
+        bg = "none"
+    elif requested_picture == "post":
+        bg = "post_image"
     review: dict[str, Any] = {}
     if bg == "none" and saved and saved.get("bg"):
         bg = saved["bg"]                       # the saved design's own background, when the post has no picture of its own

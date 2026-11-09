@@ -33,3 +33,12 @@ def test_pending_menu_state_is_namespaced():
     assert cat.waiting(st, "a topic") == ("idea", "")
     cat.clear_pending(st)
     assert cat.waiting(st, "a topic") is None
+
+
+def test_carousel_and_single_card_expose_design_and_picture_choices():
+    _, carousel = cat.carousel_options("p1")
+    assert any("c:pcpick:p1:threads" == b["callback_data"] for row in carousel for b in row)
+    _, picture = cat.picture_options("p1", "grid")
+    assert any("c:pcgo:p1:grid:post" == b["callback_data"] for row in picture for b in row)
+    _, single = cat.single_options("p1")
+    assert any("c:scpick:p1:image" == b["callback_data"] for row in single for b in row)

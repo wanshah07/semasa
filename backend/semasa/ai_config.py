@@ -107,7 +107,8 @@ def media_for(store: Any, github: MediaSettings | None = None, cfg: dict[str, di
     """The picture maker's settings: GitHub's, the page's image slot over them, then a pinned model from the AI team."""
     from . import ai_team
     github = github or MediaSettings.load()
-    return ai_team.route_media(store, media_settings(github, cfg if cfg is not None else read(store)))
+    cfg = cfg if cfg is not None else read(store)
+    return ai_team.route_media(store, media_settings(github, cfg), cfg=cfg)
 
 
 def media_settings(s: MediaSettings, cfg: dict[str, dict[str, Any]]) -> MediaSettings:

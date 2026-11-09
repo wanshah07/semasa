@@ -68,7 +68,7 @@ import {
   anthropicAnswer, answerText, chatRequest, errorText, foldAnthropic, modelsRequest, pickWorkers, readTeamInput, switchable,
   CHATGPT_CLIENT_ID, CHATGPT_RESPONSES, CHATGPT_TOKEN_URL, assembleTeam, chatgptAccount, chatgptNeedsRefresh, foldResponses, geminiKeyPatch, geminiOutcome,
   refreshedTokens, resolveChoice, responsesBody, tokenExpiry,
-  MEMORY, SYSTEM, planFaq, rankModels, shapeFaq, resolveModel, TEST_IMAGE, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanNote, cors,
+  MEMORY, SYSTEM, planFaq, rankModels, shapeFaq, resolveModel, TEST_IMAGE, UNTRUSTED, buildMessages, buildSystem, checkFetchUrl, checkReport, cleanModelId, imageCheckReport, imageRequest, imageResult, cleanNote, cors,
   OWN_HOSTS, RATE, allow, foldDelta, gatewayConfig, htmlToText, isPrivateIp, lastQuestion, parseArgs, planFold, planQuery, rateKind, readerMessage, readerCandidates, raceCandidates, summariseFailures, READER_BUDGET_MS,
   shapeRows, sseEvents, summaryMessages, userAskedToRemember, whoIs, memorySettings, planChatSearch, shapeChatHits, toolsFor,
 } from "./logic.js";
@@ -521,6 +521,30 @@ Deno.serve(async (req) => {
       const first = team.robots.find((r: any) => r.slug === auto.slug);
       return json({ robots: team.robots, auto: { slug: auto.slug, model: auto.model, name: first?.name || "", chain: auto.chain },
         models: first?.models || [], recommended: auto.model, default: auto.model, listed: !!first, gateway: first ? `${first.name} (${first.provider})` : gw.name });
+    }
+
+    // ---- check, a PICTURE MAKER (9 Nov 2026: "allow model button to be clicked and run"): one small real drawing --------------------
+    // A picture maker has no chat to test, so the Test button draws one 1024 picture at low quality (a few cents at most) at the robot's own
+    // address with its own key, and says only whether a picture came back and how long it took. The per-user "check" limit (10 in
+    // 10 minutes) bounds the spend.
+    if (body?.action === "check" && body?.kind === "image") {
+      const slug = String(body?.robot || "").trim();
+      const wanted = cleanModelId(body?.model);
+      if (!slug || !wanted) return json({ error: "name the robot and the picture model to test" }, 400);
+      const team = await loadTeam("cached");
+      const g = gateOf(team, slug);
+      if (!g) return json({ error: `${slug} has no key the function can use: ${team.robots.map((x: any) => `${x.name}: ${x.why || x.state_why || "ok"}`).join("; ")}` }, 503);
+      if (g.kind !== "openai") return json({ error: `${g.name} does not draw through the OpenAI dialect, so the function cannot test it` }, 400);
+      const list = await gateFetch(modelsRequest(g), 20000, "GET");
+      const ids: string[] | null = list.ok ? idsOf(list.data) : null;
+      const t0 = Date.now();
+      const draw = (extra: Record<string, unknown>) => gateFetch(imageRequest(g, { model: wanted, prompt: "A plain red circle on a white background", n: 1, size: "1024x1024", ...extra }), 100000);
+      let r = await draw({ quality: "low" });
+      if (!r.ok && r.status === 400 && /quality/i.test(String(r.text || ""))) r = await draw({});       // a gateway that takes no quality field is asked plainly
+      const ms = Date.now() - t0;
+      const picture = r.ok ? imageResult(r.data) : null;
+      const error = r.ok ? (picture ? "" : "the gateway answered but no picture came back") : `HTTP ${r.status}: ${errorText(r.data, r.text).slice(0, 160)}`;
+      return json({ ...imageCheckReport(wanted, ids, { ok: !!picture, ms, picture, error }), base_url: g.base, gateway: g.name, list_status: list.status });
     }
 
     // ---- check: models, picture reading, tool calling -------------------------------------------------

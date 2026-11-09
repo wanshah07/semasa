@@ -1207,6 +1207,37 @@ export function chatRequest(gate, payload, { stream = false } = {}) {
     body: JSON.stringify(stream ? { ...p, stream: true } : p) };
 }
 
+/** The HTTP request that draws one picture on an OpenAI-dialect gate: { url, headers, body } (the Test button of a picture maker). */
+export function imageRequest(gate, payload) {
+  const base = String(gate?.base || "").replace(/\/+$/, "");
+  return { url: `${base}/images/generations`, headers: { authorization: `Bearer ${gate?.key || ""}`, "content-type": "application/json" }, body: JSON.stringify(payload) };
+}
+
+/** What an images/generations answer holds: { kind: "b64"|"url", bytes } for a picture, or null. Never the picture itself: the
+    Test button only needs to know one came back. */
+export function imageResult(data) {
+  const d = Array.isArray(data?.data) ? data.data[0] : null;
+  if (!d || typeof d !== "object") return null;
+  if (typeof d.b64_json === "string" && d.b64_json.length > 100) return { kind: "b64", bytes: Math.floor((d.b64_json.length * 3) / 4) };
+  if (typeof d.url === "string" && /^https?:\/\//.test(d.url)) return { kind: "url", bytes: null };
+  return null;
+}
+
+/** What the picture maker's Test button shows (9 Nov 2026: "allow model button to be clicked and run"). `result` is {ok, ms, picture, error}
+    from one small real drawing; `models` is the ids the gateway lists (null when the list could not be read). */
+export function imageCheckReport(wanted, models, result) {
+  const ids = Array.isArray(models) ? models : null;
+  const exact = ids ? ids.find((m) => m === wanted) : null;
+  const same = ids ? ids.find((m) => norm(m) === norm(wanted)) : null;
+  const r = result || {};
+  return {
+    model: wanted, kind: "image",
+    listed: ids ? { read: true, count: ids.length, exact: !!exact, spelled_as: same && !exact ? same : null } : { read: false },
+    image_gen: r.ok ? { tested: true, ok: true, ms: Number.isFinite(r.ms) ? r.ms : null, kind: r.picture?.kind || null, bytes: r.picture?.bytes ?? null }
+      : { tested: true, ok: false, ms: Number.isFinite(r.ms) ? r.ms : null, error: String(r.error || "no picture came back").slice(0, 200) },
+  };
+}
+
 /** The HTTP request that lists a gate's models: { url, headers }. */
 export function modelsRequest(gate) {
   const base = String(gate?.base || "").replace(/\/+$/, "");

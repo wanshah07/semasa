@@ -4,6 +4,7 @@ import {
   DB_TABLES, FAQ_CATEGORIES, LIMITS, MEMORY, SYSTEM, TEST_IMAGE, TOOLS, buildMessages, planFaq, shapeFaq, buildSystem, checkFetchUrl, checkReport, cleanNote, htmlToText,
   MODEL_PREFERENCE, cleanModelId, isPrivateIp, modelNote, parseArgs, planFold, planQuery, rankModels, resolveModel, shapeRows, summaryMessages,
   userAskedToRemember, whoIs, foldDelta, lastQuestion, sseEvents,
+  imageCheckReport, imageRequest, imageResult,
   CHAT_SEARCH_OFF, CHAT_SEARCH_RULE, INSTRUCTIONS_HEAD, INSTRUCTIONS_MAX, cleanInstructions, memorySettings, planChatSearch, shapeChatHits, toolsFor,
 } from "../supabase/functions/semasa-chat/logic.js";
 
@@ -57,6 +58,26 @@ t("only real image data URLs get through, and only so many", () => {
   assert.equal(buildMessages([user("x")], many).sent.images, LIMITS.images);
   const huge = { name: "h.jpg", dataUrl: "data:image/jpeg;base64," + "A".repeat(LIMITS.imageChars) };
   assert.equal(buildMessages([user("x")], [huge]).sent.images, 0);
+});
+
+t("picture maker check: one small drawing at the gateway's own address, and the answer says only whether a picture came back", () => {
+  const req = imageRequest({ base: "https://api.mireld.my/v1/", key: "mk-1" }, { model: "gpt-image-2.5", prompt: "a red circle", n: 1 });
+  assert.equal(req.url, "https://api.mireld.my/v1/images/generations");
+  assert.equal(req.headers.authorization, "Bearer mk-1");
+  assert.equal(JSON.parse(req.body).model, "gpt-image-2.5");
+  assert.deepEqual(imageResult({ data: [{ b64_json: "A".repeat(4000) }] }), { kind: "b64", bytes: 3000 });
+  assert.deepEqual(imageResult({ data: [{ url: "https://cdn.example/x.png" }] }), { kind: "url", bytes: null });
+  assert.equal(imageResult({ data: [{ url: "javascript:alert(1)" }] }), null, "only a web address counts");
+  assert.equal(imageResult({ data: [] }), null);
+  assert.equal(imageResult({ error: { message: "no" } }), null);
+  assert.equal(imageResult(null), null);
+  const ok = imageCheckReport("gpt-image-2.5", ["gpt-image-2.5", "kimi-k3"], { ok: true, ms: 21000, picture: { kind: "b64", bytes: 3000 } });
+  assert.equal(ok.image_gen.ok, true); assert.equal(ok.image_gen.ms, 21000); assert.equal(ok.listed.exact, true);
+  const spelled = imageCheckReport("gpt-image-2.5", ["gpt-image-2-5"], { ok: true, ms: 5000, picture: { kind: "url" } });
+  assert.equal(spelled.listed.spelled_as, "gpt-image-2-5");
+  const bad = imageCheckReport("gpt-image-2.5", null, { ok: false, ms: 900, error: "HTTP 404: no such endpoint ".repeat(30) });
+  assert.equal(bad.image_gen.ok, false); assert.equal(bad.listed.read, false); assert.ok(bad.image_gen.error.length <= 200);
+  assert.equal(imageCheckReport("m", [], undefined).image_gen.ok, false);
 });
 
 t("check: 5.5 and 5-5 are the same model, and the report says how Mireld spells it", () => {

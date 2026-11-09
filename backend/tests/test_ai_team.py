@@ -478,3 +478,37 @@ def test_chatgpt_joins_the_chain_for_a_worker_job_with_its_login_as_the_key_and_
     assert any(c["slug"] == "chatgpt" for c in ai_team.chain(store, _github(), {}, NOW, job="reader")), "the reader job too"
     chat = ai_team.chain(store, _github(), {}, NOW, job="chat")
     assert not any(c["slug"] == "chatgpt" for c in chat), "chat is the edge function's"
+
+
+# ------------------------------------------------ Wanshah 2 (Mireld) as a picture maker (Wan, 9 Nov 2026)
+def _pin_picture(store, gateway, model):
+    pins = {"image_gen": {"gateway": gateway, "model": model}}
+    store.tables.setdefault(db.SETTINGS, []).append({"key": "ai_team", "value": {"pins": pins}})
+
+
+def test_mireld_is_a_robot_that_can_draw():
+    assert "make_image" in ai_team.ROBOTS["mireld"]["does"]
+
+
+def test_a_picture_pin_on_mireld_draws_through_mireld_with_mirelds_own_key():
+    store = FakeStore()
+    _pin_picture(store, "mireld", "gpt-image-2.5")
+    s = ai_team.route_media(store, _media(openai_base_url="https://kiosapi.com/v1", openai_key="kk-kios"), _github(), {})
+    assert s.provider == "openai" and s.openai_base_url == "https://api.mireld.my/v1"
+    assert s.openai_key == "mk-1" and s.openai_image_model == "gpt-image-2.5"
+    assert s.openai_key != "kk-kios", "the other gateway's key never follows to Mireld"
+
+
+def test_a_picture_pin_on_a_robot_with_no_key_here_leaves_the_saved_provider():
+    store = FakeStore()
+    _pin_picture(store, "mireld", "gpt-image-2.5")
+    keyless = _github(fallback_key=None)
+    s = ai_team.route_media(store, _media(openai_base_url="https://kiosapi.com/v1", openai_key="kk-kios"), keyless, {})
+    assert s.openai_base_url == "https://kiosapi.com/v1" and s.openai_key == "kk-kios" and s.openai_image_model == "gpt-image-1"
+
+
+def test_a_picture_pin_on_the_current_gateway_only_changes_the_model():
+    store = FakeStore()
+    _pin_picture(store, "kiosapi", "gpt-image-2.5")
+    s = ai_team.route_media(store, _media(openai_base_url="https://kiosapi.com/v1", openai_key="kk-kios"), _github(), {})
+    assert s.openai_base_url == "https://kiosapi.com/v1" and s.openai_key == "kk-kios" and s.openai_image_model == "gpt-image-2.5"

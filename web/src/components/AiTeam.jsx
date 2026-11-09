@@ -3,8 +3,8 @@ import { Loader2, Pin, PinOff, RefreshCw, Star, Zap } from "lucide-react";
 import Robot3D from "./Robot3D";
 import { useLang } from "../lib/i18n";
 import { stampMYT, timeAgo } from "../lib/format";
-import { DOES, JOBS, decisionOf, decisionPending, fmtMs, liveLines, modelsFor, pinFor, rateCheck, robotsFor, teamCards, withPin } from "../lib/aiTeam";
-import { checkAI } from "../lib/chat";
+import { DOES, JOBS, decisionOf, decisionPending, fmtMs, liveLines, modelsFor, pinFor, rateCheck, rateImage, robotsFor, teamCards, withPin } from "../lib/aiTeam";
+import { checkAI, checkImageAI } from "../lib/chat";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 
@@ -74,9 +74,17 @@ const liveOnPick = () => { try { return localStorage.getItem(LIVE_KEY) !== "off"
 /* A model's rating as stars and the numbers behind them, under its buttons. */
 function Rating({ r, t }) {
   if (!r) return null;
-  if (r.busy) return <p className="mt-2 flex items-center gap-1 text-[11px] text-accent" data-ai-rate><Loader2 size={11} className="animate-spin" />{t("menguji model ini terus…", "testing this model live…")}</p>;
+  if (r.busy) return <p className="mt-2 flex items-center gap-1 text-[11px] text-accent" data-ai-rate><Loader2 size={11} className="animate-spin" />{t("menguji model ini terus (gambar mengambil sehingga seminit)…", "testing this model live (a picture can take up to a minute)…")}</p>;
   if (!r.tested) return <p className="mt-2 text-[11px] text-muted" data-ai-rate>{t("Tidak diuji terus: ", "Not tested live: ")}{r.why}</p>;
   const p = r.parts;
+  if (r.kind === "image") return (
+    <p className="mt-2 text-[11px]" data-ai-rate={r.score} data-ai-rate-kind="image">
+      <span className="inline-flex items-center gap-0.5 text-warn" aria-label={`${r.stars} / 5`}>
+        {[1, 2, 3, 4, 5].map((n) => <Star key={n} size={12} className={n <= r.stars ? "fill-current" : "opacity-30"} />)}</span>
+      <b className="ml-1">{r.score}/100</b>
+      <span className="text-muted"> · {r.ms != null ? fmtMs(r.ms) : t("tiada masa", "no time")} · {t("melukis gambar", "drew a picture")} {p.drew ? "✓" : "✗"}{r.note ? ` · ${r.note}` : ""}</span>
+    </p>
+  );
   return (
     <p className="mt-2 text-[11px]" data-ai-rate={r.score}>
       <span className="inline-flex items-center gap-0.5 text-warn" aria-label={`${r.stars} / 5`}>
@@ -97,10 +105,10 @@ function JobPins({ cards, state, team, save, onToast }) {
   // The function's own live check of one robot + model: a real chat call with a picture and a tool. Image makers cannot be asked this.
   const rate = async (slug, model, job) => {
     const key = `${slug}|${model}`;
-    if (job === "image_gen") return setRates((r) => ({ ...r, [key]: { tested: false, why: t("pembuat gambar tidak dinilai dengan soalan teks", "an image maker is not rated with a text question") } }));
     setRates((r) => ({ ...r, [key]: { busy: true } }));
     let out;
-    try { out = rateCheck(await checkAI(key)); } catch (e) { out = { tested: false, why: e.message || String(e) }; }
+    // a picture maker has no chat to ask: the function draws one small real picture at its own address (a few cents at most) and says whether one came back
+    try { out = job === "image_gen" ? rateImage(await checkImageAI(key)) : rateCheck(await checkAI(key)); } catch (e) { out = { tested: false, why: e.message || String(e) }; }
     setRates((r) => ({ ...r, [key]: out }));
   };
   const jobs = ["reader", "motion", "image_gen", "image_reader"];
@@ -194,8 +202,9 @@ function JobPins({ cards, state, team, save, onToast }) {
                   <div className="mt-1.5 flex flex-wrap items-center gap-2">
                     <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-muted">
                       <input type="checkbox" checked={liveOn} onChange={(e) => toggleLive(e.target.checked)} data-live-switch className="accent-[var(--accent)]" />
-                      {t("uji terus bila model dipilih", "try it live when a model is picked")}</label>
-                    {pin.model && <Button size="sm" variant="ghost" disabled={rates[`${pin.gateway}|${pin.model}`]?.busy} onClick={() => rate(pin.gateway, pin.model, job)}><RefreshCw size={11} /> {t("Uji & nilai", "Test & rate")}</Button>}
+                      {t("uji terus bila model dipilih", "try it live when a model is picked")}{job === "image_gen" ? t(" (melukis satu gambar kecil)", " (draws one small picture)") : ""}</label>
+                    {pin.model && <Button size="sm" variant="ghost" disabled={rates[`${pin.gateway}|${pin.model}`]?.busy} onClick={() => rate(pin.gateway, pin.model, job)}
+                      title={job === "image_gen" ? t("Melukis satu gambar kecil sebenar (beberapa sen)", "Draws one small real picture (a few cents)") : ""}><RefreshCw size={11} /> {t("Uji & nilai", "Test & rate")}</Button>}
                     <Button size="sm" variant="ghost" disabled={!canSave || busy === job} onClick={() => setPin(job, null)}><PinOff size={12} /> {t("Auto", "Auto")}</Button>
                   </div>
                   <Rating r={rates[`${pin.gateway}|${pin.model}`]} t={t} />

@@ -5,7 +5,8 @@
 
 export const ROBOTS = {
   rootsys: { robot: "W1", name: "Wanshah 1", tone: "afiq", does: ["read", "write"] },
-  mireld: { robot: "W2", name: "Wanshah 2", tone: "mireld", does: ["read", "write"] },
+  // Mireld lists gpt-image models too (9 Nov 2026: "add wanshah2, mireld" to the picture maker); whether it really draws is what Test shows
+  mireld: { robot: "W2", name: "Wanshah 2", tone: "mireld", does: ["read", "write", "make_image"] },
   kiosapi: { robot: "W3", name: "Wanshah 3", tone: "kios", does: ["read", "write", "read_image", "make_image"] },
   // Gemini (Wan, 6 Nov 2026): several keys picked automatically; it shows only once a key has been probed (not in ORDER)
   gemini: { robot: "W4", name: "Wanshah 4", tone: "guest", does: ["read", "write", "read_image", "make_image"] },
@@ -148,4 +149,22 @@ export function rateCheck(report) {
   return { tested: true, score, stars, ms: Number.isFinite(ms) ? ms : null,
     parts: { answered: !!answered, listed: !!listed, picture: !!picture, tools: !!calls, speed },
     note: !answered ? "did not answer" : !picture && !calls ? "answers, but reads no picture and calls no tool" : "" };
+}
+
+/* A rating for one PICTURE model from the function's image check (one small real drawing). Out of 100, from what was measured:
+     drew      60  a picture came back          listed  10  the gateway lists the model by this exact name (5 when spelled differently)
+     speed     30  the drawing's time: full at 15 s or less, nothing at 60 s or more, in between linearly
+   A check that could not run (a function not deployed, a robot with no key) is `tested: false`, never a low score. */
+export function rateImage(report) {
+  if (!report || typeof report !== "object" || report.error) return { tested: false, why: String(report?.error || "no answer").slice(0, 160) };
+  const g = report.image_gen || {};
+  if (!g.tested) return { tested: false, why: "no answer" };
+  const ms = Number(g.ms);
+  const drew = g.ok ? 60 : 0;
+  const listed = report.listed?.exact ? 10 : report.listed?.spelled_as ? 5 : 0;
+  const speed = g.ok && Number.isFinite(ms) ? Math.round(30 * Math.min(1, Math.max(0, (60000 - ms) / 45000))) : 0;
+  const score = drew + listed + speed;
+  const stars = score >= 90 ? 5 : score >= 75 ? 4 : score >= 55 ? 3 : score >= 35 ? 2 : score > 0 ? 1 : 0;
+  return { tested: true, kind: "image", score, stars, ms: Number.isFinite(ms) ? ms : null,
+    parts: { drew: !!drew, listed: !!listed, speed }, note: g.ok ? "" : String(g.error || "no picture came back").slice(0, 160) };
 }

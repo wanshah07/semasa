@@ -171,3 +171,32 @@ def test_unknown_is_never_full_and_a_full_queue_does_not_stop_linkedin(monkeypat
 def test_a_post_at_an_odd_hour_still_counts_toward_the_cap_but_holds_no_slot():
     assert buffer_queue.slot_of(_myt(25, 3), ["08:00", "13:00", "21:00"]) is None
     assert buffer_queue.slot_of(_myt(25, 8) + timedelta(minutes=20), ["08:00", "13:00"]) == ("2026-09-25", "08:00")
+
+
+# ---------------------------------------------------------------- one idea per story, whatever the link
+def test_the_same_story_under_two_links_is_one_idea():
+    # 9 Nov 2026: Google News and the paper both carried "Jakim investigating The Weeknd's concerts";
+    # two LinkedIn slots got one each
+    twice = [_news(1, "halal", "Jakim investigating The Weeknd's concerts - Free Malaysia Today", summary="Jakim"),
+             {**_news(2, "halal", "Jakim investigating The Weeknd’s concerts", summary="Jakim"),
+              "url": "https://news.google.com/rss/articles/abc"}]
+    store = _store(news=twice)
+    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "streams": ["linkedin"], "per_run": 2}}, NOW)
+    made = store.tables["semasa_ideas"]
+    assert len(made) == 1, [m["source_title"] for m in made]
+    assert "news.google.com" not in made[0]["source_url"]          # the paper's own link wins: the writer can read it
+
+
+def test_a_story_already_written_up_under_another_link_is_not_written_again():
+    old = {"id": "i0", "source_title": "Jakim investigating The Weeknd's concerts", "source_url": "https://other.example/x",
+           "created_at": (NOW - timedelta(days=2)).isoformat()}
+    store = _store(news=[_news(1, "halal", "Jakim investigating The Weeknd's concerts - FMT")], ideas_=[old])
+    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "streams": ["linkedin"], "per_run": 2}}, NOW)
+    assert len(store.tables["semasa_ideas"]) == 1                    # only the old one
+
+
+def test_story_key_ignores_the_paper_tail_case_and_punctuation():
+    assert autofill.story_key("Jakim investigating The Weeknd’s concerts - Free Malaysia Today") == autofill.story_key(
+        "JAKIM investigating the Weeknd's concerts")
+    assert autofill.story_key("Minyak sapu - NPRA - FMT") == "minyak sapu npra"      # one tail is cut, never the whole
+    assert autofill.story_key("") == "" and autofill.story_key(None) == ""

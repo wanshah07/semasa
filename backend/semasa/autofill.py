@@ -11,6 +11,7 @@ is still a dry run. A gap with no fitting item is left a gap and said so, never 
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -112,6 +113,45 @@ def regulatory_link(item: dict[str, Any]) -> bool:
     return any(w in text for w in REGULATORY)
 
 
+def story_key(title: Any) -> str:
+    """One story under any link: the headline lowered, the " - Paper" tail of a Google News title cut off, letters and digits
+    only. The same story reaches the feed as a Google News link and as the paper's own link (the two LinkedIn ideas for 13 Nov
+    were both "Jakim investigating The Weeknd's concerts"), and the link is all the used-check compared."""
+    text = str(title or "").lower().strip()
+    text = re.sub(r"\s+[-|\u2013\u2014]\s+[^-|\u2013\u2014]{2,40}$", "", text)
+    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+def one_per_story(rows: list[dict[str, Any]], spent_stories: set[str] | None = None) -> list[dict[str, Any]]:
+    """Each story once: the first of its rows wins, a row with the paper's own link is preferred to a Google News redirect (the
+    writer can read the article behind it), and a story an idea already used is dropped whatever its link."""
+    spent = set(spent_stories or ())
+    best: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for r in rows:
+        key = story_key(r.get("title"))
+        if not key or key in spent:
+            continue
+        if key not in best:
+            best[key] = r
+            order.append(key)
+        elif "news.google.com" in str(best[key].get("url")) and "news.google.com" not in str(r.get("url")):
+            best[key] = r
+    return [best[k] for k in order]
+
+
+def used_stories(store: Any, days: int = 14, now: datetime | None = None) -> set[str]:
+    """Story keys of the ideas made lately: a headline already written up under another link is not written again.
+    Never raises."""
+    since = ((now or datetime.now(UTC)) - timedelta(days=days)).isoformat()
+    try:
+        rows = (store.table(db.IDEAS).select("source_title").gte("created_at", since).limit(1000).execute().data or [])
+    except Exception as exc:  # noqa: BLE001
+        log.info("used stories not read: %s", str(exc)[:100])
+        return set()
+    return {k for k in (story_key(r.get("source_title")) for r in rows) if k}
+
+
 def news_candidates(store: Any, now: datetime | None = None) -> list[dict[str, Any]]:
     """Newspaper headlines from the last NEWS_HOURS in a regulatory-adjacent category that no idea has used, shaped like feed
     items. Never raises: no table yet, or a failed read, is no news and the feed still fills the gaps."""
@@ -157,7 +197,7 @@ def candidates(store: Any, now: datetime | None = None) -> list[dict[str, Any]]:
     for chunk in db._in_filter_chunks(urls):
         spent |= {r.get("source_url") for r in (store.table(db.IDEAS).select("source_url").in_("source_url", chunk)
                                                 .execute().data or [])}
-    return [r for r in rows if r["url"] not in spent]
+    return one_per_story([r for r in rows if r["url"] not in spent], used_stories(store, now=now))
 
 
 def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> list[dict[str, Any]]:
@@ -223,7 +263,9 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                 if not item:
                     empty += 1
                     continue
-                pool.remove(item)
+                key = story_key(item.get("title"))
+                # the story leaves the pool whole, under every link
+                pool = [x for x in pool if x is not item and not (key and story_key(x.get("title")) == key)]
                 domain = None
                 urgent = (item.get("raw") or {}).get("urgent_for") == date
                 if stream == "regulab":

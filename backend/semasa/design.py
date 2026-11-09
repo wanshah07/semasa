@@ -15,14 +15,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import antislop, compliance, slides
+from . import antislop, compliance, slides, threads_slides
 from .llm import LLM
 from .log import get_logger
 
 log = get_logger("semasa.design")
 
-DESIGNS = ("poster", "card", "carousel")
-DEFAULT_FORMAT = {"poster": "portrait", "card": "portrait"}      # a carousel follows its stream; a card is 4:5 too (24 Oct 2026)
+DESIGNS = ("poster", "card", "carousel", "threads")
+# a carousel follows its stream; a card is 4:5 too (24 Oct 2026); a Threads-style set is 4:5 (threads_slides.py)
+DEFAULT_FORMAT = {"poster": "portrait", "card": "portrait", "threads": "portrait"}
 
 COMMON = """Rules. Breaking any of them blocks the artwork:
 1. No call to action of any kind ("hubungi kami", "DM", "klik link", "follow", "semak kelayakan", "comment below").
@@ -55,7 +56,25 @@ SHAPE = {
                 'Slide 1 is the cover (a headline of at most 9 words, points empty or one short line). Each middle '
                 'slide carries ONE fact: a title of at most 8 words and at most 3 points of at most 20 words. The last '
                 'slide is the takeaway, never a call to action.',
+    "threads": 'A Threads-style set of 2 to 5 pages, each a short piece of text that sits above a picture: {"slides": '
+               '[{"title": "...", "points": ["..."]}, ...], "citation": "..."}. Page 1 is the cover: its title is the '
+               'HOOK, at most 14 words, built on exactly one of the '
+               'numbered shapes below with the blanks filled from the BRIEF, and its points are empty or one short line. '
+               'Every other page carries ONE idea: a title of at most 8 words and at most 2 points of at most 18 words. '
+               'The last page is the takeaway, never a call to action. A picture is drawn under each page, so never '
+               'describe a picture in the words.',
 }
+
+
+def thread_hooks(stream: str) -> str:
+    """The shapes a Threads-style cover may be built on: the same numbered ones every post, caption and film uses
+    (hook_bank), listed for the stream. VULNERABLE stays withheld from the company stream by hook_bank itself."""
+    from . import hook_bank
+    lines = [f"  {n}. {shape}" for n, _family, shape in hook_bank.allowed(stream)]
+    return ("\n\nHOOK SHAPES (page 1 only; the rules above outrank them). Write a Malay cover as the shape is written; write "
+            "an English cover as a faithful translation. Never keep the underscores, never fill a blank with a figure, "
+            "duration, approval or cure the BRIEF does not give, and if no shape can be filled without inventing a fact "
+            "take the one that asserts the least.\n" + "\n".join(lines))
 
 
 def write(llm: LLM, brief: str, design: str, stream: str) -> tuple[list[dict[str, Any]], str]:
@@ -66,20 +85,29 @@ def write(llm: LLM, brief: str, design: str, stream: str) -> tuple[list[dict[str
         raise slides.SlideError("the writer is off, so the words cannot be written from the idea: "
                                 + (llm.why_off() if llm else "no writer") + ". Write the words yourself instead.")
     system = (f"You write the words for a social-media artwork. {VOICE.get(stream, VOICE['regulab'])}\n\n{COMMON}\n\n"
-              f"Answer with ONE JSON object only. {SHAPE[design]}{antislop.prompt_block()}")
+              f"Answer with ONE JSON object only. {SHAPE[design]}{antislop.prompt_block()}"
+              f"{thread_hooks(stream) if design == 'threads' else ''}")
     out = llm.chat_json(system, f"BRIEF (Wan's idea or prompt):\n{brief.strip()[:4000]}", max_tokens=2500)
     if not isinstance(out, dict):
         raise slides.SlideError("the writer did not answer (see the run log); press Retry, or write the words yourself")
     items = compliance.normalise_slides(out.get("slides"))
     if design in ("poster", "card"):
         items = items[:1]
+    if design == "threads":
+        # public words from a new writer: the writer got the anti-slop PROMPT, what comes back goes through clean()
+        items = [{**it, "title": antislop.clean(it["title"]), "points": [antislop.clean(p) for p in it["points"]]}
+                 for it in items[:threads_slides.MAX_PAGES]]
     if not items:
         raise slides.SlideError("the writer returned no words for the artwork; press Retry, or write them yourself")
     return items, str(out.get("citation") or "").strip()[:600]
 
 
-def check(items: list[dict[str, Any]], design: str) -> None:
-    """Posters/cards are one picture; carousels are always a multi-page story."""
+def check(items: list[dict[str, Any]], design: str, size: tuple[int, int] | None = None) -> None:
+    """Posters/cards are one picture; carousels are always a multi-page story; a Threads-style set is 2 to 5 short pages
+    (its own rules, and the size it can hold, are threads_slides.check)."""
+    if design == "threads":
+        threads_slides.check(items, size or slides.SIZES["regulab"])
+        return
     for n, item in enumerate(items, 1):
         if len(str(item.get("title") or "")) + sum(len(str(p)) for p in item.get("points") or []) > 1000:
             raise slides.SlideError(f"slide {n}: too long to fit; shorten it or split it")

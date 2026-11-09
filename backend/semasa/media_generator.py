@@ -456,6 +456,29 @@ def own_photos(store: Any, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def thread_photos(store: Any, row: dict[str, Any], items: list[dict[str, Any]],
+                  ground: bytes | None) -> list[bytes | None]:
+    """Picture for each page: its own `bg`, the job background, or an original drawing.
+
+    One page's unreadable picture never costs the set.
+    """
+    cache: dict[str, bytes | None] = {}
+    out: list[bytes | None] = []
+    for it in items:
+        tok = str(it.get("bg") or "")
+        data = ground
+        if tok and tok != "none":
+            if tok not in cache:
+                try:
+                    cache[tok] = ground_for(store, row, tok)[0]
+                except Exception as exc:  # noqa: BLE001 - one page's picture must not cost the whole set
+                    log.warning("%s: page picture %s could not be read: %s", row["id"], tok, str(exc)[:160])
+                    cache[tok] = None
+            data = cache[tok] or ground
+        out.append(data)
+    return out
+
+
 PHOTO_EDGE = 480
 MAX_CLASSIC_POINTS = 5
 
@@ -610,7 +633,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         if not items:
             raise slides.SlideError("no slides to draw: write at least one slide" + ("" if kind else " in the post"))
         if kind:
-            design.check(items, kind)
+            design.check(items, kind, design.size_of(meta, stream))
             # the words are judged by the rules a post is judged by; a hard flag is shown on the artwork and blocks
             # the post it is attached to, and the drawing still goes ahead so Wan can see what he is fixing
             meta["flags"] = [f for f in compliance.scan({"stream": stream, "citation": meta.get("citation") or "",
@@ -645,7 +668,15 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             if look == "photo" and not ground:
                 look = "grid"
             meta["look_chosen"] = look
-        if studio_cards.is_studio_look(look):
+        if kind == "threads":
+            # the Threads-style text + picture set (threads_slides.py): drawn here with Pillow, one picture per page
+            from . import threads_slides
+            look = "threads"
+            pics = threads_slides.render(classic_words(items), stream=stream, eyebrow=eyebrow,
+                                         source=str(meta.get("citation") or ""),
+                                         website=website, photos=thread_photos(store, row, items, ground),
+                                         size=size or slides.SIZES.get(stream, slides.SIZES["regulab"]))
+        elif studio_cards.is_studio_look(look):
             # ws.regulab Studio's own designs, drawn by Studio's own code in headless Chrome
             from . import cards_library
             from .providers.cloudflare import content_type_of
@@ -676,7 +707,8 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         if style.get("url"):
             meta["awaiting_confirm"] = not meta.get("saved")     # waits for Wan's Simpan; never attached before it
         db.finish_media(store, row_id, status="done", generated_media_url=urls[0], provider="semasa",
-                        model="slides-v1" if look == "classic" else f"studio-{look}", error=None, meta=meta)
+                        model={"classic": "slides-v1", "threads": "threads-v1"}.get(look, f"studio-{look}"),
+                        error=None, meta=meta)
         _drop_files(store, row_id, [x for x in before if x not in paths])     # the last version's slides, all of them
         if row.get("post_id") and not meta.get("awaiting_confirm"):
             # a Design artwork is added to the post's pictures; a post's own carousel replaces its earlier one

@@ -166,6 +166,11 @@ def test_the_idea_carries_its_look_to_the_slide_job():
     for brief in ({}, None, "not a dict"):
         assert ideas.look_of({"brief": brief}) == "image"                      # nothing chosen: the default look
     assert ideas.look_of({"brief": {"look": "neon"}}) == "classic"            # a name nobody knows: the safe drawing
+    assert ideas.slide_job({"id": "i4", "brief": {"look": "threads"}}, post, "p1")["meta"] == {
+        "flow": "A", "slides": SLIDES, "stream": "regulab", "design": "threads", "format": "portrait",
+        "citation": "", "domain": "kosmetik", "angle": None, "bg": "none", "look": "threads", "fit": True,
+    }
+    assert ideas.look_of({"brief": {"look": "threads"}}) == "threads"
 
 
 class _Route:

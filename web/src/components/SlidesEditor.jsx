@@ -160,7 +160,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
         <div className="mt-3 rounded-tile bg-surface-2/40 p-2.5">
           <LookPicker value={look} onChange={setLook} slides={previewSlides} stream={post.stream}
             eyebrow={preview.eyebrow} citation={preview.citation} bgUrl={preview.bgUrl} bgChosen={bg !== "none"}
-            mascots={MASCOTS} onBlocked={setBlocked} fit={fit} onFit={setFit} />
+            mascots={MASCOTS} threads onBlocked={setBlocked} fit={fit} onFit={setFit} />
         </div>
       )}
 

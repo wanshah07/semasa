@@ -189,6 +189,18 @@ export async function checkAI(model = "") {
   return data;
 }
 
+/** The "check" action for a PICTURE MAKER ("slug|model"): the function draws one small real picture at the robot's own address, so the
+    answer says whether a picture came back and how long it took. Costs a few cents at most; the function allows 10 checks in 10 minutes. */
+export async function checkImageAI(model = "") {
+  if (!supabase) return { error: "not configured" };
+  const { data, error } = await supabase.functions.invoke(FUNCTION, { body: { action: "check", kind: "image", ...choiceBody(model) } });
+  if (error) {
+    const why = await explain(error);
+    return { error: why.missing ? "function belum dipasang / not deployed" : why.message };
+  }
+  return data;
+}
+
 /** The chat models the function offers, best default first: { models: [{id, recommended, family, note_en, note_bm}], recommended,
     default, listed }, and since 7 Nov 2026 `robots` (all five, each with state, speed, models, or `why` it cannot be used) and `auto`
     ({slug, model, name}). null when the function is not deployed or answers an old shape (the page then hides the picker). */

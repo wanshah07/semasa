@@ -56,7 +56,7 @@ assert.deepEqual(modelsFor(null, "reader"), []);
 const three = teamCards([], [], NOW);
 assert.deepEqual(robotsFor(three, "reader").map((c) => c.robot), ["W1", "W3", "W2"], "KiosAPI serves chat models too; an image model is refused by name, not by host");
 assert.deepEqual(robotsFor(three, "motion").map((c) => c.robot), ["W1", "W3", "W2"]);
-assert.deepEqual(robotsFor(three, "image_gen").map((c) => c.robot), ["W3"]);
+assert.deepEqual(robotsFor(three, "image_gen").map((c) => c.robot), ["W3", "W2"], "Wanshah 3 draws; Wanshah 2 (Mireld) was added to the picture maker on 9 Nov 2026");
 assert.deepEqual(robotsFor(three, "image_reader").map((c) => c.robot), ["W1", "W3", "W2"]);
 
 

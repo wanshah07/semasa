@@ -78,7 +78,7 @@ def priority_rank(slug: str) -> int:
 # slug (api_status.slug_of) -> the robot. A host nobody named here is a "guest" robot with no mascot of its own.
 ROBOTS: dict[str, dict[str, Any]] = {
     "rootsys": {"robot": "W1", "name": "Wanshah 1", "tone": "afiq", "does": ["read", "write"]},
-    "mireld": {"robot": "W2", "name": "Wanshah 2", "tone": "mireld", "does": ["read", "write"]},
+    "mireld": {"robot": "W2", "name": "Wanshah 2", "tone": "mireld", "does": ["read", "write", "make_image"]},
     # KiosAPI serves chat models too (Wan's reader slot runs gpt-5.6-sol there), so it may write text; what it may NOT do is
     # answer a chat question with an image model, which cannot_write_text() refuses by the model's name.
     "kiosapi": {"robot": "W3", "name": "Wanshah 3", "tone": "kios", "does": ["read", "write", "read_image", "make_image"]},
@@ -515,8 +515,11 @@ def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
     return dataclasses.replace(base, **change)
 
 
-def route_media(store: Any, s: MediaSettings) -> MediaSettings:
-    """The picture maker: a pinned model for the image slot wins over the saved one. The provider itself is Tetapan's."""
+def route_media(store: Any, s: MediaSettings, github: LLMSettings | None = None,
+                cfg: dict[str, dict[str, Any]] | None = None) -> MediaSettings:
+    """The picture maker: a pinned model for the image slot wins over the saved one. The provider is Tetapan's, except that a pin
+    on ANOTHER OpenAI-dialect robot that holds a key here (Mireld, Wanshah 2: "add wanshah2, mireld" to the picture maker, 9 Nov
+    2026) draws through that robot's own address and key, as a pair: a key never goes to a host it was not saved for."""
     pin = read_pins(store).get("image_gen") or {}
     if not pin.get("model"):
         return s
@@ -526,7 +529,30 @@ def route_media(store: Any, s: MediaSettings) -> MediaSettings:
         return dataclasses.replace(s, cloudflare_t2i_model=pin["model"])
     if s.provider == "replicate" and pin.get("gateway") in ("", None, "replicate"):
         return dataclasses.replace(s, replicate_t2i_model=pin["model"])
+    gw = pin.get("gateway") or ""
+    if gw and gw not in ("cloudflare", "replicate") and not (s.provider == "openai" and slug_of(s.openai_base_url) == gw):
+        other = _picture_gateway(store, gw, github, cfg)
+        if other:
+            return dataclasses.replace(s, provider="openai", openai_base_url=other["base_url"], openai_key=other["key"],
+                                       openai_image_model=pin["model"])
+        log.info("picture maker pinned to %s, which has no key here: the saved provider stays", gw)
     return s
+
+
+def _picture_gateway(store: Any, slug: str, github: LLMSettings | None,
+                     cfg: dict[str, dict[str, Any]] | None) -> dict[str, str] | None:
+    """{base_url, key} of an OpenAI-dialect robot a key exists for, or None. Never raises: no key is the saved provider."""
+    try:
+        from . import ai_config, ai_providers
+        github = github or LLMSettings.load()
+        cfg = cfg if cfg is not None else ai_config.read(store)
+        for c in candidates(github, cfg, "reader", ai_providers.load(store)):
+            host_blocked = bool(c.get("blocked")) and c["blocked"] != cannot_write_text(c["base_url"], c.get("model", ""))
+            if c["slug"] == slug and c.get("key") and (c.get("provider") or "openai") == "openai" and not host_blocked:
+                return {"base_url": c["base_url"], "key": c["key"]}
+    except Exception as exc:  # noqa: BLE001 - the picture still gets drawn by the saved provider
+        log.info("picture gateway %s not resolved (%s)", slug, str(exc)[:120])
+    return None
 
 
 def _read_state(store: Any) -> dict[str, Any]:

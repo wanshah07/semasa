@@ -128,6 +128,22 @@ function SourcePills({ r }) {
 
 const isLate = (r) => r.status === "new" && Date.now() - new Date(r.updated_at || r.created_at).getTime() > LATE_MIN * 60_000;
 
+/* Auto-fill waits while Buffer's queue is full (Wan, 9 Nov 2026) and starts again by itself when a post goes out. The worker writes
+   settings.buffer_queue on every run; this only says so, so an empty Ideas list is never a mystery. */
+function QueuePause({ q }) {
+  const { t } = useLang();
+  if (!q?.paused) return null;
+  const full = (q.full || []).map((p) => `${p} ${q.counts?.[p] ?? "?"}/${q.limit ?? "?"}`).join(", ");
+  return (
+    <p className="mt-4 flex items-start gap-2 rounded-tile border border-warn/40 bg-warn/10 p-3 text-[12px] text-ink" data-queue-pause>
+      <Clock size={14} className="mt-0.5 shrink-0 text-warn" />
+      <span><b>{t("Auto-isi dijeda: queue Buffer penuh", "Auto-fill paused: the Buffer queue is full")}</b> ({full}).{" "}
+        {t("Idea baharu tidak ditulis sendiri sehingga ada post keluar dari queue; ia bersambung secara automatik. Idea yang anda tulis sendiri tidak terjejas.",
+          "No new idea is written on its own until a post leaves the queue; it resumes by itself. Ideas you write yourself are not affected.")}</span>
+    </p>
+  );
+}
+
 /* One banner above the list when any shown idea has waited too long (it used to repeat inside every late card). */
 function LateNote({ n }) {
   const { t } = useLang();
@@ -313,6 +329,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
         </div>
       </div>
       {ideas.error && <p className="mt-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{ideas.error}</p>}
+      <QueuePause q={motionSettings?.buffer_queue} />
       <LateNote n={shown.filter(isLate).length} />
       {!shown.length && !ideas.loading && (
         <p className="mt-4 rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">{t("Tiada idea di sini.", "No ideas here.")}</p>

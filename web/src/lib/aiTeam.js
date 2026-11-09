@@ -127,3 +127,25 @@ export function robotsFor(cards, job) {
 }
 
 export const fmtMs = (ms) => (ms == null ? "" : ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`);
+
+/* A rating for one model from the function's live "check" answer (Wan, 9 Nov 2026: pick a model as a button, then try it live and get a
+   rating). Out of 100, from what the check really measured, never from a guess:
+     answered   25  the model answered a request at all (the picture question is a real chat call)
+     listed     10  the gateway lists it by this exact name (5 when only spelled differently)
+     picture    20  it read the red test picture            tools    20  it called the test tool
+     speed      25  the picture question's time: full at 2 s or less, nothing at 15 s or more, in between linearly
+   A check that could not run (an image maker, the ChatGPT login, a function not deployed) is `tested: false`, never a low score.
+   Pure, so web/aiRate.test.mjs runs this under Node. */
+export function rateCheck(report) {
+  if (!report || typeof report !== "object" || report.error) return { tested: false, why: String(report?.error || "no answer").slice(0, 160) };
+  const img = report.image || {}, tools = report.tools || {}, ms = Number(report.image_ms);
+  const answered = img.tested && !img.error ? 25 : 0;
+  const listed = report.listed?.exact ? 10 : report.listed?.spelled_as ? 5 : 0;
+  const picture = img.reads ? 20 : 0, calls = tools.calls ? 20 : 0;
+  const speed = Number.isFinite(ms) && answered ? Math.round(25 * Math.min(1, Math.max(0, (15000 - ms) / 13000))) : 0;
+  const score = answered + listed + picture + calls + speed;
+  const stars = score >= 90 ? 5 : score >= 75 ? 4 : score >= 55 ? 3 : score >= 35 ? 2 : score > 0 ? 1 : 0;
+  return { tested: true, score, stars, ms: Number.isFinite(ms) ? ms : null,
+    parts: { answered: !!answered, listed: !!listed, picture: !!picture, tools: !!calls, speed },
+    note: !answered ? "did not answer" : !picture && !calls ? "answers, but reads no picture and calls no tool" : "" };
+}

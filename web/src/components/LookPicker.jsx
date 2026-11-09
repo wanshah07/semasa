@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2, Palette, Plus, RotateCcw, X, ZoomIn } from "lucide-react";
 import { LOOKS, ensureFonts, isStudioLook, renderSlides, setLogo } from "../lib/cards/studio";
-import { GROUNDS } from "../lib/cards/library";
+import { GROUNDS, groundOf } from "../lib/cards/library";
 import { resolveLook, useDesigns } from "../lib/designs";
 import { hide, offered, restore } from "../lib/lookChoice";
 import { useLang } from "../lib/i18n";
@@ -95,7 +95,10 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const grid = usePreview(cover, { ...opts, look: "grid" }, true);
   const era = usePreview(cover, { ...opts, look: "era" }, true);
   const photo = usePreview(cover, { ...opts, look: "photo" }, true);
-  const image = usePreview(cover, { ...opts, look: "image" }, true);
+  // The Image look puts the picture ON the slide, so its tile shows one even before the post has a picture (Wan, 9 Nov 2026: "add
+  // sample picture to the Gambar tile"): the post's own picture when there is one, else one of the library photographs as a sample.
+  const sampleBg = bgUrl || groundOf("g_makmal02")?.url || GROUNDS[0]?.url || "";
+  const image = usePreview(cover, { ...opts, look: "image", bg: sampleBg }, true);
   const tiles = { grid, era, photo, image };
   // a design can be removed from the choices (hidden, never deleted: old drafts still re-render) and brought back
   const shownLooks = offered(LOOKS, hiddenLooks);

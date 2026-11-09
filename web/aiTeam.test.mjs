@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { decisionOf, decisionPending, liveLines, modelsFor, pinFor, robotOf, robotsFor, stateOf, teamCards, withPin } from "./src/lib/aiTeam.js";
+import { decisionOf, decisionPending, liveLines, modelOverride, modelsFor, pinFor, robotOf, robotsFor, stateOf, teamCards, withModel, withPin } from "./src/lib/aiTeam.js";
 
 const NOW = Date.parse("2026-10-23T06:00:00Z");
 const row = (slug, over = {}) => ({ slug, key_set: true, reachable: true, key_ok: true, chat_ok: true, checked_at: "2026-10-23T05:00:00Z", models: [], ...over });
@@ -93,3 +93,22 @@ assert.equal(withProv[4].robot, "W6"); assert.equal(withProv[4].state, "standby"
 assert.equal(withProv[5].robot, "W7"); assert.equal(withProv[5].state, "offline", "a provider the probe has not reached is an offline W7");
 assert.deepEqual(teamCards([row("mireld")], [], NOW).map((c) => c.slug), ["rootsys", "kiosapi", "mireld"], "no providers: as before");
 console.log("aiTeam.test.mjs: ok");
+
+// a robot's own default model (9 Nov 2026: "allow me to adjust model mireld")
+{
+  const base = { pins: { reader: { gateway: "rootsys", model: "glm-5.3" } }, other: 1 };
+  const a = withModel(base, "mireld", " claude-fable-5.1 ", new Date("2026-11-09T01:00:00Z"));
+  assert.equal(modelOverride(a, "mireld"), "claude-fable-5.1");
+  assert.equal(modelOverride(a, "rootsys"), "");
+  assert.deepEqual(a.pins, base.pins, "pins are not touched");
+  assert.equal(a.other, 1);
+  assert.equal(a.changed_at, "2026-11-09T01:00:00.000Z");
+  const b = withModel(a, "rootsys", "glm-5.3-flash");
+  assert.equal(modelOverride(b, "mireld"), "claude-fable-5.1", "another robot's choice stays");
+  const c = withModel(b, "mireld", "");
+  assert.equal(modelOverride(c, "mireld"), "", "empty clears it");
+  assert.equal(modelOverride(c, "rootsys"), "glm-5.3-flash");
+  assert.equal(modelOverride(undefined, "mireld"), "");
+  assert.equal(modelOverride({ models: { mireld: 5 } }, "mireld"), "", "a non-string is no choice");
+}
+console.log("aiTeam model override: ok");

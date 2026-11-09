@@ -130,6 +130,33 @@ def read_pins(store: Any) -> dict[str, dict[str, Any] | None]:
     return {k: (v if isinstance(v, dict) and v.get("gateway") else None) for k, v in pins.items()}
 
 
+def read_models(store: Any) -> dict[str, str]:
+    """The model Wan chose as a robot's own default, {slug: model} (settings.ai_team.models). It beats the model GitHub's
+    variables or the page's slots carry for that gateway, for the probe and the router alike (Wan, 9 Nov 2026: "allow me to adjust
+    model mireld": Mireld's configured kimi-k3 answered in 27 s and was reported down while claude-fable-5.1 answered in 3 s)."""
+    try:
+        rows = store.table(db.SETTINGS).select("key,value").eq("key", SETTINGS_KEY).execute().data or []
+    except Exception as exc:  # noqa: BLE001 - no override is the default
+        log.info("ai_team models not read (%s)", str(exc)[:120])
+        return {}
+    raw = ((rows[0].get("value") or {}) if rows else {}).get("models") or {}
+    return {str(k): str(v).strip() for k, v in raw.items() if isinstance(raw, dict) and isinstance(v, str) and v.strip()}
+
+
+def apply_models(cands: list[dict[str, Any]], models: dict[str, str]) -> list[dict[str, Any]]:
+    """Each candidate (or probe row) whose slug has a chosen model gets it. A "blocked" reason that was only about the OLD model
+    (an image model on the chat endpoint) is recomputed for the new one; a block for the gateway's HOST stays."""
+    for c in cands:
+        want = models.get(c.get("slug") or "")
+        if not want or want == c.get("model"):
+            continue
+        old_reason = cannot_write_text(c.get("base_url", ""), c.get("model", ""))
+        c["model"] = want
+        if "blocked" in c and (not c["blocked"] or c["blocked"] == old_reason):
+            c["blocked"] = cannot_write_text(c.get("base_url", ""), want)
+    return cands
+
+
 def health(store: Any, now: datetime | None = None) -> dict[str, dict[str, Any]]:
     """{slug: {probe_ok, probe_ms, probe_at, fresh, calls, failed, avg_ms}} from the probe rows and 48 h of usage."""
     now = now or datetime.now(UTC)
@@ -388,7 +415,7 @@ def chain(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
         api_status.remember_providers(providers)           # so their usage rows carry the provider's slug, not its host
     except Exception as exc:  # noqa: BLE001 - no providers is the team as it was
         log.info("AI providers not considered (%s)", str(exc)[:120])
-    cands = candidates(github, cfg, job, providers)
+    cands = apply_models(candidates(github, cfg, job, providers), read_models(store))
     gem_seed: dict[str, Any] | None = None
     try:                          # Gemini joins the team for the jobs Wan allows, with the key it picks (gemini_keys.py)
         from . import gemini_keys

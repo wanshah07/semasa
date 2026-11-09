@@ -8,6 +8,7 @@ import { useLang } from "../lib/i18n";
 import { useTable } from "../lib/hooks";
 import { stampMYT, timeAgo } from "../lib/format";
 import { fmtTokens, orderedModels, usageByArea, usageByDay, usageByGateway, verdictOf } from "../lib/api";
+import { modelOverride, withModel } from "../lib/aiTeam";
 import Card from "../components/ui/Card";
 import { Segmented } from "../components/ui/Field";
 import AiTeam from "../components/AiTeam";
@@ -32,6 +33,9 @@ const VERDICT = {
 };
 const COLOURS = ["rgb(var(--c-accent))", "rgb(var(--c-ok))", "rgb(var(--c-warn))", "rgb(var(--c-danger))", "rgb(var(--c-muted))"];
 
+// the gateways whose default model is set from GitHub variables or secrets, so a page choice is the only way to move it
+const ADJUSTABLE = ["rootsys", "mireld"];
+
 export default function ApiTab({ settings, save, onToast }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? "en" : "bm";
@@ -41,6 +45,18 @@ export default function ApiTab({ settings, save, onToast }) {
   // the providers Wan added (supabase/074): read here so the AI team cards number them W6, W7, ... (realtime: the table is published)
   const providersT = useTable(TABLES.aiProviders, { enabled: true, order: "created_at", ascending: true, limit: 50, everyMs: 120_000 });
   const [days, setDays] = useState(30);
+  const [picking, setPicking] = useState("");                                  // "slug|model" while a default-model choice is being saved
+  // A robot's own default model (Wan, 9 Nov 2026: "allow me to adjust model mireld"): its probe asks this one and its jobs use it unless
+  // a pin names another. Click a listed model to make it the default, click it again (or Reset) to go back to the configured one.
+  const setDefaultModel = async (slug, model) => {
+    if (typeof save !== "function") return;
+    setPicking(`${slug}|${model}`);
+    try {
+      await save("ai_team", withModel(settings?.ai_team, slug, model));
+      onToast?.(model ? t("{m} ialah model lalai {r}: disemak dalam kira-kira 5 minit.", "{m} is {r}'s default model: it is checked within about 5 minutes.", { m: model, r: slug })
+        : t("Model lalai {r} kembali kepada yang ditetapkan di GitHub.", "{r}'s default model is back to the one GitHub sets.", { r: slug }), "ok");
+    } catch (e) { onToast?.(e?.message || String(e), "danger"); } finally { setPicking(""); }
+  };
   const byGw = useMemo(() => usageByGateway(usageT.rows, days), [usageT.rows, days]);
   const byDay = useMemo(() => usageByDay(usageT.rows, days), [usageT.rows, days]);
   const byArea = useMemo(() => usageByArea(usageT.rows, days), [usageT.rows, days]);
@@ -100,6 +116,8 @@ export default function ApiTab({ settings, save, onToast }) {
           const V = VERDICT[v] || VERDICT.none;
           const u = byGw[r.slug] || { calls: 0, failed: 0, tokens: 0, prompt: 0, completion: 0, ms: 0, models: {} };
           const models = orderedModels(r);
+          const over = modelOverride(settings?.ai_team, r.slug);
+          const canAdjust = typeof save === "function" && ADJUSTABLE.includes(r.slug);
           return (
             <Card key={r.slug} className="p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -120,10 +138,25 @@ export default function ApiTab({ settings, save, onToast }) {
               )}
               {r.error && <p className="mt-2 rounded-tile bg-danger/10 p-2 text-xs text-danger">{r.error}</p>}
               <div className="mt-3">
-                <p className="mb-1 text-xs font-medium text-muted">{t("Model disenaraikan", "Models listed")} · {models.length}</p>
+                <p className="mb-1 flex flex-wrap items-center gap-2 text-xs font-medium text-muted">{t("Model disenaraikan", "Models listed")} · {models.length}
+                  {canAdjust && <span className="font-normal">{over
+                    ? <>· {t("lalai anda", "your default")}: <b className="text-ink">{over}</b> <button type="button" className="underline hover:text-accent" onClick={() => setDefaultModel(r.slug, "")} disabled={!!picking}>{t("Set semula", "Reset")}</button></>
+                    : <>· {t("klik model untuk jadikan lalai {r}", "click a model to make it {r}'s default", { r: r.name || r.slug })}</>}</span>}
+                </p>
                 {models.length ? (
                   <div className={`flex flex-wrap gap-1 ${models.length > 24 ? "max-h-44 overflow-y-auto pr-1" : ""}`} data-model-list={r.slug}>
-                    {models.map((m) => <span key={m} className={`rounded-pill px-2 py-0.5 text-[11px] ${m === r.model ? "bg-accent/15 text-accent" : u.models[m] ? "bg-ok/10 text-ok" : "bg-surface-2 text-muted"}`} title={u.models[m] ? `${fmtTokens(u.models[m])} tokens` : ""}>{m}</span>)}
+                    {models.map((m) => {
+                      const cls = `rounded-pill px-2 py-0.5 text-[11px] ${m === r.model ? "bg-accent/15 text-accent" : u.models[m] ? "bg-ok/10 text-ok" : "bg-surface-2 text-muted"}`;
+                      const title = u.models[m] ? `${fmtTokens(u.models[m])} tokens` : "";
+                      if (!canAdjust) return <span key={m} className={cls} title={title}>{m}</span>;
+                      const mine = m === over;
+                      return (
+                        <button type="button" key={m} onClick={() => setDefaultModel(r.slug, mine ? "" : m)} disabled={!!picking} aria-pressed={mine} data-default-model={m}
+                          title={mine ? t("Model lalai anda: klik untuk kembali", "Your default model: click to go back") : t("Jadikan model lalai {r}", "Make this {r}'s default model", { r: r.name || r.slug })}
+                          className={`${cls} border transition hover:border-accent hover:text-accent disabled:opacity-50 ${mine ? "border-accent font-medium ring-1 ring-accent/40" : "border-transparent"}`}>
+                          {picking === `${r.slug}|${m}` ? "…" : ""}{m}{mine ? " ✓" : ""}</button>
+                      );
+                    })}
                   </div>
                 ) : <p className="text-xs text-muted">{t("Gerbang tidak menyenaraikan model (atau kunci ditolak).", "The gateway lists no models (or the key was refused).")}</p>}
               </div>

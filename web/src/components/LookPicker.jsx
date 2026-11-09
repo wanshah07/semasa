@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, Palette, Plus, RotateCcw, X, ZoomIn } from "lucide-react";
+import { AlertTriangle, Loader2, Palette, Plus, RotateCcw, Trash2, X, ZoomIn } from "lucide-react";
 import { LOOKS, ensureFonts, isStudioLook, renderSlides, setLogo } from "../lib/cards/studio";
 import { GROUNDS, groundOf } from "../lib/cards/library";
 import { resolveLook, useDesigns } from "../lib/designs";
@@ -60,7 +60,7 @@ function sampleWords(stream) {
 }
 
 /* One saved design (My designs) as a tile: its cover on the words in hand, drawn by the same code as everything else. */
-function DesignTile({ d, opts, cover, ratio, on, onPick, disabled, defaultId }) {
+function DesignTile({ d, opts, cover, ratio, on, onPick, onRemove, disabled, defaultId }) {
   const { t } = useLang();
   const g = d.bg && d.bg.startsWith("lib:") ? GROUNDS.find((x) => `lib:${x.k}` === d.bg) : null;
   const pic = usePreview(cover, { ...opts, bg: g?.url || opts.bg, look: d.look, design: d }, true).pics[0];
@@ -80,6 +80,10 @@ function DesignTile({ d, opts, cover, ratio, on, onPick, disabled, defaultId }) 
     </button>
     {pic && <button type="button" onClick={() => box.open(0)} aria-label={t("Zum kad", "Zoom the card")} title={t("Zum kad", "Zoom the card")}
       className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-ink/70 text-bg hover:bg-ink"><ZoomIn size={14} /></button>}
+    {/* a saved design can be deleted from here (Wan, 9 Nov 2026: "why some slide design cannot delete"): only the built-in looks had a button */}
+    {onRemove && <button type="button" onClick={onRemove} data-remove-design={d.id}
+      aria-label={t("Padam reka bentuk {n}", "Delete the design {n}", { n: d.name })} title={t("Padam reka bentuk ini", "Delete this design")}
+      className="absolute right-10 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-ink/70 text-bg hover:bg-danger"><Trash2 size={14} /></button>}
     <ImageLightbox {...box.props} />
     </div>
   );
@@ -89,7 +93,7 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   citation = "", bgUrl = "", bgChosen = false, size = null, full = true, onBlocked, disabled = false, mascots = [],
   fit = false, onFit = null, threads = false }) {
   const { t, lang } = useLang();
-  const { designs, defaultId, hiddenLooks, setHiddenLooks } = useDesigns();
+  const { designs, defaultId, hiddenLooks, setHiddenLooks, saveDesigns, setDefault } = useDesigns();
   const chosen = resolveLook(value, designs);                    // "d:<id>" is one of My designs: its family, colours and layouts
   const sample = givenSample || !given.length;
   const slides = given.length ? given : sampleWords(stream);
@@ -112,6 +116,18 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const shownLooks = threads ? [...studioShown, THREADS_LOOK] : studioShown;     // Threads-style is never hidden, and never counted as the last look left
   const hiddenList = LOOKS.filter((l) => !studioShown.includes(l));
   const canHide = !disabled && !!setHiddenLooks && studioShown.length > 1;
+  const [delErr, setDelErr] = useState("");
+  // delete one saved design (settings.designs); drafts already drawn do not change. The default is cleared with it, and a post that had it
+  // chosen falls back to the first look still offered.
+  const removeDesign = async (d) => {
+    if (!window.confirm(t("Padam reka bentuk \"{n}\"? Draf yang sudah dilukis tidak berubah.", "Delete the design \"{n}\"? Drafts already drawn do not change.", { n: d.name }))) return;
+    setDelErr("");
+    try {
+      await saveDesigns(designs.filter((x) => x.id !== d.id));
+      if (defaultId === d.id && setDefault) await setDefault("");
+      if (value === `d:${d.id}`) onChange(studioShown[0]?.k || "image");
+    } catch (e) { setDelErr(e?.message || String(e)); }
+  };
   const hideLook = (k) => { setHiddenLooks(hide(hiddenLooks, k, LOOKS.map((l) => l.k))); if (value === k) onChange(studioShown.find((l) => l.k !== k)?.k || "image"); };
   // Threads-style: its own words check, size check and light preview (the worker draws the real pages)
   const onThreads = threads && isThreads(chosen.look);
@@ -188,7 +204,8 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
           const r = resolveLook(`d:${d.id}`, designs);
           return (
             <DesignTile key={d.id} d={r.design ? { ...r.design, id: d.id, name: d.name } : { look: "grid", id: d.id, name: d.name }}
-              opts={opts} cover={cover} ratio={ratio} on={value === `d:${d.id}`} defaultId={defaultId} disabled={disabled} onPick={() => onChange(`d:${d.id}`)} />
+              opts={opts} cover={cover} ratio={ratio} on={value === `d:${d.id}`} defaultId={defaultId} disabled={disabled} onPick={() => onChange(`d:${d.id}`)}
+              onRemove={!disabled && saveDesigns ? () => removeDesign(d) : null} />
           );
         })}
         {!disabled && (
@@ -200,6 +217,7 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
         )}
       </div>
 
+      {delErr && <p className="mt-2 text-[12px] text-danger" role="alert">{delErr}</p>}
       {hiddenList.length > 0 && !disabled && setHiddenLooks && (
         <p className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-muted" data-hidden-looks>
           {t("Dibuang daripada pilihan:", "Removed from the choices:")}

@@ -78,7 +78,7 @@ async function pulse(admin: any) {
   const startedAt = Date.now();
   const [st, sets, cfg, sec, gk, ga] = await Promise.all([
     admin.from("semasa_api_status").select("*"),
-    admin.from("semasa_settings").select("key,value").in("key", ["gemini", "gemini_models"]),
+    admin.from("semasa_settings").select("key,value").in("key", ["gemini", "gemini_models", "ai_team"]),
     admin.from("semasa_ai_config").select("slot,provider,base_url,model,key_host"),
     admin.from("semasa_ai_secrets").select("slot,api_key"),
     admin.from("semasa_gemini_keys").select("id,api_key,enabled,status,cooldown_until,last_used_at,last_ok_at,calls,failures"),
@@ -91,7 +91,8 @@ async function pulse(admin: any) {
   const prevRows = st.data || [];
   const team = assembleTeam({ env: (k: string) => Deno.env.get(k), slots, status: prevRows, serviceRole: true,
     gemini: { settings: setting("gemini"), models: setting("gemini_models"), keys: gk.data || [] }, chatgpt: { row: ga.data || null } });
-  const plan = pulsePlan({ ...team, chatgptRow: ga.data || null }, prevRows);
+  const chosen = setting("ai_team")?.models;                      // the model Wan chose per robot (API tab)
+  const plan = pulsePlan({ ...team, chatgptRow: ga.data || null }, prevRows, chosen && typeof chosen === "object" ? chosen : {});
   const prev = Object.fromEntries(prevRows.map((r: any) => [r.slug, r]));
   const now = new Date();
 

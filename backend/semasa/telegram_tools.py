@@ -368,20 +368,36 @@ NEEDS_TOPIC = {
 
 def menu_reply(link: dict[str, Any] | None, site: str) -> tuple[str, list[list[dict[str, str]]]]:
     name = (link or {}).get("username") or "Wan"
-    text = (f"Hai {name} 👋 Semasa di sini.\n\nPilih di bawah, atau terus taip soalan. Saya ingat nota anda dan belajar daripada "
-            "👍/👎 di bawah setiap jawapan.\n\n/menu bila-bila masa untuk menu ini.")
+    text = (f"Hai {name} 👋\n\n📚 Katalog Semasa\nPilih kategori di bawah, atau terus taip soalan. "
+            "Saya ingat nota anda dan belajar daripada 👍/👎 di bawah setiap jawapan.\n\n"
+            "/menu bila-bila masa untuk buka katalog ini.")
     buttons: list[list[dict[str, str]]] = []
-    for _group, items in MENU:
-        row: list[dict[str, str]] = []
-        for label, action in items:
-            row.append({"text": label, "callback_data": f"menu:{action}"})
-            if len(row) == 2:
-                buttons.append(row)
-                row = []
-        if row:
-            buttons.append(row)
+    for i, (group, _items) in enumerate(MENU, 1):
+        buttons.append([{"text": f"{i}. {group}", "callback_data": f"menug:{i - 1}"}])
     buttons.append([{"text": "🔗 Buka Semasa", "url": site.rstrip("/") + "/"}])
     return text, buttons
+
+
+def menu_group_reply(index: int, site: str) -> tuple[str, list[list[dict[str, str]]]]:
+    """Render one category as a paged Telegram menu, like a small product catalogue."""
+    if not 0 <= index < len(MENU):
+        return menu_reply(None, site)
+    group, items = MENU[index]
+    buttons: list[list[dict[str, str]]] = []
+    row: list[dict[str, str]] = []
+    for label, action in items:
+        row.append({"text": label, "callback_data": f"menu:{action}"})
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.extend([
+        [{"text": "⬅️ Kategori", "callback_data": "menu:home"},
+         {"text": "🏠 Menu utama", "callback_data": "menu:home"}],
+        [{"text": "🔗 Buka Semasa", "url": site.rstrip("/") + "/"}],
+    ])
+    return f"📂 {group}\n\nPilih tindakan:", buttons
 
 
 def ask_topic(store: Any, action: str) -> str:

@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
-import { Loader2, Pin, PinOff, RefreshCw, Zap } from "lucide-react";
+import { Loader2, Pin, PinOff, RefreshCw, Star, Zap } from "lucide-react";
 import Robot3D from "./Robot3D";
 import { useLang } from "../lib/i18n";
 import { stampMYT, timeAgo } from "../lib/format";
-import { DOES, JOBS, decisionOf, decisionPending, fmtMs, liveLines, modelsFor, pinFor, robotsFor, teamCards, withPin } from "../lib/aiTeam";
+import { DOES, JOBS, decisionOf, decisionPending, fmtMs, liveLines, modelsFor, pinFor, rateCheck, robotsFor, teamCards, withPin } from "../lib/aiTeam";
+import { checkAI } from "../lib/chat";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
-import { Select } from "./ui/Field";
 
 /* The AI team as its robots (Wan, 23 Oct 2026: "make sure robots appear as attach ... for all segments, make sure can have
    each robot, AI providers and its model, and the model automatically switch"). Three Wanshah robots, each with its state
@@ -68,10 +68,41 @@ export default function AiTeam({ statusRows, usageRows, state, team, save, onToa
 }
 
 /* One row per job: what runs it now and why, and the pin (robot + model) Wan may set. Auto = the router's own choice. */
+const LIVE_KEY = "semasa.aiteam.liveOnPick";
+const liveOnPick = () => { try { return localStorage.getItem(LIVE_KEY) !== "off"; } catch { return true; } };
+
+/* A model's rating as stars and the numbers behind them, under its buttons. */
+function Rating({ r, t }) {
+  if (!r) return null;
+  if (r.busy) return <p className="mt-2 flex items-center gap-1 text-[11px] text-accent" data-ai-rate><Loader2 size={11} className="animate-spin" />{t("menguji model ini terus…", "testing this model live…")}</p>;
+  if (!r.tested) return <p className="mt-2 text-[11px] text-muted" data-ai-rate>{t("Tidak diuji terus: ", "Not tested live: ")}{r.why}</p>;
+  const p = r.parts;
+  return (
+    <p className="mt-2 text-[11px]" data-ai-rate={r.score}>
+      <span className="inline-flex items-center gap-0.5 text-warn" aria-label={`${r.stars} / 5`}>
+        {[1, 2, 3, 4, 5].map((n) => <Star key={n} size={12} className={n <= r.stars ? "fill-current" : "opacity-30"} />)}</span>
+      <b className="ml-1">{r.score}/100</b>
+      <span className="text-muted"> · {r.ms != null ? fmtMs(r.ms) : t("tiada masa", "no time")} · {t("baca gambar", "reads a picture")} {p.picture ? "✓" : "✗"} · {t("guna alat", "calls a tool")} {p.tools ? "✓" : "✗"}{r.note ? ` · ${r.note}` : ""}</span>
+    </p>
+  );
+}
+
 function JobPins({ cards, state, team, save, onToast }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? 1 : 0;
   const [busy, setBusy] = useState("");
+  const [liveOn, setLive] = useState(liveOnPick);                 // try the model live as soon as it is picked (Wan, 9 Nov 2026), or not
+  const [rates, setRates] = useState({});                       // "slug|model" -> rating, kept while the page is open
+  const toggleLive = (on) => { setLive(on); try { localStorage.setItem(LIVE_KEY, on ? "on" : "off"); } catch { /* not remembered */ } };
+  // The function's own live check of one robot + model: a real chat call with a picture and a tool. Image makers cannot be asked this.
+  const rate = async (slug, model, job) => {
+    const key = `${slug}|${model}`;
+    if (job === "image_gen") return setRates((r) => ({ ...r, [key]: { tested: false, why: t("pembuat gambar tidak dinilai dengan soalan teks", "an image maker is not rated with a text question") } }));
+    setRates((r) => ({ ...r, [key]: { busy: true } }));
+    let out;
+    try { out = rateCheck(await checkAI(key)); } catch (e) { out = { tested: false, why: e.message || String(e) }; }
+    setRates((r) => ({ ...r, [key]: out }));
+  };
   const jobs = ["reader", "motion", "image_gen", "image_reader"];
   const canSave = typeof save === "function";
   const pending = decisionPending(team, state);
@@ -86,9 +117,10 @@ function JobPins({ cards, state, team, save, onToast }) {
     } catch (e) { onToast?.(e.message || String(e), "error"); } finally { setBusy(""); }
   };
 
-  const setPin = async (job, pin) => {
+  const setPin = async (job, pin, tryIt = false) => {
     if (!canSave) return;
     setBusy(job);
+    if (tryIt && liveOn && pin?.gateway && pin?.model) rate(pin.gateway, pin.model, job);     // runs beside the save: the rating does not wait for it
     try {
       await save("ai_team", withPin(team, job, pin));
       onToast?.(pin ? t("Disemat: {r} diuji terus sebentar lagi, keputusannya muncul di sini dalam kira-kira seminit (masih bertukar jika ia rosak).", "Pinned: {r} is tested live in a moment, the decision shows here in about a minute (it still switches if it is down).", { r: pin.gateway })
@@ -132,18 +164,44 @@ function JobPins({ cards, state, team, save, onToast }) {
                 <ul className="mt-1 text-[11px]" data-ai-live>{live.map((l, i) => <li key={i} className={l.ok ? "text-ok" : "text-danger"}>{l.found ? t("dicari terus: ", "found live: ") : t("ujian terus: ", "live test: ")}{l.text}</li>)}</ul>
               )}
               {(job === "reader" || job === "motion") && !pin && <p className="mt-1 text-[11px] text-muted">{t("Auto: jika model sesebuah gerbang tidak menjawab, senarai modelnya dicari terus dan yang menjawab dipakai. Semat robot untuk memilih model sendiri.", "Auto: when a gateway's model does not answer, its model list is searched live and one that answers is used. Pin a robot to choose the model yourself.")}</p>}
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Select value={pin?.gateway || ""} disabled={!canSave || busy === job} aria-label={t("Gerbang", "Gateway")}
-                  onChange={(v) => setPin(job, v ? { gateway: v, model: "" } : null)}
-                  options={[["", t("Auto (terpantas)", "Auto (fastest)")], ...choices.map((c) => [c.slug, `${c.name} · ${c.row?.name || c.slug}`])]} />
-                {pin && (
-                  <Select value={pin.model || ""} disabled={!canSave || busy === job} aria-label={t("Model", "Model")} onChange={(v) => setPin(job, { ...pin, model: v })}
-                    options={[["", t("model lalai", "default model")], ...models.map((m) => [m, m])]} />
-                )}
-                {pin
-                  ? <Button size="sm" variant="ghost" disabled={!canSave || busy === job} onClick={() => setPin(job, null)}><PinOff size={12} /> {t("Auto", "Auto")}</Button>
-                  : <span className="inline-flex items-center gap-1 text-[11px] text-muted"><Pin size={11} /> {t("auto", "auto")}</span>}
+              <div className="mt-2 flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label={t("Gerbang", "Gateway")}>
+                {[["", t("Auto (terpantas)", "Auto (fastest)")], ...choices.map((c) => [c.slug, c.name])].map(([slug, label]) => {
+                  const on = (pin?.gateway || "") === slug;
+                  return (
+                    <button type="button" key={slug || "auto"} role="radio" aria-checked={on} data-robot-button={slug || "auto"}
+                      disabled={!canSave || busy === job} onClick={() => setPin(job, slug ? { gateway: slug, model: "" } : null)}
+                      className={`rounded-pill border px-2.5 py-1 text-[11px] font-medium transition ${on ? "border-accent bg-accent/15 text-accent" : "border-line text-muted hover:border-ink/40 hover:text-ink"} disabled:opacity-50`}>{label}</button>
+                  );
+                })}
               </div>
+              {pin && (
+                <div className="mt-2" data-ai-models={job}>
+                  <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("Model", "Model")}>
+                    <button type="button" role="radio" aria-checked={!pin.model} data-model-button="" disabled={!canSave || busy === job}
+                      onClick={() => setPin(job, { ...pin, model: "" })}
+                      className={`rounded-pill border px-2.5 py-1 text-[11px] transition ${!pin.model ? "border-accent bg-accent/15 text-accent" : "border-line text-muted hover:border-ink/40 hover:text-ink"} disabled:opacity-50`}>{t("model lalai", "default model")}</button>
+                    {models.map((m) => {
+                      const on = pin.model === m, r = rates[`${pin.gateway}|${m}`];
+                      const dot = r?.tested ? (r.stars >= 4 ? "bg-ok" : r.stars >= 3 ? "bg-warn" : "bg-danger") : "";
+                      return (
+                        <button type="button" key={m} role="radio" aria-checked={on} data-model-button={m} disabled={!canSave || busy === job}
+                          onClick={() => setPin(job, { ...pin, model: m }, true)} title={r?.tested ? `${r.score}/100` : ""}
+                          className={`inline-flex items-center gap-1 rounded-pill border px-2.5 py-1 text-[11px] transition ${on ? "border-accent bg-accent/15 font-medium text-accent" : "border-line text-muted hover:border-ink/40 hover:text-ink"} disabled:opacity-50`}>
+                          {dot && <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />}{m}</button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-muted">
+                      <input type="checkbox" checked={liveOn} onChange={(e) => toggleLive(e.target.checked)} data-live-switch className="accent-[var(--accent)]" />
+                      {t("uji terus bila model dipilih", "try it live when a model is picked")}</label>
+                    {pin.model && <Button size="sm" variant="ghost" disabled={rates[`${pin.gateway}|${pin.model}`]?.busy} onClick={() => rate(pin.gateway, pin.model, job)}><RefreshCw size={11} /> {t("Uji & nilai", "Test & rate")}</Button>}
+                    <Button size="sm" variant="ghost" disabled={!canSave || busy === job} onClick={() => setPin(job, null)}><PinOff size={12} /> {t("Auto", "Auto")}</Button>
+                  </div>
+                  <Rating r={rates[`${pin.gateway}|${pin.model}`]} t={t} />
+                </div>
+              )}
+              {!pin && <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted"><Pin size={11} /> {t("auto", "auto")}</span>}
             </div>
           );
         })}

@@ -26,7 +26,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from . import antislop, compliance, db, hook_bank, hook_learning, my_designs, slides, writing_styles
+from . import antislop, compliance, db, hook_bank, hook_learning, language, my_designs, slides, writing_styles
 from .fetch import get
 from .llm import LLM
 from .log import get_logger
@@ -182,7 +182,7 @@ Rules. Breaking any of them blocks the post, so follow them exactly:
    most 3 hashtags; threads at most 500 characters with at most 1 hashtag.
 8. The citation names the regulator and the instrument (for example "NPRA, Guidelines for Control of Cosmetic Products
    in Malaysia"), never a news portal, blog or social platform. If only a news report supports a fact, leave that
-   fact out.
+   fact out, unless a NEWSPAPER STORY block below allows the facts the report itself states.
 
 Answer with ONE JSON object:
 {"fit": true or false, "why_not": "", "hook": "the first line", "hook_shape": the number of the hook shape it is built on,
@@ -191,7 +191,9 @@ Answer with ONE JSON object:
                              "en": {"instagram": "...", "facebook": "...", "threads": "..."}},
  "visual_prompt": "an English description of one illustrative picture: no words, no logos, no real people",
  "alt": "short alt text in BM"}
-Set "fit" false (and say why in "why_not") only when the story gives nothing a regulatory-affairs audience can use."""
+Set "fit" false (and say why in "why_not") only when the story gives this audience (SME owners in cosmetics, food, halal and
+pharmaceuticals) nothing to use. A story does not need a rule attached to be worth a post: judge it in its context (who reads
+it, what they could take from it)."""
 
 LINKEDIN_SYSTEM = """You write a LinkedIn post for Ts. ChM Muhammad Ridzuan, a registered chemist and senior
 regulatory-affairs specialist, writing in his own name to peers (formulators, RA people, brand owners).
@@ -210,15 +212,21 @@ Rules. Breaking any blocks the post:
    replaced by a placeholder or a note in brackets.
 5. Never say the idea came from Reddit, YouTube, TikTok or a forum.
 
+ENGLISH ONLY (Wan, 9 Nov 2026): the hook, the caption and every word on every slide (cover, titles, leads, points, last slide)
+are English. The hook shapes below are written in casual Malay: translate the shape into natural English and never print the
+Malay words (no "kau", "aku", "benda pasal", "takde sapa", "yg", "Tahukah anda", no "1 Hari 1 Ilmu").
+
 Angles: %s
 
 Answer with ONE JSON object:
-{"fit": true or false, "why_not": "", "hook": "the first line", "hook_shape": the number of the hook shape it is built on,
+{"fit": true or false, "why_not": "", "hook": "the first line, in English",
+ "hook_shape": the number of the hook shape it is built on,
  "angle": one letter from the list,
  "citation": "...", "text": {"en": {"linkedin": "..."}, "bm": {"linkedin": "the same post in Malaysian Malay"}},
  "visual_prompt": "an English description of one illustrative picture: no words, no logos, no real people",
  "alt": "short alt text in English"}
-Set "fit" false (and say why) only when the story gives a regulatory professional nothing to use."""
+Set "fit" false (and say why) only when the story gives a chemist, RA or brand-owner peer nothing to use. A story does not need
+a rule attached to be worth a post: judge it in its context (the audience, the angle, what they could take from it)."""
 
 
 SLIDES_RULES = {
@@ -249,6 +257,7 @@ no maximum), drawn as 1080x1350 cards:
   write fewer points; a short slide is enlarged by the drawing.
 - The last slide is the takeaway. Never a question, never a call to action.
 - Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
+- English only on every slide, the cover and the last slide included: the Malay hook shapes are translated, never printed.
 - No company identity, no URL, no blog or aggregator, and no fact the SOURCE does not give. The citation is added
   to the last slide automatically.""",
 }
@@ -367,11 +376,16 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
     if flags.get("hook_required"):
         lines.append("HOOK REQUIRED: the first line must be the hook; a caption that opens flat is not acceptable.")
     if flags.get("relate_regulatory"):
-        lines.append("RELATE TO THE RULES: this is a current news story, not a regulator's notice. Connect it to the Malaysian "
-                     "or ASEAN rule that governs it (NPRA, KKM/BKKM, JAKIM, the Annexes) ONLY where a real link exists in the "
-                     "SOURCE or in an instrument you can name exactly, and say what it means for an SME owner. Never invent a "
-                     "link, an entry number or a date; with no genuine regulatory angle, write the story plainly (set \"fit\" "
-                     "false only when there is nothing an RA audience can use).")
+        lines.append("NEWSPAPER STORY, not a regulator's notice. A rule is NOT required (Wan, 9 Nov 2026): read the story in the "
+                     "context of this stream's audience and decide what is useful to them. Where a Malaysian or ASEAN rule "
+                     "genuinely governs it (NPRA, KKM/BKKM, JAKIM, the Annexes), say so and what it means for them, but ONLY "
+                     "where the link is real in the SOURCE or in an instrument you can name exactly. With no rule angle, write "
+                     "it from the angle that serves this audience: what happened, and why a product maker, brand owner or "
+                     "formulator would care (safety, consumer trust, ingredients, health or business impact, how it is being "
+                     "read). The facts the news report itself states may be used and told plainly as reported, without naming "
+                     "the portal, never presented as a regulator's position and never with a figure, date or name it does not "
+                     "give. Never invent a link, an entry number or a date. Set \"fit\" false only when, in this context, the "
+                     "story holds nothing this audience can use (gossip, a bare event notice), and say what was missing.")
     if source.get("ok"):
         lines.append(f"SOURCE ({source.get('label') or 'the article itself'}):\n{source.get('title') or ''}\n"
                      f"{source.get('description') or ''}\n{source.get('text') or ''}")
@@ -520,6 +534,39 @@ def kept_media(store: Any, brief: dict[str, Any]) -> list[str]:
     return [i for i in ids if i in ok]
 
 
+def english_only(llm: LLM, system: str, user: str, out: dict[str, Any], shape: int, stream: str, family: str | None,
+                 bank: hook_bank.Bank | None, max_tokens: int) -> tuple[dict[str, Any], int]:
+    """The LinkedIn stream is English (Wan, 9 Nov 2026). The hook shapes are casual Malay and the writer sometimes printed them on
+    the hook, the cover and the last slide of an English post. One more ask names the offending fields; if the answer is still
+    Malay the idea fails with a plain sentence, so a mixed-language card never leaves here. ws.regulab is not touched."""
+    if stream != "linkedin":
+        return out, shape
+    bad = language.malay_fields(out)
+    if not bad:
+        return out, shape
+    again = llm.chat_json(system, user + language.english_ask(bad), max_tokens=max_tokens)
+    got = hook_bank.declared(again, stream, family, bank) if isinstance(again, dict) else None
+    if isinstance(again, dict) and again.get("fit") is not False and got and not language.malay_fields(again):
+        return again, got
+    raise IdeaError("the writer left Malay on a LinkedIn post that must be English (" + ", ".join(bad[:5])
+                    + "; asked twice): press Cuba lagi")
+
+
+def shorter_hook(llm: LLM, hook: str, stream: str, words: int = 12) -> str:
+    """The hook, kept to `words` words or fewer so it fits a cover headline (Wan, 9 Nov 2026): one small ask, never more. The
+    caption keeps its own longer first line; the cover wears this one. "" when the writer gives nothing usable, and the cover is
+    left as the writer drew it."""
+    tongue = "natural English" if stream == "linkedin" else "casual Malaysian Malay (never Bahasa Indonesia)"
+    out = llm.chat_json(
+        f"Shorten a social-media hook to at most {words} words. Keep its opening pattern and its meaning, add no fact, "
+        f"no figure, no em dash and no underscores. Write it in {tongue}. Answer with ONE JSON object: {{\"hook\": \"...\"}}",
+        f"HOOK: {hook}", max_tokens=200)
+    short = " ".join(str((out or {}).get("hook") or "").split()) if isinstance(out, dict) else ""
+    if not short or "_" in short or len(short.split()) > words or (stream == "linkedin" and language.is_malay(short)):
+        return ""
+    return short
+
+
 def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str, Any]) -> str:
     """Returns the new post id. Raises IdeaError with a message for the page."""
     if not llm.configured:
@@ -579,6 +626,8 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     if shape is None:
         which = f"the shapes of the hook style {bank.name!r}" if bank else "the 25 hook shapes"
         raise IdeaError(f"the writer did not build the hook on one of {which} (asked twice): press Cuba lagi")
+    out, shape = english_only(llm, system, user, out, shape, stream, family, bank,
+                              5000 if (want_slides or want_poster) else 3500)
     text = normalise_text(out.get("text"), stream, lang)
     if not text.get(lang):
         raise IdeaError(f"the writer returned no {lang.upper()} caption")
@@ -603,6 +652,11 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         # only when asked: the column arrives with 006_slides.sql, and an idea that never asked
         # for slides must still be written on a database that has not run it
         post["slides"], cover_state = hook_bank.cover(slides.normalise(out.get("slides")), post["hook"])
+        if cover_state == "too_long":
+            short = shorter_hook(llm, post["hook"], stream)
+            if short:
+                post["slides"], cover_state = hook_bank.cover(post["slides"], short)
+                cover_state = "shortened" if cover_state in ("set", "kept") else "too_long"
     reg = brand.get("regulab") or {}
     if kept:
         from . import publisher
@@ -632,6 +686,11 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     poster = slides.normalise([out.get("poster")] if isinstance(out.get("poster"), dict) else [])[:1] if want_poster else []
     if poster:
         poster, cover_state = hook_bank.cover(poster, post["hook"])
+        if cover_state == "too_long":
+            short = shorter_hook(llm, post["hook"], stream)
+            if short:
+                poster, cover_state = hook_bank.cover(poster, short)
+                cover_state = "shortened" if cover_state in ("set", "kept") else "too_long"
     if poster and not has_jobs:
         jobs.append(poster_job(idea, post, post_id, poster, bg="post_image" if jobs or kept else "none", chosen=chosen))
     if jobs:
@@ -743,6 +802,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
         else:
             which = f"the shapes of the hook style {bank.name!r}" if bank else "the 25 hook shapes"
             raise IdeaError(f"the writer did not build the hook on one of {which} (asked twice); the post is unchanged")
+    out, _shape = english_only(llm, system, user, out, 0, stream, None, bank, 3500)
     text = normalise_text(out.get("text"), stream, lang)
     if not text.get(lang):
         raise IdeaError(f"the writer returned no {lang.upper()} caption; the post is unchanged")

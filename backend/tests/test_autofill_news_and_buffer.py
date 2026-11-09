@@ -66,13 +66,16 @@ def test_no_trends_table_is_no_news_not_a_crash():
     assert autofill.news_candidates(store, NOW) == []
 
 
-def test_the_writer_is_told_to_relate_a_news_story_to_the_rule_and_to_tell_it_as_a_story():
+def test_the_writer_may_use_a_rule_but_is_never_required_to_find_one():
     idea = {"stream": "regulab", "source_title": "NPRA tarik balik krim", "source_name": "Berita Harian", "source_summary": "x",
             "brief": {"relate_regulatory": True, "story_mode": True, "hook_required": True}}
     system, user = ideas.build_request(idea, {"ok": False, "why": "no article"}, {})
-    assert "RELATE TO THE RULES" in user and "STORY MODE" in user and "HOOK REQUIRED" in user
+    assert "NEWSPAPER STORY" in user and "STORY MODE" in user and "HOOK REQUIRED" in user
+    assert "A rule is NOT required" in user and "context" in user          # Wan, 9 Nov 2026: depends on context
     plain = ideas.build_request({"stream": "regulab", "source_title": "t", "brief": {}}, {"ok": False}, {})[1]
-    assert "RELATE TO THE RULES" not in plain and "STORY MODE" not in plain
+    assert "NEWSPAPER STORY" not in plain and "STORY MODE" not in plain
+    for stream_system in (ideas.REGULAB_SYSTEM, ideas.LINKEDIN_SYSTEM):
+        assert "does not need" in stream_system and "regulatory-affairs audience" not in stream_system
 
 
 def test_the_writer_voice_is_casual_with_a_hook_and_exactly_one_follow_line():

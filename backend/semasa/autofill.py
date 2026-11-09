@@ -122,21 +122,57 @@ def story_key(title: Any) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
 
 
+# Words that name no event: dropped before two headlines are compared.
+_STOP = frozenset("""yang untuk dengan adalah tidak ini itu dan atau dari dalam kepada oleh akan telah sudah baru lebih juga kata
+bagi serta bahawa ialah satu kesan bernilai ahli selepas sebelum kini lagi pula the and for with from after before over new says
+said about into has have was were that this their its are will not paper news hook""".split())
+
+
+def story_tokens(key: str) -> frozenset[str]:
+    """The words that identify an event in a story key: stop words out, a "di-" passive taken off ("disita" is "sita"), words of
+    three letters or more, and any number."""
+    out = set()
+    for w in str(key or "").split():
+        if w in _STOP:
+            continue
+        if w.startswith("di") and len(w) >= 6:
+            w = w[2:]
+        if len(w) >= 3 or w.isdigit():
+            out.add(w)
+    return frozenset(out)
+
+
+def same_event(a: frozenset[str], b: frozenset[str]) -> bool:
+    """Two headlines that are one event told in different words (Wan, 9 Nov 2026: the same halal-certificate seizure arrived as
+    "Sijil halal meragukan, AKPS sita daging kerbau...", "Kesan sijil halal meragukan..." and "Sijil halal tidak sepadan dengan
+    permit, daging kerbau dari India disita", and the exact-headline check let all three through). At least three identifying
+    words in common AND at least 60% of the shorter headline's words: two stories that only share a regulator and a food do
+    not match."""
+    shared = len(a & b)
+    return shared >= 3 and shared / min(len(a), len(b)) >= 0.6
+
+
 def one_per_story(rows: list[dict[str, Any]], spent_stories: set[str] | None = None) -> list[dict[str, Any]]:
     """Each story once: the first of its rows wins, a row with the paper's own link is preferred to a Google News redirect (the
-    writer can read the article behind it), and a story an idea already used is dropped whatever its link."""
+    writer can read the article behind it), and a story an idea already used is dropped whatever its link or its wording."""
     spent = set(spent_stories or ())
+    spent_tokens = [story_tokens(k) for k in spent]
     best: dict[str, dict[str, Any]] = {}
+    tokens: dict[str, frozenset[str]] = {}
     order: list[str] = []
     for r in rows:
         key = story_key(r.get("title"))
         if not key or key in spent:
             continue
-        if key not in best:
-            best[key] = r
+        toks = story_tokens(key)
+        if key not in best and any(same_event(toks, t) for t in spent_tokens):
+            continue                                       # the same event under another headline, already written up
+        twin = key if key in best else next((k for k in order if same_event(toks, tokens[k])), None)
+        if twin is None:
+            best[key], tokens[key] = r, toks
             order.append(key)
-        elif "news.google.com" in str(best[key].get("url")) and "news.google.com" not in str(r.get("url")):
-            best[key] = r
+        elif "news.google.com" in str(best[twin].get("url")) and "news.google.com" not in str(r.get("url")):
+            best[twin] = r
     return [best[k] for k in order]
 
 
@@ -276,7 +312,7 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                 brief = {"position": {"date": date, "slot": slot}, "auto": True, "watch_id": item["id"],
                          "hook_required": True, "story_mode": True, "source_priority": "current"}
                 if news:
-                    brief["relate_regulatory"] = True      # a newspaper story: the writer ties it to a rule where one is real
+                    brief["relate_regulatory"] = True      # a newspaper story: a rule where a real one governs it
                     brief.pop("watch_id")                 # not a regulator-feed row: trend_id says where it came from
                     brief["news"] = True
                 store.table(db.IDEAS).insert({

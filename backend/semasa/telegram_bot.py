@@ -310,10 +310,13 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
     media = media_for(store, list(post.get("media_ids") or []))
     pics = [u for m in media for u in pictures_of(m)]
     if pics:
-        try:
-            bot.photo(chat, pics[0], f"📝 {_where(post)}" + (f" · {len(pics)} gambar" if len(pics) > 1 else ""))
-        except TelegramError as exc:
-            log.info("picture not sent (%s)", exc)
+        for index, picture in enumerate(pics, 1):
+            try:
+                label = (f"🖼 Carousel · page {index}/{len(pics)}" if len(pics) > 1
+                         else f"📝 {_where(post)}")
+                bot.photo(chat, picture, label)
+            except TelegramError as exc:
+                log.info("picture %d/%d not sent (%s)", index, len(pics), exc)
     hard = blockers(store, post, now)
     text = f"📝 Draf · {_where(post)}\n\n{_caption(post)[:3000]}"
     if post.get("citation"):

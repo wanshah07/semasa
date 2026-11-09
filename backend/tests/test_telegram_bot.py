@@ -148,6 +148,18 @@ def test_only_the_linked_account_is_obeyed():
     assert bot.sent() == [] and inbox(st)[1]["status"] == "skipped"
 
 
+def test_draft_carousel_sends_every_page_to_telegram():
+    st = store(**{db.POSTS: [post("p1", media_ids=["m0", "m1"])],
+                  db.MEDIA: [PIC, {"id": "m1", "status": "done", "type": "image",
+                                 "generated_media_url": "https://cdn.example/p2.jpg", "meta": {}}],
+                  tb.INBOX: [msg(1, "/draf")]})
+    bot = Bot()
+    tb.run(st, bot=bot, now=NOW, webhook=False, push=False)
+    photos = [payload for method, payload in bot.calls if method == "sendPhoto"]
+    assert [p["photo"] for p in photos] == ["https://cdn.example/p1.jpg", "https://cdn.example/p2.jpg"]
+    assert [p["caption"] for p in photos] == ["🖼 Carousel · page 1/2", "🖼 Carousel · page 2/2"]
+
+
 def test_drafts_come_with_buttons_and_the_version_shown_is_kept():
     st = store(**{db.POSTS: [post("p1"), post("p2", text={"bm": {"facebook": "Dijamin lulus NPRA dalam 3 hari!"}})],
                   tb.INBOX: [msg(1, "/draf")]})

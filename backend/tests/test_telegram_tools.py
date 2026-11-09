@@ -165,11 +165,17 @@ def test_start_shows_the_menu_by_segment_and_a_topic_button_asks_then_uses_the_n
     run(st, bot)
     m = bot.sent()[0]
     datas = [b.get("callback_data") or b.get("url") for row in m["reply_markup"]["inline_keyboard"] for b in row]
-    assert "menu:draf" in datas and "menu:poster" in datas and "menu:robot" in datas and datas[-1].endswith("/")
-    st.tables[tb.INBOX].append(tap(2, "menu:poster"))
+    assert "menug:0" in datas and "menug:1" in datas and "menug:2" in datas and datas[-1].endswith("/")
+    st.tables[tb.INBOX].append(tap(2, "menug:1"))
+    run(st, bot)
+    group = bot.sent()[-1]
+    group_datas = [b["callback_data"] for row in group["reply_markup"]["inline_keyboard"] for b in row
+                   if "callback_data" in b]
+    assert "📂 Cipta" in group["text"] and "menu:poster" in group_datas
+    st.tables[tb.INBOX].append(tap(3, "menu:poster"))
     run(st, bot)
     assert bot.sent()[-1]["text"].startswith("🎨 Topik")
-    st.tables[tb.INBOX].append(msg(3, "amaran label krim pemutih"))
+    st.tables[tb.INBOX].append(msg(4, "amaran label krim pemutih"))
     run(st, bot)
     idea = st.tables[db.IDEAS][0]
     assert idea["brief"]["format"] == "poster" and idea["source_title"] == "amaran label krim pemutih"

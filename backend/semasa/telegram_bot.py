@@ -627,11 +627,23 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
                        "Semasa akan baca dan tulis draf; anda akan terima draf di sini untuk diluluskan.", reply_to=mid)
         return "idea made"
     if kind == "menu":
+        if rest in ("home", "main", "prev"):
+            text_, buttons = tt.menu_reply(link, SITE)
+            bot.send(chat, text_, buttons, reply_to=mid)
+            return "menu home"
         if rest in tt.NEEDS_TOPIC:
             bot.send(chat, tt.ask_topic(store, rest))
             return f"menu asks {rest}"
         fake = {**row, "payload": {"message": {"message_id": mid, "chat": {"id": chat}, "text": f"/{rest}"}}}
         return handle_message(store, bot, link, fake, lambda: None, now)
+    if kind == "menug":
+        try:
+            index = int(rest)
+        except ValueError:
+            index = -1
+        text_, buttons = tt.menu_group_reply(index, SITE)
+        bot.send(chat, text_, buttons, reply_to=mid)
+        return f"menu group {index}"
     if kind == "pin":
         bot.drop_buttons(chat, mid)
         bot.send(chat, tt.set_pin(store, rest), reply_to=mid)

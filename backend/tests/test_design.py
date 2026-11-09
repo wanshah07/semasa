@@ -17,6 +17,8 @@ POSTER = [{"title": "Sijil halal *tidak* menyembunyikan pengilang",
                       "Permohonan untuk menyembunyikannya tidak diluluskan."]}]
 CAROUSEL = [{"title": "Notifikasi *bukan* kelulusan", "points": []},
             {"title": "Apa NPRA semak", "points": ["Dokumen PIF selepas produk dipasarkan."]},
+            {"title": "Apa pemilik perlu simpan", "points": ["Rekod dan bukti produk yang sebenar."]},
+            {"title": "Bila isu mula nampak", "points": ["Semakan berlaku apabila maklumat tidak sepadan."]},
             {"title": "Ringkasnya", "points": ["Notifikasi ialah pendaftaran."]}]
 
 
@@ -92,10 +94,16 @@ def test_card_and_story_shapes(_uploads):
     assert _img(next(iter(_uploads.values()))).size == (1080, 1920)
 
 
+def test_carousel_must_have_multiple_pages(_uploads):
+    store = _store({"design": "carousel", "slides": CAROUSEL[:1]})
+    assert _run(store) is False
+    assert "5 to 7" in store.tables["media_generations"][0]["error"]
+
+
 def test_a_carousel_follows_its_stream_unless_a_shape_is_chosen(_uploads):
     store = _store({"design": "carousel", "slides": CAROUSEL, "stream": "linkedin"})
     _run(store)
-    assert [_img(b).size for b in _uploads.values()] == [(1080, 1350)] * 3
+    assert [_img(b).size for b in _uploads.values()] == [(1080, 1350)] * 5
 
 
 def test_two_slides_of_words_for_a_poster_is_named_not_cut():

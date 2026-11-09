@@ -279,7 +279,7 @@ PACE_SILENT = (
     "lines together, both languages counted), each heading at most 8 words, TWO TO FOUR short lines a scene, each line one "
     "complete fact (a number, a name, a rule, a date, a step or a reason) in about 12 words, never filler or a repeat of "
     "the heading. Put the figures, the places, the dates and the source's own headline in the lines so the scene can show "
-    "them as a chart, a map, a calendar or a news clipping. The on-screen lines are {lines}.")
+    "them as a chart, a map, a calendar or a news clipping. The on-screen lines are {lines}.\n" + CASUAL_RULE)
 
 
 def build_script_system(row: dict[str, Any], extra: str, count: int = 4, bank: hook_bank.Bank | None = None,

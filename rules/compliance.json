@@ -156,11 +156,6 @@
    "label": "CTA: 'whatsapp kami'"
   },
   {
-   "re": "(ikuti|follow)\\s+(kami|us)",
-   "flags": "i",
-   "label": "CTA: asks for a follow"
-  },
-  {
    "re": "klik\\s+(link|pautan)",
    "flags": "i",
    "label": "CTA: 'klik link'"

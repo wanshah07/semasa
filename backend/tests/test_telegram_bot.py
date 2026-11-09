@@ -155,11 +155,11 @@ def test_drafts_come_with_buttons_and_the_version_shown_is_kept():
     tb.run(st, bot=bot, now=NOW, webhook=False, push=False)
     m1, m2 = bot.sent()
     assert "Notifikasi kosmetik bukan kelulusan" in m1["text"] and "ws.regulab · 2026-11-09 08:00 · kosmetik" in m1["text"]
-    assert [b["callback_data"] for b in m1["reply_markup"]["inline_keyboard"][0]] == ["ok:p1", "no:p1"]
+    assert [b["callback_data"] for b in m1["reply_markup"]["inline_keyboard"][0]] == ["c:pe:p1", "c:pc:p1"]
     photo = {"chat_id": CHAT, "photo": "https://cdn.example/p1.jpg", "caption": "📝 ws.regulab · 2026-11-09 08:00 · kosmetik"}
     assert ("sendPhoto", photo) in bot.calls, "the picture first"
-    assert "Belum boleh diluluskan" in m2["text"], "a post the publisher would block cannot be approved here either"
-    assert [b["callback_data"] for b in m2["reply_markup"]["inline_keyboard"][0]] == ["no:p2"]
+    assert "Approval blocked" in m2["text"], "a post the publisher would block cannot be approved here either"
+    assert [b["callback_data"] for b in m2["reply_markup"]["inline_keyboard"][0]] == ["c:pe:p2", "c:pc:p2"]
     sent = {r["post_id"]: r for r in st.tables[tb.SENT]}
     assert sent["p1"]["version"] == "2026-11-07T10:00:00.123456+00:00"
 
@@ -393,6 +393,8 @@ def test_draf_lists_only_drafts_whose_slot_is_ahead_and_says_how_many_are_past()
     texts = [m["text"] for m in bot.sent()]
     assert [r["post_id"] for r in st.tables[tb.SENT]] == ["p1", "nodate"], "soonest first, the undated last, the past one not"
     undated = next(m for m in bot.sent() if "tiada tarikh" in m["text"])
-    assert [b["callback_data"] for b in undated["reply_markup"]["inline_keyboard"][0]] == ["no:nodate"], "no ✅ without a slot"
+    assert [b["callback_data"] for b in undated["reply_markup"]["inline_keyboard"][0]] == [
+        "c:pe:nodate", "c:pc:nodate"
+    ], "edit remains available"
     assert "1 draf lagi slotnya sudah lepas" in texts[-1]
     assert [p["id"] for p in tb.drafts(st, 50, NOW)] == ["p1", "nodate"]

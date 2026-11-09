@@ -79,10 +79,15 @@ def write(llm: LLM, brief: str, design: str, stream: str) -> tuple[list[dict[str
 
 
 def check(items: list[dict[str, Any]], design: str) -> None:
-    """A poster or a card is ONE picture: more than one slide of words is a mistake to name, not to cut."""
+    """Posters/cards are one picture; carousels are always a multi-page story."""
+    for n, item in enumerate(items, 1):
+        if len(str(item.get("title") or "")) + sum(len(str(p)) for p in item.get("points") or []) > 1000:
+            raise slides.SlideError(f"slide {n}: too long to fit; shorten it or split it")
     if design in ("poster", "card") and len(items) > 1:
         raise slides.SlideError(f"a {design} is one picture, and {len(items)} slides of words were given: "
                                 "keep one, or make it a carousel")
+    if design == "carousel" and not 5 <= len(items) <= 7:
+        raise slides.SlideError(f"a carousel must have 5 to 7 pages, but {len(items)} were given")
 
 
 SIZE_MIN, SIZE_MAX = 200, 4096                    # web/src/lib/sizes.js holds the same bounds

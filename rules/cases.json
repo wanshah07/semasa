@@ -1802,7 +1802,7 @@
   }
  },
  {
-  "name": "a carousel needs three slides of substance between the cover and the closing",
+  "name": "a carousel has as many slides as its story needs: one fact between the cover and the closing is fine",
   "post": {
    "stream": "regulab",
    "lang": "bm",
@@ -1837,7 +1837,7 @@
    ]
   },
   "expect": {
-   "hard": 1
+   "hard": 0
   }
  },
  {
@@ -2203,6 +2203,114 @@
   "expect": {
    "not_contains": [
     "reads as Bahasa Malaysia"
+   ]
+  }
+ },
+ {
+  "name": "a carousel has no ceiling: a call to action on slide thirteen is still found, and no slide count is complained about",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan.",
+     "threads": "Notifikasi kosmetik bukan kelulusan produk. NPRA menyemak dokumen selepas produk dipasarkan."
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ],
+   "slides": [
+    {
+     "title": "Kulit",
+     "points": []
+    },
+    {
+     "title": "Fakta 1",
+     "points": [
+      "Satu perkara yang boleh disahkan."
+     ]
+    },
+    {
+     "title": "Fakta 2",
+     "points": [
+      "Satu perkara yang boleh disahkan."
+     ]
+    },
+    {
+     "title": "Fakta 3",
+     "points": [
+      "Satu perkara yang boleh disahkan."
+     ]
+    },
+    {
+     "title": "Fakta 4",
+     "points": [
+      "Satu perkara yang boleh disahkan."
+     ]
+    },
+    {
+     "title": "Fakta 5",
+     "points": [
+      "Satu perkara yang boleh disahkan."
+     ]
+    },
+    {
+     "title": "Fakta 6",
+     "points": [
+      "Satu perkara yang boleh disahkan."
+     ]
+    },
+    {
+     "title": "Fakta 7",
+     "points": [
+      "Satu perkara yang boleh disahkan."
+     ]
+    },
+    {
+     "title": "Fakta 8",
+     "points": [
+      "Satu perkara yang boleh disahkan."
+     ]
+    },
+    {
+     "title": "Fakta 9",
+     "points": [
+      "Satu perkara yang boleh disahkan."
+     ]
+    },
+    {
+     "title": "Fakta 10",
+     "points": [
+      "Satu perkara yang boleh disahkan."
+     ]
+    },
+    {
+     "title": "Fakta 11",
+     "points": [
+      "Satu perkara yang boleh disahkan."
+     ]
+    },
+    {
+     "title": "Hubungi kami sekarang untuk semakan percuma",
+     "points": []
+    },
+    {
+     "title": "Penutup",
+     "points": [
+      "Satu pernyataan yang tinggalkan mereka ingin tahu."
+     ]
+    }
+   ]
+  },
+  "expect": {
+   "hard_min": 1,
+   "not_contains": [
+    "of substance"
    ]
   }
  }

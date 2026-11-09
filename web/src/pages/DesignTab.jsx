@@ -494,7 +494,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
             <Segmented value={words} onChange={setWords} options={[["ai", t("Semasa tulis daripada idea", "Semasa writes from an idea")], ["own", t("Saya tulis sendiri", "I write them")]]} />
           </div>
           {words === "ai" ? (
-            <label className="mt-2 block"><Label hint={design === "carousel" ? t("Semasa tulis 5 hingga 7 slaid", "Semasa writes 5 to 7 slides")
+            <label className="mt-2 block"><Label hint={design === "carousel" ? t("Semasa tulis slaid sebanyak yang cerita perlukan", "Semasa writes as many slides as the story needs")
               : t("Semasa tulis satu tajuk dan hingga {n} poin", "Semasa writes one headline and up to {n} points", { n: MAX_POINTS[design] })}>
               {t("Idea atau prompt", "Idea or prompt")}</Label>
               <TextArea rows={5} value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={4000}

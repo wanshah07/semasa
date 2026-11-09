@@ -4,7 +4,7 @@ post" / "the slide can create based on upload and prompt/idea provided").
 A design job is a `slides` render job (media_generations, mode `slides`) whose meta carries `design`:
   poster    one picture, 4:5 portrait by default: a headline and up to five points, the source at the foot
   card      one picture, square by default: a headline and up to three points
-  carousel  5 to 7 slides, the stream's own shape by default
+  carousel  as many slides as the story needs, the stream's own shape by default
 
 The words come from Wan (meta.slides) or, when he gives only an idea or a prompt (meta.brief), from the writer here,
 under the same rules as a post: no call to action, no URL, no social source, and no fact the brief does not give
@@ -52,7 +52,8 @@ SHAPE = {
               '*asterisks*. Never invent a speaker, date, time or venue.',
     "card": 'ONE card: {"slides": [{"title": "a headline of at most 9 words", "points": [up to 3 points of at most '
             '18 words each]}], "citation": "..."}',
-    "carousel": 'A carousel of 5 to 7 slides: {"slides": [{"title": "...", "points": ["..."]}, ...], "citation": "..."}. '
+    "carousel": 'A carousel with as many slides as the story needs, no fixed count: '
+                '{"slides": [{"title": "...", "points": ["..."]}, ...], "citation": "..."}. '
                 'Slide 1 is the cover (a headline of at most 9 words, points empty or one short line). Each middle '
                 'slide carries ONE fact: a title of at most 8 words and at most 3 points of at most 20 words. The last '
                 'slide is the takeaway, never a call to action.',
@@ -114,8 +115,7 @@ def check(items: list[dict[str, Any]], design: str, size: tuple[int, int] | None
     if design in ("poster", "card") and len(items) > 1:
         raise slides.SlideError(f"a {design} is one picture, and {len(items)} slides of words were given: "
                                 "keep one, or make it a carousel")
-    if design == "carousel" and not 5 <= len(items) <= 7:
-        raise slides.SlideError(f"a carousel must have 5 to 7 pages, but {len(items)} were given")
+    # a carousel has as many slides as its story needs: no minimum and no maximum (Wan, 9 Nov 2026)
 
 
 SIZE_MIN, SIZE_MAX = 200, 4096                    # web/src/lib/sizes.js holds the same bounds

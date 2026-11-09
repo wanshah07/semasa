@@ -82,8 +82,7 @@ export function indoHits(text, extra) {
   return msgs;
 }
 
-const MAX_SLIDES = 10;
-const MAX_POINTS = 5;
+const MAX_POINTS = 5;                 // points on ONE slide; the number of slides has no limit (Wan, 9 Nov 2026)
 
 /** [{title, points[]}]: the one shape the writer, this page, the renderer and the scan use.
     Mirrors normalise_slides in backend/semasa/compliance.py exactly. */
@@ -94,7 +93,7 @@ const cut = (t, n) => { const a = [...t]; return a.length > n ? a.slice(0, n).jo
 export function normaliseSlides(raw) {
   const out = [];
   if (!Array.isArray(raw)) return out;
-  for (let s of raw.slice(0, MAX_SLIDES)) {
+  for (let s of raw) {
     if (typeof s === "string") s = { title: s };
     if (!s || typeof s !== "object" || Array.isArray(s)) continue;
     const title = cut(String(s.title ?? "").trim(), 240);
@@ -242,13 +241,9 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   });
   const slides = normaliseSlides(post.slides);
   artwork(slides, "Slide");
-  // Wan's shape for a carousel (Studio, 7 Sep 2026): a cover, at least three slides carrying facts, then a closing line
-  // that leaves them curious. One slide is a single card and is not a carousel.
+  // A carousel has as many slides as its story needs: no minimum and no maximum (Wan, 9 Nov 2026: "make sure no limit or min
+  // carousel slide"). What stays is the closing line. One slide is a single card and is not a carousel.
   if (slides.length > 1) {
-    const substance = (x) => !!(x.title || x.lead || x.points.length);
-    const facts = slides.slice(1, -1).filter(substance).length;
-    if (facts < RULES.carousel_min_facts)
-      add(true, "Carousel", `${facts} slide${facts === 1 ? "" : "s"} of substance between the cover and the closing. At least ${RULES.carousel_min_facts}.`);
     const last = slides[slides.length - 1];
     if (!(last.title || last.lead)) add(true, "Carousel", "write the closing line: one statement that leaves them curious. Not a question, not an ask.");
   }

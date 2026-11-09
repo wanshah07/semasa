@@ -439,7 +439,7 @@ The **Reka bentuk** tab (Wan, 25 Sep 2026) makes three kinds of picture:
 |---|---|---|
 | Poster | 4:5 · 1080×1350 | one headline and up to five points |
 | Single card | 1:1 · 1080×1080 | one headline and up to three points |
-| Carousel | the stream's own (1:1 ws.regulab, 4:5 LinkedIn) | 5 to 7 slides from an idea, or up to 10 by hand |
+| Carousel | the stream's own (1:1 ws.regulab, 4:5 LinkedIn) | as many slides as the story needs, from an idea or by hand (no minimum, no maximum) |
 
 Any of them can be made at 1:1, 4:5 or 9:16 (1080×1920, a story).
 

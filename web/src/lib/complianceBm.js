@@ -98,8 +98,6 @@ const MSG_PATTERNS = [
   [/^Bahasa Indonesia word "([^"]+)" \(tabung: write "([^"]+)"\)$/, (m) => `perkataan Bahasa Indonesia "${m[1]}" (tabung: tulis "${m[2]}")`],
   [/^Bahasa Indonesia word "([^"]+)" \(tabung\)$/, (m) => `perkataan Bahasa Indonesia "${m[1]}" (tabung)`],
   [/^Bahasa Indonesia word "([^"]+)"$/, (m) => `perkataan Bahasa Indonesia "${m[1]}"`],
-  [/^(\d+) slides? of substance between the cover and the closing\. At least (\d+)\.$/,
-    (m) => `${m[1]} slaid berisi antara kulit dan penutup. Sekurang-kurangnya ${m[2]}.`],
   [/^(\w+) carries (.+), and this is (\S+)\. A note, not a block\.$/,
     (m) => `${DAYS_BM[m[1]] || m[1]} membawa ${m[2].replace(/ and /g, " dan ")}, dan ini ${m[3]}. Nota, bukan sekatan.`],
 ];

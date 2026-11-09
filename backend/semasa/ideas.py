@@ -226,10 +226,12 @@ SLIDES_RULES = {
 
 SLIDES WANTED. Also return "slides": a carousel in Malaysian Malay with as many slides as the story needs (no minimum,
 no maximum), drawn as 1080x1080 cards:
-[{"title": "...", "points": ["...", "..."]}, ...]
+[{"title": "...", "lead": "...", "points": ["...", "..."]}, ...]
 - Slide 1 is the cover: its headline IS the hook (the same hook shape you filled for the caption's first line, no underscores,
-  no figure the SOURCE does not give), at most 12 words, "points" empty or one short line.
-- Each middle slide carries ONE fact: a title of at most 8 words and at most 3 points of at most 20 words each.
+  no figure the SOURCE does not give), at most 12 words, no "lead", "points" empty or one short line. It is drawn very large.
+- Each middle slide is a FULL card, never a bare one: a title of at most 8 words, a "lead" (one sentence of at most 22 words that
+  says the point plainly) and 3 to 4 "points" of at most 16 words each: one fact taken apart. Never pad: if the SOURCE gives less,
+  write fewer points; a short slide is enlarged by the drawing.
 - The last slide is the takeaway, stated plainly. It is NOT a call to action.
 - Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
 - Every rule above applies to every slide: no call to action, no URL or website, no news portal or social source,
@@ -239,10 +241,12 @@ no maximum), drawn as 1080x1080 cards:
 
 SLIDES WANTED. Also return "slides": a carousel in English with as many slides as the story needs (no minimum,
 no maximum), drawn as 1080x1350 cards:
-[{"title": "...", "points": ["...", "..."]}, ...]
+[{"title": "...", "lead": "...", "points": ["...", "..."]}, ...]
 - Slide 1 is the cover: its headline IS the hook (the same hook shape you filled for the caption's first line, no underscores,
-  no figure the SOURCE does not give), at most 12 words, "points" empty or one short line.
-- Each middle slide carries ONE idea: a title of at most 9 words and at most 3 points of at most 22 words each.
+  no figure the SOURCE does not give), at most 12 words, no "lead", "points" empty or one short line. It is drawn very large.
+- Each middle slide is a FULL card, never a bare one: a title of at most 9 words, a "lead" (one sentence of at most 22 words that
+  says the idea plainly) and 3 to 4 "points" of at most 18 words each: one idea taken apart. Never pad: if the SOURCE gives less,
+  write fewer points; a short slide is enlarged by the drawing.
 - The last slide is the takeaway. Never a question, never a call to action.
 - Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
 - No company identity, no URL, no blog or aggregator, and no fact the SOURCE does not give. The citation is added

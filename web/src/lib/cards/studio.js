@@ -45,7 +45,7 @@ const FONT_SWAP = {
 };
 const pct = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n / 100 : 1; };
 /* `_fill` is set by renderGridCard only (never stored): the automatic scale that makes a sparse slide fill its card. */
-const fillOf = (spec) => { const f = Number(spec && spec._fill); return Number.isFinite(f) && f > 1 && f <= 1.6 ? f : 1; };
+const fillOf = (spec) => { const f = Number(spec && spec._fill); return Number.isFinite(f) && f > 1 && f <= 3 ? f : 1; };
 function textScale(spec) { return pct(spec && spec.type_size, 60, 120) * fillOf(spec); }
 function mascotScale(spec) { return pct(spec && spec.mascot_size, 50, 160); }
 /* The canvas context with its `font` rewritten on the way in: only a font that names Poppins or Instrument Sans (the
@@ -623,7 +623,7 @@ async function renderGridCard(spec) {
      which the content still ends inside FILL_TARGET of the room between the handle and the source line, found by measuring, never
      by guessing. A dense slide is never touched (scale 1), a person's own text size is respected, a slide with a mascot already
      fills its space with the character, and a template whose height does not follow its text (a giant figure) is left as it is. */
-  const fill = spec.type_size || spec.mascot ? 1 : await fillScale(spec, H, u, 150, probe.y, (sp) => gridCardPaint(measureProxy(ctx), sp, W, H, 0));
+  const fill = spec.type_size || spec.mascot ? 1 : await fillScale(spec, H, u, 150, probe.y, (sp) => gridCardPaint(measureProxy(ctx), sp, W, H, 0), HOOK_TPL[spec.template] ? FILL_MAX : FILL_BODY_MAX);
   if (fill > 1) {
     const filled = { ...spec, _fill: fill };
     const again = await gridCardPaint(measureProxy(ctx), filled, W, H, 0);
@@ -631,17 +631,20 @@ async function renderGridCard(spec) {
   }
   return gridCardPaint(ctx, spec, W, H, centreShift(H, u, probe.y), c);
 }
-const FILL_MAX = 1.6, FILL_FROM = 0.72, FILL_TARGET = 0.86;
+/* A hook (the cover, the closing line) is drawn very large; every other slide only grows a little, so it still reads as the full card
+   Wan asked for (headline, lead, numbered panels) and a slide with little to say is not blown up into a poster. */
+const FILL_MAX = 2.6, FILL_BODY_MAX = 1.35, FILL_FROM = 0.72, FILL_TARGET = 0.86;
+const HOOK_TPL = { g_title: 1, p_title: 1, p_quote: 1 };
 /* The scale (1 to FILL_MAX) at which a slide's content fills its card. `measure(spec)` runs the family's own painter against the
    measuring proxy and returns where the content ends; `topU` is where the content starts, in 1080-wide units. */
-async function fillScale(spec, H, u, topU, endY, measure) {
+async function fillScale(spec, H, u, topU, endY, measure, max = FILL_MAX) {
   const z = cardZone(H, u, topU);
   const room = z.bottom - z.top;
   const used = (y) => Math.max(0, y - z.top);
   if (room <= 0 || used(endY) >= FILL_FROM * room) return 1;              // already compact
   const at = async (f) => used((await measure({ ...spec, _fill: f })).y);
-  if ((await at(FILL_MAX)) < used(endY) * 1.12) return 1;                 // this layout's height does not follow its text
-  let lo = 1, hi = FILL_MAX;
+  if ((await at(max)) < used(endY) * 1.12) return 1;                      // this layout's height does not follow its text
+  let lo = 1, hi = max;
   for (let i = 0; i < 7; i++) {
     const mid = (lo + hi) / 2;
     if ((await at(mid)) <= FILL_TARGET * room) lo = mid; else hi = mid;
@@ -1308,7 +1311,26 @@ async function renderPhotoCard(spec) {
     const slack = (H - Math.round(150 * u)) - Math.max(panelTop, probe.y);
     return photoCardPaint(ctx, spec, W, H, slack > 0 ? Math.round(slack / 2) : 0, c);
   }
-  return photoCardPaint(ctx, spec, W, H, 0, c);
+  /* A photo cover or quote is a headline on a picture: when it is short it used to sit small on a mostly bare card (Wan, 9 Nov 2026: "make
+     sure takde carousel or card yang empty ... Hook make sure besar"). Its type grows until the block takes up to 70% of the room it
+     may use, measured the same way as the grid family; a chosen text size is respected. */
+  const probe = await photoCardPaint(measureProxy(ctx), spec, W, H, 0);
+  const fill = spec.type_size ? 1 : await fillBlock(spec, W, H, probe.block, (sp) => photoCardPaint(measureProxy(ctx), sp, W, H, 0));
+  return photoCardPaint(ctx, fill > 1 ? { ...spec, _fill: fill } : spec, W, H, 0, c);
+}
+async function fillBlock(spec, W, H, block, measure) {
+  const u = W / 1080, M = Math.round(74 * u);
+  const reserve = Math.round((spec.footnote || spec.chip_label ? 96 : 46) * u);
+  const room = H - M - reserve - Math.round(190 * u);
+  if (room <= 0 || !block || block >= 0.45 * room) return 1;              // already a real block
+  const at = async (f) => (await measure({ ...spec, _fill: f })).block;
+  if ((await at(FILL_MAX)) < block * 1.12) return 1;
+  let lo = 1, hi = FILL_MAX;
+  for (let i = 0; i < 7; i++) {
+    const mid = (lo + hi) / 2;
+    if ((await at(mid)) <= 0.7 * room) lo = mid; else hi = mid;
+  }
+  return lo > 1.03 ? Math.round(lo * 100) / 100 : 1;
 }
 async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   const warn = [];
@@ -1337,7 +1359,7 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
     g.addColorStop(1, "rgba(8,10,12," + s[2] + ")");
     ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
   };
-  let y = 0;
+  let y = 0, block = 0;
   const quote = t === "p_quote";
   if (t === "p_fact") {
     const photoH = Math.round(H * 0.46);
@@ -1368,6 +1390,7 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
     ctx.font = "500 " + LEAD_PX + "px " + G_BODY;
     const lLines = spec.lead ? gWrap(ctx, spec.lead, Math.round(maxW * 0.86)) : [];
     const blockH = hLines.length * hl + (lLines.length ? Math.round(22 * u) + lLines.length * LEAD_LH : 0);
+    block = blockH;
     /* Room for the source line, which is pinned to the bottom margin and drawn last. */
     const reserve = Math.round((spec.footnote || spec.chip_label ? 96 : 46) * u);
     y = Math.max(Math.round(190 * u), quote ? Math.round((H - blockH) / 2) : H - M - reserve - blockH);
@@ -1382,7 +1405,7 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   await drawBrandMark(ctx, spec, W, u, M, { top: 56, h: 34, knockout: true, textFill: "rgba(255,255,255,.88)" });
   gSourceLine(ctx, W, H, M, u, spec.chip_label || (spec.footnote ? "Sumber" : ""), spec.footnote || "", t !== "p_fact");
   if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
-  return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y } : { warn, y };
+  return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y, block } : { warn, y, block };
 }
 /* ======================= COPIED FROM STUDIO (end) ========================= */
 
@@ -1412,7 +1435,7 @@ async function renderMoreCard(spec) {
     /* The same fill as the grid family (9 Nov 2026: "each carousel page is compact, not looks empty"): the Grid and Photo templates
        grow their type to fill the card; ERA keeps its own proportions, because its character sizes off the room the words leave. */
     const fill = spec.type_size || spec.mascot || spec.template[0] === "e" ? 1
-      : await fillScale(spec, H, u, topU, probe.y, (sp) => morePaint(measureProxy(ctx), sp, W, H, 0));
+      : await fillScale(spec, H, u, topU, probe.y, (sp) => morePaint(measureProxy(ctx), sp, W, H, 0), HOOK_TPL[spec.template] ? FILL_MAX : FILL_BODY_MAX);
     if (fill > 1) {
       const filled = { ...spec, _fill: fill };
       const again = await morePaint(measureProxy(ctx), filled, W, H, 0);

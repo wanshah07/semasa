@@ -54,8 +54,9 @@ SHAPE = {
             '18 words each]}], "citation": "..."}',
     "carousel": 'A carousel with as many slides as the story needs, no fixed count: '
                 '{"slides": [{"title": "...", "points": ["..."]}, ...], "citation": "..."}. '
-                'Slide 1 is the cover (a headline of at most 9 words, points empty or one short line). Each middle '
-                'slide carries ONE fact: a title of at most 8 words and at most 3 points of at most 20 words. The last '
+                'Slide 1 is the cover (a headline of at most 9 words, points empty or one short line, drawn very large). Each '
+                'middle slide is a FULL card: a title of at most 8 words, a "lead" (one sentence of at most 22 words) and 3 '
+                'to 4 points of at most 16 words; never pad, write fewer points when the brief gives less. The last '
                 'slide is the takeaway, never a call to action.',
     "threads": 'A Threads-style set of 2 to 5 pages, each a short piece of text that sits above a picture: {"slides": '
                '[{"title": "...", "points": ["..."]}, ...], "citation": "..."}. Page 1 is the cover: its title is the '

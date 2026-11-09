@@ -181,14 +181,35 @@ def layout(slide: dict[str, Any], kind: str, width: int, scale: float, tall: boo
                  gap_title=round(34 * scale), gap_point=round(22 * scale), bullet=bullet)
 
 
+FILL_FROM = 0.45          # a slide whose words take less than this share of the room is "empty": its type grows
+FILL_TARGET = 0.78        # ... until the words take this share of the room (a hook, the cover, grows the most)
+# the hook (the cover) is drawn very large; every other slide only grows a little
+FILL_MAX = {"cover": 2.4, "single": 1.35, "point": 1.35, "close": 1.35}
+
+
 def fit(slide: dict[str, Any], kind: str, width: int, height: int, tall: bool) -> Block:
     scale = 1.0
     while scale >= MIN_SCALE - 1e-9:
         block = layout(slide, kind, width, scale, tall)
         if block.height <= height:
-            return block
+            return _fill(slide, kind, width, height, tall, block)
         scale = round(scale - SCALE_STEP, 2)
     raise SlideError("too long to fit even at the smallest type size; shorten it or split it into two slides")
+
+
+def _fill(slide: dict[str, Any], kind: str, width: int, height: int, tall: bool, block: Block) -> Block:
+    """A card that looks empty is drawn bigger (Wan, 9 Nov 2026: "make sure takde carousel or card yang empty ... Hook make sure
+    besar"). Only a slide that fit at the normal size and fills under FILL_FROM of its room grows: the largest scale, in 0.05
+    steps up to the kind's ceiling, at which it still fits inside FILL_TARGET of the room. Dense slides never change."""
+    if height <= 0 or block.height >= FILL_FROM * height:
+        return block
+    scale = FILL_MAX.get(kind, 1.35)
+    while scale > 1.0 + 1e-9:
+        bigger = layout(slide, kind, width, scale, tall)
+        if bigger.height <= FILL_TARGET * height:
+            return bigger
+        scale = round(scale - SCALE_STEP, 2)
+    return block
 
 
 # --- drawing --------------------------------------------------------------------------

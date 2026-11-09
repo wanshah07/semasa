@@ -38,7 +38,6 @@ t("messages with numbers and words in them", () => {
   assert.equal(msgBm('Bahasa Indonesia word "kualitas"'), 'perkataan Bahasa Indonesia "kualitas"');
   assert.equal(msgBm('Bahasa Indonesia word "sekarang ini" (tabung: write "kini")'), 'perkataan Bahasa Indonesia "sekarang ini" (tabung: tulis "kini")');
   assert.match(msgBm('cites "ChemLinked", a blog or news aggregator. Cite the instrument.'), /^memetik "ChemLinked"/);
-  assert.equal(msgBm("1 slide of substance between the cover and the closing. At least 3."), "1 slaid berisi antara kulit dan penutup. Sekurang-kurangnya 3.");
   assert.equal(msgBm("Monday carries kosmetik and kajian_kes, and this is makanan. A note, not a block."),
     "Isnin membawa kosmetik dan kajian_kes, dan ini makanan. Nota, bukan sekatan.");
   assert.equal(whereBm("Caption (instagram)"), "Kapsyen (instagram)");

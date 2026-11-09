@@ -94,10 +94,14 @@ def test_card_and_story_shapes(_uploads):
     assert _img(next(iter(_uploads.values()))).size == (1080, 1920)
 
 
-def test_carousel_must_have_multiple_pages(_uploads):
-    store = _store({"design": "carousel", "slides": CAROUSEL[:1]})
-    assert _run(store) is False
-    assert "5 to 7" in store.tables["media_generations"][0]["error"]
+def test_a_carousel_has_as_many_slides_as_its_story_needs(_uploads):
+    # Wan, 9 Nov 2026: "make sure no limit or min carousel slide": two slides draw, and so do a dozen
+    for n in (2, 12):
+        _uploads.clear()
+        slides_in = [CAROUSEL[i % len(CAROUSEL)] for i in range(n)]
+        store = _store({"design": "carousel", "slides": slides_in})
+        assert _run(store) is True, store.tables["media_generations"][0].get("error")
+        assert len(_uploads) == n
 
 
 def test_a_carousel_follows_its_stream_unless_a_shape_is_chosen(_uploads):

@@ -454,6 +454,5 @@ def test_threads_is_a_design_with_a_4_5_default_and_other_designs_are_unchanged(
     assert "threads" in design.DESIGNS
     assert design.size_of({"design": "threads"}, "regulab") == (1080, 1350)
     assert design.size_of({"design": "carousel"}, "linkedin") is None
-    with pytest.raises(slides.SlideError, match="5 to 7"):
-        design.check(slides.normalise(PAGES[:2] * 1), "carousel")
+    design.check(slides.normalise(PAGES[:2] * 1), "carousel")           # a carousel has no minimum (9 Nov 2026)
     design.check(slides.normalise(PAGES[:2]), "threads")

@@ -16,7 +16,6 @@ import TemplateCatalogue from "./TemplateCatalogue";
 import Button from "./ui/Button";
 import { Input, Label, Select, TextArea } from "./ui/Field";
 
-export const MAX_SLIDES = 10;
 
 /* A slide's own design (Studio's per-slide editor): the words its template draws besides the headline and the points,
    and how it is drawn. Empty = the look decides. */
@@ -90,9 +89,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
     }
     const { slides, over } = slidesFromCaption(captionPost, promo);
     setRows(toRows(slides));
-    onToast(over ? t("{n} slaid daripada kapsyen. {m} poin lagi tidak muat dalam 8 slaid dan kekal dalam kapsyen sahaja.",
-      "{n} slides from the caption. {m} more points do not fit in 8 slides and stay in the caption only.", { n: slides.length, m: over })
-      : t("{n} slaid daripada kapsyen.", "{n} slides from the caption.", { n: slides.length }), over ? "warn" : "ok");
+    onToast(t("{n} slaid daripada kapsyen.", "{n} slides from the caption.", { n: slides.length }), "ok");
   };
   const move = (i, d) => {
     const j = i + d;
@@ -106,7 +103,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
     <div className="rounded-tile border border-line p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-sm font-medium"><Layers size={14} /> {t("Slaid carousel", "Carousel slides")}</p>
-        <span className="text-[11px] text-muted">{n} / {MAX_SLIDES} {t("slaid", "slides")} · {size} · {t("dilukis tanpa AI, percuma", "drawn without AI, free")}</span>
+        <span className="text-[11px] text-muted">{n} {t("slaid", "slides")} · {size} · {t("dilukis tanpa AI, percuma", "drawn without AI, free")}</span>
       </div>
       <p className="mt-1 text-[11px] text-muted">
         {t("Satu fakta satu slaid. Tanda satu perkataan dengan *bintang* untuk penekanan. Sumber dilukis pada slaid terakhir "
@@ -166,10 +163,10 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
 
       {!locked && (
         <div className="mt-3 flex flex-wrap items-end gap-2">
-          <Button type="button" size="sm" variant="ghost" disabled={n >= MAX_SLIDES}
+          <Button type="button" size="sm" variant="ghost"
             onClick={() => setRows([...rows, blankRow()])}><Plus size={12} /> {t("Tambah slaid", "Add slide")}</Button>
           <Button type="button" size="sm" variant="ghost" onClick={() => fromCaption(false)}
-            title={t("Kulit, sekurang-kurangnya tiga fakta, dan baris penutup, daripada kapsyen", "A cover, at least three facts and a closing line, from the caption")}>
+            title={t("Kulit, satu slaid setiap poin kapsyen, dan baris penutup", "A cover, one slide for each point of the caption, and a closing line")}>
             {t("Bina daripada kapsyen", "Build from the caption")}</Button>
           <Button type="button" size="sm" variant="ghost" onClick={() => fromCaption(true)}
             title={t("Satu kad sahaja: cangkuk dan baris pertamanya", "One card only: the hook and its first line")}>

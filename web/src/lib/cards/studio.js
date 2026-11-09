@@ -44,7 +44,9 @@ const FONT_SWAP = {
   hand: { family: 'Caveat, "Instrument Sans", cursive', maxWeight: 700, only: 700 },
 };
 const pct = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n / 100 : 1; };
-function textScale(spec) { return pct(spec && spec.type_size, 60, 120); }
+/* `_fill` is set by renderGridCard only (never stored): the automatic scale that makes a sparse slide fill its card. */
+const fillOf = (spec) => { const f = Number(spec && spec._fill); return Number.isFinite(f) && f > 1 && f <= 1.6 ? f : 1; };
+function textScale(spec) { return pct(spec && spec.type_size, 60, 120) * fillOf(spec); }
 function mascotScale(spec) { return pct(spec && spec.mascot_size, 50, 160); }
 /* The canvas context with its `font` rewritten on the way in: only a font that names Poppins or Instrument Sans (the
    words) is touched; the handwritten bubble note and the monospace table keep their own faces. */
@@ -616,7 +618,35 @@ async function renderGridCard(spec) {
      slide with little text used to sit high with a dead band beneath it. Measuring first
      and shifting the whole block keeps every size exactly as it is and moves the words. */
   const probe = await gridCardPaint(measureProxy(ctx), spec, W, H, 0);
+  /* Wan, 9 Nov 2026: "make sure each carousel page is compact, not looks empty". A slide with a headline and a line or two used to
+     sit in the middle of a card that was half blank. The type now grows to fill the card: the largest scale (at most FILL_MAX) at
+     which the content still ends inside FILL_TARGET of the room between the handle and the source line, found by measuring, never
+     by guessing. A dense slide is never touched (scale 1), a person's own text size is respected, a slide with a mascot already
+     fills its space with the character, and a template whose height does not follow its text (a giant figure) is left as it is. */
+  const fill = spec.type_size || spec.mascot ? 1 : await fillScale(spec, H, u, 150, probe.y, (sp) => gridCardPaint(measureProxy(ctx), sp, W, H, 0));
+  if (fill > 1) {
+    const filled = { ...spec, _fill: fill };
+    const again = await gridCardPaint(measureProxy(ctx), filled, W, H, 0);
+    return gridCardPaint(ctx, filled, W, H, centreShift(H, u, again.y), c);
+  }
   return gridCardPaint(ctx, spec, W, H, centreShift(H, u, probe.y), c);
+}
+const FILL_MAX = 1.6, FILL_FROM = 0.72, FILL_TARGET = 0.86;
+/* The scale (1 to FILL_MAX) at which a slide's content fills its card. `measure(spec)` runs the family's own painter against the
+   measuring proxy and returns where the content ends; `topU` is where the content starts, in 1080-wide units. */
+async function fillScale(spec, H, u, topU, endY, measure) {
+  const z = cardZone(H, u, topU);
+  const room = z.bottom - z.top;
+  const used = (y) => Math.max(0, y - z.top);
+  if (room <= 0 || used(endY) >= FILL_FROM * room) return 1;              // already compact
+  const at = async (f) => used((await measure({ ...spec, _fill: f })).y);
+  if ((await at(FILL_MAX)) < used(endY) * 1.12) return 1;                 // this layout's height does not follow its text
+  let lo = 1, hi = FILL_MAX;
+  for (let i = 0; i < 7; i++) {
+    const mid = (lo + hi) / 2;
+    if ((await at(mid)) <= FILL_TARGET * room) lo = mid; else hi = mid;
+  }
+  return lo > 1.03 ? Math.round(lo * 100) / 100 : 1;
 }
 async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   const warn = [];
@@ -634,7 +664,10 @@ async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
      text"). Every template's headline, body and item-heading text now share these three
      sizes rather than each template picking its own, and nothing here scales with how
      much text a field actually holds -- an empty lead just leaves blank space, it never
-     grows the headline to fill it. g_stat's giant figure and its own subhead stay a
+     grows the headline to fill it. (9 Nov 2026, Wan: "each carousel page is compact, not looks
+     empty": renderGridCard now MEASURES the finished slide and, only when it fills too little of
+     the card, runs the same layout at a larger scale -- see fillScale. The scale is one number
+     for the slide, applied through TS, so every size on it still moves together.) g_stat's giant figure and its own subhead stay a
      deliberately separate, smaller tier: they are numerals, not the slide's headline. */
   const TS = textScale(spec);              // SEMASA: the person's own text size for this slide (100% = the template's)
   const HEAD_PX = Math.round(80 * u * TS), HEAD_LH = Math.round(90 * u * TS);
@@ -1374,8 +1407,18 @@ async function renderMoreCard(spec) {
   const ctx = styleCtx(c.getContext("2d"), spec);
   try { await document.fonts.ready; } catch (e) { }
   if (MORE_CENTRED[spec.template]) {
+    const u = W / 1080, topU = spec.template[0] === "e" ? 138 : 150;
     const probe = await morePaint(measureProxy(ctx), spec, W, H, 0);
-    return morePaint(ctx, spec, W, H, centreShift(H, W / 1080, probe.y, spec.template[0] === "e" ? 138 : 150), c);
+    /* The same fill as the grid family (9 Nov 2026: "each carousel page is compact, not looks empty"): the Grid and Photo templates
+       grow their type to fill the card; ERA keeps its own proportions, because its character sizes off the room the words leave. */
+    const fill = spec.type_size || spec.mascot || spec.template[0] === "e" ? 1
+      : await fillScale(spec, H, u, topU, probe.y, (sp) => morePaint(measureProxy(ctx), sp, W, H, 0));
+    if (fill > 1) {
+      const filled = { ...spec, _fill: fill };
+      const again = await morePaint(measureProxy(ctx), filled, W, H, 0);
+      return morePaint(ctx, filled, W, H, centreShift(H, u, again.y, topU), c);
+    }
+    return morePaint(ctx, spec, W, H, centreShift(H, u, probe.y, topU), c);
   }
   return morePaint(ctx, spec, W, H, 0, c);
 }

@@ -214,8 +214,8 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
                 ? t("Semasa tulis 2 hingga 5 halaman, kemudian lukis teks + gambar sendiri ({size}, tanpa AI, percuma).",
                   "Semasa writes 2 to 5 pages, then draws the text + picture set itself ({size}, no AI, free).",
                   { size: stream === "linkedin" ? "1080×1350" : "1080×1080" })
-                : t("Semasa tulis 5 hingga 7 slaid, kemudian lukis sendiri ({size}, tanpa AI, percuma).",
-                  "Semasa writes 5 to 7 slides, then draws them itself ({size}, no AI, free).",
+                : t("Semasa tulis slaid sebanyak yang cerita perlukan, kemudian lukis sendiri ({size}, tanpa AI, percuma).",
+                  "Semasa writes as many slides as the story needs, then draws them itself ({size}, no AI, free).",
                   { size: stream === "linkedin" ? "1080×1350" : "1080×1080" })
               : format === "poster"
                 ? t("Semasa tulis satu poster (tajuk dan hingga lima poin, sumber di kaki), kemudian lukis 1080×1350.",

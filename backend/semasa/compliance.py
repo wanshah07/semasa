@@ -132,8 +132,7 @@ def avoid_line(indo_extra: Any) -> str:
             + "; ".join(items) + ".") if items else ""
 
 
-MAX_SLIDES = 10
-MAX_POINTS = 5
+MAX_POINTS = 5            # points on ONE slide; the number of slides has no limit (Wan, 9 Nov 2026)
 
 
 def _str(v: Any) -> str:
@@ -146,7 +145,7 @@ def normalise_slides(raw: Any) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     if not isinstance(raw, list):
         return out
-    for s in raw[:MAX_SLIDES]:
+    for s in raw:
         if isinstance(s, str):
             s = {"title": s}
         if not isinstance(s, dict):
@@ -342,14 +341,10 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
 
     slides = normalise_slides(post.get("slides"))
     artwork(slides, "Slide")
-    # Wan's shape for a carousel (Studio, 7 Sep 2026): a cover, at least three slides carrying facts, then a closing
-    # line that leaves them curious. One slide is a single card and is not a carousel.
+    # A carousel has as many slides as its story needs: no minimum and no maximum (Wan, 9 Nov 2026: "make sure no limit or min
+    # carousel slide"). What stays is the closing line, because the last slide is where a carousel leaves its reader: a statement
+    # that leaves them curious. One slide is a single card and is not a carousel.
     if len(slides) > 1:
-        min_facts = int(RULES.get("carousel_min_facts") or 3)
-        facts = sum(1 for x in slides[1:-1] if x.get("title") or x.get("lead") or x.get("points"))
-        if facts < min_facts:
-            add(True, "Carousel", f"{facts} slide{'' if facts == 1 else 's'} of substance between the cover and the "
-                                  f"closing. At least {min_facts}.")
         last = slides[-1]
         if not (last.get("title") or last.get("lead")):
             add(True, "Carousel", "write the closing line: one statement that leaves them curious. Not a question, not an ask.")

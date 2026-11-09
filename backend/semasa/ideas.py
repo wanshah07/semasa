@@ -224,7 +224,8 @@ Set "fit" false (and say why) only when the story gives a regulatory professiona
 SLIDES_RULES = {
     "regulab": """
 
-SLIDES WANTED. Also return "slides": a carousel of 5 to 7 slides in Malaysian Malay, drawn as 1080x1080 cards:
+SLIDES WANTED. Also return "slides": a carousel in Malaysian Malay with as many slides as the story needs (no minimum,
+no maximum), drawn as 1080x1080 cards:
 [{"title": "...", "points": ["...", "..."]}, ...]
 - Slide 1 is the cover: its headline IS the hook (the same hook shape you filled for the caption's first line, no underscores,
   no figure the SOURCE does not give), at most 12 words, "points" empty or one short line.
@@ -236,7 +237,8 @@ SLIDES WANTED. Also return "slides": a carousel of 5 to 7 slides in Malaysian Ma
   slide from "citation" automatically, so do not write it into a slide.""",
     "linkedin": """
 
-SLIDES WANTED. Also return "slides": a carousel of 5 to 7 slides in English, drawn as 1080x1350 cards:
+SLIDES WANTED. Also return "slides": a carousel in English with as many slides as the story needs (no minimum,
+no maximum), drawn as 1080x1350 cards:
 [{"title": "...", "points": ["...", "..."]}, ...]
 - Slide 1 is the cover: its headline IS the hook (the same hook shape you filled for the caption's first line, no underscores,
   no figure the SOURCE does not give), at most 12 words, "points" empty or one short line.

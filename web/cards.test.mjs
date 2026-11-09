@@ -77,12 +77,17 @@ ok(LOOKS.map((l) => l.k).join(",") === "classic,grid,era,photo,image", "the five
   const { slides, over } = slidesFromCaption(post, promo);
   const all = slides.map((x) => [x.title, x.lead || ""].join(" ")).join(" ");
   ok(slides[0].title === "Notifikasi bukan kelulusan.", "the hook is the cover");
-  ok(slides.length >= 5 && slides.length <= 8, `cover, facts and a closing (${slides.length})`);
+  ok(slides.length >= 5, `cover, facts and a closing (${slides.length}); no ceiling`);
   ok(all.includes("pembatalan notifikasi") && all.includes("Pemeriksaan boleh berlaku"), "a long paragraph is packed, not dropped");
   ok(!/Hubungi kami|#NPRA|www\./.test(all), "no ask, no hashtags, no website on the artwork");
   ok(slides.at(-1).title.startsWith("Yang ramai tak sedar") && slides.at(-1).eyebrow === "Yang ramai tak sedar", "the last statement closes");
-  ok(over === 0, "nothing over the ceiling");
+  ok(over === 0, "nothing is ever over: there is no ceiling");
   ok(slides.every((x) => x.title.length <= 110), "every headline fits");
+  // no minimum and no maximum (Wan, 9 Nov 2026): twelve points make twelve slides plus the cover, two make a cover and a closing
+  const many = slidesFromCaption({ stream: "regulab", hook: "Tajuk utama yang cukup panjang.", caption: Array.from({ length: 12 }, (_, i) => `Fakta nombor ${i + 1} yang cukup panjang untuk jadi satu slaid.`).join("\n\n") }, promo);
+  ok(many.slides.length === 13 && many.over === 0, `twelve points are not cut to eight (${many.slides.length} slides)`);
+  const few = slidesFromCaption({ stream: "regulab", hook: "Tajuk utama yang cukup panjang.", caption: "Satu fakta yang cukup panjang untuk jadi slaid.\n\nPenutup yang cukup panjang untuk jadi slaid." }, promo);
+  ok(few.slides.length === 3 && few.slides.at(-1).title.startsWith("Penutup"), `two points are not padded to three (${few.slides.length} slides)`);
   const card = cardFromCaption(post, promo);
   ok(card.length === 1 && card[0].title === "Notifikasi bukan kelulusan." && card[0].lead.startsWith("Notifikasi ialah"), "a single card: hook and its line");
   const [h, r] = headAndRest("Perintah Perihal Dagangan (Perakuan dan Penandaan Halal) 2011, perenggan 4(1), menetapkan bila perkataan halal boleh digunakan pada produk makanan, kosmetik dan farmaseutikal yang dijual di Malaysia, termasuk yang diimport.");

@@ -381,3 +381,36 @@ def test_a_short_banner_has_room_for_its_words(size):
     out = slides.render([{"title": "Notifikasi kosmetik", "points": ["Satu perkara penting"]}], stream="regulab",
                         eyebrow="Halal", source="NPRA", website="kkmhalalconsultant.com", ground=None, size=size)
     assert Image.open(io.BytesIO(out[0])).size == size
+
+
+# ---------------------------------------------------------------- no card looks empty, and the hook is big (Wan, 9 Nov 2026)
+def test_a_sparse_card_is_drawn_bigger_and_a_dense_one_is_left_alone():
+    col, room = 904, 900
+    hook = {"title": "Satu perkara penting.", "points": []}
+    base = slides.layout(hook, "cover", col, 1.0, False)
+    grown = slides.fit(hook, "cover", col, room, False)
+    assert grown.title_font.size >= 1.5 * base.title_font.size, "a short hook fills the card"
+    assert grown.height <= slides.FILL_TARGET * room + 1, "and still ends inside its room"
+
+    dense = {"title": "Apa NPRA semak selepas produk dipasarkan dan apa yang perlu disimpan",
+             "points": ["Dokumen PIF selepas produk dipasarkan, supaya pemilik boleh membuktikan setiap tuntutan produknya.",
+                        "Label dan tuntutan yang dibuat pada pembungkusan dan di media sosial.",
+                        "Rekod aduan pengguna dan tindakan pembetulan yang telah diambil."]}
+    normal = slides.layout(dense, "point", col, 1.0, False)
+    assert normal.height >= slides.FILL_FROM * room, "the test slide really is dense"
+    assert slides.fit(dense, "point", col, room, False).title_font.size == normal.title_font.size, "a dense slide never grows"
+
+
+def test_a_short_slide_renders_with_big_type_end_to_end():
+    img = slides.render([{"title": "Satu perkara penting.", "points": []}, {"title": "Satu fakta", "points": ["a"]},
+                         {"title": "Penutup", "points": []}], stream="regulab", eyebrow="Kosmetik", source="NPRA")
+    assert len(img) == 3
+
+
+def test_the_writer_is_asked_for_full_cards_not_bare_ones_and_never_for_padding():
+    for stream in ("regulab", "linkedin"):
+        rules = ideas.SLIDES_RULES[stream]
+        assert '"lead"' in rules and "FULL card" in rules and "3 to 4" in rules, stream
+        assert "Never pad" in rules, "a fuller card must not mean a fact the SOURCE does not give"
+        assert "very large" in rules, "the hook is the cover and is drawn large"
+        assert "5 to 7" not in rules, "no fixed slide count"

@@ -160,26 +160,20 @@ def test_the_command_menu_follows_the_code(monkeypatch):
     assert len([1 for m, _ in bot.calls if m == "setMyCommands"]) == 1, "unchanged: not sent again"
 
 
-def test_start_shows_the_menu_by_segment_and_a_topic_button_asks_then_uses_the_next_message():
+def test_start_shows_the_english_catalogue_and_idea_intake_queues_a_real_idea():
     st, bot = team_store(**{tb.INBOX: [msg(1, "/start")]}), Bot()
     run(st, bot)
     m = bot.sent()[0]
-    datas = [b.get("callback_data") or b.get("url") for row in m["reply_markup"]["inline_keyboard"] for b in row]
-    assert "menug:0" in datas and "menug:1" in datas and "menug:2" in datas and datas[-1].endswith("/")
-    st.tables[tb.INBOX].append(tap(2, "menug:1"))
+    datas = [b.get("callback_data") for row in m["reply_markup"]["inline_keyboard"] for b in row]
+    assert datas == ["c:model", "c:repo", "c:idea", "c:style", "c:post"]
+    st.tables[tb.INBOX].append(tap(2, "c:idea"))
     run(st, bot)
-    group = bot.sent()[-1]
-    group_datas = [b["callback_data"] for row in group["reply_markup"]["inline_keyboard"] for b in row
-                   if "callback_data" in b]
-    assert "📂 Cipta" in group["text"] and "menu:poster" in group_datas
-    st.tables[tb.INBOX].append(tap(3, "menu:poster"))
-    run(st, bot)
-    assert bot.sent()[-1]["text"].startswith("🎨 Topik")
-    st.tables[tb.INBOX].append(msg(4, "amaran label krim pemutih"))
+    assert "Send a link" in bot.sent()[-1]["text"]
+    st.tables[tb.INBOX].append(msg(3, "https://example.com/recall focus on the hook"))
     run(st, bot)
     idea = st.tables[db.IDEAS][0]
-    assert idea["brief"]["format"] == "poster" and idea["source_title"] == "amaran label krim pemutih"
-    assert not tt.chat_state(st).get("pending"), "asked once"
+    assert (idea["status"] == "new" and idea["brief"]["hook_required"]
+            and idea["brief"]["requirements"]["source"])
 
 
 def test_a_menu_button_that_needs_no_words_runs_at_once():

@@ -73,8 +73,9 @@ def _settings(store: Any, key: str) -> dict[str, Any]:
     return dict(rows[0].get("value") or {}) if rows else {}
 
 
-def team(store: Any) -> dict[str, Any]:
-    """{rows: [robot rows], chosen: {...} | None, pin: {...} | None} from the API check and the router's last decision."""
+def team(store: Any, job: str = "reader") -> dict[str, Any]:
+    """{rows: [robot rows], chosen: {...} | None, pin: {...} | None} from the API check and the router's last decision for
+    `job` (the router's own job names: reader, ideas, motion)."""
     from .ai_team import robots
     ROBOTS = robots(store)                               # the built-in five plus Wan's providers (W6, W7, ...)
     pins_ok = pinnable(store)
@@ -90,8 +91,8 @@ def team(store: Any) -> dict[str, Any]:
                      "ok": bool(s.get("chat_ok")), "ms": s.get("chat_ms"), "error": str(s.get("error") or "")[:120],
                      "pinnable": s["slug"] in pins_ok})
     rows.sort(key=lambda r: r["robot"])
-    reader = state.get("reader") or {}
-    return {"rows": rows, "chosen": reader.get("chosen"), "pin": pins.get("reader"), "why": reader.get("why") or ""}
+    decided = state.get(job) or {}
+    return {"rows": rows, "chosen": decided.get("chosen"), "pin": pins.get(job), "why": decided.get("why") or ""}
 
 
 def robot_reply(store: Any) -> tuple[str, list[list[dict[str, str]]]]:
@@ -126,24 +127,47 @@ def robot_reply(store: Any) -> tuple[str, list[list[dict[str, str]]]]:
     return "\n".join(lines), buttons
 
 
-def set_pin(store: Any, slug: str) -> str:
-    """Pin the text writer (settings.ai_team.pins.reader), exactly as the API page does. 'auto' clears it."""
+# the router's jobs a pin can name (ai_team.chain, gemini_keys.JOBS): "reader" is every worker that reads or answers (Telegram's
+# answers, the repo library, writing styles, reports), "ideas" writes the posts, "motion" writes a film's script and storyboard.
+# Telegram's own answers have no job of their own: they are "reader" calls, which is also the pin the webhook's fast answer reads.
+TASK_JOBS = ("reader", "ideas", "motion")
+
+
+def pin_job(store: Any, slug: str, job: str = "reader") -> tuple[str, dict[str, Any] | None]:
+    """Pin the robot for one router job (settings.ai_team.pins[job]), exactly as the API page does; 'auto' clears it.
+    Other pins are kept. Returns (what happened, the robot's row): 'auto' | 'pinned' | 'down' | 'unknown'.
+    Nothing is written for the last two."""
+    if job not in TASK_JOBS:
+        return "unknown", None
     cur = _settings(store, "ai_team")
     pins = dict(cur.get("pins") or {})
+    row = None
     if slug == "auto":
-        pins["reader"] = None
-        said = "⚡ Auto: Semasa pilih robot yang paling sihat dan pantas."
+        pins[job] = None
+        what = "auto"
     else:
-        row = next((r for r in team(store)["rows"] if r["slug"] == slug and r["pinnable"]), None)
+        row = next((r for r in team(store, job)["rows"] if r["slug"] == slug and r["pinnable"]), None)
         if not row:
-            return "Robot itu tidak boleh dipilih sekarang."
+            return "unknown", None
         if not row["ok"]:
-            return f"{row['name']} tidak menjawab pada semakan terakhir: tidak dipilih."
-        pins["reader"] = {"gateway": slug, "model": row["model"]}
-        said = (f"📌 {row['robot']} {row['name']} · {row['model']} dipilih untuk menulis. "
-                "Jika ia berhenti menjawab, Semasa tukar sendiri.")
+            return "down", row
+        pins[job] = {"gateway": slug, "model": row["model"]}
+        what = "pinned"
     store.table(db.SETTINGS).upsert({"key": "ai_team", "value": {**cur, "pins": pins}}, on_conflict="key").execute()
-    return said
+    return what, row
+
+
+def set_pin(store: Any, slug: str, job: str = "reader") -> str:
+    """The legacy /robot wording (Malay) around pin_job. Pins the text writer by default."""
+    what, row = pin_job(store, slug, job)
+    if what == "auto":
+        return "⚡ Auto: Semasa pilih robot yang paling sihat dan pantas."
+    if what == "unknown" or row is None:
+        return "Robot itu tidak boleh dipilih sekarang."
+    if what == "down":
+        return f"{row['name']} tidak menjawab pada semakan terakhir: tidak dipilih."
+    return (f"📌 {row['robot']} {row['name']} · {row['model']} dipilih untuk menulis. "
+            "Jika ia berhenti menjawab, Semasa tukar sendiri.")
 
 
 def served_by(rec: dict[str, Any]) -> str:
@@ -303,16 +327,26 @@ def make_poster(store: Any, link: dict[str, Any], text: str, command: str) -> st
             "Semasa tulis draf dan lukis gambarnya; draf itu akan sampai di sini untuk anda lulus.")
 
 
+def queue_motion(store: Any, link: dict[str, Any], brief: str, *, source_url: str = "", stream: str = "regulab",
+                 language: str = "bm", idea_id: str | None = None, options: dict[str, Any] | None = None) -> str | None:
+    """A film waiting in the Motion queue (status 'waiting', like one made from the page). Nothing starts until Wan taps Start
+    (mgo: sets it pending) and nothing is made until he approves its storyboard (supabase/071). Returns the film's id."""
+    row: dict[str, Any] = {"brief": brief[:1900], "source_url": source_url, "stream": stream, "language": language,
+                           "resolution": "portrait", "status": "waiting", "created_by": link["user_id"],
+                           "options": {"via": "telegram", **(options or {})}}
+    if idea_id:
+        row["idea_id"] = idea_id
+    got = (store.table(MOTIONS).insert(row).execute().data or [{}])[0]
+    return got.get("id")
+
+
 def make_motion(store: Any, link: dict[str, Any], text: str, command: str) -> tuple[str, list[list[dict[str, str]]], str | None]:
     topic = _topic(text, command)
     if not topic:
         return (f"Tulis /{command} diikuti idea atau link. Contoh: /{command} 3 perkara sebelum notifikasi kosmetik", [], None)
     urls = URL_RE.findall(topic)
     brief = URL_RE.sub("", topic).strip() or topic
-    row = {"brief": brief[:1900], "source_url": urls[0] if urls else "", "stream": "regulab", "language": "bm",
-           "resolution": "portrait", "status": "waiting", "created_by": link["user_id"], "options": {"via": "telegram"}}
-    got = (store.table(MOTIONS).insert(row).execute().data or [{}])[0]
-    mid = got.get("id")
+    mid = queue_motion(store, link, brief, source_url=urls[0] if urls else "")
     from .billing import SITE_URL
     buttons = [[{"text": "▶️ Mula (gaya lalai)", "callback_data": f"mgo:{mid}"}],
                [{"text": "🎬 Pilih gaya di Semasa", "url": f"{SITE_URL.rstrip('/')}/#video"}]]
@@ -346,16 +380,10 @@ def due_motion_videos(store: Any, since: str) -> list[dict[str, Any]]:
     return [r for r in rows if (r.get("options") or {}).get("via") == "telegram" and r.get("video_url")]
 
 
-# ---- the main menu (Wan, 7 Nov 2026: "add button like this in telegram as per segment") -------------------------------------
-
-# (label, action): an action that needs no words runs at once; one that needs a topic asks for it (pending) and the next
-# message Wan sends is that topic.
-MENU = [
-    ("Kandungan", [("📝 Draf untuk lulus", "draf"), ("🗓 Jadual 7 hari", "jadual"), ("💡 Idea baharu", "idea")]),
-    ("Cipta", [("🎨 Poster", "poster"), ("🖼 Karusel", "karusel"), ("🎬 Motion", "motion"), ("📄 Laporan", "laporan")]),
-    ("Sistem", [("🤖 Robot AI", "robot"), ("🩺 Kesihatan", "kesihatan"), ("❗ Ralat", "ralat"), ("📊 Status", "status")]),
-    ("Bisnes & memori", [("💰 Bil", "bil"), ("🧠 Memori", "memori"), ("✍️ Ingat sesuatu", "ingat")]),
-]
+# ---- topics a legacy button asked for --------------------------------------------
+# The button menu is telegram_catalogue.py now (Wan, 9 Nov 2026). What stays here is the handler behind the OLD `menu:<action>`
+# buttons, so a menu message already sitting in Wan's chat still works: an action that needs words asks for them (pending) and
+# the next plain message he sends is that topic. None of these is offered by the new menu.
 NEEDS_TOPIC = {
     "idea": "💡 Hantar link atau tulis idea:",
     "poster": "🎨 Topik atau link untuk poster:",
@@ -366,47 +394,14 @@ NEEDS_TOPIC = {
 }
 
 
-def menu_reply(link: dict[str, Any] | None, site: str) -> tuple[str, list[list[dict[str, str]]]]:
-    name = (link or {}).get("username") or "Wan"
-    text = (f"Hai {name} 👋\n\n📚 Katalog Semasa\nPilih kategori di bawah, atau terus taip soalan. "
-            "Saya ingat nota anda dan belajar daripada 👍/👎 di bawah setiap jawapan.\n\n"
-            "/menu bila-bila masa untuk buka katalog ini.")
-    buttons: list[list[dict[str, str]]] = []
-    for i, (group, _items) in enumerate(MENU, 1):
-        buttons.append([{"text": f"{i}. {group}", "callback_data": f"menug:{i - 1}"}])
-    buttons.append([{"text": "🔗 Buka Semasa", "url": site.rstrip("/") + "/"}])
-    return text, buttons
-
-
-def menu_group_reply(index: int, site: str) -> tuple[str, list[list[dict[str, str]]]]:
-    """Render one category as a paged Telegram menu, like a small product catalogue."""
-    if not 0 <= index < len(MENU):
-        return menu_reply(None, site)
-    group, items = MENU[index]
-    buttons: list[list[dict[str, str]]] = []
-    row: list[dict[str, str]] = []
-    for label, action in items:
-        row.append({"text": label, "callback_data": f"menu:{action}"})
-        if len(row) == 2:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-    buttons.extend([
-        [{"text": "⬅️ Kategori", "callback_data": "menu:home"},
-         {"text": "🏠 Menu utama", "callback_data": "menu:home"}],
-        [{"text": "🔗 Buka Semasa", "url": site.rstrip("/") + "/"}],
-    ])
-    return f"📂 {group}\n\nPilih tindakan:", buttons
-
-
 def ask_topic(store: Any, action: str) -> str:
     save_chat_state(store, {"pending": action})
     return NEEDS_TOPIC[action]
 
 
 def take_pending(store: Any, text: str) -> str | None:
-    """A topic Wan was asked for from the menu: the plain message becomes "/<action> <text>". None when nothing waits."""
+    """A topic Wan was asked for from the menu: the plain message becomes "/<action> <text>" (the catalogue's repo, idea and
+    style prompts use this too). None when nothing waits. A command sent instead of the topic drops the question."""
     st = chat_state(store)
     action = st.get("pending")
     if not action or not text or text.startswith("/"):

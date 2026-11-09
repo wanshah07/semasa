@@ -36,6 +36,7 @@ from typing import Any
 import requests
 
 from . import billing, compliance, db, motion_review
+from . import telegram_catalogue as cat
 from . import telegram_tools as tt
 from .log import get_logger
 
@@ -288,6 +289,22 @@ def blockers(store: Any, post: dict[str, Any], now: datetime | None = None) -> l
     return scan(store, post, now)[1]
 
 
+def edit_draft_caption(store: Any, post_id: str, caption: str) -> str:
+    rows = store.table(db.POSTS).select("id,status,lang,text").eq("id", post_id).eq("status", "draft").execute().data or []
+    if not rows:
+        return "That draft is no longer editable."
+    post = rows[0]
+    lang = post.get("lang") or "bm"
+    text = dict(post.get("text") or {})
+    variants = dict(text.get(lang) or {})
+    channel = "linkedin" if lang == "en" else "instagram"
+    variants[channel] = caption[:3000]
+    text[lang] = variants
+    got = store.table(db.POSTS).update({"text": text}).eq("id", post_id).eq("status", "draft").execute().data or []
+    return ("✏️ Caption updated. Semasa will re-run its compliance checks before approval."
+            if got else "The draft changed before the edit was saved.")
+
+
 def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datetime | None = None) -> None:
     from .publisher import media_for, pictures_of
     media = media_for(store, list(post.get("media_ids") or []))
@@ -303,11 +320,17 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
         text += f"\n\nSumber: {str(post['citation'])[:300]}"
     open_btn = [{"text": "🔗 Buka di Semasa", "url": f"{SITE.rstrip('/')}/#posts"}]
     if hard:
-        text += "\n\n⚠️ Belum boleh diluluskan:\n• " + "\n• ".join(hard[:6])
-        buttons = [[{"text": "❌ Tolak", "callback_data": f"no:{post['id']}"}], open_btn]
+        text += "\n\n⚠️ Approval blocked:\n• " + "\n• ".join(hard[:6])
+        buttons = [[{"text": "✏️ Edit", "callback_data": f"c:pe:{post['id']}"},
+                    {"text": "🖼 Carousel", "callback_data": f"c:pc:{post['id']}"}],
+                   [{"text": "🎬 Motion", "callback_data": f"c:pm:{post['id']}"}],
+                   [{"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
     else:
-        buttons = [[{"text": "✅ Lulus", "callback_data": f"ok:{post['id']}"},
-                    {"text": "❌ Tolak", "callback_data": f"no:{post['id']}"}], open_btn]
+        buttons = [[{"text": "✏️ Edit", "callback_data": f"c:pe:{post['id']}"},
+                    {"text": "🖼 Carousel", "callback_data": f"c:pc:{post['id']}"}],
+                   [{"text": "🎬 Motion", "callback_data": f"c:pm:{post['id']}"}],
+                   [{"text": "✅ Approve", "callback_data": f"ok:{post['id']}"},
+                    {"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
     mid = bot.send(chat, text, buttons)
     store.table(SENT).upsert({"post_id": post["id"], "version": post["updated_at"], "chat_id": chat, "message_id": mid,
                               "sent_at": datetime.now(UTC).isoformat()}, on_conflict="post_id").execute()
@@ -604,6 +627,51 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
     msg = cq.get("message") or {}
     chat, mid = int(msg.get("chat", {}).get("id") or link["chat_id"]), int(msg.get("message_id") or 0)
     kind, _, rest = data.partition(":")
+    if kind == "c":
+        if rest == "home":
+            text_, buttons = cat.home_reply(link)
+        elif rest == "model":
+            text_, buttons = cat.model_reply(store)
+        elif rest in ("repo", "idea", "style"):
+            cat.ask(store, rest)
+            text_, buttons = cat.prompt_reply(rest)
+        elif rest == "post":
+            text_, buttons = cat.post_reply(SITE)
+        elif rest.startswith("mt:"):
+            text_, buttons = cat.task_reply(store, rest.split(":", 1)[1])
+        elif rest.startswith("pin:"):
+            _prefix, job, slug = rest.split(":", 2)
+            text_, buttons = cat.apply_pin(store, job, slug)
+        elif rest.startswith("pe:"):
+            post_id = rest.split(":", 1)[1]
+            cat.ask(store, "post_edit", post_id)
+            bot.send(chat, "✏️ Send the replacement caption now. This only edits a draft and does not publish it.", reply_to=mid)
+            return "catalogue edit asked"
+        elif rest.startswith("pc:"):
+            post_id = rest.split(":", 1)[1]
+            posts = store.table(db.POSTS).select("*").eq("id", post_id).limit(1).execute().data or []
+            bot.send(chat, cat.make_carousel(store, link, posts[0]) if posts else "That draft was not found.", reply_to=mid)
+            return "catalogue carousel"
+        elif rest.startswith("pm:"):
+            post_id = rest.split(":", 1)[1]
+            posts = store.table(db.POSTS).select("*").eq("id", post_id).limit(1).execute().data or []
+            if posts:
+                reply, buttons = cat.make_motion(store, link, posts[0])
+                bot.send(chat, reply, buttons or None, reply_to=mid)
+            else:
+                bot.send(chat, "That draft was not found.", reply_to=mid)
+            return "catalogue motion"
+        elif rest == "pd":
+            for post in drafts(store, now=now):
+                send_draft(store, bot, chat, post, now)
+            return "catalogue drafts"
+        elif rest.startswith("ms:"):
+            bot.send(chat, cat.start_motion(store, rest.split(":", 1)[1]), reply_to=mid)
+            return "catalogue motion started"
+        else:
+            text_, buttons = cat.home_reply(link)
+        bot.send(chat, text_, buttons, reply_to=mid)
+        return "catalogue button"
     if kind in ("ok", "no"):
         return decide(store, bot, link, chat, mid, rest, "approve" if kind == "ok" else "reject", now)
     if kind == "idea":
@@ -628,7 +696,7 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
         return "idea made"
     if kind == "menu":
         if rest in ("home", "main", "prev"):
-            text_, buttons = tt.menu_reply(link, SITE)
+            text_, buttons = cat.home_reply(link)
             bot.send(chat, text_, buttons, reply_to=mid)
             return "menu home"
         if rest in tt.NEEDS_TOPIC:
@@ -641,7 +709,7 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
             index = int(rest)
         except ValueError:
             index = -1
-        text_, buttons = tt.menu_group_reply(index, SITE)
+        text_, buttons = cat.home_reply(link)
         bot.send(chat, text_, buttons, reply_to=mid)
         return f"menu group {index}"
     if kind == "pin":
@@ -687,14 +755,31 @@ def handle_message(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, An
     msg = row["payload"].get("message") or {}
     chat, mid = int(msg["chat"]["id"]), int(msg.get("message_id") or 0)
     text = str(msg.get("text") or msg.get("caption") or "").strip()
-    asked = tt.take_pending(store, text)                               # a topic the menu asked for
+    pending_answer = cat.waiting(store, text)
+    if pending_answer:
+        kind, _arg = pending_answer
+        if kind in ("repo", "idea", "style"):
+            reply = cat.take_answer(store, link, kind, text, row.get("id"))
+            if reply:
+                bot.send(chat, reply[0], reply[1], reply_to=mid)
+                return f"catalogue {kind}"
+        if kind == "post_edit":
+            reply = edit_draft_caption(store, _arg, text)
+            cat.clear_pending(store)
+            bot.send(chat, reply, reply_to=mid)
+            posts = store.table(db.POSTS).select("*").eq("id", _arg).limit(1).execute().data or []
+            if posts:
+                send_draft(store, bot, chat, posts[0], now)
+            return "catalogue post edited"
+    asked = tt.take_pending(store, text)                               # legacy menu question
     if asked:
         text = asked
     cmd = text.split()[0].split("@")[0].lower().lstrip("/") if text.startswith("/") else ""
     if cmd in ("start", "menu"):
-        text_, buttons = tt.menu_reply(link, SITE)
+        cat.clear_pending(store)
+        text_, buttons = cat.home_reply(link)
         bot.send(chat, text_, buttons)
-        return "menu"
+        return "catalogue menu"
     if not cmd and text:
         fixed = tt.take_correction(store, link["user_id"], text)        # after 👎: this message is the correction
         if fixed:

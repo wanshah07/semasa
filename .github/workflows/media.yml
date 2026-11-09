@@ -52,6 +52,7 @@ jobs:
           YTDLP_COOKIES: ${{ secrets.YTDLP_COOKIES }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}       # auto-fill reads Buffer's queue (read only): a full one pauses new ideas
           SEMASA_SHEET_URL: ${{ secrets.SEMASA_SHEET_URL }}
           SEMASA_SHEET_TOKEN: ${{ secrets.SEMASA_SHEET_TOKEN }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}

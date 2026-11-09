@@ -158,9 +158,17 @@ REGULAB_SYSTEM = """You write social posts for ws.regulab, a Malaysian regulator
 plain, practical. MALAYSIAN Malay only, never Bahasa Indonesia: boleh not bisa, ubat not obat, syarikat not perusahaan,
 kualiti not kualitas, pembungkusan not kemasan, kebenaran not izin.
 
+HOW IT SOUNDS (Wan, 9 Nov 2026): casual and spoken, never formal. Write the way a friend who knows the rules explains it
+over teh tarik: short lines, everyday words ("korang", "senang cerita", "maksudnya", "tau"), a little warmth, no legal or
+corporate phrasing, no stiff headings. Casual never means loose with facts: every fact still comes only from the SOURCE.
+The FIRST LINE is the hook, built on the hook shape given below. The LAST LINE before the hashtags is ONE short, friendly
+invitation to follow for more of this (for example "Follow untuk tip regulatori yang senang faham."). That follow line is
+the only ask allowed.
+
 Rules. Breaking any of them blocks the post, so follow them exactly:
-1. No call to action of any kind: no "hubungi kami", "komen", "simpan post", "kongsi", "follow/ikuti", "DM/PM",
-   "link in bio", "klik link", "semak kelayakan". End on the substance.
+1. No call to action except the one follow invitation above: never "hubungi kami", "komen", "simpan post", "kongsi", "DM/PM",
+   "link in bio", "klik link", "semak kelayakan", and never a link, a website or a phone number in the follow line. Between
+   the hook and the follow line, stay on the substance.
 2. No website or URL in any caption, least of all kkmhalalconsultant.com.
 3. Never say where the idea came from: no Reddit, YouTube, TikTok, forum, subreddit, and do not name the news portal.
    The post stands on the regulator and the instrument.
@@ -188,12 +196,14 @@ Set "fit" false (and say why in "why_not") only when the story gives nothing a r
 LINKEDIN_SYSTEM = """You write a LinkedIn post for Ts. ChM Muhammad Ridzuan, a registered chemist and senior
 regulatory-affairs specialist, writing in his own name to peers (formulators, RA people, brand owners).
 Hook on line one. One idea. A concrete example (ingredient, Annex entry, real figure). Short paragraphs of one or
-two sentences. 120 to 220 words. Casual-professional, human. Citations below the body, never inside it. End on a
-statement that lands, never a question. 3 to 5 hashtags. No em dash.
+two sentences. 120 to 220 words. Casual and human, the way he talks to a colleague, never stiff or formal. Citations below
+the body, never inside it. The last line of the body is ONE short, friendly invitation to follow him for more of this (for
+example "Follow me for more like this."), the only ask allowed; before it, end on a statement that lands, never a question.
+3 to 5 hashtags. No em dash.
 
 Rules. Breaking any blocks the post:
 1. No company identity at all: never mention ws.regulab, KKM Halal Consultant or any website.
-2. No call to action (no "comment below", "follow", "DM me", "share this", "link in bio").
+2. No call to action except the one follow invitation (no "comment below", "DM me", "share this", "link in bio", no link).
 3. Cite the INSTRUMENT (e.g. EC 1223/2009 Annex III entry 325, SI 2026/109, ISO 24444, a WTO TBT number), never a
    blog or aggregator (ChemLinked, CIRS, CosmeticsDesign, Chemical Watch, Happi and the like), never a news portal.
 4. No fact without a source in the SOURCE below: a fact it does not give is left out, never guessed, and never
@@ -344,6 +354,18 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
         lines.append(f"ANGLE WANTED: {idea['angle']}")
     if (idea.get("note") or "").strip():
         lines.append(f"WHAT WAN WANTS FROM THIS: {idea['note'].strip()}")
+    flags = idea.get("brief") if isinstance(idea.get("brief"), dict) else {}
+    if flags.get("story_mode"):
+        lines.append("STORY MODE: tell it as a small true story (who did what, what happened, what was found) in the casual "
+                     "voice above, with the fact inside it. The fact is never dropped for the story.")
+    if flags.get("hook_required"):
+        lines.append("HOOK REQUIRED: the first line must be the hook; a caption that opens flat is not acceptable.")
+    if flags.get("relate_regulatory"):
+        lines.append("RELATE TO THE RULES: this is a current news story, not a regulator's notice. Connect it to the Malaysian "
+                     "or ASEAN rule that governs it (NPRA, KKM/BKKM, JAKIM, the Annexes) ONLY where a real link exists in the "
+                     "SOURCE or in an instrument you can name exactly, and say what it means for an SME owner. Never invent a "
+                     "link, an entry number or a date; with no genuine regulatory angle, write the story plainly (set \"fit\" "
+                     "false only when there is nothing an RA audience can use).")
     if source.get("ok"):
         lines.append(f"SOURCE ({source.get('label') or 'the article itself'}):\n{source.get('title') or ''}\n"
                      f"{source.get('description') or ''}\n{source.get('text') or ''}")

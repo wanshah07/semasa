@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import db
+from . import buffer_queue, db
 from .ideas import ANY_DAY_DOMAINS, MYT
 from .log import get_logger
 
@@ -88,6 +88,58 @@ def asked_for(store: Any, stream: str) -> set[tuple[str, str]]:
 
 SELECT = "id,section,source,kind,title,url,summary,why,domain,raw,published_at,created_at"
 
+# Current newspaper issues (isu semasa) come FIRST (Wan, 9 Nov 2026: "masukkan isu semasa sebagai prioriti idea dari surat khabar
+# dan relatekan dengan regulatori kalau boleh"). The scraper keeps a headline 48 hours; politics, crime, sport and the like are
+# not this brand's business, so only the regulatory-adjacent categories qualify, and a headline that names a regulator or an
+# instrument ranks above the rest of them.
+TRENDS = "isu_semasa_trends"
+NEWS_HOURS = 48
+NEWS_CATEGORIES = ("kosmetik", "halal", "makanan", "farmaseutikal", "kesihatan")
+NEWS_DOMAIN = {"kosmetik": "kosmetik", "halal": "halal_my", "makanan": "makanan", "farmaseutikal": "farmaseutikal",
+               "kesihatan": "farmaseutikal"}
+REGULATORY = (
+    "npra", "kkm", "bkkm", "jakim", "jawi", "fsqd", "kpdn", "moh", "kementerian kesihatan", "akta", "peraturan", "garis panduan",
+    "notifikasi", "pendaftaran", "sijil", "pensijilan", "penguatkuasaan", "tarik balik", "recall", "diharamkan", "larangan",
+    "dilarang", "label", "pelabelan", "halal", "bahan terlarang", "racun berjadual", "hidrokuinon", "merkuri", "tretinoin",
+    "steroid", "sibutramin", "pendedahan", "amaran", "ecosmetic", "quest3", "mesti dikawal", "poison", "regulation", "ban",
+    "warning", "licence", "license")
+
+
+def regulatory_link(item: dict[str, Any]) -> bool:
+    """True when the headline or summary names a regulator, an instrument or an enforcement step: the stories that can honestly be
+    tied to a rule. Words, not a guess about popularity."""
+    text = f" {item.get('title') or ''} {item.get('summary') or ''} ".lower()
+    return any(w in text for w in REGULATORY)
+
+
+def news_candidates(store: Any, now: datetime | None = None) -> list[dict[str, Any]]:
+    """Newspaper headlines from the last NEWS_HOURS in a regulatory-adjacent category that no idea has used, shaped like feed
+    items. Never raises: no table yet, or a failed read, is no news and the feed still fills the gaps."""
+    since = ((now or datetime.now(UTC)) - timedelta(hours=NEWS_HOURS)).isoformat()
+    try:
+        rows = (store.table(TRENDS).select("id,title,source,url,summary,category,published_at,created_at")
+                .in_("category", list(NEWS_CATEGORIES)).gte("created_at", since).order("created_at", desc=True)
+                .limit(120).execute().data or [])
+        if not rows:
+            return []
+        spent: set[str] = set()
+        for chunk in db._in_filter_chunks([r["url"] for r in rows]):
+            spent |= {r.get("source_url") for r in (store.table(db.IDEAS).select("source_url").in_("source_url", chunk)
+                                                    .execute().data or [])}
+    except Exception as exc:  # noqa: BLE001
+        log.info("news candidates skipped: %s", str(exc)[:100])
+        return []
+    out = []
+    for r in rows:
+        if r["url"] in spent:
+            continue
+        item = {"id": r["id"], "section": "news", "source": r.get("source"), "kind": "news", "title": r.get("title"),
+                "url": r["url"], "summary": r.get("summary"), "why": None, "domain": NEWS_DOMAIN.get(r.get("category")),
+                "raw": {}, "published_at": r.get("published_at"), "created_at": r.get("created_at"), "trend_id": r["id"]}
+        item["regulatory_link"] = regulatory_link(item)
+        out.append(item)
+    return out
+
 
 def candidates(store: Any, now: datetime | None = None) -> list[dict[str, Any]]:
     """Feed items an idea has not used yet. News is fresh for FRESH_DAYS; the OneDrive angle bank is not news and has no
@@ -97,7 +149,7 @@ def candidates(store: Any, now: datetime | None = None) -> list[dict[str, Any]]:
             .neq("section", "folder").order("created_at", desc=True).limit(200).execute().data or [])
     bank = (store.table(WATCH).select(SELECT).eq("section", "folder").eq("relevant", True).eq("dismissed", False)
             .order("created_at", desc=True).limit(300).execute().data or [])
-    rows = rows + bank
+    rows = news_candidates(store, now) + rows + bank
     if not rows:
         return []
     urls = [r["url"] for r in rows]
@@ -109,16 +161,20 @@ def candidates(store: Any, now: datetime | None = None) -> list[dict[str, Any]]:
 
 
 def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> list[dict[str, Any]]:
-    """Put newer, regulator-facing items first without inventing a viral score."""
+    """Current newspaper issues first (those that name a regulator or an instrument before the rest), then the regulator and
+    paper feed, newer and regulator-facing first, without inventing a viral score."""
     now = now or datetime.now(UTC)
-    def key(item: dict[str, Any]) -> tuple[int, float]:
+
+    def key(item: dict[str, Any]) -> tuple[int, int, float]:
         title = f"{item.get('title') or ''} {item.get('summary') or ''}".lower()
         timely = int(any(word in title for word in ("recall", "regulator", "npra", "jakim", "hsa", "efsa", "update", "warning")))
         try:
             age = -datetime.fromisoformat(str(item.get("created_at")).replace("Z", "+00:00")).timestamp()
         except (TypeError, ValueError):
             age = float("inf")
-        return (-timely, age)
+        if item.get("section") == "news":
+            return (0, 0 if item.get("regulatory_link") else 1, age)
+        return (1, -timely, age)
     return sorted(pool, key=key)
 
 
@@ -144,11 +200,22 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
     if not cfg["enabled"]:
         return "Autofill: off (switch it on in Settings)"
     try:
+        # what Buffer already holds: a full queue pauses new ideas and every post in it is a taken slot (None = unknown, carry on)
+        queue = buffer_queue.snapshot(store, settings, now) if "regulab" in cfg["streams"] else None
+        if queue and queue["is_full"]:
+            streams = [s for s in cfg["streams"] if s != "regulab"]
+            if not streams:
+                return ("Autofill: paused, the Buffer queue is full (" + ", ".join(queue["full"])
+                        + f" at {queue['limit']}); ideas resume when a post goes out")
+        else:
+            streams = cfg["streams"]
         pool = rank_candidates(candidates(store, now), now)
         brand = settings.get("brand") or {}
         made, empty = 0, 0
-        for stream in cfg["streams"]:
+        for stream in streams:
             busy = held(store, stream, now) | asked_for(store, stream)
+            if stream == "regulab" and queue:
+                busy |= {tuple(p) for p in queue["taken"]}
             for date, slot, allow in gaps(stream, brand, busy, cfg["days_ahead"], now):
                 if made >= cfg["per_run"]:
                     break
@@ -163,7 +230,15 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                     domain = item.get("domain") if item.get("domain") and (urgent or fits(item, stream, allow)) else None
                     if allow and domain not in allow and domain not in ANY_DAY_DOMAINS and not urgent:
                         domain = allow[0]
+                news = item.get("section") == "news"
+                brief = {"position": {"date": date, "slot": slot}, "auto": True, "watch_id": item["id"],
+                         "hook_required": True, "story_mode": True, "source_priority": "current"}
+                if news:
+                    brief["relate_regulatory"] = True      # a newspaper story: the writer ties it to a rule where one is real
+                    brief.pop("watch_id")                 # not a regulator-feed row: trend_id says where it came from
+                    brief["news"] = True
                 store.table(db.IDEAS).insert({
+                    **({"trend_id": item["trend_id"]} if news else {}),
                     "source_title": str(item.get("title") or "")[:500], "source_url": item["url"],
                     "source_name": item.get("source") or None,
                     "source_summary": (str(item.get("summary") or item.get("why") or "")
@@ -175,8 +250,7 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                     # no note: the writer reads a note as Wan's words, and a note also lifts the already-published
                     # guard (ideas.process_idea). What this idea is for rides in the brief, shown as a pill.
                     "note": "",
-                    "brief": {"position": {"date": date, "slot": slot}, "auto": True, "watch_id": item["id"],
-                              "hook_required": True, "story_mode": True, "source_priority": "current"},
+                    "brief": brief,
                 }).execute()
                 made += 1
         if made:

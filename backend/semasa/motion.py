@@ -265,11 +265,19 @@ STRUCTURE_RULE = (
     "3. TERLEPAS (what was missed out): the one thing most people overlook or get wrong here: the catch, the exception, the "
     "common mistake, the detail the headline skipped. Take it from the brief; if the brief gives none, say the single most "
     "likely mistake a reader makes with the fact in scene 2. Never invent a number, date, clause or case to fill it.\n"
-    "4. CTA: the one thing to do next, said in a sentence, then ONE short invitation to follow for more like this ('ikuti kami "
-    "untuk tip macam ni', 'follow for more like this'). FOLLOW is the only ask: never ask the viewer to comment, share, save, "
+    "4. CTA: the one thing to do next, said in a sentence, and nothing after it. Do NOT invite the viewer to follow: the closing "
+    "logo card the worker adds says it once, alone, and it appears nowhere else, so never write 'follow', 'ikuti kami', "
+    "'jangan lupa follow' or 'tip seterusnya' in any scene. Never ask the viewer to comment, share, save, "
     "DM, click, visit, call or 'check eligibility' ('semak kelayakan'), never give a link, a website, a handle or a phone "
-    "number, and never write 'for more info' or 'untuk maklumat lanjut' (that sends the viewer away). The closing card the "
-    "worker adds says 'follow' in its own words, so lead into it and do not repeat them.")
+    "number, and never write 'for more info' or 'untuk maklumat lanjut' (that sends the viewer away).")
+
+
+def no_follow(text: str, teaser: bool = False) -> str:
+    """A scene's words without any invitation to follow (Wan, 10 Nov 2026: said once, with the logo, never repeated). The
+    10-second teaser is one scene that carries its own exact call to action, so it is left alone."""
+    return text if teaser else motion_captions.without_follow_asks(text)
+
+
 # Wan, 10 Nov 2026, about a film on HIFU: "aku tak tahu HIFU tu apa, boleh tak masukkan setiap kali storyboard explain apa
 # yang patut". Every storyboard says what the subject IS: in `terms` (shown to Wan in the review, so he can judge the film)
 # and in the film itself.
@@ -369,10 +377,12 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
     for i, sc in enumerate(scenes[:count]):
         clean.append({"id": f"s{i + 1}", "kicker": motion_auto.LABELS[lang][i] if not teaser else "",
                       "role": motion_auto.ROLES[i] if not teaser else "hook",
-                      "heading": speak_as(motion_layout.plain(sc.get("heading"))[:160]),
+                      "heading": speak_as(no_follow(motion_layout.plain(sc.get("heading")), teaser)[:160]),
                       "lines": [speak_as(motion_layout.plain(x)[:200]) for x in (sc.get("lines") or [])
-                                if motion_layout.plain(x) and not motion_captions.hand_off(motion_layout.plain(x))][:LINES_MAX],
-                      "narration": speak_as(motion_captions.without_hand_offs(motion_layout.plain(sc.get("narration")))[:600])})
+                                if motion_layout.plain(x) and not motion_captions.hand_off(motion_layout.plain(x))
+                                and (teaser or not motion_captions.follow_ask(motion_layout.plain(x)))][:LINES_MAX],
+                      "narration": speak_as(no_follow(motion_captions.without_hand_offs(motion_layout.plain(sc.get("narration"))),
+                                                      teaser)[:600])})
     if recipe_plan:
         for sc, stage in zip(clean, recipe_plan["stages"], strict=False):
             sc["role"] = stage["role"]
@@ -563,8 +573,9 @@ def approved_plan(row: dict[str, Any], saved: dict[str, Any]) -> dict[str, Any]:
         if sc.get("id") == "brand-outro":         # the closing line is the film's own, never edited: kept exactly as planned
             clean.append(dict(sc))
             continue
-        heading = speak_as(motion_layout.plain(sc.get("heading")))[:240]
-        lines = [speak_as(motion_layout.plain(x))[:200] for x in (sc.get("lines") or []) if motion_layout.plain(x)][:LINES_MAX]
+        heading = speak_as(no_follow(motion_layout.plain(sc.get("heading")), teaser))[:240]
+        lines = [speak_as(motion_layout.plain(x))[:200] for x in (sc.get("lines") or []) if motion_layout.plain(x)
+                 and (teaser or not motion_captions.follow_ask(motion_layout.plain(x)))][:LINES_MAX]
         if not heading:
             raise fix(f"scene {i + 1} has no heading")
         for words in (heading, *lines):
@@ -572,8 +583,8 @@ def approved_plan(row: dict[str, Any], saved: dict[str, Any]) -> dict[str, Any]:
                 raise fix(f'scene {i + 1} sends the viewer away to look it up ("{words[:80]}"): say the fact instead')
         if i == 0 and re.search(r"_{2,}", heading):
             raise fix("the hook still has a blank (___) in it")
-        narration = (speak_as(motion_captions.without_hand_offs(motion_layout.plain(sc.get("narration"))))[:700]
-                     if voiced else "")
+        said = no_follow(motion_captions.without_hand_offs(motion_layout.plain(sc.get("narration"))), teaser)
+        narration = speak_as(said)[:700] if voiced else ""
         clean.append({**sc, "heading": heading, "lines": lines, "narration": narration,
                       **({"shot": motion_layout.plain(sc.get("shot"))[:600]} if sc.get("shot") else {})})
     if voiced and not teaser:             # an edit can make the speech longer: cut before it is recorded, as plan_scenes does

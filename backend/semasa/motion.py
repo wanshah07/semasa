@@ -107,8 +107,9 @@ MAX_FIX = 2                             # rewrites the writer gets for a layout 
 # Wan's own skill, 25 Oct 2026 ("add this skill in the system, and in claude code"): also a Claude Code project skill at
 # .claude/skills/ws-regulab-motion; its contract and the template of the chosen design go to the writer as a reference
 SKILL = Path(__file__).resolve().parents[2] / ".claude" / "skills" / "ws-regulab-motion"
+# Designs 3 and 4 are Design 1 with a blurred photo behind it
 SKILL_TEMPLATES = {"bright-editorial": "BrightPhotoDiagramEditorial.html", "continuous-line": "ContinuousLine.html",
-                   "blur-photo": "BrightPhotoDiagramEditorial.html"}   # Design 3 is Design 1 with a blurred photo behind it
+                   "blur-photo": "BrightPhotoDiagramEditorial.html", "blur-full": "BrightPhotoDiagramEditorial.html"}
 STYLE_MAX = 9_000                      # characters of a style repo handed to the writer
 STYLE_FILES = ("SKILL.md", "skills/SKILL.md", "STYLE.md", "DESIGN.md", "frame.md", "FRAME.md", "AGENTS.md", "CLAUDE.md")
 SIZES = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1080)}
@@ -255,21 +256,60 @@ CASUAL_RULE = ("TONE: casual, as a friend explaining to a friend, so the viewer 
 # their internal roles (hook, fact, why, solution: motion_auto.ROLES) and now do these jobs. The CTA is a FOLLOW invitation only,
 # worded so it passes the same checks as everything else: rules/compliance.json bans asking for a comment, a share, a save, a link
 # or a eligibility check, and motion_captions.HAND_OFF rejects 'for more info' (it sends the viewer away).
-STRUCTURE_RULE = (
-    "THE FILM'S FOUR PARTS, in this order, each scene doing only its own job:\n"
-    "1. HOOK: built on the hook shape below; the one line that makes this viewer stop.\n"
-    "2. CERITA & FAKTA (story and fact): tell it as a small true story a shopkeeper recognises (who did what, what happened, "
-    "what was found) in plain everyday words, and put the ACTUAL fact inside it: the number, limit, name, rule, date or step "
-    "from the brief, with the rule or study that decides it named once as a source, and what it means for them. Story and fact "
-    "are ONE scene: the fact is never dropped for the story, and the story is never dropped for the fact.\n"
-    "3. TERLEPAS (what was missed out): the one thing most people overlook or get wrong here: the catch, the exception, the "
-    "common mistake, the detail the headline skipped. Take it from the brief; if the brief gives none, say the single most "
-    "likely mistake a reader makes with the fact in scene 2. Never invent a number, date, clause or case to fill it.\n"
+_HOOK_PART = "1. HOOK: built on the hook shape below; the one line that makes this viewer stop.\n"
+_CTA_PART = (
     "4. CTA: the one thing to do next, said in a sentence, and nothing after it. Do NOT invite the viewer to follow: the closing "
     "logo card the worker adds says it once, alone, and it appears nowhere else, so never write 'follow', 'ikuti kami', "
     "'jangan lupa follow' or 'tip seterusnya' in any scene. Never ask the viewer to comment, share, save, "
     "DM, click, visit, call or 'check eligibility' ('semak kelayakan'), never give a link, a website, a handle or a phone "
     "number, and never write 'for more info' or 'untuk maklumat lanjut' (that sends the viewer away).")
+# Wan, 10 Nov 2026: "add more mode for motion, not only as explainer or gimmick only". Every mode is four teaching scenes in the
+# same internal roles (hook, fact, why, solution: motion_auto.ROLES, which the layout and the pictures already use), so a mode
+# changes what scenes 2 and 3 are FOR, never the machinery. The 10-second teaser stays its own thing (one scene).
+MODES = ("explainer", "news", "myth", "howto", "case")
+_NEVER = "Never invent a number, date, clause or case to fill it."
+_MODE_PARTS = {
+    "explainer": (
+        "2. CERITA & FAKTA (story and fact): tell it as a small true story a shopkeeper recognises (who did what, what "
+        "happened, what was found) in plain everyday words, and put the ACTUAL fact inside it: the number, limit, name, rule, "
+        "date or step from the brief, with the rule or study that decides it named once as a source, and what it means for "
+        "them. Story and fact are ONE scene: the fact is never dropped for the story, and the story is never dropped for the "
+        "fact.\n"
+        "3. TERLEPAS (what was missed out): the one thing most people overlook or get wrong here: the catch, the exception, the "
+        "common mistake, the detail the headline skipped. Take it from the brief; if the brief gives none, say the single most "
+        "likely mistake a reader makes with the fact in scene 2. " + _NEVER + "\n"),
+    "news": (
+        "2. APA JADI (what happened): the news itself as a small true story: who, what, when, where, in plain everyday words, "
+        "with the ACTUAL fact inside it (the name, number, date or instrument from the brief) and its source named once.\n"
+        "3. KENAPA PENTING (why it matters to you): what it changes for the shopkeeper in practice: the rule or limit that "
+        "decides it, the deadline or the thing to check, and what getting it wrong costs. Take it from the brief; "
+        + _NEVER + "\n"),
+    "myth": (
+        "2. MITOS (the myth): say the common belief exactly as people say it, as a short story of someone who acted on it, then "
+        "the FACT that corrects it, with the rule, study or notice that decides it named once as a source.\n"
+        "3. KENAPA ORANG PERCAYA (why people believe it): the real reason the myth spreads, and the exception or nuance it "
+        "hides. Take it from the brief; if the brief gives none, say the most likely reason in one plain sentence. "
+        + _NEVER + "\n"),
+    "howto": (
+        "2. LANGKAH (the steps): the actual steps in order, three or four short actions with the real values from the brief "
+        "(the limit, the form, the deadline), each said once in plain words; the viewer must be able to do them.\n"
+        "3. KESILAPAN (mistakes to avoid): the one or two mistakes that cost people most when they do those steps, and what "
+        "each costs them. Take it from the brief; " + _NEVER + "\n"),
+    "case": (
+        "2. KES (the case): what happened to a real product, person or company, as a small true story (who did what, what was "
+        "found, what was done about it) with the ACTUAL facts from the brief and the source named once.\n"
+        "3. PERATURAN (what the rule says): the instrument that decided the case, and why the outcome followed from it, in "
+        "plain words. Take it from the brief; " + _NEVER + "\n"),
+}
+
+
+def structure_rule(mode: str = "explainer") -> str:
+    """The film's four parts for a mode: the hook, the two parts that mode is about, and the CTA, in that order."""
+    return ("THE FILM'S FOUR PARTS, in this order, each scene doing only its own job:\n" + _HOOK_PART
+            + _MODE_PARTS.get(mode, _MODE_PARTS["explainer"]) + _CTA_PART)
+
+
+STRUCTURE_RULE = structure_rule("explainer")
 
 
 def no_follow(text: str, teaser: bool = False) -> str:
@@ -282,10 +322,14 @@ def no_follow(text: str, teaser: bool = False) -> str:
 # yang patut". Every storyboard says what the subject IS: in `terms` (shown to Wan in the review, so he can judge the film)
 # and in the film itself.
 TERMS_RULE = definitions.RULE
-FLOW = (STRUCTURE_RULE + " Connected, complete sentences, never isolated labels.\n" + TERMS_RULE + "\n" + LAYMAN_RULE
-        + "\n" + EXPLAIN_RULE
-        + "\n" + CONNECT_RULE + "\n" + LINES_RULE
-        + "\n" + LIST_RULE + "\n" + NARRATION_RULE + "\n" + MALAY_RULE)
+def flow_for(mode: str = "explainer") -> str:
+    return (structure_rule(mode) + " Connected, complete sentences, never isolated labels.\n" + TERMS_RULE + "\n" + LAYMAN_RULE
+            + "\n" + EXPLAIN_RULE
+            + "\n" + CONNECT_RULE + "\n" + LINES_RULE
+            + "\n" + LIST_RULE + "\n" + NARRATION_RULE + "\n" + MALAY_RULE)
+
+
+FLOW = flow_for("explainer")
 FLOW_TEASER = ("ONE scene: a curiosity hook only.\n" + TERMS_RULE.split(" In the film,")[0] + " " + LAYMAN_RULE + "\n"
                + EXPLAIN_RULE)
 PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, at most {words} words in all and fewer "
@@ -321,8 +365,10 @@ def build_script_system(row: dict[str, Any], extra: str, count: int = 4, bank: h
     length = (f"Plan about {seconds:g} seconds INCLUDING it." if count == 1 else
               f"There is NO fixed length: make the film as long as the information needs to be delivered in full, and not a "
               f"second longer; never more than {FILM_MAX:g} seconds including the outro.")
-    return SCRIPT_SYSTEM.format(length=length, count=count, kickers=" · ".join(motion_auto.LABELS[lang][:count]),
-                                flow=(FLOW if count > 1 else FLOW_TEASER) + "\n" + hook_bank.film_block(stream, bank, hint),
+    kickers = " · ".join(motion_auto.LABELS[lang][:count])
+    flow = flow_for(motion_styles.mode(row)) if count > 1 else FLOW_TEASER
+    return SCRIPT_SYSTEM.format(length=length, count=count, kickers=kickers,
+                                flow=flow + "\n" + hook_bank.film_block(stream, bank, hint),
                                 pace=pace, voice=voice_line(stream, lang),
                                 extra=(("WAN'S OWN INSTRUCTIONS:\n" + extra + "\n") if extra else "") + motion_styles.prompt(row)
                                 + antislop.prompt_block(film=True))

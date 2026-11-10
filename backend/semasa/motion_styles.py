@@ -20,8 +20,11 @@ LOGO = RULES / "official-logo-transparent.png"
 WAN_ICON = RULES / "wan-icon.png"
 DESIGNS = {
     "blur-photo": "Design 3 — Blurred photo: each scene's own picture, blurred and pushed in, behind a pale veil, with the "
-                  "same dark type and blocks as Design 1 on top, so the words stay easy to read whatever the picture. "
-                  "Scenes arrive zooming out of a heavy blur and leave by zooming through into the next.",
+                  "same dark type and blocks as Design 1 and the sharp picture on the slide above it. Scenes arrive "
+                  "zooming out of a heavy blur and leave by zooming through into the next.",
+    "blur-full": "Design 4 — Fully blurred photo: each scene's own picture is only a fully blurred background (no sharp copy on "
+                 "the slide), a lighter veil so more of its colour shows, and the words take the room the picture had. "
+                 "Same blur arrival, zoom-through exit and accent sweep as Design 3.",
     "bright-editorial": "Design 1 — Original Bright Photo / Diagram / Editorial: preserve the approved v9–v15 family. "
                         "Bright mint/cream, editorial type, real licensed photos with provenance when provided, "
                         "qualitative diagrams and consistent transparent centered captions. Do not replace with Design 2.",
@@ -48,6 +51,16 @@ def resolve(row: dict[str, Any]) -> dict[str, Any]:
     options = row.get("options")
     key = options.get("style") if isinstance(options, dict) else None
     return next((r for r in [*CATALOG, *BUNDLES] if r["id"] == key and key in SUPPORTED), BRIGHT)
+
+
+# what the film is FOR (options.mode); teaser is the 10 s gimmick, every other mode is four teaching scenes
+MODES = ("explainer", "news", "myth", "howto", "case", "teaser")
+
+
+def mode(row: dict[str, Any]) -> str:
+    options = row.get("options") or {}
+    key = options.get("mode") if isinstance(options, dict) else None
+    return key if key in MODES else "explainer"
 
 
 def design(row: dict[str, Any]) -> str:

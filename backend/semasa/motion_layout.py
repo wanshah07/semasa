@@ -47,35 +47,38 @@ def gradients(design: str, ambient: str) -> tuple[str, str]:
     return f"background:{b} linear-gradient(145deg,{a},{b} 70%);", f"linear-gradient(215deg,{a},{b} 70%)"
 
 
-# Design 3 (Wan, 10 Nov 2026): the scene's picture, blurred, behind a pale veil; the words stay dark on it
+# Design 3 (Wan, 10 Nov 2026): the scene's picture, blurred, behind a pale veil; the words stay dark on it, and the sharp picture
+# stays on the slide above it. Design 4 (same day: "the background make images full blurry"): the picture is ONLY the blurred
+# background, no sharp copy, a little less veil so more of its colour shows. One table for both, read by HyperFrames and Remotion.
 BLUR_DESIGN = "blur-photo"
-GRADIENT = {d: gradients(d, DEFAULT_AMBIENT)[0] for d in ("bright-editorial", "continuous-line", BLUR_DESIGN)}
-GRADIENT_ALT = {d: gradients(d, DEFAULT_AMBIENT)[1] for d in ("bright-editorial", "continuous-line", BLUR_DESIGN)}
-VEIL = 0.56                       # white over the blurred picture: the dark ink stays readable, more of the colour shows through
-BLUR_PX = 40                      # fully blurred (Wan, 10 Nov 2026: "the background make images full blurry"): no sharp picture
+FULL_BLUR_DESIGN = "blur-full"
+BLUR_LOOKS = {BLUR_DESIGN: {"veil": 0.66, "blur": 30, "sharp": True},
+              FULL_BLUR_DESIGN: {"veil": 0.56, "blur": 40, "sharp": False}}
+GRADIENT = {d: gradients(d, DEFAULT_AMBIENT)[0] for d in ("bright-editorial", "continuous-line", *BLUR_LOOKS)}
+GRADIENT_ALT = {d: gradients(d, DEFAULT_AMBIENT)[1] for d in ("bright-editorial", "continuous-line", *BLUR_LOOKS)}
 
 
-def blur_layer(sid: str, start: float, dur: float, photo: str, accent: str) -> str:
+def blur_layer(sid: str, start: float, dur: float, photo: str, accent: str, veil: float, blur: int) -> str:
     """The blurred-photo backdrop of one scene (Design 3): the scene's own picture, blurred and pushed in, a pale veil over it so
     the dark words stay easy to read on any picture, and a thin accent sweep that crosses at the scene's start."""
     return (f'<div class="clip bgb" id="{sid}-bgb" data-backdrop="1" data-start="{start:g}" data-duration="{dur:g}" '
             f'style="position:absolute;left:0;top:0;width:100%;height:100%;overflow:hidden;">'
             f'<div id="{sid}-bgi" style="position:absolute;left:-8%;top:-8%;width:116%;height:116%;background-size:cover;'
-            f'background-position:center;background-image:url({photo});filter:blur({BLUR_PX}px) saturate(1.15);"></div>'
-            f'<div style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(255,255,255,{VEIL});"></div>'
+            f'background-position:center;background-image:url({photo});filter:blur({blur}px) saturate(1.15);"></div>'
+            f'<div style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(255,255,255,{veil});"></div>'
             f'<div id="{sid}-wp" style="position:absolute;left:0;top:0;width:16%;height:100%;opacity:0;'
             f'background:linear-gradient(90deg,transparent,{rgba(accent, .55)},transparent);"></div></div>')
 
 
-def blur_tweens(sid: str, start: float, dur: float) -> list[str]:
+def blur_tweens(sid: str, start: float, dur: float, blur: int) -> list[str]:
     """The wow of Design 3: each scene's backdrop arrives zooming out of a heavy blur, drifts slowly, then rushes forward into
     blur as the scene ends (a zoom-through into the next one) while a soft accent band sweeps across at the cut."""
     end = start + dur
     return [
-        f'tl.fromTo("#{sid}-bgi",{{scale:1.35,filter:"blur({BLUR_PX * 2}px) saturate(1.4)"}},'
-        f'{{scale:1.12,filter:"blur({BLUR_PX}px) saturate(1.15)",duration:.9,ease:"expo.out"}},{start:g});',
+        f'tl.fromTo("#{sid}-bgi",{{scale:1.35,filter:"blur({blur * 2}px) saturate(1.4)"}},'
+        f'{{scale:1.12,filter:"blur({blur}px) saturate(1.15)",duration:.9,ease:"expo.out"}},{start:g});',
         f'tl.to("#{sid}-bgi",{{scale:1.22,xPercent:-3,duration:{max(0.1, dur - 1.3):.2f},ease:"none"}},{start + .9:g});',
-        f'tl.to("#{sid}-bgi",{{scale:1.55,filter:"blur({BLUR_PX * 2 + 10}px) saturate(1.3)",duration:.4,ease:"power2.in"}},'
+        f'tl.to("#{sid}-bgi",{{scale:1.55,filter:"blur({blur * 2 + 10}px) saturate(1.3)",duration:.4,ease:"power2.in"}},'
         f'{end - .4:g});',
         f'tl.fromTo("#{sid}-wp",{{xPercent:-130,opacity:1}},{{xPercent:640,opacity:0,duration:.65,ease:"power3.in"}},{start:g});',
         f'tl.fromTo("#{sid}",{{scale:.965}},{{scale:1,duration:.8,ease:"expo.out"}},{start:g});',
@@ -475,8 +478,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         photo = sc.get("photo")
         photo2 = sc.get("photo2")
         bg_photo = photo   # Design 3 blurs the scene's own picture behind it, whatever the layout keeps
-        if design == BLUR_DESIGN and bg_photo:
-            photo = photo2 = None      # and shows no sharp copy of it: the picture IS the blurred background
+        if design in BLUR_LOOKS and bg_photo and not BLUR_LOOKS[design]["sharp"]:
+            photo = photo2 = None      # Design 4 shows no sharp copy of it: the picture IS the blurred background
         # a counted list ("6 kategori"): every item is shown, so no picture, concept diagram or big number shares its column
         # (Wan, 26 Oct 2026: "sebut 6 kategori, tapi takde tulis dan perincikan")
         listing = len(sc.get("lines") or []) >= LIST_MIN
@@ -855,9 +858,10 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             digits = "".join(f'<span id="{sid}-cd{n}">{n}</span>' for n in (3, 2, 1))
             extras += f'<div class="cd" id="{sid}-cd">{digits}</div>'
             applied.add("H05")
-        if design == BLUR_DESIGN and bg_photo:
-            parts.append(blur_layer(sid, start, dur, bg_photo, accent))
-            tw.extend(blur_tweens(sid, start, dur))
+        if design in BLUR_LOOKS and bg_photo:
+            look = BLUR_LOOKS[design]
+            parts.append(blur_layer(sid, start, dur, bg_photo, accent, look["veil"], look["blur"]))
+            tw.extend(blur_tweens(sid, start, dur, look["blur"]))
         fx = ""
         if "X10" in eff:
             fx += f'<div class="gridx strong" id="{sid}-gx"></div>'

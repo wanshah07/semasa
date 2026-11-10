@@ -85,8 +85,8 @@ def props(scenes: list[dict[str, Any]], total: float, w: int, h: int, palette: d
     # the background is HyperFrames' own: its ambient gradient and line grid, from the one table in motion_layout
     a, b = motion_layout.AMBIENTS.get(ambient, motion_layout.AMBIENTS[motion_layout.DEFAULT_AMBIENT])[:2]
     bg = {"from": a, "to": b, "angle": 145, "stop": 70, "grid": motion_layout.rgba(palette["accent"], .11), "step": 72}
-    return {"width": w, "height": h, "fps": FPS, "bg": bg, "design": design if design == motion_layout.BLUR_DESIGN else "",
-            "backdrop": {"veil": motion_layout.VEIL, "blur": motion_layout.BLUR_PX},
+    return {"width": w, "height": h, "fps": FPS, "bg": bg, "design": design if design in motion_layout.BLUR_LOOKS else "",
+            "backdrop": motion_layout.BLUR_LOOKS.get(design),
             "seconds": round(float(total), 2), "palette": palette, "scenes": out,
             "outro": {"name": name, "line": str(last.get("heading") or ""), "logo": logo,
                       "brand": name == "ws.regulab"} if last else None}

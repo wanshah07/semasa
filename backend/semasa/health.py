@@ -217,9 +217,13 @@ def check_chatgpt(store: Any, now: datetime) -> list[dict[str, str]]:
     return out
 
 
+ZERNIO_FAILING = 2            # posts refused by Zernio before the report suggests waking Buffer
+
+
 def check_publisher(store: Any) -> list[dict[str, str]]:
     rows = live_posts(store)
     linkedin_locked, out = 0, []
+    zernio_posts: set[str] = set()
     for p in rows:
         for ch, err in (p.get("errors") or {}).items():
             if not isinstance(err, dict):
@@ -228,12 +232,20 @@ def check_publisher(store: Any) -> list[dict[str, str]]:
             if RESTRICTED.search(msg):
                 linkedin_locked += 1
                 continue
+            if "zernio" in msg.lower():
+                zernio_posts.add(str(p.get("id")))
             out.append(problem("Publishing", f"{p.get('date') or ''} {p.get('slot') or ''} on {ch}: {msg[:220]}",
                                "Edit the post or move it to a new slot to send it again."))
     if linkedin_locked:
         out.insert(0, problem("Publishing", f"LinkedIn refuses {linkedin_locked} post(s): the account is restricted or its "
                                             "login failed (LinkedIn's own answer, not Semasa's)",
                               "Check your LinkedIn account, then reconnect LinkedIn in Composio."))
+    if len(zernio_posts) >= ZERNIO_FAILING:
+        # Wan, 10 Nov 2026: Buffer is the idle backup; "if anything happen suggest to me to make it alive again". Only a
+        # suggestion: nothing switches routes by itself.
+        out.insert(0, problem("Publishing", f"Zernio failed on {len(zernio_posts)} post(s) that are still waiting",
+                              "Buffer is resting as the backup. To make it alive again, tell Claude \"hidupkan Buffer\" "
+                              "(it switches Zernio off in settings; Instagram, Facebook and Threads then go through Buffer)."))
     return out[:15]
 
 

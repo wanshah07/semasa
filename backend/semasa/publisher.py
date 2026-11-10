@@ -155,6 +155,30 @@ ZERNIO_FORMATS = {"linkedin": ("carousel", "video"), "threads": ("carousel", "si
 FORMAT_NAMES = {"carousel": "a carousel", "single": "a single card", "video": "a Motion film", "text": "words only"}
 
 
+BUFFER_PLATFORMS = ("instagram", "facebook", "threads")
+
+
+def buffer_is_backup(settings: dict[str, Any]) -> bool:
+    """Buffer is the backup, not the route (Wan, 10 Nov 2026: "we are using zernio as default, make buffer as backup and make
+    it idle"): true once Zernio is on and holds every platform Buffer has a channel for. Buffer's settings and key stay as
+    they are, so switching Zernio off (channels.zernio.enabled false) makes Buffer the route again at the next run."""
+    cfg = settings.get("channels") or {}
+    zacc = zernio_accounts(cfg.get("zernio") or {})
+    mine = [p for p in BUFFER_PLATFORMS if (cfg.get("buffer") or {}).get(p)]
+    return bool(zacc) and all(p in zacc for p in mine)
+
+
+def buffer_holds(posts: list[dict[str, Any]]) -> int:
+    """Channel records Buffer still has to send or confirm: while there is one, Buffer is read; at none, it is idle."""
+    n = 0
+    for p in posts:
+        for rec in (p.get("published") or {}).values():
+            if (isinstance(rec, dict) and str(rec.get("route") or "").startswith("buffer")
+                    and rec.get("status") not in ("sent", "error")):
+                n += 1
+    return n
+
+
 def zernio_accounts(zcfg: dict[str, Any]) -> dict[str, dict[str, str]]:
     """{platform: {"id": the Zernio account id, "key": which login's key}} for the platforms switched on in
     settings.channels.zernio. Nothing while `enabled` is not true: Zernio takes over a platform only when Wan says so."""
@@ -667,6 +691,12 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
     enabled = publishing_on(settings, now)
     if clients is None:
         clients = make_clients(settings) if enabled else {}
+    if clients.get("buffer") and buffer_is_backup(settings):
+        open_rows = (store.table(db.POSTS).select("published").in_("status", ["approved", "scheduled"]).execute().data or [])
+        left = buffer_holds(open_rows)
+        if not left:
+            clients = {k: v for k, v in clients.items() if k != "buffer"}       # idle: not called at all this run
+        note_buffer_state(store, settings, "idle" if not left else "finishing", left, now)
     r = _Run(store, now, settings, enabled, clients)
     posts = (db.read_with_retry(store.table(db.POSTS).select("*").eq("status", "approved").not_.is_("date", "null")
              .not_.is_("slot", "null").order("date").order("slot")).data or [])
@@ -687,6 +717,22 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
             r.counts["failed"] += 1
             log.exception("publisher: the Buffer tally failed")
     return r.counts
+
+
+def note_buffer_state(store: Any, settings: dict[str, Any], state: str, left: int, now: datetime) -> None:
+    """settings.buffer_backup for the page and the health report, and one log line when Buffer goes idle. Never raises."""
+    before = settings.get("buffer_backup") if isinstance(settings.get("buffer_backup"), dict) else {}
+    if before.get("state") == state and before.get("left") == left:
+        return
+    try:
+        store.table(db.SETTINGS).upsert({"key": "buffer_backup", "value": {
+            "state": state, "left": left, "since": now.isoformat() if before.get("state") != state else before.get("since")}},
+            on_conflict="key").execute()
+        if state == "idle" and before.get("state") != "idle":
+            db.log_event(store, "info", "publish", "buffer.idle",
+                         "Buffer kini rehat sebagai sandaran: semua post baharu melalui Zernio")
+    except Exception as exc:  # noqa: BLE001 - a note that cannot be written must not stop a send
+        log.info("buffer state not noted (%s)", str(exc)[:120])
 
 
 def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settings: dict[str, Any],

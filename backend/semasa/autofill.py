@@ -76,6 +76,47 @@ def held(store: Any, stream: str, now: datetime | None = None) -> set[tuple[str,
     return {(str(r["date"]), r["slot"]) for r in rows if r.get("date") and r.get("slot")}
 
 
+SLOT_FORMATS = ("video", "carousel", "single")
+MOTIONS = "semasa_motions"
+
+
+def slot_format(brand: dict[str, Any], stream: str, slot: str) -> str:
+    """What the rota says this slot carries (Wan, 10 Nov 2026: "6 times a day, 2 motions, 2 carousel, 2 single card"):
+    settings brand.<stream>.slot_formats = {"08:00": "video", ...}. "" when the slot has no format: the writer chooses."""
+    raw = (brand.get(stream) or {}).get("slot_formats")
+    fmt = str((raw or {}).get(slot) or "") if isinstance(raw, dict) else ""
+    return fmt if fmt in SLOT_FORMATS else ""
+
+
+def film_positions(store: Any, stream: str) -> set[tuple[str, str]]:
+    """Positions a Motion film was already asked for and has not been queued to a post yet: never two films for one slot.
+    A film that failed or that Wan deleted holds nothing."""
+    try:
+        rows = (store.table(MOTIONS).select("stream,status,options,queued_post_id").is_("queued_post_id", "null")
+                .in_("status", ["waiting", "pending", "working", "done"]).execute().data or [])
+    except Exception as exc:  # noqa: BLE001 - the Motion table unreadable only means no film holds a slot
+        log.info("film positions not read (%s)", str(exc)[:120])
+        return set()
+    out = set()
+    for r in rows:
+        pos = (r.get("options") or {}).get("position") if isinstance(r.get("options"), dict) else None
+        if (r.get("stream") or "regulab") == stream and isinstance(pos, dict) and pos.get("date") and pos.get("slot"):
+            out.add((str(pos["date"]), str(pos["slot"])))
+    return out
+
+
+def film_row(item: dict[str, Any], stream: str, date: str, slot: str) -> dict[str, Any]:
+    """A Motion film WAITING in the queue for a video slot. Nothing is made until Wan taps Start and approves its
+    storyboard (supabase/071), and the finished film reaches the slot only when he queues it."""
+    words = " ".join(x for x in (str(item.get("title") or "").strip(),
+                                 str(item.get("summary") or item.get("why") or "").strip()) if x)
+    return {"brief": words[:1900], "source_url": item.get("url") or "", "stream": stream,
+            "language": "en" if stream == "linkedin" else "bm",
+            "resolution": "square" if stream == "linkedin" else "portrait", "status": "waiting",
+            "options": {"via": "autofill", "position": {"date": date, "slot": slot},
+                        "story": str(item.get("title") or "")[:300]}}
+
+
 def asked_for(store: Any, stream: str) -> set[tuple[str, str]]:
     """Positions a waiting idea is already being written for: never two ideas for one slot."""
     rows = (store.table(db.IDEAS).select("stream,status,brief").in_("status", ["new", "working"]).execute().data or [])
@@ -249,7 +290,13 @@ def used_stories(store: Any, days: int = 14, now: datetime | None = None) -> set
     except Exception as exc:  # noqa: BLE001
         log.info("used stories not read: %s", str(exc)[:100])
         return set()
-    return {k for k in (story_key(r.get("source_title")) for r in rows) if k}
+    titles = [r.get("source_title") for r in rows]
+    try:      # a story a film was asked for is used too, so the same headline is not also written as a post
+        films = store.table(MOTIONS).select("options").gte("created_at", since).limit(500).execute().data or []
+        titles += [(f.get("options") or {}).get("story") for f in films if isinstance(f.get("options"), dict)]
+    except Exception as exc:  # noqa: BLE001
+        log.info("film stories not read: %s", str(exc)[:100])
+    return {k for k in (story_key(t) for t in titles) if k}
 
 
 def news_candidates(store: Any, now: datetime | None = None) -> list[dict[str, Any]]:
@@ -342,7 +389,10 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
         return "Autofill: off (switch it on in Settings)"
     try:
         # what Buffer already holds: a full queue pauses new ideas and every post in it is a taken slot (None = unknown, carry on)
-        queue = buffer_queue.snapshot(store, settings, now) if "regulab" in cfg["streams"] else None
+        # (not read at all while Zernio carries ws.regulab and Buffer is the idle backup: Zernio has no queue limit)
+        from . import publisher
+        read_buffer = "regulab" in cfg["streams"] and not publisher.buffer_is_backup(settings)
+        queue = buffer_queue.snapshot(store, settings, now) if read_buffer else None
         if queue and queue["is_full"]:
             streams = [s for s in cfg["streams"] if s != "regulab"]
             if not streams:
@@ -352,9 +402,9 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
             streams = cfg["streams"]
         pool = rank_candidates(candidates(store, now), now)
         brand = settings.get("brand") or {}
-        made, empty = 0, 0
+        made, empty, films = 0, 0, 0
         for stream in streams:
-            busy = held(store, stream, now) | asked_for(store, stream)
+            busy = held(store, stream, now) | asked_for(store, stream) | film_positions(store, stream)
             if stream == "regulab" and queue:
                 busy |= {tuple(p) for p in queue["taken"]}
             for date, slot, allow in gaps(stream, brand, busy, cfg["days_ahead"], now):
@@ -373,6 +423,12 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                     domain = item.get("domain") if item.get("domain") and (urgent or fits(item, stream, allow)) else None
                     if allow and domain not in allow and domain not in ANY_DAY_DOMAINS and not urgent:
                         domain = allow[0]
+                fmt = slot_format(brand, stream, slot)
+                if fmt == "video":
+                    store.table(MOTIONS).insert(film_row(item, stream, date, slot)).execute()
+                    films += 1
+                    made += 1
+                    continue
                 news = item.get("section") == "news"
                 brief = {"position": {"date": date, "slot": slot}, "auto": True, "watch_id": item["id"],
                          "hook_required": True, "story_mode": True, "source_priority": "current"}
@@ -380,6 +436,10 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                     brief["relate_regulatory"] = True      # a newspaper story: a rule where a real one governs it
                     brief.pop("watch_id")                 # not a regulator-feed row: trend_id says where it came from
                     brief["news"] = True
+                if fmt:
+                    brief["slot_format"] = fmt             # the rota's format for this slot, shown on the idea
+                if fmt == "carousel":
+                    brief["format"] = "carousel"
                 store.table(db.IDEAS).insert({
                     **({"trend_id": item["trend_id"]} if news else {}),
                     "source_title": str(item.get("title") or "")[:500], "source_url": item["url"],
@@ -390,6 +450,7 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                     "stream": stream, "domain": domain,
                     "angle": ("F" if item.get("section") == "publication" else "A") if stream == "linkedin" else None,
                     "make_media": "image", "status": "new", "created_by": None,
+                    **({"make_slides": True} if fmt == "carousel" else {}),
                     # no note: the writer reads a note as Wan's words, and a note also lifts the already-published
                     # guard (ideas.process_idea). What this idea is for rides in the brief, shown as a pill.
                     "note": "",
@@ -398,9 +459,12 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                 made += 1
         if made:
             db.log_event(store, "info", "idea", "idea.autofill",
-                         f"{made} idea ditulis untuk slot kosong (auto-isi); draf menunggu kelulusan",
-                         detail={"made": made, "no_fitting_item": empty})
-        return f"Autofill: {made} idea(s) written for empty slots" + (f"; {empty} gap(s) had no fitting item" if empty else "")
+                         f"{made - films} idea ditulis untuk slot kosong (auto-isi); draf menunggu kelulusan"
+                         + (f"; {films} filem Motion menunggu Start untuk slot video" if films else ""),
+                         detail={"made": made - films, "films": films, "no_fitting_item": empty})
+        return (f"Autofill: {made - films} idea(s) written for empty slots"
+                + (f"; {films} Motion film(s) waiting for Start" if films else "")
+                + (f"; {empty} gap(s) had no fitting item" if empty else ""))
     except Exception as exc:  # noqa: BLE001 - a missing table or setting must not stop the worker
         log.warning("autofill skipped: %s", exc)
         return f"Autofill: skipped ({str(exc)[:120]})"

@@ -5,7 +5,7 @@ import { useLang } from "../lib/i18n";
 import { useSettings, useTable } from "../lib/hooks";
 import { stampMYT, timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
-import { LANGUAGES, RESOLUTIONS, RESOLUTION_CHOICES, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults, plannedShots, motionTrack } from "../lib/motion";
+import { LANGUAGES, RESOLUTIONS, RESOLUTION_CHOICES, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults, plannedShots, motionTrack, refKind } from "../lib/motion";
 import MotionAmbient from "./MotionAmbient";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
 import MotionEffectLibrary from "./MotionEffectLibrary";
@@ -112,12 +112,26 @@ export default function MotionLab({ user, onToast, view = "make" }) {
 
   const add = async () => {
     if (assetsBusy) return;
-    const form = { brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, style, mode, design, ambient, effects, effectMode, assetMode, assets };
+    let form = { brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, style, mode, design, ambient, effects, effectMode, assetMode, assets };
+    if (!isTemplate && refKind(url) === "repo") {
+      // a GitHub repo in the reference box is this film's STYLE: filed in the repo library (once) and chosen, never read as the story
+      if (!brief.trim()) return onToast?.(t("Tulis idea juga: repo itu hanya gaya video.", "Write the idea too: the repo is only the film's style."), "warn");
+      const repo = motionRepoRow(url, user?.id || null);
+      let id = libT.rows.find((r) => (r.full_name || "").toLowerCase() === repo.full_name.toLowerCase())?.id;
+      if (!id) {
+        const { data, error } = await supabase.from(TABLES.repoLibrary).insert(repo).select("id").single();
+        if (error && !/duplicate|unique/i.test(errText(error))) return onToast?.(errText(error), "error");
+        id = data?.id || (await supabase.from(TABLES.repoLibrary).select("id").eq("full_name", repo.full_name).limit(1)).data?.[0]?.id;
+        libT.reload();
+      }
+      form = { ...form, url: "", styleRepoId: id || styleRepoId };
+    }
     const built = isTemplate ? templateRow({ ...form, template, products, businessId, tagline }, user?.id || null) : motionRow(form, user?.id || null);
     if (built.error === "products:none") return onToast?.(t("Tambah sekurang-kurangnya satu produk dengan gambarnya.", "Add at least one product with its picture."), "warn");
     if (built.error === "products:picture") return onToast?.(t("Setiap produk perlu gambarnya sendiri.", "Every product needs its own picture."), "warn");
     if (built.error === "products:many") return onToast?.(t("Paling banyak 5 produk.", "5 products at most."), "warn");
     if (built.error === "empty") return onToast?.(t("Tulis idea atau tampal pautan.", "Write an idea or paste a link."), "warn");
+    if (built.error === "ref:brief") return onToast?.(t("Tulis idea juga: video rujukan hanya gaya, bukan isi.", "Write the idea too: a reference video is only the style, not the content."), "warn");
     if (built.error === "url") return onToast?.(t("Pautan perlu bermula dengan https://", "The link must start with https://"), "warn");
     setBusy("add");
     try {
@@ -272,8 +286,13 @@ export default function MotionLab({ user, onToast, view = "make" }) {
         <label className="block"><Label hint={isTemplate ? (template === "showcase" ? t("pilihan: apa yang produk ini bawa, untuk siapa", "optional: what these products bring, and for whom") : t("topik cerita lima foto", "the topic of the five-photo story")) : t("idea, hook, atau 3 perkara yang video perlu sampaikan", "the idea, the hook, or the 3 things the video must say")}>{t("Idea", "Idea")}</Label>
           <TextArea rows={3} value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={2000}
             placeholder={t("Cth: Tiga perkara tentang PFAS dalam kosmetik yang SME perlu tahu sebelum 2027", "E.g. Three things about PFAS in cosmetics an SME must know before 2027")} /></label>
-        <label className="block"><Label hint={t("pilihan: Semasa baca halaman itu", "optional: Semasa reads that page")}>{t("Pautan", "Link")}</Label>
-          <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" inputMode="url" /></label>
+        <label className="block" data-motion-reference><Label hint={t("pilihan: video rujukan, repo GitHub atau pautan halaman", "optional: a reference video, a GitHub repo or a page link")}>{t("Rujukan", "Reference")}</Label>
+          <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={t("https://… (YouTube, TikTok, Instagram, Drive, github.com/owner/nama, atau artikel)", "https://… (YouTube, TikTok, Instagram, Drive, github.com/owner/name, or an article)")} inputMode="url" />
+          {refKind(url) && <p className="mt-1 text-[12px] text-muted" data-motion-reference-kind={refKind(url)}>{{
+            video: t("Video rujukan: Semasa menonton gayanya (warna, huruf, susun atur, rentak) dan buat video BAHARU ikut gaya itu. Rakamannya tidak diguna semula.", "Reference video: Semasa watches its style (colours, lettering, layout, pace) and makes a NEW film in that style. Its footage is not reused."),
+            repo: t("Repo GitHub: dibaca sebagai gaya video ini dan disimpan dalam Pustaka repo.", "GitHub repo: read as this film's style and kept in the repo library."),
+            page: t("Pautan halaman: Semasa baca halaman itu untuk isi video.", "Page link: Semasa reads that page for what the film says."),
+          }[refKind(url)]}</p>}</label>
         {template === "showcase" && <MotionProducts products={products} onProducts={setProducts} businessId={businessId} onBusiness={setBusinessId}
           tagline={tagline} onTagline={setTagline} client={supabase} user={user} onBusy={setAssetsBusy} />}
         {isTemplate && (

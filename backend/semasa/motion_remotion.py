@@ -26,9 +26,41 @@ FPS = 30
 NAME = "remotion"
 
 
-def wanted(row: dict[str, Any]) -> bool:
+COMBINED = "combined"
+
+
+def choice(row: dict[str, Any]) -> str:
+    """"remotion", "combined" (HyperFrames draws the first half, Remotion the second: Wan, 10 Nov 2026, "make one motion
+    film using Remotion and combine hyperframes"), or "" for HyperFrames alone."""
     options = row.get("options")
-    return isinstance(options, dict) and str(options.get("renderer") or "").lower() == NAME
+    name = str(options.get("renderer") or "").lower() if isinstance(options, dict) else ""
+    return name if name in (NAME, COMBINED) else ""
+
+
+def wanted(row: dict[str, Any]) -> bool:
+    return choice(row) == NAME
+
+
+def cut_point(scenes: list[dict[str, Any]]) -> float:
+    """Where a combined film changes engine: the start of the scene after the middle one (scene 3 of 4), so each engine
+    draws whole scenes. 0 when there are too few scenes to share."""
+    body = [sc for sc in scenes if sc.get("id") != "brand-outro"]
+    if len(body) < 2:
+        return 0.0
+    return float(body[len(body) // 2]["start"])
+
+
+def combine(first: Path, second: Path, at: float, out: Path, runner: Any = subprocess.run) -> Path:
+    """One film from two renders of the SAME timeline: `first` up to `at` seconds, `second` from there. Both are silent and
+    the same size and rate, so the cut is exact and the worker's sound mix lies over it unchanged."""
+    cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(first), "-i", str(second), "-filter_complex",
+           f"[0:v]trim=end={at:g},setpts=PTS-STARTPTS,fps=30,format=yuv420p[a];"
+           f"[1:v]trim=start={at:g},setpts=PTS-STARTPTS,fps=30,format=yuv420p[b];[a][b]concat=n=2:v=1:a=0[v]",
+           "-map", "[v]", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-an", str(out)]
+    p = runner(cmd, capture_output=True, text=True, timeout=600)
+    if p.returncode != 0 or not out.exists():
+        raise RuntimeError("the two renders could not be joined: " + ((p.stderr or p.stdout or "")[-400:]).strip())
+    return out
 
 
 def ready() -> bool:
@@ -55,11 +87,12 @@ def props(scenes: list[dict[str, Any]], total: float, w: int, h: int, palette: d
                       "brand": name == "ws.regulab"} if last else None}
 
 
-def render(folder: Path, data: dict[str, Any], runner: Any = subprocess.run, timeout: int = 900) -> Path:
+def render(folder: Path, data: dict[str, Any], runner: Any = subprocess.run, timeout: int = 900,
+           name: str = "motion.mp4") -> Path:
     """Render the film's props to renders/motion.mp4 (silent). Raises RuntimeError with Remotion's own last words."""
     if not ready():
         raise RuntimeError("Remotion is not installed on this worker (backend/remotion/node_modules is missing)")
-    out = folder / "renders" / "motion.mp4"
+    out = folder / "renders" / name
     out.parent.mkdir(parents=True, exist_ok=True)
     file = folder / "remotion-props.json"
     file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")

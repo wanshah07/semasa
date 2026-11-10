@@ -26,7 +26,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from . import antislop, compliance, db, hook_bank, hook_learning, language, my_designs, slides, writing_styles
+from . import antislop, compliance, copywriting, db, hook_bank, hook_learning, language, my_designs, slides, writing_styles
 from .fetch import get
 from .llm import LLM
 from .log import get_logger
@@ -636,6 +636,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra), writer=settings.get("writer"),
                                  bank=bank, hint=hint, style_block=writing_styles.block(style, stream=stream))
     fmt = format_of(idea)
+    system += copywriting.block(copywriting.kind_of(idea, stream, fmt))
     want_slides = fmt == "carousel"
     want_poster = fmt == "poster"
     if want_slides:
@@ -835,6 +836,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
     bank = hook_bank.pick(store, idea, settings)
     system += (antislop.prompt_block() + compliance.avoid_line(indo_extra) + writer_block(settings.get("writer"), stream)
                + writing_styles.block(writing_styles.pick(store, idea, settings), stream=stream)
+               + copywriting.block(copywriting.kind_of(idea, stream))
                + hook_bank.block(None, stream, bank, hook_learning.hint(store, bank)))
     plat = "linkedin" if stream == "linkedin" else "instagram"
     caption = ((post.get("text") or {}).get(lang) or {}).get(plat) or ""

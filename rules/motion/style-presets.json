@@ -1,0 +1,761 @@
+[
+ {
+  "id": "mp:kaiju-attack",
+  "name": "Kaiju attack",
+  "group": "MotionPrompt",
+  "tags": [
+   "promo",
+   "retro",
+   "text"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/kaiju-attack/prompt.txt"
+ },
+ {
+  "id": "mp:infographic",
+  "name": "Infographic",
+  "group": "MotionPrompt",
+  "tags": [
+   "explainer",
+   "data",
+   "social"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/infographic/prompt.txt"
+ },
+ {
+  "id": "mp:radial-infographic",
+  "name": "Radial infographic",
+  "group": "MotionPrompt",
+  "tags": [
+   "explainer",
+   "brand",
+   "data"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/radial-infographic/prompt.txt"
+ },
+ {
+  "id": "mp:slide-deck",
+  "name": "Slide deck",
+  "group": "MotionPrompt",
+  "tags": [
+   "brand",
+   "explainer",
+   "product"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/slide-deck/prompt.txt"
+ },
+ {
+  "id": "mp:flat-illustration",
+  "name": "Flat illustration",
+  "group": "MotionPrompt",
+  "tags": [
+   "explainer",
+   "brand",
+   "promo"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/flat-illustration/prompt.txt"
+ },
+ {
+  "id": "mp:isometric-diorama",
+  "name": "Isometric diorama",
+  "group": "MotionPrompt",
+  "tags": [
+   "3d",
+   "product",
+   "explainer"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/isometric-diorama/prompt.txt"
+ },
+ {
+  "id": "mp:kinetic-type",
+  "name": "Kinetic typography",
+  "group": "MotionPrompt",
+  "tags": [
+   "text",
+   "social"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/kinetic-type/prompt.txt"
+ },
+ {
+  "id": "mp:malaysian-heritage",
+  "name": "Malaysian heritage",
+  "group": "MotionPrompt",
+  "tags": [
+   "malaysia",
+   "festive",
+   "text"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/malaysian-heritage/prompt.txt"
+ },
+ {
+  "id": "mp:app-showcase",
+  "name": "App showcase",
+  "group": "MotionPrompt",
+  "tags": [
+   "product",
+   "3d"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/app-showcase/prompt.txt"
+ },
+ {
+  "id": "mp:kawaii-pastel",
+  "name": "Kawaii pastel",
+  "group": "MotionPrompt",
+  "tags": [
+   "social",
+   "promo",
+   "cute"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/kawaii-pastel/prompt.txt"
+ },
+ {
+  "id": "mp:tech-noir",
+  "name": "Tech noir",
+  "group": "MotionPrompt",
+  "tags": [
+   "3d",
+   "explainer",
+   "product"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/tech-noir/prompt.txt"
+ },
+ {
+  "id": "mp:food-menu",
+  "name": "Food menu",
+  "group": "MotionPrompt",
+  "tags": [
+   "food",
+   "promo"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/food-menu/prompt.txt"
+ },
+ {
+  "id": "mp:neon-sign",
+  "name": "Neon sign",
+  "group": "MotionPrompt",
+  "tags": [
+   "text",
+   "retro"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/neon-sign/prompt.txt"
+ },
+ {
+  "id": "mp:map-journey",
+  "name": "Map journey",
+  "group": "MotionPrompt",
+  "tags": [
+   "travel",
+   "explainer",
+   "malaysia"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/map-journey/prompt.txt"
+ },
+ {
+  "id": "mp:liquid-gradient",
+  "name": "Liquid gradient",
+  "group": "MotionPrompt",
+  "tags": [
+   "background",
+   "text"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/liquid-gradient/prompt.txt"
+ },
+ {
+  "id": "mp:festive-raya",
+  "name": "Festive Raya",
+  "group": "MotionPrompt",
+  "tags": [
+   "festive",
+   "malaysia",
+   "text"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/festive-raya/prompt.txt"
+ },
+ {
+  "id": "mp:data-story",
+  "name": "Data story",
+  "group": "MotionPrompt",
+  "tags": [
+   "data",
+   "explainer"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/data-story/prompt.txt"
+ },
+ {
+  "id": "mp:claymation",
+  "name": "Claymation",
+  "group": "MotionPrompt",
+  "tags": [
+   "3d",
+   "handmade",
+   "cute"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/claymation/prompt.txt"
+ },
+ {
+  "id": "mp:retro-synthwave",
+  "name": "Retro synthwave",
+  "group": "MotionPrompt",
+  "tags": [
+   "retro",
+   "background"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/retro-synthwave/prompt.txt"
+ },
+ {
+  "id": "mp:elegant-wedding",
+  "name": "Elegant wedding",
+  "group": "MotionPrompt",
+  "tags": [
+   "festive",
+   "text",
+   "handmade"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/elegant-wedding/prompt.txt"
+ },
+ {
+  "id": "mp:logo-spin-3d",
+  "name": "3D logo spin",
+  "group": "MotionPrompt",
+  "tags": [
+   "3d",
+   "brand"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/logo-spin-3d/prompt.txt"
+ },
+ {
+  "id": "mp:kopitiam",
+  "name": "Kopitiam",
+  "group": "MotionPrompt",
+  "tags": [
+   "food",
+   "malaysia",
+   "retro"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/kopitiam/prompt.txt"
+ },
+ {
+  "id": "mp:comic-pop-art",
+  "name": "Comic pop art",
+  "group": "MotionPrompt",
+  "tags": [
+   "promo",
+   "retro",
+   "text"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/comic-pop-art/prompt.txt"
+ },
+ {
+  "id": "mp:photo-slideshow",
+  "name": "Photo slideshow",
+  "group": "MotionPrompt",
+  "tags": [
+   "photos",
+   "travel",
+   "social"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/photo-slideshow/prompt.txt"
+ },
+ {
+  "id": "mp:batik-fashion",
+  "name": "Batik fashion",
+  "group": "MotionPrompt",
+  "tags": [
+   "malaysia",
+   "product",
+   "promo"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/batik-fashion/prompt.txt"
+ },
+ {
+  "id": "mp:merdeka",
+  "name": "Merdeka",
+  "group": "MotionPrompt",
+  "tags": [
+   "malaysia",
+   "festive",
+   "text"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/merdeka/prompt.txt"
+ },
+ {
+  "id": "mp:product-turntable",
+  "name": "Product turntable",
+  "group": "MotionPrompt",
+  "tags": [
+   "product",
+   "3d",
+   "promo"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/product-turntable/prompt.txt"
+ },
+ {
+  "id": "mp:glitch",
+  "name": "Glitch",
+  "group": "MotionPrompt",
+  "tags": [
+   "text",
+   "social"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/glitch/prompt.txt"
+ },
+ {
+  "id": "mp:kampung-sunset",
+  "name": "Kampung sunset",
+  "group": "MotionPrompt",
+  "tags": [
+   "malaysia",
+   "background",
+   "handmade"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/kampung-sunset/prompt.txt"
+ },
+ {
+  "id": "mp:chat-story",
+  "name": "Chat story",
+  "group": "MotionPrompt",
+  "tags": [
+   "social",
+   "promo",
+   "text"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/chat-story/prompt.txt"
+ },
+ {
+  "id": "mp:sale-countdown",
+  "name": "Sale countdown",
+  "group": "MotionPrompt",
+  "tags": [
+   "promo",
+   "social"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/sale-countdown/prompt.txt"
+ },
+ {
+  "id": "mp:watercolour-ink",
+  "name": "Watercolour ink",
+  "group": "MotionPrompt",
+  "tags": [
+   "handmade",
+   "text",
+   "brand"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/watercolour-ink/prompt.txt"
+ },
+ {
+  "id": "mp:pasar-malam",
+  "name": "Pasar malam",
+  "group": "MotionPrompt",
+  "tags": [
+   "food",
+   "malaysia",
+   "promo"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/pasar-malam/prompt.txt"
+ },
+ {
+  "id": "mp:whiteboard-sketch",
+  "name": "Whiteboard sketch",
+  "group": "MotionPrompt",
+  "tags": [
+   "explainer",
+   "handmade"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/whiteboard-sketch/prompt.txt"
+ },
+ {
+  "id": "mp:y2k-chrome",
+  "name": "Y2K chrome",
+  "group": "MotionPrompt",
+  "tags": [
+   "3d",
+   "retro",
+   "brand"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/y2k-chrome/prompt.txt"
+ },
+ {
+  "id": "mp:chinese-new-year",
+  "name": "Chinese heritage",
+  "group": "MotionPrompt",
+  "tags": [
+   "product",
+   "festive",
+   "promo"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/chinese-new-year/prompt.txt"
+ },
+ {
+  "id": "mp:property-tour",
+  "name": "Property tour",
+  "group": "MotionPrompt",
+  "tags": [
+   "3d",
+   "product",
+   "explainer"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/property-tour/prompt.txt"
+ },
+ {
+  "id": "mp:particle-field",
+  "name": "Particle field",
+  "group": "MotionPrompt",
+  "tags": [
+   "background"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/particle-field/prompt.txt"
+ },
+ {
+  "id": "mp:nostalgia-90s",
+  "name": "Nostalgia 90s",
+  "group": "MotionPrompt",
+  "tags": [
+   "retro",
+   "malaysia",
+   "photos"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/nostalgia-90s/prompt.txt"
+ },
+ {
+  "id": "mp:podcast-audiogram",
+  "name": "Podcast audiogram",
+  "group": "MotionPrompt",
+  "tags": [
+   "social",
+   "text"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/podcast-audiogram/prompt.txt"
+ },
+ {
+  "id": "mp:borneo-rainforest",
+  "name": "Borneo rainforest",
+  "group": "MotionPrompt",
+  "tags": [
+   "travel",
+   "background",
+   "malaysia"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/borneo-rainforest/prompt.txt"
+ },
+ {
+  "id": "mp:paper-cutout",
+  "name": "Paper cut-out",
+  "group": "MotionPrompt",
+  "tags": [
+   "handmade",
+   "background"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/paper-cutout/prompt.txt"
+ },
+ {
+  "id": "mp:pixel-art",
+  "name": "Pixel art",
+  "group": "MotionPrompt",
+  "tags": [
+   "retro",
+   "promo",
+   "product"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/pixel-art/prompt.txt"
+ },
+ {
+  "id": "mp:deepavali",
+  "name": "Deepavali",
+  "group": "MotionPrompt",
+  "tags": [
+   "festive",
+   "malaysia",
+   "text"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/deepavali/prompt.txt"
+ },
+ {
+  "id": "mp:vintage-archive",
+  "name": "Vintage archive",
+  "group": "MotionPrompt",
+  "tags": [
+   "photos",
+   "retro",
+   "brand"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/vintage-archive/prompt.txt"
+ },
+ {
+  "id": "mp:swiss-geometric",
+  "name": "Swiss geometric",
+  "group": "MotionPrompt",
+  "tags": [
+   "brand",
+   "promo",
+   "text"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/swiss-geometric/prompt.txt"
+ },
+ {
+  "id": "mp:floating-3d-icons",
+  "name": "Floating 3D icons",
+  "group": "MotionPrompt",
+  "tags": [
+   "3d",
+   "social",
+   "promo"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/floating-3d-icons/prompt.txt"
+ },
+ {
+  "id": "mp:neon-tech",
+  "name": "Neon tech",
+  "group": "MotionPrompt",
+  "tags": [
+   "explainer",
+   "brand",
+   "promo"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/neon-tech/prompt.txt"
+ },
+ {
+  "id": "mp:photo-studio",
+  "name": "Photo studio",
+  "group": "MotionPrompt",
+  "tags": [
+   "photos",
+   "promo",
+   "brand"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/photo-studio/prompt.txt"
+ },
+ {
+  "id": "mp:editorial-portfolio",
+  "name": "Editorial portfolio",
+  "group": "MotionPrompt",
+  "tags": [
+   "brand",
+   "photos",
+   "text"
+  ],
+  "url": "https://raw.githubusercontent.com/epool86/motionprompt/main/styles/editorial-portfolio/prompt.txt"
+ },
+ {
+  "id": "rl:kinetic-type",
+  "name": "Kinetic type",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "The headline is built word by word (a rise, a slide, a slam), then one slot swaps two to five words."
+ },
+ {
+  "id": "rl:blur-in-text",
+  "name": "Blur in text",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Hero words sharpen out of a blur and rise slightly, one after another."
+ },
+ {
+  "id": "rl:mask-reveal",
+  "name": "Mask reveal",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Lines of text rise from behind their own edge in sequence; pictures are uncovered by a moving clip edge."
+ },
+ {
+  "id": "rl:highlighter",
+  "name": "Highlighter",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "A marker stroke sweeps behind the key words as they come into view."
+ },
+ {
+  "id": "rl:typewriter",
+  "name": "Typewriter",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Text is typed one character at a time behind a caret, pausing at commas and full stops."
+ },
+ {
+  "id": "rl:text-scramble",
+  "name": "Text scramble",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Letters flicker through random characters and settle left to right on the real text."
+ },
+ {
+  "id": "rl:stamp",
+  "name": "Stamp",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "An element accelerates in, squashes on contact and settles at a slight tilt, like an inked stamp."
+ },
+ {
+  "id": "rl:pop",
+  "name": "Pop",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "A springy scale-in on a damped spring, with the fade finished early."
+ },
+ {
+  "id": "rl:rise",
+  "name": "Rise",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Elements enter from below with the fade landing early; a stagger of at most eight steps."
+ },
+ {
+  "id": "rl:staggered-list",
+  "name": "Staggered list",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Rows arrive one after another and a highlight moves from row to row."
+ },
+ {
+  "id": "rl:bars-count-up",
+  "name": "Bars and count-up",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Bars spring up from the baseline while each value counts up to its figure."
+ },
+ {
+  "id": "rl:donut-gauge",
+  "name": "Donut and gauge",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "One pen draws the donut with gaps, the total counts up, and a gauge needle settles."
+ },
+ {
+  "id": "rl:line-area",
+  "name": "Line and area",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "A pen draws the line chart with a dot on its tip, the area is wiped in, and notes land."
+ },
+ {
+  "id": "rl:odometer",
+  "name": "Odometer",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Digits roll like counter wheels, the last digit spinning most."
+ },
+ {
+  "id": "rl:match-checklist",
+  "name": "Match checklist",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Rows tick in order: the circle fills, the check draws, the row brightens."
+ },
+ {
+  "id": "rl:step-indicator",
+  "name": "Step indicator",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Steps joined by a line; a step ticks and the line fills to the next."
+ },
+ {
+  "id": "rl:curve-route",
+  "name": "Curve route",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "A route draws along a curve, stops pop in, and a marker rides the line."
+ },
+ {
+  "id": "rl:paper-diorama",
+  "name": "Paper diorama build",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "A cut-paper scene builds back to front; layers land and upright pieces pop up on hinges."
+ },
+ {
+  "id": "rl:exploded-view",
+  "name": "Exploded view",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Isometric layers lift apart with labels sliding out, then close up again."
+ },
+ {
+  "id": "rl:depth-parallax",
+  "name": "Depth parallax",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Layers shift by different amounts so near things move more than far things."
+ },
+ {
+  "id": "rl:dolly-in",
+  "name": "Dolly in",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Near layers grow fast and leave the frame while far layers barely change."
+ },
+ {
+  "id": "rl:rack-focus",
+  "name": "Rack focus",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Focus pulls from a near layer to a far one as the two swap blur."
+ },
+ {
+  "id": "rl:match-cut",
+  "name": "Match cut",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "A shape in one scene cuts to a matching shape in the next, both zooming on one point."
+ },
+ {
+  "id": "rl:push-transition",
+  "name": "Push transition",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "The next scene pushes the current one off the frame."
+ },
+ {
+  "id": "rl:wipe",
+  "name": "Wipe",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "The next scene replaces the current one behind a moving edge: a line, a clock hand or an iris."
+ },
+ {
+  "id": "rl:shape-transition",
+  "name": "Shape transition",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "A solid shape sweeps in to cover the frame, the scene changes, and the shape moves on."
+ },
+ {
+  "id": "rl:light-sweep",
+  "name": "Light sweep",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "A band of light crosses a card or a logo in one pass."
+ },
+ {
+  "id": "rl:freeze-frame",
+  "name": "Freeze frame",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "The action stops on its key frame, a flash, the colour drains, a label lands, then it resumes."
+ },
+ {
+  "id": "rl:stop-motion",
+  "name": "Stop-motion",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Movement jumps pose to pose at eight frames a second, like a hand-moved paper model."
+ },
+ {
+  "id": "rl:squash-stretch",
+  "name": "Squash and stretch",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Objects stretch in flight and squash on contact."
+ },
+ {
+  "id": "rl:film-grain",
+  "name": "Film grain",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Fine noise over the picture that jumps about twelve times a second."
+ },
+ {
+  "id": "rl:duotone",
+  "name": "Duotone",
+  "group": "Motion patterns",
+  "tags": [],
+  "look": "Pictures are mapped to two colours."
+ }
+]

@@ -1,3 +1,4 @@
+import presets from '../../../rules/motion/style-presets.json' with { type: 'json' };
 /* Motion (Wan, 23 Oct 2026): a motion-graphics video from an idea or a link, written by the AI as a HyperFrames composition
    and rendered on the runner (backend/semasa/motion.py, semasa_motions). Pure helpers, tested in motion.test.mjs. */
 
@@ -168,7 +169,12 @@ export function refKind(url) {
 
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. A reference VIDEO is
     a style, so it needs the idea beside it ("ref:brief"); it is kept in options.reference_video, never as the source link. */
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "auto", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "auto", design = "bright-editorial", ambient = "mint", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[], renderer = "" } = {}, userId = null) {
+/* the film engines besides HyperFrames, and the style presets (rules/motion/style-presets.json, shared with the worker) */
+export const RENDERERS = ["remotion", "combined"];
+export const PRESETS = presets;
+const PRESET_IDS = new Set(presets.map((p) => p.id));
+
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "auto", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "auto", design = "bright-editorial", ambient = "mint", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[], renderer = "", preset = "" } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
@@ -181,7 +187,8 @@ export function motionRow({ brief = "", url = "", stream = "regulab", resolution
       brief: b.slice(0, 2000), source_url: isVideo ? "" : u, stream: st, language: langOf(language, st),
       resolution: formSize(resolution, st), seconds: selectedSeconds(seconds, mode), status: "pending",
       options: { ...motionOptions({style, mode, design, ambient, effects, effectMode, assetMode, assets}), ...(isVideo ? { reference_video: u } : {}),
-        ...(renderer === "remotion" ? { renderer: "remotion" } : {}) },
+        ...(RENDERERS.includes(renderer) ? { renderer } : {}),
+        ...(PRESET_IDS.has(preset) ? { preset } : {}) },
       style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
       ...resolveLanguageVoice(language, voice, st), mascot: "",
     },

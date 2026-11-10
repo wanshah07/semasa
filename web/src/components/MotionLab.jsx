@@ -5,7 +5,7 @@ import { useLang } from "../lib/i18n";
 import { useSettings, useTable } from "../lib/hooks";
 import { stampMYT, timeAgo } from "../lib/format";
 import { STREAMS } from "../lib/brand";
-import { LANGUAGES, RESOLUTIONS, RESOLUTION_CHOICES, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults, plannedShots, motionTrack, refKind } from "../lib/motion";
+import { LANGUAGES, RESOLUTIONS, RESOLUTION_CHOICES, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults, plannedShots, motionTrack, refKind, PRESETS } from "../lib/motion";
 import MotionAmbient from "./MotionAmbient";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
 import MotionEffectLibrary from "./MotionEffectLibrary";
@@ -69,6 +69,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
   const [styleRepoId, setStyleRepoId] = useState("");
   const [style, setStyle] = useState("bright-education");
   const [design, setDesign] = useState("bright-editorial");
+  const [preset, setPreset] = useState("");              // a style preset (MotionPrompt / Motion patterns), "" = none
   const [renderer, setRenderer] = useState("");          // "" = HyperFrames (the default), "remotion" = the second renderer
   const [ambient, setAmbient] = useState("mint");
   const [effects, setEffects] = useState(['B04']);
@@ -113,7 +114,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
 
   const add = async () => {
     if (assetsBusy) return;
-    let form = { brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, style, mode, design, ambient, effects, effectMode, assetMode, assets, renderer };
+    let form = { brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, style, mode, design, ambient, effects, effectMode, assetMode, assets, renderer, preset };
     if (!isTemplate && refKind(url) === "repo") {
       // a GitHub repo in the reference box is this film's STYLE: filed in the repo library (once) and chosen, never read as the story
       if (!brief.trim()) return onToast?.(t("Tulis idea juga: repo itu hanya gaya video.", "Write the idea too: the repo is only the film's style."), "warn");
@@ -313,6 +314,14 @@ export default function MotionLab({ user, onToast, view = "make" }) {
           <select aria-label={t("Enjin filem", "Film engine")} value={renderer} onChange={e => setRenderer(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
             <option value="">HyperFrames</option>
             <option value="remotion">Remotion</option>
+            <option value="combined">{t("HyperFrames + Remotion (gabung)", "HyperFrames + Remotion (combined)")}</option>
+          </select></label>
+        <label className="block" data-motion-preset><Label hint={t("rujukan gaya sahaja: warna, huruf, gerakan", "a style reference only: colour, lettering, motion")}>{t("Gaya preset", "Style preset")}</Label>
+          <select aria-label={t("Gaya preset", "Style preset")} value={preset} onChange={e => setPreset(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
+            <option value="">{t("Tiada (rupa rumah)", "None (house look)")}</option>
+            {["MotionPrompt", "Motion patterns"].map(g => (
+              <optgroup key={g} label={g}>{PRESETS.filter(p => p.group === g).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>
+            ))}
           </select></label>
         <label className="block" data-motion-recipe><Label>{t("Gaya lampiran", "Attachment style")}</Label>
           <select aria-label={t("Gaya lampiran", "Attachment style")} value={style} onChange={e => setStyle(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">

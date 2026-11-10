@@ -43,6 +43,7 @@ from . import (
     antislop,
     api_status,
     compliance,
+    copywriting,
     db,
     fetch,
     hook_bank,
@@ -52,6 +53,7 @@ from . import (
     motion_captions,
     motion_gpt_images,
     motion_layout,
+    motion_presets,
     motion_probe,
     motion_reference,
     motion_remotion,
@@ -1391,6 +1393,14 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                 style = (ref_name + (f" and the motion repo {style[0]}" if style[1] else ""),
                          (ref_text + ("\n\n" + style[1] if style[1] else ""))[:STYLE_MAX])
             log.info("motion %s: %s", str(row["id"])[:8], ref_note)
+        preset = motion_presets.chosen(row)
+        preset_note = ""
+        if preset:
+            # a style preset (MotionPrompt or Motion patterns) is a style reference like a motion repo, never more
+            p_name, p_text, preset_note = motion_presets.words(preset)
+            if p_text:
+                style = (p_name + (f" and {style[0]}" if style[1] else ""),
+                         (p_text + ("\n\n" + style[1] if style[1] else ""))[:STYLE_MAX])
         # the voice first (Wan, 24 Oct 2026): the writer plans the scenes, each narration is recorded, and the film is
         # written to those exact times; with the voice off the plan still fixes the scenes and nothing is recorded
         bank = hook_bank.pick_for_idea(store, row.get("idea_id"))     # Wan's own hook style, or None: the built-in 25
@@ -1401,6 +1411,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             set_stage(store, row, "storyboard")
             # Wan's writing style (Phase 4) shapes the script's voice; every rule in the script prompt still outranks it
             voice_style = writing_styles.block(writing_styles.pick_for_idea(store, row.get("idea_id")), film=True)
+            voice_style += copywriting.block("film")
             plan = plan_scenes(llm, row, (settings.get("prompt") or "") + voice_style, title, text, style=style, bank=bank,
                                hint=hook_learning.hint(store, bank))
             # the storyboard: an AI (ChatGPT, then Gemini, then the film's writer) writes the shot of each scene's picture, but
@@ -1657,18 +1668,20 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         report["hook"] = {"shape": plan.get("hook_shape"), "line": plan.get("hook"), **({"style": bank.id} if bank else {})}
         if ref_note:
             report["reference_video"] = ref_note
+        if preset_note:
+            report["style_preset"] = preset_note
         style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]
         video = None
-        if motion_remotion.wanted(row):
+        engine = motion_remotion.choice(row)
+        rprops = (motion_remotion.props(scenes, total, w, h, PALETTE["regulab"],
+                                        name if stream == "linkedin" else "ws.regulab",
+                                        logo="assets/" + (motion_styles.WAN_ICON if stream == "linkedin"
+                                                          else motion_styles.LOGO).name) if engine else None)
+        if engine == motion_remotion.NAME:
             # the second renderer (Wan, 10 Nov 2026): the same scenes, voice and timings, drawn by Remotion. A failure
             # falls back to HyperFrames so the film is still made, and the report says which one drew it.
             try:
-                video = motion_remotion.render(folder, motion_remotion.props(scenes, total, w, h, PALETTE["regulab"],
-                                                                             name if stream == "linkedin" else "ws.regulab",
-                                                                             logo="assets/" + (
-                                                                                 motion_styles.WAN_ICON if stream == "linkedin"
-                                                                                 else motion_styles.LOGO).name),
-                                               runner)
+                video = motion_remotion.render(folder, rprops, runner)
                 report["renderer"] = "remotion"
                 style_line = "Remotion · " + style_line
             except Exception as exc:  # noqa: BLE001
@@ -1676,6 +1689,25 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                 report["renderer"] = "hyperframes (Remotion failed: " + str(exc)[:200] + ")"
         if video is None:
             video = render(folder, settings["cli"], size_of(row), runner)
+        if engine == motion_remotion.COMBINED:
+            # one film from both engines: HyperFrames draws the first scenes, Remotion the rest, cut on a scene boundary
+            try:
+                at = motion_remotion.cut_point(scenes)
+                if at <= 0:
+                    raise RuntimeError("too few scenes to share between two engines")
+                second = motion_remotion.render(folder, rprops, runner, name="remotion.mp4")
+                first = video.rename(video.with_name("hyperframes.mp4"))
+                try:
+                    video = motion_remotion.combine(first, second, at, folder / "renders" / "motion.mp4", runner)
+                except Exception:
+                    first.rename(folder / "renders" / "motion.mp4")
+                    raise
+                report["renderer"] = f"combined: HyperFrames to {at:g}s, Remotion from {at:g}s"
+                style_line = "HyperFrames + Remotion · " + style_line
+            except Exception as exc:  # noqa: BLE001 - the HyperFrames film stands
+                video = folder / "renders" / "motion.mp4"
+                log.warning("%s: not combined (%s); HyperFrames alone", row["id"], str(exc)[:200])
+                report["renderer"] = "hyperframes (not combined: " + str(exc)[:200] + ")"
         meta = probe(video, runner)
         if not 0 < meta["duration_s"] <= FILM_MAX + .5 or abs(meta["duration_s"] - total) > .5:
             raise ValueError("Rendered duration does not match selected duration; choose 30/60s or narrow the topic")

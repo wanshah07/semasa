@@ -2313,5 +2313,103 @@
     "of substance"
    ]
   }
+ },
+ {
+  "name": "a threads thread of short posts passes",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk.",
+     "threads": "Run bisnes solo?\n\nIni 5 perkara yang perlu ada.\n\nPenjelasan penuh di bawah.\n\n---\n\nSenarai pertama:\n1. Satu\n2. Dua\n3. Tiga\n\n---\n\nSumber:\n1. NPRA"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "hard": 0
+  }
+ },
+ {
+  "name": "a threads thread with one post over 500 blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk.",
+     "threads": "Hook\n\n---\n\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\n---\n\nSumber: NPRA"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "post 2 of the thread is 501 chars"
+   ]
+  }
+ },
+ {
+  "name": "a threads thread of six posts blocks",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk.",
+     "threads": "Post 0\n\n---\n\nPost 1\n\n---\n\nPost 2\n\n---\n\nPost 3\n\n---\n\nPost 4\n\n---\n\nPost 5"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "6 posts in the thread, over the 5 limit"
+   ]
+  }
+ },
+ {
+  "name": "threads with no separator is one post with the limit",
+  "post": {
+   "stream": "regulab",
+   "lang": "bm",
+   "text": {
+    "bm": {
+     "instagram": "Notifikasi kosmetik bukan kelulusan produk.",
+     "facebook": "Notifikasi kosmetik bukan kelulusan produk.",
+     "threads": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+   },
+   "media": [
+    {
+     "id": "m1",
+     "alt": "Botol produk di rak"
+    }
+   ]
+  },
+  "expect": {
+   "contains": [
+    "post 1 of the thread is 501 chars"
+   ]
+  }
  }
 ]

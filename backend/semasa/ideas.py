@@ -192,10 +192,16 @@ Rules. Breaking any of them blocks the post, so follow them exactly:
    no "halal-friendly" or "patuh syariah" claims.
 6. A fatwa post says whether the fatwa is diwartakan, and where.
 7. Lengths: instagram up to 2200 characters (aim about 900) with at most 8 hashtags; facebook aim about 500 with at
-   most 3 hashtags; threads at most 500 characters with at most 1 hashtag.
+   most 3 hashtags; threads is a THREAD (rule 9) of 3 to 5 posts, each at most 500 characters, at most 1 hashtag in all.
 8. The citation names the regulator and the instrument (for example "NPRA, Guidelines for Control of Cosmetic Products
    in Malaysia"), never a news portal, blog or social platform. If only a news report supports a fact, leave that
    fact out, unless a NEWSPAPER STORY block below allows the facts the report itself states.
+9. THREADS FORMAT (Wan, 10 Nov 2026): the threads caption is a thread with a continuation, never one post. Separate the
+   posts with a line holding only --- . Post 1 carries the picture and has three short paragraphs: the hook line, one line
+   saying what the thread gives (a count when it lists things: "5 perkara ..."), and one line telling the reader the detail
+   follows in the posts below. Posts 2 to 5 each open with a short label line ending in a colon, then 3 to 6 numbered
+   lines ("1. ..."), every line one complete point from the source, never a fragment; the last post names the instrument
+   or rule the thread rests on. At most 500 characters a post, no call to action, no emoji, no hashtag except one on the last.
 
 Answer with ONE JSON object:
 {"fit": true or false, "why_not": "", "hook": "the first line", "hook_shape": the number of the hook shape it is built on,

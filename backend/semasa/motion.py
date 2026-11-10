@@ -107,7 +107,8 @@ MAX_FIX = 2                             # rewrites the writer gets for a layout 
 # Wan's own skill, 25 Oct 2026 ("add this skill in the system, and in claude code"): also a Claude Code project skill at
 # .claude/skills/ws-regulab-motion; its contract and the template of the chosen design go to the writer as a reference
 SKILL = Path(__file__).resolve().parents[2] / ".claude" / "skills" / "ws-regulab-motion"
-SKILL_TEMPLATES = {"bright-editorial": "BrightPhotoDiagramEditorial.html", "continuous-line": "ContinuousLine.html"}
+SKILL_TEMPLATES = {"bright-editorial": "BrightPhotoDiagramEditorial.html", "continuous-line": "ContinuousLine.html",
+                   "blur-photo": "BrightPhotoDiagramEditorial.html"}   # Design 3 is Design 1 with a blurred photo behind it
 STYLE_MAX = 9_000                      # characters of a style repo handed to the writer
 STYLE_FILES = ("SKILL.md", "skills/SKILL.md", "STYLE.md", "DESIGN.md", "frame.md", "FRAME.md", "AGENTS.md", "CLAUDE.md")
 SIZES = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1080)}
@@ -490,7 +491,8 @@ def storyboard_preview(store: Any, row: dict[str, Any], plan: dict[str, Any], fo
         shutil.copyfile(keep, folder / "assets" / keep.name)
         props = motion_remotion.props(scenes, len(scenes) * 7.0, w, h, PALETTE["regulab"],
                                       byline(store) if stream == "linkedin" else "ws.regulab", logo="assets/" + keep.name,
-                                      ambient=str((row.get("options") or {}).get("ambient") or ""))
+                                      ambient=str((row.get("options") or {}).get("ambient") or ""),
+                                      design=motion_styles.design(row))
         stills = motion_remotion.preview(folder, props, frames, runner)
         sheet = motion_remotion.contact_sheet(stills, folder / "preview" / "sheet.jpg")
         base = f"motion/storyboard/{row['id']}"
@@ -1763,7 +1765,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                                         name if stream == "linkedin" else "ws.regulab",
                                         logo="assets/" + (motion_styles.WAN_ICON if stream == "linkedin"
                                                           else motion_styles.LOGO).name,
-                                        ambient=str((row.get("options") or {}).get("ambient") or "")) if engine else None)
+                                        ambient=str((row.get("options") or {}).get("ambient") or ""),
+                                        design=motion_styles.design(row)) if engine else None)
         if engine == motion_remotion.NAME:
             # the second renderer (Wan, 10 Nov 2026): the same scenes, voice and timings, drawn by Remotion. A failure
             # falls back to HyperFrames so the film is still made, and the report says which one drew it.

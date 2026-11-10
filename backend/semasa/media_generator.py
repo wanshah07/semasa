@@ -764,6 +764,26 @@ def locked_by_post(store: Any, media_id: str) -> dict[str, Any] | None:
         return None
 
 
+def _pinterest_reference(store: Any, row: dict[str, Any]) -> None:
+    """A Pinterest pin link as the reference (Wan, 10 Nov 2026): the pin's own picture is read from the page and used from then
+    on, with the pin's address kept in meta. The poster is drawn afresh from it, as from any reference picture."""
+    from . import pinterest
+    link = str(row.get("reference_url") or "")
+    if not pinterest.is_pinterest(link):
+        return
+    try:
+        found = pinterest.resolve(link)
+    except ValueError as exc:
+        raise ProviderError(str(exc), kind="request") from exc
+    meta = dict(row.get("meta") or {})
+    meta.update(pinterest_pin=found["pin"], pinterest_title=found["title"])
+    row["reference_url"], row["meta"] = found["image"], meta
+    try:
+        store.table(db.MEDIA).update({"reference_url": found["image"], "meta": meta}).eq("id", row["id"]).execute()
+    except Exception as exc:  # noqa: BLE001 - the picture is already in hand; only the record of it failed
+        log.warning("%s: pin picture not recorded (%s)", row.get("id"), str(exc)[:120])
+
+
 def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: dict[str, Provider],
                 llm: LLM | None = None, deadline: float | None = None) -> bool:
     held = locked_by_post(store, row["id"])
@@ -806,6 +826,7 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
         if mode == "recreate":
             if not row.get("reference_url"):
                 raise ProviderError("recreate needs a reference picture")
+            _pinterest_reference(store, row)
             if not reference_is_image(row):
                 raise ProviderError("reference must be an image (PNG, JPG, WEBP or GIF); put text in the prompt instead")
         elif not (row.get("prompt") or "").strip():

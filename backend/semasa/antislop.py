@@ -132,11 +132,27 @@ def hits(text: str) -> int:
     return n + len(tells(text))
 
 
+_POST_BREAK = re.compile(r"(?m)^[ \t]*---[ \t]*$")
+_POST_BREAK_SPLIT = re.compile(r"(?m)(^[ \t]*---[ \t]*$)")
+
+
 def clean(text: str) -> str:
     """`text` with the machine-safe slop taken out (at level off it is only counted). Nothing is added, no number or name is
     changed, and a text with none of these in it comes back as it was."""
     if not text:
         return text
+    if _POST_BREAK.search(text):
+        # a Threads thread: the posts are cleaned one by one, and the lines holding only --- survive
+        # (a dash is slop, a separator is not)
+        pieces = _POST_BREAK_SPLIT.split(text)
+        out_pieces = []
+        for i, p in enumerate(pieces):
+            if i % 2 or not p.strip():
+                out_pieces.append(p)
+                continue
+            core = p.strip()
+            out_pieces.append(p[:len(p) - len(p.lstrip())] + clean(core) + p[len(p.rstrip()):])    # the blank lines stay
+        return "".join(out_pieces)
     out = text if _state["level"] == "off" else _clean(text)
     _state["chars"] += len(text)
     _state["raw"] += hits(text)

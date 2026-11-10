@@ -88,6 +88,10 @@ const MAX_POINTS = 5;                 // points on ONE slide; the number of slid
     Mirrors normalise_slides in backend/semasa/compliance.py exactly. */
 /** Length and cut in characters as Python counts them (code points): an emoji is one, never two. */
 export const charLen = (t) => [...String(t ?? "")].length;
+
+/** A Threads caption as its posts (Wan, 10 Nov 2026: a thread, not one post): the pieces between lines holding only `sep`. */
+export const threadParts = (text, sep = "---") => String(text ?? "").split(new RegExp(`^[ \\t]*${sep.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[ \\t]*$`, "m"))
+  .map((p) => p.trim()).filter(Boolean);
 const cut = (t, n) => { const a = [...t]; return a.length > n ? a.slice(0, n).join("") : t; };
 
 export function normaliseSlides(raw) {
@@ -178,7 +182,12 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     const t = textOf(post, p, lang);
     if (!t) { add(true, where, "empty"); continue; }
     const lim = limits[p];
-    if (lim && charLen(t) > lim.max) add(true, where, `${charLen(t)} chars, over the ${lim.max} limit`);
+    if (lim && lim.parts) {
+      // a thread: every post has the limit, and there are at most `parts` of them
+      const posts = threadParts(t, lim.separator || "---");
+      if (posts.length > lim.parts) add(true, where, `${posts.length} posts in the thread, over the ${lim.parts} limit`);
+      posts.forEach((part, n) => { if (charLen(part) > lim.max) add(true, where, `post ${n + 1} of the thread is ${charLen(part)} chars, over the ${lim.max} limit`); });
+    } else if (lim && charLen(t) > lim.max) add(true, where, `${charLen(t)} chars, over the ${lim.max} limit`);
     for (const [re, label] of HARD) if (re.test(t)) add(true, where, label);
     for (const [re, label] of SOFT) if (re.test(t)) add(false, where, label);
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. Never say the idea came from Reddit, YouTube, a forum or a post.");

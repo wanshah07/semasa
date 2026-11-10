@@ -40,14 +40,6 @@ const Scene = ({ scene, palette, index, count }) => {
                                                    transform: `scale(${zoom})` }} />
     </Rise>
   ) : null;
-  const kicker = (
-    <Rise>
-      <span style={{ display: "inline-block", background: palette.accent, color: palette.accent2, fontWeight: 800,
-                     fontSize: 30 * u, letterSpacing: 3 * u, padding: `${10 * u}px ${24 * u}px`, borderRadius: 999 }}>
-        {scene.kicker || ""}
-      </span>
-    </Rise>
-  );
   const heading = <Rise at={4} style={{ fontSize: head, fontWeight: 800, lineHeight: 1.12 }}>{scene.heading}</Rise>;
   const points = (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 * u }}>
@@ -67,12 +59,12 @@ const Scene = ({ scene, palette, index, count }) => {
     <AbsoluteFill style={{ background: palette.ground, color: palette.ink, fontFamily: FONT, opacity: out }}>
       {tall ? (
         <div style={{ ...box, display: "flex", flexDirection: "column", gap: 28 * u }}>
-          {kicker}{heading}{photo || <div style={{ flex: "1 1 0" }} />}{points}
+          {heading}{photo || <div style={{ flex: "1 1 0" }} />}{points}
         </div>
       ) : (
         <div style={{ ...box, display: "flex", gap: 40 * u, alignItems: "center" }}>
           <div style={{ flex: photo ? "0 0 60%" : "1 1 0", display: "flex", flexDirection: "column", gap: 22 * u }}>
-            {kicker}{heading}{points}
+            {heading}{points}
           </div>
           {photo ? <div style={{ flex: "1 1 0", height: "100%", display: "flex", alignItems: "center" }}>{photo}</div> : null}
         </div>
@@ -102,14 +94,22 @@ const Caption = ({ text }) => {
   );
 };
 
-const Outro = ({ outro, palette }) => {
+/* the closing card: the ws.regulab logo itself (never the name typed out) and the follow line; on LinkedIn Wan's own icon,
+   his name and the follow line, with no brand at all */
+const Outro = ({ outro }) => {
   const { width: W } = useVideoConfig();
   const u = W / 1080;
+  const brand = !!outro.brand;
   return (
-    <AbsoluteFill style={{ background: palette.accent, color: palette.accent2, fontFamily: FONT, alignItems: "center",
-                           justifyContent: "center", textAlign: "center", padding: 90 * u }}>
-      {outro.name ? <Rise style={{ fontSize: 84 * u, fontWeight: 800 }}>{outro.name}</Rise> : null}
-      {outro.line ? <Rise at={8} style={{ fontSize: 44 * u, fontWeight: 600, marginTop: 28 * u }}>{outro.line}</Rise> : null}
+    <AbsoluteFill style={{ background: brand ? "#e5f6ed" : "#f5f7fb", color: brand ? "#143e35" : "#111827", fontFamily: FONT,
+                           alignItems: "center", justifyContent: "center", textAlign: "center", padding: 90 * u, gap: 36 * u }}>
+      {outro.logo ? (
+        <Rise style={{ width: brand ? "64%" : "50%" }}>
+          <Img src={staticFile(outro.logo)} style={{ width: "100%", height: "auto", objectFit: "contain" }} />
+        </Rise>
+      ) : null}
+      {outro.name && (!brand || !outro.logo) ? <Rise at={4} style={{ fontSize: 54 * u, fontWeight: 700 }}>{outro.name}</Rise> : null}
+      {outro.line ? <Rise at={8} style={{ fontSize: 50 * u, color: brand ? "#143e35" : "#0f5d4a" }}>{outro.line}</Rise> : null}
     </AbsoluteFill>
   );
 };
@@ -122,7 +122,7 @@ export const Film = ({ scenes, palette, outro, fps }) => {
       {scenes.map((s) => (
         <Sequence key={s.id} from={f(s.start)} durationInFrames={Math.max(1, f(s.duration))}>
           {s.id === "brand-outro" && outro
-            ? <Outro outro={outro} palette={palette} />
+            ? <Outro outro={outro} />
             : <Scene scene={s} palette={palette} index={shown.indexOf(s)} count={shown.length} />}
         </Sequence>
       ))}

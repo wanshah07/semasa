@@ -44,12 +44,13 @@ export default function MotionStoryboardReview({ film, onDone, onToast }) {
   return (
     <div className="mt-3 rounded-tile border border-accent/30 bg-accent/5 p-3" data-storyboard-review>
       <p className="text-sm font-medium">{t("Storyboard menunggu kelulusan anda", "The storyboard is waiting for your approval")}</p>
-      <p className="mt-0.5 text-xs text-muted">{t("Gambar dan video hanya dibuat selepas anda luluskan. Semua perkataan disemak semula sebelum digunakan.",
-        "Pictures and the film are made only after you approve. Every word is checked again before it is used.")}{sb.note ? ` · ${sb.note}` : ""}</p>
+      <p className="mt-0.5 text-xs text-muted">{t("Suara dan video hanya dibuat selepas anda luluskan. Tukar teks Gambar untuk lukis semula gambar babak itu. Semua perkataan disemak semula sebelum digunakan.",
+        "The voice and the film are made only after you approve. Change a scene's Picture text to have it drawn again. Every word is checked again before it is used.")}{sb.note ? ` · ${sb.note}` : ""}</p>
       <ol className="mt-3 space-y-2" data-storyboard-scenes>
         {scenes.map((sc) => (
           <li key={sc.key} className="rounded-tile bg-surface p-2 text-xs" data-storyboard-scene={sc.key}>
-            <p className="text-[11px] uppercase tracking-wide text-muted">{sc.label}{sc.hookShape ? ` · ${t("bentuk hook", "hook shape")} ${sc.hookShape}` : ""}</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted">{sc.label}</p>
+            {sc.image ? <img src={sc.image} alt="" loading="lazy" data-storyboard-image className="mb-2 mt-1 h-40 w-full rounded-tile object-cover" /> : null}
             {editing && sc.edit.heading
               ? <Input value={val(sc, "heading")} onChange={(e) => set(sc.key, "heading", e.target.value)} aria-label={t("Tajuk babak", "Scene heading")} />
               : <p className="font-medium">{sc.heading}</p>}

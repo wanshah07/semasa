@@ -5,7 +5,7 @@ import { Film } from "./Film.jsx";
 const SAMPLE = {
   width: 1080, height: 1920, fps: 30, seconds: 6,
   palette: { ground: "#e5f6ed", ink: "#143e35", accent: "#287b65", accent2: "#fff7e6" },
-  scenes: [{ id: "s1", role: "hook", kicker: "HOOK", heading: "Contoh tajuk", lines: ["Baris pertama"], photo: "",
+  scenes: [{ id: "s1", role: "hook", heading: "Contoh tajuk", lines: ["Baris pertama"], photo: "",
              start: 0, duration: 6, captions: [] }],
   outro: null,
 };

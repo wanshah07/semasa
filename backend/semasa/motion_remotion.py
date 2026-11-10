@@ -37,20 +37,22 @@ def ready() -> bool:
 
 
 def props(scenes: list[dict[str, Any]], total: float, w: int, h: int, palette: dict[str, str],
-          name: str = "") -> dict[str, Any]:
+          name: str = "", logo: str = "") -> dict[str, Any]:
     """What the Remotion composition draws: nothing here is new wording, only the worker's own scenes reshaped. `name` is
     the closing card's name: the brand on ws.regulab, Wan's byline on LinkedIn (which never carries the brand)."""
     out = []
     for sc in scenes:
         outro = sc.get("id") == "brand-outro"
         chunks = motion_layout.caption_chunks(sc) if sc.get("audio") and not outro else []
-        out.append({"id": str(sc.get("id") or ""), "role": str(sc.get("role") or ""), "kicker": str(sc.get("kicker") or ""),
+        # no kicker: the scene labels (HOOK, FAKTA...) are the writer's own notes, never drawn (Wan, 10 Nov 2026)
+        out.append({"id": str(sc.get("id") or ""), "role": str(sc.get("role") or ""),
                     "heading": str(sc.get("heading") or ""), "lines": [str(x) for x in (sc.get("lines") or [])][:3],
                     "photo": str(sc.get("photo") or ""), "start": float(sc["start"]), "duration": float(sc["duration"]),
                     "captions": [[text, round(a, 2), round(b, 2)] for text, a, b in chunks]})
     last = next((sc for sc in scenes if sc.get("id") == "brand-outro"), None)
     return {"width": w, "height": h, "fps": FPS, "seconds": round(float(total), 2), "palette": palette, "scenes": out,
-            "outro": {"name": name, "line": str(last.get("heading") or "")} if last else None}
+            "outro": {"name": name, "line": str(last.get("heading") or ""), "logo": logo,
+                      "brand": name == "ws.regulab"} if last else None}
 
 
 def render(folder: Path, data: dict[str, Any], runner: Any = subprocess.run, timeout: int = 900) -> Path:

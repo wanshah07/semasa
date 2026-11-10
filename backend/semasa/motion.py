@@ -397,6 +397,75 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
     return {**meta, "scenes": clean}
 
 
+def storyboard_pictures(store: Any, row: dict[str, Any], plan: dict[str, Any], folder: Path, *, style_name: str = "",
+                        photo_search: Any = None, photo_get: Any = None, own_get: Any = None, gpt_login: Any = None,
+                        gemini: Any = None, cloudflare: Any = None) -> str:
+    """The storyboard WITH its pictures (Wan, 10 Nov 2026: "for motion before proceed rendering, create storyboard with
+    images"). Each teaching scene's picture is found or drawn now, exactly as the film would get it (the idea's own pictures,
+    stock photos, then the picture makers drawing the storyboard's shot), stored, and its address kept on the scene as
+    `image` with the shot it was drawn from. Wan approves what he can see; the film then uses these same pictures.
+    Never raises: a storyboard without pictures is still a storyboard, and the note says what happened."""
+    scenes = plan["scenes"]
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        own, own_note = idea_pictures(store, row, folder, get=own_get)
+        photos, photo_note = fetch_photos(plan.get("photo_query") or "", folder, max(0, PHOTOS - len(own)),
+                                          search=photo_search, get=photo_get)
+        motion_auto.assign_photos(scenes, [*own, *photos])
+        drawn, gpt_note = motion_gpt_images.draw_scenes(
+            store, row, scenes, folder, design=motion_styles.design(row), palette=PALETTE["regulab"],
+            ambient=str((row.get("options") or {}).get("ambient") or "mint"), resolution=size_of(row),
+            style_name=style_name, login=gpt_login, gemini=gemini, cloudflare=cloudflare)
+        if drawn:
+            motion_gpt_images.pin(scenes, drawn)
+        ids = {p["path"]: str(p.get("id") or "") for p in [*own, *photos, *drawn.values()]}
+        kept = 0
+        for sc in scenes:
+            rel, credit = sc.pop("photo", None), sc.pop("photo_credit", "")
+            sc.pop("photo2", None)
+            for key in ("image", "image_credit", "image_shot", "image_id"):
+                sc.pop(key, None)
+            if not rel or sc.get("id") == "brand-outro" or not (folder / rel).exists():
+                continue
+            sc["image"] = db.upload_generated(store, f"motion/storyboard/{row['id']}/{sc['id']}.jpg",
+                                              (folder / rel).read_bytes(), "image/jpeg")
+            sc["image_credit"], sc["image_shot"] = credit or "", str(sc.get("shot") or "")
+            sc["image_id"] = ids.get(rel, "")
+            kept += 1
+        return " · ".join(x for x in (f"storyboard pictures: {kept}", own_note, photo_note, gpt_note) if x)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("%s: storyboard pictures not made (%s)", row.get("id"), str(exc)[:200])
+        return f"storyboard pictures not made ({str(exc)[:120]})"
+
+
+def picture_response(url: str) -> Any:
+    """One stored storyboard picture, fetched back (its own function so a test can serve it without the network)."""
+    return fetch.get(url, timeout=40)
+
+
+def approved_pictures(scenes: list[dict[str, Any]], folder: Path, get: Any = None) -> dict[str, dict[str, Any]]:
+    """{scene id: photo} for the storyboard pictures Wan approved, fetched back into the film's folder. A scene whose shot he
+    rewrote in review is left out (its picture no longer shows what he asked for) and is drawn again; so is one that cannot
+    be fetched. The photo has the shape every other picture has."""
+    get = get or picture_response
+    out: dict[str, dict[str, Any]] = {}
+    for sc in scenes:
+        url = str(sc.get("image") or "")
+        if not url.startswith("https://") or str(sc.get("shot") or "") != str(sc.get("image_shot") or ""):
+            continue
+        try:
+            r = get(url)
+            r.raise_for_status()
+            rel = motion_gpt_images.save(r.content, folder, f"scene-{sc['id']}")
+        except Exception as exc:  # noqa: BLE001 - it is drawn again instead
+            log.info("storyboard picture of %s not reused (%s)", sc.get("id"), str(exc)[:120])
+            continue
+        out[str(sc["id"])] = {"path": rel, "id": str(sc.get("image_id") or f"storyboard-{sc['id']}"),
+                              "credit": str(sc.get("image_credit") or ""),
+                              "page": "", "alt": str(sc.get("heading") or "")[:140]}
+    return out
+
+
 def approved_plan(row: dict[str, Any], saved: dict[str, Any]) -> dict[str, Any]:
     """The plan Wan approved (supabase/071), every word checked again the way plan_scenes checks the writer's: an edit in the
     page cannot add a scene, empty one, or send the viewer away to look something up. Raises StoryboardNeedsFix with the
@@ -1345,8 +1414,12 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                     look=motion_gpt_images.LOOK.get(design_name, motion_gpt_images.LOOK["bright-editorial"]),
                     tone=motion_gpt_images.TONE[stream_name])
                 motion_storyboard.apply(plan["scenes"], shots)
-            # Wan, 7 Nov 2026: every storyboard is shown and approved before a picture is drawn or a frame rendered
-            return motion_review.hold(store, row, "explainer", {"plan": plan}, sb_note)
+            # Wan, 10 Nov 2026: the storyboard is shown WITH its pictures; nothing is voiced or rendered until he approves
+            pic_note = storyboard_pictures(store, row, plan, folder, style_name=style[0], photo_search=photo_search,
+                                           photo_get=photo_get, own_get=own_get, gpt_login=gpt_login, gemini=gemini,
+                                           cloudflare=cloudflare)
+            return motion_review.hold(store, row, "explainer", {"plan": plan},
+                                      " · ".join(x for x in (sb_note, pic_note) if x))
         try:
             plan = approved_plan(row, saved)
         except motion_review.StoryboardNeedsFix as exc:
@@ -1397,17 +1470,30 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             return dict(total=total, w=w, h=h, lang=lang, palette=PALETTE["regulab"], gsap=GSAP, html_lang=LANGUAGE[lang][0],
                         design=motion_styles.design(row), resolution=size_of(row), stream=row.get("stream") or "regulab",
                         ambient=str((row.get("options") or {}).get("ambient") or "mint"))
-        own, own_note = idea_pictures(store, row, folder, get=own_get)
-        photos, photo_note = fetch_photos(plan.get("photo_query") or "", folder, max(0, PHOTOS - len(own)), search=photo_search,
-                                          get=photo_get)
-        photos, photo_note = [*own, *photos], " · ".join(x for x in (own_note, photo_note) if x)
-        motion_auto.assign_photos(scenes, photos)
+        # the pictures Wan saw on the storyboard are the film's pictures; only a scene without one (or whose shot he rewrote)
+        # is found or drawn now
+        approved_pics = approved_pictures(scenes, folder)
+        teaching = [sc for sc in scenes if sc.get("id") != "brand-outro"]
+        missing = [sc for sc in teaching if str(sc.get("id")) not in approved_pics]
+        if approved_pics and not missing:
+            photos, photo_note = [], f"pictures: the {len(approved_pics)} approved on the storyboard"
+            for sc in teaching:
+                for key in ("photo", "photo2", "photo_credit"):
+                    sc.pop(key, None)
+        else:
+            own, own_note = idea_pictures(store, row, folder, get=own_get)
+            photos, photo_note = fetch_photos(plan.get("photo_query") or "", folder, max(0, PHOTOS - len(own)),
+                                              search=photo_search, get=photo_get)
+            photos, photo_note = [*own, *photos], " · ".join(x for x in (own_note, photo_note) if x)
+            motion_auto.assign_photos(scenes, photos)
         # a picture drawn for each scene from the storyboard and the styles, through Wan's ChatGPT login (Wan, 5 Nov 2026);
         # a scene it does not draw keeps the photo above, and a film without the login is made exactly as before
         drawn, gpt_note = motion_gpt_images.draw_scenes(
-            store, row, scenes, folder, design=motion_styles.design(row), palette=PALETTE["regulab"],
+            store, row, missing if approved_pics else scenes, folder, design=motion_styles.design(row),
+            palette=PALETTE["regulab"],
             ambient=str((row.get("options") or {}).get("ambient") or "mint"), resolution=size_of(row), style_name=style[0],
             login=gpt_login, gemini=gemini, cloudflare=cloudflare)
+        drawn = {**drawn, **approved_pics}
         if drawn:
             motion_gpt_images.pin(scenes, drawn)
             photos = [*drawn.values(), *motion_gpt_images.used(scenes, photos)]
@@ -1578,7 +1664,10 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             # falls back to HyperFrames so the film is still made, and the report says which one drew it.
             try:
                 video = motion_remotion.render(folder, motion_remotion.props(scenes, total, w, h, PALETTE["regulab"],
-                                                                             name if stream == "linkedin" else "ws.regulab"),
+                                                                             name if stream == "linkedin" else "ws.regulab",
+                                                                             logo="assets/" + (
+                                                                                 motion_styles.WAN_ICON if stream == "linkedin"
+                                                                                 else motion_styles.LOGO).name),
                                                runner)
                 report["renderer"] = "remotion"
                 style_line = "Remotion · " + style_line

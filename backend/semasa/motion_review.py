@@ -89,9 +89,11 @@ def scenes_of(sb: dict[str, Any]) -> list[dict[str, Any]]:
     kind = sb.get("kind")
     if kind == "explainer":
         out = []
-        for sc in (sb.get("plan") or {}).get("scenes") or []:
-            out.append({"label": sc.get("kicker") or sc.get("role") or sc.get("id") or "", "heading": sc.get("heading") or "",
-                        "lines": list(sc.get("lines") or []), "said": sc.get("narration") or "", "shot": sc.get("shot") or ""})
+        # the label is the scene's number: the writer's own labels (HOOK, FAKTA...) mean nothing to a reader (Wan, 10 Nov 2026)
+        for i, sc in enumerate((sb.get("plan") or {}).get("scenes") or []):
+            out.append({"label": "Penutup" if sc.get("id") == "brand-outro" else f"Babak {i + 1}",
+                        "heading": sc.get("heading") or "", "lines": list(sc.get("lines") or []),
+                        "said": sc.get("narration") or "", "shot": sc.get("shot") or "", "image": sc.get("image") or ""})
         return out
     body = sb.get("sb") or {}
     if kind == "story":
@@ -126,12 +128,14 @@ def telegram_text(row: dict[str, Any], sb: dict[str, Any], limit: int = 3900) ->
         block += [f"   • {x}" for x in sc["lines"] if x]
         if sc["said"]:
             block.append(f"   🔊 {sc['said'][:300]}")
-        if sc["shot"]:
+        if sc.get("image"):
+            block.append(f"   🖼 {sc['image']}")
+        elif sc["shot"]:
             block.append(f"   🖼 {sc['shot'][:200]}")
         parts.append("\n".join(block))
     if sb.get("note"):
         parts += ["", str(sb["note"])[:200]]
-    parts += ["", "Gambar dan video hanya dibuat selepas anda luluskan. Untuk ubah perkataan, buka Semasa → Video."]
+    parts += ["", "Suara dan video hanya dibuat selepas anda luluskan. Untuk ubah perkataan atau gambar, buka Semasa → Video."]
     text = "\n".join(parts)
     return text if len(text) <= limit else text[: limit - 1] + "…"
 

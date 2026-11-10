@@ -32,7 +32,7 @@ def test_props_carry_the_workers_own_scenes_times_and_subtitles():
     assert s1["captions"] and s1["captions"][0][1] == 0.0 and s1["captions"][-1][2] == 6.0
     assert " ".join(c[0] for c in s1["captions"]) == SCENES[0]["narration"]          # the narration, whole, in order
     assert outro["captions"] == []                                                   # the closing card has no subtitle
-    assert p["outro"] == {"name": "ws.regulab", "line": "Ikuti kami"}
+    assert p["outro"] == {"name": "ws.regulab", "line": "Ikuti kami", "logo": "", "brand": True}
     assert mr.props(SCENES, 9.0, 1080, 1080, PAL, name="Ts. ChM Ridzuan")["outro"]["name"] == "Ts. ChM Ridzuan"
     assert mr.props(SCENES, 9.0, 1080, 1080, PAL)["outro"]["name"] == ""        # LinkedIn with no byline: no brand either
     assert mr.props(SCENES[:1], 6.0, 1080, 1920, PAL)["outro"] is None

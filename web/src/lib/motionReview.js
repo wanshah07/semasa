@@ -17,7 +17,8 @@ export function scenesOf(sb) {
   if (sb.kind === "explainer") {
     return (sb.plan?.scenes || []).map((sc, i) => {
       const outro = sc?.id === "brand-outro";
-      return { key: `e${i}`, label: str(sc?.kicker || sc?.role || sc?.id), heading: str(sc?.heading), lines: list(sc?.lines),
+      // the label is the scene's number: the writer's own labels (HOOK, FAKTA...) are not shown (Wan, 10 Nov 2026)
+      return { key: `e${i}`, label: outro ? "Penutup" : `Babak ${i + 1}`, image: str(sc?.image), heading: str(sc?.heading), lines: list(sc?.lines),
         said: str(sc?.narration), shot: str(sc?.shot), hookShape: i === 0 ? sc?.hook_shape ?? null : null,
         edit: outro ? { heading: false, lines: false, said: false, shot: false } : { heading: true, lines: true, said: true, shot: !!sc?.shot } };
     });

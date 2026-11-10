@@ -54,7 +54,6 @@ def shrink(data: bytes, limit: int = REF_MAX) -> tuple[bytes, str]:
     im.save(out, format="JPEG", quality=90)
     return out.getvalue(), "image/jpeg"
 
-
 class CloudflareProvider:
     name = "cloudflare"
     video = False          # media_generator stops a video job before anything is spent
@@ -113,6 +112,9 @@ class CloudflareProvider:
             raise ProviderError(f"Cloudflare refused the token (HTTP {r.status_code}): check CLOUDFLARE_API_TOKEN "
                                 f"has Workers AI access and CLOUDFLARE_ACCOUNT_ID is right. {errors}".strip())
         if r.status_code in (400, 422):
+            if "nsfw" in errors.lower() or {8007, "8007"} & codes:
+                # Cloudflare's own prompt filter is coarse (a butcher counter, a food shot): the next provider is asked
+                raise ProviderError(f"Cloudflare rejected the request: {errors or r.text[:300]}", kind="filter")
             raise ProviderError(f"Cloudflare rejected the request: {errors or r.text[:300]}")
         r.raise_for_status()      # 3040 out of capacity (429) and 5xx: the runner tries again (MEDIA_MAX_ATTEMPTS)
         image = ((body.get("result") or {}) if isinstance(body.get("result"), dict) else {}).get("image")

@@ -99,7 +99,7 @@ PROVIDER_CAPS: dict[str, dict[str, bool]] = {      # what each provider can take
     "gemini": {"video": False, "edits": False},
     "chatgpt": {"video": False, "edits": False},
 }
-FAILOVER_KINDS = ("transient", "auth", "limit", "unavailable", "model")
+FAILOVER_KINDS = ("transient", "auth", "limit", "unavailable", "model", "filter")
 _CONTENT_RE = re.compile(r"safety|content[_ ]?policy|moderation|nsfw|sensitive|flagged|violat|disallowed|inappropriate|"
                          r"prohibited", re.I)
 _AUTH_RE = re.compile(r"refused the (key|token)|\bnot set\b|must both be set|unauthori[sz]ed|invalid api key|api key not valid|"
@@ -113,7 +113,8 @@ _MODEL_RE = re.compile(r"model|not supported|unsupported|does not exist|not foun
 
 def error_kind(exc: BaseException) -> str:
     """What a provider's failure means for the ROW: one of FAILOVER_KINDS (another provider may draw it), "content" or
-    "request" (every provider would refuse: final), or "time" (the run is out of time)."""
+    "request" (every provider would refuse: final), or "time" (the run is out of time). "filter" is one provider's own coarse
+    prompt filter (Cloudflare's NSFW check on a food picture): another provider does not share it, so it moves on."""
     kind = getattr(exc, "kind", "")
     if kind:
         return kind

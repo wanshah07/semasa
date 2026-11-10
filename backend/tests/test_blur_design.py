@@ -33,3 +33,13 @@ def test_design_one_is_untouched_and_a_scene_without_a_picture_gets_no_backdrop(
     assert "-bgb" not in html and "-bgi" not in html
     html, _ = _compose("blur-photo", photo=None)
     assert 'id="s1-bgb"' not in html
+
+
+def test_the_backdrop_is_marked_decorative_so_the_overlap_probe_does_not_read_it_as_a_photo_under_the_words():
+    """The first real Design 3 film failed on the worker: motion_probe counted the blurred backdrop (a background-image) as a
+    photo frame and every word of scene 1 as text on it ("text overlap remains even in the safe layout")."""
+    from semasa import motion_probe
+    html, _ = _compose("blur-photo")
+    assert 'id="s1-bgb" data-backdrop="1"' in html
+    assert "closest('[data-backdrop]')" in motion_probe.JS
+

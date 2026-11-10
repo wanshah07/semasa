@@ -64,7 +64,8 @@ JS = r"""
                     text: node.textContent.trim().slice(0, 24)});
       }
     }
-    if (!own.length && getComputedStyle(el).backgroundImage.includes('url(')) {
+    // a decorative backdrop (Design 3's blurred photo, data-backdrop) sits BEHIND the words by design: it is no photo frame
+    if (!own.length && !el.closest('[data-backdrop]') && getComputedStyle(el).backgroundImage.includes('url(')) {
       const r = clipped(el, el.getBoundingClientRect());
       if (r.width > 20 && r.height > 20) {
         boxes.push({owner: el, name: label(el), kind: 'photo', x: r.left, y: r.top, w: r.width, h: r.height, text: ''});

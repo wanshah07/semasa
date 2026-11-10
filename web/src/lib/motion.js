@@ -153,18 +153,35 @@ export function withDefaults(motionSettings, form) {
 /** A cache-busting address for a video that was remade under the same path (the browser kept the first MP4 otherwise). */
 export const freshUrl = (url, stamp) => (url ? `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(stamp || "")}` : url);
 
-/** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. */
+/** What a pasted reference is (Wan, 10 Nov 2026: one box for a reference video, a repo or a link): "repo" (a GitHub repo, read
+    as the film's style), "video" (a video site, a Drive link or a video file: watched for its style, never reused), "page" (any
+    other link: read for what the film says), "" (not a link). The worker's motion_reference.kind_of is the same rule. */
+const VIDEO_HOSTS = ["youtube.com", "youtu.be", "tiktok.com", "instagram.com", "facebook.com", "fb.watch", "vimeo.com", "drive.google.com", "docs.google.com"];
+export function refKind(url) {
+  const u = String(url || "").trim();
+  if (!/^https?:\/\/\S+$/.test(u)) return "";
+  if (/^https?:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+\/?/i.test(u)) return "repo";
+  const host = u.replace(/^https?:\/\/(www\.|m\.)?/i, "").split("/")[0].toLowerCase();
+  if (/\.(mp4|mov|webm|m4v|mkv)(\?|#|$)/i.test(u) || VIDEO_HOSTS.some((h) => host === h || host.endsWith("." + h))) return "video";
+  return "page";
+}
+
+/** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. A reference VIDEO is
+    a style, so it needs the idea beside it ("ref:brief"); it is kept in options.reference_video, never as the source link. */
 export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "auto", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "auto", design = "bright-editorial", ambient = "mint", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[] } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
   if (u && !/^https?:\/\/\S+$/.test(u)) return { error: "url" };
+  const isVideo = refKind(u) === "video";
+  if (isVideo && !b) return { error: "ref:brief" };
   const st = stream === "linkedin" ? "linkedin" : "regulab";
   return {
     row: {
-      brief: b.slice(0, 2000), source_url: u, stream: st, language: langOf(language, st),
+      brief: b.slice(0, 2000), source_url: isVideo ? "" : u, stream: st, language: langOf(language, st),
       resolution: formSize(resolution, st), seconds: selectedSeconds(seconds, mode), status: "pending",
-      options: motionOptions({style, mode, design, ambient, effects, effectMode, assetMode, assets}), style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
+      options: { ...motionOptions({style, mode, design, ambient, effects, effectMode, assetMode, assets}), ...(isVideo ? { reference_video: u } : {}) },
+      style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
       ...resolveLanguageVoice(language, voice, st), mascot: "",
     },
   };

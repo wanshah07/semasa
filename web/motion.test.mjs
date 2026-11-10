@@ -192,3 +192,21 @@ assert.deepEqual(shape({ status: "error" }), ["v", "x", ".", "."], "no stamps: t
 assert.equal(motionTrack({}, { L: 0 })[1].name, "Papan cerita");
 console.log("motion tracker: ok");
 assert.deepEqual(plannedShots(undefined), []);
+
+// one reference box (Wan, 10 Nov 2026): a video is a style, a repo is a style, a page is the story
+const { refKind } = await import("./src/lib/motion.js");
+assert.equal(refKind("https://github.com/heygen-com/hyperframes"), "repo");
+assert.equal(refKind("https://youtu.be/abc"), "video");
+assert.equal(refKind("https://www.tiktok.com/@a/video/1"), "video");
+assert.equal(refKind("https://cdn.example.com/f.MP4?x=1"), "video");
+assert.equal(refKind("https://www.npra.gov.my/a"), "page");
+assert.equal(refKind("https://github.com/heygen-com"), "page");
+assert.equal(refKind("nope"), "");
+assert.deepEqual(motionRow({ url: "https://youtu.be/abc" }), { error: "ref:brief" });
+const refRow = motionRow({ brief: "PFAS", url: "https://youtu.be/abc" }).row;
+assert.equal(refRow.source_url, "");
+assert.equal(refRow.options.reference_video, "https://youtu.be/abc");
+const pageRow = motionRow({ url: "https://www.npra.gov.my/a" }).row;
+assert.equal(pageRow.source_url, "https://www.npra.gov.my/a");
+assert.equal(pageRow.options.reference_video, undefined);
+console.log("motion reference box: ok");

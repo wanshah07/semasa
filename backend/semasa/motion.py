@@ -53,6 +53,7 @@ from . import (
     motion_gpt_images,
     motion_layout,
     motion_probe,
+    motion_reference,
     motion_review,
     motion_storyboard,
     motion_styles,
@@ -1040,7 +1041,8 @@ def build_user(row: dict[str, Any], src_title: str, src_text: str, findings: lis
         if block:
             parts.append(block)
     if style[1]:
-        parts.append(f"STYLE REFERENCE (the motion repo {style[0]}): follow its visual language, scene patterns, pacing, type "
+        named = style[0] if style[0].startswith("the reference video") else f"the motion repo {style[0]}"
+        parts.append(f"STYLE REFERENCE ({named}): follow its visual language, scene patterns, pacing, type "
                      "and palette ideas. It is a reference, not a dependency: use none of its files, media, fonts or scripts, "
                      "and keep the contract above.\n" + style[1])
     if row.get("source_url"):
@@ -1310,6 +1312,15 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                                  own_get=own_get)
         title, text = source_words(row.get("source_url") or "")
         style = style_words(store, gh, row)
+        ref_url = str((row.get("options") or {}).get("reference_video") or "")
+        ref_note = ""
+        if ref_url and motion_reference.kind_of(ref_url) == "video":
+            # a reference video is WATCHED for its style (palette, lettering, layout, pace); nothing of it is reused
+            ref_name, ref_text, ref_note = motion_reference.style(ref_url, folder / "reference", llm)
+            if ref_text:
+                style = (ref_name + (f" and the motion repo {style[0]}" if style[1] else ""),
+                         (ref_text + ("\n\n" + style[1] if style[1] else ""))[:STYLE_MAX])
+            log.info("motion %s: %s", str(row["id"])[:8], ref_note)
         # the voice first (Wan, 24 Oct 2026): the writer plans the scenes, each narration is recorded, and the film is
         # written to those exact times; with the voice off the plan still fixes the scenes and nothing is recorded
         bank = hook_bank.pick_for_idea(store, row.get("idea_id"))     # Wan's own hook style, or None: the built-in 25
@@ -1557,6 +1568,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         report["photos"] = [{k: p[k] for k in ("id", "credit", "page", "alt")} for p in photos]
         report["pace"] = pace_note
         report["hook"] = {"shape": plan.get("hook_shape"), "line": plan.get("hook"), **({"style": bank.id} if bank else {})}
+        if ref_note:
+            report["reference_video"] = ref_note
         style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]
         video = render(folder, settings["cli"], size_of(row), runner)
         meta = probe(video, runner)

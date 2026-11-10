@@ -57,3 +57,20 @@ def test_the_backdrop_is_marked_decorative_so_the_overlap_probe_does_not_read_it
         assert 'id="s1-bgb" data-backdrop="1"' in _compose(d)[0]
     assert "closest('[data-backdrop]')" in motion_probe.JS
 
+
+
+def test_the_blurred_designs_draw_no_line_grid_or_ruled_lines_over_the_blur_and_design_one_still_does():
+    """Scene 2 of the first Design 4 film read as sharp: its strong grid effect was drawn over the blurred backdrop."""
+    def film(design):
+        scenes = [{"id": "s1", "role": "hook", "kicker": "", "heading": "Notifikasi bukan kelulusan", "lines": ["satu", "dua"],
+                   "narration": "", "start": 0, "duration": 6.8, "photo": "https://example.test/p.jpg"},
+                  {"id": "brand-outro", "start": 7, "duration": 3, "heading": "x"}]
+        return motion_layout.compose(scenes=scenes, plan={"scenes": {"s1": ["X10", "B08"]}, "video": {}}, total=10, w=1080,
+                                     h=1920, lang="bm", palette=PAL, gsap=motion.GSAP, html_lang="ms", resolution="portrait",
+                                     stream="regulab", design=design)[0]
+    for d in ("blur-photo", "blur-full"):
+        html = film(d)
+        for gone in ('id="s1-gx"', "s1-ln", 'tl.to("#s1-fx"', 'tl.fromTo("#s1-gx"'):
+            assert gone not in html, (d, gone)
+    plain = film("bright-editorial")
+    assert 'id="s1-gx"' in plain and "s1-ln" in plain, "Design 1 keeps its grid effects"

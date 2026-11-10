@@ -863,10 +863,13 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
             parts.append(blur_layer(sid, start, dur, bg_photo, accent, look["veil"], look["blur"]))
             tw.extend(blur_tweens(sid, start, dur, look["blur"]))
         fx = ""
-        if "X10" in eff:
+        # the blurred designs show the picture as a soft backdrop and nothing drawn over it: the line grid and the ruled lines
+        # would make it read as sharp again (Wan, 10 Nov 2026: "the background make images full blurry"), so they are left out
+        soft_bg = design in BLUR_LOOKS and bool(bg_photo)
+        if "X10" in eff and not soft_bg:
             fx += f'<div class="gridx strong" id="{sid}-gx"></div>'
             applied.add("X10")
-        if "B08" in eff:
+        if "B08" in eff and not soft_bg:
             fx += "".join(f'<div class="ln {sid}-ln" style="top:{pos}%;"></div>' for pos in (24, 50, 76))
             applied.add("B08")
         if fx:
@@ -934,10 +937,10 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                       f'{t0:g});')
             if heading:
                 tw.append(f'tl.fromTo("#{sid}-h",{{scale:1.07}},{{scale:1,duration:.35,ease:"power2.out"}},{t0 + lead:g});')
-        if "X10" in eff:
+        if "X10" in eff and not soft_bg:
             tw.append(f'tl.fromTo("#{sid}-gx",{{clipPath:"inset(0 100% 0 0)"}},{{clipPath:"inset(0 0% 0 0)",duration:.9,'
                       f'ease:"power2.inOut"}},{t0:g});')
-        if "B08" in eff:
+        if "B08" in eff and not soft_bg:
             tw.append(f'tl.fromTo(".{sid}-ln",{{x:{-w * .06:.0f}}},{{x:{w * .16:.0f},duration:{dur:g},ease:"none"}},{t0:g});')
         if heading:
             if cap_s == "C02":
@@ -1070,7 +1073,7 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
                 tw.append(f'tl.fromTo("#{sid}-photo2",{{scale:1}},{{scale:{zoom},duration:{dur:g},ease:"none"}},{t0:g});')
         fade = min(0.3, dur / 6)
         tw.append(f'tl.to("#{sid}",{{opacity:0,duration:{fade:g},ease:"power1.in"}},{t1 - fade:g});')
-        if "X10" in eff or "B08" in eff:
+        if ("X10" in eff or "B08" in eff) and not soft_bg:
             tw.append(f'tl.to("#{sid}-fx",{{opacity:0,duration:{fade:g},ease:"power1.in"}},{t1 - fade:g});')
         if first and {"H02", "H08"} & eff:
             applied.update({"H02", "H08"} & eff)

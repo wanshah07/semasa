@@ -57,7 +57,7 @@ VEIL = 0.66                       # white over the blurred picture: dark ink on 
 def blur_layer(sid: str, start: float, dur: float, photo: str, accent: str) -> str:
     """The blurred-photo backdrop of one scene (Design 3): the scene's own picture, blurred and pushed in, a pale veil over it so
     the dark words stay easy to read on any picture, and a thin accent sweep that crosses at the scene's start."""
-    return (f'<div class="clip bgb" id="{sid}-bgb" data-start="{start:g}" data-duration="{dur:g}" '
+    return (f'<div class="clip bgb" id="{sid}-bgb" data-backdrop="1" data-start="{start:g}" data-duration="{dur:g}" '
             f'style="position:absolute;left:0;top:0;width:100%;height:100%;overflow:hidden;">'
             f'<div id="{sid}-bgi" style="position:absolute;left:-8%;top:-8%;width:116%;height:116%;background-size:cover;'
             f'background-position:center;background-image:url({photo});filter:blur(30px) saturate(1.15);"></div>'

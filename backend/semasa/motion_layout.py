@@ -51,7 +51,8 @@ def gradients(design: str, ambient: str) -> tuple[str, str]:
 BLUR_DESIGN = "blur-photo"
 GRADIENT = {d: gradients(d, DEFAULT_AMBIENT)[0] for d in ("bright-editorial", "continuous-line", BLUR_DESIGN)}
 GRADIENT_ALT = {d: gradients(d, DEFAULT_AMBIENT)[1] for d in ("bright-editorial", "continuous-line", BLUR_DESIGN)}
-VEIL = 0.66                       # white over the blurred picture: dark ink on it is at least 7:1 whatever the picture is
+VEIL = 0.56                       # white over the blurred picture: the dark ink stays readable, more of the colour shows through
+BLUR_PX = 40                      # fully blurred (Wan, 10 Nov 2026: "the background make images full blurry"): no sharp picture
 
 
 def blur_layer(sid: str, start: float, dur: float, photo: str, accent: str) -> str:
@@ -60,7 +61,7 @@ def blur_layer(sid: str, start: float, dur: float, photo: str, accent: str) -> s
     return (f'<div class="clip bgb" id="{sid}-bgb" data-backdrop="1" data-start="{start:g}" data-duration="{dur:g}" '
             f'style="position:absolute;left:0;top:0;width:100%;height:100%;overflow:hidden;">'
             f'<div id="{sid}-bgi" style="position:absolute;left:-8%;top:-8%;width:116%;height:116%;background-size:cover;'
-            f'background-position:center;background-image:url({photo});filter:blur(30px) saturate(1.15);"></div>'
+            f'background-position:center;background-image:url({photo});filter:blur({BLUR_PX}px) saturate(1.15);"></div>'
             f'<div style="position:absolute;left:0;top:0;width:100%;height:100%;background:rgba(255,255,255,{VEIL});"></div>'
             f'<div id="{sid}-wp" style="position:absolute;left:0;top:0;width:16%;height:100%;opacity:0;'
             f'background:linear-gradient(90deg,transparent,{rgba(accent, .55)},transparent);"></div></div>')
@@ -71,13 +72,16 @@ def blur_tweens(sid: str, start: float, dur: float) -> list[str]:
     blur as the scene ends (a zoom-through into the next one) while a soft accent band sweeps across at the cut."""
     end = start + dur
     return [
-        f'tl.fromTo("#{sid}-bgi",{{scale:1.35,filter:"blur(70px) saturate(1.4)"}},'
-        f'{{scale:1.12,filter:"blur(30px) saturate(1.15)",duration:.9,ease:"expo.out"}},{start:g});',
+        f'tl.fromTo("#{sid}-bgi",{{scale:1.35,filter:"blur({BLUR_PX * 2}px) saturate(1.4)"}},'
+        f'{{scale:1.12,filter:"blur({BLUR_PX}px) saturate(1.15)",duration:.9,ease:"expo.out"}},{start:g});',
         f'tl.to("#{sid}-bgi",{{scale:1.22,xPercent:-3,duration:{max(0.1, dur - 1.3):.2f},ease:"none"}},{start + .9:g});',
-        f'tl.to("#{sid}-bgi",{{scale:1.55,filter:"blur(80px) saturate(1.3)",duration:.4,ease:"power2.in"}},{end - .4:g});',
+        f'tl.to("#{sid}-bgi",{{scale:1.55,filter:"blur({BLUR_PX * 2 + 10}px) saturate(1.3)",duration:.4,ease:"power2.in"}},'
+        f'{end - .4:g});',
         f'tl.fromTo("#{sid}-wp",{{xPercent:-130,opacity:1}},{{xPercent:640,opacity:0,duration:.65,ease:"power3.in"}},{start:g});',
         f'tl.fromTo("#{sid}",{{scale:.965}},{{scale:1,duration:.8,ease:"expo.out"}},{start:g});',
     ]
+
+
 SAFE = {"left": 0.08, "right": 0.14, "top": 0.13, "bottom": 0.23}
 LIST_TWO = 5                      # a counted list of this many lines or more is set in two columns
 PHOTO_MIN = 0.16                  # the smallest a picture is shrunk to (share of the frame height) to keep every line on screen
@@ -471,6 +475,8 @@ def compose(*, scenes: list[dict[str, Any]], total: float, w: int, h: int, lang:
         photo = sc.get("photo")
         photo2 = sc.get("photo2")
         bg_photo = photo   # Design 3 blurs the scene's own picture behind it, whatever the layout keeps
+        if design == BLUR_DESIGN and bg_photo:
+            photo = photo2 = None      # and shows no sharp copy of it: the picture IS the blurred background
         # a counted list ("6 kategori"): every item is shown, so no picture, concept diagram or big number shares its column
         # (Wan, 26 Oct 2026: "sebut 6 kategori, tapi takde tulis dan perincikan")
         listing = len(sc.get("lines") or []) >= LIST_MIN

@@ -63,7 +63,7 @@ const Backdrop = ({ bg }) => {
 /* Design 3, the blurred photo (mirrors blur_layer / blur_tweens in motion_layout.py): the scene's own picture, blurred and pushed
    in, under a pale veil so the dark words stay readable on any picture. It arrives zooming out of a heavy blur, drifts, then
    rushes forward into blur as the scene ends (a zoom-through into the next one), and a soft accent band sweeps across at the cut. */
-const BlurBackdrop = ({ photo, accent }) => {
+const BlurBackdrop = ({ photo, accent, veil = 0.56, blurPx = 40 }) => {
   const frame = useCurrentFrame();
   const { fps, width: W, durationInFrames: D } = useVideoConfig();
   const u = W / 1080;
@@ -73,28 +73,28 @@ const BlurBackdrop = ({ photo, accent }) => {
   if (frame < inEnd) {
     const t = interpolate(frame, [0, inEnd], [0, 1], { ...clamp, easing: expo });
     scale = 1.35 + (1.12 - 1.35) * t;
-    blur = 70 + (30 - 70) * t;
+    blur = blurPx * 2 + (blurPx - blurPx * 2) * t;
   } else {
     scale = interpolate(frame, [inEnd, Math.max(inEnd + 1, D - outLen)], [1.12, 1.22], clamp);
-    blur = 30;
+    blur = blurPx;
   }
   const rush = interpolate(frame, [D - outLen, D], [0, 1], { ...clamp, easing: Easing.in(Easing.quad) });
   scale += (1.55 - scale) * rush;
-  blur += (80 - blur) * rush;
+  blur += (blurPx * 2 + 10 - blur) * rush;
   const sweep = interpolate(frame, [0, Math.round(fps * 0.65)], [0, 1], { ...clamp, easing: Easing.in(Easing.cubic) });
   const drift = interpolate(frame, [inEnd, D], [0, -3], clamp);
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <Img src={staticFile(photo)} style={{ position: "absolute", left: "-8%", top: "-8%", width: "116%", height: "116%", objectFit: "cover",
         transform: `translateX(${drift}%) scale(${scale})`, filter: `blur(${blur * u}px) saturate(1.2)` }} />
-      <AbsoluteFill style={{ background: "rgba(255,255,255,0.66)" }} />
+      <AbsoluteFill style={{ background: `rgba(255,255,255,${veil})` }} />
       <div style={{ position: "absolute", left: 0, top: 0, width: "16%", height: "100%", opacity: 1 - sweep,
         transform: `translateX(${-130 + (640 + 130) * sweep}%)`, background: `linear-gradient(90deg, transparent, ${accent}8c, transparent)` }} />
     </AbsoluteFill>
   );
 };
 
-const Scene = ({ scene, palette, design }) => {
+const Scene = ({ scene, palette, design, backdrop }) => {
   const frame = useCurrentFrame();
   const { fps, width: W, height: H, durationInFrames: D } = useVideoConfig();
   const u = W / 1080;
@@ -105,11 +105,18 @@ const Scene = ({ scene, palette, design }) => {
   const boxW = W * 0.78, boxTop = H * (tall ? 0.13 : 0.11), boxH = H * 0.76 - boxTop - H * 0.02;
   const lines = (scene.lines || []).slice(0, 4);
   const bd = 84 * u;
-  const head = sizeFor(scene.heading, 64 * u, 46 * u, boxW, boxH * 0.3, WIDE, 1.12);
+  /* a scene with no sharp picture (every Design 3 scene) is set as large as motion_layout.py sets it: the type starts big by the
+     heading's length, a sparse scene a little bigger still, and is brought down until the column holds it */
+  const noPic = !scene.photo || design === "blur-photo";
+  const nWords = String(scene.heading || "").split(/\s+/).filter(Boolean).length;
+  const sparse = noPic && nWords + lines.join(" ").split(/\s+/).filter(Boolean).length <= 14;
+  const headMax = noPic ? (nWords <= 4 ? 128 : nWords <= 7 ? 108 : nWords <= 11 ? 88 : 66) * u * (sparse ? 1.25 : 1) : 64 * u;
+  const lineMax = noPic ? 62 * u * (sparse ? 1.2 : 1) : 46 * u;
+  const head = sizeFor(scene.heading, headMax, 46 * u, boxW, boxH * (noPic ? 0.4 : 0.3), WIDE, 1.12);
   const lineW = boxW - bd - 22 * u;
-  const lineSize = sizeFor(lines.join(" "), 46 * u, 38 * u, lineW, boxH * 0.3, BODY, 1.2);
+  const lineSize = sizeFor(lines.join(" "), lineMax, 38 * u, lineW, boxH * (noPic ? 0.42 : 0.3), BODY, 1.2);
   const step = Math.max(8, Math.floor(Math.min(fps * 1.1, (D - fps) / Math.max(lines.length, 1))));
-  const photo = scene.photo ? (
+  const photo = scene.photo && design !== "blur-photo" ? (
     <Rise at={8} style={{ flex: "1 1 0", minHeight: 0, width: "100%", position: "relative", overflow: "hidden",
         WebkitMaskImage: "linear-gradient(to right, transparent, #000 14%, #000 86%, transparent), linear-gradient(to bottom, transparent, #000 16%, #000 84%, transparent)",
         WebkitMaskComposite: "source-in", maskComposite: "intersect",
@@ -121,7 +128,7 @@ const Scene = ({ scene, palette, design }) => {
   const punch = blurred ? interpolate(frame, [0, Math.round(fps * 0.8)], [0.965, 1], { ...clamp, easing: Easing.out(Easing.exp) }) : 1;
   return (
     <>
-    {blurred ? <BlurBackdrop photo={scene.photo} accent={palette.accent} /> : null}
+    {blurred ? <BlurBackdrop photo={scene.photo} accent={palette.accent} veil={backdrop?.veil} blurPx={backdrop?.blur} /> : null}
     <AbsoluteFill style={{ color: palette.ink, fontFamily: FONT, opacity: out, transform: punch === 1 ? undefined : `scale(${punch})` }}>
       <div style={{ position: "absolute", left: W * 0.08, top: boxTop, width: boxW, height: boxH, display: "flex",
                     flexDirection: "column", justifyContent: "space-evenly", alignItems: "flex-start", gap: W * 0.028, overflow: "hidden" }}>
@@ -177,7 +184,7 @@ const Outro = ({ outro }) => {
   );
 };
 
-export const Film = ({ scenes, palette, outro, fps, bg, design }) => {
+export const Film = ({ scenes, palette, outro, fps, bg, design, backdrop }) => {
   useFonts();
   const f = (s) => Math.round(s * fps);
   return (
@@ -185,7 +192,7 @@ export const Film = ({ scenes, palette, outro, fps, bg, design }) => {
       {bg ? <Backdrop bg={bg} /> : null}
       {scenes.map((s) => (
         <Sequence key={s.id} from={f(s.start)} durationInFrames={Math.max(1, f(s.duration))}>
-          {s.id === "brand-outro" && outro ? <Outro outro={outro} /> : <Scene scene={s} palette={palette} design={design} />}
+          {s.id === "brand-outro" && outro ? <Outro outro={outro} /> : <Scene scene={s} palette={palette} design={design} backdrop={backdrop} />}
         </Sequence>
       ))}
       {scenes.flatMap((s) => (s.captions || []).map(([text, a, b], i) => (

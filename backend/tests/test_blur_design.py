@@ -21,11 +21,20 @@ def test_the_blur_design_is_known_so_it_is_not_swapped_for_design_one():
 
 def test_a_scene_with_a_picture_gets_a_blurred_backdrop_behind_a_veil_and_the_zoom_through_exit():
     html, _ = _compose("blur-photo")
-    assert 'id="s1-bgb"' in html and "blur(30px)" in html and "rgba(255,255,255,0.66)" in html
+    assert 'id="s1-bgb"' in html and f"blur({motion_layout.BLUR_PX}px)" in html \
+        and f"rgba(255,255,255,{motion_layout.VEIL})" in html
     assert 'tl.fromTo("#s1-bgi"' in html and 'tl.to("#s1-bgi",{scale:1.55' in html, \
         "arrives from heavy blur, leaves by zooming through"
     assert 'tl.fromTo("#s1-wp"' in html, "an accent band sweeps across at the cut"
     assert html.index('id="s1-bgb"') < html.index('id="s1"'), "the backdrop sits behind the scene's words"
+
+
+def test_the_picture_is_only_the_blurred_background_with_no_sharp_copy_on_the_slide():
+    """Wan, 10 Nov 2026: "the background make images full blurry"."""
+    html, _ = _compose("blur-photo")
+    assert 'id="s1-bgi"' in html and 'id="s1-photo"' not in html
+    sharp, _ = _compose("bright-editorial")
+    assert 'id="s1-photo"' in sharp, "Design 1 still shows its picture"
 
 
 def test_design_one_is_untouched_and_a_scene_without_a_picture_gets_no_backdrop():

@@ -81,7 +81,7 @@ def test_the_preview_is_made_by_one_bundle_and_many_stills(tmp_path, monkeypatch
 def test_the_writer_is_told_to_say_what_the_subject_is_and_the_terms_are_kept():
     row = {"stream": "regulab", "language": "bm", "voice": "male", "options": {}}
     system = motion.build_script_system(row, "")
-    assert "WHAT IT IS (every film)" in system and '"terms"' in system and "BEFORE the fact" in system
+    assert "WHAT IT IS:" in system and '"terms"' in system and "BEFORE the fact" in system
     plan = {"title": "t", "hook": "Benda pasal HIFU yg takde sapa bagitau kau", "hook_shape": 21,
             "terms": [{"term": "HIFU", "meaning": MEANING},
                       {"term": "", "meaning": "tiada"}, {"term": "PIF", "meaning": "cari sendiri di laman web"}, "x"],

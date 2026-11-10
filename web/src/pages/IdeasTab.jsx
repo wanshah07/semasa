@@ -103,6 +103,19 @@ function IdeaEdit({ r, brand, onSave, onCancel }) {
 
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
 
+/* What the subject IS (Wan, 10 Nov 2026: "semua flow ada definition"): the terms the writer defined for this idea, one line each. */
+function IdeaTerms({ r }) {
+  const { t } = useLang();
+  const terms = Array.isArray(r.brief?.terms) ? r.brief.terms.filter((x) => x && x.term && x.meaning) : [];
+  if (!terms.length) return null;
+  return (
+    <div className="mt-2 rounded-tile bg-surface-2 p-2 text-[12px] [overflow-wrap:anywhere]" data-idea-terms>
+      <p className="text-[10px] uppercase tracking-wide text-muted">{t("Apa itu", "What it is")}</p>
+      {terms.slice(0, 3).map((x) => <p key={x.term}><b>{x.term}</b>: {x.meaning}</p>)}
+    </div>
+  );
+}
+
 /* Where an idea came from and what it is for, as pills: the source's own site (a link back, never into a post), the
    issuer when it is a regulator or journal, a replacement for a rejected draft, and the slot it was made for. */
 function SourcePills({ r }) {
@@ -354,7 +367,9 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
                     <p className="font-medium leading-snug">{r.source_title}</p>
                     {r.note && <p className="mt-1 line-clamp-2 text-[12px] text-muted">“{r.note}”</p>}
                     {r.error && <p className="mt-1 text-[12px] text-danger">{r.error}</p>}
-                    <SourcePills r={r} />
+                    <IdeaTerms r={r} />
+                    <IdeaTerms r={r} />
+                <SourcePills r={r} />
                   </td>
                   <td className={`${TD} text-[12px] text-muted`} data-label={t("Untuk", "For")}>{forText(r)}</td>
                   <td className={`${TD} whitespace-nowrap text-[12px] text-muted`} data-label={t("Masa", "When")}>{timeAgo(r.created_at)}</td>

@@ -26,7 +26,19 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from . import antislop, compliance, copywriting, db, hook_bank, hook_learning, language, my_designs, slides, writing_styles
+from . import (
+    antislop,
+    compliance,
+    copywriting,
+    db,
+    definitions,
+    hook_bank,
+    hook_learning,
+    language,
+    my_designs,
+    slides,
+    writing_styles,
+)
 from .fetch import get
 from .llm import LLM
 from .log import get_logger
@@ -189,6 +201,7 @@ Answer with ONE JSON object:
  "domain": one of %s,
  "citation": "...", "text": {"bm": {"instagram": "...", "facebook": "...", "threads": "..."},
                              "en": {"instagram": "...", "facebook": "...", "threads": "..."}},
+ "terms": [{"term": "a word or acronym the reader may not know", "meaning": "what it is, in one plain sentence"}],
  "visual_prompt": "an English description of one illustrative picture: no words, no logos, no real people",
  "alt": "short alt text in BM"}
 Set "fit" false (and say why in "why_not") only when the story gives this audience (SME owners in cosmetics, food, halal and
@@ -223,6 +236,7 @@ Answer with ONE JSON object:
  "hook_shape": the number of the hook shape it is built on,
  "angle": one letter from the list,
  "citation": "...", "text": {"en": {"linkedin": "..."}, "bm": {"linkedin": "the same post in Malaysian Malay"}},
+ "terms": [{"term": "a word or acronym the reader may not know", "meaning": "what it is, in one plain sentence"}],
  "visual_prompt": "an English description of one illustrative picture: no words, no logos, no real people",
  "alt": "short alt text in English"}
 Set "fit" false (and say why) only when the story gives a chemist, RA or brand-owner peer nothing to use. A story does not need
@@ -394,7 +408,7 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
                      f"({source.get('why') or 'no article'}). Use only the facts they give; leave out any specific they do not.")
     family = str(idea.get("hook_family") or "").strip().lower() or None
     return (system + avoid + writer_block(writer, stream) + pillar_line(writer, stream, idea.get("domain"))
-            + style_block + hook_block(family, stream, bank, hint), "\n\n".join(lines))
+            + style_block + "\n\n" + definitions.RULE + hook_block(family, stream, bank, hint), "\n\n".join(lines))
 
 
 def normalise_text(raw: Any, stream: str, lang: str) -> dict[str, dict[str, str]]:
@@ -751,6 +765,9 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
              **({"hook_on_cover": cover_state} if cover_state else {}),
              "post_id": post_id, "media_jobs": len(jobs), "written_at": datetime.now(UTC).isoformat(),
              "model": getattr(llm, "last_model", "") or llm.s.model}
+    terms = definitions.clean(out.get("terms"))
+    if terms:
+        brief["terms"] = terms             # what the subject IS, shown on the idea card (Wan, 10 Nov 2026)
     brief["look"] = look_of(idea)          # the carousel look: Wan's choice on the idea, else the default; "classic" is kept too
     if fmt != "post":
         brief["format"] = fmt              # carousel or poster, kept for the page

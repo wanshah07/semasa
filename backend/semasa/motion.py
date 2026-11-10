@@ -45,6 +45,7 @@ from . import (
     compliance,
     copywriting,
     db,
+    definitions,
     fetch,
     hook_bank,
     hook_learning,
@@ -269,12 +270,7 @@ STRUCTURE_RULE = (
 # Wan, 10 Nov 2026, about a film on HIFU: "aku tak tahu HIFU tu apa, boleh tak masukkan setiap kali storyboard explain apa
 # yang patut". Every storyboard says what the subject IS: in `terms` (shown to Wan in the review, so he can judge the film)
 # and in the film itself.
-TERMS_RULE = ("WHAT IT IS (every film): the viewer, and the person approving this storyboard, may not know the main subject. "
-              "List up to 3 words or acronyms a shopkeeper would not know (a procedure, device, ingredient, test, rule or "
-              "body, e.g. HIFU, PIF, MS 1500) in `terms`, each with `meaning`: what it IS, in one plain sentence. In the film, "
-              "scene 2's narration says that meaning in plain words BEFORE the fact that uses it. Plain meaning only: no figure, "
-              "no claim that it works or is safe, no brand, no price; use the source's own definition when it gives one. When "
-              "every word is everyday, give `terms: []`.")
+TERMS_RULE = definitions.RULE
 FLOW = (STRUCTURE_RULE + " Connected, complete sentences, never isolated labels.\n" + TERMS_RULE + "\n" + LAYMAN_RULE
         + "\n" + EXPLAIN_RULE
         + "\n" + CONNECT_RULE + "\n" + LINES_RULE
@@ -398,12 +394,7 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
                 sc["narration"] = " ".join(f"{sc['narration']} {' '.join(missing)}".split())[:700]
         if not teaser:                    # the facts are said, so the speech must still fit the film: cut before it is recorded
             trim_to_budget(clean, int((FILM_MAX - SPEECH_RESERVE) * SPEECH_WPS))
-    terms = []
-    for t in (out.get("terms") or [])[:3] if isinstance(out.get("terms"), list) else []:
-        term = " ".join(str((t or {}).get("term") or "").split())[:60] if isinstance(t, dict) else ""
-        meaning = speak_as(motion_layout.plain((t or {}).get("meaning")))[:240].strip() if isinstance(t, dict) else ""
-        if term and meaning and not motion_captions.hand_off(meaning):
-            terms.append({"term": term, "meaning": meaning})
+    terms = definitions.clean(out.get("terms"), speak_as)
     meta = {"title": str(out.get("title") or "")[:160], "terms": terms,
             "photo_query": " ".join(str(out.get("photo_query") or "").split())[:80],
             "hook_shape": shape, "hook": hook, **({"hook_style": bank.id} if bank else {})}

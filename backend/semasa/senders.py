@@ -200,6 +200,206 @@ class Buffer:
         return {**last, "unconfirmed": True}
 
 
+# --- Zernio ---------------------------------------------------------------------------------------------------------
+
+ZERNIO_URL = "https://zernio.com/api/v1"
+ZERNIO_STATUS = {"scheduled": "scheduled", "pending": "scheduled", "publishing": "sending", "published": "sent",
+                 "failed": "error", "partial": "error", "draft": "draft", "cancelled": "error"}
+THREAD_MAX = 500                # one Threads post
+THREAD_LEVELS = 5               # the levels of one chain (Wan, 10 Nov 2026: "bertingkat post dalam 1 post")
+TIKTOK_SETTINGS = {"privacy_level": "PUBLIC_TO_EVERYONE", "allow_comment": True, "allow_duet": True, "allow_stitch": True,
+                   "commercial_content_type": "none", "content_preview_confirmed": True, "express_consent_given": True,
+                   "media_type": "video", "auto_add_music": False, "video_made_with_ai": True}
+
+
+def thread_levels(text: str, most: int = THREAD_LEVELS, limit: int = THREAD_MAX) -> list[str]:
+    """A caption as the levels of one Threads chain: its paragraphs in order, neighbours joined while they fit one post, at
+    most `most` levels (the tail is folded into the last ones). Joined with a blank line, the levels are the caption again,
+    which is how a chain already in Zernio is recognised as this post. A caption of one paragraph is one level."""
+    paras = [p.strip() for p in re.split(r"\n\s*\n", str(text or "")) if p.strip()]
+    if len(paras) <= 1:
+        return paras
+    levels: list[str] = [paras[0]]                 # the hook stands alone on the first level, above the pictures
+    for para in paras[1:]:
+        if len(levels) > 1 and len(levels[-1]) + 2 + len(para) <= limit:
+            levels[-1] += "\n\n" + para
+        else:
+            levels.append(para)
+    while len(levels) > most:
+        levels[-2:] = [levels[-2] + "\n\n" + levels[-1]]
+    return levels
+
+
+class Zernio:
+    """One Zernio login (one key) and the social accounts connected under it. It answers in Buffer's shape (id, status,
+    dueAt, sentAt, text, channelId, externalLink, error) so the publisher's no-double-post check, tally and records are the
+    same code for both. A Threads post is a chain (`threadItems`); TikTok takes a video only."""
+
+    def __init__(self, api_key: str, session: Any = None, url: str = ZERNIO_URL, sleep=time.sleep):
+        self.key, self.url = api_key, url.rstrip("/")
+        self.http = session or requests.Session()
+        self.sleep = sleep
+
+    def _call(self, method: str, path: str, **kw: Any) -> dict[str, Any]:
+        try:
+            r = self.http.request(method, f"{self.url}{path}", timeout=90,
+                                  headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}, **kw)
+        except requests.RequestException as exc:
+            raise SendError("transient", f"Zernio unreachable: {exc}") from exc
+        if r.status_code == 429 or r.status_code >= 500:
+            raise SendError("transient", f"Zernio answered {r.status_code}")
+        try:
+            body = r.json()
+        except ValueError as exc:
+            raise SendError("refused", f"Zernio answered {r.status_code} with no JSON") from exc
+        if r.status_code >= 400:
+            msg = str(body.get("error") or body.get("message") or body)[:400] if isinstance(body, dict) else str(body)[:400]
+            raise SendError("refused", f"Zernio refused ({r.status_code}): {msg}")
+        return body if isinstance(body, dict) else {}
+
+    @staticmethod
+    def shape(post: dict[str, Any], account_id: str = "") -> dict[str, Any]:
+        """A Zernio post as the publisher reads a Buffer one, for ONE of its platforms (`account_id`, else its first)."""
+        plats = post.get("platforms") or []
+
+        def acc(p: dict[str, Any]) -> str:
+            a = p.get("accountId")
+            return str(a.get("_id") if isinstance(a, dict) else a or "")
+        plat = next((p for p in plats if account_id and acc(p) == account_id), plats[0] if plats else {})
+        items = (plat.get("platformSpecificData") or {}).get("threadItems") or []
+        text = "\n\n".join(str(i.get("content") or "") for i in items) if items else str(
+            plat.get("customContent") or post.get("content") or "")
+        raw = str(plat.get("status") or post.get("status") or "")
+        status = ZERNIO_STATUS.get(raw, ZERNIO_STATUS.get(str(post.get("status") or ""), "scheduled"))
+        out: dict[str, Any] = {"id": post.get("_id"), "status": status, "text": text, "channelId": acc(plat),
+                               "dueAt": plat.get("scheduledFor") or post.get("scheduledFor"),
+                               "sentAt": plat.get("publishedAt") or post.get("publishedAt")}
+        if plat.get("platformPostUrl"):
+            out["externalLink"] = plat["platformPostUrl"]
+        if status == "error":
+            out["error"] = {"message": str(plat.get("errorMessage") or plat.get("error") or post.get("errorMessage")
+                                           or "Zernio reported a failure")[:400]}
+        return out
+
+    def _create(self, account_id: str, service: str, text: str, media: list[dict[str, Any]], due_at: str | None,
+                video: bool = False, vertical: bool = False) -> dict[str, Any]:
+        entry: dict[str, Any] = {"platform": service, "accountId": account_id}
+        content, data = text, {}
+        if service == "threads":
+            levels = thread_levels(text)
+            if len(levels) > 1:
+                content = levels[0]
+                data["threadItems"] = [{"content": lv, "mediaItems": media if i == 0 else []} for i, lv in enumerate(levels)]
+        elif service == "instagram" and video:
+            data["contentType"] = "reels"
+        elif service == "facebook" and video and vertical:
+            data["contentType"] = "reel"
+        if data:
+            entry["platformSpecificData"] = data
+        body: dict[str, Any] = {"content": content, "timezone": "UTC", "mediaItems": media, "platforms": [entry]}
+        if due_at:
+            body["scheduledFor"] = due_at
+        else:
+            body["publishNow"] = True
+        if service == "tiktok":
+            body["tiktokSettings"] = dict(TIKTOK_SETTINGS)
+        got = self._call("POST", "/posts", json=body)
+        post = got.get("post") if isinstance(got.get("post"), dict) else got
+        if not post.get("_id"):
+            raise SendError("refused", f"Zernio gave no post id: {str(got)[:300]}")
+        return self.shape(post, account_id)
+
+    def create(self, channel_id: str, service: str, text: str, pictures: list[str], alt: str,
+               due_at: str | None) -> dict[str, Any]:
+        if service == "tiktok":
+            raise SendError("refused", "tiktok: TikTok takes a Motion film only")
+        return self._create(channel_id, service, text, [{"type": "image", "url": u} for u in pictures], due_at)
+
+    def create_video(self, channel_id: str, service: str, text: str, video: dict[str, Any],
+                     due_at: str | None) -> dict[str, Any]:
+        return self._create(channel_id, service, text, [{"type": "video", "url": video["url"]}], due_at, video=True,
+                            vertical=bool(video.get("vertical")))
+
+    def get(self, post_id: str, account_id: str = "") -> dict[str, Any]:
+        got = self._call("GET", f"/posts/{post_id}")
+        return self.shape(got.get("post") if isinstance(got.get("post"), dict) else got, account_id)
+
+    def posts(self, channel_ids: list[str], start: str, end: str) -> list[dict[str, Any]]:
+        """Every post of these accounts due in [start, end], any status, in Buffer's shape (one row per account)."""
+        want = {str(c) for c in channel_ids}
+        out: list[dict[str, Any]] = []
+        for page in range(1, 21):
+            got = self._call("GET", "/posts", params={"page": page, "limit": 100, "dateFrom": start[:10], "dateTo": end[:10]})
+            rows = got.get("posts") or []
+            for post in rows:
+                for plat in post.get("platforms") or []:
+                    a = plat.get("accountId")
+                    aid = str(a.get("_id") if isinstance(a, dict) else a or "")
+                    if aid in want:
+                        out.append(self.shape(post, aid))
+            if page >= int((got.get("pagination") or {}).get("pages") or 1) or not rows:
+                break
+        return out
+
+    def confirm(self, post_id: str, tries: int = 20, every: float = 6.0, account_id: str = "") -> dict[str, Any]:
+        """A publish-now is read back until the network settles it (a video takes minutes: unconfirmed is not a failure)."""
+        last: dict[str, Any] = {}
+        for _ in range(tries):
+            last = self.get(post_id, account_id)
+            if last.get("status") in ("sent", "error"):
+                return last
+            self.sleep(every)
+        return {**last, "unconfirmed": True}
+
+    def accounts(self) -> list[dict[str, Any]]:
+        return self._call("GET", "/accounts").get("accounts") or []
+
+
+class ZernioHub:
+    """Wan's Zernio is three logins (Instagram and Threads; LinkedIn and Facebook; TikTok), so three keys. The hub is one
+    sender for the publisher: each social account id goes to the login that holds it."""
+
+    def __init__(self, by_account: dict[str, Zernio]):
+        self.by_account = dict(by_account)
+
+    def _for(self, account_id: str) -> Zernio:
+        client = self.by_account.get(str(account_id))
+        if client is None:
+            raise SendError("refused", f"no Zernio key is set for the account {account_id}")
+        return client
+
+    def create(self, channel_id: str, service: str, text: str, pictures: list[str], alt: str,
+               due_at: str | None) -> dict[str, Any]:
+        return self._for(channel_id).create(channel_id, service, text, pictures, alt, due_at)
+
+    def create_video(self, channel_id: str, service: str, text: str, video: dict[str, Any],
+                     due_at: str | None) -> dict[str, Any]:
+        return self._for(channel_id).create_video(channel_id, service, text, video, due_at)
+
+    def posts(self, channel_ids: list[str], start: str, end: str) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for cid in channel_ids:
+            out += self._for(cid).posts([cid], start, end)
+        return out
+
+    def get(self, post_id: str, account_id: str = "") -> dict[str, Any]:
+        if account_id:
+            return self._for(account_id).get(post_id, account_id)
+        last: SendError | None = None
+        for client in {id(c): c for c in self.by_account.values()}.values():
+            try:
+                return client.get(post_id)
+            except SendError as exc:           # a post of another login is "not found" here: ask the next one
+                last = exc
+        raise last or SendError("refused", "no Zernio login is set up")
+
+    def confirm(self, post_id: str, account_id: str = "", **kw: Any) -> dict[str, Any]:
+        if account_id:
+            return self._for(account_id).confirm(post_id, account_id=account_id, **kw)
+        owner = self.get(post_id)                   # which login holds it, and for which account
+        return self._for(owner.get("channelId") or "").confirm(post_id, account_id=owner.get("channelId") or "", **kw)
+
+
 # --- Composio (LinkedIn) -------------------------------------------------------------------------------------------
 
 def _message(body: Any) -> str:

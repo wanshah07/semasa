@@ -36,6 +36,8 @@ export const CODE_APIS = [
     used: ["Gmail (bil, CRM), LinkedIn, resit dan sumber Wan (Reddit, YouTube, OneDrive).", "Gmail (billing, CRM), LinkedIn, receipts and Wan's sources (Reddit, YouTube, OneDrive)."] },
   { id: "buffer", name: "Buffer", env: ["BUFFER_API_KEY"], url: "https://buffer.com", docs: "https://developers.buffer.com",
     used: ["Menerbit ke Facebook, Instagram dan Threads, dan membaca metrik.", "Publishes to Facebook, Instagram and Threads, and reads the metrics."] },
+  { id: "zernio", name: "Zernio", env: ["ZERNIO_API_KEY_1", "ZERNIO_API_KEY_2", "ZERNIO_API_KEY_3"], url: "https://zernio.com", docs: "https://docs.zernio.com",
+    used: ["Menerbit ke Instagram, Threads, Facebook, LinkedIn dan TikTok (tiga log masuk; tutup sehingga dihidupkan).", "Publishes to Instagram, Threads, Facebook, LinkedIn and TikTok (three logins; off until switched on)."] },
   { id: "unsplash", name: "Unsplash", env: ["UNSPLASH_ACCESS_KEY"], url: "https://unsplash.com/developers", docs: "https://unsplash.com/documentation",
     used: ["Gambar stok untuk post dan Motion.", "Stock photos for posts and Motion."] },
   { id: "replicate", name: "Replicate", env: ["REPLICATE_API_TOKEN"], url: "https://replicate.com", docs: "https://replicate.com/docs",

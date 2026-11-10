@@ -143,7 +143,43 @@ def make_clients(settings: dict[str, Any]) -> dict[str, Any]:
     elif os.environ.get("COMPOSIO_API_KEY") and li.get("author"):
         out["linkedin"] = senders.LinkedIn(os.environ["COMPOSIO_API_KEY"], li["author"],
                                            account_id=li.get("account_id") or None)
+    hub = zernio_hub(cfg.get("zernio") or {})
+    if hub is not None:
+        out["zernio"] = hub
     return out
+
+
+ZERNIO_FORMATS = {"linkedin": ("carousel", "video"), "threads": ("carousel", "single", "video"),
+                  "facebook": ("carousel", "single", "video"), "instagram": ("carousel", "single", "video"),
+                  "tiktok": ("video",)}
+FORMAT_NAMES = {"carousel": "a carousel", "single": "a single card", "video": "a Motion film", "text": "words only"}
+
+
+def zernio_accounts(zcfg: dict[str, Any]) -> dict[str, dict[str, str]]:
+    """{platform: {"id": the Zernio account id, "key": which login's key}} for the platforms switched on in
+    settings.channels.zernio. Nothing while `enabled` is not true: Zernio takes over a platform only when Wan says so."""
+    if zcfg.get("enabled") is not True:
+        return {}
+    out = {}
+    for plat, acc in (zcfg.get("accounts") or {}).items():
+        if isinstance(acc, dict) and acc.get("id") and acc.get("on", True) is not False:
+            out[str(plat)] = {"id": str(acc["id"]), "key": str(acc.get("key") or "1")}
+    return out
+
+
+def zernio_hub(zcfg: dict[str, Any]) -> Any:
+    """The Zernio sender, or None. Each login's key is a secret named ZERNIO_API_KEY_<key> (three logins: 1, 2, 3)."""
+    by_account: dict[str, Any] = {}
+    made: dict[str, Any] = {}
+    for acc in zernio_accounts(zcfg).values():
+        secret = os.environ.get(f"ZERNIO_API_KEY_{acc['key']}")
+        if secret:
+            by_account[acc["id"]] = made.setdefault(acc["key"], senders.Zernio(secret))
+    return senders.ZernioHub(by_account) if by_account else None
+
+
+def format_of(pictures: list[str], video: dict[str, Any] | None) -> str:
+    return "video" if video else "carousel" if len(pictures) > 1 else "single" if pictures else "text"
 
 
 def buffer_channels(settings: dict[str, Any], stream: str) -> list[str]:
@@ -155,10 +191,17 @@ def buffer_channels(settings: dict[str, Any], stream: str) -> list[str]:
     return [p for p in plats if enabled.get(p, True) is not False]
 
 
-def post_channels(settings: dict[str, Any], post: dict[str, Any]) -> list[str]:
+def post_channels(settings: dict[str, Any], post: dict[str, Any], has_video: bool | None = None) -> list[str]:
     """The platforms this post goes to: its stream's switched-on channels, narrowed to the ones Wan chose for it when it
-    was queued to some of them (a Motion film), never widened."""
-    return [p for p in buffer_channels(settings, post.get("stream") or "regulab") if p in compliance.platforms_of(post)]
+    was queued to some of them (a Motion film), never widened. TikTok (Zernio only, Wan 10 Nov 2026: "tiktok - motion")
+    rides with a ws.regulab film that goes to Instagram: it is not a platform of the page yet, so it cannot be chosen
+    there. `has_video` None means "whatever it already recorded" (the tally)."""
+    out = [p for p in buffer_channels(settings, post.get("stream") or "regulab") if p in compliance.platforms_of(post)]
+    zacc = zernio_accounts((settings.get("channels") or {}).get("zernio") or {})
+    if "tiktok" in zacc and (post.get("stream") or "regulab") == "regulab" and "instagram" in out:
+        if has_video or (has_video is None and (post.get("published") or {}).get("tiktok")):
+            out.append("tiktok")
+    return out
 
 
 def _parse(ts: Any) -> datetime | None:
@@ -245,13 +288,15 @@ def _claimed(live: list[dict[str, Any]]) -> dict[str, str]:
 def _record(bp: dict[str, Any], mode: str, route: str, now: datetime) -> dict[str, Any]:
     return {"id": bp.get("id"), "status": bp.get("status"), "dueAt": bp.get("dueAt"), "mode": mode,
             "route": route, "at": now.isoformat(), **({"url": bp["externalLink"]} if bp.get("externalLink") else {}),
+            **({"account": bp["channelId"]} if route.startswith("zernio") and bp.get("channelId") else {}),
             **({"unconfirmed": True} if bp.get("unconfirmed") else {})}
 
 
 def _send_buffer(client: Any, view: _BufferView, channel_id: str, channel: str, text: str, pictures: list[str],
                  alt: str, due: datetime, now: datetime, video: dict[str, Any] | None = None,
-                 post_id: Any = None) -> dict[str, Any]:
-    """One channel of one post into Buffer. Returns the record for `published`; raises SendError."""
+                 post_id: Any = None, route: str = "buffer") -> dict[str, Any]:
+    """One channel of one post into Buffer (or Zernio, the same shape). Returns the record for `published`; raises
+    SendError."""
     share_now = due <= now + SHARE_NOW_WITHIN
     due_iso = None if share_now else due.isoformat()
     mode = "shareNow" if share_now else "customScheduled"
@@ -266,7 +311,7 @@ def _send_buffer(client: Any, view: _BufferView, channel_id: str, channel: str, 
             found = view.find(channel_id, text, due, post_id)  # force a fresh read before deciding to retry
             if found is not None:                   # the first try did land after all
                 view.claim(found, post_id)
-                return _record(found, mode, "buffer-adopted", now)
+                return _record(found, mode, f"{route}-adopted", now)
             continue
         if share_now:
             try:
@@ -281,10 +326,10 @@ def _send_buffer(client: Any, view: _BufferView, channel_id: str, channel: str, 
                 kind = senders.classify(err)
                 if kind == "transient" and attempt == 1:
                     continue                                    # Studio's TRANSIENT_SEND: one identical retry
-                raise senders.SendError(kind, f"{channel}: {err or 'Buffer reported an error'}")
+                raise senders.SendError(kind, f"{channel}: {err or route.title() + ' reported an error'}")
             bp = {**bp, **fin}
         view.add(channel_id, bp, post_id)
-        return _record(bp, mode, "buffer", now)
+        return _record(bp, mode, route, now)
     raise senders.SendError("refused", "unreachable")
 
 
@@ -294,7 +339,8 @@ def moved_since_handed_over(published: dict[str, Any], due: datetime) -> list[st
     Sending the rest at the new slot would split one post across two slots and leave the old one taken in Buffer."""
     out = []
     for ch, rec in sorted(published.items()):
-        if not isinstance(rec, dict) or rec.get("mode") == "shareNow" or not str(rec.get("route") or "").startswith("buffer"):
+        if (not isinstance(rec, dict) or rec.get("mode") == "shareNow"
+                or not str(rec.get("route") or "").startswith(("buffer", "zernio"))):
             continue
         at = _parse(rec.get("dueAt"))
         if at and abs(at - due) > ADOPT_WITHIN:
@@ -356,6 +402,11 @@ class _Run:
         self.li_today: int | None = None
         self.live: list[dict[str, Any]] = []
         self.view: _BufferView | None = None
+        zcfg = (settings.get("channels") or {}).get("zernio") or {}
+        self.zacc = zernio_accounts(zcfg)
+        self.zformats = {**ZERNIO_FORMATS,
+                         **{k: tuple(v) for k, v in (zcfg.get("formats") or {}).items() if isinstance(v, list)}}
+        self.zview: _BufferView | None = None
 
 
 class _Pin:
@@ -428,7 +479,8 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
     pictures = [u for m in media for u in pictures_of(m)]
     video = next((v for v in (video_of(m) for m in media) if v), None)      # a post's video stands alone (no pictures)
     alt = " ".join(str((m.get("meta") or {}).get("alt") or "") for m in media).strip()
-    channels = post_channels(settings, post)
+    channels = post_channels(settings, post, has_video=bool(video))
+    zernio = clients.get("zernio")
 
     def moved_on(channel: str) -> bool:
         """Re-read the post just before a send: one changed since this run read it is not sent (race with the page)."""
@@ -442,7 +494,9 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
     for channel in channels:
         if published.get(channel):
             continue
-        text = compliance.text_of(post, channel, lang)
+        via_z = channel in ctx.zacc           # Zernio holds this platform (settings.channels.zernio), else Buffer/Composio
+        text = compliance.text_of(post, channel, lang) or (
+            compliance.text_of(post, "instagram", lang) if channel == "tiktok" else "")
         payload = {"channel": channel, "due_at": due.isoformat(), "text": text, "media": pictures}
         if video:
             payload["video"] = video["url"]
@@ -452,7 +506,7 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
             if not logged(store, post["id"], channel, "blocked", fp):
                 write_log(store, post["id"], channel, "blocked", {"fingerprint": fp, "why": hard})
             continue
-        late = (myt_date(now) > li_send_day(due)) if stream == "linkedin" else (due < now - LATE_GRACE)
+        late = ((myt_date(now) > li_send_day(due)) if stream == "linkedin" and not via_z else (due < now - LATE_GRACE))
         if late:
             counts["overdue"] += 1
             if not logged(store, post["id"], channel, "blocked", fp):
@@ -469,7 +523,7 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
         prior = errors.get(channel)
         if _final(prior) and prior.get("fingerprint") == fp:
             continue                                   # refused before with these exact words; an edit sends again
-        client = clients.get("linkedin" if stream == "linkedin" else "buffer")
+        client = zernio if via_z else clients.get("linkedin" if stream == "linkedin" else "buffer")
         if client is None:
             counts["error"] += 1
             if not logged(store, post["id"], channel, "error", fp):
@@ -478,7 +532,20 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
                                                      "secret or its settings are missing); nothing was sent"})
             continue
 
-        if stream == "linkedin":
+        if via_z:
+            fmt = format_of(pictures, video)
+            if fmt not in ctx.zformats.get(channel, ()):
+                # Wan's list of what each platform takes (10 Nov 2026): anything else is not sent there
+                takes = " or ".join(FORMAT_NAMES[f] for f in ctx.zformats.get(channel, ())) or "nothing"
+                msg = f"{channel} takes {takes}; this post is {FORMAT_NAMES[fmt]}"
+                errors[channel] = {"fingerprint": fp, "message": msg, "at": now.isoformat()}
+                changed = True
+                counts["error"] += 1
+                if not logged(store, post["id"], channel, "error", fp):
+                    write_log(store, post["id"], channel, "error", {"fingerprint": fp, "why": msg})
+                continue
+
+        if stream == "linkedin" and not via_z:
             if due > now:
                 counts["not_yet"] += 1                 # LinkedIn has no queue: it goes at its slot, never before
                 continue
@@ -527,7 +594,8 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
             write_log(store, post["id"], channel, "sent", {"fingerprint": fp, "urn": res.urn})
             continue
 
-        channel_id = ctx.bufcfg.get(channel)
+        channel_id = ctx.zacc[channel]["id"] if via_z else ctx.bufcfg.get(channel)
+        route = "zernio" if via_z else "buffer"
         if not channel_id:
             counts["error"] += 1
             if not logged(store, post["id"], channel, "error", fp):
@@ -543,17 +611,18 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
             continue
         if moved_on(channel):
             return
-        view = ctx.view
+        view = ctx.zview if via_z else ctx.view
         try:
             found = view.find(channel_id, text, due, post["id"])
             if found:
                 view.claim(found, post["id"])
-                published[channel] = _record(found, "customScheduled", "buffer-adopted", now)
+                published[channel] = _record(found, "customScheduled", f"{route}-adopted", now)
                 counts["adopted"] += 1
                 pin.save_published(published)
                 write_log(store, post["id"], channel, "adopted", {"fingerprint": fp, "buffer_id": found.get("id")})
             else:
-                rec = _send_buffer(client, view, channel_id, channel, text, pictures, alt, due, now, video, post["id"])
+                rec = _send_buffer(client, view, channel_id, channel, text, pictures, alt, due, now, video, post["id"],
+                                   route=route)
                 published[channel] = rec
                 action = "sent" if rec.get("status") == "sent" else "scheduled"
                 counts[action] += 1
@@ -603,6 +672,7 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
              .not_.is_("slot", "null").order("date").order("slot")).data or [])
     r.live = guard.load_live(store, db.POSTS, myt_date(now)) if posts else []
     r.view = _BufferView(clients["buffer"], now, _claimed(r.live)) if clients.get("buffer") else None
+    r.zview = _BufferView(clients["zernio"], now, _claimed(r.live)) if clients.get("zernio") else None
     for post in posts:
         try:
             _publish_post(r, post)
@@ -610,16 +680,17 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
             r.counts["failed"] += 1
             log.exception("publisher: post %s failed; the run goes on with the next one", post.get("id"))
 
-    if enabled and clients.get("buffer"):
+    if enabled and (clients.get("buffer") or clients.get("zernio")):
         try:
-            tally(store, clients["buffer"], now, r.counts, settings)
+            tally(store, clients.get("buffer"), now, r.counts, settings, zernio=clients.get("zernio"))
         except Exception:  # noqa: BLE001
             r.counts["failed"] += 1
             log.exception("publisher: the Buffer tally failed")
     return r.counts
 
 
-def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settings: dict[str, Any]) -> None:
+def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settings: dict[str, Any],
+          zernio: Any = None) -> None:
     """Read back every Buffer post whose moment has passed and write down what the network actually did (Studio's
     reconcileBuffer): `sent` or `error`, and a post whose every channel is sent becomes `posted`."""
     counts.setdefault("confirmed", 0)
@@ -637,8 +708,12 @@ def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settin
             due = _parse(rec.get("dueAt"))
             if due and due > now - timedelta(minutes=5):
                 continue
+            via_zernio = str(rec.get("route") or "").startswith("zernio")
+            reader = zernio if via_zernio else client          # each record is read back from the service that holds it
+            if reader is None:
+                continue
             try:
-                got = client.get(rec["id"])
+                got = reader.get(rec["id"], rec.get("account") or "") if via_zernio else reader.get(rec["id"])
             except senders.SendError:
                 continue
             status = got.get("status")
@@ -647,7 +722,8 @@ def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settin
             published[ch] = {**rec, "status": status, **({"url": got["externalLink"]} if got.get("externalLink") else {}),
                              "confirmed_at": now.isoformat()}
             if status == "error":
-                msg = (got.get("error") or {}).get("message") or "Buffer reported an error"
+                msg = ((got.get("error") or {}).get("message")
+                       or ("Zernio" if via_zernio else "Buffer") + " reported an error")
                 errors[ch] = {"message": f"{ch}: {msg}", "at": now.isoformat()}
                 write_log(store, post["id"], ch, "error", {"buffer_id": rec["id"], "why": msg})
             else:

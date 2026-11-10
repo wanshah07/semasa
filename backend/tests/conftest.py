@@ -65,8 +65,27 @@ def storyboard_approved(request, monkeypatch):
     marked `storyboard_gate` runs the worker as it is and sees the stop."""
     if "storyboard_gate" in request.keywords:
         return
+    from types import SimpleNamespace
+
     from semasa import motion
     real = motion.process
+    # the storyboard's pictures are stored when it is written and fetched back once approved (Wan, 10 Nov 2026): the stand-in
+    # keeps what was stored and serves it, so the approved film uses the pictures of its storyboard without the network
+    stored: dict[str, bytes] = {}
+    upload = motion.db.upload_generated
+
+    def remember(db_, path, data, content_type):
+        url = upload(db_, path, data, content_type)
+        if path.startswith("motion/storyboard/"):
+            stored[str(url)] = data
+        return url
+
+    def served(url):
+        if url not in stored:
+            raise OSError("not a stored storyboard picture")
+        return SimpleNamespace(content=stored[url], raise_for_status=lambda: None)
+    monkeypatch.setattr(motion.db, "upload_generated", remember)
+    monkeypatch.setattr(motion, "picture_response", served)
 
     def process(store, llm, row, settings, **k):
         out = real(store, llm, row, settings, **k)

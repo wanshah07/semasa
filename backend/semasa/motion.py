@@ -418,17 +418,19 @@ def storyboard_pictures(store: Any, row: dict[str, Any], plan: dict[str, Any], f
             style_name=style_name, login=gpt_login, gemini=gemini, cloudflare=cloudflare)
         if drawn:
             motion_gpt_images.pin(scenes, drawn)
+        ids = {p["path"]: str(p.get("id") or "") for p in [*own, *photos, *drawn.values()]}
         kept = 0
         for sc in scenes:
             rel, credit = sc.pop("photo", None), sc.pop("photo_credit", "")
             sc.pop("photo2", None)
-            for key in ("image", "image_credit", "image_shot"):
+            for key in ("image", "image_credit", "image_shot", "image_id"):
                 sc.pop(key, None)
             if not rel or sc.get("id") == "brand-outro" or not (folder / rel).exists():
                 continue
             sc["image"] = db.upload_generated(store, f"motion/storyboard/{row['id']}/{sc['id']}.jpg",
                                               (folder / rel).read_bytes(), "image/jpeg")
             sc["image_credit"], sc["image_shot"] = credit or "", str(sc.get("shot") or "")
+            sc["image_id"] = ids.get(rel, "")
             kept += 1
         return " · ".join(x for x in (f"storyboard pictures: {kept}", own_note, photo_note, gpt_note) if x)
     except Exception as exc:  # noqa: BLE001
@@ -436,11 +438,16 @@ def storyboard_pictures(store: Any, row: dict[str, Any], plan: dict[str, Any], f
         return f"storyboard pictures not made ({str(exc)[:120]})"
 
 
+def picture_response(url: str) -> Any:
+    """One stored storyboard picture, fetched back (its own function so a test can serve it without the network)."""
+    return fetch.get(url, timeout=40)
+
+
 def approved_pictures(scenes: list[dict[str, Any]], folder: Path, get: Any = None) -> dict[str, dict[str, Any]]:
     """{scene id: photo} for the storyboard pictures Wan approved, fetched back into the film's folder. A scene whose shot he
     rewrote in review is left out (its picture no longer shows what he asked for) and is drawn again; so is one that cannot
     be fetched. The photo has the shape every other picture has."""
-    get = get or (lambda url: fetch.get(url, timeout=40))
+    get = get or picture_response
     out: dict[str, dict[str, Any]] = {}
     for sc in scenes:
         url = str(sc.get("image") or "")
@@ -453,7 +460,8 @@ def approved_pictures(scenes: list[dict[str, Any]], folder: Path, get: Any = Non
         except Exception as exc:  # noqa: BLE001 - it is drawn again instead
             log.info("storyboard picture of %s not reused (%s)", sc.get("id"), str(exc)[:120])
             continue
-        out[str(sc["id"])] = {"path": rel, "id": f"storyboard-{sc['id']}", "credit": str(sc.get("image_credit") or ""),
+        out[str(sc["id"])] = {"path": rel, "id": str(sc.get("image_id") or f"storyboard-{sc['id']}"),
+                              "credit": str(sc.get("image_credit") or ""),
                               "page": "", "alt": str(sc.get("heading") or "")[:140]}
     return out
 
@@ -1464,7 +1472,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                         ambient=str((row.get("options") or {}).get("ambient") or "mint"))
         # the pictures Wan saw on the storyboard are the film's pictures; only a scene without one (or whose shot he rewrote)
         # is found or drawn now
-        approved_pics = approved_pictures(scenes, folder, get=photo_get)
+        approved_pics = approved_pictures(scenes, folder)
         teaching = [sc for sc in scenes if sc.get("id") != "brand-outro"]
         missing = [sc for sc in teaching if str(sc.get("id")) not in approved_pics]
         if approved_pics and not missing:

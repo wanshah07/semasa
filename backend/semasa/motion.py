@@ -54,6 +54,7 @@ from . import (
     motion_layout,
     motion_probe,
     motion_reference,
+    motion_remotion,
     motion_review,
     motion_storyboard,
     motion_styles,
@@ -1571,7 +1572,21 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         if ref_note:
             report["reference_video"] = ref_note
         style_line = (f"{style[0]}: {len(style[1])} characters read · " if style[1] else "") + motion_styles.resolve(row)["name"]
-        video = render(folder, settings["cli"], size_of(row), runner)
+        video = None
+        if motion_remotion.wanted(row):
+            # the second renderer (Wan, 10 Nov 2026): the same scenes, voice and timings, drawn by Remotion. A failure
+            # falls back to HyperFrames so the film is still made, and the report says which one drew it.
+            try:
+                video = motion_remotion.render(folder, motion_remotion.props(scenes, total, w, h, PALETTE["regulab"],
+                                                                             name if stream == "linkedin" else "ws.regulab"),
+                                               runner)
+                report["renderer"] = "remotion"
+                style_line = "Remotion · " + style_line
+            except Exception as exc:  # noqa: BLE001
+                log.warning("%s: Remotion did not render (%s); HyperFrames used", row["id"], str(exc)[:200])
+                report["renderer"] = "hyperframes (Remotion failed: " + str(exc)[:200] + ")"
+        if video is None:
+            video = render(folder, settings["cli"], size_of(row), runner)
         meta = probe(video, runner)
         if not 0 < meta["duration_s"] <= FILM_MAX + .5 or abs(meta["duration_s"] - total) > .5:
             raise ValueError("Rendered duration does not match selected duration; choose 30/60s or narrow the topic")

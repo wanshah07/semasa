@@ -168,7 +168,7 @@ export function refKind(url) {
 
 /** The row to insert from the form, or {error} when the form is not enough: a brief or a link, one of them. A reference VIDEO is
     a style, so it needs the idea beside it ("ref:brief"); it is kept in options.reference_video, never as the source link. */
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "auto", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "auto", design = "bright-editorial", ambient = "mint", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[] } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "auto", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "auto", design = "bright-editorial", ambient = "mint", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[], renderer = "" } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };
@@ -180,7 +180,8 @@ export function motionRow({ brief = "", url = "", stream = "regulab", resolution
     row: {
       brief: b.slice(0, 2000), source_url: isVideo ? "" : u, stream: st, language: langOf(language, st),
       resolution: formSize(resolution, st), seconds: selectedSeconds(seconds, mode), status: "pending",
-      options: { ...motionOptions({style, mode, design, ambient, effects, effectMode, assetMode, assets}), ...(isVideo ? { reference_video: u } : {}) },
+      options: { ...motionOptions({style, mode, design, ambient, effects, effectMode, assetMode, assets}), ...(isVideo ? { reference_video: u } : {}),
+        ...(renderer === "remotion" ? { renderer: "remotion" } : {}) },
       style_repo_id: styleRepoId || null, ai_background: !!aiBackground, created_by: userId,
       ...resolveLanguageVoice(language, voice, st), mascot: "",
     },

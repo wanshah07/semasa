@@ -39,7 +39,8 @@ const STATUS_CLS = { waiting: "bg-accent/15 text-accent", pending: "bg-warn/15 t
 const DESIGN_BM = {
   "bright-editorial": "Reka bentuk 1 · Foto / Rajah / Editorial cerah asal",
   "continuous-line": "Reka bentuk 2 · Garis berterusan (v17 diluluskan)",
-  "blur-photo": "Reka bentuk 3 · Latar foto kabur (tulisan kekal mudah dibaca)",
+  "blur-photo": "Reka bentuk 3 · Latar foto kabur dengan gambar tajam di atas",
+  "blur-full": "Reka bentuk 4 · Latar foto kabur sepenuhnya (tiada gambar tajam)",
 };
 const RECIPE_BM = {
   auto: "Auto · adaptasi pendidikan yang sesuai",
@@ -349,7 +350,13 @@ export default function MotionLab({ user, onToast, view = "make" }) {
             options={Object.entries(RESOLUTION_CHOICES).map(([k, v]) => [k, w([v.bm, v.en])])} /></label>
           <label className="block"><Label>{t("Mod", "Mode")}</Label>
             <Select value={mode} onChange={v => { setMode(v); setSeconds(v === "teaser" ? 10 : selectedSeconds(seconds, v)); }}
-              options={[["explainer", t("Penerang · Hook / Fakta / Kenapa / Solusi", "Explainer · Hook / Fact / Why / Solution")], ["teaser", t("Gimik / teaser sahaja · bukan penerang", "Gimmick / teaser only · not an explainer")]]} /></label>
+              options={[
+                ["explainer", t("Penerang · Hook / Fakta / Kenapa / Solusi", "Explainer · Hook / Fact / Why / Solution")],
+                ["news", t("Berita semasa · Hook / Apa jadi / Kenapa penting / Buat apa", "Current news · Hook / What happened / Why it matters / What to do")],
+                ["myth", t("Mitos vs fakta · Hook / Mitos / Kenapa orang percaya / Buat apa", "Myth vs fact · Hook / Myth / Why people believe it / What to do")],
+                ["howto", t("Cara buat · Hook / Langkah / Kesilapan / Seterusnya", "How-to · Hook / Steps / Mistakes / Next")],
+                ["case", t("Kajian kes · Hook / Kes / Peraturan / Pengajaran", "Case study · Hook / Case / The rule / Lesson")],
+                ["teaser", t("Gimik / teaser sahaja · bukan penerang", "Gimmick / teaser only · not an explainer")]]} /></label>
           <label className="block"><Label>{t("Saat", "Seconds")}</Label>
             <Select value={String(seconds)} onChange={setSeconds} options={mode === "teaser" ? [["10", t("10s · satu babak gimik kekal", "10s · one persistent gimmick scene")], ["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]] : [["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]]} /></label>
         </div>

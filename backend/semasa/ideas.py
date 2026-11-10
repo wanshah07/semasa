@@ -567,6 +567,50 @@ def shorter_hook(llm: LLM, hook: str, stream: str, words: int = 12) -> str:
     return short
 
 
+SAME_EVENT_SYSTEM = (
+    "You compare news stories for a social-media desk. Answer with ONE JSON object: {\"same_as\": N, \"why\": \"...\"}. "
+    "N is the number of an EARLIER story that reports the SAME event as the NEW one: the same incident, seizure, recall, ruling "
+    "or announcement, even when the headline, the newspaper or the way the company is named differs. A follow-up that adds a new "
+    "fact, a different incident of the same kind, or a different company is NOT the same event. Answer 0 when none matches or "
+    "when unsure.")
+
+
+def same_event_written(store: Any, llm: LLM, idea: dict[str, Any], days: int = 14, limit: int = 30) -> str:
+    """The headline of an earlier idea for the SAME stream that reports the same event as this one, or "" (Wan, 9 Nov 2026).
+    Words cannot link two reports of one incident that share no name (the roti complaint and the Gardenia factory check), so the
+    writer is asked, once and cheaply. Only for an idea auto-fill made and nobody added a note to: a click of Wan's own, or a
+    retry with a note, is a decision. It fails OPEN: a failed look-up or an answer that is not a number writes
+    the post as before."""
+    brief = idea.get("brief") if isinstance(idea.get("brief"), dict) else {}
+    if not brief.get("auto") or str(idea.get("note") or "").strip():
+        return ""
+    from . import autofill
+    try:
+        since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+        rows = (store.table(db.IDEAS).select("id,source_title,source_summary").eq("stream", idea.get("stream") or "regulab")
+                .eq("status", "drafted").neq("id", idea["id"]).gte("created_at", since).order("created_at", desc=True)
+                .limit(80).execute().data or [])
+        seen: set[str] = set()
+        earlier = []
+        for r in rows:
+            key = autofill.story_key(r.get("source_title"))
+            if key and key not in seen:
+                seen.add(key)
+                earlier.append(r)
+        earlier = earlier[:limit]
+        if not earlier:
+            return ""
+        listing = "\n".join(f"{i}. {r.get('source_title')} | {str(r.get('source_summary') or '')[:160]}"
+                            for i, r in enumerate(earlier, 1))
+        out = llm.chat_json(SAME_EVENT_SYSTEM, f"NEW: {idea.get('source_title')} | "
+                            f"{str(idea.get('source_summary') or '')[:300]}\n\nEARLIER:\n{listing}", max_tokens=150)
+        n = int((out or {}).get("same_as") or 0) if isinstance(out, dict) else 0
+    except Exception as exc:  # noqa: BLE001 - fail open
+        log.info("same-event check skipped (%s)", str(exc)[:100])
+        return ""
+    return str(earlier[n - 1].get("source_title") or "") if 1 <= n <= len(earlier) else ""
+
+
 def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str, Any]) -> str:
     """Returns the new post id. Raises IdeaError with a message for the page."""
     if not llm.configured:
@@ -575,6 +619,10 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     if earlier and not str(idea.get("note") or "").strip():
         raise IdeaError(f"this news already has a {earlier['status']} post for this stream "
                         f"({earlier.get('hook') or earlier.get('date') or earlier['id']}), so it is not written again. "
+                        "For a follow-up, add a note saying what the new post should say, then Cuba lagi.")
+    twin = same_event_written(store, llm, idea)
+    if twin:
+        raise IdeaError(f"the same event is already written up for this stream ({twin[:90]}), so it is not written again. "
                         "For a follow-up, add a note saying what the new post should say, then Cuba lagi.")
     antislop.begin(settings.get("antislop"))
     brand = settings.get("brand") or {}

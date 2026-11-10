@@ -152,28 +152,92 @@ def same_event(a: frozenset[str], b: frozenset[str]) -> bool:
     return shared >= 3 and shared / min(len(a), len(b)) >= 0.6
 
 
-def one_per_story(rows: list[dict[str, Any]], spent_stories: set[str] | None = None) -> list[dict[str, Any]]:
+# Names that say little about WHICH event: the regulators, the country, the weekdays and months.
+_COMMON_NAMES = frozenset("""malaysia malaysian kementerian kesihatan kkm npra bkkm jakim fsqd kpdn moh jabatan agensi kerajaan
+selangor johor perak kedah kelantan terengganu pahang sabah sarawak penang perlis melaka negeri sembilan putrajaya kuala lumpur
+isnin selasa rabu khamis jumaat sabtu ahad januari februari mac april mei jun julai ogos september oktober november disember
+bernama utusan harian sinar berita astro awani star""".split())
+_WORD = re.compile(r"RM\s?\d[\d,.]*|[A-Za-z][A-Za-z0-9&-]+")
+
+
+def story_profile(title: Any, summary: Any = "") -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
+    """(title words, title+summary words, names) of a story. A NAME is what actually identifies an event: a company or place
+    written with a capital that is not a sentence's first word, an acronym, or an amount (RM413,728). Names are the same
+    words story_tokens keeps, found from the original case, which story_key has already thrown away."""
+    title_words = story_tokens(story_key(title))
+    all_words = set(title_words)
+    names: set[str] = set()
+    firsts: dict[str, int] = {}
+    for part, text in enumerate((str(title or ""), str(summary or ""))):
+        for sentence in re.split(r"(?<=[.!?])\s+", text):
+            for i, w in enumerate(_WORD.findall(sentence)):
+                low = re.sub(r"[^a-z0-9]", "", w.lower())
+                if not low or low in _STOP:
+                    continue
+                if part == 1:
+                    all_words.add(low)
+                if low in _COMMON_NAMES or len(low) < 3:
+                    continue
+                if not (w.startswith("RM") or (w[0].isupper() and len(w) >= 4)
+                        or (sum(c.isupper() for c in w) >= 2 and len(w) >= 3)):
+                    continue
+                if i == 0:
+                    firsts[low] = firsts.get(low, 0) + 1
+                else:
+                    names.add(low)
+    # a sentence's first word is capitalised by grammar, so it is a name only when it opens more than one sentence (a company
+    # that opens the headline and the summary as well)
+    names |= {w for w, n in firsts.items() if n >= 2}
+    return title_words, frozenset(all_words), frozenset(names)
+
+
+def same_story_profile(a: tuple[frozenset[str], ...], b: tuple[frozenset[str], ...]) -> bool:
+    """Same event by words, with names weighing more (Wan, 9 Nov 2026): the title rule (same_event), or a NAME in common (a
+    company, a place, an amount) plus three more words from the headline and summary together. A company that appears in two
+    different stories shares few other words, so a name alone never decides it."""
+    if same_event(a[0], b[0]):
+        return True
+    return bool(a[2] & b[2]) and len(a[1] & b[1]) >= 4
+
+
+def one_per_story(rows: list[dict[str, Any]], spent_stories: set[str] | None = None,
+                  spent_profiles: list[tuple[frozenset[str], ...]] | None = None) -> list[dict[str, Any]]:
     """Each story once: the first of its rows wins, a row with the paper's own link is preferred to a Google News redirect (the
-    writer can read the article behind it), and a story an idea already used is dropped whatever its link or its wording."""
+    writer can read the article behind it), and a story an idea already used is dropped whatever its link or its wording.
+    `spent_profiles` (used_profiles) adds the name-weighted comparison, with the summary, to the title one."""
     spent = set(spent_stories or ())
     spent_tokens = [story_tokens(k) for k in spent]
+    spent_profiles = list(spent_profiles or [])
     best: dict[str, dict[str, Any]] = {}
-    tokens: dict[str, frozenset[str]] = {}
+    profiles: dict[str, tuple[frozenset[str], ...]] = {}
     order: list[str] = []
     for r in rows:
         key = story_key(r.get("title"))
         if not key or key in spent:
             continue
-        toks = story_tokens(key)
-        if key not in best and any(same_event(toks, t) for t in spent_tokens):
+        prof = story_profile(r.get("title"), r.get("summary"))
+        if key not in best and (any(same_event(prof[0], t) for t in spent_tokens)
+                                or any(same_story_profile(prof, q) for q in spent_profiles)):
             continue                                       # the same event under another headline, already written up
-        twin = key if key in best else next((k for k in order if same_event(toks, tokens[k])), None)
+        twin = key if key in best else next((k for k in order if same_story_profile(prof, profiles[k])), None)
         if twin is None:
-            best[key], tokens[key] = r, toks
+            best[key], profiles[key] = r, prof
             order.append(key)
         elif "news.google.com" in str(best[twin].get("url")) and "news.google.com" not in str(r.get("url")):
             best[twin] = r
     return [best[k] for k in order]
+
+
+def used_profiles(store: Any, days: int = 14, now: datetime | None = None) -> list[tuple[frozenset[str], ...]]:
+    """The name-weighted profiles (title and summary) of the ideas made lately. Never raises."""
+    since = ((now or datetime.now(UTC)) - timedelta(days=days)).isoformat()
+    try:
+        rows = (store.table(db.IDEAS).select("source_title,source_summary").gte("created_at", since).limit(1000)
+                .execute().data or [])
+    except Exception as exc:  # noqa: BLE001
+        log.info("used profiles not read: %s", str(exc)[:100])
+        return []
+    return [p for p in (story_profile(r.get("source_title"), r.get("source_summary")) for r in rows) if p[0]]
 
 
 def used_stories(store: Any, days: int = 14, now: datetime | None = None) -> set[str]:
@@ -233,7 +297,8 @@ def candidates(store: Any, now: datetime | None = None) -> list[dict[str, Any]]:
     for chunk in db._in_filter_chunks(urls):
         spent |= {r.get("source_url") for r in (store.table(db.IDEAS).select("source_url").in_("source_url", chunk)
                                                 .execute().data or [])}
-    return one_per_story([r for r in rows if r["url"] not in spent], used_stories(store, now=now))
+    return one_per_story([r for r in rows if r["url"] not in spent], used_stories(store, now=now),
+                         used_profiles(store, now=now))
 
 
 def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> list[dict[str, Any]]:

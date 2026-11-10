@@ -216,6 +216,13 @@ def thread_levels(text: str, most: int = THREAD_LEVELS, limit: int = THREAD_MAX)
     """A caption as the levels of one Threads chain: its paragraphs in order, neighbours joined while they fit one post, at
     most `most` levels (the tail is folded into the last ones). Joined with a blank line, the levels are the caption again,
     which is how a chain already in Zernio is recognised as this post. A caption of one paragraph is one level."""
+    explicit = [p.strip() for p in re.split(r"(?m)^[ \t]*---[ \t]*$", str(text or "")) if p.strip()]
+    if len(explicit) > 1:
+        # the writer marked the posts itself (a line holding only ---): each is one post, the first carries the pictures
+        # (Wan, 10 Nov 2026: a thread with a continuation, not one post)
+        while len(explicit) > most:
+            explicit[-2:] = [explicit[-2] + "\n\n" + explicit[-1]]
+        return explicit
     paras = [p.strip() for p in re.split(r"\n\s*\n", str(text or "")) if p.strip()]
     if len(paras) <= 1:
         return paras

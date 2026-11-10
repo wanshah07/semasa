@@ -19,6 +19,9 @@ LOGO = RULES / "official-logo-transparent.png"
 # Wan's own icon: the closing card of a LinkedIn film (his byline), in place of the brand logo
 WAN_ICON = RULES / "wan-icon.png"
 DESIGNS = {
+    "blur-photo": "Design 3 — Blurred photo: each scene's own picture, blurred and pushed in, behind a pale veil, with the "
+                  "same dark type and blocks as Design 1 on top, so the words stay easy to read whatever the picture. "
+                  "Scenes arrive zooming out of a heavy blur and leave by zooming through into the next.",
     "bright-editorial": "Design 1 — Original Bright Photo / Diagram / Editorial: preserve the approved v9–v15 family. "
                         "Bright mint/cream, editorial type, real licensed photos with provenance when provided, "
                         "qualitative diagrams and consistent transparent centered captions. Do not replace with Design 2.",

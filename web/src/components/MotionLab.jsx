@@ -39,6 +39,7 @@ const STATUS_CLS = { waiting: "bg-accent/15 text-accent", pending: "bg-warn/15 t
 const DESIGN_BM = {
   "bright-editorial": "Reka bentuk 1 · Foto / Rajah / Editorial cerah asal",
   "continuous-line": "Reka bentuk 2 · Garis berterusan (v17 diluluskan)",
+  "blur-photo": "Reka bentuk 3 · Latar foto kabur (tulisan kekal mudah dibaca)",
 };
 const RECIPE_BM = {
   auto: "Auto · adaptasi pendidikan yang sesuai",

@@ -4,7 +4,7 @@
    gradient with its line grid, a feathered picture, numbered points, and subtitles in the same lane. No sound here: the
    worker mixes the recorded voice and the music afterwards, exactly as it does for HyperFrames. */
 import React, { useState } from "react";
-import { AbsoluteFill, Img, Sequence, continueRender, delayRender, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Easing, Img, Sequence, continueRender, delayRender, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import interLatin from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2";
 import interExt from "@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2";
 
@@ -60,7 +60,41 @@ const Backdrop = ({ bg }) => {
   );
 };
 
-const Scene = ({ scene, palette }) => {
+/* Design 3, the blurred photo (mirrors blur_layer / blur_tweens in motion_layout.py): the scene's own picture, blurred and pushed
+   in, under a pale veil so the dark words stay readable on any picture. It arrives zooming out of a heavy blur, drifts, then
+   rushes forward into blur as the scene ends (a zoom-through into the next one), and a soft accent band sweeps across at the cut. */
+const BlurBackdrop = ({ photo, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps, width: W, durationInFrames: D } = useVideoConfig();
+  const u = W / 1080;
+  const inEnd = Math.round(fps * 0.9), outLen = Math.round(fps * 0.4);
+  const expo = Easing.out(Easing.exp);
+  let scale, blur;
+  if (frame < inEnd) {
+    const t = interpolate(frame, [0, inEnd], [0, 1], { ...clamp, easing: expo });
+    scale = 1.35 + (1.12 - 1.35) * t;
+    blur = 70 + (30 - 70) * t;
+  } else {
+    scale = interpolate(frame, [inEnd, Math.max(inEnd + 1, D - outLen)], [1.12, 1.22], clamp);
+    blur = 30;
+  }
+  const rush = interpolate(frame, [D - outLen, D], [0, 1], { ...clamp, easing: Easing.in(Easing.quad) });
+  scale += (1.55 - scale) * rush;
+  blur += (80 - blur) * rush;
+  const sweep = interpolate(frame, [0, Math.round(fps * 0.65)], [0, 1], { ...clamp, easing: Easing.in(Easing.cubic) });
+  const drift = interpolate(frame, [inEnd, D], [0, -3], clamp);
+  return (
+    <AbsoluteFill style={{ overflow: "hidden" }}>
+      <Img src={staticFile(photo)} style={{ position: "absolute", left: "-8%", top: "-8%", width: "116%", height: "116%", objectFit: "cover",
+        transform: `translateX(${drift}%) scale(${scale})`, filter: `blur(${blur * u}px) saturate(1.2)` }} />
+      <AbsoluteFill style={{ background: "rgba(255,255,255,0.66)" }} />
+      <div style={{ position: "absolute", left: 0, top: 0, width: "16%", height: "100%", opacity: 1 - sweep,
+        transform: `translateX(${-130 + (640 + 130) * sweep}%)`, background: `linear-gradient(90deg, transparent, ${accent}8c, transparent)` }} />
+    </AbsoluteFill>
+  );
+};
+
+const Scene = ({ scene, palette, design }) => {
   const frame = useCurrentFrame();
   const { fps, width: W, height: H, durationInFrames: D } = useVideoConfig();
   const u = W / 1080;
@@ -83,8 +117,12 @@ const Scene = ({ scene, palette }) => {
       <Img src={staticFile(scene.photo)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: `scale(${zoom})` }} />
     </Rise>
   ) : null;
+  const blurred = design === "blur-photo" && !!scene.photo;
+  const punch = blurred ? interpolate(frame, [0, Math.round(fps * 0.8)], [0.965, 1], { ...clamp, easing: Easing.out(Easing.exp) }) : 1;
   return (
-    <AbsoluteFill style={{ color: palette.ink, fontFamily: FONT, opacity: out }}>
+    <>
+    {blurred ? <BlurBackdrop photo={scene.photo} accent={palette.accent} /> : null}
+    <AbsoluteFill style={{ color: palette.ink, fontFamily: FONT, opacity: out, transform: punch === 1 ? undefined : `scale(${punch})` }}>
       <div style={{ position: "absolute", left: W * 0.08, top: boxTop, width: boxW, height: boxH, display: "flex",
                     flexDirection: "column", justifyContent: "space-evenly", alignItems: "flex-start", gap: W * 0.028, overflow: "hidden" }}>
         <Rise at={2} style={{ fontSize: head, fontWeight: 800, lineHeight: 1.12, overflowWrap: "anywhere", maxWidth: "100%", flex: "none" }}>{scene.heading}</Rise>
@@ -102,6 +140,7 @@ const Scene = ({ scene, palette }) => {
         ) : null}
       </div>
     </AbsoluteFill>
+    </>
   );
 };
 
@@ -138,7 +177,7 @@ const Outro = ({ outro }) => {
   );
 };
 
-export const Film = ({ scenes, palette, outro, fps, bg }) => {
+export const Film = ({ scenes, palette, outro, fps, bg, design }) => {
   useFonts();
   const f = (s) => Math.round(s * fps);
   return (
@@ -146,7 +185,7 @@ export const Film = ({ scenes, palette, outro, fps, bg }) => {
       {bg ? <Backdrop bg={bg} /> : null}
       {scenes.map((s) => (
         <Sequence key={s.id} from={f(s.start)} durationInFrames={Math.max(1, f(s.duration))}>
-          {s.id === "brand-outro" && outro ? <Outro outro={outro} /> : <Scene scene={s} palette={palette} />}
+          {s.id === "brand-outro" && outro ? <Outro outro={outro} /> : <Scene scene={s} palette={palette} design={design} />}
         </Sequence>
       ))}
       {scenes.flatMap((s) => (s.captions || []).map(([text, a, b], i) => (

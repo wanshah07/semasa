@@ -225,6 +225,12 @@ def slides_key(raw: Any) -> str:
     return json.dumps(normalise_slides(raw), ensure_ascii=False, separators=(",", ":"))
 
 
+def thread_parts(text: str, sep: str = "---") -> list[str]:
+    """A Threads caption as its posts (Wan, 10 Nov 2026: a thread, not one post): the pieces between lines holding only `sep`,
+    trimmed, empty ones dropped. A caption with no separator is one post."""
+    return [p.strip() for p in re.split(rf"(?m)^[ \t]*{re.escape(sep)}[ \t]*$", str(text or "")) if p.strip()]
+
+
 def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
          schedule: dict[str, list[str]] | None = None, indo_extra: Any = None) -> list[dict[str, Any]]:
     brand = {**RULES["brand"], **(brand or {})}
@@ -245,7 +251,15 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
             add(True, where, "empty")
             continue
         lim = limits.get(p)
-        if lim and len(t) > lim["max"]:
+        if lim and lim.get("parts"):
+            # a thread: every post has the limit, and there are at most `parts` of them
+            posts = thread_parts(t, lim.get("separator") or "---")
+            if len(posts) > lim["parts"]:
+                add(True, where, f"{len(posts)} posts in the thread, over the {lim['parts']} limit")
+            for n, part in enumerate(posts, 1):
+                if len(part) > lim["max"]:
+                    add(True, where, f"post {n} of the thread is {len(part)} chars, over the {lim['max']} limit")
+        elif lim and len(t) > lim["max"]:
             add(True, where, f"{len(t)} chars, over the {lim['max']} limit")
         for rx, label in HARD:
             if rx.search(t):

@@ -65,6 +65,8 @@ def safe(old: str, new: str) -> bool:
     a, b = _tokens(old), _tokens(new)
     if a[0] != b[0] or a[1] - b[1] or b[1] - a[1] or a[2] != b[2]:
         return False
+    if len(re.findall(r"(?m)^[ \t]*---[ \t]*$", old)) != len(re.findall(r"(?m)^[ \t]*---[ \t]*$", new)):
+        return False                                  # the posts of a thread stay as many as they were
     ratio = len(new) / max(1, len(old))
     return 0.8 <= ratio <= 1.2
 

@@ -26,7 +26,9 @@
    },
    "threads": {
     "max": 500,
-    "hashtags": 1
+    "hashtags": 1,
+    "parts": 5,
+    "separator": "---"
    }
   },
   "linkedin": {

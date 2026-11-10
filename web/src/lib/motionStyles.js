@@ -6,6 +6,7 @@ export const completeRecipes = bundles;
 export const designOptions = [
   {id:'bright-editorial', name:'Design 1 · Original Bright Photo / Diagram / Editorial'},
   {id:'continuous-line', name:'Design 2 · Continuous Line (approved v17)'},
+  {id:'blur-photo', name:'Design 3 · Blurred photo background (text stays easy to read)'},
 ];
 const bright = { ...recipes[3], id: 'bright-education', name: 'Bright education (Financial Education motifs)' };
 const supported = new Set(['auto', 'bright-education', 'financial-education-reel',

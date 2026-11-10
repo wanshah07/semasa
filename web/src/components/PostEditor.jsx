@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { flagWords } from "../lib/complianceBm";
 import { AlertTriangle, CalendarClock, Check, Eraser, ImagePlus, Info, RotateCcw, Save, Trash2, UploadCloud, X, XCircle } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
-import { LIMITS, charLen, hardCount, normaliseSlides, platformsOf, scan, scanMedia, stripPromo } from "../lib/compliance";
+import { LIMITS, charLen, hardCount, normaliseSlides, platformsOf, scan, scanMedia, stripPromo, threadParts } from "../lib/compliance";
 import { dueMs, duplicatesOf, handedOver, nextFreeSlot, refOf, slotGone, slotsOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
 import PostWorkflow from "./PostWorkflow";
@@ -385,12 +385,17 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       {plats.map((p) => {
         const v = ((text[view] || {})[p]) || "";
         const lim = (LIMITS[post.stream] || {})[p];
+        // a thread (Threads): the posts are separated by a line holding only ---, each has the limit (Wan, 10 Nov 2026)
+        const parts = lim?.parts ? threadParts(v, lim.separator || "---") : null;
+        const over = lim && (parts ? parts.length > lim.parts || parts.some((x) => charLen(x) > lim.max) : charLen(v) > lim.max);
         return (
           <label key={p} className="block">
-            <Label hint={`${charLen(v)}${lim ? ` / ${lim.max}` : ""} ${t("aksara", "characters")}${
-              view !== lang ? ` · ${t("tidak dihantar", "not sent")}` : ""}`}>{PLAT_LABEL[p]}</Label>
-            <TextArea id={`cap-${post.id}-${p}`} rows={p === "threads" ? 4 : 7} value={v} disabled={capFrozen(p)} onChange={(e) => setCaption(view, p, e.target.value)}
-              className={lim && charLen(v) > lim.max ? "border-danger" : ""} />
+            <Label hint={parts && parts.length > 1
+              ? `${t("{n} post berantai", "{n} posts in the thread", { n: parts.length })}: ${parts.map((x) => charLen(x)).join(" · ")} / ${lim.max}${view !== lang ? ` · ${t("tidak dihantar", "not sent")}` : ""}`
+              : `${charLen(v)}${lim ? ` / ${lim.max}` : ""} ${t("aksara", "characters")}${view !== lang ? ` · ${t("tidak dihantar", "not sent")}` : ""}`}>{PLAT_LABEL[p]}</Label>
+            {lim?.parts && <p className="mb-1 text-[11px] text-muted">{t("Asingkan setiap post dengan satu baris yang hanya ada ---. Post pertama membawa gambar.", "Separate each post with a line holding only ---. The first post carries the picture.")}</p>}
+            <TextArea id={`cap-${post.id}-${p}`} rows={p === "threads" ? 10 : 7} value={v} disabled={capFrozen(p)} onChange={(e) => setCaption(view, p, e.target.value)}
+              className={over ? "border-danger" : ""} />
           </label>
         );
       })}

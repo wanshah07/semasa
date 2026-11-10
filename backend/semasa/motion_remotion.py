@@ -69,7 +69,7 @@ def ready() -> bool:
 
 
 def props(scenes: list[dict[str, Any]], total: float, w: int, h: int, palette: dict[str, str],
-          name: str = "", logo: str = "", ambient: str = "") -> dict[str, Any]:
+          name: str = "", logo: str = "", ambient: str = "", design: str = "") -> dict[str, Any]:
     """What the Remotion composition draws: nothing here is new wording, only the worker's own scenes reshaped. `name` is
     the closing card's name: the brand on ws.regulab, Wan's byline on LinkedIn (which never carries the brand)."""
     out = []
@@ -85,7 +85,8 @@ def props(scenes: list[dict[str, Any]], total: float, w: int, h: int, palette: d
     # the background is HyperFrames' own: its ambient gradient and line grid, from the one table in motion_layout
     a, b = motion_layout.AMBIENTS.get(ambient, motion_layout.AMBIENTS[motion_layout.DEFAULT_AMBIENT])[:2]
     bg = {"from": a, "to": b, "angle": 145, "stop": 70, "grid": motion_layout.rgba(palette["accent"], .11), "step": 72}
-    return {"width": w, "height": h, "fps": FPS, "bg": bg, "seconds": round(float(total), 2), "palette": palette, "scenes": out,
+    return {"width": w, "height": h, "fps": FPS, "bg": bg, "design": design if design == motion_layout.BLUR_DESIGN else "",
+            "seconds": round(float(total), 2), "palette": palette, "scenes": out,
             "outro": {"name": name, "line": str(last.get("heading") or ""), "logo": logo,
                       "brand": name == "ws.regulab"} if last else None}
 

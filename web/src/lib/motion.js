@@ -35,7 +35,7 @@ const langOf = (v, stream) => (LANGUAGES.some(([k]) => k === v) ? v : defaultLan
 /* the voice (Wan, 24 Oct 2026); the talking mascot was removed on 25 Oct 2026: "remove mascot usage" */
 export const VOICES = [["auto", "Auto: selang-seli lelaki dan perempuan setiap video", "Auto: male and female in turn, one voice a film"], ["kitten", "VoiceStudio KittenTTS (EN)", "VoiceStudio KittenTTS (EN)"], ["male", "Lelaki", "Male"], ["female", "Perempuan", "Female"], ["off", "Tiada suara", "No voice"]];
 const voiceOf = (v) => (VOICES.some(([k]) => k === v) ? v : "auto");
-export const designOf = v => v === 'continuous-line' ? v : 'bright-editorial';
+export const designOf = v => (v === 'continuous-line' || v === 'blur-photo') ? v : 'bright-editorial';
 /* The ambient colour behind every scene, chosen per film (Wan, 26 Oct 2026: "let me choose the background ambient colour in
    semasa"). Mint is the reference films' own tone and the default; the worker (motion_layout.AMBIENTS) has the same five. */
 export const AMBIENTS = [['mint', 'Mint (rujukan)', 'Mint (reference)', '#e0f5e9'], ['lime', 'Kuning-hijau', 'Yellow-green', '#dff0c2'],

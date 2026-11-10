@@ -14,7 +14,7 @@ const clone = (v) => JSON.parse(JSON.stringify(v ?? null));
  *  four can be changed (false = shown, not editable). */
 /** What the subject IS (Wan, 10 Nov 2026: "setiap kali storyboard explain apa yang patut"): [{term, meaning}] of an explainer. */
 export function termsOf(sb) {
-  const t = sb?.kind === "explainer" ? sb?.plan?.terms : null;
+  const t = sb?.kind === "explainer" ? sb?.plan?.terms : sb?.sb?.terms;   // the explainer's plan, or a template's storyboard
   return Array.isArray(t) ? t.filter((x) => x && str(x.term)).map((x) => ({ term: str(x.term), meaning: str(x.meaning) })) : [];
 }
 

@@ -36,7 +36,7 @@ from typing import Any
 
 from PIL import Image
 
-from . import db, hook_bank, motion_assets, motion_gpt_images, motion_storyboard, motion_styles, unsplash
+from . import db, definitions, hook_bank, motion_assets, motion_gpt_images, motion_storyboard, motion_styles, unsplash
 from .log import get_logger
 
 log = get_logger("semasa.motion.templates")
@@ -114,6 +114,7 @@ Answer ONE JSON object and nothing else:
 {{"title": "<the range or the offer in 2 to 5 words>", "hook_shape": <number>, "hook": "<the hook line, at most 12 words>",
 "headline": ["<1 to 3 words>", "<1 to 3 words>"], "caption": "<at most 10 words>",
 "background": "<the background picture: setting, light and props in 20 to 60 words>",
+{terms_shape},
 "products": [{{"name": "<2 to 6 words>", "benefits": ["<2 to 5 words>", "<2 to 5 words>"], "accent": "#RRGGBB"}}]}}
 
 RULES:
@@ -126,6 +127,7 @@ RULES:
 - The background is calm and bright, with empty space in the middle, and NEVER shows a product, packaging, a person or text.
 - No website, no URL, no handle, no hashtag, no emoji, no em dash, no call to action.
 - Every word on screen is in {language}.
+- {terms_rule} The film has no narrator: the list is for the person approving the storyboard.
 {hook}"""
 
 STORY_SYSTEM = """You write the storyboard of a 20-second upright photo-story film for social media: five full-screen
@@ -134,6 +136,7 @@ photographs, each with a short caption, then a dark closing card with a title an
 Answer ONE JSON object and nothing else:
 {{"title": "<1 to 4 words>", "subtitle": "<at most 8 words>", "hook_shape": <number>, "hook": "<the hook, at most 12 words>",
 "photo_query": "<2 to 4 plain English words that find a stock photo of the topic>",
+{terms_shape},
 "scenes": [{{"caption": "<at most 8 words>", "prompt": "<the photograph: subject, place, light, framing in 20 to 60 words>",
 "accent": "#RRGGBB"}}]}}
 
@@ -146,6 +149,7 @@ RULES:
 - Captions name what the photo shows or the point it makes, from the BRIEF only. Never invent a figure, a date, a name or a claim.
 - No website, no URL, no handle, no hashtag, no emoji, no em dash, no call to action.
 - Every word on screen is in {language}.
+- {terms_rule} The film has no narrator: the list is for the person approving the storyboard.
 {hook}"""
 
 
@@ -156,9 +160,13 @@ def _hook_block(stream: str, bank: Any, where: str) -> str:
 
 def system_for(kind: str, *, count: int, lang: str, stream: str, bank: Any = None) -> str:
     if kind == "story":
-        return STORY_SYSTEM.format(language=LANG_WORDS[lang], hook=_hook_block(stream, bank, "the caption on the first photo"))
+        return STORY_SYSTEM.format(language=LANG_WORDS[lang], hook=_hook_block(stream, bank, "the caption on the first photo"),
+                                   terms_shape=definitions.SHAPE,
+                                   terms_rule=definitions.RULE_LIST_ONLY)
     return SHOWCASE_SYSTEM.format(count=count, joiner=JOINER[lang], language=LANG_WORDS[lang],
-                                  hook=_hook_block(stream, bank, "the hook line under the intro title"))
+                                  hook=_hook_block(stream, bank, "the hook line under the intro title"),
+                                  terms_shape=definitions.SHAPE,
+                                  terms_rule=definitions.RULE_LIST_ONLY)
 
 
 def request(kind: str, row: dict[str, Any], products: list[dict[str, Any]], brand: dict[str, Any]) -> str:
@@ -264,7 +272,7 @@ def validate_showcase(data: Any, products: list[dict[str, Any]], *, lang: str, s
         out.append({"name": name[:60], "benefits": benefits, "accent": _accent(item.get("accent"), f"product {i + 1}")})
     return {"title": _line(data, "title", 5, speak=speak), "hook": hook, "hook_shape": shape, "headline": headline,
             "caption": _line(data, "caption", 10, speak=speak), "background": _prompt(data.get("background"), '"background"'),
-            "products": out}
+            "terms": definitions.clean(data.get("terms"), speak), "products": out}
 
 
 def validate_story(data: Any, *, lang: str, stream: str, bank: Any = None, speak: Callable[[str], str] = str) -> dict[str, Any]:
@@ -285,7 +293,8 @@ def validate_story(data: Any, *, lang: str, stream: str, bank: Any = None, speak
                     "accent": _accent(sc.get("accent"), f"scene {i + 1}")})
     query = " ".join(_words(data.get("photo_query")).split()[:4])
     return {"title": _line(data, "title", 4, speak=speak), "subtitle": _line(data, "subtitle", 8, speak=speak),
-            "hook": hook, "hook_shape": shape, "photo_query": query, "scenes": out}
+            "hook": hook, "hook_shape": shape, "photo_query": query, "terms": definitions.clean(data.get("terms"), speak),
+            "scenes": out}
 
 
 def _ask_gemini(store: Any, gemini_llm: Any) -> Callable[[str, str], Any] | None:

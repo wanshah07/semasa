@@ -112,6 +112,14 @@ def scenes_of(sb: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def terms_of(sb: dict[str, Any]) -> list[dict[str, Any]]:
+    """What the subject IS, for every kind of film (Wan, 10 Nov 2026): the explainer keeps it on its plan, the photo story and the
+    showcase on their storyboard."""
+    holder = sb.get("plan") if sb.get("kind") == "explainer" else sb.get("sb")
+    raw = holder.get("terms") if isinstance(holder, dict) else None
+    return [t for t in (raw or []) if isinstance(t, dict) and t.get("term")]
+
+
 def title_of(row: dict[str, Any], sb: dict[str, Any]) -> str:
     if sb.get("kind") == "explainer":
         return str((sb.get("plan") or {}).get("title") or row.get("brief") or "")
@@ -124,7 +132,7 @@ def telegram_text(row: dict[str, Any], sb: dict[str, Any], limit: int = 3900) ->
     if row.get("error"):
         parts[2:2] = [f"⚠️ {str(row['error'])[:300]}", ""]
     plan = sb.get("plan") if sb.get("kind") == "explainer" and isinstance(sb.get("plan"), dict) else {}
-    terms = [t for t in (plan.get("terms") or []) if isinstance(t, dict) and t.get("term")]
+    terms = terms_of(sb)
     if terms:                 # what the subject IS (Wan, 10 Nov 2026), so the storyboard can be judged by someone new to it
         parts += ["📖 Apa itu:"] + [f"• {t['term']}: {t.get('meaning') or ''}" for t in terms] + [""]
     sheet = str((plan.get("preview") or {}).get("sheet") or "")

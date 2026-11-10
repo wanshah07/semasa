@@ -69,6 +69,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
   const [styleRepoId, setStyleRepoId] = useState("");
   const [style, setStyle] = useState("bright-education");
   const [design, setDesign] = useState("bright-editorial");
+  const [renderer, setRenderer] = useState("");          // "" = HyperFrames (the default), "remotion" = the second renderer
   const [ambient, setAmbient] = useState("mint");
   const [effects, setEffects] = useState(['B04']);
   const [effectMode, setEffectMode] = useState('auto');
@@ -112,7 +113,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
 
   const add = async () => {
     if (assetsBusy) return;
-    let form = { brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, style, mode, design, ambient, effects, effectMode, assetMode, assets };
+    let form = { brief, url, stream, resolution, seconds, styleRepoId, aiBackground, language, voice, style, mode, design, ambient, effects, effectMode, assetMode, assets, renderer };
     if (!isTemplate && refKind(url) === "repo") {
       // a GitHub repo in the reference box is this film's STYLE: filed in the repo library (once) and chosen, never read as the story
       if (!brief.trim()) return onToast?.(t("Tulis idea juga: repo itu hanya gaya video.", "Write the idea too: the repo is only the film's style."), "warn");
@@ -307,6 +308,11 @@ export default function MotionLab({ user, onToast, view = "make" }) {
         <label className="block" data-motion-design><Label>{t("Varian reka bentuk (dikekalkan)", "Design variant (preserved)")}</Label>
           <select aria-label={t("Varian reka bentuk", "Design variant")} value={design} onChange={e => setDesign(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
             {designOptions.map(d => <option key={d.id} value={d.id}>{L ? d.name : DESIGN_BM[d.id] || d.name}</option>)}
+          </select></label>
+        <label className="block" data-motion-renderer><Label hint={t("Remotion: satu rupa bersih, suara dan sari kata sama; 99 gaya hanya dengan HyperFrames", "Remotion: one clean look, same voice and subtitles; the 99 styles are HyperFrames only")}>{t("Enjin filem", "Film engine")}</Label>
+          <select aria-label={t("Enjin filem", "Film engine")} value={renderer} onChange={e => setRenderer(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
+            <option value="">HyperFrames</option>
+            <option value="remotion">Remotion</option>
           </select></label>
         <label className="block" data-motion-recipe><Label>{t("Gaya lampiran", "Attachment style")}</Label>
           <select aria-label={t("Gaya lampiran", "Attachment style")} value={style} onChange={e => setStyle(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">

@@ -43,6 +43,9 @@ jobs:
           timeout 300 sudo apt-get update -qq -o Acquire::Retries=3 -o Acquire::http::Timeout=30 && timeout 600 sudo apt-get install -y -qq ffmpeg
           pip install -r requirements.txt
           npx -y hyperframes@0.8.188 doctor || true          # warms the npx cache and says what the runner has
+          # the second renderer (backend/remotion): its packages and its own headless browser. A failure here is not fatal:
+          # a film that asks for Remotion falls back to HyperFrames and its report says so
+          (cd remotion && timeout 600 npm ci --no-audit --no-fund && timeout 300 npx remotion browser ensure) || echo "::warning::Remotion not installed; films use HyperFrames"
       - name: Write, check and render
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

@@ -6,6 +6,7 @@ import { LIMITS, charLen, hardCount, normaliseSlides, platformsOf, scan, scanMed
 import { dueMs, duplicatesOf, handedOver, nextFreeSlot, refOf, slotGone, slotsOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
 import PostWorkflow from "./PostWorkflow";
+import PostPullBack from "./PostPullBack";
 import { stampMYT } from "../lib/format";
 import { refusal, removeReference, uploadReference } from "../lib/storage";
 import { useLang } from "../lib/i18n";
@@ -373,6 +374,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
 
   return (
     <div className="space-y-4">
+      <PostPullBack post={post} onToast={onToast} onChanged={onChanged} />
       <div className="flex flex-wrap items-center gap-3">
         <Segmented value={view} onChange={setView} options={[["bm", "BM"], ["en", "EN"]]} />
         <span className="text-xs text-muted">{t("Bahasa yang dihantar:", "Language sent:")}</span>

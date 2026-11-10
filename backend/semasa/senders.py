@@ -324,6 +324,17 @@ class Zernio:
         got = self._call("GET", f"/posts/{post_id}")
         return self.shape(got.get("post") if isinstance(got.get("post"), dict) else got, account_id)
 
+    def delete(self, post_id: str) -> dict[str, Any]:
+        """DELETE /posts/{id} (Wan, 10 Nov 2026: a scheduled post is pulled back to be edited). A post that is already gone
+        is a success: the aim is that it is not in the queue. A post that has been published cannot be deleted, and Zernio
+        says so."""
+        try:
+            return self._call("DELETE", f"/posts/{post_id}")
+        except SendError as exc:
+            if "(404)" in str(exc) or "not found" in str(exc).lower():
+                return {"gone": True}
+            raise
+
     def posts(self, channel_ids: list[str], start: str, end: str) -> list[dict[str, Any]]:
         """Every post of these accounts due in [start, end], any status, in Buffer's shape (one row per account)."""
         want = {str(c) for c in channel_ids}
@@ -381,6 +392,10 @@ class ZernioHub:
         for cid in channel_ids:
             out += self._for(cid).posts([cid], start, end)
         return out
+
+    def delete(self, post_id: str, account_id: str = "") -> dict[str, Any]:
+        """Take a post out of Zernio's queue; the login that holds `account_id` does it."""
+        return self._for(account_id).delete(post_id)
 
     def get(self, post_id: str, account_id: str = "") -> dict[str, Any]:
         if account_id:

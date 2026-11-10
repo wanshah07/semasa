@@ -1,0 +1,46 @@
+name: Pull back
+
+# Pull a scheduled post back to draft so it can be edited (Wan, 10 Nov 2026: "make sure aku boleh ubah post untuk ws.regulab atau
+# linkedin"; backend/semasa/pullback.py, supabase/076). The page asks by inserting a row; the database wakes this worker
+# (repository_dispatch 'post_pull_back'); the hourly schedule is the net for a dispatch GitHub dropped. It deletes the post from
+# Zernio and puts it back to DRAFT: approving it again is still Wan's click, so this publishes nothing and approves nothing.
+# One schedule, in the repo that owns the job.
+on:
+  repository_dispatch:
+    types: [post_pull_back]
+  schedule:
+    - cron: "50 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: pullback
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  pullback:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Pull back
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ZERNIO_API_KEY_1: ${{ secrets.ZERNIO_API_KEY_1 }}
+          ZERNIO_API_KEY_2: ${{ secrets.ZERNIO_API_KEY_2 }}
+          ZERNIO_API_KEY_3: ${{ secrets.ZERNIO_API_KEY_3 }}
+        run: python -m semasa.pullback

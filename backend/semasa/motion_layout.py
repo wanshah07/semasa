@@ -101,6 +101,19 @@ def fit(blocks: list[tuple[str, float, float]], width: float, height: float, fix
         k *= 0.94
 
 
+# a subtitle never ends on one of these, nor between the words of one name ("Frontiers in | Medicine", Wan, 10 Nov 2026)
+HANGING = frozenset("""di ke dan atau yang pada dari dalam untuk dengan oleh kepada the a an of in on at to for by with and or
+but as from into than""".split())
+
+
+def hangs(words: list[str], j: int) -> bool:
+    """Would cutting before words[j] leave the subtitle hanging: on a preposition or article, or in the middle of a name?"""
+    before, after = words[j - 1].strip(".,;:!?\"'()").lower(), words[j].strip("\"'(")
+    prev_raw = words[j - 1].strip(".,;:!?\"'()")
+    name = prev_raw[:1].isupper() and after[:1].isupper() and not re.search(r"[.!?:;,]$", words[j - 1])
+    return before in HANGING or name
+
+
 def phrase_cuts(words: list[str], k: int) -> list[int]:
     """Where to cut `words` into k subtitles: near equal parts, but after a comma, full stop or similar when one is within four
     words, so a subtitle never ends in the middle of a phrase (Wan, 26 Oct 2026: "not hanging")."""
@@ -116,6 +129,12 @@ def phrase_cuts(words: list[str], k: int) -> list[int]:
                 if score < best_score:
                     best, best_score = j, score
         cut = best if best is not None else max(lo, min(hi, ideal))
+        if cut < len(words) and hangs(words, cut):       # the nearest cut that does not leave the subtitle hanging
+            for step in (1, -1, 2, -2, 3, -3):
+                alt = cut + step
+                if lo <= alt <= hi and 0 < alt < len(words) and not hangs(words, alt):
+                    cut = alt
+                    break
         if (not cuts or cut > cuts[-1]) and 0 < cut < n:
             cuts.append(cut)
     return cuts

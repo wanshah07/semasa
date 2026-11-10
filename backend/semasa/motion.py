@@ -62,6 +62,8 @@ from . import (
     motion_storyboard,
     motion_styles,
     motion_templates,
+    pronounce,
+    proofread,
     unsplash,
     writing_styles,
 )
@@ -375,6 +377,18 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
             sc["role"] = stage["role"]
     # the hook IS scene 1's heading, and when there is a narrator the first words said: made so here, never left to the writer
     hook = speak_as(motion_layout.plain(out.get("hook")))[:200].strip()
+    # grammar and spelling of every word the film shows or says, in its own language (Wan, 10 Nov 2026); facts are never changed
+    fields = {"hook": hook}
+    for i, sc in enumerate(clean):
+        fields[f"s{i}.h"], fields[f"s{i}.n"] = sc["heading"], sc["narration"]
+        fields.update({f"s{i}.l{j}": ln for j, ln in enumerate(sc["lines"])})
+    for k, t in enumerate(terms_raw := definitions.clean(out.get("terms"), speak_as)):
+        fields[f"t{k}"] = t["meaning"]
+    fixed, corrected = proofread.proofread(llm, fields, "en" if lang == "en" else "bm")
+    hook = fixed.get("hook", hook)
+    for i, sc in enumerate(clean):
+        sc["heading"], sc["narration"] = fixed.get(f"s{i}.h", sc["heading"]), fixed.get(f"s{i}.n", sc["narration"])
+        sc["lines"] = [fixed.get(f"s{i}.l{j}", ln) for j, ln in enumerate(sc["lines"])]
     clean[0]["heading"], clean[0]["hook_shape"] = hook, shape
     clean[0]["hook_first_said"] = bool(clean[0]["narration"]) and hook_bank.lead_matches(hook, clean[0]["narration"])
     if row.get("voice") == "off":
@@ -394,10 +408,11 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
                 sc["narration"] = " ".join(f"{sc['narration']} {' '.join(missing)}".split())[:700]
         if not teaser:                    # the facts are said, so the speech must still fit the film: cut before it is recorded
             trim_to_budget(clean, int((FILM_MAX - SPEECH_RESERVE) * SPEECH_WPS))
-    terms = definitions.clean(out.get("terms"), speak_as)
+    terms = [{**t, "meaning": fixed.get(f"t{k}", t["meaning"])} for k, t in enumerate(terms_raw)]
     meta = {"title": str(out.get("title") or "")[:160], "terms": terms,
             "photo_query": " ".join(str(out.get("photo_query") or "").split())[:80],
-            "hook_shape": shape, "hook": hook, **({"hook_style": bank.id} if bank else {})}
+            "hook_shape": shape, "hook": hook, **({"hook_style": bank.id} if bank else {}),
+            **({"proofread": len(corrected)} if corrected else {})}
     if teaser:
         clean[0]["heading"] += " · " + motion_styles.cta(row)
         clean[0]["narration"] = "" if row.get("voice") == "off" else (
@@ -612,7 +627,19 @@ def voice_scenes(scenes: list[dict[str, Any]], language: str, choice: str, folde
         if name and sc.get("narration"):
             rel = f"assets/voice-{i + 1}.mp3"
             try:
-                got = speak(sc["narration"], name, folder / rel, runner)
+                said = pronounce.speech_text(sc["narration"], language)     # what is READ ALOUD (the screen keeps its spelling)
+                got = speak(said, name, folder / rel, runner)
+                # the clip is measured by ffmpeg itself, apart from the worker's own calls; no file, no measurement, no verdict
+                why = (pronounce.problem(folder / rel, said, got["duration"]) if choice != "kitten" and (folder / rel).exists()
+                       else "")
+                if why:
+                    # a silent or impossible clip is recorded again once with Google's voice, and the film says so
+                    log.warning("voice of scene %d is wrong (%s); recorded again", i + 1, why)
+                    try:
+                        got = voice_mod.fallback(said, name, folder / rel, runner, RuntimeError(why))
+                        note += f" (scene {i + 1}: {why}; Google's voice used)"
+                    except Exception as exc:  # noqa: BLE001 - the first recording stands, flagged
+                        note += f" (scene {i + 1}: {why}; could not record again: {str(exc)[:60]})"
                 sc["audio"], sc["words"], sc["audio_s"] = rel, got["words"], got["duration"]
                 if got.get("provider") == "google" and "Google" not in note:
                     note += " (Edge gave no audio, so Google's voice was used)"

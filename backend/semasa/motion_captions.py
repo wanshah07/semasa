@@ -86,6 +86,30 @@ def without_hand_offs(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
 
 
+# the invitation to follow belongs to the closing logo card alone (Wan, 10 Nov 2026: "jangan lupa follow kami untuk tips
+# seterusnya jangan ulang, hanya appear bersama dengan logo saja"). "ikuti garis panduan" (follow the guideline) is not one.
+FOLLOW_ASK = re.compile(
+    r"\b(?:jangan lupa (?:untuk )?(?:follow|ikuti)"
+    r"|(?:follow|ikuti|subscribe) (?:kami|saya|kita|us|me|for more|untuk (?:tip|tips|maklumat|info))"
+    r"|follow (?:ws\.?regulab|akaun|page)|(?:tip|tips) seterusnya|stay tuned)\b", re.I)
+
+
+def follow_ask(text: str) -> bool:
+    """True when `text` invites the viewer to follow: said once, with the logo, and nowhere else in the film."""
+    return bool(FOLLOW_ASK.search(text or ""))
+
+
+def without_follow_asks(text: str) -> str:
+    """`text` with every sentence that invites the viewer to follow taken out (paragraph breaks and hashtags are kept)."""
+    out = []
+    for para in str(text or "").split("\n"):
+        if para.strip().startswith("#"):
+            out.append(para)
+            continue
+        out.append(" ".join(s for s in re.split(r"(?<=[.!?])\s+", para) if s and not follow_ask(s)))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
 def hashtags_split(text: str) -> tuple[str, list[str]]:
     """`text` without its trailing hashtag line(s), and those hashtags in order."""
     lines = text.rstrip().split("\n")

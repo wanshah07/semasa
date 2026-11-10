@@ -958,7 +958,8 @@ def test_the_script_prompt_asks_for_hook_then_story_and_fact_then_what_was_misse
         assert a < b < c < d, "the four parts, in order"
         assert "ONE scene" in sys_prompt and "ACTUAL fact inside" in sys_prompt, "story and fact are one scene"
         assert "Never invent a number, date, clause or case" in sys_prompt, "the missed-out scene may not make things up"
-        assert "FOLLOW is the only ask" in sys_prompt and "never ask the viewer to comment, share, save" in sys_prompt
+        assert "Do NOT invite the viewer to follow" in sys_prompt and "Never ask the viewer to comment, share, save" in sys_prompt
+        assert "appears nowhere else" in sys_prompt, "the follow line is the logo card's alone"
     # the CTA the prompt models, and the closing card's own, are neither compliance CTAs nor 'go and find out' hand-offs
     for line in ("ikuti kami untuk tip macam ni", "follow for more like this", "Follow us for more",
                  "Ikuti saya untuk tip seterusnya"):

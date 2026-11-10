@@ -97,7 +97,7 @@ def test_the_writer_is_told_to_say_what_the_subject_is_and_the_terms_are_kept():
         got = motion.plan_scenes(LLM(), row, "", "t", "x")
     finally:
         hb.declared = orig
-    assert got["terms"] == [{"term": "HIFU", "meaning": MEANING}]
+    assert got["terms"] == [{"term": "HIFU", "meaning": MEANING[:1].upper() + MEANING[1:]}]   # a sentence starts with a capital
 
 
 def test_the_review_shows_the_terms_and_the_preview_link_on_telegram():

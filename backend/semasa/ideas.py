@@ -36,6 +36,7 @@ from . import (
     hook_learning,
     language,
     my_designs,
+    proofread,
     slides,
     writing_styles,
 )
@@ -694,6 +695,9 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     text = normalise_text(out.get("text"), stream, lang)
     if not text.get(lang):
         raise IdeaError(f"the writer returned no {lang.upper()} caption")
+    # grammar and spelling, in the post's own language, before anything is stored (Wan, 10 Nov 2026); never changes a fact
+    fixed_hook, text, fixed_slides, corrected = proofread.post(llm, out, text, lang)
+    out = {**out, "hook": fixed_hook, **({"slides": fixed_slides} if fixed_slides is not None else {})}
     domain = idea.get("domain") or (out.get("domain") if out.get("domain") in DOMAINS else None)
     angle = idea.get("angle") or (out.get("angle") if out.get("angle") in ANGLES else None)
     if stream == "linkedin":
@@ -765,6 +769,8 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
              **({"hook_on_cover": cover_state} if cover_state else {}),
              "post_id": post_id, "media_jobs": len(jobs), "written_at": datetime.now(UTC).isoformat(),
              "model": getattr(llm, "last_model", "") or llm.s.model}
+    if corrected:
+        brief["proofread"] = len(corrected)        # how many fields the proofreader corrected, shown as a pill
     terms = definitions.clean(out.get("terms"))
     if terms:
         brief["terms"] = terms             # what the subject IS, shown on the idea card (Wan, 10 Nov 2026)

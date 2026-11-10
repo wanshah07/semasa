@@ -58,6 +58,17 @@ def remember_the_fitted_length(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def proofread_without_a_writer(request, monkeypatch):
+    """The proofreader asks the writer one more question (semasa/proofread.py). Tests that count or script the writer's answers
+    were written before it existed, so by default it runs its deterministic step only; `real_proofread` runs all of it."""
+    if "real_proofread" in request.keywords:
+        return
+    from semasa import proofread
+    real = proofread.proofread
+    monkeypatch.setattr(proofread, "proofread", lambda llm, fields, lang: real(None, fields, lang))
+
+
+@pytest.fixture(autouse=True)
 def no_remotion_here(monkeypatch):
     """Whether Remotion is installed on the machine running the tests must not change what they see: its preview and its
     renders are tested on their own, with `ready` switched on and a stand-in runner."""

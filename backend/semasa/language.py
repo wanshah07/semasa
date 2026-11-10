@@ -39,6 +39,15 @@ def slide_text(slide: Any) -> list[str]:
     return [t for t in out if t.strip()]
 
 
+def opening(out: Any, lines: int = 2) -> str:
+    """The first lines of the English LinkedIn caption: where a writing style's series label sits (or else the hook)."""
+    try:
+        text = str(out["text"]["en"]["linkedin"])
+    except (KeyError, TypeError):
+        return ""
+    return "\n".join([ln for ln in text.splitlines() if ln.strip()][:lines])
+
+
 def malay_fields(out: Any) -> list[str]:
     """The fields of a writer's answer that should be English and are not: the hook, every slide, the poster. The caption is the
     compliance scan's job. Empty when the answer is clean."""
@@ -47,6 +56,8 @@ def malay_fields(out: Any) -> list[str]:
     bad = []
     if is_malay(out.get("hook")):
         bad.append("hook")
+    if is_malay(opening(out)):
+        bad.append("caption opening")
     slides = out.get("slides") if isinstance(out.get("slides"), list) else []
     for i, s in enumerate(slides, 1):
         if any(is_malay(t) for t in slide_text(s)):

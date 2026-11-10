@@ -35,6 +35,7 @@ from . import (
     hook_bank,
     hook_learning,
     language,
+    modes,
     my_designs,
     proofread,
     slides,
@@ -658,6 +659,15 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
                                  bank=bank, hint=hint, style_block=writing_styles.block(style, stream=stream))
     fmt = format_of(idea)
     system += copywriting.block(copywriting.kind_of(idea, stream, fmt))
+    # the mode of this post (Wan, 10 Nov 2026): Wan's own pick on the idea, else chosen from the content and rotated with the
+    # modes used lately, the same way a film's is; it changes the arrangement of the facts, never the voice or a rule
+    mode = str((idea.get("brief") or {}).get("mode") or "") if isinstance(idea.get("brief"), dict) else ""
+    if mode not in modes.MODES:
+        content = " ".join(str(x or "") for x in (idea.get("source_title"), idea.get("note"), source.get("title"),
+                                                    source.get("description"), str(source.get("text") or "")[:1500]))
+        mode, mode_why = modes.choose(content, modes.recent_modes(store))
+        log.info("idea %s: mode %s, %s", str(idea.get("id"))[:8], mode, mode_why)
+    system += modes.post_block(mode, stream)
     want_slides = fmt == "carousel"
     want_poster = fmt == "poster"
     if want_slides:
@@ -780,6 +790,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     terms = definitions.clean(out.get("terms"))
     if terms:
         brief["terms"] = terms             # what the subject IS, shown on the idea card (Wan, 10 Nov 2026)
+    brief["mode"] = mode                   # what the post is FOR, shown as a pill and counted when the next one is chosen
     brief["look"] = look_of(idea)          # the carousel look: Wan's choice on the idea, else the default; "classic" is kept too
     if fmt != "post":
         brief["format"] = fmt              # carousel or poster, kept for the page

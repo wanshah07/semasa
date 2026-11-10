@@ -49,6 +49,7 @@ from . import (
     fetch,
     hook_bank,
     hook_learning,
+    modes,
     motion_assets,
     motion_auto,
     motion_captions,
@@ -310,6 +311,24 @@ def structure_rule(mode: str = "explainer") -> str:
 
 
 STRUCTURE_RULE = structure_rule("explainer")
+
+
+def resolve_mode(store: Any, row: dict[str, Any], text: str) -> tuple[str, str]:
+    """Settle an Auto mode before the script is written (Wan, 10 Nov 2026: rotate the modes, choose the one that suits the
+    content): chosen from the content and the modes used lately, then written onto the row so a Redo and the storyboard keep
+    it. A mode Wan picked, and the teaser, are left exactly as they are. Returns (mode, why); why is empty when nothing was
+    decided here."""
+    current = motion_styles.mode(row)
+    if current != "auto":
+        return current, ""
+    mode, why = modes.choose(text, modes.recent_modes(store))
+    options = {**(row.get("options") or {}), "mode": mode, "mode_why": why}
+    row["options"] = options
+    try:
+        store.table(TABLE).update({"options": options}).eq("id", row["id"]).execute()
+    except Exception as exc:  # noqa: BLE001 - the film is still written in this mode; only the record of it failed
+        log.warning("%s: mode not recorded (%s)", str(row.get("id"))[:8], str(exc)[:120])
+    return mode, why
 
 
 def no_follow(text: str, teaser: bool = False) -> str:
@@ -1552,6 +1571,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             if llm is None:           # only the storyboard needs the writer: an approved film is composed by the worker itself
                 raise RuntimeError("no AI writer: set a reader key in Tetapan → Tetapan AI")
             set_stage(store, row, "storyboard")
+            mode_name, mode_why = resolve_mode(store, row, f"{row.get('brief') or ''} {title} {str(text)[:1500]}")
             # Wan's writing style (Phase 4) shapes the script's voice; every rule in the script prompt still outranks it
             voice_style = writing_styles.block(writing_styles.pick_for_idea(store, row.get("idea_id")), film=True)
             voice_style += copywriting.block("film")
@@ -1574,8 +1594,10 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                                            photo_get=photo_get, own_get=own_get, gpt_login=gpt_login, gemini=gemini,
                                            cloudflare=cloudflare, local=local)
             prev_note = storyboard_preview(store, row, plan, folder, local, runner)
+            mode_note = f"Mode: {modes.name(mode_name)} ({mode_why})" if mode_why else (
+                f"Mode: {modes.name(mode_name)}" if mode_name in modes.MODES else "")
             return motion_review.hold(store, row, "explainer", {"plan": plan},
-                                      " · ".join(x for x in (sb_note, pic_note, prev_note) if x))
+                                      " · ".join(x for x in (mode_note, sb_note, pic_note, prev_note) if x))
         try:
             plan = approved_plan(row, saved)
         except motion_review.StoryboardNeedsFix as exc:

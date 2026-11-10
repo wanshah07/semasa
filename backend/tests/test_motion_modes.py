@@ -22,12 +22,13 @@ def test_each_mode_gives_the_writer_its_own_scene_jobs_in_the_same_four_parts(mo
         assert "Never invent a number, date, clause or case" in system
 
 
-def test_a_mode_nobody_knows_is_an_explainer_and_the_teaser_is_still_its_own_thing():
+def test_a_mode_nobody_knows_is_auto_and_the_teaser_is_still_its_own_thing():
     assert motion_styles.mode({"options": {"mode": "news"}}) == "news"
-    assert motion_styles.mode({"options": {"mode": "nonsense"}}) == "explainer"
-    assert motion_styles.mode({}) == "explainer"
+    assert motion_styles.mode({"options": {"mode": "nonsense"}}) == "auto", "settled by the worker (semasa.modes), then kept"
+    assert motion_styles.mode({}) == "auto"
     assert motion_styles.mode({"options": {"mode": "teaser"}}) == "teaser"
-    assert motion.STRUCTURE_RULE == motion.structure_rule("explainer"), "films without a mode are written exactly as before"
+    assert motion.STRUCTURE_RULE == motion.structure_rule("explainer")
+    assert motion.structure_rule("auto") == motion.structure_rule("explainer"), "an unsettled mode is written as an explainer"
     system = motion.build_script_system({"stream": "regulab", "seconds": 10, "language": "bm", "voice": "male",
                                          "options": {"mode": "teaser"}}, "", count=1)
     assert "ONE scene" in system and "4. CTA" not in system

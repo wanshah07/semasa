@@ -118,6 +118,9 @@ function IdeaTerms({ r }) {
 
 /* Where an idea came from and what it is for, as pills: the source's own site (a link back, never into a post), the
    issuer when it is a regulator or journal, a replacement for a rejected draft, and the slot it was made for. */
+/* the mode a post was written in (Wan, 10 Nov 2026), chosen from its content and rotated: backend/semasa/modes.py */
+const MODE_NAMES = { explainer: ["Penerang", "Explainer"], news: ["Berita semasa", "Current news"], myth: ["Mitos vs fakta", "Myth vs fact"],
+  howto: ["Cara buat", "How-to"], case: ["Kajian kes", "Case study"] };
 function SourcePills({ r }) {
   const { t } = useLang();
   const host = hostOf(r.source_url);
@@ -133,6 +136,7 @@ function SourcePills({ r }) {
       {pair && <span className={`${pill} text-accent`} data-idea-pair={pair}>
         {t("Berpasangan dengan idea {s}", "Paired with the {s} idea", { s: pair === "linkedin" ? "LinkedIn" : "ws.regulab" })}</span>}
       {r.brief?.auto && <span className={`${pill} text-accent`}>{t("Auto-isi slot kosong", "Auto-filled empty slot")}</span>}
+      {MODE_NAMES[r.brief?.mode] && <span className={pill} title={t("Mod yang dipilih untuk kandungan ini", "The mode chosen for this content")}>{t(MODE_NAMES[r.brief.mode][0], MODE_NAMES[r.brief.mode][1])}</span>}
       {r.brief?.replaces && <span className={`${pill} text-warn`}>{t("Pengganti draf ditolak", "Replaces a rejected draft")}</span>}
       {pos?.date && <span className={pill}><CalendarClock size={10} className="shrink-0" /> {t("Untuk {d} {s}", "For {d} {s}", { d: pos.date, s: pos.slot })}</span>}
     </div>

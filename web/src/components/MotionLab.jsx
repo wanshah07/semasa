@@ -67,7 +67,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
   const pickLanguage = (v) => { setLanguage(v); setLangTouched(true); };
   const [resolution, setResolution] = useState("auto");      // auto: the size of the platform the film is for (lib/platformFormat.js)
   const [seconds, setSeconds] = useState(SECONDS.default);
-  const [mode, setMode] = useState("explainer");
+  const [mode, setMode] = useState("auto");
   const [styleRepoId, setStyleRepoId] = useState("");
   const [style, setStyle] = useState("bright-education");
   const [design, setDesign] = useState("bright-editorial");
@@ -351,6 +351,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
           <label className="block"><Label>{t("Mod", "Mode")}</Label>
             <Select value={mode} onChange={v => { setMode(v); setSeconds(v === "teaser" ? 10 : selectedSeconds(seconds, v)); }}
               options={[
+                ["auto", t("Auto · ikut kandungan, bergilir (bukan gimik)", "Auto · fits the content, rotates (never the gimmick)")],
                 ["explainer", t("Penerang · Hook / Fakta / Kenapa / Solusi", "Explainer · Hook / Fact / Why / Solution")],
                 ["news", t("Berita semasa · Hook / Apa jadi / Kenapa penting / Buat apa", "Current news · Hook / What happened / Why it matters / What to do")],
                 ["myth", t("Mitos vs fakta · Hook / Mitos / Kenapa orang percaya / Buat apa", "Myth vs fact · Hook / Myth / Why people believe it / What to do")],

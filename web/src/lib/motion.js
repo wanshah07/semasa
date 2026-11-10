@@ -135,13 +135,14 @@ export function clampSeconds(v) {
 }
 // what the film is FOR (Wan, 10 Nov 2026: "add more mode for motion, not only as explainer or gimmick"): all but the teaser are four
 // teaching scenes; the mode changes what scenes 2 and 3 are about (backend/semasa/motion.py MODES)
-export const MODES = ["explainer", "news", "myth", "howto", "case", "teaser"];
-export const modeOf = (v) => MODES.includes(v) ? v : "explainer";
+export const MODES = ["auto", "explainer", "news", "myth", "howto", "case", "teaser"];
+// Auto (Wan, 10 Nov 2026: "rotate the mode ... choose the suitable mode based on the content") is settled by the worker
+export const modeOf = (v) => MODES.includes(v) ? v : "auto";
 export const selectedSeconds = (seconds, mode) => modeOf(mode) === "teaser" && Number(seconds) === 10 ? 10 : clampSeconds(seconds);
 
 /* Wan's saved way of making a motion video (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"):
    settings.motion.defaults, saved from the Motion form, read whenever an idea or a post draft is made into a video. */
-export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "auto", design: "bright-editorial", ambient: "mint", previewMusic: "user-reel", style: "bright-education", mode: "explainer", resolution: "auto", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
+export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "auto", design: "bright-editorial", ambient: "mint", previewMusic: "user-reel", style: "bright-education", mode: "auto", resolution: "auto", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
 /** The saved defaults over the built-in ones; an empty language means "the stream's own". */
 export function motionDefaults(settings) {
   const d = (settings || {}).motion?.defaults;
@@ -177,7 +178,7 @@ export const RENDERERS = ["remotion", "combined"];
 export const PRESETS = presets;
 const PRESET_IDS = new Set(presets.map((p) => p.id));
 
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "auto", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "auto", design = "bright-editorial", ambient = "mint", style = "bright-education", mode = "explainer", effects=['B04'], effectMode='auto', assetMode='auto', assets=[], renderer = "", preset = "" } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "auto", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "auto", design = "bright-editorial", ambient = "mint", style = "bright-education", mode = "auto", effects=['B04'], effectMode='auto', assetMode='auto', assets=[], renderer = "", preset = "" } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };

@@ -53,14 +53,16 @@ def resolve(row: dict[str, Any]) -> dict[str, Any]:
     return next((r for r in [*CATALOG, *BUNDLES] if r["id"] == key and key in SUPPORTED), BRIGHT)
 
 
-# what the film is FOR (options.mode); teaser is the 10 s gimmick, every other mode is four teaching scenes
-MODES = ("explainer", "news", "myth", "howto", "case", "teaser")
+# what the film is FOR (options.mode); teaser is the 10 s gimmick, every other mode is four teaching scenes. "auto" (Wan, 10 Nov
+# 2026: "rotate the mode ... choose the suitable mode based on the content") is settled by the worker before the script is
+# written (semasa.modes) and the chosen mode written back, so a Redo keeps it.
+MODES = ("auto", "explainer", "news", "myth", "howto", "case", "teaser")
 
 
 def mode(row: dict[str, Any]) -> str:
     options = row.get("options") or {}
     key = options.get("mode") if isinstance(options, dict) else None
-    return key if key in MODES else "explainer"
+    return key if key in MODES else "auto"
 
 
 def design(row: dict[str, Any]) -> str:

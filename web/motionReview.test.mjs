@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { canContinue, changed, continueFields, decideWords, hasStoryboardColumns, isReview, remakeFields, scenesOf, withEdits, writtenEpoch } from "./src/lib/motionReview.js";
+import { canContinue, changed, continueFields, decideWords, hasStoryboardColumns, isReview, remakeFields, scenesOf, termsOf, previewOf, withEdits, writtenEpoch } from "./src/lib/motionReview.js";
 import { STATUS_WORDS, motionTrack } from "./src/lib/motion.js";
 
 // Wan, 7 Nov 2026: "make sure all storyboard appear and approve before proceed for motion creation"
@@ -67,5 +67,14 @@ assert.match(decideWords("status:pending", "approve", 1), /no longer waiting/);
 // every decision names the storyboard it was made on (071 refuses one made on an older storyboard)
 assert.equal(writtenEpoch(explainer), 1794013200); assert.equal(writtenEpoch({}), null); assert.equal(writtenEpoch(null), null);
 assert.match(decideWords("changed", "approve", 0), /diganti/);
+
+// Wan, 10 Nov 2026: the storyboard says what its subject IS and shows a preview sheet of the film
+const withExtras = { ...explainer, plan: { ...explainer.plan, terms: [{ term: "HIFU", meaning: "alat gelombang ultrabunyi" }, { term: "", meaning: "x" }, null],
+  preview: { sheet: "https://cdn/x/preview-sheet.jpg", frames: ["https://cdn/x/preview-1.jpg", "javascript:alert(1)"], engine: "remotion layout" } } };
+assert.deepEqual(termsOf(withExtras), [{ term: "HIFU", meaning: "alat gelombang ultrabunyi" }]);
+assert.deepEqual(termsOf(explainer), []); assert.deepEqual(termsOf({ kind: "story", plan: { terms: [{ term: "a" }] } }), []);
+assert.equal(previewOf(withExtras).sheet, "https://cdn/x/preview-sheet.jpg");
+assert.deepEqual(previewOf(withExtras).frames, ["https://cdn/x/preview-1.jpg"]);   // only https addresses are ever shown
+assert.equal(previewOf(explainer), null); assert.equal(previewOf({ kind: "explainer", plan: { preview: { sheet: "http://x/a.jpg" } } }), null);
 
 console.log("motionReview: ok");

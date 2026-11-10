@@ -69,7 +69,7 @@ def ready() -> bool:
 
 
 def props(scenes: list[dict[str, Any]], total: float, w: int, h: int, palette: dict[str, str],
-          name: str = "", logo: str = "") -> dict[str, Any]:
+          name: str = "", logo: str = "", ambient: str = "") -> dict[str, Any]:
     """What the Remotion composition draws: nothing here is new wording, only the worker's own scenes reshaped. `name` is
     the closing card's name: the brand on ws.regulab, Wan's byline on LinkedIn (which never carries the brand)."""
     out = []
@@ -82,7 +82,10 @@ def props(scenes: list[dict[str, Any]], total: float, w: int, h: int, palette: d
                     "photo": str(sc.get("photo") or ""), "start": float(sc["start"]), "duration": float(sc["duration"]),
                     "captions": [[text, round(a, 2), round(b, 2)] for text, a, b in chunks]})
     last = next((sc for sc in scenes if sc.get("id") == "brand-outro"), None)
-    return {"width": w, "height": h, "fps": FPS, "seconds": round(float(total), 2), "palette": palette, "scenes": out,
+    # the background is HyperFrames' own: its ambient gradient and line grid, from the one table in motion_layout
+    a, b = motion_layout.AMBIENTS.get(ambient, motion_layout.AMBIENTS[motion_layout.DEFAULT_AMBIENT])[:2]
+    bg = {"from": a, "to": b, "angle": 145, "stop": 70, "grid": motion_layout.rgba(palette["accent"], .11), "step": 72}
+    return {"width": w, "height": h, "fps": FPS, "bg": bg, "seconds": round(float(total), 2), "palette": palette, "scenes": out,
             "outro": {"name": name, "line": str(last.get("heading") or ""), "logo": logo,
                       "brand": name == "ws.regulab"} if last else None}
 
@@ -104,4 +107,41 @@ def render(folder: Path, data: dict[str, Any], runner: Any = subprocess.run, tim
     p = runner(cmd, cwd=str(PROJECT), capture_output=True, text=True, timeout=timeout)
     if p.returncode != 0 or not out.exists():
         raise RuntimeError("Remotion render failed: " + ((p.stderr or p.stdout or "")[-600:]).strip())
+    return out
+
+
+def preview(folder: Path, data: dict[str, Any], frames: list[int], runner: Any = subprocess.run,
+            timeout: int = 420) -> list[Path]:
+    """One still per frame asked for, from the same composition the film is drawn with (remotion/preview.mjs: one bundle, many
+    stills). Raises RuntimeError when Remotion is not installed or fails: a storyboard is never held back by its preview."""
+    if not ready():
+        raise RuntimeError("Remotion is not installed on this worker")
+    out = folder / "preview"
+    out.mkdir(parents=True, exist_ok=True)
+    file = folder / "remotion-preview-props.json"
+    file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    cmd = ["node", "preview.mjs", str(file), str(folder), str(out), ",".join(str(f) for f in frames)]
+    if os.environ.get("REMOTION_BROWSER"):
+        cmd.append(os.environ["REMOTION_BROWSER"])
+    p = runner(cmd, cwd=str(PROJECT), capture_output=True, text=True, timeout=timeout)
+    got = [out / f"f{i}.png" for i in range(len(frames))]
+    if p.returncode != 0 or not all(x.exists() for x in got):
+        raise RuntimeError("the preview stills were not made: " + ((p.stderr or p.stdout or "")[-400:]).strip())
+    return got
+
+
+def contact_sheet(images: list[Path], out: Path, height: int = 640, gap: int = 14) -> Path:
+    """The scenes side by side on one sheet (Wan, 10 Nov 2026: "show scoreboard like this first before I can approve"): every
+    frame scaled to the same height, on a neutral ground, as a JPEG."""
+    from PIL import Image
+    tiles = []
+    for p in images:
+        im = Image.open(p).convert("RGB")
+        tiles.append(im.resize((max(1, round(im.width * height / im.height)), height), Image.LANCZOS))
+    sheet = Image.new("RGB", (sum(t.width for t in tiles) + gap * (len(tiles) + 1), height + 2 * gap), (236, 240, 238))
+    x = gap
+    for t in tiles:
+        sheet.paste(t, (x, gap))
+        x += t.width + gap
+    sheet.save(out, "JPEG", quality=88)
     return out

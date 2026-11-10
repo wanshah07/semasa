@@ -388,15 +388,22 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
     if not cfg["enabled"]:
         return "Autofill: off (switch it on in Settings)"
     try:
-        # what Buffer already holds: a full queue pauses new ideas and every post in it is a taken slot (None = unknown, carry on)
-        # (not read at all while Zernio carries ws.regulab and Buffer is the idle backup: Zernio has no queue limit)
+        # what the queue already holds: a full queue pauses new ideas and every post in it is a taken slot (None = unknown: carry
+        # on). The queue read is the route's: Buffer's, or Zernio's while Zernio carries ws.regulab and Buffer is the idle backup
+        # (Wan, 10 Nov 2026: the same pause applies to Zernio, against his own cap, since Zernio's plan has none)
         from . import publisher
-        read_buffer = "regulab" in cfg["streams"] and not publisher.buffer_is_backup(settings)
-        queue = buffer_queue.snapshot(store, settings, now) if read_buffer else None
+        backup = publisher.buffer_is_backup(settings)
+        queue = None
+        if "regulab" in cfg["streams"]:
+            if backup:
+                buffer_queue.rest(store, settings, now)
+                queue = buffer_queue.snapshot_zernio(store, settings, now)
+            else:
+                queue = buffer_queue.snapshot(store, settings, now)
         if queue and queue["is_full"]:
             streams = [s for s in cfg["streams"] if s != "regulab"]
             if not streams:
-                return ("Autofill: paused, the Buffer queue is full (" + ", ".join(queue["full"])
+                return (f"Autofill: paused, the {queue.get('name', 'Buffer')} queue is full (" + ", ".join(queue["full"])
                         + f" at {queue['limit']}); ideas resume when a post goes out")
         else:
             streams = cfg["streams"]

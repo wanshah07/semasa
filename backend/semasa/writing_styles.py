@@ -310,7 +310,7 @@ def pick_for_idea(store: Any, idea_id: Any) -> dict[str, Any] | None:
     return pick(store, idea, settings)
 
 
-def block(style: dict[str, Any] | None, *, film: bool = False) -> str:
+def block(style: dict[str, Any] | None, *, film: bool = False, stream: str | None = None) -> str:
     """The writing-style block for the writer's prompt, or "" with no style. It sits after the rules and the house style and says
     it can never lift one."""
     if not style:
@@ -319,11 +319,15 @@ def block(style: dict[str, Any] | None, *, film: bool = False) -> str:
     name = " ".join(str(style.get("name") or "My writing style").split())[:60]
     instruction = " ".join(str(style.get("instruction") or "").split())[:2000]
     traits = [" ".join(str(t).split())[:140] for t in (style.get("traits") or []) if str(t).strip()][:MAX_TRAITS]
+    english = ("\nLINKEDIN IS ENGLISH (Wan, 10 Nov 2026): keep this style, but write every word of it in natural English, the "
+               "series label and any opening phrase included. A Malay label such as \"1 Hari 1 Ilmu Berfaedah\" becomes "
+               "\"1 Day 1 Useful Fact\", and \"Tahukah anda?\" becomes \"Did you know?\". Never print the Malay words."
+               if stream == "linkedin" else "")
     return (f"\n\nWRITING STYLE \"{name}\" (Wan's choice for this post). It shapes how {what} reads: the voice, the rhythm, the "
             "structure and the length. It changes nothing else: every rule above, the facts and figures, the citation, the "
             "stream's language and the required hook outrank it, and it never adds a call to action, a link, a hashtag or a "
             "claim. Write in the post's own language even when the style was learnt from posts in another.\n"
-            f"{instruction}" + ("\nWhat marks it:\n- " + "\n- ".join(traits) if traits else ""))
+            f"{instruction}" + ("\nWhat marks it:\n- " + "\n- ".join(traits) if traits else "") + english)
 
 
 def main() -> int:

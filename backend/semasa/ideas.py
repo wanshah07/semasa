@@ -634,7 +634,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     hint = hook_learning.hint(store, bank)              # what has earned views and interaction so far (a hint, never a rule)
     style = writing_styles.pick(store, idea, settings)  # Wan's writing style (the voice of the caption), or None: house style
     system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra), writer=settings.get("writer"),
-                                 bank=bank, hint=hint, style_block=writing_styles.block(style))
+                                 bank=bank, hint=hint, style_block=writing_styles.block(style, stream=stream))
     fmt = format_of(idea)
     want_slides = fmt == "carousel"
     want_poster = fmt == "poster"
@@ -834,7 +834,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
             idea = {}
     bank = hook_bank.pick(store, idea, settings)
     system += (antislop.prompt_block() + compliance.avoid_line(indo_extra) + writer_block(settings.get("writer"), stream)
-               + writing_styles.block(writing_styles.pick(store, idea, settings))
+               + writing_styles.block(writing_styles.pick(store, idea, settings), stream=stream)
                + hook_bank.block(None, stream, bank, hook_learning.hint(store, bank)))
     plat = "linkedin" if stream == "linkedin" else "instagram"
     caption = ((post.get("text") or {}).get(lang) or {}).get(plat) or ""

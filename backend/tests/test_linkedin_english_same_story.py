@@ -75,7 +75,7 @@ def test_a_malay_hook_and_cover_on_linkedin_are_asked_again_in_english():
     post = store.tables["semasa_posts"][0]
     assert post["id"] == pid and post["hook"].startswith("The thing nobody tells you")
     assert not language.malay_fields({"hook": post["hook"], "slides": post["slides"]})
-    assert len(llm.seen) == 2 and "MUST BE ENGLISH" in llm.seen[1][1] and "hook, slide 1" in llm.seen[1][1]
+    assert len(llm.seen) == 2 and "MUST BE ENGLISH" in llm.seen[1][1] and "hook, caption opening, slide 1" in llm.seen[1][1]
 
 
 def test_a_linkedin_answer_that_stays_malay_fails_with_a_reason_and_writes_no_draft():
@@ -172,3 +172,30 @@ def test_two_different_stories_that_share_a_regulator_and_a_food_are_kept_apart(
 def test_the_papers_own_link_still_beats_a_google_news_link_for_a_reworded_twin():
     rows = [{"title": H1, "url": "https://news.google.com/rss/articles/abc"}, {"title": H3, "url": "https://bernama.com/a"}]
     assert autofill.one_per_story(rows)[0]["url"] == "https://bernama.com/a"
+
+
+# --- the writing style's series label on LinkedIn (Wan, 10 Nov 2026) ------------------------------------------------------
+
+LABEL_STYLE = {"name": "1 Hari 1 Ilmu Berfaedah",
+               "instruction": "Mulakan dengan label siri, kemudian soalan atau hook rasa ingin tahu."}
+
+
+def test_the_series_label_style_is_kept_on_linkedin_but_told_to_be_english():
+    from semasa import writing_styles
+    li = writing_styles.block(LABEL_STYLE, stream="linkedin")
+    assert "LINKEDIN IS ENGLISH" in li and "1 Day 1 Useful Fact" in li and "Did you know?" in li
+    assert "label siri" in li                                            # the style itself is still there
+    assert "LINKEDIN IS ENGLISH" not in writing_styles.block(LABEL_STYLE, stream="regulab")
+    assert "LINKEDIN IS ENGLISH" not in writing_styles.block(LABEL_STYLE)
+
+
+def test_a_malay_series_label_at_the_top_of_a_linkedin_caption_is_asked_again_in_english():
+    store = _store()
+    cap = "1 Hari 1 Ilmu Berfaedah\n\nThe thing nobody tells you: KKM acts before the report.\n\nFollow me for more like this."
+    bad = _li(slides=EN_SLIDES, text={"en": {"linkedin": cap}})
+    good = _li(slides=EN_SLIDES, text={"en": {"linkedin": "1 Day 1 Useful Fact\n\nThe thing nobody tells you: KKM acts."}})
+    assert language.malay_fields(bad) == ["caption opening"]
+    llm = Seq(bad, good)
+    ideas.process_idea(store, llm, _idea(), ideas.load_settings(store))
+    assert store.tables["semasa_posts"][0]["text"]["en"]["linkedin"].startswith("1 Day 1 Useful Fact")
+    assert "caption opening" in llm.seen[1][1]

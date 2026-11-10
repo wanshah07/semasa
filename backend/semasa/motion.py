@@ -201,6 +201,7 @@ SCRIPT_SYSTEM = """You plan a short motion-graphics video. Answer with ONE JSON 
 {{"title": "<short title>", "hook_shape": <the number of the hook shape scene 1 is built on>,
 "hook": "<the finished hook line, equal to scene 1's heading>",
 "photo_query": "<2 to 4 plain English words that find a stock photo of the topic: no brand, no name>",
+"terms": [{{"term": "<a word or acronym the viewer may not know>", "meaning": "<what it is, in one plain sentence>"}}],
 "scenes": [{{"kicker": "<the label>", "heading": "<the line, big>", "lines": ["<short supporting line>", "..."],
 "narration": "<what is SAID over this scene>"}}]}}. Nothing else.
 
@@ -265,10 +266,21 @@ STRUCTURE_RULE = (
     "DM, click, visit, call or 'check eligibility' ('semak kelayakan'), never give a link, a website, a handle or a phone "
     "number, and never write 'for more info' or 'untuk maklumat lanjut' (that sends the viewer away). The closing card the "
     "worker adds says 'follow' in its own words, so lead into it and do not repeat them.")
-FLOW = (STRUCTURE_RULE + " Connected, complete sentences, never isolated labels.\n" + LAYMAN_RULE + "\n" + EXPLAIN_RULE
+# Wan, 10 Nov 2026, about a film on HIFU: "aku tak tahu HIFU tu apa, boleh tak masukkan setiap kali storyboard explain apa
+# yang patut". Every storyboard says what the subject IS: in `terms` (shown to Wan in the review, so he can judge the film)
+# and in the film itself.
+TERMS_RULE = ("WHAT IT IS (every film): the viewer, and the person approving this storyboard, may not know the main subject. "
+              "List up to 3 words or acronyms a shopkeeper would not know (a procedure, device, ingredient, test, rule or "
+              "body, e.g. HIFU, PIF, MS 1500) in `terms`, each with `meaning`: what it IS, in one plain sentence. In the film, "
+              "scene 2's narration says that meaning in plain words BEFORE the fact that uses it. Plain meaning only: no figure, "
+              "no claim that it works or is safe, no brand, no price; use the source's own definition when it gives one. When "
+              "every word is everyday, give `terms: []`.")
+FLOW = (STRUCTURE_RULE + " Connected, complete sentences, never isolated labels.\n" + TERMS_RULE + "\n" + LAYMAN_RULE
+        + "\n" + EXPLAIN_RULE
         + "\n" + CONNECT_RULE + "\n" + LINES_RULE
         + "\n" + LIST_RULE + "\n" + NARRATION_RULE + "\n" + MALAY_RULE)
-FLOW_TEASER = "ONE scene: a curiosity hook only.\n" + LAYMAN_RULE + "\n" + EXPLAIN_RULE
+FLOW_TEASER = ("ONE scene: a curiosity hook only.\n" + TERMS_RULE.split(" In the film,")[0] + " " + LAYMAN_RULE + "\n"
+               + EXPLAIN_RULE)
 PACE_VOICED = ("Narration is spoken {language}: plain, warm, BRISK short sentences, at most {words} words in all and fewer "
                "when the information is simple (about "
                f"{NARRATED_WPS} words a second), saying each heading's fact and each line in plain spoken words (those words "
@@ -386,7 +398,13 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
                 sc["narration"] = " ".join(f"{sc['narration']} {' '.join(missing)}".split())[:700]
         if not teaser:                    # the facts are said, so the speech must still fit the film: cut before it is recorded
             trim_to_budget(clean, int((FILM_MAX - SPEECH_RESERVE) * SPEECH_WPS))
-    meta = {"title": str(out.get("title") or "")[:160],
+    terms = []
+    for t in (out.get("terms") or [])[:3] if isinstance(out.get("terms"), list) else []:
+        term = " ".join(str((t or {}).get("term") or "").split())[:60] if isinstance(t, dict) else ""
+        meaning = speak_as(motion_layout.plain((t or {}).get("meaning")))[:240].strip() if isinstance(t, dict) else ""
+        if term and meaning and not motion_captions.hand_off(meaning):
+            terms.append({"term": term, "meaning": meaning})
+    meta = {"title": str(out.get("title") or "")[:160], "terms": terms,
             "photo_query": " ".join(str(out.get("photo_query") or "").split())[:80],
             "hook_shape": shape, "hook": hook, **({"hook_style": bank.id} if bank else {})}
     if teaser:
@@ -401,7 +419,7 @@ def plan_scenes(llm: Any, row: dict[str, Any], extra: str, src_title: str, src_t
 
 def storyboard_pictures(store: Any, row: dict[str, Any], plan: dict[str, Any], folder: Path, *, style_name: str = "",
                         photo_search: Any = None, photo_get: Any = None, own_get: Any = None, gpt_login: Any = None,
-                        gemini: Any = None, cloudflare: Any = None) -> str:
+                        gemini: Any = None, cloudflare: Any = None, local: dict[str, str] | None = None) -> str:
     """The storyboard WITH its pictures (Wan, 10 Nov 2026: "for motion before proceed rendering, create storyboard with
     images"). Each teaching scene's picture is found or drawn now, exactly as the film would get it (the idea's own pictures,
     stock photos, then the picture makers drawing the storyboard's shot), stored, and its address kept on the scene as
@@ -429,6 +447,8 @@ def storyboard_pictures(store: Any, row: dict[str, Any], plan: dict[str, Any], f
                 sc.pop(key, None)
             if not rel or sc.get("id") == "brand-outro" or not (folder / rel).exists():
                 continue
+            if local is not None:
+                local[str(sc["id"])] = rel                    # where the picture is on this machine, for the preview
             sc["image"] = db.upload_generated(store, f"motion/storyboard/{row['id']}/{sc['id']}.jpg",
                                               (folder / rel).read_bytes(), "image/jpeg")
             sc["image_credit"], sc["image_shot"] = credit or "", str(sc.get("shot") or "")
@@ -438,6 +458,52 @@ def storyboard_pictures(store: Any, row: dict[str, Any], plan: dict[str, Any], f
     except Exception as exc:  # noqa: BLE001
         log.warning("%s: storyboard pictures not made (%s)", row.get("id"), str(exc)[:200])
         return f"storyboard pictures not made ({str(exc)[:120]})"
+
+
+def storyboard_preview(store: Any, row: dict[str, Any], plan: dict[str, Any], folder: Path, local: dict[str, str],
+                       runner: Any = subprocess.run) -> str:
+    """The preview sheet shown with the storyboard (Wan, 10 Nov 2026: "show scoreboard like this first before I can approve,
+    every time"): one frame of each scene as the film will look, side by side. It is drawn from the saved words and pictures
+    with the Remotion layout, which mirrors HyperFrames', before a voice is recorded, so each scene gets a provisional 7 seconds
+    and its first subtitle. Stored on the plan as `preview`; a failure leaves the storyboard without one and the note says why."""
+    try:
+        stream = row.get("stream") or "regulab"
+        w, h = SIZES[size_of(row)]
+        scenes, frames = [], []
+        for i, sc in enumerate(plan["scenes"]):
+            start = i * 7.0
+            first = motion_layout.caption_chunks({"narration": sc.get("narration"), "start": start, "duration": 7.0})
+            scenes.append({**sc, "start": start, "duration": 7.0, "photo": local.get(str(sc.get("id"))),
+                           "audio": "x" if sc.get("narration") and sc.get("id") != "brand-outro" else "",
+                           "audio_s": 6.5, "words": [], "narration": sc.get("narration") or ""})
+            frames.append(int((start + 3.2) * 30))
+            if first and sc.get("narration") and sc.get("id") != "brand-outro":
+                scenes[-1]["narration"] = first[0][0]
+        keep = motion_styles.WAN_ICON if stream == "linkedin" else motion_styles.LOGO
+        (folder / "assets").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(keep, folder / "assets" / keep.name)
+        props = motion_remotion.props(scenes, len(scenes) * 7.0, w, h, PALETTE["regulab"],
+                                      byline(store) if stream == "linkedin" else "ws.regulab", logo="assets/" + keep.name,
+                                      ambient=str((row.get("options") or {}).get("ambient") or ""))
+        stills = motion_remotion.preview(folder, props, frames, runner)
+        sheet = motion_remotion.contact_sheet(stills, folder / "preview" / "sheet.jpg")
+        base = f"motion/storyboard/{row['id']}"
+        urls = [db.upload_generated(store, f"{base}/preview-{i + 1}.jpg", _jpeg_of(p), "image/jpeg")
+                for i, p in enumerate(stills)]
+        plan["preview"] = {"sheet": db.upload_generated(store, f"{base}/preview-sheet.jpg", sheet.read_bytes(), "image/jpeg"),
+                           "frames": urls, "engine": "remotion layout", "at": datetime.now(UTC).isoformat(timespec="seconds")}
+        return f"preview sheet: {len(urls)} scenes"
+    except Exception as exc:  # noqa: BLE001 - a preview never stops a storyboard
+        plan.pop("preview", None)
+        log.warning("%s: storyboard preview not made (%s)", row.get("id"), str(exc)[:200])
+        return f"preview sheet not made ({str(exc)[:100]})"
+
+
+def _jpeg_of(path: Path) -> bytes:
+    """A still as JPEG bytes (the stills are PNG: a third the size as JPEG, and a phone opens them faster)."""
+    buf = io.BytesIO()
+    Image.open(path).convert("RGB").save(buf, "JPEG", quality=86)
+    return buf.getvalue()
 
 
 def picture_response(url: str) -> Any:
@@ -1426,11 +1492,13 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                     tone=motion_gpt_images.TONE[stream_name])
                 motion_storyboard.apply(plan["scenes"], shots)
             # Wan, 10 Nov 2026: the storyboard is shown WITH its pictures; nothing is voiced or rendered until he approves
+            local: dict[str, str] = {}
             pic_note = storyboard_pictures(store, row, plan, folder, style_name=style[0], photo_search=photo_search,
                                            photo_get=photo_get, own_get=own_get, gpt_login=gpt_login, gemini=gemini,
-                                           cloudflare=cloudflare)
+                                           cloudflare=cloudflare, local=local)
+            prev_note = storyboard_preview(store, row, plan, folder, local, runner)
             return motion_review.hold(store, row, "explainer", {"plan": plan},
-                                      " · ".join(x for x in (sb_note, pic_note) if x))
+                                      " · ".join(x for x in (sb_note, pic_note, prev_note) if x))
         try:
             plan = approved_plan(row, saved)
         except motion_review.StoryboardNeedsFix as exc:
@@ -1676,7 +1744,8 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         rprops = (motion_remotion.props(scenes, total, w, h, PALETTE["regulab"],
                                         name if stream == "linkedin" else "ws.regulab",
                                         logo="assets/" + (motion_styles.WAN_ICON if stream == "linkedin"
-                                                          else motion_styles.LOGO).name) if engine else None)
+                                                          else motion_styles.LOGO).name,
+                                        ambient=str((row.get("options") or {}).get("ambient") or "")) if engine else None)
         if engine == motion_remotion.NAME:
             # the second renderer (Wan, 10 Nov 2026): the same scenes, voice and timings, drawn by Remotion. A failure
             # falls back to HyperFrames so the film is still made, and the report says which one drew it.

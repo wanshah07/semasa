@@ -58,6 +58,14 @@ def remember_the_fitted_length(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_remotion_here(monkeypatch):
+    """Whether Remotion is installed on the machine running the tests must not change what they see: its preview and its
+    renders are tested on their own, with `ready` switched on and a stand-in runner."""
+    from semasa import motion_remotion
+    monkeypatch.setattr(motion_remotion, "ready", lambda: False)
+
+
+@pytest.fixture(autouse=True)
 def storyboard_approved(request, monkeypatch):
     """Every film now stops at its storyboard until Wan approves it (supabase/071, semasa/motion_review.py). Most motion tests
     were written for a whole film, so this stand-in plays Wan: when a run stops at 'review' it approves the saved storyboard,

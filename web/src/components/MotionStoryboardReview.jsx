@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CheckCircle2, Pencil, RefreshCw } from "lucide-react";
 import { errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
-import { changed, decideWords, scenesOf, withEdits, writtenEpoch } from "../lib/motionReview";
+import { changed, decideWords, previewOf, scenesOf, termsOf, withEdits, writtenEpoch } from "../lib/motionReview";
 import Button from "./ui/Button";
 import { Input, TextArea } from "./ui/Field";
 
@@ -15,6 +15,8 @@ export default function MotionStoryboardReview({ film, onDone, onToast }) {
   const L = lang === "en" ? 1 : 0;
   const sb = film?.storyboard;
   const scenes = scenesOf(sb);
+  const terms = termsOf(sb);
+  const preview = previewOf(sb);
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState({});
   const [busy, setBusy] = useState("");
@@ -46,6 +48,19 @@ export default function MotionStoryboardReview({ film, onDone, onToast }) {
       <p className="text-sm font-medium">{t("Storyboard menunggu kelulusan anda", "The storyboard is waiting for your approval")}</p>
       <p className="mt-0.5 text-xs text-muted">{t("Suara dan video hanya dibuat selepas anda luluskan. Tukar teks Gambar untuk lukis semula gambar babak itu. Semua perkataan disemak semula sebelum digunakan.",
         "The voice and the film are made only after you approve. Change a scene's Picture text to have it drawn again. Every word is checked again before it is used.")}{sb.note ? ` · ${sb.note}` : ""}</p>
+      {terms.length ? (
+        <div className="mt-3 rounded-tile bg-surface p-2 text-xs" data-storyboard-terms>
+          <p className="text-[11px] uppercase tracking-wide text-muted">{t("Apa itu", "What it is")}</p>
+          <ul className="mt-1 space-y-1">{terms.map((x) => <li key={x.term}><b>{x.term}</b>: {x.meaning}</li>)}</ul>
+        </div>
+      ) : null}
+      {preview ? (
+        <div className="mt-3" data-storyboard-preview>
+          <p className="text-[11px] uppercase tracking-wide text-muted">{t("Pratonton rupa filem", "Preview of the film")}</p>
+          <a href={preview.sheet} target="_blank" rel="noreferrer"><img src={preview.sheet} alt={t("Pratonton setiap babak", "A frame of every scene")} loading="lazy" className="mt-1 w-full rounded-tile border border-line" /></a>
+          <p className="mt-1 text-[11px] text-muted">{t("Dilukis daripada kata-kata dan gambar yang disimpan; mengubah perkataan di bawah tidak mengemas kini pratonton ini.", "Drawn from the saved words and pictures; editing the words below does not update this preview.")}</p>
+        </div>
+      ) : null}
       <ol className="mt-3 space-y-2" data-storyboard-scenes>
         {scenes.map((sc) => (
           <li key={sc.key} className="rounded-tile bg-surface p-2 text-xs" data-storyboard-scene={sc.key}>

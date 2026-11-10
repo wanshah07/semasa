@@ -12,6 +12,19 @@ const clone = (v) => JSON.parse(JSON.stringify(v ?? null));
 
 /** Each scene as { key, label, heading, lines, said, shot, edit: {heading, lines, said, shot} } where `edit` says which of the
  *  four can be changed (false = shown, not editable). */
+/** What the subject IS (Wan, 10 Nov 2026: "setiap kali storyboard explain apa yang patut"): [{term, meaning}] of an explainer. */
+export function termsOf(sb) {
+  const t = sb?.kind === "explainer" ? sb?.plan?.terms : null;
+  return Array.isArray(t) ? t.filter((x) => x && str(x.term)).map((x) => ({ term: str(x.term), meaning: str(x.meaning) })) : [];
+}
+
+/** The preview sheet of the film (one frame a scene), or null: only an https address is ever shown. */
+export function previewOf(sb) {
+  const p = sb?.kind === "explainer" ? sb?.plan?.preview : null;
+  const sheet = str(p?.sheet);
+  return sheet.startsWith("https://") ? { sheet, frames: list(p?.frames).filter((u) => u.startsWith("https://")), engine: str(p?.engine) } : null;
+}
+
 export function scenesOf(sb) {
   if (!sb || typeof sb !== "object") return [];
   if (sb.kind === "explainer") {

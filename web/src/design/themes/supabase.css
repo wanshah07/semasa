@@ -1,0 +1,24 @@
+/* SUPABASE - the Supabase preset Wan attached: near-white surfaces, mint primary #72E3AD, border #DFDFDF, input #F6F6F6. Same tokens, different values; nothing else changes.
+   Generated from one palette and checked by web/themes.test.mjs (every text pair reads 4.5:1 or better). */
+[data-theme="supabase"] {
+  --c-bg:         252 252 252;    /* #FCFCFC */
+  --c-surface:    255 255 255;
+  --c-surface-2:  246 246 246;
+  --c-line:       223 223 223;
+  --c-ink:         23  23  23;
+  --c-muted:      105 105 105;   /* 5.1:1 on surface-2 */
+  --c-accent:     114 227 173;   /* #72E3AD */
+  --c-accent-ink:   0   0   0;   /* on the accent fill: 13.3:1 */
+  --c-accent-text: 59 118  90;   /* the accent as text: 5.0:1 on the surfaces */
+  --c-warn:    166  76   8;
+  --c-warm:       205 244 225;
+  --c-gold:       245 158  11;
+  --shadow-card: 0 1px 2px rgb(23 23 23 / 0.04), 0 8px 24px -12px rgb(23 23 23 / 0.12);
+  --shadow-lift: 0 2px 6px rgb(23 23 23 / 0.06), 0 24px 48px -16px rgb(23 23 23 / 0.22);
+  --hero-gradient: radial-gradient(1200px 500px at 10% -10%, rgb(var(--c-accent) / 0.16), transparent 60%),
+                   radial-gradient(800px 400px at 90% 0%, rgb(var(--c-warm) / 0.35), transparent 60%);
+  --cat-makanan: 182 61 11;
+  --cat-sosial: 15 114 107;
+  --cat-sukan: 4 116 84;
+  --cat-alam_sekitar: 71 114 14;
+}

@@ -1,6 +1,7 @@
 import { LogOut, Menu, Palette, PanelLeftClose, Pin } from "lucide-react";
 import { THEMES, useTheme } from "../design/ThemeProvider";
 import { DARK_IDS } from "../design/themeChoice";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { tabsOf } from "../lib/tabs";
@@ -102,6 +103,11 @@ export default function Header({ tab, setTab, user, sidebar = false, navMode = "
           {onGuide && (
             <button type="button" onClick={onGuide} aria-label={t("Panduan", "Guide")} title={t("Panduan", "Guide")} data-guide
               className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-line bg-surface text-sm font-semibold text-muted transition hover:bg-surface-2 hover:text-ink lg:h-8 lg:w-8">?</button>
+          )}
+          {user && (
+            <Avatar className="hidden h-8 w-8 border border-line lg:flex" title={user.email}>
+              <AvatarFallback>{String(user.email || "?").slice(0, 1).toUpperCase()}</AvatarFallback>
+            </Avatar>
           )}
           {user && (
             <Button variant="ghost" size="sm" onClick={() => supabase.auth.signOut()} title={`${t("Keluar", "Sign out")} · ${user.email}`}

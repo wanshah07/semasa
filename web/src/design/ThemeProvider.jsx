@@ -3,6 +3,8 @@ import "./tokens.css";
 import "./themes/facerinna.css";
 import "./themes/noir.css";
 import "./themes/regulab.css";
+import "./themes/supabase.css";
+import "./themes/supabase-gelap.css";
 import "./themes/mint.css";
 import "./themes/sakura.css";
 import "./themes/lavender.css";
@@ -24,6 +26,8 @@ export const THEMES = [
   { id: "facerinna", label: "Facerinna" },
   { id: "noir", label: "Noir" },
   { id: "regulab", label: "Regulab" },
+  { id: "supabase", label: "Supabase" },
+  { id: "supabase-gelap", label: "Supabase Gelap" },
   { id: "mint", label: "Mint" },
   { id: "sakura", label: "Sakura" },
   { id: "lavender", label: "Lavender" },

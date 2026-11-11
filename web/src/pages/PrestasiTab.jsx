@@ -17,10 +17,10 @@ import { Segmented } from "../components/ui/Field";
    reach/views, average views a post, engagement, replies, the peak post, the best publishing window, a day × 3-hour heatmap
    of posting performance and a window inspector. Rows come from semasa_post_metrics (supabase/034_post_metrics.sql), which
    backend/semasa/metrics.py fills from Buffer once a day; lib/analytics.js does the arithmetic in Malaysia time. The page
-   writes nothing. LinkedIn has no figures (the connection cannot read them), and the page says so. */
+   writes nothing. TikTok and LinkedIn have figures for posts sent through Zernio (Wan, 11 Nov 2026). */
 
 const today = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
-const CHANNEL_WORDS = { threads: "Threads", instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn" };
+const CHANNEL_WORDS = { threads: "Threads", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", linkedin: "LinkedIn" };
 const DAY_WORDS = { bm: ["Ahd", "Isn", "Sel", "Rab", "Kha", "Jum", "Sab"], en: DAYS };
 const fmt = (n) => (n >= 10000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n || 0)));
 
@@ -60,8 +60,8 @@ export default function PrestasiTab({ posts, go }) {
       <motion.div variants={fadeUp} initial="hidden" animate="show" className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl">{t("Prestasi", "Performance")}</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted">{t("Apa yang setiap post buat di saluran: tontonan, penglibatan, balasan, 3 post puncak dan tetingkap siaran terbaik, dalam waktu Malaysia. Angka dibaca dari Buffer sekali sehari.",
-            "What every post did on its channel: views, engagement, replies, the top 3 posts and the best publishing window, in Malaysia time. Figures are read from Buffer once a day.")}</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted">{t("Apa yang setiap post buat di saluran: tontonan, penglibatan, balasan, 3 post puncak dan tetingkap siaran terbaik, dalam waktu Malaysia. Angka dibaca dari Zernio dan Buffer sekali sehari.",
+            "What every post did on its channel: views, engagement, replies, the top 3 posts and the best publishing window, in Malaysia time. Figures are read from Zernio and Buffer once a day.")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Segmented value={String(days)} onChange={(v) => { setDays(Number(v)); setPicked(null); }}
@@ -70,18 +70,18 @@ export default function PrestasiTab({ posts, go }) {
       </motion.div>
 
       <div role="tablist" aria-label={t("Platform", "Platform")} data-platform-tabs className="mb-5 flex gap-1.5 overflow-x-auto">
-        {[["", t("Semua", "All")], ...CHANNELS.map((c) => [c, CHANNEL_WORDS[c]]), ["linkedin", "LinkedIn"]].map(([v, label]) => (
+        {[["", t("Semua", "All")], ...CHANNELS.map((c) => [c, CHANNEL_WORDS[c]])].map(([v, label]) => (
           <button key={v || "all"} type="button" role="tab" aria-selected={channel === v} onClick={() => { setChannel(v); setPicked(null); }}
             className={`shrink-0 rounded-pill px-4 py-2 text-sm font-medium transition ${channel === v ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>{label}</button>
         ))}
       </div>
-      {channel === "linkedin" && <p className="mb-4 rounded-tile bg-surface-2 p-3 text-sm text-muted">{t("LinkedIn tiada angka: sambungan hanya boleh menyiar, bukan membaca tontonan atau interaksi. Bila LinkedIn boleh dibaca, tab ini akan terisi sendiri.",
-        "LinkedIn has no figures: the connection can post but cannot read views or interactions. When LinkedIn becomes readable this tab fills by itself.")}</p>}
+      {(channel === "linkedin" || channel === "tiktok") && !rows.length && <p className="mb-4 rounded-tile bg-surface-2 p-3 text-sm text-ink">{t("LinkedIn dan TikTok dibaca melalui Zernio, jadi hanya post yang dihantar melalui Zernio (sejak 10 Nov 2026) ada angka. Angka muncul selepas larian Metrics harian yang berikutnya.",
+        "LinkedIn and TikTok are read through Zernio, so only posts sent through Zernio (since 10 Nov 2026) have figures. They appear after the next daily Metrics run.")}</p>}
       {missing && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual belum ada: jalankan supabase/034_post_metrics.sql sekali, kemudian larian Metrics di GitHub.", "The table is not there yet: run supabase/034_post_metrics.sql once, then the Metrics workflow on GitHub.")}</p>}
       {metricsT.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{metricsT.error}</p>}
       {!metricsT.loading && !metricsT.error && !metricsT.rows.length && (
-        <p className="mb-4 rounded-tile bg-surface-2 p-3 text-sm text-muted">{t("Tiada angka lagi: larian Metrics (GitHub → Actions → Metrics → Run workflow) membaca Buffer dan mengisi jadual ini.",
-          "No figures yet: the Metrics workflow (GitHub → Actions → Metrics → Run workflow) reads Buffer and fills this table.")}</p>
+        <p className="mb-4 rounded-tile bg-surface-2 p-3 text-sm text-muted">{t("Tiada angka lagi: larian Metrics (GitHub → Actions → Metrics → Run workflow) membaca Zernio dan Buffer dan mengisi jadual ini.",
+          "No figures yet: the Metrics workflow (GitHub → Actions → Metrics → Run workflow) reads Zernio and Buffer and fills this table.")}</p>
       )}
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -187,7 +187,7 @@ export default function PrestasiTab({ posts, go }) {
         </Card>
       </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {split.map((c) => (
           <Card key={c.channel} className="p-4">
             <div className="flex items-center justify-between"><span className="text-sm font-medium">{CHANNEL_WORDS[c.channel]}</span><span className="text-[11px] text-muted">{t("{n} post", "{n} posts", { n: c.posts })}</span></div>
@@ -242,8 +242,8 @@ export default function PrestasiTab({ posts, go }) {
       </Card>
 
       <p className="mt-4 text-[11px] text-muted">
-        {t("Sumber: Buffer (Facebook paparan, Instagram tontonan + jangkauan, Threads tontonan). LinkedIn tiada angka: sambungan hanya boleh menyiar, bukan membaca. Bacaan terakhir: {at}.",
-          "Source: Buffer (Facebook impressions, Instagram views + reach, Threads views). LinkedIn has no figures: the connection can post but not read. Last read: {at}.",
+        {t("Sumber: Zernio (kelima-lima platform, untuk post yang dihantar melaluinya) dan Buffer (post lama Facebook, Instagram, Threads). Bacaan terakhir: {at}.",
+          "Source: Zernio (all five platforms, for posts sent through it) and Buffer (older Facebook, Instagram and Threads posts). Last read: {at}.",
           { at: lastRead ? stampMYT(lastRead) : t("Tiada", "None") })}
       </p>
     </main>

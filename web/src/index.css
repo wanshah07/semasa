@@ -14,6 +14,7 @@
   --info-foreground: oklch(1 0 0);
 }
 [data-theme="noir"],
+[data-theme="supabase-gelap"],
 [data-theme="midnight"],
 [data-theme="hutan"],
 [data-theme="bara"],
@@ -33,6 +34,11 @@
   html { scroll-behavior: smooth; }
   body { background: rgb(var(--c-bg)); color: rgb(var(--c-ink)); }
   ::selection { background: rgb(var(--c-accent) / 0.25); }
+  /* A native dropdown's list is drawn by the browser, not by the select's own classes: on a dark theme the list came out
+     white with the theme's pale ink on it, unreadable (Wan, 11 Nov 2026, the theme picker). Both are set here, for every
+     select in the app. */
+  select option, select optgroup { background-color: rgb(var(--c-surface)); color: rgb(var(--c-ink)); }
+  select optgroup { font-weight: 600; }
   h1, h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em; }
 }
 

@@ -7,8 +7,8 @@
 export const PICK_KEY = "semasa.themePick";
 export const OLD_KEY = "semasa.theme";
 export const AUTO = "auto";
-export const LIGHT_IDS = ["facerinna", "regulab", "mint", "sakura", "lavender", "matahari", "batu"];
-export const DARK_IDS = ["noir", "midnight", "hutan", "bara", "mawar", "lautan", "arang", "kopi"];
+export const LIGHT_IDS = ["facerinna", "regulab", "supabase", "mint", "sakura", "lavender", "matahari", "batu"];
+export const DARK_IDS = ["noir", "supabase-gelap", "midnight", "hutan", "bara", "mawar", "lautan", "arang", "kopi"];
 export const THEME_IDS = [...LIGHT_IDS, ...DARK_IDS];
 
 export const deviceTheme = (dark) => (dark ? "noir" : "facerinna");

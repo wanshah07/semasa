@@ -81,3 +81,58 @@ def test_no_key_skips_with_a_warning(monkeypatch):
     store = _store()
     assert metrics.run(store, NOW)["written"] == 0
     assert store.tables[db.LOG][-1]["event"] == "metrics.skipped"
+
+
+# --- Zernio (Wan, 11 Nov 2026: "linkedn no analysis, add for tiktok") ------------------------------------------------
+
+class FakeHub:
+    def __init__(self, posts):
+        self.posts, self.asked = posts, None
+
+    def analytics(self, start, end):
+        self.asked = (start, end)
+        return self.posts
+
+
+def _zpost(late, platforms, **kw):
+    return {"postId": "ext-" + late, "latePostId": late, "content": "Notifikasi bukan kelulusan",
+            "publishedAt": "2026-11-10T02:30:00Z",
+            "platformAnalytics": [{"platform": p, "status": "published", "accountId": "acc-" + p, "platformPostUrl": f"https://x/{p}",
+                                   "analytics": {"views": 120, "likes": 7, "comments": 2, "shares": 1, "impressions": 150,
+                                                 "engagementRate": 6.67, "lastUpdated": "2026-11-11T01:00:00Z"}}
+                                  for p in platforms], **kw}
+
+
+def test_zernio_post_is_one_row_per_platform_with_tiktok_and_linkedin():
+    rows = metrics.zernio_rows(_zpost("z1", ["tiktok", "linkedin", "instagram"]), {"z1": "post-1"}, NOW)
+    assert [r["channel"] for r in rows] == ["tiktok", "linkedin", "instagram"]
+    r = rows[0]
+    assert (r["source"], r["external_id"], r["post_id"], r["channel_id"]) == ("zernio", "z1:tiktok", "post-1", "acc-tiktok")
+    got = (r["views"], r["reactions"], r["comments"], r["shares"], r["impressions"], r["engagement"])
+    assert got == (120, 7, 2, 1, 150, 6.67)
+    assert r["quotes"] is None and r["url"] == "https://x/tiktok"
+
+
+def test_zernio_failed_platform_and_unknown_platform_have_no_row():
+    post = _zpost("z2", ["threads", "youtube"])
+    post["platformAnalytics"].append({"platform": "facebook", "status": "failed", "analytics": {}})
+    assert [r["channel"] for r in metrics.zernio_rows(post, {}, NOW)] == ["threads"]
+
+
+def test_zernio_pass_writes_beside_buffer_and_links_the_post():
+    posts = [{"id": "post-9", "status": "posted", "published": {"linkedin": {"id": "z9", "route": "zernio"}}}]
+    store = _store(posts)
+    hub = FakeHub([_zpost("z9", ["linkedin"]), _zpost("z9", ["linkedin"])])       # the same post twice is one row
+    counts = metrics.run(store, NOW, FakeBuffer([]), hub)
+    written = [r for r in store.tables[db.POST_METRICS] if r["source"] == "zernio"]
+    assert len(written) == 1 and written[0]["post_id"] == "post-9" and counts["written"] == 1
+    assert hub.asked[0][:10] == "2026-10-12" or hub.asked[0] < NOW.isoformat()
+
+
+def test_table_refusing_zernio_is_a_warning_not_a_failure():
+    class Refusing(FakeHub):
+        def analytics(self, start, end):
+            raise RuntimeError('violates check constraint "semasa_post_metrics_source_check"')
+    store = _store([])
+    assert metrics.run(store, NOW, FakeBuffer([]), Refusing([]))["written"] == 0
+    assert any(r["event"] == "metrics.zernio_blocked" for r in store.tables[db.LOG])

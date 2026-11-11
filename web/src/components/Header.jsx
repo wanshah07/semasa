@@ -1,5 +1,6 @@
 import { LogOut, Menu, Palette, PanelLeftClose, Pin } from "lucide-react";
 import { THEMES, useTheme } from "../design/ThemeProvider";
+import { DARK_IDS } from "../design/themeChoice";
 import { supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { tabsOf } from "../lib/tabs";
@@ -35,7 +36,12 @@ export function ThemeSelect({ big = false }) {
         {/* the device's light or dark setting decides until a theme is picked; this option hands it back. The theme it
             resolves to goes in the title, not the option: a longer option widened the select past a 390 px phone. */}
         <option value="auto">{t("Ikut peranti", "Follow device")}</option>
-        {THEMES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+        <optgroup label={t("Cerah", "Light")}>
+          {THEMES.filter((x) => !DARK_IDS.includes(x.id)).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+        </optgroup>
+        <optgroup label={t("Gelap", "Dark")}>
+          {THEMES.filter((x) => DARK_IDS.includes(x.id)).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+        </optgroup>
       </select>
     </label>
   );

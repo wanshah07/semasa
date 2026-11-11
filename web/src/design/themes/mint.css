@@ -1,0 +1,24 @@
+/* MINT - fresh pale green, calm and clean. Same tokens, different values; nothing else changes.
+   Generated from one palette and checked by web/themes.test.mjs (every text pair reads 4.5:1 or better). */
+[data-theme="mint"] {
+  --c-bg:         247 252 249;    /* #F7FCF9 */
+  --c-surface:    255 255 255;
+  --c-surface-2:  235 246 240;
+  --c-line:       211 232 221;
+  --c-ink:         15  40  30;
+  --c-muted:       89 108 100;   /* 5.1:1 on surface-2 */
+  --c-accent:      52 178 123;   /* #34B27B */
+  --c-accent-ink:   0   0   0;   /* on the accent fill: 7.8:1 */
+  --c-accent-text: 35 121  84;   /* the accent as text: 4.8:1 on the surfaces */
+  --c-warn:    162  75   8;
+  --c-warm:       190 236 212;
+  --c-gold:       201 162  75;
+  --shadow-card: 0 1px 2px rgb(15 40 30 / 0.04), 0 8px 24px -12px rgb(15 40 30 / 0.12);
+  --shadow-lift: 0 2px 6px rgb(15 40 30 / 0.06), 0 24px 48px -16px rgb(15 40 30 / 0.22);
+  --hero-gradient: radial-gradient(1200px 500px at 10% -10%, rgb(var(--c-accent) / 0.16), transparent 60%),
+                   radial-gradient(800px 400px at 90% 0%, rgb(var(--c-warm) / 0.35), transparent 60%);
+  --cat-makanan: 178 60 11;
+  --cat-sosial: 14 113 106;
+  --cat-sukan: 4 115 84;
+  --cat-alam_sekitar: 69 112 14;
+}

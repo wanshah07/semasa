@@ -1,0 +1,40 @@
+/* HUTAN - forest dark, leaf-green accent. Same tokens, different values; nothing else changes.
+   Generated from one palette and checked by web/themes.test.mjs (every text pair reads 4.5:1 or better). */
+[data-theme="hutan"] {
+  --c-bg:          10  24  18;    /* #0A1812 */
+  --c-surface:     15  36  27;
+  --c-surface-2:   21  49  37;
+  --c-line:        36  74  56;
+  --c-ink:        232 246 238;
+  --c-muted:      145 159 152;   /* 5.1:1 on surface-2 */
+  --c-accent:      74 201 130;   /* #4AC982 */
+  --c-accent-ink:   0   0   0;   /* on the accent fill: 10.0:1 */
+  --c-accent-text: 74 201 130;   /* the accent as text: 6.7:1 on the surfaces */
+  --c-ok:       74 222 128;
+  --c-warn:    251 146  60;
+  --c-danger:  248 119 119;
+  --c-queue:   250 204  21;
+  --c-wait:    232 121 249;
+  --c-warm:        60 160 110;
+  --c-gold:       201 162  75;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+  --shadow-lift: 0 2px 6px rgb(0 0 0 / 0.4), 0 24px 48px -16px rgb(0 0 0 / 0.7);
+  --hero-gradient: radial-gradient(1200px 500px at 10% -10%, rgb(var(--c-accent) / 0.22), transparent 60%),
+                   radial-gradient(800px 400px at 90% 0%, rgb(var(--c-gold) / 0.16), transparent 60%);
+  color-scheme: dark;
+  --cat-kosmetik: 244 114 182;
+  --cat-halal: 74 222 128;
+  --cat-makanan: 251 146 60;
+  --cat-farmaseutikal: 171 144 250;
+  --cat-kesihatan: 248 119 119;
+  --cat-ekonomi: 250 204 21;
+  --cat-politik: 96 165 250;
+  --cat-jenayah: 148 163 184;
+  --cat-sosial: 45 212 191;
+  --cat-teknologi: 143 153 249;
+  --cat-hiburan: 244 114 182;
+  --cat-sukan: 52 211 153;
+  --cat-pendidikan: 56 189 248;
+  --cat-alam_sekitar: 163 230 53;
+  --cat-lain: 148 163 184;
+}

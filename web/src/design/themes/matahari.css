@@ -1,0 +1,24 @@
+/* MATAHARI - sunlit cream with an amber accent. Same tokens, different values; nothing else changes.
+   Generated from one palette and checked by web/themes.test.mjs (every text pair reads 4.5:1 or better). */
+[data-theme="matahari"] {
+  --c-bg:         255 251 242;    /* #FFFBF2 */
+  --c-surface:    255 255 252;
+  --c-surface-2:  254 243 214;
+  --c-line:       247 228 178;
+  --c-ink:         54  38   8;
+  --c-muted:      114 102  78;   /* 5.1:1 on surface-2 */
+  --c-accent:     245 166  35;   /* #F5A623 */
+  --c-accent-ink:   0   0   0;   /* on the accent fill: 10.4:1 */
+  --c-accent-text:142  96  20;   /* the accent as text: 5.0:1 on the surfaces */
+  --c-warn:    162  75   8;
+  --c-warm:       252 224 150;
+  --c-gold:       201 162  75;
+  --shadow-card: 0 1px 2px rgb(54 38 8 / 0.04), 0 8px 24px -12px rgb(54 38 8 / 0.12);
+  --shadow-lift: 0 2px 6px rgb(54 38 8 / 0.06), 0 24px 48px -16px rgb(54 38 8 / 0.22);
+  --hero-gradient: radial-gradient(1200px 500px at 10% -10%, rgb(var(--c-accent) / 0.16), transparent 60%),
+                   radial-gradient(800px 400px at 90% 0%, rgb(var(--c-warm) / 0.35), transparent 60%);
+  --cat-makanan: 178 60 11;
+  --cat-sosial: 14 113 106;
+  --cat-sukan: 4 115 84;
+  --cat-alam_sekitar: 69 112 14;
+}

@@ -36,7 +36,7 @@ jobs:
       - name: Install
         run: |
           pip install -r requirements.txt
-          python -m playwright install --with-deps chromium     # for a page that draws its words with JavaScript, and "scrape"
+          bash ../.github/scripts/ensure-chromium.sh     # for a page that draws its words with JavaScript, and "scrape"
       - name: Read and file
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

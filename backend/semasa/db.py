@@ -36,6 +36,7 @@ BRAIN_INBOX = "semasa_brain_inbox"          # Otak AI (supabase/036_brain.sql)
 BRAIN_ENTRIES = "semasa_brain_entries"
 DOC_TEMPLATES = "semasa_doc_templates"        # templates the AI makes from a reference document (supabase/038_doc_templates.sql)
 BRAIN_DOCS = "semasa_brain_docs"             # documents the AI drafts from the brain and the FAQ (supabase/037_brain_docs.sql)
+BRAIN_ASKS = "semasa_brain_asks"             # questions answered from the brain, cited (supabase/078_brain_ask.sql)
 POST_METRICS = "semasa_post_metrics"
 REPOS = "semasa_repos"
 API_STATUS = "semasa_api_status"

@@ -16,6 +16,7 @@ import {
 import { entryText } from "../lib/documents";
 import DocumentModal from "../components/DocumentModal";
 import DocumentsPanel from "../components/DocumentsPanel";
+import BrainAskPanel from "../components/BrainAskPanel";
 import TemplateModal from "../components/TemplateModal";
 import TemplatePanel from "../components/TemplatePanel";
 import Markdown from "../components/Markdown";
@@ -246,6 +247,7 @@ export default function BrainTab({ user, settings, save, onToast }) {
       )}
 
       <DocumentsPanel onToast={onToast} />
+      <BrainAskPanel onToast={onToast} />
       <TemplatePanel templates={templatesT} onAdd={() => setTplOpen(true)} onUse={(tpl) => { setDocTemplate(tpl.id); setDocOpen(true); }} onToast={onToast} />
 
       {/* the library */}

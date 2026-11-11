@@ -212,10 +212,10 @@ TIKTOK_SETTINGS = {"privacy_level": "PUBLIC_TO_EVERYONE", "allow_comment": True,
                    "media_type": "video", "auto_add_music": False, "video_made_with_ai": True}
 
 
-def thread_levels(text: str, most: int = THREAD_LEVELS, limit: int = THREAD_MAX) -> list[str]:
-    """A caption as the levels of one Threads chain: its paragraphs in order, neighbours joined while they fit one post, at
-    most `most` levels (the tail is folded into the last ones). Joined with a blank line, the levels are the caption again,
-    which is how a chain already in Zernio is recognised as this post. A caption of one paragraph is one level."""
+_TAGS_ONLY = re.compile(r"^(?:\s*#[^\s#]+)+\s*$")
+
+
+def _raw_levels(text: str, most: int, limit: int) -> list[str]:
     explicit = [p.strip() for p in re.split(r"(?m)^[ \t]*---[ \t]*$", str(text or "")) if p.strip()]
     if len(explicit) > 1:
         # the writer marked the posts itself (a line holding only ---): each is one post, the first carries the pictures
@@ -235,6 +235,31 @@ def thread_levels(text: str, most: int = THREAD_LEVELS, limit: int = THREAD_MAX)
     while len(levels) > most:
         levels[-2:] = [levels[-2] + "\n\n" + levels[-1]]
     return levels
+
+
+def has_loose_tags(text: str, most: int = THREAD_LEVELS, limit: int = THREAD_MAX) -> bool:
+    """True when a caption would make a post of hashtags alone (the line of tags under the words). Threads refuses such a
+    post ("The parameter text is required": it reads a tags-only post as a topic, leaving no text), 11 Nov 2026."""
+    return any(_TAGS_ONLY.match(lv) for lv in _raw_levels(text, most, limit)[1:])
+
+
+def thread_levels(text: str, most: int = THREAD_LEVELS, limit: int = THREAD_MAX) -> list[str]:
+    """A caption as the levels of one Threads chain: its paragraphs in order, neighbours joined while they fit one post, at
+    most `most` levels (the tail is folded into the last ones). Joined with a blank line, the levels are the caption again,
+    which is how a chain already in Zernio is recognised as this post. A caption of one paragraph is one level. A line of
+    hashtags alone is never a level of its own: it stays under the words before it (a post of tags alone is refused by
+    Threads, 11 Nov 2026: "The parameter text is required")."""
+    out: list[str] = []
+    for lv in _raw_levels(text, most, limit):
+        if out and _TAGS_ONLY.match(lv):
+            if len(out[-1]) + 2 + len(lv) <= limit:
+                out[-1] += "\n\n" + lv
+                continue
+            if len(out[-1]) + 1 + len(lv) <= limit:
+                out[-1] += " " + lv
+                continue
+        out.append(lv)
+    return out
 
 
 class Zernio:

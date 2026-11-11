@@ -50,3 +50,19 @@ def test_each_post_of_a_thread_has_the_limit_and_the_thread_has_at_most_five():
     post["text"]["bm"]["threads"] = "\n\n---\n\n".join(str(i) for i in range(6))
     assert any("6 posts in the thread" in f["msg"] for f in compliance.scan(post))
     assert compliance.thread_parts("a\n---\nb\n  ---  \nc") == ["a", "b", "c"]
+
+
+def test_a_line_of_hashtags_stays_under_the_words_and_is_never_a_post_of_its_own():
+    # 11 Nov 2026: Threads refused the first Zernio chain ("The parameter text is required"), whose second item was only
+    # "#KeselamatanProsedur"
+    cap = "Wanita 38 tahun kena kecederaan mata selepas HIFU.\n\n#KeselamatanProsedur"
+    assert senders.has_loose_tags(cap)
+    assert senders.thread_levels(cap) == [cap]
+    two = "Hook.\n\nPenjelasan.\n\n#A #B"
+    assert senders.thread_levels(two) == ["Hook.", "Penjelasan.\n\n#A #B"]
+    marked = "Siri satu.\n\n---\n\nSiri dua.\n\n---\n\n#tag"
+    assert senders.thread_levels(marked) == ["Siri satu.", "Siri dua.\n\n#tag"]
+    assert not senders.has_loose_tags("Hook.\n\nPenjelasan dengan #tag di tengah ayat.")
+    assert senders.thread_levels("Hook.\n\nPenjelasan dengan #tag di tengah ayat.") == [
+        "Hook.", "Penjelasan dengan #tag di tengah ayat."]
+    assert "\n\n".join(senders.thread_levels(two)) == two          # the levels are still the caption, word for word

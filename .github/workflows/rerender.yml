@@ -15,6 +15,10 @@ on:
         description: "Comma-separated post ids (empty = every candidate)"
         type: string
         default: ""
+      threads:
+        description: "Instead: queue the Threads posts whose caption has a line of hashtags alone again"
+        type: boolean
+        default: false
 
 concurrency:
   group: media
@@ -53,7 +57,9 @@ jobs:
           ZERNIO_API_KEY_3: ${{ secrets.ZERNIO_API_KEY_3 }}
           DRY: ${{ inputs.dry }}
           ONLY: ${{ inputs.only }}
+          THREADS: ${{ inputs.threads }}
         run: |
           args=""
           if [ "$DRY" = "true" ]; then args="--dry"; fi
+          if [ "$THREADS" = "true" ]; then args="$args --threads"; fi
           python -m semasa.rerender $args --only "$ONLY"

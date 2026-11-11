@@ -96,13 +96,22 @@ export function ideaStatusCounts(ideas) {
   return IDEA_STATES.filter((k) => n[k]).map((k) => ({ status: k, n: n[k] }));
 }
 
-/** Per channel, the posts sent and the publisher errors in the last `days` days (semasa_publish_log). */
+/** Per channel, the posts sent and the publisher errors still unresolved in the last `days` days (semasa_publish_log). */
 export function sentByChannel(log, today, days = 30) {
   const from = addDays(today, -(days - 1));
+  // an error is counted only while it is unresolved (Wan, 11 Nov 2026: "pass the video not supported from buffer to zernio, so count
+  // to 0"): a later sent / scheduled line for the same post and channel means it was put right, and the log keeps the history
+  const fixedAt = {};
+  for (const r of log || []) {
+    if (!r.post_id || !r.channel || !r.at || !["sent", "scheduled"].includes(r.action)) continue;
+    const k = `${r.post_id}|${r.channel}`;
+    fixedAt[k] = Math.max(fixedAt[k] || 0, Date.parse(r.at));
+  }
   const by = {};
   for (const r of log || []) {
     if (!r.at || !r.channel || !["sent", "error"].includes(r.action)) continue;
     if (mytDate(Date.parse(r.at)) < from) continue;
+    if (r.action === "error" && r.post_id && (fixedAt[`${r.post_id}|${r.channel}`] || 0) > Date.parse(r.at)) continue;
     const c = (by[r.channel] ||= { channel: r.channel, sent: 0, error: 0 });
     c[r.action === "sent" ? "sent" : "error"]++;
   }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { decisionOf, decisionPending, liveLines, modelOverride, modelsFor, pinFor, robotOf, robotsFor, stateOf, teamCards, withModel, withPin } from "./src/lib/aiTeam.js";
+import { EFFORTS, decisionOf, decisionPending, effortOf, liveLines, modelOverride, modelsFor, pinFor, robotOf, robotsFor, stateOf, teamCards, withEffort, withModel, withPin } from "./src/lib/aiTeam.js";
 
 const NOW = Date.parse("2026-10-23T06:00:00Z");
 const row = (slug, over = {}) => ({ slug, key_set: true, reachable: true, key_ok: true, chat_ok: true, checked_at: "2026-10-23T05:00:00Z", models: [], ...over });
@@ -112,3 +112,25 @@ console.log("aiTeam.test.mjs: ok");
   assert.equal(modelOverride({ models: { mireld: 5 } }, "mireld"), "", "a non-string is no choice");
 }
 console.log("aiTeam model override: ok");
+
+// Wanshah 1 reads pictures (Wan, 11 Nov 2026): it can be pinned as the picture reader
+assert.ok(robotOf("rootsys").does.includes("read_image"), "W1 shows Read image");
+assert.ok(robotsFor(teamCards([row("rootsys")], [], NOW), "image_reader").some((c) => c.slug === "rootsys"));
+
+// reasoning effort per model (Wan, 11 Nov 2026)
+{
+  assert.deepEqual(EFFORTS, ["low", "medium", "high", "xhigh"]);
+  const t0 = withEffort({ pins: { reader: { gateway: "rootsys", model: "m" } }, models: { mireld: "x" } }, "rootsys", "deepseek-v4-pro", "high", new Date("2026-11-11T06:00:00Z"));
+  assert.equal(effortOf(t0, "rootsys", "deepseek-v4-pro"), "high");
+  assert.equal(effortOf(t0, "mireld", "deepseek-v4-pro"), "", "an effort belongs to one model at one gateway");
+  assert.equal(effortOf(t0, "rootsys", "other"), "");
+  assert.deepEqual(t0.pins, { reader: { gateway: "rootsys", model: "m" } }, "pins and models are untouched");
+  assert.equal(t0.models.mireld, "x");
+  assert.equal(t0.changed_at, "2026-11-11T06:00:00.000Z", "the worker is woken");
+  const t1 = withEffort(t0, "mireld", "claude-sonnet-5.5", "xhigh");
+  assert.equal(effortOf(t1, "rootsys", "deepseek-v4-pro"), "high", "another model's effort is kept");
+  assert.deepEqual(withEffort(t1, "rootsys", "deepseek-v4-pro", "").efforts, { "mireld|claude-sonnet-5.5": "xhigh" }, "empty clears just that one");
+  assert.equal(effortOf({ efforts: { "a|b": "ludicrous" } }, "a", "b"), "", "an unknown level is no choice");
+  assert.equal(effortOf(undefined, "a", "b"), "");
+}
+console.log("aiTeam effort and Wanshah 1 picture reader: ok");

@@ -80,6 +80,12 @@ import { ideaStatusCounts, postsByTopic, sentByChannel, tokensByDay } from "./sr
   ];
   assert2.deepEqual(sentByChannel(log, "2026-11-07", 30), [{ channel: "instagram", sent: 1, error: 1 }, { channel: "facebook", sent: 1, error: 0 }],
     "only sent and error lines in the window, with a channel");
+  const fixed = [
+    { post_id: "p1", channel: "threads", action: "error", at: "2026-11-06T01:00:00Z" }, { post_id: "p1", channel: "threads", action: "scheduled", at: "2026-11-06T02:00:00Z" },
+    { post_id: "p2", channel: "threads", action: "error", at: "2026-11-06T03:00:00Z" }, { post_id: "p2", channel: "threads", action: "scheduled", at: "2026-11-06T02:00:00Z" },
+  ];
+  assert2.deepEqual(sentByChannel(fixed, "2026-11-07", 30), [{ channel: "threads", sent: 0, error: 1 }],
+    "an error put right by a later scheduled line is not counted; one with nothing after it still is");
   const tk = tokensByDay([{ created_at: "2026-11-06T17:30:00Z", total_tokens: 100, ok: true }, { created_at: "2026-11-07T01:00:00Z", total_tokens: 50, ok: false },
     { created_at: "2026-10-01T00:00:00Z", total_tokens: 999 }], "2026-11-07", 3);
   assert2.deepEqual(tk.map((d) => d.date), ["2026-11-05", "2026-11-06", "2026-11-07"]);

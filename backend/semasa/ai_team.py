@@ -68,6 +68,9 @@ CHECK_AREAS = ("probe", "pulse")
 # Wan has not ranked (the providers he adds). A down robot is still last and the chain still falls over down the list. Gemini
 # stays off every job Wan has not allowed it for (gemini_keys.allowed), whatever its place here.
 PRIORITY = ("rootsys", "mireld", "kiosapi", "chatgpt", "gemini")
+# gateways that carry both text and picture models: their robot reads a picture only with the model pinned for the picture reader,
+# because the writer model it holds by default (deepseek-v4-pro on rootsys) would describe a picture it never saw
+VISION_BY_PIN = ("rootsys",)
 
 
 def priority_rank(slug: str) -> int:
@@ -77,7 +80,9 @@ def priority_rank(slug: str) -> int:
 
 # slug (api_status.slug_of) -> the robot. A host nobody named here is a "guest" robot with no mascot of its own.
 ROBOTS: dict[str, dict[str, Any]] = {
-    "rootsys": {"robot": "W1", "name": "Wanshah 1", "tone": "afiq", "does": ["read", "write"]},
+    # Wan, 11 Nov 2026: "make wanshah1 read the image". rootsys lists many models and its writer model (deepseek) is not one that
+    # sees, so W1 reads a picture with the model pinned for the Picture reader job, never with its writer model (VISION_BY_PIN)
+    "rootsys": {"robot": "W1", "name": "Wanshah 1", "tone": "afiq", "does": ["read", "write", "read_image"]},
     "mireld": {"robot": "W2", "name": "Wanshah 2", "tone": "mireld", "does": ["read", "write", "make_image"]},
     # KiosAPI serves chat models too (Wan's reader slot runs gpt-5.6-sol there), so it may write text; what it may NOT do is
     # answer a chat question with an image model, which cannot_write_text() refuses by the model's name.
@@ -141,6 +146,38 @@ def read_models(store: Any) -> dict[str, str]:
         return {}
     raw = ((rows[0].get("value") or {}) if rows else {}).get("models") or {}
     return {str(k): str(v).strip() for k, v in raw.items() if isinstance(raw, dict) and isinstance(v, str) and v.strip()}
+
+
+EFFORTS = ("low", "medium", "high", "xhigh")
+
+
+def read_efforts(store: Any) -> dict[str, str]:
+    """The reasoning effort Wan chose for a model, {"slug|model": effort} (settings.ai_team.efforts; the API tab writes it). Only
+    the four known levels are kept: anything else is read as "no choice", which sends nothing to the gateway."""
+    try:
+        rows = store.table(db.SETTINGS).select("key,value").eq("key", SETTINGS_KEY).execute().data or []
+    except Exception as exc:  # noqa: BLE001 - no choice is the default
+        log.info("ai_team efforts not read (%s)", str(exc)[:120])
+        return {}
+    raw = ((rows[0].get("value") or {}) if rows else {}).get("efforts") or {}
+    return {str(k): str(v).strip().lower() for k, v in raw.items()
+            if isinstance(raw, dict) and isinstance(v, str) and v.strip().lower() in EFFORTS}
+
+
+def efforts_for(chosen: dict[str, str], ranked: list[dict[str, Any]],
+                extra: tuple[str, str, str] | None = None) -> tuple[tuple[str, str], ...]:
+    """The choices as ("host|model", effort) pairs for the robots and models a call can actually reach, so llm.py needs no slug
+    table. `extra` is (slug, base_url, model) for the pinned picture reader, whose model is not the robot's writer model."""
+    out: dict[str, str] = {}
+    for c in ranked:
+        e = chosen.get(f"{c['slug']}|{c.get('model') or ''}")
+        if e:
+            out[f"{host_of(c['base_url'])}|{c['model']}"] = e
+    if extra:
+        e = chosen.get(f"{extra[0]}|{extra[2]}")
+        if e:
+            out[f"{host_of(extra[1])}|{extra[2]}"] = e
+    return tuple(out.items())
 
 
 def apply_models(cands: list[dict[str, Any]], models: dict[str, str]) -> list[dict[str, Any]]:
@@ -447,7 +484,7 @@ def chain(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
             log.warning("AI team live check failed (%s); the measured order stands", str(exc)[:160])
     ranked = order(cands, hl, pin)
     for c in ranked:
-        c["vision_model"] = c["model"] if "read_image" in (c.get("does") or []) else ""
+        c["vision_model"] = c["model"] if "read_image" in (c.get("does") or []) and c["slug"] not in VISION_BY_PIN else ""
     skipped = [c for c in cands if c["blocked"]]
     state: dict[str, Any] = {
         "at": now_at.isoformat(),
@@ -482,6 +519,23 @@ def chain(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
     return ranked
 
 
+def picture_reader_change(pin: dict[str, Any] | None, ranked: list[dict[str, Any]]) -> dict[str, Any]:
+    """The LLMSettings fields that make a pinned robot the picture reader: {} when nothing is pinned, the robot is not a usable
+    text robot with a key here, or it cannot read pictures. A pin with no model uses the robot's own vision model, which a
+    robot in VISION_BY_PIN does not have, so it reads nothing until Wan picks one."""
+    gateway = (pin or {}).get("gateway")
+    if not gateway:
+        return {}
+    c = next((x for x in ranked if x["slug"] == gateway), None)
+    if c is None or "read_image" not in (c.get("does") or []):
+        return {}
+    model = (pin or {}).get("model") or c.get("vision_model") or ""
+    if not model or not c.get("key"):
+        return {}
+    return {"vision_provider": c["provider"], "vision_base_url": c["base_url"], "vision_key": c["key"],
+            "vision_reader_model": model}
+
+
 def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: datetime | None = None,
           job: str = "reader", live: Any = None) -> LLMSettings:
     """LLMSettings with the fastest healthy text robot as the primary, the next OpenAI-dialect one as the backup, and the
@@ -507,9 +561,20 @@ def route(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
                                   fallback_key=second["key"] if second else None,
                                   fallback_model=second["model"] if second else "", fallback_blocked="",
                                   chain=links)
+    # the picture reader pinned on the API tab (Wan, 11 Nov 2026): that robot and model are asked first for a picture, with the
+    # robot's own key at its own address; the rest of the chain still reads it when it gives nothing
+    change.update(picture_reader_change(read_pins(store).get("image_reader"), ranked))
     # a writer that moved host or model reads pictures with its own model unless the page set a picture reader
-    if not base.vision_reader_model and (host_of(first["base_url"]) != host_of(base.base_url) or first["model"] != base.model):
+    reader_set = base.vision_reader_model or change.get("vision_reader_model")
+    if not reader_set and (host_of(first["base_url"]) != host_of(base.base_url) or first["model"] != base.model):
         change["vision_model"] = first["model"]
+    pic = None
+    if change.get("vision_reader_model"):
+        pic = next((x for x in ranked if x["base_url"] == change.get("vision_base_url")), None)
+    reader = (pic["slug"], pic["base_url"], change["vision_reader_model"]) if pic else None
+    efforts = efforts_for(read_efforts(store), ranked, reader)
+    if efforts:
+        change["efforts"] = efforts
     log.info("AI team: %s (%s, %s) writes; the chain is %s", first["name"], first["slug"], first["model"],
              " > ".join(c["slug"] for c in ranked))
     return dataclasses.replace(base, **change)

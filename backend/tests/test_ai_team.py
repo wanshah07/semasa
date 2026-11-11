@@ -557,3 +557,55 @@ def test_the_probe_asks_the_chosen_model(monkeypatch):
     monkeypatch.setattr(api_status, "probe", fake_probe)
     api_status.run(store, _github(), github=_github(), cfg={})
     assert ("mireld", "claude-fable-5.1") in asked
+
+
+# ------------------------------------------------ Wanshah 1 reads pictures (Wan, 11 Nov 2026)
+def _pin_reader_of_pictures(store, gateway, model):
+    pins = {"image_reader": {"gateway": gateway, "model": model}}
+    store.tables.setdefault(db.SETTINGS, []).append({"key": "ai_team", "value": {"pins": pins}})
+
+
+def test_wanshah_1_reads_pictures_with_the_model_pinned_for_it_and_never_with_its_writer_model():
+    assert "read_image" in ai_team.ROBOTS["rootsys"]["does"]
+    store = FakeStore()
+    plain = ai_team.route(store, _github(), {}, NOW)
+    link = next(x for x in plain.chain if x["slug"] == "rootsys")
+    assert link["vision_model"] == "", "a text model that was never shown to see is not sent a picture"
+    assert not plain.vision_reader_model
+    _pin_reader_of_pictures(store, "rootsys", "kimi-k3.1-pro")
+    s = ai_team.route(store, _github(), {}, NOW)
+    assert (s.vision_base_url, s.vision_key, s.vision_reader_model) == ("https://rootsys.cloud/v1", "sk-root", "kimi-k3.1-pro")
+    assert s.model != "kimi-k3.1-pro", "the pin changes the picture reader only, the writer is untouched"
+    assert s.vision_key != "mk-1", "Mireld's key never goes to rootsys"
+
+
+def test_a_picture_pin_with_no_model_on_wanshah_1_reads_nothing_until_a_model_is_picked():
+    store = FakeStore()
+    _pin_reader_of_pictures(store, "rootsys", "")
+    assert not ai_team.route(store, _github(), {}, NOW).vision_reader_model
+
+
+# ------------------------------------------------ reasoning effort per model (Wan, 11 Nov 2026)
+def _efforts(store, efforts):
+    store.tables.setdefault(db.SETTINGS, []).append({"key": "ai_team", "value": {"efforts": efforts}})
+
+
+def test_the_effort_chosen_for_a_model_reaches_the_settings_as_host_and_model():
+    store = FakeStore()
+    _efforts(store, {"rootsys|gpt-4.1-mini": "High", "mireld|claude-sonnet-5.5": "xhigh", "mireld|gpt-x": "low",
+                     "rootsys|junk": "ludicrous", "kiosapi|gpt-image-2": "low"})
+    s = ai_team.route(store, _github(), {}, NOW)
+    assert dict(s.efforts) == {"rootsys.cloud|gpt-4.1-mini": "high", "api.mireld.my|claude-sonnet-5.5": "xhigh"}, \
+        "only models a call can reach, only the four known levels"
+
+
+def test_no_effort_chosen_means_nothing_is_set():
+    assert ai_team.route(FakeStore(), _github(), {}, NOW).efforts == ()
+
+
+def test_the_effort_of_the_pinned_picture_reader_model_is_kept():
+    store = FakeStore()
+    store.tables.setdefault(db.SETTINGS, []).append({"key": "ai_team", "value": {
+        "pins": {"image_reader": {"gateway": "rootsys", "model": "kimi-k3.1-pro"}},
+        "efforts": {"rootsys|kimi-k3.1-pro": "medium"}}})
+    assert dict(ai_team.route(store, _github(), {}, NOW).efforts) == {"rootsys.cloud|kimi-k3.1-pro": "medium"}

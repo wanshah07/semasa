@@ -346,6 +346,22 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
     return canvas
 
 
+def cover_words(first: dict | None) -> tuple[str, str] | None:
+    """(title, supporting line) for the cover when a carousel's first slide is a hook, else None.
+
+    A hook is a title with no note and at most ONE short line under it. The writer usually gives the hook exactly one
+    such line, as a point, and the first rule ("no points at all") refused all of those: six approved carousels were
+    redrawn on 11 Nov 2026 and still had no cover, which the Instagram gate then holds back. That one line is the cover's
+    supporting line. A first slide with two or more points or a note is a content slide: the cover must not replace it,
+    so there is none."""
+    first = first if isinstance(first, dict) else {}
+    title = str(first.get("title") or "").strip()
+    points = [str(p).strip() for p in (first.get("points") or []) if str(p or "").strip()]
+    if not title or first.get("note") or len(points) > 1:
+        return None
+    return title, str(first.get("lead") or "").strip() or (points[0] if points else "")
+
+
 def cover_jpeg(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes | None = None,
                size: tuple[int, int] | None = None, quality: int = 92) -> bytes:
     buf = io.BytesIO()

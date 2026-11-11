@@ -226,3 +226,15 @@ def test_send_now_leaves_a_channel_that_already_has_a_record(monkeypatch):
     hub = _Hub()
     assert rerender.send_now(store, hub, "late", "threads", NOW).startswith("not sent: threads already has a record")
     assert hub.sent == []
+
+
+def test_a_film_made_with_its_cover_is_never_given_a_second_one():
+    """Wan, 11 Nov 2026 (Instagram needs the cover): a film whose own report says it opens on the cover is not a candidate."""
+    film = {"id": "mf", "mode": "clip", "type": "video", "status": "done", "generated_media_url": BASE + "f.mp4",
+            "meta": {"flow": "motion", "motion_id": "f1"}}
+    store = FakeStore(semasa_posts=[_post("pf", media=("mf",))], media_generations=[film],
+                      semasa_motions=[{"id": "f1", "check_report": {"cover": {"seconds": 1.1}}}], semasa_log=[])
+    assert rerender.candidates(store, NOW) == []
+    bare = FakeStore(semasa_posts=[_post("pf", media=("mf",))], media_generations=[film],
+                     semasa_motions=[{"id": "f1", "check_report": {}}], semasa_log=[])
+    assert [c["kind"] for c in rerender.candidates(bare, NOW)] == ["film"]

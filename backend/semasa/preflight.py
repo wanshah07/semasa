@@ -123,7 +123,8 @@ def check_request(channel: str, body: dict[str, Any]) -> list[tuple[str, str]]:
 
 
 def check_post(post: dict[str, Any], media: list[dict[str, Any]], settings: dict[str, Any],
-               sink: list[dict[str, Any]] | None = None) -> list[dict[str, str]]:
+               sink: list[dict[str, Any]] | None = None,
+               reports: dict[str, dict[str, Any]] | None = None) -> list[dict[str, str]]:
     """Every finding for one post: [{channel, level, message}]. `sink` collects what the queue-wide checks need."""
     findings: list[dict[str, str]] = []
     due = publisher.due_utc(post["date"], post["slot"])
@@ -148,6 +149,10 @@ def check_post(post: dict[str, Any], media: list[dict[str, Any]], settings: dict
             findings.append({"channel": channel, "level": "block", "message": str(exc)[:200]})
             continue
         findings += [{"channel": channel, "level": lv, "message": msg} for lv, msg in check_request(channel, body)]
+        if channel == "instagram" and post.get("stream") != "linkedin" and reports is not None:
+            gap = publisher.instagram_cover_gap(media, reports)
+            if gap:
+                findings.append({"channel": channel, "level": "block", "message": gap})
         if sink is not None:
             sink.append({"label": f"{post['date']} {post['slot']} {str(post['id'])[:8]}", "channel": channel, "due": due,
                          "text": text})
@@ -210,7 +215,8 @@ def run(store: Any, zernio: Any = None, now: datetime | None = None) -> dict[str
             continue
         report["posts"] += 1
         media = publisher.media_for(store, list(post.get("media_ids") or []))
-        findings = check_post(post, media, settings, sink) + (read_back(zernio, post) if zernio is not None else [])
+        findings = (check_post(post, media, settings, sink, publisher.film_reports(store, media))
+                    + (read_back(zernio, post) if zernio is not None else []))
         label = f"{post['date']} {post['slot']} {post.get('stream', '')[:4]:4} {str(post['id'])[:8]}"
         for f in findings:
             report["lines"].append(f"{'BLOCK' if f['level'] == 'block' else 'warn '} {label} {f['channel']:9} {f['message']}")

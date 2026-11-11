@@ -12,7 +12,8 @@
 const MYT_MS = 8 * 3600_000;
 export const WINDOWS = ["00-03", "03-06", "06-09", "09-12", "12-15", "15-18", "18-21", "21-24"];
 export const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-export const CHANNELS = ["threads", "instagram", "facebook"];
+// TikTok and LinkedIn have figures since Zernio became the publisher (backend/semasa/metrics.py reads its analytics)
+export const CHANNELS = ["threads", "instagram", "facebook", "tiktok", "linkedin"];
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0);
 

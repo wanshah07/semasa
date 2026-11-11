@@ -1,0 +1,40 @@
+/* SUPABASE GELAP - the same preset's dark side: charcoal surfaces, green primary #3ECF8E. Same tokens, different values; nothing else changes.
+   Generated from one palette and checked by web/themes.test.mjs (every text pair reads 4.5:1 or better). */
+[data-theme="supabase-gelap"] {
+  --c-bg:          18  18  18;    /* #121212 */
+  --c-surface:     23  23  23;
+  --c-surface-2:   32  32  32;
+  --c-line:        46  46  46;
+  --c-ink:        250 250 250;
+  --c-muted:      143 143 143;   /* 5.0:1 on surface-2 */
+  --c-accent:      62 207 142;   /* #3ECF8E */
+  --c-accent-ink:   0   0   0;   /* on the accent fill: 10.5:1 */
+  --c-accent-text: 62 207 142;   /* the accent as text: 8.2:1 on the surfaces */
+  --c-ok:       74 222 128;
+  --c-warn:    251 146  60;
+  --c-danger:  248 113 113;
+  --c-queue:   250 204  21;
+  --c-wait:    232 121 249;
+  --c-warm:         0  98  57;
+  --c-gold:       245 158  11;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+  --shadow-lift: 0 2px 6px rgb(0 0 0 / 0.4), 0 24px 48px -16px rgb(0 0 0 / 0.7);
+  --hero-gradient: radial-gradient(1200px 500px at 10% -10%, rgb(var(--c-accent) / 0.22), transparent 60%),
+                   radial-gradient(800px 400px at 90% 0%, rgb(var(--c-gold) / 0.16), transparent 60%);
+  color-scheme: dark;
+  --cat-kosmetik: 244 114 182;
+  --cat-halal: 74 222 128;
+  --cat-makanan: 251 146 60;
+  --cat-farmaseutikal: 167 139 250;
+  --cat-kesihatan: 248 113 113;
+  --cat-ekonomi: 250 204 21;
+  --cat-politik: 96 165 250;
+  --cat-jenayah: 148 163 184;
+  --cat-sosial: 45 212 191;
+  --cat-teknologi: 129 140 248;
+  --cat-hiburan: 244 114 182;
+  --cat-sukan: 52 211 153;
+  --cat-pendidikan: 56 189 248;
+  --cat-alam_sekitar: 163 230 53;
+  --cat-lain: 148 163 184;
+}

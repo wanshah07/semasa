@@ -85,7 +85,7 @@ t("daily series and the channel split", () => {
   assert.equal(d[7].date, "2026-10-10");
   assert.equal(d[7].views, 5);                                       // the 02:30 MYT post sits on 10 Oct
   const ch = byChannel(filterRows(ROWS, { days: 30, today: TODAY }));
-  assert.deepEqual(ch.map((c) => [c.channel, c.posts, c.views]), [["threads", 5, 365], ["instagram", 1, 11], ["facebook", 1, 30]]);
+  assert.deepEqual(ch.map((c) => [c.channel, c.posts, c.views]), [["threads", 5, 365], ["instagram", 1, 11], ["facebook", 1, 30], ["tiktok", 0, 0], ["linkedin", 0, 0]]);
   assert.deepEqual(ranked(filterRows(ROWS, { days: 30, today: TODAY })).slice(0, 3).map((r) => r.id), [1, 4, 3]);
 });
 

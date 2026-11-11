@@ -27,8 +27,8 @@
   --c-wait:       162  28 175;   /* post-slot check: magenta, a post waiting for approval */
 
   /* type */
-  --font-display: "Fraunces", Georgia, serif;
-  --font-body:    "Inter", system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", system-ui, sans-serif;   /* Wan, 11 Nov 2026: one face for the whole app */
+  --font-body:    "Plus Jakarta Sans", system-ui, sans-serif;
 
   /* shape */
   --r-card: 22px;

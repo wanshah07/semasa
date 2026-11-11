@@ -397,6 +397,23 @@ class Zernio:
     def accounts(self) -> list[dict[str, Any]]:
         return self._call("GET", "/accounts").get("accounts") or []
 
+    def analytics(self, from_date: str, to_date: str, pages: int = 20) -> list[dict[str, Any]]:
+        """Every post this login published through Zernio in [from_date, to_date] with its figures (GET /v1/analytics,
+        `source=late`: posts sent through Zernio only, so a post Buffer sent is never counted twice). Zernio allows a few
+        analytics reads a second, so the pages are paced."""
+        out: list[dict[str, Any]] = []
+        for page in range(1, pages + 1):
+            got = self._call("GET", "/analytics", params={"source": "late", "fromDate": from_date[:10], "toDate": to_date[:10],
+                                                           "limit": 100, "page": page})
+            rows = got.get("posts") or []
+            out += [r for r in rows if isinstance(r, dict)]
+            pg = got.get("pagination") or {}
+            last = int(pg.get("pages") or pg.get("totalPages") or 0)
+            if not rows or len(rows) < 100 or (last and page >= last):
+                break
+            self.sleep(0.5)
+        return out
+
 
 class ZernioHub:
     """Wan's Zernio is three logins (Instagram and Threads; LinkedIn and Facebook; TikTok), so three keys. The hub is one
@@ -423,6 +440,13 @@ class ZernioHub:
         out: list[dict[str, Any]] = []
         for cid in channel_ids:
             out += self._for(cid).posts([cid], start, end)
+        return out
+
+    def analytics(self, from_date: str, to_date: str) -> list[dict[str, Any]]:
+        """Every login's posts with their figures, each login asked once."""
+        out: list[dict[str, Any]] = []
+        for client in {id(c): c for c in self.by_account.values()}.values():
+            out += client.analytics(from_date, to_date)
         return out
 
     def delete(self, post_id: str, account_id: str = "") -> dict[str, Any]:

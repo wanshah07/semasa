@@ -11,6 +11,15 @@ from semasa import ideas, modes, motion, motion_styles
     ("Cara mendaftar notifikasi kosmetik: langkah demi langkah", "howto"),
     ("Laporan kes: pesakit alami kecederaan mata selepas HIFU, kes di mahkamah", "case"),
     ("Apa itu PIF dan maksud dokumen maklumat produk", "explainer"),
+    # the eight modes added 11 Nov 2026
+    ("Serum vitamin C vs retinol: mana lebih baik untuk kulit sensitif", "compare"),
+    ("Dahulu had 0.5% kini 0.3%, peraturan baharu menggantikan yang lama", "change"),
+    ("Apa maksud singkatan INCI pada label kosmetik?", "define"),
+    ("Boleh ke jual produk tanpa notifikasi?", "decide"),
+    ("Kesilapan biasa semasa mendaftar notifikasi kosmetik", "mistake"),
+    ("Senarai semak sebelum eksport kosmetik ke China", "checklist"),
+    ("Statistik: berapa ramai pengguna alami ruam selepas guna produk ini", "number"),
+    ("Soalan lazim tentang label halal untuk produk import", "qna"),
 ])
 def test_the_mode_that_suits_the_content_is_chosen(text, expected):
     mode, why = modes.choose(text, [])
@@ -20,11 +29,11 @@ def test_the_mode_that_suits_the_content_is_chosen(text, expected):
 
 def test_content_with_no_cue_rotates_through_all_the_modes_least_used_first():
     seen = []
-    for _ in range(10):
+    for _ in range(2 * len(modes.MODES)):
         mode, why = modes.choose("Produk ini ada di kedai", seen)
         assert "rotated" in why
         seen.insert(0, mode)
-    assert set(seen[:5]) == set(modes.MODES), "every mode takes a turn in five"
+    assert set(seen[:len(modes.MODES)]) == set(modes.MODES), "every mode takes a turn before any repeats"
     assert seen[0] != seen[1], "never the same mode twice running when nothing points at one"
 
 
@@ -90,3 +99,16 @@ def test_every_mode_shapes_a_post_without_touching_the_voice_or_the_rules():
             assert "never licenses a number, date, clause or case the source does not carry" in block
     assert modes.post_block("teaser") == "" and modes.post_block("auto") == ""
     assert ideas.modes is modes
+
+
+def test_there_are_thirteen_modes_each_with_a_name_in_both_languages_and_the_original_five_keep_their_places():
+    assert modes.MODES[:5] == ("explainer", "news", "myth", "howto", "case")
+    assert len(modes.MODES) == len(set(modes.MODES)) == 13
+    for mode in modes.MODES:
+        bm, en = modes.NAMES[mode]
+        assert bm and en and modes.name(mode, bm=True) == bm and modes.name(mode) == en
+    assert motion_styles.MODES == ("auto", *modes.MODES, "teaser") and motion.MODES == modes.MODES
+
+
+def test_a_checklist_cue_no_longer_makes_a_how_to():
+    assert modes.choose("Senarai semak dokumen sebelum mohon", [])[0] == "checklist"

@@ -210,3 +210,15 @@ const pageRow = motionRow({ url: "https://www.npra.gov.my/a" }).row;
 assert.equal(pageRow.source_url, "https://www.npra.gov.my/a");
 assert.equal(pageRow.options.reference_video, undefined);
 console.log("motion reference box: ok");
+
+// eight more film modes (Wan, 11 Nov 2026: "make as many model for motion as you can")
+{
+  const { MODES: M, modeOf: mo, selectedSeconds: ss } = await import("./src/lib/motion.js");
+  assert.deepEqual(M.slice(0, 6), ["auto", "explainer", "news", "myth", "howto", "case"], "the original modes keep their places");
+  for (const m of ["compare", "change", "define", "decide", "mistake", "checklist", "number", "qna"]) assert.equal(mo(m), m, `${m} is a mode`);
+  assert.equal(mo("nonsense"), "auto");
+  assert.equal(M.at(-1), "teaser");
+  assert.equal(ss(10, "teaser"), 10, "the teaser is still its own 10 s thing");
+  assert.notEqual(ss(10, "qna"), 10, "a new mode is a four-scene film, never the 10 s teaser");
+  console.log("motion modes: 13 content modes + auto + teaser ok");
+}

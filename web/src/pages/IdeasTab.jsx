@@ -120,7 +120,9 @@ function IdeaTerms({ r }) {
    issuer when it is a regulator or journal, a replacement for a rejected draft, and the slot it was made for. */
 /* the mode a post was written in (Wan, 10 Nov 2026), chosen from its content and rotated: backend/semasa/modes.py */
 const MODE_NAMES = { explainer: ["Penerang", "Explainer"], news: ["Berita semasa", "Current news"], myth: ["Mitos vs fakta", "Myth vs fact"],
-  howto: ["Cara buat", "How-to"], case: ["Kajian kes", "Case study"] };
+  howto: ["Cara buat", "How-to"], case: ["Kajian kes", "Case study"], compare: ["Banding", "Compare"], change: ["Apa berubah", "What changed"],
+  define: ["Maksud istilah", "Term explained"], decide: ["Boleh ke tak?", "Can I or can't I"], mistake: ["Kesilapan biasa", "Common mistake"],
+  checklist: ["Senarai semak", "Checklist"], number: ["Satu nombor", "One number"], qna: ["Soal jawab", "Q&A"] };
 function SourcePills({ r }) {
   const { t } = useLang();
   const host = hostOf(r.source_url);

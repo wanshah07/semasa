@@ -20,10 +20,18 @@ from .log import get_logger
 
 log = get_logger("semasa.modes")
 
-MODES = ("explainer", "news", "myth", "howto", "case")
+# Wan, 11 Nov 2026: "make as many model for motion as you can" (film modes and formats). Five original modes and eight more:
+# every one is the same four teaching scenes (hook, the two scenes that mode is about, the closing card), so a mode changes what
+# scenes 2 and 3 are FOR and never the machinery. The new ones follow `case`, so the tie-breaks of the original five do not move.
+MODES = ("explainer", "news", "myth", "howto", "case",
+         "compare", "change", "define", "decide", "mistake", "checklist", "number", "qna")
 AUTO = "auto"
 NAMES = {"explainer": ("Penerang", "Explainer"), "news": ("Berita semasa", "Current news"),
-         "myth": ("Mitos vs fakta", "Myth vs fact"), "howto": ("Cara buat", "How-to"), "case": ("Kajian kes", "Case study")}
+         "myth": ("Mitos vs fakta", "Myth vs fact"), "howto": ("Cara buat", "How-to"), "case": ("Kajian kes", "Case study"),
+         "compare": ("Banding", "Compare"), "change": ("Apa berubah", "What changed"),
+         "define": ("Maksud istilah", "Term explained"),
+         "decide": ("Boleh ke tak?", "Can I or can't I"), "mistake": ("Kesilapan biasa", "Common mistake"),
+         "checklist": ("Senarai semak", "Checklist"), "number": ("Satu nombor", "One number"), "qna": ("Soal jawab", "Q&A")}
 
 # (cue, weight): 2 is a cue that nearly settles it, 1 a hint. Malay and English, because the headlines are both.
 _CUES: dict[str, list[tuple[str, int]]] = {
@@ -35,8 +43,7 @@ _CUES: dict[str, list[tuple[str, int]]] = {
     "myth": [(r"mitos|myth|salah faham|misconception|benarkah|betul ke|adakah benar|tular|viral|fact-?check|true or false|"
               r"rumou?rs?|dakwaan|tak betul|bukan benar", 2),
              (r"sebenarnya|actually|claims?\b|dakwa|kononnya|percaya|believe", 1)],
-    "howto": [(r"cara |langkah|macam mana|bagaimana|how to|step[- ]by[- ]step|steps? to|senarai semak|checklist|"
-               r"panduan langkah", 2),
+    "howto": [(r"cara |langkah|macam mana|bagaimana|how to|step[- ]by[- ]step|steps? to|panduan langkah", 2),
               (r"panduan|guide|prosedur|procedure|daftar|mohon|permohonan|borang|apply|submit|proses |sediakan|prepare", 1)],
     "case": [(r"laporan kes|case report|case study|kajian kes|didakwa|prosecuted|mahkamah|court|serbuan|raid|disabit|"
               r"mengaku salah|dikompaun|compounded|dirampas|seized", 2),
@@ -44,6 +51,33 @@ _CUES: dict[str, list[tuple[str, int]]] = {
               r"adverse|kesan buruk|incident|insiden", 1)],
     "explainer": [(r"apa itu|what is|what are|maksud|definisi|explain|terangkan|perbezaan|difference between", 2),
                   (r"kenapa|why |bagaimana ia|how it works|asas|basics?\b", 1)],
+    # the new modes: strong cues are specific phrases, so none of them takes a piece the original five already fit
+    "compare": [(r"\bvs\.?\b|versus|berbanding|dibanding|bandingkan|compare[sd]?\b|comparison|mana (?:lebih )?(?:baik|bagus)|"
+                 r"better than|pilih (?:mana|yang)|atau\b.{0,25}\?", 2),
+                (r"kelebihan dan kekurangan|pros and cons|beza antara|bezanya", 1)],
+    "change": [(r"sebelum ini.{0,40}(?:kini|sekarang)|dahulu.{0,40}(?:kini|sekarang)|kini.{0,30}sebelum|before.{0,40}\bnow\b|"
+                r"previously.{0,60}now|old rule|new rule|peraturan lama|peraturan baharu|replaces?\b|menggantikan|diganti|"
+                r"revised|disemak semula|kemas kini peraturan", 2),
+               (r"berubah|changes?\b|perubahan|tidak lagi|no longer|mulai|starting from", 1)],
+    "define": [(r"apa maksud|singkatan|stands? for|what does .{1,40} mean|definition of|apa erti|istilah", 3),
+               (r"terminologi|jargon|glossary|glosari|bermaksud", 2),
+               (r"\bmaksudnya\b|bermakna|means\b", 1)],
+    "decide": [(r"boleh (?:ke|tak|kah)\b|bolehkah|adakah boleh|dibenarkan(?:kah)?|tak boleh|tidak boleh|can i\b|can you\b|"
+               r"is it (?:legal|allowed|okay|ok)|are we allowed|allowed to|haram ke|halal ke|wajib ke|perlu ke", 2),
+              (r"dibenarkan|dilarang|permitted|prohibited|larangan", 1)],
+    "mistake": [(r"kesilapan|silap|common mistake|mistakes?\b|jangan buat|elak(?:kan)?\b|avoid\b|biasa tersilap|"
+                 r"ditolak sebab|ditolak kerana|rejected because|kenapa ditolak|why .{0,30}rejected", 2),
+                (r"tersilap|salah buat|wrong\b|pitfall|perangkap|ralat", 1)],
+    "checklist": [(r"senarai semak|checklist|semak sebelum|check before|sebelum (?:hantar|mohon|mendaftar|eksport|jual)|"
+                   r"before (?:you )?(?:submit|apply|register|export|launch)|pastikan (?:anda )?ada", 2),
+                  (r"dokumen diperlukan|required documents|keperluan|requirements?\b|syarat", 1)],
+    "number": [(r"berapa (?:banyak|ramai|had|kadar|peratus)|how (?:many|much)\b|statistik|statistics?\b|data menunjukkan|"
+                r"data shows?|nombor (?:sebenar|sebenarnya)|the number", 2),
+               (r"\d[\d.,]*\s?(?:%|peratus|percent|ppm|mg|ug|µg|ml|kg|ribu|juta|million|billion|bilion)|\brm\s?\d[\d.,]*|"
+                r"\b\d{1,3}(?:,\d{3})+\b|\bhad\b|\blimit\b|kadar|jumlah", 1)],
+    "qna": [(r"soalan lazim|\bfaq\b|frequently asked|soal jawab|q ?& ?a|\bq:|tanya (?:jawab|pakar)|ask the expert|"
+             r"ramai (?:tanya|bertanya)|many (?:people )?ask", 2),
+            (r"ditanya|asked\b|soalan|question\b", 1)],
 }
 _RX = {m: [(re.compile(p, re.I), w) for p, w in cues] for m, cues in _CUES.items()}
 
@@ -119,6 +153,30 @@ _POST_PARTS = {
         "HOOK on the result the reader wants, then the STEPS in order (three or four short actions with the real "
         "values: the limit, the form, the deadline), then the MISTAKES that cost people most at those steps, "
         "then the next step."),
+    "compare": (
+        "HOOK on the choice, then the TWO OPTIONS side by side (each with its real value: the limit, the cost, the "
+        "requirement, the rule, the source named once), then WHICH FITS WHOM and the fact that decides it, then what to do."),
+    "change": (
+        "HOOK on what changed, then BEFORE AND NOW (the old rule or practice and the new one with the real values and the "
+        "date it takes effect, the instrument named once), then WHAT TO DO about it before the date."),
+    "define": (
+        "HOOK on the term, then WHAT IT MEANS (one plain sentence, an everyday comparison, the real definition or limit with "
+        "its source named once), then WHERE THE READER MEETS IT (a label, a form, a certificate) and the usual mix-up."),
+    "decide": (
+        "HOOK that asks the question the reader really has, then THE STRAIGHT ANSWER (yes, no or yes only if, with the real "
+        "condition and the rule named once), then THE EXCEPTION where the answer flips or the line not to cross."),
+    "mistake": (
+        "HOOK on the mistake, then THE MISTAKE (someone who made it and what it cost them, with the real fact and its source "
+        "named once), then THE RIGHT WAY and the rule that says so, then the next step."),
+    "checklist": (
+        "HOOK on what is about to be done, then THE CHECK (three or four short checkable items with the real values: the "
+        "limit, the document, the deadline), then THE ONE MOST OFTEN MISSED and what skipping it costs."),
+    "number": (
+        "HOOK on the one number, then THE NUMBER (what exactly it counts, who it covers, where it comes from, the source "
+        "named once), then WHAT IT MEANS in practice and the context that stops it being misread."),
+    "qna": (
+        "HOOK worded as the question people really ask, then THE QUESTION (who asks it and why it worries them), then THE "
+        "ANSWER with the real fact and its source named once, then the follow-up that always comes next and its answer."),
     "case": (
         "HOOK on the case, then THE CASE (what happened to a real product, person or company, who did what, what "
         "was found, what was done about it), then WHAT THE RULE SAYS (the instrument that decided it and why the "

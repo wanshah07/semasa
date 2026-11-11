@@ -357,6 +357,14 @@ export default function MotionLab({ user, onToast, view = "make" }) {
                 ["myth", t("Mitos vs fakta · Hook / Mitos / Kenapa orang percaya / Buat apa", "Myth vs fact · Hook / Myth / Why people believe it / What to do")],
                 ["howto", t("Cara buat · Hook / Langkah / Kesilapan / Seterusnya", "How-to · Hook / Steps / Mistakes / Next")],
                 ["case", t("Kajian kes · Hook / Kes / Peraturan / Pengajaran", "Case study · Hook / Case / The rule / Lesson")],
+                ["compare", t("Banding · Hook / Dua pilihan / Mana sesuai / Seterusnya", "Compare · Hook / Two options / Which fits whom / Next")],
+                ["change", t("Apa berubah · Hook / Sebelum & sekarang / Apa perlu buat / Seterusnya", "What changed · Hook / Before & now / What to do / Next")],
+                ["define", t("Maksud istilah · Hook / Maksud / Di mana jumpa / Seterusnya", "Term explained · Hook / Meaning / Where you meet it / Next")],
+                ["decide", t("Boleh ke tak? · Hook / Jawapan / Pengecualian / Seterusnya", "Can I or can't I · Hook / The answer / The exception / Next")],
+                ["mistake", t("Kesilapan biasa · Hook / Kesilapan / Yang betul / Seterusnya", "Common mistake · Hook / The mistake / The right way / Next")],
+                ["checklist", t("Senarai semak · Hook / Senarai / Yang selalu terlepas / Seterusnya", "Checklist · Hook / The check / Most often missed / Next")],
+                ["number", t("Satu nombor · Hook / Nombor / Maksudnya / Seterusnya", "One number · Hook / The number / What it means / Next")],
+                ["qna", t("Soal jawab · Hook / Soalan / Jawapan & susulan / Seterusnya", "Q&A · Hook / The question / Answer & follow-up / Next")],
                 ["teaser", t("Gimik / teaser sahaja · bukan penerang", "Gimmick / teaser only · not an explainer")]]} /></label>
           <label className="block"><Label>{t("Saat", "Seconds")}</Label>
             <Select value={String(seconds)} onChange={setSeconds} options={mode === "teaser" ? [["10", t("10s · satu babak gimik kekal", "10s · one persistent gimmick scene")], ["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]] : [["30", t("Ikut maklumat · tidak lebih 70s", "As long as the information needs · never over 70s")]]} /></label>

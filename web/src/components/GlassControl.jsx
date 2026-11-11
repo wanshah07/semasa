@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Settings2, X } from "lucide-react";
 import { useLang } from "../lib/i18n";
-import { DEFAULT_GLASS, GROUNDS, IMAGE_KEY, PRESETS, applyGlass, imageUrl, minOpacity, normalizeGlass, readGlass, writeGlass } from "../lib/glass";
+import { DEFAULT_GLASS, GROUNDS, IMAGE_KEY, PRESETS, absoluteUrl, applyGlass, imageUrl, minOpacity, normalizeGlass, readGlass, writeGlass } from "../lib/glass";
 
 /* "Laras kaca": the glass controls of the pasted dashboard, for the whole app (lib/glass.js says why it stays readable).
    `big`: the phone menu's version. The panel is this page's own, never a browser dialog. */
@@ -37,7 +37,7 @@ export default function GlassControl({ big = false }) {
   const box = useRef(null);
   const file = useRef(null);
 
-  useEffect(() => { applyGlass(document.documentElement, glass, imageUrl(glass, custom, BASE)); }, [glass, custom]);
+  useEffect(() => { applyGlass(document.documentElement, glass, absoluteUrl(imageUrl(glass, custom, BASE), document.baseURI)); }, [glass, custom]);
   useEffect(() => {
     if (!open) return undefined;
     const away = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); };

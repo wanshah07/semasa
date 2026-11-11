@@ -39,8 +39,13 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install
         run: |
-          # ubuntu-latest no longer ships ffmpeg (hyperframes doctor, 24 Oct 2026: "FFmpeg is required to encode video")
-          timeout 300 sudo apt-get update -qq -o Acquire::Retries=3 -o Acquire::http::Timeout=30 && timeout 600 sudo apt-get install -y -qq ffmpeg
+          # ubuntu-latest no longer ships ffmpeg (hyperframes doctor, 24 Oct 2026: "FFmpeg is required to encode video").
+          # apt-get update can be slow/flaky on the runner; retry it so a transient failure does not silently skip ffmpeg
+          # (the `&&` chain then rendered every film with "FFmpeg not found").
+          for attempt in 1 2 3; do
+            timeout 300 sudo apt-get update -qq -o Acquire::Retries=3 -o Acquire::http::Timeout=30 && break || { echo "::warning::apt-get update attempt $attempt failed; retrying"; sleep 10; }
+          done
+          timeout 600 sudo apt-get install -y -qq ffmpeg || echo "::warning::ffmpeg install failed; films will not render"
           pip install -r requirements.txt
           npx -y hyperframes@0.8.188 doctor || true          # warms the npx cache and says what the runner has
           # the second renderer (backend/remotion): its packages and its own headless browser. A failure here is not fatal:

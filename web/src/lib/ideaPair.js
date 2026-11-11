@@ -34,3 +34,27 @@ export function pairedIdea(idea, ideas) {
   if (!id) return null;
   return (ideas || []).find((r) => r.id !== idea.id && r.brief?.pair === id) || null;
 }
+
+/** The idea row for the OTHER stream of a post that already exists (Wan, 11 Nov 2026: "where is the button to switch the post for
+    LinkedIn and ws.regulab"). The two voices are never mixed, so the post itself is not converted: a new idea for the other stream is
+    written, drawn and queued by the worker in that stream's own voice, from the same issue. `idea` is the post's own idea row when
+    it has one (source, note, references, look, hook style), else the post's hook stands in for the title. The new row remembers
+    the post it came from (`brief.from_post`), so a second press finds it instead of making a duplicate. */
+export function otherStreamRow(post, idea, { userId = null, pairId = "" } = {}) {
+  const from = post?.stream === "linkedin" ? "linkedin" : "regulab";
+  const to = from === "linkedin" ? "regulab" : "linkedin";
+  const src = idea || {};
+  const title = String(src.source_title || post?.hook || "").trim();
+  const common = {
+    trend_id: src.trend_id ?? null, source_title: title, source_url: src.source_url || null,
+    source_name: src.source_name ?? null, source_summary: src.source_summary ?? null,
+    make_media: src.make_media ?? true, note: String(src.note || ""), reference_urls: Array.isArray(src.reference_urls) ? src.reference_urls : [],
+    status: "new", created_by: userId,
+  };
+  if (src.make_slides || (Array.isArray(post?.slides) && post.slides.length > 1)) common.make_slides = true;
+  const { position, pair, pair_stream, from_post, ...kept } = (src.brief && typeof src.brief === "object") ? src.brief : {}; // eslint-disable-line no-unused-vars
+  const brief = { ...kept, from_post: post?.id || "", ...(pairId ? { pair: pairId, pair_stream: from } : {}) };
+  const row = ideaRows(common, { choice: to, domain: "", angle: "", brief })[0];
+  row.brief = { ...row.brief, ...(pairId ? { pair: pairId, pair_stream: from } : {}) };
+  return row;
+}

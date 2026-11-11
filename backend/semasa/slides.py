@@ -22,6 +22,7 @@ from __future__ import annotations
 import io
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,8 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 from . import compliance
 
 FONTS = Path(__file__).resolve().parent / "fonts"
+# the ws.regulab logo, trimmed to its ink
+BRAND_LOGO = Path(__file__).resolve().parents[2] / "web" / "public" / "cards" / "logo-ink.png"
 DISPLAY = FONTS / "Fraunces-SemiBold.ttf"
 BODY = FONTS / "Inter-Regular.ttf"
 BODY_BOLD = FONTS / "Inter-SemiBold.ttf"
@@ -269,6 +272,28 @@ def background(size: tuple[int, int], ground: bytes | None) -> tuple[Image.Image
     return canvas, False
 
 
+LOGO_H = 46            # the ws.regulab logo, top right of every ws.regulab slide (Wan, 11 Nov 2026)
+
+
+@lru_cache(maxsize=4)
+def brand_mark(height: int, white: bool) -> Image.Image | None:
+    """The ws.regulab logo at this height, in its own colours, or knocked out in white over a photograph. None when the
+    file is missing: a slide is drawn without it rather than not at all."""
+    try:
+        im = Image.open(BRAND_LOGO).convert("RGBA")
+    except OSError:
+        return None
+    box = im.getchannel("A").getbbox()
+    if box:
+        im = im.crop(box)
+    im = im.resize((round(height * im.width / im.height), height), Image.LANCZOS)
+    if white:
+        flat = Image.new("RGBA", im.size, (255, 255, 255, 255))
+        flat.putalpha(im.getchannel("A"))
+        return flat
+    return im
+
+
 def eyebrow_text(label: str, font: ImageFont.FreeTypeFont, width: float) -> str:
     """The small label above the slide. Decoration, not a fact, so it may be shortened to fit."""
     plain = re.sub(r"\s+", " ", strip_emphasis(label)).strip().upper()
@@ -321,10 +346,15 @@ def render_one(slide: dict[str, Any], index: int, total: int, *, stream: str, ey
 
     small = _font(BODY_BOLD, 24)
     counter = f"{index + 1}/{total}" if total > 1 else ""       # a poster or a lone card has no page count
+    logo = brand_mark(LOGO_H, on_ground) if stream != "linkedin" else None    # LinkedIn carries no ws.regulab identity
+    right = w - MARGIN
+    if logo:
+        canvas.paste(logo, (right - logo.width, MARGIN - 12), logo)
+        right -= logo.width + 32                                  # the page count sits to the left of the logo
     if counter:
-        d.text((w - MARGIN - small.getlength(counter), MARGIN), counter, font=small, fill=muted)
+        d.text((right - small.getlength(counter), MARGIN), counter, font=small, fill=muted)
     if eyebrow:
-        room = col - (small.getlength(counter) + 40 if counter else 0)
+        room = (right - MARGIN) - (small.getlength(counter) + 40 if counter else 0)
         d.text((MARGIN, MARGIN), eyebrow_text(eyebrow, small, room), font=small, fill=accent)
 
     top = MARGIN + HEAD_H

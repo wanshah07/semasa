@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { BOTH, ideaRows, pairedIdea, streamOptions, streamsOf } from "./src/lib/ideaPair.js";
+import { BOTH, ideaRows, otherStreamRow, pairedIdea, streamOptions, streamsOf } from "./src/lib/ideaPair.js";
 
 const common = { source_title: "NPRA notice", source_url: "https://example.org/n", note: "focus on SMEs", make_media: "image", reference_urls: ["u1"], status: "new", created_by: "u" };
 
@@ -48,3 +48,21 @@ assert.ok(src.includes("ideaRows(") && src.includes("insert(rows)"), "the compos
 const tab = readFileSync(new URL("./src/pages/IdeasTab.jsx", import.meta.url), "utf8");
 assert.ok(tab.includes("data-idea-pair"), "the Ideas list shows which idea a pair belongs with");
 console.log("ideaPair: ok");
+
+// the other stream of an existing post (the "For" switch in the post editor): a new idea in that voice, never the post converted
+{
+  const post = { id: "p9", stream: "regulab", hook: "Notifikasi bukan kelulusan", slides: [{ title: "a" }, { title: "b" }] };
+  const idea = { source_title: "NPRA notice", source_url: "https://example.org/n", note: "SMEs", reference_urls: ["u1"], make_media: "image",
+    brief: { look: "era", position: { date: "2026-11-12", slot: "08:00" }, pair: "old", pair_stream: "linkedin" } };
+  const row = otherStreamRow(post, idea, { userId: "u", pairId: "p7" });
+  assert.equal(row.stream, "linkedin"); assert.equal(row.domain, null); assert.equal(row.angle, null);
+  assert.equal(row.source_title, "NPRA notice"); assert.deepEqual(row.reference_urls, ["u1"]); assert.equal(row.status, "new");
+  assert.equal(row.make_slides, true);                                    // it was a carousel, so is the other version
+  assert.deepEqual(row.brief, { look: "era", from_post: "p9", pair: "p7", pair_stream: "regulab" });   // the old slot and pair are not carried
+  assert.equal(idea.brief.position.slot, "08:00");                        // the source idea is untouched
+  // a hand-written post with no idea: the hook is the title; LinkedIn to ws.regulab goes the other way
+  const back = otherStreamRow({ id: "p1", stream: "linkedin", hook: "A hook", slides: [] }, null, { userId: "u" });
+  assert.equal(back.stream, "regulab"); assert.equal(back.source_title, "A hook"); assert.equal(back.make_slides, undefined);
+  assert.deepEqual(back.brief, { from_post: "p1" });
+}
+console.log("ideaPair ok");

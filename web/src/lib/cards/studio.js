@@ -210,7 +210,9 @@ async function drawBrandMark(ctx, spec, W, u, M, opts) {
   if (spec.stream === "linkedin") return;
   const ink = await logoInk();
   if (!ink || !ink.im) return;
-  const h = Math.round((o.h || 34) * u), w = Math.round(h * (ink.sw / ink.sh));
+  // top right on every ws.regulab card (Wan, 11 Nov 2026: "logo actual ws regulab dekat top right slide"); a caller may still say right:false
+  const right = o.right !== false;
+  const h = Math.round((o.h || 34) * 1.2 * u), w = Math.round(h * (ink.sw / ink.sh));
   if (o.knockout) {
     const oc = document.createElement("canvas");
     oc.width = Math.max(1, w); oc.height = Math.max(1, h);
@@ -220,10 +222,10 @@ async function drawBrandMark(ctx, spec, W, u, M, opts) {
     octx.fillStyle = "#FFFFFF"; octx.fillRect(0, 0, w, h);
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = Math.round(10 * u);
-    ctx.drawImage(oc, o.right ? W - M - w : M, top, w, h);
+    ctx.drawImage(oc, right ? W - M - w : M, top, w, h);
     ctx.restore();
   } else {
-    ctx.drawImage(ink.im, ink.sx, ink.sy, ink.sw, ink.sh, o.right ? W - M - w : M, top, w, h);
+    ctx.drawImage(ink.im, ink.sx, ink.sy, ink.sw, ink.sh, right ? W - M - w : M, top, w, h);
   }
 }
 /* A TOKEN WIDER THAN THE COLUMN IS DRAWN PAST THE EDGE AND CLIPPED, silently. Every wrapper
@@ -914,7 +916,7 @@ function eraPaper(ctx, W, H) {
 /* The black pill in the top corner. It carries the eyebrow, which is where the reference
    puts its section name -- so on a ws.regulab card it names the domain and on LinkedIn the
    pillar, exactly as the eyebrow already did everywhere else. */
-function eraBadge(ctx, W, u, M, text) {
+function eraBadge(ctx, W, u, M, text, spec) {
   if (!text) return;
   const px = Math.round(23 * u);
   ctx.save();
@@ -922,7 +924,9 @@ function eraBadge(ctx, W, u, M, text) {
   const label = stripEmph(text).toUpperCase();
   const padX = Math.round(px * 0.8), h = Math.round(px * 2);
   const w = Math.min(ctx.measureText(label).width + padX * 2, Math.round(W * 0.56));
-  const x = W - M - w, y = Math.round(50 * u);
+  // the ws.regulab logo owns the top right (Wan, 11 Nov 2026), so on its cards the badge sits at the top left; LinkedIn has no logo
+  const logoRight = !!spec && spec.stream !== "linkedin" && !(spec.handle && spec.handle !== "@ws.regulab");
+  const x = logoRight ? M : W - M - w, y = Math.round(50 * u);
   ctx.fillStyle = ERA_PAL.ink; gRound(ctx, x, y, w, h, Math.round(px * 0.4)); ctx.fill();
   ctx.fillStyle = "#FFFFFF";
   ctx.fillText(label, x + padX, y + Math.round((h - px) / 2) - Math.round(px * 0.06));
@@ -1102,7 +1106,7 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   /* Rule 7 again: the mark is the consultancy's and LinkedIn carries none of it. */
   /* SEMASA: over a ground the mark is knocked out in white (its own dark green vanished into the scrim) */
   await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: onGround, textFill: onGround ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
-  eraBadge(ctx, W, u, M, spec.eyebrow);
+  eraBadge(ctx, W, u, M, spec.eyebrow, spec);
 
   const mascot = spec.mascot && MASCOT_TPL[t] ? await loadImg(spec.mascot) : null;
   /* On the hook slide the character IS the slide -- centred and larger, with the questions
@@ -1678,7 +1682,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
   } else if (t === "e_myth") {
     const L = moreLabels(spec);
     await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: inkWhite(spec), textFill: inkWhite(spec) ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
-    eraBadge(ctx, W, u, M, spec.eyebrow);
+    eraBadge(ctx, W, u, M, spec.eyebrow, spec);
     y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(70 * u * TS), ink, red);
     y += Math.round(30 * u);
     if (spec.lead) { y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted); y += Math.round(10 * u); }
@@ -1714,7 +1718,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(32 * u));
   } else if (t === "e_check") {
     await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: inkWhite(spec), textFill: inkWhite(spec) ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
-    eraBadge(ctx, W, u, M, spec.eyebrow);
+    eraBadge(ctx, W, u, M, spec.eyebrow, spec);
     y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(70 * u * TS), ink, red);
     y += Math.round(30 * u);
     if (spec.lead) { y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted); y += Math.round(10 * u); }
@@ -1825,7 +1829,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     y = warn.length ? H : Math.min(topEnd, H - Math.round(160 * u));
   } else if (t === "e_stat") {
     await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: inkWhite(spec), textFill: inkWhite(spec) ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
-    eraBadge(ctx, W, u, M, spec.eyebrow);
+    eraBadge(ctx, W, u, M, spec.eyebrow, spec);
     y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(70 * u * TS), ink, red);
     y += Math.round(30 * u);
     const figure = items[0] || "", unit = items[1] || "";

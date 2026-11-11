@@ -130,3 +130,54 @@ def test_every_ws_regulab_slide_carries_the_logo_top_right_and_linkedin_carries_
     li = slides.render(words, stream="linkedin", eyebrow="Angle")
     assert all(_top_right_ink(p) > 300 for p in reg)           # the dark-green logo is there on every slide
     assert all(_top_right_ink(p) < 20 for p in li)             # rule 7: LinkedIn has no ws.regulab identity
+
+
+# --- the cover (Wan, 11 Nov 2026) -------------------------------------------------------------------------------------------
+
+def test_the_cover_carries_the_logo_and_the_hook_inside_the_grid_crop():
+    data = carousel.cover_jpeg("Benda pasal pensijilan halal rumah sembelih yg takde sapa bagitau kau", "satu baris sokongan",
+                               "Halal Malaysia")
+    im = Image.open(io.BytesIO(data)).convert("L")
+    assert im.size == (1080, 1350)
+    light = lambda box: sum(1 for v in im.crop(box).tobytes() if v > 200)     # noqa: E731 - white ink on the green
+    assert light((300, 120, 780, 380)) > 3000                                  # the logo, near the top of the block
+    assert light((100, 540, 980, 1060)) > 8000                                 # the hook title
+    assert light((0, 0, 60, 1350)) < 50 and light((1020, 0, 1080, 1350)) < 400   # nothing in the strip the 3:4 tile crops
+
+
+def test_a_tall_film_cover_keeps_its_block_in_the_middle_band():
+    im = Image.open(io.BytesIO(carousel.cover_jpeg("Kesan sampingan ni akan hilang sendiri?", size=(1080, 1920)))).convert("L")
+    light = lambda box: sum(1 for v in im.crop(box).tobytes() if v > 200)     # noqa: E731
+    assert light((0, 0, 1080, 300)) < 200 and light((0, 1620, 1080, 1920)) < 200   # the 3:4 crop removes these bands
+    assert light((100, 400, 980, 1500)) > 8000
+
+
+def test_a_cover_too_long_for_its_supporting_line_is_refused_not_cut():
+    with pytest.raises(slides.SlideError):
+        carousel.cover_jpeg("Tajuk", "ayat yang sangat panjang " * 20)
+
+
+def test_the_worker_puts_the_cover_first_for_ws_regulab_and_leaves_linkedin_alone(worker):
+    from fakestore import FakeStore
+    saved, uploads = worker
+    row = _job("regulab", _set(4))
+    assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
+    assert saved["meta"]["cover"] is True and saved["meta"]["closing_logo"] is True and saved["meta"]["count"] == 5
+    cover = Image.open(io.BytesIO(uploads[0])).convert("RGB")
+    assert cover.getpixel((540, 1300))[1] > cover.getpixel((540, 1300))[0]    # the green cover, not the cream slide
+    saved.clear()
+    uploads.clear()
+    row = _job("linkedin", _set(4))
+    assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
+    assert saved["meta"]["cover"] is False
+    assert Image.open(io.BytesIO(uploads[0])).convert("RGB").getpixel((20, 20)) == slides.PAPER
+
+
+def test_a_first_slide_with_points_keeps_its_own_drawing(worker):
+    from fakestore import FakeStore
+    saved, uploads = worker
+    items = _set(4)
+    items[0] = {"title": "Tajuk", "points": ["satu", "dua"]}
+    row = _job("regulab", items)
+    assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
+    assert saved["meta"]["cover"] is False                       # its words are not all on a cover, so they are not dropped

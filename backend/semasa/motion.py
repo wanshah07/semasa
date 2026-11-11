@@ -42,6 +42,7 @@ from . import (
     ai_config,
     antislop,
     api_status,
+    carousel,
     compliance,
     copywriting,
     db,
@@ -1378,6 +1379,57 @@ def mix_music(video: Path, scenes: list[dict[str, Any]], seconds: float, runner:
     return out
 
 
+def probe_audio(video: Path, runner: Any = subprocess.run) -> bool:
+    try:
+        p = runner(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_type", "-of", "csv=p=0",
+                    str(video)], capture_output=True, text=True, timeout=60)
+        return "audio" in (p.stdout or "")
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def with_cover(video: Path, title: str, lead: str = "", eyebrow: str = "", runner: Any = subprocess.run,
+               seconds: float = carousel.COVER_SECONDS) -> Path:
+    """The film with a branded cover (the ws.regulab logo and the hook title) as its first `seconds`, silent. Instagram's
+    profile grid and TikTok take a video's cover from its opening frames, and neither takes a cover image through Zernio
+    that is documented, so the cover is the opening: tile, poster and thumbnail are all the cover. Returns the new file, or
+    the film unchanged when it cannot be made (a cover is never worth a failed film)."""
+    out = video.with_name("motion-covered.mp4")
+    try:
+        meta = probe(video, runner)
+        w, h = meta["width"], meta["height"]
+        if not (w and h and title.strip()):
+            return video
+        still = video.with_name("cover.jpg")
+        still.write_bytes(carousel.cover_jpeg(title, lead, eyebrow, size=(w, h)))
+        audio = probe_audio(video, runner)
+        cmd = ["ffmpeg", "-v", "error", "-y", "-loop", "1", "-framerate", "30", "-t", f"{seconds:g}", "-i", str(still)]
+        if audio:
+            cmd += ["-f", "lavfi", "-t", f"{seconds:g}", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
+        cmd += ["-i", str(video)]
+        vsrc, asrc, main = "0:v", "1:a", "2:v"
+        main_a = "2:a"
+        if not audio:
+            main = "1:v"
+        norm = "fps=30,format=yuv420p,setsar=1"
+        if audio:
+            fc = (f"[{vsrc}]{norm}[c];[{main}]{norm}[v];[{asrc}]aresample=44100,aformat=channel_layouts=stereo[ca];"
+                  f"[{main_a}]aresample=44100,aformat=channel_layouts=stereo[ma];[c][ca][v][ma]concat=n=2:v=1:a=1[outv][outa]")
+            cmd += ["-filter_complex", fc, "-map", "[outv]", "-map", "[outa]", "-c:a", "aac", "-b:a", "192k"]
+        else:
+            fc = f"[{vsrc}]{norm}[c];[{main}]{norm}[v];[c][v]concat=n=2:v=1:a=0[outv]"
+            cmd += ["-filter_complex", fc, "-map", "[outv]"]
+        cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)]
+        result = runner(cmd, capture_output=True, text=True, timeout=600)
+        if result.returncode != 0 or not out.is_file() or out.stat().st_size == 0:
+            log.warning("cover not added: %s", (getattr(result, "stderr", "") or "no output")[-300:])
+            return video
+        return out
+    except Exception as exc:  # noqa: BLE001 - the film is done without it
+        log.warning("cover not added: %s", str(exc)[:200])
+        return video
+
+
 def social_copy(video: Path, runner: Any = subprocess.run) -> Path | None:
     """The copy a platform takes without a fuss (Wan, 26 Oct 2026: "the video compress and into post queue"): H.264 High in
     yuv420p at 30 fps, AAC stereo at 44.1 kHz, the bitrate capped at 4.5 Mbps (a 60 s film stays under 35 MB), the index at
@@ -1883,6 +1935,14 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         solution = next((sc for sc in scenes if sc.get("role") == "solution"), None)
         drop = (max(0.0, float(solution["start"]) - 0.6), float(solution["start"])) if voiced and solution else None
         video = mix_music(video, scenes, total, runner, drop)
+        if (row.get("stream") or "regulab") != "linkedin":
+            # ws.regulab films open on the branded cover (Wan, 11 Nov 2026): the Instagram grid and TikTok show it as the tile
+            first = scenes[0] if scenes else {}
+            covered = with_cover(video, str(first.get("heading") or out.get("title") or row.get("brief") or "")[:200],
+                                 eyebrow=str(first.get("kicker") or "")[:60], runner=runner)
+            if covered != video:
+                video, meta = covered, probe(covered, runner)
+                report["cover"] = {"seconds": carousel.COVER_SECONDS}
         data = video.read_bytes()
         path = f"motion/{row['id']}.mp4"
         url = db.upload_generated(store, path, data, "video/mp4")

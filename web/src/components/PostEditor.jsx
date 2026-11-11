@@ -440,7 +440,10 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
           {chosen.map((m) => (
             <span key={m.id} className="relative">
               {m.mode === "slides" && <span className="absolute bottom-1 left-1 z-10 rounded bg-ink/80 px-1 text-[10px] text-bg">{t("{n} slaid", ["{n} slide", "{n} slides"], { n: m.meta?.count || "?" })}</span>}
-              {m.type === "video"
+              {m.type === "video" && m.meta?.film_purged_at
+                ? <span className="flex h-36 w-36 items-center justify-center rounded-tile bg-surface-2 p-2 text-center text-[11px] text-muted sm:h-32 sm:w-32 lg:h-24 lg:w-24"
+                  title={m.meta.film_purged_at}>{t("Video dipadam kekal 72 jam selepas diterbitkan.", "Video deleted for good 72 hours after posting.")}</span>
+                : m.type === "video"
                 ? <video src={m.generated_media_url} className="h-36 w-36 rounded-tile bg-black object-cover sm:h-32 sm:w-32 lg:h-24 lg:w-24" muted />
                 : <button type="button" onClick={() => lbStart[m.id] !== undefined && lb.open(lbStart[m.id])} className="block cursor-zoom-in"
                   title={t("Klik untuk melihat besar", "Click to view large")}>

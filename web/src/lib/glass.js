@@ -58,6 +58,15 @@ export function imageUrl(glass, custom = "", base = "./") {
   return `${base}cards/grounds/${g.image.slice(7)}`;
 }
 
+/** The picture's address made absolute against the page. A relative url() inside a CSS variable is resolved against the
+    STYLESHEET that uses the variable (assets/index-*.css), not the page, so "./cards/grounds/x.jpg" was fetched from
+    /assets/cards/... and no built-in picture ever appeared on the live site (Wan, 11 Nov 2026). A data: address is
+    already absolute and comes back unchanged. */
+export function absoluteUrl(url, pageUrl) {
+  if (!url || url.startsWith("data:")) return url || "";
+  try { return new URL(url, pageUrl).href; } catch { return url; }
+}
+
 /** Put the settings on the page: `data-glass` on <html> switches the look, the variables carry the numbers. `url` is the
     picture's address from imageUrl(), "" for none. */
 export function applyGlass(el, glass, url = "") {

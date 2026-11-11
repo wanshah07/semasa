@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { THEME_IDS } from "./src/design/themeChoice.js";
-import { DEFAULT_GLASS, GROUNDS, IMAGE_MIN_OPACITY, IMAGE_SCRIM, MIN_OPACITY, PRESETS, cardColour, imageUrl, normalizeGlass, readGlass, scrimmed, writeGlass } from "./src/lib/glass.js";
+import { DEFAULT_GLASS, GROUNDS, IMAGE_MIN_OPACITY, absoluteUrl, IMAGE_SCRIM, MIN_OPACITY, PRESETS, cardColour, imageUrl, normalizeGlass, readGlass, scrimmed, writeGlass } from "./src/lib/glass.js";
 import { existsSync } from "node:fs";
 
 let n = 0;
@@ -75,5 +75,11 @@ t("over a pure black and a pure white picture, every theme's card still reads", 
       }
     }
   }
+});
+t("a built-in picture's address is absolute against the page, never the stylesheet", () => {
+  const page = "https://socialmedia.example.com/semasa/#papan";
+  assert.equal(absoluteUrl("./cards/grounds/g_rak01.jpg", page), "https://socialmedia.example.com/semasa/cards/grounds/g_rak01.jpg");
+  assert.equal(absoluteUrl("data:image/jpeg;base64,AAAA", page), "data:image/jpeg;base64,AAAA");
+  assert.equal(absoluteUrl("", page), "");
 });
 console.log(`glass: ${n} checks passed`);

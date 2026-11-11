@@ -184,14 +184,60 @@ def _gradient(size: tuple[int, int]) -> Image.Image:
     return Image.composite(Image.new("RGB", size, GREEN_BOTTOM), Image.new("RGB", size, GREEN_TOP), mask)
 
 
-def _glow(canvas: Image.Image) -> None:
-    """A soft lighter patch top right: the cover reads as a lit surface, not a flat fill."""
+def _layer(size: tuple[int, int]) -> Image.Image:
+    return Image.new("RGBA", size, (0, 0, 0, 0))
+
+
+def _orb(canvas: Image.Image, box: tuple[float, float, float, float], fill: tuple[int, int, int, int], blur: float) -> None:
     from PIL import ImageFilter
-    w, h = canvas.size
-    layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    ImageDraw.Draw(layer).ellipse([w * 0.35, -h * 0.18, w * 1.25, h * 0.42], fill=(120, 210, 190, 46))
-    layer = layer.filter(ImageFilter.GaussianBlur(w * 0.12))
+    layer = _layer(canvas.size)
+    ImageDraw.Draw(layer).ellipse(box, fill=fill)
+    layer = layer.filter(ImageFilter.GaussianBlur(blur))
     canvas.paste(layer, (0, 0), layer)
+
+
+def _rings(canvas: Image.Image) -> None:
+    """Fine concentric rings around the middle of the cover, like a lens or a ripple: the cover reads as a lit, designed
+    surface and the eye is drawn to the logo and the hook at the centre. Drawn at twice the size and brought down, so the
+    hairlines are smooth."""
+    w, h = canvas.size
+    k = 2
+    layer = _layer((w * k, h * k))
+    d = ImageDraw.Draw(layer)
+    cx, cy = w * k * 0.5, h * k * 0.47
+    for i in range(9):
+        r = (w * 0.34 + i * w * 0.15) * k
+        alpha = max(16, 74 - i * 7)
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(196, 242, 226, alpha), width=2 * k // 2 + 1)
+    r = (w * 0.34 + 3 * w * 0.15) * k                       # one ring in the brand gold
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(246, 206, 160, 130), width=k + 1)
+    layer = layer.resize((w, h), Image.LANCZOS)
+    canvas.paste(layer, (0, 0), layer)
+
+
+def _vignette(canvas: Image.Image) -> None:
+    w, h = canvas.size
+    mask = Image.radial_gradient("L").resize((w, h)).point(lambda v: round(max(0, v - 70) * 0.62))
+    canvas.paste(Image.new("RGB", canvas.size, (2, 18, 14)), (0, 0), mask)
+
+
+def _grain(canvas: Image.Image) -> Image.Image:
+    """A fine film grain, so the gradients do not band when the platform compresses the picture."""
+    noise = Image.effect_noise(canvas.size, 36).convert("RGB")
+    return Image.blend(canvas, noise, 0.028)
+
+
+def _glow(canvas: Image.Image) -> Image.Image:
+    """The cover's backdrop finish: a mint light top right, a warm gold glow low left, a deep emerald pool behind the title,
+    fine rings, a vignette and a little grain. Returns the finished canvas."""
+    w, h = canvas.size
+    _orb(canvas, (w * 0.30, -h * 0.14, w * 1.35, h * 0.30), (110, 224, 190, 70), w * 0.14)
+    _orb(canvas, (-w * 0.55, h * 0.70, w * 0.62, h * 1.14), (246, 190, 120, 46), w * 0.16)
+    _orb(canvas, (-w * 0.20, h * 0.34, w * 1.20, h * 0.78), (2, 40, 30, 70), w * 0.18)
+    _orb(canvas, (w * 0.18, h * 0.16, w * 0.82, h * 0.40), (150, 240, 205, 52), w * 0.12)      # a bloom behind the logo
+    _rings(canvas)
+    _vignette(canvas)
+    return _grain(canvas)
 
 
 def _watermark(canvas: Image.Image) -> None:
@@ -223,7 +269,8 @@ def _balanced(text: str, font: Any, width: float) -> list[Any]:
 
 def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes | None = None,
                size: tuple[int, int] | None = None) -> Image.Image:
-    """The branded cover: logo, a gold rule, the domain, the hook title, a short supporting line. Everything sits in a block
+    """The branded cover: logo, a gold rule, the hook title, a short supporting line (`eyebrow` is accepted, never drawn: the
+    cover carries no tag). Everything sits in a block
     centred inside the part of the picture an Instagram grid tile keeps (for a tall film frame, the middle three quarters of
     the height). A hook that is too long for the cover is drawn smaller, never cut."""
     if not LOGO.exists():
@@ -238,7 +285,7 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
         canvas = canvas.convert("RGB")
     else:
         canvas = _gradient((w, h))
-    _glow(canvas)
+    canvas = _glow(canvas)
     _watermark(canvas)
     d = ImageDraw.Draw(canvas)
 
@@ -247,7 +294,7 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
     band = h * (0.62 if h / w > 1.6 else 0.80)            # the vertical room the block may use: inside the grid's crop
     logo = _logo(round(w * 0.46), white=True)
     small = slides._font(slides.BODY_BOLD, round(w * 0.026))
-    label = slides.eyebrow_text(eyebrow, small, col) if eyebrow.strip() else ""
+    label = ""                                              # no tag on the cover (Wan, 11 Nov: "remove word hook")
     body_font = slides._font(slides.BODY, round(w * 0.036))
     lead_lines = slides.wrap(_clean(lead), body_font, col) if _clean(lead) else []
     if len(lead_lines) > 3:

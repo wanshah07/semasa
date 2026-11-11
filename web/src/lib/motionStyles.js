@@ -3,13 +3,13 @@ import bundles from '../../../rules/motion/style-bundles.json' with { type: 'jso
 // Keep the old eight-section attachment distinct from NEW Styles' complete native adaptations.
 export const catalog = recipes;
 export const completeRecipes = bundles;
-/* The film's look (Wan, 11 Nov 2026). "auto" is the default: the worker picks one of the seven 2D styles at random, never the
+/* The film's look (Wan, 11 Nov 2026). "auto" is the default: the worker picks one of the 2D styles at random, never the
    same as the last few films (backend/semasa/motion_skins.py). The four older designs stay at the end, used only when chosen
    by hand: nothing picks them automatically. */
-export const SKIN_IDS = ['comic', 'pixel', 'chalk', 'glow', 'flat', 'papercut', 'dankoe'];
+export const SKIN_IDS = ['comic', 'pixel', 'chalk', 'glow', 'flat', 'papercut', 'dankoe', 'riso', 'blueprint', 'transit', 'swiss', 'whiteboard'];
 export const LEGACY_DESIGN_IDS = ['bright-editorial', 'continuous-line', 'blur-photo', 'blur-full'];
 export const designOptions = [
-  {id:'auto', name:'Random · one of the seven 2D styles (recommended)', bm:'Rawak · satu daripada tujuh gaya 2D (disyorkan)', group:'auto'},
+  {id:'auto', name:'Random · one of the 2D styles (recommended)', bm:'Rawak · satu daripada gaya 2D (disyorkan)', group:'auto'},
   {id:'comic', name:'Comic art', bm:'Komik', group:'skin'},
   {id:'pixel', name:'Pixel art', bm:'Piksel', group:'skin'},
   {id:'chalk', name:'Chalkboard', bm:'Papan hitam', group:'skin'},
@@ -17,6 +17,11 @@ export const designOptions = [
   {id:'flat', name:'Flat vector', bm:'Vektor rata', group:'skin'},
   {id:'papercut', name:'Paper cut-out', bm:'Potongan kertas', group:'skin'},
   {id:'dankoe', name:'Minimal line', bm:'Garis minimal', group:'skin'},
+  {id:'riso', name:'Risograph print', bm:'Cetakan risograf', group:'skin'},
+  {id:'blueprint', name:'Blueprint', bm:'Pelan biru', group:'skin'},
+  {id:'transit', name:'Transit map', bm:'Peta transit', group:'skin'},
+  {id:'swiss', name:'Swiss graphic', bm:'Grafik Swiss', group:'skin'},
+  {id:'whiteboard', name:'Whiteboard', bm:'Papan putih', group:'skin'},
   {id:'bright-editorial', name:'Design 1 · Original Bright Photo / Diagram / Editorial'},
   {id:'continuous-line', name:'Design 2 · Continuous Line (approved v17)'},
   {id:'blur-photo', name:'Design 3 · Blurred photo background with the sharp picture on top'},

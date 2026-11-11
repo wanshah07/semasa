@@ -32,8 +32,8 @@ class Store:
         return R()
 
 
-def test_there_are_seven_styles_and_none_is_an_older_design():
-    assert len(ms.SKINS) == 7 and set(ms.SKINS) == set(ms.NAMES)
+def test_there_are_twelve_styles_and_none_is_an_older_design():
+    assert len(ms.SKINS) == 12 and set(ms.SKINS) == set(ms.NAMES)
     assert not set(ms.SKINS) & set(motion_styles.DESIGNS)
     assert set(ms.LEGACY) == set(motion_styles.DESIGNS)
 
@@ -52,7 +52,7 @@ def test_an_older_design_is_only_ever_chosen_by_hand_and_is_left_alone():
         row, st = {"id": "m1", "options": {"design": key}}, Store()
         assert ms.resolve(st, row) == "" and row["options"] == {"design": key} and not st.updates
         assert ms.skin(row) == "" and not ms.is_auto(row)
-    picked = {ms.choose([], random.Random(i)) for i in range(400)}
+    picked = {ms.choose([], random.Random(i)) for i in range(900)}
     assert picked == set(ms.SKINS), "every style comes up, and nothing else ever does"
 
 

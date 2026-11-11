@@ -50,6 +50,7 @@ from . import (
     fetch,
     hook_bank,
     hook_learning,
+    lenggok,
     modes,
     motion_assets,
     motion_auto,
@@ -430,6 +431,8 @@ def build_script_system(row: dict[str, Any], extra: str, count: int = 4, bank: h
               f"second longer; never more than {FILM_MAX:g} seconds including the outro.")
     kickers = " · ".join(motion_auto.LABELS[lang][:count])
     flow = flow_for(motion_styles.mode(row)) if count > 1 else FLOW_TEASER
+    if lang in ("bm", "both"):
+        flow += "\n" + lenggok.RULE   # only a Malay film sounds Malaysian (Wan, 11 Nov 2026); an English one never gets it
     return SCRIPT_SYSTEM.format(length=length, count=count, kickers=kickers,
                                 flow=flow + "\n" + hook_bank.film_block(stream, bank, hint),
                                 pace=pace, voice=voice_line(stream, lang),

@@ -173,14 +173,17 @@ def test_the_worker_puts_the_cover_first_for_ws_regulab_and_leaves_linkedin_alon
     assert Image.open(io.BytesIO(uploads[0])).convert("RGB").getpixel((20, 20)) == slides.PAPER
 
 
-def test_a_first_slide_with_points_keeps_its_own_drawing(worker):
+def test_a_first_slide_with_points_keeps_its_points_behind_a_cover_in_front(worker):
     from fakestore import FakeStore
     saved, uploads = worker
     items = _set(4)
     items[0] = {"title": "Tajuk", "points": ["satu", "dua"]}
     row = _job("regulab", items)
     assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
-    assert saved["meta"]["cover"] is False                       # its words are not all on a cover, so they are not dropped
+    # Wan, 11 Nov 2026 ("add cover in front"): the cover goes in front and the content slide follows whole
+    assert saved["meta"]["cover"] is True
+    assert saved["meta"]["slides"][0].get("front_cover") is True and saved["meta"]["slides"][1] == items[0]
+    assert saved["meta"]["count"] == len(items) + 1 + (1 if saved["meta"]["closing_logo"] else 0)
 
 
 def test_a_hook_with_one_line_under_it_gets_the_cover_and_a_content_slide_does_not():
@@ -193,3 +196,15 @@ def test_a_hook_with_one_line_under_it_gets_the_cover_and_a_content_slide_does_n
     assert carousel.cover_words({"title": "Hook", "points": ["satu"], "note": "nota"}) is None
     assert carousel.cover_words({"points": ["tiada tajuk"]}) is None and carousel.cover_words(None) is None
     carousel.cover_jpeg(*carousel.cover_words(hook))                                                  # and it draws
+
+
+def test_a_content_first_slide_gets_a_hook_in_front_once():
+    items = [{"title": "Symptom *PJ.2.1* nampak macam demam biasa", "points": ["satu", "dua", "tiga"]},
+             {"title": "Kedua", "points": ["x"]}]
+    out = carousel.with_front_cover(items, "regulab")
+    assert len(out) == 3 and out[1:] == items and carousel.cover_words(out[0]) == (items[0]["title"], "")
+    assert carousel.with_front_cover(out, "regulab") == out                      # again: nothing changes
+    hook = [{"title": "Hook", "points": ["satu baris"]}, {"title": "Kedua"}]
+    assert carousel.with_front_cover(hook, "regulab") == hook                    # already a hook
+    assert carousel.with_front_cover(items, "linkedin") == items                 # LinkedIn has no cover
+    assert carousel.with_front_cover(items[:1], "regulab") == items[:1]          # a single card stays single

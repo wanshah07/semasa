@@ -126,7 +126,7 @@ export default function GlassControl({ big = false }) {
             <button type="button" onClick={() => file.current?.click()} className="mt-2 flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-tile border border-line px-2 text-xs text-ink hover:bg-surface-2">
               <ImagePlus size={14} /> {custom ? t("Tukar gambar saya", "Change my picture") : t("Tambah gambar saya", "Add my picture")}
             </button>
-            {glass.image && <p className="mt-1.5 text-[11px] text-muted">{t("Dengan gambar, kad kekal sekurang-kurangnya 86% legap supaya tulisan jelas.", "With a picture, cards stay at least 86% opaque so the words stay clear.")}</p>}
+            {glass.image && <p className="mt-1.5 text-[11px] text-muted">{t("Dengan gambar, kad kekal sekurang-kurangnya 92% legap supaya tulisan jelas.", "With a picture, cards stay at least 92% opaque so the words stay clear.")}</p>}
             {note && <p className="mt-1.5 text-[11px] text-warn" role="alert">{note}</p>}
           </div>
           <button type="button" onClick={() => update(DEFAULT_GLASS)} className="mt-4 w-full rounded-tile border border-line px-2 py-2 text-xs text-ink hover:bg-surface-2">{t("Set semula", "Reset")}</button>

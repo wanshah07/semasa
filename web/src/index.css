@@ -52,10 +52,10 @@ html[data-glass="on"] body {
                     radial-gradient(1000px 700px at 50% 110%, rgb(var(--c-accent) / 0.10), transparent 60%);
   background-attachment: fixed;
 }
-/* A picture behind the glass (lib/glass.js): the picture, with the theme's own background laid over it at 70% (IMAGE_SCRIM),
+/* A picture behind the glass (lib/glass.js): the picture, with the theme's own background laid over it at 40% (IMAGE_SCRIM; it was 70% and Wan could not see the photo),
    so no picture can be darker or lighter than the cards' words can take. */
 html[data-glass="on"][data-glass-image="on"] body {
-  background-image: linear-gradient(rgb(var(--c-bg) / 0.7), rgb(var(--c-bg) / 0.7)), var(--glass-image);
+  background-image: linear-gradient(rgb(var(--c-bg) / 0.4), rgb(var(--c-bg) / 0.4)), var(--glass-image);
   background-size: cover;
   background-position: center;
   background-attachment: fixed;

@@ -672,6 +672,8 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         # a post's own carousel (not a Design-tab artwork): more than six pictures are squeezed by joining neighbouring slides
         # (what is DRAWN only: the words on the job and on the post stay as written), and a ws.regulab carousel ends on the
         # logo card. A render that fails squeezed is drawn again as written.
+        if not kind:
+            items = carousel.with_front_cover(items, stream)     # a content first slide gets a hook in front, for the cover
         squeeze, joined = (carousel.compact(items, stream) if not kind and kind != "threads" else (items, 0))
         attempts = [(squeeze, joined)] + ([(items, 0)] if joined else [])
         for n, (words_in, joined_here) in enumerate(attempts):

@@ -362,6 +362,20 @@ def cover_words(first: dict | None) -> tuple[str, str] | None:
     return title, str(first.get("lead") or "").strip() or (points[0] if points else "")
 
 
+def with_front_cover(items: list[dict], stream: str) -> list[dict]:
+    """The slides with a hook slide put in front when the first one is a content slide (Wan, 11 Nov 2026: "add cover in
+    front"). A first slide with several points cannot BE the cover without losing its points, and without a cover the
+    Instagram gate holds the post back. So the title is repeated on a slide of its own in front, which the cover then
+    replaces, and the content slide follows whole. Nothing changes when the first slide is already a hook, for LinkedIn
+    (no cover), or for a single picture. Doing it twice changes nothing: the second time the first slide is a hook."""
+    if stream == "linkedin" or len(items) < 2 or not isinstance(items[0], dict):
+        return items
+    title = str(items[0].get("title") or "").strip()
+    if not title or cover_words(items[0]) is not None:
+        return items
+    return [{"title": title, "points": [], "front_cover": True}, *items]
+
+
 def cover_jpeg(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes | None = None,
                size: tuple[int, int] | None = None, quality: int = 92) -> bytes:
     buf = io.BytesIO()

@@ -6,6 +6,7 @@
    A PDF, a picture and an old .doc are refused by name with what to do. Pure: no DOM, so it runs under node. */
 import { strFromU8, unzipSync } from "fflate";
 import { OfficeError, csvToRows, decodeXml, xlsxToTables } from "./officeText.js";
+import { bi } from "./bi.js";
 
 export const REFERENCE_LIMIT = 60_000;
 export const REFERENCE_MIN = 40;
@@ -60,8 +61,8 @@ function tableLines(rows, max = 8) {
 export function docxMarked(bytes) {
   let parts;
   try { parts = unzipSync(bytes, { filter: (f) => f.name === "word/document.xml" && f.originalSize <= 40_000_000 }); }
-  catch { throw new OfficeError("bukan fail Word yang sah, atau rosak / not a valid Word file, or it is damaged"); }
-  if (!parts["word/document.xml"]) throw new OfficeError("bukan fail Word .docx yang sah (tiada word/document.xml) / not a valid .docx (no word/document.xml)");
+  catch { throw new OfficeError(bi("bukan fail Word yang sah, atau rosak", "not a valid Word file, or it is damaged")); }
+  if (!parts["word/document.xml"]) throw new OfficeError(bi("bukan fail Word .docx yang sah (tiada word/document.xml)", "not a valid .docx (no word/document.xml)"));
   const lines = [];
   for (const b of blocks(strFromU8(parts["word/document.xml"]))) {
     if (b.kind === "tbl") { lines.push(...tableLines(tableRows(b.xml))); continue; }
@@ -88,7 +89,7 @@ const kindOf = (name, mime) => {
 /** The words of one reference file for the worker: { name, text } or an Error that names the file and says what to do. */
 export async function readReference(file) {
   const name = file?.name || "fail";
-  if (file.size > MAX_FILE) throw new Error(`${name}: ${Math.round(file.size / 1_000_000)} MB, melebihi ${MAX_FILE / 1_000_000} MB / over ${MAX_FILE / 1_000_000} MB`);
+  if (file.size > MAX_FILE) throw new Error(`${name}: ${Math.round(file.size / 1_000_000)} MB, ${bi("melebihi", "over")} ${MAX_FILE / 1_000_000} MB`);
   const kind = kindOf(name, file.type);
   const fail = (bm, en) => { throw new Error(`${name}: ${bm} / ${en}`); };
   let text = "";

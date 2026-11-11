@@ -1,3 +1,4 @@
+import { bi } from "./bi.js";
 /* The pure half of the FAQ AI bar (pages/FaqTab.jsx → lib/faqAi.js), so Node can test it (web/faq_ai.test.mjs).
 
    Wan, 1 Oct 2026: "for faq add AI bar that allow us to paste screenshot, image, upload pdf then AI will analyze and
@@ -26,10 +27,10 @@ export function kindOf(name, type = "") {
 /** Why a `legacy` file is refused, in one line the person can act on. */
 export function legacyWhy(name) {
   const ext = EXT(name);
-  if (["doc", "rtf", "odt", "pages"].includes(ext)) return "fail Word lama; buka dan simpan sebagai .docx atau PDF / an old Word format: open it and save as .docx or PDF";
-  if (["xls", "xlsb", "ods", "numbers"].includes(ext)) return "fail Excel lama; buka dan simpan sebagai .xlsx atau .csv / an old Excel format: open it and save as .xlsx or .csv";
-  if (["ppt", "pptx"].includes(ext)) return "PowerPoint belum boleh dibaca; simpan sebagai PDF / PowerPoint is not read yet: save it as a PDF";
-  return "format gambar ini belum boleh dibaca; simpan sebagai PNG atau JPG / this picture format is not read yet: save it as PNG or JPG";
+  if (["doc", "rtf", "odt", "pages"].includes(ext)) return bi("fail Word lama; buka dan simpan sebagai .docx atau PDF", "an old Word format: open it and save as .docx or PDF");
+  if (["xls", "xlsb", "ods", "numbers"].includes(ext)) return bi("fail Excel lama; buka dan simpan sebagai .xlsx atau .csv", "an old Excel format: open it and save as .xlsx or .csv");
+  if (["ppt", "pptx"].includes(ext)) return bi("PowerPoint belum boleh dibaca; simpan sebagai PDF", "PowerPoint is not read yet: save it as a PDF");
+  return bi("format gambar ini belum boleh dibaca; simpan sebagai PNG atau JPG", "this picture format is not read yet: save it as PNG or JPG");
 }
 
 /** A typed or pasted text longer than the note limit is MATERIAL, not a note: the function keeps only 500 characters of a

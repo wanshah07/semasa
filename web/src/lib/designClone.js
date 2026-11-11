@@ -5,6 +5,7 @@
 import { explain } from "./fnError";
 import { supabase } from "./SupabaseClient";
 import { loadImageFile } from "./designPatch";
+import { bi } from "./bi.js";
 
 const MAX_SIDE = 1600;
 
@@ -22,14 +23,14 @@ export async function shrinkReference(file) {
 }
 
 async function call(body) {
-  if (!supabase) throw new Error("Supabase belum disambung / Supabase is not configured");
+  if (!supabase) throw new Error(bi("Supabase belum disambung", "Supabase is not configured"));
   const { data, error } = await supabase.functions.invoke("semasa-chat", { body });
   if (error) {
     const why = await explain(error);
-    throw new Error(why.missing ? "fungsi belum dipasang: GitHub → Actions → Deploy functions / the function is not deployed yet: GitHub → Actions → Deploy functions" : why.message);
+    throw new Error(why.missing ? bi("fungsi belum dipasang: GitHub → Actions → Deploy functions", "the function is not deployed yet: GitHub → Actions → Deploy functions") : why.message);
   }
   if (data?.error) throw new Error(String(data.error));
-  if (!data?.layout) throw new Error("tiada susun atur dipulangkan / no layout came back");
+  if (!data?.layout) throw new Error(bi("tiada susun atur dipulangkan", "no layout came back"));
   return data;
 }
 

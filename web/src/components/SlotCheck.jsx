@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Clock, ExternalLink, Hourglass, RefreshCw, X } from "lucide-react";
 import { useLang } from "../lib/i18n";
 import { myt } from "../lib/slots";
-import { STATES, slotRows, tally } from "../lib/slotCheck";
+import { STATES, detailText, slotRows, tally } from "../lib/slotCheck";
 import { fmtDate } from "../lib/billing";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
@@ -113,13 +113,13 @@ export default function SlotCheck({ posts, onOpen, onReload }) {
                       const cls = `inline-flex min-h-[32px] items-center gap-1.5 rounded-pill border px-2.5 py-1 text-[12px] ${K.box}`;
                       return c.url
                         ? <a key={c.ch} href={c.url} target="_blank" rel="noopener noreferrer" className={cls} title={c.url}>{body}</a>
-                        : <span key={c.ch} className={cls} title={c.detail || undefined}>{body}</span>;
+                        : <span key={c.ch} className={cls} title={detailText(c.detail, t) || undefined}>{body}</span>;
                     })}
                   </div>
                 </div>
                 {r.cells.filter((c) => c.state === "failed" && c.detail).map((c) => (
                   <p key={c.ch} className="mt-2 rounded-tile bg-danger/10 px-3 py-2 text-[12px] text-danger">
-                    <b>{CHANNEL[c.ch] || c.ch}:</b> {c.detail}
+                    <b>{CHANNEL[c.ch] || c.ch}:</b> {detailText(c.detail, t)}
                   </p>
                 ))}
               </Card>

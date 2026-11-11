@@ -9,6 +9,7 @@ import PostEditor from "../components/PostEditor";
 import IdeaComposer from "../components/IdeaComposer";
 import ScheduleView from "../components/ScheduleView";
 import SlotCheck from "../components/SlotCheck";
+import StatusDot from "../components/StatusDot";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { deleteCheck } from "../lib/postDelete";
 import { fmtLeft, isPastDue, purgeLeftMs, refOf } from "../lib/slots";
@@ -230,6 +231,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
           <TableFrame label={t("Post", "Posts")}>
             <thead className={THEAD}>
               <tr>
+                <th className={`${TH} w-8`}><span className="sr-only">{t("Semakan slot", "Slot check")}</span></th>
                 <th className={TH}>{t("Gambar", "Picture")}</th>
                 <th className={TH}>Status</th>
                 <th className={TH}>{t("Slot", "Slot")}</th>
@@ -244,6 +246,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
                 const s = summary(p);
                 return (
                   <tr key={p.id} onClick={() => setFocusId(p.id)} className={`${TR} cursor-pointer hover:bg-surface-2/50 ${focusId === p.id ? "bg-accent/5" : ""}`}>
+                    <td className={TD} data-label={t("Semakan slot", "Slot check")}><StatusDot post={p} /></td>
                     <td className={TD} data-label={t("Gambar", "Picture")}><Thumb pic={s.pics[0]} small stream={p.stream} /></td>
                     <td className={TD} data-label="Status"><span className={`whitespace-nowrap rounded-pill px-2 py-0.5 text-[11px] ${TONE[bucketOf(p)]}`}>{s.label}</span></td>
                     <td className={`${TD} whitespace-nowrap text-[12px] text-muted`} data-label={t("Slot", "Slot")}>{p.date ? `${fmtDate(p.date)} ${p.slot || ""}` : t("tiada slot", "no slot")}
@@ -272,6 +275,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
                   <Thumb pic={s.pics[0]} stream={p.stream} />
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
+                      <StatusDot post={p} />
                       <span className={`rounded-pill px-2 py-0.5 ${TONE[bucketOf(p)]}`}>{s.label}</span>
                       <span>{s.forText}</span>
                       <span>{s.when || t("tiada slot", "no slot")}{s.ref ? ` · ${s.ref}` : ""}</span>

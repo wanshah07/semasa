@@ -1,6 +1,6 @@
 /* web/src/lib/slotCheck.js: the four colours of the post-slot check (Wan, 11 Nov 2026). */
 import assert from "node:assert/strict";
-import { channelState, channelsOf, postState, slotRows, tally } from "./src/lib/slotCheck.js";
+import { channelState, channelsOf, postState, rowState, slotRows, tally } from "./src/lib/slotCheck.js";
 
 const NOW = Date.parse("2026-11-11T05:30:00Z");       // 13:30 MYT: the 13:00 slot was 30 minutes ago
 let n = 0;
@@ -70,5 +70,15 @@ t("rows: today onward, oldest first, rejected and archived left out, counted by 
   assert.deepEqual(rows.map((r) => r.post.id), ["b", "c", "a"]);
   assert.deepEqual(tally(rows), { passed: 1, queued: 1, failed: 0, waiting: 1 });
   assert.deepEqual(slotRows(posts, { from: "2026-11-11", days: 400, now: NOW }).map((r) => r.post.id), ["b", "c", "a", "g"]);
+});
+t("row dot: a post is its worst channel, a draft waits, a rejected post has no colour", () => {
+  assert.equal(rowState(post({ published: { threads: rec("sent") } }), NOW).state, "passed");
+  assert.equal(rowState(post({ slot: "21:00", published: { threads: rec("scheduled") } }), NOW).state, "queued");
+  assert.equal(rowState(post({ status: "draft" }), NOW).state, "waiting");
+  assert.equal(rowState(post({ status: "rejected" }), NOW).state, "off");
+  const two = post({ channels: ["threads", "facebook"], published: { threads: rec("sent"), facebook: rec("error") },
+    errors: { facebook: { message: "facebook: refused" } } });
+  assert.equal(rowState(two, NOW).state, "failed");
+  assert.ok(Array.isArray(rowState(two, NOW).hint) && rowState(two, NOW).hint.length === 2);
 });
 console.log(`slotCheck: ${n} checks passed`);

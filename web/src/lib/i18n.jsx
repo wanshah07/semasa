@@ -20,6 +20,8 @@ const KEY = "semasa.lang";
 let current = "bm";
 
 export const currentLang = () => current;
+/* lib/bi.js reads the language from here: it cannot import this file (JSX), and a Node test cannot either */
+const mirror = (v) => { current = v; if (typeof globalThis !== "undefined") globalThis.__semasaLang = v; return v; };
 
 const english = (en, vars) => (Array.isArray(en) ? en[Number(vars?.n) === 1 ? 0 : 1] : en);
 
@@ -44,17 +46,17 @@ function initial() {
 const LangContext = createContext({ lang: "bm", setLang: () => {}, t: (bm, _en, vars) => fill(bm, vars) });
 
 export function LangProvider({ children }) {
-  const [lang, setLangState] = useState(() => (current = initial()));
+  const [lang, setLangState] = useState(() => mirror(initial()));
   const setLang = useCallback((next) => {
     const v = next === "en" ? "en" : "bm";
-    current = v;
+    mirror(v);
     setLangState(v);
     try { window.localStorage.setItem(KEY, v); } catch { /* the choice lasts this visit only */ }
   }, []);
   useEffect(() => { document.documentElement.lang = lang === "en" ? "en" : "ms"; }, [lang]);
   const t = useCallback((bm, en, vars) => fill(lang === "en" && en != null ? english(en, vars) : bm, vars), [lang]);
   const value = useMemo(() => ({ lang, setLang, t }), [lang, setLang, t]);
-  current = lang;
+  mirror(lang);
   return <LangContext.Provider value={value}>{children}</LangContext.Provider>;
 }
 

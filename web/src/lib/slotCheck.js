@@ -23,7 +23,8 @@ const errorOf = (post, ch) => {
   return (e && (e.message || (typeof e === "string" ? e : ""))) || "";
 };
 
-/** One channel of one post: {state, label, detail, url}. `label` is [Malay, English]. */
+/** One channel of one post: {state, label, detail, url}. `label` is [Malay, English]; `detail` is [Malay, English] too, except a
+ *  platform's own words (an error it sent), which stay as it wrote them. */
 export function channelState(post, ch, now = Date.now()) {
   if (post.status === "draft") {
     return { state: "waiting", label: ["Tunggu kelulusan", "Waiting for approval"], detail: "", url: "" };
@@ -33,10 +34,10 @@ export function channelState(post, ch, now = Date.now()) {
   if (rec && typeof rec === "object") {
     if (rec.status === "sent") return { state: "passed", label: ["Berjaya", "Sent"], detail: "", url: rec.url || "" };
     if (rec.status === "error") {
-      return { state: "failed", label: ["Gagal", "Failed"], detail: errorOf(post, ch) || "the platform refused it", url: "" };
+      return { state: "failed", label: ["Gagal", "Failed"], detail: errorOf(post, ch) || ["platform menolaknya", "the platform refused it"], url: "" };
     }
     if (late > STUCK_MIN) {
-      return { state: "failed", label: ["Tersangkut", "Stuck"], detail: `not sent ${Math.floor(late)} minutes after its slot`, url: "" };
+      return { state: "failed", label: ["Tersangkut", "Stuck"], detail: [`belum dihantar ${Math.floor(late)} minit selepas slotnya`, `not sent ${Math.floor(late)} minutes after its slot`], url: "" };
     }
     return { state: "queued", label: ["Dalam barisan", "Queued"], detail: "", url: "" };
   }
@@ -48,7 +49,7 @@ export function channelState(post, ch, now = Date.now()) {
     return { state: "failed", label: ["Disekat", "Blocked"], detail: String(scan[0]).slice(0, 160), url: "" };
   }
   if (late > LATE_GRACE_MIN) {
-    return { state: "failed", label: ["Terlepas", "Missed"], detail: "its slot passed and it was never handed over", url: "" };
+    return { state: "failed", label: ["Terlepas", "Missed"], detail: ["slotnya sudah lepas dan ia tidak pernah diserahkan", "its slot passed and it was never handed over"], url: "" };
   }
   return { state: "queued", label: ["Dalam barisan", "Queued"], detail: "", url: "" };
 }
@@ -83,3 +84,18 @@ export function tally(rows) {
   for (const r of rows) if (r.state in out) out[r.state]++;
   return out;
 }
+
+/** The colour of a whole row for a post in any list (Posts table and cards): a post is its worst channel, a rejected post has no
+ *  colour (`off`), and a hint says why in both languages. */
+export function rowState(post, now = Date.now()) {
+  if (post.status === "rejected") return { state: "off", hint: ["Ditolak", "Rejected"] };
+  const cells = channelsOf(post).map((ch) => ({ ch, ...channelState(post, ch, now) }));
+  const state = postState(cells);
+  const worst = cells.find((c) => c.state === state);
+  return { state, hint: worst ? worst.label : ["Tiada saluran", "No channel"], detail: worst && worst.state === "failed" ? worst.detail : "" };
+}
+export const STATE_NAME = { passed: ["Berjaya", "Passed"], queued: ["Dalam barisan", "Queued"], failed: ["Gagal", "Failed"],
+  waiting: ["Tunggu kelulusan", "Waiting for approval"], off: ["Tiada status", "No status"] };
+
+/** A detail as text in the language of the page: a [Malay, English] pair is chosen from, a platform's own words are kept. */
+export const detailText = (d, t) => (Array.isArray(d) ? t(d[0], d[1]) : String(d || ""));

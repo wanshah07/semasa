@@ -18,6 +18,7 @@ import { supabase } from "./SupabaseClient";
 import { foldAttachments } from "./chatFiles";
 import { prepareInputs } from "./faqAi";
 import { explain } from "./fnError";
+import { bi } from "./bi.js";
 
 const FUNCTION = "semasa-chat";
 
@@ -57,7 +58,7 @@ export async function askAI({ text = "", files = [], threadId = null, model = ""
     if (why.missing) return { connected: false, text: "" };
     throw new Error(why.message);
   }
-  if (!data?.text) throw new Error(data?.error || "Tiada jawapan / no answer");
+  if (!data?.text) throw new Error(data?.error || bi("Tiada jawapan", "no answer"));
   return shape(data, threadId);
 }
 
@@ -76,7 +77,7 @@ async function streamChat(body, { onDelta, onStatus, signal }) {
       body: JSON.stringify({ ...body, stream: true }),
     });
   } catch (e) {
-    if (e?.name === "AbortError") throw new Error("Dihentikan / stopped");
+    if (e?.name === "AbortError") throw new Error(bi("Dihentikan", "stopped"));
     return null;                                           // network: the plain call will say what is wrong
   }
   const type = res.headers.get("content-type") || "";
@@ -92,7 +93,7 @@ async function streamChat(body, { onDelta, onStatus, signal }) {
   let buf = "", done = null;
   for (;;) {
     let step;
-    try { step = await reader.read(); } catch (e) { if (e?.name === "AbortError" || signal?.aborted) throw new Error("Dihentikan / stopped"); throw e; }
+    try { step = await reader.read(); } catch (e) { if (e?.name === "AbortError" || signal?.aborted) throw new Error(bi("Dihentikan", "stopped")); throw e; }
     if (step.done) break;
     buf += dec.decode(step.value, { stream: true });
     const parts = buf.split("\n\n");
@@ -108,8 +109,8 @@ async function streamChat(body, { onDelta, onStatus, signal }) {
     }
   }
   if (!done) {
-    if (signal?.aborted) throw new Error("Dihentikan / stopped");   // a stream that just closes after Stop is a stop, not a cut
-    throw new Error("Jawapan terputus / the answer was cut off");
+    if (signal?.aborted) throw new Error(bi("Dihentikan", "stopped"));   // a stream that just closes after Stop is a stop, not a cut
+    throw new Error(bi("Jawapan terputus", "the answer was cut off"));
   }
   return done;
 }
@@ -136,7 +137,7 @@ export async function listThreads() {
 
 export async function renameThread(id, title) {
   const name = String(title || "").replace(/\s+/g, " ").trim().slice(0, 80);
-  if (!name) throw new Error("Nama kosong / empty name");
+  if (!name) throw new Error(bi("Nama kosong", "empty name"));
   const { error } = await supabase.from("semasa_chat_threads").update({ title: name }).eq("id", id);
   if (error) throw new Error(error.message);
 }
@@ -158,7 +159,7 @@ export async function listMemory() {
 
 export async function addMemory(note) {
   const n = String(note || "").replace(/\s+/g, " ").trim();
-  if (n.length < 3 || n.length > 500) throw new Error("Nota mesti 3 hingga 500 aksara / a note is 3 to 500 characters");
+  if (n.length < 3 || n.length > 500) throw new Error(bi("Nota mesti 3 hingga 500 aksara", "a note is 3 to 500 characters"));
   const { data: u } = await supabase.auth.getUser();
   const { error } = await supabase.from("semasa_chat_memory").insert({ user_id: u?.user?.id, note: n, source: "user" });
   if (error) throw new Error(error.message);
@@ -167,10 +168,10 @@ export async function addMemory(note) {
 /** Changes a note's words (Memori & Arahan). Its source stays: an auto note Wan corrected is still shown as one the chat found. */
 export async function updateMemory(id, note) {
   const n = String(note || "").replace(/\s+/g, " ").trim();
-  if (n.length < 3 || n.length > 500) throw new Error("Nota mesti 3 hingga 500 aksara / a note is 3 to 500 characters");
+  if (n.length < 3 || n.length > 500) throw new Error(bi("Nota mesti 3 hingga 500 aksara", "a note is 3 to 500 characters"));
   const { data, error } = await supabase.from("semasa_chat_memory").update({ note: n }).eq("id", id).select("id");
   if (error) throw new Error(error.message);
-  if (!data?.length) throw new Error("Nota tidak dijumpai / note not found");
+  if (!data?.length) throw new Error(bi("Nota tidak dijumpai", "note not found"));
 }
 
 export async function deleteMemory(id) {
@@ -184,7 +185,7 @@ export async function checkAI(model = "") {
   const { data, error } = await supabase.functions.invoke(FUNCTION, { body: { action: "check", ...choiceBody(model) } });
   if (error) {
     const why = await explain(error);
-    return { error: why.missing ? "function belum dipasang / not deployed" : why.message };
+    return { error: why.missing ? bi("function belum dipasang", "not deployed") : why.message };
   }
   return data;
 }
@@ -196,7 +197,7 @@ export async function checkImageAI(model = "") {
   const { data, error } = await supabase.functions.invoke(FUNCTION, { body: { action: "check", kind: "image", ...choiceBody(model) } });
   if (error) {
     const why = await explain(error);
-    return { error: why.missing ? "function belum dipasang / not deployed" : why.message };
+    return { error: why.missing ? bi("function belum dipasang", "not deployed") : why.message };
   }
   return data;
 }

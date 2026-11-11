@@ -46,7 +46,11 @@ PROMPT = """WRITE LIKE A PERSON, NOT A MODEL (the anti-slop rules; they apply to
 - Name who does what: no passive with the actor missing when the actor is known, and no object that "understands" or "decides".
 - Vary the sentence length. One short sentence for emphasis is fine; a row of them is not. Repeat the clearest word instead of
   cycling synonyms. No filler ("in order to", "it is important to note that").
-- Keep a voice: plain, specific, a little warm. Cold and sterile text is as obvious as padded text."""
+- Keep a voice: plain, specific, a little warm. Cold and sterile text is as obvious as padded text.
+- Sell the EXPERIENCE, not the product. Not "premium coffee beans" but "make your first sip the best part of your morning". Lead
+  with what the reader gains, feels or can do — the outcome, not the feature. Name the benefit in the reader's own life, never
+  the ingredient or the label. (Wan, 11 Nov 2026: "sell the experience, not coffee".)
+"""
 
 PROMPT_FILM = PROMPT + """
 - A film keeps its hook line (built on one of the 25 hook shapes) and the short

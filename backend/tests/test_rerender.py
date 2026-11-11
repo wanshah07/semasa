@@ -48,7 +48,8 @@ def _store(posts, media):
 
 def test_who_is_redrawn_and_who_is_left_alone():
     posts = [_post("ok"), _post("soon", date="2026-11-11", slot="10:30"), _post("linkedin", stream="linkedin"),
-             _post("sent", published={"instagram": _rec(1, "sent")}), _post("done", media=("mc",)), _post("design", media=("md",)),
+             _post("sent", published={"instagram": _rec(1, "sent")}), _post("done", media=("mc",)),
+             _post("design", media=("md",)),
              _post("draft", status="draft")]
     media = [_slides("m1"), _slides("mc", cover=True), _slides("md", design="poster")]
     got = rerender.candidates(_store(posts, media), NOW)
@@ -105,7 +106,8 @@ def test_a_copy_zernio_will_not_delete_leaves_the_post_exactly_as_it_was():
     store = _store([post], [_slides()])
     out = rerender.run(store, NOW, clients={"zernio": Zernio(fail_on="z1")}, settings=SimpleNamespace())
     assert out["failed"] == 1 and "NOT touched" in out["lines"][0]
-    assert store.tables["semasa_posts"][0]["published"] == post["published"] and store.tables["semasa_posts"][0]["status"] == "scheduled"
+    kept = store.tables["semasa_posts"][0]
+    assert kept["published"] == post["published"] and kept["status"] == "scheduled"
     assert store.tables["media_generations"][0]["status"] == "done"
 
 
@@ -126,9 +128,9 @@ def test_a_post_held_by_buffer_is_never_touched():
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs ffmpeg")
 def test_a_film_gets_its_cover_in_place(tmp_path, monkeypatch):
     film = tmp_path / "film.mp4"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0xaa3333:s=270x480:r=30:d=2", "-f", "lavfi", "-i",
-                    "sine=frequency=440:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(film)],
-                   check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0xaa3333:s=270x480:r=30:d=2",
+                    "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-shortest", str(film)], check=True)
     monkeypatch.setattr(rerender.requests, "get", lambda url, timeout=0: SimpleNamespace(
         content=film.read_bytes(), raise_for_status=lambda: None))
     uploads = []
@@ -136,7 +138,8 @@ def test_a_film_gets_its_cover_in_place(tmp_path, monkeypatch):
     media = {"id": "mf", "type": "video", "status": "done", "generated_media_url": BASE + "motion/f1-social.mp4",
              "reference_url": BASE + "motion/f1.mp4", "meta": {"flow": "motion", "motion_id": "f1", "seconds": 2}}
     store = FakeStore(semasa_posts=[_post(media=("mf",))], media_generations=[media], semasa_log=[],
-                      semasa_motions=[{"id": "f1", "title": "Satu", "video_path": "motion/f1.mp4", "video_url": BASE + "motion/f1.mp4",
+                      semasa_motions=[{"id": "f1", "title": "Satu", "video_path": "motion/f1.mp4",
+                                       "video_url": BASE + "motion/f1.mp4",
                                        "social_url": BASE + "motion/f1-social.mp4", "poster_url": BASE + "motion/f1.jpg",
                                        "script": [{"heading": "Kesan sampingan ni akan hilang sendiri?", "kicker": "Kosmetik"}],
                                        "check_report": {}}])

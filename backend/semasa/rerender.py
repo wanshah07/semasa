@@ -48,8 +48,8 @@ def _sent(post: dict[str, Any]) -> bool:
 
 def candidates(store: Any, now: datetime, only: set[str] | None = None) -> list[dict[str, Any]]:
     """[{post, kind: 'carousel' | 'film', media}] for ws.regulab posts that are approved or scheduled and not yet sent."""
-    posts = db.fetch_all(lambda: store.table(db.POSTS).select("*").eq("stream", "regulab").in_("status", ["approved", "scheduled"])
-                         .order("date"))
+    posts = db.fetch_all(lambda: store.table(db.POSTS).select("*").eq("stream", "regulab")
+                         .in_("status", ["approved", "scheduled"]).order("date"))
     out = []
     for post in posts:
         if only and post["id"] not in only:
@@ -107,7 +107,7 @@ def _restore(store: Any, before: dict[str, Any]) -> None:
 
 
 def redraw_carousel(store: Any, media: dict[str, Any], settings: Any) -> str:
-    """Draw the set again from its stored words. 'done' on success; on any failure the old row is put back and the reason returned."""
+    """Draw the set again from its stored words. 'done' on success; on any failure the old row is put back, reason returned."""
     from . import media_generator
     row = {**media, "status": "processing", "attempts": 1}
     try:
@@ -197,7 +197,10 @@ def run(store: Any, now: datetime | None = None, *, dry: bool = False, only: set
             result["lines"].append(f"{label}: NOT touched ({str(exc)[:140]})")
             continue
         try:
-            outcome = redraw_carousel(store, media, settings) if c["kind"] == "carousel" else add_cover_to_film(store, media, runner)
+            if c["kind"] == "carousel":
+                outcome = redraw_carousel(store, media, settings)
+            else:
+                outcome = add_cover_to_film(store, media, runner)
         except Exception as exc:  # noqa: BLE001 - the old artwork goes back
             outcome = f"failed: {str(exc)[:160]}"
         if outcome != "done":

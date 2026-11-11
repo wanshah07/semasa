@@ -149,7 +149,7 @@ def make_clients(settings: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-ZERNIO_FORMATS = {"linkedin": ("carousel", "video"), "threads": ("carousel", "single", "video"),
+ZERNIO_FORMATS = {"linkedin": ("carousel", "single", "video"), "threads": ("carousel", "single", "video"),
                   "facebook": ("carousel", "single", "video"), "instagram": ("carousel", "single", "video"),
                   "tiktok": ("video",)}
 FORMAT_NAMES = {"carousel": "a carousel", "single": "a single card", "video": "a Motion film", "text": "words only"}

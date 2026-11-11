@@ -351,7 +351,7 @@ def make_motion(store: Any, link: dict[str, Any], text: str, command: str) -> tu
     buttons = [[{"text": "▶️ Mula (gaya rawak)", "callback_data": f"mgo:{mid}"}],
                [{"text": "🎨 Pilih gaya", "callback_data": f"msk:{mid}"}],
                [{"text": "🎬 Buka Motion di Semasa", "url": f"{SITE_URL.rstrip('/')}/#video"}]]
-    return (f"🎬 Dalam barisan Motion: {brief[:120]}\nTekan Mula untuk gaya rawak (satu daripada tujuh gaya 2D), atau Pilih gaya "
+    return (f"🎬 Dalam barisan Motion: {brief[:120]}\nTekan Mula untuk gaya rawak (satu daripada gaya 2D), atau Pilih gaya "
             "untuk tentukan sendiri.",
             buttons, mid)
 

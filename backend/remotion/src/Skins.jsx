@@ -48,6 +48,17 @@ export const SKINS = {
               cap: { color: "#4A2A16", fontFamily: INTER, fontWeight: 700 } },
   dankoe: { head: INTER, hf: 0.58, hlh: 1.14, hw: 300, headMax: 96, body: INTER, bf: 0.55, bw: 300, lineMax: 54, pic: false,
             cap: { color: "#FFFFFF", fontFamily: INTER, fontWeight: 300 } },
+  /* five more looks, after the lemo-opuscar gallery (Wan, 11 Nov 2026: "go with option 1"): our own drawings of the same idioms */
+  riso: { head: SANS, hf: 0.66, hlh: 1.06, hw: 800, headMax: 104, body: SANS, bf: 0.58, bw: 600, lineMax: 52, pic: true,
+          cap: { color: "#1E2F8F", fontFamily: SANS, fontWeight: 700 } },
+  blueprint: { head: SANS, hf: 0.62, hlh: 1.12, hw: 500, headMax: 96, body: SANS, bf: 0.56, bw: 400, lineMax: 50, pic: false,
+               cap: { color: "#FFFFFF", fontFamily: SANS, fontWeight: 500 } },
+  transit: { head: SANS, hf: 0.66, hlh: 1.08, hw: 800, headMax: 100, body: SANS, bf: 0.58, bw: 600, lineMax: 52, pic: false,
+             cap: { color: "#1A1A1A", fontFamily: SANS, fontWeight: 600 } },
+  swiss: { head: SANS, hf: 0.68, hlh: 1.0, hw: 800, headMax: 124, body: SANS, bf: 0.58, bw: 500, lineMax: 50, pic: true,
+           cap: { color: "#111111", fontFamily: SANS, fontWeight: 600 } },
+  whiteboard: { head: SANS, hf: 0.64, hlh: 1.1, hw: 700, headMax: 100, body: SANS, bf: 0.57, bw: 500, lineMax: 52, pic: false,
+                cap: { color: "#1F2A44", fontFamily: SANS, fontWeight: 600 } },
 };
 export const isSkin = (id) => Object.prototype.hasOwnProperty.call(SKINS, id);
 
@@ -244,7 +255,107 @@ const DotGround = () => {
   );
 };
 
-const GROUNDS = { comic: ComicGround, pixel: PixelGround, chalk: ChalkGround, glow: GlowGround, flat: FlatGround, papercut: PaperGround, dankoe: DotGround };
+const RisoGround = () => {
+  const f = useCurrentFrame();
+  const { width: W, height: H, fps } = useVideoConfig();
+  const u = W / 1080;
+  const j = Math.floor(f / 4);                                    // the plates sit a hair off each other, and shift like a print run
+  const dx = (random(`rx${j % 9}`) - 0.5) * 5 * u, dy = (random(`ry${j % 9}`) - 0.5) * 5 * u;
+  const t = f / fps;
+  return (
+    <AbsoluteFill style={{ background: "#F4EDE0" }}>
+      <svg width={W} height={H} style={{ position: "absolute" }}>
+        <defs>
+          <filter id="risograin" x="0" y="0" width="100%" height="100%">
+            <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed={j % 6} />
+            <feColorMatrix type="matrix" values="0 0 0 0 0.1  0 0 0 0 0.1  0 0 0 0 0.2  0 0 0 0.16 0" />
+          </filter>
+        </defs>
+        <g style={{ mixBlendMode: "multiply" }}>
+          <circle cx={W * 0.86 + Math.sin(t * 0.5) * 20 * u} cy={H * 0.045} r={120 * u} fill="#FFD23F" />
+          <circle cx={W * 0.76 + dx} cy={H * 0.075 + dy} r={78 * u} fill="#FF5C8A" opacity="0.85" />
+          <rect x={-10} y={H * 0.93} width={W + 20} height={H * 0.08} fill="#2B4CC4" />
+          <rect x={dx - 10} y={H * 0.915 + dy} width={W * 0.55} height={H * 0.035} fill="#FF5C8A" opacity="0.85" />
+        </g>
+        <rect width={W} height={H} filter="url(#risograin)" />
+      </svg>
+    </AbsoluteFill>
+  );
+};
+
+const BlueprintGround = () => {
+  const f = useCurrentFrame();
+  const { width: W, height: H, fps } = useVideoConfig();
+  const u = W / 1080;
+  const g = 54 * u;
+  const draw = interpolate(f, [0, fps * 1.4], [1, 0], { ...clamp, easing: Easing.inOut(Easing.cubic) });
+  return (
+    <AbsoluteFill style={{ background: "radial-gradient(120% 90% at 40% 35%, #1E4F96, #153A70 70%, #102E5A)" }}>
+      <AbsoluteFill style={{ backgroundImage: `linear-gradient(rgba(255,255,255,.10) ${1.2 * u}px, transparent ${1.2 * u}px), linear-gradient(90deg, rgba(255,255,255,.10) ${1.2 * u}px, transparent ${1.2 * u}px), linear-gradient(rgba(255,255,255,.18) ${1.6 * u}px, transparent ${1.6 * u}px), linear-gradient(90deg, rgba(255,255,255,.18) ${1.6 * u}px, transparent ${1.6 * u}px)`,
+        backgroundSize: `${g}px ${g}px, ${g}px ${g}px, ${g * 5}px ${g * 5}px, ${g * 5}px ${g * 5}px` }} />
+      <svg width={W} height={H} style={{ position: "absolute" }} fill="none" stroke="#fff" strokeWidth={2 * u}>
+        <rect x={W * 0.04} y={H * 0.05} width={W * 0.92} height={H * 0.9} pathLength="1" strokeDasharray="1" strokeDashoffset={draw} opacity="0.7" />
+        <g opacity="0.55" strokeWidth={1.5 * u}>
+          <circle cx={W * 0.83} cy={H * 0.1} r={46 * u} />
+          <circle cx={W * 0.83} cy={H * 0.1} r={24 * u} strokeDasharray={`${6 * u} ${6 * u}`} transform={`rotate(${(f / fps) * 20} ${W * 0.83} ${H * 0.1})`} />
+          <path d={`M${W * 0.83 - 66 * u} ${H * 0.1} H${W * 0.83 + 66 * u} M${W * 0.83} ${H * 0.1 - 66 * u} V${H * 0.1 + 66 * u}`} strokeDasharray={`${14 * u} ${5 * u} ${3 * u} ${5 * u}`} />
+        </g>
+      </svg>
+    </AbsoluteFill>
+  );
+};
+
+const TransitGround = () => {
+  const { width: W, height: H } = useVideoConfig();
+  const u = W / 1080;
+  const s = 16 * u;
+  return (
+    <AbsoluteFill style={{ background: "#F7F5EF" }}>
+      <svg width={W} height={H} style={{ position: "absolute" }} fill="none" strokeLinecap="round" strokeLinejoin="round">
+        <path d={`M${W * 0.62} ${-20} V${H * 0.05} L${W * 0.9} ${H * 0.05 + W * 0.28} V${H * 0.72}`} stroke="#0072BC" strokeWidth={s} opacity="0.22" />
+        <path d={`M${W + 20} ${H * 0.9} H${W * 0.42} L${W * 0.3} ${H * 0.9 + W * 0.12} V${H + 20}`} stroke="#00A651" strokeWidth={s} opacity="0.25" />
+        <path d={`M${-20} ${H * 0.94} H${W * 0.7} L${W * 0.8} ${H * 0.94 + W * 0.1}`} stroke="#F7A600" strokeWidth={s} opacity="0.3" />
+      </svg>
+    </AbsoluteFill>
+  );
+};
+
+const SwissGround = () => {
+  const f = useCurrentFrame();
+  const { width: W, height: H, fps } = useVideoConfig();
+  const u = W / 1080;
+  const cols = 6, m = W * 0.08, cw = (W * 0.84) / cols;
+  const beat = Math.floor(f / (fps * 2)) % 3;                      // the one thing off the grid moves on the beat, and never eases
+  return (
+    <AbsoluteFill style={{ background: "#FFFFFF" }}>
+      <svg width={W} height={H} style={{ position: "absolute" }}>
+        {Array.from({ length: cols + 1 }, (_, i) => <rect key={i} x={m + i * cw} y="0" width={1.2 * u} height={H} fill="#111" opacity="0.07" />)}
+        <rect x={m} y={H * 0.06} width={W * 0.84} height={10 * u} fill="#111" />
+        <circle cx={m + cw * (4.5 + beat * 0.5)} cy={H * 0.945} r={cw * 0.34} fill="#E30613" />
+        <rect x={m} y={H * 0.945} width={cw * 2} height={6 * u} fill="#111" />
+      </svg>
+    </AbsoluteFill>
+  );
+};
+
+const BoardGround = () => {
+  const f = useCurrentFrame();
+  const { width: W, height: H, fps } = useVideoConfig();
+  const u = W / 1080;
+  const fr = 22 * u;
+  const sheen = interpolate((f / fps) % 12, [0, 12], [-40, 140]);
+  return (
+    <AbsoluteFill style={{ background: "#B9BEC6" }}>
+      <div style={{ position: "absolute", inset: fr, borderRadius: 14 * u, background: "#FBFBF8", overflow: "hidden", boxShadow: `inset 0 0 ${60 * u}px rgba(31,42,68,.10)` }}>
+        <div style={{ position: "absolute", inset: 0, background: `linear-gradient(115deg, transparent ${sheen - 12}%, rgba(255,255,255,.9) ${sheen}%, transparent ${sheen + 12}%)`, opacity: 0.6 }} />
+        <div style={{ position: "absolute", left: "8%", top: "86%", width: "40%", height: "5%", background: "rgba(31,58,138,.05)", filter: `blur(${14 * u}px)`, transform: "rotate(-3deg)" }} />
+      </div>
+      <div style={{ position: "absolute", left: W * 0.3, bottom: 0, width: W * 0.4, height: fr * 0.9, background: "#9AA0AA", borderRadius: `${6 * u}px ${6 * u}px 0 0` }} />
+    </AbsoluteFill>
+  );
+};
+
+const GROUNDS = { riso: RisoGround, blueprint: BlueprintGround, transit: TransitGround, swiss: SwissGround, whiteboard: BoardGround, comic: ComicGround, pixel: PixelGround, chalk: ChalkGround, glow: GlowGround, flat: FlatGround, papercut: PaperGround, dankoe: DotGround };
 export const SkinGround = ({ skin }) => { const G = GROUNDS[skin]; return G ? <G /> : null; };
 
 /* ---------------------------------------------------------------- how a block arrives, per style */
@@ -277,6 +388,19 @@ const useArrive = (skin, at) => {
   if (skin === "papercut") {                                      // dropped on the table: falls, lands, settles
     const s = spring({ frame: t, fps, config: { damping: 13, mass: 0.7 } });
     return { opacity: t < 0 ? 0 : Math.min(1, s * 3), transform: `translateY(${(1 - s) * -90 * u}px) rotate(${(1 - s) * -5}deg)` };
+  }
+  if (skin === "swiss") return { opacity: t < 0 ? 0 : 1, transform: `translateX(${t < 0 ? 0 : t < 3 ? -24 * u : 0}px)` };   // it snaps: no easing, no bounce
+  if (skin === "whiteboard" || skin === "blueprint") {            // written, or plotted, from the left
+    const p = interpolate(t, [0, fps * 0.6], [100, 0], { ...clamp, easing: Easing.out(Easing.quad) });
+    return { clipPath: `inset(-10% ${p}% -10% -5%)` };
+  }
+  if (skin === "riso") {                                          // the plate comes down: a little off, then in register
+    const p = interpolate(t, [0, fps * 0.35], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
+    return { opacity: p, transform: `translate(${(1 - p) * 14 * u}px, ${(1 - p) * -10 * u}px)` };
+  }
+  if (skin === "transit") {
+    const p = interpolate(t, [0, fps * 0.4], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
+    return { opacity: p, transform: `translateX(${(1 - p) * 26 * u}px)` };
   }
   const p = interpolate(t, [0, fps * 1.1], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
   return { opacity: p, transform: `translateY(${(1 - p) * 14 * u}px)` };
@@ -319,10 +443,10 @@ export const SkinScene = ({ scene, skin }) => {
   const pic = S.pic && scene.photo ? scene.photo : "";
 
   /* padding each style puts round its heading and its lines, taken off the width and height the type is sized for */
-  const padH = { comic: 34, pixel: 0, chalk: 0, glow: 0, flat: 0, papercut: 36, dankoe: 0 }[skin] * u;
-  const padL = { comic: 22, pixel: 0, chalk: 0, glow: 0, flat: 24, papercut: 22, dankoe: 0 }[skin] * u;
-  const mark = { comic: 84, pixel: 44, chalk: 74, glow: 76, flat: 84, papercut: 70, dankoe: 76 }[skin] * u;
-  const gap = { comic: 22, pixel: 22, chalk: 14, glow: 26, flat: 16, papercut: 20, dankoe: 30 }[skin] * u;
+  const padH = ({ comic: 34, papercut: 36 }[skin] || 0) * u;
+  const padL = ({ comic: 22, flat: 24, papercut: 22 }[skin] || 0) * u;
+  const mark = ({ comic: 84, pixel: 44, chalk: 74, glow: 76, flat: 84, papercut: 70, dankoe: 76, riso: 84, blueprint: 96, transit: 96, swiss: 110, whiteboard: 80 }[skin]) * u;
+  const gap = ({ comic: 22, pixel: 22, chalk: 14, glow: 26, flat: 16, papercut: 20, dankoe: 30, riso: 26, blueprint: 30, transit: 40, swiss: 30, whiteboard: 28 }[skin]) * u;
   const words = String(scene.heading || "").split(/\s+/).filter(Boolean).length;
   const headMax = S.headMax * u * (words <= 4 ? 1 : words <= 8 ? 0.86 : 0.72) * (pic ? 0.82 : 1);
   const head = fit([scene.heading], headMax, 42 * u, boxW - 2 * padH - 8 * u, boxH * (pic ? 0.24 : 0.34) - 2 * padH, S.hf, S.hlh);
@@ -373,6 +497,38 @@ export const SkinScene = ({ scene, skin }) => {
                       clipPath: "polygon(0 3%, 6% 0, 19% 2.5%, 34% 0.5%, 52% 3%, 71% 0, 88% 2.5%, 100% 1%, 99% 97%, 90% 100%, 72% 97.5%, 55% 100%, 37% 97%, 20% 99.5%, 7% 97%, 0.8% 100%)" }}>
           {scene.heading}</div>
       </Arrive>
+    );
+  } else if (skin === "riso") {
+    heading = (
+      <Arrive skin={skin} at={2} style={{ ...headStyle, color: "#2B4CC4", letterSpacing: "-0.03em", textShadow: `${5 * u}px ${4 * u}px 0 rgba(255,92,138,.8)`, mixBlendMode: "multiply" }}>
+        {scene.heading}</Arrive>
+    );
+  } else if (skin === "blueprint") {
+    heading = (
+      <div>
+        <Arrive skin={skin} at={2} style={{ fontFamily: SANS, fontWeight: 500, fontSize: 24 * u, letterSpacing: "0.22em", color: "rgba(255,255,255,.75)", marginBottom: 14 * u }}>FIG. {String(scene.id || "1").replace(/\D/g, "") || "1"}</Arrive>
+        <Arrive skin={skin} at={4} style={{ ...headStyle, color: "#fff", letterSpacing: "0.005em" }}>{scene.heading}</Arrive>
+        <Stroke at={Math.round(fps * 0.5)} len={0.7} width={2 * u} colour="#fff" box="0 0 100 10" d="M0 0 V10 M0 5 H100 M100 0 V10 M3 2 L0 5 L3 8 M97 2 L100 5 L97 8"
+                style={{ width: "100%", height: 22 * u, marginTop: 22 * u, opacity: 0.85 }} />
+      </div>
+    );
+  } else if (skin === "transit") {
+    heading = (
+      <div>
+        <Arrive skin={skin} at={0} style={{ display: "inline-block", background: "#E4002B", color: "#fff", fontFamily: SANS, fontWeight: 800, fontSize: 26 * u, letterSpacing: "0.12em", padding: `${8 * u}px ${18 * u}px`, borderRadius: 999, marginBottom: 22 * u }}>
+          {String(scene.id || "1").replace(/\D/g, "") || "1"}</Arrive>
+        <Arrive skin={skin} at={3} style={{ ...headStyle, color: "#1A1A1A", letterSpacing: "-0.025em" }}>{scene.heading}</Arrive>
+      </div>
+    );
+  } else if (skin === "swiss") {
+    heading = <Arrive skin={skin} at={2} style={{ ...headStyle, color: "#111", letterSpacing: "-0.045em" }}>{scene.heading}</Arrive>;
+  } else if (skin === "whiteboard") {
+    heading = (
+      <div>
+        <Arrive skin={skin} at={2} style={{ ...headStyle, color: "#1F3A8A", letterSpacing: "-0.02em" }}>{scene.heading}</Arrive>
+        <Stroke at={Math.round(fps * 0.55)} len={0.45} width={7 * u} colour="#D7263D" box="0 0 100 10" d="M1 5 C 22 2, 40 8, 60 4 S 90 7, 99 4"
+                style={{ width: "64%", height: 18 * u, marginTop: 8 * u }} />
+      </div>
     );
   } else {
     heading = (
@@ -453,6 +609,59 @@ export const SkinScene = ({ scene, skin }) => {
         </Arrive>
       );
     }
+    if (skin === "riso") {
+      const ink = ["#FF5C8A", "#FFD23F", "#2B4CC4"][i % 3];
+      return (
+        <Arrive key={i} skin={skin} at={at} style={row}>
+          <span style={{ width: mark - 22 * u, height: mark - 22 * u, flex: "none", marginRight: 12 * u, borderRadius: "50%", background: ink, mixBlendMode: "multiply", display: "flex",
+                         alignItems: "center", justifyContent: "center", fontFamily: SANS, fontWeight: 800, fontSize: (mark - 22 * u) * 0.5, color: i % 3 === 1 ? "#1E2F8F" : "#F4EDE0" }}>{n}</span>
+          <span style={{ ...lineText, color: "#1E2F8F" }}>{line}</span>
+        </Arrive>
+      );
+    }
+    if (skin === "blueprint") {
+      return (
+        <div key={i} style={row}>
+          <div style={{ position: "relative", width: mark - 10 * u, height: 60 * u, flex: "none" }}>
+            <Stroke at={at} len={0.5} width={2 * u} colour="#fff" box="0 0 96 60" d="M30 4 A26 26 0 1 1 29.9 4 M56 30 H94"
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+            <Arrive skin="dankoe" at={at + 6} style={{ position: "absolute", left: 0, top: 0, width: `${(60 / 96) * 100}%`, height: "100%", display: "flex", alignItems: "center",
+                                                      justifyContent: "center", fontFamily: SANS, fontWeight: 500, fontSize: 28 * u, color: "#fff" }}>{n}</Arrive>
+          </div>
+          <Arrive skin={skin} at={at + 6} style={{ ...lineText, color: "#fff" }}>{line}</Arrive>
+        </div>
+      );
+    }
+    if (skin === "transit") {                                     // each point is a stop on the red line, reached in order
+      const last = i === lines.length - 1;
+      const grow = interpolate(f - at, [0, fps * 0.5], [0, 1], clamp);
+      return (
+        <div key={i} style={{ ...row, position: "relative", alignItems: "flex-start" }}>
+          <div style={{ width: mark - 10 * u, flex: "none", alignSelf: "stretch", position: "relative" }}>
+            {last ? null : <div style={{ position: "absolute", left: 18 * u, top: 22 * u, width: 16 * u, height: `calc(${grow * 100}% + ${grow * gap}px)`, background: "#E4002B" }} />}
+            <Arrive skin={skin} at={at} style={{ position: "absolute", left: 0, top: 0, width: 52 * u, height: 52 * u, borderRadius: "50%", background: "#fff", border: `${9 * u}px solid #1A1A1A`, boxSizing: "border-box" }} />
+          </div>
+          <Arrive skin={skin} at={at + 3} style={{ ...lineText, color: "#1A1A1A", paddingTop: 2 * u, minHeight: 56 * u }}>{line}</Arrive>
+        </div>
+      );
+    }
+    if (skin === "swiss") {
+      return (
+        <Arrive key={i} skin={skin} at={at} style={{ ...row, alignItems: "flex-start", borderTop: `${5 * u}px solid #111`, paddingTop: gap * 0.45 }}>
+          <span style={{ width: mark - 10 * u, flex: "none", fontFamily: SANS, fontWeight: 800, fontSize: lineSize * 1.5, lineHeight: 0.95, letterSpacing: "-0.05em", color: i === 0 ? "#E30613" : "#111" }}>{String(n).padStart(2, "0")}</span>
+          <span style={{ ...lineText, color: "#111" }}>{line}</span>
+        </Arrive>
+      );
+    }
+    if (skin === "whiteboard") {
+      return (
+        <div key={i} style={row}>
+          <Stroke at={at} len={0.3} width={7 * u} colour="#1E9E5A" box="0 0 60 50" d="M6 28 L22 42 L54 8"
+                  style={{ width: mark - 26 * u, height: lineSize * 0.95, flex: "none", marginRight: 16 * u }} />
+          <Arrive skin={skin} at={at + 5} style={{ ...lineText, color: "#1F2A44" }}>{line}</Arrive>
+        </div>
+      );
+    }
     return (
       <Arrive key={i} skin={skin} at={at} style={{ ...row, alignItems: "baseline", borderTop: `${1.25 * u}px solid rgba(255,255,255,.45)`, paddingTop: gap * 0.8 }}>
         <span style={{ width: mark - 10 * u, flex: "none", fontFamily: INTER, fontWeight: 300, fontSize: lineSize * 0.62, color: "rgba(255,255,255,.6)",
@@ -497,6 +706,25 @@ export const SkinScene = ({ scene, skin }) => {
           </div>
         </Arrive>
       );
+    } else if (skin === "riso") {                                 // two plates: the picture in blue, a pink plate a hair off under it
+      picture = (
+        <Arrive skin={skin} at={8} style={slot}>
+          <div style={{ position: "relative", width: "100%", height: "100%" }}>
+            <div style={{ position: "absolute", inset: 0, background: "#FF5C8A", transform: `translate(${10 * u}px, ${10 * u}px)`, mixBlendMode: "multiply" }} />
+            <div style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#2B4CC4" }}>
+              <Img src={staticFile(pic)} style={{ ...img, filter: "grayscale(1) contrast(1.4) brightness(1.15)", mixBlendMode: "screen" }} />
+            </div>
+          </div>
+        </Arrive>
+      );
+    } else if (skin === "swiss") {
+      picture = (
+        <Arrive skin={skin} at={8} style={slot}>
+          <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: "#111" }}>
+            <Img src={staticFile(pic)} style={{ ...img, filter: "grayscale(1) contrast(1.25)" }} />
+          </div>
+        </Arrive>
+      );
     } else {
       picture = (
         <Arrive skin={skin} at={8} style={{ ...slot, transform: "rotate(1.3deg)", filter: `drop-shadow(${6 * u}px ${10 * u}px ${10 * u}px rgba(74,42,22,.35))` }}>
@@ -533,7 +761,9 @@ export const SkinCaption = ({ text, skin }) => {
     <div style={{ position: "absolute", left: W * 0.08, top: H * 0.78, width: boxW, height: laneH, display: "flex", alignItems: "center", justifyContent: "center",
                   textAlign: "center", fontSize: size, lineHeight: 1.28, overflowWrap: "anywhere", color: S.cap.color, fontFamily: S.cap.fontFamily,
                   fontWeight: S.cap.fontWeight, filter: skin === "chalk" ? "url(#chalk)" : undefined,
-                  textShadow: skin === "comic" ? "0 0 6px #FFF4D6, 0 0 6px #FFF4D6, 0 0 12px #FFF4D6" : skin === "papercut" ? "0 0 8px #F6E7CB, 0 0 8px #F6E7CB" : undefined }}>
+                  textShadow: skin === "comic" ? "0 0 6px #FFF4D6, 0 0 6px #FFF4D6, 0 0 12px #FFF4D6" : skin === "papercut" ? "0 0 8px #F6E7CB, 0 0 8px #F6E7CB"
+                    : skin === "riso" ? "0 0 8px #F4EDE0, 0 0 8px #F4EDE0" : skin === "transit" ? "0 0 8px #F7F5EF, 0 0 8px #F7F5EF"
+                    : skin === "swiss" ? "0 0 8px #fff, 0 0 8px #fff" : undefined }}>
       <span style={{ display: "block", maxWidth: "100%" }}>{text}</span>
     </div>
   );

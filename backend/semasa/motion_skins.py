@@ -1,4 +1,4 @@
-"""The seven 2D film styles, picked at random (Wan, 11 Nov 2026: "reset motion format except cover in front, logo, CTA at the
+"""The 2D film styles, picked at random (Wan, 11 Nov 2026: "reset motion format except cover in front, logo, CTA at the
 end, idle Semasa's default style, and apply motion skill below randomly").
 
 A film whose `options.design` is one of SKINS is drawn by Remotion in that style (backend/remotion/src/Skins.jsx): its own
@@ -21,7 +21,9 @@ log = get_logger("semasa.motion_skins")
 
 TABLE = "semasa_motions"
 AUTO = "auto"
-SKINS = ("comic", "pixel", "chalk", "glow", "flat", "papercut", "dankoe")
+SKINS = ("comic", "pixel", "chalk", "glow", "flat", "papercut", "dankoe",
+         # five more looks after the lemo-opuscar gallery (Wan, 11 Nov 2026), drawn afresh for Semasa
+         "riso", "blueprint", "transit", "swiss", "whiteboard")
 # (Bahasa Malaysia, English, one line on what it looks like)
 NAMES = {
     "comic": ("Komik", "Comic art", "cream halftone page, thick ink outlines, red, yellow and blue"),
@@ -31,6 +33,11 @@ NAMES = {
     "flat": ("Vektor rata", "Flat vector", "flat navy shapes, a moon and one orange accent"),
     "papercut": ("Potongan kertas", "Paper cut-out", "layered torn kraft paper with soft shadows"),
     "dankoe": ("Garis minimal", "Minimal line", "black, thin white lines, drifting dots, lots of empty space"),
+    "riso": ("Cetakan risograf", "Risograph print", "cream paper, blue, pink and yellow inks printed a hair out of register"),
+    "blueprint": ("Pelan biru", "Blueprint", "white technical line work on Prussian blue, numbered balloons"),
+    "transit": ("Peta transit", "Transit map", "each point is a stop on one red line across a printed map"),
+    "swiss": ("Grafik Swiss", "Swiss graphic", "white paper, black type on a grid and one red circle"),
+    "whiteboard": ("Papan putih", "Whiteboard", "blue marker on a glossy board, red underline, green ticks"),
 }
 LEGACY = {"bright-editorial": "Design 1", "continuous-line": "Design 2", "blur-photo": "Design 3", "blur-full": "Design 4"}
 KEEP_APART = 3            # a style is not picked again while it is among the last three used
@@ -93,7 +100,7 @@ def resolve(store: Any, row: dict[str, Any], rng: random.Random | None = None) -
 # ---- Telegram: the same choice Wan has on the page (Wan, 11 Nov 2026: "make sure I can select the styles in Telegram as well")
 
 def picker(motion_id: str, bm: bool = True) -> tuple[str, list[list[dict[str, str]]]]:
-    """The style buttons for one waiting film: random, the seven styles two to a row, then the four older designs."""
+    """The style buttons for one waiting film: random, the styles two to a row, then the four older designs."""
     def b(label: str, key: str) -> dict[str, str]:
         return {"text": label, "callback_data": f"msk:{motion_id}:{key}"}
     keys = list(SKINS)
@@ -101,9 +108,9 @@ def picker(motion_id: str, bm: bool = True) -> tuple[str, list[list[dict[str, st
     rows += [[b(name(k, bm), k) for k in keys[i:i + 2]] for i in range(0, len(keys), 2)]
     old = list(LEGACY)
     rows += [[b(LEGACY[k], k) for k in old[i:i + 2]] for i in range(0, len(old), 2)]
-    text = ("🎨 Pilih gaya filem ini. Rawak memilih satu daripada tujuh gaya 2D; Design 1 hingga 4 ialah reka bentuk lama, "
+    text = ("🎨 Pilih gaya filem ini. Rawak memilih satu daripada gaya 2D; Design 1 hingga 4 ialah reka bentuk lama, "
             "hanya jika anda pilih sendiri." if bm else
-            "🎨 Choose this film's style. Random picks one of the seven 2D styles; Design 1 to 4 are the older designs, "
+            "🎨 Choose this film's style. Random picks one of the 2D styles; Design 1 to 4 are the older designs, "
             "used only when you pick one yourself.")
     return text, rows
 

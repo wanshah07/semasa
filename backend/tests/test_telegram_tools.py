@@ -129,6 +129,7 @@ def test_the_film_style_is_chosen_in_telegram_and_the_film_starts_in_it():
     run(st, bot)
     keys = [b["callback_data"].rsplit(":", 1)[1] for r in bot.sent()[-1]["reply_markup"]["inline_keyboard"] for b in r]
     assert keys == ["auto", "comic", "pixel", "chalk", "glow", "flat", "papercut", "dankoe",
+                    "riso", "blueprint", "transit", "swiss", "whiteboard",
                     "bright-editorial", "continuous-line", "blur-photo", "blur-full"]
     assert all(len(b["callback_data"].encode()) <= 64 for r in bot.sent()[-1]["reply_markup"]["inline_keyboard"] for b in r)
     assert st.tables[tt.MOTIONS][0]["status"] == "waiting", "opening the picker starts nothing"

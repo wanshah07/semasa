@@ -238,7 +238,7 @@ console.log("motion reference box: ok");
   const { designOptions, SKIN_IDS, LEGACY_DESIGN_IDS } = await import("./src/lib/motionStyles.js");
   assert.equal(designOf(undefined), "auto"); assert.equal(designOf("nonsense"), "auto");
   for (const id of [...SKIN_IDS, ...LEGACY_DESIGN_IDS]) assert.equal(designOf(id), id);
-  assert.equal(SKIN_IDS.length, 7);
+  assert.equal(SKIN_IDS.length, 12);
   assert.deepEqual(designOptions.map(d => d.id), ["auto", ...SKIN_IDS, ...LEGACY_DESIGN_IDS]);
   assert.equal(motionRow({ brief: "x", design: "papercut" }).row.options.design, "papercut");
   assert.equal(motionRow({ brief: "x", design: "blur-full" }).row.options.design, "blur-full");

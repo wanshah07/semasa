@@ -442,7 +442,7 @@ def make_motion(store: Any, link: dict[str, Any], post: dict[str, Any]) -> tuple
     buttons = [[{"text": "▶️ Start (random style)", "callback_data": f"c:ms:{mid}"}],
                [{"text": "🎨 Choose the style", "callback_data": f"msk:{mid}:?en"}],
                [{"text": "🔗 Open Motion in Semasa", "url": f"{SITE_URL.rstrip('/')}/#video"}]]
-    return (f"{note}\nTap Start for a random style (one of the seven 2D styles), or choose the style yourself. Motion writes the "
+    return (f"{note}\nTap Start for a random style (one of the 2D styles), or choose the style yourself. Motion writes the "
             "storyboard and waits: nothing is drawn or voiced until you approve it here or in Semasa."), buttons
 
 

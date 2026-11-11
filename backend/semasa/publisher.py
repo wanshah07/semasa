@@ -99,6 +99,42 @@ def pictures_of(m: dict[str, Any]) -> list[str]:
     return [m["generated_media_url"]] if m.get("generated_media_url") else []
 
 
+def film_has_cover(meta: dict[str, Any], report: dict[str, Any] | None) -> bool:
+    """A ws.regulab film opens on the branded cover: written by the worker into the film's check_report when it made the film
+    with the cover, or by rerender into the media row's meta (`cover_added_at`) when the cover was added afterwards."""
+    return bool(meta.get("cover_added_at") or (report or {}).get("cover"))
+
+
+def instagram_cover_gap(media: list[dict[str, Any]], reports: dict[str, dict[str, Any]]) -> str:
+    """Why this post may not go to Instagram yet, or "" when it can (Wan, 11 Nov 2026: "make sure untuk instagram saja,
+    wajib ada cover image macam dipersetujui"). Instagram's profile grid shows a post by its first picture, so a carousel's first
+    picture and a film's opening frames must be the branded cover (carousel.cover_card). A single card is its own picture and a
+    Design-tab artwork carries its own, so neither is asked for one. `reports` is {motion id: check_report} for the films."""
+    for m in media:
+        meta = m.get("meta") or {}
+        if m.get("mode") == "slides" and not meta.get("design"):
+            if meta.get("cover") is not True:
+                return "its carousel has no branded cover as the first picture: redraw it before Instagram"
+        elif m.get("type") == "video" and meta.get("flow") == "motion":
+            if not film_has_cover(meta, reports.get(str(meta.get("motion_id") or ""))):
+                return "its film does not open on the branded cover: add the cover before Instagram"
+    return ""
+
+
+def film_reports(store: Any, media: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """{motion id: check_report} for the Motion films among these media, one read, and {} when there is none or it fails."""
+    ids = [str((m.get("meta") or {}).get("motion_id")) for m in media
+           if m.get("type") == "video" and (m.get("meta") or {}).get("motion_id")]
+    if not ids:
+        return {}
+    try:
+        rows = store.table("semasa_motions").select("id,check_report").in_("id", ids).execute().data or []
+    except Exception as exc:  # noqa: BLE001 - unreadable means the cover cannot be proved, which blocks Instagram (fail safe)
+        log.warning("film reports not read (%s)", str(exc)[:120])
+        return {}
+    return {str(r["id"]): (r.get("check_report") or {}) for r in rows}
+
+
 SHARE_NOW_WITHIN = timedelta(minutes=2)
 ADOPT_WITHIN = timedelta(minutes=2)    # a Buffer post is this post's channel only if it is due within this of the slot
 TRANSIENT_GIVE_UP = 5                  # runs in a row a transient failure is tried again before it is final
@@ -525,6 +561,11 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
         if video:
             payload["video"] = video["url"]
         fp = fingerprint(payload)
+        if channel == "instagram" and stream != "linkedin" and (gap := instagram_cover_gap(media, film_reports(store, media))):
+            counts["blocked"] += 1                     # only Instagram waits for the cover: the other platforms are not held
+            if not logged(store, post["id"], channel, "blocked", fp):
+                write_log(store, post["id"], channel, "blocked", {"fingerprint": fp, "why": [gap]})
+            continue
         if hard:
             counts["blocked"] += 1
             if not logged(store, post["id"], channel, "blocked", fp):

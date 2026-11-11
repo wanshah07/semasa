@@ -641,3 +641,62 @@ def test_a_half_sent_post_moved_afterwards_does_not_send_the_rest_at_the_new_slo
     p = store.tables["semasa_posts"][0]
     assert len(buf.created) == 1 and c["blocked"] == 2
     assert "facebook 2026-09-25 08:00" in " ".join(p["errors"]["scan"])
+
+
+# ---- Instagram needs the branded cover (Wan, 11 Nov 2026: "untuk instagram saja, wajib ada cover image macam dipersetujui")
+def _cover_store(meta, mtype="image", mode="slides", reports=None, stream="regulab"):
+    media = {"id": "m1", "status": "done", "generated_media_url": "https://cdn/m1.png", "type": mtype, "mode": mode, "meta": meta}
+    return FakeStore(
+        semasa_settings=[{"key": "publishing", "value": {"enabled": False}}, {"key": "brand", "value": {}}],
+        semasa_posts=[_post(stream=stream)], media_generations=[media], semasa_publish_log=[],
+        semasa_motions=[{"id": k, "check_report": v} for k, v in (reports or {}).items()])
+
+
+def _blocked(store):
+    return {(r["channel"], r["action"]) for r in store.tables["semasa_publish_log"]}
+
+
+def test_a_carousel_without_its_cover_is_held_back_from_instagram_only():
+    store = _cover_store({"alt": "x", "cover": False, "slide_urls": ["https://cdn/1.jpg", "https://cdn/2.jpg"]})
+    c = publisher.run(store, NOW)
+    got = _blocked(store)
+    assert ("instagram", "blocked") in got and ("instagram", "dry_run") not in got
+    assert ("facebook", "dry_run") in got and ("threads", "dry_run") in got, "the other platforms are not held"
+    why = [r for r in store.tables["semasa_publish_log"] if r["channel"] == "instagram"][0]["detail"]["why"][0]
+    assert "branded cover" in why and c["blocked"] == 1
+
+
+def test_a_carousel_with_its_cover_goes_to_instagram():
+    store = _cover_store({"alt": "x", "cover": True, "slide_urls": ["https://cdn/1.jpg", "https://cdn/2.jpg"]})
+    publisher.run(store, NOW)
+    assert ("instagram", "dry_run") in _blocked(store) and ("instagram", "blocked") not in _blocked(store)
+
+
+def test_a_film_needs_the_cover_in_its_report_or_added_afterwards():
+    base = {"alt": "x", "flow": "motion", "motion_id": "f1"}
+    no = _cover_store(base, mtype="video", mode="clip", reports={"f1": {}})
+    publisher.run(no, NOW)
+    assert ("instagram", "blocked") in _blocked(no)
+    native = _cover_store(base, mtype="video", mode="clip", reports={"f1": {"cover": {"seconds": 1.1}}})
+    publisher.run(native, NOW)
+    assert ("instagram", "dry_run") in _blocked(native), "a film made with the cover"
+    added = _cover_store({**base, "cover_added_at": "2026-11-11T05:00:00+00:00"}, mtype="video", mode="clip", reports={"f1": {}})
+    publisher.run(added, NOW)
+    assert ("instagram", "dry_run") in _blocked(added), "a film the cover was added to afterwards"
+
+
+def test_a_single_card_and_a_design_artwork_need_no_cover():
+    single = _cover_store({"alt": "x"}, mode="prompt")
+    publisher.run(single, NOW)
+    assert ("instagram", "dry_run") in _blocked(single)
+    design = _cover_store({"alt": "x", "design": True, "cover": False, "slide_urls": ["https://cdn/1.jpg"]})
+    publisher.run(design, NOW)
+    assert ("instagram", "dry_run") in _blocked(design)
+
+
+def test_the_gap_helper_names_the_missing_cover_and_a_film_report_that_cannot_be_read_blocks_safely():
+    carousel = {"mode": "slides", "type": "image", "meta": {"cover": False}}
+    film = {"mode": "clip", "type": "video", "meta": {"flow": "motion", "motion_id": "f9"}}
+    assert "carousel" in publisher.instagram_cover_gap([carousel], {}) and "film" in publisher.instagram_cover_gap([film], {})
+    assert publisher.instagram_cover_gap([{"mode": "prompt", "type": "image", "meta": {}}], {}) == ""
+    assert publisher.film_has_cover({"cover_added_at": "x"}, None) and not publisher.film_has_cover({}, {})

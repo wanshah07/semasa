@@ -64,10 +64,11 @@ def candidates(store: Any, now: datetime, only: set[str] | None = None) -> list[
             continue
         for media in store.table(db.MEDIA).select("*").in_("id", ids).eq("status", "done").execute().data or []:
             meta = media.get("meta") or {}
-            if media.get("mode") == "slides" and not meta.get("design") and not meta.get("cover"):
+            if media.get("mode") == "slides" and not meta.get("design") and meta.get("cover") is not True:
                 out.append({"post": post, "kind": "carousel", "media": media})
             elif media.get("type") == "video" and meta.get("flow") == "motion" and not meta.get("film_purged_at") \
-                    and not meta.get("cover_added_at") and meta.get("motion_id"):
+                    and meta.get("motion_id") and not publisher.film_has_cover(meta, publisher.film_reports(store, [media]).get(
+                        str(meta["motion_id"]))):
                 out.append({"post": post, "kind": "film", "media": media})
     return out
 

@@ -319,7 +319,8 @@ def test_the_publisher_sends_every_slide_and_blocks_stale_pictures():
             "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}}, "citation": "NPRA",
             "media_ids": ["s1"], "published": {}, "errors": {}, "slides": full}
     media = {"id": "s1", "status": "done", "mode": "slides", "generated_media_url": "https://cdn/1.jpg",
-             "meta": {"slides": full, "slide_urls": [f"https://cdn/{n}.jpg" for n in range(1, 6)]}}
+             "meta": {"slides": full, "slide_urls": [f"https://cdn/{n}.jpg" for n in range(1, 6)],
+                      "cover": True}}       # a real ws.regulab carousel opens on the branded cover (Instagram needs it)
     store = FakeStore(semasa_settings=[], semasa_posts=[post], media_generations=[media], semasa_publish_log=[])
     c = publisher.run(store, now)
     assert c["dry_run"] == 3

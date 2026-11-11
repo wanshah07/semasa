@@ -30,7 +30,7 @@ def _store(post, zcfg=ZCFG, media=None):
         semasa_posts=[post],
         media_generations=media or [{"id": "m1", "status": "done", "mode": "slides", "generated_media_url": "https://cdn/s1.jpg",
                                      "meta": {"alt": "x", "slide_urls": ["https://cdn/s1.jpg", "https://cdn/s2.jpg"],
-                                              "slides": []}}],
+                                              "slides": [], "cover": True}}],
         semasa_publish_log=[])
 
 

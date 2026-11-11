@@ -20,7 +20,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from . import antislop, compliance
+from . import antislop, compliance, lenggok
 
 log = logging.getLogger("semasa.motion_captions")
 
@@ -204,6 +204,10 @@ def write(llm: Any, row: dict[str, Any], scenes: list[dict[str, Any]], title: st
         language = {"bm": "Bahasa Malaysia (Malaysian, never Indonesian: boleh not bisa, ubat not obat, syarikat not perusahaan)",
                     "en": "English (if the script below is in another language, write the English of the same facts)",
                     "both": "BOTH: the Bahasa Malaysia text first, then the English text, each about half the length"}[lang]
+        if lang in ("bm", "both") and stream != "linkedin":
+            # the film's caption sounds like the film (Wan, 11 Nov 2026: "for bahasa melayu caption make sure casual and not
+            # kekok"): the same lenggok rule the post writer and the film's narration follow, never for the English text
+            language += ". " + lenggok.RULE
         system = SYSTEM.format(voice=voice, language=language, platforms=spec,
                                shape=", ".join(f'"{p}": "..."' for p in plats), extra=antislop.prompt_block())
         out = llm.chat_json(system, _script(title, scenes), max_tokens=1800) if llm else None

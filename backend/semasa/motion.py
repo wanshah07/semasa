@@ -563,7 +563,7 @@ def storyboard_pictures(store: Any, row: dict[str, Any], plan: dict[str, Any], f
                                           search=photo_search, get=photo_get)
         motion_auto.assign_photos(scenes, [*own, *photos])
         drawn, gpt_note = motion_gpt_images.draw_scenes(
-            store, row, scenes, folder, design=motion_styles.design(row), palette=PALETTE["regulab"],
+            store, row, scenes, folder, design=motion_skins.skin(row) or motion_styles.design(row), palette=PALETTE["regulab"],
             ambient=str((row.get("options") or {}).get("ambient") or "mint"), resolution=size_of(row),
             style_name=style_name, login=gpt_login, gemini=gemini, cloudflare=cloudflare)
         if drawn:
@@ -1685,7 +1685,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             sb_note = ""
             if motion_gpt_images.ready(store, login=gpt_login, gemini=gemini, cloudflare=cloudflare):
                 stream_name = "linkedin" if row.get("stream") == "linkedin" else "regulab"
-                design_name = motion_styles.design(row)
+                design_name = motion_skins.skin(row) or motion_styles.design(row)     # a 2D style has its own picture look
                 shots, sb_note = motion_storyboard.write(
                     store, row, plan["scenes"], login=gpt_login, llm=llm, design=design_name,
                     look=motion_gpt_images.LOOK.get(design_name, motion_gpt_images.LOOK["bright-editorial"]),
@@ -1770,7 +1770,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
         # a picture drawn for each scene from the storyboard and the styles, through Wan's ChatGPT login (Wan, 5 Nov 2026);
         # a scene it does not draw keeps the photo above, and a film without the login is made exactly as before
         drawn, gpt_note = motion_gpt_images.draw_scenes(
-            store, row, missing if approved_pics else scenes, folder, design=motion_styles.design(row),
+            store, row, missing if approved_pics else scenes, folder, design=motion_skins.skin(row) or motion_styles.design(row),
             palette=PALETTE["regulab"],
             ambient=str((row.get("options") or {}).get("ambient") or "mint"), resolution=size_of(row), style_name=style[0],
             login=gpt_login, gemini=gemini, cloudflare=cloudflare)

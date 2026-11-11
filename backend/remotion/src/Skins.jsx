@@ -38,26 +38,26 @@ export const SKINS = {
            cap: { color: "#111111", fontFamily: INTER, fontWeight: 800 } },
   pixel: { head: PIXEL, hf: 0.64, hlh: 1.16, hw: 800, headMax: 92, body: PIXEL, bf: 0.58, bw: 500, lineMax: 50, pic: true,
            cap: { color: "#F4F4F4", fontFamily: PIXEL, fontWeight: 500 } },
-  chalk: { head: CHALK, hf: 0.6, hlh: 1.12, hw: 500, headMax: 100, body: CHALK, bf: 0.56, bw: 400, lineMax: 52, pic: false,
+  chalk: { head: CHALK, hf: 0.6, hlh: 1.12, hw: 500, headMax: 100, body: CHALK, bf: 0.56, bw: 400, lineMax: 52, pic: true,
            cap: { color: "#F2F2EA", fontFamily: CHALK, fontWeight: 500 } },
-  glow: { head: INTER, hf: 0.6, hlh: 1.12, hw: 300, headMax: 104, body: INTER, bf: 0.56, bw: 300, lineMax: 54, pic: false,
+  glow: { head: INTER, hf: 0.6, hlh: 1.12, hw: 300, headMax: 104, body: INTER, bf: 0.56, bw: 300, lineMax: 54, pic: true,
           cap: { color: "#FFE7C2", fontFamily: INTER, fontWeight: 400 } },
   flat: { head: INTER, hf: 0.63, hlh: 1.08, hw: 800, headMax: 104, body: INTER, bf: 0.58, bw: 600, lineMax: 52, pic: true,
           cap: { color: "#F2EEE8", fontFamily: INTER, fontWeight: 600 } },
   papercut: { head: INTER, hf: 0.63, hlh: 1.1, hw: 800, headMax: 96, body: INTER, bf: 0.58, bw: 600, lineMax: 52, pic: true,
               cap: { color: "#4A2A16", fontFamily: INTER, fontWeight: 700 } },
-  dankoe: { head: INTER, hf: 0.58, hlh: 1.14, hw: 300, headMax: 96, body: INTER, bf: 0.55, bw: 300, lineMax: 54, pic: false,
+  dankoe: { head: INTER, hf: 0.58, hlh: 1.14, hw: 300, headMax: 96, body: INTER, bf: 0.55, bw: 300, lineMax: 54, pic: true,
             cap: { color: "#FFFFFF", fontFamily: INTER, fontWeight: 300 } },
   /* five more looks, after the lemo-opuscar gallery (Wan, 11 Nov 2026: "go with option 1"): our own drawings of the same idioms */
   riso: { head: SANS, hf: 0.66, hlh: 1.06, hw: 800, headMax: 104, body: SANS, bf: 0.58, bw: 600, lineMax: 52, pic: true,
           cap: { color: "#1E2F8F", fontFamily: SANS, fontWeight: 700 } },
-  blueprint: { head: SANS, hf: 0.62, hlh: 1.12, hw: 500, headMax: 96, body: SANS, bf: 0.56, bw: 400, lineMax: 50, pic: false,
+  blueprint: { head: SANS, hf: 0.62, hlh: 1.12, hw: 500, headMax: 96, body: SANS, bf: 0.56, bw: 400, lineMax: 50, pic: true,
                cap: { color: "#FFFFFF", fontFamily: SANS, fontWeight: 500 } },
-  transit: { head: SANS, hf: 0.66, hlh: 1.08, hw: 800, headMax: 100, body: SANS, bf: 0.58, bw: 600, lineMax: 52, pic: false,
+  transit: { head: SANS, hf: 0.66, hlh: 1.08, hw: 800, headMax: 100, body: SANS, bf: 0.58, bw: 600, lineMax: 52, pic: true,
              cap: { color: "#1A1A1A", fontFamily: SANS, fontWeight: 600 } },
   swiss: { head: SANS, hf: 0.68, hlh: 1.0, hw: 800, headMax: 124, body: SANS, bf: 0.58, bw: 500, lineMax: 50, pic: true,
            cap: { color: "#111111", fontFamily: SANS, fontWeight: 600 } },
-  whiteboard: { head: SANS, hf: 0.64, hlh: 1.1, hw: 700, headMax: 100, body: SANS, bf: 0.57, bw: 500, lineMax: 52, pic: false,
+  whiteboard: { head: SANS, hf: 0.64, hlh: 1.1, hw: 700, headMax: 100, body: SANS, bf: 0.57, bw: 500, lineMax: 52, pic: true,
                 cap: { color: "#1F2A44", fontFamily: SANS, fontWeight: 600 } },
 };
 export const isSkin = (id) => Object.prototype.hasOwnProperty.call(SKINS, id);
@@ -426,6 +426,16 @@ const Stroke = ({ d, at, len = 0.6, width, colour, style, box }) => {
 
 /* ---------------------------------------------------------------- one scene */
 
+/* how the styles that are mostly line and type hold the scene's picture: a plain framed window in the style's own ink */
+const FRAMES = {
+  chalk: { border: 5, colour: "#F2F2EA", ground: "#2F4F3A", radius: 6, filter: "saturate(.75) contrast(1.05)", opacity: 0.92 },
+  glow: { border: 2.5, colour: "#FFE7C2", ground: "#000", radius: 28, filter: "saturate(.8) brightness(.9)",
+          outer: (u) => `drop-shadow(0 0 ${6 * u}px rgba(255,231,194,.8)) drop-shadow(0 0 ${20 * u}px rgba(255,231,194,.35))` },
+  dankoe: { border: 1.25, colour: "rgba(255,255,255,.7)", ground: "#000", filter: "grayscale(1) contrast(1.1) brightness(.9)" },
+  blueprint: { border: 2, colour: "#fff", ground: "#153A70", dash: true, filter: "grayscale(1) contrast(1.2) brightness(1.15)", blend: "screen", opacity: 0.9 },
+  transit: { border: 9, colour: "#1A1A1A", ground: "#fff", radius: 26 },
+  whiteboard: { border: 6, colour: "#1F3A8A", ground: "#fff", radius: 10 },
+};
 const COMIC_TILT = [-1.6, 1.2, -0.8];
 const PAPER_TILT = [-1.4, 1.1, -0.6];
 const COMIC_FILL = ["#E63946", "#1D4ED8", "#111111"];
@@ -722,6 +732,16 @@ export const SkinScene = ({ scene, skin }) => {
         <Arrive skin={skin} at={8} style={slot}>
           <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", background: "#111" }}>
             <Img src={staticFile(pic)} style={{ ...img, filter: "grayscale(1) contrast(1.25)" }} />
+          </div>
+        </Arrive>
+      );
+    } else if (FRAMES[skin]) {
+      const F = FRAMES[skin];
+      picture = (
+        <Arrive skin={skin === "chalk" ? "dankoe" : skin} at={8} style={{ ...slot, filter: F.outer ? F.outer(u) : undefined }}>
+          <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", boxSizing: "border-box", borderRadius: (F.radius || 0) * u,
+                        border: `${F.border * u}px ${F.dash ? "dashed" : "solid"} ${F.colour}`, background: F.ground }}>
+            <Img src={staticFile(pic)} style={{ ...img, filter: F.filter, opacity: F.opacity ?? 1, mixBlendMode: F.blend }} />
           </div>
         </Arrive>
       );

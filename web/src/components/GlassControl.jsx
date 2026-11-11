@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Settings2, X } from "lucide-react";
 import { useLang } from "../lib/i18n";
-import { DEFAULT_GLASS, GROUNDS, IMAGE_KEY, PRESETS, absoluteUrl, applyGlass, imageUrl, minOpacity, normalizeGlass, readGlass, writeGlass } from "../lib/glass";
+import { DEFAULT_GLASS, GROUNDS, IMAGE_KEY, IMAGE_MAX_BLUR, IMAGE_MAX_SHOW, IMAGE_MIN_SHOW, PRESETS, absoluteUrl, applyGlass, imageUrl, minOpacity, normalizeGlass, readGlass, writeGlass } from "../lib/glass";
 
 /* "Laras kaca": the glass controls of the pasted dashboard, for the whole app (lib/glass.js says why it stays readable).
    `big`: the phone menu's version. The panel is this page's own, never a browser dialog. */
@@ -126,7 +126,18 @@ export default function GlassControl({ big = false }) {
             <button type="button" onClick={() => file.current?.click()} className="mt-2 flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-tile border border-line px-2 text-xs text-ink hover:bg-surface-2">
               <ImagePlus size={14} /> {custom ? t("Tukar gambar saya", "Change my picture") : t("Tambah gambar saya", "Add my picture")}
             </button>
-            {glass.image && <p className="mt-1.5 text-[11px] text-muted">{t("Dengan gambar, kad kekal sekurang-kurangnya 92% legap supaya tulisan jelas.", "With a picture, cards stay at least 92% opaque so the words stay clear.")}</p>}
+            {glass.image && [
+              ["imgBlur", t("Kabur gambar", "Picture blur"), 0, IMAGE_MAX_BLUR, 1, `${Math.round(glass.imgBlur)} px`],
+              ["imgOpacity", t("Kelegapan gambar", "Picture opacity"), IMAGE_MIN_SHOW, IMAGE_MAX_SHOW, 0.01, `${Math.round(glass.imgOpacity * 100)}%`],
+              ["imgSaturation", t("Warna gambar", "Picture colour"), 0, 2, 0.05, `${Math.round(glass.imgSaturation * 100)}%`],
+            ].map(([key, label, min, max, step, shown]) => (
+              <label key={key} className="mt-3 block text-xs text-ink" data-glass-picture-control={key}>
+                <span className="flex justify-between"><span>{label}</span><output className="tabular-nums text-muted">{shown}</output></span>
+                <input type="range" aria-label={label} min={min} max={max} step={step} value={glass[key]}
+                  onChange={(e) => update({ [key]: Number(e.target.value) })} className="mt-1.5 w-full accent-[rgb(var(--c-accent))]" />
+              </label>
+            ))}
+            {glass.image && <p className="mt-1.5 text-[11px] text-muted">{t("Dengan gambar, kad kekal sekurang-kurangnya {n}% legap supaya tulisan jelas. Lebih jelas gambar, lebih legap kad.", "With a picture, cards stay at least {n}% opaque so the words stay clear. The more the picture shows, the more opaque the cards.", { n: Math.round(low * 100) })}</p>}
             {note && <p className="mt-1.5 text-[11px] text-warn" role="alert">{note}</p>}
           </div>
           <button type="button" onClick={() => update(DEFAULT_GLASS)} className="mt-4 w-full rounded-tile border border-line px-2 py-2 text-xs text-ink hover:bg-surface-2">{t("Set semula", "Reset")}</button>

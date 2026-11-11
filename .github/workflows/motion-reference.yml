@@ -32,7 +32,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install
         run: |
-          timeout 300 sudo apt-get update -qq -o Acquire::Retries=3 -o Acquire::http::Timeout=30 && timeout 600 sudo apt-get install -y -qq ffmpeg
+          bash ../.github/scripts/ensure-ffmpeg.sh        # ffmpeg and ffprobe without apt
           pip install -r requirements.txt
       - name: Read the style
         env:

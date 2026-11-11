@@ -27,7 +27,7 @@ jobs:
           python-version: "3.10"
       - name: Tools and a Malay test recording
         run: |
-          timeout 300 sudo apt-get update -qq -o Acquire::Retries=3 -o Acquire::http::Timeout=30 && timeout 600 sudo apt-get install -y -qq ffmpeg
+          bash .github/scripts/ensure-ffmpeg.sh        # ffmpeg and ffprobe without apt
           pip install -q gTTS
           python - <<'PY'
           from gtts import gTTS

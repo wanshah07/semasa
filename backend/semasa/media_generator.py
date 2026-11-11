@@ -575,7 +575,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
     no key, no cost. Too long to fit is a final error that names the slide, never a cut.
     A Design-tab job (meta.design) may bring only an idea (meta.brief): the writer turns it into words first, and
     those words are saved on the job before drawing, so a retry draws them again instead of writing new ones."""
-    from . import compliance, design, ideas, slides, studio_cards
+    from . import carousel, compliance, design, ideas, slides, studio_cards
 
     row_id = row["id"]
     meta = dict(row.get("meta") or {})
@@ -669,27 +669,43 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             if look == "photo" and not ground:
                 look = "grid"
             meta["look_chosen"] = look
-        if kind == "threads":
-            # the Threads-style text + picture set (threads_slides.py): drawn here with Pillow, one picture per page
-            from . import threads_slides
-            look = "threads"
-            pics = threads_slides.render(classic_words(items), stream=stream, eyebrow=eyebrow,
-                                         source=str(meta.get("citation") or ""),
-                                         website=website, photos=thread_photos(store, row, items, ground),
-                                         size=size or slides.SIZES.get(stream, slides.SIZES["regulab"]))
-        elif studio_cards.is_studio_look(look):
-            # ws.regulab Studio's own designs, drawn by Studio's own code in headless Chrome
-            from . import cards_library
-            from .providers.cloudflare import content_type_of
-            drawn = own_photos(store, own_grounds(store, row, items))
-            pics = studio_cards.render(drawn, look=look, stream=stream, eyebrow=eyebrow,
-                                       source=str(meta.get("citation") or ""), ground=ground,
-                                       ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size,
-                                       mascots=cards_library.mascots(store), fit=bool(meta.get("fit")), design=saved)
-        else:
-            look = "classic"
-            pics = slides.render(classic_words(items), stream=stream, eyebrow=eyebrow, source=str(meta.get("citation") or ""),
-                                 website=website, ground=ground, size=size)
+        # a post's own carousel (not a Design-tab artwork): more than six pictures are squeezed by joining neighbouring slides
+        # (what is DRAWN only: the words on the job and on the post stay as written), and a ws.regulab carousel ends on the
+        # logo card. A render that fails squeezed is drawn again as written.
+        squeeze, joined = (carousel.compact(items, stream) if not kind and kind != "threads" else (items, 0))
+        attempts = [(squeeze, joined)] + ([(items, 0)] if joined else [])
+        for n, (words_in, joined_here) in enumerate(attempts):
+            joined = joined_here
+            try:
+                if kind == "threads":
+                    # the Threads-style text + picture set (threads_slides.py): drawn here with Pillow, one picture per page
+                    from . import threads_slides
+                    look = "threads"
+                    pics = threads_slides.render(classic_words(words_in), stream=stream, eyebrow=eyebrow,
+                                                 source=str(meta.get("citation") or ""),
+                                                 website=website, photos=thread_photos(store, row, words_in, ground),
+                                                 size=size or slides.SIZES.get(stream, slides.SIZES["regulab"]))
+                elif studio_cards.is_studio_look(look):
+                    # ws.regulab Studio's own designs, drawn by Studio's own code in headless Chrome
+                    from . import cards_library
+                    from .providers.cloudflare import content_type_of
+                    drawn = own_photos(store, own_grounds(store, row, words_in))
+                    pics = studio_cards.render(drawn, look=look, stream=stream, eyebrow=eyebrow,
+                                               source=str(meta.get("citation") or ""), ground=ground,
+                                               ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size,
+                                               mascots=cards_library.mascots(store), fit=bool(meta.get("fit")), design=saved)
+                else:
+                    look = "classic"
+                    pics = slides.render(classic_words(words_in), stream=stream, eyebrow=eyebrow,
+                                         source=str(meta.get("citation") or ""), website=website, ground=ground, size=size)
+                break
+            except slides.SlideError:
+                if n == len(attempts) - 1:
+                    raise
+                log.info("%s: the squeezed carousel did not fit; drawn as written", row_id)
+        closing = not kind and carousel.has_logo_card(stream, len(pics))
+        if closing:
+            pics = [*pics, carousel.closing_jpeg(len(pics), len(pics) + 1, ground=ground, size=size)]
         day = datetime.now(UTC).strftime("%Y/%m")
         stamp = datetime.now(UTC).strftime("%d%H%M%S")      # a redraw is a new file, never an hour-old cached one
         before = [x for x in (meta.get("slide_paths") or []) if x]
@@ -703,7 +719,8 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             meta.pop("revise", None)
             meta.setdefault("revisions", []).append({"note": note, "at": datetime.now(UTC).isoformat()})
         meta.update(slides=items, slide_urls=urls, slide_paths=paths, sha256=sums, count=len(urls), look=look,
-                    bg_used=ground_id, content_type="image/jpeg", bytes=sum(len(p) for p in pics),
+                    closing_logo=closing, squeezed_from=(len(items) if joined else None), bg_used=ground_id,
+                    content_type="image/jpeg", bytes=sum(len(p) for p in pics),
                     finished_at=datetime.now(UTC).isoformat())
         if style.get("url"):
             meta["awaiting_confirm"] = not meta.get("saved")     # waits for Wan's Simpan; never attached before it

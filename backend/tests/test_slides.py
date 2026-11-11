@@ -204,12 +204,13 @@ def test_slide_job_draws_uploads_and_replaces_the_old_set(monkeypatch):
     assert media_generator.process_row(store, row, _settings(), {}) is True     # no provider, no token needed
     done = store.tables["media_generations"][0]
     assert done["status"] == "done" and done["provider"] == "semasa" and done["model"] == "slides-v1"
-    assert done["meta"]["count"] == 3 and len(done["meta"]["slide_urls"]) == 3
+    # three written slides, and a ws.regulab carousel ends on the logo card (Wan, 11 Nov 2026): four pictures
+    assert done["meta"]["count"] == 4 and len(done["meta"]["slide_urls"]) == 4 and done["meta"]["closing_logo"] is True
     assert done["generated_media_url"] == done["meta"]["slide_urls"][0]
     assert done["meta"]["slides"] == compliance.normalise_slides(GOOD)
     assert all(ct == "image/jpeg" for _, ct in uploads.values())
     names = [p.rsplit("/", 1)[1] for p in uploads]
-    assert [re.sub(r"-\d{8}-", "-", n) for n in names] == ["s1-slide01.jpg", "s1-slide02.jpg", "s1-slide03.jpg"]
+    assert [re.sub(r"-\d{8}-", "-", n) for n in names] == ["s1-slide01.jpg", "s1-slide02.jpg", "s1-slide03.jpg", "s1-slide04.jpg"]
     assert store.tables["semasa_posts"][0]["media_ids"] == ["pic", "s1"]         # the old set replaced in place
 
 

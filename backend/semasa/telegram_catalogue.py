@@ -422,6 +422,8 @@ def make_motion(store: Any, link: dict[str, Any], post: dict[str, Any]) -> tuple
     from .billing import SITE_URL
     if post.get("status") not in ("draft", "approved", "scheduled"):
         return "That post is no longer active, so I did not queue a film from it.", []
+    if post.get("stream") == "linkedin":
+        return "LinkedIn gets a carousel or a single card, never a film, so I did not queue one.", []
     brief = _words_of_post(post)
     if not brief:
         return "This draft has no words to make a film from.", []

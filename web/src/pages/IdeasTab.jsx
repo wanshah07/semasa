@@ -6,6 +6,7 @@ import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { timeAgo } from "../lib/format";
 import { useSettings, useTable } from "../lib/hooks";
 import { LANGUAGES, defaultLanguage, motionDefaults, motionFromIdea, motionVariantMatches } from "../lib/motion";
+import { canFilm } from "../lib/brand";
 import { useLang } from "../lib/i18n";
 import IdeaComposer from "../components/IdeaComposer";
 import Button from "../components/ui/Button";
@@ -213,6 +214,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
   const [motionLang, setMotionLang] = useState({});
   const langFor = (r) => motionLang[r.id] || mDefaults.language || defaultLanguage(r.stream === "linkedin" ? "linkedin" : "regulab");
   async function makeMotion(r) {
+    if (!canFilm(r.stream)) return onToast(t("LinkedIn tiada video: hanya karusel atau kad tunggal.", "LinkedIn gets no video: only a carousel or a single card."), "warn");
     const row = motionFromIdea(r, user?.id || null, mDefaults, langFor(r));
     if (!row) return onToast(t("Idea ini tiada apa untuk dijadikan video.", "This idea has nothing to make a video from."), "warn");
     setMotionBusy(r.id);
@@ -223,7 +225,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
     motionsT.reload();
   }
   // every shown idea at once, with the saved way (Wan, 24 Oct 2026: "apply to all idea if I need")
-  const motionable = () => shown.filter((r) => r.status !== "rejected" && r.status !== "working" && !motionOf(r.id)
+  const motionable = () => shown.filter((r) => canFilm(r.stream) && r.status !== "rejected" && r.status !== "working" && !motionOf(r.id)
     && motionFromIdea(r, user?.id || null, mDefaults, langFor(r)));
   async function makeMotionAll() {
     const rows = motionable().map((r) => motionFromIdea(r, user?.id || null, mDefaults, langFor(r)));
@@ -287,7 +289,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
           <Clapperboard size={12} className="shrink-0" /> {t("Bahasa video", "Video language")}
           <select value={langFor(r)} onChange={e => setMotionLang(m => ({...m, [r.id]:e.target.value}))} className="min-h-[44px] rounded-pill border border-line bg-surface px-2 py-1.5 text-xs text-ink lg:min-h-0">{LANGUAGES.map(([k,l]) => <option key={k} value={k}>{l}</option>)}</select>
         </label>)}
-      {r.status !== "rejected" && r.status !== "working" && (motionOf(r.id)
+      {canFilm(r.stream) && r.status !== "rejected" && r.status !== "working" && (motionOf(r.id)
         ? <span className="inline-flex items-center gap-1 rounded-pill bg-surface-2 px-3 py-1.5 text-xs text-muted" data-idea-motion={motionOf(r.id).status}><Clapperboard size={12} /> {t("Motion", "Motion")}: {({ pending: t("menunggu", "waiting"), working: t("dibuat", "being made"), done: t("siap", "done"), error: t("ralat", "error") })[motionOf(r.id).status] || motionOf(r.id).status}</span>
         : <span className="inline-flex items-center gap-1" data-idea-motion-make>
             <Button size="sm" variant="ghost" disabled={motionBusy === r.id} onClick={() => makeMotion(r)} title={t("Jadikan video motion pendek", "Make a short motion video")}><Clapperboard size={12} /> {t("Video motion", "Motion video")}</Button>

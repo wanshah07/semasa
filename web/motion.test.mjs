@@ -222,3 +222,11 @@ console.log("motion reference box: ok");
   assert.notEqual(ss(10, "qna"), 10, "a new mode is a four-scene film, never the 10 s teaser");
   console.log("motion modes: 13 content modes + auto + teaser ok");
 }
+
+// LinkedIn gets no film (Wan, 11 Nov 2026: "for linkedn, no need to do motion, only carousel or single card")
+{
+  const { canFilm } = await import("./src/lib/motion.js");
+  assert.equal(canFilm("linkedin"), false); assert.equal(canFilm("regulab"), true); assert.equal(canFilm(undefined), true);
+  // a LinkedIn film can still be built by the pure row builders (tests above), the screens simply never call them for LinkedIn
+  console.log("linkedin: no film ok");
+}

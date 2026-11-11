@@ -4,7 +4,7 @@ import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { useSettings, useTable } from "../lib/hooks";
 import { stampMYT, timeAgo } from "../lib/format";
-import { STREAMS } from "../lib/brand";
+import { MOTION_STREAMS } from "../lib/brand";
 import { LANGUAGES, RESOLUTIONS, RESOLUTION_CHOICES, SECONDS, STATUS_WORDS, VOICES, checkItems, defaultLanguage, fmtBytes, formOf, freshUrl, motionDefaults, motionLabel, motionRepoRow, motionRow, selectedSeconds, startFields, styleRepos, withDefaults, plannedShots, motionTrack, refKind, PRESETS } from "../lib/motion";
 import MotionAmbient from "./MotionAmbient";
 import { designOptions, recipeOptions, recipeOf, styleOf as validStyle } from "../lib/motionStyles";
@@ -301,7 +301,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
           tagline={tagline} onTagline={setTagline} client={supabase} user={user} onBusy={setAssetsBusy} />}
         {isTemplate && (
           <div className="grid gap-4 md:grid-cols-2">
-            <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
+            <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={MOTION_STREAMS} /></div>
             <div data-motion-language><Label hint={t("templat: satu bahasa di skrin", "templates: one language on screen")}>{t("Bahasa", "Language")}</Label>
               <Segmented value={language === "en" ? "en" : "bm"} onChange={pickLanguage} options={TEMPLATE_LANGUAGES} /></div>
           </div>
@@ -341,7 +341,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
             options={[["", t("Gaya lalai Semasa", "Semasa's default look")], ...styles.map((r) => [r.id, `${r.name || r.full_name}${r.status !== "done" ? ` · ${t("belum dibaca", "not read yet")}` : ""}${r.safety === "avoid" ? ` · ${t("elakkan", "avoid")}` : ""}`])]} /></label>
         {styleRepoId && styleOf(styleRepoId)?.summary_bm && <p className="text-xs text-muted">{L ? styleOf(styleRepoId).summary_en || styleOf(styleRepoId).summary_bm : styleOf(styleRepoId).summary_bm}</p>}
         <div className="grid gap-4 md:grid-cols-2">
-          <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
+          <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={MOTION_STREAMS} /></div>
           <div data-motion-language><Label hint={t("perkataan di skrin; BM + English letak kedua-dua baris", "the words on screen; BM + English puts both lines up")}>{t("Bahasa", "Language")}</Label>
             <Segmented value={language} onChange={pickLanguage} options={LANGUAGES} /></div>
         </div>

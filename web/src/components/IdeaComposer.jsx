@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
-import { CATEGORY_TO_DOMAIN } from "../lib/brand";
+import { CATEGORY_TO_DOMAIN, canFilm } from "../lib/brand";
 import { BOTH, ideaRows, streamOptions, streamsOf } from "../lib/ideaPair";
 import { useLang } from "../lib/i18n";
 import { useSettings, useTable } from "../lib/hooks";
@@ -32,6 +32,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   const [stream, setStream] = useState("regulab");
   const [media, setMedia] = useState("image");
   const [outputMotion, setOutputMotion] = useState(false);
+  const motionOn = outputMotion && stream !== "linkedin";            // LinkedIn gets no film (Wan, 11 Nov 2026)
   const [motionLanguage, setMotionLanguage] = useState("en");
   const { settings: motionSettings } = useSettings(true);
   const [format, setFormat] = useState("post");   // post | carousel | poster (backend: ideas.format_of)
@@ -98,8 +99,8 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   async function submit(e) {
     e.preventDefault();
     if (uploading) return;
-    if (!title.trim() && !(outputMotion && url.trim())) return onToast(t("Perlukan tajuk atau isu.", "A title or an issue is needed."), "warn");
-    const drawn = !outputMotion && format !== "post";
+    if (!title.trim() && !(motionOn && url.trim())) return onToast(t("Perlukan tajuk atau isu.", "A title or an issue is needed."), "warn");
+    const drawn = !motionOn && format !== "post";
     if (drawn && lookBlocked === "photo") {
       return onToast(t("Reka bentuk Foto dilukis di atas gambar post: pilih Media Imej, atau reka bentuk lain.",
         "The Photo design is drawn on the post's picture: choose Media Image, or another design."), "warn");
@@ -114,9 +115,12 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
       reference_urls: refs.map((r) => r.url), status: "new", created_by: user.id,
     };
     // sent only when asked: the column arrives with supabase/006_slides.sql
-    if (outputMotion) {
+    if (motionOn) {
       // one film per stream: LinkedIn's is always English (langOf), ws.regulab's follows the language picked here
-      const motions = streamsOf(stream).map((s) => motionFromIdea({ ...common, stream: s, citations: trend?.citations, brief: { source: trend || {} } },
+      // LinkedIn gets no film (Wan, 11 Nov 2026): a "both" idea makes the ws.regulab film only, a LinkedIn-only one makes nothing here
+      const filmStreams = streamsOf(stream).filter(canFilm);
+      if (!filmStreams.length) { setBusy(false); return onToast(t("LinkedIn tiada video: hanya karusel atau kad tunggal. Matikan Motion sahaja.", "LinkedIn gets no video: only a carousel or a single card. Turn Motion only off."), "warn"); }
+      const motions = filmStreams.map((s) => motionFromIdea({ ...common, stream: s, citations: trend?.citations, brief: { source: trend || {} } },
         user.id, motionDefaults(motionSettings), motionLanguage));
       if (motions.some((m) => !m)) { setBusy(false); return onToast(t("Tambah idea atau URL sumber yang sah.", "Add an idea or valid source URL."), "warn"); }
       const { error } = await supabase.from(TABLES.motions).insert(motions);
@@ -181,7 +185,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
               : t("Semasa baca notis ini dan memetik pengawal selia serta rujukannya.", "Semasa reads this notice and cites the regulator and its reference.")}</span>}</p>
         ) : (
           <>
-            <label className="block"><Label>{t("Isu / tajuk", "Issue / title")}</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} required={!outputMotion} /></label>
+            <label className="block"><Label>{t("Isu / tajuk", "Issue / title")}</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} required={!motionOn} /></label>
             <label className="block"><Label hint={t("pilihan", "optional")}>{t("Pautan sumber", "Source link")}</Label><Input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" /></label>
           </>
         )}
@@ -201,8 +205,8 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
           <label className="block" data-writing-pick><Label hint={t("bagaimana kapsyen dibaca; peraturan tetap mengatasinya", "how the caption reads; the rules still outrank it")}>{t("Gaya penulisan", "Writing style")}</Label>
             <Select value={writingStyle} onChange={setWritingStyle} options={writingOptions(writingStyles.rows || [], t, motionSettings?.writing_style)} className="w-full" /></label>
         )}
-        <label className="flex items-center gap-2"><input type="checkbox" checked={outputMotion} onChange={e => setOutputMotion(e.target.checked)} />{t("Motion sahaja · tiada draf post/gambar", "Motion only · no post/image draft")}</label>
-        {outputMotion && <Select value={motionLanguage} onChange={setMotionLanguage} options={LANGUAGES} />}
+        <label className="flex items-center gap-2"><input type="checkbox" checked={motionOn} disabled={stream === "linkedin"} onChange={e => setOutputMotion(e.target.checked)} />{t("Motion sahaja · tiada draf post/gambar", "Motion only · no post/image draft")}</label>
+        {motionOn && <Select value={motionLanguage} onChange={setMotionLanguage} options={LANGUAGES} />}
         <div><Label>Media</Label><Segmented value={media} onChange={setMedia} options={[["image", t("Imej", "Image")], ["video", "Video"], ["none", t("Tiada", "None")]]} /></div>
         <div>
           <Label>{t("Jadikan", "Make it")}</Label>
@@ -224,7 +228,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
             {format !== "post" && media === "image" ? t(" Gambar post jadi latar.", " The post picture becomes the background.") : ""}
           </span>
         </div>
-        {!outputMotion && format !== "post" && (
+        {!motionOn && format !== "post" && (
           <div className="rounded-tile bg-surface-2/40 p-2.5">
             <LookPicker value={look} onChange={setLook} sample stream={previewStream}
               slides={format === "poster" ? posterSample : sampleSlides(title, previewStream)}

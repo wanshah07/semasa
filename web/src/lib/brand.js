@@ -1,4 +1,5 @@
 import { currentLang } from "./i18n";
+import { canFilm } from "./motion.js";
 /* Defaults mirror supabase/005_studio.sql; the live values come from semasa_settings.brand. */
 export const DEFAULT_BRAND = {
   regulab: {
@@ -19,6 +20,10 @@ export const DEFAULT_BRAND = {
 };
 
 export const STREAMS = [["regulab", "ws.regulab (FB · IG · Threads)"], ["linkedin", "LinkedIn (Wan)"]];
+/* Wan, 11 Nov 2026: "for linkedn, no need to do motion, only carousel or single card". LinkedIn gets no Motion film: no screen offers one,
+   no button makes one, auto-fill never queues one. ws.regulab is the only stream a film is for. */
+export { canFilm } from "./motion.js";
+export const MOTION_STREAMS = STREAMS.filter(([k]) => canFilm(k));
 export const DAY_NAMES = ["Ahad", "Isnin", "Selasa", "Rabu", "Khamis", "Jumaat", "Sabtu"];
 const DAY_NAMES_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 /** Weekday names (0 = Sunday) in the page's language. */

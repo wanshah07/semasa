@@ -3,6 +3,18 @@ import "./tokens.css";
 import "./themes/facerinna.css";
 import "./themes/noir.css";
 import "./themes/regulab.css";
+import "./themes/mint.css";
+import "./themes/sakura.css";
+import "./themes/lavender.css";
+import "./themes/matahari.css";
+import "./themes/batu.css";
+import "./themes/midnight.css";
+import "./themes/hutan.css";
+import "./themes/bara.css";
+import "./themes/mawar.css";
+import "./themes/lautan.css";
+import "./themes/arang.css";
+import "./themes/kopi.css";
 import { AUTO, THEME_IDS, readPick, resolveTheme, writePick } from "./themeChoice";
 import { syncThemeColor } from "../lib/pwa";
 
@@ -12,6 +24,18 @@ export const THEMES = [
   { id: "facerinna", label: "Facerinna" },
   { id: "noir", label: "Noir" },
   { id: "regulab", label: "Regulab" },
+  { id: "mint", label: "Mint" },
+  { id: "sakura", label: "Sakura" },
+  { id: "lavender", label: "Lavender" },
+  { id: "matahari", label: "Matahari" },
+  { id: "batu", label: "Batu" },
+  { id: "midnight", label: "Midnight" },
+  { id: "hutan", label: "Hutan" },
+  { id: "bara", label: "Bara" },
+  { id: "mawar", label: "Mawar" },
+  { id: "lautan", label: "Lautan" },
+  { id: "arang", label: "Arang" },
+  { id: "kopi", label: "Kopi" },
 ];
 
 const QUERY = "(prefers-color-scheme: dark)";

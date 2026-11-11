@@ -1,0 +1,40 @@
+/* LAUTAN - deep sea teal, aqua accent. Same tokens, different values; nothing else changes.
+   Generated from one palette and checked by web/themes.test.mjs (every text pair reads 4.5:1 or better). */
+[data-theme="lautan"] {
+  --c-bg:           6  26  30;    /* #061A1E */
+  --c-surface:     10  40  46;
+  --c-surface-2:   14  54  62;
+  --c-line:        28  86  96;
+  --c-ink:        226 247 250;
+  --c-muted:      145 165 169;   /* 5.0:1 on surface-2 */
+  --c-accent:      45 212 191;   /* #2DD4BF */
+  --c-accent-ink:   0   0   0;   /* on the accent fill: 11.3:1 */
+  --c-accent-text: 45 212 191;   /* the accent as text: 7.0:1 on the surfaces */
+  --c-ok:       74 222 128;
+  --c-warn:    251 146  60;
+  --c-danger:  249 131 131;
+  --c-queue:   250 204  21;
+  --c-wait:    232 122 249;
+  --c-warm:        40 170 160;
+  --c-gold:       201 162  75;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+  --shadow-lift: 0 2px 6px rgb(0 0 0 / 0.4), 0 24px 48px -16px rgb(0 0 0 / 0.7);
+  --hero-gradient: radial-gradient(1200px 500px at 10% -10%, rgb(var(--c-accent) / 0.22), transparent 60%),
+                   radial-gradient(800px 400px at 90% 0%, rgb(var(--c-gold) / 0.16), transparent 60%);
+  color-scheme: dark;
+  --cat-kosmetik: 245 125 188;
+  --cat-halal: 74 222 128;
+  --cat-makanan: 251 146 60;
+  --cat-farmaseutikal: 178 153 251;
+  --cat-kesihatan: 249 131 131;
+  --cat-ekonomi: 250 204 21;
+  --cat-politik: 109 172 250;
+  --cat-jenayah: 157 170 190;
+  --cat-sosial: 45 212 191;
+  --cat-teknologi: 153 162 249;
+  --cat-hiburan: 245 125 188;
+  --cat-sukan: 52 211 153;
+  --cat-pendidikan: 56 189 248;
+  --cat-alam_sekitar: 163 230 53;
+  --cat-lain: 157 170 190;
+}

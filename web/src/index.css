@@ -13,7 +13,14 @@
   --info: oklch(0.5 0.134 242);
   --info-foreground: oklch(1 0 0);
 }
-[data-theme="noir"] {
+[data-theme="noir"],
+[data-theme="midnight"],
+[data-theme="hutan"],
+[data-theme="bara"],
+[data-theme="mawar"],
+[data-theme="lautan"],
+[data-theme="arang"],
+[data-theme="kopi"] {
   --brand: oklch(0.8 0.183 331);
   --brand-foreground: oklch(0.115 0.002 265);
   --success: oklch(0.723 0.192 150);

@@ -1,0 +1,27 @@
+/* LAVENDER - pale violet, quiet and a little dreamy. Same tokens, different values; nothing else changes.
+   Generated from one palette and checked by web/themes.test.mjs (every text pair reads 4.5:1 or better). */
+[data-theme="lavender"] {
+  --c-bg:         251 249 255;    /* #FBF9FF */
+  --c-surface:    255 255 255;
+  --c-surface-2:  242 237 252;
+  --c-line:       224 215 244;
+  --c-ink:         34  24  60;
+  --c-muted:      106  98 124;   /* 5.0:1 on surface-2 */
+  --c-accent:     139 108 224;   /* #8B6CE0 */
+  --c-accent-ink:   0   0   0;   /* on the accent fill: 5.3:1 */
+  --c-accent-text:114  89 184;   /* the accent as text: 4.8:1 on the surfaces */
+  --c-warn:    158  73   8;
+  --c-warm:       221 208 250;
+  --c-gold:       201 162  75;
+  --shadow-card: 0 1px 2px rgb(34 24 60 / 0.04), 0 8px 24px -12px rgb(34 24 60 / 0.12);
+  --shadow-lift: 0 2px 6px rgb(34 24 60 / 0.06), 0 24px 48px -16px rgb(34 24 60 / 0.22);
+  --hero-gradient: radial-gradient(1200px 500px at 10% -10%, rgb(var(--c-accent) / 0.16), transparent 60%),
+                   radial-gradient(800px 400px at 90% 0%, rgb(var(--c-warm) / 0.35), transparent 60%);
+  --cat-kosmetik: 186 24 91;
+  --cat-makanan: 173 58 11;
+  --cat-sosial: 14 110 102;
+  --cat-hiburan: 186 24 91;
+  --cat-sukan: 4 112 81;
+  --cat-pendidikan: 3 103 158;
+  --cat-alam_sekitar: 68 109 13;
+}

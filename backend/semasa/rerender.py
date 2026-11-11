@@ -25,6 +25,7 @@ not approved, sets `posted`, or touches a post any of whose channels has already
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -133,6 +134,8 @@ def add_cover_to_film(store: Any, media: dict[str, Any], runner: Any = subproces
     """The branded cover added to the finished film (and its social copy and poster), with the files uploaded under new names
     and the old ones removed after the records point at the new ones. 'done', or the reason it could not be."""
     from . import motion
+    if runner is subprocess.run and not shutil.which("ffmpeg"):
+        return "ffmpeg is not installed on this machine"
     meta = dict(media.get("meta") or {})
     film = (store.table("semasa_motions").select("*").eq("id", meta["motion_id"]).limit(1).execute().data or [{}])[0]
     if not film.get("video_url"):

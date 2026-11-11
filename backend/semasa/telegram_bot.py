@@ -755,9 +755,10 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
         bot.drop_buttons(chat, mid)
         bot.send(chat, tt.on_feedback(store, what, src), reply_to=mid)
         return f"feedback {what}"
-    if kind in ("sbok", "sbre"):
-        # a Motion storyboard (Wan, 7 Nov 2026: approved before a picture is drawn), through the page's own decision (071)
-        action = "approve" if kind == "sbok" else "rewrite"
+    if kind in ("sbok", "sbre", "sbrej"):
+        # a Motion storyboard (Wan, 7 Nov 2026: approved before a picture is drawn), through the page's own decision (071);
+        # 072 adds 'reject' so a storyboard can be stopped, not just approved or rewritten
+        action = {"sbok": "approve", "sbre": "rewrite", "sbrej": "reject"}[kind]
         motion_id, _, written = rest.partition(":")
         try:
             args = {"p_motion": motion_id, "p_action": action, "p_telegram_user_id": link["telegram_user_id"],
@@ -769,6 +770,20 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
             bot.drop_buttons(chat, mid)
         bot.send(chat, motion_review.decide_words(res, action), reply_to=mid)
         return f"storyboard {action}: {res}"
+    if kind == "sbrf":
+        # 🔄 Refresh status: read the film's current status back, so Wan can confirm an earlier decision landed
+        motion_id = rest
+        try:
+            rows = store.table(tt.MOTIONS).select("status").eq("id", motion_id).limit(1).execute().data or []
+        except Exception as exc:  # noqa: BLE001
+            rows = []
+            log.info("refresh motion status not read (%s)", str(exc)[:120])
+        if not rows:
+            bot.send(chat, "Video itu sudah tiada.", reply_to=mid)
+        else:
+            status = rows[0].get("status")
+            bot.send(chat, motion_review.status_words(status), reply_to=mid)
+        return f"storyboard refresh: {rows[0].get('status') if rows else 'gone'}"
     if kind == "mgo":
         bot.drop_buttons(chat, mid)
         bot.send(chat, tt.start_motion(store, rest), reply_to=mid)

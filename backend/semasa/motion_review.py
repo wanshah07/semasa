@@ -164,12 +164,15 @@ def written_epoch(sb: dict[str, Any] | None) -> int | None:
 
 
 def telegram_buttons(motion_id: str, site: str, written: int | None = None) -> list[list[dict[str, str]]]:
-    """✅ and 🔁 name the film AND the storyboard (`<id>:<written epoch>`, 52 bytes of Telegram's 64): an old message's button,
-    tapped after "Tulis semula", is refused rather than approving the newer storyboard nobody has read."""
+    """✅/❌/🔁 name the film AND the storyboard (`<id>:<written epoch>`, ≤ 64 bytes): an old message's button,
+    tapped after "Tulis semula", is refused rather than approving the newer storyboard nobody has read. 🔄 re-reads the
+    film's current status, so Wan can check the outcome of an earlier decision without hunting through Semasa."""
     tag = f"{motion_id}:{written if written is not None else 0}"
-    return [[{"text": "✅ Luluskan storyboard", "callback_data": f"sbok:{tag}"}],
+    return [[{"text": "✅ Luluskan storyboard", "callback_data": f"sbok:{tag}"},
+             {"text": "❌ Tolak", "callback_data": f"sbrej:{tag}"}],
             [{"text": "🔁 Tulis semula", "callback_data": f"sbre:{tag}"},
-             {"text": "✏️ Ubah di Semasa", "url": f"{site.rstrip('/')}/#video"}]]
+             {"text": "🔄 Refresh status", "callback_data": f"sbrf:{motion_id}"}],
+            [{"text": "✏️ Ubah di Semasa", "url": f"{site.rstrip('/')}/#video"}]]
 
 
 def telegram_notify(store: Any, row: dict[str, Any], bot: Any = None, link: dict[str, Any] | None = None) -> bool:
@@ -229,6 +232,7 @@ def due(store: Any) -> list[dict[str, Any]]:
 DECIDE_WORDS = {
     "ok": "✅ Diluluskan. Semasa mula buat gambar dan video sekarang (Semasa → Video).",
     "rewrite": "🔁 Storyboard baharu sedang ditulis. Saya hantar di sini untuk diluluskan.",
+    "reject": "❌ Ditolak. Filem ini dihentikan dan tidak dibuat.",
     "not_linked": "Akaun Telegram ini tidak disambung.",
     "gone": "Video itu sudah tiada.",
     "no_storyboard": "Tiada storyboard untuk diluluskan.",
@@ -238,7 +242,20 @@ DECIDE_WORDS = {
 
 def decide_words(res: str, action: str) -> str:
     if res == "ok":
-        return DECIDE_WORDS["ok" if action == "approve" else "rewrite"]
+        return DECIDE_WORDS["ok" if action == "approve" else action]
     if res.startswith("status:"):
         return f"Storyboard ini tidak lagi menunggu kelulusan (status: {res.split(':', 1)[1]})."
     return DECIDE_WORDS.get(res, f"Tidak berjaya: {res}")
+
+
+def status_words(status: str) -> str:
+    """One line for 🔄 Refresh status: what the film is doing right now."""
+    return {
+        "waiting": "⏳ Masih dalam giliran Motion, belum dimulakan.",
+        "pending": "▶️ Dalam giliran: menunggu worker untuk menulis storyboard atau membuat filem.",
+        "working": "🎬 Sedang dibuat sekarang.",
+        "review": "👀 Storyboard menunggu kelulusan anda.",
+        "done": "✅ Siap. Ada dalam Pustaka video (Semasa → Video).",
+        "rejected": "❌ Ditolak dan dihentikan.",
+        "error": "⚠️ Ada ralat: buka Semasa → Video untuk butirannya.",
+    }.get(status, f"Status: {status}")

@@ -178,7 +178,7 @@ def _review(store):
     return store.table(motion.TABLE).insert({"status": "review", "brief": "PFAS", "storyboard": sb}).execute().data[0]
 
 
-def test_the_storyboard_reaches_telegram_once_with_approve_and_rewrite_buttons():
+def test_the_storyboard_reaches_telegram_once_with_approve_reject_rewrite_and_refresh_buttons():
     store = FakeStore(semasa_motions=[], semasa_settings=[], semasa_telegram_link=[LINK])
     r = _review(store)
     bot = Bot()
@@ -189,7 +189,42 @@ def test_the_storyboard_reaches_telegram_once_with_approve_and_rewrite_buttons()
     data = [b.get("callback_data") for row in p["reply_markup"]["inline_keyboard"] for b in row]
     epoch = motion_review.written_epoch(r["storyboard"])
     assert epoch and f"sbok:{r['id']}:{epoch}" in data and f"sbre:{r['id']}:{epoch}" in data
+    assert f"sbrej:{r['id']}:{epoch}" in data and f"sbrf:{r['id']}" in data
     assert all(len(d.encode()) <= 64 for d in data if d), "Telegram's 64-byte callback limit"
+
+
+def test_a_tap_on_reject_stops_the_film():
+    class S(FakeStore):
+        rpcs: list = []
+
+        def rpc(self, name, args):
+            self.rpcs.append((name, args))
+            return SimpleNamespace(execute=lambda: SimpleNamespace(data="ok"))
+    store = S(semasa_motions=[], semasa_settings=[], semasa_telegram_link=[LINK])
+    bot = Bot()
+    row = {"id": 1, "payload": {"callback_query": {"data": "sbrej:m-1:1762477200", "message": {"message_id": 7,
+                                                                                           "chat": {"id": 111}}}}}
+    assert tb.handle_callback(store, bot, LINK, row) == "storyboard reject: ok"
+    assert store.rpcs == [("semasa_telegram_motion_decide", {"p_motion": "m-1", "p_action": "reject",
+                                                             "p_telegram_user_id": 111, "p_written": 1762477200})]
+    assert any("Ditolak" in p.get("text", "") for m, p in bot.calls if m == "sendMessage")
+
+
+def test_a_tap_on_refresh_reads_the_current_status():
+    class S(FakeStore):
+        def table(self, name):
+            q = super().table(name)
+            if name == "semasa_motions":
+                q.select = lambda *a, **k: q
+                q.eq = lambda *a, **k: q
+                q.limit = lambda *a, **k: q
+                q.execute = lambda: SimpleNamespace(data=[{"status": "done"}])
+            return q
+    store = S(semasa_motions=[], semasa_settings=[], semasa_telegram_link=[LINK])
+    bot = Bot()
+    row = {"id": 1, "payload": {"callback_query": {"data": "sbrf:m-1", "message": {"message_id": 7, "chat": {"id": 111}}}}}
+    assert tb.handle_callback(store, bot, LINK, row) == "storyboard refresh: done"
+    assert any("Siap" in p.get("text", "") for m, p in bot.calls if m == "sendMessage")
 
 
 def test_a_tap_on_approve_goes_through_the_database_decision_as_the_linked_account():
@@ -220,6 +255,14 @@ def test_071_keeps_every_status_adds_review_and_guards_done():
     assert "grant execute on function public.semasa_motion_storyboard_decide(uuid, text, jsonb, bigint) to authenticated" in SQL
     assert "return 'changed'" in SQL, "a decision on an older storyboard is refused, never applied to the newer one"
     assert "semasa_is_uploader()" in SQL and "if m.status <> 'review'" in SQL
+
+
+def test_072_adds_reject_and_rejected_status():
+    sql = (Path(__file__).resolve().parents[2] / "supabase" / "072_motion_reject_refresh.sql").read_text()
+    statuses = re.search(r"check \(status in \(([^)]*)\)\)", sql).group(1)
+    assert "'rejected'" in statuses, "the status set gains 'rejected'"
+    assert "p_action = 'reject'" in sql and "status = 'rejected'" in sql
+    assert "'reject'" in sql and "return 'ok'" in sql
 
 
 # ---- found by the bug sweep (7 Nov 2026) ---------------------------------------------------------------------------------

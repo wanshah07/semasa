@@ -151,3 +151,31 @@ def test_a_film_gets_its_cover_in_place(tmp_path, monkeypatch):
     assert m["status"] == "done" and m["meta"]["cover_added_at"] and m["generated_media_url"] == f["social_url"]
     assert store.removed and set(store.removed[0][1]) == {"motion/f1.mp4", "motion/f1-social.mp4", "motion/f1.jpg"}
     assert rerender.candidates(store, NOW) == []                        # once only
+
+
+def test_threads_posts_with_a_line_of_tags_alone_are_queued_again_and_the_rest_left():
+    def with_text(pid, text, status="scheduled"):
+        p = _post(pid, status=status)
+        p["lang"], p["text"] = "bm", {"bm": {"threads": text}}
+        return p
+    posts = [with_text("bad", "Ayat.\n\n#Tag"), with_text("fine", "Ayat.\n\nLagi ayat."),
+             _post("no_threads", published={"instagram": _rec(1)})]
+    store = _store(posts, [])
+    z = Zernio()
+    res = rerender.requeue_threads(store, z, NOW)
+    assert (res["candidates"], res["done"], res["failed"]) == (1, 1, 0)
+    assert z.deleted == [("z2", "a2")]
+    row = {p["id"]: p for p in store.table(db.POSTS).select("*").execute().data}
+    assert "threads" not in row["bad"]["published"] and "instagram" in row["bad"]["published"]      # the other channel stays
+    assert row["bad"]["status"] == "approved" and "threads" in row["fine"]["published"]
+    dry = rerender.requeue_threads(_store(posts, []), Zernio(), NOW, dry=True)
+    assert dry["candidates"] == 1 and dry["done"] == 0
+
+
+def test_a_refused_delete_leaves_the_threads_post_exactly_as_it_was():
+    p = _post("bad")
+    p["lang"], p["text"] = "bm", {"bm": {"threads": "Ayat.\n\n#Tag"}}
+    store = _store([p], [])
+    res = rerender.requeue_threads(store, Zernio(fail_on="z2"), NOW)
+    assert (res["done"], res["failed"]) == (0, 1)
+    assert store.table(db.POSTS).select("*").execute().data[0]["published"]["threads"]["id"] == "z2"

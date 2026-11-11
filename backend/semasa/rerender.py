@@ -220,12 +220,61 @@ def run(store: Any, now: datetime | None = None, *, dry: bool = False, only: set
     return result
 
 
+def requeue_threads(store: Any, zernio: Any, now: datetime | None = None, *, dry: bool = False) -> dict[str, Any]:
+    """Threads posts already in Zernio whose caption has a line of hashtags alone: Zernio sent that line as a post of its own and
+    Threads refused it (11 Nov 2026, "The parameter text is required"). Each one's Zernio Threads copy is deleted and its
+    Threads record cleared (the other channels stay), and the post goes back to `approved`, so the publisher makes the Threads
+    post again with the tags under the words. A post due in under 20 minutes is left to run its course."""
+    from . import compliance, senders
+    now = now or datetime.now(UTC)
+    posts = db.fetch_all(lambda: store.table(db.POSTS).select("*").in_("status", ["approved", "scheduled"]).order("date"))
+    result: dict[str, Any] = {"candidates": 0, "done": 0, "failed": 0, "lines": []}
+    for post in posts:
+        rec = (post.get("published") or {}).get("threads")
+        if not isinstance(rec, dict) or rec.get("route") != "zernio" or rec.get("status") not in ("scheduled", "error"):
+            continue
+        text = compliance.text_of(post, "threads", compliance.lang_of(post))
+        if not senders.has_loose_tags(text):
+            continue
+        result["candidates"] += 1
+        label = f"{post['date']} {post['slot']} {str(post['id'])[:8]}"
+        if dry:
+            result["lines"].append(f"would re-queue Threads: {label}")
+            continue
+        try:
+            if zernio is None:
+                raise RuntimeError("no Zernio sender is set up here")
+            zernio.delete(rec["id"], rec.get("account") or "")
+            left = {k: v for k, v in (post.get("published") or {}).items() if k != "threads"}
+            errors = {k: v for k, v in (post.get("errors") or {}).items() if k != "threads"}
+            store.table(db.POSTS).update({"published": left, "errors": errors, "status": "approved"}) \
+                .eq("id", post["id"]).execute()
+            result["done"] += 1
+            result["lines"].append(f"{label}: Threads copy removed, queued again")
+        except Exception as exc:  # noqa: BLE001 - left exactly as it was
+            result["failed"] += 1
+            result["lines"].append(f"{label}: NOT touched ({str(exc)[:140]})")
+    if result["done"] or result["failed"]:
+        db.log_event(store, "info", "post", "post.threads_requeued",
+                     f"{result['done']} post Threads dihantar semula (hashtag kekal di bawah ayat), {result['failed']} dibiarkan",
+                     detail={"done": result["done"], "failed": result["failed"], "lines": result["lines"][:40]})
+    return result
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry", action="store_true")
     ap.add_argument("--only", default="")
+    ap.add_argument("--threads", action="store_true", help="queue the Threads posts that have a line of hashtags alone again")
     args = ap.parse_args()
     store = db.client(SupabaseSettings.load())
+    if args.threads:
+        clients = publisher.make_clients(publisher.load_settings(store)) if not args.dry else {}
+        res = requeue_threads(store, clients.get("zernio"), dry=args.dry)
+        print(f"candidates {res['candidates']}, queued again {res['done']}, kept {res['failed']}")
+        for line in res["lines"]:
+            print(" ", line)
+        return 1 if res["failed"] else 0
     only = {x.strip() for x in args.only.split(",") if x.strip()} or None
     res = run(store, dry=args.dry, only=only)
     print(f"candidates {res['candidates']}, redrawn {res['done']}, kept {res['failed']}")

@@ -64,7 +64,10 @@ def pull_back(store: Any, row: dict[str, Any], clients: dict[str, Any], now: dat
             _finish(store, row, "refused", f"{ch}: Zernio would not take it out of the queue ({str(exc)[:160]}); the channels "
                     "after it were not touched", now)
             return "refused"
-        publisher.write_log(store, post["id"], ch, "pulled_back", {"zernio_id": rec.get("id"), "why": "pulled back to be edited"})
+        # the app's log, not semasa_publish_log: that table's CHECK has no 'pulled_back' action, so the insert failed AFTER Zernio had
+        # deleted the post and the request was refused with the post still "scheduled" (11 Nov 2026, eb328516)
+        db.log_event(store, "info", "publish", "publish.pulled_back", f"{ch}: ditarik balik untuk disunting",
+                     ref_table=db.POSTS, ref_id=post["id"], detail={"channel": ch, "zernio_id": rec.get("id")})
     store.table(db.POSTS).update({"status": "draft", "published": {}, "errors": {}, "approved_by": None, "approved_at": None}) \
         .eq("id", post["id"]).eq("status", "scheduled").execute()
     queued = ", ".join(records) or "no channel was queued"

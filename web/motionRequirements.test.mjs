@@ -6,15 +6,15 @@ for (const language of ['en', 'bm', 'both']) {
   assert.equal(motionFromIdea({id:'i',source_title:'x'}, null, null, language).voice, expected);
   assert.equal(motionFromPost({id:'p',text:{en:{facebook:'x'}}}, null, null, language).voice, expected);
 }
-const defaults = withDefaults({}, {design:'continuous-line', language:'bm', voice:'kitten'}).defaults;
+const defaults = withDefaults({}, {design:'glow', language:'bm', voice:'kitten'}).defaults;
 assert.equal(defaults.voice, 'female');
-assert.equal(motionDefaults({motion:{defaults}}).design, 'continuous-line');
-for (const row of [motionRow({brief:'x',design:'continuous-line'}).row,
+assert.equal(motionDefaults({motion:{defaults}}).design, 'glow');
+for (const row of [motionRow({brief:'x',design:'glow'}).row,
   motionFromIdea({id:'i',source_title:'x'},null,defaults),
   motionFromPost({id:'p',text:{en:{facebook:'x'}}},null,defaults)]) {
-  assert.equal(row.options.design, 'continuous-line');
+  assert.equal(row.options.design, 'glow');
 }
-assert.equal(motionRow({brief:'x'}).row.options.design, 'bright-editorial');
+assert.equal(motionRow({brief:'x'}).row.options.design, 'auto');
 const idea = {id:'url',source_url:'https://example.com/paper', reference_urls:['https://example.com/ref'],
   source_name:'Journal',angle:'mechanism',domain:'cosmetics',citations:[{doi:'10.1/example'}],source_summary:'x'.repeat(4000)};
 const row = motionFromIdea(idea);

@@ -70,7 +70,7 @@ export default function MotionLab({ user, onToast, view = "make" }) {
   const [mode, setMode] = useState("auto");
   const [styleRepoId, setStyleRepoId] = useState("");
   const [style, setStyle] = useState("bright-education");
-  const [design, setDesign] = useState("bright-editorial");
+  const [design, setDesign] = useState("auto");
   const [preset, setPreset] = useState("");              // a style preset (MotionPrompt / Motion patterns), "" = none
   const [renderer, setRenderer] = useState("");          // "" = HyperFrames (the default), "remotion" = the second renderer
   const [ambient, setAmbient] = useState("mint");
@@ -308,9 +308,15 @@ export default function MotionLab({ user, onToast, view = "make" }) {
         )}
         {!isTemplate && (<>
         <MotionAmbient value={ambient} onChange={setAmbient} />
-        <label className="block" data-motion-design><Label>{t("Varian reka bentuk (dikekalkan)", "Design variant (preserved)")}</Label>
-          <select aria-label={t("Varian reka bentuk", "Design variant")} value={design} onChange={e => setDesign(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
-            {designOptions.map(d => <option key={d.id} value={d.id}>{L ? d.name : DESIGN_BM[d.id] || d.name}</option>)}
+        <label className="block" data-motion-design><Label>{t("Gaya filem", "Film style")}</Label>
+          <select aria-label={t("Gaya filem", "Film style")} value={design} onChange={e => setDesign(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">
+            {designOptions.filter(d => d.group === "auto").map(d => <option key={d.id} value={d.id}>{L ? d.name : d.bm}</option>)}
+            <optgroup label={t("Gaya 2D", "2D styles")}>
+              {designOptions.filter(d => d.group === "skin").map(d => <option key={d.id} value={d.id}>{L ? d.name : d.bm}</option>)}
+            </optgroup>
+            <optgroup label={t("Reka bentuk lama (pilih sendiri sahaja)", "Older designs (by hand only)")}>
+              {designOptions.filter(d => !d.group).map(d => <option key={d.id} value={d.id}>{L ? d.name : DESIGN_BM[d.id] || d.name}</option>)}
+            </optgroup>
           </select></label>
         <label className="block" data-motion-renderer><Label hint={t("Remotion: satu rupa bersih, suara dan sari kata sama; 99 gaya hanya dengan HyperFrames", "Remotion: one clean look, same voice and subtitles; the 99 styles are HyperFrames only")}>{t("Enjin filem", "Film engine")}</Label>
           <select aria-label={t("Enjin filem", "Film engine")} value={renderer} onChange={e => setRenderer(e.target.value)} className="w-full rounded-tile border border-line bg-surface p-2">

@@ -291,8 +291,11 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
 
     margin = round(w * 0.11)
     col = w - 2 * margin
-    band = h * (0.62 if h / w > 1.6 else 0.80)            # the vertical room the block may use: inside the grid's crop
-    logo = _logo(round(w * 0.46), white=True)
+    tall = h / w > 1.6                                    # a film's opening frame, not a carousel's first slide
+    band = h * (0.62 if tall else 0.80)                   # the vertical room the block may use: inside the grid's crop
+    # a film's cover is quieter (Wan, 11 Nov 2026: "make sure the cover text not too big & make it aesthetic"): on the tall
+    # frame the same sizes read as shouting, so the logo and the hook are both drawn smaller and the hook gets more air
+    logo = _logo(round(w * (0.36 if tall else 0.46)), white=True)
     small = slides._font(slides.BODY_BOLD, round(w * 0.026))
     label = ""                                              # no tag on the cover (Wan, 11 Nov: "remove word hook")
     body_font = slides._font(slides.BODY, round(w * 0.036))
@@ -304,12 +307,12 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
     fixed = logo.height + gap + 4 + gap + (round(small.size * 1.4) + round(gap * 0.5) if label else 0)
     fixed += (len(lead_lines) * body_lh + round(gap * 0.7)) if lead_lines else 0
 
-    size_px = round(w * 0.108)
-    floor = round(w * 0.05)
+    size_px = round(w * (0.072 if tall else 0.108))
+    floor = round(w * (0.046 if tall else 0.05))
     while True:
         font = slides._font(slides.DISPLAY, size_px)
         lines = _balanced(_clean(title), font, col)
-        lh = round(font.size * 1.1)
+        lh = round(font.size * (1.2 if tall else 1.1))
         if fixed + len(lines) * lh <= band or size_px <= floor:
             break
         size_px -= 4

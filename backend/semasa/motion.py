@@ -62,6 +62,7 @@ from . import (
     motion_reference,
     motion_remotion,
     motion_review,
+    motion_skins,
     motion_storyboard,
     motion_styles,
     motion_templates,
@@ -614,14 +615,15 @@ def storyboard_preview(store: Any, row: dict[str, Any], plan: dict[str, Any], fo
         props = motion_remotion.props(scenes, len(scenes) * 7.0, w, h, PALETTE["regulab"],
                                       byline(store) if stream == "linkedin" else "ws.regulab", logo="assets/" + keep.name,
                                       ambient=str((row.get("options") or {}).get("ambient") or ""),
-                                      design=motion_styles.design(row))
+                                      design=motion_styles.design(row), skin=motion_skins.skin(row))
         stills = motion_remotion.preview(folder, props, frames, runner)
         sheet = motion_remotion.contact_sheet(stills, folder / "preview" / "sheet.jpg")
         base = f"motion/storyboard/{row['id']}"
         urls = [db.upload_generated(store, f"{base}/preview-{i + 1}.jpg", _jpeg_of(p), "image/jpeg")
                 for i, p in enumerate(stills)]
         plan["preview"] = {"sheet": db.upload_generated(store, f"{base}/preview-sheet.jpg", sheet.read_bytes(), "image/jpeg"),
-                           "frames": urls, "engine": "remotion layout", "at": datetime.now(UTC).isoformat(timespec="seconds")}
+                           "frames": urls, "engine": "remotion " + (motion_skins.skin(row) or "layout"),
+                           "at": datetime.now(UTC).isoformat(timespec="seconds")}
         return f"preview sheet: {len(urls)} scenes"
     except Exception as exc:  # noqa: BLE001 - a preview never stops a storyboard
         plan.pop("preview", None)
@@ -1635,6 +1637,9 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
     try:
         motion_styles.validate_export(row)
         row = hydrate_evidence(store, row)
+        # the film's look is settled first (Wan, 11 Nov 2026): one of the seven 2D styles at random unless he chose one, or an
+        # older design, by hand. Written on the row, so the preview, the render and a Redo agree.
+        motion_skins.resolve(store, row)
         asset_plan = motion_assets.prepare(
             row, folder, download=lambda path: store.storage.from_(motion_assets.BUCKET).download(path))
         if motion_templates.template_of(row):
@@ -1943,13 +1948,16 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
                                         logo="assets/" + (motion_styles.WAN_ICON if stream == "linkedin"
                                                           else motion_styles.LOGO).name,
                                         ambient=str((row.get("options") or {}).get("ambient") or ""),
-                                        design=motion_styles.design(row)) if engine else None)
+                                        design=motion_styles.design(row), skin=motion_skins.skin(row)) if engine else None)
         if engine == motion_remotion.NAME:
             # the second renderer (Wan, 10 Nov 2026): the same scenes, voice and timings, drawn by Remotion. A failure
             # falls back to HyperFrames so the film is still made, and the report says which one drew it.
             try:
                 video = motion_remotion.render(folder, rprops, runner)
                 report["renderer"] = "remotion"
+                if rprops.get("skin"):
+                    report["skin"] = rprops["skin"]
+                    style_line = motion_skins.name(rprops["skin"]) + " · " + style_line
                 style_line = "Remotion · " + style_line
             except Exception as exc:  # noqa: BLE001
                 log.warning("%s: Remotion did not render (%s); HyperFrames used", row["id"], str(exc)[:200])

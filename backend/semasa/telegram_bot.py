@@ -35,7 +35,7 @@ from typing import Any
 
 import requests
 
-from . import billing, compliance, db, motion_review
+from . import billing, compliance, db, motion_review, motion_skins
 from . import telegram_catalogue as cat
 from . import telegram_tools as tt
 from .log import get_logger
@@ -784,6 +784,19 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
             status = rows[0].get("status")
             bot.send(chat, motion_review.status_words(status), reply_to=mid)
         return f"storyboard refresh: {rows[0].get('status') if rows else 'gone'}"
+    if kind == "msk":
+        # the film's style, chosen here as on the page: "<id>" opens the picker, "<id>:<style>" sets it and starts the film
+        film, _, key = rest.partition(":")
+        bm = not key.endswith("en")
+        if key in ("", "?en"):
+            text_, rows_ = motion_skins.picker(film, bm)
+            if not bm:
+                rows_ = [[{**b, "callback_data": b["callback_data"] + "|en"} for b in r] for r in rows_]
+            bot.send(chat, text_, rows_, reply_to=mid)
+            return "motion style picker"
+        bot.drop_buttons(chat, mid)
+        bot.send(chat, motion_skins.pick_and_start(store, film, key.removesuffix("|en"), bm), reply_to=mid)
+        return "motion style chosen"
     if kind == "mgo":
         bot.drop_buttons(chat, mid)
         bot.send(chat, tt.start_motion(store, rest), reply_to=mid)

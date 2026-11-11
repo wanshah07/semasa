@@ -439,9 +439,10 @@ def make_motion(store: Any, link: dict[str, Any], post: dict[str, Any]) -> tuple
                               language=lang if lang in ("bm", "en") else "bm", idea_id=post.get("idea_id"),
                               options={"post_id": post["id"], "catalogue": "post"})
         note = "🎬 Film queued in Motion from this draft."
-    buttons = [[{"text": "▶️ Start", "callback_data": f"c:ms:{mid}"}],
+    buttons = [[{"text": "▶️ Start (random style)", "callback_data": f"c:ms:{mid}"}],
+               [{"text": "🎨 Choose the style", "callback_data": f"msk:{mid}:?en"}],
                [{"text": "🔗 Open Motion in Semasa", "url": f"{SITE_URL.rstrip('/')}/#video"}]]
-    return (f"{note}\nTap Start to begin with the default styles, or choose the styles in Semasa first. Motion writes the "
+    return (f"{note}\nTap Start for a random style (one of the seven 2D styles), or choose the style yourself. Motion writes the "
             "storyboard and waits: nothing is drawn or voiced until you approve it here or in Semasa."), buttons
 
 

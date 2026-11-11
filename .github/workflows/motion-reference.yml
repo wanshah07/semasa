@@ -1,0 +1,45 @@
+name: Read a reference video's style
+
+# By hand only (Wan, 11 Nov 2026: "check and apply this motion style video, run to test"). Opens each link the way a Motion film's
+# reference box does (YouTube, TikTok, Instagram, Facebook, Vimeo, Drive, a file, or a Threads post), takes frames, counts the cuts,
+# has the picture reader describe them, and prints the STYLE block the film's writer would be given. Read-only: it writes nothing.
+# See backend/semasa/motion_reference.py.
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Reference video links, one per line"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  style:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: |
+          timeout 300 sudo apt-get update -qq -o Acquire::Retries=3 -o Acquire::http::Timeout=30 && timeout 600 sudo apt-get install -y -qq ffmpeg
+          pip install -r requirements.txt
+      - name: Read the style
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          URLS: ${{ inputs.urls }}
+        run: |
+          mapfile -t links <<< "$URLS"
+          python -m semasa.motion_reference "${links[@]}"

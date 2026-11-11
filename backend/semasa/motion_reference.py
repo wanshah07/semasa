@@ -10,10 +10,14 @@ Everything here fails soft: a video that cannot be fetched or read gives no styl
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
+
+import requests
 
 from . import video
 from .hook_styles import shrink
@@ -24,7 +28,9 @@ log = get_logger("semasa.motion_reference")
 MAX_SECONDS = 600                 # a reference longer than ten minutes is read for its first ten
 FRAMES = 6
 VIDEO_HOSTS = ("youtube.com", "youtu.be", "tiktok.com", "instagram.com", "facebook.com", "fb.watch", "vimeo.com",
-               "drive.google.com", "docs.google.com")
+               "drive.google.com", "docs.google.com", "threads.com", "threads.net")
+BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36")
+MAX_BYTES = 400 * 1024 ** 2
 VIDEO_FILE = re.compile(r"\.(mp4|mov|webm|m4v|mkv)(\?|#|$)", re.I)
 REPO = re.compile(r"^https?://(www\.)?github\.com/[\w.-]+/[\w.-]+/?", re.I)
 
@@ -50,10 +56,67 @@ def kind_of(url: Any) -> str:
     return "page"
 
 
+def is_threads(url: str) -> bool:
+    host = re.sub(r"^https?://(www\.|m\.)?", "", str(url or "")).split("/")[0].lower()
+    return host in ("threads.com", "threads.net") or host.endswith((".threads.com", ".threads.net"))
+
+
+def threads_video_url(url: str, browser: Any = None) -> str:
+    """The video's own address on a Threads post (Wan, 11 Nov 2026: two Threads motion videos as the style to copy). yt-dlp has no
+    Threads extractor and the page's HTML carries no video address: the video is put in the page by the page's own script, so
+    a real browser opens the post and reads the <video> it plays. Raises video.VideoError when there is none (a text post, a
+    removed post, a login wall)."""
+    from playwright.sync_api import sync_playwright
+    try:
+        with sync_playwright() as p:
+            exe = os.environ.get("PUPPETEER_EXECUTABLE_PATH") or ""
+            b = browser or p.chromium.launch(**({"executable_path": exe} if exe and Path(exe).exists() else {}))
+            try:
+                page = b.new_context(user_agent=BROWSER_UA, viewport={"width": 1000, "height": 1400}).new_page()
+                page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                found = ""
+                for _ in range(12):
+                    page.wait_for_timeout(1000)
+                    vids = page.evaluate("[...document.querySelectorAll('video')].map(v => v.currentSrc || v.src || '')")
+                    found = next((v for v in vids if v.startswith("http")), "")
+                    if found:
+                        break
+            finally:
+                b.close()
+    except Exception as exc:  # noqa: BLE001 - no browser, a timeout, a page that did not load
+        raise video.VideoError(f"the Threads post could not be opened ({str(exc)[:160]})") from exc
+    if not found:
+        raise video.VideoError("that Threads post shows no video (a text post, a removed post, or Threads asked for a login)")
+    return found
+
+
+def fetch_threads(url: str, folder: Path) -> Path:
+    dest = folder / "reference.mp4"
+    src = threads_video_url(url)
+    size = 0
+    try:
+        with requests.get(src, headers={"User-Agent": BROWSER_UA, "Referer": "https://www.threads.com/"}, stream=True,
+                          timeout=60) as r:
+            r.raise_for_status()
+            if "video" not in r.headers.get("content-type", "video"):
+                raise video.VideoError("the Threads post's video address did not return a video")
+            with open(dest, "wb") as fh:
+                for chunk in r.iter_content(1 << 20):
+                    size += len(chunk)
+                    if size > MAX_BYTES:
+                        raise video.VideoError("the Threads video is larger than 400 MB")
+                    fh.write(chunk)
+    except requests.RequestException as exc:
+        raise video.VideoError(f"the Threads video could not be downloaded ({str(exc)[:160]})") from exc
+    return dest
+
+
 def fetch(url: str, folder: Path) -> Path:
     """The reference video as a local file. Raises video.VideoError with a plain reason."""
     folder.mkdir(parents=True, exist_ok=True)
     dest = folder / "reference.mp4"
+    if is_threads(url):
+        return fetch_threads(url, folder)
     if video.is_drive(url) or VIDEO_FILE.search(url):
         return video.download_link(url, dest)
     import yt_dlp
@@ -145,3 +208,33 @@ def style(url: str, folder: Path, llm: Any, *, runner: Any = subprocess.run, fet
     except Exception as exc:  # noqa: BLE001 - the film is still made, in the default look
         log.info("reference video not used (%s): %s", url, str(exc)[:160])
         return "", "", f"the reference video was not used: {str(exc)[:200]}"
+
+
+def main(argv: list[str] | None = None) -> int:
+    """python -m semasa.motion_reference URL [URL ...]: watch each reference video and print the style the writer would be given
+    (the page's picture reader and the AI team, as a Motion run builds them). Nothing is written to the database."""
+    import tempfile
+
+    from . import ai_config, db
+    from .config import SupabaseSettings
+    from .llm import LLM
+    urls = list(sys.argv[1:] if argv is None else argv)
+    if not urls:
+        print("usage: python -m semasa.motion_reference URL [URL ...]")
+        return 2
+    store = db.client(SupabaseSettings.load())
+    llm = LLM(ai_config.llm_for(store))
+    code = 0
+    for url in urls:
+        with tempfile.TemporaryDirectory() as tmp:
+            name, text, note = style(url, Path(tmp), llm)
+        print(f"\n=== {url}\n{note}")
+        if text:
+            print(text)
+        else:
+            code = 1
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

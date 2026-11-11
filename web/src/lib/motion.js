@@ -161,7 +161,7 @@ export const freshUrl = (url, stamp) => (url ? `${url}${url.includes("?") ? "&" 
 /** What a pasted reference is (Wan, 10 Nov 2026: one box for a reference video, a repo or a link): "repo" (a GitHub repo, read
     as the film's style), "video" (a video site, a Drive link or a video file: watched for its style, never reused), "page" (any
     other link: read for what the film says), "" (not a link). The worker's motion_reference.kind_of is the same rule. */
-const VIDEO_HOSTS = ["youtube.com", "youtu.be", "tiktok.com", "instagram.com", "facebook.com", "fb.watch", "vimeo.com", "drive.google.com", "docs.google.com"];
+const VIDEO_HOSTS = ["youtube.com", "youtu.be", "tiktok.com", "instagram.com", "facebook.com", "fb.watch", "vimeo.com", "drive.google.com", "docs.google.com", "threads.com", "threads.net"];
 export function refKind(url) {
   const u = String(url || "").trim();
   if (!/^https?:\/\/\S+$/.test(u)) return "";

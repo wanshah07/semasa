@@ -174,3 +174,10 @@ def test_zernio_login_falls_back_to_unfiltered_and_keeps_only_its_own_posts():
     rows = z.analytics("2026-10-01", "2026-11-12")
     assert [r["latePostId"] for r in rows] == ["z1"] and http.asked == ["late", None]
     assert z.last_analytics == {"posts": 1, "access": True, "fallback": True, "platforms": {"facebook": 1}}
+
+
+def test_zero_views_beside_impressions_is_not_reported():
+    post = _zpost("z5", ["linkedin"])
+    post["platformAnalytics"][0]["analytics"].update({"views": 0, "impressions": 94})
+    row = metrics.zernio_rows(post, {}, NOW)[0]
+    assert row["views"] is None and row["impressions"] == 94

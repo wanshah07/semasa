@@ -111,6 +111,10 @@ def zernio_rows(post: dict[str, Any], index: dict[str, str], now: datetime) -> l
         row: dict[str, Any] = {k: None for k in COUNTS}
         for theirs, ours in ZERNIO_FIELDS.items():
             row[ours] = _int(a.get(theirs))
+        # Zernio sends 0, not null, for a figure a network does not report: LinkedIn has impressions and no views (94 and 0
+        # on 11 Nov 2026). A zero beside a real impression count is "not reported", or the page would show 0 views.
+        if not row["views"] and row["impressions"]:
+            row["views"] = None
         try:
             engagement = round(float(a["engagementRate"]), 2) if a.get("engagementRate") is not None else None
         except (TypeError, ValueError):

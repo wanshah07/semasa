@@ -26,8 +26,9 @@ export function mytSlot(stamp) {
   return { dow: d.getUTCDay(), hour, win: Math.floor(hour / 3), date: d.toISOString().slice(0, 10) };
 }
 
-/** The view figure a row carries: views, else impressions (Facebook), else reach. */
-export const viewsOf = (r) => (r.views != null ? num(r.views) : r.impressions != null ? num(r.impressions) : num(r.reach));
+/** The view figure a row carries: views, else impressions (Facebook, LinkedIn), else reach. A zero is "not reported" when
+    a later figure has a number: Zernio sends 0 rather than null for LinkedIn views. */
+export const viewsOf = (r) => num(r.views) || num(r.impressions) || num(r.reach);
 export const interactionsOf = (r) => num(r.reactions) + num(r.comments) + num(r.shares) + num(r.saves) + num(r.reposts) + num(r.quotes);
 export const engagementOf = (rows) => {
   const v = rows.reduce((a, r) => a + viewsOf(r), 0);

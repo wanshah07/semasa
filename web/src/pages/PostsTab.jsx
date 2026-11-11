@@ -8,6 +8,7 @@ import { hardCount, langOf, scan, scanMedia, textOf, platformsOf } from "../lib/
 import PostEditor from "../components/PostEditor";
 import IdeaComposer from "../components/IdeaComposer";
 import ScheduleView from "../components/ScheduleView";
+import SlotCheck from "../components/SlotCheck";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { deleteCheck } from "../lib/postDelete";
 import { fmtLeft, isPastDue, purgeLeftMs, refOf } from "../lib/slots";
@@ -18,7 +19,7 @@ import ViewToggle, { TBODY, TD, TH, THEAD, TR, TableFrame, useView } from "../co
 
 const tabsOf = (t) => [["draft", t("Draf", "Drafts")], ["approved", t("Diluluskan", "Approved")], ["scheduled", t("Dijadualkan", "Scheduled")],
   ["posted", t("Diterbitkan", "Published")], ["archived", t("Arkib", "Archive")], ["rejected", t("Ditolak", "Rejected")],
-  ["schedule", t("Jadual", "Schedule")]];
+  ["schedule", t("Jadual", "Schedule")], ["slotcheck", t("Semakan slot", "Slot check")]];
 // a published post is archived (and compacted) by the publisher 24 hours after it went out (supabase/010_archive.sql)
 const bucketOf = (p) => (p.status === "posted" && p.archived_at ? "archived" : p.status);
 const TONE = { draft: "bg-surface-2 text-muted", approved: "bg-ok/10 text-ok", scheduled: "bg-accent/10 text-accent",
@@ -186,7 +187,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
             </button>
           ))}
         </div>
-        {status !== "schedule" && (
+        {status !== "schedule" && status !== "slotcheck" && (
           <div className="flex items-center gap-2">
             <select value={streamF} onChange={(e) => setStreamF(e.target.value)} aria-label={t("Aliran", "Stream")}
               className="rounded-pill border border-line bg-surface px-3 py-1.5 text-xs">
@@ -207,9 +208,13 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
           onOpen={(id) => { const p = posts.rows.find((r) => r.id === id); if (p) setStatus(bucketOf(p)); setFocusId(id); }}
           onNewIdea={setSlotIdea} />
       )}
+      {status === "slotcheck" && (
+        <SlotCheck posts={posts.rows} onReload={() => posts.reload()}
+          onOpen={(id) => { const p = posts.rows.find((r) => r.id === id); if (p) setStatus(bucketOf(p)); setFocusId(id); }} />
+      )}
       <IdeaComposer open={Boolean(slotIdea)} onClose={() => setSlotIdea(null)} trend={null} position={slotIdea} user={user} brand={brand}
         onToast={onToast} onDone={() => posts.reload()} />
-      {status !== "schedule" && !shown.length && !posts.loading && (
+      {status !== "schedule" && status !== "slotcheck" && !shown.length && !posts.loading && (
         <p className="mt-4 rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">{t("Tiada post di sini.", "No posts here.")}</p>
       )}
       {/* the post being edited opens above the list in either view */}
@@ -220,7 +225,7 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
             onToast={onToast} onChanged={() => { posts.reload(); media.reload(); }} onClose={() => setFocusId(null)} />
         </Card>
       ))}
-      {status === "schedule" ? null : view === "table" && shown.length > 0 ? (
+      {status === "schedule" || status === "slotcheck" ? null : view === "table" && shown.length > 0 ? (
         <div className="mt-4">
           <TableFrame label={t("Post", "Posts")}>
             <thead className={THEAD}>

@@ -41,6 +41,8 @@ export default {
         ok: c("ok"),
         warn: c("warn"),
         danger: c("danger"),
+        queue: c("queue"),
+        wait: c("wait"),
         // shadcn's names, pointed at the SAME tokens, so a pasted shadcn component follows every Semasa theme
         // (bg-card, text-foreground, text-muted-foreground, border-border, bg-primary …)
         background: c("bg"),

@@ -39,7 +39,11 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Install
-        run: pip install -r requirements.txt
+        run: |
+          # ubuntu-latest no longer ships ffmpeg (motion.yml, 24 Oct 2026); the film cover is an ffmpeg step, and its absence
+          # made all nine covers fail on 11 Nov 2026 ("the cover could not be added")
+          timeout 300 sudo apt-get update -qq -o Acquire::Retries=3 -o Acquire::http::Timeout=30 && timeout 600 sudo apt-get install -y -qq ffmpeg
+          pip install -r requirements.txt
       - name: Redraw
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

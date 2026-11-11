@@ -53,7 +53,19 @@ export default function ChatTab() {
 
   // ---- the column: sized from the visual viewport so the composer stays above the keyboard and the bottom bar
   const vv = useVisualViewport();
-  const keyboard = phone && vv.keyboard;
+  // The keyboard is open when the visual viewport shrank (iPhone), or when the box has focus on a touch phone: Android
+  // shrinks the whole window instead, so the visual viewport never differs from it and the first test alone missed it
+  // (Wan, 11 Nov 2026: "fix ai chat box in mobile version"). Losing focus is believed a moment late, so a tap on Send does
+  // not find the page reflowing under the finger.
+  const [typing, setTyping] = useState(false);
+  const typingOff = useRef(null);
+  const onBoxFocus = (f) => {
+    clearTimeout(typingOff.current);
+    if (f) setTyping(true); else typingOff.current = setTimeout(() => setTyping(false), 250);
+  };
+  useEffect(() => () => clearTimeout(typingOff.current), []);
+  const touch = typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(pointer: coarse)").matches : false;
+  const keyboard = phone && (vv.keyboard || (typing && touch));
   useKeyboardFlag(keyboard);
   const root = useRef(null);
   const [height, setHeight] = useState(null);
@@ -68,8 +80,11 @@ export default function ChatTab() {
       setHeight((old) => (old === h ? old : h));
     };
     measure();
+    // data-kb hides the bottom bar and the segment tabs a moment after this runs: measure again once they are gone
+    const raf = requestAnimationFrame(measure);
+    const late = setTimeout(measure, 120);
     window.addEventListener("scroll", measure, { passive: true });
-    return () => window.removeEventListener("scroll", measure);
+    return () => { cancelAnimationFrame(raf); clearTimeout(late); window.removeEventListener("scroll", measure); };
   }, [vv, keyboard, phone]);
 
   // ---- the list: follows the newest words only while the reader is at the bottom; otherwise a pill offers the jump
@@ -466,7 +481,7 @@ export default function ChatTab() {
         )}
         <Ai04 onSubmit={send} busy={busy}
           defaultSettings={{ streaming }} onSettingsChange={(s) => { if (s.streaming !== streaming) { setStreaming(s.streaming); saveStream(s.streaming); } if (s.showHistory !== showHistory) setShowHistory(s.showHistory); }}
-          onFocusChange={(f) => { if (f && stick.current) setTimeout(() => toBottom("auto"), 300); }}
+          onFocusChange={(f) => { onBoxFocus(f); if (f && stick.current) setTimeout(() => toBottom("auto"), 300); }}
           title={empty ? t("Tanya. Semak. Terbit.", "Ask. Check. Publish.") : null}
           subtitle={empty ? t("Draf, semak dakwaan dan ringkas notis, dalam satu sembang.",
             "Draft, check claims and summarise notices in one conversation.") : null}

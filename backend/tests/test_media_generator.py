@@ -62,6 +62,7 @@ def test_cloudflare_down_the_openai_dialect_gateway_draws_and_the_row_says_so(mo
     ProviderError("@cf/x needs the Cloudflare Workers Paid plan; choose a model the free plan runs"),
     ProviderError("Cloudflare answered without a picture: 3040: out of capacity"),
     ProviderError("anything", kind="unavailable"),
+    ProviderError("Cloudflare rejected the request: 8007: AiError: Input prompt contains NSFW content", kind="filter"),
 ])
 def test_a_refusal_that_is_the_providers_own_moves_the_row_on(monkeypatch, exc):
     writes, _ = _patch_db(monkeypatch)
@@ -258,3 +259,16 @@ def test_a_provider_the_row_says_was_picked_keeps_its_place_and_an_unknown_one_i
     row2 = {**ROW, "id": "m2", "provider": "nope"}
     assert media_generator.process_row(None, row2, _settings(), {"cloudflare": cf}) is False
     assert "unknown provider" in writes["m2"]["error"]
+
+
+def test_cloudflares_nsfw_filter_is_marked_as_its_own_and_the_next_provider_draws_it():
+    class R:
+        status_code = 400
+        text = ""
+
+        def json(self):
+            return {"success": False, "errors": [{"code": 8007, "message": "AiError: Input prompt contains NSFW content"}]}
+    from semasa.providers.cloudflare import CloudflareProvider
+    with pytest.raises(ProviderError) as e:
+        CloudflareProvider._answer(object.__new__(CloudflareProvider), R(), "@cf/x")
+    assert e.value.kind == "filter" and media_generator.error_kind(e.value) in media_generator.FAILOVER_KINDS

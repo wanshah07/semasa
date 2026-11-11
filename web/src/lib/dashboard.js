@@ -96,26 +96,36 @@ export function ideaStatusCounts(ideas) {
   return IDEA_STATES.filter((k) => n[k]).map((k) => ({ status: k, n: n[k] }));
 }
 
-/** Per channel, the posts sent and the publisher errors still unresolved in the last `days` days (semasa_publish_log). */
-export function sentByChannel(log, today, days = 30) {
+/** The platforms the chart always draws, in this order, even at zero (Wan, 11 Nov 2026: "show me chart for all platform, not only
+ *  linkedn"). A channel with nothing yet is a bar of nothing, not a missing bar. */
+export const CHANNELS = ["facebook", "instagram", "threads", "tiktok", "linkedin"];
+
+/** Per platform, in the last `days` days (semasa_publish_log): posts sent, posts queued (handed to the platform's scheduler and
+ *  not sent yet) and publisher errors still unresolved. A later sent / scheduled line for the same post and channel puts an
+ *  error right (Wan, 11 Nov 2026: "pass the video not supported from buffer to zernio, so count to 0"); the log keeps the history. */
+export function sentByChannel(log, today, days = 30, channels = CHANNELS) {
   const from = addDays(today, -(days - 1));
-  // an error is counted only while it is unresolved (Wan, 11 Nov 2026: "pass the video not supported from buffer to zernio, so count
-  // to 0"): a later sent / scheduled line for the same post and channel means it was put right, and the log keeps the history
-  const fixedAt = {};
+  const at = {};
   for (const r of log || []) {
-    if (!r.post_id || !r.channel || !r.at || !["sent", "scheduled"].includes(r.action)) continue;
+    if (!r.post_id || !r.channel || !r.at) continue;
+    if (!["sent", "scheduled"].includes(r.action)) continue;
     const k = `${r.post_id}|${r.channel}`;
-    fixedAt[k] = Math.max(fixedAt[k] || 0, Date.parse(r.at));
+    (at[k] ||= { sent: 0, scheduled: 0 });
+    at[k][r.action] = Math.max(at[k][r.action], Date.parse(r.at));
   }
-  const by = {};
+  const by = Object.fromEntries(channels.map((c) => [c, { channel: c, sent: 0, queued: 0, error: 0 }]));
   for (const r of log || []) {
-    if (!r.at || !r.channel || !["sent", "error"].includes(r.action)) continue;
+    if (!r.at || !r.channel || !["sent", "error", "scheduled"].includes(r.action)) continue;
     if (mytDate(Date.parse(r.at)) < from) continue;
-    if (r.action === "error" && r.post_id && (fixedAt[`${r.post_id}|${r.channel}`] || 0) > Date.parse(r.at)) continue;
-    const c = (by[r.channel] ||= { channel: r.channel, sent: 0, error: 0 });
-    c[r.action === "sent" ? "sent" : "error"]++;
+    const c = (by[r.channel] ||= { channel: r.channel, sent: 0, queued: 0, error: 0 });
+    const t = Date.parse(r.at), seen = r.post_id ? at[`${r.post_id}|${r.channel}`] : null;
+    if (r.action === "sent") c.sent++;
+    else if (r.action === "scheduled") { if (!seen || seen.sent < t) c.queued++; }          // queued only until the post is sent
+    else if (!(seen && Math.max(seen.sent, seen.scheduled) > t)) c.error++;                  // an error counts until a later line puts it right
   }
-  return Object.values(by).sort((a, b) => b.sent + b.error - (a.sent + a.error) || a.channel.localeCompare(b.channel));
+  const known = new Map(channels.map((c, n) => [c, n]));
+  return Object.values(by).sort((a, b) => (known.has(a.channel) ? known.get(a.channel) : 99) - (known.has(b.channel) ? known.get(b.channel) : 99)
+    || a.channel.localeCompare(b.channel));
 }
 
 /** AI tokens a day for the last `days` days (semasa_api_usage), every day present, and the calls that failed. */

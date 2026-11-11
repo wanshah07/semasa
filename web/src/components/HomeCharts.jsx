@@ -11,6 +11,7 @@ const LINE = "rgb(var(--c-line))";
 const MUTED = "#94a3b8";
 const OK = "#10b981";
 const BAD = "#ef4444";
+const QUEUE = "#eab308";
 const STATE_COLOUR = { new: ACCENT, working: "#6366f1", drafted: OK, error: BAD, rejected: MUTED };
 const TOPIC_COLOURS = ["#d97706", "#2563eb", "#10b981", "#db2777", "#7c3aed", "#0891b2", "#65a30d", "#94a3b8"];
 const STATE_WORDS = { new: ["Baharu", "New"], working: ["Ditulis", "Writing"], drafted: ["Jadi draf", "Drafted"], error: ["Gagal", "Failed"], rejected: ["Ditolak", "Rejected"] };
@@ -55,16 +56,17 @@ export default function HomeCharts({ ideas, posts, log, usage, today, className 
         </ResponsiveContainer>
       </Panel>
 
-      <Panel id="channels" title={t("Siaran ikut saluran", "Posts by channel")} description={t("30 hari: dihantar dan ralat penerbit", "30 days: sent and publisher errors")}
-        isEmpty={!channels.length} empty={t("Tiada siaran dalam 30 hari.", "Nothing sent in 30 days.")}>
+      <Panel id="channels" title={t("Siaran ikut saluran", "Posts by channel")} description={t("30 hari, semua platform: dihantar, dalam barisan dan ralat penerbit", "30 days, every platform: sent, queued and publisher errors")}
+        isEmpty={!channels.some((c) => c.sent || c.queued || c.error)} empty={t("Tiada siaran dalam 30 hari.", "Nothing sent in 30 days.")}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={channels} margin={{ left: -18, right: 6 }}>
             <CartesianGrid vertical={false} stroke={LINE} />
-            <XAxis dataKey="channel" tick={{ fontSize: 10 }} stroke={MUTED} />
+            <XAxis dataKey="channel" tick={{ fontSize: 10 }} stroke={MUTED} interval={0} />
             <YAxis allowDecimals={false} tick={{ fontSize: 10 }} stroke={MUTED} />
             <Tooltip {...tip} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar dataKey="sent" name={t("Dihantar", "Sent")} stackId="a" fill={OK} />
+            <Bar dataKey="queued" name={t("Dalam barisan", "Queued")} stackId="a" fill={QUEUE} />
             <Bar dataKey="error" name={t("Ralat", "Errors")} stackId="a" fill={BAD} radius={[6, 6, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>

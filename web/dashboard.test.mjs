@@ -78,14 +78,19 @@ import { ideaStatusCounts, postsByTopic, sentByChannel, tokensByDay } from "./sr
     { channel: "facebook", action: "sent", at: "2026-11-05T02:00:00Z" }, { channel: "facebook", action: "sent", at: "2026-09-01T02:00:00Z" },
     { channel: "threads", action: "queued", at: "2026-11-06T02:00:00Z" }, { action: "sent", at: "2026-11-06T02:00:00Z" },
   ];
-  assert2.deepEqual(sentByChannel(log, "2026-11-07", 30), [{ channel: "instagram", sent: 1, error: 1 }, { channel: "facebook", sent: 1, error: 0 }],
-    "only sent and error lines in the window, with a channel");
+  const row = (channel, sent = 0, queued = 0, error = 0) => ({ channel, sent, queued, error });
+  assert2.deepEqual(sentByChannel(log, "2026-11-07", 30).map((r) => r.channel), ["facebook", "instagram", "threads", "tiktok", "linkedin"],
+    "every platform is a bar, in this order, even with nothing");
+  assert2.deepEqual(sentByChannel(log, "2026-11-07", 30), [row("facebook", 1), row("instagram", 1, 0, 1), row("threads"), row("tiktok"), row("linkedin")],
+    "only sent, queued and error lines in the window, with a channel");
   const fixed = [
     { post_id: "p1", channel: "threads", action: "error", at: "2026-11-06T01:00:00Z" }, { post_id: "p1", channel: "threads", action: "scheduled", at: "2026-11-06T02:00:00Z" },
     { post_id: "p2", channel: "threads", action: "error", at: "2026-11-06T03:00:00Z" }, { post_id: "p2", channel: "threads", action: "scheduled", at: "2026-11-06T02:00:00Z" },
+    { post_id: "p3", channel: "tiktok", action: "scheduled", at: "2026-11-06T02:00:00Z" },
+    { post_id: "p4", channel: "tiktok", action: "scheduled", at: "2026-11-06T02:00:00Z" }, { post_id: "p4", channel: "tiktok", action: "sent", at: "2026-11-06T05:00:00Z" },
   ];
-  assert2.deepEqual(sentByChannel(fixed, "2026-11-07", 30), [{ channel: "threads", sent: 0, error: 1 }],
-    "an error put right by a later scheduled line is not counted; one with nothing after it still is");
+  assert2.deepEqual(sentByChannel(fixed, "2026-11-07", 30).filter((r) => r.channel === "threads" || r.channel === "tiktok"), [row("threads", 0, 2, 1), row("tiktok", 1, 1, 0)],
+    "an error put right by a later line is not counted; a queued post stops being queued when it is sent");
   const tk = tokensByDay([{ created_at: "2026-11-06T17:30:00Z", total_tokens: 100, ok: true }, { created_at: "2026-11-07T01:00:00Z", total_tokens: 50, ok: false },
     { created_at: "2026-10-01T00:00:00Z", total_tokens: 999 }], "2026-11-07", 3);
   assert2.deepEqual(tk.map((d) => d.date), ["2026-11-05", "2026-11-06", "2026-11-07"]);

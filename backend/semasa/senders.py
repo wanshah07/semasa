@@ -398,21 +398,43 @@ class Zernio:
         return self._call("GET", "/accounts").get("accounts") or []
 
     def analytics(self, from_date: str, to_date: str, pages: int = 20) -> list[dict[str, Any]]:
-        """Every post this login published through Zernio in [from_date, to_date] with its figures (GET /v1/analytics,
-        `source=late`: posts sent through Zernio only, so a post Buffer sent is never counted twice). Zernio allows a few
-        analytics reads a second, so the pages are paced."""
-        out: list[dict[str, Any]] = []
-        for page in range(1, pages + 1):
-            got = self._call("GET", "/analytics", params={"source": "late", "fromDate": from_date[:10], "toDate": to_date[:10],
-                                                           "limit": 100, "page": page})
-            rows = got.get("posts") or []
-            out += [r for r in rows if isinstance(r, dict)]
-            pg = got.get("pagination") or {}
-            last = int(pg.get("pages") or pg.get("totalPages") or 0)
-            if not rows or len(rows) < 100 or (last and page >= last):
-                break
+        """Every post this login published through Zernio in [from_date, to_date] with its figures (GET /v1/analytics).
+        `source=late` asks for posts sent through Zernio only, so a post Buffer sent is never counted twice. A login that
+        answers nothing that way is asked once more with no source filter and only its own posts are kept (those carrying
+        a Zernio post id): Facebook and LinkedIn came back empty under the filter on 11 Nov 2026 while their posts were
+        live. `last_analytics` keeps what the login said (how many posts, whether it has analytics access) for the log.
+        Zernio allows a few analytics reads a second, so the pages are paced."""
+        self.last_analytics = {"posts": 0, "access": None, "fallback": False, "platforms": {}}
+
+        def read(source: str | None) -> list[dict[str, Any]]:
+            out: list[dict[str, Any]] = []
+            for page in range(1, pages + 1):
+                params: dict[str, Any] = {"fromDate": from_date[:10], "toDate": to_date[:10], "limit": 100, "page": page}
+                if source:
+                    params["source"] = source
+                got = self._call("GET", "/analytics", params=params)
+                if "hasAnalyticsAccess" in got:
+                    self.last_analytics["access"] = bool(got.get("hasAnalyticsAccess"))
+                rows = got.get("posts") or []
+                out += [r for r in rows if isinstance(r, dict)]
+                pg = got.get("pagination") or {}
+                last = int(pg.get("pages") or pg.get("totalPages") or 0)
+                if not rows or len(rows) < 100 or (last and page >= last):
+                    break
+                self.sleep(0.5)
+            return out
+
+        rows = read("late")
+        if not rows:
             self.sleep(0.5)
-        return out
+            rows = [r for r in read(None) if r.get("latePostId") and not r.get("isExternal")]
+            self.last_analytics["fallback"] = True
+        self.last_analytics["posts"] = len(rows)
+        for r in rows:
+            for e in r.get("platformAnalytics") or [{"platform": r.get("platform")}]:
+                name = str((e or {}).get("platform") or "?")
+                self.last_analytics["platforms"][name] = self.last_analytics["platforms"].get(name, 0) + 1
+        return rows
 
 
 class ZernioHub:
@@ -445,8 +467,11 @@ class ZernioHub:
     def analytics(self, from_date: str, to_date: str) -> list[dict[str, Any]]:
         """Every login's posts with their figures, each login asked once."""
         out: list[dict[str, Any]] = []
+        self.last_analytics = []
         for client in {id(c): c for c in self.by_account.values()}.values():
             out += client.analytics(from_date, to_date)
+            held = sorted(a for a, c in self.by_account.items() if c is client)
+            self.last_analytics.append({"accounts": held, **getattr(client, "last_analytics", {})})
         return out
 
     def delete(self, post_id: str, account_id: str = "") -> dict[str, Any]:

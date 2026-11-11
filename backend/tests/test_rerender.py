@@ -179,3 +179,50 @@ def test_a_refused_delete_leaves_the_threads_post_exactly_as_it_was():
     res = rerender.requeue_threads(store, Zernio(fail_on="z2"), NOW)
     assert (res["done"], res["failed"]) == (0, 1)
     assert store.table(db.POSTS).select("*").execute().data[0]["published"]["threads"]["id"] == "z2"
+
+
+class _Hub(Zernio):
+    def __init__(self):
+        super().__init__()
+        self.sent = []
+
+    def create(self, channel_id, service, text, pictures, alt, due_at):
+        self.sent.append((channel_id, service, text, pictures, due_at))
+        return {"id": "znew", "status": "sent", "channelId": channel_id, "dueAt": None,
+                "externalLink": "https://www.threads.com/@x/post/1"}
+
+    def create_video(self, channel_id, service, text, video, due_at):
+        return self.create(channel_id, service, text, [video["url"]], "", due_at)
+
+    def confirm(self, post_id, **kw):
+        return {"id": post_id, "status": "sent", "externalLink": "https://www.threads.com/@x/post/1"}
+
+
+def _send_setup(monkeypatch, published):
+    from semasa import publisher
+    post = _post("late", date="2026-11-11", slot="10:30", published=published)
+    post["lang"], post["text"], post["channels"] = "bm", {"bm": {"threads": "Ayat satu.\n\n#Tag"}}, ["threads"]
+    store = _store([post], [{"id": "m1", "status": "done", "type": "image", "mode": "slides",
+                             "generated_media_url": BASE + "a.jpg", "meta": {"slide_urls": [BASE + "a.jpg", BASE + "b.jpg"]}}])
+    monkeypatch.setattr(publisher, "load_settings", lambda s: {"channels": {"zernio": {
+        "enabled": True, "accounts": {"threads": {"id": "acct-t", "key": "1"}}}}})
+    monkeypatch.setattr(publisher, "post_channels", lambda settings, p, has_video=None: ["threads"])
+    return store
+
+
+def test_send_now_sends_the_one_empty_channel_past_the_lateness_rule(monkeypatch):
+    store = _send_setup(monkeypatch, {})
+    hub = _Hub()
+    out = rerender.send_now(store, hub, "late", "threads", datetime(2026, 11, 11, 3, 30, tzinfo=UTC))
+    assert out.startswith("threads sent now"), out
+    assert hub.sent and hub.sent[0][4] is None                      # no scheduled time: Zernio publishes at once
+    row = store.table(db.POSTS).select("*").execute().data[0]
+    assert row["published"]["threads"]["status"] == "sent" and row["published"]["threads"]["mode"] == "shareNow"
+    assert row["status"] == "posted"
+
+
+def test_send_now_leaves_a_channel_that_already_has_a_record(monkeypatch):
+    store = _send_setup(monkeypatch, {"threads": _rec(9, "scheduled")})
+    hub = _Hub()
+    assert rerender.send_now(store, hub, "late", "threads", NOW).startswith("not sent: threads already has a record")
+    assert hub.sent == []

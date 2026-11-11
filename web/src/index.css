@@ -52,6 +52,14 @@ html[data-glass="on"] body {
                     radial-gradient(1000px 700px at 50% 110%, rgb(var(--c-accent) / 0.10), transparent 60%);
   background-attachment: fixed;
 }
+/* A picture behind the glass (lib/glass.js): the picture, with the theme's own background laid over it at 70% (IMAGE_SCRIM),
+   so no picture can be darker or lighter than the cards' words can take. */
+html[data-glass="on"][data-glass-image="on"] body {
+  background-image: linear-gradient(rgb(var(--c-bg) / 0.7), rgb(var(--c-bg) / 0.7)), var(--glass-image);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   html[data-glass="on"] .semasa-card {
     background-color: rgb(var(--c-surface) / var(--glass-opacity, 0.74));
@@ -116,6 +124,9 @@ html[data-glass="on"] body {
    would sit under the keys: it steps aside and gives its height back, so the chat column reaches the keyboard's top edge */
 html[data-kb] { --tabbar-h: 0px; }
 html[data-kb] .mobile-tabbar { display: none; }
+/* and the row of segment tabs above the chat goes too: with the keys up a phone has about 400 px left, and that row plus the
+   bottom bar left the conversation about 100 px (Wan, 11 Nov 2026) */
+@media (max-width: 767.98px) { html[data-kb] [data-segment-bar] { display: none; } }
 .app-shell {
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);

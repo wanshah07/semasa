@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { THEME_IDS } from "./src/design/themeChoice.js";
-import { DEFAULT_GLASS, MIN_OPACITY, PRESETS, cardColour, normalizeGlass, readGlass, writeGlass } from "./src/lib/glass.js";
+import { DEFAULT_GLASS, GROUNDS, IMAGE_MIN_OPACITY, IMAGE_SCRIM, MIN_OPACITY, PRESETS, cardColour, imageUrl, normalizeGlass, readGlass, scrimmed, writeGlass } from "./src/lib/glass.js";
+import { existsSync } from "node:fs";
 
 let n = 0;
 const t = (name, fn) => { try { fn(); n++; } catch (e) { console.error("FAIL:", name); throw e; } };
@@ -17,7 +18,7 @@ const cr = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); re
 
 t("settings are bounded, and opacity has a floor", () => {
   const g = normalizeGlass({ blur: 999, opacity: 0.05, saturation: -3, edge: 7, on: "yes" });
-  assert.deepEqual(g, { on: false, blur: 40, opacity: MIN_OPACITY, saturation: 0.5, edge: 1 });
+  assert.deepEqual(g, { on: false, blur: 40, opacity: MIN_OPACITY, saturation: 0.5, edge: 1, image: "" });
   assert.deepEqual(normalizeGlass(null), DEFAULT_GLASS);
   assert.deepEqual(normalizeGlass("junk"), DEFAULT_GLASS);
   for (const p of Object.values(PRESETS)) assert.ok(p.opacity >= MIN_OPACITY);
@@ -47,6 +48,32 @@ t("the first-paint script and the stylesheet both know the switch", () => {
   assert.ok(readFileSync(new URL("./index.html", import.meta.url), "utf8").includes('setAttribute("data-glass"'));
   const css = readFileSync(new URL("./src/index.css", import.meta.url), "utf8");
   assert.ok(css.includes('html[data-glass="on"] .semasa-card'));
+  // the scrim the stylesheet paints is the scrim the contrast check assumes
+  assert.ok(css.includes(`linear-gradient(rgb(var(--c-bg) / ${IMAGE_SCRIM}), rgb(var(--c-bg) / ${IMAGE_SCRIM})), var(--glass-image)`));
   assert.ok(readFileSync(new URL("./src/components/ui/Card.jsx", import.meta.url), "utf8").includes("semasa-card"));
+});
+t("a picture raises the opacity floor; an unknown picture is no picture", () => {
+  assert.equal(normalizeGlass({ image: "custom", opacity: 0.6 }).opacity, IMAGE_MIN_OPACITY);
+  assert.equal(normalizeGlass({ image: `ground:${GROUNDS[0]}`, opacity: 0.1 }).opacity, IMAGE_MIN_OPACITY);
+  assert.equal(normalizeGlass({ image: "ground:../../secret.jpg" }).image, "");
+  assert.equal(normalizeGlass({ image: "https://example.com/x.jpg" }).image, "");
+  assert.equal(imageUrl({ image: "custom" }, "javascript:alert(1)"), "");
+  assert.equal(imageUrl({ image: "custom", on: false }, "data:image/jpeg;base64,AAAA"), "");
+  assert.equal(imageUrl({ image: `ground:${GROUNDS[1]}` }, "", "/semasa/"), `/semasa/cards/grounds/${GROUNDS[1]}`);
+  for (const g of GROUNDS) assert.ok(existsSync(new URL(`./public/cards/grounds/${g}`, import.meta.url)), g);
+});
+t("over a pure black and a pure white picture, every theme's card still reads", () => {
+  for (const id of THEME_IDS) {
+    const v = themeVars(id);
+    const solid = v["c-surface"];
+    for (const pixel of [[0, 0, 0], [255, 255, 255]]) {
+      const behind = cardColour(solid, scrimmed(pixel, v["c-bg"]), IMAGE_MIN_OPACITY);
+      assert.ok(cr(v["c-ink"], behind) >= 7, `${id}: ink ${cr(v["c-ink"], behind).toFixed(2)} over ${pixel}`);
+      for (const k of ["c-muted", "c-accent-text"]) {
+        const now = cr(v[k], behind);
+        assert.ok(now >= 4.5 || now >= cr(v[k], solid) - 0.35, `${id}: ${k} ${now.toFixed(2)} over ${pixel} (solid ${cr(v[k], solid).toFixed(2)})`);
+      }
+    }
+  }
 });
 console.log(`glass: ${n} checks passed`);

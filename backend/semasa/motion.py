@@ -268,7 +268,7 @@ _CTA_PART = (
 # Wan, 10 Nov 2026: "add more mode for motion, not only as explainer or gimmick only". Every mode is four teaching scenes in the
 # same internal roles (hook, fact, why, solution: motion_auto.ROLES, which the layout and the pictures already use), so a mode
 # changes what scenes 2 and 3 are FOR, never the machinery. The 10-second teaser stays its own thing (one scene).
-MODES = ("explainer", "news", "myth", "howto", "case")
+MODES = modes.MODES
 _NEVER = "Never invent a number, date, clause or case to fill it."
 _MODE_PARTS = {
     "explainer": (
@@ -302,6 +302,49 @@ _MODE_PARTS = {
         "found, what was done about it) with the ACTUAL facts from the brief and the source named once.\n"
         "3. PERATURAN (what the rule says): the instrument that decided the case, and why the outcome followed from it, in "
         "plain words. Take it from the brief; " + _NEVER + "\n"),
+    "compare": (
+        "2. DUA PILIHAN (the two options): set the two things side by side in one short story of someone choosing between "
+        "them, and give each one its ACTUAL value from the brief (the limit, the cost, the requirement, the rule), the source "
+        "named once. Say the real difference, never a vague one.\n"
+        "3. MANA SESUAI (which fits whom): who each one suits, and the rule or fact that decides it. Take it from the brief; "
+        + _NEVER + "\n"),
+    "change": (
+        "2. SEBELUM & SEKARANG (before and now): what the rule or practice was, and what it is now, as one small true story of "
+        "someone it touches, with the ACTUAL old and new values and the date it takes effect, the instrument named once.\n"
+        "3. APA PERLU BUAT (what to do about it): what changes in practice for the shopkeeper and the one thing to do or check "
+        "before the date. Take it from the brief; " + _NEVER + "\n"),
+    "define": (
+        "2. MAKSUD (what it means): the term in one plain sentence, then an everyday comparison a shopkeeper knows, then the "
+        "ACTUAL definition or limit from the brief with its source named once. Say the term, never leave it as a label.\n"
+        "3. DI MANA JUMPA (where you meet it): where the term turns up for them (on a label, a form, a certificate, a "
+        "notice) and the one mix-up people make about it. Take it from the brief; " + _NEVER + "\n"),
+    "decide": (
+        "2. JAWAPAN (the straight answer): answer the question the hook asked in the first words: yes, no, or yes only if, "
+        "as one small true story, with the ACTUAL condition or limit from the brief and the rule that decides it named once.\n"
+        "3. PENGECUALIAN (the exception): the case where the answer flips, or the line not to cross. Take it from the brief; "
+        + _NEVER + "\n"),
+    "mistake": (
+        "2. KESILAPAN (the mistake): the one mistake people really make here, as a short story of someone who made it and "
+        "what it cost them (a rejection, a recall, a fine, a wasted batch), with the ACTUAL fact from the brief and its "
+        "source named once.\n"
+        "3. YANG BETUL (the right way): what to do instead, and the rule that says so, in plain words. Take it from the "
+        "brief; " + _NEVER + "\n"),
+    "checklist": (
+        "2. SENARAI (the check): three or four things to check before the next step, each one short and checkable, with the "
+        "real values from the brief (the limit, the document, the deadline), said once each in plain words.\n"
+        "3. YANG SELALU TERLEPAS (the one most often missed): the single item on the list people skip, and what skipping it "
+        "costs. Take it from the brief; " + _NEVER + "\n"),
+    "number": (
+        "2. NOMBOR (the number): put the one number from the brief up front and say exactly what it counts, who it covers "
+        "and where it comes from, the source named once, as one small true story around it.\n"
+        "3. MAKSUDNYA (what it means): what that number means for the shopkeeper in practice and the context that stops it "
+        "being misread. Take it from the brief; " + _NEVER + "\n"),
+    "qna": (
+        "2. SOALAN (the question): the question people really ask, worded the way they ask it, with who asks it and why it "
+        "worries them.\n"
+        "3. JAWAPAN & SUSULAN (the answer and the follow-up): the straight answer with the ACTUAL fact from the brief and its "
+        "source named once, then the follow-up question that always comes next and its answer. Take it from the brief; "
+        + _NEVER + "\n"),
 }
 
 

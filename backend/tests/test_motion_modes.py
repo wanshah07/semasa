@@ -11,6 +11,15 @@ from semasa import motion, motion_styles
     ("myth", "MITOS", "KENAPA ORANG PERCAYA"),
     ("howto", "LANGKAH", "KESILAPAN"),
     ("case", "KES (the case)", "PERATURAN"),
+    # the eight modes added 11 Nov 2026
+    ("compare", "DUA PILIHAN", "MANA SESUAI"),
+    ("change", "SEBELUM & SEKARANG", "APA PERLU BUAT"),
+    ("define", "MAKSUD", "DI MANA JUMPA"),
+    ("decide", "JAWAPAN", "PENGECUALIAN"),
+    ("mistake", "KESILAPAN", "YANG BETUL"),
+    ("checklist", "SENARAI", "YANG SELALU TERLEPAS"),
+    ("number", "NOMBOR", "MAKSUDNYA"),
+    ("qna", "SOALAN", "JAWAPAN & SUSULAN"),
 ])
 def test_each_mode_gives_the_writer_its_own_scene_jobs_in_the_same_four_parts(mode, part2, part3):
     for lang in ("bm", "en"):

@@ -6,6 +6,8 @@ import math
 from pathlib import Path
 from typing import Any
 
+from . import modes
+
 RULES = Path(__file__).resolve().parents[2] / "rules" / "motion"
 CATALOG = json.loads((RULES / "recipes.json").read_text())
 BRIGHT = {**CATALOG[3], "id": "bright-education", "name": "Bright education (Financial Education motifs)"}
@@ -56,7 +58,7 @@ def resolve(row: dict[str, Any]) -> dict[str, Any]:
 # what the film is FOR (options.mode); teaser is the 10 s gimmick, every other mode is four teaching scenes. "auto" (Wan, 10 Nov
 # 2026: "rotate the mode ... choose the suitable mode based on the content") is settled by the worker before the script is
 # written (semasa.modes) and the chosen mode written back, so a Redo keeps it.
-MODES = ("auto", "explainer", "news", "myth", "howto", "case", "teaser")
+MODES = ("auto", *modes.MODES, "teaser")
 
 
 def mode(row: dict[str, Any]) -> str:

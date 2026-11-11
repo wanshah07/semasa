@@ -40,7 +40,9 @@ def test_a_scheduled_zernio_post_is_taken_out_of_the_queue_and_goes_back_to_draf
     assert post["date"] == "2026-11-12" and post["slot"] == "06:00"                    # its position is kept
     row = store.tables["semasa_post_pullbacks"][0]
     assert row["state"] == "done" and "approve it again" in row["note"]
-    assert {r["action"] for r in store.tables["semasa_publish_log"]} == {"pulled_back"}
+    # logged to the app's log: semasa_publish_log's CHECK has no 'pulled_back' action (the real table refused it, 11 Nov 2026)
+    assert [r["event"] for r in store.tables["semasa_log"]] == ["publish.pulled_back", "publish.pulled_back"]
+    assert not store.tables.get("semasa_publish_log")
 
 
 def test_a_post_with_a_published_channel_is_refused_and_left_exactly_as_it_was():

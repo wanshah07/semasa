@@ -42,3 +42,13 @@ def test_carousel_and_single_card_expose_design_and_picture_choices():
     assert any("c:pcgo:p1:grid:post" == b["callback_data"] for row in picture for b in row)
     _, single = cat.single_options("p1")
     assert any("c:scpick:p1:image" == b["callback_data"] for row in single for b in row)
+
+
+def test_a_linkedin_post_is_never_made_into_a_film_from_telegram():
+    from fakestore import FakeStore
+
+    from semasa import telegram_catalogue as cat
+    store = FakeStore(semasa_motions=[])
+    reply, buttons = cat.make_motion(store, {}, {"id": "p1", "stream": "linkedin", "status": "draft",
+                                                 "text": {"en": {"linkedin": "Words"}}, "lang": "en"})
+    assert "never a film" in reply and buttons == [] and store.tables["semasa_motions"] == []

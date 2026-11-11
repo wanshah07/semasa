@@ -78,3 +78,21 @@ def test_autofill_opens_by_itself_at_enabled_from():
     s = {"autofill": {"enabled": False, "enabled_from": "2026-10-02T12:00:00Z"}}
     assert autofill.config(s, datetime(2026, 10, 2, 11, 0, tzinfo=UTC))["enabled"] is False
     assert autofill.config(s, datetime(2026, 10, 2, 12, 0, tzinfo=UTC))["enabled"] is True
+
+
+def test_a_linkedin_slot_set_to_video_is_a_single_card_never_a_film():
+    """Wan, 11 Nov 2026: "for linkedn, no need to do motion, only carousel or single card"."""
+    brand = {"linkedin": {"slot_formats": {"06:00": "carousel", "19:00": "video"}},
+             "regulab": {"slot_formats": {"08:00": "video"}}}
+    assert autofill.slot_format(brand, "linkedin", "19:00") == "single"
+    assert autofill.slot_format(brand, "linkedin", "06:00") == "carousel"
+    assert autofill.slot_format(brand, "regulab", "08:00") == "video", "ws.regulab still has its film slots"
+
+
+def test_a_linkedin_gap_written_by_autofill_is_an_idea_never_a_motion_film():
+    brand = {**BRAND, "linkedin": {"slots": ["06:00"], "days": [0, 1, 2, 3, 4, 5, 6], "slot_formats": {"06:00": "video"}}}
+    store = FakeStore(semasa_watch=[_w(1, "kosmetik")], semasa_ideas=[], semasa_posts=[], semasa_log=[], semasa_motions=[])
+    cfg = {"enabled": True, "days_ahead": 3, "per_run": 4, "streams": ["linkedin"]}
+    autofill.run(store, {"brand": brand, "autofill": cfg}, NOW)
+    assert not [m for m in store.tables["semasa_motions"] if m.get("stream") == "linkedin"], "no LinkedIn film is queued"
+    assert [i for i in store.tables["semasa_ideas"] if i.get("stream") == "linkedin"], "the slot gets an idea for a post instead"

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ListChecks, Loader2, Play, Trash2 } from "lucide-react";
-import { STREAMS } from "../lib/brand";
+import { MOTION_STREAMS, STREAMS } from "../lib/brand";
 import { useLang } from "../lib/i18n";
 import { FORMAT_WORDS, LANGUAGES, VOICES, defaultLanguage, formOf, formatOf, motionLabel, selectedSeconds } from "../lib/motion";
 import { designOptions } from "../lib/motionStyles";
@@ -43,7 +43,7 @@ function QueueCard({ row, defaults, client, user, busy, onStart, onRemove }) {
       </div>
       <div data-motion-queue-stream>
         <Label hint={t("LinkedIn: suara anda, saiz 1:1, ikon dan nama anda di kad penutup", "LinkedIn: your voice, the 1:1 size, your icon and name on the closing card")}>{t("Untuk", "For")}</Label>
-        <Segmented value={form.stream} onChange={(s) => set({ stream: s, ...(s === "linkedin" && form.language === "bm" ? { language: "en" } : {}), ...(s === "regulab" && form.language === "en" ? { language: "bm" } : {}) })} options={STREAMS} />
+        <Segmented value={form.stream} onChange={(s) => set({ stream: s, ...(s === "linkedin" && form.language === "bm" ? { language: "en" } : {}), ...(s === "regulab" && form.language === "en" ? { language: "bm" } : {}) })} options={form.stream === "linkedin" ? STREAMS : MOTION_STREAMS} />
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div><Label>{t("Bahasa", "Language")}</Label>

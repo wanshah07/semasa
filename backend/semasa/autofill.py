@@ -85,7 +85,10 @@ def slot_format(brand: dict[str, Any], stream: str, slot: str) -> str:
     settings brand.<stream>.slot_formats = {"08:00": "video", ...}. "" when the slot has no format: the writer chooses."""
     raw = (brand.get(stream) or {}).get("slot_formats")
     fmt = str((raw or {}).get(slot) or "") if isinstance(raw, dict) else ""
-    return fmt if fmt in SLOT_FORMATS else ""
+    fmt = fmt if fmt in SLOT_FORMATS else ""
+    # Wan, 11 Nov 2026: "for linkedn, no need to do motion, only carousel or single card":
+    # a LinkedIn slot set to video is a single card
+    return "single" if stream == "linkedin" and fmt == "video" else fmt
 
 
 def film_positions(store: Any, stream: str) -> set[tuple[str, str]]:

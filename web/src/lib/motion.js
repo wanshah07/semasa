@@ -135,6 +135,8 @@ export function clampSeconds(v) {
 }
 // what the film is FOR (Wan, 10 Nov 2026: "add more mode for motion, not only as explainer or gimmick"): all but the teaser are four
 // teaching scenes; the mode changes what scenes 2 and 3 are about (backend/semasa/motion.py MODES)
+/* Wan, 11 Nov 2026: "for linkedn, no need to do motion, only carousel or single card": a Motion film is for ws.regulab only. */
+export const canFilm = (stream) => stream !== "linkedin";
 export const MODES = ["auto", "explainer", "news", "myth", "howto", "case",
   "compare", "change", "define", "decide", "mistake", "checklist", "number", "qna", "teaser"];     // the last eight: Wan, 11 Nov 2026
 // Auto (Wan, 10 Nov 2026: "rotate the mode ... choose the suitable mode based on the content") is settled by the worker

@@ -6,6 +6,7 @@ import { useLang } from "../lib/i18n";
 import { restoreVersion, withDecision } from "../lib/workflow";
 import { dueMs } from "../lib/slots";
 import { LANGUAGES, defaultLanguage, motionDefaults, motionFromPost } from "../lib/motion";
+import { canFilm } from "../lib/brand";
 import { useSettings } from "../lib/hooks";
 import Button from "./ui/Button";
 import { Input, Label } from "./ui/Field";
@@ -37,6 +38,7 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
   // the draft as a short motion video (Wan, 24 Oct 2026: "make sure all draft idea have option to be motion"); it plays in
   // Video → Motion, and nothing here changes the post
   async function makeMotion() {
+    if (!canFilm(post.stream)) return onToast(t("LinkedIn tiada video: hanya karusel atau kad tunggal.", "LinkedIn gets no video: only a carousel or a single card."), "warn");
     if (dirty || !post.id) return onToast(t("Simpan draf dahulu.", "Save the draft first."), "warn");
     const row = motionFromPost(post, user?.id || null, motionDefaults(motionSettings), langChosen);
     if (!row) return onToast(t("Draf ini tiada perkataan untuk dijadikan video.", "This draft has no words to make a video from."), "warn");
@@ -154,7 +156,7 @@ export default function PostWorkflow({ post, dirty, locked, mediaById, lastLook,
         </div>
       )}
 
-      {post.status !== "rejected" && (
+      {canFilm(post.stream) && post.status !== "rejected" && (
         <div className="flex flex-wrap items-center gap-2" data-post-motion>
           <select value={langChosen} onChange={(e) => setMotionLang(e.target.value)} aria-label={t("Bahasa video", "Video language")} disabled={motionSent}
             className="rounded-pill border border-line bg-surface px-2 py-1.5 text-xs">{LANGUAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>

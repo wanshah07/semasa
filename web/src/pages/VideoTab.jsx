@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Clapperboard, ExternalLink, FileText, Loader2, Plus, RotateCcw, Scissors, ShieldCheck,
   Trash2 } from "lucide-react";
 import { fadeUp } from "../design/motion";
-import { STREAMS } from "../lib/brand";
+import { MOTION_STREAMS } from "../lib/brand";
 import { platformsFor, scan } from "../lib/compliance";
 import { stampMYT, timeAgo } from "../lib/format";
 import { useLang } from "../lib/i18n";
@@ -169,7 +169,7 @@ function AddVideo({ user, brand, onToast, onAdded }) {
         {t("Pautan video", "Video link")}</Label>
         <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" inputMode="url" /></label>
       <div className="grid gap-4 md:grid-cols-2">
-        <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
+        <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={MOTION_STREAMS} /></div>
         {stream === "regulab"
           ? <label className="block"><Label>Domain</Label><Select value={domain} onChange={setDomain} className="w-full"
               options={[["", t("Semasa pilih", "Semasa chooses")], ...Object.entries(brand.regulab.domains || {})]} /></label>

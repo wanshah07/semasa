@@ -98,3 +98,17 @@ def test_the_film_cover_is_quieter_than_a_carousel_cover():
     from semasa import carousel
     film = carousel.cover_card("Notifikasi kosmetik bukan kelulusan KKM", size=(1080, 1920))
     assert film.size == (1080, 1920)
+
+
+def test_every_style_has_its_own_picture_look_and_shows_the_scene_picture():
+    from semasa import motion_gpt_images as gi
+    src = (mr.PROJECT / "src" / "Skins.jsx").read_text(encoding="utf-8")
+    assert "pic: false" not in src, "every style draws the scene's generated picture"
+    for key in ms.SKINS:
+        assert key in gi.LOOK, key
+        prompt = gi.scene_prompt({"brief": "notifikasi kosmetik"}, {"heading": "Apa itu notifikasi", "role": "fact"},
+                                 design=key, palette={"ground": "#e5f6ed"}, ambient="mint")
+        assert gi.LOOK[key] in prompt and "notifikasi kosmetik" in prompt and "#e5f6ed" not in prompt
+    old = gi.scene_prompt({"brief": "x"}, {"heading": "y"}, design="bright-editorial", palette={"ground": "#e5f6ed"},
+                          ambient="mint")
+    assert "#e5f6ed" in old

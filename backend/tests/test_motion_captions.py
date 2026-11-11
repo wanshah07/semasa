@@ -255,3 +255,21 @@ def test_a_linkedin_caption_written_in_malay_is_written_again_in_english(tmp_pat
     row = store.table(motion.TABLE).select("*").eq("id", r["id"]).execute().data[0]
     assert row["captions"] == {"linkedin": "A cosmetic notification is not an approval."}
     assert motion.backfill_captions(store, FakeLLM([])) == 0, "an English caption is left alone"
+
+
+def test_a_malay_film_caption_is_asked_for_in_casual_malaysian_malay_and_an_english_one_is_not():
+    from semasa import lenggok
+
+    class Spy:
+        def __init__(self):
+            self.system = ""
+
+        def chat_json(self, system, user, **_k):
+            self.system = system
+            return None
+
+    for lang, stream, wanted in (("bm", "regulab", True), ("both", "regulab", True), ("en", "regulab", False),
+                                 ("bm", "linkedin", False)):
+        spy = Spy()
+        motion_captions.write(spy, {"stream": stream}, SCENES, "PFAS", lang=lang, voice="v", speak_as=motion.speaker(lang))
+        assert (lenggok.RULE in spy.system) is wanted, (lang, stream)

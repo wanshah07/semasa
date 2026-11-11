@@ -41,7 +41,29 @@ LOOK = {
                         "calm composition with generous empty space for large type",
     "continuous-line": "one continuous hand-drawn line illustration on a pale ground: minimal, a single flowing ink line, "
                        "a few flat colour accents, lots of white space",
+    # the 2D film styles (motion_skins): the scene's picture is drawn in the film's own look, so it sits inside the style
+    # instead of being a photograph pasted onto it (Wan, 11 Nov 2026: "the motion must be embedded with generated images")
+    "comic": "comic-book panel illustration: thick black ink outlines, flat red, yellow and "
+              "blue, halftone dot shading, cream paper",
+    "pixel": "16-colour pixel art scene on a dark navy night ground, chunky square pixels, warm yellow and orange highlights",
+    "chalk": "white and pastel chalk drawing on a dark green chalkboard: hand-drawn, slightly rough strokes, no photograph",
+    "glow": "warm white glowing line drawing on a pure black ground: outlines only, soft neon glow, no fills",
+    "flat": "flat vector illustration: no gradients, no outlines, deep navy and muted blue shapes with one orange accent",
+    "papercut": "layered paper cut-out illustration: torn kraft paper shapes in cream, tan, "
+                 "terracotta and brown with soft drop shadows",
+    "dankoe": "minimal fine white line drawing on pure black: very few thin lines, lots of empty space, no colour",
+    "riso": "two-colour risograph print illustration: blue and pink inks with a little "
+             "yellow, visible grain, slightly off register, cream paper",
+    "blueprint": "technical blueprint drawing: fine white line work, centre lines and dimension "
+                  "marks on Prussian blue paper, no shading",
+    "transit": "clean transit-map style diagram illustration on off-white paper: bold flat "
+                "lines and dots in red, blue, green and yellow",
+    "swiss": "Swiss graphic design poster illustration: high-contrast black and white "
+              "photograph or shapes on white with one red element",
+    "whiteboard": "dry-erase marker drawing on a white board: dark blue marker lines with small "
+                   "red and green accents, hand-drawn",
 }
+OWN_PALETTE = frozenset(LOOK) - {"bright-editorial", "continuous-line"}      # looks that carry their own colours
 TONE = {
     "regulab": "warm, friendly and clear, for small Malaysian businesses",
     "linkedin": "sober, credible and professional, for industry peers",
@@ -88,9 +110,10 @@ def scene_prompt(row: dict[str, Any], sc: dict[str, Any], *, design: str, palett
         f"Directed shot (draw this): {shot}." if shot else f"Show {role}.",
         f"Mood: {mood}." if shot and mood else "",
         f"Look: {LOOK.get(design, LOOK['bright-editorial'])}.",
-        f"Palette: ground {palette.get('ground', '#e5f6ed')}, ink {palette.get('ink', '#143e35')}, "
-        f"accent {palette.get('accent', '#287b65')}"
-        + (f", with a soft {ambient} ambient tone" if ambient else "") + ".",
+        "" if design in OWN_PALETTE else (
+            f"Palette: ground {palette.get('ground', '#e5f6ed')}, ink {palette.get('ink', '#143e35')}, "
+            f"accent {palette.get('accent', '#287b65')}"
+            + (f", with a soft {ambient} ambient tone" if ambient else "") + "."),
         f"Tone: {TONE[stream]}.",
         f"In the visual spirit of the chosen style reference: {style_name}." if style_name else "",
         NEVER,

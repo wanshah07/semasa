@@ -52,13 +52,22 @@ html[data-glass="on"] body {
                     radial-gradient(1000px 700px at 50% 110%, rgb(var(--c-accent) / 0.10), transparent 60%);
   background-attachment: fixed;
 }
-/* A picture behind the glass (lib/glass.js): the picture, with the theme's own background laid over it at 40% (IMAGE_SCRIM; it was 70% and Wan could not see the photo),
-   so no picture can be darker or lighter than the cards' words can take. */
-html[data-glass="on"][data-glass-image="on"] body {
-  background-image: linear-gradient(rgb(var(--c-bg) / 0.4), rgb(var(--c-bg) / 0.4)), var(--glass-image);
+/* A picture behind the glass (lib/glass.js): drawn on a fixed layer of its own so it can be blurred, faded and de-coloured
+   from the Glass panel (--glass-img-*). The layer sits over the theme's own background colour, so fading the picture is the
+   same as laying that colour over it: no picture can be darker or lighter than the cards' words can take. */
+html[data-glass="on"][data-glass-image="on"] { background-color: rgb(var(--c-bg)); }
+html[data-glass="on"][data-glass-image="on"] body { background: transparent; }
+html[data-glass="on"][data-glass-image="on"] body::before {
+  content: "";
+  position: fixed;
+  inset: -48px;                      /* past the edges, so a blurred picture has no pale rim */
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--glass-image);
   background-size: cover;
   background-position: center;
-  background-attachment: fixed;
+  opacity: var(--glass-img-opacity, 0.6);
+  filter: blur(var(--glass-img-blur, 0px)) saturate(var(--glass-img-saturation, 1));
 }
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   html[data-glass="on"] .semasa-card {

@@ -105,6 +105,9 @@ class LLMSettings:
     # {"slug", "provider", "base_url", "key", "model", "vision_model"}. The primary and backup above are its first two
     # links, kept so every caller that reads them still works. Empty: llm.LLM builds a two-link chain from those two.
     chain: tuple[dict[str, Any], ...] = ()
+    # The reasoning effort Wan chose per model on the API tab (11 Nov 2026), as (("host|model", "high"), ...). Empty: nothing
+    # is sent and every model thinks as it does by default. semasa.ai_team.route fills it; llm.LLM reads it by host and model.
+    efforts: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def load(cls) -> LLMSettings:

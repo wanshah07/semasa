@@ -11,6 +11,7 @@
    Everything here is pure (strings and bytes in, strings out) so Node can test it against files made by real Word and
    Excel (web/office.test.mjs). */
 import { strFromU8, unzipSync } from "fflate";
+import { bi } from "./bi.js";
 
 export const OFFICE_LIMITS = { part: 40_000_000, rows: 5000, cell: 1500, pairs: 300, header: 5 };
 
@@ -31,7 +32,7 @@ function openZip(bytes, want) {
   try {
     parts = unzipSync(bytes, { filter: (f) => f.originalSize <= OFFICE_LIMITS.part && want(f.name) });
   } catch {
-    throw new OfficeError("bukan fail Office yang sah, atau rosak / not a valid Office file, or it is damaged");
+    throw new OfficeError(bi("bukan fail Office yang sah, atau rosak", "not a valid Office file, or it is damaged"));
   }
   return parts;
 }
@@ -46,7 +47,7 @@ const DOC_TOKENS = /<w:(p|tbl|tr|tc)(?=[\s>])[^>]*>|<\/w:(p|tbl|tr|tc)>|<w:t(?=[
 export function docxToText(bytes) {
   const parts = openZip(bytes, (n) => n === "word/document.xml");
   const xml = part(parts, "word/document.xml");
-  if (!xml) throw new OfficeError("bukan fail Word .docx yang sah (tiada word/document.xml) / not a valid .docx (no word/document.xml)");
+  if (!xml) throw new OfficeError(bi("bukan fail Word .docx yang sah (tiada word/document.xml)", "not a valid .docx (no word/document.xml)"));
   const lines = [];
   let para = null;                     // text of the paragraph being read
   let cell = null, row = null;         // a table cell's paragraphs, and the cells of the current row
@@ -127,7 +128,7 @@ export function xlsxToTables(bytes) {
   const parts = openZip(bytes, (n) => n === "xl/workbook.xml" || n === "xl/_rels/workbook.xml.rels" || n === "xl/sharedStrings.xml"
     || n === "xl/styles.xml" || /^xl\/worksheets\/[^/]+\.xml$/.test(n));
   const book = part(parts, "xl/workbook.xml");
-  if (!book) throw new OfficeError("bukan fail Excel .xlsx yang sah (tiada xl/workbook.xml) / not a valid .xlsx (no xl/workbook.xml)");
+  if (!book) throw new OfficeError(bi("bukan fail Excel .xlsx yang sah (tiada xl/workbook.xml)", "not a valid .xlsx (no xl/workbook.xml)"));
   const epoch1904 = /<workbookPr\b[^>]*date1904="(1|true)"/i.test(book);
   const rels = {};
   for (const m of part(parts, "xl/_rels/workbook.xml.rels").matchAll(/<Relationship\b[^>]*>/g)) {

@@ -4,7 +4,7 @@
    aiTeam.test.mjs. The ROBOTS table here mirrors the backend's: one slug, one robot, in both. */
 
 export const ROBOTS = {
-  rootsys: { robot: "W1", name: "Wanshah 1", tone: "afiq", does: ["read", "write"] },
+  rootsys: { robot: "W1", name: "Wanshah 1", tone: "afiq", does: ["read", "write", "read_image"] },
   // Mireld lists gpt-image models too (9 Nov 2026: "add wanshah2, mireld" to the picture maker); whether it really draws is what Test shows
   mireld: { robot: "W2", name: "Wanshah 2", tone: "mireld", does: ["read", "write", "make_image"] },
   kiosapi: { robot: "W3", name: "Wanshah 3", tone: "kios", does: ["read", "write", "read_image", "make_image"] },
@@ -105,6 +105,27 @@ export function withModel(team, slug, model, now = new Date()) {
   const m = String(model || "").trim();
   if (m) models[slug] = m; else delete models[slug];
   return { ...(team || {}), models, changed_at: now.toISOString() };
+}
+
+/* Reasoning effort per model (Wan, 11 Nov 2026: "add effort, so I can choose the effort for each model"). settings.ai_team.efforts is
+   {"gateway|model": level}; the backend (ai_team.read_efforts, llm.py) sends it as reasoning_effort to that model at that gateway
+   and never to another, and no entry means nothing is sent. The four levels are the ones the OpenAI dialect knows. */
+export const EFFORTS = ["low", "medium", "high", "xhigh"];
+export const EFFORT_WORDS = { low: ["Rendah", "Low"], medium: ["Sederhana", "Medium"], high: ["Tinggi", "High"], xhigh: ["Maksimum", "Max"] };
+
+/** The effort chosen for one model at one gateway, or "" for the model's own default. */
+export function effortOf(team, slug, model) {
+  const v = ((team || {}).efforts || {})[`${slug}|${model}`];
+  return EFFORTS.includes(v) ? v : "";
+}
+
+/** settings.ai_team with one model's effort set (empty clears it); the pins, models and other efforts are untouched. `changed_at` wakes
+    the worker like a pin does, so the next decision carries it. */
+export function withEffort(team, slug, model, effort, now = new Date()) {
+  const efforts = { ...((team || {}).efforts || {}) };
+  const key = `${slug}|${model}`;
+  if (EFFORTS.includes(effort)) efforts[key] = effort; else delete efforts[key];
+  return { ...(team || {}), efforts, changed_at: now.toISOString() };
 }
 
 /** True while a saved pin has not been decided on yet: the last decision is older than the change (and the change is recent,

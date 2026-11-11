@@ -10,6 +10,7 @@ import { supabase } from "./SupabaseClient";
 import { explain } from "./fnError";
 import { AI_LIMITS, batchInputs, fitSize, kindOf, legacyWhy, mergeItems, splitNote, tilePlan } from "./faqAiLogic";
 import { OfficeError, csvToRows, docxToText, tablePairs, tableText, xlsxToTables } from "./officeText";
+import { bi } from "./bi.js";
 
 /** image | pdf | docx | xlsx | csv | text | legacy | "" (see faqAiLogic.kindOf) */
 export const acceptKind = (file) => kindOf(file.name, file.type);
@@ -29,7 +30,7 @@ function loadImage(file) {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("gambar tidak boleh dibuka / the picture could not be opened")); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(bi("gambar tidak boleh dibuka", "the picture could not be opened"))); };
     img.src = url;
   });
 }
@@ -72,7 +73,7 @@ async function pdfItems(file, name) {
   try {
     doc = await task.promise;
   } catch (e) {
-    if (e?.name === "PasswordException") return [{ name, skipped: "PDF dilindungi kata laluan; buka dan simpan tanpa kata laluan / the PDF is password-protected: save a copy without the password" }];
+    if (e?.name === "PasswordException") return [{ name, skipped: bi("PDF dilindungi kata laluan; buka dan simpan tanpa kata laluan", "the PDF is password-protected: save a copy without the password") }];
     throw e;
   }
   // the loading TASK owns the worker: pdf.js 6 has no destroy() on the document itself, so `doc.destroy()` threw into
@@ -117,45 +118,45 @@ async function pdfPages(doc, name) {
   }
   if (text.trim()) items.unshift({ name, text: text.trim() });
   const notes = [];
-  if (doc.numPages > pages) notes.push({ name, skipped: `hanya ${pages} halaman pertama dibaca daripada ${doc.numPages} / only the first ${pages} of ${doc.numPages} pages were read` });
-  if (!items.length) notes.push({ name, skipped: "PDF ini tiada teks dan halaman tidak dapat dilukis / this PDF has no text and its pages could not be drawn" });
-  if (unread) notes.push({ name, skipped: `${unread} halaman imbasan tidak dibaca; had ${AI_LIMITS.pdfImagePages} halaman imbasan / ${unread} scanned pages not read; the limit is ${AI_LIMITS.pdfImagePages} scanned pages` });
+  if (doc.numPages > pages) notes.push({ name, skipped: bi(`hanya ${pages} halaman pertama dibaca daripada ${doc.numPages}`, `only the first ${pages} of ${doc.numPages} pages were read`) });
+  if (!items.length) notes.push({ name, skipped: bi("PDF ini tiada teks dan halaman tidak dapat dilukis", "this PDF has no text and its pages could not be drawn") });
+  if (unread) notes.push({ name, skipped: bi(`${unread} halaman imbasan tidak dibaca; had ${AI_LIMITS.pdfImagePages} halaman imbasan`, `${unread} scanned pages not read; the limit is ${AI_LIMITS.pdfImagePages} scanned pages`) });
   return [...items, ...notes];
 }
 
 /** A Word file → one text item. */
 async function docxItems(file, name) {
   const { text } = docxToText(new Uint8Array(await readAs(file, "readAsArrayBuffer")));
-  return text.trim() ? [{ name, text }] : [{ name, skipped: "tiada teks dalam fail Word ini / no text in this Word file" }];
+  return text.trim() ? [{ name, text }] : [{ name, skipped: bi("tiada teks dalam fail Word ini", "no text in this Word file") }];
 }
 
 /** A table (sheet or CSV) → the pairs themselves when it already has question and answer columns, else text for the reader. */
 function tableItems(name, sheet, t, label) {
   const found = tablePairs(sheet, t, label);
   if (found) {
-    const out = found.pairs.length ? [{ name, pairs: found.pairs }] : [{ name, skipped: `${sheet}: lajur soalan dijumpai tetapi tiada baris dengan soalan / a question column was found but no row has a question` }];
+    const out = found.pairs.length ? [{ name, pairs: found.pairs }] : [{ name, skipped: `${sheet}: ${bi("lajur soalan dijumpai tetapi tiada baris dengan soalan", "a question column was found but no row has a question")}` }];
     if (found.cut) out.push({ name, skipped: `${sheet}: hanya ${found.pairs.length} baris pertama diambil / only the first ${found.pairs.length} rows were taken` });
     if (found.skipped) out.push({ name, skipped: `${sheet}: ${found.skipped} baris tanpa soalan dilangkau / ${found.skipped} rows without a question were skipped` });
     return out;
   }
   const { text, header } = tableText(sheet, t.rows);
   const out = text ? [{ name, text, header }] : [];
-  if (t.truncated) out.push({ name, skipped: `${sheet}: hanya baris pertama dibaca (had) / only the first rows were read (limit)` });
+  if (t.truncated) out.push({ name, skipped: `${sheet}: ${bi("hanya baris pertama dibaca (had)", "only the first rows were read (limit)")}` });
   return out;
 }
 
 async function xlsxItems(file, name) {
   const { tables, hidden } = xlsxToTables(new Uint8Array(await readAs(file, "readAsArrayBuffer")));
   const out = tables.flatMap((t, i) => tableItems(name, t.sheet, t, `Excel, helaian ${i + 1}`));
-  if (hidden.length) out.push({ name, skipped: `helaian tersembunyi tidak dibaca / hidden sheets not read: ${hidden.join(", ")}` });
-  if (!out.length) out.push({ name, skipped: "tiada data dalam fail Excel ini / no data in this Excel file" });
+  if (hidden.length) out.push({ name, skipped: `${bi("helaian tersembunyi tidak dibaca", "hidden sheets not read")}: ${hidden.join(", ")}` });
+  if (!out.length) out.push({ name, skipped: bi("tiada data dalam fail Excel ini", "no data in this Excel file") });
   return out;
 }
 
 async function csvItems(file, name) {
   const t = csvToRows(String(await readAs(file, "readAsText")));
   const out = tableItems(name, name.replace(/\.[^.]+$/, "") || "CSV", t, "CSV");
-  return out.length ? out : [{ name, skipped: "tiada data dalam fail ini / no data in this file" }];
+  return out.length ? out : [{ name, skipped: bi("tiada data dalam fail ini", "no data in this file") }];
 }
 
 /** Everything the person gave → items for batchInputs. A file that cannot be read is named, never dropped silently. */
@@ -170,47 +171,47 @@ export async function prepareInputs(files, onProgress = () => {}) {
     try {
       const kind = acceptKind(f);
       if (kind === "image") {
-        out.push(...(f.size > AI_LIMITS.imageBytes ? [{ name, skipped: "gambar lebih 12 MB / picture over 12 MB" }] : await imageItems(f, name)));
+        out.push(...(f.size > AI_LIMITS.imageBytes ? [{ name, skipped: bi("gambar lebih 12 MB", "picture over 12 MB") }] : await imageItems(f, name)));
       } else if (kind === "pdf") {
-        out.push(...(f.size > AI_LIMITS.pdfBytes ? [{ name, skipped: "PDF lebih 25 MB / PDF over 25 MB" }] : await pdfItems(f, name)));
+        out.push(...(f.size > AI_LIMITS.pdfBytes ? [{ name, skipped: bi("PDF lebih 25 MB", "PDF over 25 MB") }] : await pdfItems(f, name)));
       } else if (kind === "docx" || kind === "xlsx") {
-        if (f.size > AI_LIMITS.officeBytes) out.push({ name, skipped: "fail lebih 20 MB / file over 20 MB" });
+        if (f.size > AI_LIMITS.officeBytes) out.push({ name, skipped: bi("fail lebih 20 MB", "file over 20 MB") });
         else out.push(...(kind === "docx" ? await docxItems(f, name) : await xlsxItems(f, name)));
       } else if (kind === "csv") {
-        out.push(...(f.size > AI_LIMITS.officeBytes ? [{ name, skipped: "fail lebih 20 MB / file over 20 MB" }] : await csvItems(f, name)));
+        out.push(...(f.size > AI_LIMITS.officeBytes ? [{ name, skipped: bi("fail lebih 20 MB", "file over 20 MB") }] : await csvItems(f, name)));
       } else if (kind === "text") {
         out.push({ name, text: String(await readAs(f, "readAsText")) });
       } else if (kind === "legacy") {
         out.push({ name, skipped: legacyWhy(name) });
       } else {
-        out.push({ name, skipped: "jenis fail ini belum boleh dibaca (gambar, PDF, Word, Excel, CSV dan teks) / this file type is not read (pictures, PDF, Word, Excel, CSV and text)" });
+        out.push({ name, skipped: bi("jenis fail ini belum boleh dibaca (gambar, PDF, Word, Excel, CSV dan teks)", "this file type is not read (pictures, PDF, Word, Excel, CSV and text)") });
       }
     } catch (e) {
-      out.push({ name, skipped: e instanceof OfficeError ? e.message : `gagal dibaca / could not be read: ${String(e?.message || e).slice(0, 100)}` });
+      out.push({ name, skipped: e instanceof OfficeError ? e.message : `${bi("gagal dibaca", "could not be read")}: ${String(e?.message || e).slice(0, 100)}` });
     }
   }
-  if (extra > 0) out.push({ name: "…", skipped: `${extra} fail lagi tidak dibaca; had ${AI_LIMITS.files} fail sekali / ${extra} more files not read; ${AI_LIMITS.files} files at a time` });
+  if (extra > 0) out.push({ name: "…", skipped: bi(`${extra} fail lagi tidak dibaca; had ${AI_LIMITS.files} fail sekali`, `${extra} more files not read; ${AI_LIMITS.files} files at a time`) });
   return out;
 }
 
 /** Send the prepared items (several calls when there is a lot) and fold the answers into one list. Never throws:
     `errors` says which call failed and why, `items` keeps what the others found. */
 export async function extractFaqs({ note = "", inputs = [], onProgress = () => {} }) {
-  if (!supabase) return { items: [], notRead: [], errors: ["Supabase belum disambung / Supabase is not configured"], missing: false, calls: 0 };
+  if (!supabase) return { items: [], notRead: [], errors: [bi("Supabase belum disambung", "Supabase is not configured")], missing: false, calls: 0 };
   // a typed text longer than a note is material, not a note (the function keeps 500 characters of a note)
   const typed = splitNote(note);
   const all = typed.material ? [...inputs, { name: "teks ditaip", text: typed.material }] : inputs;
   const { batches, skipped, direct, dropped } = batchInputs(all);
   const calls = batches.length || (typed.note ? 1 : 0);
   const lists = [direct], errors = [], notRead = skipped.map((s) => `${s.name}: ${s.why}`);
-  if (dropped) notRead.push(`${dropped} bahagian lagi tidak dibaca; had ${AI_LIMITS.calls} panggilan sekali / ${dropped} more parts were not read; ${AI_LIMITS.calls} calls at a time. Hantar fail ini dalam bahagian yang lebih kecil / send the file in smaller parts`);
+  if (dropped) notRead.push(bi(`${dropped} bahagian lagi tidak dibaca; had ${AI_LIMITS.calls} panggilan sekali. Hantar fail ini dalam bahagian yang lebih kecil`, `${dropped} more parts were not read; ${AI_LIMITS.calls} calls at a time. Send the file in smaller parts`));
   let missing = false;
   for (let i = 0; i < calls; i++) {
-    onProgress(calls > 1 ? `AI membaca bahagian ${i + 1}/${calls}… / AI is reading part ${i + 1}/${calls}…` : "AI sedang membaca… / the AI is reading…");
+    onProgress(calls > 1 ? bi(`AI membaca bahagian ${i + 1}/${calls}…`, `AI is reading part ${i + 1}/${calls}…`) : bi("AI sedang membaca…", "the AI is reading…"));
     const { data, error } = await supabase.functions.invoke("semasa-chat", { body: { action: "faq_extract", note: i === 0 ? typed.note : "", files: batches[i] || [] } });
     if (error) {
       const why = await explain(error);
-      if (why.missing) { missing = true; errors.push("fungsi belum dipasang / the function is not deployed"); break; }
+      if (why.missing) { missing = true; errors.push(bi("fungsi belum dipasang", "the function is not deployed")); break; }
       errors.push(calls > 1 ? `bahagian ${i + 1}: ${why.message}` : why.message);
       continue;
     }

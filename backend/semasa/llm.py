@@ -32,7 +32,7 @@ from typing import Any
 
 import requests
 
-from .config import LLMSettings
+from .config import LLMSettings, host_of
 from .log import get_logger
 
 log = get_logger("semasa.llm")
@@ -103,6 +103,11 @@ def classify_http(status: int | str, body: str) -> str:
     return _MISS
 
 
+# a gateway's refusal of the reasoning_effort field (OpenAI: "Unrecognized request argument", others: "unknown parameter")
+EFFORT_REFUSED_RE = re.compile(
+    r"reasoning[_ ]?effort|unrecogni[sz]ed|unknown (?:parameter|field|argument)|unsupported (?:parameter|value)", re.I)
+
+
 class LLM:
     """One writer over a CHAIN of gateways. `settings.chain` (from ai_team.chain through ai_config.llm_for) is the AI team's
     full ranked list; without it the primary and the backup in the settings are a two-link chain, exactly as before. A call
@@ -136,6 +141,7 @@ class LLM:
         # the run (a per-link cool-off) and is asked once, as a last resort, only when every other link gave nothing too.
         self._miss_run: dict[str, int] = {}
         self.links = self._links(chain)
+        self._no_effort: set[str] = set()                    # "host|model" a gateway refused a reasoning effort for
         # the whole chain may take this long for one answer; the first link is always asked, a later one is skipped when
         # the budget is spent (a 4-link chain of 60 s timeouts must not hold a batch for ten minutes)
         self.budget_s = float(self.s.timeout) * 5
@@ -171,6 +177,13 @@ class LLM:
             out.append({"label": "backup", "slug": "backup", "provider": "openai", "base_url": self.s.fallback_base_url,
                         "key": self.s.fallback_key or "", "model": self.s.fallback_model, "vision_model": ""})
         return out
+
+    def _effort_for(self, base: str, model: str) -> str:
+        """The reasoning effort Wan chose for this model at this gateway, or "" (nothing is sent, the model thinks as it does)."""
+        key = f"{host_of(base)}|{model}"
+        if key in getattr(self, "_no_effort", ()):
+            return ""
+        return dict(getattr(self.s, "efforts", ()) or ()).get(key, "")
 
     def _down(self, label: str) -> bool:
         """This link has missed PRIMARY_DOWN_AFTER times in a row AND another link is still standing: with nobody else to
@@ -496,7 +509,16 @@ class LLM:
             "max_tokens": max_tokens,
             "response_format": {"type": "json_object"},
         }
+        effort = self._effort_for(base, model)
+        if effort:
+            body["reasoning_effort"] = effort
         r = requests.post(f"{base}/chat/completions", headers=headers, json=body, timeout=self.s.timeout)
+        if effort and r.status_code == 400 and EFFORT_REFUSED_RE.search(r.text):
+            # this model does not take a reasoning effort: ask again without it, and do not send it to this model again this run
+            log.warning("LLM %s: the gateway refused reasoning_effort=%s; asked again without it", model, effort)
+            body.pop("reasoning_effort")
+            self._no_effort = {*getattr(self, "_no_effort", ()), f"{host_of(base)}|{model}"}
+            r = requests.post(f"{base}/chat/completions", headers=headers, json=body, timeout=self.s.timeout)
         if r.status_code == 400 and "response_format" in r.text:
             # endpoint does not know json_object mode: ask again without it
             body.pop("response_format")

@@ -4,13 +4,14 @@
    just below the box, takes the median of each (lib/designCloneSeed.patchFromRings), and says when the ring is so uneven that the
    box most likely sits on a photograph, where a flat patch will show and Wan should be told. Nothing leaves the browser. */
 import { medianRgb, patchFromRings } from "./designCloneSeed.js";
+import { bi } from "./bi.js";
 
 export function loadImageFile(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("gambar rujukan tidak boleh dibuka / the reference picture could not be opened")); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(bi("gambar rujukan tidak boleh dibuka", "the reference picture could not be opened"))); };
     img.src = url;
   });
 }
@@ -77,7 +78,7 @@ export async function readPixels(source, maxSide = 360) {
     img = await new Promise((resolve, reject) => {
       const el = new Image();
       el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error("gambar tidak boleh dibuka / the picture could not be opened"));
+      el.onerror = () => reject(new Error(bi("gambar tidak boleh dibuka", "the picture could not be opened")));
       el.src = source;
     });
   } else img = await loadImageFile(source);

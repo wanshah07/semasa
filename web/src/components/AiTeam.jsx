@@ -3,7 +3,7 @@ import { Loader2, Pin, PinOff, RefreshCw, Star, Zap } from "lucide-react";
 import Robot3D from "./Robot3D";
 import { useLang } from "../lib/i18n";
 import { stampMYT, timeAgo } from "../lib/format";
-import { DOES, JOBS, decisionOf, decisionPending, fmtMs, liveLines, modelsFor, pinFor, rateCheck, rateImage, robotsFor, teamCards, withPin } from "../lib/aiTeam";
+import { DOES, EFFORTS, EFFORT_WORDS, JOBS, decisionOf, decisionPending, effortOf, fmtMs, liveLines, modelsFor, pinFor, rateCheck, rateImage, robotsFor, teamCards, withEffort, withPin } from "../lib/aiTeam";
 import { checkAI, checkImageAI } from "../lib/chat";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
@@ -210,6 +210,35 @@ function JobPins({ cards, state, team, save, onToast }) {
                   <Rating r={rates[`${pin.gateway}|${pin.model}`]} t={t} />
                 </div>
               )}
+              {job !== "image_gen" && (() => {
+                // the model this job runs: the pinned one, else the one the router chose; an effort belongs to that model at that gateway
+                const slug = pin?.gateway || d.chosen?.slug || "";
+                const model = pin ? (pin.model || team?.models?.[pin.gateway] || pinnedCard?.row?.model || "") : (d.chosen?.model || "");
+                if (!slug || !model) return null;
+                const now = effortOf(team, slug, model);
+                const set = async (e) => {
+                  if (!canSave) return;
+                  setBusy(`effort-${job}`);
+                  try {
+                    await save("ai_team", withEffort(team, slug, model, e));
+                    onToast?.(e ? t("Usaha {m}: {e}. Dipakai pada panggilan seterusnya.", "{m} effort: {e}. Used from the next call.", { m: model, e: EFFORT_WORDS[e][L] })
+                      : t("Usaha {m}: ikut asal model.", "{m} effort: the model's own default.", { m: model }), "ok");
+                  } catch (err) { onToast?.(err.message || String(err), "error"); } finally { setBusy(""); }
+                };
+                return (
+                  <div className="mt-2" data-ai-effort={job}>
+                    <p className="text-[11px] text-muted">{t("Usaha berfikir untuk", "Thinking effort for")} <span className="font-medium text-ink">{model}</span></p>
+                    <div className="mt-1 flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("Usaha", "Effort")}>
+                      {[["", t("Asal", "Default")], ...EFFORTS.map((e) => [e, EFFORT_WORDS[e][L]])].map(([e, label]) => (
+                        <button type="button" key={e || "default"} role="radio" aria-checked={now === e} data-effort-button={e || "default"}
+                          disabled={!canSave || busy === `effort-${job}`} onClick={() => set(e)}
+                          className={`rounded-pill border px-2.5 py-1 text-[11px] transition ${now === e ? "border-accent bg-accent/15 font-medium text-accent" : "border-line text-muted hover:border-ink/40 hover:text-ink"} disabled:opacity-50`}>
+                          {label}</button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
               {!pin && <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted"><Pin size={11} /> {t("auto", "auto")}</span>}
             </div>
           );
@@ -217,6 +246,8 @@ function JobPins({ cards, state, team, save, onToast }) {
       </div>
       <p className="mt-3 text-[11px] text-muted">{t("Semat ialah keutamaan, bukan kunci: robot yang disemat tetapi rosak (ujian gagal, atau lebih separuh panggilan 48 jam gagal) dilangkau dan yang terpantas mengambil alih. Wanshah 3 melukis sahaja; ia tidak pernah menulis teks.",
         "A pin is a preference, not a lock: a pinned robot that is down (probe failed, or more than half its calls in 48 h failed) is skipped and the fastest takes over. Wanshah 3 only paints; it never writes text.")}</p>
+      <p className="mt-1 text-[11px] text-muted" data-ai-effort-note>{t("Usaha berfikir dihantar hanya kepada model itu di gerbang itu. Jika model tidak menerimanya, ia ditanya semula tanpa usaha dan dilangkau untuk larian itu.",
+        "The thinking effort is sent only to that model at that gateway. If a model does not take it, it is asked again without it and left alone for that run.")}</p>
     </Card>
   );
 }

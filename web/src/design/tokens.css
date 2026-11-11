@@ -23,6 +23,8 @@
   --c-ok:          22 101  52;
   --c-warn:       180  83   9;
   --c-danger:     185  28  28;
+  --c-queue:      202 138   4;   /* post-slot check: yellow, a post waiting in the queue (its pill text stays ink: yellow text fails contrast on white) */
+  --c-wait:       162  28 175;   /* post-slot check: magenta, a post waiting for approval */
 
   /* type */
   --font-display: "Fraunces", Georgia, serif;

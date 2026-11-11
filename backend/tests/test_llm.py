@@ -259,3 +259,39 @@ def test_a_chatgpt_link_without_vision_is_never_sent_a_picture(quiet):
     w = _writer(chain=[_gpt(login, vision=""), *_chain()])
     assert w.describe_image("sys", "What is it?", b"x", "image/png") == {"seen": "from mireld"}
     assert login.calls == [] and sent and sent[0][0] == "rootsys.cloud", "the primary reads it with VISION_MODEL, as before"
+
+
+# ------------------------------------------------ reasoning effort per model (Wan, 11 Nov 2026)
+def _bodies(monkeypatch, answer):
+    seen = []
+
+    def post(url, headers, json, timeout):
+        seen.append((url.split("/")[2], dict(json)))
+        return answer(url, json)
+    monkeypatch.setattr(llm_mod.requests, "post", post)
+    return seen
+
+
+def test_a_chosen_effort_is_sent_to_that_model_at_that_gateway_only(quiet):
+    seen = _bodies(quiet, lambda url, body: Resp(200, '{"ok": "yes"}'))
+    w = _writer(efforts=(("rootsys.cloud|m1", "high"),))
+    assert w.chat_json("s", "u") == {"ok": "yes"}
+    assert seen[0][1]["reasoning_effort"] == "high"
+    w2 = _writer(efforts=(("rootsys.cloud|other-model", "high"),))
+    w2.chat_json("s", "u")
+    assert "reasoning_effort" not in seen[1][1], "an effort chosen for another model is never sent to this one"
+    _writer().chat_json("s", "u")
+    assert "reasoning_effort" not in seen[2][1], "no choice sends nothing"
+
+
+def test_a_gateway_that_refuses_the_effort_is_asked_again_without_it_and_not_asked_with_it_again(quiet):
+    def answer(url, body):
+        if "reasoning_effort" in body:
+            return Resp(400, text='{"error": {"message": "Unrecognized request argument supplied: reasoning_effort"}}')
+        return Resp(200, '{"ok": "yes"}')
+    seen = _bodies(quiet, answer)
+    w = _writer(efforts=(("rootsys.cloud|m1", "low"),))
+    assert w.chat_json("s", "u") == {"ok": "yes"}
+    assert ["reasoning_effort" in b for _, b in seen] == [True, False]
+    assert w.chat_json("s", "u") == {"ok": "yes"}
+    assert ["reasoning_effort" in b for _, b in seen] == [True, False, False], "the refusal is remembered for the run"

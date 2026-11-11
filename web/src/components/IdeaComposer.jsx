@@ -118,11 +118,11 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
       // one film per stream: LinkedIn's is always English (langOf), ws.regulab's follows the language picked here
       const motions = streamsOf(stream).map((s) => motionFromIdea({ ...common, stream: s, citations: trend?.citations, brief: { source: trend || {} } },
         user.id, motionDefaults(motionSettings), motionLanguage));
-      if (motions.some((m) => !m)) { setBusy(false); return onToast("Add an idea or valid source URL.", "warn"); }
+      if (motions.some((m) => !m)) { setBusy(false); return onToast(t("Tambah idea atau URL sumber yang sah.", "Add an idea or valid source URL."), "warn"); }
       const { error } = await supabase.from(TABLES.motions).insert(motions);
       setBusy(false);
       if (error) return onToast(errText(error), "danger");
-      onToast("In the video queue: choose the styles in Video → Motion, then press Start. No post or image draft created.", "ok");
+      onToast(t("Dalam barisan video: pilih gaya di Video → Motion, kemudian tekan Mula. Tiada draf post atau gambar dicipta.", "In the video queue: choose the styles in Video → Motion, then press Start. No post or image draft created."), "ok");
       onDone?.(); onClose(); return;
     }
     if (format === "carousel") common.make_slides = true;
@@ -201,7 +201,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
           <label className="block" data-writing-pick><Label hint={t("bagaimana kapsyen dibaca; peraturan tetap mengatasinya", "how the caption reads; the rules still outrank it")}>{t("Gaya penulisan", "Writing style")}</Label>
             <Select value={writingStyle} onChange={setWritingStyle} options={writingOptions(writingStyles.rows || [], t, motionSettings?.writing_style)} className="w-full" /></label>
         )}
-        <label className="flex items-center gap-2"><input type="checkbox" checked={outputMotion} onChange={e => setOutputMotion(e.target.checked)} />Motion only · no post/image draft</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={outputMotion} onChange={e => setOutputMotion(e.target.checked)} />{t("Motion sahaja · tiada draf post/gambar", "Motion only · no post/image draft")}</label>
         {outputMotion && <Select value={motionLanguage} onChange={setMotionLanguage} options={LANGUAGES} />}
         <div><Label>Media</Label><Segmented value={media} onChange={setMedia} options={[["image", t("Imej", "Image")], ["video", "Video"], ["none", t("Tiada", "None")]]} /></div>
         <div>

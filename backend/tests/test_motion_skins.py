@@ -112,3 +112,19 @@ def test_every_style_has_its_own_picture_look_and_shows_the_scene_picture():
     old = gi.scene_prompt({"brief": "x"}, {"heading": "y"}, design="bright-editorial", palette={"ground": "#e5f6ed"},
                           ambient="mint")
     assert "#e5f6ed" in old
+
+
+def test_the_whiteboard_style_is_drawn_by_hand_with_the_vendored_engine_and_says_whose_it_is():
+    src = mr.PROJECT / "src"
+    film = (src / "Film.jsx").read_text(encoding="utf-8")
+    assert 'skin === "whiteboard"' in film and "<Handboard" in film
+    vendor = src / "vendor" / "opuscar"
+    engine = (vendor / "wb.js").read_text(encoding="utf-8")
+    assert "MIT License, Copyright (c) 2026 LemoLab" in engine and "setScreen" in engine and "resetSeed" in engine
+    rest = engine.split("let SW = 1920, SH = 1080;")[1]
+    assert "1920" not in rest, "the screen size comes from the film, never a fixed 1920 x 1080"
+    notice = (vendor / "NOTICE.md").read_text(encoding="utf-8")
+    assert "MIT" in notice and "SIL Open Font License" in notice
+    import json
+    glyphs = json.loads((vendor / "EMSTech.json").read_text(encoding="utf-8"))["glyphs"]
+    assert all(ch in glyphs for ch in "ABCXYZabcxyz0123456789?.,:()-"), "the lettering covers what a Malay or English scene needs"

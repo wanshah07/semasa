@@ -784,7 +784,9 @@ export const SkinCaption = ({ text, skin }) => {
                   textShadow: skin === "comic" ? "0 0 6px #FFF4D6, 0 0 6px #FFF4D6, 0 0 12px #FFF4D6" : skin === "papercut" ? "0 0 8px #F6E7CB, 0 0 8px #F6E7CB"
                     : skin === "riso" ? "0 0 8px #F4EDE0, 0 0 8px #F4EDE0" : skin === "transit" ? "0 0 8px #F7F5EF, 0 0 8px #F7F5EF"
                     : skin === "swiss" ? "0 0 8px #fff, 0 0 8px #fff" : undefined }}>
-      <span style={{ display: "block", maxWidth: "100%" }}>{text}</span>
+      {/* on the hand-written board the camera travels, so writing can pass behind the subtitle: it sits on its own off-white label */}
+      <span style={skin === "whiteboard" ? { display: "block", maxWidth: "100%", background: "rgba(253,252,248,.94)", borderRadius: 14 * u,
+                     padding: `${12 * u}px ${26 * u}px`, boxShadow: `0 ${4 * u}px ${18 * u}px rgba(30,30,40,.18)` } : { display: "block", maxWidth: "100%" }}>{text}</span>
     </div>
   );
 };

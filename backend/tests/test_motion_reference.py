@@ -16,6 +16,8 @@ def test_a_link_is_a_repo_a_video_or_a_page():
     assert ref.kind_of("https://www.instagram.com/reel/abc/") == "video"
     assert ref.kind_of("https://drive.google.com/file/d/1/view") == "video"
     assert ref.kind_of("https://cdn.example.com/film.MP4?x=1") == "video"
+    assert ref.kind_of("https://www.threads.com/share/BAnGNW3BZy") == "video"        # Wan, 11 Nov 2026: two Threads motion videos
+    assert ref.kind_of("https://www.threads.net/@a/post/xyz") == "video"
     assert ref.kind_of("https://www.npra.gov.my/index.php/en/") == "page"
     assert ref.kind_of("https://github.com/heygen-com") == "page"            # an owner page is not a repo
     assert ref.kind_of("not a link") == "" and ref.kind_of(None) == ""
@@ -83,3 +85,36 @@ def test_the_writer_is_told_it_is_a_reference_video_not_a_repo():
     assert "STYLE REFERENCE (the reference video)" in user and "use none of its files, media" in user
     user = motion.build_user(row, "", "", style=("owner/repo", "README"))
     assert "STYLE REFERENCE (the motion repo owner/repo)" in user
+
+
+def test_a_threads_link_is_read_by_a_browser_not_by_yt_dlp(tmp_path, monkeypatch):
+    assert ref.is_threads("https://www.threads.com/share/BAnGNW3BZy") and ref.is_threads("https://threads.net/@a/post/1")
+    assert not ref.is_threads("https://www.youtube.com/watch?v=threads.com") and not ref.is_threads("https://notthreads.com/x")
+    monkeypatch.setattr(ref, "threads_video_url", lambda url, browser=None: "https://cdn.example.com/v.mp4")
+
+    class _Resp:
+        headers = {"content-type": "video/mp4"}
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, n):
+            yield b"0123456789"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+    seen = {}
+    monkeypatch.setattr(ref.requests, "get", lambda url, **kw: seen.update(url=url, ua=kw["headers"]["User-Agent"]) or _Resp())
+    got = ref.fetch("https://www.threads.com/share/BAnGNW3BZy", tmp_path)
+    assert got.read_bytes() == b"0123456789" and seen["url"] == "https://cdn.example.com/v.mp4" and "Mozilla" in seen["ua"]
+
+
+def test_a_threads_post_with_no_video_says_so_and_the_film_is_still_made(tmp_path, monkeypatch):
+    def none(url, browser=None):
+        raise ref.video.VideoError("that Threads post shows no video (a text post, a removed post, or Threads asked for a login)")
+    monkeypatch.setattr(ref, "threads_video_url", none)
+    name, text, note = ref.style("https://www.threads.com/@a/post/1", tmp_path, llm=None)
+    assert (name, text) == ("", "") and "shows no video" in note

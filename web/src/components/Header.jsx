@@ -6,6 +6,7 @@ import { supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { tabsOf } from "../lib/tabs";
 import Button from "./ui/Button";
+import GlassControl from "./GlassControl";
 
 /** BM / EN. `big`: the phone menu's version, each button a 44 px target. */
 export function LangSwitch({ big = false }) {
@@ -99,6 +100,7 @@ export default function Header({ tab, setTab, user, sidebar = false, navMode = "
           <div className={`items-center gap-2 ${onMenu ? "hidden lg:flex" : "flex"}`}>
             <LangSwitch />
             <ThemeSelect />
+            <GlassControl />
           </div>
           {onGuide && (
             <button type="button" onClick={onGuide} aria-label={t("Panduan", "Guide")} title={t("Panduan", "Guide")} data-guide

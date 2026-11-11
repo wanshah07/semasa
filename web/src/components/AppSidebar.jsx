@@ -5,6 +5,7 @@ import { supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { segmentOf, segmentsOf, tabsOf } from "../lib/tabs";
 import { LangSwitch, ThemeSelect } from "./Header";
+import GlassControl from "./GlassControl";
 
 const OPEN_MS = 120;    // a cursor passing on its way to the page does not open it
 const CLOSE_MS = 300;   // a cursor slipping off the edge for a moment does not close it
@@ -119,6 +120,7 @@ function MobileDrawer({ onClose, label, closeLabel, children }) {
           </button>
         </div>
         <div className="px-3 pt-2"><ThemeSelect big /></div>
+        <div className="px-3 pt-2"><GlassControl big /></div>
         <div className="min-h-0 flex-1">{children}</div>
       </div>
     </div>

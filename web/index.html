@@ -36,6 +36,10 @@
         } catch (e) {}
         try { dark = window.matchMedia("(prefers-color-scheme: dark)").matches; } catch (e) {}
         document.documentElement.setAttribute("data-theme", ids.indexOf(pick) >= 0 ? pick : dark ? "noir" : "facerinna");
+        // the glass look is on unless it was switched off (src/lib/glass.js sets the numbers once the app starts)
+        var glass = null;
+        try { glass = JSON.parse(localStorage.getItem("semasa.glass") || "null"); } catch (e) {}
+        document.documentElement.setAttribute("data-glass", glass && glass.on === false ? "off" : "on");
       })();
     </script>
   </head>

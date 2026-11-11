@@ -81,14 +81,17 @@ def _linkedin(**kw):
                  text={"en": {"linkedin": "A regulation changed. Here is what it means for a formulator."}}, **kw)
 
 
-def test_linkedin_is_scheduled_ahead_through_zernio_and_takes_a_carousel_or_a_film_only():
-    store, z = _store(_linkedin(slides=[])), FakeZernio()
+def test_linkedin_is_scheduled_ahead_through_zernio_and_takes_a_card_a_carousel_or_a_film_but_not_words_alone():
+    store, z = _store(_linkedin(slides=[])), FakeZernio()              # two slides: a carousel
     c = publisher.run(store, NOW, clients={"zernio": z})
     assert c["scheduled"] == 1 and z.created[0]["channel"] == "d" * 24 and z.created[0]["due_at"]   # no waiting for the slot
-    store, z = _store(_linkedin(), media=CARD), FakeZernio()
+    store, z = _store(_linkedin(), media=CARD), FakeZernio()          # a single card goes (Wan, 11 Nov: remove the blocker)
     c = publisher.run(store, NOW, clients={"zernio": z})
-    assert z.created == [] and c["error"] == 1
-    assert "linkedin takes a carousel or a Motion film; this post is a single card" in \
+    assert c["scheduled"] == 1 and len(z.created[0]["pictures"]) == 1
+    store, z = _store(_linkedin(media_ids=[])), FakeZernio()                   # no picture at all
+    c = publisher.run(store, NOW, clients={"zernio": z})
+    assert z.created == [] and c["error"] == 1                       # words only is still refused (Wan, 10 Nov)
+    assert "linkedin takes a carousel or a single card or a Motion film; this post is words only" in \
         store.tables["semasa_posts"][0]["errors"]["linkedin"]["message"]
 
 

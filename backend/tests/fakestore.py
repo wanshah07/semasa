@@ -161,6 +161,8 @@ class FakeStore:
         self.now = "2026-09-24T00:00:00+00:00"
         self.max_rows = None
         self.removed: list[tuple[str, list[str]]] = []
+        self.listing: dict[str, list[str]] = {}          # folder -> file names, what storage.list() answers
+        self.remove_error: Exception | None = None       # raised by storage.remove() when set
         store = self
 
         class _Bucket:
@@ -168,7 +170,12 @@ class FakeStore:
                 self.name = name
 
             def remove(self, paths):
+                if store.remove_error:
+                    raise store.remove_error
                 store.removed.append((self.name, list(paths)))
+
+            def list(self, folder):
+                return [{"name": n} for n in store.listing.get(folder, [])]
 
         self.storage = SimpleNamespace(from_=_Bucket)
 

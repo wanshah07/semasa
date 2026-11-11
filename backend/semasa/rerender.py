@@ -261,13 +261,78 @@ def requeue_threads(store: Any, zernio: Any, now: datetime | None = None, *, dry
     return result
 
 
+class _NoView:
+    """The no-double-post view the publisher keeps; a one-off send has none (the channel is known to be empty)."""
+    cache: dict[str, Any] = {}
+
+    def find(self, *a: Any, **k: Any) -> None:
+        return None
+
+    def claim(self, *a: Any, **k: Any) -> None:
+        return None
+
+    def add(self, *a: Any, **k: Any) -> None:
+        return None
+
+
+def send_now(store: Any, zernio: Any, post_id: str, channel: str, now: datetime | None = None) -> str:
+    """Send ONE channel of an approved or scheduled post right now, past the publisher's 45-minute lateness rule (Wan, 11 Nov
+    2026: "send it now"): for a post whose slot passed while Threads was refusing it. The channel must be empty, the post must
+    pass the same blocker checks as the dry run, and the record is written as the publisher would write it. Returns a line."""
+    from . import compliance, preflight
+    now = now or datetime.now(UTC)
+    settings = publisher.load_settings(store)
+    rows = store.table(db.POSTS).select("*").eq("id", post_id).limit(1).execute().data or []
+    if not rows:
+        return f"no post {post_id}"
+    post = rows[0]
+    published = dict(post.get("published") or {})
+    if post.get("status") not in ("approved", "scheduled"):
+        return f"not sent: the post is {post.get('status')}"
+    if published.get(channel):
+        return f"not sent: {channel} already has a record ({published[channel].get('status')})"
+    zacc = publisher.zernio_accounts((settings.get("channels") or {}).get("zernio") or {}).get(channel)
+    if not zacc or zernio is None:
+        return f"not sent: Zernio does not carry {channel} here"
+    media = publisher.media_for(store, list(post.get("media_ids") or []))
+    blockers = [f"{f['channel']}: {f['message']}" for f in preflight.check_post(post, media, settings)
+                if f["level"] == "block" and f["channel"] in (channel, "*")]
+    scan_post = {**post, "media": [publisher.scan_entry(m) for m in media if m.get("status") == "done"]}
+    blockers += [f"{f['where']}: {f['msg']}" for f in compliance.scan(scan_post) if f["hard"]]
+    if blockers:
+        return "not sent: " + "; ".join(blockers)[:300]
+    pictures = [u for m in media for u in publisher.pictures_of(m)]
+    video = next((v for v in (publisher.video_of(m) for m in media) if v), None)
+    alt = " ".join(str((m.get("meta") or {}).get("alt") or "") for m in media).strip()
+    text = compliance.text_of(post, channel, compliance.lang_of(post))
+    rec = publisher._send_buffer(zernio, _NoView(), zacc["id"], channel, text, pictures, alt, now, now, video, post["id"],
+                                 route="zernio")
+    published[channel] = rec
+    errors = {k: v for k, v in (post.get("errors") or {}).items() if k != channel}
+    patch: dict[str, Any] = {"published": published, "errors": errors}
+    chans = publisher.post_channels(settings, post, has_video=bool(video))
+    if chans and all(published.get(c) for c in chans):
+        patch["status"] = "posted" if all(published[c].get("status") == "sent" for c in chans) else "scheduled"
+    store.table(db.POSTS).update(patch).eq("id", post["id"]).execute()
+    db.log_event(store, "info", "publish", "publish.sent_now", f"{channel} dihantar sekarang (slot sudah lepas): {post_id[:8]}",
+                 ref_table=db.POSTS, ref_id=post["id"], detail={"channel": channel, "status": rec.get("status")})
+    return f"{channel} sent now: {rec.get('status')} {rec.get('url') or ''}".strip()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry", action="store_true")
     ap.add_argument("--only", default="")
+    ap.add_argument("--send-now", default="", help="send ONE channel of this post now, past the lateness rule")
+    ap.add_argument("--channel", default="threads")
     ap.add_argument("--threads", action="store_true", help="queue the Threads posts that have a line of hashtags alone again")
     args = ap.parse_args()
     store = db.client(SupabaseSettings.load())
+    if args.send_now:
+        clients = publisher.make_clients(publisher.load_settings(store))
+        line = send_now(store, clients.get("zernio"), args.send_now, args.channel)
+        print(line)
+        return 0 if " sent now" in line else 1
     if args.threads:
         clients = publisher.make_clients(publisher.load_settings(store)) if not args.dry else {}
         res = requeue_threads(store, clients.get("zernio"), dry=args.dry)

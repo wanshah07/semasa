@@ -15,6 +15,14 @@ on:
         description: "Comma-separated post ids (empty = every candidate)"
         type: string
         default: ""
+      send_now:
+        description: "Send ONE channel of this post id now (past the lateness rule); needs `channel`"
+        type: string
+        default: ""
+      channel:
+        description: "Channel for send_now"
+        type: string
+        default: "threads"
       threads:
         description: "Instead: queue the Threads posts whose caption has a line of hashtags alone again"
         type: boolean
@@ -58,8 +66,14 @@ jobs:
           DRY: ${{ inputs.dry }}
           ONLY: ${{ inputs.only }}
           THREADS: ${{ inputs.threads }}
+          SEND_NOW: ${{ inputs.send_now }}
+          CHANNEL: ${{ inputs.channel }}
         run: |
           args=""
           if [ "$DRY" = "true" ]; then args="--dry"; fi
           if [ "$THREADS" = "true" ]; then args="$args --threads"; fi
+          if [ -n "$SEND_NOW" ]; then
+            python -m semasa.rerender --send-now "$SEND_NOW" --channel "$CHANNEL"
+            exit $?
+          fi
           python -m semasa.rerender $args --only "$ONLY"

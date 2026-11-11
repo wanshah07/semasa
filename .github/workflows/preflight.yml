@@ -1,0 +1,45 @@
+name: Dry run of every queued post
+
+# By hand only (Wan, 11 Nov 2026: "try dry run for each platform post to avoid similar failed post"). Builds the exact request
+# the Zernio sender would make for every upcoming approved or scheduled post on each of its channels, checks it against what each
+# platform takes, and with `live` reads Zernio back for the posts already handed over. Read-only: nothing is sent or written to a
+# post. See backend/semasa/preflight.py.
+on:
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Also read Zernio back for the posts already handed over"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Check
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ZERNIO_API_KEY_1: ${{ secrets.ZERNIO_API_KEY_1 }}
+          ZERNIO_API_KEY_2: ${{ secrets.ZERNIO_API_KEY_2 }}
+          ZERNIO_API_KEY_3: ${{ secrets.ZERNIO_API_KEY_3 }}
+          LIVE: ${{ inputs.live }}
+        run: |
+          args=""
+          if [ "$LIVE" = "true" ]; then args="--live"; fi
+          python -m semasa.preflight $args

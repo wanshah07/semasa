@@ -111,6 +111,10 @@ def zernio_rows(post: dict[str, Any], index: dict[str, str], now: datetime) -> l
         row: dict[str, Any] = {k: None for k in COUNTS}
         for theirs, ours in ZERNIO_FIELDS.items():
             row[ours] = _int(a.get(theirs))
+        # Zernio sends 0, not null, for a figure a network does not report: LinkedIn has impressions and no views (94 and 0
+        # on 11 Nov 2026). A zero beside a real impression count is "not reported", or the page would show 0 views.
+        if not row["views"] and row["impressions"]:
+            row["views"] = None
         try:
             engagement = round(float(a["engagementRate"]), 2) if a.get("engagementRate") is not None else None
         except (TypeError, ValueError):
@@ -147,6 +151,15 @@ def process_zernio(store: Any, settings: dict[str, Any], hub: Any, now: datetime
     for i in range(0, len(rows), 100):
         store.table(db.POST_METRICS).upsert(rows[i:i + 100], on_conflict="source,external_id").execute()
         counts["written"] += len(rows[i:i + 100])
+    logins = getattr(hub, "last_analytics", None)
+    if isinstance(logins, list):
+        counts["logins"] = logins                    # what each Zernio login answered, for the log
+        for login in logins:
+            if login.get("access") is False or not login.get("posts"):
+                why = "has no analytics access" if login.get("access") is False else "returned no post with figures"
+                db.log_event(store, "warn", "metrics", "metrics.zernio_empty",
+                             f"Prestasi: the Zernio login holding {', '.join(login.get('accounts') or [])} {why}"[:300],
+                             detail=login)
     return counts
 
 
@@ -220,7 +233,7 @@ def run(store: Any, now: datetime | None = None, client: Any | None = None, hub:
     if hub is not None:
         try:
             zcounts = process_zernio(store, settings, hub, now)
-            counts = {k: counts[k] + zcounts[k] for k in counts}
+            counts = {k: counts[k] + int(zcounts.get(k) or 0) for k in counts}
         except senders.SendError as exc:
             db.log_event(store, "error", "metrics", "metrics.failed", f"Prestasi (Zernio): {exc.message}"[:300])
             failed = failed or exc

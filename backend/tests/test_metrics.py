@@ -136,3 +136,48 @@ def test_table_refusing_zernio_is_a_warning_not_a_failure():
     store = _store([])
     assert metrics.run(store, NOW, FakeBuffer([]), Refusing([]))["written"] == 0
     assert any(r["event"] == "metrics.zernio_blocked" for r in store.tables[db.LOG])
+
+
+def test_a_login_that_answers_nothing_is_named_in_the_log():
+    hub = FakeHub([_zpost("z3", ["threads"])])
+    hub.last_analytics = [{"accounts": ["acc-fb", "acc-li"], "posts": 0, "access": False, "platforms": {}},
+                          {"accounts": ["acc-th"], "posts": 1, "access": True, "platforms": {"threads": 1}}]
+    store = _store([])
+    metrics.run(store, NOW, FakeBuffer([]), hub)
+    warned = [r for r in store.tables[db.LOG] if r["event"] == "metrics.zernio_empty"]
+    assert len(warned) == 1 and "acc-fb, acc-li" in warned[0]["title"] and "no analytics access" in warned[0]["title"]
+
+
+def test_zernio_login_falls_back_to_unfiltered_and_keeps_only_its_own_posts():
+    from semasa.senders import Zernio
+
+    class Http:
+        def __init__(self):
+            self.asked = []
+
+        def request(self, method, url, **kw):
+            self.asked.append(kw["params"].get("source"))
+            posts = [] if kw["params"].get("source") == "late" else [
+                {"postId": "e1", "latePostId": "z1", "isExternal": False, "platformAnalytics": [{"platform": "facebook"}]},
+                {"postId": "e2", "latePostId": None, "isExternal": True, "platformAnalytics": [{"platform": "facebook"}]}]
+
+            class R:
+                status_code = 200
+
+                @staticmethod
+                def json():
+                    return {"posts": posts, "hasAnalyticsAccess": True}
+            return R()
+
+    http = Http()
+    z = Zernio("k", session=http, sleep=lambda s: None)
+    rows = z.analytics("2026-10-01", "2026-11-12")
+    assert [r["latePostId"] for r in rows] == ["z1"] and http.asked == ["late", None]
+    assert z.last_analytics == {"posts": 1, "access": True, "fallback": True, "platforms": {"facebook": 1}}
+
+
+def test_zero_views_beside_impressions_is_not_reported():
+    post = _zpost("z5", ["linkedin"])
+    post["platformAnalytics"][0]["analytics"].update({"views": 0, "impressions": 94})
+    row = metrics.zernio_rows(post, {}, NOW)[0]
+    assert row["views"] is None and row["impressions"] == 94

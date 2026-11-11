@@ -89,4 +89,10 @@ t("daily series and the channel split", () => {
   assert.deepEqual(ranked(filterRows(ROWS, { days: 30, today: TODAY })).slice(0, 3).map((r) => r.id), [1, 4, 3]);
 });
 
+t("zero views beside impressions reads the impressions (LinkedIn through Zernio)", () => {
+  assert.equal(viewsOf({ views: 0, impressions: 94 }), 94);
+  assert.equal(viewsOf({ views: 12, impressions: 94 }), 12);
+  assert.equal(viewsOf({ views: null, impressions: null, reach: 7 }), 7);
+});
+
 console.log(`analytics: ${n} checks passed`);

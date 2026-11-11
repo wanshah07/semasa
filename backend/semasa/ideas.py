@@ -35,6 +35,7 @@ from . import (
     hook_bank,
     hook_learning,
     language,
+    lenggok,
     modes,
     my_designs,
     proofread,
@@ -178,6 +179,8 @@ corporate phrasing, no stiff headings. Casual never means loose with facts: ever
 The FIRST LINE is the hook, built on the hook shape given below. The LAST LINE before the hashtags is ONE short, friendly
 invitation to follow for more of this (for example "Follow untuk tip regulatori yang senang faham."). That follow line is
 the only ask allowed.
+
+""" + lenggok.RULE + """
 
 Rules. Breaking any of them blocks the post, so follow them exactly:
 1. No call to action except the one follow invitation above: never "hubungi kami", "komen", "simpan post", "kongsi", "DM/PM",

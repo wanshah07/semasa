@@ -112,3 +112,26 @@ def test_there_are_thirteen_modes_each_with_a_name_in_both_languages_and_the_ori
 
 def test_a_checklist_cue_no_longer_makes_a_how_to():
     assert modes.choose("Senarai semak dokumen sebelum mohon", [])[0] == "checklist"
+
+
+# ---- the lenggok of the Malay (Wan, 11 Nov 2026: "tidak kekok atau baku sangat, make more casual")
+def test_the_malay_writers_are_told_to_sound_like_a_malaysian_not_a_textbook():
+    from semasa import lenggok
+    assert "%" not in lenggok.RULE, "ideas.REGULAB_SYSTEM is filled with the % operator"
+    assert lenggok.RULE in ideas.REGULAB_SYSTEM and "HOW IT SOUNDS" in ideas.REGULAB_SYSTEM
+    assert (ideas.REGULAB_SYSTEM % ideas.DOMAINS).count("LENGGOK") == 1
+    assert "never Indonesian" in motion.MALAY_RULE
+    for stiff in ("adalah", "merupakan", "terdapat", "anda"):
+        assert stiff in lenggok.RULE, f"the rule names '{stiff}' as the stiff word to drop"
+    for casual in ("tak", "dah", "korang", "kena"):
+        assert casual in lenggok.RULE
+    assert "—" not in lenggok.RULE, "no em dash"
+    system = motion.build_script_system({"stream": "regulab", "seconds": 30, "language": "bm", "voice": "male",
+                                         "options": {"mode": "explainer"}}, "")
+    assert "LENGGOK" in system, "the film writer gets it for a Malay film"
+    english = motion.build_script_system({"stream": "regulab", "seconds": 30, "language": "en", "voice": "male",
+                                          "options": {"mode": "explainer"}}, "")
+    assert "LENGGOK" not in english, "an English film is never nudged towards Malay"
+    both = motion.build_script_system({"stream": "regulab", "seconds": 30, "language": "both", "voice": "male",
+                                       "options": {"mode": "explainer"}}, "")
+    assert "LENGGOK" in both

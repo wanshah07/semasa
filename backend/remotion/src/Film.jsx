@@ -8,6 +8,7 @@ import { AbsoluteFill, Easing, Img, Sequence, continueRender, delayRender, inter
 import jakarta from "@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2";
 import jakartaExt from "@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-ext-wght-normal.woff2";
 import { SkinCaption, SkinGround, SkinScene, isSkin } from "./Skins.jsx";
+import { Handboard } from "./Handboard.jsx";
 
 /* Plus Jakarta Sans for every film, whatever its style (Wan, 11 Nov 2026: "guna font plus jakarta sans untuk semua jenis format") */
 const FONT = '"Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif';
@@ -193,6 +194,26 @@ export const Film = ({ scenes, palette, outro, fps, bg, design, backdrop, skin }
   if (isSkin(skin)) {
     /* one of the seven 2D styles (Skins.jsx): its own ground under the whole film, its own scenes and subtitles. Only the
        closing card is shared: the logo and the follow line are the brand's, whatever the style */
+    if (skin === "whiteboard") {
+      /* the whiteboard is one board for the whole film, written by hand (Handboard.jsx), not a scene at a time */
+      const body = scenes.filter((s) => s.id !== "brand-outro");
+      const last = body[body.length - 1];
+      return (
+        <AbsoluteFill style={{ background: "#fbfbf9" }}>
+          {body.length ? (
+            <Sequence from={0} durationInFrames={Math.max(1, f(last.start + last.duration))}><Handboard scenes={body} /></Sequence>
+          ) : null}
+          {scenes.filter((s) => s.id === "brand-outro" && outro).map((s) => (
+            <Sequence key={s.id} from={f(s.start)} durationInFrames={Math.max(1, f(s.duration))}><Outro outro={outro} /></Sequence>
+          ))}
+          {scenes.flatMap((s) => (s.captions || []).map(([text, a, b], i) => (
+            <Sequence key={`${s.id}-c${i}`} from={f(a)} durationInFrames={Math.max(1, f(b) - f(a))}>
+              <SkinCaption text={text} skin={skin} />
+            </Sequence>
+          )))}
+        </AbsoluteFill>
+      );
+    }
     return (
       <AbsoluteFill style={{ background: "#000" }}>
         <SkinGround skin={skin} />

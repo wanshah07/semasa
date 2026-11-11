@@ -37,7 +37,7 @@ NAMES = {
     "blueprint": ("Pelan biru", "Blueprint", "white technical line work on Prussian blue, numbered balloons"),
     "transit": ("Peta transit", "Transit map", "each point is a stop on one red line across a printed map"),
     "swiss": ("Grafik Swiss", "Swiss graphic", "white paper, black type on a grid and one red circle"),
-    "whiteboard": ("Papan putih", "Whiteboard", "blue marker on a glossy board, red underline, green ticks"),
+    "whiteboard": ("Papan putih", "Whiteboard", "written by hand, stroke by stroke, by floating markers on one glossy board"),
 }
 LEGACY = {"bright-editorial": "Design 1", "continuous-line": "Design 2", "blur-photo": "Design 3", "blur-full": "Design 4"}
 KEEP_APART = 3            # a style is not picked again while it is among the last three used

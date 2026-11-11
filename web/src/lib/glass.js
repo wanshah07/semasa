@@ -17,8 +17,8 @@ export const DEFAULT_GLASS = { on: true, blur: 18, opacity: 0.74, saturation: 1.
    IMAGE_SCRIM, and a card's opacity cannot go under IMAGE_MIN_OPACITY while a picture is on. glass.test.mjs checks every
    theme against a pure black and a pure white picture, the two worst cases. */
 export const IMAGE_KEY = "semasa.glass.image";
-export const IMAGE_SCRIM = 0.7;
-export const IMAGE_MIN_OPACITY = 0.86;
+export const IMAGE_SCRIM = 0.4;
+export const IMAGE_MIN_OPACITY = 0.92;
 export const GROUNDS = ["g_makmal01.jpg", "g_makmal02.jpg", "g_dokumen01.jpg", "g_kilang01.jpg", "g_gudang01.jpg", "g_rak01.jpg"];
 const validImage = (v) => (v === "custom" || (typeof v === "string" && v.startsWith("ground:") && GROUNDS.includes(v.slice(7))) ? v : "");
 export const minOpacity = (glass) => (glass && glass.image ? IMAGE_MIN_OPACITY : MIN_OPACITY);

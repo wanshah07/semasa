@@ -51,7 +51,8 @@ def test_entry_block_uses_the_kinds_own_fields():
     faq = _entry(id="f", kind="faq", title="Jual produk dibatalkan", question="Boleh jual?", answer="Tidak.", body="")
     blk = brain_ask.entry_block(faq, 3)
     assert blk.startswith("[3] faq: Jual produk dibatalkan") and "Soalan: Boleh jual?" in blk and "Jawapan: Tidak." in blk
-    skill = _entry(id="s", kind="skill", title="Semak notifikasi", data={"when": "Sebelum jual", "steps": ["Buka Quest3+", "Cari"]}, body="")
+    skill = _entry(id="s", kind="skill", title="Semak notifikasi",
+                   data={"when": "Sebelum jual", "steps": ["Buka Quest3+", "Cari"]}, body="")
     blk2 = brain_ask.entry_block(skill, 1)
     assert "Bila guna: Sebelum jual" in blk2 and "Langkah 1: Buka Quest3+" in blk2
 

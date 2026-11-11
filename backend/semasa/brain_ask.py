@@ -207,7 +207,8 @@ def process(store: Any, llm: Any, now: datetime, limit: int = PER_RUN) -> dict[s
                 raise RuntimeError("no AI gateway is set up (LLM_API_KEY / the AI tab)")
             lang = row.get("lang") if row.get("lang") in LANGS else "ms"
             entries = store.table(db.BRAIN_ENTRIES).select(
-                "id,kind,category,title,summary,body,question,answer,tags,data,source_url,pinned").limit(3000).execute().data or []
+                "id,kind,category,title,summary,body,question,answer,"
+                "tags,data,source_url,pinned").limit(3000).execute().data or []
             materials = retrieve(entries, q)
             if not materials:
                 counts["empty"] += 1

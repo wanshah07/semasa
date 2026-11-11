@@ -161,3 +161,146 @@ def closing_jpeg(index: int, total: int, *, ground: bytes | None = None, size: t
     buf = io.BytesIO()
     closing_card(index, total, ground=ground, size=size).save(buf, "JPEG", quality=quality, optimize=True, progressive=True)
     return buf.getvalue()
+
+
+# --- the cover (Wan, 11 Nov 2026) -------------------------------------------------------------------------------------------
+# "for instagram & tiktok, create cover page so the tile pages look aesthetic, the cover must contain the ws.regulab logo and
+# the hook title." Instagram's profile grid shows a post by its FIRST picture, cropped to 3:4 (a Reel's 9:16 is cropped top and
+# bottom to the same shape), and TikTok shows the opening frame. So the first picture of every ws.regulab carousel, and the
+# opening frames of every ws.regulab film, are this one branded cover: deep green, the white ws.regulab logo, the hook title
+# big, kept inside the part the grid does not crop. Drawn, never written: the hook stays the post's words and the caption
+# does not change.
+
+GREEN_TOP = (6, 46, 29)
+GREEN_BOTTOM = (4, 104, 101)           # the two ends of the logo's own green-to-teal
+COVER_GOLD = (246, 206, 160)
+COVER_CREAM = (244, 240, 232)
+COVER_SECONDS = 1.1                    # the cover frame at the start of a film (TikTok takes its cover at 1.0 s by default)
+
+
+def _gradient(size: tuple[int, int]) -> Image.Image:
+    w, h = size
+    mask = Image.linear_gradient("L").resize((w, h))
+    return Image.composite(Image.new("RGB", size, GREEN_BOTTOM), Image.new("RGB", size, GREEN_TOP), mask)
+
+
+def _glow(canvas: Image.Image) -> None:
+    """A soft lighter patch top right: the cover reads as a lit surface, not a flat fill."""
+    from PIL import ImageFilter
+    w, h = canvas.size
+    layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(layer).ellipse([w * 0.35, -h * 0.18, w * 1.25, h * 0.42], fill=(120, 210, 190, 46))
+    layer = layer.filter(ImageFilter.GaussianBlur(w * 0.12))
+    canvas.paste(layer, (0, 0), layer)
+
+
+def _watermark(canvas: Image.Image) -> None:
+    """The logo's mark, very faint and large, bleeding off the bottom right corner."""
+    w, h = canvas.size
+    mark = _logo(round(w * 0.9), white=True)
+    mark = mark.crop((0, 0, mark.width, round(mark.height * 0.5)))
+    alpha = mark.getchannel("A").point(lambda v: round(v * 0.07))
+    mark.putalpha(alpha)
+    canvas.paste(mark, (round(w * 0.42), round(h * 0.70)), mark)
+
+
+def _balanced(text: str, font: Any, width: float) -> list[Any]:
+    """The title wrapped to the same number of lines it needs at full width, as narrow as that allows: the lines come out even
+    and a lone word is not left on the last line."""
+    lines = slides.wrap(text, font, width)
+    if len(lines) < 2:
+        return lines
+    w = width
+    while w > width * 0.6:
+        w -= width * 0.02
+        trial = slides.wrap(text, font, w)
+        if len(trial) != len(lines):
+            break
+        best = trial
+        lines = best
+    return lines
+
+
+def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes | None = None,
+               size: tuple[int, int] | None = None) -> Image.Image:
+    """The branded cover: logo, a gold rule, the domain, the hook title, a short supporting line. Everything sits in a block
+    centred inside the part of the picture an Instagram grid tile keeps (for a tall film frame, the middle three quarters of
+    the height). A hook that is too long for the cover is drawn smaller, never cut."""
+    if not LOGO.exists():
+        raise SlideError("the ws.regulab logo file is missing (rules/motion/official-logo-transparent.png)")
+    w, h = size or slides.SIZES["regulab"]
+    if ground:
+        canvas, _ = slides.background((w, h), ground)
+        wash = _gradient((w, h)).convert("RGBA")
+        wash.putalpha(214)
+        canvas = canvas.convert("RGBA")
+        canvas.alpha_composite(wash)
+        canvas = canvas.convert("RGB")
+    else:
+        canvas = _gradient((w, h))
+    _glow(canvas)
+    _watermark(canvas)
+    d = ImageDraw.Draw(canvas)
+
+    margin = round(w * 0.11)
+    col = w - 2 * margin
+    band = h * (0.62 if h / w > 1.6 else 0.80)            # the vertical room the block may use: inside the grid's crop
+    logo = _logo(round(w * 0.46), white=True)
+    small = slides._font(slides.BODY_BOLD, round(w * 0.026))
+    label = slides.eyebrow_text(eyebrow, small, col) if eyebrow.strip() else ""
+    body_font = slides._font(slides.BODY, round(w * 0.036))
+    lead_lines = slides.wrap(_clean(lead), body_font, col) if _clean(lead) else []
+    if len(lead_lines) > 3:
+        raise SlideError("the supporting line is too long for the cover")
+    body_lh = round(body_font.size * 1.4)
+    gap = round(w * 0.05)
+    fixed = logo.height + gap + 4 + gap + (round(small.size * 1.4) + round(gap * 0.5) if label else 0)
+    fixed += (len(lead_lines) * body_lh + round(gap * 0.7)) if lead_lines else 0
+
+    size_px = round(w * 0.108)
+    floor = round(w * 0.05)
+    while True:
+        font = slides._font(slides.DISPLAY, size_px)
+        lines = _balanced(_clean(title), font, col)
+        lh = round(font.size * 1.1)
+        if fixed + len(lines) * lh <= band or size_px <= floor:
+            break
+        size_px -= 4
+    total = fixed + len(lines) * lh
+    y = round((h - total) / 2)
+
+    canvas.paste(logo, ((w - logo.width) // 2, y), logo)
+    y += logo.height + gap
+    d.line([w // 2 - 44, y, w // 2 + 44, y], fill=COVER_GOLD, width=4)
+    y += 4 + gap
+    if label:
+        d.text(((w - small.getlength(label)) / 2, y), label, font=small, fill=COVER_GOLD)
+        y += round(small.size * 1.4) + round(gap * 0.5)
+    for line in lines:                                     # centred, one line at a time
+        x = (w - line.width) / 2
+        space = font.getlength(" ")
+        cx = x
+        for i, run in enumerate(line.runs):
+            if i:
+                cx += space
+            d.text((cx, y), run.text, font=font, fill=COVER_GOLD if run.emph else (255, 255, 255))
+            cx += font.getlength(run.text)
+        y += lh
+    if lead_lines:
+        y += round(gap * 0.7)
+        for line in lead_lines:
+            cx = (w - line.width) / 2
+            for i, run in enumerate(line.runs):
+                if i:
+                    cx += body_font.getlength(" ")
+                d.text((cx, y), run.text, font=body_font, fill=COVER_CREAM)
+                cx += body_font.getlength(run.text)
+            y += body_lh
+    return canvas
+
+
+def cover_jpeg(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes | None = None,
+               size: tuple[int, int] | None = None, quality: int = 92) -> bytes:
+    buf = io.BytesIO()
+    cover_card(title, lead, eyebrow, ground=ground, size=size).save(buf, "JPEG", quality=quality, optimize=True)
+    return buf.getvalue()

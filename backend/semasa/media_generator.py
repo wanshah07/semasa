@@ -703,6 +703,16 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                 if n == len(attempts) - 1:
                     raise
                 log.info("%s: the squeezed carousel did not fit; drawn as written", row_id)
+        cover = False
+        first = items[0] if items else {}
+        if not kind and stream != "linkedin" and len(pics) >= 2 and not first.get("points") and not first.get("note"):
+            # picture 1 is the branded cover (logo + the hook): what Instagram's profile grid shows for the post
+            try:
+                pics = [carousel.cover_jpeg(first.get("title") or "", first.get("lead") or "", eyebrow, ground=ground, size=size),
+                        *pics[1:]]
+                cover = True
+            except Exception as exc:  # noqa: BLE001 - the slide as drawn stands: a cover is never worth a failed render
+                log.info("%s: no cover (%s); the first slide stands", row_id, str(exc)[:120])
         closing = not kind and carousel.has_logo_card(stream, len(pics))
         if closing:
             pics = [*pics, carousel.closing_jpeg(len(pics), len(pics) + 1, ground=ground, size=size)]
@@ -719,7 +729,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             meta.pop("revise", None)
             meta.setdefault("revisions", []).append({"note": note, "at": datetime.now(UTC).isoformat()})
         meta.update(slides=items, slide_urls=urls, slide_paths=paths, sha256=sums, count=len(urls), look=look,
-                    closing_logo=closing, squeezed_from=(len(items) if joined else None), bg_used=ground_id,
+                    cover=cover, closing_logo=closing, squeezed_from=(len(items) if joined else None), bg_used=ground_id,
                     content_type="image/jpeg", bytes=sum(len(p) for p in pics),
                     finished_at=datetime.now(UTC).isoformat())
         if style.get("url"):

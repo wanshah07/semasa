@@ -32,8 +32,8 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install
         run: |
-          bash ../.github/scripts/ensure-ffmpeg.sh        # ffmpeg and ffprobe without apt
           pip install -r requirements.txt
+          bash ../.github/scripts/ensure-ffmpeg.sh        # ffmpeg and ffprobe without apt
       - name: Read the style
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

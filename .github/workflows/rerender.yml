@@ -54,8 +54,8 @@ jobs:
         run: |
           # ubuntu-latest no longer ships ffmpeg (motion.yml, 24 Oct 2026); the film cover is an ffmpeg step, and its absence
           # made all nine covers fail on 11 Nov 2026 ("the cover could not be added")
-          bash ../.github/scripts/ensure-ffmpeg.sh        # ffmpeg and ffprobe without apt
           pip install -r requirements.txt
+          bash ../.github/scripts/ensure-ffmpeg.sh        # ffmpeg and ffprobe without apt
       - name: Redraw
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

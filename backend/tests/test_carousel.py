@@ -181,3 +181,15 @@ def test_a_first_slide_with_points_keeps_its_own_drawing(worker):
     row = _job("regulab", items)
     assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
     assert saved["meta"]["cover"] is False                       # its words are not all on a cover, so they are not dropped
+
+
+def test_a_hook_with_one_line_under_it_gets_the_cover_and_a_content_slide_does_not():
+    hook = {"title": "Semua org ckp sunscreen *non-comedogenic* sesuai untuk kulit acne",
+            "points": ["Realitinya itu cuma dakwaan label, bukan jaminan."]}
+    assert carousel.cover_words(hook) == (hook["title"], hook["points"][0])
+    assert carousel.cover_words({"title": "Hook", "lead": "baris sokongan", "points": []}) == ("Hook", "baris sokongan")
+    assert carousel.cover_words({"title": "Hook"}) == ("Hook", "")
+    assert carousel.cover_words({"title": "Tiga fakta", "points": ["satu", "dua"]}) is None       # a content slide stays
+    assert carousel.cover_words({"title": "Hook", "points": ["satu"], "note": "nota"}) is None
+    assert carousel.cover_words({"points": ["tiada tajuk"]}) is None and carousel.cover_words(None) is None
+    carousel.cover_jpeg(*carousel.cover_words(hook))                                                  # and it draws

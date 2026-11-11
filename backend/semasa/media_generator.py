@@ -704,15 +704,17 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                     raise
                 log.info("%s: the squeezed carousel did not fit; drawn as written", row_id)
         cover = False
-        first = items[0] if items else {}
-        if not kind and stream != "linkedin" and len(pics) >= 2 and not first.get("points") and not first.get("note"):
-            # picture 1 is the branded cover (logo + the hook): what Instagram's profile grid shows for the post
-            try:
-                pics = [carousel.cover_jpeg(first.get("title") or "", first.get("lead") or "", eyebrow, ground=ground, size=size),
-                        *pics[1:]]
-                cover = True
-            except Exception as exc:  # noqa: BLE001 - the slide as drawn stands: a cover is never worth a failed render
-                log.info("%s: no cover (%s); the first slide stands", row_id, str(exc)[:120])
+        words = carousel.cover_words(items[0] if items else None)
+        if not kind and stream != "linkedin" and len(pics) >= 2 and words:
+            # picture 1 is the branded cover (logo + the hook): what Instagram's profile grid shows for the post. A
+            # supporting line too long for the cover is left off rather than costing the cover itself.
+            for lead in dict.fromkeys((words[1], "")):
+                try:
+                    pics = [carousel.cover_jpeg(words[0], lead, eyebrow, ground=ground, size=size), *pics[1:]]
+                    cover = True
+                    break
+                except Exception as exc:  # noqa: BLE001 - the slide as drawn stands: a cover is never worth a failed render
+                    log.info("%s: no cover (%s); the first slide stands", row_id, str(exc)[:120])
         closing = not kind and carousel.has_logo_card(stream, len(pics))
         if closing:
             pics = [*pics, carousel.closing_jpeg(len(pics), len(pics) + 1, ground=ground, size=size)]

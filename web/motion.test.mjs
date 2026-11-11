@@ -9,7 +9,7 @@ assert.equal(clampSeconds("14.6"), 30);
 assert.deepEqual(motionRow({}), { error: "empty" });
 assert.deepEqual(motionRow({ url: "github.com/x" }), { error: "url" });
 const ok = motionRow({ brief: "  PFAS  ", url: "", stream: "linkedin", resolution: "square", seconds: "20" }, "u1");
-assert.deepEqual(ok.row, { brief: "PFAS", source_url: "", stream: "linkedin", language: "en", resolution: "square", seconds: 30, status: "pending", options: { style: "bright-education", mode: "auto", design: "bright-editorial", ambient: "mint", effects:["B04"], effect_mode:"auto", asset_mode:"auto", assets:[], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true} }, style_repo_id: null, ai_background: false, created_by: "u1", voice: "auto", mascot: "" });
+assert.deepEqual(ok.row, { brief: "PFAS", source_url: "", stream: "linkedin", language: "en", resolution: "square", seconds: 30, status: "pending", options: { style: "bright-education", mode: "auto", design: "auto", ambient: "mint", effects:["B04"], effect_mode:"auto", asset_mode:"auto", assets:[], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true} }, style_repo_id: null, ai_background: false, created_by: "u1", voice: "auto", mascot: "" });
 // the voice: Wan can choose it or turn it off
 assert.equal(motionRow({ brief: "x", voice: "female" }).row.voice, "female");
 assert.equal(motionRow({ brief: "x", voice: "nope" }).row.voice, "auto");
@@ -50,10 +50,10 @@ assert.deepEqual(motionRepoRow("https://github.com/heygen-com/hyperframes/tree/m
   { url: "https://github.com/heygen-com/hyperframes", full_name: "heygen-com/hyperframes", note: "motion style", category: "motion", category_by: "wan", status: "pending", created_by: "u1" });
 assert.equal(motionRepoRow("skills.sh"), null);
 const idea = { id: "i1", source_title: "NPRA batalkan 12 produk", note: "tekankan label", source_summary: "Ringkasan.", source_url: "https://npra.gov.my/x", stream: "regulab" };
-assert.deepEqual(motionFromIdea(idea, "u1"), { brief: "NPRA batalkan 12 produk\nWan: tekankan label\nRingkasan.", source_url: "https://npra.gov.my/x", stream: "regulab", language: "en", resolution: "portrait", seconds: 30, status: "waiting", idea_id: "i1", ai_background: false, options: { style: "bright-education", mode: "auto", design: "bright-editorial", ambient: "mint", effects:["B04"], effect_mode:"auto", asset_mode:"auto", assets:[], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true}, evidence: {source_url: idea.source_url, source_title: idea.source_title, source_summary: idea.source_summary, id: idea.id} }, style_repo_id: null, voice: "auto", mascot: "", created_by: "u1" });
+assert.deepEqual(motionFromIdea(idea, "u1"), { brief: "NPRA batalkan 12 produk\nWan: tekankan label\nRingkasan.", source_url: "https://npra.gov.my/x", stream: "regulab", language: "en", resolution: "portrait", seconds: 30, status: "waiting", idea_id: "i1", ai_background: false, options: { style: "bright-education", mode: "auto", design: "auto", ambient: "mint", effects:["B04"], effect_mode:"auto", asset_mode:"auto", assets:[], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true}, evidence: {source_url: idea.source_url, source_title: idea.source_title, source_summary: idea.source_summary, id: idea.id} }, style_repo_id: null, voice: "auto", mascot: "", created_by: "u1" });
 // the saved defaults ("the skill") apply to an idea and to a post
 const saved = withDefaults({ prompt: "P" }, { language: "en", voice: "female", resolution: "square", seconds: "25", aiBackground: true, styleRepoId: "r9" });
-assert.deepEqual(saved, { prompt: "P", defaults: { effects:["B04"], effectMode:"auto", assetMode:"auto", language: "en", voice: "female", design: "bright-editorial", ambient: "mint", previewMusic: "user-reel", style: "bright-education", mode: "auto", resolution: "square", seconds: 30, aiBackground: true, styleRepoId: "r9" } });
+assert.deepEqual(saved, { prompt: "P", defaults: { effects:["B04"], effectMode:"auto", assetMode:"auto", language: "en", voice: "female", design: "auto", ambient: "mint", previewMusic: "user-reel", style: "bright-education", mode: "auto", resolution: "square", seconds: 30, aiBackground: true, styleRepoId: "r9" } });
 const dflts = motionDefaults({ motion: saved });
 const fromIdea = motionFromIdea(idea, "u1", dflts);
 assert.deepEqual([fromIdea.language, fromIdea.voice, fromIdea.mascot, fromIdea.resolution, fromIdea.seconds, fromIdea.ai_background, fromIdea.style_repo_id], ["en", "female", "", "square", 30, true, "r9"]);
@@ -70,7 +70,7 @@ console.log("motion.test.mjs: ok");
 
 // a post draft: slides first, else the caption in the post's own language
 const post = { lang: "bm", stream: "regulab", idea_id: "i9", slides: [{ title: "Tiga perkara", points: ["Satu", "Dua"] }, { title: "Penutup" }], text: { bm: { facebook: "Kapsyen" } } };
-assert.deepEqual(motionFromPost(post, "u1"), { brief: "Tiga perkara\n- Satu\n- Dua\n\nPenutup", source_url: "", stream: "regulab", language: "en", resolution: "portrait", seconds: 30, status: "waiting", idea_id: "i9", ai_background: false, options: { style: "bright-education", mode: "auto", design: "bright-editorial", ambient: "mint", effects:["B04"], effect_mode:"auto", asset_mode:"auto", assets:[], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true}, evidence: {idea_id:"i9"} }, style_repo_id: null, voice: "auto", mascot: "", created_by: "u1" });
+assert.deepEqual(motionFromPost(post, "u1"), { brief: "Tiga perkara\n- Satu\n- Dua\n\nPenutup", source_url: "", stream: "regulab", language: "en", resolution: "portrait", seconds: 30, status: "waiting", idea_id: "i9", ai_background: false, options: { style: "bright-education", mode: "auto", design: "auto", ambient: "mint", effects:["B04"], effect_mode:"auto", asset_mode:"auto", assets:[], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true}, evidence: {idea_id:"i9"} }, style_repo_id: null, voice: "auto", mascot: "", created_by: "u1" });
 assert.equal(motionFromPost({ lang: "en", stream: "linkedin", text: { en: { linkedin: "Words" } } }).brief, "Words");
 assert.equal(motionFromPost({ lang: "en", stream: "linkedin", text: { en: { linkedin: "Words" } } }).language, "en");
 assert.equal(motionFromPost({ lang: "bm", text: {} }), null);
@@ -89,7 +89,7 @@ const waiting = { ...motionFromIdea(idea, "u1"), id: "m1" };
 assert.ok(motionVariantMatches(waiting, motionFromIdea(idea, "u1", { language: "bm" })), "a waiting row is the idea's video, whatever it is set to so far");
 assert.ok(!motionVariantMatches({ ...waiting, idea_id: "other" }, motionFromIdea(idea, "u1")));
 const form = formOf(waiting);
-assert.deepEqual([form.language, form.voice, form.mode, form.seconds, form.design, form.effectMode], ["en", "auto", "auto", 30, "bright-editorial", "auto"]);
+assert.deepEqual([form.language, form.voice, form.mode, form.seconds, form.design, form.effectMode], ["en", "auto", "auto", 30, "auto", "auto"]);
 const go = startFields(waiting, { ...form, language: "bm", voice: "male", design: "continuous-line", effectMode: "manual", effects: ["V04", "H02", "ZZZ"] });
 assert.equal(go.status, "pending"); assert.equal(go.attempts, 0); assert.equal(go.error, "");
 assert.deepEqual([go.language, go.voice], ["bm", "male"]);
@@ -229,4 +229,21 @@ console.log("motion reference box: ok");
   assert.equal(canFilm("linkedin"), false); assert.equal(canFilm("regulab"), true); assert.equal(canFilm(undefined), true);
   // a LinkedIn film can still be built by the pure row builders (tests above), the screens simply never call them for LinkedIn
   console.log("linkedin: no film ok");
+}
+
+// the film's look (Wan, 11 Nov 2026): nothing chosen is "auto" (the worker picks one of the seven 2D styles at random); a style
+// or an older design chosen by hand is kept on the film; an older design is never saved as the default
+{
+  const { designOf, defaultDesignOf } = await import("./src/lib/motion.js");
+  const { designOptions, SKIN_IDS, LEGACY_DESIGN_IDS } = await import("./src/lib/motionStyles.js");
+  assert.equal(designOf(undefined), "auto"); assert.equal(designOf("nonsense"), "auto");
+  for (const id of [...SKIN_IDS, ...LEGACY_DESIGN_IDS]) assert.equal(designOf(id), id);
+  assert.equal(SKIN_IDS.length, 7);
+  assert.deepEqual(designOptions.map(d => d.id), ["auto", ...SKIN_IDS, ...LEGACY_DESIGN_IDS]);
+  assert.equal(motionRow({ brief: "x", design: "papercut" }).row.options.design, "papercut");
+  assert.equal(motionRow({ brief: "x", design: "blur-full" }).row.options.design, "blur-full");
+  for (const id of LEGACY_DESIGN_IDS) assert.equal(defaultDesignOf(id), "auto");
+  assert.equal(defaultDesignOf("pixel"), "pixel");
+  assert.equal(withDefaults({}, { design: "blur-photo" }).defaults.design, "auto");
+  assert.equal(withDefaults({}, { design: "chalk" }).defaults.design, "chalk");
 }

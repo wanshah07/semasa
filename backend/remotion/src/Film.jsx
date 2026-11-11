@@ -5,21 +5,24 @@
    worker mixes the recorded voice and the music afterwards, exactly as it does for HyperFrames. */
 import React, { useState } from "react";
 import { AbsoluteFill, Easing, Img, Sequence, continueRender, delayRender, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
-import interLatin from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2";
-import interExt from "@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2";
+import jakarta from "@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2";
+import jakartaExt from "@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-ext-wght-normal.woff2";
+import { SkinCaption, SkinGround, SkinScene, isSkin } from "./Skins.jsx";
 
-const FONT = '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif';
+/* Plus Jakarta Sans for every film, whatever its style (Wan, 11 Nov 2026: "guna font plus jakarta sans untuk semua jenis format") */
+const FONT = '"Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif';
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" };
 
-/* Inter is bundled (the worker's browser has none): one variable file per script range, loaded before the first frame */
+/* Plus Jakarta Sans is bundled (the worker's browser has none): one variable file per script range, loaded before the first frame */
 let fontsStarted = false;
 const useFonts = () => {
-  const [handle] = useState(() => (fontsStarted ? null : delayRender("Inter")));
+  const [handle] = useState(() => (fontsStarted ? null : delayRender("Plus Jakarta Sans")));
   if (!fontsStarted) {
     fontsStarted = true;
-    Promise.all([[interLatin, "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"],
-      [interExt, "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"]]
-      .map(([url, range]) => new FontFace("Inter", `url(${url})`, { weight: "100 900", unicodeRange: range }).load().then((f) => document.fonts.add(f))))
+    const LATIN = "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD";
+    const EXT = "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF";
+    Promise.all([["Plus Jakarta Sans", jakarta, LATIN, "200 800"], ["Plus Jakarta Sans", jakartaExt, EXT, "200 800"]]
+      .map(([family, url, range, weight]) => new FontFace(family, `url(${url})`, { weight, unicodeRange: range }).load().then((f) => document.fonts.add(f))))
       .catch(() => {}).finally(() => continueRender(handle));
   }
 };
@@ -184,9 +187,28 @@ const Outro = ({ outro }) => {
   );
 };
 
-export const Film = ({ scenes, palette, outro, fps, bg, design, backdrop }) => {
+export const Film = ({ scenes, palette, outro, fps, bg, design, backdrop, skin }) => {
   useFonts();
   const f = (s) => Math.round(s * fps);
+  if (isSkin(skin)) {
+    /* one of the seven 2D styles (Skins.jsx): its own ground under the whole film, its own scenes and subtitles. Only the
+       closing card is shared: the logo and the follow line are the brand's, whatever the style */
+    return (
+      <AbsoluteFill style={{ background: "#000" }}>
+        <SkinGround skin={skin} />
+        {scenes.map((s) => (
+          <Sequence key={s.id} from={f(s.start)} durationInFrames={Math.max(1, f(s.duration))}>
+            {s.id === "brand-outro" && outro ? <Outro outro={outro} /> : <SkinScene scene={s} skin={skin} />}
+          </Sequence>
+        ))}
+        {scenes.flatMap((s) => (s.captions || []).map(([text, a, b], i) => (
+          <Sequence key={`${s.id}-c${i}`} from={f(a)} durationInFrames={Math.max(1, f(b) - f(a))}>
+            <SkinCaption text={text} skin={skin} />
+          </Sequence>
+        )))}
+      </AbsoluteFill>
+    );
+  }
   return (
     <AbsoluteFill style={{ background: palette.ground, color: palette.ink }}>
       {bg ? <Backdrop bg={bg} /> : null}

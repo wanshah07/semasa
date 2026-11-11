@@ -348,9 +348,11 @@ def make_motion(store: Any, link: dict[str, Any], text: str, command: str) -> tu
     brief = URL_RE.sub("", topic).strip() or topic
     mid = queue_motion(store, link, brief, source_url=urls[0] if urls else "")
     from .billing import SITE_URL
-    buttons = [[{"text": "▶️ Mula (gaya lalai)", "callback_data": f"mgo:{mid}"}],
-               [{"text": "🎬 Pilih gaya di Semasa", "url": f"{SITE_URL.rstrip('/')}/#video"}]]
-    return (f"🎬 Dalam barisan Motion: {brief[:120]}\nTekan Mula untuk buat dengan gaya lalai, atau pilih gaya dahulu di Semasa.",
+    buttons = [[{"text": "▶️ Mula (gaya rawak)", "callback_data": f"mgo:{mid}"}],
+               [{"text": "🎨 Pilih gaya", "callback_data": f"msk:{mid}"}],
+               [{"text": "🎬 Buka Motion di Semasa", "url": f"{SITE_URL.rstrip('/')}/#video"}]]
+    return (f"🎬 Dalam barisan Motion: {brief[:120]}\nTekan Mula untuk gaya rawak (satu daripada tujuh gaya 2D), atau Pilih gaya "
+            "untuk tentukan sendiri.",
             buttons, mid)
 
 

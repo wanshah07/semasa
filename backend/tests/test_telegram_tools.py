@@ -113,11 +113,33 @@ def test_poster_and_carousel_write_ideas_and_motion_queues_a_film_that_starts_on
     assert film["status"] == "waiting" and film["source_url"] == "https://www.npra.gov.my/x"
     assert film["options"]["via"] == "telegram"
     buttons = bot.sent()[-1]["reply_markup"]["inline_keyboard"]
-    assert buttons[0][0]["callback_data"] == f"mgo:{film['id']}" and buttons[1][0]["url"].endswith("/#video")
+    assert buttons[0][0]["callback_data"] == f"mgo:{film['id']}" and buttons[2][0]["url"].endswith("/#video")
+    assert buttons[1][0]["callback_data"] == f"msk:{film['id']}", "the style can be chosen in Telegram too"
     st.tables[tb.INBOX].append(tap(4, f"mgo:{film['id']}"))
     run(st, bot)
     assert st.tables[tt.MOTIONS][0]["status"] == "pending"
     assert "sudah bermula" in tt.start_motion(st, film["id"]), "a second tap does nothing"
+
+
+def test_the_film_style_is_chosen_in_telegram_and_the_film_starts_in_it():
+    st, bot = team_store(**{tb.INBOX: [msg(1, "/motion 3 perkara sebelum notifikasi")]}), Bot()
+    run(st, bot)
+    film = st.tables[tt.MOTIONS][0]
+    st.tables[tb.INBOX].append(tap(2, f"msk:{film['id']}"))
+    run(st, bot)
+    keys = [b["callback_data"].rsplit(":", 1)[1] for r in bot.sent()[-1]["reply_markup"]["inline_keyboard"] for b in r]
+    assert keys == ["auto", "comic", "pixel", "chalk", "glow", "flat", "papercut", "dankoe",
+                    "bright-editorial", "continuous-line", "blur-photo", "blur-full"]
+    assert all(len(b["callback_data"].encode()) <= 64 for r in bot.sent()[-1]["reply_markup"]["inline_keyboard"] for b in r)
+    assert st.tables[tt.MOTIONS][0]["status"] == "waiting", "opening the picker starts nothing"
+    st.tables[tb.INBOX].append(tap(3, f"msk:{film['id']}:papercut"))
+    run(st, bot)
+    film = st.tables[tt.MOTIONS][0]
+    assert film["status"] == "pending" and film["options"]["design"] == "papercut" and film["options"]["via"] == "telegram"
+    assert "Potongan kertas" in bot.sent()[-1]["text"]
+    st.tables[tb.INBOX].append(tap(4, f"msk:{film['id']}:comic"))
+    run(st, bot)
+    assert st.tables[tt.MOTIONS][0]["options"]["design"] == "papercut", "a film that already started keeps its style"
 
 
 def test_a_finished_telegram_film_is_sent_back_once():

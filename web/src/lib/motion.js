@@ -35,7 +35,11 @@ const langOf = (v, stream) => (LANGUAGES.some(([k]) => k === v) ? v : defaultLan
 /* the voice (Wan, 24 Oct 2026); the talking mascot was removed on 25 Oct 2026: "remove mascot usage" */
 export const VOICES = [["auto", "Auto: selang-seli lelaki dan perempuan setiap video", "Auto: male and female in turn, one voice a film"], ["kitten", "VoiceStudio KittenTTS (EN)", "VoiceStudio KittenTTS (EN)"], ["male", "Lelaki", "Male"], ["female", "Perempuan", "Female"], ["off", "Tiada suara", "No voice"]];
 const voiceOf = (v) => (VOICES.some(([k]) => k === v) ? v : "auto");
-export const designOf = v => (v === 'continuous-line' || v === 'blur-photo' || v === 'blur-full') ? v : 'bright-editorial';
+/* "auto" (the worker picks one of the seven 2D styles at random) unless a style or an older design was chosen by hand */
+const DESIGN_IDS = ['comic', 'pixel', 'chalk', 'glow', 'flat', 'papercut', 'dankoe', 'bright-editorial', 'continuous-line', 'blur-photo', 'blur-full'];
+export const designOf = v => DESIGN_IDS.includes(v) ? v : 'auto';
+/* a saved DEFAULT is never one of the four older designs: those are chosen per film, by hand (Wan, 11 Nov 2026) */
+export const defaultDesignOf = v => DESIGN_IDS.slice(0, 7).includes(v) ? v : 'auto';
 /* The ambient colour behind every scene, chosen per film (Wan, 26 Oct 2026: "let me choose the background ambient colour in
    semasa"). Mint is the reference films' own tone and the default; the worker (motion_layout.AMBIENTS) has the same five. */
 export const AMBIENTS = [['mint', 'Mint (rujukan)', 'Mint (reference)', '#e0f5e9'], ['lime', 'Kuning-hijau', 'Yellow-green', '#dff0c2'],
@@ -145,16 +149,16 @@ export const selectedSeconds = (seconds, mode) => modeOf(mode) === "teaser" && N
 
 /* Wan's saved way of making a motion video (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"):
    settings.motion.defaults, saved from the Motion form, read whenever an idea or a post draft is made into a video. */
-export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "auto", design: "bright-editorial", ambient: "mint", previewMusic: "user-reel", style: "bright-education", mode: "auto", resolution: "auto", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
+export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "auto", design: "auto", ambient: "mint", previewMusic: "user-reel", style: "bright-education", mode: "auto", resolution: "auto", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
 /** The saved defaults over the built-in ones; an empty language means "the stream's own". */
 export function motionDefaults(settings) {
   const d = (settings || {}).motion?.defaults;
   const merged = { ...MOTION_DEFAULTS, ...(d && typeof d === "object" ? d : {}) };
-  return { ...merged, resolution: RESOLUTIONS[merged.resolution] && merged.resolution !== "portrait" ? merged.resolution : "auto", ...resolveLanguageVoice(merged.language, merged.voice), design: designOf(merged.design), ambient: ambientOf(merged.ambient), mode: modeOf(merged.mode), seconds: selectedSeconds(merged.seconds, merged.mode) };
+  return { ...merged, resolution: RESOLUTIONS[merged.resolution] && merged.resolution !== "portrait" ? merged.resolution : "auto", ...resolveLanguageVoice(merged.language, merged.voice), design: defaultDesignOf(merged.design), ambient: ambientOf(merged.ambient), mode: modeOf(merged.mode), seconds: selectedSeconds(merged.seconds, merged.mode) };
 }
 /** settings.motion with the form saved as the defaults; everything else in it (the prompt) untouched. */
 export function withDefaults(motionSettings, form) {
-  const d = { effects:validEffects(form.effects), effectMode:form.effectMode === 'manual' ? 'manual' : 'auto', assetMode:'auto', ...resolveLanguageVoice(form.language, form.voice), design: designOf(form.design), ambient: ambientOf(form.ambient), previewMusic: "user-reel", style: styleOf(form.style), mode: modeOf(form.mode), resolution: RESOLUTIONS[form.resolution] ? form.resolution : "auto",
+  const d = { effects:validEffects(form.effects), effectMode:form.effectMode === 'manual' ? 'manual' : 'auto', assetMode:'auto', ...resolveLanguageVoice(form.language, form.voice), design: defaultDesignOf(form.design), ambient: ambientOf(form.ambient), previewMusic: "user-reel", style: styleOf(form.style), mode: modeOf(form.mode), resolution: RESOLUTIONS[form.resolution] ? form.resolution : "auto",
     seconds: selectedSeconds(form.seconds, form.mode), aiBackground: !!form.aiBackground, styleRepoId: form.styleRepoId || "" };
   return { ...(motionSettings || {}), defaults: d };
 }
@@ -181,7 +185,7 @@ export const RENDERERS = ["remotion", "combined"];
 export const PRESETS = presets;
 const PRESET_IDS = new Set(presets.map((p) => p.id));
 
-export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "auto", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "auto", design = "bright-editorial", ambient = "mint", style = "bright-education", mode = "auto", effects=['B04'], effectMode='auto', assetMode='auto', assets=[], renderer = "", preset = "" } = {}, userId = null) {
+export function motionRow({ brief = "", url = "", stream = "regulab", resolution = "auto", seconds = SECONDS.default, styleRepoId = "", aiBackground = false, language = "", voice = "auto", design = "auto", ambient = "mint", style = "bright-education", mode = "auto", effects=['B04'], effectMode='auto', assetMode='auto', assets=[], renderer = "", preset = "" } = {}, userId = null) {
   const b = String(brief || "").trim();
   const u = String(url || "").trim();
   if (!b && !u) return { error: "empty" };

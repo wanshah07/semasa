@@ -1,0 +1,45 @@
+name: Post-slot check
+
+# Wan, 11 Nov 2026: "build the post-slot checker". A platform can refuse a post only when its slot arrives, and until now the
+# refusal sat unread until the next publish run (Threads, 11 Nov 10:30). This runs 25 minutes after each slot (the
+# ws.regulab slots 08:00 10:30 13:00 16:00 19:00 21:00 and LinkedIn's 06:00 MYT, in UTC below), reads Zernio back for what is now
+# due, records sent or failed, and tells Wan on Telegram once per problem. It never sends anything again by itself.
+# See backend/semasa/slotcheck.py. If the slots in settings change, change these times with them.
+on:
+  schedule:
+    - cron: "25 22,0,5,8,11,13 * * *"
+    - cron: "55 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  slotcheck:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Check
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ZERNIO_API_KEY_1: ${{ secrets.ZERNIO_API_KEY_1 }}
+          ZERNIO_API_KEY_2: ${{ secrets.ZERNIO_API_KEY_2 }}
+          ZERNIO_API_KEY_3: ${{ secrets.ZERNIO_API_KEY_3 }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: python -m semasa.slotcheck

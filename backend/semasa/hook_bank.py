@@ -204,13 +204,15 @@ def declared(out: Any, stream: str, family: str | None = None, bank: Bank | None
         return None
     # The hook must open on this shape's own leading words. On LinkedIn the hook is a faithful TRANSLATION of the shape, so a
     # Malay stem cannot fingerprint it and the check is skipped there. A custom bank's shapes are Wan's own wording and the
-    # writer may paraphrase them, so the stem check applies only to the built-in 25 (bank is None). A hook under four words is
-    # too short to judge (a placeholder or a very short caption), so it is left to the usual valid-number check. (Caught
-    # 12 Nov 2026: a dry-run declared shape 3 while writing a "Semua orang cakap ... tapi realitinya ..." hook.)
+    # writer may paraphrase them, so the stem check applies only to the built-in 25 (bank is None). Only the FIRST TWO words of
+    # the shape are the fingerprint: they are the part a writer cannot vary ("Sebab sebenar", "Semua orang"), while later words
+    # shift naturally (kau -> korang/anda, aku -> saya). A hook under four words is too short to judge. (Caught 12 Nov 2026: a
+    # dry-run declared shape 3 while writing a "Semua orang cakap ... tapi realitinya ..." hook, and a shape-19 hook that said
+    # "korang" instead of the shape's "kau".)
     if stream != "linkedin" and bank is None:
         hook_words = [w.lower() for w in re.findall(r"[A-Za-z0-9]+", hook)]
         stem = _shape_stem(row[2])
-        if stem and len(stem) >= 2 and len(hook_words) >= 4 and hook_words[: len(stem)] != stem:
+        if stem and len(stem) >= 2 and len(hook_words) >= 4 and hook_words[:2] != stem[:2]:
             return None
     return n
 

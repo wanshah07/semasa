@@ -3,7 +3,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { CLIS, CODE_APIS, PY_PACKAGES, buildStack, countByKind, filterStack, itemRow, liveOf, modelsOf } from "./src/lib/stack.js";
 
 const dir = new URL("../.github/workflows/", import.meta.url);
-const flows = readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).map((f) => [f, readFileSync(new URL(f, dir), "utf8")]);
+const scripts = new URL("../.github/scripts/", import.meta.url);
+// a workflow may hand a tool's install to a script it calls (ensure-chromium.sh runs `playwright install`), so the scripts count too
+const flows = [...readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).map((f) => [f, readFileSync(new URL(f, dir), "utf8")]),
+  ...readdirSync(scripts).filter((f) => /\.sh$/.test(f)).map((f) => [f, readFileSync(new URL(f, scripts), "utf8")])];
 const all = flows.map(([, s]) => s).join("\n");
 
 // every secret a workflow reads is named by one entry, and every name an entry gives is read by some workflow

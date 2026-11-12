@@ -9,7 +9,7 @@ kept `evidence`; the shared compliance rules block a draft that names either.
   Reddit   REDDIT_SEARCH_ACROSS_SUBREDDITS, `subreddit:malaysia (halal OR ...)`, top of the week, ranked by comments
            (a thread with 260 comments outranks one with 1,000 upvotes and 4). The `subreddit` argument does NOT filter
            (measured 30 Sep 2026: it returned r/nba); the restriction has to be in the query text.
-  YouTube  YOUTUBE_SEARCH_YOU_TUBE (viewCount, MY, last 14 days) then YOUTUBE_GET_VIDEO_DETAILS_BATCH for the real view
+  YouTube  YOUTUBE_SEARCH_YOU_TUBE (viewCount, MY, last 72 hours) then YOUTUBE_GET_VIDEO_DETAILS_BATCH for the real view
            counts. Never `relevanceLanguage: "ms"` (it returns nothing). Composio's shared Google project ran out of its
            daily search quota on 30 Sep 2026: that is reported in the run and Reddit carries on.
 """
@@ -39,7 +39,7 @@ for p in ((res.get("data") or {}).get("posts") or []):
                          "text": str(p.get("selftext") or "")[:500]})
 if P["youtube"]["enabled"]:
     import datetime as _dt
-    after = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=P["youtube"]["days"])).strftime("%Y-%m-%dT%H:%M:%SZ")
+    after = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=P["youtube"]["hours"])).strftime("%Y-%m-%dT%H:%M:%SZ")
     ids = []
     for yq in P["youtube"]["queries"]:
         if left() < 40:
@@ -99,6 +99,7 @@ def _when(v: Any) -> datetime | None:
         return None
 
 
+WINDOW_HOURS = 72     # a viral post older than this is no longer what people are arguing about (Wan, 12 Nov 2026)
 MAX_TERMS = 20        # measured: 19 terms match as OR; 27 return the subreddit's general top (3 of 25 mention any term)
 
 
@@ -109,18 +110,18 @@ def fetch(client: Any, cfg: dict[str, Any]) -> dict[str, Any]:
         "window": cfg.get("window") if cfg.get("window") in ("day", "week", "month") else "week",
         "limit": max(1, min(25, int(cfg.get("limit") or 15))),
         "youtube": {"enabled": yt.get("enabled") is not False, "queries": list(yt.get("queries") or [])[:4],
-                    "days": max(1, min(14, int(yt.get("days") or 14))),
+                    "hours": max(6, min(14 * 24, int(yt.get("hours") or int(yt.get("days") or 0) * 24 or WINDOW_HOURS))),
                     "max_results": max(1, min(10, int(yt.get("max_results") or 8)))}},
         thought="Semasa: what Malaysians are arguing about this week", budget=120)
 
 
-def candidates(raw: dict[str, Any], now: datetime | None = None, days: int = 14) -> list[dict[str, Any]]:
+def candidates(raw: dict[str, Any], now: datetime | None = None, hours: int = WINDOW_HOURS) -> list[dict[str, Any]]:
     """Reddit threads and videos as rows, most-discussed first. A row with no link or no title is dropped."""
     now = now or datetime.now(UTC)
     out: list[dict[str, Any]] = []
     for p in raw.get("posts") or []:
         url, title, when = p.get("permalink"), str(p.get("title") or "").strip(), _when(p.get("created"))
-        if not url or not title or (when and now - when > timedelta(days=days + 1)):
+        if not url or not title or (when and now - when > timedelta(hours=hours)):
             continue
         n = _int(p.get("num_comments"))
         out.append({"platform": "reddit", "source": "Reddit", "kind": "Hujah", "url": str(url), "title": title,
@@ -129,7 +130,7 @@ def candidates(raw: dict[str, Any], now: datetime | None = None, days: int = 14)
                     "raw": {"platform": "reddit", "original_title": title, "comments": n, "score": _int(p.get("score"))}})
     for v in raw.get("videos") or []:
         vid, title, when = v.get("id"), str(v.get("title") or "").strip(), _when(v.get("published"))
-        if not vid or not title or (when and now - when > timedelta(days=days + 1)):
+        if not vid or not title or (when and now - when > timedelta(hours=hours)):
             continue
         views = _int(v.get("views"))
         out.append({"platform": "youtube", "source": "YouTube", "kind": "Hujah",

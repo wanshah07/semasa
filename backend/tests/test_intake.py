@@ -8,7 +8,7 @@ runs inside Composio shows up here. The RUN tests drive intake.run with a fake c
 import contextlib
 import io
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fakestore import FakeStore
@@ -54,7 +54,7 @@ REDDIT = ({"data": {"posts": [
      "permalink": "https://www.reddit.com/r/malaysia/comments/a1/x", "created_datetime": "2026-09-28T01:00:00+00:00",
      "subreddit": "malaysia", "selftext": "Ramai kata cukup sekali sehari."},
     {"id": "a2", "title": "Traveling to Malaysia", "score": 9, "num_comments": "4",
-     "permalink": "https://www.reddit.com/r/malaysia/comments/a2/y", "created_datetime": "2026-09-26T01:00:00+00:00",
+     "permalink": "https://www.reddit.com/r/malaysia/comments/a2/y", "created_datetime": "2026-09-29T01:00:00+00:00",
      "subreddit": "malaysia"},
     {"id": "old", "title": "Old thread", "score": 900, "num_comments": "900",
      "permalink": "https://www.reddit.com/r/malaysia/comments/old/z", "created_datetime": "2026-08-01T01:00:00+00:00",
@@ -67,7 +67,7 @@ def cell_posts(n=None):
 
 
 CFG = {"subreddit": "malaysia", "terms": ["halal", "skincare"], "window": "week", "limit": 15,
-       "youtube": {"enabled": True, "days": 14, "max_results": 8, "queries": ["sunscreen Malaysia"]}}
+       "youtube": {"enabled": True, "hours": 72, "max_results": 8, "queries": ["sunscreen Malaysia"]}}
 
 
 def test_the_community_cell_restricts_reddit_in_the_query_text_and_survives_a_youtube_quota_answer():
@@ -92,7 +92,7 @@ def test_the_community_cell_reads_video_view_counts_from_the_details_call():
     def details(args, account):
         assert args["id"] == ["v1", "v2"] and args["parts"] == ["snippet", "statistics"]
         return ({"data": {"items": [{"id": "v1", "snippet": {"title": "Sunscreen mitos", "channelTitle": "C",
-                                                                "publishedAt": "2026-09-25T00:00:00Z"},
+                                                                "publishedAt": "2026-09-29T00:00:00Z"},
                                      "statistics": {"viewCount": "125000", "commentCount": "300"}}]}}, "")
 
     out = run_cell(community._CELL, {"subreddit": "malaysia", "terms": ["halal"], "window": "week", "limit": 5,
@@ -104,7 +104,7 @@ def test_the_community_cell_reads_video_view_counts_from_the_details_call():
 
 def test_candidates_are_ranked_by_comments_and_stale_or_linkless_ones_are_dropped():
     raw = {"posts": cell_posts() + [{"id": "n", "title": "no link", "num_comments": "50"}],
-           "videos": [{"id": "v1", "title": "Sunscreen mitos", "published": "2026-09-25T00:00:00Z", "views": "125000",
+           "videos": [{"id": "v1", "title": "Sunscreen mitos", "published": "2026-09-29T00:00:00Z", "views": "125000",
                        "channel": "C"}]}
     got = community.candidates(raw, NOW)
     reddit = [c for c in got if c["platform"] == "reddit"]
@@ -501,3 +501,18 @@ def test_reddit_terms_are_capped_because_a_long_query_stops_matching():
     assert len(seen[0]["terms"]) == community.MAX_TERMS == 20
     assert len(intake.DEFAULTS["community"]["terms"]) <= community.MAX_TERMS
     assert {"halal", "NPRA", "KKM", "JAKIM"} <= set(intake.DEFAULTS["community"]["terms"])
+
+
+def test_a_post_older_than_72_hours_is_no_longer_viral_and_is_dropped():
+    now = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
+
+    def thread(i, hours_old):
+        return {"id": i, "title": f"t{i}", "num_comments": "10",
+                "permalink": f"https://www.reddit.com/r/malaysia/comments/{i}/x",
+                "created": (now - timedelta(hours=hours_old)).isoformat()}
+
+    posts = [thread("new", 71), thread("edge", 73), thread("old", 200)]
+    got = community.candidates({"posts": posts}, now)
+    assert [c["url"].split("/")[-2] for c in got] == ["new"]
+    assert community.candidates({"posts": [thread("edge", 73)]}, now, hours=96)             # the window is a setting
+    assert intake.KEEP_HOURS["reddit"] == intake.KEEP_HOURS["youtube"] == 72

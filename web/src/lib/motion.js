@@ -29,8 +29,9 @@ export function remakeFields(film, language, stream) {
 export const SECONDS = { min: 30, max: 60, default: 30 };
 /* the words on screen (Wan, 24 Oct 2026: "choice for english, malay, or english + malay version") */
 export const LANGUAGES = [["bm", "Bahasa Malaysia"], ["en", "English"], ["both", "BM + English"]];
-/** Current generated explainer default: English for both streams; explicit BM/bilingual remains supported with Edge. */
-export const defaultLanguage = () => "en";
+/** Current default: English for LinkedIn; ws.regulab defaults to BM + English mix (Wan, 12 Nov 2026: "tukarkan english
+    version ke mix english and malay untuk ws regulab"). Explicit BM/English stays selectable for both streams. */
+export const defaultLanguage = (stream = "regulab") => (stream === "linkedin" ? "en" : "both");
 const langOf = (v, stream) => (LANGUAGES.some(([k]) => k === v) ? v : defaultLanguage(stream));
 /* the voice (Wan, 24 Oct 2026); the talking mascot was removed on 25 Oct 2026: "remove mascot usage" */
 export const VOICES = [["auto", "Auto: selang-seli lelaki dan perempuan setiap video", "Auto: male and female in turn, one voice a film"], ["kitten", "VoiceStudio KittenTTS (EN)", "VoiceStudio KittenTTS (EN)"], ["male", "Lelaki", "Male"], ["female", "Perempuan", "Female"], ["off", "Tiada suara", "No voice"]];

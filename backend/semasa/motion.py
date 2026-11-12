@@ -1109,11 +1109,13 @@ BACKGROUND = """
 
 
 def language_of(row: dict[str, Any]) -> str:
-    """bm | en | both: the row's own choice, else the stream's language (rows written before 045 have no column)."""
+    """bm | en | both: the row's own choice, else the stream's language (rows written before 045 have no column).
+
+    ws.regulab now defaults to BOTH (BM + English mix, Wan 12 Nov 2026); LinkedIn stays English."""
     lang = str(row.get("language") or "").strip().lower()
     if lang in LANGUAGE:
         return lang
-    return "en" if (row.get("stream") or "regulab") == "linkedin" else "bm"
+    return "en" if (row.get("stream") or "regulab") == "linkedin" else "both"
 
 
 def build_system(row: dict[str, Any], extra: str, background: str = "", seconds: float | None = None) -> str:

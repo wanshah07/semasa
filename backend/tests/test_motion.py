@@ -55,8 +55,9 @@ def test_build_system_carries_size_seconds_voice_and_wans_prompt():
 
 
 def test_the_language_is_the_rows_choice_and_falls_back_to_the_stream():
-    # Wan, 24 Oct 2026: "choice for english, malay, or english + malay version"
-    assert motion.language_of({"stream": "regulab"}) == "bm" and motion.language_of({"stream": "linkedin"}) == "en"
+    # Wan, 24 Oct 2026: "choice for english, malay, or english + malay version";
+    # 12 Nov 2026: ws.regulab default is now BOTH (BM + English mix)
+    assert motion.language_of({"stream": "regulab"}) == "both" and motion.language_of({"stream": "linkedin"}) == "en"
     assert motion.language_of({"stream": "regulab", "language": "en"}) == "en"
     assert motion.language_of({"stream": "linkedin", "language": "nope"}) == "en"
     s = motion.build_system({"stream": "regulab", "resolution": "portrait", "seconds": 10, "language": "en"}, "")

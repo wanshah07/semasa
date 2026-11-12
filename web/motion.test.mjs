@@ -16,10 +16,10 @@ assert.equal(motionRow({ brief: "x", voice: "nope" }).row.voice, "auto");
 assert.equal(motionRow({ brief: "x", mascot: true }).row.mascot, "", "no talking mascot in any video (Wan, 25 Oct 2026)");
 // the words on screen: the row's choice, else the stream's own language
 assert.equal(motionRow({ brief: "x", stream: "regulab", language: "both" }).row.language, "both");
-assert.equal(motionRow({ brief: "x", stream: "regulab", language: "nope" }).row.language, "en");
+assert.equal(motionRow({ brief: "x", stream: "regulab", language: "nope" }).row.language, "both");
 assert.equal(motionRow({ brief: "x", stream: "linkedin" }).row.language, "en");
 assert.deepEqual(LANGUAGES.map(([k]) => k), ["bm", "en", "both"]);
-assert.equal(defaultLanguage("linkedin"), "en"); assert.equal(defaultLanguage("regulab"), "en");
+assert.equal(defaultLanguage("linkedin"), "en"); assert.equal(defaultLanguage("regulab"), "both");
 const dflt = motionRow({ url: "https://x/y", stream: "nope", resolution: "nope", seconds: 0 });
 assert.equal(dflt.row.stream, "regulab"); assert.equal(dflt.row.resolution, "portrait"); assert.equal(dflt.row.seconds, SECONDS.min);
 assert.equal(dflt.row.created_by, null);

@@ -22,7 +22,7 @@ export const newDesignId = () => `x${Math.random().toString(36).slice(2, 8)}`;
 /** The keys a job carries (the same list as my_designs.KEYS): strings only, so a snapshot is plain data. */
 export const DESIGN_KEYS = ["look", "cover", "middle", "closing", "single", "accent", "paper", "bg", "scrim", "mascot", "eyebrow"];
 export function packDesign(d) {
-  if (!d || !["grid", "era", "photo", "image"].includes(d.look)) return null;
+  if (!d || !["grid", "era", "photo", "image", "hand"].includes(d.look)) return null;
   const out = Object.fromEntries(DESIGN_KEYS.filter((k) => typeof d[k] === "string" && d[k].trim()).map((k) => [k, d[k].trim().slice(0, 120)]));
   if (d.layouts && typeof d.layouts === "object" && Object.keys(d.layouts).length) out.layouts = d.layouts;   // a design made from a reference
   if (typeof d.bg_prompt === "string" && d.bg_prompt.trim()) out.bg_prompt = d.bg_prompt.trim().slice(0, 700);  // ... and what its background looks like

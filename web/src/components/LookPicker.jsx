@@ -110,7 +110,8 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   // sample picture to the Gambar tile"): the post's own picture when there is one, else one of the library photographs as a sample.
   const sampleBg = bgUrl || groundOf("g_makmal02")?.url || GROUNDS[0]?.url || "";
   const image = usePreview(cover, { ...opts, look: "image", bg: sampleBg }, true);
-  const tiles = { grid, era, photo, image };
+  const hand = usePreview(cover, { ...opts, look: "hand" }, true);
+  const tiles = { grid, era, photo, image, hand };
   // a design can be removed from the choices (hidden, never deleted: old drafts still re-render) and brought back
   const studioShown = offered(LOOKS, hiddenLooks);
   const shownLooks = threads ? [...studioShown, THREADS_LOOK] : studioShown;     // Threads-style is never hidden, and never counted as the last look left

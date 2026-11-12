@@ -980,7 +980,7 @@ def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: 
                      **({"review": review} if review else {}), **({"design_pack": saved} if saved else {})}}
 
 
-LOOKS = ("classic", "grid", "era", "photo", "image", "threads")
+LOOKS = ("classic", "grid", "era", "photo", "image", "threads", "hand")
 DEFAULT_LOOK = "image"          # Wan, 8 Nov 2026: the Image look (a picture ON the slide) is the default for new posts
 
 

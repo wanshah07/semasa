@@ -4,7 +4,7 @@
    A built-in design can be REMOVED from the picker: it is hidden, never deleted. Its drawing code stays, so a draft that already
    uses it still re-renders, and it comes back with one click. The list lives in semasa_settings.default_design.hidden (an existing
    row, so no SQL). At least one built-in design always stays: the picker is never empty. */
-export const BUILTIN_LOOKS = ["classic", "grid", "era", "photo", "image"];
+export const BUILTIN_LOOKS = ["classic", "hand", "grid", "era", "photo", "image"];
 export const DEFAULT_LOOK = "image";
 
 export const hiddenOf = (v) => (Array.isArray(v) ? v.filter((k) => BUILTIN_LOOKS.includes(k)) : []);

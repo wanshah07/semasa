@@ -10,7 +10,7 @@ let failed = 0;
 const ok = (cond, what) => { if (!cond) { failed++; console.error("FAIL", what); } };
 const words = (spec) => [spec.title, spec.lead, ...(spec.items || [])].join("\n");
 // how many items each template actually draws (Studio slices its lists)
-const SHOWN = { e_hook: 3, e_explain: 3, p_fact: 4, g_title: 0, p_title: 0, p_quote: 0, i_title: 8, i_note: 8, i_hero: 8, i_step: 8 };   // the image family draws every point (lines, a pill or a step)
+const SHOWN = { e_hook: 3, e_explain: 3, p_fact: 4, g_title: 0, p_title: 0, p_quote: 0, i_title: 8, i_note: 8, i_hero: 8, i_step: 8, h_poster: 8, h_hero: 8, h_note: 8 };   // the image and hand-drawn families draw every point (lines, a pill or a step)
 
 const P = (n) => Array.from({ length: n }, (_, i) => `Poin nombor ${i + 1} yang penting.`);
 const decks = [
@@ -63,7 +63,7 @@ ok(hook[0].template === "e_hook" && hook[0].mascot === "/m/confused.webp", "the 
 ok(!specsFor([{ title: "t", points: [] }], { look: "grid" })[0].mascot, "no poses offered, no mascot");
 ok(!specsFor([{ title: "t", points: ["a"], template: "e_flow" }], { look: "era", mascots: M })[0].mascot, "e_flow never carries a mascot (Studio)");
 ok(specsFor([{ title: "t", points: [], mascot: "wave", template: "e_vs" }], { mascots: M })[0].mascot === "/m/wave.webp", "a chosen pose wins over the hint");
-ok(LOOKS.map((l) => l.k).join(",") === "classic,grid,era,photo,image", "the five looks, Semasa's own first");
+ok(LOOKS.map((l) => l.k).join(",") === "classic,hand,grid,era,photo,image", "the six looks, Semasa's own first");
 
 // Studio's "Reset from caption": every paragraph kept, asks and the website never built onto the artwork
 {
@@ -106,8 +106,8 @@ ok(LOOKS.map((l) => l.k).join(",") === "classic,grid,era,photo,image", "the five
 
 // the catalogue file and the renderer name the same twenty-two templates (4 Oct 2026: nine added, then the event poster)
 const cat = JSON.parse(readFileSync(new URL("../rules/cards.json", import.meta.url), "utf8")).templates.map((x) => x.k);
-ok(cat.length === 26 && cat.slice().sort().join() === TEMPLATE_KEYS.slice().sort().join(), "rules/cards.json and studio.js list the same templates");
-ok(cat.every((k) => /^[gepi]_[a-z]{2,8}$/.test(k)), "every template key passes the slide-design pattern the database and the worker check");
+ok(cat.length === 29 && cat.slice().sort().join() === TEMPLATE_KEYS.slice().sort().join(), "rules/cards.json and studio.js list the same templates");
+ok(cat.every((k) => /^[gepih]_[a-z]{2,8}$/.test(k)), "every template key passes the slide-design pattern the database and the worker check");
 
 // "fit the design to each slide": off, nothing changes; on, only a template that draws every point is chosen
 const FIT = [{ title: "Kulit", points: [] }, { title: "Tempoh purata", points: ["14", "hari"] },

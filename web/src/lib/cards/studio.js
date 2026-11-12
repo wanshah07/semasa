@@ -74,6 +74,7 @@ const GRID_TPL = { g_title: 1, g_stat: 1, g_bars: 1, g_rows: 1, g_table: 1 };
 const GRID_DARK = { g_stat: 1, g_table: 1 };
 const ERA_TPL = { e_hook: 1, e_explain: 1, e_flow: 1, e_vs: 1 };
 const PHOTO_TPL = { p_title: 1, p_fact: 1, p_quote: 1 };
+const HAND_TPL = { h_poster: 1, h_hero: 1, h_note: 1 };
 /* THREE LOOKS, AND EACH HAS TO WORK AS A SINGLE CARD *AND* AS A WHOLE CAROUSEL (Wan,
    19 Sep 2026: "make this as second choice of carousel and single card, previous design as
    first group carousel/single card, image background as third group"). A group names the
@@ -87,7 +88,7 @@ const CARD_GROUPS = [
   { k: "photo", name: "Photo", hint: "Your own photograph behind the words, on every slide.", cover: "p_title", fact: "p_fact", close: "p_quote" },
   { k: "image", name: "Image", hint: "Your picture ON the slide: a panel, a taped print, a tipped poster or a phone screen.", cover: "i_hero", fact: "i_note", close: "i_title" },
 ];
-function groupOf(tpl) { return ERA_TPL[tpl] ? "era" : PHOTO_TPL[tpl] ? "photo" : PIC_TPL[tpl] ? "image" : "grid"; }
+function groupOf(tpl) { return ERA_TPL[tpl] ? "era" : PHOTO_TPL[tpl] ? "photo" : PIC_TPL[tpl] ? "image" : HAND_TPL[tpl] ? "hand" : "grid"; }
 function groupDef(k) { return CARD_GROUPS.find(g => g.k === k) || CARD_GROUPS[0]; }
 
 /* Which templates can carry the character. g_table stays "no character" -- it is the dark
@@ -2148,9 +2149,170 @@ async function picCardPaint(ctx, spec, W, H, canvasOut) {
   if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
   return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y } : { warn, y };
 }
+
+/* ===================== the hand-drawn family =================================
+   Wan, 13 Nov 2026: the Excalidraw look he approved for posters — grey-blue board, a white card with wobbly
+   hand-drawn borders, Permanent Marker headings with a yellow highlighter phrase, Open Sans body, a
+   "HEAD TO HEAD" ✓/✗ table and a green RECOMMENDED box. It draws with canvas (no ctx.filter — iPhone Safari
+   before 18 has none), reusing the fonts.css faces (Permanent Marker + Open Sans added for this family).
+   Three templates:
+     h_poster  the one-card 4:5 poster: hook headline (marker, highlighted key phrase), a wobbly card of points,
+               a "HEAD TO HEAD" two-column ✓/✗ table when the points are "Label | detail" pairs, and a green
+               takeaway box. Every point is drawn; a point longer than the column wraps and the type shrinks.
+     h_hero    the cover of a carousel: the same board and marker headline, one big point.
+     h_note    a middle slide: the board, a marker title and the points as numbered lines.
+   A slide with no picture is still complete (this family does not use spec.bg). */
+const HAND_PAL = { board: "#dbe4eb", card: "#ffffff", ink: "#111111", muted: "#4a4a4a", hl: "#f1c40f", hlEdge: "#e0b50c",
+  navy: "#2c3e50", blue: "#2980b9", green: "#27ae60", orange: "#d35400", purple: "#8e44ad", red: "#c0392b", line: "#bdc3c7" };
+const HAND_HEAD = '"Permanent Marker", "Caveat", cursive';
+const HAND_BODY = '"Open Sans", "Instrument Sans", sans-serif';
+
+/* A hand-drawn wobbly rounded rectangle: two passes, the second offset, so the border reads as marker ink. */
+function handCard(ctx, x, y, w, h, colour, lw) {
+  const r = Math.round(0.06 * Math.min(w, h));
+  ctx.save(); ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (let k = 0; k < 2; k++) {
+    ctx.strokeStyle = k ? "rgba(255,255,255,.5)" : colour; ctx.lineWidth = k ? Math.max(1, lw - 1) : lw;
+    ctx.beginPath();
+    const rx = r + (k ? 1.5 : 0), ry = r - (k ? 1.5 : 0);
+    ctx.moveTo(x + rx, y); ctx.lineTo(x + w - rx, y + Math.round(2 * Math.random() - 1));
+    ctx.quadraticCurveTo(x + w, y, x + w, y + ry);
+    ctx.lineTo(x + w, y + h - ry); ctx.quadraticCurveTo(x + w, y + h, x + w - rx, y + h);
+    ctx.lineTo(x + rx, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - ry);
+    ctx.lineTo(x, y + ry); ctx.quadraticCurveTo(x, y, x + rx, y); ctx.stroke();
+  }
+  ctx.restore();
+}
+/* A yellow highlighter stroke behind text: two soft overlapping rects, slightly rotated, overshooting the edges. */
+function handHl(ctx, x, y, w, h) {
+  ctx.save(); ctx.fillStyle = HAND_PAL.hl; ctx.globalAlpha = 0.95;
+  ctx.beginPath(); ctx.rect(x - 3, y - 1, w + 6, h + 2); ctx.fill();
+  ctx.restore();
+}
+/* The title with one key phrase highlighted. *word* is emphasis here as elsewhere; the last emphasised
+   phrase (or the first two words when none is marked) gets the marker block. */
+function handTitle(ctx, title, x, y, maxW, px) {
+  const t = stripEmph(title || "").trim();
+  if (!t) return y;
+  ctx.font = "400 " + px + "px " + HAND_HEAD; ctx.textBaseline = "top";
+  const words = t.split(/\s+/).filter(Boolean);
+  // find the phrase the writer marked with *asterisks*, else highlight the first two words
+  let hlSpan = [0, 0];
+  const m = /^\*([^*]+)\*/.exec(title || "") || /\s\*([^*]+)\*/.exec(title || "");
+  if (m) { const phrase = m[1]; const idx = t.indexOf(phrase); if (idx >= 0) { let before = t.slice(0, idx).trim(); hlSpan = [before ? before.split(/\s+/).length : 0, phrase.split(/\s+/).length]; } }
+  else hlSpan = [0, Math.min(2, words.length)];
+  let lines = [], line = "";
+  for (const w of words) { const next = line ? line + " " + w : w; if (line && ctx.measureText(next).width > maxW) { lines.push(line); line = w; } else line = next; }
+  if (line) lines.push(line);
+  let yy = y;
+  for (const ln of lines) {
+    const lw = ln.split(/\s+/), lc = lines.indexOf(ln), start = lines.slice(0, lc).reduce((a, s) => a + s.split(/\s+/).length, 0);
+    // highlight the words of this line that fall in the span
+    for (let i = 0; i < lw.length; i++) {
+      const gi = start + i;
+      if (gi >= hlSpan[0] && gi < hlSpan[0] + hlSpan[1]) {
+        const before = lw.slice(0, i).join(" ") + (i ? " " : "");
+        const tw = ctx.measureText(lw[i]).width;
+        handHl(ctx, x + ctx.measureText(before).width, yy - 2, tw, px * 1.15);
+      }
+    }
+    ctx.fillStyle = HAND_PAL.ink; ctx.fillText(ln, x, yy); yy += Math.round(px * 1.2);
+  }
+  ctx.textBaseline = "alphabetic"; return yy;
+}
+/* Body text: Open Sans, wraps to the width, shrinks a step until it fits maxH, never cut. */
+function handBody(ctx, text, x, y, maxW, maxH, px0, pxMin, weight, colour, lh) {
+  const t = String(text || "").trim(); if (!t) return y;
+  let px = px0, lines = [];
+  for (; ; px -= 2) {
+    ctx.font = weight + " " + px + "px " + HAND_BODY; lines = gWrap(ctx, t, maxW);
+    if (lines.length * Math.round(px * lh) <= maxH || px <= pxMin) break;
+  }
+  const lhpx = Math.round(px * lh); ctx.fillStyle = colour; ctx.textBaseline = "top";
+  for (const l of lines) { ctx.fillText(l, x, y); y += lhpx; }
+  ctx.textBaseline = "alphabetic"; return y;
+}
+/* A "HEAD TO HEAD" table from "Label | detail" point pairs: label column bold, ✓ green / ✗ red on the "Wajib ke?" row. */
+function handTable(ctx, title, items, x, y, maxW, maxH, u) {
+  const t = stripEmph(title || "").trim();
+  const rows = (items || []).map((s) => String(s || "").trim()).filter(Boolean);
+  const pairs = rows.filter((s) => s.includes("|")).map((s) => { const [a, b] = s.split("|"); return [a.trim(), b.trim()]; });
+  if (pairs.length < 2) return y;
+  ctx.save();
+  // table head
+  ctx.font = "400 " + Math.round(30 * u) + "px " + HAND_HEAD; ctx.fillStyle = HAND_PAL.ink; ctx.textBaseline = "top";
+  ctx.fillText(t, x, y); y += Math.round(44 * u);
+  const col1 = Math.round(maxW * 0.34), col2 = maxW - col1, rowH = Math.round(44 * u);
+  for (const [a, b] of pairs) {
+    const isWajib = /wajib/i.test(a);
+    ctx.font = "700 " + Math.round(24 * u) + "px " + HAND_BODY;
+    const lab = a[0] === "*" ? stripEmph(a) : a;
+    ctx.fillStyle = HAND_PAL.navy; ctx.fillText(lab, x, y + 4);
+    ctx.fillStyle = isWajib ? HAND_PAL.green : HAND_PAL.ink;
+    const mark = /tidak/i.test(b) ? "✗" : "✓";
+    ctx.fillText(mark + " " + b, x + col1, y + 4);
+    y += rowH;
+  }
+  ctx.restore(); return y;
+}
+async function renderHandCard(spec) {
+  const [W, H] = sizeOf(spec);
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const ctx = styleCtx(c.getContext("2d"), spec);
+  try { await document.fonts.ready; } catch (e) { }
+  const warn = [];
+  const u = W / 1080, M = Math.round(56 * u), pad = Math.round(44 * u);
+  const title = String(spec.title || "").trim();
+  const items = (spec.items || []).map((x) => String(x || "").trim()).filter(Boolean);
+  const lead = String(spec.lead || "").trim();
+  const footnote = String(spec.footnote || "").trim();
+  const linkedin = spec.stream === "linkedin";
+  ctx.fillStyle = HAND_PAL.board; ctx.fillRect(0, 0, W, H);
+  // the white card
+  const cardX = M, cardY = Math.round(30 * u), cardW = W - M * 2, cardH = H - Math.round(60 * u);
+  ctx.fillStyle = HAND_PAL.card; ctx.fillRect(cardX, cardY, cardW, cardH);
+  handCard(ctx, cardX, cardY, cardW, cardH, HAND_PAL.navy, Math.round(5 * u));
+  let y = cardY + pad;
+  // eyebrow label
+  if (spec.eyebrow) { ctx.font = "700 " + Math.round(19 * u) + "px " + HAND_BODY; ctx.fillStyle = HAND_PAL.muted; ctx.textBaseline = "top"; ctx.fillText(String(spec.eyebrow).toUpperCase(), cardX + pad, y); y += Math.round(34 * u); }
+  // headline (marker + highlight), takes most of the upper room
+  const headRoom = Math.round(H * 0.2);
+  ctx.textBaseline = "top";
+  y = handTitle(ctx, title, cardX + pad, y, cardW - pad * 2, Math.round(48 * u));
+  y += Math.round(20 * u);
+  ctx.textBaseline = "alphabetic";
+  // the points as a list (or a table when they are "Label | detail" pairs)
+  const piped = items.length >= 2 && items.every((s) => s.includes("|"));
+  const bodyRoom = cardH - (y - cardY) - Math.round(150 * u);
+  if (piped && items.length >= 2) {
+    const was = y;
+    y = handTable(ctx, "HEAD TO HEAD", items, cardX + pad, y, cardW - pad * 2, bodyRoom, u);
+    if (y === was) { // fallback to a list when the table could not form
+      for (const it of items) { y = handBody(ctx, it, cardX + pad, y, cardW - pad * 2, bodyRoom, Math.round(26 * u), Math.round(18 * u), 400, HAND_PAL.ink, 1.4); y += Math.round(10 * u); }
+    }
+  } else {
+    const pts = [lead, ...items].filter(Boolean);
+    const room = bodyRoom;
+    for (const it of pts) { y = handBody(ctx, it, cardX + pad, y, cardW - pad * 2, room, Math.round(27 * u), Math.round(18 * u), 400, HAND_PAL.ink, 1.4); y += Math.round(14 * u); }
+  }
+  // source line pinned to the foot
+  if (footnote) {
+    ctx.font = "400 " + Math.round(20 * u) + "px " + HAND_BODY; ctx.fillStyle = HAND_PAL.muted; ctx.textBaseline = "top";
+    const label = linkedin ? "Source: " : "Sumber: ";
+    const fl = gWrap(ctx, label + footnote, cardW - pad * 2);
+    const fy = cardY + cardH - pad - fl.length * Math.round(28 * u);
+    for (const l of fl) { ctx.fillText(l, cardX + pad, fy + fl.indexOf(l) * Math.round(28 * u)); }
+  }
+  if (!linkedin) await drawBrandMark(ctx, spec, W, u, M, { top: 40, h: 28, textFill: "rgba(21,23,27,.5)" });
+  if (y > cardY + cardH - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
+  return { url: c.toDataURL("image/jpeg", 0.9), warn, y };
+}
+
 export const LOOKS = [
   { k: "classic", bm: "Semasa", en: "Semasa", hintBm: "Reka bentuk asal Semasa: kertas krim, tajuk serif, nombor slaid.",
     hintEn: "Semasa's own drawing: cream paper, serif headline, slide numbers." },
+  { k: "hand", bm: "Lukisan tangan", en: "Hand-drawn", hintBm: "Papan kelabu-biru, kad putih sempadan bergetar, tajuk marker + highlighter kuning, jadual HEAD TO HEAD.",
+    hintEn: "Grey-blue board, white card with wobbly borders, marker headline + yellow highlighter, HEAD TO HEAD table." },
   { k: "grid", bm: "Grid", en: "Grid", hintBm: "Studio: kertas graf krim, tajuk tebal, satu perkataan oren.",
     hintEn: "Studio: cream graph paper, ultra-bold headline, one word in orange." },
   { k: "era", bm: "Info ERA", en: "Info ERA", hintBm: "Studio: kertas kraf, highlight marker, blok merah. Penerang yang lantang.",
@@ -2164,8 +2326,9 @@ export const LOOKS = [
 export const templateLabel = (k) => ({ g_title: "Grid · Title", g_stat: "Grid · Number", g_bars: "Grid · Bars", g_rows: "Grid · Numbered", g_table: "Grid · Table",
   g_check: "Grid · Checklist", g_myth: "Grid · Myth vs fact", g_steps: "Grid · Steps", e_hook: "ERA · Hook", e_explain: "ERA · Explainer", e_flow: "ERA · Flow",
   e_vs: "ERA · Versus", e_myth: "ERA · Myth vs fact", e_check: "ERA · Checklist", e_stat: "ERA · Figure", e_event: "ERA · Event poster", p_title: "Photo · Title", p_fact: "Photo · Fact",
-  p_quote: "Photo · Quote", p_stat: "Photo · Figure", p_list: "Photo · List", p_split: "Photo · Split" }[k] || String(k || ""));
-export const STUDIO_LOOKS = ["grid", "era", "photo", "image"];
+  p_quote: "Photo · Quote", p_stat: "Photo · Figure", p_list: "Photo · List", p_split: "Photo · Split",
+  h_poster: "Hand · Poster", h_hero: "Hand · Cover", h_note: "Hand · Note" }[k] || String(k || ""));
+export const STUDIO_LOOKS = ["grid", "era", "photo", "image", "hand"];
 /** The family palettes, for the Canva hand-off brief: one copy of the hex codes, the ones the renderer draws with. */
 export const PALETTES = { grid: GRID_PAL, era: ERA_PAL };
 export const isStudioLook = (k) => STUDIO_LOOKS.includes(k);
@@ -2187,7 +2350,7 @@ function asLines(points) {
    Unset fields fall back to the look's own choices: cover, middle and closing slides take the templates Studio's
    groups name (CARD_GROUPS); the source line is drawn on the closing slide, Semasa's rule; the eyebrow on every
    slide, Studio's. o.mascots = [{k, url}] are the poses on offer (none offered = no mascot anywhere). */
-export const TEMPLATE_KEYS = [...Object.keys(GRID_TPL), ...Object.keys(ERA_TPL), ...Object.keys(PHOTO_TPL), ...Object.keys(PIC_TPL), ...Object.keys(MORE_TPL)];
+export const TEMPLATE_KEYS = [...Object.keys(GRID_TPL), ...Object.keys(ERA_TPL), ...Object.keys(PHOTO_TPL), ...Object.keys(PIC_TPL), ...Object.keys(HAND_TPL), ...Object.keys(MORE_TPL)];
 export const takesMascot = (t) => !!MASCOT_TPL[t];
 /** Which templates draw each pose by default: asked of pickMascotFor itself, the renderer's own rule, so the Design
     tab's library can never disagree with a render (Studio's mascotDutyMap). {poseKey: [template, ...]} */
@@ -2260,6 +2423,12 @@ export function fitTemplate(look, s, i, n, pts) {
     if (last) return "";
     if (piped || pts.length >= 3) return "p_list";
     return i % 2 ? "p_split" : "";
+  }
+  if (look === "hand") {
+    // the poster is one card; a carousel cover is the hero, middle slides are notes. The table detects "Label | detail" pairs.
+    if (n === 1) return "h_poster";
+    if (piped && pts.length >= 2) return "h_poster";
+    return first ? "h_hero" : "h_note";
   }
   return "";
 }
@@ -2503,6 +2672,10 @@ export function specsFor(slides, o = {}) {
       if (i === 0 && n > 1 && pts.length <= 4) spec = { ...base, template: "e_hook", lead: lead0 || pts[0] || "", items: lead0 ? pts : pts.slice(1) };
       else if (pts.length && pts.length <= 3) spec = { ...base, template: "e_explain", lead: lead0, items: pts };
       else spec = { ...base, template: "e_explain", lead: withLead(asLines(pts)) };
+    } else if (look === "hand") {
+      // the hand-drawn family: a lone card is the poster; a carousel cover is the hero, middle slides are notes.
+      const tpl = n === 1 ? "h_poster" : (i === 0 ? "h_hero" : "h_note");
+      spec = { ...base, template: tpl, lead: lead0, items: pts };
     } else if (i === 0 || n === 1) spec = { ...base, template: "p_title", lead: withLead(asLines(pts)) };
     else if (last) spec = { ...base, template: "p_quote", lead: withLead(asLines(pts)) };
     else if (pts.length && pts.length <= 4) spec = { ...base, template: "p_fact", lead: lead0, items: pts };
@@ -2531,13 +2704,14 @@ function renderSpec(spec) {
   return next;
 }
 async function renderSpecNow(spec) {
-  if (spec.bg && spec.template[0] !== "p" && spec.template[0] !== "i" && await groundIsLight(spec)) spec = { ...spec, scrim: "none", _light: true };
+  if (spec.bg && spec.template[0] !== "p" && spec.template[0] !== "i" && spec.template[0] !== "h" && await groundIsLight(spec)) spec = { ...spec, scrim: "none", _light: true };
   if (spec.template === "c_ref") return renderRefCard(spec);
   if (MORE_TPL[spec.template]) return renderMoreCard(spec);
   if (GRID_TPL[spec.template]) return renderGridCard(spec);
   if (ERA_TPL[spec.template]) return renderEraCard(spec);
   if (PHOTO_TPL[spec.template]) return renderPhotoCard(spec);
   if (PIC_TPL[spec.template]) return renderPicCard(spec);
+  if (HAND_TPL[spec.template]) return renderHandCard(spec);
   throw new Error("unknown card template " + spec.template);
 }
 
@@ -2571,7 +2745,8 @@ function fullWarnFixed(spec, r) {
    uses these, so each is asked for by name; the sample text covers latin and latin-ext (ā, ş, ı ...). */
 const FACES = ["600 20px Poppins", "700 20px Poppins", "800 20px Poppins", '400 20px Anton', '700 20px "Playfair Display"', '800 20px "Playfair Display"',
   '400 20px "Instrument Sans"', '500 20px "Instrument Sans"', '600 20px "Instrument Sans"',
-  '400 20px "JetBrains Mono"', '500 20px "JetBrains Mono"', "700 20px Caveat"];
+  '400 20px "JetBrains Mono"', '500 20px "JetBrains Mono"', "700 20px Caveat",
+  '400 20px "Permanent Marker"', '400 20px "Open Sans"', '700 20px "Open Sans"', '800 20px "Open Sans"'];
 let _fonts = null;
 export function ensureFonts(base = "") {
   if (_fonts) return _fonts;

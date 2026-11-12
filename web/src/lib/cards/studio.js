@@ -2048,15 +2048,18 @@ async function picCardPaint(ctx, spec, W, H, canvasOut) {
     const head = picFit(ctx, title, maxW * 0.92, (floor - arrowRoom - top - labelH) * 0.62, Math.round(104 * u * TS), Math.round(56 * u), 1.08, 700, PIC_SERIF);
     const leadPx = Math.round(38 * u * TS); ctx.font = "500 " + leadPx + "px " + G_BODY;
     const leadText = [lead, ...items].filter(Boolean).join("\n");
-    const leadLines = leadText ? gWrap(ctx, leadText, maxW * 0.8) : [], leadLh = Math.round(leadPx * 1.32);
-    const block = labelH + head.h + (leadLines.length ? Math.round(34 * u) + leadLines.length * leadLh : 0);
+    // The body shares the same room as the headline and must never run past the card's floor: it is fitted and clipped
+    // with an ellipsis the way the headline is, so a long point reads "…" instead of silently running off the bottom.
+    const bodyRoom = Math.max(Math.round(60 * u), floor - arrowRoom - top - labelH - head.h - Math.round(34 * u));
+    const body = leadText ? picFit(ctx, leadText, maxW * 0.8, bodyRoom, leadPx, Math.round(26 * u), 1.32, 500, G_BODY) : null;
+    const block = labelH + head.h + (body ? Math.round(34 * u) + body.h : 0);
     y = im ? top : top + Math.max(0, Math.round((floor - arrowRoom - top - block) / 2));
     if (label) {
       ctx.save(); ctx.font = "700 " + Math.round(23 * u) + "px " + G_HEAD; try { ctx.letterSpacing = Math.round(4 * u) + "px"; } catch (e) { }
       ctx.fillStyle = PIC_PAL.blue; ctx.textAlign = "center"; ctx.fillText(label, W / 2, y); ctx.restore(); y += labelH;
     }
     ctx.font = "700 " + head.px + "px " + PIC_SERIF; ctx.fillStyle = PIC_PAL.ink; y = picCentered(ctx, head.lines, W / 2, y, head.lh);
-    if (leadLines.length) { y += Math.round(34 * u); ctx.font = "500 " + leadPx + "px " + G_BODY; ctx.fillStyle = PIC_PAL.ink; y = picCentered(ctx, leadLines, W / 2, y, leadLh); }
+    if (body) { y += Math.round(34 * u); ctx.font = "500 " + body.px + "px " + G_BODY; ctx.fillStyle = PIC_PAL.ink; y = picCentered(ctx, body.lines, W / 2, y, body.lh); }
     if (arrowRoom) picArrow(ctx, W / 2 - Math.round(120 * u), floor - Math.round(30 * u), W / 2 + Math.round(120 * u), floor - Math.round(44 * u), PIC_PAL.blue, Math.round(7 * u), -0.06);
   } else if (t === "i_note") {
     picCrumple(ctx, W, H);

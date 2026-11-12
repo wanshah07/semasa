@@ -159,7 +159,7 @@ def purge_rejected(store: Any, now: datetime | None = None) -> str:
     return f"purge: {purged} rejected post(s) deleted after 72h, {removed} of their pictures removed, {kept} kept"
 
 
-FILM_PURGE = timedelta(hours=72)
+PRUNE_HOURS = 12          # files of a post that went out are deleted this long after it did (Wan, 12 Nov 2026)
 _BUCKET_MARK = f"/{db.GENERATED_BUCKET}/"
 
 
@@ -188,16 +188,27 @@ def film_files(store: Any, motion: dict[str, Any], media: dict[str, Any]) -> lis
     return list(dict.fromkeys(p for p in paths if isinstance(p, str) and p))
 
 
-def purge_films(store: Any, now: datetime | None = None) -> str:
-    """A Motion film is deleted for good 72 hours after its post went out (Wan, 11 Nov 2026: "for motion if the video has
-    posted, after 72 hours delete them permanently to save space"). The platforms keep their own copy; ours only costs
-    storage. Guards, in the order that matters: only a post whose status is `posted` with a `posted_at` more than 72 hours old
-    (an unreadable stamp is never purged); a film another post that has NOT gone out still uses is kept; and the files go
-    FIRST, the records after, so a failed delete leaves everything as it was and the next run tries again. The rows stay as
+def prune_hours(store: Any) -> int:
+    """How long a posted post's files are kept: settings `prune.hours` (the page's Settings), else PRUNE_HOURS. Never below
+    2: the platforms fetch a picture when they publish, and a few hours of margin is what makes deleting ours safe."""
+    try:
+        row = store.table(db.SETTINGS).select("value").eq("key", "prune").limit(1).execute().data or []
+        value = (row[0].get("value") or {}) if row else {}
+        return max(2, min(24 * 30, int(value.get("hours") or PRUNE_HOURS)))
+    except Exception:  # noqa: BLE001 - settings unreadable: the default
+        return PRUNE_HOURS
+
+
+def purge_films(store: Any, now: datetime | None = None, hours: int = PRUNE_HOURS) -> str:
+    """A Motion film is deleted for good `hours` (12) after its post went out (Wan, 11 Nov 2026: "after 72 hours delete
+    them permanently to save space"; 12 Nov: "keep temporarily within 12 hours"). The platforms keep their own copy; ours only
+    costs storage. Guards, in the order that matters: only a post whose status is `posted` with a `posted_at` older than the
+    window (an unreadable stamp is never purged); a film another post that has NOT gone out still uses is kept; and the files
+    go FIRST, the records after, so a failed delete leaves everything as it was and the next run tries again. The rows stay as
     the record (title, script, captions, the post's `published` links): only the files, their addresses and the heavy
     composition are cleared, and `film_purged_at` says when."""
     now = now or datetime.now(UTC)
-    cutoff = (now - FILM_PURGE).isoformat()
+    cutoff = (now - timedelta(hours=hours)).isoformat()
     try:
         posts = db.fetch_all(lambda: store.table(db.POSTS).select("id,media_ids,posted_at").eq("status", "posted")
                              .lt("posted_at", cutoff).order("id"))
@@ -230,7 +241,7 @@ def purge_films(store: Any, now: datetime | None = None) -> str:
                     report["film_purged_at"] = stamp
                     store.table("semasa_motions").update({"video_url": "", "social_url": "", "poster_url": "", "video_path": "",
                                                           "html": "", "check_report": report}).eq("id", motion["id"]).execute()
-                meta.update(film_purged_at=stamp, poster_url="", generated_path=None)
+                meta.update(film_purged_at=stamp, purge_hours=hours, poster_url="", generated_path=None)
                 store.table(db.MEDIA).update({"generated_media_url": None, "reference_url": None, "meta": meta}) \
                     .eq("id", media["id"]).execute()
                 purged += 1
@@ -239,9 +250,9 @@ def purge_films(store: Any, now: datetime | None = None) -> str:
             log.warning("post %s: film not purged: %s", post["id"], str(exc)[:200])
     if purged:
         db.log_event(store, "info", "post", "film.purged",
-                     f"{purged} video Motion dipadam kekal (72 jam selepas diterbitkan); {freed} fail dibuang",
+                     f"{purged} video Motion dipadam kekal ({hours} jam selepas diterbitkan); {freed} fail dibuang",
                      detail={"films": purged, "files": freed})
-    return f"films: {purged} Motion film(s) deleted 72h after posting, {freed} file(s) removed"
+    return f"films: {purged} Motion film(s) deleted {hours}h after posting, {freed} file(s) removed"
 
 
 def _in_use_elsewhere(store: Any, media_id: str, post_id: str) -> bool:
@@ -252,3 +263,145 @@ def _in_use_elsewhere(store: Any, media_id: str, post_id: str) -> bool:
         return any(o.get("status") != "posted" for o in others)
     except Exception:  # noqa: BLE001 - when in doubt, keep the film
         return True
+
+
+def purge_pictures(store: Any, now: datetime | None = None, hours: int = PRUNE_HOURS) -> str:
+    """The pictures and slides of a post that went out are deleted `hours` after it did, as films are (Wan, 12 Nov 2026: "after
+    post it will delete automatically/or keep temporarily within 12 hours to save space disk"). The platforms keep their own
+    copy. Same guards as purge_films: only a post whose status is `posted` with a readable `posted_at` older than the
+    window; a picture another post that has NOT gone out still uses is kept; a Design-tab artwork (meta.design) is kept
+    (it is Wan's library, not this post's); the files go FIRST and the rows after, so a failed delete changes nothing and the
+    next run tries again. The row stays as the record; its addresses are cleared and `files_purged_at` says when."""
+    now = now or datetime.now(UTC)
+    cutoff = (now - timedelta(hours=hours)).isoformat()
+    try:
+        posts = db.fetch_all(lambda: store.table(db.POSTS).select("id,media_ids,posted_at").eq("status", "posted")
+                             .lt("posted_at", cutoff).order("id"))
+    except Exception as exc:  # noqa: BLE001
+        return f"pictures: skipped ({str(exc)[:100]})"
+    purged = freed = 0
+    for post in posts:
+        ids = [i for i in (post.get("media_ids") or []) if i]
+        if not ids or not post.get("posted_at"):
+            continue
+        try:
+            rows = store.table(db.MEDIA).select("*").in_("id", ids).neq("type", "video").execute().data or []
+            for media in rows:
+                meta = dict(media.get("meta") or {})
+                if meta.get("files_purged_at") or meta.get("design") or media.get("status") != "done":
+                    continue
+                if _in_use_elsewhere(store, media["id"], post["id"]):
+                    continue
+                paths = list(dict.fromkeys(files_of(media) + [path_of(media.get("generated_media_url")),
+                                                              path_of(media.get("reference_url"))]))
+                paths = [p for p in paths if p]
+                if not paths:
+                    continue
+                store.storage.from_(db.GENERATED_BUCKET).remove(paths)       # a failure raises: nothing below runs
+                meta.update(files_purged_at=now.isoformat(), purge_hours=hours, slide_urls=[], slide_paths=[],
+                            generated_path=None)
+                store.table(db.MEDIA).update({"generated_media_url": None, "reference_url": None, "meta": meta}) \
+                    .eq("id", media["id"]).execute()
+                purged += 1
+                freed += len(paths)
+        except Exception as exc:  # noqa: BLE001 - one post must not stop the others
+            log.warning("post %s: pictures not purged: %s", post["id"], str(exc)[:200])
+    if purged:
+        db.log_event(store, "info", "post", "pictures.purged",
+                     f"{purged} gambar/slaid dipadam ({hours} jam selepas diterbitkan); {freed} fail dibuang",
+                     detail={"pictures": purged, "files": freed})
+    return f"pictures: {purged} picture set(s) deleted {hours}h after posting, {freed} file(s) removed"
+
+
+ORPHAN_AGE = timedelta(hours=24)
+ORPHAN_CAP = 200          # files deleted in one run at most: a bug in the reference scan must not empty the bucket in one go
+_NO_SCAN = {db.TRENDS, db.LOG, "semasa_faqs", db.RUNS}
+
+
+def referenced_text(store: Any) -> str:
+    """Everything in the database that could name a stored file, as one string. Read from every table the code knows (a
+    table missing from this list can only make a file look USED, never unused: the skip list is the short one)."""
+    import json
+    tables = sorted({v for k, v in vars(db).items() if k.isupper() and isinstance(v, str) and (v.startswith("semasa_")
+                     or v in (db.MEDIA, db.TRENDS, db.RUNS)) and v not in _NO_SCAN} | {"semasa_motions"})
+    parts: list[str] = []
+    for t in tables:
+        rows = db.fetch_all(lambda t=t: store.table(t).select("*").order("id"))      # raises when a table cannot be read
+        parts.append(json.dumps(rows, default=str))
+    return "\n".join(parts)
+
+
+def list_bucket(store: Any, folder: str = "") -> list[dict[str, Any]]:
+    """Every file in the generated bucket (name relative to the bucket), walking folders."""
+    out: list[dict[str, Any]] = []
+    bucket = store.storage.from_(db.GENERATED_BUCKET)
+    stack = [folder]
+    while stack:
+        base = stack.pop()
+        offset = 0
+        while True:
+            page = bucket.list(base, {"limit": 1000, "offset": offset}) or []
+            for o in page:
+                name = f"{base}/{o['name']}" if base else o["name"]
+                if o.get("id") is None and not o.get("metadata"):
+                    stack.append(name)                                  # a folder
+                else:
+                    out.append({"name": name, "created_at": o.get("created_at"),
+                                "size": int((o.get("metadata") or {}).get("size") or 0)})
+            if len(page) < 1000:
+                break
+            offset += 1000
+    return out
+
+
+def sweep_orphans(store: Any, now: datetime | None = None, mode: str = "report") -> str:
+    """Files in the bucket that no database row names, and are at least a day old (a file is written before its row, so a
+    young one may be mid-flight). mode "report" (the default) only counts and logs them; "delete" removes up to ORPHAN_CAP
+    a run. Any failure reading the bucket or a table means nothing is deleted."""
+    now = now or datetime.now(UTC)
+    try:
+        text = referenced_text(store)
+        files = list_bucket(store)
+    except Exception as exc:  # noqa: BLE001 - when in doubt, keep everything
+        return f"orphans: skipped ({str(exc)[:100]})"
+    old = []
+    for f in files:
+        try:
+            made = datetime.fromisoformat(str(f["created_at"]).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            continue                                                     # an unreadable stamp is never deleted
+        if now - made >= ORPHAN_AGE and f["name"] not in text:
+            old.append(f)
+    mb = sum(f["size"] for f in old) / 1048576
+    if mode != "delete" or not old:
+        note = "nothing to do" if not old else "report only; settings prune.orphans=delete turns deletion on"
+        return f"orphans: {len(old)} unreferenced file(s), {mb:.0f} MB ({note})"
+    batch = old[:ORPHAN_CAP]
+    try:
+        store.storage.from_(db.GENERATED_BUCKET).remove([f["name"] for f in batch])
+    except Exception as exc:  # noqa: BLE001
+        return f"orphans: not deleted ({str(exc)[:100]})"
+    freed = sum(f["size"] for f in batch) / 1048576
+    db.log_event(store, "info", "post", "orphans.deleted", f"{len(batch)} fail tanpa rujukan dipadam ({freed:.0f} MB)",
+                 detail={"files": len(batch), "mb": round(freed, 1), "left": len(old) - len(batch)})
+    return f"orphans: {len(batch)} unreferenced file(s) deleted ({freed:.0f} MB), {len(old) - len(batch)} left"
+
+
+def prune(store: Any, now: datetime | None = None) -> str:
+    """One step for the publisher: films and pictures of posted posts, then the orphan sweep. Never raises."""
+    hours = prune_hours(store)
+    mode = "report"
+    try:
+        row = store.table(db.SETTINGS).select("value").eq("key", "prune").limit(1).execute().data or []
+        mode = "delete" if row and (row[0].get("value") or {}).get("orphans") == "delete" else "report"
+    except Exception:  # noqa: BLE001
+        pass
+    out = []
+    for step in (lambda: purge_films(store, now, hours), lambda: purge_pictures(store, now, hours),
+                 lambda: sweep_orphans(store, now, mode)):
+        try:
+            out.append(step())
+        except Exception as exc:  # noqa: BLE001 - one step must not stop the next
+            log.warning("prune step failed: %s", str(exc)[:200])
+            out.append(f"prune step failed ({str(exc)[:80]})")
+    return "; ".join(out)

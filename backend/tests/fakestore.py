@@ -174,8 +174,9 @@ class FakeStore:
                     raise store.remove_error
                 store.removed.append((self.name, list(paths)))
 
-            def list(self, folder):
-                return [{"name": n} for n in store.listing.get(folder, [])]
+            def list(self, folder, options=None):
+                # a name is a bare entry; a dict is passed through (a file carries id/created_at/metadata, a folder id None)
+                return [n if isinstance(n, dict) else {"name": n} for n in store.listing.get(folder, [])]
 
         self.storage = SimpleNamespace(from_=_Bucket)
 

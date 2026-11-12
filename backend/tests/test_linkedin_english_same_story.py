@@ -89,7 +89,8 @@ def test_a_linkedin_answer_that_stays_malay_fails_with_a_reason_and_writes_no_dr
 def test_ws_regulab_keeps_its_malay_hook_and_is_never_asked_to_translate():
     store = _store()
     cap = "Soalan yang takde sapa tanya pasal sunscreen: adakah ia masuk darah? Jawapannya, ya.\n\nFollow untuk tip regulatori."
-    out = {"fit": True, "hook": "Soalan yang takde sapa tanya pasal sunscreen: adakah ia masuk darah? Jawapannya, ya", "hook_shape": 3,
+    out = {"fit": True, "hook": "Soalan yang takde sapa tanya pasal sunscreen: adakah ia masuk darah? Jawapannya, ya",
+           "hook_shape": 3,
            "domain": "kosmetik", "citation": "NPRA", "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}},
            "visual_prompt": "x", "alt": "x"}
     llm = Seq(out)

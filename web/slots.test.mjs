@@ -1,7 +1,7 @@
 /* web/src/lib/slots.js, the page's half of the position rules (the worker's half is ideas.next_free_position). */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { captionKey, captionKeys, clashes, coverage, duplicatesOf, fmtLeft, handedOver, holdersOf, isPastDue, lateLinkedInSlots, liSendDay, moveCheck, nextFreeSlot, offRota, onRota, overrideCheck, clearPlan, postsOn, purgeLeftMs, refOf, slotGone, slotsOf } from "./src/lib/slots.js";
+import { captionKey, captionKeys, clashes, coverage, duplicatesOf, fmtLeft, handedOver, holdersOf, isPastDue, lateLinkedInSlots, liSendDay, moveCheck, nextFreeSlot, offRota, onRota, overrideCheck, clearPlan, postsOn, purgeLeftMs, refOf, slotGone, slotsOf, isCustomSlot, validClock } from "./src/lib/slots.js";
 
 const BRAND = {
   regulab: { slots: ["13:00", "08:00", "21:00"],
@@ -178,6 +178,14 @@ t("a post with a channel already in Buffer or LinkedIn cannot be moved or releas
   assert.deepEqual([o.ok, o.release.length, o.locked.map((p) => p.id)], [false, 0, ["me"]]);
   const plan = clearPlan([me, live("d", { status: "draft", date: "2026-10-01", slot: "08:00" })], "regulab");
   assert.deepEqual([plan.release.map((p) => p.id), plan.approved, plan.locked], [["d"], 0, 1]);
+});
+
+t("a time outside the fixed slots is a custom slot, and only a real 24-hour clock is accepted", () => {
+  const slots = slotsOf(BRAND, "regulab");
+  assert.equal(isCustomSlot(slots, "08:00"), false);
+  assert.equal(isCustomSlot(slots, "10:30"), true);
+  assert.equal(isCustomSlot(slots, ""), false);
+  assert.deepEqual(["10:30", "00:00", "23:59", "24:00", "9:30", "10:60", "", null].map(validClock), [true, true, true, false, false, false, false, false]);
 });
 
 console.log(`${n} slot tests pass`);

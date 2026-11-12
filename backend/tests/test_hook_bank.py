@@ -184,7 +184,8 @@ def test_a_revision_is_held_to_it_too_and_an_unfit_answer_is_never_asked_again(m
 
 def test_a_cover_that_already_opens_with_the_hook_is_kept_and_one_that_does_not_is_set_to_it():
     hook = "Berhenti buat label sendiri kalau nak produk selamat"
-    kept = [{"title": "Berhenti buat *label* sendiri kalau nak produk selamat", "points": []}, {"title": "Fakta", "points": ["a"]}]
+    kept = [{"title": "Berhenti buat *label* sendiri kalau nak produk selamat", "points": []},
+            {"title": "Fakta", "points": ["a"]}]
     assert hook_bank.cover(kept, hook) == (kept, "kept")
     other = [{"title": "Tentang label", "points": ["x"]}, {"title": "Fakta", "points": ["a"]}]
     got, state = hook_bank.cover(other, hook)

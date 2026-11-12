@@ -154,6 +154,34 @@ def fallback_settings() -> dict[str, str | None]:
     return {"fallback_base_url": base, "fallback_key": key, "fallback_model": model, "fallback_blocked": why}
 
 
+def _openai_key() -> str | None:
+    """The key for the OpenAI-compatible MEDIA endpoint (image edits + video).
+
+    Precedence: an explicit OPENAI_API_KEY; else, when the endpoint IS Mireld (host matches
+    LLM_FALLBACK_BASE_URL), the SAME Mireld key that backs up the writer (LLM_FALLBACK_API_KEY) — Wan, 12 Nov 2026:
+    "mireld backup guna api key yang sama untuk mireld image generation"; else LLM_API_KEY only when the writer
+    runs on the same host. A key only ever goes to the host it belongs to."""
+    base = env("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    if env("OPENAI_API_KEY"):
+        return env("OPENAI_API_KEY")
+    if host_of(base) == host_of(env("LLM_FALLBACK_BASE_URL", "https://api.mireld.my/v1")):
+        return env("LLM_FALLBACK_API_KEY")
+    if host_of(llm_base_url()) == host_of(base):
+        return env("LLM_API_KEY")
+    return None
+
+
+def _openai_image_model() -> str:
+    """The image model for the OpenAI-compatible MEDIA endpoint, by host:
+    Mireld = gpt-image-2.5 (mireld-image-gen skill); KiosAPI = gpt-image-2; else OpenAI's gpt-image-1."""
+    host = host_of(env("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+    if host == "api.mireld.my":
+        return env("OPENAI_IMAGE_MODEL", "gpt-image-2.5")
+    if host == "kiosapi.com":
+        return env("OPENAI_IMAGE_MODEL", "gpt-image-2")
+    return env("OPENAI_IMAGE_MODEL", "gpt-image-1")
+
+
 def blocked_host(base_url: str, what: str = "LLM_BASE_URL") -> str:
     """Why this writer address is refused, or "" when it is on the allowed list. The main writer is rootsys and the
     backup is Mireld (Wan, 25 Sep 2026), each on its own list, so neither can quietly take the other's place."""
@@ -249,13 +277,11 @@ class MediaSettings:
             # The input field that carries the reference picture differs per model.
             replicate_image_input_key=env("REPLICATE_IMAGE_INPUT_KEY", "input_image"),
             replicate_video_input_key=env("REPLICATE_VIDEO_INPUT_KEY", "start_image"),
-            # LLM_API_KEY stands in only when the writer runs on the same host as the pictures: on 25 Sep 2026 the
-            # rootsys key was sent to api.openai.com this way (refused, 401) for a job that chose OpenAI.
-            openai_key=env("OPENAI_API_KEY") or (
-                env("LLM_API_KEY") if host_of(llm_base_url())
-                == host_of(env("OPENAI_BASE_URL", "https://api.openai.com/v1")) else None),
+            # A key only ever goes to the host it belongs to. Mireld image gen reuses the SAME Mireld key
+            # that backs up the writer (LLM_FALLBACK_API_KEY) when OPENAI_BASE_URL points at Mireld — see _openai_key().
+            openai_key=_openai_key(),
             openai_base_url=(env("OPENAI_BASE_URL", "https://api.openai.com/v1") or "").rstrip("/"),
-            openai_image_model=env("OPENAI_IMAGE_MODEL", "gpt-image-1"),
+            openai_image_model=_openai_image_model(),
             openai_video_model=env("OPENAI_VIDEO_MODEL", "sora-2"),
             openai_image_size=env("OPENAI_IMAGE_SIZE", "1024x1024"),
             openai_video_seconds=env("OPENAI_VIDEO_SECONDS", "8"),

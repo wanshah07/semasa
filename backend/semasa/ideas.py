@@ -222,7 +222,11 @@ Answer with ONE JSON object:
  "citation": "...", "text": {"bm": {"instagram": "...", "facebook": "...", "threads": "..."},
                              "en": {"instagram": "...", "facebook": "...", "threads": "..."}},
  "terms": [{"term": "a word or acronym the reader may not know", "meaning": "what it is, in one plain sentence"}],
- "visual_prompt": "an English description of one illustrative picture: no words, no logos, no real people, and NEVER a certificate, document, seal, stamp, label, packaging, screen, app or any object that has letters, numbers or symbols printed on it (image models garble them into nonsense). Draw the SUBJECT as a plain object, a scene or a simple illustration instead — for a certification or regulation story, draw the product, the ingredient or the setting, never the paperwork.",
+ "visual_prompt": "an English description of one illustrative picture: no words, no logos, no real people, and NEVER a
+ certificate, document, seal, stamp, label, packaging, screen, app or any object that has letters, numbers or symbols
+ printed on it (image models garble them into nonsense).
+ Draw the SUBJECT as a plain object, a scene or a simple illustration instead — for a certification or regulation story,
+ draw the product, the ingredient or the setting, never the paperwork.",
  "alt": "short alt text in BM"}
 Set "fit" false (and say why in "why_not") only when the story gives this audience (SME owners in cosmetics, food, halal and
 pharmaceuticals) nothing to use. A story does not need a rule attached to be worth a post: judge it in its context (who reads
@@ -264,7 +268,11 @@ Answer with ONE JSON object:
  "angle": one letter from the list,
  "citation": "...", "text": {"en": {"linkedin": "..."}, "bm": {"linkedin": "the same post in Malaysian Malay"}},
  "terms": [{"term": "a word or acronym the reader may not know", "meaning": "what it is, in one plain sentence"}],
- "visual_prompt": "an English description of one illustrative picture: no words, no logos, no real people, and NEVER a certificate, document, seal, stamp, label, packaging, screen, app or any object that has letters, numbers or symbols printed on it (image models garble them into nonsense). Draw the SUBJECT as a plain object, a scene or a simple illustration instead — for a certification or regulation story, draw the product, the ingredient or the setting, never the paperwork.",
+ "visual_prompt": "an English description of one illustrative picture: no words, no logos, no real people, and NEVER a
+ certificate, document, seal, stamp, label, packaging, screen, app or any object that has letters, numbers or symbols
+ printed on it (image models garble them into nonsense).
+ Draw the SUBJECT as a plain object, a scene or a simple illustration instead — for a certification or regulation story,
+ draw the product, the ingredient or the setting, never the paperwork.",
  "alt": "short alt text in English"}
 Set "fit" false (and say why) only when the story gives a chemist, RA or brand-owner peer nothing to use. A story does not need
 a rule attached to be worth a post: judge it in its context (the audience, the angle, what they could take from it)."""

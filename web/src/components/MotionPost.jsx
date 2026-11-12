@@ -7,7 +7,7 @@ import { LANGUAGES, RESOLUTIONS, fmtBytes, remakeFields, streamOf } from "../lib
 import { releaseSlots } from "../lib/releaseSlots";
 import { sizeFor } from "../lib/platformFormat";
 import { CHANNEL_LABEL, canQueue, channelsFor, filmFormat, pickPosition, postLang, queueArgs, startingCaptions } from "../lib/motionQueue";
-import { clearPlan, myt, overrideCheck, slotsOf, takenSet } from "../lib/slots";
+import { clearPlan, isCustomSlot, myt, overrideCheck, slotsOf, takenSet, validClock } from "../lib/slots";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
 
@@ -89,7 +89,8 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
   const slots = slotsOf(brand, stream);
   const here = useMemo(() => (date && slot ? overrideCheck({ posts, stream, date, slot }) : { free: true, release: [], locked: [], ok: true }), [posts, stream, date, slot]);
   const useOverride = override && !here.free && here.ok;
-  const ready = canQueue(film) && channels.length > 0 && date && slot && (here.free || useOverride);
+  const custom = isCustomSlot(slots, slot);
+  const ready = canQueue(film) && channels.length > 0 && date && slot && (!custom || validClock(slot)) && (here.free || useOverride);
   const plan = useMemo(() => clearPlan(posts, stream), [posts, stream]);
   useEffect(() => { setOverride(false); }, [date, slot]);
   const args = useMemo(() => (open && date && slot && channels.length
@@ -223,8 +224,13 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
             <label className="block"><Label>{t("Tarikh", "Date")}</Label>
               <Input type="date" value={date} min={myt().date} onChange={(e) => setDate(e.target.value)} className="!w-auto" /></label>
             <label className="block"><Label>{t("Slot (waktu Malaysia)", "Slot (Malaysia time)")}</Label>
-              <Select value={slot} onChange={setSlot}
-                options={slots.map((s) => [s, taken.has(`${date} ${s}`) ? `${s} · ${t("ditempah", "booked")}` : s])} /></label>
+              <Select value={custom ? "other" : slot} onChange={(v) => setSlot(v === "other" ? (custom ? slot : "10:00") : v)}
+                options={[...slots.map((s) => [s, taken.has(`${date} ${s}`) ? `${s} · ${t("ditempah", "booked")}` : s]),
+                  ["other", t("Masa lain…", "Another time…")]]} /></label>
+            {custom && (
+              <label className="block"><Label>{t("Masa (MYT)", "Time (MYT)")}</Label>
+                <Input type="time" value={slot} onChange={(e) => setSlot(e.target.value)} className="!w-auto" data-motion-custom-time /></label>
+            )}
             <Button size="sm" variant="ghost" onClick={nextFree} data-motion-next-free>{t("Slot kosong seterusnya", "Next free slot")}</Button>
           </div>
           {date && slot && !here.free && here.ok && (

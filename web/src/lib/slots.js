@@ -32,6 +32,17 @@ export function slotsOf(brand, stream) {
   return [...(Array.isArray(s) && s.length ? s : DEFAULT_SLOTS[stream] || DEFAULT_SLOTS.regulab)].sort();
 }
 
+/** Is this a time outside the stream's fixed slots (Wan, 12 Nov 2026: "tambah satu lagi option untuk waktu selain yang
+    ditetapkan")? An empty slot is not custom. */
+export function isCustomSlot(slots, slot) {
+  return !!slot && !slots.includes(slot);
+}
+
+/** A clock a post can be due at: HH:MM, 24 hours, Malaysia time. */
+export function validClock(slot) {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(slot || ""));
+}
+
 /** The domains the rota gives a weekday (ws.regulab), or null when the rota says nothing about that day. */
 export function domainsOn(brand, iso) {
   const allow = ((brand?.regulab || {}).schedule || {})[String(dowOf(iso))];

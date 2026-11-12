@@ -168,8 +168,8 @@ def test_the_caption_writer_is_told_the_chosen_style_after_the_house_style_and_b
                    semasa_posts=[], media_generations=[], semasa_ideas=[], **{writing_styles.TABLE: [READY]})
     idea = {"id": "i1", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "none"}
     st.tables["semasa_ideas"].append({**idea, "status": "working"})
-    good = {"fit": True, "hook": "Semua org ckp notifikasi tu lulus tapi realitinya lain", "hook_shape": 16, "domain": "kosmetik",
-            "citation": "NPRA", "text": {"bm": {"instagram": "Semua org ckp notifikasi tu lulus tapi realitinya lain. Isi."}}}
+    good = {"fit": True, "hook": "Semua orang cakap notifikasi tu lulus, tapi realitinya lain", "hook_shape": 16, "domain": "kosmetik",
+            "citation": "NPRA", "text": {"bm": {"instagram": "Semua orang cakap notifikasi tu lulus, tapi realitinya lain. Isi."}}}
     seen = []
 
     class W(LLM):

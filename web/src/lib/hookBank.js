@@ -8,30 +8,30 @@ export const OFF_BRAND = ["vulnerable"];       // first person about a named hum
 
 export const BUILTIN_FAMILIES = {
   curiosity: ["Takde sapa cakap pasal ___ tapi ni sebab aku ___",
-    "Aku ignore ___ berbulan2. Pastu aku try dan ___",
-    "Benda pasal ___ yg takde sapa bagitau kau: ___",
+    "Aku ignore ___ berbulan-bulan. Lepas tu aku cuba, dan ___",
+    "Soalan yang takde sapa tanya pasal ___: ___. Jawapannya, ___",
     "Ni apa sebenarnya jadi bila kau ___",
-    "Aku wish ada org bagitau aku ___ sebelum aku start ___"],
-  transform: ["6 bulan lepas aku x boleh ___. Hari ni aku ___",
-    "Aku dulu fikir ___ mustahil sampai la ___",
-    "Hari aku stop buat ___, everything changed",
-    "Before ___ vs After ___: ni apa yg berubah",
-    "Aku dari ___ ke ___ sbb buat SATU benda ni je"],
-  vulnerable: ["Aku takut nak share ___ tapi ni kenapa penting",
-    "Kegagalan terbesar aku dgn ___ ajar aku ___",
-    "Aku almost give up bila ___ tapi lepas tu ___",
+    "Aku harap ada orang bagitau aku ___ sebelum aku mula ___"],
+  transform: ["Enam bulan lepas aku tak boleh ___. Hari ni aku ___",
+    "Aku dulu fikir ___ mustahil, sampai lah ___",
+    "Hari aku berhenti buat ___, semua berubah",
+    "Dulu ___ vs sekarang ___: ni apa yang berubah",
+    "Aku dari ___ ke ___ sebab buat satu benda je"],
+  vulnerable: ["Aku takut nak kongsi ___ tapi ni kenapa penting",
+    "Kegagalan terbesar aku dengan ___ ajar aku ___",
+    "Aku hampir give up bila ___, tapi lepas tu ___",
     "Takde sapa nampak part mana aku ___",
-    "Aku struggle ___ bulan dgn ___ sebelum aku figured out ___"],
-  bold: ["Semua org ckp ___ tapi realitinya ___",
-    "Stop buat ___ kalau kau nak ___",
-    "___ dah mati. Ni apa yg actually works skrg",
-    "Sebab sebenar kenapa kau masih x ___ lagi",
-    "Hot take: ___ x penting mana pun compared to ___"],
+    "Aku struggle ___ bulan dengan ___ sebelum aku jumpa jalan ___"],
+  bold: ["Semua orang cakap ___, tapi realitinya ___",
+    "Berhenti buat ___ kalau kau nak ___",
+    "___ dah mati. Ni apa yang sebenarnya berkesan sekarang",
+    "Sebab sebenar kenapa kau masih tak ___ lagi",
+    "Berani aku cakap: ___ tak penting mana pun berbanding ___"],
   relatable: ["POV: kau ___ tapi ___",
-    "Feeling tu bila kau dah ___ tapi masih ___",
-    "Aku: esok la aku ___. Also aku: ___",
-    "Cuba nak ___ sambil ___ be like",
-    "Org lain: ___. Aku: masih figuring out ___"],
+    "Perasaan tu bila kau dah ___ tapi masih ___",
+    "Aku: esok lah aku ___. Lepas tu aku: ___",
+    "Cuba nak ___ sambil ___ memang macam ni",
+    "Orang lain: ___. Aku: masih pikir ___"],
 };
 
 export const FAMILY_WORDS = {
@@ -49,7 +49,11 @@ export function builtinNumbered() {
 /** The worker's default guidance for the 25 (hook_bank.DEFAULT_GUIDANCE), the starting instruction of a copy. */
 export const DEFAULT_GUIDANCE = "Write a Malay post's hook as the shape is written; write an English post's hook as a faithful translation "
   + "that keeps the shape's structure and what each blank is for. If no shape can be filled without inventing a fact, take a RELATABLE "
-  + "or CURIOSITY shape: they assert nothing and always fit.";
+  + "or CURIOSITY shape: they assert nothing and always fit. "
+  + "A strong hook leans on the S.T.O.P. formula (Wan, 12 Nov 2026: saved and applied): S - Shock (a bold claim or reality check that "
+  + "surprises), T - Target (name the reader: founders, mak-mak, pekerja 9 to 5), O - Open loop (hold a little back so the reader wants "
+  + "the rest), P - Proof (result first, then how). Fold whichever of these fit into the shape's blanks; you never need all four, and "
+  + "never a fact the SOURCE does not give.";
 
 /** The row "Salin untuk diubah" inserts: a manual hook set holding the 25 and their default guidance. */
 export function builtinCopy(name, uid) {

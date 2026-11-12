@@ -33,20 +33,20 @@ def test_all_twenty_five_shapes_are_kept_and_numbered_in_series_order():
     assert [r[0] for r in rows] == list(range(1, 26))
     assert rows[0][1:] == ("curiosity", "Takde sapa cakap pasal ___ tapi ni sebab aku ___")
     assert rows[10][1] == "vulnerable" and rows[15][1] == "bold"
-    assert rows[24][1:] == ("relatable", "Org lain: ___. Aku: masih figuring out ___")
+    assert rows[24][1:] == ("relatable", "Orang lain: ___. Aku: masih pikir ___")
 
 
 def test_every_post_is_given_the_shapes_even_when_no_family_is_named():
     for family in (None, "", "zzz"):
         system, _ = _request(family=family)
         assert "HOOK SHAPE (REQUIRED" in system and "MUST be built on exactly one" in system
-        assert "RELATABLE:" in system and "Semua org ckp ___ tapi realitinya ___" in system
+        assert "RELATABLE:" in system and "Semua orang cakap ___, tapi realitinya ___" in system
 
 
 def test_a_named_family_narrows_the_shapes_but_stays_required():
     system, _ = _request(family="bold")
     assert "HOOK SHAPE (REQUIRED" in system and "BOLD:" in system and "RELATABLE:" not in system
-    assert "16. Semua org ckp ___ tapi realitinya ___" in system
+    assert "16. Semua orang cakap ___, tapi realitinya ___" in system
 
 
 def test_the_company_account_never_gets_the_first_person_family():
@@ -92,10 +92,13 @@ def test_declared_accepts_only_a_usable_shape():
     assert hook_bank.declared({**ok, "hook_shape": "abc"}, "regulab") is None
     assert hook_bank.declared({"hook": "x"}, "regulab") is None and hook_bank.declared(None, "regulab") is None
     assert hook_bank.declared({**ok, "hook": ""}, "regulab") is None
-    assert hook_bank.declared({**ok, "hook": "Stop buat ___ kalau kau nak ___"}, "regulab") is None, "blanks left in the hook"
+    assert hook_bank.declared({**ok, "hook": "Ni apa sebenarnya jadi bila kau ___"}, "regulab") is None, "blanks left in the hook"
     assert hook_bank.declared({**ok, "hook_shape": 12}, "regulab") is None, "a confession on the company account"
     assert hook_bank.declared({**ok, "hook_shape": 12}, "linkedin") == 12
     assert hook_bank.declared({**ok, "hook_shape": 4}, "regulab", family="bold") is None, "outside the family the idea named"
+    # a writer cannot declare one shape number while writing another shape's opening words
+    mismatch = {"hook": "Berhenti buat label sendiri kalau nak produk selamat", "hook_shape": 4}
+    assert hook_bank.declared(mismatch, "regulab") is None, "the hook must open on the declared shape's own words"
 
 
 def test_lead_matches_ignores_case_spacing_and_punctuation():
@@ -180,8 +183,8 @@ def test_a_revision_is_held_to_it_too_and_an_unfit_answer_is_never_asked_again(m
 # ---- the cover slide and the poster wear the hook (7 Nov 2026) --------------------------------------------------------------
 
 def test_a_cover_that_already_opens_with_the_hook_is_kept_and_one_that_does_not_is_set_to_it():
-    hook = "Stop buat label sendiri kalau nak produk selamat"
-    kept = [{"title": "Stop buat *label* sendiri kalau nak produk selamat", "points": []}, {"title": "Fakta", "points": ["a"]}]
+    hook = "Berhenti buat label sendiri kalau nak produk selamat"
+    kept = [{"title": "Berhenti buat *label* sendiri kalau nak produk selamat", "points": []}, {"title": "Fakta", "points": ["a"]}]
     assert hook_bank.cover(kept, hook) == (kept, "kept")
     other = [{"title": "Tentang label", "points": ["x"]}, {"title": "Fakta", "points": ["a"]}]
     got, state = hook_bank.cover(other, hook)
@@ -193,7 +196,7 @@ def test_a_hook_too_long_for_a_headline_or_with_blanks_left_leaves_the_cover_alo
     items = [{"title": "Tentang label", "points": []}]
     long_hook = " ".join(["perkataan"] * 14)
     assert hook_bank.cover(items, long_hook) == (items, "too_long")
-    assert hook_bank.cover(items, "Stop buat ___ kalau nak ___") == (items, "")
+    assert hook_bank.cover(items, "Berhenti buat ___ kalau nak ___") == (items, "")
     assert hook_bank.cover(items, "") == (items, "") and hook_bank.cover([], "Hook") == ([], "")
 
 

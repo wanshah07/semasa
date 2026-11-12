@@ -88,14 +88,14 @@ def test_a_linkedin_answer_that_stays_malay_fails_with_a_reason_and_writes_no_dr
 
 def test_ws_regulab_keeps_its_malay_hook_and_is_never_asked_to_translate():
     store = _store()
-    cap = "Benda pasal sunscreen yg takde sapa bagitau kau: ya, masuk darah.\n\nFollow untuk tip regulatori."
-    out = {"fit": True, "hook": "Benda pasal sunscreen yg takde sapa bagitau kau: ya, masuk darah", "hook_shape": 3,
+    cap = "Soalan yang takde sapa tanya pasal sunscreen: adakah ia masuk darah? Jawapannya, ya.\n\nFollow untuk tip regulatori."
+    out = {"fit": True, "hook": "Soalan yang takde sapa tanya pasal sunscreen: adakah ia masuk darah? Jawapannya, ya", "hook_shape": 3,
            "domain": "kosmetik", "citation": "NPRA", "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}},
            "visual_prompt": "x", "alt": "x"}
     llm = Seq(out)
     idea = {"id": "i1", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "none"}
     ideas.process_idea(store, llm, idea, ideas.load_settings(store))
-    assert len(llm.seen) == 1 and store.tables["semasa_posts"][0]["hook"].startswith("Benda pasal")
+    assert len(llm.seen) == 1 and store.tables["semasa_posts"][0]["hook"].startswith("Soalan yang takde sapa tanya")
 
 
 def test_the_linkedin_prompt_says_english_only():

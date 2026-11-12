@@ -12,4 +12,6 @@ def hooked(plan: Any) -> Any:
     first = next((s for s in plan["scenes"] if isinstance(s, dict) and s.get("heading")), None)
     if first is None:
         return plan
-    return {**plan, "hook_shape": 21, "hook": first["heading"]}
+    # shape 18 ("___ dah mati. Ni apa yang sebenarnya berkesan sekarang") opens with a blank, so its stem is empty and the
+    # strict opening-words check is skipped — the only built-in shape a freeform test heading can claim without lying.
+    return {**plan, "hook_shape": 18, "hook": first["heading"]}

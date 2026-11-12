@@ -28,30 +28,30 @@ log = get_logger("semasa.hook_bank")
 
 FAMILIES = {
     "curiosity": ["Takde sapa cakap pasal ___ tapi ni sebab aku ___",
-                  "Aku ignore ___ berbulan2. Pastu aku try dan ___",
-                  "Benda pasal ___ yg takde sapa bagitau kau: ___",
+                  "Aku ignore ___ berbulan-bulan. Lepas tu aku cuba, dan ___",
+                  "Soalan yang takde sapa tanya pasal ___: ___. Jawapannya, ___",
                   "Ni apa sebenarnya jadi bila kau ___",
-                  "Aku wish ada org bagitau aku ___ sebelum aku start ___"],
-    "transform": ["6 bulan lepas aku x boleh ___. Hari ni aku ___",
-                  "Aku dulu fikir ___ mustahil sampai la ___",
-                  "Hari aku stop buat ___, everything changed",
-                  "Before ___ vs After ___: ni apa yg berubah",
-                  "Aku dari ___ ke ___ sbb buat SATU benda ni je"],
-    "vulnerable": ["Aku takut nak share ___ tapi ni kenapa penting",
-                   "Kegagalan terbesar aku dgn ___ ajar aku ___",
-                   "Aku almost give up bila ___ tapi lepas tu ___",
+                  "Aku harap ada orang bagitau aku ___ sebelum aku mula ___"],
+    "transform": ["Enam bulan lepas aku tak boleh ___. Hari ni aku ___",
+                  "Aku dulu fikir ___ mustahil, sampai lah ___",
+                  "Hari aku berhenti buat ___, semua berubah",
+                  "Dulu ___ vs sekarang ___: ni apa yang berubah",
+                  "Aku dari ___ ke ___ sebab buat satu benda je"],
+    "vulnerable": ["Aku takut nak kongsi ___ tapi ni kenapa penting",
+                   "Kegagalan terbesar aku dengan ___ ajar aku ___",
+                   "Aku hampir give up bila ___, tapi lepas tu ___",
                    "Takde sapa nampak part mana aku ___",
-                   "Aku struggle ___ bulan dgn ___ sebelum aku figured out ___"],
-    "bold": ["Semua org ckp ___ tapi realitinya ___",
-             "Stop buat ___ kalau kau nak ___",
-             "___ dah mati. Ni apa yg actually works skrg",
-             "Sebab sebenar kenapa kau masih x ___ lagi",
-             "Hot take: ___ x penting mana pun compared to ___"],
+                   "Aku struggle ___ bulan dengan ___ sebelum aku jumpa jalan ___"],
+    "bold": ["Semua orang cakap ___, tapi realitinya ___",
+             "Berhenti buat ___ kalau kau nak ___",
+             "___ dah mati. Ni apa yang sebenarnya berkesan sekarang",
+             "Sebab sebenar kenapa kau masih tak ___ lagi",
+             "Berani aku cakap: ___ tak penting mana pun berbanding ___"],
     "relatable": ["POV: kau ___ tapi ___",
-                  "Feeling tu bila kau dah ___ tapi masih ___",
-                  "Aku: esok la aku ___. Also aku: ___",
-                  "Cuba nak ___ sambil ___ be like",
-                  "Org lain: ___. Aku: masih figuring out ___"],
+                  "Perasaan tu bila kau dah ___ tapi masih ___",
+                  "Aku: esok lah aku ___. Lepas tu aku: ___",
+                  "Cuba nak ___ sambil ___ memang macam ni",
+                  "Orang lain: ___. Aku: masih pikir ___"],
 }
 # Order matters: a brand account opens with recognition and only earns the assertive families later.
 ORDER = ("relatable", "curiosity", "bold", "transform")
@@ -93,7 +93,11 @@ def allowed(stream: str, family: str | None = None, bank: Bank | None = None) ->
 
 DEFAULT_GUIDANCE = ("Write a Malay post's hook as the shape is written; write an English post's hook as a faithful translation "
                     "that keeps the shape's structure and what each blank is for. If no shape can be filled without inventing a "
-                    "fact, take a RELATABLE or CURIOSITY shape: they assert nothing and always fit.")
+                    "fact, take a RELATABLE or CURIOSITY shape: they assert nothing and always fit. "
+                    "A strong hook leans on the S.T.O.P. formula (Wan, 12 Nov 2026: saved and applied): S - Shock (a bold claim "
+                    "or reality check that surprises), T - Target (name the reader: founders, mak-mak, pekerja 9 to 5), O - Open "
+                    "loop (hold a little back so the reader wants the rest), P - Proof (result first, then how). Fold whichever "
+                    "of these fit into the shape's blanks; you never need all four, and never a fact the SOURCE does not give.")
 
 
 def block(family: str | None, stream: str, bank: Bank | None = None, hint: str = "") -> str:
@@ -168,19 +172,46 @@ def pick_for_idea(store: Any, idea_id: Any) -> Bank | None:
     return pick(store, idea, settings)
 
 
+def _shape_stem(shape: str) -> list[str]:
+    """The shape's literal opening words before its first blank, lowercased. A finished hook must open on these words, so a
+    writer cannot declare one number while writing another shape. A shape that starts with a blank ("___ dah mati") has no
+    stem and is left unchecked."""
+    head = shape.split("___", 1)[0].strip()
+    return [w.lower() for w in re.findall(r"[A-Za-z0-9]+", head)][:4]
+
+
+def _declared_shape(n: int, stream: str, family: str | None, bank: Bank | None) -> tuple[int, str, str] | None:
+    for row in allowed(stream, family, bank):
+        if row[0] == n:
+            return row
+    return None
+
+
 def declared(out: Any, stream: str, family: str | None = None, bank: Bank | None = None) -> int | None:
-    """The shape number the writer declared, when it is one this stream may use and the hook has no blanks left; else None."""
+    """The shape number the writer declared, when it is one this stream may use, the hook has no blanks left, and the hook
+    actually opens on that shape's own words; else None."""
     if not isinstance(out, dict):
         return None
     try:
         n = int(out.get("hook_shape"))
     except (TypeError, ValueError):
         return None
-    if n not in {r[0] for r in allowed(stream, family, bank)}:
+    row = _declared_shape(n, stream, family, bank)
+    if row is None:
         return None
     hook = str(out.get("hook") or "")
     if not hook.strip() or "___" in hook or re.search(r"_{2,}", hook):
         return None
+    # The hook must open on this shape's own leading words. On LinkedIn the hook is a faithful TRANSLATION of the shape, so a
+    # Malay stem cannot fingerprint it and the check is skipped there. A custom bank's shapes are Wan's own wording and the
+    # writer may paraphrase them, so the stem check applies only to the built-in 25 (bank is None). A hook under four words is
+    # too short to judge (a placeholder or a very short caption), so it is left to the usual valid-number check. (Caught
+    # 12 Nov 2026: a dry-run declared shape 3 while writing a "Semua orang cakap ... tapi realitinya ..." hook.)
+    if stream != "linkedin" and bank is None:
+        hook_words = [w.lower() for w in re.findall(r"[A-Za-z0-9]+", hook)]
+        stem = _shape_stem(row[2])
+        if stem and len(stem) >= 2 and len(hook_words) >= 4 and hook_words[: len(stem)] != stem:
+            return None
     return n
 
 

@@ -129,15 +129,15 @@ def test_photo_with_no_picture_is_refused_by_name_before_any_browser(monkeypatch
     assert job["status"] == "error" and "Photo look is drawn on a picture" in job["error"]
 
 
-def test_a_slide_studio_calls_too_full_is_final_and_named(monkeypatch):
+def test_a_slide_studio_calls_too_full_is_drawn_in_the_classic_look_and_says_so(monkeypatch):
     def full(items, **kw):
         raise SlideError("slide 2 (e_explain): The slide is fuller than the card. Shorten it, split it into two "
                          "slides, or pick another look.")
     monkeypatch.setattr(studio_cards, "render", full)
     store = _store({"look": "era"})
-    assert _run(store) is False
+    assert _run(store) is True
     job = store.tables["media_generations"][0]
-    assert job["status"] == "error" and "slide 2" in job["error"]
+    assert job["status"] == "done" and job["meta"]["look"] == "classic" and "slide 2" in job["meta"]["look_fallback"]
 
 
 def test_a_browser_that_would_not_start_is_tried_again(monkeypatch):

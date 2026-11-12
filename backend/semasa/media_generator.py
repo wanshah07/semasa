@@ -701,9 +701,20 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                     pics = slides.render(classic_words(words_in), stream=stream, eyebrow=eyebrow,
                                          source=str(meta.get("citation") or ""), website=website, ground=ground, size=size)
                 break
-            except slides.SlideError:
+            except slides.SlideError as exc:
                 if n == len(attempts) - 1:
-                    raise
+                    if kind or look in ("threads", "classic") or "fuller than the card" not in str(exc):
+                        raise
+                    # a Studio look that cannot fit a slide's words: the classic look shrinks its type to fit, so the post
+                    # still gets its pictures instead of failing the whole job on every run
+                    try:
+                        pics = slides.render(classic_words(words_in), stream=stream, eyebrow=eyebrow,
+                                             source=str(meta.get("citation") or ""), website=website, ground=ground, size=size)
+                    except slides.SlideError:
+                        raise exc from None
+                    meta["look_fallback"] = f"{look}: {str(exc)[:200]}"
+                    look = "classic"
+                    break
                 log.info("%s: the squeezed carousel did not fit; drawn as written", row_id)
         cover = False
         words = carousel.cover_words(items[0] if items else None)

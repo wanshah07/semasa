@@ -119,6 +119,22 @@ def test_a_squeezed_set_that_fails_to_draw_is_drawn_as_written(worker, monkeypat
     assert seen == [5, 9] and saved["meta"]["count"] == 10 and saved["meta"]["squeezed_from"] is None
 
 
+def test_a_studio_look_that_cannot_fit_a_slide_falls_back_to_the_classic_look(worker, monkeypatch):
+    from fakestore import FakeStore
+
+    from semasa import studio_cards
+    saved, uploads = worker
+
+    def too_full(*a, **k):
+        raise slides.SlideError("slide 5 (i_title): The slide is fuller than the card: shorten a line.")
+    monkeypatch.setattr(studio_cards, "render", too_full)
+    row = _job("regulab", _set(4))
+    row["meta"]["look"] = "image"
+    assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
+    meta = saved["meta"]
+    assert meta["look"] == "classic" and "fuller than the card" in meta["look_fallback"] and len(uploads) >= 4
+
+
 def _top_right_ink(jpeg):
     im = Image.open(io.BytesIO(jpeg)).convert("L").crop((700, 40, 1000, 110))
     return sum(1 for v in im.tobytes() if v < 110)

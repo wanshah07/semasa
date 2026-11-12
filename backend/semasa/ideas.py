@@ -982,15 +982,22 @@ def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: 
 
 LOOKS = ("classic", "grid", "era", "photo", "image", "threads", "hand")
 DEFAULT_LOOK = "image"          # Wan, 8 Nov 2026: the Image look (a picture ON the slide) is the default for new posts
+POSTER_DEFAULT_LOOK = "hand"    # Wan, 13 Nov 2026: a poster (format=poster) is the hand-drawn look by default
 
 
 def look_of(idea: dict[str, Any]) -> str:
     """The carousel look chosen on the idea, carried in its brief ({"look": ...}) until the bot writes the draft:
     Semasa's own drawing ("classic"), Threads-style text + picture, or one of ws.regulab Studio's designs.
-    No choice is the default look ("image"); a name nobody knows is "classic", the drawing that never needs
-    a picture or the browser."""
-    raw = ((idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}).get("look")
-    look = str(raw or DEFAULT_LOOK)
+    No choice is the default look ("image"), except a poster, which defaults to the hand-drawn look ("hand");
+    a name nobody knows is "classic", the drawing that never needs a picture or the browser."""
+    brief = (idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}
+    raw = brief.get("look")
+    if raw:
+        look = str(raw)
+    elif format_of(idea) == "poster":
+        look = POSTER_DEFAULT_LOOK
+    else:
+        look = DEFAULT_LOOK
     return look if look in LOOKS or my_designs.token(look) else "classic"
 
 

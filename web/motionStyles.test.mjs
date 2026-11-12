@@ -14,7 +14,7 @@ const row = motionRow({brief:'One micro-topic'}).row;
 assert.equal(row.mascot, '');
 assert.equal(row.options.style, 'bright-education');
 assert.equal(row.seconds, 30);
-assert.equal(row.language, 'en');
+assert.equal(row.language, 'both');
 assert.equal(row.voice, 'auto');
 assert.equal(catalog.length, 8);
 assert.equal(recipeOf('wrong').id, 'bright-education');

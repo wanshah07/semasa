@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BUCKETS, TABLES, TABLES_UPLOADERS, errText, supabase } from "./SupabaseClient";
-import { liveName } from "./liveChannel";
+import { coalesce, liveName } from "./liveChannel";
 import { tr } from "./i18n";
 
 /** Auth session, kept live. */
@@ -103,12 +103,16 @@ export function useGenerations({ limit = 300, enabled = true, need = "" } = {}) 
 
   useEffect(() => {
     if (!supabase || !enabled) return undefined;
-    load();
+    // one read for a burst of row changes, and never two in flight (see coalesce)
+    const kick = coalesce(() => loadRef.current?.());
+    kick.now();
     const channel = supabase.channel(liveName("media_generations_live"))
-      .on("postgres_changes", { event: "*", schema: "public", table: TABLES.media }, () => loadRef.current?.())
+      .on("postgres_changes", { event: "*", schema: "public", table: TABLES.media }, () => kick())
       .subscribe();
-    const id = setInterval(() => loadRef.current?.(), 60_000);
-    return () => { supabase.removeChannel(channel); clearInterval(id); };
+    const id = setInterval(() => { if (!document.hidden) kick.now(); }, 60_000);
+    const onShow = () => { if (!document.hidden) kick.now(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => { kick.cancel(); supabase.removeChannel(channel); clearInterval(id); document.removeEventListener("visibilitychange", onShow); };
   }, [load, enabled]);
 
   // A Retry is a fresh start: the attempt count restarts and the provider is the one picked on the card ("" = the
@@ -168,17 +172,19 @@ export function useTable(table, { enabled = true, select = "*", order = "created
 
   useEffect(() => {
     if (!supabase || !enabled) return undefined;
-    load();
+    const kick = coalesce(() => loadRef.current?.());       // one read for a burst of changes, never two in flight
+    kick.now();
     let channel = null;
     if (realtime) {
       channel = supabase.channel(liveName(`${table}_live`))
-        .on("postgres_changes", { event: "*", schema: "public", table }, () => loadRef.current?.())
+        .on("postgres_changes", { event: "*", schema: "public", table }, () => kick())
         .subscribe();
     }
-    const tick = () => { if (!document.hidden) loadRef.current?.(); };
+    const tick = () => { if (!document.hidden) kick.now(); };
     const id = setInterval(tick, everyMs);
     document.addEventListener("visibilitychange", tick);
     return () => {
+      kick.cancel();
       if (channel) supabase.removeChannel(channel);
       clearInterval(id); document.removeEventListener("visibilitychange", tick);
     };

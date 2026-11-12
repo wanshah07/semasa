@@ -154,6 +154,12 @@ def fallback_settings() -> dict[str, str | None]:
     return {"fallback_base_url": base, "fallback_key": key, "fallback_model": model, "fallback_blocked": why}
 
 
+def _openai_base_url() -> str:
+    """The OpenAI-compatible MEDIA endpoint. Default is KiosAPI (Wan, 12 Nov 2026: "auto-kiosapi"), not api.openai.com:
+    media gen runs on the KiosAPI gateway by default, so no OPENAI_BASE_URL variable is needed."""
+    return (env("OPENAI_BASE_URL", "https://kiosapi.com/v1") or "").rstrip("/")
+
+
 def _openai_key() -> str | None:
     """The key for the OpenAI-compatible MEDIA endpoint (image edits + video).
 
@@ -161,7 +167,7 @@ def _openai_key() -> str | None:
     LLM_FALLBACK_BASE_URL), the SAME Mireld key that backs up the writer (LLM_FALLBACK_API_KEY) — Wan, 12 Nov 2026:
     "mireld backup guna api key yang sama untuk mireld image generation"; else LLM_API_KEY only when the writer
     runs on the same host. A key only ever goes to the host it belongs to."""
-    base = env("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    base = _openai_base_url()
     if env("OPENAI_API_KEY"):
         return env("OPENAI_API_KEY")
     if host_of(base) == host_of(env("LLM_FALLBACK_BASE_URL", "https://api.mireld.my/v1")):
@@ -174,7 +180,7 @@ def _openai_key() -> str | None:
 def _openai_image_model() -> str:
     """The image model for the OpenAI-compatible MEDIA endpoint, by host:
     Mireld = gpt-image-2.5 (mireld-image-gen skill); KiosAPI = gpt-image-2; else OpenAI's gpt-image-1."""
-    host = host_of(env("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+    host = host_of(_openai_base_url())
     if host == "api.mireld.my":
         return env("OPENAI_IMAGE_MODEL", "gpt-image-2.5")
     if host == "kiosapi.com":
@@ -257,10 +263,11 @@ class MediaSettings:
 
     @classmethod
     def load(cls) -> MediaSettings:
-        # Unset: Cloudflare when its two secrets are there and Replicate's is not, so adding the free provider needs
-        # no Variable as well; otherwise Replicate, as before.
+        # Unset (Wan, 12 Nov 2026: "auto-kiosapi"): the default is the OpenAI-compatible provider (KiosAPI, see
+        # _openai_base_url) — no MEDIA_PROVIDER variable needed. Cloudflare and Replicate stay opt-in: Cloudflare only
+        # when its two secrets are set and Replicate's token is not; Replicate when MEDIA_PROVIDER names it.
         free = bool(env("CLOUDFLARE_ACCOUNT_ID") and env("CLOUDFLARE_API_TOKEN")) and not env("REPLICATE_API_TOKEN")
-        provider = (env("MEDIA_PROVIDER") or ("cloudflare" if free else "replicate")).lower()
+        provider = (env("MEDIA_PROVIDER") or ("cloudflare" if free else "openai")).lower()
         if provider not in ("replicate", "openai", "cloudflare"):
             raise ConfigError(f"MEDIA_PROVIDER must be replicate, openai or cloudflare, got {provider!r}")
         return cls(
@@ -280,7 +287,7 @@ class MediaSettings:
             # A key only ever goes to the host it belongs to. Mireld image gen reuses the SAME Mireld key
             # that backs up the writer (LLM_FALLBACK_API_KEY) when OPENAI_BASE_URL points at Mireld — see _openai_key().
             openai_key=_openai_key(),
-            openai_base_url=(env("OPENAI_BASE_URL", "https://api.openai.com/v1") or "").rstrip("/"),
+            openai_base_url=_openai_base_url(),
             openai_image_model=_openai_image_model(),
             openai_video_model=env("OPENAI_VIDEO_MODEL", "sora-2"),
             openai_image_size=env("OPENAI_IMAGE_SIZE", "1024x1024"),

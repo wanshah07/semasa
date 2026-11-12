@@ -127,7 +127,9 @@ def test_a_key_is_only_ever_sent_to_its_own_host(monkeypatch):
     assert MediaSettings.load().openai_key == "sk-real"
     monkeypatch.delenv("OPENAI_API_KEY")
     monkeypatch.delenv("LLM_BASE_URL")                                  # the writer IS OpenAI: the same key serves both
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")  # (the media default is KiosAPI since 12 Nov)
     assert MediaSettings.load().openai_key == "rootsys-key"
+    monkeypatch.delenv("OPENAI_BASE_URL")
     # the other way round: an OpenAI key never goes to a gateway
     monkeypatch.delenv("LLM_API_KEY")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-real")

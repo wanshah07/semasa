@@ -238,8 +238,9 @@ explain why — do not string the reader along. Then the one thing that makes it
 are several steps or points ("1. ...", "2. ..."). Close with one short practical line, not a lecture. Vary sentence length;
 a short sentence for emphasis reads well, a row of them does not.
 
-Citations below the body, never inside it. The last line of the body is ONE short, friendly invitation to follow him for more of this (for
-example "Follow me for more like this."), the only ask allowed; before it, end on a statement that lands, never a question.
+Citations below the body, never inside it. The last line of the body is ONE short, friendly invitation to follow him for more of
+this (for example "Follow me for more like this."), the only ask allowed;
+before it, end on a statement that lands, never a question.
 3 to 5 hashtags. No em dash.
 
 Rules. Breaking any blocks the post:

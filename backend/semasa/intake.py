@@ -28,18 +28,19 @@ log = get_logger("semasa.intake")
 
 WATCH = "semasa_watch"
 KEY = "sources"                     # semasa_settings row: Wan's overrides, and the last run's report
-KEEP_DAYS = {"reddit": 14, "youtube": 14, "myra": 45}     # what is loud now is not kept; the folder bank is not pruned
+# what is loud now is kept 72 hours (Wan, 12 Nov 2026); the folder bank is not pruned
+KEEP_HOURS = {"reddit": 72, "youtube": 72, "myra": 45 * 24}
 
 DEFAULTS: dict[str, Any] = {
     "enabled": True,
     "community": {
-        "enabled": True, "subreddit": "malaysia", "window": "week", "limit": 15, "keep": 10,
+        "enabled": True, "subreddit": "malaysia", "window": "week", "limit": 15, "keep": 10, "hours": 72,
         # 19 terms, measured live on 30 Sep 2026: seven found 1 thread a week, these find 3 and 20 of 22 a month.
         # Past about 20 terms Reddit stops matching and hands back the subreddit's general top, so community.py caps it.
         "terms": ["halal", "kosmetik", "skincare", "sunscreen", "NPRA", "supplement", "label",
                   "KKM", "BKKM", "JAKIM", "makanan", "ubat", "racun", "kulit", "haram", "recall", "serum", "vitamin",
                   "cosmetic"],
-        "youtube": {"enabled": True, "days": 14, "max_results": 8,
+        "youtube": {"enabled": True, "hours": 72, "max_results": 8,
                     "queries": ["sunscreen skincare Malaysia", "halal certification Malaysia", "kosmetik NPRA"]},
     },
     "folders": {
@@ -108,7 +109,7 @@ def write(store: Any, rows: list[dict[str, Any]], dry: bool) -> int:
 
 def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetime, dry: bool) -> dict[str, Any]:
     raw = community.fetch(client, cfg)
-    cands = community.candidates(raw, now)
+    cands = community.candidates(raw, now, int(cfg.get("hours") or community.WINDOW_HOURS))
     known = have(store, [c["url"] for c in cands])
     fresh = [c for c in cands if c["url"] not in known]
     by = {"reddit": [], "youtube": []}
@@ -207,9 +208,9 @@ PARTS = (("community", do_community), ("folders", do_folders), ("myra", do_myra)
 
 
 def prune(store: Any, now: datetime) -> None:
-    for section, days in KEEP_DAYS.items():
+    for section, hours in KEEP_HOURS.items():
         try:
-            cutoff = (now - timedelta(days=days)).isoformat()
+            cutoff = (now - timedelta(hours=hours)).isoformat()
             store.table(WATCH).delete().eq("section", section).lt("created_at", cutoff).execute()
         except Exception as exc:  # noqa: BLE001 - retention never fails a sweep
             log.info("could not prune %s: %s", section, str(exc)[:100])

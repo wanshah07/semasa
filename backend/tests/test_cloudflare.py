@@ -129,14 +129,16 @@ def test_a_video_job_stops_before_anything_is_spent(monkeypatch):
     assert writes["v1"]["status"] == "error" and "pictures only" in writes["v1"]["error"]
 
 
-def test_default_provider_is_cloudflare_only_when_its_secrets_are_there(monkeypatch):
+def test_default_provider_is_openai_compatible_kiosapi_and_cloudflare_only_when_its_secrets_are_there(monkeypatch):
     for n in ("MEDIA_PROVIDER", "REPLICATE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"):
         monkeypatch.delenv(n, raising=False)
-    assert MediaSettings.load().provider == "replicate"
+    assert MediaSettings.load().provider == "openai"                    # Wan, 12 Nov 2026: "auto-kiosapi", no variable needed
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acc")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
     assert MediaSettings.load().provider == "cloudflare"
     monkeypatch.setenv("REPLICATE_API_TOKEN", "r")
-    assert MediaSettings.load().provider == "replicate"
+    assert MediaSettings.load().provider == "openai"                    # a Replicate token alone no longer picks Replicate
+    monkeypatch.setenv("MEDIA_PROVIDER", "replicate")
+    assert MediaSettings.load().provider == "replicate"                 # it is opt-in
     monkeypatch.setenv("MEDIA_PROVIDER", "cloudflare")
     assert MediaSettings.load().provider == "cloudflare"

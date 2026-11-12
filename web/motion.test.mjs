@@ -50,7 +50,7 @@ assert.deepEqual(motionRepoRow("https://github.com/heygen-com/hyperframes/tree/m
   { url: "https://github.com/heygen-com/hyperframes", full_name: "heygen-com/hyperframes", note: "motion style", category: "motion", category_by: "wan", status: "pending", created_by: "u1" });
 assert.equal(motionRepoRow("skills.sh"), null);
 const idea = { id: "i1", source_title: "NPRA batalkan 12 produk", note: "tekankan label", source_summary: "Ringkasan.", source_url: "https://npra.gov.my/x", stream: "regulab" };
-assert.deepEqual(motionFromIdea(idea, "u1"), { brief: "NPRA batalkan 12 produk\nWan: tekankan label\nRingkasan.", source_url: "https://npra.gov.my/x", stream: "regulab", language: "en", resolution: "portrait", seconds: 30, status: "waiting", idea_id: "i1", ai_background: false, options: { style: "bright-education", mode: "auto", design: "auto", ambient: "mint", effects:["B04"], effect_mode:"auto", asset_mode:"auto", assets:[], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true}, evidence: {source_url: idea.source_url, source_title: idea.source_title, source_summary: idea.source_summary, id: idea.id} }, style_repo_id: null, voice: "auto", mascot: "", created_by: "u1" });
+assert.deepEqual(motionFromIdea(idea, "u1"), { brief: "NPRA batalkan 12 produk\nWan: tekankan label\nRingkasan.", source_url: "https://npra.gov.my/x", stream: "regulab", language: "both", resolution: "portrait", seconds: 30, status: "waiting", idea_id: "i1", ai_background: false, options: { style: "bright-education", mode: "auto", design: "auto", ambient: "mint", effects:["B04"], effect_mode:"auto", asset_mode:"auto", assets:[], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true}, evidence: {source_url: idea.source_url, source_title: idea.source_title, source_summary: idea.source_summary, id: idea.id} }, style_repo_id: null, voice: "auto", mascot: "", created_by: "u1" });
 // the saved defaults ("the skill") apply to an idea and to a post
 const saved = withDefaults({ prompt: "P" }, { language: "en", voice: "female", resolution: "square", seconds: "25", aiBackground: true, styleRepoId: "r9" });
 assert.deepEqual(saved, { prompt: "P", defaults: { effects:["B04"], effectMode:"auto", assetMode:"auto", language: "en", voice: "female", design: "auto", ambient: "mint", previewMusic: "user-reel", style: "bright-education", mode: "auto", resolution: "square", seconds: 30, aiBackground: true, styleRepoId: "r9" } });
@@ -70,7 +70,7 @@ console.log("motion.test.mjs: ok");
 
 // a post draft: slides first, else the caption in the post's own language
 const post = { lang: "bm", stream: "regulab", idea_id: "i9", slides: [{ title: "Tiga perkara", points: ["Satu", "Dua"] }, { title: "Penutup" }], text: { bm: { facebook: "Kapsyen" } } };
-assert.deepEqual(motionFromPost(post, "u1"), { brief: "Tiga perkara\n- Satu\n- Dua\n\nPenutup", source_url: "", stream: "regulab", language: "en", resolution: "portrait", seconds: 30, status: "waiting", idea_id: "i9", ai_background: false, options: { style: "bright-education", mode: "auto", design: "auto", ambient: "mint", effects:["B04"], effect_mode:"auto", asset_mode:"auto", assets:[], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true}, evidence: {idea_id:"i9"} }, style_repo_id: null, voice: "auto", mascot: "", created_by: "u1" });
+assert.deepEqual(motionFromPost(post, "u1"), { brief: "Tiga perkara\n- Satu\n- Dua\n\nPenutup", source_url: "", stream: "regulab", language: "both", resolution: "portrait", seconds: 30, status: "waiting", idea_id: "i9", ai_background: false, options: { style: "bright-education", mode: "auto", design: "auto", ambient: "mint", effects:["B04"], effect_mode:"auto", asset_mode:"auto", assets:[], preferred_preview_music: {source:"user-reel", rights_status:"unverified", preview_only:true}, evidence: {idea_id:"i9"} }, style_repo_id: null, voice: "auto", mascot: "", created_by: "u1" });
 assert.equal(motionFromPost({ lang: "en", stream: "linkedin", text: { en: { linkedin: "Words" } } }).brief, "Words");
 assert.equal(motionFromPost({ lang: "en", stream: "linkedin", text: { en: { linkedin: "Words" } } }).language, "en");
 assert.equal(motionFromPost({ lang: "bm", text: {} }), null);
@@ -78,7 +78,7 @@ assert.equal(motionFromPost({ lang: "bm", text: {} }), null);
 assert.equal(motionFromIdea(idea, "u1", dflts, "bm").language, "bm");
 assert.equal(motionFromIdea(idea, "u1", null, "en").language, "en");
 assert.equal(motionFromPost(post, "u1", null, "both").language, "both");
-assert.equal(motionFromPost(post, "u1", null, "nope").language, "en", "an unknown choice falls back to current English defaults");
+assert.equal(motionFromPost(post, "u1", null, "nope").language, "both", "an unknown choice falls back to the stream's default");
 
 // the queue (Wan, 26 Oct 2026): an idea or a draft waits for its styles to be chosen; the worker only claims 'pending'
 assert.equal(motionFromIdea(idea, "u1").status, "waiting");
@@ -89,7 +89,7 @@ const waiting = { ...motionFromIdea(idea, "u1"), id: "m1" };
 assert.ok(motionVariantMatches(waiting, motionFromIdea(idea, "u1", { language: "bm" })), "a waiting row is the idea's video, whatever it is set to so far");
 assert.ok(!motionVariantMatches({ ...waiting, idea_id: "other" }, motionFromIdea(idea, "u1")));
 const form = formOf(waiting);
-assert.deepEqual([form.language, form.voice, form.mode, form.seconds, form.design, form.effectMode], ["en", "auto", "auto", 30, "auto", "auto"]);
+assert.deepEqual([form.language, form.voice, form.mode, form.seconds, form.design, form.effectMode], ["both", "auto", "auto", 30, "auto", "auto"]);
 const go = startFields(waiting, { ...form, language: "bm", voice: "male", design: "continuous-line", effectMode: "manual", effects: ["V04", "H02", "ZZZ"] });
 assert.equal(go.status, "pending"); assert.equal(go.attempts, 0); assert.equal(go.error, "");
 assert.deepEqual([go.language, go.voice], ["bm", "male"]);
@@ -98,7 +98,7 @@ assert.deepEqual(go.options.effects, ["V04", "H02"], "an unknown style id never 
 assert.deepEqual(go.options.evidence, waiting.options.evidence, "the idea's evidence rides along");
 assert.equal(startFields(waiting, { ...form, language: "bm", voice: "kitten" }).voice, "female", "Kitten is English only");
 assert.equal(startFields(waiting, { ...form, mode: "teaser", seconds: 10 }).seconds, 10);
-assert.equal(startFields({ ...waiting, stream: "linkedin" }, form).language, "en");
+assert.equal(startFields({ ...waiting, stream: "linkedin" }, form).language, "both");
 // the four approved formats, as the worker (motion.format_of) names them
 assert.equal(formatOf({ mode: "teaser", seconds: 10, language: "bm" }), "gimmick");
 assert.equal(formatOf({ mode: "explainer", seconds: 30, design: "continuous-line", language: "en" }), "preview");

@@ -32,7 +32,7 @@ export const LANGUAGES = [["bm", "Bahasa Malaysia"], ["en", "English"], ["both",
 /** Current default: English for LinkedIn; ws.regulab defaults to BM + English mix (Wan, 12 Nov 2026: "tukarkan english
     version ke mix english and malay untuk ws regulab"). Explicit BM/English stays selectable for both streams. */
 export const defaultLanguage = (stream = "regulab") => (stream === "linkedin" ? "en" : "both");
-const langOf = (v, stream) => (LANGUAGES.some(([k]) => k === v) ? v : defaultLanguage(stream));
+const langOf = (v, stream) => (LANGUAGES.some(([k]) => k === v) ? v : (stream ? defaultLanguage(stream) : v));
 /* the voice (Wan, 24 Oct 2026); the talking mascot was removed on 25 Oct 2026: "remove mascot usage" */
 export const VOICES = [["auto", "Auto: selang-seli lelaki dan perempuan setiap video", "Auto: male and female in turn, one voice a film"], ["kitten", "VoiceStudio KittenTTS (EN)", "VoiceStudio KittenTTS (EN)"], ["male", "Lelaki", "Male"], ["female", "Perempuan", "Female"], ["off", "Tiada suara", "No voice"]];
 const voiceOf = (v) => (VOICES.some(([k]) => k === v) ? v : "auto");
@@ -150,7 +150,7 @@ export const selectedSeconds = (seconds, mode) => modeOf(mode) === "teaser" && N
 
 /* Wan's saved way of making a motion video (Wan, 24 Oct 2026: "save the skill to create and apply to all idea if I need"):
    settings.motion.defaults, saved from the Motion form, read whenever an idea or a post draft is made into a video. */
-export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "en", voice: "auto", design: "auto", ambient: "mint", previewMusic: "user-reel", style: "bright-education", mode: "auto", resolution: "auto", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
+export const MOTION_DEFAULTS = { effectMode:'auto', effects:['B04'], assetMode:'auto', language: "", voice: "auto", design: "auto", ambient: "mint", previewMusic: "user-reel", style: "bright-education", mode: "auto", resolution: "auto", seconds: SECONDS.default, aiBackground: false, styleRepoId: "" };
 /** The saved defaults over the built-in ones; an empty language means "the stream's own". */
 export function motionDefaults(settings) {
   const d = (settings || {}).motion?.defaults;
@@ -263,7 +263,7 @@ export function motionFromPost(post, userId = null, defaults = null, language = 
   const brief = (fromSlides || caption).slice(0, 1900);
   if (!brief) return null;
   const stream = post?.stream === "linkedin" ? "linkedin" : "regulab";
-  return { brief, source_url: post?.source_url || "", stream, language: d.language || lang, resolution: derivedSize(d.resolution, stream),
+  return { brief, source_url: post?.source_url || "", stream, language: langOf(d.language, stream), resolution: derivedSize(d.resolution, stream),
     seconds: selectedSeconds(d.seconds, d.mode), status: "waiting", idea_id: post?.idea_id || null, ai_background: !!d.aiBackground,
     options: { ...motionOptions(d), evidence: evidenceOf(post) }, style_repo_id: d.styleRepoId || null, ...resolveLanguageVoice(d.language, d.voice, stream), mascot: "", created_by: userId };
 }

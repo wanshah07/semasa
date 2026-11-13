@@ -16,6 +16,7 @@ import ApiPulse from "../components/ApiPulse";
 import GeminiKeys from "../components/GeminiKeys";
 import AiProviders from "../components/AiProviders";
 import ChatGptLogin from "../components/ChatGptLogin";
+import ThreadsConnect from "../components/ThreadsConnect";
 import { AiSettings, MireldTrial } from "./SettingsTab";
 
 /* API: the AI gateways (rootsys = Afiq's, Mireld), their keys, their models and the tokens we spend (Wan, 9 Oct 2026: "track
@@ -100,6 +101,11 @@ export default function ApiTab({ settings, save, onToast }) {
       {/* ChatGPT beside the other robots (Wan, 7 Nov 2026: "for chatgpt put together in API, same with others"); Motion uses it from here */}
       <section className="mb-6" data-chatgpt-section>
         <ChatGptLogin onToast={onToast} />
+      </section>
+
+      {/* Wan's own Threads app (supabase/080): the viral-post feed reads Threads through it, Composio's shared app having no search permission */}
+      <section className="mb-6" data-threads-section>
+        <ThreadsConnect onToast={onToast} />
       </section>
 
       {/* moved here from Tetapan (Wan, 7 Nov 2026: "API in setting" goes to its segment): the workers' keys and endpoints, and one Mireld run */}

@@ -24,6 +24,24 @@ from . import social_web
 GITHUB_SECRET_LIMIT = 48_000          # GitHub refuses an Actions secret over 48 KB
 NEEDS = {"instagram": ("sessionid", "ds_user_id"), "facebook": ("c_user", "xs")}
 DOMAINS = {"instagram": "instagram.com", "facebook": "facebook.com"}
+# the cookies a login rests on; the last resort when even the two sites' cookies are too big for a secret
+ESSENTIAL = {"sessionid", "ds_user_id", "csrftoken", "mid", "ig_did", "c_user", "xs", "datr", "sb", "fr"}
+
+
+def _encoded_size(state: dict[str, Any]) -> int:
+    return len(base64.b64encode(json.dumps(state, separators=(",", ":")).encode()))
+
+
+def shrink(state: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """The smallest login the sweep can use: (state, what_was_dropped).
+    A codegen file carries every site's localStorage (Facebook alone is tens of KB), and the sweep reads cookies only. So keep
+    the Facebook and Instagram cookies and drop the rest; if that is still over GitHub's limit, keep only the login cookies."""
+    cookies = [c for c in state.get("cookies") or [] if any(d in str(c.get("domain") or "") for d in DOMAINS.values())]
+    slim = {"cookies": cookies, "origins": []}
+    if _encoded_size(slim) <= GITHUB_SECRET_LIMIT:
+        return slim, "kept the Facebook and Instagram cookies, dropped the saved page data"
+    minimal = {"cookies": [c for c in cookies if c.get("name") in ESSENTIAL], "origins": []}
+    return minimal, "kept only the login cookies (the full set was still too large)"
 
 
 def inspect_state(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -68,10 +86,11 @@ def main(argv: list[str]) -> int:
     held = inspect_state(state)
     for platform, h in held.items():
         print(f"{platform.title()} cookies: has {h['has'] or 'none'}; missing {h['missing'] or 'none'}")
-    encoded = base64.b64encode(raw).decode()
-    too_big = "  <- TOO LARGE: log in again in a fresh codegen window, and visit nothing else"
-    print(f"Base64 size: {len(encoded):,} characters (GitHub's limit for a secret is {GITHUB_SECRET_LIMIT:,})"
-          + (too_big if len(encoded) > GITHUB_SECRET_LIMIT else ""))
+    upload, dropped = shrink(state)
+    encoded = base64.b64encode(json.dumps(upload, separators=(",", ":")).encode()).decode()
+    too_big = "  <- STILL TOO LARGE: log in again in a fresh codegen window, and visit nothing else"
+    print(f"Base64 size: {len(base64.b64encode(raw)):,} characters as saved; {len(encoded):,} to upload ({dropped}). "
+          f"GitHub's limit for a secret is {GITHUB_SECRET_LIMIT:,}." + (too_big if len(encoded) > GITHUB_SECRET_LIMIT else ""))
     if "--b64" in argv:
         out = argv[argv.index("--b64") + 1] if argv.index("--b64") + 1 < len(argv) else "storage_state.b64.txt"
         with open(out, "w", encoding="ascii") as fh:
@@ -87,7 +106,7 @@ def main(argv: list[str]) -> int:
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         try:
-            ctx = browser.new_context(storage_state=path, locale="en-MY", timezone_id="UTC",
+            ctx = browser.new_context(storage_state=upload, locale="en-MY", timezone_id="UTC",
                                       viewport={"width": 1280, "height": 2400})
             page = ctx.new_page()
             for platform, reader in (("facebook", social_web.read_facebook), ("instagram", social_web.read_instagram)):

@@ -266,6 +266,7 @@ def slides_to_pdf(pictures: list[str]) -> bytes:
     """Join a carousel's slide pictures into one PDF, in order. LinkedIn's document post shows it as a swipeable
     carousel; the first picture is the cover. Raises SendError (transient) when a picture cannot be fetched or opened."""
     import io
+
     from PIL import Image
     imgs: list[Image.Image] = []
     for i, u in enumerate(pictures):

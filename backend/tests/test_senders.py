@@ -355,8 +355,9 @@ def test_linkedin_video_that_is_not_taken_never_reaches_the_post_call():
 # --- Zernio document carousel (Wan, 13 Nov 2026) ------------------------------------------------------------------
 
 def _jpeg(width=16, height=20):
-    from PIL import Image
     import io
+
+    from PIL import Image
     buf = io.BytesIO()
     Image.new("RGB", (width, height), (200, 20, 30)).save(buf, "JPEG")
     return buf.getvalue()
@@ -387,8 +388,9 @@ def test_slides_to_pdf_reports_a_bad_picture():
 
 
 def test_zernio_create_document_uploads_a_pdf_and_posts_a_document():
-    from PIL import Image
     import io
+
+    from PIL import Image
     buf = io.BytesIO()
     Image.new("RGB", (16, 20), (10, 10, 10)).save(buf, "JPEG")
     s = Session(Resp(headers={"content-type": "image/jpeg"}, content=buf.getvalue()),   # fetch slide 1

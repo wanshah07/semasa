@@ -19,6 +19,8 @@ test("a card opens a web address only: a OneDrive key or a link-less MYRA findin
 test("the line under a card says only what the source returned", () => {
   assert.equal(ownLine({ section: "reddit", raw: { metrics: "260 komen" } }, t), "260 komen");
   assert.equal(ownLine({ section: "youtube", raw: {} }, t), "");
+  assert.equal(ownLine({ section: "threads", raw: { metrics: "9K likes · 280 replies" } }, t), "9K likes · 280 replies");
+  assert.equal(ownLine({ section: "threads", raw: {} }, t), "");
   assert.equal(ownLine({ section: "folder", raw: { cite: "hlm 12", urgent_for: "2026-10-01" } }, t), "Segera untuk 2026-10-01 · Rujukan: hlm 12");
   assert.match(ownLine({ section: "myra", raw: { ref_no: "SR/1", markets: "EU", link_shared: true } }, t), /Rujukan: SR\/1 · EU · pautan dikongsi/);
   assert.equal(ownLine({ section: "regulatory", raw: {} }, t), "");

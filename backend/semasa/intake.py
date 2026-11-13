@@ -21,7 +21,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import api_status, community, db, folders, myra, threads_api, watch
+from . import api_status, community, db, folders, myra, threads_api, threads_web, watch
 from .log import get_logger
 
 log = get_logger("semasa.intake")
@@ -42,7 +42,9 @@ DEFAULTS: dict[str, Any] = {
                   "cosmetic"],
         "youtube": {"enabled": True, "hours": 72, "max_results": 8,
                     "queries": ["sunscreen skincare Malaysia", "halal certification Malaysia", "kosmetik NPRA"]},
-        "threads": {"enabled": True, "hours": 72, "max_results": 8,
+        # "accounts": handles to read in full (no @), a watchlist like the KKM scraper's Targets;
+        # "web": false turns the browser read off
+        "threads": {"enabled": True, "hours": 72, "max_results": 8, "accounts": [],
                     "queries": ["halal kosmetik", "sunscreen", "sijil halal"]},
     },
     "folders": {
@@ -118,6 +120,13 @@ def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: da
             raw["threads"], raw["threads_error"] = own, ""
         elif why:
             raw["threads_error"] = why
+        if not raw.get("threads"):
+            # no search permission anywhere: read the public pages in a browser, as the KKM complaint scraper does
+            seen, why = threads_web.fetch(cfg, now)
+            if seen:
+                raw["threads"], raw["threads_error"] = seen, ""
+            elif why and not raw.get("threads_error"):
+                raw["threads_error"] = why
     cands = community.candidates(raw, now, int(cfg.get("hours") or community.WINDOW_HOURS))
     cands += community.thread_candidates(raw, now, int(cfg.get("hours") or community.WINDOW_HOURS))
     known = have(store, [c["url"] for c in cands])

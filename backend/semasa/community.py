@@ -21,6 +21,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from . import threads_web
 from .log import get_logger
 
 log = get_logger("semasa.community")
@@ -191,7 +192,8 @@ def _thread_when(v: Any) -> datetime | None:
 
 def thread_candidates(raw: dict[str, Any], now: datetime | None = None, hours: int = WINDOW_HOURS) -> list[dict[str, Any]]:
     """Threads posts as rows. A Threads post's own first line is its title (there is no title field); the address is
-    kept for Wan but never reaches a post. The comment count is not exposed, so the weight is a plain rank position."""
+    kept for Wan but never reaches a post. Composio exposes no counts, so its weight is a plain rank position; a post read off the
+    page by threads_web carries the numbers Threads showed, and those rank it and fill its metrics line."""
     now = now or datetime.now(UTC)
     out: list[dict[str, Any]] = []
     for i, p in enumerate(raw.get("threads") or []):
@@ -202,10 +204,12 @@ def thread_candidates(raw: dict[str, Any], now: datetime | None = None, hours: i
         title = text.splitlines()[0][:300] if text else ""
         if not title:
             continue
+        read = bool(p.get("counts"))                      # read off the page by threads_web: the platform's own numbers
         out.append({"platform": "threads", "source": "Threads", "kind": "Hujah", "url": str(url), "title": title,
-                    "text": text[:500], "published_at": when, "weight": max(0, 100 - i),
-                    "metrics": None,
+                    "text": text[:500], "published_at": when, "weight": threads_web.score(p) if read else max(0, 100 - i),
+                    "metrics": threads_web.metrics_text(p) if read else None,
                     "raw": {"platform": "threads", "original_title": title}})
+    out.sort(key=lambda r: r["weight"], reverse=True)
     return out
 
 

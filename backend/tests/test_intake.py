@@ -427,6 +427,37 @@ def test_a_full_run_writes_each_section_once_and_a_second_run_writes_nothing_new
     assert len(s.tables["semasa_watch"]) == len(rows) and again["myra"]["new"] == 0 and again["community"]["new"] == 0
 
 
+def test_when_composio_returns_no_threads_posts_the_page_read_fills_the_tab_with_the_platforms_own_counts(monkeypatch):
+    from semasa import threads_web
+    page_post = threads_web._post({"href": "/@ali/post/T1", "datetime": "2026-09-29T10:00:00.000Z",
+                                   "body": ["Sunscreen tak perlu disapu semula?"],
+                                   "counts": {"Like": "9K", "Comment": "280", "Repost": "", "Share": ""}})
+    calls = []
+
+    def fake(cfg, now=None):
+        calls.append(cfg["threads"]["queries"])
+        return [page_post], ""
+    monkeypatch.setattr(threads_web, "fetch", fake)
+    client = Client(community_out={"posts": [], "videos": [], "threads": [], "reddit_error": "", "youtube_error": "",
+                                   "threads_error": "Application does not have permission for this action"})
+    s = store()
+    rep = intake.run(s, Writer(everything_writer), client, now=NOW, only=["community"])
+    assert len(calls) == 1 and rep["community"]["threads_error"] is None             # the page read answered, so no error shows
+    rows = [r for r in s.tables["semasa_watch"] if r["section"] == "threads"]
+    assert len(rows) == 1 and rows[0]["url"] == "https://www.threads.com/@ali/post/T1"
+    assert rows[0]["raw"]["metrics"] == "9K likes · 280 replies"                      # only the two counts the page showed
+
+
+def test_composio_threads_posts_are_not_replaced_by_a_page_read(monkeypatch):
+    from semasa import threads_web
+    monkeypatch.setattr(threads_web, "fetch", lambda cfg, now=None: (_ for _ in ()).throw(AssertionError("page read ran")))
+    client = Client(community_out={"posts": [], "videos": [], "reddit_error": "", "youtube_error": "", "threads_error": "",
+                                   "threads": [{"id": "c1", "text": "Sunscreen ya", "permalink": "https://www.threads.net/@a/post/c1",
+                                                "timestamp": "2026-09-29T10:00:00Z"}]})
+    rep = intake.run(store(), Writer(everything_writer), client, now=NOW, only=["community"])
+    assert rep["community"]["threads_error"] is None
+
+
 def test_a_dry_run_reads_and_judges_but_writes_nothing():
     s = store()
     rep = intake.run(s, Writer(everything_writer), full_client(), now=NOW, dry=True)

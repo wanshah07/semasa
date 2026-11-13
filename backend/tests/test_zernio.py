@@ -18,6 +18,11 @@ class FakeZernio(FakeBuffer):
         self.created[-1]["video"] = video["url"]
         return p
 
+    def create_document(self, channel_id, text, pictures, title, due_at):
+        p = self.create(channel_id, "linkedin", text, pictures, "", due_at)
+        self.created[-1]["document_title"] = title
+        return p
+
     def get(self, pid, account_id=""):
         return super().get(pid)
 
@@ -85,6 +90,7 @@ def test_linkedin_is_scheduled_ahead_through_zernio_and_takes_a_card_a_carousel_
     store, z = _store(_linkedin(slides=[])), FakeZernio()              # two slides: a carousel
     c = publisher.run(store, NOW, clients={"zernio": z})
     assert c["scheduled"] == 1 and z.created[0]["channel"] == "d" * 24 and z.created[0]["due_at"]   # no waiting for the slot
+    assert z.created[0]["document_title"] and len(z.created[0]["pictures"]) == 2      # a carousel goes as one document (13 Nov)
     store, z = _store(_linkedin(), media=CARD), FakeZernio()          # a single card goes (Wan, 11 Nov: remove the blocker)
     c = publisher.run(store, NOW, clients={"zernio": z})
     assert c["scheduled"] == 1 and len(z.created[0]["pictures"]) == 1

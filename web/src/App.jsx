@@ -131,7 +131,7 @@ function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, s
     <div role="tablist" aria-label={t("Segmen", "Segments")} className="mb-5 flex flex-wrap gap-1.5">
       {[["isu", t("Isu semasa", "Current issues")], ["regulatory", t("Regulatori", "Regulatory")],
         ["publication", t("Penerbitan terkini", "Latest publications")], ["reddit", "Reddit"], ["youtube", "YouTube"],
-        ["folder", "OneDrive"], ["myra", "MYRA"]].map(([v, l]) => (
+        ["threads", "Threads"], ["folder", "OneDrive"], ["myra", "MYRA"]].map(([v, l]) => (
         <button type="button" key={v} role="tab" aria-selected={seg === v} onClick={() => setSeg(v)}
           className={`rounded-pill px-4 py-2 text-sm font-medium ${seg === v ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>{l}</button>
       ))}

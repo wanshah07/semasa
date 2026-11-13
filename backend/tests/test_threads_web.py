@@ -91,6 +91,14 @@ def test_one_failed_page_does_not_hide_the_posts_the_others_returned():
     assert err == "" and [p["id"] for p in posts] == ["P1"]
 
 
+def test_a_post_from_wans_own_account_is_not_a_viral_post():
+    mine = threads_web._post(_raw("ws.regulab", "O1", ["Halal kita sendiri"], replies="9"))
+    other = threads_web._post(_raw("ali", "O2", ["Halal orang lain"], replies="1"))
+    cfg = {"threads": {"queries": ["halal"]}, "own_accounts": ["@WS.regulab"]}
+    posts, _ = threads_web.collect(object(), cfg, NOW, lambda page, url: ([mine, other], ""))
+    assert [p["id"] for p in posts] == ["O2"]
+
+
 def test_eight_keywords_and_ten_accounts_are_read_and_no_more():
     seen = []
     cfg = {"threads": {"queries": [f"kata {i}" for i in range(12)], "accounts": [f"akaun{i}" for i in range(15)]}}

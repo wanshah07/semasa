@@ -128,6 +128,12 @@ def read_url(page: Any, url: str, scrolls: int = SCROLLS) -> tuple[list[dict[str
     return [p for p in (_post(r) for r in rows) if p], ""
 
 
+def _own(p: dict[str, Any], names: list[str]) -> bool:
+    """A post from one of Wan's own accounts is never a viral post (the names are community.own_accounts)."""
+    own = {str(n).lower().lstrip("@") for n in names if str(n).strip()}
+    return str(p.get("username") or "").lower() in own
+
+
 def _when(v: Any) -> datetime | None:
     try:
         return datetime.fromisoformat(str(v).replace("Z", "+00:00"))
@@ -157,7 +163,7 @@ def collect(page: Any, cfg: dict[str, Any], now: datetime,
             log.warning("Threads page not read (%s): %s", url.split("threads.com")[-1][:60], err)
         for p in got:
             when = _when(p.get("timestamp"))
-            if p["id"] in seen or not when or now - when > timedelta(hours=hours):
+            if p["id"] in seen or not when or now - when > timedelta(hours=hours) or _own(p, cfg.get("own_accounts") or []):
                 continue
             seen.add(p["id"])
             posts.append(p)

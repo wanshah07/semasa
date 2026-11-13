@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from . import threads_web
+from . import social_web, threads_web
 from .log import get_logger
 
 log = get_logger("semasa.community")
@@ -93,8 +93,9 @@ if (P.get("threads") or {}).get("enabled"):
                                    "timestamp": post.get("timestamp"), "username": post.get("username")})
 '''
 
-SYSTEM = """You read public online arguments (a Reddit thread, a YouTube video, a Threads post) for ws.regulab, a Malaysian
-regulatory consultancy (cosmetics, halal, food, pharmaceuticals; clients are Malaysian SMEs). Each item is something people are
+SYSTEM = """You read public online arguments (a Reddit thread, a YouTube video, or a post on Threads, Facebook or Instagram)
+for ws.regulab, a Malaysian regulatory consultancy (cosmetics, halal, food, pharmaceuticals; clients are Malaysian SMEs).
+Each item is something people are
 loudly discussing. For each one decide:
 - "relevant": true only when the argument turns on cosmetics, skincare, sunscreen, supplements, halal, food, drugs,
   labels, claims or a regulator's rule, so that a chemist or regulatory adviser could correct or clarify it. False for
@@ -190,27 +191,41 @@ def _thread_when(v: Any) -> datetime | None:
     return _when(s)
 
 
-def thread_candidates(raw: dict[str, Any], now: datetime | None = None, hours: int = WINDOW_HOURS) -> list[dict[str, Any]]:
-    """Threads posts as rows. A Threads post's own first line is its title (there is no title field); the address is
-    kept for Wan but never reaches a post. Composio exposes no counts, so its weight is a plain rank position; a post read off the
-    page by threads_web carries the numbers Threads showed, and those rank it and fill its metrics line."""
-    now = now or datetime.now(UTC)
+def _social_rows(posts: list[dict[str, Any]], platform: str, source: str, now: datetime, hours: int,
+                 score: Any, metrics: Any) -> list[dict[str, Any]]:
+    """One post per row, newest 72 h, loudest first. A post's own first line is its title (there is no title field); the
+    address is kept for Wan but never reaches a post. A post carrying `counts` was read off the page and ranks by the numbers
+    the platform showed; one without (Composio's) ranks by its position."""
     out: list[dict[str, Any]] = []
-    for i, p in enumerate(raw.get("threads") or []):
+    for i, p in enumerate(posts or []):
         url, when = p.get("permalink"), _thread_when(p.get("timestamp"))
         text = str(p.get("text") or "").strip()
         if not url or not text or (when and now - when > timedelta(hours=hours)):
             continue
-        title = text.splitlines()[0][:300] if text else ""
-        if not title:
-            continue
-        read = bool(p.get("counts"))                      # read off the page by threads_web: the platform's own numbers
-        out.append({"platform": "threads", "source": "Threads", "kind": "Hujah", "url": str(url), "title": title,
-                    "text": text[:500], "published_at": when, "weight": threads_web.score(p) if read else max(0, 100 - i),
-                    "metrics": threads_web.metrics_text(p) if read else None,
-                    "raw": {"platform": "threads", "original_title": title}})
+        title = text.splitlines()[0][:300]
+        read = bool(p.get("counts"))
+        out.append({"platform": platform, "source": source, "kind": "Hujah", "url": str(url), "title": title,
+                    "text": text[:500], "published_at": when, "weight": score(p) if read else max(0, 100 - i),
+                    "metrics": metrics(p) if read else None, "raw": {"platform": platform, "original_title": title}})
     out.sort(key=lambda r: r["weight"], reverse=True)
     return out
+
+
+def thread_candidates(raw: dict[str, Any], now: datetime | None = None, hours: int = WINDOW_HOURS) -> list[dict[str, Any]]:
+    """Threads posts as rows. Composio exposes no counts, so its weight is a plain rank position; a post read off the page by
+    threads_web carries the numbers Threads showed, and those rank it and fill its metrics line."""
+    return _social_rows(raw.get("threads") or [], "threads", "Threads", now or datetime.now(UTC), hours,
+                        threads_web.score, threads_web.metrics_text)
+
+
+def facebook_candidates(raw: dict[str, Any], now: datetime | None = None, hours: int = WINDOW_HOURS) -> list[dict[str, Any]]:
+    return _social_rows(raw.get("facebook") or [], "facebook", "Facebook", now or datetime.now(UTC), hours,
+                        social_web.score, social_web.metrics_text)
+
+
+def instagram_candidates(raw: dict[str, Any], now: datetime | None = None, hours: int = WINDOW_HOURS) -> list[dict[str, Any]]:
+    return _social_rows(raw.get("instagram") or [], "instagram", "Instagram", now or datetime.now(UTC), hours,
+                        social_web.score, social_web.metrics_text)
 
 
 def annotate(llm: Any, rows: list[dict[str, Any]],

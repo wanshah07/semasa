@@ -90,7 +90,7 @@ function Unconfigured() {
 /** What stands in a tab's place while its code arrives (a moment on wifi, a second or two on a slow phone). */
 const Waiting = () => <main className="grid min-h-[40vh] place-items-center text-sm text-muted" aria-busy="true">…</main>;
 
-const SEGMENTS = ["isu", "regulatory", "publication", "reddit", "youtube", "threads", "folder", "myra"];
+const SEGMENTS = ["isu", "regulatory", "publication", "reddit", "youtube", "threads", "facebook", "instagram", "folder", "myra"];
 
 /* The words above each segment that is not the news headlines. Reddit, YouTube, OneDrive and MYRA are Wan's own sources
    (supabase/024, backend/semasa/intake.py): each is a tab here, over the same semasa_watch rows. */
@@ -111,6 +111,12 @@ function segCopy(seg, t) {
     threads: ["Threads", t("Perbualan Threads yang sedang panas tentang halal dan kosmetik.", "Threads conversations heating up on halal and cosmetics."),
       t("Post Threads paling relevan tentang halal, kosmetik dan sunscreen. Setiap baris ialah kepercayaan yang perlu dibetulkan, ditulis semula secara neutral: platform dan pautannya tidak masuk ke dalam post.",
         "The most relevant Threads posts on halal, cosmetics and sunscreen. Each row is the belief to correct, rewritten neutrally: the platform and its link never reach a post.")],
+    facebook: ["Facebook", t("Siaran Facebook awam yang sedang dibualkan tentang halal dan kosmetik.", "Public Facebook posts people are talking about on halal and cosmetics."),
+      t("Dibaca daripada halaman hashtag awam Facebook (#halalmalaysia, #sijilhalal…). Tanpa log masuk, Facebook hanya memuatkan siaran pertama setiap hashtag; dengan sesi log masuk yang disimpan (PW_STORAGE_STATE_B64) lebih banyak dibaca. Angka reaksi ialah angka sebenar Facebook.",
+        "Read from Facebook's public hashtag pages (#halalmalaysia, #sijilhalal…). Without a login Facebook loads only the first post of each hashtag; with a saved login session (PW_STORAGE_STATE_B64) more are read. The reaction count is Facebook's own.")],
+    instagram: ["Instagram", t("Siaran Instagram yang sedang tular tentang halal dan kosmetik.", "Instagram posts going round on halal and cosmetics."),
+      t("Instagram menunjukkan dinding log masuk kepada semua pengunjung, jadi tab ini hanya berfungsi dengan sesi log masuk akaun sementara yang disimpan (PW_STORAGE_STATE_B64). Tanpa sesi itu, kad masalah menyatakannya. Angka suka dan komen ialah angka sebenar Instagram.",
+        "Instagram shows a login wall to every visitor, so this tab works only with the saved login session of a throwaway account (PW_STORAGE_STATE_B64). Without it the problem card says so. Likes and comments are Instagram's own.")],
     folder: ["OneDrive", t("Sudut siaran daripada perpustakaan rujukan anda.", "Post angles from your own reference library."),
       t("Setiap fail dalam /40. HERMES dibaca sekali: sehingga 8 sudut, tiada nama pelanggan atau nombor fail. Matriks siaran LabMuffin masuk baris demi baris. Folder “urgent post/DDMMYY” untuk hari ini atau esok didahulukan.",
         "Each file in /40. HERMES is read once: up to 8 angles, no client names or file numbers. The LabMuffin post matrix comes in row by row. An “urgent post/DDMMYY” folder for today or tomorrow goes first.")],
@@ -131,7 +137,7 @@ function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, s
     <div role="tablist" aria-label={t("Segmen", "Segments")} className="mb-5 flex flex-wrap gap-1.5">
       {[["isu", t("Isu semasa", "Current issues")], ["regulatory", t("Regulatori", "Regulatory")],
         ["publication", t("Penerbitan terkini", "Latest publications")], ["reddit", "Reddit"], ["youtube", "YouTube"],
-        ["threads", "Threads"], ["folder", "OneDrive"], ["myra", "MYRA"]].map(([v, l]) => (
+        ["threads", "Threads"], ["facebook", "Facebook"], ["instagram", "Instagram"], ["folder", "OneDrive"], ["myra", "MYRA"]].map(([v, l]) => (
         <button type="button" key={v} role="tab" aria-selected={seg === v} onClick={() => setSeg(v)}
           className={`rounded-pill px-4 py-2 text-sm font-medium ${seg === v ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>{l}</button>
       ))}
@@ -154,7 +160,7 @@ function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, s
         {allowed ? (
           <main className="mx-auto max-w-page px-4 pb-20 sm:px-6">
             <Suspense fallback={<Waiting />}>
-              <WatchSegment section={seg} watch={watch} setting={["reddit", "youtube", "threads", "folder", "myra"].includes(seg) ? settings.sources : settings.watch} saveSetting={save} brand={brand} user={user}
+              <WatchSegment section={seg} watch={watch} setting={["reddit", "youtube", "threads", "facebook", "instagram", "folder", "myra"].includes(seg) ? settings.sources : settings.watch} saveSetting={save} brand={brand} user={user}
                 onIdea={onIdea ? (r) => onIdea(watchIdea(r, brand)) : undefined} onToast={onToast} />
             </Suspense>
           </main>

@@ -6,8 +6,8 @@ const t = (bm, en, vars = {}) => Object.entries(vars).reduce((s, [k, v]) => s.re
 let n = 0;
 const test = (name, fn) => { fn(); n++; };
 
-test("five own sections, none of them the news ones", () => {
-  assert.deepEqual(OWN_SECTIONS, ["reddit", "youtube", "threads", "folder", "myra"]);
+test("seven own sections, none of them the news ones", () => {
+  assert.deepEqual(OWN_SECTIONS, ["reddit", "youtube", "threads", "facebook", "instagram", "folder", "myra"]);
 });
 test("a card opens a web address only: a OneDrive key or a link-less MYRA finding opens nothing", () => {
   assert.equal(linkOf({ url: "https://www.reddit.com/r/malaysia/comments/a1/x" }), "https://www.reddit.com/r/malaysia/comments/a1/x");
@@ -21,6 +21,8 @@ test("the line under a card says only what the source returned", () => {
   assert.equal(ownLine({ section: "youtube", raw: {} }, t), "");
   assert.equal(ownLine({ section: "threads", raw: { metrics: "9K likes · 280 replies" } }, t), "9K likes · 280 replies");
   assert.equal(ownLine({ section: "threads", raw: {} }, t), "");
+  assert.equal(ownLine({ section: "facebook", raw: { metrics: "42 reactions" } }, t), "42 reactions");
+  assert.equal(ownLine({ section: "instagram", raw: { metrics: "1.2K likes · 80 comments" } }, t), "1.2K likes · 80 comments");
   assert.equal(ownLine({ section: "folder", raw: { cite: "hlm 12", urgent_for: "2026-10-01" } }, t), "Segera untuk 2026-10-01 · Rujukan: hlm 12");
   assert.match(ownLine({ section: "myra", raw: { ref_no: "SR/1", markets: "EU", link_shared: true } }, t), /Rujukan: SR\/1 · EU · pautan dikongsi/);
   assert.equal(ownLine({ section: "regulatory", raw: {} }, t), "");

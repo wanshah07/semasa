@@ -21,7 +21,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import api_status, community, db, folders, myra, threads_api, threads_web, watch
+from . import api_status, community, db, folders, myra, social_web, threads_api, threads_web, watch
 from .log import get_logger
 
 log = get_logger("semasa.intake")
@@ -29,7 +29,7 @@ log = get_logger("semasa.intake")
 WATCH = "semasa_watch"
 KEY = "sources"                     # semasa_settings row: Wan's overrides, and the last run's report
 # what is loud now is kept 72 hours (Wan, 12 Nov 2026); the folder bank is not pruned
-KEEP_HOURS = {"reddit": 72, "youtube": 72, "threads": 72, "myra": 45 * 24}
+KEEP_HOURS = {"reddit": 72, "youtube": 72, "threads": 72, "facebook": 72, "instagram": 72, "myra": 45 * 24}
 
 DEFAULTS: dict[str, Any] = {
     "enabled": True,
@@ -44,6 +44,11 @@ DEFAULTS: dict[str, Any] = {
                     "queries": ["sunscreen skincare Malaysia", "halal certification Malaysia", "kosmetik NPRA"]},
         # "accounts": handles to read in full (no @), a watchlist like the KKM scraper's Targets;
         # "web": false turns the browser read off
+        # Wan's own accounts and pages: a post of theirs is never "what people are arguing about" (Threads, Facebook, Instagram)
+        "own_accounts": ["wsregulab", "ws.regulab", "valorith", "facerinna"],
+        # Facebook and Instagram are read by hashtag: "queries" are turned into #tags (no spaces). Instagram needs a saved login.
+        "facebook": {"enabled": True, "hours": 72, "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
+        "instagram": {"enabled": True, "hours": 72, "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
         "threads": {"enabled": True, "hours": 72, "max_results": 8, "accounts": [],
                     "queries": ["halal kosmetik", "sunscreen", "sijil halal"]},
     },
@@ -127,28 +132,39 @@ def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: da
                 raw["threads"], raw["threads_error"] = seen, ""
             elif why and not raw.get("threads_error"):
                 raw["threads_error"] = why
-    cands = community.candidates(raw, now, int(cfg.get("hours") or community.WINDOW_HOURS))
-    cands += community.thread_candidates(raw, now, int(cfg.get("hours") or community.WINDOW_HOURS))
+    for platform in ("facebook", "instagram"):
+        # read in a browser (social_web.py); each says so by name when the platform shows a login wall
+        if (cfg.get(platform) or {}).get("enabled") is not False:
+            got, why = social_web.fetch(platform, cfg, now)
+            raw[platform], raw[f"{platform}_error"] = got, why
+    window = int(cfg.get("hours") or community.WINDOW_HOURS)
+    cands = community.candidates(raw, now, window)
+    cands += community.thread_candidates(raw, now, window)
+    cands += community.facebook_candidates(raw, now, window)
+    cands += community.instagram_candidates(raw, now, window)
     known = have(store, [c["url"] for c in cands])
     fresh = [c for c in cands if c["url"] not in known]
-    by = {"reddit": [], "youtube": [], "threads": []}
+    by: dict[str, list[dict[str, Any]]] = {"reddit": [], "youtube": [], "threads": [], "facebook": [], "instagram": []}
     for c in fresh:
         by[c["platform"]].append(c)
     keep = int(cfg.get("keep") or 10)
-    batch = by["reddit"][:keep] + by["youtube"][:keep] + by["threads"][:keep]
+    batch = [c for name in by for c in by[name][:keep]]
     kept, rejected = community.annotate(llm, batch)
     rows = [community.to_row(r) for r in kept] + [community.tombstone(r) for r in rejected]
     write(store, rows, dry)
     rep = {"read": {"reddit": len(raw.get("posts") or []), "youtube": len(raw.get("videos") or []),
-                    "threads": len(raw.get("threads") or [])},
+                    "threads": len(raw.get("threads") or []), "facebook": len(raw.get("facebook") or []),
+                    "instagram": len(raw.get("instagram") or [])},
            "new": len(fresh),
-           "shown": {p: sum(1 for r in kept if r["platform"] == p) for p in ("reddit", "youtube", "threads")},
+           "shown": {p: sum(1 for r in kept if r["platform"] == p) for p in by},
            "hidden": len(rejected), "reddit_error": raw.get("reddit_error") or None,
-           "youtube_error": raw.get("youtube_error") or None, "threads_error": raw.get("threads_error") or None}
+           "youtube_error": raw.get("youtube_error") or None, "threads_error": raw.get("threads_error") or None,
+           "facebook_error": raw.get("facebook_error") or None, "instagram_error": raw.get("instagram_error") or None}
     if raw.get("youtube_error"):
         log.warning("YouTube: %s (Reddit carries on)", raw["youtube_error"])
-    if raw.get("threads_error"):
-        log.warning("Threads: %s (Reddit and YouTube carry on)", raw["threads_error"])
+    for name in ("threads", "facebook", "instagram"):
+        if raw.get(f"{name}_error"):
+            log.warning("%s: %s (the other sources carry on)", name.title(), raw[f"{name}_error"])
     return rep
 
 

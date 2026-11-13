@@ -78,4 +78,11 @@ t("no page spreads a variants object onto an element: {...fadeUp} passes hidden=
   assert.deepEqual(bad, []);
 });
 
+t("every Isu semasa segment has a button in the sub-tab row (Threads had a page, copy and data and no button, 13 Nov 2026)", () => {
+  const segments = JSON.parse(`[${/const SEGMENTS = \[([^\]]*)\]/.exec(src)[1]}]`);
+  const row = /const segTabs = \([\s\S]*?\.map\(/.exec(src)[0];
+  const missing = segments.filter((id) => !row.includes(`["${id}",`));
+  assert.deepEqual(missing, []);
+});
+
 console.log(`tabs.test.mjs: ${n} groups OK`);

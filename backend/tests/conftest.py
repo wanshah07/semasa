@@ -120,3 +120,12 @@ def storyboard_approved(request, monkeypatch):
                  "stage_times": got[0].get("stage_times") or row.get("stage_times")}
         return real(store, llm, again, settings, **k)
     monkeypatch.setattr(motion, "process", process)
+
+
+@pytest.fixture(autouse=True)
+def no_live_threads_browser(monkeypatch):
+    """semasa.threads_web.fetch opens a real Chromium on threads.com, which no_network cannot see (it is not `requests`). Under
+    test it reads nothing; a test of the reader passes its own page to threads_web.collect()."""
+    from semasa import threads_web
+
+    monkeypatch.setattr(threads_web, "fetch", lambda cfg, now=None: ([], ""))

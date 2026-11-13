@@ -45,6 +45,8 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install
         run: pip install -r requirements.txt
+      - name: Chromium (reads Threads pages; not fatal, Reddit and YouTube do not need it)
+        run: bash ../.github/scripts/ensure-chromium.sh || echo "::warning::no Chromium; the Threads page read will report that"
       - name: Sweep
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

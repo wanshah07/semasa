@@ -92,8 +92,8 @@ if (P.get("threads") or {}).get("enabled"):
                                    "timestamp": post.get("timestamp"), "username": post.get("username")})
 '''
 
-SYSTEM = """You read public online arguments (a Reddit thread, a YouTube video, a Threads post) for ws.regulab, a Malaysian regulatory
-consultancy (cosmetics, halal, food, pharmaceuticals; clients are Malaysian SMEs). Each item is something people are
+SYSTEM = """You read public online arguments (a Reddit thread, a YouTube video, a Threads post) for ws.regulab, a Malaysian
+regulatory consultancy (cosmetics, halal, food, pharmaceuticals; clients are Malaysian SMEs). Each item is something people are
 loudly discussing. For each one decide:
 - "relevant": true only when the argument turns on cosmetics, skincare, sunscreen, supplements, halal, food, drugs,
   labels, claims or a regulator's rule, so that a chemist or regulatory adviser could correct or clarify it. False for

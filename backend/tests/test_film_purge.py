@@ -113,6 +113,19 @@ def test_the_pictures_of_a_posted_post_are_deleted_after_12_hours_and_the_record
     assert archive.purge_pictures(store, NOW).startswith("pictures: 0")                    # once only
 
 
+def test_a_recreate_or_upload_row_keeps_a_reference_url_the_database_check_wants_it_not_null():
+    # media_generations_mode_check: mode recreate/upload requires reference_url IS NOT NULL
+    for mode in ("recreate", "upload"):
+        store = _pic_store()
+        row = store.tables["media_generations"][0]
+        row["mode"], row["reference_url"] = mode, BASE + "2026/11/ref.jpg"
+        assert archive.purge_pictures(store, NOW).startswith("pictures: 1")
+        assert row["reference_url"] == "" and row["generated_media_url"] is None and row["meta"]["files_purged_at"]
+    other = _pic_store()
+    archive.purge_pictures(other, NOW)
+    assert other.tables["media_generations"][0]["reference_url"] is None                   # the other modes are unchanged
+
+
 def test_pictures_are_kept_inside_the_window_for_an_unposted_post_a_design_or_a_shared_picture():
     for store in (_pic_store(hours_ago=11), _pic_store(status="scheduled"), _pic_store(design=True),
                   _pic_store(other="approved")):

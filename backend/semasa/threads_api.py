@@ -136,7 +136,7 @@ def fetch(store: Any, cfg: dict[str, Any], now: datetime | None = None, http: An
     if err:
         return [], err
     th = cfg.get("threads") or {}
-    queries = [q for q in (th.get("queries") or []) if str(q).strip()][:4]
+    queries = [q for q in (th.get("queries") or []) if str(q).strip()][:8]
     hours = max(6, min(14 * 24, int(th.get("hours") or 72)))
     limit = max(1, min(25, int(th.get("max_results") or 8)))
     since = int((now - timedelta(hours=hours)).timestamp())

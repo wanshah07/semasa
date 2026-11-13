@@ -91,6 +91,13 @@ def test_one_failed_page_does_not_hide_the_posts_the_others_returned():
     assert err == "" and [p["id"] for p in posts] == ["P1"]
 
 
+def test_eight_keywords_and_ten_accounts_are_read_and_no_more():
+    seen = []
+    cfg = {"threads": {"queries": [f"kata {i}" for i in range(12)], "accounts": [f"akaun{i}" for i in range(15)]}}
+    threads_web.collect(object(), cfg, NOW, lambda page, url: (seen.append(url), ([], ""))[1])
+    assert len([u for u in seen if "/search?" in u]) == 8 and len([u for u in seen if "/@" in u]) == 10
+
+
 def test_nothing_to_read_is_not_an_error():
     assert threads_web.collect(object(), {"threads": {"queries": [], "accounts": []}}, NOW) == ([], "")
     assert threads_web.fetch({"threads": {"web": False}}, NOW) == ([], "")

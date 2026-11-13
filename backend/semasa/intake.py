@@ -21,7 +21,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import api_status, community, db, folders, myra, watch
+from . import api_status, community, db, folders, myra, threads_api, watch
 from .log import get_logger
 
 log = get_logger("semasa.intake")
@@ -111,6 +111,13 @@ def write(store: Any, rows: list[dict[str, Any]], dry: bool) -> int:
 
 def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetime, dry: bool) -> dict[str, Any]:
     raw = community.fetch(client, cfg)
+    if (cfg.get("threads") or {}).get("enabled") is not False and not raw.get("threads"):
+        # Composio's shared Threads app has no keyword-search permission; Wan's own app (supabase/080) is asked next
+        own, why = threads_api.fetch(store, cfg, now)
+        if own:
+            raw["threads"], raw["threads_error"] = own, ""
+        elif why:
+            raw["threads_error"] = why
     cands = community.candidates(raw, now, int(cfg.get("hours") or community.WINDOW_HOURS))
     cands += community.thread_candidates(raw, now, int(cfg.get("hours") or community.WINDOW_HOURS))
     known = have(store, [c["url"] for c in cands])

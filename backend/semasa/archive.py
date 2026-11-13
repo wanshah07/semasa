@@ -171,6 +171,16 @@ def path_of(url: Any) -> str:
     return text.split(_BUCKET_MARK, 1)[1].split("?", 1)[0].split("#", 1)[0]
 
 
+# media_generations_mode_check: a `recreate` or `upload` row must keep a reference_url that is NOT NULL, so writing NULL there
+# is refused by the database (the files were already gone, the row never got its record, and the run logged it every time)
+_NEEDS_REFERENCE = ("recreate", "upload")
+
+
+def _cleared(media: dict[str, Any]) -> dict[str, Any]:
+    """The addresses a purged row loses. An empty string, not NULL, where the mode's check constraint wants a reference_url."""
+    return {"generated_media_url": None, "reference_url": "" if media.get("mode") in _NEEDS_REFERENCE else None}
+
+
 def film_files(store: Any, motion: dict[str, Any], media: dict[str, Any]) -> list[str]:
     """Every file a finished Motion film left in storage: the full film, its compressed social copy, the poster, the storyboard's
     scene pictures and contact sheet. A path is listed once."""
@@ -242,7 +252,7 @@ def purge_films(store: Any, now: datetime | None = None, hours: int = PRUNE_HOUR
                     store.table("semasa_motions").update({"video_url": "", "social_url": "", "poster_url": "", "video_path": "",
                                                           "html": "", "check_report": report}).eq("id", motion["id"]).execute()
                 meta.update(film_purged_at=stamp, purge_hours=hours, poster_url="", generated_path=None)
-                store.table(db.MEDIA).update({"generated_media_url": None, "reference_url": None, "meta": meta}) \
+                store.table(db.MEDIA).update({**_cleared(media), "meta": meta}) \
                     .eq("id", media["id"]).execute()
                 purged += 1
                 freed += len(paths)
@@ -300,7 +310,7 @@ def purge_pictures(store: Any, now: datetime | None = None, hours: int = PRUNE_H
                 store.storage.from_(db.GENERATED_BUCKET).remove(paths)       # a failure raises: nothing below runs
                 meta.update(files_purged_at=now.isoformat(), purge_hours=hours, slide_urls=[], slide_paths=[],
                             generated_path=None)
-                store.table(db.MEDIA).update({"generated_media_url": None, "reference_url": None, "meta": meta}) \
+                store.table(db.MEDIA).update({**_cleared(media), "meta": meta}) \
                     .eq("id", media["id"]).execute()
                 purged += 1
                 freed += len(paths)

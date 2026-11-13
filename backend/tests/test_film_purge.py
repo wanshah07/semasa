@@ -1,6 +1,7 @@
 """A Motion film is deleted for good 72 hours after its post went out (Wan, 11 Nov 2026)."""
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 from fakestore import FakeStore
 
@@ -169,3 +170,30 @@ def test_the_orphan_sweep_deletes_nothing_when_a_table_cannot_be_read():
     store.tables["semasa_posts"] = None
     out = archive.sweep_orphans(store, NOW, mode="delete")
     assert out.startswith("orphans: skipped") and store.removed == []
+
+
+def test_a_table_with_no_id_column_is_still_read_by_the_orphan_sweep():
+    """semasa_settings has `key`, not `id`: ordering by id raised, and the sweep skipped itself on every run."""
+    class NoId:
+        def __init__(self, rows):
+            self.rows, self.ordered = rows, False
+
+        def select(self, *_):
+            return self
+
+        def order(self, col, **_):
+            if col == "id":
+                raise RuntimeError("column semasa_settings.id does not exist")
+            return self
+
+        def range(self, a, b):
+            return self
+
+        def limit(self, n):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=self.rows)
+
+    store = SimpleNamespace(table=lambda name: NoId([{"key": "k", "value": {"p": "2026/11/x.jpg"}}]))
+    assert archive._rows_of(store, "semasa_settings") == [{"key": "k", "value": {"p": "2026/11/x.jpg"}}]

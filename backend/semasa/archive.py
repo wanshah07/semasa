@@ -315,7 +315,8 @@ def purge_pictures(store: Any, now: datetime | None = None, hours: int = PRUNE_H
 
 ORPHAN_AGE = timedelta(hours=24)
 ORPHAN_CAP = 200          # files deleted in one run at most: a bug in the reference scan must not empty the bucket in one go
-_NO_SCAN = {db.TRENDS, db.LOG, "semasa_faqs", db.RUNS}
+# no file is ever named in these
+_NO_SCAN = {db.TRENDS, db.LOG, "semasa_faqs", db.RUNS, "semasa_ai_secrets", "semasa_telegram_codes"}
 
 
 def referenced_text(store: Any) -> str:
@@ -326,9 +327,18 @@ def referenced_text(store: Any) -> str:
                      or v in (db.MEDIA, db.TRENDS, db.RUNS)) and v not in _NO_SCAN} | {"semasa_motions"})
     parts: list[str] = []
     for t in tables:
-        rows = db.fetch_all(lambda t=t: store.table(t).select("*").order("id"))      # raises when a table cannot be read
-        parts.append(json.dumps(rows, default=str))
+        parts.append(json.dumps(_rows_of(store, t), default=str))
     return "\n".join(parts)
+
+
+def _rows_of(store: Any, table: str) -> list[dict[str, Any]]:
+    """Every row of a table. Seven tables (semasa_settings, the billing counters, the Telegram ones...) have no `id` column, so
+    ordering by it raised and the orphan sweep skipped itself on every run (found 13 Nov 2026: 157 orphan files still there after
+    the first run with deletion switched on). Those are read in database order; a table that still cannot be read raises."""
+    try:
+        return db.fetch_all(lambda: store.table(table).select("*").order("id"))
+    except Exception:  # noqa: BLE001 - most likely no `id` column: read it unordered
+        return db.fetch_all(lambda: store.table(table).select("*"))
 
 
 def list_bucket(store: Any, folder: str = "") -> list[dict[str, Any]]:

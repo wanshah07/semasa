@@ -90,7 +90,7 @@ function Unconfigured() {
 /** What stands in a tab's place while its code arrives (a moment on wifi, a second or two on a slow phone). */
 const Waiting = () => <main className="grid min-h-[40vh] place-items-center text-sm text-muted" aria-busy="true">…</main>;
 
-const SEGMENTS = ["isu", "regulatory", "publication", "reddit", "youtube", "folder", "myra"];
+const SEGMENTS = ["isu", "regulatory", "publication", "reddit", "youtube", "threads", "folder", "myra"];
 
 /* The words above each segment that is not the news headlines. Reddit, YouTube, OneDrive and MYRA are Wan's own sources
    (supabase/024, backend/semasa/intake.py): each is a tab here, over the same semasa_watch rows. */
@@ -108,6 +108,9 @@ function segCopy(seg, t) {
     youtube: ["YouTube", t("Video yang sedang ditonton dan dipertikaikan.", "The videos people are watching and disputing."),
       t("Video paling ditonton dalam 14 hari terakhir tentang kulit, sunscreen dan halal di Malaysia. Bilangan tontonan ialah angka sebenar daripada YouTube. Kuota carian YouTube dikongsi dan kadang-kadang habis; kalau begitu Reddit tetap berjalan.",
         "The most-watched videos of the last 14 days on skin, sunscreen and halal in Malaysia. View counts are YouTube's own. The search quota is shared and sometimes runs out; Reddit carries on when it does.")],
+    threads: ["Threads", t("Perbualan Threads yang sedang panas tentang halal dan kosmetik.", "Threads conversations heating up on halal and cosmetics."),
+      t("Post Threads paling relevan tentang halal, kosmetik dan sunscreen. Setiap baris ialah kepercayaan yang perlu dibetulkan, ditulis semula secara neutral: platform dan pautannya tidak masuk ke dalam post.",
+        "The most relevant Threads posts on halal, cosmetics and sunscreen. Each row is the belief to correct, rewritten neutrally: the platform and its link never reach a post.")],
     folder: ["OneDrive", t("Sudut siaran daripada perpustakaan rujukan anda.", "Post angles from your own reference library."),
       t("Setiap fail dalam /40. HERMES dibaca sekali: sehingga 8 sudut, tiada nama pelanggan atau nombor fail. Matriks siaran LabMuffin masuk baris demi baris. Folder “urgent post/DDMMYY” untuk hari ini atau esok didahulukan.",
         "Each file in /40. HERMES is read once: up to 8 angles, no client names or file numbers. The LabMuffin post matrix comes in row by row. An “urgent post/DDMMYY” folder for today or tomorrow goes first.")],
@@ -151,7 +154,7 @@ function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, s
         {allowed ? (
           <main className="mx-auto max-w-page px-4 pb-20 sm:px-6">
             <Suspense fallback={<Waiting />}>
-              <WatchSegment section={seg} watch={watch} setting={["reddit", "youtube", "folder", "myra"].includes(seg) ? settings.sources : settings.watch} saveSetting={save} brand={brand} user={user}
+              <WatchSegment section={seg} watch={watch} setting={["reddit", "youtube", "threads", "folder", "myra"].includes(seg) ? settings.sources : settings.watch} saveSetting={save} brand={brand} user={user}
                 onIdea={onIdea ? (r) => onIdea(watchIdea(r, brand)) : undefined} onToast={onToast} />
             </Suspense>
           </main>

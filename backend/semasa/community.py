@@ -1,10 +1,10 @@
-"""What people are arguing about right now: Reddit and YouTube, read through Composio For You (Studio's ideas sweep, 3rd
-pass, brought over 30 Sep 2026: "port all three before Friday").
+"""What people are arguing about right now: Reddit, YouTube and Threads, read through Composio For You (Studio's ideas
+sweep, 3rd pass, brought over 30 Sep 2026: "port all three before Friday"; Threads added 13 Nov 2026).
 
 Studio's rule, kept: the SOURCE never reaches a post. A row here is the wrong (or half-right) belief itself, written
-neutrally; it never names the platform, a subreddit or a handle, and every count on it is one the platform actually
-returned. The feed row still carries the link and "Reddit"/"YouTube" so Wan can go back to it, exactly as Studio's idea
-kept `evidence`; the shared compliance rules block a draft that names either.
+neutrally; it never names the platform, a subreddit, a channel or a handle, and every count on it is one the platform
+actually returned. The feed row still carries the link and "Reddit"/"YouTube"/"Threads" so Wan can go back to it,
+exactly as Studio's idea kept `evidence`; the shared compliance rules block a draft that names either.
 
   Reddit   REDDIT_SEARCH_ACROSS_SUBREDDITS, `subreddit:malaysia (halal OR ...)`, top of the week, ranked by comments
            (a thread with 260 comments outranks one with 1,000 upvotes and 4). The `subreddit` argument does NOT filter
@@ -12,6 +12,8 @@ kept `evidence`; the shared compliance rules block a draft that names either.
   YouTube  YOUTUBE_SEARCH_YOU_TUBE (viewCount, MY, last 72 hours) then YOUTUBE_GET_VIDEO_DETAILS_BATCH for the real view
            counts. Never `relevanceLanguage: "ms"` (it returns nothing). Composio's shared Google project ran out of its
            daily search quota on 30 Sep 2026: that is reported in the run and Reddit carries on.
+  Threads  THREADS_SEARCH_POSTS (TOP keyword, last 72 hours). No comment/engagement count is returned, so a post's
+           weight is its rank position, not a measure of noise; the writer's "relevant" verdict does the filtering.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ log = get_logger("semasa.community")
 DOMAINS = ("kosmetik", "makanan", "halal_my", "farmaseutikal", "fatwa", "sains_kosmetik", "kajian_kes", "lain")
 
 _CELL = '''
-OUT = {"posts": [], "videos": [], "reddit_error": "", "youtube_error": ""}
+OUT = {"posts": [], "videos": [], "threads": [], "reddit_error": "", "youtube_error": "", "threads_error": ""}
 q = "subreddit:" + P["subreddit"] + " (" + " OR ".join(P["terms"]) + ")"
 res, err = call("REDDIT_SEARCH_ACROSS_SUBREDDITS",
                 {"search_query": q, "sort": "top", "time_filter": P["window"], "limit": P["limit"], "result_type": ["link"]})
@@ -65,9 +67,32 @@ if P["youtube"]["enabled"]:
                                   "channel": sn.get("channelTitle"), "published": sn.get("publishedAt"),
                                   "views": st.get("viewCount"), "comments": st.get("commentCount"),
                                   "text": str(sn.get("description") or "")[:400]})
+if (P.get("threads") or {}).get("enabled"):
+    import time as _t
+    since = int(_t.time()) - int((P.get("threads") or {}).get("hours") or 72) * 3600
+    for tq in (P.get("threads") or {}).get("queries") or []:
+        if left() < 20:
+            break
+        r, e = call("THREADS_SEARCH_POSTS", {"query": tq, "search_type": "TOP",
+                                             "limit": (P.get("threads") or {}).get("max_results") or 8,
+                                             "since": since,
+                                             "fields": ["id", "text", "username", "permalink", "timestamp"]})
+        if e:
+            OUT["threads_error"] = str(e)[:200]
+            break
+        d = r.get("data") or {}
+        for it in (d.get("posts") or d.get("results") or []):
+            post = it.get("post") if isinstance(it.get("post"), dict) else it
+            post = post if isinstance(post, dict) else it
+            pid = post.get("id")
+            if not pid:
+                continue
+            OUT["threads"].append({"id": str(pid), "text": str(post.get("text") or "")[:500],
+                                   "permalink": post.get("permalink"),
+                                   "timestamp": post.get("timestamp"), "username": post.get("username")})
 '''
 
-SYSTEM = """You read public online arguments (a Reddit thread, a YouTube video) for ws.regulab, a Malaysian regulatory
+SYSTEM = """You read public online arguments (a Reddit thread, a YouTube video, a Threads post) for ws.regulab, a Malaysian regulatory
 consultancy (cosmetics, halal, food, pharmaceuticals; clients are Malaysian SMEs). Each item is something people are
 loudly discussing. For each one decide:
 - "relevant": true only when the argument turns on cosmetics, skincare, sunscreen, supplements, halal, food, drugs,
@@ -105,13 +130,17 @@ MAX_TERMS = 20        # measured: 19 terms match as OR; 27 return the subreddit'
 
 def fetch(client: Any, cfg: dict[str, Any]) -> dict[str, Any]:
     yt = cfg.get("youtube") or {}
+    th = cfg.get("threads") or {}
     return client.cell(_CELL, {
         "subreddit": str(cfg.get("subreddit") or "malaysia"), "terms": list(cfg.get("terms") or ["halal"])[:MAX_TERMS],
         "window": cfg.get("window") if cfg.get("window") in ("day", "week", "month") else "week",
         "limit": max(1, min(25, int(cfg.get("limit") or 15))),
         "youtube": {"enabled": yt.get("enabled") is not False, "queries": list(yt.get("queries") or [])[:4],
                     "hours": max(6, min(14 * 24, int(yt.get("hours") or int(yt.get("days") or 0) * 24 or WINDOW_HOURS))),
-                    "max_results": max(1, min(10, int(yt.get("max_results") or 8)))}},
+                    "max_results": max(1, min(10, int(yt.get("max_results") or 8)))},
+        "threads": {"enabled": th.get("enabled") is not False, "queries": list(th.get("queries") or [])[:4],
+                    "hours": max(6, min(14 * 24, int(th.get("hours") or WINDOW_HOURS))),
+                    "max_results": max(1, min(10, int(th.get("max_results") or 8)))}},
         thought="Semasa: what Malaysians are arguing about this week", budget=120)
 
 
@@ -140,6 +169,43 @@ def candidates(raw: dict[str, Any], now: datetime | None = None, hours: int = WI
                     "raw": {"platform": "youtube", "original_title": title, "views": views,
                             "channel_seen": bool(v.get("channel"))}})
     out.sort(key=lambda r: r["weight"], reverse=True)
+    return out
+
+
+def _thread_when(v: Any) -> datetime | None:
+    """Threads returns a Unix timestamp (seconds) as an int or string, or a date string."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        try:
+            return datetime.fromtimestamp(v, tz=UTC)
+        except (ValueError, OSError):
+            return None
+    s = str(v).strip()
+    try:
+        return datetime.fromtimestamp(int(s), tz=UTC)
+    except (ValueError, OSError):
+        pass
+    return _when(s)
+
+
+def thread_candidates(raw: dict[str, Any], now: datetime | None = None, hours: int = WINDOW_HOURS) -> list[dict[str, Any]]:
+    """Threads posts as rows. A Threads post's own first line is its title (there is no title field); the address is
+    kept for Wan but never reaches a post. The comment count is not exposed, so the weight is a plain rank position."""
+    now = now or datetime.now(UTC)
+    out: list[dict[str, Any]] = []
+    for i, p in enumerate(raw.get("threads") or []):
+        url, when = p.get("permalink"), _thread_when(p.get("timestamp"))
+        text = str(p.get("text") or "").strip()
+        if not url or not text or (when and now - when > timedelta(hours=hours)):
+            continue
+        title = text.splitlines()[0][:300] if text else ""
+        if not title:
+            continue
+        out.append({"platform": "threads", "source": "Threads", "kind": "Hujah", "url": str(url), "title": title,
+                    "text": text[:500], "published_at": when, "weight": max(0, 100 - i),
+                    "metrics": None,
+                    "raw": {"platform": "threads", "original_title": title}})
     return out
 
 

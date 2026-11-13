@@ -119,14 +119,15 @@ def faq_source(idea: dict[str, Any]) -> dict[str, Any] | None:
 
 
 STORED_SCHEMES = ("onedrive://", "myra://")
-STORED_HOSTS = ("reddit.com", "youtube.com", "youtu.be")
+STORED_HOSTS = ("reddit.com", "youtube.com", "youtu.be", "threads.net", "threads.com")
 
 
 def stored_source(idea: dict[str, Any]) -> dict[str, Any] | None:
-    """An idea made from Wan's own sources (supabase/024): a Reddit thread or YouTube video, a file in his OneDrive
-    library, a finding in MYRA's sheet with no link. None of them has a page the writer should fetch (Reddit and YouTube
-    refuse the fetch, and their addresses must never reach a post; the others are not web addresses), so the row's own
-    words are the source, exactly as an FAQ entry's answer is. The address is withheld from the writer on purpose."""
+    """An idea made from Wan's own sources (supabase/024): a Reddit thread, a YouTube video or a Threads post, a file in
+    his OneDrive library, a finding in MYRA's sheet with no link. None of them has a page the writer should fetch
+    (Reddit, YouTube and Threads refuse the fetch, and their addresses must never reach a post; the others are not web
+    addresses), so the row's own words are the source, exactly as an FAQ entry's answer is. The address is withheld from
+    the writer on purpose."""
     url = str(idea.get("source_url") or "")
     host = urlparse(url).netloc.lower()
     if not (url.startswith(STORED_SCHEMES) or any(host == h or host.endswith("." + h) for h in STORED_HOSTS)):

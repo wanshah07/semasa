@@ -67,7 +67,8 @@ def cell_posts(n=None):
 
 
 CFG = {"subreddit": "malaysia", "terms": ["halal", "skincare"], "window": "week", "limit": 15,
-       "youtube": {"enabled": True, "hours": 72, "max_results": 8, "queries": ["sunscreen Malaysia"]}}
+       "youtube": {"enabled": True, "hours": 72, "max_results": 8, "queries": ["sunscreen Malaysia"]},
+       "threads": {"enabled": True, "hours": 72, "max_results": 8, "queries": ["halal kosmetik"]}}
 
 
 def test_the_community_cell_restricts_reddit_in_the_query_text_and_survives_a_youtube_quota_answer():
@@ -113,6 +114,40 @@ def test_candidates_are_ranked_by_comments_and_stale_or_linkless_ones_are_droppe
     assert all("Old thread" != c["title"] and c["url"] for c in got)          # stale and linkless rows are gone
     assert reddit[0]["metrics"] == "260 komen" and video[0]["url"] == "https://www.youtube.com/watch?v=v1"
     assert video[0]["metrics"] == "125,000 tontonan"
+
+
+def test_the_community_cell_searches_threads_top_and_parses_their_posts():
+    seen = {}
+
+    def threads(args, account):
+        seen.update(args)
+        return ({"data": {"posts": [{"id": "t1", "text": "Sunscreen murah ada merkuri? Baris pertama.",
+                                      "username": "a", "permalink": "https://www.threads.net/@a/post/t1",
+                                      "timestamp": 1760000000},
+                                     {"id": "t2", "text": "Second", "permalink": "https://www.threads.net/@a/post/t2"}]}}, "")
+
+    out = run_cell(community._CELL, {"subreddit": "malaysia", "terms": ["halal"], "window": "week", "limit": 5,
+                                     "youtube": CFG["youtube"], "threads": CFG["threads"]},
+                   tools_from({"REDDIT_SEARCH_ACROSS_SUBREDDITS": ({"data": {"posts": []}}, ""),
+                               "YOUTUBE_SEARCH_YOU_TUBE": ({"data": {"items": []}}, ""),
+                               "THREADS_SEARCH_POSTS": threads}))["out"]
+    assert seen["query"] == "halal kosmetik" and seen["search_type"] == "TOP" and "since" in seen
+    assert [p["id"] for p in out["threads"]] == ["t1", "t2"] and out["threads"][0]["permalink"].startswith("https://www.threads.net/")
+    assert out["threads_error"] == ""
+
+
+def test_thread_candidates_keep_the_first_line_as_title_and_drop_stale_or_linkless():
+    now = datetime(2026, 9, 30, 2, 0, tzinfo=UTC)
+    fresh = now.timestamp()
+    raw = {"threads": [{"id": "t1", "text": "First line title\nMore text", "permalink": "https://www.threads.net/@a/post/t1",
+                        "timestamp": fresh},
+                       {"id": "t2", "text": "No link", "permalink": None, "timestamp": fresh},
+                       {"id": "t3", "text": "Old", "permalink": "https://www.threads.net/@a/post/t3",
+                        "timestamp": now.timestamp() - 100 * 3600}]}
+    got = community.thread_candidates(raw, now)
+    assert [c["title"] for c in got] == ["First line title"]
+    assert got[0]["platform"] == "threads" and got[0]["source"] == "Threads" and got[0]["url"].startswith("https://www.threads.net/")
+    assert community.thread_candidates({"threads": []}, now) == []
 
 
 class Writer:

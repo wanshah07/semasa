@@ -1,4 +1,4 @@
-/* web/src/lib/ownSources.js: what a card for Wan's own sources (Reddit, YouTube, OneDrive, MYRA) may open and say. */
+/* web/src/lib/ownSources.js: what a card for Wan's own sources (Reddit, YouTube, Threads, OneDrive, MYRA) may open and say. */
 import assert from "node:assert/strict";
 import { OWN_SECTIONS, linkOf, ownLine, ownSummary } from "./src/lib/ownSources.js";
 
@@ -6,8 +6,8 @@ const t = (bm, en, vars = {}) => Object.entries(vars).reduce((s, [k, v]) => s.re
 let n = 0;
 const test = (name, fn) => { fn(); n++; };
 
-test("four own sections, none of them the news ones", () => {
-  assert.deepEqual(OWN_SECTIONS, ["reddit", "youtube", "folder", "myra"]);
+test("five own sections, none of them the news ones", () => {
+  assert.deepEqual(OWN_SECTIONS, ["reddit", "youtube", "threads", "folder", "myra"]);
 });
 test("a card opens a web address only: a OneDrive key or a link-less MYRA finding opens nothing", () => {
   assert.equal(linkOf({ url: "https://www.reddit.com/r/malaysia/comments/a1/x" }), "https://www.reddit.com/r/malaysia/comments/a1/x");

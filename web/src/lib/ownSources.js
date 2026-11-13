@@ -1,6 +1,6 @@
-/* Wan's own sources (supabase/024): Reddit, YouTube, the OneDrive reference folders and MYRA's sheet. Each is a tab in the
-   Isu semasa row, over the same semasa_watch rows; the sweep that fills them is backend/semasa/intake.py. */
-export const OWN_SECTIONS = ["reddit", "youtube", "folder", "myra"];
+/* Wan's own sources (supabase/024 + 079): Reddit, YouTube, Threads, the OneDrive reference folders and MYRA's sheet. Each
+   is a tab in the Isu semasa row, over the same semasa_watch rows; the sweep that fills them is backend/semasa/intake.py. */
+export const OWN_SECTIONS = ["reddit", "youtube", "threads", "folder", "myra"];
 
 /** The address a card can open: a web link only. A file in OneDrive opens by its own web address, a MYRA finding by its
     source link when it has one; onedrive:// and myra:// are keys, not addresses. */
@@ -29,11 +29,12 @@ export function ownLine(r, t) {
 export function ownSummary(section, s) {
   const rep = (s && s.report) || {};
   const c = rep.community || {};
-  const n = section === "reddit" || section === "youtube" ? (c.shown || {})[section] : section === "folder" ? (rep.folders || {}).angles : (rep.myra || {}).new;
+  const n = section === "reddit" || section === "youtube" || section === "threads" ? (c.shown || {})[section] : section === "folder" ? (rep.folders || {}).angles : (rep.myra || {}).new;
   const part = section === "folder" ? "folders" : section === "myra" ? "myra" : "community";
   const failing = [];
   if (rep[part] && rep[part].ok === false) failing.push({ name: part, error: rep[part].error });
   if (section === "youtube" && c.youtube_error) failing.push({ name: "YouTube", error: c.youtube_error === "quota" ? "kuota carian YouTube habis hari ini / the YouTube search quota is used up for today" : c.youtube_error });
   if (section === "reddit" && c.reddit_error) failing.push({ name: "Reddit", error: c.reddit_error });
+  if (section === "threads" && c.threads_error) failing.push({ name: "Threads", error: c.threads_error });
   return { new: n ?? 0, failing, last: s && s.last_run };
 }

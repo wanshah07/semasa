@@ -2,10 +2,10 @@
 (community.py), the OneDrive reference folders (folders.py) and MYRA's daily sheet (myra.py). Brought over 30 Sep 2026
 ("port all three before Friday"), before ws.regulab Studio's Routines are switched off on Fri 2 Oct.
 
-What they produce is FEED ROWS in `semasa_watch` (sections `reddit`, `youtube`, `folder`, `myra`), never ideas, never
-drafts, never anything approved: Wan reads them in the page and clicks "Jadikan idea", or autofill (which is off until
-Fri 2 Oct 20:00 MYT) writes an idea for an empty slot from them, and either way the result is a draft that waits for his
-Approve. That is Studio's own rule 9 ("the sweep writes only to ideas, never to drafts"), kept.
+What they produce is FEED ROWS in `semasa_watch` (sections `reddit`, `youtube`, `threads`, `folder`, `myra`), never
+ideas, never drafts, never anything approved: Wan reads them in the page and clicks "Jadikan idea", or autofill (which
+is off until Fri 2 Oct 20:00 MYT) writes an idea for an empty slot from them, and either way the result is a draft that
+waits for his Approve. That is Studio's own rule 9 ("the sweep writes only to ideas, never to drafts"), kept.
 
 This is a duplicate READ of what Studio's Routines still read until Friday 19:45 MYT, not a duplicate SCHEDULE: nothing
 here posts, and nothing here is approved.
@@ -29,7 +29,7 @@ log = get_logger("semasa.intake")
 WATCH = "semasa_watch"
 KEY = "sources"                     # semasa_settings row: Wan's overrides, and the last run's report
 # what is loud now is kept 72 hours (Wan, 12 Nov 2026); the folder bank is not pruned
-KEEP_HOURS = {"reddit": 72, "youtube": 72, "myra": 45 * 24}
+KEEP_HOURS = {"reddit": 72, "youtube": 72, "threads": 72, "myra": 45 * 24}
 
 DEFAULTS: dict[str, Any] = {
     "enabled": True,
@@ -42,6 +42,8 @@ DEFAULTS: dict[str, Any] = {
                   "cosmetic"],
         "youtube": {"enabled": True, "hours": 72, "max_results": 8,
                     "queries": ["sunscreen skincare Malaysia", "halal certification Malaysia", "kosmetik NPRA"]},
+        "threads": {"enabled": True, "hours": 72, "max_results": 8,
+                    "queries": ["halal kosmetik", "sunscreen", "sijil halal"]},
     },
     "folders": {
         "enabled": True, "use_writer": True, "root": "/40. HERMES", "account": "Muhammad-Ridzuan",
@@ -110,22 +112,27 @@ def write(store: Any, rows: list[dict[str, Any]], dry: bool) -> int:
 def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetime, dry: bool) -> dict[str, Any]:
     raw = community.fetch(client, cfg)
     cands = community.candidates(raw, now, int(cfg.get("hours") or community.WINDOW_HOURS))
+    cands += community.thread_candidates(raw, now, int(cfg.get("hours") or community.WINDOW_HOURS))
     known = have(store, [c["url"] for c in cands])
     fresh = [c for c in cands if c["url"] not in known]
-    by = {"reddit": [], "youtube": []}
+    by = {"reddit": [], "youtube": [], "threads": []}
     for c in fresh:
         by[c["platform"]].append(c)
     keep = int(cfg.get("keep") or 10)
-    batch = by["reddit"][:keep] + by["youtube"][:keep]
+    batch = by["reddit"][:keep] + by["youtube"][:keep] + by["threads"][:keep]
     kept, rejected = community.annotate(llm, batch)
     rows = [community.to_row(r) for r in kept] + [community.tombstone(r) for r in rejected]
     write(store, rows, dry)
-    rep = {"read": {"reddit": len(raw.get("posts") or []), "youtube": len(raw.get("videos") or [])},
-           "new": len(fresh), "shown": {p: sum(1 for r in kept if r["platform"] == p) for p in ("reddit", "youtube")},
+    rep = {"read": {"reddit": len(raw.get("posts") or []), "youtube": len(raw.get("videos") or []),
+                    "threads": len(raw.get("threads") or [])},
+           "new": len(fresh),
+           "shown": {p: sum(1 for r in kept if r["platform"] == p) for p in ("reddit", "youtube", "threads")},
            "hidden": len(rejected), "reddit_error": raw.get("reddit_error") or None,
-           "youtube_error": raw.get("youtube_error") or None}
+           "youtube_error": raw.get("youtube_error") or None, "threads_error": raw.get("threads_error") or None}
     if raw.get("youtube_error"):
         log.warning("YouTube: %s (Reddit carries on)", raw["youtube_error"])
+    if raw.get("threads_error"):
+        log.warning("Threads: %s (Reddit and YouTube carry on)", raw["threads_error"])
     return rep
 
 
@@ -239,6 +246,7 @@ def run(store: Any, llm: Any, client: Any, now: datetime | None = None, only: li
                                                                 "force": False},        # the page's "Sweep now" is answered
                                          "updated_at": now.isoformat()}, on_conflict="key").execute()
         shown = sum(int((v.get("shown") or {}).get("reddit", 0)) + int((v.get("shown") or {}).get("youtube", 0))
+                    + int((v.get("shown") or {}).get("threads", 0))
                     for v in report.values() if isinstance(v, dict) and isinstance(v.get("shown"), dict))
         db.log_event(store, "info", "idea", "sources.sweep",
                      f"Sumber saya disapu: {shown} hujah, {(report.get('folders') or {}).get('angles', 0)} sudut folder, "

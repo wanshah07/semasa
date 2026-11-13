@@ -362,8 +362,14 @@ def _send_buffer(client: Any, view: _BufferView, channel_id: str, channel: str, 
     mode = "shareNow" if share_now else "customScheduled"
     for attempt in (1, 2):
         try:
-            bp = (client.create_video(channel_id, channel, text, video, due_iso) if video
-                  else client.create(channel_id, channel, text, pictures, alt, due_iso))
+            if video:
+                bp = client.create_video(channel_id, channel, text, video, due_iso)
+            elif route == "zernio" and channel == "linkedin" and len(pictures) > 1:
+                # LinkedIn carousel -> a document post (Wan, 13 Nov 2026): the slides become one PDF so LinkedIn
+                # shows a swipeable carousel with the white frame, not a gallery. The title is the caption's first line.
+                bp = client.create_document(channel_id, text, pictures, text.splitlines()[0][:250], due_iso)
+            else:
+                bp = client.create(channel_id, channel, text, pictures, alt, due_iso)
         except senders.SendError as exc:
             if exc.kind != "transient" or attempt == 2:
                 raise

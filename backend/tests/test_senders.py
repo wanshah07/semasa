@@ -350,3 +350,68 @@ def test_linkedin_video_that_is_not_taken_never_reaches_the_post_call():
     with pytest.raises(senders.SendError):
         senders.LinkedIn("key", "urn:li:person:X", session=s).post_video("Hello", "https://x/f.mp4")
     assert not any(c[1].endswith("LINKEDIN_CREATE_VIDEO_POST") for c in s.calls)
+
+
+# --- Zernio document carousel (Wan, 13 Nov 2026) ------------------------------------------------------------------
+
+def _jpeg(width=16, height=20):
+    from PIL import Image
+    import io
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height), (200, 20, 30)).save(buf, "JPEG")
+    return buf.getvalue()
+
+
+def test_slides_to_pdf_joins_pictures_in_order_and_is_a_pdf():
+    s = Session(Resp(headers={"content-type": "image/jpeg"}, content=_jpeg()),
+                Resp(headers={"content-type": "image/jpeg"}, content=_jpeg()))
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(senders.requests, "get", lambda url, timeout=90: s.get(url))
+    try:
+        pdf = senders.slides_to_pdf(["https://x/1.jpg", "https://x/2.jpg"])
+    finally:
+        monkeypatch.undo()
+    assert pdf[:4] == b"%PDF"
+
+
+def test_slides_to_pdf_reports_a_bad_picture():
+    s = Session(Resp(status=404, headers={"content-type": "text/html"}))
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(senders.requests, "get", lambda url, timeout=90: s.get(url))
+    try:
+        with pytest.raises(senders.SendError) as e:
+            senders.slides_to_pdf(["https://x/1.jpg"])
+        assert e.value.kind == "refused" and "slide 1" in e.value.message
+    finally:
+        monkeypatch.undo()
+
+
+def test_zernio_create_document_uploads_a_pdf_and_posts_a_document():
+    from PIL import Image
+    import io
+    buf = io.BytesIO()
+    Image.new("RGB", (16, 20), (10, 10, 10)).save(buf, "JPEG")
+    s = Session(Resp(headers={"content-type": "image/jpeg"}, content=buf.getvalue()),   # fetch slide 1
+                Resp(headers={"content-type": "image/jpeg"}, content=buf.getvalue()),   # fetch slide 2
+                Resp(body={"uploadUrl": "https://r2/put", "publicUrl": "https://r2/doc.pdf"}),  # POST /media
+                Resp(status=200),                                                        # PUT the PDF
+                Resp(body={"post": {"_id": "p1", "status": "published",
+                                    "platforms": [{"platform": "linkedin", "platformPostUrl": "https://li/1"}]}}),
+                )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(senders.requests, "get", lambda url, timeout=90: s.get(url))
+    try:
+        z = senders.Zernio("k", session=s)
+        rec = z.create_document("acc1", "The hook line", ["https://x/1.jpg", "https://x/2.jpg"], "The hook line", None)
+    finally:
+        monkeypatch.undo()
+    assert rec["id"] == "p1"
+    # POST /media asked for a document, then the PDF was PUT, then POST /posts carried type=document + documentTitle
+    media_call = next(c for c in s.calls if c[1] == "https://zernio.com/api/v1/media")
+    assert media_call[2]["json"] == {"filename": "carousel.pdf", "contentType": "application/pdf"}
+    put_call = next(c for c in s.calls if c[0] == "PUT")
+    assert put_call[2]["data"][:4] == b"%PDF" and put_call[2]["headers"]["Content-Type"] == "application/pdf"
+    post_call = next(c for c in s.calls if c[1] == "https://zernio.com/api/v1/posts")
+    body = post_call[2]["json"]
+    assert body["mediaItems"] == [{"type": "document", "url": "https://r2/doc.pdf"}]
+    assert body["platforms"][0]["platformSpecificData"] == {"documentTitle": "The hook line"}

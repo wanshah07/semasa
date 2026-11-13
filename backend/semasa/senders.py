@@ -262,6 +262,31 @@ def thread_levels(text: str, most: int = THREAD_LEVELS, limit: int = THREAD_MAX)
     return out
 
 
+def slides_to_pdf(pictures: list[str]) -> bytes:
+    """Join a carousel's slide pictures into one PDF, in order. LinkedIn's document post shows it as a swipeable
+    carousel; the first picture is the cover. Raises SendError (transient) when a picture cannot be fetched or opened."""
+    import io
+    from PIL import Image
+    imgs: list[Image.Image] = []
+    for i, u in enumerate(pictures):
+        try:
+            r = requests.get(u, timeout=90)
+        except requests.RequestException as exc:
+            raise SendError("transient", f"slide {i + 1} unreachable: {exc}") from exc
+        ctype = (r.headers.get("content-type") or "").split(";")[0].strip()
+        if r.status_code != 200 or not ctype.startswith("image/"):
+            raise SendError("refused", f"slide {i + 1} answered {r.status_code} {ctype or 'no type'}")
+        try:
+            imgs.append(Image.open(io.BytesIO(r.content)).convert("RGB"))
+        except Exception as exc:  # noqa: BLE001 - a bad picture is reported, never drawn half
+            raise SendError("refused", f"slide {i + 1} could not be opened ({type(exc).__name__})") from exc
+    if not imgs:
+        raise SendError("refused", "a document carousel has no pictures")
+    buf = io.BytesIO()
+    imgs[0].save(buf, "PDF", save_all=True, append_images=imgs[1:], resolution=100)
+    return buf.getvalue()
+
+
 class Zernio:
     """One Zernio login (one key) and the social accounts connected under it. It answers in Buffer's shape (id, status,
     dueAt, sentAt, text, channelId, externalLink, error) so the publisher's no-double-post check, tally and records are the
@@ -346,6 +371,36 @@ class Zernio:
         if service == "tiktok":
             raise SendError("refused", "tiktok: TikTok takes a Motion film only")
         return self._create(channel_id, service, text, [{"type": "image", "url": u} for u in pictures], due_at)
+
+    def create_document(self, channel_id: str, text: str, pictures: list[str], title: str,
+                        due_at: str | None) -> dict[str, Any]:
+        """A LinkedIn carousel as a DOCUMENT post (Wan, 13 Nov 2026): the slides are joined into one PDF, so LinkedIn
+        shows it as a swipeable document carousel with the white frame, not a gallery of separate pictures. The first
+        page is the cover; `title` is LinkedIn's required document title (`documentTitle`)."""
+        pdf = slides_to_pdf(pictures)
+        media = self._call("POST", "/media", json={"filename": "carousel.pdf", "contentType": "application/pdf"})
+        up = media.get("uploadUrl")
+        if not up:
+            raise SendError("refused", f"Zernio gave no upload URL for the document: {str(media)[:200]}")
+        put = self.http.put(up, data=pdf, headers={"Content-Type": "application/pdf"}, timeout=180)
+        if put.status_code >= 300:
+            raise SendError("transient", f"document upload answered {put.status_code}")
+        public_url = media.get("publicUrl")
+        if not public_url:
+            raise SendError("refused", "Zernio gave no public URL for the document")
+        entry: dict[str, Any] = {"platform": "linkedin", "accountId": channel_id,
+                                 "platformSpecificData": {"documentTitle": title}}
+        body: dict[str, Any] = {"content": text, "timezone": "UTC",
+                                "mediaItems": [{"type": "document", "url": public_url}], "platforms": [entry]}
+        if due_at:
+            body["scheduledFor"] = due_at
+        else:
+            body["publishNow"] = True
+        got = self._call("POST", "/posts", json=body)
+        post = got.get("post") if isinstance(got.get("post"), dict) else got
+        if not post.get("_id"):
+            raise SendError("refused", f"Zernio gave no post id: {str(got)[:300]}")
+        return self.shape(post, channel_id)
 
     def create_video(self, channel_id: str, service: str, text: str, video: dict[str, Any],
                      due_at: str | None) -> dict[str, Any]:
@@ -457,6 +512,10 @@ class ZernioHub:
     def create_video(self, channel_id: str, service: str, text: str, video: dict[str, Any],
                      due_at: str | None) -> dict[str, Any]:
         return self._for(channel_id).create_video(channel_id, service, text, video, due_at)
+
+    def create_document(self, channel_id: str, text: str, pictures: list[str], title: str,
+                        due_at: str | None) -> dict[str, Any]:
+        return self._for(channel_id).create_document(channel_id, text, pictures, title, due_at)
 
     def posts(self, channel_ids: list[str], start: str, end: str) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []

@@ -2191,7 +2191,7 @@ function handHl(ctx, x, y, w, h) {
 }
 /* The title with one key phrase highlighted. *word* is emphasis here as elsewhere; the last emphasised
    phrase (or the first two words when none is marked) gets the marker block. */
-function handTitle(ctx, title, x, y, maxW, px) {
+function handTitle(ctx, title, x, y, maxW, px, centre) {
   const t = stripEmph(title || "").trim();
   if (!t) return y;
   ctx.font = "400 " + px + "px " + HAND_HEAD; ctx.textBaseline = "top";
@@ -2207,21 +2207,22 @@ function handTitle(ctx, title, x, y, maxW, px) {
   let yy = y;
   for (const ln of lines) {
     const lw = ln.split(/\s+/), lc = lines.indexOf(ln), start = lines.slice(0, lc).reduce((a, s) => a + s.split(/\s+/).length, 0);
+    const ox = centre ? Math.max(0, Math.round((maxW - ctx.measureText(ln).width) / 2)) : 0;      // Wan, 13 Nov 2026: centred
     // highlight the words of this line that fall in the span
     for (let i = 0; i < lw.length; i++) {
       const gi = start + i;
       if (gi >= hlSpan[0] && gi < hlSpan[0] + hlSpan[1]) {
         const before = lw.slice(0, i).join(" ") + (i ? " " : "");
         const tw = ctx.measureText(lw[i]).width;
-        handHl(ctx, x + ctx.measureText(before).width, yy - 2, tw, px * 1.15);
+        handHl(ctx, x + ox + ctx.measureText(before).width, yy - 2, tw, px * 1.15);
       }
     }
-    ctx.fillStyle = HAND_PAL.ink; ctx.fillText(ln, x, yy); yy += Math.round(px * 1.2);
+    ctx.fillStyle = HAND_PAL.ink; ctx.fillText(ln, x + ox, yy); yy += Math.round(px * 1.2);
   }
   ctx.textBaseline = "alphabetic"; return yy;
 }
 /* Body text: Open Sans, wraps to the width, shrinks a step until it fits maxH, never cut. */
-function handBody(ctx, text, x, y, maxW, maxH, px0, pxMin, weight, colour, lh) {
+function handBody(ctx, text, x, y, maxW, maxH, px0, pxMin, weight, colour, lh, centre) {
   const t = String(text || "").trim(); if (!t) return y;
   let px = px0, lines = [];
   for (; ; px -= 2) {
@@ -2229,37 +2230,50 @@ function handBody(ctx, text, x, y, maxW, maxH, px0, pxMin, weight, colour, lh) {
     if (lines.length * Math.round(px * lh) <= maxH || px <= pxMin) break;
   }
   const lhpx = Math.round(px * lh); ctx.fillStyle = colour; ctx.textBaseline = "top";
-  for (const l of lines) { ctx.fillText(l, x, y); y += lhpx; }
-  ctx.textBaseline = "alphabetic"; return y;
+  if (centre) ctx.textAlign = "center";
+  for (const l of lines) { ctx.fillText(l, centre ? x + maxW / 2 : x, y); y += lhpx; }
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; return y;
 }
 /* A "HEAD TO HEAD" table from "Label | detail" point pairs: label column bold, ✓ green / ✗ red on the "Wajib ke?" row. */
-function handTable(ctx, title, items, x, y, maxW, maxH, u) {
+function handTable(ctx, title, items, x, y, maxW, maxH, u, f = 1) {
   const t = stripEmph(title || "").trim();
   const rows = (items || []).map((s) => String(s || "").trim()).filter(Boolean);
   const pairs = rows.filter((s) => s.includes("|")).map((s) => { const [a, b] = s.split("|"); return [a.trim(), b.trim()]; });
   if (pairs.length < 2) return y;
   ctx.save();
-  // table head
-  ctx.font = "400 " + Math.round(30 * u) + "px " + HAND_HEAD; ctx.fillStyle = HAND_PAL.ink; ctx.textBaseline = "top";
-  ctx.fillText(t, x, y); y += Math.round(44 * u);
-  const col1 = Math.round(maxW * 0.34), col2 = maxW - col1, rowH = Math.round(44 * u);
-  for (const [a, b] of pairs) {
-    const isWajib = /wajib/i.test(a);
-    ctx.font = "700 " + Math.round(24 * u) + "px " + HAND_BODY;
-    const lab = a[0] === "*" ? stripEmph(a) : a;
-    ctx.fillStyle = HAND_PAL.navy; ctx.fillText(lab, x, y + 4);
-    ctx.fillStyle = isWajib ? HAND_PAL.green : HAND_PAL.ink;
-    const mark = /tidak/i.test(b) ? "✗" : "✓";
-    ctx.fillText(mark + " " + b, x + col1, y + 4);
-    y += rowH;
+  ctx.font = "400 " + Math.round(30 * u * f) + "px " + HAND_HEAD; ctx.fillStyle = HAND_PAL.ink; ctx.textBaseline = "top";
+  ctx.textAlign = "center"; ctx.fillText(t, x + maxW / 2, y); ctx.textAlign = "left"; y += Math.round(44 * u * f);
+  const labs = pairs.map(([a]) => (a[0] === "*" ? stripEmph(a) : a));
+  const dets = pairs.map(([, b]) => (/tidak/i.test(b) ? "\u2717 " : "\u2713 ") + b);
+  // the type is as large as the rows allow AND still fits the card: the widest label and the widest detail side by side
+  const gapX = Math.round(28 * u);
+  let px = Math.round(24 * u * f);
+  const widest = (font, list) => { ctx.font = font; return Math.max(...list.map((l) => ctx.measureText(l).width)); };
+  for (; px > Math.round(16 * u); px -= 2) {
+    const lw = widest("700 " + px + "px " + HAND_BODY, labs), dw = widest("700 " + px + "px " + HAND_BODY, dets);
+    if (lw + gapX + dw <= maxW) break;
   }
+  const lw = widest("700 " + px + "px " + HAND_BODY, labs), dw = widest("700 " + px + "px " + HAND_BODY, dets);
+  const tableW = Math.min(maxW, lw + gapX + dw), x0 = x + Math.round((maxW - tableW) / 2);   // the table block is centred
+  const rowH = Math.round(Math.max(px * 1.8, 44 * u * f));
+  pairs.forEach(([a, b], k) => {
+    const isWajib = /wajib/i.test(a);
+    ctx.font = "700 " + px + "px " + HAND_BODY;
+    ctx.fillStyle = HAND_PAL.navy; ctx.fillText(labs[k], x0, y + 4);
+    ctx.fillStyle = isWajib ? HAND_PAL.green : HAND_PAL.ink;
+    ctx.fillText(dets[k], x0 + lw + gapX, y + 4);
+    y += rowH;
+  });
   ctx.restore(); return y;
 }
-async function renderHandCard(spec) {
-  const [W, H] = sizeOf(spec);
-  const c = document.createElement("canvas"); c.width = W; c.height = H;
-  const ctx = styleCtx(c.getContext("2d"), spec);
-  try { await document.fonts.ready; } catch (e) { }
+/* The hand-drawn card is painted twice, as the grid cards are: once against measureProxy to learn how tall the words
+   are, then for real. Wan, 13 Nov 2026: "make sure all text in the poster align centre / fill the space in the poster" --
+   the words were left-aligned at the top and the lower half of the card stayed empty. Now every line is centred, the
+   type grows (up to HAND_FILL_MAX, by the same search the grid cards use) until the words fill the card, and the
+   block is centred between the eyebrow and the source line. Never past the room: a card already full keeps its size. */
+const HAND_FILL_MAX = 1.9;
+function handZone(H, u) { return { top: Math.round(112 * u), bottom: H - Math.round(180 * u) }; }
+function handPaint(ctx, spec, W, H, fill, shift) {
   const warn = [];
   const u = W / 1080, M = Math.round(56 * u), pad = Math.round(44 * u);
   const title = String(spec.title || "").trim();
@@ -2267,45 +2281,73 @@ async function renderHandCard(spec) {
   const lead = String(spec.lead || "").trim();
   const footnote = String(spec.footnote || "").trim();
   const linkedin = spec.stream === "linkedin";
+  const f = fill > 1 ? fill : 1;
   ctx.fillStyle = HAND_PAL.board; ctx.fillRect(0, 0, W, H);
-  // the white card
   const cardX = M, cardY = Math.round(30 * u), cardW = W - M * 2, cardH = H - Math.round(60 * u);
   ctx.fillStyle = HAND_PAL.card; ctx.fillRect(cardX, cardY, cardW, cardH);
   handCard(ctx, cardX, cardY, cardW, cardH, HAND_PAL.navy, Math.round(5 * u));
-  let y = cardY + pad;
-  // eyebrow label
-  if (spec.eyebrow) { ctx.font = "700 " + Math.round(19 * u) + "px " + HAND_BODY; ctx.fillStyle = HAND_PAL.muted; ctx.textBaseline = "top"; ctx.fillText(String(spec.eyebrow).toUpperCase(), cardX + pad, y); y += Math.round(34 * u); }
-  // headline (marker + highlight), takes most of the upper room
-  const headRoom = Math.round(H * 0.2);
+  const innerW = cardW - pad * 2;
+  const z = handZone(H, u);
+  if (spec.eyebrow) {
+    ctx.font = "700 " + Math.round(19 * u) + "px " + HAND_BODY; ctx.fillStyle = HAND_PAL.muted; ctx.textBaseline = "top";
+    ctx.textAlign = "center"; ctx.fillText(String(spec.eyebrow).toUpperCase(), cardX + cardW / 2, cardY + pad); ctx.textAlign = "left";
+  }
+  let y = z.top + shift;
   ctx.textBaseline = "top";
-  y = handTitle(ctx, title, cardX + pad, y, cardW - pad * 2, Math.round(48 * u));
-  y += Math.round(20 * u);
+  y = handTitle(ctx, title, cardX + pad, y, innerW, Math.round(48 * u * f), true);
+  y += Math.round(20 * u * f);
   ctx.textBaseline = "alphabetic";
-  // the points as a list (or a table when they are "Label | detail" pairs)
   const piped = items.length >= 2 && items.every((s) => s.includes("|"));
-  const bodyRoom = cardH - (y - cardY) - Math.round(150 * u);
-  if (piped && items.length >= 2) {
+  const bodyRoom = z.bottom - z.top - Math.round(60 * u);        // what the points may take when nothing has grown
+  const maxH = f > 1 ? Infinity : bodyRoom;
+  const gap = Math.round(14 * u * f);
+  if (piped) {
     const was = y;
-    y = handTable(ctx, "HEAD TO HEAD", items, cardX + pad, y, cardW - pad * 2, bodyRoom, u);
-    if (y === was) { // fallback to a list when the table could not form
-      for (const it of items) { y = handBody(ctx, it, cardX + pad, y, cardW - pad * 2, bodyRoom, Math.round(26 * u), Math.round(18 * u), 400, HAND_PAL.ink, 1.4); y += Math.round(10 * u); }
+    y = handTable(ctx, "HEAD TO HEAD", items, cardX + pad, y, innerW, maxH, u, f);
+    if (y === was) {
+      for (const it of items) { y = handBody(ctx, it, cardX + pad, y, innerW, maxH, Math.round(26 * u * f), Math.round(18 * u), 400, HAND_PAL.ink, 1.4, true); y += gap; }
     }
   } else {
-    const pts = [lead, ...items].filter(Boolean);
-    const room = bodyRoom;
-    for (const it of pts) { y = handBody(ctx, it, cardX + pad, y, cardW - pad * 2, room, Math.round(27 * u), Math.round(18 * u), 400, HAND_PAL.ink, 1.4); y += Math.round(14 * u); }
+    for (const it of [lead, ...items].filter(Boolean)) {
+      y = handBody(ctx, it, cardX + pad, y, innerW, maxH, Math.round(27 * u * f), Math.round(18 * u), 400, HAND_PAL.ink, 1.4, true); y += gap;
+    }
   }
-  // source line pinned to the foot
   if (footnote) {
     ctx.font = "400 " + Math.round(20 * u) + "px " + HAND_BODY; ctx.fillStyle = HAND_PAL.muted; ctx.textBaseline = "top";
     const label = linkedin ? "Source: " : "Sumber: ";
-    const fl = gWrap(ctx, label + footnote, cardW - pad * 2);
+    const fl = gWrap(ctx, label + footnote, innerW);
     const fy = cardY + cardH - pad - fl.length * Math.round(28 * u);
-    for (const l of fl) { ctx.fillText(l, cardX + pad, fy + fl.indexOf(l) * Math.round(28 * u)); }
+    ctx.textAlign = "center";
+    fl.forEach((l, i) => ctx.fillText(l, cardX + cardW / 2, fy + i * Math.round(28 * u)));
+    ctx.textAlign = "left";
   }
-  if (!linkedin) await drawBrandMark(ctx, spec, W, u, M, { top: 40, h: 28, textFill: "rgba(21,23,27,.5)" });
-  if (y > cardY + cardH - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
-  return { url: c.toDataURL("image/jpeg", 0.9), warn, y };
+  if (y > z.bottom + Math.round(30 * u)) warn.push("The slide is fuller than the card: shorten a line.");
+  return { warn, y };
+}
+async function renderHandCard(spec) {
+  const [W, H] = sizeOf(spec);
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const ctx = styleCtx(c.getContext("2d"), spec);
+  try { await document.fonts.ready; } catch (e) { }
+  const u = W / 1080, z = handZone(H, u);
+  const probe = handPaint(measureProxy(ctx), spec, W, H, 1, 0);
+  // grow the type until the words fill the card (the grid cards' own search), but only when they leave it mostly empty
+  let fill = 1;
+  const used = (y) => Math.max(0, y - z.top), room = z.bottom - z.top;
+  if (!spec.type_size && room > 0 && used(probe.y) < FILL_FROM * room) {
+    const at = (f) => used(handPaint(measureProxy(ctx), spec, W, H, f, 0).y);
+    if (at(HAND_FILL_MAX) >= used(probe.y) * 1.12) {
+      let lo = 1, hi = HAND_FILL_MAX;
+      for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (at(mid) <= FILL_TARGET * room) lo = mid; else hi = mid; }
+      fill = lo > 1.03 ? Math.round(lo * 100) / 100 : 1;
+    }
+  }
+  const end = handPaint(measureProxy(ctx), spec, W, H, fill, 0).y;
+  const slack = room - used(end);
+  const shift = slack > 0 ? Math.round(slack / 2) : 0;           // centred between the eyebrow and the source line
+  const out = handPaint(ctx, spec, W, H, fill, shift);
+  if (spec.stream !== "linkedin") await drawBrandMark(ctx, spec, W, u, Math.round(56 * u), { top: 40, h: 28, textFill: "rgba(21,23,27,.5)" });
+  return { url: c.toDataURL("image/jpeg", 0.9), warn: out.warn, y: out.y };
 }
 
 export const LOOKS = [

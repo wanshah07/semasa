@@ -29,6 +29,8 @@ log = get_logger("semasa.threads_web")
 BASE = "https://www.threads.com"
 SETTLE_MS = 4000
 SCROLLS = 3
+MAX_QUERIES = 8        # keywords read per sweep (the page editor allows the same: web/src/lib/threadsKeywords.js)
+MAX_ACCOUNTS = 10
 SCROLL_MS = 1500
 LABELS = {"Like": "likes", "Comment": "replies", "Repost": "reposts", "Share": "shares"}
 _WALL = ("/login", "accounts/login")
@@ -140,8 +142,9 @@ def collect(page: Any, cfg: dict[str, Any], now: datetime,
     th = cfg.get("threads") or {}
     hours = max(6, min(14 * 24, int(th.get("hours") or 72)))
     limit = max(1, min(25, int(th.get("max_results") or 8)))
-    urls = [f"{BASE}/search?q={quote(str(q))}&serp_type=default" for q in (th.get("queries") or []) if str(q).strip()][:4]
-    urls += [f"{BASE}/@{str(h).lstrip('@')}" for h in (th.get("accounts") or []) if re.fullmatch(r"@?[\w.]{1,30}", str(h))][:10]
+    words = [str(q) for q in (th.get("queries") or []) if str(q).strip()][:MAX_QUERIES]
+    handles = [str(h).lstrip("@") for h in (th.get("accounts") or []) if re.fullmatch(r"@?[\w.]{1,30}", str(h))][:MAX_ACCOUNTS]
+    urls = [f"{BASE}/search?q={quote(q)}&serp_type=default" for q in words] + [f"{BASE}/@{h}" for h in handles]
     if not urls:
         return [], ""
     seen: set[str] = set()

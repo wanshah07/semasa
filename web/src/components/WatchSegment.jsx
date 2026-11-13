@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, Eye, EyeOff, ExternalLink, Lightbulb, Link2, Loader2, RefreshCw, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, Eye, EyeOff, ExternalLink, Lightbulb, Link2, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { fadeUp, stagger } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { currentLang, useLang } from "../lib/i18n";
 import { stampMYT } from "../lib/format";
 import { OWN_SECTIONS, linkOf, ownLine, ownSummary } from "../lib/ownSources";
 import { paperLine, watchIdea } from "../lib/watchIdea";
+import { DEFAULT_KEYWORDS, MAX_HANDLES, MAX_KEYWORDS, cleanHandles, cleanKeywords, handlesOf, keywordsOf, withThreads } from "../lib/threadsKeywords";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import Skeleton from "./ui/Skeleton";
@@ -71,6 +72,84 @@ function Competitors({ setting, saveSetting, onToast }) {
       <div className="mt-2 flex flex-wrap justify-end gap-2">
         <Button type="button" size="sm" variant="ghost" onClick={() => setText(DEFAULT_COMPETITORS.join("\n"))}>{t("Senarai asal", "Default list")}</Button>
         <Button type="button" size="sm" disabled={busy} onClick={save}>{busy ? t("Menyimpan…", "Saving…") : t("Simpan", "Save")}</Button>
+      </div>
+    </details>
+  );
+}
+
+/* The Threads keywords the sweep searches, and an optional watchlist of accounts read in full (Wan, 13 Nov 2026). Saved in the
+   `sources` setting (community.threads.queries / .accounts); the next sweep uses them. Same flow as the competitor list. */
+function ThreadsKeywords({ setting, saveSetting, onToast }) {
+  const { t } = useLang();
+  const [words, setWords] = useState(() => keywordsOf(setting));
+  const [handles, setHandles] = useState(() => handlesOf(setting));
+  const [newWord, setNewWord] = useState("");
+  const [newHandle, setNewHandle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const savedWords = keywordsOf(setting), savedHandles = handlesOf(setting);
+  const dirty = JSON.stringify(cleanKeywords(words)) !== JSON.stringify(savedWords) || JSON.stringify(cleanHandles(handles)) !== JSON.stringify(savedHandles);
+
+  function addWord() {
+    const next = cleanKeywords([...words, newWord]);
+    if (next.length === words.length) return onToast(newWord.trim().length < 2 ? t("Tulis sekurang-kurangnya dua huruf.", "Type at least two letters.")
+      : words.length >= MAX_KEYWORDS ? t("Paling banyak {n} kata kunci.", "At most {n} keywords.", { n: MAX_KEYWORDS }) : t("Kata kunci itu sudah ada.", "That keyword is already there."), "warn");
+    setWords(next); setNewWord("");
+  }
+  function addHandle() {
+    const next = cleanHandles([...handles, newHandle]);
+    if (next.length === handles.length) return onToast(handles.length >= MAX_HANDLES ? t("Paling banyak {n} akaun.", "At most {n} accounts.", { n: MAX_HANDLES })
+      : t("Nama akaun: huruf, nombor, titik dan _ sahaja, tanpa ruang; atau sudah ada.", "Account name: letters, digits, dots and _ only, no spaces; or it is already there."), "warn");
+    setHandles(next); setNewHandle("");
+  }
+  async function save() {
+    setBusy(true);
+    try {
+      await saveSetting("sources", withThreads(setting, words, handles));
+      onToast(t("Disimpan. Sapuan seterusnya mencari ini di Threads.", "Saved. The next sweep searches these on Threads."), "ok");
+    } catch (e) { onToast(e.message, "danger"); } finally { setBusy(false); }
+  }
+  const row = "flex items-center gap-2";
+  return (
+    <details className="mt-3 rounded-card border border-line bg-surface p-3 shadow-card sm:p-4" data-threads-keywords>
+      <summary className="cursor-pointer text-sm font-medium">{t("Kata kunci Threads", "Threads keywords")}
+        <span className="ml-1 text-[11px] font-normal text-muted">· {savedWords.length}{savedHandles.length ? ` + ${savedHandles.length} ${t("akaun", "accounts")}` : ""}</span></summary>
+      <p className="mt-2 text-[11px] text-muted">{t("Setiap kata kunci dicari di Threads (hasil teratas, 72 jam terakhir). Ubah, buang atau tambah, kemudian Simpan.",
+        "Each keyword is searched on Threads (top results, last 72 hours). Edit, remove or add, then Save.")}</p>
+      <ul className="mt-2 space-y-1.5">
+        {words.map((w, i) => (
+          <li key={i} className={row}>
+            <Input value={w} onChange={(e) => setWords(words.map((x, j) => (j === i ? e.target.value : x)))} aria-label={t("Kata kunci {n}", "Keyword {n}", { n: i + 1 })} className="min-w-0 flex-1" />
+            <button type="button" onClick={() => setWords(words.filter((_, j) => j !== i))} aria-label={t("Buang kata kunci", "Remove keyword")}
+              className="shrink-0 rounded-pill p-2 text-muted hover:text-danger"><Trash2 size={14} /></button>
+          </li>
+        ))}
+        {words.length === 0 && <li className="text-xs text-muted">{t("Tiada kata kunci: hanya akaun di bawah dibaca.", "No keywords: only the accounts below are read.")}</li>}
+      </ul>
+      <form className={`${row} mt-2`} onSubmit={(e) => { e.preventDefault(); addWord(); }}>
+        <Input value={newWord} onChange={(e) => setNewWord(e.target.value)} placeholder={t("Kata kunci baharu, cth. label halal", "New keyword, e.g. halal label")} aria-label={t("Kata kunci baharu", "New keyword")} className="min-w-0 flex-1" />
+        <Button type="submit" size="sm" variant="soft" disabled={!newWord.trim()}><Plus size={13} /> {t("Tambah", "Add")}</Button>
+      </form>
+
+      <p className="mt-4 text-xs font-medium">{t("Akaun untuk dibaca (pilihan)", "Accounts to read (optional)")}</p>
+      <p className="text-[11px] text-muted">{t("Tulis nama akaun tanpa @. Siaran terbaru akaun itu dibaca, seperti senarai sasaran penapis aduan KKM.", "Type the account name without @. Its newest posts are read, like the KKM complaint scraper's target list.")}</p>
+      <ul className="mt-2 space-y-1.5">
+        {handles.map((h, i) => (
+          <li key={i} className={row}>
+            <span className="text-muted">@</span>
+            <Input value={h} onChange={(e) => setHandles(handles.map((x, j) => (j === i ? e.target.value : x)))} aria-label={t("Akaun {n}", "Account {n}", { n: i + 1 })} className="min-w-0 flex-1" />
+            <button type="button" onClick={() => setHandles(handles.filter((_, j) => j !== i))} aria-label={t("Buang akaun", "Remove account")}
+              className="shrink-0 rounded-pill p-2 text-muted hover:text-danger"><Trash2 size={14} /></button>
+          </li>
+        ))}
+      </ul>
+      <form className={`${row} mt-2`} onSubmit={(e) => { e.preventDefault(); addHandle(); }}>
+        <Input value={newHandle} onChange={(e) => setNewHandle(e.target.value)} placeholder="@akaun" aria-label={t("Akaun baharu", "New account")} className="min-w-0 flex-1" />
+        <Button type="submit" size="sm" variant="soft" disabled={!newHandle.trim()}><Plus size={13} /> {t("Tambah", "Add")}</Button>
+      </form>
+
+      <div className="mt-3 flex flex-wrap justify-end gap-2">
+        <Button type="button" size="sm" variant="ghost" onClick={() => { setWords(DEFAULT_KEYWORDS); setHandles([]); }}>{t("Senarai asal", "Default list")}</Button>
+        <Button type="button" size="sm" disabled={busy || !dirty} onClick={save}>{busy ? t("Menyimpan…", "Saving…") : t("Simpan", "Save")}</Button>
       </div>
     </details>
   );
@@ -382,6 +461,7 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
       </div>
 
       {user && !own && <PasteLink section={section} user={user} onToast={onToast} onAdded={() => watch.reload()} />}
+      {section === "threads" && <ThreadsKeywords key={JSON.stringify([setting?.community?.threads?.queries, setting?.community?.threads?.accounts])} setting={setting} saveSetting={saveSetting} onToast={onToast} />}
       {section === "publication" && <Competitors key={JSON.stringify(setting?.competitors || [])} setting={setting} saveSetting={saveSetting} onToast={onToast} />}
 
       <div className="z-30 sm:sticky sm:top-[97px] xl:top-[65px] -mx-4 mt-4 bg-bg/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">

@@ -124,8 +124,10 @@ def storyboard_approved(request, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def no_live_threads_browser(monkeypatch):
-    """semasa.threads_web.fetch opens a real Chromium on threads.com, which no_network cannot see (it is not `requests`). Under
-    test it reads nothing; a test of the reader passes its own page to threads_web.collect()."""
-    from semasa import threads_web
+    """threads_web.fetch and social_web.fetch open a real Chromium on threads.com, facebook.com and instagram.com, which
+    no_network cannot see (it is not `requests`). Under test they read nothing; a test of a reader passes its own page to
+    its collect()."""
+    from semasa import social_web, threads_web
 
     monkeypatch.setattr(threads_web, "fetch", lambda cfg, now=None: ([], ""))
+    monkeypatch.setattr(social_web, "fetch", lambda platform, cfg, now=None: ([], ""))

@@ -7,7 +7,7 @@ import { currentLang, useLang } from "../lib/i18n";
 import { stampMYT } from "../lib/format";
 import { OWN_SECTIONS, linkOf, ownLine, ownSummary } from "../lib/ownSources";
 import { paperLine, watchIdea } from "../lib/watchIdea";
-import { DEFAULT_KEYWORDS, MAX_HANDLES, MAX_KEYWORDS, cleanHandles, cleanKeywords, handlesOf, keywordsOf, withThreads } from "../lib/threadsKeywords";
+import { MAX_HANDLES, MAX_KEYWORDS, cleanHandles, cleanKeywords, defaultsOf, handlesOf, keywordsOf, withPlatform } from "../lib/threadsKeywords";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import Skeleton from "./ui/Skeleton";
@@ -79,14 +79,16 @@ function Competitors({ setting, saveSetting, onToast }) {
 
 /* The Threads keywords the sweep searches, and an optional watchlist of accounts read in full (Wan, 13 Nov 2026). Saved in the
    `sources` setting (community.threads.queries / .accounts); the next sweep uses them. Same flow as the competitor list. */
-function ThreadsKeywords({ setting, saveSetting, onToast }) {
+function SourceKeywords({ platform = "threads", setting, saveSetting, onToast }) {
   const { t } = useLang();
-  const [words, setWords] = useState(() => keywordsOf(setting));
-  const [handles, setHandles] = useState(() => handlesOf(setting));
+  const withAccounts = platform === "threads";                      // only Threads also reads a watchlist of accounts
+  const label = platform === "threads" ? "Threads" : platform === "facebook" ? "Facebook" : "Instagram";
+  const [words, setWords] = useState(() => keywordsOf(setting, platform));
+  const [handles, setHandles] = useState(() => handlesOf(setting, platform));
   const [newWord, setNewWord] = useState("");
   const [newHandle, setNewHandle] = useState("");
   const [busy, setBusy] = useState(false);
-  const savedWords = keywordsOf(setting), savedHandles = handlesOf(setting);
+  const savedWords = keywordsOf(setting, platform), savedHandles = handlesOf(setting, platform);
   const dirty = JSON.stringify(cleanKeywords(words)) !== JSON.stringify(savedWords) || JSON.stringify(cleanHandles(handles)) !== JSON.stringify(savedHandles);
 
   function addWord() {
@@ -104,17 +106,20 @@ function ThreadsKeywords({ setting, saveSetting, onToast }) {
   async function save() {
     setBusy(true);
     try {
-      await saveSetting("sources", withThreads(setting, words, handles));
-      onToast(t("Disimpan. Sapuan seterusnya mencari ini di Threads.", "Saved. The next sweep searches these on Threads."), "ok");
+      await saveSetting("sources", withPlatform(setting, platform, words, handles));
+      onToast(t("Disimpan. Sapuan seterusnya mencari ini di {p}.", "Saved. The next sweep searches these on {p}.", { p: label }), "ok");
     } catch (e) { onToast(e.message, "danger"); } finally { setBusy(false); }
   }
   const row = "flex items-center gap-2";
   return (
     <details className="mt-3 rounded-card border border-line bg-surface p-3 shadow-card sm:p-4" data-threads-keywords>
-      <summary className="cursor-pointer text-sm font-medium">{t("Kata kunci Threads", "Threads keywords")}
+      <summary className="cursor-pointer text-sm font-medium">{withAccounts ? t("Kata kunci Threads", "Threads keywords") : t("Hashtag {p}", "{p} hashtags", { p: label })}
         <span className="ml-1 text-[11px] font-normal text-muted">· {savedWords.length}{savedHandles.length ? ` + ${savedHandles.length} ${t("akaun", "accounts")}` : ""}</span></summary>
-      <p className="mt-2 text-[11px] text-muted">{t("Setiap kata kunci dicari di Threads (hasil teratas, 72 jam terakhir). Ubah, buang atau tambah, kemudian Simpan.",
-        "Each keyword is searched on Threads (top results, last 72 hours). Edit, remove or add, then Save.")}</p>
+      <p className="mt-2 text-[11px] text-muted">{withAccounts
+        ? t("Setiap kata kunci dicari di Threads (hasil teratas, 72 jam terakhir). Ubah, buang atau tambah, kemudian Simpan.",
+          "Each keyword is searched on Threads (top results, last 72 hours). Edit, remove or add, then Save.")
+        : t("Setiap hashtag dibaca di {p} (72 jam terakhir). Tulis tanpa ruang atau #: “halal malaysia” dibaca sebagai #halalmalaysia. Ubah, buang atau tambah, kemudian Simpan.",
+          "Each hashtag is read on {p} (last 72 hours). Type it without spaces or #: “halal malaysia” is read as #halalmalaysia. Edit, remove or add, then Save.", { p: label })}</p>
       <ul className="mt-2 space-y-1.5">
         {words.map((w, i) => (
           <li key={i} className={row}>
@@ -130,6 +135,8 @@ function ThreadsKeywords({ setting, saveSetting, onToast }) {
         <Button type="submit" size="sm" variant="soft" disabled={!newWord.trim()}><Plus size={13} /> {t("Tambah", "Add")}</Button>
       </form>
 
+      {withAccounts && (
+        <>
       <p className="mt-4 text-xs font-medium">{t("Akaun untuk dibaca (pilihan)", "Accounts to read (optional)")}</p>
       <p className="text-[11px] text-muted">{t("Tulis nama akaun tanpa @. Siaran terbaru akaun itu dibaca, seperti senarai sasaran penapis aduan KKM.", "Type the account name without @. Its newest posts are read, like the KKM complaint scraper's target list.")}</p>
       <ul className="mt-2 space-y-1.5">
@@ -146,9 +153,11 @@ function ThreadsKeywords({ setting, saveSetting, onToast }) {
         <Input value={newHandle} onChange={(e) => setNewHandle(e.target.value)} placeholder="@akaun" aria-label={t("Akaun baharu", "New account")} className="min-w-0 flex-1" />
         <Button type="submit" size="sm" variant="soft" disabled={!newHandle.trim()}><Plus size={13} /> {t("Tambah", "Add")}</Button>
       </form>
+        </>
+      )}
 
       <div className="mt-3 flex flex-wrap justify-end gap-2">
-        <Button type="button" size="sm" variant="ghost" onClick={() => { setWords(DEFAULT_KEYWORDS); setHandles([]); }}>{t("Senarai asal", "Default list")}</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => { setWords(defaultsOf(platform)); setHandles([]); }}>{t("Senarai asal", "Default list")}</Button>
         <Button type="button" size="sm" disabled={busy || !dirty} onClick={save}>{busy ? t("Menyimpan…", "Saving…") : t("Simpan", "Save")}</Button>
       </div>
     </details>
@@ -461,7 +470,7 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
       </div>
 
       {user && !own && <PasteLink section={section} user={user} onToast={onToast} onAdded={() => watch.reload()} />}
-      {section === "threads" && <ThreadsKeywords key={JSON.stringify([setting?.community?.threads?.queries, setting?.community?.threads?.accounts])} setting={setting} saveSetting={saveSetting} onToast={onToast} />}
+      {["threads", "facebook", "instagram"].includes(section) && <SourceKeywords key={section + JSON.stringify([setting?.community?.[section]?.queries, setting?.community?.[section]?.accounts])} platform={section} setting={setting} saveSetting={saveSetting} onToast={onToast} />}
       {section === "publication" && <Competitors key={JSON.stringify(setting?.competitors || [])} setting={setting} saveSetting={saveSetting} onToast={onToast} />}
 
       <div className="z-30 sm:sticky sm:top-[97px] xl:top-[65px] -mx-4 mt-4 bg-bg/85 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">

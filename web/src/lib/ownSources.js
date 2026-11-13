@@ -1,6 +1,7 @@
-/* Wan's own sources (supabase/024 + 079): Reddit, YouTube, Threads, the OneDrive reference folders and MYRA's sheet. Each
+/* Wan's own sources (supabase/024 + 079): Reddit, YouTube, Threads, Facebook, Instagram, the OneDrive reference folders and MYRA's sheet. Each
    is a tab in the Isu semasa row, over the same semasa_watch rows; the sweep that fills them is backend/semasa/intake.py. */
-export const OWN_SECTIONS = ["reddit", "youtube", "threads", "folder", "myra"];
+export const OWN_SECTIONS = ["reddit", "youtube", "threads", "facebook", "instagram", "folder", "myra"];
+export const SOCIAL_SECTIONS = ["reddit", "youtube", "threads", "facebook", "instagram"];
 
 /** The address a card can open: a web link only. A file in OneDrive opens by its own web address, a MYRA finding by its
     source link when it has one; onedrive:// and myra:// are keys, not addresses. */
@@ -13,7 +14,7 @@ export function linkOf(r) {
 /** One line of what the platform or the file actually said (never a number the source did not return). */
 export function ownLine(r, t) {
   const raw = r.raw || {};
-  if (r.section === "reddit" || r.section === "youtube" || r.section === "threads") return raw.metrics || "";
+  if (SOCIAL_SECTIONS.includes(r.section)) return raw.metrics || "";
   if (r.section === "folder") {
     return [raw.urgent_for ? t("Segera untuk {d}", "Urgent for {d}", { d: raw.urgent_for }) : "", raw.cite ? t("Rujukan: {c}", "Reference: {c}", { c: raw.cite }) : "",
       raw.matrix && raw.citation ? t("Petikan: {c}", "Citation: {c}", { c: raw.citation }) : ""].filter(Boolean).join(" · ");
@@ -29,12 +30,14 @@ export function ownLine(r, t) {
 export function ownSummary(section, s) {
   const rep = (s && s.report) || {};
   const c = rep.community || {};
-  const n = section === "reddit" || section === "youtube" || section === "threads" ? (c.shown || {})[section] : section === "folder" ? (rep.folders || {}).angles : (rep.myra || {}).new;
+  const n = SOCIAL_SECTIONS.includes(section) ? (c.shown || {})[section] : section === "folder" ? (rep.folders || {}).angles : (rep.myra || {}).new;
   const part = section === "folder" ? "folders" : section === "myra" ? "myra" : "community";
   const failing = [];
   if (rep[part] && rep[part].ok === false) failing.push({ name: part, error: rep[part].error });
   if (section === "youtube" && c.youtube_error) failing.push({ name: "YouTube", error: c.youtube_error === "quota" ? "kuota carian YouTube habis hari ini / the YouTube search quota is used up for today" : c.youtube_error });
   if (section === "reddit" && c.reddit_error) failing.push({ name: "Reddit", error: c.reddit_error });
   if (section === "threads" && c.threads_error) failing.push({ name: "Threads", error: c.threads_error });
+  if (section === "facebook" && c.facebook_error) failing.push({ name: "Facebook", error: c.facebook_error });
+  if (section === "instagram" && c.instagram_error) failing.push({ name: "Instagram", error: c.instagram_error });
   return { new: n ?? 0, failing, last: s && s.last_run };
 }

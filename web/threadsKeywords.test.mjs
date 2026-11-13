@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { DEFAULT_KEYWORDS, MAX_HANDLES, MAX_KEYWORDS, cleanHandles, cleanKeywords, handlesOf, keywordsOf, withThreads } from "./src/lib/threadsKeywords.js";
+import { DEFAULT_KEYWORDS, DEFAULT_TAGS, MAX_HANDLES, MAX_KEYWORDS, cleanHandles, cleanKeywords, handlesOf, keywordsOf, withPlatform, withThreads } from "./src/lib/threadsKeywords.js";
 
 // keywords: trimmed, collapsed, 2..60 letters, no repeats in any case, at most eight
 assert.deepEqual(cleanKeywords(["  halal   kosmetik ", "Halal Kosmetik", "x", "", null, "sunscreen"]), ["halal kosmetik", "sunscreen"]);
@@ -27,4 +27,13 @@ assert.deepEqual(after.report, before.report);
 assert.equal(after.last_run, before.last_run);
 assert.deepEqual(withThreads(undefined, ["x y"], []).community.threads, { queries: ["x y"], accounts: [] });
 assert.equal(before.community.threads.queries, undefined);          // the input is never changed
+
+// Facebook and Instagram: hashtags, their own defaults, their own saved lists, and no accounts watchlist
+assert.deepEqual(keywordsOf(undefined, "facebook"), DEFAULT_TAGS);
+assert.deepEqual(keywordsOf({ community: { threads: { queries: ["x y"] } } }, "instagram"), DEFAULT_TAGS);          // another platform's list is not borrowed
+assert.deepEqual(keywordsOf({ community: { instagram: { queries: ["halalmalaysia"] } } }, "instagram"), ["halalmalaysia"]);
+const fb = withPlatform({ community: { threads: { queries: ["a b"], accounts: ["ali"] }, facebook: { hours: 72 } } }, "facebook", ["Halal Malaysia", "halal malaysia"], ["ignored"]);
+assert.deepEqual(fb.community.facebook, { hours: 72, queries: ["Halal Malaysia"] });                              // no accounts key for Facebook
+assert.deepEqual(fb.community.threads, { queries: ["a b"], accounts: ["ali"] });                                    // Threads untouched
+assert.deepEqual(withThreads({}, ["x y"], ["@a"]).community.threads, { queries: ["x y"], accounts: ["a"] });
 console.log("threadsKeywords: ok");

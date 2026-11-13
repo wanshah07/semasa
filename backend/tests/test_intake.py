@@ -458,6 +458,25 @@ def test_composio_threads_posts_are_not_replaced_by_a_page_read(monkeypatch):
     assert rep["community"]["threads_error"] is None
 
 
+def test_the_sweep_reads_facebook_and_instagram_by_browser_and_reports_each_ones_error_by_name(monkeypatch):
+    from semasa import social_web
+    fb = social_web.facebook_post({"href": "https://www.facebook.com/a/posts/pfbid1", "when": "3d",
+                                   "message": "Sunscreen tak perlu disapu semula? Ramai tanya.",
+                                   "text": "Ali Tuesday, September 29, 2026 at 1:25 AM 3d · Sunscreen All reactions: 42 99 Like"}, NOW)
+
+    def fake(platform, cfg, now=None):
+        return ([fb], "") if platform == "facebook" else ([], "Instagram needs a saved login (the secret PW_STORAGE_STATE_B64)")
+    monkeypatch.setattr(social_web, "fetch", fake)
+    s = store()
+    rep = intake.run(s, Writer(everything_writer), Client(community_out={"posts": [], "videos": [], "threads": [], "reddit_error": "",
+                                                                         "youtube_error": "", "threads_error": ""}),
+                     now=NOW, only=["community"])
+    assert rep["community"]["read"]["facebook"] == 1 and rep["community"]["read"]["instagram"] == 0
+    assert rep["community"]["facebook_error"] is None and "PW_STORAGE_STATE_B64" in rep["community"]["instagram_error"]
+    rows = [r for r in s.tables["semasa_watch"] if r["section"] == "facebook"]
+    assert len(rows) == 1 and rows[0]["raw"]["metrics"] == "42 reactions"
+
+
 def test_a_dry_run_reads_and_judges_but_writes_nothing():
     s = store()
     rep = intake.run(s, Writer(everything_writer), full_client(), now=NOW, dry=True)

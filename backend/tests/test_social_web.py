@@ -198,3 +198,56 @@ def test_the_page_note_names_the_address_and_title_and_never_fails_a_read():
             return "Facebook"
     assert social_web._where(Page()) == '/hashtag/halal?__cft__=x "Facebook"'
     assert social_web._where(object()) == "?"            # a page with no title() is "?", not an error
+
+
+def test_watched_accounts_are_read_after_the_hashtags_and_their_new_posts_are_kept():
+    def post(pid, hours_ago):
+        return {"id": pid, "text": f"post {pid} " * 3, "permalink": f"https://www.instagram.com/p/{pid}/", "username": "npra.kkm",
+                "timestamp": (NOW - timedelta(hours=hours_ago)).isoformat(), "counts": {"likes": 9}, "shown": {"likes": "9"}}
+    seen = []
+
+    def tag(page, name, now):
+        seen.append(("tag", name))
+        return [post("old", 5000)], ""
+
+    def account(page, name, now):
+        seen.append(("account", name))
+        return [post("fresh", 5)], ""
+    cfg = {"instagram": {"hours": 14 * 24, "queries": ["halal malaysia"], "accounts": ["@npra.kkm", "bad handle!", "npra.kkm"]}}
+    posts, err = social_web.collect(object(), "instagram", cfg, NOW, tag, account)
+    assert [p["id"] for p in posts] == ["fresh"] and err == ""                    # the old top post is dropped, the new one kept
+    assert seen == [("tag", "halalmalaysia"), ("account", "npra.kkm")]            # a malformed or repeated handle is never opened
+    assert "1 older than 336 h" in social_web.stats_text("instagram") and social_web.LAST["instagram"]["accounts"] == 1
+    only = {"facebook": {"queries": [], "accounts": ["KementerianKesihatanMalaysia"]}}
+    posts, _ = social_web.collect(object(), "facebook", only, NOW, tag, account)
+    assert [p["id"] for p in posts] == ["fresh"]                                  # accounts alone are enough to read
+    assert social_web.collect(object(), "facebook", {"facebook": {"queries": [], "accounts": []}}, NOW) == ([], "")
+
+
+def test_facebook_searches_the_words_as_posts_when_its_hashtag_page_shows_no_post():
+    class Page:
+        url = "https://www.facebook.com/hashtag/halal"
+        visited = []
+
+        def goto(self, url, **kw):
+            self.visited.append(url)
+            self.url = url
+
+        def wait_for_timeout(self, ms):
+            pass
+
+        def title(self):
+            return "(4) Facebook"
+
+        class mouse:                       # noqa: N801 - a stand-in for page.mouse
+            @staticmethod
+            def wheel(x, y):
+                pass
+
+        def evaluate(self, js):
+            return [] if "/hashtag/" in self.url else [_fb()]
+    page = Page()
+    got, err = social_web.read_facebook(page, "halal", NOW)
+    assert err == "" and len(got) == 1
+    assert page.visited[-1].startswith("https://www.facebook.com/search/posts/?q=halal")
+    assert "searched instead: 1 block(s)" in social_web._NOTES[-1]

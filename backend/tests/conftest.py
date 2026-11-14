@@ -25,6 +25,14 @@ def no_network(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_expert_browser(monkeypatch):
+    """Expert content (semasa.experts) opens a real browser for its handles and its daily search. Under test the sweep gets no
+    pages at all; a test of the reading passes its own stand-in pages to experts.sweep."""
+    from semasa import experts
+    monkeypatch.setattr(experts, "browse", lambda run: run({}))
+
+
+@pytest.fixture(autouse=True)
 def no_live_ai_questions(monkeypatch):
     """The AI team router asks gateways a live five-token question at decision time (semasa.ai_team.Live). A test that wants it
     passes its own stand-in to route(); the real one never runs under test."""

@@ -60,9 +60,9 @@ t("recent activity: newest first, trimmed", () => {
 
 t("the dashboard layout keeps the hidden widgets, so a new widget shows by default and the tiles never go", () => {
   assert.deepEqual(visibleWidgets(undefined), DASHBOARD_WIDGETS);
-  assert.deepEqual(visibleWidgets({ hidden: ["chart", "subs", "stats", "gone"] }), ["stats", "charts", "queue", "activity", "ai"], "a widget added later (charts) shows for a layout saved before it");
-  assert.deepEqual(hiddenFrom(["stats", "queue"]), ["chart", "charts", "activity", "ai", "subs"]);
-  assert.deepEqual(hiddenFrom([]), ["chart", "charts", "queue", "activity", "ai", "subs"], "the tiles cannot be hidden");
+  assert.deepEqual(visibleWidgets({ hidden: ["chart", "subs", "stats", "gone"] }), ["stats", "sources", "charts", "queue", "activity", "ai"], "a widget added later (sources, charts) shows for a layout saved before it");
+  assert.deepEqual(hiddenFrom(["stats", "queue"]), ["sources", "chart", "charts", "activity", "ai", "subs"]);
+  assert.deepEqual(hiddenFrom([]), ["sources", "chart", "charts", "queue", "activity", "ai", "subs"], "the tiles cannot be hidden");
   assert.deepEqual(visibleWidgets({ hidden: hiddenFrom(["queue"]) }), ["stats", "queue"]);
 });
 

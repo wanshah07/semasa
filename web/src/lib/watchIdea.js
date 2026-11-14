@@ -24,6 +24,9 @@ export function watchIdea(r, brand) {
     r.section === "folder" && raw.cite ? `Rujukan dalam dokumen: ${raw.cite}` : "",
     r.section === "myra" && raw.ref_no ? `Rujukan: ${raw.ref_no}${raw.markets ? ` (${raw.markets})` : ""}` : "",
     (r.section === "reddit" || r.section === "youtube") ? "Ini hujah orang ramai: betulkan kepercayaannya, jangan sebut platform atau pautannya." : "",
+    // Expert content: the expert's own words go to the writer beside the summary, as a reference to build on, never to copy
+    r.section === "expert" && raw.original ? `Catatan asal pakar (rujukan sahaja):\n${raw.original}` : "",
+    r.section === "expert" ? "Ini pandangan seorang pakar: guna sebagai rujukan dan tulis dengan sudut sendiri. Sahkan setiap fakta dengan sumber rasmi, jangan salin ayatnya, dan jangan sebut nama akaun, platform atau pautannya." : "",
   ].filter(Boolean).join("\n\n");
   return {
     watch: true, section: r.section, id: r.id, title: r.title, url: r.url, source: r.source, summary,

@@ -1,4 +1,4 @@
-import { Anchor, BarChart3, BookOpenText, Brain, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
+import { Anchor, BarChart3, BookOpenText, Brain, GraduationCap, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
   Layers, LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, NotebookPen, Radio, PenLine, Receipt, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
 
 /* Every page, once: the header's tab row on a phone, the sidebar and the sub-tab bar all read this list, so they can never
@@ -18,6 +18,10 @@ export function tabsOf(t) {
     { id: "post", label: t("Bank post", "Post bank"), icon: FileText, segment: "content" },
     { id: "hooks", label: t("Bank hook", "Hooks bank"), icon: Anchor, segment: "content" },
     { id: "gaya", label: t("Gaya penulisan", "Writing styles"), icon: PenLine, segment: "content" },
+
+    // its own segment (Wan, 14 Nov 2026: "add another segment Expert Content"); AI Expert, Halal Expert and the categories he
+    // adds later are sub-tabs INSIDE the page, because they are his data, not pages of the app
+    { id: "pakar", label: t("Kandungan pakar", "Expert content"), icon: GraduationCap, segment: "expert" },
 
     { id: "prestasi", label: t("Prestasi", "Performance"), icon: BarChart3, segment: "performance" },
 
@@ -64,6 +68,7 @@ export function segmentsOf(t) {
   return [
     seg("dashboard", t("Papan", "Dashboard"), LayoutDashboard),
     seg("content", t("Kandungan", "Content"), Newspaper),
+    seg("expert", t("Kandungan pakar", "Expert content"), GraduationCap),
     seg("performance", t("Prestasi", "Performance"), BarChart3),
     seg("image", t("Imej", "Image"), ImagePlus),
     seg("video", "Video", Clapperboard),

@@ -21,6 +21,7 @@ import AiTeam from "../components/AiTeam";
 import { Modal } from "../components/ui/Field";
 import { DashboardLayoutConfigurator } from "@/components/ui/dashboard-configuration";
 import HomeCharts from "../components/HomeCharts";
+import SourceStatus from "../components/SourceStatus";
 
 /* Papan: the whole system on one page (Wan, 9 Oct 2026: "yes whole system dashboard"). Everything is computed from
    rows the page already loads (ideas, posts, the publish log, the log, the Bil documents and the subscriptions) with
@@ -69,6 +70,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
   }
   const widgetList = [
     { id: "stats", title: t("Angka utama", "Headline figures"), description: t("Idea baharu, draf menunggu, disiar minggu ini, belum dijelaskan. Sentiasa dipapar.", "New ideas, drafts waiting, published this week, outstanding. Always shown."), isPermanent: true },
+    { id: "sources", title: t("Status sumber langsung", "Live source status"), description: t("Lampu setiap sumber scrape: hidup, siaga atau tidak hidup, dan bila ia disemak.", "Each scrape source's light: live, standby or unlive, and when it was checked.") },
     { id: "chart", title: t("Ditulis lawan disiar", "Drafted against published"), description: t("Carta lapan minggu.", "The eight-week chart.") },
     { id: "charts", title: t("Carta ringkas", "More charts"), description: t("Idea ikut status, siaran ikut saluran, token AI sehari, post ikut topik.", "Ideas by status, posts by channel, AI tokens a day, posts by topic.") },
     { id: "queue", title: t("Seterusnya dalam giliran", "Next in the queue"), description: t("Post terdekat dan tahap alirannya.", "The nearest posts and how far along they are.") },
@@ -161,7 +163,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-6 sm:px-6">
       <App1
-        header={header}
+        header={<>{header}{shows("sources") && <SourceStatus setting={settings?.source_lights} go={go} />}</>}
         keys={{ line: "drafted", area: "published" }}
         stats={[
           { label: t("Idea baharu", "New ideas"), value: String(stats.ideasNew), icon: Lightbulb,

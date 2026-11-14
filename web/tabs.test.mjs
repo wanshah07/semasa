@@ -37,6 +37,7 @@ t("Wan's layout of 11 Oct 2026: which pages sit together", () => {
   assert.deepEqual(["papan", "chat", "otak"].map(where), ["dashboard", "dashboard", "dashboard"]);
   assert.deepEqual(["isu", "idea", "post", "hooks", "gaya"].map(where), ["content", "content", "content", "content", "content"]);
   assert.equal(where("prestasi"), "performance");
+  assert.equal(where("pakar"), "expert", "Expert content is its own segment (Wan, 14 Nov 2026); its categories are sub-tabs inside the page");
   assert.deepEqual(["media", "media-lib"].map(where), ["image", "image"]);
   assert.deepEqual(["video", "video-lib", "motion-skills"].map(where), ["video", "video", "video"]);
   assert.deepEqual(["design", "design-lib"].map(where), ["poster", "poster"]);

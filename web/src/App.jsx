@@ -8,7 +8,7 @@ import { FAQ_CATEGORY_TO_DOMAIN, FAQ_SOURCE, brandOf } from "./lib/brand";
 import { stampMYT } from "./lib/format";
 import { currentLang, useLang } from "./lib/i18n";
 import SourceLight from "./components/SourceLight";
-import { lightOf } from "./lib/sourceLights";
+import { LIGHT_NAME, LIGHT_TINT, checkedText, lightOf } from "./lib/sourceLights";
 import { useCanUpload, useGenerations, useSession, useSettings, useTable, useToasts, useTrends } from "./lib/hooks";
 import FilterBar from "./components/FilterBar";
 import Gate from "./components/Gate";
@@ -64,6 +64,7 @@ const StackTab = lazy(() => import("./pages/StackTab"));
 const ApiTab = lazy(() => import("./pages/ApiTab"));
 const MemoryTab = lazy(() => import("./pages/MemoryTab"));
 const DocsTab = lazy(() => import("./pages/DocsTab"));
+const ExpertTab = lazy(() => import("./pages/ExpertTab"));
 import { setWanshah } from "./lib/cards/library";
 import { approvedPoses } from "./lib/wanshah";
 
@@ -130,29 +131,52 @@ function segCopy(seg, t) {
 }
 
 function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, save, brand, user }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [segRaw, setSeg] = useView("isu.segment", "isu");
   const seg = SEGMENTS.includes(segRaw) ? segRaw : "isu";
-  // the two watch segments share one list; it is read only while one of them is open
-  const watch = useTable(TABLES.watch, { enabled: allowed && seg !== "isu", limit: 900, realtime: false, everyMs: 120_000 });
+  // the two watch segments share one list; it is read only while one of them is open. Expert content has its own page and
+  // its own read (pages/ExpertTab.jsx), so its rows never take room in this list
+  const watch = useTable(TABLES.watch, { enabled: allowed && seg !== "isu", limit: 900, realtime: false, everyMs: 120_000, neq: ["section", "expert"] });
+  const en = lang === "en";
+  const here = seg === "isu" ? null : lightOf(settings.source_lights, seg);
   const legend = (
-    <p className="-mt-3 mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-      <span className="inline-flex items-center gap-1.5"><SourceLight light="green" />{t("Hidup", "Live")}</span>
-      <span className="inline-flex items-center gap-1.5"><SourceLight light="orange" />{t("Siaga", "Standby")}</span>
-      <span className="inline-flex items-center gap-1.5"><SourceLight light="red" />{t("Tidak hidup", "Unlive")}</span>
-      <span>{t("Lampu pengawas setiap sumber; semak setiap 6 jam dan selepas setiap sapuan.", "The watchdog's light for each source, checked every 6 hours and after every sweep.")}</span>
-    </p>
+    <div className="-mt-2 mb-4 space-y-1.5 text-xs text-ink/80">
+      {/* the open tab's own reading in words: its state, the reason, and when it was last checked */}
+      {here && (
+        <p data-source-status={here.light} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <SourceLight light={here.light} why={here.why} />
+          <strong className="font-semibold text-ink">{t(LIGHT_NAME[here.light][0], LIGHT_NAME[here.light][1])}</strong>
+          <span className="[overflow-wrap:anywhere]">{here.why}</span>
+          {here.checked && <span className="tabular-nums text-ink/70">· {t("disemak", "checked")} {checkedText(here.checked, Date.now(), en)} MYT</span>}
+        </p>
+      )}
+      <p className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span className="inline-flex items-center gap-1.5"><SourceLight light="green" />{t("Hidup", "Live")}</span>
+        <span className="inline-flex items-center gap-1.5"><SourceLight light="orange" />{t("Siaga", "Standby")}</span>
+        <span className="inline-flex items-center gap-1.5"><SourceLight light="red" />{t("Tidak hidup", "Unlive")}</span>
+        <span>{t("Warna butang ialah status sumber; masa di sebelahnya ialah bila ia kali terakhir disapu (MYT).", "A button's colour is its source's status; the time beside it is when it was last swept (MYT).")}</span>
+      </p>
+    </div>
   );
   const segTabs = (
     <>
     <div role="tablist" aria-label={t("Segmen", "Segments")} className="mb-5 flex flex-wrap gap-1.5">
       {[["isu", t("Isu semasa", "Current issues")], ["regulatory", t("Regulatori", "Regulatory")],
         ["publication", t("Penerbitan terkini", "Latest publications")], ["reddit", "Reddit"], ["youtube", "YouTube"],
-        ["threads", "Threads"], ["facebook", "Facebook"], ["instagram", "Instagram"], ["folder", "OneDrive"], ["myra", "MYRA"]].map(([v, l]) => (
-        <button type="button" key={v} role="tab" aria-selected={seg === v} onClick={() => setSeg(v)}
-          className={`inline-flex items-center gap-2 rounded-pill px-4 py-2 text-sm font-medium ${seg === v ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>
-          {v !== "isu" && <SourceLight {...lightOf(settings.source_lights, v)} />}{l}</button>
-      ))}
+        ["threads", "Threads"], ["facebook", "Facebook"], ["instagram", "Instagram"], ["folder", "OneDrive"], ["myra", "MYRA"]].map(([v, l]) => {
+        // the whole button wears its source's status (Wan, 14 Nov 2026), with the time it was last swept; the open tab is the
+        // one with the dark outline, so colour says status and outline says "you are here"
+        const lt = v === "isu" ? null : lightOf(settings.source_lights, v);
+        const when = lt ? checkedText(lt.checked, Date.now(), en) : "";
+        const on = seg === v;
+        return (
+          <button type="button" key={v} role="tab" aria-selected={on} onClick={() => setSeg(v)} data-light={lt ? lt.light : undefined}
+            className={`inline-flex items-center gap-2 rounded-pill px-4 py-2 text-sm text-ink transition ${lt ? LIGHT_TINT[lt.light] : "bg-surface-2"} ${on ? "font-semibold outline outline-2 outline-offset-2 outline-ink" : "font-medium hover:brightness-95"}`}>
+            {lt && <SourceLight light={lt.light} why={lt.why} />}{l}
+            {when && <span className="text-[11px] font-normal tabular-nums text-ink/70">{when}</span>}
+          </button>
+        );
+      })}
     </div>
     {legend}
     </>
@@ -303,7 +327,7 @@ function MediaTab({ user, gens, prompts, onToast, go }) {
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "hooks", "gaya", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "bil-valorith", "video", "video-lib", "motion-skills", "chat", "memori", "otak", "wang", "bil", "langganan", "crm", "syarikat", "resit", "faq", "log", "dokumen", "tech", "office", "repo", "api", "stack", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "hooks", "gaya", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "bil-valorith", "video", "video-lib", "motion-skills", "chat", "memori", "otak", "wang", "bil", "langganan", "crm", "syarikat", "resit", "faq", "log", "dokumen", "pakar", "tech", "office", "repo", "api", "stack", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 // #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)
@@ -460,6 +484,8 @@ export default function App() {
     onPost={(r) => setIdeaFrom(faqIdea(r))} /> : gate(null);
   else if (tab === "log") body = allowed ? <LogTab log={activity} onOpen={(to) => { if (to.postId) setFocusPost(to.postId); go(to.tab); }} /> : gate(null);
   else if (tab === "dokumen") body = allowed ? <DocsTab /> : gate(null);
+  else if (tab === "pakar") body = allowed ? <ExpertTab settings={settings} save={save} brand={brand} user={user} onToast={push}
+    onIdea={(r) => setIdeaFrom(watchIdea(r, brand))} go={go} /> : gate(null);
   else if (tab === "tetapan") body = allowed ? <SettingsTab settings={settings} brand={brand} save={save} onToast={push} /> : gate(null);
   else body = <IsuTab trends={trends} onToast={push} onIdea={allowed ? setIdeaFrom : undefined} onFaq={allowed ? faqFrom : undefined}
     allowed={allowed} gateNode={allowed ? null : gate(null)} settings={settings} save={save} brand={brand} user={user} />;

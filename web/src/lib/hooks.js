@@ -149,7 +149,10 @@ export function useToasts() {
 /** A private table, kept live for a listed uploader: realtime where the table is in the
  *  publication, a poll as the net (only while the tab is visible). `enabled` false = no reads. */
 export function useTable(table, { enabled = true, select = "*", order = "created_at", ascending = false, limit = 200,
-  realtime = true, everyMs = 90_000 } = {}) {
+  realtime = true, everyMs = 90_000, eq = null, neq = null } = {}) {
+  // eq / neq: one [column, value] pair each, so two pages can share a table without reading each other's rows
+  const [eqCol, eqVal] = eq || [];
+  const [neqCol, neqVal] = neq || [];
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -158,7 +161,10 @@ export function useTable(table, { enabled = true, select = "*", order = "created
 
   const load = useCallback(async () => {
     if (!supabase || !enabled) { setLoading(false); return; }
-    const { data, error: e } = await supabase.from(table).select(select).order(order, { ascending }).limit(limit);
+    let q = supabase.from(table).select(select);
+    if (eqCol) q = q.eq(eqCol, eqVal);
+    if (neqCol) q = q.neq(neqCol, neqVal);
+    const { data, error: e } = await q.order(order, { ascending }).limit(limit);
     if (e) setError(errText(e));
     else {
       // an unchanged answer keeps the same array, so a poll does not re-render (and reset) every open form
@@ -167,7 +173,7 @@ export function useTable(table, { enabled = true, select = "*", order = "created
       setError("");
     }
     setLoading(false);
-  }, [table, enabled, select, order, ascending, limit]);
+  }, [table, enabled, select, order, ascending, limit, eqCol, eqVal, neqCol, neqVal]);
   loadRef.current = load;
 
   useEffect(() => {

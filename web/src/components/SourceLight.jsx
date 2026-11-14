@@ -3,7 +3,7 @@ import { LIGHT_BG, LIGHT_NAME } from "../lib/sourceLights";
 
 /* One dot: green live, orange standby, red unlive (grey when the watchdog has not reported). The words are in the tooltip and the
    screen-reader name, so the colour is never the only way to read it. */
-export default function SourceLight({ light, why, className = "" }) {
+export default function SourceLight({ light, why, className = "" }) {     // extra fields of lightOf (checked) are simply not read
   const { t } = useLang();
   const name = t(LIGHT_NAME[light][0], LIGHT_NAME[light][1]);
   const label = why ? `${name}: ${why}` : name;

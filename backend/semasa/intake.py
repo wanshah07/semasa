@@ -21,7 +21,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import api_status, community, db, folders, myra, social_web, threads_api, threads_web, watch
+from . import api_status, community, db, experts, folders, myra, social_web, threads_api, threads_web, watch
 from .log import get_logger
 
 log = get_logger("semasa.intake")
@@ -31,7 +31,8 @@ KEY = "sources"                     # semasa_settings row: Wan's overrides, and 
 # what is loud now is kept 72 hours (Wan, 12 Nov 2026); the folder bank is not pruned
 # Facebook and Instagram are read by hashtag, and a hashtag page shows its TOP posts, which are rarely younger than three days:
 # a 72-hour window kept none of the three Instagram posts Wan's own check read (14 Nov 2026), so these two keep 14 days
-KEEP_HOURS = {"reddit": 72, "youtube": 72, "threads": 72, "facebook": 14 * 24, "instagram": 14 * 24, "myra": 45 * 24}
+KEEP_HOURS = {"reddit": 72, "youtube": 72, "threads": 72, "facebook": 14 * 24, "instagram": 14 * 24, "myra": 45 * 24,
+              "expert": 45 * 24}
 
 DEFAULTS: dict[str, Any] = {
     "enabled": True,
@@ -62,6 +63,8 @@ DEFAULTS: dict[str, Any] = {
                     "farmaseutikal": "Farmaseutikal", "makanan": "Food"},
         "urgent": "urgent post", "angles_per_file": 8, "files_per_run": 3, "matrix_pool": 8,
     },
+    # Expert Content: the handles and categories live in their own settings row (experts.py); this is only the switch
+    "experts": {"enabled": True},
     "myra": {
         "enabled": True, "spreadsheet_id": "15GMFlA5IXSc453oV3CRwLS7HJcUaGILBD1t-IwKhMaI",
         "account": "googlesheets_serau-tucker", "range": "Sheet1!A1:G500", "days": 10, "per_run": 8,
@@ -250,7 +253,26 @@ def do_myra(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetim
     return {"read": len(raw.get("rows") or []), "new": len(fresh), "hidden": sum(1 for r in fresh if r.get("relevant") is False)}
 
 
-PARTS = (("community", do_community), ("folders", do_folders), ("myra", do_myra))
+def do_experts(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetime, dry: bool) -> dict[str, Any]:
+    """Expert Content (experts.py): the registered handles' newest posts, analysed, written to the feed and, for a category
+    with the brain switch on, filed in the AI brain as references. Nothing is opened when no handle is registered."""
+    ecfg = experts.load(store)
+    if ecfg.get("enabled") is False:
+        return {"off": True}
+    own = (load_config(store)[0].get("community") or {}).get("own_accounts") or []
+
+    def go(pages: dict[str, Any]) -> dict[str, Any]:
+        return experts.sweep(store, llm, ecfg, own, now, dry, have, write, pages)
+    cats = experts.categories(ecfg)
+    # a browser is opened only when there is a page to read: a registered handle, or the daily search for accounts to suggest
+    need = any(c["handles"] for c in cats) or (any(c["keywords"] for c in cats) and experts.discovery_due(store, now))
+    try:
+        return experts.browse(go) if need else go({})
+    except NeedsMigration as exc:
+        raise RuntimeError("supabase/082_expert_content.sql has not been run in the SQL editor yet") from exc
+
+
+PARTS = (("community", do_community), ("folders", do_folders), ("myra", do_myra), ("experts", do_experts))
 
 
 def prune(store: Any, now: datetime) -> None:
@@ -273,25 +295,32 @@ def run(store: Any, llm: Any, client: Any, now: datetime | None = None, only: li
         if (only and name not in only) or cfg[name].get("enabled") is False:
             continue
         try:
-            report[name] = {"ok": True, **fn(store, llm, client, cfg[name], now, dry)}
+            report[name] = {"ok": True, **fn(store, llm, client, cfg[name], now, dry), "at": now.isoformat()}
         except NeedsMigration:
             raise
         except Exception as exc:  # noqa: BLE001 - one dead source must not stop the other two
-            report[name] = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+            report[name] = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:200]}", "at": now.isoformat()}
             log.warning("%s failed: %s", name, exc)
     if not dry:
         prune(store, now)
-        store.table(db.SETTINGS).upsert({"key": KEY, "value": {**stored, "last_run": now.isoformat(), "report": report,
-                                                                "force": False},        # the page's "Sweep now" is answered
+        # a sweep of one part (only=myra, or a part switched off) keeps what the OTHER parts last said, each with its own
+        # time: writing only this run's parts made every other source read "waiting for its first sweep" (14 Nov 2026)
+        before = stored.get("report") if isinstance(stored.get("report"), dict) else {}
+        kept = {k: v for k, v in before.items() if k not in report and isinstance(v, dict)}
+        for v in kept.values():
+            v.setdefault("at", stored.get("last_run"))
+        value = {**stored, "last_run": now.isoformat(), "report": {**kept, **report}, "force": False}   # "Sweep now" is answered
+        store.table(db.SETTINGS).upsert({"key": KEY, "value": value,
                                          "updated_at": now.isoformat()}, on_conflict="key").execute()
         shown = sum(int((v.get("shown") or {}).get("reddit", 0)) + int((v.get("shown") or {}).get("youtube", 0))
                     + int((v.get("shown") or {}).get("threads", 0))
                     for v in report.values() if isinstance(v, dict) and isinstance(v.get("shown"), dict))
         from . import source_lights  # the watchdog light of each source, worked out from this report (Wan, 14 Nov 2026)
-        source_lights.update(store, now, from_sweep=True)
+        source_lights.update(store, now, from_sweep="community" in report)   # only a community sweep counts a zero-read streak
         db.log_event(store, "info", "idea", "sources.sweep",
                      f"Sumber saya disapu: {shown} hujah, {(report.get('folders') or {}).get('angles', 0)} sudut folder, "
-                     f"{(report.get('myra') or {}).get('new', 0)} penemuan MYRA",
+                     f"{(report.get('myra') or {}).get('new', 0)} penemuan MYRA, "
+                     f"{(report.get('experts') or {}).get('shown', 0)} kandungan pakar",
                      detail={k: {a: b for a, b in v.items() if a != "errors"} for k, v in report.items()})
     return report
 

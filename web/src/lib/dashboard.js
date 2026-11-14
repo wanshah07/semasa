@@ -75,7 +75,7 @@ export function recentActivity(rows, n = 12) {
 /* Which widgets the home dashboard shows (Wan, 7 Nov 2026: the dashboard configuration panel; supabase/065 settings.dashboard).
    The setting keeps the HIDDEN ones, so a widget added later shows by default instead of vanishing until it is ticked. The
    headline tiles are permanent: a dashboard with nothing on it is not a choice worth offering. */
-export const DASHBOARD_WIDGETS = ["stats", "chart", "charts", "queue", "activity", "ai", "subs"];
+export const DASHBOARD_WIDGETS = ["stats", "sources", "chart", "charts", "queue", "activity", "ai", "subs"];
 export const PERMANENT_WIDGETS = ["stats"];
 export function visibleWidgets(setting) {
   const hidden = new Set(Array.isArray(setting?.hidden) ? setting.hidden : []);

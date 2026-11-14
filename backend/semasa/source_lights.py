@@ -1,7 +1,10 @@
 """The watchdog light for every scrape source (Wan, 14 Nov 2026: "make sure watchdog report if status threads, fb, ig and all
 scrape, and also add light watchdog in semasa (green live, orange standby, red unlive)").
 
-One light per tab of Isu semasa: regulatory, publication, reddit, youtube, threads, facebook, instagram, folder (OneDrive), myra.
+One light per tab of Isu semasa: regulatory, publication, reddit, youtube, threads, facebook, instagram, folder (OneDrive), myra;
+and one for Expert content (expert). Each light carries `checked`: when that source itself was last swept, which the page prints
+beside the light ("what time checked", Wan, 14 Nov 2026). A sweep of one part no longer resets the others (intake.run keeps
+every part's last report with its own time).
 
   green   live     the last sweep ran, the source answered, and it has something to show
   orange  standby  not broken, but not working yet: waiting for its first sweep, waiting for a saved login, a quota used up for
@@ -25,10 +28,12 @@ from .log import get_logger
 log = get_logger("semasa.source_lights")
 
 KEY = "source_lights"
-SECTIONS = ("regulatory", "publication", "reddit", "youtube", "threads", "facebook", "instagram", "folder", "myra")
+SECTIONS = ("regulatory", "publication", "reddit", "youtube", "threads", "facebook", "instagram", "folder", "myra", "expert")
 COMMUNITY = ("reddit", "youtube", "threads", "facebook", "instagram")
 NAMES = {"regulatory": "Regulatory", "publication": "Latest publications", "reddit": "Reddit", "youtube": "YouTube",
-         "threads": "Threads", "facebook": "Facebook", "instagram": "Instagram", "folder": "OneDrive", "myra": "MYRA"}
+         "threads": "Threads", "facebook": "Facebook", "instagram": "Instagram", "folder": "OneDrive", "myra": "MYRA",
+         "expert": "Expert content"}
+PARTS = {"folder": "folders", "myra": "myra", "expert": "experts"}        # the sweep part (intake.PARTS) behind a light
 SWEEP_STALE = timedelta(hours=14)        # the own-sources sweep runs about three times a day
 WATCH_STALE = timedelta(hours=30)        # regulatory and publication are swept once a day
 ZERO_RED = 3                             # sweeps in a row that read nothing before orange turns red
@@ -54,13 +59,19 @@ def _light(color: str, why: str, **extra: Any) -> dict[str, Any]:
     return {"light": color, "why": why[:220], **extra}
 
 
+def _swept(stored: dict[str, Any], name: str) -> datetime | None:
+    """When the part `name` itself last ran: its own stamp, or the sweep's for a report written before parts were stamped."""
+    rep = (stored.get("report") or {}).get(name) if isinstance(stored.get("report"), dict) else None
+    return _parse((rep or {}).get("at")) or _parse(stored.get("last_run"))
+
+
 def _community(section: str, cfg: dict[str, Any], stored: dict[str, Any], latest: datetime | None, streak: int,
                now: datetime) -> dict[str, Any]:
     com = cfg.get("community") or {}
     sub = com.get(section) if isinstance(com.get(section), dict) else {}
     if cfg.get("enabled") is False or com.get("enabled") is False or (section != "reddit" and sub.get("enabled") is False):
         return _light(ORANGE, "switched off in settings", off=True)
-    last = _parse(stored.get("last_run"))
+    last = _swept(stored, "community")
     rep = (stored.get("report") or {}).get("community")
     if not isinstance(rep, dict):
         return _light(ORANGE, "waiting for its first sweep")
@@ -94,18 +105,34 @@ def _community(section: str, cfg: dict[str, Any], stored: dict[str, Any], latest
 
 
 def _part(section: str, cfg: dict[str, Any], stored: dict[str, Any], now: datetime) -> dict[str, Any]:
-    name = "folders" if section == "folder" else "myra"
-    if cfg.get("enabled") is False or (cfg.get(name) or {}).get("enabled") is False:
-        return _light(ORANGE, "switched off in settings", off=True)
-    last = _parse(stored.get("last_run"))
+    name = PARTS[section]
     rep = (stored.get("report") or {}).get(name)
+    if cfg.get("enabled") is False or (cfg.get(name) or {}).get("enabled") is False or (isinstance(rep, dict) and rep.get("off")):
+        return _light(ORANGE, "switched off in settings", off=True)
+    last = _swept(stored, name)
     if not isinstance(rep, dict):
         return _light(ORANGE, "waiting for its first sweep")
     if rep.get("ok") is False:
         return _light(RED, str(rep.get("error") or "the sweep failed"))
     if last and now - last > SWEEP_STALE:
         return _light(RED, f"no sweep for {_ago(last, now)}")
+    if section == "expert":
+        return _expert(rep, last, now)
     return _light(GREEN, f"live ({_ago(last, now)})")
+
+
+def _expert(rep: dict[str, Any], last: datetime | None, now: datetime) -> dict[str, Any]:
+    """Expert content: orange until Wan registers a handle (nothing to read is not a fault), orange with a reason when the
+    handles were opened and none gave a post, green when posts were read."""
+    handles, read = int(rep.get("handles") or 0), int(rep.get("read") or 0)
+    if not handles:
+        return _light(ORANGE, "no handle registered yet: add one in Expert content")
+    if read:
+        new = int(rep.get("shown") or 0)
+        return _light(GREEN, f"live: {read} post(s) read from {handles} handle(s), {new} new ({_ago(last, now)})")
+    errs = [str(e) for e in (rep.get("errors") or []) if e]
+    return _light(ORANGE, f"{handles} handle(s) opened, no post read" + (f": {errs[0]}" if errs else " in the reading window"),
+                  act=bool(errs))
 
 
 def _watch(watch: dict[str, Any], now: datetime) -> dict[str, Any]:
@@ -140,10 +167,13 @@ def evaluate(cfg: dict[str, Any], stored: dict[str, Any], watch: dict[str, Any],
             streak = (0 if read > 0 else before + 1) if (from_sweep and isinstance(rep, dict)) else before
             res = _community(s, cfg, stored, latest.get(s), streak, now)
             res["zero_streak"] = streak
-        elif s in ("folder", "myra"):
+        elif s in PARTS:
             res = _part(s, cfg, stored, now)
         else:
             res = _watch(watch, now)
+        swept = _parse(watch.get("last_run")) if s in ("regulatory", "publication") else _swept(stored, PARTS.get(s, "community"))
+        if swept and not res.get("off"):
+            res["checked"] = swept.isoformat()
         out[s] = res
     return out
 
@@ -185,6 +215,8 @@ def problems(lights: dict[str, Any]) -> list[dict[str, str]]:
         v = lights.get(s) or {}
         if v.get("light") == RED or (v.get("light") == ORANGE and v.get("act")):
             state = "UNLIVE" if v["light"] == RED else "STANDBY"
+            where = "Expert content" if s == "expert" else "Isu semasa and the tab's light"
+            run = "the regulatory watch" if s in ("regulatory", "publication") else f"Sources (only={PARTS.get(s, 'community')})"
             out.append({"area": f"Scrape · {NAMES[s]}", "what": f"{state}: {v.get('why')}",
-                        "todo": "Open Isu semasa and the tab's light; run Sources (only=community) once the cause is fixed."})
+                        "todo": f"Open {where}; run {run} once the cause is fixed."})
     return out

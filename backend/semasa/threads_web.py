@@ -77,7 +77,7 @@ def parse_count(text: Any) -> int | None:
     return int(round(n * {"": 1, "k": 1_000, "m": 1_000_000}[m.group(2).lower()]))
 
 
-def _post(raw: dict[str, Any]) -> dict[str, Any] | None:
+def _post(raw: dict[str, Any], cap: int = 500) -> dict[str, Any] | None:
     href = str(raw.get("href") or "")
     m = re.fullmatch(r"/@([\w.]+)/post/([\w-]+)", href)
     if not m:
@@ -90,7 +90,7 @@ def _post(raw: dict[str, Any]) -> dict[str, Any] | None:
         return None
     shown = {key: str((raw.get("counts") or {}).get(label) or "").strip() for label, key in LABELS.items()}
     counts = {k: parse_count(v) for k, v in shown.items()}
-    return {"id": m.group(2), "username": m.group(1), "text": text[:500], "permalink": BASE + href,
+    return {"id": m.group(2), "username": m.group(1), "text": text[:cap], "permalink": BASE + href,
             "timestamp": raw.get("datetime"), "counts": counts, "shown": {k: v for k, v in shown.items() if v}}
 
 
@@ -112,8 +112,9 @@ def _wall(page: Any) -> bool:
     return any(part in url for part in _WALL)
 
 
-def read_url(page: Any, url: str, scrolls: int = SCROLLS) -> tuple[list[dict[str, Any]], str]:
-    """(posts, error) for one search or profile page. A page that shows a login wall is an error, never a row."""
+def read_url(page: Any, url: str, scrolls: int = SCROLLS, cap: int = 500) -> tuple[list[dict[str, Any]], str]:
+    """(posts, error) for one search or profile page. A page that shows a login wall is an error, never a row. `cap` is how
+    much of a post's words are kept: 500 for the feed of arguments, more where the post itself is the content (experts.py)."""
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_timeout(SETTLE_MS)
@@ -125,7 +126,7 @@ def read_url(page: Any, url: str, scrolls: int = SCROLLS) -> tuple[list[dict[str
         rows = page.evaluate(_EXTRACT) or []
     except Exception as exc:  # noqa: BLE001 - one page failing must not stop the others
         return [], f"{type(exc).__name__}: {str(exc)[:160]}"
-    return [p for p in (_post(r) for r in rows) if p], ""
+    return [p for p in (_post(r, cap) for r in rows) if p], ""
 
 
 def _own(p: dict[str, Any], names: list[str]) -> bool:

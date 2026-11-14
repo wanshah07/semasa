@@ -113,13 +113,14 @@ function SourceKeywords({ platform = "threads", setting, saveSetting, onToast })
   const row = "flex items-center gap-2";
   return (
     <details className="mt-3 rounded-card border border-line bg-surface p-3 shadow-card sm:p-4" data-threads-keywords>
-      <summary className="cursor-pointer text-sm font-medium">{withAccounts ? t("Kata kunci Threads", "Threads keywords") : t("Hashtag {p}", "{p} hashtags", { p: label })}
+      <summary className="cursor-pointer text-sm font-medium">{/* the title names the tab it is on: since all three gained a watchlist, Facebook and Instagram read "Threads keywords" */}
+        {platform === "threads" ? t("Kata kunci Threads", "Threads keywords") : t("Hashtag {p}", "{p} hashtags", { p: label })}
         <span className="ml-1 text-[11px] font-normal text-muted">· {savedWords.length}{savedHandles.length ? ` + ${savedHandles.length} ${t("akaun", "accounts")}` : ""}</span></summary>
-      <p className="mt-2 text-[11px] text-muted">{withAccounts
+      <p className="mt-2 text-[11px] text-muted">{platform === "threads"
         ? t("Setiap kata kunci dicari di Threads (hasil teratas, 72 jam terakhir). Ubah, buang atau tambah, kemudian Simpan.",
           "Each keyword is searched on Threads (top results, last 72 hours). Edit, remove or add, then Save.")
-        : t("Setiap hashtag dibaca di {p} (72 jam terakhir). Tulis tanpa ruang atau #: “halal malaysia” dibaca sebagai #halalmalaysia. Ubah, buang atau tambah, kemudian Simpan.",
-          "Each hashtag is read on {p} (last 72 hours). Type it without spaces or #: “halal malaysia” is read as #halalmalaysia. Edit, remove or add, then Save.", { p: label })}</p>
+        : t("Setiap hashtag dibaca di {p} (14 hari terakhir). Tulis tanpa ruang atau #: “halal malaysia” dibaca sebagai #halalmalaysia. Halaman hashtag selalunya menunjukkan siaran lama, jadi akaun di bawah ialah laluan yang lebih boleh diharap. Ubah, buang atau tambah, kemudian Simpan.",
+          "Each hashtag is read on {p} (last 14 days). Type it without spaces or #: “halal malaysia” is read as #halalmalaysia. Hashtag pages mostly show old posts, so the accounts below are the more dependable route. Edit, remove or add, then Save.", { p: label })}</p>
       <ul className="mt-2 space-y-1.5">
         {words.map((w, i) => (
           <li key={i} className={row}>

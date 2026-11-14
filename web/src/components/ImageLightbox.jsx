@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
 import { useLang } from "../lib/i18n";
 
@@ -6,7 +7,13 @@ import { useLang } from "../lib/i18n";
    the wording on the card, no need open new tab"). A drawn card is a data: address, and a browser will not open one
    as a page of its own, so the old link to a new tab was a blank page. This is a full-screen viewer over the page:
    Esc or a click outside closes it, the arrow keys (and the buttons) step through the set, and the card fills as much
-   of the screen as it can so every word on it can be read. */
+   of the screen as it can so every word on it can be read.
+
+   It is drawn into document.body, never inside whoever opened it (Wan, 14 Nov 2026: "I cannot overview the slides, and close it").
+   The Glass look gives every card a backdrop-filter, and a backdrop-filter makes the card the containing block of anything
+   `fixed` inside it: opened from the post editor, the viewer was pinned inside the editor's card, clipped by it, with its
+   close button scrolled out of sight and its overlay washing over the editor. Its overlay is also always dark: bg-ink is a
+   LIGHT colour under the dark themes, which turned it into a pale veil over a dark card. */
 
 /** The viewer's state: `open(i)` shows picture i of the list. Render <ImageLightbox {...box.props} /> once. */
 export function useLightbox(items) {
@@ -38,28 +45,29 @@ export default function ImageLightbox({ items = [], at, setAt, onClose }) {
 
   if (!shown) return null;
   const label = shown.title || shown.alt || t("Gambar {n}", "Picture {n}", { n: at + 1 });
-  return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-ink/85 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={label}
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex flex-col bg-black/85 p-3 text-white sm:p-6" role="dialog" aria-modal="true" aria-label={label}
       onMouseDown={(e) => { e.currentTarget.dataset.down = e.target === e.currentTarget ? "1" : ""; }}
       onClick={(e) => { if (e.target === e.currentTarget && e.currentTarget.dataset.down === "1") onClose(); }}>
-      <div className="mb-2 flex items-center gap-3 text-bg" onClick={(e) => e.stopPropagation()}>
+      <div className="mb-2 flex items-center gap-3 text-white" onClick={(e) => e.stopPropagation()}>
         <p className="min-w-0 flex-1 truncate text-sm">{n > 1 ? `${at + 1} / ${n} · ` : ""}{label}</p>
-        <a href={shown.url} download={`slide-${at + 1}.jpg`} className="inline-flex items-center gap-1 rounded-pill bg-bg/15 px-3 py-1.5 text-xs hover:bg-bg/25">
+        <a href={shown.url} download={`slide-${at + 1}.jpg`} className="inline-flex items-center gap-1 rounded-pill bg-white/15 px-3 py-1.5 text-xs hover:bg-white/25">
           <Download size={13} /> {t("Muat turun", "Download")}</a>
-        <button type="button" onClick={onClose} aria-label={t("Tutup", "Close")} className="rounded-full bg-bg/15 p-2 hover:bg-bg/25"><X size={16} /></button>
+        <button type="button" onClick={onClose} aria-label={t("Tutup", "Close")} className="rounded-full bg-white/15 p-2 hover:bg-white/25"><X size={16} /></button>
       </div>
       <div className="relative flex min-h-0 flex-1 items-center justify-center"
         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
         {n > 1 && (
           <button type="button" onClick={() => step(-1)} aria-label={t("Sebelum", "Previous")}
-            className="absolute left-0 z-10 rounded-full bg-bg/20 p-2 text-bg hover:bg-bg/35"><ChevronLeft size={22} /></button>
+            className="absolute left-0 z-10 rounded-full bg-white/20 p-2 text-white hover:bg-white/35"><ChevronLeft size={22} /></button>
         )}
         <img src={shown.url} alt={shown.alt || label} className="max-h-full max-w-full rounded-tile bg-surface object-contain shadow-lift" />
         {n > 1 && (
           <button type="button" onClick={() => step(1)} aria-label={t("Seterusnya", "Next")}
-            className="absolute right-0 z-10 rounded-full bg-bg/20 p-2 text-bg hover:bg-bg/35"><ChevronRight size={22} /></button>
+            className="absolute right-0 z-10 rounded-full bg-white/20 p-2 text-white hover:bg-white/35"><ChevronRight size={22} /></button>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -37,4 +37,21 @@ def test_the_report_never_prints_a_cookie_value_and_writes_the_base64_the_sweep_
     assert "secret-value" not in printed and "Base64 size" in printed
     monkeypatch.setenv("PW_STORAGE_STATE_B64", out.read_text())
     assert json.load(open(social_check.social_web.storage_state_path()))["cookies"][0]["name"] == "sessionid"
-    assert base64.b64decode(out.read_text()) == path.read_bytes()
+    assert json.loads(base64.b64decode(out.read_text())) == social_check.shrink(_state(("sessionid", ".instagram.com")))[0]
+
+
+def test_a_login_file_bloated_by_page_data_is_shrunk_to_the_two_sites_cookies_and_fits_a_secret():
+    state = _state(("sessionid", ".instagram.com"), ("c_user", ".facebook.com"), ("other", ".google.com"))
+    state["origins"] = [{"origin": "https://www.facebook.com", "localStorage": [{"name": "k", "value": "x" * 90_000}]}]
+    out, why = social_check.shrink(state)
+    assert [c["name"] for c in out["cookies"]] == ["sessionid", "c_user"]         # google's cookie goes
+    assert out["origins"] == []                                                    # and so does the page data
+    assert social_check._encoded_size(out) < social_check.GITHUB_SECRET_LIMIT and "dropped" in why
+    assert social_check.inspect_state(out)["instagram"]["has"] == ["sessionid"]   # what the sweep needs stays
+
+
+def test_when_even_the_two_sites_cookies_are_too_large_only_the_login_cookies_are_kept():
+    state = _state(("sessionid", ".instagram.com"), ("c_user", ".facebook.com"))
+    state["cookies"] += [{"name": f"junk{i}", "domain": ".facebook.com", "value": "y" * 1000} for i in range(80)]
+    out, why = social_check.shrink(state)
+    assert sorted(c["name"] for c in out["cookies"]) == ["c_user", "sessionid"] and "only the login cookies" in why

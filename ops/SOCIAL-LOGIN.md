@@ -31,7 +31,7 @@ A browser and a small inspector window open.
    you can see the home feed. If Instagram asks to "Save login info", say yes.
 2. **Facebook**: in the same browser window, go to `https://www.facebook.com/`, log in to the throwaway Facebook account, complete
    any checkpoint, wait until the feed shows.
-3. Visit nothing else (every site you open adds cookies, and a GitHub secret may not exceed 48 KB).
+3. Visit nothing else. The checker keeps only the Facebook and Instagram cookies and drops the saved page data (Facebook's alone can be 80 KB), so the text it writes for the secret is usually well under GitHub's 48 KB limit.
 4. **Close the browser window.** `storage_state.json` is written when it closes.
 
 Use a throwaway Facebook account on its own: do **not** use "Log in with Facebook" on Instagram, so the two logins stay separate.
@@ -50,7 +50,7 @@ It opens the same pages the sweep opens, with your login, and prints one line pe
 | `... LOGIN WALL ...` | Session expired, refused, or a security prompt is pending | Log in again in a fresh codegen window and finish every prompt |
 | `... has no Instagram login (sessionid ...)` | You did not log in to that platform in the window | Log in to it, close, save again |
 | `... logged in, but no posts came back` | The login works; that hashtag was empty | Run again with another hashtag: `python -m semasa.social_check storage_state.json sijilhalal` |
-| `Base64 size ... TOO LARGE` | Too many cookies | Delete `storage_state.json`, log in again visiting only the two sites |
+| `Base64 size ... STILL TOO LARGE` | Even the login cookies alone are over 48 KB (rare) | Delete `storage_state.json`, log in again in a fresh codegen window visiting only the two sites |
 
 ## 4. Save it as the secret
 

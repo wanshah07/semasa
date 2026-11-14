@@ -84,9 +84,11 @@ def _community(section: str, cfg: dict[str, Any], stored: dict[str, Any], latest
     fresh = bool(latest and now - latest <= timedelta(hours=hours))
     if read > 0 or fresh:
         return _light(GREEN, f"live: {read} read in the last sweep ({_ago(last, now)})")
+    seen = str(rep.get(f"{section}_stats") or "")
+    extra = f" ({seen})" if seen else ""
     if streak >= ZERO_RED:
-        return _light(RED, f"read nothing in {streak} sweeps in a row")
-    return _light(ORANGE, "answered, but read nothing in the last sweep", act=True)
+        return _light(RED, f"read nothing in {streak} sweeps in a row{extra}")
+    return _light(ORANGE, f"answered, but read nothing in the last sweep{extra}", act=True)
 
 
 def _part(section: str, cfg: dict[str, Any], stored: dict[str, Any], now: datetime) -> dict[str, Any]:

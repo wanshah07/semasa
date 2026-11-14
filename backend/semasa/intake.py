@@ -29,7 +29,9 @@ log = get_logger("semasa.intake")
 WATCH = "semasa_watch"
 KEY = "sources"                     # semasa_settings row: Wan's overrides, and the last run's report
 # what is loud now is kept 72 hours (Wan, 12 Nov 2026); the folder bank is not pruned
-KEEP_HOURS = {"reddit": 72, "youtube": 72, "threads": 72, "facebook": 72, "instagram": 72, "myra": 45 * 24}
+# Facebook and Instagram are read by hashtag, and a hashtag page shows its TOP posts, which are rarely younger than three days:
+# a 72-hour window kept none of the three Instagram posts Wan's own check read (14 Nov 2026), so these two keep 14 days
+KEEP_HOURS = {"reddit": 72, "youtube": 72, "threads": 72, "facebook": 14 * 24, "instagram": 14 * 24, "myra": 45 * 24}
 
 DEFAULTS: dict[str, Any] = {
     "enabled": True,
@@ -47,8 +49,8 @@ DEFAULTS: dict[str, Any] = {
         # Wan's own accounts and pages: a post of theirs is never "what people are arguing about" (Threads, Facebook, Instagram)
         "own_accounts": ["wsregulab", "ws.regulab", "valorith", "facerinna"],
         # Facebook and Instagram are read by hashtag: "queries" are turned into #tags (no spaces). Instagram needs a saved login.
-        "facebook": {"enabled": True, "hours": 72, "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
-        "instagram": {"enabled": True, "hours": 72, "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
+        "facebook": {"enabled": True, "hours": 14 * 24, "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
+        "instagram": {"enabled": True, "hours": 14 * 24, "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
         "threads": {"enabled": True, "hours": 72, "max_results": 8, "accounts": [],
                     "queries": ["halal kosmetik", "sunscreen", "sijil halal"]},
     },
@@ -140,8 +142,8 @@ def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: da
     window = int(cfg.get("hours") or community.WINDOW_HOURS)
     cands = community.candidates(raw, now, window)
     cands += community.thread_candidates(raw, now, window)
-    cands += community.facebook_candidates(raw, now, window)
-    cands += community.instagram_candidates(raw, now, window)
+    cands += community.facebook_candidates(raw, now, int((cfg.get("facebook") or {}).get("hours") or window))
+    cands += community.instagram_candidates(raw, now, int((cfg.get("instagram") or {}).get("hours") or window))
     known = have(store, [c["url"] for c in cands])
     fresh = [c for c in cands if c["url"] not in known]
     by: dict[str, list[dict[str, Any]]] = {"reddit": [], "youtube": [], "threads": [], "facebook": [], "instagram": []}
@@ -159,7 +161,10 @@ def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: da
            "shown": {p: sum(1 for r in kept if r["platform"] == p) for p in by},
            "hidden": len(rejected), "reddit_error": raw.get("reddit_error") or None,
            "youtube_error": raw.get("youtube_error") or None, "threads_error": raw.get("threads_error") or None,
-           "facebook_error": raw.get("facebook_error") or None, "instagram_error": raw.get("instagram_error") or None}
+           "facebook_error": raw.get("facebook_error") or None, "instagram_error": raw.get("instagram_error") or None,
+           # what each browser read saw (found, too old, the page it landed on): why a source read nothing, in the report
+           "facebook_stats": social_web.stats_text("facebook") or None,
+           "instagram_stats": social_web.stats_text("instagram") or None}
     if raw.get("youtube_error"):
         log.warning("YouTube: %s (Reddit carries on)", raw["youtube_error"])
     for name in ("threads", "facebook", "instagram"):

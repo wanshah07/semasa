@@ -280,6 +280,8 @@ def run(store: Any, llm: Any, client: Any, now: datetime | None = None, only: li
         shown = sum(int((v.get("shown") or {}).get("reddit", 0)) + int((v.get("shown") or {}).get("youtube", 0))
                     + int((v.get("shown") or {}).get("threads", 0))
                     for v in report.values() if isinstance(v, dict) and isinstance(v.get("shown"), dict))
+        from . import source_lights  # the watchdog light of each source, worked out from this report (Wan, 14 Nov 2026)
+        source_lights.update(store, now, from_sweep=True)
         db.log_event(store, "info", "idea", "sources.sweep",
                      f"Sumber saya disapu: {shown} hujah, {(report.get('folders') or {}).get('angles', 0)} sudut folder, "
                      f"{(report.get('myra') or {}).get('new', 0)} penemuan MYRA",

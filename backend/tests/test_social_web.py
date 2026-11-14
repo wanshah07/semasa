@@ -166,3 +166,35 @@ def test_the_facebook_extractor_reads_words_link_time_and_reactions_and_skips_a_
     post = social_web.facebook_post(rows[0], NOW)
     assert post["text"] == "TEGUR MAMAK, ORANG BUKAN MAMAK PULA YANG MEROYAN!" and post["shown"] == {"reactions": "42"}
     assert post["permalink"] == "https://www.facebook.com/agc7296/posts/pfbid0dUiv"
+
+
+def test_a_hashtag_page_shows_old_top_posts_so_facebook_and_instagram_keep_two_weeks_and_say_what_they_saw():
+    from semasa import intake
+    assert intake.DEFAULTS["community"]["instagram"]["hours"] == intake.DEFAULTS["community"]["facebook"]["hours"] == 14 * 24
+    assert intake.KEEP_HOURS["instagram"] == intake.KEEP_HOURS["facebook"] == 14 * 24 and intake.KEEP_HOURS["threads"] == 72
+
+    def post(pid, hours_ago):
+        return {"id": pid, "text": f"post {pid} " * 3, "permalink": f"https://www.instagram.com/p/{pid}/", "username": "x",
+                "timestamp": (NOW - timedelta(hours=hours_ago)).isoformat(), "counts": {"likes": 5}, "shown": {"likes": "5"}}
+
+    def read(page, tag, now):
+        social_web._NOTES.append(f"#{tag}: 2 post link(s), 2 read at /explore/tags/{tag}/ \"Instagram\"")
+        return [post("a", 100), post("b", 200)], ""
+    short = {"instagram": {"hours": 72, "queries": ["halal"]}}
+    posts, err = social_web.collect(object(), "instagram", short, NOW, read)
+    assert posts == [] and err == ""                                              # two posts read, both older than 72 h
+    line = social_web.stats_text("instagram")
+    assert "found 2 post(s)" in line and "2 older than 72 h" in line and "newest 100 h old" in line and "#halal" in line
+    wide = {"instagram": {"hours": 14 * 24, "queries": ["halal"]}}
+    posts, _ = social_web.collect(object(), "instagram", wide, NOW, read)
+    assert [p["id"] for p in posts] == ["a", "b"] and "older than" not in social_web.stats_text("instagram")
+
+
+def test_the_page_note_names_the_address_and_title_and_never_fails_a_read():
+    class Page:
+        url = "https://www.facebook.com/hashtag/halal?__cft__=x"
+
+        def title(self):
+            return "Facebook"
+    assert social_web._where(Page()) == '/hashtag/halal?__cft__=x "Facebook"'
+    assert social_web._where(object()) == "?"            # a page with no title() is "?", not an error

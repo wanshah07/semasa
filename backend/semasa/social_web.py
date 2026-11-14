@@ -34,6 +34,8 @@ SCROLLS = 2
 SCROLL_MS = 1500
 MAX_TAGS = 8
 PER_TAG_IG = 6                 # Instagram: posts opened per hashtag (each is a page load)
+LAST: dict[str, dict[str, Any]] = {}       # what the last collect() saw per platform: the sweep's report, the watchdog light
+_NOTES: list[str] = []                     # one short line per page read: the address, its title, what was found on it
 FB_BASE = "https://www.facebook.com"
 IG_BASE = "https://www.instagram.com"
 _WALL_PARTS = ("/login", "accounts/login", "checkpoint")
@@ -62,6 +64,16 @@ _IG_POST = r"""
           time: t ? t.getAttribute('datetime') : ''};
 }
 """
+
+
+def _where(page: Any) -> str:
+    """'/hashtag/halalmalaysia "Facebook"': the page's path and title, so a read of nothing can say what it was looking at."""
+    try:
+        path = re.sub(r"^https?://[^/]+", "", str(getattr(page, "url", "") or ""))[:50]
+        title = str(page.title() or "")[:40]
+    except Exception:  # noqa: BLE001 - a note must never fail a read
+        return "?"
+    return f'{path} "{title}"'
 
 
 def hashtag(query: Any) -> str:
@@ -148,7 +160,9 @@ def read_facebook(page: Any, tag: str, now: datetime) -> tuple[list[dict[str, An
         rows = page.evaluate(_FB_EXTRACT) or []
     except Exception as exc:  # noqa: BLE001 - one page failing must not stop the others
         return [], f"{type(exc).__name__}: {str(exc)[:160]}"
-    return [p for p in (facebook_post(r, now) for r in rows) if p], ""
+    got = [p for p in (facebook_post(r, now) for r in rows) if p]
+    _NOTES.append(f"#{tag}: {len(rows)} post block(s), {len(got)} usable at {_where(page)}")
+    return got, ""
 
 
 # --- Instagram --------------------------------------------------------------------------------------------------------------
@@ -191,8 +205,10 @@ def read_instagram(page: Any, tag: str, now: datetime) -> tuple[list[dict[str, A
         page.wait_for_timeout(SETTLE_MS)
         if any(p in str(getattr(page, "url", "")) for p in _WALL_PARTS):
             return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_B64)"
+        where = _where(page)
         links = (page.evaluate(_IG_LINKS) or [])[:PER_TAG_IG]
         out: list[dict[str, Any]] = []
+        refused = ""
         for href in links:
             page.goto(IG_BASE + href, wait_until="domcontentloaded", timeout=30_000)
             page.wait_for_timeout(2500)
@@ -200,8 +216,12 @@ def read_instagram(page: Any, tag: str, now: datetime) -> tuple[list[dict[str, A
             post = parse_instagram(info.get("desc", ""), info.get("time", ""), href)
             if post:
                 out.append(post)
+            elif not refused:
+                refused = " ".join(str(info.get("desc") or "").split())[:70]
     except Exception as exc:  # noqa: BLE001
         return [], f"{type(exc).__name__}: {str(exc)[:160]}"
+    _NOTES.append(f"#{tag}: {len(links)} post link(s), {len(out)} read at {where}"
+                  + (f"; a post page said: {refused}" if refused and len(out) < len(links) else ""))
     return out, ""
 
 
@@ -235,6 +255,8 @@ def collect(page: Any, platform: str, cfg: dict[str, Any], now: datetime,
     seen: set[str] = set()
     posts: list[dict[str, Any]] = []
     errors: list[str] = []
+    stats = {"tags": len(tags), "found": 0, "too_old": 0, "own": 0, "newest_h": None, "hours": hours}
+    _NOTES.clear()
     for tag in tags:
         got, err = read(page, tag, now)
         if err:
@@ -244,14 +266,39 @@ def collect(page: Any, platform: str, cfg: dict[str, Any], now: datetime,
                 break                                              # every hashtag will say the same
         for p in got:
             when = _when(p.get("timestamp"))
-            if p["id"] in seen or not when or now - when > timedelta(hours=hours) or is_own(p, cfg.get("own_accounts") or []):
+            if p["id"] in seen or not when:
+                continue
+            stats["found"] += 1
+            age = (now - when).total_seconds() / 3600
+            stats["newest_h"] = round(age) if stats["newest_h"] is None else min(stats["newest_h"], round(age))
+            if age > hours:
+                stats["too_old"] += 1
+                continue
+            if is_own(p, cfg.get("own_accounts") or []):
+                stats["own"] += 1
                 continue
             seen.add(p["id"])
             posts.append(p)
     posts.sort(key=score, reverse=True)
+    LAST[platform] = {**stats, "notes": list(_NOTES)[:6]}
     if not posts and errors:
         return [], errors[0]
     return posts, ""
+
+
+def stats_text(platform: str) -> str:
+    """One line on what the last read saw ('found 6, 6 older than 72 h, newest 90 h old; #halal: 0 post block(s)...')."""
+    st = LAST.get(platform)
+    if not st:
+        return ""
+    bits = [f"found {st['found']} post(s)"]
+    if st["too_old"]:
+        bits.append(f"{st['too_old']} older than {st['hours']} h")
+    if st["own"]:
+        bits.append(f"{st['own']} your own")
+    if st["newest_h"] is not None:
+        bits.append(f"newest {st['newest_h']} h old")
+    return ", ".join(bits) + ("; " + "; ".join(st["notes"][:3]) if st.get("notes") else "")
 
 
 def is_own(p: dict[str, Any], names: list[str]) -> bool:

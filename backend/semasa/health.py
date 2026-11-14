@@ -40,7 +40,7 @@ from typing import Any
 
 import requests
 
-from . import billing, db
+from . import billing, db, source_lights
 from .log import get_logger
 
 log = get_logger("semasa.health")
@@ -293,6 +293,13 @@ def check_business_gmail(businesses: dict[str, dict[str, Any]], ws_email: str, s
     return out
 
 
+def check_scrape_sources(store: Any, now: datetime) -> list[dict[str, str]]:
+    """Every scrape source's light (Threads, Facebook, Instagram, Reddit, YouTube, Regulatory, Publications, OneDrive, MYRA):
+    red and orange are problems, a source Wan switched off is not. The lights are refreshed here too, which is what turns a sweep
+    that stopped running red (source_lights.py)."""
+    return source_lights.problems(source_lights.update(store, now))
+
+
 def check_telegram(store: Any, now: datetime) -> list[dict[str, str]]:
     """The Telegram bot (telegram_bot.py, supabase/069): Telegram's own word on the webhook, and messages from Wan that no
     run has answered. Silent until the bot has been connected once (settings.telegram_bot)."""
@@ -441,7 +448,8 @@ def run(store: Any, now: datetime | None = None, sender: Any = None, session: An
     fixed = (fix_known_publisher_errors(store) + retry_transient_ideas(store, now)) if fix else []
     problems = (check_workflows(now, session) + check_gateways(store) + check_gemini(store) + check_chatgpt(store, now)
                 + check_publisher(store) + check_billing(store, now) + check_gmail(sender)
-                + check_business_gmail(businesses, ws_email, sender_for) + check_telegram(store, now))
+                + check_business_gmail(businesses, ws_email, sender_for) + check_telegram(store, now)
+                + check_scrape_sources(store, now))
     state = load_state(store)
     kind = should_send(problems, fixed, state, now)
     sent = ""

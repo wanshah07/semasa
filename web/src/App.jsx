@@ -7,6 +7,8 @@ import { TABLES, configured, errText, supabase } from "./lib/SupabaseClient";
 import { FAQ_CATEGORY_TO_DOMAIN, FAQ_SOURCE, brandOf } from "./lib/brand";
 import { stampMYT } from "./lib/format";
 import { currentLang, useLang } from "./lib/i18n";
+import SourceLight from "./components/SourceLight";
+import { lightOf } from "./lib/sourceLights";
 import { useCanUpload, useGenerations, useSession, useSettings, useTable, useToasts, useTrends } from "./lib/hooks";
 import FilterBar from "./components/FilterBar";
 import Gate from "./components/Gate";
@@ -133,15 +135,27 @@ function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, s
   const seg = SEGMENTS.includes(segRaw) ? segRaw : "isu";
   // the two watch segments share one list; it is read only while one of them is open
   const watch = useTable(TABLES.watch, { enabled: allowed && seg !== "isu", limit: 900, realtime: false, everyMs: 120_000 });
+  const legend = (
+    <p className="-mt-3 mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+      <span className="inline-flex items-center gap-1.5"><SourceLight light="green" />{t("Hidup", "Live")}</span>
+      <span className="inline-flex items-center gap-1.5"><SourceLight light="orange" />{t("Siaga", "Standby")}</span>
+      <span className="inline-flex items-center gap-1.5"><SourceLight light="red" />{t("Tidak hidup", "Unlive")}</span>
+      <span>{t("Lampu pengawas setiap sumber; semak setiap 6 jam dan selepas setiap sapuan.", "The watchdog's light for each source, checked every 6 hours and after every sweep.")}</span>
+    </p>
+  );
   const segTabs = (
+    <>
     <div role="tablist" aria-label={t("Segmen", "Segments")} className="mb-5 flex flex-wrap gap-1.5">
       {[["isu", t("Isu semasa", "Current issues")], ["regulatory", t("Regulatori", "Regulatory")],
         ["publication", t("Penerbitan terkini", "Latest publications")], ["reddit", "Reddit"], ["youtube", "YouTube"],
         ["threads", "Threads"], ["facebook", "Facebook"], ["instagram", "Instagram"], ["folder", "OneDrive"], ["myra", "MYRA"]].map(([v, l]) => (
         <button type="button" key={v} role="tab" aria-selected={seg === v} onClick={() => setSeg(v)}
-          className={`rounded-pill px-4 py-2 text-sm font-medium ${seg === v ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>{l}</button>
+          className={`inline-flex items-center gap-2 rounded-pill px-4 py-2 text-sm font-medium ${seg === v ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink"}`}>
+          {v !== "isu" && <SourceLight {...lightOf(settings.source_lights, v)} />}{l}</button>
       ))}
     </div>
+    {legend}
+    </>
   );
   if (seg !== "isu") {
     const [eyebrow, headline, blurb] = segCopy(seg, t);

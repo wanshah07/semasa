@@ -81,7 +81,7 @@ function Competitors({ setting, saveSetting, onToast }) {
    `sources` setting (community.threads.queries / .accounts); the next sweep uses them. Same flow as the competitor list. */
 function SourceKeywords({ platform = "threads", setting, saveSetting, onToast }) {
   const { t } = useLang();
-  const withAccounts = platform === "threads";                      // only Threads also reads a watchlist of accounts
+  const withAccounts = true;       // all three read a watchlist of accounts (Facebook pages, Instagram and Threads profiles)
   const label = platform === "threads" ? "Threads" : platform === "facebook" ? "Facebook" : "Instagram";
   const [words, setWords] = useState(() => keywordsOf(setting, platform));
   const [handles, setHandles] = useState(() => handlesOf(setting, platform));

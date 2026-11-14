@@ -49,8 +49,10 @@ DEFAULTS: dict[str, Any] = {
         # Wan's own accounts and pages: a post of theirs is never "what people are arguing about" (Threads, Facebook, Instagram)
         "own_accounts": ["wsregulab", "ws.regulab", "valorith", "facerinna"],
         # Facebook and Instagram are read by hashtag: "queries" are turned into #tags (no spaces). Instagram needs a saved login.
-        "facebook": {"enabled": True, "hours": 14 * 24, "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
-        "instagram": {"enabled": True, "hours": 14 * 24, "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
+        "facebook": {"enabled": True, "hours": 14 * 24, "accounts": [],
+                     "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
+        "instagram": {"enabled": True, "hours": 14 * 24, "accounts": [],
+                      "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
         "threads": {"enabled": True, "hours": 72, "max_results": 8, "accounts": [],
                     "queries": ["halal kosmetik", "sunscreen", "sijil halal"]},
     },

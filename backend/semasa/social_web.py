@@ -23,6 +23,7 @@ import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import quote
 
 from .log import get_logger
 from .threads_web import parse_count
@@ -33,7 +34,9 @@ SETTLE_MS = 5000
 SCROLLS = 2
 SCROLL_MS = 1500
 MAX_TAGS = 8
-PER_TAG_IG = 6                 # Instagram: posts opened per hashtag (each is a page load)
+PER_TAG_IG = 4                 # Instagram: posts opened per hashtag (each is a page load)
+PER_ACCOUNT_IG = 6             # and per watched account
+MAX_ACCOUNTS = 10
 LAST: dict[str, dict[str, Any]] = {}       # what the last collect() saw per platform: the sweep's report, the watchdog light
 _NOTES: list[str] = []                     # one short line per page read: the address, its title, what was found on it
 FB_BASE = "https://www.facebook.com"
@@ -148,20 +151,51 @@ def facebook_post(raw: dict[str, Any], now: datetime) -> dict[str, Any] | None:
             "counts": {k: parse_count(v) for k, v in shown.items()} or {"reactions": None}, "shown": shown}
 
 
+def _fb_rows(page: Any, scrolls: int = SCROLLS) -> list[dict[str, Any]]:
+    for _ in range(scrolls):
+        page.mouse.wheel(0, 2500)
+        page.wait_for_timeout(SCROLL_MS)
+    return page.evaluate(_FB_EXTRACT) or []
+
+
 def read_facebook(page: Any, tag: str, now: datetime) -> tuple[list[dict[str, Any]], str]:
+    """A hashtag's page. Facebook has largely stopped rendering posts on hashtag pages (14 Nov 2026, logged in: 0 post blocks for
+    #halalmalaysia and #sijilhalal), so when the page shows none the same words are searched as posts. Either way the note says
+    what the page held."""
     try:
         page.goto(f"{FB_BASE}/hashtag/{tag}", wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_timeout(SETTLE_MS)
         if any(p in str(getattr(page, "url", "")) for p in _WALL_PARTS):
             return [], "Facebook asked for a login"
-        for _ in range(SCROLLS):
-            page.mouse.wheel(0, 2500)
-            page.wait_for_timeout(SCROLL_MS)
-        rows = page.evaluate(_FB_EXTRACT) or []
+        rows = _fb_rows(page)
+        where = _where(page)
+        searched = ""
+        if not rows:
+            page.goto(f"{FB_BASE}/search/posts/?q={quote(tag)}", wait_until="domcontentloaded", timeout=30_000)
+            page.wait_for_timeout(SETTLE_MS)
+            if any(p in str(getattr(page, "url", "")) for p in _WALL_PARTS):
+                return [], "Facebook asked for a login"
+            rows = _fb_rows(page)
+            searched = f"; searched instead: {len(rows)} block(s) at {_where(page)}"
     except Exception as exc:  # noqa: BLE001 - one page failing must not stop the others
         return [], f"{type(exc).__name__}: {str(exc)[:160]}"
     got = [p for p in (facebook_post(r, now) for r in rows) if p]
-    _NOTES.append(f"#{tag}: {len(rows)} post block(s), {len(got)} usable at {_where(page)}")
+    _NOTES.append(f"#{tag}: {len(got)} usable at {where}{searched}")
+    return got, ""
+
+
+def read_facebook_account(page: Any, handle: str, now: datetime) -> tuple[list[dict[str, Any]], str]:
+    """A page or profile's own newest posts (facebook.com/<name>), read with the saved login."""
+    try:
+        page.goto(f"{FB_BASE}/{handle}", wait_until="domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(SETTLE_MS)
+        if any(p in str(getattr(page, "url", "")) for p in _WALL_PARTS):
+            return [], "Facebook asked for a login"
+        rows = _fb_rows(page, scrolls=3)
+    except Exception as exc:  # noqa: BLE001
+        return [], f"{type(exc).__name__}: {str(exc)[:160]}"
+    got = [p for p in (facebook_post(r, now) for r in rows) if p]
+    _NOTES.append(f"@{handle}: {len(rows)} post block(s), {len(got)} usable at {_where(page)}")
     return got, ""
 
 
@@ -199,7 +233,25 @@ def parse_instagram(desc: str, time_attr: str, href: str) -> dict[str, Any] | No
             "counts": {k: parse_count(v) for k, v in shown.items()} or {"likes": None}, "shown": shown}
 
 
+def _ig_open(page: Any, links: list[str]) -> tuple[list[dict[str, Any]], str]:
+    """Open each post link and read its description and time. (posts, what the first unreadable post page said)."""
+    out: list[dict[str, Any]] = []
+    refused = ""
+    for href in links:
+        page.goto(IG_BASE + href, wait_until="domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(2500)
+        info = page.evaluate(_IG_POST) or {}
+        post = parse_instagram(info.get("desc", ""), info.get("time", ""), href)
+        if post:
+            out.append(post)
+        elif not refused:
+            refused = " ".join(str(info.get("desc") or "").split())[:70]
+    return out, refused
+
+
 def read_instagram(page: Any, tag: str, now: datetime) -> tuple[list[dict[str, Any]], str]:
+    """A hashtag's posts. Instagram shows a hashtag's TOP posts, which were all over 18 days old on 14 Nov 2026 (the oldest from
+    February 2025), so this mostly finds nothing recent: accounts (read_instagram_account) are the reliable way to fresh posts."""
     try:
         page.goto(f"{IG_BASE}/explore/tags/{tag}/", wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_timeout(SETTLE_MS)
@@ -207,20 +259,27 @@ def read_instagram(page: Any, tag: str, now: datetime) -> tuple[list[dict[str, A
             return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_B64)"
         where = _where(page)
         links = (page.evaluate(_IG_LINKS) or [])[:PER_TAG_IG]
-        out: list[dict[str, Any]] = []
-        refused = ""
-        for href in links:
-            page.goto(IG_BASE + href, wait_until="domcontentloaded", timeout=30_000)
-            page.wait_for_timeout(2500)
-            info = page.evaluate(_IG_POST) or {}
-            post = parse_instagram(info.get("desc", ""), info.get("time", ""), href)
-            if post:
-                out.append(post)
-            elif not refused:
-                refused = " ".join(str(info.get("desc") or "").split())[:70]
+        out, refused = _ig_open(page, links)
     except Exception as exc:  # noqa: BLE001
         return [], f"{type(exc).__name__}: {str(exc)[:160]}"
     _NOTES.append(f"#{tag}: {len(links)} post link(s), {len(out)} read at {where}"
+                  + (f"; a post page said: {refused}" if refused and len(out) < len(links) else ""))
+    return out, ""
+
+
+def read_instagram_account(page: Any, handle: str, now: datetime) -> tuple[list[dict[str, Any]], str]:
+    """An account's newest posts: its profile grid lists them newest first (a pinned post can sit at the top)."""
+    try:
+        page.goto(f"{IG_BASE}/{handle}/", wait_until="domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(SETTLE_MS)
+        if any(p in str(getattr(page, "url", "")) for p in _WALL_PARTS):
+            return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_B64)"
+        where = _where(page)
+        links = (page.evaluate(_IG_LINKS) or [])[:PER_ACCOUNT_IG]
+        out, refused = _ig_open(page, links)
+    except Exception as exc:  # noqa: BLE001
+        return [], f"{type(exc).__name__}: {str(exc)[:160]}"
+    _NOTES.append(f"@{handle}: {len(links)} post link(s), {len(out)} read at {where}"
                   + (f"; a post page said: {refused}" if refused and len(out) < len(links) else ""))
     return out, ""
 
@@ -241,29 +300,37 @@ def metrics_text(p: dict[str, Any]) -> str | None:
 
 READERS: dict[str, Callable[[Any, str, datetime], tuple[list[dict[str, Any]], str]]] = {
     "facebook": read_facebook, "instagram": read_instagram}
+ACCOUNT_READERS: dict[str, Callable[[Any, str, datetime], tuple[list[dict[str, Any]], str]]] = {
+    "facebook": read_facebook_account, "instagram": read_instagram_account}
 
 
 def collect(page: Any, platform: str, cfg: dict[str, Any], now: datetime,
-            read: Callable[..., Any] | None = None) -> tuple[list[dict[str, Any]], str]:
-    """The hashtags in the settings, newest 72 h only, loudest first. (posts, error); the error only when nothing was read."""
+            read: Callable[..., Any] | None = None, read_account: Callable[..., Any] | None = None
+            ) -> tuple[list[dict[str, Any]], str]:
+    """The hashtags and the watched accounts in the settings, newest `hours` only, loudest first. (posts, error); the error
+    only when nothing was read."""
     opts = cfg.get(platform) or {}
     hours = max(6, min(14 * 24, int(opts.get("hours") or 72)))
     tags = list(dict.fromkeys(t for t in (hashtag(q) for q in (opts.get("queries") or [])) if t))[:MAX_TAGS]
-    if not tags:
+    handles = [h for h in dict.fromkeys(str(a).strip().lstrip("@") for a in (opts.get("accounts") or []))
+               if re.fullmatch(r"[\w.\-]{1,60}", h)][:MAX_ACCOUNTS]
+    if not tags and not handles:
         return [], ""
     read = read or READERS[platform]
+    read_account = read_account or ACCOUNT_READERS[platform]
     seen: set[str] = set()
     posts: list[dict[str, Any]] = []
     errors: list[str] = []
-    stats = {"tags": len(tags), "found": 0, "too_old": 0, "own": 0, "newest_h": None, "hours": hours}
+    stats = {"tags": len(tags), "accounts": len(handles), "found": 0, "too_old": 0, "own": 0, "newest_h": None, "hours": hours}
     _NOTES.clear()
-    for tag in tags:
-        got, err = read(page, tag, now)
+    jobs = [(read, t, f"#{t}") for t in tags] + [(read_account, h, f"@{h}") for h in handles]
+    for fn, name, shown in jobs:
+        got, err = fn(page, name, now)
         if err:
             errors.append(err)
-            log.warning("%s #%s not read: %s", platform, tag, err)
+            log.warning("%s %s not read: %s", platform, shown, err)
             if "asked for a login" in err and platform == "instagram":
-                break                                              # every hashtag will say the same
+                break                                              # every page will say the same
         for p in got:
             when = _when(p.get("timestamp"))
             if p["id"] in seen or not when:

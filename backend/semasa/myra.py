@@ -28,22 +28,38 @@ from .log import get_logger
 log = get_logger("semasa.myra")
 
 _CELL = '''
-OUT = {"rows": [], "error": ""}
+import re
+OUT = {"rows": [], "error": "", "trimmed": 0}
 res, err = call("GOOGLESHEETS_BATCH_GET", {"spreadsheet_id": P["id"], "ranges": [P["range"]]}, P["account"])
 if err:
     OUT["error"] = str(err)[:200]
 else:
     vr = (res.get("data") or {}).get("valueRanges") or []
     vals = (vr[0].get("values") if vr else None) or []
-    for r in vals[1:][-80:]:
+    since = P.get("since") or ""
+    keep = []
+    for r in vals[1:][-150:]:
         r = [str(c) for c in r] + [""] * (7 - len(r))
-        OUT["rows"].append([c[:700] for c in r[:7]])
+        if r[2].strip().lower() != "yes":              # only a row with an update is a finding
+            continue
+        m = re.match(r"^\\s*(\\d{1,2})/(\\d{1,2})/(\\d{4})\\s*$", r[0])
+        if m and since and "%s-%s-%s" % (m.group(3), m.group(2).zfill(2), m.group(1).zfill(2)) < since:
+            continue                                   # older than the days that are read
+        keep.append([r[0][:12], "", r[2][:12], r[3][:80], r[4][:1500], r[5][:120], r[6][:300]])
+    # the workbench's answer is capped at 36,000 characters (14 Nov 2026: 46,249 failed every sweep): newest rows are kept
+    while keep and len(json.dumps(keep, ensure_ascii=False)) > 30000:
+        keep.pop(0)
+        OUT["trimmed"] += 1
+    OUT["rows"] = keep
 '''
 
 
-def fetch(client: Any, cfg: dict[str, Any]) -> dict[str, Any]:
+def fetch(client: Any, cfg: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
+    """The sheet's recent rows with an update (Malaysia's date, `days` back and two more), trimmed to fit the answer."""
+    today = ((now or datetime.now(UTC)) + timedelta(hours=8)).date()
+    since = (today - timedelta(days=int(cfg.get("days") or 10) + 2)).isoformat()
     return client.cell(_CELL, {"id": cfg["spreadsheet_id"], "range": cfg.get("range") or "Sheet1!A1:G500",
-                               "account": cfg.get("account") or None},
+                               "account": cfg.get("account") or None, "since": since},
                        thought="Semasa: read MYRA's daily regulatory log (read only)", budget=90)
 
 

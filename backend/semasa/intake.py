@@ -238,7 +238,7 @@ def do_folders(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: date
 
 
 def do_myra(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetime, dry: bool) -> dict[str, Any]:
-    raw = myra.fetch(client, cfg)
+    raw = myra.fetch(client, cfg, now)
     if raw.get("error"):
         raise RuntimeError(f"the sheet could not be read: {raw['error']}")
     today = (now + timedelta(hours=8)).date()

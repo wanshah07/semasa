@@ -211,10 +211,40 @@ def test_the_myra_cell_reads_the_sheet_read_only_with_the_owners_account():
         seen.update(args=args, account=account)
         return ({"data": {"valueRanges": [{"values": [["Tarikh"] + [""] * 6] + SHEET}]}}, "")
 
-    out = run_cell(myra._CELL, {"id": "SHEET", "range": "Sheet1!A1:G500", "account": "googlesheets_serau-tucker"},
+    out = run_cell(myra._CELL, {"id": "SHEET", "range": "Sheet1!A1:G500", "account": "googlesheets_serau-tucker",
+                                "since": "2026-09-18"},
                    tools_from({"GOOGLESHEETS_BATCH_GET": batch}))["out"]
     assert seen["account"] == "googlesheets_serau-tucker" and seen["args"]["ranges"] == ["Sheet1!A1:G500"]
-    assert len(out["rows"]) == len(SHEET) and len(out["rows"][0]) == 7
+    # only the rows with an update, inside the days that are read: the "No" rows and the 1 September row stay in the sheet
+    assert [r[0] for r in out["rows"]] == ["25/09/2026", "28/09/2026"] and len(out["rows"][0]) == 7 and out["trimmed"] == 0
+    assert [g["title"] for g in myra.findings(out["rows"], date(2026, 9, 30), days=10)][0] == "Amaran kosmetik baharu SR/02676/26"
+
+
+def test_a_sheet_too_big_for_the_workbench_answer_is_trimmed_oldest_first_instead_of_failing_the_sweep():
+    """14 Nov 2026: 80 rows of long text made a 46,249-character answer and every sweep failed, MYRA red for good."""
+    rows = [[f"{d:02d}/11/2026", "Yes", "Yes", "EU, MY", "x" * 2500 + f" (hari {d})", f"SR/{d}", f"https://x/{d}"]
+            for d in range(1, 29)]
+
+    def batch(args, account):
+        return ({"data": {"valueRanges": [{"values": [["Tarikh"] + [""] * 6] + rows}]}}, "")
+
+    r = run_cell(myra._CELL, {"id": "S", "range": "A1:G500", "account": None, "since": "2026-10-01"},
+                 tools_from({"GOOGLESHEETS_BATCH_GET": batch}))
+    assert r["ok"] is True                                                    # not "over the workbench limit"
+    out = r["out"]
+    assert out["trimmed"] > 0 and len(json.dumps(out)) < foryou.MAX_ANSWER
+    assert out["rows"][-1][0] == "28/11/2026"                               # the newest rows are the ones kept
+    assert all(len(r_[4]) <= 1500 for r_ in out["rows"])
+
+
+def test_myra_fetch_asks_only_for_the_recent_days_in_malaysia_time():
+    class Client:
+        def cell(self, body, params, thought="", budget=0):
+            self.params = params
+            return {"rows": [], "error": ""}
+    c = Client()
+    myra.fetch(c, {"spreadsheet_id": "S", "days": 10}, datetime(2026, 11, 14, 20, 0, tzinfo=UTC))   # 15 Nov 04:00 in Malaysia
+    assert c.params["since"] == "2026-11-03" and c.params["id"] == "S"
 
 
 # --- OneDrive folders -------------------------------------------------------------------------------------------------

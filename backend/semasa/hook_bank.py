@@ -97,7 +97,11 @@ DEFAULT_GUIDANCE = ("Write a Malay post's hook as the shape is written; write an
                     "A strong hook leans on the S.T.O.P. formula (Wan, 12 Nov 2026: saved and applied): S - Shock (a bold claim "
                     "or reality check that surprises), T - Target (name the reader: founders, mak-mak, pekerja 9 to 5), O - Open "
                     "loop (hold a little back so the reader wants the rest), P - Proof (result first, then how). Fold whichever "
-                    "of these fit into the shape's blanks; you never need all four, and never a fact the SOURCE does not give.")
+                    "of these fit into the shape's blanks; you never need all four, and never a fact the SOURCE does not give. "
+                    "Also answer 'why should I keep reading' inside the hook itself: name a real result, a real effort, or a "
+                    "source worth trusting, never an invented number (Wan, 14 Nov 2026: the viral-hook formula). If the story "
+                    "has something most people miss, frame it that way honestly, not theatrically, and close on one non-obvious "
+                    "take, never generic advice. Keep it human: say it the way you would tell a friend, not like a template.")
 
 
 def block(family: str | None, stream: str, bank: Bank | None = None, hint: str = "") -> str:

@@ -45,13 +45,13 @@ VIRAL = ("VIRAL-HOOK FORMULA (Wan, 14 Nov 2026, from a Chris Chung reel; it laye
          "never instead of them, on every post and film): "
          "(1) open a loop with a question or a claim that makes people want the rest; "
          "(2) keep the premise one many people can relate to; "
-         "(3) answer 'why should I trust this' in one line with a REAL result, a real effort, or a source worth trusting — never an "
-         "invented number; "
+         "(3) answer 'why should I trust this' in one line with a REAL result, a real effort, or a source worth trusting — "
+         "never an invented number; "
          "(4) frame what most people miss honestly, not theatrically; "
          "(5) close on one NON-OBVIOUS take, never generic advice. "
          "Keep it human: say it the way you would tell a friend, not a template or an ad, in the post's own language. "
-         "GROUNDING (Wan, 14 Nov 2026): every specific — a case that was recalled, a number, a date, a penalty, a name — must come "
-         "from the SOURCE. Never invent a concrete example to look credible.")
+         "GROUNDING (Wan, 14 Nov 2026): every specific — a case that was recalled, a number, a date, a penalty, a name — "
+         "must come from the SOURCE. Never invent a concrete example to look credible.")
 FILM = ("Lay it over the film's own scenes: scene 1 is the HOOK; scene 2 carries the PROBLEM inside its story and fact; "
         "scene 3 carries the SOLUTION and its PROOF as what was missed out; the last scene is the CTA.")
 

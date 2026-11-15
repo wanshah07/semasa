@@ -1,59 +1,56 @@
-# Backlog for Fable (Wan, 15 Nov 2026: "check deeply any bug or UI/UX problem but only list for fable do later on once weekly usage limit restart")
+# Backlog of 15 Nov 2026: what was done with it
 
-Nothing below has been changed. Each line says how sure it is: **verified** (seen in the live data, a screenshot or a run) or
-**suspected** (read in the code, not reproduced). Fix in this order unless Wan says otherwise.
+Wan, 15 Nov 2026: "check deeply any bug or UI/UX problem but only list for fable do later", then "use md.file to fix". Every
+item of the list is below with what was done. **Proven** means driven in a browser or run against the real platform;
+**tested** means covered by the repo's tests only; **not proven** says what is still unverified.
 
 ## Bugs
 
-1. **Two devices editing Expert content overwrite each other** (suspected). The page saves the whole `settings.experts` row from
-   what it holds. A phone and a desktop open at once, each adding a handle, leave only the later save. Fix: re-read the row just
-   before saving and merge by category id and handle, or save only the changed category.
-2. **A sweep with many Instagram handles may not finish** (suspected). `MAX_READS = 20` counts profile pages, but an Instagram
-   profile is up to seven page loads (`PER_ACCOUNT_IG = 6` posts, each opened), and a Threads chain adds one more page. Twenty
-   Instagram handles is about 140 loads, on top of the community and MYRA parts, inside the Sources workflow's 30-minute limit.
-   Fix: count loads rather than profiles, and stop the experts part cleanly at a time budget, carrying the rest to the next sweep
-   (the rotation is already there).
-3. **A chain that grows after it was read is not updated** (verified by design). The feed row is keyed by the first part's address
-   and a known address is skipped, so a part 3 added a day later never reaches the row. Fix: for a chain read in the last 3 days,
-   compare `chain_urls` and re-analyse when it is longer.
-4. **A Facebook or Instagram post's own `Translate` / "See more" text is not cleaned** (suspected). Only the Threads reader strips
-   page labels. Check `social_web.py` output for "See more", "…" and "Translate" on real posts.
-5. **`@quantum_thought_bot (Threads)` reads 0 posts with no error** (verified in the 14 Nov report). The page says nothing, the chip
-   is orange. Either the account has nothing in 14 days or the name is wrong; the chip should say which (the profile page shows a
-   "no threads yet" text when empty, and a not-found page otherwise).
-6. **Source-lights stay green on "live: 0 read"** (verified: Reddit, Facebook and Instagram on 14 Nov, 12:25 UTC) because old rows are
-   still inside the window. Correct by design, but it hides a source that has gone quiet for days. Consider orange after three
-   sweeps with nothing new even when old rows are still shown.
-7. **The AI brain keeps the old fragments of a healed chain** (known cost of this PR's heal). The brain gets the whole chain as a new
-   reference, and the old part-by-part references already filed stay in Otak AI until Wan deletes them there.
-8. **The unread `health_state` of 14 Nov 07:38 still listed the Facebook / Instagram / YouTube lines at 21:00** (verified): the watchdog
-   refreshes every six hours, so a fixed problem can show for up to six hours. Fine, but worth saying on the card ("last checked").
+1. **Two devices editing Expert content overwrote each other.** Fixed. A save now reads the setting as it is stored at that
+   moment, applies the one change to it, and saves that. Proven in a browser: a handle added "on the phone" after the desktop
+   page loaded survived the desktop's next save.
+2. **A sweep with many Instagram handles might not finish.** Fixed. The budget is counted in page loads (Threads 1, Facebook 1,
+   Instagram 7; 60 a sweep) and the part stops cleanly after 12 minutes. Accounts not reached go first next sweep, and the page
+   says the sweep stopped and how many were left. Tested.
+3. **A chain that grows after it was read was not updated.** Fixed. A chain now longer than the stored one (or a single post
+   that has since been carried on) is read again whole; a post Wan had hidden stays hidden. Tested.
+4. **Facebook and Instagram expert posts were cut at 500 characters, Facebook at "See more".** Fixed for both caps (now 4,000).
+   Facebook: every "See more" is opened before reading and paragraphs are kept (tested against a page built for the test).
+   **Not proven:** on real Facebook with the saved login, and whether Instagram's own page description carries a whole long
+   caption (that is Instagram's text, read as given).
+5. **`@quantum_thought_bot` read 0 posts with no reason.** Fixed, and a worse bug found beside it. Checked live: that account's
+   newest post is from November 2024, so the chip now says "newest post is N days old, outside the 14-day window". The worse
+   bug: Threads sends a visitor to its login page for a username that does not exist, the sweep read that as "Threads asked
+   for a login" and **stopped every other Threads read of that sweep**. A missing account is now reported as "account not found
+   or private" for that handle only. Proven live for both cases; tested.
+6. **Lights stayed green on "0 read" because of old rows.** Fixed. Green for a quiet sweep or two; after three sweeps in a row
+   with nothing read the light turns orange and reaches the watchdog, even when older rows are still on show. Tested.
+7. **The AI brain kept the old pieces of a healed chain.** Fixed. When a chain replaces its pieces, the sweep's own old
+   references to those pieces are removed from the brain, with the entries read from them. An entry Wan edited or pinned
+   stays, and so does anything he dropped in himself. Tested.
+8. **A fixed problem could still show for up to six hours.** No change needed: nothing in the page shows that list (it is the
+   watchdog e-mail's own state), and the Papan status card already says when the watchdog last updated.
 
 ## UI / UX
 
-1. **Expert content on a phone: the first post starts 2,193 px down** (verified, 390 px wide). The three left cards (handles,
-   suggestions, settings) come before the posts. Fix: posts first on a phone, the three cards behind a "Manage accounts" button
-   or a bottom sheet; keep the two-column layout from `lg` up.
-2. **Isu semasa's tab row is ten pills tall on a phone** (verified in a screenshot: five wrapped rows before any content). Make it one
-   horizontal scrolling row, with the open tab scrolled into view, and keep the status line under it.
-3. **No way to see a handle's own posts** (suggested). A handle row could open the feed filtered to that owner (the filter exists,
-   `who`); today it is a dropdown that only appears with more than one account.
-4. **No count of what was hidden as off the niche per handle** (suggested). Wan sees `0 posts` and cannot tell "nothing posted" from
-   "everything judged off the niche" (hamiddi_ and m0d0 each have several hidden markers). Show "5 read, 3 shown, 2 hidden".
-5. **"Worth following" has no way to ask again today** (verified: AI list empty since the daily search ran at 12:14 UTC and found only
-   accounts already followed). A "search again" button, rate-limited, would answer "why is it empty".
-6. **Brain switch changes are silent about the past**: turning it on files only new posts. Say so, and offer "send the last 14 days".
-7. **Original post card cuts at five lines on a phone** with "Show all"; for a chain of four parts that is the first paragraph only.
-   Show part by part, collapsed, with the part number.
-8. **The two toasts stack over the Worth-following card** (verified in the screenshot) and hide the buttons for five seconds. Put toasts
-   at the top on a phone, or shorten the time for a plain "saved".
-9. **Category settings is closed by default and carries no hint that the brain switch lives inside** except a small "AI brain on" label.
-   Move the switch to the category tab row as a toggle.
-10. **Dashboard status card has ten tiles at five columns**: two even rows on a wide screen, but 5 rows of 2 on a phone. A compact one-line
-    version (dots only, details on press) would leave room on Papan.
+1. **Posts first on a phone.** Done. The three account cards open from "Manage accounts"; the first post moved from 2,193 px
+   down to 649. Proven at 390 px wide.
+2. **Isu semasa's tab row.** Done. One scrolling row on a phone (44 px tall instead of five wrapped rows), the open tab scrolled
+   into view. Proven.
+3. **See one account's posts.** Done. Pressing an account's name filters the feed to that owner; a chip clears it. Proven.
+4. **Counts per account.** Done. Each account shows "N shown · N off the field · N hidden by you". Proven.
+5. **Search again for accounts worth following.** Done, at most once an hour. An empty list now says why (for example "found 6
+   authors, 2 already followed; the bot judged 4 and none showed enough depth"). Proven in the page; the search itself tested.
+6. **Brain switch and the past.** Done. Turning it on says it files new posts only, and "Send the N posts already here" sends
+   the rest. Proven in a browser.
+7. **Chains in a card.** Done. Shown part by part, numbered; closed, the first part with "Show all N parts". Proven.
+8. **Toasts covering buttons.** Done. Top of the screen on a phone, bottom right on a wide screen, and a plain "saved" stays
+   2.6 seconds instead of 5 (a failure stays 7). Applies to the whole app.
+9. **Brain switch visibility.** Done. It is a switch in the open category's bar, not inside the closed settings card.
+10. **Dashboard status card on a phone.** Done. A chip a source, then only the sources that need a look with their reasons.
+    Proven.
 
-## Done in this change (not backlog)
+## Still open
 
-- Threads chains are read as one post (verified live against a real profile: 2- and 4-part chains joined, paragraphs and links kept).
-- Chains already stored part by part are replaced once, automatically.
-- One owner can have a different username on each platform.
+- Facebook "See more" and long Instagram captions need one real sweep with a Facebook or Instagram expert account to be proven.
+- The Expert page's blurb is hidden on a phone to bring the posts up; say if it should stay.

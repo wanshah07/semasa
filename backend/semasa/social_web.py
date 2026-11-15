@@ -50,9 +50,23 @@ _FB_EXTRACT = r"""
   const link = [...a.querySelectorAll('a[href]')].find((x) =>
     /\/(posts|videos|reel)\/|story_fbid|multi_permalinks|\/permalink/.test(x.getAttribute('href') || ''));
   const when = link ? link.getAttribute('aria-label') || '' : '';
+  // `lines` is the same message with its own line breaks kept, for a reader that wants the post as written (experts.py)
   return {text: text.slice(0, 700), message: msg ? (msg.innerText || '').replace(/\s+/g, ' ').trim() : '',
+          lines: msg ? (msg.innerText || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim() : '',
           href: link ? link.href : '', when};
 }).filter((p) => p.href && p.text)
+"""
+
+# runs in the page: opens every post that Facebook cut with "See more", so the message read after it is the whole post
+_FB_EXPAND = r"""
+() => {
+  let n = 0;
+  for (const b of document.querySelectorAll('[role="article"] [role="button"]')) {
+    if (n >= 15) break;
+    if (/^(see more|lihat lagi|lihat selengkapnya)$/i.test((b.innerText || '').trim())) { b.click(); n++; }
+  }
+  return n;
+}
 """
 
 _IG_LINKS = r"""
@@ -138,23 +152,34 @@ def _fb_link(href: str) -> tuple[str, str] | None:
     return (f"{FB_BASE}{path}", tail[-1]) if tail else None
 
 
-def facebook_post(raw: dict[str, Any], now: datetime) -> dict[str, Any] | None:
+_FB_TAIL = re.compile(r"\s*(…|\.\.\.)?\s*(See more|See less|See translation|See original|Lihat lagi)$", re.I)
+
+
+def facebook_post(raw: dict[str, Any], now: datetime, cap: int = 500, keep_lines: bool = False) -> dict[str, Any] | None:
+    """`keep_lines`: the message with its paragraphs kept (experts.py); `cap`: how much of it is kept."""
     link = _fb_link(str(raw.get("href") or ""))
-    text = str(raw.get("message") or "").strip()
-    text = re.sub(r"\s*(…|\.\.\.)?\s*See more$", "", text).strip()
+    text = str((raw.get("lines") if keep_lines and raw.get("lines") else raw.get("message")) or "").strip()
+    for _ in range(3):                                   # the page's own labels at the end of a message are not its words
+        text = _FB_TAIL.sub("", text).strip()
     when = _fb_time(str(raw.get("text") or ""), str(raw.get("when") or ""), now)
     if not link or len(text) < 15 or not when:
         return None
     m = re.search(r"All reactions:\s*([\d.,]+\s*[KkMm]?)", str(raw.get("text") or ""))
     shown = {"reactions": m.group(1).replace(" ", "")} if m else {}
-    return {"id": link[1], "text": text[:500], "permalink": link[0], "timestamp": when.isoformat(),
+    return {"id": link[1], "text": text[:cap], "permalink": link[0], "timestamp": when.isoformat(),
             "counts": {k: parse_count(v) for k, v in shown.items()} or {"reactions": None}, "shown": shown}
 
 
-def _fb_rows(page: Any, scrolls: int = SCROLLS) -> list[dict[str, Any]]:
+def _fb_rows(page: Any, scrolls: int = SCROLLS, expand: bool = False) -> list[dict[str, Any]]:
     for _ in range(scrolls):
         page.mouse.wheel(0, 2500)
         page.wait_for_timeout(SCROLL_MS)
+    if expand:
+        try:
+            if page.evaluate(_FB_EXPAND):
+                page.wait_for_timeout(1200)
+        except Exception as exc:  # noqa: BLE001 - a post left cut is still a post
+            log.info("Facebook posts not expanded: %s", str(exc)[:100])
     return page.evaluate(_FB_EXTRACT) or []
 
 
@@ -184,17 +209,19 @@ def read_facebook(page: Any, tag: str, now: datetime) -> tuple[list[dict[str, An
     return got, ""
 
 
-def read_facebook_account(page: Any, handle: str, now: datetime) -> tuple[list[dict[str, Any]], str]:
-    """A page or profile's own newest posts (facebook.com/<name>), read with the saved login."""
+def read_facebook_account(page: Any, handle: str, now: datetime, cap: int = 500) -> tuple[list[dict[str, Any]], str]:
+    """A page or profile's own newest posts (facebook.com/<name>), read with the saved login. With a `cap` over the feed's
+    500 the post itself is the content (experts.py): every "See more" is opened first and the paragraphs are kept."""
+    whole = cap > 500
     try:
         page.goto(f"{FB_BASE}/{handle}", wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_timeout(SETTLE_MS)
         if any(p in str(getattr(page, "url", "")) for p in _WALL_PARTS):
             return [], "Facebook asked for a login"
-        rows = _fb_rows(page, scrolls=3)
+        rows = _fb_rows(page, scrolls=3, expand=whole)
     except Exception as exc:  # noqa: BLE001
         return [], f"{type(exc).__name__}: {str(exc)[:160]}"
-    got = [p for p in (facebook_post(r, now) for r in rows) if p]
+    got = [p for p in (facebook_post(r, now, cap, whole) for r in rows) if p]
     _NOTES.append(f"@{handle}: {len(rows)} post block(s), {len(got)} usable at {_where(page)}")
     return got, ""
 
@@ -206,7 +233,7 @@ _IG_DESC = re.compile(
     r"(?P<user>[\w.]+) on (?:(?P<date>[A-Z][a-z]+ \d{1,2}, \d{4})|Instagram)\s*:\s*[\"“](?P<caption>.*)[\"”]\.?\s*$", re.S)
 
 
-def parse_instagram(desc: str, time_attr: str, href: str) -> dict[str, Any] | None:
+def parse_instagram(desc: str, time_attr: str, href: str, cap: int = 500) -> dict[str, Any] | None:
     """One post from its page: the og:description Instagram writes ('1,234 likes, 56 comments - user on November 12, 2026:
     "caption"') and the page's own <time datetime>. None when the description is not a post's (a login wall's, an empty one)."""
     m = _IG_DESC.match(" ".join(str(desc or "").split()))
@@ -228,12 +255,12 @@ def parse_instagram(desc: str, time_attr: str, href: str) -> dict[str, Any] | No
     if not when or len(caption) < 15:
         return None
     shown = {k: m.group(k) for k in ("likes", "comments") if m.group(k)}
-    return {"id": pid.group(1), "username": m.group("user"), "text": caption[:500],
+    return {"id": pid.group(1), "username": m.group("user"), "text": caption[:cap],
             "permalink": f"{IG_BASE}/p/{pid.group(1)}/", "timestamp": when.isoformat(),
             "counts": {k: parse_count(v) for k, v in shown.items()} or {"likes": None}, "shown": shown}
 
 
-def _ig_open(page: Any, links: list[str]) -> tuple[list[dict[str, Any]], str]:
+def _ig_open(page: Any, links: list[str], cap: int = 500) -> tuple[list[dict[str, Any]], str]:
     """Open each post link and read its description and time. (posts, what the first unreadable post page said)."""
     out: list[dict[str, Any]] = []
     refused = ""
@@ -241,7 +268,7 @@ def _ig_open(page: Any, links: list[str]) -> tuple[list[dict[str, Any]], str]:
         page.goto(IG_BASE + href, wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_timeout(2500)
         info = page.evaluate(_IG_POST) or {}
-        post = parse_instagram(info.get("desc", ""), info.get("time", ""), href)
+        post = parse_instagram(info.get("desc", ""), info.get("time", ""), href, cap)
         if post:
             out.append(post)
         elif not refused:
@@ -267,8 +294,9 @@ def read_instagram(page: Any, tag: str, now: datetime) -> tuple[list[dict[str, A
     return out, ""
 
 
-def read_instagram_account(page: Any, handle: str, now: datetime) -> tuple[list[dict[str, Any]], str]:
-    """An account's newest posts: its profile grid lists them newest first (a pinned post can sit at the top)."""
+def read_instagram_account(page: Any, handle: str, now: datetime, cap: int = 500) -> tuple[list[dict[str, Any]], str]:
+    """An account's newest posts: its profile grid lists them newest first (a pinned post can sit at the top). `cap` is how
+    much of a caption is kept (500 for the feed of arguments, more where the post itself is the content)."""
     try:
         page.goto(f"{IG_BASE}/{handle}/", wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_timeout(SETTLE_MS)
@@ -276,7 +304,7 @@ def read_instagram_account(page: Any, handle: str, now: datetime) -> tuple[list[
             return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_B64)"
         where = _where(page)
         links = (page.evaluate(_IG_LINKS) or [])[:PER_ACCOUNT_IG]
-        out, refused = _ig_open(page, links)
+        out, refused = _ig_open(page, links, cap)
     except Exception as exc:  # noqa: BLE001
         return [], f"{type(exc).__name__}: {str(exc)[:160]}"
     _NOTES.append(f"@{handle}: {len(links)} post link(s), {len(out)} read at {where}"

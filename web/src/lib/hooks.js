@@ -135,13 +135,16 @@ export function useGenerations({ limit = 300, enabled = true, need = "" } = {}) 
   return { rows, error, reload: load, requeue, remove };
 }
 
+export const TOAST_MS = { ok: 2600, info: 3500, warn: 6000, danger: 7000, error: 7000 };
+
 /** Tiny toast queue. */
 export function useToasts() {
   const [toasts, setToasts] = useState([]);
   const push = useCallback((text, tone = "info") => {
     const id = Math.random().toString(36).slice(2);
     setToasts((t) => [...t, { id, text, tone }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
+    // a plain "saved" does not need five seconds over the page; a failure is read, so it stays longer
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), TOAST_MS[tone] || TOAST_MS.info);
   }, []);
   return { toasts, push };
 }

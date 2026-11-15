@@ -31,7 +31,36 @@ export default function SourceStatus({ setting, go }) {
           {updated && <span className="tabular-nums text-ink/70">· {t("pengawas dikemas kini", "watchdog updated")} {updated} MYT</span>}
         </p>
       </div>
-      <ul className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+      {/* a phone gets the compact form: a chip a source (light, name, time), then only the sources that need a look, each with
+          its reason. Ten full tiles were five rows of two there, most of them saying "live". */}
+      <div className="mt-3 md:hidden" data-source-compact>
+        <ul className="flex flex-wrap gap-1.5">
+          {SOURCES.map(([id, bm, enName, tab]) => {
+            const l = lightOf(setting, id, now);
+            const when = checkedText(l.checked, now, en);
+            return (
+              <li key={id}>
+                <button type="button" onClick={() => open(id, tab)} data-source-chip={id} data-light={l.light} aria-label={`${t(bm, enName)}: ${t(LIGHT_NAME[l.light][0], LIGHT_NAME[l.light][1])}. ${l.why}`}
+                  className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-pill px-2.5 py-1 text-xs font-medium text-ink ${LIGHT_TINT[l.light]}`}>
+                  <SourceLight light={l.light} why={l.why} className="!h-2 !w-2" />{t(bm, enName)}
+                  {when && <span className="text-[10px] font-normal tabular-nums text-ink/70">{when}</span>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {SOURCES.some(([id]) => ["orange", "red"].includes(lightOf(setting, id, now).light)) ? (
+          <ul className="mt-2.5 space-y-1.5">
+            {SOURCES.map(([id, bm, enName]) => [id, t(bm, enName), lightOf(setting, id, now)]).filter(([, , l]) => ["orange", "red"].includes(l.light)).map(([id, name, l]) => (
+              <li key={id} className="flex gap-2 text-[11px] leading-snug text-ink/80" data-source-why={id}>
+                <SourceLight light={l.light} why={l.why} className="mt-1 !h-2 !w-2" />
+                <span className="[overflow-wrap:anywhere]"><strong className="font-semibold text-ink">{name}</strong> · {t(LIGHT_NAME[l.light][0], LIGHT_NAME[l.light][1])}: {l.why}</span>
+              </li>
+            ))}
+          </ul>
+        ) : n.unknown === 0 && <p className="mt-2 text-[11px] text-ink/70">{t("Semua sumber hidup.", "Every source is live.")}</p>}
+      </div>
+      <ul className="mt-3 hidden grid-cols-2 gap-2 md:grid md:grid-cols-3 xl:grid-cols-5">
         {SOURCES.map(([id, bm, enName, tab]) => {
           const l = lightOf(setting, id, now);
           const when = checkedText(l.checked, now, en);

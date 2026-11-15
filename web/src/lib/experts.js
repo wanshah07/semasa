@@ -9,7 +9,11 @@ export const PLATFORM_NAMES = { threads: "Threads", facebook: "Facebook", instag
 export const MAX_HANDLES = 20;          // per category
 export const MAX_CATEGORIES = 12;
 export const MAX_KEYWORDS = 5;
-export const READS_PER_SWEEP = 20;      // backend/semasa/experts.py MAX_READS: profile pages opened in one sweep
+/* One sweep is budgeted in PAGE LOADS (backend/semasa/experts.py LOAD_COST, MAX_LOADS): an Instagram profile is its grid and
+   six post pages, a Threads or Facebook profile is one page. */
+export const LOAD_COST = { threads: 1, facebook: 1, instagram: 7 };
+export const LOADS_PER_SWEEP = 60;
+export const SEARCH_AGAIN_MS = 60 * 60 * 1000;      // "Search again" for accounts worth following: once an hour at most
 
 export const DEFAULT_EXPERTS = {
   enabled: true, hours: 336, per_handle: 5,
@@ -77,7 +81,9 @@ export function configOf(setting) {
       dismissed: [...new Set((Array.isArray(c.dismissed) ? c.dismissed : []).map((d) => low(cleanHandle(d))).filter(Boolean))].slice(-200),
     });
   }
-  return { enabled: s.enabled !== false, hours: Number(s.hours) || DEFAULT_EXPERTS.hours, per_handle: Number(s.per_handle) || DEFAULT_EXPERTS.per_handle, categories };
+  const asked = typeof s.discover_request === "string" && Number.isFinite(Date.parse(s.discover_request)) ? s.discover_request : null;
+  return { enabled: s.enabled !== false, hours: Number(s.hours) || DEFAULT_EXPERTS.hours, per_handle: Number(s.per_handle) || DEFAULT_EXPERTS.per_handle,
+    ...(asked ? { discover_request: asked } : {}), categories };
 }
 
 const mapCat = (cfg, id, fn) => ({ ...cfg, categories: cfg.categories.map((c) => (c.id === id ? fn(c) : c)) });
@@ -214,11 +220,59 @@ export function rowsFor(rows, catId, { hidden = false, q = "", handle = "" } = {
     .sort((a, b) => String(b.published_at || b.created_at || "").localeCompare(String(a.published_at || a.created_at || "")));
 }
 
-/** How many profile pages one sweep opens for this setting, against what it can open: over the limit, the rest take turns. */
+/** How many pages one sweep would load for this setting, against what it loads: over the limit, the accounts take turns. An
+    account listed twice on one platform is read once, as the sweep does. */
 export function readLoad(cfg) {
-  const reads = cfg.categories.reduce((n, c) => n + c.handles.reduce((m, h) => m + h.platforms.length, 0), 0);
-  return { reads, limit: READS_PER_SWEEP, over: reads > READS_PER_SWEEP };
+  const seen = new Set();
+  let loads = 0;
+  for (const c of cfg.categories) {
+    for (const h of c.handles) {
+      for (const p of h.platforms) {
+        const key = `${p}|${low(accountOf(h, p))}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        loads += LOAD_COST[p] || 1;
+      }
+    }
+  }
+  return { loads, accounts: seen.size, limit: LOADS_PER_SWEEP, over: loads > LOADS_PER_SWEEP };
 }
+
+/** The parts of an original post: one for a single post, several for a chain the sweep joined ("— 2/4 —" between them). */
+export function chainParts(original) {
+  return String(original || "").split(/\n\n— \d+\/\d+ —\n\n/).map((x) => x.trim()).filter(Boolean);
+}
+
+/** Per owner in one category, from the feed rows: posts shown, posts Wan hid, and posts the bot judged off the niche. So "0
+    posts" can be told from "everything judged off the niche". Keys are the owner's main name in lower case. */
+export function ownerStats(rows, catId) {
+  const out = {};
+  for (const r of rows || []) {
+    if (r.section !== "expert" || !r.raw || r.raw.category !== catId) continue;
+    const k = low(r.raw.owner || r.raw.handle);
+    if (!k) continue;
+    const s = (out[k] ||= { shown: 0, hidden: 0, off: 0 });
+    if (r.relevant === false) s.off++;
+    else if (r.dismissed) s.hidden++;
+    else s.shown++;
+  }
+  return out;
+}
+
+/** Ask the sweep to search for accounts worth following again: the time of the request goes in the setting, and the sweep
+    searches when it is newer than its last search (it never has to clear it, so only the page writes this row). */
+export const requestDiscovery = (cfg, nowIso) => ({ ...cfg, discover_request: nowIso });
+
+/** May "Search again" be pressed: not within an hour of the last press or of the last search. { ok, waitMin }. */
+export function canSearchAgain(cfg, suggestions, nowMs = Date.now()) {
+  const last = Math.max(Date.parse(cfg && cfg.discover_request) || 0, Date.parse(suggestions && suggestions.at) || 0);
+  const left = last + SEARCH_AGAIN_MS - nowMs;
+  return { ok: left <= 0, waitMin: left > 0 ? Math.ceil(left / 60000) : 0, pending: Boolean(cfg && cfg.discover_request)
+    && (Date.parse(cfg.discover_request) || 0) > (Date.parse(suggestions && suggestions.at) || 0) };
+}
+
+/** The feed rows of one category that could still go to the AI brain by hand: shown, and not marked as filed. */
+export const notInBrain = (rows, catId, sent = new Set()) => rowsFor(rows, catId).filter((r) => !(r.raw && r.raw.brain) && !sent.has(r.id));
 
 /** The AI brain's inbox row for one feed row the person sends by hand (the sweep files its own for a category with the switch
     on): the expert's own words first, then the summary, as a reference. */

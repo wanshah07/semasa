@@ -59,6 +59,19 @@ def test_rows_still_on_show_keep_a_quiet_source_green():
     assert lights(stored({"read": {"reddit": 0}}), {"reddit": NOW - timedelta(hours=90)})["reddit"]["light"] == "orange"
 
 
+def test_a_source_that_reads_nothing_for_three_sweeps_is_not_live_because_of_what_it_read_last_week():
+    latest = {"facebook": NOW - timedelta(days=5)}
+    cfg = {**CFG, "community": {**CFG["community"], "facebook": {"enabled": True, "hours": 14 * 24, "accounts": ["x"]}}}
+    quiet = lights(stored({"read": {"facebook": 0}}), latest, prev={"facebook": {"zero_streak": 1}}, cfg=cfg)["facebook"]
+    assert quiet["light"] == "green" and "nothing new in the last sweep" in quiet["why"]
+    stuck = lights(stored({"read": {"facebook": 0}}), latest, prev={"facebook": {"zero_streak": 3}}, cfg=cfg)["facebook"]
+    assert stuck["light"] == "orange" and stuck["act"] and "read nothing in 3 sweeps in a row" in stuck["why"]
+    assert any("Facebook" in p["area"] for p in sl.problems({"facebook": stuck}))
+    back = lights(stored({"read": {"facebook": 4}}), latest, prev={"facebook": {"zero_streak": 3}}, cfg=cfg,
+                  from_sweep=True)["facebook"]
+    assert back["light"] == "green" and back["zero_streak"] == 0
+
+
 def test_a_sweep_that_stopped_running_turns_every_source_red_and_a_switched_off_one_is_orange_not_a_problem():
     got = lights(stored({"read": {"threads": 5}}, ago=20))
     assert got["threads"]["light"] == "red" and "no sweep for 20 h" in got["threads"]["why"] and got["myra"]["light"] == "red"

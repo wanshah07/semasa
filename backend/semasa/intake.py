@@ -265,7 +265,8 @@ def do_experts(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: date
         return experts.sweep(store, llm, ecfg, own, now, dry, have, write, pages)
     cats = experts.categories(ecfg)
     # a browser is opened only when there is a page to read: a registered handle, or the daily search for accounts to suggest
-    need = any(c["handles"] for c in cats) or (any(c["keywords"] for c in cats) and experts.discovery_due(store, now))
+    need = any(c["handles"] for c in cats) or (any(c["keywords"] for c in cats)
+                                               and experts.discovery_due(store, now, ecfg.get("discover_request")))
     try:
         return experts.browse(go) if need else go({})
     except NeedsMigration as exc:

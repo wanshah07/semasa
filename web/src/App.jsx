@@ -1,5 +1,5 @@
 import { hiddenOf } from "./lib/lookChoice";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { RefreshCw } from "lucide-react";
 import { fadeUp } from "./design/motion";
@@ -138,6 +138,12 @@ function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, s
   // its own read (pages/ExpertTab.jsx), so its rows never take room in this list
   const watch = useTable(TABLES.watch, { enabled: allowed && seg !== "isu", limit: 900, realtime: false, everyMs: 120_000, neq: ["section", "expert"] });
   const en = lang === "en";
+  // the open tab is brought into view in the scrolling row, so a phone never opens on a row whose open tab is off screen
+  const tabRow = useRef(null);
+  useEffect(() => {
+    const on = tabRow.current?.querySelector('[aria-selected="true"]');
+    if (on && tabRow.current.scrollWidth > tabRow.current.clientWidth) on.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [seg]);
   const here = seg === "isu" ? null : lightOf(settings.source_lights, seg);
   const legend = (
     <div className="-mt-2 mb-4 space-y-1.5 text-xs text-ink/80">
@@ -160,7 +166,9 @@ function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, s
   );
   const segTabs = (
     <>
-    <div role="tablist" aria-label={t("Segmen", "Segments")} className="mb-5 flex flex-wrap gap-1.5">
+    {/* one scrolling row on a phone (ten wrapped pills were five rows before any content), wrapped from sm up */}
+    <div role="tablist" aria-label={t("Segmen", "Segments")} ref={tabRow} data-isu-tabs
+      className="-mx-4 mb-5 flex flex-nowrap gap-1.5 overflow-x-auto px-4 py-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
       {[["isu", t("Isu semasa", "Current issues")], ["regulatory", t("Regulatori", "Regulatory")],
         ["publication", t("Penerbitan terkini", "Latest publications")], ["reddit", "Reddit"], ["youtube", "YouTube"],
         ["threads", "Threads"], ["facebook", "Facebook"], ["instagram", "Instagram"], ["folder", "OneDrive"], ["myra", "MYRA"]].map(([v, l]) => {

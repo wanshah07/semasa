@@ -45,6 +45,7 @@ def test_each_kind_of_post_takes_its_framework():
     for kind in copywriting.STEPS:                                 # the guard rides with every framework
         b = copywriting.block(kind)
         assert "never a testimonial" in b and "Do not print the step names" in b
+        assert "VIRAL-HOOK FORMULA" in b and "NON-OBVIOUS" in b and "Never invent a concrete example" in b
     assert copywriting.block("unknown") == ""
 
 

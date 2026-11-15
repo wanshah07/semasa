@@ -37,6 +37,20 @@ export function cleanHandle(v) {
 
 const platformsOf = (v) => PLATFORMS.filter((p) => (Array.isArray(v) ? v : []).includes(p));
 
+/** The usernames that differ from the owner's main name, only for platforms the owner is ticked on (Wan, 15 Nov 2026: one owner,
+    a different username on each platform). A name equal to the main one, or not a valid username, is not kept. */
+export function namesOf(handle, platforms, raw) {
+  const out = {};
+  for (const p of platforms) {
+    const v = cleanHandle(raw && raw[p]);
+    if (v && low(v) !== low(handle)) out[p] = v;
+  }
+  return out;
+}
+
+/** The username an owner has on one platform. */
+export const accountOf = (h, platform) => (h.names && h.names[platform]) || h.handle;
+
 /** The settings row as the page reads it: every category whole, every handle clean, nothing undefined. */
 export function configOf(setting) {
   const s = setting && typeof setting === "object" ? setting : {};
@@ -54,7 +68,8 @@ export function configOf(setting) {
       const platforms = platformsOf(h && typeof h === "object" ? h.platforms : ["threads"]);
       if (!handle || !platforms.length || seen.has(low(handle))) continue;
       seen.add(low(handle));
-      handles.push({ handle, platforms });
+      const names = namesOf(handle, platforms, h && typeof h === "object" ? h.names : null);
+      handles.push({ handle, platforms, ...(Object.keys(names).length ? { names } : {}) });
     }
     categories.push({
       id, name: String(c.name || id).slice(0, 60), brain: Boolean(c.brain), niche: String(c.niche || "").slice(0, 300), handles,
@@ -111,7 +126,7 @@ export function keywordsFrom(v) {
 
 /** Register a handle on the platforms ticked. A name already there gains the new platforms (one row a name). Adding a name
     also takes it off the dismissed list. { cfg } or { error: "handle" | "platform" | "full" }. */
-export function addHandle(cfg, catId, raw, platforms) {
+export function addHandle(cfg, catId, raw, platforms, names = {}) {
   const handle = cleanHandle(raw);
   const plats = platformsOf(platforms);
   if (!handle) return { error: "handle" };
@@ -125,8 +140,13 @@ export function addHandle(cfg, catId, raw, platforms) {
     cfg: mapCat(cfg, catId, (c) => ({
       ...c,
       handles: has
-        ? c.handles.map((h) => (low(h.handle) === low(handle) ? { ...h, platforms: PLATFORMS.filter((p) => h.platforms.includes(p) || plats.includes(p)) } : h))
-        : [...c.handles, { handle, platforms: plats }],
+        ? c.handles.map((h) => {
+          if (low(h.handle) !== low(handle)) return h;
+          const all = PLATFORMS.filter((p) => h.platforms.includes(p) || plats.includes(p));
+          const merged = namesOf(h.handle, all, { ...(h.names || {}), ...names });
+          return { handle: h.handle, platforms: all, ...(Object.keys(merged).length ? { names: merged } : {}) };
+        })
+        : [...c.handles, { handle, platforms: plats, ...(Object.keys(namesOf(handle, plats, names)).length ? { names: namesOf(handle, plats, names) } : {}) }],
       dismissed: c.dismissed.filter((d) => d !== low(handle)),
     })),
   };
@@ -134,6 +154,20 @@ export function addHandle(cfg, catId, raw, platforms) {
 
 export const removeHandle = (cfg, catId, handle) =>
   mapCat(cfg, catId, (c) => ({ ...c, handles: c.handles.filter((h) => low(h.handle) !== low(handle)) }));
+
+/** Set the usernames an owner has on the platforms in `map` ({ instagram: "dr.aiman", threads: "" }) in ONE change; an empty one
+    (or the main name) means "same as the main name". */
+export function setAccountNames(cfg, catId, handle, map) {
+  return mapCat(cfg, catId, (c) => ({
+    ...c,
+    handles: c.handles.map((h) => {
+      if (low(h.handle) !== low(handle)) return h;
+      const names = namesOf(h.handle, h.platforms, { ...(h.names || {}), ...(map || {}) });
+      const { names: _old, ...rest } = h;
+      return Object.keys(names).length ? { ...rest, names } : rest;
+    }),
+  }));
+}
 
 /** Tick or untick one platform of a handle. The last platform cannot be unticked: remove the handle instead. */
 export function togglePlatform(cfg, catId, handle, platform) {
@@ -144,7 +178,10 @@ export function togglePlatform(cfg, catId, handle, platform) {
       if (low(h.handle) !== low(handle)) return h;
       const on = h.platforms.includes(platform);
       if (on && h.platforms.length === 1) return h;
-      return { ...h, platforms: PLATFORMS.filter((p) => (p === platform ? !on : h.platforms.includes(p))) };
+      const platforms = PLATFORMS.filter((p) => (p === platform ? !on : h.platforms.includes(p)));
+      const names = namesOf(h.handle, platforms, h.names);       // a platform that is unticked takes its own username with it
+      const { names: _old, ...rest } = h;
+      return { ...rest, platforms, ...(Object.keys(names).length ? { names } : {}) };
     }),
   }));
 }
@@ -157,7 +194,7 @@ export function suggestionsFor(suggestions, cfg, catId) {
   const cat = cfg.categories.find((c) => c.id === catId);
   const list = suggestions && suggestions.lists && Array.isArray(suggestions.lists[catId]) ? suggestions.lists[catId] : [];
   if (!cat) return [];
-  const skip = new Set([...cat.handles.map((h) => low(h.handle)), ...cat.dismissed]);
+  const skip = new Set([...cat.handles.flatMap((h) => [low(h.handle), ...Object.values(h.names || {}).map(low)]), ...cat.dismissed]);
   const seen = new Set();
   return list.filter((s) => {
     const h = low(cleanHandle(s && s.handle));
@@ -172,8 +209,8 @@ export function rowsFor(rows, catId, { hidden = false, q = "", handle = "" } = {
   const needle = low(q).trim();
   return (rows || [])
     .filter((r) => r.section === "expert" && r.raw && r.raw.category === catId && r.relevant !== false && (hidden || !r.dismissed)
-      && (!handle || low(r.raw.handle) === low(handle))
-      && (!needle || [r.title, r.summary, r.why, r.raw.original, r.raw.handle].some((v) => low(v).includes(needle))))
+      && (!handle || low(r.raw.owner || r.raw.handle) === low(handle))
+      && (!needle || [r.title, r.summary, r.why, r.raw.original, r.raw.handle, r.raw.owner].some((v) => low(v).includes(needle))))
     .sort((a, b) => String(b.published_at || b.created_at || "").localeCompare(String(a.published_at || a.created_at || "")));
 }
 
@@ -187,8 +224,9 @@ export function readLoad(cfg) {
     on): the expert's own words first, then the summary, as a reference. */
 export function brainRow(r) {
   const raw = r.raw || {};
+  const chain = raw.parts ? ` (a chain of ${raw.parts} posts)` : "";
   const body = `Expert: @${raw.handle || ""} on ${PLATFORM_NAMES[raw.platform] || raw.platform || ""} (${raw.category_name || raw.category || ""})\n\n`
-    + `Original post:\n${String(raw.original || "").slice(0, 2000)}\n\nSummary: ${r.summary || ""}${r.why ? `\nTakeaway: ${r.why}` : ""}`;
+    + `Original post${chain}:\n${String(raw.original || "").slice(0, 8000)}\n\nSummary: ${r.summary || ""}${r.why ? `\nTakeaway: ${r.why}` : ""}`;
   return { source_kind: "text", title: String(r.title || "").slice(0, 200), url: r.url || "", body, hint: "reference",
     note: `Expert content (${raw.category_name || raw.category || ""}): a reference only, the view of one expert, not a verified fact.` };
 }

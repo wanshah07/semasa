@@ -7,8 +7,8 @@ import { useTable } from "../lib/hooks";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { stampMYT } from "../lib/format";
 import { LIGHT_NAME, LIGHT_TINT, checkedText, lightOf } from "../lib/sourceLights";
-import { MAX_HANDLES, PLATFORMS, PLATFORM_NAMES, addCategory, addHandle, brainRow, configOf, dismissSuggestion, patchCategory, readLoad, removeCategory,
-  removeHandle, rowsFor, suggestionsFor, togglePlatform } from "../lib/experts";
+import { MAX_HANDLES, PLATFORMS, PLATFORM_NAMES, accountOf, addCategory, addHandle, brainRow, configOf, dismissSuggestion, patchCategory, readLoad,
+  removeCategory, removeHandle, rowsFor, setAccountNames, suggestionsFor, togglePlatform } from "../lib/experts";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Skeleton from "../components/ui/Skeleton";
@@ -58,8 +58,35 @@ function lastRead(report, handle, platform) {
   return { state: "unknown" };
 }
 
-function HandleRow({ h, report, busy, onToggle, onRemove }) {
+/* One username field per ticked platform: the owner can be called something else on each (Wan, 15 Nov 2026). Empty = the main name. */
+function NameFields({ platforms, names, main, onChange, disabled }) {
   const { t } = useLang();
+  if (platforms.length < 1) return null;
+  return (
+    <div className="space-y-1.5" data-name-fields>
+      {platforms.map((p) => (
+        <label key={p} className="flex items-center gap-2">
+          <span className="w-[4.75rem] shrink-0 text-[11px] font-medium text-muted">{PLATFORM_NAMES[p]}</span>
+          <span className="text-muted">@</span>
+          <Input value={names[p] || ""} disabled={disabled} onChange={(e) => onChange(p, e.target.value)} data-name-input={p}
+            placeholder={main.trim().replace(/^@+/, "") || t("sama", "same")} autoCapitalize="none" autoCorrect="off" spellCheck={false}
+            aria-label={t("Nama pengguna di {p}", "Username on {p}", { p: PLATFORM_NAMES[p] })} className="min-w-0 flex-1 !py-1.5 !text-xs" />
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function HandleRow({ h, report, busy, onToggle, onRemove, onName }) {
+  const { t } = useLang();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({});
+  const differs = Object.keys(h.names || {}).length > 0;
+  function open() { setDraft({ ...(h.names || {}) }); setEditing(true); }
+  async function saveNames() {
+    // one save for every platform: a save per platform would each start from the same stored copy and undo the one before
+    if (await onName(h.handle, draft)) setEditing(false);
+  }
   return (
     <li className="rounded-tile border border-line/70 bg-bg/60 p-3" data-handle={h.handle}>
       <div className="flex items-center justify-between gap-2">
@@ -70,7 +97,7 @@ function HandleRow({ h, report, busy, onToggle, onRemove }) {
       <div className="mt-2 flex flex-wrap gap-1.5">
         {PLATFORMS.map((p) => {
           const on = h.platforms.includes(p);
-          const last = on ? lastRead(report, h.handle, p) : null;
+          const last = on ? lastRead(report, accountOf(h, p), p) : null;
           const only = on && h.platforms.length === 1;
           const said = !last ? t("tidak dibaca", "not read")
             : last.state === "red" ? last.text
@@ -81,14 +108,28 @@ function HandleRow({ h, report, busy, onToggle, onRemove }) {
               title={only ? t("Platform terakhir: buang akaun ini untuk berhenti.", "The last platform: remove the account to stop.") : `${PLATFORM_NAMES[p]}: ${said}`}
               className={`inline-flex min-h-[32px] items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-medium transition disabled:cursor-default ${on ? LIGHT_TINT[last.state] + " text-ink" : "border border-dashed border-line text-muted hover:text-ink"}`}>
               {on && <SourceLight light={last.state} why={said} className="!h-2 !w-2" />}
-              {PLATFORM_NAMES[p]}{on && last.state !== "red" && last.state !== "unknown" ? ` · ${last.n}` : ""}
+              {PLATFORM_NAMES[p]}{on && h.names?.[p] ? ` @${h.names[p]}` : ""}{on && last.state !== "red" && last.state !== "unknown" ? ` · ${last.n}` : ""}
             </button>
           );
         })}
       </div>
-      {PLATFORMS.map((p) => (h.platforms.includes(p) ? lastRead(report, h.handle, p) : null)).filter((x) => x && x.state === "red").slice(0, 1).map((x) => (
+      {PLATFORMS.map((p) => (h.platforms.includes(p) ? lastRead(report, accountOf(h, p), p) : null)).filter((x) => x && x.state === "red").slice(0, 1).map((x) => (
         <p key="err" className="mt-2 flex gap-1.5 text-[11px] leading-snug text-danger [overflow-wrap:anywhere]"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{x.text}</p>
       ))}
+      {editing ? (
+        <div className="mt-3 rounded-tile bg-surface-2 p-2.5">
+          <p className="mb-2 text-[11px] leading-snug text-muted">{t("Nama pengguna di setiap platform. Kosongkan jika sama dengan @{h}.", "The username on each platform. Leave it empty if it is the same as @{h}.", { h: h.handle })}</p>
+          <NameFields platforms={h.platforms} names={draft} main={h.handle} disabled={busy} onChange={(p, v) => setDraft((d) => ({ ...d, [p]: v }))} />
+          <div className="mt-2.5 flex gap-2">
+            <Button size="sm" disabled={busy} onClick={saveNames} data-save-names>{t("Simpan", "Save")}</Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(false)}>{t("Batal", "Cancel")}</Button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" disabled={busy} onClick={open} data-edit-names
+          className="mt-2 inline-flex min-h-[32px] items-center gap-1 text-[11px] font-medium text-accent hover:underline disabled:opacity-50">
+          {differs ? t("Ubah nama pengguna", "Edit usernames") : t("Nama pengguna berbeza di platform lain?", "A different username on another platform?")}</button>
+      )}
     </li>
   );
 }
@@ -106,6 +147,8 @@ function ExpertCard({ row, inBrain, busy, onIdea, onBrain, onHide }) {
           <span className="flex min-w-0 flex-wrap items-center gap-1.5">
             <span className={`rounded-pill px-2 py-0.5 text-[10px] font-semibold ${PLATFORM_TONE[raw.platform] || "bg-surface-2 text-ink"}`}>{PLATFORM_NAMES[raw.platform] || raw.platform}</span>
             <a href={profileUrl(raw.platform, raw.handle)} target="_blank" rel="noreferrer" className="truncate text-xs font-semibold text-ink hover:text-accent">@{raw.handle}</a>
+            {raw.owner && raw.owner !== raw.handle && <span className="truncate text-[11px] text-muted" title={t("Pemilik akaun ini", "This account's owner")}>({raw.owner})</span>}
+            {raw.parts > 1 && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[10px] font-medium text-ink/80" title={t("Rantaian catatan oleh pakar yang sama, digabungkan.", "A chain of posts by the same expert, joined.")}>{t("Rantaian · {n} catatan", "Thread · {n} posts", { n: raw.parts })}</span>}
             {inBrain && <span className="inline-flex items-center gap-1 rounded-pill bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent" title={t("Difailkan dalam Otak AI sebagai rujukan.", "Filed in the AI brain as a reference.")}><Brain size={10} /> {t("Otak AI", "AI brain")}</span>}
           </span>
           <time className="shrink-0 text-[11px] text-muted" title={row.created_at ? t("Dikutip {at}", "Collected {at}", { at: stampMYT(row.created_at) }) : ""}>{stampMYT(row.published_at || row.created_at)}</time>
@@ -161,6 +204,7 @@ export default function ExpertTab({ settings, save, user, onToast, onIdea, go })
 
   const [handle, setHandle] = useState("");
   const [plats, setPlats] = useState(["threads"]);
+  const [names, setNames] = useState({});                          // a username that differs from the main one, per ticked platform
   const [newCat, setNewCat] = useState(null);                      // null = closed, a string = the name being typed
   const [form, setForm] = useState({ name: "", niche: "", keywords: "" });
   useEffect(() => { if (cat) setForm({ name: cat.name, niche: cat.niche, keywords: cat.keywords.join(", ") }); }, [cat?.id, settings.experts]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -185,7 +229,7 @@ export default function ExpertTab({ settings, save, user, onToast, onIdea, go })
   async function register(e) {
     e?.preventDefault();
     if (!cat) return;
-    const got = addHandle(cfg, cat.id, handle, plats);
+    const got = addHandle(cfg, cat.id, handle, plats, names);
     if (got.error) {
       onToast({ handle: t("Tulis nama akaun (tanpa ruang), atau tampal pautan profilnya.", "Type the account name (no spaces), or paste its profile link."),
         platform: t("Pilih sekurang-kurangnya satu platform.", "Tick at least one platform."),
@@ -193,7 +237,7 @@ export default function ExpertTab({ settings, save, user, onToast, onIdea, go })
       return;
     }
     if (await commit(got.cfg, got.merged ? t("@{h} sudah ada: platform ditambah.", "@{h} was already there: the platforms were added.", { h: got.handle })
-      : t("@{h} ditambah. Catatannya dibaca pada sapuan seterusnya.", "@{h} added. Its posts are read at the next sweep.", { h: got.handle }))) setHandle("");
+      : t("@{h} ditambah. Catatannya dibaca pada sapuan seterusnya.", "@{h} added. Its posts are read at the next sweep.", { h: got.handle }))) { setHandle(""); setNames({}); }
   }
   const acceptSuggestion = (s) => {
     const got = addHandle(cfg, cat.id, s.handle, [PLATFORMS.includes(s.platform) ? s.platform : "threads"]);
@@ -242,7 +286,7 @@ export default function ExpertTab({ settings, save, user, onToast, onIdea, go })
     finally { setBusyId(null); }
   }
 
-  const handlesInFeed = cat ? [...new Set(rowsFor(feed.rows, cat.id).map((r) => r.raw.handle))].sort((a, b) => a.localeCompare(b)) : [];
+  const handlesInFeed = cat ? [...new Set(rowsFor(feed.rows, cat.id).map((r) => r.raw.owner || r.raw.handle))].sort((a, b) => a.localeCompare(b)) : [];
 
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6" data-expert-page>
@@ -308,15 +352,22 @@ export default function ExpertTab({ settings, save, user, onToast, onIdea, go })
                   <Input value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@namaakaun" autoCapitalize="none" autoCorrect="off" spellCheck={false} data-handle-input />
                 </div>
                 <div>
-                  <Label hint={t("pilih semua jika namanya sama", "tick them all if the name is the same")}>{t("Platform", "Platforms")}</Label>
+                  <Label hint={t("pilih semua jika pemiliknya sama", "tick them all if the owner is the same")}>{t("Platform", "Platforms")}</Label>
                   <PlatformPicks value={plats} onChange={setPlats} disabled={busy} />
                 </div>
+                {plats.length > 0 && (
+                  <div>
+                    <Label hint={t("kosongkan jika sama dengan nama di atas", "leave empty if it is the name above")}>{t("Nama pengguna di setiap platform", "Username on each platform")}</Label>
+                    <NameFields platforms={PLATFORMS.filter((p) => plats.includes(p))} names={names} main={handle} disabled={busy} onChange={(p, v) => setNames((n) => ({ ...n, [p]: v }))} />
+                  </div>
+                )}
                 <Button type="submit" size="sm" disabled={busy || !ready || !handle.trim()} data-add-handle><Plus size={13} /> {t("Tambah akaun", "Add account")}</Button>
               </form>
               <ul className="mt-4 space-y-2">
                 {cat.handles.map((h) => (
                   <HandleRow key={h.handle} h={h} report={report} busy={busy}
                     onToggle={(name, p) => commit(togglePlatform(cfg, cat.id, name, p))}
+                    onName={(name, map) => commit(setAccountNames(cfg, cat.id, name, map), t("Nama pengguna disimpan.", "Usernames saved."))}
                     onRemove={(name) => commit(removeHandle(cfg, cat.id, name), t("@{h} dibuang.", "@{h} removed.", { h: name }))} />
                 ))}
                 {!cat.handles.length && <li className="rounded-tile border border-dashed border-line p-3 text-xs leading-relaxed text-muted">{t("Belum ada akaun. Tambah nama akaun pakar di atas, atau pilih daripada cadangan di bawah.", "No account yet. Add an expert's handle above, or pick one from the suggestions below.")}</li>}

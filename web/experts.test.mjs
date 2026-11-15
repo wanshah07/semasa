@@ -1,8 +1,8 @@
 /* Expert content (14 Nov 2026): the page's logic. `npm test`. */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { DEFAULT_EXPERTS, MAX_HANDLES, READS_PER_SWEEP, addCategory, addHandle, brainRow, cleanHandle, configOf, dismissSuggestion, keywordsFrom, patchCategory,
-  readLoad, removeCategory, removeHandle, rowsFor, slugOf, suggestionsFor, togglePlatform } from "./src/lib/experts.js";
+import { DEFAULT_EXPERTS, MAX_HANDLES, READS_PER_SWEEP, accountOf, addCategory, addHandle, brainRow, cleanHandle, configOf, dismissSuggestion, keywordsFrom,
+  patchCategory, readLoad, removeCategory, removeHandle, rowsFor, setAccountNames, slugOf, suggestionsFor, togglePlatform } from "./src/lib/experts.js";
 import { watchIdea } from "./src/lib/watchIdea.js";
 
 let n = 0;
@@ -118,6 +118,38 @@ t("the page and the migration agree on the defaults, and the page is wired into 
   for (const c of DEFAULT_EXPERTS.categories) assert.ok(py.includes(`"id": "${c.id}", "name": "${c.name}", "brain": ${c.brain ? "True" : "False"}`), `${c.id} matches the sweep's default`);
   const page = readFileSync(new URL("./src/pages/ExpertTab.jsx", import.meta.url), "utf8");
   assert.ok(page.includes('save("experts"') && !page.includes('save("expert_suggestions"'), "the page never writes the sweep's own list");
+});
+
+t("one owner, a different username on each platform (Wan, 15 Nov 2026): kept per platform, merged on a second add, dropped with its platform", () => {
+  let cfg = addHandle(base(), "ai", "aiman", ["threads", "instagram", "facebook"], { instagram: "@dr.aiman", facebook: "Aiman AI", threads: "AIMAN", tiktok: "x" }).cfg;
+  const h = () => cfg.categories[0].handles[0];
+  assert.deepEqual(h(), { handle: "aiman", platforms: ["threads", "facebook", "instagram"], names: { instagram: "dr.aiman" } }, "a name with a space, the main name itself and an unknown platform are not kept");
+  assert.deepEqual(["threads", "instagram", "facebook"].map((p) => accountOf(h(), p)), ["aiman", "dr.aiman", "aiman"]);
+  cfg = addHandle(cfg, "ai", "aiman", ["facebook"], { facebook: "aiman.fb" }).cfg;
+  assert.deepEqual(h().names, { instagram: "dr.aiman", facebook: "aiman.fb" }, "adding the owner again adds to the owner, never a second row");
+  assert.equal(cfg.categories[0].handles.length, 1);
+  cfg = setAccountNames(cfg, "ai", "AIMAN", { instagram: "", threads: "ai_man" });
+  assert.deepEqual(h().names, { facebook: "aiman.fb", threads: "ai_man" }, "empty means the same as the main name; several platforms change in one save");
+  cfg = togglePlatform(cfg, "ai", "aiman", "facebook");
+  assert.deepEqual(h().names, { threads: "ai_man" }, "unticking a platform takes its username with it");
+  assert.deepEqual(configOf(JSON.parse(JSON.stringify(cfg))), cfg, "a saved setting reads back as it was");
+  cfg = setAccountNames(cfg, "ai", "aiman", { threads: "" });
+  assert.equal("names" in h(), false);
+  assert.deepEqual(addHandle(base(), "ai", "x1", ["threads"], {}).cfg.categories[0].handles[0], { handle: "x1", platforms: ["threads"] }, "no names key when none differ");
+});
+t("a username of an owner keeps it off the suggestions, and the feed filters by owner", () => {
+  const cfg = addHandle(base(), "ai", "aiman", ["instagram"], { instagram: "dr.aiman" }).cfg;
+  const sug = { lists: { ai: [{ handle: "dr.aiman" }, { handle: "aiman" }, { handle: "fresh" }] } };
+  assert.deepEqual(suggestionsFor(sug, cfg, "ai").map((s) => s.handle), ["fresh"]);
+  const rows = [{ id: 1, section: "expert", relevant: true, raw: { category: "ai", handle: "dr.aiman", owner: "aiman", original: "x" } },
+    { id: 2, section: "expert", relevant: true, raw: { category: "ai", handle: "other", owner: "other" } }];
+  assert.deepEqual(rowsFor(rows, "ai", { handle: "AIMAN" }).map((r) => r.id), [1]);
+  assert.deepEqual(rowsFor(rows, "ai", { q: "aiman" }).map((r) => r.id), [1]);
+});
+t("a chain is sent to the brain with its length said, and the post as a whole", () => {
+  const b = brainRow({ title: "t", url: "u", summary: "s", raw: { handle: "a", platform: "threads", category_name: "AI", parts: 3, original: "one\n\n— 2/3 —\n\ntwo\n\n— 3/3 —\n\nthree" } });
+  assert.match(b.body, /Original post \(a chain of 3 posts\):\none/);
+  assert.match(b.body, /three/);
 });
 
 console.log(`experts.test.mjs: ${n} groups OK`);

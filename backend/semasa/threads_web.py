@@ -58,7 +58,25 @@ _EXTRACT = r"""
       .filter((n) => !n.parentElement.closest('[dir="auto"]') && !n.closest('[role="button"]'));
     const at = nodes.findIndex((n) => n.contains(time));
     const body = nodes.slice(at + 1).map((n) => (n.innerText || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
-    out.push({href, datetime: time.getAttribute('datetime'), counts, body});
+    // the same words with their own line breaks kept, for a reader that wants the post as written (experts.py)
+    // a link is drawn shortened ("meta.com/thefu…"): its address is in the link, so the full one is written in its place
+    const whole = (n) => {
+      const c = n.cloneNode(true);
+      for (const a of c.querySelectorAll('a[href]')) {
+        if (!(a.textContent || '').trim().endsWith('…')) continue;
+        try {
+          const u = new URL(a.href, location.href).searchParams.get('u');
+          if (u) a.textContent = u;
+        } catch (e) { /* keep what is drawn */ }
+      }
+      n.parentElement.appendChild(c);               // innerText needs the copy in the page to know where the line breaks fall
+      const text = c.innerText || '';
+      c.remove();
+      return text;
+    };
+    const lines = nodes.slice(at + 1)
+      .map((n) => whole(n).replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()).filter(Boolean);
+    out.push({href, datetime: time.getAttribute('datetime'), counts, body, lines});
   }
   return out;
 }
@@ -77,15 +95,22 @@ def parse_count(text: Any) -> int | None:
     return int(round(n * {"": 1, "k": 1_000, "m": 1_000_000}[m.group(2).lower()]))
 
 
-def _post(raw: dict[str, Any], cap: int = 500) -> dict[str, Any] | None:
+_CHROME = {"·", "Author", "Translate", "Pinned"}         # labels the page draws around a post, never part of its words
+
+
+def _post(raw: dict[str, Any], cap: int = 500, keep_lines: bool = False) -> dict[str, Any] | None:
     href = str(raw.get("href") or "")
     m = re.fullmatch(r"/@([\w.]+)/post/([\w-]+)", href)
     if not m:
         return None
-    body = [t for t in (raw.get("body") or []) if t]
+    # keep_lines: the post as written, paragraphs and line breaks kept and the page's own labels (Author, Translate) removed
+    body = [t for t in ((raw.get("lines") if keep_lines and raw.get("lines") else raw.get("body")) or []) if t]
+    if keep_lines:
+        body = [re.sub(r"\s*\bTranslate$", "", t).strip() for t in body if t.strip() not in _CHROME]
+        body = [re.sub(r" {2,}", " ", re.sub(r" +([,.;:!?])", r"\1", re.sub(r"\n(@[\w.]+)\n", r" \1 ", t))) for t in body if t]
     if len(body) > 1 and re.fullmatch(r"[\w.]{1,30}", body[-1]):           # the quoted author's name trails a quote post
         body = body[:-1]
-    text = "\n".join(body).strip()
+    text = ("\n\n" if keep_lines else "\n").join(body).strip()
     if not text:
         return None
     shown = {key: str((raw.get("counts") or {}).get(label) or "").strip() for label, key in LABELS.items()}
@@ -112,7 +137,8 @@ def _wall(page: Any) -> bool:
     return any(part in url for part in _WALL)
 
 
-def read_url(page: Any, url: str, scrolls: int = SCROLLS, cap: int = 500) -> tuple[list[dict[str, Any]], str]:
+def read_url(page: Any, url: str, scrolls: int = SCROLLS, cap: int = 500,
+             keep_lines: bool = False) -> tuple[list[dict[str, Any]], str]:
     """(posts, error) for one search or profile page. A page that shows a login wall is an error, never a row. `cap` is how
     much of a post's words are kept: 500 for the feed of arguments, more where the post itself is the content (experts.py)."""
     try:
@@ -126,7 +152,7 @@ def read_url(page: Any, url: str, scrolls: int = SCROLLS, cap: int = 500) -> tup
         rows = page.evaluate(_EXTRACT) or []
     except Exception as exc:  # noqa: BLE001 - one page failing must not stop the others
         return [], f"{type(exc).__name__}: {str(exc)[:160]}"
-    return [p for p in (_post(r, cap) for r in rows) if p], ""
+    return [p for p in (_post(r, cap, keep_lines) for r in rows) if p], ""
 
 
 def _own(p: dict[str, Any], names: list[str]) -> bool:

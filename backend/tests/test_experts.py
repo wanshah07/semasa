@@ -188,3 +188,123 @@ def test_the_expert_light_is_green_when_posts_were_read_and_asks_for_help_when_h
     failed = source_lights.evaluate(base, {"last_run": at, "report": {"experts": {"ok": False, "at": at,
                                     "error": "RuntimeError: supabase/082_expert_content.sql has not been run"}}}, {}, {}, {}, NOW)
     assert failed["expert"]["light"] == "red" and "082" in failed["expert"]["why"]
+
+
+# --- chains, and one owner with a different username on each platform (15 Nov 2026) ----------------------------------------
+
+def chain_post(user, pid, text, minutes=0, hours=5):
+    return post(user, pid, text, hours=hours) | {"timestamp": (NOW - timedelta(hours=hours) + timedelta(minutes=minutes)).isoformat()}
+
+
+def page_of(*rows, error=""):
+    """What a post's own page returns: the rows in the order the page lists them."""
+    return lambda page, url, scrolls=0, cap=0, keep_lines=False: ([] if error else list(rows), error)
+
+
+def test_a_threads_chain_is_one_post_with_every_part_in_order_and_the_roots_address():
+    root = chain_post("a", "R1", "Part one makes the claim.")
+    two = chain_post("a", "R2", "Part two gives the evidence.", minutes=0)
+    other = chain_post("a", "SOLO", "A different post much later.", hours=1)
+    out = experts.merge_chains(object(), [root, two, other], page_of(
+        root | {"text": "Part one makes the claim, in full."}, two | {"text": "Part two gives the evidence, in full."}))
+    assert [p["permalink"].rsplit("/", 1)[-1] for p in out] == ["R1", "SOLO"]
+    chain = out[0]
+    assert chain["parts"] == 2 and chain["chain_urls"] == [root["permalink"], two["permalink"]]
+    assert chain["text"] == "Part one makes the claim, in full.\n\n— 2/2 —\n\nPart two gives the evidence, in full."
+    assert out[1].get("parts") is None, "a post a long way from the chain is not part of it"
+
+
+def test_the_listing_order_not_the_timestamps_says_which_part_is_first_and_a_part_not_confirmed_stays_alone():
+    # the same second on two parts, and the later part carrying the earlier clock, as Threads really does
+    first = chain_post("a", "F1", "One.", minutes=1)
+    second = chain_post("a", "F2", "Two.", minutes=0)
+    stray = chain_post("a", "F3", "A reply to a commenter, not a part.", minutes=3)
+    out = experts.merge_chains(object(), [first, second, stray], page_of(
+        first, second, {**chain_post("fan", "X1", "Great post"), "username": "fan"}, stray))
+    assert [p["permalink"].rsplit("/", 1)[-1] for p in out] == ["F1", "F3"] and out[0]["parts"] == 2
+    assert out[0]["text"].startswith("One.") and "— 2/2 —\n\nTwo." in out[0]["text"], "the first part listed is the root"
+
+
+def test_a_page_that_cannot_be_read_leaves_the_posts_exactly_as_read():
+    a, b = chain_post("a", "E1", "One."), chain_post("a", "E2", "Two.")
+    assert [p["permalink"] for p in experts.merge_chains(object(), [a, b], page_of(error="timed out"))] == [a["permalink"], b["permalink"]]
+    assert len(experts.merge_chains(object(), [a, b], page_of(a))) == 2, "a page that lists no continuation confirms nothing"
+
+
+def test_the_threads_page_reader_keeps_paragraphs_drops_its_labels_and_never_cuts_a_long_post_at_500():
+    from semasa import threads_web
+    row = {"href": "/@a/post/LONG1", "datetime": "2026-11-14T10:00:00.000Z", "counts": {}, "shown": {},
+           "body": ["x"], "lines": ["·", "Author", "First paragraph.\n\nSecond paragraph about\n@muse\n, and a link Translate", "y" * 3000]}
+    got = threads_web._post(row, cap=4000, keep_lines=True)
+    assert got["text"].startswith("First paragraph.\n\nSecond paragraph about @muse, and a link\n\n") and len(got["text"]) < 3100
+    assert "Author" not in got["text"] and "Translate" not in got["text"] and len(got["text"]) > 3000
+    assert len(threads_web._post(row, cap=500)["text"]) <= 500 and threads_web._post(row)["text"] == "x", "the other readers are unchanged"
+
+
+def test_a_chain_comes_through_a_sweep_as_one_row_that_keeps_every_part_and_says_how_many():
+    s = store()
+    root = chain_post("karpathy", "C1", "An agent needs narrow tools.")
+    two = chain_post("karpathy", "C2", "Measure the failure rate first.")
+    posts = [root | {"text": root["text"] + "\n\n— 2/2 —\n\n" + two["text"], "parts": 2, "chain_urls": [root["permalink"], two["permalink"]]}]
+    rep = run(s, table={("threads", "karpathy"): (posts, "")})
+    row = s.tables["semasa_watch"][0]
+    assert rep["shown"] == 1 and row["raw"]["parts"] == 2 and "Measure the failure rate first." in row["raw"]["original"]
+    assert row["raw"]["chain_urls"][1].endswith("/C2")
+    assert "(a chain of 2 posts)" in s.tables["semasa_brain_inbox"][0]["body"]
+
+
+def test_one_owner_can_have_a_different_username_on_each_platform_and_each_is_read_by_its_own_name():
+    cfg = {"enabled": True, "hours": 336, "per_handle": 5, "categories": [
+        {"id": "ai", "name": "AI Expert", "brain": True, "niche": "AI", "keywords": [], "dismissed": [], "handles": [
+            {"handle": "aiman", "platforms": ["threads", "instagram", "facebook"],
+             "names": {"instagram": "dr.aiman", "facebook": "Aiman AI", "tiktok": "x", "threads": "AIMAN"}}]}]}
+    cats = experts.categories(cfg)
+    assert cats[0]["handles"] == [{"handle": "aiman", "platforms": ["threads", "instagram", "facebook"], "names": {"instagram": "dr.aiman"}}]
+    asked = []
+    seen = {p: (lambda page, name, now, p=p: (asked.append((p, name)) or ([post(name, f"{p}1", "An agent needs narrow tools.")]
+                                                                           if p != "facebook" else [], ""))) for p in experts.PLATFORMS}
+    s = store()
+    rep = experts.sweep(s, Writer(), cfg, [], NOW, False, intake.have, intake.write,
+                        {"threads": object(), "facebook": object(), "instagram": object()}, seen, lambda page, url: ([], ""))
+    # "Aiman AI" is not a username (a space), so Facebook is read by the owner's main name rather than by a name that cannot work
+    assert sorted(asked) == [("facebook", "aiman"), ("instagram", "dr.aiman"), ("threads", "aiman")]
+    rows = {r["source"]: r for r in s.tables["semasa_watch"]}
+    ig = rows["Instagram · @dr.aiman"]
+    assert ig["raw"]["handle"] == "dr.aiman" and ig["raw"]["owner"] == "aiman" and rep["handles"] == 1
+    assert rows["Threads · @aiman"]["raw"]["owner"] == "aiman"
+
+
+def test_an_account_listed_twice_on_a_platform_is_read_once_and_every_name_of_an_owner_keeps_it_off_the_suggestions():
+    cfg = {"enabled": True, "categories": [
+        {"id": "ai", "name": "AI", "handles": [{"handle": "a", "platforms": ["threads"]}]},
+        {"id": "other", "name": "Other", "handles": [{"handle": "A", "platforms": ["threads"]}]}]}
+    asked = []
+    experts.collect({"threads": object()}, experts.categories(cfg), cfg, NOW, {"threads": lambda p, n, now: (asked.append(n) or ([], ""))})
+    assert asked == ["a"]
+    cat = experts.categories({"categories": [{"id": "ai", "name": "AI", "dismissed": ["gone"], "handles": [
+        {"handle": "aiman", "platforms": ["instagram"], "names": {"instagram": "dr.aiman"}}]}]})[0]
+    found = [post("dr.aiman", "S1", "agent"), post("aiman", "S2", "agent"), post("gone", "S3", "agent"), post("fresh", "S4", "agent")]
+    assert [c["handle"] for c in experts.candidates(found, cat, [])] == ["fresh"]
+
+
+def test_a_chain_already_in_the_feed_part_by_part_is_replaced_by_one_row_once():
+    s = store()
+    root = chain_post("karpathy", "H1", "Sediakan folder video.")
+    two = chain_post("karpathy", "H2", "Arahan setup khas.")
+    for p in (root, two):
+        s.tables["semasa_watch"].append({"section": "expert", "url": p["permalink"], "raw": {"category": "ai", "handle": "karpathy"}})
+    s.tables["semasa_watch"].append({"section": "expert", "url": "https://www.threads.com/@karpathy/post/OTHER", "raw": {"handle": "karpathy"}})
+    s.tables["semasa_brain_inbox"].append({"url": root["permalink"]})            # the old first part is already in the brain
+    joined = root | {"text": "Sediakan folder video.\n\n— 2/2 —\n\nArahan setup khas.", "parts": 2,
+                     "chain_urls": [root["permalink"], two["permalink"]]}
+    table = {("threads", "karpathy"): ([joined], "")}
+    dry = run(s, table=table, dry=True)
+    assert dry["healed"] == 1 and len(s.tables["semasa_watch"]) == 3, "a dry run says what it would do and deletes nothing"
+    rep = run(s, table=table)
+    urls = sorted(r["url"].rsplit("/", 1)[-1] for r in s.tables["semasa_watch"])
+    assert urls == ["H1", "OTHER"] and rep["healed"] == 1 and rep["chains"] == 1, "both old rows went, the unrelated one stayed, one new row came"
+    new = next(r for r in s.tables["semasa_watch"] if r["url"].endswith("/H1"))
+    assert new["raw"]["parts"] == 2 and "Arahan setup khas." in new["raw"]["original"]
+    assert [r["url"].rsplit("/", 1)[-1] for r in s.tables["semasa_brain_inbox"]] == ["H1", "H1#thread"], "the brain gets the whole chain too"
+    again = run(s, table=table)
+    assert again["healed"] is None and again["new"] == 0 and len(s.tables["semasa_watch"]) == 2, "healed once, never again"

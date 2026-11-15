@@ -251,3 +251,44 @@ def test_facebook_searches_the_words_as_posts_when_its_hashtag_page_shows_no_pos
     assert err == "" and len(got) == 1
     assert page.visited[-1].startswith("https://www.facebook.com/search/posts/?q=halal")
     assert "searched instead: 1 block(s)" in social_web._NOTES[-1]
+
+
+# --- the post as the content (Expert content, 15 Nov 2026): whole, with its paragraphs, not the feed's 500 characters ---------
+
+_CUT = """<html><body>
+<div role="article">
+  <a href="https://www.facebook.com/halalguru/posts/pfbidWHOLE" aria-label="2d">2d</a>
+  <div data-ad-preview="message"><div id="m">Perenggan satu tentang MPPHM.</div>
+    <div role="button" id="more"
+      onclick="document.getElementById('m').innerText='Perenggan satu tentang MPPHM.\\n\\nPerenggan dua dengan klausa 40(2).';
+               this.remove()">See more</div></div>
+  <span>All reactions: 12</span>
+</div></body></html>"""
+
+
+def test_an_expert_facebook_post_is_opened_past_see_more_and_keeps_its_paragraphs():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    try:
+        with sync_api.sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            page = browser.new_page()
+            page.set_content(_CUT)
+            cut = social_web._fb_rows(page, scrolls=0)
+            page.set_content(_CUT)
+            whole = social_web._fb_rows(page, scrolls=0, expand=True)
+            browser.close()
+    except Exception as exc:  # noqa: BLE001 - no browser in this environment
+        pytest.skip(f"no Chromium here: {str(exc)[:80]}")
+    assert social_web.facebook_post(cut[0], NOW)["text"] == "Perenggan satu tentang MPPHM.", "the feed's reader is unchanged"
+    full = social_web.facebook_post(whole[0], NOW, cap=4000, keep_lines=True)
+    assert full["text"] == "Perenggan satu tentang MPPHM.\n\nPerenggan dua dengan klausa 40(2)."
+
+
+def test_the_pages_own_labels_at_the_end_of_a_message_are_dropped_and_the_cap_is_the_callers():
+    long = "Ayat panjang. " * 200
+    p = social_web.facebook_post(_fb(message=long + "… See more See translation"), NOW, cap=4000)
+    assert p["text"].endswith("Ayat panjang.") and 2700 < len(p["text"]) <= 4000
+    assert len(social_web.facebook_post(_fb(message=long), NOW)["text"]) == 500
+    desc = '12 likes, 3 comments - dr.aiman on November 12, 2026: "' + "Kapsyen panjang. " * 100 + '"'
+    assert len(social_web.parse_instagram(desc, "2026-11-12T10:00:00.000Z", "/p/ABC/")["text"]) == 500
+    assert len(social_web.parse_instagram(desc, "2026-11-12T10:00:00.000Z", "/p/ABC/", cap=4000)["text"]) > 1500

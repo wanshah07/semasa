@@ -147,7 +147,8 @@ html[data-kb] .mobile-tabbar { display: none; }
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
 }
-.toast-stack { bottom: calc(max(var(--tabbar-h), env(safe-area-inset-bottom, 0px)) + 1.25rem); }
+.toast-stack { top: calc(env(safe-area-inset-top, 0px) + 4.25rem); }
+@media (min-width: 1024px) { .toast-stack { top: auto; bottom: 1.25rem; } }
 .install-hint { bottom: calc(max(var(--tabbar-h), env(safe-area-inset-bottom, 0px)) + 0.75rem); }
 .drawer-panel {
   padding-top: env(safe-area-inset-top, 0px);

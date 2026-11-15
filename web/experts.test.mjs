@@ -1,7 +1,7 @@
 /* Expert content (14 Nov 2026): the page's logic. `npm test`. */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { DEFAULT_EXPERTS, MAX_HANDLES, READS_PER_SWEEP, accountOf, addCategory, addHandle, brainRow, cleanHandle, configOf, dismissSuggestion, keywordsFrom,
+import { DEFAULT_EXPERTS, LOADS_PER_SWEEP, LOAD_COST, MAX_HANDLES, accountOf, canSearchAgain, chainParts, notInBrain, ownerStats, requestDiscovery, addCategory, addHandle, brainRow, cleanHandle, configOf, dismissSuggestion, keywordsFrom,
   patchCategory, readLoad, removeCategory, removeHandle, rowsFor, setAccountNames, slugOf, suggestionsFor, togglePlatform } from "./src/lib/experts.js";
 import { watchIdea } from "./src/lib/watchIdea.js";
 
@@ -90,13 +90,45 @@ t("the feed of one category: newest first, no hidden markers, hidden rows only o
   assert.deepEqual(rowsFor(ROWS, "ai", { hidden: true, handle: "B" }).map((r) => r.id), [2]);
   assert.deepEqual(rowsFor(undefined, "ai"), []);
 });
-t("more profile pages than one sweep opens is said, not hidden", () => {
+t("a sweep's load is counted in pages, as the sweep counts it, and over the budget is said, not hidden", () => {
   let cfg = base();
   for (let i = 0; i < 8; i++) cfg = addHandle(cfg, "ai", `h${i}`, ["threads", "facebook", "instagram"]).cfg;
-  assert.deepEqual(readLoad(cfg), { reads: 24, limit: READS_PER_SWEEP, over: true });
+  assert.deepEqual(readLoad(cfg), { loads: 72, accounts: 24, limit: LOADS_PER_SWEEP, over: true }, "8 x (1 + 1 + 7)");
   assert.equal(readLoad(base()).over, false);
+  const twice = addHandle(addHandle(base(), "ai", "same", ["threads"]).cfg, "halal", "SAME", ["threads"]).cfg;
+  assert.equal(readLoad(twice).loads, 1, "one account on one platform is read once, whoever lists it");
   const py = readFileSync(new URL("../backend/semasa/experts.py", import.meta.url), "utf8");
-  assert.equal(Number(/^MAX_READS = (\d+)/m.exec(py)[1]), READS_PER_SWEEP, "the page's number is the sweep's number");
+  assert.equal(Number(/^MAX_LOADS = (\d+)/m.exec(py)[1]), LOADS_PER_SWEEP, "the page's budget is the sweep's budget");
+  assert.deepEqual(JSON.parse(/^LOAD_COST = (\{[^}]*\})/m.exec(py)[1]), LOAD_COST, "and the cost of each platform too");
+});
+t("an original post is shown part by part when it is a chain", () => {
+  assert.deepEqual(chainParts("one\n\n— 2/3 —\n\ntwo\nlines\n\n— 3/3 —\n\nthree"), ["one", "two\nlines", "three"]);
+  assert.deepEqual(chainParts("a single post\n\nwith a paragraph"), ["a single post\n\nwith a paragraph"]);
+  assert.deepEqual(chainParts(""), []);
+});
+t("per owner: shown, hidden by Wan and judged off the niche are told apart", () => {
+  const rows = [
+    { section: "expert", relevant: true, raw: { category: "ai", handle: "dr.a", owner: "A" } },
+    { section: "expert", relevant: true, dismissed: true, raw: { category: "ai", handle: "a", owner: "a" } },
+    { section: "expert", relevant: false, raw: { category: "ai", handle: "a" } }, { section: "expert", relevant: false, raw: { category: "ai", handle: "a" } },
+    { section: "expert", relevant: true, raw: { category: "halal", handle: "a" } }, { section: "threads", relevant: true, raw: { category: "ai", handle: "a" } },
+  ];
+  assert.deepEqual(ownerStats(rows, "ai"), { a: { shown: 1, hidden: 1, off: 2 } });
+  assert.deepEqual(ownerStats(undefined, "ai"), {});
+  assert.deepEqual(notInBrain([{ id: 1, section: "expert", relevant: true, raw: { category: "ai", handle: "a" } }, { id: 2, section: "expert", relevant: true, raw: { category: "ai", handle: "a", brain: true } },
+    { id: 3, section: "expert", relevant: true, raw: { category: "ai", handle: "a" } }], "ai", new Set([3])).map((r) => r.id), [1]);
+});
+t("search again: the request is a time in the setting, at most once an hour, and it survives a save", () => {
+  const NOW = Date.parse("2026-11-15T10:00:00Z");
+  assert.deepEqual(canSearchAgain(base(), { at: "2026-11-15T08:00:00Z" }, NOW), { ok: true, waitMin: 0, pending: false });
+  assert.deepEqual(canSearchAgain(base(), { at: "2026-11-15T09:30:00Z" }, NOW), { ok: false, waitMin: 30, pending: false }, "the sweep searched half an hour ago");
+  const asked = requestDiscovery(base(), "2026-11-15T09:50:00.000Z");
+  assert.deepEqual(canSearchAgain(asked, { at: "2026-11-15T08:00:00Z" }, NOW), { ok: false, waitMin: 50, pending: true }, "asked, not answered yet");
+  assert.equal(canSearchAgain(asked, { at: "2026-11-15T09:55:00Z" }, NOW).pending, false, "answered");
+  assert.equal(configOf(JSON.parse(JSON.stringify(asked))).discover_request, "2026-11-15T09:50:00.000Z");
+  assert.equal(addHandle(asked, "ai", "x", ["threads"]).cfg.discover_request, "2026-11-15T09:50:00.000Z", "another change keeps the request");
+  assert.equal("discover_request" in configOf({ discover_request: "nonsense" }), false);
+  assert.deepEqual(canSearchAgain(base(), undefined, NOW), { ok: true, waitMin: 0, pending: false });
 });
 t("a post sent to the AI brain by hand is a reference carrying the expert's own words; as an idea it never names the account", () => {
   const row = { ...ROWS[0], url: "https://www.threads.com/@a/post/1", why: "w", raw: { ...ROWS[0].raw, category_name: "AI Expert" } };

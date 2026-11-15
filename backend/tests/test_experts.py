@@ -119,16 +119,73 @@ def test_a_dry_run_and_a_writer_that_is_not_set_up_write_nothing():
     assert rep["shown"] == 0 and s.tables["semasa_watch"] == []          # unanswered: tried again next sweep, never a guess
 
 
-def test_more_pages_than_one_sweep_opens_start_somewhere_else_each_sweep():
+def test_a_sweep_is_budgeted_in_page_loads_and_the_handles_left_out_go_first_next_time():
+    # threads costs 1 load: the budget's worth are read, the rest skipped, and the next sweep starts somewhere else
+    n = experts.MAX_LOADS + 5
     many = {"enabled": True, "categories": [{"id": "ai", "name": "AI", "handles": [
-        {"handle": f"h{i}", "platforms": ["threads"]} for i in range(experts.MAX_READS + 5)]}]}
+        {"handle": f"h{i}", "platforms": ["threads"]} for i in range(n)]}]}
     seen = []
     rd = {"threads": lambda page, handle, now: (seen.append(handle) or ([], ""))}
     _, stats = experts.collect({"threads": object()}, experts.categories(many), many, NOW, rd)
     first = list(seen)
     seen.clear()
     experts.collect({"threads": object()}, experts.categories(many), many, NOW + timedelta(hours=6), rd)
-    assert stats["reads"] == experts.MAX_READS and stats["skipped"] == 5 and first != seen and len(seen) == experts.MAX_READS
+    assert stats["reads"] == experts.MAX_LOADS and stats["skipped"] == 5 and stats["stopped"] == "pages"
+    assert first != seen and len(seen) == experts.MAX_LOADS
+
+
+def test_an_instagram_profile_counts_as_seven_loads_so_twenty_of_them_do_not_become_140_pages():
+    ig = {"enabled": True, "categories": [{"id": "ai", "name": "AI", "handles": [
+        {"handle": f"h{i}", "platforms": ["instagram"]} for i in range(20)]}]}
+    seen = []
+    _, stats = experts.collect({"instagram": object()}, experts.categories(ig), ig, NOW,
+                               {"instagram": lambda page, handle, now: (seen.append(handle) or ([], ""))})
+    assert len(seen) == experts.MAX_LOADS // experts.LOAD_COST["instagram"] == 8 and stats["loads"] == 56
+    assert stats["skipped"] == 12 and stats["stopped"] == "pages"
+
+
+def test_the_part_stops_cleanly_when_it_has_run_too_long_and_says_so():
+    cfg = {"enabled": True, "categories": [{"id": "ai", "name": "AI", "handles": [
+        {"handle": f"h{i}", "platforms": ["threads"]} for i in range(6)]}]}
+    t = {"now": 0.0}
+    seen = []
+
+    def slow(page, handle, now):
+        seen.append(handle)
+        t["now"] += 400                                        # each profile takes 400 s; the budget is 600
+        return [], ""
+    _, stats = experts.collect({"threads": object()}, experts.categories(cfg), cfg, NOW, {"threads": slow},
+                               clock=lambda: t["now"], budget_s=600)
+    assert seen == ["h0", "h1"] and stats["skipped"] == 4 and stats["stopped"] == "time"
+
+
+def test_an_account_that_gave_nothing_says_why_and_a_missing_account_does_not_stop_the_other_threads_reads():
+    cfg = {"enabled": True, "hours": 336, "categories": [{"id": "ai", "name": "AI", "handles": [
+        {"handle": "typo", "platforms": ["threads"]}, {"handle": "old", "platforms": ["threads"]},
+        {"handle": "empty", "platforms": ["threads"]}, {"handle": "good", "platforms": ["threads"]}]}]}
+
+    class Page:
+        url = ""
+
+    def read_url(page, url, scrolls=0, cap=0, keep_lines=False):
+        if url.endswith("@typo"):
+            return [], "Threads asked for a login"
+        if url.endswith("@old"):
+            return [post("old", "O1", "An old post", hours=24 * 400), post("someone", "O2", "a repost", hours=2)], ""
+        if url.endswith("@good"):
+            return [post("good", "G1", "A fresh post")], ""
+        return [], ""
+    import semasa.threads_web as tw
+    real = tw.read_url
+    tw.read_url = read_url
+    try:
+        posts, stats = experts.collect({"threads": Page()}, experts.categories(cfg), cfg, NOW)
+    finally:
+        tw.read_url = real
+    assert [p["handle"] for p in posts] == ["good"], "the reads after the missing account still happened"
+    assert any("@typo (Threads): account not found or private" in e and "Check the username" in e for e in stats["errors"])
+    assert stats["notes"]["@old (Threads)"] == "newest post is 400 days old, outside the 14-day window"
+    assert stats["notes"]["@empty (Threads)"] == "the profile showed no post of its own" and "@good (Threads)" not in stats["notes"]
 
 
 def test_accounts_worth_following_come_only_from_posts_read_and_never_a_registered_dismissed_or_own_account():
@@ -305,6 +362,48 @@ def test_a_chain_already_in_the_feed_part_by_part_is_replaced_by_one_row_once():
     assert urls == ["H1", "OTHER"] and rep["healed"] == 1 and rep["chains"] == 1, "both old rows went, the unrelated one stayed, one new row came"
     new = next(r for r in s.tables["semasa_watch"] if r["url"].endswith("/H1"))
     assert new["raw"]["parts"] == 2 and "Arahan setup khas." in new["raw"]["original"]
-    assert [r["url"].rsplit("/", 1)[-1] for r in s.tables["semasa_brain_inbox"]] == ["H1", "H1#thread"], "the brain gets the whole chain too"
+    assert [r["url"].rsplit("/", 1)[-1] for r in s.tables["semasa_brain_inbox"]] == ["H1", "H1#thread-2"], "the brain gets the whole chain too (a row that is not the sweep's own is left alone)"
     again = run(s, table=table)
     assert again["healed"] is None and again["new"] == 0 and len(s.tables["semasa_watch"]) == 2, "healed once, never again"
+
+
+def test_a_chain_that_grew_a_part_is_read_again_whole_keeps_being_hidden_and_its_old_brain_reference_goes():
+    s = store()
+    root = chain_post("karpathy", "G1", "One.")
+    urls = [root["permalink"], root["permalink"].replace("G1", "G2"), root["permalink"].replace("G1", "G3")]
+    s.tables["semasa_watch"].append({"section": "expert", "url": urls[0], "dismissed": True,
+                                     "raw": {"category": "ai", "handle": "karpathy", "parts": 2, "chain_urls": urls[:2]}})
+    note = "Expert content (AI Expert): a reference only, the view of one expert, not a verified fact."
+    s.tables["semasa_brain_inbox"] += [{"id": "in1", "url": urls[0], "note": note}, {"id": "in2", "url": urls[0], "note": "Wan's own drop"}]
+    s.tables["semasa_brain_entries"] = [
+        {"id": "e1", "inbox_id": "in1", "edited": False, "pinned": False}, {"id": "e2", "inbox_id": "in1", "edited": True, "pinned": False},
+        {"id": "e3", "inbox_id": "in1", "edited": False, "pinned": True}, {"id": "e4", "inbox_id": "in2", "edited": False, "pinned": False}]
+    grown = root | {"text": "One.\n\n— 2/3 —\n\nTwo.\n\n— 3/3 —\n\nThree.", "parts": 3, "chain_urls": urls}
+    rep = run(s, table={("threads", "karpathy"): ([grown], "")})
+    row = next(r for r in s.tables["semasa_watch"] if r["url"] == urls[0])
+    assert rep["healed"] == 1 and row["raw"]["parts"] == 3 and "Three." in row["raw"]["original"] and row["dismissed"] is True
+    assert sorted(e["id"] for e in s.tables["semasa_brain_entries"]) == ["e2", "e3", "e4"], "an edited or pinned entry is Wan's and stays"
+    kept = sorted((r["url"].rsplit("/", 1)[-1], r.get("note", "")[:6]) for r in s.tables["semasa_brain_inbox"])
+    assert kept == [("G1", "Wan's "), ("G1#thread-3", "Expert")], "the sweep's own old reference went, Wan's own drop stayed"
+    same = run(s, table={("threads", "karpathy"): ([grown], "")})
+    assert same["healed"] is None and same["new"] == 0, "a chain of the same length is left alone"
+
+
+def test_search_again_runs_the_search_before_its_day_is_up_and_the_page_is_told_what_the_search_saw():
+    s = store()
+    found = [post("agentsmith", "S1", "How I build an AI agent"), post("karpathy", "S2", "agent, by a followed account")]
+    run(s, search=lambda page, url: (found, ""))
+    value = next(r for r in s.tables["semasa_settings"] if r["key"] == "expert_suggestions")["value"]
+    assert value["seen"]["ai"] == {"posts": 2, "authors": 2, "known": 1, "judged": 1, "worth": 1}
+    calls = []
+    search = lambda page, url: (calls.append(url) or (found, ""))            # noqa: E731
+    run(s, search=search)
+    assert calls == [], "not due: searched once already today"
+    asked = {**CFG, "discover_request": (NOW + timedelta(seconds=1)).isoformat()}
+    experts.sweep(s, Writer(), asked, [], NOW + timedelta(minutes=5), False, intake.have, intake.write,
+                  {"threads": object()}, readers({}), search)
+    assert len(calls) == 1, "Wan asked after the last search: it runs again"
+    experts.sweep(s, Writer(), asked, [], NOW + timedelta(minutes=9), False, intake.have, intake.write,
+                  {"threads": object()}, readers({}), search)
+    assert len(calls) == 1, "the same request is answered once"
+    assert experts.load(store(experts={"discover_request": "2026-11-14T00:00:00+00:00"}))["discover_request"].startswith("2026-11-14")

@@ -93,12 +93,19 @@ def _community(section: str, cfg: dict[str, Any], stored: dict[str, Any], latest
     read = int((rep.get("read") or {}).get(section) or 0)
     hours = int(sub.get("hours") or com.get("hours") or 72)
     fresh = bool(latest and now - latest <= timedelta(hours=hours))
-    if read > 0 or fresh:
+    if read > 0:
         return _light(GREEN, f"live: {read} read in the last sweep ({_ago(last, now)})")
     seen = str(rep.get(f"{section}_stats") or "")
     extra = f" ({seen})" if seen else ""
     if section in ("facebook", "instagram") and not sub.get("accounts"):
         extra += "; add accounts to read in this tab (hashtag pages mostly show old or no posts)"
+    if fresh:
+        # older rows are still inside the window, so the tab is not empty: green for a sweep or two of quiet, but a source
+        # that has read nothing for several sweeps is not "live" because of what it read last week (15 Nov 2026: Facebook
+        # and Instagram read 0 and stayed green on rows up to 14 days old)
+        if streak >= ZERO_RED:
+            return _light(ORANGE, f"read nothing in {streak} sweeps in a row; what the tab shows is older{extra}", act=True)
+        return _light(GREEN, f"live: nothing new in the last sweep, older rows still on show ({_ago(last, now)})")
     if streak >= ZERO_RED:
         return _light(RED, f"read nothing in {streak} sweeps in a row{extra}")
     return _light(ORANGE, f"answered, but read nothing in the last sweep{extra}", act=True)

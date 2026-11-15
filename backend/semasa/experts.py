@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -41,14 +42,21 @@ SECTION = "expert"
 WATCH = "semasa_watch"             # intake.WATCH (intake imports this module, so the name is repeated, not imported)
 PLATFORMS = ("threads", "facebook", "instagram")
 NAMES = {"threads": "Threads", "facebook": "Facebook", "instagram": "Instagram"}
-MAX_READS = 20                 # handle-and-platform pages opened in one sweep (an Instagram profile is seven page loads)
+# One sweep's budget is counted in PAGE LOADS, not profiles: an Instagram profile is its grid and six post pages, a Threads or
+# Facebook profile is one page. Twenty Instagram profiles used to count as twenty and were about 140 loads, on top of the other
+# parts of the Sources run and inside its 30 minutes. The time budget is the second guard: the part stops cleanly when it has
+# run this long and the handles not reached go first next sweep (the rotation below).
+LOAD_COST = {"threads": 1, "facebook": 1, "instagram": 7}
+MAX_LOADS = 60
+TIME_BUDGET_S = 12 * 60
 MAX_BRAIN = 10                 # posts filed in the AI brain in one sweep
 MAX_SUGGESTIONS = 12           # kept per category
 DISCOVER_EVERY = timedelta(hours=20)
 HANDLE = re.compile(r"[\w.\-]{1,60}")
 
 DEFAULTS: dict[str, Any] = {
-    "enabled": True, "hours": 14 * 24, "per_handle": 5,
+    # discover_request: the time Wan last pressed "Search again" on the page; a search runs when it is newer than the last one
+    "enabled": True, "hours": 14 * 24, "per_handle": 5, "discover_request": None,
     "categories": [
         {"id": "ai", "name": "AI Expert", "brain": True, "handles": [], "dismissed": [],
          "niche": "artificial intelligence in practice: AI tools, large language models, agents, prompting, automation",
@@ -136,6 +144,7 @@ def _mine(post: dict[str, Any], handle: str, platform: str) -> bool:
     return not user or user == handle.lower()
 
 
+NOT_FOUND = "account not found or private"
 POST_CAP = 4000                # characters of one post kept (a Threads post is 500, a text attachment is far longer)
 CHAIN_WINDOW = timedelta(minutes=30)   # posts of one author this close to a first part are candidates for its chain
 
@@ -189,6 +198,10 @@ NOW_MIN = datetime.min.replace(tzinfo=UTC)
 
 def read_threads(page: Any, handle: str, now: datetime) -> tuple[list[dict[str, Any]], str]:
     got, err = threads_web.read_url(page, f"{threads_web.BASE}/@{handle}", cap=POST_CAP, keep_lines=True)
+    if err == "Threads asked for a login":
+        # Threads sends a visitor to its login page for a profile that does not exist or is private (checked live, 15 Nov 2026),
+        # while a real public profile opens. Reported as a wall, one mistyped name stopped every other Threads read of the sweep.
+        return [], f"{NOT_FOUND}: Threads shows its login page for @{handle}. Check the username"
     if err:
         return got, err
     own = [p for p in got if _same_user(p, {"username": handle})]
@@ -196,19 +209,36 @@ def read_threads(page: Any, handle: str, now: datetime) -> tuple[list[dict[str, 
     return merge_chains(page, own) + rest, ""
 
 
+def read_instagram(page: Any, handle: str, now: datetime) -> tuple[list[dict[str, Any]], str]:
+    return social_web.read_instagram_account(page, handle, now, POST_CAP)
+
+
+def read_facebook(page: Any, handle: str, now: datetime) -> tuple[list[dict[str, Any]], str]:
+    return social_web.read_facebook_account(page, handle, now, POST_CAP)             # every "See more" opened, paragraphs kept
+
+
 READERS: dict[str, Callable[[Any, str, datetime], tuple[list[dict[str, Any]], str]]] = {
-    "threads": read_threads, "instagram": social_web.read_instagram_account, "facebook": social_web.read_facebook_account}
+    "threads": read_threads, "instagram": read_instagram, "facebook": read_facebook}
+
+
+def _age(now: datetime, when: datetime) -> str:
+    days = (now - when).days
+    return f"{days} days" if days >= 2 else f"{int((now - when).total_seconds() // 3600)} hours"
 
 
 def collect(pages: dict[str, Any], cats: list[dict[str, Any]], cfg: dict[str, Any], now: datetime,
-            readers: dict[str, Any] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+            readers: dict[str, Any] | None = None, clock: Callable[[], float] = time.monotonic,
+            budget_s: float = TIME_BUDGET_S) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Every registered handle on every platform ticked for it. (posts, stats). `pages` maps a platform to the browser page
-    that reads it (None when that platform cannot be read this run, e.g. no saved login)."""
+    that reads it (None when that platform cannot be read this run, e.g. no saved login). stats["notes"] says, for a handle
+    that gave nothing, why: no post on the profile, or the newest one older than the window."""
     readers = readers or READERS
+    started = clock()
     hours = max(24, min(60 * 24, int(cfg.get("hours") or 14 * 24)))
     per = max(1, min(15, int(cfg.get("per_handle") or 5)))
     posts: list[dict[str, Any]] = []
-    stats: dict[str, Any] = {"reads": 0, "found": 0, "errors": [], "skipped": 0, "by_handle": {}}
+    stats: dict[str, Any] = {"reads": 0, "loads": 0, "found": 0, "errors": [], "skipped": 0, "by_handle": {}, "notes": {},
+                             "stopped": ""}
     seen: set[str] = set()
     walled: set[str] = set()
     todo = [(cat, h, platform) for cat in cats for h in cat["handles"] for platform in h["platforms"]]
@@ -220,7 +250,7 @@ def collect(pages: dict[str, Any], cats: list[dict[str, Any]], cfg: dict[str, An
             opened.add(key)
             unique.append(t)
     todo = unique
-    if len(todo) > MAX_READS:
+    if sum(LOAD_COST[t[2]] for t in todo) > MAX_LOADS:
         # more pages than one sweep opens: start somewhere else each sweep, so the same handles are not the ones left out
         at = int(now.timestamp() // (6 * 3600)) % len(todo)
         todo = todo[at:] + todo[:at]
@@ -231,10 +261,12 @@ def collect(pages: dict[str, Any], cats: list[dict[str, Any]], cfg: dict[str, An
         if page is None or platform in walled:
             stats["errors"].append(f"{label}: {pages.get(platform + '_error') or 'not read: the platform asked for a login'}")
             continue
-        if stats["reads"] >= MAX_READS:
+        if stats["loads"] + LOAD_COST[platform] > MAX_LOADS or clock() - started > budget_s:
+            stats["stopped"] = stats["stopped"] or ("time" if clock() - started > budget_s else "pages")
             stats["skipped"] += 1
             continue
         stats["reads"] += 1
+        stats["loads"] += LOAD_COST[platform]
         got, err = readers[platform](page, name, now)
         if err:
             stats["errors"].append(f"{label}: {err}")
@@ -242,12 +274,19 @@ def collect(pages: dict[str, Any], cats: list[dict[str, Any]], cfg: dict[str, An
                 walled.add(platform)                   # every other page of that platform will say the same
             continue
         mine = []
+        newest: datetime | None = None                       # of the account's own posts, whatever their age
         for p in got:
             when = _when(p.get("timestamp"))
             link = str(p.get("permalink") or "")
+            if when and _mine(p, name, platform) and (newest is None or when > newest):
+                newest = when
             if not link or link in seen or not when or now - when > timedelta(hours=hours) or not _mine(p, name, platform):
                 continue
             mine.append({**p, "when": when})
+        if not mine:
+            stats["notes"][label] = (f"newest post is {_age(now, newest)} old, outside the {hours // 24}-day window" if newest
+                                     else "the profile showed no post of its own")
+        stats["loads"] += sum(1 for p in mine if p.get("parts"))          # each confirmed chain cost one more page
         mine.sort(key=lambda p: p["when"], reverse=True)
         for p in mine[:per]:
             seen.add(p["permalink"])
@@ -308,20 +347,22 @@ def to_row(p: dict[str, Any], brain: bool = False) -> dict[str, Any]:
            **({"brain": True} if brain else {})}
     return {"section": SECTION, "source": f"{NAMES[p['platform']]} · @{p['handle']}", "kind": p["category_name"], "country": None,
             "title": p["title"], "url": p["permalink"], "summary": p["summary"], "why": p.get("why") or None, "domain": None,
-            "relevant": True, "lang": "ms", "summary_source": "llm", "raw": raw, "published_at": p["when"].isoformat()}
+            "relevant": True, "lang": "ms", "summary_source": "llm", "raw": raw, "published_at": p["when"].isoformat(),
+            "dismissed": bool(p.get("was_hidden"))}          # a chain Wan had hidden stays hidden when it is read again
 
 
 def tombstone(p: dict[str, Any]) -> dict[str, Any]:
     """A hidden marker for a post off the niche: its link only, so the next sweep knows it has been read."""
     return {"section": SECTION, "source": f"{NAMES[p['platform']]} · @{p['handle']}", "kind": p["category_name"], "country": None,
             "title": p["text"].splitlines()[0][:200], "url": p["permalink"], "summary": None, "why": None, "domain": None,
-            "relevant": False, "lang": "ms", "summary_source": "llm", "published_at": p["when"].isoformat(),
+            "relevant": False, "lang": "ms", "summary_source": "llm", "published_at": p["when"].isoformat(), "dismissed": False,
             "raw": {"category": p["category"], "handle": p["handle"], "owner": p.get("owner") or p["handle"]}}
 
 
 def brain_url(p: dict[str, Any]) -> str:
-    """A chain that replaces rows read part by part is filed under its own address, so the brain does not skip it as there."""
-    return p["permalink"] + ("#thread" if p.get("healed") else "")
+    """A chain that replaces rows already read (part by part, or a shorter chain) is filed under an address of its own, which
+    carries its length, so the brain does not skip it as already there."""
+    return p["permalink"] + (f"#thread-{p['parts']}" if p.get("healed") else "")
 
 
 def brain_row(p: dict[str, Any]) -> dict[str, Any]:
@@ -407,20 +448,28 @@ def merge_suggestions(old: list[dict[str, Any]], new: list[dict[str, Any]], cat:
     return out[:MAX_SUGGESTIONS]
 
 
-def discovery_due(store: Any, now: datetime) -> bool:
+def _due(last: datetime | None, now: datetime, requested: Any = None) -> bool:
+    """A search is due once a day, or when Wan asked for one (the page's "Search again") after the last one ran."""
+    asked = _when(requested)
+    return not last or now - last >= DISCOVER_EVERY or bool(asked and asked > last)
+
+
+def discovery_due(store: Any, now: datetime, requested: Any = None) -> bool:
     rows = store.table(db.SETTINGS).select("value").eq("key", SUGGEST_KEY).execute().data or []
-    last = _when(((rows[0].get("value") if rows else None) or {}).get("at"))
-    return not last or now - last >= DISCOVER_EVERY
+    return _due(_when(((rows[0].get("value") if rows else None) or {}).get("at")), now, requested)
 
 
 def discover(store: Any, llm: Any, page: Any, cats: list[dict[str, Any]], own: list[str], now: datetime, dry: bool,
-             read: Callable[..., Any] = threads_web.read_url) -> dict[str, Any]:
-    """Once a day: search Threads for each category's keywords and keep the authors the writer judges worth following."""
+             read: Callable[..., Any] = threads_web.read_url, requested: Any = None) -> dict[str, Any]:
+    """Once a day, or when asked: search Threads for each category's keywords and keep the authors the writer judges worth
+    following. The answer also says what the search saw (`seen`: authors found, and how many were already followed), so an
+    empty list on the page can say why it is empty."""
     rows = store.table(db.SETTINGS).select("value").eq("key", SUGGEST_KEY).execute().data or []
     value = dict((rows[0].get("value") if rows else None) or {})
     last = _when(value.get("at"))
-    due = page is not None and (not last or now - last >= DISCOVER_EVERY)
+    due = page is not None and _due(last, now, requested)
     lists = dict(value.get("lists") or {})
+    seen = dict(value.get("seen") or {})
     added = 0
     for cat in cats:
         fresh: list[dict[str, Any]] = []
@@ -431,10 +480,14 @@ def discover(store: Any, llm: Any, page: Any, cats: list[dict[str, Any]], own: l
                 if err:
                     log.warning("expert discovery: %s not searched: %s", kw, err)
                 found += got
-            fresh = judge(llm, candidates(found, cat, own), cat, now)
+            cands = candidates(found, cat, own)
+            fresh = judge(llm, cands, cat, now)
             added += len(fresh)
+            authors = {str(p.get("username") or "").lower() for p in found if p.get("username")}
+            seen[cat["id"]] = {"posts": len(found), "authors": len(authors), "known": len(authors & _known(cat)),
+                               "judged": len(cands), "worth": len(fresh)}
         lists[cat["id"]] = merge_suggestions(lists.get(cat["id"]) or [], fresh, cat)     # also prunes added/dismissed names
-    out = {"at": now.isoformat() if due else value.get("at"), "lists": lists}
+    out = {"at": now.isoformat() if due else value.get("at"), "lists": lists, **({"seen": seen} if seen else {})}
     if not dry and out != value:
         store.table(db.SETTINGS).upsert({"key": SUGGEST_KEY, "value": out, "updated_at": now.isoformat()},
                                         on_conflict="key").execute()
@@ -478,26 +531,53 @@ def browse(run: Callable[[dict[str, Any]], Any]) -> Any:
                 pass
 
 
+BRAIN_NOTE = "Expert content ("          # how brain_row's note starts: the mark of a reference this sweep filed itself
+
+
+def forget_fragments(store: Any, urls: list[str]) -> int:
+    """Take the sweep's own old references to these addresses out of the AI brain: the inbox rows it filed (told by their note)
+    and the entries read from them, EXCEPT an entry Wan edited or pinned, which is his now and stays. Returns the entries
+    removed. Never raises: the brain is a copy, the feed is already right."""
+    try:
+        rows = store.table(db.BRAIN_INBOX).select("id,url,note").in_("url", urls).execute().data or []
+        ids = [r["id"] for r in rows if str(r.get("note") or "").startswith(BRAIN_NOTE)]
+        if not ids:
+            return 0
+        gone = (store.table(db.BRAIN_ENTRIES).delete().in_("inbox_id", ids).eq("edited", False).eq("pinned", False)
+                .execute().data or [])
+        store.table(db.BRAIN_INBOX).delete().in_("id", ids).execute()
+        return len(gone)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("old chain references not removed from the AI brain: %s", str(exc)[:160])
+        return 0
+
+
 def heal_chains(store: Any, posts: list[dict[str, Any]], dry: bool) -> list[dict[str, Any]]:
-    """Chains read before chains were joined sit in the feed as one row a part (a 4-part setup guide shown as four posts, the
-    later parts judged off the niche because they lost their opening). A chain found again whose parts are in the feed and whose
-    first part's row has no `parts` replaces them: those expert rows are deleted so it is read as ONE post this sweep, and it is
-    marked `healed`. Returns the posts with that mark; a dry run deletes nothing and only says what would be."""
+    """A chain read now can already be in the feed in an older, shorter shape: one row a part (read before chains were joined: a
+    4-part guide shown as four posts, the later parts judged off the niche because they lost their opening), a single post that
+    has since been carried on, or a chain that has grown a part. Such a chain replaces what is stored: those expert rows are
+    deleted so it is read whole this sweep, it is marked `healed`, a row Wan had hidden stays hidden, and the sweep's own old
+    references to the pieces leave the AI brain (forget_fragments). Returns the posts with the mark; a dry run changes nothing
+    and only says what would be."""
     chains = [p for p in posts if p.get("parts")]
     if not chains:
         return posts
     urls = sorted({u for p in chains for u in p["chain_urls"]})
     try:
-        rows = store.table(WATCH).select("url,raw").eq("section", SECTION).in_("url", urls).execute().data or []
+        rows = store.table(WATCH).select("url,raw,dismissed").eq("section", SECTION).in_("url", urls).execute().data or []
     except Exception as exc:  # noqa: BLE001 - not healing is the old behaviour, not a failed sweep
         log.warning("chains not checked against the feed: %s", str(exc)[:160])
         return posts
     stored = {r["url"]: r for r in rows}
-    stale = {}
+    stale: dict[str, list[str]] = {}
+    hidden: set[str] = set()
     for p in chains:
         old = [u for u in p["chain_urls"] if u in stored]
-        if old and not ((stored.get(p["permalink"]) or {}).get("raw") or {}).get("parts"):
+        had = int(((stored.get(p["permalink"]) or {}).get("raw") or {}).get("parts") or 0)
+        if old and had < p["parts"]:
             stale[p["permalink"]] = old
+            if (stored.get(p["permalink"]) or {}).get("dismissed"):
+                hidden.add(p["permalink"])
     if stale and not dry:
         try:
             gone = sorted({u for old in stale.values() for u in old})
@@ -505,7 +585,12 @@ def heal_chains(store: Any, posts: list[dict[str, Any]], dry: bool) -> list[dict
         except Exception as exc:  # noqa: BLE001
             log.warning("old chain rows not removed: %s", str(exc)[:160])
             return posts
-    return [{**p, "healed": True} if p["permalink"] in stale else p for p in posts]
+        by = {p["permalink"]: p for p in chains}
+        pieces = sorted({u for root, old in stale.items() for u in old}
+                        | {f"{root}#thread-{k}" for root in stale for k in range(2, by[root]["parts"])})
+        forget_fragments(store, pieces)
+    return [{**p, "healed": True, **({"was_hidden": True} if p["permalink"] in hidden else {})} if p["permalink"] in stale else p
+            for p in posts]
 
 
 def sweep(store: Any, llm: Any, cfg: dict[str, Any], own: list[str], now: datetime, dry: bool, have: Callable[..., set[str]],
@@ -520,9 +605,10 @@ def sweep(store: Any, llm: Any, cfg: dict[str, Any], own: list[str], now: dateti
     filed = file_in_brain(store, kept, dry)
     in_brain = {p["permalink"] for p in [k for k in kept if k.get("brain")][:MAX_BRAIN]} if filed else set()
     write(store, [to_row(p, p["permalink"] in in_brain) for p in kept] + [tombstone(p) for p in rejected], dry)
-    found = discover(store, llm, pages.get("threads"), cats, own, now, dry, search)
+    found = discover(store, llm, pages.get("threads"), cats, own, now, dry, search, cfg.get("discover_request"))
     return {"handles": sum(len(c["handles"]) for c in cats), "reads": stats["reads"], "read": stats["found"], "new": len(fresh),
             "shown": len(kept), "hidden": len(rejected), "brain": filed, "suggested": found["suggested"],
             "chains": sum(1 for p in posts if p.get("parts")), "healed": sum(1 for p in posts if p.get("healed")) or None,
-            "skipped": stats["skipped"] or None, "errors": stats["errors"][:12] or None, "by_handle": stats["by_handle"],
+            "skipped": stats["skipped"] or None, "stopped": stats["stopped"] or None, "loads": stats["loads"],
+            "errors": stats["errors"][:12] or None, "by_handle": stats["by_handle"], "notes": stats["notes"] or None,
             "by_category": {c["id"]: sum(1 for k in kept if k["category"] == c["id"]) for c in cats}}

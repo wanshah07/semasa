@@ -266,6 +266,31 @@ def test_the_social_copy_is_h264_yuv420p_with_a_capped_bitrate_and_none_when_it_
     assert motion.social_copy(video, lambda *a, **k: (_ for _ in ()).throw(OSError("no ffmpeg"))) is None
 
 
+def test_a_film_over_the_upload_limit_is_sent_as_its_re_encode_and_one_under_it_is_left_alone(tmp_path):
+    video = tmp_path / "motion-mixed.mp4"
+    video.write_bytes(b"v" * 200)
+    calls = []
+
+    def runner(cmd, **kw):
+        calls.append(cmd)
+        Path(cmd[-1]).write_bytes(b"s" * 50)
+        return type("R", (), {"returncode": 0, "stderr": ""})()
+    assert motion.fit_for_upload(video, runner, limit=1000) == video and calls == [], "under the limit: untouched, no ffmpeg"
+    out = motion.fit_for_upload(video, runner, limit=100)
+    assert out.name == "motion-social.mp4" and out.read_bytes() == b"s" * 50 and len(calls) == 1
+
+    def same_size(cmd, **kw):
+        Path(cmd[-1]).write_bytes(b"s" * 300)
+        return type("R", (), {"returncode": 0, "stderr": ""})()
+    assert motion.fit_for_upload(video, same_size, limit=100) == video, "a re-encode no smaller is not used"
+
+    def broken(cmd, **kw):
+        return type("R", (), {"returncode": 1, "stderr": "boom"})()
+    assert motion.fit_for_upload(video, broken, limit=100) == video, "if it cannot be made smaller the film goes as it was"
+    assert motion.fit_for_upload(tmp_path / "missing.mp4", runner, limit=1) == tmp_path / "missing.mp4"
+    assert 40 * 1024 * 1024 < motion.UPLOAD_MAX < 50 * 1024 * 1024
+
+
 def test_the_silence_drop_ducks_the_music_before_the_solusi_scene(tmp_path):
     seen = []
 

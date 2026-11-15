@@ -1480,6 +1480,28 @@ def with_cover(video: Path, title: str, lead: str = "", eyebrow: str = "", runne
         return video
 
 
+UPLOAD_MAX = 45 * 1024 * 1024    # storage refuses an object over the project-wide limit (50 MB here) whatever the bucket says
+
+
+def fit_for_upload(video: Path, runner: Any = subprocess.run, limit: int = UPLOAD_MAX) -> Path:
+    """The film's own file, unless it is too big for storage: the render of 14 Nov 2026 took 12 minutes, came out over the limit
+    and was refused with 'Payload too large' on both attempts, so the film failed twice with nothing to show for twenty
+    minutes of render. A file over `limit` is re-encoded the way the social copy is (4.5 Mbps cap, a 70 s film stays under
+    40 MB) and that stands in as the film; a file already under it, or one that cannot be re-encoded, is returned as it was."""
+    try:
+        if video.stat().st_size <= limit:
+            return video
+    except OSError:
+        return video
+    small = social_copy(video, runner)
+    if small is None or small.stat().st_size >= video.stat().st_size:
+        log.warning("film is over the upload limit and could not be made smaller")
+        return video
+    log.warning("film was %.1f MB, over the upload limit: sent as the %.1f MB re-encode",
+                video.stat().st_size / 1048576, small.stat().st_size / 1048576)
+    return small
+
+
 def social_copy(video: Path, runner: Any = subprocess.run) -> Path | None:
     """The copy a platform takes without a fuss (Wan, 26 Oct 2026: "the video compress and into post queue"): H.264 High in
     yuv420p at 30 fps, AAC stereo at 44.1 kHz, the bitrate capped at 4.5 Mbps (a 60 s film stays under 35 MB), the index at
@@ -1999,6 +2021,7 @@ def process(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any],
             if covered != video:
                 video, meta = covered, probe(covered, runner)
                 report["cover"] = {"seconds": carousel.COVER_SECONDS}
+        video = fit_for_upload(video, runner)
         data = video.read_bytes()
         path = f"motion/{row['id']}.mp4"
         url = db.upload_generated(store, path, data, "video/mp4")
@@ -2116,6 +2139,7 @@ def template_film(store: Any, llm: Any, row: dict[str, Any], settings: dict[str,
     if not 0 < meta["duration_s"] <= FILM_MAX + .5 or abs(meta["duration_s"] - total) > .5:
         raise ValueError(f"Rendered duration {meta['duration_s']}s does not match the template's {total:g}s")
     video = mix_music(video, [], total, runner)
+    video = fit_for_upload(video, runner)
     data = video.read_bytes()
     path = f"motion/{row['id']}.mp4"
     url = db.upload_generated(store, path, data, "video/mp4")

@@ -135,8 +135,10 @@ function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, s
   const [segRaw, setSeg] = useView("isu.segment", "isu");
   const seg = SEGMENTS.includes(segRaw) ? segRaw : "isu";
   // the two watch segments share one list; it is read only while one of them is open. Expert content has its own page and
-  // its own read (pages/ExpertTab.jsx), so its rows never take room in this list
-  const watch = useTable(TABLES.watch, { enabled: allowed && seg !== "isu", limit: 900, realtime: false, everyMs: 120_000, neq: ["section", "expert"] });
+  // its own read (pages/ExpertTab.jsx), so its rows never take room in this list. The sweeps that fill it run a few times a
+  // day and every click that changes a row reloads it, so the safety poll is five minutes: the table has no updated_at, so
+  // each poll is the whole list (1.2 MB on 16 Nov 2026)
+  const watch = useTable(TABLES.watch, { enabled: allowed && seg !== "isu", limit: 900, realtime: false, everyMs: 300_000, neq: ["section", "expert"] });
   const en = lang === "en";
   // the open tab is brought into view in the scrolling row, so a phone never opens on a row whose open tab is off screen
   const tabRow = useRef(null);
@@ -370,15 +372,17 @@ export default function App() {
   const trends = useTrends();
   const { toasts, push } = useToasts();
   // ws.regulab Studio's history came over on 27 Sep 2026 (supabase/020): a short list would drop the oldest rows unseen
-  const posts = useTable(TABLES.posts, { enabled: allowed, limit: 1000 });
+  // delta: one full read, then only the rows that changed (lib/tableDelta.js). These lists were the page's largest downloads
+  const posts = useTable(TABLES.posts, { enabled: allowed, limit: 1000, delta: true });
   // every picture a post points at, so an old post's pictures load even when 300 newer jobs exist
   const needMedia = useMemo(() => [...new Set(posts.rows.flatMap((p) => p.media_ids || []))].sort().join(","), [posts.rows]);
   const gens = useGenerations({ enabled: allowed, need: needMedia });
-  const ideas = useTable(TABLES.ideas, { enabled: allowed, limit: 1000 });
+  const ideas = useTable(TABLES.ideas, { enabled: allowed, limit: 1000, delta: true });
   const prompts = useTable(TABLES.prompts, { enabled: allowed, realtime: false });
   const log = useTable(TABLES.publishLog, { enabled: allowed, order: "at", limit: 400, realtime: false });
-  // the two big lists stream live changes only while their tab is open; elsewhere a slow poll is enough
-  const faqs = useTable(TABLES.faqs, { enabled: allowed, limit: 3000, realtime: tab === "faq" });
+  // FAQ is the widest list of all (2.3 MB on 16 Nov 2026) and only its own tab shows it, so it is read only while that tab is
+  // open. Coming back to the tab checks the ids and fetches what changed; it does not download the list again
+  const faqs = useTable(TABLES.faqs, { enabled: allowed && tab === "faq", limit: 3000, delta: true });
   // the home dashboard shows the last few lines, so it loads the log too (a shorter read than the Log tab's)
   const activity = useTable(TABLES.log, { enabled: allowed && (tab === "log" || tab === "papan"), order: "at", limit: tab === "log" ? 3000 : 40 });
 

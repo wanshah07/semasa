@@ -6,6 +6,7 @@ import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { currentLang, useLang } from "../lib/i18n";
 import { stampMYT } from "../lib/format";
 import { OWN_SECTIONS, linkOf, ownLine, ownSummary } from "../lib/ownSources";
+import { LINK_SECTIONS, linkSummary } from "../lib/linkSources";
 import { paperLine, watchIdea } from "../lib/watchIdea";
 import { MAX_HANDLES, MAX_KEYWORDS, cleanHandles, cleanKeywords, defaultsOf, handlesOf, keywordsOf, withPlatform } from "../lib/threadsKeywords";
 import Button from "./ui/Button";
@@ -219,7 +220,7 @@ function Tags({ row, domainLabel }) {
         <span className={`rounded-pill px-2 py-0.5 text-[11px] ${String(row.raw.topic).startsWith("Competitor") ? "bg-warn/15 font-semibold text-ink" : "bg-surface-2 text-muted"}`}>
           {topicLabel(row.raw.topic, t)}</span>
       )}
-      {row.kind && (row.section === "regulatory" || OWN_SECTIONS.includes(row.section)) && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted">{row.kind}</span>}
+      {row.kind && (row.section === "regulatory" || OWN_SECTIONS.includes(row.section) || LINK_SECTIONS.includes(row.section)) && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted">{row.kind}</span>}
       {row.domain && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-[11px] text-muted">{domainLabel(row.domain)}</span>}
       {row.relevant === false && !row.pasted && <span className="rounded-pill bg-warn/10 px-2 py-0.5 text-[11px] text-warn">{t("kurang berkaitan", "less relevant")}</span>}
     </span>
@@ -429,9 +430,11 @@ export default function WatchSegment({ section, watch, setting, saveSetting, bra
     watch.reload();
   }
 
-  const own = OWN_SECTIONS.includes(section);
+  // Wan's own websites and LinkedIn lists (LinkedIn sources page) are swept with his other own sources
+  const linked = LINK_SECTIONS.includes(section);
+  const own = OWN_SECTIONS.includes(section) || linked;
   const s = setting || {};
-  const ownRes = ownSummary(section, s);
+  const ownRes = linked ? linkSummary(section, s, t) : ownSummary(section, s);
   // the four own sources are swept by their own workflow (setting "sources"); a person's save of force:true wakes it (024)
   const res = own ? { new: ownRes.new } : (s.result || {});
   const failing = own ? ownRes.failing : (res.sources || []).filter((x) => !x.ok);

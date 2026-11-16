@@ -1,5 +1,5 @@
 import { Anchor, BarChart3, BookOpenText, Brain, Briefcase, GraduationCap, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
-  Layers, LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, NotebookPen, Radio, PenLine, Receipt, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
+  Layers, LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, NotebookPen, Radio, PenLine, Receipt, Rss, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
 
 /* Every page, once: the header's tab row on a phone, the sidebar and the sub-tab bar all read this list, so they can never
    disagree. A page's `id` is its address (#post, #office…) and does not change when it moves between segments.
@@ -24,6 +24,8 @@ export function tabsOf(t) {
     // above show ws.regulab only, so the brand's BM posts and Wan's own English ones are never read in one list
     { id: "li-idea", label: t("Idea LinkedIn", "LinkedIn ideas"), icon: Lightbulb, segment: "linkedin" },
     { id: "li-post", label: t("Post LinkedIn", "LinkedIn posts"), icon: FileText, segment: "linkedin" },
+    // Wan's own lists for LinkedIn ideas (16 Nov 2026): websites to read, LinkedIn posts he pasted and company pages to watch
+    { id: "li-sumber", label: t("Sumber LinkedIn", "LinkedIn sources"), icon: Rss, segment: "linkedin" },
 
     // its own segment (Wan, 14 Nov 2026: "add another segment Expert Content"); AI Expert, Halal Expert and the categories he
     // adds later are sub-tabs INSIDE the page, because they are his data, not pages of the app

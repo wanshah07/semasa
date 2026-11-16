@@ -36,7 +36,7 @@ t("Wan's layout of 11 Oct 2026: which pages sit together", () => {
   const where = (id) => segmentOf((bm) => bm, id)?.id;
   assert.deepEqual(["papan", "chat", "otak"].map(where), ["dashboard", "dashboard", "dashboard"]);
   assert.deepEqual(["isu", "idea", "post", "hooks", "gaya"].map(where), ["content", "content", "content", "content", "content"]);
-  assert.deepEqual(["li-idea", "li-post"].map(where), ["linkedin", "linkedin"]);
+  assert.deepEqual(["li-idea", "li-post", "li-sumber"].map(where), ["linkedin", "linkedin", "linkedin"]);
   assert.equal(where("prestasi"), "performance");
   assert.equal(where("pakar"), "expert", "Expert content is its own segment (Wan, 14 Nov 2026); its categories are sub-tabs inside the page");
   assert.deepEqual(["media", "media-lib"].map(where), ["image", "image"]);
@@ -52,8 +52,8 @@ t("LinkedIn is its own segment, right after Content, with its own idea and post 
   const segs = segmentsOf((bm) => bm);
   const at = segs.findIndex((x) => x.id === "linkedin");
   assert.equal(segs[at - 1].id, "content", "it sits under Content in the sidebar");
-  assert.deepEqual(segs[at].pages.map((p) => p.id), ["li-idea", "li-post"]);
-  assert.deepEqual(segmentsOf((bm, en) => en)[at].pages.map((p) => p.label), ["LinkedIn ideas", "LinkedIn posts"]);
+  assert.deepEqual(segs[at].pages.map((p) => p.id), ["li-idea", "li-post", "li-sumber"]);
+  assert.deepEqual(segmentsOf((bm, en) => en)[at].pages.map((p) => p.label), ["LinkedIn ideas", "LinkedIn posts", "LinkedIn sources"]);
   // the pages are the idea and post pages again, each fixed to one stream, with their own state
   assert.match(src, /<IdeasTab key=\{tab\} stream=\{tab === "li-idea" \? "linkedin" : "regulab"\}/);
   assert.match(src, /<PostsTab key=\{tab\} stream=\{tab === "li-post" \? "linkedin" : "regulab"\}/);

@@ -88,7 +88,7 @@ const CARD_GROUPS = [
   { k: "photo", name: "Photo", hint: "Your own photograph behind the words, on every slide.", cover: "p_title", fact: "p_fact", close: "p_quote" },
   { k: "image", name: "Image", hint: "Your picture ON the slide: a panel, a taped print, a tipped poster or a phone screen.", cover: "i_hero", fact: "i_note", close: "i_title" },
 ];
-function groupOf(tpl) { return ERA_TPL[tpl] ? "era" : PHOTO_TPL[tpl] ? "photo" : PIC_TPL[tpl] ? "image" : HAND_TPL[tpl] ? "hand" : "grid"; }
+function groupOf(tpl) { return ERA_TPL[tpl] ? "era" : PHOTO_TPL[tpl] ? "photo" : PIC_TPL[tpl] ? "image" : HAND_TPL[tpl] ? "hand" : SKIN_TPL[tpl] ? SKIN_OF[tpl[0]] : "grid"; }
 function groupDef(k) { return CARD_GROUPS.find(g => g.k === k) || CARD_GROUPS[0]; }
 
 /* Which templates can carry the character. g_table stays "no character" -- it is the dark
@@ -2350,11 +2350,449 @@ async function renderHandCard(spec) {
   return { url: c.toDataURL("image/jpeg", 0.9), warn: out.warn, y: out.y };
 }
 
+/* ---- FOUR POSTER LOOKS: MARKER, TORN PAPER, COLOUR BLOCKS, NEON (Wan, 16 Nov 2026: four pictures of one comparison poster,
+   "masukkan semua jenis style design sebagai single card, carousel"). The four pictures are ONE layout in four dresses, so this
+   is one layout engine with four skins, not four painters that would drift apart:
+     marker  cream paper, Permanent Marker headline, red rings and ruled rows, a solid red block for the pick;
+     torn    beige ground, each point on its own torn strip of pastel paper, a dark green strip for the pick;
+     block   cream ground, solid rounded colour blocks with white type, white pills for the ticks, a yellow pick;
+     neon    a dark ground, glowing outlined boxes in white, blue, green and orange, a pink pick.
+   Each look has the five slides a post needs, so it works as a single card AND as a whole carousel:
+     x_cover   the opening slide: the headline at its largest, one supporting line;
+     x_points  the points, numbered, each in the look's own container ("Heading | detail" puts the heading in bold);
+     x_table   a comparison: one row per point, cells split on "|", a cell that says yes or no drawn as a tick or a cross,
+               and a first row with no ticks in it read as the column headings;
+     x_pick    the recommendation: the headline and its reason inside the look's highlight block, the points under it;
+     x_close   the closing slide: the headline, the points as plain strips, the source line.
+   On any of them the slide's `note` is drawn in the highlight block (on x_pick, where the block is already the headline, as a
+   line in the accent). A lone card with rows of cells is the table, else the points: the reference poster is title, table,
+   highlight block, source, and that is exactly x_table with a note.
+   EVERY WORD IS DRAWN. Nothing is sliced: a long list makes the type smaller (down to SKIN_MIN), a short one makes it larger
+   (up to SKIN_MAX), by the same two-pass search the hand-drawn cards use; only a slide that does not fit at SKIN_MIN warns.
+   The torn edges and the paper grain come from a generator seeded by the slide's own words, so the measuring pass and the
+   painting pass draw the same card and a re-render is the same picture.
+   No picture is used (spec.bg is ignored), no mascot, and a LinkedIn card carries no ws.regulab mark, as everywhere. */
+const SKIN_OF = { m: "marker", t: "torn", b: "block", n: "neon" };
+const SKIN_PARTS = ["cover", "points", "table", "pick", "close"];
+const SKIN_LOOKS = Object.values(SKIN_OF);
+const SKIN_TPL = Object.fromEntries(Object.keys(SKIN_OF).flatMap((p) => SKIN_PARTS.map((s) => [p + "_" + s, 1])));
+const SK_MARK = '"Permanent Marker", Caveat, cursive';
+const SK_HAND = 'Caveat, "Permanent Marker", cursive';
+const SK_SANS = 'Poppins, "Instrument Sans", system-ui, sans-serif';
+const SK_TEXT = '"Open Sans", "Instrument Sans", sans-serif';
+/* headK / bodyK: Caveat is drawn small for its size, so a Caveat line is set this much larger to read as large as the others */
+const SKINS = {
+  marker: { ground: "#F5EFE2", ink: "#171717", muted: "#4E4A44", accent: "#D7263D", yes: "#171717", no: "#D7263D",
+    head: SK_MARK, headW: 400, headK: 1, body: SK_HAND, bodyW: 700, bodyK: 1.24, caps: true,
+    fills: null, onFill: "#171717", pick: { fill: "#D7263D", ink: "#FFFFFF" } },
+  torn: { ground: "#E9DFCB", ink: "#1E2A24", muted: "#55584F", accent: "#C8553D", yes: "#2E7D4F", no: "#C8553D",
+    head: SK_HAND, headW: 700, headK: 1.2, body: SK_HAND, bodyW: 700, bodyK: 1.24, caps: true,
+    fills: ["#F7C8C2", "#BFD9EE", "#CBE3C3", "#F6E3A1", "#D9CBEA"], onFill: "#1E2A24", pick: { fill: "#23473A", ink: "#FFFFFF" } },
+  block: { ground: "#F4EDE1", ink: "#14213D", muted: "#4B5568", accent: "#F26B21", yes: "#1E9E5A", no: "#D7263D",
+    head: SK_SANS, headW: 800, headK: 0.9, body: SK_SANS, bodyW: 600, bodyK: 0.94,
+    fills: ["#14213D", "#2F6FDE", "#1E9E5A", "#F26B21"], onFill: "#FFFFFF", pill: "#FFFFFF", pick: { fill: "#FFC93C", ink: "#14213D" } },
+  neon: { ground: "#0B0E17", ink: "#F4F7FF", muted: "#A9B4CC", accent: "#FF4FA3", yes: "#4DFFA1", no: "#FF5C7A",
+    head: SK_HAND, headW: 700, headK: 1.2, body: SK_SANS, bodyW: 600, bodyK: 0.94, glow: true, dark: true,
+    fills: ["#F4F7FF", "#4DB8FF", "#4DFFA1", "#FFA63D"], pick: { fill: "#FF4FA3", ink: "#FFD3E8" } },
+};
+export const SKIN_MIN = 0.56, SKIN_MAX = 1.7;
+/* A poster is meant to be full: the type grows whenever the words leave more than a seventh of the card empty (the hand-drawn
+   cards wait until a quarter is empty, which left these with a wide band above and below a table). */
+const SKIN_FROM = 0.86, SKIN_TARGET = 0.94;
+const SK_YES = /^(✓|✔|☑|ya|yes|y|ada|true|betul|boleh)$/i;
+const SK_NO = /^(✗|✘|✕|x|×|tidak|tak|tiada|no|n|false|salah|-|–|—)$/i;
+const skMarkOf = (cell) => (SK_YES.test(String(cell || "").trim()) ? "yes" : SK_NO.test(String(cell || "").trim()) ? "no" : "");
+const RE_PICK = /disyor|syor|cadangan|pilihan (kami|terbaik|saya)|terbaik|kesimpulan|recommend|our pick|best (choice|pick|option)|verdict|bottom line|conclusion/i;
+const SKIN_NAMES = { marker: "Marker", torn: "Torn paper", block: "Blocks", neon: "Neon" };
+const SKIN_PART_NAMES = { cover: "Cover", points: "Points", table: "Comparison", pick: "Recommendation", close: "Closing" };
+const skinPrefix = (look) => Object.keys(SKIN_OF).find((p) => SKIN_OF[p] === look) || "m";
+
+/* Which of the five slides a slide is, from where it sits and what its points look like. Used with and without `fit`: the look
+   has no other way to dress a slide, so a set is always complete. */
+export function skinTemplate(look, s, i, n, pts) {
+  const p = skinPrefix(look);
+  const rows = (pts || []).map(gCells);
+  const table = rows.length >= 2 && rows.every((r) => r.length >= 2) && rows.some((r) => r.length >= 3 || skMarkOf(r[1]));
+  if (table) return p + "_table";
+  if (n > 1 && i === 0) return p + "_cover";
+  if (RE_PICK.test(String((s && s.title) || "")) && (rows.length || String((s && s.lead) || "").trim())) return p + "_pick";
+  if (n > 1 && i === n - 1) return p + "_close";
+  return p + "_points";
+}
+
+function skSeed(spec) {
+  const s = String(spec.template || "") + "|" + String(spec.title || "") + "|" + (spec.items || []).length;
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function skHexA(hex, a) {
+  const n = parseInt(String(hex).slice(1), 16);
+  return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
+}
+/* The ground: flat colour plus what makes each look itself. Decoration stays in the corners and the margins, never under a line
+   of text, so nothing here can cost legibility. */
+function skGround(ctx, S, look, W, H, u, rnd) {
+  ctx.fillStyle = S.ground; ctx.fillRect(0, 0, W, H);
+  if (look === "marker" || look === "torn") {
+    // paper grain: faint specks, the same ones on every render of this slide
+    ctx.save(); ctx.fillStyle = look === "torn" ? "rgba(90,70,40,.07)" : "rgba(60,50,30,.05)";
+    for (let i = 0; i < 520; i++) { const x = rnd() * W, y = rnd() * H, r = (0.6 + rnd() * 1.6) * u; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+  if (look === "block") {
+    ctx.save();
+    ctx.fillStyle = "#FFC93C"; ctx.beginPath(); ctx.arc(Math.round(26 * u), Math.round(30 * u), Math.round(118 * u), 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#2F6FDE"; ctx.beginPath();
+    ctx.moveTo(W, H - Math.round(120 * u)); ctx.lineTo(W, H); ctx.lineTo(W - Math.round(120 * u), H); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  if (look === "neon") {
+    ctx.save();
+    const g = ctx.createRadialGradient(W / 2, H * 0.42, 0, W / 2, H * 0.42, H * 0.75);
+    g.addColorStop(0, "rgba(64,92,170,.28)"); g.addColorStop(1, "rgba(11,14,23,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "rgba(120,150,220,.07)"; ctx.lineWidth = 1;
+    const step = Math.round(54 * u);
+    ctx.beginPath();
+    for (let x = step; x < W; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    for (let y = step; y < H; y += step) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+    ctx.stroke(); ctx.restore();
+  }
+}
+/* A strip of torn paper: straight sides, a ragged top and bottom. */
+function skTorn(ctx, x, y, w, h, fill, u, rnd) {
+  const step = Math.round(20 * u), amp = 5 * u;
+  const top = [], bot = [];
+  for (let px = 0; px <= w; px += step) { top.push([x + Math.min(px, w), y + (rnd() - 0.5) * 2 * amp]); bot.push([x + Math.min(px, w), y + h + (rnd() - 0.5) * 2 * amp]); }
+  top.push([x + w, y + (rnd() - 0.5) * amp]); bot.push([x + w, y + h + (rnd() - 0.5) * amp]);
+  ctx.save();
+  ctx.shadowColor = "rgba(40,30,10,.20)"; ctx.shadowBlur = Math.round(10 * u); ctx.shadowOffsetY = Math.round(4 * u);
+  ctx.fillStyle = fill; ctx.beginPath();
+  top.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+  for (let i = bot.length - 1; i >= 0; i--) ctx.lineTo(bot[i][0], bot[i][1]);
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+/* A marker stroke from one point to another: two passes a hair apart, round ends, so it reads as ink and not as a rule. */
+function skStroke(ctx, x1, y1, x2, y2, colour, lw, rnd) {
+  ctx.save(); ctx.strokeStyle = colour; ctx.lineCap = "round";
+  for (let k = 0; k < 2; k++) {
+    ctx.lineWidth = k ? Math.max(1, lw * 0.5) : lw; ctx.globalAlpha = k ? 0.55 : 1;
+    const j = () => (rnd() - 0.5) * lw * 1.1;
+    ctx.beginPath(); ctx.moveTo(x1 + j(), y1 + j());
+    ctx.quadraticCurveTo((x1 + x2) / 2 + j(), (y1 + y2) / 2 + j() * 1.6, x2 + j(), y2 + j()); ctx.stroke();
+  }
+  ctx.restore();
+}
+/* The container one point sits in. Returns the colour its words are drawn in. `i` picks the colour in the look's cycle. */
+function skBox(ctx, S, look, x, y, w, h, i, u, rnd) {
+  const c = S.fills ? S.fills[i % S.fills.length] : S.ink;
+  if (look === "marker") {
+    skStroke(ctx, x + 6 * u, y + h, x + w - 6 * u, y + h, "rgba(23,23,23,.55)", Math.max(2, 3 * u), rnd);
+    return S.ink;
+  }
+  if (look === "torn") { skTorn(ctx, x, y, w, h, c, u, rnd); return S.onFill; }
+  if (look === "block") {
+    ctx.save(); ctx.fillStyle = c; roundRect(ctx, x, y, w, h, Math.round(Math.min(26 * u, h / 2))); ctx.fill(); ctx.restore();
+    return S.onFill;
+  }
+  ctx.save();
+  ctx.fillStyle = skHexA(c, 0.07); roundRect(ctx, x, y, w, h, Math.round(Math.min(22 * u, h / 2))); ctx.fill();
+  ctx.strokeStyle = c; ctx.lineWidth = Math.max(2, Math.round(4 * u)); ctx.shadowColor = c; ctx.shadowBlur = Math.round(22 * u);
+  roundRect(ctx, x, y, w, h, Math.round(Math.min(22 * u, h / 2))); ctx.stroke(); ctx.stroke();
+  ctx.restore();
+  return c;
+}
+/* The highlight block (the pick, or a slide's note). Returns the colour of its words. */
+function skPickBox(ctx, S, look, x, y, w, h, u, rnd) {
+  const P = S.pick;
+  if (look === "torn") { skTorn(ctx, x, y, w, h, P.fill, u, rnd); return P.ink; }
+  if (look === "neon") {
+    ctx.save();
+    ctx.fillStyle = skHexA(P.fill, 0.12); roundRect(ctx, x, y, w, h, Math.round(24 * u)); ctx.fill();
+    ctx.strokeStyle = P.fill; ctx.lineWidth = Math.max(3, Math.round(5 * u)); ctx.shadowColor = P.fill; ctx.shadowBlur = Math.round(30 * u);
+    roundRect(ctx, x, y, w, h, Math.round(24 * u)); ctx.stroke(); ctx.stroke();
+    ctx.restore(); return P.ink;
+  }
+  ctx.save(); ctx.fillStyle = P.fill;
+  if (look === "marker") {
+    // a block filled by hand: the corners are not quite square
+    const j = () => (rnd() - 0.5) * 9 * u;
+    ctx.beginPath(); ctx.moveTo(x + j(), y + j()); ctx.lineTo(x + w + j(), y + j()); ctx.lineTo(x + w + j(), y + h + j()); ctx.lineTo(x + j(), y + h + j()); ctx.closePath(); ctx.fill();
+  } else { roundRect(ctx, x, y, w, h, Math.round(30 * u)); ctx.fill(); }
+  ctx.restore(); return P.ink;
+}
+/* A tick or a cross, drawn, not typed: the handwriting faces have no ✓ or ✗, and a drawn mark takes the look's own colour. */
+function skMark(ctx, S, look, kind, cx, cy, s, u, onPill) {
+  const colour = kind === "yes" ? S.yes : S.no;
+  ctx.save();
+  if (S.pill && onPill) { ctx.fillStyle = S.pill; ctx.beginPath(); ctx.arc(cx, cy, s * 0.92, 0, Math.PI * 2); ctx.fill(); }
+  ctx.strokeStyle = colour; ctx.lineWidth = Math.max(3, s * 0.24); ctx.lineCap = "round"; ctx.lineJoin = "round";
+  if (S.glow) { ctx.shadowColor = colour; ctx.shadowBlur = Math.round(16 * u); }
+  const k = S.pill && onPill ? 0.5 : 0.62;
+  ctx.beginPath();
+  if (kind === "yes") { ctx.moveTo(cx - s * k, cy + s * 0.04); ctx.lineTo(cx - s * k * 0.28, cy + s * k * 0.72); ctx.lineTo(cx + s * k, cy - s * k * 0.66); }
+  else { ctx.moveTo(cx - s * k * 0.8, cy - s * k * 0.8); ctx.lineTo(cx + s * k * 0.8, cy + s * k * 0.8); ctx.moveTo(cx + s * k * 0.8, cy - s * k * 0.8); ctx.lineTo(cx - s * k * 0.8, cy + s * k * 0.8); }
+  ctx.stroke(); ctx.restore();
+}
+/* The number in front of a point. */
+function skNum(ctx, S, look, n, cx, cy, r, colour, u, rnd) {
+  ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const label = String(n);
+  if (look === "marker") {
+    ctx.strokeStyle = S.accent; ctx.lineWidth = Math.max(3, 4.5 * u); ctx.lineCap = "round";
+    for (let k = 0; k < 2; k++) { ctx.globalAlpha = k ? 0.6 : 1; ctx.beginPath(); ctx.ellipse(cx + (rnd() - 0.5) * 3 * u, cy + (rnd() - 0.5) * 3 * u, r * (1 + k * 0.05), r * (0.94 - k * 0.03), (rnd() - 0.5) * 0.5, 0.2, Math.PI * 2 + 0.6); ctx.stroke(); }
+    ctx.globalAlpha = 1; ctx.fillStyle = S.accent; ctx.font = "400 " + Math.round(r * 1.15) + "px " + SK_MARK; ctx.fillText(label, cx, cy + r * 0.06);
+  } else if (look === "torn") {
+    ctx.fillStyle = S.ink; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#FFFFFF"; ctx.font = "700 " + Math.round(r * 1.35) + "px " + SK_HAND; ctx.fillText(label, cx, cy + r * 0.04);
+  } else if (look === "block") {
+    ctx.fillStyle = "#FFFFFF"; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = S.ink; ctx.font = "800 " + Math.round(r * 1.05) + "px " + SK_SANS; ctx.fillText(label, cx, cy + r * 0.06);
+  } else {
+    ctx.strokeStyle = colour; ctx.lineWidth = Math.max(2, 3.5 * u); ctx.shadowColor = colour; ctx.shadowBlur = Math.round(14 * u);
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = colour; ctx.font = "700 " + Math.round(r * 1.05) + "px " + SK_SANS; ctx.fillText(label, cx, cy + r * 0.06);
+  }
+  ctx.restore();
+}
+/* Wrapped lines, drawn left or centred. Returns the y under the last line. */
+function skLines(ctx, lines, x, y, w, lh, colour, centre, glow, u) {
+  ctx.save(); ctx.fillStyle = colour; ctx.textBaseline = "top"; ctx.textAlign = centre ? "center" : "left";
+  if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = Math.round(14 * u); }
+  for (const l of lines) { ctx.fillText(l, centre ? x + w / 2 : x, y); y += lh; }
+  ctx.restore(); return y;
+}
+/* The headline, centred, the *marked* words in the accent. Words are measured one by one so a colour change never moves a break. */
+function skTitle(ctx, S, look, text, x, y, w, px, u, ink, accent) {
+  const raw = String(text || "").trim();
+  if (!raw) return y;
+  ctx.font = S.headW + " " + px + "px " + S.head; ctx.textBaseline = "top";
+  const words = [];
+  for (const tok of gTokens(S.caps ? raw.toUpperCase() : raw, ink, accent)) {
+    for (const wd of tok.t.split(/\s+/).filter(Boolean)) for (const part of hardSplit(ctx, wd, w)) words.push({ t: part, c: tok.c });
+  }
+  const sp = ctx.measureText(" ").width, lines = [];
+  let line = [], lw = 0;
+  for (const wd of words) {
+    const ww = ctx.measureText(wd.t).width;
+    if (line.length && lw + sp + ww > w) { lines.push({ line, lw }); line = [wd]; lw = ww; } else { lw += (line.length ? sp : 0) + ww; line.push(wd); }
+  }
+  if (line.length) lines.push({ line, lw });
+  const lh = Math.round(px * (S.head === SK_HAND ? 0.98 : 1.14));
+  ctx.save(); ctx.textAlign = "left";
+  for (const L of lines) {
+    let cx = x + (w - L.lw) / 2;
+    for (const wd of L.line) {
+      ctx.fillStyle = wd.c;
+      if (S.glow) { ctx.shadowColor = wd.c; ctx.shadowBlur = Math.round(20 * u); }
+      ctx.fillText(wd.t, cx, y);
+      // Caveat has one weight and it is a light one at headline size: a stroke in the same colour gives it the weight of a brush
+      if (S.head === SK_HAND) { ctx.strokeStyle = wd.c; ctx.lineWidth = Math.max(1, px * 0.022); ctx.lineJoin = "round"; ctx.strokeText(wd.t, cx, y); }
+      cx += ctx.measureText(wd.t).width + sp;
+    }
+    y += lh;
+  }
+  ctx.restore();
+  return y;
+}
+const skBodyFont = (S, px, bold) => (bold ? (S.body === SK_SANS ? 800 : S.bodyW) : S.bodyW) + " " + Math.round(px * S.bodyK) + "px " + S.body;
+const skBodyLh = (S, px) => Math.round(px * S.bodyK * (S.body === SK_HAND ? 1.02 : 1.3));
+
+/* The points as a column of containers. `numbered` puts the look's number in front. Every point is drawn, whole. */
+function skList(ctx, S, look, items, x, y, w, u, f, rnd, numbered) {
+  const padX = Math.round(26 * u * f), padY = Math.round((look === "marker" ? 12 : 20) * u * f), gap = Math.round((look === "marker" ? 12 : 18) * u * f);
+  const r = Math.round(27 * u * f), numW = numbered ? r * 2 + Math.round(18 * u * f) : 0;
+  const px = 33 * u * f, lh = skBodyLh(S, px);
+  items.forEach((it, i) => {
+    const cells = gCells(it), head = cells.length > 1 ? cells[0] : "", detail = cells.length > 1 ? cells.slice(1).filter(Boolean).join(" · ") : cells[0];
+    const tw = w - padX * 2 - numW;
+    ctx.font = skBodyFont(S, px, true); const hl = head ? gWrap(ctx, head, tw) : [];
+    ctx.font = skBodyFont(S, px, false); const dl = detail ? gWrap(ctx, detail, tw) : [];
+    const h = Math.max((hl.length + dl.length) * lh, numbered ? r * 2 : 0) + padY * 2;
+    const colour = skBox(ctx, S, look, x, y, w, h, i, u, rnd);
+    if (numbered) skNum(ctx, S, look, i + 1, x + padX + r, y + h / 2, r, colour, u, rnd);
+    let ty = y + Math.round((h - (hl.length + dl.length) * lh) / 2);
+    const glow = S.glow ? colour : "";
+    if (hl.length) { ctx.font = skBodyFont(S, px, true); ty = skLines(ctx, hl, x + padX + numW, ty, tw, lh, S.body === SK_HAND ? S.accent : colour, !numbered, glow, u); }   // one-weight handwriting cannot go bold: the heading takes the accent
+    if (dl.length) { ctx.font = skBodyFont(S, px, false); ty = skLines(ctx, dl, x + padX + numW, ty, tw, lh, colour, !numbered, hl.length ? "" : glow, u); }
+    y += h + gap;
+  });
+  return y - (items.length ? gap : 0);
+}
+/* The comparison. One row per point, cells split on "|". */
+function skTable(ctx, S, look, items, x, y, w, u, f, rnd) {
+  let rows = items.map((it) => gCells(it).slice(0, 5));
+  const cols = Math.max(...rows.map((r) => r.length));
+  rows = rows.map((r) => [...r, ...Array(cols - r.length).fill("")]);
+  const marked = (r) => r.slice(1).some((c) => skMarkOf(c));
+  /* Column headings need three columns: in a two-column table the first row is a fact like any other ("Rinse-off | 3.0%" was
+     drawn as a heading, small and in capitals, which hid a limit). With three or more, a first row with no tick or cross in it
+     is the headings when at least half of the rows under it carry one. */
+  const under = rows.slice(1);
+  const header = cols >= 3 && under.length >= 2 && !marked(rows[0]) && under.filter(marked).length * 2 >= under.length ? rows.shift() : null;
+  const padX = Math.round(22 * u * f), padY = Math.round(16 * u * f), gap = Math.round((look === "marker" ? 6 : 14) * u * f);
+  const firstW = Math.round(w * (cols === 2 ? 0.56 : cols === 3 ? 0.38 : cols === 4 ? 0.34 : 0.30)), restW = (w - firstW) / (cols - 1);
+  const px = 30 * u * f, lh = skBodyLh(S, px);
+  if (header) {
+    // the headings come down in size until their longest word fits its column: a heading broken mid-word reads as a mistake
+    let hpx = 23 * u * f;
+    const fitsCol = () => header.every((c, k) => String(c).toUpperCase().split(/\s+/).every((wd) => ctx.measureText(wd).width <= (k ? restW : firstW) - Math.round(10 * u)));
+    for (; hpx > 13 * u; hpx -= 1) { ctx.font = "700 " + Math.round(hpx) + "px " + SK_SANS; if (fitsCol()) break; }
+    ctx.font = "700 " + Math.round(hpx) + "px " + SK_SANS;
+    const cellLines = header.map((c, k) => gWrap(ctx, String(c).toUpperCase(), (k ? restW : firstW) - Math.round(10 * u)));
+    const hlh = Math.round(hpx * 1.2), hh = Math.max(...cellLines.map((l) => l.length)) * hlh;
+    cellLines.forEach((ls, k) => {
+      const cx0 = k ? x + firstW + (k - 1) * restW : x + padX;
+      const top = y + hh - ls.length * hlh;
+      ctx.font = "700 " + Math.round(hpx) + "px " + SK_SANS;
+      skLines(ctx, ls, cx0, top, k ? restW : firstW - padX, hlh, look === "neon" ? S.muted : S.accent, k > 0, "", u);
+    });
+    y += hh + Math.round(12 * u * f);
+    if (look === "marker") skStroke(ctx, x, y - Math.round(4 * u * f), x + w, y - Math.round(4 * u * f), S.ink, Math.max(3, 4 * u), rnd);
+  }
+  rows.forEach((r, i) => {
+    ctx.font = skBodyFont(S, px, true); const ll = gWrap(ctx, r[0], firstW - padX - Math.round(8 * u));
+    ctx.font = skBodyFont(S, px, false);
+    const cl = r.slice(1).map((c) => (skMarkOf(c) ? null : gWrap(ctx, c, restW - Math.round(14 * u))));
+    const tall = Math.max(ll.length, ...cl.map((l) => (l ? l.length : 1)));
+    const h = tall * lh + padY * 2;
+    const colour = skBox(ctx, S, look, x, y, w, h, i, u, rnd);
+    ctx.font = skBodyFont(S, px, true);
+    skLines(ctx, ll, x + padX, y + Math.round((h - ll.length * lh) / 2), firstW - padX, lh, colour, false, S.glow ? colour : "", u);
+    r.slice(1).forEach((c, k) => {
+      const cx0 = x + firstW + k * restW, kind = skMarkOf(c);
+      if (kind) skMark(ctx, S, look, kind, cx0 + restW / 2, y + h / 2, Math.min(lh * 0.62, restW * 0.24), u, true);
+      else if (cl[k] && cl[k].length) { ctx.font = skBodyFont(S, px, false); skLines(ctx, cl[k], cx0, y + Math.round((h - cl[k].length * lh) / 2), restW, lh, colour, true, "", u); }
+    });
+    y += h + gap;
+  });
+  return y - (rows.length ? gap : 0);
+}
+/* The highlight block with words in it: an optional headline and a body, both centred. */
+function skPick(ctx, S, look, head, body, x, y, w, u, f, rnd, headPx) {
+  const padX = Math.round(34 * u * f), padY = Math.round(26 * u * f), tw = w - padX * 2;
+  const hpx = Math.round((headPx || 50) * u * f * S.headK), bpx = 33 * u * f, blh = skBodyLh(S, bpx);
+  const hlh = Math.round(hpx * (S.head === SK_HAND ? 0.98 : 1.14));
+  const headText = S.caps ? stripEmph(head).toUpperCase() : stripEmph(head);
+  ctx.font = S.headW + " " + hpx + "px " + S.head; const hl = head ? gWrap(ctx, headText, tw) : [];
+  ctx.font = skBodyFont(S, bpx, false); const bl = body ? gWrap(ctx, body, tw) : [];
+  const mid = hl.length && bl.length ? Math.round(10 * u * f) : 0;
+  const h = hl.length * hlh + mid + bl.length * blh + padY * 2;
+  const colour = skPickBox(ctx, S, look, x, y, w, h, u, rnd);
+  let ty = y + padY;
+  if (hl.length) { ctx.font = S.headW + " " + hpx + "px " + S.head; ty = skLines(ctx, hl, x + padX, ty, tw, hlh, colour, true, S.glow ? S.pick.fill : "", u) + mid; }
+  if (bl.length) { ctx.font = skBodyFont(S, bpx, false); skLines(ctx, bl, x + padX, ty, tw, blh, colour, true, "", u); }
+  return y + h;
+}
+/* Where the words may sit: under the mark and the eyebrow, above the source line (which is measured, because a long citation
+   takes two lines and the block must stop above it). */
+function skFoot(ctx, spec, W, H, u, M) {
+  const footnote = String(spec.footnote || "").trim();
+  if (!footnote) return { lines: [], lh: 0, y: H, bottom: H - Math.round(84 * u) };
+  const px = Math.round(22 * u), lh = Math.round(30 * u);
+  ctx.font = "400 " + px + "px " + SK_TEXT;
+  const lines = gWrap(ctx, (spec.stream === "linkedin" ? "Source: " : "Sumber: ") + footnote, W - M * 2);
+  const y = H - Math.round(50 * u) - lines.length * lh;
+  return { lines, lh, y, px, bottom: y - Math.round(26 * u) };
+}
+const SKIN_TOP = 150;
+function skinPaint(ctx, spec, W, H, f, shift) {
+  const look = SKIN_OF[spec.template[0]], S = SKINS[look], part = spec.template.slice(2);
+  const u = W / 1080, M = Math.round(64 * u), w = W - M * 2;
+  const rnd = picRng(skSeed(spec));                   // the same torn edges in the measuring pass and the painting pass
+  const title = String(spec.title || "").trim(), lead = stripEmph(spec.lead || "").trim(), note = stripEmph(spec.note || "").trim();
+  const items = (spec.items || []).map((x) => stripEmph(x).trim()).filter(Boolean);
+  const warn = [];
+  skGround(ctx, S, look, W, H, u, rnd);
+  if (spec.eyebrow) {
+    ctx.save(); ctx.font = "700 " + Math.round(21 * u) + "px " + SK_SANS; ctx.fillStyle = S.muted; ctx.textBaseline = "top"; ctx.textAlign = "center";
+    const eb = gWrap(ctx, String(spec.eyebrow).toUpperCase(), w)[0] || "";
+    ctx.fillText(eb, W / 2, Math.round(98 * u)); ctx.restore();
+  }
+  const foot = skFoot(ctx, spec, W, H, u, M);
+  if (foot.lines.length) { ctx.font = "400 " + foot.px + "px " + SK_TEXT; skLines(ctx, foot.lines, M, foot.y, w, foot.lh, S.muted, true, "", u); }
+  const gapL = Math.round(30 * u * f), gapS = Math.round(18 * u * f);
+  let y = Math.round(SKIN_TOP * u) + shift;
+  const leadLines = (px, colour) => {
+    if (!lead) return;
+    ctx.font = skBodyFont(S, px, false);
+    y = skLines(ctx, gWrap(ctx, lead, w - Math.round(40 * u)), M + Math.round(20 * u), y, w - Math.round(40 * u), skBodyLh(S, px), colour, true, "", u);
+  };
+  if (part === "pick") {
+    // the recommendation: the headline and its reason are the block
+    y = skPick(ctx, S, look, title, lead, M, y, w, u, f, rnd, 62);
+    if (items.length) { y += gapL; y = skList(ctx, S, look, items, M, y, w, u, f, rnd, true); }
+    if (note) {
+      y += gapL; ctx.font = skBodyFont(S, 34 * u * f, true);
+      y = skLines(ctx, gWrap(ctx, note, w), M, y, w, skBodyLh(S, 34 * u * f), S.accent, true, S.glow ? S.accent : "", u);
+    }
+  } else {
+    const tpx = { cover: 104, points: 66, table: 62, close: 82 }[part] || 66;
+    y = skTitle(ctx, S, look, title, M, y, w, Math.round(tpx * u * f * S.headK), u, S.ink, S.accent);
+    if (look === "marker" && title) { y += Math.round(6 * u * f); skStroke(ctx, W / 2 - w * 0.2, y, W / 2 + w * 0.2, y + 2 * u, S.accent, Math.max(4, 6 * u * f), rnd); y += Math.round(6 * u * f); }
+    if (lead) { y += part === "cover" ? gapL : gapS; leadLines((part === "cover" ? 42 : 34) * u * f, S.ink); }
+    if (items.length) {
+      y += gapL;
+      y = part === "table" ? skTable(ctx, S, look, items, M, y, w, u, f, rnd) : skList(ctx, S, look, items, M, y, w, u, f, rnd, part === "points");
+    }
+    if (note) {
+      // "Recommended: Meicet MD300. Closest to VISIA" → the words before the colon are the block's own headline
+      const cut = /^([^:]{2,28}):\s+(\S[\s\S]*)$/.exec(note);
+      y += gapL; y = skPick(ctx, S, look, cut ? cut[1] : "", cut ? cut[2] : note, M, y, w, u, f, rnd, 44);
+    }
+  }
+  if (y > foot.bottom + 2) warn.push("The slide is fuller than the card: shorten a line.");
+  return { warn, y, bottom: foot.bottom };
+}
+async function renderSkinCard(spec) {
+  const [W, H] = sizeOf(spec);
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const ctx = styleCtx(c.getContext("2d"), spec);
+  try { await document.fonts.ready; } catch (e) { }
+  const u = W / 1080, top = Math.round(SKIN_TOP * u), look = SKIN_OF[spec.template[0]];
+  const probe = skinPaint(measureProxy(ctx), spec, W, H, 1, 0);
+  const room = probe.bottom - top;
+  const used = (f) => skinPaint(measureProxy(ctx), spec, W, H, f, 0).y - top;
+  let fill = 1;
+  const at1 = probe.y - top;
+  if (at1 > room) {
+    // fuller than the card: the type comes down until every word fits, and only a slide that does not fit at SKIN_MIN warns
+    let lo = SKIN_MIN, hi = 1;
+    if (used(lo) <= room) { for (let i = 0; i < 8; i++) { const mid = (lo + hi) / 2; if (used(mid) <= room) lo = mid; else hi = mid; } }
+    fill = Math.floor(lo * 100) / 100;
+  } else if (!spec.type_size && at1 < SKIN_FROM * room) {
+    // room to spare: the type grows to fill it, by the search the hand-drawn cards use
+    let lo = 1, hi = SKIN_MAX;
+    for (let i = 0; i < 8; i++) { const mid = (lo + hi) / 2; if (used(mid) <= SKIN_TARGET * room) lo = mid; else hi = mid; }
+    fill = lo > 1.03 ? Math.floor(lo * 100) / 100 : 1;
+  }
+  /* The height is not a smooth function of the size: one more pixel can push a word to the next line. So the size the search
+     landed on is checked, and stepped down until the card really holds it. */
+  for (let i = 0; i < 40 && fill > SKIN_MIN && used(fill) > room; i++) fill = Math.round((fill - 0.02) * 100) / 100;
+  const slack = room - used(fill);
+  const shift = slack > 0 ? Math.round(slack / 2) : 0;           // centred between the eyebrow and the source line
+  const out = skinPaint(ctx, spec, W, H, fill, shift);
+  if (spec.stream !== "linkedin") {
+    await drawBrandMark(ctx, spec, W, u, Math.round(64 * u), { top: 40, h: 28, knockout: !!SKINS[look].dark, textFill: SKINS[look].dark ? "rgba(244,247,255,.6)" : "rgba(21,23,27,.5)" });
+  }
+  return { url: c.toDataURL("image/jpeg", 0.9), warn: out.warn, y: out.y, fill };
+}
+
 export const LOOKS = [
   { k: "classic", bm: "Semasa", en: "Semasa", hintBm: "Reka bentuk asal Semasa: kertas krim, tajuk serif, nombor slaid.",
     hintEn: "Semasa's own drawing: cream paper, serif headline, slide numbers." },
   { k: "hand", bm: "Lukisan tangan", en: "Hand-drawn", hintBm: "Papan kelabu-biru, kad putih sempadan bergetar, tajuk marker + highlighter kuning, jadual HEAD TO HEAD.",
     hintEn: "Grey-blue board, white card with wobbly borders, marker headline + yellow highlighter, HEAD TO HEAD table." },
+  // the four poster looks (Wan, 16 Nov 2026): each is a cover, points, a tick-and-cross comparison, a recommendation and a closing slide
+  { k: "marker", bm: "Poster marker", en: "Marker poster", hintBm: "Kertas krim, tajuk marker hitam, bulatan dan garis merah, blok merah untuk syor. Jadual ✓/✗.",
+    hintEn: "Cream paper, black marker headline, red rings and rules, a red block for the pick. Tick and cross table." },
+  { k: "torn", bm: "Kertas koyak", en: "Torn paper", hintBm: "Latar kuning air, setiap isi atas jalur kertas pastel yang dikoyak, jalur hijau tua untuk syor.",
+    hintEn: "Beige ground, every point on its own torn strip of pastel paper, a dark green strip for the pick." },
+  { k: "block", bm: "Blok warna", en: "Colour blocks", hintBm: "Blok warna pejal (biru tua, biru, hijau, oren) dengan tulisan putih, pil putih untuk ✓/✗, syor kuning.",
+    hintEn: "Solid colour blocks (navy, blue, green, orange) with white type, white pills for the ticks, a yellow pick." },
+  { k: "neon", bm: "Neon", en: "Neon", hintBm: "Latar gelap, kotak bergaris cahaya putih, biru, hijau dan oren, syor merah jambu.",
+    hintEn: "A dark ground, glowing outlined boxes in white, blue, green and orange, a pink pick." },
   { k: "grid", bm: "Grid", en: "Grid", hintBm: "Studio: kertas graf krim, tajuk tebal, satu perkataan oren.",
     hintEn: "Studio: cream graph paper, ultra-bold headline, one word in orange." },
   { k: "era", bm: "Info ERA", en: "Info ERA", hintBm: "Studio: kertas kraf, highlight marker, blok merah. Penerang yang lantang.",
@@ -2369,8 +2807,9 @@ export const templateLabel = (k) => ({ g_title: "Grid · Title", g_stat: "Grid �
   g_check: "Grid · Checklist", g_myth: "Grid · Myth vs fact", g_steps: "Grid · Steps", e_hook: "ERA · Hook", e_explain: "ERA · Explainer", e_flow: "ERA · Flow",
   e_vs: "ERA · Versus", e_myth: "ERA · Myth vs fact", e_check: "ERA · Checklist", e_stat: "ERA · Figure", e_event: "ERA · Event poster", p_title: "Photo · Title", p_fact: "Photo · Fact",
   p_quote: "Photo · Quote", p_stat: "Photo · Figure", p_list: "Photo · List", p_split: "Photo · Split",
-  h_poster: "Hand · Poster", h_hero: "Hand · Cover", h_note: "Hand · Note" }[k] || String(k || ""));
-export const STUDIO_LOOKS = ["grid", "era", "photo", "image", "hand"];
+  h_poster: "Hand · Poster", h_hero: "Hand · Cover", h_note: "Hand · Note" }[k]
+  || (SKIN_TPL[k] ? SKIN_NAMES[SKIN_OF[k[0]]] + " · " + SKIN_PART_NAMES[k.slice(2)] : String(k || "")));
+export const STUDIO_LOOKS = ["grid", "era", "photo", "image", "hand", ...SKIN_LOOKS];
 /** The family palettes, for the Canva hand-off brief: one copy of the hex codes, the ones the renderer draws with. */
 export const PALETTES = { grid: GRID_PAL, era: ERA_PAL };
 export const isStudioLook = (k) => STUDIO_LOOKS.includes(k);
@@ -2392,7 +2831,7 @@ function asLines(points) {
    Unset fields fall back to the look's own choices: cover, middle and closing slides take the templates Studio's
    groups name (CARD_GROUPS); the source line is drawn on the closing slide, Semasa's rule; the eyebrow on every
    slide, Studio's. o.mascots = [{k, url}] are the poses on offer (none offered = no mascot anywhere). */
-export const TEMPLATE_KEYS = [...Object.keys(GRID_TPL), ...Object.keys(ERA_TPL), ...Object.keys(PHOTO_TPL), ...Object.keys(PIC_TPL), ...Object.keys(HAND_TPL), ...Object.keys(MORE_TPL)];
+export const TEMPLATE_KEYS = [...Object.keys(GRID_TPL), ...Object.keys(ERA_TPL), ...Object.keys(PHOTO_TPL), ...Object.keys(PIC_TPL), ...Object.keys(HAND_TPL), ...Object.keys(MORE_TPL), ...Object.keys(SKIN_TPL)];
 export const takesMascot = (t) => !!MASCOT_TPL[t];
 /** Which templates draw each pose by default: asked of pickMascotFor itself, the renderer's own rule, so the Design
     tab's library can never disagree with a render (Studio's mascotDutyMap). {poseKey: [template, ...]} */
@@ -2436,6 +2875,7 @@ export function fitTemplate(look, s, i, n, pts) {
   const steps = pts.length >= 2 && pts.length <= 5 && RE_STEPS.test(title);
   const check = pts.length >= 2 && pts.length <= 5 && RE_CHECK.test(title);
   const first = i === 0 && n > 1, last = i === n - 1 && n > 1;
+  if (SKIN_LOOKS.includes(look)) return skinTemplate(look, s, i, n, pts);     // the poster looks dress every slide themselves
   if (!pts.length || first) return "";
   if (pts.length <= 6 && RE_DATE.test(String(s.note || ""))) return "e_event";     // a date in the note and people in the points: an event poster
   if (look === "grid") {
@@ -2718,6 +3158,9 @@ export function specsFor(slides, o = {}) {
       // the hand-drawn family: a lone card is the poster; a carousel cover is the hero, middle slides are notes.
       const tpl = n === 1 ? "h_poster" : (i === 0 ? "h_hero" : "h_note");
       spec = { ...base, template: tpl, lead: lead0, items: pts };
+    } else if (SKIN_LOOKS.includes(look)) {
+      // the four poster looks: cover, points, comparison, recommendation or closing, by place and by what the points look like
+      spec = { ...base, template: skinTemplate(look, s, i, n, pts), lead: lead0, items: pts };
     } else if (i === 0 || n === 1) spec = { ...base, template: "p_title", lead: withLead(asLines(pts)) };
     else if (last) spec = { ...base, template: "p_quote", lead: withLead(asLines(pts)) };
     else if (pts.length && pts.length <= 4) spec = { ...base, template: "p_fact", lead: lead0, items: pts };
@@ -2746,7 +3189,7 @@ function renderSpec(spec) {
   return next;
 }
 async function renderSpecNow(spec) {
-  if (spec.bg && spec.template[0] !== "p" && spec.template[0] !== "i" && spec.template[0] !== "h" && await groundIsLight(spec)) spec = { ...spec, scrim: "none", _light: true };
+  if (spec.bg && spec.template[0] !== "p" && spec.template[0] !== "i" && spec.template[0] !== "h" && !SKIN_TPL[spec.template] && await groundIsLight(spec)) spec = { ...spec, scrim: "none", _light: true };
   if (spec.template === "c_ref") return renderRefCard(spec);
   if (MORE_TPL[spec.template]) return renderMoreCard(spec);
   if (GRID_TPL[spec.template]) return renderGridCard(spec);
@@ -2754,6 +3197,7 @@ async function renderSpecNow(spec) {
   if (PHOTO_TPL[spec.template]) return renderPhotoCard(spec);
   if (PIC_TPL[spec.template]) return renderPicCard(spec);
   if (HAND_TPL[spec.template]) return renderHandCard(spec);
+  if (SKIN_TPL[spec.template]) return renderSkinCard(spec);
   throw new Error("unknown card template " + spec.template);
 }
 

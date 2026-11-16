@@ -11,7 +11,7 @@ assert.match(readFileSync(new URL("../backend/semasa/ideas.py", import.meta.url)
 // hiding: any built-in can go (Semasa and Grid too), it is only hidden, and it comes back
 let h = hide([], "classic"); h = hide(h, "grid");
 assert.deepEqual(h, ["classic", "grid"]);
-assert.deepEqual(offered(LOOKS, h).map((l) => l.k), ["hand", "era", "photo", "image"]);
+assert.deepEqual(offered(LOOKS, h).map((l) => l.k), ["hand", "marker", "torn", "block", "neon", "era", "photo", "image"]);
 assert.deepEqual(restore(h, "classic"), ["grid"]);
 assert.deepEqual(hide(h, "grid"), h, "hiding twice changes nothing");
 assert.deepEqual(hide([], "nonsense"), [], "an unknown name is ignored");

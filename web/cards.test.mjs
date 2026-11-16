@@ -1,7 +1,7 @@
 // The slide -> Studio card mapping (web/src/lib/cards/studio.js, specsFor). The drawing itself is tested in a real
 // browser by backend/tests/test_studio_cards.py; this checks the one rule the mapping owns: every point of every
 // slide reaches a card, whatever the look. `npm test`.
-import { specsFor, LOOKS, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf, normDesign, normLayout, placeOf } from "./src/lib/cards/studio.js";
+import { specsFor, LOOKS, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf, normDesign, normLayout, placeOf, skinTemplate, templateLabel } from "./src/lib/cards/studio.js";
 import { canvaBrief } from "./src/lib/canvaBrief.js";
 import { readFileSync } from "node:fs";
 import { cardFromCaption, headAndRest, slidesFromCaption } from "./src/lib/cards/fromCaption.js";
@@ -11,6 +11,9 @@ const ok = (cond, what) => { if (!cond) { failed++; console.error("FAIL", what);
 const words = (spec) => [spec.title, spec.lead, ...(spec.items || [])].join("\n");
 // how many items each template actually draws (Studio slices its lists)
 const SHOWN = { e_hook: 3, e_explain: 3, p_fact: 4, g_title: 0, p_title: 0, p_quote: 0, i_title: 8, i_note: 8, i_hero: 8, i_step: 8, h_poster: 8, h_hero: 8, h_note: 8 };   // the image and hand-drawn families draw every point (lines, a pill or a step)
+
+// the four poster looks draw every point, whatever the count: the type comes down in size instead (studio.js SKIN_MIN)
+for (const p of ["m", "t", "b", "n"]) for (const part of ["cover", "points", "table", "pick", "close"]) SHOWN[`${p}_${part}`] = Infinity;
 
 const P = (n) => Array.from({ length: n }, (_, i) => `Poin nombor ${i + 1} yang penting.`);
 const decks = [
@@ -63,7 +66,7 @@ ok(hook[0].template === "e_hook" && hook[0].mascot === "/m/confused.webp", "the 
 ok(!specsFor([{ title: "t", points: [] }], { look: "grid" })[0].mascot, "no poses offered, no mascot");
 ok(!specsFor([{ title: "t", points: ["a"], template: "e_flow" }], { look: "era", mascots: M })[0].mascot, "e_flow never carries a mascot (Studio)");
 ok(specsFor([{ title: "t", points: [], mascot: "wave", template: "e_vs" }], { mascots: M })[0].mascot === "/m/wave.webp", "a chosen pose wins over the hint");
-ok(LOOKS.map((l) => l.k).join(",") === "classic,hand,grid,era,photo,image", "the six looks, Semasa's own first");
+ok(LOOKS.map((l) => l.k).join(",") === "classic,hand,marker,torn,block,neon,grid,era,photo,image", "the ten looks, Semasa's own first, the four poster looks after Hand-drawn");
 
 // Studio's "Reset from caption": every paragraph kept, asks and the website never built onto the artwork
 {
@@ -106,8 +109,56 @@ ok(LOOKS.map((l) => l.k).join(",") === "classic,hand,grid,era,photo,image", "the
 
 // the catalogue file and the renderer name the same twenty-two templates (4 Oct 2026: nine added, then the event poster)
 const cat = JSON.parse(readFileSync(new URL("../rules/cards.json", import.meta.url), "utf8")).templates.map((x) => x.k);
-ok(cat.length === 29 && cat.slice().sort().join() === TEMPLATE_KEYS.slice().sort().join(), "rules/cards.json and studio.js list the same templates");
-ok(cat.every((k) => /^[gepih]_[a-z]{2,8}$/.test(k)), "every template key passes the slide-design pattern the database and the worker check");
+ok(cat.length === 49 && cat.slice().sort().join() === TEMPLATE_KEYS.slice().sort().join(), "rules/cards.json and studio.js list the same templates");
+ok(cat.every((k) => /^[gepihmtbn]_[a-z]{2,8}$/.test(k)), "every template key passes the slide-design pattern the page and the worker check");
+// ... and the check itself keeps every one of them: a slide's own template must survive slideExtras (page) and slide_extras
+// (worker). The pattern was [gepi] while the catalogue already had h_ templates, so a Hand-drawn choice on one slide was silently
+// dropped. Read from the two sources (compliance.js imports JSON, which Node will not load without an attribute).
+{
+  const py = readFileSync(new URL("../backend/semasa/compliance.py", import.meta.url), "utf8");
+  const js = readFileSync(new URL("./src/lib/compliance.js", import.meta.url), "utf8");
+  const pyRe = /"template": re\.compile\(r"([^"]+)"\)/.exec(py)[1], jsRe = /\n  template: \/([^/]+)\//.exec(js)[1];
+  ok(pyRe === jsRe, "the worker and the page check a slide's template with the same pattern");
+  ok(cat.every((k) => new RegExp(jsRe).test(k)), "the page and the worker keep every catalogue template chosen on a slide");
+  ok(!new RegExp(jsRe).test("x_table") && !new RegExp(jsRe).test("c_ref"), "and still refuse a family that does not exist");
+}
+
+// THE FOUR POSTER LOOKS (Wan, 16 Nov 2026): marker, torn paper, colour blocks, neon. Each is a single card and a whole carousel.
+{
+  const SK = ["marker", "torn", "block", "neon"];
+  ok(SK.every((k) => STUDIO_LOOKS.includes(k)), "the four poster looks are Studio looks");
+  for (const look of SK) {
+    const p = look[0];
+    // a carousel: cover, points, comparison, recommendation, closing
+    const deck = [
+      { title: "Notifikasi bukan kelulusan", lead: "Tiga perkara." },
+      { title: "Apa itu notifikasi", points: ["Pengisytiharan | oleh pemegang", "Bukan penilaian"] },
+      { title: "Kosmetik lawan ubat", points: ["Perkara | Kosmetik | Ubat", "Dinilai dahulu | tidak | ya", "Nombor | NOT | MAL"] },
+      { title: "Syor: semak PIF dahulu", lead: "Sebelum iklan.", points: ["Semak tuntutan"] },
+      { title: "Penutup", points: ["Sah 2 tahun"], note: "Tanggungjawab kekal." },
+    ];
+    for (const fit of [true, false]) {
+      const specs = specsFor(deck, { look, stream: "regulab", citation: "NPRA", fit });
+      ok(specs.map((x) => x.template).join() === [`${p}_cover`, `${p}_points`, `${p}_table`, `${p}_pick`, `${p}_close`].join(), `${look} (fit ${fit}): cover, points, comparison, recommendation, closing`);
+      ok(specs.every((x) => !x.mascot), `${look}: no mascot on a poster look`);
+      ok(specs[4].footnote === "NPRA" && specs[4].note === "Tanggungjawab kekal.", `${look}: the closing slide carries the source and its note`);
+      ok(specs[3].lead === "Sebelum iklan." && specs[3].items.join() === "Semak tuntutan", `${look}: the recommendation keeps its reason and its points`);
+    }
+    // a single card: rows of cells are the comparison, plain points are the points
+    ok(specsFor([{ title: "t", points: ["A | ✓ | ✗", "B | ✗ | ✓"] }], { look })[0].template === `${p}_table`, `${look}: a lone card with rows of cells is the comparison`);
+    ok(specsFor([{ title: "t", points: ["satu", "dua"] }], { look })[0].template === `${p}_points`, `${look}: a lone card with plain points is the points`);
+    // "Heading | detail" pairs are points with a heading, not a table; a yes/no in the second cell makes it a table
+    ok(skinTemplate(look, { title: "t" }, 1, 3, ["Tajuk | ayat penuh di bawahnya", "Lagi | satu ayat"]) === `${p}_points`, `${look}: heading | detail pairs stay points`);
+    ok(skinTemplate(look, { title: "t" }, 1, 3, ["Wajib notifikasi | ya", "Perlu ujian klinikal | tidak"]) === `${p}_table`, `${look}: a yes/no second cell is a comparison`);
+    // a slide's own template wins, and a saved design may name the look's templates per place
+    ok(specsFor([{ title: "t", points: ["a"], template: `${p}_pick` }], { look: "grid" })[0].template === `${p}_pick`, `${look}: a template chosen on the slide wins`);
+    const D = normDesign({ look, cover: `${p}_cover`, middle: `${p}_table`, closing: "g_title" });
+    ok(D && D.cover === `${p}_cover` && D.middle === `${p}_table` && !D.closing, `${look}: a saved design takes this look's templates and no other family's`);
+    ok(templateLabel(`${p}_table`).endsWith("· Comparison"), `${look}: the comparison has a readable name`);
+    // LinkedIn: the same slides, marked as that stream (the painter draws no ws.regulab mark on it)
+    ok(specsFor(deck, { look, stream: "linkedin" }).every((x) => x.stream === "linkedin"), `${look}: LinkedIn specs carry the stream`);
+  }
+}
 
 // "fit the design to each slide": off, nothing changes; on, only a template that draws every point is chosen
 const FIT = [{ title: "Kulit", points: [] }, { title: "Tempoh purata", points: ["14", "hari"] },

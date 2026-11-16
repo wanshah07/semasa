@@ -115,7 +115,7 @@ def test_the_classic_drawing_keeps_a_lead_and_a_note():
 
 def test_no_look_or_an_unknown_one_is_semasas_own_drawing(monkeypatch, _uploads):
     monkeypatch.setattr(studio_cards, "render", lambda *a, **k: pytest.fail("Studio must not draw this"))
-    for meta in ({}, {"look": "classic"}, {"look": "neon"}):
+    for meta in ({}, {"look": "classic"}, {"look": "holo"}):
         store = _store(meta)
         assert _run(store) is True
         done = store.tables["media_generations"][0]
@@ -165,7 +165,7 @@ def test_the_idea_carries_its_look_to_the_slide_job():
     assert ideas.slide_job(idea, li, "p1")["meta"]["bg"] == "lib:g_gudang01"
     for brief in ({}, None, "not a dict"):
         assert ideas.look_of({"brief": brief}) == "image"                      # nothing chosen: the default look
-    assert ideas.look_of({"brief": {"look": "neon"}}) == "classic"            # a name nobody knows: the safe drawing
+    assert ideas.look_of({"brief": {"look": "holo"}}) == "classic"            # a name nobody knows: the safe drawing
     assert ideas.slide_job({"id": "i4", "brief": {"look": "threads"}}, post, "p1")["meta"] == {
         "flow": "A", "slides": SLIDES, "stream": "regulab", "design": "threads", "format": "portrait",
         "citation": "", "domain": "kosmetik", "angle": None, "bg": "none", "look": "threads", "fit": True,
@@ -304,7 +304,21 @@ SHAPES = {
     "i_note": {"lead": "Atau guna ia untuk mempercepat semakan.", "points": ["Semoga membantu."]},
     "i_hero": {"lead": "Nombor hanya bukti.", "points": ["245 hari", "Semak maklumat"]},
     "i_step": {"eyebrow": "Langkah 5", "lead": "Satu arahan.", "points": ["Pilih Produk Baharu", "Isi maklumat"]},
+    "h_poster": {"points": ["Wajib ke? | Ya", "Siapa semak | NPRA"]}, "h_hero": {"lead": "Tiga perkara."},
+    "h_note": {"points": ["Surat pengilang", "Senarai INCI"]},
 }
+# the four poster looks (marker, torn paper, colour blocks, neon): the same five slides in each
+SKIN_SHAPES = {
+    "cover": {"lead": "Tiga perkara yang ramai salah faham."},
+    "points": {"points": ["Pengisytiharan | oleh pemegang notifikasi", "Bukan penilaian keselamatan", "PIF mesti lengkap"],
+               "note": "Tanggungjawab kekal pada pemegang."},
+    "table": {"points": ["Perkara | Kosmetik | Ubat", "Dinilai sebelum pasaran | tidak | ya", "Nombor rujukan | NOT | MAL",
+                         "Audit selepas pasaran | ya | ya"], "note": "Disyorkan: semak PIF sebelum iklan."},
+    "pick": {"lead": "Iklan rawatan menukar kosmetik menjadi ubat.", "points": ["Semak tuntutan", "Simpan data keselamatan"]},
+    "close": {"points": ["Notifikasi sah 2 tahun", "Boleh dibatalkan"], "note": "Nombor NOT ialah permulaan."},
+}
+SKIN_LOOKS = {"m": "marker", "t": "torn", "b": "block", "n": "neon"}
+SHAPES.update({f"{p}_{part}": shape for p in SKIN_LOOKS for part, shape in SKIN_SHAPES.items()})
 
 
 @browser
@@ -313,11 +327,59 @@ def test_every_template_draws_at_the_streams_size_without_a_warning(stream, size
     assert set(SHAPES) == {t["k"] for t in cards_library.catalogue()["templates"]}, "a template with no sample here is untested"
     ground = _jpeg(900, 1100)
     for k, shape in SHAPES.items():
-        look = {"g": "grid", "e": "era", "p": "photo", "i": "image"}[k[0]]
+        look = {"g": "grid", "e": "era", "p": "photo", "i": "image", "h": "hand", **SKIN_LOOKS}[k[0]]
         slide = {"title": "Semak *dahulu*", "template": k, **shape}
         pics = studio_cards.render([slide], look=look, stream=stream, eyebrow="Kosmetik", source="NPRA",
                                    ground=ground if look in ("photo", "image") else None, mascots=cards_library.mascots())
         assert Image.open(io.BytesIO(pics[0])).size == size, k
+
+
+POSTER_DECK = [
+    {"title": "Notifikasi NPRA *bukan* kelulusan produk", "lead": "Tiga perkara yang ramai pengeluar kosmetik salah faham."},
+    {"title": "Apa yang notifikasi sebenarnya", "points": [
+        "Pengisytiharan | Pemegang notifikasi mengisytiharkan produk mematuhi Garis Panduan Kawalan Produk Kosmetik",
+        "Bukan penilaian | NPRA tidak menilai keselamatan produk sebelum nombor NOT dikeluarkan"]},
+    {"title": "Notifikasi lawan pendaftaran", "points": ["Perkara | Kosmetik | Ubat", "Dinilai sebelum pasaran | tidak | ya",
+                                                         "Nombor rujukan | NOT | MAL", "Tuntutan rawatan | tidak | ya"]},
+    {"title": "Syor: semak PIF sebelum iklan", "lead": "Iklan yang menyebut kesan rawatan menukar kosmetik menjadi ubat.",
+     "points": ["Semak setiap tuntutan dengan Annex I Bahagian 8", "Simpan data keselamatan setiap bahan dalam PIF"]},
+    {"title": "Nombor NOT ialah permulaan", "points": ["Notifikasi sah 2 tahun dan mesti diperbaharui"],
+     "note": "Tanggungjawab kekal pada pemegang notifikasi."},
+]
+
+
+@browser
+@pytest.mark.parametrize("look", ["marker", "torn", "block", "neon"])
+@pytest.mark.parametrize("stream", ["regulab", "linkedin"])
+def test_a_poster_look_draws_a_whole_carousel_and_a_single_card(look, stream):
+    """Wan, 16 Nov 2026: four looks, each as a single card and as a carousel, on both streams."""
+    pics = studio_cards.render(POSTER_DECK, look=look, stream=stream, eyebrow="Kosmetik", source="NPRA", fit=True)
+    assert [Image.open(io.BytesIO(p)).size for p in pics] == [(1080, 1350)] * 5
+    assert len({bytes(p) for p in pics}) == 5, "five different slides"
+    one = studio_cards.render(POSTER_DECK[2:3], look=look, stream=stream, source="NPRA")
+    assert Image.open(io.BytesIO(one[0])).size == (1080, 1350)
+    # the same slide twice is the same picture: the torn edges and the grain are seeded by the words, not by chance
+    assert studio_cards.render(POSTER_DECK[2:3], look=look, stream=stream, source="NPRA")[0] == one[0]
+
+
+@browser
+@pytest.mark.parametrize("look", ["marker", "torn", "block", "neon"])
+def test_a_poster_look_shrinks_its_type_for_a_long_slide_and_refuses_only_what_cannot_fit(look):
+    long = {"title": "Lapan perkara tentang notifikasi kosmetik yang setiap pengeluar mesti tahu",
+            "points": ["Peraturan 18A mewajibkan notifikasi sebelum produk dikilang, diimport atau dijual di Malaysia"] * 8}
+    # eight points: smaller type, every one drawn
+    assert len(studio_cards.render([long], look=look, stream="regulab", source="NPRA")) == 1
+    with pytest.raises(SlideError, match="slide 1"):       # forty cannot fit at any legible size
+        studio_cards.render([{**long, "points": long["points"] * 5}], look=look, stream="regulab")
+
+
+@browser
+def test_the_dark_poster_look_is_dark_and_the_paper_ones_are_light():
+    def corner(look):
+        im = Image.open(io.BytesIO(studio_cards.render(POSTER_DECK[1:2], look=look, stream="linkedin")[0])).convert("L")
+        return im.getpixel((540, 20))
+    assert corner("neon") < 60
+    assert all(corner(k) > 200 for k in ("marker", "torn", "block"))
 
 
 @browser
@@ -364,8 +426,8 @@ def test_a_light_ground_is_light_under_every_grid_and_era_design_and_every_size(
     """A carousel slide and a single card go through the same designs: none of them may grey a pale picture out."""
     for stream, size in (("regulab", (1080, 1350)), ("linkedin", (1080, 1350))):
         for k, shape in SHAPES.items():
-            if k[0] == "p":
-                continue                                    # the Photo family is a dark photograph by design
+            if k[0] not in "gei":
+                continue        # Photo is a dark photograph by design; Hand-drawn and the poster looks draw no picture
             look = "grid" if k[0] == "g" else "era"
             pic = studio_cards.render([{"title": "Semak *dahulu*", "template": k, **shape}], look=look, stream=stream,
                                       eyebrow="Kosmetik", source="NPRA", ground=_pale(), mascots=cards_library.mascots())[0]

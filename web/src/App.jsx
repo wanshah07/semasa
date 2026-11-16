@@ -65,6 +65,7 @@ const ApiTab = lazy(() => import("./pages/ApiTab"));
 const MemoryTab = lazy(() => import("./pages/MemoryTab"));
 const DocsTab = lazy(() => import("./pages/DocsTab"));
 const ExpertTab = lazy(() => import("./pages/ExpertTab"));
+const LinkedInSourcesTab = lazy(() => import("./pages/LinkedInSourcesTab"));
 import { setWanshah } from "./lib/cards/library";
 import { approvedPoses } from "./lib/wanshah";
 
@@ -335,7 +336,7 @@ function MediaTab({ user, gens, prompts, onToast, go }) {
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "li-idea", "li-post", "hooks", "gaya", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "bil-valorith", "video", "video-lib", "motion-skills", "chat", "memori", "otak", "wang", "bil", "langganan", "crm", "syarikat", "resit", "faq", "log", "dokumen", "pakar", "tech", "office", "repo", "api", "stack", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "li-idea", "li-post", "li-sumber", "hooks", "gaya", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "bil-valorith", "video", "video-lib", "motion-skills", "chat", "memori", "otak", "wang", "bil", "langganan", "crm", "syarikat", "resit", "faq", "log", "dokumen", "pakar", "tech", "office", "repo", "api", "stack", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 // #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)
@@ -508,6 +509,8 @@ export default function App() {
   else if (tab === "dokumen") body = allowed ? <DocsTab /> : gate(null);
   else if (tab === "pakar") body = allowed ? <ExpertTab settings={settings} save={save} brand={brand} user={user} onToast={push}
     onIdea={(r) => setIdeaFrom(watchIdea(r, brand))} go={go} /> : gate(null);
+  else if (tab === "li-sumber") body = allowed ? <LinkedInSourcesTab settings={settings} save={save} brand={brand} user={user} onToast={push}
+    onIdea={(r) => setIdeaFrom(watchIdea(r, brand))} /> : gate(null);
   else if (tab === "tetapan") body = allowed ? <SettingsTab settings={settings} brand={brand} save={save} onToast={push} /> : gate(null);
   else body = <IsuTab trends={trends} onToast={push} onIdea={allowed ? setIdeaFrom : undefined} onFaq={allowed ? faqFrom : undefined}
     allowed={allowed} gateNode={allowed ? null : gate(null)} settings={settings} save={save} brand={brand} user={user} />;

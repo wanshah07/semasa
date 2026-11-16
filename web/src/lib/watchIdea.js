@@ -26,13 +26,19 @@ export function watchIdea(r, brand) {
     (r.section === "reddit" || r.section === "youtube") ? "Ini hujah orang ramai: betulkan kepercayaannya, jangan sebut platform atau pautannya." : "",
     // Expert content: the expert's own words go to the writer beside the summary, as a reference to build on, never to copy
     r.section === "expert" && raw.original ? `Catatan asal pakar (rujukan sahaja):\n${raw.original}` : "",
+    // LinkedIn (16 Nov 2026): someone else's post is a lead on what peers are talking about, with the numbers it carried
+    r.section === "linkedin" && raw.metrics ? `Sambutan di LinkedIn: ${raw.metrics}` : "",
+    r.section === "linkedin" && raw.original ? `Teks asal post itu (rujukan sahaja):\n${raw.original}` : "",
+    r.section === "linkedin" ? "Ini post LinkedIn orang lain: guna sebagai petunjuk isu sahaja. Tulis dari instrumen atau sumber rasmi dengan sudut sendiri, jangan salin ayatnya, dan jangan sebut nama akaun, platform atau pautannya." : "",
+    r.section === "website" ? `Daripada laman yang anda senaraikan (${r.source}). Baca dokumen asalnya sebelum menulis dan petik instrumen itu sendiri.` : "",
     r.section === "expert" ? "Ini pandangan seorang pakar: guna sebagai rujukan dan tulis dengan sudut sendiri. Sahkan setiap fakta dengan sumber rasmi, jangan salin ayatnya, dan jangan sebut nama akaun, platform atau pautannya." : "",
   ].filter(Boolean).join("\n\n");
   return {
     watch: true, section: r.section, id: r.id, title: r.title, url: r.url, source: r.source, summary,
     domain: domains[r.domain] ? r.domain : "",
     // a paper speaks to peers (LinkedIn, angle F: cosmetic science; G: medicine or dermatology); a notice to SMEs
-    stream: pub ? "linkedin" : "regulab",
+    // Wan's own websites and LinkedIn lists are kept for LinkedIn ideas (the page they are on is in that segment)
+    stream: pub || r.section === "linkedin" || r.section === "website" ? "linkedin" : "regulab",
     angle: pub ? (r.domain === "farmaseutikal" ? "G" : "F") : "",
   };
 }

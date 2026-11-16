@@ -14,7 +14,7 @@ export function linkOf(r) {
 /** One line of what the platform or the file actually said (never a number the source did not return). */
 export function ownLine(r, t) {
   const raw = r.raw || {};
-  if (SOCIAL_SECTIONS.includes(r.section)) return raw.metrics || "";
+  if (SOCIAL_SECTIONS.includes(r.section) || r.section === "linkedin") return raw.metrics || "";
   if (r.section === "folder") {
     return [raw.urgent_for ? t("Segera untuk {d}", "Urgent for {d}", { d: raw.urgent_for }) : "", raw.cite ? t("Rujukan: {c}", "Reference: {c}", { c: raw.cite }) : "",
       raw.matrix && raw.citation ? t("Petikan: {c}", "Citation: {c}", { c: raw.citation }) : ""].filter(Boolean).join(" · ");

@@ -32,7 +32,7 @@ KEY = "sources"                     # semasa_settings row: Wan's overrides, and 
 # Facebook and Instagram are read by hashtag, and a hashtag page shows its TOP posts, which are rarely younger than three days:
 # a 72-hour window kept none of the three Instagram posts Wan's own check read (14 Nov 2026), so these two keep 14 days
 KEEP_HOURS = {"reddit": 72, "youtube": 72, "threads": 72, "facebook": 14 * 24, "instagram": 14 * 24, "myra": 45 * 24,
-              "expert": 45 * 24}
+              "expert": 45 * 24, "website": 45 * 24, "linkedin": 45 * 24}
 
 DEFAULTS: dict[str, Any] = {
     "enabled": True,
@@ -65,6 +65,10 @@ DEFAULTS: dict[str, Any] = {
     },
     # Expert Content: the handles and categories live in their own settings row (experts.py); this is only the switch
     "experts": {"enabled": True},
+    # Wan's own lists for LinkedIn ideas (own_links.py, 16 Nov 2026): pages that list what is new, LinkedIn posts he pasted,
+    # and LinkedIn company pages to watch (only posts with at least `min_reactions`, from the last `days`, are shown)
+    "websites": {"enabled": True, "sites": [], "max_new": 20},
+    "linkedin": {"enabled": True, "posts": [], "pages": [], "min_reactions": 50, "days": 30},
     "myra": {
         "enabled": True, "spreadsheet_id": "15GMFlA5IXSc453oV3CRwLS7HJcUaGILBD1t-IwKhMaI",
         "account": "googlesheets_serau-tucker", "range": "Sheet1!A1:G500", "days": 10, "per_run": 8,
@@ -273,7 +277,18 @@ def do_experts(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: date
         raise RuntimeError("supabase/082_expert_content.sql has not been run in the SQL editor yet") from exc
 
 
-PARTS = (("community", do_community), ("folders", do_folders), ("myra", do_myra), ("experts", do_experts))
+def do_websites(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetime, dry: bool) -> dict[str, Any]:
+    from . import own_links
+    return own_links.do_websites(store, llm, client, cfg, now, dry)
+
+
+def do_linkedin(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetime, dry: bool) -> dict[str, Any]:
+    from . import own_links
+    return own_links.do_linkedin(store, llm, client, cfg, now, dry)
+
+
+PARTS = (("community", do_community), ("folders", do_folders), ("myra", do_myra), ("experts", do_experts),
+         ("websites", do_websites), ("linkedin", do_linkedin))
 
 
 def prune(store: Any, now: datetime) -> None:

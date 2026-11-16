@@ -385,6 +385,24 @@ def test_the_front_page_frames_the_posts_picture_and_is_complete_without_one(loo
 
 
 @browser
+def test_the_info_era_front_page_fills_the_card_and_frames_the_picture():
+    """Wan, 16 Nov 2026, of the ERA hook slide: "make sure no space excess, make it fill the page, can add image if possible"."""
+    def ink_rows(jpeg):
+        # how far down the card the dark headline ink reaches, as a share of its height
+        im = Image.open(io.BytesIO(jpeg)).convert("L")
+        w, h = im.size
+        rows = [y for y in range(0, h, 6) if sum(1 for x in range(60, w - 60, 6) if im.getpixel((x, y)) < 70) > 8]
+        return (max(rows) - min(rows)) / h if rows else 0
+    cover = {"title": "Notifikasi NPRA *bukan* kelulusan produk", "lead": "Tiga perkara yang ramai salah faham."}
+    deck = [cover, *POSTER_DECK[1:3]]
+    plain = studio_cards.render(deck, look="era", stream="regulab", eyebrow="Kosmetik", mascots=cards_library.mascots())
+    assert ink_rows(plain[0]) > 0.45, "with no picture the hook runs down more than half the card"
+    pic = studio_cards.render(deck, look="era", stream="regulab", eyebrow="Kosmetik", ground=_jpeg(900, 1100),
+                              mascots=cards_library.mascots())
+    assert pic[0] != plain[0] and Image.open(io.BytesIO(pic[0])).size == (1080, 1350)
+
+
+@browser
 def test_the_dark_poster_look_is_dark_and_the_paper_ones_are_light():
     def corner(look):
         im = Image.open(io.BytesIO(studio_cards.render(POSTER_DECK[1:2], look=look, stream="linkedin")[0])).convert("L")

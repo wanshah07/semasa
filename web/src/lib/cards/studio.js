@@ -2376,7 +2376,7 @@ async function renderHandCard(spec) {
    card and the line under it stays at reading size. When the slide has a picture it is framed at the top in the look's own
    way (a block, a taped print, a glowing frame) and the hook fills what is left; with no picture the hook has the whole card.
    The Image, Info ERA and Hand-drawn looks now open a carousel with one of these covers too (POSTER_COVER in specsFor): their
-   own first slide left the hook small in a mostly empty card.
+   own first slide left the hook small in a mostly empty card. Info ERA's keeps ERA's paper, label and red block (SKINS.kraft).
    No other slide uses a picture, there is no mascot, and a LinkedIn card carries no ws.regulab mark, as everywhere. */
 const SKIN_OF = { m: "marker", t: "torn", b: "block", n: "neon" };
 const SKIN_PARTS = ["cover", "points", "table", "pick", "close"];
@@ -2401,6 +2401,14 @@ const SKINS = {
     head: SK_HAND, headW: 700, headK: 1.2, body: SK_SANS, bodyW: 600, bodyK: 0.94, glow: true, dark: true,
     fills: ["#F4F7FF", "#4DB8FF", "#4DFFA1", "#FFA63D"], pick: { fill: "#FF4FA3", ink: "#FFD3E8" } },
 };
+/* Not a look of its own: the dress the poster cover wears as the front page of an Info ERA carousel (Wan, 16 Nov 2026, of the ERA
+   hook slide: "make sure no space excess, make it fill the page, can add image if possible"). ERA's own paper, its black
+   label, its red, and the supporting line in the red block, so the page still opens the ERA slides that follow it. */
+SKINS.kraft = { ground: "#EFE8DC", ink: "#151515", muted: "#5C574E", accent: "#D8232A", yes: "#151515", no: "#D8232A",
+  head: SK_SANS, headW: 800, headK: 0.9, body: SK_SANS, bodyW: 700, bodyK: 0.94, fills: null, onFill: "#151515",
+  pick: { fill: "#D8232A", ink: "#FFFFFF" }, eraPaper: true, badge: true, leadBlock: true };
+/** The skin a spec is drawn in: its own override (the ERA front page), else the look its template belongs to. */
+const skinOf = (spec) => (spec.skin && SKINS[spec.skin] ? spec.skin : SKIN_OF[spec.template[0]]);
 export const SKIN_MIN = 0.56, SKIN_MAX = 1.7;
 /* The first page is the hook (Wan, 16 Nov 2026: "the text for first page no need to big, but hook make bigger"): on a cover the
    headline alone grows, up to SKIN_COVER_MAX, and everything under it stays at reading size (at most SKIN_COVER_REST). */
@@ -2444,6 +2452,7 @@ function skHexA(hex, a) {
 /* The ground: flat colour plus what makes each look itself. Decoration stays in the corners and the margins, never under a line
    of text, so nothing here can cost legibility. */
 function skGround(ctx, S, look, W, H, u, rnd) {
+  if (S.eraPaper) { eraPaper(ctx, W, H); return; }
   ctx.fillStyle = S.ground; ctx.fillRect(0, 0, W, H);
   if (look === "marker" || look === "torn") {
     // paper grain: faint specks, the same ones on every render of this slide
@@ -2498,7 +2507,7 @@ function skStroke(ctx, x1, y1, x2, y2, colour, lw, rnd) {
 /* The container one point sits in. Returns the colour its words are drawn in. `i` picks the colour in the look's cycle. */
 function skBox(ctx, S, look, x, y, w, h, i, u, rnd) {
   const c = S.fills ? S.fills[i % S.fills.length] : S.ink;
-  if (look === "marker") {
+  if (look === "marker" || look === "kraft") {
     skStroke(ctx, x + 6 * u, y + h, x + w - 6 * u, y + h, "rgba(23,23,23,.55)", Math.max(2, 3 * u), rnd);
     return S.ink;
   }
@@ -2530,7 +2539,7 @@ function skPickBox(ctx, S, look, x, y, w, h, u, rnd) {
     // a block filled by hand: the corners are not quite square
     const j = () => (rnd() - 0.5) * 9 * u;
     ctx.beginPath(); ctx.moveTo(x + j(), y + j()); ctx.lineTo(x + w + j(), y + j()); ctx.lineTo(x + w + j(), y + h + j()); ctx.lineTo(x + j(), y + h + j()); ctx.closePath(); ctx.fill();
-  } else { roundRect(ctx, x, y, w, h, Math.round(30 * u)); ctx.fill(); }
+  } else { roundRect(ctx, x, y, w, h, Math.round((look === "kraft" ? 8 : 30) * u)); ctx.fill(); }
   ctx.restore(); return P.ink;
 }
 /* A tick or a cross, drawn, not typed: the handwriting faces have no ✓ or ✗, and a drawn mark takes the look's own colour. */
@@ -2732,7 +2741,7 @@ const SKIN_TITLE_PX = { cover: 104, points: 66, table: 62, close: 82, pick: 62 }
 /* How far the headline may grow before its longest word no longer fits the line. Past that the word would be cut in two
    ("NOTIFIKAS / I"), which reads as a mistake on the one line that has to land. */
 function skWordCap(ctx, spec, W) {
-  const look = SKIN_OF[spec.template[0]], S = SKINS[look], part = spec.template.slice(2);
+  const look = skinOf(spec), S = SKINS[look], part = spec.template.slice(2);
   const u = W / 1080, w = W - Math.round(64 * u) * 2 - (part === "pick" ? Math.round(34 * u) * 2 : 0);
   const raw = stripEmph(spec.title || "").trim();
   if (!raw) return Infinity;
@@ -2741,14 +2750,15 @@ function skWordCap(ctx, spec, W) {
   return widest > 0 ? (w / widest) * 0.97 : Infinity;
 }
 function skinPaint(ctx, spec, W, H, f, shift) {
-  const look = SKIN_OF[spec.template[0]], S = SKINS[look], part = spec.template.slice(2);
+  const look = skinOf(spec), S = SKINS[look], part = spec.template.slice(2);
   const u = W / 1080, M = Math.round(64 * u), w = W - M * 2;
   const rnd = picRng(skSeed(spec));                   // the same torn edges in the measuring pass and the painting pass
   const title = String(spec.title || "").trim(), lead = stripEmph(spec.lead || "").trim(), note = stripEmph(spec.note || "").trim();
   const items = (spec.items || []).map((x) => stripEmph(x).trim()).filter(Boolean);
   const warn = [];
   skGround(ctx, S, look, W, H, u, rnd);
-  if (spec.eyebrow) {
+  if (spec.eyebrow && S.badge) eraBadge(ctx, W, u, M, spec.eyebrow, spec);
+  else if (spec.eyebrow) {
     ctx.save(); ctx.font = "700 " + Math.round(21 * u) + "px " + SK_SANS; ctx.fillStyle = S.muted; ctx.textBaseline = "top"; ctx.textAlign = "center";
     const eb = gWrap(ctx, String(spec.eyebrow).toUpperCase(), w)[0] || "";
     ctx.fillText(eb, W / 2, Math.round(98 * u)); ctx.restore();
@@ -2783,7 +2793,8 @@ function skinPaint(ctx, spec, W, H, f, shift) {
     const tpx = SKIN_TITLE_PX[part] || 66;
     y = skTitle(ctx, S, look, title, M, y, w, Math.round(tpx * u * f * S.headK), u, S.ink, S.accent);
     if (look === "marker" && title) { y += Math.round(6 * u * f); skStroke(ctx, W / 2 - w * 0.2, y, W / 2 + w * 0.2, y + 2 * u, S.accent, Math.max(4, 6 * u * f), rnd); y += Math.round(6 * u * f); }
-    if (lead) { y += part === "cover" ? gapL : gapS; leadLines(34 * u * fr, part === "cover" ? S.muted : S.ink); }
+    if (lead && part === "cover" && S.leadBlock) { y += gapL; y = skPick(ctx, S, look, "", lead, M, y, w, u, fr, rnd); }
+    else if (lead) { y += part === "cover" ? gapL : gapS; leadLines(34 * u * fr, part === "cover" ? S.muted : S.ink); }
     if (items.length) {
       y += gapL;
       y = part === "table" ? skTable(ctx, S, look, items, M, y, w, u, fr, rnd) : skList(ctx, S, look, items, M, y, w, u, fr, rnd, part === "points");
@@ -2802,7 +2813,7 @@ async function renderSkinCard(spec) {
   const c = document.createElement("canvas"); c.width = W; c.height = H;
   const ctx = styleCtx(c.getContext("2d"), spec);
   try { await document.fonts.ready; } catch (e) { }
-  const u = W / 1080, look = SKIN_OF[spec.template[0]];
+  const u = W / 1080, look = skinOf(spec);
   // only the cover takes a picture; a picture that will not load leaves a cover with no picture, never a broken card
   if (spec.template.slice(2) === "cover" && spec.bg) { const im = await loadImg(spec.bg); if (im) spec = { ...spec, _im: im }; }
   const top = Math.round(SKIN_TOP * u) + (spec._im ? Math.round(H * SKIN_PIC_H) + Math.round(40 * u) : 0);
@@ -3190,7 +3201,7 @@ export function specsFor(slides, o = {}) {
     };
     let spec;
     // THE FRONT PAGE: a carousel in the Image, Info ERA or Hand-drawn look opens with a poster cover (see SKINS), unless the
-    // slide chose its own template, a saved design names one, or Info ERA is about to put the mascot on its hook
+    // slide chose its own template or a saved design names one. Info ERA's is in ERA's own dress (SKINS.kraft)
     const posterCover = i === 0 && n > 1 && !(s.template && TEMPLATE_KEYS.includes(s.template)) && !D ? POSTER_COVER[look] : "";
     const place = placeOf(i, n), refLayout = D && D.layouts && (D.layouts[place] || D.layouts.main || D.layouts.middle || D.layouts.cover || D.layouts.single);
     if (refLayout && !(s.template && TEMPLATE_KEYS.includes(s.template))) {
@@ -3199,8 +3210,8 @@ export function specsFor(slides, o = {}) {
     }
     const chosen = s.template && TEMPLATE_KEYS.includes(s.template) ? s.template
       : (D && D[placeOf(i, n)]) || (o.fit ? fitTemplate(look, s, i, n, pts) : "");
-    if (posterCover && !(look === "era" && mascotUrl(s, "e_hook", o.mascots))) {
-      spec = { ...base, template: posterCover, lead: lead0, items: pts };
+    if (posterCover) {
+      spec = { ...base, template: posterCover, lead: lead0, items: pts, ...(look === "era" ? { skin: "kraft" } : {}) };
     } else if (chosen) {
       spec = { ...base, template: chosen, lead: lead0, items: pts };
     } else if (look === "grid") {

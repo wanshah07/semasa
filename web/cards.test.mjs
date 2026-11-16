@@ -38,7 +38,7 @@ for (const look of STUDIO_LOOKS) {
 // the templates Studio's own groups name
 const g = (look) => specsFor(decks[0], { look }).map((s) => s.template).join(",");
 ok(g("grid") === "g_title,g_title,g_title", "grid is g_title throughout, like Studio's Grid group");
-ok(g("era") === "m_cover,e_explain,e_explain", "era: the poster front page, explainer after (the hook cover stays when it carries the mascot)");
+ok(g("era") === "m_cover,e_explain,e_explain", "era: the poster front page, explainer after");
 ok(g("photo") === "p_title,p_fact,p_quote", "photo: title, fact, quote, like Studio's Photo group");
 // LinkedIn: English source label, heavier scrim (Studio's defaults for that stream)
 const li = specsFor(decks[0], { look: "grid", stream: "linkedin", citation: "EC 1223/2009" });
@@ -61,7 +61,8 @@ ok(own[1].template === "e_explain" && words(own[1]).includes("Baris sokongan.") 
 ok(own[1].eyebrow === "Kosmetik" && own[1].bg === "/g/set.jpg", "unset fields fall back to the set's eyebrow and background");
 ok(own[1].mascot === "/m/point.webp", "auto mascot: e_explain gets the pointing pose, the template's own hint");
 ok(own[2].bg === "" && own[2].footnote === "NPRA" && own[2].chip_label === "Sumber", "bg none clears this slide only; the closing slide still carries the source");
-const hook = specsFor([{ title: "Kenapa?", points: ["a", "b"] }, { title: "x", points: ["c"] }], { look: "era", mascots: M });
+// the ERA hook slide is no longer the automatic front page (see THE FRONT PAGE below); chosen on a slide it still gets its pose
+const hook = specsFor([{ title: "Kenapa?", points: ["a", "b"], template: "e_hook" }, { title: "x", points: ["c"] }], { look: "era", mascots: M });
 ok(hook[0].template === "e_hook" && hook[0].mascot === "/m/confused.webp", "the ERA hook gets the confused pose");
 ok(!specsFor([{ title: "t", points: [] }], { look: "grid" })[0].mascot, "no poses offered, no mascot");
 ok(!specsFor([{ title: "t", points: ["a"], template: "e_flow" }], { look: "era", mascots: M })[0].mascot, "e_flow never carries a mascot (Studio)");
@@ -133,8 +134,14 @@ ok(cat.every((k) => /^[gepihmtbn]_[a-z]{2,8}$/.test(k)), "every template key pas
     ok(first({ look: "image", fit, bg: "https://x/p.jpg" }).template === "b_cover" && first({ look: "image", fit, bg: "https://x/p.jpg" }).bg === "https://x/p.jpg",
       `image (fit ${fit}): with a picture it is still the poster cover, and the picture goes with it`);
     ok(first({ look: "hand", fit }).template === "m_cover", `hand (fit ${fit}): the front page is the marker cover`);
-    ok(first({ look: "era", fit }).template === "m_cover", `era (fit ${fit}): with no mascot the front page is the marker cover`);
-    ok(first({ look: "era", fit, mascots: M }).template === "e_hook" && first({ look: "era", fit, mascots: M }).mascot, `era (fit ${fit}): with the mascot the hook cover stays, mascot on it`);
+    // Info ERA's front page is the poster cover in ERA's own dress, with or without a mascot on offer (Wan, 16 Nov 2026, of the
+    // ERA hook slide: "make sure no space excess, make it fill the page, can add image if possible")
+    for (const mascots of [undefined, M]) {
+      const era = first({ look: "era", fit, mascots, bg: "https://x/p.jpg" });
+      ok(era.template === "m_cover" && era.skin === "kraft" && !era.mascot && era.bg === "https://x/p.jpg", `era (fit ${fit}): the front page is the poster cover in ERA's dress, picture with it`);
+    }
+    ok(first({ look: "hand", fit }).skin === undefined && first({ look: "image", fit }).skin === undefined, `only ERA's front page wears ERA's dress (fit ${fit})`);
+    ok(specsFor(deck, { look: "era", fit, mascots: M }).slice(1).some((x) => x.mascot), `era (fit ${fit}): the mascot stays on the slides after the front page`);
     ok(first({ look: "grid", fit }).template === "g_title" && first({ look: "photo", fit, bg: "https://x/p.jpg" }).template === "p_title", `grid and photo (fit ${fit}) keep their own cover`);
   }
   ok(first({ look: "image" }).lead === "Satu baris." && first({ look: "image" }).title === "Kenapa?", "the front page keeps the hook and its supporting line");

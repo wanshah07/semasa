@@ -200,7 +200,10 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
 
   // a motion video made from an idea (Wan, 23 Oct 2026: "make the idea as short motion video"): the Video tab's Motion section
   // plays it; the idea only needs to know one was asked for
-  const motionsT = useTable(TABLES.motions, { enabled: true, order: "created_at", limit: 300, realtime: false, everyMs: 120_000 });
+  // only the columns that say whether an idea already has its film: a film row also carries its whole page, script and
+  // storyboard (about 40 KB each), and this page read 300 of them in full every two minutes. Read as a delta as well
+  const motionsT = useTable(TABLES.motions, { enabled: true, order: "created_at", limit: 300, realtime: false, everyMs: 120_000, delta: true,
+    select: "id,status,idea_id,language,voice,seconds,options,created_at,updated_at" });
   const motionOf = (id) => {
     const idea = ideas.rows.find(r => r.id === id);
     const wanted = idea && motionFromIdea(idea, user?.id || null, mDefaults, langFor(idea));

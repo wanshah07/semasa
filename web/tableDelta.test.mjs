@@ -280,6 +280,11 @@ await ok("posts, ideas, FAQ and films are read as deltas; FAQ only while its tab
   assert.match(app, /useTable\(TABLES\.ideas, \{[^}]*delta: true/);
   assert.match(app, /useTable\(TABLES\.faqs, \{ enabled: allowed && tab === "faq",[^}]*delta: true/);
   assert.match(readFileSync(new URL("./src/components/MotionLab.jsx", import.meta.url), "utf8"), /useTable\(TABLES\.motions, \{[^}]*delta: true/);
+  // the Ideas page asks the films table one thing, "does this idea have its film": it reads the columns that answer it
+  const ideasPage = readFileSync(new URL("./src/pages/IdeasTab.jsx", import.meta.url), "utf8");
+  const cols = /useTable\(TABLES\.motions, \{[^}]*delta: true,\s*select: "([^"]+)"/.exec(ideasPage)?.[1].split(",") || [];
+  for (const c of ["id", "updated_at", "status", "idea_id", "language", "voice", "seconds", "options"]) assert.ok(cols.includes(c), c);
+  for (const c of ["html", "script", "storyboard", "check_report", "captions"]) assert.ok(!cols.includes(c), `${c} is not needed to match a film to its idea`);
   const hooks = readFileSync(new URL("./src/lib/hooks.js", import.meta.url), "utf8");
   assert.match(hooks, /load\(delta \? "settle" : undefined\)/, "reload after the page's own write checks the ids, so a deleted row leaves");
 });

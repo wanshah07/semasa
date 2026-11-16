@@ -2396,6 +2396,9 @@ const SKINS = {
     fills: ["#F4F7FF", "#4DB8FF", "#4DFFA1", "#FFA63D"], pick: { fill: "#FF4FA3", ink: "#FFD3E8" } },
 };
 export const SKIN_MIN = 0.56, SKIN_MAX = 1.7;
+/* The first page is the hook (Wan, 16 Nov 2026: "the text for first page no need to big, but hook make bigger"): on a cover the
+   headline alone grows, up to SKIN_COVER_MAX, and everything under it stays at reading size (at most SKIN_COVER_REST). */
+export const SKIN_COVER_MAX = 2.6, SKIN_COVER_REST = 1.05;
 /* A poster is meant to be full: the type grows whenever the words leave more than a seventh of the card empty (the hand-drawn
    cards wait until a quarter is empty, which left these with a wide band above and below a table). */
 const SKIN_FROM = 0.86, SKIN_TARGET = 0.94;
@@ -2697,6 +2700,18 @@ function skFoot(ctx, spec, W, H, u, M) {
   return { lines, lh, y, px, bottom: y - Math.round(26 * u) };
 }
 const SKIN_TOP = 150;
+const SKIN_TITLE_PX = { cover: 104, points: 66, table: 62, close: 82, pick: 62 };
+/* How far the headline may grow before its longest word no longer fits the line. Past that the word would be cut in two
+   ("NOTIFIKAS / I"), which reads as a mistake on the one line that has to land. */
+function skWordCap(ctx, spec, W) {
+  const look = SKIN_OF[spec.template[0]], S = SKINS[look], part = spec.template.slice(2);
+  const u = W / 1080, w = W - Math.round(64 * u) * 2 - (part === "pick" ? Math.round(34 * u) * 2 : 0);
+  const raw = stripEmph(spec.title || "").trim();
+  if (!raw) return Infinity;
+  ctx.font = S.headW + " " + Math.round((SKIN_TITLE_PX[part] || 66) * u * S.headK) + "px " + S.head;
+  const widest = Math.max(...(S.caps ? raw.toUpperCase() : raw).split(/\s+/).map((x) => ctx.measureText(x).width));
+  return widest > 0 ? (w / widest) * 0.97 : Infinity;
+}
 function skinPaint(ctx, spec, W, H, f, shift) {
   const look = SKIN_OF[spec.template[0]], S = SKINS[look], part = spec.template.slice(2);
   const u = W / 1080, M = Math.round(64 * u), w = W - M * 2;
@@ -2712,7 +2727,9 @@ function skinPaint(ctx, spec, W, H, f, shift) {
   }
   const foot = skFoot(ctx, spec, W, H, u, M);
   if (foot.lines.length) { ctx.font = "400 " + foot.px + "px " + SK_TEXT; skLines(ctx, foot.lines, M, foot.y, w, foot.lh, S.muted, true, "", u); }
-  const gapL = Math.round(30 * u * f), gapS = Math.round(18 * u * f);
+  // on the cover only the hook follows `f`; the supporting line, any points and the note keep to reading size
+  const fr = part === "cover" ? Math.min(f, SKIN_COVER_REST) : f;
+  const gapL = Math.round(30 * u * fr), gapS = Math.round(18 * u * fr);
   let y = Math.round(SKIN_TOP * u) + shift;
   const leadLines = (px, colour) => {
     if (!lead) return;
@@ -2728,18 +2745,18 @@ function skinPaint(ctx, spec, W, H, f, shift) {
       y = skLines(ctx, gWrap(ctx, note, w), M, y, w, skBodyLh(S, 34 * u * f), S.accent, true, S.glow ? S.accent : "", u);
     }
   } else {
-    const tpx = { cover: 104, points: 66, table: 62, close: 82 }[part] || 66;
+    const tpx = SKIN_TITLE_PX[part] || 66;
     y = skTitle(ctx, S, look, title, M, y, w, Math.round(tpx * u * f * S.headK), u, S.ink, S.accent);
     if (look === "marker" && title) { y += Math.round(6 * u * f); skStroke(ctx, W / 2 - w * 0.2, y, W / 2 + w * 0.2, y + 2 * u, S.accent, Math.max(4, 6 * u * f), rnd); y += Math.round(6 * u * f); }
-    if (lead) { y += part === "cover" ? gapL : gapS; leadLines((part === "cover" ? 42 : 34) * u * f, S.ink); }
+    if (lead) { y += part === "cover" ? gapL : gapS; leadLines(34 * u * fr, part === "cover" ? S.muted : S.ink); }
     if (items.length) {
       y += gapL;
-      y = part === "table" ? skTable(ctx, S, look, items, M, y, w, u, f, rnd) : skList(ctx, S, look, items, M, y, w, u, f, rnd, part === "points");
+      y = part === "table" ? skTable(ctx, S, look, items, M, y, w, u, fr, rnd) : skList(ctx, S, look, items, M, y, w, u, fr, rnd, part === "points");
     }
     if (note) {
       // "Recommended: Meicet MD300. Closest to VISIA" → the words before the colon are the block's own headline
       const cut = /^([^:]{2,28}):\s+(\S[\s\S]*)$/.exec(note);
-      y += gapL; y = skPick(ctx, S, look, cut ? cut[1] : "", cut ? cut[2] : note, M, y, w, u, f, rnd, 44);
+      y += gapL; y = skPick(ctx, S, look, cut ? cut[1] : "", cut ? cut[2] : note, M, y, w, u, fr, rnd, 44);
     }
   }
   if (y > foot.bottom + 2) warn.push("The slide is fuller than the card: shorten a line.");
@@ -2762,8 +2779,8 @@ async function renderSkinCard(spec) {
     if (used(lo) <= room) { for (let i = 0; i < 8; i++) { const mid = (lo + hi) / 2; if (used(mid) <= room) lo = mid; else hi = mid; } }
     fill = Math.floor(lo * 100) / 100;
   } else if (!spec.type_size && at1 < SKIN_FROM * room) {
-    // room to spare: the type grows to fill it, by the search the hand-drawn cards use
-    let lo = 1, hi = SKIN_MAX;
+    // room to spare: the type grows to fill it, by the search the hand-drawn cards use (on a cover, the hook alone and further)
+    let lo = 1, hi = Math.max(1, Math.min(spec.template.slice(2) === "cover" ? SKIN_COVER_MAX : SKIN_MAX, skWordCap(ctx, spec, W)));
     for (let i = 0; i < 8; i++) { const mid = (lo + hi) / 2; if (used(mid) <= SKIN_TARGET * room) lo = mid; else hi = mid; }
     fill = lo > 1.03 ? Math.floor(lo * 100) / 100 : 1;
   }

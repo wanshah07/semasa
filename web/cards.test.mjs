@@ -1,7 +1,7 @@
 // The slide -> Studio card mapping (web/src/lib/cards/studio.js, specsFor). The drawing itself is tested in a real
 // browser by backend/tests/test_studio_cards.py; this checks the one rule the mapping owns: every point of every
 // slide reaches a card, whatever the look. `npm test`.
-import { specsFor, LOOKS, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf, normDesign, normLayout, placeOf, skinTemplate, templateLabel } from "./src/lib/cards/studio.js";
+import { specsFor, LOOKS, MASCOTS_ON, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf, normDesign, normLayout, placeOf, skinTemplate, templateLabel } from "./src/lib/cards/studio.js";
 import { canvaBrief } from "./src/lib/canvaBrief.js";
 import { readFileSync } from "node:fs";
 import { cardFromCaption, headAndRest, slidesFromCaption } from "./src/lib/cards/fromCaption.js";
@@ -59,14 +59,17 @@ ok(own[0].lead === "angka contoh" && own[0].eyebrow === "ACD" && own[0].chip_lab
 ok(own[0].bg === "/g/x.jpg" && !own[0].mascot, "its own background, and mascot none means none");
 ok(own[1].template === "e_explain" && words(own[1]).includes("Baris sokongan.") && words(own[1]).includes("A"), "an auto slide keeps the typed lead and its points");
 ok(own[1].eyebrow === "Kosmetik" && own[1].bg === "/g/set.jpg", "unset fields fall back to the set's eyebrow and background");
-ok(own[1].mascot === "/m/point.webp", "auto mascot: e_explain gets the pointing pose, the template's own hint");
+// NO MASCOT ANYWHERE (Wan, 16 Nov 2026: "remove all mascott"): poses on offer, a pose chosen on the slide, a design's pose, none is drawn
+ok(MASCOTS_ON === false && !own[1].mascot, "no automatic mascot, even with poses on offer");
 ok(own[2].bg === "" && own[2].footnote === "NPRA" && own[2].chip_label === "Sumber", "bg none clears this slide only; the closing slide still carries the source");
-// the ERA hook slide is no longer the automatic front page (see THE FRONT PAGE below); chosen on a slide it still gets its pose
+// the ERA hook slide is no longer the automatic front page (see THE FRONT PAGE below); chosen on a slide it is drawn without a character
 const hook = specsFor([{ title: "Kenapa?", points: ["a", "b"], template: "e_hook" }, { title: "x", points: ["c"] }], { look: "era", mascots: M });
-ok(hook[0].template === "e_hook" && hook[0].mascot === "/m/confused.webp", "the ERA hook gets the confused pose");
+ok(hook[0].template === "m_cover" && hook[0].skin === "kraft" && !hook[0].mascot, "an ERA hook slide with no character is the poster front page in ERA's dress");
+ok(words(hook[0]).includes("a") && words(hook[0]).includes("b") && words(hook[0]).includes("Kenapa?"), "and it keeps the hook and both questions");
 ok(!specsFor([{ title: "t", points: [] }], { look: "grid" })[0].mascot, "no poses offered, no mascot");
 ok(!specsFor([{ title: "t", points: ["a"], template: "e_flow" }], { look: "era", mascots: M })[0].mascot, "e_flow never carries a mascot (Studio)");
-ok(specsFor([{ title: "t", points: [], mascot: "wave", template: "e_vs" }], { mascots: M })[0].mascot === "/m/wave.webp", "a chosen pose wins over the hint");
+ok(!specsFor([{ title: "t", points: [], mascot: "wave", template: "e_vs" }], { mascots: M })[0].mascot, "a pose chosen on an old slide is not drawn either");
+ok(!specsFor([{ title: "t", points: ["a"] }], { design: { look: "grid", mascot: "wave" }, mascots: M })[0].mascot, "nor is a saved design's pose");
 ok(LOOKS.map((l) => l.k).join(",") === "classic,hand,marker,torn,block,neon,grid,era,photo,image", "the ten looks, Semasa's own first, the four poster looks after Hand-drawn");
 
 // Studio's "Reset from caption": every paragraph kept, asks and the website never built onto the artwork
@@ -141,7 +144,7 @@ ok(cat.every((k) => /^[gepihmtbn]_[a-z]{2,8}$/.test(k)), "every template key pas
       ok(era.template === "m_cover" && era.skin === "kraft" && !era.mascot && era.bg === "https://x/p.jpg", `era (fit ${fit}): the front page is the poster cover in ERA's dress, picture with it`);
     }
     ok(first({ look: "hand", fit }).skin === undefined && first({ look: "image", fit }).skin === undefined, `only ERA's front page wears ERA's dress (fit ${fit})`);
-    ok(specsFor(deck, { look: "era", fit, mascots: M }).slice(1).some((x) => x.mascot), `era (fit ${fit}): the mascot stays on the slides after the front page`);
+    ok(specsFor(deck, { look: "era", fit, mascots: M }).every((x) => !x.mascot), `era (fit ${fit}): no mascot on any slide`);
     ok(first({ look: "grid", fit }).template === "g_title" && first({ look: "photo", fit, bg: "https://x/p.jpg" }).template === "p_title", `grid and photo (fit ${fit}) keep their own cover`);
   }
   ok(first({ look: "image" }).lead === "Satu baris." && first({ look: "image" }).title === "Kenapa?", "the front page keeps the hook and its supporting line");
@@ -244,10 +247,11 @@ ok(DG.accent === "#0a7c6e" && DG.paper === "#f3efe6" && DG.bg === "lib:g_makmal0
 ok(!("accent" in normDesign({ look: "grid", accent: "red" })) && !("bg" in normDesign({ look: "grid", bg: "none" })), "a bad colour and an empty background are dropped");
 ok([0, 1, 4].map((i) => placeOf(i, 5)).join() === "cover,middle,closing" && placeOf(0, 1) === "single", "a slide's place in its set");
 const ds = specsFor(SLIDES5, { design: DG, look: "grid" });
-ok(ds.map((x) => x.template).join() === "e_hook,e_check,e_check,e_check,e_explain", "the design chooses the templates by place and the look fills the closing (auto)");
+// a design's ERA hook cover has no character to stand on any more (16 Nov 2026), so it is the poster front page in ERA's dress
+ok(ds.map((x) => x.template).join() === "m_cover,e_check,e_check,e_check,e_explain" && ds[0].skin === "kraft" && ds[0].palette.accent === "#0a7c6e", "the design chooses the templates by place and the look fills the closing (auto)");
 ok(ds.every((x) => x.palette && x.palette.accent === "#0a7c6e" && x.palette.paper === "#f3efe6" && x.eyebrow === "Kosmetik" && x.scrim === "light" && x.auto_scrim === false), "the design's colours, label and cover reach every slide");
 ok(specsFor([SLIDES5[0]], { design: DG })[0].template === "e_stat", "a single card or poster takes the design's single template");
-ok(specsFor(SLIDES5, { design: DG }).every((x, i) => (i ? true : x.template === "e_hook")) && specsFor([{ ...SLIDES5[1], template: "e_vs" }, SLIDES5[2], SLIDES5[3]], { design: DG })[0].template === "e_vs", "a template chosen on the slide beats the design");
+ok(specsFor(SLIDES5, { design: DG }).every((x, i) => (i ? true : x.template === "m_cover")) && specsFor([{ ...SLIDES5[1], template: "e_vs" }, SLIDES5[2], SLIDES5[3]], { design: DG })[0].template === "e_vs", "a template chosen on the slide beats the design");
 ok(specsFor(SLIDES5, { look: "grid" }).every((x) => !x.palette), "without a design nothing changes");
 ok(specsFor(SLIDES5, { design: { look: "photo" }, fit: true }).every((x) => x.template[0] === "p"), "a design with no templates falls back to the family and fit");
 

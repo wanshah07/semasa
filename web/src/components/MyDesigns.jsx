@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, ImageIcon, Loader2, Palette, Plus, Star, Trash2 } from "lucide-react";
-import { LOOKS, STUDIO_LOOKS, ensureFonts, renderSlides, setLogo } from "../lib/cards/studio";
+import { LOOKS, MASCOTS_ON, STUDIO_LOOKS, ensureFonts, renderSlides, setLogo } from "../lib/cards/studio";
 import { GROUNDS, MASCOTS, TEMPLATES } from "../lib/cards/library";
 import { newDesignId, packDesign, resolveLook, useDesigns } from "../lib/designs";
 import { buildDesignFromReference, nameFromFile } from "../lib/designFromReference";
@@ -122,9 +122,9 @@ function Editor({ initial, onSave, onCancel, isDefault }) {
           <Select value={d.scrim} onChange={(v) => set({ scrim: v })} className="w-full"
             options={[["", t("Auto (gambar cerah = tiada)", "Auto (a light picture gets none)")], ["none", t("Tiada", "None")], ["light", t("Ringan", "Light")],
               ["medium", t("Sederhana", "Medium")], ["heavy", t("Tebal", "Heavy")]]} /></label>}
-        <label className="block min-w-0"><Label>{t("Maskot", "Mascot")}</Label>
+        {MASCOTS_ON && <label className="block min-w-0"><Label>{t("Maskot", "Mascot")}</Label>
           <Select value={d.mascot} onChange={(v) => set({ mascot: v })} className="w-full"
-            options={[["", t("Auto (ikut templat)", "Auto (by template)")], ["none", t("Tiada", "None")], ...MASCOTS.map((m) => [m.k, lang === "bm" ? m.name : m.en])]} /></label>
+            options={[["", t("Auto (ikut templat)", "Auto (by template)")], ["none", t("Tiada", "None")], ...MASCOTS.map((m) => [m.k, lang === "bm" ? m.name : m.en])]} /></label>}
         <label className="block min-w-0"><Label hint={t("pilihan · label kecil di atas", "optional · the small label on top")}>{t("Label", "Label")}</Label>
           <Input value={d.eyebrow} maxLength={40} onChange={(e) => set({ eyebrow: e.target.value })} placeholder={t("Cth: Kosmetik", "E.g. Cosmetics")} /></label>
       </div>

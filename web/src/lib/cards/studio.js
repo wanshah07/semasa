@@ -97,6 +97,11 @@ function groupDef(k) { return CARD_GROUPS.find(g => g.k === k) || CARD_GROUPS[0]
    only (no figure given -- see the giant-number branch in renderGridCard, which still gets
    no character, since a mascot has nothing to point at there). */
 const MASCOT_TPL = { g_title: 1, g_bars: 1, g_rows: 1, g_stat: 1, e_hook: 1, e_explain: 1, e_vs: 1 };
+/* NO MASCOT ON ANY CARD (Wan, 16 Nov 2026, of an Info ERA slide with the character in a half-empty card: "REMOVE ALL MASCOTT").
+   One switch, read by the renderer (mascotUrl), by the slide editor (takesMascot) and by the Design pages, so no card draws
+   one and no control offers one. The poses, the per-template hints and the painters' mascot code are left in place: turning
+   this back on brings them all back, and a slide that stored a pose keeps the choice without drawing it. */
+export const MASCOTS_ON = false;
 /* A slide's template hints at which pose actually fits it -- a title wants a welcome, a
    comparison wants a point (Wan, 19 Sep 2026: "different gesture, depends on the idea and
    context"). Matched against each mascot's own name; unmatched or only one pose in the
@@ -640,17 +645,17 @@ const FILL_MAX = 2.6, FILL_BODY_MAX = 1.35, FILL_FROM = 0.72, FILL_TARGET = 0.86
 const HOOK_TPL = { g_title: 1, p_title: 1, p_quote: 1 };
 /* The scale (1 to FILL_MAX) at which a slide's content fills its card. `measure(spec)` runs the family's own painter against the
    measuring proxy and returns where the content ends; `topU` is where the content starts, in 1080-wide units. */
-async function fillScale(spec, H, u, topU, endY, measure, max = FILL_MAX) {
+async function fillScale(spec, H, u, topU, endY, measure, max = FILL_MAX, from = FILL_FROM, target = FILL_TARGET) {
   const z = cardZone(H, u, topU);
   const room = z.bottom - z.top;
   const used = (y) => Math.max(0, y - z.top);
-  if (room <= 0 || used(endY) >= FILL_FROM * room) return 1;              // already compact
+  if (room <= 0 || used(endY) >= from * room) return 1;                   // already compact
   const at = async (f) => used((await measure({ ...spec, _fill: f })).y);
   if ((await at(max)) < used(endY) * 1.12) return 1;                      // this layout's height does not follow its text
   let lo = 1, hi = max;
   for (let i = 0; i < 7; i++) {
     const mid = (lo + hi) / 2;
-    if ((await at(mid)) <= FILL_TARGET * room) lo = mid; else hi = mid;
+    if ((await at(mid)) <= target * room) lo = mid; else hi = mid;
   }
   return lo > 1.03 ? Math.round(lo * 100) / 100 : 1;
 }
@@ -1072,7 +1077,54 @@ async function renderEraCard(spec) {
      layout whose geometry does not depend on where it starts.** The grid family qualifies
      (its mascot is a fixed H*0.30 and only its POSITION follows the content). ERA does not.
      Before centring any future family, check whether anything in it sizes off `y`. */
-  return eraCardPaint(ctx, spec, W, H, 0, c);
+  if (spec.mascot || spec.template === "e_hook") return eraCardPaint(ctx, spec, W, H, 0, c);
+  /* WITHOUT A CHARACTER THE RULE ABOVE NO LONGER BITES (Wan, 16 Nov 2026, of an explainer slide whose lower half was empty:
+     "this poster and any poster like this can improve or remove, remove all mascott"). The character was the only thing that
+     sized off where the words started. With none, the room it used to take is simply blank, so the slide is measured first,
+     its type grown until the words fill the card (ERA_FILL_MAX at most, a chosen text size respected) and the block centred
+     between the label and the source line, exactly as the grid family does. e_hook is left alone: it spreads its own chips. */
+  const u = W / 1080;
+  /* A measuring pass carries textAlign and textBaseline to the real context (measureProxy: measureText reads them) while its
+     save() and restore() do nothing, so a painter that centres one glyph inside a save/restore (the "$" of an e_vs bullet)
+     would leave every later word centred on its x. The real context is saved and restored round each pass instead. */
+  const measure = async (sp) => { ctx.save(); try { return await eraCardPaint(measureProxy(ctx), sp, W, H, 0); } finally { ctx.restore(); } };
+  const probe = await measure(spec);
+  const max = Math.min(ERA_FILL_MAX, eraWordCap(ctx, spec, W));
+  const fill = spec.type_size || max <= 1.03 ? 1 : await fillScale(spec, H, u, ERA_TOP, probe.y, measure, max, ERA_FILL_FROM, ERA_FILL_TARGET);
+  const filled = fill > 1 ? { ...spec, _fill: fill } : spec;
+  const end = fill > 1 ? (await measure(filled)).y : probe.y;
+  return eraCardPaint(ctx, filled, W, H, centreShift(H, u, end, ERA_TOP), c);
+}
+/* An ERA slide with no character grows further than a grid body slide: it has no numbered panels to keep in proportion, and a
+   slide that says little is better as a few large lines than as a small block in a bare card. */
+const ERA_TOP = 138, ERA_FILL_MAX = 2.6, ERA_MORE_MAX = 1.9, ERA_FILL_FROM = 0.84, ERA_FILL_TARGET = 0.93;
+/* How far an ERA body slide may grow before its longest word no longer fits its column: a wrapper breaks an over-wide word
+   letter by letter (hardSplit), and a heading cut as "bertanggungjawa / b" is worse than a smaller one. Each heading is
+   measured at the size and in the column its template draws it. */
+function eraWordCap(ctx, spec, W) {
+  const u = W / 1080, maxW = W - Math.round(72 * u) * 2, t = spec.template;
+  const wide = (text, px, weight, fam) => {
+    ctx.font = weight + " " + Math.round(px * u) + "px " + fam;
+    return Math.max(0, ...stripEmph(String(text || "")).split(/\s+/).filter(Boolean).map((x) => ctx.measureText(x).width));
+  };
+  const rows = (spec.items || []).map((x) => String(x || "").trim()).filter(Boolean).map(gCells);
+  const caps = [];
+  const cap = (w0, room, pad) => { if (w0 > 0) caps.push(room / (w0 + pad)); };
+  if (t === "e_vs") {
+    // two notes side by side: a label and a figure in each, in a column of fixed width whose inner margin grows with the type
+    const colW = Math.round((maxW - Math.round(30 * u)) / 2);
+    cap(wide(spec.title, 56, 800, G_HEAD), maxW, 0);
+    rows.slice(0, 2).forEach((r, i) => { cap(wide(r[0], 25, 600, G_BODY), colW, Math.round(44 * u)); cap(wide(r[1], i ? 60 : 50, 800, G_HEAD), colW, Math.round(36 * u)); });
+    for (const r of rows.slice(2)) cap(wide(r.join(" "), 27, 700, G_BODY), Math.round(maxW * 0.92), Math.round(27 * u * 1.9));
+    cap(wide(spec.note, 34, 800, G_HEAD), maxW, Math.round(34 * u * 1.04));
+    return caps.length ? Math.min(...caps) * 0.97 : Infinity;
+  }
+  const inset = t === "e_flow" ? Math.round(150 * u) : 0, col = t === "e_flow" ? maxW : Math.round(maxW * 0.9);
+  if (rows.length || t === "e_flow") cap(wide(spec.title, 44, 800, G_HEAD), maxW, Math.round(44 * u * 1.04));    // the red band and its padding
+  else { cap(wide(spec.title, 62, 800, G_HEAD), maxW, 0); cap(wide(spec.lead, 33, 500, G_BODY), col, 0); }
+  for (const r of rows) { cap(wide(r[0], 40, 800, G_HEAD), col, inset); cap(wide(r[1], 29, 500, G_BODY), col, inset); }
+  cap(wide(spec.note, 32, 800, G_HEAD), maxW, Math.round(32 * u * 1.04));
+  return caps.length ? Math.min(...caps) * 0.97 : Infinity;
 }
 /* A CHARACTER NEVER COSTS A FACT.
    Four templates used to shrink their own item list when a mascot was present --
@@ -1102,6 +1154,7 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   const LEAD_PX = Math.round(33 * u * TS), LEAD_LH = Math.round(46 * u * TS);
   const ITEM_HEAD_PX = Math.round(40 * u * TS), ITEM_BODY_PX = Math.round(29 * u * TS), ITEM_BODY_LH = Math.round(39 * u * TS);
   const MS = mascotScale(spec);            // SEMASA: the person's own character size (100% = the template's)
+  const F = fillOf(spec), uf = u * F;      // the automatic fill: headings and gaps grow with the words, the frame does not
 
   if (!await drawGround(ctx, spec, W, H)) eraPaper(ctx, W, H);
   /* Rule 7 again: the mark is the consultancy's and LinkedIn carries none of it. */
@@ -1173,6 +1226,7 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
       eraChip(ctx, q, cx, cy, chipW, chipPx, i === 0 ? -0.035 : i === 1 ? 0.03 : 0.028);
       cy += hs[i] + gap;
     });
+    if (chips.length) cy -= gap;                 // where the last question ends, not one gap below it
     /* The two big query marks the reference hangs either side of the character. Placed off
        the mascot's own box so they follow it wherever it lands instead of guessing. */
     if (mascot) {
@@ -1190,47 +1244,47 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
        nothing under it the slide IS the title, so it takes the marker instead. A three-line
        red block is a wall, and a wall is exactly what an auto-built carousel slide -- which
        has a headline and no items at all -- would have produced every single time. */
-    if (blocks.length) { y = eraBand(ctx, M, y, maxW, spec.title || "", Math.round(44 * u)); y += Math.round(32 * u); }
-    else { y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(62 * u), Math.round(76 * u), ink, red); y += Math.round(26 * u); }
+    if (blocks.length) { y = eraBand(ctx, M, y, maxW, spec.title || "", Math.round(44 * uf)); y += Math.round(32 * uf); }
+    else { y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(62 * uf), Math.round(76 * uf), ink, red); y += Math.round(26 * uf); }
     if (blocks.length) {
       for (const cells of blocks) {
         y = eraMark(ctx, cells[0] || "", M, y, Math.round(maxW * 0.9), ITEM_HEAD_PX, Math.round(ITEM_HEAD_PX * 1.26), ink, red);
-        y += Math.round(14 * u);
+        y += Math.round(14 * uf);
         if (cells[1]) y = gPara(ctx, cells[1], M, y, Math.round(maxW * (mascot ? 0.78 : 0.9)), ITEM_BODY_PX, ITEM_BODY_LH, muted);
-        y += Math.round(30 * u);
+        y += Math.round(30 * uf);
       }
     } else if (spec.lead) {
       y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.9), LEAD_PX, LEAD_LH, muted);
     }
     const afterY = y;
     drawMascot(afterY);
-    if (spec.note) y = Math.max(y, gBubble(ctx, bubbleX, afterY + Math.round(20 * u), Math.round(470 * u), spec.note, Math.round(30 * u)));
+    if (spec.note) y = Math.max(y, gBubble(ctx, bubbleX, afterY + Math.round(20 * uf), Math.round(470 * uf), spec.note, Math.round(30 * uf)));
   } else if (t === "e_flow") {
-    y = eraBand(ctx, M, y, maxW, spec.title || "", Math.round(44 * u));
-    y += Math.round(34 * u);
+    y = eraBand(ctx, M, y, maxW, spec.title || "", Math.round(44 * uf));
+    y += Math.round(34 * uf);
     const steps = items.slice(0, 4).map(gCells);
     steps.forEach((s, i) => {
-      const inset = Math.round(150 * u);
+      const inset = Math.round(150 * uf);
       ctx.font = "800 " + ITEM_HEAD_PX + "px " + G_HEAD;
       const headLines = gWrap(ctx, s[0] || "", maxW - inset);
       ctx.font = "500 " + ITEM_BODY_PX + "px " + G_BODY;
       const bodyLines = s[1] ? gWrap(ctx, s[1], maxW - inset) : [];
-      const h = Math.round(30 * u) + headLines.length * Math.round(ITEM_HEAD_PX * 1.2)
-        + bodyLines.length * ITEM_BODY_LH + Math.round(22 * u);
+      const h = Math.round(30 * uf) + headLines.length * Math.round(ITEM_HEAD_PX * 1.2)
+        + bodyLines.length * ITEM_BODY_LH + Math.round(22 * uf);
       eraCard(ctx, M, y, maxW, h, i % 2 ? 0.006 : -0.006, (k, cw) => {
-        const r = Math.round(30 * u);
+        const r = Math.round(30 * uf);
         k.fillStyle = ERA_PAL.red;
-        k.beginPath(); k.arc(Math.round(50 * u) + r, Math.round(32 * u) + r, r, 0, Math.PI * 2); k.fill();
-        k.fillStyle = "#FFFFFF"; k.font = "800 " + Math.round(32 * u) + "px " + G_HEAD;
+        k.beginPath(); k.arc(Math.round(50 * uf) + r, Math.round(32 * uf) + r, r, 0, Math.PI * 2); k.fill();
+        k.fillStyle = "#FFFFFF"; k.font = "800 " + Math.round(32 * uf) + "px " + G_HEAD;
         k.textAlign = "center"; k.textBaseline = "middle";
-        k.fillText(String(i + 1), Math.round(50 * u) + r, Math.round(32 * u) + r + Math.round(2 * u));
+        k.fillText(String(i + 1), Math.round(50 * uf) + r, Math.round(32 * uf) + r + Math.round(2 * uf));
         k.textAlign = "left"; k.textBaseline = "top";
-        let ty = Math.round(32 * u);
+        let ty = Math.round(32 * uf);
         k.font = "800 " + ITEM_HEAD_PX + "px " + G_HEAD; k.fillStyle = ERA_PAL.ink;
-        for (const l of headLines) { k.fillText(l, Math.round(128 * u), ty); ty += Math.round(ITEM_HEAD_PX * 1.2); }
+        for (const l of headLines) { k.fillText(l, Math.round(128 * uf), ty); ty += Math.round(ITEM_HEAD_PX * 1.2); }
         if (bodyLines.length) {
           k.font = "500 " + ITEM_BODY_PX + "px " + G_BODY; k.fillStyle = ERA_PAL.muted;
-          for (const l of bodyLines) { k.fillText(l, Math.round(128 * u), ty); ty += ITEM_BODY_LH; }
+          for (const l of bodyLines) { k.fillText(l, Math.round(128 * uf), ty); ty += ITEM_BODY_LH; }
         }
       });
       y += h;
@@ -1238,52 +1292,52 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
         /* The arrow needs a shaft long enough to read as one. At a 32px drop the head alone
            filled it and the result was a wedge, not an arrow. */
         const ax = M + Math.round(maxW * 0.5);
-        eraArrow(ctx, ax, y + Math.round(10 * u), ax, y + Math.round(54 * u), Math.round(12 * u), red, Math.max(3, Math.round(6 * u)));
-        y += Math.round(66 * u);
+        eraArrow(ctx, ax, y + Math.round(10 * uf), ax, y + Math.round(54 * uf), Math.round(12 * uf), red, Math.max(3, Math.round(6 * uf)));
+        y += Math.round(66 * uf);
       }
     });
-    y += Math.round(20 * u);
-    if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(32 * u));
+    y += Math.round(20 * uf);
+    if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(32 * uf));
   } else if (t === "e_vs") {
-    y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u), Math.round(70 * u), ink, red);
-    y += Math.round(58 * u);
-    const gap = Math.round(30 * u), colW = Math.round((maxW - gap) / 2);
+    y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * uf), Math.round(70 * uf), ink, red);
+    y += Math.round(58 * uf);
+    const gap = Math.round(30 * uf), colW = Math.round((maxW - gap) / 2);
     const pairs = [items[0] || "", items[1] || ""].map(gCells);
     /* Both notes take the height the taller one needs. A fixed height left whichever side had
        the shorter label as a mostly-empty white box, which reads as a mistake rather than as
        a design. */
     const colHof = (p, i) => {
-      ctx.font = "600 " + Math.round(25 * u) + "px " + G_BODY;
-      const lab = gWrap(ctx, p[0] || "", colW - Math.round(44 * u)).length * Math.round(32 * u);
-      const fpx = Math.round((i ? 60 : 50) * u);
+      ctx.font = "600 " + Math.round(25 * uf) + "px " + G_BODY;
+      const lab = gWrap(ctx, p[0] || "", colW - Math.round(44 * uf)).length * Math.round(32 * uf);
+      const fpx = Math.round((i ? 60 : 50) * uf);
       ctx.font = "800 " + fpx + "px " + G_HEAD;
-      const fig = gWrap(ctx, p[1] || "", colW - Math.round(36 * u)).length * Math.round(fpx * 1.14);
-      return Math.round(26 * u) + lab + Math.round(14 * u) + fig + Math.round(26 * u);
+      const fig = gWrap(ctx, p[1] || "", colW - Math.round(36 * uf)).length * Math.round(fpx * 1.14);
+      return Math.round(26 * uf) + lab + Math.round(14 * uf) + fig + Math.round(26 * uf);
     };
-    const colH = Math.max(colHof(pairs[0], 0), colHof(pairs[1], 1), Math.round(150 * u));
+    const colH = Math.max(colHof(pairs[0], 0), colHof(pairs[1], 1), Math.round(150 * uf));
     pairs.forEach((p, i) => {
       const x = M + i * (colW + gap);
       /* The arrow lands in the gap the headline leaves above each note, so it never has to
          know how many lines the headline ran to. */
-      eraArrow(ctx, x + colW * (i ? 0.84 : 0.16), y - Math.round(46 * u),
-        x + colW * (i ? 0.64 : 0.36), y - Math.round(8 * u),
-        i ? -Math.round(14 * u) : Math.round(14 * u), red, Math.max(3, Math.round(6 * u)));
+      eraArrow(ctx, x + colW * (i ? 0.84 : 0.16), y - Math.round(46 * uf),
+        x + colW * (i ? 0.64 : 0.36), y - Math.round(8 * uf),
+        i ? -Math.round(14 * uf) : Math.round(14 * uf), red, Math.max(3, Math.round(6 * uf)));
       eraCard(ctx, x, y, colW, colH, i ? 0.012 : -0.012, (k, cw) => {
         k.textBaseline = "top"; k.textAlign = "left";
-        k.font = "600 " + Math.round(25 * u) + "px " + G_BODY; k.fillStyle = ERA_PAL.muted;
-        let ty = Math.round(26 * u);
-        for (const l of gWrap(k, p[0] || "", cw - Math.round(44 * u))) { k.fillText(l, Math.round(24 * u), ty); ty += Math.round(32 * u); }
-        ty += Math.round(14 * u);
-        const fpx = Math.round((i ? 60 : 50) * u);
+        k.font = "600 " + Math.round(25 * uf) + "px " + G_BODY; k.fillStyle = ERA_PAL.muted;
+        let ty = Math.round(26 * uf);
+        for (const l of gWrap(k, p[0] || "", cw - Math.round(44 * uf))) { k.fillText(l, Math.round(24 * uf), ty); ty += Math.round(32 * uf); }
+        ty += Math.round(14 * uf);
+        const fpx = Math.round((i ? 60 : 50) * uf);
         k.font = "800 " + fpx + "px " + G_HEAD; k.fillStyle = i ? ERA_PAL.red : ERA_PAL.ink;
-        for (const l of gWrap(k, p[1] || "", cw - Math.round(36 * u))) { k.fillText(l, Math.round(24 * u), ty); ty += Math.round(fpx * 1.14); }
+        for (const l of gWrap(k, p[1] || "", cw - Math.round(36 * uf))) { k.fillText(l, Math.round(24 * uf), ty); ty += Math.round(fpx * 1.14); }
       });
     });
-    y += colH + Math.round(34 * u);
-    if (spec.note) { y = eraBand(ctx, M, y, maxW, spec.note, Math.round(34 * u)); y += Math.round(22 * u); }
+    y += colH + Math.round(34 * uf);
+    if (spec.note) { y = eraBand(ctx, M, y, maxW, spec.note, Math.round(34 * uf)); y += Math.round(22 * uf); }
     for (const b of items.slice(2, 5)) {
-      y = eraBullet(ctx, b, M, y, Math.round(maxW * (mascot ? 0.68 : 0.92)), Math.round(27 * u), Math.round(36 * u));
-      y += Math.round(16 * u);
+      y = eraBullet(ctx, b, M, y, Math.round(maxW * (mascot ? 0.68 : 0.92)), Math.round(27 * uf), Math.round(36 * uf));
+      y += Math.round(16 * uf);
     }
     drawMascot(Math.round(H * 0.6));
   }
@@ -1437,10 +1491,13 @@ async function renderMoreCard(spec) {
   if (MORE_CENTRED[spec.template]) {
     const u = W / 1080, topU = spec.template[0] === "e" ? 138 : 150;
     const probe = await morePaint(measureProxy(ctx), spec, W, H, 0);
-    /* The same fill as the grid family (9 Nov 2026: "each carousel page is compact, not looks empty"): the Grid and Photo templates
-       grow their type to fill the card; ERA keeps its own proportions, because its character sizes off the room the words leave. */
-    const fill = spec.type_size || spec.mascot || spec.template[0] === "e" ? 1
-      : await fillScale(spec, H, u, topU, probe.y, (sp) => morePaint(measureProxy(ctx), sp, W, H, 0), HOOK_TPL[spec.template] ? FILL_MAX : FILL_BODY_MAX);
+    /* The same fill as the grid family (9 Nov 2026: "each carousel page is compact, not looks empty"): the type grows to fill the
+       card. The ERA ones grow as far as the other ERA slides do (16 Nov 2026: none of them carries a character, so nothing in
+       them sizes off the room the words leave, and a checklist of three lines used to leave the lower third of the card bare). */
+    const era = spec.template[0] === "e";
+    const fill = spec.type_size || spec.mascot ? 1
+      : await fillScale(spec, H, u, topU, probe.y, (sp) => morePaint(measureProxy(ctx), sp, W, H, 0),
+        era ? ERA_MORE_MAX : HOOK_TPL[spec.template] ? FILL_MAX : FILL_BODY_MAX, era ? ERA_FILL_FROM : FILL_FROM, era ? ERA_FILL_TARGET : FILL_TARGET);
     if (fill > 1) {
       const filled = { ...spec, _fill: fill };
       const again = await morePaint(measureProxy(ctx), filled, W, H, 0);
@@ -1926,6 +1983,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
    writer changes. Fonts are the ones already loaded for the other families (Poppins, Instrument Sans, JetBrains Mono, Caveat,
    Playfair Display). No ctx.filter anywhere (iPhone Safari before 18 has none). */
 const PIC_TPL = { i_title: 1, i_note: 1, i_hero: 1, i_step: 1 };
+const PIC_NOTE_MAX = 84, PIC_NOTE_PHOTO = 0.62, PIC_NOTE_PRINTS = [0.36, 0.24], PIC_NOTE_READ = 40;
 const PIC_PAL = { cream: "#F3ECE0", ink: "#15110E", muted: "#5F574D", blue: "#2F6BE0", mono: "#2E4B47", orange: "#F28A24", paper: "#F4F4F2" };
 const PIC_SERIF = '"Playfair Display", Georgia, "Times New Roman", serif';
 
@@ -2036,7 +2094,8 @@ async function picCardPaint(ctx, spec, W, H, canvasOut) {
   const im = spec.bg ? await loadImg(spec.bg) : null;
   const foot = Math.round((spec.footnote || spec.chip_label ? 96 : 46) * u), floor = H - M - foot;
   const title = stripEmph(spec.title || ""), lead = String(spec.lead || "").trim();
-  const items = (spec.items || []).map((x) => String(x || "").trim()).filter(Boolean);
+  // "Label | detail" is the writer's way of pairing two things; this family has no table, so the pair is drawn as "Label: detail"
+  const items = (spec.items || []).map((x) => stripEmph(x).trim().replace(/\s*\|\s*/g, ": ")).filter(Boolean);
   let y = 0;
   ctx.textBaseline = "top";
   if (t === "i_title") {
@@ -2066,20 +2125,42 @@ async function picCardPaint(ctx, spec, W, H, canvasOut) {
     picCrumple(ctx, W, H);
     await drawBrandMark(ctx, spec, W, u, M, { top: 64, h: 40, textFill: "rgba(46,75,71,.8)" });
     const paras = [title, lead, ...items].filter(Boolean).map((p) => p.toUpperCase());
-    const photoW = im ? Math.round(W * 0.36) : 0, photoH = im ? photoW + Math.round(photoW * 0.12) : 0;
-    const top = Math.round(210 * u), roomH = floor - top - (im ? photoH + Math.round(40 * u) : 0);
-    let px = Math.round(44 * u * TS), lines = [], lh = 0, gap = 0;
-    for (; ; px -= 2) {
-      ctx.font = "500 " + px + "px " + G_MONO; try { ctx.letterSpacing = Math.round(px * 0.06) + "px"; } catch (e) { }
-      lh = Math.round(px * 1.5); gap = Math.round(px * 0.9); lines = paras.map((p) => gWrap(ctx, p, maxW));
-      const h = lines.reduce((a, l) => a + l.length * lh, 0) + gap * Math.max(0, lines.length - 1);
-      if (h <= roomH || px <= Math.round(28 * u)) { y = top + h; break; }
+    /* THE WORDS COME FIRST, the print takes what they leave. The words are fitted beside a print of PIC_NOTE_PRINTS[0] of the
+       width; if that would push the type under a comfortable reading size (PIC_NOTE_READ) they are fitted beside a smaller
+       print, and then with no print at all. The print is then as large as the leftover room allows, up to PIC_NOTE_PHOTO, and
+       the two are centred together between the mark and the source line. A print is never drawn over a line. */
+    const bottom = Math.min(floor, H - Math.round(150 * u)), photoGap = Math.round(40 * u), top = Math.round(210 * u);
+    /* The type is the largest that fits the room (16 Nov 2026: a note with two short lines sat small at the top of a bare card).
+       It starts well above the old 44 and comes down until every paragraph fits; a chosen text size starts where it always did. */
+    const px00 = Math.round((spec.type_size ? 44 : PIC_NOTE_MAX) * u * TS);
+    const longest = (size) => { ctx.font = "500 " + size + "px " + G_MONO; try { ctx.letterSpacing = Math.round(size * 0.06) + "px"; } catch (e) { }
+      return Math.max(0, ...paras.join(" ").split(/\s+/).map((x) => ctx.measureText(x).width)); };
+    let pxTop = px00;
+    while (pxTop > Math.round(44 * u) && longest(pxTop) > maxW) pxTop -= 2;          // never so large that a word is cut in two
+    let px = pxTop, lines = [], lh = 0, gap = 0, noteH = 0, photoW = 0, photoH = 0;
+    const fitWords = (roomH) => {
+      for (px = pxTop; ; px -= 2) {
+        ctx.font = "500 " + px + "px " + G_MONO; try { ctx.letterSpacing = Math.round(px * 0.06) + "px"; } catch (e) { }
+        lh = Math.round(px * 1.5); gap = Math.round(px * 0.9); lines = paras.map((p) => gWrap(ctx, p, maxW));
+        noteH = lines.reduce((a, l) => a + l.length * lh, 0) + gap * Math.max(0, lines.length - 1);
+        if (noteH <= roomH || px <= Math.round(28 * u)) return;
+      }
+    };
+    for (const share of (im ? PIC_NOTE_PRINTS : []).concat(0)) {
+      photoW = Math.round(W * share); photoH = photoW ? photoW + Math.round(photoW * 0.12) : 0;
+      fitWords(bottom - top - (photoW ? photoH + photoGap : 0));
+      if (px >= Math.min(pxTop, Math.round(PIC_NOTE_READ * u)) && noteH <= bottom - top - (photoW ? photoH + photoGap : 0)) break;
     }
-    ctx.fillStyle = PIC_PAL.mono; let yy = top;
+    y = top + noteH;
+    const printRoom = (bottom - top - noteH - photoGap) / 1.12, showPrint = !!im && photoW > 0 && printRoom >= photoW;
+    if (showPrint) { photoW = Math.round(Math.min(W * PIC_NOTE_PHOTO, printRoom)); photoH = photoW + Math.round(photoW * 0.12); }
+    const noteShift = Math.max(0, Math.round((bottom - top - noteH - (showPrint ? photoGap + photoH : 0)) / 2));
+    y += noteShift;
+    ctx.fillStyle = PIC_PAL.mono; let yy = top + noteShift;
     for (const block of lines) { for (const l of block) { ctx.fillText(l, M, yy); yy += lh; } yy += gap; }
     try { ctx.letterSpacing = "0px"; } catch (e) { }
-    if (im) {
-      const px0 = W - M - photoW - Math.round(10 * u), py0 = Math.min(H - Math.round(150 * u) - photoH, Math.max(y + Math.round(40 * u), Math.round(H * 0.6)));
+    if (showPrint) {
+      const px0 = W - M - photoW - Math.round(10 * u), py0 = Math.min(bottom - photoH, y + photoGap);
       picPolaroid(ctx, im, px0, py0, photoW, 0.045, 1, 0.5, 0.5);
       picTape(ctx, px0 + photoW * 0.5, py0 + Math.round(8 * u), Math.round(photoW * 0.34), Math.round(30 * u), -0.05);
       y = Math.max(y, Math.min(py0 + photoH, H - Math.round(150 * u)));
@@ -2239,12 +2320,13 @@ function handTable(ctx, title, items, x, y, maxW, maxH, u, f = 1) {
   const t = stripEmph(title || "").trim();
   const rows = (items || []).map((s) => String(s || "").trim()).filter(Boolean);
   const pairs = rows.filter((s) => s.includes("|")).map((s) => { const [a, b] = s.split("|"); return [a.trim(), b.trim()]; });
-  if (pairs.length < 2) return y;
+  if (pairs.length < 2 || !pairs.some(([, b]) => skMarkOf(b))) return y;      // not a yes/no table: the caller draws heading + detail
   ctx.save();
   ctx.font = "400 " + Math.round(30 * u * f) + "px " + HAND_HEAD; ctx.fillStyle = HAND_PAL.ink; ctx.textBaseline = "top";
   ctx.textAlign = "center"; ctx.fillText(t, x + maxW / 2, y); ctx.textAlign = "left"; y += Math.round(44 * u * f);
   const labs = pairs.map(([a]) => (a[0] === "*" ? stripEmph(a) : a));
-  const dets = pairs.map(([, b]) => (/tidak/i.test(b) ? "\u2717 " : "\u2713 ") + b);
+  // a tick or a cross only where the cell IS a yes or a no (16 Nov 2026: "NPRA tidak menilai keselamatan" was getting a cross)
+  const dets = pairs.map(([, b]) => { const m = skMarkOf(b); return (m === "yes" ? "\u2713 " : m === "no" ? "\u2717 " : "") + b; });
   // the type is as large as the rows allow AND still fits the card: the widest label and the widest detail side by side
   const gapX = Math.round(28 * u);
   let px = Math.round(24 * u * f);
@@ -2271,7 +2353,7 @@ function handTable(ctx, title, items, x, y, maxW, maxH, u, f = 1) {
    the words were left-aligned at the top and the lower half of the card stayed empty. Now every line is centred, the
    type grows (up to HAND_FILL_MAX, by the same search the grid cards use) until the words fill the card, and the
    block is centred between the eyebrow and the source line. Never past the room: a card already full keeps its size. */
-const HAND_FILL_MAX = 1.9;
+const HAND_FILL_MAX = 2.6;
 function handZone(H, u) { return { top: Math.round(112 * u), bottom: H - Math.round(180 * u) }; }
 function handPaint(ctx, spec, W, H, fill, shift) {
   const warn = [];
@@ -2294,7 +2376,12 @@ function handPaint(ctx, spec, W, H, fill, shift) {
   }
   let y = z.top + shift;
   ctx.textBaseline = "top";
-  y = handTitle(ctx, title, cardX + pad, y, innerW, Math.round(48 * u * f), true);
+  // the headline grows with the rest, but never past the size at which its longest word still fits (its wrapper does not cut
+  // a word, so "BERTANGGUNGJAWAB" would run off the card); the points keep growing without it
+  ctx.font = "400 " + Math.round(48 * u) + "px " + HAND_HEAD;
+  const wordW = Math.max(0, ...stripEmph(title).split(/\s+/).filter(Boolean).map((x) => ctx.measureText(x).width));
+  const tf = Math.max(1, Math.min(f, wordW > 0 ? (innerW / wordW) * 0.97 : f));
+  y = handTitle(ctx, title, cardX + pad, y, innerW, Math.round(48 * u * tf), true);
   y += Math.round(20 * u * f);
   ctx.textBaseline = "alphabetic";
   const piped = items.length >= 2 && items.every((s) => s.includes("|"));
@@ -2305,7 +2392,13 @@ function handPaint(ctx, spec, W, H, fill, shift) {
     const was = y;
     y = handTable(ctx, "HEAD TO HEAD", items, cardX + pad, y, innerW, maxH, u, f);
     if (y === was) {
-      for (const it of items) { y = handBody(ctx, it, cardX + pad, y, innerW, maxH, Math.round(26 * u * f), Math.round(18 * u), 400, HAND_PAL.ink, 1.4, true); y += gap; }
+      // "Label | detail" that is not a yes/no table: the label as a bold line, its detail under it, never a bare "|"
+      for (const it of items) {
+        const [a, ...rest] = it.split("|").map((x) => stripEmph(x).trim());
+        y = handBody(ctx, a, cardX + pad, y, innerW, maxH, Math.round(30 * u * f), Math.round(20 * u), 700, HAND_PAL.navy, 1.3, true);
+        if (rest.join(" ").trim()) { y += Math.round(4 * u * f); y = handBody(ctx, rest.filter(Boolean).join(", "), cardX + pad, y, innerW, maxH, Math.round(26 * u * f), Math.round(18 * u), 400, HAND_PAL.ink, 1.4, true); }
+        y += Math.round(gap * 1.4);
+      }
     }
   } else {
     for (const it of [lead, ...items].filter(Boolean)) {
@@ -2750,7 +2843,9 @@ function skWordCap(ctx, spec, W) {
   return widest > 0 ? (w / widest) * 0.97 : Infinity;
 }
 function skinPaint(ctx, spec, W, H, f, shift) {
-  const look = skinOf(spec), S = SKINS[look], part = spec.template.slice(2);
+  // ERA's dress takes ERA's red as it stands, so a saved design's own accent colour reaches a front page drawn in it
+  const look = skinOf(spec), part = spec.template.slice(2);
+  const S = look === "kraft" ? { ...SKINS.kraft, accent: ERA_PAL.red, no: ERA_PAL.red, pick: { fill: ERA_PAL.red, ink: "#FFFFFF" } } : SKINS[look];
   const u = W / 1080, M = Math.round(64 * u), w = W - M * 2;
   const rnd = picRng(skSeed(spec));                   // the same torn edges in the measuring pass and the painting pass
   const title = String(spec.title || "").trim(), lead = stripEmph(spec.lead || "").trim(), note = stripEmph(spec.note || "").trim();
@@ -2898,11 +2993,12 @@ function asLines(points) {
    groups name (CARD_GROUPS); the source line is drawn on the closing slide, Semasa's rule; the eyebrow on every
    slide, Studio's. o.mascots = [{k, url}] are the poses on offer (none offered = no mascot anywhere). */
 export const TEMPLATE_KEYS = [...Object.keys(GRID_TPL), ...Object.keys(ERA_TPL), ...Object.keys(PHOTO_TPL), ...Object.keys(PIC_TPL), ...Object.keys(HAND_TPL), ...Object.keys(MORE_TPL), ...Object.keys(SKIN_TPL)];
-export const takesMascot = (t) => !!MASCOT_TPL[t];
+export const takesMascot = (t) => MASCOTS_ON && !!MASCOT_TPL[t];
 /** Which templates draw each pose by default: asked of pickMascotFor itself, the renderer's own rule, so the Design
     tab's library can never disagree with a render (Studio's mascotDutyMap). {poseKey: [template, ...]} */
 export function mascotDuty(mascots) {
   const out = {};
+  if (!MASCOTS_ON) return out;
   for (const tpl of Object.keys(MASCOT_TPL)) {
     const m = pickMascotFor(tpl, (mascots || []).map((x) => ({ name: x.k, k: x.k })));
     if (m) (out[m.k] ||= []).push(tpl);
@@ -2911,6 +3007,7 @@ export function mascotDuty(mascots) {
 }
 
 function mascotUrl(s, template, mascots) {
+  if (!MASCOTS_ON) return "";
   if (!mascots || !mascots.length || !MASCOT_TPL[template]) return "";
   if (s.mascot === "none") return "";
   if (s.mascot) return (mascots.find((m) => m.k === s.mascot) || {}).url || "";
@@ -2962,9 +3059,10 @@ export function fitTemplate(look, s, i, n, pts) {
   }
   if (look === "image") {
     if (figure) return "i_hero";
-    if (steps && pts.length <= 4) return "i_step";
     if (last) return "";
-    return pts.length >= 2 ? "i_step" : "i_note";
+    // the step slide (a phone, a "before" print, "after") is for a how-to with a screenshot: it is chosen by hand, never by fit.
+    // On an ordinary post its labels meant nothing and a third of the card stayed empty (16 Nov 2026)
+    return "i_note";
   }
   if (look === "photo") {
     if (figure) return "p_stat";
@@ -3219,7 +3317,7 @@ export function specsFor(slides, o = {}) {
     } else if (look === "image") {
       // a cover with a picture is the poster; one without is the calm title. Middle slides are notes (words) or steps (a picture to show).
       // every point is kept: the painter turns a short figure into the stat pill and draws the rest as lines
-      const tpl = (i === 0 || n === 1) ? (base.bg ? "i_hero" : "i_title") : last ? "i_title" : (base.bg && pts.length >= 2 && pts.length <= 4) ? "i_step" : "i_note";
+      const tpl = (i === 0 || n === 1) ? (base.bg ? "i_hero" : "i_title") : last ? "i_title" : "i_note";
       spec = { ...base, template: tpl, lead: lead0, items: pts };
     } else if (look === "era") {
       if (i === 0 && n > 1 && pts.length <= 4) spec = { ...base, template: "e_hook", lead: lead0 || pts[0] || "", items: lead0 ? pts : pts.slice(1) };
@@ -3238,6 +3336,10 @@ export function specsFor(slides, o = {}) {
     else spec = { ...base, template: "p_fact", lead: withLead(asLines(pts)) };
     const mascot = mascotUrl(D && D.mascot && !s.mascot ? { ...s, mascot: D.mascot } : s, spec.template, o.mascots);
     if (mascot) spec.mascot = mascot;
+    /* The ERA hook slide was built round its character: the questions float between the headline and the figure. With no
+       character (16 Nov 2026) that is a headline, two stickers and a bare card, so a hook slide chosen by hand or named by a
+       saved design is drawn as the poster front page in ERA's dress, the same one an Info ERA carousel opens with. */
+    if (spec.template === "e_hook" && !spec.mascot) { spec.template = "m_cover"; spec.skin = "kraft"; }
     return spec;
   });
 }

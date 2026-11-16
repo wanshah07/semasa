@@ -229,8 +229,9 @@ def test_too_much_for_the_card_fails_with_the_slide_number_never_clipped():
 
 
 @browser
-def test_a_mascot_a_template_and_a_photograph_really_reach_the_picture():
-    """Studio's per-slide editor, drawn for real: each choice must change the pixels, not only the settings."""
+def test_a_template_and_a_photograph_really_reach_the_picture_and_no_mascot_does():
+    """Studio's per-slide editor, drawn for real: each choice must change the pixels, not only the settings.
+    Wan, 16 Nov 2026: "remove all mascott". A pose on offer, or one chosen on an old slide, is no longer drawn."""
     from semasa import cards_library
     from semasa.media_generator import own_grounds
 
@@ -243,8 +244,8 @@ def test_a_mascot_a_template_and_a_photograph_really_reach_the_picture():
 
     base = [{"title": "Semak *dahulu*", "points": []}]           # short: a full slide makes the character stand down
     plain = px(base)
-    assert differs(plain, px(base, mascots=cards_library.mascots())), "the auto pose was not drawn"
-    assert not differs(plain, px([{**base[0], "mascot": "none"}], mascots=cards_library.mascots())), "None still drew one"
+    assert not differs(plain, px(base, mascots=cards_library.mascots())), "a mascot was drawn"
+    assert not differs(plain, px([{**base[0], "mascot": "wave"}], mascots=cards_library.mascots())), "a chosen pose was drawn"
     bars = [{"title": "Had", "template": "g_bars", "points": ["Malaysia | 0.5 | 0.5%", "EU | 0.4 | 0.4%"]}]
     assert differs(plain, px(bars)), "the chosen template was not used"
     ground = own_grounds(None, {"id": "t"}, [{**base[0], "bg": "lib:g_makmal02"}])
@@ -252,9 +253,10 @@ def test_a_mascot_a_template_and_a_photograph_really_reach_the_picture():
 
 
 @browser
-def test_text_size_font_and_mascot_choices_really_change_the_picture_and_the_default_does_not():
-    """Wan, 3 Oct 2026: compact the text, change the font, move and resize the mascot. A card with none of these
-    drawn exactly as before; each choice must move pixels, not only a setting."""
+def test_text_size_and_font_choices_really_change_the_picture_and_the_default_does_not():
+    """Wan, 3 Oct 2026: compact the text, change the font. A card with none of these is drawn exactly as before; each
+    choice must move pixels, not only a setting. The mascot's place and size (same day) move nothing since 16 Nov 2026:
+    there is no mascot to move."""
     from PIL import ImageChops
 
     from semasa import cards_library
@@ -270,11 +272,10 @@ def test_text_size_font_and_mascot_choices_really_change_the_picture_and_the_def
              "points": ["Satu", "Dua", "Tiga"]}]
     plain = px(base)
     assert not differs(plain, px([{**base[0]}])), "the same slide drew two different pictures"
-    for key, val in (("type_size", "70"), ("font", "sans"), ("font", "hand"), ("mascot_size", "60")):
+    for key, val in (("type_size", "70"), ("font", "sans"), ("font", "hand")):
         assert differs(plain, px([{**base[0], key: val}])), f"{key}={val} changed nothing"
-    # the automatic place is picked from the title, so one of the three may be the one already drawn: the other two move it
-    spots = {pos: px([{**base[0], "mascot_pos": pos}]) for pos in ("bl", "bc", "br")}
-    assert sum(differs(plain, img) for img in spots.values()) == 2, "a chosen place must move the mascot, except to where it was"
+    for key, val in (("mascot_size", "60"), ("mascot_pos", "bl"), ("mascot_pos", "bc"), ("mascot_pos", "br")):
+        assert not differs(plain, px([{**base[0], key: val}])), f"{key}={val} drew a mascot"
 
 
 # the twenty-one designs, each on words shaped for it (4 Oct 2026: nine added). A slide the browser calls too full raises.
@@ -400,6 +401,54 @@ def test_the_info_era_front_page_fills_the_card_and_frames_the_picture():
     pic = studio_cards.render(deck, look="era", stream="regulab", eyebrow="Kosmetik", ground=_jpeg(900, 1100),
                               mascots=cards_library.mascots())
     assert pic[0] != plain[0] and Image.open(io.BytesIO(pic[0])).size == (1080, 1350)
+
+
+@browser
+def test_a_slide_with_little_to_say_fills_its_card_in_the_era_image_and_hand_drawn_looks():
+    """Wan, 16 Nov 2026, of an Info ERA explainer whose lower half was the mascot and nothing else: "this poster and any
+    poster like this can improve or remove". The words now grow to fill the card and sit in the middle of it."""
+    def spread(jpeg):
+        # (first, last) row carrying dark ink, as shares of the card's height, below the logo and above the source line
+        im = Image.open(io.BytesIO(jpeg)).convert("L")
+        w, h = im.size
+        rows = [y for y in range(int(h * 0.1), int(h * 0.9), 6)
+                if sum(1 for x in range(60, w - 60, 6) if im.getpixel((x, y)) < 110) > 6]
+        return (min(rows) / h, max(rows) / h) if rows else (0, 0)
+    deck = [{"title": "Notifikasi NPRA *bukan* kelulusan produk", "points": []},
+            {"title": "Apa yang notifikasi sebenarnya", "points": ["Pengisytiharan | oleh pemegang notifikasi",
+                                                                  "Bukan penilaian | NPRA tidak menilai keselamatan"]},
+            {"title": "Nombor NOT ialah permulaan", "points": ["Sah 2 tahun"]}]
+    for look in ("era", "image", "hand"):
+        for fit in (False, True):
+            top, bottom = spread(studio_cards.render(deck, look=look, stream="regulab", eyebrow="Kosmetik", fit=fit)[1])
+            assert bottom - top > 0.42, f"{look} (fit {fit}): the words cover only {bottom - top:.0%} of the card"
+            assert bottom > 0.6, f"{look} (fit {fit}): the lower part of the card is empty (words end at {bottom:.0%})"
+    # the chosen ERA designs grow too, and none of them cuts a long word in two to do it
+    for tpl in ("e_explain", "e_flow", "e_check"):
+        one = [deck[0], {**deck[1], "template": tpl}, deck[2]]
+        top, bottom = spread(studio_cards.render(one, look="era", stream="regulab", eyebrow="Kosmetik")[1])
+        assert bottom - top > 0.42, f"{tpl}: the words cover only {bottom - top:.0%} of the card"
+
+
+@browser
+def test_a_long_note_in_the_image_look_keeps_its_words_readable_and_never_sits_under_the_print():
+    """The Image look's note slide: the words come first. Six long points with a picture are drawn at a reading size and the
+    print gives way; two short ones leave room, and the print takes it."""
+    long = [{"title": "Kulit", "points": []},
+            {"title": "Apa yang perlu ada dalam PIF sebelum produk dijual di Malaysia",
+             "points": ["Formula kuantitatif dan kualitatif penuh dengan nama INCI",
+                        "Laporan penilaian keselamatan yang ditandatangani penilai bertauliah",
+                        "Data kestabilan, spesifikasi bahan mentah dan produk siap",
+                        "Bukti tuntutan untuk setiap dakwaan pada label dan iklan",
+                        "Rekod kesan advers dan cara pengendalian aduan"]},
+            {"title": "Tutup", "points": ["Satu ayat."]}]
+    short = [long[0], {"title": "Dua perkara", "points": ["Simpan PIF", "Label ada nombor NOT"]}, long[2]]
+    ground = _jpeg(900, 1100)
+    with_pic = studio_cards.render(long, look="image", stream="regulab", ground=ground)[1]
+    no_pic = studio_cards.render(long, look="image", stream="regulab")[1]
+    assert with_pic == no_pic, "the print was drawn although the words needed the room"
+    assert (studio_cards.render(short, look="image", stream="regulab", ground=ground)[1]
+            != studio_cards.render(short, look="image", stream="regulab")[1]), "two short lines leave room: the print is drawn"
 
 
 @browser

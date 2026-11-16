@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import TileGrid from "./TileGrid";
 import { GROUNDS, MASCOTS, groundUses, templateOf } from "../lib/cards/library";
-import { mascotDuty } from "../lib/cards/studio";
+import { MASCOTS_ON, mascotDuty } from "../lib/cards/studio";
 import { useLang } from "../lib/i18n";
 
 /* Studio's Designs library: Wan's own photographs (the grounds behind the cards) and the mascot poses, each saying what
@@ -16,8 +16,10 @@ export default function DesignLibrary() {
   return (
     <section className="mt-12" aria-labelledby="lib-h">
       <h2 id="lib-h" className="text-xl">{t("Perpustakaan reka bentuk", "Design library")}</h2>
-      <p className="mt-1 text-[12px] text-muted">{t("Gambar anda sendiri (dari OneDrive, melalui Studio) di belakang kad, dan pose maskot. Pilih di mana-mana editor slaid sebagai latar atau maskot.",
-        "Your own photographs (from OneDrive, through Studio) behind the cards, and the mascot poses. Pick them in any slide editor as a background or a mascot.")}</p>
+      <p className="mt-1 text-[12px] text-muted">{t(MASCOTS_ON ? "Gambar anda sendiri (dari OneDrive, melalui Studio) di belakang kad, dan pose maskot. Pilih di mana-mana editor slaid sebagai latar atau maskot."
+        : "Gambar anda sendiri (dari OneDrive, melalui Studio) di belakang kad. Pilih di mana-mana editor slaid sebagai latar.",
+        MASCOTS_ON ? "Your own photographs (from OneDrive, through Studio) behind the cards, and the mascot poses. Pick them in any slide editor as a background or a mascot."
+          : "Your own photographs (from OneDrive, through Studio) behind the cards. Pick one in any slide editor as a background.")}</p>
 
       {/* compact tiles, 8 to a row like every Create library (Wan, 7 Nov 2026: "for poster make sure follow like video, 8 card
           per row"); a tile opens the photograph or pose with what uses it, and the photograph opens full size in a new tab */}
@@ -37,8 +39,9 @@ export default function DesignLibrary() {
         }}
         empty={t("Tiada gambar.", "No photographs.")} />
 
-      <h3 className="mt-8 mb-3 text-sm font-medium">{t("Pose maskot: {n}", "Mascot poses: {n}", { n: MASCOTS.length })}</h3>
-      <TileGrid items={MASCOTS.map((m) => ({ id: `m:${m.k}`, kind: "image", src: m.url, label: lang === "bm" ? m.name : m.en,
+      {/* no card draws a mascot while MASCOTS_ON is off (Wan, 16 Nov 2026: "remove all mascot"), so the poses are not offered */}
+      {MASCOTS_ON && <h3 className="mt-8 mb-3 text-sm font-medium">{t("Pose maskot: {n}", "Mascot poses: {n}", { n: MASCOTS.length })}</h3>}
+      {MASCOTS_ON && <TileGrid items={MASCOTS.map((m) => ({ id: `m:${m.k}`, kind: "image", src: m.url, label: lang === "bm" ? m.name : m.en,
         sub: (duty[m.k] || []).length ? `${t("Dipilih oleh", "Picked by")}: ${duty[m.k].map(tplName).join(", ")}` : t("Pilih sendiri", "Pick it yourself") }))}
         detail={(it) => {
           const m = MASCOTS.find((x) => `m:${x.k}` === it.id);
@@ -50,7 +53,7 @@ export default function DesignLibrary() {
             </div>
           );
         }}
-        empty={t("Tiada pose.", "No poses.")} />
+        empty={t("Tiada pose.", "No poses.")} />}
     </section>
   );
 }

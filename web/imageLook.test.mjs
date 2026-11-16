@@ -15,9 +15,12 @@ const deck = [{ title: "Notifikasi bukan kelulusan", points: ["245 hari", "Semak
   { title: "Nota", points: ["Satu sahaja"] }, { title: "Tutup", points: ["Satu ayat."] }];
 const withPic = specsFor(deck, { look: "image", bg: "https://x/p.jpg" }).map((s) => s.template);
 // the first slide of a carousel is the poster front page (Wan, 16 Nov 2026), with or without a picture; the rest is the look's own
-assert.deepEqual(withPic, ["b_cover", "i_step", "i_note", "i_title"]);
+// the step slide (a phone, a "before" print) is never picked automatically (Wan, 16 Nov 2026: a slide like it left a third of the
+// card empty under labels that meant nothing on an ordinary post): a middle slide is the note, with or without a picture
+assert.deepEqual(withPic, ["b_cover", "i_note", "i_note", "i_title"]);
 const noPic = specsFor(deck, { look: "image" }).map((s) => s.template);
-assert.deepEqual(noPic, ["b_cover", "i_note", "i_note", "i_title"], "no picture: a step slide has nothing to show, so it is a note");
+assert.deepEqual(noPic, ["b_cover", "i_note", "i_note", "i_title"]);
+assert.equal(specsFor([deck[0], { ...deck[1], template: "i_step" }, deck[3]], { look: "image", bg: "https://x/p.jpg" })[1].template, "i_step", "chosen by hand it is still drawn");
 // a lone card is not a cover: the poster with a picture, the calm title without
 assert.equal(specsFor(deck.slice(0, 1), { look: "image", bg: "https://x/p.jpg" })[0].template, "i_hero");
 assert.equal(specsFor(deck.slice(0, 1), { look: "image" })[0].template, "i_title");
@@ -25,10 +28,10 @@ for (const s of specsFor(deck, { look: "image", bg: "https://x/p.jpg" })) {
   const words = [s.title, s.lead, ...(s.items || [])].join("\n");
   for (const p of deck.find((d) => d.title === s.title).points) assert.ok(words.includes(p), `${s.template} keeps "${p}"`);
 }
-// a single card is the poster too; fit picks a step slide for steps and the poster for a figure
+// a single card is the poster too; fit picks the poster for a figure and the note for everything else, steps included
 assert.equal(specsFor([{ title: "Satu kad", points: [] }], { look: "image", bg: "x" })[0].template, "i_hero");
 assert.equal(fitTemplate("image", { title: "Tempoh purata" }, 1, 4, ["14", "hari"]), "i_hero");
-assert.equal(fitTemplate("image", { title: "Langkah notifikasi" }, 1, 4, ["PIF", "Hantar", "Nombor"]), "i_step");
+assert.equal(fitTemplate("image", { title: "Langkah notifikasi" }, 1, 4, ["PIF", "Hantar", "Nombor"]), "i_note");
 
 // the picture is the slide's own, never a ground: the light-ground check that re-dresses Grid and ERA must not touch it
 const src = readFileSync(new URL("./src/lib/cards/studio.js", import.meta.url), "utf8");

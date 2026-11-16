@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BUCKETS, TABLES, TABLES_UPLOADERS, errText, supabase } from "./SupabaseClient";
 import { coalesce, liveName } from "./liveChannel";
+import { dropRow, loadMedia, newMediaState, sortedRows } from "./mediaDelta";
 import { tr } from "./i18n";
 
 /** Auth session, kept live. */
@@ -78,26 +79,25 @@ export function useTrends({ limit = 240, everyMs = 600_000 } = {}) {
 /** media_generations, live: realtime for status flips, a poll as the safety net. */
 /* `need`: ids a post points at. The newest `limit` rows are loaded, and any needed row older than that is fetched by
    id, so an older post keeps its pictures (without it, once 300 newer jobs existed, an older post showed no picture,
-   read "instagram needs an image" and could not be approved). */
+   read "instagram needs an image" and could not be approved).
+   One full read, then only the rows changed since (lib/mediaDelta.js): re-reading 300 rows every minute on every open
+   device is what used up the project's egress (Wan, 16 Nov 2026). A full read again every 15 minutes, on `reload`, and
+   whenever a delta read would be incomplete. */
 export function useGenerations({ limit = 300, enabled = true, need = "" } = {}) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
   const loadRef = useRef(null);
+  const stateRef = useRef(newMediaState());
 
-  const load = useCallback(async () => {
+  // a different limit, or signing out and in, starts from a full read
+  useEffect(() => { stateRef.current = newMediaState(); }, [limit, enabled]);
+
+  const load = useCallback(async (force = false) => {
     if (!supabase || !enabled) return;
-    const { data, error: e } = await supabase.from(TABLES.media).select("*")
-      .order("created_at", { ascending: false }).limit(limit);
-    if (e) { setError(errText(e)); return; }
-    let all = data ?? [];
-    const have = new Set(all.map((r) => r.id));
-    const missing = need ? need.split(",").filter((id) => id && !have.has(id)) : [];
-    for (let i = 0; i < missing.length; i += 100) {
-      const { data: more, error: e2 } = await supabase.from(TABLES.media).select("*").in("id", missing.slice(i, i + 100));
-      if (e2) break;                        // the newest rows still show; the next poll tries again
-      all = all.concat(more ?? []);
-    }
-    setRows(all); setError("");
+    const out = await loadMedia({ client: supabase, table: TABLES.media, state: stateRef.current, limit, need, force: force === true });
+    if (out.error) { setError(errText(out.error)); return; }
+    if (out.rows) setRows(out.rows);
+    setError("");
   }, [limit, enabled, need]);
   loadRef.current = load;
 
@@ -107,7 +107,13 @@ export function useGenerations({ limit = 300, enabled = true, need = "" } = {}) 
     const kick = coalesce(() => loadRef.current?.());
     kick.now();
     const channel = supabase.channel(liveName("media_generations_live"))
-      .on("postgres_changes", { event: "*", schema: "public", table: TABLES.media }, () => kick())
+      .on("postgres_changes", { event: "*", schema: "public", table: TABLES.media }, (payload) => {
+        // a delta read cannot see a deleted row, so the event that names it removes it at once
+        if (payload?.eventType === "DELETE" && payload.old?.id && dropRow(stateRef.current, payload.old.id)) {
+          setRows(sortedRows(stateRef.current));
+        }
+        kick();
+      })
       .subscribe();
     const id = setInterval(() => { if (!document.hidden) kick.now(); }, 60_000);
     const onShow = () => { if (!document.hidden) kick.now(); };
@@ -129,10 +135,11 @@ export function useGenerations({ limit = 300, enabled = true, need = "" } = {}) 
   const remove = useCallback(async (row) => {
     const { error: e } = await supabase.from(TABLES.media).delete().eq("id", row.id);
     if (e) throw new Error(errText(e));
+    if (dropRow(stateRef.current, row.id)) setRows(sortedRows(stateRef.current));
     if (row.reference_path) await supabase.storage.from(BUCKETS.reference).remove([row.reference_path]);
   }, []);
 
-  return { rows, error, reload: load, requeue, remove };
+  return { rows, error, reload: () => load(true), requeue, remove };
 }
 
 export const TOAST_MS = { ok: 2600, info: 3500, warn: 6000, danger: 7000, error: 7000 };

@@ -78,6 +78,13 @@ def test_the_writer_may_use_a_rule_but_is_never_required_to_find_one():
         assert "does not need" in stream_system and "regulatory-affairs audience" not in stream_system
 
 
+def test_linkedin_writer_is_told_to_be_specific_not_vague():
+    # Wan, 15 Nov 2026: a peer called out a vague LinkedIn post ("updates it regularly") — pin the exact detail.
+    assert "BE SPECIFIC, NOT VAGUE" in ideas.LINKEDIN_SYSTEM
+    assert "name the exact substance" in ideas.LINKEDIN_SYSTEM
+    assert "updates it regularly" in ideas.LINKEDIN_SYSTEM and "what changed" in ideas.LINKEDIN_SYSTEM
+
+
 def test_the_writer_voice_is_casual_with_a_hook_and_exactly_one_follow_line():
     for stream in ("regulab", "linkedin"):
         idea = {"stream": stream, "source_title": "t", "brief": {}}

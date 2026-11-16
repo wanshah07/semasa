@@ -257,6 +257,13 @@ Rules. Breaking any blocks the post:
    replaced by a placeholder or a note in brackets.
 5. Never say the idea came from Reddit, YouTube, TikTok or a forum.
 
+BE SPECIFIC, NOT VAGUE (Wan, 15 Nov 2026): name the exact substance, ingredient, Annex entry or clause number, the exact
+figure and the effective date the SOURCE gives. Never write around the detail — "updates it regularly", "recent changes",
+"several substances", "new rules", "latest guidance" and the like are vague and get called out by this audience. If the
+SOURCE names the substance under review, say which substance; if it gives the entry number and date, print them exactly.
+A post whose only claim is that something "changes regularly" is not a post: it must pin down what changed, by how much,
+and from when.
+
 ENGLISH ONLY (Wan, 9 Nov 2026): the hook, the caption and every word on every slide (cover, titles, leads, points, last slide)
 are English. The hook shapes below are written in casual Malay: translate the shape into natural English and never print the
 Malay words (no "kau", "aku", "benda pasal", "takde sapa", "yg", "Tahukah anda", no "1 Hari 1 Ilmu").

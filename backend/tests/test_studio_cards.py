@@ -5,16 +5,20 @@ The drawing itself needs a browser. Those tests run when SEMASA_CHROME names one
 the refusals and the bookkeeping are checked with the renderer stubbed."""
 
 import io
+import json
 import os
+from pathlib import Path
 
 import pytest
 from fakestore import FakeStore
 from PIL import Image
 from ref_layout_fixture import POSTER
 
-from semasa import cards_library, ideas, media_generator, studio_cards
+from semasa import cards_library, compliance, ideas, media_generator, studio_cards
 from semasa.config import MediaSettings
 from semasa.slides import SlideError
+
+ROOT = Path(__file__).resolve().parents[2]
 
 SLIDES = [{"title": "Notifikasi *bukan* kelulusan", "points": ["Nombor NOT bermaksud produk telah dinotifikasi."]},
           {"title": "Apa NPRA semak", "points": ["Maklumat pada borang.", "Bukan formula penuh.", "Bukan label."]},
@@ -115,7 +119,7 @@ def test_the_classic_drawing_keeps_a_lead_and_a_note():
 
 def test_no_look_or_an_unknown_one_is_semasas_own_drawing(monkeypatch, _uploads):
     monkeypatch.setattr(studio_cards, "render", lambda *a, **k: pytest.fail("Studio must not draw this"))
-    for meta in ({}, {"look": "classic"}, {"look": "neon"}):
+    for meta in ({}, {"look": "classic"}, {"look": "holo"}):
         store = _store(meta)
         assert _run(store) is True
         done = store.tables["media_generations"][0]
@@ -165,7 +169,7 @@ def test_the_idea_carries_its_look_to_the_slide_job():
     assert ideas.slide_job(idea, li, "p1")["meta"]["bg"] == "lib:g_gudang01"
     for brief in ({}, None, "not a dict"):
         assert ideas.look_of({"brief": brief}) == "image"                      # nothing chosen: the default look
-    assert ideas.look_of({"brief": {"look": "neon"}}) == "classic"            # a name nobody knows: the safe drawing
+    assert ideas.look_of({"brief": {"look": "holo"}}) == "classic"            # a name nobody knows: the safe drawing
     assert ideas.slide_job({"id": "i4", "brief": {"look": "threads"}}, post, "p1")["meta"] == {
         "flow": "A", "slides": SLIDES, "stream": "regulab", "design": "threads", "format": "portrait",
         "citation": "", "domain": "kosmetik", "angle": None, "bg": "none", "look": "threads", "fit": True,
@@ -229,8 +233,9 @@ def test_too_much_for_the_card_fails_with_the_slide_number_never_clipped():
 
 
 @browser
-def test_a_mascot_a_template_and_a_photograph_really_reach_the_picture():
-    """Studio's per-slide editor, drawn for real: each choice must change the pixels, not only the settings."""
+def test_a_template_and_a_photograph_really_reach_the_picture_and_no_mascot_does():
+    """Studio's per-slide editor, drawn for real: each choice must change the pixels, not only the settings.
+    Wan, 16 Nov 2026: "remove all mascott". A pose on offer, or one chosen on an old slide, is no longer drawn."""
     from semasa import cards_library
     from semasa.media_generator import own_grounds
 
@@ -243,8 +248,8 @@ def test_a_mascot_a_template_and_a_photograph_really_reach_the_picture():
 
     base = [{"title": "Semak *dahulu*", "points": []}]           # short: a full slide makes the character stand down
     plain = px(base)
-    assert differs(plain, px(base, mascots=cards_library.mascots())), "the auto pose was not drawn"
-    assert not differs(plain, px([{**base[0], "mascot": "none"}], mascots=cards_library.mascots())), "None still drew one"
+    assert not differs(plain, px(base, mascots=cards_library.mascots())), "a mascot was drawn"
+    assert not differs(plain, px([{**base[0], "mascot": "wave"}], mascots=cards_library.mascots())), "a chosen pose was drawn"
     bars = [{"title": "Had", "template": "g_bars", "points": ["Malaysia | 0.5 | 0.5%", "EU | 0.4 | 0.4%"]}]
     assert differs(plain, px(bars)), "the chosen template was not used"
     ground = own_grounds(None, {"id": "t"}, [{**base[0], "bg": "lib:g_makmal02"}])
@@ -252,9 +257,10 @@ def test_a_mascot_a_template_and_a_photograph_really_reach_the_picture():
 
 
 @browser
-def test_text_size_font_and_mascot_choices_really_change_the_picture_and_the_default_does_not():
-    """Wan, 3 Oct 2026: compact the text, change the font, move and resize the mascot. A card with none of these
-    drawn exactly as before; each choice must move pixels, not only a setting."""
+def test_text_size_and_font_choices_really_change_the_picture_and_the_default_does_not():
+    """Wan, 3 Oct 2026: compact the text, change the font. A card with none of these is drawn exactly as before; each
+    choice must move pixels, not only a setting. The mascot's place and size (same day) move nothing since 16 Nov 2026:
+    there is no mascot to move."""
     from PIL import ImageChops
 
     from semasa import cards_library
@@ -270,11 +276,10 @@ def test_text_size_font_and_mascot_choices_really_change_the_picture_and_the_def
              "points": ["Satu", "Dua", "Tiga"]}]
     plain = px(base)
     assert not differs(plain, px([{**base[0]}])), "the same slide drew two different pictures"
-    for key, val in (("type_size", "70"), ("font", "sans"), ("font", "hand"), ("mascot_size", "60")):
+    for key, val in (("type_size", "70"), ("font", "sans"), ("font", "hand")):
         assert differs(plain, px([{**base[0], key: val}])), f"{key}={val} changed nothing"
-    # the automatic place is picked from the title, so one of the three may be the one already drawn: the other two move it
-    spots = {pos: px([{**base[0], "mascot_pos": pos}]) for pos in ("bl", "bc", "br")}
-    assert sum(differs(plain, img) for img in spots.values()) == 2, "a chosen place must move the mascot, except to where it was"
+    for key, val in (("mascot_size", "60"), ("mascot_pos", "bl"), ("mascot_pos", "bc"), ("mascot_pos", "br")):
+        assert not differs(plain, px([{**base[0], key: val}])), f"{key}={val} drew a mascot"
 
 
 # the twenty-one designs, each on words shaped for it (4 Oct 2026: nine added). A slide the browser calls too full raises.
@@ -304,7 +309,21 @@ SHAPES = {
     "i_note": {"lead": "Atau guna ia untuk mempercepat semakan.", "points": ["Semoga membantu."]},
     "i_hero": {"lead": "Nombor hanya bukti.", "points": ["245 hari", "Semak maklumat"]},
     "i_step": {"eyebrow": "Langkah 5", "lead": "Satu arahan.", "points": ["Pilih Produk Baharu", "Isi maklumat"]},
+    "h_poster": {"points": ["Wajib ke? | Ya", "Siapa semak | NPRA"]}, "h_hero": {"lead": "Tiga perkara."},
+    "h_note": {"points": ["Surat pengilang", "Senarai INCI"]},
 }
+# the four poster looks (marker, torn paper, colour blocks, neon): the same five slides in each
+SKIN_SHAPES = {
+    "cover": {"lead": "Tiga perkara yang ramai salah faham."},
+    "points": {"points": ["Pengisytiharan | oleh pemegang notifikasi", "Bukan penilaian keselamatan", "PIF mesti lengkap"],
+               "note": "Tanggungjawab kekal pada pemegang."},
+    "table": {"points": ["Perkara | Kosmetik | Ubat", "Dinilai sebelum pasaran | tidak | ya", "Nombor rujukan | NOT | MAL",
+                         "Audit selepas pasaran | ya | ya"], "note": "Disyorkan: semak PIF sebelum iklan."},
+    "pick": {"lead": "Iklan rawatan menukar kosmetik menjadi ubat.", "points": ["Semak tuntutan", "Simpan data keselamatan"]},
+    "close": {"points": ["Notifikasi sah 2 tahun", "Boleh dibatalkan"], "note": "Nombor NOT ialah permulaan."},
+}
+SKIN_LOOKS = {"m": "marker", "t": "torn", "b": "block", "n": "neon", "d": "deck", "k": "chalk", "l": "metro", "s": "strip"}
+SHAPES.update({f"{p}_{part}": shape for p in SKIN_LOOKS for part, shape in SKIN_SHAPES.items()})
 
 
 @browser
@@ -313,11 +332,136 @@ def test_every_template_draws_at_the_streams_size_without_a_warning(stream, size
     assert set(SHAPES) == {t["k"] for t in cards_library.catalogue()["templates"]}, "a template with no sample here is untested"
     ground = _jpeg(900, 1100)
     for k, shape in SHAPES.items():
-        look = {"g": "grid", "e": "era", "p": "photo", "i": "image"}[k[0]]
+        look = {"g": "grid", "e": "era", "p": "photo", "i": "image", "h": "hand", **SKIN_LOOKS}[k[0]]
         slide = {"title": "Semak *dahulu*", "template": k, **shape}
         pics = studio_cards.render([slide], look=look, stream=stream, eyebrow="Kosmetik", source="NPRA",
                                    ground=ground if look in ("photo", "image") else None, mascots=cards_library.mascots())
         assert Image.open(io.BytesIO(pics[0])).size == size, k
+
+
+POSTER_DECK = [
+    {"title": "Notifikasi NPRA *bukan* kelulusan produk", "lead": "Tiga perkara yang ramai pengeluar kosmetik salah faham."},
+    {"title": "Apa yang notifikasi sebenarnya", "points": [
+        "Pengisytiharan | Pemegang notifikasi mengisytiharkan produk mematuhi Garis Panduan Kawalan Produk Kosmetik",
+        "Bukan penilaian | NPRA tidak menilai keselamatan produk sebelum nombor NOT dikeluarkan"]},
+    {"title": "Notifikasi lawan pendaftaran", "points": ["Perkara | Kosmetik | Ubat", "Dinilai sebelum pasaran | tidak | ya",
+                                                         "Nombor rujukan | NOT | MAL", "Tuntutan rawatan | tidak | ya"]},
+    {"title": "Syor: semak PIF sebelum iklan", "lead": "Iklan yang menyebut kesan rawatan menukar kosmetik menjadi ubat.",
+     "points": ["Semak setiap tuntutan dengan Annex I Bahagian 8", "Simpan data keselamatan setiap bahan dalam PIF"]},
+    {"title": "Nombor NOT ialah permulaan", "points": ["Notifikasi sah 2 tahun dan mesti diperbaharui"],
+     "note": "Tanggungjawab kekal pada pemegang notifikasi."},
+]
+
+
+@browser
+@pytest.mark.parametrize("look", list(SKIN_LOOKS.values()))
+@pytest.mark.parametrize("stream", ["regulab", "linkedin"])
+def test_a_poster_look_draws_a_whole_carousel_and_a_single_card(look, stream):
+    """Wan, 16 Nov 2026: four looks, each as a single card and as a carousel, on both streams."""
+    pics = studio_cards.render(POSTER_DECK, look=look, stream=stream, eyebrow="Kosmetik", source="NPRA", fit=True)
+    assert [Image.open(io.BytesIO(p)).size for p in pics] == [(1080, 1350)] * 5
+    assert len({bytes(p) for p in pics}) == 5, "five different slides"
+    one = studio_cards.render(POSTER_DECK[2:3], look=look, stream=stream, source="NPRA")
+    assert Image.open(io.BytesIO(one[0])).size == (1080, 1350)
+    # the same slide twice is the same picture: the torn edges and the grain are seeded by the words, not by chance
+    assert studio_cards.render(POSTER_DECK[2:3], look=look, stream=stream, source="NPRA")[0] == one[0]
+
+
+@browser
+@pytest.mark.parametrize("look", list(SKIN_LOOKS.values()))
+def test_a_poster_look_shrinks_its_type_for_a_long_slide_and_refuses_only_what_cannot_fit(look):
+    long = {"title": "Lapan perkara tentang notifikasi kosmetik yang setiap pengeluar mesti tahu",
+            "points": ["Peraturan 18A mewajibkan notifikasi sebelum produk dikilang, diimport atau dijual di Malaysia"] * 8}
+    # eight points: smaller type, every one drawn
+    assert len(studio_cards.render([long], look=look, stream="regulab", source="NPRA")) == 1
+    with pytest.raises(SlideError, match="slide 1"):       # forty cannot fit at any legible size
+        studio_cards.render([{**long, "points": long["points"] * 5}], look=look, stream="regulab")
+
+
+@browser
+@pytest.mark.parametrize("look", ["image", *SKIN_LOOKS.values()])
+def test_the_front_page_frames_the_posts_picture_and_is_complete_without_one(look):
+    """Wan, 16 Nov 2026: a more impressive front page. The first slide is a poster cover: the picture on top, the hook large."""
+    with_pic = studio_cards.render(POSTER_DECK, look=look, stream="regulab", ground=_jpeg(900, 1100), fit=True)
+    without = studio_cards.render(POSTER_DECK, look=look, stream="regulab", fit=True)
+    assert Image.open(io.BytesIO(with_pic[0])).size == (1080, 1350) and with_pic[0] != without[0]
+    if look != "image":
+        assert with_pic[1:] == without[1:], "only the front page takes the picture"
+
+
+@browser
+def test_the_info_era_front_page_fills_the_card_and_frames_the_picture():
+    """Wan, 16 Nov 2026, of the ERA hook slide: "make sure no space excess, make it fill the page, can add image if possible"."""
+    def ink_rows(jpeg):
+        # how far down the card the dark headline ink reaches, as a share of its height
+        im = Image.open(io.BytesIO(jpeg)).convert("L")
+        w, h = im.size
+        rows = [y for y in range(0, h, 6) if sum(1 for x in range(60, w - 60, 6) if im.getpixel((x, y)) < 70) > 8]
+        return (max(rows) - min(rows)) / h if rows else 0
+    cover = {"title": "Notifikasi NPRA *bukan* kelulusan produk", "lead": "Tiga perkara yang ramai salah faham."}
+    deck = [cover, *POSTER_DECK[1:3]]
+    plain = studio_cards.render(deck, look="era", stream="regulab", eyebrow="Kosmetik", mascots=cards_library.mascots())
+    assert ink_rows(plain[0]) > 0.45, "with no picture the hook runs down more than half the card"
+    pic = studio_cards.render(deck, look="era", stream="regulab", eyebrow="Kosmetik", ground=_jpeg(900, 1100),
+                              mascots=cards_library.mascots())
+    assert pic[0] != plain[0] and Image.open(io.BytesIO(pic[0])).size == (1080, 1350)
+
+
+@browser
+def test_a_slide_with_little_to_say_fills_its_card_in_the_era_image_and_hand_drawn_looks():
+    """Wan, 16 Nov 2026, of an Info ERA explainer whose lower half was the mascot and nothing else: "this poster and any
+    poster like this can improve or remove". The words now grow to fill the card and sit in the middle of it."""
+    def spread(jpeg):
+        # (first, last) row carrying dark ink, as shares of the card's height, below the logo and above the source line
+        im = Image.open(io.BytesIO(jpeg)).convert("L")
+        w, h = im.size
+        rows = [y for y in range(int(h * 0.1), int(h * 0.9), 6)
+                if sum(1 for x in range(60, w - 60, 6) if im.getpixel((x, y)) < 110) > 6]
+        return (min(rows) / h, max(rows) / h) if rows else (0, 0)
+    deck = [{"title": "Notifikasi NPRA *bukan* kelulusan produk", "points": []},
+            {"title": "Apa yang notifikasi sebenarnya", "points": ["Pengisytiharan | oleh pemegang notifikasi",
+                                                                  "Bukan penilaian | NPRA tidak menilai keselamatan"]},
+            {"title": "Nombor NOT ialah permulaan", "points": ["Sah 2 tahun"]}]
+    for look in ("era", "image", "hand"):
+        for fit in (False, True):
+            top, bottom = spread(studio_cards.render(deck, look=look, stream="regulab", eyebrow="Kosmetik", fit=fit)[1])
+            assert bottom - top > 0.42, f"{look} (fit {fit}): the words cover only {bottom - top:.0%} of the card"
+            assert bottom > 0.6, f"{look} (fit {fit}): the lower part of the card is empty (words end at {bottom:.0%})"
+    # the chosen ERA designs grow too, and none of them cuts a long word in two to do it
+    for tpl in ("e_explain", "e_flow", "e_check"):
+        one = [deck[0], {**deck[1], "template": tpl}, deck[2]]
+        top, bottom = spread(studio_cards.render(one, look="era", stream="regulab", eyebrow="Kosmetik")[1])
+        assert bottom - top > 0.42, f"{tpl}: the words cover only {bottom - top:.0%} of the card"
+
+
+@browser
+def test_a_long_note_in_the_image_look_keeps_its_words_readable_and_never_sits_under_the_print():
+    """The Image look's note slide: the words come first. Six long points with a picture are drawn at a reading size and the
+    print gives way; two short ones leave room, and the print takes it."""
+    long = [{"title": "Kulit", "points": []},
+            {"title": "Apa yang perlu ada dalam PIF sebelum produk dijual di Malaysia",
+             "points": ["Formula kuantitatif dan kualitatif penuh dengan nama INCI",
+                        "Laporan penilaian keselamatan yang ditandatangani penilai bertauliah",
+                        "Data kestabilan, spesifikasi bahan mentah dan produk siap",
+                        "Bukti tuntutan untuk setiap dakwaan pada label dan iklan",
+                        "Rekod kesan advers dan cara pengendalian aduan"]},
+            {"title": "Tutup", "points": ["Satu ayat."]}]
+    short = [long[0], {"title": "Dua perkara", "points": ["Simpan PIF", "Label ada nombor NOT"]}, long[2]]
+    ground = _jpeg(900, 1100)
+    with_pic = studio_cards.render(long, look="image", stream="regulab", ground=ground)[1]
+    no_pic = studio_cards.render(long, look="image", stream="regulab")[1]
+    assert with_pic == no_pic, "the print was drawn although the words needed the room"
+    assert (studio_cards.render(short, look="image", stream="regulab", ground=ground)[1]
+            != studio_cards.render(short, look="image", stream="regulab")[1]), "two short lines leave room: the print is drawn"
+
+
+@browser
+def test_the_dark_poster_look_is_dark_and_the_paper_ones_are_light():
+    def corner(look):
+        im = Image.open(io.BytesIO(studio_cards.render(POSTER_DECK[1:2], look=look, stream="linkedin")[0])).convert("L")
+        return im.getpixel((540, 20))
+    assert corner("neon") < 60 and corner("chalk") < 120
+    assert all(corner(k) > 180 for k in ("marker", "torn", "block", "deck", "metro", "strip"))
 
 
 @browser
@@ -364,8 +508,8 @@ def test_a_light_ground_is_light_under_every_grid_and_era_design_and_every_size(
     """A carousel slide and a single card go through the same designs: none of them may grey a pale picture out."""
     for stream, size in (("regulab", (1080, 1350)), ("linkedin", (1080, 1350))):
         for k, shape in SHAPES.items():
-            if k[0] == "p":
-                continue                                    # the Photo family is a dark photograph by design
+            if k[0] not in "gei":
+                continue        # Photo is a dark photograph by design; Hand-drawn and the poster looks draw no picture
             look = "grid" if k[0] == "g" else "era"
             pic = studio_cards.render([{"title": "Semak *dahulu*", "template": k, **shape}], look=look, stream=stream,
                                       eyebrow="Kosmetik", source="NPRA", ground=_pale(), mascots=cards_library.mascots())[0]
@@ -552,3 +696,33 @@ def test_a_broken_settings_read_never_fails_a_render():
         def table(self, *a):
             raise RuntimeError("no table")
     assert cards_library.mascots(Boom()) == cards_library.mascots()
+
+
+@browser
+def test_an_ayat_slide_is_drawn_as_the_verse_card_in_every_look_and_a_bad_one_is_refused():
+    """Wan, 16 Nov 2026: "make sure can write ayat al-Quran for reminder or under fatwa". Drawn for real, with the Quran face
+    (a missing face fails the render: the fonts are checked before a card is drawn)."""
+    doc = json.loads((ROOT / "rules" / "quran_cases.json").read_text(encoding="utf-8"))
+    words = next(c["out"] for c in doc["cases"] if c["ref"] == "2:168" and c["stream"] == "regulab" and not c["down"])
+    verse = compliance.normalise_slides([{"title": "Peringatan", "points": [], **words, "ayat_ok": "1"}])[0]
+    deck = [{"title": "Halal itu *perintah*", "points": []}, verse, {"title": "Tutup", "points": ["Satu ayat."]}]
+    first = None
+    for look in ("grid", "era", "image", "hand"):
+        pics = studio_cards.render(deck, look=look, stream="regulab", eyebrow="Fatwa", source="Al-Quran")
+        assert len(pics) == 3 and Image.open(io.BytesIO(pics[1])).size == (1080, 1350)
+        first = first or pics[1]
+        assert pics[1] == first, f"the verse card is the same picture in the {look} look"
+    im = Image.open(io.BytesIO(first)).convert("L")
+    dark = sum(1 for v in im.crop((100, 250, 980, 700)).resize((220, 112)).tobytes() if v < 90)
+    assert dark > 400, "the Arabic is drawn (dark ink across the upper half of the card)"
+    alone = studio_cards.render([verse], look="grid", stream="regulab")
+    assert len(alone) == 1, "a single card can be a verse"
+    en = next(c["out"] for c in doc["cases"] if c["ref"] == "2:168" and c["stream"] == "linkedin" and not c["down"])
+    li = compliance.normalise_slides([{"title": "A reminder", "points": [], **en, "ayat_ok": "1"}])
+    assert studio_cards.render(li, look="grid", stream="linkedin")[0] != alone[0]
+    with pytest.raises(SlideError, match="has not been fetched"):
+        studio_cards.render([{"title": "Peringatan", "points": [], "ayat": "2:168", "ayat_label": "Al-Baqarah 2:168"}],
+                            look="grid", stream="regulab")
+    long = {**verse, "ayat_ar": " ".join([verse["ayat_ar"]] * 14), "ayat_tr": " ".join([verse["ayat_tr"]] * 14)}
+    with pytest.raises(SlideError, match="too long for one card"):
+        studio_cards.render([long], look="grid", stream="regulab")

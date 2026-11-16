@@ -18,8 +18,10 @@ from typing import Any
 
 RULES_PATH = Path(__file__).resolve().parents[2] / "rules" / "compliance.json"
 RULES: dict[str, Any] = json.loads(RULES_PATH.read_text(encoding="utf-8"))
+QURAN: dict[str, Any] = RULES["quran"]
 
 _WORD = re.compile(r"[a-z]+")
+ARABIC = re.compile(r"[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFC]")
 _TAG = re.compile(r"#\w+")
 DOW_MS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
@@ -35,6 +37,12 @@ SOCIAL_SRC = _rx(RULES["social_src"])
 AGGREGATOR = _rx(RULES["aggregator"])
 ANY_URL = _rx(RULES["any_url"])
 NOT_ENGLISH = _rx(RULES["not_english"])
+VAGUE = [_rx(r) for r in RULES["vague"]["phrases"]]
+VAGUE_ANCHOR = _rx(RULES["vague"]["anchor"])
+VAGUE_AHEAD = int(RULES["vague"]["ahead"])
+VAGUE_FROM = str(RULES["vague"]["from"])
+VAGUE_FIX = "Say exactly which, how many or from when: put the figure, the date or the entry number"
+_SENT_END = re.compile(r"([.!?…])\s+")
 
 
 def _esc(s: str) -> str:
@@ -161,8 +169,60 @@ def normalise_slides(raw: Any) -> list[dict[str, Any]]:
         if body and not points:
             points = [body[:400]]
         extra = slide_extras(s)
-        if title or points or any(extra.get(k) for k in SLIDE_WORDS):
+        if title or points or any(extra.get(k) for k in SLIDE_WORDS) or extra.get("ayat"):
             out.append({"title": title, "points": points, **extra})
+    return out
+
+
+# AYAT AL-QURAN ON A SLIDE (Wan, 16 Nov 2026). A slide names a verse by surah:ayat in `ayat`; the Arabic (`ayat_ar`), the
+# translation (`ayat_tr`) and the translation's edition and source (`ayat_ed`) are fetched from a published source by
+# backend/semasa/quran.py or web/src/lib/quran.js, never typed; `ayat_ok` is Wan's tick that he checked the verse fits.
+# `ayat_label` ("Al-Baqarah 2:168") is never taken from what was stored: it is worked out here from the reference, so the
+# name on the card cannot disagree with the verse. Mirrored exactly by ayatRef / ayatLabel / ayatExtras in compliance.js.
+AYAT_REF = re.compile(r"^(\d{1,3}):(\d{1,3})(?:-(\d{1,3}))?$")
+AYAT_ED = re.compile(r"^[a-z]{2}\.[a-z]{2,20}@(alquran\.cloud|quran\.com)$")
+AYAT_TEXT_CAP = 6000
+
+
+def ayat_ref(ref: Any) -> tuple[int, int, int] | None:
+    """(surah, first ayat, last ayat) of a reference to ayat that exist, at most QURAN["max_span"] of them; else None."""
+    m = AYAT_REF.match(_str(ref).strip())
+    if not m:
+        return None
+    surah, first = int(m.group(1)), int(m.group(2))
+    last = int(m.group(3)) if m.group(3) else first
+    if not 1 <= surah <= len(QURAN["surahs"]):
+        return None
+    if not (1 <= first <= last <= int(QURAN["surahs"][surah - 1][1])) or last - first + 1 > int(QURAN["max_span"]):
+        return None
+    return surah, first, last
+
+
+def ayat_label(ref: Any) -> str:
+    p = ayat_ref(ref)
+    if not p:
+        return ""
+    surah, first, last = p
+    return f"{QURAN['surahs'][surah - 1][0]} {surah}:{first}" + (f"-{last}" if last != first else "")
+
+
+def ayat_extras(s: dict[str, Any]) -> dict[str, Any]:
+    ref = _str(s.get("ayat")).strip()
+    if not AYAT_REF.match(ref):
+        return {}
+    out: dict[str, Any] = {"ayat": ref}
+    for k in ("ayat_ar", "ayat_tr"):
+        v = _str(s.get(k)).strip()[:AYAT_TEXT_CAP]
+        if v:
+            out[k] = v
+    ed = _str(s.get("ayat_ed")).strip()
+    if AYAT_ED.match(ed):
+        out["ayat_ed"] = ed
+    if _str(s.get("ayat_ok")).strip() == "1":
+        out["ayat_ok"] = "1"
+    lab = ayat_label(ref)
+    if lab:
+        out["ayat_label"] = lab
     return out
 
 
@@ -171,7 +231,9 @@ def normalise_slides(raw: Any) -> list[dict[str, Any]]:
 # existed compares equal to itself. Mirrored exactly by slideExtras in web/src/lib/compliance.js.
 SLIDE_WORDS = {"lead": 400, "eyebrow": 80, "chip": 60, "note": 240, "footnote": 300}
 SLIDE_STYLE = {
-    "template": re.compile(r"^[gepi]_[a-z]{2,8}$"),
+    # one letter per card family: grid, era, photo, image, hand, and the four poster looks (marker, torn, block, neon). It was
+    # [gepi] until 16 Nov 2026, so a slide set to a Hand-drawn template lost its choice here and was drawn as the set's design
+    "template": re.compile(r"^[gepihmtbndkls]_[a-z]{2,8}$"),
     "scrim": re.compile(r"^(none|light|medium|heavy)$"),
     "bg": re.compile(r"^(none|post_image|lib:g_[a-z0-9]{2,30}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
     "mascot": re.compile(r"^(none|[a-z]{2,20})$"),
@@ -212,6 +274,7 @@ def slide_extras(s: dict[str, Any]) -> dict[str, Any]:
     toks = photo_tokens(s.get("photos"))
     if any(toks):
         out["photos"] = ",".join(toks)
+    out.update(ayat_extras(s))
     return out
 
 
@@ -244,6 +307,7 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
     lang = lang_of(post)
     burl = brand_url_re(brand)
     limits = RULES["limits"].get(stream, {})
+    vague_hard = vague_blocks(post)
     for p in platforms_of(post):
         where = f"Caption ({p})"
         t = text_of(post, p, lang)
@@ -269,6 +333,8 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
                 add(False, where, label)
         if SOCIAL_SRC.search(t):
             add(True, where, "names a social source. Never say the idea came from Reddit, YouTube, a forum or a post.")
+        for phrase in vague_hits(sentences(t)):
+            add(vague_hard, where, f'vague: "{phrase}". {VAGUE_FIX} in that sentence or the two after it.')
         words = _WORD.findall(t.lower())
         for msg in indo_hits(t, extra):
             add(True, where, msg)
@@ -281,6 +347,9 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
             add(False, where, "a link. Naming the instrument usually reads better than pasting a URL.")
         if re.search(r"kepada\s+bapak", t, re.I):
             add(False, where, '"kepada bapak" reads as Bahasa Indonesia')
+        if ARABIC.search(t):
+            add(False, where, "Arabic script in the caption. Semasa does not check it. Name a verse by surah and ayat "
+                              "(Al-Baqarah 2:168); the verse itself is drawn on its slide.")
         tags = len(_TAG.findall(t))
         if lim and tags > lim["hashtags"]:
             add(False, where, f"{tags} hashtags, over the {lim['hashtags']} limit")
@@ -309,6 +378,8 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
                 add(False, f"{tag} variant ({p})", label)
         for msg in indo_hits(t, extra):
             add(False, f"{tag} variant ({p})", msg)
+        for phrase in vague_hits(sentences(t)):
+            add(False, f"{tag} variant ({p})", f'vague: "{phrase}". {VAGUE_FIX} in that sentence or the two after it.')
 
     # The citation is printed on the artwork's source line, so it is judged like the artwork.
     cit = str(post.get("citation") or "")
@@ -352,9 +423,27 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
                 mark = brand_mark_re(brand)
                 if mark and mark.search(t):
                     add(True, where, "a ws.regulab mark on LinkedIn")
+            if ARABIC.search(t):
+                add(False, where, "Arabic script typed on the slide. Semasa does not check it. "
+                                  "Ayat al-Quran goes in the slide's Ayat field, which fetches the verse.")
+            if sl.get("ayat"):
+                lab = sl.get("ayat_label")
+                want = QURAN["editions"]["linkedin" if stream == "linkedin" else "regulab"]["id"]
+                if not lab:
+                    add(True, where, f'ayat "{sl["ayat"]}" does not exist (surah:ayat, at most {QURAN["max_span"]} ayat). '
+                                     "Correct the reference.")
+                elif not (sl.get("ayat_ar") and sl.get("ayat_tr") and sl.get("ayat_ed")):
+                    add(True, where, f"the words of {lab} have not been fetched. Press Ambil ayat: a verse is never typed.")
+                elif not str(sl["ayat_ed"]).startswith(want + "@"):
+                    add(True, where, f"{lab} carries another stream's translation. Press Ambil ayat again.")
+                elif not sl.get("ayat_ok"):
+                    add(True, where, f"check {lab}: read the verse and its translation, then tick that it fits this post.")
 
     slides = normalise_slides(post.get("slides"))
     artwork(slides, "Slide")
+    # a vague line on a slide is pinned down on that slide or the next two (a cover may tease what slide 2 states exactly)
+    for phrase in vague_hits([slide_text(sl) for sl in slides]):
+        add(vague_hard, "Slides", f'vague: "{phrase}". {VAGUE_FIX} on that slide or the two after it.')
     # A carousel has as many slides as its story needs: no minimum and no maximum (Wan, 9 Nov 2026: "make sure no limit or min
     # carousel slide"). What stays is the closing line, because the last slide is where a carousel leaves its reader: a statement
     # that leaves them curious. One slide is a single card and is not a carousel.
@@ -386,6 +475,37 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
         if allow and post["domain"] not in allow and post["domain"] not in RULES.get("rota_any_day", []):
             add(False, "Rota", f"{DOW_MS[dow]} carries {' and '.join(allow)}, and this is {post['domain']}. A note, not a block.")
     return flags
+
+
+def sentences(text: str) -> list[str]:
+    """A caption as sentences: a full stop, ! ? or … followed by a space ends one, and so does a line break ("2.0%" does not).
+    Mirrored exactly by sentences in web/src/lib/compliance.js."""
+    return [s.strip() for s in _SENT_END.sub(r"\1\n", str(text or "")).split("\n") if s.strip()]
+
+
+def vague_hits(units: list[str]) -> list[str]:
+    """The vague phrases in `units` (a caption's sentences, or a deck's slides) that nothing pins down: no figure, date, entry
+    number or Annex in the same unit or the next VAGUE_AHEAD. One phrase per unit, each named once, in order.
+    Wan, 16 Nov 2026: "make sure no vague content post". Mirrored exactly by vagueHits in web/src/lib/compliance.js."""
+    out: list[str] = []
+    for i, unit in enumerate(units):
+        for rx in VAGUE:
+            m = rx.search(unit)
+            if not m:
+                continue
+            if not VAGUE_ANCHOR.search("\n".join(units[i:i + 1 + VAGUE_AHEAD])):
+                phrase = re.sub(r"\s+", " ", m.group(0)).strip().lower()
+                if phrase not in out:
+                    out.append(phrase)
+            break
+    return out
+
+
+def vague_blocks(post: dict[str, Any]) -> bool:
+    """A vague phrase blocks a post written on or after the day the rule arrived (rules/compliance.json vague.from) and only
+    warns on an older one, so nothing approved before the rule is stopped by it. A post with no date yet is new."""
+    made = str(post.get("created_at") or "")[:10]
+    return not made or made >= VAGUE_FROM
 
 
 def hard_count(flags: list[dict[str, Any]]) -> int:

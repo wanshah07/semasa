@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BUCKETS, TABLES, TABLES_UPLOADERS, errText, supabase } from "./SupabaseClient";
 import { coalesce, liveName } from "./liveChannel";
 import { dropRow, loadMedia, newMediaState, sortedRows } from "./mediaDelta";
+import { dropRow as dropListRow, loadDelta, newDeltaState, sortedRows as sortedList } from "./tableDelta";
 import { tr } from "./i18n";
 
 /** Auth session, kept live. */
@@ -157,9 +158,12 @@ export function useToasts() {
 }
 
 /** A private table, kept live for a listed uploader: realtime where the table is in the
- *  publication, a poll as the net (only while the tab is visible). `enabled` false = no reads. */
+ *  publication, a poll as the net (only while the tab is visible). `enabled` false = no reads.
+ *  `delta`: for a wide list on a table with `updated_at` (posts, ideas, FAQ, motions). The list is read in full once; after
+ *  that a poll or a realtime event reads only the rows that changed, and `reload` (and every five minutes) checks the list
+ *  of ids so a deleted row leaves (lib/tableDelta.js). Without it every poll downloads the whole list again. */
 export function useTable(table, { enabled = true, select = "*", order = "created_at", ascending = false, limit = 200,
-  realtime = true, everyMs = 90_000, eq = null, neq = null } = {}) {
+  realtime = true, everyMs = 90_000, eq = null, neq = null, delta = false } = {}) {
   // eq / neq: one [column, value] pair each, so two pages can share a table without reading each other's rows
   const [eqCol, eqVal] = eq || [];
   const [neqCol, neqVal] = neq || [];
@@ -168,9 +172,22 @@ export function useTable(table, { enabled = true, select = "*", order = "created
   const [loading, setLoading] = useState(true);
   const loadRef = useRef(null);
   const sigRef = useRef("");
+  const stateRef = useRef(newDeltaState());
+  const listRef = useRef("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (kind) => {
     if (!supabase || !enabled) { setLoading(false); return; }
+    if (delta) {
+      // a different list (another filter, order or limit) starts from a full read
+      const list = [table, select, order, ascending, limit, eqCol, eqVal, neqCol, neqVal].join("|");
+      if (listRef.current !== list) { listRef.current = list; stateRef.current = newDeltaState(); }
+      const out = await loadDelta({ client: supabase, table, state: stateRef.current, select, order, ascending, limit,
+        eq: eqCol ? [eqCol, eqVal] : null, neq: neqCol ? [neqCol, neqVal] : null, kind: typeof kind === "string" ? kind : "auto" });
+      if (out.error) setError(errText(out.error));
+      else { if (out.rows) setRows(out.rows); setError(""); }   // rows is null when nothing changed: no re-render
+      setLoading(false);
+      return;
+    }
     let q = supabase.from(table).select(select);
     if (eqCol) q = q.eq(eqCol, eqVal);
     if (neqCol) q = q.neq(neqCol, neqVal);
@@ -183,17 +200,27 @@ export function useTable(table, { enabled = true, select = "*", order = "created
       setError("");
     }
     setLoading(false);
-  }, [table, enabled, select, order, ascending, limit, eqCol, eqVal, neqCol, neqVal]);
+  }, [table, enabled, select, order, ascending, limit, eqCol, eqVal, neqCol, neqVal, delta]);
   loadRef.current = load;
 
   useEffect(() => {
     if (!supabase || !enabled) return undefined;
+    if (delta) {
+      if (stateRef.current.cursor) stateRef.current.settledAt = 0;   // back on show after a pause: check the ids first
+      else setLoading(true);                                          // first time on show: say so, not "nothing here"
+    }
     const kick = coalesce(() => loadRef.current?.());       // one read for a burst of changes, never two in flight
     kick.now();
     let channel = null;
     if (realtime) {
       channel = supabase.channel(liveName(`${table}_live`))
-        .on("postgres_changes", { event: "*", schema: "public", table }, () => kick())
+        .on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+          // a delta read cannot see a deleted row, so the event that names it removes it at once
+          if (delta && payload?.eventType === "DELETE" && payload.old?.id && dropListRow(stateRef.current, payload.old.id)) {
+            setRows(sortedList(stateRef.current, order, ascending));
+          }
+          kick();
+        })
         .subscribe();
     }
     const tick = () => { if (!document.hidden) kick.now(); };
@@ -204,9 +231,12 @@ export function useTable(table, { enabled = true, select = "*", order = "created
       if (channel) supabase.removeChannel(channel);
       clearInterval(id); document.removeEventListener("visibilitychange", tick);
     };
-  }, [load, enabled, realtime, table, everyMs]);
+  }, [load, enabled, realtime, table, everyMs, delta, order, ascending]);
 
-  return { rows, error, loading, reload: load };
+  // after the page's own write: the changed rows, and the rows it deleted
+  const reload = useCallback(() => load(delta ? "settle" : undefined), [load, delta]);
+
+  return { rows, error, loading, reload };
 }
 
 /** semasa_settings as { key: value }. */

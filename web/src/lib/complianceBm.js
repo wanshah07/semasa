@@ -77,6 +77,11 @@ export const MSG_BM = {
   "ends with a question": "berakhir dengan soalan",
   "a ws.regulab mark on LinkedIn. That stream is Wan's own byline.": "tanda ws.regulab di LinkedIn. Aliran itu ialah nama Wan sendiri.",
   "a ws.regulab mark on LinkedIn": "tanda ws.regulab di LinkedIn",
+  // ayat al-Quran (16 Nov 2026)
+  "Arabic script in the caption. Semasa does not check it. Name a verse by surah and ayat (Al-Baqarah 2:168); the verse itself is drawn on its slide.":
+    "Tulisan Arab dalam kapsyen. Semasa tidak menyemaknya. Sebut ayat dengan nama surah dan nombor ayat (Al-Baqarah 2:168); ayat itu sendiri dilukis pada slaidnya.",
+  "Arabic script typed on the slide. Semasa does not check it. Ayat al-Quran goes in the slide's Ayat field, which fetches the verse.":
+    "Tulisan Arab ditaip pada slaid. Semasa tidak menyemaknya. Ayat al-Quran diletak dalam medan Ayat pada slaid, yang mengambil ayat itu.",
   "reads as Bahasa Malaysia. The LinkedIn stream is English: write the caption in English.":
     "berbunyi Bahasa Malaysia. Aliran LinkedIn dalam bahasa Inggeris: tulis kapsyen dalam bahasa Inggeris.",
   "write the closing line: one statement that leaves them curious. Not a question, not an ask.":
@@ -90,6 +95,10 @@ export const MSG_BM = {
 
 /** Messages with a number or a word in them: [pattern, (match) → Malay]. */
 const MSG_PATTERNS = [
+  [/^ayat "([^"]*)" does not exist \(surah:ayat, at most (\d+) ayat\)\. Correct the reference\.$/, (m) => `ayat "${m[1]}" tidak wujud (surah:ayat, paling banyak ${m[2]} ayat). Betulkan rujukan.`],
+  [/^the words of (.+) have not been fetched\. Press Ambil ayat: a verse is never typed\.$/, (m) => `teks ${m[1]} belum diambil. Tekan Ambil ayat: ayat tidak pernah ditaip.`],
+  [/^(.+) carries another stream's translation\. Press Ambil ayat again\.$/, (m) => `${m[1]} membawa terjemahan aliran lain. Tekan Ambil ayat sekali lagi.`],
+  [/^check (.+): read the verse and its translation, then tick that it fits this post\.$/, (m) => `semak ${m[1]}: baca ayat dan terjemahannya, kemudian tandakan bahawa ia sesuai dengan post ini.`],
   [/^(\d+) chars, over the (\d+) limit$/, (m) => `${m[1]} aksara, melebihi had ${m[2]}`],
   [/^(\d+) hashtags, over the (\d+) limit$/, (m) => `${m[1]} hashtag, melebihi had ${m[2]}`],
   [/^cites "(.+)", a blog or news aggregator\. On LinkedIn cite the instrument, not where you read it\.$/,

@@ -111,7 +111,17 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const sampleBg = bgUrl || groundOf("g_makmal02")?.url || GROUNDS[0]?.url || "";
   const image = usePreview(cover, { ...opts, look: "image", bg: sampleBg }, true);
   const hand = usePreview(cover, { ...opts, look: "hand" }, true);
-  const tiles = { grid, era, photo, image, hand };
+  // the four poster looks (Wan, 16 Nov 2026), one cover each like the others
+  const marker = usePreview(cover, { ...opts, look: "marker" }, true);
+  const torn = usePreview(cover, { ...opts, look: "torn" }, true);
+  const block = usePreview(cover, { ...opts, look: "block" }, true);
+  const neon = usePreview(cover, { ...opts, look: "neon" }, true);
+  // four more (16 Nov 2026): card board, chalkboard, line map, torn strips
+  const deck = usePreview(cover, { ...opts, look: "deck" }, true);
+  const chalk = usePreview(cover, { ...opts, look: "chalk" }, true);
+  const metro = usePreview(cover, { ...opts, look: "metro" }, true);
+  const strip = usePreview(cover, { ...opts, look: "strip" }, true);
+  const tiles = { grid, era, photo, image, hand, marker, torn, block, neon, deck, chalk, metro, strip };
   // a design can be removed from the choices (hidden, never deleted: old drafts still re-render) and brought back
   const studioShown = offered(LOOKS, hiddenLooks);
   const shownLooks = threads ? [...studioShown, THREADS_LOOK] : studioShown;     // Threads-style is never hidden, and never counted as the last look left

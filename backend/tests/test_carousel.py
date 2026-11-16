@@ -224,3 +224,74 @@ def test_a_content_first_slide_gets_a_hook_in_front_once():
     assert carousel.with_front_cover(hook, "regulab") == hook                    # already a hook
     assert carousel.with_front_cover(items, "linkedin") == items                 # LinkedIn has no cover
     assert carousel.with_front_cover(items[:1], "regulab") == items[:1]          # a single card stays single
+
+
+# --- a slide that carries an ayat al-Quran (16 Nov 2026) ---------------------------------------------------------------
+
+_VERSE = {"title": "Peringatan", "points": [], "ayat": "2:168", "ayat_ar": "ar", "ayat_tr": "tr",
+          "ayat_ed": "ms.basmeih@alquran.cloud", "ayat_ok": "1", "ayat_label": "Al-Baqarah 2:168"}
+
+
+def _jpeg_bytes():
+    buf = io.BytesIO()
+    Image.new("RGB", (1080, 1350), (247, 242, 230)).save(buf, "JPEG")
+    return buf.getvalue()
+
+
+def _verse_set():
+    deck = _set(4)
+    return [deck[0], deck[1], dict(_VERSE), deck[3]]
+
+
+def test_a_set_with_a_verse_is_checked_against_the_source_and_drawn_by_the_studio_renderer(worker, monkeypatch):
+    """The classic look has no Quran face: a set that carries a verse is drawn in a Studio look, after the stored words were
+    checked against the published source. The verse slide reaches the renderer whole."""
+    from fakestore import FakeStore
+
+    from semasa import quran, studio_cards
+    saved, uploads = worker
+    checked, drawn = [], []
+    monkeypatch.setattr(quran, "verify", lambda items, stream, client=None: checked.append((len(items), stream)))
+
+    def render(items, **kw):
+        drawn.append((kw["look"], [s.get("ayat") for s in items]))
+        return [_jpeg_bytes()] * len(items)
+    monkeypatch.setattr(studio_cards, "render", render)
+    row = _job("regulab", _verse_set())                              # no look on the job: the classic one
+    assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
+    assert checked == [(4, "regulab")] and drawn[0][0] == "grid" and "2:168" in drawn[0][1]
+    assert "Grid" in saved["meta"]["look_ayat"] and saved["meta"]["look"] == "grid"
+
+
+def test_a_verse_that_no_longer_matches_the_source_is_not_drawn(worker, monkeypatch):
+    from fakestore import FakeStore
+
+    from semasa import quran, studio_cards
+    saved, uploads = worker
+
+    def differs(items, stream, client=None):
+        raise quran.QuranError("slide 3: the words stored for Al-Baqarah 2:168 differ from the published source.")
+    monkeypatch.setattr(quran, "verify", differs)
+    monkeypatch.setattr(studio_cards, "render", lambda *a, **k: pytest.fail("a verse that failed its check was drawn"))
+    row = _job("regulab", _verse_set())
+    media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load())
+    assert saved.get("status") == "error" and "differ from the published source" in str(saved.get("error_message") or saved)
+    assert not uploads
+
+
+def test_a_verse_too_long_for_its_card_never_falls_back_to_the_classic_look(worker, monkeypatch):
+    """The classic look would draw the slide WITHOUT its verse, so the usual "too full, draw it in classic" rescue is off."""
+    from fakestore import FakeStore
+
+    from semasa import quran, studio_cards
+    saved, uploads = worker
+    monkeypatch.setattr(quran, "verify", lambda *a, **k: None)
+
+    def too_full(*a, **k):
+        raise slides.SlideError("slide 3 (q_ayat): The slide is fuller than the card: this verse is too long for one card.")
+    monkeypatch.setattr(studio_cards, "render", too_full)
+    monkeypatch.setattr(slides, "render", lambda *a, **k: pytest.fail("the classic renderer was given a verse slide"))
+    row = _job("regulab", _verse_set())
+    row["meta"]["look"] = "era"
+    media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load())
+    assert saved.get("status") == "error" and not uploads

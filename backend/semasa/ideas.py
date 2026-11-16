@@ -39,6 +39,7 @@ from . import (
     modes,
     my_designs,
     proofread,
+    quran,
     slides,
     writing_styles,
 )
@@ -169,6 +170,19 @@ def parse_article(html: str, base_url: str, out: dict[str, Any] | None = None) -
 
 # --- writing ---------------------------------------------------------------------
 
+# The words the page and the publisher check a post for (rules/compliance.json `vague`, compliance.vague_hits), said to both
+# writers in the same sentence, so a draft is not written into a block (Wan, 16 Nov 2026: "make sure no vague content post").
+# No percent sign in here: both prompts are %-formatted.
+VAGUE_CHECK = """\
+THIS IS CHECKED AND A VAGUE POST IS BLOCKED: wording that stands where an exact detail should be is refused unless a figure,
+a date or an entry number is in the same sentence or one of the two sentences after it (on slides: the same slide or one of
+the two after it). The wording: "regularly", "from time to time", "recently", "recent changes", "new rules", "latest
+guidance", "several substances", "some products", "many cases", "studies show", "strict limits", "heavy fines"; in Malay
+"dari semasa ke semasa", "secara berkala", "baru-baru ini", "peraturan baharu", "syarat baharu", "garis panduan terkini",
+"beberapa bahan", "banyak produk", "pelbagai kajian", "kajian menunjukkan", "dikatakan", "denda berat". When the SOURCE
+gives the detail, print it (how many, which entry, what limit, from what date) and the wording is fine. When the SOURCE
+gives no exact detail, do not use that wording at all: say plainly what is known, and leave the rest out."""
+
 REGULAB_SYSTEM = """You write social posts for ws.regulab, a Malaysian regulatory-affairs brand speaking to SME owners
 (cosmetics, food, halal, pharmaceuticals). Voice: Bahasa Malaysia mixed naturally with English technical terms, warm,
 plain, practical. MALAYSIAN Malay only, never Bahasa Indonesia: boleh not bisa, ubat not obat, syarikat not perusahaan,
@@ -202,6 +216,9 @@ Rules. Breaking any of them blocks the post, so follow them exactly:
 4. Facts: no fee, duration, circular, entry number, date or figure unless it is in the SOURCE below. If the source
    does not give one, leave it out and write around it: never guess one, and never write a placeholder or a note in
    brackets.
+   BE SPECIFIC, NOT VAGUE (Wan, 16 Nov 2026): when the SOURCE names the product, the substance, the entry or clause number,
+   the limit or the date, print it exactly. A post that only says something "berubah dari semasa ke semasa", that there are
+   "syarat baharu" or that "beberapa produk" are affected, without saying which, how many or from when, is not a post.
 5. No em dash. Do not open with "Tahukah anda". No superlatives, no promise of approval, no "tiada kesan sampingan",
    no "halal-friendly" or "patuh syariah" claims.
 6. A fatwa post says whether the fatwa is diwartakan, and where.
@@ -301,7 +318,14 @@ no maximum), drawn as 1080x1080 cards:
 - Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
 - Every rule above applies to every slide: no call to action, no URL or website, no news portal or social source,
   and no fact that is not in the SOURCE. The source line is added to the last
-  slide from "citation" automatically, so do not write it into a slide.""",
+  slide from "citation" automatically, so do not write it into a slide.
+- AYAT AL-QURAN, only when the idea asks for a reminder (peringatan, tazkirah) or the post is a fatwa or halal post that
+  one verse genuinely anchors: ONE slide may carry "ayat": "surah:ayat" (for example "ayat": "2:168", or "2:168-169" for at
+  most 3 ayat), with a short "title" such as "Peringatan" and no points. Semasa fetches the Arabic and the translation
+  itself and draws them. YOU NEVER WRITE A VERSE: no Arabic script anywhere, and no translation of a verse in quotation
+  marks, on a slide or in the caption. Name it by surah and number (Al-Baqarah 2:168) and say in your own words what the
+  post draws from it. Use a verse only when you are certain of its surah and ayat number; when unsure, use none. Never
+  more than one verse slide, never the cover, and never a verse on a post about a product, a fee or a deadline.""",
     "linkedin": """
 
 SLIDES WANTED. Also return "slides": a carousel in English with as many slides as the story needs (no minimum,
@@ -316,7 +340,12 @@ no maximum), drawn as 1080x1350 cards:
 - Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
 - English only on every slide, the cover and the last slide included: the Malay hook shapes are translated, never printed.
 - No company identity, no URL, no blog or aggregator, and no fact the SOURCE does not give. The citation is added
-  to the last slide automatically.""",
+  to the last slide automatically.
+- AYAT AL-QURAN, only when the idea itself asks for a verse or a reminder: ONE slide may carry "ayat": "surah:ayat" (for
+  example "ayat": "2:168", or "2:168-169" for at most 3 ayat), with a short "title" such as "A reminder" and no points.
+  The Arabic and the translation are fetched and drawn for you. YOU NEVER WRITE A VERSE: no Arabic script anywhere, and no
+  translation of a verse in quotation marks, on a slide or in the caption. Name it by surah and number (Al-Baqarah 2:168).
+  Use a verse only when you are certain of its surah and ayat number; when unsure, use none. Never the cover.""",
 }
 
 
@@ -410,6 +439,7 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
         system = LINKEDIN_SYSTEM % "; ".join(f"{k} = {v}" for k, v in sorted(angles.items()))
     else:
         system = REGULAB_SYSTEM % DOMAINS
+    system += "\n\n" + VAGUE_CHECK
     system += antislop.prompt_block()
     from . import watch
     issuer = watch.is_issuer(idea.get("source_name"))
@@ -769,7 +799,11 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     if want_slides:
         # only when asked: the column arrives with 006_slides.sql, and an idea that never asked
         # for slides must still be written on a database that has not run it
-        post["slides"], cover_state = hook_bank.cover(slides.normalise(out.get("slides")), post["hook"])
+        # a model may NAME a verse, never write one: whatever verse text it returned is dropped, and the words are fetched
+        # from the published source (quran.py). The tick that says Wan checked the verse is his alone, so the post is
+        # written with a hard flag on that slide until he ticks it.
+        written = quran.fill(slides.normalise(quran.untrusted(out.get("slides"))), stream)
+        post["slides"], cover_state = hook_bank.cover(written, post["hook"])
         if cover_state == "too_long":
             short = shorter_hook(llm, post["hook"], stream)
             if short:
@@ -801,7 +835,9 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     jobs = [] if has_jobs or kept else media_jobs(idea, source, out, post_id)
     if want_slides and post.get("slides") and not has_jobs:
         jobs.append(slide_job(idea, post, post_id, bg="post_image" if jobs or kept else "none", chosen=chosen))
-    poster = slides.normalise([out.get("poster")] if isinstance(out.get("poster"), dict) else [])[:1] if want_poster else []
+    poster = slides.normalise(quran.untrusted([out.get("poster")]) if isinstance(out.get("poster"), dict) else [])[:1] \
+        if want_poster else []
+    poster = quran.fill(poster, stream)
     if poster:
         poster, cover_state = hook_bank.cover(poster, post["hook"])
         if cover_state == "too_long":
@@ -902,6 +938,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
         system = LINKEDIN_SYSTEM % "; ".join(f"{k} = {v}" for k, v in sorted(angles.items()))
     else:
         system = REGULAB_SYSTEM % DOMAINS
+    system += "\n\n" + VAGUE_CHECK          # a revision is checked by the same rule as a first draft
     idea = {}
     if post.get("idea_id"):
         try:
@@ -968,7 +1005,8 @@ def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str 
         bg = saved["bg"]                       # the saved design's own background, when the post has no picture of its own
     elif bg == "none" and saved and saved.get("bg_prompt"):
         bg, review = "from_ref", {"background": saved["bg_prompt"]}      # a design from a reference: an ORIGINAL picture
-    elif bg == "none" and studio_cards.is_studio_look(look) and look != "image" and not (saved and saved.get("layouts")):
+    elif (bg == "none" and studio_cards.is_studio_look(look) and look not in OWN_PICTURE_ONLY
+          and not (saved and saved.get("layouts"))):
         bg = cards_library.default_ground(post.get("stream") or "regulab", post.get("domain"), post.get("angle")) or "none"
     return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
             "prompt": "", "created_by": idea.get("created_by"),
@@ -996,7 +1034,11 @@ def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: 
                      **({"review": review} if review else {}), **({"design_pack": saved} if saved else {})}}
 
 
-LOOKS = ("classic", "grid", "era", "photo", "image", "threads", "hand")
+LOOKS = ("classic", "grid", "era", "photo", "image", "threads", "hand", "marker", "torn", "block", "neon",
+         "deck", "chalk", "metro", "strip")
+# looks that show a picture ON the slide (Image, and the cover of the four poster looks): only the post's own picture is ever
+# placed there, never a stock ground from the library
+OWN_PICTURE_ONLY = ("image", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip")
 DEFAULT_LOOK = "image"          # Wan, 8 Nov 2026: the Image look (a picture ON the slide) is the default for new posts
 POSTER_DEFAULT_LOOK = "hand"    # Wan, 13 Nov 2026: a poster (format=poster) is the hand-drawn look by default
 

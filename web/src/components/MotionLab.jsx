@@ -56,7 +56,8 @@ export default function MotionLab({ user, onToast, view = "make" }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? 1 : 0;
   const w = (v) => (Array.isArray(v) ? v[L] : v);
-  const motions = useTable(TABLES.motions, { enabled: true, order: "created_at", limit: 60, realtime: true, everyMs: 60_000 });
+  // delta: a film row carries its whole page (about 40 KB each), so only the rows that changed are read (lib/tableDelta.js)
+  const motions = useTable(TABLES.motions, { enabled: true, order: "created_at", limit: 60, realtime: true, everyMs: 60_000, delta: true });
   const [brief, setBrief] = useState("");
   const [url, setUrl] = useState("");
   const [stream, setStreamOnly] = useState("regulab");

@@ -24,6 +24,7 @@ import { loadImageFile, readPixels, samplePatches, sizeLike } from "../lib/desig
 import { compareImages, judgePass, snapLayout } from "../lib/designFidelity";
 import { GROUND_STYLES } from "../lib/groundStyles";
 import MyDesigns from "../components/MyDesigns";
+import { MASCOTS_ON } from "../lib/cards/studio";
 import WanshahPanel from "../components/WanshahPanel";
 import ImageLightbox, { useLightbox } from "../components/ImageLightbox";
 import { buildDesignFromReference, nameFromFile } from "../lib/designFromReference";
@@ -352,7 +353,8 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
       </motion.div>
 
       <div className="mt-8"><MyDesigns onToast={onToast} user={user} /></div>
-      <div className="mt-6"><WanshahPanel user={user} gens={gens} settings={settings} saveSetting={saveSetting} onToast={onToast} /></div>
+      {/* Wanshah is the mascot's poses; with no mascot on any card (studio.js MASCOTS_ON) there is nothing for it to replace */}
+      {MASCOTS_ON && <div className="mt-6"><WanshahPanel user={user} gens={gens} settings={settings} saveSetting={saveSetting} onToast={onToast} /></div>}
 
       <Card as="form" onSubmit={submit} className="mt-2 p-5 sm:p-6">
         <div className="grid gap-4 md:grid-cols-2">

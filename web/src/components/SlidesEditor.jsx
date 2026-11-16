@@ -3,11 +3,12 @@ import { ArrowDown, ArrowUp, Expand, ImageIcon, Layers, Loader2, Minimize2, Pain
 import { SLIDE_WORDS, isPromo, normaliseSlides, slidesKey } from "../lib/compliance";
 import { cardFromCaption, slidesFromCaption } from "../lib/cards/fromCaption";
 import { useLang } from "../lib/i18n";
-import { LOOKS, isEventSlide, isStudioLook, takesMascot } from "../lib/cards/studio";
+import { LOOKS, MASCOTS_ON, isEventSlide, isStudioLook, takesMascot } from "../lib/cards/studio";
 import { photoAt, photosFollow, speakersOf, withPhoto } from "../lib/photos";
 import { photoUrl, uploadSpeakerPhoto } from "../lib/storage";
 import { resolveLook, useDesigns } from "../lib/designs";
 import { MASCOTS, TEMPLATES, noteLabel, templateOf } from "../lib/cards/library";
+import AyatField, { AYAT_KEYS } from "./AyatField";
 import BackgroundPicker from "./BackgroundPicker";
 import CanvaHandoff from "./CanvaHandoff";
 import ImageLightbox, { useLightbox } from "./ImageLightbox";
@@ -26,13 +27,16 @@ const STYLE_KEYS = ["type_size", "font", "mascot_pos", "mascot_size"];
 
 /** Editor rows <-> stored slides. The editor keeps empty rows while typing; the scan and the save
     see normaliseSlides() of them, which drops empties exactly as the worker does. */
+/* a slide's ayat al-Quran (AyatField) travels with the row like its design does, but is not "design": it never lights the
+   "changed" mark on the design toggle */
+const KEPT = [...DESIGN, ...AYAT_KEYS];
 export const toRows = (slides) => (Array.isArray(slides) ? slides : []).map((s) => ({
   title: String(s?.title ?? ""), points: (Array.isArray(s?.points) ? s.points : []).join("\n"),
-  ...Object.fromEntries(DESIGN.map((k) => [k, String(s?.[k] ?? "")])),
+  ...Object.fromEntries(KEPT.map((k) => [k, String(s?.[k] ?? "")])),
 }));
 export const fromRows = (rows) => rows.map((r) => ({ title: r.title, points: r.points,
-  ...Object.fromEntries(DESIGN.filter((k) => String(r[k] ?? "").trim()).map((k) => [k, r[k]])) }));
-const blankRow = () => ({ title: "", points: "", ...Object.fromEntries(DESIGN.map((k) => [k, ""])) });
+  ...Object.fromEntries(KEPT.filter((k) => String(r[k] ?? "").trim()).map((k) => [k, r[k]])) }));
+const blankRow = () => ({ title: "", points: "", ...Object.fromEntries(KEPT.map((k) => [k, ""])) });
 
 const lookName = (k, lang) => {
   if (k === "canva") return "Canva"; const l = LOOKS.find((x) => x.k === (k || "classic")) || LOOKS[0]; return lang === "bm" ? l.bm : l.en; };
@@ -137,6 +141,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
               placeholder={templateOf(r.template)?.items ? t(templateOf(r.template).items, templateOf(r.template).itemsEn)
                 : i === 0 ? t("Poin (pilihan)", "Points (optional)")
                 : t("Satu poin satu baris (maksimum 5)", "One point per line (up to 5)")} />
+            <AyatField r={r} set={(patch) => set(i, patch)} stream={post.stream} locked={locked} n={i + 1} classic={!studio} />
             {studio && (
               <button type="button" onClick={() => toggle(i)} aria-expanded={open.has(i)}
                 className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline">
@@ -296,7 +301,8 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, str
   const tpl = templateOf(r.template);
   const uses = (f) => !tpl || tpl.uses.includes(f);
   const note = tpl ? noteLabel(r.template, t) : t("Nota / belon (pilihan)", "Note / bubble (optional)");
-  const groups = [["grid", "Grid"], ["era", "Info ERA"], ["photo", t("Foto", "Photo")], ["image", t("Gambar", "Image")], ["hand", t("Lukisan tangan", "Hand-drawn")]];
+  const groups = [["grid", "Grid"], ["era", "Info ERA"], ["photo", t("Foto", "Photo")], ["image", t("Gambar", "Image")], ["hand", t("Lukisan tangan", "Hand-drawn")],
+    ["marker", t("Poster marker", "Marker poster")], ["torn", t("Kertas koyak", "Torn paper")], ["block", t("Blok warna", "Colour blocks")], ["neon", "Neon"], ["deck", t("Papan kad", "Card board")], ["chalk", t("Papan kapur", "Chalkboard")], ["metro", t("Peta laluan", "Line map")], ["strip", t("Jalur koyak", "Torn strips")]];
   const tplOptions = [["", t("Ikut reka bentuk set (auto)", "As the set's design (auto)")],
     ...groups.flatMap(([g, name]) => TEMPLATES.filter((x) => x.group === g).map((x) => [x.k, `${name} · ${lang === "bm" ? x.name.split(" · ")[1] : x.en.split(" · ")[1]}`]))];
   const mascotOk = !r.template || takesMascot(r.template);
@@ -310,10 +316,11 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, str
     <div className="mt-2 grid gap-2 rounded-tile border border-line bg-surface p-2.5 sm:grid-cols-2">
       <div className="min-w-0 sm:col-span-2">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-xs font-semibold text-muted">{t("Teks dan maskot pada kad", "Text and mascot on the card")}</p>
+          <p className="text-xs font-semibold text-muted">{MASCOTS_ON ? t("Teks dan maskot pada kad", "Text and mascot on the card") : t("Teks pada kad", "Text on the card")}</p>
           <Button type="button" size="sm" variant={compact ? "primary" : "soft"} disabled={locked}
             onClick={() => set(compact ? Object.fromEntries(Object.keys(COMPACT).map((k) => [k, ""])) : COMPACT)}
-            title={t("Teks 80%, fon sempit, maskot lebih kecil: lebih banyak ruang untuk gambar", "Text 80%, narrow face, smaller mascot: more room for the picture")}>
+            title={MASCOTS_ON ? t("Teks 80%, fon sempit, maskot lebih kecil: lebih banyak ruang untuk gambar", "Text 80%, narrow face, smaller mascot: more room for the picture")
+              : t("Teks 80%, fon sempit: lebih banyak ruang untuk gambar", "Text 80%, narrow face: more room for the picture")}>
             <Minimize2 size={12} /> {compact ? t("Padatkan: hidup (klik untuk kembali)", "Compact: on (click to undo)") : t("Padatkan teks", "Compact the text")}</Button>
           {n > 1 && STYLE_KEYS.some((k) => r[k]) && (
             <Button type="button" size="sm" variant="ghost" disabled={locked} onClick={onStyleAll}>

@@ -12,6 +12,38 @@ const SOCIAL_SRC = rx(RULES.social_src);
 const AGGREGATOR = rx(RULES.aggregator);
 const ANY_URL = rx(RULES.any_url);
 const NOT_ENGLISH = rx(RULES.not_english);
+const VAGUE = RULES.vague.phrases.map(rx);
+const VAGUE_ANCHOR = rx(RULES.vague.anchor);
+const VAGUE_AHEAD = Number(RULES.vague.ahead);
+const VAGUE_FROM = String(RULES.vague.from);
+const VAGUE_FIX = "Say exactly which, how many or from when: put the figure, the date or the entry number";
+/** A caption as sentences: a full stop, ! ? or … followed by a space ends one, and so does a line break ("2.0%" does not).
+    Mirrored exactly by sentences in backend/semasa/compliance.py. */
+export const sentences = (text) => String(text ?? "").replace(/([.!?…])\s+/g, "$1\n").split("\n").map((s) => s.trim()).filter(Boolean);
+/** The vague phrases in `units` (a caption's sentences, or a deck's slides) that nothing pins down: no figure, date, entry number
+    or Annex in the same unit or the next VAGUE_AHEAD. One phrase per unit, each named once, in order. Wan, 16 Nov 2026: "make sure
+    no vague content post". Mirrored exactly by vague_hits in backend/semasa/compliance.py. */
+export function vagueHits(units) {
+  const out = [];
+  units.forEach((unit, i) => {
+    for (const re of VAGUE) {
+      const m = re.exec(unit);
+      if (!m) continue;
+      if (!VAGUE_ANCHOR.test(units.slice(i, i + 1 + VAGUE_AHEAD).join("\n"))) {
+        const phrase = m[0].replace(/\s+/g, " ").trim().toLowerCase();
+        if (!out.includes(phrase)) out.push(phrase);
+      }
+      break;
+    }
+  });
+  return out;
+}
+/** A vague phrase blocks a post written on or after the day the rule arrived (rules/compliance.json vague.from) and only warns on
+    an older one, so nothing approved before the rule is stopped by it. A post with no date yet is new. */
+export function vagueBlocks(post) {
+  const made = String(post?.created_at || "").slice(0, 10);
+  return !made || made >= VAGUE_FROM;
+}
 /** True when `text` reads as Bahasa Malaysia (a LinkedIn caption must not: rules/compliance.json `not_english`). */
 export const readsMalay = (text) => NOT_ENGLISH.test(String(text || ""));
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -109,7 +141,7 @@ export function normaliseSlides(raw) {
     const body = String(s.body ?? "").trim();
     if (body && !points.length) points = [cut(body, 400)];
     const extra = slideExtras(s);
-    if (title || points.length || SLIDE_WORD_KEYS.some((k) => extra[k])) out.push({ title, points, ...extra });
+    if (title || points.length || SLIDE_WORD_KEYS.some((k) => extra[k]) || extra.ayat) out.push({ title, points, ...extra });
   }
   return out;
 }
@@ -120,7 +152,8 @@ export function normaliseSlides(raw) {
 export const SLIDE_WORDS = { lead: 400, eyebrow: 80, chip: 60, note: 240, footnote: 300 };
 const SLIDE_WORD_KEYS = Object.keys(SLIDE_WORDS);
 const SLIDE_STYLE = {
-  template: /^[gepi]_[a-z]{2,8}$/,
+  // one letter per card family: grid, era, photo, image, hand, and the four poster looks (marker, torn, block, neon)
+  template: /^[gepihmtbndkls]_[a-z]{2,8}$/,
   scrim: /^(none|light|medium|heavy)$/,
   bg: /^(none|post_image|lib:g_[a-z0-9]{2,30}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/,
   mascot: /^(none|[a-z]{2,20})$/,
@@ -152,6 +185,49 @@ export function slideExtras(s) {
   }
   const toks = photoTokens(s.photos);
   if (toks.some(Boolean)) out.photos = toks.join(",");
+  Object.assign(out, ayatExtras(s));
+  return out;
+}
+
+/* AYAT AL-QURAN ON A SLIDE (Wan, 16 Nov 2026). A slide names a verse by surah:ayat in `ayat`; the Arabic (`ayat_ar`), the
+   translation (`ayat_tr`) and the translation's edition and source (`ayat_ed`) are fetched from a published source by
+   src/lib/quran.js or backend/semasa/quran.py, never typed; `ayat_ok` is Wan's tick that he checked the verse fits.
+   `ayat_label` ("Al-Baqarah 2:168") is never taken from what was stored: it is worked out here from the reference, so the
+   name on the card cannot disagree with the verse. Mirrors ayat_ref / ayat_label / ayat_extras in compliance.py exactly. */
+export const QURAN = RULES.quran;
+const AYAT_REF = /^(\d{1,3}):(\d{1,3})(?:-(\d{1,3}))?$/;
+const AYAT_ED = /^[a-z]{2}\.[a-z]{2,20}@(alquran\.cloud|quran\.com)$/;
+const AYAT_TEXT_CAP = 6000;
+export const ARABIC = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFC]/;
+/** [surah, first ayat, last ayat] of a reference to ayat that exist, at most QURAN.max_span of them; else null. */
+export function ayatRef(ref) {
+  const m = AYAT_REF.exec(String(ref ?? "").trim());
+  if (!m) return null;
+  const surah = Number(m[1]), first = Number(m[2]), last = m[3] ? Number(m[3]) : first;
+  if (!(surah >= 1 && surah <= QURAN.surahs.length)) return null;
+  if (!(first >= 1 && first <= last && last <= QURAN.surahs[surah - 1][1]) || last - first + 1 > QURAN.max_span) return null;
+  return [surah, first, last];
+}
+export function ayatLabel(ref) {
+  const p = ayatRef(ref);
+  if (!p) return "";
+  const [surah, first, last] = p;
+  return `${QURAN.surahs[surah - 1][0]} ${surah}:${first}` + (last !== first ? `-${last}` : "");
+}
+export const ayatEdition = (stream) => QURAN.editions[stream === "linkedin" ? "linkedin" : "regulab"];
+export function ayatExtras(s) {
+  const ref = String(s.ayat ?? "").trim();
+  if (!AYAT_REF.test(ref)) return {};
+  const out = { ayat: ref };
+  for (const k of ["ayat_ar", "ayat_tr"]) {
+    const v = cut(String(s[k] ?? "").trim(), AYAT_TEXT_CAP);
+    if (v) out[k] = v;
+  }
+  const ed = String(s.ayat_ed ?? "").trim();
+  if (AYAT_ED.test(ed)) out.ayat_ed = ed;
+  if (String(s.ayat_ok ?? "").trim() === "1") out.ayat_ok = "1";
+  const lab = ayatLabel(ref);
+  if (lab) out.ayat_label = lab;
   return out;
 }
 /** Every word a slide can put on the picture, for the scan. */
@@ -176,6 +252,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   const lang = langOf(post);
   const burl = brandUrlRe(brand);
   const limits = RULES.limits[stream] || {};
+  const vagueHard = vagueBlocks(post);
 
   for (const p of platformsOf(post)) {
     const where = `Caption (${p})`;
@@ -191,12 +268,14 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     for (const [re, label] of HARD) if (re.test(t)) add(true, where, label);
     for (const [re, label] of SOFT) if (re.test(t)) add(false, where, label);
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. Never say the idea came from Reddit, YouTube, a forum or a post.");
+    for (const phrase of vagueHits(sentences(t))) add(vagueHard, where, `vague: "${phrase}". ${VAGUE_FIX} in that sentence or the two after it.`);
     const words = t.toLowerCase().match(/[a-z]+/g) || [];
     for (const msg of indoHits(t, extra)) add(true, where, msg);
     for (const [w, why] of RULES.indo_soft) if (words.includes(w)) add(false, where, why);
     if (burl.test(t)) add(true, where, "the ws.regulab website. The artwork footer already carries it.");
     else if (ANY_URL.test(t)) add(false, where, "a link. Naming the instrument usually reads better than pasting a URL.");
     if (/kepada\s+bapak/i.test(t)) add(false, where, "\"kepada bapak\" reads as Bahasa Indonesia");
+    if (ARABIC.test(t)) add(false, where, "Arabic script in the caption. Semasa does not check it. Name a verse by surah and ayat (Al-Baqarah 2:168); the verse itself is drawn on its slide.");
     const tags = (t.match(/#\w+/g) || []).length;
     if (lim && tags > lim.hashtags) add(false, where, `${tags} hashtags, over the ${lim.hashtags} limit`);
     if (p === "linkedin" && t.trim().endsWith("?")) add(false, where, "ends with a question");
@@ -216,6 +295,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     const tag = other === "bm" ? "BM" : "EN";
     for (const [re, label] of HARD) if (re.test(t)) add(false, `${tag} variant (${p})`, label);
     for (const msg of indoHits(t, extra)) add(false, `${tag} variant (${p})`, msg);
+    for (const phrase of vagueHits(sentences(t))) add(false, `${tag} variant (${p})`, `vague: "${phrase}". ${VAGUE_FIX} in that sentence or the two after it.`);
   }
 
   const cit = String(post.citation || "");
@@ -247,9 +327,19 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
       const mark = brandMarkRe(brand);
       if (mark && mark.test(t)) add(true, where, "a ws.regulab mark on LinkedIn");
     }
+    if (ARABIC.test(t)) add(false, where, "Arabic script typed on the slide. Semasa does not check it. Ayat al-Quran goes in the slide's Ayat field, which fetches the verse.");
+    if (sl.ayat) {
+      const lab = sl.ayat_label, want = ayatEdition(stream).id;
+      if (!lab) add(true, where, `ayat "${sl.ayat}" does not exist (surah:ayat, at most ${QURAN.max_span} ayat). Correct the reference.`);
+      else if (!(sl.ayat_ar && sl.ayat_tr && sl.ayat_ed)) add(true, where, `the words of ${lab} have not been fetched. Press Ambil ayat: a verse is never typed.`);
+      else if (!String(sl.ayat_ed).startsWith(want + "@")) add(true, where, `${lab} carries another stream's translation. Press Ambil ayat again.`);
+      else if (!sl.ayat_ok) add(true, where, `check ${lab}: read the verse and its translation, then tick that it fits this post.`);
+    }
   });
   const slides = normaliseSlides(post.slides);
   artwork(slides, "Slide");
+  // a vague line on a slide is pinned down on that slide or the next two (a cover may tease what slide 2 states exactly)
+  for (const phrase of vagueHits(slides.map(slideText))) add(vagueHard, "Slides", `vague: "${phrase}". ${VAGUE_FIX} on that slide or the two after it.`);
   // A carousel has as many slides as its story needs: no minimum and no maximum (Wan, 9 Nov 2026: "make sure no limit or min
   // carousel slide"). What stays is the closing line. One slide is a single card and is not a carousel.
   if (slides.length > 1) {

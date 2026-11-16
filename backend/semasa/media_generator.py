@@ -657,6 +657,22 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             meta["bg_missing"] = "the background picture was not ready, so the slides were drawn on paper"
         size = design.size_of(meta, stream) if kind else None
         look = str(meta.get("look") or "classic")
+        # AYAT AL-QURAN (16 Nov 2026): a slide that names a verse is drawn by the Studio renderer, the only one with a Quran
+        # face. Its stored words are checked against the published source first, and it is never handed to a renderer that
+        # would draw the slide without its verse.
+        has_ayat = any(isinstance(s, dict) and s.get("ayat") for s in items)
+        if has_ayat:
+            from . import quran
+            if kind == "threads":
+                raise slides.SlideError("a slide carries an ayat al-Quran, which the Threads-style set cannot draw: "
+                                        "use a carousel or a single card")
+            try:
+                quran.verify(items, stream)
+            except quran.QuranError as exc:
+                raise slides.SlideError(str(exc)) from exc
+            if not studio_cards.is_studio_look(look) and look != "auto":
+                meta["look_ayat"] = f"{look}: drawn in the Grid look, which can draw the verse"
+                look = "grid"
         # a saved "My design" (my_designs.py), carried on the job as a snapshot
         saved = meta.get("design_pack") if isinstance(meta.get("design_pack"), dict) else None
         if saved and studio_cards.is_studio_look(saved.get("look")):
@@ -703,8 +719,8 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                 break
             except slides.SlideError as exc:
                 if n == len(attempts) - 1:
-                    if kind or look in ("threads", "classic") or "fuller than the card" not in str(exc):
-                        raise
+                    if kind or has_ayat or look in ("threads", "classic") or "fuller than the card" not in str(exc):
+                        raise                    # (the classic look would draw a verse slide without its verse)
                     # a Studio look that cannot fit a slide's words: the classic look shrinks its type to fit, so the post
                     # still gets its pictures instead of failing the whole job on every run
                     try:

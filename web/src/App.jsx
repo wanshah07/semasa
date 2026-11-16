@@ -135,8 +135,10 @@ function IsuTab({ trends, onToast, onIdea, onFaq, allowed, gateNode, settings, s
   const [segRaw, setSeg] = useView("isu.segment", "isu");
   const seg = SEGMENTS.includes(segRaw) ? segRaw : "isu";
   // the two watch segments share one list; it is read only while one of them is open. Expert content has its own page and
-  // its own read (pages/ExpertTab.jsx), so its rows never take room in this list
-  const watch = useTable(TABLES.watch, { enabled: allowed && seg !== "isu", limit: 900, realtime: false, everyMs: 120_000, neq: ["section", "expert"] });
+  // its own read (pages/ExpertTab.jsx), so its rows never take room in this list. The sweeps that fill it run a few times a
+  // day and every click that changes a row reloads it, so the safety poll is five minutes: the table has no updated_at, so
+  // each poll is the whole list (1.2 MB on 16 Nov 2026)
+  const watch = useTable(TABLES.watch, { enabled: allowed && seg !== "isu", limit: 900, realtime: false, everyMs: 300_000, neq: ["section", "expert"] });
   const en = lang === "en";
   // the open tab is brought into view in the scrolling row, so a phone never opens on a row whose open tab is off screen
   const tabRow = useRef(null);
@@ -335,7 +337,7 @@ function MediaTab({ user, gens, prompts, onToast, go }) {
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "hooks", "gaya", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "bil-valorith", "video", "video-lib", "motion-skills", "chat", "memori", "otak", "wang", "bil", "langganan", "crm", "syarikat", "resit", "faq", "log", "dokumen", "pakar", "tech", "office", "repo", "api", "stack", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "li-idea", "li-post", "hooks", "gaya", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "bil-valorith", "video", "video-lib", "motion-skills", "chat", "memori", "otak", "wang", "bil", "langganan", "crm", "syarikat", "resit", "faq", "log", "dokumen", "pakar", "tech", "office", "repo", "api", "stack", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 // #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)
@@ -370,15 +372,17 @@ export default function App() {
   const trends = useTrends();
   const { toasts, push } = useToasts();
   // ws.regulab Studio's history came over on 27 Sep 2026 (supabase/020): a short list would drop the oldest rows unseen
-  const posts = useTable(TABLES.posts, { enabled: allowed, limit: 1000 });
+  // delta: one full read, then only the rows that changed (lib/tableDelta.js). These lists were the page's largest downloads
+  const posts = useTable(TABLES.posts, { enabled: allowed, limit: 1000, delta: true });
   // every picture a post points at, so an old post's pictures load even when 300 newer jobs exist
   const needMedia = useMemo(() => [...new Set(posts.rows.flatMap((p) => p.media_ids || []))].sort().join(","), [posts.rows]);
   const gens = useGenerations({ enabled: allowed, need: needMedia });
-  const ideas = useTable(TABLES.ideas, { enabled: allowed, limit: 1000 });
+  const ideas = useTable(TABLES.ideas, { enabled: allowed, limit: 1000, delta: true });
   const prompts = useTable(TABLES.prompts, { enabled: allowed, realtime: false });
   const log = useTable(TABLES.publishLog, { enabled: allowed, order: "at", limit: 400, realtime: false });
-  // the two big lists stream live changes only while their tab is open; elsewhere a slow poll is enough
-  const faqs = useTable(TABLES.faqs, { enabled: allowed, limit: 3000, realtime: tab === "faq" });
+  // FAQ is the widest list of all (2.3 MB on 16 Nov 2026) and only its own tab shows it, so it is read only while that tab is
+  // open. Coming back to the tab checks the ids and fetches what changed; it does not download the list again
+  const faqs = useTable(TABLES.faqs, { enabled: allowed && tab === "faq", limit: 3000, delta: true });
   // the home dashboard shows the last few lines, so it loads the log too (a shorter read than the Log tab's)
   const activity = useTable(TABLES.log, { enabled: allowed && (tab === "log" || tab === "papan"), order: "at", limit: tab === "log" ? 3000 : 40 });
 
@@ -443,9 +447,13 @@ export default function App() {
       return next;
     });
   }
+  // the sidebar's badges, one stream each: Bank idea / Bank post count ws.regulab, the LinkedIn segment counts LinkedIn
+  const isLi = (r) => r.stream === "linkedin";
   const counts = {
-    idea: ideas.rows.filter((r) => r.status === "new").length,
-    post: posts.rows.filter((r) => r.status === "draft").length,
+    idea: ideas.rows.filter((r) => r.status === "new" && !isLi(r)).length,
+    post: posts.rows.filter((r) => r.status === "draft" && !isLi(r)).length,
+    "li-idea": ideas.rows.filter((r) => r.status === "new" && isLi(r)).length,
+    "li-post": posts.rows.filter((r) => r.status === "draft" && isLi(r)).length,
   };
   const gate = (node) => <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6"><Gate user={user} ready={ready} canUpload={canUpload} onToast={push}>{node}</Gate></main>;
 
@@ -453,11 +461,21 @@ export default function App() {
   if (pubToken && configured) return <Suspense fallback={<Waiting />}><BillingPublic token={pubToken} /></Suspense>;
   if (unsubToken && configured) return <Suspense fallback={<Waiting />}><CrmUnsubscribe token={unsubToken} /></Suspense>;
 
+  // a post opened from a page that is not stream-fixed lands on the page of its own stream
+  const postTabOf = (id) => (posts.rows.find((p) => p.id === id)?.stream === "linkedin" ? "li-post" : "post");
+  const openPostAny = (id) => { setFocusPost(id); go(postTabOf(id)); };
+  // "go to the post page with this post open", from a page that names the tab itself (Performance, the dashboard, the Log)
+  const goWithPost = (to, postId) => { if (postId) setFocusPost(postId); go(to === "post" && postId ? postTabOf(postId) : to); };
+
   let body;
   if (!configured) body = <Unconfigured />;
-  else if (tab === "idea") body = allowed ? <IdeasTab ideas={ideas} posts={posts} user={user} brand={brand} onToast={push}
-    openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
-  else if (tab === "post") body = allowed ? <PostsTab posts={posts} media={gens} log={log} brand={brand} user={user}
+  // Bank idea / Bank post are ws.regulab; the LinkedIn segment is the same two pages fixed to LinkedIn (Wan, 16 Nov 2026).
+  // `key` gives each its own filters and open editor, so moving between the two never carries one stream's state to the other
+  else if (tab === "idea" || tab === "li-idea") body = allowed ? <IdeasTab key={tab} stream={tab === "li-idea" ? "linkedin" : "regulab"}
+    ideas={ideas} posts={posts} user={user} brand={brand} onToast={push}
+    openPost={(id) => { setFocusPost(id); go(tab === "li-idea" ? "li-post" : "post"); }} /> : gate(null);
+  else if (tab === "post" || tab === "li-post") body = allowed ? <PostsTab key={tab} stream={tab === "li-post" ? "linkedin" : "regulab"}
+    posts={posts} media={gens} log={log} brand={brand} user={user}
     settings={settings} onToast={push} focusId={focusPost} setFocusId={setFocusPost} /> : gate(null);
   else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} onToast={push} go={go} /> : gate(null);
   else if (tab === "media-lib") body = allowed ? <ImageLibraryTab user={user} gens={gens} posts={posts} onToast={push} go={go} /> : gate(null);
@@ -465,7 +483,7 @@ export default function App() {
   else if (tab === "design-lib") body = allowed ? <DesignTab view="library" user={user} gens={gens} posts={posts} brand={brand} settings={settings} saveSetting={save} onToast={push} go={go} /> : gate(null);
   else if (tab === "wangian") body = allowed ? <FragranceTab user={user} gens={gens} onToast={push} /> : gate(null);
   else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push} prompts={prompts} go={go}
-    openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
+    openPost={openPostAny} /> : gate(null);
   else if (tab === "video-lib") body = allowed ? <VideoLibraryTab user={user} gens={gens} posts={posts} onToast={push} go={go} /> : gate(null);
   else if (tab === "motion-skills") body = allowed ? <MotionSkillsTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
@@ -485,12 +503,12 @@ export default function App() {
   else if (tab === "office") body = allowed ? <OfficeTab settings={settings} save={save} onToast={push} user={user} /> : gate(null);
   else if (tab === "repo") body = allowed ? <RepoTab settings={settings} save={save} onToast={push} user={user} /> : gate(null);
   else if (tab === "api") body = allowed ? <ApiTab settings={settings} save={save} onToast={push} /> : gate(null);
-  else if (tab === "prestasi") body = allowed ? <PrestasiTab posts={posts} go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
+  else if (tab === "prestasi") body = allowed ? <PrestasiTab posts={posts} go={goWithPost} /> : gate(null);
   else if (tab === "papan") body = allowed ? <HomeTab ideas={ideas} posts={posts} log={log} activity={activity} brand={brand} user={user} settings={settings} save={save} onToast={push}
-    go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
+    go={goWithPost} /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}
     onPost={(r) => setIdeaFrom(faqIdea(r))} /> : gate(null);
-  else if (tab === "log") body = allowed ? <LogTab log={activity} onOpen={(to) => { if (to.postId) setFocusPost(to.postId); go(to.tab); }} /> : gate(null);
+  else if (tab === "log") body = allowed ? <LogTab log={activity} onOpen={(to) => goWithPost(to.tab, to.postId)} /> : gate(null);
   else if (tab === "dokumen") body = allowed ? <DocsTab /> : gate(null);
   else if (tab === "pakar") body = allowed ? <ExpertTab settings={settings} save={save} brand={brand} user={user} onToast={push}
     onIdea={(r) => setIdeaFrom(watchIdea(r, brand))} go={go} /> : gate(null);

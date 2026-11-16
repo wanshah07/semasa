@@ -170,6 +170,19 @@ def parse_article(html: str, base_url: str, out: dict[str, Any] | None = None) -
 
 # --- writing ---------------------------------------------------------------------
 
+# The words the page and the publisher check a post for (rules/compliance.json `vague`, compliance.vague_hits), said to both
+# writers in the same sentence, so a draft is not written into a block (Wan, 16 Nov 2026: "make sure no vague content post").
+# No percent sign in here: both prompts are %-formatted.
+VAGUE_CHECK = """\
+THIS IS CHECKED AND A VAGUE POST IS BLOCKED: wording that stands where an exact detail should be is refused unless a figure,
+a date or an entry number is in the same sentence or one of the two sentences after it (on slides: the same slide or one of
+the two after it). The wording: "regularly", "from time to time", "recently", "recent changes", "new rules", "latest
+guidance", "several substances", "some products", "many cases", "studies show", "strict limits", "heavy fines"; in Malay
+"dari semasa ke semasa", "secara berkala", "baru-baru ini", "peraturan baharu", "syarat baharu", "garis panduan terkini",
+"beberapa bahan", "banyak produk", "pelbagai kajian", "kajian menunjukkan", "dikatakan", "denda berat". When the SOURCE
+gives the detail, print it (how many, which entry, what limit, from what date) and the wording is fine. When the SOURCE
+gives no exact detail, do not use that wording at all: say plainly what is known, and leave the rest out."""
+
 REGULAB_SYSTEM = """You write social posts for ws.regulab, a Malaysian regulatory-affairs brand speaking to SME owners
 (cosmetics, food, halal, pharmaceuticals). Voice: Bahasa Malaysia mixed naturally with English technical terms, warm,
 plain, practical. MALAYSIAN Malay only, never Bahasa Indonesia: boleh not bisa, ubat not obat, syarikat not perusahaan,
@@ -203,6 +216,9 @@ Rules. Breaking any of them blocks the post, so follow them exactly:
 4. Facts: no fee, duration, circular, entry number, date or figure unless it is in the SOURCE below. If the source
    does not give one, leave it out and write around it: never guess one, and never write a placeholder or a note in
    brackets.
+   BE SPECIFIC, NOT VAGUE (Wan, 16 Nov 2026): when the SOURCE names the product, the substance, the entry or clause number,
+   the limit or the date, print it exactly. A post that only says something "berubah dari semasa ke semasa", that there are
+   "syarat baharu" or that "beberapa produk" are affected, without saying which, how many or from when, is not a post.
 5. No em dash. Do not open with "Tahukah anda". No superlatives, no promise of approval, no "tiada kesan sampingan",
    no "halal-friendly" or "patuh syariah" claims.
 6. A fatwa post says whether the fatwa is diwartakan, and where.
@@ -423,6 +439,7 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
         system = LINKEDIN_SYSTEM % "; ".join(f"{k} = {v}" for k, v in sorted(angles.items()))
     else:
         system = REGULAB_SYSTEM % DOMAINS
+    system += "\n\n" + VAGUE_CHECK
     system += antislop.prompt_block()
     from . import watch
     issuer = watch.is_issuer(idea.get("source_name"))
@@ -921,6 +938,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
         system = LINKEDIN_SYSTEM % "; ".join(f"{k} = {v}" for k, v in sorted(angles.items()))
     else:
         system = REGULAB_SYSTEM % DOMAINS
+    system += "\n\n" + VAGUE_CHECK          # a revision is checked by the same rule as a first draft
     idea = {}
     if post.get("idea_id"):
         try:
@@ -987,7 +1005,8 @@ def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str 
         bg = saved["bg"]                       # the saved design's own background, when the post has no picture of its own
     elif bg == "none" and saved and saved.get("bg_prompt"):
         bg, review = "from_ref", {"background": saved["bg_prompt"]}      # a design from a reference: an ORIGINAL picture
-    elif bg == "none" and studio_cards.is_studio_look(look) and look != "image" and not (saved and saved.get("layouts")):
+    elif (bg == "none" and studio_cards.is_studio_look(look) and look not in OWN_PICTURE_ONLY
+          and not (saved and saved.get("layouts"))):
         bg = cards_library.default_ground(post.get("stream") or "regulab", post.get("domain"), post.get("angle")) or "none"
     return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
             "prompt": "", "created_by": idea.get("created_by"),
@@ -1015,7 +1034,11 @@ def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: 
                      **({"review": review} if review else {}), **({"design_pack": saved} if saved else {})}}
 
 
-LOOKS = ("classic", "grid", "era", "photo", "image", "threads", "hand")
+LOOKS = ("classic", "grid", "era", "photo", "image", "threads", "hand", "marker", "torn", "block", "neon",
+         "deck", "chalk", "metro", "strip")
+# looks that show a picture ON the slide (Image, and the cover of the four poster looks): only the post's own picture is ever
+# placed there, never a stock ground from the library
+OWN_PICTURE_ONLY = ("image", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip")
 DEFAULT_LOOK = "image"          # Wan, 8 Nov 2026: the Image look (a picture ON the slide) is the default for new posts
 POSTER_DEFAULT_LOOK = "hand"    # Wan, 13 Nov 2026: a poster (format=poster) is the hand-drawn look by default
 

@@ -85,6 +85,41 @@ def test_linkedin_writer_is_told_to_be_specific_not_vague():
     assert "updates it regularly" in ideas.LINKEDIN_SYSTEM and "what changed" in ideas.LINKEDIN_SYSTEM
 
 
+def test_both_writers_are_told_the_vague_rule_the_check_enforces():
+    # Wan, 16 Nov 2026: "make sure no vague content post". The check (rules/compliance.json `vague`) blocks a new draft, so both
+    # writers are told the same rule in the same words, and what to do when the source has no exact detail.
+    from semasa import compliance
+    assert "BE SPECIFIC, NOT VAGUE" in ideas.REGULAB_SYSTEM and "dari semasa ke semasa" in ideas.REGULAB_SYSTEM
+    assert "%" not in ideas.VAGUE_CHECK, "both prompts are %-formatted"
+    for stream in ("regulab", "linkedin"):
+        idea = {"stream": stream, "source_title": "t", "brief": {}}
+        system, _ = ideas.build_request(idea, {"ok": False}, {"linkedin": {"angles": {}}})
+        assert ideas.VAGUE_CHECK in system
+        assert "do not use" in system and "same sentence or one of the two sentences after it" in system
+    # every example the writers are given really is caught by the check, and stops being caught once a figure follows
+    import re
+    quoted = [" ".join(q.split()) for q in re.findall(r'"([^"]+)"', ideas.VAGUE_CHECK)]     # the prompt wraps inside a phrase
+    assert len(quoted) >= 20
+    for phrase in quoted:
+        assert compliance.vague_hits([f"Ada {phrase} di sini."]) == [phrase], phrase
+        assert compliance.vague_hits([f"Ada {phrase} di sini.", "Ia bermula 1 Januari 2027."]) == [], phrase
+
+
+def test_the_vague_rule_blocks_a_new_post_and_only_warns_on_one_written_before_it():
+    from semasa import compliance
+    text = "NPRA mengemas kini senarai dari semasa ke semasa. Pengeluar perlu peka. Semak formula anda."
+    post = {"stream": "regulab", "lang": "bm", "text": {"bm": {p: text for p in ("instagram", "facebook", "threads")}},
+            "media": [{"id": "m1", "alt": "x"}]}
+    new = [f for f in compliance.scan(post) if "vague" in f["msg"]]
+    assert len(new) == 3 and all(f["hard"] for f in new), "a draft just written has no date yet: it is new"
+    on_the_day = compliance.scan({**post, "created_at": compliance.VAGUE_FROM + "T00:00:00+00:00"})
+    assert all(f["hard"] for f in on_the_day if "vague" in f["msg"])
+    old = [f for f in compliance.scan({**post, "created_at": "2026-11-16T15:00:00+00:00"}) if "vague" in f["msg"]]
+    assert len(old) == 3 and not any(f["hard"] for f in old), "approved before the rule: warned, never stopped"
+    said = compliance.sentences("Had ialah 2.0% sahaja. Seterusnya!\nBaris baharu")
+    assert said == ["Had ialah 2.0% sahaja.", "Seterusnya!", "Baris baharu"]
+
+
 def test_the_writer_voice_is_casual_with_a_hook_and_exactly_one_follow_line():
     for stream in ("regulab", "linkedin"):
         idea = {"stream": stream, "source_title": "t", "brief": {}}

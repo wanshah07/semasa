@@ -1,0 +1,46 @@
+name: Comic poster sample
+
+# Wan's comparison for the dialogue (comic) poster (16 Nov 2026: "Try both and compare"): the same four-panel comic drawn by
+# ChatGPT and by Gemini, once with the picture maker writing the words and once with Semasa printing them. Run by hand from
+# the Actions tab; it has no schedule and is not wired to anything else, so it can never double a job. It writes no idea, no
+# post and no media row: four pictures, kept as an artifact for seven days and in the generated bucket under samples/comic/.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sample:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Draw the comic four ways
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python -m semasa.comic_sample "$RUNNER_TEMP/comic-out" | tee "$RUNNER_TEMP/result.txt"
+      - name: Summary
+        if: always()
+        run: grep '^RESULT' "$RUNNER_TEMP/result.txt" >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Keep the pictures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: comic-sample
+          path: ${{ runner.temp }}/comic-out
+          retention-days: 7
+          if-no-files-found: ignore

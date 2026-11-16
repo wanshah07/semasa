@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, CalendarClock, CheckCircle2, Clapperboard, Clock, ExternalLink, FileText, Loader2, Pencil, Plus, RotateCcw, Search, Trash2, XCircle } from "lucide-react";
 import { fadeUp } from "../design/motion";
@@ -189,18 +189,27 @@ function LateNote({ n }) {
   );
 }
 
-export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost }) {
+/* `stream`: the page is for one stream (Wan, 16 Nov 2026: LinkedIn has its own segment, and Bank idea shows ws.regulab only).
+   The list, the counts and the search then read that stream's ideas only, a new idea starts on it, and there is no stream to
+   choose. Without it the page shows both, as before. */
+export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost, stream = "" }) {
   const { t, lang } = useLang();
   const [composer, setComposer] = useState(false);
   const [filter, setFilter] = useState("open");
-  const [streamF, setStreamF] = useState("all");
+  const [pickedStream, setStreamF] = useState("all");
+  const streamF = stream || pickedStream;
+  const li = stream === "linkedin";
+  const rows = useMemo(() => (stream ? ideas.rows.filter((r) => (r.stream || "regulab") === stream) : ideas.rows), [ideas.rows, stream]);
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState(null);
   const [view, setView] = useView("idea");
 
   // a motion video made from an idea (Wan, 23 Oct 2026: "make the idea as short motion video"): the Video tab's Motion section
   // plays it; the idea only needs to know one was asked for
-  const motionsT = useTable(TABLES.motions, { enabled: true, order: "created_at", limit: 300, realtime: false, everyMs: 120_000 });
+  // only the columns that say whether an idea already has its film: a film row also carries its whole page, script and
+  // storyboard (about 40 KB each), and this page read 300 of them in full every two minutes. Read as a delta as well
+  const motionsT = useTable(TABLES.motions, { enabled: true, order: "created_at", limit: 300, realtime: false, everyMs: 120_000, delta: true,
+    select: "id,status,idea_id,language,voice,seconds,options,created_at,updated_at" });
   const motionOf = (id) => {
     const idea = ideas.rows.find(r => r.id === id);
     const wanted = idea && motionFromIdea(idea, user?.id || null, mDefaults, langFor(idea));
@@ -253,9 +262,9 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
   const inFilter = (r) => ({ open: r.status !== "rejected", waiting: r.status === "new" || r.status === "working",
     error: r.status === "error", drafted: r.status === "drafted", rejected: r.status === "rejected" })[filter];
   const needle = q.trim().toLowerCase();
-  const shown = ideas.rows.filter((r) => inFilter(r) && (streamF === "all" || (r.stream || "regulab") === streamF)
+  const shown = rows.filter((r) => inFilter(r) && (streamF === "all" || (r.stream || "regulab") === streamF)
     && (!needle || [r.source_title, r.note, r.source_name, r.source_url, r.domain, r.angle].some((x) => String(x || "").toLowerCase().includes(needle))));
-  const count = (k) => ideas.rows.filter((r) => ({ open: r.status !== "rejected", waiting: r.status === "new" || r.status === "working",
+  const count = (k) => rows.filter((r) => ({ open: r.status !== "rejected", waiting: r.status === "new" || r.status === "working",
     error: r.status === "error", drafted: r.status === "drafted", rejected: r.status === "rejected" })[k]).length;
   // an idea with no make_media used to print "· undefined": every part is dropped when it is empty
   const forText = (r) => [r.stream === "linkedin" ? "LinkedIn" : "ws.regulab", r.domain, r.angle,
@@ -308,27 +317,31 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show" className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-[13px] font-semibold text-accent">{t("Aliran A", "Flow A")}</p>
+          <p className="text-[13px] font-semibold text-accent" data-idea-stream={stream || "all"}>{li ? "Idea · LinkedIn" : stream ? "Idea · ws.regulab" : t("Aliran A", "Flow A")}</p>
           <h1 className="mt-2 text-3xl leading-tight sm:text-4xl">{t("Isu → idea → draf.", "Issue → idea → draft.")}</h1>
           <p className="mt-3 hidden max-w-2xl text-sm text-muted sm:block">
             {lang === "en" ? (
               <>
-                Press <b>Make an idea</b> on any issue, or write your own. Semasa reads the source, writes a draft in the
-                ws.regulab or LinkedIn voice, checks the Studio rules and generates a picture. The draft waits for your approval
-                in the Posts tab.
+                Press <b>Make an idea</b> on any issue, or write your own. Semasa reads the source, writes a draft in the{" "}
+                {li ? "LinkedIn voice (English, your own name)" : stream ? "ws.regulab voice" : "ws.regulab or LinkedIn voice"}, checks the Studio rules and generates a picture. The draft waits for your approval
+                in {li ? "LinkedIn → LinkedIn posts" : "the Posts tab"}.
               </>
             ) : (
               <>
-                Tekan <b>Jadikan idea</b> pada mana-mana isu, atau tulis sendiri. Semasa membaca sumber, menulis draf ikut suara
-                ws.regulab atau LinkedIn, menyemak peraturan Studio, dan menjana gambar. Draf menunggu kelulusan anda di tab Post.
+                Tekan <b>Jadikan idea</b> pada mana-mana isu, atau tulis sendiri. Semasa membaca sumber, menulis draf ikut suara{" "}
+                {li ? "LinkedIn (English, atas nama anda)" : stream ? "ws.regulab" : "ws.regulab atau LinkedIn"}, menyemak peraturan Studio, dan menjana gambar. Draf menunggu kelulusan anda di{" "}
+                {li ? "LinkedIn → Post LinkedIn" : "tab Post"}.
               </>
             )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={makeMotionAll} disabled={motionBusy === "all"} data-ideas-motion-all
-            title={t("Video motion untuk setiap idea yang dipapar dan belum ada video, ikut cara lalai yang disimpan di Video → Motion", "A motion video for every shown idea without one, the default way saved in Video → Motion")}>
-            {motionBusy === "all" ? <Loader2 size={12} className="animate-spin" /> : <Clapperboard size={12} />} {t("Video motion untuk idea yang dipapar", "Motion video for the ideas shown")}</Button>
+          {/* LinkedIn gets no film, only a carousel or a single card, so its page has no film button */}
+          {!li && (
+            <Button variant="ghost" size="sm" onClick={makeMotionAll} disabled={motionBusy === "all"} data-ideas-motion-all
+              title={t("Video motion untuk setiap idea yang dipapar dan belum ada video, ikut cara lalai yang disimpan di Video → Motion", "A motion video for every shown idea without one, the default way saved in Video → Motion")}>
+              {motionBusy === "all" ? <Loader2 size={12} className="animate-spin" /> : <Clapperboard size={12} />} {t("Video motion untuk idea yang dipapar", "Motion video for the ideas shown")}</Button>
+          )}
           <Button onClick={() => setComposer(true)}><Plus size={14} /> {t("Idea baharu", "New idea")}</Button>
         </div>
       </motion.div>
@@ -347,10 +360,12 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Cari idea", "Search ideas")} aria-label={t("Cari idea", "Search ideas")}
               className="w-40 rounded-pill border border-line bg-surface py-1.5 pl-8 pr-3 text-xs outline-none focus:border-accent" />
           </label>
-          <select value={streamF} onChange={(e) => setStreamF(e.target.value)} aria-label={t("Aliran", "Stream")}
-            className="rounded-pill border border-line bg-surface px-3 py-1.5 text-xs">
-            <option value="all">{t("Semua", "All")}</option><option value="regulab">ws.regulab</option><option value="linkedin">LinkedIn</option>
-          </select>
+          {!stream && (
+            <select value={streamF} onChange={(e) => setStreamF(e.target.value)} aria-label={t("Aliran", "Stream")}
+              className="rounded-pill border border-line bg-surface px-3 py-1.5 text-xs">
+              <option value="all">{t("Semua", "All")}</option><option value="regulab">ws.regulab</option><option value="linkedin">LinkedIn</option>
+            </select>
+          )}
           <ViewToggle view={view} setView={setView} />
         </div>
       </div>
@@ -419,7 +434,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost 
           })}
         </div>
       )}
-      <IdeaComposer open={composer} onClose={() => setComposer(false)} trend={null} user={user} brand={brand}
+      <IdeaComposer open={composer} onClose={() => setComposer(false)} trend={null} user={user} brand={brand} defaultStream={stream || "regulab"}
         onToast={onToast} onDone={ideas.reload} />
     </main>
   );

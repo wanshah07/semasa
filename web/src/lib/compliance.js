@@ -12,6 +12,38 @@ const SOCIAL_SRC = rx(RULES.social_src);
 const AGGREGATOR = rx(RULES.aggregator);
 const ANY_URL = rx(RULES.any_url);
 const NOT_ENGLISH = rx(RULES.not_english);
+const VAGUE = RULES.vague.phrases.map(rx);
+const VAGUE_ANCHOR = rx(RULES.vague.anchor);
+const VAGUE_AHEAD = Number(RULES.vague.ahead);
+const VAGUE_FROM = String(RULES.vague.from);
+const VAGUE_FIX = "Say exactly which, how many or from when: put the figure, the date or the entry number";
+/** A caption as sentences: a full stop, ! ? or … followed by a space ends one, and so does a line break ("2.0%" does not).
+    Mirrored exactly by sentences in backend/semasa/compliance.py. */
+export const sentences = (text) => String(text ?? "").replace(/([.!?…])\s+/g, "$1\n").split("\n").map((s) => s.trim()).filter(Boolean);
+/** The vague phrases in `units` (a caption's sentences, or a deck's slides) that nothing pins down: no figure, date, entry number
+    or Annex in the same unit or the next VAGUE_AHEAD. One phrase per unit, each named once, in order. Wan, 16 Nov 2026: "make sure
+    no vague content post". Mirrored exactly by vague_hits in backend/semasa/compliance.py. */
+export function vagueHits(units) {
+  const out = [];
+  units.forEach((unit, i) => {
+    for (const re of VAGUE) {
+      const m = re.exec(unit);
+      if (!m) continue;
+      if (!VAGUE_ANCHOR.test(units.slice(i, i + 1 + VAGUE_AHEAD).join("\n"))) {
+        const phrase = m[0].replace(/\s+/g, " ").trim().toLowerCase();
+        if (!out.includes(phrase)) out.push(phrase);
+      }
+      break;
+    }
+  });
+  return out;
+}
+/** A vague phrase blocks a post written on or after the day the rule arrived (rules/compliance.json vague.from) and only warns on
+    an older one, so nothing approved before the rule is stopped by it. A post with no date yet is new. */
+export function vagueBlocks(post) {
+  const made = String(post?.created_at || "").slice(0, 10);
+  return !made || made >= VAGUE_FROM;
+}
 /** True when `text` reads as Bahasa Malaysia (a LinkedIn caption must not: rules/compliance.json `not_english`). */
 export const readsMalay = (text) => NOT_ENGLISH.test(String(text || ""));
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -120,7 +152,8 @@ export function normaliseSlides(raw) {
 export const SLIDE_WORDS = { lead: 400, eyebrow: 80, chip: 60, note: 240, footnote: 300 };
 const SLIDE_WORD_KEYS = Object.keys(SLIDE_WORDS);
 const SLIDE_STYLE = {
-  template: /^[gepi]_[a-z]{2,8}$/,
+  // one letter per card family: grid, era, photo, image, hand, and the four poster looks (marker, torn, block, neon)
+  template: /^[gepihmtbndkls]_[a-z]{2,8}$/,
   scrim: /^(none|light|medium|heavy)$/,
   bg: /^(none|post_image|lib:g_[a-z0-9]{2,30}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/,
   mascot: /^(none|[a-z]{2,20})$/,
@@ -219,6 +252,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   const lang = langOf(post);
   const burl = brandUrlRe(brand);
   const limits = RULES.limits[stream] || {};
+  const vagueHard = vagueBlocks(post);
 
   for (const p of platformsOf(post)) {
     const where = `Caption (${p})`;
@@ -234,6 +268,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     for (const [re, label] of HARD) if (re.test(t)) add(true, where, label);
     for (const [re, label] of SOFT) if (re.test(t)) add(false, where, label);
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. Never say the idea came from Reddit, YouTube, a forum or a post.");
+    for (const phrase of vagueHits(sentences(t))) add(vagueHard, where, `vague: "${phrase}". ${VAGUE_FIX} in that sentence or the two after it.`);
     const words = t.toLowerCase().match(/[a-z]+/g) || [];
     for (const msg of indoHits(t, extra)) add(true, where, msg);
     for (const [w, why] of RULES.indo_soft) if (words.includes(w)) add(false, where, why);
@@ -260,6 +295,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     const tag = other === "bm" ? "BM" : "EN";
     for (const [re, label] of HARD) if (re.test(t)) add(false, `${tag} variant (${p})`, label);
     for (const msg of indoHits(t, extra)) add(false, `${tag} variant (${p})`, msg);
+    for (const phrase of vagueHits(sentences(t))) add(false, `${tag} variant (${p})`, `vague: "${phrase}". ${VAGUE_FIX} in that sentence or the two after it.`);
   }
 
   const cit = String(post.citation || "");
@@ -302,6 +338,8 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   });
   const slides = normaliseSlides(post.slides);
   artwork(slides, "Slide");
+  // a vague line on a slide is pinned down on that slide or the next two (a cover may tease what slide 2 states exactly)
+  for (const phrase of vagueHits(slides.map(slideText))) add(vagueHard, "Slides", `vague: "${phrase}". ${VAGUE_FIX} on that slide or the two after it.`);
   // A carousel has as many slides as its story needs: no minimum and no maximum (Wan, 9 Nov 2026: "make sure no limit or min
   // carousel slide"). What stays is the closing line. One slide is a single card and is not a carousel.
   if (slides.length > 1) {

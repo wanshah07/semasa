@@ -378,5 +378,24 @@
    ["Al-Kafirun", 6], ["An-Nasr", 3], ["Al-Masad", 5], ["Al-Ikhlas", 4],
    ["Al-Falaq", 5], ["An-Nas", 6]
   ]
+ },
+ "vague": {
+  "_about": "Vague wording (Wan, 16 Nov 2026: 'make sure no vague content post'; 15 Nov: a LinkedIn peer called out 'updates it regularly'). A phrase below stands where an exact detail should be. It is allowed only when the detail follows: `anchor` (a digit: a figure, a date, an entry number. Naming the Annex alone is not one: 'updates Annex III regularly' is the sentence that was called out) must appear in the same sentence or the next `ahead` sentences of a caption, or on the same slide or the next `ahead` slides. Blocking for a post created on or after `from`; a warning for older posts, so nothing approved before the rule is stopped. Calibrated on the 207 posts in the database that day: about 20 carried one of these phrases.",
+  "from": "2026-11-17", "ahead": 2,
+  "anchor": {"re": "\\d", "flags": ""},
+  "phrases": [
+   {"re": "\\b(regularly|periodically|from time to time|every so often|on a regular basis)\\b", "flags": "i"},
+   {"re": "\\b(recent|latest|new|upcoming)\\s+(changes?|updates?|amendments?|revisions?|rules?|regulations?|requirements?|guidance|guidelines?|developments?|restrictions?)\\b", "flags": "i"},
+   {"re": "\\b(several|various|numerous|certain|some|many|multiple|a number of|a range of)\\s+(substances?|ingredients?|products?|cases?|studies|reports?|countries|authorities|regulators|changes?|updates?|amendments?|rules?|requirements?|restrictions?)\\b", "flags": "i"},
+   {"re": "\\b(in the near future|in due course|at some point|in recent (years|months|times)|recently|lately|not long ago)\\b", "flags": "i"},
+   {"re": "\\b(studies|research|reports|data|evidence) (shows?|suggests?|indicates?|says?)\\b", "flags": "i"},
+   {"re": "\\b(significant(ly)?|substantial(ly)?|considerabl[ey]|drastic(ally)?|sharp(ly)?|huge|massive|heavy|hefty|stiff|severe|strict(er)?|tough(er)?)\\s+(increase|rise|drop|decrease|reduction|change|impact|growth|fines?|penalt(y|ies)|action|enforcement|limits?|rules?)\\b", "flags": "i"},
+   {"re": "\\b(dari semasa ke semasa|dari masa ke masa|secara berkala|sentiasa dikemas ?kini|kerap dikemas ?kini|selalu berubah|sering berubah)\\b", "flags": "i"},
+   {"re": "\\b(perubahan|pindaan|kemas ?kini|peraturan|garis panduan|keperluan|syarat|sekatan|arahan|pekeliling)\\s+(baharu|baru|terkini|terbaharu|terbaru)\\b", "flags": "i"},
+   {"re": "\\b(beberapa|pelbagai|sesetengah|sebahagian|banyak|sejumlah|segelintir)\\s+(bahan|ramuan|produk|kes|kajian|laporan|negara|perubahan|pindaan|peraturan|syarat|sekatan)\\b", "flags": "i"},
+   {"re": "\\b(baru-baru ini|kebelakangan ini|tidak lama lagi|dalam masa terdekat|tidak lama dahulu)\\b", "flags": "i"},
+   {"re": "\\bkajian (menunjukkan|mendapati|membuktikan)\\b|\\b(dikatakan|khabarnya)\\b", "flags": "i"},
+   {"re": "\\b(denda|hukuman|tindakan|penalti)\\s+(berat|tegas|keras|tinggi)\\b|\\b(peningkatan|penurunan|kenaikan|perubahan)\\s+(ketara|mendadak|besar|drastik)\\b", "flags": "i"}
+  ]
  }
 }

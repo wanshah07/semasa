@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Expand, ImageIcon, Layers, Loader2, Minimize2, Pain
 import { SLIDE_WORDS, isPromo, normaliseSlides, slidesKey } from "../lib/compliance";
 import { cardFromCaption, slidesFromCaption } from "../lib/cards/fromCaption";
 import { useLang } from "../lib/i18n";
-import { LOOKS, isEventSlide, isStudioLook, takesMascot } from "../lib/cards/studio";
+import { LOOKS, MASCOTS_ON, isEventSlide, isStudioLook, takesMascot } from "../lib/cards/studio";
 import { photoAt, photosFollow, speakersOf, withPhoto } from "../lib/photos";
 import { photoUrl, uploadSpeakerPhoto } from "../lib/storage";
 import { resolveLook, useDesigns } from "../lib/designs";
@@ -296,7 +296,8 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, str
   const tpl = templateOf(r.template);
   const uses = (f) => !tpl || tpl.uses.includes(f);
   const note = tpl ? noteLabel(r.template, t) : t("Nota / belon (pilihan)", "Note / bubble (optional)");
-  const groups = [["grid", "Grid"], ["era", "Info ERA"], ["photo", t("Foto", "Photo")], ["image", t("Gambar", "Image")], ["hand", t("Lukisan tangan", "Hand-drawn")]];
+  const groups = [["grid", "Grid"], ["era", "Info ERA"], ["photo", t("Foto", "Photo")], ["image", t("Gambar", "Image")], ["hand", t("Lukisan tangan", "Hand-drawn")],
+    ["marker", t("Poster marker", "Marker poster")], ["torn", t("Kertas koyak", "Torn paper")], ["block", t("Blok warna", "Colour blocks")], ["neon", "Neon"], ["deck", t("Papan kad", "Card board")], ["chalk", t("Papan kapur", "Chalkboard")], ["metro", t("Peta laluan", "Line map")], ["strip", t("Jalur koyak", "Torn strips")]];
   const tplOptions = [["", t("Ikut reka bentuk set (auto)", "As the set's design (auto)")],
     ...groups.flatMap(([g, name]) => TEMPLATES.filter((x) => x.group === g).map((x) => [x.k, `${name} · ${lang === "bm" ? x.name.split(" · ")[1] : x.en.split(" · ")[1]}`]))];
   const mascotOk = !r.template || takesMascot(r.template);
@@ -310,10 +311,11 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, str
     <div className="mt-2 grid gap-2 rounded-tile border border-line bg-surface p-2.5 sm:grid-cols-2">
       <div className="min-w-0 sm:col-span-2">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-xs font-semibold text-muted">{t("Teks dan maskot pada kad", "Text and mascot on the card")}</p>
+          <p className="text-xs font-semibold text-muted">{MASCOTS_ON ? t("Teks dan maskot pada kad", "Text and mascot on the card") : t("Teks pada kad", "Text on the card")}</p>
           <Button type="button" size="sm" variant={compact ? "primary" : "soft"} disabled={locked}
             onClick={() => set(compact ? Object.fromEntries(Object.keys(COMPACT).map((k) => [k, ""])) : COMPACT)}
-            title={t("Teks 80%, fon sempit, maskot lebih kecil: lebih banyak ruang untuk gambar", "Text 80%, narrow face, smaller mascot: more room for the picture")}>
+            title={MASCOTS_ON ? t("Teks 80%, fon sempit, maskot lebih kecil: lebih banyak ruang untuk gambar", "Text 80%, narrow face, smaller mascot: more room for the picture")
+              : t("Teks 80%, fon sempit: lebih banyak ruang untuk gambar", "Text 80%, narrow face: more room for the picture")}>
             <Minimize2 size={12} /> {compact ? t("Padatkan: hidup (klik untuk kembali)", "Compact: on (click to undo)") : t("Padatkan teks", "Compact the text")}</Button>
           {n > 1 && STYLE_KEYS.some((k) => r[k]) && (
             <Button type="button" size="sm" variant="ghost" disabled={locked} onClick={onStyleAll}>

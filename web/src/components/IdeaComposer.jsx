@@ -27,7 +27,7 @@ function sampleSlides(title, stream) {
 
 /* Flow A, step one. From a headline ("Jadikan idea") or by hand. Inserting the row is all the
    page does: the worker reads the source, writes the draft and queues the pictures. */
-export default function IdeaComposer({ open, onClose, trend, user, brand, onToast, onDone, position = null }) {
+export default function IdeaComposer({ open, onClose, trend, user, brand, onToast, onDone, position = null, defaultStream = "regulab" }) {
   const { t } = useLang();
   const [stream, setStream] = useState("regulab");
   const [media, setMedia] = useState("image");
@@ -59,14 +59,15 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     // a regulator's notice or a paper (Regulatory / Latest publication) arrives with its stream, angle and domain
     // chosen, and as a carousel: the flow Wan asked for is notice → idea → slides or a poster → post
     // an empty slot in the Schedule opens this for that slot: its stream, and the rota's first domain that day
-    setStream(position?.stream || (trend?.watch ? trend.stream || "regulab" : "regulab")); setMedia("image");
+    // a new idea starts on the stream of the page it was opened from (the LinkedIn segment opens it on LinkedIn)
+    setStream(position?.stream || (trend?.watch ? trend.stream || "regulab" : defaultStream)); setMedia("image");
     setOutputMotion(false); setMotionLanguage(motionDefaults(motionSettings).language);
     setFormat(trend?.watch ? "carousel" : "post"); setLook(null);
     setAngle(trend?.watch ? trend.angle || "" : ""); setNote(""); setRefs([]); setHookStyle(""); setWritingStyle("");
     setDomain(trend ? (trend.faq || trend.watch ? trend.domain : CATEGORY_TO_DOMAIN[trend.category]) || ""
       : position?.domain || "");
     setTitle(trend?.title || ""); setUrl(trend?.url || "");
-  }, [open, trend, position]);
+  }, [open, trend, position, defaultStream]);
 
   async function addFiles(files) {
     for (const f of files) {

@@ -141,7 +141,7 @@ export function normaliseSlides(raw) {
     const body = String(s.body ?? "").trim();
     if (body && !points.length) points = [cut(body, 400)];
     const extra = slideExtras(s);
-    if (title || points.length || SLIDE_WORD_KEYS.some((k) => extra[k])) out.push({ title, points, ...extra });
+    if (title || points.length || SLIDE_WORD_KEYS.some((k) => extra[k]) || extra.ayat) out.push({ title, points, ...extra });
   }
   return out;
 }
@@ -185,6 +185,49 @@ export function slideExtras(s) {
   }
   const toks = photoTokens(s.photos);
   if (toks.some(Boolean)) out.photos = toks.join(",");
+  Object.assign(out, ayatExtras(s));
+  return out;
+}
+
+/* AYAT AL-QURAN ON A SLIDE (Wan, 16 Nov 2026). A slide names a verse by surah:ayat in `ayat`; the Arabic (`ayat_ar`), the
+   translation (`ayat_tr`) and the translation's edition and source (`ayat_ed`) are fetched from a published source by
+   src/lib/quran.js or backend/semasa/quran.py, never typed; `ayat_ok` is Wan's tick that he checked the verse fits.
+   `ayat_label` ("Al-Baqarah 2:168") is never taken from what was stored: it is worked out here from the reference, so the
+   name on the card cannot disagree with the verse. Mirrors ayat_ref / ayat_label / ayat_extras in compliance.py exactly. */
+export const QURAN = RULES.quran;
+const AYAT_REF = /^(\d{1,3}):(\d{1,3})(?:-(\d{1,3}))?$/;
+const AYAT_ED = /^[a-z]{2}\.[a-z]{2,20}@(alquran\.cloud|quran\.com)$/;
+const AYAT_TEXT_CAP = 6000;
+export const ARABIC = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFC]/;
+/** [surah, first ayat, last ayat] of a reference to ayat that exist, at most QURAN.max_span of them; else null. */
+export function ayatRef(ref) {
+  const m = AYAT_REF.exec(String(ref ?? "").trim());
+  if (!m) return null;
+  const surah = Number(m[1]), first = Number(m[2]), last = m[3] ? Number(m[3]) : first;
+  if (!(surah >= 1 && surah <= QURAN.surahs.length)) return null;
+  if (!(first >= 1 && first <= last && last <= QURAN.surahs[surah - 1][1]) || last - first + 1 > QURAN.max_span) return null;
+  return [surah, first, last];
+}
+export function ayatLabel(ref) {
+  const p = ayatRef(ref);
+  if (!p) return "";
+  const [surah, first, last] = p;
+  return `${QURAN.surahs[surah - 1][0]} ${surah}:${first}` + (last !== first ? `-${last}` : "");
+}
+export const ayatEdition = (stream) => QURAN.editions[stream === "linkedin" ? "linkedin" : "regulab"];
+export function ayatExtras(s) {
+  const ref = String(s.ayat ?? "").trim();
+  if (!AYAT_REF.test(ref)) return {};
+  const out = { ayat: ref };
+  for (const k of ["ayat_ar", "ayat_tr"]) {
+    const v = cut(String(s[k] ?? "").trim(), AYAT_TEXT_CAP);
+    if (v) out[k] = v;
+  }
+  const ed = String(s.ayat_ed ?? "").trim();
+  if (AYAT_ED.test(ed)) out.ayat_ed = ed;
+  if (String(s.ayat_ok ?? "").trim() === "1") out.ayat_ok = "1";
+  const lab = ayatLabel(ref);
+  if (lab) out.ayat_label = lab;
   return out;
 }
 /** Every word a slide can put on the picture, for the scan. */
@@ -232,6 +275,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     if (burl.test(t)) add(true, where, "the ws.regulab website. The artwork footer already carries it.");
     else if (ANY_URL.test(t)) add(false, where, "a link. Naming the instrument usually reads better than pasting a URL.");
     if (/kepada\s+bapak/i.test(t)) add(false, where, "\"kepada bapak\" reads as Bahasa Indonesia");
+    if (ARABIC.test(t)) add(false, where, "Arabic script in the caption. Semasa does not check it. Name a verse by surah and ayat (Al-Baqarah 2:168); the verse itself is drawn on its slide.");
     const tags = (t.match(/#\w+/g) || []).length;
     if (lim && tags > lim.hashtags) add(false, where, `${tags} hashtags, over the ${lim.hashtags} limit`);
     if (p === "linkedin" && t.trim().endsWith("?")) add(false, where, "ends with a question");
@@ -282,6 +326,14 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
       if (hit) add(true, where, `cites "${hit[0]}", a blog or news aggregator. Cite the instrument.`);
       const mark = brandMarkRe(brand);
       if (mark && mark.test(t)) add(true, where, "a ws.regulab mark on LinkedIn");
+    }
+    if (ARABIC.test(t)) add(false, where, "Arabic script typed on the slide. Semasa does not check it. Ayat al-Quran goes in the slide's Ayat field, which fetches the verse.");
+    if (sl.ayat) {
+      const lab = sl.ayat_label, want = ayatEdition(stream).id;
+      if (!lab) add(true, where, `ayat "${sl.ayat}" does not exist (surah:ayat, at most ${QURAN.max_span} ayat). Correct the reference.`);
+      else if (!(sl.ayat_ar && sl.ayat_tr && sl.ayat_ed)) add(true, where, `the words of ${lab} have not been fetched. Press Ambil ayat: a verse is never typed.`);
+      else if (!String(sl.ayat_ed).startsWith(want + "@")) add(true, where, `${lab} carries another stream's translation. Press Ambil ayat again.`);
+      else if (!sl.ayat_ok) add(true, where, `check ${lab}: read the verse and its translation, then tick that it fits this post.`);
     }
   });
   const slides = normaliseSlides(post.slides);

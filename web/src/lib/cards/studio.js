@@ -3539,11 +3539,18 @@ export function specsFor(slides, o = {}) {
   const D = normDesign(o.design);
   const look = D ? D.look : (STUDIO_LOOKS.includes(o.look) ? o.look : "grid");
   const list = (slides || []).filter((s) => s && (String(s.title || "").trim() || (s.points || []).length
-    || String(s.lead || "").trim() || String(s.note || "").trim()));
+    || String(s.lead || "").trim() || String(s.note || "").trim() || String(s.ayat || "").trim()));
   const n = list.length;
   const linkedin = o.stream === "linkedin";
   return list.map((s, i) => {
     const pts = (s.points || []).map((x) => String(x || "").trim()).filter(Boolean);
+    if (String(s.ayat || "").trim()) {
+      // a slide that names an ayat is the verse card, whatever the look, the design or the template chosen on it
+      return { stream: linkedin ? "linkedin" : "regulab", template: "q_ayat", size: o.size || undefined,
+        title: String(s.title || "").trim(), lead: String(s.lead || "").trim(), items: pts,
+        footnote: String(s.footnote || "").trim() || (i === n - 1 ? String(o.citation || "").trim() : ""),
+        ayat: { ref: String(s.ayat).trim(), label: String(s.ayat_label || ""), ar: String(s.ayat_ar || ""), tr: String(s.ayat_tr || ""), ed: String(s.ayat_ed || "") } };
+    }
     const last = i === n - 1;
     const lead0 = String(s.lead || "").trim();
     const withLead = (x) => [lead0, x].filter(Boolean).join("\n");
@@ -3615,12 +3622,173 @@ export function specsFor(slides, o = {}) {
   });
 }
 
+/* ===================== AYAT AL-QURAN =====================================
+   Wan, 16 Nov 2026: "make sure can write ayat al-Quran for reminder or under fatwa". A slide that names a verse (`ayat`,
+   "2:168") is drawn as this card whatever the look of the set: the Arabic in a Quran face (Amiri Quran, the only Arabic face
+   the cards carry), its translation, and the reference.
+   THE WORDS ARE NEVER THIS FILE'S AND NEVER A WRITER'S: `ayat_ar` and `ayat_tr` are fetched from a published source
+   (lib/quran.js on the page, backend/semasa/quran.py in the worker) and drawn exactly as fetched. So nothing here may alter
+   them: no stripEmph, no capitals, no ellipsis, no slicing, and above all no hardSplit. An Arabic word is never cut (cutting
+   one breaks the joins between its letters and can change what it reads as), and a pause mark never starts a line. A verse
+   that does not fit at the smallest size is refused with the usual "fuller than the card" warning, never trimmed.
+   Each ayat ends with its number in the end-of-ayat sign, as a mushaf prints it; the number comes from the reference.
+   A slide whose verse has not been fetched draws the reference alone and warns, so the worker refuses it. */
+const AYAT_FACE = '"Amiri Quran", "Scheherazade New", "Traditional Arabic", serif';
+const AYAT_PAL = { paper: "#F7F2E6", ink: "#17251E", muted: "#5B645D", green: "#1F5C45", gold: "#B08A2E" };
+/* the translation's credit, by edition: the same words as rules/compliance.json quran.editions (a test holds them equal) */
+export const AYAT_CREDIT = { "ms.basmeih": "Terjemahan: Abdullah Basmeih, Tafsir Pimpinan Ar-Rahman", "en.sahih": "Translation: Saheeh International" };
+export const AYAT_MIN = 0.65, AYAT_MAX = 1.5;
+const AYAT_PAUSE = /^[ؕ-ؚۖ-ۭ]+$/;
+const ayatDigits = (n) => String(n).replace(/\d/g, (d) => String.fromCharCode(0x0660 + Number(d)));
+/** The ayat of a slide as the lines a mushaf would set: each one followed by its number in the end-of-ayat sign. */
+function ayatArabic(ayat) {
+  const m = /^(\d{1,3}):(\d{1,3})(?:-(\d{1,3}))?$/.exec(String(ayat.ref || ""));
+  const first = m ? Number(m[2]) : 0;
+  return String(ayat.ar || "").split("\n").map((x) => x.trim()).filter(Boolean)
+    .map((x, i) => (first ? x + " ۝" + ayatDigits(first + i) : x)).join(" ");
+}
+/* Whole words only, right to left. A pause mark (a small letter above the line, written as a word of its own) stays with
+   the word before it; a word wider than the column is left on a line by itself and the caller makes the type smaller. */
+function ayatWrap(ctx, text, maxW) {
+  const units = [];
+  for (const t of String(text).split(/ +/).filter(Boolean)) {
+    if (units.length && AYAT_PAUSE.test(t)) units[units.length - 1] += " " + t; else units.push(t);
+  }
+  const lines = []; let line = "", over = false;
+  for (const w of units) {
+    const next = line ? line + " " + w : w;
+    if (line && ctx.measureText(next).width > maxW) { lines.push(line); line = w; } else line = next;
+    if (ctx.measureText(w).width > maxW) over = true;
+  }
+  if (line) lines.push(line);
+  return { lines, over };
+}
+function ayatStar(ctx, cx, cy, r, colour) {
+  ctx.save(); ctx.translate(cx, cy); ctx.fillStyle = colour;
+  for (let k = 0; k < 2; k++) { ctx.fillRect(-r * 0.72, -r * 0.72, r * 1.44, r * 1.44); ctx.rotate(Math.PI / 4); }
+  ctx.fillStyle = AYAT_PAL.paper; ctx.beginPath(); ctx.arc(0, 0, r * 0.34, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+async function renderAyatCard(spec) {
+  const [W, H] = sizeOf(spec);
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const ctx = c.getContext("2d");                 // never styleCtx: a slide's own face must not replace the Quran face
+  try { await document.fonts.ready; } catch (e) { }
+  const warn = [], u = W / 1080, A = spec.ayat || {};
+  const english = spec.stream === "linkedin";
+  const frame = Math.round(40 * u), M = Math.round(96 * u), colW = W - M * 2;
+  // the ground and its frame
+  ctx.fillStyle = AYAT_PAL.paper; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = AYAT_PAL.gold; ctx.lineWidth = Math.max(2, Math.round(3 * u));
+  ctx.strokeRect(frame, frame, W - frame * 2, H - frame * 2);
+  ctx.lineWidth = Math.max(1, Math.round(1 * u));
+  ctx.strokeRect(frame + Math.round(12 * u), frame + Math.round(12 * u), W - (frame + Math.round(12 * u)) * 2, H - (frame + Math.round(12 * u)) * 2);
+  for (const [x, y] of [[frame, frame], [W - frame, frame], [frame, H - frame], [W - frame, H - frame]]) ayatStar(ctx, x, y, Math.round(15 * u), AYAT_PAL.gold);
+  await drawBrandMark(ctx, spec, W, u, M, { top: 82, h: 30, textFill: "rgba(23,37,30,.55)" });
+  // the foot: whose translation it is, and the post's source when this is the slide that carries it
+  const credit = AYAT_CREDIT[String(A.ed || "").split("@")[0]] || "";
+  const source = stripEmph(spec.footnote || "").trim();
+  const footLines = [];
+  ctx.font = "500 " + Math.round(21 * u) + "px " + G_BODY;
+  if (A.ar && A.tr && credit) footLines.push(...gWrap(ctx, credit, colW));
+  if (source) footLines.push(...gWrap(ctx, (english ? "Source: " : "Sumber: ") + source, colW));
+  const footLh = Math.round(30 * u), footTop = H - frame - Math.round(46 * u) - footLines.length * footLh;
+  ctx.fillStyle = AYAT_PAL.muted; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  footLines.forEach((l, i) => ctx.fillText(l, W / 2, footTop + i * footLh));
+  // the words, laid out at scale f: [draw(y) -> y]
+  const top = Math.round(170 * u), bottom = footTop - Math.round(34 * u), room = bottom - top;
+  const heading = stripEmph(spec.title || "").trim().toUpperCase();
+  const ref = A.label ? "Surah " + A.label : String(A.ref || "");
+  const notes = [spec.lead, ...(spec.items || [])].map((x) => stripEmph(x).trim()).filter(Boolean);
+  const arabic = A.ar && A.tr ? ayatArabic(A) : "", translation = A.ar && A.tr ? String(A.tr).split("\n").map((x) => x.trim()).filter(Boolean).join(" ") : "";
+  const layout = (f) => {
+    const steps = []; let h = 0, fits = true;
+    const add = (height, draw) => { steps.push([h, draw]); h += height; };
+    const gap = (n) => { h += Math.round(n * u * f); };
+    add(Math.round(40 * u), (y) => ayatStar(ctx, W / 2, y + Math.round(20 * u), Math.round(17 * u), AYAT_PAL.green));
+    gap(18);
+    if (heading) {
+      const px = Math.round(27 * u * Math.min(f, 1.15)), lh = Math.round(px * 1.4);
+      ctx.font = "700 " + px + "px " + G_HEAD; try { ctx.letterSpacing = Math.round(px * 0.16) + "px"; } catch (e) { }
+      const lines = gWrap(ctx, heading, colW); try { ctx.letterSpacing = "0px"; } catch (e) { }
+      add(lines.length * lh, (y) => {
+        ctx.font = "700 " + px + "px " + G_HEAD; ctx.fillStyle = AYAT_PAL.green; ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.direction = "ltr";
+        try { ctx.letterSpacing = Math.round(px * 0.16) + "px"; } catch (e) { }
+        lines.forEach((l, i) => ctx.fillText(l, W / 2, y + i * lh));
+        try { ctx.letterSpacing = "0px"; } catch (e) { }
+      });
+      gap(26);
+    }
+    if (arabic) {
+      const px = Math.round(60 * u * f), lh = Math.round(px * 2.05);
+      ctx.font = "400 " + px + "px " + AYAT_FACE; ctx.direction = "rtl";
+      const w = ayatWrap(ctx, arabic, colW); ctx.direction = "ltr";
+      if (w.over) fits = false;
+      add(w.lines.length * lh, (y) => {
+        ctx.font = "400 " + px + "px " + AYAT_FACE; ctx.fillStyle = AYAT_PAL.ink; ctx.direction = "rtl"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        w.lines.forEach((l, i) => ctx.fillText(l, W / 2, y + i * lh + lh / 2));
+        ctx.direction = "ltr";
+      });
+      gap(22);
+      add(Math.round(14 * u), (y) => {
+        ctx.strokeStyle = AYAT_PAL.gold; ctx.lineWidth = Math.max(1, Math.round(2 * u));
+        const half = Math.round(110 * u), my = y + Math.round(7 * u);
+        ctx.beginPath(); ctx.moveTo(W / 2 - half, my); ctx.lineTo(W / 2 - Math.round(16 * u), my); ctx.moveTo(W / 2 + Math.round(16 * u), my); ctx.lineTo(W / 2 + half, my); ctx.stroke();
+        ctx.save(); ctx.translate(W / 2, my); ctx.rotate(Math.PI / 4); ctx.fillStyle = AYAT_PAL.gold; const d = Math.round(6 * u); ctx.fillRect(-d, -d, d * 2, d * 2); ctx.restore();
+      });
+      gap(26);
+      const tpx = Math.round(33 * u * f), tlh = Math.round(tpx * 1.5);
+      ctx.font = "500 " + tpx + "px " + G_BODY;
+      const tl = gWrap(ctx, "“" + translation + "”", colW);
+      add(tl.length * tlh, (y) => {
+        ctx.font = "500 " + tpx + "px " + G_BODY; ctx.fillStyle = AYAT_PAL.ink; ctx.textAlign = "center"; ctx.textBaseline = "top";
+        tl.forEach((l, i) => ctx.fillText(l, W / 2, y + i * tlh));
+      });
+      gap(24);
+    }
+    {
+      const px = Math.round(30 * u * Math.min(f, 1.2)), lh = Math.round(px * 1.35);
+      ctx.font = "700 " + px + "px " + G_HEAD;
+      const lines = gWrap(ctx, ref, colW);
+      add(lines.length * lh, (y) => {
+        ctx.font = "700 " + px + "px " + G_HEAD; ctx.fillStyle = AYAT_PAL.green; ctx.textAlign = "center"; ctx.textBaseline = "top";
+        lines.forEach((l, i) => ctx.fillText(l, W / 2, y + i * lh));
+      });
+    }
+    if (!arabic) {
+      gap(20);
+      const px = Math.round(26 * u), lh = Math.round(px * 1.45);
+      ctx.font = "500 " + px + "px " + G_BODY;
+      const lines = gWrap(ctx, english ? "The verse has not been fetched yet." : "Teks ayat belum diambil.", colW);
+      add(lines.length * lh, (y) => { ctx.font = "500 " + px + "px " + G_BODY; ctx.fillStyle = AYAT_PAL.muted; ctx.textAlign = "center"; ctx.textBaseline = "top"; lines.forEach((l, i) => ctx.fillText(l, W / 2, y + i * lh)); });
+    }
+    if (notes.length) {
+      gap(26);
+      const px = Math.round(27 * u * Math.min(f, 1.1)), lh = Math.round(px * 1.5);
+      ctx.font = "500 " + px + "px " + G_BODY;
+      const lines = notes.flatMap((nn) => gWrap(ctx, nn, colW));
+      add(lines.length * lh, (y) => { ctx.font = "500 " + px + "px " + G_BODY; ctx.fillStyle = AYAT_PAL.muted; ctx.textAlign = "center"; ctx.textBaseline = "top"; lines.forEach((l, i) => ctx.fillText(l, W / 2, y + i * lh)); });
+    }
+    return { steps, h, fits };
+  };
+  // the largest size at which everything fits; a verse that does not fit at the smallest is refused, never trimmed
+  let L = null;
+  for (let f = AYAT_MAX; f >= AYAT_MIN - 1e-6; f -= 0.05) { L = layout(Math.round(f * 100) / 100); if (L.fits && L.h <= room) break; }
+  if (!L.fits || L.h > room) warn.push(FULL + ": this verse is too long for one card. Use fewer ayat, or remove the lines under it.");
+  if (!arabic) warn.push("The verse text has not been fetched: press Ambil ayat. A verse is never typed.");
+  const y0 = top + Math.max(0, Math.round((room - L.h) / 2));
+  for (const [dy, draw] of L.steps) draw(y0 + dy);
+  ctx.direction = "ltr"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  return { url: c.toDataURL("image/jpeg", 0.92), warn, y: y0 + L.h };
+}
+
 /* A design's two colours replace the family's accent and paper while ONE card is drawn. The palettes are shared constants, so every
    render waits its turn (the page previews several looks at once) and the originals are put back in a `finally`: a card in another
    look, or a failed one, can never inherit someone else's colours. */
 let _renderTurn = Promise.resolve();
 function renderSpec(spec) {
   const run = async () => {
+    if (spec.template === "q_ayat") return renderAyatCard(spec);      // the verse card is the same in every look and design
     const p = spec.palette;
     if (!p) return renderSpecNow(spec);
     const keep = { go: GRID_PAL.orange, gc: GRID_PAL.cream, er: ERA_PAL.red, ep: ERA_PAL.paper };
@@ -3677,6 +3845,8 @@ const FACES = ["600 20px Poppins", "700 20px Poppins", "800 20px Poppins", '400 
   '400 20px "Instrument Sans"', '500 20px "Instrument Sans"', '600 20px "Instrument Sans"',
   '400 20px "JetBrains Mono"', '500 20px "JetBrains Mono"', "700 20px Caveat",
   '400 20px "Permanent Marker"', '400 20px "Open Sans"', '700 20px "Open Sans"', '800 20px "Open Sans"'];
+/* the Quran face is Arabic only, so it is asked for and checked with Arabic letters: "Aa" would never load its file */
+const AYAT_FACES = ['400 20px "Amiri Quran"'], AYAT_SAMPLE = "\u0628\u0633\u0645 \u0627\u0644\u0644\u0647";
 let _fonts = null;
 export function ensureFonts(base = "") {
   if (_fonts) return _fonts;
@@ -3689,7 +3859,8 @@ export function ensureFonts(base = "") {
       await new Promise((res) => { link.onload = res; link.onerror = res; document.head.appendChild(link); });
     }
     await Promise.all(FACES.map((f) => document.fonts.load(f, "Aa āşı 1–2").catch(() => null)));
-    const missing = FACES.filter((f) => !document.fonts.check(f, "Aa"));
+    await Promise.all(AYAT_FACES.map((f) => document.fonts.load(f, AYAT_SAMPLE).catch(() => null)));
+    const missing = FACES.filter((f) => !document.fonts.check(f, "Aa")).concat(AYAT_FACES.filter((f) => !document.fonts.check(f, AYAT_SAMPLE)));
     return { missing };
   })();
   return _fonts;

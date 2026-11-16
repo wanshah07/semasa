@@ -39,6 +39,7 @@ from . import (
     modes,
     my_designs,
     proofread,
+    quran,
     slides,
     writing_styles,
 )
@@ -317,7 +318,14 @@ no maximum), drawn as 1080x1080 cards:
 - Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
 - Every rule above applies to every slide: no call to action, no URL or website, no news portal or social source,
   and no fact that is not in the SOURCE. The source line is added to the last
-  slide from "citation" automatically, so do not write it into a slide.""",
+  slide from "citation" automatically, so do not write it into a slide.
+- AYAT AL-QURAN, only when the idea asks for a reminder (peringatan, tazkirah) or the post is a fatwa or halal post that
+  one verse genuinely anchors: ONE slide may carry "ayat": "surah:ayat" (for example "ayat": "2:168", or "2:168-169" for at
+  most 3 ayat), with a short "title" such as "Peringatan" and no points. Semasa fetches the Arabic and the translation
+  itself and draws them. YOU NEVER WRITE A VERSE: no Arabic script anywhere, and no translation of a verse in quotation
+  marks, on a slide or in the caption. Name it by surah and number (Al-Baqarah 2:168) and say in your own words what the
+  post draws from it. Use a verse only when you are certain of its surah and ayat number; when unsure, use none. Never
+  more than one verse slide, never the cover, and never a verse on a post about a product, a fee or a deadline.""",
     "linkedin": """
 
 SLIDES WANTED. Also return "slides": a carousel in English with as many slides as the story needs (no minimum,
@@ -332,7 +340,12 @@ no maximum), drawn as 1080x1350 cards:
 - Mark the one key word of a title with *asterisks* for emphasis, at most once per title.
 - English only on every slide, the cover and the last slide included: the Malay hook shapes are translated, never printed.
 - No company identity, no URL, no blog or aggregator, and no fact the SOURCE does not give. The citation is added
-  to the last slide automatically.""",
+  to the last slide automatically.
+- AYAT AL-QURAN, only when the idea itself asks for a verse or a reminder: ONE slide may carry "ayat": "surah:ayat" (for
+  example "ayat": "2:168", or "2:168-169" for at most 3 ayat), with a short "title" such as "A reminder" and no points.
+  The Arabic and the translation are fetched and drawn for you. YOU NEVER WRITE A VERSE: no Arabic script anywhere, and no
+  translation of a verse in quotation marks, on a slide or in the caption. Name it by surah and number (Al-Baqarah 2:168).
+  Use a verse only when you are certain of its surah and ayat number; when unsure, use none. Never the cover.""",
 }
 
 
@@ -786,7 +799,11 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     if want_slides:
         # only when asked: the column arrives with 006_slides.sql, and an idea that never asked
         # for slides must still be written on a database that has not run it
-        post["slides"], cover_state = hook_bank.cover(slides.normalise(out.get("slides")), post["hook"])
+        # a model may NAME a verse, never write one: whatever verse text it returned is dropped, and the words are fetched
+        # from the published source (quran.py). The tick that says Wan checked the verse is his alone, so the post is
+        # written with a hard flag on that slide until he ticks it.
+        written = quran.fill(slides.normalise(quran.untrusted(out.get("slides"))), stream)
+        post["slides"], cover_state = hook_bank.cover(written, post["hook"])
         if cover_state == "too_long":
             short = shorter_hook(llm, post["hook"], stream)
             if short:
@@ -818,7 +835,9 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     jobs = [] if has_jobs or kept else media_jobs(idea, source, out, post_id)
     if want_slides and post.get("slides") and not has_jobs:
         jobs.append(slide_job(idea, post, post_id, bg="post_image" if jobs or kept else "none", chosen=chosen))
-    poster = slides.normalise([out.get("poster")] if isinstance(out.get("poster"), dict) else [])[:1] if want_poster else []
+    poster = slides.normalise(quran.untrusted([out.get("poster")]) if isinstance(out.get("poster"), dict) else [])[:1] \
+        if want_poster else []
+    poster = quran.fill(poster, stream)
     if poster:
         poster, cover_state = hook_bank.cover(poster, post["hook"])
         if cover_state == "too_long":

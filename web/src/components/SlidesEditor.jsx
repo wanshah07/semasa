@@ -8,6 +8,7 @@ import { photoAt, photosFollow, speakersOf, withPhoto } from "../lib/photos";
 import { photoUrl, uploadSpeakerPhoto } from "../lib/storage";
 import { resolveLook, useDesigns } from "../lib/designs";
 import { MASCOTS, TEMPLATES, noteLabel, templateOf } from "../lib/cards/library";
+import AyatField, { AYAT_KEYS } from "./AyatField";
 import BackgroundPicker from "./BackgroundPicker";
 import CanvaHandoff from "./CanvaHandoff";
 import ImageLightbox, { useLightbox } from "./ImageLightbox";
@@ -26,13 +27,16 @@ const STYLE_KEYS = ["type_size", "font", "mascot_pos", "mascot_size"];
 
 /** Editor rows <-> stored slides. The editor keeps empty rows while typing; the scan and the save
     see normaliseSlides() of them, which drops empties exactly as the worker does. */
+/* a slide's ayat al-Quran (AyatField) travels with the row like its design does, but is not "design": it never lights the
+   "changed" mark on the design toggle */
+const KEPT = [...DESIGN, ...AYAT_KEYS];
 export const toRows = (slides) => (Array.isArray(slides) ? slides : []).map((s) => ({
   title: String(s?.title ?? ""), points: (Array.isArray(s?.points) ? s.points : []).join("\n"),
-  ...Object.fromEntries(DESIGN.map((k) => [k, String(s?.[k] ?? "")])),
+  ...Object.fromEntries(KEPT.map((k) => [k, String(s?.[k] ?? "")])),
 }));
 export const fromRows = (rows) => rows.map((r) => ({ title: r.title, points: r.points,
-  ...Object.fromEntries(DESIGN.filter((k) => String(r[k] ?? "").trim()).map((k) => [k, r[k]])) }));
-const blankRow = () => ({ title: "", points: "", ...Object.fromEntries(DESIGN.map((k) => [k, ""])) });
+  ...Object.fromEntries(KEPT.filter((k) => String(r[k] ?? "").trim()).map((k) => [k, r[k]])) }));
+const blankRow = () => ({ title: "", points: "", ...Object.fromEntries(KEPT.map((k) => [k, ""])) });
 
 const lookName = (k, lang) => {
   if (k === "canva") return "Canva"; const l = LOOKS.find((x) => x.k === (k || "classic")) || LOOKS[0]; return lang === "bm" ? l.bm : l.en; };
@@ -137,6 +141,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
               placeholder={templateOf(r.template)?.items ? t(templateOf(r.template).items, templateOf(r.template).itemsEn)
                 : i === 0 ? t("Poin (pilihan)", "Points (optional)")
                 : t("Satu poin satu baris (maksimum 5)", "One point per line (up to 5)")} />
+            <AyatField r={r} set={(patch) => set(i, patch)} stream={post.stream} locked={locked} n={i + 1} classic={!studio} />
             {studio && (
               <button type="button" onClick={() => toggle(i)} aria-expanded={open.has(i)}
                 className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline">

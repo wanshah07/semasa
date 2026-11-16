@@ -18,8 +18,10 @@ from typing import Any
 
 RULES_PATH = Path(__file__).resolve().parents[2] / "rules" / "compliance.json"
 RULES: dict[str, Any] = json.loads(RULES_PATH.read_text(encoding="utf-8"))
+QURAN: dict[str, Any] = RULES["quran"]
 
 _WORD = re.compile(r"[a-z]+")
+ARABIC = re.compile(r"[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFC]")
 _TAG = re.compile(r"#\w+")
 DOW_MS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
@@ -167,8 +169,60 @@ def normalise_slides(raw: Any) -> list[dict[str, Any]]:
         if body and not points:
             points = [body[:400]]
         extra = slide_extras(s)
-        if title or points or any(extra.get(k) for k in SLIDE_WORDS):
+        if title or points or any(extra.get(k) for k in SLIDE_WORDS) or extra.get("ayat"):
             out.append({"title": title, "points": points, **extra})
+    return out
+
+
+# AYAT AL-QURAN ON A SLIDE (Wan, 16 Nov 2026). A slide names a verse by surah:ayat in `ayat`; the Arabic (`ayat_ar`), the
+# translation (`ayat_tr`) and the translation's edition and source (`ayat_ed`) are fetched from a published source by
+# backend/semasa/quran.py or web/src/lib/quran.js, never typed; `ayat_ok` is Wan's tick that he checked the verse fits.
+# `ayat_label` ("Al-Baqarah 2:168") is never taken from what was stored: it is worked out here from the reference, so the
+# name on the card cannot disagree with the verse. Mirrored exactly by ayatRef / ayatLabel / ayatExtras in compliance.js.
+AYAT_REF = re.compile(r"^(\d{1,3}):(\d{1,3})(?:-(\d{1,3}))?$")
+AYAT_ED = re.compile(r"^[a-z]{2}\.[a-z]{2,20}@(alquran\.cloud|quran\.com)$")
+AYAT_TEXT_CAP = 6000
+
+
+def ayat_ref(ref: Any) -> tuple[int, int, int] | None:
+    """(surah, first ayat, last ayat) of a reference to ayat that exist, at most QURAN["max_span"] of them; else None."""
+    m = AYAT_REF.match(_str(ref).strip())
+    if not m:
+        return None
+    surah, first = int(m.group(1)), int(m.group(2))
+    last = int(m.group(3)) if m.group(3) else first
+    if not 1 <= surah <= len(QURAN["surahs"]):
+        return None
+    if not (1 <= first <= last <= int(QURAN["surahs"][surah - 1][1])) or last - first + 1 > int(QURAN["max_span"]):
+        return None
+    return surah, first, last
+
+
+def ayat_label(ref: Any) -> str:
+    p = ayat_ref(ref)
+    if not p:
+        return ""
+    surah, first, last = p
+    return f"{QURAN['surahs'][surah - 1][0]} {surah}:{first}" + (f"-{last}" if last != first else "")
+
+
+def ayat_extras(s: dict[str, Any]) -> dict[str, Any]:
+    ref = _str(s.get("ayat")).strip()
+    if not AYAT_REF.match(ref):
+        return {}
+    out: dict[str, Any] = {"ayat": ref}
+    for k in ("ayat_ar", "ayat_tr"):
+        v = _str(s.get(k)).strip()[:AYAT_TEXT_CAP]
+        if v:
+            out[k] = v
+    ed = _str(s.get("ayat_ed")).strip()
+    if AYAT_ED.match(ed):
+        out["ayat_ed"] = ed
+    if _str(s.get("ayat_ok")).strip() == "1":
+        out["ayat_ok"] = "1"
+    lab = ayat_label(ref)
+    if lab:
+        out["ayat_label"] = lab
     return out
 
 
@@ -220,6 +274,7 @@ def slide_extras(s: dict[str, Any]) -> dict[str, Any]:
     toks = photo_tokens(s.get("photos"))
     if any(toks):
         out["photos"] = ",".join(toks)
+    out.update(ayat_extras(s))
     return out
 
 
@@ -292,6 +347,9 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
             add(False, where, "a link. Naming the instrument usually reads better than pasting a URL.")
         if re.search(r"kepada\s+bapak", t, re.I):
             add(False, where, '"kepada bapak" reads as Bahasa Indonesia')
+        if ARABIC.search(t):
+            add(False, where, "Arabic script in the caption. Semasa does not check it. Name a verse by surah and ayat "
+                              "(Al-Baqarah 2:168); the verse itself is drawn on its slide.")
         tags = len(_TAG.findall(t))
         if lim and tags > lim["hashtags"]:
             add(False, where, f"{tags} hashtags, over the {lim['hashtags']} limit")
@@ -365,6 +423,21 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
                 mark = brand_mark_re(brand)
                 if mark and mark.search(t):
                     add(True, where, "a ws.regulab mark on LinkedIn")
+            if ARABIC.search(t):
+                add(False, where, "Arabic script typed on the slide. Semasa does not check it. "
+                                  "Ayat al-Quran goes in the slide's Ayat field, which fetches the verse.")
+            if sl.get("ayat"):
+                lab = sl.get("ayat_label")
+                want = QURAN["editions"]["linkedin" if stream == "linkedin" else "regulab"]["id"]
+                if not lab:
+                    add(True, where, f'ayat "{sl["ayat"]}" does not exist (surah:ayat, at most {QURAN["max_span"]} ayat). '
+                                     "Correct the reference.")
+                elif not (sl.get("ayat_ar") and sl.get("ayat_tr") and sl.get("ayat_ed")):
+                    add(True, where, f"the words of {lab} have not been fetched. Press Ambil ayat: a verse is never typed.")
+                elif not str(sl["ayat_ed"]).startswith(want + "@"):
+                    add(True, where, f"{lab} carries another stream's translation. Press Ambil ayat again.")
+                elif not sl.get("ayat_ok"):
+                    add(True, where, f"check {lab}: read the verse and its translation, then tick that it fits this post.")
 
     slides = normalise_slides(post.get("slides"))
     artwork(slides, "Slide")

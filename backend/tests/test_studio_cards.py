@@ -374,6 +374,17 @@ def test_a_poster_look_shrinks_its_type_for_a_long_slide_and_refuses_only_what_c
 
 
 @browser
+@pytest.mark.parametrize("look", ["image", "marker", "torn", "block", "neon"])
+def test_the_front_page_frames_the_posts_picture_and_is_complete_without_one(look):
+    """Wan, 16 Nov 2026: a more impressive front page. The first slide is a poster cover: the picture on top, the hook large."""
+    with_pic = studio_cards.render(POSTER_DECK, look=look, stream="regulab", ground=_jpeg(900, 1100), fit=True)
+    without = studio_cards.render(POSTER_DECK, look=look, stream="regulab", fit=True)
+    assert Image.open(io.BytesIO(with_pic[0])).size == (1080, 1350) and with_pic[0] != without[0]
+    if look != "image":
+        assert with_pic[1:] == without[1:], "only the front page takes the picture"
+
+
+@browser
 def test_the_dark_poster_look_is_dark_and_the_paper_ones_are_light():
     def corner(look):
         im = Image.open(io.BytesIO(studio_cards.render(POSTER_DECK[1:2], look=look, stream="linkedin")[0])).convert("L")

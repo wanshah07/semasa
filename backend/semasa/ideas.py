@@ -968,7 +968,8 @@ def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str 
         bg = saved["bg"]                       # the saved design's own background, when the post has no picture of its own
     elif bg == "none" and saved and saved.get("bg_prompt"):
         bg, review = "from_ref", {"background": saved["bg_prompt"]}      # a design from a reference: an ORIGINAL picture
-    elif bg == "none" and studio_cards.is_studio_look(look) and look != "image" and not (saved and saved.get("layouts")):
+    elif (bg == "none" and studio_cards.is_studio_look(look) and look not in OWN_PICTURE_ONLY
+          and not (saved and saved.get("layouts"))):
         bg = cards_library.default_ground(post.get("stream") or "regulab", post.get("domain"), post.get("angle")) or "none"
     return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
             "prompt": "", "created_by": idea.get("created_by"),
@@ -997,6 +998,9 @@ def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: 
 
 
 LOOKS = ("classic", "grid", "era", "photo", "image", "threads", "hand", "marker", "torn", "block", "neon")
+# looks that show a picture ON the slide (Image, and the cover of the four poster looks): only the post's own picture is ever
+# placed there, never a stock ground from the library
+OWN_PICTURE_ONLY = ("image", "marker", "torn", "block", "neon")
 DEFAULT_LOOK = "image"          # Wan, 8 Nov 2026: the Image look (a picture ON the slide) is the default for new posts
 POSTER_DEFAULT_LOOK = "hand"    # Wan, 13 Nov 2026: a poster (format=poster) is the hand-drawn look by default
 

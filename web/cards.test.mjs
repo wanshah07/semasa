@@ -38,7 +38,7 @@ for (const look of STUDIO_LOOKS) {
 // the templates Studio's own groups name
 const g = (look) => specsFor(decks[0], { look }).map((s) => s.template).join(",");
 ok(g("grid") === "g_title,g_title,g_title", "grid is g_title throughout, like Studio's Grid group");
-ok(g("era") === "e_hook,e_explain,e_explain", "era: hook cover, explainer after, like Studio's Info ERA group");
+ok(g("era") === "m_cover,e_explain,e_explain", "era: the poster front page, explainer after (the hook cover stays when it carries the mascot)");
 ok(g("photo") === "p_title,p_fact,p_quote", "photo: title, fact, quote, like Studio's Photo group");
 // LinkedIn: English source label, heavier scrim (Studio's defaults for that stream)
 const li = specsFor(decks[0], { look: "grid", stream: "linkedin", citation: "EC 1223/2009" });
@@ -123,6 +123,29 @@ ok(cat.every((k) => /^[gepihmtbn]_[a-z]{2,8}$/.test(k)), "every template key pas
   ok(!new RegExp(jsRe).test("x_table") && !new RegExp(jsRe).test("c_ref"), "and still refuse a family that does not exist");
 }
 
+// THE FRONT PAGE (Wan, 16 Nov 2026: "create more impressive front page to replace current front page based on posters"): a carousel
+// in the Image, Info ERA or Hand-drawn look opens with a poster cover, where the hook fills the card
+{
+  const deck = [{ title: "Kenapa?", lead: "Satu baris.", points: [] }, { title: "x", points: ["c"] }, { title: "y", points: ["d"] }];
+  const first = (o, d = deck) => specsFor(d, o)[0];
+  for (const fit of [true, false]) {
+    ok(first({ look: "image", fit }).template === "b_cover", `image (fit ${fit}): the front page is the poster cover`);
+    ok(first({ look: "image", fit, bg: "https://x/p.jpg" }).template === "b_cover" && first({ look: "image", fit, bg: "https://x/p.jpg" }).bg === "https://x/p.jpg",
+      `image (fit ${fit}): with a picture it is still the poster cover, and the picture goes with it`);
+    ok(first({ look: "hand", fit }).template === "m_cover", `hand (fit ${fit}): the front page is the marker cover`);
+    ok(first({ look: "era", fit }).template === "m_cover", `era (fit ${fit}): with no mascot the front page is the marker cover`);
+    ok(first({ look: "era", fit, mascots: M }).template === "e_hook" && first({ look: "era", fit, mascots: M }).mascot, `era (fit ${fit}): with the mascot the hook cover stays, mascot on it`);
+    ok(first({ look: "grid", fit }).template === "g_title" && first({ look: "photo", fit, bg: "https://x/p.jpg" }).template === "p_title", `grid and photo (fit ${fit}) keep their own cover`);
+  }
+  ok(first({ look: "image" }).lead === "Satu baris." && first({ look: "image" }).title === "Kenapa?", "the front page keeps the hook and its supporting line");
+  // only the first slide of a carousel: a lone card and the slides after the cover are the look's own
+  ok(specsFor(deck.slice(0, 1), { look: "image" })[0].template === "i_title" && specsFor(deck.slice(0, 1), { look: "hand" })[0].template === "h_poster", "a single card is not a cover");
+  ok(specsFor(deck, { look: "image" }).slice(1).every((x) => x.template[0] === "i"), "the slides after the front page stay in the look");
+  // a choice made on the slide, or in a saved design, wins
+  ok(first({ look: "image" }, [{ ...deck[0], template: "i_title" }, ...deck.slice(1)]).template === "i_title", "a template chosen on the first slide wins");
+  ok(first({ design: { look: "image", cover: "i_hero" }, bg: "https://x/p.jpg" }).template === "i_hero", "a saved design's own cover wins");
+}
+
 // THE FOUR POSTER LOOKS (Wan, 16 Nov 2026): marker, torn paper, colour blocks, neon. Each is a single card and a whole carousel.
 {
   const SK = ["marker", "torn", "block", "neon"];
@@ -168,7 +191,7 @@ const FIT = [{ title: "Kulit", points: [] }, { title: "Tempoh purata", points: [
 const tpls = (look, fit) => specsFor(FIT, { look, fit }).map((x) => x.template).join(",");
 ok(tpls("grid", false) === "g_title,g_title,g_title,g_title,g_title,g_title", "fit off: grid is unchanged");
 ok(tpls("grid", true) === "g_title,g_stat,g_myth,g_steps,g_check,g_title", "fit on, grid: figure, myth, steps, checklist; plain slides keep the look's own");
-ok(tpls("era", true) === "e_hook,e_stat,e_myth,e_flow,e_check,e_explain", "fit on, era: figure, myth, flow, checklist");
+ok(tpls("era", true) === "m_cover,e_stat,e_myth,e_flow,e_check,e_explain", "fit on, era: figure, myth, flow, checklist");
 ok(tpls("photo", true).startsWith("p_title,p_stat,p_list,p_list,p_list,"), "fit on, photo: figure, then list panels");
 for (const look of STUDIO_LOOKS) {
   specsFor(FIT, { look, fit: true }).forEach((sp, i) => {

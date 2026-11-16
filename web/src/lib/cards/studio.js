@@ -2371,7 +2371,13 @@ async function renderHandCard(spec) {
    (up to SKIN_MAX), by the same two-pass search the hand-drawn cards use; only a slide that does not fit at SKIN_MIN warns.
    The torn edges and the paper grain come from a generator seeded by the slide's own words, so the measuring pass and the
    painting pass draw the same card and a re-render is the same picture.
-   No picture is used (spec.bg is ignored), no mascot, and a LinkedIn card carries no ws.regulab mark, as everywhere. */
+   THE COVER IS THE FRONT PAGE (Wan, 16 Nov 2026: "create more impressive front page to replace current front page based on
+   posters", and "the text for first page no need to big, but hook make bigger"). On x_cover the hook alone grows to fill the
+   card and the line under it stays at reading size. When the slide has a picture it is framed at the top in the look's own
+   way (a block, a taped print, a glowing frame) and the hook fills what is left; with no picture the hook has the whole card.
+   The Image, Info ERA and Hand-drawn looks now open a carousel with one of these covers too (POSTER_COVER in specsFor): their
+   own first slide left the hook small in a mostly empty card.
+   No other slide uses a picture, there is no mascot, and a LinkedIn card carries no ws.regulab mark, as everywhere. */
 const SKIN_OF = { m: "marker", t: "torn", b: "block", n: "neon" };
 const SKIN_PARTS = ["cover", "points", "table", "pick", "close"];
 const SKIN_LOOKS = Object.values(SKIN_OF);
@@ -2406,6 +2412,8 @@ const SK_YES = /^(✓|✔|☑|ya|yes|y|ada|true|betul|boleh)$/i;
 const SK_NO = /^(✗|✘|✕|x|×|tidak|tak|tiada|no|n|false|salah|-|–|—)$/i;
 const skMarkOf = (cell) => (SK_YES.test(String(cell || "").trim()) ? "yes" : SK_NO.test(String(cell || "").trim()) ? "no" : "");
 const RE_PICK = /disyor|syor|cadangan|pilihan (kami|terbaik|saya)|terbaik|kesimpulan|recommend|our pick|best (choice|pick|option)|verdict|bottom line|conclusion/i;
+/* The poster cover each older look opens a carousel with: the one whose paper and type sit beside that look's own slides. */
+const POSTER_COVER = { image: "b_cover", era: "m_cover", hand: "m_cover" };
 const SKIN_NAMES = { marker: "Marker", torn: "Torn paper", block: "Blocks", neon: "Neon" };
 const SKIN_PART_NAMES = { cover: "Cover", points: "Points", table: "Comparison", pick: "Recommendation", close: "Closing" };
 const skinPrefix = (look) => Object.keys(SKIN_OF).find((p) => SKIN_OF[p] === look) || "m";
@@ -2688,6 +2696,26 @@ function skPick(ctx, S, look, head, body, x, y, w, u, f, rnd, headPx) {
   if (bl.length) { ctx.font = skBodyFont(S, bpx, false); skLines(ctx, bl, x + padX, ty, tw, blh, colour, true, "", u); }
   return y + h;
 }
+/* The cover's picture, framed the way the look frames things. Drawn at a fixed height, so the hook's size never moves it. */
+function skPicture(ctx, S, look, im, x, y, w, h, u, rnd) {
+  if (look === "block") { picInBox(ctx, im, x, y, w, h, Math.round(34 * u), 1, 0.5, 0.4); return; }
+  if (look === "neon") {
+    picInBox(ctx, im, x, y, w, h, Math.round(24 * u), 1, 0.5, 0.4);
+    ctx.save(); ctx.strokeStyle = S.ink; ctx.lineWidth = Math.max(3, Math.round(5 * u)); ctx.shadowColor = "#4DB8FF"; ctx.shadowBlur = Math.round(28 * u);
+    roundRect(ctx, x, y, w, h, Math.round(24 * u)); ctx.stroke(); ctx.stroke(); ctx.restore(); return;
+  }
+  // marker and torn: a print on the paper, white border, a soft shadow, held by two strips of tape
+  const b = Math.round(14 * u);
+  ctx.save(); ctx.shadowColor = "rgba(40,30,10,.28)"; ctx.shadowBlur = Math.round(18 * u); ctx.shadowOffsetY = Math.round(6 * u);
+  ctx.fillStyle = "#FFFFFF"; ctx.fillRect(x, y, w, h); ctx.restore();
+  picInBox(ctx, im, x + b, y + b, w - b * 2, h - b * 2, 0, 1, 0.5, 0.4);
+  ctx.save(); ctx.fillStyle = look === "torn" ? "rgba(246,227,161,.85)" : "rgba(215,38,61,.72)";
+  for (const cx of [x + w * 0.2, x + w * 0.8]) {
+    ctx.save(); ctx.translate(cx, y); ctx.rotate((rnd() - 0.5) * 0.24); ctx.fillRect(-Math.round(62 * u), -Math.round(16 * u), Math.round(124 * u), Math.round(32 * u)); ctx.restore();
+  }
+  ctx.restore();
+}
+const SKIN_PIC_H = 0.34;        // the cover picture's share of the card's height
 /* Where the words may sit: under the mark and the eyebrow, above the source line (which is measured, because a long citation
    takes two lines and the block must stop above it). */
 function skFoot(ctx, spec, W, H, u, M) {
@@ -2730,7 +2758,14 @@ function skinPaint(ctx, spec, W, H, f, shift) {
   // on the cover only the hook follows `f`; the supporting line, any points and the note keep to reading size
   const fr = part === "cover" ? Math.min(f, SKIN_COVER_REST) : f;
   const gapL = Math.round(30 * u * fr), gapS = Math.round(18 * u * fr);
-  let y = Math.round(SKIN_TOP * u) + shift;
+  let y = Math.round(SKIN_TOP * u);
+  if (part === "cover" && spec._im) {
+    // the picture sits at the top and does not move; the hook is centred in what is left under it
+    const ph = Math.round(H * SKIN_PIC_H);
+    skPicture(ctx, S, look, spec._im, M, y, w, ph, u, rnd);
+    y += ph + Math.round(40 * u);
+  }
+  y += shift;
   const leadLines = (px, colour) => {
     if (!lead) return;
     ctx.font = skBodyFont(S, px, false);
@@ -2767,7 +2802,10 @@ async function renderSkinCard(spec) {
   const c = document.createElement("canvas"); c.width = W; c.height = H;
   const ctx = styleCtx(c.getContext("2d"), spec);
   try { await document.fonts.ready; } catch (e) { }
-  const u = W / 1080, top = Math.round(SKIN_TOP * u), look = SKIN_OF[spec.template[0]];
+  const u = W / 1080, look = SKIN_OF[spec.template[0]];
+  // only the cover takes a picture; a picture that will not load leaves a cover with no picture, never a broken card
+  if (spec.template.slice(2) === "cover" && spec.bg) { const im = await loadImg(spec.bg); if (im) spec = { ...spec, _im: im }; }
+  const top = Math.round(SKIN_TOP * u) + (spec._im ? Math.round(H * SKIN_PIC_H) + Math.round(40 * u) : 0);
   const probe = skinPaint(measureProxy(ctx), spec, W, H, 1, 0);
   const room = probe.bottom - top;
   const used = (f) => skinPaint(measureProxy(ctx), spec, W, H, f, 0).y - top;
@@ -3151,6 +3189,9 @@ export function specsFor(slides, o = {}) {
       mascot_size: Number(s.mascot_size) || undefined,
     };
     let spec;
+    // THE FRONT PAGE: a carousel in the Image, Info ERA or Hand-drawn look opens with a poster cover (see SKINS), unless the
+    // slide chose its own template, a saved design names one, or Info ERA is about to put the mascot on its hook
+    const posterCover = i === 0 && n > 1 && !(s.template && TEMPLATE_KEYS.includes(s.template)) && !D ? POSTER_COVER[look] : "";
     const place = placeOf(i, n), refLayout = D && D.layouts && (D.layouts[place] || D.layouts.main || D.layouts.middle || D.layouts.cover || D.layouts.single);
     if (refLayout && !(s.template && TEMPLATE_KEYS.includes(s.template))) {
       // a design from a reference: every slide without a template of its own is drawn in that layout, the words poured in
@@ -3158,7 +3199,9 @@ export function specsFor(slides, o = {}) {
     }
     const chosen = s.template && TEMPLATE_KEYS.includes(s.template) ? s.template
       : (D && D[placeOf(i, n)]) || (o.fit ? fitTemplate(look, s, i, n, pts) : "");
-    if (chosen) {
+    if (posterCover && !(look === "era" && mascotUrl(s, "e_hook", o.mascots))) {
+      spec = { ...base, template: posterCover, lead: lead0, items: pts };
+    } else if (chosen) {
       spec = { ...base, template: chosen, lead: lead0, items: pts };
     } else if (look === "grid") {
       spec = { ...base, template: "g_title", lead: withLead(asLines(pts)) };

@@ -14,9 +14,13 @@ for (const t of cat) assert.ok(t.hint && t.hintEn && t.name.startsWith("Gambar")
 const deck = [{ title: "Notifikasi bukan kelulusan", points: ["245 hari", "Semak maklumat"] }, { title: "Langkah", points: ["Satu", "Dua", "Tiga"] },
   { title: "Nota", points: ["Satu sahaja"] }, { title: "Tutup", points: ["Satu ayat."] }];
 const withPic = specsFor(deck, { look: "image", bg: "https://x/p.jpg" }).map((s) => s.template);
-assert.deepEqual(withPic, ["i_hero", "i_step", "i_note", "i_title"]);
+// the first slide of a carousel is the poster front page (Wan, 16 Nov 2026), with or without a picture; the rest is the look's own
+assert.deepEqual(withPic, ["b_cover", "i_step", "i_note", "i_title"]);
 const noPic = specsFor(deck, { look: "image" }).map((s) => s.template);
-assert.deepEqual(noPic, ["i_title", "i_note", "i_note", "i_title"], "no picture: a step slide has nothing to show, so it is a note");
+assert.deepEqual(noPic, ["b_cover", "i_note", "i_note", "i_title"], "no picture: a step slide has nothing to show, so it is a note");
+// a lone card is not a cover: the poster with a picture, the calm title without
+assert.equal(specsFor(deck.slice(0, 1), { look: "image", bg: "https://x/p.jpg" })[0].template, "i_hero");
+assert.equal(specsFor(deck.slice(0, 1), { look: "image" })[0].template, "i_title");
 for (const s of specsFor(deck, { look: "image", bg: "https://x/p.jpg" })) {
   const words = [s.title, s.lead, ...(s.items || [])].join("\n");
   for (const p of deck.find((d) => d.title === s.title).points) assert.ok(words.includes(p), `${s.template} keeps "${p}"`);

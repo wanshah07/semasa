@@ -1,4 +1,4 @@
-import { Anchor, BarChart3, BookOpenText, Brain, GraduationCap, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
+import { Anchor, BarChart3, BookOpenText, Brain, Briefcase, GraduationCap, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
   Layers, LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, NotebookPen, Radio, PenLine, Receipt, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
 
 /* Every page, once: the header's tab row on a phone, the sidebar and the sub-tab bar all read this list, so they can never
@@ -18,6 +18,12 @@ export function tabsOf(t) {
     { id: "post", label: t("Bank post", "Post bank"), icon: FileText, segment: "content" },
     { id: "hooks", label: t("Bank hook", "Hooks bank"), icon: Anchor, segment: "content" },
     { id: "gaya", label: t("Gaya penulisan", "Writing styles"), icon: PenLine, segment: "content" },
+
+    // LinkedIn is its own segment (Wan, 16 Nov 2026: "for linkedn content pisahkan dari current structure"). The two pages are
+    // the idea and post pages again, fixed to the LinkedIn stream: the same two tables, nothing moved. Bank idea and Bank post
+    // above show ws.regulab only, so the brand's BM posts and Wan's own English ones are never read in one list
+    { id: "li-idea", label: t("Idea LinkedIn", "LinkedIn ideas"), icon: Lightbulb, segment: "linkedin" },
+    { id: "li-post", label: t("Post LinkedIn", "LinkedIn posts"), icon: FileText, segment: "linkedin" },
 
     // its own segment (Wan, 14 Nov 2026: "add another segment Expert Content"); AI Expert, Halal Expert and the categories he
     // adds later are sub-tabs INSIDE the page, because they are his data, not pages of the app
@@ -68,6 +74,7 @@ export function segmentsOf(t) {
   return [
     seg("dashboard", t("Papan", "Dashboard"), LayoutDashboard),
     seg("content", t("Kandungan", "Content"), Newspaper),
+    seg("linkedin", "LinkedIn", Briefcase),
     seg("expert", t("Kandungan pakar", "Expert content"), GraduationCap),
     seg("performance", t("Prestasi", "Performance"), BarChart3),
     seg("image", t("Imej", "Image"), ImagePlus),

@@ -335,7 +335,7 @@ function MediaTab({ user, gens, prompts, onToast, go }) {
   );
 }
 
-const TAB_IDS = ["papan", "isu", "idea", "post", "hooks", "gaya", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "bil-valorith", "video", "video-lib", "motion-skills", "chat", "memori", "otak", "wang", "bil", "langganan", "crm", "syarikat", "resit", "faq", "log", "dokumen", "pakar", "tech", "office", "repo", "api", "stack", "tetapan"];
+const TAB_IDS = ["papan", "isu", "idea", "post", "li-idea", "li-post", "hooks", "gaya", "prestasi", "media", "media-lib", "design", "design-lib", "wangian", "bil-valorith", "video", "video-lib", "motion-skills", "chat", "memori", "otak", "wang", "bil", "langganan", "crm", "syarikat", "resit", "faq", "log", "dokumen", "pakar", "tech", "office", "repo", "api", "stack", "tetapan"];
 // #bil/<token>: a client opening the "view online" link of a quotation, invoice or receipt (no sign-in; supabase/028 semasa_billing_public)
 const PUBLIC_DOC = /^bil\/([a-f0-9]{32})$/;
 // #crm/unsub/<token>: the unsubscribe link under every marketing e-mail (no sign-in; supabase/031 semasa_crm_unsubscribe)
@@ -443,9 +443,13 @@ export default function App() {
       return next;
     });
   }
+  // the sidebar's badges, one stream each: Bank idea / Bank post count ws.regulab, the LinkedIn segment counts LinkedIn
+  const isLi = (r) => r.stream === "linkedin";
   const counts = {
-    idea: ideas.rows.filter((r) => r.status === "new").length,
-    post: posts.rows.filter((r) => r.status === "draft").length,
+    idea: ideas.rows.filter((r) => r.status === "new" && !isLi(r)).length,
+    post: posts.rows.filter((r) => r.status === "draft" && !isLi(r)).length,
+    "li-idea": ideas.rows.filter((r) => r.status === "new" && isLi(r)).length,
+    "li-post": posts.rows.filter((r) => r.status === "draft" && isLi(r)).length,
   };
   const gate = (node) => <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6"><Gate user={user} ready={ready} canUpload={canUpload} onToast={push}>{node}</Gate></main>;
 
@@ -453,11 +457,21 @@ export default function App() {
   if (pubToken && configured) return <Suspense fallback={<Waiting />}><BillingPublic token={pubToken} /></Suspense>;
   if (unsubToken && configured) return <Suspense fallback={<Waiting />}><CrmUnsubscribe token={unsubToken} /></Suspense>;
 
+  // a post opened from a page that is not stream-fixed lands on the page of its own stream
+  const postTabOf = (id) => (posts.rows.find((p) => p.id === id)?.stream === "linkedin" ? "li-post" : "post");
+  const openPostAny = (id) => { setFocusPost(id); go(postTabOf(id)); };
+  // "go to the post page with this post open", from a page that names the tab itself (Performance, the dashboard, the Log)
+  const goWithPost = (to, postId) => { if (postId) setFocusPost(postId); go(to === "post" && postId ? postTabOf(postId) : to); };
+
   let body;
   if (!configured) body = <Unconfigured />;
-  else if (tab === "idea") body = allowed ? <IdeasTab ideas={ideas} posts={posts} user={user} brand={brand} onToast={push}
-    openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
-  else if (tab === "post") body = allowed ? <PostsTab posts={posts} media={gens} log={log} brand={brand} user={user}
+  // Bank idea / Bank post are ws.regulab; the LinkedIn segment is the same two pages fixed to LinkedIn (Wan, 16 Nov 2026).
+  // `key` gives each its own filters and open editor, so moving between the two never carries one stream's state to the other
+  else if (tab === "idea" || tab === "li-idea") body = allowed ? <IdeasTab key={tab} stream={tab === "li-idea" ? "linkedin" : "regulab"}
+    ideas={ideas} posts={posts} user={user} brand={brand} onToast={push}
+    openPost={(id) => { setFocusPost(id); go(tab === "li-idea" ? "li-post" : "post"); }} /> : gate(null);
+  else if (tab === "post" || tab === "li-post") body = allowed ? <PostsTab key={tab} stream={tab === "li-post" ? "linkedin" : "regulab"}
+    posts={posts} media={gens} log={log} brand={brand} user={user}
     settings={settings} onToast={push} focusId={focusPost} setFocusId={setFocusPost} /> : gate(null);
   else if (tab === "media") body = allowed ? <MediaTab user={user} gens={gens} prompts={prompts} onToast={push} go={go} /> : gate(null);
   else if (tab === "media-lib") body = allowed ? <ImageLibraryTab user={user} gens={gens} posts={posts} onToast={push} go={go} /> : gate(null);
@@ -465,7 +479,7 @@ export default function App() {
   else if (tab === "design-lib") body = allowed ? <DesignTab view="library" user={user} gens={gens} posts={posts} brand={brand} settings={settings} saveSetting={save} onToast={push} go={go} /> : gate(null);
   else if (tab === "wangian") body = allowed ? <FragranceTab user={user} gens={gens} onToast={push} /> : gate(null);
   else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push} prompts={prompts} go={go}
-    openPost={(id) => { setFocusPost(id); go("post"); }} /> : gate(null);
+    openPost={openPostAny} /> : gate(null);
   else if (tab === "video-lib") body = allowed ? <VideoLibraryTab user={user} gens={gens} posts={posts} onToast={push} go={go} /> : gate(null);
   else if (tab === "motion-skills") body = allowed ? <MotionSkillsTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);
@@ -485,12 +499,12 @@ export default function App() {
   else if (tab === "office") body = allowed ? <OfficeTab settings={settings} save={save} onToast={push} user={user} /> : gate(null);
   else if (tab === "repo") body = allowed ? <RepoTab settings={settings} save={save} onToast={push} user={user} /> : gate(null);
   else if (tab === "api") body = allowed ? <ApiTab settings={settings} save={save} onToast={push} /> : gate(null);
-  else if (tab === "prestasi") body = allowed ? <PrestasiTab posts={posts} go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
+  else if (tab === "prestasi") body = allowed ? <PrestasiTab posts={posts} go={goWithPost} /> : gate(null);
   else if (tab === "papan") body = allowed ? <HomeTab ideas={ideas} posts={posts} log={log} activity={activity} brand={brand} user={user} settings={settings} save={save} onToast={push}
-    go={(to, postId) => { if (postId) setFocusPost(postId); go(to); }} /> : gate(null);
+    go={goWithPost} /> : gate(null);
   else if (tab === "faq") body = allowed ? <FaqTab faqs={faqs} settings={settings} brand={brand} user={user} onToast={push}
     onPost={(r) => setIdeaFrom(faqIdea(r))} /> : gate(null);
-  else if (tab === "log") body = allowed ? <LogTab log={activity} onOpen={(to) => { if (to.postId) setFocusPost(to.postId); go(to.tab); }} /> : gate(null);
+  else if (tab === "log") body = allowed ? <LogTab log={activity} onOpen={(to) => goWithPost(to.tab, to.postId)} /> : gate(null);
   else if (tab === "dokumen") body = allowed ? <DocsTab /> : gate(null);
   else if (tab === "pakar") body = allowed ? <ExpertTab settings={settings} save={save} brand={brand} user={user} onToast={push}
     onIdea={(r) => setIdeaFrom(watchIdea(r, brand))} go={go} /> : gate(null);

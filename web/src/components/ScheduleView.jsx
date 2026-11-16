@@ -15,9 +15,11 @@ const TONE = { draft: "bg-surface-2 text-ink", approved: "bg-ok/15 text-ok", sch
 /* Studio's Schedule tab: three weeks of positions for one stream, what holds each, and what is wrong, in one view.
    An empty slot is a click away from an idea written FOR it. Posts whose slot went by are moved in one go, each to
    the next free position its rota allows, re-reading the database first so two tabs never book the same slot. */
-export default function ScheduleView({ posts, brand, onOpen, onNewIdea, onToast, onChanged }) {
+export default function ScheduleView({ posts, brand, onOpen, onNewIdea, onToast, onChanged, lockStream = "" }) {
   const { t, lang } = useLang();
-  const [stream, setStream] = useState("regulab");
+  // lockStream: the page shows one stream only (the LinkedIn segment, or Bank post for ws.regulab), so there is nothing to switch
+  const [picked, setStream] = useState("regulab");
+  const stream = lockStream || picked;
   const [busy, setBusy] = useState(false);
   const days = useMemo(() => coverage({ posts, brand, stream, days: 21 }), [posts, brand, stream]);
   const mine = posts.filter((p) => (p.stream || "regulab") === stream);
@@ -110,11 +112,12 @@ export default function ScheduleView({ posts, brand, onOpen, onNewIdea, onToast,
 
   return (
     <div className="mt-4 space-y-3">
-      <ScheduleMap posts={posts} brand={brand} onOpen={onOpen} onNewIdea={onNewIdea} onMove={movePost} />
+      <ScheduleMap posts={posts} brand={brand} onOpen={onOpen} onNewIdea={onNewIdea} onMove={movePost} only={lockStream} />
 
       <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
         <b className="text-[12px]">{t("Butiran dan pembetulan untuk:", "Details and fixes for:")}</b>
-        <Segmented value={stream} onChange={setStream} options={[["regulab", "ws.regulab"], ["linkedin", "LinkedIn"]]} />
+        {lockStream ? <b className="text-[12px]">{lockStream === "linkedin" ? "LinkedIn" : "ws.regulab"}</b>
+          : <Segmented value={stream} onChange={setStream} options={[["regulab", "ws.regulab"], ["linkedin", "LinkedIn"]]} />}
         <span className="text-[12px] text-muted">{t("{g} slot kosong dalam 21 hari", "{g} empty slot(s) in the next 21 days", { g: gaps })}</span>
         <Button size="sm" variant="ghost" className="ml-auto" disabled={busy || !plan.release.length} onClick={clearAll} data-clear-slots
           title={t("Lepaskan semua draf dan post diluluskan daripada slot mereka", "Release every draft and approved post from its slot")}>

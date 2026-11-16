@@ -172,9 +172,9 @@ function Lane({ stream, posts, brand, onOpen, onNewIdea, canMove, drag, dragPost
   );
 }
 
-/** Both streams, each in its own lane. `onMove(post, date, slot)` moves a post (it explains a refusal itself); without it the
-    map is read-only. */
-export default function ScheduleMap({ posts, brand, onOpen, onNewIdea, onMove }) {
+/** Both streams, each in its own lane, or the one lane named by `only` (the ws.regulab and LinkedIn pages each show their own).
+    `onMove(post, date, slot)` moves a post (it explains a refusal itself); without it the map is read-only. */
+export default function ScheduleMap({ posts, brand, onOpen, onNewIdea, onMove, only = "" }) {
   const { t, lang } = useLang();
   const [drag, setDrag] = useState(null);                           // {id, how: "drag" | "pick"}: the post in hand
   const dragPost = drag ? posts.find((p) => p.id === drag.id) || null : null;
@@ -228,8 +228,8 @@ export default function ScheduleMap({ posts, brand, onOpen, onNewIdea, onMove })
             <X size={11} aria-hidden="true" /> {t("Batal (Esc)", "Cancel (Esc)")}</button>
         </div>
       )}
-      {lane("regulab")}
-      {lane("linkedin")}
+      {only !== "linkedin" && lane("regulab")}
+      {only !== "regulab" && lane("linkedin")}
     </div>
   );
 }

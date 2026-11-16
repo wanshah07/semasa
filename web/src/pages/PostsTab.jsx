@@ -46,11 +46,17 @@ function Thumb({ pic, small, stream }) {
     : <img src={pic.generated_media_url} alt="" className={`${size} shrink-0 rounded-tile object-cover`} />;
 }
 
-export default function PostsTab({ posts, media, log, brand, user, settings, onToast, focusId, setFocusId }) {
+/* `stream`: the page is for one stream (Wan, 16 Nov 2026: LinkedIn has its own segment, and Bank post shows ws.regulab only).
+   Everything on it, the counts, the list, the Schedule and the slot check, then reads that stream's posts and nothing else, and
+   there is no stream to choose. Without it the page shows both, as before. */
+export default function PostsTab({ posts, media, log, brand, user, settings, onToast, focusId, setFocusId, stream = "" }) {
   const { lang: uiLang, t } = useLang();
   const [status, setStatus] = useState("draft");
   const [view, setView] = useView("post");
-  const [streamF, setStreamF] = useState("all");
+  const [pickedStream, setStreamF] = useState("all");
+  const streamF = stream || pickedStream;
+  const li = stream === "linkedin";
+  const rows = useMemo(() => (stream ? posts.rows.filter((p) => (p.stream || "regulab") === stream) : posts.rows), [posts.rows, stream]);
   const [slotIdea, setSlotIdea] = useState(null);     // an empty Schedule slot being written for (kept stable while open)
   const mediaById = useMemo(() => Object.fromEntries(media.rows.map((m) => [m.id, m])), [media.rows]);
 
@@ -61,9 +67,9 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
   useEffect(() => {
     if (!focusId) { followed.current = null; return; }
     if (followed.current === focusId) return;
-    const p = posts.rows.find((r) => r.id === focusId);
+    const p = rows.find((r) => r.id === focusId);
     if (p) { setStatus(bucketOf(p)); followed.current = focusId; }
-  }, [focusId, posts.rows]);
+  }, [focusId, rows]);
   // the post opened from a row or a card is edited at the top of the list: bring it into view
   useEffect(() => {
     if (!focusId) return;
@@ -73,10 +79,10 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
 
   const counts = useMemo(() => {
     const c = {};
-    for (const p of posts.rows) c[bucketOf(p)] = (c[bucketOf(p)] || 0) + 1;
+    for (const p of rows) c[bucketOf(p)] = (c[bucketOf(p)] || 0) + 1;
     return c;
-  }, [posts.rows]);
-  const shown = posts.rows.filter((p) => bucketOf(p) === status && (streamF === "all" || (p.stream || "regulab") === streamF))
+  }, [rows]);
+  const shown = rows.filter((p) => bucketOf(p) === status && (streamF === "all" || (p.stream || "regulab") === streamF))
     .sort((a, b) => `${a.date || "9"}${a.slot || ""}`.localeCompare(`${b.date || "9"}${b.slot || ""}`));
   const publishing = settings.publishing || {};
   const live = publishingOn(publishing);
@@ -145,8 +151,14 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show">
-        <p className="text-[13px] font-semibold text-accent">Post</p>
+        <p className="text-[13px] font-semibold text-accent" data-post-stream={stream || "all"}>{li ? "Post · LinkedIn" : stream ? "Post · ws.regulab" : "Post"}</p>
         <h1 className="mt-2 text-3xl leading-tight sm:text-4xl">{t("Satu pintu: kelulusan anda.", "One gate: your approval.")}</h1>
+        {li && (
+          <p className="mt-3 max-w-2xl text-sm text-muted">
+            {t("Post LinkedIn anda sendiri: ditulis dalam English atas nama anda sebagai ahli kimia, tanpa jenama ws.regulab pada kad. Post ws.regulab ada di Kandungan → Bank post.",
+              "Your own LinkedIn posts: written in English under your name as a chemist, with no ws.regulab branding on the card. ws.regulab posts are in Content → Post bank.")}
+          </p>
+        )}
         <p className="mt-3 hidden max-w-2xl text-sm text-muted sm:block">
           {t("Setiap draf disemak dengan peraturan yang sama seperti Studio (tiada CTA, tiada laman web dalam kapsyen, "
             + "tiada sumber media sosial, BM Malaysia). Hanya post yang anda luluskan akan dihantar.",
@@ -190,10 +202,12 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
         </div>
         {status !== "schedule" && status !== "slotcheck" && (
           <div className="flex items-center gap-2">
-            <select value={streamF} onChange={(e) => setStreamF(e.target.value)} aria-label={t("Aliran", "Stream")}
-              className="rounded-pill border border-line bg-surface px-3 py-1.5 text-xs">
-              <option value="all">{t("Semua", "All")}</option><option value="regulab">ws.regulab</option><option value="linkedin">LinkedIn</option>
-            </select>
+            {!stream && (
+              <select value={streamF} onChange={(e) => setStreamF(e.target.value)} aria-label={t("Aliran", "Stream")}
+                className="rounded-pill border border-line bg-surface px-3 py-1.5 text-xs">
+                <option value="all">{t("Semua", "All")}</option><option value="regulab">ws.regulab</option><option value="linkedin">LinkedIn</option>
+              </select>
+            )}
             <ViewToggle view={view} setView={setView} />
           </div>
         )}
@@ -205,15 +219,15 @@ export default function PostsTab({ posts, media, log, brand, user, settings, onT
       {posts.error && <p className="mt-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{posts.error}</p>}
 
       {status === "schedule" && (
-        <ScheduleView posts={posts.rows} brand={brand} onToast={onToast} onChanged={() => posts.reload()}
-          onOpen={(id) => { const p = posts.rows.find((r) => r.id === id); if (p) setStatus(bucketOf(p)); setFocusId(id); }}
+        <ScheduleView posts={rows} brand={brand} onToast={onToast} onChanged={() => posts.reload()} lockStream={stream}
+          onOpen={(id) => { const p = rows.find((r) => r.id === id); if (p) setStatus(bucketOf(p)); setFocusId(id); }}
           onNewIdea={setSlotIdea} />
       )}
       {status === "slotcheck" && (
-        <SlotCheck posts={posts.rows} onReload={() => posts.reload()}
-          onOpen={(id) => { const p = posts.rows.find((r) => r.id === id); if (p) setStatus(bucketOf(p)); setFocusId(id); }} />
+        <SlotCheck posts={rows} onReload={() => posts.reload()} lockStream={stream}
+          onOpen={(id) => { const p = rows.find((r) => r.id === id); if (p) setStatus(bucketOf(p)); setFocusId(id); }} />
       )}
-      <IdeaComposer open={Boolean(slotIdea)} onClose={() => setSlotIdea(null)} trend={null} position={slotIdea} user={user} brand={brand}
+      <IdeaComposer open={Boolean(slotIdea)} onClose={() => setSlotIdea(null)} trend={null} position={slotIdea} user={user} brand={brand} defaultStream={stream || "regulab"}
         onToast={onToast} onDone={() => posts.reload()} />
       {status !== "schedule" && status !== "slotcheck" && !shown.length && !posts.loading && (
         <p className="mt-4 rounded-card border border-dashed border-line p-10 text-center text-sm text-muted">{t("Tiada post di sini.", "No posts here.")}</p>

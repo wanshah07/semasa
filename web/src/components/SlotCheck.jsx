@@ -21,11 +21,12 @@ const CHANNEL = { instagram: "Instagram", facebook: "Facebook", threads: "Thread
    yellow queued (handed to Zernio, or approved and waiting to be), red failed (refused, stuck, missed or blocked, with the reason),
    magenta waiting for your approval. It reads the posts the page already holds, which update live; the worker that fills them in
    (backend/semasa/slotcheck.py) reads Zernio back 25 minutes after each slot and tells you on Telegram about a failure. */
-export default function SlotCheck({ posts, onOpen, onReload }) {
+export default function SlotCheck({ posts, onOpen, onReload, lockStream = "" }) {
   const { t } = useLang();
   const [range, setRange] = useState("week");
   const [only, setOnly] = useState(null);
-  const [streamF, setStreamF] = useState("all");
+  const [pickedStream, setStreamF] = useState("all");
+  const streamF = lockStream || pickedStream;            // a page for one stream has no stream to choose
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(id); }, []);
 
@@ -48,10 +49,12 @@ export default function SlotCheck({ posts, onOpen, onReload }) {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <select value={streamF} onChange={(e) => setStreamF(e.target.value)} aria-label={t("Aliran", "Stream")}
-            className="rounded-pill border border-line bg-surface px-3 py-1.5 text-xs">
-            <option value="all">{t("Semua", "All")}</option><option value="regulab">ws.regulab</option><option value="linkedin">LinkedIn</option>
-          </select>
+          {!lockStream && (
+            <select value={streamF} onChange={(e) => setStreamF(e.target.value)} aria-label={t("Aliran", "Stream")}
+              className="rounded-pill border border-line bg-surface px-3 py-1.5 text-xs">
+              <option value="all">{t("Semua", "All")}</option><option value="regulab">ws.regulab</option><option value="linkedin">LinkedIn</option>
+            </select>
+          )}
           <Button size="sm" variant="ghost" onClick={onReload} aria-label={t("Muat semula", "Reload")}><RefreshCw size={13} /></Button>
         </div>
       </div>

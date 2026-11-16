@@ -399,19 +399,58 @@ def _send_buffer(client: Any, view: _BufferView, channel_id: str, channel: str, 
     raise senders.SendError("refused", "unreachable")
 
 
+def _settled(rec: Any) -> bool:
+    """Has the network already answered for this channel record? `sent` and `error` are final: the scheduler holds nothing
+    more for it. Anything else (scheduled, sending, unconfirmed) is still in its queue."""
+    return isinstance(rec, dict) and rec.get("status") in ("sent", "error")
+
+
 def moved_since_handed_over(published: dict[str, Any], due: datetime) -> list[str]:
-    """Channels Buffer holds for a different moment than the post's slot now: the post was moved after they were handed
-    over (the page and supabase/072 refuse that from a browser; the worker and the importer write with the service key).
-    Sending the rest at the new slot would split one post across two slots and leave the old one taken in Buffer."""
+    """Channels Buffer or Zernio STILL holds for a different moment than the post's slot now: the post was moved after they
+    were handed over (the page and supabase/072 refuse that from a browser; the worker and the importer write with the service
+    key). Sending the rest at the new slot would split one post across two slots and leave the old one taken in the queue.
+    A record the network has settled (`sent`, `error`) holds nothing there any more, so it never blocks (16 Nov 2026: a
+    post that lost two channels to an outage could not be moved, because the channel that DID go out was counted here)."""
     out = []
     for ch, rec in sorted(published.items()):
-        if (not isinstance(rec, dict) or rec.get("mode") == "shareNow"
+        if (not isinstance(rec, dict) or rec.get("mode") == "shareNow" or _settled(rec)
                 or not str(rec.get("route") or "").startswith(("buffer", "zernio"))):
             continue
         at = _parse(rec.get("dueAt"))
         if at and abs(at - due) > ADOPT_WITHIN:
             out.append(f"{ch} {(at + MYT):%Y-%m-%d %H:%M}")
     return out
+
+
+def stale_failures(published: dict[str, Any], due: datetime) -> list[str]:
+    """Channels to send AGAIN: their record is an `error` for a moment other than the post's slot now (Wan, 16 Nov 2026:
+    "move to new slot", after two posts lost channels to an outage). A person moved the post after the failure, and that
+    move is the instruction: the failed record is dead (the scheduler holds nothing for it) and the channel is handed over
+    for the new slot. Never by itself: an `error` for the SAME moment as the slot stays as it is, and a `sent` record is
+    never looked at, so a channel that went out is never sent twice. A record whose moment cannot be read is left for a
+    person. A send-now record fired when it was handed over (up to LATE_GRACE after its slot), so it is stale only once the
+    slot is later than that."""
+    out = []
+    for ch, rec in sorted((published or {}).items()):
+        if (not isinstance(rec, dict) or rec.get("status") != "error"
+                or not str(rec.get("route") or "").startswith(("buffer", "zernio"))):
+            continue
+        at = _parse(rec.get("dueAt")) or _parse(rec.get("at"))
+        if at is None:
+            continue
+        if (at < due - ADOPT_WITHIN) if rec.get("mode") == "shareNow" else (abs(at - due) > ADOPT_WITHIN):
+            out.append(ch)
+    return out
+
+
+def resend_due(post: dict[str, Any]) -> list[str]:
+    """stale_failures for a post row; [] when it has no position, or one that cannot be read. Never raises."""
+    if not post.get("date") or not post.get("slot") or not post.get("published"):
+        return []
+    try:
+        return stale_failures(post["published"], due_utc(post["date"], post["slot"]))
+    except (ValueError, TypeError, AttributeError):
+        return []
 
 
 def _final(rec: Any) -> bool:
@@ -463,10 +502,11 @@ class _Run:
         self.brand, self.reg = brand, brand.get("regulab") or {}
         self.bufcfg = (settings.get("channels") or {}).get("buffer") or {}
         self.counts = {"considered": 0, "dry_run": 0, "blocked": 0, "error": 0, "overdue": 0, "scheduled": 0, "sent": 0,
-                       "adopted": 0, "waiting": 0, "not_yet": 0, "retry": 0, "changed": 0, "failed": 0}
+                       "adopted": 0, "waiting": 0, "not_yet": 0, "retry": 0, "changed": 0, "failed": 0, "resent": 0}
         self.li_cap = max(1, len((brand.get("linkedin") or {}).get("slots") or ["06:00"]))
         self.li_today: int | None = None
         self.live: list[dict[str, Any]] = []
+        self.resend: frozenset[str] = frozenset()        # ids of the posts being sent again at a new slot (guard.rank)
         self.view: _BufferView | None = None
         zcfg = (settings.get("channels") or {}).get("zernio") or {}
         self.zacc = zernio_accounts(zcfg)
@@ -482,10 +522,11 @@ class _Pin:
 
     def __init__(self, store: Any, post: dict[str, Any]):
         self.store, self.id, self.updated_at = store, post["id"], post.get("updated_at")
+        self.status = post.get("status") or "approved"     # `scheduled` for a post being sent again (stale_failures)
 
     def still_ours(self) -> bool:
         rows = db.read_with_retry(self.store.table(db.POSTS).select("id,status,updated_at").eq("id", self.id)).data or []
-        return bool(rows) and rows[0].get("status") == "approved" and rows[0].get("updated_at") == self.updated_at
+        return bool(rows) and rows[0].get("status") == self.status and rows[0].get("updated_at") == self.updated_at
 
     def follow(self, res: Any) -> None:
         rows = getattr(res, "data", None) or []
@@ -498,14 +539,15 @@ class _Pin:
         self.follow(self.store.table(db.POSTS).update({"published": published}).eq("id", self.id).execute())
 
     def save_final(self, patch: dict[str, Any], published: dict[str, Any]) -> bool:
-        """The end-of-post write (errors, status), pinned to the post still being approved and unchanged since it was
-        read. When the pin misses, the per-channel records are written anyway (save_published) and nothing else."""
-        q = self.store.table(db.POSTS).update(patch).eq("id", self.id).eq("status", "approved")
+        """The end-of-post write (errors, status), pinned to the post still having the status it was read with and unchanged
+        since. When the pin misses, the per-channel records are written anyway (save_published) and nothing else."""
+        q = self.store.table(db.POSTS).update(patch).eq("id", self.id).eq("status", self.status)
         if self.updated_at:
             q = q.eq("updated_at", self.updated_at)
         res = q.execute()
         if getattr(res, "data", None):
             self.follow(res)
+            self.status = patch.get("status") or self.status
             return True
         if "published" in patch:
             self.save_published(published)
@@ -532,13 +574,17 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
         # a picture approved with the post has since been deleted: sending without it is not what Wan approved
         hard.append(f"{len(gone)} picture(s) approved with this post no longer exist; attach them again and approve")
     # one post to a slot and the same words never twice: only the post that outranks the others goes (guard.py)
-    hard += guard.blockers(post, ctx.live)
+    hard += guard.blockers(post, ctx.live, ctx.resend)
     lang = compliance.lang_of(post)
     published = dict(post.get("published") or {})
     elsewhere = moved_since_handed_over(published, due)
     if elsewhere:
-        hard.append(f"moved after it was handed to Buffer, which still holds {', '.join(elsewhere)} MYT: move it back "
-                    "to that slot, or delete those posts in Buffer and have their records cleared")
+        hard.append(f"moved after it was handed over, and the scheduler still holds {', '.join(elsewhere)} MYT: move it "
+                    "back to that slot, or pull the post back first (Pull back to edit)")
+    # channels that failed at an earlier moment, on a post a person has since moved: handed over again for the new slot.
+    # The failed record stays where it is until its replacement is in hand, so a run that is blocked, late or interrupted
+    # changes nothing and the next run finds the same thing to do.
+    dead = set(stale_failures(published, due))
     errors = {k: v for k, v in (post.get("errors") or {}).items() if k != "scan"}
     changed = False
     pin = _Pin(store, post)
@@ -557,8 +603,13 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
                  post["id"], channel)
         return True
 
+    def again(channel: str) -> dict[str, Any]:
+        """What a re-sent channel's log line and record carry: which failed hand-over this one replaces."""
+        old = published.get(channel) if channel in dead else None
+        return {"replaces": old.get("id"), "failed_due_at": old.get("dueAt")} if isinstance(old, dict) else {}
+
     for channel in channels:
-        if published.get(channel):
+        if published.get(channel) and channel not in dead:
             continue
         via_z = channel in ctx.zacc           # Zernio holds this platform (settings.channels.zernio), else Buffer/Composio
         text = compliance.text_of(post, channel, lang) or (
@@ -685,23 +736,28 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
         view = ctx.zview if via_z else ctx.view
         try:
             found = view.find(channel_id, text, due, post["id"])
+            was = again(channel)
             if found:
                 view.claim(found, post["id"])
-                published[channel] = _record(found, "customScheduled", f"{route}-adopted", now)
+                published[channel] = {**_record(found, "customScheduled", f"{route}-adopted", now), **was}
+                dead.discard(channel)
                 counts["adopted"] += 1
                 pin.save_published(published)
-                write_log(store, post["id"], channel, "adopted", {"fingerprint": fp, "buffer_id": found.get("id")})
+                write_log(store, post["id"], channel, "adopted", {"fingerprint": fp, "buffer_id": found.get("id"), **was})
             else:
                 rec = _send_buffer(client, view, channel_id, channel, text, pictures, alt, due, now, video, post["id"],
                                    route=route)
-                published[channel] = rec
+                published[channel] = {**rec, **was}
+                dead.discard(channel)
                 action = "sent" if rec.get("status") == "sent" else "scheduled"
                 counts[action] += 1
+                if was:
+                    counts["resent"] += 1
                 # persist 'published' BEFORE the log line (same reasoning as the LinkedIn branch above): if the
                 # save below this loop never runs, the next run must still see this channel as already handled
                 pin.save_published(published)
                 write_log(store, post["id"], channel, action,
-                          {"fingerprint": fp, "buffer_id": rec.get("id"), "due_at": due.isoformat(),
+                          {"fingerprint": fp, "buffer_id": rec.get("id"), "due_at": due.isoformat(), **was,
                            **({"unconfirmed": True} if rec.get("unconfirmed") else {})})
             errors.pop(channel, None)
             changed = True
@@ -725,8 +781,9 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
     if changed:
         patch["published"] = published
     # judged on every run, not only when this run sent something: a post whose last channel went in a run whose final
-    # write missed its pin is promoted by the next one
-    if channels and all(published.get(c) for c in channels):
+    # write missed its pin is promoted by the next one. A failed record still waiting to be replaced (`dead`) is not a
+    # hand-over, so the post keeps the status it has until every channel really is in the queue or out.
+    if channels and all(published.get(c) and c not in dead for c in channels):
         patch["status"] = "posted" if all(published[c].get("status") == "sent" for c in channels) else "scheduled"
     if patch:
         pin.save_final(patch, published)
@@ -745,9 +802,13 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
             clients = {k: v for k, v in clients.items() if k != "buffer"}       # idle: not called at all this run
         note_buffer_state(store, settings, "idle" if not left else "finishing", left, now)
     r = _Run(store, now, settings, enabled, clients)
-    posts = (db.read_with_retry(store.table(db.POSTS).select("*").eq("status", "approved").not_.is_("date", "null")
-             .not_.is_("slot", "null").order("date").order("slot")).data or [])
+    posts = (db.read_with_retry(store.table(db.POSTS).select("*").in_("status", ["approved", "scheduled"])
+             .not_.is_("date", "null").not_.is_("slot", "null").order("date").order("slot")).data or [])
+    # an approved post, and a scheduled one only when a person moved it after a channel failed (stale_failures): every
+    # other scheduled post is in the queue already and is the tally's business, never this loop's
+    posts = [p for p in posts if p.get("status") == "approved" or resend_due(p)]
     r.live = guard.load_live(store, db.POSTS, myt_date(now)) if posts else []
+    r.resend = frozenset(str(o.get("id")) for o in r.live if resend_due(o))
     r.view = _BufferView(clients["buffer"], now, _claimed(r.live)) if clients.get("buffer") else None
     r.zview = _BufferView(clients["zernio"], now, _claimed(r.live)) if clients.get("zernio") else None
     for post in posts:
@@ -782,10 +843,30 @@ def note_buffer_state(store: Any, settings: dict[str, Any], state: str, left: in
         log.info("buffer state not noted (%s)", str(exc)[:120])
 
 
+LOST = "Zernio no longer holds this post and it was not sent"
+LOST_AFTER = timedelta(minutes=20)     # how long past its moment a record must be before a 404 settles it
+
+
+def _lost(reader: Any, rec: dict[str, Any], now: datetime) -> bool:
+    """Is this hand-over dead: its moment has passed and Zernio holds no such post in ANY login (16 Nov 2026: a LinkedIn
+    post Zernio answered "Post not found" for stayed `scheduled` for ever, so it could be neither moved nor sent again)?
+    Zernio keeps a post it published and refuses to delete one, so a post that is gone after its moment was taken out of
+    the queue before it went. Never before the moment has passed, never when the moment cannot be read, and never on a
+    login that could not be read: an outage is not proof."""
+    at = _parse(rec.get("dueAt")) or _parse(rec.get("at"))
+    if at is None or at > now - LOST_AFTER:
+        return False
+    try:
+        return reader.gone(rec["id"]) is True
+    except (senders.SendError, AttributeError):
+        return False
+
+
 def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settings: dict[str, Any],
           zernio: Any = None) -> None:
     """Read back every Buffer post whose moment has passed and write down what the network actually did (Studio's
-    reconcileBuffer): `sent` or `error`, and a post whose every channel is sent becomes `posted`."""
+    reconcileBuffer): `sent` or `error`, and a post whose every channel is sent becomes `posted`. A record Zernio no
+    longer holds at all (_lost) is settled as an `error` too, so the post can be moved and that channel sent again."""
     counts.setdefault("confirmed", 0)
     rows = (store.table(db.POSTS).select("id,status,stream,channels,published,errors").in_("status", ["approved", "scheduled"])
             .execute().data or [])
@@ -805,20 +886,24 @@ def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settin
             reader = zernio if via_zernio else client          # each record is read back from the service that holds it
             if reader is None:
                 continue
+            lost = False
             try:
                 got = reader.get(rec["id"], rec.get("account") or "") if via_zernio else reader.get(rec["id"])
-            except senders.SendError:
-                continue
+            except senders.SendError as exc:
+                if not (via_zernio and exc.status == 404 and _lost(reader, rec, now)):
+                    continue                                   # an outage or a refusal to answer: read again next run
+                got, lost = {"status": "error", "error": {"message": LOST}}, True
             status = got.get("status")
             if status not in ("sent", "error"):
                 continue
             published[ch] = {**rec, "status": status, **({"url": got["externalLink"]} if got.get("externalLink") else {}),
-                             "confirmed_at": now.isoformat()}
+                             **({"lost": True} if lost else {}), "confirmed_at": now.isoformat()}
             if status == "error":
                 msg = ((got.get("error") or {}).get("message")
                        or ("Zernio" if via_zernio else "Buffer") + " reported an error")
                 errors[ch] = {"message": f"{ch}: {msg}", "at": now.isoformat()}
-                write_log(store, post["id"], ch, "error", {"buffer_id": rec["id"], "why": msg})
+                write_log(store, post["id"], ch, "error",
+                          {"buffer_id": rec["id"], "why": msg, **({"lost": True} if lost else {})})
             else:
                 write_log(store, post["id"], ch, "confirmed", {"buffer_id": rec["id"]})
             counts["confirmed"] += 1

@@ -6,10 +6,16 @@ network did (`publisher.tally`: sent, or error with the platform's own message),
 
   * a channel Zernio shows as FAILED, with the platform's message;
   * a channel still not sent 20 minutes after its slot ("stuck");
-  * an approved post whose slot has passed with a channel never handed over (the publisher leaves a late post alone).
+  * an approved post whose slot has passed with a channel never handed over (the publisher leaves a late post alone), and a
+    post moved to be sent again (publisher.stale_failures) whose new slot passed before the publisher handed it over.
 
 It never re-sends anything by itself: a refusal is read, recorded and reported, because sending again can post twice. It writes a
 log row every run (`slotcheck.ok` or `slotcheck.alert`), so a quiet run still shows that it ran.
+
+A run that starts late still reads back EVERYTHING that is due and not confirmed: `publisher.tally` has no window at all (it reads
+every record of an approved or scheduled post whose moment has passed), and WINDOW below only limits what is REPORTED, to slots of
+the last 26 hours. A record Zernio answers "Post not found" for is settled there as an error (publisher._lost), which is what
+kept the LinkedIn post of 16 Nov 19:00 reading "scheduled" for hours: the read-back worked, the answer was never written down.
 
     python -m semasa.slotcheck
 """
@@ -33,11 +39,12 @@ def _hook(post: dict[str, Any]) -> str:
     return str(post.get("hook") or "post")[:60]
 
 
-def _seen(store: Any, post_id: str, title: str) -> bool:
-    """Already told Wan about exactly this (post, channel, kind)?"""
-    rows = (store.table(db.LOG).select("id").eq("event", "slotcheck.alert").eq("ref_id", post_id).eq("title", title)
-            .limit(1).execute().data or [])
-    return bool(rows)
+def _seen(store: Any, post_id: str, title: str, due: str = "") -> bool:
+    """Already told Wan about exactly this (post, channel, kind) for THIS slot? A post moved to a new slot that fails there
+    again is a new problem and is told again; an alert written before the slot was kept counts for any slot."""
+    rows = (store.table(db.LOG).select("id,detail").eq("event", "slotcheck.alert").eq("ref_id", post_id).eq("title", title)
+            .limit(50).execute().data or [])
+    return any(not due or (r.get("detail") or {}).get("due_at") in (None, due) for r in rows)
 
 
 def problems(store: Any, zernio: Any, now: datetime, settings: dict[str, Any]) -> list[dict[str, str]]:
@@ -53,8 +60,9 @@ def problems(store: Any, zernio: Any, now: datetime, settings: dict[str, Any]) -
             continue
         pid = str(post["id"])
         published = post.get("published") or {}
+        again = publisher.stale_failures(published, due)       # failed at an earlier slot; the post was moved to go again
         for ch, rec in published.items():
-            if not isinstance(rec, dict):
+            if not isinstance(rec, dict) or ch in again:
                 continue
             if rec.get("status") == "error":
                 msg = ((post.get("errors") or {}).get(ch) or {}).get("message") or f"{ch}: the platform refused it"
@@ -78,6 +86,12 @@ def problems(store: Any, zernio: Any, now: datetime, settings: dict[str, Any]) -
                                 "message": f"{ch} was never handed over and its slot has passed; the publisher leaves a late "
                                            "post alone (send it now, or move it)",
                                 "title": f"Terlepas slot di {ch}: {_hook(post)}", "due": due.isoformat()})
+        if again and due < now - publisher.LATE_GRACE:
+            for ch in again:
+                out.append({"post_id": pid, "channel": ch, "kind": "missed",
+                            "message": f"{ch} was to be sent again at this slot, but the slot passed before the publisher "
+                                       "handed it over (it runs 06:20, 11:20 and 19:20); move the post to a later slot",
+                            "title": f"Terlepas slot di {ch}: {_hook(post)}", "due": due.isoformat()})
     return out
 
 
@@ -88,7 +102,7 @@ def run(store: Any, zernio: Any = None, now: datetime | None = None, notify: Any
     if zernio is not None:
         publisher.tally(store, None, now, counts, settings, zernio)         # sent / error, written from what Zernio says
     found = problems(store, zernio, now, settings)
-    fresh = [p for p in found if not _seen(store, p["post_id"], p["title"])]
+    fresh = [p for p in found if not _seen(store, p["post_id"], p["title"], p["due"])]
     for p in fresh:
         db.log_event(store, "error", "publish", "slotcheck.alert", p["title"], ref_table=db.POSTS, ref_id=p["post_id"],
                      detail={"channel": p["channel"], "kind": p["kind"], "why": p["message"], "due_at": p["due"]})

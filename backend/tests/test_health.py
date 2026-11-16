@@ -262,3 +262,59 @@ def test_a_telegram_webhook_error_older_than_an_answered_message_is_not_a_proble
     st.tables["semasa_telegram_inbox"].append({"id": 1, "kind": "private", "status": "done",
                                                "created_at": (NOW - timedelta(minutes=10)).isoformat()})
     assert not any("could not deliver" in p["what"] for p in health.check_telegram(st, NOW))
+
+
+# --- the publishing advice is true for the state the post is in (16 Nov 2026) -------------------------------------------------
+
+def _half_sent(**kw):
+    """16 Nov, 08:00 MYT: Instagram went out, Threads failed at the slot. NOW here is 7 Nov, so dates are relative to it."""
+    p = {"id": "h1", "date": "2026-11-07", "slot": "08:00", "stream": "regulab", "status": "scheduled",
+         "published": {"instagram": {"route": "zernio", "status": "sent", "dueAt": "2026-11-07T00:00:00.000Z"},
+                       "threads": {"route": "zernio", "status": "error", "dueAt": "2026-11-07T00:00:00.000Z"}},
+         "errors": {"threads": {"message": "threads: token refresh failed"}}}
+    p.update(kw)
+    return p
+
+
+def _advice(post, ch="threads"):
+    return health.publish_advice(post, ch, post["errors"][ch], NOW)
+
+
+def test_a_channel_that_failed_at_its_slot_is_sent_again_by_moving_the_post():
+    what, todo = _advice(_half_sent())
+    assert what == "threads: token refresh failed"
+    assert "move the post to a new slot" in todo and "Only the failed channel is sent again" in todo
+    assert "Edit the post" not in todo                                    # a scheduled post cannot be edited
+
+
+def test_while_another_channel_is_still_queued_the_advice_says_to_wait():
+    p = _half_sent()
+    p["published"]["instagram"]["status"] = "scheduled"
+    assert "instagram of this post is still in the queue" in _advice(p)[1]
+
+
+def test_a_post_already_moved_is_not_a_problem_until_its_new_slot_is_missed():
+    assert _advice(_half_sent(date="2026-11-08")) is None                  # tomorrow 08:00: the publisher sends it again
+    assert health.check_publisher(store(**{db.POSTS: [_half_sent(date="2026-11-08")]}), NOW) == []
+    late = _half_sent(date="2026-11-07", slot="13:00")                     # moved to 13:00 today; it is 17:30 now
+    what, todo = _advice(late)
+    assert "the slot passed before the publisher handed it over" in what and "Move the post to a later slot" in todo
+
+
+def test_a_hand_over_that_failed_says_wait_when_it_retries_and_edit_when_it_is_final():
+    waiting = {"id": "a1", "date": "2026-11-08", "slot": "08:00", "stream": "regulab", "status": "approved", "published": {},
+               "errors": {"threads": {"message": "Zernio answered 503", "kind": "transient", "retry": True, "fingerprint": "f"}}}
+    assert _advice(waiting)[1].startswith("Nothing to do yet: Semasa tries this channel again at the next publish run")
+    final = {**waiting, "errors": {"threads": {"message": "threads: caption too long", "kind": "refused", "fingerprint": "f"}}}
+    assert "approve it again" in _advice(final)[1] and "new slot" in _advice(final)[1]
+    held = {**final, "published": {"instagram": {"route": "zernio", "status": "scheduled"}}}
+    assert "cannot change while instagram is still in the queue" in _advice(held)[1]
+
+
+def test_a_post_zernio_lost_is_not_counted_as_zernio_failing():
+    def lost(i):
+        return _half_sent(id=f"l{i}", errors={"threads": {"message": "threads: Zernio no longer holds this post and it was not sent"}},
+                          published={"threads": {"route": "zernio", "status": "error", "lost": True,
+                                                 "dueAt": "2026-11-07T00:00:00.000Z"}})
+    out = health.check_publisher(store(**{db.POSTS: [lost(1), lost(2)]}), NOW)
+    assert len(out) == 2 and not any("Zernio failed on" in p["what"] for p in out)

@@ -172,14 +172,14 @@ def parse_article(html: str, base_url: str, out: dict[str, Any] | None = None) -
 # The words the page and the publisher check a post for (rules/compliance.json `vague`, compliance.vague_hits), said to both
 # writers in the same sentence, so a draft is not written into a block (Wan, 16 Nov 2026: "make sure no vague content post").
 # No percent sign in here: both prompts are %-formatted.
-VAGUE_CHECK = """THIS IS CHECKED AND A VAGUE POST IS BLOCKED: wording that stands where an exact detail should be is refused
-unless a figure, a date or an entry number is in the same sentence or one of the two sentences after it (on slides: the same slide or one of the
-two after it). The wording: "regularly", "from time to time", "recently", "recent changes", "new rules", "latest guidance",
-"several substances", "some products", "many cases", "studies show", "strict limits", "heavy fines"; in Malay "dari semasa ke
-semasa", "secara berkala", "baru-baru ini", "peraturan baharu", "syarat baharu", "garis panduan terkini", "beberapa bahan",
-"banyak produk", "pelbagai kajian", "kajian menunjukkan", "dikatakan", "denda berat". When the SOURCE gives the detail, print
-it (how many, which entry, what limit, from what date) and the wording is fine. When the SOURCE gives no exact detail, do not use
-that wording at all: say plainly what is known, and leave the rest out."""
+VAGUE_CHECK = """THIS IS CHECKED AND A VAGUE POST IS BLOCKED: wording that stands where an exact detail should be is refused unless a figure,
+a date or an entry number is in the same sentence or one of the two sentences after it (on slides: the same slide or one of
+the two after it). The wording: "regularly", "from time to time", "recently", "recent changes", "new rules", "latest
+guidance", "several substances", "some products", "many cases", "studies show", "strict limits", "heavy fines"; in Malay
+"dari semasa ke semasa", "secara berkala", "baru-baru ini", "peraturan baharu", "syarat baharu", "garis panduan terkini",
+"beberapa bahan", "banyak produk", "pelbagai kajian", "kajian menunjukkan", "dikatakan", "denda berat". When the SOURCE
+gives the detail, print it (how many, which entry, what limit, from what date) and the wording is fine. When the SOURCE
+gives no exact detail, do not use that wording at all: say plainly what is known, and leave the rest out."""
 
 REGULAB_SYSTEM = """You write social posts for ws.regulab, a Malaysian regulatory-affairs brand speaking to SME owners
 (cosmetics, food, halal, pharmaceuticals). Voice: Bahasa Malaysia mixed naturally with English technical terms, warm,

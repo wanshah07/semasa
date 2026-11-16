@@ -172,7 +172,8 @@ def parse_article(html: str, base_url: str, out: dict[str, Any] | None = None) -
 # The words the page and the publisher check a post for (rules/compliance.json `vague`, compliance.vague_hits), said to both
 # writers in the same sentence, so a draft is not written into a block (Wan, 16 Nov 2026: "make sure no vague content post").
 # No percent sign in here: both prompts are %-formatted.
-VAGUE_CHECK = """THIS IS CHECKED AND A VAGUE POST IS BLOCKED: wording that stands where an exact detail should be is refused unless a figure,
+VAGUE_CHECK = """\
+THIS IS CHECKED AND A VAGUE POST IS BLOCKED: wording that stands where an exact detail should be is refused unless a figure,
 a date or an entry number is in the same sentence or one of the two sentences after it (on slides: the same slide or one of
 the two after it). The wording: "regularly", "from time to time", "recently", "recent changes", "new rules", "latest
 guidance", "several substances", "some products", "many cases", "studies show", "strict limits", "heavy fines"; in Malay

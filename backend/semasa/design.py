@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import antislop, compliance, slides, threads_slides
+from . import antislop, compliance, quran, slides, threads_slides
 from .llm import LLM
 from .log import get_logger
 
@@ -92,7 +92,8 @@ def write(llm: LLM, brief: str, design: str, stream: str) -> tuple[list[dict[str
     out = llm.chat_json(system, f"BRIEF (Wan's idea or prompt):\n{brief.strip()[:4000]}", max_tokens=2500)
     if not isinstance(out, dict):
         raise slides.SlideError("the writer did not answer (see the run log); press Retry, or write the words yourself")
-    items = compliance.normalise_slides(out.get("slides"))
+    # a model may NAME a verse (ayat "2:168"), never write one: any verse text it returned is thrown away here
+    items = compliance.normalise_slides(quran.untrusted(out.get("slides")))
     if design in ("poster", "card"):
         items = items[:1]
     if design == "threads":

@@ -5,16 +5,20 @@ The drawing itself needs a browser. Those tests run when SEMASA_CHROME names one
 the refusals and the bookkeeping are checked with the renderer stubbed."""
 
 import io
+import json
 import os
+from pathlib import Path
 
 import pytest
 from fakestore import FakeStore
 from PIL import Image
 from ref_layout_fixture import POSTER
 
-from semasa import cards_library, ideas, media_generator, studio_cards
+from semasa import cards_library, compliance, ideas, media_generator, studio_cards
 from semasa.config import MediaSettings
 from semasa.slides import SlideError
+
+ROOT = Path(__file__).resolve().parents[2]
 
 SLIDES = [{"title": "Notifikasi *bukan* kelulusan", "points": ["Nombor NOT bermaksud produk telah dinotifikasi."]},
           {"title": "Apa NPRA semak", "points": ["Maklumat pada borang.", "Bukan formula penuh.", "Bukan label."]},
@@ -552,3 +556,33 @@ def test_a_broken_settings_read_never_fails_a_render():
         def table(self, *a):
             raise RuntimeError("no table")
     assert cards_library.mascots(Boom()) == cards_library.mascots()
+
+
+@browser
+def test_an_ayat_slide_is_drawn_as_the_verse_card_in_every_look_and_a_bad_one_is_refused():
+    """Wan, 16 Nov 2026: "make sure can write ayat al-Quran for reminder or under fatwa". Drawn for real, with the Quran face
+    (a missing face fails the render: the fonts are checked before a card is drawn)."""
+    doc = json.loads((ROOT / "rules" / "quran_cases.json").read_text(encoding="utf-8"))
+    words = next(c["out"] for c in doc["cases"] if c["ref"] == "2:168" and c["stream"] == "regulab" and not c["down"])
+    verse = compliance.normalise_slides([{"title": "Peringatan", "points": [], **words, "ayat_ok": "1"}])[0]
+    deck = [{"title": "Halal itu *perintah*", "points": []}, verse, {"title": "Tutup", "points": ["Satu ayat."]}]
+    first = None
+    for look in ("grid", "era", "image", "hand"):
+        pics = studio_cards.render(deck, look=look, stream="regulab", eyebrow="Fatwa", source="Al-Quran")
+        assert len(pics) == 3 and Image.open(io.BytesIO(pics[1])).size == (1080, 1350)
+        first = first or pics[1]
+        assert pics[1] == first, f"the verse card is the same picture in the {look} look"
+    im = Image.open(io.BytesIO(first)).convert("L")
+    dark = sum(1 for v in im.crop((100, 250, 980, 700)).resize((220, 112)).tobytes() if v < 90)
+    assert dark > 400, "the Arabic is drawn (dark ink across the upper half of the card)"
+    alone = studio_cards.render([verse], look="grid", stream="regulab")
+    assert len(alone) == 1, "a single card can be a verse"
+    en = next(c["out"] for c in doc["cases"] if c["ref"] == "2:168" and c["stream"] == "linkedin" and not c["down"])
+    li = compliance.normalise_slides([{"title": "A reminder", "points": [], **en, "ayat_ok": "1"}])
+    assert studio_cards.render(li, look="grid", stream="linkedin")[0] != alone[0]
+    with pytest.raises(SlideError, match="has not been fetched"):
+        studio_cards.render([{"title": "Peringatan", "points": [], "ayat": "2:168", "ayat_label": "Al-Baqarah 2:168"}],
+                            look="grid", stream="regulab")
+    long = {**verse, "ayat_ar": " ".join([verse["ayat_ar"]] * 14), "ayat_tr": " ".join([verse["ayat_tr"]] * 14)}
+    with pytest.raises(SlideError, match="too long for one card"):
+        studio_cards.render([long], look="grid", stream="regulab")

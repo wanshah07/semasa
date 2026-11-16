@@ -54,7 +54,10 @@ def _sentence(title: str, lead: str) -> str:
 
 def join(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any] | None:
     """Two neighbouring slides as one: a's headline, then a's own words and b's whole slide as points. Every word is kept;
-    None when the points would not all fit the slide shape (a join never drops one)."""
+    None when the points would not all fit the slide shape (a join never drops one), and None for a slide that carries
+    an ayat al-Quran: a verse is drawn whole on a card of its own and is never folded into another slide's points."""
+    if a.get("ayat") or b.get("ayat"):
+        return None
     points = [_clean(a.get("lead")), *(a.get("points") or []), _sentence(b.get("title", ""), b.get("lead", "")),
               *(b.get("points") or []), _clean(b.get("note"))]
     points = [p for p in (_clean(p) for p in points) if p]
@@ -360,8 +363,8 @@ def cover_words(first: dict | None) -> tuple[str, str] | None:
     first = first if isinstance(first, dict) else {}
     title = str(first.get("title") or "").strip()
     points = [str(p).strip() for p in (first.get("points") or []) if str(p or "").strip()]
-    if not title or first.get("note") or len(points) > 1:
-        return None
+    if not title or first.get("note") or len(points) > 1 or first.get("ayat"):       # a verse slide is never a hook: the cover
+        return None                                                                  # must not replace it
     return title, str(first.get("lead") or "").strip() or (points[0] if points else "")
 
 

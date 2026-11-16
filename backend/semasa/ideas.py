@@ -997,10 +997,11 @@ def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: 
                      **({"review": review} if review else {}), **({"design_pack": saved} if saved else {})}}
 
 
-LOOKS = ("classic", "grid", "era", "photo", "image", "threads", "hand", "marker", "torn", "block", "neon")
+LOOKS = ("classic", "grid", "era", "photo", "image", "threads", "hand", "marker", "torn", "block", "neon",
+         "deck", "chalk", "metro", "strip")
 # looks that show a picture ON the slide (Image, and the cover of the four poster looks): only the post's own picture is ever
 # placed there, never a stock ground from the library
-OWN_PICTURE_ONLY = ("image", "marker", "torn", "block", "neon")
+OWN_PICTURE_ONLY = ("image", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip")
 DEFAULT_LOOK = "image"          # Wan, 8 Nov 2026: the Image look (a picture ON the slide) is the default for new posts
 POSTER_DEFAULT_LOOK = "hand"    # Wan, 13 Nov 2026: a poster (format=poster) is the hand-drawn look by default
 

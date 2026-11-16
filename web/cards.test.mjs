@@ -13,7 +13,7 @@ const words = (spec) => [spec.title, spec.lead, ...(spec.items || [])].join("\n"
 const SHOWN = { e_hook: 3, e_explain: 3, p_fact: 4, g_title: 0, p_title: 0, p_quote: 0, i_title: 8, i_note: 8, i_hero: 8, i_step: 8, h_poster: 8, h_hero: 8, h_note: 8 };   // the image and hand-drawn families draw every point (lines, a pill or a step)
 
 // the four poster looks draw every point, whatever the count: the type comes down in size instead (studio.js SKIN_MIN)
-for (const p of ["m", "t", "b", "n"]) for (const part of ["cover", "points", "table", "pick", "close"]) SHOWN[`${p}_${part}`] = Infinity;
+for (const p of ["m", "t", "b", "n", "d", "k", "l", "s"]) for (const part of ["cover", "points", "table", "pick", "close"]) SHOWN[`${p}_${part}`] = Infinity;
 
 const P = (n) => Array.from({ length: n }, (_, i) => `Poin nombor ${i + 1} yang penting.`);
 const decks = [
@@ -70,7 +70,7 @@ ok(!specsFor([{ title: "t", points: [] }], { look: "grid" })[0].mascot, "no pose
 ok(!specsFor([{ title: "t", points: ["a"], template: "e_flow" }], { look: "era", mascots: M })[0].mascot, "e_flow never carries a mascot (Studio)");
 ok(!specsFor([{ title: "t", points: [], mascot: "wave", template: "e_vs" }], { mascots: M })[0].mascot, "a pose chosen on an old slide is not drawn either");
 ok(!specsFor([{ title: "t", points: ["a"] }], { design: { look: "grid", mascot: "wave" }, mascots: M })[0].mascot, "nor is a saved design's pose");
-ok(LOOKS.map((l) => l.k).join(",") === "classic,hand,marker,torn,block,neon,grid,era,photo,image", "the ten looks, Semasa's own first, the four poster looks after Hand-drawn");
+ok(LOOKS.map((l) => l.k).join(",") === "classic,hand,marker,torn,block,neon,deck,chalk,metro,strip,grid,era,photo,image", "the fourteen looks, Semasa's own first, the eight poster looks after Hand-drawn");
 
 // Studio's "Reset from caption": every paragraph kept, asks and the website never built onto the artwork
 {
@@ -113,8 +113,8 @@ ok(LOOKS.map((l) => l.k).join(",") === "classic,hand,marker,torn,block,neon,grid
 
 // the catalogue file and the renderer name the same twenty-two templates (4 Oct 2026: nine added, then the event poster)
 const cat = JSON.parse(readFileSync(new URL("../rules/cards.json", import.meta.url), "utf8")).templates.map((x) => x.k);
-ok(cat.length === 49 && cat.slice().sort().join() === TEMPLATE_KEYS.slice().sort().join(), "rules/cards.json and studio.js list the same templates");
-ok(cat.every((k) => /^[gepihmtbn]_[a-z]{2,8}$/.test(k)), "every template key passes the slide-design pattern the page and the worker check");
+ok(cat.length === 69 && cat.slice().sort().join() === TEMPLATE_KEYS.slice().sort().join(), "rules/cards.json and studio.js list the same templates");
+ok(cat.every((k) => /^[gepihmtbndkls]_[a-z]{2,8}$/.test(k)), "every template key passes the slide-design pattern the page and the worker check");
 // ... and the check itself keeps every one of them: a slide's own template must survive slideExtras (page) and slide_extras
 // (worker). The pattern was [gepi] while the catalogue already had h_ templates, so a Hand-drawn choice on one slide was silently
 // dropped. Read from the two sources (compliance.js imports JSON, which Node will not load without an attribute).
@@ -158,10 +158,10 @@ ok(cat.every((k) => /^[gepihmtbn]_[a-z]{2,8}$/.test(k)), "every template key pas
 
 // THE FOUR POSTER LOOKS (Wan, 16 Nov 2026): marker, torn paper, colour blocks, neon. Each is a single card and a whole carousel.
 {
-  const SK = ["marker", "torn", "block", "neon"];
-  ok(SK.every((k) => STUDIO_LOOKS.includes(k)), "the four poster looks are Studio looks");
-  for (const look of SK) {
-    const p = look[0];
+  // and four more the same day (card board, chalkboard, line map, torn strips): the same five slides, so the same rules
+  const SK = { marker: "m", torn: "t", block: "b", neon: "n", deck: "d", chalk: "k", metro: "l", strip: "s" };
+  ok(Object.keys(SK).every((k) => STUDIO_LOOKS.includes(k)), "the eight poster looks are Studio looks");
+  for (const [look, p] of Object.entries(SK)) {
     // a carousel: cover, points, comparison, recommendation, closing
     const deck = [
       { title: "Notifikasi bukan kelulusan", lead: "Tiga perkara." },

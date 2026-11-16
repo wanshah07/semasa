@@ -77,7 +77,7 @@ export default function TemplateCatalogue({ value, onPick, stream = "regulab", d
     return () => { live = false; };
   }, [stream]);
   const groups = [["grid", "Grid"], ["era", "Info ERA"], ["photo", t("Foto", "Photo")], ["image", t("Gambar", "Image")], ["hand", t("Lukisan tangan", "Hand-drawn")],
-    ["marker", t("Poster marker", "Marker poster")], ["torn", t("Kertas koyak", "Torn paper")], ["block", t("Blok warna", "Colour blocks")], ["neon", "Neon"]];
+    ["marker", t("Poster marker", "Marker poster")], ["torn", t("Kertas koyak", "Torn paper")], ["block", t("Blok warna", "Colour blocks")], ["neon", "Neon"], ["deck", t("Papan kad", "Card board")], ["chalk", t("Papan kapur", "Chalkboard")], ["metro", t("Peta laluan", "Line map")], ["strip", t("Jalur koyak", "Torn strips")]];
   const ratio = stream === "linkedin" ? "1080 / 1350" : "1 / 1";
   return (
     <div className="space-y-2">

@@ -121,7 +121,7 @@ export const SLIDE_WORDS = { lead: 400, eyebrow: 80, chip: 60, note: 240, footno
 const SLIDE_WORD_KEYS = Object.keys(SLIDE_WORDS);
 const SLIDE_STYLE = {
   // one letter per card family: grid, era, photo, image, hand, and the four poster looks (marker, torn, block, neon)
-  template: /^[gepihmtbn]_[a-z]{2,8}$/,
+  template: /^[gepihmtbndkls]_[a-z]{2,8}$/,
   scrim: /^(none|light|medium|heavy)$/,
   bg: /^(none|post_image|lib:g_[a-z0-9]{2,30}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/,
   mascot: /^(none|[a-z]{2,20})$/,

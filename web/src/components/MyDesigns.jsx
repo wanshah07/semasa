@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, ImageIcon, Loader2, Palette, Plus, Star, Trash2 } from "lucide-react";
-import { LOOKS, MASCOTS_ON, STUDIO_LOOKS, ensureFonts, renderSlides, setLogo } from "../lib/cards/studio";
+import { LOOKS, MASCOTS_ON, STUDIO_LOOKS, ensureFonts, lookLetter, renderSlides, setLogo } from "../lib/cards/studio";
 import { GROUNDS, MASCOTS, TEMPLATES } from "../lib/cards/library";
 import { newDesignId, packDesign, resolveLook, useDesigns } from "../lib/designs";
 import { buildDesignFromReference, nameFromFile } from "../lib/designFromReference";
@@ -79,7 +79,7 @@ function Editor({ initial, onSave, onCancel, isDefault }) {
   const [asDefault, setAsDefault] = useState(isDefault);
   const [busy, setBusy] = useState(false);
   const set = (patch) => setD((x) => ({ ...x, ...patch }));
-  const family = d.look[0];
+  const family = lookLetter(d.look);        // not the look's first letter: chalk is k_, metro is l_
   const tplOptions = useMemo(() => [["", t("Auto (keluarga memilih)", "Auto (the family chooses)")],
     ...TEMPLATES.filter((x) => x.k[0] === family).map((x) => [x.k, lang === "bm" ? x.name.split(" · ")[1] : x.en.split(" · ")[1]])], [family, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const samples = useSamples(d, true);

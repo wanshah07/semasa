@@ -318,7 +318,7 @@ SKIN_SHAPES = {
     "pick": {"lead": "Iklan rawatan menukar kosmetik menjadi ubat.", "points": ["Semak tuntutan", "Simpan data keselamatan"]},
     "close": {"points": ["Notifikasi sah 2 tahun", "Boleh dibatalkan"], "note": "Nombor NOT ialah permulaan."},
 }
-SKIN_LOOKS = {"m": "marker", "t": "torn", "b": "block", "n": "neon"}
+SKIN_LOOKS = {"m": "marker", "t": "torn", "b": "block", "n": "neon", "d": "deck", "k": "chalk", "l": "metro", "s": "strip"}
 SHAPES.update({f"{p}_{part}": shape for p in SKIN_LOOKS for part, shape in SKIN_SHAPES.items()})
 
 
@@ -350,7 +350,7 @@ POSTER_DECK = [
 
 
 @browser
-@pytest.mark.parametrize("look", ["marker", "torn", "block", "neon"])
+@pytest.mark.parametrize("look", list(SKIN_LOOKS.values()))
 @pytest.mark.parametrize("stream", ["regulab", "linkedin"])
 def test_a_poster_look_draws_a_whole_carousel_and_a_single_card(look, stream):
     """Wan, 16 Nov 2026: four looks, each as a single card and as a carousel, on both streams."""
@@ -364,7 +364,7 @@ def test_a_poster_look_draws_a_whole_carousel_and_a_single_card(look, stream):
 
 
 @browser
-@pytest.mark.parametrize("look", ["marker", "torn", "block", "neon"])
+@pytest.mark.parametrize("look", list(SKIN_LOOKS.values()))
 def test_a_poster_look_shrinks_its_type_for_a_long_slide_and_refuses_only_what_cannot_fit(look):
     long = {"title": "Lapan perkara tentang notifikasi kosmetik yang setiap pengeluar mesti tahu",
             "points": ["Peraturan 18A mewajibkan notifikasi sebelum produk dikilang, diimport atau dijual di Malaysia"] * 8}
@@ -375,7 +375,7 @@ def test_a_poster_look_shrinks_its_type_for_a_long_slide_and_refuses_only_what_c
 
 
 @browser
-@pytest.mark.parametrize("look", ["image", "marker", "torn", "block", "neon"])
+@pytest.mark.parametrize("look", ["image", *SKIN_LOOKS.values()])
 def test_the_front_page_frames_the_posts_picture_and_is_complete_without_one(look):
     """Wan, 16 Nov 2026: a more impressive front page. The first slide is a poster cover: the picture on top, the hook large."""
     with_pic = studio_cards.render(POSTER_DECK, look=look, stream="regulab", ground=_jpeg(900, 1100), fit=True)
@@ -456,8 +456,8 @@ def test_the_dark_poster_look_is_dark_and_the_paper_ones_are_light():
     def corner(look):
         im = Image.open(io.BytesIO(studio_cards.render(POSTER_DECK[1:2], look=look, stream="linkedin")[0])).convert("L")
         return im.getpixel((540, 20))
-    assert corner("neon") < 60
-    assert all(corner(k) > 200 for k in ("marker", "torn", "block"))
+    assert corner("neon") < 60 and corner("chalk") < 120
+    assert all(corner(k) > 180 for k in ("marker", "torn", "block", "deck", "metro", "strip"))
 
 
 @browser

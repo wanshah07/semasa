@@ -297,7 +297,7 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, str
   const uses = (f) => !tpl || tpl.uses.includes(f);
   const note = tpl ? noteLabel(r.template, t) : t("Nota / belon (pilihan)", "Note / bubble (optional)");
   const groups = [["grid", "Grid"], ["era", "Info ERA"], ["photo", t("Foto", "Photo")], ["image", t("Gambar", "Image")], ["hand", t("Lukisan tangan", "Hand-drawn")],
-    ["marker", t("Poster marker", "Marker poster")], ["torn", t("Kertas koyak", "Torn paper")], ["block", t("Blok warna", "Colour blocks")], ["neon", "Neon"]];
+    ["marker", t("Poster marker", "Marker poster")], ["torn", t("Kertas koyak", "Torn paper")], ["block", t("Blok warna", "Colour blocks")], ["neon", "Neon"], ["deck", t("Papan kad", "Card board")], ["chalk", t("Papan kapur", "Chalkboard")], ["metro", t("Peta laluan", "Line map")], ["strip", t("Jalur koyak", "Torn strips")]];
   const tplOptions = [["", t("Ikut reka bentuk set (auto)", "As the set's design (auto)")],
     ...groups.flatMap(([g, name]) => TEMPLATES.filter((x) => x.group === g).map((x) => [x.k, `${name} · ${lang === "bm" ? x.name.split(" · ")[1] : x.en.split(" · ")[1]}`]))];
   const mascotOk = !r.template || takesMascot(r.template);

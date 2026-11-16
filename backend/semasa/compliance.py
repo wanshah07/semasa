@@ -35,6 +35,12 @@ SOCIAL_SRC = _rx(RULES["social_src"])
 AGGREGATOR = _rx(RULES["aggregator"])
 ANY_URL = _rx(RULES["any_url"])
 NOT_ENGLISH = _rx(RULES["not_english"])
+VAGUE = [_rx(r) for r in RULES["vague"]["phrases"]]
+VAGUE_ANCHOR = _rx(RULES["vague"]["anchor"])
+VAGUE_AHEAD = int(RULES["vague"]["ahead"])
+VAGUE_FROM = str(RULES["vague"]["from"])
+VAGUE_FIX = "Say exactly which, how many or from when: put the figure, the date or the entry number"
+_SENT_END = re.compile(r"([.!?…])\s+")
 
 
 def _esc(s: str) -> str:
@@ -244,6 +250,7 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
     lang = lang_of(post)
     burl = brand_url_re(brand)
     limits = RULES["limits"].get(stream, {})
+    vague_hard = vague_blocks(post)
     for p in platforms_of(post):
         where = f"Caption ({p})"
         t = text_of(post, p, lang)
@@ -269,6 +276,8 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
                 add(False, where, label)
         if SOCIAL_SRC.search(t):
             add(True, where, "names a social source. Never say the idea came from Reddit, YouTube, a forum or a post.")
+        for phrase in vague_hits(sentences(t)):
+            add(vague_hard, where, f'vague: "{phrase}". {VAGUE_FIX} in that sentence or the two after it.')
         words = _WORD.findall(t.lower())
         for msg in indo_hits(t, extra):
             add(True, where, msg)
@@ -309,6 +318,8 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
                 add(False, f"{tag} variant ({p})", label)
         for msg in indo_hits(t, extra):
             add(False, f"{tag} variant ({p})", msg)
+        for phrase in vague_hits(sentences(t)):
+            add(False, f"{tag} variant ({p})", f'vague: "{phrase}". {VAGUE_FIX} in that sentence or the two after it.')
 
     # The citation is printed on the artwork's source line, so it is judged like the artwork.
     cit = str(post.get("citation") or "")
@@ -355,6 +366,9 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
 
     slides = normalise_slides(post.get("slides"))
     artwork(slides, "Slide")
+    # a vague line on a slide is pinned down on that slide or the next two (a cover may tease what slide 2 states exactly)
+    for phrase in vague_hits([slide_text(sl) for sl in slides]):
+        add(vague_hard, "Slides", f'vague: "{phrase}". {VAGUE_FIX} on that slide or the two after it.')
     # A carousel has as many slides as its story needs: no minimum and no maximum (Wan, 9 Nov 2026: "make sure no limit or min
     # carousel slide"). What stays is the closing line, because the last slide is where a carousel leaves its reader: a statement
     # that leaves them curious. One slide is a single card and is not a carousel.
@@ -386,6 +400,37 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
         if allow and post["domain"] not in allow and post["domain"] not in RULES.get("rota_any_day", []):
             add(False, "Rota", f"{DOW_MS[dow]} carries {' and '.join(allow)}, and this is {post['domain']}. A note, not a block.")
     return flags
+
+
+def sentences(text: str) -> list[str]:
+    """A caption as sentences: a full stop, ! ? or … followed by a space ends one, and so does a line break ("2.0%" does not).
+    Mirrored exactly by sentences in web/src/lib/compliance.js."""
+    return [s.strip() for s in _SENT_END.sub(r"\1\n", str(text or "")).split("\n") if s.strip()]
+
+
+def vague_hits(units: list[str]) -> list[str]:
+    """The vague phrases in `units` (a caption's sentences, or a deck's slides) that nothing pins down: no figure, date, entry
+    number or Annex in the same unit or the next VAGUE_AHEAD. One phrase per unit, each named once, in order.
+    Wan, 16 Nov 2026: "make sure no vague content post". Mirrored exactly by vagueHits in web/src/lib/compliance.js."""
+    out: list[str] = []
+    for i, unit in enumerate(units):
+        for rx in VAGUE:
+            m = rx.search(unit)
+            if not m:
+                continue
+            if not VAGUE_ANCHOR.search("\n".join(units[i:i + 1 + VAGUE_AHEAD])):
+                phrase = re.sub(r"\s+", " ", m.group(0)).strip().lower()
+                if phrase not in out:
+                    out.append(phrase)
+            break
+    return out
+
+
+def vague_blocks(post: dict[str, Any]) -> bool:
+    """A vague phrase blocks a post written on or after the day the rule arrived (rules/compliance.json vague.from) and only
+    warns on an older one, so nothing approved before the rule is stopped by it. A post with no date yet is new."""
+    made = str(post.get("created_at") or "")[:10]
+    return not made or made >= VAGUE_FROM
 
 
 def hard_count(flags: list[dict[str, Any]]) -> int:

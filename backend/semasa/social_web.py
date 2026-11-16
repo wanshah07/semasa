@@ -333,10 +333,11 @@ ACCOUNT_READERS: dict[str, Callable[[Any, str, datetime], tuple[list[dict[str, A
 
 
 def collect(page: Any, platform: str, cfg: dict[str, Any], now: datetime,
-            read: Callable[..., Any] | None = None, read_account: Callable[..., Any] | None = None
-            ) -> tuple[list[dict[str, Any]], str]:
+            read: Callable[..., Any] | None = None, read_account: Callable[..., Any] | None = None,
+            account_page: Any | None = None) -> tuple[list[dict[str, Any]], str]:
     """The hashtags and the watched accounts in the settings, newest `hours` only, loudest first. (posts, error); the error
-    only when nothing was read."""
+    only when nothing was read. `account_page`: the page the watched accounts are read with when it is not the hashtags' own
+    (Facebook: hashtags without the login, accounts with it, see fetch)."""
     opts = cfg.get(platform) or {}
     hours = max(6, min(14 * 24, int(opts.get("hours") or 72)))
     tags = list(dict.fromkeys(t for t in (hashtag(q) for q in (opts.get("queries") or [])) if t))[:MAX_TAGS]
@@ -351,9 +352,9 @@ def collect(page: Any, platform: str, cfg: dict[str, Any], now: datetime,
     errors: list[str] = []
     stats = {"tags": len(tags), "accounts": len(handles), "found": 0, "too_old": 0, "own": 0, "newest_h": None, "hours": hours}
     _NOTES.clear()
-    jobs = [(read, t, f"#{t}") for t in tags] + [(read_account, h, f"@{h}") for h in handles]
-    for fn, name, shown in jobs:
-        got, err = fn(page, name, now)
+    jobs = [(read, t, f"#{t}", page) for t in tags] + [(read_account, h, f"@{h}", account_page or page) for h in handles]
+    for fn, name, shown, on in jobs:
+        got, err = fn(on, name, now)
         if err:
             errors.append(err)
             log.warning("%s %s not read: %s", platform, shown, err)
@@ -431,6 +432,14 @@ def fetch(platform: str, cfg: dict[str, Any], now: datetime | None = None) -> tu
             browser = pw.chromium.launch()
             try:
                 opts: dict[str, Any] = {"locale": "en-MY", "timezone_id": "UTC", "viewport": {"width": 1280, "height": 2400}}
+                if platform == "facebook" and state:
+                    # A logged-in Facebook shows NO post on a hashtag page or in a post search (14 and 16 Nov 2026: 0 blocks for
+                    # every tag, and the sweep went from 1-2 posts to 0 the hour a working Facebook login was saved), while the
+                    # same pages without a login show one post a tag. So hashtags are read without the login and only the
+                    # watched accounts, which need it, are read with it.
+                    anonymous = browser.new_context(**opts).new_page()
+                    logged_in = browser.new_context(**opts, storage_state=state).new_page()
+                    return collect(anonymous, platform, cfg, now, account_page=logged_in)
                 if state:
                     opts["storage_state"] = state
                 page = browser.new_context(**opts).new_page()

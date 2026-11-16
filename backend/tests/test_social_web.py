@@ -292,3 +292,112 @@ def test_the_pages_own_labels_at_the_end_of_a_message_are_dropped_and_the_cap_is
     desc = '12 likes, 3 comments - dr.aiman on November 12, 2026: "' + "Kapsyen panjang. " * 100 + '"'
     assert len(social_web.parse_instagram(desc, "2026-11-12T10:00:00.000Z", "/p/ABC/")["text"]) == 500
     assert len(social_web.parse_instagram(desc, "2026-11-12T10:00:00.000Z", "/p/ABC/", cap=4000)["text"]) > 1500
+
+
+# --- a logged-in Facebook shows no post on a hashtag page (16 Nov 2026) ---------------------------------------------------------
+
+def _fake_playwright(monkeypatch):
+    """A stand-in for playwright.sync_api that records how each context was opened."""
+    import sys
+    import types
+
+    opened: list[dict] = []
+
+    class Page:
+        def __init__(self, opts):
+            self.opts = opts
+
+    class Context:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def new_page(self):
+            return Page(self.opts)
+
+    class Browser:
+        def new_context(self, **opts):
+            opened.append(opts)
+            return Context(opts)
+
+        def close(self):
+            pass
+
+    class PW:
+        class chromium:                                  # noqa: N801 - mirrors the real attribute
+            @staticmethod
+            def launch():
+                return Browser()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    mod = types.ModuleType("playwright.sync_api")
+    mod.sync_playwright = lambda: PW()
+    monkeypatch.setitem(sys.modules, "playwright", types.ModuleType("playwright"))
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", mod)
+    return opened
+
+
+def test_facebook_hashtags_are_read_without_the_login_and_only_accounts_with_it(monkeypatch):
+    opened = _fake_playwright(monkeypatch)
+    monkeypatch.setattr(social_web, "storage_state_path", lambda: "/nonexistent/state.json")
+    seen = {}
+
+    def fake_collect(page, platform, cfg, now, read=None, read_account=None, account_page=None):
+        seen.update(page=page, account_page=account_page)
+        return [], ""
+
+    monkeypatch.setattr(social_web, "collect", fake_collect)
+    REAL_FETCH("facebook", {"facebook": {"queries": ["halal"], "accounts": ["x"]}}, NOW)
+    assert len(opened) == 2
+    assert "storage_state" not in seen["page"].opts, "the hashtag page is anonymous"
+    assert seen["account_page"].opts["storage_state"] == "/nonexistent/state.json", "accounts keep the login"
+
+
+def test_instagram_still_reads_everything_with_the_login(monkeypatch):
+    opened = _fake_playwright(monkeypatch)
+    monkeypatch.setattr(social_web, "storage_state_path", lambda: "/nonexistent/state.json")
+    seen = {}
+
+    def fake_collect(page, platform, cfg, now, read=None, read_account=None, account_page=None):
+        seen.update(page=page, account_page=account_page)
+        return [], ""
+
+    monkeypatch.setattr(social_web, "collect", fake_collect)
+    REAL_FETCH("instagram", {"instagram": {"queries": ["halal"]}}, NOW)
+    assert len(opened) == 1
+    assert seen["page"].opts["storage_state"] == "/nonexistent/state.json" and seen["account_page"] is None
+
+
+def test_facebook_without_any_saved_login_still_reads_one_anonymous_page(monkeypatch):
+    opened = _fake_playwright(monkeypatch)
+    monkeypatch.setattr(social_web, "storage_state_path", lambda: None)
+    seen = {}
+
+    def fake_collect(page, platform, cfg, now, read=None, read_account=None, account_page=None):
+        seen.update(page=page, account_page=account_page)
+        return [], ""
+
+    monkeypatch.setattr(social_web, "collect", fake_collect)
+    REAL_FETCH("facebook", {"facebook": {"queries": ["halal"]}}, NOW)
+    assert len(opened) == 1 and "storage_state" not in seen["page"].opts and seen["account_page"] is None
+
+
+def test_collect_reads_accounts_with_the_account_page_and_hashtags_with_the_other():
+    hashtag_page, account_page = object(), object()
+    used = []
+
+    def tag(page, name, now):
+        used.append(("tag", page))
+        return [], ""
+
+    def account(page, name, now):
+        used.append(("account", page))
+        return [], ""
+
+    cfg = {"facebook": {"queries": ["halal"], "accounts": ["someone"]}}
+    social_web.collect(hashtag_page, "facebook", cfg, NOW, tag, account, account_page=account_page)
+    assert used == [("tag", hashtag_page), ("account", account_page)]

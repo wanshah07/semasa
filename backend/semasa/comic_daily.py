@@ -65,7 +65,7 @@ def hhmm(value: Any, fallback: str) -> str:
 
 def config(settings: dict[str, Any]) -> dict[str, Any]:
     """Wan's row `comic_series` with the file's defaults: {enabled, paused, lanes: [ids in order], at, series, words_mode,
-    make_now}. The switch is OFF unless it is exactly true, a lane the list does not name is off, an unknown lane is dropped."""
+    style, make_now}. The switch is OFF unless it is exactly true; a lane the list does not name is off."""
     raw = settings.get(KEY) if isinstance(settings.get(KEY), dict) else {}
     given = raw.get("lanes")
     lanes: list[str] = []
@@ -77,9 +77,10 @@ def config(settings: dict[str, Any]) -> dict[str, Any]:
     if not any(s["id"] == series for s in lib["series"]):
         series = RULES["series"]
     mode = str(raw.get("words_mode") or RULES["words_mode"])
+    style = str(raw.get("style") or "")
     return {"enabled": raw.get("enabled") is True, "paused": raw.get("paused") is True, "lanes": lanes,
             "at": hhmm(raw.get("at"), RULES["at"]), "series": series, "words_mode": mode if mode in ("art", "auto") else "art",
-            "make_now": str(raw.get("make_now") or "")}
+            "style": style if any(x["id"] == style for x in lib["styles"]) else "", "make_now": str(raw.get("make_now") or "")}
 
 
 def myt_day(now: datetime) -> str:
@@ -523,7 +524,8 @@ def plan_today(store: Any, settings: dict[str, Any], now: datetime | None = None
                "resolution": "portrait", "status": "pending", "voice": "off", "ai_background": False,
                "options": {"template": TEMPLATE, "via": "comic_daily", "story": item["title"][:300],
                            "series": {"id": series_id, "episode": number, "day": day, "lane": item["lane"],
-                                      "words_mode": cfg["words_mode"], "item": snapshot(item), "ruling": ruling,
+                                      "words_mode": cfg["words_mode"], "style": cfg["style"], "item": snapshot(item),
+                                      "ruling": ruling,
                                       "source": source_line(item, ruling), "requested": via, "trail": trail}}}
         made = store.table(MOTIONS).insert(row).execute().data[0]
         note(store, {"day": day, "status": "planned", "lane": item["lane"], "title": item["title"], "episode": number,
@@ -627,7 +629,8 @@ def write_storyboard(store: Any, row: dict[str, Any], llm: Any,
           "lane": sx.get("lane"), "day": sx.get("day"), "title": script["title"], "setting": script["setting"],
           "panels": [{"scene": p["scene"], "lines": [{"who": ln["who"], "text": ln["text"]} for ln in p["lines"]]}
                      for p in script["panels"]],
-          "source": source, "ruling": ruling, "words_mode": sx.get("words_mode") or RULES["words_mode"]}
+          "source": source, "ruling": ruling, "words_mode": sx.get("words_mode") or RULES["words_mode"],
+          "style": sx.get("style") or "", "names": comic_library.names_of(series)}
     lane = {d["id"]: d["name"]["bm"] for d in RULES["lane_defs"]}.get(str(sx.get("lane")), str(sx.get("lane") or ""))
     return sb, f"Siri {series['name']} · Episod {sb['episode']} · lorong {lane} · {source}"[:300]
 
@@ -653,7 +656,8 @@ def recheck(sb: Any, settings: dict[str, Any]) -> dict[str, Any]:
     why = comic_writer.refusal(comic_writer.flags(script, "regulab", reg)) or check_script(script, ruling)
     if why:
         raise StoryboardError(f"the comic breaks a rule: {why}")
-    return {**sb, "title": script["title"], "setting": script["setting"], "source": script["source"].removeprefix("Sumber: "),
+    return {**sb, "title": script["title"], "setting": script["setting"], "names": comic_library.names_of(series),
+            "source": script["source"].removeprefix("Sumber: "),
             "panels": [{"scene": p["scene"], "lines": [{"who": ln["who"], "text": ln["text"]} for ln in p["lines"]]}
                        for p in script["panels"]]}
 

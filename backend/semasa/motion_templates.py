@@ -41,7 +41,7 @@ from .log import get_logger
 
 log = get_logger("semasa.motion.templates")
 
-TEMPLATES = ("showcase", "story")
+TEMPLATES = ("showcase", "story", "comic")   # "comic": the daily comic series (comic_film.py), made by the worker only
 MAX_PRODUCTS = 5
 STORY_SCENES = 5
 SB_TOKENS = 4000              # a thinking model reasons before it answers: room for both
@@ -73,7 +73,7 @@ class StoryboardError(ValueError):
 
 
 def template_of(row: dict[str, Any]) -> str:
-    """'showcase' | 'story' when the film is made from a template, else '' (an explainer, the films from before)."""
+    """'showcase' | 'story' | 'comic' when the film is made from a template, else '' (an explainer, the films from before)."""
     options = row.get("options") or {}
     key = options.get("template") if isinstance(options, dict) else None
     return key if key in TEMPLATES else ""

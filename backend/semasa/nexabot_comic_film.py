@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from . import nexabot_check as chk
+from . import nexabot_generate as gen
 from . import nexabot_i2v as i2v
 
 PANELS_DIR = Path(__file__).resolve().parents[2] / "web" / "public" / "comic-panels"
@@ -79,47 +80,48 @@ def _clip(page, panel: Path, outdir: Path, report: dict, fresh: bool = False) ->
         return False
     gen_btn.click()
     report["generate_clicked_at"] = datetime.now(UTC).isoformat()
-    # the video URL is captured by on_response as soon as the result streams (a 206 from Supabase storage).
-    # The /api/v1/jobs list only shows t2v history, so wait on the VIDEO URL, not the jobs list.
+    # follow OUR job (the POST's own answer id), then download its MP4 — the same approach nexabot_generate.py uses.
+    # A job id comes from the Generate answer captured in `report["job_id"]`, else from the one job not in the list before.
+    before = gen._recent_jobs(page)
+    before_ids = {str(j.get("id")) for j in before or [] if j.get("id")}
     deadline = time.time() + MAX_WAIT_S
-    url = report.get("video_url")
+    meta: dict = {}
+    job_id = report.get("job_id")
     while time.time() < deadline:
-        url = report.get("video_url")
-        if url:
-            break
-        time.sleep(POLL_S)
-    if not url:
-        # the video URL may arrive just after the deadline (a long i2v generation); give it a last, longer chance
-        late_deadline = time.time() + 10 * 60
-        while time.time() < late_deadline:
-            url = report.get("video_url")
-            if url:
+        if not job_id and before is not None:
+            fresh = [j for j in (gen._recent_jobs(page) or []) if str(j.get("id")) not in before_ids]
+            if fresh:
+                job_id = str(fresh[0].get("id"))
+                report["job_id"] = job_id
+        if job_id:
+            meta = gen._job(page, job_id) or {}
+            status = str(meta.get("status") or "").lower()
+            if status in gen.DONE_STATES:
                 break
-            time.sleep(POLL_S)
-    if not url:
-        report["no_video_url"] = True
-        report["network"] = report.get("network", [])
-        return False
-    import requests
-    # a Supabase storage object streams 206 for ranged reads but a PLAIN GET (no Range header at all) returns the whole MP4
-    r = requests.get(url, timeout=300, stream=True)
-    if r.status_code not in (200, 206):
-        # a download_url may be relative; try against the base
-        if url.startswith("/"):
-            url2 = "https://nexabot.id" + url
-            r = requests.get(url2, timeout=300, stream=True)
-            if r.status_code not in (200, 206):
-                report["download_error"] = f"status {r.status_code}"
+            if status in gen.FAILED_STATES:
+                report["job_failed"] = {k: meta.get(k) for k in ("id", "status", "error") if meta.get(k)}
                 return False
-        else:
-            report["download_error"] = f"status {r.status_code}"
-            return False
-    dest = outdir / f"clip-{datetime.now(UTC).strftime('%H%M%S')}.mp4"
-    with open(dest, "wb") as fh:
-        for chunk in r.iter_content(1 << 20):
-            fh.write(chunk)
-    report.setdefault("clips", []).append(str(dest))
-    return True
+        time.sleep(POLL_S)
+    else:
+        report["timed_out"] = True
+        return False
+    # download: the job's own link first, then the documented download route, with the studio login
+    cands = [meta.get(k) for k in ("download_url", "video_url", "url")]
+    cands += [f"/api/v1/jobs/{job_id}/download"] if job_id else []
+    for url in [c for c in cands if isinstance(c, str) and c]:
+        full = url if url.startswith("http") else "https://nexabot.id" + url
+        try:
+            resp = page.context.request.get(full, timeout=300_000)
+            if resp.status == 200 and len(resp.body()) > 10_000:
+                dest = outdir / f"clip-{datetime.now(UTC).strftime('%H%M%S')}.mp4"
+                dest.write_bytes(resp.body())
+                report["clip_saved"] = str(dest)
+                report.setdefault("clips", []).append(str(dest))
+                return True
+        except Exception as exc:  # noqa: BLE001
+            report["download_tries"] = report.get("download_tries", []) + [f"{url[:60]} -> {str(exc)[:80]}"]
+    report["download_error"] = "; ".join(report.get("download_tries", []))[:400]
+    return False
 
 
 def concat(clips: list[str], out: Path) -> Path:

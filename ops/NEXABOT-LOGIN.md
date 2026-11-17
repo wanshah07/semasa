@@ -12,11 +12,12 @@ Semasa cannot log in for Wan and never handles the code. So Wan **records his ow
 session is stored as the GitHub secret `NEXABOT_STORAGE_STATE_B64`, the same way the Facebook/Instagram login is
 (`ops/SOCIAL-LOGIN.md`).
 
-**Fasa A sahaja / Phase A only.** Dalam fasa ini tiada video dibuat. Alat ini hanya (1) merakam dan menyemak sesi, dan (2) membaca
-struktur studio supaya Fasa B (menjana dan memuat turun video sebenar) ditulis daripada fakta, bukan tekaan. Probe tidak pernah
-menekan Generate.
-In this phase no video is made. The tools only (1) record and check the session, and (2) read the studio's structure so Phase B
-(generate and download a real video) is written from facts, not guesses. The probe never presses Generate.
+**Fasa A, dan satu percubaan terkawal / Phase A, and one controlled try.** Alat ini (1) merakam dan menyemak sesi, (2) membaca
+struktur studio dan, dengan `path`, mana-mana halaman lain sebagai teks (contoh `/api-docs`), dan (3) **menjana SATU video** dengan
+workflow `Nexabot generate` yang dijalankan dengan tangan sahaja (bahagian 6). Probe tidak pernah menekan Generate.
+The tools (1) record and check the session, (2) read the studio's structure and, with `path`, any other page as text (for example
+`/api-docs`), and (3) **generate ONE video** with the `Nexabot generate` workflow, run by hand only (section 6). The probe never
+presses Generate.
 
 ## Amaran / Read this first
 
@@ -30,6 +31,9 @@ In this phase no video is made. The tools only (1) record and check the session,
   perbelanjaan: had setiap larian dan had setiap hari, yang Wan tetapkan. Fasa A tidak membelanjakan apa-apa. / **Every real
   generation spends credits** (no monthly plan, credits are bought as needed). Phase B will cap spend: a per-run limit and a
   per-day limit that Wan sets. Phase A spends nothing.
+- **`Nexabot generate` MEMBELANJAKAN kredit** (0.5 setiap penjanaan; studio menunjukkan lencana UNLIMITED). Jalankan dengan tangan
+  sahaja; ia tiada jadual dan tiada apa-apa yang memanggilnya. / **`Nexabot generate` SPENDS credits** (0.5 per generation; the
+  studio shows an UNLIMITED badge). Run it by hand only; it has no schedule and nothing calls it.
 - **Probe hanya membaca.** Ia tidak menekan Generate, Buat, Hasilkan, Kirim, Bayar, Top up atau apa-apa yang boleh membelanjakan
   kredit, tidak menaip dalam kotak prompt, dan membatalkan setiap permintaan POST/PUT/PATCH/DELETE di rangkaian. / **The probe only
   reads.** It never presses Generate, Buat, Hasilkan, Kirim, Bayar, Top up or anything that could spend credits, never types in the
@@ -120,6 +124,86 @@ GitHub, repo `wanshah07/semasa`, tab **Actions**, **Nexabot probe**, **Run workf
   outside it.
 - Beritahu Claude larian itu sudah siap. Claude membaca laporan, dan Fasa B ditulis daripadanya. / Tell Claude the run is done.
   Claude reads the report, and Phase B is written from it.
+
+## 5b. Baca halaman lain, contoh /api-docs / Read another page, for example /api-docs
+
+Workflow **Nexabot probe** ada input **`path`** (lalai `/video-generator`). Isi `/api-docs` untuk membaca dokumentasi API yang ada
+di belakang log masuk. / The **Nexabot probe** workflow has an input **`path`** (default `/video-generator`). Enter `/api-docs` to
+read the API documentation that sits behind the login.
+
+- Untuk halaman selain studio, probe menulis **teks penuh yang kelihatan** (tajuk, perenggan, blok kod, jadual, laluan pautan) ke
+  `report.md` dan `report.json`, serta satu tangkap layar. Ia hanya membuka tab dan akordion; ia tidak menekan pautan atau apa-apa
+  yang menghantar. / For a page other than the studio the probe writes the **full visible text** (headings, paragraphs, code
+  blocks, tables, link paths) to `report.md` and `report.json`, plus a screenshot. It only opens tabs and accordions; it presses no
+  link and nothing that submits.
+- **Rahsia ditapis dahulu.** Halaman dokumentasi boleh memaparkan kunci API atau token Wan sendiri dalam contoh. Sebelum apa-apa
+  ditulis, token bearer, JWT, rentetan berawalan kunci (`sk-`, `nx_`, `nxb_`, `smi_`...), pasangan `api_key: nilai`, rentetan
+  24+ aksara yang bercampur huruf dan nombor, dan setiap nilai kuki yang disimpan diganti dengan `[REDACTED]`. Teks contoh seperti
+  `YOUR_API_KEY` dikekalkan. / **Secrets are removed first.** A docs page can show Wan's own API key or token in its examples.
+  Before anything is written, bearer tokens, JWTs, key-prefixed strings (`sk-`, `nx_`, `nxb_`, `smi_` ...), `api_key: value`
+  pairs, 24+ character strings that mix letters and digits, and every saved cookie value are replaced with `[REDACTED]`.
+  Placeholder text such as `YOUR_API_KEY` is kept.
+- **`/api-keys` tidak pernah dibuka**: halaman itu menyenaraikan kunci Wan. Kod menolak laluan itu dalam apa-apa ejaan, dan
+  rangkaian membatalkan sebarang permintaan ke sana. / **`/api-keys` is never opened**: that page lists Wan's keys. The code
+  refuses the path in any spelling, and the network aborts any request to it.
+- Laluan mesti laluan biasa (`/api-docs`), tanpa alamat penuh, query atau `..`. / The path must be a plain path (`/api-docs`), no
+  full address, query or `..`.
+
+## 6. Jana SATU video / Generate ONE video
+
+GitHub, repo `wanshah07/semasa`, tab **Actions**, **Nexabot generate**, **Run workflow**. / GitHub, repo `wanshah07/semasa`, tab
+**Actions**, **Nexabot generate**, **Run workflow**.
+
+**INI MEMBELANJAKAN KREDIT (0.5 setiap penjanaan; UNLIMITED ditunjukkan).** Satu larian = satu penjanaan. Jalankan dengan tangan
+sahaja. / **THIS SPENDS CREDITS (0.5 per generation; UNLIMITED is shown).** One run is one generation. Run it by hand only.
+
+Input / Inputs:
+
+| Input | Pilihan / Options | Lalai / Default |
+|---|---|---|
+| `prompt` | teks biasa, 3 hingga 800 aksara / plain text, 3 to 800 characters | "A slow cinematic push-in on a clean laboratory bench with glassware and soft morning light, no people, no text" |
+| `orientation` | `portrait`, `landscape` | `portrait` |
+| `resolution` | `720p`, `1080p` | `720p` |
+
+Apa yang dilakukan, mengikut urutan / What it does, in order:
+
+1. Membuka studio dengan sesi yang disimpan. Jika ditolak: **"the saved login was refused: record it again"**. / Opens the studio
+   with the saved session. If refused: **"the saved login was refused: record it again"**.
+2. Membaca baki dan label butang Generate; kekal dalam mod Text to Video; memilih orientasi dan resolusi; menaip prompt. / Reads
+   the balance and the Generate label; stays in Text to Video mode; picks the orientation and resolution; types the prompt.
+3. **Had perbelanjaan**: membaca label Generate sekali lagi dan **berhenti tanpa menekan Generate** jika harga melebihi 1 kredit
+   (satu pemalar, `SPEND_CAP_CREDITS`), jika harga tidak boleh dibaca tanpa penanda UNLIMITED, atau jika baki lebih rendah daripada
+   harga tanpa UNLIMITED. / **Spend cap**: reads the Generate label again and **stops without pressing Generate** when the price is
+   above 1 credit (one constant, `SPEND_CAP_CREDITS`), when the price cannot be read and there is no UNLIMITED marker, or when the
+   balance is below the price and there is no UNLIMITED marker.
+4. Menekan Generate **sekali sahaja**, tidak pernah diulang. Jika ia nampak tidak memulakan kerja, ia memberitahu dan berhenti. /
+   Presses Generate **once**, never repeated. If it seems not to have started a job, it says so and stops.
+5. Menunggu sehingga 15 minit **tanpa menekan apa-apa** (bukan CANCEL ALL, bukan DELETE ALL, bukan bayaran), membaca halaman dan
+   senarai kerja. / Waits up to 15 minutes **pressing nothing** (not CANCEL ALL, not DELETE ALL, not payment), reading the page and
+   the job list.
+6. Memuat turun MP4 (di bawah 40 MB), menjalankan ffprobe, dan menulis laporan. / Downloads the MP4 (under 40 MB), runs ffprobe,
+   and writes the report.
+
+Pengawal / Guards (dalam kod dan ujian / in code and tests):
+
+- Senarai **dibenarkan**, bukan senarai larangan: hanya mod Text to Video, orientasi dan resolusi yang dipilih, kotak prompt dan
+  Generate (sekali). `Choose payment mode`, CANCEL ALL, DELETE ALL, sembang, setiap pautan dan setiap nama lain ditolak. / An
+  **allow-list**, not a deny-list: only the Text to Video mode, the chosen orientation and resolution, the prompt box and Generate
+  (once). `Choose payment mode`, CANCEL ALL, DELETE ALL, the chat, every link and every other name are refused.
+- Satu-satunya tulis yang dihantar ialah satu POST yang mencipta kerja (ke laluan di bawah `/api/` pada nexabot.id, hanya selepas
+  Generate, sekali setiap laluan, tidak pernah ke laluan bayaran, dompet, kredit, komisen, padam, batal, log keluar, sembang atau
+  kunci). Setiap tulis lain dibatalkan di rangkaian. / The only write sent is the one job-creating POST (to a path under `/api/`
+  on nexabot.id, only after Generate, once per path, never to a payment, wallet, credits, commission, delete, cancel, logout, chat
+  or key path). Every other write is aborted at the network.
+- **Video siap tidak dihantar ke mana-mana**: tiada Telegram, tiada Supabase, tiada Import video. Ia hanya ada dalam artifact
+  **`nexabot-generate`** (satu hari): `report.md`, `report.json`, tiga tangkap layar dan `video.mp4`. / **The finished video is sent
+  nowhere**: no Telegram, no Supabase, no Import video. It exists only in the **`nexabot-generate`** artifact (one day):
+  `report.md`, `report.json`, three screenshots and `video.mp4`.
+- Laporan menyatakan baki sebelum dan selepas, label Generate, setiap panggilan (kaedah + laluan + status), bentuk JSON kerja,
+  status akhir, masa yang diambil, dan **apa yang tidak berjaya**. Tiada kuki atau token ditulis; tandatangan query alamat video
+  dibuang. / The report states the balance before and after, the Generate label, every call (method + path + status), the job JSON
+  shape, the final status, the time taken, and **what did NOT work**. No cookie or token is written; the video address's query
+  signature is dropped.
 
 ## Apa yang ada dalam laporan / What the report holds
 

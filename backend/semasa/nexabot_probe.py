@@ -1,6 +1,6 @@
 """READ-ONLY probe of the nexabot.id Creator Studio (https://nexabot.id/video-generator), Phase A (ops/NEXABOT-LOGIN.md).
 
-    python -m semasa.nexabot_probe OUTDIR [--state storage_state.json]
+    python -m semasa.nexabot_probe OUTDIR [--state storage_state.json] [--path /api-docs]
 
 It opens the studio with the saved login (NEXABOT_STORAGE_STATE_B64, or --state), and writes into OUTDIR:
   report.json, report.md   the page's structure: final address, title, the visible text of the main areas, every button, link,
@@ -8,6 +8,12 @@ It opens the studio with the saved login (NEXABOT_STORAGE_STATE_B64, or --state)
                            options a menu shows when opened, the credit or balance text if shown, and the same-origin
                            XHR/fetch calls the page made as METHOD + PATH + status
   *.png                    full-page and menu screenshots (they can show the account name and balance)
+
+With --path PATH (default /video-generator) it reads ANY other same-origin page instead, as text only: the headings, paragraphs,
+code blocks, tables and same-origin link paths of the page (used for /api-docs), after the same guarded opening of tabs and
+accordions. Everything that looks like a secret in that text (bearer tokens, JWTs, key-prefixed strings, long mixed
+letter-and-digit tokens, `api_key: value` pairs) is replaced with [REDACTED] before anything is written, as is every saved cookie
+value. /api-keys (the page that lists the account's own keys) and sign-out addresses are refused in code (`check_path`).
 
 What it never does, in code:
   * click anything that could spend credits or submit a generation: a control whose accessible name matches `FORBIDDEN`
@@ -31,7 +37,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from . import nexabot_check as check
 
@@ -50,6 +56,119 @@ ELEMENTS_MAX = 500
 AREA_CHARS = 4000
 ID_PARTS = re.compile(r"^(?:[0-9a-fA-F-]{16,}|[\d-]{5,})$")
 BALANCE_WORDS = re.compile(r"credit|kredit|saldo|balance|coin|koin|token|poin|points|wallet|dompet", re.IGNORECASE)
+
+REDACTED = "[REDACTED]"
+# path segments that are never opened: the page that lists the owner's own API keys, and anything that signs the session out
+PRIVATE_SEGMENTS = frozenset({"api-keys", "api_keys", "apikeys", "api-key", "api_key", "apikey",
+                              "logout", "log-out", "signout", "sign-out"})
+PATH_OK = re.compile(r"^/[A-Za-z0-9/_\-.]*$")
+TEXT_MAX = 200_000
+
+
+class PathRefused(ValueError):
+    """A path the probe will not open."""
+
+
+def private_path(path: str) -> bool:
+    """True when any segment of `path` is a private one (the owner's API keys, a sign-out address)."""
+    segs = [s.lower() for s in re.split(r"[/]+", unquote(path or "")) if s]
+    return any(s in PRIVATE_SEGMENTS for s in segs)
+
+
+def check_path(raw: str) -> str:
+    """The same-origin path the probe may open, or PathRefused. Only a plain path is accepted (no scheme, no host, no query, no
+    fragment, no `..`); /api-keys in any spelling, and a sign-out address, are refused."""
+    path = (raw or "").strip() or check.STUDIO_PATH
+    if not PATH_OK.match(path) or path.startswith("//") or ".." in path:
+        raise PathRefused(f"not a plain same-origin path: {path[:60]!r} (give a path like /api-docs)")
+    if private_path(path):
+        raise PathRefused(f"{path} is never opened: it lists the account's own keys or signs the session out")
+    return path.rstrip("/") or "/"
+
+
+def private_url(url: str, origin: str = check.ORIGIN) -> bool:
+    """True when a request address is a same-origin private page (checked at the network as well, so a redirect or a script
+    cannot take the browser there either)."""
+    parts = urlsplit(url or "")
+    want = urlsplit(origin)
+    return (parts.scheme, parts.netloc) == (want.scheme, want.netloc) and private_path(parts.path)
+
+
+# --- secrets in text ----------------------------------------------------------------------------------------------------------
+
+_PLACEHOLDER = re.compile(r"your|example|placeholder|x{6,}|\*{3,}|<|>|\.\.\.|\{|\}", re.IGNORECASE)
+_TYPE_WORDS = frozenset({"string", "number", "boolean", "integer", "object", "array", "null", "true", "false", "required",
+                         "optional", "bearer", "basic", "token"})
+_JWT = re.compile(r"(?<![A-Za-z0-9_\-])ey[A-Za-z0-9_\-]{6,}\.[A-Za-z0-9_\-]{6,}(?:\.[A-Za-z0-9_\-]*)?")
+_BEARER = re.compile(r"(?i)\b(bearer|basic)(\s+)([A-Za-z0-9._~+/=\-]{8,})")
+_PREFIXED = re.compile(r"(?<![A-Za-z0-9])(?:sk|pk|rk|nx|nxb|smi|ghp|gho|ghs|github_pat|xox[abp])[-_][A-Za-z0-9_\-]{8,}")
+_ASSIGN = re.compile(
+    r"""(?ix)
+    (?P<k>(?:x-)?(?:api[-_]?key|apikey|access[-_]?token|auth[-_]?token|refresh[-_]?token|secret(?:[-_]?key)?|client[-_]?secret|
+         password|passwd|token|authorization|cookie|session[-_]?id|signature)["']?)
+    (?P<sep>\s*[:=]\s*)
+    (?P<q>["']?)
+    (?P<scheme>(?:(?:bearer|basic|token)\s+)?)
+    (?P<v>[^\s"',;&<>\[\]]{6,})""")
+_LONG = re.compile(r"(?<![A-Za-z0-9_\-])[A-Za-z0-9_\-]{24,}(?![A-Za-z0-9_\-])")
+
+
+def _long_secretish(tok: str) -> bool:
+    """A 24+ character token that mixes letters and digits and is not a slug of plain words and short numbers."""
+    if not (re.search(r"[A-Za-z]", tok) and re.search(r"\d", tok)) or _PLACEHOLDER.search(tok):
+        return False
+    segs = [s for s in re.split(r"[-_]", tok) if s]
+    slug = all((s.isalpha() and s.islower() and len(s) <= 14) or (s.isdigit() and len(s) <= 4) for s in segs)
+    return not slug
+
+
+def _redact_text(text: str) -> tuple[str, int]:
+    n = 0
+
+    def hit(keep: str = "") -> str:
+        nonlocal n
+        n += 1
+        return keep + REDACTED
+
+    text = _JWT.sub(lambda m: hit(), text)
+    text = _BEARER.sub(lambda m: m.group(0) if _PLACEHOLDER.search(m.group(3)) or REDACTED in m.group(3)
+                       else hit(f"{m.group(1)}{m.group(2)}"), text)
+    text = _PREFIXED.sub(lambda m: m.group(0) if _PLACEHOLDER.search(m.group(0)) else hit(), text)
+
+    def assign(m: re.Match[str]) -> str:
+        v = m.group("v")
+        if REDACTED in v or _PLACEHOLDER.search(v) or v.lower().strip("\"'") in _TYPE_WORDS:
+            return m.group(0)
+        return hit(f"{m.group('k')}{m.group('sep')}{m.group('q')}{m.group('scheme')}")
+
+    text = _ASSIGN.sub(assign, text)
+    text = _LONG.sub(lambda m: hit() if _long_secretish(m.group(0)) else m.group(0), text)
+    return text, n
+
+
+def redact_secrets(text: str) -> str:
+    """`text` with everything that looks like a secret replaced by [REDACTED]: JWTs, bearer and basic credentials, strings with
+    a key-like prefix (sk-, nx_, nxb_, smi_ ...), `api_key: value` style pairs, and any 24+ character token that mixes letters
+    and digits (not a slug of plain words, not a placeholder such as YOUR_API_KEY). Plain words, paths and short ids stay."""
+    return _redact_text(text or "")[0]
+
+
+def redact_tree(obj: Any) -> tuple[Any, int]:
+    """The same redaction over every string inside a dict/list report, BEFORE it is serialised (redacting JSON text could eat
+    a backslash and break the file). Returns (clean copy, number of strings replaced)."""
+    if isinstance(obj, str):
+        return _redact_text(obj)
+    if isinstance(obj, list):
+        pairs = [redact_tree(v) for v in obj]
+        return [p[0] for p in pairs], sum(p[1] for p in pairs)
+    if isinstance(obj, dict):
+        out: dict[Any, Any] = {}
+        total = 0
+        for k, v in obj.items():
+            out[k], c = redact_tree(v)
+            total += c
+        return out, total
+    return obj, 0
 
 
 # --- pure decisions ----------------------------------------------------------------------------------------------------------
@@ -291,10 +410,22 @@ POPUP_JS = r"""
 """
 
 
+def private_marker(url: str) -> str:
+    """What the report says about a refused private address: the first private segment, never the rest of the address."""
+    for seg in urlsplit(url).path.split("/"):
+        if seg.lower() in PRIVATE_SEGMENTS:
+            return "/" + seg.lower() + " (private page)"
+    return "(private page)"
+
+
 def guard_route(blocked: list[str]) -> Any:
     """A Playwright route handler: reads go through, every write (POST, PUT, PATCH, DELETE) is aborted and noted."""
     def handler(route: Any) -> None:
         req = route.request
+        if private_url(req.url):
+            blocked.append(f"{req.method.upper()} {urlsplit(req.url).netloc}{private_marker(req.url)}")
+            route.abort()             # the owner's keys page (or a sign-out) is never fetched, whoever asked
+            return
         if req.method.upper() in SAFE_METHODS:
             route.fallback()          # the next handler, or the network
             return
@@ -312,14 +443,15 @@ def _shot(page: Any, outdir: Path, name: str, full: bool) -> str:
         return ""
 
 
-def probe(page: Any, outdir: Path, events: list[dict[str, Any]], blocked: list[str]) -> dict[str, Any]:
+def probe(page: Any, outdir: Path, events: list[dict[str, Any]], blocked: list[str],
+          full_shot: str = "01-studio-full.png") -> dict[str, Any]:
     """Read the open studio: snapshot, then open (never choose in) each tab and menu the guard allows."""
     notes: list[str] = []
     shots: list[str] = []
     opened: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     snap = page.evaluate(SNAPSHOT_JS)
-    s = _shot(page, outdir, "01-studio-full.png", True)
+    s = _shot(page, outdir, full_shot, True)
     if s:
         shots.append(s)
     start_url = page.url
@@ -369,9 +501,160 @@ def probe(page: Any, outdir: Path, events: list[dict[str, Any]], blocked: list[s
             "screenshots": shots, "notes": notes}
 
 
-def run(outdir: Path, state: dict[str, Any] | None) -> tuple[int, dict[str, Any]]:
+# --- reading any other page as text ------------------------------------------------------------------------------------------
+
+# The whole visible text of a page, plus its headings, code blocks (hidden tab panels included: textContent), tables and the
+# same-origin paths its links point to. It reads only; it presses nothing.
+PAGE_TEXT_JS = r"""
+() => {
+  const vis = (e) => { const r = e.getBoundingClientRect(), s = getComputedStyle(e);
+    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+  const one = (t) => (t || '').replace(/\s+/g, ' ').trim();
+  const text = (document.body.innerText || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, __MAX__);
+  const headings = [...document.querySelectorAll('h1,h2,h3,h4')].filter(vis)
+    .map((h) => h.tagName + ' ' + one(h.textContent).slice(0, 160));
+  const code = [...document.querySelectorAll('pre')].map((e) => (e.textContent || '').replace(/\s+$/g, '').slice(0, 8000))
+    .filter((t) => t.trim());
+  const tables = [...document.querySelectorAll('table')].map((t) => [...t.querySelectorAll('tr')]
+    .map((tr) => [...tr.children].map((c) => one(c.textContent).slice(0, 240)).join(' | ')).slice(0, 80));
+  const links = [];
+  for (const a of document.querySelectorAll('a[href]')) {
+    try { const u = new URL(a.href, location.href);
+      if (u.origin === location.origin) links.push(one(a.textContent).slice(0, 60) + ' -> ' + u.pathname);
+    } catch (_) {}
+  }
+  return {text, headings, code_blocks: code, tables, links: [...new Set(links)].slice(0, 120), title: document.title};
+}
+""".replace("__MAX__", str(TEXT_MAX))
+
+SCROLL_JS = """
+async () => {
+  for (let i = 0; i < 15; i++) { window.scrollBy(0, window.innerHeight); await new Promise((r) => setTimeout(r, 120)); }
+  window.scrollTo(0, 0);
+}
+"""
+
+
+def page_verdict(final_url: str, status: int | None, title: str, want_path: str, names: list[str]) -> tuple[str, str]:
+    """(code, line) for a read of an ordinary page: ok when the browser stayed on `want_path`, wall when it was sent to the
+    login, blocked on a refusal or a bot check, other for anywhere else (the studio included: a docs address that bounces to the
+    studio is not the docs)."""
+    code = check.classify(final_url, status, title)
+    path = (urlsplit(final_url or "").path or "/").rstrip("/") or "/"
+    if code == "ok" and want_path.rstrip("/") != check.STUDIO_PATH:
+        code = "other"
+    elif code == "other" and urlsplit(final_url or "").hostname == check.HOST and path == want_path.rstrip("/"):
+        code = "ok"
+    if code == "ok":
+        return code, f"nexabot.id: READ {path} with the saved login (login cookie names: {', '.join(names) or 'none'})."
+    if code == "wall":
+        return code, ("nexabot.id: LOGIN WALL. The saved login was refused (expired, signed out, or the site wants a new "
+                      "code): record it again with the login steps in ops/NEXABOT-LOGIN.md.")
+    if code == "blocked":
+        return code, f"nexabot.id: BLOCKED. The site answered {status or 'a check page'} (page title {title[:60]!r})."
+    where = (urlsplit(final_url or "").netloc or "?") + path
+    return code, f"nexabot.id: UNEXPECTED. Asked for {want_path} and the browser ended on {where}."
+
+
+def merge_unique(*lists: list[str]) -> list[str]:
+    out: list[str] = []
+    for lst in lists:
+        for x in lst:
+            if x and x not in out:
+                out.append(x)
+    return out
+
+
+def read_page(page: Any, outdir: Path, events: list[dict[str, Any]], blocked: list[str], path: str) -> dict[str, Any]:
+    """Read an opened ordinary page as text: scroll once to wake lazy content, read, open (never choose in) the tabs and
+    accordions the guard allows, read again, and merge. Returns the body for `build_page_report`."""
+    try:
+        page.evaluate(SCROLL_JS)
+    except Exception:  # noqa: BLE001 - a page that will not scroll is still read
+        pass
+    before = page.evaluate(PAGE_TEXT_JS)
+    slug = re.sub(r"[^a-z0-9]+", "-", path.lower()).strip("-") or "page"
+    body = probe(page, outdir, events, blocked, full_shot=f"01-{slug}-full.png")
+    after = page.evaluate(PAGE_TEXT_JS)
+    extra = [ln for ln in before["text"].splitlines() if ln and ln not in after["text"]]
+    text = after["text"] + ("\n" + "\n".join(extra) if extra else "")
+    tables = [t for t in after["tables"]] + [t for t in before["tables"] if t not in after["tables"]]
+    return {
+        "page_path": path, "page_text": text[:TEXT_MAX], "headings": merge_unique(before["headings"], after["headings"]),
+        "code_blocks": merge_unique(before["code_blocks"], after["code_blocks"]), "tables": tables[:40],
+        "links": merge_unique(before["links"], after["links"]), "opened": body["opened"], "skipped": body["skipped"],
+        "screenshots": body["screenshots"], "notes": body["notes"], "elements": [],
+    }
+
+
+def build_page_report(*, started: str, final_url: str, title: str, status: int | None, code: str, line: str,
+                      login_names: list[str], body: dict[str, Any], events: Iterable[dict[str, Any]],
+                      blocked_writes: list[str]) -> dict[str, Any]:
+    """The page read as plain data, with every string redacted. `redactions` says how many strings changed."""
+    parts = urlsplit(final_url)
+    safe_url = f"{parts.scheme}://{parts.netloc}{parts.path}" if parts.netloc else final_url
+    rep = {
+        "mode": "page", "started": started, "verdict": code, "verdict_line": line, "final_url": safe_url, "first_status": status,
+        "title": title, "login_cookie_names": login_names, "page_path": body.get("page_path", ""),
+        "headings": body.get("headings", []), "page_text": body.get("page_text", ""), "code_blocks": body.get("code_blocks", []),
+        "tables": body.get("tables", []), "links": body.get("links", []), "opened": body.get("opened", []),
+        "skipped_by_guard": body.get("skipped", []), "requests": summarise_requests(events),
+        "blocked_writes": sorted(set(blocked_writes)), "screenshots": body.get("screenshots", []),
+        "notes": list(body.get("notes", [])),
+    }
+    clean, n = redact_tree(rep)
+    clean["redactions"] = n
+    clean["notes"].append(f"{n} secret-looking string(s) in the text were replaced with {REDACTED} before writing")
+    return clean
+
+
+def _fence(text: str) -> str:
+    longest = max((len(m) for m in re.findall(r"`+", text)), default=0)
+    return "`" * max(3, longest + 1)
+
+
+def render_page_md(rep: dict[str, Any]) -> str:
+    """A readable version of a page read."""
+    def block(text: str) -> list[str]:
+        f = _fence(text)
+        return [f, text, f, ""]
+
+    out = [f"# Nexabot page read (read-only): {rep['page_path']}", "",
+           f"- Started: {rep['started']}", f"- Verdict: **{rep['verdict']}**: {rep['verdict_line']}",
+           f"- Final address: `{rep['final_url']}` (first status {rep['first_status']})", f"- Page title: {rep['title']!r}",
+           f"- Secret-looking strings replaced with {REDACTED}: {rep.get('redactions', 0)}", ""]
+    if rep["headings"]:
+        out += ["## Headings", ""] + [f"- {h}" for h in rep["headings"]] + [""]
+    out += ["## Page text (everything visible, after opening tabs and accordions)", ""] + block(rep["page_text"])
+    if rep["code_blocks"]:
+        out += [f"## Code blocks ({len(rep['code_blocks'])})", ""]
+        for n, c in enumerate(rep["code_blocks"], 1):
+            out += [f"### Block {n}", ""] + block(c)
+    if rep["tables"]:
+        out += [f"## Tables ({len(rep['tables'])})", ""]
+        for n, t in enumerate(rep["tables"], 1):
+            out += [f"### Table {n}", ""] + block("\n".join(t))
+    if rep["links"]:
+        out += ["## Same-origin links (text -> path; none was opened)", ""] + [f"- {x}" for x in rep["links"]] + [""]
+    out += ["## Menus and tabs opened (nothing was chosen or submitted)", ""]
+    out += [f"- {o.get('role')}: {o.get('name') or '(no name)'}" for o in rep["opened"]] or ["- none"]
+    out += ["", "## Skipped by the guard (never clicked)", ""]
+    out += [f"- {s.get('role')} {s.get('name')!r}: {s.get('why')}" for s in rep["skipped_by_guard"]] or ["- none"]
+    out += ["", "## Same-origin XHR / fetch calls (method, path, status; no headers, bodies or query values)", "",
+            "| method | path | status | times |", "|---|---|---|---|"]
+    out += [f"| {r['method']} | `{r['path']}` | {r['status']} | {r['count']} |" for r in rep["requests"]]
+    out += ["", "## Writes blocked at the network (and private pages never fetched)", ""]
+    out += [f"- {b}" for b in rep["blocked_writes"]] or ["- none"]
+    out += ["", "## Screenshots", ""] + [f"- `{s}`" for s in rep["screenshots"]]
+    out += ["", "## Notes", ""] + [f"- {n}" for n in rep["notes"]]
+    return "\n".join(out) + "\n"
+
+
+def run(outdir: Path, state: dict[str, Any] | None, path: str = check.STUDIO_PATH) -> tuple[int, dict[str, Any]]:
     from playwright.sync_api import sync_playwright
 
+    path = check_path(path)
+    studio = path == check.STUDIO_PATH
     outdir.mkdir(parents=True, exist_ok=True)
     started = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     events: list[dict[str, Any]] = []
@@ -387,40 +670,71 @@ def run(outdir: Path, state: dict[str, Any] | None) -> tuple[int, dict[str, Any]
                                                         "resource_type": r.request.resource_type}))
             page = ctx.new_page()
             page.on("dialog", lambda d: d.dismiss())            # a confirm() is never accepted
-            resp = page.goto(check.STUDIO_URL, wait_until="domcontentloaded", timeout=45_000)
+            resp = page.goto(check.ORIGIN + path, wait_until="domcontentloaded", timeout=45_000)
             try:
                 page.wait_for_load_state("networkidle", timeout=15_000)
             except Exception:  # noqa: BLE001
                 pass
             page.wait_for_timeout(2500)
             title = page.title()
-            code, line = check.verdict(page.url, names, resp.status if resp else None, title)
-            if code != "ok":
-                shot = _shot(page, outdir, "00-not-the-studio.png", False)
-                body = {"areas": {}, "elements": [], "opened": [], "skipped": [], "screenshots": [shot] if shot else [],
-                        "notes": ["the studio did not open, so nothing was probed"]}
+            status = resp.status if resp else None
+            if studio:
+                code, line = check.verdict(page.url, names, status, title)
             else:
+                code, line = page_verdict(page.url, status, title, path, names)
+            if code != "ok":
+                shot = _shot(page, outdir, "00-not-the-page.png", False)
+                body: dict[str, Any] = {
+                    "areas": {}, "elements": [], "opened": [], "skipped": [], "screenshots": [shot] if shot else [],
+                    "notes": ["the page did not open as asked, so nothing was read"], "page_path": path}
+            elif studio:
                 body = probe(page, outdir, events, blocked)
-            report = build_report(started=started, final_url=page.url, title=title, code=code, line=line,
-                                  status=resp.status if resp else None, login_names=names, events=events,
-                                  blocked_writes=blocked, **body)
+            else:
+                body = read_page(page, outdir, events, blocked, path)
+            if studio or code != "ok":
+                report = build_report(started=started, final_url=page.url, title=title, code=code, line=line, status=status,
+                                      login_names=names, events=events, blocked_writes=blocked,
+                                      **{k: v for k, v in body.items() if k != "page_path"})
+            else:
+                report = build_page_report(started=started, final_url=page.url, title=title, status=status, code=code,
+                                           line=line, login_names=names, body=body, events=events, blocked_writes=blocked)
         finally:
             browser.close()
-    secrets = secret_values(state)
-    (outdir / "report.json").write_text(redact(json.dumps(report, indent=1, ensure_ascii=False), secrets), encoding="utf-8")
-    (outdir / "report.md").write_text(redact(render_md(report), secrets), encoding="utf-8")
+    write_reports(outdir, report, state)
     return (0 if code == "ok" else 1), report
 
 
+def write_reports(outdir: Path, report: dict[str, Any], state: dict[str, Any] | None) -> None:
+    """report.json and report.md: secrets redacted in the data BEFORE it is serialised, then every saved cookie value as a
+    last line of defence over the text."""
+    secrets = secret_values(state)
+    if report.get("mode") != "page":
+        report, _n = redact_tree(report)
+        md = render_md(report)
+    else:
+        md = render_page_md(report)
+    (outdir / "report.json").write_text(redact(json.dumps(report, indent=1, ensure_ascii=False), secrets), encoding="utf-8")
+    (outdir / "report.md").write_text(redact(md, secrets), encoding="utf-8")
+
+
+def _opt(argv: list[str], name: str) -> str:
+    return argv[argv.index(name) + 1] if name in argv and argv.index(name) + 1 < len(argv) else ""
+
+
 def main(argv: list[str]) -> int:
-    args = [a for i, a in enumerate(argv[1:], 1) if not a.startswith("--") and argv[i - 1] != "--state"]
+    args = [a for i, a in enumerate(argv[1:], 1) if not a.startswith("--") and argv[i - 1] not in ("--state", "--path")]
     if not args:
         print(__doc__)
         return 2
+    try:
+        path = check_path(_opt(argv, "--path"))
+    except PathRefused as exc:
+        print(f"Refused: {exc}")
+        return 2
     state = None
-    path = argv[argv.index("--state") + 1] if "--state" in argv and argv.index("--state") + 1 < len(argv) else ""
-    if path:
-        state = json.loads(Path(path).read_text())
+    spath = _opt(argv, "--state")
+    if spath:
+        state = json.loads(Path(spath).read_text())
     elif os.environ.get("NEXABOT_STORAGE_STATE_B64", "").strip():
         import base64
         try:
@@ -430,14 +744,17 @@ def main(argv: list[str]) -> int:
             return 2
     else:
         print("No saved login given (no --state, no NEXABOT_STORAGE_STATE_B64): opening logged out, as a test run.")
-    code, rep = run(Path(args[0]), state)
+    code, rep = run(Path(args[0]), state, path)
     print(rep["verdict_line"])
-    print(f"{len(rep['elements'])} controls, {len(rep['opened'])} menus/tabs opened, "
+    print(f"{len(rep.get('elements') or [])} controls, {len(rep['opened'])} menus/tabs opened, "
           f"{len(rep['requests'])} distinct same-origin calls, {len(rep['blocked_writes'])} writes blocked, "
           f"{len(rep['screenshots'])} screenshots -> {args[0]}")
+    if rep.get("mode") == "page":
+        print(f"page text {len(rep['page_text'])} characters, {len(rep['code_blocks'])} code blocks, "
+              f"{len(rep['tables'])} tables, {rep.get('redactions', 0)} secret-looking strings redacted")
     if code != 0:
         print("::error::the saved login was refused: record it again (ops/NEXABOT-LOGIN.md)" if rep["verdict"] == "wall"
-              else f"::error::the studio did not open as expected ({rep['verdict']}): see the report")
+              else f"::error::the page did not open as expected ({rep['verdict']}): see the report")
     return code
 
 

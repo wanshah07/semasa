@@ -1,0 +1,83 @@
+name: Nexabot generate
+
+# ONE controlled video generation in the nexabot.id Creator Studio with Wan's saved login (ops/NEXABOT-LOGIN.md). THIS SPENDS
+# CREDITS (0.5 each; the studio shows an UNLIMITED badge), so it is run by hand from the Actions tab only: no schedule, no
+# trigger from any other workflow. One run is one generation: Generate is clicked once, never retried, and the run refuses to
+# click it at all when the button shows a price above the cap in backend/semasa/nexabot_generate.py (SPEND_CAP_CREDITS).
+# Everything else it may click, and the single write it may send, is an allow-list in that file. The finished video goes into
+# the one-day artifact only: nothing is sent to Telegram, Supabase or the Import endpoint. The prompt, orientation and
+# resolution reach the script through environment variables, never pasted into the shell text.
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "The video prompt (plain text, 3 to 800 characters)"
+        required: false
+        default: "A slow cinematic push-in on a clean laboratory bench with glassware and soft morning light, no people, no text"
+      orientation:
+        description: "Orientation"
+        required: false
+        default: portrait
+        type: choice
+        options: [portrait, landscape]
+      resolution:
+        description: "Resolution"
+        required: false
+        default: 720p
+        type: choice
+        options: [720p, 1080p]
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Chromium
+        run: bash ../.github/scripts/ensure-chromium.sh
+      - name: ffmpeg and ffprobe
+        run: bash ../.github/scripts/ensure-ffmpeg.sh
+      - name: Generate ONE video (spends credits)
+        env:
+          # a Playwright storage_state.json recorded by Wan, base64 (ops/NEXABOT-LOGIN.md). Empty = the run stops with a clear message.
+          NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
+          NB_PROMPT: ${{ inputs.prompt }}
+          NB_ORIENTATION: ${{ inputs.orientation }}
+          NB_RESOLUTION: ${{ inputs.resolution }}
+        run: |
+          if [ -z "$NEXABOT_STORAGE_STATE_B64" ]; then
+            echo "::error::the secret NEXABOT_STORAGE_STATE_B64 is not set: record the login and add it (ops/NEXABOT-LOGIN.md)"
+            exit 1
+          fi
+          python -m semasa.nexabot_generate "$RUNNER_TEMP/nexabot-generate" --prompt "$NB_PROMPT" \
+            --orientation "$NB_ORIENTATION" --resolution "$NB_RESOLUTION"
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/nexabot-generate/report.md" ]; then
+            grep -m1 '^- Outcome' "$RUNNER_TEMP/nexabot-generate/report.md" >> "$GITHUB_STEP_SUMMARY" || true
+            grep -m1 '^- Generate clicked' "$RUNNER_TEMP/nexabot-generate/report.md" >> "$GITHUB_STEP_SUMMARY" || true
+            echo "The report, the screenshots and video.mp4 are in the artifact nexabot-generate (kept one day)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Keep the report, screenshots and video (one day)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexabot-generate
+          path: ${{ runner.temp }}/nexabot-generate
+          retention-days: 1
+          if-no-files-found: ignore

@@ -289,3 +289,152 @@ def test_the_probe_reads_a_fake_studio_opens_the_menu_and_never_clicks_generate(
     assert {"method": "GET", "path": "/api/me?token=", "status": 200, "count": 1} in rep["requests"]
     assert "abc123SECRET" not in json.dumps(rep) + pr.render_md(rep)
     assert "Credits: 120" in rep["balance_lines"]
+
+
+# --- Task: reading any page as text (/api-docs), the secret redactor and the refused paths ----------------------------------
+
+FAKE_KEYS = [
+    "nxb_live_8f3a9c2d1e7b4a5c9d0e1f2a3b4c5d6e", "sk-abc123def456ghi789jkl012mno", "nx_9f8e7d6c5b4a3210fedcba",
+    "smi_9f8e7d6c5b4a3210", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PK",
+    "A1b2C3d4E5f6G7h8I9j0K1l2M3n4", "0123456789abcdef0123456789abcdef",
+]
+
+
+@pytest.mark.parametrize("key", FAKE_KEYS)
+def test_a_fake_key_is_redacted_wherever_it_sits(key):
+    for text in (f"key {key} end", f'{{"api_key": "{key}"}}', f"Authorization: Bearer {key}", f"curl -H 'x-api-key: {key}' u",
+                 f"https://nexabot.id/api/v1/jobs?api_key={key}&n=1", f"export TOKEN={key}", f"/api/v1/keys/{key}/use"):
+        out = pr.redact_secrets(text)
+        assert key not in out and "[REDACTED]" in out, (text, out)
+
+
+def test_plain_words_paths_short_ids_and_placeholders_are_kept():
+    keep = ["POST /api/v1/video-generations/status", "text-to-video image-to-video", "job_8x2 and id abc123",
+            "video-generation-2026-11-17-status-endpoint", "/api/v1/jobs?scope=&limit=20", "Authorization: Bearer YOUR_API_KEY",
+            '{"api_key": "YOUR_API_KEY", "type": "string", "token": "string"}', "Credits: 120", "getVideoGenerationJobStatusById",
+            "Start Frame to Video 1-1 img", "a 15-second video from text, a start frame, ingredients", "Status: processing"]
+    for text in keep:
+        assert pr.redact_secrets(text) == text, text
+
+
+def test_redact_tree_cleans_strings_inside_a_report_and_counts_them():
+    tree = {"a": ["Bearer nxb_live_8f3a9c2d1e7b4a5c9d0e1f2a3b4c5d6e", {"b": "plain text"}], "n": 5, "t": None}
+    clean, n = pr.redact_tree(tree)
+    assert n >= 1 and clean["n"] == 5 and clean["a"][1] == {"b": "plain text"}
+    assert "nxb_live" not in json.dumps(clean) and json.loads(json.dumps(clean))["a"][0].endswith("[REDACTED]")
+
+
+def test_api_keys_and_sign_out_paths_are_refused_in_every_spelling():
+    for bad in ("/api-keys", "/API-KEYS", "/api-keys/", "/api-keys/new", "/settings/api-keys", "/api_keys", "/apikeys",
+                "/api-key", "/%61pi-keys", "/logout", "/auth/signout", "//evil.example/api-docs", "https://nexabot.id/api-docs",
+                "/x/../api-keys", "/api-docs?next=1", "/api docs", "api-docs"):
+        with pytest.raises(pr.PathRefused):
+            pr.check_path(bad)
+    assert pr.check_path("/api-docs") == "/api-docs" and pr.check_path("/api-docs/") == "/api-docs"
+    assert pr.check_path("") == "/video-generator" and pr.check_path("/docs/v1/jobs.html") == "/docs/v1/jobs.html"
+    assert pr.main(["probe", "/tmp/never", "--path", "/api-keys"]) == 2
+
+
+def test_a_request_for_the_keys_page_is_aborted_at_the_network_even_as_a_read():
+    class Req:
+        def __init__(self, method, url):
+            self.method, self.url = method, url
+
+    class Route:
+        def __init__(self, req):
+            self.request, self.did = req, ""
+
+        def abort(self):
+            self.did = "abort"
+
+        def fallback(self):
+            self.did = "fallback"
+
+    blocked: list[str] = []
+    h = pr.guard_route(blocked)
+    for method, url, did in [("GET", "https://nexabot.id/api-keys", "abort"),
+                             ("GET", "https://nexabot.id/api/api-keys/list", "abort"),
+                             ("GET", "https://nexabot.id/api-docs", "fallback"), ("POST", "https://nexabot.id/api/x", "abort"),
+                             ("GET", "https://nexabot.id/logout", "abort")]:
+        r = Route(Req(method, url))
+        h(r)
+        assert r.did == did, (method, url)
+    assert any("/api-keys (private page)" in b for b in blocked)
+
+
+def test_page_verdict_for_an_ordinary_page():
+    assert pr.page_verdict("https://nexabot.id/api-docs", 200, "Docs", "/api-docs", ["s"])[0] == "ok"
+    assert pr.page_verdict("https://nexabot.id/login?next=%2Fapi-docs", 200, "Login", "/api-docs", [])[0] == "wall"
+    assert pr.page_verdict("https://nexabot.id/video-generator", 200, "NEXABOT", "/api-docs", [])[0] == "other"
+    assert pr.page_verdict("https://nexabot.id/api-docs", 403, "Forbidden", "/api-docs", [])[0] == "blocked"
+    assert "LOGIN WALL" in pr.page_verdict("https://nexabot.id/login", 200, "", "/api-docs", [])[1]
+
+
+def test_the_workflow_takes_a_path_input_through_an_env_var_not_the_shell_text():
+    raw = (pathlib.Path(__file__).parents[2] / ".github/workflows/nexabot-probe.yml").read_text()
+    flow = "\n".join(line for line in raw.splitlines() if not line.lstrip().startswith("#"))
+    assert "path:" in flow and "NB_PATH: ${{ inputs.path }}" in flow and '--path "$NB_PATH"' in flow
+    assert "run: python" not in flow and "inputs.path }}\"" not in flow
+
+
+DOCS = """<!doctype html><title>API Docs</title><main><h1>Nexabot API</h1>
+<p>Send your key as a bearer token.</p>
+<div role="tablist"><button role="tab" aria-selected="true" onclick="document.getElementById('py').hidden=true;
+ document.getElementById('sh').hidden=false">cURL</button><button role="tab" onclick="document.getElementById('sh').hidden=true;
+ document.getElementById('py').hidden=false">Python</button></div>
+<pre id="sh">curl -X POST https://nexabot.id/api/v1/jobs -H "Authorization: Bearer nxb_live_8f3a9c2d1e7b4a5c9d0e1f2a3b4c5d6e"
+  -d '{"prompt":"a cat","orientation":"portrait"}'</pre>
+<pre id="py" hidden>requests.post(url, headers={"x-api-key": "sk-abc123def456ghi789jkl012mno"})</pre>
+<table><tr><th>Field</th><th>Type</th></tr><tr><td>prompt</td><td>string</td></tr><tr><td>orientation</td><td>portrait|landscape</td></tr>
+</table><a href="/api-keys">Your keys</a><button onclick="window.fetch('/api-keys')">Show</button></main>
+<script>window.fetch('/api/docs/index'); window.fetch('/api/track',{method:'POST',body:'x'});</script>"""
+
+
+@browser
+def test_a_docs_page_is_read_as_text_with_its_keys_redacted_and_the_keys_page_never_fetched(tmp_path):
+    from playwright.sync_api import sync_playwright
+    seen: list[tuple[str, str]] = []
+
+    def fake_site(route):
+        req = route.request
+        seen.append((req.method, req.url))
+        if req.url.endswith("/api-docs"):
+            route.fulfill(status=200, content_type="text/html", body=DOCS)
+        else:
+            route.fulfill(status=200, content_type="application/json", body="{}")
+
+    events: list[dict] = []
+    blocked: list[str] = []
+    with sync_playwright() as pw:
+        b = chk.launch_browser(pw)
+        ctx = b.new_context(viewport={"width": 1366, "height": 900})
+        ctx.route("**/*", fake_site)
+        ctx.route("**/*", pr.guard_route(blocked))
+        ctx.on("response", lambda r: events.append({"method": r.request.method, "url": r.url, "status": r.status,
+                                                    "resource_type": r.request.resource_type}))
+        page = ctx.new_page()
+        page.goto(chk.ORIGIN + "/api-docs")
+        page.wait_for_timeout(300)
+        body = pr.read_page(page, tmp_path, events, blocked, "/api-docs")
+        # the page's own script tries the keys page: click that button the way a visitor would (the probe itself never does)
+        page.evaluate("() => window.fetch('/api-keys').catch(() => 0)")
+        page.wait_for_timeout(300)
+        b.close()
+    assert not any("/api-keys" in u for _, u in seen), seen             # aborted before it reached the (fake) network
+    assert all(m == "GET" for m, _ in seen), seen
+    rep = pr.build_page_report(started="t", final_url=chk.ORIGIN + "/api-docs?x=1", title="API Docs", status=200, code="ok",
+                               line="l", login_names=[], body=body, events=events, blocked_writes=blocked)
+    md = pr.render_page_md(rep)
+    blob = json.dumps(rep) + md
+    for key in ("nxb_live_8f3a9c2d1e7b4a5c9d0e1f2a3b4c5d6e", "sk-abc123def456ghi789jkl012mno"):
+        assert key not in blob, key
+    assert "Nexabot API" in md and "Authorization: Bearer [REDACTED]" in md and "x-api-key" in md          # the shape stays
+    assert rep["redactions"] >= 2 and len(rep["code_blocks"]) == 2                    # the hidden Python tab is read too
+    assert any("orientation | portrait|landscape" in "\n".join(t) for t in rep["tables"])
+    assert "Python" in {o["name"] for o in rep["opened"]}                                # a tab was opened, nothing chosen
+    assert rep["final_url"] == chk.ORIGIN + "/api-docs"                                  # no query
+    assert any("/api-keys" in x for x in rep["blocked_writes"]) and "POST nexabot.id/api/track" in rep["blocked_writes"]
+    assert (tmp_path / body["screenshots"][0]).exists()
+    pr.write_reports(tmp_path, rep, None)
+    assert "nxb_live" not in (tmp_path / "report.md").read_text() + (tmp_path / "report.json").read_text()
+    assert json.loads((tmp_path / "report.json").read_text())["mode"] == "page"

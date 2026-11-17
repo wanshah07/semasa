@@ -81,17 +81,26 @@ def _clip(page, panel: Path, outdir: Path, report: dict) -> bool:
             break
         time.sleep(POLL_S)
     if not url:
+        # the video URL may arrive just after the deadline (a long i2v generation); give it a last, longer chance
+        late_deadline = time.time() + 10 * 60
+        while time.time() < late_deadline:
+            url = report.get("video_url")
+            if url:
+                break
+            time.sleep(POLL_S)
+    if not url:
         report["no_video_url"] = True
         report["network"] = report.get("network", [])
         return False
     import requests
-    r = requests.get(url, timeout=300, stream=True)
-    if r.status_code != 200:
+    # a Supabase storage object is a 206 for ranged reads; a plain GET (no Range) returns the whole MP4
+    r = requests.get(url, timeout=300, stream=True, headers={"Range": ""})
+    if r.status_code not in (200, 206):
         # a download_url may be relative; try against the base
         if url.startswith("/"):
             url2 = "https://nexabot.id" + url
-            r = requests.get(url2, timeout=300, stream=True)
-            if r.status_code != 200:
+            r = requests.get(url2, timeout=300, stream=True, headers={"Range": ""})
+            if r.status_code not in (200, 206):
                 report["download_error"] = f"status {r.status_code}"
                 return False
         else:

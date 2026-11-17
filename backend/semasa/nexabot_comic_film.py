@@ -162,16 +162,29 @@ def main() -> int:
                                       viewport={"width": 1366, "height": 900}, accept_downloads=True)
             page = ctx.new_page()
 
+            def on_request(req):
+                if req.method == "POST" and ("/api/" in req.url or "generate" in req.url.lower()):
+                    try:
+                        body = req.post_data or ""
+                    except Exception:  # noqa: BLE001
+                        body = ""
+                    # record the mode + whether media/images are present, but NEVER a token or full base64
+                    report.setdefault("posts", []).append({
+                        "url": req.url[:200],
+                        "has_media": "media" in body or "image" in body.lower() or "base64" in body,
+                        "body_head": body[:200],
+                    })
+
             def on_response(resp):
                 req = resp.request
                 ctype = resp.headers.get("content-type", "")
                 if req.method == "GET" and i2v.gen._is_video(ctype, req.url) and not report.get("video_url"):
                     report["video_url"] = req.url
-                # record every POST and any video-bearing response, for diagnosing where the result lands
                 if req.method == "POST" or i2v.gen._is_video(ctype, req.url):
                     report.setdefault("network", []).append(
                         {"method": req.method, "url": req.url[:200], "status": resp.status, "ctype": ctype[:80]})
 
+            page.on("request", on_request)
             page.on("response", on_response)
             page.goto(chk.STUDIO_URL, wait_until="domcontentloaded", timeout=45_000)
             try:

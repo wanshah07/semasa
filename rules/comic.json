@@ -1,0 +1,124 @@
+{
+  "_about": "The comic (dialogue poster) library: the cartoon styles and the cartoon series, read by the page (web/src/lib/comic.js) and by the worker (backend/semasa/comic_library.py), so both name the same styles and the same cast. A style's `prompt` and `lettering` go into the picture maker's prompt VERBATIM every time: that is how a style is remembered and how a different picture maker draws the same look. A character's `look` is repeated word for word in every episode. Wan's own styles and series live in the settings row `comic` ({styles, series}) and are merged over these by id: the same id replaces, a new id is added.",
+  "version": 1,
+  "limits": {
+    "panels": 4,
+    "lines": 2,
+    "chars": 110,
+    "title": 90,
+    "source": 300,
+    "scene": 320,
+    "setting": 320,
+    "style_prompt": 1500,
+    "lettering": 400,
+    "look": 420,
+    "name": 60,
+    "about": 200,
+    "role": 160,
+    "voice": 240,
+    "own_styles": 24,
+    "own_series": 24
+  },
+  "default_style": "moden-bersih",
+  "default_series": "kak-lin-tanya",
+  "styles": [
+    {
+      "id": "moden-bersih",
+      "name": { "bm": "Moden bersih", "en": "Clean modern" },
+      "about": { "bm": "Warna rata, lorekan lembut, garis hitam tebal, palet hangat. Gaya contoh 16 Nov.", "en": "Flat colour, soft shading, bold black outlines, a warm palette. The look of the 16 Nov sample." },
+      "prompt": "Clean modern comic illustration. LINE: bold black outlines of one even weight around every figure and object, thinner black lines for the details inside them; closed, smooth lines, nothing sketchy or broken. COLOUR: flat fills in a warm, friendly palette of cream and soft beige walls, warm skin tones, dusty pink, mustard yellow and navy blue, at medium saturation. SHADING: one soft, slightly darker tone of the same colour under chins, hair and cloth folds; no hatching, no gradients, no hard black shadows. PROPORTIONS: semi-realistic adults about six heads tall, shown from the waist or the chest up. FACES: simple and expressive: oval eyes with a black pupil and one white highlight, thin eyebrows, a small simple nose, clear open or closed mouth shapes. BACKGROUND: the setting simplified into flat, muted shapes with few details, lighter and less saturated than the characters. FINISH: crisp digital artwork with no paper texture and no grain.",
+      "lettering": "Speech bubbles are smooth white ovals with an even black outline and a small curved tail. The lettering is a rounded, upright, bold sans-serif in black, in sentence case, centred in its bubble."
+    },
+    {
+      "id": "jalur-akhbar",
+      "name": { "bm": "Jalur akhbar", "en": "Newspaper strip" },
+      "about": { "bm": "Kartun akhbar harian: garis dakwat longgar, hidung besar, warna pudar dua tiga tona.", "en": "A daily newspaper cartoon: loose ink line, big noses, two or three faded tones." },
+      "prompt": "Classic daily newspaper comic strip. LINE: loose, lively black ink line that goes thick and thin as if drawn with a dip pen, with a few short hatching strokes for shadow. COLOUR: a limited faded palette printed on off-white newsprint: pale yellow, dull light blue and a soft brick red only, each used as a flat tint, with large areas left as plain off-white paper. SHADING: hatching and small solid black areas only; no soft shading and no gradients. PROPORTIONS: cartoon adults about four heads tall with large heads, big rounded noses, small bodies and four-fingered hands. FACES: dot eyes or small ovals, eyebrows that float above the head, wide simple mouths, strongly exaggerated expressions. BACKGROUND: almost empty: a ground line, one or two objects sketched in outline, the rest plain paper. FINISH: slightly rough ink edges and a faint newsprint paper tone.",
+      "lettering": "Speech bubbles are hand-drawn, slightly uneven white balloons with a thin black ink outline and a pointed tail. The lettering is hand-written comic capitals in black ink, upright and evenly spaced."
+    },
+    {
+      "id": "manga-hitam-putih",
+      "name": { "bm": "Manga hitam putih", "en": "Black and white manga" },
+      "about": { "bm": "Hitam putih sepenuhnya, tona titik kelabu, mata besar, garis laju.", "en": "Pure black and white with grey dot tone, large eyes, speed lines." },
+      "prompt": "Black and white Japanese manga page. LINE: fine, precise black pen lines of varying weight, thicker on the outer contour of a figure and hair-thin for details. COLOUR: none at all: pure black ink on pure white paper, with grey made only by regular dot screentone. SHADING: flat dot screentone in two densities on hair, clothes and cast shadows, plus solid black areas for dark hair; no soft grey, no gradients. PROPORTIONS: slim figures about six and a half heads tall with slightly long legs and small hands. FACES: large, tall eyes with detailed irises and two white highlights, a tiny nose drawn as one short line, a small mouth, sharp chins, hair drawn in pointed locks. BACKGROUND: clean technical line drawing of the setting in thin lines, or plain white with a few straight speed lines behind a speaker for emphasis. FINISH: crisp black and white print with visible dot pattern and no colour anywhere.",
+      "lettering": "Speech bubbles are clean white ovals with a thin black outline and a short straight tail. The lettering is a neat, upright, black sans-serif in sentence case, centred, with generous white space around it."
+    },
+    {
+      "id": "chibi-comel",
+      "name": { "bm": "Chibi comel", "en": "Cute chibi" },
+      "about": { "bm": "Kepala besar, badan kecil, warna pastel, pipi merah jambu.", "en": "Big heads, tiny bodies, pastel colours, pink cheeks." },
+      "prompt": "Cute chibi cartoon. LINE: soft, rounded dark brown outlines of one medium weight, with no sharp corners anywhere. COLOUR: bright pastel palette of mint green, baby pink, butter yellow, sky blue and lilac on a very pale cream background, flat fills. SHADING: almost none: one lighter spot of shine on hair and a small pink oval of blush on each cheek; no cast shadows. PROPORTIONS: super-deformed characters exactly two heads tall: a very large round head, a small rounded body, short stubby arms and legs, mitten hands without separate fingers. FACES: very large round shiny eyes set low on the face with two white highlights each, no nose, a tiny curved mouth, simple big expressions. BACKGROUND: one flat pastel colour with a few small simple shapes that suggest the setting, such as a shelf, a table or a window; no detail. FINISH: smooth, clean, sticker-like digital artwork.",
+      "lettering": "Speech bubbles are rounded white cloud-like shapes with a soft dark brown outline and a short rounded tail. The lettering is a rounded, friendly, bold sans-serif in dark brown, in sentence case, centred."
+    },
+    {
+      "id": "pop-retro",
+      "name": { "bm": "Pop retro titik halftone", "en": "Retro halftone pop" },
+      "about": { "bm": "Komik lama 1960-an: titik halftone, merah kuning biru terang, bayang hitam pekat.", "en": "A 1960s comic book: halftone dots, loud red, yellow and blue, solid black shadows." },
+      "prompt": "Retro 1960s pop comic book printing. LINE: heavy, confident black brush outlines that swell and taper, with solid black shapes for deep shadow and hair. COLOUR: only the four old printing colours: bright red, bright yellow, bright cyan blue and black, on slightly yellowed white paper; skin is drawn as a field of small pink dots. SHADING: visible halftone dots of even size in regular rows for every mid tone, and flat solid black for shadows; no soft shading, no gradients. PROPORTIONS: realistic, dramatic adults about seven heads tall, shown in close-up from the shoulders or the chest. FACES: realistically drawn with strong jaws, full lips, arched eyebrows and dramatic, wide-eyed expressions. BACKGROUND: a flat block of one bright colour or a field of halftone dots, with the setting suggested by one or two bold outlined objects. FINISH: slightly misaligned colour plates and a rough printed paper feel.",
+      "lettering": "Speech bubbles are white with a bold black outline and a sharp pointed tail. The lettering is bold, upright, hand-drawn comic-book capitals in black, tightly spaced and centred."
+    },
+    {
+      "id": "cat-air",
+      "name": { "bm": "Cat air lembut", "en": "Soft watercolour" },
+      "about": { "bm": "Lukisan buku cerita: cat air lutsinar, garis pensel nipis, tepi kabur, warna tanah.", "en": "A storybook painting: transparent watercolour, a thin pencil line, soft edges, earthy colours." },
+      "prompt": "Soft watercolour storybook illustration. LINE: thin, light, slightly wobbly grey-brown pencil line that fades in places; no black outline. COLOUR: transparent watercolour washes in a muted earthy palette of sage green, terracotta, ochre, dusty rose and soft grey-blue, with the white of the paper left showing through for the lightest areas. SHADING: a second, wetter layer of the same colour that pools darker at the edges of a shape; soft blooms and uneven washes; no flat fills and no hard shadows. PROPORTIONS: gentle, slightly simplified adults about five and a half heads tall with soft rounded shoulders. FACES: small dot or short-dash eyes, a faint line for the nose, a small soft mouth, a light wash of pink on the cheeks, calm and kind expressions. BACKGROUND: loose, pale washes that suggest the setting with a few painted shapes, fading out to bare paper towards the edges of each panel. FINISH: visible cold-pressed watercolour paper texture and soft, feathered edges everywhere.",
+      "lettering": "Speech bubbles are soft-edged shapes of bare off-white paper with a thin grey-brown pencil outline and a small tail. The lettering is neat, upright, rounded handwriting in dark grey-brown, in sentence case, centred."
+    },
+    {
+      "id": "vektor-rata",
+      "name": { "bm": "Vektor rata", "en": "Flat vector" },
+      "about": { "bm": "Bentuk geometri tanpa garis luar, palet terhad, gaya ilustrasi korporat moden.", "en": "Geometric shapes with no outlines, a limited palette, the modern editorial look." },
+      "prompt": "Flat vector illustration with no outlines. LINE: none: every form is a solid geometric shape with clean, sharp edges; no contour lines anywhere. COLOUR: a strict limited palette of five flat colours: deep teal, warm coral, sand yellow, off-white and charcoal, each used as a solid fill, with skin in one flat warm tone. SHADING: none except one slightly darker flat shape for a shadow side, cut with a straight or evenly curved edge; no gradients, no texture. PROPORTIONS: stylised adults about five heads tall built from simple shapes: rounded rectangle bodies, long simple limbs, small hands drawn as plain rounded shapes. FACES: minimal: two small charcoal dots for eyes, no nose or one small curve, a simple short curved line for the mouth; expression shown mostly by posture and eyebrows. BACKGROUND: a single flat colour from the palette with two or three large simple shapes for furniture, shelves or windows. FINISH: perfectly smooth, even vector artwork with no grain.",
+      "lettering": "Speech bubbles are flat off-white rounded rectangles with no outline and a small triangular tail. The lettering is a clean, geometric, medium-weight sans-serif in charcoal, in sentence case, centred."
+    },
+    {
+      "id": "garis-jelas",
+      "name": { "bm": "Garis jelas klasik", "en": "Classic clear line" },
+      "about": { "bm": "Komik Eropah klasik: garis nipis sekata, warna rata tanpa bayang, latar terperinci.", "en": "The classic European album: an even thin line, flat colour with no shadows, detailed backgrounds." },
+      "prompt": "Classic European clear-line comic album. LINE: thin black outlines of exactly the same weight everywhere, on figures and backgrounds alike; every shape fully closed; no hatching and no line variation. COLOUR: flat, even, cheerful colours of medium brightness: brick red, sky blue, leaf green, sand and warm grey, with no black fills. SHADING: none at all: no shadows on faces or clothes, no gradients, no highlights; every area is one flat colour. PROPORTIONS: neat, slightly simplified adults about five and a half heads tall in clear, readable poses shown from the knees up. FACES: very simple: small dot eyes, thin short eyebrows, a small rounded nose, a simple line mouth, tidy hair drawn as one shape. BACKGROUND: carefully drawn, realistic and detailed setting in the same thin line and flat colour, with correct perspective and many small accurate objects. FINISH: clean printed album page, sharp and bright, with no texture.",
+      "lettering": "Speech bubbles are white rectangles with slightly rounded corners, a thin black outline and a small pointed tail. The lettering is small, neat, upright hand-lettered capitals in black, evenly spaced."
+    }
+  ],
+  "series": [
+    {
+      "id": "kak-lin-tanya",
+      "name": "Kak Lin Tanya",
+      "about": { "bm": "Pengasas produk PKS bertanya, perunding regulatori menjawab. Sesuai untuk kosmetik, halal dan makanan.", "en": "A small-business founder asks, a regulatory consultant answers. Suits cosmetics, halal and food." },
+      "setting": "a small product workshop and office in Malaysia: a wooden worktable with plain unlabelled jars, pouches and boxes on it, a low shelf behind the two people, a plain light wall above the shelf",
+      "cast": {
+        "A": {
+          "name": "Kak Lin",
+          "look": "a Malaysian Malay woman in her late thirties with a round, friendly face, wearing a mustard-yellow tudung pinned neatly under the chin, a teal long-sleeved blouse and a small brown crossbody bag",
+          "role": "pengasas produk PKS (kosmetik dan makanan) yang mahu buat betul tetapi keliru dengan peraturan",
+          "voice": "santai dan terus terang, bertanya seperti orang biasa bertanya, ayat pendek, guna 'saya' dan partikel harian seperti 'ke', 'kan', 'eh'"
+        },
+        "B": {
+          "name": "Encik Adam",
+          "look": "a Malaysian Malay man in his early forties with short neat black hair and thin rectangular glasses, wearing a light grey long-sleeved shirt with the sleeves rolled to the elbow and dark navy trousers, holding a slim tablet with a blank dark screen",
+          "role": "perunding regulatori yang membaca instrumen itu sendiri",
+          "voice": "tenang dan tepat, jawab pendek, betulkan salah faham tanpa mengejek, sebut instrumen atau klausa apabila sumber memberikannya"
+        }
+      }
+    },
+    {
+      "id": "nota-makmal",
+      "name": "Nota Makmal",
+      "about": { "bm": "Ahli kimia muda bertanya, ketua hal ehwal regulatori menjawab. Sesuai untuk farmaseutikal, sains kosmetik dan LinkedIn.", "en": "A young chemist asks, a regulatory affairs lead answers. Suits pharma, cosmetic science and LinkedIn." },
+      "setting": "a tidy formulation laboratory in Malaysia: a white bench with unlabelled glass beakers and amber bottles on it, a closed cabinet behind the two people, a plain pale wall above the cabinet",
+      "cast": {
+        "A": {
+          "name": "Aina",
+          "look": "a Malaysian Malay woman in her mid twenties with a slim face, wearing a soft lilac tudung, a white lab coat over a pale blue top and clear safety glasses pushed up on her forehead, holding a closed spiral notebook",
+          "role": "ahli kimia formulasi muda, teliti dan suka bertanya kenapa",
+          "voice": "ingin tahu dan teknikal, bertanya soalan yang tepat, kadang-kadang membuat andaian yang salah supaya dapat dibetulkan"
+        },
+        "B": {
+          "name": "Encik Ravi",
+          "look": "a Malaysian Indian man in his late forties with short greying black hair and a trimmed moustache, wearing a charcoal blazer over a white open-collar shirt and a plain blue lanyard with no card, holding a thin paper file with a blank cover",
+          "role": "ketua hal ehwal regulatori yang berpengalaman",
+          "voice": "berpengalaman dan ringkas, jawab dengan nama instrumen dan entri apabila sumber memberikannya, tidak pernah meneka angka"
+        }
+      }
+    }
+  ]
+}

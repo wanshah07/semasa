@@ -743,6 +743,12 @@ def handle_action(store: Any, bot: Bot, link: dict[str, Any], chat: int, mid: in
         elif name == "ralat":
             text_, buttons = errors_reply(store, now)
             bot.send(chat, text_, buttons + [home_row])
+        elif name == "komik_harian":
+            # today's comic episode on demand: only a storyboard is asked for (the Motion worker writes it and sends it here with
+            # its own Luluskan button); nothing is drawn, approved or posted by this tap
+            from . import comic_daily, ideas
+            res = comic_daily.plan_today(store, ideas.load_settings(store), now, force=True, via="telegram")
+            bot.send(chat, comic_daily.say(res, lang), [menu.open_row(lang, SITE, "design"), home_row])
         elif name == "memori":
             text_, buttons = tt.memory_reply(store, link["user_id"])
             bot.send(chat, text_, buttons + [menu.back_row(lang, "memori", keep=True)])

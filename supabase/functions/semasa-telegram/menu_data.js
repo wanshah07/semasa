@@ -448,6 +448,12 @@ export default {
               "en": "Carousel from a topic (pick a look)"
             },
             {
+              "act": "komik_harian",
+              "icon": "🗞",
+              "bm": "Episod komik hari ini (storyboard)",
+              "en": "Today's comic episode (storyboard)"
+            },
+            {
               "act": "ayat",
               "icon": "📖",
               "bm": "Semak ayat al-Quran (surah:ayat)",

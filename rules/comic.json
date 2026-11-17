@@ -119,6 +119,49 @@
           "voice": "berpengalaman dan ringkas, jawab dengan nama instrumen dan entri apabila sumber memberikannya, tidak pernah meneka angka"
         }
       }
+    },
+    {
+      "id": "isu-semasa-harian",
+      "name": "Isu Semasa di Kedai",
+      "about": { "bm": "Siri harian: pemilik kedai runcit bertanya tentang isu semasa, eksekutif halal muda membaca apa yang dinyatakan oleh pihak berkuasa. Tiada watak yang memberi hukum.", "en": "The daily series: a corner-shop owner asks about the day's issue, a young halal executive reads out what the authority stated. Nobody rules on anything." },
+      "setting": "a small neighbourhood sundry shop in Malaysia: a wooden counter with an old cash register and plain unlabelled tins and packets on the shelves behind it, a ceiling fan above, a plain pale wall",
+      "cast": {
+        "A": {
+          "name": "Pak Mat",
+          "look": "a Malaysian Malay man in his early fifties with a round face, a short grey moustache and thinning grey hair, wearing a pale blue short-sleeved checked shirt with a pen in the pocket and a brown apron tied at the waist",
+          "role": "pemilik kedai runcit kecil yang menjual makanan dan barang harian, bertanya seperti orang biasa",
+          "voice": "santai dan mesra, ayat pendek, guna 'ni', 'kan', 'eh', 'lah'; bertanya dan kadang-kadang tersalah faham, tidak pernah memberi hukum"
+        },
+        "B": {
+          "name": "Hana",
+          "look": "a Malaysian Malay woman in her mid twenties with an oval face, wearing a dusty-pink tudung pinned neatly under the chin, a cream blouse and a navy cardigan, a slim lanyard with a blank card, holding a tablet with a blank dark screen",
+          "role": "eksekutif halal dan pematuhan muda di syarikat makanan; membaca notis rasmi dan menyebut siapa mengeluarkannya dan bila; bukan pegawai agama",
+          "voice": "tenang dan sopan, jelas; berkata 'menurut <pihak>' atau 'notis itu menyatakan'; tidak pernah memberi hukum sendiri dan berkata itu bukan kerjanya jika ditanya hukum"
+        }
+      }
     }
-  ]
+  ],
+  "daily": {
+    "_about": "The daily series (Wan, 17 Nov 2026: comic series storyboard first, motion after approval, every day, isu semasa > halal > regulatory > fatwa). Read by backend/semasa/comic_daily.py and web/src/lib/comicDaily.js. `lanes` is the default ORDER the day's item is looked for in; Wan's own order and on/off are the settings row `comic_series`. `lane_defs` says what each lane reads, in words for the page.",
+    "series": "isu-semasa-harian",
+    "at": "06:30",
+    "words_mode": "art",
+    "news_hours": 48,
+    "watch_days": 21,
+    "lanes": ["isu_semasa", "halal", "regulatori", "fatwa"],
+    "lane_defs": [
+      { "id": "isu_semasa", "name": { "bm": "Isu semasa", "en": "Current issue" },
+        "reads": { "bm": "Berita akhbar 48 jam terakhir (kosmetik, halal, makanan, farmaseutikal, kesihatan) yang menyebut pengawal selia, peraturan atau penguatkuasaan: isu semasa yang juga ada kaitan dengan peraturan.",
+                   "en": "Newspaper headlines of the last 48 hours (cosmetics, halal, food, pharma, health) that name a regulator, a rule or enforcement: a current issue that is also tied to a rule." } },
+      { "id": "halal", "name": { "bm": "Halal", "en": "Halal" },
+        "reads": { "bm": "Berita halal 48 jam terakhir dan baris suapan halal (laman pengawal selia, kertas kajian, bank OneDrive) 21 hari terakhir. Hukum hanya sebagai kedudukan yang dilaporkan dengan badan dan tarikh.",
+                   "en": "Halal news of the last 48 hours and halal feed rows (regulator pages, papers, the OneDrive bank) of the last 21 days. A ruling only as a reported position with its body and date." } },
+      { "id": "regulatori", "name": { "bm": "Regulatori", "en": "Regulatory" },
+        "reads": { "bm": "Notis pengawal selia dalam suapan peraturan (NPRA, HSA, EU, UK, NMPA dan lain-lain) dan sapuan harian MYRA, 21 hari terakhir.",
+                   "en": "Regulator notices in the regulatory feed (NPRA, HSA, EU, UK, NMPA and others) and MYRA's daily sweep, last 21 days." } },
+      { "id": "fatwa", "name": { "bm": "Fatwa", "en": "Fatwa" },
+        "reads": { "bm": "Baris bertanda fatwa dalam suapan (setakat ini bank folder Fatwa di OneDrive, bukan suapan langsung). Hanya yang menyatakan badan yang mengeluarkan dan tarikhnya.",
+                   "en": "Feed rows tagged fatwa (today the OneDrive Fatwa folder bank, not a live feed). Only a row that gives the issuing body and its date." } }
+    ]
+  }
 }

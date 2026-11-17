@@ -175,6 +175,7 @@
           "items": [
             { "act": "poster", "icon": "🎨", "bm": "Poster daripada topik (pilih gaya)", "en": "Poster from a topic (pick a look)" },
             { "act": "karusel", "icon": "🖼", "bm": "Carousel daripada topik (pilih gaya)", "en": "Carousel from a topic (pick a look)" },
+            { "act": "komik_harian", "icon": "🗞", "bm": "Episod komik hari ini (storyboard)", "en": "Today's comic episode (storyboard)" },
             { "act": "ayat", "icon": "📖", "bm": "Semak ayat al-Quran (surah:ayat)", "en": "Look up an ayat (surah:ayat)" },
             { "link": "design/card", "icon": "🃏", "bm": "Kad tunggal", "en": "Single card" },
             { "link": "design/comic", "icon": "💬", "bm": "Poster komik (dialog)", "en": "Comic (dialogue) poster" }

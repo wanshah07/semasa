@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 
 TABLE = "semasa_motions"
 REVIEW = "review"
-KINDS = ("explainer", "showcase", "story")
+KINDS = ("explainer", "showcase", "story", "comic")
 NOT_APPLIED = ("Storyboard approval needs supabase/071_motion_storyboard_review.sql applied. Nothing was drawn or rendered; "
                "press Mula again once it is applied.")
 
@@ -96,6 +96,15 @@ def scenes_of(sb: dict[str, Any]) -> list[dict[str, Any]]:
                         "said": sc.get("narration") or "", "shot": sc.get("shot") or "", "image": sc.get("image") or ""})
         return out
     body = sb.get("sb") or {}
+    if kind == "comic":
+        # the daily comic series (comic_daily.py): the title with its source, then the four panels with the people's words
+        names = body.get("names") or {}
+        head = f"Siri {body.get('series_name') or ''} · Episod {body.get('episode')}".strip()
+        return ([{"label": "Tajuk", "heading": body.get("title") or "", "lines": [head, f"Sumber: {body.get('source') or ''}"],
+                  "said": "", "shot": ""}]
+                + [{"label": f"Panel {i + 1}", "heading": "",
+                    "lines": [f"{names.get(ln.get('who'), ln.get('who'))}: {ln.get('text')}" for ln in p.get("lines") or []],
+                    "said": "", "shot": p.get("scene") or ""} for i, p in enumerate(body.get("panels") or [])])
     if kind == "story":
         return ([{"label": f"{i + 1:02d}", "heading": sc.get("caption") or "", "lines": [], "said": "",
                   "shot": sc.get("prompt") or ""} for i, sc in enumerate(body.get("scenes") or [])]
@@ -127,7 +136,8 @@ def title_of(row: dict[str, Any], sb: dict[str, Any]) -> str:
 
 
 def telegram_text(row: dict[str, Any], sb: dict[str, Any], limit: int = 3900) -> str:
-    kind = {"explainer": "Penerangan", "showcase": "Pameran produk", "story": "Cerita foto"}.get(sb.get("kind"), "")
+    kind = {"explainer": "Penerangan", "showcase": "Pameran produk", "story": "Cerita foto",
+            "comic": "Komik harian"}.get(sb.get("kind"), "")
     parts = [f"🎞 Storyboard untuk diluluskan ({kind})", title_of(row, sb)[:160], ""]
     if row.get("error"):
         parts[2:2] = [f"⚠️ {str(row['error'])[:300]}", ""]

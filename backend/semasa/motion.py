@@ -2077,6 +2077,10 @@ def template_film(store: Any, llm: Any, row: dict[str, Any], settings: dict[str,
     or Gemini (Unsplash for what none drew), the user's own product pictures, and a page laid out by code. Silent, upright,
     about 20 seconds, with the approved piano under it like every other film. Raises on a failure; process() records it."""
     kind = motion_templates.template_of(row)
+    if kind == "comic":
+        # the daily comic series (Wan, 17 Nov 2026): its own storyboard, drawing and page, the same gate and render
+        from . import comic_film
+        return comic_film.make_film(store, llm, row, settings, folder, runner=runner)
     lang = motion_templates.lang_of(row)
     speak = speaker(lang)
     login = gpt_login if gpt_login is not None else motion_gpt_images.chatgpt_login.Login(store)
@@ -2203,6 +2207,7 @@ def run(store: Any, llm: Any, *, runner: Any = subprocess.run, now: datetime | N
         gh: GitHub | None = None, clock: Any = time.monotonic, budget_s: float = CLAIM_BUDGET_S) -> dict[str, int]:
     settings = load_settings(store)
     requeued = requeue_stale(store, now)
+    daily = comic_daily_step(store, now)           # the daily comic series: plan today's episode (off until Wan switches it on)
     started = clock()
     seen: list[str] = []
     done = 0
@@ -2216,7 +2221,23 @@ def run(store: Any, llm: Any, *, runner: Any = subprocess.run, now: datetime | N
         done += bool(process(store, llm, rows[0], settings, runner=runner, now=now, gh=gh))
     captions = backfill_captions(store, llm)
     return {"claimed": len(seen), "done": done, "failed": len(seen) - done, **({"requeued": requeued} if requeued else {}),
-            **({"captions": captions} if captions else {})}
+            **({"captions": captions} if captions else {}), **({"comic_series": daily} if daily else {})}
+
+
+def comic_daily_step(store: Any, now: datetime | None) -> str:
+    """Plan today's episode of the daily comic series, answer Wan's "make today's episode now", and draft the post of a finished
+    episode (comic_daily.run). Never raises: the series must never stop a film."""
+    try:
+        from . import comic_daily
+        return comic_daily.run(store, ideas_settings(store), now)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("daily comic step skipped (%s)", str(exc)[:160])
+        return ""
+
+
+def ideas_settings(store: Any) -> dict[str, Any]:
+    from . import ideas
+    return ideas.load_settings(store)
 
 
 def requeue_stale(store: Any, now: datetime | None = None) -> int:

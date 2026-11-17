@@ -58,6 +58,9 @@ def unused_media(store: Any, post: dict[str, Any]) -> list[dict[str, Any]]:
 def files_of(row: dict[str, Any]) -> list[str]:
     meta = row.get("meta") or {}
     paths = [meta.get("generated_path")] + list(meta.get("slide_paths") or [])
+    art = (meta.get("comic") or {}).get("art") if isinstance(meta.get("comic"), dict) else None
+    if isinstance(art, dict):
+        paths.append(art.get("path"))              # the daily series' wordless art, kept for its film (comic_job.py)
     return [p for p in paths if isinstance(p, str) and p]
 
 

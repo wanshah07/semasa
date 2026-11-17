@@ -42,9 +42,9 @@ def reading(s: dict, **change) -> dict:
 
 # ---------------------------------------------------------------------------------------------------------- the rules file
 
-def test_the_rules_file_holds_six_to_eight_whole_styles_and_one_or_two_series() -> None:
+def test_the_rules_file_holds_six_to_eight_whole_styles_and_one_to_three_series() -> None:
     rules = comic_library.RULES
-    assert 6 <= len(rules["styles"]) <= 8 and 1 <= len(rules["series"]) <= 2
+    assert 6 <= len(rules["styles"]) <= 8 and 1 <= len(rules["series"]) <= 3
     ids = [s["id"] for s in rules["styles"]] + [s["id"] for s in rules["series"]]
     assert len(set(ids)) == len(ids) and all(comic_library.ID_RE.match(i) for i in ids)
     assert rules["styles"][0]["id"] == rules["default_style"] and rules["series"][0]["id"] == rules["default_series"]

@@ -44,6 +44,15 @@ def _clip(page, panel: Path, outdir: Path, report: dict) -> bool:
     if box.count():
         box.fill(PROMPT)
         report["prompt_filled"] = True
+    # verify the mode actually stayed on Ingredients (a UI quirk can reset it to t2v)
+    try:
+        mode_now = page.evaluate("""() => {
+            const b = [...document.querySelectorAll('button')].find(b => /Text to Video|Start Frame|Ingredients|Reference/.test((b.innerText||'')) && (b.innerText||'').length < 60);
+            return b ? (b.innerText||'').trim() : '';
+        }""")
+        report["mode_after_upload"] = mode_now
+    except Exception as exc:  # noqa: BLE001
+        report["mode_after_upload"] = f"err {str(exc)[:80]}"
     # the Generate button stays disabled until the uploaded image is processed: wait for it, then click
     gen_btn = page.get_by_role("button", name="Generate", exact=True).first
     enabled_at = time.time() + 60
@@ -147,6 +156,10 @@ def main() -> int:
                 ctype = resp.headers.get("content-type", "")
                 if req.method == "GET" and i2v.gen._is_video(ctype, req.url) and not report.get("video_url"):
                     report["video_url"] = req.url
+                # record every POST and any video-bearing response, for diagnosing where the result lands
+                if req.method == "POST" or i2v.gen._is_video(ctype, req.url):
+                    report.setdefault("network", []).append(
+                        {"method": req.method, "url": req.url[:200], "status": resp.status, "ctype": ctype[:80]})
 
             page.on("response", on_response)
             page.goto(chk.STUDIO_URL, wait_until="domcontentloaded", timeout=45_000)

@@ -1,7 +1,7 @@
 /* web/src/lib/slots.js, the page's half of the position rules (the worker's half is ideas.next_free_position). */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { captionKey, captionKeys, clashes, coverage, duplicatesOf, fmtLeft, handedOver, holdersOf, isPastDue, lateLinkedInSlots, liSendDay, moveCheck, nextFreeSlot, offRota, onRota, overrideCheck, clearPlan, postsOn, purgeLeftMs, refOf, slotGone, slotsOf, isCustomSlot, validClock } from "./src/lib/slots.js";
+import { canResend, captionKey, captionKeys, clashes, coverage, duplicatesOf, failedChannels, fmtLeft, handOverInTime, handedOver, holdersOf, isPastDue, lateLinkedInSlots, liSendDay, moveCheck, myt, nextFreeSlot, nextRunMs, offRota, onRota, overrideCheck, clearPlan, postsOn, purgeLeftMs, queuedChannels, refOf, resendChannels, sentChannels, slotGone, slotsOf, isCustomSlot, validClock } from "./src/lib/slots.js";
 
 const BRAND = {
   regulab: { slots: ["13:00", "08:00", "21:00"],
@@ -186,6 +186,89 @@ t("a time outside the fixed slots is a custom slot, and only a real 24-hour cloc
   assert.equal(isCustomSlot(slots, "10:30"), true);
   assert.equal(isCustomSlot(slots, ""), false);
   assert.deepEqual(["10:30", "00:00", "23:59", "24:00", "9:30", "10:60", "", null].map(validClock), [true, true, true, false, false, false, false, false]);
+});
+
+/* ---- sending the failed channels of a half-sent post again (Wan, 16 Nov 2026: "move to new slot") ---- */
+const OLD = "2026-09-23T00:00:00.000Z";                   // 23 Sep 08:00 MYT: the slot the channels failed at
+const zrec = (status, over = {}) => ({ id: "a".repeat(24), route: "zernio", mode: "customScheduled", status, dueAt: OLD, ...over });
+const half = (over = {}) => ({ id: "h", stream: "regulab", status: "scheduled", date: "2026-09-23", slot: "08:00", domain: "kosmetik",
+  published: { instagram: zrec("sent"), tiktok: zrec("error"), threads: zrec("error") }, ...over });
+
+t("a half-sent post: which channels failed, went out, are still queued, and whether it may move", () => {
+  const p = half();
+  assert.deepEqual([failedChannels(p), sentChannels(p), queuedChannels(p)], [["tiktok", "threads"], ["instagram"], []]);
+  assert.equal(canResend(p), true);
+  assert.equal(canResend(half({ status: "approved" })), true);
+  assert.equal(canResend(half({ status: "draft" })), true, "an approved post goes back to draft when it moves: that draft may move again");
+  assert.equal(canResend(half({ status: "posted" })), false);
+  assert.equal(canResend(half({ status: "rejected" })), false);
+  const queued = half({ published: { instagram: zrec("scheduled"), threads: zrec("error") } });
+  assert.deepEqual(queuedChannels(queued), ["instagram"]);
+  assert.equal(canResend(queued), false, "a channel the scheduler still holds keeps the post where it is");
+  assert.equal(canResend(half({ published: { instagram: zrec("sent"), threads: zrec("sending") } })), false);
+  assert.equal(canResend(half({ published: { instagram: zrec("sent"), threads: true } })), false, "a record that cannot be read is not settled");
+  assert.equal(canResend(half({ published: { instagram: zrec("sent") } })), false, "nothing failed: nothing to send again");
+  assert.equal(canResend(half({ published: {} })), false);
+});
+
+t("moveCheck lets a settled half-sent post move, scheduled or not, and still refuses one with a channel queued", () => {
+  const mv = (post, date = "2026-09-30", slot = "21:00", posts = []) => moveCheck({ post, date, slot, posts, brand: BRAND, now: NOW });
+  assert.deepEqual(mv(half()), { ok: true, resend: true });
+  assert.deepEqual(mv(half({ status: "approved" })), { ok: true, resend: true });
+  assert.equal(mv(half({ published: { instagram: zrec("scheduled"), threads: zrec("error") } })).why, "status");
+  assert.equal(mv(half({ status: "approved", published: { instagram: zrec("scheduled"), threads: zrec("error") } })).why, "published");
+  assert.equal(mv(half({ status: "posted" })).why, "status");
+  // one post to a slot holds for it as for any other post
+  assert.equal(mv(half(), "2026-09-30", "13:00", [live("a", { date: "2026-09-30", slot: "13:00", status: "scheduled" })]).why, "taken");
+  assert.equal(mv(half(), "2026-09-23", "08:00").why, "same");
+  assert.equal(mv(half(), "2026-09-24", "08:00").why, "past");
+});
+
+t("the publisher hands posts over only at its runs: a scheduled post is never moved to a slot its next run comes too late for", () => {
+  // NOW is 10:00 MYT: the next run is 11:20; after 19:20 it is 06:20 the next day
+  assert.equal(myt(nextRunMs(NOW)).time, "11:20");
+  assert.equal(myt(nextRunMs(Date.parse("2026-09-24T11:20:00Z"))).time, "19:20");
+  assert.deepEqual(myt(nextRunMs(Date.parse("2026-09-24T12:00:00Z"))), { date: "2026-09-25", time: "06:20", dow: 5 });
+  assert.equal(handOverInTime("2026-09-24", "13:00", NOW), true);
+  assert.equal(handOverInTime("2026-09-24", "10:40", NOW), true, "11:20 is still inside the 45 minutes after 10:40");
+  const at1140 = Date.parse("2026-09-24T03:40:00Z");                                        // 11:40 MYT: the 11:20 run has gone
+  assert.equal(handOverInTime("2026-09-24", "13:00", at1140), false, "the next run is 19:20, six hours after a 13:00 slot");
+  const chk = moveCheck({ post: half(), date: "2026-09-24", slot: "13:00", posts: [], brand: BRAND, now: at1140 });
+  assert.deepEqual([chk.ok, chk.why, chk.run], [false, "run", "19:20"]);
+  assert.equal(moveCheck({ post: half(), date: "2026-09-24", slot: "21:00", posts: [], brand: BRAND, now: at1140 }).ok, true);
+  // an approved post is approved again after its move, as before: this refusal is for a scheduled one only
+  assert.equal(moveCheck({ post: half({ status: "approved" }), date: "2026-09-24", slot: "13:00", posts: [], brand: BRAND, now: at1140 }).ok, true);
+});
+
+t("resendChannels is the publisher's stale_failures: a failure for another moment than the slot the post has now", () => {
+  assert.deepEqual(resendChannels(half()), [], "not moved: nothing is sent again by itself");
+  assert.deepEqual(resendChannels(half({ date: "2026-09-25" })), ["threads", "tiktok"]);
+  assert.deepEqual(resendChannels(half({ date: "2026-09-25", published: { instagram: zrec("sent") } })), [], "a sent channel is never sent again");
+  assert.deepEqual(resendChannels(half({ date: "2026-09-25", published: { threads: zrec("scheduled") } })), [], "a queued one is not a failure");
+  assert.deepEqual(resendChannels(half({ date: "2026-09-25", published: { threads: { status: "error", route: "zernio" } } })), [], "no moment: left for a person");
+  assert.deepEqual(resendChannels(half({ date: "2026-09-25", published: { linkedin: zrec("error", { route: "composio" }) } })), []);
+  const now = { status: "error", route: "zernio", mode: "shareNow", dueAt: null, at: "2026-09-23T00:30:00+00:00" };   // fired 08:30
+  assert.deepEqual(resendChannels(half({ published: { threads: now } })), [], "a send-now fired late is still its own slot");
+  assert.deepEqual(resendChannels(half({ date: "2026-09-25", published: { threads: now } })), ["threads"]);
+  // the two files keep the same numbers
+  const py = readFileSync(new URL("../backend/semasa/publisher.py", import.meta.url), "utf8");
+  assert.match(py, /ADOPT_WITHIN = timedelta\(minutes=2\)/);
+  assert.match(py, /LATE_GRACE = timedelta\(minutes=45\)/);
+  assert.match(py, /PUBLISH_RUNS_MYT = \("06:20", "11:20", "19:20"\)/);
+});
+
+t("supabase/084 says what the page says: settled and one failed may move, and a scheduled post's slot is checked", () => {
+  const sql = readFileSync(new URL("../supabase/084_resend_failed_channels.sql", import.meta.url), "utf8");
+  assert.match(sql, /old\.status in \('draft', 'approved', 'scheduled'\)/);
+  assert.match(sql, /not in \('sent', 'error'\)/);
+  assert.match(sql, /r\.value ->> 'status' = 'error'/);
+  assert.match(sql, /\(moved and not resend\)/);
+  assert.match(sql, /new\.status in \('draft', 'scheduled'\) and moved/);
+  // a scheduled post takes the move and nothing else, and the policy lets that one write through (never `posted`)
+  assert.match(sql, /to_jsonb\(new\) - array\['date', 'slot', 'decisions', 'updated_at'\]/);
+  assert.match(sql, /with check \(public\.semasa_is_uploader\(\) and status in \('draft', 'approved', 'rejected', 'scheduled'\)\)/);
+  assert.match(sql, /elsif old\.status in \('scheduled', 'posted'\) then\s+new\.approved_by := old\.approved_by/);
+  assert.ok(!/—/.test(sql));
 });
 
 console.log(`${n} slot tests pass`);

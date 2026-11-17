@@ -313,7 +313,8 @@ def test_a_hand_over_that_failed_says_wait_when_it_retries_and_edit_when_it_is_f
 
 def test_a_post_zernio_lost_is_not_counted_as_zernio_failing():
     def lost(i):
-        return _half_sent(id=f"l{i}", errors={"threads": {"message": "threads: Zernio no longer holds this post and it was not sent"}},
+        msg = "threads: Zernio no longer holds this post and it was not sent"
+        return _half_sent(id=f"l{i}", errors={"threads": {"message": msg}},
                           published={"threads": {"route": "zernio", "status": "error", "lost": True,
                                                  "dueAt": "2026-11-07T00:00:00.000Z"}})
     out = health.check_publisher(store(**{db.POSTS: [lost(1), lost(2)]}), NOW)

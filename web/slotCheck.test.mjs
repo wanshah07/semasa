@@ -81,4 +81,16 @@ t("row dot: a post is its worst channel, a draft waits, a rejected post has no c
   assert.equal(rowState(two, NOW).state, "failed");
   assert.ok(Array.isArray(rowState(two, NOW).hint) && rowState(two, NOW).hint.length === 2);
 });
+t("a channel that failed at an earlier slot, on a post moved since, reads as sending again, and as missed once the new slot is gone", () => {
+  const failed = { ...rec("error"), mode: "customScheduled", dueAt: "2026-11-10T05:00:00.000Z" };      // 10 Nov 13:00 MYT
+  const moved = post({ slot: "21:00", published: { threads: failed }, errors: { threads: { message: "threads: refused" } } });
+  const c = channelState(moved, "threads", NOW);
+  assert.deepEqual([c.state, c.label], ["queued", ["Dihantar semula", "Sending again"]]);
+  assert.equal(rowState(moved, NOW).state, "queued");
+  const late = channelState(post({ slot: "08:00", published: { threads: failed } }), "threads", NOW);     // moved to 08:00: long gone
+  assert.deepEqual([late.state, late.label[1]], ["failed", "Missed"]);
+  // not moved: the failure is for the slot the post still has, so it stays red with the platform's words
+  const same = post({ published: { threads: { ...failed, dueAt: "2026-11-11T05:00:00.000Z" } }, errors: { threads: { message: "threads: refused" } } });
+  assert.deepEqual([channelState(same, "threads", NOW).state, channelState(same, "threads", NOW).detail], ["failed", "threads: refused"]);
+});
 console.log(`slotCheck: ${n} checks passed`);

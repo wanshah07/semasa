@@ -9,14 +9,19 @@ const update = (text, extra = {}) => ({ message: { text, from: { id: 42 }, chat:
 const gate = { kind: 'private', owner: true };
 const options = { chatId: 42, now: new Date('2026-11-08T16:30:00Z'), site: 'https://socialmedia.kkmhalalconsultant.com/', username: 'Wan' };
 
-test('menu and help render existing worker callback namespaces without approvals', () => {
+test('menu is the catalogue of every segment and help names the commands, neither with an approval', () => {
   assert.equal(typeof api.commandReply, 'function', 'reply renderer is not implemented');
   const menu = api.commandReply('menu', {}, options);
   assert.equal(menu.method, 'sendMessage');
   assert.equal(menu.chat_id, 42);
   assert.match(menu.text, /Hai Wan/);
   const buttons = menu.reply_markup.inline_keyboard.flat();
-  assert.deepEqual(buttons.filter(b => b.callback_data).map(b => b.callback_data), ['menu:draf','menu:jadual','menu:idea','menu:poster','menu:karusel','menu:motion','menu:laporan','menu:robot','menu:kesihatan','menu:ralat','menu:status','menu:bil','menu:memori','menu:ingat']);
+  // rules/telegram_menu.json, drawn by menu.js (web/telegramMenu.test.mjs holds it to the page's own tabs): two quick buttons, then
+  // one button a segment, the language switch and the link to Semasa
+  const datas = buttons.filter(b => b.callback_data).map(b => b.callback_data);
+  assert.deepEqual(datas.slice(0, 4), ['a:draf','a:idea_r','m:s:dashboard','m:s:content']);
+  assert.deepEqual(datas.slice(-2), ['m:s:system','m:lang:en']);
+  assert.ok(datas.every(d => /^(a|m):/.test(d)) && !datas.some(d => /^(ok|no):/.test(d)), 'a menu never carries an approval');
   assert.equal(buttons.at(-1).url, options.site);
   const help = api.commandReply('help', {}, options);
   for (const command of ['draf','jadual','status','bil','kesihatan','robot','poster','motion','ingat','menu']) assert.ok(help.text.includes('/' + command));
@@ -133,11 +138,15 @@ test('orchestrator rechecks identity and pending state before serving a menu wit
   const reply = await api.fastCommand(db, update('/menu'), link, options);
   assert.match(reply.text, /Hai Wan/);
   assert.deepEqual(db.calls.map(c=>c.table), ['semasa_settings']);
-  for (const state of [{pending:'poster'},{await_note:true}]) {
+  for (const state of [{pending:'poster'},{pending:'cat:idea:linkedin',await_note:true}]) {
     const pending = mockDb({telegram_chat:{data:{value:state},error:null}});
     assert.equal(await api.fastCommand(pending, update('/status'), link, options), null);
     assert.equal(pending.calls.length, 1);
   }
+  // a 👎 correction still awaited does not hold a command back: the worker never takes a command as the correction, and one 👎
+  // left unanswered used to send every /menu to the worker
+  const awaited = mockDb({telegram_chat:{data:{value:{await_note:77,lang:'en'}},error:null}});
+  assert.match((await api.fastCommand(awaited, update('/menu'), link, options)).text, /Hi Wan/);
   for (const fixture of [{data:null,error:null},{data:{value:{}},error:{message:'SECRET'}},new Error('SECRET')]) {
     assert.equal(await api.fastCommand(mockDb({telegram_chat:fixture}), update('/menu'), link, options), null);
   }

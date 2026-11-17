@@ -183,13 +183,17 @@ def test_the_command_menu_follows_the_code(monkeypatch):
     assert len([1 for m, _ in bot.calls if m == "setMyCommands"]) == 1, "unchanged: not sent again"
 
 
-def test_start_shows_the_english_catalogue_and_idea_intake_queues_a_real_idea():
+def test_start_shows_the_menu_and_idea_intake_queues_a_real_idea():
     st, bot = team_store(**{tb.INBOX: [msg(1, "/start")]}), Bot()
     run(st, bot)
     m = bot.sent()[0]
     datas = [b.get("callback_data") for row in m["reply_markup"]["inline_keyboard"] for b in row]
-    assert datas == ["c:model", "c:repo", "c:idea", "c:style", "c:post"]
-    st.tables[tb.INBOX].append(tap(2, "c:idea"))
+    assert datas[:4] == ["a:draf", "a:idea_r", "m:s:dashboard", "m:s:content"], "the menu of every segment (telegram_menu.py)"
+    st.tables[tb.INBOX].append(tap(2, "c:idea"))           # a button of the five-task menu that is still in the chat
+    run(st, bot)
+    assert "Hantar pautan" in bot.sent()[-1]["text"]
+    tt.save_chat_state(st, {"lang": "en", "pending": None})
+    st.tables[tb.INBOX].append(tap(4, "c:idea"))
     run(st, bot)
     assert "Send a link" in bot.sent()[-1]["text"]
     st.tables[tb.INBOX].append(msg(3, "https://example.com/recall focus on the hook"))

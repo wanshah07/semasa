@@ -6,6 +6,8 @@ the database wakes this worker for Wan's own messages and taps (repository_dispa
 net. Only the ONE Telegram account Wan linked from the page (Tetapan → Telegram, a one-time code) is ever obeyed.
 
 What Wan can do from Telegram:
+  /menu       the button menu: every segment and page of Semasa (telegram_menu.py, rules/telegram_menu.json). A button
+              either does its thing here or opens that page.
   /draf       drafts waiting for him, each with its picture and ✅ Lulus / ❌ Tolak buttons
   /jadual     the next 7 days, slot by slot
   /status     drafts, approved, scheduled, errors and open watchdog problems at a glance
@@ -37,6 +39,7 @@ import requests
 
 from . import billing, compliance, db, motion_review, motion_skins
 from . import telegram_catalogue as cat
+from . import telegram_menu as menu
 from . import telegram_tools as tt
 from .log import get_logger
 
@@ -73,7 +76,7 @@ COMMANDS = [
     ("menu", "Menu butang / the button menu"),
     ("help", "Senarai arahan / the commands"),
 ]
-HELP = ("Semasa di Telegram 🤖\n\n" + "\n".join(f"/{c} — {d}" for c, d in COMMANDS) +
+HELP = ("Semasa di Telegram 🤖\n\n" + "\n".join(f"/{c} · {d}" for c, d in COMMANDS) +
         "\n\nHantar link terus untuk jadikan idea. Tanya apa-apa tentang Semasa dalam BM atau English.\n"
         "Send a link to make it an idea. Ask anything about Semasa in BM or English.")
 STREAM_WORDS = {"regulab": "ws.regulab", "linkedin": "LinkedIn"}
@@ -139,6 +142,11 @@ class Bot:
             params["reply_parameters"] = {"message_id": reply_to, "allow_sending_without_reply": True}
         res = self.call("sendMessage", **params) or {}
         return int(res.get("message_id") or 0)
+
+    def edit(self, chat: int, message_id: int, text: str, buttons: list[list[dict[str, str]]] | None = None) -> None:
+        """Redraw a message of the bot's own in place: the menu stays one message as Wan moves through it."""
+        self.call("editMessageText", chat_id=chat, message_id=message_id, text=text[:MSG_MAX],
+                  disable_web_page_preview=True, reply_markup={"inline_keyboard": buttons or []})
 
     def photo(self, chat: int, url: str, caption: str = "") -> None:
         self.call("sendPhoto", chat_id=chat, photo=url, caption=caption[:1000])
@@ -305,6 +313,12 @@ def edit_draft_caption(store: Any, post_id: str, caption: str) -> str:
             if got else "The draft changed before the edit was saved.")
 
 
+def post_tab(post: dict[str, Any] | None = None, stream: str = "") -> str:
+    """The page a post is edited on: LinkedIn has its own (web/src/lib/tabs.js). "#posts", which every link here used to
+    carry, is not a page at all and opened the dashboard."""
+    return "li-post" if (stream or (post or {}).get("stream")) == "linkedin" else "post"
+
+
 def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datetime | None = None) -> None:
     from .publisher import media_for, pictures_of
     media = media_for(store, list(post.get("media_ids") or []))
@@ -321,7 +335,7 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
     text = f"📝 Draf · {_where(post)}\n\n{_caption(post)[:3000]}"
     if post.get("citation"):
         text += f"\n\nSumber: {str(post['citation'])[:300]}"
-    open_btn = [{"text": "🔗 Buka di Semasa", "url": f"{SITE.rstrip('/')}/#posts"}]
+    open_btn = [{"text": "🔗 Buka di Semasa", "url": menu.page_url(SITE, post_tab(post))}]
     if hard:
         text += "\n\n⚠️ Approval blocked:\n• " + "\n• ".join(hard[:6])
         buttons = [[{"text": "✏️ Edit", "callback_data": f"c:pe:{post['id']}"},
@@ -341,8 +355,37 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
                               "sent_at": datetime.now(UTC).isoformat()}, on_conflict="post_id").execute()
 
 
-def draft_rows(store: Any) -> list[dict[str, Any]]:
-    return store.table(db.POSTS).select("*").eq("status", "draft").execute().data or []
+def draft_rows(store: Any, stream: str = "") -> list[dict[str, Any]]:
+    """Every draft, or one stream's ("regulab" / "linkedin": the Post bank and the LinkedIn posts page show one each)."""
+    rows = store.table(db.POSTS).select("*").eq("status", "draft").execute().data or []
+    return [p for p in rows if not stream or (p.get("stream") or "regulab") == stream]
+
+
+def show_drafts(store: Any, bot: Bot, chat: int, now: datetime, stream: str = "", lang: str = "bm",
+                foot: list[dict[str, str]] | None = None) -> str:
+    """/draf, and the menu's draft buttons: each draft Wan can still approve, with its picture and its own Approve / Reject
+    (the database gate decides, as for his click in the page). `foot` is the menu's way back, put under the last message."""
+    bm = lang == "bm"
+    every = draft_rows(store, stream)
+    rows = drafts(store, now=now, rows=every)
+    late = sum(1 for p in every if slot_past(p, now))
+    where = f" ({STREAM_WORDS[stream]})" if stream in STREAM_WORDS else ""
+    last = [foot] if foot else None
+    if not rows and not late:
+        bot.send(chat, f"Tiada draf menunggu kelulusan{where}. 👍" if bm else f"No drafts waiting for approval{where}. 👍", last)
+    for p in rows:
+        send_draft(store, bot, chat, p, now)
+    if late:
+        text = (f"⏰ {late} draf lagi slotnya sudah lepas lebih 45 minit, jadi tidak boleh diluluskan di sini: "
+                "penerbit tidak menghantar post yang lewat. Pindahkan ke slot baharu di Semasa (tab Post → Jadual → "
+                "Pindah semua), kemudian /draf semula." if bm else
+                f"⏰ {late} more draft(s) are over 45 minutes past their slot, so they cannot be approved here: the publisher "
+                "never sends a late post. Move them to a new slot in Semasa (Post tab → Schedule → Move all), then /draf again.")
+        bot.send(chat, text, [[{"text": "🔗 Buka di Semasa" if bm else "🔗 Open in Semasa",
+                                "url": menu.page_url(SITE, post_tab(stream=stream))}]] + (last or []))
+    elif rows and foot:
+        bot.send(chat, f"⬆ {len(rows)} draf{where}." if bm else f"⬆ {len(rows)} draft(s){where}.", last)
+    return f"{len(rows)} draft(s)" + (f", {late} past their slot" if late else "")
 
 
 def drafts(store: Any, limit: int = 5, now: datetime | None = None,
@@ -506,8 +549,9 @@ SYSTEM = ("You are Semasa's assistant on Telegram for Wan (Registered Chemist, r
           "ws.regulab (Facebook, Instagram, Threads) and his LinkedIn; billing; FAQ; watchdog. Answer briefly, in the "
           "language he writes: Malaysian Bahasa Malaysia (never Bahasa Indonesia) or English. Plain text, no markdown. "
           "Use the SNAPSHOT for facts about Semasa; it is current. You cannot approve, post, delete or change anything "
-          "yourself: say which command does it (/draf to approve, /poster, /karusel, /motion, /laporan, /idea, /robot to pick "
-          "the model, /jadual, /status, /ralat, /kesihatan, /bil, /ingat to save a note). On regulations, "
+          "yourself: say which command does it (/menu for the button menu of every Semasa section, /draf to approve, /poster, "
+          "/karusel, /motion, /laporan, /idea, /robot to pick the model, /jadual, /status, /ralat, /kesihatan, /bil, /ingat to "
+          "save a note). On regulations, "
           "never invent a number, date, limit or reference; say what should be checked and where.")
 
 
@@ -625,6 +669,114 @@ def decide(store: Any, bot: Bot, link: dict[str, Any], chat: int, message_id: in
     return res
 
 
+# ---- the button menu (telegram_menu.py, rules/telegram_menu.json) -----------------------------------------------------------
+
+def drop_question(store: Any) -> None:
+    """A menu button drops whatever an earlier button was waiting to be told: the next plain message is a question again."""
+    if tt.chat_state(store).get("pending"):
+        tt.save_chat_state(store, {"pending": None})
+
+
+def show_menu(bot: Bot, chat: int, message_id: int, text: str, buttons: list[list[dict[str, str]]]) -> None:
+    """Draw a menu where the tapped one was (one message, redrawn), or as a new message when that cannot be done."""
+    if message_id:
+        try:
+            bot.edit(chat, message_id, text, buttons)
+            return
+        except TelegramError as exc:
+            if "not modified" in str(exc):          # the same menu tapped twice: it is already on screen
+                return
+            log.info("menu not redrawn in place (%s)", exc)
+    bot.send(chat, text, buttons)
+
+
+def handle_menu(store: Any, bot: Bot, link: dict[str, Any], chat: int, mid: int, rest: str) -> str:
+    """m:<node>: another menu, drawn where the tapped one was (`mid`; 0 sends it as a new message, which is n:<node>).
+    m:lang:<bm|en>: the language of the menu from now on, then the home menu."""
+    changes: dict[str, Any] = {}
+    state = tt.chat_state(store)
+    if state.get("pending"):
+        changes["pending"] = None                   # leaving a question drops it
+    node = rest
+    lang = menu.lang_of(state.get("lang"))
+    if rest.startswith("lang:"):
+        lang = menu.lang_of(rest.split(":", 1)[1])
+        changes["lang"] = lang
+        node = "home"
+    if changes:
+        tt.save_chat_state(store, changes)
+    text_, buttons = menu.render(node, lang, SITE, str(link.get("username") or "Wan"))
+    show_menu(bot, chat, mid, text_, buttons)
+    return f"menu {node}" + (f" ({lang})" if "lang" in changes else "")
+
+
+def _reads(store: Any, now: datetime) -> dict[str, Any]:
+    return {"status": lambda: status_text(store, now), "jadual": lambda: schedule_text(store, now),
+            "kesihatan": lambda: health_text(store), "bil": lambda: billing_text(store), "help": lambda: HELP}
+
+
+def handle_action(store: Any, bot: Bot, link: dict[str, Any], chat: int, mid: int, rest: str, now: datetime) -> str:
+    """a:<act>: a menu button that does its thing here. Every one is something the bot could already do (menu.ACTIONS): a
+    read, the drafts with their own approval buttons, or a question whose answer becomes a row a worker picks up. Each answer
+    carries the way back to the menu."""
+    lang = cat.lang(store)
+    home_row = menu.back_row(lang, keep=True)        # under an answer: the menu comes as a new message, the answer stays
+    if rest.startswith("lk:"):                       # a look picked for a poster or a carousel: now ask for the topic
+        _, kind, look = (rest.split(":", 2) + ["", ""])[:3]
+        asks = menu.LOOK_KINDS.get(kind)
+        if not asks or look not in menu.LOOKS.get(kind, []):
+            return handle_menu(store, bot, link, chat, mid, "p:design")
+        cat.ask(store, asks, look)
+        text_, buttons = cat.prompt_reply(asks, lang, look)
+        bot.send(chat, text_, buttons)
+        return f"menu asks {asks} ({look})"
+    spec = menu.ACTIONS.get(rest)
+    if not spec:
+        return handle_menu(store, bot, link, chat, mid, "home")
+    drop_question(store)
+    what = spec[0]
+    if what == "cmd":
+        name = spec[1]
+        reads = _reads(store, now)
+        if name in reads:
+            bot.send(chat, reads[name](), [home_row])
+        elif name == "ralat":
+            text_, buttons = errors_reply(store, now)
+            bot.send(chat, text_, buttons + [home_row])
+        elif name == "memori":
+            text_, buttons = tt.memory_reply(store, link["user_id"])
+            bot.send(chat, text_, buttons + [menu.back_row(lang, "memori", keep=True)])
+        else:                                        # draf: every stream
+            show_drafts(store, bot, chat, now, lang=lang, foot=home_row)
+        return f"menu {name}"
+    if what == "drafts":
+        tab = post_tab(stream=spec[1])
+        foot = menu.back_row(lang, tab, keep=True)
+        return "menu " + show_drafts(store, bot, chat, now, stream=spec[1], lang=lang, foot=foot)
+    if what == "ideas":
+        tab = "li-idea" if spec[1] == "linkedin" else "idea"
+        rows = [menu.open_row(lang, SITE, tab), menu.back_row(lang, tab, keep=True)]
+        bot.send(chat, cat.ideas_reply(store, spec[1], lang), rows)
+        return f"menu ideas ({spec[1]})"
+    if what == "topic":
+        tt.save_chat_state(store, {"pending": spec[1]})
+        text_, buttons = menu.topic(spec[1], lang)
+        bot.send(chat, text_, buttons)
+        return f"menu asks {spec[1]}"
+    if what == "ask":
+        cat.ask(store, spec[1], spec[2])
+        text_, buttons = cat.prompt_reply(spec[1], lang, spec[2])
+        bot.send(chat, text_, buttons)
+        return f"menu asks {spec[1]}" + (f" ({spec[2]})" if spec[2] else "")
+    if what == "looks":
+        text_, buttons = menu.looks_menu(spec[1], lang)
+        bot.send(chat, text_, buttons)
+        return f"menu looks ({spec[1]})"
+    text_, buttons = cat.model_reply(store)          # model
+    bot.send(chat, text_, buttons)
+    return "menu model"
+
+
 def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, Any], now: datetime | None = None) -> str:
     now = now or datetime.now(UTC)
     cq = row["payload"]["callback_query"]
@@ -632,14 +784,19 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
     msg = cq.get("message") or {}
     chat, mid = int(msg.get("chat", {}).get("id") or link["chat_id"]), int(msg.get("message_id") or 0)
     kind, _, rest = data.partition(":")
+    if kind in ("m", "n"):                           # n: the same menu as a new message, so the answer above it stays
+        return handle_menu(store, bot, link, chat, 0 if kind == "n" else mid, rest)
+    if kind == "a":
+        return handle_action(store, bot, link, chat, mid, rest, now)
     if kind == "c":
         if rest == "home":
-            text_, buttons = cat.home_reply(link)
+            cat.clear_pending(store)
+            text_, buttons = cat.home_reply(link, cat.lang(store), SITE)
         elif rest == "model":
             text_, buttons = cat.model_reply(store)
         elif rest in ("repo", "idea", "style"):
             cat.ask(store, rest)
-            text_, buttons = cat.prompt_reply(rest)
+            text_, buttons = cat.prompt_reply(rest, cat.lang(store))
         elif rest == "post":
             text_, buttons = cat.post_reply(SITE)
         elif rest.startswith("mt:"):
@@ -699,7 +856,7 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
             bot.send(chat, cat.start_motion(store, rest.split(":", 1)[1]), reply_to=mid)
             return "catalogue motion started"
         else:
-            text_, buttons = cat.home_reply(link)
+            text_, buttons = cat.home_reply(link, cat.lang(store), SITE)
         bot.send(chat, text_, buttons, reply_to=mid)
         return "catalogue button"
     if kind in ("ok", "no"):
@@ -726,7 +883,7 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
         return "idea made"
     if kind == "menu":
         if rest in ("home", "main", "prev"):
-            text_, buttons = cat.home_reply(link)
+            text_, buttons = cat.home_reply(link, cat.lang(store), SITE)
             bot.send(chat, text_, buttons, reply_to=mid)
             return "menu home"
         if rest in tt.NEEDS_TOPIC:
@@ -739,7 +896,7 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
             index = int(rest)
         except ValueError:
             index = -1
-        text_, buttons = cat.home_reply(link)
+        text_, buttons = cat.home_reply(link, cat.lang(store), SITE)
         bot.send(chat, text_, buttons, reply_to=mid)
         return f"menu group {index}"
     if kind == "pin":
@@ -816,8 +973,8 @@ def handle_message(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, An
     pending_answer = cat.waiting(store, text)
     if pending_answer:
         kind, _arg = pending_answer
-        if kind in ("repo", "idea", "style"):
-            reply = cat.take_answer(store, link, kind, text, row.get("id"))
+        if kind != "post_edit":
+            reply = cat.take_answer(store, link, kind, text, row.get("id"), arg=_arg, lang=cat.lang(store))
             if reply:
                 bot.send(chat, reply[0], reply[1], reply_to=mid)
                 return f"catalogue {kind}"
@@ -835,7 +992,7 @@ def handle_message(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, An
     cmd = text.split()[0].split("@")[0].lower().lstrip("/") if text.startswith("/") else ""
     if cmd in ("start", "menu"):
         cat.clear_pending(store)
-        text_, buttons = cat.home_reply(link)
+        text_, buttons = cat.home_reply(link, cat.lang(store), SITE)
         bot.send(chat, text_, buttons)
         return "catalogue menu"
     if not cmd and text:
@@ -882,19 +1039,7 @@ def handle_message(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, An
         bot.send(chat, HELP)
         return "help"
     if cmd in ("draf", "drafts", "draft"):
-        every = draft_rows(store)
-        rows = drafts(store, now=now, rows=every)
-        late = sum(1 for p in every if slot_past(p, now))
-        if not rows and not late:
-            bot.send(chat, "Tiada draf menunggu kelulusan. 👍")
-        for p in rows:
-            send_draft(store, bot, chat, p, now)
-        if late:
-            bot.send(chat, f"⏰ {late} draf lagi slotnya sudah lepas lebih 45 minit, jadi tidak boleh diluluskan di sini: "
-                           "penerbit tidak menghantar post yang lewat. Pindahkan ke slot baharu di Semasa (tab Post → Jadual → "
-                           "Pindah semua), kemudian /draf semula.",
-                     [[{"text": "🔗 Buka di Semasa", "url": f"{SITE.rstrip('/')}/#posts"}]])
-        return f"{len(rows)} draft(s)" + (f", {late} past their slot" if late else "")
+        return show_drafts(store, bot, chat, now, lang=cat.lang(store))
     if cmd in ("jadual", "schedule"):
         bot.send(chat, schedule_text(store, now))
         return "schedule"

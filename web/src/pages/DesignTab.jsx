@@ -9,6 +9,7 @@ import { normaliseSlides, scan } from "../lib/compliance";
 import { timeAgo } from "../lib/format";
 import { sizeLabel, sizeMeta, sizeOf } from "../lib/sizes";
 import { useLang } from "../lib/i18n";
+import { useSubLink } from "../lib/deepLink";
 import { IMAGE_TYPES, refusal, removeReference, uploadReference } from "../lib/storage";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import LookPicker from "../components/LookPicker";
@@ -311,6 +312,9 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
       setBusy("");
     }
   }
+
+  // a link can name the kind (#design/comic, from the Telegram menu): chosen when the page opens; a kind this page does not offer is ignored
+  useSubLink("design", (kind) => { if (designs.some((d) => d[0] === kind)) setDesign(kind); });
 
   const results = gens.rows.filter((r) => r.meta?.design);
   // a design inside an approved, scheduled or posted post cannot be deleted (supabase/017: the database refuses it)

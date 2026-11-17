@@ -208,10 +208,12 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None, *, provide
     try:
         settings = ideas.load_settings(store)
         lib = comic_library.library(settings.get("comic"))
-        series = comic_library.series_of(lib, c.get("series"), c.get("series_copy"))
-        style = comic_library.style_of(lib, c.get("style"), c.get("style_copy"))
+        # a job that names none (an idea that asked for a comic without picking) takes the library's defaults
+        series = comic_library.series_of(lib, c.get("series") or lib["default_series"], c.get("series_copy"))
+        style = comic_library.style_of(lib, c.get("style") or lib["default_style"], c.get("style_copy"))
         if not series or not style:
             raise comic.ComicError("the comic's series or style is not in the library any more: pick one and send it again")
+        c.update(series=series["id"], style=style["id"])
         reg = ((settings.get("brand") or {}).get("regulab") or {})
         source = str(meta.get("citation") or "")
         note = str((c.get("revise") or {}).get("note") or "") if isinstance(c.get("revise"), dict) else ""

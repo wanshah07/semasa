@@ -161,4 +161,9 @@ assert.match(tab, /design === "comic" && <ComicMaker/);
 const maker = read("src/components/ComicMaker.jsx");
 assert.ok(!/\u2014/.test(maker) && !/\u2014/.test(read("src/lib/comic.js")), "no em dash in anything a person reads");
 assert.match(maker, /supabase\/085_comic\.sql/);
+// an idea can ask for a comic as its post's one picture (backend ideas.format_of, ideas.comic_job)
+const composer = read("src/components/IdeaComposer.jsx");
+assert.match(composer, /\["comic", t\("Komik", "Comic"\)\]/);
+assert.match(composer, /brief\.format = "comic"; brief\.comic = \{ series: /);
+assert.match(read("../backend/semasa/ideas.py"), /if fmt in \("carousel", "poster", "comic"\)/);
 console.log("comic: ok");

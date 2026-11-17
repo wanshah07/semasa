@@ -677,3 +677,53 @@ def test_a_linkedin_comic_is_in_english_and_carries_no_brand(uploads) -> None:
     logo = comic.layout(script(), episode="x", stream="regulab")["logo"]
     region = (logo["x"], logo["y"], logo["x"] + logo["w"], logo["y"] + logo["h"])
     assert poster.convert("L").crop(region).getextrema()[0] > 240
+
+
+# ------------------------------------------------------------------------------------ a comic as an idea's one picture
+
+def test_an_idea_can_ask_for_a_comic_as_its_posts_picture(monkeypatch) -> None:
+    from semasa import ideas
+    from semasa.llm import LLM
+
+    assert ideas.format_of({"brief": {"format": "comic"}}) == "comic" and ideas.format_of({"brief": {}}) == "post"
+
+    class IdeaWriter(LLM):
+        def __init__(self, answer):
+            super().__init__(LLMSettings(provider="openai", api_key="k", base_url="https://x/v1", model="m", timeout=5))
+            self.answer = answer
+
+        def chat_json(self, system, user, **_k):
+            return self.answer
+
+    monkeypatch.setattr(ideas, "read_source", lambda _url: {"ok": False, "why": "no link", "image": "https://news/p.jpg"})
+    caption = "Logo halal tidak semestinya hijau. MPPHM (Domestik) 2020, Klausa 40(2) membenarkan warna ikut pembungkusan."
+    brand = {"regulab": {"slots": ["08:00", "13:00", "21:00"], "schedule": {str(d): ["halal_my"] for d in range(7)}}}
+    store = FakeStore(semasa_settings=[{"key": "brand", "value": brand}], semasa_posts=[], media_generations=[], semasa_ideas=[])
+    llm = IdeaWriter({"fit": True, "hook": "Hijau ke?", "hook_shape": 21, "domain": "halal_my",
+                      "citation": SOURCE, "text": {"bm": {"instagram": caption, "facebook": caption, "threads": caption}},
+                      "visual_prompt": "a packet on a shelf", "alt": "paket"})
+    idea = {"id": "i1", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "image",
+            "brief": {"format": "comic", "comic": {"series": "nota-makmal", "style": "chibi-comel"}}}
+    store.tables["semasa_ideas"].append({**idea, "status": "working"})
+    pid = ideas.process_idea(store, llm, idea, ideas.load_settings(store))
+    jobs = store.tables["media_generations"]
+    assert len(jobs) == 1                                               # the comic is the picture: no other picture is made
+    m = jobs[0]["meta"]
+    assert (jobs[0]["mode"], jobs[0]["post_id"], m["design"], m["stream"]) == ("slides", pid, "comic", "regulab")
+    assert m["comic"] == {"series": "nota-makmal", "style": "chibi-comel", "words_mode": "auto"} and "script" not in m["comic"]
+    assert caption in m["brief"] and m["brief"].startswith("Hijau ke?") and m["citation"] == SOURCE
+    assert "review" not in m["comic"]                                    # the draft itself is what waits for Wan
+    # a citation too long for the foot of a comic is left to the comic's writer, never cut
+    long = ideas.comic_job(idea, {"stream": "linkedin", "lang": "en", "hook": "h", "citation": "c" * 400,
+                                  "text": {"en": {"linkedin": "The caption."}}}, "p9")
+    assert long["meta"]["citation"] == "" and "The caption." in long["meta"]["brief"] and ("c" * 400) in long["meta"]["brief"]
+
+
+def test_a_job_that_names_no_series_or_style_takes_the_librarys_defaults() -> None:
+    row = job(comic_meta={"series": "", "style": ""})
+    store = store_with(row)
+    maker = Maker()
+    assert comic_job.process(store, copy.deepcopy(row), settings(), None, draw=maker, read=None) is True
+    c = store.tables["media_generations"][0]["meta"]["comic"]
+    assert (c["series"], c["style"]) == (comic_library.RULES["default_series"], comic_library.RULES["default_style"])
+    assert STYLES[0]["prompt"] in maker.prompts[0] and c["episode_line"] == "Siri Kak Lin Tanya · Episod 1"

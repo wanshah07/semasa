@@ -82,9 +82,18 @@ def upload_panel(page, panel: Path, report: dict) -> bool:
         report["upload"] = "no input[type=file] found"
         dump_controls(page, report, "upload_state")
         return False
+    # set the file, then wait for the thumbnail (ATTACH n/3) to appear so the upload is really processed
     file_inputs.first.set_input_files(str(panel))
-    page.wait_for_timeout(2500)
-    report["upload"] = f"set {panel.name}"
+    page.wait_for_timeout(3500)
+    try:
+        attach = page.evaluate("""() => {
+            const t = document.body.innerText || '';
+            const m = t.match(/ATTACH (\\d+)\\/3/);
+            return m ? m[0] : '';
+        }""")
+        report["upload"] = f"set {panel.name}; attach={attach}"
+    except Exception:  # noqa: BLE001
+        report["upload"] = f"set {panel.name}"
     return True
 
 

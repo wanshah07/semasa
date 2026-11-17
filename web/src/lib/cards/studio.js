@@ -2751,7 +2751,7 @@ SKINS.kraft = { ground: "#EFE8DC", ink: "#151515", muted: "#5C574E", accent: "#D
 /** The skin a spec is drawn in: its own override (the ERA front page), else the look its template belongs to. */
 const skinOf = (spec) => (spec.skin && SKINS[spec.skin] ? spec.skin : SKIN_OF[spec.template[0]]);
 /* SKIN_MAX was 1.7 until 16 Nov 2026 (auto-fit): a slide of one short point then filled a third of its card. */
-export const SKIN_MIN = 0.56, SKIN_MAX = 2.4;
+export const SKIN_MIN = 0.56, SKIN_MAX = 2.8;
 /* The first page is the hook (Wan, 16 Nov 2026: "the text for first page no need to big, but hook make bigger"): on a cover the
    headline alone grows, up to SKIN_COVER_MAX, and everything under it stays at reading size (at most SKIN_COVER_REST). */
 export const SKIN_COVER_MAX = 2.6, SKIN_COVER_REST = 1.05;

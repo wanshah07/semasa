@@ -148,6 +148,28 @@ def _block(page: dict[str, Any], cover: bool, width: int, unit: float, scale: fl
     return PageBlock(title, points, tf, bf, title_lh, body_lh, gap, gap_point, height, scale)
 
 
+# AUTO-FIT (Wan, 16 Nov 2026). The picture's share is still chosen once for the set and the words still come first. What was
+# missing is the other direction: a page of a few words kept the template's type size and left a wide empty band between its
+# words and its picture. A page that fits at full size and takes under FILL_FROM of its text zone now grows, up to the
+# ceiling of its kind, to at most FILL_TARGET of the zone, and never so far that a word would be cut in two.
+FILL_FROM, FILL_TARGET = 0.62, 0.9
+FILL_MAX = {True: 2.4, False: 1.9}            # the cover (the hook), every other page
+FILL_STEP = 0.05
+
+
+def _grow(page: dict[str, Any], cover: bool, width: int, unit: float, room: int, block: PageBlock) -> PageBlock:
+    if room <= 0 or block.scale < 1.0 or block.height >= FILL_FROM * room:
+        return block
+    whole = slides.pieces(block)
+    scale = FILL_MAX[cover]
+    while scale > 1.0 + 1e-9:
+        bigger = _block(page, cover, width, unit, scale)
+        if bigger.height <= FILL_TARGET * room and slides.pieces(bigger) == whole:
+            return bigger
+        scale = round(scale - FILL_STEP, 2)
+    return block
+
+
 def _source_lines(source: str, stream: str, width: int) -> tuple[list[Line], Any]:
     """The closing page's source line: the smallest of three sizes that takes four lines or fewer, else an error (never cut)."""
     label = "Sumber: " if stream != "linkedin" else "Source: "
@@ -185,7 +207,7 @@ def _fit_all(items: list[dict[str, Any]], size: tuple[int, int], share: float, s
         found = next((b for b in (_block(page, i == 0, width, z.unit, s) for s in scales) if b.height <= room), None)
         if found is None:
             return i
-        blocks.append(found)
+        blocks.append(_grow(page, i == 0, width, z.unit, room, found))
     return Plan(z, share, blocks, src_lines, src_font)
 
 

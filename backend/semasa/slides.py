@@ -184,10 +184,20 @@ def layout(slide: dict[str, Any], kind: str, width: int, scale: float, tall: boo
                  gap_title=round(34 * scale), gap_point=round(22 * scale), bullet=bullet)
 
 
-FILL_FROM = 0.45          # a slide whose words take less than this share of the room is "empty": its type grows
-FILL_TARGET = 0.78        # ... until the words take this share of the room (a hook, the cover, grows the most)
-# the hook (the cover) is drawn very large; every other slide only grows a little
-FILL_MAX = {"cover": 2.4, "single": 1.35, "point": 1.35, "close": 1.35}
+# AUTO-FIT (Wan, 16 Nov 2026: "for all poster, single card, comic, image make auto-fit application"). A slide that is too full
+# has always shrunk here (fit, down to MIN_SCALE) and failed by name when it still did not fit. The other half was weak: a
+# poster of three words and one point grew to 1.35 at most and sat in the upper third of a bare card. The ceilings are higher
+# now, a slide starts growing sooner, and growth stops before it would cut a word in two (pieces).
+FILL_FROM = 0.6           # a slide whose words take less than this share of the room is "empty": its type grows
+FILL_TARGET = 0.82        # ... until the words take this share of the room (a hook, the cover, grows the most)
+# the hook (the cover) is drawn very large; a slide with a lead and three points already fills its card and is not touched
+FILL_MAX = {"cover": 3.0, "single": 2.4, "point": 2.4, "close": 2.4}
+
+
+def pieces(block: Any) -> int:
+    """How many drawn pieces a laid-out block has. A word wider than the column is split by character (hard_split), so a
+    block with more pieces than the same words had at a smaller size has a word cut in two."""
+    return sum(len(ln.runs) for ln in block.title) + sum(len(ln.runs) for pt in block.points for ln in pt)
 
 
 def fit(slide: dict[str, Any], kind: str, width: int, height: int, tall: bool) -> Block:
@@ -206,10 +216,11 @@ def _fill(slide: dict[str, Any], kind: str, width: int, height: int, tall: bool,
     steps up to the kind's ceiling, at which it still fits inside FILL_TARGET of the room. Dense slides never change."""
     if height <= 0 or block.height >= FILL_FROM * height:
         return block
+    whole = pieces(block)
     scale = FILL_MAX.get(kind, 1.35)
     while scale > 1.0 + 1e-9:
         bigger = layout(slide, kind, width, scale, tall)
-        if bigger.height <= FILL_TARGET * height:
+        if bigger.height <= FILL_TARGET * height and pieces(bigger) == whole:      # fills the room and cuts no word in two
             return bigger
         scale = round(scale - SCALE_STEP, 2)
     return block

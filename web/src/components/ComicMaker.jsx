@@ -257,11 +257,10 @@ export default function ComicMaker({ user, gens, posts, brand, settings, saveSet
               <span className="mt-1 block text-[11px] text-muted [overflow-wrap:anywhere]">{say(series.about)}</span>
               <span className="mt-1 block text-[11px] [overflow-wrap:anywhere]"><b>{series.cast.A.name}</b> ({t("kiri", "left")}) · <b>{series.cast.B.name}</b> ({t("kanan", "right")})</span>
             </label>
-            <div className="flex flex-wrap items-end gap-3">
-              <p className="text-[12px]" data-comic-episode>{t("Poster akan tertulis", "The poster will read")}: <b>{episodeLine(series.name, Number(episode) > 0 ? Number(episode) : next, stream === "linkedin" ? "en" : "bm")}</b></p>
-              <label className="block w-28"><Label hint={t("pilihan", "optional")}>{t("Nombor episod", "Episode number")}</Label>
-                <Input value={episode} inputMode="numeric" onChange={(e) => setEpisode(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder={String(next)} /></label>
-            </div>
+            <label className="block"><Label hint={t("pilihan · kosong = episod seterusnya siri ini", "optional · empty = the series' next episode")}>{t("Nombor episod", "Episode number")}</Label>
+              <Input value={episode} inputMode="numeric" className="max-w-[9rem]" onChange={(e) => setEpisode(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder={String(next)} />
+              <span className="mt-1 block text-[12px]" data-comic-episode>{t("Poster akan tertulis", "The poster will read")}: <b>{episodeLine(series.name, Number(episode) > 0 ? Number(episode) : next, stream === "linkedin" ? "en" : "bm")}</b></span>
+            </label>
             <label className="block"><Label hint={t("instrumen atau pengawal selia; dicetak di bawah komik", "the instrument or regulator; printed under the comic")}>{t("Sumber", "Source")}</Label>
               <Input value={source} onChange={(e) => setSource(e.target.value)} maxLength={LIMITS.source} placeholder="MPPHM (Domestik) 2020, Klausa 40(2)" /></label>
             <label className="block"><Label hint={t("pilihan · ditambah pada gambar post draf itu", "optional · added to that draft post's pictures")}>{t("Lampirkan pada post", "Attach to a post")}</Label>
@@ -340,7 +339,8 @@ export function ComicCard({ row, mine, settings, brand, gens, onToast }) {
   const note = wordsNote(c.words);
   const problem = open ? scriptProblem(script, m.citation || "") : "";
   const flags = useMemo(() => (open ? scriptFlags(script, m.stream || "regulab", m.citation || "", brand?.regulab) : []), [open, script, m.stream, m.citation, brand]);
-  const styleName = c.style_name ? (lang === "en" ? c.style_name.en : c.style_name.bm) : (c.style_copy?.name ? (lang === "en" ? c.style_copy.name.en : c.style_copy.name.bm) : "");
+  const style = c.style_name ? { name: c.style_name } : lib.styles.find((x) => x.id === c.style) || c.style_copy;
+  const styleName = style?.name ? (lang === "en" ? style.name.en : style.name.bm) : "";
 
   async function draw() {
     if (problem) return onToast(problem, "warn");

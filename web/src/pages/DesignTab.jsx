@@ -676,7 +676,7 @@ function DesignResults({ rows, user, gens, onToast, designs, lockedBy = () => nu
     try { await fn(); } catch (e) { onToast(e.message || String(e), "danger"); }
   }
   return (
-    <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className={`grid items-start gap-4 ${rows.length === 1 && rows[0].meta?.design === "comic" ? "" : "md:grid-cols-2 xl:grid-cols-3"}`}>
       {rows.map((r) => {
         const m = r.meta || {};
         const urls = m.slide_urls || (r.generated_media_url ? [r.generated_media_url] : []);

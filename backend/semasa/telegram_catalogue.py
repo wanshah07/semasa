@@ -1,17 +1,23 @@
-"""Semasa on Telegram, the catalogue (Wan, 9 Nov 2026): /start and /menu show FIVE buttons, in English, and nothing else.
+"""Semasa on Telegram, the things a menu button queues or reads (Wan, 9 Nov 2026, then 16 Nov 2026: "make sure all features
+appear in telegram semasa button").
+
+The menu itself is telegram_menu.py, drawn from rules/telegram_menu.json: the page's own segments and pages. This module is
+what stands behind the buttons that do something in the chat:
 
   Model by task   which AI robot does reading and answers, post writing and motion scripts (the router's own jobs
                   reader / ideas / motion), or Auto. A pin is the API page's own pin (settings.ai_team.pins[job]).
   Repo library    a link becomes a semasa_repo_library row (status pending, note, created_by); the repo worker reads it.
-  Idea            a link or some text becomes a semasa_ideas row (status new, stream regulab); the idea worker writes the draft.
+  Idea            a link or some text becomes a semasa_ideas row (status new, stream regulab or linkedin); the idea worker
+                  writes the draft. A poster or a carousel is the same row with its format and the look Wan picked.
   Writing style   a post link or pasted text becomes a semasa_writing_styles row (status new); the style worker describes it.
   Post            the drafts waiting, with Edit, Make carousel, Make motion, Approve, Reject and Open in Semasa
                   (the posts half lives in telegram_bot.py, beside the preview and the approval gate).
+  Reads           the newest ideas of a stream, the vague-wording check on pasted text, an ayat al-Quran by surah:ayat.
 
-Everything here only WRITES A ROW that an existing worker picks up. Nothing is published, approved, cloned or run from this file.
-A question the menu asks ("send a link") is kept as settings.telegram_chat.pending = "cat:<kind>[:<id>]"; the next plain message
-is the answer, a command sent instead drops the question. The legacy slash commands and the old `menu:` buttons stay in
-telegram_bot.py as hidden compatibility handlers; the menu no longer offers them.
+Everything here only WRITES A ROW that an existing worker picks up, or READS. Nothing is published, approved, cloned or run from
+this file. A question the menu asks ("send a link") is kept as settings.telegram_chat.pending = "cat:<kind>[:<arg>]"; the next
+plain message is the answer, a command sent instead drops the question. The legacy slash commands and the old `menu:` and `c:`
+buttons stay in telegram_bot.py as compatibility handlers, so a menu message already in Wan's chat still works.
 """
 
 from __future__ import annotations
@@ -20,7 +26,8 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
-from . import db, repo_library
+from . import compliance, db, repo_library
+from . import telegram_menu as menu
 from . import telegram_tools as tt
 from .log import get_logger
 
@@ -38,33 +45,35 @@ MAX_LINKS = 8                               # the same table's size check
 MAX_SAMPLE = 12000
 MIN_IDEA = 6                                # characters of plain text that can be an idea
 
-HOME = (("🤖 Model by task", "c:model"), ("📚 Repo library", "c:repo"), ("💡 Idea", "c:idea"),
-        ("✍️ Writing style", "c:style"), ("📝 Post", "c:post"))
 TASKS = (("reader", "📖 Reading and answers", "Telegram answers, repo and style analysis, reports"),
          ("ideas", "💡 Writing posts", "the captions and hooks of every draft"),
          ("motion", "🎬 Motion scripts", "a film's script and storyboard"))
 TASK_NAME = {job: name for job, name, _ in TASKS}
 
 
-def _back(to: str = "c:home", label: str = "⬅ Back") -> list[dict[str, str]]:
+def _back(to: str = "m:home", label: str = "⬅ Back") -> list[dict[str, str]]:
     return [{"text": label, "callback_data": to}]
+
+
+def lang(store: Any) -> str:
+    """The language Wan picked for the menu (settings.telegram_chat.lang; the 🌐 button on the home menu): Malay unless he
+    chose English, like the page."""
+    return menu.lang_of(tt.chat_state(store).get("lang"))
 
 
 # ---- the home menu --------------------------------------------------------------------------------------------------------
 
-def home_reply(link: dict[str, Any] | None = None) -> tuple[str, list[list[dict[str, str]]]]:
-    """The five buttons, one to a row, and no other."""
-    who = str((link or {}).get("username") or "Wan")
-    text = (f"Hi {who} 👋 Semasa here.\n\nPick what you want to do, or just type a question. "
-            "I remember your standing notes and learn from 👍 and 👎 under my answers.\n\n/menu shows this again.")
-    return text, [[{"text": label, "callback_data": data}] for label, data in HOME]
+def home_reply(link: dict[str, Any] | None = None, lang: str = "bm", site: str = "") -> tuple[str, list[list[dict[str, str]]]]:
+    """The home menu: two quick buttons, every segment of the page, the language switch and a link to Semasa."""
+    from .billing import SITE_URL
+    return menu.home(menu.lang_of(lang), site or SITE_URL, str((link or {}).get("username") or "Wan"))
 
 
 def post_reply(site: str) -> tuple[str, list[list[dict[str, str]]]]:
     return ("📝 Post\n\nChoose a draft to edit, turn into a carousel or motion, and approve through the Semasa gate.",
             [[{"text": "📋 Show drafts", "callback_data": "c:pd"}],
-             [{"text": "🌐 Open Post editor", "url": site.rstrip("/") + "/#posts"}],
-             _back("c:home", "⬅ Menu")])
+             [{"text": "🌐 Open Post editor", "url": menu.page_url(site, "post")}],
+             _back("m:home", "⬅ Menu")])
 
 
 # ---- questions the menu asks ------------------------------------------------------------------------------------------------
@@ -109,7 +118,7 @@ def model_reply(store: Any) -> tuple[str, list[list[dict[str, str]]]]:
     for job, name, what in TASKS:
         lines.append(f"• {name}: {_pin_words(pins.get(job))}  ({what})")
     buttons = [[{"text": name, "callback_data": f"c:mt:{job}"}] for job, name, _ in TASKS]
-    buttons.append(_back("c:home", "⬅ Menu"))
+    buttons.append(_back("m:home", "⬅ Menu"))
     return "\n".join(lines), buttons
 
 
@@ -168,20 +177,9 @@ def apply_pin(store: Any, job: str, slug: str) -> tuple[str, list[list[dict[str,
 
 # ---- the questions the menu asks ------------------------------------------------------------------------------------------
 
-PROMPTS = {
-    "repo": ("📚 Repo library\n\nSend a GitHub repository link, with a note after it if you like. Semasa reads the README and "
-             "files, checks them for safety and files a summary. Nothing is cloned or run.\n\n"
-             "Another kind of link (a post, a video, a site) is saved as a source note and queued the same way."),
-    "idea": ("💡 Idea\n\nSend a link or write the idea. It goes to the idea writer as a ws.regulab draft: the first line is "
-             "built on one of the 25 hook shapes and the draft must cite its source. Nothing is published; you approve the "
-             "draft under Post first."),
-    "style": ("✍️ Writing style\n\nSend a link to a post whose writing you like, or paste its text (at least 80 characters). "
-              "Semasa describes how it is written, never what it says, and files it under Gaya penulisan in Semasa."),
-}
-
-
-def prompt_reply(kind: str) -> tuple[str, list[list[dict[str, str]]]]:
-    return PROMPTS[kind], [_back("c:home", "⬅ Menu")]
+def prompt_reply(kind: str, lang: str = "bm", arg: str = "") -> tuple[str, list[list[dict[str, str]]]]:
+    """The question a button asks, in Wan's language, with a way back (the words are in telegram_menu.PROMPTS)."""
+    return menu.prompt(kind, lang, arg)
 
 
 def _urls(text: str) -> list[str]:
@@ -245,26 +243,101 @@ def idea_made_from(store: Any, inbox_id: Any) -> dict[str, Any] | None:
     return got[0] if got else None
 
 
-def add_idea(store: Any, link: dict[str, Any], text: str, inbox_id: Any = None) -> tuple[str, bool]:
-    """(what to tell Wan, whether the question is answered). A real semasa_ideas row, status new, stream regulab. The idea worker
-    writes the draft (hook shape, citation, pictures) and the draft comes back to Telegram for approval. Nothing is published."""
+def add_idea(store: Any, link: dict[str, Any], text: str, inbox_id: Any = None, stream: str = "regulab", fmt: str = "",
+             look: str = "", lang: str = "en") -> tuple[str, bool]:
+    """(what to tell Wan, whether the question is answered). A real semasa_ideas row, status new, for ws.regulab or for Wan's own
+    LinkedIn. The idea worker writes the draft (hook shape, citation, pictures) and the draft comes back to Telegram for
+    approval. `fmt` "poster" or "carousel" asks for that artwork, in the look Wan picked (brief.look, the idea composer's own
+    field: ideas.look_of). Nothing is published."""
+    bm = lang == "bm"
+    stream = "linkedin" if stream == "linkedin" else "regulab"
     urls = _urls(text)
     note = _words(text)
     if not urls and len(note) < MIN_IDEA:
-        return "That is too short for an idea. Send a link, or a sentence about the topic.", False
+        return ("Terlalu pendek untuk jadi idea. Hantar pautan, atau satu ayat tentang topiknya." if bm else
+                "That is too short for an idea. Send a link, or a sentence about the topic."), False
     made = idea_made_from(store, inbox_id)
     if made:
-        return f"💡 That idea is already with the writer: {made.get('source_title') or ''}", True
+        return (f"💡 Idea itu sudah bersama penulis: {made.get('source_title') or ''}" if bm else
+                f"💡 That idea is already with the writer: {made.get('source_title') or ''}"), True
     title = (note[:200] or urls[0])
+    brief: dict[str, Any] = {"via": "telegram", "catalogue": "idea", "telegram_inbox_id": inbox_id, "hook_required": True,
+                             "source_required": True, "requirements": REQUIREMENTS, "source_kind": "link" if urls else "text"}
+    if fmt == "poster":
+        brief["format"] = "poster"                       # telegram_tools.make_poster's own mark (the /poster command)
+    if look:
+        brief["look"] = look
     row = {"source_title": title[:300], "source_url": urls[0] if urls else None, "source_name": "Telegram",
-           "stream": "regulab", "make_media": "image", "note": note[:2000], "reference_urls": urls[1:8],
-           "status": "new", "created_by": link["user_id"],
-           "brief": {"via": "telegram", "catalogue": "idea", "telegram_inbox_id": inbox_id, "hook_required": True,
-                     "source_required": True, "requirements": REQUIREMENTS,
-                     "source_kind": "link" if urls else "text"}}
+           "stream": stream, "make_media": "image", "make_slides": fmt == "carousel", "note": note[:2000],
+           "reference_urls": urls[1:8], "status": "new", "created_by": link["user_id"], "brief": brief}
     store.table(db.IDEAS).insert(row).execute()
-    return (f"💡 Idea sent to the writer (ws.regulab): {title[:120]}\nIt becomes a draft with a hook and a cited source, and "
-            "comes back here under Post for you to approve. Nothing is published."), True
+    where = "LinkedIn" if stream == "linkedin" else "ws.regulab"
+    what = {"poster": "Poster", "carousel": "Carousel"}.get(fmt, "Idea")
+    dress = f" · {menu.look_name(look, lang)}" if look else ""
+    if bm:
+        return (f"💡 {what}{dress} dihantar kepada penulis ({where}): {title[:120]}\nIa menjadi draf dengan hook dan sumber "
+                "yang disebut, dan sampai di sini untuk anda luluskan. Tiada apa yang diterbitkan."), True
+    return (f"💡 {what}{dress} sent to the writer ({where}): {title[:120]}\nIt becomes a draft with a hook and a cited source, "
+            "and comes back here for you to approve. Nothing is published."), True
+
+
+def ideas_reply(store: Any, stream: str, lang: str = "bm", limit: int = 10) -> str:
+    """The newest ideas of one stream, read only: what each is and where it stands."""
+    bm = lang == "bm"
+    stream = "linkedin" if stream == "linkedin" else "regulab"
+    rows = store.table(db.IDEAS).select("id,source_title,status,stream,created_at").eq("stream", stream) \
+        .order("created_at", desc=True).limit(limit).execute().data or []
+    where = "LinkedIn" if stream == "linkedin" else "ws.regulab"
+    if not rows:
+        return f"💡 Tiada idea {where} lagi." if bm else f"💡 No {where} ideas yet."
+    icon = {"new": "🆕", "working": "✍️", "drafted": "📝", "rejected": "❌", "error": "❗"}
+    head = (f"💡 Idea {where} terkini (🆕 baharu · ✍️ sedang ditulis · 📝 sudah jadi draf · ❌ ditolak · ❗ gagal)" if bm else
+            f"💡 Latest {where} ideas (🆕 new · ✍️ being written · 📝 drafted · ❌ rejected · ❗ failed)")
+    return head + "\n" + "\n".join(f"{icon.get(r.get('status'), '·')} {str(r.get('source_title') or '')[:80]}" for r in rows)
+
+
+# ---- reads: the vague-wording check and an ayat ---------------------------------------------------------------------------
+
+def check_vague(text: str, lang: str = "bm") -> tuple[str, bool]:
+    """The publisher's own vague-wording rule (compliance.vague_hits, rules/compliance.json) on pasted text. Read only."""
+    bm = lang == "bm"
+    units = compliance.sentences(text)
+    if not units:
+        return ("Tampal teks yang hendak disemak." if bm else "Paste the text to check."), False
+    hits = compliance.vague_hits(units)
+    if not hits:
+        return ("🔎 Tiada frasa kabur ditemui: setiap frasa disokong angka, tarikh atau nombor entri." if bm else
+                "🔎 No vague phrase found: each one is pinned down by a figure, a date or an entry number."), True
+    listed = "\n".join(f'• "{h}"' for h in hits[:12])
+    if bm:
+        return (f"🔎 Frasa kabur ({len(hits)}):\n{listed}\n\nNyatakan butiran tepat (angka, tarikh atau nombor entri) dalam ayat "
+                "yang sama atau dua ayat selepasnya. Post baharu dengan frasa begini tidak boleh diluluskan."), True
+    return (f"🔎 Vague phrases ({len(hits)}):\n{listed}\n\nState the exact detail (a figure, a date or an entry number) in the "
+            "same sentence or the two after it. A new post carrying one of these cannot be approved."), True
+
+
+def lookup_ayat(text: str, lang: str = "bm", client: Any = None) -> tuple[str, bool]:
+    """An ayat by surah:ayat, fetched from the published source the cards use (quran.fetch): the Arabic, the translation and
+    where it came from. Read only: the tick that says Wan checked a verse on a card is his alone, on the page."""
+    from . import quran
+    bm = lang == "bm"
+    ref = "".join(str(text or "").split())
+    if not quran.parse(ref):
+        return ('Tulis rujukan sebagai surah:ayat, contohnya 2:168 atau 2:168-169.' if bm else
+                "Write the reference as surah:ayat, for example 2:168 or 2:168-169."), False
+    try:
+        got = quran.fetch(ref, "regulab" if bm else "linkedin", client)
+    except quran.QuranError as exc:
+        return f"📖 {exc}", True
+    except Exception as exc:  # noqa: BLE001 - a published source that does not answer is said plainly, never guessed around
+        log.info("ayat not fetched (%s)", str(exc)[:120])
+        return ("📖 Sumber ayat tidak menjawab sekarang. Cuba lagi sebentar." if bm else
+                "📖 The verse source did not answer just now. Try again shortly."), True
+    foot = (f"Sumber: {got['ayat_ed']}. Untuk kad, namakan {got['ayat']} pada slaid di Jana poster dan tandakan sendiri bahawa "
+            "anda sudah menyemaknya." if bm else
+            f"Source: {got['ayat_ed']}. For a card, name {got['ayat']} on a slide in Generate poster and tick it as checked "
+            "yourself.")
+    return f"📖 {quran.label(got['ayat'])}\n\n{got['ayat_ar']}\n\n{got['ayat_tr']}\n\n{foot}"[:3800], True
 
 
 # ---- Writing style --------------------------------------------------------------------------------------------------------
@@ -297,21 +370,31 @@ def add_style(store: Any, link: dict[str, Any], text: str) -> tuple[str, bool]:
 
 # ---- the answer to a question the menu asked ------------------------------------------------------------------------------
 
-def take_answer(store: Any, link: dict[str, Any], kind: str, text: str,
-                inbox_id: Any = None) -> tuple[str, list[list[dict[str, str]]]] | None:
-    """(reply, buttons) for repo, idea and style. None for a kind that is not this module's (an edit, which needs the post and
-    the gate and lives in telegram_bot.py). A question that was not answered (no link in it) stays pending."""
+def take_answer(store: Any, link: dict[str, Any], kind: str, text: str, inbox_id: Any = None, arg: str = "",
+                lang: str = "bm") -> tuple[str, list[list[dict[str, str]]]] | None:
+    """(reply, buttons) for the questions this module answers. None for a kind that is not this module's (an edit, which needs
+    the post and the gate and lives in telegram_bot.py). A question that was not answered (no link in it) stays pending.
+    `arg` is what the button narrowed the question to: an idea's stream, a poster's look."""
     if kind == "repo":
         reply, done = add_repo(store, link, text)
     elif kind == "idea":
-        reply, done = add_idea(store, link, text, inbox_id)
+        reply, done = add_idea(store, link, text, inbox_id, stream=arg or "regulab", lang=lang)
+    elif kind in ("poster", "karusel"):
+        reply, done = add_idea(store, link, text, inbox_id, fmt="poster" if kind == "poster" else "carousel",
+                               look=arg if arg in menu.LOOKS["names"] else "", lang=lang)
     elif kind == "style":
         reply, done = add_style(store, link, text)
+    elif kind == "vague":
+        reply, done = check_vague(text, lang)
+    elif kind == "ayat":
+        reply, done = lookup_ayat(text, lang)
     else:
         return None
     if done:
         tt.save_chat_state(store, {"pending": None})
-    return reply, [_back("c:home", "⬅ Menu")]
+    key = f"{kind}:{arg}" if f"{kind}:{arg}" in menu.ASK_TAB else kind
+    # an answer keeps its place in the chat (keep=True); a question that was not answered is still a question
+    return reply, [menu.back_row(lang, menu.ASK_TAB.get(key, ""), keep=done)]
 
 
 def carousel_options(post_id: str) -> tuple[str, list[list[dict[str, str]]]]:

@@ -1,10 +1,9 @@
-const DEFAULT_SITE = 'https://socialmedia.kkmhalalconsultant.com';
-const MENU = [
-  [['📝 Draf untuk lulus', 'draf'], ['🗓 Jadual 7 hari', 'jadual'], ['💡 Idea baharu', 'idea']],
-  [['🎨 Poster', 'poster'], ['🖼 Karusel', 'karusel'], ['🎬 Motion', 'motion'], ['📄 Laporan', 'laporan']],
-  [['🤖 Robot AI', 'robot'], ['🩺 Kesihatan', 'kesihatan'], ['❗ Ralat', 'ralat'], ['📊 Status', 'status']],
-  [['💰 Bil', 'bil'], ['🧠 Memori', 'memori'], ['✍️ Ingat sesuatu', 'ingat']],
-];
+// The menu /menu and /start open is menu.js (rules/telegram_menu.json): every segment and page of Semasa, one catalogue for
+// this webhook and the worker. The old four rows of `menu:<action>` buttons are gone from here; the worker still answers a tap
+// on one that is already in the chat.
+import { homeRow, langOf, renderMenu, safeSite } from './menu.js';
+
+export const DEFAULT_SITE = 'https://socialmedia.kkmhalalconsultant.com';
 const HELP = 'Semasa di Telegram 🤖\n\n' + [
   '/draf · Draf untuk lulus', '/jadual · Jadual 7 hari', '/status · Ringkasan Semasa', '/ralat · Ralat dan cuba lagi',
   '/kesihatan · Masalah watchdog', '/bil · Invois dan sebut harga terbuka', '/idea · Idea daripada topik atau link',
@@ -90,21 +89,13 @@ function billing(data) {
   return lines.join('\n');
 }
 
-export function commandReply(command, data, { chatId, now = new Date(), site = DEFAULT_SITE, username = 'Wan' } = {}) {
+export function commandReply(command, data, { chatId, now = new Date(), site = DEFAULT_SITE, username = 'Wan', lang = 'bm' } = {}) {
   if (chatId == null) return null;
   let text, keyboard;
   if (command === 'menu') {
-    try {
-      const url = new URL(site);
-      if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return null;
-    } catch { return null; }
-    text = `Hai ${username || 'Wan'} 👋 Semasa di sini.\n\nPilih di bawah, atau terus taip soalan. Saya ingat nota anda dan belajar daripada 👍/👎 di bawah setiap jawapan.\n\n/menu bila-bila masa untuk menu ini.`;
-    keyboard = MENU.flatMap(group => {
-      const rows = [];
-      for (let i = 0; i < group.length; i += 2) rows.push(group.slice(i, i + 2).map(([label, action]) => ({ text: label, callback_data: `menu:${action}` })));
-      return rows;
-    });
-    keyboard.push([{ text: '🔗 Buka Semasa', url: site.replace(/\/+$/, '') + '/' }]);
+    if (!safeSite(site)) return null;
+    // the name is the one thing in the menu that did not come from the catalogue: it is cleaned before it is drawn
+    ({ text, keyboard } = renderMenu('home', langOf(lang), site, clip(username || 'Wan', 40).trim() || 'Wan'));
   } else if (command === 'help') text = HELP;
   else if (command === 'jadual') text = schedule(data, now);
   else if (command === 'status') text = status(data, now);
@@ -129,6 +120,21 @@ async function rows(query) {
   return result.data;
 }
 
+/** What a read command needs from the database, and nothing more. Throws when a read is incomplete. */
+async function load(db, command, now) {
+  const data = {};
+  if (command === 'jadual') data.posts = await rows(db.from('semasa_posts').select('date,slot,stream,status,hook,domain,angle', { count: 'exact' })
+    .in('status', ['draft', 'approved', 'scheduled', 'posted']).gte('date', mytDate(now)).lte('date', mytDate(new Date(now.getTime() + 7 * DAY))));
+  if (command === 'status') [data.posts, data.ideas, data.health] = await Promise.all([
+    rows(db.from('semasa_posts').select('status,date,errors', { count: 'exact' }).in('status', ['draft', 'approved', 'scheduled'])),
+    rows(db.from('semasa_ideas').select('status,updated_at', { count: 'exact' }).in('status', ['new', 'working', 'error'])),
+    setting(db, 'health_state'),
+  ]);
+  if (command === 'kesihatan') data.health = await setting(db, 'health_state');
+  if (command === 'bil') data.billingDocs = await rows(db.from('semasa_billing_docs').select('kind,number,status,total,currency,due_date,client', { count: 'exact' }).in('status', OPEN));
+  return data;
+}
+
 // The caller checks recent unfinished inbox rows and passes busy; unreadable means busy.
 // An optional state is a fresh telegram_chat value already read by the caller, not an empty substitute after a read error.
 export async function fastCommand(db, update, link, { now = new Date(), site = DEFAULT_SITE, busy = false, state } = {}) {
@@ -138,23 +144,30 @@ export async function fastCommand(db, update, link, { now = new Date(), site = D
   if (!command) return null;
   try {
     const chatState = state === undefined ? await setting(db, 'telegram_chat') : state;
-    if (!object(chatState) || chatState.pending || chatState.await_note) return null;
-    const data = {};
-    if (command === 'jadual') data.posts = await rows(db.from('semasa_posts').select('date,slot,stream,status,hook,domain,angle', { count: 'exact' })
-      .in('status', ['draft', 'approved', 'scheduled', 'posted']).gte('date', mytDate(now)).lte('date', mytDate(new Date(now.getTime() + 7 * DAY))));
-    if (command === 'status') [data.posts, data.ideas, data.health] = await Promise.all([
-      rows(db.from('semasa_posts').select('status,date,errors', { count: 'exact' }).in('status', ['draft', 'approved', 'scheduled'])),
-      rows(db.from('semasa_ideas').select('status,updated_at', { count: 'exact' }).in('status', ['new', 'working', 'error'])),
-      setting(db, 'health_state'),
-    ]);
-    if (command === 'kesihatan') data.health = await setting(db, 'health_state');
-    if (command === 'bil') data.billingDocs = await rows(db.from('semasa_billing_docs').select('kind,number,status,total,currency,due_date,client', { count: 'exact' }).in('status', OPEN));
-    return commandReply(command, data, { chatId: update.message.chat.id, now, site, username: link.username });
+    // A pending question goes to the worker: a command sent instead of the answer drops it, and only the worker writes that.
+    // A 👎 correction that is still awaited (await_note) does not hold a command back: the worker never takes a command as the
+    // correction (telegram_tools.take_correction), so the row is the same either way. It did hold them back until 16 Nov 2026,
+    // and one 👎 left unanswered sent every /menu to the worker for days.
+    if (!object(chatState) || chatState.pending) return null;
+    return commandReply(command, await load(db, command, now), { chatId: update.message.chat.id, now, site, username: link.username, lang: chatState.lang });
   } catch {
     return null;
   }
 }
 
+/** A read a menu button asked for (menu.js readOf, which has already checked who tapped and that nothing is waiting): the
+    slash command's own text, with the way back to the menu under it. null hands the tap to the worker. */
+export async function fastRead(db, command, { chatId, now = new Date(), site = DEFAULT_SITE, lang = 'bm' } = {}) {
+  if (!Object.hasOwn(READS, command)) return null;
+  try {
+    const reply = commandReply(command, await load(db, command, now), { chatId, now, site, lang });
+    return reply ? { ...reply, reply_markup: { inline_keyboard: [homeRow(lang)] } } : null;
+  } catch {
+    return null;
+  }
+}
+
+const READS = { help: 1, status: 1, jadual: 1, kesihatan: 1, bil: 1 };
 const COMMANDS = { menu: 'menu', start: 'menu', help: 'help', bantuan: 'help', status: 'status', jadual: 'jadual', bil: 'bil', kesihatan: 'kesihatan' };
 
 export function fastCommandOf(update, { kind, owner, busy = false } = {}) {

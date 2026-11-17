@@ -1953,7 +1953,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
       const label = stripEmph(spec.eyebrow).toUpperCase(), room = maxW - (spec.stream === "linkedin" ? 0 : Math.round(300 * u));
       let ep = Math.round(25 * u); ctx.font = "700 " + ep + "px " + G_HEAD;
       while (ep > Math.round(17 * u) && ctx.measureText(label).width > room) { ep -= 1; ctx.font = "700 " + ep + "px " + G_HEAD; }
-      gWrap(ctx, label, room).slice(0, 2).forEach((l, i) => ctx.fillText(l, M, top + Math.round(4 * u) + i * Math.round(ep * 1.25) - (i ? 0 : 0)));
+      gWrap(ctx, label, room).slice(0, 2).forEach((l, i) => ctx.fillText(l, M, top + Math.round(4 * u) + i * Math.round(ep * 1.25)));
     }
     try { ctx.letterSpacing = "0px"; } catch (e) { }
     await drawBrandMark(ctx, spec, W, u, M, { top: 48, h: 34, right: true, knockout: white, textFill: white ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });

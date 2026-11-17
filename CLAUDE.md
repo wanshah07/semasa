@@ -196,3 +196,16 @@ Two hard limits that come from this repo's own rules, not from the format:
   website; LinkedIn carries no brand identity. Every line is fitted to its own area or the job is refused by name.
 - An idea can ask for a comic as its post's one picture (`brief.format = "comic"`, `ideas.comic_job`): the script is written from
   the post's own words and no other picture is made.
+## Sending failed channels again (16 Nov 2026)
+
+- Wan: "move to new slot", after two films lost channels when their slot came (Instagram went out, TikTok / Threads / Facebook failed). A post can be **half sent**: `published.<channel>.status` is `sent` on some channels and `error` on others. Nothing is ever sent again by itself. **A person moving the post to a new slot is the instruction.**
+- The rules (`backend/semasa/publisher.py`, tests `tests/test_resend.py`):
+  - a record the network has **settled** (`sent`, `error`) holds nothing in the scheduler's queue, so it never blocks a move (`moved_since_handed_over`); a record still pending (scheduled, sending, unconfirmed) does;
+  - `stale_failures`: a channel whose record is `error` for a moment **other than the slot the post has now** is handed over again for the new slot. The failed record stays until its replacement is in hand (the new record carries `replaces`), so a blocked, late or interrupted run changes nothing;
+  - an `error` for the slot the post **still has** is never retried, and a `sent` channel is never looked at: no channel goes out twice;
+  - the loop reads an approved post, and a `scheduled` one **only** when it has a stale failure. Such a post ranks below posts already scheduled on the new slot (`guard.rank(p, resend)`), so one post to a slot still holds; it ends `posted` once every channel is sent;
+  - a record Zernio answers **404 "Post not found"** for, 20 minutes past its moment and in **every** login (`ZernioHub.gone`), is settled as an `error` with `lost: true` ("Zernio no longer holds this post and it was not sent"). A timeout, a 5xx or one unreadable login is never proof.
+- The page: `web/src/lib/slots.js` (`canResend`, `resendChannels`, `moveCheck` → `resend`), `lib/resend.js` and `components/PostResend.jsx` (the box in the post editor: which channels failed, in the platform's words, and "Move and send again", which writes the date and slot only). The schedule map lets such a post be dragged. A scheduled post is never moved to a slot the publisher's next run (06:20, 11:20, 19:20) comes too late for.
+- The database: `supabase/084_resend_failed_channels.sql`. The move is accepted when every record is settled and at least one failed; it is the ONE write a browser may make to a scheduled post (date, slot and the decision note), to a free slot still ahead; an approved post that moves goes back to draft and is approved again. Before 084 is run the page's move is refused and the box says to run it.
+- The slot check tells a re-send that missed its new slot and a second failure at a new slot (an alert is per post, channel, kind **and slot**). The health report's advice is per case (`health.publish_advice`).
+- MYRA's sheet read (`myra.fetch`) reads again after 20 s and 65 s when Google answers with its per-minute read quota or a rate limit; every other error is final at once.

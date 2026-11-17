@@ -10,6 +10,11 @@ A post is blocked only by a post that OUTRANKS it, so exactly one of a clashing 
   1. a post already scheduled or posted outranks everything (Buffer or LinkedIn already holds it);
   2. then an approved post that has already sent a channel (half done is not undone by a newcomer);
   3. then whichever was approved first (approved_at, else created_at), the id breaking a tie.
+
+A post being SENT AGAIN (a person moved it to a new slot after a channel failed; publisher.stale_failures) is still
+`scheduled`, but it does not hold the new slot in any queue yet: it ranks under rule 2, so a post already scheduled or posted on
+that slot keeps it and the moved post waits for a person. `resend` is the ids of those posts, the same set for every post
+of a run, so two posts on one slot always agree on which of them goes.
 """
 
 from __future__ import annotations
@@ -39,9 +44,9 @@ def caption_keys(post: dict[str, Any]) -> set[str]:
     return {k for k in (caption_key(v) for v in by_plat.values()) if k}
 
 
-def rank(p: dict[str, Any]) -> tuple[int, str, str]:
+def rank(p: dict[str, Any], resend: frozenset[str] = frozenset()) -> tuple[int, str, str]:
     """Lower outranks higher (see the module docstring)."""
-    if p.get("status") in ("scheduled", "posted"):
+    if p.get("status") in ("scheduled", "posted") and str(p.get("id")) not in resend:
         tier = 0
     elif p.get("published"):
         tier = 1
@@ -57,18 +62,18 @@ def _day(v: Any) -> date | None:
         return None
 
 
-def blockers(post: dict[str, Any], live: list[dict[str, Any]]) -> list[str]:
-    """Why this approved post must not be sent: [] when nothing outranks it. `live` is every approved, scheduled or
-    posted post nearby (this one included; it is skipped by id)."""
+def blockers(post: dict[str, Any], live: list[dict[str, Any]], resend: frozenset[str] = frozenset()) -> list[str]:
+    """Why this post must not be sent: [] when nothing outranks it. `live` is every approved, scheduled or posted post
+    nearby (this one included; it is skipped by id). `resend`: the ids of the posts being sent again at a new slot."""
     stream = post.get("stream") or "regulab"
-    mine = rank(post)
+    mine = rank(post, resend)
     out: list[str] = []
     keys = caption_keys(post)
     day = _day(post.get("date"))
     for o in live:
         if o.get("id") == post.get("id") or (o.get("stream") or "regulab") != stream or o.get("status") not in LIVE:
             continue
-        if rank(o) >= mine:
+        if rank(o, resend) >= mine:
             continue
         name = str(o.get("hook") or o.get("id"))[:60]
         who = f'"{name}" ({o.get("status")}, {o.get("date") or "no date"} {o.get("slot") or ""})'.strip()

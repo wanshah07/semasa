@@ -122,4 +122,11 @@ t("every Isu semasa segment has a button in the sub-tab row (Threads had a page,
   assert.deepEqual(missing, []);
 });
 
+t("the Video page carries the Import video card (Wan, 17 Nov 2026): one component, no new tab, and it never hands out a hash", () => {
+  const video = readFileSync(new URL("./src/pages/VideoTab.jsx", import.meta.url), "utf8");
+  assert.ok(video.includes('import VideoImportCard from "../components/VideoImportCard"') && video.includes("<VideoImportCard "));
+  assert.ok(!menu.includes("import") && !menu.includes("video-import"), "a card on an existing page, not a page of its own");
+  assert.ok(!readFileSync(new URL("./src/components/VideoImportCard.jsx", import.meta.url), "utf8").includes("token_hash"));
+});
+
 console.log(`tabs.test.mjs: ${n} groups OK`);

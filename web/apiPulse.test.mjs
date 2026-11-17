@@ -253,7 +253,7 @@ t("supabase/075: realtime for the two tables (guarded), the clock function readi
 });
 t("functions.yml deploys semasa-pulse without JWT verification and sets PULSE_SECRET from the GitHub secret with --yes", () => {
   const yml = read("../.github/workflows/functions.yml");
-  assert.ok(/semasa-telegram\|semasa-pulse\) extra="--no-verify-jwt"/.test(yml), "the pulse's gate is its header, as Telegram's is");
+  assert.ok(/semasa-telegram\|semasa-pulse(\|semasa-import-video)?\) extra="--no-verify-jwt"/.test(yml), "the pulse's gate is its header, as Telegram's is");
   assert.ok(yml.includes('PULSE_SECRET: ${{ secrets.PULSE_SECRET }}'));
   assert.ok(/supabase secrets set "PULSE_SECRET=\$PULSE_SECRET" --project-ref "\$PROJECT_REF" --yes/.test(yml), "no terminal to confirm on");
   assert.ok(yml.includes('if [ -z "$PULSE_SECRET" ]'), "a missing secret is a notice, not a failed deploy");

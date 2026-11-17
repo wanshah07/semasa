@@ -10,8 +10,10 @@ name: Deploy functions
 # runners does not matter here; the Mireld call happens later, from inside Supabase.
 #
 # JWT verification stays ON (the default). The function also checks auth.getUser + semasa_is_uploader() itself.
-# Two exceptions are deployed --no-verify-jwt because their callers carry no Supabase login and each has a secret header as
-# its gate: semasa-telegram (Telegram's webhook) and semasa-pulse (the database clock, supabase/075_api_pulse.sql).
+# Three exceptions are deployed --no-verify-jwt because their callers carry no Supabase login and each has a secret as its gate:
+# semasa-telegram (Telegram's webhook), semasa-pulse (the database clock, supabase/075_api_pulse.sql) and semasa-import-video
+# (an outside agent sending a finished MP4: its gate is a bearer token Wan makes on the page, only the sha256 of which is kept,
+# supabase/087_video_import.sql). It needs no secret of its own here.
 
 on:
   push:
@@ -81,9 +83,10 @@ jobs:
             [ -f "$dir/index.ts" ] || continue
             found=1
             echo "::group::deploy $name"
-            # Telegram's webhook and the database clock carry no Supabase login: a secret header is each one's gate
-            # (semasa-telegram/index.ts, semasa-pulse/index.ts; the pulse still checks an uploader's JWT itself when one is sent)
-            case "$name" in semasa-telegram|semasa-pulse) extra="--no-verify-jwt" ;; *) extra="" ;; esac
+            # Telegram's webhook, the database clock and the video import carry no Supabase login: a secret is each one's gate
+            # (semasa-telegram/index.ts, semasa-pulse/index.ts, semasa-import-video/index.ts; the pulse still checks an uploader's
+            # JWT itself when one is sent)
+            case "$name" in semasa-telegram|semasa-pulse|semasa-import-video) extra="--no-verify-jwt" ;; *) extra="" ;; esac
             supabase functions deploy "$name" --project-ref "$PROJECT_REF" --use-api --yes $extra
             echo "::endgroup::"
           done

@@ -39,8 +39,23 @@ def _clip(page, panel: Path, outdir: Path, report: dict) -> bool:
         return False
     if not i2v.upload_panel(page, panel, report):
         return False
+    # the Generate button stays disabled until the uploaded image is processed: wait for it, then click
     gen_btn = page.get_by_role("button", name="Generate", exact=True).first
+    enabled_at = time.time() + 60
+    while time.time() < enabled_at:
+        try:
+            if not gen_btn.is_disabled():
+                break
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(2)
+    else:
+        report["generate_never_enabled"] = True
+        i2v.dump_controls(page, report, "generate_disabled_state")
+        page.screenshot(path=str(outdir / "generate-disabled.png"))
+        return False
     gen_btn.click()
+    report["generate_clicked_at"] = datetime.now(UTC).isoformat()
     deadline = time.time() + MAX_WAIT_S
     url = report.get("video_url")
     while time.time() < deadline:

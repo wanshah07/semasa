@@ -44,8 +44,16 @@ const FONT_SWAP = {
   hand: { family: 'Caveat, "Instrument Sans", cursive', maxWeight: 700, only: 700 },
 };
 const pct = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n / 100 : 1; };
-/* `_fill` is set by renderGridCard only (never stored): the automatic scale that makes a sparse slide fill its card. */
-const fillOf = (spec) => { const f = Number(spec && spec._fill); return Number.isFinite(f) && f > 1 && f <= 3 ? f : 1; };
+/* AUTO-FIT (Wan, 16 Nov 2026: "for all poster, single card, comic, image make auto-fit application"). Whatever words a card is
+   given, it fits by itself: a card with little to say grows its type until the card is full, a card with too much shrinks it
+   until every word is above the source line, and only a card that does not fit at FIT_MIN (the smallest size that still reads
+   on a phone) says so with the "fuller than the card" warning. One number does it, `_fill`: it is never stored, it is found
+   by measuring the finished layout (fillScale), and every size on the card moves with it. A text size the person chose on a
+   slide (`type_size`) is theirs: the card is then drawn at that size and only warns.
+   A layout that takes part must (1) draw every line through a wrapper, so nothing runs off the side, (2) size its containers
+   from the lines in them, so nothing runs out of a box, and (3) report where its content ends, including a note. */
+export const FIT_MIN = 0.62;
+const fillOf = (spec) => { const f = Number(spec && spec._fill); return Number.isFinite(f) && f >= FIT_MIN - 0.001 && f <= 3 ? f : 1; };
 function textScale(spec) { return pct(spec && spec.type_size, 60, 120) * fillOf(spec); }
 function mascotScale(spec) { return pct(spec && spec.mascot_size, 50, 160); }
 /* The canvas context with its `font` rewritten on the way in: only a font that names Poppins or Instrument Sans (the
@@ -496,13 +504,22 @@ function gHeadline(ctx, text, x, y, maxW, px, lh, base, accent) {
   if (line.length) flush();
   return yy;
 }
+/* The small label over the headline. It comes down in size until it fits between the two side margins (a long domain name such
+   as "Sains kosmetik (penerbitan terkini)" used to run under the logo and off the card), and wraps when even that is not enough.
+   A label that fits is drawn exactly as before and takes the same height. */
 function gEyebrow(ctx, text, x, y, colour, px) {
   if (!text) return y;
-  ctx.save(); ctx.font = "700 " + px + "px " + G_HEAD;
-  try { ctx.letterSpacing = Math.round(px * 0.17) + "px"; } catch (e) { }
-  ctx.fillStyle = colour; ctx.textBaseline = "top";
-  ctx.fillText(stripEmph(text).toUpperCase(), x, y); ctx.restore();
-  return y + Math.round(px * 2.2);
+  const label = stripEmph(text).toUpperCase(), room = (ctx.canvas ? ctx.canvas.width : 1080) - x * 2, px0 = px;
+  ctx.save(); ctx.textBaseline = "top";
+  const set = () => { ctx.font = "700 " + px + "px " + G_HEAD; try { ctx.letterSpacing = Math.round(px * 0.17) + "px"; } catch (e) { } };
+  set();
+  while (px > Math.round(px0 * 0.7) && ctx.measureText(label).width > room) { px -= 1; set(); }
+  const lines = ctx.measureText(label).width > room ? gWrap(ctx, label, room) : [label];
+  ctx.fillStyle = colour;
+  lines.forEach((l, i) => ctx.fillText(l, x, y + i * Math.round(px * 1.35)));
+  try { ctx.letterSpacing = "0px"; } catch (e) { }
+  ctx.restore();
+  return y + Math.round(px0 * 2.2) + (lines.length - 1) * Math.round(px * 1.35);
 }
 /* The source line (Wan, 19 Sep 2026: "can the source be small text at the bottom not in the
    box"). It was a raised chip -- a panel, an accent bar, its own background -- and he wanted
@@ -605,11 +622,25 @@ function measureProxy(ctx) {
 }
 /* Where the words sit between the handle at the top and the source line pinned to the
    bottom margin. Both are drawn outside the content block and must not be centred into. */
-function cardZone(H, u, topU) {
-  return { top: Math.round((topU || 150) * u), bottom: H - Math.round(150 * u) };
+function cardZone(H, u, topU, floor) {
+  return { top: Math.round((topU || 150) * u), bottom: floor || H - Math.round(150 * u) };
 }
-function centreShift(H, u, contentEndY, topU) {
-  const z = cardZone(H, u, topU);
+/* Where the words must stop. 150u above the bottom edge clears a source line of one or two lines; a long citation wraps to
+   more, and the floor then rises with it, so the words can never sit on the source (it is drawn last, pinned to the bottom
+   margin, whatever is above it). Measured with the same wrapping gSourceLine draws with. */
+function cardFloor(ctx, spec, W, H, M, u) {
+  const base = H - Math.round(150 * u);
+  const label = spec.chip_label || (spec.footnote ? "Sumber" : ""), ref = spec.footnote || "";
+  if (!ref) return base;
+  const px = Math.round(21 * u), gap = Math.round(px * 0.55);
+  ctx.font = "500 " + px + "px " + G_MONO;
+  const labelW = label ? ctx.measureText(label + " ·").width : 0;
+  ctx.font = "400 " + px + "px " + G_MONO;
+  const n = Math.max(1, gWrap(ctx, ref, W - M * 2 - (label ? labelW + gap : 0)).length);
+  return Math.min(base, H - M - n * Math.round(px * 1.4) - Math.round(22 * u));
+}
+function centreShift(H, u, contentEndY, topU, floor) {
+  const z = cardZone(H, u, topU, floor);
   const slack = (z.bottom - z.top) - Math.max(0, contentEndY - z.top);
   /* Never pull content upward past its own start, and never centre a block that already
      fills the card -- a negative shift would push the last line under the source line. */
@@ -625,39 +656,86 @@ async function renderGridCard(spec) {
      The type scale is fixed on purpose (a short lead must not grow the headline), so a
      slide with little text used to sit high with a dead band beneath it. Measuring first
      and shifting the whole block keeps every size exactly as it is and moves the words. */
-  const probe = await gridCardPaint(measureProxy(ctx), spec, W, H, 0);
+  const M = Math.round(72 * u), floor = cardFloor(ctx, spec, W, H, M, u);
+  const measure = (sp) => gridCardPaint(measureProxy(ctx), sp, W, H, 0);
+  const probe = await measure(spec);
   /* Wan, 9 Nov 2026: "make sure each carousel page is compact, not looks empty". A slide with a headline and a line or two used to
      sit in the middle of a card that was half blank. The type now grows to fill the card: the largest scale (at most FILL_MAX) at
      which the content still ends inside FILL_TARGET of the room between the handle and the source line, found by measuring, never
-     by guessing. A dense slide is never touched (scale 1), a person's own text size is respected, a slide with a mascot already
-     fills its space with the character, and a template whose height does not follow its text (a giant figure) is left as it is. */
-  const fill = spec.type_size || spec.mascot ? 1 : await fillScale(spec, H, u, 150, probe.y, (sp) => gridCardPaint(measureProxy(ctx), sp, W, H, 0), HOOK_TPL[spec.template] ? FILL_MAX : FILL_BODY_MAX);
-  if (fill > 1) {
-    const filled = { ...spec, _fill: fill };
-    const again = await gridCardPaint(measureProxy(ctx), filled, W, H, 0);
-    return gridCardPaint(ctx, filled, W, H, centreShift(H, u, again.y), c);
+     by guessing. A person's own text size is respected and a slide with a mascot already fills its space with the character.
+     16 Nov 2026 (auto-fit): the same search now runs the other way too. A slide that is fuller than the card shrinks until every
+     word is above the source line, and the growth stops before the longest word would be cut in two (wordCap). */
+  const max = Math.min(HOOK_TPL[spec.template] ? FILL_MAX : FILL_BODY_MAX, gridWordCap(ctx, spec, W));
+  const fill = spec.type_size || spec.mascot ? 1 : await fillScale(spec, H, u, 150, probe.y, measure, max, FILL_FROM, FILL_TARGET, floor);
+  const drawn = fill !== 1 ? { ...spec, _fill: fill } : spec;
+  const end = fill !== 1 ? (await measure(drawn)).y : probe.y;
+  return gridCardPaint(ctx, drawn, W, H, centreShift(H, u, end, 150, floor), c);
+}
+/* How far a card may grow before one of its words no longer fits its column: every wrapper breaks an over-wide word letter by
+   letter (hardSplit), and a headline cut as "NOTIFIKAS / I" is worse than a smaller one. parts = [text, size in 1080-wide units,
+   weight, family, column width in pixels]. A token that is already wider than its column at the template's own size (a long
+   reference) is split whatever the scale, so it does not hold the rest of the card back. */
+function wordCap(ctx, u, parts) {
+  let cap = Infinity;
+  for (const [text, px, weight, fam, colW] of parts) {
+    if (!text || !(colW > 0)) continue;
+    ctx.font = weight + " " + Math.round(px * u) + "px " + fam;
+    for (const w of stripEmph(String(text)).split(/\s+/).filter(Boolean)) {
+      const ww = ctx.measureText(w).width;
+      if (ww > 0 && ww <= colW) cap = Math.min(cap, (colW / ww) * 0.97);
+    }
   }
-  return gridCardPaint(ctx, spec, W, H, centreShift(H, u, probe.y), c);
+  return cap;
+}
+function gridWordCap(ctx, spec, W) {
+  const u = W / 1080, maxW = W - Math.round(72 * u) * 2, t = spec.template;
+  const rows = (spec.items || []).map((x) => String(x || "").trim()).filter(Boolean).map(gCells);
+  const figure = t === "g_stat" && rows.length;
+  const parts = [[spec.title, figure ? 58 : 80, 800, G_HEAD, maxW], [t === "g_bars" ? "" : spec.lead, 34, 500, G_BODY, Math.round(maxW * 0.92)]];
+  if (t === "g_rows") for (const r of rows) parts.push([r[0], 36, 700, G_HEAD, maxW - Math.round(160 * u)], [r.slice(1).join(" "), 30, 500, G_BODY, maxW - Math.round(160 * u)]);
+  if (t === "g_table") for (const r of rows) parts.push([r[1], 34, 700, G_HEAD, maxW - Math.round(180 * u)], [r[2], 27, 500, G_BODY, maxW - Math.round(180 * u)]);
+  if (t === "g_bars") for (const r of rows) parts.push([r[0], 30, 600, G_BODY, maxW - Math.round(76 * u)]);
+  return wordCap(ctx, u, parts);
 }
 /* A hook (the cover, the closing line) is drawn very large; every other slide only grows a little, so it still reads as the full card
    Wan asked for (headline, lead, numbered panels) and a slide with little to say is not blown up into a poster. */
-const FILL_MAX = 2.6, FILL_BODY_MAX = 1.35, FILL_FROM = 0.72, FILL_TARGET = 0.86;
+/* 16 Nov 2026 (auto-fit: "no card left half empty with small text"): a body slide may now grow to 2.2 (it stopped at 1.35, which
+   left a slide of one short point as a small block in the upper third of the card). A slide with a lead and three or four points
+   already fills its card and is not touched; the ceiling only decides how a sparse one looks. */
+const FILL_MAX = 2.6, FILL_BODY_MAX = 2.2, FILL_FROM = 0.72, FILL_TARGET = 0.86;
 const HOOK_TPL = { g_title: 1, p_title: 1, p_quote: 1 };
 /* The scale (1 to FILL_MAX) at which a slide's content fills its card. `measure(spec)` runs the family's own painter against the
    measuring proxy and returns where the content ends; `topU` is where the content starts, in 1080-wide units. */
-async function fillScale(spec, H, u, topU, endY, measure, max = FILL_MAX, from = FILL_FROM, target = FILL_TARGET) {
-  const z = cardZone(H, u, topU);
+async function fillScale(spec, H, u, topU, endY, measure, max = FILL_MAX, from = FILL_FROM, target = FILL_TARGET, floor = 0) {
+  const z = cardZone(H, u, topU, floor);
   const room = z.bottom - z.top;
   const used = (y) => Math.max(0, y - z.top);
-  if (room <= 0 || used(endY) >= from * room) return 1;                   // already compact
+  if (room <= 0) return 1;
   const at = async (f) => used((await measure({ ...spec, _fill: f })).y);
-  if ((await at(max)) < used(endY) * 1.12) return 1;                      // this layout's height does not follow its text
-  let lo = 1, hi = max;
-  for (let i = 0; i < 7; i++) {
-    const mid = (lo + hi) / 2;
-    if ((await at(mid)) <= target * room) lo = mid; else hi = mid;
+  return fitSearch(at, used(endY), room, max, from, target);
+}
+/* The one search behind every family's fit. `at(f)` is how much of the room the content takes at scale f (measured, never
+   guessed), `used1` what it takes at 1. Fuller than the room: the largest scale down to FIT_MIN at which it fits, and FIT_MIN
+   itself when nothing fits (the painter then warns). Under `from` of the room: the largest scale up to `max` at which it
+   stays inside `target` of it. The height is not a smooth function of the size (one more pixel can push a word to the next
+   line), so whatever the search lands on is checked and stepped down until the card really holds it. */
+async function fitSearch(at, used1, room, max = FILL_MAX, from = FILL_FROM, target = FILL_TARGET, min = FIT_MIN) {
+  let f = 1;
+  if (used1 > room) {
+    if ((await at(min)) > room) return min;
+    let lo = min, hi = 1;
+    for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if ((await at(mid)) <= room) lo = mid; else hi = mid; }
+    f = Math.floor(lo * 100) / 100;
+    for (let i = 0; i < 20 && f > min && (await at(f)) > room; i++) f = Math.round((f - 0.01) * 100) / 100;
+    return Math.max(min, f);
   }
-  return lo > 1.03 ? Math.round(lo * 100) / 100 : 1;
+  if (used1 >= from * room || max <= 1.03) return 1;                      // already compact, or nothing may grow
+  if ((await at(max)) < used1 * 1.12) return 1;                           // this layout's height does not follow its text
+  let lo = 1, hi = max;
+  for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if ((await at(mid)) <= target * room) lo = mid; else hi = mid; }
+  f = Math.floor(lo * 100) / 100;
+  for (let i = 0; i < 20 && f > 1 && (await at(f)) > room; i++) f = Math.round((f - 0.02) * 100) / 100;
+  return f > 1.03 ? f : 1;
 }
 async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   const warn = [];
@@ -684,6 +762,8 @@ async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   const HEAD_PX = Math.round(80 * u * TS), HEAD_LH = Math.round(90 * u * TS);
   const LEAD_PX = Math.round(34 * u * TS), LEAD_LH = Math.round(48 * u * TS);
   const ITEM_HEAD_PX = Math.round(36 * u * TS), ITEM_BODY_PX = Math.round(30 * u * TS), ITEM_BODY_LH = Math.round(40 * u * TS);
+  const us = u * TS;                       // what sits inside a row or a panel (its padding, its number, its bar) moves with its words
+  const noteK = Math.min(1, TS);           // a sticky note or a bubble never grows, but it shrinks with a full card
 
   if (!await drawGround(ctx, spec, W, H)) gPaper(ctx, W, H, dark);
 
@@ -752,7 +832,7 @@ async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
        roughly one height rather than one stacking under the other. */
     const afterY = y;
     drawMascot(afterY);
-    if (spec.note) y = Math.max(y, gBubble(ctx, bubbleX, afterY + Math.round(24 * u), Math.round(470 * u), spec.note, Math.round(30 * u)));
+    if (spec.note) y = Math.max(y, gBubble(ctx, bubbleX, afterY + Math.round(24 * u), Math.round(470 * u), spec.note, Math.round(30 * u * noteK)));
   } else if (t === "g_stat") {
     /* No figure given (items empty): this is the dark advice/hint slide, not a number
        slide (Wan, 19 Sep 2026: "make CTA as advice or hint what normally we miss" --
@@ -765,18 +845,25 @@ async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
       gSparks(ctx, W - Math.round(84 * u), Math.round(196 * u), 3, accent, Math.round(22 * u), Math.round(26 * u));
       const statAfterY = y;
       drawMascot(statAfterY);
-      if (spec.note) y = Math.max(y, gBubble(ctx, bubbleX, statAfterY + Math.round(24 * u), Math.round(470 * u), spec.note, Math.round(30 * u)));
+      if (spec.note) y = Math.max(y, gBubble(ctx, bubbleX, statAfterY + Math.round(24 * u), Math.round(470 * u), spec.note, Math.round(30 * u * noteK)));
     } else {
       const figure = items[0] || spec.title || "";
       const unit = items[1] || "";
-      ctx.font = "800 " + Math.round(300 * u) + "px " + G_HEAD; ctx.textBaseline = "top";
+      /* The figure is as large as the column allows, up to 300u: "RM240,000" at the full size ran off the right edge. Its unit
+         sits beside it when there is room and under it, wrapped, when there is not. */
+      const fpx = fitFigure(ctx, figure, maxW, Math.round(300 * us), G_HEAD);
+      ctx.font = "800 " + fpx + "px " + G_HEAD; ctx.textBaseline = "top";
       ctx.fillStyle = ink; ctx.fillText(figure, M, y);
-      const fw = ctx.measureText(figure).width;
-      if (unit) {
-        ctx.font = "700 " + Math.round(54 * u) + "px " + G_HEAD; ctx.fillStyle = accent;
-        ctx.fillText(unit, M + fw + Math.round(28 * u), y + Math.round(150 * u));
+      const fw = ctx.measureText(figure).width, upx = Math.round(54 * us);
+      ctx.font = "700 " + upx + "px " + G_HEAD;
+      const beside = unit && fw + Math.round(28 * u) + ctx.measureText(unit).width <= maxW;
+      if (beside) { ctx.fillStyle = accent; ctx.fillText(unit, M + fw + Math.round(28 * u), y + Math.round(fpx * 0.5)); }
+      y += Math.round(fpx * 1.1);
+      if (unit && !beside) {
+        ctx.fillStyle = accent;
+        for (const l of gWrap(ctx, unit, maxW)) { ctx.fillText(l, M, y); y += Math.round(upx * 1.22); }
+        y += Math.round(16 * us);
       }
-      y += Math.round(330 * u);
       /* This subhead sits under a giant numeral -- a deliberately smaller tier than the
          carousel's main headline, the same way it was before standardisation; only the
          body text below it joins the shared LEAD size. */
@@ -787,83 +874,109 @@ async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
     }
   } else if (t === "g_bars") {
     y = gHeadline(ctx, spec.title || "", M, y, headW, HEAD_PX, HEAD_LH, ink, accent);
-    y += Math.round(18 * u);
-    if (spec.lead) { ctx.font = "700 " + Math.round(40 * u) + "px " + G_MARK; ctx.fillStyle = muted; ctx.textBaseline = "top"; ctx.fillText(spec.lead, M, y); y += Math.round(60 * u); }
-    /* A mascot plus a speech bubble both eat vertical room a bar chart doesn't have to
-       spare -- fewer rows, not smaller type (Wan's rule: no font-size change to make
-       things fit). A note on top of both is one row too many. */
-    const rows = items.slice(0, 5).map(l => { const c2 = gCells(l); return { label: c2[0] || "", v: parseFloat(c2[1]) || 0, show: c2[2] || c2[1] || "" }; });
+    y += Math.round(18 * us);
+    if (spec.lead) {
+      ctx.font = "700 " + Math.round(40 * us) + "px " + G_MARK; ctx.fillStyle = muted; ctx.textBaseline = "top";
+      for (const l of gWrap(ctx, spec.lead, maxW)) { ctx.fillText(l, M, y); y += Math.round(46 * us); }
+      y += Math.round(14 * us);
+    }
+    /* Every row is drawn and every label is wrapped (auto-fit, 16 Nov 2026): a long label used to run through the value and off
+       the panel. The value column is as wide as the widest value, and the track takes what is left. */
+    const rows = items.map(l => { const c2 = gCells(l); return { label: c2[0] || "", v: parseFloat(c2[1]) || 0, show: c2[2] || c2[1] || "" }; });
     const max = Math.max(1e-9, ...rows.map(r => r.v));
-    const rowH = Math.round(104 * u), padY = Math.round(50 * u);
-    const barsW = maxW;
-    gPanel(ctx, M, y, barsW, rows.length * rowH + padY);
-    let by = y + Math.round(38 * u);
-    const trackX = M + Math.round(38 * u), trackW = Math.round(barsW * 0.72);
-    rows.forEach((r, i) => {
-      ctx.font = "600 " + ITEM_BODY_PX + "px " + G_BODY; ctx.fillStyle = GRID_PAL.ink; ctx.textBaseline = "top";
-      ctx.fillText(r.label, trackX, by);
-      const bh = Math.round(26 * u);
-      ctx.fillStyle = "#EDE6D6"; gRound(ctx, trackX, by + Math.round(44 * u), trackW, bh, bh / 2); ctx.fill();
-      ctx.fillStyle = i === 0 ? accent : "#2A2E34";
-      gRound(ctx, trackX, by + Math.round(44 * u), Math.max(bh, (r.v / max) * trackW), bh, bh / 2); ctx.fill();
-      ctx.font = "700 " + ITEM_BODY_PX + "px " + G_HEAD; ctx.fillStyle = GRID_PAL.ink;
-      ctx.textAlign = "right"; ctx.fillText(r.show, M + barsW - Math.round(38 * u), by + Math.round(40 * u)); ctx.textAlign = "left";
-      by += rowH;
+    const padX = Math.round(38 * us), bh = Math.round(26 * us), labelLh = Math.round(ITEM_BODY_PX * 1.3);
+    ctx.font = "700 " + ITEM_BODY_PX + "px " + G_HEAD;
+    const valW = Math.min(Math.round(maxW * 0.42), Math.ceil(Math.max(0, ...rows.map(r => ctx.measureText(r.show).width))));
+    const trackX = M + padX, trackW = Math.min(Math.round(maxW * 0.72), maxW - padX * 2 - valW - Math.round(24 * us));
+    const lay = rows.map(r => {
+      ctx.font = "600 " + ITEM_BODY_PX + "px " + G_BODY; const ll = gWrap(ctx, r.label, maxW - padX * 2);
+      ctx.font = "700 " + ITEM_BODY_PX + "px " + G_HEAD; const vl = gWrap(ctx, r.show, valW + 2);
+      return { r, ll, vl, h: ll.length * labelLh + Math.round(5 * us) + Math.max(bh, vl.length * labelLh - Math.round(8 * us)) + Math.round(34 * us) };
     });
-    y += rows.length * rowH + padY + Math.round(32 * u);
+    const total = lay.reduce((a, L) => a + L.h, 0) + Math.round(50 * us);
+    gPanel(ctx, M, y, maxW, total);
+    let by = y + Math.round(38 * us);
+    lay.forEach((L, i) => {
+      ctx.font = "600 " + ITEM_BODY_PX + "px " + G_BODY; ctx.fillStyle = GRID_PAL.ink; ctx.textBaseline = "top";
+      L.ll.forEach((l, n) => ctx.fillText(l, trackX, by + n * labelLh));
+      const barY = by + L.ll.length * labelLh + Math.round(5 * us);
+      ctx.fillStyle = "#EDE6D6"; gRound(ctx, trackX, barY, trackW, bh, bh / 2); ctx.fill();
+      ctx.fillStyle = i === 0 ? accent : "#2A2E34";
+      gRound(ctx, trackX, barY, Math.max(bh, (L.r.v / max) * trackW), bh, bh / 2); ctx.fill();
+      ctx.font = "700 " + ITEM_BODY_PX + "px " + G_HEAD; ctx.fillStyle = GRID_PAL.ink;
+      ctx.textAlign = "right"; L.vl.forEach((l, n) => ctx.fillText(l, M + maxW - padX, barY - Math.round(4 * us) + n * labelLh)); ctx.textAlign = "left";
+      by += L.h;
+    });
+    y += total + Math.round(32 * us);
     const barsAfterY = y;
     drawMascot(barsAfterY);
-    if (spec.note) y = Math.max(y, gBubble(ctx, bubbleX, barsAfterY + Math.round(24 * u), Math.round(470 * u), spec.note, Math.round(30 * u)));
+    if (spec.note) y = Math.max(y, gBubble(ctx, bubbleX, barsAfterY + Math.round(24 * u), Math.round(470 * u), spec.note, Math.round(30 * u * noteK)));
   } else if (t === "g_rows") {
     y = gHeadline(ctx, spec.title || "", M, y, headW, HEAD_PX, HEAD_LH, ink, accent);
-    y += Math.round(30 * u);
-    /* Same reasoning as g_bars above -- a mascot plus a speech bubble need the room a
-       fourth panel would take, so the row count gives way, not the type size. */
-    const rows = items.slice(0, 4).map(gCells);
-    const rowH = Math.round(168 * u), gap = Math.round(28 * u);
-    const rowsW = maxW;
+    y += Math.round(30 * us);
+    /* EVERY ROW, AND EVERY ROW AS TALL AS ITS WORDS (auto-fit, 16 Nov 2026). The panels were a fixed 168u and the list stopped at
+       four: a heading longer than the panel ran off its right edge, a detail of three lines ran out of its foot onto the next
+       panel, and a fifth point was dropped without a word. Now the heading wraps, the panel grows with its lines, and when the
+       card is too full the whole slide's type comes down together (renderGridCard). */
+    const rows = items.map(gCells);
+    const gap = Math.round(28 * us), padT = Math.round(38 * us), padB = Math.round(34 * us), textX = M + Math.round(110 * us);
+    const textW = maxW - Math.round(160 * us), headLh = Math.round(ITEM_HEAD_PX * 1.25);
     rows.forEach((r, i) => {
-      gPanel(ctx, M, y, rowsW, rowH);
-      ctx.font = "800 " + Math.round(44 * u) + "px " + G_HEAD; ctx.fillStyle = accent; ctx.textBaseline = "top";
-      ctx.fillText(String(i + 1), M + Math.round(38 * u), y + Math.round(54 * u));
+      ctx.font = "700 " + ITEM_HEAD_PX + "px " + G_HEAD; const hl = gWrap(ctx, r[0] || "", textW);
+      const detail = r.slice(1).filter(Boolean).join(" · ");
+      ctx.font = "500 " + ITEM_BODY_PX + "px " + G_BODY; const bl = detail ? gWrap(ctx, detail, textW) : [];
+      const rowH = Math.max(Math.round(168 * us), padT + hl.length * headLh + (bl.length ? Math.round(7 * us) + bl.length * ITEM_BODY_LH : 0) + padB);
+      gPanel(ctx, M, y, maxW, rowH);
+      ctx.font = "800 " + Math.round(44 * us) + "px " + G_HEAD; ctx.fillStyle = accent; ctx.textBaseline = "top";
+      ctx.fillText(String(i + 1), M + Math.round(38 * us), y + Math.round(54 * us));
       ctx.font = "700 " + ITEM_HEAD_PX + "px " + G_HEAD; ctx.fillStyle = GRID_PAL.ink;
-      ctx.fillText(r[0] || "", M + Math.round(110 * u), y + Math.round(38 * u));
-      if (r[1]) gPara(ctx, r[1], M + Math.round(110 * u), y + Math.round(90 * u), rowsW - Math.round(160 * u), ITEM_BODY_PX, ITEM_BODY_LH, GRID_PAL.muted);
+      let ty = y + padT;
+      for (const l of hl) { ctx.fillText(l, textX, ty); ty += headLh; }
+      if (bl.length) { ty += Math.round(7 * us); ctx.font = "500 " + ITEM_BODY_PX + "px " + G_BODY; ctx.fillStyle = GRID_PAL.muted; for (const l of bl) { ctx.fillText(l, textX, ty); ty += ITEM_BODY_LH; } }
       y += rowH + gap;
     });
     const rowsAfterY = y;
     drawMascot(rowsAfterY);
-    /* The footer row is clamped inside the card. A sticky note is taller than a chip and
-       the square ws.regulab card is 270px shorter than the LinkedIn one, so on three rows
-       it ran off the bottom edge before this. A mascot takes the sticky note's usual
-       corner, so with one placed the note becomes a speech bubble at the mascot's side
-       instead (Wan's reference prompt: "pointing with bubble speech"). */
-    const fy = Math.min(y + Math.round(6 * u), H - M - Math.round(150 * u));
-    if (spec.note && mascot) y = Math.max(y, gBubble(ctx, bubbleX, rowsAfterY + Math.round(6 * u), Math.round(470 * u), spec.note, Math.round(30 * u)));
-    else if (spec.note) gSticky(ctx, W - M - Math.round(410 * u), fy, Math.round(410 * u), spec.note, GRID_PAL.yellow, 0.03, Math.round(46 * u));
+    /* The note is part of the slide's height now. It used to be clamped inside the card, which on a full slide put it ON the
+       last panel's words; it sits under the rows and the fit makes the room. With a mascot it is a speech bubble at its side. */
+    if (spec.note && mascot) y = Math.max(y, gBubble(ctx, bubbleX, rowsAfterY + Math.round(6 * u), Math.round(470 * u), spec.note, Math.round(30 * u * noteK)));
+    else if (spec.note) y += Math.round(6 * u) + gSticky(ctx, W - M - Math.round(410 * u), y + Math.round(6 * u), Math.round(410 * u), spec.note, GRID_PAL.yellow, 0.03, Math.round(46 * u * noteK)) + Math.round(14 * u);
   } else if (t === "g_table") {
     y = gHeadline(ctx, spec.title || "", M, y, maxW, HEAD_PX, HEAD_LH, ink, accent);
-    y += Math.round(40 * u);
-    const rows = items.slice(0, 5).map(gCells);
-    const rowH = Math.round(128 * u);
-    gPanel(ctx, M, y, maxW, rows.length * rowH + Math.round(40 * u), { fill: "rgba(255,255,255,.055)", shadow: false, stroke: "rgba(255,255,255,.12)" });
-    let ry = y + Math.round(34 * u);
-    rows.forEach((r, i) => {
-      ctx.textBaseline = "top";
-      ctx.font = "500 " + Math.round(28 * u) + "px " + G_MONO; ctx.fillStyle = accent;
-      ctx.fillText(r[0] || "", M + Math.round(42 * u), ry + Math.round(6 * u));
-      ctx.font = "700 " + Math.round(34 * u) + "px " + G_HEAD; ctx.fillStyle = "#fff";
-      ctx.fillText(r[1] || "", M + Math.round(126 * u), ry);
-      if (r[2]) gPara(ctx, r[2], M + Math.round(126 * u), ry + Math.round(48 * u), maxW - Math.round(180 * u), Math.round(27 * u), Math.round(36 * u), "rgba(255,255,255,.6)");
-      if (i < rows.length - 1) {
-        ctx.save(); ctx.strokeStyle = "rgba(255,255,255,.12)"; ctx.lineWidth = 2; ctx.setLineDash([8, 8]);
-        ctx.beginPath(); ctx.moveTo(M + Math.round(42 * u), ry + Math.round(108 * u)); ctx.lineTo(W - M - Math.round(42 * u), ry + Math.round(108 * u)); ctx.stroke(); ctx.restore();
-      }
-      ry += rowH;
+    y += Math.round(40 * us);
+    // every row, as tall as its words; the mark comes down in size until it fits its own narrow column
+    const rows = items.map(gCells);
+    const padX = Math.round(42 * us), textX = M + Math.round(126 * us), textW = maxW - Math.round(180 * us);
+    const headPx = Math.round(34 * us), headLh = Math.round(48 * us), detPx = Math.round(27 * us), detLh = Math.round(36 * us);
+    const lay = rows.map((r) => {
+      ctx.font = "700 " + headPx + "px " + G_HEAD; const hl = gWrap(ctx, r[1] || "", textW);
+      const detail = r.slice(2).filter(Boolean).join(" · ");
+      ctx.font = "500 " + detPx + "px " + G_BODY; const dl = detail ? gWrap(ctx, detail, textW) : [];
+      let mpx = Math.round(28 * us); ctx.font = "500 " + mpx + "px " + G_MONO;
+      while (mpx > Math.round(13 * u) && ctx.measureText(r[0] || "").width > Math.round(74 * us)) { mpx -= 1; ctx.font = "500 " + mpx + "px " + G_MONO; }
+      return { r, hl, dl, mpx, h: Math.max(Math.round(128 * us), hl.length * headLh + dl.length * detLh + Math.round(44 * us)) };
     });
-    y += rows.length * rowH + Math.round(80 * u);
-    const fyT = Math.min(y, H - M - Math.round(150 * u));
-    if (spec.note) gSticky(ctx, W - M - Math.round(410 * u), fyT, Math.round(410 * u), spec.note, GRID_PAL.purple, 0.028, Math.round(46 * u));
+    const total = lay.reduce((a, L) => a + L.h, 0) + Math.round(40 * us);
+    gPanel(ctx, M, y, maxW, total, { fill: "rgba(255,255,255,.055)", shadow: false, stroke: "rgba(255,255,255,.12)" });
+    let ry = y + Math.round(34 * us);
+    lay.forEach((L, i) => {
+      ctx.textBaseline = "top";
+      ctx.font = "500 " + L.mpx + "px " + G_MONO; ctx.fillStyle = accent;
+      ctx.fillText(L.r[0] || "", M + padX, ry + Math.round(6 * us));
+      ctx.font = "700 " + headPx + "px " + G_HEAD; ctx.fillStyle = "#fff";
+      let ty = ry;
+      for (const l of L.hl) { ctx.fillText(l, textX, ty); ty += headLh; }
+      ctx.font = "500 " + detPx + "px " + G_BODY; ctx.fillStyle = "rgba(255,255,255,.6)";
+      for (const l of L.dl) { ctx.fillText(l, textX, ty); ty += detLh; }
+      if (i < lay.length - 1) {
+        ctx.save(); ctx.strokeStyle = "rgba(255,255,255,.12)"; ctx.lineWidth = 2; ctx.setLineDash([8, 8]);
+        ctx.beginPath(); ctx.moveTo(M + padX, ry + L.h - Math.round(20 * us)); ctx.lineTo(W - M - padX, ry + L.h - Math.round(20 * us)); ctx.stroke(); ctx.restore();
+      }
+      ry += L.h;
+    });
+    y += total + Math.round(40 * us);
+    // the note sits under the table and counts toward the slide's height (it used to be clamped onto the last rows)
+    if (spec.note) y += gSticky(ctx, W - M - Math.round(410 * u), y, Math.round(410 * u), spec.note, GRID_PAL.purple, 0.028, Math.round(46 * u * noteK)) + Math.round(14 * u);
   }
 
   /* One source line, pinned to the card's own bottom margin, drawn last so nothing else
@@ -873,7 +986,7 @@ async function gridCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   /* Reserve room for the source line drawn just below this check -- it is pinned to the
      card's own bottom margin regardless of how far the content above it flowed, so a
      bubble or panel that merely cleared the canvas could still run into it unseen. */
-  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
+  if (y > cardFloor(ctx, spec, W, H, M, u) + 1) warn.push("The slide is fuller than the card: shorten a line.");
   /* The measuring pass wants the layout, not a picture: it is handed no canvas and returns
      only where the content ended, which is what centreShift needs. */
   return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.88), warn, y } : { warn, y };
@@ -924,14 +1037,18 @@ function eraPaper(ctx, W, H) {
    pillar, exactly as the eyebrow already did everywhere else. */
 function eraBadge(ctx, W, u, M, text, spec) {
   if (!text) return;
-  const px = Math.round(23 * u);
+  let px = Math.round(23 * u);
   ctx.save();
   ctx.font = "700 " + px + "px " + G_HEAD; ctx.textBaseline = "top"; ctx.textAlign = "left";
   const label = stripEmph(text).toUpperCase();
-  const padX = Math.round(px * 0.8), h = Math.round(px * 2);
-  const w = Math.min(ctx.measureText(label).width + padX * 2, Math.round(W * 0.56));
   // the ws.regulab logo owns the top right (Wan, 11 Nov 2026), so on its cards the badge sits at the top left; LinkedIn has no logo
   const logoRight = !!spec && spec.stream !== "linkedin" && !(spec.handle && spec.handle !== "@ws.regulab");
+  /* The pill is as wide as its label, up to the room it has (beside the logo, or most of the card on LinkedIn), and a label
+     longer than that comes down in size until it fits: the pill used to stop at 56% of the card while the words ran on past it. */
+  const room = logoRight ? W - M * 2 - Math.round(300 * u) : Math.round(W * 0.7);
+  while (px > Math.round(13 * u) && ctx.measureText(label).width + Math.round(px * 0.8) * 2 > room) { px -= 1; ctx.font = "700 " + px + "px " + G_HEAD; }
+  const padX = Math.round(px * 0.8), h = Math.round(Math.round(23 * u) * 2);
+  const w = Math.min(ctx.measureText(label).width + padX * 2, room);
   const x = logoRight ? M : W - M - w, y = Math.round(50 * u);
   ctx.fillStyle = ERA_PAL.ink; gRound(ctx, x, y, w, h, Math.round(px * 0.4)); ctx.fill();
   ctx.fillStyle = "#FFFFFF";
@@ -1083,17 +1200,18 @@ async function renderEraCard(spec) {
      sized off where the words started. With none, the room it used to take is simply blank, so the slide is measured first,
      its type grown until the words fill the card (ERA_FILL_MAX at most, a chosen text size respected) and the block centred
      between the label and the source line, exactly as the grid family does. e_hook is left alone: it spreads its own chips. */
-  const u = W / 1080;
+  const u = W / 1080, floor = cardFloor(ctx, spec, W, H, Math.round(72 * u), u);
   /* A measuring pass carries textAlign and textBaseline to the real context (measureProxy: measureText reads them) while its
      save() and restore() do nothing, so a painter that centres one glyph inside a save/restore (the "$" of an e_vs bullet)
      would leave every later word centred on its x. The real context is saved and restored round each pass instead. */
   const measure = async (sp) => { ctx.save(); try { return await eraCardPaint(measureProxy(ctx), sp, W, H, 0); } finally { ctx.restore(); } };
   const probe = await measure(spec);
-  const max = Math.min(ERA_FILL_MAX, eraWordCap(ctx, spec, W));
-  const fill = spec.type_size || max <= 1.03 ? 1 : await fillScale(spec, H, u, ERA_TOP, probe.y, measure, max, ERA_FILL_FROM, ERA_FILL_TARGET);
-  const filled = fill > 1 ? { ...spec, _fill: fill } : spec;
-  const end = fill > 1 ? (await measure(filled)).y : probe.y;
-  return eraCardPaint(ctx, filled, W, H, centreShift(H, u, end, ERA_TOP), c);
+  // the same search shrinks a slide that is fuller than the card (auto-fit, 16 Nov 2026); growth still stops at the longest word
+  const max = Math.max(1, Math.min(ERA_FILL_MAX, eraWordCap(ctx, spec, W)));
+  const fill = spec.type_size ? 1 : await fillScale(spec, H, u, ERA_TOP, probe.y, measure, max, ERA_FILL_FROM, ERA_FILL_TARGET, floor);
+  const filled = fill !== 1 ? { ...spec, _fill: fill } : spec;
+  const end = fill !== 1 ? (await measure(filled)).y : probe.y;
+  return eraCardPaint(ctx, filled, W, H, centreShift(H, u, end, ERA_TOP, floor), c);
 }
 /* An ERA slide with no character grows further than a grid body slide: it has no numbered panels to keep in proportion, and a
    slide that says little is better as a few large lines than as a small block in a bare card. */
@@ -1239,7 +1357,7 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
     }
     y = cy;
   } else if (t === "e_explain") {
-    const blocks = items.slice(0, 3).map(gCells);
+    const blocks = items.map(gCells);                // every point: a full slide shrinks its type, it never drops a block
     /* With blocks under it the title is a section heading and takes the red stamp; with
        nothing under it the slide IS the title, so it takes the marker instead. A three-line
        red block is a wall, and a wall is exactly what an auto-built carousel slide -- which
@@ -1262,7 +1380,7 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   } else if (t === "e_flow") {
     y = eraBand(ctx, M, y, maxW, spec.title || "", Math.round(44 * uf));
     y += Math.round(34 * uf);
-    const steps = items.slice(0, 4).map(gCells);
+    const steps = items.map(gCells);
     steps.forEach((s, i) => {
       const inset = Math.round(150 * uf);
       ctx.font = "800 " + ITEM_HEAD_PX + "px " + G_HEAD;
@@ -1335,7 +1453,7 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
     });
     y += colH + Math.round(34 * uf);
     if (spec.note) { y = eraBand(ctx, M, y, maxW, spec.note, Math.round(34 * uf)); y += Math.round(22 * uf); }
-    for (const b of items.slice(2, 5)) {
+    for (const b of items.slice(2)) {
       y = eraBullet(ctx, b, M, y, Math.round(maxW * (mascot ? 0.68 : 0.92)), Math.round(27 * uf), Math.round(36 * uf));
       y += Math.round(16 * uf);
     }
@@ -1343,7 +1461,7 @@ async function eraCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   }
 
   gSourceLine(ctx, W, H, M, u, spec.chip_label || (spec.footnote ? "Sumber" : ""), spec.footnote || "", false);
-  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
+  if (y > cardFloor(ctx, spec, W, H, M, u) + 1) warn.push("The slide is fuller than the card: shorten a line.");
   return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y } : { warn, y };
 }
 
@@ -1364,32 +1482,29 @@ async function renderPhotoCard(spec) {
   const c = document.createElement("canvas"); c.width = W; c.height = H;
   const ctx = styleCtx(c.getContext("2d"), spec);                  // SEMASA: the slide's own face, when it chose one
   try { await document.fonts.ready; } catch (e) { }
+  const u = W / 1080, M = Math.round(74 * u), maxW = W - M * 2;
+  const measure = async (sp) => { ctx.save(); try { return await photoCardPaint(measureProxy(ctx), sp, W, H, 0); } finally { ctx.restore(); } };
+  const probe = await measure(spec);
   if (spec.template === "p_fact") {
-    const probe = await photoCardPaint(measureProxy(ctx), spec, W, H, 0);
-    const u = W / 1080, panelTop = Math.round(H * 0.46) + Math.round(58 * u);
-    const slack = (H - Math.round(150 * u)) - Math.max(panelTop, probe.y);
-    return photoCardPaint(ctx, spec, W, H, slack > 0 ? Math.round(slack / 2) : 0, c);
+    /* The words live in the cream panel under the photograph. They are fitted to it like any other card (auto-fit, 16 Nov 2026):
+       a long fact shrinks until it clears the source line, a short one grows, and the block is centred in the panel. */
+    const floor = cardFloor(ctx, spec, W, H, M, u), topU = (Math.round(H * 0.46) + Math.round(58 * u)) / u;
+    const rows = (spec.items || []).map((x) => [x, 28, 600, G_BODY, maxW - Math.round(34 * u)]);
+    const max = Math.min(FILL_BODY_MAX, wordCap(ctx, u, [[spec.title, 56, 800, G_HEAD, maxW], [spec.lead, 32, 500, G_BODY, Math.round(maxW * 0.92)], ...rows]));
+    const fill = spec.type_size ? 1 : await fillScale(spec, H, u, topU, probe.y, measure, max, FILL_FROM, FILL_TARGET, floor);
+    const drawn = fill !== 1 ? { ...spec, _fill: fill } : spec;
+    const end = fill !== 1 ? (await measure(drawn)).y : probe.y;
+    return photoCardPaint(ctx, drawn, W, H, centreShift(H, u, end, topU, floor), c);
   }
   /* A photo cover or quote is a headline on a picture: when it is short it used to sit small on a mostly bare card (Wan, 9 Nov 2026: "make
      sure takde carousel or card yang empty ... Hook make sure besar"). Its type grows until the block takes up to 70% of the room it
-     may use, measured the same way as the grid family; a chosen text size is respected. */
-  const probe = await photoCardPaint(measureProxy(ctx), spec, W, H, 0);
-  const fill = spec.type_size ? 1 : await fillBlock(spec, W, H, probe.block, (sp) => photoCardPaint(measureProxy(ctx), sp, W, H, 0));
-  return photoCardPaint(ctx, fill > 1 ? { ...spec, _fill: fill } : spec, W, H, 0, c);
-}
-async function fillBlock(spec, W, H, block, measure) {
-  const u = W / 1080, M = Math.round(74 * u);
-  const reserve = Math.round((spec.footnote || spec.chip_label ? 96 : 46) * u);
-  const room = H - M - reserve - Math.round(190 * u);
-  if (room <= 0 || !block || block >= 0.45 * room) return 1;              // already a real block
-  const at = async (f) => (await measure({ ...spec, _fill: f })).block;
-  if ((await at(FILL_MAX)) < block * 1.12) return 1;
-  let lo = 1, hi = FILL_MAX;
-  for (let i = 0; i < 7; i++) {
-    const mid = (lo + hi) / 2;
-    if ((await at(mid)) <= 0.7 * room) lo = mid; else hi = mid;
-  }
-  return lo > 1.03 ? Math.round(lo * 100) / 100 : 1;
+     may use, measured the same way as the grid family; a chosen text size is respected. A block taller than its room shrinks (16 Nov
+     2026): a long headline used to be pushed against the top clamp and run under the source line. */
+  const quote = spec.template === "p_quote";
+  const cap = wordCap(ctx, u, [[quote ? "“" + String(spec.title || "") + "”" : spec.title, quote ? 62 : 72, 800, G_HEAD, maxW], [spec.lead, 32, 500, G_BODY, Math.round(maxW * 0.86)]]);
+  const fill = spec.type_size ? 1
+    : await fitSearch(async (f) => (await measure({ ...spec, _fill: f })).block, probe.block, probe.room, Math.min(FILL_MAX, cap), 0.45, 0.7);
+  return photoCardPaint(ctx, fill !== 1 ? { ...spec, _fill: fill } : spec, W, H, 0, c);
 }
 async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   const warn = [];
@@ -1418,7 +1533,7 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
     g.addColorStop(1, "rgba(8,10,12," + s[2] + ")");
     ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
   };
-  let y = 0, block = 0;
+  let y = 0, block = 0, room = 0, bottomY = cardFloor(ctx, spec, W, H, M, u);
   const quote = t === "p_quote";
   if (t === "p_fact") {
     const photoH = Math.round(H * 0.46);
@@ -1427,15 +1542,15 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
     ctx.fillStyle = GRID_PAL.cream; ctx.fillRect(0, photoH, W, H - photoH);
     y = photoH + Math.round(58 * u) + (yShift || 0);
     if (spec.eyebrow) y = gEyebrow(ctx, spec.eyebrow, M, y, GRID_PAL.orange, Math.round(23 * u));
-    y = gHeadline(ctx, spec.title || "", M, y, maxW, Math.round(56 * u), Math.round(68 * u), GRID_PAL.ink, GRID_PAL.orange);
+    y = gHeadline(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(68 * u * TS), GRID_PAL.ink, GRID_PAL.orange);
     y += Math.round(18 * u);
     if (spec.lead) y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, GRID_PAL.muted);
     if (items.length) {
       y += Math.round(16 * u);
-      for (const it of items.slice(0, 4)) {
+      for (const it of items) {                        // every point: the type follows the room, no point is dropped
         ctx.fillStyle = GRID_PAL.orange;
-        ctx.beginPath(); ctx.arc(M + Math.round(9 * u), y + Math.round(15 * u), Math.round(8 * u), 0, Math.PI * 2); ctx.fill();
-        y = gPara(ctx, it, M + Math.round(34 * u), y, maxW - Math.round(34 * u), Math.round(28 * u), Math.round(38 * u), GRID_PAL.ink, 600);
+        ctx.beginPath(); ctx.arc(M + Math.round(9 * u * TS), y + Math.round(15 * u * TS), Math.round(8 * u * TS), 0, Math.PI * 2); ctx.fill();
+        y = gPara(ctx, it, M + Math.round(34 * u), y, maxW - Math.round(34 * u), Math.round(28 * u * TS), Math.round(38 * u * TS), GRID_PAL.ink, 600);
         y += Math.round(10 * u);
       }
     }
@@ -1452,7 +1567,10 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
     block = blockH;
     /* Room for the source line, which is pinned to the bottom margin and drawn last. */
     const reserve = Math.round((spec.footnote || spec.chip_label ? 96 : 46) * u);
-    y = Math.max(Math.round(190 * u), quote ? Math.round((H - blockH) / 2) : H - M - reserve - blockH);
+    // where the block must end, and how tall it may be: a title hangs from that line, a quote is centred on the card
+    bottomY = Math.min(H - M - reserve, spec.footnote ? bottomY : H);
+    room = quote ? Math.min(2 * bottomY - H, H - 2 * Math.round(190 * u)) : bottomY - Math.round(190 * u);
+    y = Math.max(Math.round(190 * u), quote ? Math.round((H - blockH) / 2) : bottomY - blockH);
     if (spec.eyebrow && !quote) gEyebrow(ctx, spec.eyebrow, M, y - Math.round(54 * u), "#FFFFFF", Math.round(23 * u));
     y = gHeadline(ctx, headText, M, y, maxW, hp, hl, "#FFFFFF", GRID_PAL.yellow);
     if (lLines.length) {
@@ -1463,8 +1581,8 @@ async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
   /* Always over a photograph here, so the mark is always knocked out. */
   await drawBrandMark(ctx, spec, W, u, M, { top: 56, h: 34, knockout: true, textFill: "rgba(255,255,255,.88)" });
   gSourceLine(ctx, W, H, M, u, spec.chip_label || (spec.footnote ? "Sumber" : ""), spec.footnote || "", t !== "p_fact");
-  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
-  return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y, block } : { warn, y, block };
+  if (y > bottomY + 1) warn.push("The slide is fuller than the card: shorten a line.");
+  return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y, block, room } : { warn, y, block, room };
 }
 /* ======================= COPIED FROM STUDIO (end) ========================= */
 
@@ -1488,24 +1606,46 @@ async function renderMoreCard(spec) {
   const c = document.createElement("canvas"); c.width = W; c.height = H;
   const ctx = styleCtx(c.getContext("2d"), spec);
   try { await document.fonts.ready; } catch (e) { }
-  if (MORE_CENTRED[spec.template]) {
-    const u = W / 1080, topU = spec.template[0] === "e" ? 138 : 150;
-    const probe = await morePaint(measureProxy(ctx), spec, W, H, 0);
-    /* The same fill as the grid family (9 Nov 2026: "each carousel page is compact, not looks empty"): the type grows to fill the
-       card. The ERA ones grow as far as the other ERA slides do (16 Nov 2026: none of them carries a character, so nothing in
-       them sizes off the room the words leave, and a checklist of three lines used to leave the lower third of the card bare). */
-    const era = spec.template[0] === "e";
-    const fill = spec.type_size || spec.mascot ? 1
-      : await fillScale(spec, H, u, topU, probe.y, (sp) => morePaint(measureProxy(ctx), sp, W, H, 0),
-        era ? ERA_MORE_MAX : HOOK_TPL[spec.template] ? FILL_MAX : FILL_BODY_MAX, era ? ERA_FILL_FROM : FILL_FROM, era ? ERA_FILL_TARGET : FILL_TARGET);
-    if (fill > 1) {
-      const filled = { ...spec, _fill: fill };
-      const again = await morePaint(measureProxy(ctx), filled, W, H, 0);
-      return morePaint(ctx, filled, W, H, centreShift(H, u, again.y, topU), c);
+  const u = W / 1080, t = spec.template, era = t[0] === "e";
+  const measure = async (sp) => { ctx.save(); try { return await morePaint(measureProxy(ctx), sp, W, H, 0); } finally { ctx.restore(); } };
+  if (t === "e_event") {
+    /* The event poster is anchored top and bottom, so there is nothing to centre; when the headline and the speakers do not fit
+       together its type comes down until they do (auto-fit, 16 Nov 2026), and it warns only when FIT_MIN is not enough. */
+    const full = async (f) => (await measure(f === 1 ? spec : { ...spec, _fill: f })).warn.some((w) => w.includes("fuller than the card"));
+    let f = 1;
+    if (!spec.type_size && await full(1)) {
+      f = FIT_MIN;
+      if (!(await full(FIT_MIN))) { let lo = FIT_MIN, hi = 1; for (let i = 0; i < 6; i++) { const mid = (lo + hi) / 2; if (await full(mid)) hi = mid; else lo = mid; } f = Math.floor(lo * 100) / 100; }
     }
-    return morePaint(ctx, spec, W, H, centreShift(H, u, probe.y, topU), c);
+    return morePaint(ctx, f !== 1 ? { ...spec, _fill: f } : spec, W, H, 0, c);
   }
-  return morePaint(ctx, spec, W, H, 0, c);
+  /* Measured, fitted and centred like the grid family (9 Nov 2026: "each carousel page is compact, not looks empty"): the type grows
+     to fill the card, and since 16 Nov 2026 (auto-fit) shrinks when the card is too full. The ERA ones grow as far as the other ERA
+     slides do: none of them carries a character, so nothing in them sizes off the room the words leave. p_split is fitted to its
+     dark panel, the lower half of the card: its photograph does not move. */
+  const topU = t === "p_split" ? Math.round(H * 0.5) / u + 44 : era ? 138 : 150;
+  const floor = cardFloor(ctx, spec, W, H, Math.round(72 * u), u);
+  const probe = await measure(spec);
+  const max = Math.max(1, Math.min(era ? ERA_MORE_MAX : HOOK_TPL[t] ? FILL_MAX : FILL_BODY_MAX, moreWordCap(ctx, spec, W)));
+  const fill = spec.type_size || spec.mascot ? 1
+    : await fillScale(spec, H, u, topU, probe.y, measure, max, era ? ERA_FILL_FROM : FILL_FROM, era ? ERA_FILL_TARGET : FILL_TARGET, floor);
+  const drawn = fill !== 1 ? { ...spec, _fill: fill } : spec;
+  const end = fill !== 1 ? (await measure(drawn)).y : probe.y;
+  return morePaint(ctx, drawn, W, H, centreShift(H, u, end, topU, floor), c);
+}
+function moreWordCap(ctx, spec, W) {
+  const u = W / 1080, maxW = W - Math.round(72 * u) * 2, t = spec.template;
+  const rows = (spec.items || []).map((x) => String(x || "").trim()).filter(Boolean).map(gCells);
+  const headPx = t[0] === "e" ? 56 : t === "p_stat" ? 58 : t === "p_list" ? 66 : t === "p_split" ? 54 : 74;
+  const parts = [[spec.title, headPx, 800, G_HEAD, maxW], [spec.lead, 32, 500, G_BODY, Math.round(maxW * 0.9)]];
+  const half = Math.round((maxW - Math.round(24 * u)) / 2) - Math.round(56 * u), col = maxW - Math.round(170 * u);
+  for (const r of rows) {
+    if (t === "g_myth") parts.push([r[0], 28, 600, G_BODY, half], [r[1], 28, 700, G_BODY, half]);
+    else if (t === "e_myth") parts.push([r[0], 34, 600, G_BODY, maxW - Math.round(64 * u)], [r[1], 38, 800, G_HEAD, maxW - Math.round(64 * u)]);
+    else if (t === "p_split") parts.push([r.join(" "), 28, 600, G_BODY, maxW - Math.round(34 * u)]);
+    else if (t !== "e_stat" && t !== "p_stat") parts.push([r[0], 34, 800, G_HEAD, col], [r.slice(1).join(" "), 28, 500, G_BODY, col]);
+  }
+  return wordCap(ctx, u, parts);
 }
 
 /* A figure sized to the column: the largest size up to maxPx that fits, never below 40. */
@@ -1802,9 +1942,15 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     const white = inkWhite(spec), line = white ? "rgba(255,255,255,.9)" : ink;
     const speakers = items.map(gCells).map((r) => ({ name: r[0] || "", where: r[1] || "" })).filter((r) => r.name);
     const top = Math.round(50 * u);
-    ctx.font = "700 " + Math.round(25 * u) + "px " + G_HEAD; ctx.textBaseline = "top"; ctx.fillStyle = ink;
+    ctx.textBaseline = "top"; ctx.fillStyle = ink;
     try { ctx.letterSpacing = Math.round(3 * u) + "px"; } catch (e) { }
-    if (spec.eyebrow) ctx.fillText(stripEmph(spec.eyebrow).toUpperCase(), M, top + Math.round(4 * u));
+    if (spec.eyebrow) {
+      // the label stays clear of the logo at the top right: it comes down in size, then takes a second line
+      const label = stripEmph(spec.eyebrow).toUpperCase(), room = maxW - (spec.stream === "linkedin" ? 0 : Math.round(300 * u));
+      let ep = Math.round(25 * u); ctx.font = "700 " + ep + "px " + G_HEAD;
+      while (ep > Math.round(17 * u) && ctx.measureText(label).width > room) { ep -= 1; ctx.font = "700 " + ep + "px " + G_HEAD; }
+      gWrap(ctx, label, room).slice(0, 2).forEach((l, i) => ctx.fillText(l, M, top + Math.round(4 * u) + i * Math.round(ep * 1.25) - (i ? 0 : 0)));
+    }
     try { ctx.letterSpacing = "0px"; } catch (e) { }
     await drawBrandMark(ctx, spec, W, u, M, { top: 48, h: 34, right: true, knockout: white, textFill: white ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
     y = top + Math.round(70 * u);
@@ -1860,14 +2006,21 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
         const lhN = Math.round(namePx * 1.22), blockH = nl.length * lhN + (sp.where ? whPx + Math.round(6 * u) : 0);
         let ty = cy - blockH / 2;
         ctx.fillStyle = ink; nl.forEach((l) => { ctx.fillText(l, tx, ty); ty += lhN; });
-        if (sp.where) { ctx.font = "400 " + whPx + "px " + G_BODY; ctx.fillStyle = ink; ctx.fillText(stripEmph(sp.where).toUpperCase(), tx, ty + Math.round(4 * u)); }
+        if (sp.where) { ctx.font = "400 " + whPx + "px " + G_BODY; ctx.fillStyle = ink; ctx.fillText(gWrap(ctx, stripEmph(sp.where).toUpperCase(), tw)[0] || "", tx, ty + Math.round(4 * u)); }
       });
       if (y0 < topEnd + Math.round(20 * u)) warn.push("The slide is fuller than the card: shorten the headline or the topic.");
     }
     if (dt.day || dt.lines.length || spec.chip_label) {
       const w = W - M - colR;
-      const tall = (dt.day ? Math.round(dayPx * 0.92) + Math.round(yrPx * 0.9) + Math.round(22 * u) : 0) + dt.lines.length * Math.round(dPx * 1.35) + (spec.chip_label ? Math.round(dPx * 1.7) : 0);
+      // the lines under the date and the organiser are wrapped to the column before the block is placed, so it ends on the foot
+      ctx.font = "700 " + dPx + "px " + G_HEAD;
+      const dLines = dt.lines.flatMap((l) => gWrap(ctx, stripEmph(l).toUpperCase(), w));
+      ctx.font = "600 " + Math.round(dPx * 0.92) + "px " + G_HEAD;
+      const chipLines = spec.chip_label ? gWrap(ctx, stripEmph(spec.chip_label).toUpperCase(), w) : [];
+      const tall = (dt.day ? Math.round(dayPx * 0.92) + Math.round(yrPx * 0.9) + Math.round(22 * u) : 0) + dLines.length * Math.round(dPx * 1.35)
+        + (chipLines.length ? Math.round(dPx * 0.5) + chipLines.length * Math.round(dPx * 1.2) : 0);
       let dy = foot - tall;
+      if (dy < topEnd + Math.round(20 * u)) warn.push("The slide is fuller than the card: shorten the headline or the topic.");
       if (dt.day) {
         ctx.font = "800 " + dayPx + "px " + G_HEAD; ctx.textBaseline = "top"; ctx.fillStyle = ink;
         const dayW = ctx.measureText(dt.day).width;
@@ -1880,9 +2033,8 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
         dy += Math.round(yrPx * 0.9) + Math.round(22 * u);
       }
       ctx.font = "700 " + dPx + "px " + G_HEAD; ctx.fillStyle = ink; ctx.textBaseline = "top";
-      for (const l of dt.lines) for (const piece of gWrap(ctx, stripEmph(l).toUpperCase(), w)) { ctx.fillText(piece, colR, dy); dy += Math.round(dPx * 1.35); }
-      if (spec.chip_label) { ctx.font = "600 " + Math.round(dPx * 0.92) + "px " + G_HEAD; ctx.fillStyle = muted; ctx.fillText(stripEmph(spec.chip_label).toUpperCase(), colR, dy + Math.round(dPx * 0.5)); }
-      if (dy - 0 < topEnd) warn.push("The slide is fuller than the card: shorten the headline or the topic.");
+      for (const piece of dLines) { ctx.fillText(piece, colR, dy); dy += Math.round(dPx * 1.35); }
+      if (chipLines.length) { ctx.font = "600 " + Math.round(dPx * 0.92) + "px " + G_HEAD; ctx.fillStyle = muted; dy += Math.round(dPx * 0.5); for (const l of chipLines) { ctx.fillText(l, colR, dy); dy += Math.round(dPx * 1.2); } }
     }
     y = warn.length ? H : Math.min(topEnd, H - Math.round(160 * u));
   } else if (t === "e_stat") {
@@ -1944,7 +2096,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     photo(0, 0, W, photoH); scrim(0, 0, W, photoH, "light");
     ctx.fillStyle = GRID_PAL.dark; ctx.fillRect(0, photoH, W, H - photoH);
     ctx.fillStyle = accent; ctx.fillRect(0, photoH, W, Math.round(10 * u));
-    y = photoH + Math.round(52 * u);
+    y = photoH + Math.round(52 * u) + (yShift || 0);
     if (spec.eyebrow) y = gEyebrow(ctx, spec.eyebrow, M, y, accent, Math.round(23 * u));
     y = gHeadline(ctx, spec.title || "", M, y, maxW, Math.round(54 * u * TS), Math.round(66 * u * TS), "#FFFFFF", GRID_PAL.yellow);
     if (spec.lead) { y += Math.round(14 * u); y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), Math.round(29 * u * TS), Math.round(40 * u * TS), "rgba(255,255,255,.78)"); }
@@ -1960,7 +2112,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
 
   if (fam !== "e") await drawBrandMark(ctx, spec, W, u, M, { top: 56, h: 34, knockout: dark, textFill: dark ? "rgba(255,255,255,.62)" : "rgba(21,23,27,.5)" });
   gSourceLine(ctx, W, H, M, u, t === "e_event" ? (spec.footnote ? "Sumber" : "") : (spec.chip_label || (spec.footnote ? "Sumber" : "")), spec.footnote || "", fam === "e" ? inkWhite(spec) : dark || t === "p_split");
-  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
+  if (y > cardFloor(ctx, spec, W, H, M, u) + 1) warn.push("The slide is fuller than the card: shorten a line.");
   return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y } : { warn, y };
 }
 

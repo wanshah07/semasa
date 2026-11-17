@@ -629,15 +629,18 @@ function cardZone(H, u, topU, floor) {
    more, and the floor then rises with it, so the words can never sit on the source (it is drawn last, pinned to the bottom
    margin, whatever is above it). Measured with the same wrapping gSourceLine draws with. */
 function cardFloor(ctx, spec, W, H, M, u) {
-  const base = H - Math.round(150 * u);
+  return Math.min(H - Math.round(150 * u), sourceTop(ctx, spec, W, H, M, u) - Math.round(22 * u));
+}
+/** The top of the source line as gSourceLine will draw it (the card's own height when there is none). */
+function sourceTop(ctx, spec, W, H, M, u) {
   const label = spec.chip_label || (spec.footnote ? "Sumber" : ""), ref = spec.footnote || "";
-  if (!ref) return base;
+  if (!ref) return H;
   const px = Math.round(21 * u), gap = Math.round(px * 0.55);
   ctx.font = "500 " + px + "px " + G_MONO;
   const labelW = label ? ctx.measureText(label + " ·").width : 0;
   ctx.font = "400 " + px + "px " + G_MONO;
   const n = Math.max(1, gWrap(ctx, ref, W - M * 2 - (label ? labelW + gap : 0)).length);
-  return Math.min(base, H - M - n * Math.round(px * 1.4) - Math.round(22 * u));
+  return H - M - n * Math.round(px * 1.4);
 }
 function centreShift(H, u, contentEndY, topU, floor) {
   const z = cardZone(H, u, topU, floor);
@@ -702,7 +705,7 @@ function gridWordCap(ctx, spec, W) {
 /* 16 Nov 2026 (auto-fit: "no card left half empty with small text"): a body slide may now grow to 2.2 (it stopped at 1.35, which
    left a slide of one short point as a small block in the upper third of the card). A slide with a lead and three or four points
    already fills its card and is not touched; the ceiling only decides how a sparse one looks. */
-const FILL_MAX = 2.6, FILL_BODY_MAX = 2.2, FILL_FROM = 0.72, FILL_TARGET = 0.86;
+const FILL_MAX = 3, FILL_BODY_MAX = 2.2, FILL_FROM = 0.72, FILL_TARGET = 0.86;
 const HOOK_TPL = { g_title: 1, p_title: 1, p_quote: 1 };
 /* The scale (1 to FILL_MAX) at which a slide's content fills its card. `measure(spec)` runs the family's own painter against the
    measuring proxy and returns where the content ends; `topU` is where the content starts, in 1080-wide units. */
@@ -1215,7 +1218,7 @@ async function renderEraCard(spec) {
 }
 /* An ERA slide with no character grows further than a grid body slide: it has no numbered panels to keep in proportion, and a
    slide that says little is better as a few large lines than as a small block in a bare card. */
-const ERA_TOP = 138, ERA_FILL_MAX = 2.6, ERA_MORE_MAX = 1.9, ERA_FILL_FROM = 0.84, ERA_FILL_TARGET = 0.93;
+const ERA_TOP = 138, ERA_FILL_MAX = 3, ERA_MORE_MAX = 2.4, ERA_FILL_FROM = 0.84, ERA_FILL_TARGET = 0.93;
 /* How far an ERA body slide may grow before its longest word no longer fits its column: a wrapper breaks an over-wide word
    letter by letter (hardSplit), and a heading cut as "bertanggungjawa / b" is worse than a smaller one. Each heading is
    measured at the size and in the column its template draws it. */
@@ -1503,7 +1506,7 @@ async function renderPhotoCard(spec) {
   const quote = spec.template === "p_quote";
   const cap = wordCap(ctx, u, [[quote ? "“" + String(spec.title || "") + "”" : spec.title, quote ? 62 : 72, 800, G_HEAD, maxW], [spec.lead, 32, 500, G_BODY, Math.round(maxW * 0.86)]]);
   const fill = spec.type_size ? 1
-    : await fitSearch(async (f) => (await measure({ ...spec, _fill: f })).block, probe.block, probe.room, Math.min(FILL_MAX, cap), 0.45, 0.7);
+    : await fitSearch(async (f) => (await measure({ ...spec, _fill: f })).block, probe.block, probe.room, Math.min(FILL_MAX, cap), 0.6, 0.8);
   return photoCardPaint(ctx, fill !== 1 ? { ...spec, _fill: fill } : spec, W, H, 0, c);
 }
 async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
@@ -1743,6 +1746,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
   const HEAD_PX = Math.round(74 * u * TS), HEAD_LH = Math.round(86 * u * TS);
   const LEAD_PX = Math.round(32 * u * TS), LEAD_LH = Math.round(45 * u * TS);
   const IH = Math.round(34 * u * TS), IB = Math.round(28 * u * TS), IBL = Math.round(38 * u * TS);
+  const us = u * TS;                       // inside a design's own layout every gap, box and number moves with its words (auto-fit)
   const accent = GRID_PAL.orange, red = ERA_PAL.red;
   let dark = false, ink = GRID_PAL.ink, muted = GRID_PAL.muted;
   let bg = null;
@@ -1776,7 +1780,7 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     : gPanel(ctx, x, y, w, h));
   const sticky = (y) => {
     if (!spec.note) return y;
-    const h = gSticky(ctx, W - M - Math.round(410 * u), y + Math.round(26 * u), Math.round(410 * u), spec.note, GRID_PAL.yellow, 0.03, Math.round(46 * u));
+    const h = gSticky(ctx, W - M - Math.round(410 * u), y + Math.round(26 * u), Math.round(410 * u), spec.note, GRID_PAL.yellow, 0.03, Math.round(46 * u * Math.min(1, TS)));
     return y + Math.round(26 * u) + h + Math.round(10 * u);
   };
   let y = Math.round((fam === "e" ? 138 : 150) * u) + (yShift || 0);
@@ -1785,26 +1789,26 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
   if (t === "g_check") {
     y = gEyebrow(ctx, spec.eyebrow, M, y, accent, Math.round(24 * u));
     y = gHeadline(ctx, spec.title || "", M, y, maxW, HEAD_PX, HEAD_LH, ink, accent);
-    y += Math.round(18 * u);
+    y += Math.round(18 * us);
     if (spec.lead) y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted);
-    y += Math.round(22 * u);
-    const box = Math.round(46 * u), padX = Math.round(38 * u), textX = M + padX + box + Math.round(26 * u), textW = M + maxW - padX - textX;
-    const gap = Math.round(30 * u);
+    y += Math.round(22 * us);
+    const box = Math.round(46 * us), padX = Math.round(38 * us), textX = M + padX + box + Math.round(26 * us), textW = M + maxW - padX - textX;
+    const gap = Math.round(30 * us);
     const lay = items.map(gCells).map((r) => {
       ctx.font = "700 " + IH + "px " + G_HEAD; const hl = gWrap(ctx, r[0] || "", textW);
       ctx.font = "500 " + IB + "px " + G_BODY; const bl = r[1] ? gWrap(ctx, r[1], textW) : [];
-      return { hl, bl, h: Math.max(box, hl.length * Math.round(IH * 1.2) + (bl.length ? Math.round(6 * u) + bl.length * IBL : 0)) };
+      return { hl, bl, h: Math.max(box, hl.length * Math.round(IH * 1.2) + (bl.length ? Math.round(6 * us) + bl.length * IBL : 0)) };
     });
-    const total = lay.reduce((s, r) => s + r.h, 0) + gap * Math.max(0, lay.length - 1) + Math.round(76 * u);
+    const total = lay.reduce((s, r) => s + r.h, 0) + gap * Math.max(0, lay.length - 1) + Math.round(76 * us);
     panel(M, y, maxW, total);
-    let ry = y + Math.round(38 * u);
+    let ry = y + Math.round(38 * us);
     lay.forEach((r, i) => {
-      ctx.fillStyle = accent; gRound(ctx, M + padX, ry, box, box, Math.round(12 * u)); ctx.fill();
-      moreMark(ctx, "tick", M + padX, ry, box, "#FFFFFF", Math.max(4, Math.round(7 * u)));
+      ctx.fillStyle = accent; gRound(ctx, M + padX, ry, box, box, Math.round(12 * us)); ctx.fill();
+      moreMark(ctx, "tick", M + padX, ry, box, "#FFFFFF", Math.max(4, Math.round(7 * us)));
       let ty = ry; ctx.textBaseline = "top";
       ctx.font = "700 " + IH + "px " + G_HEAD; ctx.fillStyle = ink;
       for (const l of r.hl) { ctx.fillText(l, textX, ty); ty += Math.round(IH * 1.2); }
-      if (r.bl.length) { ty += Math.round(6 * u); ctx.font = "500 " + IB + "px " + G_BODY; ctx.fillStyle = muted; for (const l of r.bl) { ctx.fillText(l, textX, ty); ty += IBL; } }
+      if (r.bl.length) { ty += Math.round(6 * us); ctx.font = "500 " + IB + "px " + G_BODY; ctx.fillStyle = muted; for (const l of r.bl) { ctx.fillText(l, textX, ty); ty += IBL; } }
       if (i < lay.length - 1) {
         ctx.save(); ctx.strokeStyle = dark ? "rgba(255,255,255,.14)" : GRID_PAL.panelLine; ctx.lineWidth = 2; ctx.setLineDash([8, 8]);
         const ly = ry + r.h + Math.round(gap / 2); ctx.beginPath(); ctx.moveTo(M + padX, ly); ctx.lineTo(M + maxW - padX, ly); ctx.stroke(); ctx.restore();
@@ -1816,22 +1820,22 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     const L = moreLabels(spec);
     y = gEyebrow(ctx, spec.eyebrow, M, y, accent, Math.round(24 * u));
     y = gHeadline(ctx, spec.title || "", M, y, maxW, HEAD_PX, HEAD_LH, ink, accent);
-    y += Math.round(18 * u);
+    y += Math.round(18 * us);
     if (spec.lead) y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted);
-    y += Math.round(24 * u);
-    const gap = Math.round(24 * u), colW = Math.round((maxW - gap) / 2), pad = Math.round(28 * u);
+    y += Math.round(24 * us);
+    const gap = Math.round(24 * us), colW = Math.round((maxW - gap) / 2), pad = Math.round(28 * us);
     // the two column labels, each with its own mark
-    const lp = Math.round(26 * u), ic = Math.round(38 * u);
+    const lp = Math.round(26 * us), ic = Math.round(38 * us);
     [[M, L.myth, "cross", muted], [M + colW + gap, L.fact, "tick", accent]].forEach(([x, label, kind, col]) => {
       ctx.fillStyle = kind === "tick" ? accent : (dark ? "rgba(255,255,255,.22)" : "#CFC6B2");
       ctx.beginPath(); ctx.arc(x + ic / 2, y + ic / 2, ic / 2, 0, Math.PI * 2); ctx.fill();
-      moreMark(ctx, kind, x + ic * 0.12, y + ic * 0.12, ic * 0.76, kind === "tick" ? "#FFFFFF" : ink, Math.max(3, Math.round(5 * u)));
+      moreMark(ctx, kind, x + ic * 0.12, y + ic * 0.12, ic * 0.76, kind === "tick" ? "#FFFFFF" : ink, Math.max(3, Math.round(5 * us)));
       ctx.font = "800 " + lp + "px " + G_HEAD; ctx.fillStyle = col; ctx.textBaseline = "top";
       try { ctx.letterSpacing = Math.round(lp * 0.14) + "px"; } catch (e) { }
-      ctx.fillText(label, x + ic + Math.round(14 * u), y + Math.round((ic - lp) / 2));
+      ctx.fillText(label, x + ic + Math.round(14 * us), y + Math.round((ic - lp) / 2));
       try { ctx.letterSpacing = "0px"; } catch (e) { }
     });
-    y += ic + Math.round(18 * u);
+    y += ic + Math.round(18 * us);
     for (const r of items.map(gCells)) {
       ctx.font = "600 " + IB + "px " + G_BODY; const ml = gWrap(ctx, r[0] || "", colW - pad * 2);
       ctx.font = "700 " + IB + "px " + G_BODY; const fl = gWrap(ctx, r[1] || "", colW - pad * 2);
@@ -1842,38 +1846,38 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
       ctx.font = "600 " + IB + "px " + G_BODY; ctx.fillStyle = muted;
       ml.forEach((l, i) => {
         const ly = y + pad + i * IBL; ctx.fillText(l, M + pad, ly);
-        ctx.save(); ctx.strokeStyle = dark ? "rgba(255,255,255,.55)" : "#8A6F5A"; ctx.lineWidth = Math.max(2, Math.round(3 * u));
+        ctx.save(); ctx.strokeStyle = dark ? "rgba(255,255,255,.55)" : "#8A6F5A"; ctx.lineWidth = Math.max(2, Math.round(3 * us));
         ctx.beginPath(); ctx.moveTo(M + pad, ly + Math.round(IB * 0.58)); ctx.lineTo(M + pad + ctx.measureText(l).width, ly + Math.round(IB * 0.58)); ctx.stroke(); ctx.restore();
       });
       ctx.font = "700 " + IB + "px " + G_BODY; ctx.fillStyle = ink;
       fl.forEach((l, i) => ctx.fillText(l, M + colW + gap + pad, y + pad + i * IBL));
-      y += h + Math.round(18 * u);
+      y += h + Math.round(18 * us);
     }
     y = sticky(y);
   } else if (t === "g_steps") {
     y = gEyebrow(ctx, spec.eyebrow, M, y, accent, Math.round(24 * u));
     y = gHeadline(ctx, spec.title || "", M, y, maxW, HEAD_PX, HEAD_LH, ink, accent);
-    y += Math.round(18 * u);
+    y += Math.round(18 * us);
     if (spec.lead) y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted);
-    y += Math.round(30 * u);
-    const r0 = Math.round(32 * u), textX = M + r0 * 2 + Math.round(30 * u), textW = M + maxW - textX, gap = Math.round(30 * u);
+    y += Math.round(30 * us);
+    const r0 = Math.round(32 * us), textX = M + r0 * 2 + Math.round(30 * us), textW = M + maxW - textX, gap = Math.round(30 * us);
     const lay = items.map(gCells).map((r) => {
       ctx.font = "700 " + IH + "px " + G_HEAD; const hl = gWrap(ctx, r[0] || "", textW);
       ctx.font = "500 " + IB + "px " + G_BODY; const bl = r[1] ? gWrap(ctx, r[1], textW) : [];
-      return { hl, bl, h: Math.max(r0 * 2, hl.length * Math.round(IH * 1.2) + (bl.length ? Math.round(6 * u) + bl.length * IBL : 0)) };
+      return { hl, bl, h: Math.max(r0 * 2, hl.length * Math.round(IH * 1.2) + (bl.length ? Math.round(6 * us) + bl.length * IBL : 0)) };
     });
     if (lay.length > 1) {                                           // the rail the numbers sit on
       const top = y + r0, bottom = y + lay.slice(0, -1).reduce((s, r) => s + r.h + gap, 0) + r0;
-      ctx.save(); ctx.strokeStyle = dark ? "rgba(255,255,255,.28)" : "#D9CFBA"; ctx.lineWidth = Math.max(4, Math.round(6 * u)); ctx.lineCap = "round";
+      ctx.save(); ctx.strokeStyle = dark ? "rgba(255,255,255,.28)" : "#D9CFBA"; ctx.lineWidth = Math.max(4, Math.round(6 * us)); ctx.lineCap = "round";
       ctx.beginPath(); ctx.moveTo(M + r0, top); ctx.lineTo(M + r0, bottom); ctx.stroke(); ctx.restore();
     }
     lay.forEach((r, i) => {
       ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(M + r0, y + r0, r0, 0, Math.PI * 2); ctx.fill();
-      ctx.font = "800 " + Math.round(34 * u) + "px " + G_HEAD; ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(String(i + 1), M + r0, y + r0 + Math.round(2 * u)); ctx.textAlign = "left"; ctx.textBaseline = "top";
+      ctx.font = "800 " + Math.round(34 * us) + "px " + G_HEAD; ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(String(i + 1), M + r0, y + r0 + Math.round(2 * us)); ctx.textAlign = "left"; ctx.textBaseline = "top";
       let ty = y; ctx.font = "700 " + IH + "px " + G_HEAD; ctx.fillStyle = ink;
       for (const l of r.hl) { ctx.fillText(l, textX, ty); ty += Math.round(IH * 1.2); }
-      if (r.bl.length) { ty += Math.round(6 * u); ctx.font = "500 " + IB + "px " + G_BODY; ctx.fillStyle = muted; for (const l of r.bl) { ctx.fillText(l, textX, ty); ty += IBL; } }
+      if (r.bl.length) { ty += Math.round(6 * us); ctx.font = "500 " + IB + "px " + G_BODY; ctx.fillStyle = muted; for (const l of r.bl) { ctx.fillText(l, textX, ty); ty += IBL; } }
       y += r.h + gap;
     });
     y = sticky(y - gap);
@@ -1882,62 +1886,62 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: inkWhite(spec), textFill: inkWhite(spec) ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
     eraBadge(ctx, W, u, M, spec.eyebrow, spec);
     y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(70 * u * TS), ink, red);
-    y += Math.round(30 * u);
-    if (spec.lead) { y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted); y += Math.round(10 * u); }
-    const pad = Math.round(32 * u), tagPx = Math.round(24 * u), textW = maxW - pad * 2;
+    y += Math.round(30 * us);
+    if (spec.lead) { y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted); y += Math.round(10 * us); }
+    const pad = Math.round(32 * us), tagPx = Math.round(24 * us), textW = maxW - pad * 2;
     items.map(gCells).forEach((p, i, all) => {
       ctx.font = "600 " + IH + "px " + G_BODY; const ml = gWrap(ctx, p[0] || "", textW);
       ctx.font = "800 " + Math.round(38 * u * TS) + "px " + G_HEAD; const fl = gWrap(ctx, p[1] || "", textW);
       const fh = Math.round(38 * u * TS * 1.2), tagH = Math.round(tagPx * 1.7);
-      const h1 = pad + tagH + Math.round(14 * u) + ml.length * Math.round(IH * 1.3) + pad;
+      const h1 = pad + tagH + Math.round(14 * us) + ml.length * Math.round(IH * 1.3) + pad;
       eraCard(ctx, M, y, maxW, h1, -0.007, (k) => {
         eraTag(k, L.myth, pad, pad, tagPx);
         k.textBaseline = "top"; k.font = "600 " + IH + "px " + G_BODY; k.fillStyle = ERA_PAL.muted;
-        let ty = pad + tagH + Math.round(14 * u);
+        let ty = pad + tagH + Math.round(14 * us);
         for (const l of ml) {
           k.fillText(l, pad, ty);
-          k.save(); k.strokeStyle = red; k.lineWidth = Math.max(3, Math.round(5 * u));
+          k.save(); k.strokeStyle = red; k.lineWidth = Math.max(3, Math.round(5 * us));
           const ly = ty + Math.round(IH * 0.6); k.beginPath(); k.moveTo(pad - 6, ly + 1); k.lineTo(pad + k.measureText(l).width + 6, ly - 2); k.stroke(); k.restore();
           ty += Math.round(IH * 1.3);
         }
       });
-      y += h1 + Math.round(10 * u);
-      eraArrow(ctx, M + Math.round(maxW * 0.5), y, M + Math.round(maxW * 0.5), y + Math.round(44 * u), Math.round(12 * u), red, Math.max(3, Math.round(6 * u)));
-      y += Math.round(58 * u);
-      const h2 = pad + tagH + Math.round(14 * u) + fl.length * fh + pad;
+      y += h1 + Math.round(10 * us);
+      eraArrow(ctx, M + Math.round(maxW * 0.5), y, M + Math.round(maxW * 0.5), y + Math.round(44 * us), Math.round(12 * us), red, Math.max(3, Math.round(6 * us)));
+      y += Math.round(58 * us);
+      const h2 = pad + tagH + Math.round(14 * us) + fl.length * fh + pad;
       eraBlock(ctx, M, y, maxW, h2, 0.006, red, (k) => {
         eraTag(k, L.fact, pad, pad, tagPx, ERA_PAL.yellow, ERA_PAL.ink);
         k.textBaseline = "top"; k.font = "800 " + Math.round(38 * u * TS) + "px " + G_HEAD; k.fillStyle = "#FFFFFF";
-        let ty = pad + tagH + Math.round(14 * u);
+        let ty = pad + tagH + Math.round(14 * us);
         for (const l of fl) { k.fillText(l, pad, ty); ty += fh; }
       });
       y += h2 + Math.round((i < all.length - 1 ? 34 : 24) * u);
     });
-    if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(32 * u));
+    if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(32 * us));
   } else if (t === "e_check") {
     await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: inkWhite(spec), textFill: inkWhite(spec) ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
     eraBadge(ctx, W, u, M, spec.eyebrow, spec);
     y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(70 * u * TS), ink, red);
-    y += Math.round(30 * u);
-    if (spec.lead) { y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted); y += Math.round(10 * u); }
-    const box = Math.round(52 * u), inset = Math.round(40 * u) + box + Math.round(26 * u), textW = maxW - inset - Math.round(30 * u);
+    y += Math.round(30 * us);
+    if (spec.lead) { y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted); y += Math.round(10 * us); }
+    const box = Math.round(52 * us), inset = Math.round(40 * us) + box + Math.round(26 * us), textW = maxW - inset - Math.round(30 * us);
     items.map(gCells).forEach((r, i) => {
       ctx.font = "800 " + IH + "px " + G_HEAD; const hl = gWrap(ctx, r[0] || "", textW);
       ctx.font = "500 " + IB + "px " + G_BODY; const bl = r[1] ? gWrap(ctx, r[1], textW) : [];
-      const h = Math.round(30 * u) + hl.length * Math.round(IH * 1.2) + bl.length * IBL + Math.round(22 * u);
+      const h = Math.round(30 * us) + hl.length * Math.round(IH * 1.2) + bl.length * IBL + Math.round(22 * us);
       eraCard(ctx, M, y, maxW, h, i % 2 ? 0.006 : -0.006, (k) => {
-        const bx = Math.round(40 * u), by = Math.round(28 * u);
-        k.strokeStyle = ERA_PAL.ink; k.lineWidth = Math.max(3, Math.round(5 * u)); k.strokeRect(bx, by, box, box);
-        moreMark(k, "tick", bx - Math.round(2 * u), by - Math.round(14 * u), box * 1.15, red, Math.max(5, Math.round(9 * u)));
-        k.textBaseline = "top"; let ty = Math.round(30 * u);
+        const bx = Math.round(40 * us), by = Math.round(28 * us);
+        k.strokeStyle = ERA_PAL.ink; k.lineWidth = Math.max(3, Math.round(5 * us)); k.strokeRect(bx, by, box, box);
+        moreMark(k, "tick", bx - Math.round(2 * us), by - Math.round(14 * us), box * 1.15, red, Math.max(5, Math.round(9 * us)));
+        k.textBaseline = "top"; let ty = Math.round(30 * us);
         k.font = "800 " + IH + "px " + G_HEAD; k.fillStyle = ERA_PAL.ink;
         for (const l of hl) { k.fillText(l, inset, ty); ty += Math.round(IH * 1.2); }
         k.font = "500 " + IB + "px " + G_BODY; k.fillStyle = ERA_PAL.muted;
         for (const l of bl) { k.fillText(l, inset, ty); ty += IBL; }
       });
-      y += h + Math.round(26 * u);
+      y += h + Math.round(26 * us);
     });
-    if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(32 * u));
+    if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(32 * us));
   } else if (t === "e_event") {
     const white = inkWhite(spec), line = white ? "rgba(255,255,255,.9)" : ink;
     const speakers = items.map(gCells).map((r) => ({ name: r[0] || "", where: r[1] || "" })).filter((r) => r.name);
@@ -1972,7 +1976,9 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     y = eventHeadline(ctx, spec.title || "", M, y, maxW, Math.round(60 * u * TS), Math.round(70 * u * TS), ink);
     const topEnd = y;
     // the foot: speakers on the left, the date on the right, both anchored to the bottom
-    const foot = H - Math.round((spec.footnote ? 130 : 78) * u);
+    const foot = spec.footnote ? Math.min(H - Math.round(130 * u), sourceTop(ctx, spec, W, H, M, u) - Math.round(14 * u)) : H - Math.round(78 * u);
+    // the closing slide of a set is handed "Sumber"/"Source" as its chip (specsFor): that is the source line's label, not an organiser
+    const organiser = spec.chip_label && !/^(sumber|source)$/i.test(String(spec.chip_label).trim()) ? spec.chip_label : "";
     const colR = Math.round(W * 0.655);
     const dt = eventDate(spec.note);
     const dayPx = Math.round(128 * u), monPx = Math.round(70 * u), yrPx = Math.round(118 * u), dPx = Math.round(31 * u);
@@ -2010,13 +2016,13 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
       });
       if (y0 < topEnd + Math.round(20 * u)) warn.push("The slide is fuller than the card: shorten the headline or the topic.");
     }
-    if (dt.day || dt.lines.length || spec.chip_label) {
+    if (dt.day || dt.lines.length || organiser) {
       const w = W - M - colR;
       // the lines under the date and the organiser are wrapped to the column before the block is placed, so it ends on the foot
       ctx.font = "700 " + dPx + "px " + G_HEAD;
       const dLines = dt.lines.flatMap((l) => gWrap(ctx, stripEmph(l).toUpperCase(), w));
       ctx.font = "600 " + Math.round(dPx * 0.92) + "px " + G_HEAD;
-      const chipLines = spec.chip_label ? gWrap(ctx, stripEmph(spec.chip_label).toUpperCase(), w) : [];
+      const chipLines = organiser ? gWrap(ctx, stripEmph(organiser).toUpperCase(), w) : [];
       const tall = (dt.day ? Math.round(dayPx * 0.92) + Math.round(yrPx * 0.9) + Math.round(22 * u) : 0) + dLines.length * Math.round(dPx * 1.35)
         + (chipLines.length ? Math.round(dPx * 0.5) + chipLines.length * Math.round(dPx * 1.2) : 0);
       let dy = foot - tall;
@@ -2041,19 +2047,19 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     await drawBrandMark(ctx, spec, W, u, M, { top: 54, h: 34, knockout: inkWhite(spec), textFill: inkWhite(spec) ? "rgba(255,255,255,.7)" : "rgba(21,21,21,.6)" });
     eraBadge(ctx, W, u, M, spec.eyebrow, spec);
     y = eraMark(ctx, spec.title || "", M, y, maxW, Math.round(56 * u * TS), Math.round(70 * u * TS), ink, red);
-    y += Math.round(30 * u);
+    y += Math.round(30 * us);
     const figure = items[0] || "", unit = items[1] || "";
     if (figure) {
       const px = fitFigure(ctx, figure, maxW, Math.round(330 * u * TS), G_HEAD);
       ctx.font = "800 " + px + "px " + G_HEAD; ctx.textBaseline = "top"; ctx.fillStyle = red; ctx.fillText(figure, M, y);
       const fw = ctx.measureText(figure).width;
-      eraArrow(ctx, M + Math.min(fw, maxW - Math.round(60 * u)) + Math.round(34 * u), y + Math.round(px * 1.18), M + Math.min(fw, maxW - Math.round(60 * u)) - Math.round(6 * u), y + Math.round(px * 0.9), -Math.round(16 * u), ERA_PAL.ink, Math.max(3, Math.round(6 * u)));
-      y += Math.round(px * 1.12) + Math.round(8 * u);
+      eraArrow(ctx, M + Math.min(fw, maxW - Math.round(60 * us)) + Math.round(34 * us), y + Math.round(px * 1.18), M + Math.min(fw, maxW - Math.round(60 * us)) - Math.round(6 * us), y + Math.round(px * 0.9), -Math.round(16 * us), ERA_PAL.ink, Math.max(3, Math.round(6 * us)));
+      y += Math.round(px * 1.12) + Math.round(8 * us);
       if (unit) y = eraMark(ctx, unit, M, y, maxW, Math.round(54 * u * TS), Math.round(66 * u * TS), ink, red);
-      y += Math.round(20 * u);
+      y += Math.round(20 * us);
     }
-    if (spec.lead) { y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted); y += Math.round(18 * u); }
-    if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(34 * u));
+    if (spec.lead) { y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), LEAD_PX, LEAD_LH, muted); y += Math.round(18 * us); }
+    if (spec.note) y = eraBand(ctx, M, y, maxW, spec.note, Math.round(34 * us));
   } else if (t === "p_stat") {
     photo(0, 0, W, H); scrim(0, 0, W, H, scrimLevel);
     y = gEyebrow(ctx, spec.eyebrow, M, y, "#FFFFFF", Math.round(24 * u));
@@ -2064,30 +2070,30 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
       const fw = ctx.measureText(figure).width, upx = Math.round(54 * u * TS);
       if (unit) {
         ctx.font = "700 " + upx + "px " + G_HEAD;
-        if (fw + Math.round(28 * u) + ctx.measureText(unit).width <= maxW) { ctx.fillStyle = GRID_PAL.yellow; ctx.fillText(unit, M + fw + Math.round(28 * u), y + Math.round(px * 0.5)); y += Math.round(px * 1.12); }
-        else { y += Math.round(px * 1.08); ctx.fillStyle = GRID_PAL.yellow; ctx.fillText(unit, M, y); y += Math.round(upx * 1.3); }
+        if (fw + Math.round(28 * us) + ctx.measureText(unit).width <= maxW) { ctx.fillStyle = GRID_PAL.yellow; ctx.fillText(unit, M + fw + Math.round(28 * us), y + Math.round(px * 0.5)); y += Math.round(px * 1.12); }
+        else { y += Math.round(px * 1.08); ctx.fillStyle = GRID_PAL.yellow; for (const l of gWrap(ctx, unit, maxW)) { ctx.fillText(l, M, y); y += Math.round(upx * 1.22); } y += Math.round(upx * 0.1); }
       } else y += Math.round(px * 1.12);
-      y += Math.round(14 * u);
+      y += Math.round(14 * us);
     }
     y = gHeadline(ctx, spec.title || "", M, y, maxW, Math.round(58 * u * TS), Math.round(70 * u * TS), "#FFFFFF", GRID_PAL.yellow);
-    if (spec.lead) { y += Math.round(18 * u); y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.9), LEAD_PX, LEAD_LH, "rgba(255,255,255,.84)"); }
+    if (spec.lead) { y += Math.round(18 * us); y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.9), LEAD_PX, LEAD_LH, "rgba(255,255,255,.84)"); }
   } else if (t === "p_list") {
     photo(0, 0, W, H); scrim(0, 0, W, H, spec.scrim || "heavy");
     y = gEyebrow(ctx, spec.eyebrow, M, y, "#FFFFFF", Math.round(24 * u));
     y = gHeadline(ctx, spec.title || "", M, y, maxW, Math.round(66 * u * TS), Math.round(78 * u * TS), "#FFFFFF", GRID_PAL.yellow);
-    if (spec.lead) { y += Math.round(14 * u); y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.9), LEAD_PX, LEAD_LH, "rgba(255,255,255,.84)"); }
-    y += Math.round(26 * u);
-    const numW = Math.round(76 * u), textX = M + Math.round(34 * u) + numW, textW = M + maxW - Math.round(34 * u) - textX, gap = Math.round(20 * u);
+    if (spec.lead) { y += Math.round(14 * us); y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.9), LEAD_PX, LEAD_LH, "rgba(255,255,255,.84)"); }
+    y += Math.round(26 * us);
+    const numW = Math.round(76 * us), textX = M + Math.round(34 * us) + numW, textW = M + maxW - Math.round(34 * us) - textX, gap = Math.round(20 * us);
     for (const [i, r] of items.map(gCells).entries()) {
       ctx.font = "700 " + IH + "px " + G_HEAD; const hl = gWrap(ctx, r[0] || "", textW);
       ctx.font = "500 " + IB + "px " + G_BODY; const bl = r[1] ? gWrap(ctx, r[1], textW) : [];
-      const h = Math.max(Math.round(110 * u), Math.round(36 * u) + hl.length * Math.round(IH * 1.2) + (bl.length ? Math.round(4 * u) + bl.length * IBL : 0));
+      const h = Math.max(Math.round(110 * us), Math.round(36 * us) + hl.length * Math.round(IH * 1.2) + (bl.length ? Math.round(4 * us) + bl.length * IBL : 0));
       gPanel(ctx, M, y, maxW, h, { fill: "rgba(255,255,255,.11)", shadow: false, stroke: "rgba(255,255,255,.2)", r: 22 });
-      ctx.font = "800 " + Math.round(48 * u) + "px " + G_HEAD; ctx.fillStyle = GRID_PAL.yellow; ctx.textBaseline = "top";
-      ctx.fillText(String(i + 1), M + Math.round(34 * u), y + Math.round((h - 48 * u) / 2 - 4 * u));
-      let ty = y + Math.round(18 * u); ctx.font = "700 " + IH + "px " + G_HEAD; ctx.fillStyle = "#FFFFFF";
+      ctx.font = "800 " + Math.round(48 * us) + "px " + G_HEAD; ctx.fillStyle = GRID_PAL.yellow; ctx.textBaseline = "top";
+      ctx.fillText(String(i + 1), M + Math.round(34 * us), y + Math.round((h - 48 * us) / 2 - 4 * us));
+      let ty = y + Math.round(18 * us); ctx.font = "700 " + IH + "px " + G_HEAD; ctx.fillStyle = "#FFFFFF";
       for (const l of hl) { ctx.fillText(l, textX, ty); ty += Math.round(IH * 1.2); }
-      if (bl.length) { ty += Math.round(4 * u); ctx.font = "500 " + IB + "px " + G_BODY; ctx.fillStyle = "rgba(255,255,255,.8)"; for (const l of bl) { ctx.fillText(l, textX, ty); ty += IBL; } }
+      if (bl.length) { ty += Math.round(4 * us); ctx.font = "500 " + IB + "px " + G_BODY; ctx.fillStyle = "rgba(255,255,255,.8)"; for (const l of bl) { ctx.fillText(l, textX, ty); ty += IBL; } }
       y += h + gap;
     }
     y -= gap;
@@ -2099,13 +2105,13 @@ async function morePaint(ctx, spec, W, H, yShift, canvasOut) {
     y = photoH + Math.round(52 * u) + (yShift || 0);
     if (spec.eyebrow) y = gEyebrow(ctx, spec.eyebrow, M, y, accent, Math.round(23 * u));
     y = gHeadline(ctx, spec.title || "", M, y, maxW, Math.round(54 * u * TS), Math.round(66 * u * TS), "#FFFFFF", GRID_PAL.yellow);
-    if (spec.lead) { y += Math.round(14 * u); y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), Math.round(29 * u * TS), Math.round(40 * u * TS), "rgba(255,255,255,.78)"); }
+    if (spec.lead) { y += Math.round(14 * us); y = gPara(ctx, spec.lead, M, y, Math.round(maxW * 0.92), Math.round(29 * u * TS), Math.round(40 * u * TS), "rgba(255,255,255,.78)"); }
     if (items.length) {
-      y += Math.round(14 * u);
+      y += Math.round(14 * us);
       for (const it of items) {
-        ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(M + Math.round(9 * u), y + Math.round(15 * u), Math.round(8 * u), 0, Math.PI * 2); ctx.fill();
-        y = gPara(ctx, it, M + Math.round(34 * u), y, maxW - Math.round(34 * u), Math.round(28 * u * TS), Math.round(38 * u * TS), "#FFFFFF", 600);
-        y += Math.round(8 * u);
+        ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(M + Math.round(9 * us), y + Math.round(15 * us), Math.round(8 * us), 0, Math.PI * 2); ctx.fill();
+        y = gPara(ctx, it, M + Math.round(34 * us), y, maxW - Math.round(34 * us), Math.round(28 * u * TS), Math.round(38 * u * TS), "#FFFFFF", 600);
+        y += Math.round(8 * us);
       }
     }
   }

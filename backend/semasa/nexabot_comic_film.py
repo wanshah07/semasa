@@ -70,9 +70,11 @@ def _clip(page, panel: Path, outdir: Path, report: dict) -> bool:
         return False
     gen_btn.click()
     report["generate_clicked_at"] = datetime.now(UTC).isoformat()
+    gen_epoch = int(time.time() * 1000)  # ms; the new job's created_at is after this
     deadline = time.time() + MAX_WAIT_S
     url = report.get("video_url")
     job_meta = {}
+    first_poll = True
     while time.time() < deadline:
         try:
             jobs = page.evaluate("""async () => {
@@ -82,14 +84,21 @@ def _clip(page, panel: Path, outdir: Path, report: dict) -> bool:
             }""")
         except Exception:  # noqa: BLE001
             jobs = []
-        done = [j for j in jobs if j.get("status") in ("done", "complete", "ready", "success")]
+        if first_poll:
+            report["jobs_sample"] = [{k: j.get(k) for k in ("id", "status", "mode", "created_at") if j.get(k) is not None} for j in jobs[:5]]
+            first_poll = False
+        # the NEW job: created after the Generate click, or (if no timestamps) the latest one
+        new = [j for j in jobs if (j.get("created_at") or 0) >= gen_epoch - 2000]
+        if not new:
+            new = jobs[:1]
+        done = [j for j in new if j.get("status") in ("done", "complete", "ready", "success")]
         if done:
             job_meta = done[0]
             url = url or report.get("video_url") or job_meta.get("download_url") or job_meta.get("video_url") or job_meta.get("url")
             break
         time.sleep(POLL_S)
     if not url:
-        report["job_meta_no_url"] = {k: job_meta.get(k) for k in ("id", "status", "mode", "model", "download_url", "video_url", "url") if job_meta.get(k)}
+        report["job_meta_no_url"] = {k: job_meta.get(k) for k in ("id", "status", "mode", "model", "download_url", "video_url", "url", "created_at") if job_meta.get(k)}
         return False
     import requests
     r = requests.get(url, timeout=300, stream=True)

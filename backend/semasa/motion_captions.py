@@ -184,8 +184,9 @@ def _script(title: str, scenes: list[dict[str, Any]]) -> str:
 
 
 def write(llm: Any, row: dict[str, Any], scenes: list[dict[str, Any]], title: str, *, lang: str, voice: str,
-          speak_as: Callable[[str], str]) -> dict[str, str]:
-    """One fitted caption per platform of the row's stream, in the film's language. Never raises."""
+          speak_as: Callable[[str], str], note: str = "") -> dict[str, str]:
+    """One fitted caption per platform of the row's stream, in the film's language. Never raises. `note` is extra brief
+    appended to the system prompt (an imported film's: only what its sender gave)."""
     stream = row.get("stream") or "regulab"
     plats = platforms_of(stream)
     fallback = from_script(title, scenes, stream)
@@ -210,6 +211,8 @@ def write(llm: Any, row: dict[str, Any], scenes: list[dict[str, Any]], title: st
             language += ". " + lenggok.RULE
         system = SYSTEM.format(voice=voice, language=language, platforms=spec,
                                shape=", ".join(f'"{p}": "..."' for p in plats), extra=antislop.prompt_block())
+        if note:
+            system += "\n\n" + note.strip()
         out = llm.chat_json(system, _script(title, scenes), max_tokens=1800) if llm else None
         got = (out or {}).get("captions") if isinstance(out, dict) else None
         if not isinstance(got, dict):

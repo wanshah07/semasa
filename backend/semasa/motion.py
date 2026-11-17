@@ -2208,7 +2208,7 @@ def run(store: Any, llm: Any, *, runner: Any = subprocess.run, now: datetime | N
     settings = load_settings(store)
     requeued = requeue_stale(store, now)
     daily = comic_daily_step(store, now)           # the daily comic series: plan today's episode (off until Wan switches it on)
-    imported = video_import_step(store, now)       # videos sent in from outside (video_import.py): checked, then a DRAFT post
+    imported = video_import_step(store, now, llm)  # videos sent in from outside (video_import.py): checked, then a DRAFT post
     started = clock()
     seen: list[str] = []
     done = 0
@@ -2237,12 +2237,13 @@ def comic_daily_step(store: Any, now: datetime | None) -> str:
         return ""
 
 
-def video_import_step(store: Any, now: datetime | None) -> str:
+def video_import_step(store: Any, now: datetime | None, llm: Any = None) -> str:
     """Check the videos an outside agent sent in and draft their posts (video_import.run). Never raises: an import must never stop
-    a film. It makes drafts only; nothing is approved, scheduled or posted."""
+    a film. It makes drafts only; nothing is approved, scheduled or posted. `llm` writes the caption of an import that came with
+    none (from its title only)."""
     try:
         from . import video_import
-        return video_import.run(store, None, now)
+        return video_import.run(store, None, now, **({"llm": llm} if llm is not None else {}))
     except Exception as exc:  # noqa: BLE001
         log.warning("video import step skipped (%s)", str(exc)[:160])
         return ""

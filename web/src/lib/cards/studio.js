@@ -2750,7 +2750,8 @@ SKINS.kraft = { ground: "#EFE8DC", ink: "#151515", muted: "#5C574E", accent: "#D
   pick: { fill: "#D8232A", ink: "#FFFFFF" }, eraPaper: true, badge: true, leadBlock: true };
 /** The skin a spec is drawn in: its own override (the ERA front page), else the look its template belongs to. */
 const skinOf = (spec) => (spec.skin && SKINS[spec.skin] ? spec.skin : SKIN_OF[spec.template[0]]);
-export const SKIN_MIN = 0.56, SKIN_MAX = 1.7;
+/* SKIN_MAX was 1.7 until 16 Nov 2026 (auto-fit): a slide of one short point then filled a third of its card. */
+export const SKIN_MIN = 0.56, SKIN_MAX = 2.4;
 /* The first page is the hook (Wan, 16 Nov 2026: "the text for first page no need to big, but hook make bigger"): on a cover the
    headline alone grows, up to SKIN_COVER_MAX, and everything under it stays at reading size (at most SKIN_COVER_REST). */
 export const SKIN_COVER_MAX = 2.6, SKIN_COVER_REST = 1.05;
@@ -2995,18 +2996,21 @@ function skTitle(ctx, S, look, text, x, y, w, px, u, ink, accent) {
   for (const tok of gTokens(S.caps ? raw.toUpperCase() : raw, ink, accent)) {
     const lead = /^\s/.test(tok.t), trail = /\s$/.test(tok.t);
     tok.t.split(/\s+/).filter(Boolean).forEach((wd, k) => {
-      hardSplit(ctx, wd, w).forEach((part, j) => words.push({ t: part, c: tok.c, glue: k === 0 && j === 0 && !lead && !spaced && words.length > 0 }));
+      hardSplit(ctx, wd, w - skLean(S, px)).forEach((part, j) => words.push({ t: part, c: tok.c, glue: k === 0 && j === 0 && !lead && !spaced && words.length > 0 }));
     });
     spaced = trail || !tok.t.trim();
   }
   const sp = ctx.measureText(" ").width, lines = [];
+  /* A handwriting face leans past its own advance width (the l of "label" in Caveat ends well right of where the next letter
+     would start), and at hook size that lean reached the edge of the card. Its lines are wrapped a little short of the column. */
+  const wFit = w - skLean(S, px);
   let line = [], lw = 0;
   for (let i = 0; i < words.length; i++) {
     // a word and the pieces glued to it are measured and placed as one
     let ww = ctx.measureText(words[i].t).width, j = i;
     while (j + 1 < words.length && words[j + 1].glue) { j += 1; ww += ctx.measureText(words[j].t).width; }
     const group = words.slice(i, j + 1);
-    if (line.length && lw + sp + ww > w) { lines.push({ line, lw }); line = [...group]; lw = ww; } else { lw += (line.length ? sp : 0) + ww; line.push(...group); }
+    if (line.length && lw + sp + ww > wFit) { lines.push({ line, lw }); line = [...group]; lw = ww; } else { lw += (line.length ? sp : 0) + ww; line.push(...group); }
     i = j;
   }
   if (line.length) lines.push({ line, lw });
@@ -3030,6 +3034,7 @@ function skTitle(ctx, S, look, text, x, y, w, px, u, ink, accent) {
   ctx.restore();
   return y;
 }
+const skLean = (S, px) => (S.head === SK_HAND ? px * 0.2 : S.head === SK_MARK ? px * 0.06 : 0);
 const skBodyFont = (S, px, bold) => (bold ? (S.boldW || (S.body === SK_SANS ? 800 : S.bodyW)) : S.bodyW) + " " + Math.round(px * S.bodyK) + "px " + S.body;
 /* the heading of one point: a look may set it in its marker face (deck), else it is the body face in bold */
 const skItemFont = (S, px) => (S.itemHead ? "400 " + Math.round(px * 1.02) + "px " + S.itemHead : skBodyFont(S, px, true));
@@ -3304,6 +3309,10 @@ function skPicture(ctx, S, look, im, x, y, w, h, u, rnd) {
   ctx.restore();
 }
 const SKIN_PIC_H = 0.34;        // the cover picture's share of the card's height
+/* THE WORDS COME FIRST (auto-fit, 16 Nov 2026). A cover with a picture, a supporting line and a few points did not fit a square
+   card at any size and was refused. The picture is now tried at 34% of the card, then 27%, then 20%: the first share at which
+   the words fit at their reading size; at the smallest share the type comes down as on any other slide. */
+const SKIN_PIC_SHARES = [SKIN_PIC_H, 0.27, 0.2];
 /* Where the words may sit: under the mark and the eyebrow, above the source line (which is measured, because a long citation
    takes two lines and the block must stop above it). */
 function skFoot(ctx, spec, W, H, u, M) {
@@ -3324,8 +3333,10 @@ function skWordCap(ctx, spec, W) {
   const u = W / 1080, w = W - Math.round(64 * u) * 2 - (part === "pick" ? Math.round(34 * u) * 2 : 0);
   const raw = stripEmph(spec.title || "").trim();
   if (!raw) return Infinity;
-  ctx.font = S.headW + " " + Math.round((SKIN_TITLE_PX[part] || 66) * u * S.headK) + "px " + S.head;
-  const widest = Math.max(...(S.caps ? raw.toUpperCase() : raw).split(/\s+/).map((x) => ctx.measureText(x).width));
+  const px = Math.round((SKIN_TITLE_PX[part] || 66) * u * S.headK);
+  ctx.font = S.headW + " " + px + "px " + S.head;
+  // the lean of a handwriting face grows with the type, so it is added to the word, not taken off the column
+  const widest = Math.max(...(S.caps ? raw.toUpperCase() : raw).split(/\s+/).map((x) => ctx.measureText(x).width)) + skLean(S, px);
   return widest > 0 ? (w / widest) * 0.97 : Infinity;
 }
 function skinPaint(ctx, spec, W, H, f, shift) {
@@ -3341,8 +3352,10 @@ function skinPaint(ctx, spec, W, H, f, shift) {
   if (spec.eyebrow && S.badge) eraBadge(ctx, W, u, M, spec.eyebrow, spec);
   else if (spec.eyebrow) {
     ctx.save(); ctx.font = "700 " + Math.round(21 * u) + "px " + SK_SANS; ctx.fillStyle = S.muted; ctx.textBaseline = "top"; ctx.textAlign = "center";
-    const eb = gWrap(ctx, String(spec.eyebrow).toUpperCase(), w)[0] || "";
-    ctx.fillText(eb, W / 2, Math.round(98 * u)); ctx.restore();
+    // a long label comes down in size until it fits (its second line used to be dropped without a word)
+    const ebText = String(spec.eyebrow).toUpperCase();
+    fitLinePx(ctx, ebText, w, Math.round(21 * u), Math.round(13 * u), (q) => "700 " + q + "px " + SK_SANS);
+    ctx.fillText(gWrap(ctx, ebText, w)[0] || "", W / 2, Math.round(98 * u)); ctx.restore();
   }
   const foot = skFoot(ctx, spec, W, H, u, M);
   if (foot.lines.length) { ctx.font = "400 " + foot.px + "px " + SK_TEXT; skLines(ctx, foot.lines, M, foot.y, w, foot.lh, S.muted, true, "", u); }
@@ -3352,7 +3365,7 @@ function skinPaint(ctx, spec, W, H, f, shift) {
   let y = Math.round(SKIN_TOP * u);
   if (part === "cover" && spec._im) {
     // the picture sits at the top and does not move; the hook is centred in what is left under it
-    const ph = Math.round(H * SKIN_PIC_H);
+    const ph = Math.round(H * (spec._ph || SKIN_PIC_H));
     skPicture(ctx, S, look, spec._im, M, y, w, ph, u, rnd);
     y += ph + Math.round(40 * u);
   }
@@ -3397,7 +3410,14 @@ async function renderSkinCard(spec) {
   const u = W / 1080, look = skinOf(spec);
   // only the cover takes a picture; a picture that will not load leaves a cover with no picture, never a broken card
   if (spec.template.slice(2) === "cover" && spec.bg) { const im = await loadImg(spec.bg); if (im) spec = { ...spec, _im: im }; }
-  const top = Math.round(SKIN_TOP * u) + (spec._im ? Math.round(H * SKIN_PIC_H) + Math.round(40 * u) : 0);
+  if (spec._im) {
+    for (const share of SKIN_PIC_SHARES) {
+      spec = { ...spec, _ph: share };
+      const p = skinPaint(measureProxy(ctx), spec, W, H, 1, 0);
+      if (p.y - (Math.round(SKIN_TOP * u) + Math.round(H * share) + Math.round(40 * u)) <= p.bottom - (Math.round(SKIN_TOP * u) + Math.round(H * share) + Math.round(40 * u))) break;
+    }
+  }
+  const top = Math.round(SKIN_TOP * u) + (spec._im ? Math.round(H * spec._ph) + Math.round(40 * u) : 0);
   const probe = skinPaint(measureProxy(ctx), spec, W, H, 1, 0);
   const room = probe.bottom - top;
   const used = (f) => skinPaint(measureProxy(ctx), spec, W, H, f, 0).y - top;

@@ -2208,6 +2208,7 @@ def run(store: Any, llm: Any, *, runner: Any = subprocess.run, now: datetime | N
     settings = load_settings(store)
     requeued = requeue_stale(store, now)
     daily = comic_daily_step(store, now)           # the daily comic series: plan today's episode (off until Wan switches it on)
+    imported = video_import_step(store, now)       # videos sent in from outside (video_import.py): checked, then a DRAFT post
     started = clock()
     seen: list[str] = []
     done = 0
@@ -2221,7 +2222,8 @@ def run(store: Any, llm: Any, *, runner: Any = subprocess.run, now: datetime | N
         done += bool(process(store, llm, rows[0], settings, runner=runner, now=now, gh=gh))
     captions = backfill_captions(store, llm)
     return {"claimed": len(seen), "done": done, "failed": len(seen) - done, **({"requeued": requeued} if requeued else {}),
-            **({"captions": captions} if captions else {}), **({"comic_series": daily} if daily else {})}
+            **({"captions": captions} if captions else {}), **({"comic_series": daily} if daily else {}),
+            **({"video_import": imported} if imported else {})}
 
 
 def comic_daily_step(store: Any, now: datetime | None) -> str:
@@ -2232,6 +2234,17 @@ def comic_daily_step(store: Any, now: datetime | None) -> str:
         return comic_daily.run(store, ideas_settings(store), now)
     except Exception as exc:  # noqa: BLE001
         log.warning("daily comic step skipped (%s)", str(exc)[:160])
+        return ""
+
+
+def video_import_step(store: Any, now: datetime | None) -> str:
+    """Check the videos an outside agent sent in and draft their posts (video_import.run). Never raises: an import must never stop
+    a film. It makes drafts only; nothing is approved, scheduled or posted."""
+    try:
+        from . import video_import
+        return video_import.run(store, None, now)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("video import step skipped (%s)", str(exc)[:160])
         return ""
 
 

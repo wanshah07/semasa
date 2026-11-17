@@ -14,6 +14,7 @@ import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { Input, Label, Segmented, Select, TextArea } from "../components/ui/Field";
 import MotionLab from "../components/MotionLab";
+import VideoImportCard from "../components/VideoImportCard";
 import MediaUploader from "../components/MediaUploader";
 import PromptLibrary from "../components/PromptLibrary";
 import { useView } from "../components/ViewToggle";
@@ -93,6 +94,7 @@ export default function VideoTab({ user, gens, brand, onToast, openPost, prompts
         {running > 0 ? ` · ${t("{n} klip AI sedang dijana", "{n} AI clips generating", { n: running })}` : ""}</p>}
 
       {mode === "motion" && <MotionLab user={user} onToast={onToast} view="make" />}
+      {mode === "motion" && <VideoImportCard onToast={onToast} go={go} />}
 
       {mode === "ai" && (
         <>

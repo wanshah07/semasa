@@ -39,6 +39,11 @@ def _clip(page, panel: Path, outdir: Path, report: dict) -> bool:
         return False
     if not i2v.upload_panel(page, panel, report):
         return False
+    # i2v REQUIRES a text prompt too (the Generate button stays disabled with an empty prompt)
+    box = page.locator("textarea[placeholder*='Describe your video']").first
+    if box.count():
+        box.fill(PROMPT)
+        report["prompt_filled"] = True
     # the Generate button stays disabled until the uploaded image is processed: wait for it, then click
     gen_btn = page.get_by_role("button", name="Generate", exact=True).first
     enabled_at = time.time() + 60

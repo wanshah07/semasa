@@ -115,7 +115,8 @@ def generate(page: object, prompt: str, outdir: Path, max_gen: int, dry: bool, r
         done = [j for j in jobs if (j.get("status") in ("done", "complete", "ready", "success"))]
         if done:
             report["job_done"] = True
-            report["job_meta"] = {k: done[0].get(k) for k in ("id", "status", "mode", "model", "width", "height", "size_bytes", "download_url") if done[0].get(k) is not None}
+            keys = ("id", "status", "mode", "model", "width", "height", "size_bytes", "download_url")
+            report["job_meta"] = {k: done[0].get(k) for k in keys if done[0].get(k) is not None}
             break
         time.sleep(POLL_S)
     else:
@@ -155,7 +156,6 @@ def run(outdir: Path, prompt: str, max_gen: int, dry: bool, import_ok: bool) -> 
 
     report: dict = {"started": datetime.now(UTC).isoformat(), "prompt": prompt, "max_gen": max_gen,
                     "dry": dry, "events": [], "video_saved": None, "import": None}
-    captured: list[dict] = []
 
     with sync_playwright() as pw:
         browser = chk.launch_browser(pw)

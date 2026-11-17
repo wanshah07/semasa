@@ -298,7 +298,7 @@ def comic_job_row(sb: dict[str, Any], series: dict[str, Any], source: str, s: An
     """The Design job the episode's drawing is made by: a `slides` job with meta.design "comic", the script already approved
     (so the writer is never asked again), the episode number the plan gave, and `film` so the square picture is kept."""
     script = {"title": sb["title"], "setting": sb["setting"], "panels": sb["panels"]}
-    return {"type": "image", "mode": "slides", "status": "working", "prompt": "", "created_by": None,
+    return {"type": "image", "mode": "slides", "status": "processing", "prompt": "", "created_by": None,
             "attempts": int(getattr(s, "max_attempts", 3)),          # one try: a failure is final, the film retries by itself
             "meta": {"flow": "comic-series", "design": "comic", "format": "portrait", "stream": "regulab",
                      "citation": source[:comic.MAX_SOURCE],
@@ -333,9 +333,9 @@ def ensure_comic(store: Any, row: dict[str, Any], sb: dict[str, Any], llm: Any, 
     fresh = comic_job_row({**sb, "style": sx.get("style") or ""}, series, source, s)
     if found and comic_meta.get("script_sha") == want:
         # the same storyboard whose drawing failed: tried again on the same row
-        store.table(db.MEDIA).update({"status": "working", "error": None, "attempts": fresh["attempts"],
+        store.table(db.MEDIA).update({"status": "processing", "error": None, "attempts": fresh["attempts"],
                                       "meta": {**meta, "comic": {**comic_meta, "film": True}}}).eq("id", found["id"]).execute()
-        job = {**found, "status": "working", "attempts": fresh["attempts"]}
+        job = {**found, "status": "processing", "attempts": fresh["attempts"]}
     else:
         job = store.table(db.MEDIA).insert(fresh).execute().data[0]
         _series_options(store, row, comic_id=job["id"], script_sha=want)

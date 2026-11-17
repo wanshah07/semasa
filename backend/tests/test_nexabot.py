@@ -438,3 +438,22 @@ def test_a_docs_page_is_read_as_text_with_its_keys_redacted_and_the_keys_page_ne
     pr.write_reports(tmp_path, rep, None)
     assert "nxb_live" not in (tmp_path / "report.md").read_text() + (tmp_path / "report.json").read_text()
     assert json.loads((tmp_path / "report.json").read_text())["mode"] == "page"
+
+
+def test_a_page_read_writes_no_screenshot(tmp_path):
+    """A docs page can show a real credential on screen and a picture cannot be redacted, so only the studio is photographed."""
+    class FakePage:
+        def __init__(self):
+            self.calls = 0
+
+        def screenshot(self, path, full_page):
+            self.calls += 1
+            pathlib.Path(path).write_bytes(b"png")
+
+    page = FakePage()
+    pr.SCREENSHOTS_ON = False
+    try:
+        assert pr._shot(page, tmp_path, "x.png", True) == "" and page.calls == 0 and not list(tmp_path.iterdir())
+    finally:
+        pr.SCREENSHOTS_ON = True
+    assert pr._shot(page, tmp_path, "y.png", True) == "y.png" and page.calls == 1

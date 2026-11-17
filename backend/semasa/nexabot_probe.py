@@ -435,7 +435,14 @@ def guard_route(blocked: list[str]) -> Any:
     return handler
 
 
+# Screenshots are taken for the studio page only. A docs page can show a real credential on screen, and an image cannot
+# be redacted the way the text is, so reading any other page (--path) writes no picture at all.
+SCREENSHOTS_ON = True
+
+
 def _shot(page: Any, outdir: Path, name: str, full: bool) -> str:
+    if not SCREENSHOTS_ON:
+        return ""
     try:
         page.screenshot(path=str(outdir / name), full_page=full)
         return name
@@ -653,8 +660,10 @@ def render_page_md(rep: dict[str, Any]) -> str:
 def run(outdir: Path, state: dict[str, Any] | None, path: str = check.STUDIO_PATH) -> tuple[int, dict[str, Any]]:
     from playwright.sync_api import sync_playwright
 
+    global SCREENSHOTS_ON
     path = check_path(path)
     studio = path == check.STUDIO_PATH
+    SCREENSHOTS_ON = studio                      # no pictures of any other page (see SCREENSHOTS_ON)
     outdir.mkdir(parents=True, exist_ok=True)
     started = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     events: list[dict[str, Any]] = []

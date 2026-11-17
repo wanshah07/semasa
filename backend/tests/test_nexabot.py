@@ -564,3 +564,83 @@ def test_the_workflow_takes_the_new_inputs_and_hands_them_over_only_as_environme
     gen_run = next(r for r in runs if "nexabot_generate" in r)
     assert '"${args[@]}"' in gen_run and '"$NB_TITLE"' in gen_run and '"$NB_CAPTIONS_JSON"' in gen_run
     assert "--dry" in gen_run and "--import" in gen_run, "dry and import keep working"
+
+
+def test_generate_follows_only_its_own_job(tmp_path, monkeypatch):
+    """A finished OLD job on the account must never be taken for the video just asked for (the 17 Nov run stopped in
+    seconds on one and saved nothing)."""
+    from semasa import nexabot_generate as ng
+
+    monkeypatch.setattr(ng, "POLL_S", 0)
+
+    class Loc:
+        def __init__(self, page): self.page = page
+        first = property(lambda self: self)
+        def wait_for(self, **k): pass
+        def fill(self, t): pass
+        def is_visible(self): return False
+        def is_disabled(self): return False
+        def click(self): self.page.clicked = True
+
+    class Req:
+        def __init__(self, page): self.page = page
+        def get(self, url, timeout=0):
+            self.page.fetched.append(url)
+            class R:
+                status = 200
+                def body(self): return b"x" * 20_000
+            return R()
+
+    class Ctx:
+        def __init__(self, page): self.request = Req(page)
+
+    class Page:
+        def __init__(self):
+            self.clicked, self.fetched, self.polls = False, [], 0
+            self.context = Ctx(self)
+        def locator(self, sel): return Loc(self)
+        def get_by_role(self, *a, **k): return Loc(self)
+        def wait_for_timeout(self, ms): pass
+        def evaluate(self, js, arg=None):
+            if arg is not None:  # one job by id
+                self.polls += 1
+                return {"id": arg, "status": "done" if self.polls > 1 else "processing"}
+            old = {"id": "old1", "status": "done"}
+            return [old] + ([{"id": "new1", "status": "queued"}] if self.clicked else [])
+
+    page, report = Page(), {}
+    ng.generate(page, "a prompt", tmp_path, 1, False, report)
+    assert report["job_id"] == "new1" and report["job_id_via"] == "list_diff"
+    assert report["job_done"] and report["video_saved"]
+    assert page.fetched == ["https://nexabot.id/api/v1/jobs/new1/download"]
+
+
+def test_generate_without_a_baseline_does_not_guess_a_job(tmp_path, monkeypatch):
+    """If the pre-click job list could not be read, an old finished job must not be taken as new: with no id from the
+    Generate answer the run waits out (here: a short deadline) and saves nothing."""
+    from semasa import nexabot_generate as ng
+
+    monkeypatch.setattr(ng, "POLL_S", 0)
+    monkeypatch.setattr(ng, "MAX_WAIT_S", 0.05)
+
+    class Loc:
+        first = property(lambda self: self)
+        def wait_for(self, **k): pass
+        def fill(self, t): pass
+        def is_visible(self): return False
+        def is_disabled(self): return False
+        def click(self): pass
+
+    class Page:
+        calls = 0
+        def locator(self, sel): return Loc()
+        def get_by_role(self, *a, **k): return Loc()
+        def wait_for_timeout(self, ms): pass
+        def evaluate(self, js, arg=None):
+            Page.calls += 1
+            return None if Page.calls == 1 else [{"id": "old1", "status": "done"}]
+
+    report = {}
+    ng.generate(Page(), "a prompt", tmp_path, 1, False, report)
+    assert report["jobs_before"] is None
+    assert "job_id" not in report and not report.get("video_saved") and report.get("timed_out")

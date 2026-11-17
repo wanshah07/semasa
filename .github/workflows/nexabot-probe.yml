@@ -1,0 +1,58 @@
+name: Nexabot probe
+
+# READ-ONLY look at the nexabot.id Creator Studio with Wan's saved login (Phase A, ops/NEXABOT-LOGIN.md). Run by hand from the
+# Actions tab; it has no schedule and is not wired to anything else, so it can never double a job. It opens the studio, lists what
+# it shows (controls, menus, the credit text, the page's own same-origin calls as method + path + status) and takes screenshots.
+# It never presses Generate, never types, and aborts every write at the network (backend/semasa/nexabot_probe.py), so it spends no
+# credits. It writes nothing to Supabase. The report is kept for ONE day: the repository is private, and the screenshots can show
+# the account name and balance.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Chromium
+        run: bash ../.github/scripts/ensure-chromium.sh
+      - name: Probe the studio (reads only)
+        env:
+          # a Playwright storage_state.json recorded by Wan, base64 (ops/NEXABOT-LOGIN.md). Empty = the run stops with a clear message.
+          NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
+        run: |
+          if [ -z "$NEXABOT_STORAGE_STATE_B64" ]; then
+            echo "::error::the secret NEXABOT_STORAGE_STATE_B64 is not set: record the login and add it (ops/NEXABOT-LOGIN.md)"
+            exit 1
+          fi
+          python -m semasa.nexabot_probe "$RUNNER_TEMP/nexabot-probe"
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/nexabot-probe/report.md" ]; then
+            grep -m1 '^- Verdict' "$RUNNER_TEMP/nexabot-probe/report.md" >> "$GITHUB_STEP_SUMMARY" || true
+            echo "The full report and the screenshots are in the artifact nexabot-probe (kept one day)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Keep the report and screenshots (one day)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexabot-probe
+          path: ${{ runner.temp }}/nexabot-probe
+          retention-days: 1
+          if-no-files-found: ignore

@@ -40,6 +40,8 @@ export const CODE_APIS = [
     used: ["Menerbit ke Instagram, Threads, Facebook, LinkedIn dan TikTok (tiga log masuk; tutup sehingga dihidupkan).", "Publishes to Instagram, Threads, Facebook, LinkedIn and TikTok (three logins; off until switched on)."] },
   { id: "social-login", name: "Log masuk Facebook/Instagram (akaun sementara)", env: ["PW_STORAGE_STATE_B64"], url: "https://playwright.dev/docs/auth", docs: "https://playwright.dev/docs/auth",
     used: ["Sesi log masuk pelayar yang disimpan: Instagram menunjukkan dinding log masuk kepada semua orang, dan Facebook hanya memuatkan siaran pertama setiap hashtag tanpanya.", "A saved browser login session: Instagram shows a login wall to everyone, and Facebook loads only the first post of a hashtag without it."] },
+  { id: "nexabot-login", name: "Log masuk Nexabot Creator Studio (Fasa A)", env: ["NEXABOT_STORAGE_STATE_B64"], url: "https://nexabot.id/video-generator", docs: "https://playwright.dev/docs/auth",
+    used: ["Sesi log masuk pelayar yang disimpan untuk nexabot.id: hanya Probe Nexabot (baca sahaja, tidak menekan Generate) membacanya; tiada video dibuat lagi.", "A saved browser login for nexabot.id: only the Nexabot probe (read-only, never presses Generate) reads it; no video is made yet."] },
   { id: "unsplash", name: "Unsplash", env: ["UNSPLASH_ACCESS_KEY"], url: "https://unsplash.com/developers", docs: "https://unsplash.com/documentation",
     used: ["Gambar stok untuk post dan Motion.", "Stock photos for posts and Motion."] },
   { id: "replicate", name: "Replicate", env: ["REPLICATE_API_TOKEN"], url: "https://replicate.com", docs: "https://replicate.com/docs",

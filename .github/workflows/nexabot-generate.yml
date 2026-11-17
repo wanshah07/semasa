@@ -1,0 +1,69 @@
+name: Nexabot generate
+
+# Phase B, first real run: drive the Creator Studio with the saved session login, generate ONE video (Unlimited plan,
+# no credits), capture the MP4, and — when --import is on — send it to Semasa's import-video route, which makes a DRAFT
+# post. Wan's Approve is the only gate. By hand only; no schedule.
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "The video prompt"
+        required: true
+        type: string
+      dry:
+        description: "true = do everything except press Generate (spends nothing)"
+        type: boolean
+        default: true
+      import:
+        description: "true = send the MP4 to Semasa import-video (needs SEMASA_IMPORT_TOKEN)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: nexabot-generate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Chromium
+        run: bash ../.github/scripts/ensure-chromium.sh
+      - name: Generate one video
+        env:
+          NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
+          SEMASA_IMPORT_TOKEN: ${{ secrets.SEMASA_IMPORT_TOKEN }}
+          SEMASA_IMPORT_URL: ${{ vars.SEMASA_IMPORT_URL }}
+        run: |
+          if [ "${{ inputs.dry }}" = "true" ]; then
+            python -m semasa.nexabot_generate "$RUNNER_TEMP/nexabot-out" --prompt "${{ inputs.prompt }}" --dry
+          elif [ "${{ inputs.import }}" = "true" ]; then
+            python -m semasa.nexabot_generate "$RUNNER_TEMP/nexabot-out" --prompt "${{ inputs.prompt }}" --import
+          else
+            python -m semasa.nexabot_generate "$RUNNER_TEMP/nexabot-out" --prompt "${{ inputs.prompt }}"
+          fi
+      - name: Keep the video and report (one day)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexabot-generate
+          path: /home/runner/work/_temp/nexabot-out
+          retention-days: 1
+          if-no-files-found: ignore

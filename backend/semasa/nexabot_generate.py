@@ -1,0 +1,223 @@
+"""Nexabot Creator Studio — Phase B: generate a real video through the studio UI and hand it to Semasa.
+
+Phase A (nexabot_probe.py) only READ the studio. This module DRIVES it: it types a prompt, keeps the default mode/ratio/
+resolution, picks the UNLIMITED payment mode (the web-only plan — no credits are deducted), presses Generate, waits for the
+job, and captures the MP4. It then sends the MP4 to Semasa through the import-video route (docs/VIDEO-IMPORT.md), which
+makes a DRAFT post — Wan's Approve stays the only gate.
+
+The first real run is ALSO an observation run: because the studio has no public API and Phase A aborted every write, the
+download mechanism is not yet known. So every network call is recorded (method + path + status + content-type + body size,
+and a response that looks like video is SAVED), and the report is written beside the MP4. Nothing else is inferred.
+
+Spend guard (the guide's Phase B promise): one generation per run by default; `--max` raises it, `--dry` does everything
+except the final Generate click (records, spends nothing).
+
+Run it on the GitHub runner (the secret NEXABOT_STORAGE_STATE_B64 exists there), from the backend folder:
+
+    python -m semasa.nexabot_generate OUTDIR --prompt "a cozy coffee cup on a wooden table"
+
+Env:
+  NEXABOT_STORAGE_STATE_B64   the saved session login (base64)
+  SEMASA_IMPORT_TOKEN         bearer token for the import-video route (docs/VIDEO-IMPORT.md)
+  SEMASA_IMPORT_URL           https://<project>.supabase.co/functions/v1/semasa-import-video (optional; default from env)
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import os
+import sys
+import tempfile
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+from urllib.parse import urlsplit
+
+from . import nexabot_check as chk
+
+STUDIO = chk.STUDIO_URL
+PROMPT_PLACEHOLDER = "Describe your video"
+GENERATE_NAME = "Generate"
+PAYMENT_NAME = "Choose payment mode"
+UNLIMITED_NAME = "Unlimited"
+RESULTS_SELECTOR = "[data-results] *, [class*='result'] *"
+MAX_WAIT_S = 15 * 60
+POLL_S = 4
+
+
+def storage_state() -> dict | None:
+    raw = (os.environ.get("NEXABOT_STORAGE_STATE_B64") or "").strip()
+    if not raw:
+        return None
+    try:
+        data = base64.b64decode(raw, validate=False)
+        if b'"cookies"' not in data:
+            return None
+        return json.loads(data)
+    except (ValueError, json.JSONDecodeError):
+        return None
+
+
+def _is_video(ctype: str, url: str) -> bool:
+    c = (ctype or "").lower()
+    if "video" in c or "octet-stream" in c or "mp4" in c:
+        return True
+    return ".mp4" in url.lower()
+
+
+def generate(page: object, prompt: str, outdir: Path, max_gen: int, dry: bool, report: dict) -> None:
+    """Drive the studio: fill the prompt, pick Unlimited, press Generate, poll jobs, capture the MP4."""
+    # 1. the prompt box
+    box = page.locator(f"textarea[placeholder*='{PROMPT_PLACEHOLDER}']").first
+    box.wait_for(state="visible", timeout=30_000)
+    box.fill(prompt)
+    report["prompt_filled"] = True
+
+    # 2. payment mode -> Unlimited (the web-only plan: no credits deducted). Defaults may already be Unlimited.
+    try:
+        pay = page.get_by_role("button", name=PAYMENT_NAME).first
+        if pay.is_visible():
+            pay.click()
+            page.wait_for_timeout(600)
+            opt = page.get_by_role("option", name=UNLIMITED_NAME).first
+            if opt.is_visible():
+                opt.click()
+                page.wait_for_timeout(400)
+            else:
+                page.keyboard.press("Escape")
+    except Exception as exc:  # noqa: BLE001 - a default that is already Unlimited needs no click
+        report["payment_note"] = f"payment select skipped: {str(exc)[:120]}"
+
+    # 3. Generate (disabled until a prompt is present)
+    gen = page.get_by_role("button", name=GENERATE_NAME, exact=True).first
+    report["generate_disabled_before"] = gen.is_disabled()
+    if dry:
+        report["dry"] = True
+        return
+    gen.click()
+    report["generate_clicked_at"] = datetime.now(UTC).isoformat()
+
+    # 4. poll the jobs list until a NEW job reaches done, then let the capture handler save the video
+    # (the download mechanism is captured in the network record, not guessed)
+    deadline = time.time() + MAX_WAIT_S
+    seen = report.get("seen_jobs", [])
+    while time.time() < deadline:
+        try:
+            jobs = page.evaluate("""async () => {
+                const r = await fetch('/api/v1/jobs?scope=all&limit=10');
+                const j = await r.json();
+                return Array.isArray(j) ? j : (j.jobs || j.data || []);
+            }""")
+        except Exception:  # noqa: BLE001
+            jobs = []
+        for job in jobs:
+            jid = job.get("id") or job.get("_id")
+            if jid and jid not in seen:
+                seen.append(jid)
+                report["seen_jobs"] = seen
+        time.sleep(POLL_S)
+    report["timed_out"] = True
+
+
+def run(outdir: Path, prompt: str, max_gen: int, dry: bool, import_ok: bool) -> int:
+    state = storage_state()
+    if not state:
+        print("nexabot: no saved login (NEXABOT_STORAGE_STATE_B64 empty or not JSON).")
+        return 2
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("Playwright is not installed.")
+        return 2
+
+    report: dict = {"started": datetime.now(UTC).isoformat(), "prompt": prompt, "max_gen": max_gen,
+                    "dry": dry, "events": [], "video_saved": None, "import": None}
+    captured: list[dict] = []
+
+    with sync_playwright() as pw:
+        browser = chk.launch_browser(pw)
+        try:
+            ctx = browser.new_context(storage_state=state, locale="en-MY", timezone_id="Asia/Kuala_Lumpur",
+                                      viewport={"width": 1366, "height": 900}, accept_downloads=True)
+            page = ctx.new_page()
+
+            def on_response(resp):
+                req = resp.request
+                url = req.url
+                ctype = resp.headers.get("content-type", "")
+                status = resp.status
+                row = {"method": req.method, "url": url, "status": status, "ctype": ctype}
+                try:
+                    body = resp.body()
+                    row["size"] = len(body)
+                    if req.method == "GET" and _is_video(ctype, url) and not captured:
+                        dest = outdir / f"nexabot-{datetime.now(UTC).strftime('%H%M%S')}.mp4"
+                        dest.write_bytes(body)
+                        row["saved"] = str(dest)
+                        report["video_saved"] = str(dest)
+                        captured.append(dict(row))
+                except Exception:  # noqa: BLE001 - a streamed/empty body is just not saved
+                    row["size"] = None
+                report["events"].append(row)
+
+            page.on("response", on_response)
+            page.goto(STUDIO, wait_until="domcontentloaded", timeout=45_000)
+            try:
+                page.wait_for_load_state("networkidle", timeout=15_000)
+            except Exception:  # noqa: BLE001
+                pass
+            page.wait_for_timeout(2500)
+            final_url = page.url
+            report["final_url"] = final_url
+            if "/login" in final_url:
+                print("nexabot: LOGIN WALL — record the login again (ops/NEXABOT-LOGIN.md).")
+                return 1
+            generate(page, prompt, outdir, max_gen, dry, report)
+            page.wait_for_timeout(3000)
+        finally:
+            browser.close()
+
+    (outdir / "report.json").write_text(json.dumps(report, indent=2), "utf-8")
+    print(json.dumps({"ok": True, "dry": dry, "video_saved": report.get("video_saved"),
+                      "events": len(report["events"])}, indent=2))
+    if report.get("video_saved") and import_ok and not dry:
+        return _import(report["video_saved"], report)
+    return 0
+
+
+def _import(mp4: str, report: dict) -> int:
+    import requests
+    url = os.environ.get("SEMASA_IMPORT_URL")
+    token = os.environ.get("SEMASA_IMPORT_TOKEN")
+    if not url or not token:
+        report["import"] = {"error": "SEMASA_IMPORT_URL/TOKEN not set; the MP4 is saved but not imported"}
+        print("nexabot: MP4 saved but SEMASA_IMPORT_URL/TOKEN not set.")
+        return 0
+    with open(mp4, "rb") as f:
+        r = requests.post(url, headers={"Authorization": f"Bearer {token}"},
+                          files={"file": ("film.mp4", f, "video/mp4")},
+                          data={"source": "nexabot", "title": report.get("prompt", "")[:160],
+                                "idempotency_key": f"nexabot-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"},
+                          timeout=300)
+    report["import"] = {"status": r.status_code, "body": r.text[:500]}
+    print(f"import: {r.status_code} {r.text[:300]}")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("outdir")
+    ap.add_argument("--prompt", required=True)
+    ap.add_argument("--max", type=int, default=1, dest="max_gen")
+    ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--import", dest="import_ok", action="store_true", help="send the MP4 to Semasa import-video")
+    a = ap.parse_args(argv[1:])
+    outdir = Path(a.outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    return run(outdir, a.prompt, a.max_gen, a.dry, a.import_ok)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

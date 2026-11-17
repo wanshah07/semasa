@@ -125,9 +125,11 @@ def _clip(page, panel: Path, outdir: Path, report: dict, fresh: bool = False) ->
 
 
 def concat(clips: list[str], out: Path) -> Path:
+    import imageio_ffmpeg
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     list_file = out.parent / "clips.txt"
     list_file.write_text("".join(f"file '{c}'\n" for c in clips), "utf-8")
-    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(out)],
+    subprocess.run([ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(out)],
                    check=True, capture_output=True)
     return out
 

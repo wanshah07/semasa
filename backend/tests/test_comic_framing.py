@@ -283,3 +283,22 @@ def test_the_frame_places_the_whole_comic_and_cuts_nothing_of_it():
     ):
         edge = ImageChops.difference(placed.crop(box), want.crop(box)).convert("L")
         assert max(edge.getdata()) < 90, f"the outer edge {box} of the comic is on the poster uncut"
+
+
+def test_the_films_bubbles_sit_above_the_people_too_and_stay_inside_their_panel():
+    from semasa import comic_film
+
+    img = Image.open(FIX / "wordless-chatgpt-full.jpg").convert("RGB").resize((1080, 1080))
+    h = comic.measure_heads(img)
+    series = comic_job.comic_library.series_of(comic_job.comic_library.library(None), "kak-lin-tanya")
+    script = comic_writer.assemble({"title": SCRIPT["title"], "setting": "", "panels": SCRIPT["panels"]}, series, "regulab", "S")
+    half = comic.SIDE / 2
+    cut = half * comic_film.INSET
+    k = comic_film.BOX / (half - 2 * cut)
+    for n, panel in enumerate(comic_film.film_bubbles(script, h)):
+        ox, oy = (n % 2) * half + cut, (n // 2) * half + cut
+        for b in panel:
+            x, y, w, hh = b["box"]
+            assert x >= 0 and y >= 0 and x + w <= comic_film.BOX and y + hh <= comic_film.BOX, "inside the panel as shown"
+            box = (ox + x / k, oy + y / k, ox + (x + w) / k, oy + (y + hh) / k)
+            assert inks(img, (box[0] + 4, box[1] + 4, box[2] - 4, box[3] - 4), n) <= 6, "the film's bubble covers nobody"

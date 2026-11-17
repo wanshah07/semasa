@@ -368,10 +368,11 @@ citation is drawn at its foot automatically.""",
 
 
 def format_of(idea: dict[str, Any]) -> str:
-    """What the idea should become besides its caption: 'post' (a picture), 'carousel' (slides) or 'poster' (one 4:5
-    artwork). make_slides (006) still means a carousel; the choice itself rides in the idea's brief."""
+    """What the idea should become besides its caption: 'post' (a picture), 'carousel' (slides), 'poster' (one 4:5
+    artwork) or 'comic' (a four-panel dialogue comic as the post's one picture). make_slides (006) still means a carousel;
+    the choice itself rides in the idea's brief."""
     fmt = str(((idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}).get("format") or "")
-    if fmt in ("carousel", "poster"):
+    if fmt in ("carousel", "poster", "comic"):
         return fmt
     return "carousel" if idea.get("make_slides") else "post"
 
@@ -832,7 +833,11 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     antislop.finish(store, "post", post_id)
 
     chosen = my_designs.for_idea(store, idea)      # the idea's look, or the default "My design" when it asked for none
-    jobs = [] if has_jobs or kept else media_jobs(idea, source, out, post_id)
+    if fmt == "comic":
+        # the comic IS the post's picture (17 Nov 2026): no other picture is made for it
+        jobs = [] if has_jobs or kept else [comic_job(idea, post, post_id)]
+    else:
+        jobs = [] if has_jobs or kept else media_jobs(idea, source, out, post_id)
     if want_slides and post.get("slides") and not has_jobs:
         jobs.append(slide_job(idea, post, post_id, bg="post_image" if jobs or kept else "none", chosen=chosen))
     poster = slides.normalise(quran.untrusted([out.get("poster")]) if isinstance(out.get("poster"), dict) else [])[:1] \
@@ -1032,6 +1037,29 @@ def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: 
                      "citation": post.get("citation") or "", "domain": post.get("domain"), "angle": post.get("angle"),
                      "bg": bg, "look": look, "fit": look != "classic",
                      **({"review": review} if review else {}), **({"design_pack": saved} if saved else {})}}
+
+
+def comic_job(idea: dict[str, Any], post: dict[str, Any], post_id: str) -> dict[str, Any]:
+    """The idea's comic: a Design job (comic_job.py) attached to its draft as the post's one picture. Its script is written
+    by the comic's own writer from the post's words, which were written from the source under the post rules, so the comic
+    states nothing the caption does not. The series and style picked on the idea ride in its brief ({"comic": {series,
+    style}}); none picked means the library's defaults. The source goes under the comic when it fits there."""
+    from . import comic
+    brief = (idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}
+    pick = brief.get("comic") if isinstance(brief.get("comic"), dict) else {}
+    stream = post.get("stream") or "regulab"
+    lang = post.get("lang") or ("en" if stream == "linkedin" else "bm")
+    words = (post.get("text") or {}).get(lang) or {}
+    caption = str(words.get("linkedin" if stream == "linkedin" else "instagram") or next(iter(words.values()), "") or "")
+    citation = " ".join(str(post.get("citation") or "").split())
+    told = "\n\n".join(x for x in (str(post.get("hook") or "").strip(), caption.strip(),
+                                    f"Source: {citation}" if citation else "") if x)
+    return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
+            "prompt": "", "created_by": idea.get("created_by"),
+            "meta": {"flow": "A", "design": "comic", "format": "portrait", "stream": stream, "brief": told[:4000],
+                     "citation": citation if len(citation) <= comic.MAX_SOURCE else "",
+                     "comic": {"series": str(pick.get("series") or ""), "style": str(pick.get("style") or ""),
+                               "words_mode": "auto"}}}
 
 
 LOOKS = ("classic", "grid", "era", "photo", "image", "threads", "hand", "marker", "torn", "block", "neon",

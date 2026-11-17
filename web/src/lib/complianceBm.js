@@ -84,6 +84,10 @@ export const MSG_BM = {
     "Tulisan Arab ditaip pada slaid. Semasa tidak menyemaknya. Ayat al-Quran diletak dalam medan Ayat pada slaid, yang mengambil ayat itu.",
   "reads as Bahasa Malaysia. The LinkedIn stream is English: write the caption in English.":
     "berbunyi Bahasa Malaysia. Aliran LinkedIn dalam bahasa Inggeris: tulis kapsyen dalam bahasa Inggeris.",
+  // the comic's own (backend/semasa/comic_writer.py flags, web/src/lib/comic.js scriptFlags)
+  "reads as Bahasa Malaysia. The LinkedIn stream is English: write the comic in English.":
+    "berbunyi Bahasa Malaysia. Aliran LinkedIn dalam bahasa Inggeris: tulis komik dalam bahasa Inggeris.",
+  "an em dash. Use a full stop or a comma.": "sengkang em. Guna noktah atau koma.",
   "write the closing line: one statement that leaves them curious. Not a question, not an ask.":
     "tulis baris penutup: satu kenyataan yang membuat mereka ingin tahu. Bukan soalan, bukan permintaan.",
   "the slide pictures carry different words from the slides written here. Draw them again (Jana slaid) so what is sent is what was checked.":
@@ -95,6 +99,8 @@ export const MSG_BM = {
 
 /** Messages with a number or a word in them: [pattern, (match) → Malay]. */
 const MSG_PATTERNS = [
+  [/^vague: "(.+)"\. Say exactly which, how many or from when: put the figure, the date or the entry number in that bubble or the two after it\.$/,
+    (m) => `kabur: "${m[1]}". Nyatakan dengan tepat yang mana, berapa atau bila: letak angka, tarikh atau nombor entri dalam gelembung itu atau dua gelembung selepasnya.`],
   [/^ayat "([^"]*)" does not exist \(surah:ayat, at most (\d+) ayat\)\. Correct the reference\.$/, (m) => `ayat "${m[1]}" tidak wujud (surah:ayat, paling banyak ${m[2]} ayat). Betulkan rujukan.`],
   [/^the words of (.+) have not been fetched\. Press Ambil ayat: a verse is never typed\.$/, (m) => `teks ${m[1]} belum diambil. Tekan Ambil ayat: ayat tidak pernah ditaip.`],
   [/^(.+) carries another stream's translation\. Press Ambil ayat again\.$/, (m) => `${m[1]} membawa terjemahan aliran lain. Tekan Ambil ayat sekali lagi.`],
@@ -119,6 +125,9 @@ const WHERE_PATTERNS = [
   [/^Design (\d+), slide (\d+)$/, (m) => `Reka bentuk ${m[1]}, slaid ${m[2]}`],
   [/^Slide (\d+)$/, (m) => `Slaid ${m[1]}`],
   [/^Source$/, () => "Sumber"],
+  [/^Comic title$/, () => "Tajuk komik"],
+  [/^Comic panel (\d+)$/, (m) => `Panel komik ${m[1]}`],
+  [/^Comic$/, () => "Komik"],
   [/^Carousel$/, () => "Karusel"],
   [/^Slides$/, () => "Slaid"],
 ];

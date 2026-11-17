@@ -166,3 +166,33 @@ Two hard limits that come from this repo's own rules, not from the format:
   - After the approval the film is made from EXACTLY the saved storyboard, checked again with the same rules (`motion.approved_plan`, `motion_templates.validate_*`). An edit that breaks one goes back to `review` with the reason, never into a film. The outro is never editable.
   - The database holds the line too: 071's guard refuses any change INTO `done` without an approval, and clears an approval when the storyboard itself changes. An automatic retry keeps the approved storyboard; "Buat semula" asks for a new one; "Cuba lagi (storyboard sama)" carries a failed approved film on.
   - Before 071 is applied the film goes back to `waiting` with a note naming 071: never made without an approval. Tests: `tests/test_motion_review.py` (marked `storyboard_gate`); every other motion test runs through `conftest.storyboard_approved`, which plays Wan's Approve.
+
+## Comic as a Design choice (17 Nov 2026)
+
+- Wan, 16 to 17 Nov 2026: "remember the comic style so other model can use and render same based on topics / for comic style create
+  multiples cartoon or comic style, and make it series like cartoon series / add comic as choice". Jana poster has a fourth kind,
+  **Komik** (`components/ComicMaker.jsx`, `lib/comic.js`); the worker is `backend/semasa/comic_job.py` with `comic.py` (prompts,
+  lettering, trim, frame), `comic_library.py` (styles and series) and `comic_writer.py` (the script and its checks).
+- **A style is remembered as words.** `rules/comic.json` holds the built-in cartoon styles and series, read by the page and the
+  worker alike. A style's `prompt` goes into every prompt verbatim, and its `lettering` when the picture maker writes the words; a
+  character's `look` is repeated word for word in every episode. Wan's own are the settings row `comic` ({styles, series},
+  supabase/085), merged over the file by id: the same id replaces a built-in one, a new id is added, and an entry that is not whole
+  is left out. A cast is two people inside a comic, never a brand mascot.
+- **A comic is a `slides` job** with `meta.design = "comic"` and its own block `meta.comic`, so the library, attach to a post, the
+  publisher and the post's compliance scan treat it as any design (`meta.slides` holds the title and each panel's bubbles). No
+  constraint changed.
+- **The script** is four panels, one or two bubbles a panel, each person once a panel, a bubble at most `comic.MAX_CHARS`. Written
+  from an idea under `design.COMMON` and the stream's voice, or typed. It is refused with the reason, before any picture is paid
+  for, on a hard compliance flag over the title or a bubble, vague wording nothing pins down, Malay on LinkedIn, or (a written one
+  only) a figure the brief never gave. A written script waits for Wan first unless he unticks it (`meta.comic.review`, stage
+  `script`: a `done` row with no picture).
+- **The words**: the picture maker draws the comic with its words, the picture reader Semasa already has (`llm.describe_image`,
+  the reader pinned on the API page first) reads every bubble back, and they are compared after case, spaces and the spacing
+  around punctuation are evened out. A difference is drawn once more; a second one, or no reader, falls back to wordless art and
+  Semasa's own lettering, which is exact. `meta.comic.words` records the path and whether the words were checked, and the card
+  shows it. Makers are tried in `comic_job.MAKERS` order (the two the 16 Nov sample proved first), not `IMAGE_PRIORITY`.
+- **The frame** is Semasa's: the series and episode ("Siri <name> · Episod N"; the series' finished comics + 1, kept through a
+  redraw), the title, the comic trimmed of the picture maker's stray border, the source. ws.regulab carries the logo and the
+  website; LinkedIn carries no brand identity. Every line is fitted to its own area or the job is refused by name.
+- An idea can ask for a comic as its post's one picture (`brief.format = "comic"`, `ideas.comic_job`): the script is written from
+  the post's own words and no other picture is made.

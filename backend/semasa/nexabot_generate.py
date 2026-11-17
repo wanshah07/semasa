@@ -118,26 +118,30 @@ def generate(page: object, prompt: str, outdir: Path, max_gen: int, dry: bool, r
         if done:
             report["job_done"] = True
             report["job_meta"] = {k: done[0].get(k) for k in ("id", "status", "mode", "model", "width", "height", "size_bytes", "download_url") if done[0].get(k) is not None}
-            # a done job whose download was not captured as a raw video body: try its download_url directly
-            url = done[0].get("download_url")
-            if url and not report.get("video_saved"):
-                try:
-                    dl = page.evaluate("""async (u) => {
-                        const r = await fetch(u);
-                        const b = await r.arrayBuffer();
-                        return {status: r.status, b64: btoa(String.fromCharCode(...new Uint8Array(b)))};
-                    }""", url)
-                    if dl and dl.get("status") == 200 and dl.get("b64"):
-                        dest = outdir / f"nexabot-{datetime.now(UTC).strftime('%H%M%S')}.mp4"
-                        dest.write_bytes(base64.b64decode(dl["b64"]))
-                        report["video_saved"] = str(dest)
-                        report["video_via"] = "download_url"
-                except Exception as exc:  # noqa: BLE001
-                    report["download_url_note"] = f"download_url fetch failed: {str(exc)[:120]}"
             break
         time.sleep(POLL_S)
     else:
         report["timed_out"] = True
+
+    # 5. download the full MP4 with a plain GET (no Range), from the recorded video URL; fall back to the job's download_url.
+    if report.get("job_done") and not report.get("video_saved"):
+        url = report.get("video_url") or (report.get("job_meta") or {}).get("download_url")
+        if url:
+            try:
+                import requests
+                r = requests.get(url, timeout=300, stream=True)
+                if r.status_code == 200:
+                    dest = outdir / f"nexabot-{datetime.now(UTC).strftime('%H%M%S')}.mp4"
+                    with open(dest, "wb") as fh:
+                        for chunk in r.iter_content(1 << 20):
+                            fh.write(chunk)
+                    report["video_saved"] = str(dest)
+                    report["video_via"] = "direct_get"
+                    report["video_size_final"] = dest.stat().st_size
+                else:
+                    report["download_error"] = f"status {r.status_code}"
+            except Exception as exc:  # noqa: BLE001
+                report["download_error"] = str(exc)[:200]
 
 
 def run(outdir: Path, prompt: str, max_gen: int, dry: bool, import_ok: bool) -> int:
@@ -171,14 +175,13 @@ def run(outdir: Path, prompt: str, max_gen: int, dry: bool, import_ok: bool) -> 
                 try:
                     body = resp.body()
                     row["size"] = len(body)
-                    if req.method == "GET" and _is_video(ctype, url) and not captured:
-                        dest = outdir / f"nexabot-{datetime.now(UTC).strftime('%H%M%S')}.mp4"
-                        dest.write_bytes(body)
-                        row["saved"] = str(dest)
-                        report["video_saved"] = str(dest)
-                        captured.append(dict(row))
-                except Exception:  # noqa: BLE001 - a streamed/empty body is just not saved
+                except Exception:  # noqa: BLE001 - a streamed body is just not read
                     row["size"] = None
+                # record the FIRST full video URL (not a partial 206 chunk). The real download happens after the job
+                # is done, with a plain GET that does not ask for a range, so the whole MP4 comes back.
+                if req.method == "GET" and _is_video(ctype, url) and status in (200, 206) and not report.get("video_url"):
+                    report["video_url"] = url
+                    report["video_size_hint"] = row["size"]
                 report["events"].append(row)
 
             page.on("response", on_response)

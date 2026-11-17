@@ -40,7 +40,7 @@ from typing import Any
 
 import requests
 
-from . import billing, db, source_lights
+from . import billing, db, publisher, source_lights
 from .log import get_logger
 
 log = get_logger("semasa.health")
@@ -78,8 +78,8 @@ def _rows(store: Any, table: str, build: Any) -> list[dict[str, Any]]:
 
 def live_posts(store: Any) -> list[dict[str, Any]]:
     """Approved and scheduled posts: the only ones the publisher still sends."""
-    return _rows(store, db.POSTS,
-                 lambda q: q.select("id,date,slot,stream,status,errors").in_("status", ["approved", "scheduled"]))
+    return _rows(store, db.POSTS, lambda q: q.select("id,date,slot,stream,status,errors,published")
+                 .in_("status", ["approved", "scheduled"]))
 
 
 def problem(area: str, what: str, todo: str = "") -> dict[str, str]:
@@ -220,7 +220,44 @@ def check_chatgpt(store: Any, now: datetime) -> list[dict[str, str]]:
 ZERNIO_FAILING = 2            # posts refused by Zernio before the report suggests waking Buffer
 
 
-def check_publisher(store: Any) -> list[dict[str, str]]:
+RUNS_MYT = ", ".join(publisher.PUBLISH_RUNS_MYT)
+
+
+def publish_advice(post: dict[str, Any], ch: str, err: dict[str, Any], now: datetime) -> tuple[str, str] | None:
+    """(what went wrong, what to do) for one channel error of a live post, true for the state the post is in, or None when
+    there is nothing to do yet. The advice used to be one sentence for every case ("Edit the post or move it to a new slot
+    to send it again") while a half-sent post could be neither edited nor moved (16 Nov 2026)."""
+    msg = str(err.get("message") or "")
+    records = {c: r for c, r in (post.get("published") or {}).items() if isinstance(r, dict)}
+    queued = sorted(c for c, r in records.items() if r.get("status") not in ("sent", "error"))
+    rec = records.get(ch)
+    if rec is not None and rec.get("status") == "error":
+        if ch in publisher.resend_due(post):
+            # the post was moved after this failure: the publisher sends the channel again at the new slot
+            due = publisher.due_utc(post["date"], post["slot"])
+            if due >= now - publisher.LATE_GRACE:
+                return None
+            return ("was to be sent again at this slot, but the slot passed before the publisher handed it over",
+                    f"Move the post to a later slot. The publisher hands posts over at {RUNS_MYT} MYT, so pick a slot "
+                    "after its next run.")
+        if queued:
+            return (msg, f"{', '.join(queued)} of this post is still in the queue. Once it has gone out, move the post to a "
+                         "new slot: only the failed channel is sent again.")
+        return (msg, "Fix what the message names if it names something, then move the post to a new slot (its editor, or "
+                     "drag it on the schedule). Only the failed channel is sent again; a channel that went out is never "
+                     f"sent twice. The publisher hands it over at its next run ({RUNS_MYT} MYT).")
+    if err.get("retry"):
+        return (msg, "Nothing to do yet: Semasa tries this channel again at the next publish run, up to "
+                     f"{publisher.TRANSIENT_GIVE_UP} runs in a row.")
+    if queued:
+        return (msg, "Fix what the message names in this channel's caption and approve the post again. Its date and slot "
+                     f"cannot change while {', '.join(queued)} is still in the queue.")
+    return (msg, "Fix what the message names in the post and approve it again; if its slot has passed, give it a new slot "
+                 "first.")
+
+
+def check_publisher(store: Any, now: datetime | None = None) -> list[dict[str, str]]:
+    now = now or datetime.now(UTC)
     rows = live_posts(store)
     linkedin_locked, out = 0, []
     zernio_posts: set[str] = set()
@@ -232,10 +269,14 @@ def check_publisher(store: Any) -> list[dict[str, str]]:
             if RESTRICTED.search(msg):
                 linkedin_locked += 1
                 continue
-            if "zernio" in msg.lower():
+            advice = publish_advice(p, ch, err, now)
+            if advice is None:
+                continue
+            lost = ((p.get("published") or {}).get(ch) or {}).get("lost")       # taken out of Zernio's queue, not refused by it
+            if "zernio" in msg.lower() and not lost:
                 zernio_posts.add(str(p.get("id")))
-            out.append(problem("Publishing", f"{p.get('date') or ''} {p.get('slot') or ''} on {ch}: {msg[:220]}",
-                               "Edit the post or move it to a new slot to send it again."))
+            where = f"{p.get('date') or ''} {p.get('slot') or ''} on {ch}"
+            out.append(problem("Publishing", f"{where}: {advice[0][:220]}", advice[1]))
     if linkedin_locked:
         out.insert(0, problem("Publishing", f"LinkedIn refuses {linkedin_locked} post(s): the account is restricted or its "
                                             "login failed (LinkedIn's own answer, not Semasa's)",
@@ -447,7 +488,7 @@ def run(store: Any, now: datetime | None = None, sender: Any = None, session: An
     ws_email = str((settings.get("company") or {}).get("email") or "")
     fixed = (fix_known_publisher_errors(store) + retry_transient_ideas(store, now)) if fix else []
     problems = (check_workflows(now, session) + check_gateways(store) + check_gemini(store) + check_chatgpt(store, now)
-                + check_publisher(store) + check_billing(store, now) + check_gmail(sender)
+                + check_publisher(store, now) + check_billing(store, now) + check_gmail(sender)
                 + check_business_gmail(businesses, ws_email, sender_for) + check_telegram(store, now)
                 + check_scrape_sources(store, now))
     state = load_state(store)

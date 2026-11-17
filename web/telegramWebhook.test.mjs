@@ -82,3 +82,53 @@ pending=null;busy=false;writes=[];
 await handler(request(update('/start AB12CD34'),'test-signature',true));
 assert.equal(writes.length,0,'probe mode must not link accounts or run any unsupported command');
 console.log('telegram webhook: probe fallback cannot mutate or dispatch: ok');
+
+// ---- 16 Nov 2026: the button menu (menu.js, rules/telegram_menu.json). A tap that only opens another menu is redrawn here, in
+// place, without the worker; a read button is answered here; anything a button does, and every tap while something waits, is
+// still the worker's, in order.
+const tapOf=(data,from=111,id=200)=>({update_id:id,callback_query:{id:'cq2',from:{id:from},data,message:{message_id:9,chat:{id:from,type:'private'}}}});
+pending=null;busy=false;duplicate=false;writes=[];
+reply=await (await handler(request(tapOf('m:s:content')))).json();
+assert.equal(reply.method,'editMessageText','another menu opens at once, in the same message');
+assert.equal(reply.message_id,9);
+assert.ok(reply.text.startsWith('📰 Kandungan'));
+assert.ok(reply.reply_markup.inline_keyboard.flat().some(b=>b.callback_data==='m:home'),'with its way back');
+assert.equal(writes.at(-1).status,'done','a menu tap answered here must not wake the GitHub worker');
+assert.equal(writes.at(-1).note,'answered (menu: s:content)');
+assert.equal(writes.at(-1).payload.semasa_timing.path,'menu');
+writes=[];
+reply=await (await handler(request(tapOf('a:help')))).json();
+assert.equal(reply.method,'sendMessage');
+assert.match(reply.text,/\/draf/);
+assert.deepEqual(reply.reply_markup.inline_keyboard.flat().map(b=>b.callback_data),['n:home']);
+assert.equal(writes.at(-1).note,'answered (menu read: help)');
+writes=[];
+reply=await (await handler(request(tapOf('n:home')))).json();
+assert.equal(reply.method,'sendMessage','the way back under an answer is a new message: the answer stays in the chat');
+assert.ok(reply.text.startsWith('Hai Wan'));
+assert.equal(writes.at(-1).status,'done');
+for (const data of ['a:draf','a:draf_l','a:idea_l','a:poster','a:lk:poster:neon','m:lang:en','a:status']) {
+  // a:status needs the database's rows: this stand-in has none to give, so it falls back to the worker like any failed read
+  writes=[];
+  reply=await (await handler(request(tapOf(data)))).json();
+  assert.equal(reply.method,'answerCallbackQuery',`${data} is the worker's`);
+  assert.equal(writes.at(-1).status,'new');
+  assert.deepEqual(writes.at(-1).payload,tapOf(data));
+}
+for (const mode of ['pending','busy']) {
+  pending=mode==='pending'?'cat:idea:linkedin':null;
+  busy=mode==='busy';
+  writes=[];
+  reply=await (await handler(request(tapOf('m:home')))).json();
+  assert.equal(reply.method,'answerCallbackQuery',`${mode}: the worker draws the menu, after what is waiting`);
+  assert.equal(writes.at(-1).status,'new');
+}
+pending=null;busy=false;writes=[];
+reply=await (await handler(request(tapOf('m:home',999)))).json();
+assert.equal(reply.show_alert,true,'a stranger gets no menu');
+assert.equal(writes.at(-1).status,'skipped');
+duplicate=true;
+reply=await (await handler(request(tapOf('m:home')))).json();
+assert.deepEqual(reply,{ok:true},'a tap delivered twice is drawn once');
+duplicate=false;
+console.log('telegram webhook: menu taps redraw here, actions and ordering stay with the worker: ok');

@@ -245,16 +245,18 @@ def do_folders(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: date
 
 
 def do_myra(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetime, dry: bool) -> dict[str, Any]:
-    raw = myra.fetch(client, cfg, now)
+    raw = myra.fetch(client, cfg, now)             # a quota answer has already been read again (myra.RETRY_WAITS)
+    tries = int(raw.get("tries") or 1)
     if raw.get("error"):
-        raise RuntimeError(f"the sheet could not be read: {raw['error']}")
+        raise RuntimeError(f"the sheet could not be read{f' in {tries} tries' if tries > 1 else ''}: {raw['error']}")
     today = (now + timedelta(hours=8)).date()
     rows = myra.findings(raw.get("rows") or [], today, int(cfg.get("days") or 10), limit=int(cfg.get("per_run") or 8) * 2)
     known = have(store, [r["url"] for r in rows])
     fresh = [r for r in rows if r["url"] not in known][:int(cfg.get("per_run") or 8)]
     watch.annotate(llm, fresh)
     write(store, [watch.to_row(r) for r in fresh], dry)
-    return {"read": len(raw.get("rows") or []), "new": len(fresh), "hidden": sum(1 for r in fresh if r.get("relevant") is False)}
+    return {"read": len(raw.get("rows") or []), "new": len(fresh), "hidden": sum(1 for r in fresh if r.get("relevant") is False),
+            **({"tries": tries} if tries > 1 else {})}
 
 
 def do_experts(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetime, dry: bool) -> dict[str, Any]:

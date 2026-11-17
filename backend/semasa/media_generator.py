@@ -854,6 +854,10 @@ def process_row(store: Any, row: dict[str, Any], s: MediaSettings, providers: di
                               "Put the post back to draft, then run it again.")
         return False
     if row.get("mode") == "slides":
+        if (row.get("meta") or {}).get("design") == "comic":
+            # a dialogue comic: its people are drawn by a picture maker, so it has its own job (semasa.comic_job)
+            from . import comic_job
+            return comic_job.process(store, row, s, llm, providers=providers, deadline=deadline)
         return process_slides(store, row, s, llm)
     if row.get("mode") == "fragrance":
         # a perfume ad in steps: concepts, two renders, Wan's pick (semasa.fragrance)
@@ -973,6 +977,8 @@ STOP_MARGIN = 60           # seconds past MEDIA_RUN_BUDGET a provider may still 
 def need_seconds(row: dict[str, Any], s: MediaSettings) -> int:
     """The least time left worth starting this job in. Less than that and it is handed back unstarted, since a job
     GitHub kills mid-way loses its attempt, and at a paid provider keeps running (and billing) with nobody to collect."""
+    if row.get("mode") == "slides" and (row.get("meta") or {}).get("design") == "comic":
+        return 2 * min(s.max_wait_image, 300) + 120     # a comic may be drawn twice and read back before it is lettered
     if row.get("mode") in ("slides", "clip", "fragrance", "upload") or (row.get("provider") or "").lower() == "unsplash":
         return 120
     if (row.get("type") or "image") == "video":

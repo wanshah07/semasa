@@ -15,11 +15,17 @@ Kept from Studio's rules:
     link is kept but flagged (`raw.link_shared`), and the page says so, so it is never read as the finding's own source.
   * The read uses the account that owns the sheet (`googlesheets_serau-tucker`, info@kkmhalalconsultant.com). The
     default Sheets account in For You belongs to a client and must never be used for this.
+
+One thing Studio never met (16 Nov 2026): Google counts Sheets reads per minute for the whole project the connector runs
+under, which every other user of the connector shares. A sweep that lands in a busy minute is answered "Quota exceeded for
+quota metric 'Read requests' and limit 'Read requests per minute'", while the same read a minute later works. That answer
+is read again after a wait (RETRY_WAITS); every other error is final at once, as before.
 """
 
 from __future__ import annotations
 
 import re
+import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -54,13 +60,39 @@ else:
 '''
 
 
-def fetch(client: Any, cfg: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
-    """The sheet's recent rows with an update (Malaysia's date, `days` back and two more), trimmed to fit the answer."""
+# Google's "slow down", in the words its APIs use: a per-minute quota, a rate limit, a 429. Never a permission or a missing sheet.
+QUOTA = re.compile(r"quota|rate[ _-]?limit|too many requests|resource[ _]?exhausted|\b429\b", re.I)
+# Seconds waited before the 2nd and the 3rd read. The quota is per minute: the first wait rides out a short burst, the second
+# is a whole minute and a little. Three reads and 85 seconds at most, well inside the sweep's 30 minutes (sources.yml).
+RETRY_WAITS = (20, 65)
+
+
+def is_quota(error: Any) -> bool:
+    return bool(QUOTA.search(str(error or "")))
+
+
+def fetch(client: Any, cfg: dict[str, Any], now: datetime | None = None, sleep: Any = None) -> dict[str, Any]:
+    """The sheet's recent rows with an update (Malaysia's date, `days` back and two more), trimmed to fit the answer.
+    A quota or rate answer is read again after each of RETRY_WAITS; `tries` says how many reads it took. `sleep` is for
+    tests."""
     today = ((now or datetime.now(UTC)) + timedelta(hours=8)).date()
     since = (today - timedelta(days=int(cfg.get("days") or 10) + 2)).isoformat()
-    return client.cell(_CELL, {"id": cfg["spreadsheet_id"], "range": cfg.get("range") or "Sheet1!A1:G500",
-                               "account": cfg.get("account") or None, "since": since},
-                       thought="Semasa: read MYRA's daily regulatory log (read only)", budget=90)
+    params = {"id": cfg["spreadsheet_id"], "range": cfg.get("range") or "Sheet1!A1:G500",
+              "account": cfg.get("account") or None, "since": since}
+    waits = list(RETRY_WAITS)
+    tries = 0
+    while True:
+        tries += 1
+        raw = client.cell(_CELL, params, thought="Semasa: read MYRA's daily regulatory log (read only)", budget=90)
+        error = raw.get("error") if isinstance(raw, dict) else ""
+        if not error or not is_quota(error) or not waits:
+            break
+        wait = waits.pop(0)
+        log.info("MYRA: Google's read quota for this minute is used (read %d); reading again in %d s", tries, wait)
+        (sleep or time.sleep)(wait)
+    if isinstance(raw, dict):
+        raw["tries"] = tries
+    return raw
 
 
 def _none(v: str) -> str | None:

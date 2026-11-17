@@ -3,7 +3,7 @@ import { AlertTriangle, CalendarPlus, CalendarX, MoveRight } from "lucide-react"
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { releaseSlots } from "../lib/releaseSlots";
 import { useLang } from "../lib/i18n";
-import { clashes, clearPlan, coverage, isPastDue, moveCheck, nextFreeSlot, offRota, refOf, takenSet } from "../lib/slots";
+import { clashes, clearPlan, coverage, failedChannels, isPastDue, moveCheck, nextFreeSlot, offRota, refOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
 import ScheduleMap from "./ScheduleMap";
 import Button from "./ui/Button";
@@ -89,19 +89,33 @@ export default function ScheduleView({ posts, brand, onOpen, onNewIdea, onToast,
         slot: t("{s} bukan salah satu slot lorong ini.", "{s} is not one of this lane's slots.", { s: slot }),
         day: t("Lorong ini tidak menerbitkan pada {d}.", "This lane does not post on {d}.", { d: date }),
         past: t("Slot itu sudah lepas atau terlalu hampir: penerbit tidak akan menghantarnya.", "That slot has passed or is too close: the publisher would never send it."),
+        run: t("Slot itu terlalu awal: penerbit hanya menyerahkan post pada 06:20, 11:20 dan 19:20, dan lariannya yang seterusnya ialah {r}. Pilih slot selepas itu.",
+          "That slot is too early: the publisher hands posts over only at 06:20, 11:20 and 19:20, and its next run is {r}. Pick a slot after that.", { r: chk.run }),
         taken: t("Slot {d} {s} sudah dipegang oleh: {h}. Satu slot, satu post.", "The slot {d} {s} is already held by: {h}. One post to a slot.", { d: date, s: slot, h: by }),
       }[chk.why];
       return onToast(why, "warn");
     }
     const patch = { date, slot, ...("decisions" in p ? { decisions: withDecision(p, "moved", `from ${p.date} ${p.slot}: dragged on the schedule map`) } : {}) };
+    // a half-sent post whose failed channels go again (moveCheck `resend`) may be scheduled: it moves as the status it has
     const res = await supabase.from(TABLES.posts).update(patch).eq("id", p.id).eq("date", p.date).eq("slot", p.slot)
-      .in("status", ["draft", "approved"]).select("id,status");
-    if (res.error) return onToast(errText(res.error), "danger");
+      .in("status", chk.resend ? ["draft", "approved", "scheduled"] : ["draft", "approved"]).select("id,status");
+    if (res.error) {
+      return onToast(chk.resend && /sudah diserahkan|row-level security/.test(errText(res.error))
+        ? t("Pangkalan data menolak pemindahan ini: jalankan supabase/084_resend_failed_channels.sql sekali di SQL editor.",
+          "The database refused this move: run supabase/084_resend_failed_channels.sql once in the SQL editor.")
+        : errText(res.error), "danger");
+    }
     if (!(res.data || []).length) {
       onChanged();
       return onToast(t("Post ini berubah semasa anda menyeretnya (diluluskan, dihantar atau dipindah di tempat lain). Tiada apa-apa dipindah.", "This post changed while you were dragging it (approved, sent or moved elsewhere). Nothing was moved."), "warn");
     }
     const back = p.status === "approved" && res.data[0].status === "draft";
+    if (chk.resend && !back) {
+      onChanged();
+      return onToast(p.status === "draft"
+        ? t("Dipindah ke {d} {s}. Luluskan post ini: kemudian hanya saluran yang gagal ({c}) dihantar.", "Moved to {d} {s}. Approve this post: then only the failed channels ({c}) are sent.", { d: date, s: slot, c: failedChannels(p).join(", ") })
+        : t("Dipindah ke {d} {s}. Penerbit menghantar saluran yang gagal sahaja ({c}) pada slot itu.", "Moved to {d} {s}. The publisher sends only the failed channels ({c}) at that slot.", { d: date, s: slot, c: failedChannels(p).join(", ") }), "ok");
+    }
     onToast(back
       ? t("Dipindah ke {d} {s}. Post ini kembali ke draf kerana masanya berubah: luluskan semula.", "Moved to {d} {s}. It went back to draft because its time changed: approve it again.", { d: date, s: slot })
       : chk.note === "rota"

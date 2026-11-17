@@ -269,7 +269,7 @@ export default function IdeasTab({ ideas, posts, user, brand, onToast, openPost,
   // an idea with no make_media used to print "· undefined": every part is dropped when it is empty
   const forText = (r) => [r.stream === "linkedin" ? "LinkedIn" : "ws.regulab", r.domain, r.angle,
     { image: t("imej", "image"), video: "video", none: t("tiada media", "no media") }[r.make_media] || r.make_media,
-    r.brief?.format === "poster" ? "poster" : r.make_slides || r.brief?.format === "carousel" ? "carousel" : ""].filter(Boolean).join(" · ");
+    r.brief?.format === "poster" ? "poster" : r.brief?.format === "comic" ? t("komik", "comic") : r.make_slides || r.brief?.format === "carousel" ? "carousel" : ""].filter(Boolean).join(" · ");
   const actions = (r) => (
     <>
       {r.status === "drafted" && r.brief?.post_id && (

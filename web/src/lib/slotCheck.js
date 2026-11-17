@@ -2,7 +2,7 @@
    queue, red fail, magenta wait for approval"). The worker half is backend/semasa/slotcheck.py (it reads Zernio back 25 minutes after
    each slot and writes sent or error onto the post); this file only READS what the posts say, so the page and the worker cannot
    disagree about a channel. Plain functions with one import, so web/slotCheck.test.mjs runs them under Node as they are. */
-import { LATE_GRACE_MIN, dueMs } from "./slots.js";
+import { LATE_GRACE_MIN, dueMs, resendChannels } from "./slots.js";
 
 export const STUCK_MIN = 20;                        // backend/semasa/slotcheck.py STUCK_AFTER: not sent this long after its slot
 export const STATES = ["passed", "queued", "failed", "waiting"];
@@ -34,6 +34,15 @@ export function channelState(post, ch, now = Date.now()) {
   if (rec && typeof rec === "object") {
     if (rec.status === "sent") return { state: "passed", label: ["Berjaya", "Sent"], detail: "", url: rec.url || "" };
     if (rec.status === "error") {
+      // failed at an earlier slot and the post has been moved since: the publisher hands this channel over again (16 Nov 2026)
+      if (resendChannels(post).includes(ch)) {
+        if (late > LATE_GRACE_MIN) {
+          return { state: "failed", label: ["Terlepas", "Missed"], detail: ["slot baharunya lepas sebelum penerbit menyerahkannya semula: pindahkan ke slot yang lebih lewat",
+            "its new slot passed before the publisher handed it over again: move it to a later slot"], url: "" };
+        }
+        return { state: "queued", label: ["Dihantar semula", "Sending again"], detail: ["gagal pada slot lama; penerbit menyerahkannya semula untuk slot ini",
+          "failed at the old slot; the publisher hands it over again for this slot"], url: "" };
+      }
       return { state: "failed", label: ["Gagal", "Failed"], detail: errorOf(post, ch) || ["platform menolaknya", "the platform refused it"], url: "" };
     }
     if (late > STUCK_MIN) {

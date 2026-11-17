@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Briefcase, CalendarPlus, GripVertical, Lock, Megaphone, X } from "lucide-react";
 import { useLang } from "../lib/i18n";
-import { coverage, moveCheck, refOf, slotsOf } from "../lib/slots";
+import { canResend, coverage, moveCheck, refOf, slotsOf } from "../lib/slots";
 
 /* The schedule as a map (Wan, 3 Oct 2026: "map schedule so easy to see which slot have been filled, separate between
    ws.regulab and LinkedIn, asingkan this segment visibly"). Two lanes, one under the other, each its own colour and
@@ -42,7 +42,8 @@ const MOVABLE = ["draft", "approved"];
 function PostTile({ p, c, d, brand, onOpen, t, lang, canMove, drag, startDrag, endDrag, pick }) {
   const tone = TILE[p.status] || TILE.draft;
   const ref = refOf(p, brand) || p.id.slice(0, 6);
-  const movable = canMove && MOVABLE.includes(p.status);
+  // a half-sent post whose channels are all settled may move too, scheduled or not: its failed channels then go again
+  const movable = canMove && (MOVABLE.includes(p.status) || canResend(p));
   const mine = drag && drag.id === p.id;
   const label = `${d.date} ${c.slot} · ${ref} · ${lang === "en" ? tone.en : tone.bm}${p.hook ? ` · ${p.hook}` : ""}`;
   return (
@@ -223,6 +224,7 @@ export default function ScheduleMap({ posts, brand, onOpen, onNewIdea, onMove, o
             {t("Letakkan pada slot kosong yang bergaris putus-putus dalam lorong", "Drop it on a dashed empty slot in the")}{" "}
             <b>{(dragPost.stream || "regulab") === "linkedin" ? "LinkedIn" : "ws.regulab"}</b>
             {dragPost.status === "approved" && ` · ${t("selepas dipindah ia kembali ke draf: luluskan semula", "after the move it goes back to draft: approve it again")}`}
+            {canResend(dragPost) && ` · ${t("hanya saluran yang gagal dihantar semula", "only the failed channels are sent again")}`}
           </span>
           <button type="button" onClick={stop} className="inline-flex items-center gap-1 rounded-pill border border-line bg-surface px-2 py-0.5 hover:border-accent">
             <X size={11} aria-hidden="true" /> {t("Batal (Esc)", "Cancel (Esc)")}</button>

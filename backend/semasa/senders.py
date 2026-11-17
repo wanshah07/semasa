@@ -41,12 +41,14 @@ LINKEDIN_VIDEO_POST = "LINKEDIN_CREATE_VIDEO_POST"    # that urn + the words -> 
 
 
 class SendError(Exception):
-    """kind: 'full' | 'transient' | 'refused'."""
+    """kind: 'full' | 'transient' | 'refused'. `status` is the HTTP status of the service's own JSON answer when there was
+    one (Zernio's 404 "Post not found" is how a post it no longer holds is told from an outage)."""
 
-    def __init__(self, kind: str, message: str):
+    def __init__(self, kind: str, message: str, status: int | None = None):
         super().__init__(message)
         self.kind = kind
         self.message = message
+        self.status = status
 
 
 def classify(message: str) -> str:
@@ -312,7 +314,7 @@ class Zernio:
             raise SendError("refused", f"Zernio answered {r.status_code} with no JSON") from exc
         if r.status_code >= 400:
             msg = str(body.get("error") or body.get("message") or body)[:400] if isinstance(body, dict) else str(body)[:400]
-            raise SendError("refused", f"Zernio refused ({r.status_code}): {msg}")
+            raise SendError("refused", f"Zernio refused ({r.status_code}): {msg}", status=r.status_code)
         return body if isinstance(body, dict) else {}
 
     @staticmethod
@@ -411,6 +413,17 @@ class Zernio:
     def get(self, post_id: str, account_id: str = "") -> dict[str, Any]:
         got = self._call("GET", f"/posts/{post_id}")
         return self.shape(got.get("post") if isinstance(got.get("post"), dict) else got, account_id)
+
+    def gone(self, post_id: str) -> bool:
+        """Does this login answer 404 for the post? True only on Zernio's own "not found"; a post it holds is False, and
+        anything else (an outage, a 429, a 5xx, an answer that is not JSON) raises: none of those proves the post is gone."""
+        try:
+            self._call("GET", f"/posts/{post_id}")
+        except SendError as exc:
+            if exc.status == 404:
+                return True
+            raise
+        return False
 
     def delete(self, post_id: str) -> dict[str, Any]:
         """DELETE /posts/{id} (Wan, 10 Nov 2026: a scheduled post is pulled back to be edited). A post that is already gone
@@ -548,6 +561,14 @@ class ZernioHub:
             except SendError as exc:           # a post of another login is "not found" here: ask the next one
                 last = exc
         raise last or SendError("refused", "no Zernio login is set up")
+
+    def gone(self, post_id: str) -> bool:
+        """Is the post in NONE of the logins? Every login is asked, because a post another login holds answers 404 here
+        too: one that holds it makes this False, and one that cannot be read raises (never taken as gone)."""
+        clients = list({id(c): c for c in self.by_account.values()}.values())
+        if not clients:
+            raise SendError("refused", "no Zernio login is set up")
+        return all([c.gone(post_id) for c in clients])
 
     def confirm(self, post_id: str, account_id: str = "", **kw: Any) -> dict[str, Any]:
         if account_id:

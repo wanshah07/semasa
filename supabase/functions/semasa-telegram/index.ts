@@ -8,6 +8,7 @@
 //   4. answers at once with a method in the response body ("typing…", "Sedang diproses…"), so it never holds the bot token.
 // It never approves or writes an idea: backend/semasa/telegram_bot.py does, for the linked account only. The one model call it makes
 // is the fast answer below (7 Nov 2026), and since 8 Nov 2026 that draws on the whole AI team and fails over to a second robot.
+// Since 16 Nov 2026 it also draws the button menu (menu.js, from rules/telegram_menu.json): /menu, and a tap that opens another menu.
 //
 // Deployed with --no-verify-jwt (Telegram sends no Supabase login); the secret header is the gate.
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -15,7 +16,8 @@ import { BUSY_WINDOW_MS, fastEligible, fastGatesFor, fastMessages, fastReply, in
 import { MEMORY, answerText, assembleTeam, chatRequest, errorText, pickWorkers, readTeamInput, switchable } from "../semasa-chat/logic.js";
 
 import { FAST_TOTAL_MS, tryFastGates } from "./fast.js";
-import { fastCommand, fastCommandOf } from "./commands.js";
+import { DEFAULT_SITE, fastCommand, fastCommandOf, fastRead } from "./commands.js";
+import { menuEdit, nodeOf, readOf } from "./menu.js";
 const FAST_TRIES = 2;         // gates tried inside that budget before the worker takes over (8 Nov 2026)
 
 /** A plain question answered here with the AI chat's team: the answer, or null to hand it to the worker.
@@ -88,7 +90,7 @@ Deno.serve(async (req) => {
     auth: { persistSession: false },
   });
   const kind = kindOf(update);
-  const { data: link } = await db.from("semasa_telegram_link").select("telegram_user_id,user_id").eq("id", 1).maybeSingle();
+  const { data: link } = await db.from("semasa_telegram_link").select("telegram_user_id,user_id,username").eq("id", 1).maybeSingle();
   const from = update?.callback_query?.from?.id ?? update?.message?.from?.id ?? null;
   let owner = !!link && Number(link.telegram_user_id) === Number(from);
   const probe = req.headers.get("x-semasa-probe") === "latency-v1";
@@ -107,7 +109,7 @@ Deno.serve(async (req) => {
       return ok({
         method: "sendMessage", chat_id: update.message.chat.id,
         text: claimed
-          ? "Bersambung ✅ Semasa kini boleh dikawal dari sini. Taip /help untuk senarai arahan.\nLinked ✅ Type /help for the commands."
+          ? "Bersambung ✅ Semasa kini boleh dikawal dari sini. Taip /menu untuk menu setiap ciri, /help untuk senarai arahan.\nLinked ✅ Type /menu for the menu of every feature, /help for the commands."
           : "Kod tidak sah atau sudah tamat (15 minit). Jana kod baharu di Semasa → Tetapan → Telegram.",
       });
     }
@@ -139,6 +141,46 @@ Deno.serve(async (req) => {
   }
 
   if (probe) return ok({ probe: true, inline: false });
+
+  // a tap on a menu button (16 Nov 2026: every Semasa feature is in the button menu, so a menu must open at once, not after
+  // the worker has started). Another menu is redrawn here, in place (or sent as a new message under an answer, so the answer
+  // stays); the reads commands.js could already answer are answered here too.
+  // Anything a button DOES stays the worker's, and so does every tap while something of his is still waiting or a question is
+  // pending (a menu button drops the question, and only the worker writes that row).
+  if (kind === "callback" && owner && /^[mna]:/.test(String(update.callback_query?.data ?? ""))) {
+    try {
+      const chatId = update.callback_query.message?.chat?.id ?? null;
+      const [stateQ, waitingQ] = await Promise.all([
+        db.from("semasa_settings").select("value").eq("key", "telegram_chat").maybeSingle(),
+        db.from("semasa_telegram_inbox").select("id").eq("chat_id", chatId)
+          .in("kind", ["private", "callback"]).in("status", ["new", "working"])
+          .gte("created_at", new Date(Date.now() - BUSY_WINDOW_MS).toISOString()).limit(1),
+      ]);
+      const busy = !!waitingQ.error || !Array.isArray(waitingQ.data) || waitingQ.data.length > 0;
+      const state = !stateQ.error && stateQ.data?.value ? stateQ.data.value : null;
+      const site = Deno.env.get("SEMASA_SITE_URL") || DEFAULT_SITE;
+      const gate = { owner, busy, state, site, name: link?.username || "Wan" };
+      let reply: any = menuEdit(update, gate);
+      let note = reply ? `answered (menu: ${nodeOf(update.callback_query.data)})` : "";
+      if (!reply) {
+        const read = readOf(update, gate);
+        if (read) {
+          reply = await fastRead(db, read, { chatId, site, lang: state?.lang });
+          note = `answered (menu read: ${read})`;
+        }
+      }
+      if (reply) {
+        const { data: saved, error } = await db.from("semasa_telegram_inbox").upsert({
+          ...inboxRow(update, kind, owner), status: "done", note,
+          payload: { ...update, semasa_timing: { path: "menu", elapsed_ms: Date.now() - receivedAt } },
+          done_at: new Date().toISOString(),
+        }, { onConflict: "update_id", ignoreDuplicates: true }).select("id").maybeSingle();
+        if (!error) return saved?.id ? ok(reply) : ok();
+      }
+    } catch {
+      // A failed read falls back to the ordered worker, which draws the same menu.
+    }
+  }
 
   // a plain question from Wan: answered here in seconds when it can be, else the worker answers (30-60 s)
   if (kind === "private" && owner && fastEligible({ kind, text: update.message?.text, owner, state: {}, pin: null, gwName: "" })) {

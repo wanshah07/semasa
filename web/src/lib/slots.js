@@ -194,20 +194,69 @@ export function clearPlan(posts, stream) {
     or rejected from the page (supabase/072_posts_published_lock.sql refuses the same writes). */
 export const handedOver = (p) => !!(p && p.published && typeof p.published === "object" && Object.keys(p.published).length);
 
-/** May `post` be moved to date+slot? {ok, why?, note?}. `why` is a refusal; `note` is a warning that does not block
-    (the rota is a plan, never a block). The database refuses the same moves, so this is the polite version. */
+/* ---- Sending failed channels again (Wan, 16 Nov 2026: "move to new slot"). A post can be half sent: Instagram went out, TikTok
+   and Threads failed when the slot came. A record the network has settled (`sent`, `error`) holds nothing in the scheduler's queue,
+   so such a post may move, and the publisher then sends ONLY the failed channels at the new slot (backend/semasa/publisher.py
+   stale_failures). While any channel is still queued the lock above holds. supabase/084_resend_failed_channels.sql says the same. */
+const SETTLED = ["sent", "error"];
+const recordsOf = (p) => Object.entries(p && p.published && typeof p.published === "object" ? p.published : {});
+const isRec = (r) => !!r && typeof r === "object";
+/** Channels whose hand-over failed: the platform refused it at its slot, or the scheduler no longer holds it. */
+export const failedChannels = (p) => recordsOf(p).filter(([, r]) => isRec(r) && r.status === "error").map(([c]) => c);
+/** Channels that went out. They are never sent again. */
+export const sentChannels = (p) => recordsOf(p).filter(([, r]) => isRec(r) && r.status === "sent").map(([c]) => c);
+/** Channels the scheduler still holds (scheduled, sending, unconfirmed): while there is one the post cannot move. */
+export const queuedChannels = (p) => recordsOf(p).filter(([, r]) => !isRec(r) || !SETTLED.includes(r.status)).map(([c]) => c);
+/** May this post be moved so that its failed channels go again? Every record settled, at least one failed. */
+export const canResend = (p) => !!p && ["draft", "approved", "scheduled"].includes(p.status) && failedChannels(p).length > 0
+  && queuedChannels(p).length === 0;
+
+const ADOPT_MS = 2 * 60_000;                       // publisher.py ADOPT_WITHIN
+/** Channels the publisher will send again: failed for a moment other than the slot the post has now, so a person has moved
+    it since (publisher.py stale_failures, the same rule). A failure for the slot it still has is never sent again by itself. */
+export function resendChannels(p) {
+  if (!p || !p.date || !p.slot) return [];
+  const due = dueMs(p.date, p.slot);
+  return recordsOf(p).filter(([, r]) => {
+    if (!isRec(r) || r.status !== "error" || !/^(buffer|zernio)/.test(String(r.route || ""))) return false;
+    const at = Date.parse(r.dueAt || r.at || "");
+    if (Number.isNaN(at) || Number.isNaN(due)) return false;
+    return r.mode === "shareNow" ? at < due - ADOPT_MS : Math.abs(at - due) > ADOPT_MS;
+  }).map(([c]) => c).sort();
+}
+
+/** The publisher's next run at or after `now`, in ms (PUBLISH_RUNS_MYT). It hands a post over only at a run. */
+export function nextRunMs(now = Date.now()) {
+  const today = myt(now).date;
+  for (let i = 0; i < 2; i++) {
+    for (const run of PUBLISH_RUNS_MYT) {
+      const at = dueMs(addDays(today, i), run);
+      if (at >= +now) return at;
+    }
+  }
+  return dueMs(addDays(today, 1), PUBLISH_RUNS_MYT[0]);
+}
+/** Will the publisher still hand a post over for this position? Its next run must come before the slot is 45 minutes gone. */
+export const handOverInTime = (date, slot, now = Date.now()) => nextRunMs(now) <= dueMs(date, slot) + LATE_GRACE_MIN * 60_000;
+
+/** May `post` be moved to date+slot? {ok, why?, note?, resend?}. `why` is a refusal; `note` is a warning that does not block
+    (the rota is a plan, never a block). `resend` says the move sends the post's failed channels again (canResend). The
+    database refuses the same moves, so this is the polite version. */
 export function moveCheck({ post, date, slot, posts, brand, now = Date.now(), leadMin = 30 }) {
   const stream = post.stream || "regulab";
-  if (!["draft", "approved"].includes(post.status)) return { ok: false, why: "status" };
-  if (handedOver(post)) return { ok: false, why: "published" };
+  const resend = canResend(post);
+  if (!["draft", "approved"].includes(post.status) && !resend) return { ok: false, why: "status" };
+  if (handedOver(post) && !resend) return { ok: false, why: "published" };
   if (post.date === date && post.slot === slot) return { ok: false, why: "same" };
   if (!slotsOf(brand, stream).includes(slot)) return { ok: false, why: "slot" };
   if (!postsOn(brand, stream, date)) return { ok: false, why: "day" };
   if (dueMs(date, slot) <= +now + leadMin * 60_000) return { ok: false, why: "past" };
+  // a scheduled post is not approved again after the move, so nothing later catches a slot the publisher cannot reach
+  if (resend && post.status === "scheduled" && !handOverInTime(date, slot, now)) return { ok: false, why: "run", run: myt(nextRunMs(now)).time };
   const held = holdersOf(posts, stream, date, slot, post.id);
   if (held.length) return { ok: false, why: "taken", by: held };
   const note = stream === "regulab" && post.domain && !onRota(brand, date, post.domain) ? "rota" : undefined;
-  return { ok: true, ...(note ? { note } : {}) };
+  return { ok: true, ...(note ? { note } : {}), ...(resend ? { resend: true } : {}) };
 }
 
 /** Every waiting ws.regulab post from today on whose domain the rota does not give that day (Studio's offRota). */

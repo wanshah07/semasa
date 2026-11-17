@@ -7,6 +7,7 @@ import { TABLES, configured, errText, supabase } from "./lib/SupabaseClient";
 import { FAQ_CATEGORY_TO_DOMAIN, FAQ_SOURCE, brandOf } from "./lib/brand";
 import { stampMYT } from "./lib/format";
 import { currentLang, useLang } from "./lib/i18n";
+import { parseHash } from "./lib/deepLink";
 import SourceLight from "./components/SourceLight";
 import { LIGHT_NAME, LIGHT_TINT, checkedText, lightOf } from "./lib/sourceLights";
 import { useCanUpload, useGenerations, useSession, useSettings, useTable, useToasts, useTrends } from "./lib/hooks";
@@ -349,7 +350,7 @@ export default function App() {
   const { t } = useLang();                                   // read here so a language switch re-renders the page
   const [tab, setTab] = useState(() => {
     const h = window.location.hash.replace("#", "");
-    return TAB_IDS.includes(h) ? h : "papan";                 // the home is the dashboard (Wan, 9 Oct 2026); #isu still opens the issues
+    return parseHash(h, TAB_IDS).tab || "papan";              // the home is the dashboard (Wan, 9 Oct 2026); #isu still opens the issues
   });
   const [pubToken, setPubToken] = useState(() => (PUBLIC_DOC.exec(window.location.hash.replace("#", "")) || [])[1] || "");
   const [unsubToken, setUnsubToken] = useState(() => (UNSUB.exec(window.location.hash.replace("#", "")) || [])[1] || "");
@@ -360,7 +361,7 @@ export default function App() {
       const h = window.location.hash.replace("#", "");
       setPubToken((PUBLIC_DOC.exec(h) || [])[1] || "");
       setUnsubToken((UNSUB.exec(h) || [])[1] || "");
-      const next = TAB_IDS.includes(h) ? h : "papan";
+      const next = parseHash(h, TAB_IDS).tab || "papan";      // #design/comic is the design page: the page reads the rest (lib/deepLink.js)
       setTab(next);
     };
     window.addEventListener("hashchange", onHash);

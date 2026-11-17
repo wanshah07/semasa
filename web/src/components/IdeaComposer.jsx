@@ -12,6 +12,7 @@ import { IMAGE_TYPES, refusal, removeReference, uploadReference } from "../lib/s
 import { startLook } from "../lib/lookChoice";
 import LookPicker from "./LookPicker";
 import { useDesigns } from "../lib/designs";
+import { comicLibrary } from "../lib/comic";
 import Button from "./ui/Button";
 import { Input, Label, Modal, Segmented, Select, TextArea } from "./ui/Field";
 
@@ -35,7 +36,11 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   const motionOn = outputMotion && stream !== "linkedin";            // LinkedIn gets no film (Wan, 11 Nov 2026)
   const [motionLanguage, setMotionLanguage] = useState("en");
   const { settings: motionSettings } = useSettings(true);
-  const [format, setFormat] = useState("post");   // post | carousel | poster (backend: ideas.format_of)
+  const [format, setFormat] = useState("post");   // post | carousel | poster | comic (backend: ideas.format_of)
+  // a comic as the post's picture (17 Nov 2026): the series and the cartoon style, from the comic library (lib/comic.js)
+  const comics = comicLibrary(motionSettings?.comic);
+  const [comicSeries, setComicSeries] = useState("");
+  const [comicStyle, setComicStyle] = useState("");
   // the slide design: what Wan picked, else the DEFAULT of My designs (chosen in the same place as Semasa, Grid, Info ERA and Photo)
   const { designs, defaultId, hiddenLooks } = useDesigns();
   const [lookPick, setLook] = useState(null);
@@ -101,7 +106,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     e.preventDefault();
     if (uploading) return;
     if (!title.trim() && !(motionOn && url.trim())) return onToast(t("Perlukan tajuk atau isu.", "A title or an issue is needed."), "warn");
-    const drawn = !motionOn && format !== "post";
+    const drawn = !motionOn && (format === "carousel" || format === "poster");     // a comic has no slide design to pick
     if (drawn && lookBlocked === "photo") {
       return onToast(t("Reka bentuk Foto dilukis di atas gambar post: pilih Media Imej, atau reka bentuk lain.",
         "The Photo design is drawn on the post's picture: choose Media Image, or another design."), "warn");
@@ -135,6 +140,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     const brief = {};
     if (drawn) brief.look = look;                       // always said, "classic" included: an explicit choice beats the default design
     if (format === "poster") brief.format = "poster";
+    if (format === "comic") { brief.format = "comic"; brief.comic = { series: comicSeries || comics.defaultSeries, style: comicStyle || comics.defaultStyle }; }
     if (hookStyle) Object.assign(brief, withHookStyle({}, hookStyle));   // the style this idea's hook is built on (backend hook_bank.pick)
     if (writingStyle) Object.assign(brief, withWritingStyle({}, writingStyle));   // how the caption reads (backend writing_styles.pick)
     // the worker keeps this slot while it is still ahead and free (backend ideas.asked_position), else the next free
@@ -160,6 +166,9 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
       : format === "poster"
         ? t("Idea dihantar. Semasa akan tulis draf dan kata-kata poster, jana gambar, kemudian lukis poster 4:5.",
           "Idea sent. Semasa will write the draft and the poster's words, generate a picture, then draw a 4:5 poster.")
+        : format === "comic"
+          ? t("Idea dihantar. Semasa akan tulis draf, tulis skrip komik daripada draf itu, kemudian lukis komik sebagai gambar post.",
+            "Idea sent. Semasa will write the draft, write the comic's script from it, then draw the comic as the post's picture.")
         : t("Idea dihantar. Semasa akan baca sumber, tulis draf dan jana gambar.",
         "Idea sent. Semasa will read the source, write the draft and generate a picture."), "ok");
     onDone?.();
@@ -212,7 +221,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
         <div>
           <Label>{t("Jadikan", "Make it")}</Label>
           <Segmented value={format} onChange={setFormat}
-            options={[["post", t("Post", "Post")], ["carousel", t("Carousel (slaid/PPT)", "Carousel (slides/PPT)")], ["poster", "Poster"]]} />
+            options={[["post", t("Post", "Post")], ["carousel", t("Carousel (slaid/PPT)", "Carousel (slides/PPT)")], ["poster", "Poster"], ["comic", t("Komik", "Comic")]]} />
           <span className="mt-1 block text-[11px] text-muted">
             {format === "carousel"
               ? look === "threads"
@@ -225,11 +234,22 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
               : format === "poster"
                 ? t("Semasa tulis satu poster (tajuk dan hingga lima poin, sumber di kaki), kemudian lukis 1080×1350.",
                   "Semasa writes one poster (a headline and up to five points, the source at the foot), then draws it at 1080×1350.")
-                : t("Kapsyen dan satu gambar.", "A caption and one picture.")}
-            {format !== "post" && media === "image" ? t(" Gambar post jadi latar.", " The post picture becomes the background.") : ""}
+                : format === "comic"
+                  ? t("Kapsyen dan satu komik empat panel sebagai gambar post (1080×1350). Skrip ditulis daripada draf, dan perkataan dalam gelembung disemak dengan skrip. Tiada gambar lain dibuat.",
+                    "A caption and one four-panel comic as the post's picture (1080×1350). The script is written from the draft, and the words in the bubbles are checked against it. No other picture is made.")
+                  : t("Kapsyen dan satu gambar.", "A caption and one picture.")}
+            {(format === "carousel" || format === "poster") && media === "image" ? t(" Gambar post jadi latar.", " The post picture becomes the background.") : ""}
           </span>
         </div>
-        {!motionOn && format !== "post" && (
+        {!motionOn && format === "comic" && (
+          <div className="grid gap-2 rounded-tile bg-surface-2/40 p-2.5 sm:grid-cols-2" data-idea-comic>
+            <label className="block"><Label>{t("Siri komik", "Comic series")}</Label>
+              <Select value={comicSeries || comics.defaultSeries} onChange={setComicSeries} className="w-full" options={comics.series.map((x) => [x.id, x.name])} /></label>
+            <label className="block"><Label>{t("Gaya kartun", "Cartoon style")}</Label>
+              <Select value={comicStyle || comics.defaultStyle} onChange={setComicStyle} className="w-full" options={comics.styles.map((x) => [x.id, t(x.name.bm, x.name.en)])} /></label>
+          </div>
+        )}
+        {!motionOn && (format === "carousel" || format === "poster") && (
           <div className="rounded-tile bg-surface-2/40 p-2.5">
             <LookPicker value={look} onChange={setLook} sample stream={previewStream}
               slides={format === "poster" ? posterSample : sampleSlides(title, previewStream)}

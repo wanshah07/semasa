@@ -247,6 +247,58 @@ def test_myra_fetch_asks_only_for_the_recent_days_in_malaysia_time():
     assert c.params["since"] == "2026-11-03" and c.params["id"] == "S"
 
 
+QUOTA = ("API Error: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute' of service "
+         "'sheets.googleapis.com' for consumer 'project_number:51156656082")
+
+
+class Sheets:
+    """Answers the MYRA cell with each of `answers` in turn (the last one for ever)."""
+
+    def __init__(self, *answers):
+        self.answers, self.calls = list(answers), 0
+
+    def cell(self, body, params=None, thought="", budget=0):
+        self.calls += 1
+        return dict(self.answers.pop(0) if len(self.answers) > 1 else self.answers[0])
+
+
+def _fetch(client):
+    waited = []
+    out = myra.fetch(client, {"spreadsheet_id": "S"}, NOW, sleep=waited.append)
+    return out, waited
+
+
+def test_googles_per_minute_quota_is_read_again_after_a_wait_and_the_second_answer_is_used():
+    # 16 Nov 2026: the sweep kept failing on the connector's shared read quota while the same read by hand worked
+    c = Sheets({"rows": [], "error": QUOTA}, {"rows": [SHEET[0]], "error": ""})
+    out, waited = _fetch(c)
+    assert out["rows"] == [SHEET[0]] and not out["error"] and out["tries"] == 2
+    assert c.calls == 2 and waited == [20]
+
+
+def test_a_quota_that_lasts_is_read_three_times_with_a_full_minute_before_the_last():
+    c = Sheets({"rows": [], "error": QUOTA}, {"rows": [], "error": "429 Too Many Requests"}, {"rows": [SHEET[1]], "error": ""})
+    out, waited = _fetch(c)
+    assert out["rows"] == [SHEET[1]] and c.calls == 3 and waited == [20, 65] and out["tries"] == 3
+    still = Sheets({"rows": [], "error": QUOTA})
+    out, waited = _fetch(still)
+    assert out["error"] == QUOTA and still.calls == 3 and waited == [20, 65]        # three reads, then it says so
+    assert sum(myra.RETRY_WAITS) <= 120                                              # the waits stay far inside the sweep's time
+
+
+def test_every_other_error_is_final_at_once_and_a_good_read_waits_for_nothing():
+    for error in ("403 The caller does not have permission", "Requested entity was not found", "Unable to parse range: Sheet9!A1:G500",
+                  "the answer was 46249 characters, over the workbench limit"):
+        c = Sheets({"rows": [], "error": error})
+        out, waited = _fetch(c)
+        assert (c.calls, waited, out["error"], out["tries"]) == (1, [], error, 1), error
+    ok = Sheets({"rows": [SHEET[0]], "error": ""})
+    out, waited = _fetch(ok)
+    assert (ok.calls, waited, out["tries"]) == (1, [], 1)
+    assert all(myra.is_quota(e) for e in (QUOTA, "RESOURCE_EXHAUSTED", "Rate limit exceeded", "rate_limit", "HTTP 429", "Too many requests"))
+    assert not any(myra.is_quota(e) for e in ("", None, "403 forbidden", "sheet 4290 not found", "invalid range"))
+
+
 # --- OneDrive folders -------------------------------------------------------------------------------------------------
 
 def test_the_folder_listing_cell_reads_each_domain_folder_and_only_todays_and_tomorrows_urgent_subfolders():
@@ -511,6 +563,28 @@ def test_a_dry_run_reads_and_judges_but_writes_nothing():
     s = store()
     rep = intake.run(s, Writer(everything_writer), full_client(), now=NOW, dry=True)
     assert s.tables["semasa_watch"] == [] and not s.tables["semasa_settings"] and rep["folders"]["angles"] == 2
+
+
+def test_a_quota_answer_from_the_sheet_is_retried_inside_the_sweep_and_the_part_reports_ok(monkeypatch):
+    monkeypatch.setattr(myra, "RETRY_WAITS", (0, 0))                       # the waits themselves are tested with myra.fetch
+    c = full_client()
+    good, answers = c.sheet, [{"rows": [], "error": QUOTA}]
+    cell = c.cell
+
+    def flaky(body, params=None, thought="", budget=0):
+        c.sheet = answers.pop(0) if body is myra._CELL and answers else good
+        return cell(body, params, thought, budget)
+    c.cell = flaky
+    s = store()
+    rep = intake.run(s, Writer(everything_writer), c, now=NOW, only=["myra"])
+    assert rep["myra"]["ok"] is True and rep["myra"]["new"] == 3 and rep["myra"]["tries"] == 2      # ok is what turns the light green
+    assert sum(1 for b in c.asked if b is myra._CELL) == 2
+    lights = next(r for r in s.tables["semasa_settings"] if r["key"] == "source_lights")["value"]["lights"]
+    assert lights["myra"]["light"] == "green"
+    c2 = full_client()
+    c2.sheet = {"rows": [], "error": QUOTA}
+    rep = intake.run(store(), Writer(everything_writer), c2, now=NOW, only=["myra"])
+    assert rep["myra"]["ok"] is False and "in 3 tries" in rep["myra"]["error"] and "Quota exceeded" in rep["myra"]["error"]
 
 
 def test_one_dead_source_does_not_stop_the_other_two():

@@ -7,6 +7,7 @@ import { dueMs, duplicatesOf, handedOver, nextFreeSlot, refOf, slotGone, slotsOf
 import { withDecision } from "../lib/workflow";
 import PostWorkflow from "./PostWorkflow";
 import PostPullBack from "./PostPullBack";
+import PostResend from "./PostResend";
 import PostStreamSwitch from "./PostStreamSwitch";
 import { stampMYT } from "../lib/format";
 import { refusal, removeReference, uploadReference } from "../lib/storage";
@@ -376,6 +377,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   return (
     <div className="space-y-4">
       <PostPullBack post={post} onToast={onToast} onChanged={onChanged} />
+      <PostResend post={post} posts={posts} brand={brand} onToast={onToast} onChanged={onChanged} />
       <PostStreamSwitch post={post} user={user} onToast={onToast} onChanged={onChanged} />
       <div className="flex flex-wrap items-center gap-3">
         <Segmented value={view} onChange={setView} options={[["bm", "BM"], ["en", "EN"]]} />

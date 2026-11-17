@@ -101,7 +101,7 @@ export function decodeBase64(text) {
 const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
 /** The caption: one text for every channel, or an object {channel: text}. Never altered here; the worker's compliance scan judges
-    it and a caption that fails is refused with the reason, never shortened behind the sender's back. */
+    it; a caption that fails still makes a DRAFT with the blocking flags on it, and is never shortened behind the sender's back. */
 export function captionOf(v) {
   if (v == null || v === "") return { ok: true, value: "" };
   if (typeof v === "string") return v.length > 5000 ? fail(422, "caption_too_long", "The caption is over 5000 characters.") : { ok: true, value: v.trim() };

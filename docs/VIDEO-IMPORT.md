@@ -28,7 +28,7 @@ Options (all optional):
 | Field | Meaning |
 | --- | --- |
 | `title` | up to 160 characters; the post's hook and the picture's alt text. Default: the caption's first line |
-| `caption` | text for every channel, or an object `{"instagram": "…", "facebook": "…", "threads": "…"}`. Never altered or shortened: a caption that breaks a rule refuses the import. Empty: a draft is made with a blocking flag |
+| `caption` | text for every channel, or an object `{"instagram": "…", "facebook": "…", "threads": "…"}`. Never altered or shortened. A caption that breaks a rule, or none at all, still makes the draft, with the blocking flags on it for Wan to fix in the page |
 | `lang` | `bm` (default for `regulab`) or `en` (the only choice for `linkedin`) |
 | `stream` | `regulab` (default: Instagram, Facebook, Threads) or `linkedin` |
 | `channels` | a subset of the stream's channels. Default: all of them |
@@ -51,21 +51,27 @@ Options (all optional):
 | 429 | `rate_limited` | more than 20 imports an hour from this key (`settings.video_import.max_per_hour`) |
 
 `received` means stored, not yet checked. The Motion worker checks it within minutes (it is woken by the new row; the hourly run is the
-net). It ends as `done` (a draft post exists) or `error` with a sentence saying why. The card in Semasa shows both. A refused
-file is deleted from storage. To try again after a refusal, fix the video or caption and send it with a **new** `idempotency_key`.
+net). It ends as `done` (a draft post exists) or `error` with a sentence saying why; only a bad **file** ends as `error`. The card in
+Semasa shows both. A refused file is deleted from storage. To try again after a refusal, fix the video and send it with a **new**
+`idempotency_key`.
 
 ## What the worker checks
 
+- A bad **file** (not an MP4, no picture, too long or too big, a bad link) is the only thing that ends the import as `error`.
 - ffprobe reads it as a video with a picture track and a length; MP4/MOV container.
 - Length at most **90 s** (`video.MAX_CLIP`) and posted size at most **48 MB** (`video.MAX_OUT_BYTES`), the repo's own limits for
   every channel. A file that is not already H.264 + AAC (or silent) in yuv420p, or is over 48 MB, gets the same platform copy a
   Motion film gets (`motion.social_copy`); if it is still too big it is refused.
 - The caption and title go through the compliance scan of the chosen stream: no CTA, no ws.regulab website in a ws.regulab
   caption, no promise of approval, no vague wording, no Bahasa Indonesia, LinkedIn in English, Threads at most 500 characters a post. A blocking
-  flag refuses the import; a warning (for example a plain link) goes on the draft.
+  flag does **not** refuse the import (Wan, 17 Nov 2026): the draft is made anyway with `hard_flags` > 0, the flags listed, and the
+  import's note says "N blocking flag(s) to fix". Wan fixes the caption in the page; Approve stays blocked while a hard flag remains.
+  A warning (for example a plain link) goes on the draft too. The draft is never approved.
 - A landscape film on ws.regulab only warns: it will not show as a Reel.
-- ws.regulab's branded cover rule for Instagram films does not apply: the film was not made by Semasa and a cover cannot be added to
-  someone else's film.
+- **Decision of Wan's (17 Nov 2026): the branded-cover rule for Instagram films is OFF for imports.** The rule
+  (`publisher.instagram_cover_gap`) applies to films with `meta.flow == "motion"`; an import's media row has `flow == "import"`, so an
+  imported film can go to Instagram without Semasa's cover. The film was not made by Semasa and a cover cannot be added to someone
+  else's film. Wan still sees the film before he approves.
 
 ## Examples
 

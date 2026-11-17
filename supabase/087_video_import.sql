@@ -13,6 +13,7 @@
 --      is its gate) writes it as `received` with the file already in the public bucket semasa-generated under imports/<id>.mp4 (or
 --      the address the agent gave). The Motion worker (backend/semasa/video_import.py) then checks the file and the caption, and
 --      ends the row as `done` (a Motion film row exists and a DRAFT post waits for Wan) or `error` with a human reason.
+--      Only a bad FILE ends as `error`; a caption that breaks a rule still makes the draft, with its blocking flags set for Wan to fix.
 --      Why a table of its own and not a `pending` Motion film: the Motion worker makes films from a storyboard, and 071's guard
 --      refuses any film turning `done` without an approved storyboard. An import has no storyboard; the film row is inserted only
 --      once the file has passed, already `done`, and 071 is untouched.

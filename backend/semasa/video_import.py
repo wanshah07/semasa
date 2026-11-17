@@ -4,10 +4,11 @@ worker half, run from the Motion step (`motion.run`, beside the daily comic): it
 pass, makes a Motion film row (already `done`) and a DRAFT post on the next free slot, exactly as `comic_daily.queue_post` does.
 
 THE GATE: nothing here approves, schedules or posts. The post is a draft carrying the page's own scan; Wan's Approve click
-(page or Telegram) is the only gate and the database enforces it. A file that fails (not a real MP4, no picture, too long or too
-big for the channels, a bad link) or a caption that fails the compliance scan ends the import as `error` with a sentence a
-person can act on, and the stored file is deleted. No caption at all is not a failure: the draft is made with a blocking flag so
-Wan writes it.
+(page or Telegram) is the only gate and the database enforces it. A FILE that fails (not a real MP4, no picture, too long or
+too big for the channels, a bad link) ends the import as `error` with a sentence a person can act on, and the stored file is
+deleted. A CAPTION that fails the compliance scan, or none at all, is not a failure (Wan, 17 Nov 2026): the draft is made anyway
+with the blocking flags on it, so he fixes the caption in the page; the page (and Telegram's Approve) refuse while a hard
+flag remains.
 
 Limits are the repo's own, none invented: a stored file is at most 50 MB (the bucket, supabase/003), the posted copy at most
 `video.MAX_OUT_BYTES` (48 MB) and `video.MAX_CLIP` (90 s), the longest short film Semasa itself makes. The compressed copy is
@@ -256,11 +257,6 @@ def draft_flags(
     return flags
 
 
-def caption_failures(flags: list[dict[str, Any]]) -> list[str]:
-    """What fails an import: a blocking flag that is not just a missing caption (that one is the draft's, for Wan to fill)."""
-    return [f"{f['where']}: {f['msg']}" for f in flags if f["hard"] and f["msg"] != "empty" and f["where"] != "Caption"]
-
-
 # --- the slot ------------------------------------------------------------------------------------------------------------------
 
 
@@ -352,13 +348,6 @@ def process(
             info = probe(src, runner)
             check_file(info, channels)
             flags = draft_flags(stream, lang, texts, channels, title, settings, info)
-            bad = caption_failures(flags)
-            if bad:
-                raise Reject(
-                    "the caption fails Semasa's rules, so nothing was made: "
-                    + "; ".join(bad[:4])
-                    + ". Fix it and send the video again with a new idempotency_key"
-                )
             date, slot = slot_for(store, stream, params, settings, now)
             note: list[str] = []
             if not stored:  # a link: the file is kept in Semasa's own bucket from here on
@@ -410,6 +399,9 @@ def process(
             poster_url,
             now,
         )
+        blocking = compliance.hard_count(flags)
+        if blocking:  # a caption that breaks a rule is the draft's to fix (Wan, 17 Nov 2026), never a reason to refuse the import
+            note.append(f"the draft was made with {blocking} blocking flag(s) to fix before Wan can approve it")
         if not texts:
             note.append("no caption: write it before approving")
         soft = [f"{f['where']}: {f['msg']}" for f in flags if not f["hard"]]
@@ -428,7 +420,10 @@ def process(
             ref_id=post_id,
             detail={"import_id": row["id"], "source": row.get("source"), "date": date, "slot": slot},
         )
-        _tell(store, f"Video import siap, menunggu lulus: {title[:100]} ({date} {slot}, {', '.join(channels)})", notify)
+        told = f"Video import siap, menunggu lulus: {title[:100]} ({date} {slot}, {', '.join(channels)})"
+        if blocking:
+            told += f". {blocking} perkara menghalang Lulus: betulkan kapsyen di Semasa"
+        _tell(store, told, notify)
         return "done"
     except Reject as no:
         _reject(store, row, str(no), storage, made)

@@ -274,18 +274,31 @@ def test_a_file_over_the_stored_ceiling_is_refused(clips, monkeypatch):
         ("Produk ini dijamin lulus NPRA, " + GOOD_BM, "approval"),
     ],
 )
-def test_a_caption_with_a_cta_or_the_website_is_refused_and_nothing_is_made(clips, caption, needle):
+def test_a_caption_with_a_cta_or_the_website_is_a_flagged_draft_never_an_error_and_never_approved(clips, caption, needle):
     store, bucket = setup()
     iid = received(store, bucket, clips["good"], caption=caption)
-    step(store, bucket)
+    told = step(store, bucket)[1]
     r = row(store, iid)
-    assert r["status"] == "error" and needle.lower() in r["error"].lower() and "idempotency_key" in r["error"]
-    assert (
-        not store.tables.get("semasa_posts")
-        and not store.tables.get("semasa_motions")
-        and not store.tables.get("media_generations")
+    assert r["status"] == "done" and r["error"] == "" and r["post_id"], "Wan decided: a bad caption is his to fix in the page"
+    post = store.tables["semasa_posts"][0]
+    assert post["status"] == "draft" and post["id"] == r["post_id"]
+    assert post["hard_flags"] > 0 and post["hard_flags"] == sum(1 for f in post["flags"] if f["hard"])
+    assert any(f["hard"] and needle.lower() in f["msg"].lower() for f in post["flags"]), post["flags"]
+    assert post["text"]["bm"]["instagram"] == caption, "the caption is kept exactly as sent, for Wan to edit"
+    assert f"{post['hard_flags']} blocking flag(s) to fix" in r["note"]
+    assert not any(p["status"] in ("approved", "scheduled", "posted") for p in store.tables["semasa_posts"])
+    assert "approved_by" not in post and "approved_at" not in post
+    assert len(store.tables["semasa_motions"]) == 1 and len(store.tables["media_generations"]) == 1
+    assert "betulkan kapsyen" in told[0]
+
+
+def test_a_bad_file_still_ends_in_error_while_a_bad_caption_does_not(clips):
+    store, bucket = setup()
+    bad_file = received(
+        store, bucket, b"\x00\x00\x00\x18" + b"not an mp4" * 40, caption="Semak kelayakan di www.kkmhalalconsultant.com"
     )
-    assert not bucket.files
+    step(store, bucket)
+    assert row(store, bad_file)["status"] == "error" and not store.tables.get("semasa_posts")
 
 
 def test_a_link_in_the_caption_is_a_warning_on_the_draft_not_a_refusal(clips):
@@ -317,17 +330,17 @@ def test_a_caption_per_channel_is_kept_exactly(clips):
     assert post["text"]["bm"] == caps and sorted(post["channels"]) == ["instagram", "threads"]
 
 
-def test_a_linkedin_import_is_english_and_a_malay_caption_is_refused(clips):
+def test_a_linkedin_import_is_english_and_a_malay_caption_is_a_flagged_draft(clips):
     store, bucket = setup()
     ok = received(store, bucket, clips["good"], stream="linkedin", lang="en", channels=["linkedin"], caption=GOOD_EN)
     bad = received(store, bucket, clips["good"], stream="linkedin", lang="en", channels=["linkedin"], caption=LONG_BM)
     step(store, bucket)
-    assert (
-        row(store, ok)["status"] == "done"
-        and row(store, bad)["status"] == "error"
-        and "Bahasa Malaysia" in row(store, bad)["error"]
-    )
-    post = store.tables["semasa_posts"][0]
+    assert row(store, ok)["status"] == "done" and row(store, bad)["status"] == "done"
+    flagged = next(p for p in store.tables["semasa_posts"] if p["id"] == row(store, bad)["post_id"])
+    assert flagged["status"] == "draft" and flagged["hard_flags"] > 0
+    assert any("Bahasa Malaysia" in f["msg"] for f in flagged["flags"] if f["hard"])
+    post = next(p for p in store.tables["semasa_posts"] if p["id"] == row(store, ok)["post_id"])
+    assert post["hard_flags"] == 0
     assert (
         post["stream"] == "linkedin" and post["lang"] == "en" and post["channels"] == ["linkedin"] and post["status"] == "draft"
     )

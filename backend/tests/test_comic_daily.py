@@ -1079,3 +1079,12 @@ def test_a_tap_on_make_todays_episode_asks_only_for_a_storyboard_and_changes_no_
     st.tables[tb.INBOX].append(tap(2, "a:komik_harian"))
     run(st, bot)
     assert len(st.tables["semasa_motions"]) == 1 and "sudah ada" in bot.sent()[-1]["text"], "one episode a day, even by button"
+
+
+def test_comic_drawing_job_uses_a_status_the_media_table_allows():
+    """media_generations allows only pending / processing / done / error (supabase/001): the first real episode died on
+    "working", which a stub table accepts and Postgres refuses."""
+    series = comic_library.series_of(comic_library.library(None), comic_daily.RULES["series"])
+    sb = {"title": "t", "setting": "s", "panels": [{"scene": "x", "lines": [{"who": "A", "text": "a"}]}], "series": series["id"]}
+    job = comic_film.comic_job_row(sb, series, "Sumber", SimpleNamespace(max_attempts=3))
+    assert job["status"] in ("pending", "processing", "done", "error")

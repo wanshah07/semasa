@@ -72,35 +72,18 @@ def _clip(page, panel: Path, outdir: Path, report: dict) -> bool:
         return False
     gen_btn.click()
     report["generate_clicked_at"] = datetime.now(UTC).isoformat()
-    gen_epoch = int(time.time() * 1000)  # ms; the new job's created_at is after this
+    # the video URL is captured by on_response as soon as the result streams (a 206 from Supabase storage).
+    # The /api/v1/jobs list only shows t2v history, so wait on the VIDEO URL, not the jobs list.
     deadline = time.time() + MAX_WAIT_S
     url = report.get("video_url")
-    job_meta = {}
-    first_poll = True
     while time.time() < deadline:
-        try:
-            jobs = page.evaluate("""async () => {
-                const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
-                const j = await r.json();
-                return Array.isArray(j) ? j : (j.jobs || j.data || []);
-            }""")
-        except Exception:  # noqa: BLE001
-            jobs = []
-        if first_poll:
-            report["jobs_sample"] = [{k: j.get(k) for k in ("id", "status", "mode", "created_at") if j.get(k) is not None} for j in jobs[:5]]
-            first_poll = False
-        # the NEW job: created after the Generate click, or (if no timestamps) the latest one
-        new = [j for j in jobs if (j.get("created_at") or 0) >= gen_epoch - 2000]
-        if not new:
-            new = jobs[:1]
-        done = [j for j in new if j.get("status") in ("done", "complete", "ready", "success")]
-        if done:
-            job_meta = done[0]
-            url = url or report.get("video_url") or job_meta.get("download_url") or job_meta.get("video_url") or job_meta.get("url")
+        url = report.get("video_url")
+        if url:
             break
         time.sleep(POLL_S)
     if not url:
-        report["job_meta_no_url"] = {k: job_meta.get(k) for k in ("id", "status", "mode", "model", "download_url", "video_url", "url", "created_at") if job_meta.get(k)}
+        report["no_video_url"] = True
+        report["network"] = report.get("network", [])
         return False
     import requests
     r = requests.get(url, timeout=300, stream=True)

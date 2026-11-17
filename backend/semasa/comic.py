@@ -112,6 +112,17 @@ def _style(style: dict[str, Any] | None) -> dict[str, Any]:
     return style if style and str(style.get("prompt") or "").strip() else DEFAULT_STYLE
 
 
+FRAMING = (
+    "FRAMING. Both characters are fully inside their own panel: the whole head and face of each is visible with clear space "
+    "around the head, and nobody is cropped by the left, right or top edge of a panel. Frame every panel waist-up or chest-up: "
+    "the bottom edge may cut the body, but never a head or a face. The characters are the same size in all four panels and "
+    "stand apart from the panel edges.")
+FRAMING_STRONG = (
+    "STRONGER FRAMING, because an earlier drawing put a head too high or against an edge: draw the characters smaller, "
+    "chest-up, with their heads no higher than the middle of the panel and at least 45 percent of the panel's height left "
+    "empty above them, and clear space between each head and the left, right and top edges.")
+
+
 def _base(script: dict[str, Any], style: dict[str, Any] | None = None) -> str:
     cast = script["cast"]
     return ("A square comic page of four equal panels in a 2 by 2 grid, separated by thin white gutters. The comic fills the "
@@ -119,6 +130,7 @@ def _base(script: dict[str, Any], style: dict[str, Any] | None = None) -> str:
             f"ART STYLE. Draw every part of the page in exactly this style, and in no other:\n{_style(style)['prompt']}\n"
             "The same two characters in all four panels, looking the same every time: the same face, hair, clothes and "
             "colours.\n"
+            f"{FRAMING}\n"
             f"Setting: {str(script.get('setting') or 'an everyday Malaysian place').strip()}\n"
             f"Character A, always on the LEFT side of a panel: {str(cast['A']).strip()}\n"
             f"Character B, always on the RIGHT side of a panel: {str(cast['B']).strip()}\n")
@@ -139,10 +151,11 @@ def prompt_full(script: dict[str, Any], style: dict[str, Any] | None = None) -> 
             "No other text anywhere in the picture: no title, no caption, no sound effects, no signs, no brand names.")
 
 
-def prompt_art(script: dict[str, Any], style: dict[str, Any] | None = None) -> str:
-    """The picture maker draws the people only. The words are printed afterwards by `letter`, in the empty top of each panel."""
+def prompt_art(script: dict[str, Any], style: dict[str, Any] | None = None, strong: bool = False) -> str:
+    """The picture maker draws the people only. The words are printed afterwards by `letter`, in the empty top of each panel.
+    `strong` is the second ask, after a drawing whose people left no room for the words or touched a panel's edge."""
     check(script)
-    return (_base(script, style) + _scenes(script, False) + "\n"
+    return (_base(script, style) + (FRAMING_STRONG + "\n" if strong else "") + _scenes(script, False) + "\n"
             f"IMPORTANT: no text of any kind anywhere, and NO speech bubbles: no letters, numbers, signs, labels or brand names. "
             f"In EVERY panel keep the top {round(ZONE * 100)} percent completely empty: a plain, flat, light-coloured wall or "
             "sky with nothing on it. The characters' heads stay below that empty area, in the lower part of the panel.")
@@ -251,6 +264,88 @@ def _clean_gutters(img: Image.Image, dark: Image.Image) -> Image.Image:
     return img
 
 
+# ------------------------------------------------------------------------------------------------- where the people are
+
+HEAD_EDGE = 0.03          # a panel's outline and the gutter are not measured: this share of its side is skipped on every side
+HEAD_BINS = 36            # the panel is read in this many columns
+INK_DIFF = 40             # a pixel this far (largest colour channel) from the wall is ink; so is anything darker than _DARK
+HEAD_MARGIN = 0.03        # air between a bubble's lowest edge and the highest ink under it, as a share of a panel's side
+WALL_ROWS = 0.30          # the wall's colour is read from the top of the panel this far down (its commonest colour)
+
+
+class NoRoom(ComicError):
+    """The words do not fit above the people at a readable size without covering one: the message says which panel."""
+
+
+def _wall(px: list[tuple[int, int, int]], w: int, rows: int) -> tuple[int, int, int]:
+    """The commonest colour (16 levels a channel) in the top `rows` rows of a panel: the wall behind the people."""
+    seen: dict[tuple[int, int, int], list[int]] = {}
+    for y in range(rows):
+        for x in range(w):
+            r, g, b = px[y * w + x]
+            seen.setdefault((r // 16, g // 16, b // 16), []).append(y * w + x)
+    key = max(seen, key=lambda k: len(seen[k]))
+    pts = [px[i] for i in seen[key]]
+    return tuple(round(sum(c[i] for c in pts) / len(pts)) for i in range(3))  # type: ignore[return-value]
+
+
+def _is_ink(p: tuple[int, int, int], wall: tuple[int, int, int]) -> bool:
+    return max(abs(p[0] - wall[0]), abs(p[1] - wall[1]), abs(p[2] - wall[2])) > INK_DIFF or sum(p) < 3 * _DARK
+
+
+class Heads:
+    """Where the people are in a WORDLESS comic, read from its pixels: for every panel and every column bin, the row of the first
+    ink below the wall (the top of the highest head, hair, tudung or object in that column), in the panel's own pixels at `side`.
+    Bubbles are placed above this line and nowhere else (`floor`). A panel with no ink at all has a floor at its bottom."""
+
+    def __init__(self, tops: list[list[float]], side: int, edges: list[dict[str, bool]]):
+        self.tops, self.side, self.edges = tops, side, edges
+
+    def floor(self, panel: int, x0: float, x1: float) -> float:
+        """The highest ink between panel-relative x0 and x1 (pixels of the panel at this side), or the panel's bottom."""
+        half = self.side / 2
+        bins = self.tops[panel]
+        lo, hi = max(0, int(x0 / half * len(bins))), min(len(bins) - 1, int(x1 / half * len(bins)))
+        got = [bins[i] for i in range(lo, hi + 1)]
+        return min(got) if got else half
+
+
+def measure_heads(art: Image.Image | bytes, side: int = SIDE) -> Heads:
+    """Read the people's position off the wordless picture (see Heads). Also notes, per panel, whether ink touches the panel's top
+    edge (`top`: a head or hair cut by the top of the panel; the wall zone is meant to be empty there, so this is reliable) and
+    its left or right edge in the head rows (`left`, `right`: advisory only, a shelf or a shoulder can do that legitimately)."""
+    img = Image.open(io.BytesIO(art)) if isinstance(art, bytes) else art
+    img = img.convert("RGB").resize((side, side), Image.LANCZOS)
+    half = side // 2
+    cut = round(half * HEAD_EDGE)
+    n = HEAD_BINS * 2
+    tops: list[list[float]] = []
+    edges: list[dict[str, bool]] = []
+    for k in range(PANELS):
+        px0, py0 = (k % 2) * half, (k // 2) * half
+        crop = img.crop((px0 + cut, py0 + cut, px0 + half - cut, py0 + half - cut)).resize((n, n), Image.BOX)
+        px = list(crop.get_flattened_data() if hasattr(crop, "get_flattened_data") else crop.getdata())
+        wall = _wall(px, n, max(2, round(n * WALL_ROWS)))
+        ink = [[_is_ink(px[y * n + x], wall) for x in range(n)] for y in range(n)]
+        scale = (half - 2 * cut) / n
+        bins: list[float] = []
+        for b in range(HEAD_BINS):
+            xs = range(b * 2, b * 2 + 2)
+            first = next((y for y in range(n - 2) if all(any(ink[y + d][x] for x in xs) for d in range(3))), None)
+            bins.append(float(half) if first is None else cut + first * scale)
+        tops.append(bins)
+        top_touch = sum(1 for x in range(n) if ink[0][x] and ink[1][x]) >= max(3, round(n * 0.08))
+        first_row = next((y for y in range(n) if sum(ink[y]) >= max(3, round(n * 0.05))), None)
+        left = right = False
+        if first_row is not None:
+            head_rows = range(first_row, min(n, first_row + round(n * 0.30)))
+            band = max(1, round(n * 0.04))
+            left = sum(1 for y in head_rows if all(ink[y][x] for x in range(band))) >= len(head_rows) * 0.6
+            right = sum(1 for y in head_rows if all(ink[y][n - 1 - x] for x in range(band))) >= len(head_rows) * 0.6
+        edges.append({"top": top_touch, "left": left, "right": right})
+    return Heads(tops, side, edges)
+
+
 # ---------------------------------------------------------------------------------------------------- lettering (Semasa's)
 
 def _wrap(text: str, font: ImageFont.FreeTypeFont, width: float) -> list[str]:
@@ -265,22 +360,35 @@ def _wrap(text: str, font: ImageFont.FreeTypeFont, width: float) -> list[str]:
     return lines + ([cur] if cur else [])
 
 
-def bubbles(script: dict[str, Any], side: int = SIDE) -> list[dict[str, Any]]:
+def bubbles(script: dict[str, Any], side: int = SIDE, heads: Heads | None = None) -> list[dict[str, Any]]:
     """Where every bubble goes on a square comic of `side` pixels: [{panel, who, text, lines, size, box: (x0, y0, x1, y1),
-    tail: [(x, y) * 3]}]. One size of lettering for the whole page (the largest that fits every panel's empty top), so the
-    page reads as one hand. A's bubble hangs from the left and B's from the right, the second one a step lower."""
+    tail: [(x, y) * 3]}]. One size of lettering for the whole page (the largest that fits every panel), so the page reads as one
+    hand. A's bubble hangs from the left and B's from the right, the second one a step lower.
+
+    Without `heads` the words go in the empty top ZONE of each panel (the picture maker was asked to leave it empty). With `heads`
+    (measure_heads, read off the wordless picture itself) a bubble goes only where the picture is empty: its bottom edge stays
+    HEAD_MARGIN above the highest ink in the columns it sits over, and its tail stops at the head's top, never on the face. When
+    the words do not fit like that at the smallest readable size NoRoom says which panel."""
     check(script)
     half = side // 2
     pad, gap, edge = round(side * 0.013), round(side * 0.011), round(side * 0.017)
     zone_h = round(half * ZONE)
-    for size in range(FONT_MAX, FONT_MIN - 1, -1):
+    air = round(half * HEAD_MARGIN)
+    stuck = ""
+    # stacked first (A above B, the second a step lower), from the largest lettering down to the smallest readable; only then,
+    # when people are in the way, the two bubbles of a panel side by side in the empty width above the two heads
+    modes = (False, True) if heads is not None else (False,)
+    layouts = [(c, z) for c in modes for z in range(FONT_MAX, FONT_MIN - 1, -1)]
+    for columns, size in layouts:
         font, lh = _font(BODY_BOLD, size * side / SIDE), round(size * side / SIDE * 1.24)
         out, fits = [], True
         for n, panel in enumerate(script["panels"]):
             px, py = (n % 2) * half, (n // 2) * half
             two = len(panel["lines"]) == 2
-            max_w = round(half * (0.70 if two else 0.84)) - 2 * pad
+            row = columns and two
+            max_w = round(half * (0.46 if row else 0.70 if two else 0.84)) - 2 * pad
             y = py + edge
+            top = y
             for line in panel["lines"]:
                 text = _words(line)
                 rows = _wrap(text, font, max_w)
@@ -293,23 +401,41 @@ def bubbles(script: dict[str, Any], side: int = SIDE) -> list[dict[str, Any]]:
                 box = (x0, y, x0 + w, y + h)
                 tx = x0 + round(w * (0.28 if left else 0.72))
                 tip = (tx + round(half * (-0.03 if left else 0.03)), y + h + round(half * 0.07))
+                if heads is not None:
+                    roof = py + heads.floor(n, x0 - px, x0 - px + w)           # the highest ink over this bubble's columns
+                    if y + h > roof - air:
+                        fits = False
+                        room = max(0, round(roof - air - y))
+                        stuck = f"panel {n + 1}: the highest head leaves {room} px for a bubble that needs {h}"
+                    under = py + heads.floor(n, tip[0] - px - 4, tip[0] - px + 4)
+                    tip = (tip[0], max(y + h + 6, min(tip[1], under)))         # the tail stops at the head's top
                 out.append({"panel": n + 1, "who": line["who"], "text": text, "lines": rows, "size": size, "box": box,
                             "tail": [(tx - round(side * 0.012), y + h - 2), (tx + round(side * 0.012), y + h - 2), tip]})
-                y += h + gap
-            if y - gap > py + zone_h:
+                if row:
+                    y = top                      # the second bubble of a row starts at the same height
+                    top = max(top, y + h + gap)
+                else:
+                    y += h + gap
+            if heads is None and y - gap > py + zone_h:
                 fits = False
         if fits:
             return out
+    if heads is not None and stuck:
+        raise NoRoom(f"the words do not fit above the people without covering one ({stuck}) at the smallest readable size")
     raise ComicError("the words do not fit above the people at a readable size: shorten the longest bubble")
 
 
-def letter(art: Image.Image | bytes, script: dict[str, Any], side: int = SIDE) -> Image.Image:
-    """The wordless comic with Semasa's own bubbles and words on it, as a square picture."""
+def letter(art: Image.Image | bytes, script: dict[str, Any], side: int = SIDE, heads: Heads | None = None) -> Image.Image:
+    """The wordless comic with Semasa's own bubbles and words on it, as a square picture. The bubbles go where the picture is
+    empty (`heads`, measured from the picture itself unless given); NoRoom when the words cannot be placed without covering
+    a person."""
     img = Image.open(io.BytesIO(art)) if isinstance(art, bytes) else art
     img = img.convert("RGB").resize((side, side), Image.LANCZOS)
+    if heads is None:
+        heads = measure_heads(img, side)
     d = ImageDraw.Draw(img)
     stroke = max(2, round(side * 0.003))
-    for b in bubbles(script, side):
+    for b in bubbles(script, side, heads):
         font = _font(BODY_BOLD, b["size"] * side / SIDE)
         lh, pad = round(b["size"] * side / SIDE * 1.24), round(side * 0.013)
         d.polygon(b["tail"], fill=PAPER, outline=INK)

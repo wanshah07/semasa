@@ -106,15 +106,16 @@ def write_panels(art: bytes, folder: Path, *, wordless: bool = True) -> list[str
     return paths
 
 
-def film_bubbles(script: dict[str, Any]) -> list[list[dict[str, Any]]]:
+def film_bubbles(script: dict[str, Any], heads: comic.Heads | None = None) -> list[list[dict[str, Any]]]:
     """Each panel's bubbles in reading order, placed on the film's panel box: {who, rows, size (font px), box (x, y, w, h), tail
     [(x, y) * 3], pad}. The geometry is comic.bubbles' own (the same words fit in the same places), scaled from the square comic
-    to the panel as it is shown (the INSET is cut from each edge first)."""
+    to the panel as it is shown (the INSET is cut from each edge first). `heads` (comic.measure_heads of the wordless art)
+    keeps every bubble above the people."""
     half = comic.SIDE / 2
     cut = half * INSET
     k = BOX / (half - 2 * cut)
     out: list[list[dict[str, Any]]] = [[] for _ in range(comic.PANELS)]
-    for b in comic.bubbles(script, comic.SIDE):
+    for b in comic.bubbles(script, comic.SIDE, heads):
         n = b["panel"] - 1
         ox, oy = (n % 2) * half + cut, (n // 2) * half + cut
         x0, y0, x1, y1 = b["box"]
@@ -158,13 +159,14 @@ def _say_html(pid: str, who: str, name: str, text: str, top: float, fs: int) -> 
 
 
 def compose(sb: dict[str, Any], script: dict[str, Any], panels: list[str], *, wordless: bool, website: str,
-            episode_line: str, logo: str = "assets/official-logo-transparent.png") -> tuple[str, float]:
+            episode_line: str, logo: str = "assets/official-logo-transparent.png",
+            heads: comic.Heads | None = None) -> tuple[str, float]:
     """The film's page and its length. Every block has its own band of the frame, so no two words can meet; each scene is one
     clip and the bubbles of a panel come in one by one, in reading order, over the picture."""
     tl = timeline(sb)
     total = tl["total"]
     names = sb.get("names") or {"A": "A", "B": "B"}
-    bubbles = film_bubbles(script) if wordless else [[] for _ in range(comic.PANELS)]
+    bubbles = film_bubbles(script, heads) if wordless else [[] for _ in range(comic.PANELS)]
     css = [
         motion_templates.FONT_CSS,
         f"html,body{{margin:0;width:{W}px;height:{H}px;overflow:hidden;background:{PAPER};}}",
@@ -410,7 +412,8 @@ def make_film(store: Any, llm: Any, row: dict[str, Any], settings: dict[str, Any
     reg = ((all_settings.get("brand") or {}).get("regulab") or {})
     website = str(reg.get("website") or "www.kkmhalalconsultant.com")
     episode_line = comic_library.episode_line(series["name"], sb.get("episode"), "bm")
-    html, total = compose(sb, comic_script, panels, wordless=wordless, website=website, episode_line=episode_line)
+    html, total = compose(sb, comic_script, panels, wordless=wordless, website=website, episode_line=episode_line,
+                          heads=comic.measure_heads(data) if wordless else None)
     motion.write_project(folder, html, "regulab")
     report = motion.check(folder, settings["cli"], runner)
     report.update(template="comic", storyboard=sb_note, comic_media_id=media["id"], wordless=wordless,

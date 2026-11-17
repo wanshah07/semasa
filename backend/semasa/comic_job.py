@@ -111,6 +111,68 @@ def _say(diff: dict[str, Any]) -> str:
     return f'panel {diff["panel"]}: wanted "{" | ".join(diff["want"])}", drawn "{got}"'[:300]
 
 
+def _full(script: dict[str, Any], style: dict[str, Any] | None, draw: Any, read: Any, words: dict[str, Any],
+          keep: dict[str, Any] | None) -> tuple[Image.Image, dict[str, Any]] | None:
+    """The picture maker draws the words too and the picture is read back (FULL_TRIES at most); None when nothing matched or the
+    reader gave nothing (`words` then says why). The picture is shown whole: nothing of the maker's is ever cropped."""
+    for _ in range(FULL_TRIES):
+        picture = comic.trim(draw(comic.prompt_full(script, style)))
+        words["draws"] += 1
+        answer = read(_jpeg(picture))
+        if answer is None:
+            words["why"] = "the picture reader gave no answer, so the picture maker's words could not be checked"
+            return None
+        diff = compare(script, answer)
+        if not diff:
+            if keep is not None:
+                keep.update(art=picture, wordless=False)
+            other = answer.get("other_text") if isinstance(answer, dict) else None
+            extra = [str(x)[:80] for x in (other if isinstance(other, list) else []) if str(x or "").strip()][:6]
+            return picture, {**words, "path": "full", "checked": True, "exact": True, "by": "maker", "why": "",
+                             **({"other_text": extra} if extra else {})}
+        words["tries"].append([_say(d) for d in diff[:4]])
+        words["why"] = f"the picture maker's words differed from the script twice ({_say(diff[0])})"
+    return None
+
+
+def _art(script: dict[str, Any], style: dict[str, Any] | None, draw: Any, read: Any, words: dict[str, Any],
+         keep: dict[str, Any] | None) -> tuple[Image.Image, dict[str, Any]]:
+    """The people are drawn with no words and Semasa prints the bubbles where the picture is EMPTY (comic.measure_heads reads the
+    people's position off the picture; a bubble never covers a head). When the first drawing leaves no room for the words at the
+    smallest readable size, or has a head against the panel's top edge, it is drawn ONCE more with a stronger framing instruction.
+    Still no room: the picture maker's own words path when a reader exists (the panels are shown whole), else the comic is refused
+    with the reason (comic.NoRoom). A head against the top edge that remains is recorded (`words.framing`), not refused."""
+    reason = ""
+    for attempt in range(2):
+        art = comic.trim(draw(comic.prompt_art(script, style, strong=attempt > 0)))
+        words["draws"] += 1
+        heads = comic.measure_heads(art)
+        touching = [i + 1 for i, e in enumerate(heads.edges) if e["top"]]
+        try:
+            lettered = comic.letter(art, script, heads=heads)
+        except comic.NoRoom as exc:
+            also = f"; a head also touches the top edge of panel {', '.join(map(str, touching))}" if touching else ""
+            reason = str(exc) + also
+            words.setdefault("framing", []).append(f"drawing {attempt + 1}: {reason}")
+            continue
+        if touching and attempt == 0:
+            where = ", ".join(map(str, touching))
+            words.setdefault("framing", []).append(f"drawing 1: a head touches the top edge of panel {where}")
+            continue
+        if touching:
+            words.setdefault("framing", []).append(
+                f"drawing 2: a head still touches the top edge of panel {', '.join(map(str, touching))}")
+        if keep is not None:
+            keep.update(art=art, wordless=True)
+        return lettered, {**words, "path": "art", "exact": True, "by": "semasa", "retried": attempt > 0}
+    words["why"] = f"{reason} (drawn twice)"
+    if read is not None:
+        got = _full(script, style, draw, read, words, keep)
+        if got:
+            return got[0], {**got[1], "why": f"{words['why']}: the picture maker's own words are used instead"}
+    raise comic.NoRoom(f"{words['why']}. Shorten the longest bubble or ask for fewer words, then draw again")
+
+
 def make(script: dict[str, Any], style: dict[str, Any] | None, draw: Any, read: Any = None, *,
          mode: str = "auto", keep: dict[str, Any] | None = None) -> tuple[Image.Image, dict[str, Any]]:
     """(the square comic, how its words got there). `draw(prompt) -> picture bytes`; `read(jpeg bytes) -> the reader's JSON
@@ -125,30 +187,13 @@ def make(script: dict[str, Any], style: dict[str, Any] | None, draw: Any, read: 
         if read is None:
             words["why"] = "no picture reader is available, so the picture maker's words could not be checked"
         else:
-            for _ in range(FULL_TRIES):
-                picture = comic.trim(draw(comic.prompt_full(script, style)))
-                words["draws"] += 1
-                answer = read(_jpeg(picture))
-                if answer is None:
-                    words["why"] = "the picture reader gave no answer, so the picture maker's words could not be checked"
-                    break
-                diff = compare(script, answer)
-                if not diff:
-                    if keep is not None:
-                        keep.update(art=picture, wordless=False)
-                    other = answer.get("other_text") if isinstance(answer, dict) else None
-                    extra = [str(x)[:80] for x in (other if isinstance(other, list) else []) if str(x or "").strip()][:6]
-                    return picture, {**words, "path": "full", "checked": True, "exact": True, "by": "maker", "why": "",
-                                     **({"other_text": extra} if extra else {})}
-                words["tries"].append([_say(d) for d in diff[:4]])
-                words["why"] = f"the picture maker's words differed from the script twice ({_say(diff[0])})"
+            got = _full(script, style, draw, read, words, keep)
+            if got:
+                return got
     else:
         words["why"] = "Semasa was asked to print the words itself"
-    art = comic.trim(draw(comic.prompt_art(script, style)))
-    words["draws"] += 1
-    if keep is not None:
-        keep.update(art=art, wordless=True)
-    return comic.letter(art, script), {**words, "path": "art", "exact": True, "by": "semasa"}
+    # in "auto" the picture maker's own words were already tried above, so a failure here is final; in "art" they are the way out
+    return _art(script, style, draw, read if mode == "art" else None, words, keep)
 
 
 # ------------------------------------------------------------------------------------------------------------ the worker

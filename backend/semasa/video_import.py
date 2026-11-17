@@ -836,7 +836,7 @@ def recover_missing_drafts(
             .select("*")
             .eq("status", "done")
             .gte("created_at", (now - RECOVER_WITHIN).isoformat())
-            .order("created_at")
+            .order("created_at", desc=True)  # newest first: the oldest 50 would hide a newer import whose draft is missing
             .limit(50)
             .execute()
             .data

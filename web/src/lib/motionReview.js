@@ -37,6 +37,16 @@ export function scenesOf(sb) {
     });
   }
   const b = sb.sb || {};
+  if (sb.kind === "comic") {
+    // the daily comic series (backend/semasa/comic_daily.py): the title with the source the system built, then the four panels with the
+    // people's words (one line a bubble, "Name: words") and the scene the artist is given. The source line is shown, never editable.
+    const names = b.names || {};
+    return [{ key: "title", label: "Tajuk", heading: str(b.title), lines: [`Siri ${str(b.series_name)} · Episod ${str(b.episode)}`, `Sumber: ${str(b.source)}`],
+      said: "", shot: "", hookShape: null, edit: { heading: true, lines: false, said: false, shot: false } },
+    ...(b.panels || []).map((p, i) => ({ key: `c${i}`, label: `Panel ${i + 1}`, heading: "",
+      lines: (p?.lines || []).map((l) => `${str(names[l?.who] || l?.who)}: ${str(l?.text)}`), said: "", shot: str(p?.scene), hookShape: null,
+      edit: { heading: false, lines: true, said: false, shot: true } }))];
+  }
   if (sb.kind === "story") {
     return [...(b.scenes || []).map((sc, i) => ({ key: `s${i}`, label: String(i + 1).padStart(2, "0"),
       heading: i === 0 ? str(b.hook) : str(sc?.caption), lines: [], said: "", shot: str(sc?.prompt), hookShape: i === 0 ? b.hook_shape ?? null : null,
@@ -54,6 +64,19 @@ export function scenesOf(sb) {
       edit: { heading: true, lines: true, said: false, shot: false } }];
   }
   return [];
+}
+
+/** The bubbles of a panel from the lines Wan edited ("Name: words" one a line): a name that is one of the two people's sets who speaks,
+    a line with no name keeps the speaker the bubble had (else the other person), an empty line is no bubble. The worker checks the
+    result again (a panel has one or two bubbles, each person once, every rule a comic has). */
+export function comicLines(lines, before, names) {
+  const byName = Object.fromEntries(Object.entries(names || {}).map(([who, name]) => [String(name).toLowerCase(), who]));
+  return (lines || []).map((raw, k) => {
+    const m = String(raw).match(/^\s*([^:]{1,40}?)\s*:\s*(.*)$/s);
+    const who = m && byName[m[1].toLowerCase()];
+    const text = (who ? m[2] : String(raw)).replace(/\s+/g, " ").trim();
+    return { who: who || before[k]?.who || (k === 0 ? "A" : "B"), text };
+  }).filter((l) => l.text);
 }
 
 const linesOf = (text) => str(text).split("\n").map((x) => x.trim()).filter(Boolean);
@@ -84,6 +107,15 @@ export function withEdits(sb, edits = {}) {
     return out;
   }
   const b = out.sb || {};
+  if (out.kind === "comic") {
+    const t = pick("title", "heading"); if (t !== undefined) b.title = t;
+    (b.panels || []).forEach((p, i) => {
+      const l = pick(`c${i}`, "lines");
+      if (l !== undefined) p.lines = comicLines(l, p.lines || [], b.names || {});
+      const sh = pick(`c${i}`, "shot"); if (sh !== undefined) p.scene = sh;
+    });
+    return out;
+  }
   if (out.kind === "story") {
     (b.scenes || []).forEach((sc, i) => {
       const h = pick(`s${i}`, "heading");

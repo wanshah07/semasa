@@ -71,6 +71,7 @@ export function templateRow(form, userId = null) {
 
 /** What a film's card says about its template, or "" for an explainer. */
 export function templateLabel(row, L = 0) {
+  if (row?.options?.template === "comic") return L ? "Daily comic" : "Komik harian";      // made by the worker, never chosen in the form
   const t = TEMPLATES.find((x) => x.id === row?.options?.template && x.id !== "explainer");
   return t ? (L ? t.en : t.bm) : "";
 }

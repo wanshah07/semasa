@@ -6,6 +6,7 @@ import { BUILT_IN, LIMITS, blankScript, comicLibrary, comicMeta, comicStage, ent
 import { flagWords } from "../lib/complianceBm";
 import { useLang } from "../lib/i18n";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
+import ComicDailyPanel from "./ComicDailyPanel";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
@@ -315,6 +316,7 @@ export default function ComicMaker({ user, gens, posts, brand, settings, saveSet
           <Button type="submit" disabled={busy || !ready}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} {t("Jana komik", "Make the comic")}</Button>
         </div>
       </Card>
+      <ComicDailyPanel settings={settings} saveSetting={saveSetting} onToast={onToast} go={go} />
       <ComicLibraryEditor value={value} lib={lib} canSave={value !== undefined} saveSetting={saveSetting} onToast={onToast} />
       {go && <p className="mt-6 text-sm text-muted">{t("Hasil ada di", "Results are in")}{" "}
         <button type="button" className="text-accent underline" onClick={() => go("design-lib")}>{t("Pustaka poster", "the Poster library")}</button></p>}

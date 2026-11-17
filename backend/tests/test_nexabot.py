@@ -613,3 +613,34 @@ def test_generate_follows_only_its_own_job(tmp_path, monkeypatch):
     assert report["job_id"] == "new1" and report["job_id_via"] == "list_diff"
     assert report["job_done"] and report["video_saved"]
     assert page.fetched == ["https://nexabot.id/api/v1/jobs/new1/download"]
+
+
+def test_generate_without_a_baseline_does_not_guess_a_job(tmp_path, monkeypatch):
+    """If the pre-click job list could not be read, an old finished job must not be taken as new: with no id from the
+    Generate answer the run waits out (here: a short deadline) and saves nothing."""
+    from semasa import nexabot_generate as ng
+
+    monkeypatch.setattr(ng, "POLL_S", 0)
+    monkeypatch.setattr(ng, "MAX_WAIT_S", 0.05)
+
+    class Loc:
+        first = property(lambda self: self)
+        def wait_for(self, **k): pass
+        def fill(self, t): pass
+        def is_visible(self): return False
+        def is_disabled(self): return False
+        def click(self): pass
+
+    class Page:
+        calls = 0
+        def locator(self, sel): return Loc()
+        def get_by_role(self, *a, **k): return Loc()
+        def wait_for_timeout(self, ms): pass
+        def evaluate(self, js, arg=None):
+            Page.calls += 1
+            return None if Page.calls == 1 else [{"id": "old1", "status": "done"}]
+
+    report = {}
+    ng.generate(Page(), "a prompt", tmp_path, 1, False, report)
+    assert report["jobs_before"] is None
+    assert "job_id" not in report and not report.get("video_saved") and report.get("timed_out")

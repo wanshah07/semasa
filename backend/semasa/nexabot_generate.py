@@ -74,15 +74,18 @@ DONE_STATES = ("done", "complete", "completed", "ready", "success")
 FAILED_STATES = ("failed", "error", "cancelled", "canceled")
 
 
-def _recent_jobs(page: object) -> list:
+def _recent_jobs(page: object) -> list | None:
+    """The recent jobs, or None when the request failed or came back unusable (never an empty list for a failure)."""
     try:
-        return page.evaluate("""async () => {
+        jobs = page.evaluate("""async () => {
             const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
+            if (!r.ok) return null;
             const j = await r.json();
-            return Array.isArray(j) ? j : (j.jobs || j.data || []);
-        }""") or []
+            return Array.isArray(j) ? j : (j.jobs || j.data || null);
+        }""")
     except Exception:  # noqa: BLE001
-        return []
+        return None
+    return jobs if isinstance(jobs, list) else None
 
 
 def _job(page: object, job_id: str) -> dict | None:
@@ -129,8 +132,10 @@ def generate(page: object, prompt: str, outdir: Path, max_gen: int, dry: bool, r
         return
     # the jobs already on the account BEFORE Generate: a finished old job must never be mistaken for this one
     before = _recent_jobs(page)
-    report["jobs_before"] = len(before)
-    before_ids = {str(j.get("id")) for j in before if j.get("id")}
+    # a baseline that could not be read is NOT an empty one: without it the list diff would call an old job new, so
+    # the job id then has to come from the Generate answer alone
+    report["jobs_before"] = None if before is None else len(before)
+    before_ids = {str(j.get("id")) for j in before or [] if j.get("id")}
     gen.click()
     report["generate_clicked_at"] = datetime.now(UTC).isoformat()
 
@@ -140,8 +145,8 @@ def generate(page: object, prompt: str, outdir: Path, max_gen: int, dry: bool, r
     meta: dict = {}
     while time.time() < deadline:
         job_id = report.get("job_id")
-        if not job_id:
-            fresh = [j for j in _recent_jobs(page) if str(j.get("id")) not in before_ids]
+        if not job_id and before is not None:
+            fresh = [j for j in _recent_jobs(page) or [] if str(j.get("id")) not in before_ids]
             if fresh:
                 job_id = str(fresh[0].get("id"))
                 report["job_id"] = job_id

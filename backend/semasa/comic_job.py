@@ -112,10 +112,14 @@ def _say(diff: dict[str, Any]) -> str:
 
 
 def make(script: dict[str, Any], style: dict[str, Any] | None, draw: Any, read: Any = None, *,
-         mode: str = "auto") -> tuple[Image.Image, dict[str, Any]]:
+         mode: str = "auto", keep: dict[str, Any] | None = None) -> tuple[Image.Image, dict[str, Any]]:
     """(the square comic, how its words got there). `draw(prompt) -> picture bytes`; `read(jpeg bytes) -> the reader's JSON
     answer, or None when it gave nothing`; `read` itself None means there is no reader. Every picture is trimmed of the
-    picture maker's stray border first. See the module note for the steps."""
+    picture maker's stray border first. See the module note for the steps.
+
+    `keep`, when given, receives what a film made from this comic needs (the daily series, comic_film.py): `keep["art"]` is
+    the square picture BEFORE any words are on it (only when Semasa printed the words, so the picture is wordless) and
+    `keep["wordless"]` says which it is. Without wordless art the film shows the drawn picture as it is."""
     words: dict[str, Any] = {"path": "", "checked": False, "exact": False, "by": "", "draws": 0, "why": "", "tries": []}
     if mode != "art":
         if read is None:
@@ -130,6 +134,8 @@ def make(script: dict[str, Any], style: dict[str, Any] | None, draw: Any, read: 
                     break
                 diff = compare(script, answer)
                 if not diff:
+                    if keep is not None:
+                        keep.update(art=picture, wordless=False)
                     other = answer.get("other_text") if isinstance(answer, dict) else None
                     extra = [str(x)[:80] for x in (other if isinstance(other, list) else []) if str(x or "").strip()][:6]
                     return picture, {**words, "path": "full", "checked": True, "exact": True, "by": "maker", "why": "",
@@ -140,6 +146,8 @@ def make(script: dict[str, Any], style: dict[str, Any] | None, draw: Any, read: 
         words["why"] = "Semasa was asked to print the words itself"
     art = comic.trim(draw(comic.prompt_art(script, style)))
     words["draws"] += 1
+    if keep is not None:
+        keep.update(art=art, wordless=True)
     return comic.letter(art, script), {**words, "path": "art", "exact": True, "by": "semasa"}
 
 
@@ -255,8 +263,9 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None, *, provide
                     raise ProviderError("the picture maker returned no picture")
                 used.update(maker=name, model=gen.model, **({"failover": tried} if tried else {}))
                 return gen.data
+        kept: dict[str, Any] | None = {} if c.get("film") else None       # a film is made from this comic (comic_film.py)
         picture, words = make(script, style, draw, _reader(llm) if read == "auto" else read,
-                              mode=str(c.get("words_mode") or "auto"))
+                              mode=str(c.get("words_mode") or "auto"), keep=kept)
         if words.get("checked"):
             words["reader"] = getattr(llm, "last_model", "") or None
         episode = _number(c.get("episode")) or episodes_so_far(store, series["id"], row_id) + 1
@@ -266,8 +275,14 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None, *, provide
 
         day, stamp = datetime.now(UTC).strftime("%Y/%m"), datetime.now(UTC).strftime("%d%H%M%S")
         before = [x for x in (meta.get("slide_paths") or []) if x]
+        old_art = ((meta.get("comic") or {}).get("art") or {}).get("path") if isinstance(meta.get("comic"), dict) else None
         path = f"{day}/{row_id}-{stamp}-comic.jpg"                 # a redraw is a new file, never an hour-old cached one
         url = db.upload_generated(store, path, poster, "image/jpeg")
+        if kept and kept.get("art") is not None:
+            # the square picture the film is cut into panels from, stored once so a failed film never draws the comic again
+            art_path = f"{day}/{row_id}-{stamp}-comic-art.jpg"
+            c["art"] = {"path": art_path, "url": db.upload_generated(store, art_path, _jpeg(kept["art"]), "image/jpeg"),
+                        "wordless": bool(kept.get("wordless")), "size": list(kept["art"].size)}
         c.update(episode=episode, episode_line=line, words=words, stage="done", series_name=series["name"],
                  style_name=style["name"], **used)
         c.pop("revise", None)
@@ -276,7 +291,8 @@ def process(store: Any, row: dict[str, Any], s: Any, llm: Any = None, *, provide
                     content_type="image/jpeg", bytes=len(poster), finished_at=datetime.now(UTC).isoformat())
         db.finish_media(store, row_id, status="done", generated_media_url=url, provider=used.get("maker") or "semasa",
                         model=used.get("model") or "comic-v1", error=None, meta=meta)
-        mg._drop_files(store, row_id, [x for x in before if x != path])
+        new_art = (c.get("art") or {}).get("path")
+        mg._drop_files(store, row_id, [x for x in before if x != path] + ([old_art] if old_art and old_art != new_art else []))
         if row.get("post_id"):
             db.attach_media_to_draft(store, row["post_id"], row_id)
         log.info("%s: comic drawn (%s episode %s, words %s, %d drawing(s))", row_id, series["id"], episode,

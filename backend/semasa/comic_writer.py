@@ -17,6 +17,7 @@ Wan typed is checked the same way, except for the figures: his own words are his
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
 
 from . import antislop, comic, comic_library, compliance, design
@@ -187,16 +188,20 @@ def _tidy(out: dict[str, Any]) -> dict[str, Any]:
 
 
 def write(llm: LLM | None, brief: str, stream: str, series: dict[str, Any], *, source: str = "",
-          note: str = "", brand: dict[str, Any] | None = None) -> dict[str, Any]:
+          note: str = "", brand: dict[str, Any] | None = None, extra_rules: str = "",
+          check: Callable[[dict[str, Any]], str] | None = None) -> dict[str, Any]:
     """The script written from Wan's idea: {title, setting, panels, citation}, already checked. Raises comic.ComicError with
-    the reason for the page when the writer is off, does not answer, or twice returns a script that breaks a rule."""
+    the reason for the page when the writer is off, does not answer, or twice returns a script that breaks a rule.
+
+    `extra_rules` is added to the writer's rules (the daily series' halal and fatwa rules, comic_daily.py) and `check` is one
+    more judge: it gets the assembled script and answers "" or the reason it is refused, which goes back to the writer once."""
     brief = str(brief or "").strip()
     if not brief:
         raise comic.ComicError("there is no idea to write the comic from: give an idea, or write the script yourself")
     if not llm or not llm.configured:
         raise comic.ComicError("the writer is off, so the script cannot be written from the idea: "
                                + (llm.why_off() if llm else "no writer") + ". Write the script yourself instead.")
-    system = system_prompt(stream, series)
+    system = system_prompt(stream, series) + (f"\n\n{extra_rules.strip()}" if extra_rules.strip() else "")
     user = f"BRIEF (Wan's idea or prompt):\n{brief[:4000]}"
     if source.strip():
         user += f"\n\nSOURCE Wan named (printed under the comic; a bubble may name it): {source.strip()[:comic.MAX_SOURCE]}"
@@ -215,6 +220,8 @@ def write(llm: LLM | None, brief: str, stream: str, series: dict[str, Any], *, s
             why = str(exc)
             continue
         why = refusal(flags(script, stream, brand))
+        if not why and check:
+            why = check(script) or ""
         if not why:
             extra = unsourced_figures(script, f"{brief}\n{source}\n{note}")
             if extra:

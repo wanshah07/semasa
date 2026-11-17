@@ -82,8 +82,14 @@ def upload_panel(page, panel: Path, report: dict) -> bool:
         report["upload"] = "no input[type=file] found"
         dump_controls(page, report, "upload_state")
         return False
-    # set the file, then wait for the thumbnail (ATTACH n/3) to appear so the upload is really processed
+    # set_input_files alone can leave a React-controlled input unseen; also dispatch a change event after setting
     file_inputs.first.set_input_files(str(panel))
+    try:
+        file_inputs.first.evaluate("""(el) => {
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+        }""")
+    except Exception:  # noqa: BLE001
+        pass
     page.wait_for_timeout(3500)
     try:
         attach = page.evaluate("""() => {

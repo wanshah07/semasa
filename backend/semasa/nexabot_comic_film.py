@@ -55,6 +55,8 @@ def _clip(page, panel: Path, outdir: Path, report: dict) -> bool:
         report["mode_after_upload"] = f"err {str(exc)[:80]}"
     # the Generate button stays disabled until the uploaded image is processed: wait for it, then click
     gen_btn = page.get_by_role("button", name="Generate", exact=True).first
+    # screenshot the pre-click state so a wrong mode/empty attach is visible, not guessed
+    page.screenshot(path=str(outdir / f"preclick-{panel.stem}.png"))
     enabled_at = time.time() + 60
     while time.time() < enabled_at:
         try:

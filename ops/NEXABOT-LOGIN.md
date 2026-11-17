@@ -132,9 +132,9 @@ di belakang log masuk. / The **Nexabot probe** workflow has an input **`path`** 
 read the API documentation that sits behind the login.
 
 - Untuk halaman selain studio, probe menulis **teks penuh yang kelihatan** (tajuk, perenggan, blok kod, jadual, laluan pautan) ke
-  `report.md` dan `report.json`, serta satu tangkap layar. Ia hanya membuka tab dan akordion; ia tidak menekan pautan atau apa-apa
+  `report.md` dan `report.json`, **tanpa tangkap layar** (gambar tidak boleh ditapis seperti teks). Ia hanya membuka tab dan akordion; ia tidak menekan pautan atau apa-apa
   yang menghantar. / For a page other than the studio the probe writes the **full visible text** (headings, paragraphs, code
-  blocks, tables, link paths) to `report.md` and `report.json`, plus a screenshot. It only opens tabs and accordions; it presses no
+  blocks, tables, link paths) to `report.md` and `report.json`, with **no screenshot** (a picture cannot be redacted the way text is). It only opens tabs and accordions; it presses no
   link and nothing that submits.
 - **Rahsia ditapis dahulu.** Halaman dokumentasi boleh memaparkan kunci API atau token Wan sendiri dalam contoh. Sebelum apa-apa
   ditulis, token bearer, JWT, rentetan berawalan kunci (`sk-`, `nx_`, `nxb_`, `smi_`...), pasangan `api_key: nilai`, rentetan

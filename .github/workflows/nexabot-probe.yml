@@ -6,8 +6,17 @@ name: Nexabot probe
 # It never presses Generate, never types, and aborts every write at the network (backend/semasa/nexabot_probe.py), so it spends no
 # credits. It writes nothing to Supabase. The report is kept for ONE day: the repository is private, and the screenshots can show
 # the account name and balance.
+#
+# With the input `path` it reads another same-origin page of the studio as TEXT instead (for example /api-docs, which is behind
+# the login): the page's text, code blocks and tables go into the report with every secret-looking string replaced by
+# [REDACTED] first. /api-keys (the page that lists the account's own keys) is refused in code.
 on:
   workflow_dispatch:
+    inputs:
+      path:
+        description: "Same-origin page to read as text (default: the studio). Example: /api-docs. /api-keys is refused."
+        required: false
+        default: /video-generator
 
 permissions:
   contents: read
@@ -35,12 +44,13 @@ jobs:
         env:
           # a Playwright storage_state.json recorded by Wan, base64 (ops/NEXABOT-LOGIN.md). Empty = the run stops with a clear message.
           NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
+          NB_PATH: ${{ inputs.path }}
         run: |
           if [ -z "$NEXABOT_STORAGE_STATE_B64" ]; then
             echo "::error::the secret NEXABOT_STORAGE_STATE_B64 is not set: record the login and add it (ops/NEXABOT-LOGIN.md)"
             exit 1
           fi
-          python -m semasa.nexabot_probe "$RUNNER_TEMP/nexabot-probe"
+          python -m semasa.nexabot_probe "$RUNNER_TEMP/nexabot-probe" --path "$NB_PATH"
       - name: Summary
         if: always()
         run: |

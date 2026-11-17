@@ -7,7 +7,7 @@ from __future__ import annotations
 import copy
 import io
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -891,8 +891,11 @@ def test_a_comic_the_picture_maker_lettered_is_shown_as_drawn_and_each_line_is_a
 
 def test_the_draft_post_is_a_draft_on_the_next_free_slot_with_the_film_and_nothing_is_approved(tmp_path):
     store, row, asked, drawn, llm, draw, run = approved_run(tmp_path)
+    # the draft starts from TOMORROW, Malaysia time, so the dates follow the real clock (a fixed date fails after midnight MYT)
+    today_myt = comic_daily.myt_day(datetime.now(UTC))
+    tomorrow_myt = (date.fromisoformat(today_myt) + timedelta(days=1)).isoformat()
     store.tables["semasa_posts"].append(
-        {"id": "held", "stream": "regulab", "date": "2026-11-17", "slot": "08:00", "status": "draft"}
+        {"id": "held", "stream": "regulab", "date": today_myt, "slot": "08:00", "status": "draft"}
     )
     store.tables["semasa_settings"].append({"key": "brand", "value": {"regulab": {"slots": ["08:00", "13:00"]}}})
     comic_film.make_film(store, llm, asked, SETTINGS, tmp_path / "b", runner=run, s=MEDIA, draw=draw, read=None)
@@ -900,7 +903,7 @@ def test_the_draft_post_is_a_draft_on_the_next_free_slot_with_the_film_and_nothi
     assert len(posts) == 1
     post = posts[0]
     assert post["status"] == "draft" and post["stream"] == "regulab" and post["lang"] == "bm"
-    assert (post["date"], post["slot"]) == ("2026-11-18", "08:00"), "the next free slot, from tomorrow"
+    assert (post["date"], post["slot"]) == (tomorrow_myt, "08:00"), "the next free slot, from tomorrow"
     assert sorted(post["channels"]) == ["facebook", "instagram", "threads"] and post["text"]["bm"]["instagram"]
     assert post["citation"] == "Buletin TV3" or post["citation"].startswith("Buletin TV3")
     film_media = [m for m in store.tables["media_generations"] if m.get("type") == "video"]

@@ -16,6 +16,18 @@ class _Not:
         return self.q
 
 
+def _path(row, col):
+    """The value at a jsonb path. `->>` reads as text, so True is "true", the way the database answers it."""
+    value = row
+    for part in col.replace("->>", "->").split("->"):
+        value = value.get(part) if isinstance(value, dict) else None
+    if "->>" in col:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        return None if value is None else (value if isinstance(value, str) else str(value))
+    return value
+
+
 class Query:
     def __init__(self, store, table):
         self.store, self.table, self.filters = store, table, []
@@ -44,6 +56,9 @@ class Query:
 
     # filters
     def eq(self, c, v):
+        if "->" in c:                             # a jsonb path, as PostgREST takes it: meta->>design, meta->comic->>series
+            self.filters.append(lambda r: _path(r, c) == v)
+            return self
         self.filters.append(lambda r: r.get(c) == v)
         return self
 

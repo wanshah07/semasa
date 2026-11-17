@@ -37,6 +37,8 @@ import { thumbOf } from "../lib/genActions";
 import CanvaHandoff from "../components/CanvaHandoff";
 import { canDeleteDesign, ownsDesign } from "../lib/designDelete";
 import { startLook } from "../lib/lookChoice";
+import ComicMaker, { ComicCard } from "../components/ComicMaker";
+import { comicStage } from "../lib/comic";
 
 /* The Design tab (Wan, 25 Sep 2026: "add design section - to create poster, single card and carousel for post" and
    "the slide can create based on upload and prompt/idea provided"). The page only registers a job: the worker
@@ -315,7 +317,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
   const results = gens.rows.filter((r) => r.meta?.design);
   // a design inside an approved, scheduled or posted post cannot be deleted (supabase/017: the database refuses it)
   const lockedBy = (id) => (posts?.rows || []).find((p) => ["approved", "scheduled", "posted"].includes(p.status) && (p.media_ids || []).includes(id));
-  const designs = [["poster", "Poster"], ["card", t("Kad tunggal", "Single card")], ["carousel", "Carousel"]];
+  const designs = [["poster", "Poster"], ["card", t("Kad tunggal", "Single card")], ["carousel", "Carousel"], ["comic", t("Komik", "Comic")]];
 
   if (view === "library") {
     return (
@@ -323,16 +325,18 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
         <motion.div variants={fadeUp} initial="hidden" animate="show" className="mb-5">
           <p className="text-[13px] font-semibold text-accent">Poster</p>
           <h1 className="mt-2 text-4xl leading-tight">{t("Pustaka poster", "Poster library")}</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted">{t("Setiap poster, kad dan carousel yang sudah dijana. Klik satu untuk buka kad penuh: lampirkan pada post, bina semula dalam Canva, muat turun, padam.",
-            "Every poster, card and carousel made. Click one to open the full card: attach it to a post, rebuild it in Canva, download, delete.")}
+          <p className="mt-2 max-w-2xl text-sm text-muted">{t("Setiap poster, kad, carousel dan komik yang sudah dijana. Klik satu untuk buka kad penuh: lampirkan pada post, bina semula dalam Canva, muat turun, padam.",
+            "Every poster, card, carousel and comic made. Click one to open the full card: attach it to a post, rebuild it in Canva, download, delete.")}
           {go && <> <button type="button" className="text-accent underline" onClick={() => go("design")}>{t("Jana poster baharu", "Generate a new poster")}</button></>}</p>
         </motion.div>
         {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
-        <TileGrid items={results.map((r) => ({ id: r.id, kind: "image", src: thumbOf(r), status: r.status === "done" ? "" : r.status,
+        <TileGrid items={results.map((r) => ({ id: r.id, kind: "image", src: thumbOf(r),
+          status: r.status !== "done" ? r.status : r.meta?.design === "comic" && comicStage(r) === "script" ? "review" : "",
           label: (r.meta?.slides?.[0]?.title || r.meta?.brief || t("Poster", "Poster")).replace(/\*/g, ""),
           sub: `${designs.find(([k]) => k === r.meta?.design)?.[1] || r.meta?.design} · ${timeAgo(r.created_at)}` }))}
           detail={(it) => { const r = results.find((x) => x.id === it.id); return r
-            ? <DesignResults lockedBy={lockedBy} posts={posts?.rows || []} rows={[r]} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)} /> : null; }}
+            ? <DesignResults lockedBy={lockedBy} posts={posts?.rows || []} rows={[r]} user={user} gens={gens} onToast={onToast} designs={Object.fromEntries(designs)}
+              settings={settings} brand={brand} /> : null; }}
           empty={t("Belum ada poster. Jana satu dahulu.", "No posters yet. Generate one first.")} />
         <DesignLibrary />
       </main>
@@ -343,7 +347,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
     <main className="mx-auto max-w-page px-4 pb-20 pt-10 sm:px-6">
       <motion.div variants={fadeUp} initial="hidden" animate="show">
         <p className="text-[13px] font-semibold text-accent">Poster</p>
-        <h1 className="mt-2 text-4xl leading-tight">{t("Jana poster, kad dan carousel untuk post.", "Generate posters, cards and carousels for posts.")}</h1>
+        <h1 className="mt-2 text-4xl leading-tight">{t("Jana poster, kad, carousel dan komik untuk post.", "Generate posters, cards, carousels and comics for posts.")}</h1>
         <p className="mt-3 max-w-2xl text-sm text-muted">
           {t("Beri idea atau prompt dan Semasa tulis perkataannya, atau tulis sendiri. Pilih latar: kertas jenama, gambar anda, "
             + "atau gambar AI. Lukisan dibuat tanpa AI dan percuma; peraturan post (tiada CTA, tiada URL, tiada sumber media sosial) berlaku pada setiap perkataan.",
@@ -356,7 +360,10 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
       {/* Wanshah is the mascot's poses; with no mascot on any card (studio.js MASCOTS_ON) there is nothing for it to replace */}
       {MASCOTS_ON && <div className="mt-6"><WanshahPanel user={user} gens={gens} settings={settings} saveSetting={saveSetting} onToast={onToast} /></div>}
 
-      <Card as="form" onSubmit={submit} className="mt-2 p-5 sm:p-6">
+      {/* a comic is its own form: a series, a cartoon style and a script, drawn by a picture maker (components/ComicMaker.jsx) */}
+      {design === "comic" && <ComicMaker user={user} gens={gens} posts={posts} brand={brand} settings={settings} saveSetting={saveSetting} onToast={onToast} go={go}
+        kindPicker={<div><Label>{t("Jenis", "Kind")}</Label><Segmented value={design} onChange={setDesign} options={designs} /></div>} />}
+      <Card as="form" onSubmit={submit} className={`mt-2 p-5 sm:p-6 ${design === "comic" ? "hidden" : ""}`}>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="min-w-0 space-y-4">
             <div><Label>{t("Jenis", "Kind")}</Label><Segmented value={design} onChange={setDesign} options={designs} /></div>
@@ -539,7 +546,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
         onPreview={(layout, w) => previewOf(cloneReview, layout, w)} onRefine={(layout, w) => refineOnce(cloneReview, layout, w)}
         onOpen={(layout, w) => downloadClone(cloneReview, layout, w)} />}
 
-      {go && <p className="mt-6 text-sm text-muted">{t("Hasil ada di", "Results are in")}{" "}
+      {go && design !== "comic" && <p className="mt-6 text-sm text-muted">{t("Hasil ada di", "Results are in")}{" "}
         <button type="button" className="text-accent underline" onClick={() => go("design-lib")}>{t("Pustaka poster", "the Poster library")}</button>
         {results.some((r) => ["pending", "processing"].includes(r.status)) ? ` · ${t("{n} sedang dijana", "{n} generating", { n: results.filter((r) => ["pending", "processing"].includes(r.status)).length })}` : ""}</p>}
     </main>
@@ -658,7 +665,7 @@ function deleteQuestion(row, posts, t) {
     : t("Padam reka bentuk ini?", "Delete this design?");
 }
 
-function DesignResults({ rows, user, gens, onToast, designs, lockedBy = () => null, posts = [] }) {
+function DesignResults({ rows, user, gens, onToast, designs, lockedBy = () => null, posts = [], settings = null, brand = null }) {
   const { t, lang: uiLang } = useLang();
   const [canva, setCanva] = useState(null);                  // the design row being handed to Canva
   if (!rows.length) {
@@ -677,6 +684,8 @@ function DesignResults({ rows, user, gens, onToast, designs, lockedBy = () => nu
         const soft = (m.flags || []).filter((f) => !f.hard);
         const mine = ownsDesign(r, user);
         const canDel = canDeleteDesign(r, user);
+        const isComic = m.design === "comic";
+        const scriptWaits = isComic && comicStage(r) === "script";      // the comic's script is written; nothing is drawn until Wan reads it
         const Icon = r.status === "done" ? CheckCircle2 : r.status === "error" ? AlertTriangle : r.status === "processing" ? Loader2 : Clock;
         return (
           <Card key={r.id} className="min-w-0 overflow-hidden">
@@ -693,11 +702,11 @@ function DesignResults({ rows, user, gens, onToast, designs, lockedBy = () => nu
             )}
             <div className="p-4">
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                <span className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 font-semibold ${r.status === "done" && m.awaiting_confirm ? "bg-warn/10 text-warn"
+                <span className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 font-semibold ${r.status === "done" && (m.awaiting_confirm || scriptWaits) ? "bg-warn/10 text-warn"
                   : r.status === "done" ? "bg-ok/10 text-ok"
                   : r.status === "error" ? "bg-danger/10 text-danger" : "bg-warn/10 text-warn"}`}>
                   <Icon size={12} className={r.status === "processing" ? "animate-spin" : ""} />
-                  {r.status === "done" ? (m.awaiting_confirm ? t("Tunggu pengesahan", "Awaiting your Save") : m.saved ? t("Disimpan", "Saved") : t("Siap", "Done"))
+                  {r.status === "done" ? (scriptWaits ? t("Skrip menunggu anda", "Script waiting for you") : m.awaiting_confirm ? t("Tunggu pengesahan", "Awaiting your Save") : m.saved ? t("Disimpan", "Saved") : t("Siap", "Done"))
                     : r.status === "error" ? t("Gagal", "Failed") : r.status === "processing" ? t("Melukis", "Drawing") : t("Menunggu", "Waiting")}
                 </span>
                 <span className="text-muted">{designs[m.design] || m.design} · {m.size_name ? `${m.size_name} · ${m.size?.[0]}×${m.size?.[1]}` : sizeLabel(m.format, m.size)} · {timeAgo(r.created_at)}</span>
@@ -710,10 +719,11 @@ function DesignResults({ rows, user, gens, onToast, designs, lockedBy = () => nu
               {soft.length > 0 && <ul className="mt-2 space-y-1 text-[11px] text-warn">{soft.map((f, i) => <li key={i} className="[overflow-wrap:anywhere]"><b>{flagWords(f, uiLang).where}</b>: {flagWords(f, uiLang).msg}</li>)}</ul>}
               {r.error && <p className="mt-2 [overflow-wrap:anywhere] rounded-tile bg-danger/5 p-2 text-[11px] text-danger">{r.error}</p>}
               {m.style_ref && <ReviewPanel row={r} mine={mine} onToast={onToast} gens={gens} />}
+              {isComic && <ComicCard row={r} mine={mine} settings={settings} brand={brand} gens={gens} onToast={onToast} />}
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {urls[0] && <a href={urls[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">
                   <ExternalLink size={11} /> {t("Buka fail", "Open file")}</a>}
-                {urls[0] && r.status === "done" && m.flow !== "canva" && Array.isArray(m.slides) && m.slides.length > 0 && (
+                {urls[0] && r.status === "done" && m.flow !== "canva" && !isComic && Array.isArray(m.slides) && m.slides.length > 0 && (
                   <button type="button" onClick={() => setCanva(r)} className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline"
                     title={t("Bina semula sebagai reka bentuk Canva yang boleh disunting", "Rebuild as an editable Canva design")}>
                     <Palette size={11} /> {t("Bina semula dalam Canva", "Rebuild in Canva")}</button>

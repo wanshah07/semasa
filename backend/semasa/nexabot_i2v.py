@@ -54,20 +54,18 @@ def dump_controls(page, report: dict, label: str) -> None:
 
 
 def choose_mode(page, report: dict) -> bool:
-    # open the mode dropdown
+    # open the mode dropdown (the trigger is the button labelled "Text to Video")
     btn = page.get_by_role("button", name=MODE_BUTTON).first
     btn.click()
     page.wait_for_timeout(800)
-    opt = page.get_by_role("option", name=MODE_I2V).first
-    if opt.is_visible():
-        opt.click()
-        page.wait_for_timeout(800)
-        report["mode_chosen"] = MODE_I2V
-        return True
-    # the menu items may be [role=menuitem] or plain text
-    items = page.locator("[role=option], [role=menuitem]")
+    # the menu items are BUTTONS (not [role=option]) whose text carries a newline, e.g. "Ingredients to Video\n1-3 img"
+    items = page.locator("button")
     for i in range(items.count()):
-        if MODE_I2V in (items.nth(i).inner_text() or ""):
+        try:
+            text = (items.nth(i).inner_text() or "").strip()
+        except Exception:  # noqa: BLE001 - a detached button
+            continue
+        if MODE_I2V in text:
             items.nth(i).click()
             page.wait_for_timeout(800)
             report["mode_chosen"] = MODE_I2V

@@ -63,6 +63,7 @@ def _clip(page, panel: Path, outdir: Path, report: dict) -> bool:
     report["generate_clicked_at"] = datetime.now(UTC).isoformat()
     deadline = time.time() + MAX_WAIT_S
     url = report.get("video_url")
+    job_meta = {}
     while time.time() < deadline:
         try:
             jobs = page.evaluate("""async () => {
@@ -74,15 +75,26 @@ def _clip(page, panel: Path, outdir: Path, report: dict) -> bool:
             jobs = []
         done = [j for j in jobs if j.get("status") in ("done", "complete", "ready", "success")]
         if done:
-            url = url or report.get("video_url")
+            job_meta = done[0]
+            url = url or report.get("video_url") or job_meta.get("download_url") or job_meta.get("video_url") or job_meta.get("url")
             break
         time.sleep(POLL_S)
     if not url:
+        report["job_meta_no_url"] = {k: job_meta.get(k) for k in ("id", "status", "mode", "model", "download_url", "video_url", "url") if job_meta.get(k)}
         return False
     import requests
     r = requests.get(url, timeout=300, stream=True)
     if r.status_code != 200:
-        return False
+        # a download_url may be relative; try against the base
+        if url.startswith("/"):
+            url2 = "https://nexabot.id" + url
+            r = requests.get(url2, timeout=300, stream=True)
+            if r.status_code != 200:
+                report["download_error"] = f"status {r.status_code}"
+                return False
+        else:
+            report["download_error"] = f"status {r.status_code}"
+            return False
     dest = outdir / f"clip-{datetime.now(UTC).strftime('%H%M%S')}.mp4"
     with open(dest, "wb") as fh:
         for chunk in r.iter_content(1 << 20):

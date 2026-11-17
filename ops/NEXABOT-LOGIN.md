@@ -154,56 +154,20 @@ read the API documentation that sits behind the login.
 GitHub, repo `wanshah07/semasa`, tab **Actions**, **Nexabot generate**, **Run workflow**. / GitHub, repo `wanshah07/semasa`, tab
 **Actions**, **Nexabot generate**, **Run workflow**.
 
-**INI MEMBELANJAKAN KREDIT (0.5 setiap penjanaan; UNLIMITED ditunjukkan).** Satu larian = satu penjanaan. Jalankan dengan tangan
-sahaja. / **THIS SPENDS CREDITS (0.5 per generation; UNLIMITED is shown).** One run is one generation. Run it by hand only.
-
 Input / Inputs:
 
-| Input | Pilihan / Options | Lalai / Default |
+| Input | Maksud / Meaning | Lalai / Default |
 |---|---|---|
-| `prompt` | teks biasa, 3 hingga 800 aksara / plain text, 3 to 800 characters | "A slow cinematic push-in on a clean laboratory bench with glassware and soft morning light, no people, no text" |
-| `orientation` | `portrait`, `landscape` | `portrait` |
-| `resolution` | `720p`, `1080p` | `720p` |
+| `prompt` | teks video / the video prompt | (diperlukan / required) |
+| `dry` | `true` = buat semua kecuali menekan Generate (tiada yang dibelanjakan) / do everything except press Generate (spends nothing) | `true` |
+| `import` | `true` = hantar MP4 ke Semasa Import video (draf, anda lulus) / send the MP4 to Semasa Import video (a draft, you approve) | `false` |
 
-Apa yang dilakukan, mengikut urutan / What it does, in order:
-
-1. Membuka studio dengan sesi yang disimpan. Jika ditolak: **"the saved login was refused: record it again"**. / Opens the studio
-   with the saved session. If refused: **"the saved login was refused: record it again"**.
-2. Membaca baki dan label butang Generate; kekal dalam mod Text to Video; memilih orientasi dan resolusi; menaip prompt. / Reads
-   the balance and the Generate label; stays in Text to Video mode; picks the orientation and resolution; types the prompt.
-3. **Had perbelanjaan**: membaca label Generate sekali lagi dan **berhenti tanpa menekan Generate** jika harga melebihi 1 kredit
-   (satu pemalar, `SPEND_CAP_CREDITS`), jika harga tidak boleh dibaca tanpa penanda UNLIMITED, atau jika baki lebih rendah daripada
-   harga tanpa UNLIMITED. / **Spend cap**: reads the Generate label again and **stops without pressing Generate** when the price is
-   above 1 credit (one constant, `SPEND_CAP_CREDITS`), when the price cannot be read and there is no UNLIMITED marker, or when the
-   balance is below the price and there is no UNLIMITED marker.
-4. Menekan Generate **sekali sahaja**, tidak pernah diulang. Jika ia nampak tidak memulakan kerja, ia memberitahu dan berhenti. /
-   Presses Generate **once**, never repeated. If it seems not to have started a job, it says so and stops.
-5. Menunggu sehingga 15 minit **tanpa menekan apa-apa** (bukan CANCEL ALL, bukan DELETE ALL, bukan bayaran), membaca halaman dan
-   senarai kerja. / Waits up to 15 minutes **pressing nothing** (not CANCEL ALL, not DELETE ALL, not payment), reading the page and
-   the job list.
-6. Memuat turun MP4 (di bawah 40 MB), menjalankan ffprobe, dan menulis laporan. / Downloads the MP4 (under 40 MB), runs ffprobe,
-   and writes the report.
-
-Pengawal / Guards (dalam kod dan ujian / in code and tests):
-
-- Senarai **dibenarkan**, bukan senarai larangan: hanya mod Text to Video, orientasi dan resolusi yang dipilih, kotak prompt dan
-  Generate (sekali). `Choose payment mode`, CANCEL ALL, DELETE ALL, sembang, setiap pautan dan setiap nama lain ditolak. / An
-  **allow-list**, not a deny-list: only the Text to Video mode, the chosen orientation and resolution, the prompt box and Generate
-  (once). `Choose payment mode`, CANCEL ALL, DELETE ALL, the chat, every link and every other name are refused.
-- Satu-satunya tulis yang dihantar ialah satu POST yang mencipta kerja (ke laluan di bawah `/api/` pada nexabot.id, hanya selepas
-  Generate, sekali setiap laluan, tidak pernah ke laluan bayaran, dompet, kredit, komisen, padam, batal, log keluar, sembang atau
-  kunci). Setiap tulis lain dibatalkan di rangkaian. / The only write sent is the one job-creating POST (to a path under `/api/`
-  on nexabot.id, only after Generate, once per path, never to a payment, wallet, credits, commission, delete, cancel, logout, chat
-  or key path). Every other write is aborted at the network.
-- **Video siap tidak dihantar ke mana-mana**: tiada Telegram, tiada Supabase, tiada Import video. Ia hanya ada dalam artifact
-  **`nexabot-generate`** (satu hari): `report.md`, `report.json`, tiga tangkap layar dan `video.mp4`. / **The finished video is sent
-  nowhere**: no Telegram, no Supabase, no Import video. It exists only in the **`nexabot-generate`** artifact (one day):
-  `report.md`, `report.json`, three screenshots and `video.mp4`.
-- Laporan menyatakan baki sebelum dan selepas, label Generate, setiap panggilan (kaedah + laluan + status), bentuk JSON kerja,
-  status akhir, masa yang diambil, dan **apa yang tidak berjaya**. Tiada kuki atau token ditulis; tandatangan query alamat video
-  dibuang. / The report states the balance before and after, the Generate label, every call (method + path + status), the job JSON
-  shape, the final status, the time taken, and **what did NOT work**. No cookie or token is written; the video address's query
-  signature is dropped.
+Ia memakai pelan **UNLIMITED** (tiada kredit ditolak), menekan Generate **sekali**, menunggu sehingga 15 minit, merekod setiap
+panggilan dan menyimpan MP4 dalam artifact `nexabot-generate` (satu hari). Dengan `import`, ia memerlukan rahsia
+`SEMASA_IMPORT_TOKEN` dan pemboleh ubah `SEMASA_IMPORT_URL`; jika tiada, MP4 disimpan tetapi tidak diimport. /
+It uses the **UNLIMITED** plan (no credits deducted), presses Generate **once**, waits up to 15 minutes, records every call and
+saves the MP4 in the `nexabot-generate` artifact (one day). With `import` it needs the secret `SEMASA_IMPORT_TOKEN` and the
+variable `SEMASA_IMPORT_URL`; without them the MP4 is saved but not imported.
 
 ## Apa yang ada dalam laporan / What the report holds
 

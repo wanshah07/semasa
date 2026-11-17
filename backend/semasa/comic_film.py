@@ -34,8 +34,10 @@ from .log import get_logger
 log = get_logger("semasa.comic_film")
 
 W, H = motion_templates.W, motion_templates.H
-BOX = 960                      # a panel on the film, px (60 px margins on the 1080 canvas)
-BOX_X, BOX_Y = 60, 390
+SAFE_X = 90                    # side margin of everything on the film: 8% of the width, as the other template films keep
+SAFE_Y = 96                    # nothing is placed above this or below H - SAFE_Y
+BOX = W - 2 * SAFE_X           # a panel on the film, px
+BOX_X, BOX_Y = SAFE_X, 420
 INSET = 0.015                  # the share of a panel's side cut off each edge: the picture maker's outline and the gutter
 PAPER, INK, MUTED, GREEN = "#f6f0e4", "#161616", "#6b6458", "#0f5d4a"
 TITLE_SECONDS = 2.6
@@ -43,8 +45,8 @@ OUTRO_SECONDS = 3.6
 LEAD = 0.8                     # a panel's picture is up this long before its first bubble
 TAIL = 1.0                     # ... and holds this long after its last one is read
 PANEL_MIN, PANEL_MAX = 4.0, 10.0
-ZOOM = 1.08                    # the camera move over a wordless panel (the empty wall expands, the people hardly move)
-ZOOM_BAKED = 0.95              # over a panel with words drawn into it the camera only PULLS OUT: a push-in would cut a word off
+MOVE = 0.95                    # the camera move is the WHOLE panel (frame and bubbles) between this scale and 1.0: the panel
+                               # is never larger than its box, so no edge, face or word ever leaves the picture
 INSET_BAKED = 0.006            # ... and its edges are cut less (the picture maker drew words near them)
 CHARS_PER_SECOND = 13.0        # how fast a bubble is read
 
@@ -169,8 +171,8 @@ def compose(sb: dict[str, Any], script: dict[str, Any], panels: list[str], *, wo
         f"body{{font-family:{motion_templates.FAMILY};color:{INK};}}",
         f"#root{{position:absolute;left:0;top:0;width:{W}px;height:{H}px;overflow:hidden;background:{PAPER};}}",
         ".sc{position:absolute;inset:0;}",
-        f".ey{{position:absolute;left:60px;width:{W - 120}px;font-weight:700;color:{MUTED};letter-spacing:.04em;}}",
-        f".cnt{{position:absolute;right:60px;top:118px;font-size:32px;font-weight:700;color:{GREEN};letter-spacing:.14em;}}",
+        f".ey{{position:absolute;left:{SAFE_X}px;width:{W - 2 * SAFE_X}px;font-weight:700;color:{MUTED};letter-spacing:.04em;}}",
+        f".cnt{{position:absolute;right:{SAFE_X}px;top:118px;font-size:32px;font-weight:700;color:{GREEN};letter-spacing:.14em;}}",
         f".box{{position:absolute;left:{BOX_X}px;top:{BOX_Y}px;width:{BOX}px;height:{BOX}px;border-radius:34px;overflow:hidden;"
         f"background:#fff;box-shadow:0 0 0 7px {INK},0 22px 50px rgba(0,0,0,.18);}}",
         ".cam{position:absolute;inset:0;}",
@@ -179,17 +181,18 @@ def compose(sb: dict[str, Any], script: dict[str, Any], panels: list[str], *, wo
         ".bsv{position:absolute;left:0;top:0;}",
         f".bt{{position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;"
         f"color:{INK};white-space:nowrap;}}",
-        f".ttl{{position:absolute;left:60px;width:{W - 120}px;text-align:center;font-weight:800;line-height:1.14;color:{INK};}}",
-        f".say{{position:absolute;left:90px;width:{W - 180}px;font-weight:500;line-height:1.22;color:{INK};}}",
+        f".ttl{{position:absolute;left:{SAFE_X}px;width:{W - 2 * SAFE_X}px;text-align:center;font-weight:800;line-height:1.14;"
+        f"color:{INK};}}",
+        f".say{{position:absolute;left:{SAFE_X}px;width:{W - 2 * SAFE_X}px;font-weight:500;line-height:1.22;color:{INK};}}",
         f".say b{{font-weight:800;color:{GREEN};}}",
-        ".dots{position:absolute;left:0;width:100%;display:flex;justify-content:center;gap:22px;}",
+        f".dots{{position:absolute;left:{SAFE_X}px;width:{W - 2 * SAFE_X}px;display:flex;justify-content:center;gap:22px;}}",
         ".dots i{display:block;width:18px;height:18px;border-radius:50%;}",
         f"#out{{position:absolute;inset:0;background:{PAPER};}}",
-        f".os{{position:absolute;left:80px;width:{W - 160}px;text-align:center;}}",
+        f".os{{position:absolute;left:{SAFE_X}px;width:{W - 2 * SAFE_X}px;text-align:center;}}",
     ]
     parts, tw = [], []
     # ---- the title card
-    ep_fs = motion_templates._fit(episode_line, 40, W - 160, 26, factor=.56)
+    ep_fs = motion_templates._fit(episode_line, 40, W - 2 * SAFE_X, 26, factor=.56)
     t_fs = motion_templates._fit(sb["title"], 104, W - 180, 58, factor=.6, lines=3)
     t_lines = max(1, min(4, round(len(sb["title"]) * t_fs * .58 / (W - 180) + .49)))
     t_top = H * .46 - t_lines * t_fs * 1.14 / 2
@@ -205,7 +208,6 @@ def compose(sb: dict[str, Any], script: dict[str, Any], panels: list[str], *, wo
            'tl.fromTo("#s0r",{scaleX:0},{scaleX:1,duration:.5,ease:"power2.out"},1.0);',
            f'tl.to("#s0",{{opacity:0,duration:.3,ease:"power1.in"}},{TITLE_SECONDS - .3:g});']
     # ---- the four panels, in reading order
-    zoom = ZOOM if wordless else ZOOM_BAKED
     for i, (p, when) in enumerate(zip(sb["panels"], tl["panels"], strict=True)):
         n = i + 1
         t0, dur = when["start"], when["duration"]
@@ -214,7 +216,7 @@ def compose(sb: dict[str, Any], script: dict[str, Any], panels: list[str], *, wo
         dots = "".join(f'<i style="background:{GREEN if k == i else "#d8cfbd"};"></i>' for k in range(comic.PANELS))
         say = ""
         if not wordless:
-            top = 1590.0
+            top = 1580.0
             heavy = sum(len(ln["text"]) + 8 for ln in p["lines"])          # the lane holds two bubbles' words above the dots
             fs = 42 if heavy <= 100 else 36 if heavy <= 160 else 31
             for j, line in enumerate(p["lines"]):
@@ -224,17 +226,17 @@ def compose(sb: dict[str, Any], script: dict[str, Any], panels: list[str], *, wo
         s_fs = motion_templates._fit(sb["title"], 46, W - 140, 30, factor=.58, lines=2)
         parts.append(
             f'<div class="clip sc" id="{sid}" data-start="{t0:g}" data-duration="{dur:g}" style="z-index:{n + 1};">'
-            f'<div class="ey" id="{sid}e" style="top:112px;font-size:32px;width:{W - 360}px;">{_esc(episode_line)}</div>'
+            f'<div class="ey" id="{sid}e" style="top:112px;font-size:32px;width:{W - 2 * SAFE_X - 260}px;">'
+            f'{_esc(episode_line)}</div>'
             f'<div class="cnt" id="{sid}c">{n} / {comic.PANELS}</div>'
             f'<div class="box" id="{sid}x"><div class="cam" id="{sid}m">'
             f'<div class="art" style="background-image:url({panels[i]});"></div></div>{bub}</div>'
-            f'<div class="ttl" id="{sid}t" style="top:1452px;font-size:{s_fs}px;font-weight:700;color:{MUTED};">'
-            f'{_esc(sb["title"])}</div>'            f'{say}<div class="dots" style="top:1830px;">{dots}</div></div>')
-        grow = wordless and i % 2 == 0
-        origin = "50% 75%" if wordless else "50% 50%"
-        a, z = (1, zoom) if grow else ((zoom, 1) if wordless else (zoom, 1))
-        tw.append(f'tl.fromTo("#{sid}m",{{scale:{a:g},transformOrigin:"{origin}"}},'
-                  f'{{scale:{z:g},transformOrigin:"{origin}",duration:{dur:g},ease:"none"}},{t0:g});')
+            f'<div class="ttl" id="{sid}t" style="top:1390px;font-size:{s_fs}px;font-weight:700;color:{MUTED};">'
+            f'{_esc(sb["title"])}</div>'            f'{say}<div class="dots" style="top:1780px;">{dots}</div></div>')
+        # the camera: the whole panel (frame, bubbles and all) pushes in from MOVE to 1 or pulls out from 1 to MOVE, never above 1
+        a, z = (MOVE, 1) if i % 2 == 0 else (1, MOVE)
+        tw.append(f'tl.fromTo("#{sid}x",{{scale:{a:g},transformOrigin:"50% 50%"}},'
+                  f'{{scale:{z:g},transformOrigin:"50% 50%",duration:{dur:g},ease:"none"}},{t0:g});')
         tw += [f'tl.fromTo("#{sid}",{{opacity:0}},{{opacity:1,duration:.35,ease:"power1.out"}},{t0:g});',
                f'tl.fromTo("#{sid}x",{{y:30}},{{y:0,duration:.5,ease:"power3.out"}},{t0:g});']
         for j, at in enumerate(when["appear"]):
@@ -243,7 +245,7 @@ def compose(sb: dict[str, Any], script: dict[str, Any], panels: list[str], *, wo
                 tw.append(f'tl.fromTo("#b{n}{j + 1}",{{opacity:0,scale:.82,transformOrigin:"{bx + bw / 2:g}px {by + bh:g}px"}},'
                           f'{{opacity:1,scale:1,duration:.4,ease:"back.out(1.7)"}},{at:g});')
             else:
-                tw.append(f'tl.fromTo("#y{n}{j + 1}",{{opacity:0,x:-30}},{{opacity:1,x:0,duration:.45,ease:"power2.out"}},'
+                tw.append(f'tl.fromTo("#y{n}{j + 1}",{{opacity:0,y:14}},{{opacity:1,y:0,duration:.45,ease:"power2.out"}},'
                           f'{at:g});')
         tw.append(f'tl.to("#{sid}",{{opacity:0,duration:.3,ease:"power1.in"}},{t0 + dur - .3:g});')
     # ---- the outro: the brand, the website and the source

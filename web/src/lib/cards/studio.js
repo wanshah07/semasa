@@ -2231,9 +2231,11 @@ function picBolt(ctx, x, y, s, colour) {
 /* The largest size, down from px0 in steps of 4 and never below pxMin, at which `text` wraps to a block no taller than maxH. */
 function picFit(ctx, text, maxW, maxH, px0, pxMin, lhK, weight, family) {
   let px = px0, lines = [];
+  const words = stripEmph(text).split(/\s+/).filter(Boolean);
   for (; ; px -= 4) {
     ctx.font = weight + " " + px + "px " + family; lines = gWrap(ctx, text, maxW);
-    if (lines.length * Math.round(px * lhK) <= maxH || px <= pxMin) break;
+    const whole = words.every((w) => ctx.measureText(w).width <= maxW);          // never a word cut in two while a smaller size keeps it whole
+    if ((whole && lines.length * Math.round(px * lhK) <= maxH) || px <= pxMin) break;
   }
   return { px, lh: Math.round(px * lhK), lines, h: lines.length * Math.round(px * lhK) };
 }
@@ -2244,7 +2246,22 @@ async function renderPicCard(spec) {
   const c = document.createElement("canvas"); c.width = W; c.height = H;
   const ctx = styleCtx(c.getContext("2d"), spec);
   try { await document.fonts.ready; } catch (e) { }
-  return picCardPaint(ctx, spec, W, H, c);
+  /* Each of these layouts already sizes its own headline to its room (picFit). What it could not do was give way as a whole: a
+     long lead ran on under the picture, the pill or the source line. So the finished layout is measured, and a card that is
+     still too full has all its type brought down together until it fits (auto-fit, 16 Nov 2026). The note slide is left out:
+     it has its own fit down to its reading size, and the print gives way before the words do. */
+  if (spec.type_size || spec.template === "i_note") return picCardPaint(ctx, spec, W, H, c);
+  const measure = async (sp) => { ctx.save(); try { return await picCardPaint(measureProxy(ctx), sp, W, H); } finally { ctx.restore(); } };
+  const probe = await measure(spec);
+  const fill = probe.y <= probe.limit ? 1
+    : await fitSearch(async (f) => (await measure({ ...spec, _fill: f })).y - probe.top, probe.y - probe.top, probe.limit - probe.top, 1);
+  return picCardPaint(ctx, fill !== 1 ? { ...spec, _fill: fill } : spec, W, H, c);
+}
+/* One line that must stay one line (a label in a corner): the largest size from px down to minPx at which it fits maxW. */
+function fitLinePx(ctx, text, maxW, px, minPx, fontOf) {
+  ctx.font = fontOf(px);
+  while (px > minPx && ctx.measureText(text).width > maxW) { px -= 1; ctx.font = fontOf(px); }
+  return px;
 }
 async function picCardPaint(ctx, spec, W, H, canvasOut) {
   const warn = [];
@@ -2254,31 +2271,54 @@ async function picCardPaint(ctx, spec, W, H, canvasOut) {
   const title = stripEmph(spec.title || ""), lead = String(spec.lead || "").trim();
   // "Label | detail" is the writer's way of pairing two things; this family has no table, so the pair is drawn as "Label: detail"
   const items = (spec.items || []).map((x) => stripEmph(x).trim().replace(/\s*\|\s*/g, ": ")).filter(Boolean);
-  let y = 0;
+  const K = Math.min(1, TS);               // the smallest sizes come down with a card that had to shrink
+  const limit = cardFloor(ctx, spec, W, H, M, u), logoRoom = spec.stream === "linkedin" ? 0 : Math.round(300 * u);
+  let y = 0, yTop = Math.round(150 * u);
   ctx.textBaseline = "top";
   if (t === "i_title") {
     ctx.fillStyle = PIC_PAL.cream; ctx.fillRect(0, 0, W, H);
     await drawBrandMark(ctx, spec, W, u, M, { top: 56, h: 34, textFill: "rgba(21,17,14,.6)" });
-    let top = Math.round(150 * u);
-    if (im) { const ph = Math.round(H * 0.3); picInBox(ctx, im, M, top, maxW, ph, Math.round(40 * u), 1, 0.5, 0.45); top += ph + Math.round(56 * u); }
+    const top0 = Math.round(150 * u);
     const arrowRoom = spec.footnote ? 0 : Math.round(130 * u);
     const label = String(spec.eyebrow || "").toUpperCase(), labelH = label ? Math.round(56 * u) : 0;
-    const head = picFit(ctx, title, maxW * 0.92, (floor - arrowRoom - top - labelH) * 0.62, Math.round(104 * u * TS), Math.round(56 * u), 1.08, 700, PIC_SERIF);
-    const leadPx = Math.round(38 * u * TS); ctx.font = "500 " + leadPx + "px " + G_BODY;
+    const leadPx = Math.round(38 * u * TS);
     const leadText = [lead, ...items].filter(Boolean).join("\n");
-    // The body shares the same room as the headline and must never run past the card's floor: it is fitted and clipped
-    // with an ellipsis the way the headline is, so a long point reads "…" instead of silently running off the bottom.
-    const bodyRoom = Math.max(Math.round(60 * u), floor - arrowRoom - top - labelH - head.h - Math.round(34 * u));
-    const body = leadText ? picFit(ctx, leadText, maxW * 0.8, bodyRoom, leadPx, Math.round(26 * u), 1.32, 500, G_BODY) : null;
-    const block = labelH + head.h + (body ? Math.round(34 * u) + body.h : 0);
-    y = im ? top : top + Math.max(0, Math.round((floor - arrowRoom - top - block) / 2));
+    /* THE WORDS COME FIRST, the picture takes what they leave (the note slide's rule, now here too). The panel is tried at 30%
+       of the card, then 22%, then 15%: the first at which the headline and the lines under it fit at a reading size. The body
+       shares the room with the headline and is fitted the way the headline is; what still does not fit is the whole card's to
+       shrink (renderPicCard), never a line run past the floor. */
+    let top = top0, head = null, body = null, ph = 0, need = 0;
+    const lay = (g) => {
+      head = picFit(ctx, title, maxW * 0.92, (floor - arrowRoom - top - labelH) * (leadText ? 0.62 : 1), Math.round(104 * u * TS * g), Math.round(56 * u * K), 1.08, 700, PIC_SERIF);
+      const bodyRoom = Math.max(Math.round(60 * u), floor - arrowRoom - top - labelH - head.h - Math.round(34 * u));
+      body = leadText ? picFit(ctx, leadText, maxW * 0.8, bodyRoom, Math.round(leadPx * g), Math.round(26 * u * K), 1.32, 500, G_BODY) : null;
+      need = labelH + head.h + (body ? Math.round(34 * u) + body.h : 0);
+    };
+    for (const share of im ? [0.3, 0.22, 0.15] : [0]) {
+      ph = Math.round(H * share); top = top0 + (ph ? ph + Math.round(56 * u) : 0);
+      lay(1);
+      if (need <= floor - arrowRoom - top && (!body || body.px >= Math.min(leadPx, Math.round(30 * u)))) break;
+    }
+    // a few words on a bare card: the type grows (to 1.9 at most) until the block takes about two thirds of its room
+    const roomH = floor - arrowRoom - top;
+    if (!spec.type_size && fillOf(spec) === 1 && need < 0.5 * roomH) {
+      for (let g = 1.9; g > 1.04; g -= 0.1) { lay(g); if (need <= 0.72 * roomH) break; }
+      if (need > roomH) lay(1);
+    }
+    // and the picture takes what the words leave, up to 46% of the card
+    const spare = roomH - need, extra = im && spare > 0 ? Math.min(spare, Math.round(H * 0.16)) : 0;
+    ph += extra; top += extra;
+    if (im) picInBox(ctx, im, M, top0, maxW, ph, Math.round(40 * u), 1, 0.5, 0.45);
+    y = top + Math.max(0, Math.round((spare - extra) / 2));
     if (label) {
-      ctx.save(); ctx.font = "700 " + Math.round(23 * u) + "px " + G_HEAD; try { ctx.letterSpacing = Math.round(4 * u) + "px"; } catch (e) { }
-      ctx.fillStyle = PIC_PAL.blue; ctx.textAlign = "center"; ctx.fillText(label, W / 2, y); ctx.restore(); y += labelH;
+      const lp = fitLinePx(ctx, label, maxW - Math.round(60 * u), Math.round(23 * u), Math.round(14 * u), (q) => "700 " + q + "px " + G_HEAD);
+      ctx.save(); ctx.font = "700 " + lp + "px " + G_HEAD; try { ctx.letterSpacing = Math.round(lp * 0.17) + "px"; } catch (e) { }
+      ctx.fillStyle = PIC_PAL.blue; ctx.textAlign = "center"; ctx.fillText(gWrap(ctx, label, maxW)[0] || "", W / 2, y); ctx.restore(); y += labelH;
     }
     ctx.font = "700 " + head.px + "px " + PIC_SERIF; ctx.fillStyle = PIC_PAL.ink; y = picCentered(ctx, head.lines, W / 2, y, head.lh);
     if (body) { y += Math.round(34 * u); ctx.font = "500 " + body.px + "px " + G_BODY; ctx.fillStyle = PIC_PAL.ink; y = picCentered(ctx, body.lines, W / 2, y, body.lh); }
-    if (arrowRoom) picArrow(ctx, W / 2 - Math.round(120 * u), floor - Math.round(30 * u), W / 2 + Math.round(120 * u), floor - Math.round(44 * u), PIC_PAL.blue, Math.round(7 * u), -0.06);
+    yTop = top;
+    if (arrowRoom && y <= floor - arrowRoom + Math.round(40 * u)) picArrow(ctx, W / 2 - Math.round(120 * u), floor - Math.round(30 * u), W / 2 + Math.round(120 * u), floor - Math.round(44 * u), PIC_PAL.blue, Math.round(7 * u), -0.06);
   } else if (t === "i_note") {
     picCrumple(ctx, W, H);
     await drawBrandMark(ctx, spec, W, u, M, { top: 64, h: 40, textFill: "rgba(46,75,71,.8)" });
@@ -2336,28 +2376,48 @@ async function picCardPaint(ctx, spec, W, H, canvasOut) {
     else { ctx.fillStyle = "rgba(242,138,36,.18)"; gRound(ctx, 0, 0, pw, ph, Math.round(46 * u)); ctx.fill(); }
     ctx.restore();
     await drawBrandMark(ctx, spec, W, u, M, { top: 58, h: 36, textFill: "rgba(21,17,14,.6)" });
-    if (spec.eyebrow && spec.stream === "linkedin") { ctx.font = "700 " + Math.round(24 * u) + "px " + G_MONO; ctx.fillStyle = PIC_PAL.muted; ctx.fillText(String(spec.eyebrow), M, Math.round(58 * u)); }
-    if (spec.note) { ctx.font = "500 " + Math.round(24 * u) + "px " + G_MONO; ctx.fillStyle = PIC_PAL.muted; ctx.textAlign = "right"; ctx.fillText(String(spec.note).split("\n")[0], W - M, Math.round(58 * u)); ctx.textAlign = "left"; }
+    /* The two corner labels fit their corner (auto-fit, 16 Nov 2026). The note was drawn at the top right at a fixed size,
+       under the ws.regulab logo and off the card when it was long: it now sits at the top left on a ws.regulab card (the logo
+       owns the right), comes down in size to fit, and wraps when it still does not. LinkedIn has no logo: label left, note right. */
+    const mono = (w) => (px) => w + " " + px + "px " + G_MONO;
+    const cornerTop = Math.round(58 * u);
+    let cornerEnd = cornerTop;
+    if (spec.eyebrow && spec.stream === "linkedin") {
+      const ep = fitLinePx(ctx, String(spec.eyebrow), maxW * (spec.note ? 0.5 : 1), Math.round(24 * u), Math.round(15 * u), mono(700));
+      ctx.fillStyle = PIC_PAL.muted;
+      gWrap(ctx, String(spec.eyebrow), maxW * (spec.note ? 0.5 : 1)).slice(0, 2).forEach((l, i) => { ctx.fillText(l, M, cornerTop + i * Math.round(ep * 1.3)); cornerEnd = cornerTop + (i + 1) * Math.round(ep * 1.3); });
+    }
+    if (spec.note) {
+      const noteText = String(spec.note).split("\n")[0], right = spec.stream === "linkedin";
+      const room = right ? maxW * (spec.eyebrow ? 0.46 : 1) : maxW - logoRoom;
+      const np = fitLinePx(ctx, noteText, room, Math.round(24 * u), Math.round(15 * u), mono(500));
+      ctx.fillStyle = PIC_PAL.muted; ctx.textAlign = right ? "right" : "left";
+      gWrap(ctx, noteText, room).slice(0, 3).forEach((l, i) => { ctx.fillText(l, right ? W - M : M, cornerTop + i * Math.round(np * 1.3)); cornerEnd = Math.max(cornerEnd, cornerTop + (i + 1) * Math.round(np * 1.3)); });
+      ctx.textAlign = "left";
+    }
     const x0 = Math.round(W * 0.51), colW = W - M - x0;
     const accentTitle = /\*[^*]+\*/.test(spec.title || "") ? String(spec.title) : String(spec.title || "").replace(/^(\S+(?:\s+\S+)?)/, "*$1*");
     let hpx = Math.round(112 * u * TS), lines;
     for (; ; hpx -= 4) {
       ctx.font = "800 " + hpx + "px " + G_HEAD; lines = gWrap(ctx, stripEmph(accentTitle), colW);
       const widest = Math.max(0, ...stripEmph(accentTitle).split(/\s+/).map((w) => ctx.measureText(w).width));      // never break a word in two
-      if ((widest <= colW && lines.length * Math.round(hpx * 1.0) <= Math.round(H * 0.4)) || hpx <= Math.round(40 * u)) break;
+      if ((widest <= colW && lines.length * Math.round(hpx * 1.0) <= Math.round(H * 0.4)) || hpx <= Math.round(40 * u * K)) break;
     }
-    y = Math.round(160 * u);
+    y = Math.max(Math.round(160 * u), cornerEnd + Math.round(24 * u));
+    yTop = y;
     y = gHeadline(ctx, accentTitle, x0, y, colW, hpx, Math.round(hpx * 1.02), PIC_PAL.ink, PIC_PAL.orange);
     const stat = items.length && items[0].length <= 14 && /\d/.test(items[0]) ? items[0] : "";
     const heroText = [lead, ...(stat ? items.slice(1) : items)].filter(Boolean).join("\n");
-    if (heroText) { y += Math.round(28 * u); y = gPara(ctx, heroText, x0, y, colW, Math.round(34 * u * TS), Math.round(46 * u * TS), PIC_PAL.ink, 500); }
+    if (heroText) { y += Math.round(28 * u * K); y = gPara(ctx, heroText, x0, y, colW, Math.round(34 * u * TS), Math.round(46 * u * TS), PIC_PAL.ink, 500); }
     if (stat) {
-      const spx = Math.round(40 * u); ctx.font = "800 " + spx + "px " + G_HEAD;
-      const pw2 = Math.min(colW, Math.round(ctx.measureText(stat).width + 150 * u)), ph2 = Math.round(88 * u), py2 = Math.max(y + Math.round(44 * u), Math.round(H * 0.7));
+      // the pill hangs at 70% of the card when the words end above it, and follows them when they run longer; never past the floor
+      const spx = Math.round(40 * u * K); ctx.font = "800 " + spx + "px " + G_HEAD;
+      const pw2 = Math.min(colW, Math.round(ctx.measureText(stat).width + 150 * u * K)), ph2 = Math.round(88 * u * K);
+      const py2 = Math.max(y + Math.round(44 * u * K), Math.min(Math.round(H * 0.7), limit - ph2));
       ctx.save(); ctx.shadowColor = "rgba(150,70,0,.25)"; ctx.shadowBlur = Math.round(18 * u); ctx.shadowOffsetY = Math.round(8 * u);
       ctx.fillStyle = PIC_PAL.orange; gRound(ctx, x0, py2, pw2, ph2, Math.round(20 * u)); ctx.fill(); ctx.restore();
-      ctx.fillStyle = "#FFFFFF"; ctx.font = "800 " + spx + "px " + G_HEAD; ctx.fillText(stat, x0 + Math.round(26 * u), py2 + Math.round((ph2 - spx) / 2) - Math.round(spx * 0.06));
-      picBolt(ctx, x0 + pw2 - Math.round(96 * u), py2 - Math.round(20 * u), Math.round(110 * u), "#2A1606");
+      ctx.fillStyle = "#FFFFFF"; ctx.font = "800 " + spx + "px " + G_HEAD; ctx.fillText(stat, x0 + Math.round(26 * u * K), py2 + Math.round((ph2 - spx) / 2) - Math.round(spx * 0.06));
+      picBolt(ctx, x0 + pw2 - Math.round(96 * u * K), py2 - Math.round(20 * u * K), Math.round(110 * u * K), "#2A1606");
       y = Math.max(y, py2 + ph2);
     }
   } else { // i_step
@@ -2366,27 +2426,35 @@ async function picCardPaint(ctx, spec, W, H, canvasOut) {
     const phW = Math.round(W * 0.46), labelMax = W - M - phW - M;           // the label stays left of the phone
     let lpx = Math.round(130 * u); ctx.font = "700 italic " + lpx + "px " + G_MARK;
     while (ctx.measureText(label).width > labelMax && lpx > Math.round(60 * u)) { lpx -= 4; ctx.font = "700 italic " + lpx + "px " + G_MARK; }
-    ctx.fillStyle = PIC_PAL.ink; ctx.fillText(label, M, Math.round(96 * u));
+    ctx.fillStyle = PIC_PAL.ink; ctx.fillText(gWrap(ctx, label, labelMax)[0] || "", M, Math.round(96 * u));
     const colW = Math.round(W * 0.4), ty = Math.round(250 * u);
-    const head = picFit(ctx, title, colW, Math.round(H * 0.3), Math.round(44 * u * TS), Math.round(28 * u), 1.28, 700, G_BODY);
+    yTop = ty;
+    const head = picFit(ctx, title, colW, Math.round(H * 0.3), Math.round(44 * u * TS), Math.round(28 * u * K), 1.28, 700, G_BODY);
     ctx.font = "700 " + head.px + "px " + G_BODY; ctx.fillStyle = PIC_PAL.ink; ctx.textAlign = "left";
     y = ty; for (const l of head.lines) { ctx.fillText(l, M, y); y += head.lh; }
     const stepText = [lead, ...items].filter(Boolean).join("\n");
-    if (stepText) { y += Math.round(16 * u); y = gPara(ctx, stepText, M, y, colW, Math.round(28 * u * TS), Math.round(38 * u * TS), PIC_PAL.muted, 500); }
+    if (stepText) { y += Math.round(16 * u * K); y = gPara(ctx, stepText, M, y, colW, Math.round(28 * u * TS), Math.round(38 * u * TS), PIC_PAL.muted, 500); }
     const phw = Math.round(W * 0.46), phh = Math.round(H * 0.66), phx = W - M - phw + Math.round(20 * u), phy = Math.round(H * 0.05);
     picPhone(ctx, im, phx, phy, phw, phh);
+    /* The column is a flow now (auto-fit, 16 Nov 2026): the words, then "after" with its arrow to the phone, then the "before"
+       print with its label. The print used to sit at a fixed height, ON the words when they ran long, and on a square card its
+       label ended under the floor whatever the words were. The print takes the room that is left, between 16% and 30% of the
+       card's width, and whatever still does not fit is the whole card's to shrink. */
     const after = spec.stream === "linkedin" ? "after" : "selepas", before = spec.stream === "linkedin" ? "before" : "sebelum";
-    const lx = M + Math.round(colW * 0.35), ly = Math.max(y + Math.round(40 * u), Math.round(H * 0.4));
-    ctx.font = "700 italic " + Math.round(58 * u) + "px " + G_MARK; ctx.fillStyle = PIC_PAL.ink; ctx.fillText(after, lx, ly);
-    picArrow(ctx, lx + Math.round(150 * u), ly + Math.round(30 * u), phx - Math.round(10 * u), ly + Math.round(80 * u), PIC_PAL.ink, Math.round(4 * u), 0.2);
-    const polW = Math.round(W * 0.3), polY = Math.min(floor - Math.round(polW * 1.25), Math.round(H * 0.56));
+    const aPx = Math.round(58 * u * K), bPx = Math.round(54 * u * K);
+    const lx = M + Math.round(colW * 0.35), ly = Math.max(y + Math.round(30 * u * K), Math.min(Math.round(H * 0.4), limit - Math.round(W * 0.16 * 1.12) - aPx - bPx - Math.round(70 * u * K)));
+    ctx.font = "700 italic " + aPx + "px " + G_MARK; ctx.fillStyle = PIC_PAL.ink; ctx.fillText(after, lx, ly);
+    picArrow(ctx, lx + Math.round(150 * u * K), ly + Math.round(30 * u * K), phx - Math.round(10 * u), ly + Math.round(80 * u * K), PIC_PAL.ink, Math.round(4 * u), 0.2);
+    const polTop = ly + aPx + Math.round(34 * u * K), bRoom = bPx + Math.round(26 * u * K);
+    const polW = Math.round(Math.max(W * 0.16, Math.min(W * 0.3, (limit - polTop - bRoom) / 1.12)));
+    const polY = Math.max(polTop, Math.min(limit - bRoom - Math.round(polW * 1.12), Math.round(H * 0.56)));
     const polH = picPolaroid(ctx, im, M, polY, polW, -0.05, 1.8, 0.2, 0.4);
-    ctx.font = "700 italic " + Math.round(54 * u) + "px " + G_MARK; ctx.fillStyle = PIC_PAL.ink; ctx.fillText(before, M + Math.round(polW * 0.3), polY + polH + Math.round(14 * u));
-    y = Math.max(y, polY + polH + Math.round(70 * u));
+    ctx.font = "700 italic " + bPx + "px " + G_MARK; ctx.fillStyle = PIC_PAL.ink; ctx.fillText(before, M + Math.round(polW * 0.3), polY + polH + Math.round(10 * u * K));
+    y = Math.max(y, polY + polH + Math.round(10 * u * K) + bPx);
   }
   gSourceLine(ctx, W, H, M, u, spec.chip_label || (spec.footnote ? "Sumber" : ""), spec.footnote || "", false);
-  if (y > H - Math.round(150 * u)) warn.push("The slide is fuller than the card: shorten a line.");
-  return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y } : { warn, y };
+  if (y > limit + 1) warn.push("The slide is fuller than the card: shorten a line.");
+  return canvasOut ? { url: canvasOut.toDataURL("image/jpeg", 0.9), warn, y, limit, top: yTop } : { warn, y, limit, top: yTop };
 }
 
 /* ===================== the hand-drawn family =================================

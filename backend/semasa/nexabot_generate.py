@@ -70,6 +70,34 @@ def _is_video(ctype: str, url: str) -> bool:
     return ".mp4" in url.lower()
 
 
+DONE_STATES = ("done", "complete", "completed", "ready", "success")
+FAILED_STATES = ("failed", "error", "cancelled", "canceled")
+
+
+def _recent_jobs(page: object) -> list:
+    try:
+        return page.evaluate("""async () => {
+            const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
+            const j = await r.json();
+            return Array.isArray(j) ? j : (j.jobs || j.data || []);
+        }""") or []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _job(page: object, job_id: str) -> dict | None:
+    try:
+        j = page.evaluate("""async (id) => {
+            const r = await fetch('/api/v1/jobs/' + encodeURIComponent(id));
+            return r.ok ? await r.json() : null;
+        }""", job_id)
+    except Exception:  # noqa: BLE001
+        return None
+    if isinstance(j, dict) and isinstance(j.get("job"), dict):
+        j = j["job"]
+    return j if isinstance(j, dict) else None
+
+
 def generate(page: object, prompt: str, outdir: Path, max_gen: int, dry: bool, report: dict) -> None:
     """Drive the studio: fill the prompt, pick Unlimited, press Generate, poll jobs, capture the MP4."""
     # 1. the prompt box
@@ -99,53 +127,65 @@ def generate(page: object, prompt: str, outdir: Path, max_gen: int, dry: bool, r
     if dry:
         report["dry"] = True
         return
+    # the jobs already on the account BEFORE Generate: a finished old job must never be mistaken for this one
+    before = _recent_jobs(page)
+    report["jobs_before"] = len(before)
+    before_ids = {str(j.get("id")) for j in before if j.get("id")}
     gen.click()
     report["generate_clicked_at"] = datetime.now(UTC).isoformat()
 
-    # 4. wait for the result: the MP4 is captured by the on_response handler (a GET whose body is video);
-    #    break as soon as a video lands, and otherwise keep polling the jobs list until the deadline.
+    # 4. wait for OUR job: its id comes from the Generate POST's own answer, or else it is the one job that was not
+    #    in the list before the click. Only that job is polled, and only a done status of it ends the wait.
     deadline = time.time() + MAX_WAIT_S
+    meta: dict = {}
     while time.time() < deadline:
-        if report.get("video_saved"):
-            report["video_captured_at"] = datetime.now(UTC).isoformat()
-            break
-        try:
-            jobs = page.evaluate("""async () => {
-                const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
-                const j = await r.json();
-                return Array.isArray(j) ? j : (j.jobs || j.data || []);
-            }""")
-        except Exception:  # noqa: BLE001
-            jobs = []
-        done = [j for j in jobs if (j.get("status") in ("done", "complete", "ready", "success"))]
-        if done:
-            report["job_done"] = True
-            keys = ("id", "status", "mode", "model", "width", "height", "size_bytes", "download_url")
-            report["job_meta"] = {k: done[0].get(k) for k in keys if done[0].get(k) is not None}
-            break
+        job_id = report.get("job_id")
+        if not job_id:
+            fresh = [j for j in _recent_jobs(page) if str(j.get("id")) not in before_ids]
+            if fresh:
+                job_id = str(fresh[0].get("id"))
+                report["job_id"] = job_id
+                report["job_id_via"] = "list_diff"
+        if job_id:
+            meta = _job(page, job_id) or {}
+            status = str(meta.get("status") or "").lower()
+            if status in DONE_STATES:
+                report["job_done"] = True
+                report["job_keys"] = sorted(meta.keys())
+                keys = ("id", "status", "mode", "model", "width", "height", "size_bytes", "download_url")
+                report["job_meta"] = {k: meta.get(k) for k in keys if meta.get(k) is not None}
+                break
+            if status in FAILED_STATES:
+                report["job_failed"] = {k: meta.get(k) for k in ("id", "status", "error", "message") if meta.get(k)}
+                break
         time.sleep(POLL_S)
     else:
         report["timed_out"] = True
 
-    # 5. download the full MP4 with a plain GET (no Range), from the recorded video URL; fall back to the job's download_url.
+    # 5. download the full MP4 of that job: its own link first, then the documented download route, with the studio login
+    #    (a plain GET without Range, so the whole file comes back).
     if report.get("job_done") and not report.get("video_saved"):
-        url = report.get("video_url") or (report.get("job_meta") or {}).get("download_url")
-        if url:
+        job_id = report.get("job_id") or (report.get("job_meta") or {}).get("id")
+        cands = [(meta or {}).get(k) for k in ("download_url", "video_url", "url")]
+        cands += [f"/api/v1/jobs/{job_id}/download"] if job_id else []
+        errors = []
+        for url in [c for c in cands if isinstance(c, str) and c]:
+            full = url if url.startswith("http") else "https://nexabot.id" + url
             try:
-                import requests
-                r = requests.get(url, timeout=300, stream=True)
-                if r.status_code == 200:
+                resp = page.context.request.get(full, timeout=300_000)
+                body = resp.body() if resp.status == 200 else b""
+                if resp.status == 200 and len(body) > 10_000:
                     dest = outdir / f"nexabot-{datetime.now(UTC).strftime('%H%M%S')}.mp4"
-                    with open(dest, "wb") as fh:
-                        for chunk in r.iter_content(1 << 20):
-                            fh.write(chunk)
+                    dest.write_bytes(body)
                     report["video_saved"] = str(dest)
-                    report["video_via"] = "direct_get"
-                    report["video_size_final"] = dest.stat().st_size
-                else:
-                    report["download_error"] = f"status {r.status_code}"
+                    report["video_via"] = url if not url.startswith("http") else "job_link"
+                    report["video_size_final"] = len(body)
+                    break
+                errors.append(f"{url[:60]} -> {resp.status} {len(body)}B")
             except Exception as exc:  # noqa: BLE001
-                report["download_error"] = str(exc)[:200]
+                errors.append(f"{url[:60]} -> {str(exc)[:80]}")
+        if errors and not report.get("video_saved"):
+            report["download_error"] = "; ".join(errors)[:400]
 
 
 def run(outdir: Path, prompt: str, max_gen: int, dry: bool, import_ok: bool, opts: dict | None = None) -> int:
@@ -185,6 +225,16 @@ def run(outdir: Path, prompt: str, max_gen: int, dry: bool, import_ok: bool, opt
                 if req.method == "GET" and _is_video(ctype, url) and status in (200, 206) and not report.get("video_url"):
                     report["video_url"] = url
                     report["video_size_hint"] = row["size"]
+                if req.method == "POST" and url.rstrip("/").endswith("/api/v1/generate") and status in (200, 201, 202):
+                    try:
+                        j = resp.json()
+                        j = j.get("job") if isinstance(j.get("job"), dict) else j
+                        jid = j.get("id") or j.get("job_id") or j.get("jobId")
+                        if jid:
+                            report["job_id"] = str(jid)
+                            report["job_id_via"] = "generate_answer"
+                    except Exception:  # noqa: BLE001 - the list diff finds it instead
+                        pass
                 report["events"].append(row)
 
             page.on("response", on_response)

@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Nexabot i2v — animate one comic panel into a short clip (Phase B, comic film step 1).
 
 Drives the Creator Studio with the saved session login: opens the studio, switches the mode dropdown to
@@ -15,9 +16,7 @@ Env: NEXABOT_STORAGE_STATE_B64.
 from __future__ import annotations
 
 import argparse
-import base64
 import json
-import os
 import sys
 import time
 from datetime import UTC, datetime

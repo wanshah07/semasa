@@ -564,3 +564,52 @@ def test_the_workflow_takes_the_new_inputs_and_hands_them_over_only_as_environme
     gen_run = next(r for r in runs if "nexabot_generate" in r)
     assert '"${args[@]}"' in gen_run and '"$NB_TITLE"' in gen_run and '"$NB_CAPTIONS_JSON"' in gen_run
     assert "--dry" in gen_run and "--import" in gen_run, "dry and import keep working"
+
+
+def test_generate_follows_only_its_own_job(tmp_path, monkeypatch):
+    """A finished OLD job on the account must never be taken for the video just asked for (the 17 Nov run stopped in
+    seconds on one and saved nothing)."""
+    from semasa import nexabot_generate as ng
+
+    monkeypatch.setattr(ng, "POLL_S", 0)
+
+    class Loc:
+        def __init__(self, page): self.page = page
+        first = property(lambda self: self)
+        def wait_for(self, **k): pass
+        def fill(self, t): pass
+        def is_visible(self): return False
+        def is_disabled(self): return False
+        def click(self): self.page.clicked = True
+
+    class Req:
+        def __init__(self, page): self.page = page
+        def get(self, url, timeout=0):
+            self.page.fetched.append(url)
+            class R:
+                status = 200
+                def body(self): return b"x" * 20_000
+            return R()
+
+    class Ctx:
+        def __init__(self, page): self.request = Req(page)
+
+    class Page:
+        def __init__(self):
+            self.clicked, self.fetched, self.polls = False, [], 0
+            self.context = Ctx(self)
+        def locator(self, sel): return Loc(self)
+        def get_by_role(self, *a, **k): return Loc(self)
+        def wait_for_timeout(self, ms): pass
+        def evaluate(self, js, arg=None):
+            if arg is not None:  # one job by id
+                self.polls += 1
+                return {"id": arg, "status": "done" if self.polls > 1 else "processing"}
+            old = {"id": "old1", "status": "done"}
+            return [old] + ([{"id": "new1", "status": "queued"}] if self.clicked else [])
+
+    page, report = Page(), {}
+    ng.generate(page, "a prompt", tmp_path, 1, False, report)
+    assert report["job_id"] == "new1" and report["job_id_via"] == "list_diff"
+    assert report["job_done"] and report["video_saved"]
+    assert page.fetched == ["https://nexabot.id/api/v1/jobs/new1/download"]

@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Nexabot comic film — animate the four comic panels (one i2v generation each) and concatenate them into one MP4.
 
 Reads the 4 panels from web/public/comic-panels/panel-p{1..4}.png (committed temporarily for an episode), drives the
@@ -13,9 +14,7 @@ Run on the GitHub runner (NEXABOT_STORAGE_STATE_B64), from backend:
 from __future__ import annotations
 
 import argparse
-import base64
 import json
-import os
 import subprocess
 import sys
 import time

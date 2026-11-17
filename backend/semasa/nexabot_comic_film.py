@@ -31,8 +31,16 @@ MAX_WAIT_S = 15 * 60
 POLL_S = 4
 
 
-def _clip(page, panel: Path, outdir: Path, report: dict) -> bool:
+def _clip(page, panel: Path, outdir: Path, report: dict, fresh: bool = False) -> bool:
     """One i2v generation: choose mode, upload the panel, generate, poll, download. Returns whether an MP4 landed."""
+    if fresh:
+        # a fresh page load clears the previous panel's attachment and any stuck state, so each panel starts clean
+        page.goto(chk.STUDIO_URL, wait_until="domcontentloaded", timeout=45_000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=15_000)
+        except Exception:  # noqa: BLE001
+            pass
+        page.wait_for_timeout(2500)
     # mode dropdown
     if not i2v.choose_mode(page, report):
         return False
@@ -93,13 +101,13 @@ def _clip(page, panel: Path, outdir: Path, report: dict) -> bool:
         report["network"] = report.get("network", [])
         return False
     import requests
-    # a Supabase storage object is a 206 for ranged reads; a plain GET (no Range) returns the whole MP4
-    r = requests.get(url, timeout=300, stream=True, headers={"Range": ""})
+    # a Supabase storage object streams 206 for ranged reads but a PLAIN GET (no Range header at all) returns the whole MP4
+    r = requests.get(url, timeout=300, stream=True)
     if r.status_code not in (200, 206):
         # a download_url may be relative; try against the base
         if url.startswith("/"):
             url2 = "https://nexabot.id" + url
-            r = requests.get(url2, timeout=300, stream=True, headers={"Range": ""})
+            r = requests.get(url2, timeout=300, stream=True)
             if r.status_code not in (200, 206):
                 report["download_error"] = f"status {r.status_code}"
                 return False
@@ -196,9 +204,9 @@ def main() -> int:
                 print(json.dumps({"ok": True, "dry": True}, indent=2))
                 return 0
 
-            for panel in panels:
+            for i, panel in enumerate(panels):
                 report["video_url"] = None
-                ok = _clip(page, panel, outdir, report)
+                ok = _clip(page, panel, outdir, report, fresh=(i > 0))
                 if not ok:
                     report["error_panel"] = panel.name
                     break

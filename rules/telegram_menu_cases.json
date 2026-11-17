@@ -1706,6 +1706,12 @@
     ],
     [
      [
+      "🗞 Episod komik hari ini (storyboard)",
+      "cb:a:komik_harian"
+     ]
+    ],
+    [
+     [
       "📖 Semak ayat al-Quran (surah:ayat)",
       "cb:a:ayat"
      ]
@@ -1755,6 +1761,12 @@
      [
       "🖼 Carousel from a topic (pick a look)",
       "cb:a:karusel"
+     ]
+    ],
+    [
+     [
+      "🗞 Today's comic episode (storyboard)",
+      "cb:a:komik_harian"
      ]
     ],
     [

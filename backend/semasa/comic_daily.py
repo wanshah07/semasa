@@ -546,6 +546,25 @@ def make_now_due(store: Any, settings: dict[str, Any]) -> bool:
     return asked > str(read_state(store).get("make_now_done") or "")
 
 
+def say(res: dict[str, Any], lang: str = "bm") -> str:
+    """What the button's answer says, in Wan's language: the storyboard is on its way, or why no episode was made."""
+    bm = lang != "en"
+    status = res.get("status")
+    if status == "planned":
+        return (f"Episod {res.get('episode')} (lorong {res.get('lane')}) sedang ditulis storyboardnya. Saya hantar di sini untuk "
+                "anda luluskan; tiada gambar dibayar sebelum itu." if bm else
+                f"Episode {res.get('episode')} (lane {res.get('lane')}) is having its storyboard written. I send it here for "
+                "your approval; no picture is paid for before that.")
+    if status == "exists":
+        return (f"Episod hari ini sudah ada: {res.get('reason')}. Satu episod sehari sahaja." if bm else
+                f"Today's episode already exists: {res.get('reason')}. One episode a day at most.")
+    if status == "skipped":
+        return (f"Tiada item yang sesuai hari ini, jadi tiada episod: {res.get('reason')}" if bm else
+                f"Nothing fitting today, so no episode: {res.get('reason')}")
+    why = res.get("reason") or status
+    return f"Episod tidak dibuat: {why}" if bm else f"No episode was made: {why}"
+
+
 def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> str:
     """Motion's hook: answer a button press, plan the day, and draft the post a done film still waits for. One log line."""
     now = now or datetime.now(UTC)

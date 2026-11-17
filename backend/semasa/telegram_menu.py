@@ -40,7 +40,8 @@ Reply = tuple[str, list[list[Button]]]
 
 # What each `act` in the catalogue is, in the worker's own terms (telegram_bot.handle_action). Every power here existed before
 # the menu: a command the bot already answered, a question whose answer becomes a queued row, or a read.
-#   cmd     the slash command of that name, as if Wan had typed it
+#   cmd     the slash command of that name, as if Wan had typed it (komik_harian: asks the Motion worker for today's comic
+#           episode's STORYBOARD, comic_daily.plan_today; it spends nothing, approves nothing and posts nothing)
 #   drafts  the drafts of one stream, each with its own Approve / Reject (the database gate decides, as always)
 #   ideas   the newest ideas of one stream, read only
 #   topic   asks for words; the next plain message becomes "/<command> <words>"
@@ -50,6 +51,7 @@ Reply = tuple[str, list[list[Button]]]
 ACTIONS: dict[str, tuple[str, ...]] = {
     "draf": ("cmd", "draf"), "status": ("cmd", "status"), "jadual": ("cmd", "jadual"), "ralat": ("cmd", "ralat"),
     "kesihatan": ("cmd", "kesihatan"), "bil": ("cmd", "bil"), "memori": ("cmd", "memori"), "help": ("cmd", "help"),
+    "komik_harian": ("cmd", "komik_harian"),
     "draf_r": ("drafts", "regulab"), "draf_l": ("drafts", "linkedin"),
     "ideas_r": ("ideas", "regulab"), "ideas_l": ("ideas", "linkedin"),
     "motion": ("topic", "motion"), "laporan": ("topic", "laporan"), "ingat": ("topic", "ingat"),

@@ -1052,3 +1052,30 @@ def test_086_seeds_both_rows_wakes_motion_on_a_button_press_and_keeps_the_clock_
     assert "drop trigger if exists semasa_clock_comic_changed" in SQL and "'motion_pending'" in SQL
     assert "cron.schedule('semasa_comic_daily'" in SQL and "Run ONCE in the SQL editor" in SQL
     assert "-- Check" in SQL and "select count(*)" in SQL.split("-- Check", 1)[1]
+
+
+# ------------------------------------------------------------------------------------------------------------- Telegram
+
+
+def test_a_tap_on_make_todays_episode_asks_only_for_a_storyboard_and_changes_no_post():
+    from test_telegram_menu import Bot, menu_store, run, tap
+
+    from semasa import db
+    from semasa import telegram_bot as tb
+    from semasa import telegram_menu as menu
+
+    assert menu.ACTIONS["komik_harian"][0] == "cmd" and "komik_harian" in menu.acts()
+    fresh = {**NEWS_HALAL, "created_at": datetime.now(UTC).isoformat()}  # the tap reads the real clock
+    st = menu_store(
+        **{tb.INBOX: [tap(1, "a:komik_harian")], "isu_semasa_trends": [fresh], "semasa_watch": [], "semasa_motions": []}
+    )
+    before = json.dumps(st.tables[db.POSTS], sort_keys=True)
+    bot = Bot()
+    assert run(st, bot)["errors"] == 0
+    rows = st.tables["semasa_motions"]
+    assert len(rows) == 1 and rows[0]["status"] == "pending" and rows[0]["options"]["template"] == "comic"
+    assert rows[0]["options"]["series"]["requested"] == "telegram"
+    assert "storyboard" in bot.sent()[-1]["text"] and st.rpcs == [] and json.dumps(st.tables[db.POSTS], sort_keys=True) == before
+    st.tables[tb.INBOX].append(tap(2, "a:komik_harian"))
+    run(st, bot)
+    assert len(st.tables["semasa_motions"]) == 1 and "sudah ada" in bot.sent()[-1]["text"], "one episode a day, even by button"

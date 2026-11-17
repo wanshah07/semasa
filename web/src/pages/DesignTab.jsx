@@ -47,7 +47,7 @@ import { startLook } from "../lib/lookChoice";
 const pxOf = (id) => { const s = sizeOf(id); return s ? [s.w, s.h] : [1080, 1350]; };
 const MAX_POINTS = { poster: 5, card: 3, carousel: 3 };
 const blankSlide = () => ({ title: "", points: "" });
-const defaultSize = (design, stream) => (design === "poster" ? "portrait" : design === "card" ? "square"
+const defaultSize = (design, stream) => (design === "poster" || design === "comic" ? "portrait" : design === "card" ? "square"
   : stream === "linkedin" ? "portrait" : "square");
 
 /* `view` (Wan, 11 Oct 2026: "Design change to Poster, split to poster generate and library"): "make" is the form, "library" is
@@ -57,6 +57,8 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
   const { t, lang: uiLang } = useLang();
   const { designs: myDesigns, defaultId, ready: designsReady, saveDesigns, setDefault, hiddenLooks } = useDesigns();
   const [design, setDesign] = useState("poster");
+  const comic = design === "comic";                          // the dialogue comic (backend/semasa/comic.py): an idea, no look, no background
+  const [maker, setMaker] = useState("auto");                // auto | chatgpt | gemini: who draws the comic's bubbles
   const [stream, setStream] = useState("regulab");
   const [format, setFormat] = useState("portrait");
   const [words, setWords] = useState("ai");                 // ai | own
@@ -111,7 +113,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
   const unsplashReady = !!uRow && (!!uRow.generated_media_url || !!uRow.meta?.pick) && uRow.status !== "error";
   const rebuild = !!styleFile && refMode === "rebuild";
   const wordsOk = words === "ai" ? brief.trim().length > 0 : own.length > 0;
-  const ready = rebuild
+  const ready = comic ? brief.trim().length > 0 : rebuild
     ? wordsOk && design !== "carousel" && (bg !== "upload" || !!file)
     : wordsOk
     && (bg !== "upload" || file) && (bg !== "ai" || bgPrompt.trim()) && (bg !== "unsplash" || unsplashReady)
@@ -260,10 +262,30 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
     setCloneReview(null);
   }
 
+  // a dialogue comic: only the idea is sent; the worker writes the script, saves it on the job, draws it and reads every bubble back
+  async function submitComic() {
+    setBusy("send");
+    try {
+      const ins = await supabase.from(TABLES.media).insert({
+        mode: "slides", type: "image", status: "pending", created_by: user.id, prompt: "", post_id: attach || null,
+        meta: { flow: "design", design: "comic", format: "portrait", ...sizeMeta("portrait"), stream, maker, brief: brief.trim(), citation: citation.trim() },
+      });
+      if (ins.error) throw new Error(errText(ins.error));
+      onToast(t("Dalam giliran. Skrip ditulis, dilukis, dan setiap gelembung dibaca semula: beberapa minit.",
+        "Queued. The script is written, drawn, and every bubble read back: a few minutes."), "ok");
+      gens.reload();
+    } catch (err) {
+      onToast(err.message || String(err), "danger");
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function submit(e) {
     e.preventDefault();
     if (!ready) return onToast(t("Lengkapkan perkataan dan latar dahulu.", "Fill in the words and the background first."), "warn");
     if (rebuild) return startClone();
+    if (comic) return submitComic();
     setBusy("send");
     let uploaded = null;
     let styleUp = null;
@@ -315,7 +337,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
   const results = gens.rows.filter((r) => r.meta?.design);
   // a design inside an approved, scheduled or posted post cannot be deleted (supabase/017: the database refuses it)
   const lockedBy = (id) => (posts?.rows || []).find((p) => ["approved", "scheduled", "posted"].includes(p.status) && (p.media_ids || []).includes(id));
-  const designs = [["poster", "Poster"], ["card", t("Kad tunggal", "Single card")], ["carousel", "Carousel"]];
+  const designs = [["poster", "Poster"], ["card", t("Kad tunggal", "Single card")], ["carousel", "Carousel"], ["comic", t("Komik dialog", "Dialogue comic")]];
 
   if (view === "library") {
     return (
@@ -357,7 +379,30 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
       {MASCOTS_ON && <div className="mt-6"><WanshahPanel user={user} gens={gens} settings={settings} saveSetting={saveSetting} onToast={onToast} /></div>}
 
       <Card as="form" onSubmit={submit} className="mt-2 p-5 sm:p-6">
-        <div className="grid gap-4 md:grid-cols-2">
+        {comic && (<>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="min-w-0 space-y-4">
+              <div><Label>{t("Jenis", "Kind")}</Label><Segmented value={design} onChange={setDesign} options={designs} /></div>
+              <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
+              <div><Label hint={t("Auto cuba ChatGPT dahulu, kemudian Gemini", "Auto tries ChatGPT first, then Gemini")}>{t("Pelukis", "Picture maker")}</Label>
+                <Segmented value={maker} onChange={setMaker} options={[["auto", "Auto"], ["chatgpt", "ChatGPT"], ["gemini", "Gemini"]]} /></div>
+            </div>
+            <div className="min-w-0 space-y-4">
+              <label className="block"><Label hint={t("Semasa tulis skrip empat panel daripada idea ini", "Semasa writes a four-panel script from this idea")}>{t("Idea atau prompt", "Idea or prompt")}</Label>
+                <TextArea rows={5} value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={4000}
+                  placeholder={t("Cth: pembeli hairan logo halal pada paket berwarna hitam; fakta daripada MPPHM (Domestik) 2020, Klausa 40(2)",
+                    "E.g. a shopper wonders why the halal logo on a pack is black; facts from MPPHM (Domestik) 2020, Clause 40(2)")} /></label>
+              <label className="block"><Label hint={t("pilihan · dilukis di bawah; kosong bermakna skrip yang menamakannya", "optional · drawn at the foot; empty means the script names it")}>{t("Sumber", "Source")}</Label>
+                <Input value={citation} onChange={(e) => setCitation(e.target.value)} maxLength={300} placeholder="MPPHM (Domestik) 2020, Klausa 40(2)" /></label>
+              <label className="block"><Label hint={t("pilihan · ditambah pada gambar post draf itu", "optional · added to that draft post's pictures")}>{t("Lampirkan pada post", "Attach to a post")}</Label>
+                <Select value={attach} onChange={setAttach} className="w-full" aria-label={t("Lampirkan pada post", "Attach to a post")}
+                  options={[["", t("Tidak", "No")], ...drafts.slice(0, 150).map((p) => [p.id, `${p.date || t("Tiada", "None")} · ${(p.hook || "").slice(0, 60) || p.id.slice(0, 8)}`])]} /></label>
+            </div>
+          </div>
+          <p className="mt-4 text-[12px] text-muted">{t("AI lukis gelembung percakapan; setiap gelembung dibaca semula dan dibandingkan huruf demi huruf dengan skrip. Halaman yang berbeza dilukis semula; jika masih berbeza, Semasa cetak perkataan sendiri. Peraturan post berlaku pada setiap perkataan.",
+            "The AI draws the speech bubbles; every bubble is read back and compared letter for letter with the script. A page that differs is drawn again; if it still differs, Semasa prints the words itself. The post rules apply to every word.")}</p>
+        </>)}
+        {!comic && <div className="grid gap-4 md:grid-cols-2">
           <div className="min-w-0 space-y-4">
             <div><Label>{t("Jenis", "Kind")}</Label><Segmented value={design} onChange={setDesign} options={designs} /></div>
             <div><Label>{t("Untuk", "For")}</Label><Segmented value={stream} onChange={setStream} options={STREAMS} /></div>
@@ -488,9 +533,9 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
               <Select value={attach} onChange={setAttach} className="w-full" aria-label={t("Lampirkan pada post", "Attach to a post")}
                 options={[["", t("Tidak", "No")], ...drafts.slice(0, 150).map((p) => [p.id, `${p.date || t("Tiada", "None")} · ${(p.hook || "").slice(0, 60) || p.id.slice(0, 8)}`])]} /></label>
           </div>
-        </div>
+        </div>}
 
-        <div className="mt-5 border-t border-line pt-4">
+        {!comic && <div className="mt-5 border-t border-line pt-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Label>{t("Perkataan", "Words")}</Label>
             <Segmented value={words} onChange={setWords} options={[["ai", t("Semasa tulis daripada idea", "Semasa writes from an idea")], ["own", t("Saya tulis sendiri", "I write them")]]} />
@@ -513,9 +558,9 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
               ))}
             </ul>
           )}
-        </div>
+        </div>}
 
-        {!rebuild && <div className="mt-5 border-t border-line pt-4">
+        {!rebuild && !comic && <div className="mt-5 border-t border-line pt-4">
           {styleFile && autoLook && <p className="mb-2 text-[12px] text-accent">{t("AI akan memilih reka bentuk daripada rujukan; pilihan di bawah hanya pratonton.",
             "The AI picks the design from the reference; the choice below is only a preview.")}</p>}
           <LookPicker value={look} onChange={setLook} slides={previewSlides} sample={sampleWords} stream={stream}
@@ -524,7 +569,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
         </div>}
 
         <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
-          <span className="text-xs text-muted">{sizeLabel(format)} · {rebuild ? t("AI baca susun atur sekali; selebihnya tanpa AI", "the AI reads the layout once; the rest is drawn without AI") : t("dilukis tanpa AI, percuma", "drawn without AI, free")}</span>
+          <span className="text-xs text-muted">{comic ? t("4:5 · AI lukis, Semasa baca semula", "4:5 · the AI draws, Semasa reads it back") : <>{sizeLabel(format)} · {rebuild ? t("AI baca susun atur sekali; selebihnya tanpa AI", "the AI reads the layout once; the rest is drawn without AI") : t("dilukis tanpa AI, percuma", "drawn without AI, free")}</>}</span>
           {styleFile && refMode === "inspire" && design !== "carousel" && (
             <Button type="button" variant="soft" disabled={!!busy || !wordsOk} onClick={() => startClone("inspire")}
               title={t("AI gubah reka bentuk asli dalam gaya rujukan (warna, jenis huruf, suasana) dan siap serta-merta sebagai PNG, tanpa menunggu pekerja.", "The AI composes an original design in the reference's style (colours, type, mood) and finishes it at once as a PNG, with no worker queue.")}>

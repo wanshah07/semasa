@@ -588,6 +588,8 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             db.attach_media_to_draft(store, row["post_id"], row_id)
         log.info("%s: design confirmed and saved", row_id)
         return True
+    if str(meta.get("design") or "") == "comic":
+        return process_comic(store, row, s, llm)
     if picture_pending(store, row):
         # drawn on the post's picture, which is still being made: wait for it rather than draw on paper
         store.table(db.MEDIA).update({"status": "pending", "attempts": max(0, int(row.get("attempts") or 1) - 1),
@@ -778,6 +780,96 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         from .slides import SlideError
         attempts = int(row.get("attempts") or 0)
         final = isinstance(exc, SlideError) or attempts >= s.max_attempts
+        msg = f"{type(exc).__name__}: {str(exc)[:600]}"
+        log.error("%s: %s (attempt %d)", row_id, msg, attempts)
+        db.finish_media(store, row_id, status="error" if final else "pending", error=msg, provider="semasa")
+        return False
+
+
+def comic_makers(store: Any, pick: str = "auto") -> tuple[list[tuple[str, Any]], Any]:
+    """([(name, draw)], read) for a dialogue comic: the picture makers in the order they are tried (ChatGPT first, since its
+    login is also the reader; Gemini second; `pick` names one alone) and the reader that can see, or None. A maker that is not
+    connected or not switched on is left out. `draw(prompt) -> bytes`, `read(system, prompt, data, mime) -> str`."""
+    from . import chatgpt_login
+    from .gemini_images import Drawer
+    login, drawer = chatgpt_login.Login(store), Drawer(store)
+    gpt_ok = login.connected() and bool((login.settings() or {}).get("enabled", True))
+    makers: list[tuple[str, Any]] = []
+    if gpt_ok and pick in ("auto", "chatgpt"):
+        makers.append(("chatgpt", lambda prompt: login.draw(prompt, size=chatgpt_login.SIZES["square"])))
+    if drawer.ready() and pick in ("auto", "gemini"):
+        makers.append(("gemini", lambda prompt: drawer.draw(prompt, resolution="square")))
+    return makers, (login.read_image if gpt_ok else None)
+
+
+def process_comic(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM | None = None) -> bool:
+    """A Design job of kind `comic` (Wan, 17 Nov 2026): a four-panel dialogue poster. The script comes from Wan (meta.comic)
+    or is written from his idea (meta.brief) and saved on the job before anything is drawn, so a retry draws the same words.
+    The words are judged by the rules a post is judged by. The picture maker draws the bubbles' words and every bubble is read
+    back and compared with the script; a page that cannot be proven exact is drawn without words and Semasa prints them
+    (comic.make). A hard flag is shown on the artwork and blocks the post it is attached to, and the drawing still goes ahead."""
+    from . import chatgpt_login, comic, compliance
+    from .gemini_images import GeminiError
+
+    row_id = row["id"]
+    meta = dict(row.get("meta") or {})
+    try:
+        stream = str(meta.get("stream") or "regulab")
+        revise = meta.get("revise") if isinstance(meta.get("revise"), dict) else None
+        note = str((revise or {}).get("note") or "").strip()[:600]
+        brief = str(meta.get("brief") or "").strip()
+        if revise and brief:
+            meta.pop("comic", None)                       # "Ubah": the words are written again with the note
+        script = meta.get("comic") if isinstance(meta.get("comic"), dict) else None
+        if script is None:
+            if not brief:
+                raise comic.ComicError("no comic to draw: give an idea, or the script")
+            script = comic.write(llm, brief, stream, note)
+            meta.update(comic=script, written_by=getattr(llm, "last_model", "") or None)
+            store.table(db.MEDIA).update({"meta": meta}).eq("id", row_id).execute()
+        comic.check(script)
+        if not str(meta.get("citation") or "").strip():
+            meta["citation"] = str(script.get("source") or "")
+        meta["flags"] = [f for f in compliance.scan({"stream": stream, "citation": meta.get("citation") or "",
+                                                     "media": [{"artwork": comic.as_words(script)}]})
+                         if f["where"].startswith(("Design", "Source"))]
+        makers, read = comic_makers(store, str(meta.get("maker") or "auto"))
+        if not makers:
+            raise ProviderError("no picture maker for the comic: connect ChatGPT on the API page, or switch Gemini pictures on",
+                                kind="auth")
+        made, used, failed = None, "", []
+        for name, draw in makers:
+            try:
+                made, used = comic.make(draw, read, script), name
+                break
+            except (chatgpt_login.ChatGPTError, GeminiError) as exc:
+                failed.append({"maker": name, "why": str(exc)[:200]})
+                log.warning("%s: %s could not draw the comic (%s)", row_id, name, str(exc)[:120])
+        if made is None:
+            why = "; ".join(f"{f['maker']}: {f['why']}" for f in failed)
+            raise ProviderError(f"no picture maker could draw the comic: {why}", kind="unavailable")
+        day, stamp = datetime.now(UTC).strftime("%Y/%m"), datetime.now(UTC).strftime("%d%H%M%S")
+        before = [x for x in (meta.get("slide_paths") or []) if x]
+        path = f"{day}/{row_id}-{stamp}-slide01.jpg"
+        url = db.upload_generated(store, path, made["jpeg"], "image/jpeg")
+        if revise:
+            meta.pop("revise", None)
+            meta.setdefault("revisions", []).append({"note": note, "at": datetime.now(UTC).isoformat()})
+        meta.update(slides=comic.as_words(script), slide_urls=[url], slide_paths=[path], count=1, look="comic", comic=script,
+                    sha256=[hashlib.sha256(made["jpeg"]).hexdigest()], content_type="image/jpeg", bytes=len(made["jpeg"]),
+                    comic_how=made["how"], comic_tries=made["tries"], comic_notes=made["notes"], comic_maker=used,
+                    comic_failed=failed or None, finished_at=datetime.now(UTC).isoformat())
+        db.finish_media(store, row_id, status="done", generated_media_url=url, provider="semasa", model=f"comic-{used}",
+                        error=None, meta=meta)
+        _drop_files(store, row_id, [x for x in before if x != path])
+        if row.get("post_id"):
+            db.attach_media_to_draft(store, row["post_id"], row_id)
+        log.info("%s: comic drawn by %s, words %s after %d read-back(s)", row_id, used, made["how"], made["tries"])
+        return True
+    except Exception as exc:  # noqa: BLE001 - the row records it; the run continues
+        from .comic import ComicError
+        attempts = int(row.get("attempts") or 0)
+        final = isinstance(exc, ComicError) or attempts >= s.max_attempts
         msg = f"{type(exc).__name__}: {str(exc)[:600]}"
         log.error("%s: %s (attempt %d)", row_id, msg, attempts)
         db.finish_media(store, row_id, status="error" if final else "pending", error=msg, provider="semasa")

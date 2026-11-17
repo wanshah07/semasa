@@ -10,7 +10,7 @@ with the MIT licence beside the core. `CLAUDE.md` loads them for any session in 
 
 **2. Text the system writes.** `backend/semasa/antislop.py`:
 - `PROMPT` is handed to every writer whose words reach the public: the post writers in `ideas.py` (new draft and rewrite), the clip captions in
-  `video.py`, the card words in `design.py`, the ad copy in `fragrance.py`, and the film script in `motion.py` (`PROMPT_FILM`, which keeps Wan's own hooks).
+  `video.py`, the card words in `design.py`, the dialogue comic's script in `comic.py` (`write`), the ad copy in `fragrance.py`, and the film script in `motion.py` (`PROMPT_FILM`, which keeps Wan's own hooks).
 - `clean()` makes the machine-safe edits on what comes back: the em dash and the double hyphen, a decorative emoji that opens a line, a chatbot
   closer, "let's dive in", filler such as "in order to" and "dalam usaha untuk". It adds no word and touches no number, name or reference.
   It runs in `ideas.normalise_text` (every AI caption) and on every heading, line and narration of a film.

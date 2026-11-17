@@ -52,7 +52,7 @@ const pct = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n
    slide (`type_size`) is theirs: the card is then drawn at that size and only warns.
    A layout that takes part must (1) draw every line through a wrapper, so nothing runs off the side, (2) size its containers
    from the lines in them, so nothing runs out of a box, and (3) report where its content ends, including a note. */
-export const FIT_MIN = 0.62;
+export const FIT_MIN = 0.66;                // a 30u body line at this scale is 20 px on a 1080 px card: the source line's own size
 const fillOf = (spec) => { const f = Number(spec && spec._fill); return Number.isFinite(f) && f >= FIT_MIN - 0.001 && f <= 3 ? f : 1; };
 function textScale(spec) { return pct(spec && spec.type_size, 60, 120) * fillOf(spec); }
 function mascotScale(spec) { return pct(spec && spec.mascot_size, 50, 160); }
@@ -2477,12 +2477,13 @@ const HAND_BODY = '"Open Sans", "Instrument Sans", sans-serif';
 /* A hand-drawn wobbly rounded rectangle: two passes, the second offset, so the border reads as marker ink. */
 function handCard(ctx, x, y, w, h, colour, lw) {
   const r = Math.round(0.06 * Math.min(w, h));
+  const rnd = picRng(Math.round(x * 7 + y * 13 + w * 17 + h * 19));        // seeded by the box: the same card is the same picture every time
   ctx.save(); ctx.lineCap = "round"; ctx.lineJoin = "round";
   for (let k = 0; k < 2; k++) {
     ctx.strokeStyle = k ? "rgba(255,255,255,.5)" : colour; ctx.lineWidth = k ? Math.max(1, lw - 1) : lw;
     ctx.beginPath();
     const rx = r + (k ? 1.5 : 0), ry = r - (k ? 1.5 : 0);
-    ctx.moveTo(x + rx, y); ctx.lineTo(x + w - rx, y + Math.round(2 * Math.random() - 1));
+    ctx.moveTo(x + rx, y); ctx.lineTo(x + w - rx, y + Math.round(2 * rnd() - 1));
     ctx.quadraticCurveTo(x + w, y, x + w, y + ry);
     ctx.lineTo(x + w, y + h - ry); ctx.quadraticCurveTo(x + w, y + h, x + w - rx, y + h);
     ctx.lineTo(x + rx, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - ry);
@@ -2502,7 +2503,7 @@ function handTitle(ctx, title, x, y, maxW, px, centre) {
   const t = stripEmph(title || "").trim();
   if (!t) return y;
   ctx.font = "400 " + px + "px " + HAND_HEAD; ctx.textBaseline = "top";
-  const words = t.split(/\s+/).filter(Boolean);
+  const words = t.split(/\s+/).filter(Boolean).flatMap((w) => hardSplit(ctx, w, maxW));      // a long reference is split, never run off the card
   // find the phrase the writer marked with *asterisks*, else highlight the first two words
   let hlSpan = [0, 0];
   const m = /^\*([^*]+)\*/.exec(title || "") || /\s\*([^*]+)\*/.exec(title || "");
@@ -2553,24 +2554,21 @@ function handTable(ctx, title, items, x, y, maxW, maxH, u, f = 1) {
   const labs = pairs.map(([a]) => (a[0] === "*" ? stripEmph(a) : a));
   // a tick or a cross only where the cell IS a yes or a no (16 Nov 2026: "NPRA tidak menilai keselamatan" was getting a cross)
   const dets = pairs.map(([, b]) => { const m = skMarkOf(b); return (m === "yes" ? "\u2713 " : m === "no" ? "\u2717 " : "") + b; });
-  // the type is as large as the rows allow AND still fits the card: the widest label and the widest detail side by side
-  const gapX = Math.round(28 * u);
-  let px = Math.round(24 * u * f);
-  const widest = (font, list) => { ctx.font = font; return Math.max(...list.map((l) => ctx.measureText(l).width)); };
-  for (; px > Math.round(16 * u); px -= 2) {
-    const lw = widest("700 " + px + "px " + HAND_BODY, labs), dw = widest("700 " + px + "px " + HAND_BODY, dets);
-    if (lw + gapX + dw <= maxW) break;
-  }
-  const lw = widest("700 " + px + "px " + HAND_BODY, labs), dw = widest("700 " + px + "px " + HAND_BODY, dets);
-  const tableW = Math.min(maxW, lw + gapX + dw), x0 = x + Math.round((maxW - tableW) / 2);   // the table block is centred
-  const rowH = Math.round(Math.max(px * 1.8, 44 * u * f));
-  pairs.forEach(([a, b], k) => {
+  /* The label column is as wide as its widest label, up to 42% of the card; the details take the rest, and both wrap
+     (auto-fit, 16 Nov 2026). The type used to come down to 16u and then be drawn anyway, off both sides of the card. */
+  const gapX = Math.round(28 * u * Math.min(1, f));
+  const px = Math.round(24 * u * f), lh = Math.round(px * 1.32);
+  const widest = (list) => Math.max(...list.map((l) => ctx.measureText(l).width));
+  ctx.font = "700 " + px + "px " + HAND_BODY;
+  const lw = Math.min(Math.round(maxW * 0.42), Math.ceil(widest(labs))), dw = Math.min(maxW - lw - gapX, Math.ceil(widest(dets)));
+  const tableW = lw + gapX + dw, x0 = x + Math.round((maxW - tableW) / 2);   // the table block is centred
+  pairs.forEach(([a], k) => {
     const isWajib = /wajib/i.test(a);
     ctx.font = "700 " + px + "px " + HAND_BODY;
-    ctx.fillStyle = HAND_PAL.navy; ctx.fillText(labs[k], x0, y + 4);
-    ctx.fillStyle = isWajib ? HAND_PAL.green : HAND_PAL.ink;
-    ctx.fillText(dets[k], x0 + lw + gapX, y + 4);
-    y += rowH;
+    const ll = gWrap(ctx, labs[k], lw + 1), dl = gWrap(ctx, dets[k], dw + 1);
+    ctx.fillStyle = HAND_PAL.navy; ll.forEach((l, n) => ctx.fillText(l, x0, y + 4 + n * lh));
+    ctx.fillStyle = isWajib ? HAND_PAL.green : HAND_PAL.ink; dl.forEach((l, n) => ctx.fillText(l, x0 + lw + gapX, y + 4 + n * lh));
+    y += Math.round(Math.max(Math.max(ll.length, dl.length) * lh + px * 0.48, 44 * u * f));
   });
   ctx.restore(); return y;
 }
@@ -2579,8 +2577,10 @@ function handTable(ctx, title, items, x, y, maxW, maxH, u, f = 1) {
    the words were left-aligned at the top and the lower half of the card stayed empty. Now every line is centred, the
    type grows (up to HAND_FILL_MAX, by the same search the grid cards use) until the words fill the card, and the
    block is centred between the eyebrow and the source line. Never past the room: a card already full keeps its size. */
-const HAND_FILL_MAX = 2.6;
-function handZone(H, u) { return { top: Math.round(112 * u), bottom: H - Math.round(180 * u) }; }
+/* 16 Nov 2026 (auto-fit): up to 3.4 (it was 2.6, which left a cover of three words and one line in the middle third of the card),
+   and down to HAND_FIT_MIN, where the 27u body line is 20 px. */
+const HAND_FILL_MAX = 3.4, HAND_FIT_MIN = 0.74;
+function handZone(H, u) { return { top: Math.round(112 * u), bottom: H - Math.round(130 * u) }; }   // the source line is measured in handPaint and lowers this when it is long
 function handPaint(ctx, spec, W, H, fill, shift) {
   const warn = [];
   const u = W / 1080, M = Math.round(56 * u), pad = Math.round(44 * u);
@@ -2589,16 +2589,23 @@ function handPaint(ctx, spec, W, H, fill, shift) {
   const lead = String(spec.lead || "").trim();
   const footnote = String(spec.footnote || "").trim();
   const linkedin = spec.stream === "linkedin";
-  const f = fill > 1 ? fill : 1;
+  const f = fill > 0 ? fill : 1;
   ctx.fillStyle = HAND_PAL.board; ctx.fillRect(0, 0, W, H);
   const cardX = M, cardY = Math.round(30 * u), cardW = W - M * 2, cardH = H - Math.round(60 * u);
   ctx.fillStyle = HAND_PAL.card; ctx.fillRect(cardX, cardY, cardW, cardH);
   handCard(ctx, cardX, cardY, cardW, cardH, HAND_PAL.navy, Math.round(5 * u));
   const innerW = cardW - pad * 2;
   const z = handZone(H, u);
+  // the source line is measured first: a long citation takes more lines, and the words must stop above it
+  ctx.font = "400 " + Math.round(20 * u) + "px " + HAND_BODY;
+  const fl = footnote ? gWrap(ctx, (linkedin ? "Source: " : "Sumber: ") + footnote, innerW) : [];
+  const fy = cardY + cardH - pad - fl.length * Math.round(28 * u);
+  if (fl.length) z.bottom = Math.min(z.bottom, fy - Math.round(26 * u));
   if (spec.eyebrow) {
-    ctx.font = "700 " + Math.round(19 * u) + "px " + HAND_BODY; ctx.fillStyle = HAND_PAL.muted; ctx.textBaseline = "top";
-    ctx.textAlign = "center"; ctx.fillText(String(spec.eyebrow).toUpperCase(), cardX + cardW / 2, cardY + pad); ctx.textAlign = "left";
+    const eb = String(spec.eyebrow).toUpperCase(), font = (q) => "700 " + q + "px " + HAND_BODY;
+    const ep = fitLinePx(ctx, eb, innerW, Math.round(19 * u), Math.round(12 * u), font);
+    ctx.font = font(ep); ctx.fillStyle = HAND_PAL.muted; ctx.textBaseline = "top";
+    ctx.textAlign = "center"; ctx.fillText(gWrap(ctx, eb, innerW)[0] || "", cardX + cardW / 2, cardY + pad); ctx.textAlign = "left";
   }
   let y = z.top + shift;
   ctx.textBaseline = "top";
@@ -2606,13 +2613,12 @@ function handPaint(ctx, spec, W, H, fill, shift) {
   // a word, so "BERTANGGUNGJAWAB" would run off the card); the points keep growing without it
   ctx.font = "400 " + Math.round(48 * u) + "px " + HAND_HEAD;
   const wordW = Math.max(0, ...stripEmph(title).split(/\s+/).filter(Boolean).map((x) => ctx.measureText(x).width));
-  const tf = Math.max(1, Math.min(f, wordW > 0 ? (innerW / wordW) * 0.97 : f));
+  const tf = f < 1 ? f : Math.max(1, Math.min(f, wordW > 0 ? (innerW / wordW) * 0.97 : f));
   y = handTitle(ctx, title, cardX + pad, y, innerW, Math.round(48 * u * tf), true);
   y += Math.round(20 * u * f);
   ctx.textBaseline = "alphabetic";
   const piped = items.length >= 2 && items.every((s) => s.includes("|"));
-  const bodyRoom = z.bottom - z.top - Math.round(60 * u);        // what the points may take when nothing has grown
-  const maxH = f > 1 ? Infinity : bodyRoom;
+  const maxH = Infinity;       // no line is fitted by itself any more: the whole card is (renderHandCard), so the sizes stay in step
   const gap = Math.round(14 * u * f);
   if (piped) {
     const was = y;
@@ -2627,21 +2633,19 @@ function handPaint(ctx, spec, W, H, fill, shift) {
       }
     }
   } else {
-    for (const it of [lead, ...items].filter(Boolean)) {
+    // a lone "Label | detail" is not a table: it is drawn as "Label: detail", never with a bare "|"
+    for (const it of [lead, ...items.map((x) => stripEmph(x).replace(/\s*\|\s*/g, ": "))].filter(Boolean)) {
       y = handBody(ctx, it, cardX + pad, y, innerW, maxH, Math.round(27 * u * f), Math.round(18 * u), 400, HAND_PAL.ink, 1.4, true); y += gap;
     }
   }
   if (footnote) {
     ctx.font = "400 " + Math.round(20 * u) + "px " + HAND_BODY; ctx.fillStyle = HAND_PAL.muted; ctx.textBaseline = "top";
-    const label = linkedin ? "Source: " : "Sumber: ";
-    const fl = gWrap(ctx, label + footnote, innerW);
-    const fy = cardY + cardH - pad - fl.length * Math.round(28 * u);
     ctx.textAlign = "center";
     fl.forEach((l, i) => ctx.fillText(l, cardX + cardW / 2, fy + i * Math.round(28 * u)));
     ctx.textAlign = "left";
   }
   if (y > z.bottom + Math.round(30 * u)) warn.push("The slide is fuller than the card: shorten a line.");
-  return { warn, y };
+  return { warn, y, bottom: z.bottom };
 }
 async function renderHandCard(spec) {
   const [W, H] = sizeOf(spec);
@@ -2650,17 +2654,11 @@ async function renderHandCard(spec) {
   try { await document.fonts.ready; } catch (e) { }
   const u = W / 1080, z = handZone(H, u);
   const probe = handPaint(measureProxy(ctx), spec, W, H, 1, 0);
-  // grow the type until the words fill the card (the grid cards' own search), but only when they leave it mostly empty
-  let fill = 1;
-  const used = (y) => Math.max(0, y - z.top), room = z.bottom - z.top;
-  if (!spec.type_size && room > 0 && used(probe.y) < FILL_FROM * room) {
-    const at = (f) => used(handPaint(measureProxy(ctx), spec, W, H, f, 0).y);
-    if (at(HAND_FILL_MAX) >= used(probe.y) * 1.12) {
-      let lo = 1, hi = HAND_FILL_MAX;
-      for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (at(mid) <= FILL_TARGET * room) lo = mid; else hi = mid; }
-      fill = lo > 1.03 ? Math.round(lo * 100) / 100 : 1;
-    }
-  }
+  /* The one search every family uses (fitSearch): the type grows until the words fill the card when they leave it mostly empty,
+     and since 16 Nov 2026 (auto-fit) comes down when they do not fit, to FIT_MIN, before the card warns. */
+  const used = (y) => Math.max(0, y - z.top), room = probe.bottom - z.top;
+  const fill = spec.type_size || room <= 0 ? 1
+    : await fitSearch(async (f) => used(handPaint(measureProxy(ctx), spec, W, H, f, 0).y), used(probe.y), room, HAND_FILL_MAX, FILL_FROM, FILL_TARGET, HAND_FIT_MIN);
   const end = handPaint(measureProxy(ctx), spec, W, H, fill, 0).y;
   const slack = room - used(end);
   const shift = slack > 0 ? Math.round(slack / 2) : 0;           // centred between the eyebrow and the source line

@@ -226,8 +226,10 @@ def test_photo_draws_on_the_picture_and_a_design_shape_is_honoured():
 
 @browser
 def test_too_much_for_the_card_fails_with_the_slide_number_never_clipped():
+    # since 16 Nov 2026 a full slide first shrinks its type (auto-fit); only one that does not fit at the smallest
+    # readable size is refused, so this one is far longer than it used to need to be
     long = [SLIDES[0], {"title": "Senarai panjang " * 6,
-                        "points": ["Satu ayat yang agak panjang untuk mengisi ruang pada kad ini. " * 3] * 5}]
+                        "points": ["Satu ayat yang agak panjang untuk mengisi ruang pada kad ini. " * 9] * 5}]
     with pytest.raises(SlideError, match="slide 2"):
         studio_cards.render(long, look="grid", stream="regulab")
 
@@ -726,3 +728,4 @@ def test_an_ayat_slide_is_drawn_as_the_verse_card_in_every_look_and_a_bad_one_is
     long = {**verse, "ayat_ar": " ".join([verse["ayat_ar"]] * 14), "ayat_tr": " ".join([verse["ayat_tr"]] * 14)}
     with pytest.raises(SlideError, match="too long for one card"):
         studio_cards.render([long], look="grid", stream="regulab")
+

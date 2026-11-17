@@ -99,26 +99,45 @@ def generate(page: object, prompt: str, outdir: Path, max_gen: int, dry: bool, r
     gen.click()
     report["generate_clicked_at"] = datetime.now(UTC).isoformat()
 
-    # 4. poll the jobs list until a NEW job reaches done, then let the capture handler save the video
-    # (the download mechanism is captured in the network record, not guessed)
+    # 4. wait for the result: the MP4 is captured by the on_response handler (a GET whose body is video);
+    #    break as soon as a video lands, and otherwise keep polling the jobs list until the deadline.
     deadline = time.time() + MAX_WAIT_S
-    seen = report.get("seen_jobs", [])
     while time.time() < deadline:
+        if report.get("video_saved"):
+            report["video_captured_at"] = datetime.now(UTC).isoformat()
+            break
         try:
             jobs = page.evaluate("""async () => {
-                const r = await fetch('/api/v1/jobs?scope=all&limit=10');
+                const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
                 const j = await r.json();
                 return Array.isArray(j) ? j : (j.jobs || j.data || []);
             }""")
         except Exception:  # noqa: BLE001
             jobs = []
-        for job in jobs:
-            jid = job.get("id") or job.get("_id")
-            if jid and jid not in seen:
-                seen.append(jid)
-                report["seen_jobs"] = seen
+        done = [j for j in jobs if (j.get("status") in ("done", "complete", "ready", "success"))]
+        if done:
+            report["job_done"] = True
+            report["job_meta"] = {k: done[0].get(k) for k in ("id", "status", "mode", "model", "width", "height", "size_bytes", "download_url") if done[0].get(k) is not None}
+            # a done job whose download was not captured as a raw video body: try its download_url directly
+            url = done[0].get("download_url")
+            if url and not report.get("video_saved"):
+                try:
+                    dl = page.evaluate("""async (u) => {
+                        const r = await fetch(u);
+                        const b = await r.arrayBuffer();
+                        return {status: r.status, b64: btoa(String.fromCharCode(...new Uint8Array(b)))};
+                    }""", url)
+                    if dl and dl.get("status") == 200 and dl.get("b64"):
+                        dest = outdir / f"nexabot-{datetime.now(UTC).strftime('%H%M%S')}.mp4"
+                        dest.write_bytes(base64.b64decode(dl["b64"]))
+                        report["video_saved"] = str(dest)
+                        report["video_via"] = "download_url"
+                except Exception as exc:  # noqa: BLE001
+                    report["download_url_note"] = f"download_url fetch failed: {str(exc)[:120]}"
+            break
         time.sleep(POLL_S)
-    report["timed_out"] = True
+    else:
+        report["timed_out"] = True
 
 
 def run(outdir: Path, prompt: str, max_gen: int, dry: bool, import_ok: bool) -> int:

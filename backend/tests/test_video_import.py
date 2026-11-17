@@ -4,6 +4,7 @@ ffmpeg; no network, no Telegram, no storage: the bucket is a dict."""
 from __future__ import annotations
 
 import json
+import shutil
 import socket
 import subprocess
 from datetime import UTC, datetime
@@ -40,6 +41,8 @@ def ffmpeg(tmp_path, name, *args):
 
 @pytest.fixture(scope="module")
 def clips(tmp_path_factory):
+    if not (shutil.which("ffmpeg") and shutil.which("ffprobe")):
+        pytest.skip("needs ffmpeg and ffprobe")  # the CI runner has neither on PATH; the repo's other video tests skip the same way
     tmp = tmp_path_factory.mktemp("clips")
     src = ["-f", "lavfi", "-i", "testsrc=size=270x480:rate=10:duration=2", "-f", "lavfi", "-i", "sine=frequency=440:duration=2"]
     return {

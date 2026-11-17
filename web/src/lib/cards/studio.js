@@ -722,7 +722,7 @@ async function fillScale(spec, H, u, topU, endY, measure, max = FILL_MAX, from =
    itself when nothing fits (the painter then warns). Under `from` of the room: the largest scale up to `max` at which it
    stays inside `target` of it. The height is not a smooth function of the size (one more pixel can push a word to the next
    line), so whatever the search lands on is checked and stepped down until the card really holds it. */
-async function fitSearch(at, used1, room, max = FILL_MAX, from = FILL_FROM, target = FILL_TARGET, min = FIT_MIN) {
+export async function fitSearch(at, used1, room, max = FILL_MAX, from = FILL_FROM, target = FILL_TARGET, min = FIT_MIN) {
   let f = 1;
   if (used1 > room) {
     if ((await at(min)) > room) return min;

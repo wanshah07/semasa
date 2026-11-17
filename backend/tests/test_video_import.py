@@ -317,10 +317,10 @@ def test_a_link_in_the_caption_is_a_warning_on_the_draft_not_a_refusal(clips):
 
 def test_no_caption_is_a_draft_with_a_blocking_flag_for_wan_to_fill(clips):
     store, bucket = setup()
-    iid = received(store, bucket, clips["good"], caption="", title="Video tanpa kapsyen")
+    iid = received(store, bucket, clips["good"], caption="", title="")  # a title would be written up (see below)
     step(store, bucket)
     post = store.tables["semasa_posts"][0]
-    assert post["status"] == "draft" and post["text"] == {"bm": {}} and post["hook"] == "Video tanpa kapsyen"
+    assert post["status"] == "draft" and post["text"] == {"bm": {}} and post["hook"] == "Video import (hermes)"
     assert post["hard_flags"] >= 1 and any("no caption" in f["msg"] for f in post["flags"] if f["hard"])
     assert "no caption" in row(store, iid)["note"]
 
@@ -554,3 +554,245 @@ def test_the_token_never_reaches_a_row_a_log_line_or_a_file(clips, caplog):
         step(store, bucket)
     dump = json.dumps(store.tables, default=str) + caplog.text
     assert PLAIN_TOKEN not in dump and "smi_" not in dump
+
+
+# ---- no caption sent: Semasa writes one from the title alone (Wan, 17 Nov 2026) ----------------------------------------------
+
+TITLE = "a warm cup of Malaysian teh tarik on a wooden table, steam rising, cozy cafe"
+WRITTEN = {
+    "instagram": "Secawan teh tarik panas atas meja kayu, wapnya naik perlahan di kafe yang selesa.",
+    "facebook": "Secawan teh tarik panas atas meja kayu di kafe yang selesa. Wap masih naik dari cawan.",
+    "threads": "Teh tarik panas, meja kayu, kafe yang selesa.",
+}
+PLAIN = "A warm cup of Malaysian teh tarik on a wooden table, steam rising, cozy cafe."
+
+
+class Writer:
+    """The caption writer's model: records what it was asked, answers with `reply`."""
+
+    def __init__(self, reply=None, boom=False):
+        self.reply, self.boom, self.calls = reply, boom, []
+
+    def chat_json(self, system, user, max_tokens=0):
+        self.calls.append((system, user))
+        if self.boom:
+            raise RuntimeError("the model is down")
+        return self.reply
+
+
+def untitled(store, bucket, data, **params):
+    return received(store, bucket, data, caption="", title=TITLE, **params)
+
+
+def test_no_caption_sent_the_writer_writes_one_per_channel_from_the_title_only_and_the_draft_is_never_approved(clips):
+    store, bucket = setup()
+    llm = Writer({"captions": WRITTEN})
+    iid = untitled(store, bucket, clips["good"])
+    out, told = step(store, bucket, llm=llm)
+    assert out == "1 import(s) drafted"
+    post = store.tables["semasa_posts"][0]
+    assert post["status"] == "draft" and post["id"] == row(store, iid)["post_id"]
+    assert not any(p["status"] in ("approved", "scheduled", "posted") for p in store.tables["semasa_posts"])
+    assert "approved_by" not in post and "approved_at" not in post
+    got = post["text"]["bm"]
+    assert sorted(got) == ["facebook", "instagram", "threads"]
+    assert got["instagram"] == WRITTEN["instagram"] and got["threads"] == WRITTEN["threads"]
+    assert post["hard_flags"] == 0 and not any("no caption" in f["msg"] for f in post["flags"])
+    assert any(not f["hard"] and "Semasa wrote this caption from the title only" in f["msg"] for f in post["flags"])
+    assert any("written by Semasa from the title only" in d["action"] for d in post["decisions"])
+    assert not any(d["by"] == "wan" for d in post["decisions"])
+    note = row(store, iid)["note"]
+    assert "Semasa wrote it from the title only" in note and "read it before approving" in note
+    assert "Kapsyen ditulis oleh Semasa daripada tajuk sahaja" in told[0] and "betulkan" not in told[0]
+    assert store.tables["semasa_motions"][0]["captions"] == got
+
+
+def test_the_writer_is_given_nothing_but_the_title_and_the_source(clips):
+    store, bucket = setup()
+    llm = Writer({"captions": WRITTEN})
+    untitled(store, bucket, clips["good"], date="", slot="")
+    step(store, bucket, llm=llm)
+    assert len(llm.calls) == 1
+    system, user = llm.calls[0]
+    assert user == f"TITLE: {TITLE}", "the brief is the sender's title and no scene, no script, no idea"
+    assert "THIS FILM WAS MADE OUTSIDE SEMASA" in system and "Never invent anything" in system
+    assert "hermes" in system and "is not named in the caption" in system
+    assert "No call to action" in system and "Bahasa Malaysia" in system
+    assert "GOOD_BM" not in system and "NPRA" not in user
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "Jangan lupa follow kami untuk lagi teh tarik!",
+        "Layari www.kkmhalalconsultant.com untuk menu penuh.",
+        "Teh tarik ini dijamin lulus NPRA.",
+        "Komen SAHKAN di bawah untuk tahu lebih lanjut.",
+        "Teh tarik panas, 3 sudu gula dan 250 ml susu.",
+        "Teh tarik ini halal dan selamat diminum.",
+    ],
+)
+def test_a_writer_that_asks_promises_links_or_invents_falls_back_to_the_plain_caption(clips, bad):
+    store, bucket = setup()
+    iid = untitled(store, bucket, clips["good"])
+    step(store, bucket, llm=Writer({"captions": {c: bad for c in WRITTEN}}))
+    post = store.tables["semasa_posts"][0]
+    assert post["status"] == "draft" and post["hard_flags"] == 0
+    assert set(post["text"]["bm"].values()) == {PLAIN}, post["text"]
+    assert "plain caption from the title" in row(store, iid)["note"]
+    assert any("Semasa wrote this caption from the title only" in f["msg"] for f in post["flags"])
+
+
+def test_a_writer_that_is_down_or_missing_or_answers_nothing_falls_back_to_the_plain_caption(clips):
+    for llm in (Writer(boom=True), None, Writer({"captions": "nothing"}), Writer({"captions": {}})):
+        store, bucket = setup()
+        untitled(store, bucket, clips["good"])
+        step(store, bucket, llm=llm)
+        post = store.tables["semasa_posts"][0]
+        assert post["status"] == "draft" and set(post["text"]["bm"].values()) == {PLAIN}
+
+
+def test_one_good_channel_is_kept_and_a_bad_one_is_plain(clips):
+    store, bucket = setup()
+    untitled(store, bucket, clips["good"])
+    step(store, bucket, llm=Writer({"captions": {**WRITTEN, "facebook": "Follow kami untuk lagi!"}}))
+    t = store.tables["semasa_posts"][0]["text"]["bm"]
+    assert t["instagram"] == WRITTEN["instagram"] and t["facebook"] == PLAIN
+
+
+def test_a_caption_the_sender_gave_is_never_touched_and_the_writer_is_never_asked(clips):
+    store, bucket = setup()
+    llm = Writer({"captions": WRITTEN})
+    caps = {"instagram": GOOD_BM, "threads": "Notifikasi NPRA sebelum jual."}
+    received(store, bucket, clips["good"], caption=caps, channels=["instagram", "threads"], title=TITLE)
+    received(store, bucket, clips["good"], caption=GOOD_BM, title=TITLE)
+    step(store, bucket, llm=llm)
+    a, b = store.tables["semasa_posts"]
+    assert a["text"]["bm"] == caps and b["text"]["bm"]["facebook"] == GOOD_BM
+    assert llm.calls == []
+    for p in (a, b):
+        assert not any("Semasa wrote" in f["msg"] for f in p["flags"])
+        assert not any("written by Semasa" in d["action"] for d in p["decisions"])
+
+
+def test_a_per_channel_caption_sent_as_a_json_string_in_a_form_field_is_the_senders_own(clips):
+    store, bucket = setup()
+    llm = Writer({"captions": WRITTEN})
+    caps = {"instagram": GOOD_BM, "threads": "Notifikasi NPRA sebelum jual."}
+    received(store, bucket, clips["good"], caption=json.dumps(caps), channels=["instagram", "threads"], title=TITLE)
+    step(store, bucket, llm=llm)
+    assert store.tables["semasa_posts"][0]["text"]["bm"] == caps and llm.calls == []
+    assert video_import.texts_of({"caption": '{"oops": "x"}'}, ["instagram"]) == {"instagram": '{"oops": "x"}'}
+    assert video_import.texts_of({"caption": "{not json"}, ["instagram"]) == {"instagram": "{not json"}
+
+
+def test_no_title_and_no_caption_is_the_old_flagged_draft_and_the_writer_is_not_asked(clips):
+    store, bucket = setup()
+    llm = Writer({"captions": WRITTEN})
+    received(store, bucket, clips["good"], caption="", title="")
+    step(store, bucket, llm=llm)
+    post = store.tables["semasa_posts"][0]
+    assert llm.calls == [] and post["text"] == {"bm": {}}
+    assert any("no caption" in f["msg"] for f in post["flags"] if f["hard"])
+
+
+def test_an_english_linkedin_import_gets_an_english_caption(clips):
+    store, bucket = setup()
+    llm = Writer({"captions": {"linkedin": "A warm cup of teh tarik on a wooden table in a cosy cafe."}})
+    received(store, bucket, clips["good"], stream="linkedin", lang="en", channels=["linkedin"], caption="", title=TITLE)
+    step(store, bucket, llm=llm)
+    post = store.tables["semasa_posts"][0]
+    assert post["lang"] == "en" and post["text"]["en"]["linkedin"].startswith("A warm cup") and post["hard_flags"] == 0
+    assert "English" in llm.calls[0][0]
+
+
+def test_the_motion_hook_hands_its_llm_to_the_import_step(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(video_import, "run", lambda st, settings, now, **kw: seen.update(kw) or "")
+    llm = Writer({})
+    motion.video_import_step(FakeStore(), NOW, llm)
+    assert seen == {"llm": llm}
+
+
+# ---- an import whose draft is gone ------------------------------------------------------------------------------------------
+
+
+def lose_the_draft(store, iid):
+    """What deleting the draft in the page leaves behind (supabase/087 and 051: both references are on delete set null)."""
+    r = row(store, iid)
+    store.tables["semasa_posts"] = [p for p in store.tables["semasa_posts"] if p["id"] != r["post_id"]]
+    for m in store.tables["media_generations"]:
+        if m.get("post_id") == r["post_id"]:
+            m["post_id"] = None
+    for f in store.tables["semasa_motions"]:
+        if f["id"] == r["motion_id"]:
+            f["queued_post_id"] = None
+    r["post_id"] = None
+
+
+def test_a_done_import_whose_draft_is_gone_gets_exactly_one_new_draft_with_written_captions(clips):
+    store, bucket = setup()
+    llm = Writer({"captions": WRITTEN})
+    kept = received(store, bucket, clips["good"])
+    gone = untitled(store, bucket, clips["good"])
+    step(store, bucket, llm=Writer({"captions": {c: "Follow kami!" for c in WRITTEN}}))  # first made with the plain caption
+    assert len(store.tables["semasa_posts"]) == 2
+    lose_the_draft(store, gone)
+    out, told = step(store, bucket, llm=llm)
+    assert out == "1 draft(s) made again"
+    posts = store.tables["semasa_posts"]
+    assert len(posts) == 2, "one for the import that kept its draft, one made again"
+    new = next(p for p in posts if p["id"] == row(store, gone)["post_id"])
+    assert new["status"] == "draft" and not any(p["status"] != "draft" for p in posts)
+    assert row(store, kept)["post_id"] and sum(1 for p in posts if p["id"] == row(store, kept)["post_id"]) == 1
+    film = next(f for f in store.tables["semasa_motions"] if f["id"] == row(store, gone)["motion_id"])
+    assert film["queued_post_id"] == new["id"] and len(store.tables["semasa_motions"]) == 2
+    assert new["text"]["bm"]["instagram"] == PLAIN, "the captions the film already carried are kept, never rewritten"
+    assert (new["date"], new["slot"]) not in {(p["date"], p["slot"]) for p in posts if p is not new}
+    assert any("made again from the stored film" in d["action"] for d in new["decisions"])
+    assert row(store, gone)["note"].startswith("[draft made again 2026-11-17]")
+    assert len(told) == 1 and "dibuat semula sebagai draf" in told[0] and TITLE[:30] in told[0]
+    # the second run finds nothing to do: once per import
+    out, told = step(store, bucket, llm=llm)
+    assert out == "" and told == [] and len(store.tables["semasa_posts"]) == 2
+
+
+def test_the_recovered_draft_is_written_from_the_title_when_the_film_has_no_captions(clips):
+    store, bucket = setup()
+    iid = untitled(store, bucket, clips["good"])
+    step(store, bucket)  # no writer: a plain caption
+    lose_the_draft(store, iid)
+    film = store.tables["semasa_motions"][0]
+    film["captions"] = {}  # what the stored film of the first import looked like: nothing was written then
+    step(store, bucket, llm=Writer({"captions": WRITTEN}))
+    new = store.tables["semasa_posts"][0]
+    assert new["status"] == "draft" and new["text"]["bm"]["instagram"] == WRITTEN["instagram"]
+    assert any("Semasa wrote this caption" in f["msg"] for f in new["flags"])
+    assert store.tables["semasa_motions"][0]["captions"]["threads"] == WRITTEN["threads"]
+
+
+def test_an_import_older_than_seven_days_or_already_recovered_or_failed_is_left_alone(clips):
+    store, bucket = setup()
+    old = untitled(store, bucket, clips["good"])
+    step(store, bucket)
+    lose_the_draft(store, old)
+    row(store, old)["created_at"] = "2026-11-09T01:00:00+00:00"  # 8 days
+    assert video_import.recover_missing_drafts(store, SETTINGS, NOW) == 0 and not store.tables["semasa_posts"]
+    row(store, old)["created_at"] = "2026-11-17T01:59:00+00:00"
+    row(store, old)["note"] = "[draft made again 2026-11-16] x"
+    assert video_import.recover_missing_drafts(store, SETTINGS, NOW) == 0 and not store.tables["semasa_posts"]
+    row(store, old)["note"] = ""
+    row(store, old)["status"] = "error"
+    assert video_import.recover_missing_drafts(store, SETTINGS, NOW) == 0 and not store.tables["semasa_posts"]
+
+
+def test_a_recovery_that_fails_is_never_tried_twice_and_never_raises(clips):
+    store, bucket = Blink(semasa_settings=[{"key": "brand", "value": SETTINGS["brand"]}]), Bucket()
+    store.fail = False
+    iid = untitled(store, bucket, clips["good"])
+    step(store, bucket)
+    lose_the_draft(store, iid)
+    store.fail = True  # the first post insert of the recovery blinks
+    assert video_import.recover_missing_drafts(store, SETTINGS, NOW) == 0
+    assert row(store, iid)["note"].startswith("[draft made again"), "marked before the draft: no loop"
+    assert video_import.recover_missing_drafts(store, SETTINGS, NOW) == 0 and not store.tables["semasa_posts"]

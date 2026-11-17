@@ -16,6 +16,11 @@ Run it on the GitHub runner (the secret NEXABOT_STORAGE_STATE_B64 exists there),
 
     python -m semasa.nexabot_generate OUTDIR --prompt "a cozy coffee cup on a wooden table"
 
+With --import the film can carry its own post text, so Semasa does not have to write it (docs/VIDEO-IMPORT.md): --title, --caption
+(one text for every channel), --captions-json (an object {"instagram": "...", "facebook": "...", "threads": "..."}), --channels
+(comma list), --lang (bm|en), --source (default nexabot). With none of them the film is sent with only its prompt as the title and
+Semasa writes the caption from that title.
+
 Env:
   NEXABOT_STORAGE_STATE_B64   the saved session login (base64)
   SEMASA_IMPORT_TOKEN         bearer token for the import-video route (docs/VIDEO-IMPORT.md)
@@ -143,7 +148,7 @@ def generate(page: object, prompt: str, outdir: Path, max_gen: int, dry: bool, r
                 report["download_error"] = str(exc)[:200]
 
 
-def run(outdir: Path, prompt: str, max_gen: int, dry: bool, import_ok: bool) -> int:
+def run(outdir: Path, prompt: str, max_gen: int, dry: bool, import_ok: bool, opts: dict | None = None) -> int:
     state = storage_state()
     if not state:
         print("nexabot: no saved login (NEXABOT_STORAGE_STATE_B64 empty or not JSON).")
@@ -203,11 +208,54 @@ def run(outdir: Path, prompt: str, max_gen: int, dry: bool, import_ok: bool) -> 
     print(json.dumps({"ok": True, "dry": dry, "video_saved": report.get("video_saved"),
                       "events": len(report["events"])}, indent=2))
     if report.get("video_saved") and import_ok and not dry:
-        return _import(report["video_saved"], report)
+        return _import(report["video_saved"], report, opts)
     return 0
 
 
-def _import(mp4: str, report: dict) -> int:
+CHANNELS = ("instagram", "facebook", "threads", "linkedin")
+
+
+def import_form(prompt: str, opts: dict | None = None, now: datetime | None = None) -> dict:
+    """The form fields sent beside the file, as the intake's parseOptions reads them
+    (supabase/functions/semasa-import-video/logic.js). A caption as one text goes in `caption`; per-channel captions go in
+    `caption` as one JSON object (a multipart field is text: the worker reads a JSON object there, video_import.texts_of).
+    Empty options are left out, so a bare run sends what it always did."""
+    o = opts or {}
+    now = now or datetime.now(UTC)
+    data = {"source": (o.get("source") or "nexabot")[:60], "title": (o.get("title") or prompt or "")[:160],
+            "idempotency_key": f"nexabot-{now.strftime('%Y%m%d-%H%M%S')}"}
+    channels = [c.strip().lower() for c in str(o.get("channels") or "").split(",") if c.strip()]
+    by_channel = o.get("captions") if isinstance(o.get("captions"), dict) else {}
+    plain = str(o.get("caption") or "").strip()
+    if by_channel:
+        merged = {c: plain for c in (channels or CHANNELS[:3])} if plain else {}
+        merged.update({c: t for c, t in by_channel.items() if str(t).strip()})
+        data["caption"] = json.dumps(merged, ensure_ascii=False)
+    elif plain:
+        data["caption"] = plain
+    if channels:
+        data["channels"] = ",".join(channels)
+    if o.get("lang"):
+        data["lang"] = str(o["lang"])
+    return data
+
+
+def parse_captions_json(raw: str) -> dict:
+    """--captions-json as a dict {channel: text}; ValueError (with the reason) when it is not that."""
+    try:
+        obj = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"--captions-json is not valid JSON ({exc.msg})") from exc
+    if not isinstance(obj, dict) or not obj:
+        raise ValueError("--captions-json must be a JSON object such as {\"instagram\": \"...\"}")
+    bad = [k for k, v in obj.items() if k not in CHANNELS or not isinstance(v, str)]
+    if bad:
+        names = ", ".join(map(str, bad))
+        raise ValueError(f"--captions-json: {names} is not a channel with a text (channels: {', '.join(CHANNELS)})")
+    return obj
+
+
+def _import(mp4: str, report: dict, opts: dict | None = None) -> int:
     import requests
     url = os.environ.get("SEMASA_IMPORT_URL")
     token = os.environ.get("SEMASA_IMPORT_TOKEN")
@@ -218,9 +266,7 @@ def _import(mp4: str, report: dict) -> int:
     with open(mp4, "rb") as f:
         r = requests.post(url, headers={"Authorization": f"Bearer {token}"},
                           files={"file": ("film.mp4", f, "video/mp4")},
-                          data={"source": "nexabot", "title": report.get("prompt", "")[:160],
-                                "idempotency_key": f"nexabot-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"},
-                          timeout=300)
+                          data=import_form(report.get("prompt", ""), opts), timeout=300)
     report["import"] = {"status": r.status_code, "body": r.text[:500]}
     print(f"import: {r.status_code} {r.text[:300]}")
     return 0
@@ -233,10 +279,23 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--max", type=int, default=1, dest="max_gen")
     ap.add_argument("--dry", action="store_true")
     ap.add_argument("--import", dest="import_ok", action="store_true", help="send the MP4 to Semasa import-video")
+    ap.add_argument("--title", default="", help="the post's title (default: the prompt)")
+    ap.add_argument("--caption", default="", help="one caption for every channel")
+    ap.add_argument("--captions-json", default="", dest="captions_json", help='per-channel captions, {"instagram": "...", ...}')
+    ap.add_argument("--channels", default="", help="comma list: instagram,facebook,threads")
+    ap.add_argument("--lang", default="", choices=["", "bm", "en"])
+    ap.add_argument("--source", default="nexabot")
     a = ap.parse_args(argv[1:])
+    opts = {"title": a.title, "caption": a.caption, "channels": a.channels, "lang": a.lang, "source": a.source}
+    if a.captions_json.strip():
+        try:  # refused before anything is generated: a bad caption must not cost a run
+            opts["captions"] = parse_captions_json(a.captions_json)
+        except ValueError as exc:
+            print(f"nexabot: {exc}")
+            return 2
     outdir = Path(a.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    return run(outdir, a.prompt, a.max_gen, a.dry, a.import_ok)
+    return run(outdir, a.prompt, a.max_gen, a.dry, a.import_ok, opts)
 
 
 if __name__ == "__main__":

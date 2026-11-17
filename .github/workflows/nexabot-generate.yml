@@ -19,6 +19,26 @@ on:
         description: "true = send the MP4 to Semasa import-video (needs SEMASA_IMPORT_TOKEN)"
         type: boolean
         default: false
+      title:
+        description: "Optional. The post's title (default: the prompt). Only used with import"
+        type: string
+        default: ""
+      caption:
+        description: "Optional. One caption for every channel. Leave empty and captions_json empty to let Semasa write one from the title. Only used with import"
+        type: string
+        default: ""
+      captions_json:
+        description: 'Optional. A caption per channel as JSON, e.g. {"instagram": "...", "facebook": "...", "threads": "..."}. Only used with import'
+        type: string
+        default: ""
+      channels:
+        description: "Optional. Comma list of channels: instagram,facebook,threads (default: all three). Only used with import"
+        type: string
+        default: ""
+      lang:
+        description: "Optional. bm or en (default bm). Only used with import"
+        type: string
+        default: ""
 
 concurrency:
   group: nexabot-generate
@@ -47,18 +67,33 @@ jobs:
       - name: Chromium
         run: bash ../.github/scripts/ensure-chromium.sh
       - name: Generate one video
+        # every input reaches the script through an environment variable: a caption can hold quotes, $ and backticks, and none of
+        # it is ever pasted into shell text
         env:
           NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
           SEMASA_IMPORT_TOKEN: ${{ secrets.SEMASA_IMPORT_TOKEN }}
           SEMASA_IMPORT_URL: ${{ vars.SEMASA_IMPORT_URL }}
+          NB_PROMPT: ${{ inputs.prompt }}
+          NB_DRY: ${{ inputs.dry }}
+          NB_IMPORT: ${{ inputs.import }}
+          NB_TITLE: ${{ inputs.title }}
+          NB_CAPTION: ${{ inputs.caption }}
+          NB_CAPTIONS_JSON: ${{ inputs.captions_json }}
+          NB_CHANNELS: ${{ inputs.channels }}
+          NB_LANG: ${{ inputs.lang }}
         run: |
-          if [ "${{ inputs.dry }}" = "true" ]; then
-            python -m semasa.nexabot_generate "$RUNNER_TEMP/nexabot-out" --prompt "${{ inputs.prompt }}" --dry
-          elif [ "${{ inputs.import }}" = "true" ]; then
-            python -m semasa.nexabot_generate "$RUNNER_TEMP/nexabot-out" --prompt "${{ inputs.prompt }}" --import
-          else
-            python -m semasa.nexabot_generate "$RUNNER_TEMP/nexabot-out" --prompt "${{ inputs.prompt }}"
+          args=("$RUNNER_TEMP/nexabot-out" --prompt "$NB_PROMPT")
+          if [ "$NB_DRY" = "true" ]; then
+            args+=(--dry)
+          elif [ "$NB_IMPORT" = "true" ]; then
+            args+=(--import)
+            if [ -n "$NB_TITLE" ]; then args+=(--title "$NB_TITLE"); fi
+            if [ -n "$NB_CAPTION" ]; then args+=(--caption "$NB_CAPTION"); fi
+            if [ -n "$NB_CAPTIONS_JSON" ]; then args+=(--captions-json "$NB_CAPTIONS_JSON"); fi
+            if [ -n "$NB_CHANNELS" ]; then args+=(--channels "$NB_CHANNELS"); fi
+            if [ -n "$NB_LANG" ]; then args+=(--lang "$NB_LANG"); fi
           fi
+          python -m semasa.nexabot_generate "${args[@]}"
       - name: Keep the video and report (one day)
         if: always()
         uses: actions/upload-artifact@v4

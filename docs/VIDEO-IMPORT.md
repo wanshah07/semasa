@@ -28,7 +28,7 @@ Options (all optional):
 | Field | Meaning |
 | --- | --- |
 | `title` | up to 160 characters; the post's hook and the picture's alt text. Default: the caption's first line |
-| `caption` | text for every channel, or an object `{"instagram": "…", "facebook": "…", "threads": "…"}`. Never altered or shortened. A caption that breaks a rule, or none at all, still makes the draft, with the blocking flags on it for Wan to fix in the page |
+| `caption` | text for every channel, or an object `{"instagram": "…", "facebook": "…", "threads": "…"}` (in a multipart form, which carries text only, send that object as a JSON string: the worker reads it). Never altered or shortened. A caption that breaks a rule still makes the draft, with the blocking flags on it for Wan to fix in the page. **None at all and a `title`: Semasa writes one, see "No caption sent"** |
 | `lang` | `bm` (default for `regulab`) or `en` (the only choice for `linkedin`) |
 | `stream` | `regulab` (default: Instagram, Facebook, Threads) or `linkedin` |
 | `channels` | a subset of the stream's channels. Default: all of them |
@@ -73,6 +73,38 @@ Semasa shows both. A refused file is deleted from storage. To try again after a 
   imported film can go to Instagram without Semasa's cover. The film was not made by Semasa and a cover cannot be added to someone
   else's film. Wan still sees the film before he approves.
 
+## No caption sent: Semasa writes one from the title (17 Nov 2026)
+
+When a `title` came and no `caption` (string or object), the worker writes a caption for each channel with the Motion caption writer
+(`motion_captions.write`, the one that writes a film's captions), so the draft is not left with blocking "no caption" flags.
+
+- **The brief is only what the sender gave**: the title (the prompt, for a Nexabot film) and the `source`, which the writer is told
+  not to name. No scene, no script, no idea, no search. The writer is told to describe what the picture shows in two or three
+  warm, plain sentences, and never to bring in a number, name, place, date, regulation, source or claim the title does not already
+  contain. Language and voice follow the draft: Malaysian Malay, casual brand voice, for `regulab`; English for `linkedin`;
+  each platform's own length and hashtag count (`rules/compliance.json`); no call to action, no ws.regulab URL, no "follow for more".
+- **It is checked, never trusted.** A written caption is refused (that channel gets the plain caption) when it asks people to follow,
+  sends the reader away to look something up, states a number the title does not have, or names a rule, body or guarantee
+  (NPRA, JAKIM, halal, "dijamin", "safe", "clinical" and the like) that the title does not. Then the whole set goes through the
+  same compliance scan as a sent caption; if a blocking flag is still there, every channel gets the **plain caption**: the title as
+  one sentence, fitted to the platform, nothing added. The same plain caption stands in when no writer is available or it fails. Wan
+  is flagged only for what still blocks.
+- **The draft says so**: a warning flag ("Semasa wrote this caption from the title only: read it before approving"), a `decisions`
+  line, the import's `note` and the Telegram message. It is a DRAFT like any import; nothing is approved. Wan reads the caption,
+  edits it if he likes, then approves.
+- **A caption the sender gave is never touched**, and the writer is not asked. No title and no caption is the old draft with the
+  "no caption" blocking flag.
+
+## An import whose draft is gone
+
+`video_import.recover_missing_drafts`, called from the same Motion step as the import itself, looks at imports that are `done`, younger
+than 7 days, and whose draft post no longer exists (deleted in the page: the import's `post_id` and the film's `queued_post_id` were set
+to null, and no post carries the film's media). It makes the draft again from the stored film (no new file, no probe), with the film's
+captions, or written from the title as above when it has none, on the next free slot, tells Wan on Telegram, and marks the import row's
+`note` with `[draft made again YYYY-MM-DD]` **before** it writes the draft: an import is recovered once, never again, even if the
+recovery fails half way. Up to two a run. No column is needed. A draft Wan deletes on purpose within 7 days of the import is
+made again once; delete it a second time and it stays gone.
+
 ## Examples
 
 ```bash
@@ -109,6 +141,16 @@ A link instead of a file:
 curl -X POST "$URL" -H "Authorization: Bearer $SEMASA_IMPORT_TOKEN" -H "Content-Type: application/json" \
   -d '{"video_url": "https://cdn.example.com/film.mp4", "caption": "…", "idempotency_key": "hermes-2026-11-18-02"}'
 ```
+
+### From the Nexabot generate job
+
+`.github/workflows/nexabot-generate.yml` (Actions, "Run workflow"): `prompt`, `dry` and `import` as before, plus optional `title`,
+`caption` (one text for every channel), `captions_json` (`{"instagram": "…", "facebook": "…", "threads": "…"}`), `channels`
+(`instagram,facebook,threads`) and `lang` (`bm` or `en`). They only count with `import` on and `dry` off. Every input reaches the script as
+an environment variable (`NB_TITLE`, `NB_CAPTION`, `NB_CAPTIONS_JSON`, `NB_CHANNELS`, `NB_LANG`), never pasted into shell text, so a
+caption with quotes or `$` is safe. With none of them, the film goes with its prompt as the title and Semasa writes the caption.
+`python -m semasa.nexabot_generate OUT --prompt … --import [--title … --caption … --captions-json … --channels … --lang … --source …]`
+does the same by hand; a `--captions-json` that is not a JSON object of channel texts is refused before anything is generated.
 
 Code: `supabase/functions/semasa-import-video/` (the intake), `supabase/087_video_import.sql` (tables, keys), `backend/semasa/video_import.py`
 (the worker, called from `motion.run`), `web/src/components/VideoImportCard.jsx` (the card).

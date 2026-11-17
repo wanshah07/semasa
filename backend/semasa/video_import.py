@@ -10,6 +10,11 @@ deleted. A CAPTION that fails the compliance scan, or none at all, is not a fail
 with the blocking flags on it, so he fixes the caption in the page; the page (and Telegram's Approve) refuse while a hard
 flag remains.
 
+NO CAPTION SENT (Wan, 17 Nov 2026: "betulkan untuk imported video"): when the sender gave a title but no caption, Semasa
+writes one per channel with the Motion caption writer (`motion_captions.write`) from the title alone, checks it with the same
+compliance scan, and falls back to a plain caption built from the title when the writer fails or its text breaks a rule. The
+draft says so (a decision, a warning flag, the note) and is never approved. A caption the sender gave is never touched.
+
 Limits are the repo's own, none invented: a stored file is at most 50 MB (the bucket, supabase/003), the posted copy at most
 `video.MAX_OUT_BYTES` (48 MB) and `video.MAX_CLIP` (90 s), the longest short film Semasa itself makes. The compressed copy is
 `motion.social_copy`, the same one a Motion film gets. Never raises: the import step must never stop a film."""
@@ -18,6 +23,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 import socket
 import subprocess
 import tempfile
@@ -28,7 +34,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
-from . import autofill, compliance, db, ideas, motion, video
+from . import autofill, compliance, db, ideas, motion, motion_captions, video
 from .log import get_logger
 
 log = get_logger("semasa.video_import")
@@ -212,8 +218,17 @@ def needs_copy(info: dict[str, Any], size: int) -> bool:
 
 
 def texts_of(params: dict[str, Any], channels: list[str]) -> dict[str, str]:
-    """{channel: caption} from the request: one text for every channel, or the object the sender gave. Never altered."""
+    """{channel: caption} from the request: one text for every channel, or the object the sender gave (also as a JSON object in a
+    string). Never altered."""
     cap = params.get("caption")
+    if isinstance(cap, str) and cap.lstrip().startswith("{"):
+        # a multipart form field is text, so a sender with a caption per channel sends the object as JSON in `caption`
+        try:
+            obj = json.loads(cap)
+        except ValueError:
+            obj = None
+        if isinstance(obj, dict) and obj and all(k in CHANNEL_NAMES and isinstance(v, str) for k, v in obj.items()):
+            cap = obj
     if isinstance(cap, dict):
         return {c: str(cap[c]).strip() for c in channels if str(cap.get(c) or "").strip()}
     text = str(cap or "").strip()
@@ -255,6 +270,112 @@ def draft_flags(
             }
         )
     return flags
+
+
+# --- a caption when none was sent -----------------------------------------------------------------------------------------------
+
+IMPORT_NOTE = """THIS FILM WAS MADE OUTSIDE SEMASA. The TITLE line above is all anyone told us about it: the prompt or title its
+sender used. It overrides the rules above that ask for a script, a source or a rule that decides it.
+- Write a short, warm, plain caption about what the picture shows, from the TITLE and nothing else. Two or three sentences at most
+  (Threads: one).
+- Never invent anything: no number, name, brand, place, date, regulation, source, claim, health or safety statement that the TITLE
+  does not already contain. If the TITLE is only a scene, describe the scene.
+- No call to action, no "follow for more", no link, no website, no question that tells people to do something.
+- The film's maker or tool ({made_by}) is not named in the caption.
+- Hashtags: only the number given for the platform, plain words from the TITLE."""
+
+# words that put a rule, a body or a guarantee in a caption: only allowed when the sender's own title already has them
+CLAIM_WORDS = re.compile(
+    r"\b(?:npra|jakim|kkm|moh|fda|sccs|hsa|akta|peraturan|regulation|regulations|directive|direktif|garis panduan|guideline|"
+    r"guidelines|halal|sijil|certified|bersijil|dijamin|guaranteed|terbukti|proven|klinikal|clinical|selamat|safe)\b",
+    re.I,
+)
+NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def invented(text: str, title: str) -> str:
+    """Why a written caption is refused ('' when it is fine): it asks for something, sends the reader away, or brings in a
+    number or a rule/claim word the sender's title does not contain. What an author could not know from a picture is the risk."""
+    body = "\n".join(ln for ln in text.split("\n") if not ln.strip().startswith("#"))
+    if motion_captions.follow_ask(text):
+        return "it asks people to follow"
+    if motion_captions.hand_off(text):
+        return "it sends the reader away"
+    have = title.lower()
+    nums = {n for n in NUMBER.findall(body) if n not in title}
+    if nums:
+        return f"it states a number the title does not have ({sorted(nums)[0]})"
+    for m in CLAIM_WORDS.finditer(body):
+        if m.group(0).lower() not in have:
+            return f"it states '{m.group(0)}', which the title does not"
+    return ""
+
+
+def plain_caption(title: str, stream: str, platform: str) -> str:
+    """The safe caption: the sender's own title as a sentence, fitted to the platform. Nothing added."""
+    t = " ".join(str(title or "").split())
+    if not t:
+        return ""
+    t = t[0].upper() + t[1:]
+    if t[-1] not in ".!?":
+        t += "."
+    return motion_captions.fit(t, stream, platform)
+
+
+def auto_captions(
+    llm: Any,
+    stream: str,
+    lang: str,
+    channels: list[str],
+    title: str,
+    source: str,
+    settings: dict[str, Any],
+) -> tuple[dict[str, str], str]:
+    """({channel: caption}, who) for an import that came with no caption. `who` is 'semasa' when the Motion caption writer
+    wrote at least one (from the title only), 'plain' when the plain caption from the title stands in, '' when there is no title.
+    The writer's text is judged by the same compliance scan as any caption; one that breaks a rule is replaced by the plain
+    caption. Never raises."""
+    plain = {c: plain_caption(title, stream, c) for c in channels}
+    plain = {c: t for c, t in plain.items() if t}
+    if not plain:
+        return {}, ""
+    texts, written = dict(plain), 0
+    if llm is not None:
+        try:
+            mark = motion_captions.from_script(title, [], stream)  # what write() answers when it could not write
+            got = motion_captions.write(
+                llm,
+                {"stream": stream},
+                [],
+                title,
+                lang=lang,
+                voice=motion.voice_line(stream, lang),
+                speak_as=motion.speaker(lang),
+                note=IMPORT_NOTE.format(made_by=source or "an outside agent"),
+            )
+            for c in channels:
+                t = str(got.get(c) or "").strip()
+                if not t or t == mark.get(c):
+                    continue
+                why = invented(t, title)
+                if why:
+                    log.info("written caption for %s refused: %s", c, why)
+                    continue
+                texts[c], written = t, written + 1
+        except Exception as exc:  # noqa: BLE001 - the plain caption stands in
+            log.warning("import caption writer failed (%s)", str(exc)[:160])
+            texts, written = dict(plain), 0
+    if written and compliance.hard_count(draft_flags(stream, lang, texts, channels, title, settings)):
+        texts, written = dict(plain), 0  # a rule is still broken: the plain caption, and Wan is flagged for what still blocks
+    return texts, ("semasa" if written else "plain")
+
+
+AUTHORED_FLAG = {
+    "hard": False,
+    "where": "Caption",
+    "msg": "Semasa wrote this caption from the title only: read it before approving",
+}
+AUTHORED_ACTION = "caption written by Semasa from the title only (nothing else was sent); read it before approving"
 
 
 # --- the slot ------------------------------------------------------------------------------------------------------------------
@@ -300,6 +421,14 @@ def _title_of(params: dict[str, Any], row: dict[str, Any], texts: dict[str, str]
     return (first[:80] or f"Video import ({str(row.get('source') or 'luar')[:40]})").strip()
 
 
+def _shape(params: dict[str, Any]) -> tuple[str, str, list[str]]:
+    """(stream, language, channels) an import asked for, with the defaults the intake applies."""
+    stream = "linkedin" if params.get("stream") == "linkedin" else "regulab"
+    lang = "en" if stream == "linkedin" else ("en" if params.get("lang") == "en" else "bm")
+    plats = compliance.platforms_for(stream)
+    return stream, lang, [c for c in (params.get("channels") or []) if c in plats] or list(plats)
+
+
 def process(
     store: Any,
     row: dict[str, Any],
@@ -311,16 +440,14 @@ def process(
     resolve: Any = socket.getaddrinfo,
     notify: Any = None,
     now: datetime | None = None,
+    llm: Any = None,
 ) -> str:
     """One import to its end: 'done' (a draft post waits for Wan) or 'error' (with the reason). Raises only for a failure worth
     trying again (the caller counts attempts); a Reject is final and is written here."""
     storage = storage or Storage(store)
     now = now or datetime.now(UTC)
     params = row.get("params") if isinstance(row.get("params"), dict) else {}
-    stream = "linkedin" if params.get("stream") == "linkedin" else "regulab"
-    lang = "en" if stream == "linkedin" else ("en" if params.get("lang") == "en" else "bm")
-    plats = compliance.platforms_for(stream)
-    channels = [c for c in (params.get("channels") or []) if c in plats] or list(plats)
+    stream, lang, channels = _shape(params)
     made: list[str] = []  # every file this import wrote: all of them go if it is rejected
     stored = str(row.get("stored_path") or "")
     try:
@@ -342,12 +469,17 @@ def process(
             raise Reject("the file is not an MP4 (it has no ftyp header). Send H.264/AAC in an .mp4 container")
         texts = texts_of(params, channels)
         title = _title_of(params, row, texts)
+        authored = ""
+        if not texts and str(params.get("title") or "").strip():  # no caption sent: Semasa writes one, from that title alone
+            texts, authored = auto_captions(llm, stream, lang, channels, title, str(row.get("source") or ""), settings)
         with tempfile.TemporaryDirectory(prefix="semasa-import-") as tmp:
             src = Path(tmp) / "import.mp4"
             src.write_bytes(data)
             info = probe(src, runner)
             check_file(info, channels)
             flags = draft_flags(stream, lang, texts, channels, title, settings, info)
+            if authored:
+                flags.append(dict(AUTHORED_FLAG))
             date, slot = slot_for(store, stream, params, settings, now)
             note: list[str] = []
             if not stored:  # a link: the file is kept in Semasa's own bucket from here on
@@ -398,12 +530,19 @@ def process(
             social_bytes,
             poster_url,
             now,
+            authored=authored,
         )
         blocking = compliance.hard_count(flags)
         if blocking:  # a caption that breaks a rule is the draft's to fix (Wan, 17 Nov 2026), never a reason to refuse the import
             note.append(f"the draft was made with {blocking} blocking flag(s) to fix before Wan can approve it")
         if not texts:
             note.append("no caption: write it before approving")
+        if authored:
+            note.append(
+                "no caption was sent: Semasa wrote it from the title only"
+                + (" (the writer was not used: a plain caption from the title)" if authored == "plain" else "")
+                + "; read it before approving"
+            )
         soft = [f"{f['where']}: {f['msg']}" for f in flags if not f["hard"]]
         if soft:
             note.append(f"{len(soft)} warning(s) on the draft")
@@ -423,6 +562,8 @@ def process(
         told = f"Video import siap, menunggu lulus: {title[:100]} ({date} {slot}, {', '.join(channels)})"
         if blocking:
             told += f". {blocking} perkara menghalang Lulus: betulkan kapsyen di Semasa"
+        elif authored:
+            told += ". Kapsyen ditulis oleh Semasa daripada tajuk sahaja: baca dahulu sebelum Lulus"
         _tell(store, told, notify)
         return "done"
     except Reject as no:
@@ -449,6 +590,8 @@ def _make_draft(
     social_bytes: int,
     poster_url: str,
     now: datetime,
+    authored: str = "",
+    recovered: bool = False,
 ) -> str:
     """The film row (already done), its media row and the DRAFT post, written in the order comic_daily.queue_post uses. A retry
     after a half-finished try reuses the film row the first try made."""
@@ -540,7 +683,9 @@ def _make_draft(
                 "at": now.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                 "by": "worker",
                 "action": f"imported video ({src['source'] or 'outside agent'}); a draft, waiting for Wan's Approve",
-            }
+            },
+            *([{"at": now.strftime("%Y-%m-%dT%H:%M:%S.000Z"), "by": "worker", "action": RECOVERED_ACTION}] if recovered else []),
+            *([{"at": now.strftime("%Y-%m-%dT%H:%M:%S.000Z"), "by": "worker", "action": AUTHORED_ACTION}] if authored else []),
         ],
     }
     post["flags"], post["hard_flags"] = flags, compliance.hard_count(flags)
@@ -585,6 +730,128 @@ def _tell(store: Any, text: str, notify: Any = None) -> None:
             telegram_bot.notify(store, text)
     except Exception as exc:  # noqa: BLE001
         log.info("import not announced on Telegram (%s)", str(exc)[:120])
+
+
+# --- an import whose draft is gone ----------------------------------------------------------------------------------------------
+
+RECOVER_WITHIN = timedelta(days=7)
+MAX_RECOVER = 2  # drafts made again in one run
+RECOVERED_TAG = "[draft made again"  # at the front of the import row's `note`: the one recovery an import gets
+RECOVERED_ACTION = "draft made again from the stored film (the first draft was removed); a draft, waiting for Wan's Approve"
+
+
+def _post_exists(store: Any, post_id: Any) -> bool:
+    if not post_id:
+        return False
+    return bool(store.table(db.POSTS).select("id").eq("id", post_id).limit(1).execute().data)
+
+
+def _recover_one(store: Any, row: dict[str, Any], settings: dict[str, Any], now: datetime, notify: Any, llm: Any) -> bool:
+    """One `done` import whose draft post is gone gets its draft again, once. False when there was nothing to do."""
+    if RECOVERED_TAG in str(row.get("note") or "") or not row.get("motion_id") or _post_exists(store, row.get("post_id")):
+        return False
+    film = (store.table(MOTIONS).select("*").eq("id", row["motion_id"]).limit(1).execute().data or [None])[0]
+    if not film or film.get("status") != "done" or not film.get("video_url") or _post_exists(store, film.get("queued_post_id")):
+        return False
+    for m in store.table(db.MEDIA).select("id,post_id").eq("meta->>import_id", row["id"]).execute().data or []:
+        if _post_exists(store, m.get("post_id")):
+            return False  # a post still carries this film
+    params = row.get("params") if isinstance(row.get("params"), dict) else {}
+    stream, lang, channels = _shape(params)
+    title = str(film.get("title") or film.get("brief") or params.get("title") or "").strip()[:160]
+    kept = film.get("captions") if isinstance(film.get("captions"), dict) else {}
+    texts, authored = {c: str(kept[c]).strip() for c in channels if str(kept.get(c) or "").strip()}, ""
+    if not texts and title:
+        texts, authored = auto_captions(llm, stream, lang, channels, title, str(row.get("source") or ""), settings)
+    info = {
+        "width": int(film.get("width") or 0),
+        "height": int(film.get("height") or 0),
+        "duration_s": float(film.get("duration_s") or 0),
+        "bytes": int(film.get("bytes") or 0),
+    }
+    flags = draft_flags(stream, lang, texts, channels, title, settings, info)
+    if authored:
+        flags.append(dict(AUTHORED_FLAG))
+    date, slot = slot_for(store, stream, {}, settings, now)
+    note = f"{RECOVERED_TAG} {now.strftime('%Y-%m-%d')}] {str(row.get('note') or '')}"[:500]
+    # the marker is written BEFORE the draft: whatever happens next, this import is never recovered a second time
+    store.table(TABLE).update({"note": note}).eq("id", row["id"]).eq("status", "done").execute()
+    post_id = _make_draft(
+        store,
+        {**row, "note": note},
+        params,
+        stream,
+        lang,
+        channels,
+        texts,
+        title,
+        flags,
+        date,
+        slot,
+        info,
+        str(film.get("video_path") or row.get("stored_path") or ""),
+        str(film.get("video_url")),
+        str(film.get("social_url") or ""),
+        int(film.get("social_bytes") or 0),
+        str(film.get("poster_url") or ""),
+        now,
+        authored=authored,
+        recovered=True,
+    )
+    store.table(TABLE).update({"post_id": post_id}).eq("id", row["id"]).execute()
+    if authored:
+        store.table(MOTIONS).update({"captions": texts}).eq("id", film["id"]).execute()
+    db.log_event(
+        store,
+        "info",
+        "import",
+        "import.recovered",
+        f"Video import dibuat semula sebagai draf: {title[:80]} ({date} {slot}); menunggu Lulus anda",
+        ref_table=db.POSTS,
+        ref_id=post_id,
+        detail={"import_id": row["id"], "source": row.get("source"), "date": date, "slot": slot},
+    )
+    blocking = compliance.hard_count(flags)
+    told = f"Video import dibuat semula sebagai draf, menunggu lulus: {title[:100]} ({date} {slot}, {', '.join(channels)})"
+    if blocking:
+        told += f". {blocking} perkara menghalang Lulus: betulkan kapsyen di Semasa"
+    elif authored:
+        told += ". Kapsyen ditulis oleh Semasa daripada tajuk sahaja: baca dahulu sebelum Lulus"
+    _tell(store, told, notify)
+    return True
+
+
+def recover_missing_drafts(
+    store: Any, settings: dict[str, Any] | None = None, now: datetime | None = None, *, notify: Any = None, llm: Any = None
+) -> int:
+    """Imports that finished (`done`) in the last 7 days whose draft post was removed get their draft again from the stored film,
+    with the written captions, on the next free slot and a Telegram message: once per import (the import row's `note` carries
+    the mark). Idempotent; never raises. Returns the number of drafts made."""
+    now = now or datetime.now(UTC)
+    made = 0
+    try:
+        settings = settings if settings is not None else ideas.load_settings(store)
+        rows = (
+            store.table(TABLE)
+            .select("*")
+            .eq("status", "done")
+            .gte("created_at", (now - RECOVER_WITHIN).isoformat())
+            .order("created_at")
+            .limit(50)
+            .execute()
+            .data
+            or []
+        )
+        for r in rows:
+            if made >= MAX_RECOVER:
+                break
+            try:
+                made += _recover_one(store, r, settings, now, notify, llm)
+            except Exception as exc:  # noqa: BLE001 - one import's trouble never stops the others
+                log.warning("import %s draft not recovered (%s)", r.get("id"), str(exc)[:200])
+    except Exception as exc:  # noqa: BLE001
+        log.warning("import recovery step failed (%s)", str(exc)[:200])
+    return made
 
 
 # --- the step ------------------------------------------------------------------------------------------------------------------
@@ -644,6 +911,9 @@ def run(store: Any, settings: dict[str, Any] | None = None, now: datetime | None
             out.append(f"{done} import(s) drafted")
         if failed:
             out.append(f"{failed} import(s) refused")
+        again = recover_missing_drafts(store, settings, now, notify=kw.get("notify"), llm=kw.get("llm"))
+        if again:
+            out.append(f"{again} draft(s) made again")
     except Exception as exc:  # noqa: BLE001
         log.warning("video import step failed (%s)", str(exc)[:200])
         out.append("error")

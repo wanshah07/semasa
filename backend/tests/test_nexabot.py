@@ -457,3 +457,110 @@ def test_a_page_read_writes_no_screenshot(tmp_path):
     finally:
         pr.SCREENSHOTS_ON = True
     assert pr._shot(page, tmp_path, "y.png", True) == "y.png" and page.calls == 1
+
+
+# --- Phase B: the post text passes through to the import (Wan, 17 Nov 2026) ----------------------------------------------------
+
+import re  # noqa: E402
+from datetime import UTC, datetime  # noqa: E402
+
+from semasa import nexabot_generate as gen  # noqa: E402
+
+WORKFLOW = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "nexabot-generate.yml"
+NOW = datetime(2026, 11, 17, 5, 6, 7, tzinfo=UTC)
+
+
+def test_a_bare_run_sends_what_it_always_sent():
+    assert gen.import_form("a cup of tea", None, NOW) == {
+        "source": "nexabot", "title": "a cup of tea", "idempotency_key": "nexabot-20261117-050607"}
+    assert gen.import_form("p" * 300, {}, NOW)["title"] == "p" * 160
+
+
+def test_title_caption_channels_lang_and_source_are_sent_as_the_intake_reads_them():
+    odd = 'Satu "caption" $HOME `x`\nbaris dua'
+    f = gen.import_form(
+        "prompt", {"title": "Teh tarik", "caption": odd, "channels": "Instagram, threads", "lang": "bm", "source": "hermes"}, NOW)
+    assert f["title"] == "Teh tarik" and f["source"] == "hermes" and f["lang"] == "bm"
+    assert f["caption"] == 'Satu "caption" $HOME `x`\nbaris dua', "the caption is sent exactly, quotes and all"
+    assert f["channels"] == "instagram,threads"
+
+
+def test_per_channel_captions_go_as_one_json_object_and_override_the_plain_one():
+    caps = {"instagram": "IG", "facebook": "FB"}
+    f = gen.import_form("p", {"captions": caps, "caption": "all", "channels": "instagram,facebook,threads"}, NOW)
+    assert json.loads(f["caption"]) == {"instagram": "IG", "facebook": "FB", "threads": "all"}
+    assert json.loads(gen.import_form("p", {"captions": caps}, NOW)["caption"]) == caps
+
+
+def test_captions_json_is_checked_before_anything_is_generated():
+    assert gen.parse_captions_json('{"instagram": "a", "threads": "b"}') == {"instagram": "a", "threads": "b"}
+    for bad in ("not json", "[1]", "{}", '{"tiktok": "x"}', '{"instagram": 3}'):
+        with pytest.raises(ValueError):
+            gen.parse_captions_json(bad)
+    assert gen.main(["x", "/tmp/never", "--prompt", "p", "--captions-json", "{broken"]) == 2
+
+
+def test_import_posts_the_file_with_that_form(tmp_path, monkeypatch):
+    import requests
+
+    mp4 = tmp_path / "film.mp4"
+    mp4.write_bytes(b"\x00\x00\x00\x18ftypisom" + b"0" * 40)
+    seen = {}
+
+    class R:
+        status_code, text = 202, '{"ok": true}'
+
+    def post(url, headers=None, files=None, data=None, timeout=None):
+        seen.update(url=url, headers=headers, data=data, name=files["file"][0])
+        return R()
+
+    monkeypatch.setattr(requests, "post", post)
+    monkeypatch.setenv("SEMASA_IMPORT_URL", "https://x.test/functions/v1/semasa-import-video")
+    monkeypatch.setenv("SEMASA_IMPORT_TOKEN", "smi_" + "0" * 48)
+    report: dict = {"prompt": "a cup of tea"}
+    assert gen._import(str(mp4), report, {"title": "T", "captions": {"threads": "hi"}, "lang": "en"}) == 0
+    assert seen["data"]["title"] == "T" and seen["data"]["lang"] == "en"
+    assert json.loads(seen["data"]["caption"]) == {"threads": "hi"}
+    assert seen["data"]["source"] == "nexabot" and seen["name"] == "film.mp4"
+    assert report["import"]["status"] == 202
+    assert "smi_" not in json.dumps(report)
+    seen.clear()
+    gen._import(str(mp4), {"prompt": "a cup of tea"})  # no options: the old behaviour
+    assert seen["data"]["title"] == "a cup of tea" and "caption" not in seen["data"] and "channels" not in seen["data"]
+
+
+def _run_blocks(text):
+    """The shell text of every `run:` block in the workflow (a block scalar: the lines indented under it)."""
+    lines, out, i = text.split("\n"), [], 0
+    while i < len(lines):
+        m = re.match(r"^(\s*)(?:- )?run:\s*(.*)$", lines[i])
+        if not m:
+            i += 1
+            continue
+        indent, first, block = len(m.group(1)), m.group(2), []
+        if first and first not in ("|", ">", "|-", ">-"):
+            block.append(first)
+        i += 1
+        while i < len(lines) and (not lines[i].strip() or len(lines[i]) - len(lines[i].lstrip()) > indent):
+            block.append(lines[i])
+            i += 1
+        out.append("\n".join(block))
+    return out
+
+
+def test_the_workflow_takes_the_new_inputs_and_hands_them_over_only_as_environment_variables():
+    text = WORKFLOW.read_text("utf-8")
+    for name in ("prompt", "dry", "import", "title", "caption", "captions_json", "channels", "lang"):
+        assert re.search(rf"^      {name}:\n", text, re.M), f"workflow_dispatch input {name} is missing"
+    runs = _run_blocks(text)
+    assert runs and any("nexabot_generate" in r for r in runs)
+    for r in runs:
+        assert "${{" not in r, f"an expression is pasted into shell text: {r[:200]}"
+    assert not re.search(r"\$\{\{\s*inputs\.", "\n".join(runs))
+    for name, var in (("title", "NB_TITLE"), ("caption", "NB_CAPTION"), ("captions_json", "NB_CAPTIONS_JSON"),
+                      ("channels", "NB_CHANNELS"), ("lang", "NB_LANG"), ("prompt", "NB_PROMPT")):
+        env = re.search(rf"^\s+{var}: \$\{{\{{ inputs\.{name} \}}\}}$", text, re.M)
+        assert env, f"{var} is not an env var from inputs.{name}"
+    gen_run = next(r for r in runs if "nexabot_generate" in r)
+    assert '"${args[@]}"' in gen_run and '"$NB_TITLE"' in gen_run and '"$NB_CAPTIONS_JSON"' in gen_run
+    assert "--dry" in gen_run and "--import" in gen_run, "dry and import keep working"

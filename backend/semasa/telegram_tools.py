@@ -383,9 +383,10 @@ def due_motion_videos(store: Any, since: str) -> list[dict[str, Any]]:
 
 
 # ---- topics a legacy button asked for --------------------------------------------
-# The button menu is telegram_catalogue.py now (Wan, 9 Nov 2026). What stays here is the handler behind the OLD `menu:<action>`
-# buttons, so a menu message already sitting in Wan's chat still works: an action that needs words asks for them (pending) and
-# the next plain message he sends is that topic. None of these is offered by the new menu.
+# The button menu is telegram_menu.py now (rules/telegram_menu.json: every segment and page of Semasa; Wan, 16 Nov 2026). What
+# stays here is the handler behind the OLD `menu:<action>` buttons, so a menu message already sitting in Wan's chat still works:
+# an action that needs words asks for them (pending) and the next plain message he sends is that topic. The new menu's motion,
+# report and note buttons keep the same pending word, so take_pending below answers them too.
 NEEDS_TOPIC = {
     "idea": "💡 Hantar link atau tulis idea:",
     "poster": "🎨 Topik atau link untuk poster:",

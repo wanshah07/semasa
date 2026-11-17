@@ -10,10 +10,14 @@ from test_telegram_tools import LINK, team_store  # noqa: E402
 from semasa import telegram_catalogue as cat  # noqa: E402
 
 
-def test_home_has_only_the_five_new_english_buttons():
-    text, buttons = cat.home_reply(LINK)
+def test_home_is_the_menu_of_every_segment_and_keeps_the_five_tasks_within_reach():
+    """The five tasks of 9 Nov 2026 (model, repo, idea, style, post) are still buttons: each sits in its page's own menu now."""
+    from semasa import telegram_menu as menu
+    text, buttons = cat.home_reply(LINK, "en", "https://semasa.example")
     assert "Semasa here" in text
-    assert [row[0]["callback_data"] for row in buttons] == ["c:model", "c:repo", "c:idea", "c:style", "c:post"]
+    datas = [b.get("callback_data") for row in buttons for b in row]
+    assert datas[:2] == ["a:draf", "a:idea_r"] and "m:s:content" in datas and "m:s:technology" in datas
+    assert {"model", "repo", "idea_r", "style", "draf_r"} <= set(menu.acts())
 
 
 def test_idea_repo_and_style_are_queued_without_execution():

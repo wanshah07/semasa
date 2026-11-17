@@ -1,0 +1,324 @@
+{
+  "_about": "Semasa on Telegram, the button menu (Wan, 16 Nov 2026: 'make sure all features appear in telegram semasa button'). ONE catalogue: /start and /menu open `home`, a segment button opens that segment, a page with `items` opens its own short menu. Segments and pages are the page's own (web/src/lib/tabs.js: ids, order and both labels are held equal by web/telegramMenu.test.mjs, so a new tab without an entry here fails CI, and so does an entry for a tab that is gone). `system` is the one group the sidebar does not have: Settings (the page with no segment) and the bot's own reports. A page with no `items` is a link straight to that page. An item is either `act` (the worker does it in the chat: backend/semasa/telegram_menu.py ACTIONS, every name there and here, tested) or `link` (a page address, `tab` or `tab/sub`, opened in the browser). Nothing here approves, publishes, deletes or spends: approval stays the draft card's own button and its database gate. Read by the worker (backend/semasa/telegram_menu.py) and, as a generated copy, by the webhook (supabase/functions/semasa-telegram/menu_data.js, made by `python ops/telegram_menu_copy.py`). rules/telegram_menu_cases.json holds what both renderers must draw.",
+  "version": 1,
+  "home": {
+    "text": {
+      "bm": "Hai {name} 👋 Semasa di sini.\n\nPilih bahagian di bawah, susunannya sama seperti menu di halaman Semasa. Butang bertanda ↗ membuka halaman itu; butang lain dijawab terus di sini.\n\nAtau taip sahaja soalan anda. /menu membuka menu ini semula.",
+      "en": "Hi {name} 👋 Semasa here.\n\nPick a section below, in the same order as the menu on the Semasa page. A button marked ↗ opens that page; the others are answered right here.\n\nOr just type your question. /menu opens this menu again."
+    },
+    "quick": [
+      { "act": "draf", "icon": "📝", "bm": "Draf untuk lulus", "en": "Drafts to approve" },
+      { "act": "idea_r", "icon": "💡", "bm": "Idea baharu", "en": "New idea" }
+    ],
+    "open": { "icon": "🔗", "bm": "Buka Semasa", "en": "Open Semasa" },
+    "lang": { "bm": "🌐 English", "en": "🌐 Bahasa Malaysia" }
+  },
+  "words": {
+    "segment_hint": { "bm": "↗ membuka halaman; yang lain dijawab di sini.", "en": "↗ opens the page; the rest is answered here." },
+    "open_page": { "bm": "🔗 Buka halaman ini", "en": "🔗 Open this page" },
+    "menu": { "bm": "🏠 Menu", "en": "🏠 Menu" }
+  },
+  "segments": [
+    {
+      "id": "dashboard", "icon": "📊", "bm": "Papan", "en": "Dashboard",
+      "pages": [
+        {
+          "tab": "papan", "icon": "📊", "bm": "Papan", "en": "Dashboard",
+          "about": { "bm": "ringkasan, carta dan lampu sumber", "en": "the overview, charts and source lights" },
+          "items": [
+            { "act": "status", "icon": "📊", "bm": "Ringkasan sekarang", "en": "Status now" },
+            { "act": "jadual", "icon": "🗓", "bm": "Jadual 7 hari", "en": "Next 7 days" }
+          ]
+        },
+        {
+          "tab": "chat", "icon": "💬", "bm": "Sembang AI", "en": "AI chat",
+          "about": { "bm": "tanya pasukan AI; di sini, taip sahaja soalan", "en": "ask the AI team; here, just type a question" },
+          "items": [
+            { "act": "laporan", "icon": "📄", "bm": "Tulis laporan", "en": "Write a report" },
+            { "act": "model", "icon": "🤖", "bm": "Model ikut tugas", "en": "Model by task" }
+          ]
+        },
+        {
+          "tab": "memori", "icon": "🧠", "bm": "Memori & Arahan", "en": "Memory & instructions",
+          "about": { "bm": "nota tetap dan arahan untuk setiap jawapan", "en": "standing notes and instructions for every answer" },
+          "items": [
+            { "act": "memori", "icon": "🧠", "bm": "Lihat nota tetap", "en": "See the standing notes" },
+            { "act": "ingat", "icon": "✍️", "bm": "Simpan nota baharu", "en": "Save a new note" }
+          ]
+        },
+        {
+          "tab": "otak", "icon": "🧬", "bm": "Otak AI", "en": "AI brain",
+          "about": { "bm": "rujukan yang dibaca AI, soalan bersumber", "en": "the references the AI reads, cited answers" }
+        }
+      ]
+    },
+    {
+      "id": "content", "icon": "📰", "bm": "Kandungan", "en": "Content",
+      "pages": [
+        {
+          "tab": "isu", "icon": "📡", "bm": "Isu semasa", "en": "Current issues",
+          "about": { "bm": "berita, pengawal selia, Threads, Facebook, Instagram", "en": "news, regulators, Threads, Facebook, Instagram" }
+        },
+        {
+          "tab": "idea", "icon": "💡", "bm": "Bank idea", "en": "Ideas bank",
+          "about": { "bm": "idea ws.regulab sebelum jadi draf", "en": "ws.regulab ideas before they become drafts" },
+          "items": [
+            { "act": "idea_r", "icon": "➕", "bm": "Idea baharu (ws.regulab)", "en": "New idea (ws.regulab)" },
+            { "act": "ideas_r", "icon": "📋", "bm": "Senarai idea terkini", "en": "Latest ideas" }
+          ]
+        },
+        {
+          "tab": "post", "icon": "📝", "bm": "Bank post", "en": "Post bank",
+          "about": { "bm": "draf ws.regulab, jadual dan kelulusan", "en": "ws.regulab drafts, the schedule and approval" },
+          "items": [
+            { "act": "draf_r", "icon": "📝", "bm": "Draf untuk lulus (ws.regulab)", "en": "Drafts to approve (ws.regulab)" },
+            { "act": "jadual", "icon": "🗓", "bm": "Jadual 7 hari", "en": "Next 7 days" },
+            { "act": "ralat", "icon": "❗", "bm": "Ralat dan cuba lagi", "en": "Errors and retry" },
+            { "act": "vague", "icon": "🔎", "bm": "Semak ayat kabur", "en": "Check for vague wording" }
+          ]
+        },
+        {
+          "tab": "hooks", "icon": "🪝", "bm": "Bank hook", "en": "Hooks bank",
+          "about": { "bm": "25 bentuk hook, set hook sendiri, pembelajaran hook", "en": "the 25 hook shapes, your own sets, hook learning" }
+        },
+        {
+          "tab": "gaya", "icon": "✍️", "bm": "Gaya penulisan", "en": "Writing styles",
+          "about": { "bm": "gaya rumah dan gaya daripada post tular", "en": "the house style and styles made from viral posts" },
+          "items": [
+            { "act": "style", "icon": "➕", "bm": "Tambah gaya daripada post", "en": "Add a style from a post" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "linkedin", "icon": "💼", "bm": "LinkedIn", "en": "LinkedIn",
+      "pages": [
+        {
+          "tab": "li-idea", "icon": "💡", "bm": "Idea LinkedIn", "en": "LinkedIn ideas",
+          "about": { "bm": "idea untuk LinkedIn Wan sendiri", "en": "ideas for Wan's own LinkedIn" },
+          "items": [
+            { "act": "idea_l", "icon": "➕", "bm": "Idea baharu (LinkedIn)", "en": "New idea (LinkedIn)" },
+            { "act": "ideas_l", "icon": "📋", "bm": "Senarai idea terkini", "en": "Latest ideas" }
+          ]
+        },
+        {
+          "tab": "li-post", "icon": "📝", "bm": "Post LinkedIn", "en": "LinkedIn posts",
+          "about": { "bm": "draf LinkedIn dan kelulusan", "en": "LinkedIn drafts and approval" },
+          "items": [
+            { "act": "draf_l", "icon": "📝", "bm": "Draf untuk lulus (LinkedIn)", "en": "Drafts to approve (LinkedIn)" },
+            { "act": "vague", "icon": "🔎", "bm": "Semak ayat kabur", "en": "Check for vague wording" }
+          ]
+        },
+        {
+          "tab": "li-sumber", "icon": "📥", "bm": "Sumber LinkedIn", "en": "LinkedIn sources",
+          "about": { "bm": "laman web sendiri, post LinkedIn yang ditampal, halaman syarikat dipantau", "en": "your own websites, pasted LinkedIn posts, company pages to watch" }
+        }
+      ]
+    },
+    {
+      "id": "expert", "icon": "🎓", "bm": "Kandungan pakar", "en": "Expert content",
+      "pages": [
+        {
+          "tab": "pakar", "icon": "🎓", "bm": "Kandungan pakar", "en": "Expert content",
+          "about": { "bm": "Pakar AI, Pakar Halal dan kategori anda: post asal, ringkasan, jadikan idea", "en": "AI Expert, Halal Expert and your categories: the original post, a summary, make it an idea" }
+        }
+      ]
+    },
+    {
+      "id": "performance", "icon": "📈", "bm": "Prestasi", "en": "Performance",
+      "pages": [
+        {
+          "tab": "prestasi", "icon": "📈", "bm": "Prestasi", "en": "Performance",
+          "about": { "bm": "tontonan dan interaksi setiap post", "en": "views and interaction of every post" }
+        }
+      ]
+    },
+    {
+      "id": "image", "icon": "🖼", "bm": "Imej", "en": "Image",
+      "pages": [
+        {
+          "tab": "media", "icon": "🖼", "bm": "Jana imej", "en": "Generate image",
+          "about": { "bm": "gambar AI, lukis semula, foto Unsplash", "en": "AI pictures, recreate, Unsplash photos" }
+        },
+        {
+          "tab": "media-lib", "icon": "🗂", "bm": "Pustaka imej", "en": "Image library",
+          "about": { "bm": "semua gambar yang sudah dijana", "en": "every picture already made" }
+        }
+      ]
+    },
+    {
+      "id": "video", "icon": "🎬", "bm": "Video", "en": "Video",
+      "pages": [
+        {
+          "tab": "video", "icon": "🎬", "bm": "Jana video", "en": "Generate video",
+          "about": { "bm": "Motion, video AI dan klip YouTube", "en": "Motion, AI video and YouTube clips" },
+          "items": [
+            { "act": "motion", "icon": "🎬", "bm": "Video motion daripada idea", "en": "Motion video from an idea" }
+          ]
+        },
+        {
+          "tab": "video-lib", "icon": "🎞", "bm": "Pustaka video", "en": "Video library",
+          "about": { "bm": "filem dan video yang sudah siap", "en": "finished films and videos" }
+        },
+        {
+          "tab": "motion-skills", "icon": "✨", "bm": "Kemahiran motion", "en": "Motion skills",
+          "about": { "bm": "kemahiran dan repo motion", "en": "the motion skill and its repos" }
+        }
+      ]
+    },
+    {
+      "id": "poster", "icon": "🎨", "bm": "Poster", "en": "Poster",
+      "pages": [
+        {
+          "tab": "design", "icon": "🎨", "bm": "Jana poster", "en": "Generate poster",
+          "about": { "bm": "poster, kad tunggal, carousel dengan muka depan poster, lapan gaya poster, kad ayat al-Quran, komik", "en": "poster, single card, carousel with a poster front page, the eight poster looks, the ayat al-Quran card, comic" },
+          "items": [
+            { "act": "poster", "icon": "🎨", "bm": "Poster daripada topik (pilih gaya)", "en": "Poster from a topic (pick a look)" },
+            { "act": "karusel", "icon": "🖼", "bm": "Carousel daripada topik (pilih gaya)", "en": "Carousel from a topic (pick a look)" },
+            { "act": "ayat", "icon": "📖", "bm": "Semak ayat al-Quran (surah:ayat)", "en": "Look up an ayat (surah:ayat)" },
+            { "link": "design/card", "icon": "🃏", "bm": "Kad tunggal", "en": "Single card" },
+            { "link": "design/comic", "icon": "💬", "bm": "Poster komik (dialog)", "en": "Comic (dialogue) poster" }
+          ]
+        },
+        {
+          "tab": "design-lib", "icon": "🗂", "bm": "Pustaka poster", "en": "Poster library",
+          "about": { "bm": "poster siap, latar dan reka bentuk sendiri", "en": "finished posters, grounds and your own designs" }
+        }
+      ]
+    },
+    {
+      "id": "valorith", "icon": "💧", "bm": "Valorith", "en": "Valorith",
+      "pages": [
+        {
+          "tab": "wangian", "icon": "💧", "bm": "Wangian", "en": "Fragrance",
+          "about": { "bm": "gambar iklan minyak wangi Valorith", "en": "Valorith perfume ad pictures" }
+        },
+        {
+          "tab": "bil-valorith", "icon": "🧾", "bm": "Bil Valorith", "en": "Valorith billing",
+          "about": { "bm": "sebut harga, invois dan resit Valorith", "en": "Valorith quotations, invoices and receipts" }
+        }
+      ]
+    },
+    {
+      "id": "business", "icon": "💰", "bm": "Perniagaan", "en": "Business",
+      "pages": [
+        {
+          "tab": "wang", "icon": "💵", "bm": "Ringkasan wang", "en": "Money overview",
+          "about": { "bm": "wang masuk, wang keluar, yang belum selesai", "en": "money in, money out, what is pending" }
+        },
+        {
+          "tab": "bil", "icon": "🧾", "bm": "Bil & Resit", "en": "Billing",
+          "about": { "bm": "sebut harga, invois dan resit", "en": "quotations, invoices and receipts" },
+          "items": [
+            { "act": "bil", "icon": "💰", "bm": "Invois dan sebut harga terbuka", "en": "Open invoices and quotations" }
+          ]
+        },
+        {
+          "tab": "crm", "icon": "👥", "bm": "CRM", "en": "CRM",
+          "about": { "bm": "kenalan dan kempen e-mel", "en": "contacts and e-mail campaigns" }
+        },
+        {
+          "tab": "syarikat", "icon": "🏢", "bm": "Syarikat", "en": "Businesses",
+          "about": { "bm": "setiap perniagaan dan tetapan bilnya", "en": "each business and its billing settings" }
+        }
+      ]
+    },
+    {
+      "id": "technology", "icon": "🖥", "bm": "Teknologi", "en": "Technology",
+      "pages": [
+        {
+          "tab": "tech", "icon": "🖥", "bm": "Ringkasan", "en": "Overview",
+          "about": { "bm": "keadaan API, repo dan pekerja", "en": "the state of the APIs, repos and workers" },
+          "items": [
+            { "act": "kesihatan", "icon": "🩺", "bm": "Masalah watchdog", "en": "Watchdog problems" }
+          ]
+        },
+        {
+          "tab": "office", "icon": "🏢", "bm": "Repo pejabat", "en": "Office repos",
+          "about": { "bm": "papan kesihatan repo pejabat", "en": "the office repos' health board" }
+        },
+        {
+          "tab": "repo", "icon": "📚", "bm": "Pustaka repo", "en": "Repo library",
+          "about": { "bm": "pautan repo yang dibaca dan diringkaskan", "en": "repo links, read and summarised" },
+          "items": [
+            { "act": "repo", "icon": "➕", "bm": "Tambah repo atau pautan", "en": "Add a repo or a link" }
+          ]
+        },
+        {
+          "tab": "api", "icon": "🤖", "bm": "API", "en": "API",
+          "about": { "bm": "robot AI, kunci, model dan semakan", "en": "the AI robots, keys, models and checks" },
+          "items": [
+            { "act": "model", "icon": "🤖", "bm": "Model ikut tugas", "en": "Model by task" }
+          ]
+        },
+        {
+          "tab": "stack", "icon": "🧱", "bm": "Senarai teknologi", "en": "Technology list",
+          "about": { "bm": "setiap API, SDK, CLI, repo dan servis", "en": "every API, SDK, CLI, repo and service" }
+        }
+      ]
+    },
+    {
+      "id": "personal", "icon": "👤", "bm": "Peribadi", "en": "Personal",
+      "pages": [
+        {
+          "tab": "resit", "icon": "🧾", "bm": "Pembelian", "en": "Purchases",
+          "about": { "bm": "resit pembelian yang dibaca", "en": "purchase receipts, read" }
+        },
+        {
+          "tab": "langganan", "icon": "💳", "bm": "Langganan", "en": "Subscriptions",
+          "about": { "bm": "langganan dan bil akan datang", "en": "subscriptions and the bills ahead" }
+        }
+      ]
+    },
+    {
+      "id": "reference", "icon": "📚", "bm": "Rujukan", "en": "Reference",
+      "pages": [
+        {
+          "tab": "faq", "icon": "❓", "bm": "FAQ", "en": "FAQ",
+          "about": { "bm": "soalan lazim dan jawapannya", "en": "frequent questions and their answers" }
+        },
+        {
+          "tab": "log", "icon": "📜", "bm": "Log", "en": "Log",
+          "about": { "bm": "apa yang Semasa buat, baris demi baris", "en": "what Semasa did, line by line" }
+        },
+        {
+          "tab": "dokumen", "icon": "📖", "bm": "Dokumen", "en": "Documents",
+          "about": { "bm": "peraturan dan panduan repo ini", "en": "this repo's rules and guides" }
+        }
+      ]
+    },
+    {
+      "id": "system", "icon": "⚙️", "bm": "Tetapan & sistem", "en": "Settings & system",
+      "pages": [
+        {
+          "tab": "tetapan", "icon": "⚙️", "bm": "Tetapan", "en": "Settings",
+          "about": { "bm": "slot, jenama, Telegram, penerbitan", "en": "slots, brand, Telegram, publishing" }
+        }
+      ],
+      "items": [
+        { "act": "status", "icon": "📊", "bm": "Ringkasan", "en": "Status" },
+        { "act": "kesihatan", "icon": "🩺", "bm": "Kesihatan", "en": "Health" },
+        { "act": "ralat", "icon": "❗", "bm": "Ralat", "en": "Errors" },
+        { "act": "help", "icon": "📋", "bm": "Senarai arahan", "en": "Commands" }
+      ]
+    }
+  ],
+  "looks": {
+    "_about": "The looks the Poster and Carousel buttons offer, by the worker's own key (backend/semasa/ideas.py LOOKS, web/src/lib/lookChoice.js BUILTIN_LOOKS; both tested). `poster` is the eight poster looks behind the hand-drawn default; `carousel` adds the looks whose first slide is the poster front page.",
+    "names": {
+      "hand": { "bm": "Lukisan tangan", "en": "Hand-drawn" },
+      "image": { "bm": "Gambar", "en": "Image" },
+      "era": { "bm": "Info ERA", "en": "Info ERA" },
+      "marker": { "bm": "Poster marker", "en": "Marker poster" },
+      "torn": { "bm": "Kertas koyak", "en": "Torn paper" },
+      "block": { "bm": "Blok warna", "en": "Colour blocks" },
+      "neon": { "bm": "Neon", "en": "Neon" },
+      "deck": { "bm": "Papan kad", "en": "Card board" },
+      "chalk": { "bm": "Papan kapur", "en": "Chalkboard" },
+      "metro": { "bm": "Peta laluan", "en": "Line map" },
+      "strip": { "bm": "Jalur koyak", "en": "Torn strips" }
+    },
+    "poster": ["hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip"],
+    "carousel": ["image", "era", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip"]
+  }
+}

@@ -13,13 +13,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 
 from . import nexabot_check as chk
 from . import nexabot_generate as gen
-from .nexabot_comic_film import CREDIT, SUBTITLES, burn_subtitles, concat
+from .nexabot_comic_film import burn_subtitles, concat
 
 # each scene: a Malay prompt (t2v) + its dialogue (burned as a subtitle afterwards)
 # the shared comic style, told in Malay so the model draws a cartoon/anime look, not a realistic photo

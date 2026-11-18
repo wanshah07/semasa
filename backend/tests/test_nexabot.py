@@ -644,3 +644,47 @@ def test_generate_without_a_baseline_does_not_guess_a_job(tmp_path, monkeypatch)
     ng.generate(Page(), "a prompt", tmp_path, 1, False, report)
     assert report["jobs_before"] is None
     assert "job_id" not in report and not report.get("video_saved") and report.get("timed_out")
+
+
+def test_cat_film_story_is_four_scenes_with_four_lines():
+    from semasa import nexabot_cat_film as cf
+
+    assert len(cf.SCENES) == len(cf.NARRATION) == 4
+    # the words are voice + subtitle: the video prompts carry no quoted speech, and the sheet draws no text
+    assert all('"' not in s and "“" not in s for s in cf.SCENES)
+    assert "No people, no text" in cf.CHAR_SHEET_PROMPT
+    # three named cats appear in the narration, in Malay (not Indonesian)
+    assert "Comot" in cf.NARRATION[0] and "Putih" in cf.NARRATION[1] and "Belang" in cf.NARRATION[1]
+    assert all(w not in " ".join(cf.NARRATION).lower() for w in ("kucingnya", "sahabat-sahabat"))
+
+
+def test_cat_film_dry_run_spends_nothing(tmp_path):
+    from semasa import nexabot_cat_film as cf
+
+    assert cf.run(tmp_path, "Sulafat", True) == 0
+    assert (tmp_path / "report.json").exists()
+
+
+def test_cat_film_mix_holds_the_last_frame_for_a_long_line(tmp_path):
+    """A clip shorter than its voice must be held, not cut: the scene lasts as long as lead + voice + tail."""
+    import subprocess
+
+    import pytest
+
+    imageio_ffmpeg = pytest.importorskip("imageio_ffmpeg")
+    from semasa import nexabot_cat_film as cf
+
+    ff = imageio_ffmpeg.get_ffmpeg_exe()
+    clip, voice = tmp_path / "c.mp4", tmp_path / "v.wav"
+    subprocess.run([ff, "-y", "-f", "lavfi", "-i", "color=c=orange:s=320x180:d=1:r=24", "-pix_fmt", "yuv420p", str(clip)],
+                   check=True, capture_output=True)
+    subprocess.run([ff, "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", str(voice)], check=True, capture_output=True)
+    try:
+        seg = cf.scene_segment(clip, voice, "Comot dan kawan-kawan", tmp_path / "s.mp4", size=(320, 180))
+    except subprocess.CalledProcessError as exc:
+        if b"drawtext" in (exc.stderr or b"") or b"fontfile" in (exc.stderr or b""):
+            pytest.skip("the runner has no DejaVu font for drawtext")
+        raise
+    assert cf.duration(seg) == pytest.approx(cf.LEAD_S + 3 + cf.TAIL_S, abs=0.3)
+    out = cf.join([seg, seg], tmp_path / "all.mp4")
+    assert cf.duration(out) == pytest.approx(2 * cf.duration(seg), abs=0.4)

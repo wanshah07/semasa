@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Nexabot Image Generator — generate the two-character sheet (Hana + Hassan), then the video sfv with that sheet.
 
 Step 1: Image Generator (Nano Banana Pro) draws the character sheet (16:9, both characters full body, same style).

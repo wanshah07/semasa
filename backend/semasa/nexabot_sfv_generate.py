@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Nexabot sfv generate — generate ONE scene with the character sheet as Start Frame (consistent characters).
 
 Reuses nexabot_i2v.choose_mode's substring-matching approach but targets "Start Frame to Video" (sfv). Uploads the

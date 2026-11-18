@@ -112,7 +112,7 @@ def run(outdir: Path, sheet: Path, prompt: str, dry: bool) -> int:
             gen_btn.click()
             report["generate_clicked_at"] = datetime.now(UTC).isoformat()
 
-            # poll the job via recent list
+            # poll the job via recent list — filter to VIDEO jobs only (an old image job must not be mistaken)
             deadline = time.time() + MAX_WAIT_S
             while time.time() < deadline:
                 try:
@@ -123,7 +123,9 @@ def run(outdir: Path, sheet: Path, prompt: str, dry: bool) -> int:
                     }""")
                 except Exception:  # noqa: BLE001
                     jobs = []
-                done = [j for j in jobs if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
+                done = [j for j in jobs
+                        if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")
+                        and str(j.get("mode") or "").lower() in ("sfv", "i2v", "t2v", "video", "r2v", "extend")]
                 if done:
                     report["job_done"] = True
                     report["job_meta"] = {k: done[0].get(k) for k in ("id", "status", "mode", "model", "width", "height", "size_bytes") if done[0].get(k) is not None}

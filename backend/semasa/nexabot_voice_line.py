@@ -92,6 +92,9 @@ def run(outdir: Path, who: str, voice: str, text: str, dry: bool) -> int:
                 return 0
 
             before = set(seen_audio)
+            before_dom = page.evaluate("""() =>
+                [...document.querySelectorAll('audio, video')].map(x => x.src).filter(Boolean)
+            """)
             btn = page.get_by_role("button", name="Generate Voice", exact=True).first
             t0 = time.time()
             while time.time() - t0 < 20:
@@ -104,14 +107,26 @@ def run(outdir: Path, who: str, voice: str, text: str, dry: bool) -> int:
             btn.click()
             report["generate_clicked_at"] = datetime.now(UTC).isoformat()
 
-            # wait for a NEW audio url (never the pre-click auto-play one)
+            # wait for a NEW audio: a network url not seen before, OR a DOM audio src that appeared after the click
             new_url = None
             deadline = time.time() + MAX_WAIT_S
             while time.time() < deadline:
-                new = [u for u in seen_audio if u not in before]
-                if new:
-                    new_url = new[-1]
+                new_net = [u for u in seen_audio if u not in before]
+                if new_net:
+                    new_url = new_net[-1]
+                    report["audio_via"] = "network"
                     break
+                try:
+                    after_dom = page.evaluate("""() =>
+                        [...document.querySelectorAll('audio, video')].map(x => x.src).filter(Boolean)
+                    """)
+                    new_dom = [s for s in after_dom if s not in before_dom]
+                    if new_dom:
+                        new_url = new_dom[-1]
+                        report["audio_via"] = "dom_new"
+                        break
+                except Exception:  # noqa: BLE001
+                    pass
                 time.sleep(2)
 
             if new_url:
@@ -128,28 +143,6 @@ def run(outdir: Path, who: str, voice: str, text: str, dry: bool) -> int:
                     report["download_error"] = f"{full[:80]} -> {str(exc)[:120]}"
             else:
                 report["no_audio"] = True
-
-            # fallback: the result <audio>/<video> element's own src (the first successful run used this)
-            if not report.get("audio_saved"):
-                try:
-                    src = page.evaluate("""() => {
-                        const a = document.querySelector('audio');
-                        if (a && a.src) return a.src;
-                        const t = [...document.querySelectorAll('audio, video')].map(x => x.src).filter(Boolean);
-                        return t[0] || null;
-                    }""")
-                    if src:
-                        full = src if src.startswith("http") else chk.ORIGIN + src
-                        resp = page.context.request.get(full, timeout=120_000)
-                        if resp.status == 200 and len(resp.body()) > 500:
-                            dest = outdir / f"voice-{who}.wav"
-                            dest.write_bytes(resp.body())
-                            report["audio_saved"] = str(dest)
-                            report["audio_bytes"] = len(resp.body())
-                            report["audio_url"] = full
-                            report["audio_via_dom"] = True
-                except Exception as exc:  # noqa: BLE001
-                    report["dom_err"] = str(exc)[:120]
         finally:
             browser.close()
 

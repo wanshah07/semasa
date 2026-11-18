@@ -33,7 +33,7 @@ jobs:
       - name: Generate 6 lines
         env:
           NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
-        run: python -m semasa.nexabot_film_voice "$RUNNER_TEMP/nexabot-film-voice"
+        run: python -m semasa.nexabot_film_voice_retry "$RUNNER_TEMP/nexabot-film-voice"
       - name: Keep audio and report
         if: always()
         uses: actions/upload-artifact@v4

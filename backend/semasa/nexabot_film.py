@@ -105,6 +105,19 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed):
             return Array.isArray(j) ? j : (j.jobs || j.data || []);
         }""")
 
+    def is_video_job(meta):
+        # reject voice/audio/TTS jobs that the voice run may have created concurrently
+        mode = str(meta.get("mode") or "").lower()
+        if any(k in mode for k in ("voice", "audio", "tts", "speech")):
+            return False
+        # video jobs carry a width/height and a .mp4 download; audio jobs do not
+        if meta.get("width") or meta.get("height"):
+            return True
+        # heuristic: mode text for video modes
+        if any(k in mode for k in ("video", "start frame", "text to video", "image to video", "i2v", "t2v", "sfv")):
+            return True
+        return False
+
     def download(meta):
         jid = str(meta.get("id"))
         report[f"scene{idx+1}_job"] = {k: meta.get(k) for k in ("id", "mode", "width", "height", "size_bytes") if meta.get(k) is not None}
@@ -115,12 +128,18 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed):
             full = u if u.startswith("http") else chk.ORIGIN + u
             try:
                 resp = page.context.request.get(full, timeout=300_000)
-                if resp.status == 200 and len(resp.body()) > 100_000:
+                ctype = (resp.headers.get("content-type") or "").lower()
+                body = resp.body()
+                is_video = ("video" in ctype or "mp4" in ctype or full.lower().endswith(".mp4"))
+                if resp.status == 200 and is_video and len(body) > 500_000:
                     dest = outdir / f"clip{idx+1}.mp4"
-                    dest.write_bytes(resp.body())
+                    dest.write_bytes(body)
                     report[f"scene{idx+1}_saved"] = str(dest)
                     consumed.add(jid)
                     return dest, jid
+                # audio or too-small: skip (wrong job), keep waiting for the real video
+                consumed.add(jid)
+                report[f"scene{idx+1}_skip"] = f"{u[:60]} ctype={ctype[:30]} bytes={len(body)}"
             except Exception as exc:  # noqa: BLE001
                 report[f"scene{idx+1}_dl_try"] = f"{u[:60]} -> {str(exc)[:80]}"
         return None, None
@@ -131,7 +150,7 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed):
             jobs = fetch_jobs()
         except Exception:  # noqa: BLE001
             jobs = []
-        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed]
+        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed and is_video_job(j)]
         if ours:
             report[f"scene{idx+1}_first_seen"] = {k: ours[0].get(k) for k in ("id", "status", "mode", "progress") if ours[0].get(k) is not None}
         done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
@@ -139,7 +158,6 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed):
             saved, jid = download(done[0])
             if saved:
                 return saved, jid
-            return None, None
         time.sleep(4)
 
     # late-wait: sfv can exceed 15 minutes
@@ -150,13 +168,12 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed):
             jobs = fetch_jobs()
         except Exception:  # noqa: BLE001
             jobs = []
-        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed]
+        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed and is_video_job(j)]
         done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
         if done:
             saved, jid = download(done[0])
             if saved:
                 return saved, jid
-            return None, None
         time.sleep(4)
     report[f"scene{idx+1}_timed_out"] = True
     return None, None

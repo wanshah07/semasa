@@ -8,7 +8,10 @@ with any record, blocked a moved post whole, and never looked at a `scheduled` p
   2. a post a person MOVED after a failure has its failed channels handed over for the new slot, and only those;
   3. a failure for the slot the post still has is never retried by itself, and a sent channel is never sent twice;
   4. one post to a slot still holds: a moved post yields to a post already scheduled on the new slot;
-  5. a record Zernio no longer holds after its moment ("Post not found") is settled as a failure, so rule 2 can apply.
+  5. a record Zernio no longer holds after its moment ("Post not found") is settled as a failure, so rule 2 can apply;
+  6. (18 Nov 2026) the same is found BEFORE the moment, for a LinkedIn hand-over made at least an hour ago, so the post can be
+     moved while there is time;
+  7. (18 Nov 2026) a LinkedIn post is handed to Zernio at most 30 hours before its slot, not days ahead.
 """
 
 from datetime import UTC, datetime
@@ -374,3 +377,89 @@ def test_the_hub_asks_every_login_before_calling_a_post_gone():
         senders.ZernioHub({"acc1": Login(), "acc3": Login(down=True)}).gone("x")
     with pytest.raises(senders.SendError):
         senders.ZernioHub({}).gone("x")
+
+
+# --- rule 6: a hand-over Zernio has dropped is found before its slot ------------------------------------------------------------
+
+EARLY_DATE, EARLY_SLOT = "2026-09-25", "06:00"          # 24 Sep 22:00 UTC: twenty hours after NOW (24 Sep 02:00 UTC)
+EARLY_DUE = "2026-09-24T22:00:00.000Z"
+
+
+def early_post(made="2026-09-21T03:20:00+00:00", **kw):
+    held = {"id": LOST_ID, "route": "zernio", "mode": "customScheduled", "status": "scheduled", "dueAt": EARLY_DUE,
+            "account": ACC["linkedin"], "at": made}
+    return li_post(date=EARLY_DATE, slot=EARLY_SLOT, published={"linkedin": held}, **kw)
+
+
+def test_a_linkedin_hand_over_zernio_dropped_is_settled_before_its_slot_and_can_then_be_moved():
+    store = store_of(early_post(), media=CARD)
+    c = tally(store, hub(Login(), Login()))
+    p = post_of(store, "li")
+    rec_ = p["published"]["linkedin"]
+    assert c["confirmed"] == 1 and p["status"] == "scheduled"
+    assert rec_["status"] == "error" and rec_["lost"] is True and rec_["lost_early"] is True and rec_["id"] == LOST_ID
+    assert p["errors"]["linkedin"]["message"] == f"linkedin: {publisher.LOST_EARLY}"
+    z = FakeZernio()
+    assert publisher.run(store, NOW, clients={"zernio": z})["considered"] == 0 and z.created == []   # nothing by itself
+    post_of(store, "li").update(date="2026-09-26", slot="06:00")                                    # Wan moves it a day on
+    publisher.run(store, datetime(2026, 9, 25, 4, 0, tzinfo=UTC), clients={"zernio": z})            # 26 Sep 06:00 is 18 h away
+    p = post_of(store, "li")
+    assert [x["service"] for x in z.created] == ["linkedin"] and p["published"]["linkedin"]["replaces"] == LOST_ID
+    assert "lost" not in p["published"]["linkedin"] and p["errors"] == {}
+
+
+@pytest.mark.parametrize("why, post, logins", [
+    ("handed over only half an hour ago", early_post(made="2026-09-24T01:30:00+00:00"), (Login(), Login())),
+    ("no hand-over time to judge by", early_post(made=None), (Login(), Login())),
+    ("the login is down", early_post(), (Login(down=True), Login())),
+    ("another login could not be read", early_post(), (Login(), Login(down=True))),
+    ("another login holds it", early_post(), (Login(), Login(holds=[LOST_ID]))),
+    ("this login still holds it", early_post(), (Login(holds=[LOST_ID]), Login())),
+])
+def test_a_hand_over_is_not_called_lost_early_without_proof(why, post, logins):
+    store = store_of(post, media=CARD)
+    c = tally(store, hub(*logins))
+    p = post_of(store, "li")
+    assert c["confirmed"] == 0 and p["published"]["linkedin"]["status"] == "scheduled" and p["errors"] == {}, why
+
+
+def test_only_a_linkedin_record_is_looked_at_before_its_moment():
+    held = dict(early_post()["published"]["linkedin"], account=ACC["instagram"])
+    store = store_of(li_post(date=EARLY_DATE, slot=EARLY_SLOT, published={"instagram": held}, stream="regulab"), media=CARD)
+    z = Login()
+    assert tally(store, hub(z, Login()))["confirmed"] == 0 and z.asked == []           # not even asked
+
+
+# --- rule 7: LinkedIn goes to Zernio at most 30 hours ahead ---------------------------------------------------------------------
+
+def approved_li(date, slot):
+    return li_post(date=date, slot=slot, status="approved", published={}, approved_at="2026-09-01T00:00:00+00:00")
+
+
+def test_a_linkedin_post_is_handed_to_zernio_only_within_30_hours_of_its_slot():
+    far = store_of(approved_li("2026-09-26", "06:00"), media=CARD)                      # 44 h after NOW
+    z = FakeZernio()
+    c = publisher.run(far, NOW, clients={"zernio": z})
+    assert z.created == [] and c["not_yet"] == 1 and post_of(far, "li")["status"] == "approved"
+    assert post_of(far, "li")["published"] == {}
+    near = store_of(approved_li("2026-09-25", "06:00"), media=CARD)                     # 20 h
+    z = FakeZernio()
+    publisher.run(near, NOW, clients={"zernio": z})
+    assert [x["service"] for x in z.created] == ["linkedin"] and post_of(near, "li")["status"] == "scheduled"
+    edge = store_of(approved_li("2026-09-25", "19:00"), media=CARD)                     # 33 h: waits for the next runs
+    z = FakeZernio()
+    publisher.run(edge, NOW, clients={"zernio": z})
+    assert z.created == []
+    publisher.run(edge, datetime(2026, 9, 24, 11, 20, tzinfo=UTC), clients={"zernio": z})   # 24 Sep 19:20 MYT: 23.7 h ahead
+    assert [x["service"] for x in z.created] == ["linkedin"]
+
+
+def test_the_lead_does_not_apply_to_the_other_platforms():
+    store, z = _store_ig(), FakeZernio()
+    publisher.run(store, NOW, clients={"zernio": z})
+    assert {"instagram", "threads"} <= {x["service"] for x in z.created}               # six days ahead, still handed over
+
+
+def _store_ig():
+    p = half_sent(date="2026-09-30", slot="08:00", status="approved", published={}, errors={})     # six days ahead
+    return store_of(p)

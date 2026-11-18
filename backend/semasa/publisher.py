@@ -34,6 +34,15 @@ log = get_logger("semasa.publisher")
 MYT = timedelta(hours=8)
 LATE_GRACE = timedelta(minutes=45)    # Studio's LATE_GRACE_MS: a slot long past is never fired automatically
 LOOKAHEAD = timedelta(days=14)
+# Zernio dropped every LinkedIn post that was handed over days ahead for a slot from 17 Nov 2026 on (Wan, 18 Nov 2026: "yes
+# handover timing"; five posts "Post not found" while posts handed over the same morning survived). A LinkedIn post for Zernio
+# is therefore handed over at most this long before its slot: the three daily runs (06:20, 11:20, 19:20 MYT) give a 06:00 or
+# 19:00 slot three or four tries on the day before, and what Zernio can lose is only what it holds for a day.
+LINKEDIN_LEAD = timedelta(hours=30)
+LEAD_CHANNELS = ("linkedin",)
+# ...and a hand-over Zernio has dropped is found by the next run, hours before its slot, not 20 minutes after it, so a person
+# can move the post while there is still time (see _lost, early). Only after this long, so a post just made is never judged.
+EARLY_LOST_AFTER = timedelta(hours=1)
 
 
 def due_utc(date: str, slot: str) -> datetime:
@@ -636,6 +645,9 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
                           {"fingerprint": fp, "why": [f"overdue: its slot was {post['date']} {post['slot']} MYT; "
                                                       "move it to a new slot"]})
             continue
+        if via_z and channel in LEAD_CHANNELS and due > now + LINKEDIN_LEAD:
+            counts["not_yet"] += 1                     # Zernio is handed this post later: see LINKEDIN_LEAD
+            continue
         if not ctx.enabled:
             counts["dry_run"] += 1
             if not logged(store, post["id"], channel, "dry_run", fp):
@@ -844,17 +856,28 @@ def note_buffer_state(store: Any, settings: dict[str, Any], state: str, left: in
 
 
 LOST = "Zernio no longer holds this post and it was not sent"
+LOST_EARLY = ("Zernio no longer holds this post, found before its slot, so it will not go out as it stands; move it to a "
+              "new slot to send it again")
 LOST_AFTER = timedelta(minutes=20)     # how long past its moment a record must be before a 404 settles it
 
 
-def _lost(reader: Any, rec: dict[str, Any], now: datetime) -> bool:
+def _lost(reader: Any, rec: dict[str, Any], now: datetime, early: bool = False) -> bool:
     """Is this hand-over dead: its moment has passed and Zernio holds no such post in ANY login (16 Nov 2026: a LinkedIn
     post Zernio answered "Post not found" for stayed `scheduled` for ever, so it could be neither moved nor sent again)?
     Zernio keeps a post it published and refuses to delete one, so a post that is gone after its moment was taken out of
     the queue before it went. Never before the moment has passed, never when the moment cannot be read, and never on a
-    login that could not be read: an outage is not proof."""
+    login that could not be read: an outage is not proof.
+
+    `early` (18 Nov 2026) judges a record whose moment has NOT come: the same proof (a 404 in every login), but only for a
+    hand-over made at least EARLY_LOST_AFTER ago, and only when the moment and the hand-over time can both be read."""
     at = _parse(rec.get("dueAt")) or _parse(rec.get("at"))
-    if at is None or at > now - LOST_AFTER:
+    if at is None:
+        return False
+    if early:
+        made = _parse(rec.get("at"))
+        if made is None or made > now - EARLY_LOST_AFTER:
+            return False
+    elif at > now - LOST_AFTER:
         return False
     try:
         return reader.gone(rec["id"]) is True
@@ -880,9 +903,10 @@ def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settin
             if rec.get("status") in ("sent", "error"):
                 continue
             due = _parse(rec.get("dueAt"))
-            if due and due > now - timedelta(minutes=5):
-                continue
             via_zernio = str(rec.get("route") or "").startswith("zernio")
+            early = bool(due and due > now - timedelta(minutes=5))
+            if early and not (via_zernio and ch in LEAD_CHANNELS):
+                continue                                       # not due yet: only a LinkedIn record on Zernio is looked at now
             reader = zernio if via_zernio else client          # each record is read back from the service that holds it
             if reader is None:
                 continue
@@ -890,14 +914,15 @@ def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settin
             try:
                 got = reader.get(rec["id"], rec.get("account") or "") if via_zernio else reader.get(rec["id"])
             except senders.SendError as exc:
-                if not (via_zernio and exc.status == 404 and _lost(reader, rec, now)):
+                if not (via_zernio and exc.status == 404 and _lost(reader, rec, now, early=early)):
                     continue                                   # an outage or a refusal to answer: read again next run
-                got, lost = {"status": "error", "error": {"message": LOST}}, True
+                got, lost = {"status": "error", "error": {"message": LOST_EARLY if early else LOST}}, True
             status = got.get("status")
-            if status not in ("sent", "error"):
-                continue
+            if status not in ("sent", "error") or (early and not lost):
+                continue                                       # before its moment only a lost hand-over is written down
             published[ch] = {**rec, "status": status, **({"url": got["externalLink"]} if got.get("externalLink") else {}),
-                             **({"lost": True} if lost else {}), "confirmed_at": now.isoformat()}
+                             **({"lost": True} if lost else {}), **({"lost_early": True} if lost and early else {}),
+                             "confirmed_at": now.isoformat()}
             if status == "error":
                 msg = ((got.get("error") or {}).get("message")
                        or ("Zernio" if via_zernio else "Buffer") + " reported an error")

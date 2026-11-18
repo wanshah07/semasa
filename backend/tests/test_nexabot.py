@@ -688,3 +688,53 @@ def test_cat_film_mix_holds_the_last_frame_for_a_long_line(tmp_path):
     assert cf.duration(seg) == pytest.approx(cf.LEAD_S + 3 + cf.TAIL_S, abs=0.3)
     out = cf.join([seg, seg], tmp_path / "all.mp4")
     assert cf.duration(out) == pytest.approx(2 * cf.duration(seg), abs=0.4)
+
+
+def test_cat_film_each_scene_takes_only_its_own_job(tmp_path, monkeypatch):
+    """The 18 Nov run saved scene 1's clip four times because the set of old jobs never grew. Each finished job's id must join
+    the set before the next scene, so a later scene cannot take an earlier scene's job."""
+    from semasa import nexabot_cat_film as cf
+    from semasa import nexabot_film as film
+    from semasa import nexabot_generate as gen
+
+    monkeypatch.setattr(gen, "storage_state", lambda: {"cookies": []})
+    seen_by_scene = []
+
+    def fake_scene(page, prompt, outdir, report, idx, pre_jobs):
+        seen_by_scene.append(set(pre_jobs))
+        report[f"scene{idx + 1}_job"] = {"id": f"job{idx + 1}"}
+        dest = outdir / f"clip{idx + 1}.mp4"
+        dest.write_bytes(b"x" * (idx + 1))
+        return dest
+
+    monkeypatch.setattr(film, "one_scene", fake_scene)
+
+    class Page:
+        url = "https://nexabot.id/video-generator"
+        def goto(self, *a, **k): pass
+        def wait_for_load_state(self, *a, **k): pass
+        def wait_for_timeout(self, ms): pass
+        def evaluate(self, js, arg=None): return [{"id": "old"}]
+
+    class Ctx:
+        def new_page(self): return Page()
+
+    class Browser:
+        def new_context(self, **k): return Ctx()
+        def close(self): pass
+
+    class PW:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        chromium = object()
+
+    import playwright.sync_api as sync_api
+
+    from semasa import nexabot_check as chk
+
+    monkeypatch.setattr(sync_api, "sync_playwright", lambda: PW())
+    monkeypatch.setattr(chk, "launch_browser", lambda pw: Browser())
+    clips = cf.make_clips(tmp_path, tmp_path / "sheet.png", {})
+    assert len(clips) == 4
+    assert seen_by_scene[0] == {"old"}
+    assert seen_by_scene[3] == {"old", "job1", "job2", "job3"}

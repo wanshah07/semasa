@@ -122,6 +122,61 @@ def plan() -> dict:
     return {"scenes": len(SCENES), "narration": NARRATION, "sheet_prompt_chars": len(CHAR_SHEET_PROMPT)}
 
 
+def make_clips(clip_dir: Path, sheet: Path, report: dict) -> list[Path]:
+    """One Start Frame clip per scene, each from its OWN job. nexabot_film.run keeps one fixed set of "jobs that existed before
+    the run", so scene 2 saw scene 1's finished job as new and downloaded it again: four identical clips (18 Nov, run 1). Here
+    every finished job's id joins the set before the next scene starts, so a scene can only ever take a job made after it."""
+    from . import nexabot_check as chk
+    from . import nexabot_film as film
+    from . import nexabot_generate as gen
+
+    state = gen.storage_state()
+    if not state:
+        report["video_error"] = "no saved login"
+        return []
+    from playwright.sync_api import sync_playwright
+
+    film.SHEET = sheet
+    clips: list[Path] = []
+    with sync_playwright() as pw:
+        browser = chk.launch_browser(pw)
+        try:
+            ctx = browser.new_context(storage_state=state, locale="ms-MY", timezone_id="Asia/Kuala_Lumpur",
+                                      viewport={"width": 1366, "height": 900}, accept_downloads=True)
+            page = ctx.new_page()
+            seen: set[str] = set()
+            for idx, prompt in enumerate(SCENES):
+                page.goto(chk.STUDIO_URL, wait_until="domcontentloaded", timeout=45_000)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=15_000)
+                except Exception:  # noqa: BLE001
+                    pass
+                page.wait_for_timeout(2500)
+                if "/login" in page.url:
+                    report["video_error"] = "login wall"
+                    break
+                if idx == 0:
+                    jobs = page.evaluate("""async () => {
+                        const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
+                        const j = await r.json();
+                        return Array.isArray(j) ? j : (j.jobs || j.data || []);
+                    }""") or []
+                    seen = {str(j.get("id")) for j in jobs if j.get("id")}
+                    report["jobs_before"] = len(seen)
+                saved = film.one_scene(page, prompt, clip_dir, report, idx, seen)
+                job = report.get(f"scene{idx + 1}_job") or {}
+                if job.get("id"):
+                    seen.add(str(job["id"]))
+                if not saved:
+                    report["error_scene"] = idx + 1
+                    break
+                clips.append(Path(saved))
+        finally:
+            browser.close()
+    (clip_dir / "clips-report.json").write_text(json.dumps(report, indent=2, default=str), "utf-8")
+    return clips
+
+
 def run(outdir: Path, voice: str, dry: bool) -> int:
     report: dict = {"started": datetime.now(UTC).isoformat(), "voice": voice, "dry": dry, "plan": plan()}
 
@@ -134,7 +189,6 @@ def run(outdir: Path, voice: str, dry: bool) -> int:
         return 0
 
     from . import nexabot_charsheet as cs
-    from . import nexabot_film as film
     from . import nexabot_voice_line as vl
 
     # 1 · image: one sheet with the three cats
@@ -152,14 +206,11 @@ def run(outdir: Path, voice: str, dry: bool) -> int:
     # 2 · video: one Start Frame clip per scene from that sheet
     clip_dir = outdir / "clips"
     clip_dir.mkdir(exist_ok=True)
-    film.SHEET = sheet_dir / "charsheet.png"
-    film.SCENES = SCENES
-    code = film.run(clip_dir)
-    clips = [clip_dir / f"clip{i + 1}.mp4" for i in range(len(SCENES))]
-    report["clips"] = [str(c) for c in clips if c.exists()]
+    clips = make_clips(clip_dir, sheet_dir / "charsheet.png", report)
+    report["clips"] = [str(c) for c in clips]
     save()
-    if code != 0 or len(report["clips"]) != len(SCENES):
-        report["failed"] = f"video: {len(report['clips'])} of {len(SCENES)} clips were made"
+    if len(clips) != len(SCENES):
+        report["failed"] = f"video: {len(clips)} of {len(SCENES)} clips were made"
         print(report["failed"])
         return 1
 

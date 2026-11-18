@@ -54,6 +54,7 @@ NARRATION = [
     "Kerana bagi Comot, kawan yang baik lebih berharga daripada seekor ikan.",
 ]
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+ATTEMPTS = 3      # a video that Nexabot refuses is asked for again, up to this many times
 LEAD_S = 0.6      # the voice starts this long after a scene starts
 TAIL_S = 0.8      # and the scene holds this long after the voice ends
 
@@ -251,7 +252,16 @@ def make_clips(clip_dir: Path, sheet: Path, report: dict) -> list[Path]:
                     }""") or []
                     seen = {str(j.get("id")) for j in jobs if j.get("id")}
                     report["jobs_before"] = len(seen)
-                saved = scene_clip(page, prompt, clip_dir, report, idx, seen)
+                saved = None
+                for attempt in range(1, ATTEMPTS + 1):
+                    report[f"scene{idx + 1}_attempt"] = attempt
+                    saved = scene_clip(page, prompt, clip_dir, report, idx, seen)
+                    if saved:
+                        break
+                    report.setdefault(f"scene{idx + 1}_errors", []).append(report.get(f"scene{idx + 1}_error"))
+                    # a refused video is often Nexabot's own temporary trouble ("preparing an account"): fresh page, ask again
+                    page.goto(chk.STUDIO_URL, wait_until="domcontentloaded", timeout=45_000)
+                    page.wait_for_timeout(2500)
                 if not saved:
                     report["error_scene"] = idx + 1
                     break

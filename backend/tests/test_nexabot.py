@@ -783,3 +783,50 @@ def test_cat_film_scene_ignores_other_jobs_on_the_account(tmp_path, monkeypatch)
     dest = cf.scene_clip(Page(), "x", tmp_path, report, 0, seen, wait_s=5)
     assert dest is not None and calls["url"].endswith("/api/v1/jobs/mine/download")
     assert "mine" in seen and "voice1" not in seen
+
+
+def test_cat_film_a_refused_video_is_asked_for_again(tmp_path, monkeypatch):
+    """Nexabot sometimes refuses a video job itself ("preparing an account"): the scene is asked for again, then gives up."""
+    from semasa import nexabot_cat_film as cf
+    from semasa import nexabot_check as chk
+    from semasa import nexabot_generate as gen
+
+    monkeypatch.setattr(gen, "storage_state", lambda: {"cookies": []})
+    tries = []
+
+    def flaky(page, prompt, outdir, report, idx, seen):
+        tries.append(idx)
+        if len(tries) < 3:
+            report[f"scene{idx + 1}_error"] = "the video job failed"
+            return None
+        dest = outdir / f"clip{idx + 1}.mp4"
+        dest.write_bytes(b"x")
+        return dest
+
+    monkeypatch.setattr(cf, "scene_clip", flaky)
+
+    class Page:
+        url = "https://nexabot.id/video-generator"
+        def goto(self, *a, **k): pass
+        def wait_for_load_state(self, *a, **k): pass
+        def wait_for_timeout(self, ms): pass
+        def evaluate(self, js, arg=None): return []
+
+    class Browser:
+        def new_context(self, **k):
+            return type("C", (), {"new_page": lambda self: Page()})()
+        def close(self): pass
+
+    class PW:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    import playwright.sync_api as sync_api
+
+    monkeypatch.setattr(sync_api, "sync_playwright", lambda: PW())
+    monkeypatch.setattr(chk, "launch_browser", lambda pw: Browser())
+    monkeypatch.setattr(cf, "SCENES", ["one scene"])
+    report = {}
+    clips = cf.make_clips(tmp_path, tmp_path / "sheet.png", report)
+    assert len(clips) == 1 and tries == [0, 0, 0]
+    assert report["scene1_attempt"] == 3 and len(report["scene1_errors"]) == 2

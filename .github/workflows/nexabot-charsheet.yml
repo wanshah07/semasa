@@ -1,0 +1,44 @@
+name: Nexabot char sheet
+
+# Generate the Hana + Hassan character sheet via Image Generator (Nano Banana Pro), for consistent video characters.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: nexabot-charsheet
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sheet:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Chromium
+        run: bash ../.github/scripts/ensure-chromium.sh
+      - name: Generate character sheet
+        env:
+          NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
+        run: python -m semasa.nexabot_charsheet "$RUNNER_TEMP/nexabot-charsheet"
+      - name: Keep sheet and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexabot-charsheet
+          path: /home/runner/work/_temp/nexabot-charsheet
+          retention-days: 1
+          if-no-files-found: ignore

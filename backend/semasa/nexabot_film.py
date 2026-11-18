@@ -164,6 +164,18 @@ def run(outdir: Path) -> int:
                 print("nexabot: LOGIN WALL.")
                 return 1
 
+            # seed seen_jobs with EVERY pre-existing done job, so each scene downloads only a job created in this run
+            try:
+                pre = page.evaluate("""async () => {
+                    const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
+                    const j = await r.json();
+                    return Array.isArray(j) ? j : (j.jobs || j.data || []);
+                }""")
+                seen_jobs = {str(j.get("id")) for j in (pre or []) if j.get("id")}
+                report["pre_existing_jobs"] = len(seen_jobs)
+            except Exception as exc:  # noqa: BLE001
+                report["pre_jobs_err"] = str(exc)[:100]
+
             for idx, prompt in enumerate(SCENES):
                 if idx > 0:
                     # fresh page per scene clears prior attachment

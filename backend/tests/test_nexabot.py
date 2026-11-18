@@ -688,3 +688,145 @@ def test_cat_film_mix_holds_the_last_frame_for_a_long_line(tmp_path):
     assert cf.duration(seg) == pytest.approx(cf.LEAD_S + 3 + cf.TAIL_S, abs=0.3)
     out = cf.join([seg, seg], tmp_path / "all.mp4")
     assert cf.duration(out) == pytest.approx(2 * cf.duration(seg), abs=0.4)
+
+
+def test_cat_film_each_scene_takes_only_its_own_job(tmp_path, monkeypatch):
+    """The 18 Nov run saved scene 1's clip four times because the set of old jobs never grew. Each finished job's id must join
+    the set before the next scene, so a later scene cannot take an earlier scene's job."""
+    from semasa import nexabot_cat_film as cf
+    from semasa import nexabot_generate as gen
+
+    monkeypatch.setattr(gen, "storage_state", lambda: {"cookies": []})
+    seen_by_scene = []
+
+    def fake_scene(page, prompt, outdir, report, idx, seen):
+        seen_by_scene.append(set(seen))
+        seen.add(f"job{idx + 1}")
+        dest = outdir / f"clip{idx + 1}.mp4"
+        dest.write_bytes(b"x" * (idx + 1))
+        return dest
+
+    monkeypatch.setattr(cf, "scene_clip", fake_scene)
+
+    class Page:
+        url = "https://nexabot.id/video-generator"
+        def goto(self, *a, **k): pass
+        def wait_for_load_state(self, *a, **k): pass
+        def wait_for_timeout(self, ms): pass
+        def evaluate(self, js, arg=None): return [{"id": "old"}]
+
+    class Ctx:
+        def new_page(self): return Page()
+
+    class Browser:
+        def new_context(self, **k): return Ctx()
+        def close(self): pass
+
+    class PW:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        chromium = object()
+
+    import playwright.sync_api as sync_api
+
+    from semasa import nexabot_check as chk
+
+    monkeypatch.setattr(sync_api, "sync_playwright", lambda: PW())
+    monkeypatch.setattr(chk, "launch_browser", lambda pw: Browser())
+    clips = cf.make_clips(tmp_path, tmp_path / "sheet.png", {})
+    assert len(clips) == 4
+    assert seen_by_scene[0] == {"old"}
+    assert seen_by_scene[3] == {"old", "job1", "job2", "job3"}
+
+
+def test_cat_film_scene_ignores_other_jobs_on_the_account(tmp_path, monkeypatch):
+    """A voice (tts) job and an old video job on the shared account are not this scene's video: only a NEW sfv job counts."""
+    from semasa import nexabot_cat_film as cf
+    from semasa import nexabot_film as film
+    from semasa import nexabot_i2v as i2v
+
+    monkeypatch.setattr(film, "choose_sfv", lambda page, report: True)
+    monkeypatch.setattr(i2v, "select_1080p", lambda page, report: True)
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    calls = {"n": 0}
+
+    class Loc:
+        first = property(lambda self: self)
+        def count(self): return 1
+        def set_input_files(self, p): pass
+        def evaluate(self, js): pass
+        def fill(self, t): pass
+        def is_disabled(self): return False
+        def click(self): pass
+
+    class Resp:
+        status = 200
+        def body(self): return b"v" * 200_000
+
+    class Page:
+        class context:  # noqa: N801
+            class request:  # noqa: N801
+                @staticmethod
+                def get(url, timeout=0):
+                    calls["url"] = url
+                    return Resp()
+        def locator(self, sel): return Loc()
+        def get_by_role(self, *a, **k): return Loc()
+        def wait_for_timeout(self, ms): pass
+        def evaluate(self, js, arg=None):
+            return [{"id": "voice1", "mode": "tts", "status": "done"},
+                    {"id": "old", "mode": "sfv", "status": "done"},
+                    {"id": "mine", "mode": "sfv", "status": "done"}]
+
+    report = {}
+    seen = {"old"}
+    dest = cf.scene_clip(Page(), "x", tmp_path, report, 0, seen, wait_s=5)
+    assert dest is not None and calls["url"].endswith("/api/v1/jobs/mine/download")
+    assert "mine" in seen and "voice1" not in seen
+
+
+def test_cat_film_a_refused_video_is_asked_for_again(tmp_path, monkeypatch):
+    """Nexabot sometimes refuses a video job itself ("preparing an account"): the scene is asked for again, then gives up."""
+    from semasa import nexabot_cat_film as cf
+    from semasa import nexabot_check as chk
+    from semasa import nexabot_generate as gen
+
+    monkeypatch.setattr(gen, "storage_state", lambda: {"cookies": []})
+    tries = []
+
+    def flaky(page, prompt, outdir, report, idx, seen):
+        tries.append(idx)
+        if len(tries) < 3:
+            report[f"scene{idx + 1}_error"] = "the video job failed"
+            return None
+        dest = outdir / f"clip{idx + 1}.mp4"
+        dest.write_bytes(b"x")
+        return dest
+
+    monkeypatch.setattr(cf, "scene_clip", flaky)
+
+    class Page:
+        url = "https://nexabot.id/video-generator"
+        def goto(self, *a, **k): pass
+        def wait_for_load_state(self, *a, **k): pass
+        def wait_for_timeout(self, ms): pass
+        def evaluate(self, js, arg=None): return []
+
+    class Browser:
+        def new_context(self, **k):
+            return type("C", (), {"new_page": lambda self: Page()})()
+        def close(self): pass
+
+    class PW:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    import playwright.sync_api as sync_api
+
+    monkeypatch.setattr(sync_api, "sync_playwright", lambda: PW())
+    monkeypatch.setattr(chk, "launch_browser", lambda pw: Browser())
+    monkeypatch.setattr(cf, "SCENES", ["one scene"])
+    report = {}
+    clips = cf.make_clips(tmp_path, tmp_path / "sheet.png", report)
+    assert len(clips) == 1 and tries == [0, 0, 0]
+    assert report["scene1_attempt"] == 3 and len(report["scene1_errors"]) == 2

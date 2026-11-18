@@ -54,6 +54,7 @@ NARRATION = [
     "Kerana bagi Comot, kawan yang baik lebih berharga daripada seekor ikan.",
 ]
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+ATTEMPTS = 3      # a video that Nexabot refuses is asked for again, up to this many times
 LEAD_S = 0.6      # the voice starts this long after a scene starts
 TAIL_S = 0.8      # and the scene holds this long after the voice ends
 
@@ -122,6 +123,155 @@ def plan() -> dict:
     return {"scenes": len(SCENES), "narration": NARRATION, "sheet_prompt_chars": len(CHAR_SHEET_PROMPT)}
 
 
+def _jobs(page) -> list:
+    try:
+        return page.evaluate("""async () => {
+            const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
+            const j = await r.json();
+            return Array.isArray(j) ? j : (j.jobs || j.data || []);
+        }""") or []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def scene_clip(page, prompt: str, clip_dir: Path, report: dict, idx: int, seen: set[str], wait_s: int = 40 * 60) -> Path | None:
+    """One Start Frame clip. The job it waits for is the first VIDEO (sfv) job that was not on the account before the click:
+    the account is shared, and on 18 Nov a voice job started by another run was taken for scene 3's video and waited on for
+    25 minutes. A video job that fails ends the wait at once, with the reason in the report.
+    The finished job's id joins `seen`."""
+    import time
+
+    from . import nexabot_check as chk
+    from . import nexabot_film as film
+    from . import nexabot_i2v as i2v
+
+    n = idx + 1
+    if not film.choose_sfv(page, report):
+        return None
+    i2v.select_1080p(page, report)
+    files = page.locator("input[type=file]")
+    if files.count() == 0:
+        report[f"scene{n}_error"] = "no file input"
+        return None
+    files.first.set_input_files(str(film.SHEET))
+    try:
+        files.first.evaluate("(el) => el.dispatchEvent(new Event('change', {bubbles:true}))")
+    except Exception:  # noqa: BLE001
+        pass
+    page.wait_for_timeout(3500)
+    box = page.locator("textarea[placeholder*='Describe your video']").first
+    if box.count():
+        box.fill(prompt)
+    button = page.get_by_role("button", name="Generate", exact=True).first
+    t0 = time.time()
+    while time.time() - t0 < 60:
+        try:
+            if not button.is_disabled():
+                break
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(2)
+    button.click()
+    report[f"scene{n}_clicked_at"] = datetime.now(UTC).isoformat()
+
+    deadline = time.time() + wait_s
+    while time.time() < deadline:
+        mine = [j for j in _jobs(page) if str(j.get("mode") or "").lower() == "sfv" and str(j.get("id")) not in seen]
+        for job in mine:
+            status = str(job.get("status") or "").lower()
+            keep = ("id", "status", "mode", "progress", "width", "height", "size_bytes")
+            report[f"scene{n}_job"] = {k: job.get(k) for k in keep if job.get(k) is not None}
+            if status in ("failed", "error", "cancelled", "canceled"):
+                report[f"scene{n}_error"] = f"the video job {status}: {job.get('progress') or job.get('error') or ''}"[:200]
+                seen.add(str(job.get("id")))
+                return None
+            if status in ("done", "complete", "ready", "success"):
+                urls = [job.get(k) for k in ("download_url", "video_url", "url") if job.get(k)]
+                urls.append(f"/api/v1/jobs/{job['id']}/download")
+                for url in urls:
+                    full = url if url.startswith("http") else chk.ORIGIN + url
+                    try:
+                        resp = page.context.request.get(full, timeout=300_000)
+                        body = resp.body() if resp.status == 200 else b""
+                    except Exception as exc:  # noqa: BLE001
+                        report[f"scene{n}_download_try"] = f"{url[:60]} -> {str(exc)[:80]}"
+                        continue
+                    if len(body) > 100_000:
+                        dest = clip_dir / f"clip{n}.mp4"
+                        dest.write_bytes(body)
+                        seen.add(str(job["id"]))
+                        report[f"scene{n}_saved"] = str(dest)
+                        return dest
+                report[f"scene{n}_error"] = "the video job is done but its file could not be downloaded"
+                seen.add(str(job["id"]))
+                return None
+            break  # the first video job of ours is still going: wait for it, never look past it
+        time.sleep(4)
+    report[f"scene{n}_error"] = f"no video job finished within {wait_s // 60} minutes"
+    return None
+
+
+def make_clips(clip_dir: Path, sheet: Path, report: dict) -> list[Path]:
+    """One Start Frame clip per scene, each from its OWN job. nexabot_film.run keeps one fixed set of "jobs that existed before
+    the run", so scene 2 saw scene 1's finished job as new and downloaded it again: four identical clips (18 Nov, run 1). Here
+    every finished job's id joins the set before the next scene starts, so a scene can only ever take a job made after it."""
+    from . import nexabot_check as chk
+    from . import nexabot_film as film
+    from . import nexabot_generate as gen
+
+    state = gen.storage_state()
+    if not state:
+        report["video_error"] = "no saved login"
+        return []
+    from playwright.sync_api import sync_playwright
+
+    film.SHEET = sheet
+    clips: list[Path] = []
+    with sync_playwright() as pw:
+        browser = chk.launch_browser(pw)
+        try:
+            ctx = browser.new_context(storage_state=state, locale="ms-MY", timezone_id="Asia/Kuala_Lumpur",
+                                      viewport={"width": 1366, "height": 900}, accept_downloads=True)
+            page = ctx.new_page()
+            seen: set[str] = set()
+            for idx, prompt in enumerate(SCENES):
+                page.goto(chk.STUDIO_URL, wait_until="domcontentloaded", timeout=45_000)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=15_000)
+                except Exception:  # noqa: BLE001
+                    pass
+                page.wait_for_timeout(2500)
+                if "/login" in page.url:
+                    report["video_error"] = "login wall"
+                    break
+                if idx == 0:
+                    jobs = page.evaluate("""async () => {
+                        const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
+                        const j = await r.json();
+                        return Array.isArray(j) ? j : (j.jobs || j.data || []);
+                    }""") or []
+                    seen = {str(j.get("id")) for j in jobs if j.get("id")}
+                    report["jobs_before"] = len(seen)
+                saved = None
+                for attempt in range(1, ATTEMPTS + 1):
+                    report[f"scene{idx + 1}_attempt"] = attempt
+                    saved = scene_clip(page, prompt, clip_dir, report, idx, seen)
+                    if saved:
+                        break
+                    report.setdefault(f"scene{idx + 1}_errors", []).append(report.get(f"scene{idx + 1}_error"))
+                    # a refused video is often Nexabot's own temporary trouble ("preparing an account"): fresh page, ask again
+                    page.goto(chk.STUDIO_URL, wait_until="domcontentloaded", timeout=45_000)
+                    page.wait_for_timeout(2500)
+                if not saved:
+                    report["error_scene"] = idx + 1
+                    break
+                clips.append(Path(saved))
+        finally:
+            browser.close()
+    (clip_dir / "clips-report.json").write_text(json.dumps(report, indent=2, default=str), "utf-8")
+    return clips
+
+
 def run(outdir: Path, voice: str, dry: bool) -> int:
     report: dict = {"started": datetime.now(UTC).isoformat(), "voice": voice, "dry": dry, "plan": plan()}
 
@@ -134,7 +284,6 @@ def run(outdir: Path, voice: str, dry: bool) -> int:
         return 0
 
     from . import nexabot_charsheet as cs
-    from . import nexabot_film as film
     from . import nexabot_voice_line as vl
 
     # 1 · image: one sheet with the three cats
@@ -152,14 +301,11 @@ def run(outdir: Path, voice: str, dry: bool) -> int:
     # 2 · video: one Start Frame clip per scene from that sheet
     clip_dir = outdir / "clips"
     clip_dir.mkdir(exist_ok=True)
-    film.SHEET = sheet_dir / "charsheet.png"
-    film.SCENES = SCENES
-    code = film.run(clip_dir)
-    clips = [clip_dir / f"clip{i + 1}.mp4" for i in range(len(SCENES))]
-    report["clips"] = [str(c) for c in clips if c.exists()]
+    clips = make_clips(clip_dir, sheet_dir / "charsheet.png", report)
+    report["clips"] = [str(c) for c in clips]
     save()
-    if code != 0 or len(report["clips"]) != len(SCENES):
-        report["failed"] = f"video: {len(report['clips'])} of {len(SCENES)} clips were made"
+    if len(clips) != len(SCENES):
+        report["failed"] = f"video: {len(clips)} of {len(SCENES)} clips were made"
         print(report["failed"])
         return 1
 

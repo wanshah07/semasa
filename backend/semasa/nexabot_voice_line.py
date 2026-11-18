@@ -107,7 +107,8 @@ def run(outdir: Path, who: str, voice: str, text: str, dry: bool) -> int:
             btn.click()
             report["generate_clicked_at"] = datetime.now(UTC).isoformat()
 
-            # wait for a NEW audio: a network url not seen before, OR a DOM audio src that appeared after the click
+            # wait for a NEW audio: network url not seen before, OR DOM audio src that appeared after the click
+            # (voice generation can be slow; give it a long window + a late-wait)
             new_url = None
             deadline = time.time() + MAX_WAIT_S
             while time.time() < deadline:
@@ -127,7 +128,30 @@ def run(outdir: Path, who: str, voice: str, text: str, dry: bool) -> int:
                         break
                 except Exception:  # noqa: BLE001
                     pass
-                time.sleep(2)
+                time.sleep(3)
+
+            # late-wait: voice can exceed 5 minutes; give it 10 more
+            if not new_url:
+                report["late_wait"] = True
+                late = time.time() + 10 * 60
+                while time.time() < late:
+                    new_net = [u for u in seen_audio if u not in before]
+                    if new_net:
+                        new_url = new_net[-1]
+                        report["audio_via"] = "network_late"
+                        break
+                    try:
+                        after_dom = page.evaluate("""() =>
+                            [...document.querySelectorAll('audio, video')].map(x => x.src).filter(Boolean)
+                        """)
+                        new_dom = [s for s in after_dom if s not in before_dom]
+                        if new_dom:
+                            new_url = new_dom[-1]
+                            report["audio_via"] = "dom_new_late"
+                            break
+                    except Exception:  # noqa: BLE001
+                        pass
+                    time.sleep(3)
 
             if new_url:
                 full = new_url if new_url.startswith("http") else chk.ORIGIN + new_url

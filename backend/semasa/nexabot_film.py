@@ -63,8 +63,8 @@ def choose_sfv(page, report):
     return False
 
 
-def one_scene(page, prompt, outdir, report, idx):
-    """Generate one sfv clip; return the saved path or None."""
+def one_scene(page, prompt, outdir, report, idx, seen_jobs):
+    """Generate one sfv clip; return the saved path or None. seen_jobs is a set of job ids already downloaded."""
     report["scene"] = idx + 1
     if not choose_sfv(page, report):
         return None
@@ -85,7 +85,6 @@ def one_scene(page, prompt, outdir, report, idx):
         box.fill(prompt)
     page.screenshot(path=str(outdir / f"scene{idx+1}-preclick.png"))
     gen_btn = page.get_by_role("button", name="Generate", exact=True).first
-    # wait enabled (image processed)
     t0 = time.time()
     while time.time() - t0 < 60:
         try:
@@ -97,7 +96,6 @@ def one_scene(page, prompt, outdir, report, idx):
     gen_btn.click()
     report[f"scene{idx+1}_clicked_at"] = datetime.now(UTC).isoformat()
 
-    video_url = None
     deadline = time.time() + MAX_WAIT_S
     while time.time() < deadline:
         try:
@@ -108,14 +106,16 @@ def one_scene(page, prompt, outdir, report, idx):
             }""")
         except Exception:  # noqa: BLE001
             jobs = []
+        # a NEW done video job we have not already downloaded (skip stale/old jobs)
         done = [j for j in jobs
                 if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")
-                and str(j.get("mode") or "").lower() in ("sfv", "i2v", "t2v", "video", "r2v", "extend")]
+                and str(j.get("mode") or "").lower() in ("sfv", "i2v", "t2v", "video", "r2v", "extend")
+                and str(j.get("id")) not in seen_jobs]
         if done:
             meta = done[0]
+            jid = str(meta.get("id"))
+            seen_jobs.add(jid)
             report[f"scene{idx+1}_job"] = {k: meta.get(k) for k in ("id", "mode", "width", "height", "size_bytes") if meta.get(k) is not None}
-            # download via the job's own download route
-            jid = meta.get("id")
             cands = [meta.get(k) for k in ("download_url", "video_url", "url") if meta.get(k)]
             if jid:
                 cands.append(f"/api/v1/jobs/{jid}/download")
@@ -130,7 +130,6 @@ def one_scene(page, prompt, outdir, report, idx):
                         return str(dest)
                 except Exception as exc:  # noqa: BLE001
                     report[f"scene{idx+1}_dl_try"] = f"{u[:60]} -> {str(exc)[:80]}"
-            # fallback: capture a GET video/mp4 url from network on the NEXT poll — but keep simple: return None
             return None
         time.sleep(4)
     report[f"scene{idx+1}_timed_out"] = True
@@ -148,6 +147,7 @@ def run(outdir: Path) -> int:
     from playwright.sync_api import sync_playwright
 
     report = {"started": datetime.now(UTC).isoformat(), "clips": []}
+    seen_jobs: set[str] = set()
     with sync_playwright() as pw:
         browser = chk.launch_browser(pw)
         try:
@@ -173,7 +173,7 @@ def run(outdir: Path) -> int:
                     except Exception:  # noqa: BLE001
                         pass
                     page.wait_for_timeout(2500)
-                saved = one_scene(page, prompt, outdir, report, idx)
+                saved = one_scene(page, prompt, outdir, report, idx, seen_jobs)
                 if saved:
                     report["clips"].append(saved)
                 else:

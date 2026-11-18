@@ -82,6 +82,9 @@ def run(outdir: Path) -> int:
             page.screenshot(path=str(outdir / "img-preclick.png"))
             img_urls: list[str] = []
             events: list[dict] = []
+            before_srcs: list[str] = page.evaluate("""() =>
+                [...document.querySelectorAll('img')].map(i => i.src).filter(s => s && /storage|supabase|media|blob/i.test(s))
+            """)
 
             def on_resp(resp):
                 req = resp.request
@@ -90,8 +93,12 @@ def run(outdir: Path) -> int:
                 events.append(row)
                 if req.method == "GET" and _is_image(ctype, req.url):
                     img_urls.append(req.url)
-                # the image may come back on the POST's own JSON (synchronous image API returns url)
                 if req.method == "POST" and "image" in req.url.lower():
+                    try:
+                        body = req.post_data or ""
+                        row["post_body_head"] = body[:300]
+                    except Exception:  # noqa: BLE001
+                        row["post_body_head"] = ""
                     try:
                         j = resp.json()
                         u = j.get("url") or (j.get("data") or {}).get("url")
@@ -106,22 +113,23 @@ def run(outdir: Path) -> int:
             t1 = time.time()
             while time.time() - t1 < 120 and not img_urls:
                 time.sleep(2)
-            # fallback: the result <img> in the DOM
+            # fallback: a NEW result img in the DOM that was not there before the click
             if not img_urls:
                 try:
-                    dom = page.evaluate("""() => {
-                        const imgs = [...document.querySelectorAll('img')].map(i => i.src).filter(s => s && /storage|supabase|media|blob/i.test(s));
-                        return imgs;
-                    }""")
-                    if dom:
-                        img_urls = dom
-                        report["img_via_dom"] = True
+                    after_srcs = page.evaluate("""() =>
+                        [...document.querySelectorAll('img')].map(i => i.src).filter(s => s && /storage|supabase|media|blob/i.test(s))
+                    """)
+                    new = [s for s in after_srcs if s not in before_srcs]
+                    if new:
+                        img_urls = new
+                        report["img_via_dom_new"] = True
                 except Exception as exc:  # noqa: BLE001
                     report["dom_err"] = str(exc)[:100]
             report["img_url_count"] = len(img_urls)
+            report["before_src_count"] = len(before_srcs)
             report["events"] = [e for e in events if e["s"] != 304][-40:]
             if img_urls:
-                full = img_urls[-1] if img_urls[-1].startswith("http") else chk.ORIGIN + img_urls[-1]
+                full = img_urls[0] if img_urls[0].startswith("http") else chk.ORIGIN + img_urls[0]
                 resp = page.context.request.get(full, timeout=120_000)
                 if resp.status == 200 and len(resp.body()) > 1000:
                     dest = outdir / "charsheet.png"

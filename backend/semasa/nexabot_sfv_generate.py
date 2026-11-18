@@ -107,13 +107,27 @@ def run(outdir: Path, sheet: Path, prompt: str, dry: bool) -> int:
                 (outdir / "report.json").write_text(json.dumps(report, indent=2), "utf-8")
                 return 0
 
+            # capture baseline jobs BEFORE Generate, so we only ever take a job created by THIS click
+            try:
+                baseline = page.evaluate("""async () => {
+                    const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
+                    const j = await r.json();
+                    return Array.isArray(j) ? j : (j.jobs || j.data || []);
+                }""")
+                baseline_ids = {str(j.get("id")) for j in (baseline or []) if j.get("id")}
+                report["baseline_jobs"] = len(baseline_ids)
+            except Exception as exc:  # noqa: BLE001
+                baseline_ids = set()
+                report["baseline_err"] = str(exc)[:100]
+
             gen_btn = page.get_by_role("button", name="Generate", exact=True).first
             report["generate_disabled"] = gen_btn.is_disabled()
             gen_btn.click()
             report["generate_clicked_at"] = datetime.now(UTC).isoformat()
 
-            # poll the job via recent list — filter to VIDEO jobs only (an old image job must not be mistaken)
+            # poll for a NEW video job (id not in baseline) that is done
             deadline = time.time() + MAX_WAIT_S
+            meta = {}
             while time.time() < deadline:
                 try:
                     jobs = page.evaluate("""async () => {
@@ -125,28 +139,34 @@ def run(outdir: Path, sheet: Path, prompt: str, dry: bool) -> int:
                     jobs = []
                 done = [j for j in jobs
                         if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")
-                        and str(j.get("mode") or "").lower() in ("sfv", "i2v", "t2v", "video", "r2v", "extend")]
+                        and str(j.get("mode") or "").lower() in ("sfv", "i2v", "t2v", "video", "r2v", "extend")
+                        and str(j.get("id")) not in baseline_ids]
                 if done:
+                    meta = done[0]
                     report["job_done"] = True
-                    report["job_meta"] = {k: done[0].get(k) for k in ("id", "status", "mode", "model", "width", "height", "size_bytes") if done[0].get(k) is not None}
+                    report["job_meta"] = {k: meta.get(k) for k in ("id", "status", "mode", "model", "width", "height", "size_bytes") if meta.get(k) is not None}
                     break
                 time.sleep(4)
             else:
                 report["timed_out"] = True
 
-            if report.get("job_done") and report.get("video_url"):
-                import requests
-                try:
-                    r = requests.get(report["video_url"], timeout=300, stream=True)
-                    if r.status_code == 200:
-                        dest = outdir / f"scene-{datetime.now(UTC).strftime('%H%M%S')}.mp4"
-                        with open(dest, "wb") as fh:
-                            for chunk in r.iter_content(1 << 20):
-                                fh.write(chunk)
-                        report["video_saved"] = str(dest)
-                        report["video_size_final"] = dest.stat().st_size
-                except Exception as exc:  # noqa: BLE001
-                    report["download_error"] = str(exc)[:200]
+            if report.get("job_done"):
+                jid = str(meta.get("id"))
+                cands = [meta.get(k) for k in ("download_url", "video_url", "url") if meta.get(k)]
+                if jid:
+                    cands.append(f"/api/v1/jobs/{jid}/download")
+                for u in cands:
+                    full = u if u.startswith("http") else chk.ORIGIN + u
+                    try:
+                        resp = page.context.request.get(full, timeout=300_000)
+                        if resp.status == 200 and len(resp.body()) > 100_000:
+                            dest = outdir / f"scene-{datetime.now(UTC).strftime('%H%M%S')}.mp4"
+                            dest.write_bytes(resp.body())
+                            report["video_saved"] = str(dest)
+                            report["video_size_final"] = len(resp.body())
+                            break
+                    except Exception as exc:  # noqa: BLE001
+                        report["download_error"] = f"{u[:60]} -> {str(exc)[:120]}"
         finally:
             browser.close()
 

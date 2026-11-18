@@ -1,0 +1,45 @@
+name: Nexabot film
+
+# Generate the 4 photorealistic scenes (Start Frame, consistent characters) for the halal-logo story.
+# Voice + subtitles are assembled separately. No dialogue in the video prompt.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: nexabot-film
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  film:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Chromium
+        run: bash ../.github/scripts/ensure-chromium.sh
+      - name: Generate 4 scenes
+        env:
+          NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
+        run: python -m semasa.nexabot_film "$RUNNER_TEMP/nexabot-film"
+      - name: Keep clips and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexabot-film
+          path: /home/runner/work/_temp/nexabot-film
+          retention-days: 1
+          if-no-files-found: ignore

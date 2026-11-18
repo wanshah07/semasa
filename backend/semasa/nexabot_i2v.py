@@ -74,6 +74,21 @@ def choose_mode(page, report: dict) -> bool:
     return False
 
 
+def select_1080p(page, report: dict) -> bool:
+    """Pick 1080p resolution (the default is 720p). Returns whether the button was found and clicked."""
+    try:
+        btn = page.get_by_role("button", name="1080p", exact=True).first
+        if btn.count() and btn.is_visible():
+            btn.click()
+            page.wait_for_timeout(600)
+            report["resolution_chosen"] = "1080p"
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    report["resolution_chosen"] = "NOT FOUND"
+    return False
+
+
 def upload_panel(page, panel: Path, report: dict) -> bool:
     # an i2v UI normally has an <input type=file> (a dropzone wraps a hidden one)
     file_inputs = page.locator("input[type=file]")

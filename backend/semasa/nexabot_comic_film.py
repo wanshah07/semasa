@@ -31,6 +31,17 @@ PROMPT = "Animate this comic panel: the two characters gesture and talk naturall
 MAX_WAIT_S = 15 * 60
 POLL_S = 4
 
+# each panel's dialogue, burned as a subtitle AFTER Nexabot animates the panel (Nexabot cannot render text reliably)
+SUBTITLES = [
+    ("Hana", "Eh, logo halal kat paket ni warna hijau. Bukan sepatutnya hitam ke?"),
+    ("Pak Mat", "Jangan-jangan logo palsu?"),
+    ("Hana", "Tak semestinya. Warna bukan penentu."),
+    ("Hana", "Pemegang sijil boleh cetak logo ikut warna pembungkusan, asalkan spesifikasi logo tak diubah."),
+    ("Pak Mat", "Mana tulis tu?"),
+    ("Hana", "MPPHM (Domestik) 2020, Klausa 40(2)."),
+]
+CREDIT = "Sumber: MPPHM (Domestik) 2020, Klausa 40(2)"
+
 
 def _clip(page, panel: Path, outdir: Path, report: dict, fresh: bool = False) -> bool:
     """One i2v generation: choose mode, upload the panel, generate, poll, download. Returns whether an MP4 landed."""
@@ -45,6 +56,8 @@ def _clip(page, panel: Path, outdir: Path, report: dict, fresh: bool = False) ->
     # mode dropdown
     if not i2v.choose_mode(page, report):
         return False
+    # pick 1080p (default is 720p) — the film is 1920x1080
+    i2v.select_1080p(page, report)
     if not i2v.upload_panel(page, panel, report):
         return False
     # i2v REQUIRES a text prompt too (the Generate button stays disabled with an empty prompt)
@@ -134,6 +147,68 @@ def concat(clips: list[str], out: Path) -> Path:
     return out
 
 
+def _escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:").replace(",", "\\,").replace("%", "\\%")
+
+
+def _dur(path: Path) -> float:
+    import imageio_ffmpeg
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    p = subprocess.run([ffmpeg, "-hide_banner", "-i", str(path)], capture_output=True, text=True)
+    import re
+    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", p.stderr)
+    return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)) if m else 0.0
+
+
+def burn_subtitles(clips: list[str], film: Path, out: Path) -> Path:
+    """Burn each dialogue line as a subtitle into the concatenated film. Nexabot animated the panels; this step adds
+    the exact words (Nexabot cannot render text reliably), one line per clip, plus the credit on the last one.
+    Six dialogue lines map onto the four clips: clip 1 -> line 1, clip 2 -> lines 2+3, clip 3 -> line 4, clip 4 -> lines 5+6.
+    """
+    import imageio_ffmpeg
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    durs = [_dur(Path(c)) for c in clips]
+    # line -> (start, end) inside the film timeline
+    starts: list[float] = []
+    t = 0.0
+    for d in durs:
+        starts.append(t)
+        t += d
+    total = t
+    # 6 lines: [0]=clip1, [1,2]=clip2, [3]=clip3, [4,5]=clip4
+    per_clip = {0: [0], 1: [1, 2], 2: [3], 3: [4, 5]}
+    vf = []
+    fontfile = "C\\:/Windows/Fonts/arialbd.ttf"  # fallback; the runner has DejaVu, use a robust path
+    # actually use DejaVu on the ubuntu runner (always present)
+    fontfile = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    for ci, line_idxs in per_clip.items():
+        cstart = starts[ci]
+        cdur = durs[ci]
+        n = len(line_idxs)
+        seg = cdur / n
+        for k, li in enumerate(line_idxs):
+            who, text = SUBTITLES[li]
+            s = cstart + k * seg
+            e = s + seg
+            label = f"{who}\\: {text}"
+            vf.append(
+                f"drawtext=fontfile={fontfile}:text='{_escape(label)}':fontsize=44:fontcolor=white:"
+                f"borderw=3:bordercolor=black:box=1:boxcolor=black@0.6:boxborderw=18:"
+                f"x=(w-text_w)/2:y=h-140:enable='between(t,{s:.2f},{e:.2f})'"
+            )
+    # the credit, held on the final clip's tail (last 2s)
+    credit = f"{CREDIT}"
+    vf.append(
+        f"drawtext=fontfile={fontfile}:text='{_escape(credit)}':fontsize=36:fontcolor=white:"
+        f"borderw=3:bordercolor=black:box=1:boxcolor=black@0.6:boxborderw=18:"
+        f"x=(w-text_w)/2:y=h-140:enable='between(t,{total - 2:.2f},{total:.2f})'"
+    )
+    chain = ",".join(vf)
+    subprocess.run([ffmpeg, "-y", "-i", str(film), "-vf", chain, "-c:a", "copy", str(out)],
+                   check=True, capture_output=True)
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("outdir")
@@ -215,7 +290,8 @@ def main() -> int:
                     report["error_panel"] = panel.name
                     break
             if len(report.get("clips", [])) == len(panels):
-                film = concat(report["clips"], outdir / "comic-film.mp4")
+                raw = concat(report["clips"], outdir / "comic-film-raw.mp4")
+                film = burn_subtitles(report["clips"], raw, outdir / "comic-film.mp4")
                 report["film"] = str(film)
                 print("film saved:", film)
         finally:

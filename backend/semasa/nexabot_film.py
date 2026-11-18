@@ -63,9 +63,10 @@ def choose_sfv(page, report):
     return False
 
 
-def one_scene(page, prompt, outdir, report, idx, pre_jobs):
-    """Generate one sfv clip; return the saved path or None. pre_jobs is the immutable set of job ids that existed
-    before this run started — a job is 'ours' only if its id is NOT in pre_jobs (it was created by our Generate)."""
+def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed):
+    """Generate one sfv clip; return (saved_path, job_id). pre_jobs is the immutable set of job ids that existed
+    before this run started; consumed is the mutable set of job ids already downloaded by earlier scenes in this run.
+    A job is 'ours to download' only if its id is NOT in pre_jobs AND NOT in consumed."""
     report["scene"] = idx + 1
     if not choose_sfv(page, report):
         return None
@@ -118,10 +119,11 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs):
                     dest = outdir / f"clip{idx+1}.mp4"
                     dest.write_bytes(resp.body())
                     report[f"scene{idx+1}_saved"] = str(dest)
-                    return dest
+                    consumed.add(jid)
+                    return dest, jid
             except Exception as exc:  # noqa: BLE001
                 report[f"scene{idx+1}_dl_try"] = f"{u[:60]} -> {str(exc)[:80]}"
-        return None
+        return None, None
 
     deadline = time.time() + MAX_WAIT_S
     while time.time() < deadline:
@@ -129,15 +131,15 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs):
             jobs = fetch_jobs()
         except Exception:  # noqa: BLE001
             jobs = []
-        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs]
+        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed]
         if ours:
             report[f"scene{idx+1}_first_seen"] = {k: ours[0].get(k) for k in ("id", "status", "mode", "progress") if ours[0].get(k) is not None}
         done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
         if done:
-            saved = download(done[0])
+            saved, jid = download(done[0])
             if saved:
-                return saved
-            return None
+                return saved, jid
+            return None, None
         time.sleep(4)
 
     # late-wait: sfv can exceed 15 minutes
@@ -148,16 +150,16 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs):
             jobs = fetch_jobs()
         except Exception:  # noqa: BLE001
             jobs = []
-        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs]
+        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed]
         done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
         if done:
-            saved = download(done[0])
+            saved, jid = download(done[0])
             if saved:
-                return saved
-            return None
+                return saved, jid
+            return None, None
         time.sleep(4)
     report[f"scene{idx+1}_timed_out"] = True
-    return None
+    return None, None
 
 
 def run(outdir: Path) -> int:
@@ -172,6 +174,7 @@ def run(outdir: Path) -> int:
 
     report = {"started": datetime.now(UTC).isoformat(), "clips": []}
     pre_jobs: set[str] = set()
+    consumed: set[str] = set()
     with sync_playwright() as pw:
         browser = chk.launch_browser(pw)
         try:
@@ -209,9 +212,9 @@ def run(outdir: Path) -> int:
                     except Exception:  # noqa: BLE001
                         pass
                     page.wait_for_timeout(2500)
-                saved = one_scene(page, prompt, outdir, report, idx, pre_jobs)
+                saved, jid = one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed)
                 if saved:
-                    report["clips"].append(saved)
+                    report["clips"].append(str(saved))
                 else:
                     report["error_scene"] = idx + 1
                     break

@@ -68,8 +68,23 @@ def run(outdir: Path, text: str, voices: list[str]) -> int:
 
             for voice in voices:
                 before = set(audio_urls.keys())
-                # select voice
-                page.get_by_role("button", name="Achernar").first.click()
+                # select voice: the voice dropdown is the button with haspopup=menu that is NOT the engine/payment
+                # (its visible name is the currently-selected voice, so we locate it structurally, not by name)
+                vbtn = page.evaluate("""() => {
+                    const bs = [...document.querySelectorAll('button')];
+                    for (const b of bs) {
+                        const n = (b.innerText||'').trim();
+                        if (b.getAttribute('aria-haspopup') === 'menu'
+                            && n !== 'Natural TTS' && n !== 'ElevenLabs'
+                            && !/Choose payment|Unlimited|Clone Voice/i.test(n)
+                            && n.length < 20) return n;
+                    }
+                    return '';
+                }""")
+                if vbtn:
+                    page.get_by_role("button", name=vbtn, exact=True).first.click()
+                else:
+                    page.get_by_role("button", name="Achernar").first.click()
                 page.wait_for_timeout(600)
                 page.get_by_role("button", name=voice, exact=True).first.click()
                 page.wait_for_timeout(500)

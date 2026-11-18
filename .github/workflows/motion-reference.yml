@@ -43,3 +43,16 @@ jobs:
         run: |
           mapfile -t links <<< "$URLS"
           python -m semasa.motion_reference "${links[@]}"
+      - name: Keep the first reference, its frames and its sound (one day)
+        env:
+          URLS: ${{ inputs.urls }}
+        run: |
+          mapfile -t links <<< "$URLS"
+          python -m semasa.reference_keep "$RUNNER_TEMP/reference-kept" "${links[0]}" || true
+      - name: Upload what was kept
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-kept
+          path: /home/runner/work/_temp/reference-kept
+          retention-days: 1
+          if-no-files-found: ignore

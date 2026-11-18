@@ -688,3 +688,28 @@ def test_cat_film_mix_holds_the_last_frame_for_a_long_line(tmp_path):
     assert cf.duration(seg) == pytest.approx(cf.LEAD_S + 3 + cf.TAIL_S, abs=0.3)
     out = cf.join([seg, seg], tmp_path / "all.mp4")
     assert cf.duration(out) == pytest.approx(2 * cf.duration(seg), abs=0.4)
+
+
+def test_reference_keep_writes_frames_sound_and_info(tmp_path, monkeypatch):
+    """The kept reference is what a person looks at: frames, a mono 16 kHz sound and a one-line info file."""
+    import subprocess
+
+    import pytest
+
+    imageio_ffmpeg = pytest.importorskip("imageio_ffmpeg")
+    from semasa import motion_reference as ref
+    from semasa import reference_keep as rk
+    from semasa import video
+
+    ff = imageio_ffmpeg.get_ffmpeg_exe()
+    src = tmp_path / "src.mp4"
+    cmd = [ff, "-y", "-f", "lavfi", "-i", "testsrc=size=160x90:rate=10:duration=4", "-f", "lavfi", "-i", "sine=duration=4",
+           "-shortest", "-pix_fmt", "yuv420p", str(src)]
+    subprocess.run(cmd, check=True, capture_output=True)
+    monkeypatch.setattr(ref, "fetch", lambda url, folder: src)
+    monkeypatch.setattr(video, "ffmpeg", lambda: ff)
+    monkeypatch.setattr(video, "probe_duration", lambda p: 4.0)
+    info = rk.keep("https://example.test/v", tmp_path / "out")
+    assert info["frames"] == rk.FRAME_COUNT and info["audio"] is True
+    assert (tmp_path / "out" / "audio.wav").stat().st_size > 1000
+    assert "seconds: 4.0" in (tmp_path / "out" / "info.txt").read_text()

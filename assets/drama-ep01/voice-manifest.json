@@ -1,0 +1,30 @@
+[
+  {
+    "n": 1,
+    "who": "Siti",
+    "file": "line01-Siti.wav",
+    "duration": 4.2,
+    "text": "Aiman, kenapa kau ambil makanan aku?"
+  },
+  {
+    "n": 2,
+    "who": "Aiman",
+    "file": "line02-Aiman.wav",
+    "duration": 5.04,
+    "text": "Ala, sikit je. Nanti aku belanja kau."
+  },
+  {
+    "n": 3,
+    "who": "Siti",
+    "file": "line03-Siti.wav",
+    "duration": 1.872,
+    "text": "Janji?"
+  },
+  {
+    "n": 4,
+    "who": "Aiman",
+    "file": "line04-Aiman.wav",
+    "duration": 1.872,
+    "text": "Janji."
+  }
+]

@@ -128,6 +128,28 @@ def run(outdir: Path, who: str, voice: str, text: str, dry: bool) -> int:
                     report["download_error"] = f"{full[:80]} -> {str(exc)[:120]}"
             else:
                 report["no_audio"] = True
+
+            # fallback: the result <audio>/<video> element's own src (the first successful run used this)
+            if not report.get("audio_saved"):
+                try:
+                    src = page.evaluate("""() => {
+                        const a = document.querySelector('audio');
+                        if (a && a.src) return a.src;
+                        const t = [...document.querySelectorAll('audio, video')].map(x => x.src).filter(Boolean);
+                        return t[0] || null;
+                    }""")
+                    if src:
+                        full = src if src.startswith("http") else chk.ORIGIN + src
+                        resp = page.context.request.get(full, timeout=120_000)
+                        if resp.status == 200 and len(resp.body()) > 500:
+                            dest = outdir / f"voice-{who}.wav"
+                            dest.write_bytes(resp.body())
+                            report["audio_saved"] = str(dest)
+                            report["audio_bytes"] = len(resp.body())
+                            report["audio_url"] = full
+                            report["audio_via_dom"] = True
+                except Exception as exc:  # noqa: BLE001
+                    report["dom_err"] = str(exc)[:120]
         finally:
             browser.close()
 

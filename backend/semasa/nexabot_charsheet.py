@@ -80,19 +80,45 @@ def run(outdir: Path) -> int:
                 time.sleep(1)
             page.screenshot(path=str(outdir / "img-preclick.png"))
             img_urls: list[str] = []
+            events: list[dict] = []
 
-            def on_img(resp):
+            def on_resp(resp):
                 req = resp.request
-                if req.method == "GET" and _is_image(resp.headers.get("content-type", ""), req.url):
+                ctype = resp.headers.get("content-type", "")
+                row = {"m": req.method, "u": req.url[:160], "s": resp.status, "c": ctype[:50]}
+                events.append(row)
+                if req.method == "GET" and _is_image(ctype, req.url):
                     img_urls.append(req.url)
+                # the image may come back on the POST's own JSON (synchronous image API returns url)
+                if req.method == "POST" and "image" in req.url.lower():
+                    try:
+                        j = resp.json()
+                        u = j.get("url") or (j.get("data") or {}).get("url")
+                        if u:
+                            img_urls.append(u)
+                    except Exception:  # noqa: BLE001
+                        pass
 
-            page.on("response", on_img)
+            page.on("response", on_resp)
             btn.click()
             report["img_clicked_at"] = datetime.now(UTC).isoformat()
             t1 = time.time()
             while time.time() - t1 < 120 and not img_urls:
                 time.sleep(2)
+            # fallback: the result <img> in the DOM
+            if not img_urls:
+                try:
+                    dom = page.evaluate("""() => {
+                        const imgs = [...document.querySelectorAll('img')].map(i => i.src).filter(s => s && /storage|supabase|media|blob/i.test(s));
+                        return imgs;
+                    }""")
+                    if dom:
+                        img_urls = dom
+                        report["img_via_dom"] = True
+                except Exception as exc:  # noqa: BLE001
+                    report["dom_err"] = str(exc)[:100]
             report["img_url_count"] = len(img_urls)
+            report["events"] = [e for e in events if e["s"] != 304][-40:]
             if img_urls:
                 full = img_urls[-1] if img_urls[-1].startswith("http") else chk.ORIGIN + img_urls[-1]
                 resp = page.context.request.get(full, timeout=120_000)
@@ -101,6 +127,8 @@ def run(outdir: Path) -> int:
                     dest.write_bytes(resp.body())
                     report["charsheet"] = str(dest)
                     report["charsheet_bytes"] = len(resp.body())
+                else:
+                    report["download_status"] = resp.status
             page.screenshot(path=str(outdir / "img-after.png"))
 
         finally:

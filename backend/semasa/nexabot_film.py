@@ -63,8 +63,9 @@ def choose_sfv(page, report):
     return False
 
 
-def one_scene(page, prompt, outdir, report, idx, seen_jobs):
-    """Generate one sfv clip; return the saved path or None. seen_jobs is a set of job ids already downloaded."""
+def one_scene(page, prompt, outdir, report, idx, pre_jobs):
+    """Generate one sfv clip; return the saved path or None. pre_jobs is the immutable set of job ids that existed
+    before this run started — a job is 'ours' only if its id is NOT in pre_jobs (it was created by our Generate)."""
     report["scene"] = idx + 1
     if not choose_sfv(page, report):
         return None
@@ -96,40 +97,63 @@ def one_scene(page, prompt, outdir, report, idx, seen_jobs):
     gen_btn.click()
     report[f"scene{idx+1}_clicked_at"] = datetime.now(UTC).isoformat()
 
+    def fetch_jobs():
+        return page.evaluate("""async () => {
+            const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
+            const j = await r.json();
+            return Array.isArray(j) ? j : (j.jobs || j.data || []);
+        }""")
+
+    def download(meta):
+        jid = str(meta.get("id"))
+        report[f"scene{idx+1}_job"] = {k: meta.get(k) for k in ("id", "mode", "width", "height", "size_bytes") if meta.get(k) is not None}
+        cands = [meta.get(k) for k in ("download_url", "video_url", "url") if meta.get(k)]
+        if jid:
+            cands.append(f"/api/v1/jobs/{jid}/download")
+        for u in cands:
+            full = u if u.startswith("http") else chk.ORIGIN + u
+            try:
+                resp = page.context.request.get(full, timeout=300_000)
+                if resp.status == 200 and len(resp.body()) > 100_000:
+                    dest = outdir / f"clip{idx+1}.mp4"
+                    dest.write_bytes(resp.body())
+                    report[f"scene{idx+1}_saved"] = str(dest)
+                    return dest
+            except Exception as exc:  # noqa: BLE001
+                report[f"scene{idx+1}_dl_try"] = f"{u[:60]} -> {str(exc)[:80]}"
+        return None
+
     deadline = time.time() + MAX_WAIT_S
     while time.time() < deadline:
         try:
-            jobs = page.evaluate("""async () => {
-                const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
-                const j = await r.json();
-                return Array.isArray(j) ? j : (j.jobs || j.data || []);
-            }""")
+            jobs = fetch_jobs()
         except Exception:  # noqa: BLE001
             jobs = []
-        # a NEW done video job we have not already downloaded (skip stale/old jobs)
-        done = [j for j in jobs
-                if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")
-                and str(j.get("mode") or "").lower() in ("sfv", "i2v", "t2v", "video", "r2v", "extend")
-                and str(j.get("id")) not in seen_jobs]
+        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs]
+        if ours:
+            report[f"scene{idx+1}_first_seen"] = {k: ours[0].get(k) for k in ("id", "status", "mode", "progress") if ours[0].get(k) is not None}
+        done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
         if done:
-            meta = done[0]
-            jid = str(meta.get("id"))
-            seen_jobs.add(jid)
-            report[f"scene{idx+1}_job"] = {k: meta.get(k) for k in ("id", "mode", "width", "height", "size_bytes") if meta.get(k) is not None}
-            cands = [meta.get(k) for k in ("download_url", "video_url", "url") if meta.get(k)]
-            if jid:
-                cands.append(f"/api/v1/jobs/{jid}/download")
-            for u in cands:
-                full = u if u.startswith("http") else chk.ORIGIN + u
-                try:
-                    resp = page.context.request.get(full, timeout=300_000)
-                    if resp.status == 200 and len(resp.body()) > 100_000:
-                        dest = outdir / f"clip{idx+1}.mp4"
-                        dest.write_bytes(resp.body())
-                        report[f"scene{idx+1}_saved"] = str(dest)
-                        return str(dest)
-                except Exception as exc:  # noqa: BLE001
-                    report[f"scene{idx+1}_dl_try"] = f"{u[:60]} -> {str(exc)[:80]}"
+            saved = download(done[0])
+            if saved:
+                return saved
+            return None
+        time.sleep(4)
+
+    # late-wait: sfv can exceed 15 minutes
+    report[f"scene{idx+1}_late_wait"] = True
+    late = time.time() + 10 * 60
+    while time.time() < late:
+        try:
+            jobs = fetch_jobs()
+        except Exception:  # noqa: BLE001
+            jobs = []
+        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs]
+        done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
+        if done:
+            saved = download(done[0])
+            if saved:
+                return saved
             return None
         time.sleep(4)
     report[f"scene{idx+1}_timed_out"] = True
@@ -147,7 +171,7 @@ def run(outdir: Path) -> int:
     from playwright.sync_api import sync_playwright
 
     report = {"started": datetime.now(UTC).isoformat(), "clips": []}
-    seen_jobs: set[str] = set()
+    pre_jobs: set[str] = set()
     with sync_playwright() as pw:
         browser = chk.launch_browser(pw)
         try:
@@ -164,15 +188,15 @@ def run(outdir: Path) -> int:
                 print("nexabot: LOGIN WALL.")
                 return 1
 
-            # seed seen_jobs with EVERY pre-existing done job, so each scene downloads only a job created in this run
+            # seed pre_jobs with EVERY pre-existing job, so each scene downloads only a job created in this run
             try:
                 pre = page.evaluate("""async () => {
                     const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
                     const j = await r.json();
                     return Array.isArray(j) ? j : (j.jobs || j.data || []);
                 }""")
-                seen_jobs = {str(j.get("id")) for j in (pre or []) if j.get("id")}
-                report["pre_existing_jobs"] = len(seen_jobs)
+                pre_jobs = {str(j.get("id")) for j in (pre or []) if j.get("id")}
+                report["pre_existing_jobs"] = len(pre_jobs)
             except Exception as exc:  # noqa: BLE001
                 report["pre_jobs_err"] = str(exc)[:100]
 
@@ -185,7 +209,7 @@ def run(outdir: Path) -> int:
                     except Exception:  # noqa: BLE001
                         pass
                     page.wait_for_timeout(2500)
-                saved = one_scene(page, prompt, outdir, report, idx, seen_jobs)
+                saved = one_scene(page, prompt, outdir, report, idx, pre_jobs)
                 if saved:
                     report["clips"].append(saved)
                 else:

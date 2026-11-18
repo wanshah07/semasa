@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Probe Nexabot Voice Generator with the ELEVENLABS engine selected (read-only).
 
 Clicks the "Natural TTS" engine menu -> picks "ElevenLabs", then dumps the voice dropdown options and any new
@@ -67,7 +68,7 @@ def main() -> int:
             eng_btn = page.get_by_role("button", name="Natural TTS").first
             eng_btn.click()
             page.wait_for_timeout(800)
-            after_open = snapshot()
+            snapshot()
             # find a menu item named ElevenLabs
             item = page.get_by_role("menuitem", name="ElevenLabs").first
             if not item.count():

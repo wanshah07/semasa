@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Probe Nexabot Image Generator UI + the video generator's sfv/i2v mode controls (read-only).
 
 Reports controls, model options, aspect ratio, and whether sfv (Start Frame) accepts an image upload. Never Generate.

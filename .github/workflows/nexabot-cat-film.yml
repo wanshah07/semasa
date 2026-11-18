@@ -1,0 +1,63 @@
+name: Nexabot cat film
+
+# A short photorealistic film in Bahasa Malaysia (a cat and his two friends), made with Nexabot's image, video and voice
+# generators and mixed with ffmpeg. A file for Wan to watch: nothing is imported into Semasa, no post, no gate. By hand only.
+on:
+  workflow_dispatch:
+    inputs:
+      voice:
+        description: "Voice Generator voice for the narrator"
+        type: string
+        default: "Sulafat"
+      dry:
+        description: "true = print the plan and spend nothing"
+        type: boolean
+        default: true
+
+concurrency:
+  group: nexabot-cat-film
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  film:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Chromium
+        run: bash ../.github/scripts/ensure-chromium.sh
+      - name: Make the film
+        env:
+          NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
+          NB_VOICE: ${{ inputs.voice }}
+          NB_DRY: ${{ inputs.dry }}
+        run: |
+          args=("$RUNNER_TEMP/nexabot-cat-film" --voice "$NB_VOICE")
+          if [ "$NB_DRY" = "true" ]; then args+=(--dry); fi
+          python -m semasa.nexabot_cat_film "${args[@]}"
+      - name: Keep the film and report (one day)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexabot-cat-film
+          path: |
+            /home/runner/work/_temp/nexabot-cat-film/*.mp4
+            /home/runner/work/_temp/nexabot-cat-film/report.json
+            /home/runner/work/_temp/nexabot-cat-film/sheet/charsheet.png
+            /home/runner/work/_temp/nexabot-cat-film/clips/*.mp4
+          retention-days: 1
+          if-no-files-found: ignore

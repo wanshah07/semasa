@@ -52,7 +52,7 @@ def run(outdir: Path, sheet: Path, prompt: str, dry: bool) -> int:
     from playwright.sync_api import sync_playwright
 
     report = {"started": datetime.now(UTC).isoformat(), "sheet": sheet.name, "dry": dry,
-              "video_url": None, "video_saved": None}
+              "video_url": None, "video_saved": None, "job_id": None}
     with sync_playwright() as pw:
         browser = chk.launch_browser(pw)
         try:
@@ -63,6 +63,17 @@ def run(outdir: Path, sheet: Path, prompt: str, dry: bool) -> int:
             def on_response(resp):
                 req = resp.request
                 ctype = resp.headers.get("content-type", "")
+                # capture the job id from the Generate POST's own answer (authoritative)
+                if req.method == "POST" and req.url.rstrip("/").endswith("/api/v1/generate") and resp.status in (200, 201, 202):
+                    try:
+                        j = resp.json()
+                        j = j.get("job") if isinstance(j.get("job"), dict) else j
+                        jid = j.get("id") or j.get("job_id") or j.get("jobId")
+                        if jid:
+                            report["job_id"] = str(jid)
+                            report["job_id_via"] = "generate_answer"
+                    except Exception:  # noqa: BLE001
+                        pass
                 if req.method == "GET" and gen._is_video(ctype, req.url) and not report.get("video_url"):
                     report["video_url"] = req.url
 
@@ -125,33 +136,57 @@ def run(outdir: Path, sheet: Path, prompt: str, dry: bool) -> int:
             gen_btn.click()
             report["generate_clicked_at"] = datetime.now(UTC).isoformat()
 
-            # poll for a NEW video job (id not in baseline) that is done
+            # poll for OUR job (prefer the id from the Generate answer, else a NEW job not in baseline) until done
             deadline = time.time() + MAX_WAIT_S
             meta = {}
             while time.time() < deadline:
-                try:
-                    jobs = page.evaluate("""async () => {
-                        const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
-                        const j = await r.json();
-                        return Array.isArray(j) ? j : (j.jobs || j.data || []);
-                    }""")
-                except Exception:  # noqa: BLE001
-                    jobs = []
-                done = [j for j in jobs
-                        if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")
-                        and str(j.get("mode") or "").lower() in ("sfv", "i2v", "t2v", "video", "r2v", "extend")
-                        and str(j.get("id")) not in baseline_ids]
-                if done:
-                    meta = done[0]
-                    report["job_done"] = True
-                    report["job_meta"] = {k: meta.get(k) for k in ("id", "status", "mode", "model", "width", "height", "size_bytes") if meta.get(k) is not None}
-                    break
+                job_id = report.get("job_id")
+                if job_id:
+                    try:
+                        m = page.evaluate("""async (id) => {
+                            const r = await fetch('/api/v1/jobs/' + encodeURIComponent(id));
+                            return r.ok ? await r.json() : null;
+                        }""", job_id)
+                        if isinstance(m, dict):
+                            m = m.get("job") if isinstance(m.get("job"), dict) else m
+                            meta = m
+                    except Exception:  # noqa: BLE001
+                        meta = {}
+                    st = str(meta.get("status") or "").lower()
+                    if st in ("done", "complete", "ready", "success"):
+                        report["job_done"] = True
+                        report["job_meta"] = {k: meta.get(k) for k in ("id", "status", "mode", "model", "width", "height", "size_bytes") if meta.get(k) is not None}
+                        break
+                    if st in ("failed", "error", "cancelled", "canceled"):
+                        report["job_failed"] = {k: meta.get(k) for k in ("id", "status", "error") if meta.get(k)}
+                        break
+                else:
+                    # no id from answer: fall back to a NEW done job not in baseline
+                    try:
+                        jobs = page.evaluate("""async () => {
+                            const r = await fetch('/api/v1/jobs?scope=recent&limit=30');
+                            const j = await r.json();
+                            return Array.isArray(j) ? j : (j.jobs || j.data || []);
+                        }""")
+                    except Exception:  # noqa: BLE001
+                        jobs = []
+                    done = [j for j in jobs
+                            if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")
+                            and str(j.get("mode") or "").lower() in ("sfv", "i2v", "t2v", "video", "r2v", "extend")
+                            and str(j.get("id")) not in baseline_ids]
+                    if done:
+                        meta = done[0]
+                        report["job_id"] = str(meta.get("id"))
+                        report["job_id_via"] = "list_diff"
+                        report["job_done"] = True
+                        report["job_meta"] = {k: meta.get(k) for k in ("id", "status", "mode", "model", "width", "height", "size_bytes") if meta.get(k) is not None}
+                        break
                 time.sleep(4)
             else:
                 report["timed_out"] = True
 
             if report.get("job_done"):
-                jid = str(meta.get("id"))
+                jid = str(report.get("job_id") or meta.get("id"))
                 cands = [meta.get(k) for k in ("download_url", "video_url", "url") if meta.get(k)]
                 if jid:
                     cands.append(f"/api/v1/jobs/{jid}/download")
@@ -164,6 +199,7 @@ def run(outdir: Path, sheet: Path, prompt: str, dry: bool) -> int:
                             dest.write_bytes(resp.body())
                             report["video_saved"] = str(dest)
                             report["video_size_final"] = len(resp.body())
+                            report["download_via"] = full
                             break
                     except Exception as exc:  # noqa: BLE001
                         report["download_error"] = f"{u[:60]} -> {str(exc)[:120]}"

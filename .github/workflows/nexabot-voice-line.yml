@@ -14,10 +14,6 @@ on:
         description: "Malay line to speak"
         required: true
 
-concurrency:
-  group: nexabot-voice-line
-  cancel-in-progress: false
-
 permissions:
   contents: read
 

@@ -694,20 +694,19 @@ def test_cat_film_each_scene_takes_only_its_own_job(tmp_path, monkeypatch):
     """The 18 Nov run saved scene 1's clip four times because the set of old jobs never grew. Each finished job's id must join
     the set before the next scene, so a later scene cannot take an earlier scene's job."""
     from semasa import nexabot_cat_film as cf
-    from semasa import nexabot_film as film
     from semasa import nexabot_generate as gen
 
     monkeypatch.setattr(gen, "storage_state", lambda: {"cookies": []})
     seen_by_scene = []
 
-    def fake_scene(page, prompt, outdir, report, idx, pre_jobs):
-        seen_by_scene.append(set(pre_jobs))
-        report[f"scene{idx + 1}_job"] = {"id": f"job{idx + 1}"}
+    def fake_scene(page, prompt, outdir, report, idx, seen):
+        seen_by_scene.append(set(seen))
+        seen.add(f"job{idx + 1}")
         dest = outdir / f"clip{idx + 1}.mp4"
         dest.write_bytes(b"x" * (idx + 1))
         return dest
 
-    monkeypatch.setattr(film, "one_scene", fake_scene)
+    monkeypatch.setattr(cf, "scene_clip", fake_scene)
 
     class Page:
         url = "https://nexabot.id/video-generator"
@@ -738,3 +737,49 @@ def test_cat_film_each_scene_takes_only_its_own_job(tmp_path, monkeypatch):
     assert len(clips) == 4
     assert seen_by_scene[0] == {"old"}
     assert seen_by_scene[3] == {"old", "job1", "job2", "job3"}
+
+
+def test_cat_film_scene_ignores_other_jobs_on_the_account(tmp_path, monkeypatch):
+    """A voice (tts) job and an old video job on the shared account are not this scene's video: only a NEW sfv job counts."""
+    from semasa import nexabot_cat_film as cf
+    from semasa import nexabot_film as film
+    from semasa import nexabot_i2v as i2v
+
+    monkeypatch.setattr(film, "choose_sfv", lambda page, report: True)
+    monkeypatch.setattr(i2v, "select_1080p", lambda page, report: True)
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    calls = {"n": 0}
+
+    class Loc:
+        first = property(lambda self: self)
+        def count(self): return 1
+        def set_input_files(self, p): pass
+        def evaluate(self, js): pass
+        def fill(self, t): pass
+        def is_disabled(self): return False
+        def click(self): pass
+
+    class Resp:
+        status = 200
+        def body(self): return b"v" * 200_000
+
+    class Page:
+        class context:  # noqa: N801
+            class request:  # noqa: N801
+                @staticmethod
+                def get(url, timeout=0):
+                    calls["url"] = url
+                    return Resp()
+        def locator(self, sel): return Loc()
+        def get_by_role(self, *a, **k): return Loc()
+        def wait_for_timeout(self, ms): pass
+        def evaluate(self, js, arg=None):
+            return [{"id": "voice1", "mode": "tts", "status": "done"},
+                    {"id": "old", "mode": "sfv", "status": "done"},
+                    {"id": "mine", "mode": "sfv", "status": "done"}]
+
+    report = {}
+    seen = {"old"}
+    dest = cf.scene_clip(Page(), "x", tmp_path, report, 0, seen, wait_s=5)
+    assert dest is not None and calls["url"].endswith("/api/v1/jobs/mine/download")
+    assert "mine" in seen and "voice1" not in seen

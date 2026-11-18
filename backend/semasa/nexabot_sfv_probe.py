@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Probe Nexabot Video Generator sfv (Start Frame) mode — how to upload the charsheet as the first frame.
 
 Read-only: switch to "Start Frame" mode, dump the upload controls (file input, image preview), record the POST body

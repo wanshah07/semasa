@@ -34,10 +34,10 @@ POLL_S = 4
 # each panel's dialogue, burned as a subtitle AFTER Nexabot animates the panel (Nexabot cannot render text reliably)
 SUBTITLES = [
     ("Hana", "Eh, logo halal kat paket ni warna hijau. Bukan sepatutnya hitam ke?"),
-    ("Pak Mat", "Jangan-jangan logo palsu?"),
+    ("Hassan", "Jangan-jangan logo palsu?"),
     ("Hana", "Tak semestinya. Warna bukan penentu."),
     ("Hana", "Pemegang sijil boleh cetak logo ikut warna pembungkusan, asalkan spesifikasi logo tak diubah."),
-    ("Pak Mat", "Mana tulis tu?"),
+    ("Hassan", "Mana tulis tu?"),
     ("Hana", "MPPHM (Domestik) 2020, Klausa 40(2)."),
 ]
 CREDIT = "Sumber: MPPHM (Domestik) 2020, Klausa 40(2)"

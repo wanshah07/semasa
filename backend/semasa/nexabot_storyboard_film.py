@@ -26,38 +26,37 @@ from .nexabot_comic_film import CREDIT, SUBTITLES, burn_subtitles, concat
 STYLE = ("Gaya komik kartun anime, lukisan 2D yang berwarna terang, garisan luar hitam yang jelas, watak dengan mata "
          "besar dan ekspresi muka yang terang, latar belakang rata ala komik. Bukan foto realistik, bukan 3D. ")
 # the two characters, described once so every scene draws the SAME people
-CAST = ("Hana ialah wanita muda Melayu bertudung merah jambu dan berbaju krim. Pak Mat ialah lelaki Melayu berusia "
+CAST = ("Hana ialah wanita muda Melayu bertudung merah jambu dan berbaju krim. Hassan ialah lelaki Melayu berusia "
         "30-an, rambut hitam pendek, bercermin mata hitam, berbaju polo biru laut, memegang papan klip. ")
 
 SCENES = [
     {
         "prompt": (STYLE + CAST +
                    "Babak pertama: di kedai runcit kecil di Malaysia, di depan rak makanan berbungkus. Hana memandang "
-                   "dekat bungkusan snek kuning di tangannya dengan wajah hairan. Ada logo halal berwarna hijau pada "
-                   "bungkusan itu. Pak Mat berdiri di sebelahnya sambil mendengar."),
-        "lines": [("Hana", "Eh, logo halal kat paket ni warna hijau. Bukan sepatutnya hitam ke?")],
-    },
-    {
-        "prompt": (STYLE + CAST +
-                   "Babak kedua: di kedai runcit kecil di Malaysia, di depan rak makanan berbungkus. Pak Mat memandang "
-                   "bungkusan snek kuning dengan risau, tangan menyentuh dagu. Hana tersenyum tenang dan mengangkat "
-                   "satu tangan sambil memegang bungkusan snek kuning yang ada logo halal hijau."),
-        "lines": [("Pak Mat", "Jangan-jangan logo palsu?"),
+                   "dekat bungkusan snek kuning di tangannya dengan wajah hairan, ada logo halal berwarna hijau pada "
+                   "bungkusan itu. Hassan memandang bungkusan itu dengan risau, tangan menyentuh dagu. Hana tersenyum "
+                   "tenang dan mengangkat satu tangan. Dialog: Hana berkata, \"Eh, logo halal kat paket ni warna hijau. "
+                   "Bukan sepatutnya hitam ke?\" Lalu Hassan berkata, \"Jangan-jangan logo palsu?\" Lalu Hana berkata, "
+                   "\"Tak semestinya. Warna bukan penentu.\""),
+        "lines": [("Hana", "Eh, logo halal kat paket ni warna hijau. Bukan sepatutnya hitam ke?"),
+                  ("Hassan", "Jangan-jangan logo palsu?"),
                   ("Hana", "Tak semestinya. Warna bukan penentu.")],
     },
     {
         "prompt": (STYLE + CAST +
-                   "Babak ketiga: di kedai runcit kecil di Malaysia, di depan rak makanan berbungkus. Hana menunjuk "
-                   "logo halal hijau pada bungkusan snek kuning dan menerangkan sesuatu. Pak Mat mendengar dengan minat "
-                   "sambil memegang papan klip."),
+                   "Babak kedua: di kedai runcit kecil di Malaysia, di depan rak makanan berbungkus. Hana menunjuk "
+                   "logo halal hijau pada bungkusan snek kuning dan menerangkan sesuatu. Hassan mendengar dengan minat "
+                   "sambil memegang papan klip. Dialog: Hana berkata, \"Pemegang sijil boleh cetak logo ikut warna "
+                   "pembungkusan, asalkan spesifikasi logo tak diubah.\""),
         "lines": [("Hana", "Pemegang sijil boleh cetak logo ikut warna pembungkusan, asalkan spesifikasi logo tak diubah.")],
     },
     {
         "prompt": (STYLE + CAST +
-                   "Babak keempat: di kedai runcit kecil di Malaysia, di depan rak makanan berbungkus. Pak Mat kelihatan "
+                   "Babak ketiga: di kedai runcit kecil di Malaysia, di depan rak makanan berbungkus. Hassan kelihatan "
                    "lega dan ingin tahu. Hana mengangkat bungkusan snek kuning dengan logo halal hijau dan menunjuk ke "
-                   "arah logo itu."),
-        "lines": [("Pak Mat", "Mana tulis tu?"),
+                   "arah logo itu. Dialog: Hassan berkata, \"Mana tulis tu?\" Lalu Hana berkata, \"MPPHM (Domestik) "
+                   "2020, Klausa 40(2).\""),
+        "lines": [("Hassan", "Mana tulis tu?"),
                   ("Hana", "MPPHM (Domestik) 2020, Klausa 40(2).")],
     },
 ]

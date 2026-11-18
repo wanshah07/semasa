@@ -22,11 +22,12 @@ IMG_URL = chk.ORIGIN + "/image-generator"
 VID_URL = chk.ORIGIN + "/video-generator"
 
 CHAR_SHEET_PROMPT = (
-    "Gaya komik kartun anime, lukisan 2D berwarna terang, garisan luar hitam jelas, mata besar, ekspresi muka terang. "
-    "Lembaran watak (character sheet) dua watak bersebelahan, badan penuh, berdiri menghadap kamera: "
-    "di kiri, Hana, wanita muda Melayu bertudung merah jambu dan blaus krim; di kanan, Hassan, lelaki Melayu 30-an, "
-    "rambut hitam pendek, cermin mata hitam, baju polo biru laut. Latar belakang rata putih ala komik. "
-    "Tidak ada teks, tiada logo, tiada gelembung cakap. Bukan foto realistik, bukan 3D."
+    "Photorealistic character sheet, professional studio photograph, two real people standing side by side, full body, "
+    "facing the camera, soft even lighting, clean white studio background: "
+    "on the left, Hana, a young Malaysian woman wearing a pastel pink hijab (tudung) and a cream blouse, natural friendly "
+    "smile; on the right, Hassan, a Malaysian man in his thirties, short black hair, black-rimmed glasses, navy blue polo "
+    "shirt, calm confident expression. Highly detailed faces, natural skin texture, realistic proportions. "
+    "No text, no logo, no watermark, no cartoon, no illustration."
 )
 
 

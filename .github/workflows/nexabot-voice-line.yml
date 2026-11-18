@@ -1,0 +1,57 @@
+name: Nexabot voice line
+
+# Generate ONE voice line (fresh page per line, capture only new audio). For reliable 6-line films.
+on:
+  workflow_dispatch:
+    inputs:
+      who:
+        description: "Speaker name (Hana / Hassan)"
+        required: true
+      voice:
+        description: "Nexabot voice name (Sulafat / Aoede)"
+        required: true
+      text:
+        description: "Malay line to speak"
+        required: true
+
+concurrency:
+  group: nexabot-voice-line
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  voice:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Chromium
+        run: bash ../.github/scripts/ensure-chromium.sh
+      - name: Generate one line
+        env:
+          NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
+          NB_WHO: ${{ inputs.who }}
+          NB_VOICE: ${{ inputs.voice }}
+          NB_TEXT: ${{ inputs.text }}
+        run: python -m semasa.nexabot_voice_line "$RUNNER_TEMP/nexabot-voice-line" --who "$NB_WHO" --voice "$NB_VOICE" --text "$NB_TEXT"
+      - name: Keep audio and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexabot-voice-line
+          path: /home/runner/work/_temp/nexabot-voice-line
+          retention-days: 1
+          if-no-files-found: ignore

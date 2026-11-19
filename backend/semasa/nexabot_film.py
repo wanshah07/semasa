@@ -209,7 +209,25 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_video=N
             return None, None
         time.sleep(4)
 
-    # no long late-wait: i2v is fast (~5 min); a job past MAX_WAIT_S is gone
+    # server can be slow; give it a late-wait window before giving up
+    report[f"scene{idx+1}_late_wait"] = True
+    late = time.time() + 10 * 60
+    while time.time() < late:
+        try:
+            jobs = fetch_jobs()
+        except Exception:  # noqa: BLE001
+            jobs = []
+        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed and is_video_job(j)]
+        done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
+        failed = [j for j in ours if str(j.get("status") or "").lower() in ("failed", "error", "cancelled", "canceled")]
+        if done:
+            saved, jid = download(done[0])
+            if saved:
+                return saved, jid
+        if failed:
+            report[f"scene{idx+1}_job_failed"] = {k: failed[0].get(k) for k in ("id", "status", "error", "message") if failed[0].get(k) is not None}
+            return None, None
+        time.sleep(4)
     report[f"scene{idx+1}_timed_out"] = True
     return None, None
 

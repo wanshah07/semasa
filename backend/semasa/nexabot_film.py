@@ -35,8 +35,8 @@ SCENES = [
     "memandang bungkusan snek kuning di tangannya dengan wajah hairan. Hassan, lelaki bercermin mata hitam dan baju "
     "polo biru laut, berdiri di sebelahnya. Hana berkata eh logo halal ni warna hijau, bukan sepatutnya hitam ke, "
     "jangan-jangan logo palsu. Hassan terus menjawab tak semestinya, warna bukan penentu, pemegang sijil boleh cetak "
-    "logo ikut warna bungkusan, ada tertulis dalam M P P H M Domestik dua ribu dua puluh, Klausa empat puluh ayat dua. "
-    "Hana mengangguk faham dan berkata oh baru tahu, jom kita beli. Tiada dialog lain. Kamera statik.",
+    "logo ikut warna bungkusan, ada tertulis dalam M P P H M Domestik tahun dua ribu dua puluh, Klausa empat puluh "
+    "ayat dua. Hana mengangguk lega dan berkata oh baru tahu, lega dengar, jom kita beli. Tiada dialog lain. Kamera statik.",
 ]
 
 

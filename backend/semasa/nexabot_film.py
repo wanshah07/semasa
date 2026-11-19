@@ -27,16 +27,20 @@ MODE_I2V = "Ingredients to Video"
 MAX_WAIT_S = 15 * 60
 SHEET = Path(__file__).resolve().parents[2] / "web" / "public" / "comic-panels" / "charsheet.png"
 
-# ONE continuous scene: Hana questions the logo, Hassan explains + cites MPPHM, Hana nods faham + ajak beli.
-# All in the SAME shop location, no cuts. "Tiada dialog lain" stops i2v improvising extra lines.
-# (no quote marks in the dialogue — they can break the i2v job)
+# 2 scenes, SAME shop location (no change). Scene 1 = Hana asks + Hassan cites MPPHM 40(2).
+# Scene 2 = Hassan continues "pemegang sijil..." + Hana "baru tahu, jom beli keropok ni".
+# "Tiada dialog lain" stops i2v improvising. Citation spelled letter-by-letter so the voice reads it fully.
 SCENES = [
     "Photorealistic video. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu dan blaus krim, "
     "memandang bungkusan snek kuning di tangannya dengan wajah hairan. Hassan, lelaki bercermin mata hitam dan baju "
     "polo biru laut, berdiri di sebelahnya. Hana berkata eh logo halal ni warna hijau, bukan sepatutnya hitam ke, "
-    "jangan-jangan logo palsu. Hassan terus menjawab tak semestinya, warna bukan penentu, pemegang sijil boleh cetak "
-    "logo ikut warna bungkusan, ada tertulis dalam M P P H M Domestik tahun dua ribu dua puluh, Klausa empat puluh "
-    "ayat dua. Hana mengangguk lega dan berkata oh baru tahu, lega dengar, jom kita beli. Tiada dialog lain. Kamera statik.",
+    "jangan-jangan logo palsu. Hassan terus menjawab tak semestinya, warna bukan penentu, ada tertulis dalam M P P H M "
+    "Domestik dua ribu dua puluh, Klausa empat puluh ayat dua. Tiada dialog lain. Kamera statik.",
+    "Photorealistic video. Di kedai runcit di Malaysia, tempat dan latar yang sama, Hassan, lelaki bercermin mata "
+    "hitam dan baju polo biru laut, terus bercakap sambil memberi isyarat tangan. Hana, wanita muda bertudung merah "
+    "jambu, mendengar sambil membelek bungkusan snek kuning. Hassan berkata pemegang sijil boleh cetak logo ikut "
+    "warna bungkusan. Hana tersenyum lega dan berkata ooo baru tahu, kalau macam tu jom beli keropok ni. Tiada dialog "
+    "lain. Kamera statik.",
 ]
 
 

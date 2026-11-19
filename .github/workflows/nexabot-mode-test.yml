@@ -1,0 +1,76 @@
+name: Nexabot mode test
+
+# Generate ONE video in a chosen mode (t2v / sfv / i2v1 / i2v3 / r2v) to compare how each mode behaves.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Mode: t2v, sfv, i2v1, i2v3, r2v"
+        required: true
+        default: "t2v"
+      prompt:
+        description: "Video prompt"
+        required: true
+      img:
+        description: "Image filename in assets/ (for sfv/i2v/r2v)"
+        required: false
+        default: ""
+      img2:
+        description: "2nd image filename in assets/ (for i2v3)"
+        required: false
+        default: ""
+      img3:
+        description: "3rd image filename in assets/ (for i2v3)"
+        required: false
+        default: ""
+      video:
+        description: "Reference video filename in assets/ (for r2v)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Chromium
+        run: bash ../.github/scripts/ensure-chromium.sh
+      - name: Generate one video in chosen mode
+        env:
+          NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
+          NB_MODE: ${{ inputs.mode }}
+          NB_PROMPT: ${{ inputs.prompt }}
+          NB_IMG: ${{ inputs.img }}
+          NB_IMG2: ${{ inputs.img2 }}
+          NB_IMG3: ${{ inputs.img3 }}
+          NB_VIDEO: ${{ inputs.video }}
+        run: |
+          args=("$RUNNER_TEMP/nexabot-mode" --mode "$NB_MODE" --prompt "$NB_PROMPT")
+          [ -n "$NB_IMG" ] && args+=(--img "../assets/$NB_IMG")
+          [ -n "$NB_IMG2" ] && args+=(--img "../assets/$NB_IMG2")
+          [ -n "$NB_IMG3" ] && args+=(--img "../assets/$NB_IMG3")
+          [ -n "$NB_VIDEO" ] && args+=(--video "../assets/$NB_VIDEO")
+          python -m semasa.nexabot_mode_test "${args[@]}"
+      - name: Keep video and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexabot-mode-test
+          path: /home/runner/work/_temp/nexabot-mode
+          retention-days: 1
+          if-no-files-found: ignore

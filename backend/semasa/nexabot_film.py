@@ -27,24 +27,20 @@ MODE_I2V = "Ingredients to Video"
 MAX_WAIT_S = 15 * 60
 SHEET = Path(__file__).resolve().parents[2] / "web" / "public" / "comic-panels" / "charsheet.png"
 
-# 4 scenes with the dialogue IN the prompt so i2v's auto-generated audio speaks the halal story
-# (Ingredients to Video mode voices the scene itself — no separate voice step)
+# 3 scenes, dialogue IN the prompt so i2v's auto-generated audio speaks the halal story.
+# Scene 2 = Hassan explains the full rule + cites MPPHM. Scene 3 = Hana lega + ajak beli.
 SCENES = [
     "Photorealistic video. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu dan blaus krim, "
     "memandang bungkusan snek kuning di tangannya dengan wajah hairan. Hassan, lelaki bercermin mata hitam dan baju "
-    "polo biru laut, berdiri di sebelahnya sambil melihat. Hana berkata, \"Eh, logo halal kat paket ni warna hijau. "
+    "polo biru laut, berdiri di sebelahnya sambil melihat. Hana berkata, \"Eh, logo halal di paket ini warna hijau. "
     "Bukan sepatutnya hitam ke?\" Hassan menjawab, \"Jangan-jangan logo palsu?\" Kamera statik.",
-    "Photorealistic video. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu, menunjuk bungkusan "
-    "snek kuning dan menerangkan. Hassan, lelaki bercermin mata hitam dan baju polo biru laut, mendengar dengan minat. "
-    "Hana berkata, \"Tak semestinya. Warna bukan penentu. Pemegang sijil boleh cetak logo ikut warna bungkusan, "
-    "asalkan spesifikasi logo tak diubah.\" Kamera statik.",
     "Photorealistic video. Di kedai runcit di Malaysia, Hassan, lelaki bercermin mata hitam dan baju polo biru laut, "
-    "memandang bungkusan snek kuning dengan risau, tangan menyentuh dagu. Hana, wanita muda bertudung merah jambu, "
-    "tersenyum tenang. Hassan bertanya, \"Mana tulis tu?\" Hana menjawab, \"MPPHM (Domestik) 2020, Klausa 40(2).\" "
-    "Kamera statik.",
-    "Photorealistic video. Di kedai runcit di Malaysia, Hassan, lelaki bercermin mata hitam dan baju polo biru laut, "
-    "kelihatan lega dan ingin tahu. Hana, wanita muda bertudung merah jambu, mengangkat bungkusan snek kuning dan "
-    "menunjuk logo halal hijau di atasnya. Kedua-duanya tersenyum. Kamera statik.",
+    "menunjuk bungkusan snek kuning dan menerangkan dengan yakin. Hana, wanita muda bertudung merah jambu, mendengar "
+    "dengan minat. Hassan berkata, \"Tak semestinya. Warna bukan penentu. Pemegang sijil boleh cetak logo ikut warna "
+    "bungkusan, asalkan spesifikasi logo tak diubah. Ada tertulis dalam MPPHM Domestik 2020, Klausa 40(2).\" Kamera statik.",
+    "Photorealistic video. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu, tersenyum lega sambil "
+    "memegang bungkusan snek kuning. Hassan, lelaki bercermin mata hitam dan baju polo biru laut, tersenyum di sebelahnya. "
+    "Hana berkata, \"Lega. Jom kita beli.\" Hassan menjawab, \"Jom.\" Kamera statik.",
 ]
 
 

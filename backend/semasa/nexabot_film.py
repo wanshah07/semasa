@@ -33,11 +33,10 @@ SHEET = Path(__file__).resolve().parents[2] / "web" / "public" / "comic-panels" 
 SCENES = [
     "Photorealistic video. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu dan blaus krim, "
     "memandang bungkusan snek kuning di tangannya dengan wajah hairan. Hassan, lelaki bercermin mata hitam dan baju "
-    "polo biru laut, berdiri di sebelahnya. Hana berkata eh logo halal di paket ini warna hijau, bukan sepatutnya "
-    "hitam ke, jangan-jangan logo palsu. Hassan terus menjawab tak semestinya, warna bukan penentu, pemegang sijil "
-    "boleh cetak logo ikut warna bungkusan asalkan spesifikasi logo tak diubah, ada tertulis dalam MPPHM Domestik "
-    "tahun dua ribu dua puluh, Klausa empat puluh, ayat dua. Hana mengangguk faham dan berkata oh baru tahu, jom kita "
-    "beli keropok ni. Hassan tersenyum. Tiada dialog lain. Kamera statik, tempat yang sama sepanjang video.",
+    "polo biru laut, berdiri di sebelahnya. Hana berkata eh logo halal ni warna hijau, bukan sepatutnya hitam ke, "
+    "jangan-jangan logo palsu. Hassan terus menjawab tak semestinya, warna bukan penentu, pemegang sijil boleh cetak "
+    "logo ikut warna bungkusan, ada tertulis dalam M P P H M Domestik dua ribu dua puluh, Klausa empat puluh ayat dua. "
+    "Hana mengangguk faham dan berkata oh baru tahu, jom kita beli. Tiada dialog lain. Kamera statik.",
 ]
 
 

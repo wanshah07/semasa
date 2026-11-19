@@ -296,7 +296,7 @@ def run(outdir: Path) -> int:
         finally:
             browser.close()
 
-    (outdir / "report.json").write_text(json.dumps(report, indent=2), "utf-8")
+    (outdir / "report.json").write_text(json.dumps(report, indent=2, default=str), "utf-8")
     print(json.dumps({"ok": len(report["clips"]) == len(SCENES), "clips": len(report["clips"]),
                       "total": len(SCENES)}, indent=2))
     return 0 if len(report["clips"]) == len(SCENES) else 1

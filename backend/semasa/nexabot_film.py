@@ -41,8 +41,8 @@ SCENES = [
     "Photorealistic video, vertical 9:16 portrait framing. Di kedai runcit di Malaysia, rak makanan snek yang sama, latar yang sama persis seperti "
     "video sebelum ini, Hassan, lelaki bercermin mata hitam dan baju polo biru laut, terus bercakap sambil memberi "
     "isyarat tangan. Hana, wanita muda bertudung merah jambu, berdiri di tempat yang sama mendengar sambil membelek "
-    "bungkusan snek kuning. Hassan berkata ayat dua, dalam klausa tu ada sebut pemegang sijil boleh cetak logo ikut "
-    "warna bungkusan. Hana tersenyum lega dan berkata ooo baru tahu, kalau macam tu jom beli keropok ni. Tiada dialog lain. Kamera statik.",
+    "bungkusan snek kuning. Hassan berkata klausa empat puluh ayat dua itu bermaksud pemegang sijil boleh cetak logo "
+    "ikut warna bungkusan. Hana tersenyum lega dan berkata ooo baru tahu, kalau macam tu jom beli keropok ni. Tiada dialog lain. Kamera statik.",
 ]
 
 

@@ -166,25 +166,7 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed):
             return None, None
         time.sleep(4)
 
-    # late-wait: sfv can exceed 15 minutes
-    report[f"scene{idx+1}_late_wait"] = True
-    late = time.time() + 10 * 60
-    while time.time() < late:
-        try:
-            jobs = fetch_jobs()
-        except Exception:  # noqa: BLE001
-            jobs = []
-        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed and is_video_job(j)]
-        done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
-        failed = [j for j in ours if str(j.get("status") or "").lower() in ("failed", "error", "cancelled", "canceled")]
-        if done:
-            saved, jid = download(done[0])
-            if saved:
-                return saved, jid
-        if failed:
-            report[f"scene{idx+1}_job_failed"] = {k: failed[0].get(k) for k in ("id", "status", "error", "message") if failed[0].get(k) is not None}
-            return None, None
-        time.sleep(4)
+    # no long late-wait: i2v is fast (~5 min); a job past MAX_WAIT_S is gone
     report[f"scene{idx+1}_timed_out"] = True
     return None, None
 
@@ -239,7 +221,26 @@ def run(outdir: Path) -> int:
                     except Exception:  # noqa: BLE001
                         pass
                     page.wait_for_timeout(2500)
-                saved, jid = one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed)
+                saved = None
+                for attempt in range(1, 4):
+                    saved, jid = one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed)
+                    if saved:
+                        break
+                    # retry transient server failures (e.g. "server restart")
+                    reason = report.get(f"scene{idx+1}_job_failed") or {}
+                    err = str(reason.get("error") or reason.get("message") or "")
+                    if "restart" in err.lower() or "try again" in err.lower() or "interrupted" in err.lower():
+                        report[f"scene{idx+1}_attempt"] = attempt
+                        # fresh page + re-choose mode/upload for the retry
+                        page.goto(STUDIO, wait_until="domcontentloaded", timeout=45_000)
+                        try:
+                            page.wait_for_load_state("networkidle", timeout=15_000)
+                        except Exception:  # noqa: BLE001
+                            pass
+                        page.wait_for_timeout(2500)
+                        time.sleep(5)
+                        continue
+                    break
                 if saved:
                     report["clips"].append(str(saved))
                 else:

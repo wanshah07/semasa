@@ -36,11 +36,11 @@ SCENES = [
     "polo biru laut, berdiri di sebelahnya. Hana berkata eh logo halal ni warna hijau, bukan sepatutnya hitam ke, "
     "jangan-jangan logo palsu. Hassan terus menjawab tak semestinya, warna bukan penentu, ada tertulis dalam M P P H M "
     "Domestik dua ribu dua puluh, Klausa empat puluh ayat dua. Tiada dialog lain. Kamera statik.",
-    "Photorealistic video. Di kedai runcit di Malaysia, tempat dan latar yang sama, Hassan, lelaki bercermin mata "
-    "hitam dan baju polo biru laut, terus bercakap sambil memberi isyarat tangan. Hana, wanita muda bertudung merah "
-    "jambu, mendengar sambil membelek bungkusan snek kuning. Hassan berkata pemegang sijil boleh cetak logo ikut "
-    "warna bungkusan. Hana tersenyum lega dan berkata ooo baru tahu, kalau macam tu jom beli keropok ni. Tiada dialog "
-    "lain. Kamera statik.",
+    "Photorealistic video. Di kedai runcit di Malaysia, rak makanan snek yang sama, latar yang sama persis seperti "
+    "video sebelum ini, Hassan, lelaki bercermin mata hitam dan baju polo biru laut, terus bercakap sambil memberi "
+    "isyarat tangan. Hana, wanita muda bertudung merah jambu, berdiri di tempat yang sama mendengar sambil membelek "
+    "bungkusan snek kuning. Hassan berkata dalam klausa tu ada sebut pemegang sijil boleh cetak logo ikut warna "
+    "bungkusan. Hana tersenyum lega dan berkata ooo baru tahu, kalau macam tu jom beli keropok ni. Tiada dialog lain. Kamera statik.",
 ]
 
 
@@ -64,25 +64,69 @@ def choose_i2v(page, report):
     return False
 
 
-def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed):
-    """Generate one sfv clip; return (saved_path, job_id). pre_jobs is the immutable set of job ids that existed
+def choose_r2v(page, report):
+    btn = page.get_by_role("button", name="Text to Video").first
+    btn.click()
+    page.wait_for_timeout(800)
+    items = page.locator("button")
+    for i in range(items.count()):
+        try:
+            text = (items.nth(i).inner_text() or "").strip()
+        except Exception:  # noqa: BLE001
+            continue
+        if "Reference Video" in text:
+            items.nth(i).click()
+            page.wait_for_timeout(900)
+            report["mode_chosen"] = text.split("\n")[0].strip()
+            return True
+    report["mode_chosen"] = "NOT FOUND"
+    i2v.dump_controls(page, report, "r2v_dropdown_state")
+    return False
+
+
+def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_video=None):
+    """Generate one clip; return (saved_path, job_id). pre_jobs is the immutable set of job ids that existed
     before this run started; consumed is the mutable set of job ids already downloaded by earlier scenes in this run.
-    A job is 'ours to download' only if its id is NOT in pre_jobs AND NOT in consumed."""
+    A job is 'ours to download' only if its id is NOT in pre_jobs AND NOT in consumed.
+    ref_video: if set (scene 2+), use Reference Video mode with this clip so the background stays consistent."""
     report["scene"] = idx + 1
-    if not choose_i2v(page, report):
-        return None, None
+    if ref_video:
+        if not choose_r2v(page, report):
+            return None, None
+    else:
+        if not choose_i2v(page, report):
+            return None, None
     i2v.select_1080p(page, report)
     file_inputs = page.locator("input[type=file]")
     if file_inputs.count() == 0:
         report["upload"] = "no input[type=file]"
-        i2v.dump_controls(page, report, "i2v_upload_state")
+        i2v.dump_controls(page, report, "upload_state")
         return None, None
-    file_inputs.first.set_input_files(str(SHEET))
-    try:
-        file_inputs.first.evaluate("(el) => el.dispatchEvent(new Event('change', {bubbles:true}))")
-    except Exception:  # noqa: BLE001
-        pass
-    page.wait_for_timeout(3500)
+    if ref_video:
+        # Reference Video mode: first upload the reference video, then the charsheet as the image
+        file_inputs.first.set_input_files(str(ref_video))
+        try:
+            file_inputs.first.evaluate("(el) => el.dispatchEvent(new Event('change', {bubbles:true}))")
+        except Exception:  # noqa: BLE001
+            pass
+        page.wait_for_timeout(3500)
+        # charsheet as second input if a second file input exists
+        if file_inputs.count() > 1:
+            file_inputs.nth(1).set_input_files(str(SHEET))
+            try:
+                file_inputs.nth(1).evaluate("(el) => el.dispatchEvent(new Event('change', {bubbles:true}))")
+            except Exception:  # noqa: BLE001
+                pass
+            page.wait_for_timeout(2500)
+        report["upload"] = f"ref_video {Path(ref_video).name} + charsheet"
+    else:
+        file_inputs.first.set_input_files(str(SHEET))
+        try:
+            file_inputs.first.evaluate("(el) => el.dispatchEvent(new Event('change', {bubbles:true}))")
+        except Exception:  # noqa: BLE001
+            pass
+        page.wait_for_timeout(3500)
+        report["upload"] = "charsheet"
     box = page.locator("textarea[placeholder*='Describe your video']").first
     if box.count():
         box.fill(prompt)
@@ -211,6 +255,7 @@ def run(outdir: Path) -> int:
             except Exception as exc:  # noqa: BLE001
                 report["pre_jobs_err"] = str(exc)[:100]
 
+            prev_clip = None
             for idx, prompt in enumerate(SCENES):
                 if idx > 0:
                     # fresh page per scene clears prior attachment
@@ -221,8 +266,10 @@ def run(outdir: Path) -> int:
                         pass
                     page.wait_for_timeout(2500)
                 saved = None
+                # scene 2+ uses the previous clip as a reference video to keep the background consistent
+                ref = prev_clip if idx > 0 else None
                 for attempt in range(1, 4):
-                    saved, jid = one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed)
+                    saved, jid = one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_video=ref)
                     if saved:
                         break
                     # retry transient server failures (e.g. "server restart")
@@ -242,6 +289,7 @@ def run(outdir: Path) -> int:
                     break
                 if saved:
                     report["clips"].append(str(saved))
+                    prev_clip = str(saved)
                 else:
                     report["error_scene"] = idx + 1
                     break

@@ -37,12 +37,12 @@ SCENES = [
     "memandang bungkusan snek kuning di tangannya dengan wajah hairan. Hassan, lelaki bercermin mata hitam dan baju "
     "polo biru laut, berdiri di sebelahnya. Hana berkata eh logo halal ni warna hijau, bukan sepatutnya hitam ke, "
     "jangan-jangan logo palsu. Hassan terus menjawab tak semestinya, warna bukan penentu, ada tertulis dalam M P P H M "
-    "Domestik dua ribu dua puluh, Klausa empat puluh ayat dua. Tiada dialog lain. Kamera statik.",
+    "Domestik dua ribu dua puluh, Klausa empat puluh. Tiada dialog lain. Kamera statik.",
     "Photorealistic video, vertical 9:16 portrait framing. Di kedai runcit di Malaysia, rak makanan snek yang sama, latar yang sama persis seperti "
     "video sebelum ini, Hassan, lelaki bercermin mata hitam dan baju polo biru laut, terus bercakap sambil memberi "
     "isyarat tangan. Hana, wanita muda bertudung merah jambu, berdiri di tempat yang sama mendengar sambil membelek "
-    "bungkusan snek kuning. Hassan berkata dalam klausa tu ada sebut pemegang sijil boleh cetak logo ikut warna "
-    "bungkusan. Hana tersenyum lega dan berkata ooo baru tahu, kalau macam tu jom beli keropok ni. Tiada dialog lain. Kamera statik.",
+    "bungkusan snek kuning. Hassan berkata ayat dua, dalam klausa tu ada sebut pemegang sijil boleh cetak logo ikut "
+    "warna bungkusan. Hana tersenyum lega dan berkata ooo baru tahu, kalau macam tu jom beli keropok ni. Tiada dialog lain. Kamera statik.",
 ]
 
 

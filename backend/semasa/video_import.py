@@ -384,7 +384,7 @@ AUTHORED_ACTION = "caption written by Semasa from the title only (nothing else w
 def slot_for(store: Any, stream: str, params: dict[str, Any], settings: dict[str, Any], now: datetime) -> tuple[str, str]:
     """The sender's date and slot when both were given and free and ahead, else the next free position (what comic_daily does)."""
     brand = settings.get("brand") or {}
-    taken = ideas.taken_positions(store, stream) | autofill.film_positions(store, stream)
+    taken = ideas.taken_positions(store, stream, now) | autofill.film_positions(store, stream)
     date, slot = str(params.get("date") or ""), str(params.get("slot") or "")
     if date and slot:
         slots = sorted((brand.get(stream) or {}).get("slots") or [])

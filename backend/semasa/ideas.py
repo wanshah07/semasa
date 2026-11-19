@@ -558,8 +558,10 @@ def load_settings(store: Any) -> dict[str, Any]:
         return {}
 
 
-def taken_positions(store: Any, stream: str) -> set[tuple[str, str]]:
-    today = (datetime.now(UTC) + MYT).date().isoformat()
+def taken_positions(store: Any, stream: str, now: datetime | None = None) -> set[tuple[str, str]]:
+    """Slots a post of this stream holds from today (Malaysia time) on. `now` defaults to the real clock; a caller that was
+    given a moment (video_import.slot_for) passes it, so what is "ahead" and what is "held" are judged at the same time."""
+    today = ((now or datetime.now(UTC)) + MYT).date().isoformat()
     rows = (store.table(db.POSTS).select("date,slot,status").eq("stream", stream).gte("date", today)
             .neq("status", "rejected").execute().data or [])
     return {(str(r["date"]), r["slot"]) for r in rows if r.get("date") and r.get("slot")}

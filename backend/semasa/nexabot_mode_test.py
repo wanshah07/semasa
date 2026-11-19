@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Nexabot mode test — generate ONE video in a chosen mode, to compare how each mode behaves.
 
 Modes (from the "Text to Video" dropdown):

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import time
 from datetime import UTC, datetime
@@ -25,6 +26,7 @@ from . import nexabot_i2v as i2v
 STUDIO = chk.STUDIO_URL
 MODE_I2V = "Ingredients to Video"
 MAX_WAIT_S = 15 * 60
+FFMPEG = "ffmpeg"
 SHEET = Path(__file__).resolve().parents[2] / "web" / "public" / "comic-panels" / "charsheet.png"
 
 # 2 scenes, SAME shop location (no change). Scene 1 = Hana asks + Hassan cites MPPHM 40(2).
@@ -84,33 +86,29 @@ def choose_r2v(page, report):
     return False
 
 
-def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_video=None):
+def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_frame=None):
     """Generate one clip; return (saved_path, job_id). pre_jobs is the immutable set of job ids that existed
     before this run started; consumed is the mutable set of job ids already downloaded by earlier scenes in this run.
     A job is 'ours to download' only if its id is NOT in pre_jobs AND NOT in consumed.
-    ref_video: if set (scene 2+), use Reference Video mode with this clip so the background stays consistent."""
+    ref_frame: if set (scene 2+), use i2v Ingredients mode with TWO images — the last frame of the previous clip
+    (keeps the background) + the charsheet (keeps the characters)."""
     report["scene"] = idx + 1
-    if ref_video:
-        if not choose_r2v(page, report):
-            return None, None
-    else:
-        if not choose_i2v(page, report):
-            return None, None
+    if not choose_i2v(page, report):
+        return None, None
     i2v.select_1080p(page, report)
     file_inputs = page.locator("input[type=file]")
     if file_inputs.count() == 0:
         report["upload"] = "no input[type=file]"
         i2v.dump_controls(page, report, "upload_state")
         return None, None
-    if ref_video:
-        # Reference Video mode: first upload the reference video, then the charsheet as the image
-        file_inputs.first.set_input_files(str(ref_video))
+    if ref_frame:
+        # Ingredients mode: frame (background) first, then charsheet (characters)
+        file_inputs.first.set_input_files(str(ref_frame))
         try:
             file_inputs.first.evaluate("(el) => el.dispatchEvent(new Event('change', {bubbles:true}))")
         except Exception:  # noqa: BLE001
             pass
-        page.wait_for_timeout(3500)
-        # charsheet as second input if a second file input exists
+        page.wait_for_timeout(2500)
         if file_inputs.count() > 1:
             file_inputs.nth(1).set_input_files(str(SHEET))
             try:
@@ -118,7 +116,7 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_video=N
             except Exception:  # noqa: BLE001
                 pass
             page.wait_for_timeout(2500)
-        report["upload"] = f"ref_video {Path(ref_video).name} + charsheet"
+        report["upload"] = f"frame {Path(ref_frame).name} + charsheet"
     else:
         file_inputs.first.set_input_files(str(SHEET))
         try:
@@ -273,7 +271,7 @@ def run(outdir: Path) -> int:
             except Exception as exc:  # noqa: BLE001
                 report["pre_jobs_err"] = str(exc)[:100]
 
-            prev_clip = None
+            prev_frame = None
             for idx, prompt in enumerate(SCENES):
                 if idx > 0:
                     # fresh page per scene clears prior attachment
@@ -284,10 +282,10 @@ def run(outdir: Path) -> int:
                         pass
                     page.wait_for_timeout(2500)
                 saved = None
-                # scene 2+ uses the previous clip as a reference video to keep the background consistent
-                ref = prev_clip if idx > 0 else None
+                # scene 2+ uses the last frame of the previous clip (background) + charsheet (characters)
+                ref = prev_frame if idx > 0 else None
                 for attempt in range(1, 4):
-                    saved, jid = one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_video=ref)
+                    saved, jid = one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_frame=ref)
                     if saved:
                         break
                     # retry transient server failures (e.g. "server restart")
@@ -307,7 +305,17 @@ def run(outdir: Path) -> int:
                     break
                 if saved:
                     report["clips"].append(str(saved))
-                    prev_clip = str(saved)
+                    # extract the last frame of this clip as the background reference for the next scene
+                    try:
+                        frame = outdir / f"frame{idx+1}.png"
+                        subprocess.run([FFMPEG, "-y", "-sseof", "-1", "-i", str(saved),
+                                        "-frames:v", "1", str(frame)], check=True,
+                                       capture_output=True, timeout=120)
+                        if frame.exists() and frame.stat().st_size > 1000:
+                            prev_frame = str(frame)
+                            report[f"scene{idx+1}_frame_ref"] = str(frame)
+                    except Exception as exc:  # noqa: BLE001
+                        report[f"scene{idx+1}_frame_err"] = str(exc)[:120]
                 else:
                     report["error_scene"] = idx + 1
                     break

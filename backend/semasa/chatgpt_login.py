@@ -71,6 +71,11 @@ COMPLEXITIES = ("low", "high", "medium")
 
 MODEL_REFUSED = re.compile(r"model_not_found|model is not supported|not supported when using codex|unknown model|"
                            r"does not exist|invalid model", re.I)
+# 18 Nov 2026: the saved model (gpt-6.2-sol) began answering 404 {"detail":"Not Found"} with a login that still refreshed, and
+# no words about a model, so it was never replaced and the robot stayed down. A bare 404 on the Codex responses route, from a
+# login that is accepted, is read as a model the account no longer has: the account's list and the fallbacks are tried, each
+# a cheap one-shot call, and the error says which were tried if none answers.
+BARE_NOT_FOUND = re.compile(r'\W*(\{\W*"detail"\W*:\W*)?"?not found"?\W*', re.I)
 
 
 class ChatGPTError(RuntimeError):
@@ -335,7 +340,7 @@ class Login:
             if code == 200:
                 return read(resp.iter_lines(decode_unicode=True))
             text = _clip(getattr(resp, "text", ""))
-            if code in (400, 404) and MODEL_REFUSED.search(text):
+            if (code in (400, 404) and MODEL_REFUSED.search(text)) or (code == 404 and BARE_NOT_FOUND.fullmatch(text.strip())):
                 raise ChatGPTError(f"ChatGPT refused the model ({code}): {text}", model=True)
             if code == 401 and not renewed:
                 renewed = True

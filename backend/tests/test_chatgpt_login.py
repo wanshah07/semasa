@@ -468,6 +468,24 @@ def test_every_model_refused_says_which_were_tried_and_another_error_is_not_retr
     assert e2.value.limit and not e2.value.model and len(http2.calls) == 1
 
 
+def test_a_bare_404_not_found_is_a_model_the_account_no_longer_has_and_is_replaced():
+    st = store()
+    bare = '{"detail":"Not Found"}'
+    http = Http2(Resp(404, text=bare), Resp(200, lines=words("OK")), listed=["gpt-5.5"])
+    assert login(st, http).write("s", "u", model="gpt-6.2-sol") == "OK"
+    assert [kw["json"]["model"] for _, kw in http.calls] == ["gpt-6.2-sol", "gpt-5.5"]
+    assert st.tables[cl.TABLE][0]["model"] == "gpt-5.5"
+    every = Http2(*[Resp(404, text=bare) for _ in range(6)], listed=[])
+    with pytest.raises(cl.ChatGPTError) as e:
+        login(store(), every).write("s", "u", model="gpt-6.2-sol")
+    assert e.value.model and "Tried gpt-6.2-sol, gpt-5.5" in str(e.value) and len(every.calls) == 1 + cl.MODEL_TRIES
+    # a 404 that says something else is not taken for a model
+    other = Http2(Resp(404, text="route /v9/x not found for this tenant"))
+    with pytest.raises(cl.ChatGPTError) as e2:
+        login(store(), other).write("s", "u", model="gpt-6.2-sol")
+    assert not e2.value.model and len(other.calls) == 1
+
+
 def test_chatgpt_is_a_robot_on_the_api_page():
     st = store()
     http = Http2(Resp(400, text=REFUSED), Resp(200, lines=words("OK")), listed=["gpt-5.5"])

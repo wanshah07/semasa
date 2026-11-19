@@ -26,14 +26,15 @@ VOICE_URL = chk.ORIGIN + "/voice-generator"
 MAX_WAIT_S = 5 * 60
 LATE_WAIT_S = 8 * 60
 
-# (who, voice, text) — 6 lines in film order
+# (who, voice, text) — 6 lines in film order, ALL in consistent Indonesian (the Nexabot voices are Indonesian).
+# Consistent spelling = the voice sounds natural and consistent; subtitles stay Malay for the audience.
 LINES = [
-    ("Hana", "Sulafat", "Eh, logo halal kat paket ni warna hijau. Bukan sepatutnya hitam ke?"),
+    ("Hana", "Sulafat", "Eh, logo halal di paket ini warnanya hijau. Bukankah seharusnya hitam?"),
     ("Hassan", "Aoede", "Jangan-jangan logo palsu?"),
     ("Hana", "Sulafat", "Belum tentu. Warna bukan penentu."),
     ("Hana", "Sulafat", "Pemegang sertifikat boleh mencetak logo sesuai warna kemasan."),
-    ("Hassan", "Aoede", "Mana tulis tu?"),
-    ("Hana", "Sulafat", "MPPHM (Domestik) 2020, Klausa 40(2)."),
+    ("Hassan", "Aoede", "Mana tulisnya?"),
+    ("Hana", "Sulafat", "MPPHM Domestik 2020, Klausa 40 ayat 2."),
 ]
 
 

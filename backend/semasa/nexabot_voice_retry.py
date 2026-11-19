@@ -16,7 +16,7 @@ from . import nexabot_generate as gen
 from .nexabot_voice_film import one_line
 
 MISSING = [
-    (1, "Hana", "Sulafat", "Eh, logo halal kat paket ni warna hijau. Bukan sepatutnya hitam ke?"),
+    (1, "Hana", "Sulafat", "Eh, logo halal di paket ini warnanya hijau. Bukankah seharusnya hitam?"),
     (4, "Hana", "Sulafat", "Pemegang sertifikat boleh mencetak logo sesuai warna kemasan."),
 ]
 

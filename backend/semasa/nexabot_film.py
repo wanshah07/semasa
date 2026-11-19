@@ -36,8 +36,8 @@ SCENES = [
     "polo biru laut, berdiri di sebelahnya. Hana berkata eh logo halal di paket ini warna hijau, bukan sepatutnya "
     "hitam ke, jangan-jangan logo palsu. Hassan terus menjawab tak semestinya, warna bukan penentu, pemegang sijil "
     "boleh cetak logo ikut warna bungkusan asalkan spesifikasi logo tak diubah, ada tertulis dalam MPPHM Domestik "
-    "2020 Klausa 40 ayat 2. Hana mengangguk faham dan berkata oh baru tahu, jom kita beli keropok ni. Hassan "
-    "tersenyum. Tiada dialog lain. Kamera statik, tempat yang sama sepanjang video.",
+    "tahun dua ribu dua puluh, Klausa empat puluh, ayat dua. Hana mengangguk faham dan berkata oh baru tahu, jom kita "
+    "beli keropok ni. Hassan tersenyum. Tiada dialog lain. Kamera statik, tempat yang sama sepanjang video.",
 ]
 
 

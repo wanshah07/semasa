@@ -33,12 +33,12 @@ SHEET = Path(__file__).resolve().parents[2] / "web" / "public" / "comic-panels" 
 # Scene 2 = Hassan continues "pemegang sijil..." + Hana "baru tahu, jom beli keropok ni".
 # "Tiada dialog lain" stops i2v improvising. Citation spelled letter-by-letter so the voice reads it fully.
 SCENES = [
-    "Photorealistic video. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu dan blaus krim, "
+    "Photorealistic video, vertical 9:16 portrait framing. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu dan blaus krim, "
     "memandang bungkusan snek kuning di tangannya dengan wajah hairan. Hassan, lelaki bercermin mata hitam dan baju "
     "polo biru laut, berdiri di sebelahnya. Hana berkata eh logo halal ni warna hijau, bukan sepatutnya hitam ke, "
     "jangan-jangan logo palsu. Hassan terus menjawab tak semestinya, warna bukan penentu, ada tertulis dalam M P P H M "
     "Domestik dua ribu dua puluh, Klausa empat puluh ayat dua. Tiada dialog lain. Kamera statik.",
-    "Photorealistic video. Di kedai runcit di Malaysia, rak makanan snek yang sama, latar yang sama persis seperti "
+    "Photorealistic video, vertical 9:16 portrait framing. Di kedai runcit di Malaysia, rak makanan snek yang sama, latar yang sama persis seperti "
     "video sebelum ini, Hassan, lelaki bercermin mata hitam dan baju polo biru laut, terus bercakap sambil memberi "
     "isyarat tangan. Hana, wanita muda bertudung merah jambu, berdiri di tempat yang sama mendengar sambil membelek "
     "bungkusan snek kuning. Hassan berkata dalam klausa tu ada sebut pemegang sijil boleh cetak logo ikut warna "
@@ -86,6 +86,21 @@ def choose_r2v(page, report):
     return False
 
 
+def select_portrait(page, report):
+    """Pick Portrait ratio (9:16 vertical) — needed so the film fits TikTok/Reels/Threads without side-cropping."""
+    try:
+        btn = page.get_by_role("button", name="Portrait", exact=True).first
+        if btn.count() and btn.is_visible():
+            btn.click()
+            page.wait_for_timeout(600)
+            report["ratio_chosen"] = "Portrait"
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    report["ratio_chosen"] = "NOT FOUND"
+    return False
+
+
 def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_frame=None):
     """Generate one clip; return (saved_path, job_id). pre_jobs is the immutable set of job ids that existed
     before this run started; consumed is the mutable set of job ids already downloaded by earlier scenes in this run.
@@ -96,6 +111,7 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_frame=N
     if not choose_i2v(page, report):
         return None, None
     i2v.select_1080p(page, report)
+    select_portrait(page, report)
     file_inputs = page.locator("input[type=file]")
     if file_inputs.count() == 0:
         report["upload"] = "no input[type=file]"

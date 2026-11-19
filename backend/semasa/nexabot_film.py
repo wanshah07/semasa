@@ -29,18 +29,19 @@ SHEET = Path(__file__).resolve().parents[2] / "web" / "public" / "comic-panels" 
 
 # 3 scenes, dialogue IN the prompt so i2v's auto-generated audio speaks the halal story.
 # Scene 2 = Hassan explains the full rule + cites MPPHM. Scene 3 = Hana lega + ajak beli.
+# (no quote marks in the dialogue — they can break the i2v job)
 SCENES = [
     "Photorealistic video. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu dan blaus krim, "
     "memandang bungkusan snek kuning di tangannya dengan wajah hairan. Hassan, lelaki bercermin mata hitam dan baju "
-    "polo biru laut, berdiri di sebelahnya sambil melihat. Hana berkata, \"Eh, logo halal di paket ini warna hijau. "
-    "Bukan sepatutnya hitam ke?\" Hassan menjawab, \"Jangan-jangan logo palsu?\" Kamera statik.",
+    "polo biru laut, berdiri di sebelahnya sambil melihat. Hana berkata eh logo halal di paket ini warna hijau bukan "
+    "sepatutnya hitam ke. Hassan menjawab jangan-jangan logo palsu. Kamera statik.",
     "Photorealistic video. Di kedai runcit di Malaysia, Hassan, lelaki bercermin mata hitam dan baju polo biru laut, "
     "menunjuk bungkusan snek kuning dan menerangkan dengan yakin. Hana, wanita muda bertudung merah jambu, mendengar "
-    "dengan minat. Hassan berkata, \"Tak semestinya. Warna bukan penentu. Pemegang sijil boleh cetak logo ikut warna "
-    "bungkusan, asalkan spesifikasi logo tak diubah. Ada tertulis dalam MPPHM Domestik 2020, Klausa 40(2).\" Kamera statik.",
+    "dengan minat. Hassan berkata tak semestinya warna bukan penentu, pemegang sijil boleh cetak logo ikut warna "
+    "bungkusan asalkan spesifikasi logo tak diubah, ada tertulis dalam MPPHM Domestik 2020 Klausa 40 ayat 2. Kamera statik.",
     "Photorealistic video. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu, tersenyum lega sambil "
     "memegang bungkusan snek kuning. Hassan, lelaki bercermin mata hitam dan baju polo biru laut, tersenyum di sebelahnya. "
-    "Hana berkata, \"Lega. Jom kita beli.\" Hassan menjawab, \"Jom.\" Kamera statik.",
+    "Hana berkata lega, jom kita beli. Hassan menjawab jom. Kamera statik.",
 ]
 
 
@@ -155,10 +156,14 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed):
         if ours:
             report[f"scene{idx+1}_first_seen"] = {k: ours[0].get(k) for k in ("id", "status", "mode", "progress") if ours[0].get(k) is not None}
         done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
+        failed = [j for j in ours if str(j.get("status") or "").lower() in ("failed", "error", "cancelled", "canceled")]
         if done:
             saved, jid = download(done[0])
             if saved:
                 return saved, jid
+        if failed:
+            report[f"scene{idx+1}_job_failed"] = {k: failed[0].get(k) for k in ("id", "status", "error", "message") if failed[0].get(k) is not None}
+            return None, None
         time.sleep(4)
 
     # late-wait: sfv can exceed 15 minutes
@@ -171,10 +176,14 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed):
             jobs = []
         ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed and is_video_job(j)]
         done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
+        failed = [j for j in ours if str(j.get("status") or "").lower() in ("failed", "error", "cancelled", "canceled")]
         if done:
             saved, jid = download(done[0])
             if saved:
                 return saved, jid
+        if failed:
+            report[f"scene{idx+1}_job_failed"] = {k: failed[0].get(k) for k in ("id", "status", "error", "message") if failed[0].get(k) is not None}
+            return None, None
         time.sleep(4)
     report[f"scene{idx+1}_timed_out"] = True
     return None, None

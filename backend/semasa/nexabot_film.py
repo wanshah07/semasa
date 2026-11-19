@@ -1,8 +1,9 @@
 # ruff: noqa: E501
-"""Nexabot film — generate the 4 photorealistic scenes (Start Frame, consistent characters) for the halal-logo story.
+"""Nexabot film — generate the 4 photorealistic scenes (Ingredients to Video 1-1, consistent characters).
 
-Each scene uses the committed character sheet (web/public/comic-panels/charsheet.png) as the Start Frame so Hana and
-Hassan stay the SAME people. The prompt is a description only — NO dialogue (dialogue is voice + subtitle, added later).
+Each scene uploads the committed character sheet (web/public/comic-panels/charsheet.png) as the ingredient image
+so Hana and Hassan stay the SAME people. Ingredients mode (i2v1) is proven faster and 1080p-capable (Start Frame
+mode timed out). The prompt is a description only — NO dialogue (dialogue is voice + subtitle, added later).
 One fresh page load per scene, 1080p, Unlimited.
 
 Run on GitHub with NEXABOT_STORAGE_STATE_B64, from backend:
@@ -22,28 +23,28 @@ from . import nexabot_generate as gen
 from . import nexabot_i2v as i2v
 
 STUDIO = chk.STUDIO_URL
-MODE_SFV = "Start Frame"
+MODE_I2V = "Ingredients to Video"
 MAX_WAIT_S = 15 * 60
 SHEET = Path(__file__).resolve().parents[2] / "web" / "public" / "comic-panels" / "charsheet.png"
 
-# 4 scenes, description only (no dialogue text — the model would garble it and it repeats)
+# 2 scenes, SAME shop location (no change). Scene 1 = Hana asks + Hassan cites MPPHM 40(2).
+# Scene 2 = Hassan continues "pemegang sijil..." + Hana "baru tahu, jom beli keropok ni".
+# "Tiada dialog lain" stops i2v improvising. Citation spelled letter-by-letter so the voice reads it fully.
 SCENES = [
     "Photorealistic video. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu dan blaus krim, "
     "memandang bungkusan snek kuning di tangannya dengan wajah hairan. Hassan, lelaki bercermin mata hitam dan baju "
-    "polo biru laut, berdiri di sebelahnya sambil melihat. Kamera statik, pergerakan semula jadi.",
-    "Photorealistic video. Di kedai runcit di Malaysia, Hassan, lelaki bercermin mata hitam dan baju polo biru laut, "
-    "memandang bungkusan snek kuning dengan risau, tangan menyentuh dagu. Hana, wanita muda bertudung merah jambu, "
-    "tersenyum tenang dan mengangkat satu tangan. Kamera statik.",
-    "Photorealistic video. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu, menunjuk bungkusan "
-    "snek kuning dan menerangkan sesuatu. Hassan, lelaki bercermin mata hitam dan baju polo biru laut, mendengar "
-    "dengan minat. Kamera statik.",
-    "Photorealistic video. Di kedai runcit di Malaysia, Hassan, lelaki bercermin mata hitam dan baju polo biru laut, "
-    "kelihatan lega dan ingin tahu. Hana, wanita muda bertudung merah jambu, mengangkat bungkusan snek kuning dan "
-    "menunjuk ke arahnya. Kamera statik.",
+    "polo biru laut, berdiri di sebelahnya. Hana berkata eh logo halal ni warna hijau, bukan sepatutnya hitam ke, "
+    "jangan-jangan logo palsu. Hassan terus menjawab tak semestinya, warna bukan penentu, ada tertulis dalam M P P H M "
+    "Domestik dua ribu dua puluh, Klausa empat puluh ayat dua. Tiada dialog lain. Kamera statik.",
+    "Photorealistic video. Di kedai runcit di Malaysia, tempat dan latar yang sama, Hassan, lelaki bercermin mata "
+    "hitam dan baju polo biru laut, terus bercakap sambil memberi isyarat tangan. Hana, wanita muda bertudung merah "
+    "jambu, mendengar sambil membelek bungkusan snek kuning. Hassan berkata pemegang sijil boleh cetak logo ikut "
+    "warna bungkusan. Hana tersenyum lega dan berkata ooo baru tahu, kalau macam tu jom beli keropok ni. Tiada dialog "
+    "lain. Kamera statik.",
 ]
 
 
-def choose_sfv(page, report):
+def choose_i2v(page, report):
     btn = page.get_by_role("button", name="Text to Video").first
     btn.click()
     page.wait_for_timeout(800)
@@ -53,13 +54,13 @@ def choose_sfv(page, report):
             text = (items.nth(i).inner_text() or "").strip()
         except Exception:  # noqa: BLE001
             continue
-        if MODE_SFV in text:
+        if MODE_I2V in text:
             items.nth(i).click()
             page.wait_for_timeout(900)
             report["mode_chosen"] = text.split("\n")[0].strip()
             return True
     report["mode_chosen"] = "NOT FOUND"
-    i2v.dump_controls(page, report, "sfv_dropdown_state")
+    i2v.dump_controls(page, report, "i2v_dropdown_state")
     return False
 
 
@@ -68,14 +69,14 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed):
     before this run started; consumed is the mutable set of job ids already downloaded by earlier scenes in this run.
     A job is 'ours to download' only if its id is NOT in pre_jobs AND NOT in consumed."""
     report["scene"] = idx + 1
-    if not choose_sfv(page, report):
-        return None
+    if not choose_i2v(page, report):
+        return None, None
     i2v.select_1080p(page, report)
     file_inputs = page.locator("input[type=file]")
     if file_inputs.count() == 0:
         report["upload"] = "no input[type=file]"
-        i2v.dump_controls(page, report, "sfv_upload_state")
-        return None
+        i2v.dump_controls(page, report, "i2v_upload_state")
+        return None, None
     file_inputs.first.set_input_files(str(SHEET))
     try:
         file_inputs.first.evaluate("(el) => el.dispatchEvent(new Event('change', {bubbles:true}))")
@@ -154,27 +155,17 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed):
         if ours:
             report[f"scene{idx+1}_first_seen"] = {k: ours[0].get(k) for k in ("id", "status", "mode", "progress") if ours[0].get(k) is not None}
         done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
+        failed = [j for j in ours if str(j.get("status") or "").lower() in ("failed", "error", "cancelled", "canceled")]
         if done:
             saved, jid = download(done[0])
             if saved:
                 return saved, jid
+        if failed:
+            report[f"scene{idx+1}_job_failed"] = {k: failed[0].get(k) for k in ("id", "status", "error", "message") if failed[0].get(k) is not None}
+            return None, None
         time.sleep(4)
 
-    # late-wait: sfv can exceed 15 minutes
-    report[f"scene{idx+1}_late_wait"] = True
-    late = time.time() + 10 * 60
-    while time.time() < late:
-        try:
-            jobs = fetch_jobs()
-        except Exception:  # noqa: BLE001
-            jobs = []
-        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed and is_video_job(j)]
-        done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
-        if done:
-            saved, jid = download(done[0])
-            if saved:
-                return saved, jid
-        time.sleep(4)
+    # no long late-wait: i2v is fast (~5 min); a job past MAX_WAIT_S is gone
     report[f"scene{idx+1}_timed_out"] = True
     return None, None
 
@@ -229,7 +220,26 @@ def run(outdir: Path) -> int:
                     except Exception:  # noqa: BLE001
                         pass
                     page.wait_for_timeout(2500)
-                saved, jid = one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed)
+                saved = None
+                for attempt in range(1, 4):
+                    saved, jid = one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed)
+                    if saved:
+                        break
+                    # retry transient server failures (e.g. "server restart")
+                    reason = report.get(f"scene{idx+1}_job_failed") or {}
+                    err = str(reason.get("error") or reason.get("message") or "")
+                    if "restart" in err.lower() or "try again" in err.lower() or "interrupted" in err.lower():
+                        report[f"scene{idx+1}_attempt"] = attempt
+                        # fresh page + re-choose mode/upload for the retry
+                        page.goto(STUDIO, wait_until="domcontentloaded", timeout=45_000)
+                        try:
+                            page.wait_for_load_state("networkidle", timeout=15_000)
+                        except Exception:  # noqa: BLE001
+                            pass
+                        page.wait_for_timeout(2500)
+                        time.sleep(5)
+                        continue
+                    break
                 if saved:
                     report["clips"].append(str(saved))
                 else:

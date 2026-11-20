@@ -138,7 +138,9 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     if (format === "carousel") common.make_slides = true;
     // the look and a poster ride in the idea's brief until the bot writes the draft (backend: ideas.look_of, format_of)
     const brief = {};
-    if (drawn) brief.look = look;                       // always said, "classic" included: an explicit choice beats the default design
+    // said only when Wan picked one ("classic" included: an explicit choice beats the default design). None picked: the worker takes
+    // the next Semasa poster look in its turn and never repeats (Wan, 20 Nov 2026; backend rotation.next_look)
+    if (drawn && lookPick !== null) brief.look = look;
     if (format === "poster") brief.format = "poster";
     if (format === "comic") { brief.format = "comic"; brief.comic = { series: comicSeries || comics.defaultSeries, style: comicStyle || comics.defaultStyle }; }
     if (hookStyle) Object.assign(brief, withHookStyle({}, hookStyle));   // the style this idea's hook is built on (backend hook_bank.pick)
@@ -256,6 +258,10 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
               size={format === "poster" ? [1080, 1350] : null}
               eyebrow={previewStream === "regulab" ? (brand.regulab.domains || {})[domain] || "" : (brand.linkedin.angles || {})[angle] || ""}
               bgChosen={media === "image"} threads={format === "carousel"} onBlocked={setLookBlocked} />
+            {lookPick === null && (
+              <p className="mt-1.5 text-xs text-muted" data-look-turn>{t("Belum pilih: Semasa guna reka bentuk poster seterusnya dalam giliran dan tidak mengulang. Pilih satu untuk menetapkannya.",
+                "Nothing picked: Semasa uses the next poster look in its turn and never repeats one. Pick one to fix it.")}</p>
+            )}
           </div>
         )}
         <label className="block"><Label hint={t("pilihan", "optional")}>{t("Apa yang anda mahu daripada isu ini", "What you want from this issue")}</Label>

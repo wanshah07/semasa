@@ -97,7 +97,9 @@ def test_autofill_asks_a_film_for_a_video_slot_a_carousel_for_a_carousel_slot_an
     by_slot = {i["brief"]["position"]["slot"]: i for i in ideas}
     assert sorted(by_slot) == ["13:00", "21:00"]
     assert by_slot["13:00"].get("make_slides") is True and by_slot["13:00"]["brief"]["format"] == "carousel"
-    assert not by_slot["21:00"].get("make_slides") and by_slot["21:00"]["brief"]["slot_format"] == "single"
+    assert not by_slot["21:00"].get("make_slides")
+    # a single card is one Semasa poster (Wan, 20 Nov 2026: every post that is not a film is drawn in the poster looks)
+    assert by_slot["21:00"]["brief"]["slot_format"] == "poster" and by_slot["21:00"]["brief"]["format"] == "poster"
     assert "1 Motion film(s) waiting for Start" in out
     again = autofill.run(store, cfg, now)                              # the video slot is held by the waiting film
     assert len(store.tables["semasa_motions"]) == 1 and "Motion film" not in again

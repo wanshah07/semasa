@@ -40,6 +40,7 @@ from . import (
     my_designs,
     proofread,
     quran,
+    rotation,
     slides,
     writing_styles,
 )
@@ -251,27 +252,34 @@ pharmaceuticals) nothing to use. A story does not need a rule attached to be wor
 it, what they could take from it)."""
 
 LINKEDIN_SYSTEM = """You write a LinkedIn post for Ts. ChM Muhammad Ridzuan, a registered chemist and senior
-regulatory-affairs specialist, writing in his own name to peers (formulators, RA people, brand owners).
-Hook on line one. One idea. A concrete example (ingredient, Annex entry, real figure). Short paragraphs of one or
-two sentences. 120 to 220 words. Casual and human, the way he talks to a colleague, never stiff or formal.
+regulatory-affairs specialist, writing in his own name to peers (RA people, product developers, brand owners).
+Hook on line one. One subject, treated in depth. The reader should finish knowing the exact facts: the instrument, the clause or
+entry, the figure, the date. Casual and human, the way he talks to a colleague, never stiff or formal. Short paragraphs of one or
+two sentences; the numbered facts below are the body.
 
-LEAD WITH THE ANSWER (Wan, 12 Nov 2026). When the hook is a question, answer it plainly right after the hook before you
-explain why — do not string the reader along. Then the one thing that makes it useful, then the detail, numbered if there
-are several steps or points ("1. ...", "2. ..."). Close with one short practical line, not a lecture. Vary sentence length;
-a short sentence for emphasis reads well, a row of them does not.
+DEPTH AND NUMBERING (Wan, 20 Nov 2026: "explain more facts on the caption in numbering, not brief only, people like more accurate
+and deeply fact"). 250 to 380 words. After the hook, answer it in one or two sentences, then give the facts as a NUMBERED LIST,
+"1. ...", "2. ...", 5 to 8 points. Every point is one complete fact from the SOURCE with its exact detail (the substance, the
+limit, the entry or clause number, the date, who it applies to) and, where the SOURCE gives it, where it is written. A point
+that only says a thing "matters" or "changed" with no detail is not a point. Order the points the way the reader needs them (what
+it is, the number, who it covers, from when, what it means in practice). Then ONE short paragraph on what this means for a
+product on the shelf, drawn only from those facts. Close on a statement that lands.
 
-Citations below the body, never inside it. The last line of the body is ONE short, friendly invitation to follow him for more of
-this (for example "Follow me for more like this."), the only ask allowed;
-before it, end on a statement that lands, never a question.
-3 to 5 hashtags. No em dash.
+NO SELF-LABEL AND NO FOLLOW LINE (Wan, 20 Nov 2026: "no need mention as formulator or follow me for more"). Never write "as a
+formulator", "as a chemist", "as an RA specialist" or any "as a ..." about the author, and never address the reader by job title
+("formulators should ...", "brand owners need to ..."): state the fact and let the reader draw it. The post ends with no
+invitation of any kind: no "follow me", no "follow for more", no "like", "share", "repost" or "comment". The body ends, then the
+hashtags.
+
+Citations below the body, never inside it. 3 to 5 hashtags. No em dash.
 
 Rules. Breaking any blocks the post:
 1. No company identity at all: never mention ws.regulab, KKM Halal Consultant or any website.
-2. No call to action except the one follow invitation (no "comment below", "DM me", "share this", "link in bio", no link).
+2. No call to action of any kind (no "comment below", "DM me", "share this", "follow me", "link in bio", no link).
 3. Cite the INSTRUMENT (e.g. EC 1223/2009 Annex III entry 325, SI 2026/109, ISO 24444, a WTO TBT number), never a
    blog or aggregator (ChemLinked, CIRS, CosmeticsDesign, Chemical Watch, Happi and the like), never a news portal.
 4. No fact without a source in the SOURCE below: a fact it does not give is left out, never guessed, and never
-   replaced by a placeholder or a note in brackets.
+   replaced by a placeholder or a note in brackets. More facts means every fact the SOURCE gives, not facts you add.
 5. Never say the idea came from Reddit, YouTube, TikTok or a forum.
 
 BE SPECIFIC, NOT VAGUE (Wan, 15 Nov 2026): name the exact substance, ingredient, Annex entry or clause number, the exact
@@ -358,7 +366,8 @@ POSTER_RULES = {
     "regulab": """
 
 POSTER WANTED. Also return "poster": ONE 4:5 poster in Malaysian Malay: {"title": "the hook: the same hook shape you filled
-for the caption's first line, at most 12 words", "points": [up to 5 points of at most 22 words each]}. Mark the one key word
+for the caption's first line, at most 12 words", "points": [up to 5 points of at most 22 words each, every one a concrete fact
+from the SOURCE with its figure, entry, clause or date, never a general remark]}. Mark the one key word
 of the title with *asterisks*. The same
 rules apply to every word: no call to action, no URL, no fact the SOURCE does not give.
 The citation is drawn at its foot automatically.""",
@@ -727,6 +736,9 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     source = faq_source(idea) or stored_source(idea) or read_source(idea.get("source_url"))
     bank = hook_bank.pick(store, idea, settings)        # a hook style made from screenshots, or None: the built-in 25
     hint = hook_learning.hint(store, bank)              # what has earned views and interaction so far (a hint, never a rule)
+    family = str(idea.get("hook_family") or "").strip().lower() or None
+    turn = rotation.turn_for(store, stream, bank, family)    # this post's hook shape: the turn goes round, never repeats
+    hint = "\n".join(x for x in (hint, turn.hint()) if x)
     style = writing_styles.pick(store, idea, settings)  # Wan's writing style (the voice of the caption), or None: house style
     system, user = build_request(idea, source, brand, avoid=compliance.avoid_line(indo_extra), writer=settings.get("writer"),
                                  bank=bank, hint=hint, style_block=writing_styles.block(style, stream=stream))
@@ -767,8 +779,15 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     if out.get("fit") is False:
         raise IdeaError(f"the writer judged this headline no fit for {stream}: {str(out.get('why_not') or '')[:300]}. "
                         "Add a note saying what you want from it, then Cuba lagi.")
-    family = str(idea.get("hook_family") or "").strip().lower() or None
     shape = hook_bank.declared(out, stream, family, bank)
+    if shape is not None and turn.assigned and shape not in turn.permitted:
+        # not this post's turn (Wan, 20 Nov 2026): one more ask, then what the writer gave stands, so a post is never lost to it
+        again = llm.chat_json(system, user + turn.ask_again(), max_tokens=5000 if (want_slides or want_poster) else 3500)
+        got = hook_bank.declared(again, stream, family, bank) if isinstance(again, dict) else None
+        if again and again.get("fit") is not False and got in turn.permitted:
+            out, shape = again, got
+        else:
+            log.info("idea %s: hook shape %s is not its turn (%s); kept", str(idea.get("id"))[:8], shape, turn.assigned)
     if shape is None:
         # every post leads with one of the hook shapes (Wan, 6 Nov 2026): one more ask, then the idea fails with a reason
         again = llm.chat_json(system, user + hook_bank.asks_again(stream, family, bank),
@@ -839,6 +858,12 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
             .eq("id", idea["id"]).execute()
     antislop.finish(store, "post", post_id)
 
+    if fmt in ("carousel", "poster") and not str(brief0.get("look") or "").strip():
+        # no look chosen: the Semasa poster looks take their turn and never repeat (Wan, 20 Nov 2026), unless Wan saved a
+        # "My design" as the default, which is then the one new drafts use
+        dd = settings.get("default_design") if isinstance(settings.get("default_design"), dict) else {}
+        if not dd.get("id"):
+            idea = {**idea, "brief": {**brief0, "look": rotation.next_look(store, stream, dd.get("hidden"))}}
     chosen = my_designs.for_idea(store, idea)      # the idea's look, or the default "My design" when it asked for none
     if fmt == "comic":
         # the comic IS the post's picture (17 Nov 2026): no other picture is made for it

@@ -61,11 +61,6 @@
    "label": "promises approval"
   },
   {
-   "re": "orang\\s+dalam",
-   "flags": "i",
-   "label": "implies an inside contact ('orang dalam')"
-  },
-  {
    "re": "tiada\\s+kesan\\s+sampingan",
    "flags": "i",
    "label": "absolute safety claim"

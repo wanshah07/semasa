@@ -446,6 +446,10 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                     films += 1
                     made += 1
                     continue
+                if fmt in ("", "single"):
+                    # every post that is not a film is drawn in the Semasa poster looks (Wan, 20 Nov 2026: "semua ws regulab post
+                    # jugak guna poster semasa", and LinkedIn "terus render" them): a single card is one 4:5 poster
+                    fmt = "poster"
                 news = item.get("section") == "news"
                 brief = {"position": {"date": date, "slot": slot}, "auto": True, "watch_id": item["id"],
                          "hook_required": True, "story_mode": True, "source_priority": "current"}

@@ -14,7 +14,6 @@ export const MSG_BM = {
   "old brand name 'KKM Halal Consultant'": "nama jenama lama 'KKM Halal Consultant'",
   "promises approval ('dijamin lulus')": "menjanjikan kelulusan ('dijamin lulus')",
   "promises approval": "menjanjikan kelulusan",
-  "implies an inside contact ('orang dalam')": "membayangkan ada kenalan dalaman ('orang dalam')",
   "absolute safety claim": "dakwaan keselamatan mutlak",
   "halal claim without certificate": "dakwaan halal tanpa sijil",
   "shariah claim without certificate": "dakwaan patuh syariah tanpa sijil",

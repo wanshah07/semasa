@@ -244,7 +244,6 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_frame=N
 
     DONE = ("done", "complete", "completed", "ready", "success")
     FAILED = ("failed", "error", "cancelled", "canceled")
-    ACTIVE = ("queued", "queue", "processing", "pending", "running", "in_progress", "in-progress", "waiting")
 
     deadline = time.time() + MAX_WAIT_S
     while time.time() < deadline:

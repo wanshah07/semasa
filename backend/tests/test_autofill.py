@@ -96,3 +96,21 @@ def test_a_linkedin_gap_written_by_autofill_is_an_idea_never_a_motion_film():
     autofill.run(store, {"brand": brand, "autofill": cfg}, NOW)
     assert not [m for m in store.tables["semasa_motions"] if m.get("stream") == "linkedin"], "no LinkedIn film is queued"
     assert [i for i in store.tables["semasa_ideas"] if i.get("stream") == "linkedin"], "the slot gets an idea for a post instead"
+
+
+# --- LinkedIn from official sources, and posters (Wan, 20 Nov 2026) ---------------------------------------
+
+def test_linkedin_takes_only_official_sections_never_a_headline_or_a_social_post():
+    for section in ("regulatory", "publication", "website", "folder"):
+        assert autofill.fits({"section": section}, "linkedin", None), section
+    for section in ("news", "linkedin", "expert", "reddit", "youtube", "threads", "instagram", "facebook", ""):
+        assert not autofill.fits({"section": section}, "linkedin", None), section
+    assert autofill.fits({"section": "news", "domain": "halal_my"}, "regulab", ["halal_my"])      # ws.regulab is unchanged
+
+
+def test_a_poster_slot_makes_a_poster_idea_not_a_carousel_or_a_single_card():
+    brand = {"linkedin": {"slots": ["06:00", "19:00"], "slot_formats": {"06:00": "carousel", "19:00": "poster"}}}
+    assert autofill.slot_format(brand, "linkedin", "19:00") == "poster"
+    assert autofill.slot_format(brand, "linkedin", "06:00") == "carousel"
+    from semasa import ideas
+    assert ideas.format_of({"brief": {"format": "poster"}}) == "poster"

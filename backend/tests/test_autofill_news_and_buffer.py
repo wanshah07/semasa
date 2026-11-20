@@ -221,12 +221,12 @@ def test_a_post_at_an_odd_hour_still_counts_toward_the_cap_but_holds_no_slot():
 # ---------------------------------------------------------------- one idea per story, whatever the link
 def test_the_same_story_under_two_links_is_one_idea():
     # 9 Nov 2026: Google News and the paper both carried "Jakim investigating The Weeknd's concerts";
-    # two LinkedIn slots got one each
+    # two slots got one each (ws.regulab: LinkedIn has taken no newspaper story since 20 Nov 2026)
     twice = [_news(1, "halal", "Jakim investigating The Weeknd's concerts - Free Malaysia Today", summary="Jakim"),
              {**_news(2, "halal", "Jakim investigating The Weeknd’s concerts", summary="Jakim"),
               "url": "https://news.google.com/rss/articles/abc"}]
     store = _store(news=twice)
-    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "streams": ["linkedin"], "per_run": 2}}, NOW)
+    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "streams": ["regulab"], "per_run": 2}}, NOW)
     made = store.tables["semasa_ideas"]
     assert len(made) == 1, [m["source_title"] for m in made]
     assert "news.google.com" not in made[0]["source_url"]          # the paper's own link wins: the writer can read it
@@ -236,7 +236,7 @@ def test_a_story_already_written_up_under_another_link_is_not_written_again():
     old = {"id": "i0", "source_title": "Jakim investigating The Weeknd's concerts", "source_url": "https://other.example/x",
            "created_at": (NOW - timedelta(days=2)).isoformat()}
     store = _store(news=[_news(1, "halal", "Jakim investigating The Weeknd's concerts - FMT")], ideas_=[old])
-    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "streams": ["linkedin"], "per_run": 2}}, NOW)
+    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "streams": ["regulab"], "per_run": 2}}, NOW)
     assert len(store.tables["semasa_ideas"]) == 1                    # only the old one
 
 

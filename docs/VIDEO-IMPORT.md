@@ -67,7 +67,7 @@ Semasa shows both. A refused file is deleted from storage. To try again after a 
   flag does **not** refuse the import (Wan, 17 Nov 2026): the draft is made anyway with `hard_flags` > 0, the flags listed, and the
   import's note says "N blocking flag(s) to fix". Wan fixes the caption in the page; Approve stays blocked while a hard flag remains.
   A warning (for example a plain link) goes on the draft too. The draft is never approved.
-- A landscape film on ws.regulab only warns: it will not show as a Reel.
+- A film that is not in its stream's shape is fitted to it (see "TikTok and the platform shape" below), never just warned about.
 - **Decision of Wan's (17 Nov 2026): the branded-cover rule for Instagram films is OFF for imports.** The rule
   (`publisher.instagram_cover_gap`) applies to films with `meta.flow == "motion"`; an import's media row has `flow == "import"`, so an
   imported film can go to Instagram without Semasa's cover. The film was not made by Semasa and a cover cannot be added to someone
@@ -155,14 +155,24 @@ does the same by hand; a `--captions-json` that is not a JSON object of channel 
 Code: `supabase/functions/semasa-import-video/` (the intake), `supabase/087_video_import.sql` (tables, keys), `backend/semasa/video_import.py`
 (the worker, called from `motion.run`), `web/src/components/VideoImportCard.jsx` (the card).
 
-## TikTok (Wan, 20 Nov 2026)
+## TikTok and the platform shape (Wan, 20 Nov 2026)
 
-- **TikTok takes upright 9:16.** A film from Hermes / Nous is usually 16:9 (Nexabot's web route makes 1280x720). For TikTok only,
-  Semasa sends an upright 1080x1920 copy: the whole picture across the width over a blurred, darkened copy of itself
-  (`backend/semasa/tiktok_ratio.py`). Both routes use it: the publisher (an imported or Motion film that goes to TikTok) and
-  `semasa.zernio_publish` (Hermes handing a finished film to Zernio). The copy is kept in the public bucket under `tiktok/<hash>.mp4`
-  and reused on a re-send; a film already 9:16 is left alone; when the copy cannot be made TikTok gets nothing (the other platforms
-  still go) and the publisher tries again next run. Facebook, Instagram and Threads get the film as it came.
+- **A film is posted in the shape its platform takes (Wan, 20 Nov 2026: "fix all import film especially from hermes nous, so before
+  post make sure follow platform ratio which is already set in semasa").** The shape is Semasa's own per-stream table
+  (`motion.PLATFORM_SIZE`): ws.regulab upright **9:16** (Instagram and Facebook Reels, Threads, TikTok), LinkedIn **1:1**. A film from
+  Hermes / Nous is usually 16:9 (Nexabot's web route makes 1280x720). It is fitted at three points, all by
+  `backend/semasa/film_ratio.py`: the whole picture across the width over a blurred, darkened copy of itself, H.264 + AAC, sound kept.
+  1. **The import worker**: a film not in its stream's shape is fitted before the draft is made, so the draft Wan approves is the film
+     that posts. The sender's own file is kept as the reference, the fitted copy is what is posted, the film and media rows carry the
+     posted size, the import's note says "fitted from 1280x720 to 1080x1920", and the old "not upright" warning is gone because there
+     is nothing left to warn about. A film that cannot be fitted is refused with a reason, like any bad file.
+  2. **The publisher**: before any send (Zernio, Buffer or LinkedIn) the film goes through the same step, once per post. It covers a
+     film imported before this existed or one that skipped the worker. A film whose size is on its media row and already fits is not
+     downloaded. When the copy cannot be made nothing is sent in the wrong shape, and the next run tries again.
+  3. **`semasa.zernio_publish`** (Hermes handing a finished film over): the copy is made once and every channel, TikTok included,
+     gets it; when it cannot be made no channel gets the film.
+  The copy is kept in the public bucket under `ratio/<W>x<H>/<hash>.mp4` and reused on a re-send; a film already in the shape is
+  left alone and nothing is copied. A 4:5 film is upright but is not 9:16, so it is fitted too.
 - **TikTok is on request, not automatic.** An approved film no longer goes to TikTok by itself (it used to ride with every ws.regulab
   film that went to Instagram). It goes when Wan asks: Hermes names `tiktok` in `zernio_publish --channels ...`, which sends the
   upright copy. A post that already holds a TikTok record keeps it (a failed hand-over is retried; a sent one stays counted).

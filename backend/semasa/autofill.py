@@ -76,7 +76,7 @@ def held(store: Any, stream: str, now: datetime | None = None) -> set[tuple[str,
     return {(str(r["date"]), r["slot"]) for r in rows if r.get("date") and r.get("slot")}
 
 
-SLOT_FORMATS = ("video", "carousel", "single")
+SLOT_FORMATS = ("video", "carousel", "poster", "single")
 MOTIONS = "semasa_motions"
 
 
@@ -377,9 +377,16 @@ def pick(pool: list[dict[str, Any]], stream: str, allow: list[str] | None, day: 
     return next((x for x in pool if fits(x, stream, allow)), None)
 
 
+# LinkedIn writes from FACTS in a guideline, a regulation or an official website (Wan, 20 Nov 2026: "for linkedn change direction
+# to fact from guideline or official website rather than isu semasa viral"): the regulator feed, the papers, the websites Wan
+# lists himself and his angle bank. A newspaper headline, another person's LinkedIn post and an expert's post are what is loud,
+# not what is official, so they never fill a LinkedIn slot by themselves (Wan can still make an idea of any of them by hand).
+LINKEDIN_SECTIONS = ("regulatory", "publication", "website", "folder")
+
+
 def fits(item: dict[str, Any], stream: str, allow: list[str] | None) -> bool:
     if stream == "linkedin":
-        return True                                            # every section reads as a chemist's post
+        return item.get("section") in LINKEDIN_SECTIONS
     dom = item.get("domain")
     if not allow:
         return True
@@ -448,8 +455,8 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                     brief["news"] = True
                 if fmt:
                     brief["slot_format"] = fmt             # the rota's format for this slot, shown on the idea
-                if fmt == "carousel":
-                    brief["format"] = "carousel"
+                if fmt in ("carousel", "poster"):
+                    brief["format"] = fmt                  # a poster is ONE 4:5 artwork (ideas.format_of), not a slide set
                 store.table(db.IDEAS).insert({
                     **({"trend_id": item["trend_id"]} if news else {}),
                     "source_title": str(item.get("title") or "")[:500], "source_url": item["url"],

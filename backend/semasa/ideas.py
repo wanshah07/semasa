@@ -285,6 +285,11 @@ ENGLISH ONLY (Wan, 9 Nov 2026): the hook, the caption and every word on every sl
 are English. The hook shapes below are written in casual Malay: translate the shape into natural English and never print the
 Malay words (no "kau", "aku", "benda pasal", "takde sapa", "yg", "Tahukah anda", no "1 Hari 1 Ilmu").
 
+DIRECTION (Wan, 20 Nov 2026): the post states a FACT taken from a guideline, a regulation or an official website, and says
+exactly where in it (the instrument, the clause or entry, the date). It is not a reaction to something that went viral: no
+"everyone is talking about", no news-cycle hook. If the SOURCE is a newspaper story, write only the rule behind it, from the
+instrument.
+
 Angles: %s
 
 Answer with ONE JSON object:

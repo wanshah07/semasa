@@ -126,6 +126,13 @@ GOOD = {"fit": True, "hook": "Ni apa sebenarnya jadi bila kau hantar notifikasi"
         "citation": "NPRA", "text": {"bm": {"instagram": "Ni apa sebenarnya jadi bila kau hantar notifikasi. " + CAP}}}
 
 
+@pytest.fixture(autouse=True)
+def no_turn(monkeypatch):
+    """These tests are about the shape check itself: the turn (rotation.py) has its own tests and assigns nothing here."""
+    from semasa import rotation
+    monkeypatch.setattr(rotation, "turn_for", lambda *a, **k: rotation.Turn())
+
+
 def _store():
     return FakeStore(semasa_settings=[{"key": "brand", "value": {}}, {"key": "publishing", "value": {"enabled": False}}],
                      semasa_posts=[], media_generations=[], semasa_ideas=[])

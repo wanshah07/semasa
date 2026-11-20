@@ -1,0 +1,33 @@
+# Hooks and poster looks take their turn (Wan, 20 Nov 2026)
+
+> "make sure hook sentiasa berubah, tak berulang dan ikut turutan" · "follow turn not repeat"
+
+**What was wrong.** The writer was told to pick the hook shape that fitted the story best, so it picked the same one: shape 16
+("Semua orang cakap ___, tapi realitinya ___") opened nearly every recent post, and every poster was drawn in the one default look
+(`hand` for LinkedIn, `image` for the rest).
+
+**What happens now** (`backend/semasa/rotation.py`, used by `ideas.process_idea`):
+
+- **Hooks.** The shapes come round in a fixed turn that moves through the families, so two posts in a row never share a shape or
+  a family: 1, 6, 16, 21, 2, 7, 17, 22, ... (ws.regulab has no first-person family, LinkedIn has all five). Each stream keeps its
+  own place, read from the last ideas it wrote (`brief.hook_shape`). The writer is told THIS post's shape, two fall-backs for when
+  it cannot be filled without inventing a fact, and the last eight hooks so it does not echo their opening words. A shape that is
+  not its turn is asked for once more; after that what the writer gave stands, so a post is never lost to the rotation.
+- **Looks.** A carousel or a poster whose idea names no look takes the next Semasa poster look: hand-drawn, marker poster, torn
+  paper, colour blocks, neon, cardboard, chalkboard, line map, torn strips, grid, Semasa's own. Looks Wan hid in the picker
+  (`default_design.hidden`) are skipped, and one is not used again until four others have been. The look is stored on the idea
+  (`brief.look`), which is how the next post knows where the turn is. `photo`, `image` and `threads` need a picture and stay a hand
+  choice.
+- **Every post that is not a film is a poster look.** Auto-fill makes a slot set to `single` (or to nothing) a Semasa poster, one
+  4:5 artwork, for both streams, so ws.regulab and LinkedIn are drawn in the same looks. Carousels keep their slides and take the
+  turn's look too.
+- **Wan's own choice wins.** In the New idea composer, a look he picks is sent and kept. With nothing picked the composer says the
+  turn will be used and sends no look.
+
+**LinkedIn writing.** The LinkedIn writer now gives 5 to 8 NUMBERED facts (250 to 380 words), each with its exact figure, entry,
+clause or date from the source, and ends with no invitation: no "follow me", no "as a formulator" or any "as a ..." about the
+author, no reader addressed by job title.
+
+**Blocker removed.** `orang dalam` is no longer a blocking phrase (`rules/compliance.json`).
+
+Posts already written are not changed: their hooks and looks stay as they are.

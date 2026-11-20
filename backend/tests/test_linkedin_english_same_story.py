@@ -24,6 +24,13 @@ class Seq(LLM):
         return self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
 
 
+@pytest.fixture(autouse=True)
+def no_turn(monkeypatch):
+    """These tests count the writer's asks for the language and the cover; the hook turn (rotation.py) has its own tests."""
+    from semasa import rotation
+    monkeypatch.setattr(rotation, "turn_for", lambda *a, **k: rotation.Turn())
+
+
 def _store():
     return FakeStore(semasa_settings=[{"key": "brand", "value": BRAND}, {"key": "publishing", "value": {"enabled": False}}],
                      semasa_posts=[], media_generations=[], semasa_ideas=[])

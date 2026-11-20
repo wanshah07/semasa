@@ -86,6 +86,27 @@ def test_a_film_goes_to_tiktok_only_when_the_setting_brings_the_ride_along_back_
     assert "tiktok" not in {x["service"] for x in z.created}
 
 
+def test_a_film_queued_with_tiktok_ticked_goes_there_and_a_post_that_never_asked_does_not():
+    # the per-post tick (Wan, 20 Nov 2026): "tiktok" in the post's own channels is the request
+    asked = ["instagram", "facebook", "threads", "tiktok"]
+    store, z = _store(_post(channels=asked), media=FILM), FakeZernio()
+    publisher.run(store, NOW, clients={"zernio": z})
+    assert sorted(x["service"] for x in z.created) == ["facebook", "instagram", "threads", "tiktok"]
+    assert next(x for x in z.created if x["service"] == "tiktok")["text"] == CAP        # Instagram's caption
+    # chosen channels without it stay off TikTok
+    store, z = _store(_post(channels=["instagram", "facebook", "threads"]), media=FILM), FakeZernio()
+    publisher.run(store, NOW, clients={"zernio": z})
+    assert "tiktok" not in {x["service"] for x in z.created}
+    # a post with pictures only never goes, even when ticked: TikTok takes a film
+    store, z = _store(_post(slides=[], channels=asked)), FakeZernio()
+    publisher.run(store, NOW, clients={"zernio": z})
+    assert "tiktok" not in {x["service"] for x in z.created}
+    # not an Instagram post, not a TikTok add-on
+    store, z = _store(_post(channels=["facebook", "tiktok"]), media=FILM), FakeZernio()
+    publisher.run(store, NOW, clients={"zernio": z})
+    assert sorted(x["service"] for x in z.created) == ["facebook"]
+
+
 def _linkedin(**kw):
     return _post(stream="linkedin", lang="en", slot="06:00", citation="EC 1223/2009",
                  text={"en": {"linkedin": "A regulation changed. Here is what it means for a formulator."}}, **kw)

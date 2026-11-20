@@ -167,4 +167,8 @@ Code: `supabase/functions/semasa-import-video/` (the intake), `supabase/087_vide
   film that went to Instagram). It goes when Wan asks: Hermes names `tiktok` in `zernio_publish --channels ...`, which sends the
   upright copy. A post that already holds a TikTok record keeps it (a failed hand-over is retried; a sent one stays counted).
   `settings.channels.zernio.tiktok_with_film = true` brings the old ride-along back.
+- **A per-post TikTok tick (Wan, 20 Nov 2026: "ask me every time").** In Motion's **Post / queue** panel, a ws.regulab film that goes
+  to Instagram shows **Send to TikTok too**, off every time. Ticked, the queued post lists `tiktok` in its own `channels`
+  (`supabase/088_tiktok_channel.sql` lets the column hold it) and the publisher sends the upright copy with Instagram's caption.
+  A picture post, a LinkedIn post, or a post without Instagram never goes, whatever the column says.
 

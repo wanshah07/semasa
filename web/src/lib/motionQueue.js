@@ -6,7 +6,11 @@ import { LIMITS, hardCount, platformsFor, readsMalay, scan } from "./compliance.
 import { sizeFor } from "./platformFormat.js";
 import { nextFreeSlot } from "./slots.js";
 
-export const CHANNEL_LABEL = { facebook: "Facebook", instagram: "Instagram", threads: "Threads", linkedin: "LinkedIn" };
+export const CHANNEL_LABEL = { facebook: "Facebook", instagram: "Instagram", threads: "Threads", linkedin: "LinkedIn", tiktok: "TikTok" };
+
+/** TikTok is an add-on to a ws.regulab film that goes to Instagram, ticked per post (Wan, 20 Nov 2026: "ask me every time"). It has no
+    caption of its own (it carries Instagram's), so it never gets a field, and it is off unless Wan ticks it. */
+export const tiktokOffered = (film, channels) => (film?.stream || "regulab") === "regulab" && (channels || []).includes("instagram");
 
 /** The platforms a film can go to: its stream's own (ws.regulab speaks BM to SMEs on Facebook, Instagram and Threads; the LinkedIn
     stream is Wan's own English byline). Two voices are never mixed, so a film is never offered to the other stream's platforms. */
@@ -87,7 +91,7 @@ export function pickPosition({ film, posts, brand, post, now = Date.now() }) {
 }
 
 /** The arguments of semasa_queue_motion, with the page's own scan of the caption each platform will carry. */
-export function queueArgs({ film, channels, captions, date, slot, brand, post, indo, approve = false, override = false }) {
+export function queueArgs({ film, channels, captions, date, slot, brand, post, indo, approve = false, override = false, tiktok = false }) {
   const lang = postLang(film);
   const text = { [lang]: Object.fromEntries(channels.map((c) => [c, String(captions?.[c] || "").trim()])) };
   const draft = { stream: film.stream || "regulab", lang, channels, text, date, slot, domain: post?.domain || null,
@@ -95,7 +99,7 @@ export function queueArgs({ film, channels, captions, date, slot, brand, post, i
   const reg = brand?.regulab || {};
   const flags = scan(draft, reg, reg.schedule, indo);
   return {
-    p_motion: film.id, p_channels: channels, p_lang: lang, p_hook: String(film.title || "").trim(), p_text: text,
+    p_motion: film.id, p_channels: tiktok && tiktokOffered(film, channels) ? [...channels, "tiktok"] : channels, p_lang: lang, p_hook: String(film.title || "").trim(), p_text: text,
     p_citation: post?.citation || "", p_date: date, p_slot: slot, p_flags: flags, p_hard: hardCount(flags),
     p_approve: !!approve && hardCount(flags) === 0,        // Wan's own Approve click, taken only when nothing blocks
     p_override: !!override,                                // take the slot from the draft or approved post that holds it (supabase/054)

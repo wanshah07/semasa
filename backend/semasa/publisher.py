@@ -263,7 +263,8 @@ def buffer_channels(settings: dict[str, Any], stream: str) -> list[str]:
 def post_channels(settings: dict[str, Any], post: dict[str, Any], has_video: bool | None = None) -> list[str]:
     """The platforms this post goes to: its stream's switched-on channels, narrowed to the ones Wan chose for it when it
     was queued to some of them (a Motion film), never widened. TikTok (Zernio only, Wan 10 Nov 2026: "tiktok - motion")
-    rode with a ws.regulab film that goes to Instagram; since 20 Nov 2026 it goes only on request (see below).
+    rode with a ws.regulab film that goes to Instagram; since 20 Nov 2026 it goes only on request (see below): the post lists
+    "tiktok" in its own `channels` (the tick in Motion), or it already holds a TikTok record.
     `has_video` None means "whatever it already recorded" (the tally)."""
     out = [p for p in buffer_channels(settings, post.get("stream") or "regulab") if p in compliance.platforms_of(post)]
     zcfg = (settings.get("channels") or {}).get("zernio") or {}
@@ -273,9 +274,12 @@ def post_channels(settings: dict[str, Any], post: dict[str, Any], has_video: boo
         # approved film no longer goes there by itself. It still goes when the post already holds a TikTok record (a failed
         # hand-over is retried, a sent one is counted), and `settings.channels.zernio.tiktok_with_film = true` brings the old
         # ride-along back. A film Wan asks to be sent to TikTok goes through zernio_publish (Hermes), which names the channel.
+        # The per-post tick (Wan, 20 Nov 2026: "ask me every time"): a Motion film queued with TikTok ticked lists "tiktok" in
+        # its own `channels`. That is a request, so it counts like a record does, but only for a post that carries a video.
         already = bool((post.get("published") or {}).get("tiktok"))
+        asked = "tiktok" in (post.get("channels") or [])
         ride = zcfg.get("tiktok_with_film") is True
-        if (has_video is None and already) or (has_video and (ride or already)):
+        if (has_video is None and (already or asked)) or (has_video and (ride or already or asked)):
             out.append("tiktok")
     return out
 

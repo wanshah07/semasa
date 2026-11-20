@@ -6,7 +6,7 @@ import { useLang } from "../lib/i18n";
 import { LANGUAGES, RESOLUTIONS, fmtBytes, remakeFields, streamOf } from "../lib/motion";
 import { releaseSlots } from "../lib/releaseSlots";
 import { sizeFor } from "../lib/platformFormat";
-import { CHANNEL_LABEL, canQueue, channelsFor, filmFormat, pickPosition, postLang, queueArgs, startingCaptions } from "../lib/motionQueue";
+import { CHANNEL_LABEL, canQueue, channelsFor, filmFormat, pickPosition, postLang, queueArgs, startingCaptions, tiktokOffered } from "../lib/motionQueue";
 import { clearPlan, isCustomSlot, myt, overrideCheck, slotsOf, takenSet, validClock } from "../lib/slots";
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
@@ -38,6 +38,7 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
   const [posts, setPosts] = useState([]);                  // what already holds a position, read fresh when this opens
   const [channels, setChannels] = useState(all);
   const [captions, setCaptions] = useState({});
+  const [tiktok, setTiktok] = useState(false);              // off every time: Wan ticks it for each film he wants on TikTok
   const [date, setDate] = useState("");
   const [slot, setSlot] = useState("");
   const [version, setVersion] = useState(film.language || "en");     // the language the film would be made again in
@@ -94,7 +95,7 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
   const plan = useMemo(() => clearPlan(posts, stream), [posts, stream]);
   useEffect(() => { setOverride(false); }, [date, slot]);
   const args = useMemo(() => (open && date && slot && channels.length
-    ? queueArgs({ film, channels, captions, date, slot, brand, post, indo, override: useOverride }) : null), [open, film, channels, captions, date, slot, brand, post, indo, useOverride]);
+    ? queueArgs({ film, channels, captions, date, slot, brand, post, indo, override: useOverride, tiktok }) : null), [open, film, channels, captions, date, slot, brand, post, indo, useOverride, tiktok]);
   const hard = (args?.p_flags || []).filter((f) => f.hard);
 
   const queue = async (approve) => {
@@ -103,7 +104,7 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
     try {
       const { error } = await supabase.rpc("semasa_queue_motion", { ...args, p_approve: !!approve && args.p_hard === 0, p_override: useOverride });
       if (error) throw new Error(errText(error));
-      const where = { d: date, s: slot, c: channels.map((c) => CHANNEL_LABEL[c]).join(", ") };
+      const where = { d: date, s: slot, c: (args.p_channels || channels).map((c) => CHANNEL_LABEL[c]).join(", ") };
       onToast?.(approve && args.p_hard === 0
         ? t("Diluluskan dan masuk giliran: disiarkan pada {d} {s} ({c}). Filem ini sudah keluar daripada senarai Motion.",
           "Approved and queued: it posts on {d} {s} ({c}). The film has left the Motion list.", where)
@@ -189,6 +190,12 @@ export default function MotionPost({ film, brand, indo, onQueued, onToast }) {
             </label>
           ))}
         </div>
+        {!switching && tiktokOffered(film, channels) && (
+          <label className={`mt-2 inline-flex cursor-pointer items-center gap-2 rounded-pill px-3 py-1.5 text-xs ${tiktok ? "bg-accent/15 text-accent" : "bg-surface text-muted"}`} data-motion-tiktok>
+            <input type="checkbox" checked={tiktok} onChange={() => setTiktok((v) => !v)} />
+            {t("Hantar ke TikTok juga (9:16, kapsyen Instagram)", "Send to TikTok too (9:16, Instagram's caption)")}
+          </label>
+        )}
       </div>
       <div className="mt-3 rounded-tile border border-line bg-surface p-2" data-motion-version>
         <Label hint={t("filem dibuat semula, kapsyen ditulis semula bersamanya", "the film is made again and its captions are written again with it")}>{t("Versi", "Version")}</Label>

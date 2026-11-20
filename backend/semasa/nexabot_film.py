@@ -29,20 +29,19 @@ MAX_WAIT_S = 15 * 60
 FFMPEG = "ffmpeg"
 SHEET = Path(__file__).resolve().parents[2] / "web" / "public" / "comic-panels" / "charsheet.png"
 
-# 2 scenes, SAME shop location (no change). Scene 1 = Hana asks + Hassan cites MPPHM 40(2).
-# Scene 2 = Hassan continues "pemegang sijil..." + Hana "baru tahu, jom beli keropok ni".
-# "Tiada dialog lain" stops i2v improvising. Citation spelled letter-by-letter so the voice reads it fully.
+# 2 scenes, SAME shop location (no change). Scene 1 = Hana asks about expiry date.
+# Scene 2 = Hassan explains durations (food 2 years, medicine/cosmetic 3 years) + Hana "baru tahu".
+# "Tiada dialog lain" stops i2v improvising. Numbers spelled letter-by-letter so the voice reads them fully.
 SCENES = [
     "Photorealistic video, vertical 9:16 portrait framing. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu dan blaus krim, "
     "memandang bungkusan snek kuning di tangannya dengan wajah hairan. Hassan, lelaki bercermin mata hitam dan baju "
-    "polo biru laut, berdiri di sebelahnya. Hana berkata eh logo halal ni warna hijau, bukan sepatutnya hitam ke, "
-    "jangan-jangan logo palsu. Hassan terus menjawab tak semestinya, warna bukan penentu, ada tertulis dalam M P P H M "
-    "Domestik dua ribu dua puluh, Klausa empat puluh. Tiada dialog lain. Kamera statik.",
+    "polo biru laut, berdiri di sebelahnya. Hana berkata eh logo halal ni ada tarikh luput ke, ingatkan kekal je. "
+    "Tiada dialog lain. Kamera statik.",
     "Photorealistic video, vertical 9:16 portrait framing. Di kedai runcit di Malaysia, rak makanan snek yang sama, latar yang sama persis seperti "
     "video sebelum ini, Hassan, lelaki bercermin mata hitam dan baju polo biru laut, terus bercakap sambil memberi "
     "isyarat tangan. Hana, wanita muda bertudung merah jambu, berdiri di tempat yang sama mendengar sambil membelek "
-    "bungkusan snek kuning. Hassan berkata klausa empat puluh ayat dua itu bermaksud pemegang sijil boleh cetak logo "
-    "ikut warna bungkusan. Hana tersenyum lega dan berkata ooo baru tahu, kalau macam tu jom beli keropok ni. Tiada dialog lain. Kamera statik.",
+    "bungkusan snek kuning. Hassan berkata sijil halal ni ada tempoh, makanan macam ni biasanya dua tahun, ubat dengan "
+    "kosmetik pulak sampai tiga tahun. Hana tersenyum lega dan berkata baru tahu sekarang, dulu tak tahu ada tarikh luput halal ni. Tiada dialog lain. Kamera statik.",
 ]
 
 

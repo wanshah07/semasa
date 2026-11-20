@@ -193,5 +193,15 @@ export function flips(prevRows, nextRows) {
     .map((r) => ({ slug: r.slug, name: r.name, error: clip(r.error, 160) }));
 }
 
+export const QUIET_MS = 3 * 3600_000;   // a robot already logged as down is not logged again for this long
+
+/** Drop the robots whose "down" line is already in the log from the last QUIET_MS: a key on a per-minute quota answers one pulse
+    and refuses the next, and each flip used to write a new line (95 identical lines in 36 hours, 20 Nov 2026, and the same ones in the
+    health e-mail). `recent` is the titles of the api_pulse.down lines since then. */
+export function newlyDown(broke, recent) {
+  const said = (recent || []).map((t) => String(t || ""));
+  return (broke || []).filter((b) => !said.some((t) => t.includes(String(b.name))));
+}
+
 /** The page's reading of a robot's state after a pulse, the same rule the chat uses (probeState), for the test. */
 export const stateAfter = (row, now = Date.now()) => probeState(row, now).state;

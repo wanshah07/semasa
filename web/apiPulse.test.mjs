@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  CADENCE_MIN, GEMINI_CHEAP, HEADER, NAMES, chatBody, chatgptRow, flips, geminiModel, modelIds, pulsePlan, pulseRows, sameSecret, stateAfter, statusRow, usageOf,
+  CADENCE_MIN, GEMINI_CHEAP, HEADER, NAMES, QUIET_MS, chatBody, chatgptRow, flips, geminiModel, modelIds, newlyDown, pulsePlan, pulseRows, sameSecret, stateAfter, statusRow, usageOf,
 } from "../supabase/functions/semasa-pulse/logic.js";
 import { EVERY_MIN, LATE_MS, PULSE_KEY, freshness, pulseOf, pulseRequest, pulseUrl, readAnswer, runPulse, tally } from "./src/lib/apiPulse.js";
 
@@ -177,6 +177,15 @@ t("pulseRows: status upserts, one zero-token usage row per answered chat (area p
   assert.deepEqual(out.settings.results.chatgpt, { ok: true, ms: null, error: "", skipped: "no chat sent" });
   assert.ok(!JSON.stringify(out.settings).includes("1234"), "the settings row carries no key fragment");
 });
+t("a robot already logged as down in the last hours is not logged again (a flapping quota wrote 95 lines in 36 hours)", () => {
+  const broke = [{ slug: "gemini", name: "Gemini (Wanshah 4)", error: "429" }, { slug: "rootsys", name: "rootsys (Afiq)", error: "timed out" }];
+  assert.deepEqual(newlyDown(broke, ["Denyut API: Gemini (Wanshah 4) gagal"]).map((b) => b.slug), ["rootsys"]);
+  assert.deepEqual(newlyDown(broke, []).map((b) => b.slug), ["gemini", "rootsys"], "nothing logged lately: both are new");
+  assert.deepEqual(newlyDown(broke, ["Denyut API: Gemini (Wanshah 4) gagal, rootsys (Afiq) gagal"]), []);
+  assert.deepEqual(newlyDown(null, null), []);
+  assert.equal(QUIET_MS, 3 * 3600_000);
+});
+
 t("flips: only a robot that answered before and fails now earns a log line", () => {
   const before = [{ slug: "rootsys", chat_ok: true }, { slug: "kiosapi", chat_ok: false }, { slug: "chatgpt", chat_ok: true }];
   const after = [{ slug: "rootsys", name: "rootsys (Afiq)", chat_ok: false, error: "timed out" }, { slug: "kiosapi", name: "KiosAPI", chat_ok: false, error: "x" }, { slug: "chatgpt", chat_ok: false }];

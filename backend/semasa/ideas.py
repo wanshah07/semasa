@@ -445,6 +445,39 @@ def writer_block(writer: dict[str, Any] | None, stream: str) -> str:
     return "\n\nHOUSE STYLE (from Settings). It adds to the rules above and never lifts one:\n- " + "\n- ".join(lines)
 
 
+# LinkedIn takes a news story only when it is about an authority's act (Wan, 20 Nov 2026: "for linkedn, no need include idea from
+# recent issue unless berkaitan regulatory, circular from authority etc"): a circular, a guideline, a law or its amendment, a
+# recall, a ban, a seizure, a licence or registration, an approval, an enforcement notice, a standard, a fatwa, a named regulator.
+AUTHORITY = re.compile(
+    r"\b(?:pekeliling|circular|garis\s+panduan|guideline|guidelines|guidance|peraturan|regulations?|regulatory|regulator|akta|"
+    r"act\s+\d|pindaan|amendments?|enactment|gazette|warta|direktif|directive|notis|notice|"
+    r"laws?|undang-undang|legislation|npra|bkkm|fsqd|jakim|sirim|"
+    r"fda|efsa|sccs|echa|opss|hsa|tga|nmpa|mfds|"
+    r"ditarik\s+balik|tarik\s+balik|recall(?:s|ed)?|larangan|dilarang|ban(?:s|ned)?|rampas|dirampas|seiz(?:e|es|ed|ure|ures)|"
+    r"lesen|licen[cs]e[sd]?|pendaftaran|registration|notifikasi|notification|kelulusan|approv(?:al|ed)|diluluskan|"
+    r"penguatkuasaan|enforcement|saman|compound|piawaian|standards?|iso\s*\d|fatwa|pensijilan|certification|sijil\s+halal)\b",
+    re.I)
+
+
+def linkedin_news_gate(idea: dict[str, Any], source: dict[str, Any]) -> str:
+    """"" when the idea may be written for LinkedIn; else the reason it may not. Only a NEWS story (a headline from the issue
+    feed, `trend_id`) is judged: a regulator's notice, a paper, a website or a folder row, and anything Wan wrote a note on
+    (his own words are his decision), pass. A headline with no authority in it is not written, and no writer is paid for it."""
+    if (idea.get("stream") or "regulab") != "linkedin" or not idea.get("trend_id"):
+        return ""
+    if str(idea.get("note") or "").strip():
+        return ""
+    brief = idea.get("brief") if isinstance(idea.get("brief"), dict) else {}
+    if brief.get("source_kind") == "regulator":
+        return ""
+    hay = " ".join(str(x or "") for x in (idea.get("source_title"), idea.get("source_summary"), source.get("title"),
+                                           str(source.get("description") or "")[:600]))
+    if AUTHORITY.search(hay):
+        return ""
+    return ("LinkedIn takes a news story only when it is about a regulation, a circular or another act of an authority, and this "
+            "headline is not (Wan, 20 Nov 2026). Add a note saying what you want from it to write it anyway.")
+
+
 def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str, Any],
                   avoid: str = "", writer: dict[str, Any] | None = None,
                   bank: hook_bank.Bank | None = None, hint: str = "", style_block: str = "") -> tuple[str, str]:
@@ -477,6 +510,12 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
                      "voice above, with the fact inside it. The fact is never dropped for the story.")
     if flags.get("hook_required"):
         lines.append("HOOK REQUIRED: the first line must be the hook; a caption that opens flat is not acceptable.")
+    if stream == "linkedin" and idea.get("trend_id"):
+        lines.append("NEWSPAPER STORY ON LINKEDIN (Wan, 20 Nov 2026). This stream takes a news story only when it is about an "
+                     "act of an authority: a circular, a guideline, a regulation or its amendment, a recall, a ban, a seizure, "
+                     "a licence, an approval, an enforcement notice or a standard. If the story is about a person, an accident, "
+                     "an award, a business or an event with no authority's instrument in it, answer "
+                     "{\"fit\": false, \"why_not\": \"what is missing\"} and write nothing.")
     if flags.get("relate_regulatory"):
         lines.append("NEWSPAPER STORY, not a regulator's notice. A rule is NOT required (Wan, 9 Nov 2026): read the story in the "
                      "context of this stream's audience and decide what is useful to them. Where a Malaysian or ASEAN rule "
@@ -734,6 +773,9 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     stream = idea.get("stream") or "regulab"
     lang = "en" if stream == "linkedin" else "bm"
     source = faq_source(idea) or stored_source(idea) or read_source(idea.get("source_url"))
+    shut = linkedin_news_gate(idea, source)
+    if shut:
+        raise IdeaError(shut)
     bank = hook_bank.pick(store, idea, settings)        # a hook style made from screenshots, or None: the built-in 25
     hint = hook_learning.hint(store, bank)              # what has earned views and interaction so far (a hint, never a rule)
     family = str(idea.get("hook_family") or "").strip().lower() or None

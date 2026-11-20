@@ -31,3 +31,16 @@ author, no reader addressed by job title.
 **Blocker removed.** `orang dalam` is no longer a blocking phrase (`rules/compliance.json`).
 
 Posts already written are not changed: their hooks and looks stay as they are.
+
+## LinkedIn and the news (Wan, 20 Nov 2026)
+
+> "for linkedn, no need include idea from recent issue unless berkaitan regulatory, circular from authority etc"
+
+Auto-fill already never takes a newspaper story for a LinkedIn slot. The ideas that still reached LinkedIn on 19 and 20 Nov (an organ
+donor, a wasp-sting rescue, a wrongly removed ovary, an awards list) came from a headline turned into an idea by hand, usually for
+both streams at once. The worker now judges them (`ideas.linkedin_news_gate`): an idea whose source is a headline from the issue
+feed (`trend_id`) is written for LinkedIn only when it names an act of an authority (a circular, guideline, regulation or law,
+recall, ban, seizure, licence, registration, approval, enforcement, standard, fatwa, or a named product regulator). Otherwise it
+stops with a plain sentence, before any writer is paid, and the writer is also told to decline such a story. A note Wan writes on the
+idea overrides the gate (his own words are his decision). Regulator rows, papers, the websites he lists and the folder bank are
+never judged.

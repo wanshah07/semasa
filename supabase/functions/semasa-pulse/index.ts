@@ -25,7 +25,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { allow, assembleTeam, cors, geminiKeyPatch, netError, whoIs } from "../semasa-chat/logic.js";
 import {
-  CADENCE_MIN, HEADER, PULSE_TIMEOUT_MS, SETTINGS_KEY, chatBody, chatgptRow, flips, modelIds, pulsePlan, pulseRows, sameSecret, statusRow, usageOf,
+  CADENCE_MIN, HEADER, PULSE_TIMEOUT_MS, QUIET_MS, SETTINGS_KEY, chatBody, chatgptRow, flips, modelIds, newlyDown, pulsePlan, pulseRows, sameSecret,
+  statusRow, usageOf,
 } from "./logic.js";
 
 const json = (body: unknown, status = 200) =>
@@ -114,7 +115,13 @@ async function pulse(admin: any) {
   if (out.status.length) writes.push(admin.from("semasa_api_status").upsert(out.status, { onConflict: "slug" }));
   if (out.usage.length) writes.push(admin.from("semasa_api_usage").insert(out.usage));
   writes.push(admin.from("semasa_settings").upsert({ key: SETTINGS_KEY, value: out.settings }, { onConflict: "key" }));
-  const broke = flips(prevRows, out.status);
+  let broke = flips(prevRows, out.status);
+  if (broke.length) {
+    // a robot already logged as down in the last few hours is not logged again (a quota that flaps flipped every few minutes)
+    const since = new Date(now.getTime() - QUIET_MS).toISOString();
+    const said = await admin.from("semasa_log").select("title").eq("event", "api_pulse.down").gte("at", since).limit(50);
+    broke = newlyDown(broke, (said.data || []).map((r: any) => r.title));
+  }
   if (broke.length) {
     writes.push(admin.from("semasa_log").insert({ level: "warn", area: "api", event: "api_pulse.down",
       title: "Denyut API: " + broke.map((b) => `${b.name} gagal`).join(", "),

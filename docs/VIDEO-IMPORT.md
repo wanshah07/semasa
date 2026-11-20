@@ -154,3 +154,17 @@ does the same by hand; a `--captions-json` that is not a JSON object of channel 
 
 Code: `supabase/functions/semasa-import-video/` (the intake), `supabase/087_video_import.sql` (tables, keys), `backend/semasa/video_import.py`
 (the worker, called from `motion.run`), `web/src/components/VideoImportCard.jsx` (the card).
+
+## TikTok (Wan, 20 Nov 2026)
+
+- **TikTok takes upright 9:16.** A film from Hermes / Nous is usually 16:9 (Nexabot's web route makes 1280x720). For TikTok only,
+  Semasa sends an upright 1080x1920 copy: the whole picture across the width over a blurred, darkened copy of itself
+  (`backend/semasa/tiktok_ratio.py`). Both routes use it: the publisher (an imported or Motion film that goes to TikTok) and
+  `semasa.zernio_publish` (Hermes handing a finished film to Zernio). The copy is kept in the public bucket under `tiktok/<hash>.mp4`
+  and reused on a re-send; a film already 9:16 is left alone; when the copy cannot be made TikTok gets nothing (the other platforms
+  still go) and the publisher tries again next run. Facebook, Instagram and Threads get the film as it came.
+- **TikTok is on request, not automatic.** An approved film no longer goes to TikTok by itself (it used to ride with every ws.regulab
+  film that went to Instagram). It goes when Wan asks: Hermes names `tiktok` in `zernio_publish --channels ...`, which sends the
+  upright copy. A post that already holds a TikTok record keeps it (a failed hand-over is retried; a sent one stays counted).
+  `settings.channels.zernio.tiktok_with_film = true` brings the old ride-along back.
+

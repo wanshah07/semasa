@@ -21,11 +21,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from typing import Any
 
-from . import db
+from . import db, tiktok_ratio
 from .config import SupabaseSettings
 from .log import get_logger
 from .publisher import ZERNIO_FORMATS, load_settings, zernio_accounts, zernio_hub
@@ -82,6 +81,13 @@ def run(
             continue
         caption = captions.get(channel) or ""
         video = {"url": video_url, "vertical": True}
+        if channel == "tiktok":
+            # TikTok takes upright 9:16 only: a landscape film from Hermes gets an upright copy first (tiktok_ratio)
+            try:
+                video = tiktok_ratio.for_tiktok(store, video)
+            except Exception as exc:  # noqa: BLE001 - this channel fails; the others still go
+                out[channel] = {"error": getattr(exc, "message", str(exc))}
+                continue
         rec = hub.create_video(acc["id"], channel, caption, video, due_at)
         out[channel] = {"id": rec.get("id"), "status": rec.get("status"), "due_at": rec.get("dueAt") or "now"}
         log.info("zernio publish %s: %s", channel, out[channel])

@@ -153,8 +153,39 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_frame=N
         except Exception:  # noqa: BLE001
             pass
         time.sleep(2)
+
+    # capture the Generate POST answer to learn OUR job id directly (scope=recent list can be empty while jobs queue)
+    captured = {}
+    def _on_resp(resp):
+        try:
+            u = resp.url
+            if "/api/v1/generate" in u or u.rstrip("/").endswith("/generate"):
+                try:
+                    body = resp.json()
+                except Exception:  # noqa: BLE001
+                    body = {}
+                if isinstance(body, dict):
+                    jid = body.get("job_id") or body.get("id")
+                    if not jid and isinstance(body.get("job"), dict):
+                        jid = body["job"].get("id")
+                    if jid:
+                        captured["job_id"] = str(jid)
+                        captured["body_keys"] = sorted(body.keys())
+        except Exception:  # noqa: BLE001
+            pass
+    page.on("response", _on_resp)
+
     gen_btn.click()
     report[f"scene{idx+1}_clicked_at"] = datetime.now(UTC).isoformat()
+    # give the POST a moment to answer
+    for _ in range(15):
+        if captured.get("job_id"):
+            break
+        time.sleep(1)
+    if captured.get("job_id"):
+        report[f"scene{idx+1}_job_id_captured"] = captured["job_id"]
+    else:
+        report[f"scene{idx+1}_job_id_captured"] = None
 
     def fetch_jobs():
         return page.evaluate("""async () => {
@@ -162,6 +193,15 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_frame=N
             const j = await r.json();
             return Array.isArray(j) ? j : (j.jobs || j.data || []);
         }""")
+
+    def fetch_job_by_id(jid):
+        return page.evaluate("""async (id) => {
+            const r = await fetch('/api/v1/jobs/' + encodeURIComponent(id));
+            if (!r.ok) return null;
+            const j = await r.json();
+            if (j && j.job && typeof j.job === 'object') return j.job;
+            return j;
+        }""", jid)
 
     def is_video_job(meta):
         # reject voice/audio/TTS jobs that the voice run may have created concurrently
@@ -202,44 +242,91 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_frame=N
                 report[f"scene{idx+1}_dl_try"] = f"{u[:60]} -> {str(exc)[:80]}"
         return None, None
 
+    DONE = ("done", "complete", "completed", "ready", "success")
+    FAILED = ("failed", "error", "cancelled", "canceled")
+    ACTIVE = ("queued", "queue", "processing", "pending", "running", "in_progress", "in-progress", "waiting")
+
     deadline = time.time() + MAX_WAIT_S
     while time.time() < deadline:
-        try:
-            jobs = fetch_jobs()
-        except Exception:  # noqa: BLE001
-            jobs = []
-        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed and is_video_job(j)]
-        if ours:
-            report[f"scene{idx+1}_first_seen"] = {k: ours[0].get(k) for k in ("id", "status", "mode", "progress") if ours[0].get(k) is not None}
-        done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
-        failed = [j for j in ours if str(j.get("status") or "").lower() in ("failed", "error", "cancelled", "canceled")]
-        if done:
-            saved, jid = download(done[0])
-            if saved:
-                return saved, jid
-        if failed:
-            report[f"scene{idx+1}_job_failed"] = {k: failed[0].get(k) for k in ("id", "status", "error", "message") if failed[0].get(k) is not None}
-            return None, None
+        meta = None
+        jid = captured.get("job_id")
+        if jid:
+            try:
+                meta = fetch_job_by_id(jid)
+            except Exception:  # noqa: BLE001
+                meta = None
+            if meta:
+                status = str(meta.get("status") or "").lower()
+                report[f"scene{idx+1}_status"] = status
+                if status in DONE:
+                    saved, _jid = download(meta)
+                    if saved:
+                        return saved, _jid
+                elif status in FAILED:
+                    report[f"scene{idx+1}_job_failed"] = {k: meta.get(k) for k in ("id", "status", "error", "message") if meta.get(k) is not None}
+                    return None, None
+                # else active/unknown: keep polling by id
+        else:
+            try:
+                jobs = fetch_jobs()
+            except Exception:  # noqa: BLE001
+                jobs = []
+            ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed and is_video_job(j)]
+            if ours:
+                report[f"scene{idx+1}_first_seen"] = {k: ours[0].get(k) for k in ("id", "status", "mode", "progress") if ours[0].get(k) is not None}
+                # adopt the first new job id even if still queued/processing
+                captured["job_id"] = str(ours[0].get("id"))
+                report[f"scene{idx+1}_job_id_adopted"] = captured["job_id"]
+            done = [j for j in ours if str(j.get("status") or "").lower() in DONE]
+            failed = [j for j in ours if str(j.get("status") or "").lower() in FAILED]
+            if done:
+                saved, _jid = download(done[0])
+                if saved:
+                    return saved, _jid
+            if failed:
+                report[f"scene{idx+1}_job_failed"] = {k: failed[0].get(k) for k in ("id", "status", "error", "message") if failed[0].get(k) is not None}
+                return None, None
         time.sleep(4)
 
     # server can be slow; give it a late-wait window before giving up
     report[f"scene{idx+1}_late_wait"] = True
     late = time.time() + 10 * 60
     while time.time() < late:
-        try:
-            jobs = fetch_jobs()
-        except Exception:  # noqa: BLE001
-            jobs = []
-        ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed and is_video_job(j)]
-        done = [j for j in ours if str(j.get("status") or "").lower() in ("done", "complete", "ready", "success")]
-        failed = [j for j in ours if str(j.get("status") or "").lower() in ("failed", "error", "cancelled", "canceled")]
-        if done:
-            saved, jid = download(done[0])
-            if saved:
-                return saved, jid
-        if failed:
-            report[f"scene{idx+1}_job_failed"] = {k: failed[0].get(k) for k in ("id", "status", "error", "message") if failed[0].get(k) is not None}
-            return None, None
+        meta = None
+        jid = captured.get("job_id")
+        if jid:
+            try:
+                meta = fetch_job_by_id(jid)
+            except Exception:  # noqa: BLE001
+                meta = None
+            if meta:
+                status = str(meta.get("status") or "").lower()
+                report[f"scene{idx+1}_status"] = status
+                if status in DONE:
+                    saved, _jid = download(meta)
+                    if saved:
+                        return saved, _jid
+                elif status in FAILED:
+                    report[f"scene{idx+1}_job_failed"] = {k: meta.get(k) for k in ("id", "status", "error", "message") if meta.get(k) is not None}
+                    return None, None
+        else:
+            try:
+                jobs = fetch_jobs()
+            except Exception:  # noqa: BLE001
+                jobs = []
+            ours = [j for j in jobs if str(j.get("id")) not in pre_jobs and str(j.get("id")) not in consumed and is_video_job(j)]
+            if ours:
+                captured["job_id"] = str(ours[0].get("id"))
+                report[f"scene{idx+1}_job_id_adopted"] = captured["job_id"]
+            done = [j for j in ours if str(j.get("status") or "").lower() in DONE]
+            failed = [j for j in ours if str(j.get("status") or "").lower() in FAILED]
+            if done:
+                saved, _jid = download(done[0])
+                if saved:
+                    return saved, _jid
+            if failed:
+                report[f"scene{idx+1}_job_failed"] = {k: failed[0].get(k) for k in ("id", "status", "error", "message") if failed[0].get(k) is not None}
+                return None, None
         time.sleep(4)
     report[f"scene{idx+1}_timed_out"] = True
     return None, None

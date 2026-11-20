@@ -1,0 +1,69 @@
+name: Zernio publish
+
+# Hermes triggers this to hand a finished film + captions to Zernio's queue for the
+# ws.regulab social accounts. It renders nothing, imports nothing and approves nothing:
+# it only publishes through Zernio using the account ids already in
+# semasa_settings.channels.zernio and the repo's ZERNIO_API_KEY_* secrets. Wan's go-ahead
+# is the trigger. Run by hand, or from Hermes with:
+#   gh workflow run zernio-publish.yml -f video_url=... -f channels=... -f captions_json='...' -f scheduled_for=...
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "Public https URL of the finished MP4"
+        required: true
+        type: string
+      channels:
+        description: "Comma list: facebook,instagram,threads,tiktok"
+        required: true
+        default: "facebook,instagram,threads,tiktok"
+        type: string
+      captions_json:
+        description: 'JSON object {"facebook":"...","instagram":"...","threads":"...","tiktok":"..."}'
+        required: false
+        default: "{}"
+        type: string
+      scheduled_for:
+        description: "ISO moment to publish at (Asia/Kuala_Lumpur offset), empty = publish now"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Publish to Zernio
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ZERNIO_API_KEY_1: ${{ secrets.ZERNIO_API_KEY_1 }}
+          ZERNIO_API_KEY_2: ${{ secrets.ZERNIO_API_KEY_2 }}
+          ZERNIO_API_KEY_3: ${{ secrets.ZERNIO_API_KEY_3 }}
+          # inputs arrive as environment variables; a caption with quotes/`$` is safe here
+          ZP_VIDEO_URL: ${{ inputs.video_url }}
+          ZP_CHANNELS: ${{ inputs.channels }}
+          ZP_CAPTIONS_JSON: ${{ inputs.captions_json }}
+          ZP_SCHEDULED_FOR: ${{ inputs.scheduled_for }}
+        run: |
+          python -m semasa.zernio_publish \
+            --video-url "$ZP_VIDEO_URL" \
+            --channels "$ZP_CHANNELS" \
+            --captions-json "$ZP_CAPTIONS_JSON" \
+            --scheduled-for "$ZP_SCHEDULED_FOR"

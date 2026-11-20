@@ -70,13 +70,18 @@ def test_one_platform_can_move_alone_and_a_channel_buffer_already_holds_is_not_s
     assert [x["service"] for x in z.created] == ["threads"] and [x["service"] for x in buf.created] == ["facebook"]
 
 
-def test_a_film_also_goes_to_tiktok_and_a_carousel_never_does():
+def test_a_film_goes_to_tiktok_only_when_the_setting_brings_the_ride_along_back_and_a_carousel_never_does():
+    # TikTok is on request since 20 Nov 2026 (Wan): an approved film does not go there by itself
     store, z = _store(_post(), media=FILM), FakeZernio()
+    publisher.run(store, NOW, clients={"zernio": z})
+    assert sorted(x["service"] for x in z.created) == ["facebook", "instagram", "threads"]
+    # `tiktok_with_film` brings the old ride-along back
+    store, z = _store(_post(), zcfg={**ZCFG, "tiktok_with_film": True}, media=FILM), FakeZernio()
     publisher.run(store, NOW, clients={"zernio": z})
     assert sorted(x["service"] for x in z.created) == ["facebook", "instagram", "threads", "tiktok"]
     assert all(x.get("video") == "https://cdn/f.mp4" for x in z.created)
     assert next(x for x in z.created if x["service"] == "tiktok")["text"] == CAP        # Instagram's caption
-    store, z = _store(_post(slides=[])), FakeZernio()
+    store, z = _store(_post(slides=[]), zcfg={**ZCFG, "tiktok_with_film": True}), FakeZernio()
     publisher.run(store, NOW, clients={"zernio": z})
     assert "tiktok" not in {x["service"] for x in z.created}
 

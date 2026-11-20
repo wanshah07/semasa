@@ -139,3 +139,12 @@ def no_live_threads_browser(monkeypatch):
 
     monkeypatch.setattr(threads_web, "fetch", lambda cfg, now=None: ([], ""))
     monkeypatch.setattr(social_web, "fetch", lambda platform, cfg, now=None: ([], ""))
+
+
+@pytest.fixture(autouse=True)
+def tiktok_film_as_is(monkeypatch):
+    """The upright copy for TikTok (tiktok_ratio) downloads the film and runs ffmpeg: a publisher test sends a film address that
+    is not a real file, so it takes the film as it is. test_tiktok_ratio.py exercises the real function."""
+    from semasa import tiktok_ratio
+
+    monkeypatch.setattr(tiktok_ratio, "for_tiktok", lambda store, film: film)

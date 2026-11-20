@@ -285,6 +285,11 @@ ENGLISH ONLY (Wan, 9 Nov 2026): the hook, the caption and every word on every sl
 are English. The hook shapes below are written in casual Malay: translate the shape into natural English and never print the
 Malay words (no "kau", "aku", "benda pasal", "takde sapa", "yg", "Tahukah anda", no "1 Hari 1 Ilmu").
 
+DIRECTION (Wan, 20 Nov 2026): the post states a FACT taken from a guideline, a regulation or an official website, and says
+exactly where in it (the instrument, the clause or entry, the date). It is not a reaction to something that went viral: no
+"everyone is talking about", no news-cycle hook. If the SOURCE is a newspaper story, write only the rule behind it, from the
+instrument.
+
 Angles: %s
 
 Answer with ONE JSON object:
@@ -558,8 +563,10 @@ def load_settings(store: Any) -> dict[str, Any]:
         return {}
 
 
-def taken_positions(store: Any, stream: str) -> set[tuple[str, str]]:
-    today = (datetime.now(UTC) + MYT).date().isoformat()
+def taken_positions(store: Any, stream: str, now: datetime | None = None) -> set[tuple[str, str]]:
+    """Slots a post of this stream holds from today (Malaysia time) on. `now` defaults to the real clock; a caller that was
+    given a moment (video_import.slot_for) passes it, so what is "ahead" and what is "held" are judged at the same time."""
+    today = ((now or datetime.now(UTC)) + MYT).date().isoformat()
     rows = (store.table(db.POSTS).select("date,slot,status").eq("stream", stream).gte("date", today)
             .neq("status", "rejected").execute().data or [])
     return {(str(r["date"]), r["slot"]) for r in rows if r.get("date") and r.get("slot")}

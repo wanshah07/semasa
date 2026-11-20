@@ -24,7 +24,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import compliance, db, guard, senders
+from . import compliance, db, guard, senders, tiktok_ratio
 from .config import SupabaseSettings
 from .log import get_logger
 from .studio_link import when_utc
@@ -254,12 +254,19 @@ def buffer_channels(settings: dict[str, Any], stream: str) -> list[str]:
 def post_channels(settings: dict[str, Any], post: dict[str, Any], has_video: bool | None = None) -> list[str]:
     """The platforms this post goes to: its stream's switched-on channels, narrowed to the ones Wan chose for it when it
     was queued to some of them (a Motion film), never widened. TikTok (Zernio only, Wan 10 Nov 2026: "tiktok - motion")
-    rides with a ws.regulab film that goes to Instagram: it is not a platform of the page yet, so it cannot be chosen
-    there. `has_video` None means "whatever it already recorded" (the tally)."""
+    rode with a ws.regulab film that goes to Instagram; since 20 Nov 2026 it goes only on request (see below).
+    `has_video` None means "whatever it already recorded" (the tally)."""
     out = [p for p in buffer_channels(settings, post.get("stream") or "regulab") if p in compliance.platforms_of(post)]
-    zacc = zernio_accounts((settings.get("channels") or {}).get("zernio") or {})
+    zcfg = (settings.get("channels") or {}).get("zernio") or {}
+    zacc = zernio_accounts(zcfg)
     if "tiktok" in zacc and (post.get("stream") or "regulab") == "regulab" and "instagram" in out:
-        if has_video or (has_video is None and (post.get("published") or {}).get("tiktok")):
+        # TikTok is ON REQUEST since 20 Nov 2026 (Wan: "no motion from approved post for tiktok unless I request for it"): an
+        # approved film no longer goes there by itself. It still goes when the post already holds a TikTok record (a failed
+        # hand-over is retried, a sent one is counted), and `settings.channels.zernio.tiktok_with_film = true` brings the old
+        # ride-along back. A film Wan asks to be sent to TikTok goes through zernio_publish (Hermes), which names the channel.
+        already = bool((post.get("published") or {}).get("tiktok"))
+        ride = zcfg.get("tiktok_with_film") is True
+        if (has_video is None and already) or (has_video and (ride or already)):
             out.append("tiktok")
     return out
 
@@ -745,7 +752,9 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
                 pin.save_published(published)
                 write_log(store, post["id"], channel, "adopted", {"fingerprint": fp, "buffer_id": found.get("id"), **was})
             else:
-                rec = _send_buffer(client, view, channel_id, channel, text, pictures, alt, due, now, video, post["id"],
+                # TikTok takes upright 9:16 only: a film of another shape (Hermes, 16:9) is sent as an upright copy
+                send_video = tiktok_ratio.for_tiktok(store, video) if (video and channel == "tiktok") else video
+                rec = _send_buffer(client, view, channel_id, channel, text, pictures, alt, due, now, send_video, post["id"],
                                    route=route)
                 published[channel] = {**rec, **was}
                 dead.discard(channel)

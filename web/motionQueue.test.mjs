@@ -14,7 +14,7 @@ writeFileSync(join(dir, "compliance.js"), readFileSync(new URL("src/lib/complian
 copyFileSync(new URL("src/lib/slots.js", here), join(dir, "slots.js"));
 copyFileSync(new URL("src/lib/platformFormat.js", here), join(dir, "platformFormat.js"));
 copyFileSync(new URL("src/lib/motionQueue.js", here), join(dir, "motionQueue.js"));
-const { CHANNEL_LABEL, canQueue, channelsFor, filmFormat, fitCaption, inMotionList, pickPosition, postLang, queueArgs, startingCaptions } =
+const { CHANNEL_LABEL, canQueue, channelsFor, filmFormat, fitCaption, inMotionList, pickPosition, postLang, queueArgs, startingCaptions, tiktokOffered } =
   await import(pathToFileURL(join(dir, "motionQueue.js")).href);
 
 const BRAND = { regulab: { slots: ["08:00", "13:00", "21:00"], schedule: {} }, linkedin: { slots: ["06:00"] } };
@@ -27,7 +27,7 @@ const t = (name, fn) => { fn(); n++; };
 t("a film is offered only the platforms of its own stream", () => {
   assert.deepEqual(channelsFor(film), ["instagram", "facebook", "threads"]);
   assert.deepEqual(channelsFor({ stream: "linkedin" }), ["linkedin"]);
-  assert.deepEqual(Object.keys(CHANNEL_LABEL), ["facebook", "instagram", "threads", "linkedin"]);
+  assert.deepEqual(Object.keys(CHANNEL_LABEL), ["facebook", "instagram", "threads", "linkedin", "tiktok"]);   // TikTok is a label only: no chip, no caption
 });
 
 t("the post's language follows the film, and a bilingual film the stream", () => {
@@ -94,6 +94,22 @@ t("an empty caption or one over a platform's limit blocks approval, and only on 
   assert.equal(empty.p_hard, 1, "threads is empty, facebook is not on this post and is not asked for");
   const ig = queueArgs({ film, channels: ["instagram"], captions: { instagram: CAP }, date: "2026-10-27", slot: "13:00", brand: BRAND });
   assert.equal(ig.p_hard, 0);
+});
+
+t("TikTok is a per-post tick: off unless ticked, only beside Instagram on ws.regulab, and it never gets a caption of its own", () => {
+  const base = { film, channels: ["instagram", "threads"], captions: { instagram: CAP, threads: CAP }, date: "2026-10-27", slot: "13:00", brand: BRAND };
+  assert.deepEqual(queueArgs(base).p_channels, ["instagram", "threads"], "not ticked: not asked for");
+  const on = queueArgs({ ...base, tiktok: true });
+  assert.deepEqual(on.p_channels, ["instagram", "threads", "tiktok"]);
+  assert.deepEqual(on.p_text, { bm: { instagram: CAP, threads: CAP } }, "TikTok carries Instagram's caption, so no text of its own");
+  assert.equal(on.p_hard, 0);
+  assert.equal(CHANNEL_LABEL.tiktok, "TikTok");
+  const noIg = queueArgs({ ...base, channels: ["threads"], captions: { threads: CAP }, tiktok: true });
+  assert.deepEqual(noIg.p_channels, ["threads"], "without Instagram the tick is ignored");
+  assert.equal(tiktokOffered(film, ["instagram"]), true);
+  assert.equal(tiktokOffered(film, ["threads"]), false);
+  assert.equal(tiktokOffered({ ...film, stream: "linkedin" }, ["instagram"]), false);
+  assert.deepEqual(queueArgs({ ...base, film: { ...film, stream: "linkedin" }, tiktok: true }).p_channels, ["instagram", "threads"]);
 });
 
 t("approve is Wan's own click and is taken only when nothing blocks", () => {

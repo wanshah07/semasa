@@ -913,9 +913,10 @@ def tally(store: Any, client: Any, now: datetime, counts: dict[str, int], settin
                 continue
             due = _parse(rec.get("dueAt"))
             via_zernio = str(rec.get("route") or "").startswith("zernio")
-            early = bool(due and due > now - timedelta(minutes=5))
-            if early and not (via_zernio and ch in LEAD_CHANNELS):
-                continue                                       # not due yet: only a LinkedIn record on Zernio is looked at now
+            future = bool(due and due > now)
+            if due and due > now - timedelta(minutes=5) and not (future and via_zernio and ch in LEAD_CHANNELS):
+                continue        # not due yet (only LinkedIn on Zernio is looked at now), or just due: the next runs judge it
+            early = future      # a record AT or just after its slot keeps the normal grace (LOST_AFTER), never the early rule
             reader = zernio if via_zernio else client          # each record is read back from the service that holds it
             if reader is None:
                 continue

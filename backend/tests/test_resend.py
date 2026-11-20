@@ -14,7 +14,7 @@ with any record, blocked a moved post whole, and never looked at a `scheduled` p
   7. (18 Nov 2026) a LinkedIn post is handed to Zernio at most 30 hours before its slot, not days ahead.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fakestore import FakeStore
@@ -421,6 +421,23 @@ def test_a_hand_over_is_not_called_lost_early_without_proof(why, post, logins):
     c = tally(store, hub(*logins))
     p = post_of(store, "li")
     assert c["confirmed"] == 0 and p["published"]["linkedin"]["status"] == "scheduled" and p["errors"] == {}, why
+
+
+def test_a_record_at_or_just_after_its_slot_keeps_the_normal_grace_not_the_early_rule():
+    """Codex review of #292: the early rule (an hour old, no 20 minutes of grace) must only judge a slot still ahead."""
+    due = datetime(2026, 9, 24, 22, 0, tzinfo=UTC)                                  # EARLY_DUE
+    for minutes, settled in ((-30, True), (-1, True), (2, False), (10, False), (21, True)):   # minutes from the slot
+        store = store_of(early_post(), media=CARD)
+        z = Login()
+        c = tally(store, hub(z, Login()), due + timedelta(minutes=minutes))
+        p = post_of(store, "li")
+        assert (c["confirmed"] == 1) is settled, f"{minutes} min from the slot"
+        if settled and minutes > 0:
+            assert "lost_early" not in p["published"]["linkedin"]                    # judged the normal way, after its grace
+        if minutes == 2:
+            assert z.asked == [], "inside the five-minute read-back window nothing is asked"
+        if not settled:
+            assert p["published"]["linkedin"]["status"] == "scheduled"                # still waiting: the grace holds
 
 
 def test_only_a_linkedin_record_is_looked_at_before_its_moment():

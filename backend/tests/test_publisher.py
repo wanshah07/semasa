@@ -371,11 +371,42 @@ def _film(post):
     return store
 
 
+def test_a_film_of_the_wrong_shape_is_sent_as_the_fitted_copy_to_every_channel_made_once(monkeypatch):
+    # Wan, 20 Nov 2026: before a post, the film follows the platform ratio already set in Semasa (film_ratio)
+    from semasa import film_ratio
+    asked = []
+
+    def fit(store, film, stream):
+        asked.append(stream)
+        return {**film, "url": "https://cdn/ratio/1080x1920/film.mp4", "width": 1080, "height": 1920, "vertical": True}
+    monkeypatch.setattr(film_ratio, "for_stream", fit)
+    store = _film(_post(channels=["instagram", "threads"]))
+    media = store.tables["media_generations"][0]
+    media["meta"] = {**media["meta"], "width": 1280, "height": 720}      # a copy: VIDEO's own meta is shared by every test
+    buf = VideoBuffer()
+    publisher.run(store, NOW, clients={"buffer": buf})
+    assert {x["video"]["url"] for x in buf.created} == {"https://cdn/ratio/1080x1920/film.mp4"}
+    assert asked == ["regulab"], "one copy for all the channels of the post"
+
+
+def test_a_film_that_cannot_be_fitted_is_not_sent_and_is_tried_again(monkeypatch):
+    from semasa import film_ratio
+
+    def refuse(store, film, stream):
+        raise senders.SendError("transient", "the film could not be fitted to 1080x1920 (x)")
+    monkeypatch.setattr(film_ratio, "for_stream", refuse)
+    store, buf = _film(_post(channels=["instagram", "threads"])), VideoBuffer()
+    publisher.run(store, NOW, clients={"buffer": buf})
+    assert buf.created == [], "nothing goes in the wrong shape"
+    assert not store.tables["semasa_posts"][0]["published"]
+
+
 def test_a_film_goes_only_to_the_platforms_it_was_queued_to_as_a_video_never_as_a_picture():
     store, buf = _film(_post(channels=["instagram", "threads"])), VideoBuffer()
     c = publisher.run(store, NOW, clients={"buffer": buf})
     assert c["scheduled"] == 2 and {x["service"] for x in buf.created} == {"instagram", "threads"}
-    assert all(x["video"] == {"url": "https://cdn/film.mp4", "thumbnail": "https://cdn/film.jpg", "vertical": True}
+    assert all(x["video"] == {"url": "https://cdn/film.mp4", "thumbnail": "https://cdn/film.jpg", "width": 1080, "height": 1920,
+                              "vertical": True}
                for x in buf.created)
     p = store.tables["semasa_posts"][0]
     assert set(p["published"]) == {"instagram", "threads"} and p["status"] == "scheduled", "done when the CHOSEN ones are"

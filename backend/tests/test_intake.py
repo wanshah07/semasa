@@ -705,3 +705,31 @@ def test_a_post_older_than_72_hours_is_no_longer_viral_and_is_dropped():
     assert [c["url"].split("/")[-2] for c in got] == ["new"]
     assert community.candidates({"posts": [thread("edge", 73)]}, now, hours=96)             # the window is a setting
     assert intake.KEEP_HOURS["reddit"] == intake.KEEP_HOURS["youtube"] == 72
+
+
+def _retrying_in_the_cell(monkeypatch, answers):
+    """The cell's own `_retrying`, run with a stand-in `call` that answers from `answers`; returns (result, calls made)."""
+    import time
+
+    from semasa import community
+    src = community._CELL
+    helper = src[src.index("def _retrying"):src.index('if P["youtube"]["enabled"]')]
+    calls: list = []
+
+    def call(slug, args):
+        calls.append(slug)
+        return answers[min(len(calls), len(answers)) - 1]
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+    ns = {"call": call, "left": lambda: 100}
+    exec(helper, ns)  # noqa: S102 - the cell text is this repo's own
+    return ns["_retrying"]("YOUTUBE_GET_VIDEO_DETAILS_BATCH", {}), len(calls)
+
+
+def test_a_momentary_google_403_is_asked_again_but_a_quota_answer_is_not(monkeypatch):
+    # 20 Nov 2026: the YouTube light went red on one "403 Forbidden" from the details call; the same call answered a few hours on
+    got, n = _retrying_in_the_cell(monkeypatch, [({}, "HTTP request failed: 403 Client Error: Forbidden"), ({"data": 1}, None)])
+    assert got == ({"data": 1}, None) and n == 2
+    got, n = _retrying_in_the_cell(monkeypatch, [({}, "403 Forbidden")])
+    assert got[1] == "403 Forbidden" and n == 3, "three tries, then the error stands"
+    got, n = _retrying_in_the_cell(monkeypatch, [({}, "403 quotaExceeded")])
+    assert got[1] == "403 quotaExceeded" and n == 1, "a quota answer is not retried"

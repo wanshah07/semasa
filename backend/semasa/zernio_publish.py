@@ -7,7 +7,8 @@ only hands the film + captions to Zernio's queue (or publishes now when no `--sc
 is given). Wan's go-ahead is the trigger; nothing here overrides his approval.
 
 The film must already be at a public https URL. Channels are a subset of the platforms Zernio
-holds (settings.channels.zernio.accounts); TikTok takes a video only, which is what this sends.
+holds (settings.channels.zernio.accounts); TikTok takes a video only, which is what this sends. The film is sent in
+the shape the platforms take (upright 9:16, film_ratio): a 16:9 film from Hermes gets a fitted copy first.
 
 Usage (run by hand, or via .github/workflows/zernio-publish.yml):
   python -m semasa.zernio_publish \
@@ -24,7 +25,7 @@ import json
 import sys
 from typing import Any
 
-from . import db, tiktok_ratio
+from . import db, film_ratio
 from .config import SupabaseSettings
 from .log import get_logger
 from .publisher import ZERNIO_FORMATS, load_settings, zernio_accounts, zernio_hub
@@ -71,6 +72,7 @@ def run(
                **{k: tuple(v) for k, v in (zcfg.get("formats") or {}).items() if isinstance(v, list)}}
     due_at = (scheduled_for or "").strip() or None
     out: dict[str, Any] = {}
+    fitted: list[dict[str, Any]] = []
     for channel in channels:
         acc = accounts.get(channel)
         if acc is None:
@@ -80,14 +82,18 @@ def run(
             out[channel] = {"error": f"{channel} is not configured to take a video (formats: {formats.get(channel)})"}
             continue
         caption = captions.get(channel) or ""
-        video = {"url": video_url, "vertical": True}
-        if channel == "tiktok":
-            # TikTok takes upright 9:16 only: a landscape film from Hermes gets an upright copy first (tiktok_ratio)
+        # Every channel here is a ws.regulab one, which takes the stream's shape (upright 9:16): a film of another shape (Hermes /
+        # Nous, usually 16:9) goes as a fitted copy, made once for all of them (film_ratio). When the copy cannot be made no
+        # channel gets the film in the wrong shape.
+        if not fitted:
             try:
-                video = tiktok_ratio.for_tiktok(store, video)
-            except Exception as exc:  # noqa: BLE001 - this channel fails; the others still go
-                out[channel] = {"error": getattr(exc, "message", str(exc))}
-                continue
+                fitted.append(film_ratio.for_stream(store, {"url": video_url}, "regulab"))
+            except Exception as exc:  # noqa: BLE001 - nothing wrong-shaped goes to a platform
+                fitted.append({"error": getattr(exc, "message", str(exc))})
+        video = fitted[0]
+        if video.get("error"):
+            out[channel] = {"error": video["error"]}
+            continue
         rec = hub.create_video(acc["id"], channel, caption, video, due_at)
         out[channel] = {"id": rec.get("id"), "status": rec.get("status"), "due_at": rec.get("dueAt") or "now"}
         log.info("zernio publish %s: %s", channel, out[channel])

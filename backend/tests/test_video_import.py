@@ -210,18 +210,44 @@ def test_a_file_the_platforms_would_refuse_gets_the_motion_platform_copy(clips):
     assert "platform copy" in row(store, iid)["note"]
 
 
-def test_a_silent_h264_film_needs_no_copy_and_a_wide_one_only_warns(clips):
+def test_a_silent_h264_film_needs_no_copy(clips):
     store, bucket = setup()
     received(store, bucket, clips["silent"])
-    received(store, bucket, clips["wide"])
     step(store, bucket)
-    posts = store.tables["semasa_posts"]
-    assert len(posts) == 2 and all(m["meta"]["compressed"] is False for m in store.tables["media_generations"])
-    wide = next(p for p in posts if any("not upright" in f["msg"] for f in p["flags"]))
-    assert wide["hard_flags"] == 0 and wide["status"] == "draft"
-    assert {p["slot"] for p in posts} == {"08:00", "13:00"} or len({(p["date"], p["slot"]) for p in posts}) == 2, (
-        "one post to a slot"
-    )
+    (post,) = store.tables["semasa_posts"]
+    assert store.tables["media_generations"][0]["meta"]["compressed"] is False and post["hard_flags"] == 0
+
+
+def test_a_wide_film_is_fitted_to_the_streams_shape_before_the_draft_not_just_warned_about(clips):
+    # Wan, 20 Nov 2026: a film from Hermes / Nous follows the platform ratio already set in Semasa
+    store, bucket = setup()
+    iid = received(store, bucket, clips["wide"])
+    step(store, bucket)
+    (post,) = store.tables["semasa_posts"]
+    m = store.tables["media_generations"][0]
+    assert m["meta"]["compressed"] is True and m["generated_media_url"].endswith(f"imports/{iid}-social.mp4")
+    assert (m["meta"]["width"], m["meta"]["height"]) == (1080, 1920), "the media row is what is posted"
+    assert m["reference_url"].endswith(f"imports/{iid}.mp4"), "the sender's own file is kept"
+    assert not any("not upright" in f["msg"] for f in post["flags"]), "nothing left to warn about"
+    assert post["hard_flags"] == 0 and post["status"] == "draft"
+    film = store.tables["semasa_motions"][0]
+    assert (film["width"], film["height"]) == (1080, 1920) and film["resolution"] == "portrait"
+    assert "fitted from" in row(store, iid)["note"] and "1080x1920" in row(store, iid)["note"]
+
+
+def test_a_wide_linkedin_film_is_fitted_square(clips):
+    store, bucket = setup()
+    received(store, bucket, clips["wide"], stream="linkedin", lang="en", channels=["linkedin"], caption=GOOD_EN)
+    step(store, bucket)
+    m = store.tables["media_generations"][0]
+    assert (m["meta"]["width"], m["meta"]["height"]) == (1080, 1080)
+
+
+def test_an_upright_film_is_not_refitted(clips):
+    store, bucket = setup()
+    iid = received(store, bucket, clips["good"])
+    step(store, bucket)
+    assert f"imports/{iid}-social.mp4" not in bucket.files and "fitted" not in row(store, iid)["note"]
 
 
 def test_a_file_that_is_not_an_mp4_is_refused_with_a_reason_and_deleted(clips):

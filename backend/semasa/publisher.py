@@ -24,7 +24,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import compliance, db, guard, senders, tiktok_ratio
+from . import compliance, db, film_ratio, guard, senders
 from .config import SupabaseSettings
 from .log import get_logger
 from .studio_link import when_utc
@@ -96,6 +96,7 @@ def video_of(m: dict[str, Any]) -> dict[str, Any] | None:
         return None
     meta = m.get("meta") or {}
     return {"url": m["generated_media_url"], "thumbnail": meta.get("poster_url") or "",
+            "width": int(meta.get("width") or 0), "height": int(meta.get("height") or 0),
             "vertical": int(meta.get("height") or 0) > int(meta.get("width") or 0) > 0}
 
 
@@ -613,6 +614,14 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
     alt = " ".join(str((m.get("meta") or {}).get("alt") or "") for m in media).strip()
     channels = post_channels(settings, post, has_video=bool(video))
     zernio = clients.get("zernio")
+    fitted: list[dict[str, Any]] = []
+
+    def in_shape(v: dict[str, Any]) -> dict[str, Any]:
+        """The film in the shape the stream's platforms take (film_ratio), made once however many channels send it. Raises
+        senders.SendError when the copy cannot be made: a film of the wrong shape is never sent."""
+        if not fitted:
+            fitted.append(film_ratio.for_stream(store, v, stream))
+        return fitted[0]
 
     def moved_on(channel: str) -> bool:
         """Re-read the post just before a send: one changed since this run read it is not sent (race with the page)."""
@@ -722,7 +731,7 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
                 # A TRANSIENT failure can only come from before the post call (account lookup, picture fetch/upload,
                 # video hand-over), when nothing can be on LinkedIn: it closes its "sending" line (before_post) and the
                 # next run tries again.
-                res = client.post_video(text, video["url"]) if video else client.post(text, pictures)
+                res = client.post_video(text, in_shape(video)["url"]) if video else client.post(text, pictures)
             except senders.SendError as exc:
                 _fail(ctx, post["id"], errors, channel, fp, exc, before_post=exc.kind == "transient")
                 changed = True
@@ -768,8 +777,9 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
                 pin.save_published(published)
                 write_log(store, post["id"], channel, "adopted", {"fingerprint": fp, "buffer_id": found.get("id"), **was})
             else:
-                # TikTok takes upright 9:16 only: a film of another shape (Hermes, 16:9) is sent as an upright copy
-                send_video = tiktok_ratio.for_tiktok(store, video) if (video and channel == "tiktok") else video
+                # a film of another shape (Hermes, 16:9) goes in the shape the platform takes: upright for ws.regulab
+                # (TikTok takes nothing else), square for LinkedIn
+                send_video = in_shape(video) if video else None
                 rec = _send_buffer(client, view, channel_id, channel, text, pictures, alt, due, now, send_video, post["id"],
                                    route=route)
                 published[channel] = {**rec, **was}

@@ -40,6 +40,20 @@ for p in ((res.get("data") or {}).get("posts") or []):
                          "num_comments": p.get("num_comments"), "permalink": p.get("permalink"),
                          "created": p.get("created_datetime"), "subreddit": p.get("subreddit"),
                          "text": str(p.get("selftext") or "")[:500]})
+def _retrying(slug, args):
+    """A 403/429/5xx from Google that is not a quota message is usually momentary (20 Nov 2026: the details call 403'd, and the
+    same call a few hours on answered): ask again, up to three times, while the run still has time."""
+    import time as _tm
+    r, e = call(slug, args)
+    tries = 0
+    momentary = ("403", "429", "500", "502", "503", "timed out")
+    while e and tries < 2 and left() > 25 and "uota" not in str(e) and any(c in str(e) for c in momentary):
+        tries += 1
+        _tm.sleep(4 * tries)
+        r, e = call(slug, args)
+    return r, e
+
+
 if P["youtube"]["enabled"]:
     import datetime as _dt
     after = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=P["youtube"]["hours"])).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -47,7 +61,7 @@ if P["youtube"]["enabled"]:
     for yq in P["youtube"]["queries"]:
         if left() < 40:
             break
-        r, e = call("YOUTUBE_SEARCH_YOU_TUBE", {"q": yq, "type": "video", "order": "viewCount",
+        r, e = _retrying("YOUTUBE_SEARCH_YOU_TUBE", {"q": yq, "type": "video", "order": "viewCount",
                                                "maxResults": P["youtube"]["max_results"], "regionCode": "MY",
                                                "publishedAfter": after})
         if e:
@@ -59,7 +73,7 @@ if P["youtube"]["enabled"]:
             if vid and vid not in ids:
                 ids.append(vid)
     if ids:
-        r, e = call("YOUTUBE_GET_VIDEO_DETAILS_BATCH", {"id": ids[:40], "parts": ["snippet", "statistics"]})
+        r, e = _retrying("YOUTUBE_GET_VIDEO_DETAILS_BATCH", {"id": ids[:40], "parts": ["snippet", "statistics"]})
         if e:
             OUT["youtube_error"] = str(e)[:200]
         for it in ((r.get("data") or {}).get("items") or []):

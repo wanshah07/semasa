@@ -34,7 +34,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
-from . import autofill, compliance, db, ideas, motion, motion_captions, video
+from . import autofill, compliance, db, film_ratio, ideas, motion, motion_captions, video
 from .log import get_logger
 
 log = get_logger("semasa.video_import")
@@ -477,9 +477,6 @@ def process(
             src.write_bytes(data)
             info = probe(src, runner)
             check_file(info, channels)
-            flags = draft_flags(stream, lang, texts, channels, title, settings, info)
-            if authored:
-                flags.append(dict(AUTHORED_FLAG))
             date, slot = slot_for(store, stream, params, settings, now)
             note: list[str] = []
             if not stored:  # a link: the file is kept in Semasa's own bucket from here on
@@ -489,7 +486,34 @@ def process(
             else:
                 video_url = storage.url(stored)
             social_url, social_bytes = "", 0
-            if needs_copy(info, len(data)):
+            # the film goes in the shape its stream's platforms take (Wan, 20 Nov 2026): a 16:9 film from Hermes / Nous is fitted
+            # over a blurred copy of itself now, so the draft Wan approves already is the film that is posted
+            target = film_ratio.size_for(stream)
+            fitting = not film_ratio.fits(info["width"], info["height"], target)
+            if fitting:
+                try:
+                    small = film_ratio.fit_copy(src, Path(tmp) / "fitted.mp4", target)
+                except Exception as exc:  # noqa: BLE001 - a film that cannot be put in the right shape is not posted
+                    raise Reject(
+                        f"the video is {info['width']}x{info['height']} and could not be fitted to {target[0]}x{target[1]} "
+                        f"for the platforms ({str(exc)[:120]}). Send it in that shape and try again"
+                    ) from exc
+                social_bytes = small.stat().st_size
+                _, ceiling = channel_limits(channels)
+                if social_bytes > ceiling:
+                    raise Reject(
+                        f"the video is {social_bytes / 1_048_576:.0f} MB even after fitting, over the "
+                        f"{ceiling // 1_048_576} MB limit. Make it shorter or smaller and send it again"
+                    )
+                path = f"imports/{row['id']}-social.mp4"
+                social_url = storage.upload(path, small.read_bytes(), "video/mp4")
+                made.append(path)
+                note.append(
+                    f"fitted from {info['width']}x{info['height']} to {target[0]}x{target[1]} for the platforms "
+                    f"({social_bytes / 1_048_576:.1f} MB)"
+                )
+                info = {**info, "width": target[0], "height": target[1]}      # what is posted, from here on
+            elif needs_copy(info, len(data)):
                 small = motion.social_copy(src, runner)
                 if small is None:
                     raise Reject(
@@ -506,6 +530,9 @@ def process(
                 social_url = storage.upload(path, small.read_bytes(), "video/mp4")
                 made.append(path)
                 note.append(f"a platform copy was made ({social_bytes / 1_048_576:.1f} MB)")
+            flags = draft_flags(stream, lang, texts, channels, title, settings, info)     # info is what is posted
+            if authored:
+                flags.append(dict(AUTHORED_FLAG))
             jpg = motion.poster(src, runner)
             poster_url = ""
             if jpg:

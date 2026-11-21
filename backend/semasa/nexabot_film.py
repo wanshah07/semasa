@@ -33,13 +33,13 @@ SHEET = Path(__file__).resolve().parents[2] / "web" / "public" / "comic-panels" 
 # Scene 2 = Hassan explains durations (food 2 years, medicine/cosmetic 3 years) + Hana "baru tahu".
 # "Tiada dialog lain" stops i2v improvising. Numbers spelled letter-by-letter so the voice reads them fully.
 SCENES = [
-    "Photorealistic video, vertical 9:16 portrait framing. Di kedai runcit di Malaysia, Hana, wanita muda bertudung merah jambu dan blaus krim, "
-    "memandang bungkusan snek kuning di tangannya dengan wajah hairan. Hassan, lelaki bercermin mata hitam dan baju "
-    "polo biru laut, berdiri di sebelahnya. Hana berkata eh logo halal ni ada tarikh luput ke, ingatkan kekal je. "
+    "Photorealistic video, vertical 9:16 portrait framing. Di kedai runcit di Malaysia, Hana, perempuan bertudung merah jambu dan berbaju krim, "
+    "memandang bungkusan snek kuning di tangan dengan wajah hairan. Hassan, lelaki bercermin mata hitam dan berbaju "
+    "polo biru laut, berdiri di sebelah. Hana berkata eh logo halal ni ada tarikh luput ke, ingatkan kekal je. "
     "Tiada dialog lain. Kamera statik.",
     "Photorealistic video, vertical 9:16 portrait framing. Di kedai runcit di Malaysia, rak makanan snek yang sama, latar yang sama persis seperti "
-    "video sebelum ini, Hassan, lelaki bercermin mata hitam dan baju polo biru laut, terus bercakap sambil memberi "
-    "isyarat tangan. Hana, wanita muda bertudung merah jambu, berdiri di tempat yang sama mendengar sambil membelek "
+    "video sebelum ini, Hassan, lelaki bercermin mata hitam dan berbaju polo biru laut, terus bercakap sambil memberi "
+    "isyarat tangan. Hana, perempuan bertudung merah jambu, berdiri di tempat yang sama mendengar sambil membelek "
     "bungkusan snek kuning. Hassan berkata sijil halal ni ada tempoh, makanan macam ni biasanya dua tahun, ubat dengan "
     "kosmetik pulak sampai tiga tahun. Hana tersenyum lega dan berkata baru tahu sekarang, dulu tak tahu ada tarikh luput halal ni. Tiada dialog lain. Kamera statik.",
 ]
@@ -160,10 +160,13 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_frame=N
         try:
             u = resp.url
             if "/api/v1/generate" in u or u.rstrip("/").endswith("/generate"):
+                raw_status = resp.status
                 try:
                     body = resp.json()
                 except Exception:  # noqa: BLE001
                     body = {}
+                captured.setdefault("status", raw_status)
+                # record the raw body text so a moderation/validation rejection is visible (not silently dropped)
                 if isinstance(body, dict):
                     jid = body.get("job_id") or body.get("id")
                     if not jid and isinstance(body.get("job"), dict):
@@ -171,6 +174,12 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_frame=N
                     if jid:
                         captured["job_id"] = str(jid)
                         captured["body_keys"] = sorted(body.keys())
+                    else:
+                        # no job id -> likely a rejection; keep the full body for diagnosis
+                        captured["body"] = body
+                        captured["body_keys"] = sorted(body.keys())
+                else:
+                    captured["body_raw"] = body
         except Exception:  # noqa: BLE001
             pass
     page.on("response", _on_resp)
@@ -186,6 +195,8 @@ def one_scene(page, prompt, outdir, report, idx, pre_jobs, consumed, ref_frame=N
         report[f"scene{idx+1}_job_id_captured"] = captured["job_id"]
     else:
         report[f"scene{idx+1}_job_id_captured"] = None
+        # surface whatever the Generate POST actually answered, so a moderation/validation rejection is not silent
+        report[f"scene{idx+1}_generate_response"] = captured
 
     def fetch_jobs():
         return page.evaluate("""async () => {

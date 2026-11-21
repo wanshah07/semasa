@@ -1,0 +1,45 @@
+name: Nexabot clear jobs
+
+# Padam job lama stuck dari panel Results (CANCEL ALL + DELETE ALL) supaya longgokan
+# server bersih sebelum render episod baru.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: nexabot-clear
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  clear:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Chromium
+        run: bash ../.github/scripts/ensure-chromium.sh
+      - name: Clear stuck jobs
+        env:
+          NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
+        run: python -m semasa.nexabot_clear "$RUNNER_TEMP/nexabot-clear"
+      - name: Keep report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexabot-clear
+          path: /home/runner/work/_temp/nexabot-clear
+          retention-days: 1
+          if-no-files-found: ignore

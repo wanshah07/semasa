@@ -92,7 +92,7 @@ assert.deepEqual(C.scriptFlags(partial, "regulab").filter((f) => f.hard).map((f)
 assert.deepEqual(C.scriptFlags(C.blankScript(), "regulab"), []);
 // vague wording, pinned down or not, in reading order
 const vague = structuredClone(script); vague.panels[3].lines[1].text = "Ada beberapa syarat penting yang perlu dipatuhi.";
-assert.ok(C.scriptFlags(vague, "regulab").some((f) => f.hard && /^vague/.test(f.msg)));
+assert.ok(C.scriptFlags(vague, "regulab").some((f) => !f.hard && /^vague/.test(f.msg)));
 const pinned = structuredClone(script); pinned.panels[2].lines[0].text = "Ada beberapa syarat dalam klausa itu.";
 assert.ok(!C.scriptFlags(pinned, "regulab").some((f) => /^vague/.test(f.msg)));
 // LinkedIn is English, and the source is judged like any artwork's source line

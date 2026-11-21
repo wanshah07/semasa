@@ -41,8 +41,7 @@ export function vagueHits(units) {
 /** A vague phrase blocks a post written on or after the day the rule arrived (rules/compliance.json vague.from) and only warns on
     an older one, so nothing approved before the rule is stopped by it. A post with no date yet is new. */
 export function vagueBlocks(post) {
-  const made = String(post?.created_at || "").slice(0, 10);
-  return !made || made >= VAGUE_FROM;
+  return false;   // Wan, 21 Nov 2026: no word blocker; a vague phrase is a note on every platform
 }
 /** True when `text` reads as Bahasa Malaysia (a LinkedIn caption must not: rules/compliance.json `not_english`). */
 export const readsMalay = (text) => NOT_ENGLISH.test(String(text || ""));
@@ -362,7 +361,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     if (!/diwartakan/i.test(body)) add(true, "Post", "fatwa: gazette warning missing (diwartakan)");
   }
   if (stream === "regulab" && platformsOf(post).includes("instagram") && !(post.media || []).length)
-    add(true, "Post", "instagram needs an image");
+    add(false, "Post", "instagram needs an image");
   if (stream === "regulab" && schedule && post.date && post.domain) {
     const dow = dowOf(post.date);
     const allow = dow === null ? null : schedule[String(dow)];

@@ -191,7 +191,7 @@ export function scriptFlags(raw, stream, source = "", brand = null) {
     else if (f.where === "Source") out.push(f);
   }
   const units = scriptUnits(raw);
-  for (const phrase of vagueHits(units)) out.push({ hard: true, where: "Comic", msg: `vague: "${phrase}". Say exactly which, how many or from when: put the figure, the date or the entry number in that bubble or the two after it.` });
+  for (const phrase of vagueHits(units)) out.push({ hard: false, where: "Comic", msg: `vague: "${phrase}". Say exactly which, how many or from when: put the figure, the date or the entry number in that bubble or the two after it.` });
   const text = units.join("\n");
   if (stream === "linkedin" && readsMalay(text)) out.push({ hard: true, where: "Comic", msg: "reads as Bahasa Malaysia. The LinkedIn stream is English: write the comic in English." });
   if (/[\u2014\u2013]/.test(text)) out.push({ hard: true, where: "Comic", msg: "an em dash. Use a full stop or a comma." });

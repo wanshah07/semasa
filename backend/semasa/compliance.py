@@ -468,7 +468,7 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
         if not re.search(r"diwartakan", body, re.I):
             add(True, "Post", "fatwa: gazette warning missing (diwartakan)")
     if stream == "regulab" and "instagram" in platforms_of(post) and not (post.get("media") or []):
-        add(True, "Post", "instagram needs an image")
+        add(False, "Post", "instagram needs an image")
     if stream == "regulab" and schedule and post.get("date") and post.get("domain"):
         dow = dow_of(str(post["date"]))
         allow = schedule.get(str(dow)) if dow is not None else None
@@ -502,10 +502,8 @@ def vague_hits(units: list[str]) -> list[str]:
 
 
 def vague_blocks(post: dict[str, Any]) -> bool:
-    """A vague phrase blocks a post written on or after the day the rule arrived (rules/compliance.json vague.from) and only
-    warns on an older one, so nothing approved before the rule is stopped by it. A post with no date yet is new."""
-    made = str(post.get("created_at") or "")[:10]
-    return not made or made >= VAGUE_FROM
+    """A vague phrase never blocks a post any more: it is a note on every platform and every post, old or new."""
+    return False        # Wan, 21 Nov 2026: no word blocker ("banyak produk" and the like): a note, never a block
 
 
 def hard_count(flags: list[dict[str, Any]]) -> int:

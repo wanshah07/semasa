@@ -105,17 +105,16 @@ def test_both_writers_are_told_the_vague_rule_the_check_enforces():
         assert compliance.vague_hits([f"Ada {phrase} di sini.", "Ia bermula 1 Januari 2027."]) == [], phrase
 
 
-def test_the_vague_rule_blocks_a_new_post_and_only_warns_on_one_written_before_it():
+def test_the_vague_rule_never_blocks_a_post_it_only_notes_it():
     from semasa import compliance
     text = "NPRA mengemas kini senarai dari semasa ke semasa. Pengeluar perlu peka. Semak formula anda."
     post = {"stream": "regulab", "lang": "bm", "text": {"bm": {p: text for p in ("instagram", "facebook", "threads")}},
             "media": [{"id": "m1", "alt": "x"}]}
-    new = [f for f in compliance.scan(post) if "vague" in f["msg"]]
-    assert len(new) == 3 and all(f["hard"] for f in new), "a draft just written has no date yet: it is new"
-    on_the_day = compliance.scan({**post, "created_at": compliance.VAGUE_FROM + "T00:00:00+00:00"})
-    assert all(f["hard"] for f in on_the_day if "vague" in f["msg"])
-    old = [f for f in compliance.scan({**post, "created_at": "2026-11-16T15:00:00+00:00"}) if "vague" in f["msg"]]
-    assert len(old) == 3 and not any(f["hard"] for f in old), "approved before the rule: warned, never stopped"
+    for created in (None, compliance.VAGUE_FROM + "T00:00:00+00:00", "2026-11-16T15:00:00+00:00"):
+        found = [f for f in compliance.scan({**post, "created_at": created} if created else post) if "vague" in f["msg"]]
+        assert len(found) == 3 and not any(f["hard"] for f in found), "Wan, 21 Nov 2026: a vague word is a note, never a block"
+    ig = compliance.scan({"stream": "regulab", "lang": "bm", "text": {"bm": {"instagram": "Ada 3 kes."}}, "media": []})
+    assert [f for f in ig if f["msg"] == "instagram needs an image"] and not any(f["hard"] for f in ig if "image" in f["msg"])
     said = compliance.sentences("Had ialah 2.0% sahaja. Seterusnya!\nBaris baharu")
     assert said == ["Had ialah 2.0% sahaja.", "Seterusnya!", "Baris baharu"]
 

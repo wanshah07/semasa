@@ -913,7 +913,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     else:
         jobs = [] if has_jobs or kept else media_jobs(idea, source, out, post_id)
     if want_slides and post.get("slides") and not has_jobs:
-        jobs.append(slide_job(idea, post, post_id, bg="post_image" if jobs or kept else "none", chosen=chosen))
+        jobs.append(slide_job(idea, post, post_id, bg=slide_ground(stream, bool(jobs or kept)), chosen=chosen))
     poster = slides.normalise(quran.untrusted([out.get("poster")]) if isinstance(out.get("poster"), dict) else [])[:1] \
         if want_poster else []
     poster = quran.fill(poster, stream)
@@ -925,7 +925,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
                 poster, cover_state = hook_bank.cover(poster, short)
                 cover_state = "shortened" if cover_state in ("set", "kept") else "too_long"
     if poster and not has_jobs:
-        jobs.append(poster_job(idea, post, post_id, poster, bg="post_image" if jobs or kept else "none", chosen=chosen))
+        jobs.append(poster_job(idea, post, post_id, poster, bg=slide_ground(stream, bool(jobs or kept)), chosen=chosen))
     if jobs:
         store.table(db.MEDIA).insert(jobs).execute()
     caption = (text.get(lang) or {}).get("linkedin" if stream == "linkedin" else "instagram", "")
@@ -1094,6 +1094,12 @@ def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str 
                      "citation": post.get("citation") or "", "domain": post.get("domain"),
                      "angle": post.get("angle"), "bg": bg, "look": look, "fit": look != "classic",
                      **({"review": review} if review else {}), **({"design_pack": saved} if saved else {})}}
+
+
+def slide_ground(stream: str, has_picture: bool) -> str:
+    """What sits behind a slide: the post's own picture, blurred, when it has one, except on LinkedIn, whose slides are plain
+    cream paper (Wan, 21 Nov 2026: "I want like this for linkedn": a serif title over sans text, the source at the foot)."""
+    return "post_image" if has_picture and stream != "linkedin" else "none"
 
 
 def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: list[dict[str, Any]],

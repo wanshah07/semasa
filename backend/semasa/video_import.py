@@ -773,6 +773,26 @@ def _post_exists(store: Any, post_id: Any) -> bool:
     return bool(store.table(db.POSTS).select("id").eq("id", post_id).limit(1).execute().data)
 
 
+def fitted_for_recovery(store: Any, video_url: str, info: dict[str, Any], stream: str, social_url: str,
+                        social_bytes: int) -> tuple[dict[str, Any], str, int]:
+    """A draft made again from an older import carries the film in the shape the stream's platforms take (Wan, 21 Nov 2026:
+    "make sure the ratio of the film sent by Hermes Nous follows each platform before it posts"). An import made before the
+    fitting existed is stored in its maker's shape (usually 16:9), so it is fitted now, from the original. A film already in
+    shape is left alone, and one that cannot be fitted here keeps its stored address: the publisher fits it again before any
+    send."""
+    target = film_ratio.size_for(stream)
+    if not (info.get("width") and info.get("height")) or film_ratio.fits(info["width"], info["height"], target):
+        return info, social_url, social_bytes
+    try:
+        got = film_ratio.for_stream(store, {"url": video_url, "width": info["width"], "height": info["height"]}, stream)
+    except Exception as exc:  # noqa: BLE001 - the draft is still made; the publisher fits the film before it sends
+        log.warning("import recovery: film not fitted (%s); the publisher fits it before any send", str(exc)[:120])
+        return info, social_url, social_bytes
+    if got.get("url") == video_url:
+        return info, social_url, social_bytes
+    return {**info, "width": target[0], "height": target[1]}, str(got["url"]), 0
+
+
 def _recover_one(store: Any, row: dict[str, Any], settings: dict[str, Any], now: datetime, notify: Any, llm: Any) -> bool:
     """One `done` import whose draft post is gone gets its draft again, once. False when there was nothing to do."""
     if RECOVERED_TAG in str(row.get("note") or "") or not row.get("motion_id") or _post_exists(store, row.get("post_id")):
@@ -796,6 +816,9 @@ def _recover_one(store: Any, row: dict[str, Any], settings: dict[str, Any], now:
         "duration_s": float(film.get("duration_s") or 0),
         "bytes": int(film.get("bytes") or 0),
     }
+    social_url, social_bytes = str(film.get("social_url") or ""), int(film.get("social_bytes") or 0)
+    info, social_url, social_bytes = fitted_for_recovery(
+        store, str(film.get("video_url")), info, stream, social_url, social_bytes)
     flags = draft_flags(stream, lang, texts, channels, title, settings, info)
     if authored:
         flags.append(dict(AUTHORED_FLAG))
@@ -818,8 +841,8 @@ def _recover_one(store: Any, row: dict[str, Any], settings: dict[str, Any], now:
         info,
         str(film.get("video_path") or row.get("stored_path") or ""),
         str(film.get("video_url")),
-        str(film.get("social_url") or ""),
-        int(film.get("social_bytes") or 0),
+        social_url,
+        social_bytes,
         str(film.get("poster_url") or ""),
         now,
         authored=authored,

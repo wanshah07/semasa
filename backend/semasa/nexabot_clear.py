@@ -79,9 +79,9 @@ def main() -> int:
                 report["results_before"] = None
 
             report["clicks"].append(try_click("Cancel all"))
-            time.sleep(1000)
+            time.sleep(1.0)
             report["clicks"].append(try_click("Delete all"))
-            time.sleep(1000)
+            time.sleep(1.0)
 
             # confirm any dialog (Delete All may ask "are you sure")
             for _ in range(3):
@@ -90,9 +90,9 @@ def main() -> int:
                     if confirm.count() and confirm.is_visible():
                         confirm.click()
                         sync_page.wait_for_timeout(800)
+                        break
                 except Exception:  # noqa: BLE001
                     break
-                break
 
             sync_page.screenshot(path=str(outdir / "after-clear.png"))
             try:

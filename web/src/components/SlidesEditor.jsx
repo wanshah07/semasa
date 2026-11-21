@@ -173,9 +173,6 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
           <Button type="button" size="sm" variant="ghost" onClick={() => fromCaption(false)}
             title={t("Kulit, satu slaid setiap poin kapsyen, dan baris penutup", "A cover, one slide for each point of the caption, and a closing line")}>
             {t("Bina daripada kapsyen", "Build from the caption")}</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => fromCaption(true)}
-            title={t("Satu kad sahaja: cangkuk dan baris pertamanya", "One card only: the hook and its first line")}>
-            {t("Kad tunggal", "Single card")}</Button>
           {studio && anyOwnBg && <Button type="button" size="sm" variant="ghost" onClick={bgClearAll}
             title={t("Setiap slaid kembali memakai latar set ini", "Every slide goes back to the set's background")}>
             {t("Kosongkan latar setiap slaid", "Clear every slide's background")}</Button>}

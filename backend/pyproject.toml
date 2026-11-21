@@ -10,5 +10,6 @@ testpaths = ["tests"]
 addopts = "-q"
 markers = ["composed: runs the motion worker on its default path, where the worker composes the film itself and the AI writer is not asked",
            "storyboard_gate: runs the motion worker without the test stand-in that approves each storyboard (supabase/071)",
+           "caption_floor: runs the idea writer with the real caption floor (ideas.CAPTION_FLOOR)",
            "real_proofread: runs the proofreader's writer call (every other test sees the deterministic step only)"]
 pythonpath = ["."]

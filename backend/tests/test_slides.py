@@ -288,8 +288,8 @@ def test_an_idea_that_asks_for_slides_gets_them_and_one_slide_job(monkeypatch):
     post = store.tables["semasa_posts"][0]
     assert post["slides"] == compliance.normalise_slides(GOOD)
     jobs = store.tables["media_generations"]
-    assert [j["mode"] for j in jobs] == ["prompt", "slides"]                   # the picture first: it is the ground
-    assert jobs[1]["meta"]["bg"] == "post_image" and jobs[1]["meta"]["slides"] == post["slides"]
+    assert [j["mode"] for j in jobs] == ["slides"]                             # no AI picture beside the slides (21 Nov 2026)
+    assert jobs[0]["meta"]["bg"] != "post_image" and jobs[0]["meta"]["slides"] == post["slides"]
     assert any(f["where"] == "Slides" and not f["hard"] for f in post["flags"])  # written, not drawn yet
 
 

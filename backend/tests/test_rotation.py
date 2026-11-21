@@ -185,3 +185,47 @@ def test_a_linkedin_poster_is_drawn_on_plain_paper_even_when_the_post_has_a_pict
     _write(llm, store, stream="linkedin", make_media="image", brief={"format": "poster"})
     job = next(m for m in store.tables["media_generations"] if (m.get("meta") or {}).get("design") == "poster")
     assert job["meta"]["look"] == "image" and job["meta"]["bg"] == "none"
+
+
+# --- no single picture card (Wan, 21 Nov 2026: "for ws regulab and linkend no more image single card, because too ugly") ---
+
+
+def test_an_idea_with_no_format_is_a_poster_never_a_single_picture():
+    assert ideas.format_of({"stream": "regulab"}) == "poster" and ideas.format_of({"stream": "linkedin"}) == "poster"
+    assert ideas.format_of({"stream": "regulab", "make_slides": True}) == "carousel"
+    assert ideas.format_of({"brief": {"format": "comic"}}) == "comic"
+    assert ideas.format_of({"brief": {"format": "carousel"}}) == "carousel"
+
+
+def _modes(store):
+    return sorted(str(m.get("mode")) for m in store.tables["media_generations"])
+
+
+def test_a_poster_and_a_carousel_are_written_with_no_ai_picture_beside_them(offline):
+    poster = {**GOOD, "hook_shape": 4, "poster": {"title": "Notifikasi", "points": ["Satu"]}}
+    store = _store([{"hook_shape": 4, "look": "hand"}])
+    _write(Seq(poster), store, make_media="image", brief={"format": "poster"})
+    assert _modes(store) == ["slides"], "one poster job and no 'recreate' or 'prompt' picture"
+    carousel = {**GOOD, "hook_shape": 4, "slides": [{"title": "Satu", "points": ["a"]}, {"title": "Dua", "points": ["b"]}]}
+    store = _store([{"hook_shape": 4, "look": "hand"}])
+    _write(Seq(carousel), store, make_media="image", make_slides=True)
+    assert _modes(store) == ["slides"], "one slides job and no picture"
+
+
+def test_a_post_the_writer_gave_no_poster_for_still_gets_a_picture(offline):
+    store = _store([{"hook_shape": 4, "look": "hand"}])
+    answer = {**GOOD, "hook_shape": 4, "visual_prompt": "a bottle on a table"}
+    _write(Seq(answer), store, make_media="image", brief={"format": "poster"})
+    # no poster came back: the fall-back picture keeps the post from having none
+    assert _modes(store) != [] and "slides" not in _modes(store)
+
+
+def test_a_crowded_slide_is_drawn_as_two_when_no_look_can_fit_it():
+    from semasa import carousel
+    slide = {"title": "Trial", "points": ["a one", "b two", "c three", "d four", "e five"]}
+    out = carousel.split_full([slide])
+    assert [s["title"] for s in out] == ["Trial (1/2)", "Trial (2/2)"]
+    assert [p for s in out for p in s["points"]] == slide["points"]      # every word kept
+    assert carousel.split_full([{"title": "T", "points": ["a", "b", "c"]}]) == [{"title": "T", "points": ["a", "b", "c"]}]
+    verse = {"title": "V", "points": list("abcde"), "ayat": {"surah": 1}}
+    assert carousel.split_full([verse]) == [verse]                        # a verse is never split

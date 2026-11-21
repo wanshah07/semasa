@@ -36,7 +36,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   const motionOn = outputMotion && stream !== "linkedin";            // LinkedIn gets no film (Wan, 11 Nov 2026)
   const [motionLanguage, setMotionLanguage] = useState("en");
   const { settings: motionSettings } = useSettings(true);
-  const [format, setFormat] = useState("post");   // post | carousel | poster | comic (backend: ideas.format_of)
+  const [format, setFormat] = useState("poster");   // carousel | poster | comic (backend: ideas.format_of); no single-picture post any more
   // a comic as the post's picture (17 Nov 2026): the series and the cartoon style, from the comic library (lib/comic.js)
   const comics = comicLibrary(motionSettings?.comic);
   const [comicSeries, setComicSeries] = useState("");
@@ -67,7 +67,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
     // a new idea starts on the stream of the page it was opened from (the LinkedIn segment opens it on LinkedIn)
     setStream(position?.stream || (trend?.watch ? trend.stream || "regulab" : defaultStream)); setMedia("image");
     setOutputMotion(false); setMotionLanguage(motionDefaults(motionSettings).language);
-    setFormat(trend?.watch ? "carousel" : "post"); setLook(null);
+    setFormat(trend?.watch ? "carousel" : "poster"); setLook(null);
     setAngle(trend?.watch ? trend.angle || "" : ""); setNote(""); setRefs([]); setHookStyle(""); setWritingStyle("");
     setDomain(trend ? (trend.faq || trend.watch ? trend.domain : CATEGORY_TO_DOMAIN[trend.category]) || ""
       : position?.domain || "");
@@ -223,7 +223,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
         <div>
           <Label>{t("Jadikan", "Make it")}</Label>
           <Segmented value={format} onChange={setFormat}
-            options={[["post", t("Post", "Post")], ["carousel", t("Carousel (slaid/PPT)", "Carousel (slides/PPT)")], ["poster", "Poster"], ["comic", t("Komik", "Comic")]]} />
+            options={[["poster", "Poster"], ["carousel", t("Carousel (slaid/PPT)", "Carousel (slides/PPT)")], ["comic", t("Komik", "Comic")]]} />
           <span className="mt-1 block text-[11px] text-muted">
             {format === "carousel"
               ? look === "threads"

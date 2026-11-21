@@ -9,8 +9,8 @@ default look. Now the next shape and the next look are chosen HERE, from what th
     are never the same shape or even the same family. The writer is given THIS post's shape, two fall-backs for when it cannot
     be filled without inventing a fact, and the hooks of the last posts so it does not echo their opening words.
   * Looks: the Semasa poster looks (hand-drawn, marker, torn paper, colour blocks, neon, cardboard, chalkboard, line map, torn
-    strips, grid, Semasa's own) in a fixed turn, skipping the ones Wan has hidden and the last few used. ws.regulab only:
-    LinkedIn keeps the clean Image slide (Wan, 21 Nov 2026).
+    strips, grid, Semasa's own) in a fixed turn, skipping the ones Wan has hidden and the last few used. Both streams,
+    each on its own turn (Wan, 21 Nov 2026).
 
 Wan's own choice always wins: an idea that names a look keeps it, and a hook style he made from screenshots is rotated the same
 way. Nothing here raises: a store that cannot answer means the turn simply starts again, which only costs the rotation, never
@@ -32,9 +32,9 @@ log = get_logger("semasa.rotation")
 # Image. "photo" is drawn ON a background picture and fails without one, and "threads" is a text-and-picture slide set of its
 # own, so those two stay a hand choice. "era" is not offered any more.
 LOOK_TURN = ("classic", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "grid", "image")
-# A stream that keeps one look. LinkedIn is the clean Image slide on plain cream paper, a serif title over sans text and the
-# source at the foot (Wan, 21 Nov 2026: "I want like this for linkedn"), so its looks do not take turns.
-STREAM_LOOK = {"linkedin": "image"}
+# A stream that keeps one look. None does any more: LinkedIn and ws.regulab both take their turn through the poster looks,
+# each on its own turn (Wan, 21 Nov 2026: "check if linkedn and ws regulab post will auto use these posters, ikut turn").
+STREAM_LOOK: dict[str, str] = {}   # none now: LinkedIn takes its turn through the same poster looks (Wan, 21 Nov 2026)
 LOOK_WINDOW = 4          # a look is not used again until this many others have been
 SHAPE_WINDOW = 8         # nor a hook shape until this many others have been (fewer when the bank is small)
 RECENT_HOOKS = 8

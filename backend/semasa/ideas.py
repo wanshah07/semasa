@@ -199,7 +199,8 @@ LEAD WITH THE ANSWER. When the hook is a question, answer it plainly right after
 tidak.") before you explain why. Do not string the reader along to the last line. Then give the one thing that makes the
 answer surprising or useful, then the detail, numbered if it has steps or several points ("1. ...", "2. ..."). Close with
 one short practical line (for example "Nasihat mudah: ..."), not a lecture. A short list of numbered points reads better
-than a wall of text; use it when there are three or more separate things.
+than a wall of text; use it when there are three or more separate things. Give MORE facts, not fewer: every fact the SOURCE
+states that a reader could use goes in, 5 to 8 numbered points when the SOURCE has that many.
 
 The FIRST LINE is the hook, built on the hook shape given below. The LAST LINE before the hashtags is ONE short, friendly
 invitation to follow for more of this (for example "Follow untuk tip regulatori yang senang faham."). That follow line is
@@ -223,8 +224,11 @@ Rules. Breaking any of them blocks the post, so follow them exactly:
 5. No em dash. Do not open with "Tahukah anda". No superlatives, no promise of approval, no "tiada kesan sampingan",
    no "halal-friendly" or "patuh syariah" claims.
 6. A fatwa post says whether the fatwa is diwartakan, and where.
-7. Lengths: instagram up to 2200 characters (aim about 900) with at most 8 hashtags; facebook aim about 500 with at
-   most 3 hashtags; threads is a THREAD (rule 9) of 3 to 5 posts, each at most 500 characters, at most 1 hashtag in all.
+7. Lengths (Wan, 21 Nov 2026: "tambahkan lagi fakta, jangan bagi caption yang pendek sangat"): instagram up to 2200 characters,
+   aim about 1500 and never under 900, with at most 8 hashtags; facebook aim about 800 and never under 400, with at most 3
+   hashtags; a caption under those floors is asked again. Fill the length with MORE FACTS from the SOURCE (who, what, how many,
+   since when, which clause, what it means for the product), numbered "1. ... 2. ..." when there are several, never with filler;
+   threads is a THREAD (rule 9) of 3 to 5 posts, each at most 500 characters, at most 1 hashtag in all.
 8. The citation names the regulator and the instrument (for example "NPRA, Guidelines for Control of Cosmetic Products
    in Malaysia"), never a news portal, blog or social platform. If only a news report supports a fact, leave that
    fact out, unless a NEWSPAPER STORY block below allows the facts the report itself states.
@@ -258,8 +262,10 @@ entry, the figure, the date. Casual and human, the way he talks to a colleague, 
 two sentences; the numbered facts below are the body.
 
 DEPTH AND NUMBERING (Wan, 20 Nov 2026: "explain more facts on the caption in numbering, not brief only, people like more accurate
-and deeply fact"). 250 to 380 words. After the hook, answer it in one or two sentences, then give the facts as a NUMBERED LIST,
-"1. ...", "2. ...", 5 to 8 points. Every point is one complete fact from the SOURCE with its exact detail (the substance, the
+and deeply fact"; 21 Nov 2026: "tambahkan lagi fakta, jangan bagi caption yang pendek sangat"). 350 to 500 words, at least
+1500 characters: a shorter caption is asked again. After the hook, answer it in one or two sentences, then give the facts as a
+NUMBERED LIST, "1. ...", "2. ...", 6 to 10 points. Every point is one complete fact from the SOURCE with its exact detail
+(the substance, the
 limit, the entry or clause number, the date, who it applies to) and, where the SOURCE gives it, where it is written. A point
 that only says a thing "matters" or "changed" with no detail is not a point. Order the points the way the reader needs them (what
 it is, the number, who it covers, from when, what it means in practice). Then ONE short paragraph on what this means for a
@@ -379,6 +385,26 @@ of the title with *asterisks*. No
 company identity, no URL, no blog or aggregator, no fact the SOURCE does not give. The
 citation is drawn at its foot automatically.""",
 }
+
+
+# The shortest a caption may be before the writer is asked once more for MORE FACTS (Wan, 21 Nov 2026: "tambahkan lagi fakta,
+# termasuk ws regulab, jangan bagi caption yang pendek sangat"). It never fails a post: the second answer is used only
+# when longer.
+CAPTION_FLOOR = {"regulab": ("instagram", 900), "linkedin": ("linkedin", 1500)}
+
+
+def caption_short(text: dict[str, Any], stream: str, lang: str) -> tuple[int, int] | None:
+    """(length, floor) when the post's main caption is under its floor, else None."""
+    key, floor = CAPTION_FLOOR.get(stream, ("", 0))
+    have = len(str(((text or {}).get(lang) or {}).get(key) or "").strip())
+    return (have, floor) if floor and 0 < have < floor else None
+
+
+def ask_longer(have: int, floor: int, stream: str) -> str:
+    return (f"\n\nYOUR LAST CAPTION WAS TOO SHORT ({have} characters; at least {floor}). Write the whole answer again in "
+            "the same "
+            "JSON, the same hook shape, and add MORE FACTS from the SOURCE: every figure, name, date, clause, who it covers and "
+            "what it means in practice, numbered \"1. ... 2. ...\", each one complete. Add nothing the SOURCE does not say.")
 
 
 def format_of(idea: dict[str, Any]) -> str:
@@ -847,6 +873,21 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     text = normalise_text(out.get("text"), stream, lang)
     if not text.get(lang):
         raise IdeaError(f"the writer returned no {lang.upper()} caption")
+    short = caption_short(text, stream, lang)
+    if short:
+        # too brief (Wan, 21 Nov 2026): one more ask for more facts; the longer answer is used only when it is still on this
+        # post's hook shape, so the post is never lost to it
+        again = llm.chat_json(system, user + ask_longer(*short, stream),
+                              max_tokens=5000 if (want_slides or want_poster) else 3500)
+        if isinstance(again, dict) and again.get("fit") is not False:
+            got = hook_bank.declared(again, stream, family, bank)
+            more = normalise_text(again.get("text"), stream, lang)
+            longer = caption_short(more, stream, lang)
+            if got is not None and (not turn.assigned or got in turn.permitted) and more.get(lang) \
+                    and len(str(more[lang].get(CAPTION_FLOOR[stream][0]) or "")) > short[0]:
+                out, shape, text = again, got, more
+                log.info("idea %s: caption asked again for more facts (%s -> %s chars%s)", str(idea.get("id"))[:8], short[0],
+                         len(str(text[lang].get(CAPTION_FLOOR[stream][0]) or "")), "" if not longer else ", still short")
     # grammar and spelling, in the post's own language, before anything is stored (Wan, 10 Nov 2026); never changes a fact
     fixed_hook, text, fixed_slides, corrected = proofread.post(llm, out, text, lang)
     out = {**out, "hook": fixed_hook, **({"slides": fixed_slides} if fixed_slides is not None else {})}

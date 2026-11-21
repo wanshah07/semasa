@@ -321,7 +321,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
   const results = gens.rows.filter((r) => r.meta?.design);
   // a design inside an approved, scheduled or posted post cannot be deleted (supabase/017: the database refuses it)
   const lockedBy = (id) => (posts?.rows || []).find((p) => ["approved", "scheduled", "posted"].includes(p.status) && (p.media_ids || []).includes(id));
-  const designs = [["poster", "Poster"], ["card", t("Kad tunggal", "Single card")], ["carousel", "Carousel"], ["comic", t("Komik", "Comic")]];
+  const designs = [["poster", "Poster"], ["carousel", "Carousel"], ["comic", t("Komik", "Comic")]];
 
   if (view === "library") {
     return (

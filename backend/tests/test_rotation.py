@@ -14,12 +14,12 @@ from test_hook_bank import CAP, GOOD, Seq  # noqa: E402
 from semasa import hook_bank, ideas, rotation  # noqa: E402
 
 
-def _store(briefs=(), hooks=()):
+def _store(briefs=(), hooks=(), stream="regulab"):
     """Ideas written for `regulab`, newest first, each with a brief; posts with these hooks, newest first."""
     n = len(briefs)
-    rows = [{"id": f"i{k}", "stream": "regulab", "status": "drafted", "brief": b, "updated_at": f"2026-11-{20 - k:02d}T00:00:00Z"}
+    rows = [{"id": f"i{k}", "stream": stream, "status": "drafted", "brief": b, "updated_at": f"2026-11-{20 - k:02d}T00:00:00Z"}
             for k, b in enumerate(briefs)]
-    posts = [{"id": f"p{k}", "stream": "regulab", "hook": h, "created_at": f"2026-11-{20 - k:02d}T00:00:00Z"}
+    posts = [{"id": f"p{k}", "stream": stream, "hook": h, "created_at": f"2026-11-{20 - k:02d}T00:00:00Z"}
              for k, h in enumerate(hooks)]
     assert n == len(rows)
     return FakeStore(semasa_ideas=rows, semasa_posts=posts, semasa_settings=[{"key": "brand", "value": {}}])
@@ -92,11 +92,17 @@ def test_the_looks_follow_the_turn_and_never_repeat():
     assert set(looks) == set(rotation.LOOK_TURN)
 
 
-def test_linkedin_keeps_the_clean_image_slide_and_takes_no_turn():
-    # Wan, 21 Nov 2026: "I want like this for linkedn": cream paper, serif title, sans text, the source at the foot
-    briefs = [{"look": "hand"}, {"look": "image"}, {"look": "marker"}]
-    assert {rotation.next_look(_store(briefs), "linkedin") for _ in range(3)} == {"image"}
-    assert rotation.next_look(_store(briefs), "regulab") != "image", "ws.regulab still takes its turn"
+def test_linkedin_and_ws_regulab_each_take_their_own_turn_through_the_posters():
+    # Wan, 21 Nov 2026: "check if linkedn and ws regulab post will auto use these posters, ikut turn, bukan repeat"
+    for stream in ("linkedin", "regulab"):
+        briefs: list[dict] = []
+        looks: list[str] = []
+        for _ in range(len(rotation.LOOK_TURN)):
+            look = rotation.next_look(_store(briefs, stream=stream), stream)
+            looks.append(look)
+            briefs.insert(0, {"look": look})
+        assert looks == list(rotation.LOOK_TURN), stream
+        assert len(set(looks[:4])) == 4, "no look repeats within a few posts"
 
 
 def test_a_hidden_look_is_skipped_and_a_look_off_the_turn_starts_it_again():
@@ -168,7 +174,7 @@ def test_a_poster_with_no_look_takes_the_next_look_in_the_turn_and_a_chosen_look
 
 def test_the_linkedin_writer_wants_numbered_facts_and_no_follow_line_or_self_label():
     p = ideas.LINKEDIN_SYSTEM
-    assert "NUMBERED LIST" in p and "5 to 8 points" in p and "250 to 380 words" in p
+    assert "NUMBERED LIST" in p and "6 to 10 points" in p and "350 to 500 words" in p and "1500 characters" in p
     assert "no \"follow me\"" in p and "as a chemist" in p and "never address the reader by job title" in p
     assert "invitation to follow him" not in p and "Follow me for more like this" not in p
 
@@ -181,10 +187,11 @@ def test_a_linkedin_poster_is_drawn_on_plain_paper_even_when_the_post_has_a_pict
                "text": {"en": {"linkedin": "Here is what a notification does and does not do. It is not approval."}},
                "poster": {"title": "Notification", "points": ["One"]}}
     llm = Seq(english)
-    store = _store([{"hook_shape": 4, "look": "hand"}])
+    store = _store([{"hook_shape": 4, "look": "hand"}], stream="linkedin")
     _write(llm, store, stream="linkedin", make_media="image", brief={"format": "poster"})
     job = next(m for m in store.tables["media_generations"] if (m.get("meta") or {}).get("design") == "poster")
-    assert job["meta"]["look"] == "image" and job["meta"]["bg"] == "none"
+    assert job["meta"]["look"] == "marker", "LinkedIn takes its turn through the posters: marker follows hand"
+    assert job["meta"]["bg"] == "none"
 
 
 # --- no single picture card (Wan, 21 Nov 2026: "for ws regulab and linkend no more image single card, because too ugly") ---
@@ -229,3 +236,38 @@ def test_a_crowded_slide_is_drawn_as_two_when_no_look_can_fit_it():
     assert carousel.split_full([{"title": "T", "points": ["a", "b", "c"]}]) == [{"title": "T", "points": ["a", "b", "c"]}]
     verse = {"title": "V", "points": list("abcde"), "ayat": {"surah": 1}}
     assert carousel.split_full([verse]) == [verse]                        # a verse is never split
+
+
+@pytest.mark.caption_floor
+def test_a_caption_under_its_floor_is_asked_again_for_more_facts():
+    short = "Notifikasi bukan kelulusan. NPRA menyemak selepas produk dipasarkan."
+    longer = "Notifikasi bukan kelulusan.\n" + "\n".join(f"{n}. NPRA menyemak fakta {n} selepas produk." for n in range(1, 30))
+    assert ideas.caption_short({"bm": {"instagram": short}}, "regulab", "bm") == (len(short), ideas.CAPTION_FLOOR["regulab"][1])
+    assert ideas.caption_short({"bm": {"instagram": longer}}, "regulab", "bm") is None
+    assert ideas.caption_short({"en": {"linkedin": "x" * 1499}}, "linkedin", "en") is not None
+    assert ideas.caption_short({"en": {"linkedin": "x" * 1500}}, "linkedin", "en") is None
+    assert "TOO SHORT" in ideas.ask_longer(10, 900, "regulab") and "MORE FACTS" in ideas.ask_longer(10, 900, "regulab")
+
+
+@pytest.mark.caption_floor
+def test_a_short_caption_is_written_again_longer_and_the_longer_one_is_stored(offline):
+    first = {**GOOD, "hook": "Takde sapa cakap pasal notifikasi tapi ni sebab aku hantar", "hook_shape": 1,
+             "text": {"bm": {"instagram": "Takde sapa cakap pasal notifikasi tapi ni sebab aku hantar. Pendek."}}}
+    long_cap = "Takde sapa cakap pasal notifikasi tapi ni sebab aku hantar.\n" + "\n".join(
+        f"{n}. NPRA menyemak fakta nombor {n} selepas produk dipasarkan di pasaran." for n in range(1, 30))
+    llm = Seq(first, {**first, "text": {"bm": {"instagram": long_cap}}})
+    store = _store([{"hook_shape": 25}])
+    pid = _write(llm, store)
+    assert len(llm.seen) == 2 and "TOO SHORT" in llm.seen[1][1]
+    post = next(p for p in store.tables["semasa_posts"] if p["id"] == pid)
+    assert post["text"]["bm"]["instagram"].startswith("Takde sapa") and "19. NPRA" in post["text"]["bm"]["instagram"]
+
+
+@pytest.mark.caption_floor
+def test_a_caption_that_stays_short_still_makes_the_post(offline):
+    first = {**GOOD, "hook": "Takde sapa cakap pasal notifikasi tapi ni sebab aku hantar", "hook_shape": 1,
+             "text": {"bm": {"instagram": "Takde sapa cakap pasal notifikasi tapi ni sebab aku hantar. Pendek."}}}
+    llm = Seq(first, first)
+    store = _store([{"hook_shape": 25}])
+    pid = _write(llm, store)
+    assert len(llm.seen) == 2 and any(p["id"] == pid for p in store.tables["semasa_posts"])

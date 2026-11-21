@@ -29,7 +29,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib import request, error
+from urllib import error, request
 
 BASE = "https://nexabot.id"
 API = BASE + "/api/v1/api"

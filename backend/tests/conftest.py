@@ -40,6 +40,15 @@ def no_live_ai_questions(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_caption_floor(request, monkeypatch):
+    """The writer is asked once more for a caption under its floor (ideas.CAPTION_FLOOR). Most tests feed the writer a one-line
+    caption, so they run with no floor; a test marked `caption_floor` runs with the real one."""
+    if "caption_floor" not in request.keywords:
+        from semasa import ideas
+        monkeypatch.setattr(ideas, "CAPTION_FLOOR", {})
+
+
+@pytest.fixture(autouse=True)
 def writer_on(request, monkeypatch):
     """Most motion tests were written for the AI writer's path. The worker composes films itself by default (26 Oct 2026),
     so those tests switch the writer back on; a test marked `composed` runs the default path."""

@@ -822,3 +822,30 @@ def test_a_recovery_that_fails_is_never_tried_twice_and_never_raises(clips):
     assert video_import.recover_missing_drafts(store, SETTINGS, NOW) == 0
     assert row(store, iid)["note"].startswith("[draft made again"), "marked before the draft: no loop"
     assert video_import.recover_missing_drafts(store, SETTINGS, NOW) == 0 and not store.tables["semasa_posts"]
+
+
+def test_a_draft_made_again_from_an_old_import_is_fitted_to_the_streams_ratio(monkeypatch):
+    # Wan, 21 Nov 2026: the film from Hermes / Nous follows each platform's ratio before it posts, drafts made again included
+    from semasa import film_ratio
+    asked = []
+
+    def fake(store, film, stream):
+        asked.append((film["url"], stream))
+        return {**film, "url": "https://x/ratio/1080x1920/a.mp4", "width": 1080, "height": 1920}
+
+    monkeypatch.setattr(film_ratio, "for_stream", fake)
+    info = {"width": 1280, "height": 720, "duration_s": 15.0, "bytes": 4_000_000}
+    out, url, size = video_import.fitted_for_recovery(None, "https://x/old.mp4", info, "regulab", "", 0)
+    assert asked == [("https://x/old.mp4", "regulab")]
+    assert (out["width"], out["height"]) == (1080, 1920) and url == "https://x/ratio/1080x1920/a.mp4" and size == 0
+    upright = {"width": 1080, "height": 1920, "duration_s": 15.0, "bytes": 1}
+    assert video_import.fitted_for_recovery(None, "https://x/ok.mp4", upright, "regulab", "u", 5) == (upright, "u", 5)
+    assert len(asked) == 1, "a film already in shape is not touched"
+    square = video_import.fitted_for_recovery(None, "https://x/sq.mp4", info, "linkedin", "", 0)
+    assert (square[0]["width"], square[0]["height"]) == (1080, 1080), "LinkedIn is square"
+
+    def boom(store, film, stream):
+        raise RuntimeError("no ffmpeg")
+
+    monkeypatch.setattr(film_ratio, "for_stream", boom)
+    assert video_import.fitted_for_recovery(None, "https://x/old.mp4", info, "regulab", "s", 7) == (info, "s", 7)

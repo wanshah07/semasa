@@ -459,7 +459,7 @@ function LatencyCard() {
           <span className="text-5xl font-semibold leading-none tracking-tight text-white [font-variant-numeric:tabular-nums]">
             {Math.round(animatedLatest)}
           </span>
-          <span className="mb-1 text-sm text-slate-500">ms</span>
+          <span className="mb-1 text-sm text-slate-400">ms</span>
         </div>
         <div className="mb-1 flex gap-4 text-xs text-slate-400">
           <span>
@@ -532,7 +532,7 @@ function LatencyCard() {
         )}
       </div>
 
-      <div className="mt-2 flex justify-between text-[11px] text-slate-500">
+      <div className="mt-2 flex justify-between text-[11px] text-slate-400">
         <span>{Math.round((SERIES_LENGTH * TICK_MS) / 1000)}s ago</span>
         <span>now</span>
       </div>
@@ -659,7 +659,7 @@ function LighthouseCard() {
                 {item.score}
               </span>
             </div>
-            <span className="text-[11px] text-slate-500">{item.label}</span>
+            <span className="text-[11px] text-slate-400">{item.label}</span>
           </div>
         ))}
       </div>
@@ -754,7 +754,7 @@ export function StackCard({ techs = TECHS, title = "Tech stack", hint = "Hover o
                 <span className={cx("text-xs font-medium transition-colors duration-300", on ? "text-white" : "text-slate-300")}>
                   {tech.name}
                 </span>
-                <span className="text-[10px] text-slate-500">{tech.version ? `v${tech.version}` : ""}</span>
+                <span className="text-[10px] text-slate-400">{tech.version ? `v${tech.version}` : ""}</span>
               </button>
             </li>
           );

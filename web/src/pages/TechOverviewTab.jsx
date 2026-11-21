@@ -17,7 +17,7 @@ export const PYTHON = "3.12";          // what the workflows run (techOverview.t
 const DEPS = { ...pkg.dependencies, ...pkg.devDependencies };
 const pick = (id) => TECHS.find((x) => x.id === id)?.icon;
 const DOT = { up: "bg-emerald-400", models: "bg-amber-400", stale: "bg-amber-400", key: "bg-rose-400", down: "bg-rose-400", nokey: "bg-slate-500", none: "bg-slate-500" };
-const MARK = { ok: ["✓", "text-emerald-300"], bad: ["✗", "text-rose-300"], running: ["●", "text-cyan-300"], none: ["›", "text-slate-500"] };
+const MARK = { ok: ["✓", "text-emerald-300"], bad: ["✗", "text-rose-300"], running: ["●", "text-cyan-300"], none: ["›", "text-slate-400"] };
 
 export default function TechOverviewTab({ go }) {
   const { t } = useLang();
@@ -65,7 +65,7 @@ export default function TechOverviewTab({ go }) {
 }
 
 function Empty({ children }) {
-  return <p className="flex flex-1 items-center justify-center text-center text-sm text-slate-500">{children}</p>;
+  return <p className="flex flex-1 items-center justify-center text-center text-sm text-slate-400">{children}</p>;
 }
 
 function GatewayCard({ gw, at, t, go }) {
@@ -75,13 +75,13 @@ function GatewayCard({ gw, at, t, go }) {
   const max = Math.max(1, ...gw.map((g) => g.ms || 0));
   return (
     <GlowCard accent="indigo" className="min-h-[420px] sm:col-span-2 lg:row-span-2">
-      <CardTitle right={at ? <span className="text-xs text-slate-500">{t("diperiksa", "checked")} {timeAgo(at)}</span> : null}>{t("Gerbang AI", "AI gateways")}</CardTitle>
+      <CardTitle right={at ? <span className="text-xs text-slate-400">{t("diperiksa", "checked")} {timeAgo(at)}</span> : null}>{t("Gerbang AI", "AI gateways")}</CardTitle>
       {gw.length ? (
         <>
           <div className="mb-4 flex flex-wrap items-end gap-x-5 gap-y-2">
             <div className="flex items-end gap-1.5">
               <span className="text-5xl font-semibold leading-none tracking-tight text-white [font-variant-numeric:tabular-nums]" data-tech-median>{med == null ? "–" : Math.round(shown)}</span>
-              <span className="mb-1 text-sm text-slate-500">{t("ms (median jawapan)", "ms (median answer)")}</span>
+              <span className="mb-1 text-sm text-slate-400">{t("ms (median jawapan)", "ms (median answer)")}</span>
             </div>
             <span className="mb-1 text-xs text-slate-400">{t("{u} daripada {n} menjawab", "{u} of {n} answering", { u: up, n: gw.length })}</span>
           </div>
@@ -90,7 +90,7 @@ function GatewayCard({ gw, at, t, go }) {
               <li key={g.name} className="rounded-lg px-2 py-1.5 transition-colors hover:bg-white/[0.05]" data-tech-gateway={g.verdict}>
                 <div className="flex items-center gap-3 text-sm">
                   <span className={cx("h-2 w-2 shrink-0 rounded-full", DOT[g.verdict] || DOT.none)} />
-                  <span className="flex-1 truncate text-slate-200">{g.name}<span className="ml-2 text-xs text-slate-500">{g.role}{g.model ? ` · ${g.model}` : ""}</span></span>
+                  <span className="flex-1 truncate text-slate-200">{g.name}<span className="ml-2 text-xs text-slate-400">{g.role}{g.model ? ` · ${g.model}` : ""}</span></span>
                   <span className="text-xs text-slate-300 [font-variant-numeric:tabular-nums]">{g.ms != null ? `${g.ms} ms` : "–"}</span>
                 </div>
                 {g.ms != null && <span className="mt-1 block h-1 rounded bg-indigo-400/60" style={{ width: `${Math.max(4, (g.ms / max) * 100)}%` }} />}
@@ -107,7 +107,7 @@ function GatewayCard({ gw, at, t, go }) {
 function RunsCard({ runs, at, t }) {
   return (
     <GlowCard accent="fuchsia" className="min-h-[340px] sm:col-span-2 lg:col-span-1 lg:row-span-2">
-      <CardTitle right={at ? <span className="text-xs text-slate-500">{timeAgo(at)}</span> : null}>{t("Larian terkini", "Latest runs")}</CardTitle>
+      <CardTitle right={at ? <span className="text-xs text-slate-400">{timeAgo(at)}</span> : null}>{t("Larian terkini", "Latest runs")}</CardTitle>
       {runs.length ? (
         <div className="flex flex-1 flex-col gap-1.5 overflow-hidden rounded-xl border border-white/5 bg-black/30 p-4 font-mono text-xs leading-relaxed" role="log" aria-label={t("Larian workflow", "Workflow runs")}>
           {runs.map((r, i) => {
@@ -116,7 +116,7 @@ function RunsCard({ runs, at, t }) {
               <div key={`${r.repo}-${r.name}-${i}`} className="tb-slide flex gap-2" data-tech-run={r.verdict}>
                 <span className={cx("w-3 shrink-0 text-center", cls)}>{mark}</span>
                 <span className="min-w-0 flex-1 truncate text-slate-300">{r.url ? <a href={r.url} target="_blank" rel="noreferrer" className="hover:underline">{r.repo} · {r.name}</a> : `${r.repo} · ${r.name}`}</span>
-                <span className="shrink-0 text-slate-500">{timeAgo(r.at)}</span>
+                <span className="shrink-0 text-slate-400">{timeAgo(r.at)}</span>
               </div>
             );
           })}
@@ -146,7 +146,7 @@ function HealthCard({ rows, t, go }) {
                   </svg>
                   <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-white">{score}</span>
                 </div>
-                <span className="max-w-[4.5rem] truncate text-[11px] text-slate-500" title={r.full_name}>{r.name}</span>
+                <span className="max-w-[4.5rem] truncate text-[11px] text-slate-400" title={r.full_name}>{r.name}</span>
               </div>
             );
           })}
@@ -162,7 +162,7 @@ function CommitsCard({ days, t }) {
   const max = Math.max(1, ...days.map((d) => d.n));
   return (
     <GlowCard accent="cyan" className="min-h-[200px]">
-      <CardTitle right={<span className="text-xs text-slate-500">{t("{n} hari", "{n} days", { n: days.length })}</span>}>{t("Commit di pejabat", "Commits in the office")}</CardTitle>
+      <CardTitle right={<span className="text-xs text-slate-400">{t("{n} hari", "{n} days", { n: days.length })}</span>}>{t("Commit di pejabat", "Commits in the office")}</CardTitle>
       {days.length ? (
         <>
           <div className="text-4xl font-semibold leading-none tracking-tight text-white [font-variant-numeric:tabular-nums]" data-tech-commits>{Math.round(shown)}</div>

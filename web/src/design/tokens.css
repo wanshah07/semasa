@@ -21,7 +21,7 @@
   /* text-ok/warn/danger are read as 11-12 px text on white and on their own 10% tints: these are the darkest shades
      that still read as green/amber/red and pass 4.5:1 on white (the old 22 163 74 read 2.9) */
   --c-ok:          22 101  52;
-  --c-warn:       180  83   9;
+  --c-warn:       158  73   8;   /* 180 83 9 read 4.38 on its own 10% tint over white (sweep 21 Nov 2026) */
   --c-danger:     185  28  28;
   --c-queue:      202 138   4;   /* post-slot check: yellow, a post waiting in the queue (its pill text stays ink: yellow text fails contrast on white) */
   --c-wait:       162  28 175;   /* post-slot check: magenta, a post waiting for approval */

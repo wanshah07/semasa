@@ -533,11 +533,11 @@ export default function ExpertTab({ settings, save, user, onToast, onIdea, go })
                 <summary className="flex cursor-pointer list-none items-center gap-2 text-base font-semibold [&::-webkit-details-marker]:hidden"><Settings2 size={15} /> {t("Tetapan kategori", "Category settings")}
                   <span className="ml-auto text-xs font-normal text-muted"><span className="group-open:hidden">{t("buka", "open")}</span><span className="hidden group-open:inline">{t("tutup", "close")}</span></span></summary>
                 <div className="mt-3 space-y-3">
-                  <div><Label>{t("Nama kategori", "Category name")}</Label><Input value={form.name} maxLength={60} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></div>
-                  <div><Label hint={t("bot menapis catatan dengan ini", "the bot filters posts by this")}>{t("Bidang", "Field")}</Label>
-                    <TextArea rows={3} value={form.niche} maxLength={300} onChange={(e) => setForm((f) => ({ ...f, niche: e.target.value }))} placeholder={t("cth. keselamatan kosmetik, penilaian keselamatan, SCCS", "e.g. cosmetic safety, safety assessment, SCCS")} /></div>
-                  <div><Label hint={t("sehingga 5, koma di antaranya", "up to 5, commas between")}>{t("Kata carian cadangan", "Search words for suggestions")}</Label>
-                    <Input value={form.keywords} onChange={(e) => setForm((f) => ({ ...f, keywords: e.target.value }))} placeholder="AI agent, LLM" /></div>
+                  <label className="block"><Label>{t("Nama kategori", "Category name")}</Label><Input value={form.name} maxLength={60} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></label>
+                  <label className="block"><Label hint={t("bot menapis catatan dengan ini", "the bot filters posts by this")}>{t("Bidang", "Field")}</Label>
+                    <TextArea rows={3} value={form.niche} maxLength={300} onChange={(e) => setForm((f) => ({ ...f, niche: e.target.value }))} placeholder={t("cth. keselamatan kosmetik, penilaian keselamatan, SCCS", "e.g. cosmetic safety, safety assessment, SCCS")} /></label>
+                  <label className="block"><Label hint={t("sehingga 5, koma di antaranya", "up to 5, commas between")}>{t("Kata carian cadangan", "Search words for suggestions")}</Label>
+                    <Input value={form.keywords} onChange={(e) => setForm((f) => ({ ...f, keywords: e.target.value }))} placeholder="AI agent, LLM" /></label>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <Button size="sm" disabled={busy || !dirty || !form.name.trim()} onClick={() => commit((c) => patchCategory(c, cat.id, form), t("Disimpan.", "Saved."))}>{t("Simpan", "Save")}</Button>
                     <button type="button" disabled={busy} onClick={dropCategory} className="inline-flex min-h-[36px] items-center gap-1.5 text-xs text-muted hover:text-danger disabled:opacity-50"><Trash2 size={13} /> {t("Padam kategori", "Delete category")}</button>

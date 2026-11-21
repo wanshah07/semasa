@@ -706,6 +706,13 @@ function gridWordCap(ctx, spec, W) {
    left a slide of one short point as a small block in the upper third of the card). A slide with a lead and three or four points
    already fills its card and is not touched; the ceiling only decides how a sparse one looks. */
 const FILL_MAX = 3, FILL_BODY_MAX = 2.2, FILL_FROM = 0.72, FILL_TARGET = 0.86;
+/* LinkedIn type does not grow to fill the card the way ws.regulab's does (Wan, 21 Nov 2026: "for linkedn make sure poster font size
+   like this, not too big like ws regulab"): the words are drawn at most this many times the template's own size, so a short post
+   stays a readable poster instead of a billboard. Each family has its own base size, so the cap is a share of that family's own
+   growth limit (3x, 2.2x for body slides, 3.4x for the hand-drawn card), never below the template's own size. Words that do not
+   fit still shrink as before. */
+const LI_FILL_SHARE = 0.6;
+export const capFill = (spec, max) => (spec && spec.stream === "linkedin" ? Math.max(1, max * LI_FILL_SHARE) : max);
 const HOOK_TPL = { g_title: 1, p_title: 1, p_quote: 1 };
 /* The scale (1 to FILL_MAX) at which a slide's content fills its card. `measure(spec)` runs the family's own painter against the
    measuring proxy and returns where the content ends; `topU` is where the content starts, in 1080-wide units. */
@@ -715,7 +722,7 @@ async function fillScale(spec, H, u, topU, endY, measure, max = FILL_MAX, from =
   const used = (y) => Math.max(0, y - z.top);
   if (room <= 0) return 1;
   const at = async (f) => used((await measure({ ...spec, _fill: f })).y);
-  return fitSearch(at, used(endY), room, max, from, target);
+  return fitSearch(at, used(endY), room, capFill(spec, max), from, target);
 }
 /* The one search behind every family's fit. `at(f)` is how much of the room the content takes at scale f (measured, never
    guessed), `used1` what it takes at 1. Fuller than the room: the largest scale down to FIT_MIN at which it fits, and FIT_MIN
@@ -1506,7 +1513,7 @@ async function renderPhotoCard(spec) {
   const quote = spec.template === "p_quote";
   const cap = wordCap(ctx, u, [[quote ? "“" + String(spec.title || "") + "”" : spec.title, quote ? 62 : 72, 800, G_HEAD, maxW], [spec.lead, 32, 500, G_BODY, Math.round(maxW * 0.86)]]);
   const fill = spec.type_size ? 1
-    : await fitSearch(async (f) => (await measure({ ...spec, _fill: f })).block, probe.block, probe.room, Math.min(FILL_MAX, cap), 0.6, 0.8);
+    : await fitSearch(async (f) => (await measure({ ...spec, _fill: f })).block, probe.block, probe.room, capFill(spec, Math.min(FILL_MAX, cap)), 0.6, 0.8);
   return photoCardPaint(ctx, fill !== 1 ? { ...spec, _fill: fill } : spec, W, H, 0, c);
 }
 async function photoCardPaint(ctx, spec, W, H, yShift, canvasOut) {
@@ -2658,7 +2665,7 @@ async function renderHandCard(spec) {
      and since 16 Nov 2026 (auto-fit) comes down when they do not fit, to FIT_MIN, before the card warns. */
   const used = (y) => Math.max(0, y - z.top), room = probe.bottom - z.top;
   const fill = spec.type_size || room <= 0 ? 1
-    : await fitSearch(async (f) => used(handPaint(measureProxy(ctx), spec, W, H, f, 0).y), used(probe.y), room, HAND_FILL_MAX, FILL_FROM, FILL_TARGET, HAND_FIT_MIN);
+    : await fitSearch(async (f) => used(handPaint(measureProxy(ctx), spec, W, H, f, 0).y), used(probe.y), room, capFill(spec, HAND_FILL_MAX), FILL_FROM, FILL_TARGET, HAND_FIT_MIN);
   const end = handPaint(measureProxy(ctx), spec, W, H, fill, 0).y;
   const slack = room - used(end);
   const shift = slack > 0 ? Math.round(slack / 2) : 0;           // centred between the eyebrow and the source line

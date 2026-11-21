@@ -3,10 +3,14 @@
 // (web/src/lib/cards/studio.js fitSearch); the drawing is checked in a real browser by backend/tests/test_studio_cards.py.
 // Here: the search itself, with layouts whose height is known, and the path a "too full" warning takes to the page. `npm test`.
 import { readFileSync } from "node:fs";
-import { fitSearch, FIT_MIN, SKIN_MIN, STUDIO_LOOKS } from "./src/lib/cards/studio.js";
+import { capFill, fitSearch, FIT_MIN, SKIN_MIN, STUDIO_LOOKS } from "./src/lib/cards/studio.js";
 
 let failed = 0;
 const ok = (cond, what) => { if (!cond) { failed++; console.error("FAIL", what); } };
+
+// LinkedIn type grows less than ws.regulab's (Wan, 21 Nov 2026): 60% of the family's own growth limit, never under the template's size
+ok(capFill({ stream: "regulab" }, 3.4) === 3.4 && capFill(null, 3) === 3, "ws.regulab type grows as far as it did");
+ok(Math.abs(capFill({ stream: "linkedin" }, 3.4) - 2.04) < 1e-9 && capFill({ stream: "linkedin" }, 1.2) === 1, "LinkedIn type is capped, never below 1");
 
 const ROOM = 1000;
 // a paragraph of `chars` characters in a column 900 px wide: the lines get fewer as the type gets smaller, in whole steps

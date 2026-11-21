@@ -92,6 +92,13 @@ def test_the_looks_follow_the_turn_and_never_repeat():
     assert set(looks) == set(rotation.LOOK_TURN)
 
 
+def test_linkedin_keeps_the_clean_image_slide_and_takes_no_turn():
+    # Wan, 21 Nov 2026: "I want like this for linkedn": cream paper, serif title, sans text, the source at the foot
+    briefs = [{"look": "hand"}, {"look": "image"}, {"look": "marker"}]
+    assert {rotation.next_look(_store(briefs), "linkedin") for _ in range(3)} == {"image"}
+    assert rotation.next_look(_store(briefs), "regulab") != "image", "ws.regulab still takes its turn"
+
+
 def test_a_hidden_look_is_skipped_and_a_look_off_the_turn_starts_it_again():
     assert rotation.next_look(_store([{"look": "hand"}]), "regulab", ["marker"]) == "torn"
     assert rotation.next_look(_store([{"look": "image"}]), "regulab") == "hand", "image is chosen by hand, not part of the turn"
@@ -160,3 +167,17 @@ def test_the_linkedin_writer_wants_numbered_facts_and_no_follow_line_or_self_lab
     assert "NUMBERED LIST" in p and "5 to 8 points" in p and "250 to 380 words" in p
     assert "no \"follow me\"" in p and "as a chemist" in p and "never address the reader by job title" in p
     assert "invitation to follow him" not in p and "Follow me for more like this" not in p
+
+
+def test_a_linkedin_poster_is_drawn_on_plain_paper_even_when_the_post_has_a_picture(offline):
+    assert ideas.slide_ground("linkedin", True) == "none" and ideas.slide_ground("linkedin", False) == "none"
+    assert ideas.slide_ground("regulab", True) == "post_image" and ideas.slide_ground("regulab", False) == "none"
+    english = {"fit": True, "hook": "Here is what a notification does and does not do", "hook_shape": 4, "angle": "A",
+               "citation": "NPRA",
+               "text": {"en": {"linkedin": "Here is what a notification does and does not do. It is not approval."}},
+               "poster": {"title": "Notification", "points": ["One"]}}
+    llm = Seq(english)
+    store = _store([{"hook_shape": 4, "look": "hand"}])
+    _write(llm, store, stream="linkedin", make_media="image", brief={"format": "poster"})
+    job = next(m for m in store.tables["media_generations"] if (m.get("meta") or {}).get("design") == "poster")
+    assert job["meta"]["look"] == "image" and job["meta"]["bg"] == "none"

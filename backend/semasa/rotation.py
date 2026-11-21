@@ -9,7 +9,8 @@ default look. Now the next shape and the next look are chosen HERE, from what th
     are never the same shape or even the same family. The writer is given THIS post's shape, two fall-backs for when it cannot
     be filled without inventing a fact, and the hooks of the last posts so it does not echo their opening words.
   * Looks: the Semasa poster looks (hand-drawn, marker, torn paper, colour blocks, neon, cardboard, chalkboard, line map, torn
-    strips, grid, Semasa's own) in a fixed turn, skipping the ones Wan has hidden and the last few used.
+    strips, grid, Semasa's own) in a fixed turn, skipping the ones Wan has hidden and the last few used. ws.regulab only:
+    LinkedIn keeps the clean Image slide (Wan, 21 Nov 2026).
 
 Wan's own choice always wins: an idea that names a look keeps it, and a hook style he made from screenshots is rotated the same
 way. Nothing here raises: a store that cannot answer means the turn simply starts again, which only costs the rotation, never
@@ -30,6 +31,9 @@ log = get_logger("semasa.rotation")
 # "threads" put the post's own picture on the slide, and "era" is not offered any more: none of those can be relied on for a
 # post that is made with no picture, so they are chosen by hand and are not part of the turn.
 LOOK_TURN = ("hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "grid", "classic")
+# A stream that keeps one look. LinkedIn is the clean Image slide on plain cream paper, a serif title over sans text and the
+# source at the foot (Wan, 21 Nov 2026: "I want like this for linkedn"), so its looks do not take turns.
+STREAM_LOOK = {"linkedin": "image"}
 LOOK_WINDOW = 4          # a look is not used again until this many others have been
 SHAPE_WINDOW = 8         # nor a hook shape until this many others have been (fewer when the bank is small)
 RECENT_HOOKS = 8
@@ -141,6 +145,8 @@ def turn_for(store: Any, stream: str, bank: hook_bank.Bank | None = None, family
 def next_look(store: Any, stream: str, hidden: list[str] | None = None) -> str:
     """The poster look this stream's next post is drawn in: the one after the last used in the turn, skipping the ones Wan hid
     and the latest few, so it follows the turn and never repeats."""
+    if stream in STREAM_LOOK:
+        return STREAM_LOOK[stream]
     gone = {str(h) for h in (hidden or [])}
     order = [k for k in LOOK_TURN if k not in gone] or list(LOOK_TURN)
     used = [str(b.get("look") or "") for b in _briefs(store, stream) if b.get("look")]

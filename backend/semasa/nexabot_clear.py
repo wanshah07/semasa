@@ -48,7 +48,7 @@ def main() -> int:
                     btn.click()
                     sync_page.wait_for_timeout(1200)
                     return {"name": name, "clicked": True}
-            except Exception as exc:  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 pass
             time.sleep(1)
         return {"name": name, "clicked": False}

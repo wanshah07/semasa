@@ -259,8 +259,11 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
               eyebrow={previewStream === "regulab" ? (brand.regulab.domains || {})[domain] || "" : (brand.linkedin.angles || {})[angle] || ""}
               bgChosen={media === "image"} threads={format === "carousel"} onBlocked={setLookBlocked} />
             {lookPick === null && (
-              <p className="mt-1.5 text-xs text-muted" data-look-turn>{t("Belum pilih: Semasa guna reka bentuk poster seterusnya dalam giliran dan tidak mengulang. Pilih satu untuk menetapkannya.",
-                "Nothing picked: Semasa uses the next poster look in its turn and never repeats one. Pick one to fix it.")}</p>
+              <p className="mt-1.5 text-xs text-muted" data-look-turn>{previewStream === "linkedin"
+                ? t("Belum pilih: LinkedIn guna slaid Image yang bersih di atas kertas krim, tanpa gambar latar. Pilih satu untuk menukarnya.",
+                  "Nothing picked: LinkedIn uses the clean Image slide on plain cream paper, with no photo behind it. Pick one to change it.")
+                : t("Belum pilih: Semasa guna reka bentuk poster seterusnya dalam giliran dan tidak mengulang. Pilih satu untuk menetapkannya.",
+                  "Nothing picked: Semasa uses the next poster look in its turn and never repeats one. Pick one to fix it.")}</p>
             )}
           </div>
         )}

@@ -13,7 +13,7 @@
   own place, read from the last ideas it wrote (`brief.hook_shape`). The writer is told THIS post's shape, two fall-backs for when
   it cannot be filled without inventing a fact, and the last eight hooks so it does not echo their opening words. A shape that is
   not its turn is asked for once more; after that what the writer gave stands, so a post is never lost to the rotation.
-- **Looks.** A carousel or a poster whose idea names no look takes the next Semasa poster look: hand-drawn, marker poster, torn
+- **Looks (ws.regulab).** A carousel or a poster whose idea names no look takes the next Semasa poster look: hand-drawn, marker poster, torn
   paper, colour blocks, neon, cardboard, chalkboard, line map, torn strips, grid, Semasa's own. Looks Wan hid in the picker
   (`default_design.hidden`) are skipped, and one is not used again until four others have been. The look is stored on the idea
   (`brief.look`), which is how the next post knows where the turn is. `photo`, `image` and `threads` need a picture and stay a hand
@@ -44,3 +44,11 @@ recall, ban, seizure, licence, registration, approval, enforcement, standard, fa
 stops with a plain sentence, before any writer is paid, and the writer is also told to decline such a story. A note Wan writes on the
 idea overrides the gate (his own words are his decision). Regulator rows, papers, the websites he lists and the folder bank are
 never judged.
+
+## LinkedIn keeps one look (Wan, 21 Nov 2026)
+
+> "I want like this for linkedn" (the clean Image slide: cream paper, a serif title, sans text, the source at the foot)
+
+LinkedIn does not take turns. Its carousels and posters are the **Image look on plain cream paper**, with no blurred photo behind
+the words (`rotation.STREAM_LOOK`, `ideas.slide_ground`). A look Wan picks on the idea still wins. ws.regulab keeps its turn.
+Posts already written keep the look they were drawn in.

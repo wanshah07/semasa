@@ -72,9 +72,9 @@ def test_dry_run_writes_nothing():
     assert rep["written"] and store.tables["semasa_posts"] == [] and store.tables["media_generations"] == []
 
 
-def test_an_approved_post_without_a_picture_is_named_as_blocked():
-    rep = studio_import.apply(_store(), [_row(media=None)])
-    assert rep["hard"] and "instagram needs an image" in rep["hard"][0]
+def test_an_approved_post_without_a_picture_is_no_longer_blocked():
+    rep = studio_import.apply(_store(), [_row(media=None)])      # Wan, 21 Nov 2026: "image needed" is a note, not a blocker
+    assert not rep["hard"]
 
 
 def test_the_post_is_written_before_its_picture_because_the_picture_points_at_it():

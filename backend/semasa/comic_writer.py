@@ -131,7 +131,7 @@ def flags(script: dict[str, Any], stream: str, brand: dict[str, Any] | None = No
         elif f["where"] == "Source":
             out.append(f)
     for phrase in compliance.vague_hits(units(script)):
-        out.append({"hard": True, "where": "Comic",
+        out.append({"hard": False, "where": "Comic",
                     "msg": f'vague: "{phrase}". {compliance.VAGUE_FIX} in that bubble or the two after it.'})
     text = "\n".join(units(script))
     if stream == "linkedin" and compliance.NOT_ENGLISH.search(text):

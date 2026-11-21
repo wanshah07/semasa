@@ -200,7 +200,6 @@ def test_the_writer_gets_the_rules_the_voice_the_cast_and_the_brief() -> None:
     (with_bubble("Hubungi kami untuk semak kelayakan produk anda."), "Comic panel 4"),
     (with_bubble("Lawati www.kkmhalalconsultant.com untuk tahu lagi."), "Comic panel 4"),
     (with_bubble("Saya nampak dekat TikTok semalam."), "social source"),
-    (with_bubble("Ada beberapa syarat penting yang perlu dipatuhi.", 3, 1), "vague"),
     (with_bubble("Kena siap dalam masa 30 hari."), "a figure the brief does not"),
     ({**GOOD, "panels": PANELS[:3]}, "exactly 4 panels"),
     (with_bubble("kata " * 30), "characters"),
@@ -247,7 +246,7 @@ def test_a_typed_script_is_judged_by_the_same_rules() -> None:
     titled = script(title="Hubungi kami untuk tahu lagi")
     assert any(f["where"] == "Comic title" for f in comic_writer.flags(titled, "regulab"))
     vague = script(panels=with_bubble("Ada beberapa syarat penting yang perlu dipatuhi.", 3, 1)["panels"])
-    assert any("vague" in f["msg"] and f["hard"] for f in comic_writer.flags(vague, "regulab"))
+    assert any("vague" in f["msg"] and not f["hard"] for f in comic_writer.flags(vague, "regulab"))     # a note, never a block
     # the detail in the same bubble or the two after it pins the phrase down, as on a slide
     pinned = script(panels=with_bubble("Ada beberapa syarat dalam klausa itu.", 2)["panels"])
     assert not any("vague" in f["msg"] for f in comic_writer.flags(pinned, "regulab"))

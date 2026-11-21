@@ -692,6 +692,9 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             items = carousel.with_front_cover(items, stream)     # a content first slide gets a hook in front, for the cover
         squeeze, joined = (carousel.compact(items, stream) if not kind and kind != "threads" else (items, 0))
         attempts = [(squeeze, joined)] + ([(items, 0)] if joined else [])
+        spread = carousel.split_full(items) if not kind else items       # a crowded slide drawn as two, when nothing else fits
+        if len(spread) != len(items):
+            attempts.append((spread, 0))
         for n, (words_in, joined_here) in enumerate(attempts):
             joined = joined_here
             try:

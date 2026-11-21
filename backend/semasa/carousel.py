@@ -67,6 +67,23 @@ def join(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any] | None:
     return {"title": a.get("title", ""), "points": points, **keep}
 
 
+def split_full(items: list[dict[str, Any]], keep: int = 3) -> list[dict[str, Any]]:
+    """The last resort for a slide that no look can fit: every slide with more than `keep` points is drawn as two, the same
+    headline marked 1/2 and 2/2 and the points shared between them. Every word is kept; a verse is never split."""
+    out: list[dict[str, Any]] = []
+    for s in items:
+        pts = [p for p in (_clean(p) for p in (s.get("points") or [])) if p]
+        if s.get("ayat") or len(pts) <= keep:
+            out.append(s)
+            continue
+        half = (len(pts) + 1) // 2
+        title = _clean(s.get("title"))
+        rest = {k: v for k, v in s.items() if k not in ("title", "points", "lead", "note")}
+        out.append({**rest, "title": f"{title} (1/2)".strip(), "points": pts[:half], "lead": s.get("lead") or ""})
+        out.append({**rest, "title": f"{title} (2/2)".strip(), "points": pts[half:], "note": s.get("note") or ""})
+    return out
+
+
 def _text_size(slide: dict[str, Any]) -> int:
     return len(_clean(slide.get("title"))) + sum(len(_clean(p)) for p in (slide.get("points") or [])) + len(
         _clean(slide.get("lead"))) + len(_clean(slide.get("note")))

@@ -382,13 +382,15 @@ citation is drawn at its foot automatically.""",
 
 
 def format_of(idea: dict[str, Any]) -> str:
-    """What the idea should become besides its caption: 'post' (a picture), 'carousel' (slides), 'poster' (one 4:5
-    artwork) or 'comic' (a four-panel dialogue comic as the post's one picture). make_slides (006) still means a carousel;
-    the choice itself rides in the idea's brief."""
+    """What the idea should become besides its caption: 'carousel' (slides), 'poster' (one 4:5 artwork, the default) or
+    'comic' (a four-panel dialogue comic as the post's one picture). There is no single-picture post any more. make_slides
+    (006) still means a carousel; the choice itself rides in the idea's brief."""
     fmt = str(((idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}).get("format") or "")
     if fmt in ("carousel", "poster", "comic"):
         return fmt
-    return "carousel" if idea.get("make_slides") else "post"
+    # no more single-picture post (Wan, 21 Nov 2026: "for ws regulab and linkend no more image single card, because it too ugly"):
+    # an idea that names no format is one Semasa poster, never an AI picture on its own
+    return "carousel" if idea.get("make_slides") else "poster"
 
 
 # Studio's pillars: what KIND of post it is, named by the writer (settings "writer".regulab.pillars, per domain)
@@ -911,7 +913,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         # the comic IS the post's picture (17 Nov 2026): no other picture is made for it
         jobs = [] if has_jobs or kept else [comic_job(idea, post, post_id)]
     else:
-        jobs = [] if has_jobs or kept else media_jobs(idea, source, out, post_id)
+        jobs = []         # no AI picture beside the slides or the poster (Wan, 21 Nov 2026): it was the "ugly single card"
     if want_slides and post.get("slides") and not has_jobs:
         jobs.append(slide_job(idea, post, post_id, bg=slide_ground(stream, bool(jobs or kept)), chosen=chosen))
     poster = slides.normalise(quran.untrusted([out.get("poster")]) if isinstance(out.get("poster"), dict) else [])[:1] \
@@ -926,6 +928,9 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
                 cover_state = "shortened" if cover_state in ("set", "kept") else "too_long"
     if poster and not has_jobs:
         jobs.append(poster_job(idea, post, post_id, poster, bg=slide_ground(stream, bool(jobs or kept)), chosen=chosen))
+    if not jobs and not has_jobs and not kept and fmt != "comic":
+        # the writer gave no slides and no poster: the post is not left with no picture at all (Instagram needs one)
+        jobs = media_jobs(idea, source, out, post_id)
     if jobs:
         store.table(db.MEDIA).insert(jobs).execute()
     caption = (text.get(lang) or {}).get("linkedin" if stream == "linkedin" else "instagram", "")

@@ -27,10 +27,11 @@ from .log import get_logger
 
 log = get_logger("semasa.rotation")
 
-# The Semasa poster looks in the order they come round (Wan's attached picker). "photo" needs a background picture, "image" and
-# "threads" put the post's own picture on the slide, and "era" is not offered any more: none of those can be relied on for a
-# post that is made with no picture, so they are chosen by hand and are not part of the turn.
-LOOK_TURN = ("hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "grid", "classic")
+# The Semasa poster looks in the order of the picker (Wan's attached grid, 21 Nov 2026: "follow order automatically"):
+# Semasa's own, Hand-drawn, Marker poster, Torn paper, Colour blocks, Neon, Cardboard, Chalkboard, Line map, Torn strips, Grid,
+# Image. "photo" is drawn ON a background picture and fails without one, and "threads" is a text-and-picture slide set of its
+# own, so those two stay a hand choice. "era" is not offered any more.
+LOOK_TURN = ("classic", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "grid", "image")
 # A stream that keeps one look. LinkedIn is the clean Image slide on plain cream paper, a serif title over sans text and the
 # source at the foot (Wan, 21 Nov 2026: "I want like this for linkedn"), so its looks do not take turns.
 STREAM_LOOK = {"linkedin": "image"}

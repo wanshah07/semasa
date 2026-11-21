@@ -14,10 +14,9 @@
   it cannot be filled without inventing a fact, and the last eight hooks so it does not echo their opening words. A shape that is
   not its turn is asked for once more; after that what the writer gave stands, so a post is never lost to the rotation.
 - **Looks (ws.regulab).** A carousel or a poster whose idea names no look takes the next Semasa poster look: hand-drawn, marker poster, torn
-  paper, colour blocks, neon, cardboard, chalkboard, line map, torn strips, grid, Semasa's own. Looks Wan hid in the picker
+  paper, colour blocks, neon, cardboard, chalkboard, line map, torn strips, grid, Image, in the order of the picker (Semasa's own first). Looks Wan hid in the picker
   (`default_design.hidden`) are skipped, and one is not used again until four others have been. The look is stored on the idea
-  (`brief.look`), which is how the next post knows where the turn is. `photo`, `image` and `threads` need a picture and stay a hand
-  choice.
+  (`brief.look`), which is how the next post knows where the turn is. `photo` (drawn ON a background picture) and `threads` (a text-and-picture slide set of its own) stay a hand choice.
 - **Every post that is not a film is a poster look.** Auto-fill makes a slot set to `single` (or to nothing) a Semasa poster, one
   4:5 artwork, for both streams, so ws.regulab and LinkedIn are drawn in the same looks. Carousels keep their slides and take the
   turn's look too.

@@ -74,7 +74,7 @@ def test_the_turn_survives_a_store_that_cannot_answer():
             raise RuntimeError("down")
     t = rotation.turn_for(Broken(), "regulab")
     assert t.assigned == 1 and t.recent == []
-    assert rotation.next_look(Broken(), "regulab") == "hand"
+    assert rotation.next_look(Broken(), "regulab") == "classic"
 
 
 # --- the poster looks ------------------------------------------------------------------------------------------------------
@@ -88,7 +88,7 @@ def test_the_looks_follow_the_turn_and_never_repeat():
         assert look not in looks[:4]
         looks.insert(0, look)
         briefs.insert(0, {"look": look})
-    assert looks[-1] == "hand" and looks[-2] == "marker" and looks[-3] == "torn", "in the order of the picker"
+    assert looks[-4:][::-1] == ["classic", "hand", "marker", "torn"], "in the order of the picker, Semasa's own first"
     assert set(looks) == set(rotation.LOOK_TURN)
 
 
@@ -101,7 +101,11 @@ def test_linkedin_keeps_the_clean_image_slide_and_takes_no_turn():
 
 def test_a_hidden_look_is_skipped_and_a_look_off_the_turn_starts_it_again():
     assert rotation.next_look(_store([{"look": "hand"}]), "regulab", ["marker"]) == "torn"
-    assert rotation.next_look(_store([{"look": "image"}]), "regulab") == "hand", "image is chosen by hand, not part of the turn"
+    assert rotation.next_look(_store([{"look": "chalk"}]), "regulab") == "metro", "where the live queue stands after chalk"
+    assert rotation.next_look(_store([{"look": "photo"}]), "regulab") == "classic", "photo needs a picture: not in the turn"
+    assert rotation.next_look(_store([{"look": "image"}]), "regulab") == "classic", "the turn closes on image, then starts again"
+    assert rotation.LOOK_TURN == ("classic", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip",
+                                  "grid", "image")
     every = list(rotation.LOOK_TURN)
     assert rotation.next_look(_store(), "regulab", every) in rotation.LOOK_TURN, "hiding all of them never leaves nothing"
 

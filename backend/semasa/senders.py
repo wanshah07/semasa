@@ -270,8 +270,14 @@ def slides_to_pdf(pictures: list[str]) -> bytes:
     import io
 
     from PIL import Image
+
+    from .brain import public_url
     imgs: list[Image.Image] = []
     for i, u in enumerate(pictures):
+        try:
+            u = public_url(u)   # reject private/loopback/link-local/reserved/metadata addresses
+        except ValueError as exc:
+            raise SendError("refused", f"slide {i + 1} address refused: {exc}") from exc
         try:
             r = requests.get(u, timeout=90)
         except requests.RequestException as exc:
@@ -648,6 +654,11 @@ class LinkedIn:
         return {"name": filename, "mimetype": mimetype, "s3key": meta["key"]}
 
     def fetch_picture(self, url: str, n: int) -> tuple[bytes, str, str]:
+        from .brain import public_url
+        try:
+            url = public_url(url)   # reject private/loopback/link-local/reserved/metadata addresses
+        except ValueError as exc:
+            raise SendError("refused", f"picture {n} address refused: {exc}") from exc
         try:
             r = self.http.get(url, timeout=60)
         except requests.RequestException as exc:

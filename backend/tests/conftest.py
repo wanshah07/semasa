@@ -25,6 +25,20 @@ def no_network(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_browser_launch(monkeypatch):
+    """fetch.Browser launches a real Chromium, whose egress no_network cannot see (it is not
+    `requests`). A test that reaches a browser path must pass its own stand-in page_html; a real
+    launch fails loudly here instead of leaking live egress under the offline guarantee. Gated
+    browser tests (e.g. test_nexabot) opt in via SEMASA_CHROME and drive their own launcher, not
+    fetch.Browser."""
+    from semasa import fetch
+
+    def refuse_start(self):
+        raise AssertionError("a test tried to launch a real browser: pass a stand-in page_html instead")
+    monkeypatch.setattr(fetch.Browser, "start", refuse_start)
+
+
+@pytest.fixture(autouse=True)
 def no_expert_browser(monkeypatch):
     """Expert content (semasa.experts) opens a real browser for its handles and its daily search. Under test the sweep gets no
     pages at all; a test of the reading passes its own stand-in pages to experts.sweep."""

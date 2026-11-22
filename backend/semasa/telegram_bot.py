@@ -518,7 +518,12 @@ def billing_text(store: Any) -> str:
 
 def page_title(url: str) -> str:
     from . import fetch
+    from .brain import public_url
     try:
+        # The same IP-validated guard the other fetch paths use: refuse private/loopback/
+        # link-local/reserved/metadata addresses before fetching (redirect hops keep the
+        # same parity as the existing public_url callers).
+        url = public_url(url)
         r = fetch.get(url, timeout=15, retries=0)
         m = re.search(r"<title[^>]*>(.*?)</title>", r.text[:200000], re.I | re.S)
         return htmllib.unescape(" ".join(m.group(1).split()))[:200] if m else ""

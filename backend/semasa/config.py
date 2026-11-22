@@ -195,7 +195,11 @@ def blocked_host(base_url: str, what: str = "LLM_BASE_URL") -> str:
         if what == "LLM_FALLBACK_BASE_URL" else ("LLM_ALLOWED_HOSTS", "rootsys.cloud", "https://rootsys.cloud/v1")
     allowed = [h.strip().lower() for h in (env(var, default) or "").split(",") if h.strip()]
     host = host_of(base_url).lower()
-    if allowed and not any(host == h or host.endswith("." + h) for h in allowed):
+    if not allowed:
+        # Fail closed: an empty allowlist must refuse the key, never silently disable the guard.
+        return (f"{what} has an empty allowlist ({var}): refusing to send the key until an allowed writer host "
+                f"is configured — set {what}={fix} or add hosts to the GitHub variable {var}")
+    if not any(host == h or host.endswith("." + h) for h in allowed):
         return (f"{what} points at {host or 'nothing'}, which is not an allowed writer "
                 f"({', '.join(allowed)}): set {what}={fix}, add the host to the GitHub variable {var}, or save this "
                 "endpoint TOGETHER with its own key in Tetapan → Tetapan AI")

@@ -24,7 +24,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import compliance, db, film_ratio, guard, rollforward, senders
+from . import caption_fit, compliance, db, film_ratio, guard, rollforward, senders
 from .config import SupabaseSettings
 from .log import get_logger
 from .studio_link import when_utc
@@ -576,6 +576,38 @@ class _Pin:
         return False
 
 
+def fit_before_send(store: Any, post: dict[str, Any]) -> dict[str, Any]:
+    """The post with every caption inside its platform's limit (caption_fit), saved before anything is handed over (Wan,
+    22 Nov 2026: "Make sure caption untuk semua platform di bawah maksimum aksara dibenarkan"). The caption of a channel a
+    platform already holds is never changed (it is what that platform shows). The write is pinned to the post as it was read
+    (status and updated_at), so an edit made meanwhile wins and the next run looks again; the service role keeps the post's
+    approval, since only whole paragraphs at the end come out."""
+    stream = post.get("stream") or "regulab"
+    text = post.get("text")
+    fitted = caption_fit.fit_text(text, stream)
+    if fitted == text or not isinstance(text, dict):
+        return post
+    held = set((post.get("published") or {}).keys())
+    for lg, inner in fitted.items():
+        if isinstance(inner, dict):
+            for p in held & set(inner):
+                inner[p] = (text.get(lg) or {}).get(p)
+    if fitted == text:
+        return post
+    over = [f"{lg}.{p}" for lg, inner in text.items() if isinstance(inner, dict) for p in inner if fitted[lg][p] != inner[p]]
+    q = store.table(db.POSTS).update({"text": fitted}).eq("id", post["id"]).eq("status", post.get("status") or "approved")
+    if post.get("updated_at"):
+        q = q.eq("updated_at", post["updated_at"])
+    rows = getattr(q.execute(), "data", None) or []
+    if not rows:
+        log.info("publisher: post %s changed before its captions could be fitted; the next run looks again", post["id"])
+        return post
+    db.log_event(store, "info", "publish", "publish.caption_fitted",
+                 f"Kapsyen dipendekkan ikut had platform: {str(post.get('hook') or post['id'])[:80]} ({', '.join(over)})",
+                 ref_table=db.POSTS, ref_id=post["id"], detail={"captions": over, "stream": stream})
+    return {**post, "text": fitted, "updated_at": rows[0].get("updated_at", post.get("updated_at"))}
+
+
 def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
     store, now, counts, settings, clients = ctx.store, ctx.now, ctx.counts, ctx.settings, ctx.clients
     due = due_utc(post["date"], post["slot"])
@@ -583,6 +615,7 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
         return
     counts["considered"] += 1
     stream = post.get("stream") or "regulab"
+    post = fit_before_send(store, post)
     media = media_for(store, list(post.get("media_ids") or []))
     scan_post = {**post, "media": [scan_entry(m) for m in media if m.get("status") == "done"]}
     flags = compliance.scan(scan_post, brand=ctx.reg, schedule=ctx.reg.get("schedule"),
@@ -651,6 +684,8 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
         via_z = channel in ctx.zacc           # Zernio holds this platform (settings.channels.zernio), else Buffer/Composio
         text = compliance.text_of(post, channel, lang) or (
             compliance.text_of(post, "instagram", lang) if channel == "tiktok" else "")
+        if channel == "tiktok" or channel not in published:
+            text = caption_fit.fit(text, channel, stream)          # the last word: TikTok reads the Instagram caption
         payload = {"channel": channel, "due_at": due.isoformat(), "text": text, "media": pictures}
         if video:
             payload["video"] = video["url"]

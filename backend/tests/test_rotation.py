@@ -11,7 +11,7 @@ from fakestore import FakeStore
 sys.path.insert(0, str(Path(__file__).parent))
 from test_hook_bank import CAP, GOOD, Seq  # noqa: E402
 
-from semasa import hook_bank, ideas, rotation  # noqa: E402
+from semasa import compliance, hook_bank, ideas, rotation  # noqa: E402
 
 
 def _store(briefs=(), hooks=(), stream="regulab"):
@@ -281,4 +281,6 @@ def test_a_caption_over_the_platform_limit_is_trimmed_by_whole_paragraphs_keepin
     assert all(p in cap for p in out.split("\n\n")), "no paragraph is cut in the middle"
     assert ideas.fit_caption("pendek", 2200) == "pendek"
     fitted = ideas.fit_captions({"bm": {"instagram": cap, "threads": cap}}, "regulab")
-    assert len(fitted["bm"]["instagram"]) <= 2200 and fitted["bm"]["threads"] == cap, "a thread keeps its own rule"
+    assert len(fitted["bm"]["instagram"]) <= 2200
+    chain = compliance.thread_parts(fitted["bm"]["threads"])
+    assert 1 < len(chain) <= 5 and all(len(x) <= 500 for x in chain), "a thread is fitted to its own rule: 5 posts of 500"

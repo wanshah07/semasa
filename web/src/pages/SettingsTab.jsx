@@ -230,7 +230,9 @@ export function WriterSettings({ settings, save, onToast }) {
 
 /* Studio's nightly drafter as a switch (supabase/022, backend/semasa/autofill.py). Off, nothing is written without
    Wan's click, as before; on, each worker run writes ideas for the empty slots of the next few days from the Regulatory
-   and Latest publication feed, rota-true. They become drafts that still wait for his approval. */
+   and Latest publication feed, rota-true. They become drafts that still wait for his approval. Facts first (22 Nov 2026): a
+   regulator's or the government's announcement leads, then official publications; the newspaper headlines (isu semasa) are
+   OFF unless the `news` box is ticked, and then they come after every official item. */
 function AutofillSettings({ settings, save, onToast }) {
   const { t } = useLang();
   const a = settings.autofill;
@@ -238,7 +240,7 @@ function AutofillSettings({ settings, save, onToast }) {
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     setF({ enabled: a?.enabled === true, days: String(a?.days_ahead || 3), per: String(a?.per_run || 2),
-      streams: Array.isArray(a?.streams) ? a.streams : ["regulab", "linkedin"] });
+      streams: Array.isArray(a?.streams) ? a.streams : ["regulab", "linkedin"], news: a?.news === true });
   }, [JSON.stringify(a)]); // eslint-disable-line react-hooks/exhaustive-deps -- a change elsewhere must not wipe an edit here
   if (!f) return null;
   const toggleStream = (k) => setF((x) => ({ ...x, streams: x.streams.includes(k) ? x.streams.filter((y) => y !== k) : [...x.streams, k] }));
@@ -246,7 +248,7 @@ function AutofillSettings({ settings, save, onToast }) {
   async function submit() {
     setBusy(true);
     try {
-      await save("autofill", { enabled: f.enabled, days_ahead: Number(f.days), per_run: Number(f.per), streams: f.streams });
+      await save("autofill", { enabled: f.enabled, days_ahead: Number(f.days), per_run: Number(f.per), streams: f.streams, news: f.news });
       onToast(f.enabled ? t("Auto-isi dihidupkan. Larian Semasa seterusnya menulis idea untuk slot kosong; semuanya draf.",
         "Autofill is on. The next Semasa run writes ideas for empty slots; all of them stay drafts.")
         : t("Auto-isi dimatikan.", "Autofill is off."), "ok");
@@ -260,11 +262,16 @@ function AutofillSettings({ settings, save, onToast }) {
   return (
     <Card className="p-5">
       <h2 className="flex items-center gap-2 text-lg"><FlaskConical size={16} /> {t("Auto-isi slot kosong", "Fill empty slots")}</h2>
-      <p className="mt-1 text-[12px] text-muted">{t("Seperti penulis malam Studio. Mati: tiada idea ditulis tanpa klik anda. Hidup: setiap larian Semasa menulis idea untuk slot kosong beberapa hari ke depan, daripada suapan Regulatori dan Penerbitan Terkini, ikut rota. Semuanya kekal draf sehingga anda luluskan.",
-        "Like Studio's nightly drafter. Off: no idea is written without your click. On: each Semasa run writes ideas for the empty slots of the next few days, from the Regulatory and Latest publication feed, following the rota. Every one stays a draft until you approve it.")}</p>
+      <p className="mt-1 text-[12px] text-muted">{t("Seperti penulis malam Studio. Mati: tiada idea ditulis tanpa klik anda. Hidup: setiap larian Semasa menulis idea untuk slot kosong beberapa hari ke depan, ikut rota, dengan FAKTA DAHULU: pengumuman pengawal selia atau kerajaan (penarikan balik, larangan, amaran, pekeliling) di tempat pertama, kemudian penerbitan rasmi dan laman web rasmi. Berita akhbar (isu semasa) dimatikan kecuali anda hidupkannya di bawah. Semuanya kekal draf sehingga anda luluskan.",
+        "Like Studio's nightly drafter. Off: no idea is written without your click. On: each Semasa run writes ideas for the empty slots of the next few days, following the rota, FACTS FIRST: an announcement by a regulator or the government (a recall, a ban, a warning, a circular) comes first, then official publications and official websites. Newspaper headlines (isu semasa) stay off unless you switch them on below. Every one stays a draft until you approve it.")}</p>
       <label className="mt-3 flex items-center gap-2 text-sm">
         <input type="checkbox" checked={f.enabled} onChange={(e) => setF((x) => ({ ...x, enabled: e.target.checked }))} />
         {t("Hidupkan auto-isi", "Switch autofill on")}</label>
+      <label className="mt-2 flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={f.news} onChange={(e) => setF((x) => ({ ...x, news: e.target.checked }))} />
+        {t("Benarkan berita akhbar (isu semasa) mengisi slot, selepas sumber rasmi", "Let newspaper headlines (isu semasa) fill slots, after the official sources")}</label>
+      <p className="mt-1 text-[12px] text-muted">{t("Dimatikan secara lalai: isu semasa datang daripada Hermes (Nous) melalui import. Anda masih boleh Jadikan idea daripada mana-mana berita dengan tangan.",
+        "Off by default: isu semasa comes from Hermes (Nous) through the import route. You can still make an idea of any news item by hand.")}</p>
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <label><Label>{t("Berapa hari ke depan", "How many days ahead")}</Label><Select value={f.days} onChange={(v) => setF((x) => ({ ...x, days: v }))} options={days} /></label>
         <label><Label>{t("Idea paling banyak setiap larian", "Most ideas per run")}</Label><Select value={f.per} onChange={(v) => setF((x) => ({ ...x, per: v }))} options={per} /></label>

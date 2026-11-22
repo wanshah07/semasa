@@ -44,8 +44,8 @@ export default function Guide({ open, onClose, settings = {}, brand }) {
       <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
         <div className="space-y-2">
           <h4 className="text-sm font-semibold">{t("1 · Aliran kerja", "1 · The flow")}</h4>
-          <Pair bm="Isu semasa, Regulatori atau Penerbitan Terkini → Jadikan idea → Semasa menulis draf dan gambar → anda semak di tab Post → Luluskan. Hanya post yang anda luluskan akan dihantar."
-            en="Current issues, Regulatory or Latest publication → Make an idea → Semasa writes the draft and pictures → you check it in Posts → Approve. Only posts you approve are ever sent." />
+          <Pair bm="Regulatori, Penerbitan Terkini atau Isu semasa → Jadikan idea → Semasa menulis draf dan gambar → anda semak di tab Post → Luluskan. Hanya post yang anda luluskan akan dihantar."
+            en="Regulatory, Latest publication or Current issues → Make an idea → Semasa writes the draft and pictures → you check it in Posts → Approve. Only posts you approve are ever sent." />
         </div>
 
         <div className={sec}>
@@ -94,9 +94,16 @@ export default function Guide({ open, onClose, settings = {}, brand }) {
           <h4 className="text-sm font-semibold">{t("7 · Auto-isi slot kosong", "7 · Filling empty slots")}</h4>
           <p className={`rounded-tile p-2 text-[12.5px] ${auto ? "bg-accent/10 text-ink" : "bg-surface-2 text-muted"}`}>
             {auto
-              ? t(`HIDUP: setiap larian Semasa menulis idea untuk slot kosong ${settings.autofill?.days_ahead || 3} hari ke depan. Semuanya draf.`, `ON: each Semasa run writes ideas for the empty slots of the next ${settings.autofill?.days_ahead || 3} days. All of them stay drafts.`)
+              ? t(`HIDUP: setiap larian Semasa menulis idea untuk slot kosong ${settings.autofill?.days_ahead || 3} hari ke depan, fakta dahulu: pengumuman pengawal selia atau kerajaan di tempat pertama, kemudian sumber rasmi${settings.autofill?.news === true ? ", kemudian berita akhbar" : " (berita akhbar dimatikan)"}. Semuanya draf.`,
+                `ON: each Semasa run writes ideas for the empty slots of the next ${settings.autofill?.days_ahead || 3} days, facts first: a regulator's or government announcement first, then official sources${settings.autofill?.news === true ? ", then newspaper headlines" : " (newspaper headlines are off)"}. All of them stay drafts.`)
               : t("MATI: tiada idea ditulis tanpa klik anda. Hidupkan di Tetapan.", "OFF: no idea is written without your click. Switch it on in Settings.")}
           </p>
+        </div>
+
+        <div className={sec}>
+          <h4 className="text-sm font-semibold">{t("8 · Fakta dahulu, dan istilah teknikal", "8 · Facts first, and technical terms")}</h4>
+          <Pair bm="Semasa menulis daripada fakta rasmi: pengumuman pengawal selia atau kerajaan di tempat pertama. Setiap istilah teknikal diterangkan dua kali dengan perkataan yang sama: nota kaki kecil pada poster atau slaid (medan Nota kaki), dan baris Definisi di hujung kapsyen. Maksudnya datang dari rules/glossary.json. Amaran kuning “terangkan ...” bermaksud satu istilah belum diterangkan; ia tidak menghalang kelulusan."
+            en="Semasa writes from official facts: an announcement by a regulator or the government comes first. Every technical term is explained twice in the same words: a small footnote on the poster or slide (the Footnote field) and a Definition line at the end of the caption. The meanings come from rules/glossary.json. A yellow “explain ...” warning means a term has not been explained yet; it never blocks approval." />
         </div>
       </div>
     </Modal>

@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { glossarySource } from "./glossaryInline.mjs";
 
 const here = new URL(".", import.meta.url);
 const rulesText = readFileSync(new URL("../rules/compliance.json", here), "utf8");
@@ -13,6 +14,7 @@ const doc = JSON.parse(readFileSync(new URL("../rules/quran_cases.json", here), 
 // Node needs an import attribute for JSON that Vite does not: inline the rules, as the other suites do
 const dir = mkdtempSync(join(tmpdir(), "qrn-"));
 writeFileSync(join(dir, "compliance.js"), readFileSync(new URL("src/lib/compliance.js", here), "utf8").replace(/^import RULES from .*$/m, `const RULES = ${rulesText};`));
+writeFileSync(join(dir, "glossary.js"), glossarySource());
 writeFileSync(join(dir, "quran.js"), readFileSync(new URL("src/lib/quran.js", here), "utf8").replace('from "./compliance"', 'from "./compliance.js"'));
 const { fetchAyat, skeleton, cleanArabic, QuranError } = await import(pathToFileURL(join(dir, "quran.js")).href);
 const { ayatRef, ayatLabel, normaliseSlides } = await import(pathToFileURL(join(dir, "compliance.js")).href);

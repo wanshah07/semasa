@@ -3837,6 +3837,9 @@ export function specsFor(slides, o = {}) {
       footnote: String(s.footnote || "").trim() || (last ? cite : ""),
       chip_label: String(s.chip || "").trim() || (last && cite ? (linkedin ? "Source" : "Sumber") : ""),
       note: String(s.note || "").trim(),
+      // the small definition note ("Definisi: PIF = ..."), never on the cover or the closing slide of a carousel (their terms are
+      // defined in the caption's Definisi line); a lone poster or card carries its own
+      foot: n > 1 && (i === 0 || last) ? "" : String(s.foot || "").trim(),
       bg: s.bg === "none" ? "" : (s.bg_url || o.bg || ""),
       scrim: s.scrim || (D && D.scrim) || (linkedin ? "heavy" : "medium"),
       auto_scrim: !s.scrim && !(D && D.scrim),
@@ -4075,7 +4078,59 @@ function renderSpec(spec) {
   _renderTurn = next.catch(() => null);
   return next;
 }
+/* THE DEFINITION NOTE (Wan, 22 Nov 2026: "if got technical terms, must have small foot note for definition in the poster/carousel/
+   card"). One common place for every look: a slide's `foot` ("Definisi: PIF = ...; NPRA = ...") is drawn small and muted in its own
+   band at the foot of the card, two lines at most. The look itself is drawn on a card that much SHORTER (spec.size), so its own
+   content, source line and "fuller than the card" test all keep clear of the band: the note can never overlap a word, whatever the
+   look, and the cards need no per-look change. The band takes its colour from the card's own bottom edge, so it reads as part of
+   the card. When the note is too long for two lines its last term goes (never a word cut in half); when not even the first term
+   fits, no band is drawn and the caption's Definisi line carries it. */
+const FOOT_LINES = 2;
+function footOf(spec) { return spec.template === "q_ayat" ? "" : String(spec.foot || "").replace(/\s+/g, " ").trim(); }
+/** The note as at most FOOT_LINES lines of `maxW`: while it does not fit the LAST term is dropped ("Definisi: a = x; b = y."). */
+export function footLines(ctx, text, maxW) {
+  let t = stripEmph(text).trim();
+  while (t) {
+    const lines = gWrap(ctx, t, maxW);
+    if (lines.length && lines.length <= FOOT_LINES) return lines;
+    const at = t.replace(/\.+$/, "").lastIndexOf("; ");
+    t = at > 0 ? t.slice(0, at).replace(/\.+$/, "") + "." : "";
+  }
+  return [];
+}
+const FOOT_FONT = (px) => "400 " + px + 'px "Instrument Sans", system-ui, sans-serif';
+async function renderWithFoot(spec, foot) {
+  const [W, H] = sizeOf(spec), u = W / 1080;
+  const px = Math.round(23 * u), lh = Math.round(px * 1.36), M = Math.round(72 * u);
+  const probe = document.createElement("canvas").getContext("2d");
+  probe.font = FOOT_FONT(px);
+  const lines = footLines(probe, foot, W - M * 2);
+  if (!lines.length) return renderCard(spec);
+  const padT = Math.round(20 * u), padB = Math.round(26 * u), band = padT + lines.length * lh + padB;
+  const r = await renderCard({ ...spec, size: [W, H - band] });
+  if (!r.url) return r;
+  const im = await new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = r.url; });   // not loadImg: its cache would keep every card
+  if (!im) return r;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(im, 0, 0, W, H - band);
+  // the band's colour: the average of the card's own bottom edge
+  const edge = ctx.getImageData(0, H - band - 6, W, 6).data;
+  let rr = 0, gg = 0, bb = 0, k = 0;
+  for (let i = 0; i < edge.length; i += 4) { rr += edge[i]; gg += edge[i + 1]; bb += edge[i + 2]; k++; }
+  rr = Math.round(rr / k); gg = Math.round(gg / k); bb = Math.round(bb / k);
+  const dark = (0.299 * rr + 0.587 * gg + 0.114 * bb) < 128;
+  ctx.fillStyle = "rgb(" + rr + "," + gg + "," + bb + ")"; ctx.fillRect(0, H - band, W, band);
+  ctx.fillStyle = dark ? "rgba(255,255,255,.16)" : "rgba(21,21,21,.14)"; ctx.fillRect(M, H - band + 1, Math.round(56 * u), Math.max(2, Math.round(2 * u)));
+  ctx.font = FOOT_FONT(px); ctx.fillStyle = dark ? "rgba(255,255,255,.74)" : "rgba(21,21,21,.62)"; ctx.textBaseline = "top";
+  lines.forEach((l, i) => ctx.fillText(l, M, H - band + padT + i * lh));
+  return { ...r, url: c.toDataURL("image/jpeg", 0.92), size: [W, H - band], foot: lines.join(" ") };
+}
 async function renderSpecNow(spec) {
+  const foot = footOf(spec);
+  return foot ? renderWithFoot(spec, foot) : renderCard(spec);
+}
+async function renderCard(spec) {
   if (spec.bg && spec.template[0] !== "p" && spec.template[0] !== "i" && spec.template[0] !== "h" && !SKIN_TPL[spec.template] && await groundIsLight(spec)) spec = { ...spec, scrim: "none", _light: true };
   if (spec.template === "c_ref") return renderRefCard(spec);
   if (MORE_TPL[spec.template]) return renderMoreCard(spec);
@@ -4221,7 +4276,7 @@ const FULL = "The slide is fuller than the card";
 function fullWarnFixed(spec, r) {
   const warn = r.warn || [];
   if (spec.template !== "p_title" || typeof r.y !== "number") return warn;
-  const [W, H] = sizeOf(spec), u = W / 1080, M = Math.round(74 * u);
+  const [W, H] = r.size || sizeOf(spec), u = W / 1080, M = Math.round(74 * u);   // r.size: the card above its definition band
   const reserve = Math.round((spec.footnote || spec.chip_label ? 96 : 46) * u);
   if (r.y <= H - M - reserve + 1) return warn.filter((w) => !String(w).startsWith(FULL));
   return warn;

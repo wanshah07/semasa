@@ -9,6 +9,10 @@ const TIKTOK_MAX = 2200;
 const SEP = "---";
 const TAGS_ONLY = /^(?:\s*#[^\s#]+)+\s*$/;
 const FOLLOW = /\b(follow|ikuti|ikut kami|ikut saya)\b/i;
+// the caption's definitions paragraph ("Definisi: term = meaning; ..." / "Definition: ..."): kept with the follow line and the hashtags
+// when a caption is trimmed, and on the last post of a Threads chain (Wan, 22 Nov 2026). Twin of _DEFS in caption_fit.py.
+const DEFS = /^\s*(?:definisi|definition)s?\s*:/i;
+const DEFS_MAX = 700;
 const units = (t) => String(t ?? "").length;
 const paragraphs = (t) => String(t ?? "").trim().split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
 const join = (a) => a.join("\n\n");
@@ -34,7 +38,8 @@ function split(para, limit) {
 function tailOf(paras) {
   const body = [...paras];
   const tail = [];
-  while (body.length > 1 && (TAGS_ONLY.test(body[body.length - 1]) || (FOLLOW.test(body[body.length - 1]) && units(body[body.length - 1]) <= 200))) {
+  while (body.length > 1 && (TAGS_ONLY.test(body[body.length - 1]) || (FOLLOW.test(body[body.length - 1]) && units(body[body.length - 1]) <= 200)
+    || (DEFS.test(body[body.length - 1]) && units(body[body.length - 1]) <= DEFS_MAX))) {
     tail.unshift(body.pop());
   }
   return [body, tail];
@@ -92,9 +97,21 @@ export function fitThread(text, limit = 500, parts = 5) {
     else posts.push(u);
   }
   if (posts.length > parts) {
-    const keep = posts.slice(parts).filter((p) => FOLLOW.test(p));
+    let keep = posts.slice(parts).filter((p) => FOLLOW.test(p));
+    // the definitions go on the LAST post, and the body gives way to them, never the other way round
+    const defs = posts.slice(parts).flatMap((p) => p.split(/\n\s*\n/)).filter((para) => DEFS.test(para) && units(para) <= DEFS_MAX);
     posts = posts.slice(0, parts);
-    if (keep.length && units(posts[posts.length - 1]) + 2 + units(keep[keep.length - 1]) <= limit) posts[posts.length - 1] += `\n\n${keep[keep.length - 1]}`;
+    if (defs.length) {
+      keep = keep.flatMap((p) => p.split(/\n\s*\n/)).filter((para) => FOLLOW.test(para));
+      let reserve = [...defs.slice(0, 1), ...keep.slice(-1)].join("\n\n");
+      while (units(posts[posts.length - 1]) + 2 + units(reserve) > limit) {
+        const paras = posts[posts.length - 1].split("\n\n");
+        if (paras.length > 1) posts[posts.length - 1] = paras.slice(0, -1).join("\n\n");
+        else if (posts.length > 1) posts.pop();
+        else { reserve = units(defs[0]) <= limit ? defs[0] : ""; break; }
+      }
+      if (reserve && units(posts[posts.length - 1]) + 2 + units(reserve) <= limit) posts[posts.length - 1] += `\n\n${reserve}`;
+    } else if (keep.length && units(posts[posts.length - 1]) + 2 + units(keep[keep.length - 1]) <= limit) posts[posts.length - 1] += `\n\n${keep[keep.length - 1]}`;
   }
   if (tags && posts.length) {
     const room = limit - units(posts[posts.length - 1]) - 2;

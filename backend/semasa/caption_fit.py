@@ -29,6 +29,10 @@ SEP = "---"
 _SEP_LINE = re.compile(rf"(?m)^[ \t]*{re.escape(SEP)}[ \t]*$")
 _TAGS_ONLY = re.compile(r"^(?:\s*#[^\s#]+)+\s*$")
 _FOLLOW = re.compile(r"\b(follow|ikuti|ikut kami|ikut saya)\b", re.I)
+# the caption's definitions paragraph ("Definisi: term = meaning; ..." / "Definition: ...", glossary.py): kept with the follow
+# line and the hashtags when a caption is trimmed (Wan, 22 Nov 2026), and on the last post of a Threads chain
+_DEFS = re.compile(r"^\s*(?:definisi|definition)s?\s*:", re.I)
+DEFS_MAX = 700
 
 
 def units(text: str) -> int:
@@ -66,7 +70,8 @@ def _cut(para: str, limit: int) -> str:
 def _tail(paras: list[str]) -> tuple[list[str], list[str]]:
     """(body, tail): the hashtag and follow paragraphs at the end are the tail, kept whatever else comes out."""
     body, tail = list(paras), []
-    while len(body) > 1 and (_TAGS_ONLY.match(body[-1]) or _FOLLOW.search(body[-1]) and units(body[-1]) <= 200):
+    while len(body) > 1 and (_TAGS_ONLY.match(body[-1]) or _FOLLOW.search(body[-1]) and units(body[-1]) <= 200
+                             or _DEFS.match(body[-1]) and units(body[-1]) <= DEFS_MAX):
         tail.insert(0, body.pop())
     return body, tail
 
@@ -135,7 +140,7 @@ def fit_thread(text: str, limit: int = 500, parts: int = 5) -> str:
     flat = [p for b in blocks for p in b]
     body, tail = _tail(flat)
     tags = " ".join(t for t in tail if _TAGS_ONLY.match(t))
-    follow = [t for t in tail if not _TAGS_ONLY.match(t)]
+    follow = [t for t in tail if not _TAGS_ONLY.match(t)]       # the definitions paragraph, then the follow line
     units_in: list[str] = []
     for p in body + follow:
         while units(p) > limit:
@@ -152,8 +157,24 @@ def fit_thread(text: str, limit: int = 500, parts: int = 5) -> str:
             posts.append(u)
     if len(posts) > parts:
         keep_follow = [p for p in posts[parts:] if _FOLLOW.search(p)]
+        # the definitions go on the LAST post, and the body gives way to them, never the other way round
+        defs = [para for p in posts[parts:] for para in re.split(r"\n\s*\n", p) if _DEFS.match(para) and units(para) <= DEFS_MAX]
         posts = posts[:parts]
-        if keep_follow and units(posts[-1]) + 2 + units(keep_follow[-1]) <= limit:
+        if defs:
+            keep_follow = [para for p in keep_follow for para in re.split(r"\n\s*\n", p) if _FOLLOW.search(para)]
+            reserve = "\n\n".join(defs[:1] + keep_follow[-1:])
+            while units(posts[-1]) + 2 + units(reserve) > limit:
+                paras = posts[-1].split("\n\n")
+                if len(paras) > 1:
+                    posts[-1] = "\n\n".join(paras[:-1])
+                elif len(posts) > 1:
+                    posts.pop()
+                else:
+                    reserve = defs[0] if units(defs[0]) <= limit else ""
+                    break
+            if reserve and units(posts[-1]) + 2 + units(reserve) <= limit:
+                posts[-1] += "\n\n" + reserve
+        elif keep_follow and units(posts[-1]) + 2 + units(keep_follow[-1]) <= limit:
             posts[-1] += "\n\n" + keep_follow[-1]
     if tags and posts:
         room = limit - units(posts[-1]) - 2

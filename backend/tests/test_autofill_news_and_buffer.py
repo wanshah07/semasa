@@ -1,5 +1,5 @@
-"""Auto-fill (Wan, 9 Nov 2026): current newspaper issues first and tied to the rules; a full Buffer queue pauses new ideas and
-every post Buffer already holds is a taken slot."""
+"""Auto-fill: official items first and the newspaper off unless switched on (Wan, 22 Nov 2026, reversing 9 Nov); a full Buffer
+queue pauses new ideas and every post Buffer already holds is a taken slot."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -30,26 +30,47 @@ def _store(news=(), feed=(), ideas_=(), posts=()):
                      semasa_log=[], semasa_settings=[])
 
 
-# ---------------------------------------------------------------- newspaper issues first, tied to the rules
-def test_a_current_newspaper_issue_that_names_a_regulator_beats_the_regulator_feed():
+# ---------------------------------------------------------------- facts first: official items lead, the newspaper is off
+# (Wan, 9 Nov 2026 put the newspaper first; 22 Nov 2026 reversed it: "all content is based on facts as priority")
+def test_a_regulator_notice_beats_a_current_newspaper_issue_and_the_newspaper_is_off_by_default():
     store = _store(news=[_news(1, "kosmetik", "NPRA tarik balik krim pemutih mengandungi merkuri", summary="Produk dibatalkan")],
                    feed=[_feed(1)])
-    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "per_run": 1}}, NOW)
-    first = store.tables["semasa_ideas"][0]
-    assert first["source_url"] == "https://bh.example/1" and first["trend_id"] == "n1"
-    brief = first["brief"]
-    assert brief["relate_regulatory"] is True and brief["news"] is True and brief["hook_required"] is True
-    assert brief["story_mode"] is True and "watch_id" not in brief
-    assert first["domain"] == "kosmetik" and first["note"] == ""
+    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "per_run": 3}}, NOW)
+    made = store.tables["semasa_ideas"]
+    assert [m["source_url"] for m in made] == ["https://npra.gov.my/1"], "the headline is not written unless news is switched on"
+    brief = made[0]["brief"]
+    assert brief["source_priority"] == "official" and brief["announcement"] is True and brief["watch_id"] == "w1"
+    assert "news" not in brief and "relate_regulatory" not in brief and brief["hook_required"] is True
 
 
-def test_news_that_names_a_rule_ranks_above_news_that_does_not_and_both_above_the_feed():
+def test_with_news_switched_on_a_headline_is_written_but_only_after_every_official_item():
+    store = _store(news=[_news(1, "kosmetik", "NPRA tarik balik krim pemutih mengandungi merkuri", summary="Produk dibatalkan")],
+                   feed=[_feed(1)])
+    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "per_run": 2, "news": True}}, NOW)
+    made = store.tables["semasa_ideas"]
+    assert [m["source_url"] for m in made] == ["https://npra.gov.my/1", "https://bh.example/1"]
+    news = made[1]
+    assert news["trend_id"] == "n1" and news["note"] == "" and news["domain"] == "kosmetik"
+    assert news["brief"]["relate_regulatory"] is True and news["brief"]["news"] is True and "watch_id" not in news["brief"]
+    assert news["brief"]["source_priority"] == "current" and "announcement" not in news["brief"]
+    assert autofill.config({"autofill": {"enabled": True}})["news"] is False
+
+
+def test_ranking_puts_announcements_first_then_official_sections_then_news_then_the_rest():
+    old = (NOW - timedelta(days=9)).isoformat()
     pool = autofill.rank_candidates([
-        {**_feed(1), "created_at": NOW.isoformat()},
+        {"section": "reddit", "title": "viral thing", "created_at": NOW.isoformat()},
         {"section": "news", "title": "Harga barang naik", "created_at": NOW.isoformat(), "regulatory_link": False},
         {"section": "news", "title": "JAKIM sahkan sijil halal", "created_at": (NOW - timedelta(hours=9)).isoformat(),
-         "regulatory_link": True}], NOW)
-    assert [x.get("title") for x in pool] == ["JAKIM sahkan sijil halal", "Harga barang naik", "Notis 1"]
+         "regulatory_link": True},
+        {"section": "folder", "title": "Angle bank row", "created_at": NOW.isoformat()},
+        {"section": "publication", "title": "A paper", "created_at": NOW.isoformat()},
+        {**_feed(1), "title": "Laporan tahunan", "created_at": NOW.isoformat()},
+        {**_feed(2), "title": "Amaran NPRA: produk tarik balik", "created_at": old},
+        {"section": "website", "title": "A guideline page", "created_at": NOW.isoformat()}], NOW)
+    assert [x["title"] for x in pool] == [
+        "Amaran NPRA: produk tarik balik", "Laporan tahunan", "A paper", "A guideline page", "Angle bank row",
+        "JAKIM sahkan sijil halal", "Harga barang naik", "viral thing"]
 
 
 def test_only_regulatory_adjacent_categories_and_fresh_unused_headlines_are_candidates():
@@ -225,7 +246,7 @@ def test_the_same_story_under_two_links_is_one_idea():
              {**_news(2, "halal", "Jakim investigating The Weeknd’s concerts", summary="Jakim"),
               "url": "https://news.google.com/rss/articles/abc"}]
     store = _store(news=twice)
-    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "streams": ["regulab"], "per_run": 2}}, NOW)
+    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "streams": ["regulab"], "per_run": 2, "news": True}}, NOW)
     made = store.tables["semasa_ideas"]
     assert len(made) == 1, [m["source_title"] for m in made]
     assert "news.google.com" not in made[0]["source_url"]          # the paper's own link wins: the writer can read it
@@ -235,7 +256,7 @@ def test_a_story_already_written_up_under_another_link_is_not_written_again():
     old = {"id": "i0", "source_title": "Jakim investigating The Weeknd's concerts", "source_url": "https://other.example/x",
            "created_at": (NOW - timedelta(days=2)).isoformat()}
     store = _store(news=[_news(1, "halal", "Jakim investigating The Weeknd's concerts - FMT")], ideas_=[old])
-    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "streams": ["regulab"], "per_run": 2}}, NOW)
+    autofill.run(store, {"brand": BRAND, "autofill": {**ON, "streams": ["regulab"], "per_run": 2, "news": True}}, NOW)
     assert len(store.tables["semasa_ideas"]) == 1                    # only the old one
 
 

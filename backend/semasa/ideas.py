@@ -33,6 +33,7 @@ from . import (
     copywriting,
     db,
     definitions,
+    glossary,
     hook_bank,
     hook_learning,
     language,
@@ -185,6 +186,42 @@ guidance", "several substances", "some products", "many cases", "studies show", 
 gives the detail, print it (how many, which entry, what limit, from what date) and the wording is fine. When the SOURCE
 gives no exact detail, do not use that wording at all: say plainly what is known, and leave the rest out."""
 
+# FACTS FIRST (Wan, 22 Nov 2026: "after this all content is based on facts as priority rather isu semasa, I will create post isu
+# semasa from Hermes nous, the content must easy to understand and if got technical terms, must have small foot note for
+# definition in the poster/carousel/card, and end of caption, besides that, prioritize announcement make by regulators or
+# government so people/viewers alert"). Both writers get the same block; the stream decides the label of the definitions
+# ("Definisi:" / "Definition:") and whether there is a follow line. The block is %-formatted by facts_first().
+FACTS_FIRST = """\
+FACTS FIRST (Wan, 22 Nov 2026). Semasa's own posts rest on facts, not on what is trending. This is checked by the page.
+1. EVERY CLAIM IS A FACT FROM A NAMED INSTRUMENT OR ANNOUNCEMENT: who issued it, what it says, the date, and the reference number
+   ONLY when the SOURCE gives one. Never invent a date, a number, a clause or a name; a fact the SOURCE does not give is left out.
+2. AN ANNOUNCEMENT BY A REGULATOR OR THE GOVERNMENT COMES FIRST (NPRA, KKM, BKKM/FSQD, JAKIM, KPDN, JPJ and the like, or a
+   foreign regulator). When the SOURCE is one, the post opens with WHO announced WHAT and, when the SOURCE gives it, from WHEN it
+   applies, so a reader is alerted at once. The first line is still the hook built on one of the hook shapes (that rule stays):
+   fill the shape so it carries the announcement, then the next sentence says who, what and when in full.
+3. PLAIN LANGUAGE, so anyone can follow: short sentences, an everyday word wherever one works, and after any rule one clause
+   saying what it means for the reader. Do not stack terms.
+4. TECHNICAL TERMS GET A DEFINITION. A term the reader would not know (a body, a form, a list, a test, an acronym) is explained
+   twice, in the same words:
+   a. on the artwork: every slide (and the poster) returns "foot": "%(label)s: <term> = <what it is, at most 14 words>" with up
+      to 2 terms, only terms that appear on THAT slide; "foot": "" when it has none. The cover slide and the last slide carry no
+      foot.
+   b. in the caption: the LAST paragraph of the body, before %(tail)s, is "%(label)s: term = meaning; term2 = meaning." with
+      every term used (at most %(cap)s), each in the same words as on the artwork.
+   A definition is MEANING ONLY: no figure, no claim that it works or is safe, no legal claim, no link, no brand.
+5. THE GLOSSARY BELOW IS WAN'S OWN WORDING. When a term is in it, use its meaning word for word (the code puts it back if you
+   reword it). Add a term of your own only when it is not listed, and only as a plain explanation of what it is.
+GLOSSARY (term = meaning):
+%(glossary)s"""
+
+
+def facts_first(stream: str) -> str:
+    """The FACTS FIRST block for a stream: the label of the definitions and what follows them differ, the rules do not."""
+    lang = "en" if stream == "linkedin" else "bm"
+    return FACTS_FIRST % {"label": glossary.LABEL[lang], "cap": glossary.CAPTION_TERMS, "glossary": glossary.prompt_block(lang),
+                          "tail": "the hashtags" if stream == "linkedin" else "the follow line and the hashtags"}
+
+
 REGULAB_SYSTEM = """You write social posts for ws.regulab, a Malaysian regulatory-affairs brand speaking to SME owners
 (cosmetics, food, halal, pharmaceuticals). Voice: Bahasa Malaysia mixed naturally with English technical terms, warm,
 plain, practical. MALAYSIAN Malay only, never Bahasa Indonesia: boleh not bisa, ubat not obat, syarikat not perusahaan,
@@ -332,9 +369,12 @@ SLIDES_RULES = {
 
 SLIDES WANTED. Also return "slides": a carousel in Malaysian Malay with as many slides as the story needs (no minimum,
 no maximum), drawn as 1080x1080 cards:
-[{"title": "...", "lead": "...", "points": ["...", "..."]}, ...]
+[{"title": "...", "lead": "...", "points": ["...", "..."], "foot": "Definisi: term = meaning"}, ...]
 - Slide 1 is the cover: its headline IS the hook (the same hook shape you filled for the caption's first line, no underscores,
-  no figure the SOURCE does not give), at most 12 words, no "lead", "points" empty or one short line. It is drawn very large.
+  no figure the SOURCE does not give), at most 12 words, no "lead", "points" empty or one short line, no "foot". It is drawn
+  very large.
+- "foot" (FACTS FIRST rule 4a) is the slide's small definition note: "Definisi: term = meaning", up to 2 terms that appear on
+  that slide, "" when none; never on the cover or the last slide.
 - Each middle slide is a FULL card, never a bare one: a title of at most 8 words, a "lead" (one sentence of at most 22 words that
   says the point plainly) and 3 to 4 "points" of at most 16 words each: one fact taken apart. Never pad: if the SOURCE gives less,
   write fewer points; a short slide is enlarged by the drawing.
@@ -354,9 +394,12 @@ no maximum), drawn as 1080x1080 cards:
 
 SLIDES WANTED. Also return "slides": a carousel in English with as many slides as the story needs (no minimum,
 no maximum), drawn as 1080x1350 cards:
-[{"title": "...", "lead": "...", "points": ["...", "..."]}, ...]
+[{"title": "...", "lead": "...", "points": ["...", "..."], "foot": "Definition: term = meaning"}, ...]
 - Slide 1 is the cover: its headline IS the hook (the same hook shape you filled for the caption's first line, no underscores,
-  no figure the SOURCE does not give), at most 12 words, no "lead", "points" empty or one short line. It is drawn very large.
+  no figure the SOURCE does not give), at most 12 words, no "lead", "points" empty or one short line, no "foot". It is drawn
+  very large.
+- "foot" (FACTS FIRST rule 4a) is the slide's small definition note: "Definition: term = meaning", up to 2 terms that appear on
+  that slide, "" when none; never on the cover or the last slide.
 - Each middle slide is a FULL card, never a bare one: a title of at most 9 words, a "lead" (one sentence of at most 22 words that
   says the idea plainly) and 3 to 4 "points" of at most 18 words each: one idea taken apart. Never pad: if the SOURCE gives less,
   write fewer points; a short slide is enlarged by the drawing.
@@ -379,7 +422,8 @@ POSTER_RULES = {
 POSTER WANTED. Also return "poster": ONE 4:5 poster in Malaysian Malay: {"eyebrow": "a 2 to 4 word label for the topic",
 "title": "the hook: the same hook shape you filled for the caption's first line, at most 10 words", "lead": "one short line
 under the title, at most 14 words", "points": [2 to 3 points of at most 12 words each: only the MOST important facts from the
-SOURCE, each with its figure, entry, clause or date]}. A poster is read in three seconds (Wan, 22 Nov 2026: "jangan letak
+SOURCE, each with its figure, entry, clause or date], "foot": "Definisi: term = meaning" (up to 2 terms the poster uses, ""
+when none; FACTS FIRST rule 4a)}. A poster is read in three seconds (Wan, 22 Nov 2026: "jangan letak
 semua info dalam 1 card, hanya info penting"): never put the whole story on it, the caption carries the rest. The title is
 drawn big, the lead smaller and the points smallest, so keep each one to its own job. Mark the one key word of the title with
 *asterisks*. The same rules apply to every word: no call to action, no follow line, no URL, no fact the SOURCE does not give.
@@ -389,7 +433,8 @@ The citation is drawn at its foot automatically.""",
 POSTER WANTED. Also return "poster": ONE 4:5 poster in English: {"eyebrow": "a 2 to 4 word topic label", "title": "the hook:
 the same hook shape you filled for the caption's first line, at most 10 words", "lead": "one short line under the title, at most
 14 words", "points": [2 to 3 points of at most 12 words each: only the most important facts, each with its figure, entry, clause
-or date]}. A poster is read in three seconds: never put the whole post on it, the caption carries the rest. Title big, lead
+or date], "foot": "Definition: term = meaning" (up to 2 terms the poster uses, "" when none; FACTS FIRST rule 4a)}. A poster is
+read in three seconds: never put the whole post on it, the caption carries the rest. Title big, lead
 smaller, points smallest. Mark the one key word of the title with *asterisks*. No company identity, no URL, no blog or
 aggregator, no fact the SOURCE does not give. The citation is drawn at its foot automatically.""",
 }
@@ -524,6 +569,7 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
     else:
         system = REGULAB_SYSTEM % DOMAINS
     system += "\n\n" + VAGUE_CHECK
+    system += "\n\n" + facts_first(stream)
     system += antislop.prompt_block()
     from . import watch
     issuer = watch.is_issuer(idea.get("source_name"))
@@ -550,6 +596,14 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
                      "voice above, with the fact inside it. The fact is never dropped for the story.")
     if flags.get("hook_required"):
         lines.append("HOOK REQUIRED: the first line must be the hook; a caption that opens flat is not acceptable.")
+    if flags.get("announcement"):
+        lines.append(
+            "ANNOUNCEMENT BY A REGULATOR OR THE GOVERNMENT (FACTS FIRST rule 2). The SOURCE below is the issuer's own notice: "
+            "open the post with WHO announced WHAT and, when the SOURCE gives it, FROM WHEN it applies, so the reader is "
+            "alerted at once, then what it means for them in plain words. Use the notice's own reference only if the SOURCE "
+            "prints it.")
+    elif flags.get("source_priority") == "official":
+        lines.append("OFFICIAL SOURCE (FACTS FIRST): every claim comes from this source's own words; name the issuing body.")
     if stream == "linkedin" and idea.get("trend_id"):
         lines.append("NEWSPAPER STORY ON LINKEDIN (Wan, 20 Nov 2026). This stream takes a news story only when it is about an "
                      "act of an authority: a circular, a guideline, a regulation or its amendment, a recall, a ban, a seizure, "
@@ -607,6 +661,82 @@ def fit_captions(text: dict[str, dict[str, str]], stream: str) -> dict[str, dict
     """Every caption of the post inside its platform's hard limit, a Threads chain included (caption_fit; Wan, 22 Nov 2026:
     "Make sure caption untuk semua platform di bawah maksimum aksara dibenarkan")."""
     return caption_fit.fit_text(text, stream)
+
+
+# --- definitions: the footnote on the artwork and the paragraph at the end of the caption (Wan, 22 Nov 2026) ----------------
+
+def _appears(term: str, body: str) -> bool:
+    """Does the term a footnote defines appear in the words of the slide it sits on? A glossary term by any of its forms, any
+    other term as the writer wrote it."""
+    e = glossary.lookup(term)
+    if e:
+        return any(x["id"] == e["id"] for x, _ in glossary.used(body, scan_only=False))
+    return " ".join(term.lower().split()) in " ".join(body.lower().split())
+
+
+def clean_feet(items: list[dict[str, Any]], lang: str) -> list[dict[str, Any]]:
+    """The `foot` of every slide (or of a poster) made safe, and filled where the writer left a glossary term unexplained:
+      * the cover and the last slide of a carousel carry none (a lone poster or card carries its own);
+      * a glossary term always takes the glossary's own wording, a term of the writer's own is kept only when short;
+      * only terms that appear on that slide stay, at most two, and a slide that uses a glossary term its foot does not define
+        gets it added (the writer is asked, the code makes sure).
+    The caption's Definisi paragraph is built from what is left (build_definitions)."""
+    n = len(items)
+    out: list[dict[str, Any]] = []
+    for i, sl in enumerate(items):
+        base = {k: v for k, v in sl.items() if k != "foot"}
+        if (n > 1 and i in (0, n - 1)) or sl.get("ayat"):
+            out.append(base)                       # the cover, the closing slide and a verse card
+            continue
+        body = compliance.slide_body(sl)
+        pairs = [(t, m) for t, m in glossary.pairs_of(str(sl.get("foot") or "")) if _appears(t, body)]
+        have = {e["id"] for t, _ in pairs if (e := glossary.lookup(t))}
+        pairs += [(glossary.label(e, lang), glossary.meaning(e, lang)) for e, _ in glossary.used(body) if e["id"] not in have]
+        foot = glossary.clean_foot([{"term": t, "meaning": m} for t, m in pairs], lang)
+        out.append({**base, "foot": foot} if foot else base)
+    return out
+
+
+def build_definitions(text_slides: list[dict[str, Any]], lang: str, cap: int = glossary.CAPTION_TERMS) -> str:
+    """The caption's end paragraph from the slides' footnotes: "Definisi: term = meaning; term2 = meaning." ("Definition:" in
+    English), every term once in the order the slides use them, at most `cap`. "" when no slide carries a footnote."""
+    pairs = [p for sl in text_slides for p in glossary.pairs_of(str(sl.get("foot") or ""))]
+    return _capped(pairs, lang, cap)
+
+
+def _capped(pairs: list[tuple[str, str]], lang: str, cap: int) -> str:
+    kept = glossary.clean_pairs(pairs, lang)[:cap]
+    return glossary.build_paragraph(kept, lang)
+
+
+def caption_definitions(caption: str, feet: list[tuple[str, str]], lang: str, native: bool, cap: int) -> str:
+    """One caption with its Definisi paragraph: the terms on the artwork first, then every glossary term the caption itself uses,
+    then any the writer defined (a term of its own only in the post's own language). Placed before the follow line and the
+    hashtags. A caption with nothing to define loses an empty paragraph and is otherwise untouched."""
+    body = glossary.strip_definisi(caption)
+    mine = [p for para in glossary.definisi_paragraphs(caption) for p in glossary.pairs_of(para)]
+    pairs = list(feet) + [(glossary.label(e, lang), glossary.meaning(e, lang)) for e, _ in glossary.used(body)] + mine
+    if not native:
+        pairs = [(t, m) for t, m in pairs if glossary.lookup(t)]        # a term of the writer's own is not translated
+    paragraph = _capped(pairs, lang, cap)
+    if not paragraph:
+        return "\n\n".join(p for p in re.split(r"\n\s*\n", caption) if not glossary.DEF_HEAD.match(p)) if mine else caption
+    return glossary.place_in_caption(caption, paragraph)
+
+
+def with_definitions(text: dict[str, dict[str, str]], slide_lists: list[list[dict[str, Any]]], stream: str,
+                     lang: str) -> dict[str, dict[str, str]]:
+    """Every caption of the post ({lang: {platform: caption}}) with its Definisi paragraph. A Threads chain takes two terms (the
+    paragraph rides on its last post); fit_captions afterwards keeps it and trims the body first."""
+    feet = [p for lst in slide_lists for sl in lst for p in glossary.pairs_of(str(sl.get("foot") or ""))]
+    out: dict[str, dict[str, str]] = {}
+    for lg, inner in (text or {}).items():
+        if not isinstance(inner, dict):
+            out[lg] = inner
+            continue
+        out[lg] = {plat: caption_definitions(cap, feet, lg, lg == lang, 2 if plat == "threads" else glossary.CAPTION_TERMS)
+                   if isinstance(cap, str) and cap.strip() else cap for plat, cap in inner.items()}
+    return out
 
 
 # --- placing ---------------------------------------------------------------------
@@ -945,6 +1075,26 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
             if short:
                 post["slides"], cover_state = hook_bank.cover(post["slides"], short)
                 cover_state = "shortened" if cover_state in ("set", "kept") else "too_long"
+    poster = slides.normalise(quran.untrusted([out.get("poster")]) if isinstance(out.get("poster"), dict) else [])[:1] \
+        if want_poster else []
+    poster = quran.fill(poster, stream)
+    if poster:
+        poster, cover_state = hook_bank.cover(poster, post["hook"])
+        if cover_state == "too_long":
+            short = shorter_hook(llm, post["hook"], stream)
+            if short:
+                poster, cover_state = hook_bank.cover(poster, short)
+                cover_state = "shortened" if cover_state in ("set", "kept") else "too_long"
+    # the technical terms (Wan, 22 Nov 2026): a footnote on every slide and the poster that needs one, and ONE Definisi
+    # paragraph at the end of every caption, built from them and from the glossary terms the caption itself uses; the paragraph
+    # is placed before the follow line and the hashtags and the caption is fitted to its platform's limit again
+    if post.get("slides"):
+        post["slides"] = clean_feet(post["slides"], lang)
+    if poster:
+        poster = clean_feet(poster, lang)
+    drawn_words = [x for x in (post.get("slides"), poster) if x]
+    post["text"] = fit_captions(with_definitions(post["text"], drawn_words, stream, lang), stream)
+    text = post["text"]
     reg = brand.get("regulab") or {}
     if kept:
         from . import publisher
@@ -981,16 +1131,6 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         jobs = []         # no AI picture beside the slides or the poster (Wan, 21 Nov 2026): it was the "ugly single card"
     if want_slides and post.get("slides") and not has_jobs:
         jobs.append(slide_job(idea, post, post_id, bg=slide_ground(stream, bool(jobs or kept)), chosen=chosen))
-    poster = slides.normalise(quran.untrusted([out.get("poster")]) if isinstance(out.get("poster"), dict) else [])[:1] \
-        if want_poster else []
-    poster = quran.fill(poster, stream)
-    if poster:
-        poster, cover_state = hook_bank.cover(poster, post["hook"])
-        if cover_state == "too_long":
-            short = shorter_hook(llm, post["hook"], stream)
-            if short:
-                poster, cover_state = hook_bank.cover(poster, short)
-                cover_state = "shortened" if cover_state in ("set", "kept") else "too_long"
     if poster and not has_jobs:
         jobs.append(poster_job(idea, post, post_id, poster, bg=slide_ground(stream, bool(jobs or kept)), chosen=chosen,
                                design="card" if fmt == "card" else "poster"))
@@ -1089,6 +1229,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
     else:
         system = REGULAB_SYSTEM % DOMAINS
     system += "\n\n" + VAGUE_CHECK          # a revision is checked by the same rule as a first draft
+    system += "\n\n" + facts_first(stream)
     idea = {}
     if post.get("idea_id"):
         try:
@@ -1115,9 +1256,11 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
             which = f"the shapes of the hook style {bank.name!r}" if bank else "the 25 hook shapes"
             raise IdeaError(f"the writer did not build the hook on one of {which} (asked twice); the post is unchanged")
     out, _shape = english_only(llm, system, user, out, 0, stream, None, bank, 3500)
-    text = caption_fit.fit_text(normalise_text(out.get("text"), stream, lang), stream)
+    text = normalise_text(out.get("text"), stream, lang)
     if not text.get(lang):
         raise IdeaError(f"the writer returned no {lang.upper()} caption; the post is unchanged")
+    # the slides stay as they are, so their footnotes are what the rewritten caption's Definisi paragraph is built from
+    text = caption_fit.fit_text(with_definitions(text, [post.get("slides") or []], stream, lang), stream)
     before = {k: post.get(k) for k in ("hook", "text", "citation")}
     update: dict[str, Any] = {
         "text": text, "hook": str(out.get("hook") or post.get("hook") or "")[:300],

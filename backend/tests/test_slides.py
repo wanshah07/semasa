@@ -286,7 +286,9 @@ def test_an_idea_that_asks_for_slides_gets_them_and_one_slide_job(monkeypatch):
     ideas.process_idea(store, llm, idea, {})
     assert "SLIDES WANTED" in llm.seen[0][0]
     post = store.tables["semasa_posts"][0]
-    assert post["slides"] == compliance.normalise_slides(GOOD)
+    # the words are the writer's, plus the footnote the code adds where a slide uses a glossary term (Wan, 22 Nov 2026)
+    assert [{k: v for k, v in sl.items() if k != "foot"} for sl in post["slides"]] == compliance.normalise_slides(GOOD)
+    assert [i for i, sl in enumerate(post["slides"]) if sl.get("foot")] == [1] and "PIF = " in post["slides"][1]["foot"]
     jobs = store.tables["media_generations"]
     assert [j["mode"] for j in jobs] == ["slides"]                             # no AI picture beside the slides (21 Nov 2026)
     assert jobs[0]["meta"]["bg"] != "post_image" and jobs[0]["meta"]["slides"] == post["slides"]

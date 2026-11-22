@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { glossarySource } from "./glossaryInline.mjs";
 
 // compliance.js imports JSON the way Vite does; inline it for Node (as compliance.test.mjs does)
 const here = new URL(".", import.meta.url);
@@ -12,6 +13,7 @@ const src = readFileSync(new URL("src/lib/compliance.js", here), "utf8")
   .replace(/import RULES from "[^"]+";/, `const RULES = ${rules};`);
 const dir = mkdtempSync(join(tmpdir(), "wf-"));
 writeFileSync(join(dir, "compliance.js"), src);
+writeFileSync(join(dir, "glossary.js"), glossarySource());
 const { stripPromo } = await import(pathToFileURL(join(dir, "compliance.js")).href);
 const { withDecision, withVersion, restoreVersion } = await import(new URL("src/lib/workflow.js", here).href);
 

@@ -730,3 +730,38 @@ def test_an_ayat_slide_is_drawn_as_the_verse_card_in_every_look_and_a_bad_one_is
     with pytest.raises(SlideError, match="too long for one card"):
         studio_cards.render([long], look="grid", stream="regulab")
 
+
+
+# --- the definition note (Wan, 22 Nov 2026) ------------------------------------------------------
+
+FOOT = "Definisi: PIF = Fail maklumat dan bukti keselamatan kosmetik, disimpan syarikat dan ditunjukkan kepada NPRA bila diminta."
+
+
+def test_a_slides_foot_reaches_the_studio_renderer_and_the_words_kept_on_the_job(monkeypatch, _uploads):
+    seen = {}
+    monkeypatch.setattr(studio_cards, "render", lambda items, **kw: seen.update(items=items) or [_jpeg() for _ in items])
+    words = [{"title": "Satu", "points": ["a"]}, {"title": "Apa itu PIF", "points": ["b"], "foot": FOOT},
+             {"title": "Tiga", "points": ["c"]}]
+    store = _store({"look": "grid", "slides": words})
+    assert _run(store) is True
+    assert [i.get("foot") for i in seen["items"]] == [None, FOOT, None]
+    assert store.tables["media_generations"][0]["meta"]["slides"][1]["foot"] == FOOT
+
+
+@browser
+@pytest.mark.parametrize("look", ["grid", "era", "photo", "hand", "marker", "neon"])
+def test_a_foot_is_drawn_in_every_look_without_changing_the_cards_size_or_touching_the_cover(look):
+    from semasa import compliance
+    deck = [{"title": "Kulit", "points": []}, {"title": "Apa itu PIF", "lead": "Satu fail.", "points": ["NPRA boleh minta PIF."]},
+            {"title": "Tutup", "points": ["Sedia."]}]
+    ground = _jpeg(800, 600)
+    plain = studio_cards.render(deck, look=look, stream="regulab", ground=ground, source="NPRA", fit=True)
+    withfoot = [deck[0], {**deck[1], "foot": FOOT}, deck[2]]
+    noted = studio_cards.render(withfoot, look=look, stream="regulab", ground=ground, source="NPRA", fit=True)
+    a, b = Image.open(io.BytesIO(plain[1])).convert("L"), Image.open(io.BytesIO(noted[1])).convert("L")
+    assert a.size == b.size == (1080, 1350)
+    from PIL import ImageChops
+    band = (0, 1260, 1080, 1350)
+    assert ImageChops.difference(a.crop(band), b.crop(band)).getbbox(), "the note is drawn at the foot"
+    assert noted[0] == plain[0] and noted[2] == plain[2], "the cover and the closing slide carry none"
+    assert compliance.normalise_slides([{"title": "x", "foot": FOOT}])[0]["foot"] == FOOT

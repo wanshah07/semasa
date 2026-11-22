@@ -5,6 +5,10 @@ and *"Make sure film and motion only for ig reel, facebook and tiktok"*.
 
 Paste the block below into Hermes as its standing instruction for every film it makes for ws.regulab.
 
+The words of a film's caption follow the facts-first rules in [`HERMES_CONTENT_BRIEF.md`](HERMES_CONTENT_BRIEF.md) (Wan, 22 Nov 2026):
+an announcement by a regulator or the government leads, plain language, and every technical term defined in a final
+"Definisi:" paragraph. Paste that brief into Hermes too.
+
 ---
 
 ```text
@@ -43,6 +47,9 @@ If one fails, fix the file and check again. Never send a film you have not check
    - No call to action and no website in the caption.
    - Do not name Reddit, YouTube, TikTok or any social post as the source.
    - Name the regulator, instrument or document the fact comes from.
+   - Facts first: when the film is about an announcement by a regulator or the government, the caption opens with who announced
+     what and from when. Write plainly. Define every technical term in a last paragraph, "Definisi: term = meaning; term2 =
+     meaning.", placed before the follow line and the hashtags (use the glossary's wording when the term is in it).
 
 5. CHECK BEFORE SENDING
    Run:

@@ -4,12 +4,14 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { glossarySource } from "./glossaryInline.mjs";
 
 // compliance.js imports the rules as JSON, which Node wants an attribute for; inline them (as compliance.test.mjs does) beside photos.js
 const here = new URL(".", import.meta.url);
 const dir = mkdtempSync(join(tmpdir(), "photos-"));
 writeFileSync(join(dir, "compliance.js"), readFileSync(new URL("src/lib/compliance.js", here), "utf8")
   .replace(/^import RULES from .*$/m, `const RULES = ${readFileSync(new URL("../rules/compliance.json", here), "utf8")};`));
+writeFileSync(join(dir, "glossary.js"), glossarySource());
 writeFileSync(join(dir, "photos.js"), readFileSync(new URL("src/lib/photos.js", here), "utf8"));
 const { normaliseSlides, photoTokens } = await import(pathToFileURL(join(dir, "compliance.js")).href);
 const { photoAt, photoPath, photoToken, photosFollow, speakersOf, withPhoto } = await import(pathToFileURL(join(dir, "photos.js")).href);

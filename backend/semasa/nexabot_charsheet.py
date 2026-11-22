@@ -26,9 +26,11 @@ CHAR_SHEET_PROMPT = (
     "Photorealistic character sheet, two real people standing side by side, full body, facing the camera, "
     "soft even lighting, inside a Malaysian sundry shop (kedai runcit): "
     "on the left, Hana, a young Malaysian woman wearing a pastel pink hijab (tudung) and a cream blouse, natural friendly "
-    "smile; on the right, Hassan, a Malaysian man in his thirties, short black hair, black-rimmed glasses, navy blue polo "
-    "shirt, calm confident expression. Behind them, a few blurred shoppers walk past casually, and an orange cat sits "
-    "calmly near the snack shelf in the background. Highly detailed faces, natural skin texture, realistic proportions. "
+    "smile, holding a small orange cat in her hands near her chest, the orange cat meowing with its mouth open; "
+    "on the right, Hassan, a Malaysian man in his thirties, short black hair, black-rimmed glasses, navy blue polo "
+    "shirt, calm confident expression. Behind them, a few blurred shoppers walk past casually. "
+    "The orange cat is clearly visible, close to Hana. "
+    "Highly detailed faces, natural skin texture, realistic proportions. "
     "No text, no logo, no watermark, no cartoon, no illustration."
 )
 

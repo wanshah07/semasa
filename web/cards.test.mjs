@@ -1,7 +1,7 @@
 // The slide -> Studio card mapping (web/src/lib/cards/studio.js, specsFor). The drawing itself is tested in a real
 // browser by backend/tests/test_studio_cards.py; this checks the one rule the mapping owns: every point of every
 // slide reaches a card, whatever the look. `npm test`.
-import { specsFor, LOOKS, MASCOTS_ON, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf, normDesign, normLayout, placeOf, skinTemplate, templateLabel } from "./src/lib/cards/studio.js";
+import { specsFor, LOOKS, MASCOTS_ON, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf, normDesign, normLayout, placeOf, skinTemplate, templateLabel, coverWords, withFrontCover } from "./src/lib/cards/studio.js";
 import { canvaBrief } from "./src/lib/canvaBrief.js";
 import { readFileSync } from "node:fs";
 import { cardFromCaption, headAndRest, isFollow, sameLine, slidesFromCaption } from "./src/lib/cards/fromCaption.js";
@@ -282,5 +282,20 @@ ok(!hiv.some((x) => /follow/i.test(`${x.title} ${x.lead || ""}`)), "the follow l
 ok(isFollow("Follow untuk tip regulatori yang senang faham.") && isFollow("Ikuti kami untuk info lanjut") && !isFollow("Pengilang perlu ikut garis panduan NPRA."), "a follow line is told apart from a fact");
 ok(sameLine("*Sebab* sebenar kenapa stigma HIV masih belum hilang.", "Sebab sebenar kenapa stigma HIV masih belum hilang") && !sameLine("Satu", "Dua"), "the same line once punctuation and emphasis are set aside");
 
+
+// the branded cover (Wan, 22 Nov 2026): the page's preview follows the worker's rule (carousel.py cover_words / with_front_cover)
+{
+  const hook = { title: "Rokok elektronik bukan sekadar isu *paru-paru*", points: ["Apa kata pihak berkuasa."] };
+  const content = { title: "Tiga syarat label", points: ["Satu.", "Dua.", "Tiga."] };
+  ok(JSON.stringify(coverWords(hook)) === JSON.stringify({ title: hook.title, lead: "Apa kata pihak berkuasa." }), "a hook slide is the cover: its one point is the supporting line");
+  ok(coverWords({ title: "T", lead: "Baris sokongan", points: ["a", "b"] }) === null, "two points make a content slide, not a cover");
+  ok(coverWords({ title: "T", points: [], note: "catatan" }) === null && coverWords({ title: "T", points: [], ayat: { s: 1 } }) === null, "a note or a verse slide is never a cover");
+  ok(coverWords({ title: "", points: [] }) === null && coverWords(null) === null, "no title, no cover");
+  const framed = withFrontCover([content, hook], "regulab");
+  ok(framed.length === 3 && framed[0].front_cover && framed[0].title === content.title && framed[1] === content, "a content first slide gets a hook slide in front, whole behind it");
+  ok(withFrontCover([hook, content], "regulab").length === 2, "a hook first slide needs nothing in front");
+  ok(withFrontCover([content, hook], "linkedin").length === 2 && withFrontCover([content], "regulab").length === 1, "LinkedIn and a lone card have no cover");
+  ok(withFrontCover(withFrontCover([content, hook], "regulab"), "regulab").length === 3, "doing it twice changes nothing");
+}
 if (failed) { console.error(`${failed} card mapping check(s) failed`); process.exit(1); }
 console.log("cards: slide -> Studio card mapping keeps every word");

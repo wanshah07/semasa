@@ -179,6 +179,26 @@ function loadImg(src) {
    The bbox is computed from the pixels, not written down, so replacing the logo file needs
    no numbers changed anywhere. */
 let _logoInk = null;
+const _inkOf = new Map();
+/* The same trimming for any logo file (the cover's stacked logo is a different file from the card footer's horizontal one). */
+async function inkOfLogo(src) {
+  if (_inkOf.has(src)) return _inkOf.get(src);
+  const im = await loadImg(src);
+  let r = { im: null };
+  if (im) {
+    try {
+      const c = document.createElement("canvas"); c.width = im.width; c.height = im.height;
+      const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, 0, 0);
+      const d = x.getImageData(0, 0, c.width, c.height).data;
+      let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+      for (let py = 0; py < c.height; py++) for (let px = 0; px < c.width; px++) if (d[(py * c.width + px) * 4 + 3] > 8) {
+        if (px < x0) x0 = px; if (px > x1) x1 = px; if (py < y0) y0 = py; if (py > y1) y1 = py;
+      }
+      r = x1 < 0 ? { im, sx: 0, sy: 0, sw: im.width, sh: im.height } : { im, sx: x0, sy: y0, sw: x1 - x0 + 1, sh: y1 - y0 + 1 };
+    } catch { r = { im, sx: 0, sy: 0, sw: im.width, sh: im.height }; }
+  }
+  _inkOf.set(src, r); return r;
+}
 async function logoInk() {
   if (_logoInk) return _logoInk;
   const im = await loadImg(LOGO);
@@ -4098,6 +4118,87 @@ export async function renderClosingCard(o = {}) {
   ctx.fillStyle = "#7A746C";
   ctx.fillText("Follow us for more", W / 2, y);
   return { url: c.toDataURL("image/jpeg", 0.9), warn: [], template: "closing" };
+}
+
+/* The branded cover of a ws.regulab carousel (Wan, 22 Nov 2026: white page, the logo in its own green, the title in black with its hook
+   word in red, light-blue wave circles). The worker draws the same card (backend/semasa/carousel.py cover_card) and puts it first; this
+   one is the page's preview of it, so what Wan sees on slide 1 is what is posted. These two helpers are carousel.py's cover_words and
+   with_front_cover: a first slide that is a hook IS the cover, a content first slide gets a hook slide of its own in front. */
+export function coverWords(first) {
+  const f = first && typeof first === "object" ? first : {};
+  const title = String(f.title || "").trim();
+  const points = (Array.isArray(f.points) ? f.points : []).map((p) => String(p || "").trim()).filter(Boolean);
+  if (!title || f.note || points.length > 1 || f.ayat) return null;
+  return { title, lead: String(f.lead || "").trim() || points[0] || "" };
+}
+export function withFrontCover(slides, stream) {
+  const list = Array.isArray(slides) ? slides : [];
+  if (stream === "linkedin" || list.length < 2 || !list[0] || typeof list[0] !== "object") return list;
+  const title = String(list[0].title || "").trim();
+  if (!title || coverWords(list[0])) return list;
+  return [{ title, points: [], front_cover: true }, ...list];
+}
+export async function renderCoverCard(o = {}) {
+  const [W, H] = Array.isArray(o.size) ? o.size : CARD_SIZES.regulab;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, W, H);
+  // the wave circles: a soft blue glow, then ten rings (no ctx.filter: iPhone Safari before 18 has none)
+  const cx = W / 2, cy = H * 0.47;
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.52);
+  glow.addColorStop(0, "rgba(214,236,250,.62)"); glow.addColorStop(1, "rgba(214,236,250,0)");
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 10; i++) {
+    ctx.beginPath(); ctx.arc(cx, cy, W * (0.30 + i * 0.12), 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(150,205,238,${Math.max(70, 200 - i * 14) / 255})`; ctx.lineWidth = i % 3 === 0 ? 3 : 2; ctx.stroke();
+  }
+  const mark = o.logo ? await inkOfLogo(o.logo) : await logoInk();       // the worker's stacked logo (cover-logo.png), else the page's
+  const margin = Math.round(W * 0.11), col = W - 2 * margin;
+  const tall = H / W > 1.6, band = H * (tall ? 0.62 : 0.80);
+  const lw = Math.round(W * (tall ? 0.36 : 0.46));
+  const lh = mark.im ? Math.round(lw * mark.sh / mark.sw) : 0;
+  let raw = String(o.title || "").trim();
+  if (raw && !raw.includes("*")) { const k = raw.lastIndexOf(" "); raw = k > 0 ? `${raw.slice(0, k)} *${raw.slice(k + 1)}*` : raw; }   // no hook word marked: the last word is red
+  const words = [];
+  for (const [i, part] of raw.split("*").entries()) for (const w of part.split(/\s+/).filter(Boolean)) words.push({ w, em: i % 2 === 1 });
+  const gap = Math.round(W * 0.05);
+  const FONT = '"Playfair Display", Georgia, serif', BODY = '"Instrument Sans", system-ui, sans-serif';
+  const bodyPx = Math.round(W * 0.036), bodyLh = Math.round(bodyPx * 1.4);
+  ctx.font = `400 ${bodyPx}px ${BODY}`;
+  let lead = gWrap(ctx, String(o.lead || ""), col);
+  if (lead.length > 3) lead = [];                                   // too long for the cover: left off rather than costing it
+  const fixed = lh + gap + 4 + gap + (lead.length ? lead.length * bodyLh + Math.round(gap * 0.7) : 0);
+  let px = Math.round(W * (tall ? 0.072 : 0.108)), lines = [];
+  const floor = Math.round(W * (tall ? 0.046 : 0.05));
+  for (;;) {
+    ctx.font = `700 ${px}px ${FONT}`;
+    lines = []; let cur = [];
+    const width = (arr) => ctx.measureText(arr.map((x) => x.w).join(" ")).width;
+    for (const x of words) { if (cur.length && width([...cur, x]) > col) { lines.push(cur); cur = [x]; } else cur.push(x); }
+    if (cur.length) lines.push(cur);
+    if (fixed + lines.length * px * 1.1 <= band || px <= floor) break;
+    px -= 4;
+  }
+  const tlh = Math.round(px * 1.1);
+  let y = Math.round((H - (fixed + lines.length * tlh)) / 2);
+  if (mark.im) ctx.drawImage(mark.im, mark.sx, mark.sy, mark.sw, mark.sh, Math.round((W - lw) / 2), y, lw, lh);
+  y += lh + gap;
+  ctx.fillStyle = "#D32027"; ctx.fillRect(Math.round(W / 2 - 44), y, 88, 4);
+  y += 4 + gap;
+  ctx.textBaseline = "top"; ctx.font = `700 ${px}px ${FONT}`;
+  for (const ln of lines) {
+    const total = ctx.measureText(ln.map((x) => x.w).join(" ")).width, sp = ctx.measureText(" ").width;
+    let x = (W - total) / 2;
+    ln.forEach((t, i) => { if (i) x += sp; ctx.fillStyle = t.em ? "#D32027" : "#111111"; ctx.fillText(t.w, x, y); x += ctx.measureText(t.w).width; });
+    y += tlh;
+  }
+  if (lead.length) {
+    y += Math.round(gap * 0.7);
+    ctx.font = `400 ${bodyPx}px ${BODY}`; ctx.fillStyle = "#5A5A5A"; ctx.textAlign = "center";
+    for (const l of lead) { ctx.fillText(l, W / 2, y); y += bodyLh; }
+  }
+  return { url: c.toDataURL("image/jpeg", 0.92), warn: [], template: "cover" };
 }
 
 /* Draw every slide. Returns [{url (a JPEG data URL), warn[], template}], one per slide, in order. A warning is

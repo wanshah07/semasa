@@ -4,7 +4,7 @@
 import { specsFor, LOOKS, MASCOTS_ON, STUDIO_LOOKS, TEMPLATE_KEYS, fitTemplate, eventDate, initialsOf, normDesign, normLayout, placeOf, skinTemplate, templateLabel } from "./src/lib/cards/studio.js";
 import { canvaBrief } from "./src/lib/canvaBrief.js";
 import { readFileSync } from "node:fs";
-import { cardFromCaption, headAndRest, slidesFromCaption } from "./src/lib/cards/fromCaption.js";
+import { cardFromCaption, headAndRest, isFollow, sameLine, slidesFromCaption } from "./src/lib/cards/fromCaption.js";
 
 let failed = 0;
 const ok = (cond, what) => { if (!cond) { failed++; console.error("FAIL", what); } };
@@ -273,6 +273,14 @@ ok(specsFor([{ ...SLIDES5[0], template: "g_stat" }], { design: { look: "grid", l
 
 // a design never carries a copy of its reference picture, whatever it is handed
 ok(!("refart" in normDesign({ look: "grid", layouts: { main: LAY }, refart: { url: "data:image/jpeg;base64,AAAA", w: 800, h: 1000 } })), "no reference picture is kept");
+
+// Wan, 22 Nov 2026: the caption's first line is the hook, so slide 2 never repeats it; the follow line is never a slide
+const hiv = slidesFromCaption({ stream: "regulab", hook: "Sebab sebenar kenapa stigma HIV masih belum hilang sepenuhnya",
+  caption: "Sebab sebenar kenapa stigma HIV masih belum hilang sepenuhnya.\n\nBerita terbaru cakap persekitaran yang lebih terbuka boleh bantu hapuskan stigma terhadap HIV dan AIDS.\n\nMaksudnya, bila masyarakat mula bercakap secara jujur dan tanpa rasa janggal, stigma berkurang.\n\nFollow untuk tip regulatori yang senang faham." }, () => false).slides;
+ok(hiv.length === 3 && hiv.every((x, i) => i === 0 || !sameLine(x.title, hiv[0].title)), "slide 2 never repeats the hook on slide 1");
+ok(!hiv.some((x) => /follow/i.test(`${x.title} ${x.lead || ""}`)), "the follow line is never drawn as a slide");
+ok(isFollow("Follow untuk tip regulatori yang senang faham.") && isFollow("Ikuti kami untuk info lanjut") && !isFollow("Pengilang perlu ikut garis panduan NPRA."), "a follow line is told apart from a fact");
+ok(sameLine("*Sebab* sebenar kenapa stigma HIV masih belum hilang.", "Sebab sebenar kenapa stigma HIV masih belum hilang") && !sameLine("Satu", "Dua"), "the same line once punctuation and emphasis are set aside");
 
 if (failed) { console.error(`${failed} card mapping check(s) failed`); process.exit(1); }
 console.log("cards: slide -> Studio card mapping keeps every word");

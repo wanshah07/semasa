@@ -587,13 +587,20 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
     flags = compliance.scan(scan_post, brand=ctx.reg, schedule=ctx.reg.get("schedule"),
                             indo_extra=(settings.get("bahasa") or {}).get("indo"))
     hard = [f"{f['where']}: {f['msg']}" for f in flags if f["hard"]]
-    not_ready = [m["id"] for m in media if m.get("status") != "done" or not m.get("generated_media_url")]
-    if not_ready:
-        hard.append(f"{len(not_ready)} picture(s) not generated yet")
+    ready = [m for m in media if m.get("status") == "done" and m.get("generated_media_url")]
+    failed = [m for m in media if m.get("status") == "error"]
+    drawing = [m["id"] for m in media if m not in ready and m not in failed]
     gone = [i for i in (post.get("media_ids") or []) if i not in {m["id"] for m in media}]
-    if gone:
-        # a picture approved with the post has since been deleted: sending without it is not what Wan approved
-        hard.append(f"{len(gone)} picture(s) approved with this post no longer exist; attach them again and approve")
+    if drawing:
+        hard.append(f"{len(drawing)} picture(s) not generated yet")       # still being drawn: the next run sends it with them
+    elif (failed or gone) and not ready and stream != "linkedin":
+        # nothing left to show: Instagram needs a picture, so this post waits for one
+        hard.append(f"{len(failed) + len(gone)} picture(s) failed or were deleted and no other picture is ready")
+    elif failed or gone:
+        # a failed or deleted picture is no longer a blocker (Wan, 22 Nov 2026: "fix any blocker or remove blocker"): the post
+        # goes with the pictures that are ready (LinkedIn may go as text)
+        media = ready
+        log.info("publisher: post %s goes without %d failed/deleted picture(s)", post["id"], len(failed) + len(gone))
     # one post to a slot and the same words never twice: only the post that outranks the others goes (guard.py)
     hard += guard.blockers(post, ctx.live, ctx.resend)
     lang = compliance.lang_of(post)

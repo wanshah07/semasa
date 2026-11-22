@@ -10,6 +10,8 @@ const ok = (cond, what) => { if (!cond) { failed++; console.error("FAIL", what);
 
 // LinkedIn type grows less than ws.regulab's (Wan, 21 Nov 2026): 60% of the family's own growth limit, never under the template's size
 ok(capFill({ stream: "regulab" }, 3.4) === 3.4 && capFill(null, 3) === 3, "ws.regulab type grows as far as it did");
+ok(Math.abs(capFill({ stream: "regulab", place: "middle" }, 3) - 1.8) < 1e-9 && capFill({ stream: "regulab", place: "cover" }, 3) === 3
+  && capFill({ stream: "regulab", place: "single" }, 3) === 3, "ws.regulab content slides are calmer; the cover and a lone poster stay big");
 ok(Math.abs(capFill({ stream: "linkedin" }, 3.4) - 2.04) < 1e-9 && capFill({ stream: "linkedin" }, 1.2) === 1, "LinkedIn type is capped, never below 1");
 
 const ROOM = 1000;

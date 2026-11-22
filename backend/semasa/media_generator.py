@@ -689,6 +689,8 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         # (what is DRAWN only: the words on the job and on the post stay as written), and a ws.regulab carousel ends on the
         # logo card. A render that fails squeezed is drawn again as written.
         if not kind:
+            # the caption's follow line is never a slide: the closing card carries it (Wan, 22 Nov 2026)
+            items = [s for s in items if not (isinstance(s, dict) and carousel.is_follow_slide(s))] or items
             items = carousel.with_front_cover(items, stream)     # a content first slide gets a hook in front, for the cover
         squeeze, joined = (carousel.compact(items, stream) if not kind and kind != "threads" else (items, 0))
         attempts = [(squeeze, joined)] + ([(items, 0)] if joined else [])
@@ -735,6 +737,10 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                     look = "classic"
                     break
                 log.info("%s: the squeezed carousel did not fit; drawn as written", row_id)
+        if kind not in ("comic", "threads") and look != "threads":
+            # a small picture with a transparent background on the poster and the slides (Wan, 22 Nov 2026), where it fits
+            from . import stickers
+            pics = stickers.on_slides(pics, stickers.ensure(store, s, row_id, meta))
         cover = False
         words = carousel.cover_words(items[0] if items else None)
         if not kind and stream != "linkedin" and len(pics) >= 2 and words:

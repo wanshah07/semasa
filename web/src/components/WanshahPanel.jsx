@@ -8,6 +8,7 @@ import { MASCOTS } from "../lib/cards/library";
 import { uploadReference } from "../lib/storage";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { DEFAULT_LOOK, POSES, buildPrompt, floodTransparent, opaqueBox } from "../lib/wanshah";
+import SmallImg from "./SmallImg";
 
 /* Design → Wanshah: make the 3D robot's four poses with the image provider set in Tetapan → AI, approve each one, and the card
    renderer draws it in place of the old pose (library.js setWanshah). Nothing is replaced until you press Guna. */
@@ -110,7 +111,7 @@ export default function WanshahPanel({ user, gens, settings, saveSetting, onToas
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   {done.map((g) => (
                     <div key={g.id} className="min-w-0">
-                      <img src={g.generated_media_url} alt="" loading="lazy" className="aspect-square w-full rounded-tile border border-line bg-white object-contain" />
+                      <SmallImg url={g.generated_media_url} loading="lazy" className="aspect-square w-full rounded-tile border border-line bg-white object-contain" />
                       <Button size="sm" variant="ghost" className="mt-1 w-full" disabled={!!busy} onClick={() => use(p.k, g)}>
                         {busy === g.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} {t("Guna", "Use")}
                       </Button>

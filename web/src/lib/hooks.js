@@ -3,6 +3,8 @@ import { BUCKETS, TABLES, TABLES_UPLOADERS, errText, supabase } from "./Supabase
 import { coalesce, liveName } from "./liveChannel";
 import { dropRow, loadMedia, newMediaState, sortedRows } from "./mediaDelta";
 import { dropRow as dropListRow, loadDelta, newDeltaState, sortedRows as sortedList } from "./tableDelta";
+import { dropRow as dropAppendRow, loadAppend, mergeRows, newAppendState, sortedRows as sortedAppend } from "./appendDelta";
+import { loadDaily, newDailyState } from "./usageDaily";
 import { tr } from "./i18n";
 
 /** Auth session, kept live. */
@@ -161,9 +163,13 @@ export function useToasts() {
  *  publication, a poll as the net (only while the tab is visible). `enabled` false = no reads.
  *  `delta`: for a wide list on a table with `updated_at` (posts, ideas, FAQ, motions). The list is read in full once; after
  *  that a poll or a realtime event reads only the rows that changed, and `reload` (and every five minutes) checks the list
- *  of ids so a deleted row leaves (lib/tableDelta.js). Without it every poll downloads the whole list again. */
+ *  of ids so a deleted row leaves (lib/tableDelta.js). Without it every poll downloads the whole list again.
+ *  `append`: { windowMs } for a list that only ever gets new rows and has no updated_at (semasa_log, semasa_api_usage),
+ *  newest first by `order`: read in full once, then only rows newer than the newest seen; a realtime INSERT is added from the
+ *  event itself, with no read (lib/appendDelta.js). `windowMs` keeps only rows that recent (0 = no window).
+ *  `liveWaitMs`: how long a burst of realtime events is gathered before the one read it causes. */
 export function useTable(table, { enabled = true, select = "*", order = "created_at", ascending = false, limit = 200,
-  realtime = true, everyMs = 90_000, eq = null, neq = null, delta = false } = {}) {
+  realtime = true, everyMs = 90_000, eq = null, neq = null, delta = false, append = null, liveWaitMs = 1500 } = {}) {
   // eq / neq: one [column, value] pair each, so two pages can share a table without reading each other's rows
   const [eqCol, eqVal] = eq || [];
   const [neqCol, neqVal] = neq || [];
@@ -174,9 +180,21 @@ export function useTable(table, { enabled = true, select = "*", order = "created
   const sigRef = useRef("");
   const stateRef = useRef(newDeltaState());
   const listRef = useRef("");
+  const windowMs = append ? Number(append.windowMs) || 0 : -1;   // -1: not an append list (a primitive, for the deps)
+  const isAppend = windowMs >= 0;
 
   const load = useCallback(async (kind) => {
     if (!supabase || !enabled) { setLoading(false); return; }
+    if (isAppend) {
+      const list = ["append", table, select, order, limit, windowMs, eqCol, eqVal, neqCol, neqVal].join("|");
+      if (listRef.current !== list) { listRef.current = list; stateRef.current = newAppendState(); }
+      const out = await loadAppend({ client: supabase, table, state: stateRef.current, select, at: order, limit, windowMs,
+        eq: eqCol ? [eqCol, eqVal] : null, neq: neqCol ? [neqCol, neqVal] : null, kind: typeof kind === "string" ? kind : "auto" });
+      if (out.error) setError(errText(out.error));
+      else { if (out.rows) setRows(out.rows); setError(""); }   // rows is null when nothing changed: no re-render
+      setLoading(false);
+      return;
+    }
     if (delta) {
       // a different list (another filter, order or limit) starts from a full read
       const list = [table, select, order, ascending, limit, eqCol, eqVal, neqCol, neqVal].join("|");
@@ -200,7 +218,7 @@ export function useTable(table, { enabled = true, select = "*", order = "created
       setError("");
     }
     setLoading(false);
-  }, [table, enabled, select, order, ascending, limit, eqCol, eqVal, neqCol, neqVal, delta]);
+  }, [table, enabled, select, order, ascending, limit, eqCol, eqVal, neqCol, neqVal, delta, isAppend, windowMs]);
   loadRef.current = load;
 
   useEffect(() => {
@@ -209,12 +227,27 @@ export function useTable(table, { enabled = true, select = "*", order = "created
       if (stateRef.current.cursor) stateRef.current.settledAt = 0;   // back on show after a pause: check the ids first
       else setLoading(true);                                          // first time on show: say so, not "nothing here"
     }
-    const kick = coalesce(() => loadRef.current?.());       // one read for a burst of changes, never two in flight
+    if (isAppend && !stateRef.current.cursor) setLoading(true);
+    const kick = coalesce(() => loadRef.current?.(), liveWaitMs);   // one read for a burst of changes, never two in flight
     kick.now();
     let channel = null;
     if (realtime) {
       channel = supabase.channel(liveName(`${table}_live`))
         .on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+          if (isAppend) {
+            const st = stateRef.current;
+            // an INSERT carries its row: add it, no read. Only once the list has been read (a cursor), and only a row the
+            // list's own filter would hold; anything else (a DELETE, an UPDATE, a row of another filter) is left to a read
+            const row = payload?.new;
+            const fits = row?.id != null && row[order] && (!eqCol || row[eqCol] === eqVal) && (!neqCol || row[neqCol] !== neqVal);
+            if (payload?.eventType === "INSERT" && st.cursor && fits) {
+              if (mergeRows(st, [row], { at: order, limit, windowMs })) setRows(sortedAppend(st, order));
+              return;
+            }
+            if (payload?.eventType === "DELETE" && payload.old?.id != null && dropAppendRow(st, payload.old.id)) setRows(sortedAppend(st, order));
+            kick();
+            return;
+          }
           // a delta read cannot see a deleted row, so the event that names it removes it at once
           if (delta && payload?.eventType === "DELETE" && payload.old?.id && dropListRow(stateRef.current, payload.old.id)) {
             setRows(sortedList(stateRef.current, order, ascending));
@@ -231,12 +264,61 @@ export function useTable(table, { enabled = true, select = "*", order = "created
       if (channel) supabase.removeChannel(channel);
       clearInterval(id); document.removeEventListener("visibilitychange", tick);
     };
-  }, [load, enabled, realtime, table, everyMs, delta, order, ascending]);
+  }, [load, enabled, realtime, table, everyMs, delta, order, ascending, isAppend, limit, windowMs, liveWaitMs, eqCol, eqVal, neqCol, neqVal]);
 
   // after the page's own write: the changed rows, and the rows it deleted
-  const reload = useCallback(() => load(delta ? "settle" : undefined), [load, delta]);
+  const reload = useCallback(() => (isAppend ? load("delta") : load(delta ? "settle" : undefined)), [load, delta, isAppend]);
 
   return { rows, error, loading, reload };
+}
+
+const DAY_MS = 86_400_000;
+export const USAGE_RECENT_MS = 6 * 3600_000;   // the robots' "active in the last 3 hours" (lib/aiTeam.js), with room to spare
+
+/** AI usage for a page (Papan, API): `daily` for the charts and `recent` for the robots' active/standby.
+ *  daily: one row per Malaysian day, gateway, area, model and ok from semasa_api_usage_daily (supabase/091, lib/usageDaily.js),
+ *  `days` back, re-read for the last two days every 5 minutes. Until 091 is run (`aggregated` false) it is the raw rows of the
+ *  window, read through lib/appendDelta.js: `rawSelect` the columns the page needs, `rawPulse` false to leave the API pulse's
+ *  ~800 rows a day out on the server, `rawLimit` the most it holds (the old read's cap).
+ *  recent: the last USAGE_RECENT_MS of raw rows, pulse left out (aiTeam.stateOf never counts it), a few dozen rows.
+ *  Each list re-reads only what is new, every 5 minutes while the tab is on show. */
+export function useApiUsage({ enabled = true, days = 14, rawSelect = "id,gateway,area,total_tokens,ok,created_at", rawPulse = false,
+  rawLimit = 5000 } = {}) {
+  const [daily, setDaily] = useState([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [missing, setMissing] = useState(null);   // null: not known yet; true: 091 not run, raw rows instead
+  const stateRef = useRef(newDailyState());
+  const load = useCallback(async () => {
+    if (!supabase || !enabled) { setLoading(false); return; }
+    const out = await loadDaily({ client: supabase, state: stateRef.current, days });
+    if (out.missing) setMissing(true);
+    else if (out.error) setError(errText(out.error));
+    else { setMissing(false); setDaily(out.rows); setError(""); }
+    setLoading(false);
+  }, [enabled, days]);
+  useEffect(() => {
+    if (!supabase || !enabled) return undefined;
+    const kick = coalesce(load);
+    kick.now();
+    const tick = () => { if (!document.hidden) kick.now(); };
+    const id = setInterval(tick, 300_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { kick.cancel(); clearInterval(id); document.removeEventListener("visibilitychange", tick); };
+  }, [load, enabled]);
+  const raw = useTable(TABLES.apiUsage, { enabled: enabled && missing === true, select: rawSelect, order: "created_at", limit: rawLimit,
+    realtime: false, everyMs: 300_000, neq: rawPulse ? null : ["area", "pulse"], append: { windowMs: days * DAY_MS } });
+  const recent = useTable(TABLES.apiUsage, { enabled, select: "id,gateway,area,ok,created_at", order: "created_at", limit: 2000,
+    realtime: false, everyMs: 300_000, neq: ["area", "pulse"], append: { windowMs: USAGE_RECENT_MS } });
+  const aggregated = missing === false;
+  return {
+    daily: missing === true ? raw.rows : daily,
+    recent: recent.rows,
+    aggregated,
+    missing: missing === true,
+    error: (missing === true ? raw.error : error) || recent.error,
+    loading: missing === true ? raw.loading : loading,
+  };
 }
 
 /** semasa_settings as { key: value }. */

@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import db
+from . import db, thumbs
 from .log import get_logger
 
 log = get_logger("semasa.archive")
@@ -403,7 +403,8 @@ def sweep_orphans(store: Any, now: datetime | None = None, mode: str = "report")
             made = datetime.fromisoformat(str(f["created_at"]).replace("Z", "+00:00"))
         except (TypeError, ValueError):
             continue                                                     # an unreadable stamp is never deleted
-        if now - made >= ORPHAN_AGE and f["name"] not in text:
+        # a library thumbnail (semasa/thumbs.py) is named by no row: it lives exactly as long as its picture is named
+        if now - made >= ORPHAN_AGE and (thumbs.original_of(f["name"]) or f["name"]) not in text:
             old.append(f)
     mb = sum(f["size"] for f in old) / 1048576
     if mode != "delete" or not old:

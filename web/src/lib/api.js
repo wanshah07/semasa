@@ -5,6 +5,11 @@
 const MYT_MS = 8 * 3600_000;
 export const mytDay = (iso) => new Date(new Date(iso).getTime() + MYT_MS).toISOString().slice(0, 10);
 
+/* A usage row is one call (semasa_api_usage) or one day's total of many (supabase/091, lib/usageDaily.js): the day it falls on
+   and the calls it stands for. */
+export const dayOfUsage = (r) => r.day || mytDay(r.created_at);
+export const callsOf = (r) => (r.calls == null ? 1 : Number(r.calls) || 0);
+
 /** A gateway's one-word verdict: up (chat answered), key (key refused), down (unreachable), nokey, stale (not checked in 13 h). */
 export function verdictOf(row, now = Date.now()) {
   if (!row) return "none";
@@ -21,11 +26,11 @@ export function usageByGateway(rows, days = 30, today = mytDay(new Date().toISOS
   const from = dayShift(today, -(days - 1));
   const out = {};
   for (const r of rows || []) {
-    const d = mytDay(r.created_at);
+    const d = dayOfUsage(r);
     if (d < from || d > today) continue;
     const g = out[r.gateway] || (out[r.gateway] = { calls: 0, failed: 0, tokens: 0, prompt: 0, completion: 0, ms: 0, models: {} });
-    g.calls += 1;
-    if (!r.ok) g.failed += 1;
+    g.calls += callsOf(r);
+    if (!r.ok) g.failed += callsOf(r);
     g.tokens += r.total_tokens || 0; g.prompt += r.prompt_tokens || 0; g.completion += r.completion_tokens || 0; g.ms += r.ms || 0;
     if (r.model) g.models[r.model] = (g.models[r.model] || 0) + (r.total_tokens || 0);
   }
@@ -42,10 +47,10 @@ export function usageByDay(rows, days = 30, today = mytDay(new Date().toISOStrin
     byDay[d] = { date: d, calls: 0, ...Object.fromEntries(gateways.map((g) => [g, 0])) };
   }
   for (const r of rows || []) {
-    const d = mytDay(r.created_at);
+    const d = dayOfUsage(r);
     if (!byDay[d]) continue;
     byDay[d][r.gateway] += r.total_tokens || 0;
-    byDay[d].calls += 1;
+    byDay[d].calls += callsOf(r);
   }
   return { gateways, series: Object.values(byDay) };
 }
@@ -55,7 +60,7 @@ export function usageByArea(rows, days = 30, today = mytDay(new Date().toISOStri
   const from = dayShift(today, -(days - 1));
   const out = {};
   for (const r of rows || []) {
-    const d = mytDay(r.created_at);
+    const d = dayOfUsage(r);
     if (d < from || d > today) continue;
     const a = r.area || "?";
     out[a] = (out[a] || 0) + (r.total_tokens || 0);

@@ -34,7 +34,7 @@ import { resolveLook, useDesigns } from "../lib/designs";
 import { renderSeedPreview } from "../lib/kanvasBuild";
 import DesignLibrary from "../components/DesignLibrary";
 import TileGrid from "../components/TileGrid";
-import { thumbOf } from "../lib/genActions";
+import { tileOf } from "../lib/genActions";
 import CanvaHandoff from "../components/CanvaHandoff";
 import { canDeleteDesign, ownsDesign } from "../lib/designDelete";
 import { startLook } from "../lib/lookChoice";
@@ -334,7 +334,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
           {go && <> <button type="button" className="text-accent underline" onClick={() => go("design")}>{t("Jana poster baharu", "Generate a new poster")}</button></>}</p>
         </motion.div>
         {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
-        <TileGrid items={results.map((r) => ({ id: r.id, kind: "image", src: thumbOf(r),
+        <TileGrid items={results.map((r) => ({ id: r.id, kind: "image", ...tileOf(r),
           status: r.status !== "done" ? r.status : r.meta?.design === "comic" && comicStage(r) === "script" ? "review" : "",
           label: (r.meta?.slides?.[0]?.title || r.meta?.brief || t("Poster", "Poster")).replace(/\*/g, ""),
           sub: `${designs.find(([k]) => k === r.meta?.design)?.[1] || r.meta?.design} · ${timeAgo(r.created_at)}` }))}

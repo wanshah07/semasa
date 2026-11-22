@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { AlertTriangle, Clapperboard, Clock, ImageOff, Loader2, PenLine, Play } from "lucide-react";
 import { useLang } from "../lib/i18n";
+import { nextSrc } from "../lib/thumbs";
 import { Modal } from "./ui/Field";
 
 /* The compact library every Create page uses (Wan, 11 Oct 2026: "do separate library, make it compact, tile 8 per row"):
    a square tile per item, 3 across on a phone up to 8 across at 1280 px, and a click opens the full card in a dialog. The
    full card is the page's own (retry, delete, post, download), so nothing a card could do is lost by making the grid small.
-   `items`: [{ id, src, kind: "image" | "video", label, status, sub }]; `detail(item)` draws the dialog's content. */
+   `items`: [{ id, src, full, kind: "image" | "video", label, status, sub }] (full: see Thumb); `detail(item)` draws the dialog's content. */
 export const TILES_PER_ROW = "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8";
 
 const BADGE = {
@@ -31,7 +32,12 @@ function Thumb({ item }) {
       </>
     );
   }
-  return <img src={item.src} alt="" loading="lazy" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />;
+  // `item.full`: the picture itself, when `src` is its small copy (lib/thumbs.js). A copy that does not load (not made yet)
+  // falls back to it once; the picture itself failing hides the tile's image, as before
+  return <img src={item.src} alt="" loading="lazy" className="h-full w-full object-cover" onError={(e) => {
+    const next = nextSrc(e.currentTarget.getAttribute("src"), item.full);
+    if (next) e.currentTarget.src = next; else e.currentTarget.style.visibility = "hidden";
+  }} />;
 }
 
 export default function TileGrid({ items, detail, title, empty }) {

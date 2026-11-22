@@ -165,3 +165,14 @@ def film_as_is(monkeypatch):
     from semasa import film_ratio
 
     monkeypatch.setattr(film_ratio, "for_stream", lambda store, film, stream: film)
+
+
+@pytest.fixture(autouse=True)
+def no_thumbnail_downloads(monkeypatch):
+    """The housekeeping run makes missing library thumbnails (semasa/thumbs.py) by downloading the picture; a test never reaches
+    the network for it. A test that wants a download passes its own `fetch`."""
+    from semasa import thumbs
+
+    def refuse(url):
+        raise OSError(f"no network in tests: {url}")
+    monkeypatch.setattr(thumbs, "_fetch", refuse)

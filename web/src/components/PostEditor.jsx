@@ -5,6 +5,7 @@ import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { LIMITS, charLen, hardCount, normaliseSlides, platformsOf, scan, scanMedia, stripPromo, threadParts } from "../lib/compliance";
 import { approvePosition, dueMs, duplicatesOf, handedOver, nextFreeSlot, refOf, slotGone, slotsOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
+import { fitText } from "../lib/captionFit";
 import PostWorkflow from "./PostWorkflow";
 import PostPullBack from "./PostPullBack";
 import PostResend from "./PostResend";
@@ -94,6 +95,10 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   const frozen = locked || inBuffer;
   const sentPlats = Object.keys(post.published || {});
   const capFrozen = (p) => locked || (inBuffer && view === lang && sentPlats.includes(p));
+  // every caption inside its platform's limit (Wan, 22 Nov 2026: "caption untuk semua platform di bawah maksimum aksara"): what
+  // Save and Approve write, and what the checks read. A caption a platform already holds is left as it is.
+  const fittedText = useMemo(() => fitText(text, post.stream || "regulab", inBuffer ? sentPlats : []),
+    [JSON.stringify(text), post.stream, inBuffer, sentPlats.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   const chosen = mediaIds.map((id) => mediaById[id]).filter(Boolean);
   // a chosen picture opens in place, a slide set opens its slides one after another (never a blank new tab)
   const lbStart = {};
@@ -138,7 +143,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       creditMeta: isUnsplash(m) ? m.meta?.credit : null, label: m.prompt ? m.prompt.slice(0, 40) : t("Gambar {n}", "Picture {n}", { n: i + 1 }) })),
     unsplashOpen, pending, user, post, busy, onToast, onQueued: onChanged, onGenerate: (prompt) => queuePicture(prompt),
   };
-  const current = { ...post, text, lang, citation, date: date || null, slot: slot || null, media_ids: mediaIds,
+  const current = { ...post, text: fittedText, lang, citation, date: date || null, slot: slot || null, media_ids: mediaIds,
     ...(hasSlides ? { slides } : {}),
     media: chosen.filter((m) => m.status === "done").map(scanMedia) };
   const flags = useMemo(() => scan(current, reg, reg.schedule, indoExtra), [JSON.stringify(current), reg, indoExtra]); // eslint-disable-line
@@ -214,7 +219,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
     onChanged();
   }
 
-  const content = () => ({ text, lang, citation, date: date || null, slot: slot || null, media_ids: mediaIds,
+  const content = () => ({ text: fittedText, lang, citation, date: date || null, slot: slot || null, media_ids: mediaIds,
     ...(hasSlides ? { slides } : {}), flags, hard_flags: hard });
   // the decision record rides on the same write, only once 021 has added the column (a row read before it has no key)
   const decided = (action, note = "") => ("decisions" in post ? { decisions: withDecision(post, action, note) } : {});
@@ -421,6 +426,8 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
         // a thread (Threads): the posts are separated by a line holding only ---, each has the limit (Wan, 10 Nov 2026)
         const parts = lim?.parts ? threadParts(v, lim.separator || "---") : null;
         const over = lim && (parts ? parts.length > lim.parts || parts.some((x) => charLen(x) > lim.max) : charLen(v) > lim.max);
+        const fitted = ((fittedText[view] || {})[p]) ?? v;
+        const shortens = !capFrozen(p) && fitted !== v;
         return (
           <label key={p} className="block">
             <Label hint={parts && parts.length > 1
@@ -429,6 +436,17 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
             {lim?.parts && <p className="mb-1 text-[11px] text-muted">{t("Asingkan setiap post dengan satu baris yang hanya ada ---. Post pertama membawa gambar.", "Separate each post with a line holding only ---. The first post carries the picture.")}</p>}
             <TextArea id={`cap-${post.id}-${p}`} rows={p === "threads" ? 10 : 7} value={v} disabled={capFrozen(p)} onChange={(e) => setCaption(view, p, e.target.value)}
               className={over ? "border-danger" : ""} />
+            {shortens && (
+              <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-warn">
+                {lim?.parts
+                  ? t("Melebihi had Threads ({m} aksara setiap post, {n} post). Bila Simpan atau Luluskan, ia disusun semula dan perenggan hujung dibuang supaya muat.",
+                    "Over the Threads limit ({m} characters a post, {n} posts). On Save or Approve it is rearranged and the last paragraphs come out so it fits.", { m: lim.max, n: lim.parts })
+                  : t("Melebihi had {m} aksara ({c} sekarang). Bila Simpan atau Luluskan, perenggan hujung dibuang supaya muat ({f}).",
+                    "Over the {m}-character limit ({c} now). On Save or Approve the last paragraphs come out so it fits ({f}).", { m: lim?.max, c: v.length, f: fitted.length })}
+                <button type="button" className="underline hover:text-ink" onClick={() => setCaption(view, p, fitted)}>
+                  {t("Pendekkan sekarang", "Shorten now")}</button>
+              </p>
+            )}
           </label>
         );
       })}

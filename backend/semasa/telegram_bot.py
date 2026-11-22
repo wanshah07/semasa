@@ -40,7 +40,7 @@ from typing import Any
 
 import requests
 
-from . import billing, compliance, db, motion_review, motion_skins, rollforward
+from . import billing, caption_fit, compliance, db, motion_review, motion_skins, rollforward
 from . import telegram_catalogue as cat
 from . import telegram_menu as menu
 from . import telegram_tools as tt
@@ -324,7 +324,7 @@ def edit_draft_caption(store: Any, post_id: str, caption: str) -> str:
     text = dict(post.get("text") or {})
     variants = dict(text.get(lang) or {})
     channel = "linkedin" if lang == "en" else "instagram"
-    variants[channel] = caption[:3000]
+    variants[channel] = caption_fit.fit(caption, channel, "linkedin" if lang == "en" else "regulab")
     text[lang] = variants
     got = store.table(db.POSTS).update({"text": text}).eq("id", post_id).eq("status", "draft").execute().data or []
     return ("✏️ Caption updated. Semasa will re-run its compliance checks before approval."

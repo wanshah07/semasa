@@ -1,10 +1,11 @@
 /* A finished Motion film queued to the platforms Wan picks (Wan, 26 Oct 2026: "allow me to choose which platform to post, so from
    the video can directly post or queue to post to platform ... remove from motion list"). The film becomes a DRAFT post in the
    Posts queue through semasa_queue_motion (supabase/051): the single gate stays Wan's Approve click there, and the publisher scans
-   the post again before it sends. No imports beyond the scanners, the slots and platformFormat.js, so web/motionQueue.test.mjs runs this under Node as it is. */
+   the post again before it sends. No imports beyond the scanners, the slots, captionFit.js and platformFormat.js, so web/motionQueue.test.mjs runs this under Node as it is. */
 import { LIMITS, filmPlatformsFor, hardCount, readsMalay, scan } from "./compliance.js";
 import { sizeFor } from "./platformFormat.js";
 import { nextFreeSlot } from "./slots.js";
+import { fitText } from "./captionFit.js";
 
 export const CHANNEL_LABEL = { facebook: "Facebook", instagram: "Instagram", threads: "Threads", linkedin: "LinkedIn", tiktok: "TikTok" };
 
@@ -94,7 +95,8 @@ export function pickPosition({ film, posts, brand, post, now = Date.now() }) {
 /** The arguments of semasa_queue_motion, with the page's own scan of the caption each platform will carry. */
 export function queueArgs({ film, channels, captions, date, slot, brand, post, indo, approve = false, override = false, tiktok = false }) {
   const lang = postLang(film);
-  const text = { [lang]: Object.fromEntries(channels.map((c) => [c, String(captions?.[c] || "").trim()])) };
+  // each caption inside its platform's limit before it is queued (Wan, 22 Nov 2026: captions under the maximum)
+  const text = fitText({ [lang]: Object.fromEntries(channels.map((c) => [c, String(captions?.[c] || "").trim()])) }, film.stream || "regulab");
   const draft = { stream: film.stream || "regulab", lang, channels, text, date, slot, domain: post?.domain || null,
     media: [{ alt: film.title || "" }] };
   const reg = brand?.regulab || {};

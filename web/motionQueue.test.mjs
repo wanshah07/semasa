@@ -13,6 +13,7 @@ writeFileSync(join(dir, "compliance.js"), readFileSync(new URL("src/lib/complian
   .replace(/^import RULES from .*$/m, `const RULES = ${rules};`));
 copyFileSync(new URL("src/lib/slots.js", here), join(dir, "slots.js"));
 copyFileSync(new URL("src/lib/platformFormat.js", here), join(dir, "platformFormat.js"));
+copyFileSync(new URL("src/lib/captionFit.js", here), join(dir, "captionFit.js"));
 copyFileSync(new URL("src/lib/motionQueue.js", here), join(dir, "motionQueue.js"));
 const { CHANNEL_LABEL, canQueue, channelsFor, filmFormat, fitCaption, inMotionList, pickPosition, postLang, queueArgs, startingCaptions, tiktokOffered } =
   await import(pathToFileURL(join(dir, "motionQueue.js")).href);
@@ -85,11 +86,11 @@ t("the queue arguments carry the chosen platforms, one caption each, and the pag
   assert.equal(args.p_hard, 0, "a clean caption on a film with its video has nothing blocking");
 });
 
-t("an empty caption or one over a platform's limit blocks approval, and only on the platforms chosen", () => {
+t("an empty caption blocks approval, one over a platform's limit is fitted to it (Wan, 22 Nov 2026), only on the platforms chosen", () => {
   const long = "Perkataan ".repeat(60);                                  // 600 chars: over Threads' 500
-  const blocked = queueArgs({ film, channels: ["threads"], captions: { threads: long }, date: "2026-10-27", slot: "13:00", brand: BRAND });
-  assert.equal(blocked.p_hard, 1);
-  assert.ok(blocked.p_flags.some((f) => f.hard && /threads/.test(f.where)));
+  const fitted = queueArgs({ film, channels: ["threads"], captions: { threads: long }, date: "2026-10-27", slot: "13:00", brand: BRAND });
+  assert.equal(fitted.p_hard, 0, "fitted, so nothing blocks");
+  assert.ok(fitted.p_text.bm.threads.split(/^---$/m).every((x) => x.trim().length <= 500), "a chain of posts of 500 at most");
   const empty = queueArgs({ film, channels: ["instagram", "threads"], captions: { instagram: CAP, threads: "" }, date: "2026-10-27", slot: "13:00", brand: BRAND });
   assert.equal(empty.p_hard, 1, "threads is empty, facebook is not on this post and is not asked for");
   const ig = queueArgs({ film, channels: ["instagram"], captions: { instagram: CAP }, date: "2026-10-27", slot: "13:00", brand: BRAND });

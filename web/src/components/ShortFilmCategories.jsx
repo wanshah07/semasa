@@ -8,7 +8,7 @@ import { Input, Label, Select, TextArea } from "./ui/Field";
 
 /* Short-film categories (Wan, 22 Nov 2026: "Untuk short film ada kan dua kategori - kisah keluarga halal dan cats, dan kategori ini
    boleh ditambah"). The two built-in ones are rules/short_films.json; Wan's own are the settings row `short_films`, written here
-   (supabase/089_short_films.sql makes the row). The page only keeps the list: a film is made by hand in GitHub Actions with the
+   (supabase/090_short_films.sql makes the row). The page only keeps the list: a film is made by hand in GitHub Actions with the
    category's id, and for one of his own the writer writes the scenes from its cast, place and style plus the day's topic. */
 
 const blank = () => ({ name: "", about: "", cast: "", setting: "", style: "Photorealistic video.", scenes: "4", voice: VOICES[0], notes: "" });
@@ -35,8 +35,8 @@ export default function ShortFilmCategories({ settings, saveSetting, onToast }) 
       onToast(msg, "ok");
       return true;
     } catch (e) {
-      onToast(/not found/.test(e.message || "") ? t("Belum disediakan: jalankan supabase/089_short_films.sql sekali dalam Supabase, kemudian cuba lagi.",
-        "Not set up yet: run supabase/089_short_films.sql once in Supabase, then try again.") : (e.message || String(e)), "danger");
+      onToast(/not found/.test(e.message || "") ? t("Belum disediakan: jalankan supabase/090_short_films.sql sekali dalam Supabase, kemudian cuba lagi.",
+        "Not set up yet: run supabase/090_short_films.sql once in Supabase, then try again.") : (e.message || String(e)), "danger");
       return false;
     } finally {
       setBusy("");
@@ -71,8 +71,8 @@ export default function ShortFilmCategories({ settings, saveSetting, onToast }) 
       <p className="mt-2 max-w-3xl text-[12px] text-muted">{t(
         "Setiap kategori ialah satu jenis filem pendek: wataknya (rupa setiap watak diulang tepat dalam setiap babak), tempatnya dan gaya gambarnya. Filem dibuat dengan tangan di GitHub Actions dengan id kategori. Untuk kategori anda sendiri, Semasa menulis babak dan narasi daripada watak, tempat dan gaya itu serta topik hari itu.",
         "Each category is one kind of short film: its characters (each character's look is repeated exactly in every scene), its place and its picture style. A film is made by hand in GitHub Actions with the category's id. For a category of your own, Semasa writes the scenes and narration from those characters, place and style plus the day's topic.")}</p>
-      {!canSave && <p className="mt-2 rounded-tile bg-warn/10 p-2 text-[12px] text-warn">{t("Untuk simpan kategori sendiri, jalankan supabase/089_short_films.sql sekali dalam Supabase. Dua kategori terbina sudah boleh difilemkan.",
-        "To save your own categories, run supabase/089_short_films.sql once in Supabase. The two built-in categories can be filmed already.")}</p>}
+      {!canSave && <p className="mt-2 rounded-tile bg-warn/10 p-2 text-[12px] text-warn">{t("Untuk simpan kategori sendiri, jalankan supabase/090_short_films.sql sekali dalam Supabase. Dua kategori terbina sudah boleh difilemkan.",
+        "To save your own categories, run supabase/090_short_films.sql once in Supabase. The two built-in categories can be filmed already.")}</p>}
 
       <ul className="mt-3 space-y-2">
         {shown.map((c) => {

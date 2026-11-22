@@ -135,7 +135,7 @@ def test_the_page_and_the_worker_read_one_file():
     page = (ROOT / "web" / "src" / "lib" / "shortFilms.js").read_text("utf-8")
     assert 'import RULES from "../../../rules/short_films.json"' in page
     assert rules["limits"] == sf.LIMITS
-    assert "'short_films'" in (ROOT / "supabase" / "089_short_films.sql").read_text("utf-8")
+    assert "'short_films'" in (ROOT / "supabase" / "090_short_films.sql").read_text("utf-8")
 
 
 class FakeLLM:

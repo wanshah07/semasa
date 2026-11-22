@@ -1,6 +1,6 @@
 -- Semasa · Short-film categories (Wan, 22 Nov 2026: "Untuk short film ada kan dua kategori - kisah keluarga halal dan cats, dan
 -- kategori ini boleh ditambah").
--- Run ONCE in the SQL editor, after 088. Idempotent: safe to run again.
+-- Run ONCE in the SQL editor, after 089 (089 is 089_housekeeping.sql). Idempotent: safe to run again.
 --
 -- What it does
 --   One row in semasa_settings, `short_films`: {categories: [...], hidden: [...]}. The built-in categories (kisah-keluarga-halal and

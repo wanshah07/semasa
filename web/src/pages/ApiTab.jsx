@@ -5,7 +5,7 @@ import { Activity, AlertTriangle, CheckCircle2, Cpu, KeyRound, RefreshCw, Timer,
 import { fadeUp } from "../design/motion";
 import { TABLES } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
-import { useTable } from "../lib/hooks";
+import { useApiUsage, useTable } from "../lib/hooks";
 import { stampMYT, timeAgo } from "../lib/format";
 import { fmtTokens, orderedModels, usageByArea, usageByDay, usageByGateway, verdictOf } from "../lib/api";
 import { modelOverride, withModel } from "../lib/aiTeam";
@@ -42,7 +42,10 @@ export default function ApiTab({ settings, save, onToast }) {
   const L = lang === "en" ? "en" : "bm";
   // realtime: the 5-minute pulse (supabase/075, semasa-pulse) rewrites these rows and every robot card redraws as the row lands
   const statusT = useTable(TABLES.apiStatus, { enabled: true, order: "role", ascending: true, limit: 20, realtime: true, everyMs: 60_000 });
-  const usageT = useTable(TABLES.apiUsage, { enabled: true, order: "created_at", limit: 5000, realtime: false, everyMs: 300_000 });
+  // 90 days of daily totals (the widest window the page offers; supabase/091, 545 rows on 22 Nov 2026), re-read for the last two
+  // days every 5 minutes; until 091 is run, the raw rows as before (at most 5,000), read on only for what is new
+  const usage = useApiUsage({ days: 90, rawPulse: true,
+    rawSelect: "id,gateway,model,area,prompt_tokens,completion_tokens,total_tokens,ms,ok,created_at" });
   // the providers Wan added (supabase/074): read here so the AI team cards number them W6, W7, ... (realtime: the table is published)
   const providersT = useTable(TABLES.aiProviders, { enabled: true, order: "created_at", ascending: true, limit: 50, everyMs: 120_000 });
   const [days, setDays] = useState(30);
@@ -58,10 +61,10 @@ export default function ApiTab({ settings, save, onToast }) {
         : t("Model lalai {r} kembali kepada yang ditetapkan di GitHub.", "{r}'s default model is back to the one GitHub sets.", { r: slug }), "ok");
     } catch (e) { onToast?.(e?.message || String(e), "danger"); } finally { setPicking(""); }
   };
-  const byGw = useMemo(() => usageByGateway(usageT.rows, days), [usageT.rows, days]);
-  const byDay = useMemo(() => usageByDay(usageT.rows, days), [usageT.rows, days]);
-  const byArea = useMemo(() => usageByArea(usageT.rows, days), [usageT.rows, days]);
-  const missing = /semasa_api_(status|usage)/.test(statusT.error || usageT.error || "");
+  const byGw = useMemo(() => usageByGateway(usage.daily, days), [usage.daily, days]);
+  const byDay = useMemo(() => usageByDay(usage.daily, days), [usage.daily, days]);
+  const byArea = useMemo(() => usageByArea(usage.daily, days), [usage.daily, days]);
+  const missing = /semasa_api_(status|usage)/.test(statusT.error || usage.error || "");
   const total = Object.values(byGw).reduce((n, g) => n + g.tokens, 0);
   const calls = Object.values(byGw).reduce((n, g) => n + g.calls, 0);
   const failed = Object.values(byGw).reduce((n, g) => n + g.failed, 0);
@@ -82,7 +85,7 @@ export default function ApiTab({ settings, save, onToast }) {
       </motion.div>
 
       {missing && <p className="mb-4 rounded-tile bg-warn/10 p-3 text-sm text-warn">{t("Jadual belum ada: jalankan supabase/035_repos_api.sql sekali, kemudian larian API status di GitHub.", "The tables are not there yet: run supabase/035_repos_api.sql once, then the API status workflow on GitHub.")}</p>}
-      {(statusT.error || usageT.error) && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{statusT.error || usageT.error}</p>}
+      {(statusT.error || usage.error) && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{statusT.error || usage.error}</p>}
       {!statusT.loading && !statusT.error && !statusT.rows.length && (
         <p className="mb-4 rounded-tile bg-surface-2 p-3 text-sm text-muted">{t("Belum disemak: larian API status (GitHub → Actions → API status → Run workflow) menanya setiap gerbang dan mengisi kad di bawah.",
           "Not checked yet: the API status workflow (GitHub → Actions → API status → Run workflow) asks every gateway and fills the cards below.")}</p>
@@ -91,7 +94,7 @@ export default function ApiTab({ settings, save, onToast }) {
       <section className="mb-6" data-ai-team>
         <h2 className="mb-2 flex items-center gap-2 text-sm font-medium"><Cpu size={14} className="text-accent" /> {t("Pasukan AI", "AI team")}</h2>
         <div className="mb-3"><ApiPulse onToast={onToast} /></div>
-        <AiTeam statusRows={statusT.rows} usageRows={usageT.rows} state={settings?.ai_team_state} team={settings?.ai_team} save={save} onToast={onToast} providers={providersT.rows} />
+        <AiTeam statusRows={statusT.rows} usageRows={usage.recent} state={settings?.ai_team_state} team={settings?.ai_team} save={save} onToast={onToast} providers={providersT.rows} />
       </section>
 
       <section className="mb-6" data-gemini-section>
@@ -112,7 +115,7 @@ export default function ApiTab({ settings, save, onToast }) {
       <section className="mb-6 space-y-5" data-ai-settings>
         <AiSettings onToast={onToast} github={{ scrape: settings?.ai_github_scrape, media: settings?.ai_github_media }} />
         {/* extra providers under the AI slots: Anthropic, a second KiosAPI key, any OpenAI-compatible gateway, as robots W6, W7, ... */}
-        <AiProviders statusRows={statusT.rows} usageRows={usageT.rows} onToast={onToast} />
+        <AiProviders statusRows={statusT.rows} usageRows={usage.recent} onToast={onToast} />
         <MireldTrial settings={settings || {}} save={save} onToast={onToast} />
       </section>
 
@@ -200,6 +203,8 @@ export default function ApiTab({ settings, save, onToast }) {
             </div>
           )) : <p className="text-xs text-muted">{t("Tiada penggunaan direkod dalam tempoh ini. Setiap larian scrape, media, idea dan resit menulis baris di sini mulai sekarang.", "No usage recorded in this window. Every scrape, media, idea and receipt run writes rows here from now on.")}</p>}
           <p className="mt-3 text-[11px] text-muted">{t("Token ialah apa yang gerbang laporkan dalam `usage`; gerbang yang tidak melaporkan dikira sebagai panggilan dengan 0 token.", "Tokens are what the gateway reports in `usage`; a gateway that reports none counts as a call with 0 tokens.")}</p>
+          {usage.missing && <p className="mt-1 text-[11px] text-muted" data-usage-raw>{t("Jalankan supabase/091_api_usage_daily.sql sekali untuk jumlah harian penuh. Sehingga itu, halaman ini membaca 5,000 panggilan terkini sahaja.",
+            "Run supabase/091_api_usage_daily.sql once for full daily totals. Until then this page reads only the latest 5,000 calls.")}</p>}
         </Card>
       </div>
     </main>

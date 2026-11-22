@@ -128,18 +128,22 @@ export function sentByChannel(log, today, days = 30, channels = CHANNELS) {
     || a.channel.localeCompare(b.channel));
 }
 
-/** AI tokens a day for the last `days` days (semasa_api_usage), every day present, and the calls that failed. */
+/** AI tokens a day for the last `days` days (semasa_api_usage), every day present, and the calls that failed. A row is one call,
+    or one day's total (supabase/091: `day` and `calls`). The API pulse's own checks (area "pulse", ~800 a day, 0 tokens) are not
+    AI work and are left out, so the calls and failures are the workers' (Wan, 22 Nov 2026). */
 export function tokensByDay(usage, today, days = 14) {
   const out = [];
   for (let i = days - 1; i >= 0; i--) out.push({ date: addDays(today, -i), tokens: 0, calls: 0, failed: 0 });
   const by = Object.fromEntries(out.map((d) => [d.date, d]));
   for (const u of usage || []) {
-    if (!u.created_at) continue;
-    const d = by[mytDate(Date.parse(u.created_at))];
+    if (u.area === "pulse") continue;
+    const day = u.day || (u.created_at ? mytDate(Date.parse(u.created_at)) : "");
+    const d = by[day];
     if (!d) continue;
+    const n = u.calls == null ? 1 : Number(u.calls) || 0;
     d.tokens += Number(u.total_tokens) || 0;
-    d.calls++;
-    if (u.ok === false) d.failed++;
+    d.calls += n;
+    if (u.ok === false) d.failed += n;
   }
   return out;
 }

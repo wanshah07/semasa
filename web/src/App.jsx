@@ -37,6 +37,9 @@ const DesignTab = lazy(() => import("./pages/DesignTab"));
 const FaqTab = lazy(() => import("./pages/FaqTab"));
 const FragranceTab = lazy(() => import("./pages/FragranceTab"));
 const LogTab = lazy(() => import("./pages/LogTab"));
+// semasa_log's columns as the Log tab uses them: every one (a line opens to its detail, the search reads it, the CSV carries
+// it), named rather than "*" so a column added later is not downloaded 3,000 times without anyone deciding to
+const LOG_COLUMNS = "id,at,level,area,event,title,ref_table,ref_id,actor,detail";
 const IdeasTab = lazy(() => import("./pages/IdeasTab"));
 const PostsTab = lazy(() => import("./pages/PostsTab"));
 const SettingsTab = lazy(() => import("./pages/SettingsTab"));
@@ -385,8 +388,12 @@ export default function App() {
   // FAQ is the widest list of all (2.3 MB on 16 Nov 2026) and only its own tab shows it, so it is read only while that tab is
   // open. Coming back to the tab checks the ids and fetches what changed; it does not download the list again
   const faqs = useTable(TABLES.faqs, { enabled: allowed && tab === "faq", limit: 3000, delta: true });
-  // the home dashboard shows the last few lines, so it loads the log too (a shorter read than the Log tab's)
-  const activity = useTable(TABLES.log, { enabled: allowed && (tab === "log" || tab === "papan"), order: "at", limit: tab === "log" ? 3000 : 40 });
+  // the home dashboard shows the last few lines, so it loads the log too (a shorter read than the Log tab's). The log only ever
+  // gets new lines: read in full once, then only the lines newer than the newest held, and a realtime line is added from the
+  // event itself (lib/appendDelta.js). It was 3,000 rows (~1.4 MB) on every poll and every event (22 Nov 2026). The columns
+  // are the ones the Log tab shows (detail is opened, searched and exported); a burst of lines is gathered for 5 s
+  const activity = useTable(TABLES.log, { enabled: allowed && (tab === "log" || tab === "papan"), order: "at", limit: tab === "log" ? 3000 : 40,
+    select: LOG_COLUMNS, append: { windowMs: 0 }, liveWaitMs: 5000 });
 
   // "Jadikan FAQ" on a headline: the worker reads the article and writes one bilingual FAQ from it
   async function faqFrom(trend) {

@@ -17,6 +17,7 @@ import { fmtDate } from "../lib/billing";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import ViewToggle, { TBODY, TD, TH, THEAD, TR, TableFrame, useView } from "../components/ViewToggle";
+import SmallImg from "../components/SmallImg";
 
 const tabsOf = (t) => [["draft", t("Draf", "Drafts")], ["approved", t("Diluluskan", "Approved")], ["scheduled", t("Dijadualkan", "Scheduled")],
   ["posted", t("Diterbitkan", "Published")], ["archived", t("Arkib", "Archive")], ["rejected", t("Ditolak", "Rejected")],
@@ -43,7 +44,7 @@ function Thumb({ pic, small, stream }) {
   }
   return pic.type === "video"
     ? <video src={pic.generated_media_url} className={`${size} shrink-0 rounded-tile bg-black object-cover`} muted />
-    : <img src={pic.generated_media_url} alt="" className={`${size} shrink-0 rounded-tile object-cover`} />;
+    : <SmallImg url={pic.generated_media_url} className={`${size} shrink-0 rounded-tile object-cover`} />;
 }
 
 /* `stream`: the page is for one stream (Wan, 16 Nov 2026: LinkedIn has its own segment, and Bank post shows ws.regulab only).

@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { fadeUp } from "../design/motion";
 import { timeAgo } from "../lib/format";
 import { useLang } from "../lib/i18n";
-import { genActions, lockedMedia, thumbOf } from "../lib/genActions";
+import { genActions, lockedMedia, tileOf } from "../lib/genActions";
 import GenerationGallery from "../components/GenerationGallery";
 import TileGrid from "../components/TileGrid";
 import { Segmented } from "../components/ui/Field";
@@ -42,7 +42,7 @@ export default function ImageLibraryTab({ user, gens, posts, onToast, go }) {
           ["running", `${t("Berjalan", "Running")} ${count("running")}`], ["error", `${t("Gagal", "Failed")} ${count("error")}`]]} />
       </motion.div>
       {gens.error && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{gens.error}</p>}
-      <TileGrid items={rows.map((r) => ({ id: r.id, kind: "image", src: thumbOf(r), status: r.status === "done" ? "" : r.status,
+      <TileGrid items={rows.map((r) => ({ id: r.id, kind: "image", ...tileOf(r), status: r.status === "done" ? "" : r.status,
         label: jobLabel(r, t), sub: `${r.provider || t("Tiada", "None")} · ${timeAgo(r.created_at)}` }))}
         detail={(it) => { const r = rows.find((x) => x.id === it.id); return r ? <GenerationGallery rows={[r]} user={user} onToast={onToast} locked={locked} {...actions} /> : null; }}
         empty={t("Tiada gambar untuk paparan ini.", "No pictures for this view.")} />

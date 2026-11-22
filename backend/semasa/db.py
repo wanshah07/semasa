@@ -367,7 +367,11 @@ def finish_media(db: Client, row_id: str, **fields: Any) -> None:
 
 
 def upload_generated(db: Client, path: str, data: bytes, content_type: str) -> str:
-    """Put the bytes in bucket `semasa-generated` and return the public address."""
+    """Put the bytes in bucket `semasa-generated` and return the public address. A picture also gets its small copy for the
+    page's library tiles (semasa/thumbs.py), made from these bytes; that never fails the upload."""
     bucket = db.storage.from_(GENERATED_BUCKET)
     bucket.upload(path, data, {"content-type": content_type, "upsert": "true"})
+    if str(content_type or "").startswith("image/"):
+        from .thumbs import store_thumb
+        store_thumb(bucket, path, data)
     return bucket.get_public_url(path)

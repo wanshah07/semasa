@@ -4,7 +4,7 @@ import { AlertTriangle, CalendarClock, CreditCard, FileText, LayoutGrid, Lightbu
 import { fadeUp } from "../design/motion";
 import { TABLES } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
-import { useTable } from "../lib/hooks";
+import { useApiUsage, useTable } from "../lib/hooks";
 import { stampMYT } from "../lib/format";
 import { dayNames } from "../lib/brand";
 import { fmtDate, money, summary } from "../lib/billing";
@@ -40,7 +40,9 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
   const docsT = useTable(TABLES.billingDocs, { enabled: true, limit: 2000, realtime: false });
   const subsT = useTable(TABLES.subscriptions, { enabled: true, order: "next_payment", ascending: true, limit: 500, realtime: false });
   const apiT = useTable(TABLES.apiStatus, { enabled: true, order: "role", ascending: true, limit: 20, realtime: true, everyMs: 60_000 });   // the 5-minute pulse rewrites these rows
-  const usageT = useTable(TABLES.apiUsage, { enabled: true, order: "created_at", limit: 2000, realtime: false, everyMs: 300_000 });   // 14 days for the tokens chart
+  // 14 days for the tokens chart as daily totals (supabase/091; raw rows without the API pulse until it is run), and the last
+  // hours of calls for the robots' active/standby. Each re-reads only what is new (lib/usageDaily.js, lib/appendDelta.js)
+  const usage = useApiUsage({ days: 14 });
   const now = myt();
   const today = now.date;
   const stats = useMemo(() => systemStats({ ideas: ideas.rows, posts: posts.rows, log: log.rows, today }), [ideas.rows, posts.rows, log.rows, today]);
@@ -127,7 +129,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
           : t("Robot Wanshah; pengarah pilih yang terpantas.", "Wanshah's robots; the router picks the fastest.")}</CardDescription>
       </CardHeader>
       <CardContent>
-        <AiTeam statusRows={apiT.rows} usageRows={usageT.rows} state={settings?.ai_team_state} team={settings?.ai_team} compact />
+        <AiTeam statusRows={apiT.rows} usageRows={usage.recent} state={settings?.ai_team_state} team={settings?.ai_team} compact />
         <Button size="sm" variant="ghost" className="mt-3" onClick={() => go("api")}>{t("Tab API", "API tab")}</Button>
       </CardContent>
     </Card>}
@@ -179,7 +181,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
         projects={projects}
         activity={activityRows}
         aside={aside}
-        below={shows("charts") ? <HomeCharts className="grid gap-4 sm:grid-cols-2" ideas={ideas.rows} posts={posts.rows} log={log.rows} usage={usageT.rows} today={today} /> : null}
+        below={shows("charts") ? <HomeCharts className="grid gap-4 sm:grid-cols-2" ideas={ideas.rows} posts={posts.rows} log={log.rows} usage={usage.daily} today={today} /> : null}
         show={{ chart: shows("chart"), projects: shows("queue"), activity: shows("activity") }}
         words={{
           chartTitle: t("Ditulis lawan disiar", "Drafted against published"), chartDescription: t("Lapan minggu terakhir: post yang ditulis dan post yang sampai ke saluran", "The last eight weeks: posts written and posts that reached a channel"),

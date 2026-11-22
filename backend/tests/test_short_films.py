@@ -66,7 +66,10 @@ def test_the_cats_film_is_word_for_word_what_it_was():
 
 def test_the_halal_family_films_are_word_for_word_what_they_were():
     assert charsheet.CHAR_SHEET_PROMPT.startswith(FAMILY_SHEET_START)
-    assert "holding a small orange cat in her hands near her chest" in charsheet.CHAR_SHEET_PROMPT
+    # the sheet's words live in rules/short_films.json and change by episode (ep4, 22 Nov 2026: a fresh fish and the orange cat);
+    # the script's copy must be the file's, word for word, whatever the episode says
+    family = next(c for c in sf.RULES["categories"] if c["id"] == "kisah-keluarga-halal")
+    assert charsheet.CHAR_SHEET_PROMPT == family["script"]["sheet_prompt"] and "orange cat" in charsheet.CHAR_SHEET_PROMPT
     assert len(api.SCENES) == 2 and api.SCENES[0].endswith(FAMILY_SCENE_1_END)
     assert web_film.SCENES == api.SCENES, "the web route and the API route film the same two scenes"
     assert comic_film.SUBTITLES == SUBTITLES

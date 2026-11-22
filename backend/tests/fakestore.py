@@ -178,6 +178,7 @@ class FakeStore:
         self.removed: list[tuple[str, list[str]]] = []
         self.listing: dict[str, list[str]] = {}          # folder -> file names, what storage.list() answers
         self.remove_error: Exception | None = None       # raised by storage.remove() when set
+        self.uploaded: dict[str, bytes] = {}             # path -> bytes, what storage.upload() was handed
         store = self
 
         class _Bucket:
@@ -188,6 +189,12 @@ class FakeStore:
                 if store.remove_error:
                     raise store.remove_error
                 store.removed.append((self.name, list(paths)))
+
+            def upload(self, path, data, options=None):
+                store.uploaded[path] = data
+
+            def get_public_url(self, path):
+                return f"https://x.supabase.co/storage/v1/object/public/{self.name}/{path}"
 
             def list(self, folder, options=None):
                 # a name is a bare entry; a dict is passed through (a file carries id/created_at/metadata, a folder id None)

@@ -27,6 +27,9 @@ WHAT THIS ADDS, each a step that reports what it found and, in "delete" mode, re
     idle_films    a finished Motion film never put on a post (no queued post, no post holding its media) and not touched for
                   30 days: REPORTED ONLY unless `settings.housekeeping.idle_films` is "delete". When on, its files go and the
                   rows stay as the record, exactly as purge_films does 12 h after a film is posted.
+  thumbs (adds, never deletes)
+    the small JPEG each stored picture now gets for the page's library tiles (semasa/thumbs.py): pictures stored before
+                  22 Nov 2026 have none, so up to thumbs.BACKFILL_CAP a run are made (one download of the picture each, once).
 
 Guards: nothing that belongs to a draft, approved, scheduled or posted post is a candidate; a step that cannot read what it needs
 deletes nothing; files are removed only after their row is gone (a file left behind is the orphan sweep's, a row pointing at a
@@ -51,7 +54,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import archive, db
+from . import archive, db, thumbs
 from .log import get_logger
 
 log = get_logger("semasa.housekeeping")
@@ -315,6 +318,9 @@ def run(store: Any, now: datetime | None = None, dry: bool | None = None) -> dic
     report["cron"] = sweep_cron(store, cfg, dry)
     report["deleted_posts"] = sweep_deleted_posts(store, cfg, now, dry, sizes)
     report["idle_films"] = sweep_idle_films(store, cfg, now, dry, sizes)
+    # not a delete: the library thumbnails pictures stored before 22 Nov 2026 are missing (semasa/thumbs.py), a few a run.
+    # Only with a bucket listing to compare against; without one, nothing is made rather than everything again
+    report["thumbs"] = thumbs.backfill(store, set(sizes), dry) if sizes else {"skipped": "bucket not listed"}
     if not dry:
         rows = sum(int((report.get(k) or {}).get("deleted") or 0) for k in ("pulse_log", "pulse_usage", "telegram", "cron"))
         pics, films = report["deleted_posts"].get("deleted", 0), report["idle_films"].get("deleted", 0)
@@ -362,6 +368,12 @@ def summary(report: dict[str, Any]) -> str:
                      f"{f['days']} days: {f['found']}, {_mb(f['bytes'])}; {acted}")
     else:
         lines.append(f"- idle Motion films: not checked ({f.get('error')})")
+    th = report.get("thumbs") or {}
+    if "found" in th:
+        lines.append(f"- library thumbnails missing: {th['found']}; " + ("none made (dry run)" if report.get("dry")
+                     else f"{th['made']} made from {_mb(th['bytes'])} of pictures"))
+    elif th:
+        lines.append(f"- library thumbnails: {th.get('skipped') or th.get('error')}")
     return "\n".join(lines)
 
 

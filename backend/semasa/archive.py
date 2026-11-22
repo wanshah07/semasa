@@ -328,19 +328,29 @@ def purge_pictures(store: Any, now: datetime | None = None, hours: int = PRUNE_H
 
 ORPHAN_AGE = timedelta(hours=24)
 ORPHAN_CAP = 200          # files deleted in one run at most: a bug in the reference scan must not empty the bucket in one go
-# no file is ever named in these
-_NO_SCAN = {db.TRENDS, db.LOG, "semasa_faqs", db.RUNS, "semasa_ai_secrets", "semasa_telegram_codes"}
+# no file is ever named in these. semasa_api_usage is one row per AI call (gateway, model, area, tokens, ms, error): it never
+# names a file, and at 21,000 rows it was 5.2 MB of the ~12 MB this scan downloaded on every publisher run (22 Nov 2026)
+_NO_SCAN = {db.TRENDS, db.LOG, "semasa_faqs", db.RUNS, "semasa_ai_secrets", "semasa_telegram_codes", db.API_USAGE}
 
 
-def referenced_text(store: Any) -> str:
+def scanned_tables() -> list[str]:
+    """The tables whose rows may name a stored file: every table the code knows, less the short skip list."""
+    return sorted({v for k, v in vars(db).items() if k.isupper() and isinstance(v, str) and (v.startswith("semasa_")
+                   or v in (db.MEDIA, db.TRENDS, db.RUNS)) and v not in _NO_SCAN} | {"semasa_motions"})
+
+
+def referenced_text(store: Any, skip: dict[str, set[str]] | None = None) -> str:
     """Everything in the database that could name a stored file, as one string. Read from every table the code knows (a
-    table missing from this list can only make a file look USED, never unused: the skip list is the short one)."""
+    table missing from this list can only make a file look USED, never unused: the skip list is the short one). `skip` leaves
+    out rows by id ({table: {id, ...}}): a row that is itself about to go must not count as the thing that keeps its file."""
     import json
-    tables = sorted({v for k, v in vars(db).items() if k.isupper() and isinstance(v, str) and (v.startswith("semasa_")
-                     or v in (db.MEDIA, db.TRENDS, db.RUNS)) and v not in _NO_SCAN} | {"semasa_motions"})
+    skip = skip or {}
     parts: list[str] = []
-    for t in tables:
-        parts.append(json.dumps(_rows_of(store, t), default=str))
+    for t in scanned_tables():
+        rows = _rows_of(store, t)
+        if skip.get(t):
+            rows = [r for r in rows if str(r.get("id")) not in skip[t]]
+        parts.append(json.dumps(rows, default=str))
     return "\n".join(parts)
 
 

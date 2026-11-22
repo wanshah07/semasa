@@ -50,7 +50,7 @@ class Query:
         self.op, self.payload = "update", payload
         return self
 
-    def delete(self):
+    def delete(self, **_k):                      # returning="minimal" is accepted and ignored
         self.op = "delete"
         return self
 

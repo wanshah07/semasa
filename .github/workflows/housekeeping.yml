@@ -1,0 +1,48 @@
+name: Housekeeping
+
+# Routine cleaning so the database, the storage bucket and the egress stay small (Wan, 22 Nov 2026: "make do routine cleaning to make
+# sure supabase or egress/db is not tight"). Once a day at 03:47 MYT, the quietest hour: backend/semasa/housekeeping.py deletes the
+# API pulse's old log and usage rows, handled Telegram updates, pg_cron's old run history (after supabase/089) and the pictures of
+# posts Wan deleted a week ago; it only REPORTS finished Motion films that were never posted. Nothing of a draft, approved, scheduled
+# or posted post is touched, and only Semasa's tables and the semasa-generated bucket (the project is shared with KPI).
+# settings.housekeeping = {"mode": "report"} turns every deletion off; "Run workflow" with dry run ticked counts and changes nothing.
+on:
+  schedule:
+    - cron: "47 19 * * *"         # 03:47 MYT
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: count what would go, delete nothing"
+        type: boolean
+        default: true
+
+concurrency:
+  group: housekeeping
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  clean:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Clean up
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '--dry-run' || '' }}
+        run: python -m semasa.housekeeping $DRY

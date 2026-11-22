@@ -11,6 +11,19 @@
 const FACT_MAX = 150;            // a headline plus a supporting line fit in about this much
 const HEAD_MAX = 110;
 
+/* The caption's own follow invitation ("Follow untuk tip regulatori yang senang faham.") is never a slide (Wan, 22 Nov 2026): the
+   carousel ends on the standard closing card, which carries the logo and that line. */
+const FOLLOW_RE = /^\s*follow\b|\bfollow\s+(untuk|kami|kita|us|me|for)\b|\bikuti\s+(kami|kita)\b/i;
+export const isFollow = (text) => FOLLOW_RE.test(String(text || ""));
+
+/* Two lines say the same thing when their letters and digits match once case, emphasis marks and punctuation are set aside: a
+   caption's first line is the hook with a full stop, and it must not come back as slide 2 (Wan, 22 Nov 2026). */
+const norm = (t) => String(t || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+export const sameLine = (a, b) => {
+  const x = norm(a), y = norm(b);
+  return !!x && !!y && (x === y || (y.length >= 20 && x.startsWith(y)));
+};
+
 export function sentencesOf(p) {
   return String(p || "").split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
 }
@@ -49,14 +62,14 @@ export function headAndRest(text) {
 export function factUnits(post, isPromo = () => false) {
   const hook = String(post.hook || "").trim();
   const paras = String(post.caption || "").split(/\n+/).map((x) => x.trim()).filter(Boolean)
-    .filter((p) => !/^#/.test(p) && !/^www\./i.test(p) && !/^(Rujukan|Sources|Sumber)\b/i.test(p) && p !== hook)
-    .filter((p) => !isPromo(p));
+    .filter((p) => !/^#/.test(p) && !/^www\./i.test(p) && !/^(Rujukan|Sources|Sumber)\b/i.test(p) && !sameLine(p, hook))
+    .filter((p) => !isPromo(p) && !isFollow(p));
   const units = [];
   for (const p of paras) {
     if (p.length <= FACT_MAX) { units.push(p); continue; }
     let buf = "";
     for (const sen of sentencesOf(p)) {
-      if (isPromo(sen)) continue;
+      if (isPromo(sen) || isFollow(sen) || sameLine(sen, hook)) continue;
       if (!buf) buf = sen;
       else if ((buf + " " + sen).length <= FACT_MAX) buf += " " + sen;
       else { units.push(buf); buf = sen; }
@@ -101,7 +114,7 @@ export function slidesFromCaption(post, isPromo = () => false) {
 export function cardFromCaption(post, isPromo = () => false) {
   const hook = String(post.hook || "").trim();
   const paras = String(post.caption || "").split(/\n+/).map((x) => x.trim()).filter(Boolean);
-  const lead = paras.find((p) => p !== hook && p.length > 30 && !/^#|^www\./i.test(p) && !isPromo(p)) || "";
+  const lead = paras.find((p) => !sameLine(p, hook) && p.length > 30 && !/^#|^www\./i.test(p) && !isPromo(p) && !isFollow(p)) || "";
   const [title, rest] = headAndRest(hook || lead);
   const under = hook ? lead : rest;
   return [{ title, points: [], ...(under ? { lead: under } : {}) }];

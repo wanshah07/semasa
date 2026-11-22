@@ -711,8 +711,11 @@ const FILL_MAX = 3, FILL_BODY_MAX = 2.2, FILL_FROM = 0.72, FILL_TARGET = 0.86;
    stays a readable poster instead of a billboard. Each family has its own base size, so the cap is a share of that family's own
    growth limit (3x, 2.2x for body slides, 3.4x for the hand-drawn card), never below the template's own size. Words that do not
    fit still shrink as before. */
+/* The same cap holds for every slide after a ws.regulab cover (Wan, 22 Nov 2026: "kecilkan tulisan di poster content, hanya tulisan di
+   slide pertama"): only the cover (or a lone poster) is drawn big; the content slides read at a calmer size. */
 const LI_FILL_SHARE = 0.6;
-export const capFill = (spec, max) => (spec && spec.stream === "linkedin" ? Math.max(1, max * LI_FILL_SHARE) : max);
+export const capFill = (spec, max) => (spec && (spec.stream === "linkedin" || spec.place === "middle" || spec.place === "closing")
+  ? Math.max(1, max * LI_FILL_SHARE) : max);
 const HOOK_TPL = { g_title: 1, p_title: 1, p_quote: 1 };
 /* The scale (1 to FILL_MAX) at which a slide's content fills its card. `measure(spec)` runs the family's own painter against the
    measuring proxy and returns where the content ends; `topU` is where the content starts, in 1080-wide units. */
@@ -3808,6 +3811,7 @@ export function specsFor(slides, o = {}) {
     const cite = String(o.citation || "").trim();
     const base = {
       stream: linkedin ? "linkedin" : "regulab",
+      place: placeOf(i, n),           // cover / middle / closing / single: only the cover and a lone card grow their type
       title: String(s.title || "").trim(),
       eyebrow: String(s.eyebrow || o.eyebrow || (D && D.eyebrow) || "").trim(),
       footnote: String(s.footnote || "").trim() || (last ? cite : ""),
@@ -4062,6 +4066,38 @@ async function renderSpecNow(spec) {
   if (HAND_TPL[spec.template]) return renderHandCard(spec);
   if (SKIN_TPL[spec.template]) return renderSkinCard(spec);
   throw new Error("unknown card template " + spec.template);
+}
+
+/* The standard last page of a ws.regulab carousel (Wan, 22 Nov 2026): the logo large in the middle, a short rule, the tagline big and
+   "Follow us for more" small. The worker draws the same card (backend/semasa/carousel.py closing_card); this one is for the page's
+   preview, so the set Wan approves ends the way it is posted. LinkedIn has no closing card. */
+export const CLOSING_TAGLINE = "Follow untuk tip regulatori yang senang faham.";
+export async function renderClosingCard(o = {}) {
+  const [W, H] = Array.isArray(o.size) ? o.size : CARD_SIZES.regulab;
+  const u = W / 1080;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#FAF7F2"; ctx.fillRect(0, 0, W, H);
+  const mark = await logoInk();
+  const lw = Math.round(W * 0.78);
+  const lh = mark.im ? Math.round(lw * mark.sh / mark.sw) : 0;
+  ctx.font = `700 ${Math.round(66 * u)}px "Playfair Display", Georgia, serif`;
+  const lines = gWrap(ctx, CLOSING_TAGLINE, W - Math.round(190 * u));
+  const lineH = Math.round(66 * u * 1.14), gap = Math.round(60 * u);
+  const block = lh + gap * 2 + Math.round(4 * u) + lines.length * lineH + Math.round(30 * u) + Math.round(42 * u);
+  let y = Math.max(Math.round(110 * u), Math.round((H - block) / 2));
+  if (mark.im) ctx.drawImage(mark.im, mark.sx, mark.sy, mark.sw, mark.sh, Math.round((W - lw) / 2), y, lw, lh);
+  y += lh + gap;
+  ctx.fillStyle = "#B07A2A"; ctx.fillRect(Math.round(W / 2 - 40 * u), y, Math.round(80 * u), Math.max(2, Math.round(4 * u)));
+  y += Math.round(4 * u) + gap;
+  ctx.fillStyle = "#1F1B16"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (const line of lines) { ctx.fillText(line, W / 2, y); y += lineH; }
+  y += Math.round(30 * u);
+  ctx.font = `400 ${Math.round(32 * u)}px "Instrument Sans", system-ui, sans-serif`;
+  ctx.fillStyle = "#7A746C";
+  ctx.fillText("Follow us for more", W / 2, y);
+  return { url: c.toDataURL("image/jpeg", 0.9), warn: [], template: "closing" };
 }
 
 /* Draw every slide. Returns [{url (a JPEG data URL), warn[], template}], one per slide, in order. A warning is

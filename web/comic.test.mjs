@@ -165,5 +165,5 @@ assert.match(maker, /supabase\/085_comic\.sql/);
 const composer = read("src/components/IdeaComposer.jsx");
 assert.match(composer, /\["comic", t\("Komik", "Comic"\)\]/);
 assert.match(composer, /brief\.format = "comic"; brief\.comic = \{ series: /);
-assert.match(read("../backend/semasa/ideas.py"), /if fmt in \("carousel", "poster", "comic"\)/);
+assert.match(read("../backend/semasa/ideas.py"), /if fmt in \("carousel", "poster", "card", "comic"\)/);
 console.log("comic: ok");

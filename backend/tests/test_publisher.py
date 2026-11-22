@@ -92,10 +92,17 @@ def test_a_cleared_block_stops_reading_as_blocked():
     assert c["dry_run"] == 3 and store.tables["semasa_posts"][0]["errors"] == {}
 
 
-def test_a_picture_deleted_after_approval_blocks():
+def test_a_picture_deleted_after_approval_no_longer_blocks_when_another_is_ready():
+    # Wan, 22 Nov 2026: "fix any blocker or remove blocker": the post goes with the picture that is ready
     store = _store(_post(media_ids=["m1", "gone"]))
     c = publisher.run(store, NOW)
-    assert c["blocked"] == 3 and "no longer exist" in " ".join(store.tables["semasa_posts"][0]["errors"]["scan"])
+    assert c["blocked"] == 0 and not (store.tables["semasa_posts"][0].get("errors") or {}).get("scan")
+
+
+def test_a_post_whose_only_picture_is_gone_still_waits_on_instagram():
+    store = _store(_post(media_ids=["gone"]))
+    c = publisher.run(store, NOW)
+    assert c["blocked"] >= 1 and "no other picture is ready" in " ".join(store.tables["semasa_posts"][0]["errors"]["scan"])
 
 
 # --- live senders (Wan, 29 Sep 2026: Semasa replaces Studio on Friday 2 Oct) -----------------------------------------

@@ -27,6 +27,18 @@ LOGO = ROOT / "rules" / "motion" / "official-logo-transparent.png"      # the sa
 
 FOLLOW_EN = "Follow us for more"
 FOLLOW_BM = "Ikuti kami untuk info seterusnya"
+# the closing card's tagline: the caption's own follow line (Wan, 22 Nov 2026: "logo ... ketengah, besarkan dan letak tagline
+# 'follow untuk...'"), drawn big under the logo, with the English line small beneath it
+TAGLINE = "Follow untuk tip regulatori yang senang faham."
+
+
+def is_follow_slide(slide: dict[str, Any]) -> bool:
+    """A slide whose words are only the caption's follow invitation: never drawn (the closing card carries that line)."""
+    from . import motion_captions
+    words = " ".join(str(slide.get(k) or "") for k in ("title", "lead", "note")) + " " + " ".join(
+        str(p) for p in (slide.get("points") or []))
+    words = " ".join(words.split())
+    return bool(words) and not slide.get("ayat") and motion_captions.follow_ask(words) and len(words) <= 160
 
 
 def has_logo_card(stream: str, count: int) -> bool:
@@ -148,8 +160,9 @@ def _centred(d: ImageDraw.ImageDraw, text: str, font: Any, cx: int, y: int, fill
 
 
 def closing_card(index: int, total: int, *, ground: bytes | None = None, size: tuple[int, int] | None = None) -> Image.Image:
-    """The last picture: the logo, a short rule, "Follow us for more" and its Malay line, centred, with the page count the
-    other slides carry. On a photograph ground the logo is knocked out in white, as on the other slides' marks."""
+    """The last picture, one standard format (Wan, 22 Nov 2026): the logo large in the middle, a short rule, the tagline
+    "Follow untuk tip regulatori yang senang faham." big and "Follow us for more" small under it, with the page count the other
+    slides carry. No logo in the corner. On a photograph ground the logo is knocked out in white, as on the other slides'."""
     if not LOGO.exists():
         raise SlideError("the ws.regulab logo file is missing (rules/motion/official-logo-transparent.png)")
     w, h = size or slides.SIZES["regulab"]
@@ -161,18 +174,21 @@ def closing_card(index: int, total: int, *, ground: bytes | None = None, size: t
     counter = f"{index + 1}/{total}"
     d.text((w - slides.MARGIN - small.getlength(counter), slides.MARGIN), counter, font=small, fill=muted)
 
-    logo = _logo(round(w * 0.64), white=on_ground)
-    big, body = slides._font(slides.DISPLAY, 74), slides._font(slides.BODY, 34)
-    rule_gap, line_gap = 56, 28
-    block = logo.height + rule_gap + 4 + rule_gap + round(big.size * 1.12) + line_gap + round(body.size * 1.3)
+    logo = _logo(round(w * 0.78), white=on_ground)
+    big, body = slides._font(slides.DISPLAY, 66), slides._font(slides.BODY, 32)
+    lines = _balanced(TAGLINE, big, w - 2 * slides.MARGIN - 40)
+    rule_gap, line_gap, lh = 60, 30, round(big.size * 1.14)
+    block = logo.height + rule_gap + 4 + rule_gap + lh * len(lines) + line_gap + round(body.size * 1.3)
     y = max(slides.MARGIN + slides.HEAD_H, (h - block) // 2)
     canvas.paste(logo, ((w - logo.width) // 2, y), logo)
     y += logo.height + rule_gap
     d.line([w // 2 - 40, y, w // 2 + 40, y], fill=accent, width=4)
     y += 4 + rule_gap
-    _centred(d, FOLLOW_EN, big, w // 2, y, ink)
-    y += round(big.size * 1.12) + line_gap
-    _centred(d, FOLLOW_BM, body, w // 2, y, muted)
+    for line in lines:
+        _centred(d, " ".join(r.text for r in line.runs), big, w // 2, y, ink)
+        y += lh
+    y += line_gap
+    _centred(d, FOLLOW_EN, body, w // 2, y, muted)
     return canvas
 
 
@@ -195,6 +211,10 @@ GREEN_TOP = (6, 46, 29)
 GREEN_BOTTOM = (4, 104, 101)           # the two ends of the logo's own green-to-teal
 COVER_GOLD = (246, 206, 160)
 COVER_CREAM = (244, 240, 232)
+COVER_WHITE = (255, 255, 255)
+COVER_INK = (17, 17, 17)
+COVER_RED = (211, 32, 39)
+COVER_MUTED = (90, 90, 90)
 COVER_SECONDS = 1.1                    # the cover frame at the start of a film (TikTok takes its cover at 1.0 s by default)
 
 
@@ -231,6 +251,28 @@ def _rings(canvas: Image.Image) -> None:
         d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(196, 242, 226, alpha), width=2 * k // 2 + 1)
     r = (w * 0.34 + 3 * w * 0.15) * k                       # one ring in the brand gold
     d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(246, 206, 160, 130), width=k + 1)
+    layer = layer.resize((w, h), Image.LANCZOS)
+    canvas.paste(layer, (0, 0), layer)
+
+
+def _blue_waves(canvas: Image.Image) -> None:
+    """The white cover's wave circles (Wan, 22 Nov 2026: "with wave circle light blue"): concentric light-blue rings around the
+    middle, the inner ones a little stronger, with a soft blue glow at the centre. Drawn at twice the size and brought down so
+    the lines are smooth; light enough that the black title and the green logo stay crisp over them."""
+    from PIL import ImageFilter
+    w, h = canvas.size
+    glow = Image.new("RGBA", (w, h), (214, 236, 250, 0))      # blue even where transparent: the blur never greys the white
+    ImageDraw.Draw(glow).ellipse([w * 0.12, h * 0.17, w * 0.88, h * 0.77], fill=(214, 236, 250, 150))
+    glow = glow.filter(ImageFilter.GaussianBlur(w * 0.09))
+    canvas.paste(glow, (0, 0), glow)
+    k = 2
+    layer = Image.new("RGBA", (w * k, h * k), (150, 205, 238, 0))
+    d = ImageDraw.Draw(layer)
+    cx, cy = w * k * 0.5, h * k * 0.47
+    for i in range(10):
+        r = (w * 0.30 + i * w * 0.12) * k
+        alpha = max(70, 200 - i * 14)
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(150, 205, 238, alpha), width=k * 3 if i % 3 == 0 else k + 2)
     layer = layer.resize((w, h), Image.LANCZOS)
     canvas.paste(layer, (0, 0), layer)
 
@@ -289,25 +331,22 @@ def _balanced(text: str, font: Any, width: float) -> list[Any]:
 
 def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes | None = None,
                size: tuple[int, int] | None = None) -> Image.Image:
-    """The branded cover: logo, a gold rule, the hook title, a short supporting line (`eyebrow` is accepted, never drawn: the
-    cover carries no tag). Everything sits in a block
+    """The branded cover: logo, a rule, the hook title, a short supporting line (`eyebrow` is accepted, never drawn: the
+    cover carries no tag). Since 22 Nov 2026 (Wan: "background white, green color logo, title black text and red hook word") it
+    is a white card with light-blue wave circles: the logo in its own green, the title in black and its hook word (the *marked*
+    one, else the last word) in red. Everything sits in a block
     centred inside the part of the picture an Instagram grid tile keeps (for a tall film frame, the middle three quarters of
     the height). A hook that is too long for the cover is drawn smaller, never cut."""
     if not LOGO.exists():
         raise SlideError("the ws.regulab logo file is missing (rules/motion/official-logo-transparent.png)")
     w, h = size or slides.SIZES["regulab"]
-    if ground:
-        canvas, _ = slides.background((w, h), ground)
-        wash = _gradient((w, h)).convert("RGBA")
-        wash.putalpha(214)
-        canvas = canvas.convert("RGBA")
-        canvas.alpha_composite(wash)
-        canvas = canvas.convert("RGB")
-    else:
-        canvas = _gradient((w, h))
-    canvas = _glow(canvas)
-    _watermark(canvas)
+    canvas = Image.new("RGB", (w, h), COVER_WHITE)        # white whatever the ground: the picture stays on the slides after it
+    _blue_waves(canvas)
     d = ImageDraw.Draw(canvas)
+    title = _clean(title)
+    if title and "*" not in title:                        # no hook word marked: the last word carries the red
+        head, _, last = title.rpartition(" ")
+        title = f"{head} *{last}*".strip() if last else title
 
     margin = round(w * 0.11)
     col = w - 2 * margin
@@ -315,7 +354,7 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
     band = h * (0.62 if tall else 0.80)                   # the vertical room the block may use: inside the grid's crop
     # a film's cover is quieter (Wan, 11 Nov 2026: "make sure the cover text not too big & make it aesthetic"): on the tall
     # frame the same sizes read as shouting, so the logo and the hook are both drawn smaller and the hook gets more air
-    logo = _logo(round(w * (0.36 if tall else 0.46)), white=True)
+    logo = _logo(round(w * (0.36 if tall else 0.46)), white=False)
     small = slides._font(slides.BODY_BOLD, round(w * 0.026))
     label = ""                                              # no tag on the cover (Wan, 11 Nov: "remove word hook")
     body_font = slides._font(slides.BODY, round(w * 0.036))
@@ -331,7 +370,7 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
     floor = round(w * (0.046 if tall else 0.05))
     while True:
         font = slides._font(slides.DISPLAY, size_px)
-        lines = _balanced(_clean(title), font, col)
+        lines = _balanced(title, font, col)
         lh = round(font.size * (1.2 if tall else 1.1))
         if fixed + len(lines) * lh <= band or size_px <= floor:
             break
@@ -341,10 +380,10 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
 
     canvas.paste(logo, ((w - logo.width) // 2, y), logo)
     y += logo.height + gap
-    d.line([w // 2 - 44, y, w // 2 + 44, y], fill=COVER_GOLD, width=4)
+    d.line([w // 2 - 44, y, w // 2 + 44, y], fill=COVER_RED, width=4)
     y += 4 + gap
     if label:
-        d.text(((w - small.getlength(label)) / 2, y), label, font=small, fill=COVER_GOLD)
+        d.text(((w - small.getlength(label)) / 2, y), label, font=small, fill=COVER_RED)
         y += round(small.size * 1.4) + round(gap * 0.5)
     for line in lines:                                     # centred, one line at a time
         x = (w - line.width) / 2
@@ -353,7 +392,7 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
         for i, run in enumerate(line.runs):
             if i:
                 cx += space
-            d.text((cx, y), run.text, font=font, fill=COVER_GOLD if run.emph else (255, 255, 255))
+            d.text((cx, y), run.text, font=font, fill=COVER_RED if run.emph else COVER_INK)
             cx += font.getlength(run.text)
         y += lh
     if lead_lines:
@@ -363,7 +402,7 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
             for i, run in enumerate(line.runs):
                 if i:
                     cx += body_font.getlength(" ")
-                d.text((cx, y), run.text, font=body_font, fill=COVER_CREAM)
+                d.text((cx, y), run.text, font=body_font, fill=COVER_MUTED)
                 cx += body_font.getlength(run.text)
             y += body_lh
     return canvas

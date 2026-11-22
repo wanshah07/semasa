@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2, Palette, Plus, RotateCcw, Trash2, X, ZoomIn } from "lucide-react";
-import { LOOKS, ensureFonts, isStudioLook, renderSlides, setLogo } from "../lib/cards/studio";
+import { LOOKS, ensureFonts, isStudioLook, renderClosingCard, renderSlides, setLogo } from "../lib/cards/studio";
 import { GROUNDS, groundOf } from "../lib/cards/library";
 import { resolveLook, useDesigns } from "../lib/designs";
 import { hide, offered, restore } from "../lib/lookChoice";
@@ -50,6 +50,26 @@ function usePreview(slides, opts, enabled) {
   return state;
 }
 
+/* The standard last page a ws.regulab carousel ends on (the worker adds it): shown at the end of the preview strip. */
+function useClosing(enabled, size) {
+  const [pic, setPic] = useState(null);
+  const key = JSON.stringify([enabled, size]);
+  useEffect(() => {
+    if (!enabled) { setPic(null); return undefined; }
+    let live = true;
+    (async () => {
+      try {
+        setLogo(`${BASE}logo.png`);
+        await ensureFonts(BASE);
+        const p = await renderClosingCard({ size });
+        if (live) setPic(p);
+      } catch { if (live) setPic(null); }
+    })();
+    return () => { live = false; };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return pic;
+}
+
 /* No words yet (a post with no slides written): the designs are shown on sample words rather than as blank tiles. */
 function sampleWords(stream) {
   const en = stream === "linkedin";
@@ -91,7 +111,7 @@ function DesignTile({ d, opts, cover, ratio, on, onPick, onRemove, disabled, def
 
 export default function LookPicker({ value, onChange, slides: given, sample: givenSample = false, stream = "regulab", eyebrow = "",
   citation = "", bgUrl = "", bgChosen = false, size = null, full = true, onBlocked, disabled = false, mascots = [],
-  fit = false, onFit = null, threads = false }) {
+  fit = false, onFit = null, threads = false, onDropSlide = null }) {
   const { t, lang } = useLang();
   const { designs, defaultId, hiddenLooks, setHiddenLooks, saveDesigns, setDefault } = useDesigns();
   const chosen = resolveLook(value, designs);                    // "d:<id>" is one of My designs: its family, colours and layouts
@@ -149,7 +169,10 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const dBg = chosen.design?.bg && chosen.design.bg.startsWith("lib:") ? GROUNDS.find((x) => `lib:${x.k}` === chosen.design.bg)?.url : "";
   const all = usePreview(slides, { ...opts, look: chosen.look, bg: bgUrl || dBg || "", ...(chosen.design ? { design: chosen.design } : {}) },
     full && isStudioLook(chosen.look));
-  const box = useLightbox(all.pics.map((p, i) => ({ url: p.url, title: t("Slaid {n} daripada {m}", "Slide {n} of {m}", { n: i + 1, m: all.pics.length }) })));
+  // a ws.regulab carousel ends on the standard closing card (big logo + the follow tagline), drawn by the worker: shown last
+  const closing = useClosing(full && !sample && stream !== "linkedin" && slides.length >= 2 && isStudioLook(chosen.look), [W, H]);
+  const setPics = closing && all.pics.length ? [...all.pics, { ...closing, closing: true }] : all.pics;
+  const box = useLightbox(setPics.map((p, i) => ({ url: p.url, title: t("Slaid {n} daripada {m}", "Slide {n} of {m}", { n: i + 1, m: setPics.length }) })));
 
   // Studio's own warnings, minus "no picture" while a picture is chosen but not made yet (the worker waits for it)
   const problems = useMemo(() => all.pics.map((p, i) => ({ n: i + 1,
@@ -264,15 +287,24 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
             {bgChosen && !bgUrl && ` ${t("Gambar latar belum siap: pratonton tanpa gambar.", "The background is not ready: previewed without it.")}`}
           </p>
           <div className="mt-1.5 flex gap-2 overflow-x-auto pb-1" style={{ scrollSnapType: "x mandatory" }}>
-            {all.pics.map((p, i) => {
+            {setPics.map((p, i) => {
               const bad = problems.find((x) => x.n === i + 1);
               return (
-                <button type="button" key={i} onClick={() => box.open(i)} className="relative shrink-0 cursor-zoom-in" style={{ scrollSnapAlign: "start" }}
-                  title={bad ? bad.warn.join(" ") : t("Slaid {n}: klik untuk baca perkataan pada kad", "Slide {n}: click to read the words on the card", { n: i + 1 })}>
-                  <img src={p.url} alt={t("Slaid {n}", "Slide {n}", { n: i + 1 })}
-                    className={`h-72 max-w-[80vw] rounded-tile border object-cover sm:h-64 lg:h-36 ${bad ? "border-danger ring-2 ring-danger/40" : "border-line"}`} style={{ aspectRatio: ratio }} />
-                  <span className="absolute left-1 top-1 rounded bg-ink/80 px-1 text-[10px] text-bg">{i + 1}</span>
-                </button>
+                <div key={i} className="relative shrink-0" style={{ scrollSnapAlign: "start" }}>
+                  <button type="button" onClick={() => box.open(i)} className="block cursor-zoom-in"
+                    title={p.closing ? t("Halaman penutup standard: logo dan tagline, ditambah oleh Semasa", "The standard last page: the logo and the tagline, added by Semasa")
+                      : bad ? bad.warn.join(" ") : t("Slaid {n}: klik untuk baca perkataan pada kad", "Slide {n}: click to read the words on the card", { n: i + 1 })}>
+                    <img src={p.url} alt={t("Slaid {n}", "Slide {n}", { n: i + 1 })}
+                      className={`h-72 max-w-[80vw] rounded-tile border object-cover sm:h-64 lg:h-36 ${bad ? "border-danger ring-2 ring-danger/40" : "border-line"}`} style={{ aspectRatio: ratio }} />
+                    <span className="absolute left-1 top-1 rounded bg-ink/80 px-1 text-[10px] text-bg">{i + 1}</span>
+                  </button>
+                  {/* Wan, 22 Nov 2026: a slide is deleted straight from the preview */}
+                  {onDropSlide && !p.closing && !sample && !disabled && (
+                    <button type="button" onClick={() => onDropSlide(i)} data-drop-slide={i}
+                      aria-label={t("Padam slaid {n}", "Delete slide {n}", { n: i + 1 })} title={t("Padam slaid ini", "Delete this slide")}
+                      className="absolute right-1 top-1 rounded-full bg-ink/80 p-1 text-bg hover:bg-danger"><Trash2 size={12} /></button>
+                  )}
+                </div>
               );
             })}
           </div>

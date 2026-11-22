@@ -15,7 +15,9 @@ Env:
   NEXABOT_API_KEY    the account's API key (nxb_...)
 
 Run on GitHub, from backend:
-  python -m semasa.nexabot_api_film OUTDIR
+  python -m semasa.nexabot_api_film OUTDIR [--category kisah-keluarga-halal]
+
+The scenes and the sheet are the category's (semasa.short_films); the default is the halal family, exactly as before.
 """
 
 from __future__ import annotations
@@ -31,21 +33,29 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib import error, request
 
+from . import short_films
+
 BASE = "https://nexabot.id"
 API = BASE + "/api/v1/api"
 SHEET = Path(__file__).resolve().parents[2] / "web" / "public" / "comic-panels" / "charsheet.png"
 
-SCENES = [
-    "Photorealistic video, vertical 9:16 portrait framing. Di kedai runcit di Malaysia, Hana, perempuan bertudung merah jambu dan berbaju krim, "
-    "memandang bungkusan snek kuning di tangan dengan wajah hairan. Hassan, lelaki bercermin mata hitam dan berbaju "
-    "polo biru laut, berdiri di sebelah. Hana berkata eh logo halal ni ada tarikh luput ke, ingatkan kekal je. "
-    "Tiada dialog lain. Kamera statik.",
-    "Photorealistic video, vertical 9:16 portrait framing. Di kedai runcit di Malaysia, rak makanan snek yang sama, latar yang sama persis seperti "
-    "video sebelum ini, Hassan, lelaki bercermin mata hitam dan berbaju polo biru laut, terus bercakap sambil memberi "
-    "isyarat tangan. Hana, perempuan bertudung merah jambu, berdiri di tempat yang sama mendengar sambil membelek "
-    "bungkusan snek kuning. Hassan berkata sijil halal ni ada tempoh, makanan macam ni biasanya dua tahun, ubat dengan "
-    "kosmetik pulak sampai tiga tahun. Hana tersenyum lega dan berkata baru tahu sekarang, dulu tak tahu ada tarikh luput halal ni. Tiada dialog lain. Kamera statik.",
-]
+# the scenes come from a short-film category (rules/short_films.json): the halal family's by default, word for word as before
+DEFAULT_CATEGORY = "kisah-keluarga-halal"
+SCENES = [s["prompt"] for s in short_films.category_of(short_films.library(), DEFAULT_CATEGORY)["script"]["scenes"]]
+
+
+def use(category_id: str) -> None:
+    """Film another category: its hand-written scenes and its committed character sheet. This route speaks the dialogue
+    inside the video and cannot draw a sheet, so a category without both is refused with the workflow that can make it."""
+    global SCENES, SHEET
+    cat = short_films.category_of(short_films.library(), category_id)
+    if not cat:
+        raise SystemExit(f"there is no built-in short-film category {category_id!r}: {', '.join(short_films.built_in_ids())}")
+    if not cat.get("script") or not cat.get("sheet"):
+        raise SystemExit(f"{category_id!r} has no hand-written scenes and character sheet for this route: "
+                         f"make it with {short_films.OWN_WORKFLOW} (it draws its own sheet)")
+    SCENES = [s["prompt"] for s in cat["script"]["scenes"]]
+    SHEET = Path(__file__).resolve().parents[2] / cat["sheet"]
 
 
 def _key() -> str:
@@ -137,9 +147,12 @@ def extract_last_frame(video: Path, out: Path) -> Path | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("outdir")
+    ap.add_argument("--category", default=DEFAULT_CATEGORY, help="a built-in short-film category with its own scenes and sheet")
     a = ap.parse_args(sys.argv[1:])
     outdir = Path(a.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
+    if a.category.strip() and a.category.strip() != DEFAULT_CATEGORY:
+        use(a.category.strip())
 
     key = _key()
     if not SHEET.exists():

@@ -2,8 +2,14 @@ name: Nexabot film API
 
 # Render the multi-scene halal film through the official Nexabot REST API (POST /api/v1/api),
 # not the web UI (which now 403s automated Generate). i2v with charsheet; dialogue in prompt.
+# The scenes and the sheet are a short-film category's (rules/short_films.json); the default is the halal family, as before.
 on:
   workflow_dispatch:
+    inputs:
+      category:
+        description: "Built-in short-film category with its own scenes and sheet"
+        type: string
+        default: "kisah-keluarga-halal"
 
 concurrency:
   group: nexabot-film-api
@@ -32,7 +38,8 @@ jobs:
       - name: Generate scenes via API
         env:
           NEXABOT_API_KEY: ${{ secrets.NEXABOT_API_KEY }}
-        run: python -m semasa.nexabot_api_film "$RUNNER_TEMP/nexabot-film-api"
+          NB_CATEGORY: ${{ inputs.category }}
+        run: python -m semasa.nexabot_api_film "$RUNNER_TEMP/nexabot-film-api" --category "${NB_CATEGORY:-kisah-keluarga-halal}"
       - name: Keep clips and report
         if: always()
         uses: actions/upload-artifact@v4

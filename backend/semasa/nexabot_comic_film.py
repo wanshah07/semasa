@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -24,6 +25,7 @@ from pathlib import Path
 from . import nexabot_check as chk
 from . import nexabot_generate as gen
 from . import nexabot_i2v as i2v
+from . import short_films
 
 PANELS_DIR = Path(__file__).resolve().parents[2] / "web" / "public" / "comic-panels"
 PANELS = ["panel-p1.png", "panel-p2.png", "panel-p3.png", "panel-p4.png"]
@@ -31,16 +33,19 @@ PROMPT = "Animate this comic panel: the two characters gesture and talk naturall
 MAX_WAIT_S = 15 * 60
 POLL_S = 4
 
-# each panel's dialogue, burned as a subtitle AFTER Nexabot animates the panel (Nexabot cannot render text reliably)
-SUBTITLES = [
-    ("Hana", "Eh, logo halal kat paket ni warna hijau. Bukan sepatutnya hitam ke?"),
-    ("Hassan", "Jangan-jangan logo palsu?"),
-    ("Hana", "Tak semestinya. Warna bukan penentu."),
-    ("Hana", "Pemegang sijil boleh cetak logo ikut warna pembungkusan, asalkan spesifikasi logo tak diubah."),
-    ("Hassan", "Mana tulis tu?"),
-    ("Hana", "MPPHM (Domestik) 2020, Klausa 40(2)."),
-]
-CREDIT = "Sumber: MPPHM (Domestik) 2020, Klausa 40(2)"
+# each panel's dialogue, burned as a subtitle AFTER Nexabot animates the panel (Nexabot cannot render text reliably). The words are
+# the short-film category's (rules/short_films.json `panel_lines`): the halal family's by default, exactly as before.
+DEFAULT_CATEGORY = "kisah-keluarga-halal"
+
+
+def lines_of(category_id: str) -> tuple[list[tuple[str, str]], str]:
+    """(who, text) lines and the credit of a built-in category's panel film; ([], "") when it has none."""
+    cat = short_films.category_of(short_films.library(), category_id)
+    script = (cat or {}).get("script") or {}
+    return [(x["who"], x["text"]) for x in script.get("panel_lines") or []], str(script.get("credit") or "")
+
+
+SUBTITLES, CREDIT = lines_of(DEFAULT_CATEGORY)
 
 
 def _clip(page, panel: Path, outdir: Path, report: dict, fresh: bool = False) -> bool:
@@ -160,7 +165,22 @@ def _dur(path: Path) -> float:
     return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)) if m else 0.0
 
 
-def burn_subtitles(clips: list[str], film: Path, out: Path) -> Path:
+def spread(n_lines: int, n_clips: int) -> dict[int, list[int]]:
+    """Which lines go on which clip, in order. Six lines on four clips keep the family film's own pattern (1, 2+3, 4, 5+6);
+    any other count is shared out as evenly as it goes, the earlier clips taking one more."""
+    if n_lines == 6 and n_clips == 4:
+        return {0: [0], 1: [1, 2], 2: [3], 3: [4, 5]}
+    out: dict[int, list[int]] = {}
+    at = 0
+    for ci in range(n_clips):
+        take = n_lines // n_clips + (1 if ci < n_lines % n_clips else 0)
+        out[ci] = list(range(at, at + take))
+        at += take
+    return out
+
+
+def burn_subtitles(clips: list[str], film: Path, out: Path, lines: list[tuple[str, str]] | None = None,
+                   credit: str | None = None) -> Path:
     """Burn each dialogue line as a subtitle into the concatenated film. Nexabot animated the panels; this step adds
     the exact words (Nexabot cannot render text reliably), one line per clip, plus the credit on the last one.
     Six dialogue lines map onto the four clips: clip 1 -> line 1, clip 2 -> lines 2+3, clip 3 -> line 4, clip 4 -> lines 5+6.
@@ -175,8 +195,9 @@ def burn_subtitles(clips: list[str], film: Path, out: Path) -> Path:
         starts.append(t)
         t += d
     total = t
-    # 6 lines: [0]=clip1, [1,2]=clip2, [3]=clip3, [4,5]=clip4
-    per_clip = {0: [0], 1: [1, 2], 2: [3], 3: [4, 5]}
+    lines = SUBTITLES if lines is None else lines
+    credit = CREDIT if credit is None else credit
+    per_clip = spread(len(lines), len(clips))
     vf = []
     fontfile = "C\\:/Windows/Fonts/arialbd.ttf"  # fallback; the runner has DejaVu, use a robust path
     # actually use DejaVu on the ubuntu runner (always present)
@@ -185,9 +206,11 @@ def burn_subtitles(clips: list[str], film: Path, out: Path) -> Path:
         cstart = starts[ci]
         cdur = durs[ci]
         n = len(line_idxs)
+        if not n:
+            continue
         seg = cdur / n
         for k, li in enumerate(line_idxs):
-            who, text = SUBTITLES[li]
+            who, text = lines[li]
             s = cstart + k * seg
             e = s + seg
             label = f"{who}\\: {text}"
@@ -197,12 +220,15 @@ def burn_subtitles(clips: list[str], film: Path, out: Path) -> Path:
                 f"x=(w-text_w)/2:y=h-140:enable='between(t,{s:.2f},{e:.2f})'"
             )
     # the credit, held on the final clip's tail (last 2s)
-    credit = f"{CREDIT}"
-    vf.append(
-        f"drawtext=fontfile={fontfile}:text='{_escape(credit)}':fontsize=36:fontcolor=white:"
-        f"borderw=3:bordercolor=black:box=1:boxcolor=black@0.6:boxborderw=18:"
-        f"x=(w-text_w)/2:y=h-140:enable='between(t,{total - 2:.2f},{total:.2f})'"
-    )
+    if credit:
+        vf.append(
+            f"drawtext=fontfile={fontfile}:text='{_escape(credit)}':fontsize=36:fontcolor=white:"
+            f"borderw=3:bordercolor=black:box=1:boxcolor=black@0.6:boxborderw=18:"
+            f"x=(w-text_w)/2:y=h-140:enable='between(t,{total - 2:.2f},{total:.2f})'"
+        )
+    if not vf:
+        shutil.copyfile(film, out)
+        return out
     chain = ",".join(vf)
     subprocess.run([ffmpeg, "-y", "-i", str(film), "-vf", chain, "-c:a", "copy", str(out)],
                    check=True, capture_output=True)
@@ -212,8 +238,10 @@ def burn_subtitles(clips: list[str], film: Path, out: Path) -> Path:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("outdir")
+    ap.add_argument("--category", default=DEFAULT_CATEGORY, help="the built-in short-film category whose panel lines are burned in")
     ap.add_argument("--dry", action="store_true")
     a = ap.parse_args(sys.argv[1:])
+    lines, credit = lines_of(a.category.strip() or DEFAULT_CATEGORY)
     outdir = Path(a.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     panels = [PANELS_DIR / p for p in PANELS]
@@ -291,7 +319,7 @@ def main() -> int:
                     break
             if len(report.get("clips", [])) == len(panels):
                 raw = concat(report["clips"], outdir / "comic-film-raw.mp4")
-                film = burn_subtitles(report["clips"], raw, outdir / "comic-film.mp4")
+                film = burn_subtitles(report["clips"], raw, outdir / "comic-film.mp4", lines, credit)
                 report["film"] = str(film)
                 print("film saved:", film)
         finally:

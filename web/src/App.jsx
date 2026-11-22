@@ -485,7 +485,7 @@ export default function App() {
   else if (tab === "design-lib") body = allowed ? <DesignTab view="library" user={user} gens={gens} posts={posts} brand={brand} settings={settings} saveSetting={save} onToast={push} go={go} /> : gate(null);
   else if (tab === "wangian") body = allowed ? <FragranceTab user={user} gens={gens} onToast={push} /> : gate(null);
   else if (tab === "video") body = allowed ? <VideoTab user={user} gens={gens} brand={brand} onToast={push} prompts={prompts} go={go}
-    openPost={openPostAny} /> : gate(null);
+    openPost={openPostAny} settings={settings} saveSetting={save} /> : gate(null);
   else if (tab === "video-lib") body = allowed ? <VideoLibraryTab user={user} gens={gens} posts={posts} onToast={push} go={go} /> : gate(null);
   else if (tab === "motion-skills") body = allowed ? <MotionSkillsTab user={user} settings={settings} save={save} onToast={push} /> : gate(null);
   else if (tab === "chat") body = allowed ? <ChatTab /> : gate(null);

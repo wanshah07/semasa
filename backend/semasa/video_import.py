@@ -34,7 +34,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
-from . import autofill, compliance, db, film_ratio, ideas, motion, motion_captions, video
+from . import autofill, caption_fit, compliance, db, film_ratio, ideas, motion, motion_captions, video
 from .log import get_logger
 
 log = get_logger("semasa.video_import")
@@ -335,7 +335,7 @@ def auto_captions(
     wrote at least one (from the title only), 'plain' when the plain caption from the title stands in, '' when there is no title.
     The writer's text is judged by the same compliance scan as any caption; one that breaks a rule is replaced by the plain
     caption. Never raises."""
-    plain = {c: plain_caption(title, stream, c) for c in channels}
+    plain = {c: caption_fit.fit(plain_caption(title, stream, c), c, stream) for c in channels}
     plain = {c: t for c, t in plain.items() if t}
     if not plain:
         return {}, ""
@@ -361,7 +361,7 @@ def auto_captions(
                 if why:
                     log.info("written caption for %s refused: %s", c, why)
                     continue
-                texts[c], written = t, written + 1
+                texts[c], written = caption_fit.fit(t, c, stream), written + 1
         except Exception as exc:  # noqa: BLE001 - the plain caption stands in
             log.warning("import caption writer failed (%s)", str(exc)[:160])
             texts, written = dict(plain), 0
@@ -467,7 +467,8 @@ def process(
             )
         if data[4:8] != b"ftyp":
             raise Reject("the file is not an MP4 (it has no ftyp header). Send H.264/AAC in an .mp4 container")
-        texts = texts_of(params, channels)
+        # the sender's words, inside each platform's limit (Wan, 22 Nov 2026: "caption untuk semua platform di bawah maksimum")
+        texts = {c: caption_fit.fit(t, c, stream) for c, t in texts_of(params, channels).items()}
         title = _title_of(params, row, texts)
         authored = ""
         if not texts and str(params.get("title") or "").strip():  # no caption sent: Semasa writes one, from that title alone

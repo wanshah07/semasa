@@ -27,7 +27,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import autofill, comic, comic_library, comic_writer, compliance, db, ideas, motion_captions
+from . import autofill, caption_fit, comic, comic_library, comic_writer, compliance, db, ideas, motion_captions
 from .log import get_logger
 
 log = get_logger("semasa.comic_daily")
@@ -707,7 +707,7 @@ def queue_post(store: Any, row: dict[str, Any], settings: dict[str, Any] | None 
         reg = brand.get("regulab") or {}
         sx = ((film.get("options") or {}).get("series") or {}) if isinstance(film.get("options"), dict) else {}
         sb = (film.get("storyboard") or {}).get("sb") or {}
-        captions = {p: str(t or "").strip() for p, t in (film.get("captions") or {}).items()
+        captions = {p: caption_fit.fit(str(t or "").strip(), p, "regulab") for p, t in (film.get("captions") or {}).items()
                     if p in compliance.platforms_for("regulab") and str(t or "").strip()}
         if not captions:
             return None                          # no caption yet: the next run tries again

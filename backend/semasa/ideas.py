@@ -28,6 +28,7 @@ from bs4 import BeautifulSoup
 
 from . import (
     antislop,
+    caption_fit,
     compliance,
     copywriting,
     db,
@@ -598,30 +599,14 @@ def normalise_text(raw: Any, stream: str, lang: str) -> dict[str, dict[str, str]
 
 
 def fit_caption(text: str, limit: int) -> str:
-    """A caption over its platform's hard limit is brought under it by taking out whole paragraphs from the end of the body (the
-    hook, the follow line and the hashtags stay), never by cutting a sentence (Wan, 22 Nov 2026: "fix any blocker"). A caption
-    already inside the limit is returned as it is."""
-    if not limit or len(text) <= limit:
-        return text
-    paras = text.split("\n\n")
-    tail = []
-    while paras and (paras[-1].lstrip().startswith("#") or "follow" in paras[-1].lower() or "ikuti" in paras[-1].lower()):
-        tail.insert(0, paras.pop())
-    while len(paras) > 1 and len("\n\n".join(paras + tail)) > limit:
-        paras.pop()
-    out = "\n\n".join(paras + tail)
-    return out if len(out) <= limit else out[:limit].rsplit(" ", 1)[0]
+    """A caption over its platform's hard limit brought under it by whole paragraphs from the end of the body (caption_fit)."""
+    return caption_fit.fit_caption(text, limit)
 
 
 def fit_captions(text: dict[str, dict[str, str]], stream: str) -> dict[str, dict[str, str]]:
-    """Every caption of the post inside its platform's hard limit (rules/compliance.json `limits`; a thread is left to its own
-    per-post rule)."""
-    limits = compliance.RULES["limits"].get(stream, {})
-    out: dict[str, dict[str, str]] = {}
-    for lg, inner in (text or {}).items():
-        out[lg] = {p: (fit_caption(t, int(limits[p]["max"])) if p in limits and not limits[p].get("parts") else t)
-                   for p, t in inner.items()}
-    return out
+    """Every caption of the post inside its platform's hard limit, a Threads chain included (caption_fit; Wan, 22 Nov 2026:
+    "Make sure caption untuk semua platform di bawah maksimum aksara dibenarkan")."""
+    return caption_fit.fit_text(text, stream)
 
 
 # --- placing ---------------------------------------------------------------------
@@ -1130,7 +1115,7 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
             which = f"the shapes of the hook style {bank.name!r}" if bank else "the 25 hook shapes"
             raise IdeaError(f"the writer did not build the hook on one of {which} (asked twice); the post is unchanged")
     out, _shape = english_only(llm, system, user, out, 0, stream, None, bank, 3500)
-    text = normalise_text(out.get("text"), stream, lang)
+    text = caption_fit.fit_text(normalise_text(out.get("text"), stream, lang), stream)
     if not text.get(lang):
         raise IdeaError(f"the writer returned no {lang.upper()} caption; the post is unchanged")
     before = {k: post.get(k) for k in ("hook", "text", "citation")}

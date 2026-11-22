@@ -20,7 +20,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from . import antislop, compliance, lenggok
+from . import antislop, caption_fit, compliance, lenggok
 
 log = logging.getLogger("semasa.motion_captions")
 
@@ -147,7 +147,7 @@ def fit(text: str, stream: str, platform: str) -> str:
     tail = ("\n\n" + " ".join(tags)) if tags else ""
     if hard and len(body) + len(tail) > hard:
         body = _cut(body, hard - len(tail))
-    return (body + tail).strip()
+    return caption_fit.fit((body + tail).strip(), platform, stream)      # the last word on the limit (UTF-16, a thread chain)
 
 
 def platforms_of(stream: str) -> list[str]:

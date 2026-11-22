@@ -96,7 +96,7 @@ assert.match(S.categoryProblem({ ...rabbit, id: "cats" }), /terbina|built-in/i);
 const tab = read("src/pages/VideoTab.jsx");
 assert.match(tab, /mode === "motion" && <ShortFilmCategories settings=\{settings\} saveSetting=\{saveSetting\}/);
 assert.match(read("src/App.jsx"), /<VideoTab [^>]*\n?[^>]*settings=\{settings\} saveSetting=\{save\}/);
-assert.match(read("../supabase/089_short_films.sql"), /'short_films'/);
+assert.match(read("../supabase/090_short_films.sql"), /'short_films'/);
 const card = read("src/components/ShortFilmCategories.jsx");
 assert.ok(card.includes('saveSetting("short_films"'));
 assert.ok(!/\u2014/.test(card), "no em dash in what a person reads");

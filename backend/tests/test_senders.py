@@ -8,6 +8,20 @@ import pytest
 from semasa import senders
 
 
+@pytest.fixture(autouse=True)
+def dns(monkeypatch):
+    """A picture address is looked up before it is fetched (brain.public_url refuses anything that points inside the
+    runner). The tests use made-up hosts, so DNS is stood in for: every host is a public address, except the few named
+    here that are not. No test in this file reaches a real resolver."""
+    import socket
+
+    inside = {"localhost": "127.0.0.1", "metadata.internal": "169.254.169.254", "lan.internal": "10.0.0.5"}
+
+    def fake(host, *a, **k):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (inside.get(host, "93.184.216.34"), 0))]
+    monkeypatch.setattr("semasa.brain.socket.getaddrinfo", fake)
+
+
 class Resp:
     def __init__(self, status=200, body=None, headers=None, content=b""):
         self.status_code, self._body, self.headers, self.content = status, body, headers or {}, content
@@ -417,3 +431,22 @@ def test_zernio_create_document_uploads_a_pdf_and_posts_a_document():
     body = post_call[2]["json"]
     assert body["mediaItems"] == [{"type": "document", "url": "https://r2/doc.pdf"}]
     assert body["platforms"][0]["platformSpecificData"] == {"documentTitle": "The hook line"}
+
+
+@pytest.mark.parametrize("host", ["localhost", "metadata.internal", "lan.internal"])
+def test_linkedin_refuses_a_picture_that_points_inside_the_runner_before_fetching_it(host):
+    s = Session()                       # any call on the wire would pop an empty list and fail the test
+    with pytest.raises(senders.SendError) as e:
+        senders.LinkedIn("key", "urn:li:person:X", session=s).fetch_picture(f"http://{host}/1.jpg", 1)
+    assert e.value.kind == "refused" and "private network" in e.value.message
+    assert s.calls == []
+
+
+@pytest.mark.parametrize("host", ["localhost", "metadata.internal", "lan.internal"])
+def test_slides_to_pdf_refuses_a_picture_that_points_inside_the_runner_before_fetching_it(host, monkeypatch):
+    def never(*a, **k):
+        raise AssertionError("a private address was fetched")
+    monkeypatch.setattr(senders.requests, "get", never)
+    with pytest.raises(senders.SendError) as e:
+        senders.slides_to_pdf([f"http://{host}/1.jpg"])
+    assert e.value.kind == "refused" and "private network" in e.value.message

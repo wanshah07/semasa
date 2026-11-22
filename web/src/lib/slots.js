@@ -279,6 +279,19 @@ export function slotGone(stream, date, slot, now = Date.now()) {
   return dueMs(date, slot) < +now - LATE_GRACE_MIN * 60_000;
 }
 
+/** Where Approve puts a post (Wan, 22 Nov 2026: "kalau terlepas tarikh dan masa, auto cari next slot"). Its own date and slot
+    while they are still usable; else the next free slot of its stream: when it has none (`why` "none"), when the slot is gone
+    by the publisher's rule ("past", slotGone) or when another post holds it ("taken"). {date, slot, moved, why?, from?}, or null
+    when no slot is free in the horizon. backend/semasa/rollforward.py does the same for Telegram's Approve and the publisher. */
+export function approvePosition({ post, date, slot, posts, brand, now = Date.now() }) {
+  const stream = post.stream || "regulab";
+  const why = !date || !slot ? "none" : slotGone(stream, date, slot, now) ? "past"
+    : holdersOf(posts, stream, date, slot, post.id).length ? "taken" : "";
+  if (!why) return { date, slot, moved: false };
+  const pos = nextFreeSlot({ posts, brand, stream, domain: post.domain, skipId: post.id, now });
+  return pos ? { ...pos, moved: true, why, from: { date: date || null, slot: slot || null } } : null;
+}
+
 /** A draft or approved post whose slot is gone by the publisher's rule (slotGone): it will never be sent by itself. */
 export const isPastDue = (p, now = Date.now()) => ["draft", "approved"].includes(p.status) && !!(p.date && p.slot)
   && slotGone(p.stream, p.date, p.slot, now);

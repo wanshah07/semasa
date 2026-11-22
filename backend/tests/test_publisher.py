@@ -295,8 +295,12 @@ def test_linkedin_daily_cap_and_a_missed_day_is_never_sent():
     store, li = _live(_li(date="2026-09-24", slot="06:00"), extra_posts=posted), FakeLinkedIn()
     c = publisher.run(store, NOW, clients={"linkedin": li})
     assert c["waiting"] == 1 and li.sent == []
-    c = publisher.run(_live(_li(date="2026-09-23", slot="19:00")), NOW, clients={"linkedin": li})
-    assert c["overdue"] == 1 and li.sent == []
+    # a missed day is never sent late: it moves to the next free slot and waits for it (rollforward.py, 22 Nov 2026)
+    missed = _live(_li(date="2026-09-23", slot="19:00"))
+    c = publisher.run(missed, NOW, clients={"linkedin": li})
+    assert c["moved"] == 1 and c["overdue"] == 0 and c["not_yet"] == 1 and li.sent == []
+    p = missed.tables["semasa_posts"][0]
+    assert (p["date"], p["slot"], p["status"]) == ("2026-09-24", "19:00", "approved")
 
 
 def test_linkedin_is_never_sent_twice_after_an_unanswered_attempt():
@@ -653,9 +657,11 @@ def test_a_linkedin_slot_after_the_last_run_goes_at_the_first_run_next_day_not_o
         assert publisher.run(store, datetime(2026, 9, 24, h, 20, tzinfo=UTC), clients={"linkedin": li})["not_yet"] == 1
     c = publisher.run(store, datetime(2026, 9, 24, 22, 20, tzinfo=UTC), clients={"linkedin": li})   # 06:20 next day
     assert c["sent"] == 1 and c["overdue"] == 0 and store.tables["semasa_posts"][0]["status"] == "posted"
-    # one day later still is overdue, as before
+    # one day later still is past its day: it is never sent late, it moves to the next free slot (rollforward.py)
     late = _live(_li(date="2026-09-23", slot="20:00", text={"en": {"linkedin": en}}, media_ids=[]))
-    assert publisher.run(late, datetime(2026, 9, 24, 22, 20, tzinfo=UTC), clients={"linkedin": li})["overdue"] == 1
+    c = publisher.run(late, datetime(2026, 9, 24, 22, 20, tzinfo=UTC), clients={"linkedin": li})
+    assert c["overdue"] == 0 and c["moved"] == 1 and c["sent"] == 0
+    assert (late.tables["semasa_posts"][0]["date"], late.tables["semasa_posts"][0]["slot"]) == ("2026-09-25", "19:00")
 
 
 def test_li_send_day():

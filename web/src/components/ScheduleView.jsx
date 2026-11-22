@@ -142,7 +142,8 @@ export default function ScheduleView({ posts, brand, onOpen, onNewIdea, onToast,
       {late.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-tile border border-danger/40 bg-danger/5 p-3 text-[12px]">
           <AlertTriangle size={14} className="text-danger" />
-          <span className="flex-1">{t("{n} post sudah lepas slotnya dan tidak akan dihantar: {l}", "{n} post(s) are past their slot and will never be sent: {l}",
+          <span className="flex-1">{t("{n} post sudah lepas slotnya: {l}. Post diluluskan dipindah sendiri ke slot kosong seterusnya pada larian penerbit berikutnya, draf apabila diluluskan.",
+            "{n} post(s) are past their slot: {l}. An approved one moves to the next free slot by itself at the publisher's next run, a draft when it is approved.",
             { n: late.length, l: late.map(name).join(", ") })}</span>
           <Button size="sm" variant="soft" disabled={busy} onClick={bumpAll}><MoveRight size={12} /> {t("Pindah semua ke slot kosong", "Bump all to free slots")}</Button>
         </div>

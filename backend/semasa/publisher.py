@@ -24,7 +24,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import compliance, db, film_ratio, guard, senders
+from . import compliance, db, film_ratio, guard, rollforward, senders
 from .config import SupabaseSettings
 from .log import get_logger
 from .studio_link import when_utc
@@ -523,7 +523,8 @@ class _Run:
         self.brand, self.reg = brand, brand.get("regulab") or {}
         self.bufcfg = (settings.get("channels") or {}).get("buffer") or {}
         self.counts = {"considered": 0, "dry_run": 0, "blocked": 0, "error": 0, "overdue": 0, "scheduled": 0, "sent": 0,
-                       "adopted": 0, "waiting": 0, "not_yet": 0, "retry": 0, "changed": 0, "failed": 0, "resent": 0}
+                       "adopted": 0, "waiting": 0, "not_yet": 0, "retry": 0, "changed": 0, "failed": 0, "resent": 0,
+                       "moved": 0}
         self.li_cap = max(1, len((brand.get("linkedin") or {}).get("slots") or ["06:00"]))
         self.li_today: int | None = None
         self.live: list[dict[str, Any]] = []
@@ -849,7 +850,16 @@ def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None 
     # an approved post, and a scheduled one only when a person moved it after a channel failed (stale_failures): every
     # other scheduled post is in the queue already and is the tally's business, never this loop's
     posts = [p for p in posts if p.get("status") == "approved" or resend_due(p)]
-    r.live = guard.load_live(store, db.POSTS, myt_date(now)) if posts else []
+    # an approved post that missed its slot before anything was handed over moves to the next free slot of its stream and
+    # stays approved (Wan, 22 Nov 2026: "kalau terlepas tarikh dan masa, auto cari next slot"): it is never sent late, and
+    # never left behind. Only while publishing is on: the emergency stop (`paused`) moves nothing either.
+    if enabled and posts:
+        try:
+            moved = rollforward.roll_missed(store, posts, settings, now, linkedin_queued="linkedin" in r.zacc)
+            r.counts["moved"] = len(moved)
+        except Exception:  # noqa: BLE001 - a failed move leaves the post overdue, as before; the run goes on
+            log.exception("publisher: missed slots not moved")
+    r.live =guard.load_live(store, db.POSTS, myt_date(now)) if posts else []
     r.resend = frozenset(str(o.get("id")) for o in r.live if resend_due(o))
     r.view = _BufferView(clients["buffer"], now, _claimed(r.live)) if clients.get("buffer") else None
     r.zview = _BufferView(clients["zernio"], now, _claimed(r.live)) if clients.get("zernio") else None

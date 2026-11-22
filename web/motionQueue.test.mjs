@@ -25,9 +25,9 @@ const film = { id: "f1", status: "done", video_url: "https://x/f.mp4", stream: "
 let n = 0;
 const t = (name, fn) => { fn(); n++; };
 
-t("a film is offered only the platforms of its own stream", () => {
-  assert.deepEqual(channelsFor(film), ["instagram", "facebook", "threads"]);
-  assert.deepEqual(channelsFor({ stream: "linkedin" }), ["linkedin"]);
+t("a film is offered Instagram (Reel) and Facebook only, never Threads or LinkedIn (Wan, 22 Nov 2026)", () => {
+  assert.deepEqual(channelsFor(film), ["instagram", "facebook"]);
+  assert.deepEqual(channelsFor({ stream: "linkedin" }), [], "a LinkedIn film has nowhere to go");
   assert.deepEqual(Object.keys(CHANNEL_LABEL), ["facebook", "instagram", "threads", "linkedin", "tiktok"]);   // TikTok is a label only: no chip, no caption
 });
 

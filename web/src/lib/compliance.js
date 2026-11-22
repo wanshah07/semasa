@@ -68,6 +68,10 @@ function brandMarkRe(brand) {
 }
 
 export function platformsFor(stream) { return RULES.platforms[stream] || RULES.platforms.regulab; }
+/** A film goes to Instagram (a Reel), Facebook and TikTok only, never Threads or LinkedIn (Wan, 22 Nov 2026: "Make sure film and
+    motion only for ig reel, facebook and tiktok"). TikTok is the per-post tick on top of Instagram. */
+export const FILM_PLATFORMS = RULES.film_platforms || ["instagram", "facebook", "tiktok"];
+export function filmPlatformsFor(stream) { return platformsFor(stream).filter((p) => FILM_PLATFORMS.includes(p)); }
 /** The platforms THIS post goes to: the ones chosen (`channels`, a Motion film queued to some of them), else every platform
     of its stream. A name the stream does not have is ignored, and an empty choice means all. */
 export function platformsOf(post) {

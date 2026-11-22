@@ -74,6 +74,15 @@ def platforms_for(stream: str) -> list[str]:
     return RULES["platforms"].get(stream, RULES["platforms"]["regulab"])
 
 
+FILM_PLATFORMS: tuple[str, ...] = tuple(RULES.get("film_platforms") or ("instagram", "facebook", "tiktok"))
+
+
+def film_platforms_for(stream: str) -> list[str]:
+    """The stream's platforms a FILM may go to (Wan, 22 Nov 2026: "film and motion only for ig reel, facebook and tiktok"):
+    Instagram (a Reel) and Facebook for ws.regulab, none for LinkedIn. TikTok is asked for per post on top (publisher)."""
+    return [p for p in platforms_for(stream) if p in FILM_PLATFORMS]
+
+
 def platforms_of(post: dict[str, Any]) -> list[str]:
     """The platforms THIS post goes to: the ones Wan chose (`channels`, a Motion film queued to some of them), else every
     platform of its stream. A name the stream does not have is ignored, and an empty choice means all."""

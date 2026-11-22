@@ -74,11 +74,11 @@ def test_a_film_goes_to_tiktok_only_when_the_setting_brings_the_ride_along_back_
     # TikTok is on request since 20 Nov 2026 (Wan): an approved film does not go there by itself
     store, z = _store(_post(), media=FILM), FakeZernio()
     publisher.run(store, NOW, clients={"zernio": z})
-    assert sorted(x["service"] for x in z.created) == ["facebook", "instagram", "threads"]
+    assert sorted(x["service"] for x in z.created) == ["facebook", "instagram"], "a film never goes to Threads (22 Nov 2026)"
     # `tiktok_with_film` brings the old ride-along back
     store, z = _store(_post(), zcfg={**ZCFG, "tiktok_with_film": True}, media=FILM), FakeZernio()
     publisher.run(store, NOW, clients={"zernio": z})
-    assert sorted(x["service"] for x in z.created) == ["facebook", "instagram", "threads", "tiktok"]
+    assert sorted(x["service"] for x in z.created) == ["facebook", "instagram", "tiktok"]
     assert all(x.get("video") == "https://cdn/f.mp4" for x in z.created)
     assert next(x for x in z.created if x["service"] == "tiktok")["text"] == CAP        # Instagram's caption
     store, z = _store(_post(slides=[]), zcfg={**ZCFG, "tiktok_with_film": True}), FakeZernio()
@@ -91,7 +91,7 @@ def test_a_film_queued_with_tiktok_ticked_goes_there_and_a_post_that_never_asked
     asked = ["instagram", "facebook", "threads", "tiktok"]
     store, z = _store(_post(channels=asked), media=FILM), FakeZernio()
     publisher.run(store, NOW, clients={"zernio": z})
-    assert sorted(x["service"] for x in z.created) == ["facebook", "instagram", "threads", "tiktok"]
+    assert sorted(x["service"] for x in z.created) == ["facebook", "instagram", "tiktok"], "Threads is never a film's platform"
     assert next(x for x in z.created if x["service"] == "tiktok")["text"] == CAP        # Instagram's caption
     # chosen channels without it stay off TikTok
     store, z = _store(_post(channels=["instagram", "facebook", "threads"]), media=FILM), FakeZernio()

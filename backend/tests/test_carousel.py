@@ -155,17 +155,19 @@ def test_the_cover_carries_the_logo_and_the_hook_inside_the_grid_crop():
                                "Halal Malaysia")
     im = Image.open(io.BytesIO(data)).convert("L")
     assert im.size == (1080, 1350)
-    light = lambda box: sum(1 for v in im.crop(box).tobytes() if v > 200)     # noqa: E731 - white ink on the green
-    assert light((300, 120, 780, 380)) > 3000                                  # the logo, near the top of the block
-    assert light((100, 540, 980, 1060)) > 8000                                 # the hook title
-    assert light((0, 0, 60, 1350)) < 50 and light((1020, 0, 1080, 1350)) < 400   # nothing in the strip the 3:4 tile crops
+    # since 22 Nov 2026 a white card: a green logo and a black title (the light-blue circles are not ink)
+    ink = lambda box: sum(1 for v in im.crop(box).tobytes() if v < 110)       # noqa: E731
+    assert ink((300, 120, 780, 380)) > 3000                                    # the logo, near the top of the block
+    assert ink((100, 540, 980, 1060)) > 8000                                   # the hook title
+    assert ink((0, 0, 60, 1350)) < 50 and ink((1020, 0, 1080, 1350)) < 400     # nothing in the strip the 3:4 tile crops
+    assert im.getpixel((540, 20)) > 200, "the card is white"
 
 
 def test_a_tall_film_cover_keeps_its_block_in_the_middle_band():
     im = Image.open(io.BytesIO(carousel.cover_jpeg("Kesan sampingan ni akan hilang sendiri?", size=(1080, 1920)))).convert("L")
-    light = lambda box: sum(1 for v in im.crop(box).tobytes() if v > 200)     # noqa: E731
-    assert light((0, 0, 1080, 300)) < 200 and light((0, 1620, 1080, 1920)) < 200   # the 3:4 crop removes these bands
-    assert light((100, 400, 980, 1500)) > 8000
+    ink = lambda box: sum(1 for v in im.crop(box).tobytes() if v < 110)       # noqa: E731
+    assert ink((0, 0, 1080, 300)) < 200 and ink((0, 1620, 1080, 1920)) < 200   # the 3:4 crop removes these bands
+    assert ink((100, 400, 980, 1500)) > 8000
 
 
 def test_a_cover_too_long_for_its_supporting_line_is_refused_not_cut():
@@ -180,7 +182,7 @@ def test_the_worker_puts_the_cover_first_for_ws_regulab_and_leaves_linkedin_alon
     assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
     assert saved["meta"]["cover"] is True and saved["meta"]["closing_logo"] is True and saved["meta"]["count"] == 5
     cover = Image.open(io.BytesIO(uploads[0])).convert("RGB")
-    assert cover.getpixel((540, 1300))[1] > cover.getpixel((540, 1300))[0]    # the green cover, not the cream slide
+    assert min(cover.getpixel((540, 20))) > 240 and cover.getpixel((540, 20)) != slides.PAPER    # the white cover (22 Nov 2026)
     saved.clear()
     uploads.clear()
     row = _job("linkedin", _set(4))

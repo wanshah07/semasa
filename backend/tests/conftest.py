@@ -40,6 +40,14 @@ def no_live_ai_questions(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_sticker_makers(monkeypatch):
+    """The poster's small picture is made by Cloudflare or Unsplash (semasa.stickers.make); under test no picture is made, and a
+    test of the laying passes its own sticker to stickers.lay / on_slides."""
+    from semasa import stickers
+    monkeypatch.setattr(stickers, "make", lambda s, subject: None)
+
+
+@pytest.fixture(autouse=True)
 def no_caption_floor(request, monkeypatch):
     """The writer is asked once more for a caption under its floor (ideas.CAPTION_FLOOR). Most tests feed the writer a one-line
     caption, so they run with no floor; a test marked `caption_floor` runs with the real one."""

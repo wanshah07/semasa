@@ -277,11 +277,15 @@ formulator", "as a chemist", "as an RA specialist" or any "as a ..." about the a
 invitation of any kind: no "follow me", no "follow for more", no "like", "share", "repost" or "comment". The body ends, then the
 hashtags.
 
-Citations below the body, never inside it. 3 to 5 hashtags. No em dash.
+Citations below the body, never inside it. SOURCE LINK (Wan, 22 Nov 2026: "put link source but it's not mandatory"): when the
+SOURCE gives the address of the regulator's, the instrument's or the journal's own page, add it on its own line under the citation
+("Source: https://..."); leave it out when there is none, and never link a blog, an aggregator, a news portal or a social post.
+3 to 5 hashtags. No em dash.
 
 Rules. Breaking any blocks the post:
 1. No company identity at all: never mention ws.regulab, KKM Halal Consultant or any website.
-2. No call to action of any kind (no "comment below", "DM me", "share this", "follow me", "link in bio", no link).
+2. No call to action of any kind (no "comment below", "DM me", "share this", "follow me", "link in bio"). The only link allowed is
+   the source link under the citation.
 3. Cite the INSTRUMENT (e.g. EC 1223/2009 Annex III entry 325, SI 2026/109, ISO 24444, a WTO TBT number), never a
    blog or aggregator (ChemLinked, CIRS, CosmeticsDesign, Chemical Watch, Happi and the like), never a news portal.
 4. No fact without a source in the SOURCE below: a fact it does not give is left out, never guessed, and never
@@ -371,19 +375,22 @@ no maximum), drawn as 1080x1350 cards:
 POSTER_RULES = {
     "regulab": """
 
-POSTER WANTED. Also return "poster": ONE 4:5 poster in Malaysian Malay: {"title": "the hook: the same hook shape you filled
-for the caption's first line, at most 12 words", "points": [up to 5 points of at most 22 words each, every one a concrete fact
-from the SOURCE with its figure, entry, clause or date, never a general remark]}. Mark the one key word
-of the title with *asterisks*. The same
-rules apply to every word: no call to action, no URL, no fact the SOURCE does not give.
+POSTER WANTED. Also return "poster": ONE 4:5 poster in Malaysian Malay: {"eyebrow": "a 2 to 4 word label for the topic",
+"title": "the hook: the same hook shape you filled for the caption's first line, at most 10 words", "lead": "one short line
+under the title, at most 14 words", "points": [2 to 3 points of at most 12 words each: only the MOST important facts from the
+SOURCE, each with its figure, entry, clause or date]}. A poster is read in three seconds (Wan, 22 Nov 2026: "jangan letak
+semua info dalam 1 card, hanya info penting"): never put the whole story on it, the caption carries the rest. The title is
+drawn big, the lead smaller and the points smallest, so keep each one to its own job. Mark the one key word of the title with
+*asterisks*. The same rules apply to every word: no call to action, no follow line, no URL, no fact the SOURCE does not give.
 The citation is drawn at its foot automatically.""",
     "linkedin": """
 
-POSTER WANTED. Also return "poster": ONE 4:5 poster in English: {"title": "the hook: the same hook shape you filled
-for the caption's first line, at most 12 words", "points": [up to 5 points of at most 22 words each]}. Mark the one key word
-of the title with *asterisks*. No
-company identity, no URL, no blog or aggregator, no fact the SOURCE does not give. The
-citation is drawn at its foot automatically.""",
+POSTER WANTED. Also return "poster": ONE 4:5 poster in English: {"eyebrow": "a 2 to 4 word topic label", "title": "the hook:
+the same hook shape you filled for the caption's first line, at most 10 words", "lead": "one short line under the title, at most
+14 words", "points": [2 to 3 points of at most 12 words each: only the most important facts, each with its figure, entry, clause
+or date]}. A poster is read in three seconds: never put the whole post on it, the caption carries the rest. Title big, lead
+smaller, points smallest. Mark the one key word of the title with *asterisks*. No company identity, no URL, no blog or
+aggregator, no fact the SOURCE does not give. The citation is drawn at its foot automatically.""",
 }
 
 
@@ -412,8 +419,8 @@ def format_of(idea: dict[str, Any]) -> str:
     'comic' (a four-panel dialogue comic as the post's one picture). There is no single-picture post any more. make_slides
     (006) still means a carousel; the choice itself rides in the idea's brief."""
     fmt = str(((idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}).get("format") or "")
-    if fmt in ("carousel", "poster", "comic"):
-        return fmt
+    if fmt in ("carousel", "poster", "card", "comic"):
+        return fmt              # "card": a single Studio card (Wan, 22 Nov 2026: "tambah option poster/single card")
     # no more single-picture post (Wan, 21 Nov 2026: "for ws regulab and linkend no more image single card, because it too ugly"):
     # an idea that names no format is one Semasa poster, never an AI picture on its own
     return "carousel" if idea.get("make_slides") else "poster"
@@ -526,6 +533,10 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
          f"PUBLISHER: {idea.get('source_name') or ''} (for your understanding only; never name it in the post)"),
         f"SUMMARY: {idea.get('source_summary') or ''}",
     ]
+    if stream == "linkedin" and issuer and str(idea.get("source_url") or "").startswith("http"):
+        # the regulator's or the journal's own page may go under the citation as the source link (Wan, 22 Nov 2026)
+        lines.append(f"SOURCE ADDRESS: {idea['source_url']} (the issuer's own page: it may go under the citation as the "
+                     "source link)")
     if idea.get("domain"):
         lines.append(f"DOMAIN WANTED: {idea['domain']}")
     if idea.get("angle"):
@@ -583,6 +594,33 @@ def normalise_text(raw: Any, stream: str, lang: str) -> dict[str, dict[str, str]
                 out[lg] = kept
         elif isinstance(inner, str) and inner.strip() and len(plats) == 1:
             out[lg] = {plats[0]: antislop.clean(inner.strip())}
+    return out
+
+
+def fit_caption(text: str, limit: int) -> str:
+    """A caption over its platform's hard limit is brought under it by taking out whole paragraphs from the end of the body (the
+    hook, the follow line and the hashtags stay), never by cutting a sentence (Wan, 22 Nov 2026: "fix any blocker"). A caption
+    already inside the limit is returned as it is."""
+    if not limit or len(text) <= limit:
+        return text
+    paras = text.split("\n\n")
+    tail = []
+    while paras and (paras[-1].lstrip().startswith("#") or "follow" in paras[-1].lower() or "ikuti" in paras[-1].lower()):
+        tail.insert(0, paras.pop())
+    while len(paras) > 1 and len("\n\n".join(paras + tail)) > limit:
+        paras.pop()
+    out = "\n\n".join(paras + tail)
+    return out if len(out) <= limit else out[:limit].rsplit(" ", 1)[0]
+
+
+def fit_captions(text: dict[str, dict[str, str]], stream: str) -> dict[str, dict[str, str]]:
+    """Every caption of the post inside its platform's hard limit (rules/compliance.json `limits`; a thread is left to its own
+    per-post rule)."""
+    limits = compliance.RULES["limits"].get(stream, {})
+    out: dict[str, dict[str, str]] = {}
+    for lg, inner in (text or {}).items():
+        out[lg] = {p: (fit_caption(t, int(limits[p]["max"])) if p in limits and not limits[p].get("parts") else t)
+                   for p, t in inner.items()}
     return out
 
 
@@ -824,7 +862,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         log.info("idea %s: mode %s, %s", str(idea.get("id"))[:8], mode, mode_why)
     system += modes.post_block(mode, stream)
     want_slides = fmt == "carousel"
-    want_poster = fmt == "poster"
+    want_poster = fmt in ("poster", "card")      # a single card is written like a poster and drawn as one card
     if want_slides:
         system += SLIDES_RULES.get(stream, SLIDES_RULES["regulab"])
     if want_poster:
@@ -889,6 +927,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
                 log.info("idea %s: caption asked again for more facts (%s -> %s chars%s)", str(idea.get("id"))[:8], short[0],
                          len(str(text[lang].get(CAPTION_FLOOR[stream][0]) or "")), "" if not longer else ", still short")
     # grammar and spelling, in the post's own language, before anything is stored (Wan, 10 Nov 2026); never changes a fact
+    text = fit_captions(text, stream)           # a caption over the platform's hard limit is trimmed by whole paragraphs
     fixed_hook, text, fixed_slides, corrected = proofread.post(llm, out, text, lang)
     out = {**out, "hook": fixed_hook, **({"slides": fixed_slides} if fixed_slides is not None else {})}
     domain = idea.get("domain") or (out.get("domain") if out.get("domain") in DOMAINS else None)
@@ -943,7 +982,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
             .eq("id", idea["id"]).execute()
     antislop.finish(store, "post", post_id)
 
-    if fmt in ("carousel", "poster") and not str(brief0.get("look") or "").strip():
+    if fmt in ("carousel", "poster", "card") and not str(brief0.get("look") or "").strip():
         # no look chosen: the Semasa poster looks take their turn and never repeat (Wan, 20 Nov 2026), unless Wan saved a
         # "My design" as the default, which is then the one new drafts use
         dd = settings.get("default_design") if isinstance(settings.get("default_design"), dict) else {}
@@ -968,7 +1007,8 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
                 poster, cover_state = hook_bank.cover(poster, short)
                 cover_state = "shortened" if cover_state in ("set", "kept") else "too_long"
     if poster and not has_jobs:
-        jobs.append(poster_job(idea, post, post_id, poster, bg=slide_ground(stream, bool(jobs or kept)), chosen=chosen))
+        jobs.append(poster_job(idea, post, post_id, poster, bg=slide_ground(stream, bool(jobs or kept)), chosen=chosen,
+                               design="card" if fmt == "card" else "poster"))
     if not jobs and not has_jobs and not kept and fmt != "comic":
         # the writer gave no slides and no poster: the post is not left with no picture at all (Instagram needs one)
         jobs = media_jobs(idea, source, out, post_id)
@@ -1149,7 +1189,8 @@ def slide_ground(stream: str, has_picture: bool) -> str:
 
 
 def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: list[dict[str, Any]],
-               bg: str = "none", chosen: tuple[str, dict[str, Any] | None] | None = None) -> dict[str, Any]:
+               bg: str = "none", chosen: tuple[str, dict[str, Any] | None] | None = None,
+               design: str = "poster") -> dict[str, Any]:
     """The idea's poster: a Design job (one 4:5 artwork) attached to its draft, in the look chosen on the idea."""
     look, saved = chosen or (look_of(idea), None)
     review: dict[str, Any] = {}
@@ -1159,7 +1200,7 @@ def poster_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, words: 
         bg, review = "from_ref", {"background": saved["bg_prompt"]}
     return {"idea_id": idea["id"], "post_id": post_id, "type": "image", "mode": "slides", "status": "pending",
             "prompt": "", "created_by": idea.get("created_by"),
-            "meta": {"flow": "A", "design": "poster", "format": "portrait", "slides": words, "stream": post.get("stream"),
+            "meta": {"flow": "A", "design": design, "format": "portrait", "slides": words, "stream": post.get("stream"),
                      "citation": post.get("citation") or "", "domain": post.get("domain"), "angle": post.get("angle"),
                      "bg": bg, "look": look, "fit": look != "classic",
                      **({"review": review} if review else {}), **({"design_pack": saved} if saved else {})}}
@@ -1206,7 +1247,7 @@ def look_of(idea: dict[str, Any]) -> str:
     raw = brief.get("look")
     if raw:
         look = str(raw)
-    elif format_of(idea) == "poster":
+    elif format_of(idea) in ("poster", "card"):
         look = POSTER_DEFAULT_LOOK
     else:
         look = DEFAULT_LOOK

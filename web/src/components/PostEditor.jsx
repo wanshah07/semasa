@@ -182,11 +182,15 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
     "these words are already in: {h}. Change the wording or reject one of the two posts.", { h: dups.map((p) => `${p.hook || p.id.slice(0, 8)} (${p.date || "-"})`).join(" · ") }) });
   // the publisher refuses a post whose attached picture was deleted or never finished (publisher.py not_ready/gone);
   // read from the database, because the Media list holds only the newest rows
-  if (gone.length) shownFlags.push({ hard: true, where: t("Gambar", "Pictures"), msg: t("{n} gambar yang dilampirkan sudah dipadam: buang daripada post ini",
-    "{n} attached picture(s) were deleted: remove them from this post", { n: gone.length }) });
-  if (unready.length) shownFlags.push({ hard: true, where: t("Gambar", "Pictures"), msg: t("{n} gambar yang dilampirkan belum siap atau gagal",
-    "{n} attached picture(s) are not finished or failed", { n: unready.length }) });
-  const blocking = hard + (past ? 1 : 0) + (gone.length ? 1 : 0) + (unready.length ? 1 : 0) + (clash.length ? 1 : 0) + (dups.length ? 1 : 0);
+  // Wan, 22 Nov 2026: "fix any blocker or remove blocker": a deleted or failed picture is a note, not a block. The publisher sends
+  // the post with the pictures that are ready (backend publisher.py), and the buttons below keep or remove the failed ones.
+  const failedPics = unready.filter((m) => m.status === "error");
+  if (gone.length) shownFlags.push({ hard: false, where: t("Gambar", "Pictures"), msg: t("{n} gambar yang dilampirkan sudah dipadam: post dihantar tanpanya",
+    "{n} attached picture(s) were deleted: the post goes without them", { n: gone.length }) });
+  if (unready.length) shownFlags.push({ hard: false, where: t("Gambar", "Pictures"), msg: failedPics.length
+    ? t("{n} gambar gagal: post dihantar dengan gambar yang siap. Simpan atau buang di bawah.", "{n} picture(s) failed: the post goes with the pictures that are ready. Keep or remove them below.", { n: failedPics.length })
+    : t("{n} gambar masih dilukis: post menunggunya", "{n} picture(s) still being drawn: the post waits for them", { n: unready.length }) });
+  const blocking = hard + (past ? 1 : 0) + (clash.length ? 1 : 0) + (dups.length ? 1 : 0);
 
   function setCaption(lg, plat, v) {
     setText((prev) => ({ ...prev, [lg]: { ...(prev[lg] || {}), [plat]: v } }));
@@ -533,6 +537,9 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
         {gone.length > 0 && !locked && <Button size="sm" variant="soft" className="mt-2"
           onClick={() => setMediaIds((ids) => ids.filter((id) => !gone.includes(id)))}>
           <Trash2 size={12} /> {t("Buang gambar yang sudah dipadam", "Remove the deleted pictures")}</Button>}
+        {failedPics.length > 0 && !locked && <Button size="sm" variant="soft" className="mt-2 ml-2" data-drop-failed
+          onClick={() => setMediaIds((ids) => ids.filter((id) => !failedPics.some((m) => m.id === id)))}>
+          <Trash2 size={12} /> {t("Buang {n} gambar yang gagal", "Remove {n} failed picture(s)", { n: failedPics.length })}</Button>}
         {post.errors?.scan && <p className="mt-2 text-[12px] text-danger">
           {t("Penerbit menyekat pada {at}", "The publisher blocked it at {at}", { at: stampMYT(post.errors.at) })}: {post.errors.scan.join(" · ")}</p>}
       </div>

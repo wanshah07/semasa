@@ -271,3 +271,14 @@ def test_a_caption_that_stays_short_still_makes_the_post(offline):
     store = _store([{"hook_shape": 25}])
     pid = _write(llm, store)
     assert len(llm.seen) == 2 and any(p["id"] == pid for p in store.tables["semasa_posts"])
+
+
+def test_a_caption_over_the_platform_limit_is_trimmed_by_whole_paragraphs_keeping_hook_follow_and_tags():
+    body = "\n\n".join(f"{n}. Fakta nombor {n} " + "x" * 300 for n in range(1, 12))
+    cap = "Hook di sini.\n\n" + body + "\n\nFollow untuk tip regulatori yang senang faham.\n\n#halal #npra"
+    out = ideas.fit_caption(cap, 2200)
+    assert len(out) <= 2200 and out.startswith("Hook di sini.") and out.endswith("#halal #npra") and "Follow untuk" in out
+    assert all(p in cap for p in out.split("\n\n")), "no paragraph is cut in the middle"
+    assert ideas.fit_caption("pendek", 2200) == "pendek"
+    fitted = ideas.fit_captions({"bm": {"instagram": cap, "threads": cap}}, "regulab")
+    assert len(fitted["bm"]["instagram"]) <= 2200 and fitted["bm"]["threads"] == cap, "a thread keeps its own rule"

@@ -6,6 +6,7 @@ import { useLang } from "../lib/i18n";
 import { LOOKS, MASCOTS_ON, isEventSlide, isStudioLook, takesMascot } from "../lib/cards/studio";
 import { photoAt, photosFollow, speakersOf, withPhoto } from "../lib/photos";
 import { photoUrl, uploadSpeakerPhoto } from "../lib/storage";
+import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { resolveLook, useDesigns } from "../lib/designs";
 import { MASCOTS, TEMPLATES, noteLabel, templateOf } from "../lib/cards/library";
 import AyatField, { AYAT_KEYS } from "./AyatField";
@@ -55,6 +56,15 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
   const latestDone = jobs.find((j) => j.status === "done");
   const drawnStale = latestDone && slidesKey(latestDone.meta?.slides) !== slidesKey(fromRows(rows));
   const set = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  // keep, change or remove the poster's small picture: the drawn set goes back to the worker with the choice (backend stickers.py)
+  const sticker = async (patch) => {
+    if (!latestDone) return;
+    const { data, error } = await supabase.from(TABLES.media).update({ meta: { ...(latestDone.meta || {}), ...patch }, status: "pending", attempts: 0, error: null })
+      .eq("id", latestDone.id).select("id");
+    if (error) return onToast(errText(error), "danger");
+    if (!data?.length) return onToast(t("Tidak dapat diubah: hanya orang yang memulakan lukisan ini boleh mengubahnya.", "Could not change it: only the person who started this drawing can change it."), "warn");
+    onToast(t("Slaid dilukis semula dengan pilihan gambar ini.", "The slides are drawn again with this picture choice."), "ok");
+  };
   const { designs } = useDesigns();
   const studio = isStudioLook(resolveLook(look, designs).look);
   const [open, setOpen] = useState(() => new Set());
@@ -162,7 +172,9 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
         <div className="mt-3 rounded-tile bg-surface-2/40 p-2.5">
           <LookPicker value={look} onChange={setLook} slides={previewSlides} stream={post.stream}
             eyebrow={preview.eyebrow} citation={preview.citation} bgUrl={preview.bgUrl} bgChosen={bg !== "none"}
-            mascots={MASCOTS} threads onBlocked={setBlocked} fit={fit} onFit={setFit} />
+            mascots={MASCOTS} threads onBlocked={setBlocked} fit={fit} onFit={setFit}
+            onDropSlide={(i) => { const live = rows.map((r, j) => (normaliseSlides(fromRows([r])).length ? j : -1)).filter((j) => j >= 0);
+              if (live[i] !== undefined) setRows(rows.filter((_, j) => j !== live[i])); }} />
         </div>
       )}
 
@@ -173,6 +185,9 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
           <Button type="button" size="sm" variant="ghost" onClick={() => fromCaption(false)}
             title={t("Kulit, satu slaid setiap poin kapsyen, dan baris penutup", "A cover, one slide for each point of the caption, and a closing line")}>
             {t("Bina daripada kapsyen", "Build from the caption")}</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => fromCaption(true)}
+            title={t("Satu kad sahaja: cangkuk dan baris pertamanya (Wan, 22 Nov 2026: pilihan poster/kad tunggal)", "One card only: the hook and its first line")}>
+            {t("Kad tunggal", "Single card")}</Button>
           {studio && anyOwnBg && <Button type="button" size="sm" variant="ghost" onClick={bgClearAll}
             title={t("Setiap slaid kembali memakai latar set ini", "Every slide goes back to the set's background")}>
             {t("Kosongkan latar setiap slaid", "Clear every slide's background")}</Button>}
@@ -219,6 +234,24 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
               title={t("Bina semula slaid ini sebagai reka bentuk Canva yang boleh disunting", "Rebuild these slides as an editable Canva design")}>
               <Palette size={10} /> {t("Bina semula dalam Canva", "Rebuild in Canva")}</button>}
           </p>
+          {/* the small real picture on the poster (Wan, 22 Nov 2026): keep it, change it or take it off; the slides are drawn again */}
+          {latestDone.meta?.look !== "canva" && !locked && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-tile bg-surface-2/40 p-2 text-[12px]" data-sticker>
+              {latestDone.meta?.sticker_url && latestDone.meta?.sticker !== false
+                ? <img src={latestDone.meta.sticker_url} alt="" className="h-12 w-12 rounded border border-line bg-white object-contain" />
+                : <ImageIcon size={16} className="text-muted" />}
+              <span className="text-muted">{latestDone.meta?.sticker === false
+                ? t("Tiada gambar kecil pada poster.", "No small picture on the poster.")
+                : latestDone.meta?.sticker_url ? t("Gambar kecil pada poster.", "The small picture on the poster.")
+                  : t("Gambar kecil dibuat semasa lukisan seterusnya.", "The small picture is made at the next drawing.")}</span>
+              {latestDone.meta?.sticker === false
+                ? <Button type="button" size="sm" variant="soft" onClick={() => sticker({ sticker: true })}>{t("Letak gambar", "Add a picture")}</Button>
+                : <>
+                  <Button type="button" size="sm" variant="soft" onClick={() => sticker({ sticker: true, sticker_url: null })}>{t("Tukar gambar", "Change the picture")}</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => sticker({ sticker: false })}><Trash2 size={12} /> {t("Buang gambar", "Remove the picture")}</Button>
+                </>}
+            </div>
+          )}
           {drawnStale && <p className="mt-1 text-[12px] text-warn">
             {t("Slaid di atas telah diubah sejak dilukis. Tekan Jana slaid supaya gambar membawa perkataan yang sama.",
               "The slides above changed since they were drawn. Press Generate slides so the pictures carry the same words.")}</p>}

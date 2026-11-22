@@ -260,7 +260,8 @@ def test_a_question_is_answered_with_a_snapshot_and_the_earlier_turns():
 
 
 def test_new_drafts_are_pushed_once_and_a_draft_still_drawing_waits():
-    st = store(**{db.POSTS: [post("p1"), post("p2", media_ids=["m1"]), post("old", created_at="2026-11-01T00:00:00+00:00")],
+    st = store(**{db.POSTS: [post("p1"), post("p2", media_ids=["m1"], created_at="2026-11-07T11:30:00+00:00"),
+                             post("old", created_at="2026-11-01T00:00:00+00:00")],
                   db.MEDIA: [PIC, {"id": "m1", "status": "working", "generated_media_url": None}]})
     bot = Bot()
     tb.run(st, bot=bot, now=NOW, webhook=False)
@@ -376,37 +377,40 @@ def test_the_watchdog_says_to_rerun_deploy_functions_when_telegram_is_refused():
     assert len(got) == 1 and "Deploy functions" in got[0]["todo"] and "secret does not match" in got[0]["todo"]
 
 
-def test_a_past_or_undated_draft_is_never_approved_from_telegram():
-    late = post("p1", date="2026-11-07", slot="13:00")        # 05:00 UTC: seven hours before NOW
+def test_a_past_or_undated_draft_is_moved_to_the_next_free_slot_as_it_is_approved_from_telegram():
+    # Wan, 22 Nov 2026: "kalau terlepas tarikh dan masa, auto cari next slot" (it used to be refused here)
+    late = post("p1", date="2026-11-07", slot="13:00")        # 05:00 UTC: seven hours before NOW (20:00 MYT)
     st = store(**{db.POSTS: [late], tb.SENT: [{"post_id": "p1", "version": late["updated_at"], "chat_id": CHAT,
                                                "message_id": 700}], tb.INBOX: [tap(1, "ok:p1")]})
     bot = Bot()
     tb.run(st, bot=bot, now=NOW, webhook=False, push=False)
-    assert st.rpcs == [] and st.tables[db.POSTS][0]["status"] == "draft"
-    assert "sudah lepas lebih 45 minit" in bot.sent()[-1]["text"] and "Pindahkan" in bot.sent()[-1]["text"]
+    p = st.tables[db.POSTS][0]
+    assert (p["status"], p["date"], p["slot"]) == ("approved", "2026-11-07", "21:00"), "today's 21:00 is still ahead and free"
+    assert "Dipindah dari 2026-11-07 13:00" in bot.sent()[-1]["text"]
     undated = post("p2", date=None, slot=None)
     st = store(**{db.POSTS: [undated], tb.SENT: [{"post_id": "p2", "version": undated["updated_at"], "chat_id": CHAT}],
                   tb.INBOX: [tap(1, "ok:p2")]})
     tb.run(st, bot=Bot(), now=NOW, webhook=False, push=False)
-    assert st.rpcs == [] and st.tables[db.POSTS][0]["status"] == "draft"
-    # within the grace (40 minutes past) it still goes through the gate, like the page
+    p = st.tables[db.POSTS][0]
+    assert (p["status"], p["date"], p["slot"]) == ("approved", "2026-11-07", "21:00")
+    # within the grace (40 minutes past) it keeps its slot and goes through the gate, like the page
     near = post("p3", date="2026-11-07", slot="19:20")        # 11:20 UTC
     st = store(**{db.POSTS: [near], tb.SENT: [{"post_id": "p3", "version": near["updated_at"], "chat_id": CHAT,
                                                "message_id": 700}], tb.INBOX: [tap(1, "ok:p3")]})
     tb.run(st, bot=Bot(), now=NOW, webhook=False, push=False)
-    assert st.tables[db.POSTS][0]["status"] == "approved"
+    assert (st.tables[db.POSTS][0]["status"], st.tables[db.POSTS][0]["slot"]) == ("approved", "19:20")
 
 
-def test_draf_lists_only_drafts_whose_slot_is_ahead_and_says_how_many_are_past():
+def test_draf_lists_every_draft_and_a_past_one_says_approve_moves_it():
     st = store(**{db.POSTS: [post("old", date="2026-11-01", slot="08:00"), post("p1"), post("nodate", date=None, slot=None)],
                   tb.INBOX: [msg(1, "/draf")]})
     bot = Bot()
     tb.run(st, bot=bot, now=NOW, webhook=False, push=False)
-    texts = [m["text"] for m in bot.sent()]
-    assert [r["post_id"] for r in st.tables[tb.SENT]] == ["p1", "nodate"], "soonest first, the undated last, the past one not"
+    assert [r["post_id"] for r in st.tables[tb.SENT]] == ["old", "p1", "nodate"], "soonest first, the undated last"
+    old = next(m for m in bot.sent() if "2026-11-01 08:00 ·" in m["text"])
+    assert "slotnya sudah lepas: Lulus akan memindahkannya ke slot kosong seterusnya, 2026-11-07 21:00 MYT" in old["text"]
+    assert any(b.get("callback_data") == "ok:old" for row in old["reply_markup"]["inline_keyboard"] for b in row), \
+        "a past draft can be approved: it is moved"
     undated = next(m for m in bot.sent() if "tiada tarikh" in m["text"])
-    assert [b["callback_data"] for b in undated["reply_markup"]["inline_keyboard"][0]] == [
-        "c:pe:nodate", "c:pc:nodate"
-    ], "edit remains available"
-    assert "1 draf lagi slotnya sudah lepas" in texts[-1]
-    assert [p["id"] for p in tb.drafts(st, 50, NOW)] == ["p1", "nodate"]
+    assert "Lulus akan memindahkannya" in undated["text"]
+    assert [p["id"] for p in tb.drafts(st, 50, NOW)] == ["old", "p1", "nodate"]

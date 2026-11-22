@@ -91,3 +91,14 @@ jobs:
           FAQ_BATCH: ${{ vars.FAQ_BATCH }}
           MEDIA_ONLY_ID: ${{ github.event.client_payload.id || inputs.only_id }}
         run: python -m semasa.media_generator
+      # every new draft this run wrote reaches Wan on Telegram with its picture and its Approve button (Wan, 22 Nov 2026:
+      # "hantar ke telegram setiap kali siap post draft"), once each (backend/semasa/draft_announce.py). Never fails the job.
+      - name: Announce new drafts on Telegram
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SEMASA_SITE_URL: ${{ vars.SEMASA_SITE_URL }}
+        run: python -m semasa.draft_announce

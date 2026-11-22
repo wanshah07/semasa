@@ -1,7 +1,7 @@
 /* web/src/lib/slots.js, the page's half of the position rules (the worker's half is ideas.next_free_position). */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { canResend, captionKey, captionKeys, clashes, coverage, duplicatesOf, failedChannels, fmtLeft, handOverInTime, handedOver, holdersOf, isPastDue, lateLinkedInSlots, liSendDay, moveCheck, myt, nextFreeSlot, nextRunMs, offRota, onRota, overrideCheck, clearPlan, postsOn, purgeLeftMs, queuedChannels, refOf, resendChannels, sentChannels, slotGone, slotsOf, isCustomSlot, validClock } from "./src/lib/slots.js";
+import { approvePosition, canResend, captionKey, captionKeys, clashes, coverage, duplicatesOf, failedChannels, fmtLeft, handOverInTime, handedOver, holdersOf, isPastDue, lateLinkedInSlots, liSendDay, moveCheck, myt, nextFreeSlot, nextRunMs, offRota, onRota, overrideCheck, clearPlan, postsOn, purgeLeftMs, queuedChannels, refOf, resendChannels, sentChannels, slotGone, slotsOf, isCustomSlot, validClock } from "./src/lib/slots.js";
 
 const BRAND = {
   regulab: { slots: ["13:00", "08:00", "21:00"],
@@ -269,6 +269,40 @@ t("supabase/084 says what the page says: settled and one failed may move, and a 
   assert.match(sql, /with check \(public\.semasa_is_uploader\(\) and status in \('draft', 'approved', 'rejected', 'scheduled'\)\)/);
   assert.match(sql, /elsif old\.status in \('scheduled', 'posted'\) then\s+new\.approved_by := old\.approved_by/);
   assert.ok(!/—/.test(sql));
+});
+
+t("Approve keeps a usable slot, and moves a missing, gone or held one to the next free slot (Wan, 22 Nov 2026)", () => {
+  const mine = { id: "a", stream: "regulab", status: "draft", domain: "farmaseutikal" };
+  const at = (date, slot, posts = []) => approvePosition({ post: { ...mine, date, slot }, date, slot, posts, brand: BRAND, now: NOW });
+  assert.deepEqual(at("2026-09-24", "21:00"), { date: "2026-09-24", slot: "21:00", moved: false });
+  assert.deepEqual(at("2026-09-23", "08:00"), { date: "2026-09-24", slot: "13:00", moved: true, why: "past",
+    from: { date: "2026-09-23", slot: "08:00" } }, "yesterday: today's next slot, not tomorrow's");
+  const held = [{ id: "b", stream: "regulab", status: "draft", date: "2026-09-24", slot: "13:00" }];
+  const taken = at("2026-09-24", "13:00", held);
+  assert.equal(taken.why, "taken"); assert.equal(taken.slot, "21:00");
+  assert.equal(at("2026-09-23", "08:00", held).slot, "21:00", "never onto a held slot");
+  const rejected = [{ ...held[0], status: "rejected" }];
+  assert.equal(at("2026-09-24", "13:00", rejected).moved, false, "a rejected post holds nothing");
+  assert.equal(at(null, null).why, "none");
+  assert.equal(at(null, null).slot, "13:00");
+  // the rota is kept: a cosmetics post that missed Thursday goes on Friday
+  const cos = approvePosition({ post: { ...mine, domain: "kosmetik", date: "2026-09-23", slot: "08:00" }, date: "2026-09-23",
+    slot: "08:00", posts: [], brand: BRAND, now: NOW });
+  assert.deepEqual([cos.date, cos.slot], ["2026-09-25", "08:00"]);
+  // LinkedIn: its own slots and weekdays (Mon, Wed, Fri)
+  const li = approvePosition({ post: { id: "l", stream: "linkedin", status: "draft" }, date: "2026-09-21", slot: "06:00",
+    posts: [], brand: BRAND, now: NOW });
+  assert.deepEqual([li.date, li.slot, li.why], ["2026-09-25", "06:00", "past"]);
+  const closed = { regulab: { slots: ["08:00"], schedule: Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, []])) } };
+  assert.equal(approvePosition({ post: mine, date: "2026-09-23", slot: "08:00", posts: [], brand: closed, now: NOW }), null);
+});
+
+t("the editor's Approve is no longer blocked by a past or held slot: it moves the post (PostEditor.jsx)", () => {
+  const src = readFileSync(new URL("./src/components/PostEditor.jsx", import.meta.url), "utf8");
+  const blocking = src.match(/const blocking = ([^;]+);/)[1];
+  assert.ok(!/past|clash/.test(blocking), "past and clash are notes now");
+  assert.match(src, /approvePosition\(\{ post, date, slot, posts: live \|\| posts, brand \}\)/, "approve re-reads the slots first");
+  assert.ok(!/disabled=\{busy \|\| blocking > 0 \|\| !date/.test(src), "no date is not a block either: Approve picks a slot");
 });
 
 console.log(`${n} slot tests pass`);

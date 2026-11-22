@@ -16,12 +16,15 @@ What Wan can do from Telegram:
   /bil        unpaid invoices and open quotations, with their due dates
   /idea …     text or a link becomes an idea; a bare link does too. He picks ws.regulab or LinkedIn on a button.
   anything else is a question: the AI team answers it with a snapshot of Semasa (it can explain, never change anything).
-It also pushes new drafts as they are written (scheduled runs) and the watchdog's alerts (health.py → notify()).
+It also pushes every new draft of both streams once, with its picture and its buttons (push_new_drafts; the media and
+motion runs call it too, draft_announce.py), and the watchdog's alerts (health.py → notify()).
 
 APPROVE goes through the page's own database gate: semasa_telegram_decide() (supabase/069) runs the update as Wan's own
 login, so the slot and duplicate guards and approved_by apply exactly as for his click in the page; it approves only the
 version he was shown (semasa_telegram_sent.version), and the same compliance scan the publisher runs is checked first.
-Nothing here posts: the publisher still sends an approved post at its slot, never early and never late.
+Nothing here posts: the publisher still sends an approved post at its slot, never early and never late. A draft with no
+slot, a slot gone by or a slot another post holds is moved to the next free slot of its stream as it is approved
+(rollforward.py, Wan 22 Nov 2026: "kalau terlepas tarikh dan masa, auto cari next slot").
 """
 
 from __future__ import annotations
@@ -37,7 +40,7 @@ from typing import Any
 
 import requests
 
-from . import billing, compliance, db, motion_review, motion_skins
+from . import billing, compliance, db, motion_review, motion_skins, rollforward
 from . import telegram_catalogue as cat
 from . import telegram_menu as menu
 from . import telegram_tools as tt
@@ -262,20 +265,38 @@ def slot_past(post: dict[str, Any], now: datetime) -> bool:
     return due is not None and due < now - LATE_GRACE
 
 
-def position_problem(post: dict[str, Any], now: datetime) -> str:
-    """The page's position checks (PostEditor): a post with no date and slot, or whose slot is more than 45 minutes gone, is
-    never sent by the publisher, so it is not approved here either. Wan moves it in Semasa first."""
-    if slot_utc(post) is None:
-        return "tiada tarikh atau slot: pilih tarikh dan slot di Semasa (tab Post) dahulu"
-    if slot_past(post, now):
-        return (f"slot {post.get('date')} {post.get('slot')} MYT sudah lepas lebih 45 minit: penerbit tidak akan "
-                "menghantarnya. Pindahkan ke slot baharu di Semasa (tab Post → Jadual → Pindah semua)")
-    return ""
+def linkedin_queued(settings: dict[str, Any]) -> bool:
+    """Does LinkedIn go through Zernio (a queue, the 45-minute rule) rather than Composio (its day, li_send_day)?"""
+    from .publisher import zernio_accounts
+    return "linkedin" in zernio_accounts((settings.get("channels") or {}).get("zernio") or {})
+
+
+def where_to(store: Any, post: dict[str, Any], now: datetime, settings: dict[str, Any] | None = None) -> tuple[str, Any]:
+    """(why the post cannot stay where it is: "" / "none" / "past" / "taken", the position Approve moves it to, or None when
+    no slot is free). The page's Approve does the same (web/src/lib/slots.js approvePosition)."""
+    from .publisher import load_settings
+    settings = settings if settings is not None else load_settings(store)
+    why = rollforward.why_move(store, post, now, linkedin_queued(settings))
+    if not why:
+        return "", None
+    stream = post.get("stream") or "regulab"
+    return why, rollforward.next_position(post, settings.get("brand") or {}, rollforward.taken_now(store, stream, now), now)
+
+
+def position_note(why: str, pos: Any) -> str:
+    """What a preview says about a position Approve will change (a note: it never stops the approval by itself)."""
+    if not why:
+        return ""
+    if pos is None:
+        return (f"{rollforward.WHY_WORDS[why]}, dan tiada slot kosong dalam {rollforward.HORIZON_DAYS} hari: "
+                "pilih tarikh di Semasa")
+    return f"{rollforward.WHY_WORDS[why]}: Lulus akan memindahkannya ke slot kosong seterusnya, {pos[0]} {pos[1]} MYT"
 
 
 def scan(store: Any, post: dict[str, Any], now: datetime | None = None) -> tuple[list[dict[str, Any]], list[str]]:
-    """(the compliance flags to save with an approval, what stops it): the publisher's own hard checks, plus the page's
-    position checks (which depend on the clock, so they stop the approval but are never saved as flags)."""
+    """(the compliance flags to save with an approval, what stops it): the publisher's own hard checks. The position is not
+    one of them any more (Wan, 22 Nov 2026): a draft with no slot, a slot gone by or a slot another post holds is moved to the
+    next free slot when it is approved (decide, rollforward.py), so it is a note on the preview, never a block."""
     from .publisher import load_settings, media_for, scan_entry
     settings = load_settings(store)
     reg = (settings.get("brand") or {}).get("regulab") or {}
@@ -287,9 +308,6 @@ def scan(store: Any, post: dict[str, Any], now: datetime | None = None) -> tuple
         hard.append("gambar belum siap dijana")
     if len(media) < len(post.get("media_ids") or []):
         hard.append("gambar yang dilampirkan sudah dipadam")
-    where = position_problem(post, now or datetime.now(UTC))
-    if where:
-        hard.insert(0, where)
     return flags, hard
 
 
@@ -319,8 +337,12 @@ def post_tab(post: dict[str, Any] | None = None, stream: str = "") -> str:
     return "li-post" if (stream or (post or {}).get("stream")) == "linkedin" else "post"
 
 
-def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datetime | None = None) -> None:
+def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datetime | None = None, intro: str = "",
+               note: str = "") -> int:
+    """One draft as Wan sees it: its pictures, its caption, what blocks it and its buttons. `intro` heads a draft announced
+    as it is written (push_new_drafts); `note` is a line about its pictures. Returns the message id the buttons are on."""
     from .publisher import media_for, pictures_of
+    now = now or datetime.now(UTC)
     media = media_for(store, list(post.get("media_ids") or []))
     pics = [u for m in media for u in pictures_of(m)]
     if pics:
@@ -332,9 +354,18 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
             except TelegramError as exc:
                 log.info("picture %d/%d not sent (%s)", index, len(pics), exc)
     hard = blockers(store, post, now)
-    text = f"📝 Draf · {_where(post)}\n\n{_caption(post)[:3000]}"
+    text = (f"{intro}\n" if intro else "") + f"📝 Draf · {_where(post)}\n\n{_caption(post)[:3000]}"
     if post.get("citation"):
         text += f"\n\nSumber: {str(post['citation'])[:300]}"
+    try:
+        moving = position_note(*where_to(store, post, now))
+    except Exception as exc:  # noqa: BLE001 - a note, never a reason not to show the draft
+        log.info("position of %s not read (%s)", post.get("id"), str(exc)[:120])
+        moving = ""
+    if moving:
+        text += f"\n\n⏰ {moving}"
+    if note:
+        text += f"\n\n🖼 {note}"
     open_btn = [{"text": "🔗 Buka di Semasa", "url": menu.page_url(SITE, post_tab(post))}]
     if hard:
         text += "\n\n⚠️ Approval blocked:\n• " + "\n• ".join(hard[:6])
@@ -353,6 +384,7 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
     mid = bot.send(chat, text, buttons)
     store.table(SENT).upsert({"post_id": post["id"], "version": post["updated_at"], "chat_id": chat, "message_id": mid,
                               "sent_at": datetime.now(UTC).isoformat()}, on_conflict="post_id").execute()
+    return mid
 
 
 def draft_rows(store: Any, stream: str = "") -> list[dict[str, Any]]:
@@ -368,32 +400,23 @@ def show_drafts(store: Any, bot: Bot, chat: int, now: datetime, stream: str = ""
     bm = lang == "bm"
     every = draft_rows(store, stream)
     rows = drafts(store, now=now, rows=every)
-    late = sum(1 for p in every if slot_past(p, now))
+    late = sum(1 for p in rows if slot_past(p, now))
     where = f" ({STREAM_WORDS[stream]})" if stream in STREAM_WORDS else ""
     last = [foot] if foot else None
-    if not rows and not late:
+    if not rows:
         bot.send(chat, f"Tiada draf menunggu kelulusan{where}. 👍" if bm else f"No drafts waiting for approval{where}. 👍", last)
     for p in rows:
         send_draft(store, bot, chat, p, now)
-    if late:
-        text = (f"⏰ {late} draf lagi slotnya sudah lepas lebih 45 minit, jadi tidak boleh diluluskan di sini: "
-                "penerbit tidak menghantar post yang lewat. Pindahkan ke slot baharu di Semasa (tab Post → Jadual → "
-                "Pindah semua), kemudian /draf semula." if bm else
-                f"⏰ {late} more draft(s) are over 45 minutes past their slot, so they cannot be approved here: the publisher "
-                "never sends a late post. Move them to a new slot in Semasa (Post tab → Schedule → Move all), then /draf again.")
-        bot.send(chat, text, [[{"text": "🔗 Buka di Semasa" if bm else "🔗 Open in Semasa",
-                                "url": menu.page_url(SITE, post_tab(stream=stream))}]] + (last or []))
-    elif rows and foot:
+    if rows and foot:
         bot.send(chat, f"⬆ {len(rows)} draf{where}." if bm else f"⬆ {len(rows)} draft(s){where}.", last)
     return f"{len(rows)} draft(s)" + (f", {late} past their slot" if late else "")
 
 
 def drafts(store: Any, limit: int = 5, now: datetime | None = None,
            rows: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
-    """Drafts Wan can still approve, soonest slot first: one whose slot is more than 45 minutes gone is left out (the
-    publisher would never send it; /draf says how many and where to move them). A draft with no date yet comes last."""
-    now = now or datetime.now(UTC)
-    rows = [p for p in (draft_rows(store) if rows is None else rows) if not slot_past(p, now)]
+    """Drafts waiting for Wan, soonest slot first, a draft with no date yet last. One whose slot has gone by is listed too:
+    Approve moves it to the next free slot (rollforward.py), so it is never left unapprovable."""
+    rows = list(draft_rows(store) if rows is None else rows)
     rows.sort(key=lambda p: (str(p.get("date") or "9999"), str(p.get("slot") or "")))
     return rows[:limit]
 
@@ -614,6 +637,18 @@ DECIDE_WORDS = {
 }
 
 
+def same_version(a: Any, b: Any) -> bool:
+    """Two updated_at stamps the way semasa_telegram_decide compares them: to the millisecond."""
+    def ms(v: Any) -> datetime | None:
+        try:
+            dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return dt.replace(microsecond=dt.microsecond // 1000 * 1000)
+    x, y = ms(a), ms(b)
+    return x is not None and x == y
+
+
 def decide(store: Any, bot: Bot, link: dict[str, Any], chat: int, message_id: int, post_id: str, action: str,
            now: datetime | None = None) -> str:
     now = now or datetime.now(UTC)
@@ -634,11 +669,43 @@ def decide(store: Any, bot: Bot, link: dict[str, Any], chat: int, message_id: in
         send_draft(store, bot, chat, post, now)
         return "old preview"
     flags: list[dict[str, Any]] = []
+    moved_from = ""
     if action == "approve":
         flags, hard = scan(store, post, now)
         if hard:
             bot.send(chat, "⚠️ Belum boleh diluluskan:\n• " + "\n• ".join(hard[:6]), reply_to=message_id)
             return "blocked"
+        # no slot, a slot gone by or a slot another post holds: the next free slot first (Wan, 22 Nov 2026: "kalau terlepas
+        # tarikh dan masa, auto cari next slot"), then the gate approves it there
+        why, pos = where_to(store, post, now)
+        if why and post.get("status") == "draft":
+            if pos is None:
+                bot.send(chat, f"⚠️ Belum boleh diluluskan: {position_note(why, pos)}.", reply_to=message_id)
+                return "no slot"
+            if not same_version(post.get("updated_at"), version):
+                version = None                       # the gate answers "changed" and the newest preview is sent
+            else:
+                new = rollforward.move(store, post, pos[0], pos[1], why, "telegram", now, "draft")
+                if new is None:
+                    version = None
+                else:
+                    moved_from = f"{post.get('date') or '-'} {post.get('slot') or ''}".strip()
+                    db.log_event(store, "info", "post", "post.moved",
+                                 f"Telegram: {str(post.get('hook') or post_id)[:80]} dipindah dari {moved_from} ke "
+                                 f"{pos[0]} {pos[1]} sebelum diluluskan ({rollforward.WHY_WORDS[why]})",
+                                 ref_table=db.POSTS, ref_id=post_id,
+                                 detail={"from": moved_from, "to": {"date": pos[0], "slot": pos[1]}, "why": why})
+                    post = new
+                    if not new.get("updated_at"):    # the write's own answer had no stamp: read it back
+                        got = store.table(db.POSTS).select("updated_at").eq("id", post_id).execute().data or []
+                        post = {**new, "updated_at": got[0]["updated_at"] if got else None}
+                    version = post.get("updated_at")
+                    # the preview Wan tapped still stands for these words: only the position moved, by Semasa itself
+                    store.table(SENT).update({"version": version}).eq("post_id", post_id).execute()
+                    flags, hard = scan(store, post, now)
+                    if hard:
+                        bot.send(chat, "⚠️ Belum boleh diluluskan:\n• " + "\n• ".join(hard[:6]), reply_to=message_id)
+                        return "blocked"
     try:
         res = store.rpc("semasa_telegram_decide", {"p_post": post_id, "p_version": version, "p_action": action,
                                                    "p_telegram_user_id": link["telegram_user_id"], "p_flags": flags,
@@ -651,8 +718,10 @@ def decide(store: Any, bot: Bot, link: dict[str, Any], chat: int, message_id: in
     if res == "ok":
         bot.drop_buttons(chat, message_id)
         if action == "approve":
-            bot.send(chat, f"✅ Diluluskan. Penerbit akan hantar pada slotnya: {post.get('date')} {post.get('slot')}.",
+            bot.send(chat, f"✅ Diluluskan. Penerbit akan hantar pada slotnya: {post.get('date')} {post.get('slot')}."
+                     + (f" (Dipindah dari {moved_from}: slot asal tidak boleh digunakan.)" if moved_from else ""),
                      reply_to=message_id)
+            return "approved" + (f" (moved from {moved_from} to {post.get('date')} {post.get('slot')})" if moved_from else "")
         else:
             bot.send(chat, "❌ Ditolak.", reply_to=message_id)
         return action + "d"
@@ -1087,26 +1156,93 @@ def claim(store: Any) -> list[dict[str, Any]]:
     return out
 
 
-def push_new_drafts(store: Any, bot: Bot, link: dict[str, Any], now: datetime | None = None) -> int:
-    """Drafts written since the last push, once their pictures are ready: each lands in Telegram with its buttons."""
-    known = {r["post_id"] for r in store.table(SENT).select("post_id").execute().data or []}
-    linked_at = str(link.get("linked_at") or "")
+ANNOUNCE_WINDOW = timedelta(days=3)    # only drafts written in the last 3 days are announced: never a flood of old ones
+DRAW_WAIT = timedelta(hours=2)         # a draft whose picture is still being drawn after this is announced anyway, said so
+CLAIM_STALE = timedelta(minutes=15)    # a claim a crashed run never finished is taken again after this
+JUST_WRITTEN = timedelta(minutes=2)    # a draft with no picture row at all, younger than this, waits a run for its jobs
+INTRO = {"regulab": "🆕 Draf ws.regulab baharu siap: perlu kelulusan anda",
+         "linkedin": "🆕 Draf LinkedIn baharu siap: perlu kelulusan anda"}
+
+
+def draft_alerts_on(store: Any) -> bool:
+    """New drafts are announced unless Wan switched it off (settings telegram_chat.draft_alerts = false)."""
+    try:
+        return tt.chat_state(store).get("draft_alerts") is not False
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _claim_announce(store: Any, post: dict[str, Any], chat: int, now: datetime, stale: bool) -> bool:
+    """Take the right to announce this draft, once: a row in semasa_telegram_sent with no message yet. Two workers (the media
+    run and the Telegram run) racing for one draft: the database's primary key lets one through."""
+    if stale:
+        store.table(SENT).delete().eq("post_id", post["id"]).is_("message_id", "null").execute()
+    got = store.table(SENT).upsert({"post_id": post["id"], "version": post["updated_at"], "chat_id": chat, "message_id": None,
+                                    "sent_at": now.isoformat()}, on_conflict="post_id", ignore_duplicates=True).execute()
+    return bool(getattr(got, "data", None))
+
+
+def push_new_drafts(store: Any, bot: Bot, link: dict[str, Any], now: datetime | None = None, limit: int = PUSH_PER_RUN) -> int:
+    """Every new draft, of both streams, lands in Telegram ONCE with its pictures and its Approve / Reject buttons (Wan, 22 Nov
+    2026: "hantar ke telegram setiap kali siap post draft untuk both ws dan linkedin untuk dapatkan approval"). Run at the end
+    of every worker run that writes drafts (media.yml, motion.yml: python -m semasa.draft_announce) and by the Telegram
+    worker's own runs, so a draft is announced as soon as its picture is drawn. A draft still drawing waits for it, up to
+    DRAW_WAIT, then goes with a note. Once is kept in semasa_telegram_sent (also written when /draf shows a draft): a revised,
+    re-rendered or retried draft is the same row and is never announced again."""
+    if not draft_alerts_on(store):
+        return 0
     now = now or datetime.now(UTC)
-    todo = [p for p in drafts(store, 50, now) if p["id"] not in known and str(p.get("created_at") or "") >= linked_at]
+    chat = int(link["chat_id"])
+    rows = store.table(SENT).select("post_id,message_id,sent_at").execute().data or []
+    stale_before = (now - CLAIM_STALE).isoformat()
+    stale = {r["post_id"] for r in rows if r.get("message_id") is None and str(r.get("sent_at") or "") < stale_before}
+    known = {r["post_id"] for r in rows} - stale
+    since = max(str(link.get("linked_at") or ""), (now - ANNOUNCE_WINDOW).isoformat())
+    todo = [p for p in drafts(store, 200, now) if p["id"] not in known and str(p.get("created_at") or "") >= since]
     n = 0
     from .publisher import media_for
     for p in todo:
-        if n >= PUSH_PER_RUN:
+        if n >= limit:
             break
         media = media_for(store, list(p.get("media_ids") or []))
-        if any(m.get("status") not in ("done", "error") for m in media):
-            continue                      # still drawing: it goes on a later run, with its picture
+        drawing = [m for m in media if m.get("status") not in ("done", "error")]
+        if not media:            # the worker's picture jobs are attached once drawn: one still queued for the post counts too
+            jobs = (store.table(db.MEDIA).select("id,status,provider").eq("post_id", p["id"])
+                    .in_("status", ["pending", "processing"]).execute().data or [])
+            drawing = [m for m in jobs if (m.get("provider") or "") != "unsplash"]     # a search waits for Wan's pick
+        young = str(p.get("created_at") or "") > (now - DRAW_WAIT).isoformat()
+        if drawing and young:
+            continue                      # still drawing: announced on a later run, with its picture
+        if not media and str(p.get("created_at") or "") > (now - JUST_WRITTEN).isoformat():
+            continue                      # written this minute: its picture jobs may not be queued yet
+        note = ("gambar masih dijana; ia akan muncul di Semasa apabila siap" if drawing else
+                "satu gambar gagal dijana: semak di Semasa" if any(m.get("status") == "error" for m in media) else "")
+        if not _claim_announce(store, p, chat, now, p["id"] in stale):
+            continue                      # another run announced it a moment ago
         try:
-            send_draft(store, bot, int(link["chat_id"]), p, now)
+            send_draft(store, bot, chat, p, now, intro=INTRO.get(p.get("stream") or "regulab", INTRO["regulab"]), note=note)
             n += 1
-        except Exception as exc:  # noqa: BLE001
-            log.warning("draft %s not pushed: %s", p["id"], str(exc)[:160])
+            db.log_event(store, "info", "post", "post.announced", f"Telegram: draf dihantar untuk kelulusan: "
+                         f"{str(p.get('hook') or p['id'])[:80]}", ref_table=db.POSTS, ref_id=p["id"],
+                         detail={"stream": p.get("stream") or "regulab", "date": p.get("date"), "slot": p.get("slot")})
+        except Exception as exc:  # noqa: BLE001 - the claim is given back, so the next run tries again
+            log.warning("draft %s not pushed: %s", p["id"], scrub(exc, getattr(bot, "token", ""))[:160])
+            try:
+                store.table(SENT).delete().eq("post_id", p["id"]).is_("message_id", "null").execute()
+            except Exception:  # noqa: BLE001
+                pass
     return n
+
+
+def announce(store: Any, bot: Bot | None = None, now: datetime | None = None) -> dict[str, Any]:
+    """`python -m semasa.draft_announce`: the new drafts only, quietly nothing with no bot token or no linked account."""
+    bot = bot if bot is not None else make_bot()
+    if bot is None:
+        return {"pushed": 0, "note": "TELEGRAM_BOT_TOKEN is not set"}
+    link = link_of(store)
+    if not link:
+        return {"pushed": 0, "note": "no Telegram account linked yet"}
+    return {"pushed": push_new_drafts(store, bot, link, now)}
 
 
 def notify(store: Any, text: str, bot: Bot | None = None) -> bool:

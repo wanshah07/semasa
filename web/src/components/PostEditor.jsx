@@ -3,7 +3,7 @@ import { flagWords } from "../lib/complianceBm";
 import { AlertTriangle, CalendarClock, Check, Eraser, ImagePlus, Info, RotateCcw, Save, Trash2, UploadCloud, X, XCircle } from "lucide-react";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { LIMITS, charLen, hardCount, normaliseSlides, platformsOf, scan, scanMedia, stripPromo, threadParts } from "../lib/compliance";
-import { dueMs, duplicatesOf, handedOver, nextFreeSlot, refOf, slotGone, slotsOf, takenSet } from "../lib/slots";
+import { approvePosition, dueMs, duplicatesOf, handedOver, nextFreeSlot, refOf, slotGone, slotsOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
 import PostWorkflow from "./PostWorkflow";
 import PostPullBack from "./PostPullBack";
@@ -156,27 +156,33 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   const gone = checked ? mediaIds.filter((id) => !mediaState.rows.some((m) => m.id === id)) : [];
   const unready = checked ? mediaState.rows.filter((m) => mediaIds.includes(m.id) && (m.status !== "done" || !m.generated_media_url)) : [];
   const hard = hardCount(flags);
-  // a slot the publisher will no longer send (publisher.py: ws.regulab 45 minutes late, LinkedIn past li_send_day): approving
-  // it would only read "✓ checks passed" while nothing goes out. A page-only block, not saved in hard_flags (it is the clock).
+  // a slot the publisher will no longer send (publisher.py: ws.regulab 45 minutes late, LinkedIn past li_send_day), and a slot
+  // another post holds (one post to a slot, Wan 3 Oct 2026: supabase/026 refuses it, guard.py never sends the second). Neither
+  // blocks any more (Wan, 22 Nov 2026: "kalau terlepas tarikh dan masa, auto cari next slot"): Approve puts the post on the next
+  // free slot of its stream (approvePosition), and the publisher moves an approved post whose slot went by (rollforward.py).
+  // Both are notes about the clock and the other posts, never saved in hard_flags.
   const past = ["draft", "approved", "rejected"].includes(post.status) && slotGone(post.stream, date, slot);
-  // one post to a slot, and the same words never twice (Wan, 3 Oct 2026): both block approval here, the database refuses a
-  // browser's write that does either (supabase/026) and the publisher never sends the second (guard.py)
   const clash = date && slot ? posts.filter((p) => p.id !== post.id && (p.stream || "regulab") === (post.stream || "regulab")
     && p.status !== "rejected" && p.date === date && p.slot === slot) : [];
   const dups = useMemo(() => duplicatesOf({ ...post, text, lang, date: date || null }, posts), [post, text, lang, date, posts]);
   const movedPosition = (date || "") !== (post.date || "") || (slot || "") !== (post.slot || "");
+  const willGo = post.status === "approved" ? null : approvePosition({ post, date, slot, posts, brand });
+  const goesTo = willGo?.moved ? t("Lulus akan memindahkannya ke slot kosong seterusnya: {d} {s}.", "Approve moves it to the next free slot: {d} {s}.",
+    { d: willGo.date, s: willGo.slot }) : !willGo && post.status !== "approved" ? t("Tiada slot kosong dalam 60 hari: pilih tarikh.",
+    "No free slot in the next 60 days: pick a date.") : "";
   const shownFlags = !date || !slot
-    ? [...flags, { hard: false, where: t("Kedudukan", "Position"), msg: t("belum ada tarikh dan slot: penerbit melangkau post tanpanya",
-      "no date and slot yet: the publisher skips a post without one") }]
-    : past ? [...flags, { hard: true, where: t("Kedudukan", "Position"), msg: post.stream === "linkedin"
-      ? t("slot ini sudah lepas: penerbit tidak menghantar post LinkedIn selepas harinya (slot selepas 19:20 dihantar pada 06:20 esoknya). Pilih tarikh atau slot baharu.",
-        "this slot has passed: the publisher never sends a LinkedIn post after its day (a slot after 19:20 goes at 06:20 the next day). Pick a new date or slot.")
-      : t("slot ini sudah lepas: penerbit tidak menghantar post yang lewat lebih 45 minit. Pilih tarikh atau slot baharu.",
-        "this slot has passed: the publisher never sends a post more than 45 minutes late. Pick a new date or slot.") }]
+    ? [...flags, { hard: false, where: t("Kedudukan", "Position"), msg: `${t("belum ada tarikh dan slot.", "no date and slot yet.")} ${goesTo}`.trim() }]
+    : past ? [...flags, { hard: false, where: t("Kedudukan", "Position"), msg: `${post.stream === "linkedin"
+      ? t("slot ini sudah lepas: penerbit tidak menghantar post LinkedIn selepas harinya (slot selepas 19:20 dihantar pada 06:20 esoknya).",
+        "this slot has passed: the publisher never sends a LinkedIn post after its day (a slot after 19:20 goes at 06:20 the next day).")
+      : t("slot ini sudah lepas: penerbit tidak menghantar post yang lewat lebih 45 minit.",
+        "this slot has passed: the publisher never sends a post more than 45 minutes late.")} ${post.status === "approved"
+      ? t("Penerbit memindahkannya ke slot kosong seterusnya pada lariannya yang berikut.", "The publisher moves it to the next free slot at its next run.")
+      : goesTo}`.trim() }]
       : [...flags];
-  if (clash.length && !locked) shownFlags.push({ hard: true, where: t("Kedudukan", "Position"), msg: t(
-    "slot ini sudah dipegang oleh: {h}. Satu slot, satu post: pindahkan salah satu.",
-    "this slot is already held by: {h}. One post to a slot: move one of the two.", { h: clash.map((p) => p.hook || p.id.slice(0, 8)).join(" · ") }) });
+  if (clash.length && !locked) shownFlags.push({ hard: false, where: t("Kedudukan", "Position"), msg: `${t(
+    "slot ini sudah dipegang oleh: {h}. Satu slot, satu post.",
+    "this slot is already held by: {h}. One post to a slot.", { h: clash.map((p) => p.hook || p.id.slice(0, 8)).join(" · ") })} ${goesTo}`.trim() });
   if (dups.length && !locked) shownFlags.push({ hard: true, where: t("Duplikasi", "Duplicate"), msg: t(
     "perkataan yang sama sudah ada pada: {h}. Ubah ayatnya atau tolak salah satu post.",
     "these words are already in: {h}. Change the wording or reject one of the two posts.", { h: dups.map((p) => `${p.hook || p.id.slice(0, 8)} (${p.date || "-"})`).join(" · ") }) });
@@ -186,7 +192,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
     "{n} attached picture(s) were deleted: remove them from this post", { n: gone.length }) });
   if (unready.length) shownFlags.push({ hard: true, where: t("Gambar", "Pictures"), msg: t("{n} gambar yang dilampirkan belum siap atau gagal",
     "{n} attached picture(s) are not finished or failed", { n: unready.length }) });
-  const blocking = hard + (past ? 1 : 0) + (gone.length ? 1 : 0) + (unready.length ? 1 : 0) + (clash.length ? 1 : 0) + (dups.length ? 1 : 0);
+  const blocking = hard + (gone.length ? 1 : 0) + (unready.length ? 1 : 0) + (dups.length ? 1 : 0);
 
   function setCaption(lg, plat, v) {
     setText((prev) => ({ ...prev, [lg]: { ...(prev[lg] || {}), [plat]: v } }));
@@ -211,6 +217,25 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   const dirty = JSON.stringify(text) !== JSON.stringify(post.text || {}) || citation !== (post.citation || "")
     || (date || "") !== (post.date || "") || (slot || "") !== (post.slot || "")
     || JSON.stringify(mediaIds) !== JSON.stringify(post.media_ids || []);
+
+  // Approve keeps the post's own slot while it is still usable; with no slot, a slot gone by or a slot another post holds it
+  // goes on the next free slot of its stream (Wan, 22 Nov 2026: "auto cari next slot"). The slots are re-read from the database
+  // first (the list on screen can be a poll behind), and the database's own slot guard (supabase/026) still has the last word.
+  async function approve() {
+    setBusy(true);
+    const { data: live, error } = await supabase.from(TABLES.posts).select("id,stream,status,date,slot")
+      .eq("stream", post.stream || "regulab").neq("status", "rejected").gte("date", new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10));
+    setBusy(false);
+    if (error) return onToast(errText(error), "danger");
+    const pos = approvePosition({ post, date, slot, posts: live || posts, brand });
+    if (!pos) return onToast(t("Tiada slot kosong dalam 60 hari: pilih tarikh dahulu.", "No free slot in the next 60 days: pick a date first."), "warn");
+    if (pos.moved) { setDate(pos.date); setSlot(pos.slot); }
+    const was = `${pos.from?.date || "-"} ${pos.from?.slot || ""}`.trim();
+    const note = pos.moved ? `moved from ${was} to ${pos.date} ${pos.slot}: ${{ none: "it had no date or slot", past: "its slot had passed", taken: "its slot was held by another post" }[pos.why]}` : "";
+    await write({ ...content(), date: pos.date, slot: pos.slot, status: "approved", ...decided("approved", note) },
+      pos.moved ? t("Diluluskan, dan dipindah ke {d} {s} (slot kosong seterusnya).", "Approved, and moved to {d} {s} (the next free slot).", { d: pos.date, s: pos.slot })
+        : t("Diluluskan.", "Approved."));
+  }
 
   // Restore goes back on its own slot while that is still ahead and free, else on the next free one for the stream
   // (Studio's restoreDraft put two posts on one slot until it asked claimSlot; the slot is re-read from the database
@@ -426,8 +451,8 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
             { c: sentPlats.map((c) => PLAT_LABEL[c] || c).join(", ") })}</p>
       )}
       {clash.length > 0 && !locked && (
-        <p className="-mt-2 text-[12px] text-danger">{t("Slot ini sudah dipegang oleh: {h}. Satu slot, satu post: ia tidak boleh diluluskan sehingga salah satu dipindah.",
-          "This slot is already held by: {h}. One post to a slot: it cannot be approved until one of the two moves.", { h: clash.map((p) => p.hook || p.id.slice(0, 8)).join(" · ") })}</p>
+        <p className="-mt-2 text-[12px] text-muted">{t("Slot ini sudah dipegang oleh: {h}. Satu slot, satu post: Lulus akan meletakkannya pada slot kosong seterusnya.",
+          "This slot is already held by: {h}. One post to a slot: Approve puts it on the next free slot instead.", { h: clash.map((p) => p.hook || p.id.slice(0, 8)).join(" · ") })}</p>
       )}
 
       {dups.length > 0 && !locked && (
@@ -555,9 +580,9 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       {!locked && <div data-post-actions className="sticky z-10 -mx-4 flex flex-wrap items-center border-t border-line bg-surface/95 px-4 py-2 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none gap-1.5 [&>button]:min-h-[44px] [&>button]:px-3 sm:gap-2 sm:[&>button]:min-h-0 sm:[&>button]:px-4 [&>button:not([data-icon-only])>svg]:hidden sm:[&>button:not([data-icon-only])>svg]:inline"
         style={{ bottom: "var(--tabbar-h, 0px)" }}>
         {post.status !== "approved" && !locked && (
-          <Button disabled={busy || blocking > 0 || !date || !slot} onClick={() => write({ ...content(), status: "approved", ...decided("approved") }, t("Diluluskan.", "Approved."))}
+          <Button disabled={busy || blocking > 0} onClick={approve}
             title={blocking ? t("Selesaikan perkara bertanda ■ dahulu", "Resolve the items marked ■ first")
-              : !date || !slot ? t("Pilih tarikh dan slot", "Choose a date and slot") : ""}>
+              : willGo?.moved ? goesTo : ""}>
             <Check size={13} /> {t("Luluskan", "Approve")}
           </Button>
         )}

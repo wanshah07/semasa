@@ -83,8 +83,8 @@ def problems(store: Any, zernio: Any, now: datetime, settings: dict[str, Any]) -
             for ch in publisher.post_channels(settings, post):
                 if not published.get(ch):
                     out.append({"post_id": pid, "channel": ch, "kind": "missed",
-                                "message": f"{ch} was never handed over and its slot has passed; the publisher leaves a late "
-                                           "post alone (send it now, or move it)",
+                                "message": f"{ch} was never handed over and its slot has passed; it is never sent late: the "
+                                           "publisher moves it to the next free slot at its next run",
                                 "title": f"Terlepas slot di {ch}: {_hook(post)}", "due": due.isoformat()})
         if again and due < now - publisher.LATE_GRACE:
             for ch in again:

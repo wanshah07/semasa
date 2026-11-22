@@ -50,8 +50,8 @@ export default function Guide({ open, onClose, settings = {}, brand }) {
 
         <div className={sec}>
           <h4 className="text-sm font-semibold">{t("2 · Bila post keluar", "2 · When a post goes out")}</h4>
-          <Pair bm={`Slot ws.regulab: ${reg} MYT. Slot LinkedIn: ${li} MYT${liDays ? `, pada ${liDays.map((d) => DAYS_BM[d]).join(", ")}` : ", setiap hari"}. Penerbit berjalan pada ${runs} MYT. Post yang lewat lebih ${LATE_GRACE_MIN} minit dari slotnya tidak dihantar: pindahkan ia (tab Post → Jadual → Pindah semua).`}
-            en={`ws.regulab slots: ${reg} MYT. LinkedIn slots: ${li} MYT${liDays ? `, on ${liDays.map((d) => DAYS_EN[d]).join(", ")}` : ", every day"}. The publisher runs at ${runs} MYT. A post more than ${LATE_GRACE_MIN} minutes past its slot is never sent: move it (Posts → Schedule → Bump all).`} />
+          <Pair bm={`Slot ws.regulab: ${reg} MYT. Slot LinkedIn: ${li} MYT${liDays ? `, pada ${liDays.map((d) => DAYS_BM[d]).join(", ")}` : ", setiap hari"}. Penerbit berjalan pada ${runs} MYT. Post yang lewat lebih ${LATE_GRACE_MIN} minit dari slotnya tidak dihantar lewat: post diluluskan dipindah sendiri ke slot kosong seterusnya, dan draf dipindah apabila anda meluluskannya (di Semasa atau Telegram).`}
+            en={`ws.regulab slots: ${reg} MYT. LinkedIn slots: ${li} MYT${liDays ? `, on ${liDays.map((d) => DAYS_EN[d]).join(", ")}` : ", every day"}. The publisher runs at ${runs} MYT. A post more than ${LATE_GRACE_MIN} minutes past its slot is never sent late: an approved one moves to the next free slot by itself, and a draft moves when you approve it (in Semasa or on Telegram).`} />
           <p className={`rounded-tile p-2 text-[12.5px] ${publishing ? "bg-ok/10 text-ok" : "bg-warn/10 text-ink"}`}>
             {publishing
               ? t("Penerbitan HIDUP.", "Publishing is ON.")

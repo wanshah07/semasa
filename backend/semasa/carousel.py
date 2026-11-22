@@ -220,6 +220,7 @@ COVER_WHITE = (255, 255, 255)
 COVER_INK = (17, 17, 17)
 COVER_RED = (211, 32, 39)
 COVER_MUTED = (90, 90, 90)
+COVER_VERSION = 2          # 1: the dark green cover; 2: white, light-blue waves, red hook word (22 Nov 2026)
 COVER_SECONDS = 1.1                    # the cover frame at the start of a film (TikTok takes its cover at 1.0 s by default)
 
 

@@ -213,3 +213,54 @@ def test_the_setting_brings_the_ride_along_back():
     post = {"stream": "regulab", "channels": ["instagram"]}
     assert publisher.post_channels(_settings(tiktok_with_film=True), post, has_video=True) == ["instagram", "tiktok"]
     assert publisher.post_channels(_settings(tiktok_with_film=True), post, has_video=False) == ["instagram"]
+
+
+def _cats(monkeypatch, sent, extra=True):
+    """settings with the cat series' own TikTok account as an extra (Wan, 22 Nov 2026), beside the main TikTok."""
+    zcfg = {"enabled": True, "accounts": {c: {"id": f"a-{c}", "key": "1"} for c in ("instagram", "tiktok")},
+            "formats": {"instagram": ["video"], "tiktok": ["video"]}}
+    if extra:
+        zcfg["extra"] = {"tiktok_cats": {"id": "6b02e881c90d45ebb59674bd", "key": "3", "platform": "tiktok", "label": "Cats"}}
+    monkeypatch.setattr(zernio_publish, "load_settings", lambda store: {"channels": {"zernio": zcfg}})
+
+    class Hub:
+        def create_video(self, account, service, caption, film, due):
+            sent.append((account, service, caption))
+            return {"id": f"id-{account}", "status": "scheduled"}
+    monkeypatch.setattr(zernio_publish, "zernio_hub", lambda cfg: Hub())
+    monkeypatch.setattr(film_ratio, "for_stream", lambda store, film, stream: {**film, "url": "https://cdn.test/up.mp4"})
+
+
+def test_the_cat_series_tiktok_is_its_own_account_on_the_tiktok_platform(monkeypatch):
+    sent = []
+    _cats(monkeypatch, sent)
+    out = zernio_publish.run(object(), "https://x/f.mp4", ["tiktok_cats"], {"tiktok_cats": "Comot dan kawan-kawan"})
+    assert sent == [("6b02e881c90d45ebb59674bd", "tiktok", "Comot dan kawan-kawan")], "its own account id, sent as TikTok"
+    assert out["tiktok_cats"]["status"] == "scheduled"
+    assert "tiktok" not in out, "the main TikTok is not touched"
+
+
+def test_the_cat_series_account_takes_the_tiktok_caption_when_it_has_none_and_the_main_tiktok_is_unaffected(monkeypatch):
+    sent = []
+    _cats(monkeypatch, sent)
+    zernio_publish.run(object(), "https://x/f.mp4", ["tiktok", "tiktok_cats"], {"tiktok": "Satu"})
+    assert sent == [("a-tiktok", "tiktok", "Satu"), ("6b02e881c90d45ebb59674bd", "tiktok", "Satu")]
+
+
+def test_an_extra_account_settings_does_not_hold_is_refused_not_guessed(monkeypatch):
+    sent = []
+    _cats(monkeypatch, sent, extra=False)
+    out = zernio_publish.run(object(), "https://x/f.mp4", ["tiktok_cats"], {})
+    assert sent == [] and "no Zernio account id" in out["tiktok_cats"]["error"]
+
+
+def test_channel_names_are_checked_and_the_extra_accounts_stay_out_of_the_publishers_platforms():
+    assert zernio_publish._channels("instagram,tiktok_cats") == ["instagram", "tiktok_cats"]
+    for bad in ("threads", "linkedin", "tiktok cats", "x"):
+        with pytest.raises(SystemExit):
+            zernio_publish._channels(bad)
+    zcfg = {"enabled": True, "accounts": {"tiktok": {"id": "t", "key": "3"}},
+            "extra": {"tiktok_cats": {"id": "c", "key": "3", "platform": "tiktok"}, "no_platform": {"id": "z"}}}
+    assert set(publisher.zernio_accounts(zcfg)) == {"tiktok"}, "the publisher's queue, tally and figures never see it"
+    assert set(publisher.zernio_extra_accounts(zcfg)) == {"tiktok_cats"}
+    assert publisher.zernio_extra_accounts({**zcfg, "enabled": False}) == {}

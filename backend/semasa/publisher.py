@@ -237,11 +237,26 @@ def zernio_accounts(zcfg: dict[str, Any]) -> dict[str, dict[str, str]]:
     return out
 
 
+def zernio_extra_accounts(zcfg: dict[str, Any]) -> dict[str, dict[str, str]]:
+    """Accounts a film may be sent to by name that are NOT one of the stream's platforms (Wan, 22 Nov 2026: a second TikTok
+    account for the cat series): {name: {"id", "key", "platform"}} from settings.channels.zernio.extra. They are kept apart from
+    `accounts` on purpose: the publisher's queue cap, tally, pull-back and figures all read `accounts` by platform, and a second
+    TikTok there would be counted as the first. Only zernio_publish (Hermes handing a finished film over) sends to these."""
+    if zcfg.get("enabled") is not True:
+        return {}
+    out = {}
+    for name, acc in (zcfg.get("extra") or {}).items():
+        if isinstance(acc, dict) and acc.get("id") and acc.get("platform") and acc.get("on", True) is not False:
+            out[str(name)] = {"id": str(acc["id"]), "key": str(acc.get("key") or "1"), "platform": str(acc["platform"]),
+                              "label": str(acc.get("label") or name)}
+    return out
+
+
 def zernio_hub(zcfg: dict[str, Any]) -> Any:
     """The Zernio sender, or None. Each login's key is a secret named ZERNIO_API_KEY_<key> (three logins: 1, 2, 3)."""
     by_account: dict[str, Any] = {}
     made: dict[str, Any] = {}
-    for acc in zernio_accounts(zcfg).values():
+    for acc in [*zernio_accounts(zcfg).values(), *zernio_extra_accounts(zcfg).values()]:
         secret = os.environ.get(f"ZERNIO_API_KEY_{acc['key']}")
         if secret:
             by_account[acc["id"]] = made.setdefault(acc["key"], senders.Zernio(secret))

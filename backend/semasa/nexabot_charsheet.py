@@ -18,23 +18,14 @@ from pathlib import Path
 
 from . import nexabot_check as chk
 from . import nexabot_generate as gen
+from . import short_films
 
 IMG_URL = chk.ORIGIN + "/image-generator"
 VID_URL = chk.ORIGIN + "/video-generator"
 
-CHAR_SHEET_PROMPT = (
-    "Photorealistic character sheet, two real people standing side by side, full body, facing the camera, "
-    "soft even lighting, inside a Malaysian sundry shop (kedai runcit) with a fresh fish display nearby: "
-    "on the left, Hana, a young Malaysian woman wearing a pastel pink hijab (tudung) and a cream blouse, natural friendly "
-    "smile, holding a fresh whole fish in one hand and a small orange cat perched in her other arm near her chest, "
-    "the orange cat meowing with its mouth open, looking at the fish; "
-    "on the right, Hassan, a Malaysian man in his thirties, short black hair, black-rimmed glasses, navy blue polo "
-    "shirt, calm confident expression, standing beside fresh fish and vegetables on the shop shelves. "
-    "Behind them, a few blurred shoppers walk past casually. "
-    "The orange cat and the fresh fish are clearly visible, close to Hana. "
-    "Highly detailed faces, natural skin texture, realistic proportions. "
-    "No text, no logo, no watermark, no cartoon, no illustration."
-)
+# the halal family's sheet, from its short-film category (rules/short_films.json): the ONE place it is edited each episode (an
+# episode's edit used to be made here as well, and the two copies drifted apart); the cat film swaps in its own before run()
+CHAR_SHEET_PROMPT = short_films.category_of(short_films.library(), "kisah-keluarga-halal")["script"]["sheet_prompt"]
 
 
 def _is_image(ctype, url):

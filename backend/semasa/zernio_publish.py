@@ -22,13 +22,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import sys
 from typing import Any
 
 from . import db, film_ratio
 from .config import SupabaseSettings
 from .log import get_logger
-from .publisher import ZERNIO_FORMATS, load_settings, zernio_accounts, zernio_hub
+from .publisher import ZERNIO_FORMATS, load_settings, zernio_accounts, zernio_extra_accounts, zernio_hub
 
 log = get_logger("semasa.zernio_publish")
 
@@ -45,11 +47,17 @@ def _captions(raw: str, channels: list[str]) -> dict[str, str]:
     return {c: str(obj[c]).strip() for c in channels if str(obj.get(c) or "").strip()}
 
 
+EXTRA_NAME = re.compile(r"^[a-z][a-z0-9_]{2,30}$")
+
+
 def _channels(raw: str) -> list[str]:
+    """The channels asked for: a film platform, or the name of an extra account in settings (the cat series' own TikTok is
+    `tiktok_cats`); `run` refuses a name settings does not hold."""
     out = [c.strip() for c in (raw or "").split(",") if c.strip()]
-    bad = [c for c in out if c not in VIDEO_PLATFORMS]
+    bad = [c for c in out if c not in VIDEO_PLATFORMS and not (EXTRA_NAME.match(c) and "_" in c)]
     if bad:
-        raise SystemExit(f"unknown channel(s): {', '.join(bad)} (allowed: {', '.join(VIDEO_PLATFORMS)})")
+        raise SystemExit(f"unknown channel(s): {', '.join(bad)} "
+                         f"(allowed: {', '.join(VIDEO_PLATFORMS)}, or an extra account name)")
     return out
 
 
@@ -63,6 +71,7 @@ def run(
     settings = load_settings(store)
     zcfg = (settings.get("channels") or {}).get("zernio") or {}
     accounts = zernio_accounts(zcfg)
+    extra = zernio_extra_accounts(zcfg)
     if not accounts:
         raise SystemExit("Zernio is not enabled (settings.channels.zernio.enabled is not true)")
     hub = zernio_hub(zcfg)
@@ -74,14 +83,18 @@ def run(
     out: dict[str, Any] = {}
     fitted: list[dict[str, Any]] = []
     for channel in channels:
-        acc = accounts.get(channel)
+        acc = accounts.get(channel) if channel in VIDEO_PLATFORMS else extra.get(channel)
         if acc is None:
-            out[channel] = {"error": f"no Zernio account id for {channel} in settings.channels.zernio.accounts"}
+            out[channel] = {"error": f"no Zernio account id for {channel} in settings.channels.zernio.accounts or .extra"}
             continue
-        if "video" not in formats.get(channel, ()):
-            out[channel] = {"error": f"{channel} is not configured to take a video (formats: {formats.get(channel)})"}
+        service = acc.get("platform") or channel                 # an extra account names the platform it lives on
+        if "video" not in formats.get(service, ()):
+            out[channel] = {"error": f"{channel} is not configured to take a video (formats: {formats.get(service)})"}
             continue
+        # an extra TikTok carries its own caption, else the main TikTok's, else the Instagram one (TikTok reads that)
         caption = captions.get(channel) or ""
+        if not caption and channel != service:
+            caption = captions.get(service) or captions.get("instagram") or ""
         # Every channel here is a ws.regulab one, which takes the stream's shape (upright 9:16): a film of another shape (Hermes /
         # Nous, usually 16:9) goes as a fitted copy, made once for all of them (film_ratio). When the copy cannot be made no
         # channel gets the film in the wrong shape.
@@ -94,20 +107,48 @@ def run(
         if video.get("error"):
             out[channel] = {"error": video["error"]}
             continue
-        rec = hub.create_video(acc["id"], channel, caption, video, due_at)
+        rec = hub.create_video(acc["id"], service, caption, video, due_at)
         out[channel] = {"id": rec.get("id"), "status": rec.get("status"), "due_at": rec.get("dueAt") or "now"}
         log.info("zernio publish %s: %s", channel, out[channel])
     return out
 
 
+def list_accounts() -> int:
+    """Which Zernio login holds which social account (ids, platforms and names only, never a key): to find the `key` an account
+    belongs to before it is added to settings.channels.zernio. One line per account, for each ZERNIO_API_KEY_<n> that is set."""
+    from . import senders
+    found = 0
+    for n in ("1", "2", "3", "4", "5"):
+        secret = os.environ.get(f"ZERNIO_API_KEY_{n}")
+        if not secret:
+            continue
+        try:
+            accounts = senders.Zernio(secret).accounts()
+        except Exception as exc:  # noqa: BLE001 - one login failing must not hide the others
+            print(f"key {n}: could not list accounts ({str(exc)[:120]})")
+            continue
+        for a in accounts:
+            found += 1
+            print(f"key {n}: {a.get('_id') or a.get('id')}  {a.get('platform')}  "
+                  f"{a.get('username') or a.get('displayName') or a.get('name') or ''}  "
+                  f"{'ACTIVE' if a.get('isActive', True) else 'inactive'}")
+    print(f"{found} account(s) in total")
+    return 0 if found else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Publish a finished film to social platforms via Zernio.")
-    ap.add_argument("--video-url", required=True)
+    ap.add_argument("--list-accounts", action="store_true", help="print which login holds which account, and stop")
+    ap.add_argument("--video-url", default="")
     ap.add_argument("--channels", default="facebook,instagram,tiktok")
     ap.add_argument("--captions-json", default="{}")
     ap.add_argument("--scheduled-for", default="")
     args = ap.parse_args()
 
+    if args.list_accounts:
+        return list_accounts()
+    if not args.video_url:
+        raise SystemExit("--video-url is required")
     channels = _channels(args.channels)
     captions = _captions(args.captions_json, channels)
     store = db.client(SupabaseSettings.load())

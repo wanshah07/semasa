@@ -9,14 +9,20 @@ name: Zernio publish
 on:
   workflow_dispatch:
     inputs:
+      list_accounts:
+        description: "Only print which Zernio login holds which social account (no key is printed), then stop"
+        required: false
+        default: false
+        type: boolean
       video_url:
-        description: "Public https URL of the finished MP4"
-        required: true
+        description: "Public https URL of the finished MP4 (not needed for list_accounts)"
+        required: false
+        default: ""
         type: string
       channels:
-        description: "Comma list: facebook,instagram,threads,tiktok"
-        required: true
-        default: "facebook,instagram,threads,tiktok"
+        description: "Comma list: facebook,instagram,tiktok, and tiktok_cats for the cat series' own TikTok (a film never goes to Threads)"
+        required: false
+        default: "facebook,instagram,tiktok"
         type: string
       captions_json:
         description: 'JSON object {"facebook":"...","instagram":"...","threads":"...","tiktok":"..."}'
@@ -57,11 +63,16 @@ jobs:
           ZERNIO_API_KEY_2: ${{ secrets.ZERNIO_API_KEY_2 }}
           ZERNIO_API_KEY_3: ${{ secrets.ZERNIO_API_KEY_3 }}
           # inputs arrive as environment variables; a caption with quotes/`$` is safe here
+          ZP_LIST: ${{ inputs.list_accounts }}
           ZP_VIDEO_URL: ${{ inputs.video_url }}
           ZP_CHANNELS: ${{ inputs.channels }}
           ZP_CAPTIONS_JSON: ${{ inputs.captions_json }}
           ZP_SCHEDULED_FOR: ${{ inputs.scheduled_for }}
         run: |
+          if [ "$ZP_LIST" = "true" ]; then
+            python -m semasa.zernio_publish --list-accounts
+            exit $?
+          fi
           python -m semasa.zernio_publish \
             --video-url "$ZP_VIDEO_URL" \
             --channels "$ZP_CHANNELS" \

@@ -7,6 +7,10 @@ name: Nexabot comic film
 on:
   workflow_dispatch:
     inputs:
+      category:
+        description: "Built-in short-film category whose panel lines are burned in"
+        type: string
+        default: "kisah-keluarga-halal"
       dry:
         description: "true = do everything except press Generate (spends nothing)"
         type: boolean
@@ -41,12 +45,12 @@ jobs:
       - name: Animate the panels
         env:
           NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
+          NB_CATEGORY: ${{ inputs.category }}
+          NB_DRY: ${{ inputs.dry }}
         run: |
-          if [ "${{ inputs.dry }}" = "true" ]; then
-            python -m semasa.nexabot_comic_film "$RUNNER_TEMP/nexabot-film" --dry
-          else
-            python -m semasa.nexabot_comic_film "$RUNNER_TEMP/nexabot-film"
-          fi
+          args=("$RUNNER_TEMP/nexabot-film" --category "${NB_CATEGORY:-kisah-keluarga-halal}")
+          if [ "$NB_DRY" = "true" ]; then args+=(--dry); fi
+          python -m semasa.nexabot_comic_film "${args[@]}"
       - name: Keep the film and report (one day)
         if: always()
         uses: actions/upload-artifact@v4

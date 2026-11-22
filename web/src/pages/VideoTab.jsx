@@ -15,6 +15,7 @@ import Card from "../components/ui/Card";
 import { Input, Label, Segmented, Select, TextArea } from "../components/ui/Field";
 import MotionLab from "../components/MotionLab";
 import VideoImportCard from "../components/VideoImportCard";
+import ShortFilmCategories from "../components/ShortFilmCategories";
 import MediaUploader from "../components/MediaUploader";
 import PromptLibrary from "../components/PromptLibrary";
 import { useView } from "../components/ViewToggle";
@@ -71,7 +72,7 @@ function useVideos(enabled) {
    motion repos, uploads) are on their own page beside it. */
 const MODES = ["motion", "ai", "clips"];
 
-export default function VideoTab({ user, gens, brand, onToast, openPost, prompts, go }) {
+export default function VideoTab({ user, gens, brand, onToast, openPost, prompts, go, settings, saveSetting }) {
   const { t } = useLang();
   const [raw, setMode] = useView("video.mode", "motion");
   const mode = MODES.includes(raw) ? raw : "motion";
@@ -95,6 +96,7 @@ export default function VideoTab({ user, gens, brand, onToast, openPost, prompts
 
       {mode === "motion" && <MotionLab user={user} onToast={onToast} view="make" />}
       {mode === "motion" && <VideoImportCard onToast={onToast} go={go} />}
+      {mode === "motion" && <ShortFilmCategories settings={settings} saveSetting={saveSetting} onToast={onToast} />}
 
       {mode === "ai" && (
         <>

@@ -1,14 +1,25 @@
 name: Nexabot cat film
 
-# A short photorealistic film in Bahasa Malaysia (a cat and his two friends), made with Nexabot's image, video and voice
-# generators and mixed with ffmpeg. A file for Wan to watch: nothing is imported into Semasa, no post, no gate. By hand only.
+# A short photorealistic film in Bahasa Malaysia, made with Nexabot's image, video and voice generators and mixed with ffmpeg. A file
+# for Wan to watch: nothing is imported into Semasa, no post, no gate. By hand only.
+# The film is a short-film CATEGORY (rules/short_films.json + Wan's own from the page's Motion tab, settings row `short_films`).
+# `cats` (Comot, Putih and Belang) is the default and films its hand-written script word for word; one of Wan's own is written
+# by the writer from its cast, setting and style plus `topic` (read script.json in the artifact). See backend/semasa/short_films.py.
 on:
   workflow_dispatch:
     inputs:
-      voice:
-        description: "Voice Generator voice for the narrator"
+      category:
+        description: "Short-film category id (cats, or one of yours from the Motion tab)"
         type: string
-        default: "Sulafat"
+        default: "cats"
+      topic:
+        description: "The day's topic, for a category of yours (the writer writes the scenes from it)"
+        type: string
+        default: ""
+      voice:
+        description: "Voice Generator voice for the narrator (empty = the category's)"
+        type: string
+        default: ""
       dry:
         description: "true = print the plan and spend nothing"
         type: boolean
@@ -43,10 +54,26 @@ jobs:
       - name: Make the film
         env:
           NEXABOT_STORAGE_STATE_B64: ${{ secrets.NEXABOT_STORAGE_STATE_B64 }}
+          NB_CATEGORY: ${{ inputs.category }}
+          NB_TOPIC: ${{ inputs.topic }}
           NB_VOICE: ${{ inputs.voice }}
           NB_DRY: ${{ inputs.dry }}
+          # read only for one of Wan's own categories: the settings row `short_films` and the writer that writes its scenes
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_ALLOWED_HOSTS: ${{ vars.LLM_ALLOWED_HOSTS }}
+          LLM_FALLBACK_BASE_URL: ${{ vars.LLM_FALLBACK_BASE_URL }}
+          LLM_FALLBACK_MODEL: ${{ vars.LLM_FALLBACK_MODEL }}
+          LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
+          LLM_FALLBACK_ALLOWED_HOSTS: ${{ vars.LLM_FALLBACK_ALLOWED_HOSTS }}
+          LLM_TIMEOUT: "180"
         run: |
-          args=("$RUNNER_TEMP/nexabot-cat-film" --voice "$NB_VOICE")
+          args=("$RUNNER_TEMP/nexabot-cat-film" --category "${NB_CATEGORY:-cats}" --topic "$NB_TOPIC")
+          if [ -n "$NB_VOICE" ]; then args+=(--voice "$NB_VOICE"); fi
           if [ "$NB_DRY" = "true" ]; then args+=(--dry); fi
           python -m semasa.nexabot_cat_film "${args[@]}"
       - name: Keep the film and report (one day)
@@ -57,6 +84,7 @@ jobs:
           path: |
             /home/runner/work/_temp/nexabot-cat-film/*.mp4
             /home/runner/work/_temp/nexabot-cat-film/report.json
+            /home/runner/work/_temp/nexabot-cat-film/script.json
             /home/runner/work/_temp/nexabot-cat-film/sheet/charsheet.png
             /home/runner/work/_temp/nexabot-cat-film/clips/*.mp4
           retention-days: 1

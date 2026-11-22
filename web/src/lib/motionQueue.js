@@ -2,7 +2,7 @@
    the video can directly post or queue to post to platform ... remove from motion list"). The film becomes a DRAFT post in the
    Posts queue through semasa_queue_motion (supabase/051): the single gate stays Wan's Approve click there, and the publisher scans
    the post again before it sends. No imports beyond the scanners, the slots and platformFormat.js, so web/motionQueue.test.mjs runs this under Node as it is. */
-import { LIMITS, hardCount, platformsFor, readsMalay, scan } from "./compliance.js";
+import { LIMITS, filmPlatformsFor, hardCount, readsMalay, scan } from "./compliance.js";
 import { sizeFor } from "./platformFormat.js";
 import { nextFreeSlot } from "./slots.js";
 
@@ -12,9 +12,10 @@ export const CHANNEL_LABEL = { facebook: "Facebook", instagram: "Instagram", thr
     caption of its own (it carries Instagram's), so it never gets a field, and it is off unless Wan ticks it. */
 export const tiktokOffered = (film, channels) => (film?.stream || "regulab") === "regulab" && (channels || []).includes("instagram");
 
-/** The platforms a film can go to: its stream's own (ws.regulab speaks BM to SMEs on Facebook, Instagram and Threads; the LinkedIn
-    stream is Wan's own English byline). Two voices are never mixed, so a film is never offered to the other stream's platforms. */
-export const channelsFor = (film) => platformsFor(film?.stream || "regulab");
+/** The platforms a film can go to: Instagram (a Reel) and Facebook, plus the TikTok tick, never Threads or LinkedIn (Wan, 22 Nov
+    2026: "Make sure film and motion only for ig reel, facebook and tiktok"). Two voices are never mixed, so a film is never offered
+    to the other stream's platforms: a LinkedIn film has none. */
+export const channelsFor = (film) => filmPlatformsFor(film?.stream || "regulab");
 
 /** The language of the post a film becomes: what the film says, and for a bilingual film the stream's own. */
 // the LinkedIn stream is English whatever language the film is in (Wan, 27 Oct 2026: "untuk linkedn post, make sure the caption is in english")

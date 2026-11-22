@@ -904,7 +904,7 @@ def test_the_draft_post_is_a_draft_on_the_next_free_slot_with_the_film_and_nothi
     post = posts[0]
     assert post["status"] == "draft" and post["stream"] == "regulab" and post["lang"] == "bm"
     assert (post["date"], post["slot"]) == (tomorrow_myt, "08:00"), "the next free slot, from tomorrow"
-    assert sorted(post["channels"]) == ["facebook", "instagram", "threads"] and post["text"]["bm"]["instagram"]
+    assert sorted(post["channels"]) == ["facebook", "instagram"] and post["text"]["bm"]["instagram"], "a film is never Threads'"
     assert post["citation"] == "Buletin TV3" or post["citation"].startswith("Buletin TV3")
     film_media = [m for m in store.tables["media_generations"] if m.get("type") == "video"]
     assert len(film_media) == 1 and post["media_ids"] == [film_media[0]["id"]] and film_media[0]["post_id"] == post["id"]
@@ -930,13 +930,13 @@ def test_a_caption_that_rules_or_links_is_replaced_by_the_storyboards_own_words(
     comic_film.make_film(store, bad, asked, SETTINGS, tmp_path / "b", runner=run, s=MEDIA, draw=draw, read=None)
     got = store.table("semasa_motions").select("*").eq("id", row["id"]).execute().data[0]
     assert got["captions"]["facebook"] == "Dua ditahan guna sijil halal palsu."
-    for plat in ("instagram", "threads"):
+    for plat in ("instagram",):
         assert (
             "Sumber: Buletin TV3" in got["captions"][plat]
             and "www." not in got["captions"][plat]
             and "Hukumnya" not in got["captions"][plat]
         )
-    assert sorted(got["check_report"]["captions_from_storyboard"]) == ["instagram", "threads"]
+    assert sorted(got["check_report"]["captions_from_storyboard"]) == ["instagram"]
 
 
 # ------------------------------------------------------------------------------------------------ failure and resume

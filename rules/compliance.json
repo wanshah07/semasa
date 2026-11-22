@@ -10,6 +10,8 @@
    "linkedin"
   ]
  },
+ "film_platforms_about": "Wan, 22 Nov 2026: \"Make sure film and motion only for ig reel, facebook and tiktok\". A post that carries a film (a Motion film, an imported video, a clip, the daily comic film) goes to these platforms only: Instagram as a Reel, Facebook, TikTok (TikTok still only when asked, per post). Never Threads, never LinkedIn.",
+ "film_platforms": ["instagram", "facebook", "tiktok"],
  "default_lang": {
   "regulab": "bm",
   "linkedin": "en"

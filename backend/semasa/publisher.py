@@ -268,6 +268,12 @@ def post_channels(settings: dict[str, Any], post: dict[str, Any], has_video: boo
     "tiktok" in its own `channels` (the tick in Motion), or it already holds a TikTok record.
     `has_video` None means "whatever it already recorded" (the tally)."""
     out = [p for p in buffer_channels(settings, post.get("stream") or "regulab") if p in compliance.platforms_of(post)]
+    if has_video:
+        # a film goes to Instagram (a Reel), Facebook and TikTok only, never Threads or LinkedIn (Wan, 22 Nov 2026: "Make sure
+        # film and motion only for ig reel, facebook and tiktok"). A channel that already holds a record is kept, so a film
+        # handed over before this rule is still counted and never sent twice.
+        held = set((post.get("published") or {}).keys())
+        out = [p for p in out if p in compliance.FILM_PLATFORMS or p in held]
     zcfg = (settings.get("channels") or {}).get("zernio") or {}
     zacc = zernio_accounts(zcfg)
     if "tiktok" in zacc and (post.get("stream") or "regulab") == "regulab" and "instagram" in out:
@@ -621,6 +627,14 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
     video = next((v for v in (video_of(m) for m in media) if v), None)      # a post's video stands alone (no pictures)
     alt = " ".join(str((m.get("meta") or {}).get("alt") or "") for m in media).strip()
     channels = post_channels(settings, post, has_video=bool(video))
+    if video and not channels:
+        # a film on a stream with no film platform (LinkedIn) has nowhere to go: said once, never sent
+        fp0 = fingerprint({"post": post["id"], "film_platforms": list(compliance.FILM_PLATFORMS)})
+        counts["blocked"] += 1
+        if not logged(store, post["id"], "film", "blocked", fp0):
+            write_log(store, post["id"], "film", "blocked", {"fingerprint": fp0, "why": [
+                "a film goes only to Instagram (Reel), Facebook and TikTok; this post's stream has none of them"]})
+        return
     zernio = clients.get("zernio")
     fitted: list[dict[str, Any]] = []
 

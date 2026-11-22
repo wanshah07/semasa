@@ -474,7 +474,7 @@ def test_a_linkedin_post_is_handed_to_zernio_only_within_30_hours_of_its_slot():
 def test_the_lead_does_not_apply_to_the_other_platforms():
     store, z = _store_ig(), FakeZernio()
     publisher.run(store, NOW, clients={"zernio": z})
-    assert {"instagram", "threads"} <= {x["service"] for x in z.created}               # six days ahead, still handed over
+    assert "instagram" in {x["service"] for x in z.created}                            # six days ahead, still handed over
 
 
 def _store_ig():

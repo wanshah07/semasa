@@ -707,7 +707,11 @@ def write_post(store: Any, row: dict[str, Any], video: dict[str, Any], meta: dic
     caption = str(meta.get("caption") or "").strip()
     if not caption:
         return None
-    text = ideas.normalise_text({lang: {p: caption for p in compliance.platforms_for(stream)}}, stream, lang)
+    plats = compliance.film_platforms_for(stream)      # a clip is a film: Instagram Reel and Facebook only (Wan, 22 Nov 2026)
+    if not plats:
+        log.info("video: a %s clip has no platform a film may go to; no draft written", stream)
+        return None
+    text = ideas.normalise_text({lang: {p: caption for p in plats}}, stream, lang)
     settings = ideas.load_settings(store)
     brand = settings.get("brand") or {}
     domain = video.get("domain") if stream == "regulab" else None

@@ -30,11 +30,11 @@ def test_the_writers_captions_are_fitted_cleaned_and_one_for_each_platform_of_th
     llm = FakeLLM([answer])
     got = motion_captions.write(llm, {"stream": "regulab"}, SCENES, "PFAS", lang="bm", voice="ws.regulab",
                                 speak_as=motion.speaker("bm"))
-    assert set(got) == {"instagram", "facebook", "threads"}
+    assert set(got) == {"instagram", "facebook"}, "a film is never Threads' (Wan, 22 Nov 2026)"
     assert "—" not in got["instagram"], "the anti-slop edits run on every caption"
-    assert len(got["threads"]) <= 500 and len(got["facebook"]) <= 63206
+    assert len(got["instagram"]) <= 2200 and len(got["facebook"]) <= 63206
     system, user = llm.asked[0]
-    assert "Under 420 characters" in system and "ONE tight post" in system and "Malaysian, never Indonesian" in system
+    assert "Malaysian, never Indonesian" in system and "threads" not in system.lower(), "no Threads caption is asked for a film"
     assert "Enam kategori bahan kosmetik dikaji" in user and "Jangan lupa follow kami" not in user, "the outro is not a fact"
     li = motion_captions.write(FakeLLM([{"captions": {"linkedin": "I read the instrument."}}]), {"stream": "linkedin"}, SCENES,
                                "PFAS", lang="en", voice="a named chemist", speak_as=motion.speaker("en"))
@@ -45,15 +45,15 @@ def test_a_writer_that_fails_leaves_captions_built_from_the_script():
     for llm in (None, FakeLLM([]), FakeLLM([{"captions": "not an object"}])):
         got = motion_captions.write(llm, {"stream": "regulab"}, SCENES, "PFAS: enam kategori", lang="bm", voice="v",
                                     speak_as=motion.speaker("bm"))
-        assert set(got) == {"instagram", "facebook", "threads"} and all(got.values())
-        assert got["threads"].startswith("PFAS: enam kategori") and len(got["threads"]) <= 500
+        assert set(got) == {"instagram", "facebook"} and all(got.values())
+        assert got["instagram"].startswith("PFAS: enam kategori") and len(got["instagram"]) <= 2200
         assert "Pengawet" in got["instagram"]
 
     class Boom:
         def chat_json(self, *a, **k):
             raise RuntimeError("down")
     assert motion_captions.write(Boom(), {"stream": "regulab"}, SCENES, "T", lang="en", voice="v",
-                                 speak_as=motion.speaker("en"))["threads"].startswith("T")
+                                 speak_as=motion.speaker("en"))["instagram"].startswith("T")
 
 
 def test_every_caption_stays_inside_the_rules_the_publisher_scans_with():
@@ -79,7 +79,7 @@ def test_a_linkedin_film_closes_in_wans_own_voice_not_the_brands():
 
 
 def test_process_saves_the_captions_with_the_film(tmp_path):
-    for stream, keys in (("regulab", {"instagram", "facebook", "threads"}), ("linkedin", {"linkedin"})):
+    for stream, keys in (("regulab", {"instagram", "facebook"}), ("linkedin", {"linkedin"})):
         store = Store()
         r = _row(store, stream=stream, resolution="")
         cap = {"captions": {k: f"Caption {k}." for k in keys}}
@@ -183,14 +183,14 @@ def test_finished_films_without_captions_are_given_them_from_their_saved_script(
     script = [{"id": "s1", "heading": "Enam kategori", "lines": ["Pengawet"], "narration": "Enam kategori."},
               {"id": "brand-outro", "heading": "Ikuti saya", "lines": []}]
     bare = _row(store, status="done", script=script, title="Enam kategori", captions={}, language="bm")
-    has = _row(store, status="done", script=script, captions={"threads": "Sudah ada."}, language="bm")
+    has = _row(store, status="done", script=script, captions={"instagram": "Sudah ada."}, language="bm")
     queued = _row(store, status="done", script=script, captions={}, queued_post_id="p1", language="bm")
     old = _row(store, status="done", captions={}, language="bm")                  # no saved script: nothing to write from
     llm = FakeLLM([{"captions": {"instagram": "Satu.", "facebook": "Dua.", "threads": "Tiga."}}])
     assert motion.backfill_captions(store, llm) == 1
     rows = {r["id"]: r for r in store.table(motion.TABLE).select("*").execute().data}
-    assert rows[bare["id"]]["captions"] == {"instagram": "Satu.", "facebook": "Dua.", "threads": "Tiga."}
-    assert rows[has["id"]]["captions"] == {"threads": "Sudah ada."}, "captions already written are never overwritten"
+    assert rows[bare["id"]]["captions"] == {"instagram": "Satu.", "facebook": "Dua."}, "never a Threads caption for a film"
+    assert rows[has["id"]]["captions"] == {"instagram": "Sudah ada."}, "captions already written are never overwritten"
     assert rows[queued["id"]]["captions"] == {} and rows[old["id"]]["captions"] == {}
     assert len(llm.asked) == 1
     assert motion.backfill_captions(store, llm) == 0 and len(llm.asked) == 1, "done once, not again"

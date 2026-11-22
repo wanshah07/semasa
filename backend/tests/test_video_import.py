@@ -139,7 +139,7 @@ def received(store, bucket, data, **params):
             "params": {
                 "stream": "regulab",
                 "lang": "bm",
-                "channels": ["instagram", "facebook", "threads"],
+                "channels": ["instagram", "facebook"],
                 "caption": GOOD_BM,
                 "title": "Notifikasi kosmetik",
                 "date": "",
@@ -181,7 +181,7 @@ def test_a_good_video_becomes_a_draft_post_and_is_never_approved(clips):
     assert "approved_by" not in post and "approved_at" not in post and post["created_by"] is None
     assert (post["date"], post["slot"]) == ("2026-11-18", "08:00"), "the next free slot, from tomorrow"
     assert (
-        post["stream"] == "regulab" and post["lang"] == "bm" and sorted(post["channels"]) == ["facebook", "instagram", "threads"]
+        post["stream"] == "regulab" and post["lang"] == "bm" and sorted(post["channels"]) == ["facebook", "instagram"]
     )
     assert post["text"]["bm"]["instagram"] == GOOD_BM and post["hard_flags"] == 0
     media = store.tables["media_generations"]
@@ -194,7 +194,7 @@ def test_a_good_video_becomes_a_draft_post_and_is_never_approved(clips):
     assert (
         film["queued_post_id"] == post["id"] and film["width"] == 270 and film["height"] == 480 and 1.5 < film["duration_s"] < 2.5
     )
-    assert told == ["Video import siap, menunggu lulus: Notifikasi kosmetik (2026-11-18 08:00, instagram, facebook, threads)"]
+    assert told == ["Video import siap, menunggu lulus: Notifikasi kosmetik (2026-11-18 08:00, instagram, facebook)"]
     assert any(f"imports/{iid}.jpg" in p for p in bucket.files), "a poster frame is kept"
 
 
@@ -235,12 +235,24 @@ def test_a_wide_film_is_fitted_to_the_streams_shape_before_the_draft_not_just_wa
     assert "fitted from" in row(store, iid)["note"] and "1080x1920" in row(store, iid)["note"]
 
 
-def test_a_wide_linkedin_film_is_fitted_square(clips):
+def test_a_linkedin_film_is_refused_a_film_goes_only_to_instagram_facebook_and_tiktok(clips):
+    # Wan, 22 Nov 2026: "Make sure film and motion only for ig reel, facebook and tiktok"
     store, bucket = setup()
-    received(store, bucket, clips["wide"], stream="linkedin", lang="en", channels=["linkedin"], caption=GOOD_EN)
+    iid = received(store, bucket, clips["wide"], stream="linkedin", lang="en", channels=["linkedin"], caption=GOOD_EN)
     step(store, bucket)
-    m = store.tables["media_generations"][0]
-    assert (m["meta"]["width"], m["meta"]["height"]) == (1080, 1080)
+    r = row(store, iid)
+    assert r["status"] == "error" and "Instagram (Reel), Facebook and TikTok" in r["error"]
+    assert not store.tables.get("semasa_posts")
+
+
+def test_a_film_asked_for_threads_goes_to_instagram_and_facebook_and_tiktok_only_when_asked(clips):
+    store, bucket = setup()
+    received(store, bucket, clips["good"], channels=["threads"])
+    received(store, bucket, clips["good"], channels=["instagram", "threads", "tiktok"])
+    step(store, bucket)
+    a, b = store.tables["semasa_posts"]
+    assert sorted(a["channels"]) == ["facebook", "instagram"], "Threads is never a film's platform: the defaults instead"
+    assert b["channels"] == ["instagram", "tiktok"]
 
 
 def test_an_upright_film_is_not_refitted(clips):
@@ -353,28 +365,20 @@ def test_no_caption_is_a_draft_with_a_blocking_flag_for_wan_to_fill(clips):
 
 def test_a_caption_per_channel_is_kept_exactly(clips):
     store, bucket = setup()
-    caps = {"instagram": GOOD_BM, "threads": "Notifikasi NPRA sebelum jual."}
-    received(store, bucket, clips["good"], caption=caps, channels=["instagram", "threads"])
+    caps = {"instagram": GOOD_BM, "facebook": "Notifikasi NPRA sebelum jual."}
+    received(store, bucket, clips["good"], caption=caps, channels=["instagram", "facebook"])
     step(store, bucket)
     post = store.tables["semasa_posts"][0]
-    assert post["text"]["bm"] == caps and sorted(post["channels"]) == ["instagram", "threads"]
+    assert post["text"]["bm"] == caps and sorted(post["channels"]) == ["facebook", "instagram"]
 
 
-def test_a_linkedin_import_is_english_and_a_malay_caption_is_a_flagged_draft(clips):
+def test_a_linkedin_import_is_refused_whatever_its_caption(clips):
     store, bucket = setup()
     ok = received(store, bucket, clips["good"], stream="linkedin", lang="en", channels=["linkedin"], caption=GOOD_EN)
     bad = received(store, bucket, clips["good"], stream="linkedin", lang="en", channels=["linkedin"], caption=LONG_BM)
     step(store, bucket)
-    assert row(store, ok)["status"] == "done" and row(store, bad)["status"] == "done"
-    flagged = next(p for p in store.tables["semasa_posts"] if p["id"] == row(store, bad)["post_id"])
-    assert flagged["status"] == "draft" and flagged["hard_flags"] > 0
-    assert any("Bahasa Malaysia" in f["msg"] for f in flagged["flags"] if f["hard"])
-    post = next(p for p in store.tables["semasa_posts"] if p["id"] == row(store, ok)["post_id"])
-    assert post["hard_flags"] == 0
-    assert (
-        post["stream"] == "linkedin" and post["lang"] == "en" and post["channels"] == ["linkedin"] and post["status"] == "draft"
-    )
-    assert (post["date"], post["slot"]) == ("2026-11-18", "06:00"), "LinkedIn's own slots"
+    assert row(store, ok)["status"] == "error" and row(store, bad)["status"] == "error"
+    assert not store.tables.get("semasa_posts"), "a film never becomes a LinkedIn post"
 
 
 def test_the_next_free_slot_skips_what_is_held_and_a_taken_slot_asked_for_is_refused(clips):
@@ -621,8 +625,8 @@ def test_no_caption_sent_the_writer_writes_one_per_channel_from_the_title_only_a
     assert not any(p["status"] in ("approved", "scheduled", "posted") for p in store.tables["semasa_posts"])
     assert "approved_by" not in post and "approved_at" not in post
     got = post["text"]["bm"]
-    assert sorted(got) == ["facebook", "instagram", "threads"]
-    assert got["instagram"] == WRITTEN["instagram"] and got["threads"] == WRITTEN["threads"]
+    assert sorted(got) == ["facebook", "instagram"]
+    assert got["instagram"] == WRITTEN["instagram"] and got["facebook"] == WRITTEN["facebook"]
     assert post["hard_flags"] == 0 and not any("no caption" in f["msg"] for f in post["flags"])
     assert any(not f["hard"] and "Semasa wrote this caption from the title only" in f["msg"] for f in post["flags"])
     assert any("written by Semasa from the title only" in d["action"] for d in post["decisions"])
@@ -689,8 +693,8 @@ def test_one_good_channel_is_kept_and_a_bad_one_is_plain(clips):
 def test_a_caption_the_sender_gave_is_never_touched_and_the_writer_is_never_asked(clips):
     store, bucket = setup()
     llm = Writer({"captions": WRITTEN})
-    caps = {"instagram": GOOD_BM, "threads": "Notifikasi NPRA sebelum jual."}
-    received(store, bucket, clips["good"], caption=caps, channels=["instagram", "threads"], title=TITLE)
+    caps = {"instagram": GOOD_BM, "facebook": "Notifikasi NPRA sebelum jual."}
+    received(store, bucket, clips["good"], caption=caps, channels=["instagram", "facebook"], title=TITLE)
     received(store, bucket, clips["good"], caption=GOOD_BM, title=TITLE)
     step(store, bucket, llm=llm)
     a, b = store.tables["semasa_posts"]
@@ -704,8 +708,8 @@ def test_a_caption_the_sender_gave_is_never_touched_and_the_writer_is_never_aske
 def test_a_per_channel_caption_sent_as_a_json_string_in_a_form_field_is_the_senders_own(clips):
     store, bucket = setup()
     llm = Writer({"captions": WRITTEN})
-    caps = {"instagram": GOOD_BM, "threads": "Notifikasi NPRA sebelum jual."}
-    received(store, bucket, clips["good"], caption=json.dumps(caps), channels=["instagram", "threads"], title=TITLE)
+    caps = {"instagram": GOOD_BM, "facebook": "Notifikasi NPRA sebelum jual."}
+    received(store, bucket, clips["good"], caption=json.dumps(caps), channels=["instagram", "facebook"], title=TITLE)
     step(store, bucket, llm=llm)
     assert store.tables["semasa_posts"][0]["text"]["bm"] == caps and llm.calls == []
     assert video_import.texts_of({"caption": '{"oops": "x"}'}, ["instagram"]) == {"instagram": '{"oops": "x"}'}
@@ -720,16 +724,6 @@ def test_no_title_and_no_caption_is_the_old_flagged_draft_and_the_writer_is_not_
     post = store.tables["semasa_posts"][0]
     assert llm.calls == [] and post["text"] == {"bm": {}}
     assert any("no caption" in f["msg"] for f in post["flags"] if f["hard"])
-
-
-def test_an_english_linkedin_import_gets_an_english_caption(clips):
-    store, bucket = setup()
-    llm = Writer({"captions": {"linkedin": "A warm cup of teh tarik on a wooden table in a cosy cafe."}})
-    received(store, bucket, clips["good"], stream="linkedin", lang="en", channels=["linkedin"], caption="", title=TITLE)
-    step(store, bucket, llm=llm)
-    post = store.tables["semasa_posts"][0]
-    assert post["lang"] == "en" and post["text"]["en"]["linkedin"].startswith("A warm cup") and post["hard_flags"] == 0
-    assert "English" in llm.calls[0][0]
 
 
 def test_the_motion_hook_hands_its_llm_to_the_import_step(monkeypatch):
@@ -794,7 +788,7 @@ def test_the_recovered_draft_is_written_from_the_title_when_the_film_has_no_capt
     new = store.tables["semasa_posts"][0]
     assert new["status"] == "draft" and new["text"]["bm"]["instagram"] == WRITTEN["instagram"]
     assert any("Semasa wrote this caption" in f["msg"] for f in new["flags"])
-    assert store.tables["semasa_motions"][0]["captions"]["threads"] == WRITTEN["threads"]
+    assert store.tables["semasa_motions"][0]["captions"]["facebook"] == WRITTEN["facebook"]
 
 
 def test_an_import_older_than_seven_days_or_already_recovered_or_failed_is_left_alone(clips):

@@ -151,7 +151,10 @@ def fit(text: str, stream: str, platform: str) -> str:
 
 
 def platforms_of(stream: str) -> list[str]:
-    return list(compliance.RULES["platforms"].get(stream) or compliance.RULES["platforms"]["regulab"])
+    """The platforms a film's captions are written for: Instagram (Reel) and Facebook for ws.regulab, never Threads (Wan,
+    22 Nov 2026: "film and motion only for ig reel, facebook and tiktok"; TikTok carries the Instagram caption). A LinkedIn film
+    keeps its LinkedIn caption, but the publisher never sends a film there."""
+    return compliance.film_platforms_for(stream) or list(compliance.platforms_for(stream))
 
 
 def from_script(title: str, scenes: list[dict[str, Any]], stream: str) -> dict[str, str]:

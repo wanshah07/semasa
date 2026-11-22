@@ -413,31 +413,44 @@ def test_a_film_that_cannot_be_fitted_is_not_sent_and_is_tried_again(monkeypatch
 
 
 def test_a_film_goes_only_to_the_platforms_it_was_queued_to_as_a_video_never_as_a_picture():
-    store, buf = _film(_post(channels=["instagram", "threads"])), VideoBuffer()
+    store, buf = _film(_post(channels=["instagram", "facebook"])), VideoBuffer()
     c = publisher.run(store, NOW, clients={"buffer": buf})
-    assert c["scheduled"] == 2 and {x["service"] for x in buf.created} == {"instagram", "threads"}
+    assert c["scheduled"] == 2 and {x["service"] for x in buf.created} == {"instagram", "facebook"}
     assert all(x["video"] == {"url": "https://cdn/film.mp4", "thumbnail": "https://cdn/film.jpg", "width": 1080, "height": 1920,
                               "vertical": True}
                for x in buf.created)
     p = store.tables["semasa_posts"][0]
-    assert set(p["published"]) == {"instagram", "threads"} and p["status"] == "scheduled", "done when the CHOSEN ones are"
+    assert set(p["published"]) == {"instagram", "facebook"} and p["status"] == "scheduled", "done when the CHOSEN ones are"
     publisher.run(store, NOW, clients={"buffer": buf})
     assert len(buf.created) == 2
 
 
-def test_a_film_post_with_no_channels_chosen_goes_to_all_three():
+def test_a_film_post_with_no_channels_chosen_goes_to_instagram_and_facebook_never_threads():
+    # Wan, 22 Nov 2026: "Make sure film and motion only for ig reel, facebook and tiktok"
     store, buf = _film(_post()), VideoBuffer()
     publisher.run(store, NOW, clients={"buffer": buf})
-    assert {x["service"] for x in buf.created} == {"instagram", "facebook", "threads"}
+    assert {x["service"] for x in buf.created} == {"instagram", "facebook"}
+    store, buf = _film(_post(channels=["threads"])), VideoBuffer()
+    publisher.run(store, NOW, clients={"buffer": buf})
+    assert buf.created == [], "a film queued to Threads alone goes nowhere"
 
 
-def test_a_film_to_linkedin_posts_as_a_native_video_once():
+def test_a_film_already_handed_to_threads_keeps_its_record_and_is_never_sent_again():
+    held = {"threads": {"id": "b-old", "status": "sent", "dueAt": "2026-09-25T00:00:00Z"}}
+    store, buf = _film(_post(published=held)), VideoBuffer()
+    publisher.run(store, NOW, clients={"buffer": buf})
+    assert "threads" not in {x["service"] for x in buf.created}
+    assert store.tables["semasa_posts"][0]["published"]["threads"]["id"] == "b-old"
+
+
+def test_a_film_on_linkedin_is_never_sent_and_says_why_once():
+    # Wan, 22 Nov 2026: a film goes only to Instagram (Reel), Facebook and TikTok
     store, li = _film(_li(date="2026-09-24", slot="06:00")), VideoLinkedIn()
-    publisher.run(store, datetime(2026, 9, 24, 11, 20, tzinfo=UTC), clients={"linkedin": li})
-    p = store.tables["semasa_posts"][0]
-    assert li.sent == [(CAP, "https://cdn/film.mp4")] and p["published"]["linkedin"]["route"] == "composio+video"
+    c = publisher.run(store, datetime(2026, 9, 24, 11, 20, tzinfo=UTC), clients={"linkedin": li})
     publisher.run(store, datetime(2026, 9, 24, 11, 40, tzinfo=UTC), clients={"linkedin": li})
-    assert len(li.sent) == 1
+    assert li.sent == [] and c["blocked"] == 1 and store.tables["semasa_posts"][0]["published"] == {}
+    why = [r for r in store.tables["semasa_publish_log"] if r["channel"] == "film"]
+    assert len(why) == 1 and "Instagram (Reel), Facebook and TikTok" in why[0]["detail"]["why"][0]
 
 
 def test_a_picture_post_is_still_sent_as_pictures():

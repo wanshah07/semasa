@@ -11,7 +11,7 @@ import { clearPlan, isCustomSlot, myt, overrideCheck, slotsOf, takenSet, validCl
 import Button from "./ui/Button";
 import { Input, Label, Segmented, Select, TextArea } from "./ui/Field";
 
-const CHIPS = ["instagram", "facebook", "threads", "linkedin"];         // LinkedIn beside Threads: picking it makes the film a LinkedIn post
+const CHIPS = ["instagram", "facebook"];   // a film goes to IG Reels, Facebook and the TikTok tick only, never Threads or LinkedIn (Wan, 22 Nov 2026)
 const streamOfChannel = (c) => (c === "linkedin" ? "linkedin" : "regulab");
 
 /* A finished film to the platforms Wan picks (Wan, 26 Oct 2026: "allow me to choose which platform to post, so from the video can

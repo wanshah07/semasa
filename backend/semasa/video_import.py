@@ -50,8 +50,9 @@ MAX_POSTED_BYTES = video.MAX_OUT_BYTES
 MYT = timedelta(hours=8)
 FETCH_TIMEOUT = (10, 60)
 MAX_REDIRECTS = 3
-LIMITS = {c: {"seconds": MAX_SECONDS, "bytes": MAX_POSTED_BYTES} for c in ("instagram", "facebook", "threads", "linkedin")}
-CHANNEL_NAMES = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads", "linkedin": "LinkedIn"}
+LIMITS = {c: {"seconds": MAX_SECONDS, "bytes": MAX_POSTED_BYTES} for c in ("instagram", "facebook", "tiktok")}
+CHANNEL_NAMES = {"instagram": "Instagram", "facebook": "Facebook", "threads": "Threads", "linkedin": "LinkedIn",
+                 "tiktok": "TikTok"}
 MP4_FORMATS = ("mov", "mp4")  # what ffprobe calls every MP4 / MOV: "mov,mp4,m4a,3gp,3g2,mj2"
 H264, AAC = "h264", "aac"
 
@@ -425,8 +426,13 @@ def _shape(params: dict[str, Any]) -> tuple[str, str, list[str]]:
     """(stream, language, channels) an import asked for, with the defaults the intake applies."""
     stream = "linkedin" if params.get("stream") == "linkedin" else "regulab"
     lang = "en" if stream == "linkedin" else ("en" if params.get("lang") == "en" else "bm")
-    plats = compliance.platforms_for(stream)
-    return stream, lang, [c for c in (params.get("channels") or []) if c in plats] or list(plats)
+    # a film goes to Instagram (a Reel) and Facebook only, plus TikTok when asked (Wan, 22 Nov 2026); never Threads or LinkedIn
+    plats = compliance.film_platforms_for(stream)
+    asked = [c for c in (params.get("channels") or []) if c in plats]
+    chosen = asked or list(plats)
+    if "tiktok" in (params.get("channels") or []) and "instagram" in chosen:
+        chosen.append("tiktok")
+    return stream, lang, chosen
 
 
 def process(
@@ -453,6 +459,9 @@ def process(
     try:
         if stored:
             made.append(stored)
+        if not channels:
+            raise Reject("a film goes only to Instagram (Reel), Facebook and TikTok, and the LinkedIn stream has none of them: "
+                         "send it with stream regulab")
         try:
             data = storage.download(stored) if stored else fetch_url(str(row.get("source_url") or ""), get=get, resolve=resolve)
         except Reject:
@@ -806,6 +815,8 @@ def _recover_one(store: Any, row: dict[str, Any], settings: dict[str, Any], now:
             return False  # a post still carries this film
     params = row.get("params") if isinstance(row.get("params"), dict) else {}
     stream, lang, channels = _shape(params)
+    if not channels:
+        return False  # a LinkedIn film has no platform a film may go to (Wan, 22 Nov 2026)
     title = str(film.get("title") or film.get("brief") or params.get("title") or "").strip()[:160]
     kept = film.get("captions") if isinstance(film.get("captions"), dict) else {}
     texts, authored = {c: str(kept[c]).strip() for c in channels if str(kept.get(c) or "").strip()}, ""

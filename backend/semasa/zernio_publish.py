@@ -13,8 +13,8 @@ the shape the platforms take (upright 9:16, film_ratio): a 16:9 film from Hermes
 Usage (run by hand, or via .github/workflows/zernio-publish.yml):
   python -m semasa.zernio_publish \
     --video-url https://.../film.mp4 \
-    --channels facebook,instagram,threads,tiktok \
-    --captions-json '{"facebook":"...","instagram":"...","threads":"...","tiktok":"..."}' \
+    --channels facebook,instagram,tiktok \
+    --captions-json '{"facebook":"...","instagram":"...","tiktok":"..."}' \
     [--scheduled-for 2026-11-21T08:00:00+08:00]
 """
 
@@ -32,7 +32,7 @@ from .publisher import ZERNIO_FORMATS, load_settings, zernio_accounts, zernio_hu
 
 log = get_logger("semasa.zernio_publish")
 
-VIDEO_PLATFORMS = ("instagram", "facebook", "threads", "tiktok")
+VIDEO_PLATFORMS = ("instagram", "facebook", "tiktok")   # a film never goes to Threads (Wan, 22 Nov 2026)
 
 
 def _captions(raw: str, channels: list[str]) -> dict[str, str]:
@@ -103,7 +103,7 @@ def run(
 def main() -> int:
     ap = argparse.ArgumentParser(description="Publish a finished film to social platforms via Zernio.")
     ap.add_argument("--video-url", required=True)
-    ap.add_argument("--channels", default="facebook,instagram,threads,tiktok")
+    ap.add_argument("--channels", default="facebook,instagram,tiktok")
     ap.add_argument("--captions-json", default="{}")
     ap.add_argument("--scheduled-for", default="")
     args = ap.parse_args()

@@ -35,7 +35,7 @@ from typing import Any
 
 import requests
 
-from . import archive, db, publisher
+from . import archive, carousel, db, publisher
 from .config import SupabaseSettings
 from .log import get_logger
 
@@ -48,24 +48,33 @@ def _sent(post: dict[str, Any]) -> bool:
 
 
 def candidates(store: Any, now: datetime, only: set[str] | None = None) -> list[dict[str, Any]]:
-    """[{post, kind: 'carousel' | 'film', media}] for ws.regulab posts that are approved or scheduled and not yet sent."""
+    """[{post, kind: 'carousel' | 'film', media}] for ws.regulab posts that are draft, approved or scheduled and not yet sent. A
+    carousel is a candidate when it has no branded cover or one drawn in an older design (`meta.cover_v` below
+    carousel.COVER_VERSION: Wan, 22 Nov 2026, "make sure all using new cover"); a draft has no copy at a sender and no due time
+    to protect, so it is redrawn at once."""
     posts = db.fetch_all(lambda: store.table(db.POSTS).select("*").eq("stream", "regulab")
-                         .in_("status", ["approved", "scheduled"]).order("date"))
+                         .in_("status", ["draft", "approved", "scheduled"]).order("date"))
     out = []
     for post in posts:
         if only and post["id"] not in only:
             continue
-        if not post.get("date") or not post.get("slot") or _sent(post):
+        if _sent(post):
             continue
-        if publisher.due_utc(post["date"], post["slot"]) < now + MARGIN:
-            continue
+        if post.get("status") != "draft":
+            if not post.get("date") or not post.get("slot"):
+                continue
+            if publisher.due_utc(post["date"], post["slot"]) < now + MARGIN:
+                continue
         ids = [i for i in (post.get("media_ids") or []) if i]
         if not ids:
             continue
         for media in store.table(db.MEDIA).select("*").in_("id", ids).eq("status", "done").execute().data or []:
             meta = media.get("meta") or {}
-            if media.get("mode") == "slides" and not meta.get("design") and meta.get("cover") is not True:
+            if media.get("mode") == "slides" and not meta.get("design") and meta.get("look") != "threads" \
+                    and (meta.get("cover") is not True or int(meta.get("cover_v") or 1) < carousel.COVER_VERSION):
                 out.append({"post": post, "kind": "carousel", "media": media})
+            elif post.get("status") == "draft":
+                continue                                  # a draft's film is not touched here
             elif media.get("type") == "video" and meta.get("flow") == "motion" and not meta.get("film_purged_at") \
                     and meta.get("motion_id") and not publisher.film_has_cover(meta, publisher.film_reports(store, [media]).get(
                         str(meta["motion_id"]))):
@@ -194,7 +203,10 @@ def run(store: Any, now: datetime | None = None, *, dry: bool = False, only: set
         post, media = c["post"], c["media"]
         label = f"{c['kind']} {post['date']} {post['slot']} {post['id'][:8]}"
         try:
-            _hold(store, zernio, post, media)
+            if post.get("status") == "draft":
+                store.table(db.MEDIA).update({"status": "processing"}).eq("id", media["id"]).execute()   # no sender holds it
+            else:
+                _hold(store, zernio, post, media)
         except Exception as exc:  # noqa: BLE001 - nothing was changed beyond the hold: lift it and leave the post as it was
             store.table(db.MEDIA).update({"status": "done"}).eq("id", media["id"]).execute()
             result["failed"] += 1

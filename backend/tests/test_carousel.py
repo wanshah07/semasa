@@ -181,6 +181,7 @@ def test_the_worker_puts_the_cover_first_for_ws_regulab_and_leaves_linkedin_alon
     row = _job("regulab", _set(4))
     assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
     assert saved["meta"]["cover"] is True and saved["meta"]["closing_logo"] is True and saved["meta"]["count"] == 5
+    assert saved["meta"]["cover_v"] == carousel.COVER_VERSION, "the cover is marked with its design version"
     cover = Image.open(io.BytesIO(uploads[0])).convert("RGB")
     assert min(cover.getpixel((540, 20))) > 240 and cover.getpixel((540, 20)) != slides.PAPER    # the white cover (22 Nov 2026)
     saved.clear()

@@ -47,14 +47,25 @@ def _store(posts, media):
 
 
 def test_who_is_redrawn_and_who_is_left_alone():
+    # Wan, 22 Nov 2026: "make sure all using new cover": a carousel whose cover is the old design (no cover_v) is redrawn too, a
+    # draft included (nothing is held at a sender); one already on the white cover (cover_v 2) is left alone
     posts = [_post("ok"), _post("soon", date="2026-11-11", slot="10:30"), _post("linkedin", stream="linkedin"),
-             _post("sent", published={"instagram": _rec(1, "sent")}), _post("done", media=("mc",)),
-             _post("design", media=("md",)),
-             _post("draft", status="draft")]
-    media = [_slides("m1"), _slides("mc", cover=True), _slides("md", design="poster")]
+             _post("sent", published={"instagram": _rec(1, "sent")}), _post("old", media=("mc",)),
+             _post("new", media=("mn",)), _post("design", media=("md",)),
+             _post("draft", status="draft", media=("mc",), published={}), _post("undated", date=None, slot=None)]
+    media = [_slides("m1"), _slides("mc", cover=True), _slides("mn", cover=True, cover_v=2), _slides("md", design="poster")]
     got = rerender.candidates(_store(posts, media), NOW)
-    assert [(c["post"]["id"], c["kind"]) for c in got] == [("ok", "carousel")]
+    assert [(c["post"]["id"], c["kind"]) for c in got] == [("ok", "carousel"), ("old", "carousel"), ("draft", "carousel")]
     assert rerender.candidates(_store(posts, media), NOW, only={"nope"}) == []
+
+
+def test_a_draft_is_redrawn_without_touching_any_sender(monkeypatch):
+    post = _post("d", status="draft", media=("mc",), published={})
+    store, z = _store([post], [_slides("mc", cover=True)]), Zernio()
+    monkeypatch.setattr(rerender, "redraw_carousel", lambda st, m, s: "done")
+    out = rerender.run(store, NOW, clients={"zernio": z}, settings=object())
+    assert out["done"] == 1 and z.deleted == []
+    assert store.tables["semasa_posts"][0]["status"] == "draft", "a draft stays a draft"
 
 
 def test_a_dry_run_changes_nothing():

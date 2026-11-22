@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2, Palette, Plus, RotateCcw, Trash2, X, ZoomIn } from "lucide-react";
-import { LOOKS, ensureFonts, isStudioLook, renderClosingCard, renderSlides, setLogo } from "../lib/cards/studio";
+import { LOOKS, coverWords, ensureFonts, isStudioLook, renderClosingCard, renderCoverCard, renderSlides, setLogo, withFrontCover } from "../lib/cards/studio";
 import { GROUNDS, groundOf } from "../lib/cards/library";
 import { resolveLook, useDesigns } from "../lib/designs";
 import { hide, offered, restore } from "../lib/lookChoice";
@@ -48,6 +48,30 @@ function usePreview(slides, opts, enabled) {
     return () => { live = false; clearTimeout(timer); };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   return state;
+}
+
+/* The branded cover a ws.regulab carousel opens on (the worker draws it and puts it first): the same card, so slide 1 of the preview is
+   what is posted. A first slide that is a hook is replaced by it; a content first slide gets it in front. */
+function useCover(enabled, first, size) {
+  const [pic, setPic] = useState(null);
+  const key = JSON.stringify([enabled, first?.title, first?.lead, first?.points, size]);
+  useEffect(() => {
+    const w = enabled ? coverWords(first) : null;
+    if (!w) { setPic(null); return undefined; }
+    let live = true;
+    (async () => {
+      try {
+        setLogo(`${BASE}logo.png`);
+        await ensureFonts(BASE);
+        let p;
+        try { p = await renderCoverCard({ title: w.title, lead: w.lead, size, logo: `${BASE}cover-logo.png` }); }
+        catch { p = await renderCoverCard({ title: w.title, lead: "", size, logo: `${BASE}cover-logo.png` }); }
+        if (live) setPic(p);
+      } catch { if (live) setPic(null); }
+    })();
+    return () => { live = false; };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return pic;
 }
 
 /* The standard last page a ws.regulab carousel ends on (the worker adds it): shown at the end of the preview strip. */
@@ -170,8 +194,16 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const all = usePreview(slides, { ...opts, look: chosen.look, bg: bgUrl || dBg || "", ...(chosen.design ? { design: chosen.design } : {}) },
     full && isStudioLook(chosen.look));
   // a ws.regulab carousel ends on the standard closing card (big logo + the follow tagline), drawn by the worker: shown last
-  const closing = useClosing(full && !sample && stream !== "linkedin" && slides.length >= 2 && isStudioLook(chosen.look), [W, H]);
-  const setPics = closing && all.pics.length ? [...all.pics, { ...closing, closing: true }] : all.pics;
+  const branded = full && !sample && stream !== "linkedin" && slides.length >= 2 && isStudioLook(chosen.look);
+  const closing = useClosing(branded, [W, H]);
+  // the cover: the worker's rule (carousel.py with_front_cover + cover_words): a hook first slide is replaced by the branded cover,
+  // a content first slide keeps its own card and gets the cover in front of it
+  const framed = withFrontCover(slides, stream);
+  const brandCover = useCover(branded, framed[0], [W, H]);
+  const front = framed.length > slides.length;
+  let body = all.pics;
+  if (brandCover && body.length) body = front ? [{ ...brandCover, cover: true }, ...body] : [{ ...brandCover, cover: true }, ...body.slice(1)];
+  const setPics = closing && body.length ? [...body, { ...closing, closing: true }] : body;
   const box = useLightbox(setPics.map((p, i) => ({ url: p.url, title: t("Slaid {n} daripada {m}", "Slide {n} of {m}", { n: i + 1, m: setPics.length }) })));
 
   // Studio's own warnings, minus "no picture" while a picture is chosen but not made yet (the worker waits for it)
@@ -293,14 +325,15 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
                 <div key={i} className="relative shrink-0" style={{ scrollSnapAlign: "start" }}>
                   <button type="button" onClick={() => box.open(i)} className="block cursor-zoom-in"
                     title={p.closing ? t("Halaman penutup standard: logo dan tagline, ditambah oleh Semasa", "The standard last page: the logo and the tagline, added by Semasa")
+                      : p.cover ? t("Muka depan berjenama: logo dan tajuk, ditambah oleh Semasa", "The branded front page: the logo and the hook, added by Semasa")
                       : bad ? bad.warn.join(" ") : t("Slaid {n}: klik untuk baca perkataan pada kad", "Slide {n}: click to read the words on the card", { n: i + 1 })}>
                     <img src={p.url} alt={t("Slaid {n}", "Slide {n}", { n: i + 1 })}
                       className={`h-72 max-w-[80vw] rounded-tile border object-cover sm:h-64 lg:h-36 ${bad ? "border-danger ring-2 ring-danger/40" : "border-line"}`} style={{ aspectRatio: ratio }} />
                     <span className="absolute left-1 top-1 rounded bg-ink/80 px-1 text-[10px] text-bg">{i + 1}</span>
                   </button>
                   {/* Wan, 22 Nov 2026: a slide is deleted straight from the preview */}
-                  {onDropSlide && !p.closing && !sample && !disabled && (
-                    <button type="button" onClick={() => onDropSlide(i)} data-drop-slide={i}
+                  {onDropSlide && !p.closing && !(p.cover && front) && !sample && !disabled && (
+                    <button type="button" onClick={() => onDropSlide(i - (front ? 1 : 0))} data-drop-slide={i}
                       aria-label={t("Padam slaid {n}", "Delete slide {n}", { n: i + 1 })} title={t("Padam slaid ini", "Delete this slide")}
                       className="absolute right-1 top-1 rounded-full bg-ink/80 p-1 text-bg hover:bg-danger"><Trash2 size={12} /></button>
                   )}

@@ -769,7 +769,8 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             meta.pop("revise", None)
             meta.setdefault("revisions", []).append({"note": note, "at": datetime.now(UTC).isoformat()})
         meta.update(slides=items, slide_urls=urls, slide_paths=paths, sha256=sums, count=len(urls), look=look,
-                    cover=cover, closing_logo=closing, squeezed_from=(len(items) if joined else None), bg_used=ground_id,
+                    cover=cover, cover_v=(carousel.COVER_VERSION if cover else None), closing_logo=closing,
+                    squeezed_from=(len(items) if joined else None), bg_used=ground_id,
                     content_type="image/jpeg", bytes=sum(len(p) for p in pics),
                     finished_at=datetime.now(UTC).isoformat())
         if style.get("url"):

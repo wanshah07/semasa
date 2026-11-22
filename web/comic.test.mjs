@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { glossarySource } from "./glossaryInline.mjs";
 
 const here = new URL(".", import.meta.url);
 const read = (p) => readFileSync(new URL(p, here), "utf8");
@@ -12,6 +13,7 @@ const rules = JSON.parse(read("../rules/comic.json"));
 // Node needs an import attribute for JSON that Vite does not: inline the rules, as the other suites do
 const dir = mkdtempSync(join(tmpdir(), "cmc-"));
 writeFileSync(join(dir, "compliance.js"), read("src/lib/compliance.js").replace(/^import RULES from .*$/m, `const RULES = ${read("../rules/compliance.json")};`));
+writeFileSync(join(dir, "glossary.js"), glossarySource());
 writeFileSync(join(dir, "bi.js"), read("src/lib/bi.js"));
 writeFileSync(join(dir, "comic.js"), read("src/lib/comic.js").replace(/^import RULES from .*$/m, `const RULES = ${JSON.stringify(rules)};`)
   .replace('from "./bi"', 'from "./bi.js"').replace('from "./compliance"', 'from "./compliance.js"'));

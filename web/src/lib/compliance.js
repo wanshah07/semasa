@@ -3,6 +3,7 @@
    before Approve and the check the publisher runs before it sends are the same rules.
    rules/cases.json is run by both test suites (npm test / pytest). */
 import RULES from "../../../rules/compliance.json";
+import { definedIn, definedInCaption, stripDefinisi, used as glossaryUsed } from "./glossary.js";
 
 const rx = (r) => new RegExp(r.re, (r.flags || "").includes("i") ? "i" : "");
 const HARD = [...RULES.hard, ...RULES.cta].map((r) => [rx(r), r.label]);
@@ -152,7 +153,8 @@ export function normaliseSlides(raw) {
 /* A slide's own design (Studio's per-slide editor, brought over 27 Sep 2026): the words each design draws besides the
    headline and the points, and how it is drawn. Kept only when set, in this order, so a slide written before these
    existed compares equal to itself. Mirrored exactly by slide_extras in backend/semasa/compliance.py. */
-export const SLIDE_WORDS = { lead: 400, eyebrow: 80, chip: 60, note: 240, footnote: 300 };
+// `foot` is the small definition note under the words ("Definisi: PIF = ..."; glossary.js), `footnote` the source line.
+export const SLIDE_WORDS = { lead: 400, eyebrow: 80, chip: 60, note: 240, footnote: 300, foot: 300 };
 const SLIDE_WORD_KEYS = Object.keys(SLIDE_WORDS);
 const SLIDE_STYLE = {
   // one letter per card family: grid, era, photo, image, hand, and the four poster looks (marker, torn, block, neon)
@@ -235,6 +237,13 @@ export function ayatExtras(s) {
 }
 /** Every word a slide can put on the picture, for the scan. */
 export const slideText = (sl) => [sl.title || "", ...(sl.points || []), ...SLIDE_WORD_KEYS.map((k) => sl[k] || "")].join("\n");
+/** The words a slide SAYS, without its definition note: what the glossary check reads for the terms the slide uses. */
+export const slideBody = (sl) => [sl.title || "", ...(sl.points || []), ...SLIDE_WORD_KEYS.filter((k) => k !== "foot").map((k) => sl[k] || "")].join("\n");
+
+export const EXPLAIN = (written) => `explain "${written}": add a footnote (Nota kaki)`;
+/** The glossary terms `body` uses (as written) that nothing in `defined` explains. A warning only, never a block (Wan, 22 Nov 2026).
+    Mirrors unexplained in backend/semasa/compliance.py. */
+export const unexplained = (body, defined) => glossaryUsed(body).filter(([e]) => !defined.has(e.id)).map(([, w]) => w);
 
 /** Comparable form of a slide list: equal keys mean the same words. */
 export const slidesKey = (raw) => JSON.stringify(normaliseSlides(raw));
@@ -282,6 +291,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     const tags = (t.match(/#\w+/g) || []).length;
     if (lim && tags > lim.hashtags) add(false, where, `${tags} hashtags, over the ${lim.hashtags} limit`);
     if (p === "linkedin" && t.trim().endsWith("?")) add(false, where, "ends with a question");
+    for (const written of unexplained(stripDefinisi(t), definedInCaption(t))) add(false, where, EXPLAIN(written));
     if (stream === "linkedin") {
       const hit = t.match(AGGREGATOR);
       if (hit) add(true, where, `cites "${hit[0]}", a blog or news aggregator. On LinkedIn cite the instrument, not where you read it.`);
@@ -317,9 +327,14 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   }
 
   // Slides are artwork: judged like a caption, and what is DRAWN must be what is written.
-  const artwork = (items, label) => items.forEach((sl, i) => {
+  const captionDefined = new Set();
+  for (const p of platformsOf(post)) for (const id of definedInCaption(textOf(post, p, lang))) captionDefined.add(id);
+  const artwork = (items, label, explain = false) => items.forEach((sl, i) => {
     const where = `${label} ${i + 1}`;
     const t = slideText(sl);
+    // a term the slide uses is explained by its own footnote or by the caption's Definisi line (a cover and a closing slide carry no
+    // footnote, so the caption is where theirs goes)
+    if (explain) for (const written of unexplained(slideBody(sl), new Set([...definedIn(sl.foot || ""), ...captionDefined]))) add(false, where, EXPLAIN(written));
     for (const [re, lab] of HARD) if (re.test(t)) add(true, where, lab);
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. A post stands on the instrument, never on where the idea was spotted.");
     for (const msg of indoHits(t, extra)) add(true, where, msg);
@@ -340,7 +355,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     }
   });
   const slides = normaliseSlides(post.slides);
-  artwork(slides, "Slide");
+  artwork(slides, "Slide", true);
   // a vague line on a slide is pinned down on that slide or the next two (a cover may tease what slide 2 states exactly)
   for (const phrase of vagueHits(slides.map(slideText))) add(vagueHard, "Slides", `vague: "${phrase}". ${VAGUE_FIX} on that slide or the two after it.`);
   // A carousel has as many slides as its story needs: no minimum and no maximum (Wan, 9 Nov 2026: "make sure no limit or min

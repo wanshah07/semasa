@@ -17,7 +17,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 
-from . import compliance, slides
+from . import compliance, glossary, slides
 from .slides import SlideError
 
 MAX_SLIDES = 6                      # pictures in one carousel, the logo card included
@@ -76,6 +76,11 @@ def join(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any] | None:
     if len(points) > compliance.MAX_POINTS:
         return None
     keep = {k: v for k, v in a.items() if k not in ("title", "points", "lead", "note")}
+    feet = [str(x.get("foot") or "") for x in (a, b) if x.get("foot")]
+    if len(feet) == 2:                 # both slides' definition notes ride on the joined one, two terms at most
+        keep["foot"] = glossary.merge_feet(feet, "en" if "Definition:" in feet[0] else "bm")
+    elif feet:
+        keep["foot"] = feet[0]
     return {"title": a.get("title", ""), "points": points, **keep}
 
 

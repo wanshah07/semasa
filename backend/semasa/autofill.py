@@ -1,5 +1,14 @@
 """Filling empty slots (Studio's nightly drafter, brought over 27 Sep 2026), OFF until Wan switches it on in Settings.
 
+FACTS FIRST (Wan, 22 Nov 2026: "after this all content is based on facts as priority rather isu semasa, I will create post isu
+semasa from Hermes nous ... prioritize announcement make by regulators or government so people/viewers alert"). This reverses his
+9 Nov rule that put newspaper headlines first. Now an empty slot is filled, in this order, from: (1) an ANNOUNCEMENT by a
+regulator or the government (the regulator feed: a recall, a ban, a warning, a circular, a notice), newest first; (2) the other
+regulator notices; (3) official publications and guidelines (papers, the websites Wan lists, MYRA's findings, his OneDrive angle
+bank). The newspaper headline (isu semasa) is OFF by default (`settings.autofill.news` brings it back), and so is every social
+row (Reddit, YouTube, Threads, Facebook, Instagram, experts): Hermes supplies isu semasa through the import route, and Wan can
+still make an idea of any news item or social post by hand. A gap with no official item is left a gap.
+
 Semasa's rule so far is that no idea is written without Wan's click. This step keeps that rule while it is off, which is
 how it ships (supabase/022 seeds settings "autofill" with enabled false). Switched on, each worker run looks at the next
 `days_ahead` days, finds positions no post holds and no waiting idea is already written for, and writes an idea FOR that
@@ -39,7 +48,8 @@ def config(settings: dict[str, Any], now: datetime | None = None) -> dict[str, A
     days = max(1, min(MAX_DAYS, int(raw.get("days_ahead") or 3)))
     per = max(1, min(MAX_PER_RUN, int(raw.get("per_run") or 2)))
     streams = [s for s in (raw.get("streams") or ["regulab", "linkedin"]) if s in ("regulab", "linkedin")]
-    return {"enabled": on, "days_ahead": days, "per_run": per, "streams": streams}
+    # the newspaper headline (isu semasa) is OFF unless Wan switches it on: facts first (22 Nov 2026)
+    return {"enabled": on, "days_ahead": days, "per_run": per, "streams": streams, "news": raw.get("news") is True}
 
 
 def gaps(stream: str, brand: dict[str, Any], taken: set[tuple[str, str]], days: int,
@@ -133,10 +143,11 @@ def asked_for(store: Any, stream: str) -> set[tuple[str, str]]:
 
 SELECT = "id,section,source,kind,title,url,summary,why,domain,raw,published_at,created_at"
 
-# Current newspaper issues (isu semasa) come FIRST (Wan, 9 Nov 2026: "masukkan isu semasa sebagai prioriti idea dari surat khabar
-# dan relatekan dengan regulatori kalau boleh"). The scraper keeps a headline 48 hours; politics, crime, sport and the like are
-# not this brand's business, so only the regulatory-adjacent categories qualify, and a headline that names a regulator or an
-# instrument ranks above the rest of them.
+# Newspaper issues (isu semasa): used to come FIRST (Wan, 9 Nov 2026: "masukkan isu semasa sebagai prioriti idea dari surat khabar
+# dan relatekan dengan regulatori kalau boleh"). Reversed on 22 Nov 2026 (facts first): they are OFF for auto-fill unless
+# `settings.autofill.news` is true, and then they rank AFTER every official item. The scraper keeps a headline 48 hours; politics,
+# crime, sport and the like are not this brand's business, so only the regulatory-adjacent categories qualify, and a headline that
+# names a regulator or an instrument ranks above the rest of them.
 TRENDS = "isu_semasa_trends"
 NEWS_HOURS = 48
 NEWS_CATEGORIES = ("kosmetik", "halal", "makanan", "farmaseutikal", "kesihatan")
@@ -331,15 +342,18 @@ def news_candidates(store: Any, now: datetime | None = None) -> list[dict[str, A
     return out
 
 
-def candidates(store: Any, now: datetime | None = None) -> list[dict[str, Any]]:
-    """Feed items an idea has not used yet. News is fresh for FRESH_DAYS; the OneDrive angle bank is not news and has no
-    age limit (its rows are written once, when a file is first read, and wait until they are used)."""
+def candidates(store: Any, now: datetime | None = None, news: bool = False) -> list[dict[str, Any]]:
+    """Feed items an idea has not used yet. A regulator's notice is fresh for FRESH_DAYS; the OneDrive angle bank is not news and
+    has no age limit (its rows are written once, when a file is first read, and wait until they are used). Only OFFICIAL sections
+    are read, and the newspaper headlines with them only when `news` is on (settings.autofill.news): facts first."""
     since = ((now or datetime.now(UTC)) - timedelta(days=FRESH_DAYS)).isoformat()
     rows = (store.table(WATCH).select(SELECT).eq("relevant", True).eq("dismissed", False).gte("created_at", since)
             .neq("section", "folder").order("created_at", desc=True).limit(200).execute().data or [])
     bank = (store.table(WATCH).select(SELECT).eq("section", "folder").eq("relevant", True).eq("dismissed", False)
             .order("created_at", desc=True).limit(300).execute().data or [])
-    rows = news_candidates(store, now) + rows + bank
+    if not news:
+        rows = [r for r in rows if r.get("section") in OFFICIAL_SECTIONS]            # no Reddit, YouTube, Threads or expert post
+    rows = (news_candidates(store, now) if news else []) + rows + bank
     if not rows:
         return []
     urls = [r["url"] for r in rows]
@@ -351,21 +365,46 @@ def candidates(store: Any, now: datetime | None = None) -> list[dict[str, Any]]:
                          used_profiles(store, now=now))
 
 
+# What an official announcement looks like in a title or a summary: a recall, a ban, a warning, a circular or a notice. Whole
+# words only ("ban" is not "urban" or "bank").
+ANNOUNCEMENT = re.compile(
+    r"\b(?:recall(?:s|ed)?|tarik\s+balik|ditarik\s+balik|pembatalan|dibatalkan|cancell?ed|cancell?ation|ban(?:s|ned)?|larangan|dilarang|"
+    r"diharamkan|warning|alert|amaran|circular|pekeliling|notice|notis|announcement|pengumuman|kenyataan\s+(?:media|akhbar)|"
+    r"directive|direktif|penarikan|suspend(?:ed)?|digantung|penggantungan|enforcement|penguatkuasaan)\b", re.I)
+# Official sections, best first: a regulator's own notice, a paper, an official website, MYRA's finding, Wan's own angle bank.
+OFFICIAL_SECTIONS = ("regulatory", "publication", "website", "myra", "folder")
+
+
+def is_announcement(item: dict[str, Any]) -> bool:
+    """A notice from a regulator or the government (the regulator feed), as opposed to a paper, a website or an angle."""
+    return item.get("section") == "regulatory"
+
+
+def tier(item: dict[str, Any]) -> int:
+    """0 an announcement that says what it is (recall, ban, warning, circular, notice); 1 any other regulator notice; 2 to 5 the
+    other official sections in OFFICIAL_SECTIONS order; 6 a newspaper headline (only when Wan switched them on); 7 the rest."""
+    section = item.get("section")
+    if section == "regulatory":
+        return 0 if ANNOUNCEMENT.search(f"{item.get('title') or ''} {item.get('summary') or ''}") else 1
+    if section in OFFICIAL_SECTIONS:
+        return 1 + OFFICIAL_SECTIONS.index(str(section))
+    return 6 if section == "news" else 7
+
+
 def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> list[dict[str, Any]]:
-    """Current newspaper issues first (those that name a regulator or an instrument before the rest), then the regulator and
-    paper feed, newer and regulator-facing first, without inventing a viral score."""
-    now = now or datetime.now(UTC)
+    """Official first (Wan, 22 Nov 2026): a regulator's or the government's announcement, then its other notices, then official
+    publications, websites and the angle bank; a newspaper headline only after every official item (and only when switched on).
+    Newest first inside a tier, without inventing a viral score. An item with no section at all ranks last, announcements
+    first among those."""
 
     def key(item: dict[str, Any]) -> tuple[int, int, float]:
-        title = f"{item.get('title') or ''} {item.get('summary') or ''}".lower()
-        timely = int(any(word in title for word in ("recall", "regulator", "npra", "jakim", "hsa", "efsa", "update", "warning")))
         try:
             age = -datetime.fromisoformat(str(item.get("created_at")).replace("Z", "+00:00")).timestamp()
         except (TypeError, ValueError):
             age = float("inf")
-        if item.get("section") == "news":
-            return (0, 0 if item.get("regulatory_link") else 1, age)
-        return (1, -timely, age)
+        text = f"{item.get('title') or ''} {item.get('summary') or ''}"
+        said = int(not (ANNOUNCEMENT.search(text) or item.get("regulatory_link"))) if tier(item) >= 6 else 0
+        return (tier(item), said, age)
     return sorted(pool, key=key)
 
 
@@ -417,7 +456,7 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                         + f" at {queue['limit']}); ideas resume when a post goes out")
         else:
             streams = cfg["streams"]
-        pool = rank_candidates(candidates(store, now), now)
+        pool = rank_candidates(candidates(store, now, cfg["news"]), now)
         brand = settings.get("brand") or {}
         made, empty, films = 0, 0, 0
         for stream in streams:
@@ -451,8 +490,14 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                     # jugak guna poster semasa", and LinkedIn "terus render" them): a single card is one 4:5 poster
                     fmt = "poster"
                 news = item.get("section") == "news"
+                # facts first (22 Nov 2026): a regulator's or an official source's own words are "official"; only a newspaper
+                # headline or a social post (both off unless Wan switched `news` on) is "current". An announcement by a regulator
+                # or the government is flagged so the writer opens with who announced what and from when.
+                official = item.get("section") in OFFICIAL_SECTIONS
                 brief = {"position": {"date": date, "slot": slot}, "auto": True, "watch_id": item["id"],
-                         "hook_required": True, "story_mode": True, "source_priority": "current"}
+                         "hook_required": True, "story_mode": True, "source_priority": "official" if official else "current"}
+                if is_announcement(item):
+                    brief["announcement"] = True
                 if news:
                     brief["relate_regulatory"] = True      # a newspaper story: a rule where a real one governs it
                     brief.pop("watch_id")                 # not a regulator-feed row: trend_id says where it came from

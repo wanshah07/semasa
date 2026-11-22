@@ -104,6 +104,7 @@ const MSG_PATTERNS = [
   [/^the words of (.+) have not been fetched\. Press Ambil ayat: a verse is never typed\.$/, (m) => `teks ${m[1]} belum diambil. Tekan Ambil ayat: ayat tidak pernah ditaip.`],
   [/^(.+) carries another stream's translation\. Press Ambil ayat again\.$/, (m) => `${m[1]} membawa terjemahan aliran lain. Tekan Ambil ayat sekali lagi.`],
   [/^check (.+): read the verse and its translation, then tick that it fits this post\.$/, (m) => `semak ${m[1]}: baca ayat dan terjemahannya, kemudian tandakan bahawa ia sesuai dengan post ini.`],
+  [/^explain "(.+)": add a footnote \(Nota kaki\)$/, (m) => `terangkan "${m[1]}": tambah nota kaki (Nota kaki)`],
   [/^(\d+) chars, over the (\d+) limit$/, (m) => `${m[1]} aksara, melebihi had ${m[2]}`],
   [/^(\d+) hashtags, over the (\d+) limit$/, (m) => `${m[1]} hashtag, melebihi had ${m[2]}`],
   [/^cites "(.+)", a blog or news aggregator\. On LinkedIn cite the instrument, not where you read it\.$/,

@@ -282,5 +282,20 @@ ok(!hiv.some((x) => /follow/i.test(`${x.title} ${x.lead || ""}`)), "the follow l
 ok(isFollow("Follow untuk tip regulatori yang senang faham.") && isFollow("Ikuti kami untuk info lanjut") && !isFollow("Pengilang perlu ikut garis panduan NPRA."), "a follow line is told apart from a fact");
 ok(sameLine("*Sebab* sebenar kenapa stigma HIV masih belum hilang.", "Sebab sebenar kenapa stigma HIV masih belum hilang") && !sameLine("Satu", "Dua"), "the same line once punctuation and emphasis are set aside");
 
+// THE DEFINITION NOTE (Wan, 22 Nov 2026): a slide's `foot` reaches its card spec in every look, a middle slide and a lone poster carry
+// it, the cover and the closing slide of a carousel never do, and a verse card has none (its words are fetched, never glossed)
+const FOOT = "Definisi: PIF = Fail maklumat dan bukti keselamatan produk kosmetik; Annex III = Senarai bahan yang dibenarkan dengan had.";
+const footDeck = [{ title: "Kulit", points: [], foot: FOOT }, { title: "Satu", points: P(2), foot: FOOT }, { title: "Tutup", points: P(1), foot: FOOT }];
+for (const look of STUDIO_LOOKS) {
+  const specs = specsFor(footDeck, { look, stream: "regulab", citation: "NPRA" });
+  ok(specs[1].foot === FOOT, `${look}: a middle slide's foot reaches its card spec`);
+  ok(!specs[0].foot && !specs[2].foot, `${look}: the cover and the closing slide carry no foot`);
+  const lone = specsFor([{ title: "Poster", points: P(2), foot: FOOT }], { look, stream: "regulab" });
+  ok(lone.length === 1 && lone[0].foot === FOOT, `${look}: a lone poster or card carries its foot`);
+  ok(specsFor([{ title: "Satu", points: P(1) }, { title: "Dua", points: P(1) }, { title: "Tiga", points: P(1) }], { look })[1].foot === "", `${look}: no foot written, none drawn`);
+}
+const verse = specsFor([{ title: "A", points: [] }, { ayat: "2:168", ayat_ar: "x", ayat_tr: "y", ayat_ed: "ms.basmeih@alquran.cloud", foot: FOOT }, { title: "C", points: P(1) }], { look: "grid" });
+ok(verse[1].template === "q_ayat" && !verse[1].foot, "a verse card carries no foot");
+
 if (failed) { console.error(`${failed} card mapping check(s) failed`); process.exit(1); }
 console.log("cards: slide -> Studio card mapping keeps every word");

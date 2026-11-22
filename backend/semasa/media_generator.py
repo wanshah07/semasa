@@ -493,7 +493,7 @@ def classic_words(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         pts = [" ".join(str(p).split()) for p in words if str(p or "").strip()]
         if len(pts) > MAX_CLASSIC_POINTS:            # the drawing takes five: the rest share the fifth line, never cut
             pts = pts[:MAX_CLASSIC_POINTS - 1] + [" · ".join(pts[MAX_CLASSIC_POINTS - 1:])]
-        out.append({"title": it.get("title") or "", "points": pts})
+        out.append({"title": it.get("title") or "", "points": pts, **({"foot": it["foot"]} if it.get("foot") else {})})
     return out
 
 

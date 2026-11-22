@@ -3,8 +3,9 @@
 // the two scanners can be compared line by line. `npm test`.
 import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { glossarySource } from "./glossaryInline.mjs";
 
 const here = new URL(".", import.meta.url);
 const rules = readFileSync(new URL("../rules/compliance.json", here), "utf8");
@@ -14,6 +15,7 @@ const src = readFileSync(new URL("src/lib/compliance.js", here), "utf8")
   .replace(/^import RULES from .*$/m, `const RULES = ${rules};`);
 const tmp = join(mkdtempSync(join(tmpdir(), "cmp-")), "compliance.mjs");
 writeFileSync(tmp, src);
+writeFileSync(join(dirname(tmp), "glossary.js"), glossarySource());
 const { scan, normaliseSlides } = await import(pathToFileURL(tmp).href);
 
 if (process.argv.includes("--dump")) {

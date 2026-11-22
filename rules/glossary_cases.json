@@ -1,0 +1,384 @@
+{
+ "_about": "Cases run by backend/tests/test_facts_first.py and web/glossary.test.mjs: the page's glossary.js must give the same answers as backend/semasa/glossary.py.",
+ "used": [
+  {
+   "text": "Fail PIF mesti ada. Notifikasi kosmetik dibuat di QUEST3+.",
+   "used": [
+    [
+     "pif",
+     "PIF"
+    ],
+    [
+     "notifikasi_kosmetik",
+     "Notifikasi kosmetik"
+    ],
+    [
+     "quest3",
+     "QUEST3+"
+    ]
+   ],
+   "all": [
+    "pif",
+    "notifikasi_kosmetik",
+    "quest3"
+   ]
+  },
+  {
+   "text": "Pifagoras dan sdsx tidak ada kaitan.",
+   "used": [],
+   "all": []
+  },
+  {
+   "text": "Kira MoS dahulu, bukan mos.",
+   "used": [
+    [
+     "mos",
+     "MoS"
+    ]
+   ],
+   "all": [
+    "mos"
+   ]
+  },
+  {
+   "text": "a COSMETIC NOTIFICATION and a Cosmetic Notification Holder (CNH)",
+   "used": [
+    [
+     "notifikasi_kosmetik",
+     "COSMETIC NOTIFICATION"
+    ],
+    [
+     "pemegang_notifikasi",
+     "Cosmetic Notification Holder"
+    ]
+   ],
+   "all": [
+    "notifikasi_kosmetik",
+    "pemegang_notifikasi"
+   ]
+  },
+  {
+   "text": "KKM umum tarik balik NPRA",
+   "used": [],
+   "all": [
+    "kkm",
+    "tarik_balik",
+    "npra"
+   ]
+  },
+  {
+   "text": "Bahan terlarang dalam Annex II; Annex III ada had. Poison List dan racun berjadual.",
+   "used": [
+    [
+     "bahan_terlarang",
+     "Bahan terlarang"
+    ],
+    [
+     "annex_iii",
+     "Annex III"
+    ],
+    [
+     "racun_berjadual",
+     "Poison List"
+    ]
+   ],
+   "all": [
+    "bahan_terlarang",
+    "annex_iii",
+    "racun_berjadual"
+   ]
+  },
+  {
+   "text": "Sijil halal SPHM dan logo Halal Malaysia dikeluarkan JAKIM.",
+   "used": [
+    [
+     "sphm",
+     "Sijil halal"
+    ],
+    [
+     "logo_halal",
+     "logo Halal Malaysia"
+    ]
+   ],
+   "all": [
+    "sphm",
+    "logo_halal",
+    "jakim"
+   ]
+  },
+  {
+   "text": "Notis dari BKKM di bawah Akta Makanan 1983 tentang HACCP dan MeSTI, traceability serta alergen.",
+   "used": [
+    [
+     "akta_makanan",
+     "Akta Makanan 1983"
+    ],
+    [
+     "haccp",
+     "HACCP"
+    ],
+    [
+     "mesti",
+     "MeSTI"
+    ],
+    [
+     "traceability",
+     "traceability"
+    ],
+    [
+     "alergen",
+     "alergen"
+    ]
+   ],
+   "all": [
+    "fsqd",
+    "akta_makanan",
+    "haccp",
+    "mesti",
+    "traceability",
+    "alergen"
+   ]
+  },
+  {
+   "text": "no. NOT atau nombor NOT; MAL number; NOT number",
+   "used": [
+    [
+     "not_number",
+     "no. NOT"
+    ],
+    [
+     "mal_number",
+     "MAL number"
+    ]
+   ],
+   "all": [
+    "not_number",
+    "mal_number"
+   ]
+  },
+  {
+   "text": "SCCS NOAEL SDS CPNP GMP cGMP CoA INCI SPF ACD DRGD PBKD DCA",
+   "used": [
+    [
+     "sccs",
+     "SCCS"
+    ],
+    [
+     "noael",
+     "NOAEL"
+    ],
+    [
+     "sds",
+     "SDS"
+    ],
+    [
+     "cpnp",
+     "CPNP"
+    ],
+    [
+     "gmp",
+     "GMP"
+    ],
+    [
+     "coa",
+     "CoA"
+    ],
+    [
+     "inci",
+     "INCI"
+    ],
+    [
+     "spf",
+     "SPF"
+    ],
+    [
+     "acd",
+     "ACD"
+    ],
+    [
+     "drgd",
+     "DRGD"
+    ],
+    [
+     "pbkd",
+     "PBKD"
+    ]
+   ],
+   "all": [
+    "sccs",
+    "noael",
+    "sds",
+    "cpnp",
+    "gmp",
+    "coa",
+    "inci",
+    "spf",
+    "acd",
+    "drgd",
+    "pbkd"
+   ]
+  },
+  {
+   "text": "Ditarik balik dan diwartakan di warta; gazetted recall",
+   "used": [
+    [
+     "diwartakan",
+     "diwartakan"
+    ]
+   ],
+   "all": [
+    "tarik_balik",
+    "diwartakan"
+   ]
+  },
+  {
+   "text": "",
+   "used": [],
+   "all": []
+  }
+ ],
+ "feet": [
+  {
+   "foot": "Definisi: PIF = fail; Notifikasi kosmetik = pemberitahuan kepada NPRA.",
+   "pairs": [
+    [
+     "PIF",
+     "fail"
+    ],
+    [
+     "Notifikasi kosmetik",
+     "pemberitahuan kepada NPRA"
+    ]
+   ],
+   "defined": [
+    "notifikasi_kosmetik",
+    "pif"
+   ],
+   "clean_bm": "Definisi: PIF = Fail maklumat dan bukti keselamatan kosmetik, disimpan syarikat dan ditunjukkan kepada NPRA bila diminta; Notifikasi kosmetik = Memaklumkan NPRA tentang produk kosmetik sebelum dijual. Ia bukan kelulusan.",
+   "clean_en": "Definition: PIF = A cosmetic's technical and safety file, kept by the company for NPRA on request; Cosmetic notification = Telling NPRA about a cosmetic product before selling it. It is not an approval."
+  },
+  {
+   "foot": "Definition: cosmetic notification = telling NPRA; SCCS = EU committee.",
+   "pairs": [
+    [
+     "cosmetic notification",
+     "telling NPRA"
+    ],
+    [
+     "SCCS",
+     "EU committee"
+    ]
+   ],
+   "defined": [
+    "notifikasi_kosmetik",
+    "sccs"
+   ],
+   "clean_bm": "Definisi: Notifikasi kosmetik = Memaklumkan NPRA tentang produk kosmetik sebelum dijual. Ia bukan kelulusan; SCCS = Jawatankuasa saintifik EU yang menasihati Suruhanjaya Eropah tentang keselamatan bahan kosmetik.",
+   "clean_en": "Definition: Cosmetic notification = Telling NPRA about a cosmetic product before selling it. It is not an approval; SCCS = The EU scientific committee advising the European Commission on cosmetic ingredient safety."
+  },
+  {
+   "foot": "Definisi: ZXQ = benda kecil; PIF = ayat saya sendiri",
+   "pairs": [
+    [
+     "ZXQ",
+     "benda kecil"
+    ],
+    [
+     "PIF",
+     "ayat saya sendiri"
+    ]
+   ],
+   "defined": [
+    "pif"
+   ],
+   "clean_bm": "Definisi: ZXQ = benda kecil; PIF = Fail maklumat dan bukti keselamatan kosmetik, disimpan syarikat dan ditunjukkan kepada NPRA bila diminta.",
+   "clean_en": "Definition: ZXQ = benda kecil; PIF = A cosmetic's technical and safety file, kept by the company for NPRA on request."
+  },
+  {
+   "foot": "Definisi: ZXQ = kata kata kata kata kata kata kata kata kata kata kata kata kata kata kata kata kata kata kata kata ",
+   "pairs": [
+    [
+     "ZXQ",
+     "kata kata kata kata kata kata kata kata kata kata kata kata kata kata kata kata kata kata kata kata"
+    ]
+   ],
+   "defined": [],
+   "clean_bm": "",
+   "clean_en": ""
+  },
+  {
+   "foot": "Definisi: PIF = x; NPRA = y; MoS = z",
+   "pairs": [
+    [
+     "PIF",
+     "x"
+    ],
+    [
+     "NPRA",
+     "y"
+    ],
+    [
+     "MoS",
+     "z"
+    ]
+   ],
+   "defined": [
+    "mos",
+    "npra",
+    "pif"
+   ],
+   "clean_bm": "Definisi: PIF = Fail maklumat dan bukti keselamatan kosmetik, disimpan syarikat dan ditunjukkan kepada NPRA bila diminta; NPRA = Agensi di bawah KKM yang mengawal selia ubat, kosmetik dan produk semula jadi.",
+   "clean_en": "Definition: PIF = A cosmetic's technical and safety file, kept by the company for NPRA on request; NPRA = The Ministry of Health agency that regulates medicines, cosmetics and natural products."
+  },
+  {
+   "foot": "PIF: fail maklumat",
+   "pairs": [
+    [
+     "PIF",
+     "fail maklumat"
+    ]
+   ],
+   "defined": [
+    "pif"
+   ],
+   "clean_bm": "Definisi: PIF = Fail maklumat dan bukti keselamatan kosmetik, disimpan syarikat dan ditunjukkan kepada NPRA bila diminta.",
+   "clean_en": "Definition: PIF = A cosmetic's technical and safety file, kept by the company for NPRA on request."
+  },
+  {
+   "foot": "tiada pasangan",
+   "pairs": [],
+   "defined": [],
+   "clean_bm": "",
+   "clean_en": ""
+  },
+  {
+   "foot": "",
+   "pairs": [],
+   "defined": [],
+   "clean_bm": "",
+   "clean_en": ""
+  }
+ ],
+ "captions": [
+  {
+   "caption": "Isi.\n\nDefinisi: PIF = fail.\n\nFollow untuk tip.\n\n#a #b",
+   "defined": [
+    "pif"
+   ],
+   "stripped": "Isi.\n\nFollow untuk tip.\n\n#a #b"
+  },
+  {
+   "caption": "Ada Definisi: PIF = fail di tengah.",
+   "defined": [],
+   "stripped": "Ada Definisi: PIF = fail di tengah."
+  },
+  {
+   "caption": "Isi PIF.\n\nDefinition: SCCS = x; PIF = y",
+   "defined": [
+    "pif",
+    "sccs"
+   ],
+   "stripped": "Isi PIF."
+  }
+ ]
+}

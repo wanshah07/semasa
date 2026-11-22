@@ -16,6 +16,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from . import glossary
+
 RULES_PATH = Path(__file__).resolve().parents[2] / "rules" / "compliance.json"
 RULES: dict[str, Any] = json.loads(RULES_PATH.read_text(encoding="utf-8"))
 QURAN: dict[str, Any] = RULES["quran"]
@@ -238,7 +240,8 @@ def ayat_extras(s: dict[str, Any]) -> dict[str, Any]:
 # A slide's own design (Studio's per-slide editor, brought over 27 Sep 2026): the words each design draws besides the
 # headline and the points, and how it is drawn. Kept only when set, in this order, so a slide written before these
 # existed compares equal to itself. Mirrored exactly by slideExtras in web/src/lib/compliance.js.
-SLIDE_WORDS = {"lead": 400, "eyebrow": 80, "chip": 60, "note": 240, "footnote": 300}
+# `foot` is the small definition note under the words ("Definisi: PIF = ..."; glossary.py), `footnote` the source line.
+SLIDE_WORDS = {"lead": 400, "eyebrow": 80, "chip": 60, "note": 240, "footnote": 300, "foot": 300}
 SLIDE_STYLE = {
     # one letter per card family: grid, era, photo, image, hand, and the four poster looks (marker, torn, block, neon). It was
     # [gepi] until 16 Nov 2026, so a slide set to a Hand-drawn template lost its choice here and was drawn as the set's design
@@ -290,6 +293,11 @@ def slide_extras(s: dict[str, Any]) -> dict[str, Any]:
 def slide_text(sl: dict[str, Any]) -> str:
     """Every word a slide can put on the picture, for the scan."""
     return "\n".join([sl.get("title") or "", *(sl.get("points") or []), *(sl.get(k) or "" for k in SLIDE_WORDS)])
+
+
+def slide_body(sl: dict[str, Any]) -> str:
+    """The words a slide SAYS, without its definition note: what the glossary check reads for the terms the slide uses."""
+    return "\n".join([sl.get("title") or "", *(sl.get("points") or []), *(sl.get(k) or "" for k in SLIDE_WORDS if k != "foot")])
 
 
 def slides_key(raw: Any) -> str:
@@ -364,6 +372,8 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
             add(False, where, f"{tags} hashtags, over the {lim['hashtags']} limit")
         if p == "linkedin" and t.strip().endswith("?"):
             add(False, where, "ends with a question")
+        for written in unexplained(glossary.strip_definisi(t), glossary.defined_in_caption(t)):
+            add(False, where, EXPLAIN.format(written))
         if stream == "linkedin":
             hit = AGGREGATOR.search(t)
             if hit:
@@ -412,10 +422,19 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
                 add(True, where, "a ws.regulab mark on LinkedIn")
 
     # Slides are artwork: judged like a caption, and what is DRAWN must be what is written.
-    def artwork(items: list[dict[str, Any]], label: str) -> None:
+    caption_defined: set[str] = set()
+    for p in platforms_of(post):
+        caption_defined |= glossary.defined_in_caption(text_of(post, p, lang))
+
+    def artwork(items: list[dict[str, Any]], label: str, explain: bool = False) -> None:
         for i, sl in enumerate(items):
             where = f"{label} {i + 1}"
             t = slide_text(sl)
+            if explain:
+                # a term the slide uses is explained by its own footnote or by the caption's Definisi line (a cover and a
+                # closing slide carry no footnote, so the caption is where theirs goes)
+                for written in unexplained(slide_body(sl), glossary.defined_in(sl.get("foot") or "") | caption_defined):
+                    add(False, where, EXPLAIN.format(written))
             for rx, lab in HARD:
                 if rx.search(t):
                     add(True, where, lab)
@@ -449,7 +468,7 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
                     add(True, where, f"check {lab}: read the verse and its translation, then tick that it fits this post.")
 
     slides = normalise_slides(post.get("slides"))
-    artwork(slides, "Slide")
+    artwork(slides, "Slide", explain=True)
     # a vague line on a slide is pinned down on that slide or the next two (a cover may tease what slide 2 states exactly)
     for phrase in vague_hits([slide_text(sl) for sl in slides]):
         add(vague_hard, "Slides", f'vague: "{phrase}". {VAGUE_FIX} on that slide or the two after it.')
@@ -484,6 +503,16 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
         if allow and post["domain"] not in allow and post["domain"] not in RULES.get("rota_any_day", []):
             add(False, "Rota", f"{DOW_MS[dow]} carries {' and '.join(allow)}, and this is {post['domain']}. A note, not a block.")
     return flags
+
+
+EXPLAIN = 'explain "{}": add a footnote (Nota kaki)'
+
+
+def unexplained(body: str, defined: set[str]) -> list[str]:
+    """The glossary terms `body` uses (as written) that nothing in `defined` explains. A warning only, never a block (Wan,
+    22 Nov 2026): the glossary is Wan's list and a term he did not expect to need a note is his call. Mirrored by unexplained
+    in web/src/lib/compliance.js."""
+    return [written for e, written in glossary.used(body) if e["id"] not in defined]
 
 
 def sentences(text: str) -> list[str]:

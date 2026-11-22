@@ -4,15 +4,18 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { MSG_BM, flagWords, msgBm, whereBm } from "./src/lib/complianceBm.js";
+import { glossarySource } from "./glossaryInline.mjs";
 
 const rulesText = readFileSync(new URL("../rules/compliance.json", import.meta.url), "utf8");
 const RULES = JSON.parse(rulesText);
 // Node needs an import attribute for JSON that Vite does not; inline the rules, as compliance.test.mjs does
 const tmp = join(mkdtempSync(join(tmpdir(), "cmpbm-")), "compliance.mjs");
 writeFileSync(tmp, readFileSync(new URL("./src/lib/compliance.js", import.meta.url), "utf8").replace(/^import RULES from .*$/m, `const RULES = ${rulesText};`));
+
+writeFileSync(join(dirname(tmp), "glossary.js"), glossarySource());
 const { scan } = await import(pathToFileURL(tmp).href);
 let n = 0;
 const t = (name, fn) => { fn(); n++; };
@@ -40,6 +43,7 @@ t("messages with numbers and words in them", () => {
   assert.match(msgBm('cites "ChemLinked", a blog or news aggregator. Cite the instrument.'), /^memetik "ChemLinked"/);
   assert.equal(msgBm("Monday carries kosmetik and kajian_kes, and this is makanan. A note, not a block."),
     "Isnin membawa kosmetik dan kajian_kes, dan ini makanan. Nota, bukan sekatan.");
+  assert.equal(msgBm('explain "PIF": add a footnote (Nota kaki)'), 'terangkan "PIF": tambah nota kaki (Nota kaki)');
   assert.equal(whereBm("Caption (instagram)"), "Kapsyen (instagram)");
   assert.equal(whereBm("EN variant (facebook)"), "Varian EN (facebook)");
   assert.equal(whereBm("Design 2, slide 3"), "Reka bentuk 2, slaid 3");

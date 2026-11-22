@@ -4,6 +4,7 @@ import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { glossarySource } from "./glossaryInline.mjs";
 
 // Node needs an import attribute for JSON that Vite does not: compliance.js is copied with its rules inlined (as compliance.test.mjs does)
 const here = new URL(".", import.meta.url);
@@ -11,6 +12,7 @@ const dir = mkdtempSync(join(tmpdir(), "mq-"));
 const rules = readFileSync(new URL("../rules/compliance.json", here), "utf8");
 writeFileSync(join(dir, "compliance.js"), readFileSync(new URL("src/lib/compliance.js", here), "utf8")
   .replace(/^import RULES from .*$/m, `const RULES = ${rules};`));
+writeFileSync(join(dir, "glossary.js"), glossarySource());
 copyFileSync(new URL("src/lib/slots.js", here), join(dir, "slots.js"));
 copyFileSync(new URL("src/lib/platformFormat.js", here), join(dir, "platformFormat.js"));
 copyFileSync(new URL("src/lib/captionFit.js", here), join(dir, "captionFit.js"));

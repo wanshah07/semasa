@@ -333,6 +333,26 @@ def draw_lines(d: ImageDraw.ImageDraw, lines: list[Line], x: int, y: int, font: 
     return y
 
 
+FOOT_LINES = 2          # a slide's definition note ("Definisi: PIF = ...") takes two lines at most
+
+
+def foot_layout(foot: str, width: int) -> tuple[list[Line], ImageFont.FreeTypeFont]:
+    """The definition note of a slide as lines of at most FOOT_LINES, small and muted (Wan, 22 Nov 2026): the largest of 23, 22
+    and 21 px at which it fits; when it does not, the LAST term goes (the note is "Definisi: a = x; b = y.") until it does, so
+    a word is never cut. ([], font) when not even the first term fits: the caption's Definisi line still carries it."""
+    text = " ".join(strip_emphasis(str(foot or "")).split())
+    font = _font(BODY, 21)
+    while text:
+        for size in (23, 22, 21):
+            font = _font(BODY, size)
+            lines = wrap(text, font, width)
+            if len(lines) <= FOOT_LINES:
+                return lines, font
+        head, sep, _ = text.rstrip(".").rpartition("; ")
+        text = head.rstrip(".") + "." if sep else ""
+    return [], font
+
+
 SHORT_H = 600       # below this height the fixed margins, header and footer leave no room for words
 SHORT_DRAW_H = 1000  # ... so a short banner is drawn at this height and scaled down to its real size
 
@@ -385,9 +405,17 @@ def render_one(slide: dict[str, Any], index: int, total: int, *, stream: str, ey
             raise SlideError("the source line is too long for the closing slide; shorten the Source field")
     src_lh = round(src_font.size * 1.35)
     src_h = (len(src_lines) * src_lh + 28) if src_lines else 0
+    # the definition note: small and muted at the foot of a middle slide or a lone card, under the source line, never on the
+    # cover or the closing slide (the caption's Definisi line carries those)
+    foot_lines: list[Line] = []
+    foot_font = _font(BODY, 21)
+    if kind in ("point", "single") and str(slide.get("foot") or "").strip():
+        foot_lines, foot_font = foot_layout(str(slide["foot"]), col)
+    foot_lh = round(foot_font.size * 1.35)
+    foot_h = (len(foot_lines) * foot_lh + 24) if foot_lines else 0
 
-    block = fit(slide, kind, col, bottom - top - src_h, tall)
-    y = top + max(0, (bottom - top - src_h - block.height) // 2)
+    block = fit(slide, kind, col, bottom - top - src_h - foot_h, tall)
+    y = top + max(0, (bottom - top - src_h - foot_h - block.height) // 2)
     y = draw_lines(d, block.title, MARGIN, y, block.title_font, block.title_lh, ink, accent)
     if block.points and block.title:
         y += block.gap_title
@@ -402,8 +430,13 @@ def render_one(slide: dict[str, Any], index: int, total: int, *, stream: str, ey
         if i < len(block.points) - 1:
             y += block.gap_point
 
+    if foot_lines:
+        fy = bottom - len(foot_lines) * foot_lh
+        d.line([MARGIN, fy - 14, MARGIN + 40, fy - 14], fill=muted, width=1)
+        draw_lines(d, foot_lines, MARGIN, fy, foot_font, foot_lh, muted, muted)
+
     if src_lines:
-        sy = bottom - len(src_lines) * src_lh
+        sy = bottom - foot_h - len(src_lines) * src_lh
         d.line([MARGIN, sy - 16, MARGIN + 80, sy - 16], fill=accent if on_ground else LINE, width=2)
         draw_lines(d, src_lines, MARGIN, sy, src_font, src_lh, muted, muted)
 

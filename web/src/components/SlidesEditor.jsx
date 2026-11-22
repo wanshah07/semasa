@@ -398,6 +398,9 @@ function SlideDesign({ r, i, n, set, locked, bgOptions, onBgAll, onStyleAll, str
         { placeholder: i === n - 1 ? t("Sumber", "Source") : "" })}
       {note && f("note", note)}
       {f("footnote", t("Baris sumber (kaki)", "Source line (footer)"), { placeholder: i === n - 1 ? t("dari medan Sumber", "from the Source field") : "" })}
+      {/* the small definition note (Wan, 22 Nov 2026): never on the cover or the closing slide, whose terms the caption's Definisi line carries */}
+      {!(n > 1 && (i === 0 || i === n - 1)) && f("foot", t("Nota kaki (definisi istilah)", "Footnote (definition of a term)"),
+        { placeholder: t("Definisi: PIF = fail maklumat produk kosmetik", "Definition: PIF = a cosmetic's product information file") })}
       <div className="block min-w-0"><Label>{t("Latar slaid ini", "This slide's background")}</Label>
         <div className="flex items-center gap-2">
           <span className="h-9 w-9 shrink-0 overflow-hidden rounded border border-line bg-surface-2">

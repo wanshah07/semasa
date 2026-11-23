@@ -22,6 +22,9 @@ log = get_logger("semasa.my_designs")
 
 ID_RE = re.compile(r"^d:([a-z0-9_]{4,24})$")
 FAMILIES = ("grid", "era", "photo", "image", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip")
+# the plain looks an idea may ask for besides a saved design: Semasa's own, the Studio families, and the Journal look (a saved
+# design cannot be made from it: it draws a picture per slide, which a saved layout has no place for)
+PLAIN_LOOKS = ("classic", *FAMILIES, "journal")
 KEYS = ("look", "cover", "middle", "closing", "single", "accent", "paper", "bg", "scrim", "mascot", "eyebrow")
 
 
@@ -78,7 +81,7 @@ def choose(designs: list[dict[str, Any]], default_id: str, look: str) -> tuple[s
         got = pack(d)
         if got:
             return got["look"], got
-    return (look if look in ("classic", *FAMILIES) else "classic"), None
+    return (look if look in PLAIN_LOOKS else "classic"), None
 
 
 def for_idea(store: Any, idea: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:

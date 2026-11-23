@@ -173,6 +173,37 @@ def test_a_poster_with_no_look_takes_the_next_look_in_the_turn_and_a_chosen_look
     assert store.tables["semasa_ideas"][-1]["brief"]["look"] == "neon", "Wan's own choice wins"
 
 
+DIARI = [{"title": "Notifikasi bukan kelulusan", "points": [], "lead": "Ramai tersalah faham.",
+          "note": "Tapi ada satu perkara."},
+         {"title": "NPRA semak selepas produk di pasaran", "points": [], "lead": "Semakan datang kemudian.",
+          "note": "Itu sahaja."}]
+
+
+def test_a_diari_carousel_reaches_the_job_as_journal_never_as_classic(offline):
+    # found on the first real run (23 Nov 2026): my_designs.choose turned every look it did not know into "classic", so the
+    # Diari Wan picked, and every automatic turn of it, was drawn as Semasa's own look
+    llm = Seq({**GOOD, "hook_shape": 4, "slides": DIARI})
+    store = _store([{"hook_shape": 4, "look": "hand"}])
+    _write(llm, store, make_media="image", make_slides=True, brief={"format": "carousel", "look": "journal"})
+    job = next(m for m in store.tables["media_generations"] if (m.get("meta") or {}).get("slides"))
+    assert job["meta"]["look"] == "journal" and "look_auto" not in job["meta"]
+    assert store.tables["semasa_ideas"][-1]["brief"]["look"] == "journal"
+
+
+def test_an_automatic_turn_of_diari_reaches_the_job_marked_so_it_can_give_way(offline):
+    llm = Seq({**GOOD, "hook_shape": 4, "slides": DIARI})
+    store = _store([{"hook_shape": 4, "look": "image"}])                  # the turn after Image is Diari
+    _write(llm, store, make_media="image", make_slides=True, brief={"format": "carousel"})
+    job = next(m for m in store.tables["media_generations"] if (m.get("meta") or {}).get("slides"))
+    assert job["meta"]["look"] == "journal" and job["meta"]["look_auto"] is True
+
+
+def test_my_designs_keeps_every_look_it_is_asked_for_that_the_renderer_knows():
+    from semasa import my_designs, studio_cards
+    for look in ("classic", *studio_cards.LOOKS):
+        assert my_designs.choose([], "", look) == (look, None), look
+
+
 def test_the_linkedin_writer_wants_numbered_facts_and_no_follow_line_or_self_label():
     p = ideas.LINKEDIN_SYSTEM
     assert "NUMBERED LIST" in p and "6 to 10 points" in p and "350 to 500 words" in p and "1500 characters" in p

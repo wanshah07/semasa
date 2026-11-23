@@ -102,7 +102,9 @@ def test_process_idea_writes_a_scanned_draft_and_queues_media(monkeypatch):
     assert post["id"] == pid and post["status"] == "draft" and post["domain"] == "kosmetik"
     assert post["hard_flags"] >= 1 and any("hubungi kami" in f["msg"] for f in post["flags"])
     assert post["date"] and post["slot"]
-    assert store.tables["media_generations"][0]["mode"] == "prompt"
+    # the writer gave no poster: the post still gets one, never an AI picture on its own (Wan, 23 Nov 2026)
+    job = store.tables["media_generations"][0]
+    assert job["mode"] == "slides" and job["meta"]["design"] == "poster" and job["meta"]["slides"][0]["title"]
     assert store.tables["semasa_ideas"][0]["status"] == "drafted"
     assert "only the headline and summary" in llm.seen[0][1]         # the writer is told it has no article
 
@@ -338,3 +340,56 @@ def test_a_settings_line_asking_for_sahkan_never_reaches_the_writer():
     w = {"regulab": {"voice": "Blunt.", "never": ["Never name a client.", "Unsourced fee: write [SAHKAN: fee] instead."]}}
     block = ideas.writer_block(w, "regulab")
     assert "Never name a client." in block and "SAHKAN" not in block
+
+
+# ---- a LinkedIn post is a poster, never an AI picture alone (Wan, 23 Nov 2026) ----------------------------------------------
+
+LI_CAP = ("I went from thinking exosomes were a lab fantasy to reading 30 studies.\n\n1. Barrier scores improved in 22 of 30 "
+          "studies. More detail here.\n\n2. Itch scores fell in the 12 trials that measured them.\n\n3. Doses varied from 5 to "
+          "50 micrograms.\n\n#cosmeticscience")
+
+
+def test_the_poster_is_built_from_the_caption_when_the_writer_gives_none():
+    got = ideas.poster_from_caption("Exosomes for atopic dermatitis: lab fantasy or real?", LI_CAP, None, "linkedin")
+    assert got["title"].startswith("Exosomes") and len(got["points"]) == 3
+    assert got["points"][0] == "Barrier scores improved in 22 of 30 studies."
+    long_hook = "I went from thinking exosomes for atopic dermatitis were a lab fantasy to reading thirty studies"
+    short = ideas.poster_from_caption(long_hook, LI_CAP, None, "linkedin")
+    assert len(short["title"].split()) <= 10
+
+
+def test_poster_for_post_asks_the_writer_then_falls_back_to_the_caption():
+    post = {"hook": "Exosomes: fantasy or real?", "text": {"en": {"linkedin": LI_CAP}}}
+    said = FakeLLM({"poster": {"eyebrow": "Cosmetic science", "title": "Exosomes: *real* data", "lead": "30 studies read",
+                              "points": ["22 of 30 improved barrier scores"]}})
+    got = ideas.poster_for_post(said, post, "linkedin", "en")
+    assert got[0]["title"] and got[0]["points"] == ["22 of 30 improved barrier scores"]
+    none = FakeLLM(None)
+    got = ideas.poster_for_post(none, post, "linkedin", "en")
+    assert got and got[0]["title"] and got[0]["points"], "a poster is drawn even when the writer gives nothing"
+    malay = FakeLLM({"poster": {"title": "Kosmetik bukan kelulusan produk", "points": ["Notifikasi sahaja yang diperlukan"]}})
+    got = ideas.poster_for_post(malay, post, "linkedin", "en")
+    assert "Kosmetik bukan" not in got[0]["title"], "LinkedIn stays English"
+
+
+def test_a_linkedin_draft_with_only_an_ai_picture_is_given_a_poster():
+    store = FakeStore(
+        semasa_settings=[{"key": "brand", "value": BRAND}, {"key": "publishing", "value": {"enabled": False}}],
+        semasa_posts=[
+            {"id": "p1", "stream": "linkedin", "status": "draft", "lang": "en", "hook": "Exosomes: fantasy or real?",
+             "text": {"en": {"linkedin": LI_CAP}}, "media_ids": ["m1"], "idea_id": "i1", "created_by": "u", "angle": "F"},
+            {"id": "p2", "stream": "linkedin", "status": "draft", "lang": "en", "hook": "Has a poster",
+             "text": {"en": {"linkedin": LI_CAP}}, "media_ids": ["m2"]},
+            {"id": "p3", "stream": "linkedin", "status": "approved", "lang": "en", "hook": "Approved, untouched",
+             "text": {"en": {"linkedin": LI_CAP}}, "media_ids": ["m1"]}],
+        media_generations=[{"id": "m1", "mode": "prompt", "status": "done", "meta": {}},
+                           {"id": "m2", "mode": "slides", "status": "done", "meta": {"design": "poster"}}],
+        semasa_ideas=[], semasa_log=[])
+    note = ideas.repair_picture_only(store, FakeLLM(None))
+    assert "1 LinkedIn draft" in note
+    posts = {p["id"]: p for p in store.tables["semasa_posts"]}
+    assert posts["p1"]["media_ids"] == [] and posts["p2"]["media_ids"] == ["m2"] and posts["p3"]["media_ids"] == ["m1"]
+    jobs = [j for j in store.tables["media_generations"] if j.get("post_id") == "p1"]
+    assert len(jobs) == 1 and jobs[0]["mode"] == "slides" and jobs[0]["meta"]["design"] == "poster"
+    assert jobs[0]["meta"]["stream"] == "linkedin" and jobs[0]["meta"]["slides"][0]["title"]
+    assert ideas.repair_picture_only(store, FakeLLM(None)) == "Poster repair: none needed", "it runs once per draft"

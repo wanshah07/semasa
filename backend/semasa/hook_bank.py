@@ -101,7 +101,12 @@ DEFAULT_GUIDANCE = ("Write a Malay post's hook as the shape is written; write an
                     "Also answer 'why should I keep reading' inside the hook itself: name a real result, a real effort, or a "
                     "source worth trusting, never an invented number (Wan, 14 Nov 2026: the viral-hook formula). If the story "
                     "has something most people miss, frame it that way honestly, not theatrically, and close on one non-obvious "
-                    "take, never generic advice. Keep it human: say it the way you would tell a friend, not like a template.")
+                    "take, never generic advice. Match the hook to the reader's awareness stage (TOFU/MOFU/BOFU, the short form of "
+                    "Eugene Schwartz's five awareness stages, Wan 22 Nov 2026): Unaware (TOFU) wake them to a problem they don't know "
+                    "they have; Problem aware (TOFU) name the problem; Solution aware (MOFU) name the solution, not the problem; "
+                    "Product aware (BOFU) differentiate the specific product or offer; Most aware (BOFU) skip the education, go straight "
+                    "to the offer. Most Semasa regulatory posts target problem-aware or solution-aware readers, so open at that stage, "
+                    "never a generic 'did you know' that only fits the unaware. Keep it human: say it the way you would tell a friend, not like a template.")
 
 
 def block(family: str | None, stream: str, bank: Bank | None = None, hint: str = "") -> str:

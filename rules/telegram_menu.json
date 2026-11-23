@@ -29,7 +29,12 @@
             { "act": "status", "icon": "📊", "bm": "Ringkasan sekarang", "en": "Status now" },
             { "act": "jadual", "icon": "🗓", "bm": "Jadual 7 hari", "en": "Next 7 days" }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "id": "chat", "icon": "💬", "bm": "Sembang AI", "en": "AI chat",
+      "pages": [
         {
           "tab": "chat", "icon": "💬", "bm": "Sembang AI", "en": "AI chat",
           "about": { "bm": "tanya pasukan AI; di sini, taip sahaja soalan", "en": "ask the AI team; here, just type a question" },
@@ -37,7 +42,12 @@
             { "act": "laporan", "icon": "📄", "bm": "Tulis laporan", "en": "Write a report" },
             { "act": "model", "icon": "🤖", "bm": "Model ikut tugas", "en": "Model by task" }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "id": "memori", "icon": "🧠", "bm": "Memori & Arahan", "en": "Memory & instructions",
+      "pages": [
         {
           "tab": "memori", "icon": "🧠", "bm": "Memori & Arahan", "en": "Memory & instructions",
           "about": { "bm": "nota tetap dan arahan untuk setiap jawapan", "en": "standing notes and instructions for every answer" },
@@ -45,7 +55,12 @@
             { "act": "memori", "icon": "🧠", "bm": "Lihat nota tetap", "en": "See the standing notes" },
             { "act": "ingat", "icon": "✍️", "bm": "Simpan nota baharu", "en": "Save a new note" }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "id": "otak", "icon": "🧬", "bm": "Otak AI", "en": "AI brain",
+      "pages": [
         {
           "tab": "otak", "icon": "🧬", "bm": "Otak AI", "en": "AI brain",
           "about": { "bm": "rujukan yang dibaca AI, soalan bersumber", "en": "the references the AI reads, cited answers" }

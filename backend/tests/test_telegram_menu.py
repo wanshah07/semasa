@@ -205,7 +205,7 @@ def test_both_languages_are_there_and_nothing_a_person_reads_has_an_em_dash():
 # ---- Telegram's limits ------------------------------------------------------------------------------------------------------
 
 def _check_keyboard(rows, where):
-    assert 1 <= len(rows) <= 10, f"{where}: {len(rows)} rows is too tall for a phone"
+    assert 1 <= len(rows) <= 12, f"{where}: {len(rows)} rows is too tall for a phone"
     assert sum(len(r) for r in rows) <= 100
     for row in rows:
         assert 1 <= len(row) <= menu.PER_ROW, f"{where}: {len(row)} buttons in one row"

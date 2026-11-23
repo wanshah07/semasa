@@ -31,7 +31,9 @@ export const AuroraBackground = ({
       )}
       {...props}
     >
-      <div className="absolute inset-0 overflow-hidden" aria-hidden>
+      {/* pointer-events-none: this positioned layer paints ABOVE the unpositioned content next to it, so without it the buttons in the
+          dashboard's header band could not be clicked (Wan, 23 Nov 2026: "the button not clickable") */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
         <div
           className={cn(
             `

@@ -8,10 +8,10 @@ import { Anchor, BarChart3, BookOpenText, Brain, Briefcase, GraduationCap, Build
 export function tabsOf(t) {
   return [
     { id: "papan", label: t("Papan", "Dashboard"), icon: LayoutDashboard, segment: "dashboard" },
-    { id: "chat", label: t("Sembang AI", "AI chat"), icon: MessageSquare, segment: "dashboard" },
-    // beside the chat whose answers it shapes (its instructions, its memory, its two switches), not in Tetapan with the workers
-    { id: "memori", label: t("Memori & Arahan", "Memory & instructions"), icon: NotebookPen, segment: "dashboard" },
-    { id: "otak", label: t("Otak AI", "AI brain"), icon: Brain, segment: "dashboard" },
+    { id: "chat", label: t("Sembang AI", "AI chat"), icon: MessageSquare, segment: "chat" },
+    // the chat's instructions, memory and two switches, not in Tetapan with the workers; its own sidebar entry since 23 Nov 2026
+    { id: "memori", label: t("Memori & Arahan", "Memory & instructions"), icon: NotebookPen, segment: "memori" },
+    { id: "otak", label: t("Otak AI", "AI brain"), icon: Brain, segment: "otak" },
 
     { id: "isu", label: t("Isu semasa", "Current issues"), icon: Radio, segment: "content" },
     { id: "idea", label: t("Bank idea", "Ideas bank"), icon: Lightbulb, segment: "content" },
@@ -74,7 +74,12 @@ export function segmentsOf(t) {
   const pages = tabsOf(t);
   const seg = (id, label, icon) => ({ id, label, icon, pages: pages.filter((p) => p.segment === id) });
   return [
+    // the dashboard, the AI chat, its memory and instructions, and the AI brain each stand alone in the sidebar (Wan, 23 Nov 2026:
+    // "pisahkan AI chat, Memory & Instructions, AI brain dari dashboard and standalone")
     seg("dashboard", t("Papan", "Dashboard"), LayoutDashboard),
+    seg("chat", t("Sembang AI", "AI chat"), MessageSquare),
+    seg("memori", t("Memori & Arahan", "Memory & instructions"), NotebookPen),
+    seg("otak", t("Otak AI", "AI brain"), Brain),
     seg("content", t("Kandungan", "Content"), Newspaper),
     seg("linkedin", "LinkedIn", Briefcase),
     seg("expert", t("Kandungan pakar", "Expert content"), GraduationCap),

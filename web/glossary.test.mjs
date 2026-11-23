@@ -71,7 +71,9 @@ t("the foot is kept by normaliseSlides, compared by slidesKey and judged like an
   assert.notEqual(C.slidesKey([{ title: "A", foot: "x" }]), C.slidesKey([{ title: "A" }]));
   assert.ok(C.slideText(s[0]).includes("Definisi: PIF") && !C.slideBody(s[0]).includes("Definisi"));
   assert.deepEqual(C.normaliseSlides([{ foot: "Definisi: PIF = fail" }]), [{ title: "", points: [], foot: "Definisi: PIF = fail" }]);
-  assert.ok(C.scan(post("Isi.", [{ title: "A", points: ["x"], foot: "Hubungi kami" }])).some((f) => f.hard && f.where === "Slide 1"));
+  // a call to action is named, as a warning, and no longer blocks (Wan, 23 Nov 2026)
+  const asked = C.scan(post("Isi.", [{ title: "A", points: ["x"], foot: "Hubungi kami" }]));
+  assert.ok(asked.some((f) => !f.hard && f.where === "Slide 1") && !asked.some((f) => f.hard && f.where === "Slide 1"));
 });
 
 console.log(`ok - ${n} glossary checks`);

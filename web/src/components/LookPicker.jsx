@@ -94,6 +94,14 @@ function useClosing(enabled, size) {
   return pic;
 }
 
+/* A stand-in cut-out drawing (public/cards/sample-art.png: a flask, a leaf, two dots, transparent round a white sticker border) so every tile and the preview show where
+   the illustration goes (Wan, 23 Nov 2026: "kenapa poster style design masih lama ... tiada illustration"). The real drawing is made by the
+   worker for each slide when the post is drawn; this one only ever appears in the picker and is never saved. */
+const SAMPLE_ART = `${BASE}sample-art.png`;
+const SAMPLE_PAGE = `${BASE}sample-art-page.png`;       // Diari's picture is the whole drawn page (opaque), the other looks' is a cut-out
+const asPage = (list) => list.map((s) => (s && s.art_url === SAMPLE_ART ? { ...s, art_url: SAMPLE_PAGE } : s));
+const withSampleArt = (list) => list.map((s) => (s && !s.art_url && !s.art_skip ? { ...s, art_url: SAMPLE_ART } : s));
+
 /* No words yet (a post with no slides written): the designs are shown on sample words rather than as blank tiles. */
 function sampleWords(stream) {
   const en = stream === "linkedin";
@@ -140,7 +148,7 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const { designs, defaultId, hiddenLooks, setHiddenLooks, saveDesigns, setDefault } = useDesigns();
   const chosen = resolveLook(value, designs);                    // "d:<id>" is one of My designs: its family, colours and layouts
   const sample = givenSample || !given.length;
-  const slides = given.length ? given : sampleWords(stream);
+  const slides = withSampleArt(given.length ? given : sampleWords(stream));
   const [W, H] = sizeOf(stream, size);
   const ratio = `${W} / ${H}`;
   const opts = { stream, eyebrow, citation, bg: bgUrl || "", size: Array.isArray(size) ? size : undefined,
@@ -166,7 +174,7 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const metro = usePreview(cover, { ...opts, look: "metro" }, true);
   const strip = usePreview(cover, { ...opts, look: "strip" }, true);
   // Diari had no tile of its own: `tiles.journal` was undefined, so its square showed a bare dot (Wan, 23 Nov 2026: "why journal not appear")
-  const journal = usePreview(cover, { ...opts, look: "journal" }, true);
+  const journal = usePreview(asPage(cover), { ...opts, look: "journal" }, true);
   const tiles = { journal, grid, era, photo, image, hand, marker, torn, block, neon, deck, chalk, metro, strip };
   // a design can be removed from the choices (hidden, never deleted: old drafts still re-render) and brought back
   const studioShown = offered(LOOKS, hiddenLooks);
@@ -193,7 +201,7 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const tProblems = useMemo(() => (onThreads ? threadsProblems(sample ? threadsSample(stream) : slides, Array.isArray(size) ? size : null) : []),
     [onThreads, sample, stream, JSON.stringify(slides), JSON.stringify(size)]); // eslint-disable-line react-hooks/exhaustive-deps
   const dBg = chosen.design?.bg && chosen.design.bg.startsWith("lib:") ? GROUNDS.find((x) => `lib:${x.k}` === chosen.design.bg)?.url : "";
-  const all = usePreview(slides, { ...opts, look: chosen.look, bg: bgUrl || dBg || "", ...(chosen.design ? { design: chosen.design } : {}) },
+  const all = usePreview(chosen.look === "journal" ? asPage(slides) : slides, { ...opts, look: chosen.look, bg: bgUrl || dBg || "", ...(chosen.design ? { design: chosen.design } : {}) },
     full && isStudioLook(chosen.look));
   // a ws.regulab carousel ends on the standard closing card (big logo + the follow tagline), drawn by the worker: shown last
   const branded = full && !sample && stream !== "linkedin" && slides.length >= 2 && isStudioLook(chosen.look);

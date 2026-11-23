@@ -733,9 +733,12 @@ const FILL_MAX = 3, FILL_BODY_MAX = 2.2, FILL_FROM = 0.72, FILL_TARGET = 0.86;
    fit still shrink as before. */
 /* The same cap holds for every slide after a ws.regulab cover (Wan, 22 Nov 2026: "kecilkan tulisan di poster content, hanya tulisan di
    slide pertama"): only the cover (or a lone poster) is drawn big; the content slides read at a calmer size. */
-const LI_FILL_SHARE = 0.6;
-export const capFill = (spec, max) => (spec && (spec.stream === "linkedin" || spec.place === "middle" || spec.place === "closing")
-  ? Math.max(1, max * LI_FILL_SHARE) : max);
+/* EVERY LOOK READS AT DIARI'S SIZE (Wan, 23 Nov 2026: "kenapa poster style design masih lama, tulisan masih tak kecil", after "all
+   carousel slide design follow diari size text"). Auto-fit used to GROW a sparse card's type, up to 3x the template's own size, so a
+   short slide became a billboard in every look but Diari, whose headline is 84u. Nothing grows now: the words are drawn at the
+   template's own size (72 to 80u, Diari's range) and still SHRINK when they do not fit, down to FIT_MIN. The space a short slide
+   leaves is where its illustration stands (renderWithArt). Callers still pass their own limit; it no longer matters. */
+export const capFill = () => 1;
 const HOOK_TPL = { g_title: 1, p_title: 1, p_quote: 1 };
 /* The scale (1 to FILL_MAX) at which a slide's content fills its card. `measure(spec)` runs the family's own painter against the
    measuring proxy and returns where the content ends; `topU` is where the content starts, in 1080-wide units. */
@@ -3460,7 +3463,7 @@ async function renderSkinCard(spec) {
     fill = Math.floor(lo * 100) / 100;
   } else if (!spec.type_size && at1 < SKIN_FROM * room) {
     // room to spare: the type grows to fill it, by the search the hand-drawn cards use (on a cover, the hook alone and further)
-    let lo = 1, hi = Math.max(1, Math.min(spec.template.slice(2) === "cover" ? SKIN_COVER_MAX : SKIN_MAX, skWordCap(ctx, spec, W)));
+    let lo = 1, hi = Math.max(1, Math.min(capFill(spec, spec.template.slice(2) === "cover" ? SKIN_COVER_MAX : SKIN_MAX), skWordCap(ctx, spec, W)));      // capFill: nothing grows (Diari's size)
     for (let i = 0; i < 8; i++) { const mid = (lo + hi) / 2; if (used(mid) <= SKIN_TARGET * room) lo = mid; else hi = mid; }
     fill = lo > 1.03 ? Math.floor(lo * 100) / 100 : 1;
   }

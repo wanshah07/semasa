@@ -24,6 +24,8 @@ export const CODE_APIS = [
     used: ["Pangkalan data, storan fail dan log masuk; setiap pekerja dan halaman. Token akses menghantar Edge Functions; PULSE_SECRET ialah rahsia jam denyut API (sama dengan Vault semasa_pulse_secret).", "Database, file storage and sign-in; every worker and page. The access token deploys the Edge Functions; PULSE_SECRET is the API pulse clock's secret (the same value as Vault semasa_pulse_secret)."] },
   { id: "llm", name: "Gerbang AI (penulis utama dan sandaran)", env: ["LLM_API_KEY", "LLM_FALLBACK_API_KEY"], url: "", docs: "",
     used: ["Kunci penulis utama dan sandaran; gerbang dan model yang diperiksa disenaraikan di bawah.", "The primary and backup writers' keys; the gateways and models the probe reads are listed below."] },
+  { id: "kiosapi-account", name: "KiosAPI (akaun)", env: ["KIOSAPI_ACCESS_TOKEN", "KIOSAPI_USER_ID"], url: "https://kiosapi.com", docs: "",
+    used: ["Baki top-up KiosAPI ada pada akaun, bukan kunci API: token akses (Tetapan peribadi > Keselamatan) dan ID pengguna dibaca oleh larian baki kredit (api_credit.py). Pilihan.", "KiosAPI's top-up sits on the account, not the API key: the access token (Personal settings > Security) and the user id are read by the credit run (api_credit.py). Optional."] },
   { id: "openai", name: "OpenAI", env: ["OPENAI_API_KEY"], url: "https://platform.openai.com", docs: "https://platform.openai.com/docs",
     used: ["Gambar dan video (providers/openai_images.py); penulis gantian bila ditetapkan.", "Images and video (providers/openai_images.py); a stand-in writer when set."] },
   { id: "anthropic", name: "Anthropic", env: ["ANTHROPIC_API_KEY"], url: "https://console.anthropic.com", docs: "https://docs.anthropic.com",

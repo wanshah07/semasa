@@ -54,6 +54,9 @@ jobs:
           LLM_MODEL: ${{ vars.LLM_MODEL }}
           LLM_FALLBACK_BASE_URL: ${{ vars.LLM_FALLBACK_BASE_URL }}
           LLM_FALLBACK_MODEL: ${{ vars.LLM_FALLBACK_MODEL }}
+          # optional: KiosAPI keeps the top-up on the account, which a key cannot read (api_credit.account_headers)
+          KIOSAPI_ACCESS_TOKEN: ${{ secrets.KIOSAPI_ACCESS_TOKEN }}
+          KIOSAPI_USER_ID: ${{ secrets.KIOSAPI_USER_ID }}
           LLM_ALLOWED_HOSTS: ${{ vars.LLM_ALLOWED_HOSTS }}
           LLM_FALLBACK_ALLOWED_HOSTS: ${{ vars.LLM_FALLBACK_ALLOWED_HOSTS }}
         run: python -m semasa.api_status --credit-only

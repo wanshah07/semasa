@@ -19,6 +19,7 @@ Nothing here writes to the database or posts anywhere: api_status.credit_main wr
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from datetime import UTC, datetime, timedelta
@@ -43,6 +44,7 @@ MAX_GRANTS = 20
 # and a path under the host root are listed apart: New-API / One-API panels keep /api/... at the root, OpenAI's billing under /v1.
 BASE_PATHS = (
     "/dashboard/billing/credit_grants",
+    "/quota",                                     # rootsys.cloud/v1/quota: tokens left, total, used, expiry
     "/dashboard/billing/subscription",
     "/dashboard/billing/usage?start_date={start}&end_date={end}",
     "/credits",
@@ -54,6 +56,7 @@ BASE_PATHS = (
     "/me",
 )
 ROOT_PATHS = (
+    "/api/usage/token/",                          # New-API answers /api/usage/token with a 301 to this one: the slash is the fix
     "/api/usage/token",
     "/api/user/self",
     "/api/status",
@@ -63,10 +66,12 @@ ROOT_PATHS = (
     "/v1/usage",
 )
 
-REMAINING_KEYS = ("total_available", "remaining", "remain_quota", "remaining_quota", "quota_remaining", "limit_remaining",
+REMAINING_KEYS = ("total_available", "tokens_remaining", "remaining", "remain_quota", "remaining_quota", "quota_remaining",
+                  "limit_remaining",
                   "available", "available_balance", "total_balance", "balance", "credits", "credit", "left", "remain")
-TOTAL_KEYS = ("total_granted", "total_quota", "quota_total", "total", "limit", "hard_limit_usd", "system_hard_limit_usd")
-USED_KEYS = ("total_used", "used_quota", "used", "usage")
+TOTAL_KEYS = ("total_granted", "tokens_total", "total_quota", "quota_total", "total", "limit", "hard_limit_usd",
+              "system_hard_limit_usd")
+USED_KEYS = ("total_used", "tokens_used", "used_quota", "used", "usage")
 EXPIRY_KEYS = ("expires_at", "expire_at", "expired_at", "expiry", "expiry_date", "expire_date", "expire_time", "expires",
                "expiration", "expiration_time", "valid_until", "access_until")
 GRANT_AMOUNT = ("grant_amount", "amount", "total_granted", "granted")
@@ -227,12 +232,18 @@ def facts_of(j: Any) -> dict[str, Any]:
     rem = _first(ds, REMAINING_KEYS)
     if rem is None and "used_quota" in keys_in:
         rem = _first(ds, ("quota",))
-    tot = _first(ds, TOTAL_KEYS)
+    # a New-API KEY with no limit of its own: its figures say nothing about the account's top-up, so they are not a balance
+    limitless = any(d.get("unlimited_quota") is True for d in ds)
+    if limitless:
+        rem = None
+    tot = None if limitless else _first(ds, TOTAL_KEYS)
     if tot and tot[0].endswith("_usd"):
         unit = "USD"
         if tot[1] >= UNLIMITED:                       # a sentinel for "no limit", not a figure to compute a percentage from
             tot = None
-    used = _first(ds, USED_KEYS)
+    used = None if limitless else _first(ds, USED_KEYS)
+    if rem and rem[0] == "tokens_remaining":
+        unit = "tokens"                              # rootsys counts in tokens (its dashboard: "545.1M left")
     cents = _first(ds, ("total_usage",))             # /dashboard/billing/usage: hundredths of a US dollar, spent this period
     if used is None and cents is not None:
         used, unit = ("total_usage", cents[1] / 100), unit or "USD"
@@ -245,7 +256,7 @@ def facts_of(j: Any) -> dict[str, Any]:
         f["total"] = tot[1]
     if used:
         f["used"] = used[1]
-    if any(d.get("unlimited_quota") is True or d.get("unlimited") is True for d in ds):
+    if any(d.get("unlimited") is True for d in ds):
         f["unlimited"] = True
     grants = _grants(j)
     if grants:
@@ -366,13 +377,13 @@ def _urls(base_url: str, now: datetime) -> list[tuple[str, str]]:
     return out
 
 
-def ask(url: str, key: str, timeout: float, get: Any = None) -> dict[str, Any]:
+def ask(url: str, key: str, timeout: float, get: Any = None, headers: dict[str, str] | None = None) -> dict[str, Any]:
     """One GET with the gateway's own key: {http, shape, keys, ms, json}. The key is sent to this URL alone and a redirect is not
-    followed (it could lead to another host)."""
+    followed (it could lead to another host). `headers` replaces the bearer key (an account's access token, below)."""
     get = get or requests.get
     t0 = time.monotonic()
     try:
-        r = get(url, headers={"Authorization": f"Bearer {key}", "Accept": "application/json"}, timeout=timeout,
+        r = get(url, headers=headers or {"Authorization": f"Bearer {key}", "Accept": "application/json"}, timeout=timeout,
                 allow_redirects=False)
     except requests.RequestException as exc:
         ms = int((time.monotonic() - t0) * 1000)
@@ -389,6 +400,36 @@ def ask(url: str, key: str, timeout: float, get: Any = None) -> dict[str, Any]:
     return {"http": code, "shape": shape, "keys": key_names(j), "ms": ms, "json": j if code == 200 else None}
 
 
+ACCOUNT_PATH = "/api/user/self"
+
+
+def account_headers(slug: str, env: Any = None) -> dict[str, str] | None:
+    """New-API panels (KiosAPI) keep the top-up on the ACCOUNT, which an API key cannot read: it takes the access token made
+    in the panel (Personal settings, Security) plus the user id. Both are optional secrets, `<SLUG>_ACCESS_TOKEN` and
+    `<SLUG>_USER_ID`; with either missing the account is not asked and the card says so."""
+    env = os.environ if env is None else env
+    token, uid = str(env.get(f"{slug.upper()}_ACCESS_TOKEN") or "").strip(), str(env.get(f"{slug.upper()}_USER_ID") or "").strip()
+    if not token or not uid:
+        return None
+    return {"Authorization": f"Bearer {token}", "New-Api-User": uid, "Accept": "application/json"}
+
+
+def _per_unit(j: Any) -> float | None:
+    """quota_per_unit from the panel's public /api/status: how many quota points are one US dollar (500000 by default)."""
+    d = j.get("data") if isinstance(j, dict) else None
+    v = num(d.get("quota_per_unit")) if isinstance(d, dict) else None
+    return v if v and v > 0 else None
+
+
+def _in_dollars(facts: dict[str, Any], per: float) -> dict[str, Any]:
+    out = dict(facts)
+    for k in ("remaining", "total", "used"):
+        if out.get(k) is not None:
+            out[k] = out[k] / per
+    out["unit"] = "USD"
+    return out
+
+
 def check(gw: dict[str, Any], timeout: float = 10, budget: float = 60, prev: dict[str, Any] | None = None,
           now: datetime | None = None, get: Any = None) -> dict[str, Any]:
     """The `balance` object for one gateway (see the module docstring). Stops asking once a remaining figure AND a validity date
@@ -398,7 +439,11 @@ def check(gw: dict[str, Any], timeout: float = 10, budget: float = 60, prev: dic
     tried: list[dict[str, Any]] = []
     legacy: dict[str, Any] = {}
     started = time.monotonic()
+    per_unit: float | None = None
+    hdr = account_headers(gw["slug"])
     for label, url in _urls(gw["base_url"], now):
+        if hdr and label == ACCOUNT_PATH:               # asked below with the access token instead: a key gets a 401 there
+            continue
         if len(tried) >= MAX_TRIED or time.monotonic() - started > budget:
             break
         a = ask(url, gw["key"], min(timeout, 15), get)
@@ -410,9 +455,20 @@ def check(gw: dict[str, Any], timeout: float = 10, budget: float = 60, prev: dic
             if not legacy and facts.get("remaining") is not None and isinstance(a["json"], dict):
                 legacy = {"path": label.split("?")[0],
                           **{k: v for k, v in a["json"].items() if isinstance(v, (int, float, str)) and len(str(v)) < 80}}
+        if label == "/api/status" and a["http"] == 200:
+            per_unit = _per_unit(a["json"]) or per_unit
         cred = credit_from(gw["slug"], found, now)
         if cred["remaining"] is not None and cred["expires_at"]:
             break
+    if hdr and not any(f.get("remaining") is not None for _p, f in found):
+        parts = urlsplit(gw["base_url"].rstrip("/"))
+        root = f"{parts.scheme}://{parts.netloc}"
+        a = ask(root + ACCOUNT_PATH, gw["key"], min(timeout, 15), get, headers=hdr)
+        facts = facts_of(a["json"]) if a["http"] == 200 else {}
+        tried.append({"path": ACCOUNT_PATH + " (account)", "http": a["http"], "shape": a["shape"], "keys": a["keys"],
+                      "ms": a["ms"], "read": bool(facts)})
+        if facts:
+            found.append((ACCOUNT_PATH + " (account)", _in_dollars(facts, per_unit or 500000.0)))
     credit = credit_from(gw["slug"], found, now)
     out = {**legacy, "credit": credit, "tried": tried, "checked_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
     return keep_if_unreachable(out, prev)

@@ -296,3 +296,67 @@ def test_the_watchdog_names_a_low_or_expired_credit_and_stays_quiet_about_an_unr
     gone = health.check_credit(store, later)
     assert [p["what"].split(":")[0] for p in gone] == ["Mireld"] and "has expired" in gone[0]["what"]
     assert health.check_credit(FakeStore(**{db.API_STATUS: [row("mireld", "Mireld", mireld, key_set=False)]}), NOW) == []
+
+
+# ---- rootsys and KiosAPI (Wan, 23 Nov 2026: "fix rootsys and Kioskapi") --------------------------------------------------------
+
+# what https://rootsys.cloud/v1/quota answered on 23 Nov 2026 (Wan's dashboard: 545.1M left, 21%)
+ROOTSYS = {"tokens_remaining": "537588605", "tokens_total": "2570880000", "tokens_used": "2033291395",
+           "expires_at": "2026-12-19T17:07:35.382Z", "seconds_remaining": 2251368.586, "days_remaining": 26.05, "active": True,
+           "status": "active", "snapshot_at": "2026-11-23T15:44:46.796Z"}
+
+
+def test_rootsys_quota_gives_tokens_left_of_the_total_and_its_validity():
+    f = ac.facts_of(ROOTSYS)
+    assert (f["remaining"], f["total"], f["used"], f["unit"]) == (537588605.0, 2570880000.0, 2033291395.0, "tokens")
+    c = ac.credit_from("rootsys", [("/quota", f)], NOW)
+    assert c["percent_left"] == 20.9 and c["unit"] == "tokens" and c["display_scale"] is None
+    assert c["expires_at"] == "2026-12-19T17:07:35Z" or c["expires_at"].startswith("2026-12-19T17:07:35")
+    assert c["status"] == "ok"
+
+
+def test_rootsys_is_read_through_its_quota_path_and_stops_there():
+    log = []
+    bal = ac.check(_gw("rootsys", "https://rootsys.cloud/v1"), now=NOW, get=_fake_get({"/v1/quota": R(200, ROOTSYS)}, log))
+    assert bal["credit"]["source"] == "/quota" and bal["credit"]["remaining"] == 537588605.0
+    assert any(t["path"] == "/quota" and t["read"] for t in bal["tried"])
+
+
+def test_a_new_api_key_with_no_limit_is_not_a_balance_and_the_slash_path_is_asked():
+    token = {"data": {"name": "k", "total_granted": 0, "total_used": 0, "total_available": 0, "unlimited_quota": True,
+                      "expires_at": 0}, "message": "ok", "success": True}
+    assert ac.facts_of(token) == {}, "an unlimited key says nothing about the account's top-up"
+    slash = ac.ROOT_PATHS.index("/api/usage/token/")
+    assert slash < ac.ROOT_PATHS.index("/api/usage/token")
+    limited = {"data": {"total_granted": 500000, "total_used": 125000, "total_available": 375000, "unlimited_quota": False,
+                        "expires_at": 1798000000}, "success": True}
+    f = ac.facts_of(limited)
+    assert f["remaining"] == 375000.0 and f["total"] == 500000.0
+
+
+def test_the_account_is_asked_with_the_access_token_and_user_id_and_read_in_dollars():
+    env = {"KIOSAPI_ACCESS_TOKEN": "tok-SECRET", "KIOSAPI_USER_ID": "42"}
+    assert ac.account_headers("kiosapi", {}) is None and ac.account_headers("kiosapi", {"KIOSAPI_ACCESS_TOKEN": "x"}) is None
+    hdr = ac.account_headers("kiosapi", env)
+    assert hdr["New-Api-User"] == "42" and hdr["Authorization"] == "Bearer tok-SECRET"
+    seen = {}
+
+    def get(url, headers=None, **kw):
+        seen[url] = headers
+        if url.endswith("/api/user/self"):
+            return R(200, {"success": True, "data": {"quota": 2500000, "used_quota": 7500000, "username": "x"}})
+        if url.endswith("/api/status"):
+            return R(200, {"data": {"quota_per_unit": 500000}})
+        return R(404, {"error": "no"})
+    import os
+    old = {k: os.environ.get(k) for k in env}
+    os.environ.update(env)
+    try:
+        bal = ac.check(_gw("kiosapi", "https://kiosapi.com/v1"), now=NOW, get=get)
+    finally:
+        for k, v in old.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+    c = bal["credit"]
+    assert c["unit"] == "USD" and c["remaining"] == 5.0 and c["total"] == 20.0 and c["percent_left"] == 25.0
+    assert seen["https://kiosapi.com/api/user/self"]["New-Api-User"] == "42"
+    assert not any("tok-SECRET" in json.dumps(t) for t in bal["tried"]), "the token never reaches the stored reading"

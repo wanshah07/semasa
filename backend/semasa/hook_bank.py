@@ -106,7 +106,11 @@ DEFAULT_GUIDANCE = ("Write a Malay post's hook as the shape is written; write an
                     "they have; Problem aware (TOFU) name the problem; Solution aware (MOFU) name the solution, not the problem; "
                     "Product aware (BOFU) differentiate the specific product or offer; Most aware (BOFU) skip the education, go straight "
                     "to the offer. Most Semasa regulatory posts target problem-aware or solution-aware readers, so open at that stage, "
-                    "never a generic 'did you know' that only fits the unaware. Keep it human: say it the way you would tell a friend, not like a template.")
+                    "never a generic 'did you know' that only fits the unaware. Concrete hook examples per stage (Wan's saved Threads "
+                    "post): Unaware '1 benda ni dah naikkan bisnes aku'; Problem aware 'FB ads kau makin mahal tapi lead makin kurang?'; "
+                    "Solution aware '1 benda yang buat aku boleh siapkan 5 creative baru bawah 60 saat'; Product aware 'AI Claude ni "
+                    "gamechanger untuk bisnes aku'; Most aware 'Program X diskaun 50% dalam 24 jam'. Adapt these patterns to the topic; "
+                    "they are stage templates, not copy to reuse verbatim. Keep it human: say it the way you would tell a friend, not like a template.")
 
 
 def block(family: str | None, stream: str, bank: Bank | None = None, hint: str = "") -> str:

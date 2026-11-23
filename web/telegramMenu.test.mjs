@@ -147,7 +147,8 @@ t("the looks a poster or a carousel button offers are looks the page has, under 
     const page = LOOKS.find((l) => l.k === k);
     assert.deepEqual({ bm: name.bm, en: name.en }, { bm: page.bm, en: page.en }, `${k}: the page calls it something else`);
   }
-  assert.equal(RULES.looks.post_carousel[0], "journal", "Diari leads the buttons under a draft");
+  assert.deepEqual(RULES.looks.post_carousel.slice(0, 2), ["journal", "threads"], "Diari and Threads lead the buttons under a draft");
+  assert.deepEqual(RULES.looks.carousel.slice(0, 2), ["journal", "threads"], "and the carousel-from-a-topic menu");
   assert.ok(!RULES.looks.post_card.includes("journal") && !RULES.looks.post_card.includes("threads"), "a single card never offers Diari or Threads");
   assert.equal(RULES.looks.carousel[0], DEFAULT_LOOK);
   assert.equal(RULES.looks.poster.length, 9, "the hand-drawn default and the eight poster looks");

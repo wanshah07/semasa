@@ -75,6 +75,8 @@ def test_a_drafts_carousel_buttons_offer_every_look_the_page_offers_with_diari_f
     first = rows[0][0]
     assert first == {"text": "✨ Journal", "callback_data": "c:pcpick:p1:journal"} and len(rows[0]) == 1, "Diari leads, alone"
     looks = [d.rsplit(":", 1)[1] for d in _datas(rows) if d.startswith("c:pcpick:")]
+    assert looks[:2] == ["journal", "threads"], "Diari and Threads on top (Wan, 23 Nov 2026)"
+    assert menu.LOOKS["carousel"][:2] == ["journal", "threads"], "and in the carousel-from-a-topic menu"
     assert looks == menu.LOOKS["post_carousel"]
     assert set(looks) <= set(ideas.LOOKS) and len(looks) == len(set(looks))
     assert {"classic", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "grid", "photo", "image",

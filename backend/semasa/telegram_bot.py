@@ -367,20 +367,17 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
     if note:
         text += f"\n\n🖼 {note}"
     open_btn = [{"text": "🔗 Buka di Semasa", "url": menu.page_url(SITE, post_tab(post))}]
+    # LinkedIn never gets a film (the page has no Motion button there either): a carousel or a single card only
+    film = [] if post.get("stream") == "linkedin" else [{"text": "🎬 Motion", "callback_data": f"c:pm:{post['id']}"}]
+    make = [[{"text": "✏️ Edit", "callback_data": f"c:pe:{post['id']}"},
+             {"text": "🖼 Carousel", "callback_data": f"c:pc:{post['id']}"}],
+            [{"text": "🎨 Single card", "callback_data": f"c:sc:{post['id']}"}, *film]]
     if hard:
         text += "\n\n⚠️ Approval blocked:\n• " + "\n• ".join(hard[:6])
-        buttons = [[{"text": "✏️ Edit", "callback_data": f"c:pe:{post['id']}"},
-                    {"text": "🖼 Carousel", "callback_data": f"c:pc:{post['id']}"}],
-                   [{"text": "🎨 Single card", "callback_data": f"c:sc:{post['id']}"},
-                    {"text": "🎬 Motion", "callback_data": f"c:pm:{post['id']}"}],
-                   [{"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
+        buttons = [*make, [{"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
     else:
-        buttons = [[{"text": "✏️ Edit", "callback_data": f"c:pe:{post['id']}"},
-                    {"text": "🖼 Carousel", "callback_data": f"c:pc:{post['id']}"}],
-                   [{"text": "🎨 Single card", "callback_data": f"c:sc:{post['id']}"},
-                    {"text": "🎬 Motion", "callback_data": f"c:pm:{post['id']}"}],
-                   [{"text": "✅ Approve", "callback_data": f"ok:{post['id']}"},
-                    {"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
+        buttons = [*make, [{"text": "✅ Approve", "callback_data": f"ok:{post['id']}"},
+                           {"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
     mid = bot.send(chat, text, buttons)
     store.table(SENT).upsert({"post_id": post["id"], "version": post["updated_at"], "chat_id": chat, "message_id": mid,
                               "sent_at": datetime.now(UTC).isoformat()}, on_conflict="post_id").execute()

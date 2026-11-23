@@ -427,6 +427,15 @@ takeaway). Facts go in the title and the lead, with their figure, entry or date;
 term that needs it. A slide that can be pictured (a person, a place, an object, a moment) reads better than an abstract one."""
 
 
+# The Threads look (Codex review on #325): its set is checked by threads_slides.check, which refuses a set outside 2 to 5 pages, a
+# cover hook over 16 words, more than 3 points on a page and a page over 420 characters, so the writer is told those limits.
+THREADS_RULES = """
+
+THREADS LOOK. This set is drawn as short Threads-style pages, so write EXACTLY 2 to 5 slides (never more than 5, whatever the
+story holds: keep the strongest facts). The first slide is the cover: a "title" hook of at most 16 words. Each slide has at most 3
+"points", and its "title" and "points" TOGETHER are at most 420 characters. Short plain sentences, one idea per slide."""
+
+
 POSTER_RULES = {
     "regulab": """
 
@@ -993,6 +1002,8 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         system += SLIDES_RULES.get(stream, SLIDES_RULES["regulab"])
         if look_of(idea) == "journal":
             system += JOURNAL_RULES
+        elif look_of(idea) == "threads":
+            system += THREADS_RULES
     if want_poster:
         system += POSTER_RULES.get(stream, POSTER_RULES["regulab"])
     # A retry after a failure part-way (the draft written, then the picture jobs or the idea's own update failed) must

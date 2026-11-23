@@ -176,6 +176,19 @@ def test_drafts_come_with_buttons_and_the_version_shown_is_kept():
     assert sent["p1"]["version"] == "2026-11-07T10:00:00.123456+00:00"
 
 
+def test_a_linkedin_draft_has_no_motion_button_and_a_ws_regulab_one_has_it():
+    # tally with the page (Wan, 23 Nov 2026): LinkedIn never gets a film, so Telegram does not offer one either
+    st = store(**{db.POSTS: [post("p1"), post("p2", stream="linkedin")], tb.INBOX: [msg(1, "/draf")]})
+    bot = Bot()
+    tb.run(st, bot=bot, now=NOW, webhook=False, push=False)
+    by_post = {}
+    for m in bot.sent():
+        buttons = [b["callback_data"] for row in m["reply_markup"]["inline_keyboard"] for b in row if "callback_data" in b]
+        by_post["p2" if "c:pe:p2" in buttons else "p1"] = buttons
+    assert "c:pm:p1" in by_post["p1"] and "c:sc:p1" in by_post["p1"] and "c:pc:p1" in by_post["p1"]
+    assert "c:pm:p2" not in by_post["p2"] and "c:sc:p2" in by_post["p2"] and "c:pc:p2" in by_post["p2"], by_post["p2"]
+
+
 def test_approve_goes_through_the_gate_with_the_version_shown():
     st = store(**{db.POSTS: [post("p1")], tb.SENT: [{"post_id": "p1", "version": "2026-11-07T10:00:00.123456+00:00",
                                                      "chat_id": CHAT, "message_id": 700}],

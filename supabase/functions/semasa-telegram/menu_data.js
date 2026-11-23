@@ -763,7 +763,7 @@ export default {
     }
   ],
   "looks": {
-    "_about": "The looks the Poster and Carousel buttons offer, by the worker's own key (backend/semasa/ideas.py LOOKS, web/src/lib/lookChoice.js BUILTIN_LOOKS; both tested). `poster` is the eight poster looks behind the hand-drawn default; `carousel` adds the looks whose first slide is the poster front page, and starts with Diari, the primary carousel look (Wan, 23 Nov 2026). `post_carousel` and `post_card` are the choices under a DRAFT's Carousel and Single card buttons (telegram_catalogue.py): every look the page's picker offers, Diari first; a single card never offers Diari (it draws a picture on every slide) or Threads.",
+    "_about": "The looks the Poster and Carousel buttons offer, by the worker's own key (backend/semasa/ideas.py LOOKS, web/src/lib/lookChoice.js BUILTIN_LOOKS; both tested). `poster` is the eight poster looks behind the hand-drawn default; `carousel` adds the looks whose first slide is the poster front page, and starts with Diari and Threads, the two Wan wants on top (23 Nov 2026), then the rest of the page's picker (not Photo, which needs a picture the topic flow has not asked for). `post_carousel` and `post_card` are the choices under a DRAFT's Carousel and Single card buttons (telegram_catalogue.py): every look the page's picker offers, Diari first; a single card never offers Diari (it draws a picture on every slide) or Threads.",
     "names": {
       "journal": {
         "bm": "Diari",
@@ -843,6 +843,7 @@ export default {
     ],
     "carousel": [
       "journal",
+      "threads",
       "image",
       "era",
       "hand",
@@ -853,10 +854,13 @@ export default {
       "deck",
       "chalk",
       "metro",
-      "strip"
+      "strip",
+      "classic",
+      "grid"
     ],
     "post_carousel": [
       "journal",
+      "threads",
       "image",
       "hand",
       "marker",
@@ -870,8 +874,7 @@ export default {
       "classic",
       "grid",
       "era",
-      "photo",
-      "threads"
+      "photo"
     ],
     "post_card": [
       "image",

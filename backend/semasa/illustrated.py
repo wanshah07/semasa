@@ -83,8 +83,11 @@ def safe_label(text: Any, stream: str, lang: str) -> str:
         return ""
     flags = compliance.scan({"stream": stream, "lang": lang, "media": [{"artwork": [{"title": label, "points": []}]}]})
     where = ("Design", "Slide", "Artwork")
-    hard = compliance.hard_count([f for f in flags if str(f.get("where") or "").startswith(where)])
-    return "" if hard else label
+    mine = [f for f in flags if str(f.get("where") or "").startswith(where)]
+    # a call to action is only a warning on a post (Wan, 23 Nov 2026), but a label is words the picture-maker's writer
+    # invented, not Wan's: it is left off rather than drawn onto every slide
+    asks = [f for f in mine if str(f.get("msg") or "").startswith("CTA")]
+    return "" if (compliance.hard_count(mine) or asks) else label
 
 
 def plan(llm: Any, items: list[dict[str, Any]], idx: list[int], stream: str) -> dict[int, dict[str, str]]:

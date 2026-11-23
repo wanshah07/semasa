@@ -91,7 +91,7 @@ def _store():
 def test_process_idea_writes_a_scanned_draft_and_queues_media(monkeypatch):
     monkeypatch.setattr(ideas, "read_source", lambda url: {"ok": False, "why": "no link", "image": None})
     store = _store()
-    cap = "Notifikasi kosmetik bukan kelulusan. Hubungi kami."
+    cap = "Notifikasi kosmetik bukan kelulusan. Produk ini dijamin lulus NPRA."
     llm = FakeLLM({"fit": True, "hook": "h", "hook_shape": 21, "domain": "kosmetik", "citation": "NPRA",
                    "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}},
                    "visual_prompt": "botol di rak", "alt": "botol"})
@@ -100,7 +100,7 @@ def test_process_idea_writes_a_scanned_draft_and_queues_media(monkeypatch):
     pid = ideas.process_idea(store, llm, idea, ideas.load_settings(store))
     post = store.tables["semasa_posts"][0]
     assert post["id"] == pid and post["status"] == "draft" and post["domain"] == "kosmetik"
-    assert post["hard_flags"] >= 1 and any("hubungi kami" in f["msg"] for f in post["flags"])
+    assert post["hard_flags"] >= 1 and any("approval" in f["msg"] for f in post["flags"])
     assert post["date"] and post["slot"]
     # the writer gave no poster: the post still gets one, never an AI picture on its own (Wan, 23 Nov 2026)
     job = store.tables["media_generations"][0]

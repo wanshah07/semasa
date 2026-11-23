@@ -57,7 +57,7 @@
   }
  },
  {
-  "name": "keyword-comment CTA is case sensitive on keyword",
+  "name": "keyword-comment CTA is case sensitive on keyword (a warning, not a block)",
   "post": {
    "stream": "regulab",
    "lang": "bm",
@@ -75,11 +75,7 @@
     }
    ]
   },
-  "expect": {
-   "contains": [
-    "keyword comment"
-   ]
-  }
+  "expect": {"hard": 0, "soft_contains": ["keyword comment"]}
  },
  {
   "name": "lowercase komen word is not a CTA",
@@ -105,7 +101,7 @@
   }
  },
  {
-  "name": "hubungi kami blocks",
+  "name": "hubungi kami is a warning, not a block",
   "post": {
    "stream": "regulab",
    "lang": "bm",
@@ -123,11 +119,7 @@
     }
    ]
   },
-  "expect": {
-   "contains": [
-    "hubungi kami"
-   ]
-  }
+  "expect": {"hard": 0, "soft_contains": ["hubungi kami"]}
  },
  {
   "name": "brand website in caption blocks",
@@ -479,7 +471,7 @@
   }
  },
  {
-  "name": "alt text CTA blocks",
+  "name": "alt text CTA is a warning, not a block",
   "post": {
    "stream": "regulab",
    "lang": "bm",
@@ -497,11 +489,7 @@
     }
    ]
   },
-  "expect": {
-   "contains": [
-    "Picture 1 alt text"
-   ]
-  }
+  "expect": {"hard": 0, "soft_contains": ["Picture 1 alt text"]}
  },
  {
   "name": "linkedin aggregator citation blocks",
@@ -943,7 +931,7 @@
   }
  },
  {
-  "name": "CTA on a slide blocks",
+  "name": "CTA on a slide is a warning, not a block",
   "post": {
    "stream": "regulab",
    "lang": "bm",
@@ -969,11 +957,7 @@
     }
    ]
   },
-  "expect": {
-   "contains": [
-    "Slide 1: CTA: 'hubungi kami'"
-   ]
-  }
+  "expect": {"hard": 0, "soft_contains": ["Slide 1: CTA: 'hubungi kami'"]}
  },
  {
   "name": "website on a slide blocks",
@@ -1613,7 +1597,7 @@
   }
  },
  {
-  "name": "a call to action in a slide note blocks, like one in the headline",
+  "name": "a call to action in a slide note is a warning, like one in the headline",
   "post": {
    "stream": "regulab",
    "lang": "bm",
@@ -1653,9 +1637,7 @@
     }
    ]
   },
-  "expect": {
-   "hard": 1
-  }
+  "expect": {"hard": 0}
  },
  {
   "name": "a slide re-styled after drawing (template, mascot) is not what was drawn",
@@ -2216,7 +2198,7 @@
   }
  },
  {
-  "name": "a carousel has no ceiling: a call to action on slide thirteen is still found, and no slide count is complained about",
+  "name": "a carousel has no ceiling: a call to action on slide thirteen is still named, and no slide count is complained about",
   "post": {
    "stream": "regulab",
    "lang": "bm",
@@ -2316,12 +2298,7 @@
     }
    ]
   },
-  "expect": {
-   "hard_min": 1,
-   "not_contains": [
-    "of substance"
-   ]
-  }
+  "expect": {"hard": 0, "soft_contains": ["Slide 13: CTA"]}
  },
  {
   "name": "a threads thread of short posts passes",
@@ -2438,5 +2415,5 @@
  {"name": "glossary: a slide term is explained by the slide's own foot", "post": {"stream": "regulab", "lang": "bm", "text": {"bm": {"instagram": "Isi tanpa istilah.", "facebook": "Isi tanpa istilah.", "threads": "Isi tanpa istilah."}}, "media": [{"id": "m1", "alt": "x", "slides": [{"title": "Apa itu PIF", "points": ["NPRA boleh minta PIF."], "foot": "Definisi: PIF = fail maklumat dan bukti keselamatan produk."}]}], "slides": [{"title": "Apa itu PIF", "points": ["NPRA boleh minta PIF."], "foot": "Definisi: PIF = fail maklumat dan bukti keselamatan produk."}]}, "expect": {"hard": 0, "soft_not_contains": ["explain"]}},
  {"name": "glossary: a slide term with no foot and no Definisi line warns softly", "post": {"stream": "regulab", "lang": "bm", "text": {"bm": {"instagram": "Isi tanpa istilah.", "facebook": "Isi tanpa istilah.", "threads": "Isi tanpa istilah."}}, "media": [{"id": "m1", "alt": "x", "slides": [{"title": "Apa itu PIF", "points": ["NPRA boleh minta PIF."]}]}], "slides": [{"title": "Apa itu PIF", "points": ["NPRA boleh minta PIF."]}]}, "expect": {"hard": 0, "soft_contains": ["Slide 1: explain \"PIF\": add a footnote (Nota kaki)"]}},
  {"name": "glossary: familiar names (KKM, NPRA, tarik balik) never ask for a footnote", "post": {"stream": "regulab", "lang": "bm", "text": {"bm": {"instagram": "KKM dan NPRA umumkan tarik balik produk itu hari ini.", "facebook": "KKM dan NPRA umumkan tarik balik produk itu hari ini.", "threads": "KKM dan NPRA umumkan tarik balik produk itu hari ini."}}, "media": [{"id": "m1", "alt": "Botol produk di rak"}]}, "expect": {"hard": 0, "soft_not_contains": ["explain"]}},
- {"name": "glossary: a call to action in a foot blocks like any slide word", "post": {"stream": "regulab", "lang": "bm", "text": {"bm": {"instagram": "Isi tanpa istilah.", "facebook": "Isi tanpa istilah.", "threads": "Isi tanpa istilah."}}, "media": [{"id": "m1", "alt": "x", "slides": [{"title": "Satu", "points": ["x"], "foot": "Hubungi kami"}]}], "slides": [{"title": "Satu", "points": ["x"], "foot": "Hubungi kami"}]}, "expect": {"hard_min": 1, "contains": ["Slide 1: CTA"]}}
+ {"name": "glossary: a call to action in a foot is a warning like any slide word", "post": {"stream": "regulab", "lang": "bm", "text": {"bm": {"instagram": "Isi tanpa istilah.", "facebook": "Isi tanpa istilah.", "threads": "Isi tanpa istilah."}}, "media": [{"id": "m1", "alt": "x", "slides": [{"title": "Satu", "points": ["x"], "foot": "Hubungi kami"}]}], "slides": [{"title": "Satu", "points": ["x"], "foot": "Hubungi kami"}]}, "expect": {"hard": 0, "soft_contains": ["Slide 1: CTA"]}}
 ]

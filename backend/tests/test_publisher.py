@@ -48,10 +48,10 @@ def test_a_changed_caption_is_logged_again():
 
 
 def test_hard_flags_block_even_an_approved_post():
-    store = _store(_post(text={"bm": {"instagram": CAP + " Hubungi kami.", "facebook": CAP, "threads": CAP}}))
+    store = _store(_post(text={"bm": {"instagram": CAP + " Produk ini dijamin lulus NPRA.", "facebook": CAP, "threads": CAP}}))
     c = publisher.run(store, NOW)
     assert c["blocked"] == 3 and c["dry_run"] == 0
-    assert "hubungi kami" in " ".join(store.tables["semasa_posts"][0]["errors"]["scan"])
+    assert "approval" in " ".join(store.tables["semasa_posts"][0]["errors"]["scan"])
 
 
 def test_ungenerated_picture_blocks():

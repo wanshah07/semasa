@@ -84,12 +84,16 @@ const twice = structuredClone(script); twice.panels[1].lines[1].who = "A";
 assert.match(C.scriptProblem(twice), /sekali sahaja/);
 assert.match(C.scriptProblem({ ...script, title: "t".repeat(rules.limits.title + 1) }), /Tajuk/);
 // the post rules, on the title and on each bubble by name
-const cta = structuredClone(script); cta.panels[3].lines[1].text = "Hubungi kami untuk semakan percuma.";
+const cta = structuredClone(script); cta.panels[3].lines[1].text = "Produk ini dijamin lulus NPRA percuma.";
 const found = C.scriptFlags(cta, "regulab");
 assert.ok(found.some((f) => f.hard && f.where === "Comic panel 4"), JSON.stringify(found));
-assert.ok(C.scriptFlags({ ...script, title: "Hubungi kami untuk tahu lagi" }, "regulab").some((f) => f.where === "Comic title"));
+// a call to action is a warning, not a block (Wan, 23 Nov 2026): named, never hard
+const ask = structuredClone(script); ask.panels[3].lines[1].text = "Hubungi kami untuk semakan percuma.";
+assert.ok(C.scriptFlags(ask, "regulab").some((f) => !f.hard && f.where === "Comic panel 4" && f.msg.startsWith("CTA")));
+assert.ok(!C.scriptFlags(ask, "regulab").some((f) => f.hard));
+assert.ok(C.scriptFlags({ ...script, title: "Dijamin lulus NPRA untuk tahu lagi" }, "regulab").some((f) => f.where === "Comic title"));
 // a panel still empty does not shift the names of the ones after it
-const partial = C.blankScript(); partial.title = "Tajuk"; partial.panels[2].lines[0].text = "Klik link di bio sekarang.";
+const partial = C.blankScript(); partial.title = "Tajuk"; partial.panels[2].lines[0].text = "Produk ini dijamin lulus NPRA sekarang.";
 assert.deepEqual(C.scriptFlags(partial, "regulab").filter((f) => f.hard).map((f) => f.where), ["Comic panel 3"]);
 assert.deepEqual(C.scriptFlags(C.blankScript(), "regulab"), []);
 // vague wording, pinned down or not, in reading order

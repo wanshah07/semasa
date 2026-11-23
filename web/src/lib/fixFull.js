@@ -37,22 +37,24 @@ export function splitRow(row) {
     [a, b] = [[cut[0]], [cut[1]]];
   }
   const title = stripMark(row.title);
-  return [{ ...row, title, points: a.join("\n") }, { ...row, title, points: b.join("\n") }];
+  return [{ ...row, title, points: a.join("\n"), __piece: true }, { ...row, title, points: b.join("\n"), __piece: true }];
 }
 
-/** Number the pieces of a split slide "(1/2)", "(2/2)": consecutive rows with the same title, so a second split renumbers. */
+/** Number the pieces of a split slide "(1/2)", "(2/2)". Only rows this fix created (`__piece`) and rows already numbered join a
+    group, so two unrelated slides that happen to share a title are never renamed; a second split renumbers its whole group. */
 export function renumber(rows) {
   const out = rows.map((r) => ({ ...r }));
+  const member = (r) => MARK.test(String(r.title || "")) || r.__piece;
   let i = 0;
   while (i < out.length) {
+    if (!member(out[i])) { i += 1; continue; }
     const base = stripMark(out[i].title);
     let j = i + 1;
-    while (j < out.length && base && stripMark(out[j].title) === base && (MARK.test(out[j].title) || MARK.test(out[i].title) || j === i + 1)) j += 1;
-    const n = j - i;
-    if (n > 1 && base) for (let k = i; k < j; k += 1) out[k].title = `${base} (${k - i + 1}/${n})`;
+    while (j < out.length && member(out[j]) && stripMark(out[j].title) === base) j += 1;
+    if (j - i > 1 && base) for (let k = i; k < j; k += 1) out[k].title = `${base} (${k - i + 1}/${j - i})`;
     i = j;
   }
-  return out;
+  return out.map(({ __piece, ...r }) => r); // eslint-disable-line no-unused-vars
 }
 
 /** The fix: split every row in `idx` (0-based indexes into `rows`). {rows, split, stuck}: how many were split and which could not be. */

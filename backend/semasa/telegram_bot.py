@@ -315,6 +315,15 @@ def blockers(store: Any, post: dict[str, Any], now: datetime | None = None) -> l
     return scan(store, post, now)[1]
 
 
+PICTURE_BLOCKERS = ("gambar belum siap", "gambar yang dilampirkan")        # the two picture blockers scan() adds
+
+
+def fixable(blocked: list[str]) -> list[str]:
+    """The blockers a rewrite of the caption and hook can clear. A picture that is still drawing or was deleted is not one: the
+    revise worker leaves media_ids alone, so asking it would rewrite a draft to no effect (Codex review on #339)."""
+    return [b for b in blocked if not b.startswith(PICTURE_BLOCKERS)]
+
+
 def edit_draft_caption(store: Any, post_id: str, caption: str) -> str:
     rows = store.table(db.POSTS).select("id,status,lang,text").eq("id", post_id).eq("status", "draft").execute().data or []
     if not rows:
@@ -374,8 +383,8 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
             [{"text": "🎨 Single card", "callback_data": f"c:sc:{post['id']}"}, *film]]
     if hard:
         text += "\n\n⚠️ Approval blocked:\n• " + "\n• ".join(hard[:6])
-        buttons = [*make, [{"text": "🛠 Fix", "callback_data": f"c:fx:{post['id']}"},
-                           {"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
+        fix = [{"text": "🛠 Fix", "callback_data": f"c:fx:{post['id']}"}] if fixable(hard) else []
+        buttons = [*make, [*fix, {"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
     else:
         buttons = [*make, [{"text": "✅ Approve", "callback_data": f"ok:{post['id']}"},
                            {"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
@@ -395,9 +404,12 @@ def queue_fix(store: Any, post_id: str, now: datetime | None = None) -> str:
     post = rows[0]
     if post.get("revise_state") in ("new", "working"):
         return "Semasa is already fixing this draft."
-    hard = blockers(store, post, now)
-    if not hard:
+    every = blockers(store, post, now)
+    hard = fixable(every)
+    if not every:
         return "Nothing blocks this draft any more. 👍"
+    if not hard:
+        return "Nothing here that a rewrite can fix (a picture still drawing or deleted is not one). 👍"
     note = ("Clear every approval blocker below and change nothing else. Where a blocker marks a fact the source does not give, "
             "leave that fact out; never guess one. " + " ".join(f"{i}) {h}" for i, h in enumerate(hard[:8], 1)))[:800]
     store.table(db.POSTS).update({"revise_note": note, "revise_state": "new", "revise_error": None}) \
@@ -1272,6 +1284,16 @@ QUIET_FROM, QUIET_TO = 23, 7           # no reminders from 23:00 to 07:00 Malays
 REMIND_INTRO = "⏰ Peringatan: draf ini siap dan masih menunggu kelulusan anda"
 
 
+def _claim_remind(store: Any, post: dict[str, Any], chat: int, now: datetime, last: dict[str, Any]) -> bool:
+    """Take the right to remind about this draft, once per window: a compare-and-set on the sent_at this run read, so two runs
+    (the media run's draft_announce and the Telegram run) that both found the draft due cannot both send. A draft never sent
+    is claimed the way push_new_drafts claims it."""
+    if not last:
+        return _claim_announce(store, post, chat, now, False)
+    mine = store.table(SENT).update({"sent_at": now.isoformat()}).eq("post_id", post["id"]).eq("sent_at", last["sent_at"])
+    return bool(mine.execute().data)
+
+
 def remind_hours(store: Any) -> float:
     try:
         raw = tt.chat_state(store).get("remind_hours")
@@ -1315,6 +1337,8 @@ def remind_pending_drafts(store: Any, bot: Bot, link: dict[str, Any], now: datet
             continue                      # a ws.regulab draft with no picture at all is not ready
         if blockers(store, p, now):
             continue                      # cannot be approved as it stands: Wan is told in /draf, not nagged
+        if not _claim_remind(store, p, chat, now, last):
+            continue                      # another run reminded about it a moment ago
         try:
             send_draft(store, bot, chat, p, now, intro=REMIND_INTRO)
             n += 1
@@ -1323,6 +1347,10 @@ def remind_pending_drafts(store: Any, bot: Bot, link: dict[str, Any], now: datet
                          detail={"stream": p.get("stream") or "regulab", "date": p.get("date"), "slot": p.get("slot")})
         except Exception as exc:  # noqa: BLE001 - one draft that will not send never stops the rest
             log.warning("reminder for %s not sent: %s", p["id"], scrub(exc, getattr(bot, "token", ""))[:160])
+            if last:                      # the claim is given back, so the next run tries again
+                store.table(SENT).update({"sent_at": last["sent_at"]}).eq("post_id", p["id"]).execute()
+            else:
+                store.table(SENT).delete().eq("post_id", p["id"]).is_("message_id", "null").execute()
     return n
 
 

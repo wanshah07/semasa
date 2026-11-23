@@ -328,6 +328,24 @@ def test_the_fix_button_on_a_blocked_draft_sends_the_blockers_to_the_worker():
     assert "already fixing" in tb.queue_fix(st, "b1", NOW), "once, not twice"
 
 
+def test_a_picture_blocker_is_not_a_fix_for_the_worker_and_a_reminder_is_claimed_once():
+    # Codex review on #339: (1) a still-drawing or deleted picture cannot be cleared by a caption rewrite; (2) two runs that both
+    # find a reminder due must not both send it
+    drawing = post("d1", media_ids=["m1"])
+    st = store(**{db.POSTS: [drawing], db.MEDIA: [PIC, {"id": "m1", "status": "working", "generated_media_url": None}]})
+    bot = Bot()
+    tb.send_draft(st, bot, CHAT, drawing, NOW)
+    flat = [b.get("callback_data", "") for row in bot.sent()[0]["reply_markup"]["inline_keyboard"] for b in row]
+    assert not any(c.startswith("c:fx:") for c in flat), "no Fix button when only a picture blocks"
+    assert "Nothing here that a rewrite can fix" in tb.queue_fix(st, "d1", NOW)
+    assert st.tables[db.POSTS][0].get("revise_state") in (None, ""), "nothing queued for the worker"
+    sent_at = "2026-11-07T00:00:00+00:00"
+    row = {"post_id": "a", "version": "2026-11-07T10:00:00.123456+00:00", "chat_id": CHAT, "message_id": 5, "sent_at": sent_at}
+    st2 = store(**{db.POSTS: [post("a", date="2026-11-08")], tb.SENT: [dict(row)]})
+    assert tb._claim_remind(st2, post("a"), CHAT, NOW, row) is True
+    assert tb._claim_remind(st2, post("a"), CHAT, NOW, row) is False, "the second run read the same old sent_at and loses"
+
+
 def test_status_and_billing_read_without_error():
     docs = [{"kind": "invoice", "number": "INV-2026-020", "status": "sent", "total": 840, "currency": "MYR",
              "due_date": "2026-11-20", "client": {"name": "Marosia"}}]

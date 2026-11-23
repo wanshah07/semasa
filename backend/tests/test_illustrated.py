@@ -573,3 +573,14 @@ def test_a_studio_look_that_overflows_falls_back_to_classic_and_keeps_its_pictur
     meta = store.tables["media_generations"][0]["meta"]
     assert meta["look"] == "classic" and "fuller than the card" in meta["look_fallback"]
     assert len(banded) >= len(SLIDES), "every fallback page gets its illustration band"
+
+
+def test_the_kept_cover_art_is_not_swept_as_stale_and_the_web_looks_it_up_by_the_same_key():
+    # Codex review on #339: cover_art stores under "cover|" + key_of(item); stale_paths kept only the cut-out key and deleted it
+    item = {"title": "Aku baca kajian 12 minggu ni.", "points": []}
+    meta = {"art": {"cover|" + illustrated.key_of(item): {"path": "2026/11/j1-cover.jpg", "url": "u"},
+                    "cover|" + illustrated.key_of(item, True): {"path": "2026/11/j1-old-cover.png", "url": "o"}}}
+    gone = illustrated.stale_paths(meta, [item, {"title": "Dua", "points": ["x"]}], "regulab")
+    assert "2026/11/j1-cover.jpg" not in gone, "the cover picture the redraw just made is kept"
+    assert "2026/11/j1-old-cover.png" in gone, "the old transparent cut-out cover is swept"
+

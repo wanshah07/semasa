@@ -21,6 +21,10 @@ const r2 = fixFullRows(r1.rows, [1]);
 ok(r2.rows.map((r) => r.title).join("|") === "Cover|Bukti (1/3)|Bukti (2/3)|Bukti (3/3)|Akhir", r2.rows.map((r) => r.title).join("|"));
 const words = (rows) => rows.flatMap((r) => r.points.split(/\s+/)).filter(Boolean).join(" ");
 ok(words(r2.rows) === words([row("", "x"), row("", "a\nb\nc\nd"), row("", "z")]), "every word kept, in order");
+// two unrelated slides sharing a title are not renamed by a split elsewhere (Codex review on #339)
+const r4 = fixFullRows([row("Cover", "x"), row("Sama", "a"), row("Sama", "b"), row("Besar", "a\nb\nc\nd")], [3]);
+ok(r4.rows.map((r) => r.title).join("|") === "Cover|Sama|Sama|Besar (1/2)|Besar (2/2)", r4.rows.map((r) => r.title).join("|"));
+ok(r4.rows.every((r) => !("__piece" in r)), "no internal marker leaks into the rows");
 // a row that cannot split is reported, not lost
 const r3 = fixFullRows([row("T", "pendek")], [0]);
 ok(r3.split === 0 && r3.stuck[0] === 0 && r3.rows.length === 1, "stuck reported");

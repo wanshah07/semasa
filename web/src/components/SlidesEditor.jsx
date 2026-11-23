@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ArrowDown, ArrowUp, Expand, ImageIcon, Layers, Loader2, Minimize2, Paintbrush, Palette, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { SLIDE_WORDS, isPromo, normaliseSlides, slidesKey } from "../lib/compliance";
 import { cardFromCaption, slidesFromCaption } from "../lib/cards/fromCaption";
+import { fixFullRows } from "../lib/fixFull";
 import { useLang } from "../lib/i18n";
 import { LOOKS, MASCOTS_ON, isEventSlide, isStudioLook, takesMascot } from "../lib/cards/studio";
 import { photoAt, photosFollow, speakersOf, withPhoto } from "../lib/photos";
@@ -92,6 +93,16 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
     return s.photos ? { ...s, photo_urls: s.photos.split(",").map(photoUrl) } : s;     // speaker photos, drawn in the preview too
   });
   // Studio's "Reset from caption" and single card: built from the caption as it is on screen now
+  // the Fix button of "Too full for this design": each slide the design cannot hold becomes two (every word kept)
+  const fixFull = (ns) => {
+    const live = rows.map((r, j) => (normaliseSlides(fromRows([r])).length ? j : -1)).filter((j) => j >= 0);
+    const { rows: next, split, stuck } = fixFullRows(rows, ns.map((x) => live[x - 1]).filter((j) => j !== undefined));
+    if (split) setRows(next);
+    onToast(split
+      ? t("{n} slaid dipecahkan kepada dua; tiada perkataan dibuang. Semak pratonton.", "{n} slide(s) split in two; no word was removed. Check the preview.", { n: split })
+      : t("Slaid itu terlalu pendek untuk dipecahkan: pendekkan perkataannya atau pilih reka bentuk lain.", "That slide is too short to split: shorten its words or pick another design."), split ? "ok" : "warn");
+    if (stuck.length && split) onToast(t("{n} slaid tidak dapat dipecahkan.", "{n} slide(s) could not be split.", { n: stuck.length }), "warn");
+  };
   const hasWords = rows.some((r) => r.title.trim() || r.points.trim());
   const fromCaption = (single, draw = false) => {
     if (!captionPost?.caption?.trim()) return onToast(t("Tulis kapsyen dahulu.", "Write the caption first."), "warn");
@@ -175,7 +186,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
         <div className="mt-3 rounded-tile bg-surface-2/40 p-2.5">
           <LookPicker value={look} onChange={setLook} slides={previewSlides} stream={post.stream} artJobs={jobs}
             eyebrow={preview.eyebrow} citation={preview.citation} bgUrl={preview.bgUrl} bgChosen={bg !== "none"}
-            mascots={MASCOTS} threads onBlocked={setBlocked} fit={fit} onFit={setFit}
+            mascots={MASCOTS} threads onBlocked={setBlocked} fit={fit} onFit={setFit} onFix={fixFull}
             onDropSlide={(i) => { const live = rows.map((r, j) => (normaliseSlides(fromRows([r])).length ? j : -1)).filter((j) => j >= 0);
               if (live[i] !== undefined) setRows(rows.filter((_, j) => j !== live[i])); }} />
         </div>

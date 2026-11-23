@@ -69,9 +69,30 @@ class ArtError(Exception):
     """A picture could not be made; the job tries again (what was made is kept)."""
 
 
-def compose_band(card: bytes, art_png: bytes, full: tuple[int, int], quality: int = 90) -> bytes:
-    """Semasa's own (classic) look, which Pillow draws: `card` was drawn on a card ART_BAND shorter, and the slide's cut-out
-    stands on the band added below it, like studio.js renderWithArt does for every other look. Returns a JPEG of full size."""
+def rounded_card(art: bytes, box: tuple[int, int], radius: int, shadow: int) -> Image.Image:
+    """The picture as a card (Wan, 23 Nov 2026, revoking "transparent background": a rounded picture with a soft shadow, like
+    Diari's, at the foot of every look and of the cover). Fitted inside `box` without cropping; returns RGBA with the shadow
+    included (paste it with itself as the mask)."""
+    from PIL import ImageDraw, ImageFilter
+    pic = Image.open(io.BytesIO(art)).convert("RGB")
+    k = min(box[0] / pic.width, box[1] / pic.height)
+    pic = pic.resize((max(1, round(pic.width * k)), max(1, round(pic.height * k))), Image.LANCZOS)
+    w, h = pic.size
+    pad = shadow * 2
+    out = Image.new("RGBA", (w + 2 * pad, h + 2 * pad), (0, 0, 0, 0))
+    soft = Image.new("L", out.size, 0)
+    ImageDraw.Draw(soft).rounded_rectangle([pad, pad + shadow // 2, pad + w, pad + h + shadow // 2], radius=radius, fill=70)
+    out.paste((8, 50, 30, 255), mask=soft.filter(ImageFilter.GaussianBlur(max(1, shadow // 2))))
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, w - 1, h - 1], radius=radius, fill=255)
+    out.paste(pic, (pad, pad), mask)
+    return out
+
+
+def compose_band(card: bytes, art: bytes, full: tuple[int, int], quality: int = 90) -> bytes:
+    """Semasa's own (classic) look, which Pillow draws: `card` was drawn on a card ART_BAND shorter, and the slide's picture
+    stands on the band added below it as a rounded card, like studio.js renderWithArt does for every other look. Returns a JPEG
+    of full size."""
     w, h = full
     band = round(h * ART_BAND)
     top = Image.open(io.BytesIO(card)).convert("RGB")
@@ -79,12 +100,11 @@ def compose_band(card: bytes, art_png: bytes, full: tuple[int, int], quality: in
     canvas.paste(top.resize((w, h - band)) if top.size != (w, h - band) else top, (0, 0))
     edge = canvas.crop((0, h - band - 6, w, h - band)).resize((1, 1), Image.BOX).getpixel((0, 0))
     canvas.paste(Image.new("RGB", (w, band), edge), (0, h - band))
-    pic = Image.open(io.BytesIO(art_png)).convert("RGBA")
     margin, pad_t, pad_b = round(w * 72 / 1080), round(w * 14 / 1080), round(w * 40 / 1080)
-    box_w, box_h = w - 2 * margin, band - pad_t - pad_b
-    k = min(box_w / pic.width, box_h / pic.height)
-    pic = pic.resize((max(1, round(pic.width * k)), max(1, round(pic.height * k))), Image.LANCZOS)
-    canvas.paste(pic, ((w - pic.width) // 2, h - band + pad_t + (box_h - pic.height)), pic)
+    card_pic = rounded_card(art, (w - 2 * margin, band - pad_t - pad_b), round(w * 24 / 1080), round(w * 12 / 1080))
+    pad = round(w * 12 / 1080) * 2
+    pw, ph = card_pic.size[0] - 2 * pad, card_pic.size[1] - 2 * pad
+    canvas.paste(card_pic, ((w - pw) // 2 - pad, h - band + pad_t + (band - pad_t - pad_b - ph) - pad), card_pic)
     buf = io.BytesIO()
     canvas.save(buf, "JPEG", quality=quality, optimize=True, progressive=True)
     return buf.getvalue()
@@ -310,18 +330,18 @@ def with_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], item
 def stale_paths(meta: dict[str, Any], items: list[dict[str, Any]], stream: str, covered: bool | None = None) -> list[str]:
     """Kept pictures whose slide's words are gone: files to remove once the redraw has used the rest."""
     live = {key_of(items[i], c) for i in slides_needing_art(items, stream, covered) for c in (False, True)}
-    live |= {"cover|" + key_of(items[0], True)} if items else set()
+    live |= {"cover|" + key_of(items[0])} if items else set()
     return [e["path"] for k, e in (meta.get("art") or {}).items() if k not in live and isinstance(e, dict) and e.get("path")]
 
 
 def cover_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], item: dict[str, Any], stream: str,
               llm: Any = None, *, providers: dict[str, Any] | None = None, deadline: float | None = None, draw_fn: Any = None,
               fetch_fn: Any = None) -> bytes | None:
-    """The hook's illustration for the white brand cover: a transparent cut-out PNG, made once and kept on the job like the others
-    (Wan, 23 Nov 2026: "for cover, the illustration must have transparent background"). Raises ArtError when it cannot be
+    """The hook's illustration for the white brand cover: the same picture a slide gets (a rounded card, since Wan revoked
+    the transparent cut-out on 23 Nov 2026), made once and kept on the job like the others. Raises ArtError when it cannot be
     made; the cover is then drawn without it."""
     from datetime import UTC, datetime
-    key = "cover|" + key_of(item, True)
+    key = "cover|" + key_of(item)
     kept: dict[str, Any] = dict(meta.get("art") or {}) if isinstance(meta.get("art"), dict) else {}
     entry = kept.get(key)
     if not (entry or {}).get("url"):
@@ -334,14 +354,13 @@ def cover_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], ite
             raise ArtError("no picture maker is connected for the cover's illustration")
         provs = providers if providers is not None else {}
         try:
-            prompt = prompt_of(scene, True)
+            prompt = prompt_of(scene)
             data, maker = (draw_fn(prompt), "test") if draw_fn else draw(store, s, prompt, names, provs, deadline, row["id"])
-            data = cutout(data)
         except Exception as exc:  # noqa: BLE001 - the cover is drawn without it
-            raise ArtError(f"cover: the illustration could not be made ({str(exc)[:200]})") from exc
-        path = f"{datetime.now(UTC).strftime('%Y/%m')}/{row['id']}-{datetime.now(UTC).strftime('%d%H%M%S')}-cover.png"
-        url = db.upload_generated(store, path, data, "image/png")
-        entry = kept[key] = {"url": url, "path": path, "scene": scene, "label": "", "maker": maker, "mime": "image/png",
+            raise ArtError(f"cover: the illustration could not be made ({str(exc)[:160]})") from exc
+        path = f"{datetime.now(UTC).strftime('%Y/%m')}/{row['id']}-{datetime.now(UTC).strftime('%d%H%M%S')}-cover.jpg"
+        url = db.upload_generated(store, path, data, "image/jpeg")
+        entry = kept[key] = {"url": url, "path": path, "scene": scene, "label": "", "maker": maker, "mime": "image/jpeg",
                              "at": datetime.now(UTC).isoformat()}
         meta["art"] = kept
         meta["art_paths"] = [e["path"] for e in kept.values() if e.get("path")]

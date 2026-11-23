@@ -315,6 +315,15 @@ def blockers(store: Any, post: dict[str, Any], now: datetime | None = None) -> l
     return scan(store, post, now)[1]
 
 
+PICTURE_BLOCKERS = ("gambar belum siap", "gambar yang dilampirkan")        # the two picture blockers scan() adds
+
+
+def fixable(blocked: list[str]) -> list[str]:
+    """The blockers a rewrite of the caption and hook can clear. A picture that is still drawing or was deleted is not one: the
+    revise worker leaves media_ids alone, so asking it would rewrite a draft to no effect (Codex review on #339)."""
+    return [b for b in blocked if not b.startswith(PICTURE_BLOCKERS)]
+
+
 def edit_draft_caption(store: Any, post_id: str, caption: str) -> str:
     rows = store.table(db.POSTS).select("id,status,lang,text").eq("id", post_id).eq("status", "draft").execute().data or []
     if not rows:
@@ -374,7 +383,8 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
             [{"text": "🎨 Single card", "callback_data": f"c:sc:{post['id']}"}, *film]]
     if hard:
         text += "\n\n⚠️ Approval blocked:\n• " + "\n• ".join(hard[:6])
-        buttons = [*make, [{"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
+        fix = [{"text": "🛠 Fix", "callback_data": f"c:fx:{post['id']}"}] if fixable(hard) else []
+        buttons = [*make, [*fix, {"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
     else:
         buttons = [*make, [{"text": "✅ Approve", "callback_data": f"ok:{post['id']}"},
                            {"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
@@ -382,6 +392,29 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
     store.table(SENT).upsert({"post_id": post["id"], "version": post["updated_at"], "chat_id": chat, "message_id": mid,
                               "sent_at": datetime.now(UTC).isoformat()}, on_conflict="post_id").execute()
     return mid
+
+
+def queue_fix(store: Any, post_id: str, now: datetime | None = None) -> str:
+    """The 🛠 Fix button on a draft whose approval is blocked (Wan, 23 Nov 2026: "if got blocker, put the fix button so your worker
+    can fix the blocker"): the blockers go to the worker as a revise note, the same job as "Revise with a note", which writes the
+    caption and hook again and never changes a fact. Writes no status, so the gate is untouched."""
+    rows = store.table(db.POSTS).select("*").eq("id", post_id).limit(1).execute().data or []
+    if not rows or rows[0].get("status") != "draft":
+        return "That draft is no longer a draft, so there is nothing to fix."
+    post = rows[0]
+    if post.get("revise_state") in ("new", "working"):
+        return "Semasa is already fixing this draft."
+    every = blockers(store, post, now)
+    hard = fixable(every)
+    if not every:
+        return "Nothing blocks this draft any more. 👍"
+    if not hard:
+        return "Nothing here that a rewrite can fix (a picture still drawing or deleted is not one). 👍"
+    note = ("Clear every approval blocker below and change nothing else. Where a blocker marks a fact the source does not give, "
+            "leave that fact out; never guess one. " + " ".join(f"{i}) {h}" for i, h in enumerate(hard[:8], 1)))[:800]
+    store.table(db.POSTS).update({"revise_note": note, "revise_state": "new", "revise_error": None}) \
+        .eq("id", post_id).eq("status", "draft").execute()
+    return f"🛠 Sent to Semasa: {len(hard)} blocker(s) to fix. The draft comes back here when it is rewritten."
 
 
 def draft_rows(store: Any, stream: str = "") -> list[dict[str, Any]]:
@@ -886,6 +919,9 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
             cat.ask(store, "post_edit", post_id)
             bot.send(chat, "✏️ Send the replacement caption now. This only edits a draft and does not publish it.", reply_to=mid)
             return "catalogue edit asked"
+        elif rest.startswith("fx:"):
+            bot.send(chat, queue_fix(store, rest.split(":", 1)[1], now), reply_to=mid)
+            return "fix queued"
         elif rest.startswith("pc:"):
             post_id = rest.split(":", 1)[1]
             text_, buttons = cat.carousel_options(post_id, cat.lang(store))
@@ -1242,6 +1278,82 @@ def push_new_drafts(store: Any, bot: Bot, link: dict[str, Any], now: datetime | 
     return n
 
 
+REMIND_HOURS = 12                      # hours before a ready draft still waiting is asked about again (0 = off)
+REMIND_PER_RUN = 3                     # reminders a run: never a flood, soonest slot first, the rest follow on later runs
+QUIET_FROM, QUIET_TO = 23, 7           # no reminders from 23:00 to 07:00 Malaysia time
+REMIND_INTRO = "⏰ Peringatan: draf ini siap dan masih menunggu kelulusan anda"
+
+
+def _claim_remind(store: Any, post: dict[str, Any], chat: int, now: datetime, last: dict[str, Any]) -> bool:
+    """Take the right to remind about this draft, once per window: a compare-and-set on the sent_at this run read, so two runs
+    (the media run's draft_announce and the Telegram run) that both found the draft due cannot both send. A draft never sent
+    is claimed the way push_new_drafts claims it."""
+    if not last:
+        return _claim_announce(store, post, chat, now, False)
+    mine = store.table(SENT).update({"sent_at": now.isoformat()}).eq("post_id", post["id"]).eq("sent_at", last["sent_at"])
+    return bool(mine.execute().data)
+
+
+def remind_hours(store: Any) -> float:
+    try:
+        raw = tt.chat_state(store).get("remind_hours")
+        return REMIND_HOURS if raw is None else max(0.0, float(raw))
+    except Exception:  # noqa: BLE001
+        return float(REMIND_HOURS)
+
+
+def remind_pending_drafts(store: Any, bot: Bot, link: dict[str, Any], now: datetime | None = None,
+                          limit: int = REMIND_PER_RUN) -> int:
+    """Every READY draft, a carousel or a single card, that is still waiting for Wan is sent to Telegram again, with its
+    pictures and its Approve / Reject buttons, every `remind_hours` (Wan, 23 Nov 2026: "all carousel and ready draft send to
+    semasa telegram for approval routinely"). push_new_drafts announces a draft once and only for 3 days, so a draft he did
+    not answer, or one written before the link, was never asked about again (settings telegram_chat.remind_hours sets the
+    hours). Ready = its pictures are drawn (none still queued or being drawn) and nothing blocks its approval; a draft
+    still drawing or blocked is not asked about. Soonest slot first, at most `limit` a run, and quietly nothing from 23:00
+    to 07:00 Malaysia time. Never writes a status: Wan's tap is still the gate."""
+    now = now or datetime.now(UTC)
+    every = remind_hours(store)
+    hour = (now + timedelta(hours=8)).hour
+    if every <= 0 or not draft_alerts_on(store) or hour >= QUIET_FROM or hour < QUIET_TO:
+        return 0
+    chat = int(link["chat_id"])
+    sent = {r["post_id"]: r for r in store.table(SENT).select("post_id,message_id,sent_at").execute().data or []}
+    due_before = (now - timedelta(hours=every)).isoformat()
+    from .publisher import media_for
+    n = 0
+    for p in drafts(store, 200, now):
+        if n >= limit:
+            break
+        last = sent.get(p["id"]) or {}
+        if last and (last.get("message_id") is None or str(last.get("sent_at") or "") > due_before):
+            continue                      # claimed a moment ago, or reminded inside the window
+        media = media_for(store, list(p.get("media_ids") or []))
+        jobs = store.table(db.MEDIA).select("id,status,provider").eq("post_id", p["id"]) \
+            .in_("status", ["pending", "processing"]).execute().data or []
+        drawing = [m for m in media if m.get("status") not in ("done", "error")]
+        if drawing or [j for j in jobs if (j.get("provider") or "") != "unsplash"]:
+            continue                      # still drawing
+        if not media and not p.get("slides") and p.get("stream") != "linkedin":
+            continue                      # a ws.regulab draft with no picture at all is not ready
+        if blockers(store, p, now):
+            continue                      # cannot be approved as it stands: Wan is told in /draf, not nagged
+        if not _claim_remind(store, p, chat, now, last):
+            continue                      # another run reminded about it a moment ago
+        try:
+            send_draft(store, bot, chat, p, now, intro=REMIND_INTRO)
+            n += 1
+            db.log_event(store, "info", "post", "post.reminded", f"Telegram: peringatan kelulusan: "
+                         f"{str(p.get('hook') or p['id'])[:80]}", ref_table=db.POSTS, ref_id=p["id"],
+                         detail={"stream": p.get("stream") or "regulab", "date": p.get("date"), "slot": p.get("slot")})
+        except Exception as exc:  # noqa: BLE001 - one draft that will not send never stops the rest
+            log.warning("reminder for %s not sent: %s", p["id"], scrub(exc, getattr(bot, "token", ""))[:160])
+            if last:                      # the claim is given back, so the next run tries again
+                store.table(SENT).update({"sent_at": last["sent_at"]}).eq("post_id", p["id"]).execute()
+            else:
+                store.table(SENT).delete().eq("post_id", p["id"]).is_("message_id", "null").execute()
+    return n
+
+
 def announce(store: Any, bot: Bot | None = None, now: datetime | None = None) -> dict[str, Any]:
     """`python -m semasa.draft_announce`: the new drafts only, quietly nothing with no bot token or no linked account."""
     bot = bot if bot is not None else make_bot()
@@ -1250,7 +1362,7 @@ def announce(store: Any, bot: Bot | None = None, now: datetime | None = None) ->
     link = link_of(store)
     if not link:
         return {"pushed": 0, "note": "no Telegram account linked yet"}
-    return {"pushed": push_new_drafts(store, bot, link, now)}
+    return {"pushed": push_new_drafts(store, bot, link, now), "reminded": remind_pending_drafts(store, bot, link, now)}
 
 
 def notify(store: Any, text: str, bot: Bot | None = None) -> bool:
@@ -1324,6 +1436,7 @@ def run(store: Any, bot: Bot | None = None, now: datetime | None = None, llm_fac
             .eq("id", row["id"]).execute()
     if push:
         out["pushed"] = push_new_drafts(store, bot, link, now)
+        out["reminded"] = remind_pending_drafts(store, bot, link, now)
         out["videos"] = push_videos(store, bot, link, now)
         out["storyboards"] = push_storyboards(store, bot, link)
     return out

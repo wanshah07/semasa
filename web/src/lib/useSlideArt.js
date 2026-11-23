@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { artFor, artIndex, cutOutUrl, dataUrlOf, onPageUrl } from "./slideArt";
+import { artFor, artIndex, dataUrlOf } from "./slideArt";
 
 const CACHE = new Map();                                    // address → {cut, page} data addresses, kept for the session
 
@@ -16,16 +16,15 @@ export default function useSlideArt(slides, jobs) {
       const urls = await artFor(slides, jobs);
       const out = {};
       for (let i = 0; i < urls.length; i++) {
-        const { cut, page } = urls[i], from = cut || page;
+        const { cut, page } = urls[i], from = page || cut;      // the whole picture first (the worker draws it for every look now)
         if (!from) continue;
-        if (!CACHE.has(from + "|" + cut + "|" + page)) {
+        if (!CACHE.has(from)) {
+          // the picture as the worker drew it, on every look (Wan, 23 Nov 2026: no cut-out): one blob address per drawing
           const data = await dataUrlOf(from);
           if (!data) continue;
-          const pair = cut ? { cut: data, page: page ? (await dataUrlOf(page)) || (await onPageUrl(data)) : await onPageUrl(data) }
-            : { cut: await cutOutUrl(data), page: data };
-          CACHE.set(from + "|" + cut + "|" + page, pair);
+          CACHE.set(from, { cut: data, page: data });
         }
-        out[i] = CACHE.get(from + "|" + cut + "|" + page);
+        out[i] = CACHE.get(from);
       }
       if (live) setGot(out);
     })();

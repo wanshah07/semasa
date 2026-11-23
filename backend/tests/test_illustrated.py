@@ -451,7 +451,7 @@ def test_a_cutout_takes_the_white_page_away_and_keeps_the_white_inside_the_drawi
         illustrated.cutout(_paper())                                     # a picture with no white page round it
 
 
-def test_the_cover_picture_is_a_transparent_cutout_made_once_and_kept(monkeypatch):
+def test_the_cover_picture_is_the_whole_drawing_made_once_and_kept(monkeypatch):
     monkeypatch.setattr(illustrated.db, "upload_generated", lambda st, path, data, ct: f"https://cdn/{path}")
     store, meta, made = _store(), {}, []
 
@@ -462,14 +462,17 @@ def test_the_cover_picture_is_a_transparent_cutout_made_once_and_kept(monkeypatc
     row = store.tables["media_generations"][0]
     item = {"title": "Aku baca kajian 12 minggu ni.", "points": []}
     first = illustrated.cover_art(store, None, row, meta, item, "regulab", Llm(None), draw_fn=draw)
-    assert Image.open(io.BytesIO(first)).mode == "RGBA" and len(made) == 1
-    assert "pure white page" in made[0] and "Scene:" in made[0], "the cut-out is asked for a plain white page"
+    assert Image.open(io.BytesIO(first)).mode == "RGB" and len(made) == 1, "no cut-out any more (Wan revoked it, 23 Nov 2026)"
+    assert "pure white page" not in made[0] and "Scene:" in made[0], "the picture is drawn as it is for every slide"
     again = illustrated.cover_art(store, None, row, meta, item, "regulab", Llm(None), draw_fn=draw, fetch_fn=lambda u: first)
     assert again == first and len(made) == 1, "kept on the job: a redraw pays for nothing"
-    assert any(p.endswith("-cover.png") for p in meta["art_paths"])
+    assert any(p.endswith("-cover.jpg") for p in meta["art_paths"])
+    def broken(prompt):
+        raise RuntimeError("the maker said no")
+
     with pytest.raises(illustrated.ArtError, match="cover"):
         illustrated.cover_art(_store(), None, {"id": "j1"}, {}, {"title": "Lain", "points": []}, "regulab", Llm(None),
-                              draw_fn=lambda prompt: _paper())
+                              draw_fn=broken)
 
 
 def test_the_cover_title_is_short_and_never_invents(monkeypatch):
@@ -518,7 +521,7 @@ def _poster_job(job_id: str, look: str = "hand") -> dict:
                      "format": "portrait", "citation": "NPRA"}}
 
 
-def test_a_single_poster_gets_a_cutout_picture_in_its_look(monkeypatch):
+def test_a_single_poster_gets_a_picture_in_its_look(monkeypatch):
     kept, seen = {}, {}
     monkeypatch.setattr(illustrated, "makers", lambda s, store: ["x"])
     monkeypatch.setattr(illustrated, "draw", lambda *a, **k: (_white_page_drawing(), "x"))
@@ -531,7 +534,7 @@ def test_a_single_poster_gets_a_cutout_picture_in_its_look(monkeypatch):
                       media_generations=[_poster_job("s1")])
     assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is True
     assert seen["look"] == "hand" and len(seen["items"]) == 1
-    assert seen["items"][0]["art_url"].startswith("data:image/png;base64,"), "the card carries its own cut-out illustration"
+    assert seen["items"][0]["art_url"].startswith("data:image/jpeg;base64,"), "the card carries its own picture"
 
 
 def test_a_poster_with_no_picture_maker_is_still_drawn_without_the_band(monkeypatch):
@@ -564,3 +567,14 @@ def test_a_studio_look_that_overflows_falls_back_to_classic_and_keeps_its_pictur
     meta = store.tables["media_generations"][0]["meta"]
     assert meta["look"] == "classic" and "fuller than the card" in meta["look_fallback"]
     assert len(banded) >= len(SLIDES), "every fallback page gets its illustration band"
+
+
+def test_the_kept_cover_art_is_not_swept_as_stale_and_the_web_looks_it_up_by_the_same_key():
+    # Codex review on #339: cover_art stores under "cover|" + key_of(item); stale_paths kept only the cut-out key and deleted it
+    item = {"title": "Aku baca kajian 12 minggu ni.", "points": []}
+    meta = {"art": {"cover|" + illustrated.key_of(item): {"path": "2026/11/j1-cover.jpg", "url": "u"},
+                    "cover|" + illustrated.key_of(item, True): {"path": "2026/11/j1-old-cover.png", "url": "o"}}}
+    gone = illustrated.stale_paths(meta, [item, {"title": "Dua", "points": ["x"]}], "regulab")
+    assert "2026/11/j1-cover.jpg" not in gone, "the cover picture the redraw just made is kept"
+    assert "2026/11/j1-old-cover.png" in gone, "the old transparent cut-out cover is swept"
+

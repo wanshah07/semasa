@@ -278,9 +278,72 @@ def test_new_drafts_are_pushed_once_and_a_draft_still_drawing_waits():
                   db.MEDIA: [PIC, {"id": "m1", "status": "working", "generated_media_url": None}]})
     bot = Bot()
     tb.run(st, bot=bot, now=NOW, webhook=False)
-    assert [r["post_id"] for r in st.tables[tb.SENT]] == ["p1"], "p2 waits for its picture; a draft from before the link is not"
+    # p2 waits for its picture; the old draft is outside the announce window, but it is READY and was never answered, so the
+    # routine reminder (Wan, 23 Nov 2026) sends it
+    assert [r["post_id"] for r in st.tables[tb.SENT]] == ["p1", "old"]
     tb.run(st, bot=bot, now=NOW, webhook=False)
-    assert len(st.tables[tb.SENT]) == 1
+    assert len(st.tables[tb.SENT]) == 2
+
+
+def test_ready_drafts_still_waiting_are_sent_again_for_approval_routinely():
+    # Wan, 23 Nov 2026: "all carousel and ready draft send to semasa telegram for approval routinely"
+    sent_at = "2026-11-07T00:00:00+00:00"                                  # 12 hours before NOW
+    posts = [post("a", date="2026-11-08"), post("b", date="2026-11-09"), post("drawing", date="2026-11-08", media_ids=["m1"]),
+             post("fresh", date="2026-11-08"), post("hard", date="2026-11-08", text={"bm": {"instagram": "[SAHKAN: x]"}}),
+             post("bare", date="2026-11-08", media_ids=[], stream="regulab")]
+    sents = [{"post_id": i, "version": "2026-11-07T10:00:00.123456+00:00", "chat_id": CHAT, "message_id": 5, "sent_at": sent_at}
+             for i in ("a", "b", "drawing", "hard", "bare")]
+    sents.append({**sents[0], "post_id": "fresh", "sent_at": "2026-11-07T08:00:00+00:00"})     # reminded 4 hours ago
+    st = store(**{db.POSTS: posts, tb.SENT: sents, db.MEDIA: [PIC, {"id": "m1", "status": "working"}]})
+    bot = Bot()
+    n = tb.remind_pending_drafts(st, bot, LINK, NOW, limit=10)
+    got = [m["text"] for m in bot.sent()]
+    assert n == 2 and all(t.startswith(tb.REMIND_INTRO) for t in got), got       # a and b only
+    assert tb.remind_pending_drafts(st, bot, LINK, NOW, limit=10) == 0, "reminded once inside the window"
+    assert all(p["status"] == "draft" for p in st.tables[db.POSTS]), "a reminder writes no status: the tap is the gate"
+    # the limit, the quiet hours and the switch
+    st2 = store(**{db.POSTS: posts[:2], tb.SENT: sents[:2]})
+    assert tb.remind_pending_drafts(st2, Bot(), LINK, NOW, limit=1) == 1
+    night = datetime(2026, 11, 7, 17, 0, tzinfo=UTC)                          # 01:00 Malaysia
+    assert tb.remind_pending_drafts(store(**{db.POSTS: posts[:1], tb.SENT: sents[:1]}), Bot(), LINK, night) == 0
+    off = store(**{db.POSTS: posts[:1], tb.SENT: sents[:1],
+                   db.SETTINGS: [{"key": "telegram_chat", "value": {"remind_hours": 0}}]})
+    assert tb.remind_pending_drafts(off, Bot(), LINK, NOW) == 0
+
+
+def test_the_fix_button_on_a_blocked_draft_sends_the_blockers_to_the_worker():
+    # Wan, 23 Nov 2026: "if got blocker, put the fix button so your worker can fix the blocker"
+    blocked = post("b1", text={"bm": {"instagram": "Notifikasi [SAHKAN: nombor] bukan kelulusan."}})
+    st = store(**{db.POSTS: [blocked, post("ok1")]})
+    bot = Bot()
+    tb.send_draft(st, bot, CHAT, blocked, NOW)
+    tb.send_draft(st, bot, CHAT, post("ok1"), NOW)
+    buttons = [[b.get("callback_data", "") for row in m["reply_markup"]["inline_keyboard"] for b in row] for m in bot.sent()]
+    assert "c:fx:b1" in buttons[0] and "ok:b1" not in buttons[0], "a blocked draft offers Fix, not Approve"
+    assert not any("c:fx:" in c for c in buttons[1]), "a clean draft has no Fix button"
+    assert "Nothing blocks" in tb.queue_fix(st, "ok1", NOW)
+    assert "blocker(s) to fix" in tb.queue_fix(st, "b1", NOW)
+    row = [p for p in st.tables[db.POSTS] if p["id"] == "b1"][0]
+    assert row["revise_state"] == "new" and "1) " in row["revise_note"] and row["status"] == "draft"
+    assert "already fixing" in tb.queue_fix(st, "b1", NOW), "once, not twice"
+
+
+def test_a_picture_blocker_is_not_a_fix_for_the_worker_and_a_reminder_is_claimed_once():
+    # Codex review on #339: (1) a still-drawing or deleted picture cannot be cleared by a caption rewrite; (2) two runs that both
+    # find a reminder due must not both send it
+    drawing = post("d1", media_ids=["m1"])
+    st = store(**{db.POSTS: [drawing], db.MEDIA: [PIC, {"id": "m1", "status": "working", "generated_media_url": None}]})
+    bot = Bot()
+    tb.send_draft(st, bot, CHAT, drawing, NOW)
+    flat = [b.get("callback_data", "") for row in bot.sent()[0]["reply_markup"]["inline_keyboard"] for b in row]
+    assert not any(c.startswith("c:fx:") for c in flat), "no Fix button when only a picture blocks"
+    assert "Nothing here that a rewrite can fix" in tb.queue_fix(st, "d1", NOW)
+    assert st.tables[db.POSTS][0].get("revise_state") in (None, ""), "nothing queued for the worker"
+    sent_at = "2026-11-07T00:00:00+00:00"
+    row = {"post_id": "a", "version": "2026-11-07T10:00:00.123456+00:00", "chat_id": CHAT, "message_id": 5, "sent_at": sent_at}
+    st2 = store(**{db.POSTS: [post("a", date="2026-11-08")], tb.SENT: [dict(row)]})
+    assert tb._claim_remind(st2, post("a"), CHAT, NOW, row) is True
+    assert tb._claim_remind(st2, post("a"), CHAT, NOW, row) is False, "the second run read the same old sent_at and loses"
 
 
 def test_status_and_billing_read_without_error():

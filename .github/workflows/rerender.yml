@@ -29,7 +29,9 @@ on:
         default: false
 
 concurrency:
-  group: media
+  # its own queue (23 Nov 2026): in the shared `media` group a waiting redraw was replaced by every newer media run, which is how the
+  # first dry run was cancelled before it started. Two runs of this workflow still never overlap.
+  group: rerender
   cancel-in-progress: false
 
 permissions:
@@ -63,6 +65,50 @@ jobs:
           ZERNIO_API_KEY_1: ${{ secrets.ZERNIO_API_KEY_1 }}
           ZERNIO_API_KEY_2: ${{ secrets.ZERNIO_API_KEY_2 }}
           ZERNIO_API_KEY_3: ${{ secrets.ZERNIO_API_KEY_3 }}
+          # the picture makers and the writer the redraw needs (the same as media.yml): without them only the ChatGPT login held in the
+          # database was tried, and its 402 failed every redraw on 23 Nov 2026
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_FALLBACK_BASE_URL: ${{ vars.LLM_FALLBACK_BASE_URL }}
+          LLM_FALLBACK_MODEL: ${{ vars.LLM_FALLBACK_MODEL }}
+          VISION_MODEL: ${{ vars.VISION_MODEL }}
+          MEDIA_PROVIDER: ${{ vars.MEDIA_PROVIDER }}
+          REPLICATE_T2I_MODEL: ${{ vars.REPLICATE_T2I_MODEL }}
+          REPLICATE_IMAGE_MODEL: ${{ vars.REPLICATE_IMAGE_MODEL }}
+          REPLICATE_VIDEO_MODEL: ${{ vars.REPLICATE_VIDEO_MODEL }}
+          REPLICATE_IMAGE_INPUT_KEY: ${{ vars.REPLICATE_IMAGE_INPUT_KEY }}
+          REPLICATE_VIDEO_INPUT_KEY: ${{ vars.REPLICATE_VIDEO_INPUT_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_IMAGE_MODEL: ${{ vars.OPENAI_IMAGE_MODEL }}
+          OPENAI_VIDEO_MODEL: ${{ vars.OPENAI_VIDEO_MODEL }}
+          CLOUDFLARE_T2I_MODEL: ${{ vars.CLOUDFLARE_T2I_MODEL }}
+          CLOUDFLARE_EDIT_MODEL: ${{ vars.CLOUDFLARE_EDIT_MODEL }}
+          CLOUDFLARE_IMAGE_SIZE: ${{ vars.CLOUDFLARE_IMAGE_SIZE }}
+          LLM_ALLOWED_HOSTS: ${{ vars.LLM_ALLOWED_HOSTS }}
+          LLM_FALLBACK_ALLOWED_HOSTS: ${{ vars.LLM_FALLBACK_ALLOWED_HOSTS }}
+          LLM_TIMEOUT: ${{ vars.LLM_TIMEOUT }}
+          MEDIA_MAX_ATTEMPTS: ${{ vars.MEDIA_MAX_ATTEMPTS }}
+          MEDIA_STALE_MINUTES: ${{ vars.MEDIA_STALE_MINUTES }}
+          MEDIA_RUN_BUDGET: ${{ vars.MEDIA_RUN_BUDGET }}
+          MEDIA_BATCH: ${{ vars.MEDIA_BATCH }}
+          MEDIA_POLL_SECONDS: ${{ vars.MEDIA_POLL_SECONDS }}
+          MEDIA_MAX_WAIT_IMAGE: ${{ vars.MEDIA_MAX_WAIT_IMAGE }}
+          MEDIA_MAX_WAIT_VIDEO: ${{ vars.MEDIA_MAX_WAIT_VIDEO }}
+          OPENAI_IMAGE_SIZE: ${{ vars.OPENAI_IMAGE_SIZE }}
+          OPENAI_VIDEO_SECONDS: ${{ vars.OPENAI_VIDEO_SECONDS }}
+          OPENAI_VIDEO_SIZE: ${{ vars.OPENAI_VIDEO_SIZE }}
+          IDEAS_BATCH: ${{ vars.IDEAS_BATCH }}
+          FAQ_BATCH: ${{ vars.FAQ_BATCH }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SEMASA_SITE_URL: ${{ vars.SEMASA_SITE_URL }}
           DRY: ${{ inputs.dry }}
           ONLY: ${{ inputs.only }}
           THREADS: ${{ inputs.threads }}

@@ -137,6 +137,26 @@ def test_linkedin_takes_an_updated_circular_before_an_existing_guideline_before_
                                                 row(1, "publication", "x"))] == [0, 1, 2, 3, 4]
 
 
+def test_linkedin_prefers_halal_then_cosmetic_then_pharma_then_research_whatever_the_tier():
+    # Wan, 23 Nov 2026: "for linkedn, add more about halal>cosmetic>pharma>research"
+    def row(i, domain, section, title="Kenyataan", created="2026-09-20T00:00:00+00:00"):
+        return {**_w(i, domain, section), "title": title, "summary": "s", "created_at": created}
+    halal_site = row(1, "halal_my", "website", "Garis panduan sedia ada")           # tier 2, but halal
+    cosmetic_new = row(2, "kosmetik", "regulatory", "Updated guideline", "2026-09-23T00:00:00+00:00")   # tier 0
+    pharma = row(3, "farmaseutikal", "regulatory", "Updated circular", "2026-09-23T00:00:00+00:00")
+    paper = row(4, "sains_kosmetik", "publication", "A trial", "2026-09-23T00:00:00+00:00")
+    food = row(5, "makanan", "regulatory", "Updated circular", "2026-09-23T00:00:00+00:00")
+    assert [autofill.linkedin_subject(x) for x in (halal_site, cosmetic_new, pharma, paper, food)] == [0, 1, 2, 3, 4]
+    pool = [food, paper, pharma, cosmetic_new, halal_site]
+    order = []
+    while pool:
+        got = autofill.pick(autofill.rank_candidates(pool), "linkedin", None, "2026-09-25")
+        order.append(got["id"])
+        pool.remove(got)
+    assert order == [halal_site["id"], cosmetic_new["id"], pharma["id"], paper["id"], food["id"]], order
+    assert [autofill.linkedin_angle(x) for x in (halal_site, cosmetic_new, paper)] == ["B", "A", "F"]
+
+
 def test_ws_regulab_keeps_its_own_order_when_linkedin_has_one():
     paper, notice = _w(1, "kosmetik", "publication"), _w(2, "kosmetik", "regulatory")
     ranked = autofill.rank_candidates([paper, notice])

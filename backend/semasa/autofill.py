@@ -391,6 +391,14 @@ def tier(item: dict[str, Any]) -> int:
     return 6 if section == "news" else 7
 
 
+def age_of(item: dict[str, Any]) -> float:
+    """Newest first sorts lowest: minus the item's created_at as a timestamp; an item with no readable date sorts last."""
+    try:
+        return -datetime.fromisoformat(str(item.get("created_at")).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return float("inf")
+
+
 def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> list[dict[str, Any]]:
     """Official first (Wan, 22 Nov 2026): a regulator's or the government's announcement, then its other notices, then official
     publications, websites and the angle bank; a newspaper headline only after every official item (and only when switched on).
@@ -398,10 +406,7 @@ def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> 
     first among those."""
 
     def key(item: dict[str, Any]) -> tuple[int, int, float]:
-        try:
-            age = -datetime.fromisoformat(str(item.get("created_at")).replace("Z", "+00:00")).timestamp()
-        except (TypeError, ValueError):
-            age = float("inf")
+        age = age_of(item)
         text = f"{item.get('title') or ''} {item.get('summary') or ''}"
         said = int(not (ANNOUNCEMENT.search(text) or item.get("regulatory_link"))) if tier(item) >= 6 else 0
         return (tier(item), said, age)
@@ -413,7 +418,11 @@ def pick(pool: list[dict[str, Any]], stream: str, allow: list[str] | None, day: 
     for x in pool:
         if (x.get("raw") or {}).get("urgent_for") == day:
             return x
-    return next((x for x in pool if fits(x, stream, allow)), None)
+    fitting = [x for x in pool if fits(x, stream, allow)]
+    if stream == "linkedin":
+        # the best tier, and the newest item inside it
+        return min(fitting, key=lambda x: (linkedin_tier(x), age_of(x)), default=None)
+    return fitting[0] if fitting else None
 
 
 # LinkedIn writes from FACTS in a guideline, a regulation or an official website (Wan, 20 Nov 2026: "for linkedn change direction
@@ -421,6 +430,26 @@ def pick(pool: list[dict[str, Any]], stream: str, allow: list[str] | None, day: 
 # lists himself and his angle bank. A newspaper headline, another person's LinkedIn post and an expert's post are what is loud,
 # not what is official, so they never fill a LinkedIn slot by themselves (Wan can still make an idea of any of them by hand).
 LINKEDIN_SECTIONS = ("regulatory", "publication", "website", "folder")
+
+
+# LinkedIn's own order (Wan, 23 Nov 2026: "for linkedn now, start scrape updated circular/guideline > existing guideline >
+# research"): an UPDATED circular or guideline from a regulator first, then the other regulator notices, then the EXISTING
+# guidelines (the official websites Wan lists, then his angle bank of reference documents), and a research paper last. ws.regulab
+# keeps the order above.
+UPDATED_GUIDELINE = re.compile(
+    r"\b(?:guidelines?|garis\s+panduan|updated?|revis(?:ed|ion|ions)|amend(?:ed|ment|ments)|pindaan|dikemas\s*kini|dipinda|"
+    r"circulars?|pekeliling|directives?|direktif|regulations?|peraturan)\b", re.I)
+LINKEDIN_LATER = {"website": 2, "folder": 3, "publication": 4}
+
+
+def linkedin_tier(item: dict[str, Any]) -> int:
+    """0 an updated circular, guideline or other announcement by a regulator; 1 any other regulator notice; 2 an existing
+    guideline on an official website; 3 the angle bank of reference documents; 4 a research paper; 5 anything else."""
+    section = item.get("section")
+    if section == "regulatory":
+        text = f"{item.get('title') or ''} {item.get('summary') or ''}"
+        return 0 if (ANNOUNCEMENT.search(text) or UPDATED_GUIDELINE.search(text)) else 1
+    return LINKEDIN_LATER.get(str(section), 5)
 
 
 def fits(item: dict[str, Any], stream: str, allow: list[str] | None) -> bool:

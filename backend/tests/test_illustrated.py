@@ -54,11 +54,18 @@ def test_a_picture_belongs_to_a_slides_words():
     assert a != illustrated.key_of({**SLIDES[0], "lead": "Lain."})
 
 
-def test_the_brand_cover_takes_no_picture_but_a_linkedin_first_slide_does():
-    assert illustrated.slides_needing_art(SLIDES, "regulab") == [1, 2], "slide 1 becomes the white brand cover"
+def test_every_first_slide_takes_a_picture_and_on_the_brand_cover_it_is_the_hooks_illustration():
+    # Wan, 23 Nov 2026: "can adjust coverpage by add illustration hook"
+    assert illustrated.slides_needing_art(SLIDES, "regulab") == [0, 1, 2], "slide 1 is the brand cover, with its picture"
     assert illustrated.slides_needing_art(SLIDES, "linkedin") == [0, 1, 2]
     many = [{"title": f"S{n}", "points": []} for n in range(14)]
-    assert len(illustrated.slides_needing_art(many, "linkedin")) == illustrated.MAX_ART
+    assert len(illustrated.slides_needing_art(many, "linkedin")) == 14, "every page, however long the set"
+    # Codex review on #328: a verse card has no place for a picture, so it is never asked for one
+    verse = [*SLIDES, {"title": "Peringatan", "points": [], "ayat": "2:168"}]
+    assert illustrated.slides_needing_art(verse, "linkedin") == [0, 1, 2]
+    huge = [{"title": f"S{n}", "points": []} for n in range(illustrated.MAX_ART + 1)]
+    with pytest.raises(illustrated.ArtError, match="shorten the set"):
+        illustrated.with_art(_store(), None, {"id": "j1"}, {}, huge, "linkedin", Llm(None), draw_fn=lambda p: _paper())
 
 
 def test_the_scenes_are_planned_together_and_a_failed_plan_never_stops_the_set():
@@ -90,19 +97,19 @@ def test_each_picture_is_made_once_and_kept_so_a_redraw_pays_for_nothing(monkeyp
     row = store.tables["media_generations"][0]
     items = [dict(x) for x in SLIDES]
     out = illustrated.with_art(store, None, row, meta, items, "regulab", Llm(None), draw_fn=draw, fetch_fn=lambda u: _paper())
-    assert len(made) == 2 and "art_url" not in out[0], "slide 1 is the cover"
+    assert len(made) == 3 and out[0]["art_url"], "slide 1 is the cover, and its picture is the hook's illustration"
     assert out[1]["art_url"].startswith("data:image/jpeg;base64,") and out[2]["art_url"]
-    assert len(meta["art"]) == 2 and len(meta["art_paths"]) == 2
+    assert len(meta["art"]) == 3 and len(meta["art_paths"]) == 3
     assert store.tables["media_generations"][0]["meta"]["art"] == meta["art"], "kept on the job before the next picture"
     # a redraw of the same words: nothing is made again
     illustrated.with_art(store, None, row, meta, [dict(x) for x in SLIDES], "regulab", Llm(None), draw_fn=draw,
                          fetch_fn=lambda u: _paper())
-    assert len(made) == 2
+    assert len(made) == 3
     # one slide's words change: only that slide gets a new picture
     changed = [dict(x) for x in SLIDES]
     changed[2] = {**changed[2], "title": "Dia mesti ada di Malaysia."}
     illustrated.with_art(store, None, row, meta, changed, "regulab", Llm(None), draw_fn=draw, fetch_fn=lambda u: _paper())
-    assert len(made) == 3
+    assert len(made) == 4
     stale = illustrated.stale_paths(meta, changed, "regulab")
     assert len(stale) == 1 and "art03" in stale[0], "the old third picture is left to be removed"
 
@@ -119,7 +126,7 @@ def test_a_failure_part_way_keeps_what_was_made(monkeypatch):
         return _paper()
 
     row = store.tables["media_generations"][0]
-    with pytest.raises(illustrated.ArtError, match="slide 3"):
+    with pytest.raises(illustrated.ArtError, match="slide 2"):
         illustrated.with_art(store, None, row, meta, [dict(x) for x in SLIDES], "regulab", Llm(None), draw_fn=draw)
     assert len(meta["art"]) == 1, "the first picture is kept, so the retry pays only for the rest"
 
@@ -137,7 +144,11 @@ def test_the_look_is_known_to_every_list_and_only_a_carousel_draws_pictures():
     assert "journal" in studio_cards.LOOKS and "journal" in ideas.LOOKS and "journal" in ideas.OWN_PICTURE_ONLY
     assert illustrated.wants("journal", "") and illustrated.wants("journal", "carousel"), "a post's carousel, or the Design tab's"
     assert not illustrated.wants("journal", "poster") and not illustrated.wants("journal", "card")
-    assert not illustrated.wants("journal", "threads") and not illustrated.wants("grid", "")
+    assert not illustrated.wants("journal", "threads") and not illustrated.wants("grid", "poster")
+    # every other Studio look draws one too, in a band at the foot (Wan, 23 Nov 2026); Semasa's own (classic) cannot
+    for look in studio_cards.LOOKS:
+        assert illustrated.wants(look, "") and illustrated.wants(look, "carousel"), look
+    assert not illustrated.wants("classic", "") and not illustrated.wants("threads", "")
     from semasa import rotation
     assert "journal" not in rotation.LOOK_TURN, "the turn is for posters; every carousel takes Diari (Wan, 23 Nov 2026)"
     assert ideas.DEFAULT_LOOK == "journal"
@@ -172,7 +183,7 @@ def test_the_slide_job_draws_the_pictures_then_the_card_and_records_them(monkeyp
                       media_generations=[job])
     assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is True
     assert seen["look"] == "journal" and seen["final"] is True
-    assert seen["total"] == len(seen["items"]) + 1, "the closing logo card counts in '04 / 10'"
+    assert seen["total"] == len(seen["items"]) + 2 and seen["offset"] == 1, "the cover and the logo card count in '04 / 10'"
     assert all(it.get("art_url") for it in seen["items"])
     meta = store.tables["media_generations"][0]["meta"]
     assert meta["look"] == "journal" and meta["art_paths"] == ["p/art01.jpg"]
@@ -308,9 +319,11 @@ def test_the_ws_regulab_set_keeps_the_white_brand_cover_first_and_the_logo_card_
     assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is True
     meta = store.tables["media_generations"][0]["meta"]
     assert meta["look"] == "journal" and meta["cover"] is True and meta["closing_logo"] is True
-    assert seen["items"][0].get("art_skip") is True and not seen["items"][0].get("art_url"), "slide 1 is the cover: no picture"
-    assert all(it.get("art_url") for it in seen["items"][1:])
-    assert meta["count"] == len(seen["items"]) + 1
+    assert all(it.get("art_url") for it in seen["items"]), "every page has its picture, the hook page too"
+    assert not any(it.get("art_skip") for it in seen["items"])
+    assert illustrated.art_bytes(seen["items"][0]) and illustrated.art_bytes({}) is None
+    assert meta["count"] == len(seen["items"]) + 2, "the brand cover is a picture in front of the first page, then the logo card"
+    assert meta["cover_title"], "the cover's own short title is kept on the job"
 
 
 @browser
@@ -326,7 +339,7 @@ def test_the_front_page_the_brand_cover_replaces_draws_without_a_picture_frame_a
 def test_a_design_tab_carousel_takes_diari_with_a_picture_on_every_slide_the_cover_included(monkeypatch):
     # Codex review of #324: the Design tab's Carousel mode must get Diari too; it has no brand cover, so slide 1 gets a picture
     assert illustrated.slides_needing_art(SLIDES, "regulab", covered=False) == [0, 1, 2]
-    assert illustrated.slides_needing_art(SLIDES, "regulab", covered=True) == [1, 2]
+    assert illustrated.slides_needing_art(SLIDES, "regulab", covered=True) == [0, 1, 2]
     monkeypatch.setattr(illustrated, "makers", lambda s, store: ["x"])
     monkeypatch.setattr(illustrated, "draw", lambda *a, **k: (_paper(), "x"))
     monkeypatch.setattr(illustrated, "fetch", lambda url: _paper())
@@ -341,3 +354,140 @@ def test_a_design_tab_carousel_takes_diari_with_a_picture_on_every_slide_the_cov
     assert meta["look"] == "journal" and "look_fallback" not in meta
     assert len(seen["items"]) == 3 and all(it.get("art_url") for it in seen["items"])
     assert not any(it.get("art_skip") for it in seen["items"])
+
+
+def _bold_art() -> str:
+    """A picture no look's own paper resembles: deep blue with orange bars."""
+    import base64
+    im = Image.new("RGB", (900, 600), (20, 70, 150))
+    d = ImageDraw.Draw(im)
+    for k in range(0, 900, 90):
+        d.rectangle([k, 0, k + 45, 600], fill=(235, 120, 20))
+    b = io.BytesIO()
+    im.save(b, "JPEG")
+    return "data:image/jpeg;base64," + base64.b64encode(b.getvalue()).decode()
+
+
+@browser
+@pytest.mark.parametrize("look", [k for k in studio_cards.LOOKS if k not in ("journal", "photo")])
+def test_every_other_look_draws_the_illustration_in_a_band_at_the_foot(look):
+    # Wan, 23 Nov 2026: "all carousel slide design ... must have illustration but no need to have illustration at the centre
+    # page and no need to have same size with diary"
+    art = _bold_art()
+    drawn = studio_cards.render([{**SLIDES[1], "art_url": art}, {**SLIDES[2], "art_url": art}], look=look, stream="regulab",
+                                final=True)
+    assert len(drawn) == 2
+    for pic in drawn:
+        im = Image.open(io.BytesIO(pic)).convert("RGB")
+        assert im.size == (1080, 1350)
+        w, h = im.size
+        band = [(x, y) for x in range(160, w - 160, 40) for y in range(int(h * 0.70), int(h * 0.92), 40)]
+        blue_or_orange = sum(1 for xy in band if (im.getpixel(xy)[2] > 120 > im.getpixel(xy)[0])
+                             or (im.getpixel(xy)[0] > 200 and im.getpixel(xy)[2] < 80))
+        assert blue_or_orange > len(band) * 0.6, f"{look}: the picture fills the band at the foot"
+
+
+@browser
+def test_a_picture_that_cannot_be_read_leaves_the_slide_drawn_without_it():
+    broken = [{**SLIDES[1], "art_url": "data:image/jpeg;base64,AAAA"}]
+    [pic] = studio_cards.render(broken, look="hand", stream="regulab", final=True)
+    assert Image.open(io.BytesIO(pic)).size == (1080, 1350)
+
+
+def _cut_png() -> bytes:
+    """A cut-out stand-in: a blue block with orange bars inside a fully transparent margin."""
+    im = Image.new("RGBA", (900, 600), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rectangle([150, 100, 750, 500], fill=(20, 70, 150, 255))
+    for k in range(150, 750, 90):
+        d.rectangle([k, 100, k + 45, 500], fill=(235, 120, 20, 255))
+    b = io.BytesIO()
+    im.save(b, "PNG")
+    return b.getvalue()
+
+
+def test_the_brand_cover_carries_a_short_title_and_the_hooks_cutout_at_the_foot_with_no_card_behind_it():
+    from semasa import carousel
+    title = "Mikrobiom kulit kepala"
+    plain = Image.open(io.BytesIO(carousel.cover_jpeg(title, "", "", size=(1080, 1350)))).convert("RGB")
+    drawn = Image.open(io.BytesIO(carousel.cover_jpeg(title, "", "", size=(1080, 1350), art=_cut_png()))).convert("RGB")
+    assert plain.size == drawn.size == (1080, 1350)
+    band = [(x, y) for x in range(380, 700, 20) for y in range(1010, 1230, 20)]
+    coloured = sum(1 for xy in band if (drawn.getpixel(xy)[2] > 120 > drawn.getpixel(xy)[0])
+                   or (drawn.getpixel(xy)[0] > 200 and drawn.getpixel(xy)[2] < 80))
+    assert coloured > len(band) * 0.6, "the cut-out stands at the foot"
+    assert not any((plain.getpixel(xy)[2] > 120 > plain.getpixel(xy)[0]) for xy in band), "and the plain cover has none"
+    # no card: the margin of the cut-out is transparent, so the cover's own white shows beside it
+    assert min(drawn.getpixel((130, 1120))) > 225 and min(drawn.getpixel((950, 1120))) > 225
+    ink = sum(1 for x in range(100, 980, 10) for y in range(400, 700, 10) if max(drawn.getpixel((x, y))) < 60)
+    assert ink > 100, "the short title is drawn above it"
+    # a film's tall frame keeps its own layout: no band
+    tall = Image.open(io.BytesIO(carousel.cover_jpeg(title, "", "", size=(1080, 1920), art=_cut_png()))).convert("RGB")
+    assert not any(tall.getpixel(xy)[2] > 120 > tall.getpixel(xy)[0] for xy in [(x, y) for x in range(200, 880, 60)
+                                                                                for y in range(1500, 1800, 60)])
+
+
+def _white_page_drawing() -> bytes:
+    im = Image.new("RGB", (900, 600), (255, 255, 255))
+    d = ImageDraw.Draw(im)
+    d.ellipse([300, 150, 600, 450], outline=(20, 20, 20), width=6, fill=(255, 255, 255))      # white INSIDE the drawing
+    d.ellipse([380, 230, 420, 270], fill=(20, 20, 20))
+    b = io.BytesIO()
+    im.save(b, "JPEG")
+    return b.getvalue()
+
+
+def test_a_cutout_takes_the_white_page_away_and_keeps_the_white_inside_the_drawing():
+    out = illustrated.cutout(_white_page_drawing())
+    im = Image.open(io.BytesIO(out))
+    assert im.mode == "RGBA" and im.width < 400, "cropped to the drawing"
+    assert im.getpixel((1, 1))[3] == 0, "the page is transparent"
+    assert im.getpixel((im.width // 2, im.height // 2 + 40))[3] == 255, "the inside of the drawing is kept"
+    with pytest.raises(illustrated.ArtError, match="no plain page"):
+        illustrated.cutout(_paper())                                     # a picture with no white page round it
+
+
+def test_the_cover_picture_is_a_transparent_cutout_made_once_and_kept(monkeypatch):
+    monkeypatch.setattr(illustrated.db, "upload_generated", lambda st, path, data, ct: f"https://cdn/{path}")
+    store, meta, made = _store(), {}, []
+
+    def draw(prompt):
+        made.append(prompt)
+        return _white_page_drawing()
+
+    row = store.tables["media_generations"][0]
+    item = {"title": "Aku baca kajian 12 minggu ni.", "points": []}
+    first = illustrated.cover_art(store, None, row, meta, item, "regulab", Llm(None), draw_fn=draw)
+    assert Image.open(io.BytesIO(first)).mode == "RGBA" and len(made) == 1
+    assert "pure white page" in made[0] and "Scene:" in made[0], "the cut-out is asked for a plain white page"
+    again = illustrated.cover_art(store, None, row, meta, item, "regulab", Llm(None), draw_fn=draw, fetch_fn=lambda u: first)
+    assert again == first and len(made) == 1, "kept on the job: a redraw pays for nothing"
+    assert any(p.endswith("-cover.png") for p in meta["art_paths"])
+    with pytest.raises(illustrated.ArtError, match="cover"):
+        illustrated.cover_art(_store(), None, {"id": "j1"}, {}, {"title": "Lain", "points": []}, "regulab", Llm(None),
+                              draw_fn=lambda prompt: _paper())
+
+
+def test_the_cover_title_is_short_and_never_invents(monkeypatch):
+    from semasa import carousel
+    hook = "Aku: esok lah aku fikir pasal mikrobiom kulit kepala. Lepas tu aku: baca kajian 12 minggu ni."
+
+    class Said:
+        def __init__(self, title):
+            self.title = title
+
+        def chat_json(self, system, user, max_tokens=0):
+            return {"title": self.title}
+
+    assert carousel.short_title(Said("Kajian *mikrobiom* kulit kepala"), hook) == "Kajian *mikrobiom* kulit kepala"
+    long = carousel.short_title(Said("Aku esok fikir pasal mikrobiom kulit kepala lepas tu baca kajian"), hook)
+    assert len(long.split()) <= carousel.COVER_TITLE_WORDS, "a long answer falls back to the hook's own first words"
+    assert carousel.short_title(None, hook) == carousel._lead_words(hook, carousel.COVER_TITLE_WORDS)
+    blocked = carousel.short_title(Said("Produk ini dijamin lulus NPRA"), hook)
+    assert "dijamin" not in blocked, "a title that breaks a blocking rule is dropped"
+    assert carousel.short_title(Said("x"), "Tajuk pendek sahaja") == "Tajuk pendek sahaja", "a short hook is the title"
+
+
+def _bold_art_bytes() -> bytes:
+    import base64
+    return base64.b64decode(_bold_art().split(",", 1)[1])

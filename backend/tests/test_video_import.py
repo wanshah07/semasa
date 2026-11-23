@@ -312,7 +312,6 @@ def test_a_file_over_the_stored_ceiling_is_refused(clips, monkeypatch):
     "caption,needle",
     [
         ("Semak kelayakan produk anda di www.kkmhalalconsultant.com sekarang.", "website"),
-        ("Komen SAHKAN di bawah untuk tahu lebih lanjut. " + GOOD_BM, "CTA"),
         ("Produk ini dijamin lulus NPRA, " + GOOD_BM, "approval"),
     ],
 )
@@ -332,6 +331,18 @@ def test_a_caption_with_a_cta_or_the_website_is_a_flagged_draft_never_an_error_a
     assert "approved_by" not in post and "approved_at" not in post
     assert len(store.tables["semasa_motions"]) == 1 and len(store.tables["media_generations"]) == 1
     assert "betulkan kapsyen" in told[0]
+
+
+def test_a_call_to_action_in_a_caption_is_a_warning_not_a_block(clips):
+    # Wan, 23 Nov 2026 ("remove blocker"): it is named on the draft, and the draft is not held back for it
+    store, bucket = setup()
+    caption = "Komen SAHKAN di bawah untuk tahu lebih lanjut. " + GOOD_BM
+    received(store, bucket, clips["good"], caption=caption)
+    step(store, bucket)
+    post = store.tables["semasa_posts"][0]
+    assert post["status"] == "draft" and post["hard_flags"] == 0
+    assert any(not f["hard"] and "CTA" in f["msg"] for f in post["flags"]), post["flags"]
+    assert post["text"]["bm"]["instagram"] == caption
 
 
 def test_a_bad_file_still_ends_in_error_while_a_bad_caption_does_not(clips):
@@ -657,7 +668,6 @@ def test_the_writer_is_given_nothing_but_the_title_and_the_source(clips):
         "Jangan lupa follow kami untuk lagi teh tarik!",
         "Layari www.kkmhalalconsultant.com untuk menu penuh.",
         "Teh tarik ini dijamin lulus NPRA.",
-        "Komen SAHKAN di bawah untuk tahu lebih lanjut.",
         "Teh tarik panas, 3 sudu gula dan 250 ml susu.",
         "Teh tarik ini halal dan selamat diminum.",
     ],

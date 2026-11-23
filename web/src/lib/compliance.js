@@ -6,7 +6,8 @@ import RULES from "../../../rules/compliance.json";
 import { definedIn, definedInCaption, stripDefinisi, used as glossaryUsed } from "./glossary.js";
 
 const rx = (r) => new RegExp(r.re, (r.flags || "").includes("i") ? "i" : "");
-const HARD = [...RULES.hard, ...RULES.cta].map((r) => [rx(r), r.label]);
+// A call to action is a WARNING, never a block (Wan, 23 Nov 2026: "remove blocker"); see CTA below.
+const HARD = RULES.hard.map((r) => [rx(r), r.label]);
 const CTA = RULES.cta.map((r) => [rx(r), r.label]);
 const SOFT = RULES.soft.map((r) => [rx(r), r.label]);
 const SOCIAL_SRC = rx(RULES.social_src);
@@ -278,6 +279,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
       posts.forEach((part, n) => { if (charLen(part) > lim.max) add(true, where, `post ${n + 1} of the thread is ${charLen(part)} chars, over the ${lim.max} limit`); });
     } else if (lim && charLen(t) > lim.max) add(true, where, `${charLen(t)} chars, over the ${lim.max} limit`);
     for (const [re, label] of HARD) if (re.test(t)) add(true, where, label);
+    for (const [re, label] of CTA) if (re.test(t)) add(false, where, label);
     for (const [re, label] of SOFT) if (re.test(t)) add(false, where, label);
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. Never say the idea came from Reddit, YouTube, a forum or a post.");
     for (const phrase of vagueHits(sentences(t))) add(vagueHard, where, `vague: "${phrase}". ${VAGUE_FIX} in that sentence or the two after it.`);
@@ -306,7 +308,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     const t = textOf(post, p, other);
     if (!t) continue;
     const tag = other === "bm" ? "BM" : "EN";
-    for (const [re, label] of HARD) if (re.test(t)) add(false, `${tag} variant (${p})`, label);
+    for (const [re, label] of [...HARD, ...CTA]) if (re.test(t)) add(false, `${tag} variant (${p})`, label);
     for (const msg of indoHits(t, extra)) add(false, `${tag} variant (${p})`, msg);
     for (const phrase of vagueHits(sentences(t))) add(false, `${tag} variant (${p})`, `vague: "${phrase}". ${VAGUE_FIX} in that sentence or the two after it.`);
   }
@@ -315,7 +317,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
   const alts = (post.media || []).filter((m) => m && typeof m === "object").map((m) => String(m.alt || ""));
   for (const [where, t] of [["Source", cit], ...alts.map((a, i) => [`Picture ${i + 1} alt text`, a])]) {
     if (!t) continue;
-    for (const [re, label] of CTA) if (re.test(t)) add(true, where, label);
+    for (const [re, label] of CTA) if (re.test(t)) add(false, where, label);
     if (burl.test(t)) add(true, where, "the ws.regulab website");
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. A post stands on the instrument, never on where the idea was spotted.");
     if (stream === "linkedin") {
@@ -336,6 +338,7 @@ export function scan(post, brandIn = null, schedule = null, indoExtra = null) {
     // footnote, so the caption is where theirs goes)
     if (explain) for (const written of unexplained(slideBody(sl), new Set([...definedIn(sl.foot || ""), ...captionDefined]))) add(false, where, EXPLAIN(written));
     for (const [re, lab] of HARD) if (re.test(t)) add(true, where, lab);
+    for (const [re, lab] of CTA) if (re.test(t)) add(false, where, lab);
     if (SOCIAL_SRC.test(t)) add(true, where, "names a social source. A post stands on the instrument, never on where the idea was spotted.");
     for (const msg of indoHits(t, extra)) add(true, where, msg);
     if (burl.test(t)) add(true, where, "the ws.regulab website. Only the artwork footer carries it.");

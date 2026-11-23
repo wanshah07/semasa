@@ -36,8 +36,20 @@ export async function artFor(slides, jobs) {
 
 // ---- the brand cover's own title and illustration ---------------------------------------------------------------------------------
 
-export const COVER_TITLE_WORDS = 6;                   // carousel.COVER_TITLE_WORDS: the cover's title is short, the long hook is page one
-/** carousel._lead_words: the first clause of `text` when it is short enough, else its first `n` words; no trailing punctuation. */
+export const COVER_TITLE_WORDS = 12;                  // carousel.COVER_TITLE_WORDS: the cover's title is ONE COMPLETE SENTENCE of at most this many words
+export const LEAD_SENTENCE_MAX = 22;
+/** carousel._lead_sentence: the first WHOLE sentence of `text`, no trailing punctuation; longer than `most` words it is cut at its
+    last comma, semicolon or colon inside the limit, else kept whole. Never a few words cut off a longer line. */
+export function leadSentence(text, most = LEAD_SENTENCE_MAX) {
+  const t = String(text || "").replace(/\*/g, "").replace(/\s+/g, " ").trim();
+  const first = t.split(/(?<=[.!?])\s+/)[0].trim().replace(/[.!?,;:]+$/, "");
+  const w = first.split(" ").filter(Boolean);
+  if (w.length <= most) return first;
+  const head = w.slice(0, most).join(" ");
+  const cut = Math.max(head.lastIndexOf(","), head.lastIndexOf(";"), head.lastIndexOf(":"));
+  return cut > 0 && head.slice(0, cut).trim().split(" ").length >= 4 ? head.slice(0, cut).trim() : first;
+}
+// kept for older callers: the first clause when short enough, else its first n words
 export function leadWords(text, n) {
   const t = String(text || "").replace(/\*/g, "").replace(/\s+/g, " ").trim();
   const first = t.split(/(?<=[.:;!?])\s+/)[0].trim().replace(/[.:;!?,]+$/, "");
@@ -54,7 +66,7 @@ export function coverTitleFor(first, jobs) {
     const ct = String(j?.meta?.cover_title || "").trim();
     if (ct && j.status === "done" && (j.meta.slides || []).some((s) => String(s?.title || "").trim() === hook)) return ct;
   }
-  return hook.replace(/\*/g, "").split(/\s+/).length <= COVER_TITLE_WORDS ? hook : leadWords(hook, COVER_TITLE_WORDS);
+  return hook.replace(/\*/g, "").split(/\s+/).length <= COVER_TITLE_WORDS ? hook : leadSentence(hook);
 }
 /** The address of the hook's cover illustration the worker kept for this slide ("cover|" + the cut-out key), or "". */
 export async function coverArtUrl(first, jobs) {

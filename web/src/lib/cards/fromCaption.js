@@ -1,12 +1,13 @@
 /* Slides built from a post's own caption: Studio's "Reset from caption" (argus studio/part2.html factUnits,
    splitCarousel, headAndRest, breakLong, autoSlides), brought over 27 Sep 2026.
    Wan's shape (7 Sep 2026): a cover, the slides carrying facts, then a closing line that leaves them curious. As many slides as the
-   caption has points: no minimum and no maximum (Wan, 9 Nov 2026: "make sure no limit or min carousel slide").
+   caption has points, joined down to under 10 pictures (Wan, 23 Nov 2026: "limitkan slide less 10"; it was no maximum on 9 Nov).
    Every paragraph of the caption becomes at least one slide's worth of text: a long paragraph is packed into slide-sized
    units, never dropped (Studio lost 77 paragraphs that way before). A sentence that asks for something, or carries the
    ws.regulab website, is never built onto the artwork. */
 /* The caller hands in the caption as it is on screen now (not the last saved copy) and the scanner's own isPromo
    (web/src/lib/compliance.js), so this file needs nothing else and runs under Node for the tests as it is. */
+import { limitSlides, writtenCap } from "../limitSlides.js";
 
 const FACT_MAX = 150;            // a headline plus a supporting line fit in about this much
 const HEAD_MAX = 110;
@@ -107,7 +108,8 @@ export function slidesFromCaption(post, isPromo = () => false) {
     const [title, lead] = headAndRest(close);
     slides.push({ title, points: [], ...(lead ? { lead } : {}), eyebrow: linkedin ? "The part most miss" : "Yang ramai tak sedar" });
   }
-  return { slides, over };
+  const { slides: fitted } = limitSlides(slides, writtenCap(post.stream));      // under 10 pictures (Wan, 23 Nov 2026), no word lost
+  return { slides: fitted, over };
 }
 
 /** One card: the hook as the headline and the caption's first substantial line under it (Studio's single card). */

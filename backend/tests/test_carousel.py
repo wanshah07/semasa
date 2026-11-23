@@ -19,20 +19,21 @@ def _words(items):
     return " ".join(" ".join([s.get("title", ""), s.get("lead", ""), *s.get("points", [])]) for s in items)
 
 
-def test_a_carousel_of_nine_is_squeezed_to_five_written_slides_and_keeps_every_word():
-    items = _set(9)
+def test_a_carousel_of_twelve_is_squeezed_to_seven_written_slides_and_keeps_every_word():
+    items = _set(12)
     out, joined = carousel.compact(items, "regulab")
-    assert len(out) == 5 and joined == 4
+    assert len(out) == 7 and joined == 5
     assert out[0] == items[0] and out[-1] == items[-1]                # the cover and the closing slide stay alone
     kept = _words(out)
-    for i in range(1, 8):
+    for i in range(1, 11):
         assert f"Fakta nombor {i}" in kept                              # nothing is dropped, only joined
-    assert len(items) == 9                                              # the words as written are not touched
+    assert len(items) == 12                                             # the words as written are not touched
 
 
-def test_linkedin_keeps_six_written_slides_because_it_has_no_logo_card():
-    assert len(carousel.compact(_set(9), "linkedin")[0]) == 6
-    assert carousel.text_target("regulab") == 5 and carousel.text_target("linkedin") == 6
+def test_a_carousel_is_under_ten_pictures_cover_and_logo_card_included():
+    # Wan, 23 Nov 2026: "limitkan slide less 10": 7 written + the brand cover + the logo card = 9; LinkedIn has neither: 9
+    assert carousel.MAX_SLIDES == 9 and carousel.text_target("regulab") == 7 and carousel.text_target("linkedin") == 9
+    assert len(carousel.compact(_set(12), "linkedin")[0]) == 9
 
 
 def test_a_short_carousel_is_left_alone():
@@ -84,15 +85,15 @@ def _job(stream, items):
             "meta": {"slides": items, "stream": stream, "bg": "none", "citation": "NPRA"}}
 
 
-def test_the_worker_squeezes_a_nine_slide_ws_regulab_carousel_and_ends_it_on_the_logo_card(worker):
+def test_the_worker_squeezes_a_twelve_slide_ws_regulab_carousel_and_ends_it_on_the_logo_card(worker):
     from fakestore import FakeStore
     saved, uploads = worker
-    row = _job("regulab", _set(9))
+    row = _job("regulab", _set(12))
     assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
     meta = saved["meta"]
-    # the brand cover is a picture in front of the first page (Wan, 23 Nov 2026), so five pages + cover + logo card = 7
-    assert meta["count"] == 7 and len(uploads) == 7 and meta["closing_logo"] is True and meta["squeezed_from"] == 9
-    assert len(meta["slides"]) == 9                              # the words on the job are the ones written
+    # the brand cover is a picture in front of the first page (Wan, 23 Nov 2026), so seven pages + cover + logo card = 9
+    assert meta["count"] == 9 and len(uploads) == 9 and meta["closing_logo"] is True and meta["squeezed_from"] == 12
+    assert len(meta["slides"]) == 12                             # the words on the job are the ones written
 
 
 def test_a_linkedin_carousel_has_no_logo_card(worker):
@@ -111,13 +112,13 @@ def test_a_squeezed_set_that_fails_to_draw_is_drawn_as_written(worker, monkeypat
 
     def render(words, **kw):
         seen.append(len(words))
-        if len(words) < 9:
+        if len(words) < 12:
             raise slides.SlideError("slide 3: too long to fit")
         return real(words, **kw)
     monkeypatch.setattr(slides, "render", render)
-    row = _job("regulab", _set(9))
+    row = _job("regulab", _set(12))
     assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
-    assert seen == [5, 9] and saved["meta"]["count"] == 11 and saved["meta"]["squeezed_from"] is None
+    assert seen == [7, 12] and saved["meta"]["count"] == 14 and saved["meta"]["squeezed_from"] is None
 
 
 def test_a_studio_look_that_cannot_fit_a_slide_falls_back_to_the_classic_look(worker, monkeypatch):

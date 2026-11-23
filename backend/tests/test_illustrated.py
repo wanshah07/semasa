@@ -487,9 +487,15 @@ def test_the_cover_title_is_short_and_never_invents(monkeypatch):
             return {"title": self.title}
 
     assert carousel.short_title(Said("Kajian *mikrobiom* kulit kepala"), hook) == "Kajian *mikrobiom* kulit kepala"
-    long = carousel.short_title(Said("Aku esok fikir pasal mikrobiom kulit kepala lepas tu baca kajian"), hook)
-    assert len(long.split()) <= carousel.COVER_TITLE_WORDS, "a long answer falls back to the hook's own first words"
-    assert carousel.short_title(None, hook) == carousel._lead_words(hook, carousel.COVER_TITLE_WORDS)
+    first = "Aku: esok lah aku fikir pasal mikrobiom kulit kepala"
+    many = "Aku esok fikir pasal mikrobiom kulit kepala lepas tu baca kajian " + "kajian " * 7
+    long = carousel.short_title(Said(many), hook)
+    assert long == first, "a too-long answer falls back to the first WHOLE sentence"
+    assert carousel.short_title(None, hook) == first
+    assert carousel.short_title(Said("Kajian"), hook) == first, "a fragment is refused"
+    # a hook of 12 words or fewer is the cover title whole: never a few words cut from it (Wan, 23 Nov 2026: "ayat lengkap")
+    whole = "Perasaan tu bila kau dah submit borang NPRA tapi tak tahu status"
+    assert carousel.short_title(None, whole) == whole
     blocked = carousel.short_title(Said("Produk ini dijamin lulus NPRA"), hook)
     assert "dijamin" not in blocked, "a title that breaks a blocking rule is dropped"
     assert carousel.short_title(Said("x"), "Tajuk pendek sahaja") == "Tajuk pendek sahaja", "a short hook is the title"

@@ -52,7 +52,7 @@ const pct = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n
    slide (`type_size`) is theirs: the card is then drawn at that size and only warns.
    A layout that takes part must (1) draw every line through a wrapper, so nothing runs off the side, (2) size its containers
    from the lines in them, so nothing runs out of a box, and (3) report where its content ends, including a note. */
-export const FIT_MIN = 0.66;                // a 30u body line at this scale is 20 px on a 1080 px card: the source line's own size
+export const FIT_MIN = 0.6;                 // a 30u body line at this scale is 18 px on a 1080 px card (Wan, 23 Nov 2026: smaller, compact, still readable)
 const fillOf = (spec) => { const f = Number(spec && spec._fill); return Number.isFinite(f) && f >= FIT_MIN - 0.001 && f <= 3 ? f : 1; };
 function textScale(spec) { return pct(spec && spec.type_size, 60, 120) * fillOf(spec); }
 function mascotScale(spec) { return pct(spec && spec.mascot_size, 50, 160); }

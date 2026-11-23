@@ -170,7 +170,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
 
       {!locked && (
         <div className="mt-3 rounded-tile bg-surface-2/40 p-2.5">
-          <LookPicker value={look} onChange={setLook} slides={previewSlides} stream={post.stream}
+          <LookPicker value={look} onChange={setLook} slides={previewSlides} stream={post.stream} artJobs={jobs}
             eyebrow={preview.eyebrow} citation={preview.citation} bgUrl={preview.bgUrl} bgChosen={bg !== "none"}
             mascots={MASCOTS} threads onBlocked={setBlocked} fit={fit} onFit={setFit}
             onDropSlide={(i) => { const live = rows.map((r, j) => (normaliseSlides(fromRows([r])).length ? j : -1)).filter((j) => j >= 0);

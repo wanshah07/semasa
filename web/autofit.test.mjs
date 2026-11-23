@@ -60,7 +60,7 @@ ok(/isStudioLook\(chosen\.look\) && !sample && problems\.length \? "full"/.test(
 ok(STUDIO_LOOKS.length === 14, "fourteen looks drawn by this renderer, all through the same path (the Journal look included)");
 
 // The picker's tiles show an illustration at the foot in every look (Wan, 23 Nov 2026): a stand-in drawing, and Diari's opaque page
-ok(/SAMPLE_ART = `\$\{BASE\}sample-art\.png`/.test(picker) && /withSampleArt\(given\.length/.test(picker), "the picker gives every preview slide a stand-in drawing");
+ok(/SAMPLE_ART = `\$\{BASE\}sample-art\.png`/.test(picker) && /withSampleArt\(useSlideArt/.test(picker), "the picker gives every preview slide a stand-in drawing");
 ok(["sample-art.png", "sample-art-page.png"].every((f) => readFileSync(new URL(`./public/cards/${f}`, import.meta.url)).length > 1000), "and both drawings are shipped");
 ok(/usePreview\(asPage\(cover\), \{ \.\.\.opts, look: "journal" \}/.test(picker), "Diari's tile gets the opaque page version");
 

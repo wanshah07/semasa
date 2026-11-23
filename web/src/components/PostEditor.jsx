@@ -5,6 +5,7 @@ import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { LIMITS, charLen, hardCount, normaliseSlides, platformsOf, scan, scanMedia, stripPromo, threadParts } from "../lib/compliance";
 import { approvePosition, dueMs, duplicatesOf, handedOver, nextFreeSlot, refOf, slotGone, slotsOf, takenSet } from "../lib/slots";
 import { withDecision } from "../lib/workflow";
+import { fixNote } from "../lib/fixFull";
 import { fitText } from "../lib/captionFit";
 import PostWorkflow from "./PostWorkflow";
 import PostPullBack from "./PostPullBack";
@@ -216,6 +217,19 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       onToast(t("Disimpan. Post ini diubah selepas diluluskan, jadi ia kembali ke draf: luluskan semula.",
         "Saved. This post was changed after approval, so it went back to draft: approve it again."), "warn");
     } else onToast(msg, "ok");
+    onChanged();
+  }
+
+  // Wan, 23 Nov 2026: "if got blocker, put the fix button so your worker can fix the blocker". The hard blockers go to the worker as a
+  // revise note (the same job as "Revise with a note": the caption and hook are written again, the facts are never changed).
+  const workerCanFix = blocking > 0 && !locked && post.status === "draft" && "revise_state" in post && !post.revise_state;
+  async function askWorkerFix() {
+    if (dirty) return onToast(t("Simpan suntingan anda dahulu: Semasa membetulkan perkataan yang disimpan.", "Save your edits first: Semasa fixes the saved words."), "warn");
+    setBusy(true);
+    const { error } = await supabase.from(TABLES.posts).update({ revise_note: fixNote(shownFlags), revise_state: "new", revise_error: null }).eq("id", post.id);
+    setBusy(false);
+    if (error) return onToast(errText(error), "danger");
+    onToast(t("Dihantar. Semasa membetulkan perkara yang menyekat; perkataan lama disimpan dalam Sejarah.", "Sent. Semasa is fixing what blocks it; the old words are kept in History."), "ok");
     onChanged();
   }
 
@@ -581,6 +595,11 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
             </li>
           ))}
         </ul>
+        {workerCanFix && <Button size="sm" className="mt-2 mr-2" data-worker-fix disabled={busy} onClick={askWorkerFix}
+          title={t("Semasa menulis semula kapsyen dan hook supaya perkara ini hilang, tanpa mengubah fakta", "Semasa rewrites the caption and hook so these go, without changing a fact")}>
+          {t("Betulkan dengan Semasa", "Fix with Semasa")}</Button>}
+        {post.revise_state === "new" || post.revise_state === "working" ? <p className="mt-2 text-[12px] text-muted">
+          {t("Semasa sedang membetulkan post ini…", "Semasa is fixing this post…")}</p> : null}
         {promo > 0 && !locked && <Button size="sm" variant="soft" className="mt-2 mr-2" onClick={stripAll}>
           <Eraser size={12} /> {t("Buang {n} ayat seruan / laman web", "Remove {n} ask / website sentence(s)", { n: promo })}</Button>}
         {gone.length > 0 && !locked && <Button size="sm" variant="soft" className="mt-2"

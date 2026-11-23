@@ -151,7 +151,7 @@ function DesignTile({ d, opts, cover, ratio, on, onPick, onRemove, disabled, def
 }
 
 export default function LookPicker({ value, onChange, slides: given, sample: givenSample = false, stream = "regulab", eyebrow = "",
-  citation = "", bgUrl = "", bgChosen = false, size = null, full = true, onBlocked, disabled = false, mascots = [],
+  citation = "", bgUrl = "", bgChosen = false, size = null, full = true, onBlocked, onFix = null, disabled = false, mascots = [],
   fit = false, onFit = null, threads = false, onDropSlide = null, artJobs = null }) {
   const { t, lang } = useLang();
   const { designs, defaultId, hiddenLooks, setHiddenLooks, saveDesigns, setDefault } = useDesigns();
@@ -366,7 +366,12 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
             <p className="mt-1 flex items-start gap-1.5 text-[12px] text-danger"><AlertTriangle size={13} className="mt-0.5 shrink-0" />
               <span>{t("Terlalu penuh untuk reka bentuk ini: slaid {n}. Pendekkan, pecahkan kepada dua slaid, atau pilih reka bentuk lain. Tiada perkataan dipotong.",
                 "Too full for this design: slide {n}. Shorten it, split it into two slides, or pick another design. No word is ever cut.",
-                { n: problems.map((p) => p.n).join(", ") })}</span></p>
+                { n: problems.map((p) => p.n).join(", ") })}</span>
+              {onFix && !disabled && (
+                <button type="button" data-fix-full onClick={() => onFix(problems.map((p) => p.n))}
+                  className="ml-1 shrink-0 rounded-tile border border-danger px-2 py-0.5 text-[12px] font-medium text-danger hover:bg-danger hover:text-bg">
+                  {t("Betulkan: pecahkan slaid", "Fix: split the slide")}</button>
+              )}</p>
           )}
         </div>
       )}

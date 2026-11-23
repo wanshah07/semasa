@@ -374,7 +374,8 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
             [{"text": "🎨 Single card", "callback_data": f"c:sc:{post['id']}"}, *film]]
     if hard:
         text += "\n\n⚠️ Approval blocked:\n• " + "\n• ".join(hard[:6])
-        buttons = [*make, [{"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
+        buttons = [*make, [{"text": "🛠 Fix", "callback_data": f"c:fx:{post['id']}"},
+                           {"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
     else:
         buttons = [*make, [{"text": "✅ Approve", "callback_data": f"ok:{post['id']}"},
                            {"text": "❌ Reject", "callback_data": f"no:{post['id']}"}], open_btn]
@@ -382,6 +383,26 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
     store.table(SENT).upsert({"post_id": post["id"], "version": post["updated_at"], "chat_id": chat, "message_id": mid,
                               "sent_at": datetime.now(UTC).isoformat()}, on_conflict="post_id").execute()
     return mid
+
+
+def queue_fix(store: Any, post_id: str, now: datetime | None = None) -> str:
+    """The 🛠 Fix button on a draft whose approval is blocked (Wan, 23 Nov 2026: "if got blocker, put the fix button so your worker
+    can fix the blocker"): the blockers go to the worker as a revise note, the same job as "Revise with a note", which writes the
+    caption and hook again and never changes a fact. Writes no status, so the gate is untouched."""
+    rows = store.table(db.POSTS).select("*").eq("id", post_id).limit(1).execute().data or []
+    if not rows or rows[0].get("status") != "draft":
+        return "That draft is no longer a draft, so there is nothing to fix."
+    post = rows[0]
+    if post.get("revise_state") in ("new", "working"):
+        return "Semasa is already fixing this draft."
+    hard = blockers(store, post, now)
+    if not hard:
+        return "Nothing blocks this draft any more. 👍"
+    note = ("Clear every approval blocker below and change nothing else. Where a blocker marks a fact the source does not give, "
+            "leave that fact out; never guess one. " + " ".join(f"{i}) {h}" for i, h in enumerate(hard[:8], 1)))[:800]
+    store.table(db.POSTS).update({"revise_note": note, "revise_state": "new", "revise_error": None}) \
+        .eq("id", post_id).eq("status", "draft").execute()
+    return f"🛠 Sent to Semasa: {len(hard)} blocker(s) to fix. The draft comes back here when it is rewritten."
 
 
 def draft_rows(store: Any, stream: str = "") -> list[dict[str, Any]]:
@@ -886,6 +907,9 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
             cat.ask(store, "post_edit", post_id)
             bot.send(chat, "✏️ Send the replacement caption now. This only edits a draft and does not publish it.", reply_to=mid)
             return "catalogue edit asked"
+        elif rest.startswith("fx:"):
+            bot.send(chat, queue_fix(store, rest.split(":", 1)[1], now), reply_to=mid)
+            return "fix queued"
         elif rest.startswith("pc:"):
             post_id = rest.split(":", 1)[1]
             text_, buttons = cat.carousel_options(post_id, cat.lang(store))

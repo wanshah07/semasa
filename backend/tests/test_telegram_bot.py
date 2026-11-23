@@ -311,6 +311,23 @@ def test_ready_drafts_still_waiting_are_sent_again_for_approval_routinely():
     assert tb.remind_pending_drafts(off, Bot(), LINK, NOW) == 0
 
 
+def test_the_fix_button_on_a_blocked_draft_sends_the_blockers_to_the_worker():
+    # Wan, 23 Nov 2026: "if got blocker, put the fix button so your worker can fix the blocker"
+    blocked = post("b1", text={"bm": {"instagram": "Notifikasi [SAHKAN: nombor] bukan kelulusan."}})
+    st = store(**{db.POSTS: [blocked, post("ok1")]})
+    bot = Bot()
+    tb.send_draft(st, bot, CHAT, blocked, NOW)
+    tb.send_draft(st, bot, CHAT, post("ok1"), NOW)
+    buttons = [[b.get("callback_data", "") for row in m["reply_markup"]["inline_keyboard"] for b in row] for m in bot.sent()]
+    assert "c:fx:b1" in buttons[0] and "ok:b1" not in buttons[0], "a blocked draft offers Fix, not Approve"
+    assert not any("c:fx:" in c for c in buttons[1]), "a clean draft has no Fix button"
+    assert "Nothing blocks" in tb.queue_fix(st, "ok1", NOW)
+    assert "blocker(s) to fix" in tb.queue_fix(st, "b1", NOW)
+    row = [p for p in st.tables[db.POSTS] if p["id"] == "b1"][0]
+    assert row["revise_state"] == "new" and "1) " in row["revise_note"] and row["status"] == "draft"
+    assert "already fixing" in tb.queue_fix(st, "b1", NOW), "once, not twice"
+
+
 def test_status_and_billing_read_without_error():
     docs = [{"kind": "invoice", "number": "INV-2026-020", "status": "sent", "total": 840, "currency": "MYR",
              "due_date": "2026-11-20", "client": {"name": "Marosia"}}]

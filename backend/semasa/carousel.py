@@ -12,13 +12,17 @@
 from __future__ import annotations
 
 import io
+import re
 from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageDraw
 
 from . import compliance, glossary, slides
+from .log import get_logger
 from .slides import SlideError
+
+log = get_logger("semasa.carousel")
 
 MAX_SLIDES = 6                      # pictures in one carousel, the logo card included
 COMFORT = 0.8                       # a joined slide must fit at this share of the normal type size, or it is not joined
@@ -220,7 +224,7 @@ COVER_WHITE = (255, 255, 255)
 COVER_INK = (17, 17, 17)
 COVER_RED = (211, 32, 39)
 COVER_MUTED = (90, 90, 90)
-COVER_VERSION = 2          # 1: the dark green cover; 2: white, light-blue waves, red hook word (22 Nov 2026)
+COVER_VERSION = 3          # 1: dark green; 2: white, light-blue waves, red hook word; 3: a short title + a cut-out (23 Nov 2026)
 COVER_SECONDS = 1.1                    # the cover frame at the start of a film (TikTok takes its cover at 1.0 s by default)
 
 
@@ -335,29 +339,19 @@ def _balanced(text: str, font: Any, width: float) -> list[Any]:
     return lines
 
 
-ART_BAND = 0.30            # the share of the cover's height the hook's illustration takes, at the foot (Wan, 23 Nov 2026)
+ART_BAND = 0.36            # the share of the cover's height the hook's illustration takes, at the foot (Wan, 23 Nov 2026)
 
 
 def _art_band(canvas: Image.Image, art: bytes, band: int) -> None:
-    """The hook's illustration, a rounded card with a soft shadow in the band at the foot of the cover, cropped to fill it."""
-    from PIL import ImageFilter
+    """The hook's illustration, a transparent cut-out (illustrated.cutout), standing on the foot of the cover: fitted inside the
+    band without cropping, centred, no card behind it, so the cover's light-blue rings show round it."""
     w, h = canvas.size
     margin = round(w * 0.11)
-    pad_b = round(w * 0.06)
-    x0, y0, x1, y1 = margin, h - band, w - margin, h - pad_b
-    cw, ch, r = x1 - x0, y1 - y0, round(w * 0.022)
-    pic = Image.open(io.BytesIO(art)).convert("RGB")
-    scale = max(cw / pic.width, ch / pic.height)
-    pic = pic.resize((max(cw, round(pic.width * scale)), max(ch, round(pic.height * scale))), Image.LANCZOS)
-    left, top = (pic.width - cw) // 2, (pic.height - ch) // 2
-    pic = pic.crop((left, top, left + cw, top + ch))
-    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).rounded_rectangle([x0, y0 + round(w * 0.012), x1, y1 + round(w * 0.012)], radius=r, fill=(0, 0, 0, 60))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(w * 0.014))
-    canvas.paste(shadow, (0, 0), shadow)
-    mask = Image.new("L", (cw, ch), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, cw - 1, ch - 1], radius=r, fill=255)
-    canvas.paste(pic, (x0, y0), mask)
+    pic = Image.open(io.BytesIO(art)).convert("RGBA")
+    box_w, box_h = w - 2 * margin, band - round(w * 0.05)
+    scale = min(box_w / pic.width, box_h / pic.height)
+    pic = pic.resize((max(1, round(pic.width * scale)), max(1, round(pic.height * scale))), Image.LANCZOS)
+    canvas.paste(pic, ((w - pic.width) // 2, h - round(w * 0.05) - pic.height), pic)
 
 
 def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes | None = None,
@@ -442,6 +436,50 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
     if art_h:
         _art_band(canvas, art, art_h)
     return canvas
+
+
+COVER_TITLE_WORDS = 6      # the cover's own title: short (Wan, 23 Nov 2026: the long hook is the first PAGE, not the cover)
+COVER_TITLE_SYSTEM = (
+    "You write the TITLE on the cover of a social-media carousel. The first page after the cover carries the full hook; "
+    "the cover carries only a short title that names the same idea. Write at most %d words, in the SAME language and "
+    "voice as the hook (Malaysian Malay mix stays Malaysian Malay; never Bahasa Indonesia), no full stop, no emoji, no "
+    "hashtag. Take only words and facts that are in the hook: add no number, name, date or claim of your own. Put "
+    "*asterisks* round the ONE word that carries the idea. Answer with ONE JSON object: {\"title\": \"...\"}")
+
+
+def short_title(llm: Any, hook: str, stream: str = "regulab") -> str:
+    """The short title for the cover. The writer shortens the hook; any answer that is long, empty or breaks a rule that blocks
+    a post is dropped for the hook's own first words, so the cover is always short and never invents anything."""
+    from . import compliance
+    hook = _clean(hook)
+    plain = hook.replace("*", "")
+    fallback = _lead_words(plain, COVER_TITLE_WORDS)
+    if len(plain.split()) <= COVER_TITLE_WORDS:
+        return hook
+    got = ""
+    try:
+        out = llm.chat_json(COVER_TITLE_SYSTEM % COVER_TITLE_WORDS, hook[:600], max_tokens=200) if llm is not None else None
+        got = _clean(str(out.get("title") or "")) if isinstance(out, dict) else ""
+    except Exception as exc:  # noqa: BLE001 - the hook's own first words stand in
+        got = ""
+        log.info("cover title not shortened (%s)", str(exc)[:100])
+    words = got.replace("*", "").split()
+    if not got or len(words) > COVER_TITLE_WORDS + 1 or len(words) < 2:
+        return fallback
+    flags = compliance.scan({"stream": stream, "media": [{"artwork": [{"title": got.replace("*", ""), "points": []}]}]})
+    if compliance.hard_count([f for f in flags if str(f.get("where") or "").startswith(("Design", "Slide", "Artwork"))]):
+        return fallback
+    return got
+
+
+def _lead_words(text: str, n: int) -> str:
+    """The first clause of `text` when it is short enough, else its first `n` words; no trailing punctuation."""
+    for part in re.split(r"(?<=[.:;!?])\s+", text):
+        part = part.strip().rstrip(".:;!?,")
+        if 2 <= len(part.split()) <= n:
+            return part
+        break
+    return " ".join(text.split()[:n]).rstrip(".:;!?,")
 
 
 def cover_words(first: dict | None) -> tuple[str, str] | None:

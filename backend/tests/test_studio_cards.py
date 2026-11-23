@@ -75,10 +75,10 @@ def test_a_studio_look_is_drawn_by_studio_and_recorded(monkeypatch, _uploads):
     assert _run(store) is True
     done = store.tables["media_generations"][0]
     assert done["status"] == "done" and done["model"] == "studio-era" and done["meta"]["look"] == "era"
-    assert done["meta"]["count"] == 4 and len(_uploads) == 4       # three drawn by Studio + the ws.regulab logo card
+    assert done["meta"]["count"] == 5 and len(_uploads) == 5       # three drawn by Studio + the cover in front + the logo card
     assert seen == {"look": "era", "stream": "regulab", "eyebrow": "Kosmetik", "source": "NPRA, Garis Panduan",
                     "ground": None, "ground_mime": "image/jpeg", "size": None, "n": 3, "fit": False, "design": None,
-                    "final": True, "total": 4,           # a posted picture, and the set's length with its closing card
+                    "final": True, "offset": 1, "total": 5,    # a posted picture; the set's length with its cover and logo card
                     "mascots": [{"k": k, "url": f"/cards/mascots/{k}.webp"} for k in ("wave", "point", "confused", "shocked")]}
 
 

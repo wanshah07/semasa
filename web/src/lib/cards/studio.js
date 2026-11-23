@@ -3893,7 +3893,7 @@ export function specsFor(slides, o = {}) {
       // the Journal look: every slide is one page of the same set (the cover included: a front page without a picture); the picture
       // the worker drew for the slide arrives as `art_url`, its hand-lettered label as `art_label`, the page's place as `pager`
       spec = { ...base, template: "j_page", bg: "", lead: lead0 || pts[0] || "", items: lead0 ? pts : pts.slice(1), art: s.art_url || "",
-        art_label: String(s.art_label || "").trim(), pager: [i + 1, Number(o.total) || n], preview: !o.final, art_skip: !!s.art_skip };
+        art_label: String(s.art_label || "").trim(), pager: [i + 1 + (Number(o.offset) || 0), Number(o.total) || n], preview: !o.final, art_skip: !!s.art_skip };
     } else if (SKIN_LOOKS.includes(look)) {
       // the four poster looks: cover, points, comparison, recommendation or closing, by place and by what the points look like
       spec = { ...base, template: skinTemplate(look, s, i, n, pts), lead: lead0, items: pts };
@@ -4142,11 +4142,12 @@ async function renderBody(spec) {
   return foot ? renderWithFoot(spec, foot) : renderCard(spec);
 }
 /* AN ILLUSTRATION ON EVERY PAGE, IN EVERY LOOK (Wan, 23 Nov 2026: "all carousel slide design follow diari size text, and must have
-   illustration but no need to have illustration at the centre page and no need to have same size with diary"). The look is drawn
-   on a card ART_BAND shorter (the same trick as the definition note's band), so its own type, auto-fit and "fuller than the card"
-   test keep clear of the picture, and the worker's hand-inked illustration for this slide sits in a band at the foot: not in the
-   middle, and smaller than Diari's. The band takes its colour from the card's own bottom edge. A picture that will not load
-   leaves the slide drawn without it, never a failed card. */
+   illustration but no need to have illustration at the centre page and no need to have same size with diary", then "same like other
+   slide design, make illustration with transparent background"). The look is drawn on a card ART_BAND shorter (the same trick as the
+   definition note's band), so its own type, auto-fit and "fuller than the card" test keep clear of the picture, and the worker's
+   hand-inked illustration for this slide, a transparent CUT-OUT with a thin white sticker border (illustrated.cutout), stands in a
+   band at the foot: not in the middle, no card behind it, smaller than Diari's. The band takes its colour from the card's own bottom
+   edge. A picture that will not load leaves the slide drawn without it, never a failed card. */
 const ART_BAND = 0.34;
 async function renderWithArt(spec) {
   const art = await jnImage(spec.art_pic);
@@ -4166,16 +4167,10 @@ async function renderWithArt(spec) {
   for (let i = 0; i < edge.length; i += 4) { rr += edge[i]; gg += edge[i + 1]; bb += edge[i + 2]; k++; }
   rr = Math.round(rr / k); gg = Math.round(gg / k); bb = Math.round(bb / k);
   ctx.fillStyle = "rgb(" + rr + "," + gg + "," + bb + ")"; ctx.fillRect(0, H - band, W, band);
-  const M = Math.round(72 * u), padT = Math.round(20 * u), padB = Math.round(44 * u);
-  const cx = M, cy = H - band + padT, cw = W - M * 2, ch = band - padT - padB, rad = Math.round(22 * u);
-  ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,.22)"; ctx.shadowBlur = Math.round(26 * u); ctx.shadowOffsetY = Math.round(10 * u);
-  ctx.fillStyle = jnPaperOf(art); roundRect(ctx, cx, cy, cw, ch, rad); ctx.fill();
-  ctx.restore();
-  ctx.save(); roundRect(ctx, cx, cy, cw, ch, rad); ctx.clip();
-  const sc = Math.max(cw / art.naturalWidth, ch / art.naturalHeight), dw = art.naturalWidth * sc, dh = art.naturalHeight * sc;
-  ctx.drawImage(art, cx + (cw - dw) / 2, cy + (ch - dh) / 2, dw, dh);
-  ctx.restore();
+  const M = Math.round(72 * u), padT = Math.round(14 * u), padB = Math.round(40 * u);
+  const aw = W - M * 2, ah = band - padT - padB;
+  const sc = Math.min(aw / art.naturalWidth, ah / art.naturalHeight), dw = art.naturalWidth * sc, dh = art.naturalHeight * sc;
+  ctx.drawImage(art, (W - dw) / 2, H - band + padT + (ah - dh), dw, dh);       // stands on the foot of the band, centred
   return { ...r, url: c.toDataURL("image/jpeg", 0.92), size: [W, H - band] };
 }
 async function renderSpecNow(spec) {

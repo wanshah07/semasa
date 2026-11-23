@@ -89,7 +89,7 @@ def render(items: list[dict[str, Any]], *, look: str, stream: str, eyebrow: str 
            ground: bytes | None = None, ground_mime: str = "image/jpeg",
            size: tuple[int, int] | None = None, mascots: list[dict[str, str]] | None = None,
            fit: bool = False, design: dict[str, Any] | None = None, final: bool = False,
-           total: int | None = None) -> list[bytes]:
+           total: int | None = None, offset: int = 0) -> list[bytes]:
     """JPEG bytes per slide, drawn in the chosen Studio look. Raises SlideError with a message for the page.
     fit=True lets each slide that names no template take the design in its family that suits its words (studio.js
     fitTemplate); off, every slide follows the look's own rule exactly as before."""
@@ -110,6 +110,8 @@ def render(items: list[dict[str, Any]], *, look: str, stream: str, eyebrow: str 
         opts["final"] = True               # a posted picture: no preview placeholder on it (the Journal look's empty card)
     if total:
         opts["total"] = int(total)         # the set's length for a "04 / 10" place, the closing card included
+    if offset:
+        opts["offset"] = int(offset)       # pictures in front of the first slide (the brand cover): the first slide is "02 / 10"
     if isinstance(design, dict) and design:
         opts["design"] = design            # a saved "My design"; the renderer normalises it (normDesign), nothing is trusted here
     if ground:

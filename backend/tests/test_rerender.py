@@ -46,14 +46,18 @@ def _store(posts, media):
     return FakeStore(semasa_posts=posts, media_generations=media, semasa_motions=[], semasa_log=[])
 
 
+CURRENT = rerender.carousel.COVER_VERSION
+
+
 def test_who_is_redrawn_and_who_is_left_alone():
     # Wan, 22 Nov 2026: "make sure all using new cover": a carousel whose cover is the old design (no cover_v) is redrawn too, a
-    # draft included (nothing is held at a sender); one already on the white cover (cover_v 2) is left alone
+    # draft included (nothing is held at a sender); one already on the current cover (a short title + a cut-out, 23 Nov 2026,
+    # COVER_VERSION 3) is left alone, and one on the earlier white cover (cover_v 2) is redrawn too
     posts = [_post("ok"), _post("soon", date="2026-11-11", slot="10:30"), _post("linkedin", stream="linkedin"),
              _post("sent", published={"instagram": _rec(1, "sent")}), _post("old", media=("mc",)),
              _post("new", media=("mn",)), _post("design", media=("md",)),
              _post("draft", status="draft", media=("mc",), published={}), _post("undated", date=None, slot=None)]
-    media = [_slides("m1"), _slides("mc", cover=True), _slides("mn", cover=True, cover_v=2), _slides("md", design="poster")]
+    media = [_slides("m1"), _slides("mc", cover=True), _slides("mn", cover=True, cover_v=CURRENT), _slides("md", design="poster")]
     got = rerender.candidates(_store(posts, media), NOW)
     assert [(c["post"]["id"], c["kind"]) for c in got] == [("ok", "carousel"), ("old", "carousel"), ("draft", "carousel")]
     assert rerender.candidates(_store(posts, media), NOW, only={"nope"}) == []

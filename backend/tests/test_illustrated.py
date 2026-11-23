@@ -144,11 +144,15 @@ def test_the_look_is_known_to_every_list_and_only_a_carousel_draws_pictures():
     assert "journal" in studio_cards.LOOKS and "journal" in ideas.LOOKS and "journal" in ideas.OWN_PICTURE_ONLY
     assert illustrated.wants("journal", "") and illustrated.wants("journal", "carousel"), "a post's carousel, or the Design tab's"
     assert not illustrated.wants("journal", "poster") and not illustrated.wants("journal", "card")
-    assert not illustrated.wants("journal", "threads") and not illustrated.wants("grid", "poster")
+    assert not illustrated.wants("journal", "threads") and not illustrated.wants("grid", "threads")
+    assert not illustrated.wants("grid", "comic")
+    # a single card or poster takes a picture too (Wan, 23 Nov 2026: "single card must have illustration in it"), never Diari
+    assert illustrated.wants("grid", "poster") and illustrated.wants("hand", "card") and illustrated.wants("classic", "poster")
+    assert not illustrated.wants("journal", "poster") and not illustrated.wants("journal", "card")
     # every other Studio look draws one too, in a band at the foot (Wan, 23 Nov 2026); Semasa's own (classic) cannot
     for look in studio_cards.LOOKS:
         assert illustrated.wants(look, "") and illustrated.wants(look, "carousel"), look
-    assert not illustrated.wants("classic", "") and not illustrated.wants("threads", "")
+    assert illustrated.wants("classic", "") and not illustrated.wants("threads", "")
     from semasa import rotation
     assert "journal" not in rotation.LOOK_TURN, "the turn is for posters; every carousel takes Diari (Wan, 23 Nov 2026)"
     assert ideas.DEFAULT_LOOK == "journal"
@@ -491,3 +495,72 @@ def test_the_cover_title_is_short_and_never_invents(monkeypatch):
 def _bold_art_bytes() -> bytes:
     import base64
     return base64.b64decode(_bold_art().split(",", 1)[1])
+
+
+def test_semasas_own_look_gets_the_cutout_in_a_band_at_the_foot():
+    from semasa import slides
+    full = (1080, 1350)
+    band = round(full[1] * illustrated.ART_BAND)
+    card = slides.render([{"title": "Satu tajuk", "points": ["Satu perkara."]}], stream="regulab",
+                         size=(full[0], full[1] - band))[0]
+    out = Image.open(io.BytesIO(illustrated.compose_band(card, _cut_png(), full))).convert("RGB")
+    assert out.size == full
+    zone = [(x, y) for x in range(380, 700, 20) for y in range(full[1] - band + 40, full[1] - 60, 20)]
+    coloured = sum(1 for xy in zone if (out.getpixel(xy)[2] > 120 > out.getpixel(xy)[0])
+                   or (out.getpixel(xy)[0] > 200 and out.getpixel(xy)[2] < 80))
+    assert coloured > len(zone) * 0.6, "the cut-out stands on the band"
+
+
+def _poster_job(job_id: str, look: str = "hand") -> dict:
+    return {"id": job_id, "mode": "slides", "type": "image", "status": "processing", "attempts": 1,
+            "created_at": "2099-01-01T00:00:00+00:00",
+            "meta": {"stream": "regulab", "bg": "none", "slides": [SLIDES[1]], "look": look, "design": "poster",
+                     "format": "portrait", "citation": "NPRA"}}
+
+
+def test_a_single_poster_gets_a_cutout_picture_in_its_look(monkeypatch):
+    kept, seen = {}, {}
+    monkeypatch.setattr(illustrated, "makers", lambda s, store: ["x"])
+    monkeypatch.setattr(illustrated, "draw", lambda *a, **k: (_white_page_drawing(), "x"))
+    monkeypatch.setattr(illustrated, "fetch", lambda url: kept.get(url))
+    monkeypatch.setattr(media_generator.db, "upload_generated",
+                        lambda st, path, data, ct: kept.setdefault(f"https://cdn/{path}", data) and f"https://cdn/{path}")
+    monkeypatch.setattr(studio_cards, "render",
+                        lambda items, **kw: seen.update(items=items, look=kw["look"]) or [_paper(1080, 1350)])
+    store = FakeStore(semasa_settings=[{"key": "brand", "value": {"regulab": {"website": "www.x.com"}}}], semasa_posts=[],
+                      media_generations=[_poster_job("s1")])
+    assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is True
+    assert seen["look"] == "hand" and len(seen["items"]) == 1
+    assert seen["items"][0]["art_url"].startswith("data:image/png;base64,"), "the card carries its own cut-out illustration"
+
+
+def test_a_poster_with_no_picture_maker_is_still_drawn_without_the_band(monkeypatch):
+    monkeypatch.setattr(illustrated, "makers", lambda s, store: [])
+    monkeypatch.setattr(studio_cards, "render", lambda items, **kw: [_paper(1080, 1350)])
+    monkeypatch.setattr(media_generator.db, "upload_generated", lambda st, path, data, ct: f"https://cdn/{path}")
+    store = FakeStore(semasa_settings=[{"key": "brand", "value": {"regulab": {"website": "www.x.com"}}}], semasa_posts=[],
+                      media_generations=[_poster_job("s2")])
+    assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is True
+    assert "no picture maker" in store.tables["media_generations"][0]["meta"].get("art_missing", "")
+
+
+def test_a_studio_look_that_overflows_falls_back_to_classic_and_keeps_its_pictures(monkeypatch):
+    # Codex review of #333: the classic fallback used to drop the illustrations the Studio look had already made
+    from semasa import slides
+    monkeypatch.setattr(illustrated, "makers", lambda s, store: ["x"])
+    monkeypatch.setattr(illustrated, "draw", lambda *a, **k: (_white_page_drawing(), "x"))
+    monkeypatch.setattr(illustrated, "fetch", lambda url: _white_page_drawing())
+    banded = []
+    monkeypatch.setattr(illustrated, "compose_band", lambda page, art, size: banded.append(size) or page)
+    monkeypatch.setattr(media_generator.db, "upload_generated", lambda st, path, data, ct: f"https://cdn/{path}")
+
+    def too_full(items, **kw):
+        raise slides.SlideError("slide 2: The slide is fuller than the card: shorten a line.")
+    monkeypatch.setattr(studio_cards, "render", too_full)
+    monkeypatch.setattr(slides, "render", lambda words, **kw: [_paper(1080, 1350 - 400) for _ in words])
+    store = FakeStore(semasa_settings=[{"key": "brand", "value": {"regulab": {"website": "www.x.com"}}}], semasa_posts=[],
+                      media_generations=[_job({"look": "image"})])
+    assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is True
+    meta = store.tables["media_generations"][0]["meta"]
+    assert meta["look"] == "classic" and "fuller than the card" in meta["look_fallback"]
+    assert len(banded) >= len(SLIDES), "every fallback page gets its illustration band"

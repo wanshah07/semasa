@@ -135,7 +135,9 @@ def test_no_picture_maker_is_a_clear_refusal(monkeypatch):
 def test_the_look_is_known_to_every_list_and_only_a_carousel_draws_pictures():
     from semasa import ideas
     assert "journal" in studio_cards.LOOKS and "journal" in ideas.LOOKS and "journal" in ideas.OWN_PICTURE_ONLY
-    assert illustrated.wants("journal", "") and not illustrated.wants("journal", "poster") and not illustrated.wants("grid", "")
+    assert illustrated.wants("journal", "") and illustrated.wants("journal", "carousel"), "a post's carousel, or the Design tab's"
+    assert not illustrated.wants("journal", "poster") and not illustrated.wants("journal", "card")
+    assert not illustrated.wants("journal", "threads") and not illustrated.wants("grid", "")
     from semasa import rotation
     assert "journal" not in rotation.LOOK_TURN, "the turn is for posters; every carousel takes Diari (Wan, 23 Nov 2026)"
     assert ideas.DEFAULT_LOOK == "journal"
@@ -319,3 +321,23 @@ def test_the_front_page_the_brand_cover_replaces_draws_without_a_picture_frame_a
     cream = lambda p: all(abs(a - b) < 5 for a, b in zip(p, (239, 235, 224), strict=True))  # noqa: E731
     paper = sum(1 for x in range(100, 980, 20) for y in range(300, 1250, 20) if cream(im.getpixel((x, y))))
     assert paper == 0, "no cream picture card on a front page"
+
+
+def test_a_design_tab_carousel_takes_diari_with_a_picture_on_every_slide_the_cover_included(monkeypatch):
+    # Codex review of #324: the Design tab's Carousel mode must get Diari too; it has no brand cover, so slide 1 gets a picture
+    assert illustrated.slides_needing_art(SLIDES, "regulab", covered=False) == [0, 1, 2]
+    assert illustrated.slides_needing_art(SLIDES, "regulab", covered=True) == [1, 2]
+    monkeypatch.setattr(illustrated, "makers", lambda s, store: ["x"])
+    monkeypatch.setattr(illustrated, "draw", lambda *a, **k: (_paper(), "x"))
+    monkeypatch.setattr(illustrated, "fetch", lambda url: _paper())
+    monkeypatch.setattr(media_generator.db, "upload_generated", lambda st, path, data, ct: f"https://cdn/{path}")
+    seen = {}
+    monkeypatch.setattr(studio_cards, "render",
+                        lambda items, **kw: seen.update(items=items) or [_paper(1080, 1350) for _ in items])
+    store = FakeStore(semasa_settings=[{"key": "brand", "value": {"regulab": {"website": "www.x.com"}}}], semasa_posts=[],
+                      media_generations=[_job({"design": "carousel", "format": "portrait"})])
+    assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is True
+    meta = store.tables["media_generations"][0]["meta"]
+    assert meta["look"] == "journal" and "look_fallback" not in meta
+    assert len(seen["items"]) == 3 and all(it.get("art_url") for it in seen["items"])
+    assert not any(it.get("art_skip") for it in seen["items"])

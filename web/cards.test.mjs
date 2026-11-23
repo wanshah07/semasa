@@ -12,6 +12,8 @@ const words = (spec) => [spec.title, spec.lead, ...(spec.items || [])].join("\n"
 // how many items each template actually draws (Studio slices its lists)
 const SHOWN = { e_hook: 3, e_explain: 3, p_fact: 4, g_title: 0, p_title: 0, p_quote: 0, i_title: 8, i_note: 8, i_hero: 8, i_step: 8, h_poster: 8, h_hero: 8, h_note: 8 };   // the image and hand-drawn families draw every point (lines, a pill or a step)
 
+SHOWN.j_page = Infinity;   // the Journal look draws every point: the first as the lead, the last as the foot line, the rest as more lead
+
 // the four poster looks draw every point, whatever the count: the type comes down in size instead (studio.js SKIN_MIN)
 for (const p of ["m", "t", "b", "n", "d", "k", "l", "s"]) for (const part of ["cover", "points", "table", "pick", "close"]) SHOWN[`${p}_${part}`] = Infinity;
 
@@ -70,7 +72,7 @@ ok(!specsFor([{ title: "t", points: [] }], { look: "grid" })[0].mascot, "no pose
 ok(!specsFor([{ title: "t", points: ["a"], template: "e_flow" }], { look: "era", mascots: M })[0].mascot, "e_flow never carries a mascot (Studio)");
 ok(!specsFor([{ title: "t", points: [], mascot: "wave", template: "e_vs" }], { mascots: M })[0].mascot, "a pose chosen on an old slide is not drawn either");
 ok(!specsFor([{ title: "t", points: ["a"] }], { design: { look: "grid", mascot: "wave" }, mascots: M })[0].mascot, "nor is a saved design's pose");
-ok(LOOKS.map((l) => l.k).join(",") === "classic,hand,marker,torn,block,neon,deck,chalk,metro,strip,grid,era,photo,image", "the fourteen looks, Semasa's own first, the eight poster looks after Hand-drawn");
+ok(LOOKS.map((l) => l.k).join(",") === "classic,hand,marker,torn,block,neon,deck,chalk,metro,strip,grid,era,photo,image,journal", "the fifteen looks, Semasa's own first, the eight poster looks after Hand-drawn, the Journal look last");
 
 // Studio's "Reset from caption": every paragraph kept, asks and the website never built onto the artwork
 {

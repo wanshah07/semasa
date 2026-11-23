@@ -3507,6 +3507,9 @@ export const LOOKS = [
     hintEn: "Studio: your picture behind the words, on every slide. Needs a background picture." },
   { k: "image", bm: "Gambar", en: "Image", hintBm: "Gambar anda DI ATAS slaid: panel, cetakan bertampal, poster condong atau skrin telefon. Slaid tanpa gambar tetap lengkap.",
     hintEn: "Your picture ON the slide: a panel, a taped print, a tipped poster or a phone screen. A slide with no picture is still complete." },
+  // Wan, 23 Nov 2026: a hand-inked illustration in the middle of every slide, drawn for the slide's own words (illustrated.py)
+  { k: "journal", bm: "Diari", en: "Journal", hintBm: "Latar biru tua, tajuk serif editorial, lukisan dakwat berwarna di tengah setiap slaid yang dilukis untuk isi slaid itu, satu baris italik di bawah. Setiap slaid menggunakan satu gambar AI: kos kredit.",
+    hintEn: "Deep-blue ground, an editorial serif headline, a hand-inked illustration in the middle of every slide drawn for that slide's own words, one italic line at the foot. Every slide uses one AI picture: it costs credits." },
 ];
 /** A template key as a short readable name ("e_myth" → "ERA · Myth vs fact"), for hand-offs and logs. */
 export const templateLabel = (k) => ({ g_title: "Grid · Title", g_stat: "Grid · Number", g_bars: "Grid · Bars", g_rows: "Grid · Numbered", g_table: "Grid · Table",
@@ -3515,7 +3518,7 @@ export const templateLabel = (k) => ({ g_title: "Grid · Title", g_stat: "Grid �
   p_quote: "Photo · Quote", p_stat: "Photo · Figure", p_list: "Photo · List", p_split: "Photo · Split",
   h_poster: "Hand · Poster", h_hero: "Hand · Cover", h_note: "Hand · Note" }[k]
   || (SKIN_TPL[k] ? SKIN_NAMES[SKIN_OF[k[0]]] + " · " + SKIN_PART_NAMES[k.slice(2)] : String(k || "")));
-export const STUDIO_LOOKS = ["grid", "era", "photo", "image", "hand", ...SKIN_LOOKS];
+export const STUDIO_LOOKS = ["grid", "era", "photo", "image", "hand", ...SKIN_LOOKS, "journal"];
 /** The family palettes, for the Canva hand-off brief: one copy of the hex codes, the ones the renderer draws with. */
 export const PALETTES = { grid: GRID_PAL, era: ERA_PAL };
 export const isStudioLook = (k) => STUDIO_LOOKS.includes(k);
@@ -3883,6 +3886,11 @@ export function specsFor(slides, o = {}) {
       // the hand-drawn family: a lone card is the poster; a carousel cover is the hero, middle slides are notes.
       const tpl = n === 1 ? "h_poster" : (i === 0 ? "h_hero" : "h_note");
       spec = { ...base, template: tpl, lead: lead0, items: pts };
+    } else if (look === "journal") {
+      // the Journal look: every slide is one page of the same set (the cover included: a front page without a picture); the picture
+      // the worker drew for the slide arrives as `art_url`, its hand-lettered label as `art_label`, the page's place as `pager`
+      spec = { ...base, template: "j_page", bg: "", lead: lead0 || pts[0] || "", items: lead0 ? pts : pts.slice(1), art: s.art_url || "",
+        art_label: String(s.art_label || "").trim(), pager: [i + 1, Number(o.total) || n], preview: !o.final };
     } else if (SKIN_LOOKS.includes(look)) {
       // the four poster looks: cover, points, comparison, recommendation or closing, by place and by what the points look like
       spec = { ...base, template: skinTemplate(look, s, i, n, pts), lead: lead0, items: pts };
@@ -4132,6 +4140,7 @@ async function renderSpecNow(spec) {
 }
 async function renderCard(spec) {
   if (spec.bg && spec.template[0] !== "p" && spec.template[0] !== "i" && spec.template[0] !== "h" && !SKIN_TPL[spec.template] && await groundIsLight(spec)) spec = { ...spec, scrim: "none", _light: true };
+  if (spec.template === "j_page") return renderJournalCard(spec);
   if (spec.template === "c_ref") return renderRefCard(spec);
   if (MORE_TPL[spec.template]) return renderMoreCard(spec);
   if (GRID_TPL[spec.template]) return renderGridCard(spec);
@@ -4256,6 +4265,132 @@ export async function renderCoverCard(o = {}) {
   return { url: c.toDataURL("image/jpeg", 0.92), warn: [], template: "cover" };
 }
 
+/* ===================== THE JOURNAL LOOK =====================================
+   Wan, 23 Nov 2026: "try develop carousel like this, each slide got illustration in the middle related to content, copy the font, the
+   format, the layout" (a Threads carousel "Diari CEO": a deep-blue ground, an editorial serif headline, a hand-inked illustration on
+   a cream card in the middle of every slide, one italic line at the foot). Measured from the reference's own pixels, then drawn here:
+     * the ground is navy (#0A0E2D) at the top-left and bottom-right corners and royal blue at the other two, so the blue runs along the
+       other diagonal; two triangles, one gradient each, because a canvas gradient has one axis;
+     * a header row: the series name in italic serif at the left, the slide's place ("04 / 10") in a semibold sans at the right;
+     * the headline in Newsreader (a tight editorial serif, fonts.css), white, left, at most three lines; under it the lead in the same
+       face smaller; the illustration card (90% of the width, rounded, a soft shadow) in the middle of what is left; one italic
+       line in pale blue at the foot;
+     * the illustration is a picture the worker draws for the slide (illustrated.py) and hands in as `art`; a small hand-lettered
+       label under it (Caveat) sits on the card's own paper. The label is drawn here, never inside the picture, so its spelling
+       is never a picture maker's.
+   The slide's words: title, lead (else the first point), the rest of the points as more lead lines, and `note` (else the last
+   point) as the foot line. Nothing is dropped: what does not fit says so with the usual "fuller than the card" warning.
+   The page's preview has no picture yet, so it shows the card empty with its place marked. */
+const JN = { navy: "#0A0E2D", ink: "#FFFFFF", soft: "rgba(255,255,255,.88)", foot: "#CBDAF8", paper: "#EFEBE0", label: "#1B2A6B" };
+const JN_SERIF = 'Newsreader, "Playfair Display", Georgia, serif', JN_SANS = '"Instrument Sans", system-ui, sans-serif';
+function jnGround(ctx, W, H) {
+  ctx.fillStyle = JN.navy; ctx.fillRect(0, 0, W, H);
+  const d = W * W + H * H;
+  // each blue corner is lit along the line from the TL-BR diagonal to it (t = 0 on the diagonal, 1 in the corner)
+  const tri = (corner, pts, stops) => {
+    const k = (corner[0] * W + corner[1] * H) / d, ax = W * k, ay = H * k;
+    const g = ctx.createLinearGradient(ax, ay, corner[0], corner[1]);
+    stops.forEach(([o, col]) => g.addColorStop(o, col));
+    ctx.save(); ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); pts.slice(1).forEach((q) => ctx.lineTo(q[0], q[1])); ctx.closePath(); ctx.clip();
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore();
+  };
+  tri([0, H], [[0, 0], [0, H], [W, H]], [[0, "#0A0E2D"], [0.5, "#0A0E2D"], [0.6, "#0B123B"], [0.8, "#111E6C"], [1, "#15248E"]]);
+  tri([W, 0], [[0, 0], [W, 0], [W, H]], [[0, "#0A0E2D"], [0.35, "#0A0E2D"], [0.45, "#0C1444"], [0.625, "#13258A"], [0.81, "#172DB1"], [1, "#182EB2"]]);
+}
+const jnImage = (src) => new Promise((res) => { if (!src) return res(null); const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+/** The paper colour of a picture's bottom edge (the label strip continues it), as "rgb(r,g,b)". */
+function jnPaperOf(im) {
+  const w = 48, h = 4, c = document.createElement("canvas"); c.width = w; c.height = h;
+  const x = c.getContext("2d"); x.drawImage(im, 0, im.naturalHeight - Math.max(2, Math.round(im.naturalHeight * 0.02)), im.naturalWidth, Math.max(2, Math.round(im.naturalHeight * 0.02)), 0, 0, w, h);
+  const d = x.getImageData(0, 0, w, h).data, px = [];
+  for (let i = 0; i < d.length; i += 4) px.push([d[i], d[i + 1], d[i + 2], d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114]);
+  px.sort((a, b) => b[3] - a[3]);                                   // the brightest half: the paper, not a stroke of ink at the edge
+  const top = px.slice(0, Math.max(1, px.length >> 1)); let r = 0, g = 0, b = 0;
+  for (const q of top) { r += q[0]; g += q[1]; b += q[2]; }
+  return "rgb(" + Math.round(r / top.length) + "," + Math.round(g / top.length) + "," + Math.round(b / top.length) + ")";
+}
+async function renderJournalCard(spec) {
+  const [W, H] = sizeOf(spec), u = W / 1080;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const ctx = c.getContext("2d");
+  try { await document.fonts.ready; } catch (e) { }
+  const warn = [];
+  jnGround(ctx, W, H);
+  const M = Math.round(72 * u), colW = W - M * 2, cardW = W - Math.round(108 * u);
+  ctx.textBaseline = "top"; ctx.textAlign = "left";
+  // header
+  ctx.font = "italic 400 " + Math.round(27 * u) + "px " + JN_SERIF; ctx.fillStyle = JN.soft;
+  if (spec.eyebrow) ctx.fillText(stripEmph(spec.eyebrow), M, Math.round(58 * u));
+  const [pi, pn] = Array.isArray(spec.pager) ? spec.pager : [0, 0];
+  if (pi && pn) {
+    const pad = (n) => String(n).padStart(2, "0");
+    ctx.font = "600 " + Math.round(24 * u) + "px " + JN_SANS; ctx.fillStyle = JN.ink; ctx.textAlign = "right";
+    ctx.fillText(pad(pi) + " / " + pad(pn), W - M, Math.round(60 * u)); ctx.textAlign = "left";
+  }
+  // the words
+  const items = (spec.items || []).map((x) => String(x || "").trim()).filter(Boolean);
+  const foot = String(spec.note || "").trim() || (items.length > 1 || (items.length && !spec.lead) ? items.pop() : "");
+  const leadText = [String(spec.lead || "").trim(), ...items].filter(Boolean);
+  const art = await jnImage(spec.art);
+  const label = String(spec.art_label || "").trim();
+  const stripH = label ? Math.round(96 * u) : 0;
+  const ratio = art ? Math.min(1.9, Math.max(1.3, art.naturalWidth / art.naturalHeight)) : 1.5;
+  const wantH = Math.round(cardW / ratio) + stripH, minH = Math.round(430 * u), gap = Math.round(40 * u);
+  let tpx = Math.round(84 * u), lpx = Math.round(44 * u), fpx = Math.round(44 * u), lay;
+  for (;;) {
+    ctx.font = "400 " + tpx + "px " + JN_SERIF;
+    const tl = gWrap(ctx, spec.title || "", colW);
+    ctx.font = "400 " + lpx + "px " + JN_SERIF;
+    const ll = leadText.flatMap((p) => gWrap(ctx, p, colW));
+    ctx.font = "italic 400 " + fpx + "px " + JN_SERIF;
+    const fl = foot ? gWrap(ctx, foot, colW) : [];
+    const tlh = Math.round(tpx * 1.06), llh = Math.round(lpx * 1.22), flh = Math.round(fpx * 1.22);
+    const top = Math.round(128 * u), bottom = H - Math.round(78 * u);
+    const textBottom = top + tl.length * tlh + (ll.length ? Math.round(20 * u) + ll.length * llh : 0);
+    const footTop = fl.length ? bottom - fl.length * flh : bottom;
+    const avail = footTop - gap - (textBottom + gap);
+    lay = { tl, ll, fl, tlh, llh, flh, top, textBottom, footTop, avail };
+    if ((tl.length <= 3 && ll.length <= 4 && avail >= Math.min(wantH, minH)) || tpx <= Math.round(58 * u)) break;
+    tpx -= Math.round(2 * u); lpx = Math.max(Math.round(34 * u), lpx - Math.round(1 * u)); fpx = Math.max(Math.round(34 * u), fpx - Math.round(1 * u));
+  }
+  const { tl, ll, fl, tlh, llh, flh, top, textBottom, footTop, avail } = lay;
+  ctx.fillStyle = JN.ink; ctx.font = "400 " + tpx + "px " + JN_SERIF;
+  tl.forEach((l, i) => ctx.fillText(l, M, top + i * tlh));
+  ctx.fillStyle = JN.soft; ctx.font = "400 " + lpx + "px " + JN_SERIF;
+  const ly = top + tl.length * tlh + Math.round(20 * u);
+  ll.forEach((l, i) => ctx.fillText(l, M, ly + i * llh));
+  ctx.fillStyle = JN.foot; ctx.font = "italic 400 " + fpx + "px " + JN_SERIF;
+  fl.forEach((l, i) => ctx.fillText(l, M, footTop + i * flh));
+  // the illustration card, in the middle of what the words leave
+  const boxH = Math.min(avail, wantH);
+  if (tl.length > 3 || ll.length > 4 || boxH < Math.round(380 * u)) warn.push(FULL + ": the headline, the lead and the foot line leave no room for the picture.");
+  const cx = Math.round((W - cardW) / 2), cy = Math.round(textBottom + gap + (avail - boxH) / 2), r = Math.round(22 * u);
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = Math.round(40 * u); ctx.shadowOffsetY = Math.round(18 * u);
+  ctx.fillStyle = art ? jnPaperOf(art) : JN.paper; roundRect(ctx, cx, cy, cardW, boxH, r); ctx.fill();
+  ctx.restore();
+  ctx.save(); roundRect(ctx, cx, cy, cardW, boxH, r); ctx.clip();
+  const ah = boxH - stripH;
+  if (art) {
+    const s = Math.max(cardW / art.naturalWidth, ah / art.naturalHeight), dw = art.naturalWidth * s, dh = art.naturalHeight * s;
+    ctx.drawImage(art, cx + (cardW - dw) / 2, cy + (ah - dh) / 2, dw, dh);
+  } else {
+    ctx.fillStyle = JN.paper; ctx.fillRect(cx, cy, cardW, boxH);
+    if (spec.preview) {                       // only the page's preview says so; a posted picture is never drawn with this text
+      ctx.fillStyle = "rgba(27,42,107,.38)"; ctx.font = "italic 400 " + Math.round(34 * u) + "px " + JN_SERIF; ctx.textAlign = "center";
+      ctx.fillText("Ilustrasi dilukis semasa render", cx + cardW / 2, cy + ah / 2 - Math.round(20 * u)); ctx.textAlign = "left";
+    } else warn.push("No illustration was drawn for this slide.");
+  }
+  if (label) {
+    ctx.fillStyle = art ? jnPaperOf(art) : JN.paper; ctx.fillRect(cx, cy + ah, cardW, stripH);
+    ctx.fillStyle = JN.label; ctx.font = "700 " + Math.round(50 * u) + "px Caveat, " + JN_SANS; ctx.textAlign = "center";
+    let lt = label; while (ctx.measureText(lt).width > cardW - Math.round(80 * u) && lt.length > 6) lt = lt.slice(0, -2).trimEnd() + "…";
+    ctx.fillText(lt, cx + cardW / 2, cy + ah + Math.round(20 * u)); ctx.textAlign = "left";
+  }
+  ctx.restore();
+  return { url: c.toDataURL("image/jpeg", 0.92), warn, y: textBottom, size: [W, H], template: "j_page" };
+}
+
 /* Draw every slide. Returns [{url (a JPEG data URL), warn[], template}], one per slide, in order. A warning is
    Studio's own "fuller than the card" or "no picture chosen": the page shows it, the worker refuses to ship it. */
 export async function renderSlides(slides, o = {}) {
@@ -4287,7 +4422,8 @@ function fullWarnFixed(spec, r) {
 const FACES = ["600 20px Poppins", "700 20px Poppins", "800 20px Poppins", '400 20px Anton', '700 20px "Playfair Display"', '800 20px "Playfair Display"',
   '400 20px "Instrument Sans"', '500 20px "Instrument Sans"', '600 20px "Instrument Sans"',
   '400 20px "JetBrains Mono"', '500 20px "JetBrains Mono"', "700 20px Caveat",
-  '400 20px "Permanent Marker"', '400 20px "Open Sans"', '700 20px "Open Sans"', '800 20px "Open Sans"'];
+  '400 20px "Permanent Marker"', '400 20px "Open Sans"', '700 20px "Open Sans"', '800 20px "Open Sans"',
+  '400 20px Newsreader', '500 20px Newsreader', 'italic 400 20px Newsreader'];
 /* the Quran face is Arabic only, so it is asked for and checked with Arabic letters: "Aa" would never load its file */
 const AYAT_FACES = ['400 20px "Amiri Quran"'], AYAT_SAMPLE = "\u0628\u0633\u0645 \u0627\u0644\u0644\u0647";
 let _fonts = null;

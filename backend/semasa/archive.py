@@ -58,6 +58,8 @@ def unused_media(store: Any, post: dict[str, Any]) -> list[dict[str, Any]]:
 def files_of(row: dict[str, Any]) -> list[str]:
     meta = row.get("meta") or {}
     paths = [meta.get("generated_path")] + list(meta.get("slide_paths") or [])
+    # the Journal look's pictures (illustrated.py)
+    paths += [x for x in (meta.get("art_paths") or []) if isinstance(x, str)]
     art = (meta.get("comic") or {}).get("art") if isinstance(meta.get("comic"), dict) else None
     if isinstance(art, dict):
         paths.append(art.get("path"))              # the daily series' wordless art, kept for its film (comic_job.py)
@@ -312,7 +314,7 @@ def purge_pictures(store: Any, now: datetime | None = None, hours: int = PRUNE_H
                     continue
                 store.storage.from_(db.GENERATED_BUCKET).remove(paths)       # a failure raises: nothing below runs
                 meta.update(files_purged_at=now.isoformat(), purge_hours=hours, slide_urls=[], slide_paths=[],
-                            generated_path=None)
+                            generated_path=None, art_paths=[], art={})
                 store.table(db.MEDIA).update({**_cleared(media), "meta": meta}) \
                     .eq("id", media["id"]).execute()
                 purged += 1

@@ -1,4 +1,4 @@
-import { Anchor, BarChart3, BookOpenText, Brain, Briefcase, GraduationCap, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
+import { Anchor, BarChart3, BookOpenText, Brain, Briefcase, GraduationCap, Building2, Clapperboard, Contact, Cpu, CreditCard, Droplets, FileText, Film, Gauge, GitBranch, HelpCircle, ImagePlus, Images, LayoutDashboard,
   Layers, LayoutGrid, LayoutTemplate, Lightbulb, Library, ListChecks, MessageSquare, Newspaper, NotebookPen, Radio, PenLine, Receipt, Rss, ScanLine, Server, Settings, Sparkles, UserRound, Wallet } from "lucide-react";
 
 /* Every page, once: the header's tab row on a phone, the sidebar and the sub-tab bar all read this list, so they can never
@@ -57,6 +57,9 @@ export function tabsOf(t) {
     { id: "api", label: "API", icon: Cpu, segment: "technology" },
     { id: "stack", label: t("Senarai teknologi", "Technology list"), icon: Layers, segment: "technology" },
 
+    // its own segment with one page (Wan, 23 Nov 2026: "satu segment untuk pantau ... baki credit API ... validity"); no sub-tab bar
+    { id: "kredit", label: t("Baki kredit API", "API credit"), icon: Gauge, segment: "credit" },
+
     { id: "resit", label: t("Pembelian", "Purchases"), icon: ScanLine, segment: "personal" },
     { id: "langganan", label: t("Langganan", "Subscriptions"), icon: CreditCard, segment: "personal" },
 
@@ -90,6 +93,7 @@ export function segmentsOf(t) {
     seg("valorith", "Valorith", Droplets),
     seg("business", t("Perniagaan", "Business"), Receipt),
     seg("technology", t("Teknologi", "Technology"), Server),
+    seg("credit", t("Baki kredit API", "API credit"), Gauge),
     seg("personal", t("Peribadi", "Personal"), UserRound),
     seg("reference", t("Rujukan", "Reference"), Library),
   ];

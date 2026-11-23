@@ -11,6 +11,9 @@ Two halves:
      by day and gateway. A gateway that reports no `usage` gets a row with zero tokens, so the call is still counted.
 
 Nothing here changes which writer answers: llm.py decides that. This only watches.
+
+A third thing (23 Nov 2026): `python -m semasa.api_status --credit-only` reads only the balance of Mireld, rootsys and KiosAPI
+(what is left and until when, api_credit.py) and writes it into each row's `balance`; api-credit.yml runs it every 15 minutes.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ from typing import Any
 
 import requests
 
-from . import ai_config, db
+from . import ai_config, api_credit, db
 from . import llm as llm_mod
 from .config import LLMSettings, MediaSettings, host_of
 
@@ -190,9 +193,14 @@ def usage_of(j: Any) -> dict[str, int]:
 
 
 def _balance(gw: dict[str, Any], timeout: int) -> dict[str, Any]:
-    """Whatever balance endpoint answers JSON with a number in it, else {}. Gateways differ; none is assumed."""
+    """Whatever balance endpoint answers JSON with a number in it, else {}. Gateways differ; none is assumed.
+
+    The gateways Wan pays for (api_credit.CREDIT_SLUGS) get the full reading instead: a normalised `credit` object (what is left,
+    until when, status) and `tried`, every path asked with what it answered (api_credit.py)."""
     if gw["provider"] == "anthropic":
         return {}
+    if gw["slug"] in api_credit.CREDIT_SLUGS:
+        return api_credit.check(gw, timeout=min(timeout, 15))
     for path in BALANCE_PATHS:
         try:
             r = requests.get(
@@ -211,7 +219,13 @@ def _balance(gw: dict[str, Any], timeout: int) -> dict[str, Any]:
     return {}
 
 
-def probe(gw: dict[str, Any], timeout: int = 30) -> dict[str, Any]:
+def _kept(gw: dict[str, Any], balance: dict[str, Any], prev: dict[str, Any] | None) -> dict[str, Any]:
+    """A credit reading that reached no endpoint keeps the last good figure (api_credit.keep_if_unreachable)."""
+    return api_credit.keep_if_unreachable(balance, prev) if "credit" in balance else balance
+
+
+def probe(gw: dict[str, Any], timeout: int = 30, prev: dict[str, Any] | None = None) -> dict[str, Any]:
+    """`prev` is the gateway's last `balance`, so a reading that cannot reach the gateway keeps the last good credit figure."""
     row: dict[str, Any] = {
         "slug": gw["slug"],
         "name": gw["name"],
@@ -243,7 +257,7 @@ def probe(gw: dict[str, Any], timeout: int = 30) -> dict[str, Any]:
     if gw["role"] in IMAGE_ROLES:
         # a painter is "up" when it lists models with the key accepted; its chat endpoint is not its job
         row.update(chat_ok=bool(row["key_ok"]) and bool(models), chat_ms=ms)
-        row["balance"] = _balance(gw, timeout) if row["key_ok"] else {}
+        row["balance"] = _kept(gw, _balance(gw, timeout), prev) if row["key_ok"] else {}
         return row
     chat_ok, chat_ms, _usage, chat_err = _chat(gw, timeout)
     row.update(chat_ok=chat_ok, chat_ms=chat_ms)
@@ -251,7 +265,7 @@ def probe(gw: dict[str, Any], timeout: int = 30) -> dict[str, Any]:
         row["error"] = chat_err
     if chat_ok:
         row["key_ok"] = True
-    row["balance"] = _balance(gw, timeout) if row["key_ok"] else {}
+    row["balance"] = _kept(gw, _balance(gw, timeout), prev) if row["key_ok"] else {}
     return row
 
 
@@ -283,14 +297,26 @@ def team(settings: LLMSettings, media: MediaSettings | None = None, github: LLMS
     return out
 
 
+def last_balances(store: Any) -> dict[str, dict[str, Any]]:
+    """slug -> the `balance` the last check stored, so a check that cannot reach a gateway keeps its last good credit figure."""
+    try:
+        rows = store.table(db.API_STATUS).select("slug,balance").execute().data or []
+    except Exception as exc:  # noqa: BLE001 - a missing figure is the lesser thing
+        log.info("last balances not read: %s", str(exc)[:120])
+        return {}
+    return {r["slug"]: r["balance"] for r in rows if r.get("slug") and isinstance(r.get("balance"), dict)}
+
+
 def run(store: Any, settings: LLMSettings, timeout: int = 30, media: MediaSettings | None = None,
         github: LLMSettings | None = None, cfg: dict[str, Any] | None = None,
         extra: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     rows = []
     from . import ai_team
     chosen = ai_team.read_models(store)
+    previous = last_balances(store)
     for gw in ai_team.apply_models([*team(settings, media, github, cfg), *(extra or [])], chosen):
-        row = probe(gw, timeout)
+        prev = previous.get(gw["slug"])
+        row = probe(gw, timeout, prev) if prev else probe(gw, timeout)
         rows.append(row)
         store.table(db.API_STATUS).upsert(row, on_conflict="slug").execute()
         if row.get("chat_ok"):
@@ -365,9 +391,9 @@ def attach(store: Any, area: str) -> None:
     llm_mod.set_usage_sink(sink)
 
 
-def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    store = db.client()
+def _config(store: Any) -> tuple[dict[str, Any], LLMSettings, MediaSettings | None, list[dict[str, Any]]]:
+    """(cfg, settings, media, extra): the page's AI slots over the GitHub configuration, the picture maker, and the gateways that
+    are not in either (Gemini's next key, the providers Wan added). Shared by the full probe and the credit check."""
     cfg = ai_config.read(store)
     settings = ai_config.llm_settings(LLMSettings.load(), cfg)
     try:
@@ -390,6 +416,55 @@ def main() -> int:
         extra += ai_providers.gateways(store, provs)
     except Exception as exc:  # noqa: BLE001
         log.info("AI providers not probed: %s", str(exc)[:120])
+    return cfg, settings, media, extra
+
+
+def credit_run(store: Any, gws: list[dict[str, Any]], timeout: float = 10, now: datetime | None = None) -> list[dict[str, Any]]:
+    """The credit check alone (no models, no chat question): for each of Wan's three paid gateways this run holds a key for,
+    read what is left and until when, and write it into that gateway's `balance`, leaving every other column of the row as the
+    probe and the pulse wrote it. A gateway with no row yet (the 6-hourly probe has not met it) or no key is skipped, and said."""
+    now = now or datetime.now(UTC)
+    previous = last_balances(store)
+    done = []
+    for gw in gws:
+        slug = gw["slug"]
+        if slug not in api_credit.CREDIT_SLUGS or gw.get("provider") == "anthropic":
+            continue
+        if not gw.get("key"):
+            log.info("%s: no key in this run, credit not read (%s)", slug, gw.get("blocked") or "no key set")
+            continue
+        bal = api_credit.check(gw, timeout=timeout, prev=previous.get(slug), now=now)
+        hit = store.table(db.API_STATUS).update({"balance": bal}).eq("slug", slug).execute().data
+        if not hit:
+            log.info("%s: read, but there is no semasa_api_status row yet (the next full probe makes it)", slug)
+        c = bal["credit"]
+        log.info("%s: credit %s, left %s of %s, until %s, via %s%s", slug, c["status"], c["remaining"], c["total"],
+                 c["expires_at"] or "-", c["source"] or "no endpoint", " (stale)" if c.get("stale") else "")
+        done.append({"slug": slug, **c})
+    return done
+
+
+def credit_main() -> int:
+    """`python -m semasa.api_status --credit-only`: cheap enough to run every 15 minutes (api-credit.yml)."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    store = db.client()
+    cfg, settings, media, extra = _config(store)
+    gws = [*team(settings, media, LLMSettings.load(), cfg), *extra]
+    done = credit_run(store, gws, timeout=float(os.environ.get("CREDIT_TIMEOUT") or 10))
+    for c in done:
+        print(f"{c['slug']}: {c['status']} left={c['remaining']} total={c['total']} expires={c['expires_at'] or '-'} "
+              f"source={c['source'] or 'none'}")
+    if not done:
+        print("no gateway of mireld / rootsys / kiosapi has a key in this run")
+    return 0
+
+
+def main() -> int:
+    if "--credit-only" in sys.argv[1:]:
+        return credit_main()
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    store = db.client()
+    cfg, settings, media, extra = _config(store)
     rows = run(store, settings, timeout=int(os.environ.get("LLM_TIMEOUT") or 30), media=media, github=LLMSettings.load(), cfg=cfg,
                extra=extra)
     # the probe just measured every robot: decide the order now, so the API tab shows the team the next run will use

@@ -90,15 +90,19 @@
     ],
     [
      [
-      "👤 Peribadi",
-      "cb:m:s:personal"
+      "⛽ Baki kredit API",
+      "cb:m:s:credit"
      ],
      [
-      "📚 Rujukan",
-      "cb:m:s:reference"
+      "👤 Peribadi",
+      "cb:m:s:personal"
      ]
     ],
     [
+     [
+      "📚 Rujukan",
+      "cb:m:s:reference"
+     ],
      [
       "⚙️ Tetapan & sistem",
       "cb:m:s:system"
@@ -203,15 +207,19 @@
     ],
     [
      [
-      "👤 Personal",
-      "cb:m:s:personal"
+      "⛽ API credit",
+      "cb:m:s:credit"
      ],
      [
-      "📚 Reference",
-      "cb:m:s:reference"
+      "👤 Personal",
+      "cb:m:s:personal"
      ]
     ],
     [
+     [
+      "📚 Reference",
+      "cb:m:s:reference"
+     ],
      [
       "⚙️ Settings & system",
       "cb:m:s:system"
@@ -967,6 +975,44 @@
      [
       "🧱 Technology list",
       "url:https://semasa.example/#stack"
+     ]
+    ],
+    [
+     [
+      "🏠 Menu",
+      "cb:m:home"
+     ]
+    ]
+   ]
+  },
+  {
+   "node": "s:credit",
+   "lang": "bm",
+   "text": "⛽ Baki kredit API\n\n• Baki kredit API: kredit Mireld, rootsys dan KiosAPI yang tinggal dan tarikh tamatnya\n\n↗ membuka halaman; yang lain dijawab di sini.",
+   "rows": [
+    [
+     [
+      "⛽ Baki kredit API",
+      "url:https://semasa.example/#kredit"
+     ]
+    ],
+    [
+     [
+      "🏠 Menu",
+      "cb:m:home"
+     ]
+    ]
+   ]
+  },
+  {
+   "node": "s:credit",
+   "lang": "en",
+   "text": "⛽ API credit\n\n• API credit: the credit left on Mireld, rootsys and KiosAPI, and when it ends\n\n↗ opens the page; the rest is answered here.",
+   "rows": [
+    [
+     [
+      "⛽ API credit",
+      "url:https://semasa.example/#kredit"
      ]
     ],
     [

@@ -64,7 +64,7 @@ await t("the cover's title is short: the worker's own choice when it drew this h
   assert.equal(coverTitleFor({ title: "Hook pendek" }, []), "Hook pendek", "a hook that is already short stays");
   assert.equal(coverTitleFor({ title: "Another hook" }, jobs), "Another hook", "a title chosen for another hook is not borrowed");
   const first = { title: hook, points: [] };
-  assert.equal(await coverArtUrl(first, [{ meta: { art: { ["cover|" + await artKey(first, true)]: { url: "cover.png" } } } }]), "cover.png");
+  assert.equal(await coverArtUrl(first, [{ meta: { art: { ["cover|" + await artKey(first)]: { url: "cover.png" } } } }]), "cover.png");
   assert.equal(await coverArtUrl(first, []), "");
 });
 

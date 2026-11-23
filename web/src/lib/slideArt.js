@@ -56,10 +56,10 @@ export function coverTitleFor(first, jobs) {
   }
   return hook.replace(/\*/g, "").split(/\s+/).length <= COVER_TITLE_WORDS ? hook : leadWords(hook, COVER_TITLE_WORDS);
 }
-/** The address of the hook's cover illustration the worker kept for this slide ("cover|" + the cut-out key), or "". */
+/** The address of the hook's cover illustration the worker kept for this slide ("cover|" + the slide's key), or "". */
 export async function coverArtUrl(first, jobs) {
   if (!first) return "";
-  return artIndex(jobs).get("cover|" + await artKey(first, true)) || "";
+  return artIndex(jobs).get("cover|" + await artKey(first)) || "";
 }
 
 // ---- turning a drawing on a white page into a cut-out (the browser twin of illustrated.cutout) ----------------------------------

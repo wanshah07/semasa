@@ -330,7 +330,7 @@ def with_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], item
 def stale_paths(meta: dict[str, Any], items: list[dict[str, Any]], stream: str, covered: bool | None = None) -> list[str]:
     """Kept pictures whose slide's words are gone: files to remove once the redraw has used the rest."""
     live = {key_of(items[i], c) for i in slides_needing_art(items, stream, covered) for c in (False, True)}
-    live |= {"cover|" + key_of(items[0], True)} if items else set()
+    live |= {"cover|" + key_of(items[0])} if items else set()
     return [e["path"] for k, e in (meta.get("art") or {}).items() if k not in live and isinstance(e, dict) and e.get("path")]
 
 

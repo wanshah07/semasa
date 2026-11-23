@@ -184,19 +184,36 @@ def _art_url() -> str:
     return "data:image/jpeg;base64," + base64.b64encode(_paper()).decode()
 
 
+def _luminance(p) -> float:
+    def lin(c):
+        c /= 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    return 0.2126 * lin(p[0]) + 0.7152 * lin(p[1]) + 0.0722 * lin(p[2])
+
+
+def _contrast(a, b) -> float:
+    hi, lo = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
 @browser
-def test_the_journal_card_has_the_references_ground_and_a_picture_in_the_middle():
+def test_the_journal_card_is_light_green_with_dark_green_type_that_reads_and_a_picture_in_the_middle():
     slides = [{**SLIDES[1], "art_url": _art_url(), "art_label": "Siapa menjawab?"}]
     [pic] = studio_cards.render(slides, look="journal", stream="regulab", eyebrow="Diari Semasa", final=True, total=10)
     im = Image.open(io.BytesIO(pic)).convert("RGB")
     assert im.size == (1080, 1350)
-    tl, bl, tr, br = im.getpixel((4, 4)), im.getpixel((4, 1345)), im.getpixel((1075, 4)), im.getpixel((1075, 1345))
-    assert max(tl) < 40 and max(br) < 40, "the very dark green in the top-left and bottom-right corners"
-    assert bl[1] > bl[2] + 25 and bl[1] > 80 and tr[1] > tr[2] + 40 and tr[1] > 110, "emerald green in the other two, never blue"
+    corners = [im.getpixel(xy) for xy in ((4, 4), (4, 1345), (1075, 4), (1075, 1345))]
+    for c in corners:
+        assert c[1] > c[0] and c[1] > c[2], f"every corner is green, never blue: {c}"
+        assert _luminance(c) > 0.55, f"and light, not dark: {c}"
     paper = [im.getpixel((x, y)) for x in range(300, 800, 50) for y in range(560, 860, 50)]
     assert sum(1 for p in paper if min(p) > 150) > len(paper) * 0.5, "the cream illustration card sits in the middle"
-    white = sum(1 for x in range(72, 1000, 6) for y in range(120, 330, 6) if min(im.getpixel((x, y))) > 235)
-    assert white > 150, "the headline is white serif type at the top"
+    dark = sum(1 for x in range(72, 1000, 6) for y in range(120, 330, 6) if max(im.getpixel((x, y))) < 90)
+    assert dark > 150, "the headline is dark-green serif type at the top"
+    # the type reads on the ground behind it: the darkest ink against the lightest and the deepest corner
+    ink = (11, 61, 38)
+    assert min(_contrast(ink, c) for c in corners) >= 7, "the headline against the deepest corner"
+    assert min(_contrast((15, 74, 44), c) for c in corners) >= 5, "the foot line against the deepest corner"
 
 
 @browser

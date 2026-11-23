@@ -114,3 +114,30 @@ def test_a_poster_slot_makes_a_poster_idea_not_a_carousel_or_a_single_card():
     assert autofill.slot_format(brand, "linkedin", "06:00") == "carousel"
     from semasa import ideas
     assert ideas.format_of({"brief": {"format": "poster"}}) == "poster"
+
+
+def test_linkedin_takes_an_updated_circular_before_an_existing_guideline_before_research():
+    # Wan, 23 Nov 2026: "updated circular/guideline > existing guideline > research"
+    def row(i, section, title, summary="s"):
+        return {**_w(i, "kosmetik", section), "title": title, "summary": summary,
+                "created_at": f"2026-09-23T0{9 - i}:00:00+00:00"}              # the research paper is the newest
+    store = _store([row(1, "publication", "A new trial of a cream"),
+                    row(2, "website", "Garis panduan sedia ada"),
+                    row(3, "regulatory", "Kenyataan tentang kilang"),
+                    row(4, "folder", "Nota rujukan"),
+                    row(5, "regulatory", "NPRA updates the cosmetic guideline", "Pindaan Garis Panduan Notifikasi")])
+    brand = {"linkedin": {"slots": ["06:00", "11:00", "19:00"], "days": [0, 1, 2, 3, 4, 5, 6]}}
+    cfg = {"enabled": True, "days_ahead": 2, "per_run": 5, "streams": ["linkedin"]}
+    autofill.run(store, {"brand": brand, "autofill": cfg}, NOW)
+    got = [i["source_url"][-1] for i in sorted(store.tables["semasa_ideas"], key=lambda i: (
+        i["brief"]["position"]["date"], i["brief"]["position"]["slot"]))]
+    assert got == ["5", "3", "2", "4", "1"], got
+    assert [autofill.linkedin_tier(x) for x in (row(5, "regulatory", "Updated guideline"), row(3, "regulatory", "Kenyataan"),
+                                                row(2, "website", "x"), row(4, "folder", "x"),
+                                                row(1, "publication", "x"))] == [0, 1, 2, 3, 4]
+
+
+def test_ws_regulab_keeps_its_own_order_when_linkedin_has_one():
+    paper, notice = _w(1, "kosmetik", "publication"), _w(2, "kosmetik", "regulatory")
+    ranked = autofill.rank_candidates([paper, notice])
+    assert autofill.pick(ranked, "regulab", ["kosmetik"], "2026-09-25") is notice

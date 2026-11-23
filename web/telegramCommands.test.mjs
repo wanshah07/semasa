@@ -19,7 +19,7 @@ test('menu is the catalogue of every segment and help names the commands, neithe
   // rules/telegram_menu.json, drawn by menu.js (web/telegramMenu.test.mjs holds it to the page's own tabs): two quick buttons, then
   // one button a segment, the language switch and the link to Semasa
   const datas = buttons.filter(b => b.callback_data).map(b => b.callback_data);
-  assert.deepEqual(datas.slice(0, 4), ['a:draf','a:idea_r','m:s:dashboard','m:s:content']);
+  assert.deepEqual(datas.slice(0, 4), ['a:draf','a:idea_r','m:s:dashboard','m:s:chat']);   // the dashboard and the AI pages each stand alone (23 Nov 2026)
   assert.deepEqual(datas.slice(-2), ['m:s:system','m:lang:en']);
   assert.ok(datas.every(d => /^(a|m):/.test(d)) && !datas.some(d => /^(ok|no):/.test(d)), 'a menu never carries an approval');
   assert.equal(buttons.at(-1).url, options.site);

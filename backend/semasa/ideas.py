@@ -1142,7 +1142,8 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         # "My design" as the default, which is then the one new drafts use
         dd = settings.get("default_design") if isinstance(settings.get("default_design"), dict) else {}
         if not dd.get("id"):
-            idea = {**idea, "brief": {**brief0, "look": rotation.next_look(store, stream, dd.get("hidden"))}}
+            idea = {**idea, "brief": {**brief0, "look_auto": True,
+                                      "look": rotation.next_look(store, stream, dd.get("hidden"), carousel=fmt == "carousel")}}
     chosen = my_designs.for_idea(store, idea)      # the idea's look, or the default "My design" when it asked for none
     if fmt == "comic":
         # the comic IS the post's picture (17 Nov 2026): no other picture is made for it
@@ -1360,7 +1361,7 @@ def poster_job_for_draft(store: Any, post: dict[str, Any], words: list[dict[str,
     """The Design job that draws a poster for a draft that has none, in the look the Semasa rotation gives it."""
     idea = {"id": post.get("idea_id"), "brief": {}, "created_by": post.get("created_by")}
     stream = post.get("stream") or "regulab"
-    idea["brief"] = {"look": rotation.next_look(store, stream, None), "format": "poster"}
+    idea["brief"] = {"look": rotation.next_look(store, stream, None, carousel=False), "format": "poster"}
     return poster_job(idea, post, post["id"], words, bg=slide_ground(stream, False), chosen=(look_of(idea), None))
 
 
@@ -1423,7 +1424,14 @@ def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str 
                      **({"design": "threads", "format": "portrait"} if look == "threads" else {}),
                      "citation": post.get("citation") or "", "domain": post.get("domain"),
                      "angle": post.get("angle"), "bg": bg, "look": look, "fit": look != "classic",
+                     **({"look_auto": True} if look_auto(idea) else {}),
                      **({"review": review} if review else {}), **({"design_pack": saved} if saved else {})}}
+
+
+def look_auto(idea: dict[str, Any]) -> bool:
+    """True when the look was taken from the rotation, not chosen by Wan: a look that cannot be drawn then gives way."""
+    brief = idea.get("brief") if isinstance(idea.get("brief"), dict) else {}
+    return bool(brief.get("look_auto"))
 
 
 def slide_ground(stream: str, has_picture: bool) -> str:

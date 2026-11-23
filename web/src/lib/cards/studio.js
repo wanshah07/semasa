@@ -3508,8 +3508,8 @@ export const LOOKS = [
   { k: "image", bm: "Gambar", en: "Image", hintBm: "Gambar anda DI ATAS slaid: panel, cetakan bertampal, poster condong atau skrin telefon. Slaid tanpa gambar tetap lengkap.",
     hintEn: "Your picture ON the slide: a panel, a taped print, a tipped poster or a phone screen. A slide with no picture is still complete." },
   // Wan, 23 Nov 2026: a hand-inked illustration in the middle of every slide, drawn for the slide's own words (illustrated.py)
-  { k: "journal", bm: "Diari", en: "Journal", hintBm: "Latar biru tua, tajuk serif editorial, lukisan dakwat berwarna di tengah setiap slaid yang dilukis untuk isi slaid itu, satu baris italik di bawah. Setiap slaid menggunakan satu gambar AI: kos kredit.",
-    hintEn: "Deep-blue ground, an editorial serif headline, a hand-inked illustration in the middle of every slide drawn for that slide's own words, one italic line at the foot. Every slide uses one AI picture: it costs credits." },
+  { k: "journal", bm: "Diari", en: "Journal", hintBm: "Latar hijau zamrud tua, tajuk serif editorial, lukisan dakwat berwarna di tengah setiap slaid yang dilukis untuk isi slaid itu, satu baris italik di bawah. Setiap slaid menggunakan satu gambar AI: kos kredit.",
+    hintEn: "Deep emerald-green ground, an editorial serif headline, a hand-inked illustration in the middle of every slide drawn for that slide's own words, one italic line at the foot. Every slide uses one AI picture: it costs credits." },
 ];
 /** A template key as a short readable name ("e_myth" → "ERA · Myth vs fact"), for hand-offs and logs. */
 export const templateLabel = (k) => ({ g_title: "Grid · Title", g_stat: "Grid · Number", g_bars: "Grid · Bars", g_rows: "Grid · Numbered", g_table: "Grid · Table",
@@ -3890,7 +3890,7 @@ export function specsFor(slides, o = {}) {
       // the Journal look: every slide is one page of the same set (the cover included: a front page without a picture); the picture
       // the worker drew for the slide arrives as `art_url`, its hand-lettered label as `art_label`, the page's place as `pager`
       spec = { ...base, template: "j_page", bg: "", lead: lead0 || pts[0] || "", items: lead0 ? pts : pts.slice(1), art: s.art_url || "",
-        art_label: String(s.art_label || "").trim(), pager: [i + 1, Number(o.total) || n], preview: !o.final };
+        art_label: String(s.art_label || "").trim(), pager: [i + 1, Number(o.total) || n], preview: !o.final, art_skip: !!s.art_skip };
     } else if (SKIN_LOOKS.includes(look)) {
       // the four poster looks: cover, points, comparison, recommendation or closing, by place and by what the points look like
       spec = { ...base, template: skinTemplate(look, s, i, n, pts), lead: lead0, items: pts };
@@ -4269,8 +4269,10 @@ export async function renderCoverCard(o = {}) {
    Wan, 23 Nov 2026: "try develop carousel like this, each slide got illustration in the middle related to content, copy the font, the
    format, the layout" (a Threads carousel "Diari CEO": a deep-blue ground, an editorial serif headline, a hand-inked illustration on
    a cream card in the middle of every slide, one italic line at the foot). Measured from the reference's own pixels, then drawn here:
-     * the ground is navy (#0A0E2D) at the top-left and bottom-right corners and royal blue at the other two, so the blue runs along the
-       other diagonal; two triangles, one gradient each, because a canvas gradient has one axis;
+     * the ground is very dark at the top-left and bottom-right corners and lit at the other two, so the colour runs along the other
+       diagonal; two triangles, one gradient each, because a canvas gradient has one axis. The reference's blue is EMERALD GREEN here
+       (Wan, 23 Nov 2026: "make green or other better color than blue"): the colour of the ws.regulab logo, and halal's own. One place
+       sets it: JN and the two ramps in jnGround;
      * a header row: the series name in italic serif at the left, the slide's place ("04 / 10") in a semibold sans at the right;
      * the headline in Newsreader (a tight editorial serif, fonts.css), white, left, at most three lines; under it the lead in the same
        face smaller; the illustration card (90% of the width, rounded, a soft shadow) in the middle of what is left; one italic
@@ -4281,7 +4283,7 @@ export async function renderCoverCard(o = {}) {
    The slide's words: title, lead (else the first point), the rest of the points as more lead lines, and `note` (else the last
    point) as the foot line. Nothing is dropped: what does not fit says so with the usual "fuller than the card" warning.
    The page's preview has no picture yet, so it shows the card empty with its place marked. */
-const JN = { navy: "#0A0E2D", ink: "#FFFFFF", soft: "rgba(255,255,255,.88)", foot: "#CBDAF8", paper: "#EFEBE0", label: "#1B2A6B" };
+const JN = { navy: "#07130F", ink: "#FFFFFF", soft: "rgba(255,255,255,.88)", foot: "#CFEFDC", paper: "#EFEBE0", label: "#14532D", hint: "rgba(20,83,45,.38)" };
 const JN_SERIF = 'Newsreader, "Playfair Display", Georgia, serif', JN_SANS = '"Instrument Sans", system-ui, sans-serif';
 function jnGround(ctx, W, H) {
   ctx.fillStyle = JN.navy; ctx.fillRect(0, 0, W, H);
@@ -4294,8 +4296,8 @@ function jnGround(ctx, W, H) {
     ctx.save(); ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); pts.slice(1).forEach((q) => ctx.lineTo(q[0], q[1])); ctx.closePath(); ctx.clip();
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore();
   };
-  tri([0, H], [[0, 0], [0, H], [W, H]], [[0, "#0A0E2D"], [0.5, "#0A0E2D"], [0.6, "#0B123B"], [0.8, "#111E6C"], [1, "#15248E"]]);
-  tri([W, 0], [[0, 0], [W, 0], [W, H]], [[0, "#0A0E2D"], [0.35, "#0A0E2D"], [0.45, "#0C1444"], [0.625, "#13258A"], [0.81, "#172DB1"], [1, "#182EB2"]]);
+  tri([0, H], [[0, 0], [0, H], [W, H]], [[0, JN.navy], [0.5, JN.navy], [0.6, "#0A1F17"], [0.8, "#0B4630"], [1, "#0D6B49"]]);
+  tri([W, 0], [[0, 0], [W, 0], [W, H]], [[0, JN.navy], [0.35, JN.navy], [0.45, "#0A2419"], [0.625, "#0C5A3C"], [0.81, "#0E7A52"], [1, "#109563"]]);
 }
 const jnImage = (src) => new Promise((res) => { if (!src) return res(null); const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
 /** The paper colour of a picture's bottom edge (the label strip continues it), as "rgb(r,g,b)". */
@@ -4332,11 +4334,12 @@ async function renderJournalCard(spec) {
   const foot = String(spec.note || "").trim() || (items.length > 1 || (items.length && !spec.lead) ? items.pop() : "");
   const leadText = [String(spec.lead || "").trim(), ...items].filter(Boolean);
   const art = await jnImage(spec.art);
+  const bare = !!spec.art_skip && !art;          // a front page the brand cover replaces: a headline alone, no card and no warning
   const label = String(spec.art_label || "").trim();
   const stripH = label ? Math.round(96 * u) : 0;
   const ratio = art ? Math.min(1.9, Math.max(1.3, art.naturalWidth / art.naturalHeight)) : 1.5;
   const wantH = Math.round(cardW / ratio) + stripH, minH = Math.round(430 * u), gap = Math.round(40 * u);
-  let tpx = Math.round(84 * u), lpx = Math.round(44 * u), fpx = Math.round(44 * u), lay;
+  let tpx = Math.round((bare ? 104 : 84) * u), lpx = Math.round(44 * u), fpx = Math.round(44 * u), lay;
   for (;;) {
     ctx.font = "400 " + tpx + "px " + JN_SERIF;
     const tl = gWrap(ctx, spec.title || "", colW);
@@ -4350,7 +4353,7 @@ async function renderJournalCard(spec) {
     const footTop = fl.length ? bottom - fl.length * flh : bottom;
     const avail = footTop - gap - (textBottom + gap);
     lay = { tl, ll, fl, tlh, llh, flh, top, textBottom, footTop, avail };
-    if ((tl.length <= 3 && ll.length <= 4 && avail >= Math.min(wantH, minH)) || tpx <= Math.round(58 * u)) break;
+    if ((tl.length <= 3 && ll.length <= 4 && (bare || avail >= Math.min(wantH, minH))) || tpx <= Math.round(58 * u)) break;
     tpx -= Math.round(2 * u); lpx = Math.max(Math.round(34 * u), lpx - Math.round(1 * u)); fpx = Math.max(Math.round(34 * u), fpx - Math.round(1 * u));
   }
   const { tl, ll, fl, tlh, llh, flh, top, textBottom, footTop, avail } = lay;
@@ -4362,6 +4365,7 @@ async function renderJournalCard(spec) {
   ctx.fillStyle = JN.foot; ctx.font = "italic 400 " + fpx + "px " + JN_SERIF;
   fl.forEach((l, i) => ctx.fillText(l, M, footTop + i * flh));
   // the illustration card, in the middle of what the words leave
+  if (bare) return { url: c.toDataURL("image/jpeg", 0.92), warn, y: textBottom, size: [W, H], template: "j_page" };
   const boxH = Math.min(avail, wantH);
   if (tl.length > 3 || ll.length > 4 || boxH < Math.round(380 * u)) warn.push(FULL + ": the headline, the lead and the foot line leave no room for the picture.");
   const cx = Math.round((W - cardW) / 2), cy = Math.round(textBottom + gap + (avail - boxH) / 2), r = Math.round(22 * u);
@@ -4377,7 +4381,7 @@ async function renderJournalCard(spec) {
   } else {
     ctx.fillStyle = JN.paper; ctx.fillRect(cx, cy, cardW, boxH);
     if (spec.preview) {                       // only the page's preview says so; a posted picture is never drawn with this text
-      ctx.fillStyle = "rgba(27,42,107,.38)"; ctx.font = "italic 400 " + Math.round(34 * u) + "px " + JN_SERIF; ctx.textAlign = "center";
+      ctx.fillStyle = JN.hint; ctx.font = "italic 400 " + Math.round(34 * u) + "px " + JN_SERIF; ctx.textAlign = "center";
       ctx.fillText("Ilustrasi dilukis semasa render", cx + cardW / 2, cy + ah / 2 - Math.round(20 * u)); ctx.textAlign = "left";
     } else warn.push("No illustration was drawn for this slide.");
   }

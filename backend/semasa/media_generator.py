@@ -657,6 +657,10 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             meta["bg_missing"] = "the background picture was not ready, so the slides were drawn on paper"
         size = design.size_of(meta, stream) if kind else None
         look = str(meta.get("look") or "classic")
+        if look == "journal" and kind:
+            # a Design-tab poster, card or comic has its own single picture: the per-slide pictures are for a carousel
+            meta["look_fallback"] = "journal: a poster or card has one picture, drawn in the Hand-drawn look"
+            look = "hand"
         # AYAT AL-QURAN (16 Nov 2026): a slide that names a verse is drawn by the Studio renderer, the only one with a Quran
         # face. Its stored words are checked against the published source first, and it is never handed to a renderer that
         # would draw the slide without its verse.
@@ -716,7 +720,17 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                     journal = illustrated.wants(look, kind)
                     if journal:
                         # the Journal look: a hand-inked picture for every slide, made once and kept on the job (illustrated.py)
-                        drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm)
+                        try:
+                            drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm)
+                        except illustrated.ArtError as exc:
+                            # taken from the rotation, not chosen by Wan: with no picture maker, or on the last try, the post is
+                            # drawn in the Image look rather than lost; a look Wan chose fails with the reason instead
+                            last = int(row.get("attempts") or 0) >= s.max_attempts
+                            if not (meta.get("look_auto") and (last or "no picture maker" in str(exc))):
+                                raise
+                            meta["look_fallback"] = f"journal: {str(exc)[:200]}"
+                            look = "image"
+                            log.warning("%s: the Journal pictures could not be made (%s); Image look", row_id, str(exc)[:160])
                     pics = studio_cards.render(drawn, look=look, stream=stream, eyebrow=eyebrow,
                                                source=str(meta.get("citation") or ""), ground=ground,
                                                ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size,

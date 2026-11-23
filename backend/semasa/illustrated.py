@@ -33,12 +33,13 @@ log = get_logger("semasa.illustrated")
 
 LOOK = "journal"
 MAX_ART = 10                         # Instagram takes ten pictures; the closing card is one of them
-STYLE_VERSION = 1                    # bump it and every kept picture is made again
-STYLE = ("Editorial pen-and-ink illustration on warm cream paper. A loose hand-drawn black ink line with fine cross-hatching and "
-         "pencil texture. Flat crayon colour used sparingly: one deep royal blue and one warm orange only, everything else left "
-         "uncoloured. Everyday Malaysian people (men and women, some women in a tudung), expressive faces, one clear scene that "
-         "explains the idea. The drawing fills the whole picture edge to edge on the paper, wide landscape, no border, no frame, "
-         "no paper edge. Absolutely no text, no letters, no numbers, no signs, no logos, no captions in the picture.")
+STYLE_VERSION = 2                    # bump it and every kept picture is made again
+STYLE = ("Editorial pen-and-ink illustration on warm cream paper. A loose hand-drawn black ink line with fine "
+         "cross-hatching and pencil texture. Flat crayon colour used sparingly: one deep forest green and one "
+         "warm orange only, everything else left uncoloured. Everyday Malaysian people (men and women, some "
+         "women in a tudung), expressive faces, one clear scene that explains the idea. The drawing fills the "
+         "whole picture edge to edge on the paper, wide landscape, no border, no frame, no paper edge. "
+         "Absolutely no text, no letters, no numbers, no signs, no logos, no captions in the picture.")
 PLAN_SYSTEM = (
     "You are the art director of a social-media carousel drawn as hand-inked illustrations, one per slide. For EVERY slide below "
     "write ONE scene that shows, as a picture, what that slide says: who is there, what they are doing, the object or the "
@@ -195,7 +196,8 @@ def with_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], item
     for i, it in enumerate(items):
         entry = kept.get(keys.get(i, "")) if i in keys else None
         if not entry:
-            out.append(it)
+            # the first slide of a ws.regulab set is replaced by the white brand cover: told so, it draws no empty picture frame
+            out.append({**it, "art_skip": True} if i == 0 and stream != "linkedin" else it)
             continue
         data = (fetch_fn or fetch)(entry["url"])
         if not data:

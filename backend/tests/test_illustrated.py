@@ -136,7 +136,8 @@ def test_the_look_is_known_to_every_list_and_only_a_carousel_draws_pictures():
     from semasa import ideas
     assert "journal" in studio_cards.LOOKS and "journal" in ideas.LOOKS and "journal" in ideas.OWN_PICTURE_ONLY
     assert illustrated.wants("journal", "") and not illustrated.wants("journal", "poster") and not illustrated.wants("grid", "")
-    assert "journal" not in __import__("semasa.rotation", fromlist=["LOOK_TURN"]).LOOK_TURN, "costs credits: only when chosen"
+    from semasa import rotation
+    assert "journal" in rotation.LOOK_TURN, "Diari is in the automatic rotation (Wan, 23 Nov 2026)"
     assert "JOURNAL LOOK" in ideas.JOURNAL_RULES and carousel.has_logo_card("regulab", 3)
 
 
@@ -190,8 +191,8 @@ def test_the_journal_card_has_the_references_ground_and_a_picture_in_the_middle(
     im = Image.open(io.BytesIO(pic)).convert("RGB")
     assert im.size == (1080, 1350)
     tl, bl, tr, br = im.getpixel((4, 4)), im.getpixel((4, 1345)), im.getpixel((1075, 4)), im.getpixel((1075, 1345))
-    assert max(tl) < 70 and max(br) < 70, "navy in the top-left and bottom-right corners"
-    assert bl[2] > 110 and tr[2] > 130, "royal blue in the other two"
+    assert max(tl) < 40 and max(br) < 40, "the very dark green in the top-left and bottom-right corners"
+    assert bl[1] > bl[2] + 25 and bl[1] > 80 and tr[1] > tr[2] + 40 and tr[1] > 110, "emerald green in the other two, never blue"
     paper = [im.getpixel((x, y)) for x in range(300, 800, 50) for y in range(560, 860, 50)]
     assert sum(1 for p in paper if min(p) > 150) > len(paper) * 0.5, "the cream illustration card sits in the middle"
     white = sum(1 for x in range(72, 1000, 6) for y in range(120, 330, 6) if min(im.getpixel((x, y))) > 235)
@@ -212,3 +213,91 @@ def test_a_slide_with_too_many_words_for_its_picture_says_so():
             "note": "Satu baris penutup yang juga terlalu panjang untuk muat di bawah. " * 3, "art_url": _art_url()}
     with pytest.raises(SlideError, match="fuller than the card"):
         studio_cards.render([long], look="journal", stream="regulab", final=True)
+
+
+# ---- Diari in the automatic rotation, a green ground, the white cover kept (Wan, 23 Nov 2026) ----------------------------------
+
+def test_a_lone_poster_or_card_never_takes_diari_but_a_carousel_does():
+    from semasa import rotation
+    store = FakeStore(semasa_ideas=[{"stream": "regulab", "brief": {"look": "image"}, "updated_at": "2026-11-23"}])
+    assert rotation.next_look(store, "regulab", None, carousel=True) == "journal"
+    assert rotation.next_look(store, "regulab", None, carousel=False) == "classic", "a poster skips it and starts the turn again"
+    every = [k for k in rotation.LOOK_TURN if k != "journal"]
+    assert rotation.next_look(store, "regulab", every, carousel=False) != "journal"
+    assert rotation.next_look(store, "regulab", ["journal"], carousel=True) != "journal", "Wan can hide it in the picker"
+
+
+def test_a_look_from_the_rotation_is_marked_so_it_can_give_way(monkeypatch):
+    from semasa import ideas
+    idea = {"id": "i1", "created_by": "u", "brief": {"look": "journal", "look_auto": True}}
+    job = ideas.slide_job(idea, {"slides": SLIDES, "stream": "regulab"}, "p1", chosen=("journal", None))
+    assert job["meta"]["look"] == "journal" and job["meta"]["look_auto"] is True and job["meta"]["bg"] == "none"
+    chosen = ideas.slide_job({"id": "i2", "brief": {"look": "journal"}}, {"slides": SLIDES, "stream": "regulab"}, "p1",
+                             chosen=("journal", None))
+    assert "look_auto" not in chosen["meta"], "a look Wan picked is never swapped for another"
+
+
+def _job(meta):
+    return {"id": "s1", "mode": "slides", "type": "image", "status": "processing", "attempts": 1,
+            "created_at": "2099-01-01T00:00:00+00:00",
+            "meta": {"stream": "regulab", "bg": "none", "slides": SLIDES, "look": "journal", "citation": "NPRA", **meta}}
+
+
+def _run(job, monkeypatch):
+    monkeypatch.setattr(media_generator.db, "upload_generated", lambda st, path, data, ct: f"https://cdn/{path}")
+    store = FakeStore(semasa_settings=[{"key": "brand", "value": {"regulab": {"website": "www.x.com"}}}], semasa_posts=[],
+                      media_generations=[job])
+    monkeypatch.setattr(studio_cards, "render", lambda items, **kw: [_paper(1080, 1350) for _ in items])
+    ok = media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None)
+    return ok, store.tables["media_generations"][0]
+
+
+def test_an_automatic_diari_with_no_picture_maker_is_drawn_in_the_image_look_not_lost(monkeypatch):
+    monkeypatch.setattr(illustrated, "makers", lambda s, store: [])
+    ok, row = _run(_job({"look_auto": True}), monkeypatch)
+    assert ok is True and row["status"] == "done" and row["meta"]["look"] == "image"
+    assert "no picture maker" in row["meta"]["look_fallback"]
+
+
+def test_a_diari_wan_chose_fails_with_the_reason_instead_of_changing_look(monkeypatch):
+    monkeypatch.setattr(illustrated, "makers", lambda s, store: [])
+    ok, row = _run(_job({}), monkeypatch)
+    assert ok is False and "no picture maker" in str(row.get("error") or "")
+
+
+def test_a_diari_poster_job_is_drawn_in_the_hand_look_never_without_its_picture(monkeypatch):
+    ok, row = _run(_job({"design": "poster", "format": "portrait", "slides": [SLIDES[1]]}), monkeypatch)
+    assert ok is True and row["meta"]["look"] == "hand" and "one picture" in row["meta"]["look_fallback"]
+
+
+def test_the_ws_regulab_set_keeps_the_white_brand_cover_first_and_the_logo_card_last(monkeypatch):
+    monkeypatch.setattr(illustrated, "makers", lambda s, store: ["x"])
+    monkeypatch.setattr(illustrated, "draw", lambda *a, **k: (_paper(), "x"))
+    monkeypatch.setattr(illustrated, "fetch", lambda url: _paper())
+    monkeypatch.setattr(illustrated.db, "upload_generated", lambda st, path, data, ct: f"https://cdn/{path}")
+    seen = {}
+    monkeypatch.setattr(studio_cards, "render",
+                        lambda items, **kw: seen.update(items=items) or [_paper(1080, 1350) for _ in items])
+    uploaded = {}
+    monkeypatch.setattr(media_generator.db, "upload_generated",
+                        lambda st, path, data, ct: uploaded.setdefault(path, data) and f"https://cdn/{path}")
+    job = _job({"slides": [{"title": "Notifikasi bukan kelulusan", "points": ["Satu fakta penting yang ringkas."],
+                            "lead": "Ramai tersalah faham."}, *SLIDES[1:]]})
+    store = FakeStore(semasa_settings=[{"key": "brand", "value": {"regulab": {"website": "www.x.com"}}}], semasa_posts=[],
+                      media_generations=[job])
+    assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is True
+    meta = store.tables["media_generations"][0]["meta"]
+    assert meta["look"] == "journal" and meta["cover"] is True and meta["closing_logo"] is True
+    assert seen["items"][0].get("art_skip") is True and not seen["items"][0].get("art_url"), "slide 1 is the cover: no picture"
+    assert all(it.get("art_url") for it in seen["items"][1:])
+    assert meta["count"] == len(seen["items"]) + 1
+
+
+@browser
+def test_the_front_page_the_brand_cover_replaces_draws_without_a_picture_frame_and_without_a_warning():
+    [pic] = studio_cards.render([{**SLIDES[0], "art_skip": True}], look="journal", stream="regulab", final=True)
+    im = Image.open(io.BytesIO(pic)).convert("RGB")
+    assert im.size == (1080, 1350)
+    cream = lambda p: all(abs(a - b) < 5 for a, b in zip(p, (239, 235, 224), strict=True))  # noqa: E731
+    paper = sum(1 for x in range(100, 980, 20) for y in range(300, 1250, 20) if cream(im.getpixel((x, y))))
+    assert paper == 0, "no cream picture card on a front page"

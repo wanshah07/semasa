@@ -3855,6 +3855,9 @@ export function specsFor(slides, o = {}) {
       font: FONT_CHOICES.includes(s.font) ? s.font : undefined,
       mascot_pos: MASCOT_POS.includes(s.mascot_pos) ? s.mascot_pos : undefined,
       mascot_size: Number(s.mascot_size) || undefined,
+      // the picture the worker drew for this slide's own words (illustrated.py), in every look but Diari, which draws it itself in
+      // the middle of the page: a band at the foot of the card (renderWithArt)
+      art_pic: look !== "journal" && s.art_url && !s.art_skip ? String(s.art_url) : "",
     };
     let spec;
     // THE FRONT PAGE: a carousel in the Image, Info ERA or Hand-drawn look opens with a poster cover (see SKINS), unless the
@@ -3890,7 +3893,7 @@ export function specsFor(slides, o = {}) {
       // the Journal look: every slide is one page of the same set (the cover included: a front page without a picture); the picture
       // the worker drew for the slide arrives as `art_url`, its hand-lettered label as `art_label`, the page's place as `pager`
       spec = { ...base, template: "j_page", bg: "", lead: lead0 || pts[0] || "", items: lead0 ? pts : pts.slice(1), art: s.art_url || "",
-        art_label: String(s.art_label || "").trim(), pager: [i + 1, Number(o.total) || n], preview: !o.final, art_skip: !!s.art_skip };
+        art_label: String(s.art_label || "").trim(), pager: [i + 1 + (Number(o.offset) || 0), Number(o.total) || n], preview: !o.final, art_skip: !!s.art_skip };
     } else if (SKIN_LOOKS.includes(look)) {
       // the four poster looks: cover, points, comparison, recommendation or closing, by place and by what the points look like
       spec = { ...base, template: skinTemplate(look, s, i, n, pts), lead: lead0, items: pts };
@@ -4134,9 +4137,45 @@ async function renderWithFoot(spec, foot) {
   lines.forEach((l, i) => ctx.fillText(l, M, H - band + padT + i * lh));
   return { ...r, url: c.toDataURL("image/jpeg", 0.92), size: [W, H - band], foot: lines.join(" ") };
 }
-async function renderSpecNow(spec) {
+async function renderBody(spec) {
   const foot = footOf(spec);
   return foot ? renderWithFoot(spec, foot) : renderCard(spec);
+}
+/* AN ILLUSTRATION ON EVERY PAGE, IN EVERY LOOK (Wan, 23 Nov 2026: "all carousel slide design follow diari size text, and must have
+   illustration but no need to have illustration at the centre page and no need to have same size with diary", then "same like other
+   slide design, make illustration with transparent background"). The look is drawn on a card ART_BAND shorter (the same trick as the
+   definition note's band), so its own type, auto-fit and "fuller than the card" test keep clear of the picture, and the worker's
+   hand-inked illustration for this slide, a transparent CUT-OUT with a thin white sticker border (illustrated.cutout), stands in a
+   band at the foot: not in the middle, no card behind it, smaller than Diari's. The band takes its colour from the card's own bottom
+   edge. A picture that will not load leaves the slide drawn without it, never a failed card. */
+const ART_BAND = 0.34;
+async function renderWithArt(spec) {
+  const art = await jnImage(spec.art_pic);
+  const inner = { ...spec, art_pic: "" };
+  if (!art) return renderBody(inner);
+  const [W, H] = sizeOf(spec), u = W / 1080;
+  const band = Math.round(H * ART_BAND);
+  const r = await renderBody({ ...inner, size: [W, H - band] });
+  if (!r.url) return r;
+  const im = await new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = r.url; });
+  if (!im) return r;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(im, 0, 0, W, H - band);
+  const edge = ctx.getImageData(0, H - band - 6, W, 6).data;
+  let rr = 0, gg = 0, bb = 0, k = 0;
+  for (let i = 0; i < edge.length; i += 4) { rr += edge[i]; gg += edge[i + 1]; bb += edge[i + 2]; k++; }
+  rr = Math.round(rr / k); gg = Math.round(gg / k); bb = Math.round(bb / k);
+  ctx.fillStyle = "rgb(" + rr + "," + gg + "," + bb + ")"; ctx.fillRect(0, H - band, W, band);
+  const M = Math.round(72 * u), padT = Math.round(14 * u), padB = Math.round(40 * u);
+  const aw = W - M * 2, ah = band - padT - padB;
+  const sc = Math.min(aw / art.naturalWidth, ah / art.naturalHeight), dw = art.naturalWidth * sc, dh = art.naturalHeight * sc;
+  ctx.drawImage(art, (W - dw) / 2, H - band + padT + (ah - dh), dw, dh);       // stands on the foot of the band, centred
+  return { ...r, url: c.toDataURL("image/jpeg", 0.92), size: [W, H - band] };
+}
+async function renderSpecNow(spec) {
+  if (spec.art_pic && spec.template !== "q_ayat" && spec.template !== "j_page") return renderWithArt(spec);
+  return renderBody(spec);
 }
 async function renderCard(spec) {
   if (spec.bg && spec.template[0] !== "p" && spec.template[0] !== "i" && spec.template[0] !== "h" && !SKIN_TPL[spec.template] && await groundIsLight(spec)) spec = { ...spec, scrim: "none", _light: true };

@@ -154,7 +154,9 @@ def test_the_writer_voice_is_casual_with_a_hook_and_exactly_one_follow_line():
         assert not [f for f in flags if "follow" in f["msg"].lower()], caption
     for ask in ("Komen di bawah ya.", "Hubungi kami sekarang.", "Share this dengan kawan."):
         flags = compliance.scan({"stream": "regulab", "lang": "bm", "text": {"bm": {"instagram": ask}}})
-        assert [f for f in flags if f["hard"] and f["msg"].startswith("CTA")], ask
+        # Wan, 23 Nov 2026 ("remove blocker"): an ask is still named, as a warning, and no longer blocks Approve
+        assert [f for f in flags if not f["hard"] and f["msg"].startswith("CTA")], ask
+        assert not [f for f in flags if f["hard"] and f["msg"].startswith("CTA")], ask
 
 
 # ---------------------------------------------------------------- the Buffer queue

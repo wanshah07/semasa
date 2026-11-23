@@ -32,7 +32,9 @@ def _rx(rule: dict[str, Any]) -> re.Pattern[str]:
     return re.compile(rule["re"], re.I if "i" in rule.get("flags", "") else 0)
 
 
-HARD = [(_rx(r), r["label"]) for r in RULES["hard"]] + [(_rx(r), r["label"]) for r in RULES["cta"]]
+# A call to action is a WARNING, never a block (Wan, 23 Nov 2026: "remove blocker", on "Approval blocked: CTA share this"):
+# it is still listed so it can be read, but it no longer stops Approve or the send.
+HARD = [(_rx(r), r["label"]) for r in RULES["hard"]]
 CTA = [(_rx(r), r["label"]) for r in RULES["cta"]]
 SOFT = [(_rx(r), r["label"]) for r in RULES["soft"]]
 SOCIAL_SRC = _rx(RULES["social_src"])
@@ -345,6 +347,9 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
         for rx, label in HARD:
             if rx.search(t):
                 add(True, where, label)
+        for rx, label in CTA:
+            if rx.search(t):
+                add(False, where, label)
         for rx, label in SOFT:
             if rx.search(t):
                 add(False, where, label)
@@ -392,7 +397,7 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
         if not t:
             continue
         tag = "BM" if other == "bm" else "EN"
-        for rx, label in HARD:
+        for rx, label in HARD + CTA:
             if rx.search(t):
                 add(False, f"{tag} variant ({p})", label)
         for msg in indo_hits(t, extra):
@@ -408,7 +413,7 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
             continue
         for rx, label in CTA:
             if rx.search(t):
-                add(True, where, label)
+                add(False, where, label)
         if burl.search(t):
             add(True, where, "the ws.regulab website")
         if SOCIAL_SRC.search(t):
@@ -438,6 +443,9 @@ def scan(post: dict[str, Any], brand: dict[str, Any] | None = None,
             for rx, lab in HARD:
                 if rx.search(t):
                     add(True, where, lab)
+            for rx, lab in CTA:
+                if rx.search(t):
+                    add(False, where, lab)
             if SOCIAL_SRC.search(t):
                 add(True, where, "names a social source. A post stands on the instrument, never on where the idea was spotted.")
             for msg in indo_hits(t, extra):

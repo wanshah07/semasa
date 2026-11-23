@@ -604,7 +604,7 @@ def test_a_reported_position_must_name_the_body_the_row_gives():
     "bad, why",
     [
         (rewritten(GOOD, p1="Klik www.kkmhalalconsultant.com untuk semak."), "website"),
-        (rewritten(GOOD, p1="Hubungi kami hari ini untuk semak sijil anda."), "call to action"),
+        (rewritten(GOOD, p1="Produk ini dijamin lulus NPRA, semak sijil anda."), "approval promise"),
         (rewritten(GOOD, p1="Berita reddit kata dua orang ditahan guna sijil palsu."), "reddit"),
         (rewritten(GOOD, p1="Dalam surah Al-Baqarah ayat 168 ada perintah makan yang baik."), "verse"),
     ],

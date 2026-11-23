@@ -141,3 +141,15 @@ def test_ws_regulab_keeps_its_own_order_when_linkedin_has_one():
     paper, notice = _w(1, "kosmetik", "publication"), _w(2, "kosmetik", "regulatory")
     ranked = autofill.rank_candidates([paper, notice])
     assert autofill.pick(ranked, "regulab", ["kosmetik"], "2026-09-25") is notice
+
+
+def test_inside_a_linkedin_tier_the_newest_item_wins_even_when_an_older_one_is_an_announcement():
+    # Codex review on #327: an "Updated guideline" notice and a recall are both tier 0 for LinkedIn, and the shared ranking
+    # puts the recall first whatever its date
+    older = {**_w(1, "kosmetik"), "title": "Recall of a cream", "summary": "s", "created_at": "2026-09-20T00:00:00+00:00"}
+    newer = {**_w(2, "kosmetik"), "title": "Updated guideline on labels", "summary": "s",
+             "created_at": "2026-09-23T00:00:00+00:00"}
+    assert autofill.linkedin_tier(older) == autofill.linkedin_tier(newer) == 0
+    ranked = autofill.rank_candidates([older, newer])
+    assert ranked[0] is older, "the shared order puts the announcement first"
+    assert autofill.pick(ranked, "linkedin", None, "2026-09-25") is newer

@@ -391,6 +391,14 @@ def tier(item: dict[str, Any]) -> int:
     return 6 if section == "news" else 7
 
 
+def age_of(item: dict[str, Any]) -> float:
+    """Newest first sorts lowest: minus the item's created_at as a timestamp; an item with no readable date sorts last."""
+    try:
+        return -datetime.fromisoformat(str(item.get("created_at")).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return float("inf")
+
+
 def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> list[dict[str, Any]]:
     """Official first (Wan, 22 Nov 2026): a regulator's or the government's announcement, then its other notices, then official
     publications, websites and the angle bank; a newspaper headline only after every official item (and only when switched on).
@@ -398,10 +406,7 @@ def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> 
     first among those."""
 
     def key(item: dict[str, Any]) -> tuple[int, int, float]:
-        try:
-            age = -datetime.fromisoformat(str(item.get("created_at")).replace("Z", "+00:00")).timestamp()
-        except (TypeError, ValueError):
-            age = float("inf")
+        age = age_of(item)
         text = f"{item.get('title') or ''} {item.get('summary') or ''}"
         said = int(not (ANNOUNCEMENT.search(text) or item.get("regulatory_link"))) if tier(item) >= 6 else 0
         return (tier(item), said, age)
@@ -415,7 +420,8 @@ def pick(pool: list[dict[str, Any]], stream: str, allow: list[str] | None, day: 
             return x
     fitting = [x for x in pool if fits(x, stream, allow)]
     if stream == "linkedin":
-        return min(fitting, key=linkedin_tier, default=None)        # the first of the best tier: the pool is already newest first
+        # the best tier, and the newest item inside it
+        return min(fitting, key=lambda x: (linkedin_tier(x), age_of(x)), default=None)
     return fitting[0] if fitting else None
 
 

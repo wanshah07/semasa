@@ -8,11 +8,9 @@ import { capFill, fitSearch, FIT_MIN, SKIN_MIN, STUDIO_LOOKS } from "./src/lib/c
 let failed = 0;
 const ok = (cond, what) => { if (!cond) { failed++; console.error("FAIL", what); } };
 
-// LinkedIn type grows less than ws.regulab's (Wan, 21 Nov 2026): 60% of the family's own growth limit, never under the template's size
-ok(capFill({ stream: "regulab" }, 3.4) === 3.4 && capFill(null, 3) === 3, "ws.regulab type grows as far as it did");
-ok(Math.abs(capFill({ stream: "regulab", place: "middle" }, 3) - 1.8) < 1e-9 && capFill({ stream: "regulab", place: "cover" }, 3) === 3
-  && capFill({ stream: "regulab", place: "single" }, 3) === 3, "ws.regulab content slides are calmer; the cover and a lone poster stay big");
-ok(Math.abs(capFill({ stream: "linkedin" }, 3.4) - 2.04) < 1e-9 && capFill({ stream: "linkedin" }, 1.2) === 1, "LinkedIn type is capped, never below 1");
+// Every look reads at Diari's size (Wan, 23 Nov 2026): auto-fit never grows a card's type past the template's own size, in either stream
+ok([null, { stream: "regulab" }, { stream: "regulab", place: "middle" }, { stream: "regulab", place: "cover" }, { stream: "regulab", place: "single" },
+  { stream: "linkedin" }].every((sp) => capFill(sp, 3.4) === 1 && capFill(sp, 1.2) === 1), "no card's type grows past the template's own size");
 
 const ROOM = 1000;
 // a paragraph of `chars` characters in a column 900 px wide: the lines get fewer as the type gets smaller, in whole steps
@@ -60,6 +58,11 @@ const picker = readFileSync(new URL("./src/components/LookPicker.jsx", import.me
 ok(/all\.pics\.map\(\(p, i\) => \(\{ n: i \+ 1,\s*warn: \(p\.warn \|\| \[\]\)/.test(picker), "the page reads the warnings of every slide, whatever the look");
 ok(/isStudioLook\(chosen\.look\) && !sample && problems\.length \? "full"/.test(picker) && picker.includes("Terlalu penuh untuk reka bentuk ini"), "and blocks the render with a message naming the slide");
 ok(STUDIO_LOOKS.length === 14, "fourteen looks drawn by this renderer, all through the same path (the Journal look included)");
+
+// The picker's tiles show an illustration at the foot in every look (Wan, 23 Nov 2026): a stand-in drawing, and Diari's opaque page
+ok(/SAMPLE_ART = `\$\{BASE\}sample-art\.png`/.test(picker) && /withSampleArt\(given\.length/.test(picker), "the picker gives every preview slide a stand-in drawing");
+ok(["sample-art.png", "sample-art-page.png"].every((f) => readFileSync(new URL(`./public/cards/${f}`, import.meta.url)).length > 1000), "and both drawings are shipped");
+ok(/usePreview\(asPage\(cover\), \{ \.\.\.opts, look: "journal" \}/.test(picker), "Diari's tile gets the opaque page version");
 
 if (failed) { console.error(`${failed} auto-fit check(s) failed`); process.exit(1); }
 console.log("autofit: one search fits every card, and a card that cannot fit says so");

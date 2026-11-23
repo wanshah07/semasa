@@ -575,7 +575,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
     no key, no cost. Too long to fit is a final error that names the slide, never a cut.
     A Design-tab job (meta.design) may bring only an idea (meta.brief): the writer turns it into words first, and
     those words are saved on the job before drawing, so a retry draws them again instead of writing new ones."""
-    from . import carousel, compliance, design, ideas, slides, studio_cards
+    from . import carousel, compliance, design, ideas, illustrated, slides, studio_cards
 
     row_id = row["id"]
     meta = dict(row.get("meta") or {})
@@ -657,6 +657,10 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             meta["bg_missing"] = "the background picture was not ready, so the slides were drawn on paper"
         size = design.size_of(meta, stream) if kind else None
         look = str(meta.get("look") or "classic")
+        if look == "journal" and kind:
+            # a Design-tab poster, card or comic has its own single picture: the per-slide pictures are for a carousel
+            meta["look_fallback"] = "journal: a poster or card has one picture, drawn in the Hand-drawn look"
+            look = "hand"
         # AYAT AL-QURAN (16 Nov 2026): a slide that names a verse is drawn by the Studio renderer, the only one with a Quran
         # face. Its stored words are checked against the published source first, and it is never handed to a renderer that
         # would draw the slide without its verse.
@@ -713,10 +717,25 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                     from . import cards_library
                     from .providers.cloudflare import content_type_of
                     drawn = own_photos(store, own_grounds(store, row, words_in))
+                    journal = illustrated.wants(look, kind)
+                    if journal:
+                        # the Journal look: a hand-inked picture for every slide, made once and kept on the job (illustrated.py)
+                        try:
+                            drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm)
+                        except illustrated.ArtError as exc:
+                            # taken from the rotation, not chosen by Wan: with no picture maker, or on the last try, the post is
+                            # drawn in the Image look rather than lost; a look Wan chose fails with the reason instead
+                            last = int(row.get("attempts") or 0) >= s.max_attempts
+                            if not (meta.get("look_auto") and (last or "no picture maker" in str(exc))):
+                                raise
+                            meta["look_fallback"] = f"journal: {str(exc)[:200]}"
+                            look = "image"
+                            log.warning("%s: the Journal pictures could not be made (%s); Image look", row_id, str(exc)[:160])
                     pics = studio_cards.render(drawn, look=look, stream=stream, eyebrow=eyebrow,
                                                source=str(meta.get("citation") or ""), ground=ground,
                                                ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size,
-                                               mascots=cards_library.mascots(store), fit=bool(meta.get("fit")), design=saved)
+                                               mascots=cards_library.mascots(store), fit=bool(meta.get("fit")), design=saved,
+                                               final=True, total=len(drawn) + int(carousel.has_logo_card(stream, len(drawn))))
                 else:
                     look = "classic"
                     pics = slides.render(classic_words(words_in), stream=stream, eyebrow=eyebrow,
@@ -779,6 +798,8 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                         model={"classic": "slides-v1", "threads": "threads-v1"}.get(look, f"studio-{look}"),
                         error=None, meta=meta)
         _drop_files(store, row_id, [x for x in before if x not in paths])     # the last version's slides, all of them
+        if illustrated.wants(look, kind):
+            _drop_files(store, row_id, illustrated.stale_paths(meta, items, stream))      # pictures of words that are gone
         if row.get("post_id") and not meta.get("awaiting_confirm"):
             # a Design artwork is added to the post's pictures; a post's own carousel replaces its earlier one
             (db.attach_media_to_draft if kind else db.attach_slides_to_draft)(store, row["post_id"], row_id)

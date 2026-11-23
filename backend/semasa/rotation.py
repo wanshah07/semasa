@@ -31,7 +31,12 @@ log = get_logger("semasa.rotation")
 # Semasa's own, Hand-drawn, Marker poster, Torn paper, Colour blocks, Neon, Cardboard, Chalkboard, Line map, Torn strips, Grid,
 # Image. "photo" is drawn ON a background picture and fails without one, and "threads" is a text-and-picture slide set of its
 # own, so those two stay a hand choice. "era" is not offered any more.
-LOOK_TURN = ("classic", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "grid", "image")
+LOOK_TURN = ("classic", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "grid", "image",
+             "journal")
+# "journal" (Diari, Wan 23 Nov 2026: "include the diari in automatic rotation") draws a picture on every slide, so it is a
+# CAROUSEL look: a lone poster or card never gets it (next_look(..., carousel=False)); and when its pictures cannot be made on an
+# automatic turn, the post is drawn in the Image look instead of failing (media_generator.process_slides, meta.look_auto).
+CAROUSEL_ONLY = ("journal",)
 # A stream that keeps one look. None does any more: LinkedIn and ws.regulab both take their turn through the poster looks,
 # each on its own turn (Wan, 21 Nov 2026: "check if linkedn and ws regulab post will auto use these posters, ikut turn").
 STREAM_LOOK: dict[str, str] = {}   # none now: LinkedIn takes its turn through the same poster looks (Wan, 21 Nov 2026)
@@ -143,13 +148,14 @@ def turn_for(store: Any, stream: str, bank: hook_bank.Bank | None = None, family
 # --- looks ---------------------------------------------------------------------------------------------------------------------
 
 
-def next_look(store: Any, stream: str, hidden: list[str] | None = None) -> str:
+def next_look(store: Any, stream: str, hidden: list[str] | None = None, carousel: bool = True) -> str:
     """The poster look this stream's next post is drawn in: the one after the last used in the turn, skipping the ones Wan hid
     and the latest few, so it follows the turn and never repeats."""
     if stream in STREAM_LOOK:
         return STREAM_LOOK[stream]
     gone = {str(h) for h in (hidden or [])}
-    order = [k for k in LOOK_TURN if k not in gone] or list(LOOK_TURN)
+    turn = [k for k in LOOK_TURN if carousel or k not in CAROUSEL_ONLY]       # a poster or a card has no pictures to draw
+    order = [k for k in turn if k not in gone] or turn
     used = [str(b.get("look") or "") for b in _briefs(store, stream) if b.get("look")]
     start = (order.index(used[0]) + 1) % len(order) if used and used[0] in order else 0
     window = set(used[:max(1, min(LOOK_WINDOW, len(order) - 1))])

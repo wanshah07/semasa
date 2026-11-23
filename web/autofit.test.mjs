@@ -59,7 +59,7 @@ ok(/out\.push\(\{ url: r\.url, warn: fullWarnFixed\(spec, r\)/.test(src), "rende
 const picker = readFileSync(new URL("./src/components/LookPicker.jsx", import.meta.url), "utf8");
 ok(/all\.pics\.map\(\(p, i\) => \(\{ n: i \+ 1,\s*warn: \(p\.warn \|\| \[\]\)/.test(picker), "the page reads the warnings of every slide, whatever the look");
 ok(/isStudioLook\(chosen\.look\) && !sample && problems\.length \? "full"/.test(picker) && picker.includes("Terlalu penuh untuk reka bentuk ini"), "and blocks the render with a message naming the slide");
-ok(STUDIO_LOOKS.length === 13, "thirteen looks drawn by this renderer, all through the same path");
+ok(STUDIO_LOOKS.length === 14, "fourteen looks drawn by this renderer, all through the same path (the Journal look included)");
 
 if (failed) { console.error(`${failed} auto-fit check(s) failed`); process.exit(1); }
 console.log("autofit: one search fits every card, and a card that cannot fit says so");

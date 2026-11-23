@@ -416,6 +416,17 @@ no maximum), drawn as 1080x1350 cards:
 }
 
 
+# The Journal look (Wan, 23 Nov 2026): a hand-inked picture fills the middle of every slide, so a slide has room for a headline, a
+# lead and one italic line, and no list of points. The set reads as one story (illustrated.py draws a picture per slide).
+JOURNAL_RULES = """
+
+JOURNAL LOOK. Every middle slide has a picture in the middle, so write the set as ONE STORY told slide by slide, and write each
+middle slide ONLY as: a "title" of at most 10 words, a "lead" (one sentence of at most 20 words), "points": [] (none), and a
+"note": ONE short closing line of at most 12 words that leads the reader to the next slide (the last slide's note is the plain
+takeaway). Facts go in the title and the lead, with their figure, entry or date; nothing is left for a list. Keep "foot" for a
+term that needs it. A slide that can be pictured (a person, a place, an object, a moment) reads better than an abstract one."""
+
+
 POSTER_RULES = {
     "regulab": """
 
@@ -980,6 +991,8 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     want_poster = fmt in ("poster", "card")      # a single card is written like a poster and drawn as one card
     if want_slides:
         system += SLIDES_RULES.get(stream, SLIDES_RULES["regulab"])
+        if look_of(idea) == "journal":
+            system += JOURNAL_RULES
     if want_poster:
         system += POSTER_RULES.get(stream, POSTER_RULES["regulab"])
     # A retry after a failure part-way (the draft written, then the picture jobs or the idea's own update failed) must
@@ -1129,7 +1142,8 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         # "My design" as the default, which is then the one new drafts use
         dd = settings.get("default_design") if isinstance(settings.get("default_design"), dict) else {}
         if not dd.get("id"):
-            idea = {**idea, "brief": {**brief0, "look": rotation.next_look(store, stream, dd.get("hidden"))}}
+            idea = {**idea, "brief": {**brief0, "look_auto": True,
+                                      "look": rotation.next_look(store, stream, dd.get("hidden"), carousel=fmt == "carousel")}}
     chosen = my_designs.for_idea(store, idea)      # the idea's look, or the default "My design" when it asked for none
     if fmt == "comic":
         # the comic IS the post's picture (17 Nov 2026): no other picture is made for it
@@ -1347,7 +1361,7 @@ def poster_job_for_draft(store: Any, post: dict[str, Any], words: list[dict[str,
     """The Design job that draws a poster for a draft that has none, in the look the Semasa rotation gives it."""
     idea = {"id": post.get("idea_id"), "brief": {}, "created_by": post.get("created_by")}
     stream = post.get("stream") or "regulab"
-    idea["brief"] = {"look": rotation.next_look(store, stream, None), "format": "poster"}
+    idea["brief"] = {"look": rotation.next_look(store, stream, None, carousel=False), "format": "poster"}
     return poster_job(idea, post, post["id"], words, bg=slide_ground(stream, False), chosen=(look_of(idea), None))
 
 
@@ -1410,7 +1424,14 @@ def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str 
                      **({"design": "threads", "format": "portrait"} if look == "threads" else {}),
                      "citation": post.get("citation") or "", "domain": post.get("domain"),
                      "angle": post.get("angle"), "bg": bg, "look": look, "fit": look != "classic",
+                     **({"look_auto": True} if look_auto(idea) else {}),
                      **({"review": review} if review else {}), **({"design_pack": saved} if saved else {})}}
+
+
+def look_auto(idea: dict[str, Any]) -> bool:
+    """True when the look was taken from the rotation, not chosen by Wan: a look that cannot be drawn then gives way."""
+    brief = idea.get("brief") if isinstance(idea.get("brief"), dict) else {}
+    return bool(brief.get("look_auto"))
 
 
 def slide_ground(stream: str, has_picture: bool) -> str:
@@ -1461,10 +1482,10 @@ def comic_job(idea: dict[str, Any], post: dict[str, Any], post_id: str) -> dict[
 
 
 LOOKS = ("classic", "grid", "era", "photo", "image", "threads", "hand", "marker", "torn", "block", "neon",
-         "deck", "chalk", "metro", "strip")
+         "deck", "chalk", "metro", "strip", "journal")
 # looks that show a picture ON the slide (Image, and the cover of the four poster looks): only the post's own picture is ever
 # placed there, never a stock ground from the library
-OWN_PICTURE_ONLY = ("image", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip")
+OWN_PICTURE_ONLY = ("image", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "journal")
 DEFAULT_LOOK = "image"          # Wan, 8 Nov 2026: the Image look (a picture ON the slide) is the default for new posts
 POSTER_DEFAULT_LOOK = "hand"    # Wan, 13 Nov 2026: a poster (format=poster) is the hand-drawn look by default
 

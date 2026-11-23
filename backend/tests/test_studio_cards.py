@@ -78,6 +78,7 @@ def test_a_studio_look_is_drawn_by_studio_and_recorded(monkeypatch, _uploads):
     assert done["meta"]["count"] == 4 and len(_uploads) == 4       # three drawn by Studio + the ws.regulab logo card
     assert seen == {"look": "era", "stream": "regulab", "eyebrow": "Kosmetik", "source": "NPRA, Garis Panduan",
                     "ground": None, "ground_mime": "image/jpeg", "size": None, "n": 3, "fit": False, "design": None,
+                    "final": True, "total": 4,           # a posted picture, and the set's length with its closing card
                     "mascots": [{"k": k, "url": f"/cards/mascots/{k}.webp"} for k in ("wave", "point", "confused", "shocked")]}
 
 

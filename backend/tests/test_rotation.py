@@ -109,9 +109,10 @@ def test_a_hidden_look_is_skipped_and_a_look_off_the_turn_starts_it_again():
     assert rotation.next_look(_store([{"look": "hand"}]), "regulab", ["marker"]) == "torn"
     assert rotation.next_look(_store([{"look": "chalk"}]), "regulab") == "metro", "where the live queue stands after chalk"
     assert rotation.next_look(_store([{"look": "photo"}]), "regulab") == "classic", "photo needs a picture: not in the turn"
-    assert rotation.next_look(_store([{"look": "image"}]), "regulab") == "classic", "the turn closes on image, then starts again"
+    assert rotation.next_look(_store([{"look": "image"}]), "regulab") == "journal", "Diari follows Image (Wan, 23 Nov 2026)"
+    assert rotation.next_look(_store([{"look": "journal"}]), "regulab") == "classic", "the turn closes on Diari, then restarts"
     assert rotation.LOOK_TURN == ("classic", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip",
-                                  "grid", "image")
+                                  "grid", "image", "journal")
     every = list(rotation.LOOK_TURN)
     assert rotation.next_look(_store(), "regulab", every) in rotation.LOOK_TURN, "hiding all of them never leaves nothing"
 

@@ -90,7 +90,8 @@ def test_the_worker_squeezes_a_nine_slide_ws_regulab_carousel_and_ends_it_on_the
     row = _job("regulab", _set(9))
     assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
     meta = saved["meta"]
-    assert meta["count"] == 6 and len(uploads) == 6 and meta["closing_logo"] is True and meta["squeezed_from"] == 9
+    # the brand cover is a picture in front of the first page (Wan, 23 Nov 2026), so five pages + cover + logo card = 7
+    assert meta["count"] == 7 and len(uploads) == 7 and meta["closing_logo"] is True and meta["squeezed_from"] == 9
     assert len(meta["slides"]) == 9                              # the words on the job are the ones written
 
 
@@ -116,7 +117,7 @@ def test_a_squeezed_set_that_fails_to_draw_is_drawn_as_written(worker, monkeypat
     monkeypatch.setattr(slides, "render", render)
     row = _job("regulab", _set(9))
     assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
-    assert seen == [5, 9] and saved["meta"]["count"] == 10 and saved["meta"]["squeezed_from"] is None
+    assert seen == [5, 9] and saved["meta"]["count"] == 11 and saved["meta"]["squeezed_from"] is None
 
 
 def test_a_studio_look_that_cannot_fit_a_slide_falls_back_to_the_classic_look(worker, monkeypatch):
@@ -180,7 +181,7 @@ def test_the_worker_puts_the_cover_first_for_ws_regulab_and_leaves_linkedin_alon
     saved, uploads = worker
     row = _job("regulab", _set(4))
     assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
-    assert saved["meta"]["cover"] is True and saved["meta"]["closing_logo"] is True and saved["meta"]["count"] == 5
+    assert saved["meta"]["cover"] is True and saved["meta"]["closing_logo"] is True and saved["meta"]["count"] == 6
     assert saved["meta"]["cover_v"] == carousel.COVER_VERSION, "the cover is marked with its design version"
     cover = Image.open(io.BytesIO(uploads[0])).convert("RGB")
     assert min(cover.getpixel((540, 20))) > 240 and cover.getpixel((540, 20)) != slides.PAPER    # the white cover (22 Nov 2026)
@@ -202,7 +203,7 @@ def test_a_first_slide_with_points_keeps_its_points_behind_a_cover_in_front(work
     # Wan, 11 Nov 2026 ("add cover in front"): the cover goes in front and the content slide follows whole
     assert saved["meta"]["cover"] is True
     assert saved["meta"]["slides"][0].get("front_cover") is True and saved["meta"]["slides"][1] == items[0]
-    assert saved["meta"]["count"] == len(items) + 1 + (1 if saved["meta"]["closing_logo"] else 0)
+    assert saved["meta"]["count"] == len(items) + 2 + (1 if saved["meta"]["closing_logo"] else 0)
 
 
 def test_a_hook_with_one_line_under_it_gets_the_cover_and_a_content_slide_does_not():

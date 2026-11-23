@@ -729,7 +729,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                         # a hand-inked picture for every slide, made once and kept on the job (illustrated.py): in the middle of
                         # the page in the Journal look, in a band at the foot in every other Studio look
                         try:
-                            drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm, cut=(look != "journal"),
+                            drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm, cut=False,
                                                          covered=not kind and stream != "linkedin")
                         except illustrated.ArtError as exc:
                             # With no picture maker, or on the last try, the post is still drawn rather than lost. Diari is
@@ -761,7 +761,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                     if illustrated.wants("classic", kind):
                         # Semasa's own look draws the slide's cut-out in a band at the foot too (illustrated.compose_band)
                         try:
-                            got = illustrated.with_art(store, s, row, meta, [dict(x) for x in words_in], stream, llm, cut=True,
+                            got = illustrated.with_art(store, s, row, meta, [dict(x) for x in words_in], stream, llm, cut=False,
                                                        covered=not kind and stream != "linkedin")
                             arts = [illustrated.art_bytes(x) for x in got]
                             art_used = True

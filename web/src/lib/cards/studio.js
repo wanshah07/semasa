@@ -4144,13 +4144,27 @@ async function renderBody(spec) {
   const foot = footOf(spec);
   return foot ? renderWithFoot(spec, foot) : renderCard(spec);
 }
+/* The picture as a card (Wan, 23 Nov 2026, revoking "the illustration must have transparent background"): fitted inside the box
+   without cropping, rounded, with a soft shadow, bottom-centred in it. The same card the worker's Pillow code draws on the classic
+   look and on the brand cover (illustrated.rounded_card). */
+function drawArtCard(ctx, im, x, y, w, h, u) {
+  const k = Math.min(w / im.naturalWidth, h / im.naturalHeight), dw = Math.round(im.naturalWidth * k), dh = Math.round(im.naturalHeight * k);
+  const dx = Math.round(x + (w - dw) / 2), dy = Math.round(y + h - dh), r = Math.round(24 * u);
+  const path = () => { ctx.beginPath(); ctx.moveTo(dx + r, dy); ctx.arcTo(dx + dw, dy, dx + dw, dy + dh, r); ctx.arcTo(dx + dw, dy + dh, dx, dy + dh, r);
+    ctx.arcTo(dx, dy + dh, dx, dy, r); ctx.arcTo(dx, dy, dx + dw, dy, r); ctx.closePath(); };
+  ctx.save();
+  ctx.shadowColor = "rgba(8,50,30,.30)"; ctx.shadowBlur = Math.round(22 * u); ctx.shadowOffsetY = Math.round(8 * u);
+  path(); ctx.fillStyle = "#EFEBE0"; ctx.fill();
+  ctx.restore();
+  ctx.save(); path(); ctx.clip(); ctx.drawImage(im, dx, dy, dw, dh); ctx.restore();
+}
 /* AN ILLUSTRATION ON EVERY PAGE, IN EVERY LOOK (Wan, 23 Nov 2026: "all carousel slide design follow diari size text, and must have
-   illustration but no need to have illustration at the centre page and no need to have same size with diary", then "same like other
-   slide design, make illustration with transparent background"). The look is drawn on a card ART_BAND shorter (the same trick as the
-   definition note's band), so its own type, auto-fit and "fuller than the card" test keep clear of the picture, and the worker's
-   hand-inked illustration for this slide, a transparent CUT-OUT with a thin white sticker border (illustrated.cutout), stands in a
-   band at the foot: not in the middle, no card behind it, smaller than Diari's. The band takes its colour from the card's own bottom
-   edge. A picture that will not load leaves the slide drawn without it, never a failed card. */
+   illustration but no need to have illustration at the centre page and no need to have same size with diary"). The look is drawn on
+   a card ART_BAND shorter (the same trick as the definition note's band), so its own type, auto-fit and "fuller than the card" test
+   keep clear of the picture, and the worker's hand-inked illustration for this slide stands in a band at the foot as a rounded
+   card with a soft shadow (drawArtCard): not in the middle, smaller than Diari's. (He asked for a transparent cut-out the same day
+   and revoked it: "revoke instruction that illustration with transparent background".) The band takes its colour from the card's
+   own bottom edge. A picture that will not load leaves the slide drawn without it, never a failed card. */
 const ART_BAND = 0.34;
 async function renderWithArt(spec) {
   const art = await jnImage(spec.art_pic);
@@ -4171,9 +4185,7 @@ async function renderWithArt(spec) {
   rr = Math.round(rr / k); gg = Math.round(gg / k); bb = Math.round(bb / k);
   ctx.fillStyle = "rgb(" + rr + "," + gg + "," + bb + ")"; ctx.fillRect(0, H - band, W, band);
   const M = Math.round(72 * u), padT = Math.round(14 * u), padB = Math.round(40 * u);
-  const aw = W - M * 2, ah = band - padT - padB;
-  const sc = Math.min(aw / art.naturalWidth, ah / art.naturalHeight), dw = art.naturalWidth * sc, dh = art.naturalHeight * sc;
-  ctx.drawImage(art, (W - dw) / 2, H - band + padT + (ah - dh), dw, dh);       // stands on the foot of the band, centred
+  drawArtCard(ctx, art, M, H - band + padT, W - M * 2, band - padT - padB, u);     // a rounded card with a soft shadow, centred in the band
   return { ...r, url: c.toDataURL("image/jpeg", 0.92), size: [W, H - band] };
 }
 async function renderSpecNow(spec) {
@@ -4309,9 +4321,8 @@ export async function renderCoverCard(o = {}) {
     for (const l of lead) { ctx.fillText(l, W / 2, y); y += bodyLh; }
   }
   if (artIm) {
-    const pad = Math.round(W * 0.05), bw = W - 2 * margin, bh = artH - pad;
-    const k = Math.min(bw / artIm.naturalWidth, bh / artIm.naturalHeight), dw = Math.round(artIm.naturalWidth * k), dh = Math.round(artIm.naturalHeight * k);
-    ctx.drawImage(artIm, Math.round((W - dw) / 2), H - pad - dh, dw, dh);
+    const pad = Math.round(W * 0.05);
+    drawArtCard(ctx, artIm, margin, H - artH, W - 2 * margin, artH - pad, W / 1080);       // the hook's picture, as a card at the foot
   }
   return { url: c.toDataURL("image/jpeg", 0.92), warn: [], template: "cover" };
 }

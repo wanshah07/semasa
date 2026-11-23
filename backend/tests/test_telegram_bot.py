@@ -278,9 +278,37 @@ def test_new_drafts_are_pushed_once_and_a_draft_still_drawing_waits():
                   db.MEDIA: [PIC, {"id": "m1", "status": "working", "generated_media_url": None}]})
     bot = Bot()
     tb.run(st, bot=bot, now=NOW, webhook=False)
-    assert [r["post_id"] for r in st.tables[tb.SENT]] == ["p1"], "p2 waits for its picture; a draft from before the link is not"
+    # p2 waits for its picture; the old draft is outside the announce window, but it is READY and was never answered, so the
+    # routine reminder (Wan, 23 Nov 2026) sends it
+    assert [r["post_id"] for r in st.tables[tb.SENT]] == ["p1", "old"]
     tb.run(st, bot=bot, now=NOW, webhook=False)
-    assert len(st.tables[tb.SENT]) == 1
+    assert len(st.tables[tb.SENT]) == 2
+
+
+def test_ready_drafts_still_waiting_are_sent_again_for_approval_routinely():
+    # Wan, 23 Nov 2026: "all carousel and ready draft send to semasa telegram for approval routinely"
+    sent_at = "2026-11-07T00:00:00+00:00"                                  # 12 hours before NOW
+    posts = [post("a", date="2026-11-08"), post("b", date="2026-11-09"), post("drawing", date="2026-11-08", media_ids=["m1"]),
+             post("fresh", date="2026-11-08"), post("hard", date="2026-11-08", text={"bm": {"instagram": "[SAHKAN: x]"}}),
+             post("bare", date="2026-11-08", media_ids=[], stream="regulab")]
+    sents = [{"post_id": i, "version": "2026-11-07T10:00:00.123456+00:00", "chat_id": CHAT, "message_id": 5, "sent_at": sent_at}
+             for i in ("a", "b", "drawing", "hard", "bare")]
+    sents.append({**sents[0], "post_id": "fresh", "sent_at": "2026-11-07T08:00:00+00:00"})     # reminded 4 hours ago
+    st = store(**{db.POSTS: posts, tb.SENT: sents, db.MEDIA: [PIC, {"id": "m1", "status": "working"}]})
+    bot = Bot()
+    n = tb.remind_pending_drafts(st, bot, LINK, NOW, limit=10)
+    got = [m["text"] for m in bot.sent()]
+    assert n == 2 and all(t.startswith(tb.REMIND_INTRO) for t in got), got       # a and b only
+    assert tb.remind_pending_drafts(st, bot, LINK, NOW, limit=10) == 0, "reminded once inside the window"
+    assert all(p["status"] == "draft" for p in st.tables[db.POSTS]), "a reminder writes no status: the tap is the gate"
+    # the limit, the quiet hours and the switch
+    st2 = store(**{db.POSTS: posts[:2], tb.SENT: sents[:2]})
+    assert tb.remind_pending_drafts(st2, Bot(), LINK, NOW, limit=1) == 1
+    night = datetime(2026, 11, 7, 17, 0, tzinfo=UTC)                          # 01:00 Malaysia
+    assert tb.remind_pending_drafts(store(**{db.POSTS: posts[:1], tb.SENT: sents[:1]}), Bot(), LINK, night) == 0
+    off = store(**{db.POSTS: posts[:1], tb.SENT: sents[:1],
+                   db.SETTINGS: [{"key": "telegram_chat", "value": {"remind_hours": 0}}]})
+    assert tb.remind_pending_drafts(off, Bot(), LINK, NOW) == 0
 
 
 def test_status_and_billing_read_without_error():

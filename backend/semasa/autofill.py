@@ -427,8 +427,8 @@ def pick(pool: list[dict[str, Any]], stream: str, allow: list[str] | None, day: 
             return x
     fitting = [x for x in pool if fits(x, stream, allow)]
     if stream == "linkedin":
-        # the best tier, and the newest item inside it
-        return min(fitting, key=lambda x: (linkedin_tier(x), age_of(x)), default=None)
+        # the subject Wan wants most, then the best tier inside it, then the newest item
+        return min(fitting, key=lambda x: (linkedin_subject(x), linkedin_tier(x), age_of(x)), default=None)
     return fitting[0] if fitting else None
 
 
@@ -457,6 +457,25 @@ def linkedin_tier(item: dict[str, Any]) -> int:
         text = f"{item.get('title') or ''} {item.get('summary') or ''}"
         return 0 if (ANNOUNCEMENT.search(text) or UPDATED_GUIDELINE.search(text)) else 1
     return LINKEDIN_LATER.get(str(section), 5)
+
+
+# LinkedIn's subject order (Wan, 23 Nov 2026: "for linkedn, add more about halal>cosmetic>pharma>research"): halal first, then
+# cosmetics, then pharmaceuticals, then research; any other subject (food, an unlabelled notice) after all four. It comes BEFORE
+# the tier above, so a halal guideline on an official website beats an updated cosmetic circular; inside one subject the tier
+# order and then the newest item still decide.
+LINKEDIN_SUBJECTS = {"halal_my": 0, "fatwa": 0, "kosmetik": 1, "farmaseutikal": 2, "sains_kosmetik": 3}
+
+
+def linkedin_subject(item: dict[str, Any]) -> int:
+    """0 halal (and fatwa), 1 cosmetics, 2 pharmaceuticals, 3 research (a paper), 4 anything else."""
+    if item.get("section") == "publication":
+        return 3
+    return LINKEDIN_SUBJECTS.get(str(item.get("domain") or ""), 4)
+
+
+def linkedin_angle(item: dict[str, Any]) -> str:
+    """The writer's angle: F for a paper, B (halal) for a halal or fatwa item, else A (a regulatory change)."""
+    return "F" if item.get("section") == "publication" else ("B" if linkedin_subject(item) == 0 else "A")
 
 
 def fits(item: dict[str, Any], stream: str, allow: list[str] | None) -> bool:
@@ -547,7 +566,7 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                                        + (f" (Rujukan dalam dokumen: {(item.get('raw') or {}).get('cite')})"
                                           if (item.get("raw") or {}).get("cite") else ""))[:4000] or None,
                     "stream": stream, "domain": domain,
-                    "angle": ("F" if item.get("section") == "publication" else "A") if stream == "linkedin" else None,
+                    "angle": linkedin_angle(item) if stream == "linkedin" else None,
                     "make_media": "image", "status": "new", "created_by": None,
                     **({"make_slides": True} if fmt == "carousel" else {}),
                     # no note: the writer reads a note as Wan's words, and a note also lifts the already-published

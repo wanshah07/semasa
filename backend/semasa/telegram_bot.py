@@ -1242,6 +1242,66 @@ def push_new_drafts(store: Any, bot: Bot, link: dict[str, Any], now: datetime | 
     return n
 
 
+REMIND_HOURS = 12                      # hours before a ready draft still waiting is asked about again (0 = off)
+REMIND_PER_RUN = 3                     # reminders a run: never a flood, soonest slot first, the rest follow on later runs
+QUIET_FROM, QUIET_TO = 23, 7           # no reminders from 23:00 to 07:00 Malaysia time
+REMIND_INTRO = "⏰ Peringatan: draf ini siap dan masih menunggu kelulusan anda"
+
+
+def remind_hours(store: Any) -> float:
+    try:
+        raw = tt.chat_state(store).get("remind_hours")
+        return REMIND_HOURS if raw is None else max(0.0, float(raw))
+    except Exception:  # noqa: BLE001
+        return float(REMIND_HOURS)
+
+
+def remind_pending_drafts(store: Any, bot: Bot, link: dict[str, Any], now: datetime | None = None,
+                          limit: int = REMIND_PER_RUN) -> int:
+    """Every READY draft, a carousel or a single card, that is still waiting for Wan is sent to Telegram again, with its
+    pictures and its Approve / Reject buttons, every `remind_hours` (Wan, 23 Nov 2026: "all carousel and ready draft send to
+    semasa telegram for approval routinely"). push_new_drafts announces a draft once and only for 3 days, so a draft he did
+    not answer, or one written before the link, was never asked about again (settings telegram_chat.remind_hours sets the
+    hours). Ready = its pictures are drawn (none still queued or being drawn) and nothing blocks its approval; a draft
+    still drawing or blocked is not asked about. Soonest slot first, at most `limit` a run, and quietly nothing from 23:00
+    to 07:00 Malaysia time. Never writes a status: Wan's tap is still the gate."""
+    now = now or datetime.now(UTC)
+    every = remind_hours(store)
+    hour = (now + timedelta(hours=8)).hour
+    if every <= 0 or not draft_alerts_on(store) or hour >= QUIET_FROM or hour < QUIET_TO:
+        return 0
+    chat = int(link["chat_id"])
+    sent = {r["post_id"]: r for r in store.table(SENT).select("post_id,message_id,sent_at").execute().data or []}
+    due_before = (now - timedelta(hours=every)).isoformat()
+    from .publisher import media_for
+    n = 0
+    for p in drafts(store, 200, now):
+        if n >= limit:
+            break
+        last = sent.get(p["id"]) or {}
+        if last and (last.get("message_id") is None or str(last.get("sent_at") or "") > due_before):
+            continue                      # claimed a moment ago, or reminded inside the window
+        media = media_for(store, list(p.get("media_ids") or []))
+        jobs = store.table(db.MEDIA).select("id,status,provider").eq("post_id", p["id"]) \
+            .in_("status", ["pending", "processing"]).execute().data or []
+        drawing = [m for m in media if m.get("status") not in ("done", "error")]
+        if drawing or [j for j in jobs if (j.get("provider") or "") != "unsplash"]:
+            continue                      # still drawing
+        if not media and not p.get("slides") and p.get("stream") != "linkedin":
+            continue                      # a ws.regulab draft with no picture at all is not ready
+        if blockers(store, p, now):
+            continue                      # cannot be approved as it stands: Wan is told in /draf, not nagged
+        try:
+            send_draft(store, bot, chat, p, now, intro=REMIND_INTRO)
+            n += 1
+            db.log_event(store, "info", "post", "post.reminded", f"Telegram: peringatan kelulusan: "
+                         f"{str(p.get('hook') or p['id'])[:80]}", ref_table=db.POSTS, ref_id=p["id"],
+                         detail={"stream": p.get("stream") or "regulab", "date": p.get("date"), "slot": p.get("slot")})
+        except Exception as exc:  # noqa: BLE001 - one draft that will not send never stops the rest
+            log.warning("reminder for %s not sent: %s", p["id"], scrub(exc, getattr(bot, "token", ""))[:160])
+    return n
+
+
 def announce(store: Any, bot: Bot | None = None, now: datetime | None = None) -> dict[str, Any]:
     """`python -m semasa.draft_announce`: the new drafts only, quietly nothing with no bot token or no linked account."""
     bot = bot if bot is not None else make_bot()
@@ -1250,7 +1310,7 @@ def announce(store: Any, bot: Bot | None = None, now: datetime | None = None) ->
     link = link_of(store)
     if not link:
         return {"pushed": 0, "note": "no Telegram account linked yet"}
-    return {"pushed": push_new_drafts(store, bot, link, now)}
+    return {"pushed": push_new_drafts(store, bot, link, now), "reminded": remind_pending_drafts(store, bot, link, now)}
 
 
 def notify(store: Any, text: str, bot: Bot | None = None) -> bool:
@@ -1324,6 +1384,7 @@ def run(store: Any, bot: Bot | None = None, now: datetime | None = None, llm_fac
             .eq("id", row["id"]).execute()
     if push:
         out["pushed"] = push_new_drafts(store, bot, link, now)
+        out["reminded"] = remind_pending_drafts(store, bot, link, now)
         out["videos"] = push_videos(store, bot, link, now)
         out["storyboards"] = push_storyboards(store, bot, link)
     return out

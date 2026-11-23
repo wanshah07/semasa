@@ -343,15 +343,16 @@ ART_BAND = 0.36            # the share of the cover's height the hook's illustra
 
 
 def _art_band(canvas: Image.Image, art: bytes, band: int) -> None:
-    """The hook's illustration, a transparent cut-out (illustrated.cutout), standing on the foot of the cover: fitted inside the
-    band without cropping, centred, no card behind it, so the cover's light-blue rings show round it."""
+    """The hook's illustration, a rounded card with a soft shadow (Wan, 23 Nov 2026, no cut-out), at the foot
+    of the cover: fitted inside the band without cropping and centred, the cover's light-blue rings round it."""
+    from .illustrated import rounded_card
     w, h = canvas.size
     margin = round(w * 0.11)
-    pic = Image.open(io.BytesIO(art)).convert("RGBA")
-    box_w, box_h = w - 2 * margin, band - round(w * 0.05)
-    scale = min(box_w / pic.width, box_h / pic.height)
-    pic = pic.resize((max(1, round(pic.width * scale)), max(1, round(pic.height * scale))), Image.LANCZOS)
-    canvas.paste(pic, ((w - pic.width) // 2, h - round(w * 0.05) - pic.height), pic)
+    shadow = round(w * 0.012)
+    card = rounded_card(art, (w - 2 * margin, band - round(w * 0.05)), round(w * 0.022), shadow)
+    pad = shadow * 2
+    pw, ph = card.size[0] - 2 * pad, card.size[1] - 2 * pad
+    canvas.paste(card, ((w - pw) // 2 - pad, h - round(w * 0.05) - ph - pad), card)
 
 
 def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes | None = None,

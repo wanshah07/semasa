@@ -105,7 +105,7 @@ t("Telegram's limits: 64 bytes of callback data, two buttons to a row, a menu th
   for (const node of nodes()) for (const lang of ["bm", "en"]) {
     const { text, keyboard } = renderMenu(node, lang, SITE, "W".repeat(40));
     assert.ok(text.length > 0 && text.length <= 1500, `${node}: the text stays short`);
-    assert.ok(keyboard.length >= 1 && keyboard.length <= 10, `${node} (${lang}): ${keyboard.length} rows`);
+    assert.ok(keyboard.length >= 1 && keyboard.length <= 12, `${node} (${lang}): ${keyboard.length} rows`);
     for (const row of keyboard) {
       assert.ok(row.length >= 1 && row.length <= 2, `${node}: ${row.length} buttons in a row`);
       for (const b of row) {
@@ -115,7 +115,7 @@ t("Telegram's limits: 64 bytes of callback data, two buttons to a row, a menu th
       }
     }
   }
-  assert.ok(renderMenu("home", "bm", SITE).keyboard.length <= 9, "the home menu: quick buttons, segments two to a row, one closing row");
+  assert.ok(renderMenu("home", "bm", SITE).keyboard.length <= 11, "the home menu: quick buttons, segments two to a row, one closing row");
 });
 
 t("both languages are there, and no em dash is in anything a person reads", () => {

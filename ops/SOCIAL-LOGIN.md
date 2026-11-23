@@ -19,7 +19,9 @@ python instagram_login.py
 ```
 
 (`python -m pip` and not `pip`: on Windows `pip` is often not on the PATH. No virtual environment is needed. If `python` is not
-found, install **Python 3.12** from python.org and tick "Add python.exe to PATH".)
+found, install **Python 3.12** from python.org and tick "Add python.exe to PATH". **On a Mac the command is `python3`**
+(`python3 -m pip install playwright`, `python3 -m playwright install chromium`, `python3 instagram_login.py`), because the
+python.org installer does not create a `python` command; use `python3` for the repo route in step 2 too.)
 
 A browser opens. Log in to the throwaway **Instagram** account (finish any code or "is this you" prompt, wait for the feed), press
 Enter in the terminal, log in to the throwaway **Facebook** account the same way (not "Log in with Facebook"), press Enter. The

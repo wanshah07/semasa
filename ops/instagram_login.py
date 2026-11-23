@@ -6,7 +6,7 @@ Run it on your own computer (Windows PowerShell is fine), from any folder:
     python -m playwright install chromium
     python instagram_login.py
 
-It opens a browser. Log in to the throwaway INSTAGRAM account (finish any code or "is this you" prompt, wait for the feed), press
+On a Mac, type python3 wherever it says python. It opens a browser. Log in to the throwaway INSTAGRAM account (finish any code or "is this you" prompt, wait for the feed), press
 Enter here, then log in to the throwaway FACEBOOK account the same way and press Enter again. It then writes `secret.txt`: paste the
 WHOLE text of that file as the GitHub secret PW_STORAGE_STATE_B64 (repo wanshah07/semasa, Settings, Secrets and variables, Actions).
 It prints names and sizes only, never a cookie. Never use ws.regulab, Valorith, FACERINNA or a personal account. See

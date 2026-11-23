@@ -397,14 +397,22 @@ def take_answer(store: Any, link: dict[str, Any], kind: str, text: str, inbox_id
     return reply, [menu.back_row(lang, menu.ASK_TAB.get(key, ""), keep=done)]
 
 
-def carousel_options(post_id: str) -> tuple[str, list[list[dict[str, str]]]]:
-    return ("🖼 Carousel\n\nChoose the slide design first:", [
-        [{"text": "Threads", "callback_data": f"c:pcpick:{post_id}:threads"}],
-        [{"text": "Grid", "callback_data": f"c:pcpick:{post_id}:grid"},
-         {"text": "Info ERA", "callback_data": f"c:pcpick:{post_id}:era"}],
-        [{"text": "Photo", "callback_data": f"c:pcpick:{post_id}:photo"},
-         {"text": "Image", "callback_data": f"c:pcpick:{post_id}:image"}],
-        _back("c:post", "⬅ Post")])
+def look_buttons(kind: str, post_id: str, prefix: str, lang: str) -> list[list[dict[str, str]]]:
+    """The design buttons under a draft's Carousel or Single card: every look in rules/telegram_menu.json looks[kind], in the
+    page's names and the menu's language, two to a row. Diari (journal) leads the carousel's, alone on its row: the primary look
+    (Wan, 23 Nov 2026)."""
+    keys = list(menu.LOOKS[kind])
+    buttons = [{"text": ("✨ " if i == 0 and kind == "post_carousel" else "") + menu.look_name(k, lang),
+                "callback_data": f"c:{prefix}:{post_id}:{k}"} for i, k in enumerate(keys)]
+    first = buttons[:1] if kind == "post_carousel" else []
+    return [*([first] if first else []), *[buttons[i:i + 2] for i in range(len(first), len(buttons), 2)]]
+
+
+def carousel_options(post_id: str, lang: str = "en") -> tuple[str, list[list[dict[str, str]]]]:
+    note = ("✨ Diari = a hand-inked picture on every slide (one AI picture per slide)."
+            if menu.lang_of(lang) == "en" else "✨ Diari = lukisan dakwat pada setiap slaid (satu gambar AI setiap slaid).")
+    return (f"🖼 Carousel\n\nChoose the slide design first:\n{note}",
+            [*look_buttons("post_carousel", post_id, "pcpick", lang), _back("c:post", "⬅ Post")])
 
 
 def picture_options(post_id: str, look: str) -> tuple[str, list[list[dict[str, str]]]]:
@@ -414,14 +422,9 @@ def picture_options(post_id: str, look: str) -> tuple[str, list[list[dict[str, s
         _back("c:post", "⬅ Post")])
 
 
-def single_options(post_id: str) -> tuple[str, list[list[dict[str, str]]]]:
-    return ("🎨 Single card\n\nChoose the slide design:", [
-        [{"text": "Semasa", "callback_data": f"c:scpick:{post_id}:classic"}],
-        [{"text": "Grid", "callback_data": f"c:scpick:{post_id}:grid"},
-         {"text": "Info ERA", "callback_data": f"c:scpick:{post_id}:era"}],
-        [{"text": "Photo", "callback_data": f"c:scpick:{post_id}:photo"},
-         {"text": "Image", "callback_data": f"c:scpick:{post_id}:image"}],
-        _back("c:post", "⬅ Post")])
+def single_options(post_id: str, lang: str = "en") -> tuple[str, list[list[dict[str, str]]]]:
+    return ("🎨 Single card\n\nChoose the slide design:",
+            [*look_buttons("post_card", post_id, "scpick", lang), _back("c:post", "⬅ Post")])
 
 
 def single_picture_options(post_id: str, look: str) -> tuple[str, list[list[dict[str, str]]]]:

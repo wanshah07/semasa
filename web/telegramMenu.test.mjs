@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { segmentsOf, tabsOf } from "./src/lib/tabs.js";
 import { parseHash, subOf } from "./src/lib/deepLink.js";
 import { BUILTIN_LOOKS, DEFAULT_LOOK } from "./src/lib/lookChoice.js";
+import { LOOKS } from "./src/lib/cards/studio.js";
 import DATA from "../supabase/functions/semasa-telegram/menu_data.js";
 import { CALLBACK_MAX, homeRow, langOf, menuEdit, nodeOf, nodes, pageUrl, readOf, renderMenu, safeSite, tabs } from "../supabase/functions/semasa-telegram/menu.js";
 import { commandReply, fastRead } from "../supabase/functions/semasa-telegram/commands.js";
@@ -137,13 +138,17 @@ t("both languages are there, and no em dash is in anything a person reads", () =
 });
 
 t("the looks a poster or a carousel button offers are looks the page has, under the page's own names", () => {
-  const src = read("./src/components/SlidesEditor.jsx");
-  for (const kind of ["poster", "carousel"]) for (const k of RULES.looks[kind]) {
-    assert.ok(BUILTIN_LOOKS.includes(k), `${k} is not a look`);
+  // the page's own names are the picker's (cards/studio.js LOOKS: bm and en)
+  for (const kind of ["poster", "carousel", "post_carousel", "post_card"]) for (const k of RULES.looks[kind]) {
     const name = RULES.looks.names[k];
-    const pair = name.bm === name.en ? `["${k}", "${name.bm}"]` : `["${k}", t("${name.bm}", "${name.en}")]`;
-    assert.ok(src.includes(pair), `${k}: the page calls it something else (SlidesEditor.jsx groups)`);
+    assert.ok(name, `${k} has no name`);
+    if (k === "threads") continue;                    // Threads is the picker's own entry (lib/threadsSlides.js), not one of Studio's looks
+    assert.ok(BUILTIN_LOOKS.includes(k), `${k} is not a look`);
+    const page = LOOKS.find((l) => l.k === k);
+    assert.deepEqual({ bm: name.bm, en: name.en }, { bm: page.bm, en: page.en }, `${k}: the page calls it something else`);
   }
+  assert.equal(RULES.looks.post_carousel[0], "journal", "Diari leads the buttons under a draft");
+  assert.ok(!RULES.looks.post_card.includes("journal") && !RULES.looks.post_card.includes("threads"), "a single card never offers Diari or Threads");
   assert.equal(RULES.looks.carousel[0], DEFAULT_LOOK);
   assert.equal(RULES.looks.poster.length, 9, "the hand-drawn default and the eight poster looks");
 });

@@ -44,7 +44,7 @@ export default function IdeaComposer({ open, onClose, trend, user, brand, onToas
   // the slide design: what Wan picked, else the DEFAULT of My designs (chosen in the same place as Semasa, Grid, Info ERA and Photo)
   const { designs, defaultId, hiddenLooks } = useDesigns();
   const [lookPick, setLook] = useState(null);
-  const look = lookPick ?? startLook({ designs, defaultId, hidden: hiddenLooks });
+  const look = lookPick ?? startLook({ designs, defaultId, hidden: hiddenLooks, carousel: format === "carousel" });
   const [lookBlocked, setLookBlocked] = useState(null);
   const [domain, setDomain] = useState("");
   const [angle, setAngle] = useState("");

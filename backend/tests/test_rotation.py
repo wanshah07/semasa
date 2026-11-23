@@ -74,7 +74,7 @@ def test_the_turn_survives_a_store_that_cannot_answer():
             raise RuntimeError("down")
     t = rotation.turn_for(Broken(), "regulab")
     assert t.assigned == 1 and t.recent == []
-    assert rotation.next_look(Broken(), "regulab") == "classic"
+    assert rotation.next_look(Broken(), "regulab", carousel=False) == "classic"
 
 
 # --- the poster looks ------------------------------------------------------------------------------------------------------
@@ -84,7 +84,7 @@ def test_the_looks_follow_the_turn_and_never_repeat():
     looks: list[str] = []
     briefs: list[dict] = []
     for _ in range(33):
-        look = rotation.next_look(_store(briefs), "regulab")
+        look = rotation.next_look(_store(briefs), "regulab", carousel=False)
         assert look not in looks[:4]
         looks.insert(0, look)
         briefs.insert(0, {"look": look})
@@ -98,7 +98,7 @@ def test_linkedin_and_ws_regulab_each_take_their_own_turn_through_the_posters():
         briefs: list[dict] = []
         looks: list[str] = []
         for _ in range(len(rotation.LOOK_TURN)):
-            look = rotation.next_look(_store(briefs, stream=stream), stream)
+            look = rotation.next_look(_store(briefs, stream=stream), stream, carousel=False)
             looks.append(look)
             briefs.insert(0, {"look": look})
         assert looks == list(rotation.LOOK_TURN), stream
@@ -106,15 +106,24 @@ def test_linkedin_and_ws_regulab_each_take_their_own_turn_through_the_posters():
 
 
 def test_a_hidden_look_is_skipped_and_a_look_off_the_turn_starts_it_again():
-    assert rotation.next_look(_store([{"look": "hand"}]), "regulab", ["marker"]) == "torn"
-    assert rotation.next_look(_store([{"look": "chalk"}]), "regulab") == "metro", "where the live queue stands after chalk"
-    assert rotation.next_look(_store([{"look": "photo"}]), "regulab") == "classic", "photo needs a picture: not in the turn"
-    assert rotation.next_look(_store([{"look": "image"}]), "regulab") == "journal", "Diari follows Image (Wan, 23 Nov 2026)"
-    assert rotation.next_look(_store([{"look": "journal"}]), "regulab") == "classic", "the turn closes on Diari, then restarts"
+    def nxt(used, hidden=None):
+        return rotation.next_look(_store([{"look": used}] if used else []), "regulab", hidden, carousel=False)
+    assert nxt("hand", ["marker"]) == "torn"
+    assert nxt("chalk") == "metro", "where the live queue stands after chalk"
+    assert nxt("photo") == "classic", "photo needs a picture: not in the turn"
+    assert nxt("image") == "classic", "the turn closes on image, then starts again"
     assert rotation.LOOK_TURN == ("classic", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip",
-                                  "grid", "image", "journal")
+                                  "grid", "image"), "Diari is not in it: carousels take Diari, the turn is for posters"
     every = list(rotation.LOOK_TURN)
-    assert rotation.next_look(_store(), "regulab", every) in rotation.LOOK_TURN, "hiding all of them never leaves nothing"
+    assert nxt("", every) in rotation.LOOK_TURN, "hiding all of them never leaves nothing"
+
+
+def test_every_carousel_takes_diari_unless_wan_hid_it():
+    # Wan, 23 Nov 2026: "jadikan diari test carousel sebagai primary and main"
+    for used in ("", "hand", "image", "journal"):
+        assert rotation.next_look(_store([{"look": used}] if used else []), "regulab") == "journal", used
+        assert rotation.next_look(_store([{"look": used}] if used else []), "linkedin") == "journal", used
+    assert rotation.next_look(_store([{"look": "journal"}]), "regulab", ["journal"]) in rotation.LOOK_TURN
 
 
 # --- the writer ------------------------------------------------------------------------------------------------------------
@@ -192,7 +201,7 @@ def test_a_diari_carousel_reaches_the_job_as_journal_never_as_classic(offline):
 
 def test_an_automatic_turn_of_diari_reaches_the_job_marked_so_it_can_give_way(offline):
     llm = Seq({**GOOD, "hook_shape": 4, "slides": DIARI})
-    store = _store([{"hook_shape": 4, "look": "image"}])                  # the turn after Image is Diari
+    store = _store([{"hook_shape": 4, "look": "hand"}])                   # Diari takes every carousel, whatever came before
     _write(llm, store, make_media="image", make_slides=True, brief={"format": "carousel"})
     job = next(m for m in store.tables["media_generations"] if (m.get("meta") or {}).get("slides"))
     assert job["meta"]["look"] == "journal" and job["meta"]["look_auto"] is True

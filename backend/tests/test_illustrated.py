@@ -137,7 +137,8 @@ def test_the_look_is_known_to_every_list_and_only_a_carousel_draws_pictures():
     assert "journal" in studio_cards.LOOKS and "journal" in ideas.LOOKS and "journal" in ideas.OWN_PICTURE_ONLY
     assert illustrated.wants("journal", "") and not illustrated.wants("journal", "poster") and not illustrated.wants("grid", "")
     from semasa import rotation
-    assert "journal" in rotation.LOOK_TURN, "Diari is in the automatic rotation (Wan, 23 Nov 2026)"
+    assert "journal" not in rotation.LOOK_TURN, "the turn is for posters; every carousel takes Diari (Wan, 23 Nov 2026)"
+    assert ideas.DEFAULT_LOOK == "journal"
     assert "JOURNAL LOOK" in ideas.JOURNAL_RULES and carousel.has_logo_card("regulab", 3)
 
 
@@ -234,12 +235,12 @@ def test_a_slide_with_too_many_words_for_its_picture_says_so():
 
 # ---- Diari in the automatic rotation, a green ground, the white cover kept (Wan, 23 Nov 2026) ----------------------------------
 
-def test_a_lone_poster_or_card_never_takes_diari_but_a_carousel_does():
+def test_a_lone_poster_or_card_never_takes_diari_but_a_carousel_always_does():
     from semasa import rotation
     store = FakeStore(semasa_ideas=[{"stream": "regulab", "brief": {"look": "image"}, "updated_at": "2026-11-23"}])
     assert rotation.next_look(store, "regulab", None, carousel=True) == "journal"
-    assert rotation.next_look(store, "regulab", None, carousel=False) == "classic", "a poster skips it and starts the turn again"
-    every = [k for k in rotation.LOOK_TURN if k != "journal"]
+    assert rotation.next_look(store, "regulab", None, carousel=False) == "classic", "a poster has the turn, which starts again"
+    every = list(rotation.LOOK_TURN)
     assert rotation.next_look(store, "regulab", every, carousel=False) != "journal"
     assert rotation.next_look(store, "regulab", ["journal"], carousel=True) != "journal", "Wan can hide it in the picker"
 

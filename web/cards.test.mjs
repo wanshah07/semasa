@@ -72,7 +72,7 @@ ok(!specsFor([{ title: "t", points: [] }], { look: "grid" })[0].mascot, "no pose
 ok(!specsFor([{ title: "t", points: ["a"], template: "e_flow" }], { look: "era", mascots: M })[0].mascot, "e_flow never carries a mascot (Studio)");
 ok(!specsFor([{ title: "t", points: [], mascot: "wave", template: "e_vs" }], { mascots: M })[0].mascot, "a pose chosen on an old slide is not drawn either");
 ok(!specsFor([{ title: "t", points: ["a"] }], { design: { look: "grid", mascot: "wave" }, mascots: M })[0].mascot, "nor is a saved design's pose");
-ok(LOOKS.map((l) => l.k).join(",") === "classic,hand,marker,torn,block,neon,deck,chalk,metro,strip,grid,era,photo,image,journal", "the fifteen looks, Semasa's own first, the eight poster looks after Hand-drawn, the Journal look last");
+ok(LOOKS.map((l) => l.k).join(",") === "journal,classic,hand,marker,torn,block,neon,deck,chalk,metro,strip,grid,era,photo,image", "the fifteen looks, Diari first (the primary look), then Semasa's own, the eight poster looks after Hand-drawn");
 
 // Studio's "Reset from caption": every paragraph kept, asks and the website never built onto the artwork
 {

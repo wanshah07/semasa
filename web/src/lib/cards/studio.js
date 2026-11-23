@@ -3477,6 +3477,9 @@ async function renderSkinCard(spec) {
 }
 
 export const LOOKS = [
+  // Diari, the primary look (Wan, 23 Nov 2026): a hand-inked illustration in the middle of every slide, drawn for its own words (illustrated.py)
+  { k: "journal", bm: "Diari", en: "Journal", hintBm: "Latar hijau muda, tulisan hijau tua yang jelas dibaca, tajuk serif editorial, lukisan dakwat berwarna di tengah setiap slaid yang dilukis untuk isi slaid itu, satu baris italik di bawah. Setiap slaid menggunakan satu gambar AI: kos kredit.",
+    hintEn: "Light-green ground with dark-green type that reads easily, an editorial serif headline, a hand-inked illustration in the middle of every slide drawn for that slide's own words, one italic line at the foot. Every slide uses one AI picture: it costs credits." },
   { k: "classic", bm: "Semasa", en: "Semasa", hintBm: "Reka bentuk asal Semasa: kertas krim, tajuk serif, nombor slaid.",
     hintEn: "Semasa's own drawing: cream paper, serif headline, slide numbers." },
   { k: "hand", bm: "Lukisan tangan", en: "Hand-drawn", hintBm: "Papan kelabu-biru, kad putih sempadan bergetar, tajuk marker + highlighter kuning, jadual HEAD TO HEAD.",
@@ -3507,9 +3510,6 @@ export const LOOKS = [
     hintEn: "Studio: your picture behind the words, on every slide. Needs a background picture." },
   { k: "image", bm: "Gambar", en: "Image", hintBm: "Gambar anda DI ATAS slaid: panel, cetakan bertampal, poster condong atau skrin telefon. Slaid tanpa gambar tetap lengkap.",
     hintEn: "Your picture ON the slide: a panel, a taped print, a tipped poster or a phone screen. A slide with no picture is still complete." },
-  // Wan, 23 Nov 2026: a hand-inked illustration in the middle of every slide, drawn for the slide's own words (illustrated.py)
-  { k: "journal", bm: "Diari", en: "Journal", hintBm: "Latar hijau muda, tulisan hijau tua yang jelas dibaca, tajuk serif editorial, lukisan dakwat berwarna di tengah setiap slaid yang dilukis untuk isi slaid itu, satu baris italik di bawah. Setiap slaid menggunakan satu gambar AI: kos kredit.",
-    hintEn: "Light-green ground with dark-green type that reads easily, an editorial serif headline, a hand-inked illustration in the middle of every slide drawn for that slide's own words, one italic line at the foot. Every slide uses one AI picture: it costs credits." },
 ];
 /** A template key as a short readable name ("e_myth" → "ERA · Myth vs fact"), for hand-offs and logs. */
 export const templateLabel = (k) => ({ g_title: "Grid · Title", g_stat: "Grid · Number", g_bars: "Grid · Bars", g_rows: "Grid · Numbered", g_table: "Grid · Table",

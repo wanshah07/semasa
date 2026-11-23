@@ -4,8 +4,13 @@
    A built-in design can be REMOVED from the picker: it is hidden, never deleted. Its drawing code stays, so a draft that already
    uses it still re-renders, and it comes back with one click. The list lives in semasa_settings.default_design.hidden (an existing
    row, so no SQL). At least one built-in design always stays: the picker is never empty. */
-export const BUILTIN_LOOKS = ["classic", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "grid", "era", "photo", "image", "journal"];
-export const DEFAULT_LOOK = "image";
+/* Wan, 23 Nov 2026: "jadikan diari test carousel sebagai primary and main": Diari (journal) is the first look in the picker and the
+   default for every new CAROUSEL. A lone poster or card cannot take it (it draws a picture on every slide), so those start on the look
+   that was the default before (Image) and the picker still lists Diari first. */
+export const BUILTIN_LOOKS = ["journal", "classic", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "grid", "era", "photo", "image"];
+export const DEFAULT_LOOK = "journal";
+export const POSTER_START_LOOK = "image";
+export const CAROUSEL_ONLY = ["journal"];
 
 export const hiddenOf = (v) => (Array.isArray(v) ? v.filter((k) => BUILTIN_LOOKS.includes(k)) : []);
 
@@ -24,10 +29,11 @@ export function hide(hidden, key, all = BUILTIN_LOOKS) {
 }
 export const restore = (hidden, key) => hiddenOf(hidden).filter((k) => k !== key);
 
-/** The look a new post starts on: the default saved design when there is one, else Image, else the first look still offered. */
-export function startLook({ designs = [], defaultId = "", hidden = [] } = {}) {
+/** The look a new post starts on: the default saved design when there is one, else Diari for a carousel (Image for a poster or card,
+ *  which cannot take it), else the first look still offered. */
+export function startLook({ designs = [], defaultId = "", hidden = [], carousel = true } = {}) {
   if (defaultId && designs.some((d) => d.id === defaultId)) return `d:${defaultId}`;
-  const h = hiddenOf(hidden);
-  if (!h.includes(DEFAULT_LOOK)) return DEFAULT_LOOK;
-  return BUILTIN_LOOKS.find((k) => !h.includes(k)) || DEFAULT_LOOK;
+  const h = hiddenOf(hidden), first = carousel ? DEFAULT_LOOK : POSTER_START_LOOK;
+  if (!h.includes(first)) return first;
+  return BUILTIN_LOOKS.find((k) => !h.includes(k) && (carousel || !CAROUSEL_ONLY.includes(k))) || first;
 }

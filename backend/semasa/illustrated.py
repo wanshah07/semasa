@@ -57,9 +57,12 @@ class ArtError(Exception):
 
 
 def wants(look: str, kind: str = "") -> bool:
-    """The Journal look draws a picture per slide, on a carousel only: a post's own carousel, or the Design tab's Carousel mode.
-    A Design-tab poster, card, comic or Threads set has its own single picture."""
-    return look == LOOK and kind in ("", "carousel")
+    """Every Studio look draws a picture per slide, on a carousel only: a post's own carousel, or the Design tab's Carousel mode
+    (Wan, 23 Nov 2026: "all carousel slide design ... must have illustration"). The Journal look puts it in the middle of the
+    page, the others in a band at the foot (studio.js renderWithArt). A Design-tab poster, card, comic or Threads set has its
+    own single picture, and Semasa's own (classic) look is drawn without Studio's renderer, so it has none."""
+    from . import studio_cards
+    return kind in ("", "carousel") and look in studio_cards.LOOKS
 
 
 def key_of(item: dict[str, Any]) -> str:
@@ -70,10 +73,10 @@ def key_of(item: dict[str, Any]) -> str:
 
 
 def slides_needing_art(items: list[dict[str, Any]], stream: str, covered: bool | None = None) -> list[int]:
-    """Indexes of the slides that get a picture: every one, except the first of a set the white brand cover replaces (a ws.regulab
-    post's own carousel; `covered` says so, and defaults to that stream's rule)."""
-    skip = {0} if (stream != "linkedin" if covered is None else covered) else set()
-    return [i for i, it in enumerate(items) if i not in skip and (it.get("title") or it.get("points"))][:MAX_ART]
+    """Indexes of the slides that get a picture: every one. The first slide of a ws.regulab post's own carousel is replaced by the
+    white brand cover, and its picture is the HOOK's illustration on that cover (Wan, 23 Nov 2026: "can adjust coverpage by add
+    illustration hook"); `covered` is kept so a caller can say which kind of set it is, and changes nothing here."""
+    return [i for i, it in enumerate(items) if (it.get("title") or it.get("points"))][:MAX_ART]
 
 
 def safe_label(text: Any, stream: str, lang: str) -> str:
@@ -148,6 +151,18 @@ def draw(store: Any, s: Any, prompt: str, names: list[str], providers: dict[str,
     if not gen.data:
         raise ProviderError("the picture maker returned no picture")
     return shrink(gen.data), name
+
+
+def art_bytes(item: dict[str, Any]) -> bytes | None:
+    """The picture bytes of a slide that carries `art_url` (a data address), or None."""
+    import base64
+    url = str(item.get("art_url") or "")
+    if not url.startswith("data:") or "," not in url:
+        return None
+    try:
+        return base64.b64decode(url.split(",", 1)[1])
+    except ValueError:
+        return None
 
 
 def fetch(url: str) -> bytes | None:

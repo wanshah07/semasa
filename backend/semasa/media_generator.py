@@ -702,6 +702,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         spread = carousel.split_full(items) if not kind else items       # a crowded slide drawn as two, when nothing else fits
         if len(spread) != len(items):
             attempts.append((spread, 0))
+        cover_art: bytes | None = None           # the first slide's illustration, drawn on the brand cover that replaces it
         for n, (words_in, joined_here) in enumerate(attempts):
             joined = joined_here
             try:
@@ -720,19 +721,27 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                     drawn = own_photos(store, own_grounds(store, row, words_in))
                     journal = illustrated.wants(look, kind)
                     if journal:
-                        # the Journal look: a hand-inked picture for every slide, made once and kept on the job (illustrated.py)
+                        # a hand-inked picture for every slide, made once and kept on the job (illustrated.py): in the middle of
+                        # the page in the Journal look, in a band at the foot in every other Studio look
                         try:
                             drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm,
                                                          covered=not kind and stream != "linkedin")
                         except illustrated.ArtError as exc:
-                            # taken from the rotation, not chosen by Wan: with no picture maker, or on the last try, the post is
-                            # drawn in the Image look rather than lost; a look Wan chose fails with the reason instead
+                            # With no picture maker, or on the last try, the post is still drawn rather than lost. Diari is
+                            # nothing without its pictures: taken from the rotation it becomes the Image look, and a Diari Wan
+                            # chose fails with the reason. Every other look works without them: drawn without the band.
                             last = int(row.get("attempts") or 0) >= s.max_attempts
-                            if not (meta.get("look_auto") and (last or "no picture maker" in str(exc))):
+                            soft = look != "journal" or bool(meta.get("look_auto"))
+                            if not (soft and (last or "no picture maker" in str(exc))):
                                 raise
-                            meta["look_fallback"] = f"journal: {str(exc)[:200]}"
-                            look = "image"
-                            log.warning("%s: the Journal pictures could not be made (%s); Image look", row_id, str(exc)[:160])
+                            if look == "journal":
+                                meta["look_fallback"] = f"{look}: {str(exc)[:200]}"
+                                look = "image"
+                            else:
+                                meta["art_missing"] = str(exc)[:200]
+                            log.warning("%s: the pictures could not be made (%s); drawn as %s", row_id, str(exc)[:160], look)
+                        else:
+                            cover_art = illustrated.art_bytes(drawn[0]) if drawn else None
                     pics = studio_cards.render(drawn, look=look, stream=stream, eyebrow=eyebrow,
                                                source=str(meta.get("citation") or ""), ground=ground,
                                                ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size,
@@ -769,7 +778,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             # supporting line too long for the cover is left off rather than costing the cover itself.
             for lead in dict.fromkeys((words[1], "")):
                 try:
-                    pics = [carousel.cover_jpeg(words[0], lead, eyebrow, ground=ground, size=size), *pics[1:]]
+                    pics = [carousel.cover_jpeg(words[0], lead, eyebrow, ground=ground, size=size, art=cover_art), *pics[1:]]
                     cover = True
                     break
                 except Exception as exc:  # noqa: BLE001 - the slide as drawn stands: a cover is never worth a failed render

@@ -335,8 +335,33 @@ def _balanced(text: str, font: Any, width: float) -> list[Any]:
     return lines
 
 
+ART_BAND = 0.30            # the share of the cover's height the hook's illustration takes, at the foot (Wan, 23 Nov 2026)
+
+
+def _art_band(canvas: Image.Image, art: bytes, band: int) -> None:
+    """The hook's illustration, a rounded card with a soft shadow in the band at the foot of the cover, cropped to fill it."""
+    from PIL import ImageFilter
+    w, h = canvas.size
+    margin = round(w * 0.11)
+    pad_b = round(w * 0.06)
+    x0, y0, x1, y1 = margin, h - band, w - margin, h - pad_b
+    cw, ch, r = x1 - x0, y1 - y0, round(w * 0.022)
+    pic = Image.open(io.BytesIO(art)).convert("RGB")
+    scale = max(cw / pic.width, ch / pic.height)
+    pic = pic.resize((max(cw, round(pic.width * scale)), max(ch, round(pic.height * scale))), Image.LANCZOS)
+    left, top = (pic.width - cw) // 2, (pic.height - ch) // 2
+    pic = pic.crop((left, top, left + cw, top + ch))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle([x0, y0 + round(w * 0.012), x1, y1 + round(w * 0.012)], radius=r, fill=(0, 0, 0, 60))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(w * 0.014))
+    canvas.paste(shadow, (0, 0), shadow)
+    mask = Image.new("L", (cw, ch), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, cw - 1, ch - 1], radius=r, fill=255)
+    canvas.paste(pic, (x0, y0), mask)
+
+
 def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes | None = None,
-               size: tuple[int, int] | None = None) -> Image.Image:
+               size: tuple[int, int] | None = None, art: bytes | None = None) -> Image.Image:
     """The branded cover: logo, a rule, the hook title, a short supporting line (`eyebrow` is accepted, never drawn: the
     cover carries no tag). Since 22 Nov 2026 (Wan: "background white, green color logo, title black text and red hook word") it
     is a white card with light-blue wave circles: the logo in its own green, the title in black and its hook word (the *marked*
@@ -358,6 +383,9 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
     col = w - 2 * margin
     tall = h / w > 1.6                                    # a film's opening frame, not a carousel's first slide
     band = h * (0.62 if tall else 0.80)                   # the vertical room the block may use: inside the grid's crop
+    art_h = round(h * ART_BAND) if (art and not tall) else 0       # the hook's illustration takes the foot of a carousel's cover
+    if art_h:
+        band = (h - art_h) * 0.94                         # the words keep the part above it
     # a film's cover is quieter (Wan, 11 Nov 2026: "make sure the cover text not too big & make it aesthetic"): on the tall
     # frame the same sizes read as shouting, so the logo and the hook are both drawn smaller and the hook gets more air
     logo = _logo(round(w * (0.36 if tall else 0.46)), white=False)
@@ -382,7 +410,7 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
             break
         size_px -= 4
     total = fixed + len(lines) * lh
-    y = round((h - total) / 2)
+    y = round(((h - art_h) - total) / 2)
 
     canvas.paste(logo, ((w - logo.width) // 2, y), logo)
     y += logo.height + gap
@@ -411,6 +439,8 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
                 d.text((cx, y), run.text, font=body_font, fill=COVER_MUTED)
                 cx += body_font.getlength(run.text)
             y += body_lh
+    if art_h:
+        _art_band(canvas, art, art_h)
     return canvas
 
 
@@ -445,7 +475,7 @@ def with_front_cover(items: list[dict], stream: str) -> list[dict]:
 
 
 def cover_jpeg(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes | None = None,
-               size: tuple[int, int] | None = None, quality: int = 92) -> bytes:
+               size: tuple[int, int] | None = None, quality: int = 92, art: bytes | None = None) -> bytes:
     buf = io.BytesIO()
-    cover_card(title, lead, eyebrow, ground=ground, size=size).save(buf, "JPEG", quality=quality, optimize=True)
+    cover_card(title, lead, eyebrow, ground=ground, size=size, art=art).save(buf, "JPEG", quality=quality, optimize=True)
     return buf.getvalue()

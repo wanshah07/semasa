@@ -54,8 +54,9 @@ def test_a_picture_belongs_to_a_slides_words():
     assert a != illustrated.key_of({**SLIDES[0], "lead": "Lain."})
 
 
-def test_the_brand_cover_takes_no_picture_but_a_linkedin_first_slide_does():
-    assert illustrated.slides_needing_art(SLIDES, "regulab") == [1, 2], "slide 1 becomes the white brand cover"
+def test_every_first_slide_takes_a_picture_and_on_the_brand_cover_it_is_the_hooks_illustration():
+    # Wan, 23 Nov 2026: "can adjust coverpage by add illustration hook"
+    assert illustrated.slides_needing_art(SLIDES, "regulab") == [0, 1, 2], "slide 1 is the brand cover, with its picture"
     assert illustrated.slides_needing_art(SLIDES, "linkedin") == [0, 1, 2]
     many = [{"title": f"S{n}", "points": []} for n in range(14)]
     assert len(illustrated.slides_needing_art(many, "linkedin")) == illustrated.MAX_ART
@@ -90,19 +91,19 @@ def test_each_picture_is_made_once_and_kept_so_a_redraw_pays_for_nothing(monkeyp
     row = store.tables["media_generations"][0]
     items = [dict(x) for x in SLIDES]
     out = illustrated.with_art(store, None, row, meta, items, "regulab", Llm(None), draw_fn=draw, fetch_fn=lambda u: _paper())
-    assert len(made) == 2 and "art_url" not in out[0], "slide 1 is the cover"
+    assert len(made) == 3 and out[0]["art_url"], "slide 1 is the cover, and its picture is the hook's illustration"
     assert out[1]["art_url"].startswith("data:image/jpeg;base64,") and out[2]["art_url"]
-    assert len(meta["art"]) == 2 and len(meta["art_paths"]) == 2
+    assert len(meta["art"]) == 3 and len(meta["art_paths"]) == 3
     assert store.tables["media_generations"][0]["meta"]["art"] == meta["art"], "kept on the job before the next picture"
     # a redraw of the same words: nothing is made again
     illustrated.with_art(store, None, row, meta, [dict(x) for x in SLIDES], "regulab", Llm(None), draw_fn=draw,
                          fetch_fn=lambda u: _paper())
-    assert len(made) == 2
+    assert len(made) == 3
     # one slide's words change: only that slide gets a new picture
     changed = [dict(x) for x in SLIDES]
     changed[2] = {**changed[2], "title": "Dia mesti ada di Malaysia."}
     illustrated.with_art(store, None, row, meta, changed, "regulab", Llm(None), draw_fn=draw, fetch_fn=lambda u: _paper())
-    assert len(made) == 3
+    assert len(made) == 4
     stale = illustrated.stale_paths(meta, changed, "regulab")
     assert len(stale) == 1 and "art03" in stale[0], "the old third picture is left to be removed"
 
@@ -119,7 +120,7 @@ def test_a_failure_part_way_keeps_what_was_made(monkeypatch):
         return _paper()
 
     row = store.tables["media_generations"][0]
-    with pytest.raises(illustrated.ArtError, match="slide 3"):
+    with pytest.raises(illustrated.ArtError, match="slide 2"):
         illustrated.with_art(store, None, row, meta, [dict(x) for x in SLIDES], "regulab", Llm(None), draw_fn=draw)
     assert len(meta["art"]) == 1, "the first picture is kept, so the retry pays only for the rest"
 
@@ -137,7 +138,11 @@ def test_the_look_is_known_to_every_list_and_only_a_carousel_draws_pictures():
     assert "journal" in studio_cards.LOOKS and "journal" in ideas.LOOKS and "journal" in ideas.OWN_PICTURE_ONLY
     assert illustrated.wants("journal", "") and illustrated.wants("journal", "carousel"), "a post's carousel, or the Design tab's"
     assert not illustrated.wants("journal", "poster") and not illustrated.wants("journal", "card")
-    assert not illustrated.wants("journal", "threads") and not illustrated.wants("grid", "")
+    assert not illustrated.wants("journal", "threads") and not illustrated.wants("grid", "poster")
+    # every other Studio look draws one too, in a band at the foot (Wan, 23 Nov 2026); Semasa's own (classic) cannot
+    for look in studio_cards.LOOKS:
+        assert illustrated.wants(look, "") and illustrated.wants(look, "carousel"), look
+    assert not illustrated.wants("classic", "") and not illustrated.wants("threads", "")
     from semasa import rotation
     assert "journal" not in rotation.LOOK_TURN, "the turn is for posters; every carousel takes Diari (Wan, 23 Nov 2026)"
     assert ideas.DEFAULT_LOOK == "journal"
@@ -308,8 +313,9 @@ def test_the_ws_regulab_set_keeps_the_white_brand_cover_first_and_the_logo_card_
     assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is True
     meta = store.tables["media_generations"][0]["meta"]
     assert meta["look"] == "journal" and meta["cover"] is True and meta["closing_logo"] is True
-    assert seen["items"][0].get("art_skip") is True and not seen["items"][0].get("art_url"), "slide 1 is the cover: no picture"
-    assert all(it.get("art_url") for it in seen["items"][1:])
+    assert all(it.get("art_url") for it in seen["items"]), "slide 1 is the cover, and its picture is the hook's illustration"
+    assert not any(it.get("art_skip") for it in seen["items"])
+    assert illustrated.art_bytes(seen["items"][0]) and illustrated.art_bytes({}) is None
     assert meta["count"] == len(seen["items"]) + 1
 
 
@@ -326,7 +332,7 @@ def test_the_front_page_the_brand_cover_replaces_draws_without_a_picture_frame_a
 def test_a_design_tab_carousel_takes_diari_with_a_picture_on_every_slide_the_cover_included(monkeypatch):
     # Codex review of #324: the Design tab's Carousel mode must get Diari too; it has no brand cover, so slide 1 gets a picture
     assert illustrated.slides_needing_art(SLIDES, "regulab", covered=False) == [0, 1, 2]
-    assert illustrated.slides_needing_art(SLIDES, "regulab", covered=True) == [1, 2]
+    assert illustrated.slides_needing_art(SLIDES, "regulab", covered=True) == [0, 1, 2]
     monkeypatch.setattr(illustrated, "makers", lambda s, store: ["x"])
     monkeypatch.setattr(illustrated, "draw", lambda *a, **k: (_paper(), "x"))
     monkeypatch.setattr(illustrated, "fetch", lambda url: _paper())
@@ -341,3 +347,66 @@ def test_a_design_tab_carousel_takes_diari_with_a_picture_on_every_slide_the_cov
     assert meta["look"] == "journal" and "look_fallback" not in meta
     assert len(seen["items"]) == 3 and all(it.get("art_url") for it in seen["items"])
     assert not any(it.get("art_skip") for it in seen["items"])
+
+
+def _bold_art() -> str:
+    """A picture no look's own paper resembles: deep blue with orange bars."""
+    import base64
+    im = Image.new("RGB", (900, 600), (20, 70, 150))
+    d = ImageDraw.Draw(im)
+    for k in range(0, 900, 90):
+        d.rectangle([k, 0, k + 45, 600], fill=(235, 120, 20))
+    b = io.BytesIO()
+    im.save(b, "JPEG")
+    return "data:image/jpeg;base64," + base64.b64encode(b.getvalue()).decode()
+
+
+@browser
+@pytest.mark.parametrize("look", [k for k in studio_cards.LOOKS if k not in ("journal", "photo")])
+def test_every_other_look_draws_the_illustration_in_a_band_at_the_foot(look):
+    # Wan, 23 Nov 2026: "all carousel slide design ... must have illustration but no need to have illustration at the centre
+    # page and no need to have same size with diary"
+    art = _bold_art()
+    drawn = studio_cards.render([{**SLIDES[1], "art_url": art}, {**SLIDES[2], "art_url": art}], look=look, stream="regulab",
+                                final=True)
+    assert len(drawn) == 2
+    for pic in drawn:
+        im = Image.open(io.BytesIO(pic)).convert("RGB")
+        assert im.size == (1080, 1350)
+        w, h = im.size
+        band = [(x, y) for x in range(160, w - 160, 40) for y in range(int(h * 0.70), int(h * 0.92), 40)]
+        blue_or_orange = sum(1 for xy in band if (im.getpixel(xy)[2] > 120 > im.getpixel(xy)[0])
+                             or (im.getpixel(xy)[0] > 200 and im.getpixel(xy)[2] < 80))
+        assert blue_or_orange > len(band) * 0.6, f"{look}: the picture fills the band at the foot"
+
+
+@browser
+def test_a_picture_that_cannot_be_read_leaves_the_slide_drawn_without_it():
+    broken = [{**SLIDES[1], "art_url": "data:image/jpeg;base64,AAAA"}]
+    [pic] = studio_cards.render(broken, look="hand", stream="regulab", final=True)
+    assert Image.open(io.BytesIO(pic)).size == (1080, 1350)
+
+
+def test_the_brand_cover_carries_the_hooks_illustration_at_the_foot_and_the_hook_stays_above_it():
+    from semasa import carousel
+    hook = "Aku: esok lah aku fikir pasal mikrobiom kulit kepala. Lepas tu aku: baca kajian 12 minggu ni."
+    plain = Image.open(io.BytesIO(carousel.cover_jpeg(hook, "", "", size=(1080, 1350)))).convert("RGB")
+    drawn = Image.open(io.BytesIO(carousel.cover_jpeg(hook, "", "", size=(1080, 1350), art=_bold_art_bytes()))).convert("RGB")
+    assert plain.size == drawn.size == (1080, 1350)
+    band = [(x, y) for x in range(200, 880, 30) for y in range(1000, 1230, 30)]
+    blue = sum(1 for xy in band if (drawn.getpixel(xy)[2] > 120 > drawn.getpixel(xy)[0])
+               or (drawn.getpixel(xy)[0] > 200 and drawn.getpixel(xy)[2] < 80))
+    assert blue > len(band) * 0.6, "the picture fills the band at the foot"
+    assert sum(1 for xy in band if plain.getpixel(xy)[2] > 120 > plain.getpixel(xy)[0]) == 0, "and the plain cover has none"
+    # the hook is still drawn in black above the picture: some dark pixels in the middle of the page
+    ink = sum(1 for x in range(100, 980, 10) for y in range(450, 900, 10) if max(drawn.getpixel((x, y))) < 60)
+    assert ink > 200, "the hook is still legible above the illustration"
+    # a film's tall frame keeps its own layout: no band
+    tall = Image.open(io.BytesIO(carousel.cover_jpeg(hook, "", "", size=(1080, 1920), art=_bold_art_bytes()))).convert("RGB")
+    assert not any(tall.getpixel(xy)[2] > 120 > tall.getpixel(xy)[0] for xy in [(x, y) for x in range(200, 880, 60)
+                                                                                for y in range(1500, 1800, 60)])
+
+
+def _bold_art_bytes() -> bytes:
+    import base64
+    return base64.b64decode(_bold_art().split(",", 1)[1])

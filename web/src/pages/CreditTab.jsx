@@ -102,8 +102,8 @@ export default function CreditTab({ settings, save, onToast }) {
         {views.map(({ card, v }) => <CreditCard key={card.slug} card={card} v={v} now={now} L={L} t={t} onSaveManual={saveManual} loading={statusT.loading} canSave={typeof save === "function"} />)}
       </div>
 
-      <p className="mt-6 max-w-3xl text-[11px] text-muted">{t("Unit kredit: setiap gerbang mengira dengan unitnya sendiri. API Mireld memberi 89.11 manakala papan pemuka Mireld menunjukkan 89.11M (sejuta kali ganda; jumlah pelan 1275 lawan 1.27B): kedua-duanya dipaparkan. Bagi rootsys dan KiosAPI, angka hanya muncul apabila API-nya menjawab dengan kunci ini; jika tidak, kad menunjukkan setiap laluan yang dicuba.",
-        "Credit units: each gateway counts in its own unit. Mireld's API says 89.11 while its dashboard shows 89.11M (a million times that; plan total 1275 against 1.27B): both are shown. For rootsys and KiosAPI a figure appears only when their API answers to this key; until then the card lists every path tried.")}</p>
+      <p className="mt-6 max-w-3xl text-[11px] text-muted">{t("Unit kredit: setiap gerbang mengira dengan unitnya sendiri. API Mireld memberi 89.11 manakala papan pemuka Mireld menunjukkan 89.11M (sejuta kali ganda; jumlah pelan 1275 lawan 1.27B): kedua-duanya dipaparkan. rootsys dibaca daripada /v1/quota (token). Baki KiosAPI ada pada akaun, yang tidak boleh dibaca dengan kunci API: letak rahsia KIOSAPI_ACCESS_TOKEN dan KIOSAPI_USER_ID (token akses dari Tetapan peribadi › Keselamatan) di GitHub; sehingga itu kad menunjukkan setiap laluan yang dicuba.",
+        "Credit units: each gateway counts in its own unit. Mireld's API says 89.11 while its dashboard shows 89.11M (a million times that; plan total 1275 against 1.27B): both are shown. rootsys is read from /v1/quota (tokens). KiosAPI's balance sits on the account, which an API key cannot read: add the secrets KIOSAPI_ACCESS_TOKEN and KIOSAPI_USER_ID (the access token comes from Personal settings › Security) in GitHub; until then the card lists every path tried.")}</p>
     </main>
   );
 }

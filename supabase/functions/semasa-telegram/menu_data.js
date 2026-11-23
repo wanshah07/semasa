@@ -763,8 +763,12 @@ export default {
     }
   ],
   "looks": {
-    "_about": "The looks the Poster and Carousel buttons offer, by the worker's own key (backend/semasa/ideas.py LOOKS, web/src/lib/lookChoice.js BUILTIN_LOOKS; both tested). `poster` is the eight poster looks behind the hand-drawn default; `carousel` adds the looks whose first slide is the poster front page.",
+    "_about": "The looks the Poster and Carousel buttons offer, by the worker's own key (backend/semasa/ideas.py LOOKS, web/src/lib/lookChoice.js BUILTIN_LOOKS; both tested). `poster` is the eight poster looks behind the hand-drawn default; `carousel` adds the looks whose first slide is the poster front page, and starts with Diari, the primary carousel look (Wan, 23 Nov 2026). `post_carousel` and `post_card` are the choices under a DRAFT's Carousel and Single card buttons (telegram_catalogue.py): every look the page's picker offers, Diari first; a single card never offers Diari (it draws a picture on every slide) or Threads.",
     "names": {
+      "journal": {
+        "bm": "Diari",
+        "en": "Journal"
+      },
       "hand": {
         "bm": "Lukisan tangan",
         "en": "Hand-drawn"
@@ -808,6 +812,22 @@ export default {
       "strip": {
         "bm": "Jalur koyak",
         "en": "Torn strips"
+      },
+      "classic": {
+        "bm": "Semasa",
+        "en": "Semasa"
+      },
+      "grid": {
+        "bm": "Grid",
+        "en": "Grid"
+      },
+      "photo": {
+        "bm": "Foto",
+        "en": "Photo"
+      },
+      "threads": {
+        "bm": "Threads",
+        "en": "Threads"
       }
     },
     "poster": [
@@ -822,6 +842,7 @@ export default {
       "strip"
     ],
     "carousel": [
+      "journal",
       "image",
       "era",
       "hand",
@@ -833,6 +854,40 @@ export default {
       "chalk",
       "metro",
       "strip"
+    ],
+    "post_carousel": [
+      "journal",
+      "image",
+      "hand",
+      "marker",
+      "torn",
+      "block",
+      "neon",
+      "deck",
+      "chalk",
+      "metro",
+      "strip",
+      "classic",
+      "grid",
+      "era",
+      "photo",
+      "threads"
+    ],
+    "post_card": [
+      "image",
+      "hand",
+      "marker",
+      "torn",
+      "block",
+      "neon",
+      "deck",
+      "chalk",
+      "metro",
+      "strip",
+      "classic",
+      "grid",
+      "era",
+      "photo"
     ]
   }
 };

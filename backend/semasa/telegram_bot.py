@@ -891,11 +891,17 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
             return "catalogue edit asked"
         elif rest.startswith("pc:"):
             post_id = rest.split(":", 1)[1]
-            text_, buttons = cat.carousel_options(post_id)
+            text_, buttons = cat.carousel_options(post_id, cat.lang(store))
             bot.send(chat, text_, buttons, reply_to=mid)
             return "catalogue carousel options"
         elif rest.startswith("pcpick:"):
             _, post_id, look = rest.split(":", 2)
+            if look == "journal":
+                # Diari draws a picture of its own for every slide, so there is no picture source to ask about
+                posts = store.table(db.POSTS).select("*").eq("id", post_id).limit(1).execute().data or []
+                reply = cat.make_carousel(store, link, posts[0], look, "none") if posts else "That draft was not found."
+                bot.send(chat, reply, reply_to=mid)
+                return "catalogue carousel queued"
             text_, buttons = cat.picture_options(post_id, look)
             bot.send(chat, text_, buttons, reply_to=mid)
             return "catalogue carousel picture"
@@ -907,7 +913,7 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
             return "catalogue carousel queued"
         elif rest.startswith("sc:"):
             post_id = rest.split(":", 1)[1]
-            text_, buttons = cat.single_options(post_id)
+            text_, buttons = cat.single_options(post_id, cat.lang(store))
             bot.send(chat, text_, buttons, reply_to=mid)
             return "catalogue single card options"
         elif rest.startswith("scpick:"):

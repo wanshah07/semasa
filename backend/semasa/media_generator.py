@@ -657,8 +657,9 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             meta["bg_missing"] = "the background picture was not ready, so the slides were drawn on paper"
         size = design.size_of(meta, stream) if kind else None
         look = str(meta.get("look") or "classic")
-        if look == "journal" and kind:
-            # a Design-tab poster, card or comic has its own single picture: the per-slide pictures are for a carousel
+        if look == "journal" and kind and kind != "carousel":
+            # a Design-tab poster, card, comic or Threads set has its own single picture: Diari's per-slide pictures are for
+            # a carousel
             meta["look_fallback"] = "journal: a poster or card has one picture, drawn in the Hand-drawn look"
             look = "hand"
         # AYAT AL-QURAN (16 Nov 2026): a slide that names a verse is drawn by the Studio renderer, the only one with a Quran
@@ -721,7 +722,8 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                     if journal:
                         # the Journal look: a hand-inked picture for every slide, made once and kept on the job (illustrated.py)
                         try:
-                            drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm)
+                            drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm,
+                                                         covered=not kind and stream != "linkedin")
                         except illustrated.ArtError as exc:
                             # taken from the rotation, not chosen by Wan: with no picture maker, or on the last try, the post is
                             # drawn in the Image look rather than lost; a look Wan chose fails with the reason instead
@@ -799,7 +801,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                         error=None, meta=meta)
         _drop_files(store, row_id, [x for x in before if x not in paths])     # the last version's slides, all of them
         if illustrated.wants(look, kind):
-            _drop_files(store, row_id, illustrated.stale_paths(meta, items, stream))      # pictures of words that are gone
+            _drop_files(store, row_id, illustrated.stale_paths(meta, items, stream, not kind and stream != "linkedin"))
         if row.get("post_id") and not meta.get("awaiting_confirm"):
             # a Design artwork is added to the post's pictures; a post's own carousel replaces its earlier one
             (db.attach_media_to_draft if kind else db.attach_slides_to_draft)(store, row["post_id"], row_id)

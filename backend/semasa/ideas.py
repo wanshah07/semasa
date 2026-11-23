@@ -1486,20 +1486,22 @@ LOOKS = ("classic", "grid", "era", "photo", "image", "threads", "hand", "marker"
 # looks that show a picture ON the slide (Image, and the cover of the four poster looks): only the post's own picture is ever
 # placed there, never a stock ground from the library
 OWN_PICTURE_ONLY = ("image", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "journal")
-DEFAULT_LOOK = "image"          # Wan, 8 Nov 2026: the Image look (a picture ON the slide) is the default for new posts
+DEFAULT_LOOK = "journal"        # Wan, 23 Nov 2026: Diari is the primary and main look for a carousel (was Image, 8 Nov 2026)
 POSTER_DEFAULT_LOOK = "hand"    # Wan, 13 Nov 2026: a poster (format=poster) is the hand-drawn look by default
 
 
 def look_of(idea: dict[str, Any]) -> str:
     """The carousel look chosen on the idea, carried in its brief ({"look": ...}) until the bot writes the draft:
     Semasa's own drawing ("classic"), Threads-style text + picture, or one of ws.regulab Studio's designs.
-    No choice is the default look ("image"), except a poster, which defaults to the hand-drawn look ("hand");
-    a name nobody knows is "classic", the drawing that never needs a picture or the browser."""
+    No choice is the default look ("journal", Diari), except a poster or card, which defaults to the hand-drawn look ("hand"),
+    and which never takes Diari (it draws a picture on every slide: a poster has one); a name nobody knows is "classic", the
+    drawing that never needs a picture or the browser."""
     brief = (idea.get("brief") or {}) if isinstance(idea.get("brief"), dict) else {}
     raw = brief.get("look")
-    if raw:
+    one_picture = format_of(idea) in ("poster", "card")
+    if raw and not (one_picture and str(raw) == "journal"):
         look = str(raw)
-    elif format_of(idea) in ("poster", "card"):
+    elif one_picture:
         look = POSTER_DEFAULT_LOOK
     else:
         look = DEFAULT_LOOK

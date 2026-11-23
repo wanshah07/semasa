@@ -57,8 +57,9 @@ class ArtError(Exception):
 
 
 def wants(look: str, kind: str = "") -> bool:
-    """The Journal look draws a picture per slide, on a carousel only (a Design-tab artwork has its own pictures)."""
-    return look == LOOK and not kind
+    """The Journal look draws a picture per slide, on a carousel only: a post's own carousel, or the Design tab's Carousel mode.
+    A Design-tab poster, card, comic or Threads set has its own single picture."""
+    return look == LOOK and kind in ("", "carousel")
 
 
 def key_of(item: dict[str, Any]) -> str:
@@ -68,9 +69,10 @@ def key_of(item: dict[str, Any]) -> str:
     return hashlib.sha1(f"{STYLE_VERSION}|{words}".encode()).hexdigest()[:16]
 
 
-def slides_needing_art(items: list[dict[str, Any]], stream: str) -> list[int]:
-    """Indexes of the slides that get a picture: every one, except the first of a ws.regulab set (the brand cover)."""
-    skip = {0} if stream != "linkedin" else set()
+def slides_needing_art(items: list[dict[str, Any]], stream: str, covered: bool | None = None) -> list[int]:
+    """Indexes of the slides that get a picture: every one, except the first of a set the white brand cover replaces (a ws.regulab
+    post's own carousel; `covered` says so, and defaults to that stream's rule)."""
+    skip = {0} if (stream != "linkedin" if covered is None else covered) else set()
     return [i for i, it in enumerate(items) if i not in skip and (it.get("title") or it.get("points"))][:MAX_ART]
 
 
@@ -158,13 +160,13 @@ def fetch(url: str) -> bytes | None:
 
 def with_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], items: list[dict[str, Any]], stream: str,
              llm: Any = None, *, providers: dict[str, Any] | None = None, deadline: float | None = None,
-             draw_fn: Any = None, fetch_fn: Any = None) -> list[dict[str, Any]]:
+             draw_fn: Any = None, fetch_fn: Any = None, covered: bool | None = None) -> list[dict[str, Any]]:
     """`items` with each picture-bearing slide carrying `art_url` (a data address) and `art_label`, ready for the renderer.
     Pictures already kept on the job (`meta.art`, by the slide's words) are reused; the rest are made, uploaded and kept before
     the next one starts, so a failure part-way costs only what is missing. Raises ArtError when a picture cannot be made."""
     import base64
     from datetime import UTC, datetime
-    idx = slides_needing_art(items, stream)
+    idx = slides_needing_art(items, stream, covered)
     if not idx:
         return items
     kept: dict[str, Any] = dict(meta.get("art") or {}) if isinstance(meta.get("art"), dict) else {}
@@ -197,7 +199,7 @@ def with_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], item
         entry = kept.get(keys.get(i, "")) if i in keys else None
         if not entry:
             # the first slide of a ws.regulab set is replaced by the white brand cover: told so, it draws no empty picture frame
-            out.append({**it, "art_skip": True} if i == 0 and stream != "linkedin" else it)
+            out.append({**it, "art_skip": True} if i == 0 and (stream != "linkedin" if covered is None else covered) else it)
             continue
         data = (fetch_fn or fetch)(entry["url"])
         if not data:
@@ -208,7 +210,7 @@ def with_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], item
     return out
 
 
-def stale_paths(meta: dict[str, Any], items: list[dict[str, Any]], stream: str) -> list[str]:
+def stale_paths(meta: dict[str, Any], items: list[dict[str, Any]], stream: str, covered: bool | None = None) -> list[str]:
     """Kept pictures whose slide's words are gone: files to remove once the redraw has used the rest."""
-    live = {key_of(items[i]) for i in slides_needing_art(items, stream)}
+    live = {key_of(items[i]) for i in slides_needing_art(items, stream, covered)}
     return [e["path"] for k, e in (meta.get("art") or {}).items() if k not in live and isinstance(e, dict) and e.get("path")]

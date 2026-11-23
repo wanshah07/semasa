@@ -80,7 +80,7 @@ export default function DesignTab({ user, gens, posts, brand, settings, saveSett
   const [lookPick, setLook] = useState(null);
   const [mdStatus, setMdStatus] = useState({ steps: [], error: "", done: null });          // the progress of "Save as my design"
   const zoom = useLightbox(mdStatus.done ? [{ url: mdStatus.done.image, title: t("Rujukan", "Reference") }, { url: mdStatus.done.render, title: t("Lukisan kita", "Our drawing") }] : []);
-  const look = lookPick ?? startLook({ designs: myDesigns, defaultId, hidden: hiddenLooks });
+  const look = lookPick ?? startLook({ designs: myDesigns, defaultId, hidden: hiddenLooks, carousel: design === "carousel" });   // Diari draws one picture per slide: only the Carousel mode takes it
   const [fit, setFit] = useState(true);                      // fit the design to each slide (studio.js fitTemplate)
   // a reference to take ideas from (Wan, 26 Sep 2026: "upload reference and AI will review > render and get
   // confirmation to save the design"): read by the worker, drawn, and kept only when Wan presses Simpan

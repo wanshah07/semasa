@@ -159,7 +159,9 @@ def test_the_idea_carries_its_look_to_the_slide_job():
     assert ideas.slide_job(idea, post, "p1")["meta"]["fit"] is True            # a Studio look fits each slide by default
     classic = {"id": "i2", "brief": {"look": "classic"}}                    # Semasa's own look, chosen
     assert ideas.slide_job(classic, post, "p1")["meta"]["fit"] is False
-    assert ideas.look_of({"id": "i2", "brief": {"format": "carousel"}}) == "image"   # a carousel with no choice: the Image look
+    # a carousel with no choice: Diari, the primary look
+    assert ideas.look_of({"id": "i2", "brief": {"format": "carousel"}}) == "journal"
+    assert ideas.look_of({"id": "i2", "brief": {"format": "poster", "look": "journal"}}) == "hand", "a poster never takes Diari"
     assert ideas.look_of({"id": "i2", "brief": {}}) == "hand"             # no format, no choice: a poster, hand-drawn
     # no picture made: a Studio look is drawn on Studio's ground for the domain; Semasa's own look stays on paper
     assert ideas.slide_job(idea, post, "p1")["meta"]["bg"] == "lib:g_makmal02"

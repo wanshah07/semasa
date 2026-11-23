@@ -56,3 +56,59 @@ def test_a_linkedin_post_is_never_made_into_a_film_from_telegram():
     reply, buttons = cat.make_motion(store, {}, {"id": "p1", "stream": "linkedin", "status": "draft",
                                                  "text": {"en": {"linkedin": "Words"}}, "lang": "en"})
     assert "never a film" in reply and buttons == [] and store.tables["semasa_motions"] == []
+
+
+# ---- the design buttons under a draft: the page's own looks, Diari first (Wan, 23 Nov 2026) -----------------------------------
+
+def _datas(rows):
+    return [b["callback_data"] for row in rows for b in row]
+
+
+def _labels(rows):
+    return [b["text"] for row in rows for b in row]
+
+
+def test_a_drafts_carousel_buttons_offer_every_look_the_page_offers_with_diari_first():
+    from semasa import ideas
+    from semasa import telegram_menu as menu
+    text, rows = cat.carousel_options("p1", "en")
+    first = rows[0][0]
+    assert first == {"text": "✨ Journal", "callback_data": "c:pcpick:p1:journal"} and len(rows[0]) == 1, "Diari leads, alone"
+    looks = [d.rsplit(":", 1)[1] for d in _datas(rows) if d.startswith("c:pcpick:")]
+    assert looks == menu.LOOKS["post_carousel"]
+    assert set(looks) <= set(ideas.LOOKS) and len(looks) == len(set(looks))
+    assert {"classic", "hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "grid", "photo", "image",
+            "threads", "journal"} <= set(looks)
+    assert "Diari" in cat.carousel_options("p1", "bm")[1][0][0]["text"] and "gambar AI" in cat.carousel_options("p1", "bm")[0]
+    assert "one AI picture per slide" in text
+    assert all(len(d.encode()) <= menu.CALLBACK_MAX for d in _datas(rows)), "Telegram's 64-byte limit"
+    long_id = "0123456789abcdef0123456789abcdef0123"
+    assert all(len(d.encode()) <= menu.CALLBACK_MAX for d in _datas(cat.carousel_options(long_id)[1]) + _datas(
+        cat.picture_options(long_id, "journal")[1]) + [f"c:pcgo:{long_id}:journal:none", f"c:scgo:{long_id}:metro:none"])
+    assert _datas(rows)[-1] == "c:post", "and a way back"
+
+
+def test_a_drafts_single_card_buttons_never_offer_diari_or_threads():
+    from semasa import telegram_menu as menu
+    _, rows = cat.single_options("p1", "en")
+    looks = [d.rsplit(":", 1)[1] for d in _datas(rows) if d.startswith("c:scpick:")]
+    assert looks == menu.LOOKS["post_card"] and "journal" not in looks and "threads" not in looks
+    assert {"hand", "marker", "torn", "block", "neon", "deck", "chalk", "metro", "strip", "classic", "grid", "photo",
+            "image"} <= set(looks)
+    assert "Torn strips" in _labels(rows) and "Lukisan tangan" in _labels(cat.single_options("p1", "bm")[1])
+
+
+def test_choosing_diari_under_a_draft_makes_the_carousel_at_once_with_no_picture_question():
+    from fakestore import FakeStore
+    store = FakeStore(semasa_ideas=[])
+    post = {"id": "p1", "status": "draft", "stream": "regulab", "domain": "kosmetik", "hook": "Hook", "lang": "bm",
+            "text": {"bm": {"instagram": "Caption."}}, "idea_id": None}
+    out = cat.make_carousel(store, {"user_id": "u"}, post, "journal", "none")
+    row = store.tables["semasa_ideas"][0]
+    assert "sent to the writer" in out and row["brief"]["look"] == "journal" and row["make_slides"] is True
+    import inspect
+
+    from semasa import telegram_bot
+    src = inspect.getsource(telegram_bot)
+    assert 'if look == "journal":' in src and 'cat.make_carousel(store, link, posts[0], look, "none")' in src, \
+        "the handler skips the picture-source step for Diari"

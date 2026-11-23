@@ -652,6 +652,24 @@ export default {
       ]
     },
     {
+      "id": "credit",
+      "icon": "⛽",
+      "bm": "Baki kredit API",
+      "en": "API credit",
+      "pages": [
+        {
+          "tab": "kredit",
+          "icon": "⛽",
+          "bm": "Baki kredit API",
+          "en": "API credit",
+          "about": {
+            "bm": "kredit Mireld, rootsys dan KiosAPI yang tinggal dan tarikh tamatnya",
+            "en": "the credit left on Mireld, rootsys and KiosAPI, and when it ends"
+          }
+        }
+      ]
+    },
+    {
       "id": "personal",
       "icon": "👤",
       "bm": "Peribadi",

@@ -40,7 +40,7 @@ from typing import Any
 
 import requests
 
-from . import billing, db, publisher, source_lights
+from . import api_credit, billing, db, publisher, source_lights
 from .log import get_logger
 
 log = get_logger("semasa.health")
@@ -190,6 +190,33 @@ def check_gateways(store: Any) -> list[dict[str, str]]:
         elif r.get("role") not in ("image",) and r.get("chat_ok") is False:
             out.append(problem("AI", f"{name}: listed its models but its model {r.get('model')} did not answer "
                                      f"({str(r.get('error') or '')[:160]})", "The AI team uses the next robot meanwhile."))
+    return out
+
+
+def check_credit(store: Any, now: datetime | None = None) -> list[dict[str, str]]:
+    """Mireld, rootsys and KiosAPI: the credit left and its validity (api_credit.py, read every 15 minutes). A problem when one is
+    LOW (under 15% left, or under 7 days to run) or EXPIRED. A gateway whose balance cannot be read yet is not a problem: that
+    is on the Credit page, and naming it here every six hours would be noise until its endpoint is found."""
+    now = now or datetime.now(UTC)
+    out = []
+    for r in _rows(store, db.API_STATUS, lambda q: q.select("slug,name,key_set,balance")):
+        c = (r.get("balance") or {}).get("credit") if isinstance(r.get("balance"), dict) else None
+        if r.get("slug") not in api_credit.CREDIT_SLUGS or r.get("key_set") is False or not isinstance(c, dict):
+            continue
+        status = api_credit.status_of(c, now)
+        if status not in ("low", "expired"):
+            continue
+        scale = c.get("display_scale") or 1
+        parts = []
+        if c.get("remaining") is not None:
+            parts.append(f"{c['remaining'] * scale / 1e6:.2f}M left" if scale == 1_000_000 else f"{c['remaining']:g} left")
+        if c.get("percent_left") is not None:
+            parts.append(f"{c['percent_left']:g}% of the plan")
+        if c.get("expires_at"):
+            parts.append(f"valid until {str(c['expires_at'])[:10]}")
+        what = "its credit has expired" if status == "expired" else "its credit is running low"
+        out.append(problem("AI", f"{r.get('name') or r['slug']}: {what}" + (f" ({', '.join(parts)})" if parts else ""),
+                           "Top up or renew the plan; the API credit page shows the figure and the date."))
     return out
 
 
@@ -487,8 +514,8 @@ def run(store: Any, now: datetime | None = None, sender: Any = None, session: An
         sender, sender_for = billing.make_senders(settings)
     ws_email = str((settings.get("company") or {}).get("email") or "")
     fixed = (fix_known_publisher_errors(store) + retry_transient_ideas(store, now)) if fix else []
-    problems = (check_workflows(now, session) + check_gateways(store) + check_gemini(store) + check_chatgpt(store, now)
-                + check_publisher(store, now) + check_billing(store, now) + check_gmail(sender)
+    problems = (check_workflows(now, session) + check_gateways(store) + check_credit(store, now) + check_gemini(store)
+                + check_chatgpt(store, now) + check_publisher(store, now) + check_billing(store, now) + check_gmail(sender)
                 + check_business_gmail(businesses, ws_email, sender_for) + check_telegram(store, now)
                 + check_scrape_sources(store, now))
     state = load_state(store)

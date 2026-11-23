@@ -115,7 +115,7 @@ t("Telegram's limits: 64 bytes of callback data, two buttons to a row, a menu th
       }
     }
   }
-  assert.ok(renderMenu("home", "bm", SITE).keyboard.length <= 9, "the home menu: quick buttons, segments two to a row, one closing row");
+  assert.ok(renderMenu("home", "bm", SITE).keyboard.length <= 10, "the home menu: quick buttons, segments two to a row, one closing row (10 since the API credit segment, 23 Nov 2026)");
 });
 
 t("both languages are there, and no em dash is in anything a person reads", () => {

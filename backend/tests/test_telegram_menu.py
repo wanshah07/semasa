@@ -237,7 +237,7 @@ def test_every_menu_fits_telegrams_limits_in_both_languages():
 
 def test_the_menu_stays_short_enough_to_use_on_a_phone():
     home = menu.render("home", "bm", SITE)[1]
-    assert len(home) <= 9, "the home menu is two quick buttons, the segments two to a row, and one closing row"
+    assert len(home) <= 10, "the home menu is two quick buttons, the segments two to a row, and one closing row"
     assert [b["callback_data"] for b in home[0]] == ["a:draf", "a:idea_r"], "what Wan does most is on the first row"
     deepest = max(len(menu.render(n, "bm", SITE)[1]) for n in menu.nodes() if n != "home")
     assert deepest <= 8

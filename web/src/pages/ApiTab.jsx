@@ -37,7 +37,7 @@ const COLOURS = ["rgb(var(--c-accent))", "rgb(var(--c-ok))", "rgb(var(--c-warn))
 // the gateways whose default model is set from GitHub variables or secrets, so a page choice is the only way to move it
 const ADJUSTABLE = ["rootsys", "mireld"];
 
-export default function ApiTab({ settings, save, onToast }) {
+export default function ApiTab({ settings, save, onToast, go }) {
   const { t, lang } = useLang();
   const L = lang === "en" ? "en" : "bm";
   // realtime: the 5-minute pulse (supabase/075, semasa-pulse) rewrites these rows and every robot card redraws as the row lands
@@ -142,8 +142,9 @@ export default function ApiTab({ settings, save, onToast }) {
                 <Stat label={t("Masa jawab", "Latency")} value={r.chat_ms != null ? `${r.chat_ms} ms` : r.latency_ms != null ? `${r.latency_ms} ms` : t("Tiada", "None")} hint={r.http ? `HTTP ${r.http}` : ""} />
                 <Stat label={t("Token {d} hari", "Tokens {d} days", { d: days })} value={fmtTokens(u.tokens)} hint={t("{n} panggilan, {f} gagal", "{n} calls, {f} failed", { n: u.calls, f: u.failed })} warn={u.failed > 0} />
               </div>
-              {r.balance && Object.keys(r.balance).length > 1 && (
-                <p className="mt-2 text-xs text-muted"><Wallet size={12} className="mr-1 inline" />{Object.entries(r.balance).filter(([k]) => k !== "path").map(([k, val]) => `${k}: ${val}`).join(" · ")} <span className="opacity-70">({r.balance.path})</span></p>
+              {balanceLine(r.balance) && (
+                <p className="mt-2 text-xs text-muted"><Wallet size={12} className="mr-1 inline" />{balanceLine(r.balance)} <span className="opacity-70">({r.balance.path})</span>
+                  {r.balance.credit && <> · <button type="button" className="underline hover:text-accent" onClick={() => go?.("kredit")}>{t("Baki kredit API", "API credit")}</button></>}</p>
               )}
               {r.error && <p className="mt-2 rounded-tile bg-danger/10 p-2 text-xs text-danger">{r.error}</p>}
               <div className="mt-3">
@@ -209,6 +210,12 @@ export default function ApiTab({ settings, save, onToast }) {
       </div>
     </main>
   );
+}
+
+/** The one line of figures a balance endpoint answered (its numbers and short words), without the credit reading's own objects. */
+function balanceLine(b) {
+  if (!b || !b.path) return "";
+  return Object.entries(b).filter(([k, val]) => k !== "path" && ["number", "string"].includes(typeof val) && k !== "checked_at").map(([k, val]) => `${k}: ${val}`).join(" · ");
 }
 
 function Stat({ label, value, hint, warn }) {

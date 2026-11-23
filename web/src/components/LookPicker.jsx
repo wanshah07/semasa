@@ -165,7 +165,9 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   const chalk = usePreview(cover, { ...opts, look: "chalk" }, true);
   const metro = usePreview(cover, { ...opts, look: "metro" }, true);
   const strip = usePreview(cover, { ...opts, look: "strip" }, true);
-  const tiles = { grid, era, photo, image, hand, marker, torn, block, neon, deck, chalk, metro, strip };
+  // Diari had no tile of its own: `tiles.journal` was undefined, so its square showed a bare dot (Wan, 23 Nov 2026: "why journal not appear")
+  const journal = usePreview(cover, { ...opts, look: "journal" }, true);
+  const tiles = { journal, grid, era, photo, image, hand, marker, torn, block, neon, deck, chalk, metro, strip };
   // a design can be removed from the choices (hidden, never deleted: old drafts still re-render) and brought back
   const studioShown = offered(LOOKS, hiddenLooks);
   const shownLooks = threads ? [...studioShown, THREADS_LOOK] : studioShown;     // Threads-style is never hidden, and never counted as the last look left

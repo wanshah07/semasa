@@ -6,6 +6,7 @@ import { resolveLook, useDesigns } from "../lib/designs";
 import { hide, offered, restore } from "../lib/lookChoice";
 import { THREADS, THREADS_LOOK, isThreads, threadsProblems, threadsSample } from "../lib/threadsSlides";
 import { useLang } from "../lib/i18n";
+import useSlideArt from "../lib/useSlideArt";
 import ImageLightbox, { useLightbox } from "./ImageLightbox";
 import ThreadsStrip, { ThreadsPage } from "./ThreadsPreview";
 
@@ -94,12 +95,12 @@ function useClosing(enabled, size) {
   return pic;
 }
 
-/* A stand-in cut-out drawing (public/cards/sample-art.png: a flask, a leaf, two dots, transparent round a white sticker border) so every tile and the preview show where
-   the illustration goes (Wan, 23 Nov 2026: "kenapa poster style design masih lama ... tiada illustration"). The real drawing is made by the
-   worker for each slide when the post is drawn; this one only ever appears in the picker and is never saved. */
+/* A stand-in cut-out (public/cards/sample-art.png: a plain picture frame with a sun and two hills, transparent round a white sticker border)
+   so a tile shows where the illustration goes when the slide has no drawing yet (Wan, 23 Nov 2026: "tiada illustration", then "illustration
+   based on content, not fix conical flask"): a slide the worker HAS drawn shows its own drawing instead (useSlideArt). Never saved. */
 const SAMPLE_ART = `${BASE}sample-art.png`;
 const SAMPLE_PAGE = `${BASE}sample-art-page.png`;       // Diari's picture is the whole drawn page (opaque), the other looks' is a cut-out
-const asPage = (list) => list.map((s) => (s && s.art_url === SAMPLE_ART ? { ...s, art_url: SAMPLE_PAGE } : s));
+const asPage = (list) => list.map((s) => (s && s.art_page ? { ...s, art_url: s.art_page } : s && s.art_url === SAMPLE_ART ? { ...s, art_url: SAMPLE_PAGE } : s));
 const withSampleArt = (list) => list.map((s) => (s && !s.art_url && !s.art_skip ? { ...s, art_url: SAMPLE_ART } : s));
 
 /* No words yet (a post with no slides written): the designs are shown on sample words rather than as blank tiles. */
@@ -143,12 +144,13 @@ function DesignTile({ d, opts, cover, ratio, on, onPick, onRemove, disabled, def
 
 export default function LookPicker({ value, onChange, slides: given, sample: givenSample = false, stream = "regulab", eyebrow = "",
   citation = "", bgUrl = "", bgChosen = false, size = null, full = true, onBlocked, disabled = false, mascots = [],
-  fit = false, onFit = null, threads = false, onDropSlide = null }) {
+  fit = false, onFit = null, threads = false, onDropSlide = null, artJobs = null }) {
   const { t, lang } = useLang();
   const { designs, defaultId, hiddenLooks, setHiddenLooks, saveDesigns, setDefault } = useDesigns();
   const chosen = resolveLook(value, designs);                    // "d:<id>" is one of My designs: its family, colours and layouts
   const sample = givenSample || !given.length;
-  const slides = withSampleArt(given.length ? given : sampleWords(stream));
+  const words = useMemo(() => (given.length ? given : sampleWords(stream)), [given, stream]);
+  const slides = withSampleArt(useSlideArt(words, artJobs));
   const [W, H] = sizeOf(stream, size);
   const ratio = `${W} / ${H}`;
   const opts = { stream, eyebrow, citation, bg: bgUrl || "", size: Array.isArray(size) ? size : undefined,

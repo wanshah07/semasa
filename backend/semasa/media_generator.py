@@ -707,6 +707,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         cover_words = (carousel.cover_words(items[0]) if items else None) if (not kind and stream != "linkedin"
                                                                                and len(items) >= 2) else None
         art_used = False
+        drawn: list[dict[str, Any]] = []
         for n, (words_in, joined_here) in enumerate(attempts):
             joined = joined_here
             try:
@@ -784,9 +785,16 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                         raise                    # (the classic look would draw a verse slide without its verse)
                     # a Studio look that cannot fit a slide's words: the classic look shrinks its type to fit, so the post
                     # still gets its pictures instead of failing the whole job on every run
+                    # the pictures already made for the Studio look are kept: the classic fallback draws the same band at the foot
+                    full = size or slides.SIZES.get(stream, slides.SIZES["regulab"])
+                    kept = [illustrated.art_bytes(x) for x in drawn] if art_used and len(drawn) == len(words_in) else []
+                    band = bool(kept) and all(kept)
                     try:
                         pics = slides.render(classic_words(words_in), stream=stream, eyebrow=eyebrow,
-                                             source=str(meta.get("citation") or ""), website=website, ground=ground, size=size)
+                                             source=str(meta.get("citation") or ""), website=website, ground=ground,
+                                             size=(full[0], full[1] - round(full[1] * illustrated.ART_BAND)) if band else size)
+                        if band:
+                            pics = [illustrated.compose_band(p, a, full) for p, a in zip(pics, kept, strict=True)]
                     except slides.SlideError:
                         raise exc from None
                     meta["look_fallback"] = f"{look}: {str(exc)[:200]}"

@@ -542,3 +542,25 @@ def test_a_poster_with_no_picture_maker_is_still_drawn_without_the_band(monkeypa
                       media_generations=[_poster_job("s2")])
     assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is True
     assert "no picture maker" in store.tables["media_generations"][0]["meta"].get("art_missing", "")
+
+
+def test_a_studio_look_that_overflows_falls_back_to_classic_and_keeps_its_pictures(monkeypatch):
+    # Codex review of #333: the classic fallback used to drop the illustrations the Studio look had already made
+    from semasa import slides
+    monkeypatch.setattr(illustrated, "makers", lambda s, store: ["x"])
+    monkeypatch.setattr(illustrated, "draw", lambda *a, **k: (_white_page_drawing(), "x"))
+    monkeypatch.setattr(illustrated, "fetch", lambda url: _white_page_drawing())
+    banded = []
+    monkeypatch.setattr(illustrated, "compose_band", lambda page, art, size: banded.append(size) or page)
+    monkeypatch.setattr(media_generator.db, "upload_generated", lambda st, path, data, ct: f"https://cdn/{path}")
+
+    def too_full(items, **kw):
+        raise slides.SlideError("slide 2: The slide is fuller than the card: shorten a line.")
+    monkeypatch.setattr(studio_cards, "render", too_full)
+    monkeypatch.setattr(slides, "render", lambda words, **kw: [_paper(1080, 1350 - 400) for _ in words])
+    store = FakeStore(semasa_settings=[{"key": "brand", "value": {"regulab": {"website": "www.x.com"}}}], semasa_posts=[],
+                      media_generations=[_job({"look": "image"})])
+    assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is True
+    meta = store.tables["media_generations"][0]["meta"]
+    assert meta["look"] == "classic" and "fuller than the card" in meta["look_fallback"]
+    assert len(banded) >= len(SLIDES), "every fallback page gets its illustration band"

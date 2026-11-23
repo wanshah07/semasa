@@ -162,7 +162,7 @@ def test_the_idea_carries_its_look_to_the_slide_job():
     # a carousel with no choice: Diari, the primary look
     assert ideas.look_of({"id": "i2", "brief": {"format": "carousel"}}) == "journal"
     assert ideas.look_of({"id": "i2", "brief": {"format": "poster", "look": "journal"}}) == "hand", "a poster never takes Diari"
-    assert ideas.look_of({"id": "i2", "brief": {}}) == "hand"             # no format, no choice: a poster, hand-drawn
+    assert ideas.look_of({"id": "i2", "brief": {}}) == "journal"        # no format, no choice: a carousel, in Diari
     # no picture made: a Studio look is drawn on Studio's ground for the domain; Semasa's own look stays on paper
     assert ideas.slide_job(idea, post, "p1")["meta"]["bg"] == "lib:g_makmal02"
     assert ideas.slide_job(idea, post, "p1", bg="post_image")["meta"]["bg"] == "post_image"
@@ -172,7 +172,7 @@ def test_the_idea_carries_its_look_to_the_slide_job():
     li = {**post, "stream": "linkedin", "domain": None, "angle": "E"}
     assert ideas.slide_job(idea, li, "p1")["meta"]["bg"] == "lib:g_gudang01"
     for brief in ({}, None, "not a dict"):
-        assert ideas.look_of({"brief": brief}) == "hand"                       # nothing chosen: a poster, hand-drawn
+        assert ideas.look_of({"brief": brief}) == "journal"                    # nothing chosen: a carousel, in Diari
     assert ideas.look_of({"brief": {"look": "holo"}}) == "classic"            # a name nobody knows: the safe drawing
     assert ideas.slide_job({"id": "i4", "brief": {"look": "threads"}}, post, "p1")["meta"] == {
         "flow": "A", "slides": SLIDES, "stream": "regulab", "design": "threads", "format": "portrait",

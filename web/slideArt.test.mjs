@@ -1,7 +1,7 @@
 // A post's own illustrations in the design picker (src/lib/slideArt.js): the keys are the worker's keys, the cut-out is the worker's rule
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { STYLE_VERSION, artFor, artIndex, artKey, cutPixels, wordsOf } from "./src/lib/slideArt.js";
+import { STYLE_VERSION, artFor, artIndex, artKey, coverArtUrl, coverTitleFor, cutPixels, leadWords, pageColour, wordsOf } from "./src/lib/slideArt.js";
 
 let n = 0;
 const t = async (name, fn) => { try { await fn(); n++; } catch (e) { console.error("FAIL:", name); throw e; } };
@@ -52,6 +52,44 @@ await t("the picker is wired: the editor hands its slide jobs over, and a drawn 
   assert.match(editor, /<LookPicker[^>]*artJobs=\{jobs\}/);
   assert.match(picker, /useSlideArt\(words, artJobs\)/);
   assert.match(picker, /s\.art_page \? \{ \.\.\.s, art_url: s\.art_page \}/, "Diari's tile takes the whole page");
+});
+
+await t("the cover's title is short: the worker's own choice when it drew this hook, else the same fallback as carousel._lead_words", async () => {
+  assert.equal(leadWords("Soalan yang takde sapa tanya pasal sunblock masa depan: boleh ke bahan semula jadi lawan UV?", 6), "Soalan yang takde sapa tanya pasal");
+  assert.equal(leadWords("Natural boleh lawan UV. Tapi jangan langkau peraturan.", 6), "Natural boleh lawan UV", "a short first clause is kept whole");
+  const hook = "Soalan yang takde sapa tanya pasal sunblock masa depan";
+  const jobs = [{ status: "done", meta: { cover_title: "Sunblock masa depan", slides: [{ title: hook }] } }];
+  assert.equal(coverTitleFor({ title: hook }, jobs), "Sunblock masa depan");
+  assert.equal(coverTitleFor({ title: hook }, []), "Soalan yang takde sapa tanya pasal");
+  assert.equal(coverTitleFor({ title: "Hook pendek" }, []), "Hook pendek", "a hook that is already short stays");
+  assert.equal(coverTitleFor({ title: "Another hook" }, jobs), "Another hook", "a title chosen for another hook is not borrowed");
+  const first = { title: hook, points: [] };
+  assert.equal(await coverArtUrl(first, [{ meta: { art: { ["cover|" + await artKey(first, true)]: { url: "cover.png" } } } }]), "cover.png");
+  assert.equal(await coverArtUrl(first, []), "");
+});
+
+await t("the editor offers Refresh and Build-from-the-caption-and-draw, and a render can be asked fresh", () => {
+  const ed = readFileSync(new URL("./src/components/PostEditor.jsx", import.meta.url), "utf8");
+  const sl = readFileSync(new URL("./src/components/SlidesEditor.jsx", import.meta.url), "utf8");
+  assert.match(ed, /async function renderSlides\(refresh = false\)/);
+  assert.match(ed, /onRefresh=\{\(\) => renderSlides\(true\)\}/);
+  assert.match(ed, /onBuildAndDraw=\{\(\) => setDrawNext\(Date\.now\(\)\)\}/);
+  assert.match(sl, /fromCaption\(false, true\)/);
+  assert.match(sl, /onClick=\{onRefresh\}/);
+  assert.match(sl, /disabled=\{busy \|\| drawing/, "one drawing at a time");
+});
+
+await t("a drawing on CREAM paper (a stored Diari picture) is cut out by its own page colour; a picture that fills its frame is left alone", () => {
+  const w = 60, h = 40, cream = [250, 236, 205];
+  const px = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) { px[i * 4] = cream[0] + (i % 5); px[i * 4 + 1] = cream[1]; px[i * 4 + 2] = cream[2]; px[i * 4 + 3] = 255; }   // a little paper grain
+  for (let y = 10; y < 30; y++) for (let x = 20; x < 40; x++) { const i = (y * w + x) * 4; const edge = x === 20 || x === 39 || y === 10 || y === 29; px[i] = edge ? 30 : cream[0]; px[i + 1] = edge ? 30 : cream[1]; px[i + 2] = edge ? 30 : cream[2]; }
+  assert.deepEqual(pageColour(px, w, h).map((v) => Math.round(v / 10)), cream.map((v) => Math.round(v / 10)));
+  assert.equal(cutPixels(px, w, h, 3), true);
+  const a = (x, y) => px[(y * w + x) * 4 + 3];
+  assert.equal(a(0, 0), 0, "the cream page is transparent"); assert.equal(a(30, 20), 255, "the cream inside the ring stays"); assert.equal(a(18, 20), 255, "with a sticker border outside the ink");
+  const dark = new Uint8ClampedArray(8 * 8 * 4).fill(40); for (let i = 3; i < dark.length; i += 4) dark[i] = 255;
+  assert.equal(pageColour(dark, 8, 8), null); assert.equal(cutPixels(dark, 8, 8, 2), false);
 });
 
 console.log(`slideArt: ${n} checks passed`);

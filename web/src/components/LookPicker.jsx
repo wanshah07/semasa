@@ -7,6 +7,7 @@ import { hide, offered, restore } from "../lib/lookChoice";
 import { THREADS, THREADS_LOOK, isThreads, threadsProblems, threadsSample } from "../lib/threadsSlides";
 import { useLang } from "../lib/i18n";
 import useSlideArt from "../lib/useSlideArt";
+import { coverArtUrl, coverTitleFor, dataUrlOf } from "../lib/slideArt";
 import ImageLightbox, { useLightbox } from "./ImageLightbox";
 import ThreadsStrip, { ThreadsPage } from "./ThreadsPreview";
 
@@ -53,9 +54,11 @@ function usePreview(slides, opts, enabled) {
 
 /* The branded cover a ws.regulab carousel opens on (the worker draws it and puts it first): the same card, so slide 1 of the preview is
    what is posted. A first slide that is a hook is replaced by it; a content first slide gets it in front. */
-function useCover(enabled, first, size) {
+const COVER_BLOBS = new Map();                                // a kept cover illustration's address → its blob address, fetched once
+function useCover(enabled, first, size, jobs = null) {
   const [pic, setPic] = useState(null);
-  const key = JSON.stringify([enabled, first?.title, first?.lead, first?.points, size]);
+  const jobKey = (jobs || []).map((j) => `${j.id}:${j.status}:${j.meta?.cover_title || ""}:${Object.keys(j.meta?.art || {}).length}`).join("|");
+  const key = JSON.stringify([enabled, first?.title, first?.lead, first?.points, size, jobKey]);
   useEffect(() => {
     const w = enabled ? coverWords(first) : null;
     if (!w) { setPic(null); return undefined; }
@@ -65,8 +68,13 @@ function useCover(enabled, first, size) {
         setLogo(`${BASE}logo.png`);
         await ensureFonts(BASE);
         let p;
-        try { p = await renderCoverCard({ title: w.title, lead: w.lead, size, logo: `${BASE}cover-logo.png` }); }
-        catch { p = await renderCoverCard({ title: w.title, lead: "", size, logo: `${BASE}cover-logo.png` }); }
+        // as the worker draws it (Wan, 23 Nov 2026): a SHORT title, no supporting line (the long hook is page one) and the hook's own
+        // cut-out illustration at the foot when the worker has drawn one for these very words
+        const title = coverTitleFor(first, jobs);
+        const artSrc = await coverArtUrl(first, jobs);
+        if (artSrc && !COVER_BLOBS.has(artSrc)) COVER_BLOBS.set(artSrc, await dataUrlOf(artSrc));
+        const art = artSrc ? COVER_BLOBS.get(artSrc) : "";
+        p = await renderCoverCard({ title, lead: "", size, logo: `${BASE}cover-logo.png`, ...(art ? { art } : {}) });
         if (live) setPic(p);
       } catch { if (live) setPic(null); }
     })();
@@ -211,7 +219,7 @@ export default function LookPicker({ value, onChange, slides: given, sample: giv
   // the cover: the worker's rule (carousel.py with_front_cover + cover_words): a hook first slide is replaced by the branded cover,
   // a content first slide keeps its own card and gets the cover in front of it
   const framed = withFrontCover(slides, stream);
-  const brandCover = useCover(branded, framed[0], [W, H]);
+  const brandCover = useCover(branded, framed[0], [W, H], artJobs);
   const front = framed.length > slides.length;
   let body = all.pics;
   if (brandCover && body.length) body = front ? [{ ...brandCover, cover: true }, ...body] : [{ ...brandCover, cover: true }, ...body.slice(1)];

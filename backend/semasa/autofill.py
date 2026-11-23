@@ -90,6 +90,13 @@ SLOT_FORMATS = ("video", "carousel", "poster", "single")
 MOTIONS = "semasa_motions"
 
 
+def auto_format(fmt: str) -> str:
+    """What an auto-filled post becomes: a slot with no format is a carousel, drawn with the worker's illustrations (Wan, 23 Nov
+    2026: "all post must auto appear carousel ... only if I choose single card"); only a slot Wan set to single is one 4:5 card
+    (drawn in the poster looks). video, carousel and poster pass through."""
+    return {"": "carousel", "single": "poster"}.get(fmt, fmt)
+
+
 def slot_format(brand: dict[str, Any], stream: str, slot: str) -> str:
     """What the rota says this slot carries (Wan, 10 Nov 2026: "6 times a day, 2 motions, 2 carousel, 2 single card"):
     settings brand.<stream>.slot_formats = {"08:00": "video", ...}. "" when the slot has no format: the writer chooses."""
@@ -514,10 +521,7 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                     films += 1
                     made += 1
                     continue
-                if fmt in ("", "single"):
-                    # every post that is not a film is drawn in the Semasa poster looks (Wan, 20 Nov 2026: "semua ws regulab post
-                    # jugak guna poster semasa", and LinkedIn "terus render" them): a single card is one 4:5 poster
-                    fmt = "poster"
+                fmt = auto_format(fmt)
                 news = item.get("section") == "news"
                 # facts first (22 Nov 2026): a regulator's or an official source's own words are "official"; only a newspaper
                 # headline or a social post (both off unless Wan switched `news` on) is "current". An announcement by a regulator

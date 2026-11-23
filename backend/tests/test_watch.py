@@ -174,7 +174,7 @@ def test_an_idea_from_a_regulator_cites_the_regulator_and_a_news_idea_hides_its_
 def test_an_idea_can_ask_for_a_carousel_or_a_poster():
     assert ideas.format_of({"make_slides": True}) == "carousel"
     assert ideas.format_of({"brief": {"format": "poster"}}) == "poster"
-    assert ideas.format_of({"brief": {"format": "nonsense"}}) == "poster"
+    assert ideas.format_of({"brief": {"format": "nonsense"}}) == "carousel"
     job = ideas.poster_job({"id": "i1", "brief": {"look": "grid"}}, {"stream": "regulab", "citation": "NPRA"}, "p1",
                            [{"title": "T", "points": ["a"]}])
     assert job["meta"]["design"] == "poster" and job["meta"]["format"] == "portrait" and job["meta"]["look"] == "grid"

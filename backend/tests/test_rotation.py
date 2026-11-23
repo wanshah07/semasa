@@ -207,6 +207,20 @@ def test_an_automatic_turn_of_diari_reaches_the_job_marked_so_it_can_give_way(of
     assert job["meta"]["look"] == "journal" and job["meta"]["look_auto"] is True
 
 
+def test_a_threads_carousel_is_written_to_the_threads_page_limits(offline):
+    # Codex review on #325: the writer was given "as many slides as the story needs", and threads_slides.check refuses a
+    # set outside 2 to 5 pages, so a long story made a failed media job
+    from semasa import threads_slides
+    llm = Seq({**GOOD, "hook_shape": 4, "slides": DIARI})
+    store = _store([{"hook_shape": 4, "look": "hand"}])
+    _write(llm, store, make_media="image", make_slides=True, brief={"format": "carousel", "look": "threads"})
+    system = llm.seen[0][0]
+    assert "THREADS LOOK" in system and "JOURNAL LOOK" not in system
+    for limit in (threads_slides.MIN_PAGES, threads_slides.MAX_PAGES, threads_slides.MAX_POINTS, threads_slides.MAX_PAGE_CHARS,
+                  threads_slides.MAX_HOOK_WORDS):
+        assert str(limit) in ideas.THREADS_RULES, limit
+
+
 def test_my_designs_keeps_every_look_it_is_asked_for_that_the_renderer_knows():
     from semasa import my_designs, studio_cards
     for look in ("classic", *studio_cards.LOOKS):

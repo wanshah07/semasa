@@ -29,7 +29,9 @@ on:
         default: false
 
 concurrency:
-  group: media
+  # its own queue (23 Nov 2026): in the shared `media` group a waiting redraw was replaced by every newer media run, which is how the
+  # dry run of 23 Nov was cancelled before it started. Two runs of this workflow still never overlap.
+  group: rerender
   cancel-in-progress: false
 
 permissions:

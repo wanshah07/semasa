@@ -684,7 +684,7 @@ def test_an_idea_can_ask_for_a_comic_as_its_posts_picture(monkeypatch) -> None:
     from semasa import ideas
     from semasa.llm import LLM
 
-    assert ideas.format_of({"brief": {"format": "comic"}}) == "comic" and ideas.format_of({"brief": {}}) == "poster"
+    assert ideas.format_of({"brief": {"format": "comic"}}) == "comic" and ideas.format_of({"brief": {}}) == "carousel"
 
     class IdeaWriter(LLM):
         def __init__(self, answer):

@@ -312,7 +312,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
     onToast(t("{n} ayat seruan atau laman web dibuang. Semak, kemudian Simpan.", "{n} ask or website sentence(s) removed. Check, then Save.", { n: promo }), "info");
   }
 
-  async function renderSlides() {
+  async function renderSlides(refresh = false) {
     if (!slides.length) return onToast(t("Tulis sekurang-kurangnya satu slaid.", "Write at least one slide."), "warn");
     if (lookBlocked) return onToast(lookBlocked === "photo"
       ? t("Reka bentuk Foto perlu gambar latar.", "The Photo design needs a background picture.")
@@ -326,6 +326,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       post_id: post.id, idea_id: post.idea_id,
       meta: { flow: "B", slides, stream: post.stream, citation, domain: post.domain, angle: post.angle,
         bg: bg === "none" && rl.pack?.bg ? rl.pack.bg : bg, look: rl.look, fit: fit && rl.look !== "classic",
+        ...(refresh === true ? { refresh: true } : {}),                // a new job draws the cover and every illustration again
         ...(rl.pack ? { design_pack: rl.pack, design_id: rl.id } : {}) },
     });
     setBusy(false);
@@ -340,6 +341,11 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       : t("Disimpan. Slaid dalam giliran untuk dilukis.", "Saved. Slides queued for drawing."), "ok");
     onChanged();
   }
+
+  // "Build from the caption and draw": the slides are built in the editor, and the next render (after they are in `slides`) queues the
+  // worker to draw the cover and an illustration for each slide from its words
+  const [drawNext, setDrawNext] = useState(0);
+  useEffect(() => { if (drawNext) { setDrawNext(0); renderSlides(true); } }, [drawNext]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // one carousel per post: a set chosen here replaces the post's earlier set, in the same place
   function chooseSet(id) {
@@ -549,7 +555,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
       {hasSlides ? (
         <div id={`slides-${post.id}`}><SlidesEditor post={post} rows={slideRows} setRows={setSlideRows} locked={frozen} jobs={slideJobs}
           attachedIds={mediaIds} bg={bg} setBg={setBg} bgOptions={bgOptions} busy={busy}
-          onRender={renderSlides} onUse={chooseSet} look={look} fit={fit} setFit={setFit}
+          onRender={() => renderSlides(false)} onRefresh={() => renderSlides(true)} onBuildAndDraw={() => setDrawNext(Date.now())} onUse={chooseSet} look={look} fit={fit} setFit={setFit}
           setLook={(k) => { setLook(k); if (isStudioLook(k) && bg === "none" && defaultGround(post)) setBg(defaultGround(post)); }}
           preview={{ eyebrow, citation, bgUrl, brand: reg }} blocked={lookBlocked} setBlocked={setLookBlocked} resolveBg={resolveBg}
           onToast={onToast} picker={picker} captionPost={{ stream: post.stream, hook: post.hook || "",

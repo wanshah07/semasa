@@ -302,7 +302,7 @@ def test_an_idea_without_slides_writes_no_slides_column(monkeypatch):
     store = FakeStore(semasa_settings=[], semasa_posts=[], media_generations=[], semasa_ideas=[])
     llm = FakeLLM({"fit": True, "hook": "h", "hook_shape": 21, "citation": "NPRA", "slides": GOOD,
                    "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}}})
-    ideas.process_idea(store, llm, {"id": "i1", "stream": "regulab", "make_media": "none"}, {})
+    ideas.process_idea(store, llm, {"id": "i1", "stream": "regulab", "make_media": "none", "brief": {"format": "poster"}}, {})
     assert "slides" not in store.tables["semasa_posts"][0]
     assert "SLIDES WANTED" not in llm.seen[0][0]
     assert store.tables["media_generations"] == []

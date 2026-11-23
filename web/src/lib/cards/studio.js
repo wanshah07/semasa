@@ -4261,7 +4261,11 @@ export async function renderCoverCard(o = {}) {
   }
   const mark = o.logo ? await inkOfLogo(o.logo) : await logoInk();       // the worker's stacked logo (cover-logo.png), else the page's
   const margin = Math.round(W * 0.11), col = W - 2 * margin;
-  const tall = H / W > 1.6, band = H * (tall ? 0.62 : 0.80);
+  const tall = H / W > 1.6;
+  // the hook's illustration (a transparent cut-out) stands on the foot of a carousel's cover (carousel.py ART_BAND / _art_band)
+  const artIm = o.art && !tall ? await new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = o.art; }) : null;
+  const artH = artIm ? Math.round(H * 0.36) : 0;
+  const band = artH ? (H - artH) * 0.94 : H * (tall ? 0.62 : 0.80);
   const lw = Math.round(W * (tall ? 0.36 : 0.46));
   const lh = mark.im ? Math.round(lw * mark.sh / mark.sw) : 0;
   let raw = String(o.title || "").trim();
@@ -4287,7 +4291,7 @@ export async function renderCoverCard(o = {}) {
     px -= 4;
   }
   const tlh = Math.round(px * 1.1);
-  let y = Math.round((H - (fixed + lines.length * tlh)) / 2);
+  let y = Math.round(((H - artH) - (fixed + lines.length * tlh)) / 2);
   if (mark.im) ctx.drawImage(mark.im, mark.sx, mark.sy, mark.sw, mark.sh, Math.round((W - lw) / 2), y, lw, lh);
   y += lh + gap;
   ctx.fillStyle = "#D32027"; ctx.fillRect(Math.round(W / 2 - 44), y, 88, 4);
@@ -4303,6 +4307,11 @@ export async function renderCoverCard(o = {}) {
     y += Math.round(gap * 0.7);
     ctx.font = `400 ${bodyPx}px ${BODY}`; ctx.fillStyle = "#5A5A5A"; ctx.textAlign = "center";
     for (const l of lead) { ctx.fillText(l, W / 2, y); y += bodyLh; }
+  }
+  if (artIm) {
+    const pad = Math.round(W * 0.05), bw = W - 2 * margin, bh = artH - pad;
+    const k = Math.min(bw / artIm.naturalWidth, bh / artIm.naturalHeight), dw = Math.round(artIm.naturalWidth * k), dh = Math.round(artIm.naturalHeight * k);
+    ctx.drawImage(artIm, Math.round((W - dw) / 2), H - pad - dh, dw, dh);
   }
   return { url: c.toDataURL("image/jpeg", 0.92), warn: [], template: "cover" };
 }

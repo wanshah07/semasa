@@ -34,14 +34,61 @@ export async function artFor(slides, jobs) {
   return Promise.all(slides.map(async (s) => ({ cut: idx.get(await artKey(s, true)) || "", page: idx.get(await artKey(s, false)) || "" })));
 }
 
+// ---- the brand cover's own title and illustration ---------------------------------------------------------------------------------
+
+export const COVER_TITLE_WORDS = 6;                   // carousel.COVER_TITLE_WORDS: the cover's title is short, the long hook is page one
+/** carousel._lead_words: the first clause of `text` when it is short enough, else its first `n` words; no trailing punctuation. */
+export function leadWords(text, n) {
+  const t = String(text || "").replace(/\*/g, "").replace(/\s+/g, " ").trim();
+  const first = t.split(/(?<=[.:;!?])\s+/)[0].trim().replace(/[.:;!?,]+$/, "");
+  const c = first.split(" ").filter(Boolean).length;
+  if (c >= 2 && c <= n) return first;
+  return t.split(" ").slice(0, n).join(" ").replace(/[.:;!?,]+$/, "");
+}
+/** What the preview's cover says: the title the worker chose when a finished job drew this very hook, else the same fallback the
+    worker uses when no writer answers (the hook itself when it is already short). */
+export function coverTitleFor(first, jobs) {
+  const hook = String(first?.title || "").trim();
+  if (!hook) return "";
+  for (const j of jobs || []) {
+    const ct = String(j?.meta?.cover_title || "").trim();
+    if (ct && j.status === "done" && (j.meta.slides || []).some((s) => String(s?.title || "").trim() === hook)) return ct;
+  }
+  return hook.replace(/\*/g, "").split(/\s+/).length <= COVER_TITLE_WORDS ? hook : leadWords(hook, COVER_TITLE_WORDS);
+}
+/** The address of the hook's cover illustration the worker kept for this slide ("cover|" + the cut-out key), or "". */
+export async function coverArtUrl(first, jobs) {
+  if (!first) return "";
+  return artIndex(jobs).get("cover|" + await artKey(first, true)) || "";
+}
+
 // ---- turning a drawing on a white page into a cut-out (the browser twin of illustrated.cutout) ----------------------------------
 
 const PAGE_WHITE = 232;                               // illustrated.CUT_WHITE: a pixel this light on every channel is page, not ink
-/** In place: the page round the drawing (white reached from the edges) becomes transparent, then a white sticker border of `r` px
-    is grown round what is left. `px` is RGBA, row by row. Returns false when no page was found (the picture fills its card). */
+const PAGE_TOL = 26;                                  // a cream or tinted page: within this of the colour the edges are made of
+/** The colour of the page round a drawing: the median of the LIGHT pixels on its four edges ([r,g,b]), or null when the edges are
+    mostly ink (a picture that fills its whole frame). */
+export function pageColour(px, w, h) {
+  const at = [];
+  for (let x = 0; x < w; x += 2) { at.push(x, (h - 1) * w + x); }
+  for (let y = 0; y < h; y += 2) { at.push(y * w, y * w + w - 1); }
+  const light = at.filter((i) => px[i * 4 + 3] > 0 && Math.min(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]) >= 170);
+  if (light.length < at.length * 0.4) return null;
+  const med = (c) => { const v = light.map((i) => px[i * 4 + c]).sort((p, q) => p - q); return v[v.length >> 1]; };
+  return [med(0), med(1), med(2)];
+}
+/** In place: the page round the drawing (the page colour reached from the edges) becomes transparent, then a white sticker border of
+    `r` px is grown round what is left. White is the worker's rule (CUT_WHITE); a cream page, like the Diari drawings, is taken away
+    by its own colour so a stored drawing is transparent in the picker too. `px` is RGBA, row by row. Returns false when no page
+    was found (the picture fills its card). */
 export function cutPixels(px, w, h, r = Math.max(6, Math.round(w * 0.012))) {
+  const pc = pageColour(px, w, h);
+  if (!pc) return false;
+  const whitePage = Math.min(...pc) >= PAGE_WHITE;
   const page = new Uint8Array(w * h), stack = [];
-  const white = (i) => px[i * 4] >= PAGE_WHITE && px[i * 4 + 1] >= PAGE_WHITE && px[i * 4 + 2] >= PAGE_WHITE && px[i * 4 + 3] > 0;
+  const white = (i) => px[i * 4 + 3] > 0 && (whitePage
+    ? px[i * 4] >= PAGE_WHITE && px[i * 4 + 1] >= PAGE_WHITE && px[i * 4 + 2] >= PAGE_WHITE
+    : Math.abs(px[i * 4] - pc[0]) <= PAGE_TOL && Math.abs(px[i * 4 + 1] - pc[1]) <= PAGE_TOL && Math.abs(px[i * 4 + 2] - pc[2]) <= PAGE_TOL);
   const seed = (i) => { if (!page[i] && white(i)) { page[i] = 1; stack.push(i); } };
   for (let x = 0; x < w; x++) { seed(x); seed((h - 1) * w + x); }
   for (let y = 0; y < h; y++) { seed(y * w); seed(y * w + w - 1); }

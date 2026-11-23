@@ -252,8 +252,8 @@ def test_a_linkedin_poster_is_drawn_on_plain_paper_even_when_the_post_has_a_pict
 # --- no single picture card (Wan, 21 Nov 2026: "for ws regulab and linkend no more image single card, because too ugly") ---
 
 
-def test_an_idea_with_no_format_is_a_poster_never_a_single_picture():
-    assert ideas.format_of({"stream": "regulab"}) == "poster" and ideas.format_of({"stream": "linkedin"}) == "poster"
+def test_an_idea_with_no_format_is_a_carousel_never_a_single_picture_unless_chosen():
+    assert ideas.format_of({"stream": "regulab"}) == "carousel" and ideas.format_of({"stream": "linkedin"}) == "carousel"
     assert ideas.format_of({"stream": "regulab", "make_slides": True}) == "carousel"
     assert ideas.format_of({"brief": {"format": "comic"}}) == "comic"
     assert ideas.format_of({"brief": {"format": "carousel"}}) == "carousel"

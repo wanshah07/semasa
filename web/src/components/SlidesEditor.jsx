@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Expand, ImageIcon, Layers, Loader2, Minimize2, Paintbrush, Palette, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Expand, ImageIcon, Layers, Loader2, Minimize2, Paintbrush, Palette, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { SLIDE_WORDS, isPromo, normaliseSlides, slidesKey } from "../lib/compliance";
 import { cardFromCaption, slidesFromCaption } from "../lib/cards/fromCaption";
 import { useLang } from "../lib/i18n";
@@ -48,12 +48,13 @@ const kindOf = (t, i, n) => (i === 0 ? t("Kulit", "Cover") : i === n - 1 && n > 
 /* The carousel of one post: its words, where they are drawn from, and the drawn pictures.
    Drawing is done by the worker (backend/semasa/slides.py) with no AI and no key. */
 export default function SlidesEditor({ post, rows, setRows, locked, jobs, attachedIds, bg, setBg, bgOptions, busy,
-  onRender, onUse, look, setLook, fit = false, setFit = null, preview, blocked, setBlocked, resolveBg = () => "", captionPost = null, onToast = () => {}, picker = null }) {
+  onRender, onRefresh = null, onBuildAndDraw = null, onUse, look, setLook, fit = false, setFit = null, preview, blocked, setBlocked, resolveBg = () => "", captionPost = null, onToast = () => {}, picker = null }) {
   const { t, lang } = useLang();
   const n = rows.length;
   const size = post.stream === "linkedin" ? "1080×1350" : "1080×1080";
   const latest = jobs[0];
   const latestDone = jobs.find((j) => j.status === "done");
+  const drawing = !!latest && (latest.status === "pending" || latest.status === "processing");      // one drawing at a time: a second costs a second set of pictures
   const drawnStale = latestDone && slidesKey(latestDone.meta?.slides) !== slidesKey(fromRows(rows));
   const set = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   // keep, change or remove the poster's small picture: the drawn set goes back to the worker with the choice (backend stickers.py)
@@ -92,7 +93,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
   });
   // Studio's "Reset from caption" and single card: built from the caption as it is on screen now
   const hasWords = rows.some((r) => r.title.trim() || r.points.trim());
-  const fromCaption = (single) => {
+  const fromCaption = (single, draw = false) => {
     if (!captionPost?.caption?.trim()) return onToast(t("Tulis kapsyen dahulu.", "Write the caption first."), "warn");
     if (hasWords && !window.confirm(t("Ganti slaid yang ada dengan slaid daripada kapsyen?", "Replace the slides you have with slides from the caption?"))) return;
     const brand = preview.brand || null;
@@ -103,7 +104,9 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
     }
     const { slides, over } = slidesFromCaption(captionPost, promo);
     setRows(toRows(slides));
-    onToast(t("{n} slaid daripada kapsyen.", "{n} slides from the caption.", { n: slides.length }), "ok");
+    onToast(draw ? t("{n} slaid daripada kapsyen; Semasa melukis kulit dan ilustrasi setiap slaid.", "{n} slides from the caption; Semasa draws the cover and an illustration for each slide.", { n: slides.length })
+      : t("{n} slaid daripada kapsyen.", "{n} slides from the caption.", { n: slides.length }), "ok");
+    if (draw && onBuildAndDraw) onBuildAndDraw();
   };
   const move = (i, d) => {
     const j = i + d;
@@ -185,6 +188,10 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
           <Button type="button" size="sm" variant="ghost" onClick={() => fromCaption(false)}
             title={t("Kulit, satu slaid setiap poin kapsyen, dan baris penutup", "A cover, one slide for each point of the caption, and a closing line")}>
             {t("Bina daripada kapsyen", "Build from the caption")}</Button>
+          {onBuildAndDraw && <Button type="button" size="sm" variant="soft" disabled={busy || drawing} onClick={() => fromCaption(false, true)}
+            title={t("Bina slaid daripada kapsyen, kemudian Semasa melukis kulit dan ilustrasi berdasarkan kandungan setiap slaid",
+              "Build the slides from the caption, then Semasa draws the cover and an illustration from each slide's own words")}>
+            <Layers size={12} /> {t("Bina daripada kapsyen + lukis ilustrasi", "Build from the caption + draw illustrations")}</Button>}
           <Button type="button" size="sm" variant="ghost" onClick={() => fromCaption(true)}
             title={t("Satu kad sahaja: cangkuk dan baris pertamanya (Wan, 22 Nov 2026: pilihan poster/kad tunggal)", "One card only: the hook and its first line")}>
             {t("Kad tunggal", "Single card")}</Button>
@@ -196,6 +203,10 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
           {picker && <Button type="button" size="sm" variant="soft" onClick={() => setPickFor({ i: null })}
             title={t("Pilih daripada gambar post, foto Wan, Unsplash atau jana gambar baharu", "Choose from the post's pictures, Wan's photos, Unsplash, or generate a new one")}>
             <ImageIcon size={12} /> {t("Pilih latar…", "Choose background…")}</Button>}
+          {onRefresh && <Button type="button" size="sm" variant="soft" disabled={busy || drawing || !n || !!blocked} onClick={onRefresh}
+            title={t("Semasa melukis semula kulit, slaid dan setiap ilustrasi daripada kandungan slaid sekarang",
+              "Semasa draws the cover, the slides and every illustration again from the slides as they are now")}>
+            <RotateCcw size={12} /> {t("Segarkan", "Refresh")}</Button>}
           <Button type="button" size="sm" disabled={busy || !n || !!blocked} onClick={onRender}
             title={t("Simpan post ini, kemudian Semasa melukis slaid", "Save this post, then Semasa draws the slides")}>
             <Layers size={12} /> {t("Jana slaid", "Generate slides")}</Button>

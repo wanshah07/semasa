@@ -153,3 +153,8 @@ def test_inside_a_linkedin_tier_the_newest_item_wins_even_when_an_older_one_is_a
     ranked = autofill.rank_candidates([older, newer])
     assert ranked[0] is older, "the shared order puts the announcement first"
     assert autofill.pick(ranked, "linkedin", None, "2026-09-25") is newer
+
+
+def test_a_slot_with_no_format_is_a_carousel_and_only_a_single_slot_is_one_card():
+    got = [autofill.auto_format(f) for f in ("", "carousel", "single", "poster", "video")]
+    assert got == ["carousel", "carousel", "poster", "poster", "video"]

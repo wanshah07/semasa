@@ -100,7 +100,7 @@ t("the list is newest first, filtered by who wrote it and by every word searched
   assert.deepEqual(filterNotes(rows, "GUNA untuk").map((r) => r.id), ["c", "a"]);
 });
 t("the page sits beside the AI chat, writes only its two settings, and edits notes through the chat's own helpers", () => {
-  assert.equal(segmentOf((bm) => bm, "memori")?.id, "dashboard");
+  assert.equal(segmentOf((bm) => bm, "memori")?.id, "memori", "its own sidebar entry since 23 Nov 2026");
   assert.equal(segmentOf((bm) => bm, "dokumen")?.id, "reference");
   const page = readFileSync(new URL("./src/pages/MemoryTab.jsx", import.meta.url), "utf8");
   assert.ok(page.includes("save(INSTRUCTIONS_KEY") && page.includes("save(MEMORY_KEY"));

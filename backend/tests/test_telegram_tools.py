@@ -188,7 +188,7 @@ def test_start_shows_the_menu_and_idea_intake_queues_a_real_idea():
     run(st, bot)
     m = bot.sent()[0]
     datas = [b.get("callback_data") for row in m["reply_markup"]["inline_keyboard"] for b in row]
-    assert datas[:4] == ["a:draf", "a:idea_r", "m:s:dashboard", "m:s:content"], "the menu of every segment (telegram_menu.py)"
+    assert datas[:4] == ["a:draf", "a:idea_r", "m:s:dashboard", "m:s:chat"], "the menu of every segment (telegram_menu.py)"
     st.tables[tb.INBOX].append(tap(2, "c:idea"))           # a button of the five-task menu that is still in the chat
     run(st, bot)
     assert "Hantar pautan" in bot.sent()[-1]["text"]

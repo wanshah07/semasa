@@ -76,7 +76,15 @@ export default {
               "en": "Next 7 days"
             }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "id": "chat",
+      "icon": "💬",
+      "bm": "Sembang AI",
+      "en": "AI chat",
+      "pages": [
         {
           "tab": "chat",
           "icon": "💬",
@@ -100,7 +108,15 @@ export default {
               "en": "Model by task"
             }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "id": "memori",
+      "icon": "🧠",
+      "bm": "Memori & Arahan",
+      "en": "Memory & instructions",
+      "pages": [
         {
           "tab": "memori",
           "icon": "🧠",
@@ -124,7 +140,15 @@ export default {
               "en": "Save a new note"
             }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "id": "otak",
+      "icon": "🧬",
+      "bm": "Otak AI",
+      "en": "AI brain",
+      "pages": [
         {
           "tab": "otak",
           "icon": "🧬",

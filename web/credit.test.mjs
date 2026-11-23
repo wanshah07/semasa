@@ -156,4 +156,11 @@ t("the page is wired: the segment, the page, the lazy import and the telegram en
   assert.match(read("../.github/workflows/api-credit.yml"), /cron: "\*\/15 \* \* \* \*"/);
 });
 
+t("an unreachable gateway still moves the attempt time, so a Refresh finishes (Codex review of #332)", () => {
+  const old = "2026-11-23T10:00:00Z", fresh = "2026-11-23T15:00:00Z";
+  const v = viewOf({ slug: "mireld", balance: { checked_at: fresh, credit: { ...MIRELD, checked_at: old, stale: true } } }, null, NOW);
+  assert.equal(v.readAt, old, "the figure is as old as the last good reading");
+  assert.equal(v.attemptAt, fresh, "the attempt is the newer time");
+});
+
 console.log(`credit: ${n} checks passed`);

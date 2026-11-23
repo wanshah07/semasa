@@ -24,71 +24,85 @@
       "cb:m:s:dashboard"
      ],
      [
-      "📰 Kandungan",
-      "cb:m:s:content"
+      "💬 Sembang AI",
+      "cb:m:s:chat"
      ]
     ],
     [
+     [
+      "🧠 Memori & Arahan",
+      "cb:m:s:memori"
+     ],
+     [
+      "🧬 Otak AI",
+      "cb:m:s:otak"
+     ]
+    ],
+    [
+     [
+      "📰 Kandungan",
+      "cb:m:s:content"
+     ],
      [
       "💼 LinkedIn",
       "cb:m:s:linkedin"
-     ],
+     ]
+    ],
+    [
      [
       "🎓 Kandungan pakar",
       "cb:m:s:expert"
-     ]
-    ],
-    [
+     ],
      [
       "📈 Prestasi",
       "cb:m:s:performance"
-     ],
+     ]
+    ],
+    [
      [
       "🖼 Imej",
       "cb:m:s:image"
-     ]
-    ],
-    [
+     ],
      [
       "🎬 Video",
       "cb:m:s:video"
-     ],
+     ]
+    ],
+    [
      [
       "🎨 Poster",
       "cb:m:s:poster"
-     ]
-    ],
-    [
+     ],
      [
       "💧 Valorith",
       "cb:m:s:valorith"
-     ],
+     ]
+    ],
+    [
      [
       "💰 Perniagaan",
       "cb:m:s:business"
-     ]
-    ],
-    [
+     ],
      [
       "🖥 Teknologi",
       "cb:m:s:technology"
-     ],
+     ]
+    ],
+    [
      [
       "⛽ Baki kredit API",
       "cb:m:s:credit"
-     ]
-    ],
-    [
+     ],
      [
       "👤 Peribadi",
       "cb:m:s:personal"
-     ],
-     [
-      "📚 Rujukan",
-      "cb:m:s:reference"
      ]
     ],
     [
+     [
+      "📚 Rujukan",
+      "cb:m:s:reference"
+     ],
      [
       "⚙️ Tetapan & sistem",
       "cb:m:s:system"
@@ -127,71 +141,85 @@
       "cb:m:s:dashboard"
      ],
      [
-      "📰 Content",
-      "cb:m:s:content"
+      "💬 AI chat",
+      "cb:m:s:chat"
      ]
     ],
     [
+     [
+      "🧠 Memory & instructions",
+      "cb:m:s:memori"
+     ],
+     [
+      "🧬 AI brain",
+      "cb:m:s:otak"
+     ]
+    ],
+    [
+     [
+      "📰 Content",
+      "cb:m:s:content"
+     ],
      [
       "💼 LinkedIn",
       "cb:m:s:linkedin"
-     ],
+     ]
+    ],
+    [
      [
       "🎓 Expert content",
       "cb:m:s:expert"
-     ]
-    ],
-    [
+     ],
      [
       "📈 Performance",
       "cb:m:s:performance"
-     ],
+     ]
+    ],
+    [
      [
       "🖼 Image",
       "cb:m:s:image"
-     ]
-    ],
-    [
+     ],
      [
       "🎬 Video",
       "cb:m:s:video"
-     ],
+     ]
+    ],
+    [
      [
       "🎨 Poster",
       "cb:m:s:poster"
-     ]
-    ],
-    [
+     ],
      [
       "💧 Valorith",
       "cb:m:s:valorith"
-     ],
+     ]
+    ],
+    [
      [
       "💰 Business",
       "cb:m:s:business"
-     ]
-    ],
-    [
+     ],
      [
       "🖥 Technology",
       "cb:m:s:technology"
-     ],
+     ]
+    ],
+    [
      [
       "⛽ API credit",
       "cb:m:s:credit"
-     ]
-    ],
-    [
+     ],
      [
       "👤 Personal",
       "cb:m:s:personal"
-     ],
-     [
-      "📚 Reference",
-      "cb:m:s:reference"
      ]
     ],
     [
+     [
+      "📚 Reference",
+      "cb:m:s:reference"
+     ],
      [
       "⚙️ Settings & system",
       "cb:m:s:system"
@@ -212,7 +240,7 @@
   {
    "node": "s:dashboard",
    "lang": "bm",
-   "text": "📊 Papan\n\n• Papan: ringkasan, carta dan lampu sumber\n• Sembang AI: tanya pasukan AI; di sini, taip sahaja soalan\n• Memori & Arahan: nota tetap dan arahan untuk setiap jawapan\n• Otak AI: rujukan yang dibaca AI, soalan bersumber\n\n↗ membuka halaman; yang lain dijawab di sini.",
+   "text": "📊 Papan\n\n• Papan: ringkasan, carta dan lampu sumber\n\n↗ membuka halaman; yang lain dijawab di sini.",
    "rows": [
     [
      [
@@ -222,16 +250,112 @@
     ],
     [
      [
+      "🏠 Menu",
+      "cb:m:home"
+     ]
+    ]
+   ]
+  },
+  {
+   "node": "s:dashboard",
+   "lang": "en",
+   "text": "📊 Dashboard\n\n• Dashboard: the overview, charts and source lights\n\n↗ opens the page; the rest is answered here.",
+   "rows": [
+    [
+     [
+      "📊 Dashboard",
+      "cb:m:p:papan"
+     ]
+    ],
+    [
+     [
+      "🏠 Menu",
+      "cb:m:home"
+     ]
+    ]
+   ]
+  },
+  {
+   "node": "s:chat",
+   "lang": "bm",
+   "text": "💬 Sembang AI\n\n• Sembang AI: tanya pasukan AI; di sini, taip sahaja soalan\n\n↗ membuka halaman; yang lain dijawab di sini.",
+   "rows": [
+    [
+     [
       "💬 Sembang AI",
       "cb:m:p:chat"
      ]
     ],
     [
      [
+      "🏠 Menu",
+      "cb:m:home"
+     ]
+    ]
+   ]
+  },
+  {
+   "node": "s:chat",
+   "lang": "en",
+   "text": "💬 AI chat\n\n• AI chat: ask the AI team; here, just type a question\n\n↗ opens the page; the rest is answered here.",
+   "rows": [
+    [
+     [
+      "💬 AI chat",
+      "cb:m:p:chat"
+     ]
+    ],
+    [
+     [
+      "🏠 Menu",
+      "cb:m:home"
+     ]
+    ]
+   ]
+  },
+  {
+   "node": "s:memori",
+   "lang": "bm",
+   "text": "🧠 Memori & Arahan\n\n• Memori & Arahan: nota tetap dan arahan untuk setiap jawapan\n\n↗ membuka halaman; yang lain dijawab di sini.",
+   "rows": [
+    [
+     [
       "🧠 Memori & Arahan",
       "cb:m:p:memori"
      ]
     ],
+    [
+     [
+      "🏠 Menu",
+      "cb:m:home"
+     ]
+    ]
+   ]
+  },
+  {
+   "node": "s:memori",
+   "lang": "en",
+   "text": "🧠 Memory & instructions\n\n• Memory & instructions: standing notes and instructions for every answer\n\n↗ opens the page; the rest is answered here.",
+   "rows": [
+    [
+     [
+      "🧠 Memory & instructions",
+      "cb:m:p:memori"
+     ]
+    ],
+    [
+     [
+      "🏠 Menu",
+      "cb:m:home"
+     ]
+    ]
+   ]
+  },
+  {
+   "node": "s:otak",
+   "lang": "bm",
+   "text": "🧬 Otak AI\n\n• Otak AI: rujukan yang dibaca AI, soalan bersumber\n\n↗ membuka halaman; yang lain dijawab di sini.",
+   "rows": [
     [
      [
       "🧬 Otak AI",
@@ -247,28 +371,10 @@
    ]
   },
   {
-   "node": "s:dashboard",
+   "node": "s:otak",
    "lang": "en",
-   "text": "📊 Dashboard\n\n• Dashboard: the overview, charts and source lights\n• AI chat: ask the AI team; here, just type a question\n• Memory & instructions: standing notes and instructions for every answer\n• AI brain: the references the AI reads, cited answers\n\n↗ opens the page; the rest is answered here.",
+   "text": "🧬 AI brain\n\n• AI brain: the references the AI reads, cited answers\n\n↗ opens the page; the rest is answered here.",
    "rows": [
-    [
-     [
-      "📊 Dashboard",
-      "cb:m:p:papan"
-     ]
-    ],
-    [
-     [
-      "💬 AI chat",
-      "cb:m:p:chat"
-     ]
-    ],
-    [
-     [
-      "🧠 Memory & instructions",
-      "cb:m:p:memori"
-     ]
-    ],
     [
      [
       "🧬 AI brain",
@@ -1202,8 +1308,8 @@
     ],
     [
      [
-      "⬅ Papan",
-      "cb:m:s:dashboard"
+      "⬅ Sembang AI",
+      "cb:m:s:chat"
      ],
      [
       "🏠 Menu",
@@ -1237,8 +1343,8 @@
     ],
     [
      [
-      "⬅ Dashboard",
-      "cb:m:s:dashboard"
+      "⬅ AI chat",
+      "cb:m:s:chat"
      ],
      [
       "🏠 Menu",
@@ -1272,8 +1378,8 @@
     ],
     [
      [
-      "⬅ Papan",
-      "cb:m:s:dashboard"
+      "⬅ Memori & Arahan",
+      "cb:m:s:memori"
      ],
      [
       "🏠 Menu",
@@ -1307,8 +1413,8 @@
     ],
     [
      [
-      "⬅ Dashboard",
-      "cb:m:s:dashboard"
+      "⬅ Memory & instructions",
+      "cb:m:s:memori"
      ],
      [
       "🏠 Menu",

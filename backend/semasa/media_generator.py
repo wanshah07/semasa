@@ -702,6 +702,11 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         spread = carousel.split_full(items) if not kind else items       # a crowded slide drawn as two, when nothing else fits
         if len(spread) != len(items):
             attempts.append((spread, 0))
+        # The brand cover goes IN FRONT of the first page (Wan, 23 Nov 2026: the cover carries a short title and its own
+        # illustration; the long hook is the first page after it), so the pages are numbered from the second picture
+        cover_words = (carousel.cover_words(items[0]) if items else None) if (not kind and stream != "linkedin"
+                                                                               and len(items) >= 2) else None
+        art_used = False
         for n, (words_in, joined_here) in enumerate(attempts):
             joined = joined_here
             try:
@@ -720,24 +725,34 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                     drawn = own_photos(store, own_grounds(store, row, words_in))
                     journal = illustrated.wants(look, kind)
                     if journal:
-                        # the Journal look: a hand-inked picture for every slide, made once and kept on the job (illustrated.py)
+                        # a hand-inked picture for every slide, made once and kept on the job (illustrated.py): in the middle of
+                        # the page in the Journal look, in a band at the foot in every other Studio look
                         try:
-                            drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm,
+                            drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm, cut=(look != "journal"),
                                                          covered=not kind and stream != "linkedin")
                         except illustrated.ArtError as exc:
-                            # taken from the rotation, not chosen by Wan: with no picture maker, or on the last try, the post is
-                            # drawn in the Image look rather than lost; a look Wan chose fails with the reason instead
+                            # With no picture maker, or on the last try, the post is still drawn rather than lost. Diari is
+                            # nothing without its pictures: taken from the rotation it becomes the Image look, and a Diari Wan
+                            # chose fails with the reason. Every other look works without them: drawn without the band.
                             last = int(row.get("attempts") or 0) >= s.max_attempts
-                            if not (meta.get("look_auto") and (last or "no picture maker" in str(exc))):
+                            soft = look != "journal" or bool(meta.get("look_auto"))
+                            if not (soft and (last or "no picture maker" in str(exc))):
                                 raise
-                            meta["look_fallback"] = f"journal: {str(exc)[:200]}"
-                            look = "image"
-                            log.warning("%s: the Journal pictures could not be made (%s); Image look", row_id, str(exc)[:160])
+                            if look == "journal":
+                                meta["look_fallback"] = f"{look}: {str(exc)[:200]}"
+                                look = "image"
+                            else:
+                                meta["art_missing"] = str(exc)[:200]
+                            log.warning("%s: the pictures could not be made (%s); drawn as %s", row_id, str(exc)[:160], look)
+                        else:
+                            art_used = True
                     pics = studio_cards.render(drawn, look=look, stream=stream, eyebrow=eyebrow,
                                                source=str(meta.get("citation") or ""), ground=ground,
                                                ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size,
                                                mascots=cards_library.mascots(store), fit=bool(meta.get("fit")), design=saved,
-                                               final=True, total=len(drawn) + int(carousel.has_logo_card(stream, len(drawn))))
+                                               final=True, offset=int(bool(cover_words)),
+                                               total=len(drawn) + int(carousel.has_logo_card(stream, len(drawn)))
+                                               + int(bool(cover_words)))
                 else:
                     look = "classic"
                     pics = slides.render(classic_words(words_in), stream=stream, eyebrow=eyebrow,
@@ -763,17 +778,25 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             from . import stickers
             pics = stickers.on_slides(pics, stickers.ensure(store, s, row_id, meta))
         cover = False
-        words = carousel.cover_words(items[0] if items else None)
-        if not kind and stream != "linkedin" and len(pics) >= 2 and words:
-            # picture 1 is the branded cover (logo + the hook): what Instagram's profile grid shows for the post. A
-            # supporting line too long for the cover is left off rather than costing the cover itself.
-            for lead in dict.fromkeys((words[1], "")):
+        if cover_words and len(pics) >= 2:
+            # picture 1 is the branded cover: logo, a SHORT title and the hook's illustration as a transparent cut-out. It is
+            # what Instagram's profile grid shows for the post, and the first slide (the long hook) follows it as page one.
+            title = str(meta.get("cover_title") or "").strip()
+            if not title:
+                title = carousel.short_title(llm, cover_words[0], stream)
+                meta["cover_title"] = title
+            cover_png = None
+            if art_used:
                 try:
-                    pics = [carousel.cover_jpeg(words[0], lead, eyebrow, ground=ground, size=size), *pics[1:]]
-                    cover = True
-                    break
-                except Exception as exc:  # noqa: BLE001 - the slide as drawn stands: a cover is never worth a failed render
-                    log.info("%s: no cover (%s); the first slide stands", row_id, str(exc)[:120])
+                    cover_png = illustrated.cover_art(store, s, row, meta, items[0], stream, llm)
+                except illustrated.ArtError as exc:
+                    meta["art_missing"] = str(exc)[:200]
+                    log.info("%s: the cover is drawn without its illustration (%s)", row_id, str(exc)[:120])
+            try:
+                pics = [carousel.cover_jpeg(title, "", eyebrow, ground=ground, size=size, art=cover_png), *pics]
+                cover = True
+            except Exception as exc:  # noqa: BLE001 - the pages as drawn stand: a cover is never worth a failed render
+                log.info("%s: no cover (%s); the first slide stands", row_id, str(exc)[:120])
         closing = not kind and carousel.has_logo_card(stream, len(pics))
         if closing:
             pics = [*pics, carousel.closing_jpeg(len(pics), len(pics) + 1, ground=ground, size=size)]

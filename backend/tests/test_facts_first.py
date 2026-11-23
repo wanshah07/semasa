@@ -115,7 +115,8 @@ def test_the_foot_is_kept_by_normalise_slides_compared_by_slides_key_and_judged_
     assert "Definisi: PIF" in compliance.slide_text(s[0]) and "Definisi" not in compliance.slide_body(s[0])
     assert compliance.normalise_slides([{"foot": "Definisi: PIF = fail"}]) == [{"title": "", "points": [], "foot": "Definisi: PIF = fail"}]
     bad = compliance.scan(_post("Isi.", [{"title": "A", "points": [], "foot": "Hubungi kami untuk PIF"}]))
-    assert any(f["hard"] and f["where"] == "Slide 1" for f in bad), "a call to action in a foot blocks like anywhere else"
+    assert any(not f["hard"] and f["where"] == "Slide 1" for f in bad), "a call to action in a foot is named, as a warning"
+    assert not any(f["hard"] and f["where"] == "Slide 1" for f in bad), "and no longer blocks (Wan, 23 Nov 2026)"
 
 
 def test_an_imported_film_gets_the_same_soft_check_on_its_caption():

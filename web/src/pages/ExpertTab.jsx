@@ -14,7 +14,8 @@ import Card from "../components/ui/Card";
 import Skeleton from "../components/ui/Skeleton";
 import SourceLight from "../components/SourceLight";
 import { Input, Label, TextArea } from "../components/ui/Field";
-import { useView } from "../components/ViewToggle";
+import ViewToggle, { useView } from "../components/ViewToggle";
+import ExpertReport from "../components/ExpertReport";
 
 /* Kandungan pakar / Expert content (Wan, 14 Nov 2026: "add another segment Expert Content, under it put AI Expert, Halal
    Expert (will be add more later) - in every subsegment I can add handler username and you will scrape their post (threads, fb,
@@ -229,6 +230,8 @@ export default function ExpertTab({ settings, save, user, onToast, onIdea, go })
   const cfg = local || saved;
   const [busy, setBusy] = useState(false);
   const [catRaw, setCat] = useView("pakar.category", "");
+  const [layout, setLayout] = useView("pakar.layout", "card");          // "card" = the feed, "table" = the report (print, PDF, CSV, DOC)
+  const [order, setOrder] = useView("pakar.order", "newest");           // the report's timeline: newest or oldest first
   const cat = cfg.categories.find((c) => c.id === catRaw) || cfg.categories[0] || null;
 
   const feed = useTable(TABLES.watch, { order: "published_at", limit: 600, realtime: false, everyMs: 120_000, eq: ["section", "expert"] });
@@ -564,11 +567,16 @@ export default function ExpertTab({ settings, save, user, onToast, onIdea, go })
                 )}
                 {hiddenN > 0 && <button type="button" onClick={() => setShowHidden((v) => !v)} className="inline-flex min-h-[36px] items-center gap-1.5 text-xs text-muted hover:text-ink">
                   {showHidden ? <EyeOff size={13} /> : <Eye size={13} />} {showHidden ? t("Sorok yang disembunyi", "Hide the hidden") : t("Tunjuk {n} disembunyi", "Show {n} hidden", { n: hiddenN })}</button>}
-                <span className="ml-auto text-xs tabular-nums text-muted">{t("{n} catatan", "{n} post(s)", { n: rows.length })}</span>
+                <span className="ml-auto flex items-center gap-3">
+                  <span className="text-xs tabular-nums text-muted">{t("{n} catatan", "{n} post(s)", { n: rows.length })}</span>
+                  <ViewToggle view={layout} setView={setLayout} />
+                </span>
               </div>
               {feed.error && !/semasa_watch/.test(feed.error) && <p className="mb-3 rounded-tile bg-danger/10 p-3 text-sm text-danger">{feed.error}</p>}
               {feed.loading ? (
                 <div className="grid gap-4 xl:grid-cols-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-56" />)}</div>
+              ) : rows.length && layout === "table" ? (
+                <ExpertReport rows={rows} category={cat.name} account={who} q={q} hidden={showHidden} order={order === "oldest" ? "oldest" : "newest"} setOrder={setOrder} onToast={onToast} />
               ) : rows.length ? (
                 <motion.div variants={stagger} initial="hidden" animate="show" className="grid items-start gap-4 xl:grid-cols-2 [&>*]:min-w-0">
                   {rows.map((r) => <ExpertCard key={r.id} row={r} inBrain={Boolean(r.raw?.brain) || sent.has(r.id)} busy={busyId === r.id}

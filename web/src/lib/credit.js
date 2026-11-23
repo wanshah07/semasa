@@ -125,13 +125,16 @@ export function viewOf(row, manual, now = Date.now()) {
   const merged = { remaining: fig?.remaining ?? null, percent_left: fig?.percent_left ?? null, unlimited: !!live?.unlimited,
     expires_at: expLive || expManual };
   const readAt = live?.checked_at || bal.checked_at || null;
+  // the latest ATTEMPT, which moves even when the gateway was unreachable and the last good figure was kept: a Refresh is
+  // finished when this moves (Codex review of #332), while the freshness of the figure itself is `readAt`
+  const attemptAt = [bal.checked_at, live?.checked_at].filter((x) => when(x) !== null).sort((a, b) => when(b) - when(a))[0] || null;
   const age = when(readAt) === null ? null : now - when(readAt);
   return {
     slug: row?.slug || "", hasRow: !!row, keySet: row ? row.key_set !== false : true,
     source: hasLive ? "live" : useManual ? "manual" : "none",
     figure: fig, expiresAt: merged.expires_at, expiryManual: !!expManual,
     status: statusOf(merged, now),
-    readAt, ageMs: age, late: age !== null && age > LATE_MS, stale: !!live?.stale,
+    readAt, attemptAt, ageMs: age, late: age !== null && age > LATE_MS, stale: !!live?.stale,
     endpoint: live?.source || null, tried: Array.isArray(bal.tried) ? bal.tried : [],
     manual: man, manualAt: man?.entered_at || null,
     raw: hasLive ? live : null,

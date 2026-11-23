@@ -43,7 +43,7 @@ export default function CreditTab({ settings, save, onToast }) {
   // "Refresh now": write settings.credit_check; the database wakes the workflow; the cards redraw as the run lands
   const [asked, setAsked] = useState(0);                       // when it was asked (ms), 0 = not waiting
   const [busy, setBusy] = useState(false);
-  const landed = asked && views.some(({ v }) => v.readAt && Date.parse(v.readAt) >= asked - 5000);
+  const landed = asked && views.some(({ v }) => v.attemptAt && Date.parse(v.attemptAt) >= asked - 5000);
   const reload = useRef(null);
   reload.current = statusT.reload;
   useEffect(() => {

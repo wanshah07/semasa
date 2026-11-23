@@ -12,13 +12,17 @@
 from __future__ import annotations
 
 import io
+import re
 from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageDraw
 
 from . import compliance, glossary, slides
+from .log import get_logger
 from .slides import SlideError
+
+log = get_logger("semasa.carousel")
 
 MAX_SLIDES = 6                      # pictures in one carousel, the logo card included
 COMFORT = 0.8                       # a joined slide must fit at this share of the normal type size, or it is not joined
@@ -220,7 +224,7 @@ COVER_WHITE = (255, 255, 255)
 COVER_INK = (17, 17, 17)
 COVER_RED = (211, 32, 39)
 COVER_MUTED = (90, 90, 90)
-COVER_VERSION = 2          # 1: the dark green cover; 2: white, light-blue waves, red hook word (22 Nov 2026)
+COVER_VERSION = 3          # 1: dark green; 2: white, light-blue waves, red hook word; 3: a short title + a cut-out (23 Nov 2026)
 COVER_SECONDS = 1.1                    # the cover frame at the start of a film (TikTok takes its cover at 1.0 s by default)
 
 
@@ -335,8 +339,23 @@ def _balanced(text: str, font: Any, width: float) -> list[Any]:
     return lines
 
 
+ART_BAND = 0.36            # the share of the cover's height the hook's illustration takes, at the foot (Wan, 23 Nov 2026)
+
+
+def _art_band(canvas: Image.Image, art: bytes, band: int) -> None:
+    """The hook's illustration, a transparent cut-out (illustrated.cutout), standing on the foot of the cover: fitted inside the
+    band without cropping, centred, no card behind it, so the cover's light-blue rings show round it."""
+    w, h = canvas.size
+    margin = round(w * 0.11)
+    pic = Image.open(io.BytesIO(art)).convert("RGBA")
+    box_w, box_h = w - 2 * margin, band - round(w * 0.05)
+    scale = min(box_w / pic.width, box_h / pic.height)
+    pic = pic.resize((max(1, round(pic.width * scale)), max(1, round(pic.height * scale))), Image.LANCZOS)
+    canvas.paste(pic, ((w - pic.width) // 2, h - round(w * 0.05) - pic.height), pic)
+
+
 def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes | None = None,
-               size: tuple[int, int] | None = None) -> Image.Image:
+               size: tuple[int, int] | None = None, art: bytes | None = None) -> Image.Image:
     """The branded cover: logo, a rule, the hook title, a short supporting line (`eyebrow` is accepted, never drawn: the
     cover carries no tag). Since 22 Nov 2026 (Wan: "background white, green color logo, title black text and red hook word") it
     is a white card with light-blue wave circles: the logo in its own green, the title in black and its hook word (the *marked*
@@ -358,6 +377,9 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
     col = w - 2 * margin
     tall = h / w > 1.6                                    # a film's opening frame, not a carousel's first slide
     band = h * (0.62 if tall else 0.80)                   # the vertical room the block may use: inside the grid's crop
+    art_h = round(h * ART_BAND) if (art and not tall) else 0       # the hook's illustration takes the foot of a carousel's cover
+    if art_h:
+        band = (h - art_h) * 0.94                         # the words keep the part above it
     # a film's cover is quieter (Wan, 11 Nov 2026: "make sure the cover text not too big & make it aesthetic"): on the tall
     # frame the same sizes read as shouting, so the logo and the hook are both drawn smaller and the hook gets more air
     logo = _logo(round(w * (0.36 if tall else 0.46)), white=False)
@@ -382,7 +404,7 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
             break
         size_px -= 4
     total = fixed + len(lines) * lh
-    y = round((h - total) / 2)
+    y = round(((h - art_h) - total) / 2)
 
     canvas.paste(logo, ((w - logo.width) // 2, y), logo)
     y += logo.height + gap
@@ -411,7 +433,53 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
                 d.text((cx, y), run.text, font=body_font, fill=COVER_MUTED)
                 cx += body_font.getlength(run.text)
             y += body_lh
+    if art_h:
+        _art_band(canvas, art, art_h)
     return canvas
+
+
+COVER_TITLE_WORDS = 6      # the cover's own title: short (Wan, 23 Nov 2026: the long hook is the first PAGE, not the cover)
+COVER_TITLE_SYSTEM = (
+    "You write the TITLE on the cover of a social-media carousel. The first page after the cover carries the full hook; "
+    "the cover carries only a short title that names the same idea. Write at most %d words, in the SAME language and "
+    "voice as the hook (Malaysian Malay mix stays Malaysian Malay; never Bahasa Indonesia), no full stop, no emoji, no "
+    "hashtag. Take only words and facts that are in the hook: add no number, name, date or claim of your own. Put "
+    "*asterisks* round the ONE word that carries the idea. Answer with ONE JSON object: {\"title\": \"...\"}")
+
+
+def short_title(llm: Any, hook: str, stream: str = "regulab") -> str:
+    """The short title for the cover. The writer shortens the hook; any answer that is long, empty or breaks a rule that blocks
+    a post is dropped for the hook's own first words, so the cover is always short and never invents anything."""
+    from . import compliance
+    hook = _clean(hook)
+    plain = hook.replace("*", "")
+    fallback = _lead_words(plain, COVER_TITLE_WORDS)
+    if len(plain.split()) <= COVER_TITLE_WORDS:
+        return hook
+    got = ""
+    try:
+        out = llm.chat_json(COVER_TITLE_SYSTEM % COVER_TITLE_WORDS, hook[:600], max_tokens=200) if llm is not None else None
+        got = _clean(str(out.get("title") or "")) if isinstance(out, dict) else ""
+    except Exception as exc:  # noqa: BLE001 - the hook's own first words stand in
+        got = ""
+        log.info("cover title not shortened (%s)", str(exc)[:100])
+    words = got.replace("*", "").split()
+    if not got or len(words) > COVER_TITLE_WORDS + 1 or len(words) < 2:
+        return fallback
+    flags = compliance.scan({"stream": stream, "media": [{"artwork": [{"title": got.replace("*", ""), "points": []}]}]})
+    if compliance.hard_count([f for f in flags if str(f.get("where") or "").startswith(("Design", "Slide", "Artwork"))]):
+        return fallback
+    return got
+
+
+def _lead_words(text: str, n: int) -> str:
+    """The first clause of `text` when it is short enough, else its first `n` words; no trailing punctuation."""
+    for part in re.split(r"(?<=[.:;!?])\s+", text):
+        part = part.strip().rstrip(".:;!?,")
+        if 2 <= len(part.split()) <= n:
+            return part
+        break
+    return " ".join(text.split()[:n]).rstrip(".:;!?,")
 
 
 def cover_words(first: dict | None) -> tuple[str, str] | None:
@@ -445,7 +513,7 @@ def with_front_cover(items: list[dict], stream: str) -> list[dict]:
 
 
 def cover_jpeg(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes | None = None,
-               size: tuple[int, int] | None = None, quality: int = 92) -> bytes:
+               size: tuple[int, int] | None = None, quality: int = 92, art: bytes | None = None) -> bytes:
     buf = io.BytesIO()
-    cover_card(title, lead, eyebrow, ground=ground, size=size).save(buf, "JPEG", quality=quality, optimize=True)
+    cover_card(title, lead, eyebrow, ground=ground, size=size, art=art).save(buf, "JPEG", quality=quality, optimize=True)
     return buf.getvalue()

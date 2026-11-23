@@ -50,6 +50,7 @@ STYLE_CUT = ("Editorial pen-and-ink illustration. A loose hand-drawn black ink l
              "backdrop, no ground shadow, no paper texture, no frame, and a clear margin of white all round so the drawing "
              "never touches the edge of the picture. Wide landscape. "
              "Absolutely no text, no letters, no numbers, no signs, no logos, no captions in the picture.")
+ART_BAND = 0.34                      # the share of a card's height the band at the foot takes (studio.js ART_BAND says the same)
 CUT_WHITE = 232                      # a pixel whose three channels are all at least this, and joined to the edge, is the page
 CUT_EDGE = 5                         # the white sticker border round the drawing, in pixels of the working size
 PLAN_SYSTEM = (
@@ -68,13 +69,37 @@ class ArtError(Exception):
     """A picture could not be made; the job tries again (what was made is kept)."""
 
 
+def compose_band(card: bytes, art_png: bytes, full: tuple[int, int], quality: int = 90) -> bytes:
+    """Semasa's own (classic) look, which Pillow draws: `card` was drawn on a card ART_BAND shorter, and the slide's cut-out
+    stands on the band added below it, like studio.js renderWithArt does for every other look. Returns a JPEG of full size."""
+    w, h = full
+    band = round(h * ART_BAND)
+    top = Image.open(io.BytesIO(card)).convert("RGB")
+    canvas = Image.new("RGB", (w, h))
+    canvas.paste(top.resize((w, h - band)) if top.size != (w, h - band) else top, (0, 0))
+    edge = canvas.crop((0, h - band - 6, w, h - band)).resize((1, 1), Image.BOX).getpixel((0, 0))
+    canvas.paste(Image.new("RGB", (w, band), edge), (0, h - band))
+    pic = Image.open(io.BytesIO(art_png)).convert("RGBA")
+    margin, pad_t, pad_b = round(w * 72 / 1080), round(w * 14 / 1080), round(w * 40 / 1080)
+    box_w, box_h = w - 2 * margin, band - pad_t - pad_b
+    k = min(box_w / pic.width, box_h / pic.height)
+    pic = pic.resize((max(1, round(pic.width * k)), max(1, round(pic.height * k))), Image.LANCZOS)
+    canvas.paste(pic, ((w - pic.width) // 2, h - band + pad_t + (box_h - pic.height)), pic)
+    buf = io.BytesIO()
+    canvas.save(buf, "JPEG", quality=quality, optimize=True, progressive=True)
+    return buf.getvalue()
+
+
 def wants(look: str, kind: str = "") -> bool:
-    """Every Studio look draws a picture per slide, on a carousel only: a post's own carousel, or the Design tab's Carousel mode
-    (Wan, 23 Nov 2026: "all carousel slide design ... must have illustration"). The Journal look puts it in the middle of the
-    page, the others in a band at the foot (studio.js renderWithArt). A Design-tab poster, card, comic or Threads set has its
-    own single picture, and Semasa's own (classic) look is drawn without Studio's renderer, so it has none."""
+    """Every look draws a picture on each page of a carousel (a post's own, or the Design tab's Carousel mode) and on a single
+    card or poster (Wan, 23 Nov 2026: "all carousel slide design ... must have illustration", "single card must have
+    illustration in it"). The Journal look puts it in the middle of the page, the others in a band at the foot (studio.js
+    renderWithArt; Semasa's own look, drawn by Pillow, compose_band). Diari is for a carousel only: a lone card has one
+    picture and no page to fill. A comic or a Threads-style set has its own pictures."""
     from . import studio_cards
-    return kind in ("", "carousel") and look in studio_cards.LOOKS
+    if kind in ("poster", "card"):
+        return look != LOOK and (look in studio_cards.LOOKS or look == "classic")
+    return kind in ("", "carousel") and (look in studio_cards.LOOKS or look == "classic")
 
 
 def key_of(item: dict[str, Any], cut: bool = False) -> str:

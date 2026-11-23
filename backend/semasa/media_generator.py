@@ -755,8 +755,28 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                                                + int(bool(cover_words)))
                 else:
                     look = "classic"
+                    full = size or slides.SIZES.get(stream, slides.SIZES["regulab"])
+                    arts = None
+                    if illustrated.wants("classic", kind):
+                        # Semasa's own look draws the slide's cut-out in a band at the foot too (illustrated.compose_band)
+                        try:
+                            got = illustrated.with_art(store, s, row, meta, [dict(x) for x in words_in], stream, llm, cut=True,
+                                                       covered=not kind and stream != "linkedin")
+                            arts = [illustrated.art_bytes(x) for x in got]
+                            art_used = True
+                        except illustrated.ArtError as exc:
+                            last = int(row.get("attempts") or 0) >= s.max_attempts
+                            if not (last or "no picture maker" in str(exc)):
+                                raise
+                            meta["art_missing"] = str(exc)[:200]
+                            log.warning("%s: the pictures could not be made (%s); drawn without them", row_id, str(exc)[:160])
+                    with_art_band = bool(arts) and all(arts)
+                    cut_h = round(full[1] * illustrated.ART_BAND)
                     pics = slides.render(classic_words(words_in), stream=stream, eyebrow=eyebrow,
-                                         source=str(meta.get("citation") or ""), website=website, ground=ground, size=size)
+                                         source=str(meta.get("citation") or ""), website=website, ground=ground,
+                                         size=(full[0], full[1] - cut_h) if with_art_band else size)
+                    if with_art_band:
+                        pics = [illustrated.compose_band(p, a, full) for p, a in zip(pics, arts, strict=True)]
                 break
             except slides.SlideError as exc:
                 if n == len(attempts) - 1:

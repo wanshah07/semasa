@@ -219,12 +219,14 @@ def test_a_poster_and_a_carousel_are_written_with_no_ai_picture_beside_them(offl
     assert _modes(store) == ["slides"], "one slides job and no picture"
 
 
-def test_a_post_the_writer_gave_no_poster_for_still_gets_a_picture(offline):
+def test_a_post_the_writer_gave_no_poster_for_still_gets_a_poster_never_an_ai_picture_alone(offline):
     store = _store([{"hook_shape": 4, "look": "hand"}])
     answer = {**GOOD, "hook_shape": 4, "visual_prompt": "a bottle on a table"}
     _write(Seq(answer), store, make_media="image", brief={"format": "poster"})
-    # no poster came back: the fall-back picture keeps the post from having none
-    assert _modes(store) != [] and "slides" not in _modes(store)
+    # no poster came back: the poster is asked for from the caption, or built from it, and drawn (Wan, 23 Nov 2026: "make
+    # sure its poster not only generated image"); an AI picture is never the post's artwork on its own
+    assert _modes(store) == ["slides"]
+    assert [j["mode"] for j in store.tables["media_generations"]].count("prompt") == 0
 
 
 def test_a_crowded_slide_is_drawn_as_two_when_no_look_can_fit_it():

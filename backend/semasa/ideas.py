@@ -1085,6 +1085,13 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
             if short:
                 poster, cover_state = hook_bank.cover(poster, short)
                 cover_state = "shortened" if cover_state in ("set", "kept") else "too_long"
+    if (not kept and idea.get("make_media") != "none" and fmt in ("poster", "card", "carousel")
+            and not poster and not post.get("slides")):
+        # the writer gave neither slides nor a poster (Wan, 23 Nov 2026: "for semasa linkedin post, make sure its poster not
+        # only generated image"): the post is never left with an AI picture alone. The poster is asked for on its own, from the
+        # caption just written, and failing that built from the caption's own words.
+        poster = poster_for_post(llm, post, stream, lang)
+        cover_state = "fallback"
     # the technical terms (Wan, 22 Nov 2026): a footnote on every slide and the poster that needs one, and ONE Definisi
     # paragraph at the end of every caption, built from them and from the glossary terms the caption itself uses; the paragraph
     # is placed before the follow line and the hashtags and the caption is fitted to its platform's limit again
@@ -1134,8 +1141,9 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
     if poster and not has_jobs:
         jobs.append(poster_job(idea, post, post_id, poster, bg=slide_ground(stream, bool(jobs or kept)), chosen=chosen,
                                design="card" if fmt == "card" else "poster"))
-    if not jobs and not has_jobs and not kept and fmt != "comic":
-        # the writer gave no slides and no poster: the post is not left with no picture at all (Instagram needs one)
+    if not jobs and not has_jobs and not kept and fmt not in ("comic", "poster", "card", "carousel"):
+        # an AI picture on its own is never a post's artwork any more (Wan, 21 and 23 Nov 2026): only an idea that names no
+        # poster, card or carousel can reach this, and format_of gives every idea one of them
         jobs = media_jobs(idea, source, out, post_id)
     if jobs:
         store.table(db.MEDIA).insert(jobs).execute()
@@ -1282,6 +1290,101 @@ def revise_one(store: Any, llm: LLM, post: dict[str, Any], settings: dict[str, A
     antislop.finish(store, "post", post["id"])
     db.log_event(store, "info", "post", "post.revised", f"Ditulis semula dengan nota: {update['hook'][:80]}",
                  ref_table="semasa_posts", ref_id=post["id"])
+
+POSTER_FROM_CAPTION = (
+    "You turn a finished social-media caption into the words of ONE 4:5 poster. "
+    "Answer with ONE JSON object: {\"poster\": {\"eyebrow\": \"a 2 to 4 word topic label\", "
+    "\"title\": \"the hook, at most 10 words, one key word marked with *asterisks*\", "
+    "\"lead\": \"one short line under the title, at most 14 words\", "
+    "\"points\": [2 to 3 points of at most 12 words each: the most important facts of the caption, "
+    "each with its figure, entry, clause or date], \"foot\": \"\"}}. "
+    "Use ONLY what the caption says: add no fact, no figure, no name. "
+    "No call to action, no follow line, no URL. Write in %s.")
+
+
+def poster_for_post(llm: LLM, post: dict[str, Any], stream: str, lang: str) -> list[dict[str, Any]]:
+    """The poster words for a post that has none: the writer is asked for them alone from the post's own caption (nothing new
+    can come in); if that gives nothing, the poster is built from the caption's own numbered facts. Never empty while the post
+    has a hook, so a poster is always drawn (Wan, 23 Nov 2026)."""
+    plat = "linkedin" if stream == "linkedin" else "instagram"
+    caption = str(((post.get("text") or {}).get(lang) or {}).get(plat) or "")
+    hook = " ".join(str(post.get("hook") or "").split())
+    tongue = "natural English" if stream == "linkedin" else "casual Malaysian Malay (never Bahasa Indonesia)"
+    got: list[dict[str, Any]] = []
+    try:
+        out = llm.chat_json(POSTER_FROM_CAPTION % tongue, f"HOOK: {hook}\n\nCAPTION:\n{caption[:3500]}", max_tokens=900)
+        if isinstance(out, dict) and isinstance(out.get("poster"), dict):
+            got = slides.normalise([out["poster"]])[:1]
+    except Exception as exc:  # noqa: BLE001 - the words built from the caption below always stand in
+        log.info("poster asked from the caption: %s", str(exc)[:120])
+    if got and stream == "linkedin" and language.is_malay(compliance.slide_body(got[0])):
+        got = []                                       # LinkedIn is English only
+    if not got:
+        got = [poster_from_caption(hook, caption, llm, stream)]
+    got, _ = hook_bank.cover(got, hook)
+    return got
+
+
+def poster_from_caption(hook: str, caption: str, llm: LLM | None, stream: str) -> dict[str, Any]:
+    """A poster built only from the caption's own words: the hook as the title (shortened when too long for a headline),
+    and up to three of its numbered facts, each its first complete sentence, kept only when short enough to read in three
+    seconds. No new word is written."""
+    title = hook
+    if len(title.split()) > 10:
+        short = shorter_hook(llm, hook, stream, words=10) if llm is not None else ""
+        title = short or " ".join(title.split()[:10]).rstrip(",;:-")
+    points: list[str] = []
+    for m in re.finditer(r"(?m)^\s*\d{1,2}[.)]\s*(.+)$", caption):
+        first = re.split(r"(?<=[.!?])\s", m.group(1).strip())[0].strip()
+        if first and len(first.split()) <= 16:
+            points.append(first)
+        if len(points) == 3:
+            break
+    return {"title": title, "points": points}
+
+
+def poster_job_for_draft(store: Any, post: dict[str, Any], words: list[dict[str, Any]]) -> dict[str, Any]:
+    """The Design job that draws a poster for a draft that has none, in the look the Semasa rotation gives it."""
+    idea = {"id": post.get("idea_id"), "brief": {}, "created_by": post.get("created_by")}
+    stream = post.get("stream") or "regulab"
+    idea["brief"] = {"look": rotation.next_look(store, stream, None), "format": "poster"}
+    return poster_job(idea, post, post["id"], words, bg=slide_ground(stream, False), chosen=(look_of(idea), None))
+
+
+def repair_picture_only(store: Any, llm: LLM, limit: int = 3) -> str:
+    """A LinkedIn DRAFT whose only picture is an AI image (a poster the writer never returned) gets its poster (Wan, 23 Nov
+    2026: "for semasa linkedin post, make sure its poster not only generated image"). The poster is made from the draft's own
+    caption, the AI picture comes off the post and a new job draws the poster. A draft only: an approved post is what Wan
+    approved, and the worker never touches it."""
+    try:
+        drafts = (store.table(db.POSTS).select("*").eq("stream", "linkedin").eq("status", "draft").limit(60).execute().data
+                  or [])
+    except Exception as exc:  # noqa: BLE001 - a read that fails must not stop the writing step
+        return f"Poster repair: skipped ({str(exc)[:80]})"
+    fixed = 0
+    for post in drafts:
+        ids = [str(x) for x in (post.get("media_ids") or [])]
+        if not ids or fixed >= limit:
+            continue
+        rows = store.table(db.MEDIA).select("id,mode,status,meta").in_("id", ids).execute().data or []
+        if len(rows) != len(ids) or any(r.get("mode") not in ("prompt", "recreate") for r in rows):
+            continue                                   # a poster, slides, a comic or a kept picture: nothing to repair
+        try:
+            lang = post.get("lang") or "en"
+            words = poster_for_post(llm, post, "linkedin", lang)
+            job = poster_job_for_draft(store, post, words)
+            got = store.table(db.POSTS).update({"media_ids": []}).eq("id", post["id"]).eq("status", "draft").execute().data
+            if not got:
+                continue                               # approved meanwhile
+            store.table(db.MEDIA).insert(job).execute()
+            fixed += 1
+            db.log_event(store, "info", "post", "post.poster_repaired",
+                         "LinkedIn draft had only an AI picture: its poster is being drawn from its own caption",
+                         ref_table="semasa_posts", ref_id=post["id"])
+        except Exception as exc:  # noqa: BLE001 - recorded; the next run tries again
+            log.warning("poster repair of %s: %s", str(post.get("id"))[:8], str(exc)[:160])
+    return f"Poster repair: {fixed} LinkedIn draft(s) given a poster" if fixed else "Poster repair: none needed"
+
 
 def slide_job(idea: dict[str, Any], post: dict[str, Any], post_id: str, bg: str = "none",
               chosen: tuple[str, dict[str, Any] | None] | None = None) -> dict[str, Any]:
@@ -1432,4 +1535,5 @@ def run_all(store: Any, llm: LLM) -> str:
     drafts, then drafts Wan asked to revise."""
     from . import autofill
     fill = autofill.run(store, load_settings(store)) if llm.configured else "Autofill: waiting for a writer"
-    return "\n".join([fill, run(store, llm), revise_posts(store, llm)])
+    repair = repair_picture_only(store, llm) if llm.configured else "Poster repair: waiting for a writer"
+    return "\n".join([fill, run(store, llm), revise_posts(store, llm), repair])

@@ -197,7 +197,7 @@ def test_the_writer_gets_the_rules_the_voice_the_cast_and_the_brief() -> None:
 
 
 @pytest.mark.parametrize("bad, reason", [
-    (with_bubble("Hubungi kami untuk semak kelayakan produk anda."), "Comic panel 4"),
+    (with_bubble("Produk ini dijamin lulus NPRA, semak kelayakan anda."), "Comic panel 4"),
     (with_bubble("Lawati www.kkmhalalconsultant.com untuk tahu lagi."), "Comic panel 4"),
     (with_bubble("Saya nampak dekat TikTok semalam."), "social source"),
     (with_bubble("Kena siap dalam masa 30 hari."), "a figure the brief does not"),
@@ -240,10 +240,10 @@ def test_no_writer_no_answer_and_no_brief_each_say_so() -> None:
 def test_a_typed_script_is_judged_by_the_same_rules() -> None:
     clean = script()
     assert comic_writer.flags(clean, "regulab") == [] and comic_writer.refusal([]) == ""
-    bad = script(panels=with_bubble("DM kami sekarang untuk semakan percuma.")["panels"])
+    bad = script(panels=with_bubble("Produk ini dijamin lulus NPRA sekarang.")["panels"])
     found = comic_writer.flags(bad, "regulab")
     assert any(f["hard"] and f["where"] == "Comic panel 4" for f in found) and "Comic panel 4" in comic_writer.refusal(found)
-    titled = script(title="Hubungi kami untuk tahu lagi")
+    titled = script(title="Dijamin lulus NPRA untuk tahu lagi")
     assert any(f["where"] == "Comic title" for f in comic_writer.flags(titled, "regulab"))
     vague = script(panels=with_bubble("Ada beberapa syarat penting yang perlu dipatuhi.", 3, 1)["panels"])
     assert any("vague" in f["msg"] and not f["hard"] for f in comic_writer.flags(vague, "regulab"))     # a note, never a block
@@ -595,7 +595,7 @@ def test_the_fallback_path_is_recorded_on_the_job(uploads) -> None:
 
 
 def test_a_script_that_breaks_a_rule_is_refused_before_anything_is_drawn() -> None:
-    bad = {**copy.deepcopy(TYPED), "panels": with_bubble("Hubungi kami untuk semakan percuma.")["panels"]}
+    bad = {**copy.deepcopy(TYPED), "panels": with_bubble("Produk ini dijamin lulus NPRA percuma.")["panels"]}
     store = store_with(job(comic_meta={"script": bad}))
     ok, done, draw = run(store)
     assert ok is False and done["status"] == "error" and draw.prompts == []
@@ -631,7 +631,7 @@ def test_an_idea_without_review_is_written_and_drawn_in_one_go_and_a_refused_scr
     assert ok and draw.kinds == ["full"] and done["meta"]["comic"]["script"]["title"] == "Logo halal bukan hijau. Palsu ke?"
     refused = job(comic_meta={"script": None})
     refused["meta"]["brief"] = BRIEF
-    ok, done, draw = run(store_with(refused), llm=Writer(with_bubble("Klik link di bio untuk tahu lagi.")))
+    ok, done, draw = run(store_with(refused), llm=Writer(with_bubble("Produk ini dijamin lulus NPRA, tahu lagi.")))
     assert ok is False and done["status"] == "error" and "refused twice" in done["error"] and draw.prompts == []
     nothing = job(comic_meta={"script": None})
     ok, done, _ = run(store_with(nothing))

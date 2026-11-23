@@ -412,8 +412,13 @@ def test_the_threads_set_is_judged_by_the_post_rules_like_other_artwork():
     # the same scan finds a rule broken inside the Threads-style words, and names the Design set
     bad = publisher.scan_entry({"mode": "slides", "meta": {"design": "threads", "slides": [
         {"title": "Hubungi kami sekarang", "points": []}, PAGES[1]]}})
-    hits = [f for f in compliance.scan({**post, "media": [bad]}) if f["hard"]]
-    assert hits and all(f["where"].startswith("Design 1") for f in hits)
+    # a call to action is a warning, not a block (Wan, 23 Nov 2026); it is still named, and a rule that still blocks is too
+    hits = [f for f in compliance.scan({**post, "media": [bad]}) if f["where"].startswith("Design 1")]
+    assert hits and not any(f["hard"] for f in hits)
+    worse = publisher.scan_entry({"mode": "slides", "meta": {"design": "threads", "slides": [
+        {"title": "Produk ini dijamin lulus NPRA", "points": []}, PAGES[1]]}})
+    blocking = [f for f in compliance.scan({**post, "media": [worse]}) if f["hard"]]
+    assert blocking and all(f["where"].startswith("Design 1") for f in blocking)
 
 
 # --- the writer ---------------------------------------------------------------------------------

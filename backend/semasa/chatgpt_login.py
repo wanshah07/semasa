@@ -224,18 +224,22 @@ def _is_limit(text: str) -> bool:
 class Login:
     """The saved login and the calls made with it. `http` is `requests` (a test passes its own); `sleep` is `time.sleep`."""
 
-    def __init__(self, store: Any, *, http: Any = None, sleep: Any = None, now: Any = None):
+    def __init__(self, store: Any, *, http: Any = None, sleep: Any = None, now: Any = None, table: str = TABLE,
+                 row_id: str = "main", row: dict[str, Any] | None = None):
+        # `table` and `row_id` name the saved login: the main one (058) by default, or one extra picture account (095,
+        # ACCOUNTS). `row` hands over a row already read, so listing the accounts does not read each one twice.
+        self.table, self.row_id = table, row_id
         self.store = store
         self.http = http or requests
         self.sleep = sleep or time.sleep
         self.now = now or (lambda: datetime.now(UTC))
-        self._row: dict[str, Any] | None = None
+        self._row: dict[str, Any] | None = row
 
     # ---- the row
     def row(self, fresh: bool = False) -> dict[str, Any] | None:
         if self._row is None or fresh:
             try:
-                rows = self.store.table(TABLE).select("*").eq("id", "main").execute().data or []
+                rows = self.store.table(self.table).select("*").eq("id", self.row_id).execute().data or []
             except Exception as exc:  # noqa: BLE001 - 058 not applied yet, or the table cannot be read: no login
                 log.info("ChatGPT login not read (%s)", str(exc)[:120])
                 rows = []
@@ -256,7 +260,7 @@ class Login:
 
     def _save(self, patch: dict[str, Any]) -> None:
         try:
-            self.store.table(TABLE).update({**patch, "updated_at": self.now().isoformat()}).eq("id", "main").execute()
+            self.store.table(self.table).update({**patch, "updated_at": self.now().isoformat()}).eq("id", self.row_id).execute()
         except Exception as exc:  # noqa: BLE001 - losing a status line must never lose a film
             log.warning("ChatGPT login status not saved: %s", str(exc)[:120])
 
@@ -553,6 +557,138 @@ class Login:
             row["error"] = _clip(exc, 300)
         row["model_listed"] = (row["model"] in row["models"]) if row["models"] else None
         return row
+
+
+# --- more than one account for pictures (supabase/095; Wan, 24 Nov 2026: "add multiple accounts to support image gen") ----------
+ACCOUNTS = "semasa_chatgpt_accounts"
+MAX_ACCOUNTS = 8
+LIMIT_REST = timedelta(hours=3)        # an account that said its allowance is used up is not asked again for this long
+
+
+def extra_rows(store: Any) -> list[dict[str, Any]]:
+    """Every extra account's row, by id. [] when 095 is not applied or the table cannot be read."""
+    try:
+        rows = store.table(ACCOUNTS).select("*").execute().data or []
+    except Exception as exc:  # noqa: BLE001 - no extra accounts is the one login as it was
+        log.info("extra ChatGPT accounts not read (%s)", str(exc)[:120])
+        return []
+    return sorted((r for r in rows if r.get("id")), key=lambda r: str(r["id"]))
+
+
+def _resting(row: dict[str, Any], now: datetime) -> bool:
+    try:
+        until = datetime.fromisoformat(str(row.get("limit_until")).replace("Z", "+00:00")) if row.get("limit_until") else None
+    except ValueError:
+        until = None
+    return bool(until and until > now)
+
+
+def extra_logins(store: Any, now: datetime | None = None, **kw: Any) -> list[Login]:
+    """The extra picture accounts that may be asked now: switched on, holding tokens, and not resting after a used-up
+    allowance. In id order. [] when there are none (or 095 is not applied)."""
+    now = now or datetime.now(UTC)
+    out: list[Login] = []
+    for r in extra_rows(store)[:MAX_ACCOUNTS]:
+        if not r.get("enabled", True) or _resting(r, now):
+            continue
+        acc = Login(store, table=ACCOUNTS, row_id=str(r["id"]), row=r, **kw)
+        if acc.connected():
+            out.append(acc)
+    return out
+
+
+def picture_logins(store: Any, now: datetime | None = None, **kw: Any) -> list[Login]:
+    """The logins a picture may be drawn with, in the order they are asked: the main one, then each extra account.
+
+    The main login's switch is THE switch for ChatGPT pictures: switched off, nothing here draws, extra accounts included (one
+    place turns ChatGPT pictures off). With no main login saved at all, the extra accounts still draw."""
+    main = Login(store, **kw)
+    out: list[Login] = []
+    if main.connected():
+        if not (main.settings() or {}).get("enabled", True):
+            return []
+        out.append(main)
+    return out + extra_logins(store, now, **kw)
+
+
+def rest(login: Login, message: str) -> None:
+    """The account said its allowance is used up: an extra account is not asked again for LIMIT_REST; the main one only notes
+    the error (its row has no rest column, and the text jobs still need it)."""
+    stamp = login.now()
+    patch: dict[str, Any] = {"last_error": _clip(message, 400), "last_error_at": stamp.isoformat()}
+    if getattr(login, "table", TABLE) == ACCOUNTS:
+        patch["limit_until"] = (stamp + LIMIT_REST).isoformat()
+    login._save(patch)
+
+
+def name_of(login: Login) -> str:
+    """"main" or the extra account's id ("acc1"): what a log line and a job's record may say. Never the e-mail."""
+    return str(getattr(login, "row_id", "main")) if getattr(login, "table", TABLE) == ACCOUNTS else "main"
+
+
+def draw_any(store: Any, prompt: str, *, size: str = "1024x1024", model: str = "", image_model: str = "",
+             timeout: int | None = None, logins: list[Login] | None = None,
+             skip: set[str] | None = None) -> tuple[bytes, Login, str]:
+    """(picture bytes, the login that drew it, the chat model that drew). Each login of picture_logins is asked in turn: one that
+    says its allowance is used up rests (rest) and the next one draws; one whose login is refused, or whose plan has no model
+    that draws, is noted and the next one draws. Any other failure (ChatGPT not reachable, a refused request) is the same for
+    every account, so it is raised at once and no other account is spent on it.
+
+    `model` "" asks each login with its own saved chat model. `skip` holds the names (name_of) a caller already saw fail in this
+    run, and gains the ones that fail here, so a film of six scenes asks a used-up account once and not six times.
+    When no login draws, the error raised is the last one; it says `limit` only when every login asked was at its limit."""
+    asked = logins if logins is not None else picture_logins(store)
+    skip = skip if skip is not None else set()
+    todo = [x for x in asked if name_of(x) not in skip]
+    if not todo:
+        if asked:
+            raise ChatGPTError("every ChatGPT account has used up its allowance or is refused", limit=True)
+        raise ChatGPTError("ChatGPT is not connected: log in on Technology → API", auth=True)
+    last: ChatGPTError | None = None
+    limits = 0
+    for login in todo:
+        saved = str((login.settings() or {}).get("model") or DEFAULT_MODEL)
+        want = model or saved
+        kw: dict[str, Any] = {"image_model": image_model} if image_model else {}
+        if timeout:
+            kw["timeout"] = timeout
+        try:
+            data = login.draw(prompt, size=size, model=want, **kw)
+        except ChatGPTError as exc:
+            if not (exc.limit or exc.auth or exc.model):
+                raise
+            last = exc
+            skip.add(name_of(login))
+            if exc.limit:
+                limits += 1
+                rest(login, str(exc))
+            else:
+                login.failed(str(exc))
+            log.info("ChatGPT account %s did not draw (%s); %d more to ask", name_of(login),
+                     "limit" if exc.limit else "login" if exc.auth else "model", len(todo) - todo.index(login) - 1)
+            continue
+        login.ok()
+        # a refused model was replaced and saved on that login (Login._with_model): say the one that drew
+        after = str((login.settings() or {}).get("model") or DEFAULT_MODEL)
+        return data, login, (after if after != saved else want)
+    if last is None:                                   # not reachable: todo is never empty here
+        raise ChatGPTError("ChatGPT is not connected: log in on Technology → API", auth=True)
+    if limits == len(todo):
+        raise ChatGPTError(f"every ChatGPT account asked is at its limit ({len(todo)}): {last}", limit=True)
+    raise last
+
+
+def check_accounts(store: Any) -> list[str]:
+    """The 6-hourly check for the extra accounts: refresh each one (the cheapest real proof, and it keeps a login that only
+    draws when the main one is used up from going stale). One line an account, by id; never an e-mail or a token."""
+    out: list[str] = []
+    for r in extra_rows(store)[:MAX_ACCOUNTS]:
+        acc = Login(store, table=ACCOUNTS, row_id=str(r["id"]), row=r)
+        if not acc.connected():
+            out.append(f"ChatGPT account {r['id']}: no login saved")
+            continue
+        out.append(acc.check().replace("ChatGPT login", f"ChatGPT account {r['id']}", 1))
+    return out
 
 
 # --- ChatGPT as a robot of the AI team (Wan, 8 Nov 2026: "make the chatgpt also can read, writing, read and generate image") ---

@@ -1,6 +1,8 @@
 """Image provider failover (feature C, 8 Nov 2026): a provider that is down, out of neurons or credits, or refuses its
 own key hands the row to the next provider with credentials; a refusal about the picture itself is final."""
 
+from datetime import UTC, datetime
+
 import pytest
 import requests
 from test_media import _patch_db
@@ -240,13 +242,30 @@ def test_the_chatgpt_provider_maps_its_errors_to_failover_kinds_and_sizes_the_pi
                 raise self.exc
             return b"\x89PNG\r\n\x1a\n" + b"0" * 50
 
-    p = media_generator.ChatGPTImageProvider.__new__(media_generator.ChatGPTImageProvider)
-    p.login = Login()
+        def ok(self):
+            pass
+
+        def failed(self, message):
+            pass
+
+        def now(self):
+            return datetime.now(UTC)
+
+        def _save(self, patch):
+            pass
+
+    def provider(login):
+        p = media_generator.ChatGPTImageProvider.__new__(media_generator.ChatGPTImageProvider)
+        p.store, p.login, p.logins, p.spent = None, login, [login], set()
+        return p
+
+    p = provider(Login())
     out = p.generate_from_text("a lab", {"resolution": "portrait"})
     assert out.content_type == "image/png" and out.model == "gpt-5.5" and p.login.sizes == [cl.SIZES["portrait"]]
+    assert out.meta == {"chatgpt_model": "gpt-5.5", "chatgpt_account": "main"}
     for exc, kind in ((cl.ChatGPTError("usage limit", limit=True), "limit"), (cl.ChatGPTError("login", auth=True), "auth"),
                       (cl.ChatGPTError("model", model=True), "model"), (cl.ChatGPTError("boom"), "unavailable")):
-        p.login = Login(exc)
+        p = provider(Login(exc))
         with pytest.raises(ProviderError) as e:
             p.generate_from_text("a lab", {})
         assert e.value.kind == kind
@@ -323,6 +342,9 @@ def test_chatgpt_draws_with_the_pinned_model_else_the_saved_one_and_reports_the_
                 self.saved = "gpt-6.1-sol"
             return b"\x89PNG\r\n\x1a\n" + b"0" * 64
 
+        def ok(self):
+            pass
+
     monkeypatch.setattr(cl, "Login", Login)
     plain = media_generator.ChatGPTImageProvider(FakeStore())
     got = plain.generate_from_text("a flask", {})
@@ -359,9 +381,13 @@ def test_a_pinned_picture_model_is_drawn_by_the_image_tool_through_the_logins_ch
             self.asked.append((model, image_model))
             return b"\x89PNG\r\n\x1a\n" + b"0" * 64
 
+        def ok(self):
+            pass
+
     monkeypatch.setattr(cl, "Login", Login)
     pin = {"key": "ai_team", "value": {"pins": {"image_gen": {"gateway": "chatgpt", "model": "gpt-image-2"}}}}
     p = media_generator.ChatGPTImageProvider(FakeStore(semasa_settings=[pin]))
     got = p.generate_from_text("a flask", {})
     assert p.login.asked == [("gpt-6.2-sol", "gpt-image-2")]
-    assert got.model == "gpt-image-2" and got.meta == {"chatgpt_model": "gpt-6.2-sol", "chatgpt_image_model": "gpt-image-2"}
+    assert got.model == "gpt-image-2"
+    assert got.meta == {"chatgpt_model": "gpt-6.2-sol", "chatgpt_account": "main", "chatgpt_image_model": "gpt-image-2"}

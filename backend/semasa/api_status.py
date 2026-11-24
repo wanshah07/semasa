@@ -508,6 +508,8 @@ def main() -> int:
             store.table(db.API_STATUS).upsert(row, on_conflict="slug").execute()
             print(f"ChatGPT: chat_ok={row.get('chat_ok')} model={row.get('model')} models={len(row['models'])} "
                   f"{row.get('error') or ''}")
+        for line in chatgpt_login.check_accounts(store):     # the extra picture accounts (095): refreshed so they stay usable
+            print(line)
     except Exception as exc:  # noqa: BLE001 - the check is a courtesy; the API tab's other rows must still be written
         log.info("ChatGPT login not checked: %s", str(exc)[:120])
     for r in rows:

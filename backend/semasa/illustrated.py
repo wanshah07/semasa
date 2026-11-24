@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
 from typing import Any
 
 import requests
@@ -228,25 +229,82 @@ def shrink(data: bytes, edge: int = 1400) -> bytes:
     return buf.getvalue()
 
 
-def makers(s: Any, store: Any) -> list[str]:
-    """The picture makers tried in order, each only when it has credentials here (the comic's list: the ones that draw people)."""
+# Who makes a slide's picture, in order (Wan, 24 Nov 2026: "KioskAPI is the last choice to save credit - prioritize chatgpt then
+# cloudflare then unsplashed then kioskapi to create image or illustration for slide design"). ChatGPT (his login) and
+# Cloudflare (the free tier) DRAW it; when neither can, an Unsplash PHOTOGRAPH of the scene stands in (free, credited on the
+# job); Gemini and Replicate after that; KiosAPI ("openai"), paid per picture, only when everything before it gave nothing.
+ORDER = ("chatgpt", "cloudflare", "unsplash", "gemini", "replicate", "openai")
+_QUERY_STOP = frozenset("""about after again against along among around because before behind being below beside between
+    both does doing down during each from have having here into itself just more most only other over same should some such
+    than that their them then there these they this those through under until very were what when where which while will with
+    would your shows show showing scene everyday explains idea someone something people person holding looking standing
+    """.split())
+
+
+def photo_query(prompt: str) -> str:
+    """A short Unsplash search from the scene's words (the part after "Scene:"): its first five words that say something."""
+    scene = prompt.rsplit("Scene:", 1)[-1]
+    words = [w for w in re.findall(r"[A-Za-z]{4,}", scene) if w.lower() not in _QUERY_STOP]
+    return " ".join(words[:5]) or " ".join(re.findall(r"[A-Za-z]{3,}", scene)[:4])
+
+
+class UnsplashPhoto:
+    """An Unsplash photograph as a slide's picture, in the shape generate_with_failover drives. Any failure (no key, the hourly
+    limit, nothing found) is the provider's own, so the next maker in ORDER is asked."""
+
+    name = "unsplash"
+    video = False
+    edits = False
+
+    def generate_from_text(self, prompt: str, options: dict[str, Any]) -> Any:
+        from . import unsplash
+        from .providers import Generated, ProviderError
+        query = photo_query(prompt)
+        try:
+            found = unsplash.search(query, "landscape") if query else []
+            if not found:
+                raise ProviderError(f"Unsplash has no photo for {query!r}", kind="unavailable")
+            photo = found[0]
+            data = unsplash.fetch(photo)
+        except ProviderError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a photo that cannot be had is the next maker's turn
+            raise ProviderError(f"Unsplash: {str(exc)[:160]}", kind="unavailable") from exc
+        credit = {"name": photo.get("name") or "", "page": photo.get("page") or "", "id": photo.get("id"), "query": query}
+        return Generated(data, "image/jpeg", "unsplash", {"credit": credit})
+
+
+def makers(s: Any, store: Any, cut: bool = False) -> list[str]:
+    """The makers tried in ORDER, each only when it can be used here. Unsplash needs its key and a picture that is NOT a
+    cut-out (a photograph has no white page to take away)."""
+    import os
+
     from . import media_generator as mg
-    from .comic_job import MAKERS
-    return [n for n in MAKERS if mg.has_credentials(n, s, store)]
+    out = []
+    for n in ORDER:
+        if n == "unsplash":
+            if not cut and (os.environ.get("UNSPLASH_ACCESS_KEY") or "").strip():
+                out.append(n)
+        elif mg.has_credentials(n, s, store):
+            out.append(n)
+    return out
 
 
 def draw(store: Any, s: Any, prompt: str, names: list[str], providers: dict[str, Any], deadline: float | None,
-         row_id: str) -> tuple[bytes, str]:
+         row_id: str) -> tuple[bytes, str, dict[str, Any] | None]:
+    """(the picture, who made it, the photographer's credit when it is an Unsplash photograph else None)."""
     from . import media_generator as mg
     from .providers import ProviderError
 
     def one(p: Any) -> Any:
         opts = {"resolution": "landscape", **({"size": "1536x1024"} if getattr(p, "name", "") == "openai" else {})}
         return p.generate_from_text(prompt, opts)
+    if "unsplash" in names:
+        providers.setdefault("unsplash", UnsplashPhoto())
     gen, name, _tried = mg.generate_with_failover(providers, names, s, store, one, deadline=deadline, row_id=row_id)
     if not gen.data:
         raise ProviderError("the picture maker returned no picture")
-    return shrink(gen.data), name
+    return shrink(gen.data), name, ((gen.meta or {}).get("credit") if name == "unsplash" else None)
 
 
 def art_bytes(item: dict[str, Any]) -> bytes | None:
@@ -287,7 +345,7 @@ def with_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], item
     keys = {i: key_of(items[i], cut) for i in idx}
     missing = [i for i in idx if not (kept.get(keys[i]) or {}).get("url")]
     scenes = plan(llm, items, missing, stream) if missing else {}
-    names = [] if draw_fn else makers(s, store)
+    names = [] if draw_fn else (makers(s, store, True) if cut else makers(s, store))
     if missing and not draw_fn and not names:
         raise ArtError("no picture maker is connected (ChatGPT, Gemini, OpenAI, Cloudflare or Replicate): connect one on the API "
                        "page, or pick another look")
@@ -298,7 +356,9 @@ def with_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], item
         sc = scenes[i]
         try:
             prompt = prompt_of(sc["scene"], cut)
-            data, maker = (draw_fn(prompt), "test") if draw_fn else draw(store, s, prompt, names, provs, deadline, row_id)
+            # (picture, maker) or (picture, maker, credit): the credit is there only for an Unsplash photograph
+            data, maker, credit = (*((draw_fn(prompt), "test") if draw_fn else
+                                     draw(store, s, prompt, names, provs, deadline, row_id)), None)[:3]
             if cut:
                 data = cutout(data)
         except Exception as exc:  # noqa: BLE001 - what is made stays; the job tries again for the rest
@@ -307,7 +367,7 @@ def with_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], item
         path = f"{day}/{row_id}-{stamp}-art{i + 1:02d}{'c' if cut else ''}.{ext}"
         url = db.upload_generated(store, path, data, mime)
         kept[keys[i]] = {"url": url, "path": path, "scene": sc["scene"], "label": sc["label"], "maker": maker, "mime": mime,
-                         "at": datetime.now(UTC).isoformat()}
+                         "at": datetime.now(UTC).isoformat(), **({"credit": credit} if credit else {})}
         meta["art"] = kept
         meta["art_paths"] = [e["path"] for e in kept.values() if e.get("path")]
         store.table(db.MEDIA).update({"meta": meta}).eq("id", row_id).execute()
@@ -355,13 +415,14 @@ def cover_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], ite
         provs = providers if providers is not None else {}
         try:
             prompt = prompt_of(scene)
-            data, maker = (draw_fn(prompt), "test") if draw_fn else draw(store, s, prompt, names, provs, deadline, row["id"])
+            data, maker, credit = (*((draw_fn(prompt), "test") if draw_fn else
+                                     draw(store, s, prompt, names, provs, deadline, row["id"])), None)[:3]
         except Exception as exc:  # noqa: BLE001 - the cover is drawn without it
             raise ArtError(f"cover: the illustration could not be made ({str(exc)[:160]})") from exc
         path = f"{datetime.now(UTC).strftime('%Y/%m')}/{row['id']}-{datetime.now(UTC).strftime('%d%H%M%S')}-cover.jpg"
         url = db.upload_generated(store, path, data, "image/jpeg")
         entry = kept[key] = {"url": url, "path": path, "scene": scene, "label": "", "maker": maker, "mime": "image/jpeg",
-                             "at": datetime.now(UTC).isoformat()}
+                             "at": datetime.now(UTC).isoformat(), **({"credit": credit} if credit else {})}
         meta["art"] = kept
         meta["art_paths"] = [e["path"] for e in kept.values() if e.get("path")]
         store.table(db.MEDIA).update({"meta": meta}).eq("id", row["id"]).execute()

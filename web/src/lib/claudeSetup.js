@@ -4,6 +4,7 @@
    (ai_team.prefer, ai_team.pins) and writes only those. backend/semasa/ai_providers.resolve_model is the same rule as resolveModel. */
 
 export const CHATGPT = "chatgpt";
+export const IMAGE_MODELS_TEST = "chatgpt_image_models";      // settings.ai_test.what for the picture-model probe (chatgpt_test.py)
 
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
@@ -60,6 +61,8 @@ export function applyPlan(team, row, model, now = new Date()) {
   const t = team || {};
   const pins = { ...(t.pins || {}) };
   pins.reader = { gateway: row.id, model: model || row.model || "" };
+  // every Claude model reads pictures, so an Anthropic provider is the picture reader too (Wan, 24 Nov 2026: "make sure claude can read image")
+  if (row.dialect === "anthropic") pins.image_reader = { gateway: row.id, model: model || row.model || "" };
   pins.image_gen = { gateway: CHATGPT, model: pins.image_gen?.gateway === CHATGPT ? pins.image_gen.model || "" : "" };
   return { ...t, prefer: row.id, pins, changed_at: now.toISOString() };
 }
@@ -70,6 +73,7 @@ export function planState(team, row) {
   return {
     text: !!row && t.prefer === row.id && t.pins?.reader?.gateway === row.id,
     pictures: t.pins?.image_gen?.gateway === CHATGPT,
+    reads: !!row && t.pins?.image_reader?.gateway === row.id,
   };
 }
 
@@ -80,6 +84,11 @@ export function pictureTest(request, result, now = Date.now()) {
   if (asked && asked > done) return { state: now - asked > 12 * 60_000 ? "lost" : "running", at: request.at };
   if (!done) return { state: "none" };
   if (result.not_connected) return { state: "notconnected", at: result.at };
+  if (result.what === IMAGE_MODELS_TEST) {
+    // the picture-model probe: "ignored" = ChatGPT drew even with a made-up model name, so the name chooses nothing
+    const models = Array.isArray(result.models) ? result.models : [];
+    return { state: result.ignored ? "ignored" : models.length ? "models" : "nomodels", at: result.at, models };
+  }
   const bad = Object.entries(result.steps || {}).filter(([, v]) => !v.ok).map(([k, v]) => ({ step: k, detail: v.detail || "" }));
   return { state: result.ok ? "ok" : "failed", at: result.at, model: result.draw_model || result.model || "", bad };
 }

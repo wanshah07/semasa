@@ -44,8 +44,10 @@ assert.deepEqual(next.pins.image_gen, { gateway: "chatgpt", model: "" });   // a
 assert.deepEqual(next.efforts, team.efforts);
 assert.deepEqual(next.models, team.models);
 assert.equal(next.changed_at, "2026-11-24T10:00:00.000Z");
-assert.deepEqual(planState(team, row), { text: false, pictures: false });
-assert.deepEqual(planState(next, row), { text: true, pictures: true });
+assert.deepEqual(planState(team, row), { text: false, pictures: false, reads: false });
+assert.deepEqual(planState(next, row), { text: true, pictures: true, reads: true });
+assert.deepEqual(next.pins.image_reader, { gateway: "claude", model: "claude-opus-5-5" });      // Claude reads the pictures too
+assert.equal(applyPlan({}, { id: "gw", dialect: "openai", model: "m" }, "m", now).pins.image_reader, undefined);   // only an Anthropic provider
 assert.equal(applyPlan({ pins: { image_gen: { gateway: "chatgpt", model: "gpt-6.2-sol" } } }, row, "x", now).pins.image_gen.model, "gpt-6.2-sol");
 assert.equal(applyPlan(undefined, row, "", now).pins.reader.model, "Claude Opus 5.5");
 
@@ -60,6 +62,10 @@ assert.equal(bad.state, "failed");
 assert.equal(pictureTest({}, { at: "2026-11-24T10:03:00Z", ok: true, model: "gpt-6.2-sol", draw_model: "gpt-6-astra" }).model, "gpt-6-astra");   // the model that drew
 assert.deepEqual(bad.bad, [{ step: "draw", detail: "HTTP 402" }]);
 assert.equal(pictureTest({}, { at: "2026-11-24T10:03:00Z", ok: false, not_connected: true }).state, "notconnected");
+// the picture-model probe: a made-up model that draws means the name chooses nothing
+assert.equal(pictureTest({}, { at: "2026-11-24T10:03:00Z", what: "chatgpt_image_models", ok: false, ignored: true, models: [] }).state, "ignored");
+assert.deepEqual(pictureTest({}, { at: "2026-11-24T10:03:00Z", what: "chatgpt_image_models", ok: true, models: ["gpt-image-2"] }).models, ["gpt-image-2"]);
+assert.equal(pictureTest({}, { at: "2026-11-24T10:03:00Z", what: "chatgpt_image_models", ok: false, models: [] }).state, "nomodels");
 // clicking a model on a provider's card: the pins that name it follow, the rest stay
 const clicked = withProviderModel({ pins: { reader: { gateway: "claude", model: "claude-opus-5-5" }, motion: null, image_gen: { gateway: "chatgpt", model: "" } }, prefer: "claude" },
   "claude", "claude-sonnet-5-5", now);

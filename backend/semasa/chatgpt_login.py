@@ -66,6 +66,16 @@ def writer_candidates(listed: list[str]) -> list[str]:
 
 # The image tool refuses a setting it does not offer for the image model behind the chosen model (8 Nov 2026, gpt-6.1-sol:
 # "Complexity 'medium' is not supported for this image model."). The default is refused, so the other levels are asked in turn.
+# The picture models the login may be asked to draw WITH (Wan, 24 Nov 2026: "check why chatgpt not list out image gen model
+# such as gpt-image-2"). ChatGPT's own model list is the Codex CHAT models; a picture is drawn by the image_generation TOOL
+# of one of them, and that tool takes a `model` of its own. These are only CANDIDATES: chatgpt_test's picture-model probe asks
+# each one for a real picture and keeps the ones the account draws with in settings[IMAGE_MODELS_KEY]; only those are listed
+# for the picture maker.
+IMAGE_TOOL_MODELS = ("gpt-image-2.5", "gpt-image-2", "gpt-image-1.5", "gpt-image-1")
+IMAGE_MODELS_KEY = "chatgpt_image_models"
+IMAGE_TOOL_RE = re.compile(r"^gpt-image-|^dall-?e", re.I)
+ITEM_FACTS = ("model", "size", "quality", "output_format", "background", "status")     # what a drawn item says about itself
+
 COMPLEXITY_REFUSED = re.compile(r"complexity '([\w-]+)' is not supported", re.I)
 COMPLEXITIES = ("low", "high", "medium")
 
@@ -123,11 +133,15 @@ def _event_error(ev: dict[str, Any]) -> str:
     return _clip(err or ev.get("message") or "the ChatGPT call failed")
 
 
-def read_stream(lines: Any) -> bytes:
+def read_stream(lines: Any, info: dict[str, Any] | None = None) -> bytes:
     """The finished picture from a Responses event stream: the `image_generation_call` item's base64 `result`, from the item's own
     `done` event or, failing that, from the final `response.completed` output. An error event, or a stream with no picture,
-    raises."""
+    raises. `info`, when given, is filled with what the drawn item says about itself (ITEM_FACTS: model, size, quality...)."""
     found = ""
+
+    def note(item: dict[str, Any]) -> None:
+        if info is not None:
+            info.update({k: item[k] for k in ITEM_FACTS if isinstance(item.get(k), (str, int, float)) and item.get(k) != ""})
     said = []
     for raw in lines:
         line = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw or "")
@@ -147,12 +161,14 @@ def read_stream(lines: Any) -> bytes:
         item = ev.get("item") or {}
         if kind == "response.output_item.done" and item.get("type") == "image_generation_call" and item.get("result"):
             found = str(item["result"])
+            note(item)
         elif kind == "response.output_text.delta":
             said.append(str(ev.get("delta") or ""))
         elif kind == "response.completed" and not found:
             for out in (ev.get("response") or {}).get("output") or []:
                 if out.get("type") == "image_generation_call" and out.get("result"):
                     found = str(out["result"])
+                    note(out)
     if not found:
         raise ChatGPTError("ChatGPT answered without a picture" + (f": {_clip(''.join(said), 160)}" if said else ""))
     try:
@@ -309,8 +325,11 @@ class Login:
         return "ChatGPT login: accepted"
 
     # ---- a picture
-    def _body(self, prompt: str, model: str, size: str, variant: int, complexity: str | None = None) -> dict[str, Any]:
+    def _body(self, prompt: str, model: str, size: str, variant: int, complexity: str | None = None,
+              image_model: str = "") -> dict[str, Any]:
         tool: dict[str, Any] = {"type": "image_generation"}
+        if image_model:
+            tool["model"] = image_model               # the picture model the tool draws with (chat `model` only calls the tool)
         if variant == 0:
             tool["size"] = size
         if complexity:
@@ -427,14 +446,31 @@ class Login:
         lists = f"; the account lists {', '.join(listed[:8])}" if listed else ""
         raise ChatGPTError(f"{first} Tried {', '.join(tried)}{lists}", model=True)
 
-    def draw(self, prompt: str, *, size: str = "1024x1024", model: str = DEFAULT_MODEL, timeout: int = 300) -> bytes:
+    def draw_once(self, prompt: str, *, model: str, image_model: str, size: str = "1024x1024", timeout: int = 240,
+                  info: dict[str, Any] | None = None) -> bytes:
+        """ONE picture asked of ONE picture model, with no fallbacks: the probe's question (chatgpt_test.probe_image_models).
+        What ChatGPT says is what comes back: the picture, or the refusal in its own words. `info` gets the drawn item's facts."""
+        return self._run(lambda v: self._body(prompt, model, size, 0, None, image_model),
+                         lambda lines: read_stream(lines, info), timeout, 0)
+
+    def image_models(self) -> list[str]:
+        """The picture models the probe found this account draws with (settings[IMAGE_MODELS_KEY].models), or []."""
+        try:
+            rows = self.store.table("semasa_settings").select("value").eq("key", IMAGE_MODELS_KEY).execute().data or []
+        except Exception:  # noqa: BLE001 - no record is no picture model to offer
+            return []
+        got = ((rows[0].get("value") or {}) if rows else {}).get("models") or []
+        return [m for m in got if isinstance(m, str) and IMAGE_TOOL_RE.search(m)][:8]
+
+    def draw(self, prompt: str, *, size: str = "1024x1024", model: str = DEFAULT_MODEL, timeout: int = 300,
+             image_model: str = "") -> bytes:
         """One picture's bytes (PNG or JPEG, whatever ChatGPT sends). Variants run only after a 400 that names what it did not
         accept: the sized forced-tool call first, then without a forced tool, then with the bare tool. A refused model is
         replaced by one the account allows (_with_model). When the image tool refuses a complexity level ("Complexity 'medium' is
         not supported for this image model"), the other levels are asked in turn, and the one that works is remembered for this
         login; when none works the model is treated as refused so the account's next model is tried."""
         def one(m: str, complexity: str | None) -> bytes:
-            return self._run(lambda v: self._body(prompt, m, size, v, complexity), read_stream, timeout, 2)
+            return self._run(lambda v: self._body(prompt, m, size, v, complexity, image_model), read_stream, timeout, 2)
 
         def call(m: str) -> bytes:
             first = getattr(self, "complexity", None)
@@ -503,7 +539,9 @@ class Login:
         except ChatGPTError as exc:
             row.update(key_ok=False if exc.auth else None, error=_clip(exc, 300))
             return row
-        row["models"] = self.models()
+        # the chat models ChatGPT lists, then the picture models the probe found it draws with (listed for the picture maker only:
+        # the page and the router both keep an image model away from a text job by its name)
+        row["models"] = [*self.models(), *self.image_models()]
         row["latency_ms"] = int((time.monotonic() - started) * 1000)
         t0 = time.monotonic()
         try:

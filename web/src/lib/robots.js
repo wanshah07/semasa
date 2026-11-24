@@ -9,6 +9,14 @@ export const THEMES = {
   kios: { shell: ["#c58bff", "#7a3fd1", "#3d1a7a"], visor: ["#25103f", "#10061f"], eye: "#f1d4ff", glow: "#d08cff", accent: "#f0b429", label: "W3", name: "Wanshah 3" },
   // a provider Wan added on the API tab (Wanshah 6, 7, ...): the same robot in copper, so an added robot reads as one family
   provider: { shell: ["#f2a65a", "#b85c1e", "#5a2a0c"], visor: ["#2b1608", "#140903"], eye: "#ffe0b8", glow: "#ffb46b", accent: "#c9a227", label: "W6", name: "Wanshah 6" },
+  // Gemini (W4) and ChatGPT (W5) each in a colour of their own (Wan, 24 Nov 2026: "all bot live have their own colors"): both
+  // were the guest slate, so two live robots looked like one. Teal and rose: neither is W1's green, W2's blue or W3's purple.
+  gemini: { shell: ["#5eead4", "#0f9a8a", "#0a4f47"], visor: ["#06302b", "#021513"], eye: "#c9fff6", glow: "#3df0d8", accent: "#f0b429", label: "W4", name: "Wanshah 4" },
+  chatgpt: { shell: ["#ff9ccb", "#d1367f", "#6b1740"], visor: ["#3a0e23", "#1a0610"], eye: "#ffe0ef", glow: "#ff7ab8", accent: "#f0b429", label: "W5", name: "Wanshah 5" },
+  // the second, third and fourth provider Wan adds (W7, W8, W9): gold, red and indigo, so no two added robots share a colour either
+  provider2: { shell: ["#ffe27a", "#c79a12", "#6b5208"], visor: ["#2e2406", "#161103"], eye: "#fff5c9", glow: "#ffd84a", accent: "#c9a227", label: "W7", name: "Wanshah 7" },
+  provider3: { shell: ["#ff9a8f", "#c43a3a", "#6b1d1d"], visor: ["#350f0f", "#190707"], eye: "#ffe0dc", glow: "#ff7466", accent: "#c9a227", label: "W8", name: "Wanshah 8" },
+  provider4: { shell: ["#a5a8ff", "#4a4fd1", "#22257a"], visor: ["#12143f", "#08091f"], eye: "#e0e1ff", glow: "#8c90ff", accent: "#c9a227", label: "W9", name: "Wanshah 9" },
   // a gateway nobody named (OpenAI, Anthropic, a host Wan typed in): the same robot in slate
   guest: { shell: ["#b8c2cc", "#5f6b78", "#2e3640"], visor: ["#1e2530", "#0c1016"], eye: "#e6edf3", glow: "#c3ccd6", accent: "#c9a227", label: "W?", name: "Wanshah" },
 };
@@ -47,4 +55,23 @@ export const GREY_GLASS = "linear-gradient(180deg,#3f444c,#23262b)";
 export function themeFor(tone, label) {
   const t = THEMES[tone] || THEMES.guest;
   return label ? { ...t, label } : t;
+}
+
+const PROVIDER_TONES = ["provider", "provider2", "provider3", "provider4"];
+
+/** The tone a robot is drawn in: its own for the built-in five; for a provider Wan added, one of four by its number (W6 copper,
+    W7 gold, W8 red, W9 indigo, then round again), so every robot on the page has a colour of its own. */
+export function toneFor(card) {
+  if (!card) return "guest";
+  if (card.added || card.tone === "provider") {
+    const n = Number(String(card.robot || "").replace(/\D/g, "")) || 6;
+    return PROVIDER_TONES[(((n - 6) % PROVIDER_TONES.length) + PROVIDER_TONES.length) % PROVIDER_TONES.length];
+  }
+  return THEMES[card.tone] ? card.tone : "guest";
+}
+
+/** A robot's own colour as one hex, for a border or a dot beside its name: the bright stop of its shell while it is live, the
+    shared dead grey when it is offline ("offline" looks the same whichever AI it is, as on the robot itself). */
+export function colourFor(card, live = true) {
+  return live ? (THEMES[toneFor(card)] || THEMES.guest).shell[0] : "#7b8088";
 }

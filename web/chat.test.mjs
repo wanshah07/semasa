@@ -893,7 +893,23 @@ console.log("all robots: ok");
       messages: [{ role: "system", content: "RULES" }, { role: "user", content: [{ type: "text", text: "lihat" }, { type: "image_url", image_url: { url: TEST_IMAGE } }] },
         { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "fetch_url", arguments: "{\"url\":\"https://x\"}" } }] },
         { role: "tool", tool_call_id: "c1", content: "PAGE" }, { role: "assistant", content: "ok" }, { role: "user", content: "lagi" }] });
-    assert.equal(body.system, "RULES"); assert.equal(body.stream, true); assert.equal(body.max_tokens, 100); assert.equal(body.model, "claude-sonnet-5.5");
+    assert.equal(body.system, "RULES"); assert.equal(body.stream, true); assert.equal(body.model, "claude-sonnet-5.5");
+    // Claude's fifth generation thinks first and the thinking is spent out of max_tokens (24 Nov 2026: 5000 asked, 5000 used, the JSON cut)
+    assert.equal(body.max_tokens, 9100, "the 100 asked for the answer, plus room for the thinking at the model's own (high) effort");
+    assert.ok(!("output_config" in body), "no effort is sent to a gate that is not Anthropic's own API");
+    const own = L.anthropicBody({ model: "claude-sonnet-5-5", max_tokens: 2400, messages: [{ role: "user", content: "x" }] }, { official: true });
+    assert.equal(own.max_tokens, 8400); assert.deepEqual(own.output_config, { effort: "medium" });
+    assert.equal(L.anthropicBody({ model: "claude-opus-5-5", max_tokens: 20, messages: [{ role: "user", content: "x" }] }, { official: true }).max_tokens, 6020, "a 20-token yes/no still gets words back");
+    assert.equal(L.anthropicMaxTokens("claude-sonnet-5-5", 15000), 16000, "never more than one call should carry");
+    assert.equal(L.anthropicMaxTokens("claude-sonnet-5-5", 20000), 20000, "and never less than was asked");
+    assert.equal(L.anthropicMaxTokens("claude-sonnet-5-5", undefined), 8400);
+    const older = L.anthropicBody({ model: "claude-haiku-4-5-20251001", max_tokens: 10, tool_choice: "required", tools: [{ type: "function", function: { name: "t" } }], messages: [{ role: "user", content: "x" }] }, { official: true });
+    assert.equal(older.max_tokens, 10, "an older model is asked exactly as before"); assert.ok(!("output_config" in older));
+    assert.deepEqual(older.tool_choice, { type: "any" }, "and may still be made to call a tool");
+    const forced = L.anthropicBody({ model: "claude-opus-5-5", max_tokens: 10, tool_choice: "required", tools: [{ type: "function", function: { name: "t" } }], messages: [{ role: "user", content: "x" }] });
+    assert.ok(!("tool_choice" in forced), "a forced tool call is a 400 on Claude Opus 5.5 and Sonnet 5.5: it is never sent");
+    assert.equal(JSON.parse(L.chatRequest({ kind: "anthropic", base: "https://api.anthropic.com/", key: "k" }, { model: "claude-sonnet-5-5", max_tokens: 60, messages: [{ role: "user", content: "x" }] }).body).output_config.effort, "medium");
+    assert.ok(!("output_config" in JSON.parse(L.chatRequest({ kind: "anthropic", base: "https://gw.example.my", key: "k" }, { model: "claude-sonnet-5-5", max_tokens: 60, messages: [{ role: "user", content: "x" }] }).body)));
     assert.ok(!("temperature" in body), "a Claude 5 model refuses temperature (400), so none is sent");
     assert.equal(L.anthropicBody({ model: "claude-haiku-4-5-20251001", max_tokens: 10, temperature: 0.2, messages: [{ role: "user", content: "x" }] }).temperature, 0.2, "an older model keeps it");
     assert.equal(L.anthropicTakesTemperature("claude-opus-5-5"), false); assert.equal(L.anthropicTakesTemperature("claude-opus-4-8"), true);

@@ -539,14 +539,29 @@ class LLM:
 
     def _anthropic(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str, base: str,
                    key: str) -> str:
+        thinks = thinks_first(model)
+        # a model that thinks first is slower for the same answer: 5000 tokens took 36 s on 24 Nov 2026, and the room below
+        # can more than double that, so the usual 60 s would cut a good answer off
+        timeout = max(self.s.timeout, ANTHROPIC_THINK_TIMEOUT) if thinks else self.s.timeout
+
         def ask(body: dict[str, Any]) -> requests.Response:
             return requests.post(
                 f"{base}/v1/messages",
                 headers={"x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
-                json=body, timeout=self.s.timeout)
+                json=body, timeout=timeout)
 
         body: dict[str, Any] = {"model": model, "system": system, "messages": [{"role": "user", "content": user}],
                                 "max_tokens": max_tokens}
+        effort = ""
+        if thinks:
+            # Claude's fifth generation thinks before it answers and the thinking is spent out of max_tokens. Asked for 5000
+            # tokens it thought for most of them and the JSON came back cut ("Unterminated string"), three times a draft, and
+            # DeepSeek wrote instead (run 45451508948, 24 Nov 2026: completion_tokens exactly 5000 and 3000, every time).
+            # So the answer keeps the tokens the caller asked for and the thinking gets room of its own on top.
+            effort = anthropic_effort(self._effort_for(base, model))
+            body["max_tokens"] = with_think_room(max_tokens, effort)
+            if f"{host_of(base)}|{model}" not in getattr(self, "_no_effort", ()):
+                body["output_config"] = {"effort": effort}
         if takes_temperature(model):
             body["temperature"] = 0.2
         r = ask(body)
@@ -556,11 +571,40 @@ class LLM:
             NO_TEMPERATURE.add(model)
             body.pop("temperature")
             r = ask(body)
+        if r.status_code == 400 and "output_config" in body and ANTHROPIC_EFFORT_REFUSED_RE.search(r.text):
+            # a gateway or model that does not take an effort: asked again without it, and not sent to it again this run
+            log.warning("LLM %s: output_config.effort=%s was refused; asked again without it", model, effort)
+            body.pop("output_config")
+            self._no_effort = {*getattr(self, "_no_effort", ()), f"{host_of(base)}|{model}"}
+            r = ask(body)
         r.raise_for_status()
         j = r.json()
-        _LAST_USAGE.update(_usage_from(j))
+        if thinks and j.get("stop_reason") == "max_tokens" and body["max_tokens"] < ANTHROPIC_MAX_TOKENS:
+            # still cut: the thinking took more than its room. Asked once more with the most a call may have, thinking as
+            # little as the model allows. The cut answer is not returned: half a JSON object is no answer.
+            log.warning("LLM %s: the answer was cut at %d tokens (thinking included); asked once more with %d at low effort",
+                        model, body["max_tokens"], ANTHROPIC_MAX_TOKENS)
+            usage = _usage_from(j)
+            body["max_tokens"] = ANTHROPIC_MAX_TOKENS
+            if "output_config" in body:
+                body["output_config"] = {"effort": "low"}
+            r = ask(body)
+            r.raise_for_status()
+            j = r.json()
+            again = _usage_from(j)                   # both calls were paid for: the usage row says so
+            _LAST_USAGE.update({k: usage[k] + again[k] for k in usage})
+        else:
+            _LAST_USAGE.update(_usage_from(j))
+        stop = j.get("stop_reason")
         blocks = j.get("content") or []
-        return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+        text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+        if stop == "max_tokens":
+            log.warning("LLM %s: the answer was cut at max_tokens=%d (stop_reason=max_tokens); %d characters of answer came back",
+                        model, body["max_tokens"], len(text))
+        elif stop == "refusal":
+            cat = str((j.get("stop_details") or {}).get("category") or "no category")
+            log.warning("LLM %s: Claude declined the request (stop_reason=refusal, %s); the next link is asked", model, cat)
+        return text
 
 
 # Claude's fifth generation refuses `temperature` outright: 400 "`temperature` is deprecated for this model" (24 Nov 2026,
@@ -572,6 +616,36 @@ NO_TEMPERATURE: set[str] = set()                 # models learned from a refusal
 def takes_temperature(model: str) -> bool:
     """False for a model known to refuse the field (the Claude 5 family, or one that already refused in this run)."""
     return model not in NO_TEMPERATURE and not NO_TEMPERATURE_RE.search(model or "")
+
+
+# Claude's fifth generation also THINKS before it answers, whether asked to or not (adaptive thinking is on when `thinking` is
+# left out; on Opus 5.5 and Sonnet 5.5 it cannot be switched off with "disabled"). The thinking is billed as output and counts
+# toward max_tokens, so a caller's "5000 tokens for the answer" was mostly spent before the first character of JSON.
+# `output_config.effort` is the one control: low | medium | high | xhigh | max.
+ANTHROPIC_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+ANTHROPIC_DEFAULT_EFFORT = "medium"                 # Wan's choice on the API tab (settings.ai_team.efforts) replaces it
+# tokens added for the thinking, by effort; the answer keeps what the caller asked for
+ANTHROPIC_THINK_ROOM = {"low": 3000, "medium": 6000, "high": 9000, "xhigh": 11000, "max": 11000}
+ANTHROPIC_MAX_TOKENS = 16000                        # a call that is not streamed stays under this (Anthropic's own guidance)
+ANTHROPIC_THINK_TIMEOUT = 180                       # seconds: 16000 tokens at the 140 a second measured on 24 Nov, with slack
+ANTHROPIC_EFFORT_REFUSED_RE = re.compile(r"output_config|effort", re.I)
+
+
+def thinks_first(model: str) -> bool:
+    """True for a Claude model that thinks before it answers by default (the fifth generation)."""
+    return bool(NO_TEMPERATURE_RE.search(model or ""))
+
+
+def anthropic_effort(chosen: str) -> str:
+    """The effort sent to Claude: Wan's choice for this model when it is one Claude takes, else the default."""
+    return chosen if chosen in ANTHROPIC_EFFORTS else ANTHROPIC_DEFAULT_EFFORT
+
+
+def with_think_room(max_tokens: int, effort: str) -> int:
+    """max_tokens for a model that thinks first: what the caller asked for the ANSWER, plus room for the thinking, and never
+    more than a call that is not streamed should carry (nor less than the caller asked)."""
+    room = ANTHROPIC_THINK_ROOM.get(effort, ANTHROPIC_THINK_ROOM[ANTHROPIC_DEFAULT_EFFORT])
+    return max(max_tokens, min(ANTHROPIC_MAX_TOKENS, max_tokens + room))
 
 
 def with_instructions(system: str, user: str | list[dict[str, Any]]) -> str | list[dict[str, Any]]:

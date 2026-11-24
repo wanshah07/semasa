@@ -300,8 +300,13 @@ class Login:
             newer = dict((now_row.get("auth") or {}).get("tokens") or {})
             if newer.get("refresh_token") and newer["refresh_token"] != used:
                 return str(newer.get("access_token") or ""), account_of(newer)
-            raise ChatGPTError(f"ChatGPT refused the saved login ({resp.status_code}): log in again with `codex login` and paste "
-                               f"auth.json again. {_clip(getattr(resp, 'text', ''), 160)}", auth=True)
+            said = (f"ChatGPT refused the saved login ({resp.status_code}): log in again with a code on Technology → API. "
+                    f"{_clip(getattr(resp, 'text', ''), 160)}")
+            # written on the login's own row, whoever was asking (a picture, a film, the writer, the test): on 24 Nov 2026
+            # ChatGPT ended the session ("Your session has ended. Please log in again."), eleven pictures were refused in one
+            # run, and the page went on showing the login as accepted because only the 6-hourly check ever wrote the error
+            self.failed(said)
+            raise ChatGPTError(said, auth=True)
         body = resp.json()
         access = str(body.get("access_token") or "")
         if not access:

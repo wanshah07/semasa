@@ -9,9 +9,9 @@ export const ROBOTS = {
   mireld: { robot: "W2", name: "Wanshah 2", tone: "mireld", does: ["read", "write", "make_image"] },
   kiosapi: { robot: "W3", name: "Wanshah 3", tone: "kios", does: ["read", "write", "read_image", "make_image"] },
   // Gemini (Wan, 6 Nov 2026): several keys picked automatically; it shows only once a key has been probed (not in ORDER)
-  gemini: { robot: "W4", name: "Wanshah 4", tone: "guest", does: ["read", "write", "read_image", "make_image"] },
+  gemini: { robot: "W4", name: "Wanshah 4", tone: "gemini", does: ["read", "write", "read_image", "make_image"] },
   // ChatGPT (Wan, 7 Nov 2026): Wan's own ChatGPT login, shown once the API check has asked it
-  chatgpt: { robot: "W5", name: "Wanshah 5", tone: "guest", does: ["read", "write", "read_image", "make_image"] },
+  chatgpt: { robot: "W5", name: "Wanshah 5", tone: "chatgpt", does: ["read", "write", "read_image", "make_image"] },
 };
 // shown in this order, like halal-executive: Wanshah 1, then 3, then 2
 export const ORDER = ["rootsys", "kiosapi", "mireld"];

@@ -8,7 +8,8 @@ import { useLang } from "../lib/i18n";
 import { useApiUsage, useTable } from "../lib/hooks";
 import { stampMYT, timeAgo } from "../lib/format";
 import { fmtTokens, orderedModels, usageByArea, usageByDay, usageByGateway, verdictOf } from "../lib/api";
-import { modelOverride, rateCheck, withModel } from "../lib/aiTeam";
+import { modelOverride, rateCheck, robotOf, stateOf, withModel } from "../lib/aiTeam";
+import { colourFor } from "../lib/robots";
 import { formOf, rpcArgs } from "../lib/aiProviders";
 import { checkAI } from "../lib/chat";
 import { withProviderModel } from "../lib/claudeSetup";
@@ -37,6 +38,10 @@ const VERDICT = {
   none: { cls: "bg-surface-2 text-muted", icon: Cpu, bm: "Tiada", en: "None" },
 };
 const COLOURS = ["rgb(var(--c-accent))", "rgb(var(--c-ok))", "rgb(var(--c-warn))", "rgb(var(--c-danger))", "rgb(var(--c-muted))"];
+
+// the page's five parts, in setup order: [element id, Bahasa Malaysia, English]
+const SECTIONS = [["api-setup", "Tetapan pantas", "Quick setup"], ["api-team", "Siapa buat apa", "Who does what"], ["api-robots", "Setiap robot", "Each robot"],
+  ["api-connect", "Kunci dan log masuk", "Keys and logins"], ["api-usage", "Penggunaan", "Usage"]];
 
 // the gateways whose default model is set from GitHub variables or secrets, so a page choice is the only way to move it
 const ADJUSTABLE = ["rootsys", "mireld"];
@@ -113,37 +118,31 @@ export default function ApiTab({ settings, save, onToast, go }) {
           "Not checked yet: the API status workflow (GitHub → Actions → API status → Run workflow) asks every gateway and fills the cards below.")}</p>
       )}
 
-      <section className="mb-6" data-ai-team>
-        <h2 className="mb-2 flex items-center gap-2 text-sm font-medium"><Cpu size={14} className="text-accent" /> {t("Pasukan AI", "AI team")}</h2>
+      {/* The page in five numbered parts, in the order Wan sets things up (24 Nov 2026: "rearrange API layout so easy to configure"):
+          set it up, see who does what, look at each robot, connect keys and logins, read the spend. The row below jumps to each. */}
+      <nav className="mb-5 flex flex-wrap gap-2" aria-label={t("Bahagian halaman API", "API page sections")} data-api-nav>
+        {SECTIONS.map(([id, bm, en], n) => (
+          <button key={id} type="button" onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className="rounded-pill border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:border-accent hover:text-accent" data-api-jump={id}>
+            <span className="mr-1 text-muted">{n + 1}</span>{L === "en" ? en : bm}
+          </button>
+        ))}
+      </nav>
+
+      <section className="mb-8 scroll-mt-20" id="api-setup" data-api-section="setup">
+        <SectionHead n={1} title={t("Tetapan pantas", "Quick setup")} hint={t("Satu kad: Claude untuk teks, ChatGPT untuk gambar, dengan butang Uji dan Betulkan.", "One card: Claude for text, ChatGPT for pictures, with its Test and Fix buttons.")} />
+        <ClaudeSetup providers={providersT.rows} statusRows={statusT.rows} team={settings?.ai_team} request={settings?.ai_test}
+          result={settings?.ai_test_result} save={save} onChanged={providersT.reload} onToast={onToast} />
+      </section>
+
+      <section className="mb-8 scroll-mt-20" id="api-team" data-ai-team data-api-section="team">
+        <SectionHead n={2} title={t("Siapa buat apa", "Who does what")} hint={t("Setiap robot dengan warnanya sendiri, dan robot serta model yang dipilih untuk setiap kerja.", "Every robot in its own colour, and the robot and model chosen for each job.")} />
         <div className="mb-3"><ApiPulse onToast={onToast} /></div>
         <AiTeam statusRows={statusT.rows} usageRows={usage.recent} state={settings?.ai_team_state} team={settings?.ai_team} save={save} onToast={onToast} providers={providersT.rows} />
       </section>
 
-      <section className="mb-6" data-gemini-section>
-        <GeminiKeys settings={settings} save={save} onToast={onToast} />
-      </section>
-
-      {/* ChatGPT beside the other robots (Wan, 7 Nov 2026: "for chatgpt put together in API, same with others"); Motion uses it from here */}
-      <section className="mb-6" data-chatgpt-section>
-        <ChatGptLogin onToast={onToast} />
-      </section>
-
-      {/* Wan's own Threads app (supabase/080): the viral-post feed reads Threads through it, Composio's shared app having no search permission */}
-      <section className="mb-6" data-threads-section>
-        <ThreadsConnect onToast={onToast} />
-      </section>
-
-      {/* moved here from Tetapan (Wan, 7 Nov 2026: "API in setting" goes to its segment): the workers' keys and endpoints, and one Mireld run */}
-      <section className="mb-6 space-y-5" data-ai-settings>
-        {/* Claude for every text job, ChatGPT's login for pictures, with its test and fix buttons (Wan, 24 Nov 2026) */}
-        <ClaudeSetup providers={providersT.rows} statusRows={statusT.rows} team={settings?.ai_team} request={settings?.ai_test}
-          result={settings?.ai_test_result} save={save} onChanged={providersT.reload} onToast={onToast} />
-        <AiSettings onToast={onToast} github={{ scrape: settings?.ai_github_scrape, media: settings?.ai_github_media }} />
-        {/* extra providers under the AI slots: Anthropic, a second KiosAPI key, any OpenAI-compatible gateway, as robots W6, W7, ... */}
-        <AiProviders statusRows={statusT.rows} usageRows={usage.recent} onToast={onToast} />
-        <MireldTrial settings={settings || {}} save={save} onToast={onToast} />
-      </section>
-
+      <section className="mb-8 scroll-mt-20" id="api-robots" data-api-section="robots">
+        <SectionHead n={3} title={t("Setiap robot: kunci, model, kelajuan", "Each robot: key, model, speed")} hint={t("Klik model untuk menukarnya. Ralat terakhir setiap gerbang ditunjukkan di sini.", "Click a model to change it. Each gateway's last error shows here.")} />
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
         {statusT.rows.map((r) => {
           const v = verdictOf(r);
@@ -151,15 +150,17 @@ export default function ApiTab({ settings, save, onToast, go }) {
           const u = byGw[r.slug] || { calls: 0, failed: 0, tokens: 0, prompt: 0, completion: 0, ms: 0, models: {} };
           const models = orderedModels(r);
           const provRow = providersT.rows.find((p) => p.id === r.slug);
+          // the robot's own colour on its card while it is live, one grey when it is not (the same rule as the robot cards above)
+          const colour = colourFor(robotOf(r.slug, r, providersT.rows), stateOf(r, usage.recent) !== "offline");
           // a provider's chosen model is its own row's; a built-in robot's is the override Wan clicked (settings.ai_team.models)
           const over = r.role === "provider" && provRow ? "" : modelOverride(settings?.ai_team, r.slug);
           const isProvider = r.role === "provider" && providersT.rows.some((p) => p.id === r.slug);
           const canAdjust = typeof save === "function" && (ADJUSTABLE.includes(r.slug) || isProvider);
           return (
-            <Card key={r.slug} className="p-4">
+            <Card key={r.slug} className="p-4" data-status-card={r.slug} data-robot-colour={colour} style={{ borderLeft: `4px solid ${colour}` }}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <p className="font-display text-lg">{r.name || r.slug} <span className="text-xs text-muted">· {r.role}</span></p>
+                  <p className="font-display text-lg"><span className="mr-2 inline-block h-2.5 w-2.5 rounded-full align-middle" style={{ background: colour }} aria-hidden="true" />{r.name || r.slug} <span className="text-xs text-muted">· {r.role}</span></p>
                   <p className="truncate text-xs text-muted">{r.base_url}</p>
                 </div>
                 <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] ${V.cls}`}><V.icon size={12} /> {V[L]}</span>
@@ -207,6 +208,24 @@ export default function ApiTab({ settings, save, onToast, go }) {
         })}
       </div>
 
+      </section>
+
+      <section className="mb-8 scroll-mt-20 space-y-5" id="api-connect" data-ai-settings data-api-section="connect">
+        <SectionHead n={4} title={t("Kunci dan log masuk", "Keys and logins")} hint={t("Tambah atau tukar kunci, log masuk ChatGPT, kunci Gemini, penyedia tambahan dan aplikasi Threads.", "Add or change keys, the ChatGPT login, the Gemini keys, extra providers and the Threads app.")} />
+        {/* ChatGPT beside the other robots (Wan, 7 Nov 2026: "for chatgpt put together in API, same with others"); Motion uses it from here */}
+        <div data-chatgpt-section><ChatGptLogin onToast={onToast} /></div>
+        <div data-gemini-section><GeminiKeys settings={settings} save={save} onToast={onToast} /></div>
+        {/* extra providers: Anthropic, a second KiosAPI key, any OpenAI-compatible gateway, as robots W6, W7, ... */}
+        <AiProviders statusRows={statusT.rows} usageRows={usage.recent} onToast={onToast} />
+        {/* moved here from Tetapan (Wan, 7 Nov 2026: "API in setting" goes to its segment): the workers' keys and endpoints, and one Mireld run */}
+        <AiSettings onToast={onToast} github={{ scrape: settings?.ai_github_scrape, media: settings?.ai_github_media }} />
+        {/* Wan's own Threads app (supabase/080): the viral-post feed reads Threads through it, Composio's shared app having no search permission */}
+        <div data-threads-section><ThreadsConnect onToast={onToast} /></div>
+        <MireldTrial settings={settings || {}} save={save} onToast={onToast} />
+      </section>
+
+      <section className="scroll-mt-20" id="api-usage" data-api-section="usage">
+        <SectionHead n={5} title={t("Penggunaan token", "Token usage")} hint={t("Token sehari mengikut gerbang, dan siapa yang membelanjakannya.", "Tokens a day by gateway, and who spends them.")} />
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="p-4 lg:col-span-2">
           <div className="mb-2 flex items-center justify-between">
@@ -239,6 +258,7 @@ export default function ApiTab({ settings, save, onToast, go }) {
             "Run supabase/091_api_usage_daily.sql once for full daily totals. Until then this page reads only the latest 5,000 calls.")}</p>}
         </Card>
       </div>
+      </section>
     </main>
   );
 }
@@ -247,6 +267,16 @@ export default function ApiTab({ settings, save, onToast, go }) {
 function balanceLine(b) {
   if (!b || !b.path) return "";
   return Object.entries(b).filter(([k, val]) => k !== "path" && ["number", "string"].includes(typeof val) && k !== "checked_at").map(([k, val]) => `${k}: ${val}`).join(" · ");
+}
+
+function SectionHead({ n, title, hint }) {
+  return (
+    <div className="mb-3">
+      <h2 className="flex items-center gap-2 font-display text-xl">
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-accent/15 text-xs font-semibold text-accent">{n}</span>{title}</h2>
+      {hint && <p className="mt-0.5 text-[12px] text-muted">{hint}</p>}
+    </div>
+  );
 }
 
 function Stat({ label, value, hint, warn }) {

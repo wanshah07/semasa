@@ -29,9 +29,15 @@ _T0 = time.time()
 P = json.loads(base64.b64decode("{params}").decode())
 
 def call(slug, args, acct=None):
-    """One Composio app tool. (data, error): error is "" when it worked. No retries: a quota answer is an answer."""
+    """One Composio app tool. (data, error): error is "" when it worked. No retries: a quota answer is an answer.
+    Some tools (Reddit, 24 Nov 2026) answer a refused request as a SUCCESS whose data is only {{"http_error": "429 ..."}}:
+    that is an error too, or the cell reads it as a quiet zero ("Reddit: 0 read") with nothing in the report saying why."""
     res, err = run_composio_tool(slug, args, account=acct, print_schema_for_tool=False, retry_params={{"max_retries": 0}})
-    return (res or {{}}), (err or "")
+    res = res or {{}}
+    d = res.get("data") if isinstance(res, dict) else None
+    if not err and isinstance(d, dict) and d.get("http_error"):
+        err = str(d["http_error"])[:200]
+    return res, (err or "")
 
 def left():
     """Seconds of this cell's budget still unspent."""

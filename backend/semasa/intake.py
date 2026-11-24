@@ -51,10 +51,10 @@ DEFAULTS: dict[str, Any] = {
         "own_accounts": ["wsregulab", "ws.regulab", "valorith", "facerinna"],
         # Facebook and Instagram are read by hashtag: "queries" are turned into #tags (no spaces). Instagram needs a saved login.
         "facebook": {"enabled": True, "hours": 14 * 24, "accounts": [],
-                     "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
+                     "queries": ["halal", "kosmetik", "cosmetic"]},
         # accounts are the dependable route on Instagram (a hashtag page shows its top posts, mostly old); Wan, 24 Nov 2026
         "instagram": {"enabled": True, "hours": 14 * 24, "accounts": ["labmuffinbeautyscience", "moskinlab"],
-                      "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
+                      "queries": ["halal", "kosmetik", "cosmetic"]},
         "threads": {"enabled": True, "hours": 72, "max_results": 8, "accounts": [],
                     "queries": ["halal kosmetik", "sunscreen", "sijil halal"]},
     },
@@ -177,6 +177,8 @@ def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: da
            "instagram_stats": social_web.stats_text("instagram") or None}
     if raw.get("youtube_error"):
         log.warning("YouTube: %s (Reddit carries on)", raw["youtube_error"])
+    if raw.get("reddit_error"):
+        log.warning("Reddit: %s (YouTube and the rest carry on)", raw["reddit_error"])
     for name in ("threads", "facebook", "instagram"):
         if raw.get(f"{name}_error"):
             log.warning("%s: %s (the other sources carry on)", name.title(), raw[f"{name}_error"])

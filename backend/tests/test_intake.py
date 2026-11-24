@@ -103,6 +103,42 @@ def test_the_community_cell_reads_video_view_counts_from_the_details_call():
     assert out["youtube_error"] == "" and out["videos"][0]["views"] == "125000"
 
 
+def test_a_reddit_429_that_composio_calls_a_success_is_an_error_not_a_quiet_zero(monkeypatch):
+    """24 Nov 2026: Reddit answered 429 inside a successful call (data = {"http_error": ...}); the cell read it as no posts and the
+    report said nothing. It is an error now, it is asked again, and a persistent one is named in reddit_error."""
+    refused = ({"data": {"http_error": "429 Client Error: Too Many Requests for url: https://oauth.reddit.com/search.json",
+                         "status_code": 429}}, "")
+    calls = []
+
+    def search(args, account):
+        calls.append(1)
+        return refused
+
+    cfg = {"subreddit": "malaysia", "terms": ["halal"], "window": "week", "limit": 5, "youtube": {**CFG["youtube"], "enabled": False}}
+    out = run_cell(community._CELL, cfg, tools_from({"REDDIT_SEARCH_ACROSS_SUBREDDITS": search}))["out"]
+    assert out["posts"] == [] and "429" in out["reddit_error"] and len(calls) == 3        # asked, then twice more
+
+    answers = iter([refused, REDDIT])
+    out = run_cell(community._CELL, cfg, tools_from({"REDDIT_SEARCH_ACROSS_SUBREDDITS": lambda a, acct: next(answers)}))["out"]
+    assert out["reddit_error"] == "" and out["posts"]                                        # a momentary 429 is retried and works
+
+
+def test_when_the_youtube_details_call_is_refused_the_search_results_are_kept_without_view_counts():
+    def search(args, account):
+        return ({"data": {"items": [{"id": {"videoId": "v9"}, "snippet": {"title": "Sunscreen mitos", "channelTitle": "C",
+                                                                           "publishedAt": "2026-09-29T00:00:00Z"}}]}}, "")
+
+    cfg = {"subreddit": "malaysia", "terms": ["halal"], "window": "week", "limit": 5,
+           "youtube": {**CFG["youtube"], "queries": ["sunscreen"]}}
+    out = run_cell(community._CELL, cfg, tools_from({
+        "REDDIT_SEARCH_ACROSS_SUBREDDITS": ({"data": {"posts": []}}, ""), "YOUTUBE_SEARCH_YOU_TUBE": search,
+        "YOUTUBE_GET_VIDEO_DETAILS_BATCH": ({}, "HTTP request failed: 403 Client Error: Forbidden for url")}))["out"]
+    assert out["youtube_error"].startswith("HTTP request failed: 403")                # still reported
+    assert [v["id"] for v in out["videos"]] == ["v9"] and out["videos"][0]["views"] is None    # and the video is not lost
+    rows = community.candidates({"videos": out["videos"]}, NOW)
+    assert rows and rows[0]["metrics"] is None and rows[0]["weight"] == 0              # no number invented
+
+
 def test_candidates_are_ranked_by_comments_and_stale_or_linkless_ones_are_dropped():
     raw = {"posts": cell_posts() + [{"id": "n", "title": "no link", "num_comments": "50"}],
            "videos": [{"id": "v1", "title": "Sunscreen mitos", "published": "2026-09-29T00:00:00Z", "views": "125000",
@@ -713,7 +749,7 @@ def _retrying_in_the_cell(monkeypatch, answers):
 
     from semasa import community
     src = community._CELL
-    helper = src[src.index("def _retrying"):src.index('if P["youtube"]["enabled"]')]
+    helper = src[src.index("def _retrying"):src.index("q = \"subreddit:\"")]
     calls: list = []
 
     def call(slug, args):

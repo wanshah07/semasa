@@ -7,11 +7,11 @@ export const MAX_KEYWORDS = 8;
 export const MAX_HANDLES = 10;
 export const DEFAULT_KEYWORDS = ["halal kosmetik", "sunscreen", "sijil halal"];
 /* Facebook and Instagram are read by hashtag (backend/semasa/social_web.py turns each entry into #letters-and-digits). */
-export const DEFAULT_TAGS = ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"];
+export const DEFAULT_TAGS = ["halal", "kosmetik", "cosmetic"];       // one word each (Wan, 24 Nov 2026)
 /* Hashtags worth adding (Wan, 24 Nov 2026: "add recommendation # so instagram can read"): shown as one-tap chips in the Facebook and
-   Instagram tabs. Words, not claims about reach: a tag nobody posts under simply reads nothing. */
-export const RECOMMENDED_TAGS = ["halalmalaysia", "sijilhalal", "kosmetikmalaysia", "skincaremalaysia", "jakimhalal", "produkhalal",
-  "kosmetikhalal", "sunscreenmalaysia", "notifikasikosmetik", "kkmmalaysia", "labelhalal", "ingredientskincare"];
+   Instagram tabs. One word each (Wan, 24 Nov 2026: "just use 1 word macam kosmetik or cosmetic"). A tag nobody posts under simply reads nothing. */
+export const RECOMMENDED_TAGS = ["halal", "kosmetik", "cosmetic", "skincare", "sunscreen", "supplement", "serum", "vitamin", "jakim", "npra",
+  "kkm", "haram"];
 /* Instagram accounts watched from the start (Wan, 24 Nov 2026: "add labmuffin and moskinlab to read"). */
 export const DEFAULT_ACCOUNTS = { instagram: ["labmuffinbeautyscience", "moskinlab"] };
 export const PLATFORMS = ["threads", "facebook", "instagram"];

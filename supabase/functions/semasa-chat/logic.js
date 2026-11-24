@@ -1116,6 +1116,10 @@ function anthropicPart(p) {
 }
 
 /** The OpenAI-shaped payload the functions build, as an Anthropic Messages body. Pure. */
+/** Claude's fifth generation refuses `temperature` ("`temperature` is deprecated for this model", 400, 24 Nov 2026), so a body for one of
+    those models carries none; an older model keeps it. */
+export function anthropicTakesTemperature(model) { return !/claude-(opus|sonnet|haiku|fable)-5/i.test(String(model || "")); }
+
 export function anthropicBody(payload, { stream = true } = {}) {
   const list = Array.isArray(payload?.messages) ? payload.messages : [];
   const system = list.filter((m) => m?.role === "system" && typeof m.content === "string" && m.content.trim()).map((m) => m.content).join("\n\n");
@@ -1143,7 +1147,7 @@ export function anthropicBody(payload, { stream = true } = {}) {
   if (messages.length && messages[0].role !== "user") messages.unshift({ role: "user", content: [{ type: "text", text: "(continue)" }] });
   const body = { model: cleanModelId(payload?.model), max_tokens: Number(payload?.max_tokens) || 2400, messages, stream };
   if (system) body.system = system;
-  if (payload?.temperature != null) body.temperature = payload.temperature;
+  if (payload?.temperature != null && anthropicTakesTemperature(body.model)) body.temperature = payload.temperature;
   const tools = (Array.isArray(payload?.tools) ? payload.tools : []).filter((t) => t?.type === "function" && t.function?.name)
     .map((t) => ({ name: t.function.name, description: String(t.function.description || ""), input_schema: t.function.parameters || { type: "object", properties: {} } }));
   if (tools.length) { body.tools = tools; if (payload.tool_choice === "required") body.tool_choice = { type: "any" }; }

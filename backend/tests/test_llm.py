@@ -295,3 +295,59 @@ def test_a_gateway_that_refuses_the_effort_is_asked_again_without_it_and_not_ask
     assert ["reasoning_effort" in b for _, b in seen] == [True, False]
     assert w.chat_json("s", "u") == {"ok": "yes"}
     assert ["reasoning_effort" in b for _, b in seen] == [True, False, False], "the refusal is remembered for the run"
+
+
+# ---- Claude's fifth generation refuses `temperature` (24 Nov 2026) ----------------------------------------------------------
+
+ANTH = "https://api.anthropic.com"
+
+
+class _AResp:
+    def __init__(self, status, text="", answer="ok"):
+        self.status_code, self.text, self._answer = status, text, answer
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            import requests
+            raise requests.HTTPError(f"{self.status_code} {self.text}")
+
+    def json(self):
+        return {"content": [{"type": "text", "text": self._answer}], "usage": {"input_tokens": 3, "output_tokens": 2}}
+
+
+def _anthropic_posts(monkeypatch, answer):
+    bodies = []
+
+    def post(url, headers, json, timeout):
+        bodies.append(dict(json))
+        return answer(json)
+
+    monkeypatch.setattr(llm_mod.requests, "post", post)
+    return bodies
+
+
+def test_a_claude_five_model_is_never_sent_temperature_and_an_older_one_still_is(monkeypatch):
+    bodies = _anthropic_posts(monkeypatch, lambda b: _AResp(200))
+    llm = LLM(_settings(provider="anthropic", base_url=ANTH, model="claude-opus-5-5"))
+    assert llm._anthropic("sys", "hi", 100, "claude-opus-5-5", ANTH, "k") == "ok"
+    assert "temperature" not in bodies[0]
+    assert llm._anthropic("sys", "hi", 100, "claude-haiku-4-5-20251001", ANTH, "k") == "ok"
+    assert bodies[1]["temperature"] == 0.2                              # a model that takes it keeps the steadier answers
+    assert llm_mod.takes_temperature("claude-sonnet-5-5") is False and llm_mod.takes_temperature("claude-opus-4-8") is True
+
+
+def test_a_model_that_refuses_temperature_is_asked_again_without_it_and_remembered(monkeypatch):
+    llm_mod.NO_TEMPERATURE.discard("claude-next-9")
+    refusal = '{"error":{"type":"invalid_request_error","message":"`temperature` is deprecated for this model."}}'
+    bodies = _anthropic_posts(monkeypatch, lambda b: _AResp(400, refusal) if "temperature" in b else _AResp(200, answer="done"))
+    llm = LLM(_settings(provider="anthropic", base_url=ANTH, model="claude-next-9"))
+    assert llm._anthropic("sys", "hi", 100, "claude-next-9", ANTH, "k") == "done"
+    assert ["temperature" in b for b in bodies] == [True, False]        # refused, then asked plainly
+    assert llm._anthropic("sys", "hi", 100, "claude-next-9", ANTH, "k") == "done"
+    assert ["temperature" in b for b in bodies] == [True, False, False]  # and not sent again
+    llm_mod.NO_TEMPERATURE.discard("claude-next-9")
+    # a 400 about something else is not retried: the request's own fault
+    bodies2 = _anthropic_posts(monkeypatch, lambda b: _AResp(400, '{"error":{"message":"max_tokens too large"}}'))
+    with pytest.raises(Exception, match="max_tokens"):
+        llm._anthropic("sys", "hi", 100, "claude-older-1", ANTH, "k")
+    assert len(bodies2) == 1

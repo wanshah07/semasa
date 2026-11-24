@@ -92,9 +92,11 @@ ok(LOOKS.map((l) => l.k).join(",") === "journal,classic,hand,marker,torn,block,n
   ok(slides.at(-1).title.startsWith("Yang ramai tak sedar") && slides.at(-1).eyebrow === "Yang ramai tak sedar", "the last statement closes");
   ok(over === 0, "nothing is ever over: there is no ceiling");
   ok(slides.every((x) => x.title.length <= 110), "every headline fits");
-  // no minimum and no maximum (Wan, 9 Nov 2026): twelve points make twelve slides plus the cover, two make a cover and a closing
+  // under 10 pictures (Wan, 23 Nov 2026; it was no maximum on 9 Nov): twelve points are JOINED to 7 slides, none dropped; two make a cover and a closing
   const many = slidesFromCaption({ stream: "regulab", hook: "Tajuk utama yang cukup panjang.", caption: Array.from({ length: 12 }, (_, i) => `Fakta nombor ${i + 1} yang cukup panjang untuk jadi satu slaid.`).join("\n\n") }, promo);
-  ok(many.slides.length === 13 && many.over === 0, `twelve points are not cut to eight (${many.slides.length} slides)`);
+  const manyText = many.slides.map((x) => [x.title, x.lead, ...(x.points || [])].join(" ")).join(" ");
+  ok(many.slides.length === 7 && many.over === 0, `twelve points come down to the cap of 7 (${many.slides.length} slides)`);
+  ok(Array.from({ length: 12 }, (_, i) => `Fakta nombor ${i + 1}`).every((f) => manyText.includes(f)), "every fact is still on a slide");
   const few = slidesFromCaption({ stream: "regulab", hook: "Tajuk utama yang cukup panjang.", caption: "Satu fakta yang cukup panjang untuk jadi slaid.\n\nPenutup yang cukup panjang untuk jadi slaid." }, promo);
   ok(few.slides.length === 3 && few.slides.at(-1).title.startsWith("Penutup"), `two points are not padded to three (${few.slides.length} slides)`);
   const card = cardFromCaption(post, promo);

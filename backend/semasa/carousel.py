@@ -24,8 +24,8 @@ from .slides import SlideError
 
 log = get_logger("semasa.carousel")
 
-MAX_SLIDES = 6                      # pictures in one carousel, the logo card included
-COMFORT = 0.8                       # a joined slide must fit at this share of the normal type size, or it is not joined
+MAX_SLIDES = 9                      # pictures in a carousel, brand cover and logo card included (Wan, 23 Nov 2026: under 10)
+COMFORT = 0.7                       # a joined slide must fit at this share of the normal type size, or it is not joined
 ROOT = Path(__file__).resolve().parents[2]
 LOGO = ROOT / "rules" / "motion" / "official-logo-transparent.png"      # the same file the Motion films' logo card uses
 
@@ -51,8 +51,9 @@ def has_logo_card(stream: str, count: int) -> bool:
 
 
 def text_target(stream: str) -> int:
-    """How many written slides a carousel keeps: the cap less the logo card, which takes a place of its own."""
-    return MAX_SLIDES - (1 if stream != "linkedin" else 0)
+    """How many written slides a carousel keeps: the cap less the brand cover and the logo card, a place each (ws.regulab;
+    LinkedIn has neither): 7 for ws.regulab, 9 for LinkedIn."""
+    return MAX_SLIDES - (2 if stream != "linkedin" else 0)
 
 
 def _clean(text: Any) -> str:
@@ -68,17 +69,25 @@ def _sentence(title: str, lead: str) -> str:
     return f"{title}{' ' if title[-1] in '.!?:;' else '. '}{lead}"
 
 
+def fit_points(points: list[str], most: int) -> list[str]:
+    """At most `most` points without losing a word: while there are more, the two neighbouring points with the fewest letters
+    between them become one ("first; second")."""
+    pts = list(points)
+    while len(pts) > most >= 1:
+        i = min(range(len(pts) - 1), key=lambda k: len(pts[k]) + len(pts[k + 1]))
+        pts[i:i + 2] = [pts[i].rstrip(".;: ") + "; " + pts[i + 1][:1].lower() + pts[i + 1][1:]]
+    return pts
+
+
 def join(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any] | None:
     """Two neighbouring slides as one: a's headline, then a's own words and b's whole slide as points. Every word is kept;
     None when the points would not all fit the slide shape (a join never drops one), and None for a slide that carries
     an ayat al-Quran: a verse is drawn whole on a card of its own and is never folded into another slide's points."""
     if a.get("ayat") or b.get("ayat"):
         return None
-    points = [_clean(a.get("lead")), *(a.get("points") or []), _sentence(b.get("title", ""), b.get("lead", "")),
-              *(b.get("points") or []), _clean(b.get("note"))]
-    points = [p for p in (_clean(p) for p in points) if p]
-    if len(points) > compliance.MAX_POINTS:
-        return None
+    points = [_clean(a.get("lead")), *(a.get("points") or []), _clean(a.get("note")),
+              _sentence(b.get("title", ""), b.get("lead", "")), *(b.get("points") or []), _clean(b.get("note"))]
+    points = fit_points([p for p in (_clean(p) for p in points) if p], compliance.MAX_POINTS)
     keep = {k: v for k, v in a.items() if k not in ("title", "points", "lead", "note")}
     feet = [str(x.get("foot") or "") for x in (a, b) if x.get("foot")]
     if len(feet) == 2:                 # both slides' definition notes ride on the joined one, two terms at most
@@ -439,38 +448,55 @@ def cover_card(title: str, lead: str = "", eyebrow: str = "", *, ground: bytes |
     return canvas
 
 
-COVER_TITLE_WORDS = 6      # the cover's own title: short (Wan, 23 Nov 2026: the long hook is the first PAGE, not the cover)
+COVER_TITLE_WORDS = 12     # the cover's title: ONE COMPLETE SENTENCE of at most this many words (Wan, 23 Nov 2026)
 COVER_TITLE_SYSTEM = (
-    "You write the TITLE on the cover of a social-media carousel. The first page after the cover carries the full hook; "
-    "the cover carries only a short title that names the same idea. Write at most %d words, in the SAME language and "
-    "voice as the hook (Malaysian Malay mix stays Malaysian Malay; never Bahasa Indonesia), no full stop, no emoji, no "
-    "hashtag. Take only words and facts that are in the hook: add no number, name, date or claim of your own. Put "
-    "*asterisks* round the ONE word that carries the idea. Answer with ONE JSON object: {\"title\": \"...\"}")
+    "You write the TITLE on the cover of a social-media carousel. It must be ONE COMPLETE SENTENCE that a stranger understands "
+    "without reading the post: a whole thought with its subject and its point, never a fragment, never a quote cut from the "
+    "middle of a longer line, never a bare question mark of words. Write at most %d words, in the SAME language and voice as "
+    "the hook (Malaysian Malay mix stays Malaysian Malay; never Bahasa Indonesia), no emoji, no hashtag. Take only words and "
+    "facts that are in the hook: add no number, name, date or claim of your own. Put *asterisks* round the ONE word that "
+    "carries the idea. Answer with ONE JSON object: {\"title\": \"...\"}")
 
 
 def short_title(llm: Any, hook: str, stream: str = "regulab") -> str:
-    """The short title for the cover. The writer shortens the hook; any answer that is long, empty or breaks a rule that blocks
-    a post is dropped for the hook's own first words, so the cover is always short and never invents anything."""
+    """The title for the cover: the hook itself when it is short enough, else ONE COMPLETE sentence of it. The writer shortens
+    the hook; any answer that is long, too short or breaks a rule that blocks a post is dropped for the hook's own first whole
+    sentence, so the cover is always a sentence a stranger understands and never invents anything."""
     from . import compliance
     hook = _clean(hook)
     plain = hook.replace("*", "")
-    fallback = _lead_words(plain, COVER_TITLE_WORDS)
+    fallback = _lead_sentence(plain)
     if len(plain.split()) <= COVER_TITLE_WORDS:
         return hook
     got = ""
     try:
         out = llm.chat_json(COVER_TITLE_SYSTEM % COVER_TITLE_WORDS, hook[:600], max_tokens=200) if llm is not None else None
         got = _clean(str(out.get("title") or "")) if isinstance(out, dict) else ""
-    except Exception as exc:  # noqa: BLE001 - the hook's own first words stand in
+    except Exception as exc:  # noqa: BLE001 - the hook's own first sentence stands in
         got = ""
         log.info("cover title not shortened (%s)", str(exc)[:100])
     words = got.replace("*", "").split()
-    if not got or len(words) > COVER_TITLE_WORDS + 1 or len(words) < 2:
+    if not got or len(words) > COVER_TITLE_WORDS + 2 or len(words) < 3:
         return fallback
     flags = compliance.scan({"stream": stream, "media": [{"artwork": [{"title": got.replace("*", ""), "points": []}]}]})
     if compliance.hard_count([f for f in flags if str(f.get("where") or "").startswith(("Design", "Slide", "Artwork"))]):
         return fallback
     return got
+
+
+LEAD_SENTENCE_MAX = 22     # a first sentence longer than this is cut at its last clause break inside it, never mid-clause
+
+
+def _lead_sentence(text: str, most: int = LEAD_SENTENCE_MAX) -> str:
+    """The first WHOLE sentence of `text` (the cover is never a few words cut off a longer line), no trailing punctuation.
+    A first sentence longer than `most` words is cut at its last comma, semicolon or colon inside the limit; else kept whole."""
+    first = re.split(r"(?<=[.!?])\s+", _clean(text).strip())[0].strip().rstrip(".!?,;:")
+    words = first.split()
+    if len(words) <= most:
+        return first
+    head = " ".join(words[:most])
+    cut = max(head.rfind(","), head.rfind(";"), head.rfind(":"))
+    return head[:cut].strip() if cut > 0 and len(head[:cut].split()) >= 4 else first
 
 
 def _lead_words(text: str, n: int) -> str:

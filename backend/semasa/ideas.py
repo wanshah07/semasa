@@ -29,6 +29,7 @@ from bs4 import BeautifulSoup
 from . import (
     antislop,
     caption_fit,
+    carousel,
     compliance,
     copywriting,
     db,
@@ -367,8 +368,10 @@ a rule attached to be worth a post: judge it in its context (the audience, the a
 SLIDES_RULES = {
     "regulab": """
 
-SLIDES WANTED. Also return "slides": a carousel in Malaysian Malay with as many slides as the story needs (no minimum,
-no maximum), drawn as 1080x1080 cards:
+SLIDES WANTED. Also return "slides": a carousel in Malaysian Malay of AT MOST 7 slides in all (Wan, 23 Nov 2026: a carousel is
+under 10 pictures: Semasa adds the brand cover and the closing logo card, so 7 is the most you write; fewer is better), drawn as
+1080x1080 cards. Compact the story: join facts that belong together into one slide instead of one slide for each, and write every
+slide in short, plain, complete sentences a reader understands at once:
 [{"title": "...", "lead": "...", "points": ["...", "..."], "foot": "Definisi: term = meaning"}, ...]
 - Slide 1 is the cover: its headline IS the hook (the same hook shape you filled for the caption's first line, no underscores,
   no figure the SOURCE does not give), at most 12 words, no "lead", "points" empty or one short line, no "foot". It is drawn
@@ -392,8 +395,9 @@ no maximum), drawn as 1080x1080 cards:
   more than one verse slide, never the cover, and never a verse on a post about a product, a fee or a deadline.""",
     "linkedin": """
 
-SLIDES WANTED. Also return "slides": a carousel in English with as many slides as the story needs (no minimum,
-no maximum), drawn as 1080x1350 cards:
+SLIDES WANTED. Also return "slides": a carousel in English of AT MOST 9 slides in all (Wan, 23 Nov 2026: a carousel is under 10
+pictures; fewer is better), drawn as 1080x1350 cards. Compact the story: join facts that belong together into one slide
+instead of one slide for each, and write every slide in short, plain, complete sentences a reader understands at once:
 [{"title": "...", "lead": "...", "points": ["...", "..."], "foot": "Definition: term = meaning"}, ...]
 - Slide 1 is the cover: its headline IS the hook (the same hook shape you filled for the caption's first line, no underscores,
   no figure the SOURCE does not give), at most 12 words, no "lead", "points" empty or one short line, no "foot". It is drawn
@@ -1094,6 +1098,7 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         # from the published source (quran.py). The tick that says Wan checked the verse is his alone, so the post is
         # written with a hard flag on that slide until he ticks it.
         written = quran.fill(slides.normalise(quran.untrusted(out.get("slides"))), stream)
+        written = carousel.compact(written, stream)[0]            # under 10 pictures: a longer set is joined, no word lost
         post["slides"], cover_state = hook_bank.cover(written, post["hook"])
         if cover_state == "too_long":
             short = shorter_hook(llm, post["hook"], stream)

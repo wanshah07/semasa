@@ -1,7 +1,7 @@
 // A post's own illustrations in the design picker (src/lib/slideArt.js): the keys are the worker's keys, the cut-out is the worker's rule
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { STYLE_VERSION, artFor, artIndex, artKey, coverArtUrl, coverTitleFor, cutPixels, leadWords, pageColour, wordsOf } from "./src/lib/slideArt.js";
+import { STYLE_VERSION, artFor, artIndex, artKey, coverArtUrl, coverTitleFor, cutPixels, leadSentence, pageColour, wordsOf } from "./src/lib/slideArt.js";
 
 let n = 0;
 const t = async (name, fn) => { try { await fn(); n++; } catch (e) { console.error("FAIL:", name); throw e; } };
@@ -54,14 +54,15 @@ await t("the picker is wired: the editor hands its slide jobs over, and a drawn 
   assert.match(picker, /s\.art_page \? \{ \.\.\.s, art_url: s\.art_page \}/, "Diari's tile takes the whole page");
 });
 
-await t("the cover's title is short: the worker's own choice when it drew this hook, else the same fallback as carousel._lead_words", async () => {
-  assert.equal(leadWords("Soalan yang takde sapa tanya pasal sunblock masa depan: boleh ke bahan semula jadi lawan UV?", 6), "Soalan yang takde sapa tanya pasal");
-  assert.equal(leadWords("Natural boleh lawan UV. Tapi jangan langkau peraturan.", 6), "Natural boleh lawan UV", "a short first clause is kept whole");
-  const hook = "Soalan yang takde sapa tanya pasal sunblock masa depan";
+await t("the cover's title is ONE COMPLETE SENTENCE: the worker's own choice when it drew this hook, else the hook's first whole sentence", async () => {
+  assert.equal(leadSentence("Aku: esok lah aku fikir pasal mikrobiom kulit kepala. Lepas tu aku: baca kajian 12 minggu ni."), "Aku: esok lah aku fikir pasal mikrobiom kulit kepala");
+  assert.equal(leadSentence("Natural boleh lawan UV. Tapi jangan langkau peraturan."), "Natural boleh lawan UV", "a short first sentence is kept whole");
+  assert.equal(leadSentence("Satu dua tiga empat lima enam tujuh lapan sembilan, sepuluh sebelas dua belas tiga belas empat belas lima belas enam belas tujuh belas lapan belas sembilan belas dua puluh dua puluh satu dua puluh dua dua puluh tiga"), "Satu dua tiga empat lima enam tujuh lapan sembilan", "a very long sentence is cut at its last comma, never mid-clause");
+  const hook = "Soalan yang takde sapa tanya pasal sunblock masa depan yang semua orang patut tahu sebelum beli";
   const jobs = [{ status: "done", meta: { cover_title: "Sunblock masa depan", slides: [{ title: hook }] } }];
   assert.equal(coverTitleFor({ title: hook }, jobs), "Sunblock masa depan");
-  assert.equal(coverTitleFor({ title: hook }, []), "Soalan yang takde sapa tanya pasal");
-  assert.equal(coverTitleFor({ title: "Hook pendek" }, []), "Hook pendek", "a hook that is already short stays");
+  assert.equal(coverTitleFor({ title: hook }, []), hook, "no sentence break: the whole hook, never a few words cut off it");
+  assert.equal(coverTitleFor({ title: "Perasaan tu bila kau dah submit borang NPRA tapi tak tahu status" }, []), "Perasaan tu bila kau dah submit borang NPRA tapi tak tahu status", "12 words or fewer stays whole");
   assert.equal(coverTitleFor({ title: "Another hook" }, jobs), "Another hook", "a title chosen for another hook is not borrowed");
   const first = { title: hook, points: [] };
   assert.equal(await coverArtUrl(first, [{ meta: { art: { ["cover|" + await artKey(first)]: { url: "cover.png" } } } }]), "cover.png");

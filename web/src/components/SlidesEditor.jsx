@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Expand, ImageIcon, Layers, Loader2, Minimize2, Pain
 import { SLIDE_WORDS, isPromo, normaliseSlides, slidesKey } from "../lib/compliance";
 import { cardFromCaption, slidesFromCaption } from "../lib/cards/fromCaption";
 import { fixFullRows } from "../lib/fixFull";
+import { limitSlides, writtenCap } from "../lib/limitSlides";
 import { useLang } from "../lib/i18n";
 import { LOOKS, MASCOTS_ON, isEventSlide, isStudioLook, takesMascot } from "../lib/cards/studio";
 import { photoAt, photosFollow, speakersOf, withPhoto } from "../lib/photos";
@@ -103,6 +104,17 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
       : t("Slaid itu terlalu pendek untuk dipecahkan: pendekkan perkataannya atau pilih reka bentuk lain.", "That slide is too short to split: shorten its words or pick another design."), split ? "ok" : "warn");
     if (stuck.length && split) onToast(t("{n} slaid tidak dapat dipecahkan.", "{n} slide(s) could not be split.", { n: stuck.length }), "warn");
   };
+  // a carousel is under 10 pictures (Wan, 23 Nov 2026: "limitkan slide less 10"): more written slides than the cap are joined, no word lost
+  const cap = writtenCap(post.stream);
+  const tooMany = normaliseSlides(fromRows(rows)).length > cap;
+  const fixMany = () => {
+    const full = rows.filter((r) => normaliseSlides(fromRows([r])).length)       // every row the preview counts: a lead-only or verse row too
+      .map((r) => ({ ...r, points: String(r.points || "").split("\n").map((x) => x.trim()).filter(Boolean) }));
+    const { slides, joined } = limitSlides(full, cap);
+    if (!joined) return onToast(t("Slaid itu terlalu padat untuk digabungkan lagi tanpa sukar dibaca.", "Those slides are too dense to join further without being hard to read."), "warn");
+    setRows(toRows(slides));
+    onToast(t("{n} slaid digabungkan: {m} slaid sekarang. Tiada perkataan dibuang.", "{n} slide(s) joined: {m} slides now. No word was removed.", { n: joined, m: slides.length }), "ok");
+  };
   const hasWords = rows.some((r) => r.title.trim() || r.points.trim());
   const fromCaption = (single, draw = false) => {
     if (!captionPost?.caption?.trim()) return onToast(t("Tulis kapsyen dahulu.", "Write the caption first."), "warn");
@@ -181,6 +193,16 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
           </li>
         ))}
       </ol>
+
+      {!locked && tooMany && (
+        <p className="mt-3 flex items-start gap-1.5 text-[12px] text-danger" data-too-many>
+          <span>{t("Terlalu banyak slaid: {n}. Karusel kurang daripada 10 gambar (kulit dan kad logo termasuk), jadi tulis paling banyak {c} slaid.",
+            "Too many slides: {n}. A carousel is under 10 pictures (the cover and the logo card included), so write at most {c} slides.",
+            { n: normaliseSlides(fromRows(rows)).length, c: cap })}</span>
+          <button type="button" data-fix-many onClick={fixMany}
+            className="shrink-0 rounded-tile border border-danger px-2 py-0.5 font-medium text-danger hover:bg-danger hover:text-bg">
+            {t("Betulkan: gabungkan slaid", "Fix: join slides")}</button></p>
+      )}
 
       {!locked && (
         <div className="mt-3 rounded-tile bg-surface-2/40 p-2.5">

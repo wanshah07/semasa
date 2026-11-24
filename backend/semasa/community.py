@@ -30,16 +30,6 @@ DOMAINS = ("kosmetik", "makanan", "halal_my", "farmaseutikal", "fatwa", "sains_k
 
 _CELL = '''
 OUT = {"posts": [], "videos": [], "threads": [], "reddit_error": "", "youtube_error": "", "threads_error": ""}
-q = "subreddit:" + P["subreddit"] + " (" + " OR ".join(P["terms"]) + ")"
-res, err = call("REDDIT_SEARCH_ACROSS_SUBREDDITS",
-                {"search_query": q, "sort": "top", "time_filter": P["window"], "limit": P["limit"], "result_type": ["link"]})
-if err:
-    OUT["reddit_error"] = str(err)[:200]
-for p in ((res.get("data") or {}).get("posts") or []):
-    OUT["posts"].append({"id": p.get("id"), "title": str(p.get("title") or "")[:300], "score": p.get("score"),
-                         "num_comments": p.get("num_comments"), "permalink": p.get("permalink"),
-                         "created": p.get("created_datetime"), "subreddit": p.get("subreddit"),
-                         "text": str(p.get("selftext") or "")[:500]})
 def _retrying(slug, args):
     """A 403/429/5xx from Google that is not a quota message is usually momentary (20 Nov 2026: the details call 403'd, and the
     same call a few hours on answered): ask again, up to three times, while the run still has time."""
@@ -54,10 +44,21 @@ def _retrying(slug, args):
     return r, e
 
 
+q = "subreddit:" + P["subreddit"] + " (" + " OR ".join(P["terms"]) + ")"
+res, err = _retrying("REDDIT_SEARCH_ACROSS_SUBREDDITS",
+                     {"search_query": q, "sort": "top", "time_filter": P["window"], "limit": P["limit"], "result_type": ["link"]})
+if err:
+    OUT["reddit_error"] = ("rate limit (429): Reddit refused the shared connection" if "429" in str(err) else str(err)[:200])
+for p in ((res.get("data") or {}).get("posts") or []):
+    OUT["posts"].append({"id": p.get("id"), "title": str(p.get("title") or "")[:300], "score": p.get("score"),
+                         "num_comments": p.get("num_comments"), "permalink": p.get("permalink"),
+                         "created": p.get("created_datetime"), "subreddit": p.get("subreddit"),
+                         "text": str(p.get("selftext") or "")[:500]})
 if P["youtube"]["enabled"]:
     import datetime as _dt
     after = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=P["youtube"]["hours"])).strftime("%Y-%m-%dT%H:%M:%SZ")
     ids = []
+    found = {}
     for yq in P["youtube"]["queries"]:
         if left() < 40:
             break
@@ -72,6 +73,7 @@ if P["youtube"]["enabled"]:
             vid = (it.get("id") or {}).get("videoId") if isinstance(it.get("id"), dict) else it.get("id")
             if vid and vid not in ids:
                 ids.append(vid)
+                found[vid] = it.get("snippet") or {}
     if ids:
         r, e = _retrying("YOUTUBE_GET_VIDEO_DETAILS_BATCH", {"id": ids[:40], "parts": ["snippet", "statistics"]})
         if e:
@@ -82,6 +84,15 @@ if P["youtube"]["enabled"]:
                                   "channel": sn.get("channelTitle"), "published": sn.get("publishedAt"),
                                   "views": st.get("viewCount"), "comments": st.get("commentCount"),
                                   "text": str(sn.get("description") or "")[:400]})
+        if not OUT["videos"]:
+            # the details call was refused (24 Nov 2026: 403 after three tries) but the search had answered: keep what it said,
+            # with NO view count, because a count not read is never claimed. They rank last; the writer judges relevance.
+            for vid in ids[:20]:
+                sn = found.get(vid) or {}
+                if sn.get("title"):
+                    OUT["videos"].append({"id": vid, "title": str(sn.get("title"))[:300], "channel": sn.get("channelTitle"),
+                                          "published": sn.get("publishedAt"), "views": None, "comments": None,
+                                          "text": str(sn.get("description") or "")[:400]})
 if (P.get("threads") or {}).get("enabled"):
     import time as _t
     since = int(_t.time()) - int((P.get("threads") or {}).get("hours") or 72) * 3600

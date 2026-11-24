@@ -34,12 +34,13 @@ assert.deepEqual(keywordsOf({ community: { threads: { queries: ["x y"] } } }, "i
 assert.deepEqual(keywordsOf({ community: { instagram: { queries: ["halalmalaysia"] } } }, "instagram"), ["halalmalaysia"]);
 const fb = withPlatform({ community: { threads: { queries: ["a b"], accounts: ["ali"] }, facebook: { hours: 72 } } }, "facebook", ["Halal Malaysia", "halal malaysia"], ["ignored"]);
 assert.deepEqual(fb.community.facebook, { hours: 72, queries: ["Halal Malaysia"], accounts: ["ignored"] });        // Facebook pages are watched too, so its list is saved
-const ig = withPlatform({}, "instagram", ["halalmalaysia"], ["@labmuffinbeautyscience", "moskinlab"]);
+const ig = withPlatform({}, "instagram", ["halal"], ["@labmuffinbeautyscience", "moskinlab"]);
 assert.deepEqual(ig.community.instagram.accounts, ["labmuffinbeautyscience", "moskinlab"]);                       // Instagram saves its watchlist
 assert.deepEqual(handlesOf(undefined, "instagram"), DEFAULT_ACCOUNTS.instagram);                                  // starts with LabMuffin and MoSkinLab
 assert.deepEqual(handlesOf({ community: { instagram: { accounts: [] } } }, "instagram"), []);                     // an emptied list stays empty
 assert.deepEqual(handlesOf(undefined, "facebook"), []);
-assert.ok(recommendedFor(["#HalalMalaysia", "sijil halal"]).every((t) => t !== "halalmalaysia" && t !== "sijilhalal"));
+assert.ok(recommendedFor(["#Halal", "kosmetik"]).every((t) => t !== "halal" && t !== "kosmetik"));
+assert.ok(RECOMMENDED_TAGS.every((t) => /^[a-z]+$/.test(t)));                                                    // one word each
 assert.equal(recommendedFor(RECOMMENDED_TAGS).length, 0);
 assert.equal(recommendedFor(undefined).length, RECOMMENDED_TAGS.length);
 assert.deepEqual(fb.community.threads, { queries: ["a b"], accounts: ["ali"] });                                    // Threads untouched

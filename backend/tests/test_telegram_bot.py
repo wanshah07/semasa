@@ -346,6 +346,24 @@ def test_a_picture_blocker_is_not_a_fix_for_the_worker_and_a_reminder_is_claimed
     assert tb._claim_remind(st2, post("a"), CHAT, NOW, row) is False, "the second run read the same old sent_at and loses"
 
 
+def test_redraw_button_asks_the_worker_once_and_the_command_counts_what_needs_it():
+    # Wan, 24 Nov 2026: "how many need to redraw, and add redraw in semasa and telegram button"
+    far = post("r1", date="2026-11-12", status="approved")      # NOW is 7 Nov; a due date well ahead
+    st = store(**{db.POSTS: [far, post("li", stream="linkedin")], "semasa_post_redraws": [],
+                  db.MEDIA: [{**PIC, "id": "m0", "mode": "slides", "meta": {"cover": True, "cover_v": 1}}]})
+    bot = Bot()
+    tb.send_draft(st, bot, CHAT, post("r1"), NOW)
+    tb.send_draft(st, bot, CHAT, post("li", stream="linkedin"), NOW)
+    buttons = [[b.get("callback_data", "") for row in m["reply_markup"]["inline_keyboard"] for b in row] for m in bot.sent()]
+    assert "c:rd:r1" in buttons[0] and not any(c.startswith("c:rd:") for c in buttons[1]), "ws.regulab only"
+    assert "Redraw asked" in tb.queue_redraw(st, "r1") and "Already asked" in tb.queue_redraw(st, "r1"), "once"
+    assert [r["post_id"] for r in st.tables["semasa_post_redraws"]] == ["r1"]
+    assert "Only ws.regulab" in tb.queue_redraw(st, "li")
+    text_, buttons_ = tb.redraw_reply(st, NOW)
+    assert "1 karusel" in text_ and buttons_[0][0]["callback_data"] == "c:rda"
+    assert "Nothing needs a redraw" in tb.queue_redraw_all(store(**{db.POSTS: [], db.MEDIA: []}), NOW)
+
+
 def test_status_and_billing_read_without_error():
     docs = [{"kind": "invoice", "number": "INV-2026-020", "status": "sent", "total": 840, "currency": "MYR",
              "due_date": "2026-11-20", "client": {"name": "Marosia"}}]

@@ -47,11 +47,14 @@ def _sent(post: dict[str, Any]) -> bool:
     return any(isinstance(r, dict) and r.get("status") in ("sent", "error") for r in (post.get("published") or {}).values())
 
 
-def candidates(store: Any, now: datetime, only: set[str] | None = None) -> list[dict[str, Any]]:
+REQUESTS = "semasa_post_redraws"      # supabase/093: the Redraw buttons (Semasa and Telegram) ask by inserting a row here
+
+
+def candidates(store: Any, now: datetime, only: set[str] | None = None, force: bool = False) -> list[dict[str, Any]]:
     """[{post, kind: 'carousel' | 'film', media}] for ws.regulab posts that are draft, approved or scheduled and not yet sent. A
     carousel is a candidate when it has no branded cover or one drawn in an older design (`meta.cover_v` below
     carousel.COVER_VERSION: Wan, 22 Nov 2026, "make sure all using new cover"); a draft has no copy at a sender and no due time
-    to protect, so it is redrawn at once."""
+    to protect, so it is redrawn at once. `force` (a Redraw button, Wan, 24 Nov 2026) redraws a carousel whatever its cover."""
     posts = db.fetch_all(lambda: store.table(db.POSTS).select("*").eq("stream", "regulab")
                          .in_("status", ["draft", "approved", "scheduled"]).order("date"))
     out = []
@@ -71,7 +74,7 @@ def candidates(store: Any, now: datetime, only: set[str] | None = None) -> list[
         for media in store.table(db.MEDIA).select("*").in_("id", ids).eq("status", "done").execute().data or []:
             meta = media.get("meta") or {}
             if media.get("mode") == "slides" and not meta.get("design") and meta.get("look") != "threads" \
-                    and (meta.get("cover") is not True or int(meta.get("cover_v") or 1) < carousel.COVER_VERSION):
+                    and (force or meta.get("cover") is not True or int(meta.get("cover_v") or 1) < carousel.COVER_VERSION):
                 out.append({"post": post, "kind": "carousel", "media": media})
             elif post.get("status") == "draft":
                 continue                                  # a draft's film is not touched here
@@ -187,9 +190,10 @@ def add_cover_to_film(store: Any, media: dict[str, Any], runner: Any = subproces
 
 
 def run(store: Any, now: datetime | None = None, *, dry: bool = False, only: set[str] | None = None,
-        clients: dict[str, Any] | None = None, settings: Any = None, runner: Any = subprocess.run) -> dict[str, Any]:
+        clients: dict[str, Any] | None = None, settings: Any = None, runner: Any = subprocess.run,
+        force: bool = False) -> dict[str, Any]:
     now = now or datetime.now(UTC)
-    todo = candidates(store, now, only)
+    todo = candidates(store, now, only, force)
     result: dict[str, Any] = {"candidates": len(todo), "done": 0, "failed": 0, "lines": []}
     if dry:
         result["lines"] = [f"{c['kind']:8} {c['post']['date']} {c['post']['slot']} {c['post']['id']}" for c in todo]
@@ -231,6 +235,50 @@ def run(store: Any, now: datetime | None = None, *, dry: bool = False, only: set
                      f"{result['done']} post dilukis semula di tempat (kelulusan kekal), {result['failed']} dibiarkan",
                      detail={"done": result["done"], "failed": result["failed"], "lines": result["lines"][:40]})
     return result
+
+
+def need_redraw(store: Any, now: datetime | None = None) -> int:
+    """How many posts a redraw would touch right now (the Telegram /redraw line and the Semasa count)."""
+    return len({c["post"]["id"] for c in candidates(store, now or datetime.now(UTC))})
+
+
+def run_requests(store: Any, now: datetime | None = None, clients: dict[str, Any] | None = None, settings: Any = None,
+                 runner: Any = subprocess.run) -> dict[str, int]:
+    """The Redraw buttons' requests (supabase/093): each pending row redraws that ONE post in place, whatever its cover,
+    keeping its approval, slot and words exactly as the batch does (run). Refused, with the reason on the row, when the post is
+    gone, is not ws.regulab, was already sent, is due within two hours or has no carousel. A failed redraw puts the old artwork
+    back."""
+    now = now or datetime.now(UTC)
+    rows = store.table(REQUESTS).select("*").eq("state", "pending").order("requested_at").limit(10).execute().data or []
+    counts = {"done": 0, "refused": 0}
+    if not rows:
+        return counts
+    if clients is None:
+        clients = publisher.make_clients(publisher.load_settings(store))
+    for row in rows:
+        post_id = row["post_id"]
+        posts = store.table(db.POSTS).select("id,stream,status").eq("id", post_id).limit(1).execute().data or []
+        if not posts:
+            state, note = "refused", "the post no longer exists"
+        elif (posts[0].get("stream") or "regulab") != "regulab":
+            state, note = "refused", ("only ws.regulab carousels are redrawn here (a LinkedIn carousel has no brand cover: use "
+                                      "Refresh in the editor)")
+        else:
+            try:
+                res = run(store, now, only={post_id}, clients=clients, settings=settings, runner=runner, force=True)
+            except Exception as exc:  # noqa: BLE001 - one bad request never stops the others
+                res = {"candidates": 1, "done": 0, "failed": 1, "lines": [f"failed: {str(exc)[:160]}"]}
+            if not res["candidates"]:
+                state, note = "refused", ("nothing to redraw: it has no carousel or film, was already sent, or is due within two "
+                                          "hours")
+            elif res["done"]:
+                state, note = "done", "redrawn in place; approval, slot and words unchanged"
+            else:
+                state, note = "refused", "; ".join(res["lines"])[:300] or "the redraw failed: the old artwork is back"
+        done = {"state": state, "note": note[:500], "done_at": now.isoformat()}
+        store.table(REQUESTS).update(done).eq("id", row["id"]).execute()
+        counts[state] += 1
+    return counts
 
 
 def requeue_threads(store: Any, zernio: Any, now: datetime | None = None, *, dry: bool = False) -> dict[str, Any]:
@@ -336,11 +384,16 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry", action="store_true")
     ap.add_argument("--only", default="")
+    ap.add_argument("--requests", action="store_true", help="do the Redraw buttons' pending requests (supabase/093)")
     ap.add_argument("--send-now", default="", help="send ONE channel of this post now, past the lateness rule")
     ap.add_argument("--channel", default="threads")
     ap.add_argument("--threads", action="store_true", help="queue the Threads posts that have a line of hashtags alone again")
     args = ap.parse_args()
     store = db.client(SupabaseSettings.load())
+    if args.requests:
+        res = run_requests(store)
+        print(f"redraw requests: {res}")
+        return 0
     if args.send_now:
         clients = publisher.make_clients(publisher.load_settings(store))
         line = send_now(store, clients.get("zernio"), args.send_now, args.channel)

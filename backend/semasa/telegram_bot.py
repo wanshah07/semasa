@@ -51,6 +51,7 @@ log = get_logger("semasa.telegram_bot")
 TG = "https://api.telegram.org/bot{token}/{method}"
 INBOX = "semasa_telegram_inbox"
 SENT = "semasa_telegram_sent"
+REDRAWS = "semasa_post_redraws"      # supabase/093: a Redraw button asks by inserting a row
 LINK = "semasa_telegram_link"
 STATE_KEY = "telegram_bot"
 LABEL = b"semasa-telegram-webhook"
@@ -70,6 +71,7 @@ COMMANDS = [
     ("laporan", "Tulis laporan / write a report"),
     ("ingat", "Simpan nota tetap / remember a standing note"),
     ("memori", "Lihat nota tetap / the standing notes"),
+    ("redraw", "Karusel perlu dilukis semula / carousels to redraw"),
     ("jadual", "Jadual 7 hari / the next 7 days"),
     ("status", "Ringkasan Semasa / Semasa at a glance"),
     ("ralat", "Ralat dan idea gagal / errors and failed ideas"),
@@ -378,9 +380,11 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
     open_btn = [{"text": "🔗 Buka di Semasa", "url": menu.page_url(SITE, post_tab(post))}]
     # LinkedIn never gets a film (the page has no Motion button there either): a carousel or a single card only
     film = [] if post.get("stream") == "linkedin" else [{"text": "🎬 Motion", "callback_data": f"c:pm:{post['id']}"}]
+    redraw = [{"text": "🔄 Redraw", "callback_data": f"c:rd:{post['id']}"}] \
+        if post.get("stream") != "linkedin" and (post.get("slides") or post.get("media_ids")) else []
     make = [[{"text": "✏️ Edit", "callback_data": f"c:pe:{post['id']}"},
              {"text": "🖼 Carousel", "callback_data": f"c:pc:{post['id']}"}],
-            [{"text": "🎨 Single card", "callback_data": f"c:sc:{post['id']}"}, *film]]
+            [{"text": "🎨 Single card", "callback_data": f"c:sc:{post['id']}"}, *film, *redraw]]
     if hard:
         text += "\n\n⚠️ Approval blocked:\n• " + "\n• ".join(hard[:6])
         fix = [{"text": "🛠 Fix", "callback_data": f"c:fx:{post['id']}"}] if fixable(hard) else []
@@ -415,6 +419,62 @@ def queue_fix(store: Any, post_id: str, now: datetime | None = None) -> str:
     store.table(db.POSTS).update({"revise_note": note, "revise_state": "new", "revise_error": None}) \
         .eq("id", post_id).eq("status", "draft").execute()
     return f"🛠 Sent to Semasa: {len(hard)} blocker(s) to fix. The draft comes back here when it is rewritten."
+
+
+def queue_redraw(store: Any, post_id: str) -> str:
+    """The 🔄 Redraw button (Wan, 24 Nov 2026: "add redraw in semasa and telegram button"): asks the worker (supabase/093,
+    rerender.yml) to draw this post's carousel again in place. Its words, slot and approval stay; nothing is approved or sent."""
+    rows = store.table(db.POSTS).select("id,stream,status").eq("id", post_id).limit(1).execute().data or []
+    if not rows:
+        return "That post was not found."
+    post = rows[0]
+    if (post.get("stream") or "regulab") != "regulab":
+        return "Only ws.regulab carousels are redrawn here. For LinkedIn use Refresh in the slides editor on the site."
+    if post.get("status") not in ("draft", "approved", "scheduled"):
+        return f"This post is {post.get('status')}: nothing to redraw."
+    asks = store.table(REDRAWS).select("id").eq("post_id", post_id).eq("state", "pending").limit(1)
+    if asks.execute().data:
+        return "Already asked: the worker is on it."
+    store.table(REDRAWS).insert({"post_id": post_id, "state": "pending"}).execute()
+    return "🔄 Redraw asked. The worker draws it again within a few minutes; the words, slot and approval stay."
+
+
+def redraw_wanted(store: Any, now: datetime) -> list[dict[str, Any]]:
+    """The posts a redraw would touch now (an older or missing brand cover), one entry per post."""
+    from . import rerender
+    seen: dict[str, dict[str, Any]] = {}
+    for c in rerender.candidates(store, now):
+        seen.setdefault(c["post"]["id"], c["post"])
+    return list(seen.values())
+
+
+def queue_redraw_all(store: Any, now: datetime) -> str:
+    wanted = redraw_wanted(store, now)
+    if not wanted:
+        return "Nothing needs a redraw. 👍"
+    open_asks = store.table(REDRAWS).select("post_id").eq("state", "pending").execute().data or []
+    asked = [r["post_id"] for r in open_asks]
+    made = 0
+    for p in wanted:
+        if p["id"] in asked:
+            continue
+        store.table(REDRAWS).insert({"post_id": p["id"], "state": "pending"}).execute()
+        made += 1
+    return (f"🔄 {made} redraw(s) asked ({len(wanted) - made} were already asked). The worker draws them one by one; "
+            "approvals, slots and words stay.")
+
+
+def redraw_reply(store: Any, now: datetime) -> tuple[str, list[list[dict[str, str]]]]:
+    wanted = redraw_wanted(store, now)
+    if not wanted:
+        return "Tiada karusel perlu dilukis semula. 👍", []
+    days: dict[str, int] = {}
+    for p in wanted:
+        days[str(p.get("date") or "?")] = days.get(str(p.get("date") or "?"), 0) + 1
+    by_day = " · ".join(f"{d[5:]}: {n}" for d, n in sorted(days.items()))
+    return (f"🔄 {len(wanted)} karusel ws.regulab perlu dilukis semula (kulit lama atau tiada kulit jenama):\n{by_day}\n\n"
+            "Kata-kata, slot dan kelulusan kekal; hanya gambar dilukis semula."), \
+        [[{"text": f"🔄 Lukis semula semua ({len(wanted)})", "callback_data": "c:rda"}]]
 
 
 def draft_rows(store: Any, stream: str = "") -> list[dict[str, Any]]:
@@ -491,6 +551,7 @@ def status_text(store: Any, now: datetime) -> str:
     return (f"Semasa sekarang ({(now + timedelta(hours=8)).strftime('%d/%m %H:%M')} MYT)\n"
             f"📝 Draf menunggu: {count['draft']}\n✅ Diluluskan: {count['approved']}\n🕒 Dijadualkan: {count['scheduled']}\n"
             f"✍️ Idea sedang ditulis: {writing}\n❗ Idea gagal (7 hari): {failed}\n📮 Post dengan ralat penerbit: {errs}\n"
+            f"🔄 Karusel perlu dilukis semula: {len(redraw_wanted(store, now))}\n"
             f"🩺 Masalah watchdog terbuka: {len(probs)}\n\n/draf untuk lulus · /ralat untuk ralat · /kesihatan untuk masalah")
 
 
@@ -919,6 +980,12 @@ def handle_callback(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, A
             cat.ask(store, "post_edit", post_id)
             bot.send(chat, "✏️ Send the replacement caption now. This only edits a draft and does not publish it.", reply_to=mid)
             return "catalogue edit asked"
+        elif rest.startswith("rd:"):
+            bot.send(chat, queue_redraw(store, rest.split(":", 1)[1]), reply_to=mid)
+            return "redraw queued"
+        elif rest == "rda":
+            bot.send(chat, queue_redraw_all(store, now), reply_to=mid)
+            return "redraw all queued"
         elif rest.startswith("fx:"):
             bot.send(chat, queue_fix(store, rest.split(":", 1)[1], now), reply_to=mid)
             return "fix queued"
@@ -1157,6 +1224,10 @@ def handle_message(store: Any, bot: Bot, link: dict[str, Any], row: dict[str, An
     if cmd in ("help", "mula", "bantuan"):
         bot.send(chat, HELP)
         return "help"
+    if cmd in ("redraw", "lukis"):
+        text_, buttons = redraw_reply(store, now)
+        bot.send(chat, text_, buttons or None)
+        return "redraw list"
     if cmd in ("draf", "drafts", "draft"):
         return show_drafts(store, bot, chat, now, lang=cat.lang(store))
     if cmd in ("jadual", "schedule"):

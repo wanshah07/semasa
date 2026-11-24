@@ -253,3 +253,29 @@ def test_a_film_made_with_its_cover_is_never_given_a_second_one():
     bare = FakeStore(semasa_posts=[_post("pf", media=("mf",))], media_generations=[film],
                      semasa_motions=[{"id": "f1", "check_report": {}}], semasa_log=[])
     assert [c["kind"] for c in rerender.candidates(bare, NOW)] == ["film"]
+
+
+def _req_store(posts, media, requests):
+    return FakeStore(semasa_posts=posts, media_generations=media, semasa_motions=[], semasa_log=[], semasa_post_redraws=requests)
+
+
+def test_a_redraw_request_redraws_that_one_post_whatever_its_cover(monkeypatch):
+    # Wan, 24 Nov 2026: "add redraw in semasa and telegram button": the cover is already current, the button redraws it anyway
+    def fake_slides(store, row, settings, llm=None):
+        db_row = store.tables["media_generations"][0]
+        db_row.update(status="done", generated_media_url=BASE + "n1.jpg", meta={**row["meta"], "slide_urls": [BASE + "n1.jpg"]})
+        return True
+    monkeypatch.setattr(media_generator, "process_slides", fake_slides)
+    reqs = [{"id": "r1", "post_id": "p1", "state": "pending"}, {"id": "r2", "post_id": "li", "state": "pending"},
+            {"id": "r3", "post_id": "gone", "state": "pending"}, {"id": "r4", "post_id": "soon", "state": "pending"}]
+    store = _req_store([_post("p1"), _post("li", stream="linkedin"), _post("soon", date="2026-11-11", slot="10:30")],
+                       [_slides("m1", cover=True, cover_v=CURRENT)], reqs)
+    out = rerender.run_requests(store, NOW, clients={"zernio": Zernio()}, settings=SimpleNamespace())
+    got = {r["id"]: (r["state"], r["note"]) for r in store.tables["semasa_post_redraws"]}
+    assert out == {"done": 1, "refused": 3}
+    assert got["r1"][0] == "done" and "approval" in got["r1"][1]
+    assert got["r2"][0] == "refused" and "LinkedIn" in got["r2"][1]
+    assert got["r3"] == ("refused", "the post no longer exists")
+    assert got["r4"][0] == "refused" and "nothing to redraw" in got["r4"][1], "due within two hours: left alone"
+    assert store.tables["semasa_posts"][0]["status"] == "approved", "the gate is untouched"
+

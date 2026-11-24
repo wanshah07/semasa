@@ -9,6 +9,7 @@ import { fixNote } from "../lib/fixFull";
 import { fitText } from "../lib/captionFit";
 import PostWorkflow from "./PostWorkflow";
 import PostPullBack from "./PostPullBack";
+import PostRedraw from "./PostRedraw";
 import PostResend from "./PostResend";
 import PostStreamSwitch from "./PostStreamSwitch";
 import { stampMYT } from "../lib/format";
@@ -431,6 +432,7 @@ export default function PostEditor({ post, posts = [], mediaById, mediaRows, log
   return (
     <div className="space-y-4">
       <PostPullBack post={post} onToast={onToast} onChanged={onChanged} />
+      <PostRedraw post={post} onToast={onToast} onChanged={onChanged} />
       <PostResend post={post} posts={posts} brand={brand} onToast={onToast} onChanged={onChanged} />
       <PostStreamSwitch post={post} user={user} onToast={onToast} onChanged={onChanged} />
       <div className="flex flex-wrap items-center gap-3">

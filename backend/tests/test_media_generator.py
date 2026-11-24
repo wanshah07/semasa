@@ -46,7 +46,7 @@ ROW = {"id": "m1", "type": "image", "mode": "prompt", "prompt": "a jar on a shel
 
 def _picked():
     """ROW as a row whose provider was PICKED (Cloudflare first, then the rest): what the failover tests start from. A row
-    whose provider is only Tetapan's default follows IMAGE_PRIORITY instead (ChatGPT, KiosAPI, ...; 24 Nov 2026)."""
+    whose provider is only Tetapan's default follows IMAGE_PRIORITY instead (ChatGPT, Cloudflare, ...; 24 Nov 2026)."""
     return {**ROW, "meta": {"provider_explicit": True}}
 
 
@@ -99,8 +99,8 @@ def test_when_every_provider_fails_the_error_names_them_all(monkeypatch):
 def test_a_video_row_skips_providers_that_make_pictures_only():
     s = _settings(replicate_token="rt")
     assert media_generator.provider_chain(s, "openai", kind="video") == ["openai", "replicate"]
-    assert media_generator.provider_chain(s, "cloudflare", kind="image") == ["cloudflare", "openai", "replicate"]
-    assert media_generator.provider_chain(s, "replicate", kind="image", needs_edit=True) == ["replicate", "openai", "cloudflare"]
+    assert media_generator.provider_chain(s, "cloudflare", kind="image") == ["cloudflare", "replicate", "openai"]
+    assert media_generator.provider_chain(s, "replicate", kind="image", needs_edit=True) == ["replicate", "cloudflare", "openai"]
     assert media_generator.provider_chain(_settings(openai_key=None), "cloudflare") == ["cloudflare"]
     assert media_generator.provider_chain(_settings(openai_key=None), "nope") == ["nope", "cloudflare"]
 
@@ -110,7 +110,7 @@ def test_gemini_joins_the_chain_only_when_its_pictures_are_on_and_a_key_can_be_u
 
     from semasa import db, gemini_keys
     on = FakeStore(**{gemini_keys.TABLE: [{"id": "k1", "api_key": "AIza-1", "enabled": True, "status": "new"}]})
-    assert media_generator.provider_chain(_settings(), "cloudflare", store=on) == ["cloudflare", "openai", "gemini"]
+    assert media_generator.provider_chain(_settings(), "cloudflare", store=on) == ["cloudflare", "gemini", "openai"]
     off = FakeStore(**{gemini_keys.TABLE: [{"id": "k1", "api_key": "AIza-1", "enabled": True, "status": "new"}],
                        db.SETTINGS: [{"key": "gemini", "value": {"images": False}}]})
     assert media_generator.provider_chain(_settings(), "cloudflare", store=off) == ["cloudflare", "openai"]
@@ -175,7 +175,7 @@ def test_an_http_error_is_read_by_its_status():
 
 # ---- ChatGPT draws too (Wan, 8 Nov 2026) ---------------------------------------------------------------------------------
 
-def test_chatgpt_is_a_picture_provider_that_takes_words_only_and_comes_before_kiosapi():
+def test_chatgpt_is_a_picture_provider_that_takes_words_only_and_comes_first_with_kiosapi_last():
     from fakestore import FakeStore
 
     from semasa import chatgpt_login as cl
@@ -186,7 +186,7 @@ def test_chatgpt_is_a_picture_provider_that_takes_words_only_and_comes_before_ki
     assert not media_generator.has_credentials("chatgpt", _settings(), None)
     s = _settings()
     assert media_generator.provider_chain(s, "cloudflare", store=on) == ["cloudflare", "chatgpt", "openai"]
-    assert media_generator.provider_chain(s, "cloudflare", store=on, explicit=False) == ["chatgpt", "openai", "cloudflare"]
+    assert media_generator.provider_chain(s, "cloudflare", store=on, explicit=False) == ["chatgpt", "cloudflare", "openai"]
     assert "chatgpt" not in media_generator.provider_chain(s, "cloudflare", needs_edit=True, store=on), "no reference picture"
     assert "chatgpt" not in media_generator.provider_chain(s, "cloudflare", kind="video", store=on)
 
@@ -206,7 +206,7 @@ def test_a_chatgpt_pin_for_the_picture_maker_puts_chatgpt_first_and_the_others_s
     assert "chatgpt" not in media_generator.provider_chain(s, "cloudflare", needs_edit=True, store=pinned)
     other = {"key": "ai_team", "value": {"pins": {"image_gen": {"gateway": "mireld", "model": "x"}}}}
     unpinned = media_generator.provider_chain(s, "openai", store=FakeStore(**login, semasa_settings=[other]), explicit=False)
-    assert unpinned[:2] == ["chatgpt", "openai"]              # no pin on ChatGPT: Wan's order already puts it first
+    assert unpinned == ["chatgpt", "cloudflare", "openai"]     # no pin on ChatGPT: Wan's order already puts it first
     assert media_generator.pinned_picture_maker(None) == ""
 
 
@@ -255,17 +255,17 @@ def test_the_chatgpt_provider_maps_its_errors_to_failover_kinds_and_sizes_the_pi
     assert e2.value.kind == "request"
 
 
-# ---- Wan's picture order (24 Nov 2026): ChatGPT > KiosAPI, then Cloudflare > Gemini > Replicate ------------------------
+# ---- Wan's picture order (24 Nov 2026): ChatGPT > Cloudflare > Gemini > Replicate, KiosAPI LAST to save credit ---------
 
-def test_the_picture_order_is_chatgpt_kiosapi_then_the_rest_and_a_picked_provider_goes_first(monkeypatch):
+def test_the_picture_order_is_chatgpt_cloudflare_and_kiosapi_last_and_a_picked_provider_goes_first(monkeypatch):
     monkeypatch.setattr(media_generator, "has_credentials", lambda name, s, store=None: True)
     s = _settings()
-    order = ["chatgpt", "openai", "cloudflare", "gemini", "replicate"]
+    order = ["chatgpt", "cloudflare", "gemini", "replicate", "openai"]
     assert media_generator.provider_chain(s, "openai", explicit=False) == order
     picked = media_generator.provider_chain(s, "gemini", explicit=True)
-    assert picked == ["gemini", "chatgpt", "openai", "cloudflare", "replicate"]
-    # a reference picture: ChatGPT and Gemini draw from words only, so KiosAPI is the first asked
-    assert media_generator.provider_chain(s, "openai", needs_edit=True, explicit=False) == ["openai", "cloudflare", "replicate"]
+    assert picked == ["gemini", "chatgpt", "cloudflare", "replicate", "openai"]
+    # a reference picture: ChatGPT and Gemini draw from words only, so Cloudflare is the first asked and KiosAPI still the last
+    assert media_generator.provider_chain(s, "openai", needs_edit=True, explicit=False) == ["cloudflare", "replicate", "openai"]
     video = media_generator.provider_chain(s, "gemini", kind="video", explicit=False)
     assert video == ["openai", "replicate"], "only video makers"
 
@@ -273,9 +273,9 @@ def test_the_picture_order_is_chatgpt_kiosapi_then_the_rest_and_a_picked_provide
 def test_a_row_stamped_with_the_default_provider_follows_wans_order_not_the_stamp(monkeypatch):
     writes, _ = _patch_db(monkeypatch)
     cf, oai = Fake("cloudflare", result=PIC), Fake("openai", result=PIC)
-    row = {**ROW, "provider": "cloudflare"}                 # Tetapan's stamp when the row was queued: a default, not a choice
+    row = {**ROW, "provider": "openai"}                     # Tetapan's stamp when the row was queued: a default, not a choice
     assert media_generator.process_row(None, row, _settings(), {"cloudflare": cf, "openai": oai}) is True
-    assert writes["m1"]["provider"] == "openai" and oai.calls and cf.calls == []        # no ChatGPT login here: KiosAPI is next
+    assert writes["m1"]["provider"] == "cloudflare" and cf.calls and oai.calls == []    # no ChatGPT login: Cloudflare first
 
 
 def test_a_provider_the_row_says_was_picked_keeps_its_place_and_an_unknown_one_is_still_reported(monkeypatch):

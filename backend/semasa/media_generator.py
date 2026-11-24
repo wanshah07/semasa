@@ -179,9 +179,13 @@ def has_credentials(name: str, s: MediaSettings, store: Any = None) -> bool:
 # ("openai" here). Replicate is not in his list, so it comes last. A picture row carries the provider Tetapan stamped on it when
 # it was queued ("openai"), which is a default and not a choice, so the order below is used unless the row says its provider
 # was picked (meta.provider_explicit).
-# Wan, 24 Nov 2026: "for image gen prioritize chatgpt then kioskapi". ChatGPT (his login, words only) first, KiosAPI second, then
-# the rest. A job with a reference picture still starts at KiosAPI, because ChatGPT and Gemini draw from words only here.
-IMAGE_PRIORITY = ("chatgpt", "openai", "cloudflare", "gemini", "replicate")
+# Wan, 24 Nov 2026: "KioskAPI is the last choice to save credit - prioritize chatgpt then cloudflare then unsplashed then
+# kioskapi". ChatGPT (his login, words only) first, Cloudflare's free tier second, and KiosAPI ("openai", paid per picture)
+# LAST. Unsplash is a photograph, not a drawing: it stands between Cloudflare and KiosAPI for a slide's illustration only
+# (illustrated.ORDER), never for a picture somebody asked to be drawn. A job with a reference picture skips ChatGPT and Gemini
+# (words only) and starts at Cloudflare.
+IMAGE_PRIORITY = ("chatgpt", "cloudflare", "gemini", "replicate", "openai")
+VIDEO_PRIORITY = ("openai", "replicate")           # a film is not what Wan reordered: the two video makers, as they were
 
 
 def pinned_picture_maker(store: Any) -> str:
@@ -207,7 +211,7 @@ def provider_chain(s: MediaSettings, first: str, *, kind: str = "image", needs_e
     was only a default, so IMAGE_PRIORITY alone decides the order (the providers without credentials are left out)."""
     out = [first] if explicit else []
     pinned = pinned_picture_maker(store) if kind == "image" else ""     # ChatGPT first when Wan pinned it; the rest still follow
-    for name in (*((pinned,) if pinned else ()), *IMAGE_PRIORITY, s.provider):
+    for name in (*((pinned,) if pinned else ()), *(VIDEO_PRIORITY if kind == "video" else IMAGE_PRIORITY), s.provider):
         name = (name or "").lower()
         if not name or name in out or name not in PROVIDER_CAPS:
             continue

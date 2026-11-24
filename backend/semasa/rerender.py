@@ -85,6 +85,24 @@ def candidates(store: Any, now: datetime, only: set[str] | None = None, force: b
     return out
 
 
+def redrawable(post: dict[str, Any], media: list[dict[str, Any]]) -> bool:
+    """Would a Redraw request for this post find something to redraw? A finished carousel (not a Diari/Threads design pack, not a
+    poster), or, once it is no longer a draft, a Motion film. The same test `candidates` applies to each media row, so the buttons
+    are shown only where the worker will not refuse (Codex review on #341)."""
+    if (post.get("stream") or "regulab") != "regulab":
+        return False
+    for m in media:
+        meta = m.get("meta") or {}
+        if m.get("status") != "done":
+            continue
+        if m.get("mode") == "slides" and not meta.get("design") and meta.get("look") != "threads":
+            return True
+        if post.get("status") != "draft" and m.get("type") == "video" and meta.get("flow") == "motion" \
+                and not meta.get("film_purged_at") and meta.get("motion_id"):
+            return True
+    return False
+
+
 def _hold(store: Any, zernio: Any, post: dict[str, Any], media: dict[str, Any]) -> None:
     """Hold the post back from the publisher, then take its Zernio copy out and clear its records. Raises when a copy cannot be
     deleted: the copies already deleted are cleared from the post (it is queued again for those channels), the rest stay as

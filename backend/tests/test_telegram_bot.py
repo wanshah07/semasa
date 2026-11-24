@@ -356,6 +356,13 @@ def test_redraw_button_asks_the_worker_once_and_the_command_counts_what_needs_it
     tb.send_draft(st, bot, CHAT, post("li", stream="linkedin"), NOW)
     buttons = [[b.get("callback_data", "") for row in m["reply_markup"]["inline_keyboard"] for b in row] for m in bot.sent()]
     assert "c:rd:r1" in buttons[0] and not any(c.startswith("c:rd:") for c in buttons[1]), "ws.regulab only"
+    # Codex review on #341: a post whose media is a film or a single-card design, or that has none, shows no Redraw button
+    other = post("r2", media_ids=["mf"])
+    st.tables[db.MEDIA].append({"id": "mf", "status": "done", "type": "video", "mode": "clip", "meta": {"flow": "motion"}})
+    bot2 = Bot()
+    tb.send_draft(st, bot2, CHAT, other, NOW)       # a draft film is not redrawn here
+    keys = [b.get("callback_data", "") for row in bot2.sent()[0]["reply_markup"]["inline_keyboard"] for b in row]
+    assert not any(k.startswith("c:rd:") for k in keys)
     assert "Redraw asked" in tb.queue_redraw(st, "r1") and "Already asked" in tb.queue_redraw(st, "r1"), "once"
     assert [r["post_id"] for r in st.tables["semasa_post_redraws"]] == ["r1"]
     assert "Only ws.regulab" in tb.queue_redraw(st, "li")

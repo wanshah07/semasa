@@ -65,3 +65,21 @@ def test_the_result_is_recorded_for_the_api_tab_and_a_failed_step_says_so():
     assert row == value and row["ok"] is False and row["steps"]["draw"] == {"ok": False, "detail": "HTTP 402"}
     assert row["what"] == "chatgpt" and row["model"] == "gpt-6.2-sol" and row["at"]
     assert ct.record({k: {"ok": True, "detail": ""} for k in ("write", "read", "draw")}, st)["ok"] is True
+
+
+def test_the_picture_is_drawn_with_the_model_pinned_for_the_picture_maker():
+    from fakestore import FakeStore
+
+    asked = {}
+
+    class L(Login):
+        def draw(self, prompt, *, model, timeout):
+            asked["model"] = model
+            return super().draw(prompt, model=model, timeout=timeout)
+
+    res = ct.run(L(), draw_model="gpt-6-astra")
+    assert asked["model"] == "gpt-6-astra" and res["draw_model"] == "gpt-6-astra"
+    assert ct.run(L())["draw_model"] == "gpt-6.1-sol"                                 # no pin: the login's saved model
+    pin = {"key": "ai_team", "value": {"pins": {"image_gen": {"gateway": "chatgpt", "model": "gpt-6-astra"}}}}
+    assert ct.pinned_draw_model(FakeStore(semasa_settings=[pin])) == "gpt-6-astra"
+    assert ct.pinned_draw_model(FakeStore()) == ""

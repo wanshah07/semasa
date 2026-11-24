@@ -75,6 +75,8 @@ const liveOnPick = () => { try { return localStorage.getItem(LIVE_KEY) !== "off"
 function Rating({ r, t }) {
   if (!r) return null;
   if (r.busy) return <p className="mt-2 flex items-center gap-1 text-[11px] text-accent" data-ai-rate><Loader2 size={11} className="animate-spin" />{t("menguji model ini terus (gambar mengambil sehingga seminit)…", "testing this model live (a picture can take up to a minute)…")}</p>;
+  if (r.worker === "picture") return <p className="mt-2 text-[11px] text-accent" data-ai-rate>{t("ChatGPT sedang melukis satu gambar ujian dengan model ini: keputusan muncul pada kad “Claude untuk semua fungsi, ChatGPT untuk gambar” dalam kira-kira 3 minit.", "ChatGPT is drawing one test picture with this model: the result shows on the “Claude for every function, ChatGPT for pictures” card in about 3 minutes.")}</p>;
+  if (r.worker === "text") return <p className="mt-2 text-[11px] text-accent" data-ai-rate>{t("ChatGPT ditanya terus oleh pekerja: keputusan di atas dikemas kini dalam kira-kira seminit.", "ChatGPT is asked live by the worker: the decision above updates in about a minute.")}</p>;
   if (!r.tested) return <p className="mt-2 text-[11px] text-muted" data-ai-rate>{t("Tidak diuji terus: ", "Not tested live: ")}{r.why}</p>;
   const p = r.parts;
   if (r.kind === "image") return (
@@ -105,6 +107,16 @@ function JobPins({ cards, state, team, save, onToast }) {
   // The function's own live check of one robot + model: a real chat call with a picture and a tool. Image makers cannot be asked this.
   const rate = async (slug, model, job) => {
     const key = `${slug}|${model}`;
+    if (slug === "chatgpt") {
+      // ChatGPT is Wan's login, not an OpenAI-dialect gateway: the function's check cannot ask it. Its picture model is proved by the
+      // worker's live test (one answer, one picture read, one picture DRAWN with this pinned model; supabase/094), and its text by
+      // the worker's live question, which the decision above shows within about a minute.
+      if (job === "image_gen" && canSave) {
+        try { await save("ai_test", { at: new Date().toISOString(), what: "chatgpt", model }); } catch { /* the card above says nothing ran */ }
+      }
+      setRates((r) => ({ ...r, [key]: { tested: false, worker: job === "image_gen" ? "picture" : "text", why: "" } }));
+      return;
+    }
     setRates((r) => ({ ...r, [key]: { busy: true } }));
     let out;
     // a picture maker has no chat to ask: the function draws one small real picture at its own address (a few cents at most) and says whether one came back

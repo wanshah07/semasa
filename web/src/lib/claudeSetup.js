@@ -81,5 +81,14 @@ export function pictureTest(request, result, now = Date.now()) {
   if (!done) return { state: "none" };
   if (result.not_connected) return { state: "notconnected", at: result.at };
   const bad = Object.entries(result.steps || {}).filter(([, v]) => !v.ok).map(([k, v]) => ({ step: k, detail: v.detail || "" }));
-  return { state: result.ok ? "ok" : "failed", at: result.at, model: result.model || "", bad };
+  return { state: result.ok ? "ok" : "failed", at: result.at, model: result.draw_model || result.model || "", bad };
+}
+
+/** settings.ai_team after a provider's model was changed by a click on its card: every pin that names that provider follows to the new
+    model (a pin's model outranks the provider's own, so a pin left on the old one would make the click look dead), and `changed_at`
+    wakes the worker to check it live (supabase/057). Pins on other robots, the defaults and the efforts are untouched. */
+export function withProviderModel(team, slug, model, now = new Date()) {
+  const t = team || {};
+  const pins = Object.fromEntries(Object.entries(t.pins || {}).map(([job, p]) => [job, p && p.gateway === slug && model ? { ...p, model } : p]));
+  return { ...t, pins, changed_at: now.toISOString() };
 }

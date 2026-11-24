@@ -3,12 +3,15 @@ import { motion } from "framer-motion";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Activity, AlertTriangle, CheckCircle2, Cpu, KeyRound, RefreshCw, Timer, Wallet, XCircle } from "lucide-react";
 import { fadeUp } from "../design/motion";
-import { TABLES } from "../lib/SupabaseClient";
+import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { useApiUsage, useTable } from "../lib/hooks";
 import { stampMYT, timeAgo } from "../lib/format";
 import { fmtTokens, orderedModels, usageByArea, usageByDay, usageByGateway, verdictOf } from "../lib/api";
-import { modelOverride, withModel } from "../lib/aiTeam";
+import { modelOverride, rateCheck, withModel } from "../lib/aiTeam";
+import { formOf, rpcArgs } from "../lib/aiProviders";
+import { checkAI } from "../lib/chat";
+import { withProviderModel } from "../lib/claudeSetup";
 import Card from "../components/ui/Card";
 import { Segmented } from "../components/ui/Field";
 import AiTeam from "../components/AiTeam";
@@ -60,6 +63,24 @@ export default function ApiTab({ settings, save, onToast, go }) {
       await save("ai_team", withModel(settings?.ai_team, slug, model));
       onToast?.(model ? t("{m} ialah model lalai {r}: disemak dalam kira-kira 5 minit.", "{m} is {r}'s default model: it is checked within about 5 minutes.", { m: model, r: slug })
         : t("Model lalai {r} kembali kepada yang ditetapkan di GitHub.", "{r}'s default model is back to the one GitHub sets.", { r: slug }), "ok");
+    } catch (e) { onToast?.(e?.message || String(e), "danger"); } finally { setPicking(""); }
+  };
+  // A provider Wan added (Claude, W6..): its model lives on its own row, which the workers AND the chat and Telegram functions read, so a
+  // click saves it there, moves the pins that name this provider, wakes the worker's live check and asks the model one live question now
+  // (Wan, 24 Nov 2026: "function by click the model to change the model is live").
+  const setProviderModel = async (slug, model) => {
+    const row = providersT.rows.find((p) => p.id === slug);
+    if (!row || typeof save !== "function" || !supabase) return;
+    setPicking(`${slug}|${model}`);
+    try {
+      const { error } = await supabase.rpc("semasa_save_ai_provider", rpcArgs({ ...formOf(row), model }));
+      if (error) throw new Error(errText(error));
+      await providersT.reload?.();
+      await save("ai_team", withProviderModel(settings?.ai_team, slug, model));
+      onToast?.(t("{m} disimpan untuk {r}. Menguji terus…", "{m} saved for {r}. Testing it live…", { m: model, r: row.name || slug }), "ok");
+      const r = rateCheck(await checkAI(`${slug}|${model}`));
+      if (r.tested && r.parts?.answered) onToast?.(t("{m} menjawab dalam {s} s: ia hidup.", "{m} answered in {s} s: it is live.", { m: model, s: r.ms ? (r.ms / 1000).toFixed(1) : "?" }), "ok");
+      else onToast?.(t("{m} tidak menjawab ujian terus: {w}", "{m} did not answer the live test: {w}", { m: model, w: r.why || r.note || "-" }), "danger");
     } catch (e) { onToast?.(e?.message || String(e), "danger"); } finally { setPicking(""); }
   };
   const byGw = useMemo(() => usageByGateway(usage.daily, days), [usage.daily, days]);
@@ -129,8 +150,11 @@ export default function ApiTab({ settings, save, onToast, go }) {
           const V = VERDICT[v] || VERDICT.none;
           const u = byGw[r.slug] || { calls: 0, failed: 0, tokens: 0, prompt: 0, completion: 0, ms: 0, models: {} };
           const models = orderedModels(r);
-          const over = modelOverride(settings?.ai_team, r.slug);
-          const canAdjust = typeof save === "function" && ADJUSTABLE.includes(r.slug);
+          const provRow = providersT.rows.find((p) => p.id === r.slug);
+          // a provider's chosen model is its own row's; a built-in robot's is the override Wan clicked (settings.ai_team.models)
+          const over = r.role === "provider" && provRow ? "" : modelOverride(settings?.ai_team, r.slug);
+          const isProvider = r.role === "provider" && providersT.rows.some((p) => p.id === r.slug);
+          const canAdjust = typeof save === "function" && (ADJUSTABLE.includes(r.slug) || isProvider);
           return (
             <Card key={r.slug} className="p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -155,6 +179,7 @@ export default function ApiTab({ settings, save, onToast, go }) {
                 <p className="mb-1 flex flex-wrap items-center gap-2 text-xs font-medium text-muted">{t("Model disenaraikan", "Models listed")} · {models.length}
                   {canAdjust && <span className="font-normal">{over
                     ? <>· {t("lalai anda", "your default")}: <b className="text-ink">{over}</b> <button type="button" className="underline hover:text-accent" onClick={() => setDefaultModel(r.slug, "")} disabled={!!picking}>{t("Set semula", "Reset")}</button></>
+                    : isProvider ? <>· {t("klik model untuk menukar model {r}: disimpan dan diuji terus", "click a model to change {r}'s model: saved and tested live", { r: r.name || r.slug })}</>
                     : <>· {t("klik model untuk jadikan lalai {r}", "click a model to make it {r}'s default", { r: r.name || r.slug })}</>}</span>}
                 </p>
                 {models.length ? (
@@ -163,10 +188,12 @@ export default function ApiTab({ settings, save, onToast, go }) {
                       const cls = `rounded-pill px-2 py-0.5 text-[11px] ${m === r.model ? "bg-accent/15 text-accent" : u.models[m] ? "bg-ok/10 text-ok" : "bg-surface-2 text-muted"}`;
                       const title = u.models[m] ? `${fmtTokens(u.models[m])} tokens` : "";
                       if (!canAdjust) return <span key={m} className={cls} title={title}>{m}</span>;
-                      const mine = m === over;
+                      const mine = isProvider ? m === provRow?.model : m === over;
                       return (
-                        <button type="button" key={m} onClick={() => setDefaultModel(r.slug, mine ? "" : m)} disabled={!!picking} aria-pressed={mine} data-default-model={m}
-                          title={mine ? t("Model lalai anda: klik untuk kembali", "Your default model: click to go back") : t("Jadikan model lalai {r}", "Make this {r}'s default model", { r: r.name || r.slug })}
+                        <button type="button" key={m} onClick={() => (isProvider ? (mine ? null : setProviderModel(r.slug, m)) : setDefaultModel(r.slug, mine ? "" : m))}
+                          disabled={!!picking} aria-pressed={mine} data-default-model={m}
+                          title={isProvider ? (mine ? t("Model {r} sekarang", "{r}'s model now", { r: r.name || r.slug }) : t("Tukar {r} kepada model ini dan uji terus", "Change {r} to this model and test it live", { r: r.name || r.slug }))
+                            : mine ? t("Model lalai anda: klik untuk kembali", "Your default model: click to go back") : t("Jadikan model lalai {r}", "Make this {r}'s default model", { r: r.name || r.slug })}
                           className={`${cls} border transition hover:border-accent hover:text-accent disabled:opacity-50 ${mine ? "border-accent font-medium ring-1 ring-accent/40" : "border-transparent"}`}>
                           {picking === `${r.slug}|${m}` ? "…" : ""}{m}{mine ? " ✓" : ""}</button>
                       );

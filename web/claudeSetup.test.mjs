@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { applyPlan, claudeFacts, claudeRow, pictureTest, planState, resolveModel, suggestModel } from "./src/lib/claudeSetup.js";
+import { applyPlan, claudeFacts, claudeRow, pictureTest, planState, resolveModel, suggestModel, withProviderModel } from "./src/lib/claudeSetup.js";
 
 const LISTED = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001", "gpt-5.6-sol", "gpt-5.6-sol-mini"];
 
@@ -57,6 +57,16 @@ assert.equal(pictureTest({ at: "2026-11-24T10:00:00Z" }, { at: "2026-11-24T09:00
 assert.equal(pictureTest({ at: "2026-11-24T10:00:00Z" }, { at: "2026-11-24T10:03:00Z", ok: true, model: "m" }, t0 + 240_000).state, "ok");
 const bad = pictureTest({}, { at: "2026-11-24T10:03:00Z", ok: false, steps: { write: { ok: true }, draw: { ok: false, detail: "HTTP 402" } } });
 assert.equal(bad.state, "failed");
+assert.equal(pictureTest({}, { at: "2026-11-24T10:03:00Z", ok: true, model: "gpt-6.2-sol", draw_model: "gpt-6-astra" }).model, "gpt-6-astra");   // the model that drew
 assert.deepEqual(bad.bad, [{ step: "draw", detail: "HTTP 402" }]);
 assert.equal(pictureTest({}, { at: "2026-11-24T10:03:00Z", ok: false, not_connected: true }).state, "notconnected");
+// clicking a model on a provider's card: the pins that name it follow, the rest stay
+const clicked = withProviderModel({ pins: { reader: { gateway: "claude", model: "claude-opus-5-5" }, motion: null, image_gen: { gateway: "chatgpt", model: "" } }, prefer: "claude" },
+  "claude", "claude-sonnet-5-5", now);
+assert.deepEqual(clicked.pins.reader, { gateway: "claude", model: "claude-sonnet-5-5" });
+assert.deepEqual(clicked.pins.image_gen, { gateway: "chatgpt", model: "" });
+assert.equal(clicked.pins.motion, null);
+assert.equal(clicked.prefer, "claude");
+assert.equal(clicked.changed_at, "2026-11-24T10:00:00.000Z");
+assert.deepEqual(withProviderModel(undefined, "claude", "m", now).pins, {});
 console.log("claudeSetup: ok");

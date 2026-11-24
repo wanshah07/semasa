@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { MAX_ACCOUNTS, accountState, canAdd, ordered, restMinutes, restText, usable } from "./src/lib/chatgptAccounts.js";
 import { deviceView, forTarget } from "./src/lib/chatgptDevice.js";
 
@@ -57,5 +58,13 @@ assert.equal(deviceView(forTarget(waiting, "new"), T0).phase, "idle");
 assert.equal(deviceView(forTarget({ state: "done", target: "new" }, "main"), T0).phase, "idle", "and never says 'connected' for it");
 assert.equal(forTarget({ state: "done", target: "new", server_now: at(0) }, "main").server_now, at(0), "the clock reading is kept");
 assert.equal(deviceView(forTarget(null, "main"), T0).phase, "idle");
+
+// ---- the way in: a button at the top of the API tab jumps to the card, and the card carries the id it jumps to
+const tab = readFileSync(new URL("./src/pages/ApiTab.jsx", import.meta.url), "utf8");
+const card = readFileSync(new URL("./src/components/ChatGptAccounts.jsx", import.meta.url), "utf8");
+const target = /jumpTo\("([a-z-]+)"\)/.exec(tab)?.[1];
+assert.equal(target, "chatgpt-accounts", "the top button jumps to the accounts card");
+assert.equal((card.match(new RegExp(`id="${target}"`, "g")) || []).length, 2, "both the card and its 'run 095 first' stand-in carry that id");
+assert.ok(/data-api-add-chatgpt/.test(tab) && tab.indexOf("data-api-add-chatgpt") > tab.indexOf("data-api-nav"), "the button sits in the jump row at the top");
 
 console.log("chatgptAccounts: ok");

@@ -24,7 +24,9 @@ export function robotsWith(providers) {
   const rows = [...(providers || [])].filter((p) => p && p.id && !ROBOTS[p.id])
     .sort((a, b) => `${a.created_at || ""}${a.id}`.localeCompare(`${b.created_at || ""}${b.id}`));
   rows.forEach((p, n) => {
-    out[p.id] = { robot: `W${FIRST_PROVIDER_ROBOT + n}`, name: p.name || p.id, tone: "provider", does: ["read", "write"], added: true, enabled: p.enabled !== false };
+    out[p.id] = { robot: `W${FIRST_PROVIDER_ROBOT + n}`, name: p.name || p.id, tone: "provider",
+      does: p.dialect === "anthropic" ? ["read", "write", "read_image"] : ["read", "write"],      // every Claude model reads pictures
+      added: true, enabled: p.enabled !== false };
   });
   return out;
 }

@@ -5,6 +5,12 @@ name: ChatGPT live test
 # an artifact for three days.
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "full = answer, read, draw. image-models = find which picture models (gpt-image-2...) the login draws with"
+        type: choice
+        options: [full, image-models]
+        default: full
   # the "Test pictures" button on the API tab (supabase/094) writes settings.ai_test and the database wakes this
   repository_dispatch:
     types: [ai_test]
@@ -38,6 +44,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CHATGPT_TEST_MODE: ${{ inputs.mode }}
         run: python -m semasa.chatgpt_test "$RUNNER_TEMP/chatgpt-out" | tee "$RUNNER_TEMP/result.txt"
       - name: Summary
         if: always()

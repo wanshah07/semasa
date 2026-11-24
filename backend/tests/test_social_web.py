@@ -162,6 +162,30 @@ def test_malformed_cookie_entries_are_dropped_and_never_fail_the_sweep(monkeypat
     assert {c["value"] for c in json.load(open(social_web.storage_state_path()))["cookies"]} == {"f"}
 
 
+def test_the_login_diagnostic_prints_counts_and_cookie_names_never_a_value(monkeypatch, caplog):
+    # Wan, 24 Nov 2026: "diagnostic": tell a login wall from a login that never arrived, without exposing the login
+    def secret(cookies):
+        return base64.b64encode(json.dumps({"cookies": cookies, "origins": []}).encode()).decode()
+    soon = 4_000_000_000
+    ig = [{"name": "sessionid", "domain": ".instagram.com", "value": "TOPSECRETVALUE", "expires": soon},
+          {"name": "csrftoken", "domain": ".instagram.com", "value": "ANOTHERSECRET", "expires": soon}]
+    fb = {"name": "c_user", "domain": ".facebook.com", "value": "FBSECRET"}
+    monkeypatch.setenv("PW_STORAGE_STATE_B64", secret([fb]))
+    monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", secret(ig))
+    with caplog.at_level("INFO", logger="semasa.social_web"):
+        social_web.storage_state_path()
+    text = " ".join(r.getMessage() for r in caplog.records)
+    assert "base secret: 1 cookie(s), 0 instagram, 1 facebook" in text and "instagram secret: 2 instagram cookie(s)" in text
+    assert "sessionid present" in text and "csrftoken present" in text and "ds_user_id absent" in text, text
+    assert "TOPSECRETVALUE" not in text and "ANOTHERSECRET" not in text and "FBSECRET" not in text, "no value is ever logged"
+    # without the second secret the line says so
+    monkeypatch.delenv("PW_STORAGE_STATE_IG_B64")
+    caplog.clear()
+    with caplog.at_level("INFO", logger="semasa.social_web"):
+        social_web.storage_state_path()
+    assert "instagram secret: absent" in " ".join(r.getMessage() for r in caplog.records)
+
+
 def test_social_posts_feed_the_tabs_with_their_own_platform_and_counts():
     fb = social_web.facebook_post(_fb(), NOW)
     ig = social_web.parse_instagram('1.2K likes, 80 comments - ali on November 12, 2026: "Sunscreen tak perlu disapu semula?"',

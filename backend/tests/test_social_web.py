@@ -127,6 +127,41 @@ def test_a_saved_login_is_read_from_the_secret_and_a_wrong_one_is_ignored(monkey
     assert social_web.storage_state_path() is None
 
 
+def test_an_instagram_secret_is_merged_over_the_base_login_and_touches_nothing_else(monkeypatch):
+    # Wan, 24 Nov 2026: "add instagram live without kacau other platforms"
+    def secret(cookies):
+        return base64.b64encode(json.dumps({"cookies": cookies, "origins": []}).encode()).decode()
+    fb = {"name": "c_user", "domain": ".facebook.com", "value": "f"}
+    old_ig = {"name": "sessionid", "domain": ".instagram.com", "value": "old"}
+    new_ig = {"name": "sessionid", "domain": ".instagram.com", "value": "new"}
+    junk = {"name": "x", "domain": ".example.com", "value": "j"}
+    monkeypatch.setenv("PW_STORAGE_STATE_B64", secret([fb, old_ig]))
+    monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", secret([new_ig, junk]))
+    merged = json.load(open(social_web.storage_state_path()))["cookies"]
+    assert {(c["domain"], c["value"]) for c in merged} == {(".facebook.com", "f"), (".instagram.com", "new")}, merged
+    # Instagram alone: no base secret at all
+    monkeypatch.delenv("PW_STORAGE_STATE_B64")
+    assert [c["value"] for c in json.load(open(social_web.storage_state_path()))["cookies"]] == ["new"]
+    # a broken or Instagram-less second secret changes nothing
+    monkeypatch.setenv("PW_STORAGE_STATE_B64", secret([fb, old_ig]))
+    monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", base64.b64encode(b"not a session").decode())
+    assert {c["value"] for c in json.load(open(social_web.storage_state_path()))["cookies"]} == {"f", "old"}
+    monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", secret([junk]))
+    assert {c["value"] for c in json.load(open(social_web.storage_state_path()))["cookies"]} == {"f", "old"}
+
+
+def test_malformed_cookie_entries_are_dropped_and_never_fail_the_sweep(monkeypatch):
+    # Codex review on #342: a null in the cookies list of the optional secret raised before the protected browser block
+    def secret(cookies):
+        return base64.b64encode(json.dumps({"cookies": cookies, "origins": []}).encode()).decode()
+    good = {"name": "sessionid", "domain": ".instagram.com", "value": "v"}
+    monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", secret([None, "x", 5, good]))
+    monkeypatch.setenv("PW_STORAGE_STATE_B64", secret([None, {"name": "c_user", "domain": ".facebook.com", "value": "f"}]))
+    assert {c["value"] for c in json.load(open(social_web.storage_state_path()))["cookies"]} == {"v", "f"}
+    monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", secret([None, "x"]))              # nothing usable left: ignored
+    assert {c["value"] for c in json.load(open(social_web.storage_state_path()))["cookies"]} == {"f"}
+
+
 def test_social_posts_feed_the_tabs_with_their_own_platform_and_counts():
     fb = social_web.facebook_post(_fb(), NOW)
     ig = social_web.parse_instagram('1.2K likes, 80 comments - ali on November 12, 2026: "Sunscreen tak perlu disapu semula?"',

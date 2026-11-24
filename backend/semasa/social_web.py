@@ -17,6 +17,7 @@ the post page's own description). A number the page did not show is not claimed.
 from __future__ import annotations
 
 import base64
+import json
 import os
 import re
 import tempfile
@@ -98,20 +99,47 @@ def hashtag(query: Any) -> str:
     return "".join(ch for ch in str(query or "").lower() if ch.isalnum())[:60]
 
 
-def storage_state_path() -> str | None:
-    """The saved login as a file Playwright can load, from PW_STORAGE_STATE_B64 (the KKM scraper's own secret name), or None."""
-    raw = (os.environ.get("PW_STORAGE_STATE_B64") or "").strip()
+IG_DOMAIN = "instagram.com"
+
+
+def _state_of(name: str) -> dict[str, Any] | None:
+    """One saved login from the environment (base64 of a Playwright storage_state.json), or None when absent or unreadable."""
+    raw = (os.environ.get(name) or "").strip()
     if not raw:
         return None
     try:
         data = base64.b64decode(raw, validate=False)
-    except ValueError:
+        state = json.loads(data)
+    except (ValueError, TypeError):
         return None
-    if b'"cookies"' not in data:
+    if not isinstance(state, dict) or not isinstance(state.get("cookies"), list):
         return None
+    # a malformed entry (null, a string...) is dropped, never iterated: the optional secret must not be able to fail the sweep
+    return {**state, "cookies": [c for c in state["cookies"] if isinstance(c, dict)]}
+
+
+def storage_state_path() -> str | None:
+    """The saved login as a file Playwright can load, or None.
+
+    PW_STORAGE_STATE_B64 (the KKM scraper's own secret name) is the base: whatever it holds, Facebook included. A SECOND secret,
+    PW_STORAGE_STATE_IG_B64 (Wan, 24 Nov 2026: "add instagram live without kacau other platforms"), holds an Instagram login on
+    its own and is merged over the base: its Instagram cookies replace the base's Instagram cookies and nothing else is touched.
+    So adding Instagram never means rewriting the secret Facebook already reads with, and a bad Instagram secret is ignored."""
+    base = _state_of("PW_STORAGE_STATE_B64")
+    ig = _state_of("PW_STORAGE_STATE_IG_B64")
+    if ig is not None and not any(IG_DOMAIN in str(c.get("domain") or "") for c in ig["cookies"]):
+        ig = None                                       # a file with no Instagram cookie in it adds nothing
+    if base is None and ig is None:
+        return None
+    state = dict(base or {"cookies": [], "origins": []})
+    cookies = list(state.get("cookies") or [])
+    if ig is not None:
+        cookies = [c for c in cookies if IG_DOMAIN not in str(c.get("domain") or "")]
+        cookies += [c for c in ig["cookies"] if IG_DOMAIN in str(c.get("domain") or "")]
+    state["cookies"] = cookies
     fd, path = tempfile.mkstemp(suffix=".json", prefix="pwstate-")
-    with os.fdopen(fd, "wb") as fh:
-        fh.write(data)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(state, fh)
     return path
 
 

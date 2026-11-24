@@ -184,6 +184,25 @@ def test_chatgpt_is_a_picture_provider_that_takes_words_only_and_is_the_last_res
     assert "chatgpt" not in media_generator.provider_chain(s, "cloudflare", kind="video", store=on)
 
 
+def test_a_chatgpt_pin_for_the_picture_maker_puts_chatgpt_first_and_the_others_still_follow():
+    from fakestore import FakeStore
+
+    from semasa import chatgpt_login as cl
+    tokens = {"access_token": "a", "refresh_token": "r"}
+    login = {cl.TABLE: [{"id": "main", "auth": {"tokens": tokens}, "enabled": True}]}
+    pin = {"key": "ai_team", "value": {"pins": {"image_gen": {"gateway": "chatgpt", "model": ""}}}}
+    pinned = FakeStore(**login, semasa_settings=[pin])
+    s = _settings()
+    got = media_generator.provider_chain(s, "openai", store=pinned, explicit=False)
+    assert got[0] == "chatgpt" and "cloudflare" in got and len(got) == len(set(got))          # first, and the rest still follow
+    assert media_generator.provider_chain(s, "openai", store=pinned, explicit=True)[0] == "openai"   # a row's own choice is first
+    assert "chatgpt" not in media_generator.provider_chain(s, "cloudflare", needs_edit=True, store=pinned)
+    other = {"key": "ai_team", "value": {"pins": {"image_gen": {"gateway": "mireld", "model": "x"}}}}
+    unpinned = media_generator.provider_chain(s, "openai", store=FakeStore(**login, semasa_settings=[other]), explicit=False)
+    assert unpinned[-1] == "chatgpt" or "chatgpt" in unpinned and unpinned[0] != "chatgpt"      # not pinned: the old order
+    assert media_generator.pinned_picture_maker(None) == ""
+
+
 def test_when_the_others_cannot_draw_chatgpt_does_and_the_row_says_so(monkeypatch):
     writes, _ = _patch_db(monkeypatch)
     cf = Fake("cloudflare", exc=ProviderError("the free 10,000 neurons for today are used up"))

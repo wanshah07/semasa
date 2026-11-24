@@ -1,10 +1,17 @@
 name: ChatGPT live test
 
-# A manual test of Wan's ChatGPT login (8 Nov 2026): one short answer, one picture read, one picture drawn. Run by hand from the
+# A test of Wan's ChatGPT login, by hand or from the API tab's button (8 Nov 2026): one short answer, one picture read, one picture drawn. Run by hand from the
 # Actions tab; it has no schedule and is not wired to anything else, so it can never double a job. The drawn picture is kept as
 # an artifact for three days.
 on:
   workflow_dispatch:
+  # the "Test pictures" button on the API tab (supabase/094) writes settings.ai_test and the database wakes this
+  repository_dispatch:
+    types: [ai_test]
+
+concurrency:
+  group: chatgpt-test
+  cancel-in-progress: false
 
 permissions:
   contents: read

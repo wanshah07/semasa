@@ -13,6 +13,7 @@ rule ai_config._key keeps for the AI slots). A provider whose key is missing or 
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .log import get_logger
@@ -27,6 +28,41 @@ FIRST_ROBOT = 6                                                        # the fir
 ROLE = "provider"                                                      # semasa_api_status.role for a provider's row
 
 
+def _norm(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", str(name or "").lower()).strip("-")
+
+
+def resolve_model(name: str, known: list[str] | None) -> str:
+    """The real model id for what was typed, from the gateway's own list (Wan, 24 Nov 2026: the Claude provider was saved
+    with the model "Claude Opus 5.5", which Anthropic answers 404 not_found; its id is claude-opus-5-5). An id in the list is
+    kept as it is; otherwise the same words are matched ignoring case, spaces, dots and a missing "claude-" prefix, and a family
+    name with no date ("claude-sonnet-4-5") takes its dated id (eight digits after it, never another model that merely starts
+    with it). Nothing close in the list returns the name unchanged: never an invented id."""
+    n = str(name or "").strip()
+    listed = [str(m) for m in (known or []) if m]
+    if not n or not listed or n in listed:
+        return n
+    by = {_norm(m.removeprefix("models/")): m for m in listed}
+    key = _norm(n.removeprefix("models/"))
+    for k in (key, "claude-" + key):
+        if k in by:
+            return by[k]
+    dated = sorted(m for k, m in by.items() if re.fullmatch(r"(claude-)?" + re.escape(key) + r"-\d{8}", k))
+    return dated[-1] if dated else n
+
+
+def _known_models(store: Any, ids: list[str]) -> dict[str, list[str]]:
+    """{slug: models the last probe listed} for the providers, or {} (the probe has not run, or the read failed)."""
+    if not ids:
+        return {}
+    try:
+        rows = store.table("semasa_api_status").select("slug,models").in_("slug", ids).execute().data or []
+    except Exception as exc:  # noqa: BLE001 - no list is the name as typed
+        log.info("provider model lists not read (%s)", str(exc)[:120])
+        return {}
+    return {r["slug"]: [m for m in (r.get("models") or []) if isinstance(m, str)] for r in rows if r.get("slug")}
+
+
 def load(store: Any) -> list[dict[str, Any]]:
     """Every provider row with its api_key (service role only), oldest first. [] when 074 is not applied or the read fails."""
     try:
@@ -36,7 +72,10 @@ def load(store: Any) -> list[dict[str, Any]]:
         log.info("AI providers not read (%s)", str(exc)[:120])
         return []
     secret = {k.get("id"): k.get("api_key") for k in keys}
-    out = [{**r, "api_key": secret.get(r["id"])} for r in rows if r.get("id") and r["id"] not in RESERVED]
+    known = _known_models(store, [r["id"] for r in rows if r.get("id") and r["id"] not in RESERVED])
+    # a model typed as a name ("Claude Opus 5.5") is the gateway's real id from here on, for the router and the probe alike
+    out = [{**r, "api_key": secret.get(r["id"]), "model": resolve_model(r.get("model") or "", known.get(r["id"]))}
+           for r in rows if r.get("id") and r["id"] not in RESERVED]
     out.sort(key=lambda r: (str(r.get("created_at") or ""), r["id"]))
     return out
 

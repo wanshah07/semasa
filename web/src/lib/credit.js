@@ -150,6 +150,9 @@ export function viewOf(row, manual, now = Date.now()) {
     endpoint: live?.source || null, tried: Array.isArray(bal.tried) ? bal.tried : [],
     manual: man, manualAt: man?.entered_at || null,
     raw: hasLive ? live : null,
+    // what the KEY says of itself when it carries no balance (a New-API key with no limit and no end date): facts, never a balance
+    keyInfo: live?.key && typeof live.key === "object" ? { unlimited: !!live.key.unlimited, neverExpires: !!live.key.never_expires,
+      used: numOf(live.key.used), unit: live.key.unit || "USD", accountRead: !!live.key.account_read } : null,
   };
 }
 

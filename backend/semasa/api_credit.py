@@ -443,6 +443,24 @@ def account_headers(slug: str, env: Any = None) -> dict[str, str] | None:
     return {"Authorization": f"Bearer {token}", "New-Api-User": uid, "Accept": "application/json"}
 
 
+def key_facts(j: Any) -> dict[str, Any]:
+    """What a New-API KEY says about ITSELF at /api/usage/token (KiosAPI, 24 Nov 2026): {unlimited, never_expires, used_points}.
+    Wan's KiosAPI key has no limit of its own (`unlimited_quota`) and no expiry (`expires_at` 0), so it carries no balance to
+    read, and the card said only "Unknown". These are facts about the key, shown as such; the account's top-up is still read
+    with the account token (account_headers). {} for any other answer."""
+    d = j.get("data") if isinstance(j, dict) else None
+    if not isinstance(d, dict) or "unlimited_quota" not in d:
+        return {}
+    out: dict[str, Any] = {"unlimited": d.get("unlimited_quota") is True}
+    exp = num(d.get("expires_at"))
+    if exp is not None and exp <= 0:
+        out["never_expires"] = True                    # New-API writes 0 or -1 for a key with no end date
+    used = num(d.get("total_used"))
+    if used is not None and used >= 0:
+        out["used_points"] = used
+    return out
+
+
 def _per_unit(j: Any) -> float | None:
     """quota_per_unit from the panel's public /api/status: how many quota points are one US dollar (500000 by default)."""
     d = j.get("data") if isinstance(j, dict) else None
@@ -469,6 +487,7 @@ def check(gw: dict[str, Any], timeout: float = 10, budget: float = 60, prev: dic
     legacy: dict[str, Any] = {}
     started = time.monotonic()
     per_unit: float | None = None
+    key: dict[str, Any] = {}
     hdr = account_headers(gw["slug"])
     for label, url in _urls(gw["base_url"], now):
         if hdr and label == ACCOUNT_PATH:               # asked below with the access token instead: a key gets a 401 there
@@ -486,6 +505,8 @@ def check(gw: dict[str, Any], timeout: float = 10, budget: float = 60, prev: dic
                           **{k: v for k, v in a["json"].items() if isinstance(v, (int, float, str)) and len(str(v)) < 80}}
         if label == "/api/status" and a["http"] == 200:
             per_unit = _per_unit(a["json"]) or per_unit
+        if label.startswith("/api/usage/token") and a["http"] == 200 and not key:
+            key = key_facts(a["json"])
         cred = credit_from(gw["slug"], found, now)
         if cred["remaining"] is not None and cred["expires_at"]:
             break
@@ -499,5 +520,11 @@ def check(gw: dict[str, Any], timeout: float = 10, budget: float = 60, prev: dic
         if facts:
             found.append((ACCOUNT_PATH + " (account)", _in_dollars(facts, per_unit or 500000.0)))
     credit = credit_from(gw["slug"], found, now)
+    if key:
+        # what the key says of itself, beside (never instead of) a balance: no limit, no end date, what it has spent in US dollars
+        used = key.get("used_points")
+        credit["key"] = {"unlimited": bool(key.get("unlimited")), "never_expires": bool(key.get("never_expires")),
+                         "used": None if used is None else round(used / (per_unit or 500000.0), 2), "unit": "USD",
+                         "account_read": bool(hdr)}
     out = {**legacy, "credit": credit, "tried": tried, "checked_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
     return keep_if_unreachable(out, prev)

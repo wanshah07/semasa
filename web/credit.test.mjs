@@ -165,6 +165,20 @@ t("an unreachable gateway still moves the attempt time, so a Refresh finishes (C
 
 console.log(`credit: ${n} checks passed`);
 
+// a New-API key with no limit and no end date: facts about the key, and still no balance (24 Nov 2026)
+{
+  const { viewOf } = await import("./src/lib/credit.js");
+  const assert = (await import("node:assert/strict")).default;
+  const row = { slug: "kiosapi", key_set: true, balance: { checked_at: "2026-11-24T10:00:00Z", tried: [],
+    credit: { remaining: null, status: "unknown", checked_at: "2026-11-24T10:00:00Z", key: { unlimited: true, never_expires: true, used: 2.5, unit: "USD", account_read: false } } } };
+  const v = viewOf(row, null, Date.parse("2026-11-24T10:05:00Z"));
+  assert.equal(v.source, "none");
+  assert.equal(v.status, "unknown");
+  assert.deepEqual(v.keyInfo, { unlimited: true, neverExpires: true, used: 2.5, unit: "USD", accountRead: false });
+  assert.equal(viewOf({ slug: "mireld", balance: { credit: { remaining: 5 } } }, null).keyInfo, null);
+  console.log("credit key facts: ok");
+}
+
 // the account key typed into Semasa (supabase/096): what the page refuses before the database does
 {
   const { ACCOUNT_KEY_SLUGS, accountKeyProblem } = await import("./src/lib/credit.js");

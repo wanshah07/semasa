@@ -69,6 +69,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # a slide's picture falls to an Unsplash photograph before KiosAPI is paid (illustrated.ORDER); without the key it is skipped
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           ZERNIO_API_KEY_1: ${{ secrets.ZERNIO_API_KEY_1 }}
           ZERNIO_API_KEY_2: ${{ secrets.ZERNIO_API_KEY_2 }}
           ZERNIO_API_KEY_3: ${{ secrets.ZERNIO_API_KEY_3 }}

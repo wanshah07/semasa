@@ -584,3 +584,69 @@ def test_the_kept_cover_art_is_not_swept_as_stale_and_the_web_looks_it_up_by_the
     assert "2026/11/j1-cover.jpg" not in gone, "the cover picture the redraw just made is kept"
     assert "2026/11/j1-old-cover.png" in gone, "the old transparent cut-out cover is swept"
 
+
+
+# ---- who makes a slide's picture: ChatGPT, Cloudflare, an Unsplash photograph, ..., KiosAPI last (24 Nov 2026) ----------------
+
+def test_the_makers_follow_wans_order_kiosapi_last_and_unsplash_needs_its_key_and_is_never_a_cut_out(monkeypatch):
+    from semasa import media_generator as mg
+    monkeypatch.setattr(mg, "has_credentials", lambda name, s, store=None: True)
+    monkeypatch.setenv("UNSPLASH_ACCESS_KEY", "k")
+    assert illustrated.makers(None, None) == ["chatgpt", "cloudflare", "unsplash", "gemini", "replicate", "openai"]
+    assert illustrated.makers(None, None, True) == ["chatgpt", "cloudflare", "gemini", "replicate", "openai"]   # no photo cut-out
+    monkeypatch.delenv("UNSPLASH_ACCESS_KEY")
+    assert "unsplash" not in illustrated.makers(None, None)
+    monkeypatch.setattr(mg, "has_credentials", lambda name, s, store=None: name == "openai")
+    assert illustrated.makers(None, None) == ["openai"]                       # still drawn when KiosAPI is all there is
+
+
+def test_the_photo_search_is_a_few_words_of_the_scene_never_the_style_text():
+    prompt = illustrated.prompt_of("A woman in a tudung reading the back label of a sunscreen bottle at a pharmacy shelf")
+    q = illustrated.photo_query(prompt)
+    assert q == "woman tudung reading back label" and "ink" not in q.lower()
+    assert illustrated.photo_query("Scene: a cat") == "cat"                   # nothing long enough: the short words stand in
+
+
+def test_when_chatgpt_and_cloudflare_cannot_draw_an_unsplash_photo_is_used_and_kiosapi_is_never_paid(monkeypatch):
+    from semasa import media_generator as mg
+    from semasa import unsplash
+    from semasa.providers import ProviderError
+
+    class Down:
+        def __init__(self, name, why):
+            self.name, self.why, self.calls = name, why, 0
+
+        def generate_from_text(self, prompt, opts):
+            self.calls += 1
+            raise ProviderError(self.why, kind="limit")
+
+    class Paid(Down):
+        def generate_from_text(self, prompt, opts):
+            self.calls += 1
+            raise AssertionError("KiosAPI must not be asked when a photograph was found")
+
+    asked = {}
+
+    def search(query, orientation=None):
+        asked["query"], asked["orientation"] = query, orientation
+        return [{"id": "ph1", "raw": "https://images.unsplash.com/x", "name": "Aina", "page": "https://unsplash.com/photos/ph1"}]
+
+    monkeypatch.setattr(unsplash, "search", search)
+    monkeypatch.setattr(unsplash, "fetch", lambda photo: _paper())
+    provs = {"chatgpt": Down("chatgpt", "usage limit reached"), "cloudflare": Down("cloudflare", "the free neurons are used up"),
+             "openai": Paid("openai", "")}
+    data, maker, credit = illustrated.draw(None, None, illustrated.prompt_of("A pharmacist checking a halal logo on a box"),
+                                           ["chatgpt", "cloudflare", "unsplash", "openai"], provs, None, "m1")
+    assert maker == "unsplash" and data[:2] == b"\xff\xd8"                      # a JPEG, shrunk like any other picture
+    assert credit == {"name": "Aina", "page": "https://unsplash.com/photos/ph1", "id": "ph1", "query": asked["query"]}
+    assert asked["orientation"] == "landscape" and "pharmacist" in asked["query"]
+    assert provs["chatgpt"].calls == 1 and provs["cloudflare"].calls == 1 and provs["openai"].calls == 0
+    # no photograph either: only then is KiosAPI asked
+    monkeypatch.setattr(unsplash, "search", lambda q, o=None: [])
+    drew = mg.Generated(_paper(), "image/jpeg", "gpt-image-2", {})
+    paid = type("P", (), {"name": "openai", "generate_from_text": lambda self, p, o: drew})()
+    data, maker, credit = illustrated.draw(None, None, illustrated.prompt_of("x y z scene words"),
+                                           ["chatgpt", "cloudflare", "unsplash", "openai"],
+                                           {"chatgpt": Down("chatgpt", "usage limit"),
+                                            "cloudflare": Down("cloudflare", "used up"), "openai": paid}, None, "m2")
+    assert maker == "openai" and credit is None

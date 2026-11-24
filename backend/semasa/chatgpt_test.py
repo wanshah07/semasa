@@ -24,6 +24,10 @@ log = logging.getLogger("semasa.chatgpt_test")
 TEXT_ON_PICTURE = "WS 4821"
 DRAW_PROMPT = "A flat vector icon of a laboratory flask with blue liquid on a plain white background, no text"
 MODE_IMAGE_MODELS = "chatgpt_image_models"          # settings.ai_test.what, or the workflow's `mode` input
+# A picture model that does not exist, asked FIRST. The first probe (24 Nov 2026) "drew" with all four candidates, each answer the
+# same 1312x1199 low-quality PNG whatever was asked and none naming a model: the sign of a server that accepts the field and
+# ignores it. If the made-up name draws too, the field chooses nothing, and no candidate may be listed as a model Wan can pick.
+CONTROL_MODEL = "gpt-image-control-0000"
 
 
 def test_picture() -> bytes:
@@ -95,9 +99,20 @@ def probe_image_models(login: Any, candidates: tuple[str, ...] = cl.IMAGE_TOOL_M
     a refusal costs nothing, a picture costs one of the plan's picture allowances. A candidate counts only when a real picture
     came back AND, where the drawn item names its model, that name is the candidate (a server that ignores the field and draws
     with its default must not pass for the model asked). A used-up allowance stops the probe: the rest stay untried.
-    Returns {chat_model, tried: {candidate: {ok, error | said}}, models: [accepted]}."""
+    A made-up model is asked first (CONTROL_MODEL): when even that draws, the field is ignored and nothing is listed.
+    Returns {chat_model, tried: {candidate: {ok, error | said}}, models: [accepted], ignored}."""
     chat = str((login.settings() or {}).get("model") or cl.DEFAULT_MODEL)
     tried: dict[str, Any] = {}
+    try:
+        login.draw_once(DRAW_PROMPT, model=chat, image_model=CONTROL_MODEL, info={})
+        tried[CONTROL_MODEL] = {"ok": False, "error": "a picture model that does not exist was drawn with: ChatGPT ignores the "
+                                                      "field and picks the picture model itself"}
+        log.info("picture-model probe: the made-up model drew, so the field chooses nothing; no candidate is asked")
+        return {"chat_model": chat, "tried": tried, "models": [], "ignored": True}
+    except cl.ChatGPTError as exc:
+        tried[CONTROL_MODEL] = {"ok": False, "error": str(exc)[:240], "control": True}
+        if exc.limit:                                  # nothing can be learned today: the last good answer stays
+            return {"chat_model": chat, "tried": {}, "models": []}
     for cand in candidates:
         said: dict[str, Any] = {}
         try:
@@ -116,7 +131,7 @@ def probe_image_models(login: Any, candidates: tuple[str, ...] = cl.IMAGE_TOOL_M
         except Exception as exc:  # noqa: BLE001 - one candidate's failure is its own
             tried[cand] = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
         log.info("picture model %s: %s", cand, "DRAWS" if tried[cand]["ok"] else "no: " + str(tried[cand].get("error")))
-    return {"chat_model": chat, "tried": tried, "models": [c for c, v in tried.items() if v.get("ok")]}
+    return {"chat_model": chat, "tried": tried, "models": [c for c, v in tried.items() if v.get("ok")], "ignored": False}
 
 
 def record_image_models(res: dict[str, Any], store: Any) -> dict[str, Any]:
@@ -131,6 +146,7 @@ def record_image_models(res: dict[str, Any], store: Any) -> dict[str, Any]:
             store.table(db.SETTINGS).upsert({"key": cl.IMAGE_MODELS_KEY, "value": value}, on_conflict="key").execute()
         store.table(db.SETTINGS).upsert({"key": "ai_test_result", "value": {
             "at": at, "what": MODE_IMAGE_MODELS, "ok": bool(res.get("models")), "models": res.get("models") or [],
+            "ignored": bool(res.get("ignored")),
             "steps": {c: {"ok": bool(v.get("ok")), "detail": str(v.get("error") or v.get("size") or "")[:200]}
                       for c, v in (res.get("tried") or {}).items()}}}, on_conflict="key").execute()
     except Exception as exc:  # noqa: BLE001 - the log still has it

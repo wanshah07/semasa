@@ -107,6 +107,8 @@ def test_the_probe_keeps_only_the_picture_models_that_really_drew_and_stops_when
 
         def draw_once(self, prompt, *, model, image_model, info=None):
             self.asked.append((model, image_model))
+            if image_model == ct.CONTROL_MODEL:                # a server that honours the field refuses a made-up model
+                raise cl.ChatGPTError("ChatGPT answered 400: Invalid value: 'gpt-image-control-0000'")
             if image_model == "gpt-image-2.5":
                 raise cl.ChatGPTError("ChatGPT answered 400: Unknown parameter: 'tools[0].model'")
             if image_model == "gpt-image-2":
@@ -120,7 +122,8 @@ def test_the_probe_keeps_only_the_picture_models_that_really_drew_and_stops_when
     login = L()
     res = ct.probe_image_models(login, ("gpt-image-2.5", "gpt-image-2", "gpt-image-1.5", "gpt-image-1", "never-asked"))
     assert res["models"] == ["gpt-image-2"] and res["chat_model"] == "gpt-6.2-sol"
-    assert [m for _c, m in login.asked] == ["gpt-image-2.5", "gpt-image-2", "gpt-image-1.5", "gpt-image-1"]   # then stopped
+    assert [m for _c, m in login.asked] == [ct.CONTROL_MODEL, "gpt-image-2.5", "gpt-image-2", "gpt-image-1.5", "gpt-image-1"]
+    assert res["ignored"] is False and res["tried"][ct.CONTROL_MODEL]["control"] is True
     assert all(c == "gpt-6.2-sol" for c, _m in login.asked)             # every picture asked through the login's chat model
     assert "Unknown parameter" in res["tried"]["gpt-image-2.5"]["error"]
     assert res["tried"]["gpt-image-1.5"]["ok"] is False and "drew with gpt-image-2" in res["tried"]["gpt-image-1.5"]["error"]
@@ -160,3 +163,30 @@ def test_the_mode_comes_from_the_workflow_input_or_the_pages_request(monkeypatch
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv("CHATGPT_TEST_MODE", "image-models")
     assert ct.wanted_mode(FakeStore(), ["x"]) == ct.MODE_IMAGE_MODELS    # the workflow's own input
+
+
+def test_when_a_made_up_picture_model_draws_the_field_is_ignored_and_nothing_is_listed():
+    """24 Nov 2026, live: all four candidates 'drew', each the same 1312x1199 low-quality PNG and none naming a model."""
+    from fakestore import FakeStore
+
+    from semasa import db
+
+    class L:
+        asked: list = []
+
+        def settings(self):
+            return {"model": "gpt-6.2-sol"}
+
+        def draw_once(self, prompt, *, model, image_model, info=None):
+            self.asked.append(image_model)
+            return _png((1312, 1199))                          # draws whatever is named
+
+    login = L()
+    res = ct.probe_image_models(login)
+    assert res["models"] == [] and res["ignored"] is True
+    assert login.asked == [ct.CONTROL_MODEL]                   # one picture spent, not five
+    st = FakeStore(semasa_settings=[{"key": cl.IMAGE_MODELS_KEY, "value": {"models": ["gpt-image-2"]}}])
+    ct.record_image_models(res, st)
+    kept = {r["key"]: r["value"] for r in st.tables[db.SETTINGS]}
+    assert kept[cl.IMAGE_MODELS_KEY]["models"] == [] and kept[cl.IMAGE_MODELS_KEY]["ignored"] is True   # a wrong list is cleared
+    assert kept["ai_test_result"]["ok"] is False and kept["ai_test_result"]["ignored"] is True

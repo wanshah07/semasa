@@ -360,3 +360,26 @@ def test_the_account_is_asked_with_the_access_token_and_user_id_and_read_in_doll
     assert c["unit"] == "USD" and c["remaining"] == 5.0 and c["total"] == 20.0 and c["percent_left"] == 25.0
     assert seen["https://kiosapi.com/api/user/self"]["New-Api-User"] == "42"
     assert not any("tok-SECRET" in json.dumps(t) for t in bal["tried"]), "the token never reaches the stored reading"
+
+
+# ---- what a New-API key says of itself (KiosAPI, 24 Nov 2026) ------------------------------------------------------------------
+
+KIOS_TOKEN = {"code": True, "message": "ok", "data": {"object": "token_usage", "name": "semasa", "total_granted": 0,
+                                                       "total_used": 1250000, "total_available": 0, "unlimited_quota": True,
+                                                       "model_limits": {}, "model_limits_enabled": False, "expires_at": 0}}
+
+
+def test_an_unlimited_key_with_no_end_date_says_so_and_what_it_spent_and_is_never_a_balance(monkeypatch):
+    monkeypatch.delenv("KIOSAPI_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("KIOSAPI_USER_ID", raising=False)
+    get = _fake_get({"/api/usage/token/": R(200, KIOS_TOKEN), "/dashboard/billing/subscription": R(200, KIOS),
+                     "/api/status": R(200, {"success": True, "data": {"quota_per_unit": 500000}})}, [])
+    bal = ac.check(_gw("kiosapi", "https://kiosapi.com/v1"), now=NOW, get=get)
+    c = bal["credit"]
+    assert c["remaining"] is None and c["source"] is None and c["status"] == "unknown"       # still no BALANCE: honest
+    assert c["key"] == {"unlimited": True, "never_expires": True, "used": 2.5, "unit": "USD", "account_read": False}
+    assert ac.key_facts({"data": {"unlimited_quota": False, "expires_at": 1798761600, "total_used": 5}}) == {
+        "unlimited": False, "used_points": 5.0}                                              # a dated, capped key: no "never"
+    assert ac.key_facts({"total_available": 5}) == {} and ac.key_facts(None) == {}           # any other answer: nothing
+    plain = ac.check(_gw(), now=NOW, get=_fake_get({"/dashboard/billing/credit_grants": R(200, MIRELD)}, []))
+    assert "key" not in plain["credit"]                                                      # one with a balance: unchanged

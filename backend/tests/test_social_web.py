@@ -179,6 +179,13 @@ def test_a_gzipped_login_from_the_kkm_helper_is_read_like_a_plain_one(monkeypatc
     # a bomb is refused, garbage is 'unreadable', and neither raises
     monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", base64.b64encode(gzip.compress(b" " * 6_000_000)).decode())
     assert social_web._read_secret("PW_STORAGE_STATE_IG_B64") == (None, "unreadable")
+    # Codex review on #344: gzip magic followed by garbage (zlib.error) is 'unreadable' too, and never raises
+    broken = b"\x1f\x8b" + b"this is not a gzip stream at all"
+    monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", base64.b64encode(broken).decode())
+    assert social_web._read_secret("PW_STORAGE_STATE_IG_B64") == (None, "unreadable")
+    truncated = gzip.compress(b'{"cookies": []}')[:12]
+    monkeypatch.setenv("PW_STORAGE_STATE_B64", base64.b64encode(truncated).decode())
+    social_web.storage_state_path()                                    # a truncated gzip in either secret must not raise
     monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", "not base64 at all !!!")
     assert social_web._read_secret("PW_STORAGE_STATE_IG_B64")[1] == "unreadable"
     monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", base64.b64encode(b"\xef\xbb\xbf" + json.dumps(state).encode()).decode())

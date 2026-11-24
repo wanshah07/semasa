@@ -112,7 +112,10 @@ def _unpack(data: bytes) -> bytes:
     import zlib
     if data[:2] == GZIP_MAGIC:
         box = zlib.decompressobj(wbits=31)
-        data = box.decompress(data, MAX_STATE_BYTES)
+        try:
+            data = box.decompress(data, MAX_STATE_BYTES)
+        except zlib.error as exc:                  # a corrupt or truncated gzip: not a ValueError, so it is normalised here
+            raise ValueError("saved login is not a readable gzip") from exc
         if box.unconsumed_tail:
             raise ValueError("saved login too large")
     return data.lstrip(b"\xef\xbb\xbf")

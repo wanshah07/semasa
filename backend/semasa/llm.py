@@ -539,27 +539,39 @@ class LLM:
 
     def _anthropic(self, system: str, user: str | list[dict[str, Any]], max_tokens: int, model: str, base: str,
                    key: str) -> str:
-        r = requests.post(
-            f"{base}/v1/messages",
-            headers={
-                "x-api-key": key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "system": system,
-                "messages": [{"role": "user", "content": user}],
-                "max_tokens": max_tokens,
-                "temperature": 0.2,
-            },
-            timeout=self.s.timeout,
-        )
+        def ask(body: dict[str, Any]) -> requests.Response:
+            return requests.post(
+                f"{base}/v1/messages",
+                headers={"x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
+                json=body, timeout=self.s.timeout)
+
+        body: dict[str, Any] = {"model": model, "system": system, "messages": [{"role": "user", "content": user}],
+                                "max_tokens": max_tokens}
+        if takes_temperature(model):
+            body["temperature"] = 0.2
+        r = ask(body)
+        if r.status_code == 400 and "temperature" in r.text.lower() and "temperature" in body:
+            # a model that refuses the field ("`temperature` is deprecated for this model", Claude Opus 5.5, 24 Nov 2026):
+            # asked again without it, and remembered, so every later call skips it
+            NO_TEMPERATURE.add(model)
+            body.pop("temperature")
+            r = ask(body)
         r.raise_for_status()
         j = r.json()
         _LAST_USAGE.update(_usage_from(j))
         blocks = j.get("content") or []
         return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+
+
+# Claude's fifth generation refuses `temperature` outright: 400 "`temperature` is deprecated for this model" (24 Nov 2026, opus-5-5,
+# from the real sweep; the API probe sends none, so it passed while every real call failed and fell to the next robot).
+NO_TEMPERATURE_RE = re.compile(r"claude-(opus|sonnet|haiku|fable)-5", re.I)
+NO_TEMPERATURE: set[str] = set()                 # models learned from a refusal in this run
+
+
+def takes_temperature(model: str) -> bool:
+    """False for a model known to refuse the field (the Claude 5 family, or one that already refused in this run)."""
+    return model not in NO_TEMPERATURE and not NO_TEMPERATURE_RE.search(model or "")
 
 
 def with_instructions(system: str, user: str | list[dict[str, Any]]) -> str | list[dict[str, Any]]:

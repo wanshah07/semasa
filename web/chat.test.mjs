@@ -894,6 +894,9 @@ console.log("all robots: ok");
         { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "fetch_url", arguments: "{\"url\":\"https://x\"}" } }] },
         { role: "tool", tool_call_id: "c1", content: "PAGE" }, { role: "assistant", content: "ok" }, { role: "user", content: "lagi" }] });
     assert.equal(body.system, "RULES"); assert.equal(body.stream, true); assert.equal(body.max_tokens, 100); assert.equal(body.model, "claude-sonnet-5.5");
+    assert.ok(!("temperature" in body), "a Claude 5 model refuses temperature (400), so none is sent");
+    assert.equal(L.anthropicBody({ model: "claude-haiku-4-5-20251001", max_tokens: 10, temperature: 0.2, messages: [{ role: "user", content: "x" }] }).temperature, 0.2, "an older model keeps it");
+    assert.equal(L.anthropicTakesTemperature("claude-opus-5-5"), false); assert.equal(L.anthropicTakesTemperature("claude-opus-4-8"), true);
     assert.deepEqual(body.tools, [{ name: "fetch_url", description: "d", input_schema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } }]);
     assert.ok(!("tool_choice" in body), "auto is Anthropic's default");
     assert.deepEqual(body.messages.map((m) => m.role), ["user", "assistant", "user", "assistant", "user"]);

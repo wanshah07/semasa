@@ -351,3 +351,116 @@ def test_a_model_that_refuses_temperature_is_asked_again_without_it_and_remember
     with pytest.raises(Exception, match="max_tokens"):
         llm._anthropic("sys", "hi", 100, "claude-older-1", ANTH, "k")
     assert len(bodies2) == 1
+
+
+# ---- Claude's fifth generation thinks first, and the thinking is spent out of max_tokens (24 Nov 2026) ----------------------
+# Run 45451508948: asked for 5000 tokens, Claude Sonnet 5.5 used exactly 5000 (mostly thinking), the JSON came back cut, three
+# times a draft, and DeepSeek wrote the post. completion_tokens was exactly the cap on every failed call.
+
+class _ACut:
+    """An Anthropic answer with its stop_reason: `cut` answers are what a thinking model returns when max_tokens runs out."""
+
+    def __init__(self, text, stop="end_turn", out=10, details=None):
+        self.status_code, self.text = 200, ""
+        self._j = {"content": [{"type": "thinking", "thinking": ""}, {"type": "text", "text": text}], "stop_reason": stop,
+                   "usage": {"input_tokens": 100, "output_tokens": out}}
+        if details:
+            self._j["stop_details"] = details
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._j
+
+
+def _posts_with_timeout(monkeypatch, answer):
+    seen = []
+
+    def post(url, headers, json, timeout):
+        seen.append((dict(json), timeout))
+        return answer(json)
+
+    monkeypatch.setattr(llm_mod.requests, "post", post)
+    return seen
+
+
+def test_a_thinking_claude_gets_room_for_the_thinking_on_top_of_the_answer_and_an_effort(monkeypatch):
+    seen = _posts_with_timeout(monkeypatch, lambda b: _ACut('{"ok": 1}'))
+    llm = LLM(_settings(provider="anthropic", base_url=ANTH, model="claude-sonnet-5-5"))
+    # the thinking block is not the answer
+    assert llm._anthropic("sys", "hi", 5000, "claude-sonnet-5-5", ANTH, "k") == '{"ok": 1}'
+    body, timeout = seen[0]
+    assert body["max_tokens"] == 11000, "the 5000 the caller asked for the answer, plus 6000 for the thinking"
+    assert body["output_config"] == {"effort": "medium"} and "thinking" not in body and "temperature" not in body
+    assert timeout == llm_mod.ANTHROPIC_THINK_TIMEOUT, "a model that thinks first is not cut off at the usual 60 s"
+    # the small calls that failed silently before: 40 tokens of answer were all spent thinking
+    llm._anthropic("sys", "hi", 40, "claude-opus-5-5", ANTH, "k")
+    assert seen[1][0]["max_tokens"] == 6040
+    # never more than a call that is not streamed should carry, and never less than the caller asked
+    assert llm_mod.with_think_room(14000, "medium") == 16000 and llm_mod.with_think_room(20000, "high") == 20000
+    assert [llm_mod.with_think_room(1000, e) for e in ("low", "medium", "high", "xhigh", "max", "nonsense")] == \
+        [4000, 7000, 10000, 12000, 12000, 7000]
+
+
+def test_an_older_claude_is_asked_exactly_as_before(monkeypatch):
+    seen = _posts_with_timeout(monkeypatch, lambda b: _AResp(200))
+    llm = LLM(_settings(provider="anthropic", base_url=ANTH, model="claude-haiku-4-5-20251001"))
+    llm._anthropic("sys", "hi", 5000, "claude-haiku-4-5-20251001", ANTH, "k")
+    body, timeout = seen[0]
+    assert body["max_tokens"] == 5000 and "output_config" not in body and timeout == llm.s.timeout
+    assert llm_mod.thinks_first("claude-opus-4-8") is False and llm_mod.thinks_first("claude-haiku-5-5") is True
+
+
+def test_wans_effort_for_the_model_is_sent_to_claude_and_sizes_the_room(monkeypatch):
+    seen = _posts_with_timeout(monkeypatch, lambda b: _ACut("ok"))
+    llm = LLM(_settings(provider="anthropic", base_url=ANTH, model="claude-opus-5-5", efforts=(
+        ("api.anthropic.com|claude-opus-5-5", "low"), ("api.anthropic.com|claude-sonnet-5-5", "xhigh"))))
+    llm._anthropic("sys", "hi", 2000, "claude-opus-5-5", ANTH, "k")
+    llm._anthropic("sys", "hi", 2000, "claude-sonnet-5-5", ANTH, "k")
+    llm._anthropic("sys", "hi", 2000, "claude-haiku-5-5", ANTH, "k")                            # no choice: the default
+    asked = [(b["output_config"]["effort"], b["max_tokens"]) for b, _ in seen]
+    assert asked == [("low", 5000), ("xhigh", 13000), ("medium", 8000)]
+    assert llm_mod.anthropic_effort("minimal") == "medium", "an effort Claude does not take is not sent"
+
+
+def test_an_answer_still_cut_is_asked_once_more_with_the_most_room_and_both_calls_are_counted(monkeypatch):
+    def answer(b):
+        if b["max_tokens"] < 16000:
+            return _ACut('{"hook": "Berani aku cak', stop="max_tokens", out=11000)
+        return _ACut('{"hook": "x"}', out=7000)
+    seen = _posts_with_timeout(monkeypatch, answer)
+    llm = LLM(_settings(provider="anthropic", base_url=ANTH, model="claude-sonnet-5-5"))
+    got = llm._anthropic("sys", "hi", 5000, "claude-sonnet-5-5", ANTH, "k")
+    assert got == '{"hook": "x"}', "half a JSON object is never returned"
+    assert [(b["max_tokens"], b["output_config"]["effort"]) for b, _ in seen] == [(11000, "medium"), (16000, "low")]
+    assert llm_mod._LAST_USAGE["completion_tokens"] == 18000 and llm_mod._LAST_USAGE["prompt_tokens"] == 200, "both were paid for"
+
+
+def test_an_answer_cut_even_with_the_most_room_is_said_in_the_log_and_not_asked_a_third_time(monkeypatch, caplog):
+    seen = _posts_with_timeout(monkeypatch, lambda b: _ACut('{"hook": "Berani', stop="max_tokens", out=b["max_tokens"]))
+    llm = LLM(_settings(provider="anthropic", base_url=ANTH, model="claude-sonnet-5-5"))
+    with caplog.at_level("WARNING"):
+        assert llm._anthropic("sys", "hi", 5000, "claude-sonnet-5-5", ANTH, "k") == '{"hook": "Berani'
+    assert len(seen) == 2 and "stop_reason=max_tokens" in caplog.text and "16000" in caplog.text
+    # through the chain: the cut answer does not parse, so the next link is asked, and the log now says WHY
+    assert llm.chat_json("s", "u", max_tokens=5000, retries=0) is None
+
+
+def test_a_refusal_is_named_in_the_log(monkeypatch, caplog):
+    _posts_with_timeout(monkeypatch, lambda b: _ACut("", stop="refusal", details={"type": "refusal", "category": "bio"}))
+    llm = LLM(_settings(provider="anthropic", base_url=ANTH, model="claude-sonnet-5-5"))
+    with caplog.at_level("WARNING"):
+        assert llm._anthropic("sys", "hi", 500, "claude-sonnet-5-5", ANTH, "k") == ""
+    assert "stop_reason=refusal, bio" in caplog.text
+
+
+def test_a_gateway_that_refuses_the_effort_is_asked_again_without_it_and_remembered(monkeypatch):
+    refusal = '{"error":{"type":"invalid_request_error","message":"output_config: Extra inputs are not permitted"}}'
+    seen = _posts_with_timeout(
+        monkeypatch, lambda b: _AResp(400, refusal) if "output_config" in b else _AResp(200, answer="done"))
+    llm = LLM(_settings(provider="anthropic", base_url="https://claude.example.com", model="claude-sonnet-5-5"))
+    assert llm._anthropic("sys", "hi", 1000, "claude-sonnet-5-5", "https://claude.example.com", "k") == "done"
+    assert llm._anthropic("sys", "hi", 1000, "claude-sonnet-5-5", "https://claude.example.com", "k") == "done"
+    assert ["output_config" in b for b, _ in seen] == [True, False, False], "refused once, then not sent again this run"
+    assert all(b["max_tokens"] == 7000 for b, _ in seen), "the room for the thinking stays: only the effort was refused"

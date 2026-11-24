@@ -4,7 +4,8 @@ import { errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { timeAgo } from "../lib/format";
 import { DEFAULT_MODEL, MAX_IMAGES, PARSE_ERRORS, STATE_CLS, STATE_WORDS, parseAuth, stateOf, validModel } from "../lib/chatgptLogin";
-import { POLL_MS, clock, deviceView, polling } from "../lib/chatgptDevice";
+import { POLL_MS, clock, deviceView, forTarget, polling } from "../lib/chatgptDevice";
+import ChatGptAccounts from "./ChatGptAccounts";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 import { Input, Label, TextArea } from "./ui/Field";
@@ -45,7 +46,7 @@ export default function ChatGptLogin({ onToast }) {
   }, [onToast]);
 
   const readDevice = useCallback((data) => {
-    setDev(data || { state: "idle" });
+    setDev(forTarget(data, "main"));                // a code asked for an extra picture account (095) is that card's, not this one's
     const server = Date.parse(data?.server_now || "");
     if (Number.isFinite(server)) setSkew(server - Date.now());
   }, []);
@@ -201,6 +202,7 @@ export default function ChatGptLogin({ onToast }) {
   );
 
   return (
+    <>
     <Card className="mb-4 space-y-3 p-4" data-chatgpt-login>
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="flex items-center gap-2 text-base"><ImagePlus size={16} className="text-accent" /> {t("Gambar ChatGPT untuk setiap babak", "ChatGPT pictures for every scene")}</h3>
@@ -267,5 +269,7 @@ export default function ChatGptLogin({ onToast }) {
         </div>
       )}
     </Card>
+    <ChatGptAccounts onToast={onToast} />
+    </>
   );
 }

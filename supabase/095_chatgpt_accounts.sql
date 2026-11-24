@@ -114,8 +114,12 @@ begin
   if not public.semasa_is_uploader() then
     raise exception 'only a Semasa uploader may change the ChatGPT logins' using errcode = '42501';
   end if;
-  update public.semasa_chatgpt_accounts set enabled = coalesce(p_enabled, enabled), limit_until = null, updated_by = auth.uid(),
-    updated_at = now() where id = p_id;
+  -- saving the switch ends a rest ("ask again now"), and the "limit reached" message that started it goes with it: an account
+  -- Wan just told Semasa to ask again must not read as an error. (The right-hand sides read the row as it was.)
+  update public.semasa_chatgpt_accounts set enabled = coalesce(p_enabled, enabled),
+    last_error = case when limit_until is not null then null else last_error end,
+    last_error_at = case when limit_until is not null then null else last_error_at end,
+    limit_until = null, updated_by = auth.uid(), updated_at = now() where id = p_id;
   if not found then
     raise exception 'no such ChatGPT account';
   end if;

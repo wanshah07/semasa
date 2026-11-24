@@ -14,6 +14,9 @@ the worker does it, and the page only ever sees the code and the link:
 Steps 1 and 3 were probed from a runner-like environment on 6 Nov 2026 (a real code came back; polling it answered 403 pending).
 Step 4 needs a real approval, so it is covered by tests with fake replies and proved by Wan's first login.
 
+A request may be for one more PICTURE account instead of the main login (supabase/095: the row's `target` is 'new'). The login
+is the same; the tokens are saved as a row of semasa_chatgpt_accounts (save_account), never over the main login.
+
 A new request (the "new code" button) overwrites the row, and the next poll sees it and stops this run; the workflow also cancels
 an older run. A run ends when the code is approved, expires, is cancelled or superseded, or fails. Nothing is logged but states:
 never a token, never the device id.
@@ -109,8 +112,7 @@ def exchange(http: Any, approved: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def save_login(store: Any, tokens: dict[str, Any], now: datetime) -> None:
-    """The same row 058's paste writes, so Motion cannot tell the two ways in apart. The switch, model and count stay as set."""
+def _login_row(tokens: dict[str, Any], now: datetime) -> dict[str, Any]:
     keep = {k: tokens[k] for k in ("id_token", "access_token", "refresh_token") if tokens.get(k)}
     acct = chatgpt_login.account_of(keep)
     if acct:
@@ -118,10 +120,43 @@ def save_login(store: Any, tokens: dict[str, Any], now: datetime) -> None:
     ends = chatgpt_login.expiry(str(keep.get("access_token") or ""))
     email = str(chatgpt_login.claims(str(keep.get("id_token") or "")).get("email") or "")[:120] or None
     stamp = now.isoformat()
-    store.table(chatgpt_login.TABLE).upsert({
-        "id": "main", "auth": {"tokens": keep}, "account": email, "access_expires_at": ends.isoformat() if ends else None,
-        "connected_at": stamp, "checked_at": None, "last_ok_at": None, "last_error": None, "last_error_at": None,
-        "updated_at": stamp}, on_conflict="id").execute()
+    return {"auth": {"tokens": keep}, "account": email, "access_expires_at": ends.isoformat() if ends else None,
+            "connected_at": stamp, "checked_at": None, "last_ok_at": None, "last_error": None, "last_error_at": None,
+            "updated_at": stamp}
+
+
+def save_login(store: Any, tokens: dict[str, Any], now: datetime) -> None:
+    """The same row 058's paste writes, so Motion cannot tell the two ways in apart. The switch, model and count stay as set."""
+    store.table(chatgpt_login.TABLE).upsert({"id": "main", **_login_row(tokens, now)}, on_conflict="id").execute()
+
+
+def _same(a: Any, b: Any) -> bool:
+    return bool(a and b and str(a).strip().lower() == str(b).strip().lower())
+
+
+def save_account(store: Any, tokens: dict[str, Any], now: datetime) -> str:
+    """One EXTRA picture account (supabase/095): a new row of semasa_chatgpt_accounts, or the same row again when that e-mail is
+    already an extra account (logging in again is how a refused login is repaired). Returns the row's id ("acc1").
+
+    The main login's own account is refused: the same account twice is the same allowance twice, and it would look like help
+    that is not there. So is a ninth account. Raises DeviceError with words the card can show."""
+    row = _login_row(tokens, now)
+    email = row.get("account")
+    main = store.table(chatgpt_login.TABLE).select("account").eq("id", "main").execute().data or []
+    if main and _same(main[0].get("account"), email):
+        raise DeviceError("That is the main ChatGPT login's own account. An extra account has to be a different ChatGPT "
+                          "account: it adds nothing to draw with the same allowance twice.")
+    have = store.table(chatgpt_login.ACCOUNTS).select("id,account").execute().data or []
+    again = next((r for r in have if _same(r.get("account"), email)), None)
+    if again:
+        store.table(chatgpt_login.ACCOUNTS).update({**row, "limit_until": None}).eq("id", again["id"]).execute()
+        return str(again["id"])
+    taken = {str(r.get("id")) for r in have}
+    free = next((f"acc{n}" for n in range(1, chatgpt_login.MAX_ACCOUNTS + 1) if f"acc{n}" not in taken), None)
+    if free is None:
+        raise DeviceError(f"{chatgpt_login.MAX_ACCOUNTS} extra ChatGPT accounts is the most: remove one first.")
+    store.table(chatgpt_login.ACCOUNTS).insert({"id": free, **row}).execute()
+    return free
 
 
 def run(store: Any, *, http: Any = None, sleep: Any = None, now: Any = None) -> str:
@@ -133,6 +168,7 @@ def run(store: Any, *, http: Any = None, sleep: Any = None, now: Any = None) -> 
     if not row or row.get("state") != "requested":
         return "no ChatGPT login was asked for"
     mine = row.get("requested_at")
+    extra = str(row.get("target") or "main") == "new"     # 095: this code is for one more picture account, not the main login
     try:
         code = request_code(http)
     except DeviceError as exc:
@@ -177,6 +213,14 @@ def run(store: Any, *, http: Any = None, sleep: Any = None, now: Any = None) -> 
     except DeviceError as exc:
         _set(store, state="error", error=str(exc), device_auth_id=None)
         return f"error: {exc}"
+    if extra:
+        try:
+            acc = save_account(store, tokens, clock())
+        except DeviceError as exc:
+            _set(store, state="error", error=str(exc), user_code=None, device_auth_id=None)
+            return f"error: {exc}"
+        _set(store, state="done", user_code=None, device_auth_id=None, error=None)
+        return f"done: ChatGPT account {acc} is connected for pictures"
     save_login(store, tokens, clock())
     _set(store, state="done", user_code=None, device_auth_id=None, error=None)
     return "done: ChatGPT is connected"

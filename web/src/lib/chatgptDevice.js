@@ -41,3 +41,12 @@ export function deviceView(status, now = Date.now(), skew = 0) {
 /** Whether the card should keep asking the database (every few seconds) for the status. */
 export const polling = (view) => view.phase === "requested" || view.phase === "waiting";
 export const POLL_MS = 3000;
+
+/** One code request serves two cards (supabase/095): the main login, and "add one more picture account". Each card shows only the
+    request that is its own: `target` is "main" or "new", and a row written before 095 has none and is the main login's.
+    A request for the other card reads as idle here, so neither card shows the other's code or says "connected" for it. */
+export function forTarget(status, target) {
+  const s = status || {};
+  const whose = s.target === "new" ? "new" : "main";
+  return whose === target ? s : { state: "idle", server_now: s.server_now };
+}

@@ -167,8 +167,8 @@ def has_credentials(name: str, s: MediaSettings, store: Any = None) -> bool:
             return False
         try:
             from . import chatgpt_login
-            login = chatgpt_login.Login(store)
-            return login.connected() and bool((login.settings() or {}).get("enabled", True))
+            # the main login, or any extra picture account (supabase/095) that is on and not resting after a used-up allowance
+            return bool(chatgpt_login.picture_logins(store))
         except Exception as exc:  # noqa: BLE001 - a login that cannot be read is a login that is not there
             log.info("ChatGPT pictures not considered (%s)", str(exc)[:120])
             return False
@@ -262,7 +262,11 @@ class GeminiImageProvider:
 
 
 class ChatGPTImageProvider:
-    """Wan's ChatGPT login as a picture provider (chatgpt_login.Login.draw): words only, like Gemini."""
+    """Wan's ChatGPT login as a picture provider (chatgpt_login.Login.draw): words only, like Gemini.
+
+    More than one account (Wan, 24 Nov 2026: "add multiple accounts to support image gen using chatgpt"): the main login is
+    asked first, then each extra picture account (supabase/095). An account that says its allowance is used up rests and the
+    next one draws (chatgpt_login.draw_any); only when none draws does the job go on to the next maker."""
 
     name = "chatgpt"
     video = False
@@ -271,9 +275,11 @@ class ChatGPTImageProvider:
     def __init__(self, store: Any):
         from . import chatgpt_login
         self.store = store
-        self.login = chatgpt_login.Login(store)
-        if not self.login.connected():
+        self.logins = chatgpt_login.picture_logins(store)      # the main login first, then the extra picture accounts
+        self.spent: set[str] = set()                           # accounts that failed in this run: not asked again
+        if not self.logins:
             raise ProviderError("ChatGPT is not connected: log in on the API page", kind="auth")
+        self.login = self.logins[0]
 
     def pinned_model(self) -> str:
         """The model of a picture-maker pin on ChatGPT (settings.ai_team.pins.image_gen), or "" when there is none."""
@@ -295,22 +301,22 @@ class ChatGPTImageProvider:
         # the model Wan picked for the picture maker (a pin on ChatGPT with a model), else the login's saved one. Before
         # 24 Nov 2026 this drew with DEFAULT_MODEL whatever was saved, and then reported the saved one. A refused model still
         # falls over to the next the account allows (Login._with_model), and that one is saved.
-        saved = str((self.login.settings() or {}).get("model") or cgl.DEFAULT_MODEL)
         pinned = self.pinned_model()
         # a pinned PICTURE model (gpt-image-2...) is the image tool's model, drawn through the login's saved chat model; a pinned
         # chat model is the one that calls the tool, with the tool's own default picture model
         tool_model = pinned if cgl.IMAGE_TOOL_RE.search(pinned or "") else ""
-        want = saved if tool_model else (pinned or saved)
+        # "" lets each account draw with its own saved chat model (an extra account's plan may allow other models)
+        ask = "" if tool_model else pinned
         try:
-            data = self.login.draw(prompt, size=size, model=want, **({"image_model": tool_model} if tool_model else {}))
+            data, login, model = cgl.draw_any(self.store, prompt, size=size, model=ask, image_model=tool_model,
+                                              logins=self.logins, skip=self.spent)
         except cgl.ChatGPTError as exc:
             kind = "limit" if exc.limit else "auth" if exc.auth else "model" if exc.model else "unavailable"
             raise ProviderError(str(exc), kind=kind) from exc
-        after = str((self.login.settings() or {}).get("model") or cgl.DEFAULT_MODEL)
-        model = after if after != saved else want            # a refused model was replaced and saved: say the one that drew
+        meta = {"chatgpt_model": model, "chatgpt_account": cgl.name_of(login)}
         if tool_model:
-            return Generated(data, content_type_of(data), tool_model, {"chatgpt_model": model, "chatgpt_image_model": tool_model})
-        return Generated(data, content_type_of(data), model, {"chatgpt_model": model})
+            return Generated(data, content_type_of(data), tool_model, {**meta, "chatgpt_image_model": tool_model})
+        return Generated(data, content_type_of(data), model, meta)
 
 
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif")

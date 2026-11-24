@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, HelpCircle, Hourglass, Loader2, PenLine, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, HelpCircle, Hourglass, KeyRound, Loader2, PenLine, RefreshCw, XCircle } from "lucide-react";
 import { fadeUp } from "../design/motion";
-import { TABLES } from "../lib/SupabaseClient";
+import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { useTable } from "../lib/hooks";
 import { timeAgo } from "../lib/format";
-import { CARDS, amountOf, countdownOf, countdownText, isoToMytInput, manualEntry, mytText, viewOf } from "../lib/credit";
+import { ACCOUNT_KEY_SLUGS, CARDS, accountKeyProblem, amountOf, countdownOf, countdownText, isoToMytInput, manualEntry, mytText, viewOf } from "../lib/credit";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import { Input, Label } from "../components/ui/Field";
@@ -64,6 +64,33 @@ export default function CreditTab({ settings, save, onToast }) {
       onToast?.(/not found|0 rows/.test(msg) ? t("Jalankan supabase/092_api_credit.sql sekali dahulu, atau tunggu larian 15 minit.", "Run supabase/092_api_credit.sql once first, or wait for the 15-minute run.") : msg, "danger");
     } finally { setBusy(false); }
   };
+  // The account key that reads a gateway's balance (supabase/096; Wan, 24 Nov 2026: "add key directly in the semasa so can read
+  // balance"). The page sends the token once and never gets it back: it sees the user id and the token's last four characters.
+  const [accounts, setAccounts] = useState([]);
+  const [noAccounts, setNoAccounts] = useState(false);          // 096 not run yet
+  const loadAccounts = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.rpc("semasa_credit_accounts_status");
+    if (error) { setNoAccounts(/semasa_credit_accounts_status|PGRST202|42883|does not exist/i.test(`${error.code} ${error.message}`)); return; }
+    setNoAccounts(false);
+    setAccounts(Array.isArray(data) ? data : []);
+  };
+  useEffect(() => { loadAccounts(); }, []);
+  const saveAccount = async (slug, token, userId) => {
+    const { data, error } = await supabase.rpc("semasa_credit_account_save", { p_slug: slug, p_access_token: token, p_user_id: userId });
+    if (error) { onToast?.(errText(error), "danger"); return false; }
+    setAccounts(Array.isArray(data) ? data : []);
+    onToast?.(t("Kunci akaun disimpan. Baki dibaca sekarang.", "Account key saved. The balance is being read now."), "ok");
+    refresh();                                                    // the reading with the new key lands in about a minute
+    return true;
+  };
+  const removeAccount = async (slug) => {
+    const { data, error } = await supabase.rpc("semasa_credit_account_remove", { p_slug: slug });
+    if (error) { onToast?.(errText(error), "danger"); return false; }
+    setAccounts(Array.isArray(data) ? data : []);
+    onToast?.(t("Kunci akaun dibuang.", "Account key removed."), "ok");
+    return true;
+  };
   const saveManual = async (slug, entry) => {
     const next = { ...manual };
     if (entry) next[slug] = entry; else delete next[slug];
@@ -99,7 +126,8 @@ export default function CreditTab({ settings, save, onToast }) {
       {statusT.error && !missing && <p className="mb-4 rounded-tile bg-danger/10 p-3 text-sm text-danger">{statusT.error}</p>}
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {views.map(({ card, v }) => <CreditCard key={card.slug} card={card} v={v} now={now} L={L} t={t} onSaveManual={saveManual} loading={statusT.loading} canSave={typeof save === "function"} />)}
+        {views.map(({ card, v }) => <CreditCard key={card.slug} card={card} v={v} now={now} L={L} t={t} onSaveManual={saveManual} loading={statusT.loading} canSave={typeof save === "function"}
+          account={accounts.find((a) => a.slug === card.slug) || null} noAccounts={noAccounts} onSaveAccount={saveAccount} onRemoveAccount={removeAccount} />)}
       </div>
 
       <p className="mt-6 max-w-3xl text-[11px] text-muted">{t("Unit kredit: setiap gerbang mengira dengan unitnya sendiri. API Mireld memberi 89.11 manakala papan pemuka Mireld menunjukkan 89.11M (sejuta kali ganda; jumlah pelan 1275 lawan 1.27B): kedua-duanya dipaparkan. rootsys dibaca daripada /v1/quota (token). Baki KiosAPI ada pada akaun, yang tidak boleh dibaca dengan kunci API: letak rahsia KIOSAPI_ACCESS_TOKEN dan KIOSAPI_USER_ID (token akses dari Tetapan peribadi › Keselamatan) di GitHub; sehingga itu kad menunjukkan setiap laluan yang dicuba.",
@@ -108,7 +136,7 @@ export default function CreditTab({ settings, save, onToast }) {
   );
 }
 
-function CreditCard({ card, v, now, L, t, onSaveManual, loading, canSave }) {
+function CreditCard({ card, v, now, L, t, onSaveManual, loading, canSave, account, noAccounts, onSaveAccount, onRemoveAccount }) {
   const B = BADGE[v.status] || BADGE.unknown;
   const f = v.figure;
   const left = f ? amountOf(f.remaining, f) : null;
@@ -192,8 +220,68 @@ function CreditCard({ card, v, now, L, t, onSaveManual, loading, canSave }) {
         </details>
       )}
 
+      {(ACCOUNT_KEY_SLUGS.includes(card.slug) || account) && (
+        <AccountKey card={card} v={v} t={t} L={L} account={account} missing={noAccounts} onSave={onSaveAccount} onRemove={onRemoveAccount} />
+      )}
       <Manual card={card} v={v} t={t} L={L} onSave={onSaveManual} canSave={canSave} />
     </Card>
+  );
+}
+
+/* The account key that reads the balance (supabase/096). KiosAPI's top-up sits on the ACCOUNT, which the API key cannot read: the
+   panel's access token (Personal settings, Security) plus the user id can. Typed here once; only the worker reads it back, and
+   it is sent only to that gateway. An access token can manage the account, so Remove is always one tap away. */
+function AccountKey({ card, v, t, L, account, missing, onSave, onRemove }) {
+  const [open, setOpen] = useState(false);
+  const [token, setToken] = useState("");
+  const [userId, setUserId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sure, setSure] = useState(false);
+  const problem = accountKeyProblem(token, userId);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (problem) return;
+    setBusy(true);
+    if (await onSave(card.slug, token.trim(), userId.trim())) { setToken(""); setUserId(""); setOpen(false); }   // the token leaves the page once saved
+    setBusy(false);
+  };
+  const remove = async () => {
+    if (!sure) { setSure(true); setTimeout(() => setSure(false), 6000); return; }
+    setBusy(true);
+    await onRemove(card.slug);
+    setBusy(false); setSure(false);
+  };
+  if (missing) return <p className="mt-3 border-t border-line pt-3 text-[11px] text-muted" data-credit-account={card.slug}>{t("Jalankan supabase/096_credit_account_keys.sql sekali untuk menaip kunci akaun di sini.", "Run supabase/096_credit_account_keys.sql once to type the account key here.")}</p>;
+  return (
+    <div className="mt-3 border-t border-line pt-3" data-credit-account={card.slug}>
+      <p className="flex items-center gap-1 text-xs font-medium"><KeyRound size={12} className="text-accent" /> {t("Kunci akaun (untuk membaca baki)", "Account key (to read the balance)")}</p>
+      {account ? (
+        <p className="mt-1 text-[11px] text-muted" data-credit-account-saved>
+          {t("Disimpan", "Saved")}: …{account.token_hint} · {t("ID pengguna", "user id")} {account.user_id} · {mytText(account.updated_at, L)}
+          {v.source !== "live" && <span className="block text-warn">{t("Baki belum dibaca dengan kunci ini: semak token dan ID, kemudian Segar semula.", "The balance has not been read with this key yet: check the token and the id, then Refresh.")}</span>}
+        </p>
+      ) : (
+        <p className="mt-1 text-[11px] text-muted">{t("Di panel {n}: Tetapan peribadi → Keselamatan → jana Token Akses, dan salin ID pengguna (nombor). Tampal kedua-duanya di sini.",
+          "In the {n} panel: Personal settings → Security → generate an Access Token, and copy your user ID (a number). Paste both here.", { n: card.name })}</p>
+      )}
+      {!open ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="soft" onClick={() => setOpen(true)} data-credit-account-open>{account ? t("Tukar kunci", "Change the key") : t("Tambah kunci akaun", "Add the account key")}</Button>
+          {account && <Button type="button" size="sm" variant={sure ? "danger" : "ghost"} disabled={busy} onClick={remove} data-credit-account-remove>{sure ? t("Tekan lagi untuk buang", "Tap again to remove") : t("Buang", "Remove")}</Button>}
+        </div>
+      ) : (
+        <form onSubmit={submit} className="mt-2 space-y-2">
+          <label className="block"><Label>{t("Token akses", "Access token")}</Label><Input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} data-credit-account-token /></label>
+          <label className="block"><Label>{t("ID pengguna (nombor)", "User ID (a number)")}</Label><Input inputMode="numeric" value={userId} onChange={(e) => setUserId(e.target.value)} data-credit-account-user /></label>
+          {(token || userId) && problem && <p className="text-[11px] text-warn">{problem[L === "en" ? 1 : 0]}</p>}
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" size="sm" disabled={!!problem || busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : null} {t("Simpan", "Save")}</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => { setOpen(false); setToken(""); setUserId(""); }}>{t("Batal", "Cancel")}</Button>
+          </div>
+          <p className="text-[11px] text-muted">{t("Token dihantar sekali dan tidak dipaparkan semula. Ia hanya dihantar ke {h}.", "The token is sent once and never shown again. It is only ever sent to {h}.", { h: card.host })}</p>
+        </form>
+      )}
+    </div>
   );
 }
 

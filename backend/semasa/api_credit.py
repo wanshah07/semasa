@@ -19,6 +19,7 @@ Nothing here writes to the database or posts anywhere: api_status.credit_main wr
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import time
@@ -27,6 +28,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import requests
+
+log = logging.getLogger("semasa.api_credit")
 
 CREDIT_SLUGS = ("mireld", "rootsys", "kiosapi")        # the three gateways Wan named
 LOW_PERCENT = 15.0                                      # under this much left is "low" ...
@@ -403,12 +406,38 @@ def ask(url: str, key: str, timeout: float, get: Any = None, headers: dict[str, 
 ACCOUNT_PATH = "/api/user/self"
 
 
+ACCOUNTS_TABLE = "semasa_credit_accounts"
+# slug -> {"token", "user_id"}: the account keys Wan typed on the API credit page (supabase/096), read once a run by
+# load_accounts. Held in memory only, for the run; sent only to that gateway's own host (check()).
+_ACCOUNTS: dict[str, dict[str, str]] = {}
+
+
+def load_accounts(store: Any) -> list[str]:
+    """Read the account keys typed into Semasa (supabase/096) for this run. Returns the slugs that have one; [] when the table
+    is not there or cannot be read (the GitHub secrets, if any, still work). Never logs a token."""
+    _ACCOUNTS.clear()
+    try:
+        rows = store.table(ACCOUNTS_TABLE).select("slug,access_token,user_id").execute().data or []
+    except Exception as exc:  # noqa: BLE001 - no table is no typed key
+        log.info("account keys not read (%s)", str(exc)[:120])
+        return []
+    for r in rows:
+        token, uid = str(r.get("access_token") or "").strip(), str(r.get("user_id") or "").strip()
+        if r.get("slug") in CREDIT_SLUGS and token and uid:
+            _ACCOUNTS[str(r["slug"])] = {"token": token, "user_id": uid}
+    return sorted(_ACCOUNTS)
+
+
 def account_headers(slug: str, env: Any = None) -> dict[str, str] | None:
     """New-API panels (KiosAPI) keep the top-up on the ACCOUNT, which an API key cannot read: it takes the access token made
-    in the panel (Personal settings, Security) plus the user id. Both are optional secrets, `<SLUG>_ACCESS_TOKEN` and
-    `<SLUG>_USER_ID`; with either missing the account is not asked and the card says so."""
+    in the panel (Personal settings, Security) plus the user id. The pair comes from the optional secrets
+    `<SLUG>_ACCESS_TOKEN` and `<SLUG>_USER_ID`, else from what Wan typed on the API credit page (load_accounts); with neither
+    the account is not asked and the card says so."""
     env = os.environ if env is None else env
     token, uid = str(env.get(f"{slug.upper()}_ACCESS_TOKEN") or "").strip(), str(env.get(f"{slug.upper()}_USER_ID") or "").strip()
+    if not token or not uid:
+        typed = _ACCOUNTS.get(slug) or {}
+        token, uid = typed.get("token", ""), typed.get("user_id", "")
     if not token or not uid:
         return None
     return {"Authorization": f"Bearer {token}", "New-Api-User": uid, "Accept": "application/json"}

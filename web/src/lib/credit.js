@@ -9,6 +9,18 @@ export const CARDS = [
   { slug: "rootsys", name: "rootsys (Afiq)", host: "rootsys.cloud", unit: "credits" },
   { slug: "kiosapi", name: "KiosAPI", host: "kiosapi.com", unit: "Rp" },
 ];
+// the gateways whose balance sits on the ACCOUNT and needs the panel's access token + user id (supabase/096): KiosAPI's New-API panel
+export const ACCOUNT_KEY_SLUGS = ["kiosapi"];
+
+/** Why the typed account key cannot be saved, as [BM, EN], or null when it can. The database checks the same things. */
+export function accountKeyProblem(token, userId) {
+  const tk = String(token || "").trim(), id = String(userId || "").trim();
+  if (!tk || !id) return ["Isi kedua-dua token akses dan ID pengguna.", "Fill in both the access token and the user ID."];
+  if (/\s/.test(tk) || tk.length < 16 || tk.length > 400) return ["Itu tidak kelihatan seperti token akses (satu rentetan panjang, tiada ruang).", "That does not look like an access token (one long string, no spaces)."];
+  if (!/^[0-9]{1,12}$/.test(id)) return ["ID pengguna ialah NOMBOR yang ditunjukkan panel untuk akaun anda.", "The user ID is the NUMBER the panel shows for your account."];
+  return null;
+}
+
 export const LOW_PERCENT = 15;          // under this much left is "low" ...
 export const LOW_DAYS = 7;              // ... and so is under this long to run
 export const LATE_MS = 45 * 60_000;     // a reading older than this means the 15-minute run has missed its turns

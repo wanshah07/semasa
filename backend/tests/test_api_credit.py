@@ -360,3 +360,40 @@ def test_the_account_is_asked_with_the_access_token_and_user_id_and_read_in_doll
     assert c["unit"] == "USD" and c["remaining"] == 5.0 and c["total"] == 20.0 and c["percent_left"] == 25.0
     assert seen["https://kiosapi.com/api/user/self"]["New-Api-User"] == "42"
     assert not any("tok-SECRET" in json.dumps(t) for t in bal["tried"]), "the token never reaches the stored reading"
+
+
+# ---- the account key typed into Semasa (supabase/096, 24 Nov 2026) ----------------------------------------------------
+
+def test_an_account_key_typed_in_semasa_reads_the_account_and_goes_only_to_that_gateways_host(monkeypatch):
+    from fakestore import FakeStore
+    monkeypatch.delenv("KIOSAPI_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("KIOSAPI_USER_ID", raising=False)
+    store = FakeStore(**{ac.ACCOUNTS_TABLE: [{"slug": "kiosapi", "access_token": "acct-token-typed-1234", "user_id": "77"},
+                                             {"slug": "elsewhere", "access_token": "x" * 20, "user_id": "1"},
+                                             {"slug": "mireld", "access_token": "", "user_id": "5"}]})
+    assert ac.load_accounts(store) == ["kiosapi"]                       # an unknown gateway and an empty token are not keys
+    assert ac.account_headers("kiosapi") == {"Authorization": "Bearer acct-token-typed-1234", "New-Api-User": "77",
+                                             "Accept": "application/json"}
+    assert ac.account_headers("mireld") is None
+    log = []
+    account = {"success": True, "data": {"quota": 4408500, "used_quota": 1250000}}        # New-API: quota is what is LEFT
+    get = _fake_get({"/api/status": R(200, {"data": {"quota_per_unit": 500000}}), "/api/user/self": R(200, account)}, log)
+    bal = ac.check(_gw("kiosapi", "https://kiosapi.com/v1"), now=NOW, get=get)
+    c = bal["credit"]
+    assert c["source"] == "/api/user/self (account)" and c["unit"] == "USD"
+    assert c["remaining"] == 8.817 and c["used"] == 2.5 and c["status"] == "ok"
+    sent = [(u, h) for u, h, _r in log if h.get("New-Api-User")]
+    assert sent and all(u.startswith("https://kiosapi.com/") for u, _h in sent)           # the token never leaves the gateway
+    assert all(h["Authorization"] == "Bearer acct-token-typed-1234" for _u, h in sent)
+    # the GitHub secrets, when both are set, still win over what was typed
+    monkeypatch.setenv("KIOSAPI_ACCESS_TOKEN", "from-secret")
+    monkeypatch.setenv("KIOSAPI_USER_ID", "9")
+    assert ac.account_headers("kiosapi")["Authorization"] == "Bearer from-secret"
+    # a table that is not there is no typed key, never an error
+    monkeypatch.delenv("KIOSAPI_ACCESS_TOKEN")
+
+    class Broken:
+        def table(self, name):
+            raise RuntimeError("relation does not exist")
+
+    assert ac.load_accounts(Broken()) == [] and ac.account_headers("kiosapi") is None

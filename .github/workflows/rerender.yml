@@ -1,10 +1,17 @@
 name: Redraw approved posts in place
 
-# One-off, by hand only (Wan, 11 Nov 2026: "Re-render the carousels and films", answered "in place, keep approvals").
+# By hand, and for the Redraw buttons' requests (Wan, 24 Nov 2026). The original one-off (Wan, 11 Nov 2026: "Re-render the carousels and films", answered "in place, keep approvals").
 # Redraws the carousels of ws.regulab posts that are approved or scheduled and not yet sent, and adds the branded cover to their
 # films, keeping each post's approval, slot and words. A Zernio copy is deleted first and the publisher queues the post again.
 # `dry` lists what would be touched and changes nothing. See backend/semasa/rerender.py.
 on:
+  # the Redraw buttons (Semasa and Telegram, supabase/093): the page or the bot inserts a row, the database wakes this workflow
+  # (repository_dispatch 'post_redraw'); the hourly schedule is the net for a dispatch GitHub dropped. Both only do the pending
+  # requests (--requests): nothing is redrawn on a schedule by itself. One schedule, in the repo that owns the job.
+  repository_dispatch:
+    types: [post_redraw]
+  schedule:
+    - cron: "35 * * * *"
   workflow_dispatch:
     inputs:
       dry:
@@ -109,12 +116,17 @@ jobs:
           FAQ_BATCH: ${{ vars.FAQ_BATCH }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           SEMASA_SITE_URL: ${{ vars.SEMASA_SITE_URL }}
+          EVENT: ${{ github.event_name }}
           DRY: ${{ inputs.dry }}
           ONLY: ${{ inputs.only }}
           THREADS: ${{ inputs.threads }}
           SEND_NOW: ${{ inputs.send_now }}
           CHANNEL: ${{ inputs.channel }}
         run: |
+          if [ "$EVENT" = "repository_dispatch" ] || [ "$EVENT" = "schedule" ]; then
+            python -m semasa.rerender --requests
+            exit $?
+          fi
           args=""
           if [ "$DRY" = "true" ]; then args="--dry"; fi
           if [ "$THREADS" = "true" ]; then args="$args --threads"; fi

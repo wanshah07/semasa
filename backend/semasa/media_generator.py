@@ -179,7 +179,9 @@ def has_credentials(name: str, s: MediaSettings, store: Any = None) -> bool:
 # ("openai" here). Replicate is not in his list, so it comes last. A picture row carries the provider Tetapan stamped on it when
 # it was queued ("openai"), which is a default and not a choice, so the order below is used unless the row says its provider
 # was picked (meta.provider_explicit).
-IMAGE_PRIORITY = ("cloudflare", "openai", "chatgpt", "gemini", "replicate")
+# Wan, 24 Nov 2026: "for image gen prioritize chatgpt then kioskapi". ChatGPT (his login, words only) first, KiosAPI second, then
+# the rest. A job with a reference picture still starts at KiosAPI, because ChatGPT and Gemini draw from words only here.
+IMAGE_PRIORITY = ("chatgpt", "openai", "cloudflare", "gemini", "replicate")
 
 
 def pinned_picture_maker(store: Any) -> str:
@@ -290,14 +292,20 @@ class ChatGPTImageProvider:
         # 24 Nov 2026 this drew with DEFAULT_MODEL whatever was saved, and then reported the saved one. A refused model still
         # falls over to the next the account allows (Login._with_model), and that one is saved.
         saved = str((self.login.settings() or {}).get("model") or cgl.DEFAULT_MODEL)
-        want = self.pinned_model() or saved
+        pinned = self.pinned_model()
+        # a pinned PICTURE model (gpt-image-2...) is the image tool's model, drawn through the login's saved chat model; a pinned
+        # chat model is the one that calls the tool, with the tool's own default picture model
+        tool_model = pinned if cgl.IMAGE_TOOL_RE.search(pinned or "") else ""
+        want = saved if tool_model else (pinned or saved)
         try:
-            data = self.login.draw(prompt, size=size, model=want)
+            data = self.login.draw(prompt, size=size, model=want, **({"image_model": tool_model} if tool_model else {}))
         except cgl.ChatGPTError as exc:
             kind = "limit" if exc.limit else "auth" if exc.auth else "model" if exc.model else "unavailable"
             raise ProviderError(str(exc), kind=kind) from exc
         after = str((self.login.settings() or {}).get("model") or cgl.DEFAULT_MODEL)
         model = after if after != saved else want            # a refused model was replaced and saved: say the one that drew
+        if tool_model:
+            return Generated(data, content_type_of(data), tool_model, {"chatgpt_model": model, "chatgpt_image_model": tool_model})
         return Generated(data, content_type_of(data), model, {"chatgpt_model": model})
 
 

@@ -44,11 +44,17 @@ PIC = Generated(b"\x89PNG....", "image/png", "gpt-image-2", {})
 ROW = {"id": "m1", "type": "image", "mode": "prompt", "prompt": "a jar on a shelf", "attempts": 1, "provider": "cloudflare"}
 
 
+def _picked():
+    """ROW as a row whose provider was PICKED (Cloudflare first, then the rest): what the failover tests start from. A row
+    whose provider is only Tetapan's default follows IMAGE_PRIORITY instead (ChatGPT, KiosAPI, ...; 24 Nov 2026)."""
+    return {**ROW, "meta": {"provider_explicit": True}}
+
+
 def test_cloudflare_down_the_openai_dialect_gateway_draws_and_the_row_says_so(monkeypatch):
     writes, _ = _patch_db(monkeypatch)
     cf = Fake("cloudflare", exc=requests.ConnectionError("could not reach Cloudflare"))
     oai = Fake("openai", result=PIC)
-    assert media_generator.process_row(None, dict(ROW), _settings(), {"cloudflare": cf, "openai": oai}) is True
+    assert media_generator.process_row(None, _picked(), _settings(), {"cloudflare": cf, "openai": oai}) is True
     w = writes["m1"]
     assert w["status"] == "done" and w["provider"] == "openai" and w["model"] == "gpt-image-2"
     assert w["meta"]["provider"] == "openai"
@@ -67,7 +73,7 @@ def test_cloudflare_down_the_openai_dialect_gateway_draws_and_the_row_says_so(mo
 def test_a_refusal_that_is_the_providers_own_moves_the_row_on(monkeypatch, exc):
     writes, _ = _patch_db(monkeypatch)
     cf, oai = Fake("cloudflare", exc=exc), Fake("openai", result=PIC)
-    assert media_generator.process_row(None, dict(ROW), _settings(), {"cloudflare": cf, "openai": oai}) is True
+    assert media_generator.process_row(None, _picked(), _settings(), {"cloudflare": cf, "openai": oai}) is True
     assert writes["m1"]["provider"] == "openai"
 
 
@@ -75,7 +81,7 @@ def test_a_refusal_about_the_picture_itself_is_final_and_nobody_else_is_asked(mo
     writes, _ = _patch_db(monkeypatch)
     cf = Fake("cloudflare", exc=ProviderError("OpenAI rejected the request: rejected by our safety system"))
     oai = Fake("openai", result=PIC)
-    assert media_generator.process_row(None, dict(ROW), _settings(), {"cloudflare": cf, "openai": oai}) is False
+    assert media_generator.process_row(None, _picked(), _settings(), {"cloudflare": cf, "openai": oai}) is False
     assert writes["m1"]["status"] == "error" and "safety" in writes["m1"]["error"]
     assert oai.calls == [], "a content refusal is not retried elsewhere"
     assert writes["m1"]["provider"] == "cloudflare", "the row keeps the provider it was given"
@@ -85,7 +91,7 @@ def test_when_every_provider_fails_the_error_names_them_all(monkeypatch):
     writes, _ = _patch_db(monkeypatch)
     cf = Fake("cloudflare", exc=TimeoutError("slow"))
     oai = Fake("openai", exc=ProviderError("OpenAI refused the key (HTTP 401): check the OPENAI_API_KEY secret"))
-    media_generator.process_row(None, dict(ROW), _settings(), {"cloudflare": cf, "openai": oai})
+    media_generator.process_row(None, _picked(), _settings(), {"cloudflare": cf, "openai": oai})
     w = writes["m1"]
     assert w["status"] == "error" and "refused the key" in w["error"] and "also failed: cloudflare: slow" in w["error"]
 
@@ -94,7 +100,7 @@ def test_a_video_row_skips_providers_that_make_pictures_only():
     s = _settings(replicate_token="rt")
     assert media_generator.provider_chain(s, "openai", kind="video") == ["openai", "replicate"]
     assert media_generator.provider_chain(s, "cloudflare", kind="image") == ["cloudflare", "openai", "replicate"]
-    assert media_generator.provider_chain(s, "replicate", kind="image", needs_edit=True) == ["replicate", "cloudflare", "openai"]
+    assert media_generator.provider_chain(s, "replicate", kind="image", needs_edit=True) == ["replicate", "openai", "cloudflare"]
     assert media_generator.provider_chain(_settings(openai_key=None), "cloudflare") == ["cloudflare"]
     assert media_generator.provider_chain(_settings(openai_key=None), "nope") == ["nope", "cloudflare"]
 
@@ -169,7 +175,7 @@ def test_an_http_error_is_read_by_its_status():
 
 # ---- ChatGPT draws too (Wan, 8 Nov 2026) ---------------------------------------------------------------------------------
 
-def test_chatgpt_is_a_picture_provider_that_takes_words_only_and_is_the_last_resort():
+def test_chatgpt_is_a_picture_provider_that_takes_words_only_and_comes_before_kiosapi():
     from fakestore import FakeStore
 
     from semasa import chatgpt_login as cl
@@ -179,7 +185,8 @@ def test_chatgpt_is_a_picture_provider_that_takes_words_only_and_is_the_last_res
     assert not media_generator.has_credentials("chatgpt", _settings(), FakeStore(**{cl.TABLE: []}))
     assert not media_generator.has_credentials("chatgpt", _settings(), None)
     s = _settings()
-    assert media_generator.provider_chain(s, "cloudflare", store=on)[-1] == "chatgpt"
+    assert media_generator.provider_chain(s, "cloudflare", store=on) == ["cloudflare", "chatgpt", "openai"]
+    assert media_generator.provider_chain(s, "cloudflare", store=on, explicit=False) == ["chatgpt", "openai", "cloudflare"]
     assert "chatgpt" not in media_generator.provider_chain(s, "cloudflare", needs_edit=True, store=on), "no reference picture"
     assert "chatgpt" not in media_generator.provider_chain(s, "cloudflare", kind="video", store=on)
 
@@ -199,7 +206,7 @@ def test_a_chatgpt_pin_for_the_picture_maker_puts_chatgpt_first_and_the_others_s
     assert "chatgpt" not in media_generator.provider_chain(s, "cloudflare", needs_edit=True, store=pinned)
     other = {"key": "ai_team", "value": {"pins": {"image_gen": {"gateway": "mireld", "model": "x"}}}}
     unpinned = media_generator.provider_chain(s, "openai", store=FakeStore(**login, semasa_settings=[other]), explicit=False)
-    assert unpinned[-1] == "chatgpt" or "chatgpt" in unpinned and unpinned[0] != "chatgpt"      # not pinned: the old order
+    assert unpinned[:2] == ["chatgpt", "openai"]              # no pin on ChatGPT: Wan's order already puts it first
     assert media_generator.pinned_picture_maker(None) == ""
 
 
@@ -209,7 +216,7 @@ def test_when_the_others_cannot_draw_chatgpt_does_and_the_row_says_so(monkeypatc
     gpt = Fake("chatgpt", result=Generated(b"\x89PNG....", "image/png", "gpt-5.5", {}))
     s = _settings(openai_key=None)
     monkeypatch.setattr(media_generator, "has_credentials", lambda name, s, store=None: name in ("cloudflare", "chatgpt"))
-    assert media_generator.process_row(None, dict(ROW), s, {"cloudflare": cf, "chatgpt": gpt}) is True
+    assert media_generator.process_row(None, _picked(), s, {"cloudflare": cf, "chatgpt": gpt}) is True
     w = writes["m1"]
     assert w["status"] == "done" and w["provider"] == "chatgpt" and w["meta"]["failover"][0]["provider"] == "cloudflare"
 
@@ -248,25 +255,27 @@ def test_the_chatgpt_provider_maps_its_errors_to_failover_kinds_and_sizes_the_pi
     assert e2.value.kind == "request"
 
 
-# ---- Wan's picture order (8 Nov 2026): Cloudflare > KioskAPI > ChatGPT > Gemini -----------------------------------------------
+# ---- Wan's picture order (24 Nov 2026): ChatGPT > KiosAPI, then Cloudflare > Gemini > Replicate ------------------------
 
-def test_the_picture_order_is_cloudflare_kiosapi_chatgpt_gemini_and_a_picked_provider_goes_first(monkeypatch):
+def test_the_picture_order_is_chatgpt_kiosapi_then_the_rest_and_a_picked_provider_goes_first(monkeypatch):
     monkeypatch.setattr(media_generator, "has_credentials", lambda name, s, store=None: True)
     s = _settings()
-    order = ["cloudflare", "openai", "chatgpt", "gemini", "replicate"]
+    order = ["chatgpt", "openai", "cloudflare", "gemini", "replicate"]
     assert media_generator.provider_chain(s, "openai", explicit=False) == order
     picked = media_generator.provider_chain(s, "gemini", explicit=True)
-    assert picked == ["gemini", "cloudflare", "openai", "chatgpt", "replicate"]
+    assert picked == ["gemini", "chatgpt", "openai", "cloudflare", "replicate"]
+    # a reference picture: ChatGPT and Gemini draw from words only, so KiosAPI is the first asked
+    assert media_generator.provider_chain(s, "openai", needs_edit=True, explicit=False) == ["openai", "cloudflare", "replicate"]
     video = media_generator.provider_chain(s, "gemini", kind="video", explicit=False)
     assert video == ["openai", "replicate"], "only video makers"
 
 
-def test_a_row_stamped_with_the_default_provider_is_drawn_by_cloudflare_first(monkeypatch):
+def test_a_row_stamped_with_the_default_provider_follows_wans_order_not_the_stamp(monkeypatch):
     writes, _ = _patch_db(monkeypatch)
     cf, oai = Fake("cloudflare", result=PIC), Fake("openai", result=PIC)
-    row = {**ROW, "provider": "openai"}                     # what Tetapan stamped when the row was queued
+    row = {**ROW, "provider": "cloudflare"}                 # Tetapan's stamp when the row was queued: a default, not a choice
     assert media_generator.process_row(None, row, _settings(), {"cloudflare": cf, "openai": oai}) is True
-    assert writes["m1"]["provider"] == "cloudflare" and cf.calls and oai.calls == []
+    assert writes["m1"]["provider"] == "openai" and oai.calls and cf.calls == []        # no ChatGPT login here: KiosAPI is next
 
 
 def test_a_provider_the_row_says_was_picked_keeps_its_place_and_an_unknown_one_is_still_reported(monkeypatch):
@@ -329,3 +338,30 @@ def test_chatgpt_draws_with_the_pinned_model_else_the_saved_one_and_reports_the_
     assert other.generate_from_text("a flask", {}).model == "gpt-6.2-sol"
     moved = pinned("gpt-refused")
     assert moved.generate_from_text("a flask", {}).model == "gpt-6.1-sol"             # says the one that actually drew
+
+
+def test_a_pinned_picture_model_is_drawn_by_the_image_tool_through_the_logins_chat_model(monkeypatch):
+    from fakestore import FakeStore
+
+    from semasa import chatgpt_login as cl
+
+    class Login:
+        def __init__(self, store):
+            self.asked = []
+
+        def connected(self):
+            return True
+
+        def settings(self):
+            return {"model": "gpt-6.2-sol"}
+
+        def draw(self, prompt, *, size, model, image_model=""):
+            self.asked.append((model, image_model))
+            return b"\x89PNG\r\n\x1a\n" + b"0" * 64
+
+    monkeypatch.setattr(cl, "Login", Login)
+    pin = {"key": "ai_team", "value": {"pins": {"image_gen": {"gateway": "chatgpt", "model": "gpt-image-2"}}}}
+    p = media_generator.ChatGPTImageProvider(FakeStore(semasa_settings=[pin]))
+    got = p.generate_from_text("a flask", {})
+    assert p.login.asked == [("gpt-6.2-sol", "gpt-image-2")]
+    assert got.model == "gpt-image-2" and got.meta == {"chatgpt_model": "gpt-6.2-sol", "chatgpt_image_model": "gpt-image-2"}

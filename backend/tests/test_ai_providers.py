@@ -47,8 +47,11 @@ def test_a_provider_is_a_robot_numbered_after_the_built_in_five_with_its_dialect
     assert [(c["slug"], c["robot"], c["name"], c["provider"], c["key"]) for c in cands] == [
         ("claude", "W6", "Claude", "anthropic", "key-claude-1234"), ("kios2", "W7", "KiosAPI 2", "openai", "key-kios2-1234")]
     assert all(c["source"] == "provider" and not c["blocked"] for c in cands)
-    assert ai_team.robots(st)["claude"] == {"robot": "W6", "name": "Claude", "tone": "provider", "does": ["read", "write"],
-                                            "added": True}
+    # every Claude model reads pictures, so an Anthropic provider is a picture reader too; an OpenAI-dialect one is text only
+    assert ai_team.robots(st)["claude"] == {"robot": "W6", "name": "Claude", "tone": "provider",
+                                            "does": ["read", "write", "read_image"], "added": True}
+    assert ai_team.robots(st)["kios2"]["does"] == ["read", "write"]
+    assert cands[0]["does"] == ["read", "write", "read_image"] and cands[1]["does"] == ["read", "write"]
     assert ai_team.robots(st)["rootsys"]["robot"] == "W1"
 
 
@@ -272,3 +275,16 @@ def test_a_preferred_robot_goes_first_for_every_text_job_but_a_pin_of_its_own_st
     # a bad value is no preference
     bad = {"key": "ai_team", "value": {"prefer": "../x y"}}
     assert ai_team.read_prefer(store(provider(), **{db.SETTINGS: [bad]})) == ""
+
+
+def test_an_anthropic_provider_can_be_pinned_as_the_picture_reader_and_reads_with_its_own_model_in_the_chain():
+    pins = {"key": "ai_team", "value": {"pins": {"image_reader": {"gateway": "claude", "model": ""}}}}
+    st = store(provider(model="claude-opus-5-5"), **{db.SETTINGS: [pins]})
+    st.tables[db.API_STATUS] = [{"slug": s, "chat_ok": True, "chat_ms": 500, "error": "",
+                                 "checked_at": (NOW - timedelta(hours=1)).isoformat()} for s in ("rootsys", "mireld", "claude")]
+    links = ai_team.chain(st, github(), {}, NOW)
+    claude = next(c for c in links if c["slug"] == "claude")
+    assert claude["vision_model"] == "claude-opus-5-5"                       # a link that is sent pictures
+    got = ai_team.route(st, github(), {}, NOW)
+    assert got.vision_provider == "anthropic" and got.vision_base_url == "https://api.anthropic.com"
+    assert got.vision_reader_model == "claude-opus-5-5" and got.vision_key == "key-claude-1234"

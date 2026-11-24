@@ -85,8 +85,8 @@ def join(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any] | None:
     an ayat al-Quran: a verse is drawn whole on a card of its own and is never folded into another slide's points."""
     if a.get("ayat") or b.get("ayat"):
         return None
-    points = [_clean(a.get("lead")), *(a.get("points") or []), _sentence(b.get("title", ""), b.get("lead", "")),
-              *(b.get("points") or []), _clean(b.get("note"))]
+    points = [_clean(a.get("lead")), *(a.get("points") or []), _clean(a.get("note")),
+              _sentence(b.get("title", ""), b.get("lead", "")), *(b.get("points") or []), _clean(b.get("note"))]
     points = fit_points([p for p in (_clean(p) for p in points) if p], compliance.MAX_POINTS)
     keep = {k: v for k, v in a.items() if k not in ("title", "points", "lead", "note")}
     feet = [str(x.get("foot") or "") for x in (a, b) if x.get("foot")]

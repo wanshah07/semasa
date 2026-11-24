@@ -300,3 +300,11 @@ def test_a_verse_too_long_for_its_card_never_falls_back_to_the_classic_look(work
     row["meta"]["look"] = "era"
     media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load())
     assert saved.get("status") == "error" and not uploads
+
+
+def test_a_join_keeps_the_first_slides_note_too():
+    # Codex review on #340: join() left a's note out
+    out = carousel.join({"title": "A", "lead": "satu", "note": "catatan satu", "points": []},
+                        {"title": "B", "lead": "dua", "note": "catatan dua", "points": []})
+    assert "catatan satu" in " ".join(out["points"]) and "catatan dua" in " ".join(out["points"])
+

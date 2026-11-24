@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { writtenCap, fitPoints, limitSlides } from "./src/lib/limitSlides.js";
+import { writtenCap, fitPoints, joinSlides, limitSlides } from "./src/lib/limitSlides.js";
 
 let n = 0; const ok = (c, m) => { assert.ok(c, m); n += 1; };
 const set = (k) => [{ title: "Tajuk utama", points: [] },
@@ -22,4 +22,9 @@ const long = "Ayat yang sangat panjang tentang peraturan dan notifikasi ".repeat
 ok(limitSlides([...set(10).slice(0, 1), ...Array.from({ length: 8 }, (_, i) => ({ title: `F${i}`, lead: long, points: [] })), set(2)[1]], 7).joined === 0, "a join too dense to read is refused");
 ok(fitPoints(["aa", "b", "c", "dddd", "e", "f", "g"], 5).length === 5, "points merged to the limit");
 ok(words([{ title: "", points: fitPoints(["un", "dua", "tiga", "empat", "lima", "enam", "tujuh"], 5) }]) === words([{ title: "", points: ["un", "dua", "tiga", "empat", "lima", "enam", "tujuh"] }]), "no word lost in merged points");
+// Codex review on #340: the first slide's note and both definition notes survive a join
+const joined = joinSlides({ title: "A", lead: "la", note: "catatan satu", foot: "Definisi: x = satu", points: [] },
+  { title: "B", lead: "lb", note: "catatan dua", foot: "Definisi: y = dua", points: [] });
+ok(joined.points.join("|").includes("catatan satu") && joined.points.join("|").includes("catatan dua"), "both notes kept");
+ok(joined.foot === "Definisi: x = satu; y = dua", `both definitions kept (${joined.foot})`);
 console.log(`limitSlides: ${n} checks passed`);

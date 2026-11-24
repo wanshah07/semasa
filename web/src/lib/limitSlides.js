@@ -24,14 +24,22 @@ export function fitPoints(points, most = MAX_POINTS) {
   return pts;
 }
 
+/** The definition notes of two slides as one: "Definisi: a = x" and "Definisi: b = y" become "Definisi: a = x; b = y". No term is lost. */
+export function mergeFeet(x, y) {
+  const f = [x, y].map(clean).filter(Boolean);
+  if (!f.length) return {};
+  if (f.length === 1) return { foot: f[0] };
+  const bare = (t) => t.replace(/^(definisi|definition)\s*:\s*/i, "");
+  return { foot: `${f[0].replace(/[;.\s]+$/, "")}; ${bare(f[1])}` };
+}
+
 /** Two neighbouring slides as one, or null: a verse is never folded into another slide, and a join too dense to read is refused. */
 export function joinSlides(a, b) {
   if (a.ayat || b.ayat) return null;
-  const pts = fitPoints([clean(a.lead), ...(a.points || []), sentence(b.title, b.lead), ...(b.points || []), clean(b.note)]
+  const pts = fitPoints([clean(a.lead), ...(a.points || []), clean(a.note), sentence(b.title, b.lead), ...(b.points || []), clean(b.note)]
     .map(clean).filter(Boolean));
   const { title, lead, points, note, foot, ...keep } = a; // eslint-disable-line no-unused-vars
-  const feet = [a.foot, b.foot].map(clean).filter(Boolean);
-  const joined = { ...keep, title: a.title, points: pts, ...(feet.length ? { foot: feet[0] } : {}) };
+  const joined = { ...keep, title: a.title, points: pts, ...mergeFeet(a.foot, b.foot) };
   return chars(joined) > DENSE ? null : joined;
 }
 

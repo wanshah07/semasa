@@ -108,7 +108,7 @@ export default function SlidesEditor({ post, rows, setRows, locked, jobs, attach
   const cap = writtenCap(post.stream);
   const tooMany = normaliseSlides(fromRows(rows)).length > cap;
   const fixMany = () => {
-    const full = rows.filter((r) => r.title.trim() || r.points.trim())
+    const full = rows.filter((r) => normaliseSlides(fromRows([r])).length)       // every row the preview counts: a lead-only or verse row too
       .map((r) => ({ ...r, points: String(r.points || "").split("\n").map((x) => x.trim()).filter(Boolean) }));
     const { slides, joined } = limitSlides(full, cap);
     if (!joined) return onToast(t("Slaid itu terlalu padat untuk digabungkan lagi tanpa sukar dibaca.", "Those slides are too dense to join further without being hard to read."), "warn");

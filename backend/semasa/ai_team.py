@@ -257,18 +257,40 @@ def _parse(s: Any) -> datetime | None:
 
 # --- asking a gateway live ------------------------------------------------------------------------------------------------
 
+def _chatgpt_live(login: Any, model: str, timeout: int) -> tuple[bool, int | None, str]:
+    """The live question for Wan's ChatGPT login (24 Nov 2026). Its candidate's `key` is the Login, not a bearer string, and
+    its address has no /chat/completions: asked as an OpenAI gateway it answered 404 {"detail":"Not Found"} in 126 ms and the
+    router wrote ChatGPT off as down while the probe, which asks through the login, found it up. So it is asked the way the
+    probe asks it: one short real answer through the login."""
+    import time
+    t0 = time.monotonic()
+    try:
+        got = login.write("Answer with the single word OK.", "Say OK.", model=model, timeout=max(int(timeout), 30))
+        ok = bool(str(got).strip())
+        return ok, int((time.monotonic() - t0) * 1000), "" if ok else "empty answer"
+    except Exception as exc:  # noqa: BLE001 - a refusal is an answer: not live
+        return False, int((time.monotonic() - t0) * 1000), str(exc)[:160]
+
+
 class Live:
     """The two live questions: does THIS model answer a five-token question right now, and which models does the gateway list
     right now. Tests pass a stand-in; the real one is `LIVE`, used by the runners (`llm_for`) and the API workflow."""
 
     def chat(self, c: dict[str, Any], model: str, timeout: int = LIVE_TIMEOUT) -> tuple[bool, int | None, str]:
         from . import api_status
+        if c.get("provider") == "chatgpt":
+            return _chatgpt_live(c.get("key"), model, timeout)
         gw = {"provider": c["provider"], "base_url": c["base_url"], "key": c["key"], "model": model}
         ok, ms, _usage, err = api_status._chat(gw, timeout)
         return ok, ms, err
 
     def models(self, c: dict[str, Any], timeout: int = LIVE_TIMEOUT) -> list[str]:
         from . import api_status
+        if c.get("provider") == "chatgpt":
+            try:
+                return list(c["key"].models())
+            except Exception:  # noqa: BLE001 - no list is no search
+                return []
         gw = {"provider": c["provider"], "base_url": c["base_url"], "key": c["key"]}
         return [m.removeprefix("models/") for m in api_status._models(gw, timeout)[0]]     # Gemini lists "models/gemini-..."
 

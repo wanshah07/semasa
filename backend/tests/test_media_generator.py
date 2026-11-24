@@ -227,7 +227,7 @@ def test_the_chatgpt_provider_maps_its_errors_to_failover_kinds_and_sizes_the_pi
         def settings(self):
             return {"model": "gpt-5.5"}
 
-        def draw(self, prompt, size):
+        def draw(self, prompt, size, model=None):
             self.sizes.append(size)
             if self.exc:
                 raise self.exc
@@ -291,3 +291,41 @@ def test_cloudflares_nsfw_filter_is_marked_as_its_own_and_the_next_provider_draw
     with pytest.raises(ProviderError) as e:
         CloudflareProvider._answer(object.__new__(CloudflareProvider), R(), "@cf/x")
     assert e.value.kind == "filter" and media_generator.error_kind(e.value) in media_generator.FAILOVER_KINDS
+
+
+def test_chatgpt_draws_with_the_pinned_model_else_the_saved_one_and_reports_the_one_that_drew(monkeypatch):
+    from fakestore import FakeStore
+
+    from semasa import chatgpt_login as cl
+
+    class Login:
+        def __init__(self, store):
+            self.saved, self.asked = "gpt-6.2-sol", []
+
+        def connected(self):
+            return True
+
+        def settings(self):
+            return {"model": self.saved}
+
+        def draw(self, prompt, *, size, model):
+            self.asked.append(model)
+            if model == "gpt-refused":                 # the account refuses it: the login moves to another and saves it
+                self.saved = "gpt-6.1-sol"
+            return b"\x89PNG\r\n\x1a\n" + b"0" * 64
+
+    monkeypatch.setattr(cl, "Login", Login)
+    plain = media_generator.ChatGPTImageProvider(FakeStore())
+    got = plain.generate_from_text("a flask", {})
+    assert plain.login.asked == ["gpt-6.2-sol"] and got.model == "gpt-6.2-sol"       # the saved model, not DEFAULT_MODEL
+
+    def pinned(model, gateway="chatgpt"):
+        pin = {"key": "ai_team", "value": {"pins": {"image_gen": {"gateway": gateway, "model": model}}}}
+        return media_generator.ChatGPTImageProvider(FakeStore(semasa_settings=[pin]))
+
+    p = pinned("gpt-6-astra")
+    assert p.generate_from_text("a flask", {}).model == "gpt-6-astra" and p.login.asked == ["gpt-6-astra"]
+    other = pinned("gpt-image-2", gateway="kiosapi")                                  # another robot's pin is not ChatGPT's model
+    assert other.generate_from_text("a flask", {}).model == "gpt-6.2-sol"
+    moved = pinned("gpt-refused")
+    assert moved.generate_from_text("a flask", {}).model == "gpt-6.1-sol"             # says the one that actually drew

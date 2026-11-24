@@ -264,9 +264,19 @@ class ChatGPTImageProvider:
 
     def __init__(self, store: Any):
         from . import chatgpt_login
+        self.store = store
         self.login = chatgpt_login.Login(store)
         if not self.login.connected():
             raise ProviderError("ChatGPT is not connected: log in on the API page", kind="auth")
+
+    def pinned_model(self) -> str:
+        """The model of a picture-maker pin on ChatGPT (settings.ai_team.pins.image_gen), or "" when there is none."""
+        try:
+            from . import ai_team
+            pin = ai_team.read_pins(getattr(self, "store", None)).get("image_gen") or {}
+        except Exception:  # noqa: BLE001 - no pin is the saved model
+            return ""
+        return str(pin.get("model") or "") if pin.get("gateway") == "chatgpt" else ""
 
     def generate(self, kind: str, reference_url: str, prompt: str, options: dict[str, Any]) -> Generated:
         raise ProviderError("ChatGPT draws from words only here: a reference picture goes to Cloudflare, OpenAI or Replicate",
@@ -276,12 +286,18 @@ class ChatGPTImageProvider:
         from . import chatgpt_login as cgl
         from .providers.cloudflare import content_type_of
         size = cgl.SIZES.get(str(options.get("resolution") or "square"), cgl.SIZES["square"])
+        # the model Wan picked for the picture maker (a pin on ChatGPT with a model), else the login's saved one. Before
+        # 24 Nov 2026 this drew with DEFAULT_MODEL whatever was saved, and then reported the saved one. A refused model still
+        # falls over to the next the account allows (Login._with_model), and that one is saved.
+        saved = str((self.login.settings() or {}).get("model") or cgl.DEFAULT_MODEL)
+        want = self.pinned_model() or saved
         try:
-            data = self.login.draw(prompt, size=size)
+            data = self.login.draw(prompt, size=size, model=want)
         except cgl.ChatGPTError as exc:
             kind = "limit" if exc.limit else "auth" if exc.auth else "model" if exc.model else "unavailable"
             raise ProviderError(str(exc), kind=kind) from exc
-        model = str((self.login.settings() or {}).get("model") or cgl.DEFAULT_MODEL)
+        after = str((self.login.settings() or {}).get("model") or cgl.DEFAULT_MODEL)
+        model = after if after != saved else want            # a refused model was replaced and saved: say the one that drew
         return Generated(data, content_type_of(data), model, {"chatgpt_model": model})
 
 

@@ -609,3 +609,38 @@ def test_the_effort_of_the_pinned_picture_reader_model_is_kept():
         "pins": {"image_reader": {"gateway": "rootsys", "model": "kimi-k3.1-pro"}},
         "efforts": {"rootsys|kimi-k3.1-pro": "medium"}}})
     assert dict(ai_team.route(store, _github(), {}, NOW).efforts) == {"rootsys.cloud|kimi-k3.1-pro": "medium"}
+
+
+# ---- ChatGPT is asked live through its login, never as an OpenAI gateway (24 Nov 2026) -------------------------------
+
+def test_the_live_question_for_chatgpt_goes_through_the_login_and_never_to_chat_completions(monkeypatch):
+    from semasa import api_status
+
+    class Login:
+        def __init__(self, answer="OK", exc=None):
+            self.answer, self.exc, self.asked = answer, exc, []
+
+        def write(self, system, user, *, model, timeout):
+            self.asked.append((model, timeout))
+            if self.exc:
+                raise self.exc
+            return self.answer
+
+        def models(self):
+            return ["gpt-6.2-sol", "gpt-6.1-sol"]
+
+    def boom(*a, **k):
+        raise AssertionError("ChatGPT must not be asked as an OpenAI gateway")
+
+    monkeypatch.setattr(api_status, "_chat", boom)
+    monkeypatch.setattr(api_status, "_models", boom)
+    login = Login()
+    c = {"provider": "chatgpt", "base_url": "https://chatgpt.com/backend-api/codex", "key": login, "slug": "chatgpt"}
+    ok, ms, err = ai_team.LIVE.chat(c, "gpt-6.2-sol")
+    assert ok is True and err == "" and isinstance(ms, int)
+    assert login.asked == [("gpt-6.2-sol", 30)]                       # the login's own road, with time to answer
+    assert ai_team.LIVE.models(c) == ["gpt-6.2-sol", "gpt-6.1-sol"]
+    refused = Login(exc=RuntimeError("the account refuses this model"))
+    ok, _ms, err = ai_team.LIVE.chat({**c, "key": refused}, "gpt-x")
+    assert ok is False and "refuses" in err
+    assert ai_team.LIVE.chat({**c, "key": Login(answer="  ")}, "gpt-6.2-sol")[0] is False      # an empty answer is not live

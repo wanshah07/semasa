@@ -147,7 +147,7 @@ export default function ClaudeSetup({ providers = [], statusRows = [], team, req
         </p>
         {test.state === "running" && <p className="mt-1 flex items-center gap-1 text-[11px] text-accent" data-pictures-running><Loader2 size={11} className="animate-spin" />{t("ChatGPT sedang diuji (menjawab, membaca, melukis)…", "ChatGPT is being tested (answer, read, draw)…")}</p>}
         {test.state === "lost" && <p className="mt-1 text-[11px] text-warn">{t("Tiada jawapan selepas 12 minit: ujian mungkin tidak bermula. Tekan Uji gambar lagi, atau jalankan “ChatGPT live test” di GitHub Actions.", "No answer after 12 minutes: the test may not have started. Press Test pictures again, or run “ChatGPT live test” in GitHub Actions.")}</p>}
-        {test.state === "ok" && <p className="mt-1 text-[11px] text-ok" data-pictures-ok>{t("Lulus: ChatGPT menjawab, membaca dan melukis ({m}).", "Passed: ChatGPT answered, read and drew ({m}).", { m: test.model || "-" })} <span className="text-muted">· {timeAgo(test.at, now)}</span></p>}
+        {test.state === "ok" && <p className="mt-1 text-[11px] text-ok" data-pictures-ok>{t("Lulus: ChatGPT menjawab, membaca dan melukis satu gambar dengan {m}.", "Passed: ChatGPT answered, read and drew one picture with {m}.", { m: test.model || "-" })} <span className="text-muted">· {timeAgo(test.at, now)}</span></p>}
         {test.state === "notconnected" && <p className="mt-1 text-[11px] text-danger">{t("ChatGPT belum log masuk: log masuk di kad ChatGPT di bawah, kemudian uji lagi.", "ChatGPT is not logged in: log in on the ChatGPT card below, then test again.")}</p>}
         {test.state === "failed" && (
           <p className="mt-1 text-[11px] text-danger" data-pictures-failed>

@@ -112,7 +112,10 @@ def _state_of(name: str) -> dict[str, Any] | None:
         state = json.loads(data)
     except (ValueError, TypeError):
         return None
-    return state if isinstance(state, dict) and isinstance(state.get("cookies"), list) else None
+    if not isinstance(state, dict) or not isinstance(state.get("cookies"), list):
+        return None
+    # a malformed entry (null, a string...) is dropped, never iterated: the optional secret must not be able to fail the sweep
+    return {**state, "cookies": [c for c in state["cookies"] if isinstance(c, dict)]}
 
 
 def storage_state_path() -> str | None:

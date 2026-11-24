@@ -120,7 +120,7 @@ def test_the_probe_keeps_only_the_picture_models_that_really_drew_and_stops_when
     login = L()
     res = ct.probe_image_models(login, ("gpt-image-2.5", "gpt-image-2", "gpt-image-1.5", "gpt-image-1", "never-asked"))
     assert res["models"] == ["gpt-image-2"] and res["chat_model"] == "gpt-6.2-sol"
-    assert [m for _c, m in login.asked] == ["gpt-image-2.5", "gpt-image-2", "gpt-image-1.5", "gpt-image-1"]   # stopped at the limit
+    assert [m for _c, m in login.asked] == ["gpt-image-2.5", "gpt-image-2", "gpt-image-1.5", "gpt-image-1"]   # then stopped
     assert all(c == "gpt-6.2-sol" for c, _m in login.asked)             # every picture asked through the login's chat model
     assert "Unknown parameter" in res["tried"]["gpt-image-2.5"]["error"]
     assert res["tried"]["gpt-image-1.5"]["ok"] is False and "drew with gpt-image-2" in res["tried"]["gpt-image-1.5"]["error"]

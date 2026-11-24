@@ -9,7 +9,19 @@ import Button from "./ui/Button";
    approval stay exactly as they are; the worker (supabase/093, backend/semasa/rerender.py) takes the Zernio copy out, draws the
    pictures again with the current design and the publisher queues it again. It asks by inserting a row; nothing is approved or
    sent from here. Not for LinkedIn (no brand cover: use Refresh in the slides editor) or for a post already sent. */
-export default function PostRedraw({ post, onToast, onChanged }) {
+/* The worker's own test (rerender.redrawable): a finished carousel (not a Diari or Threads design pack), or, once the post is not a
+   draft any more, a Motion film. Anything else would be refused, so no button is shown (Codex review on #341). */
+export function redrawable(post, media) {
+  if ((post.stream || "regulab") !== "regulab") return false;
+  return (media || []).some((m) => {
+    const meta = m.meta || {};
+    if (m.status !== "done") return false;
+    if (m.mode === "slides" && !meta.design && meta.look !== "threads") return true;
+    return post.status !== "draft" && m.type === "video" && meta.flow === "motion" && !meta.film_purged_at && !!meta.motion_id;
+  });
+}
+
+export default function PostRedraw({ post, media, onToast, onChanged }) {
   const { t } = useLang();
   const [req, setReq] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -34,7 +46,7 @@ export default function PostRedraw({ post, onToast, onChanged }) {
     load();
   }
 
-  if (!["draft", "approved", "scheduled"].includes(post.status) || (post.stream || "regulab") !== "regulab" || !(post.slides || []).length) return null;
+  if (!["draft", "approved", "scheduled"].includes(post.status) || !redrawable(post, media)) return null;
   const pending = req?.state === "pending";
   return (
     <div className="rounded-tile border border-line bg-surface-2 p-3 text-sm" data-post-redraw>

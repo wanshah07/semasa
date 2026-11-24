@@ -380,8 +380,8 @@ def send_draft(store: Any, bot: Bot, chat: int, post: dict[str, Any], now: datet
     open_btn = [{"text": "🔗 Buka di Semasa", "url": menu.page_url(SITE, post_tab(post))}]
     # LinkedIn never gets a film (the page has no Motion button there either): a carousel or a single card only
     film = [] if post.get("stream") == "linkedin" else [{"text": "🎬 Motion", "callback_data": f"c:pm:{post['id']}"}]
-    redraw = [{"text": "🔄 Redraw", "callback_data": f"c:rd:{post['id']}"}] \
-        if post.get("stream") != "linkedin" and (post.get("slides") or post.get("media_ids")) else []
+    from . import rerender
+    redraw = [{"text": "🔄 Redraw", "callback_data": f"c:rd:{post['id']}"}] if rerender.redrawable(post, media) else []
     make = [[{"text": "✏️ Edit", "callback_data": f"c:pe:{post['id']}"},
              {"text": "🖼 Carousel", "callback_data": f"c:pc:{post['id']}"}],
             [{"text": "🎨 Single card", "callback_data": f"c:sc:{post['id']}"}, *film, *redraw]]

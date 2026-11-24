@@ -1,6 +1,7 @@
 """Facebook and Instagram read in a browser (13 Nov 2026): the page's own numbers, a login wall named and never a row."""
 
 import base64
+import gzip
 import json
 from datetime import UTC, datetime, timedelta
 
@@ -160,6 +161,35 @@ def test_malformed_cookie_entries_are_dropped_and_never_fail_the_sweep(monkeypat
     assert {c["value"] for c in json.load(open(social_web.storage_state_path()))["cookies"]} == {"v", "f"}
     monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", secret([None, "x"]))              # nothing usable left: ignored
     assert {c["value"] for c in json.load(open(social_web.storage_state_path()))["cookies"]} == {"f"}
+
+
+def test_a_gzipped_login_from_the_kkm_helper_is_read_like_a_plain_one(monkeypatch, caplog):
+    # Wan, 24 Nov 2026: the diagnostic said "instagram secret: absent": session_pack.py writes base64 of a GZIP of the JSON
+    state = {"cookies": [{"name": "sessionid", "domain": ".instagram.com", "value": "v", "expires": 4_000_000_000},
+                         {"name": "x", "domain": ".threads.com", "value": "t"}], "origins": []}
+    packed = base64.b64encode(gzip.compress(json.dumps(state, separators=(",", ":")).encode(), 9)).decode()
+    monkeypatch.setenv("PW_STORAGE_STATE_B64", base64.b64encode(json.dumps({"cookies": [
+        {"name": "c_user", "domain": ".facebook.com", "value": "f"}], "origins": []}).encode()).decode())
+    monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", packed)
+    with caplog.at_level("INFO", logger="semasa.social_web"):
+        path = social_web.storage_state_path()
+    merged = json.load(open(path))["cookies"]
+    assert {c["value"] for c in merged} == {"f", "v"}, "the Instagram cookie joins the Facebook one; Threads is not kept"
+    assert "read gzip" in " ".join(r.getMessage() for r in caplog.records)
+    # a bomb is refused, garbage is 'unreadable', and neither raises
+    monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", base64.b64encode(gzip.compress(b" " * 6_000_000)).decode())
+    assert social_web._read_secret("PW_STORAGE_STATE_IG_B64") == (None, "unreadable")
+    # Codex review on #344: gzip magic followed by garbage (zlib.error) is 'unreadable' too, and never raises
+    broken = b"\x1f\x8b" + b"this is not a gzip stream at all"
+    monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", base64.b64encode(broken).decode())
+    assert social_web._read_secret("PW_STORAGE_STATE_IG_B64") == (None, "unreadable")
+    truncated = gzip.compress(b'{"cookies": []}')[:12]
+    monkeypatch.setenv("PW_STORAGE_STATE_B64", base64.b64encode(truncated).decode())
+    social_web.storage_state_path()                                    # a truncated gzip in either secret must not raise
+    monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", "not base64 at all !!!")
+    assert social_web._read_secret("PW_STORAGE_STATE_IG_B64")[1] == "unreadable"
+    monkeypatch.setenv("PW_STORAGE_STATE_IG_B64", base64.b64encode(b"\xef\xbb\xbf" + json.dumps(state).encode()).decode())
+    assert social_web._read_secret("PW_STORAGE_STATE_IG_B64")[1] == "plain", "a leading byte-order mark is tolerated"
 
 
 def test_the_login_diagnostic_prints_counts_and_cookie_names_never_a_value(monkeypatch, caplog):

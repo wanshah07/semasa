@@ -102,20 +102,44 @@ def hashtag(query: Any) -> str:
 IG_DOMAIN = "instagram.com"
 
 
-def _state_of(name: str) -> dict[str, Any] | None:
-    """One saved login from the environment (base64 of a Playwright storage_state.json), or None when absent or unreadable."""
+GZIP_MAGIC = b"\x1f\x8b"
+MAX_STATE_BYTES = 5_000_000        # a saved login is kilobytes: anything that unpacks beyond this is not one
+
+
+def _unpack(data: bytes) -> bytes:
+    """The JSON bytes of a saved login: plain, or gzip (the KKM helper session_pack.py writes base64 of a gzip), with a leading
+    byte-order mark dropped. A gzip that unpacks past MAX_STATE_BYTES is refused rather than expanded."""
+    import zlib
+    if data[:2] == GZIP_MAGIC:
+        box = zlib.decompressobj(wbits=31)
+        data = box.decompress(data, MAX_STATE_BYTES)
+        if box.unconsumed_tail:
+            raise ValueError("saved login too large")
+    return data.lstrip(b"\xef\xbb\xbf")
+
+
+def _read_secret(name: str) -> tuple[dict[str, Any] | None, str]:
+    """(the saved login, how it was read) from one environment secret. The second part says WHY there is none: 'absent' (not
+    set), 'unreadable' (set, but not base64 of JSON or of a gzip of it) or 'no cookies' (JSON without a cookies list), or how it
+    was read ('plain', 'gzip'). Never a value."""
     raw = (os.environ.get(name) or "").strip()
     if not raw:
-        return None
+        return None, "absent"
     try:
         data = base64.b64decode(raw, validate=False)
-        state = json.loads(data)
-    except (ValueError, TypeError):
-        return None
+        gz = data[:2] == GZIP_MAGIC
+        state = json.loads(_unpack(data))
+    except (ValueError, TypeError, OSError):
+        return None, "unreadable"
     if not isinstance(state, dict) or not isinstance(state.get("cookies"), list):
-        return None
+        return None, "no cookies"
     # a malformed entry (null, a string...) is dropped, never iterated: the optional secret must not be able to fail the sweep
-    return {**state, "cookies": [c for c in state["cookies"] if isinstance(c, dict)]}
+    return {**state, "cookies": [c for c in state["cookies"] if isinstance(c, dict)]}, "gzip" if gz else "plain"
+
+
+def _state_of(name: str) -> dict[str, Any] | None:
+    """One saved login from the environment (base64 of a Playwright storage_state.json, plain or gzipped), or None."""
+    return _read_secret(name)[0]
 
 
 def _is_ig(cookie: dict[str, Any]) -> bool:
@@ -123,7 +147,7 @@ def _is_ig(cookie: dict[str, Any]) -> bool:
 
 
 def describe_login(base: dict[str, Any] | None, ig: dict[str, Any] | None, merged: list[dict[str, Any]],
-                   now: float | None = None) -> str:
+                   now: float | None = None, how: tuple[str, str] = ("", "")) -> str:
     """One line for the run log that says what the saved login holds, so a login wall can be told from a login that never
     arrived (Wan, 24 Nov 2026: "diagnostic"). COUNTS AND COOKIE NAMES ONLY, never a value: the names (sessionid, csrftoken,
     ds_user_id) are public protocol, the values are the login."""
@@ -134,13 +158,16 @@ def describe_login(base: dict[str, Any] | None, ig: dict[str, Any] | None, merge
         return sum(1 for c in (state or {}).get("cookies", []) if match(c))
     fb = count(base, lambda c: "facebook.com" in str(c.get("domain") or ""))
     if base is None:
-        base_text = "absent"
+        base_text = how[0] or "absent"
     else:
-        base_text = f"{len(base['cookies'])} cookie(s), {count(base, _is_ig)} instagram, {fb} facebook"
+        base_text = f"{len(base['cookies'])} cookie(s), {count(base, _is_ig)} instagram, {fb} facebook" + (
+            f" (read {how[0]})" if how[0] else "")
     if ig is None:
-        ig_text = "absent or without an instagram cookie"
+        ig_text = how[1] if how[1] and how[1] != "plain" and how[1] != "gzip" else "absent or without an instagram cookie"
+        if how[1] in ("plain", "gzip"):
+            ig_text = f"read {how[1]}, but no instagram cookie in it"
     else:
-        ig_text = f"{count(ig, _is_ig)} instagram cookie(s)"
+        ig_text = f"{count(ig, _is_ig)} instagram cookie(s)" + (f" (read {how[1]})" if how[1] else "")
     parts = [f"base secret: {base_text}", f"instagram secret: {ig_text}"]
     ig_now = [c for c in merged if _is_ig(c)]
     names = {str(c.get("name")): c for c in ig_now}
@@ -164,8 +191,8 @@ def storage_state_path() -> str | None:
     PW_STORAGE_STATE_IG_B64 (Wan, 24 Nov 2026: "add instagram live without kacau other platforms"), holds an Instagram login on
     its own and is merged over the base: its Instagram cookies replace the base's Instagram cookies and nothing else is touched.
     So adding Instagram never means rewriting the secret Facebook already reads with, and a bad Instagram secret is ignored."""
-    base = _state_of("PW_STORAGE_STATE_B64")
-    ig = _state_of("PW_STORAGE_STATE_IG_B64")
+    base, base_how = _read_secret("PW_STORAGE_STATE_B64")
+    ig, ig_how = _read_secret("PW_STORAGE_STATE_IG_B64")
     if ig is not None and not any(IG_DOMAIN in str(c.get("domain") or "") for c in ig["cookies"]):
         ig = None                                       # a file with no Instagram cookie in it adds nothing
     if base is None and ig is None:
@@ -177,7 +204,7 @@ def storage_state_path() -> str | None:
         cookies += [c for c in ig["cookies"] if IG_DOMAIN in str(c.get("domain") or "")]
     state["cookies"] = cookies
     try:
-        log.info(describe_login(base, ig, cookies))
+        log.info(describe_login(base, ig, cookies, how=(base_how, ig_how)))
     except Exception as exc:  # noqa: BLE001 - a diagnostic line must never fail the sweep
         log.info("saved login: not described (%s)", str(exc)[:80])
     fd, path = tempfile.mkstemp(suffix=".json", prefix="pwstate-")

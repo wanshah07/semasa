@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Activity, AlertTriangle, CheckCircle2, Cpu, KeyRound, RefreshCw, Timer, Wallet, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, Cpu, KeyRound, RefreshCw, Timer, UserPlus, Wallet, XCircle } from "lucide-react";
 import { fadeUp } from "../design/motion";
 import { TABLES, errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
@@ -40,6 +40,15 @@ const VERDICT = {
 const COLOURS = ["rgb(var(--c-accent))", "rgb(var(--c-ok))", "rgb(var(--c-warn))", "rgb(var(--c-danger))", "rgb(var(--c-muted))"];
 
 // the page's five parts, in setup order: [element id, Bahasa Malaysia, English]
+/** Scroll to a part of the page and ring it for a moment, so the eye finds it. */
+function jumpTo(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  el.classList.add("ring-2", "ring-accent");
+  setTimeout(() => el.classList.remove("ring-2", "ring-accent"), 2500);
+}
+
 const SECTIONS = [["api-setup", "Tetapan pantas", "Quick setup"], ["api-team", "Siapa buat apa", "Who does what"], ["api-robots", "Setiap robot", "Each robot"],
   ["api-connect", "Kunci dan log masuk", "Keys and logins"], ["api-usage", "Penggunaan", "Usage"]];
 
@@ -127,6 +136,12 @@ export default function ApiTab({ settings, save, onToast, go }) {
             <span className="mr-1 text-muted">{n + 1}</span>{L === "en" ? en : bm}
           </button>
         ))}
+        {/* One press to the place a second ChatGPT account is added (Wan, 24 Nov 2026: "where can I login another chatgpt
+            account, please add"): the card lives in part 4, far down the page, so it has a button here too. */}
+        <button type="button" data-api-add-chatgpt onClick={() => jumpTo("chatgpt-accounts")}
+          className="inline-flex items-center gap-1 rounded-pill border border-accent bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20">
+          <UserPlus size={13} /> {t("Tambah akaun ChatGPT", "Add a ChatGPT account")}
+        </button>
       </nav>
 
       <section className="mb-8 scroll-mt-20" id="api-setup" data-api-section="setup">

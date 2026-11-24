@@ -133,7 +133,7 @@ export default function ChatGptAccounts({ onToast }) {
 
   if (missing) {
     return (
-      <Card className="mb-4 p-4 text-sm text-muted" data-chatgpt-accounts="missing">
+      <Card className="mb-4 scroll-mt-20 p-4 text-sm text-muted" id="chatgpt-accounts" data-chatgpt-accounts="missing">
         {head}
         <p className="mt-1">{t("Jalankan supabase/095_chatgpt_accounts.sql sekali dahulu.", "Run supabase/095_chatgpt_accounts.sql once first.")}</p>
       </Card>
@@ -144,7 +144,7 @@ export default function ChatGptAccounts({ onToast }) {
   const showPanel = ["requested", "waiting", "expired", "error"].includes(view.phase);
 
   return (
-    <Card className="mb-4 space-y-3 p-4" data-chatgpt-accounts>
+    <Card className="mb-4 scroll-mt-20 space-y-3 p-4" id="chatgpt-accounts" data-chatgpt-accounts>
       <div className="flex flex-wrap items-center gap-2">
         {head}
         {rows && <span className="rounded-pill bg-surface-2 px-2 py-0.5 text-xs text-muted" data-chatgpt-accounts-count>

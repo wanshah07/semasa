@@ -149,7 +149,10 @@ function CreditCard({ card, v, now, L, t, onSaveManual, loading, canSave }) {
         ) : (
           <p className="text-sm text-muted" data-credit-none>{!v.hasRow ? t("Belum disemak: larian API menulis kad ini selepas bacaan pertama.", "Not checked yet: the API run writes this card after its first reading.")
             : !v.keySet ? t("Tiada kunci untuk gerbang ini dalam konfigurasi pekerja.", "No key for this gateway in the workers' configuration.")
-              : t("Tiada titik akhir baki menjawab untuk kunci ini lagi.", "No balance endpoint answers for this key yet.")}</p>
+              : v.keyInfo?.unlimited
+                ? t("Kunci ini tiada had sendiri, jadi ia tidak membawa baki. Baki tambah nilai berada pada AKAUN: tambah dua rahsia di bawah untuk membacanya.",
+                  "This key has no limit of its own, so it carries no balance. The top-up balance sits on the ACCOUNT: add the two secrets below to read it.")
+                : t("Tiada titik akhir baki menjawab untuk kunci ini lagi.", "No balance endpoint answers for this key yet.")}</p>
         )}
         {v.source === "manual" && <p className="mt-1 text-[11px] text-muted" data-credit-manual-note>{t("Angka ini ditaip oleh Wan daripada papan pemuka gerbang pada", "Typed by Wan from the gateway's own dashboard on")} {mytText(v.manualAt, L)}{v.manual?.note ? ` · ${v.manual.note}` : ""}. {t("Ia bukan bacaan langsung.", "It is not a live reading.")}</p>}
       </div>
@@ -163,7 +166,12 @@ function CreditCard({ card, v, now, L, t, onSaveManual, loading, canSave }) {
             <p className="text-sm font-medium" data-credit-expiry>{mytText(v.expiresAt, L)}</p>
             <p className={`text-sm tabular-nums ${cd?.past ? "text-danger" : v.status === "low" ? "text-warn" : "text-ink"}`} data-credit-countdown>{countdownText(cd, t)}</p>
           </>
-        ) : <p className="text-sm text-muted">{t("Tarikh tamat tidak dibaca daripada API.", "No expiry date is readable from the API.")}</p>}
+        ) : v.keyInfo?.neverExpires
+          ? <p className="text-sm text-muted" data-credit-key-forever>{t("Kunci ini tiada tarikh tamat. (Tambah nilai akaun mungkin ada.)", "This key has no end date. (The account's top-up may have one.)")}</p>
+          : <p className="text-sm text-muted">{t("Tarikh tamat tidak dibaca daripada API.", "No expiry date is readable from the API.")}</p>}
+        {v.keyInfo && v.source === "none" && v.keyInfo.used !== null && (
+          <p className="mt-1 text-[11px] text-muted" data-credit-key-used>{t("Dibelanjakan dengan kunci ini setakat ini:", "Spent with this key so far:")} <b className="text-ink">US$ {v.keyInfo.used.toFixed(2)}</b></p>
+        )}
       </div>
 
       {/* freshness and where it came from */}

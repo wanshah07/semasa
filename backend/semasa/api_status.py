@@ -154,12 +154,30 @@ def _chat(gw: dict[str, Any], timeout: int) -> tuple[bool, int | None, dict[str,
     t0 = time.monotonic()
     try:
         if gw["provider"] == "anthropic":
-            r = requests.post(
-                f"{gw['base_url']}/v1/messages",
-                headers={"x-api-key": gw["key"], "anthropic-version": "2023-06-01"},
-                json={"model": gw["model"], "max_tokens": 5, "messages": [{"role": "user", "content": "Say OK"}]},
-                timeout=timeout,
-            )
+            abody: dict[str, Any] = {"model": gw["model"], "max_tokens": 5, "messages": [{"role": "user", "content": "Say OK"}]}
+            thinks = llm_mod.thinks_first(str(gw["model"]))
+            if thinks:
+                # a Claude that thinks first spends max_tokens on the thinking: five tokens can come back as 200 with no text
+                # at all. The check passed that way on 24 Nov 2026 while every long draft Claude wrote was cut. So it gets the
+                # same room a real call gets, and "live" below means words came back.
+                abody["max_tokens"] = llm_mod.with_think_room(16, "low")
+                abody["output_config"] = {"effort": "low"}
+            head = {"x-api-key": gw["key"], "anthropic-version": "2023-06-01"}
+            r = requests.post(f"{gw['base_url']}/v1/messages", headers=head, json=abody, timeout=timeout)
+            if r.status_code == 400 and "output_config" in abody and llm_mod.ANTHROPIC_EFFORT_REFUSED_RE.search(r.text):
+                abody.pop("output_config")              # an endpoint that does not take an effort is asked plainly
+                r = requests.post(f"{gw['base_url']}/v1/messages", headers=head, json=abody, timeout=timeout)
+            if thinks and r.status_code < 400:
+                ms = int((time.monotonic() - t0) * 1000)
+                try:
+                    j = r.json()
+                except ValueError:
+                    return False, ms, {}, "not JSON"
+                words = "".join(str(b.get("text") or "") for b in (j.get("content") or []) if isinstance(b, dict)
+                                and b.get("type") == "text").strip()
+                if not words:
+                    return False, ms, usage_of(j), f"answered with no text (stop_reason={j.get('stop_reason')})"
+                return True, ms, usage_of(j), ""
         else:
             body: dict[str, Any] = {"model": gw["model"], "max_tokens": 5, "messages": [{"role": "user", "content": "Say OK"}]}
             # Gemini 3.x Flash thinks before it answers on Google's OpenAI-compatible endpoint; a five-token question needs none
@@ -490,6 +508,8 @@ def main() -> int:
             store.table(db.API_STATUS).upsert(row, on_conflict="slug").execute()
             print(f"ChatGPT: chat_ok={row.get('chat_ok')} model={row.get('model')} models={len(row['models'])} "
                   f"{row.get('error') or ''}")
+        for line in chatgpt_login.check_accounts(store):     # the extra picture accounts (095): refreshed so they stay usable
+            print(line)
     except Exception as exc:  # noqa: BLE001 - the check is a courtesy; the API tab's other rows must still be written
         log.info("ChatGPT login not checked: %s", str(exc)[:120])
     for r in rows:

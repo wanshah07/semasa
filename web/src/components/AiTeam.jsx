@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Loader2, Pin, PinOff, RefreshCw, Star, Zap } from "lucide-react";
 import Robot3D from "./Robot3D";
+import { colourFor, toneFor } from "../lib/robots";
 import { useLang } from "../lib/i18n";
 import { stampMYT, timeAgo } from "../lib/format";
 import { DOES, EFFORTS, EFFORT_WORDS, JOBS, decisionOf, decisionPending, effortOf, fmtMs, liveLines, modelsFor, pinFor, rateCheck, rateImage, robotsFor, teamCards, withEffort, withPin } from "../lib/aiTeam";
@@ -31,12 +32,16 @@ export default function AiTeam({ statusRows, usageRows, state, team, save, onToa
         const order = reader.order.find((o) => o.slug === c.slug);
         const skipped = reader.skipped.find((o) => o.slug === c.slug);
         const r = c.row;
+        const live = c.state !== "offline";
+        const colour = colourFor(c, live);            // each robot's own colour while it is live; one grey for every offline robot
         return (
-          <Card key={c.slug} className={`p-4 ${compact ? "flex flex-col items-center text-center" : ""}`} data-robot={c.robot}>
+          <Card key={c.slug} className={`p-4 ${compact ? "flex flex-col items-center text-center" : ""}`} data-robot={c.robot} data-robot-colour={colour}
+            style={{ borderTop: `3px solid ${colour}` }}>
             <div className={`flex ${compact ? "flex-col items-center" : "flex-col sm:flex-row sm:items-center"} gap-3`}>
-              <div className="shrink-0"><Robot3D tone={c.tone} state={c.state} size={compact ? 96 : 118} name={c.name} label={c.robot} /></div>
+              <div className="shrink-0"><Robot3D tone={toneFor(c)} state={c.state} size={compact ? 96 : 118} name={c.name} label={c.robot} /></div>
               <div className="min-w-0 w-full">
                 <div className={`flex flex-wrap items-center gap-2 ${compact ? "justify-center" : ""}`}>
+                  <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colour }} aria-hidden="true" />
                   <span className="font-display text-lg">{c.name}</span>
                   <span className={`rounded-pill px-2 py-0.5 text-[11px] ${STATE_CLS[c.state]}`}>● {w(STATE_WORDS[c.state])}</span>
                   {chosen === c.slug && <span className="rounded-pill bg-accent/15 px-2 py-0.5 text-[11px] text-accent"><Zap size={10} className="mr-0.5 inline" />{t("menulis sekarang", "writing now")}</span>}

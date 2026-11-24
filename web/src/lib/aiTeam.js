@@ -9,9 +9,9 @@ export const ROBOTS = {
   mireld: { robot: "W2", name: "Wanshah 2", tone: "mireld", does: ["read", "write", "make_image"] },
   kiosapi: { robot: "W3", name: "Wanshah 3", tone: "kios", does: ["read", "write", "read_image", "make_image"] },
   // Gemini (Wan, 6 Nov 2026): several keys picked automatically; it shows only once a key has been probed (not in ORDER)
-  gemini: { robot: "W4", name: "Wanshah 4", tone: "guest", does: ["read", "write", "read_image", "make_image"] },
+  gemini: { robot: "W4", name: "Wanshah 4", tone: "gemini", does: ["read", "write", "read_image", "make_image"] },
   // ChatGPT (Wan, 7 Nov 2026): Wan's own ChatGPT login, shown once the API check has asked it
-  chatgpt: { robot: "W5", name: "Wanshah 5", tone: "guest", does: ["read", "write", "read_image", "make_image"] },
+  chatgpt: { robot: "W5", name: "Wanshah 5", tone: "chatgpt", does: ["read", "write", "read_image", "make_image"] },
 };
 // shown in this order, like halal-executive: Wanshah 1, then 3, then 2
 export const ORDER = ["rootsys", "kiosapi", "mireld"];
@@ -24,7 +24,9 @@ export function robotsWith(providers) {
   const rows = [...(providers || [])].filter((p) => p && p.id && !ROBOTS[p.id])
     .sort((a, b) => `${a.created_at || ""}${a.id}`.localeCompare(`${b.created_at || ""}${b.id}`));
   rows.forEach((p, n) => {
-    out[p.id] = { robot: `W${FIRST_PROVIDER_ROBOT + n}`, name: p.name || p.id, tone: "provider", does: ["read", "write"], added: true, enabled: p.enabled !== false };
+    out[p.id] = { robot: `W${FIRST_PROVIDER_ROBOT + n}`, name: p.name || p.id, tone: "provider",
+      does: p.dialect === "anthropic" ? ["read", "write", "read_image"] : ["read", "write"],      // every Claude model reads pictures
+      added: true, enabled: p.enabled !== false };
   });
   return out;
 }

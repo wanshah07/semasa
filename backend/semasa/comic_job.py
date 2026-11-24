@@ -39,7 +39,8 @@ from .log import get_logger
 log = get_logger("semasa.comic_job")
 
 # the makers the 16 Nov sample showed can spell a bubble come first; the rest still draw the people for the fallback
-MAKERS = ("chatgpt", "gemini", "openai", "cloudflare", "replicate")
+# Wan, 24 Nov 2026: "KioskAPI is the last choice to save credit": ChatGPT, the free and prepaid makers, KiosAPI ("openai") last
+MAKERS = ("chatgpt", "cloudflare", "gemini", "replicate", "openai")
 FULL_TRIES = 2                       # the comic with words is drawn at most twice before Semasa prints the words itself
 
 READ_SYSTEM = "You copy the words printed in a comic exactly as they are drawn. Answer with one JSON object only."

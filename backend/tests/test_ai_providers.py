@@ -47,8 +47,11 @@ def test_a_provider_is_a_robot_numbered_after_the_built_in_five_with_its_dialect
     assert [(c["slug"], c["robot"], c["name"], c["provider"], c["key"]) for c in cands] == [
         ("claude", "W6", "Claude", "anthropic", "key-claude-1234"), ("kios2", "W7", "KiosAPI 2", "openai", "key-kios2-1234")]
     assert all(c["source"] == "provider" and not c["blocked"] for c in cands)
-    assert ai_team.robots(st)["claude"] == {"robot": "W6", "name": "Claude", "tone": "provider", "does": ["read", "write"],
-                                            "added": True}
+    # every Claude model reads pictures, so an Anthropic provider is a picture reader too; an OpenAI-dialect one is text only
+    assert ai_team.robots(st)["claude"] == {"robot": "W6", "name": "Claude", "tone": "provider",
+                                            "does": ["read", "write", "read_image"], "added": True}
+    assert ai_team.robots(st)["kios2"]["does"] == ["read", "write"]
+    assert cands[0]["does"] == ["read", "write", "read_image"] and cands[1]["does"] == ["read", "write"]
     assert ai_team.robots(st)["rootsys"]["robot"] == "W1"
 
 
@@ -172,7 +175,8 @@ def test_the_anthropic_dialect_uses_x_api_key_and_v1_messages(monkeypatch):
         text = "{}"
 
         def json(self):
-            return {"data": [{"id": "claude-haiku"}], "usage": {"input_tokens": 3, "output_tokens": 2}}
+            return {"data": [{"id": "claude-haiku"}], "usage": {"input_tokens": 3, "output_tokens": 2},
+                    "content": [{"type": "thinking", "thinking": ""}, {"type": "text", "text": "OK"}], "stop_reason": "end_turn"}
 
     def fake(method, url, **kw):
         calls.append({"method": method, "url": url, **kw})
@@ -187,6 +191,49 @@ def test_the_anthropic_dialect_uses_x_api_key_and_v1_messages(monkeypatch):
     assert calls[0]["url"] == "https://api.anthropic.com/v1/models" and calls[0]["headers"]["x-api-key"] == "key-claude-1234"
     assert calls[1]["url"] == "https://api.anthropic.com/v1/messages" and calls[1]["headers"]["anthropic-version"]
     assert "Authorization" not in calls[0]["headers"] and "Authorization" not in calls[1]["headers"]
+    # a Claude that thinks first is asked with room for the thinking, at low effort: five tokens came back as 200 with no words
+    assert calls[1]["json"]["max_tokens"] == 3016 and calls[1]["json"]["output_config"] == {"effort": "low"}
+
+
+def test_a_claude_that_answers_200_with_no_words_is_not_live(monkeypatch):
+    """24 Nov 2026: the check said Claude was live (HTTP 200) while every long draft it wrote came back cut. Live means words."""
+    class R:
+        status_code = 200
+        text = "{}"
+
+        def __init__(self, j):
+            self._j = j
+
+        def json(self):
+            return self._j
+
+    answers = [{"content": [{"type": "thinking", "thinking": ""}], "stop_reason": "max_tokens",
+                "usage": {"input_tokens": 9, "output_tokens": 3016}}]
+    monkeypatch.setattr(api_status.requests, "post", lambda url, **kw: R(answers[0]))
+    gw = ai_providers.gateways(store(provider()))[0]
+    ok, _ms, usage, err = api_status._chat(gw, 5)
+    assert ok is False and err == "answered with no text (stop_reason=max_tokens)" and usage["completion_tokens"] == 3016
+    # an older Claude that does not think first is asked the five-token question as before, and 200 is enough
+    asked = []
+
+    def post(url, **kw):
+        asked.append(kw["json"])
+        return R({"usage": {"input_tokens": 3, "output_tokens": 2}})
+    monkeypatch.setattr(api_status.requests, "post", post)
+    old = {**gw, "model": "claude-haiku-4-5-20251001"}
+    assert api_status._chat(old, 5)[0] is True and asked[0]["max_tokens"] == 5 and "output_config" not in asked[0]
+    # an endpoint that refuses the effort is asked again without it
+    asked.clear()
+
+    class Bad:
+        status_code = 400
+        text = '{"error":{"message":"output_config: Extra inputs are not permitted"}}'
+
+    def picky(url, **kw):
+        asked.append(dict(kw["json"]))
+        return Bad() if "output_config" in kw["json"] else R({"content": [{"type": "text", "text": "OK"}], "usage": {}})
+    monkeypatch.setattr(api_status.requests, "post", picky)
+    assert api_status._chat(gw, 5)[0] is True and ["output_config" in b for b in asked] == [True, False]
 
 
 # ---- Telegram ----------------------------------------------------------------------------------------------------------------
@@ -272,3 +319,16 @@ def test_a_preferred_robot_goes_first_for_every_text_job_but_a_pin_of_its_own_st
     # a bad value is no preference
     bad = {"key": "ai_team", "value": {"prefer": "../x y"}}
     assert ai_team.read_prefer(store(provider(), **{db.SETTINGS: [bad]})) == ""
+
+
+def test_an_anthropic_provider_can_be_pinned_as_the_picture_reader_and_reads_with_its_own_model_in_the_chain():
+    pins = {"key": "ai_team", "value": {"pins": {"image_reader": {"gateway": "claude", "model": ""}}}}
+    st = store(provider(model="claude-opus-5-5"), **{db.SETTINGS: [pins]})
+    st.tables[db.API_STATUS] = [{"slug": s, "chat_ok": True, "chat_ms": 500, "error": "",
+                                 "checked_at": (NOW - timedelta(hours=1)).isoformat()} for s in ("rootsys", "mireld", "claude")]
+    links = ai_team.chain(st, github(), {}, NOW)
+    claude = next(c for c in links if c["slug"] == "claude")
+    assert claude["vision_model"] == "claude-opus-5-5"                       # a link that is sent pictures
+    got = ai_team.route(st, github(), {}, NOW)
+    assert got.vision_provider == "anthropic" and got.vision_base_url == "https://api.anthropic.com"
+    assert got.vision_reader_model == "claude-opus-5-5" and got.vision_key == "key-claude-1234"

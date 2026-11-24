@@ -109,8 +109,15 @@ def robots(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for n, r in enumerate(rows):
         out[r["id"]] = {"robot": f"W{FIRST_ROBOT + n}", "name": r.get("name") or r["id"], "tone": "provider",
-                        "does": ["read", "write"], "added": True}
+                        "does": does_of(r), "added": True}
     return out
+
+
+def does_of(row: dict[str, Any]) -> list[str]:
+    """What a provider's robot does. Every Claude model reads pictures (llm.image_parts speaks Anthropic's image block), so an
+    Anthropic-dialect provider is a picture reader too (Wan, 24 Nov 2026: "make sure claude can read image"); a provider on the
+    OpenAI dialect is a text robot only, because nothing says its model can see."""
+    return ["read", "write", "read_image"] if (row.get("dialect") or "openai") == "anthropic" else ["read", "write"]
 
 
 def candidates(store: Any, job: str, rows: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
@@ -125,7 +132,7 @@ def candidates(store: Any, job: str, rows: list[dict[str, Any]] | None = None) -
         out.append({"source": "provider", "slug": r["id"], "provider": r["provider"], "base_url": r["base_url"],
                     "key": r["key"], "model": model, "blocked": ai_team.cannot_write_text(r["base_url"], model),
                     **robots_by.get(r["id"], {"robot": r["robot"], "name": r.get("name") or r["id"], "tone": "provider",
-                                              "does": ["read", "write"]})})
+                                              "does": does_of(r)})})
     return out
 
 

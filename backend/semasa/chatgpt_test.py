@@ -84,14 +84,37 @@ def run(login: Any, out_dir: Path | None = None) -> dict[str, Any]:
     return results
 
 
+def record(res: dict[str, Any], store: Any | None = None) -> dict[str, Any]:
+    """The result where the API tab reads it (settings.ai_test_result): ok, the three steps' words, the model and the time. Never
+    raises: the test's own answer is the log, the record is for the page (Wan, 24 Nov 2026: "button so we can test ... live")."""
+    from datetime import UTC, datetime
+    value = {"at": datetime.now(UTC).isoformat(), "what": "chatgpt", "model": res.get("model"),
+             "ok": all((res.get(n) or {}).get("ok") for n in ("write", "read", "draw")),
+             "steps": {n: {"ok": bool((res.get(n) or {}).get("ok")), "detail": str((res.get(n) or {}).get("detail") or "")[:200]}
+                       for n in ("write", "read", "draw")}}
+    try:
+        (store or db.client()).table(db.SETTINGS).upsert({"key": "ai_test_result", "value": value}, on_conflict="key").execute()
+    except Exception as exc:  # noqa: BLE001 - the log still has it
+        log.info("ai_test_result not written (%s)", str(exc)[:120])
+    return value
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     out_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else None
     login = cl.Login(db.client())
     if not login.connected():
         print("RESULT not connected: log in on the API page first")
+        from datetime import UTC, datetime
+        try:
+            db.client().table(db.SETTINGS).upsert({"key": "ai_test_result", "value": {
+                "at": datetime.now(UTC).isoformat(), "what": "chatgpt", "ok": False, "not_connected": True,
+                "steps": {}}}, on_conflict="key").execute()
+        except Exception as exc:  # noqa: BLE001
+            log.info("ai_test_result not written (%s)", str(exc)[:120])
         return 1
     res = run(login, out_dir)
+    record(res)
     for name in ("write", "read", "draw"):
         print(f"RESULT {name}={'OK' if res[name]['ok'] else 'FAILED'} · {res[name]['detail']}")
     print(f"RESULT model={res['model']}")

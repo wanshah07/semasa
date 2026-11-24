@@ -207,3 +207,68 @@ def test_telegram_may_pin_an_enabled_provider_and_not_a_switched_off_one():
     assert telegram_tools.set_pin(st, "claude").startswith("📌 W6 Claude")
     pins = [r for r in st.tables[db.SETTINGS] if r["key"] == "ai_team"][0]["value"]["pins"]
     assert pins["reader"] == {"gateway": "claude", "model": "claude-sonnet-5.5"}
+
+
+# ---- the model name (24 Nov 2026: "Claude Opus 5.5" was saved, Anthropic's id is claude-opus-5-5) --------------------
+
+LISTED = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001",
+          "gpt-5.6-sol", "gpt-5.6-sol-mini"]
+
+
+def test_a_typed_model_name_becomes_the_id_the_gateway_lists_and_never_an_invented_one():
+    r = ai_providers.resolve_model
+    assert r("Claude Opus 5.5", LISTED) == "claude-opus-5-5"
+    assert r("claude-opus-5-5", LISTED) == "claude-opus-5-5"                 # an id in the list is kept
+    assert r("Sonnet 5.5", LISTED) == "claude-sonnet-5-5"                    # the missing "claude-" is understood
+    assert r("claude-sonnet-4-5", LISTED) == "claude-sonnet-4-5-20250929"     # a family with no date takes its dated id
+    assert r("gpt-5.6", LISTED) == "gpt-5.6"                                  # a model that merely starts with it is NOT taken
+    assert r("Claude Fable 9", LISTED) == "Claude Fable 9"                    # nothing close: unchanged
+    assert r("Claude Opus 5.5", []) == "Claude Opus 5.5" and r("", LISTED) == ""
+
+
+def test_the_provider_is_loaded_with_the_real_model_id_from_its_last_probe():
+    st = store(provider(model="Claude Opus 5.5"), **{db.API_STATUS: [{"slug": "claude", "models": LISTED}]})
+    assert ai_providers.load(st)[0]["model"] == "claude-opus-5-5"
+    assert ai_providers.candidates(st, "reader")[0]["model"] == "claude-opus-5-5"
+    no_probe = store(provider(model="Claude Opus 5.5"))
+    assert ai_providers.load(no_probe)[0]["model"] == "Claude Opus 5.5"      # no probe yet: as typed
+
+
+def test_the_probe_asks_the_resolved_model(monkeypatch):
+    seen = {}
+
+    def chat(gw, timeout):
+        seen["model"] = gw["model"]
+        return True, 100, {}, ""
+
+    monkeypatch.setattr(api_status, "_models", lambda gw, t: (LISTED, 200, 50, ""))
+    monkeypatch.setattr(api_status, "_chat", chat)
+    monkeypatch.setattr(api_status, "_balance", lambda gw, t: {})
+    row = api_status.probe({"slug": "claude", "name": "Claude", "role": "provider", "base_url": "https://api.anthropic.com",
+                            "key": "k-1234", "model": "Claude Opus 5.5", "provider": "anthropic", "blocked": ""})
+    assert seen["model"] == "claude-opus-5-5" and row["model"] == "claude-opus-5-5" and row["chat_ok"] is True
+
+
+# ---- "use Claude for all functions" (settings.ai_team.prefer) --------------------------------------------------------
+
+def test_a_preferred_robot_goes_first_for_every_text_job_but_a_pin_of_its_own_still_wins():
+    prefer = {"key": "ai_team", "value": {"prefer": "claude"}}
+    st = store(provider(model="claude-opus-5-5"), **{db.SETTINGS: [prefer]})
+    ok = lambda s: {"slug": s, "chat_ok": True, "chat_ms": 300 if s != "claude" else 4000, "error": "",   # noqa: E731
+                    "checked_at": (NOW - timedelta(hours=1)).isoformat()}
+    st.tables[db.API_STATUS] = [ok("rootsys"), ok("mireld"), ok("claude")]
+    for job in ("reader", "ideas", "motion"):
+        got = ai_team.route(st, github(), {}, NOW, job=job)
+        assert got.provider == "anthropic" and got.model == "claude-opus-5-5", job    # slower, ranked last, yet first
+    pinned = {"key": "ai_team",
+              "value": {"prefer": "claude", "pins": {"reader": {"gateway": "mireld", "model": "x"}}}}
+    st2 = store(provider(model="claude-opus-5-5"), **{db.SETTINGS: [pinned]})
+    st2.tables[db.API_STATUS] = [ok("rootsys"), ok("mireld"), ok("claude")]
+    assert ai_team.route(st2, github(), {}, NOW).base_url == "https://api.mireld.my/v1"
+    # a preferred robot that is down hands over to the rest
+    st3 = store(provider(model="claude-opus-5-5"), **{db.SETTINGS: [prefer]})
+    st3.tables[db.API_STATUS] = [ok("rootsys"), ok("mireld"), {**ok("claude"), "chat_ok": False, "error": "404"}]
+    assert ai_team.route(st3, github(), {}, NOW).base_url == "https://rootsys.cloud/v1"
+    # a bad value is no preference
+    bad = {"key": "ai_team", "value": {"prefer": "../x y"}}
+    assert ai_team.read_prefer(store(provider(), **{db.SETTINGS: [bad]})) == ""

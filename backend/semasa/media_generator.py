@@ -182,6 +182,21 @@ def has_credentials(name: str, s: MediaSettings, store: Any = None) -> bool:
 IMAGE_PRIORITY = ("cloudflare", "openai", "chatgpt", "gemini", "replicate")
 
 
+def pinned_picture_maker(store: Any) -> str:
+    """"chatgpt" when the API tab pins the picture maker to Wan's ChatGPT login (settings.ai_team.pins.image_gen), else ""
+    (Wan, 24 Nov 2026: "chatgpt auth CLI for image generation"). Only ChatGPT is handled here: a pin on another gateway is
+    route_media's."""
+    if store is None:
+        return ""
+    try:
+        from . import ai_team
+        pin = ai_team.read_pins(store).get("image_gen") or {}
+    except Exception as exc:  # noqa: BLE001 - no pin is IMAGE_PRIORITY as it was
+        log.info("picture pin not read (%s)", str(exc)[:120])
+        return ""
+    return "chatgpt" if str(pin.get("gateway") or "") == "chatgpt" else ""
+
+
 def provider_chain(s: MediaSettings, first: str, *, kind: str = "image", needs_edit: bool = False,
                    store: Any = None, explicit: bool = True) -> list[str]:
     """Provider names in the order a row tries them: the one it was given first (always, so an explicit choice that
@@ -189,7 +204,8 @@ def provider_chain(s: MediaSettings, first: str, *, kind: str = "image", needs_e
     (a video needs a video provider, a reference picture an edit model). Each name once. `explicit` False: the row's provider
     was only a default, so IMAGE_PRIORITY alone decides the order (the providers without credentials are left out)."""
     out = [first] if explicit else []
-    for name in (*IMAGE_PRIORITY, s.provider):
+    pinned = pinned_picture_maker(store) if kind == "image" else ""     # ChatGPT first when Wan pinned it; the rest still follow
+    for name in (*((pinned,) if pinned else ()), *IMAGE_PRIORITY, s.provider):
         name = (name or "").lower()
         if not name or name in out or name not in PROVIDER_CAPS:
             continue

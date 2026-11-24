@@ -15,6 +15,7 @@ import AiTeam from "../components/AiTeam";
 import ApiPulse from "../components/ApiPulse";
 import GeminiKeys from "../components/GeminiKeys";
 import AiProviders from "../components/AiProviders";
+import ClaudeSetup from "../components/ClaudeSetup";
 import ChatGptLogin from "../components/ChatGptLogin";
 import ThreadsConnect from "../components/ThreadsConnect";
 import { AiSettings, MireldTrial } from "./SettingsTab";
@@ -113,6 +114,9 @@ export default function ApiTab({ settings, save, onToast, go }) {
 
       {/* moved here from Tetapan (Wan, 7 Nov 2026: "API in setting" goes to its segment): the workers' keys and endpoints, and one Mireld run */}
       <section className="mb-6 space-y-5" data-ai-settings>
+        {/* Claude for every text job, ChatGPT's login for pictures, with its test and fix buttons (Wan, 24 Nov 2026) */}
+        <ClaudeSetup providers={providersT.rows} statusRows={statusT.rows} team={settings?.ai_team} request={settings?.ai_test}
+          result={settings?.ai_test_result} save={save} onChanged={providersT.reload} onToast={onToast} />
         <AiSettings onToast={onToast} github={{ scrape: settings?.ai_github_scrape, media: settings?.ai_github_media }} />
         {/* extra providers under the AI slots: Anthropic, a second KiosAPI key, any OpenAI-compatible gateway, as robots W6, W7, ... */}
         <AiProviders statusRows={statusT.rows} usageRows={usage.recent} onToast={onToast} />

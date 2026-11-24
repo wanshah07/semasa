@@ -125,6 +125,22 @@ def cannot_write_text(base_url: str, model: str) -> str:
 
 # --- what the page saved and what the probes measured ---------------------------------------------------------------
 
+TEXT_JOBS = ("reader", "ideas", "motion", "chat", "telegram")     # every job that writes or reads text (not the picture ones)
+
+
+def read_prefer(store: Any) -> str:
+    """settings.ai_team.prefer: the slug of the robot that goes first for EVERY text job that has no pin of its own (Wan,
+    24 Nov 2026: "use claude API for all functions"). A preference like a pin: while that robot is down the rest of the chain
+    answers. "" = none."""
+    try:
+        rows = store.table(db.SETTINGS).select("value").eq("key", SETTINGS_KEY).execute().data or []
+    except Exception as exc:  # noqa: BLE001 - no preference is the order as it was
+        log.info("ai_team preference not read (%s)", str(exc)[:120])
+        return ""
+    v = ((rows[0].get("value") or {}) if rows else {}).get("prefer")
+    return v.strip() if isinstance(v, str) and re.fullmatch(r"[a-z0-9_-]{1,40}", v.strip()) else ""
+
+
 def read_pins(store: Any) -> dict[str, dict[str, Any] | None]:
     try:
         rows = store.table(db.SETTINGS).select("key,value").eq("key", SETTINGS_KEY).execute().data or []
@@ -470,6 +486,9 @@ def chain(store: Any, github: LLMSettings, cfg: dict[str, dict[str, Any]], now: 
         log.info("ChatGPT not considered (%s)", str(exc)[:120])
     pins = read_pins(store)
     pin = pins.get(job)
+    prefer = read_prefer(store) if job in TEXT_JOBS else ""
+    if not pin and prefer:
+        pin = {"gateway": prefer, "model": ""}              # Wan's "use Claude for all functions": first while it is healthy
     if not pin and job == "motion" and cands and cands[0]["source"] == "motion":
         pin = {"gateway": cands[0]["slug"], "model": ""}        # Wan's own motion API goes first while it is healthy
     hl = health(store, now)

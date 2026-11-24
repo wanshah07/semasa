@@ -251,6 +251,13 @@ def probe(gw: dict[str, Any], timeout: int = 30, prev: dict[str, Any] | None = N
         key_ok=None if http is None else http not in (401, 403),
         error=err,
     )
+    if gw.get("role") == "provider" and models and gw["model"]:
+        from . import ai_providers
+        fixed = ai_providers.resolve_model(gw["model"], models)           # "Claude Opus 5.5" is asked as claude-opus-5-5
+        if fixed != gw["model"]:
+            log.info("%s: the saved model %r is asked as %r, the id its gateway lists", gw["slug"], gw["model"], fixed)
+            gw = {**gw, "model": fixed}
+            row["model"] = fixed
     # Google lists "models/gemini-3.6-flash" while the workers ask for "gemini-3.6-flash": compare without the prefix
     listed = {str(m).removeprefix("models/") for m in models or []}
     row["model_listed"] = (str(gw["model"]).removeprefix("models/") in listed) if models and gw["model"] else None

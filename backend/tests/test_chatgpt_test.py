@@ -51,3 +51,17 @@ def test_a_wrong_reading_and_a_refused_draw_are_reported_and_do_not_stop_the_oth
     assert res["write"]["ok"] and not res["read"]["ok"] and not res["draw"]["ok"]
     assert "usage limit" in res["draw"]["detail"] and lg.asked == ["write", "read", "draw"]
     assert not (tmp_path / "chatgpt-drawn.png").exists()
+
+
+def test_the_result_is_recorded_for_the_api_tab_and_a_failed_step_says_so():
+    from fakestore import FakeStore
+
+    from semasa import db
+    st = FakeStore()
+    res = {"write": {"ok": True, "detail": "Na"}, "read": {"ok": True, "detail": "red blue 4821"},
+           "draw": {"ok": False, "detail": "HTTP 402"}, "model": "gpt-6.2-sol"}
+    value = ct.record(res, st)
+    row = [r for r in st.tables[db.SETTINGS] if r["key"] == "ai_test_result"][0]["value"]
+    assert row == value and row["ok"] is False and row["steps"]["draw"] == {"ok": False, "detail": "HTTP 402"}
+    assert row["what"] == "chatgpt" and row["model"] == "gpt-6.2-sol" and row["at"]
+    assert ct.record({k: {"ok": True, "detail": ""} for k in ("write", "read", "draw")}, st)["ok"] is True

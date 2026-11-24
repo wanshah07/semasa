@@ -118,6 +118,45 @@ def _state_of(name: str) -> dict[str, Any] | None:
     return {**state, "cookies": [c for c in state["cookies"] if isinstance(c, dict)]}
 
 
+def _is_ig(cookie: dict[str, Any]) -> bool:
+    return IG_DOMAIN in str(cookie.get("domain") or "")
+
+
+def describe_login(base: dict[str, Any] | None, ig: dict[str, Any] | None, merged: list[dict[str, Any]],
+                   now: float | None = None) -> str:
+    """One line for the run log that says what the saved login holds, so a login wall can be told from a login that never
+    arrived (Wan, 24 Nov 2026: "diagnostic"). COUNTS AND COOKIE NAMES ONLY, never a value: the names (sessionid, csrftoken,
+    ds_user_id) are public protocol, the values are the login."""
+    import time
+    now = time.time() if now is None else now
+
+    def count(state: dict[str, Any] | None, match: Callable[[dict[str, Any]], bool]) -> int:
+        return sum(1 for c in (state or {}).get("cookies", []) if match(c))
+    fb = count(base, lambda c: "facebook.com" in str(c.get("domain") or ""))
+    if base is None:
+        base_text = "absent"
+    else:
+        base_text = f"{len(base['cookies'])} cookie(s), {count(base, _is_ig)} instagram, {fb} facebook"
+    if ig is None:
+        ig_text = "absent or without an instagram cookie"
+    else:
+        ig_text = f"{count(ig, _is_ig)} instagram cookie(s)"
+    parts = [f"base secret: {base_text}", f"instagram secret: {ig_text}"]
+    ig_now = [c for c in merged if _is_ig(c)]
+    names = {str(c.get("name")): c for c in ig_now}
+    seen = []
+    for name in ("sessionid", "ds_user_id", "csrftoken"):
+        c = names.get(name)
+        if c is None:
+            seen.append(f"{name} absent")
+            continue
+        exp = c.get("expires")
+        days = f", {round((float(exp) - now) / 86400, 1)} day(s) left" if isinstance(exp, (int, float)) and exp > 0 else ""
+        seen.append(f"{name} present{days}")
+    parts.append(f"merged: {len(merged)} cookie(s), {len(ig_now)} instagram ({'; '.join(seen)})")
+    return "saved login: " + " | ".join(parts)
+
+
 def storage_state_path() -> str | None:
     """The saved login as a file Playwright can load, or None.
 
@@ -137,6 +176,10 @@ def storage_state_path() -> str | None:
         cookies = [c for c in cookies if IG_DOMAIN not in str(c.get("domain") or "")]
         cookies += [c for c in ig["cookies"] if IG_DOMAIN in str(c.get("domain") or "")]
     state["cookies"] = cookies
+    try:
+        log.info(describe_login(base, ig, cookies))
+    except Exception as exc:  # noqa: BLE001 - a diagnostic line must never fail the sweep
+        log.info("saved login: not described (%s)", str(exc)[:80])
     fd, path = tempfile.mkstemp(suffix=".json", prefix="pwstate-")
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(state, fh)

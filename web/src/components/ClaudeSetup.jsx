@@ -6,7 +6,7 @@ import { timeAgo } from "../lib/format";
 import { formOf, rpcArgs } from "../lib/aiProviders";
 import { checkAI } from "../lib/chat";
 import { rateCheck } from "../lib/aiTeam";
-import { CHATGPT, applyPlan, claudeFacts, claudeRow, pictureTest, planState, suggestModel } from "../lib/claudeSetup";
+import { CHATGPT, IMAGE_MODELS_TEST, applyPlan, claudeFacts, claudeRow, pictureTest, planState, suggestModel } from "../lib/claudeSetup";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
 
@@ -76,7 +76,7 @@ export default function ClaudeSetup({ providers = [], statusRows = [], team, req
   const testClaude = (modelId) => run("test", async () => {
     const m = modelId || model;
     const r = rateCheck(await checkAI(`${row.id}|${m}`));
-    setLive({ ok: !!(r.tested && r.parts?.answered), ms: r.ms, why: r.why || r.note || "", model: m, at: new Date().toISOString() });
+    setLive({ ok: !!(r.tested && r.parts?.answered), reads: !!r.parts?.picture, ms: r.ms, why: r.why || r.note || "", model: m, at: new Date().toISOString() });
     if (canSave) save("ai_team", { ...(team || {}), changed_at: new Date().toISOString() }).catch(() => {});      // the worker asks it too (supabase/057)
   });
   const fixClaude = () => run("fix", async () => {
@@ -96,6 +96,13 @@ export default function ClaudeSetup({ providers = [], statusRows = [], team, req
     setPic((p) => ({ ...p, request: { at, what: CHATGPT } }));
     setNow(Date.now());
     onToast?.(t("Ujian bermula: ChatGPT menjawab, membaca dan melukis satu gambar. Keputusan dalam kira-kira 3 minit.", "Test started: ChatGPT answers, reads and draws one picture. The result shows in about 3 minutes."), "ok");
+  });
+  const findModels = () => run("picmodels", async () => {
+    const at = new Date().toISOString();
+    await save("ai_test", { at, what: IMAGE_MODELS_TEST });
+    setPic((p) => ({ ...p, request: { at, what: IMAGE_MODELS_TEST } }));
+    setNow(Date.now());
+    onToast?.(t("Mencari model gambar ChatGPT: satu hingga lima gambar ujian dilukis. Keputusan dalam beberapa minit.", "Looking for ChatGPT's picture models: one to five test pictures are drawn. The result shows in a few minutes."), "ok");
   });
   const fixPictures = () => run("picfix", async () => {
     const pins = { ...(team?.pins || {}), image_gen: { gateway: CHATGPT, model: "" } };
@@ -125,7 +132,8 @@ export default function ClaudeSetup({ providers = [], statusRows = [], team, req
         {facts.error && facts.verdict !== "ok" && <p className="mt-1 break-words text-[11px] text-muted">{facts.error.slice(0, 200)}</p>}
         {live && (
           <p className={`mt-1 text-[11px] ${live.ok ? "text-ok" : "text-danger"}`} data-claude-live>
-            {live.ok ? t("Diuji sekarang: {m} menjawab dalam {s} s.", "Live test: {m} answered in {s} s.", { m: live.model, s: live.ms ? (live.ms / 1000).toFixed(1) : "?" })
+            {live.ok ? t("Diuji sekarang: {m} menjawab dalam {s} s dan {p}.", "Live test: {m} answered in {s} s and {p}.", { m: live.model, s: live.ms ? (live.ms / 1000).toFixed(1) : "?",
+              p: live.reads ? t("membaca gambar ujian", "read the test picture") : t("TIDAK membaca gambar ujian", "did NOT read the test picture") })
               : t("Diuji sekarang: {m} tidak menjawab: {w}", "Live test: {m} did not answer: {w}", { m: live.model, w: live.why || "-" })}
             <span className="text-muted"> · {timeAgo(live.at, now)}</span>
           </p>
@@ -148,6 +156,9 @@ export default function ClaudeSetup({ providers = [], statusRows = [], team, req
         {test.state === "running" && <p className="mt-1 flex items-center gap-1 text-[11px] text-accent" data-pictures-running><Loader2 size={11} className="animate-spin" />{t("ChatGPT sedang diuji (menjawab, membaca, melukis)…", "ChatGPT is being tested (answer, read, draw)…")}</p>}
         {test.state === "lost" && <p className="mt-1 text-[11px] text-warn">{t("Tiada jawapan selepas 12 minit: ujian mungkin tidak bermula. Tekan Uji gambar lagi, atau jalankan “ChatGPT live test” di GitHub Actions.", "No answer after 12 minutes: the test may not have started. Press Test pictures again, or run “ChatGPT live test” in GitHub Actions.")}</p>}
         {test.state === "ok" && <p className="mt-1 text-[11px] text-ok" data-pictures-ok>{t("Lulus: ChatGPT menjawab, membaca dan melukis satu gambar dengan {m}.", "Passed: ChatGPT answered, read and drew one picture with {m}.", { m: test.model || "-" })} <span className="text-muted">· {timeAgo(test.at, now)}</span></p>}
+        {test.state === "ignored" && <p className="mt-1 text-[11px] text-muted" data-pictures-ignored>{t("Model gambar tidak boleh dipilih dengan log masuk ChatGPT: ChatGPT melukis walaupun nama model gambar yang tidak wujud diberi, jadi ia memilih model gambarnya sendiri. Sebab itu tiada gpt-image-2 dalam senarai.", "A picture model cannot be chosen with a ChatGPT login: ChatGPT drew even when given a picture model that does not exist, so it picks its own. That is why no gpt-image-2 is listed.")} <span className="opacity-70">· {timeAgo(test.at, now)}</span></p>}
+        {test.state === "models" && <p className="mt-1 text-[11px] text-ok" data-pictures-models>{t("Model gambar yang dilukis oleh log masuk ini:", "Picture models this login draws with:")} {test.models.join(", ")} <span className="text-muted">· {timeAgo(test.at, now)}</span></p>}
+        {test.state === "nomodels" && <p className="mt-1 text-[11px] text-muted">{t("Tiada model gambar yang dinamakan diterima: ChatGPT melukis dengan model lalainya.", "No named picture model was accepted: ChatGPT draws with its default.")}</p>}
         {test.state === "notconnected" && <p className="mt-1 text-[11px] text-danger">{t("ChatGPT belum log masuk: log masuk di kad ChatGPT di bawah, kemudian uji lagi.", "ChatGPT is not logged in: log in on the ChatGPT card below, then test again.")}</p>}
         {test.state === "failed" && (
           <p className="mt-1 text-[11px] text-danger" data-pictures-failed>
@@ -160,6 +171,10 @@ export default function ClaudeSetup({ providers = [], statusRows = [], team, req
             title={t("Melukis satu gambar sebenar: menggunakan satu peruntukan gambar ChatGPT", "Draws one real picture: uses one ChatGPT picture allowance")}>
             {busy === "pic" ? <Loader2 size={13} className="animate-spin" /> : <FlaskConical size={13} />} {t("Uji gambar", "Test pictures")}
           </Button>
+          <Button size="sm" variant="ghost" disabled={!canSave || !!busy || test.state === "running"} onClick={findModels} data-pictures-models-find
+            title={t("Bertanya kepada ChatGPT model gambar mana yang ia lukis (melukis 1 hingga 5 gambar ujian)", "Asks ChatGPT which picture models it draws with (draws 1 to 5 test pictures)")}>
+            {busy === "picmodels" ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />} {t("Cari model gambar", "Find picture models")}
+          </Button>
           <Button size="sm" variant={!plan.pictures ? "primary" : "ghost"} disabled={!canSave || !!busy} onClick={fixPictures} data-pictures-fix>
             {busy === "picfix" ? <Loader2 size={13} className="animate-spin" /> : <Wrench size={13} />} {t("Betulkan", "Fix")}
           </Button>
@@ -171,7 +186,8 @@ export default function ClaudeSetup({ providers = [], statusRows = [], team, req
           {busy === "plan" ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} {t("Guna tetapan ini", "Use this setup")}
         </Button>
         <span className={`text-[11px] ${plan.text && plan.pictures ? "text-ok" : "text-muted"}`} data-plan-state>
-          {plan.text && plan.pictures ? t("Aktif: Claude menulis semua teks, ChatGPT melukis.", "Active: Claude writes all text, ChatGPT draws.")
+          {plan.text && plan.pictures && plan.reads ? t("Aktif: Claude menulis semua teks dan membaca gambar, ChatGPT melukis.", "Active: Claude writes all text and reads pictures, ChatGPT draws.")
+            : plan.text && plan.pictures ? t("Claude menulis dan ChatGPT melukis; tekan Guna tetapan ini supaya Claude juga membaca gambar.", "Claude writes and ChatGPT draws; press Use this setup so Claude reads pictures too.")
             : t("Belum aktif sepenuhnya.", "Not fully active yet.")}
         </span>
       </div>

@@ -1,5 +1,15 @@
 # Facebook and Instagram login for the viral-post sweep
 
+> **Adding Instagram without touching anything else (24 Nov 2026).** Do NOT overwrite `PW_STORAGE_STATE_B64`: it is the secret
+> Facebook reads with, and the sweep shares one browser session between the two. Add Instagram as a **second secret**,
+> `PW_STORAGE_STATE_IG_B64`, instead. The worker merges it over the first at run time (its Instagram cookies replace the old
+> Instagram cookies, nothing else is changed), a missing or broken second secret is ignored, and deleting it puts everything back
+> exactly as it was. Steps: (1) `python instagram_login.py instagram` (Mac: `python3`), log in to a throwaway **Instagram** account
+> only, press Enter; it writes `secret-instagram.txt`. (2) GitHub, repo `wanshah07/semasa`, Settings, Secrets and variables,
+> Actions, New repository secret, name `PW_STORAGE_STATE_IG_B64`, paste the WHOLE text. (3) Actions, **Sources**, Run workflow,
+> only = `community`, dry = true first, then false; the summary line shows `'instagram': N` above 0. (4) Delete
+> `secret-instagram.txt`. The rest of this page is the original two-platform route.
+
 Instagram shows a login wall to every visitor, and Facebook loads only the first post of a hashtag page without a login
 (measured 13 Nov 2026). So the Sources sweep reads both with a **saved browser login** of a throwaway account, kept as the GitHub
 secret `PW_STORAGE_STATE_B64` (the same secret name the KKM complaint scraper uses, in its own repo). One file holds both logins.

@@ -39,3 +39,12 @@ def test_a_secret_over_githubs_limit_falls_back_to_the_login_cookies():
     assert len(il.encoded({"cookies": big, "origins": []})) > il.LIMIT
     out = il.slim(state)
     assert {c["name"] for c in out["cookies"]} == {"c_user", "xs"} and len(il.encoded(out)) < il.LIMIT
+
+
+def test_instagram_alone_keeps_only_instagram_cookies_and_names_the_second_secret():
+    # Wan, 24 Nov 2026: Instagram is added as its own secret so the one Facebook reads with is never rewritten
+    state = {"cookies": [{"name": "sessionid", "domain": ".instagram.com"}, {"name": "c_user", "domain": ".facebook.com"}],
+             "origins": []}
+    assert [c["name"] for c in il.slim(state, "instagram")["cookies"]] == ["sessionid"]
+    assert len(il.slim(state)["cookies"]) == 2
+

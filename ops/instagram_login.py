@@ -5,6 +5,10 @@ INSTAGRAM ALONE (Wan, 24 Nov 2026: "add instagram live without kacau other platf
 secret, PW_STORAGE_STATE_IG_B64. The worker merges it over PW_STORAGE_STATE_B64 when it runs, so the secret Facebook (and anything
 else) already reads with is never rewritten and nothing else changes.
 
+REDDIT ALONE (Wan, 24 Nov 2026: "yes set up reddit login"): `python instagram_login.py reddit` asks for a throwaway Reddit login only
+and writes `secret-reddit.txt`, to be saved as the secret PW_STORAGE_STATE_REDDIT_B64. Reddit refuses the shared connection the sweep
+used (429 Too Many Requests on every run); with its own login the sweep reads Reddit as its own visitor. No other secret is touched.
+
 Run it on your own computer (Windows PowerShell is fine), from any folder:
 
     python -m pip install playwright
@@ -25,9 +29,13 @@ import json
 import sys
 
 LIMIT = 48_000                                  # GitHub refuses an Actions secret over 48 KB
-NEEDS = {"instagram": ("sessionid", "ds_user_id"), "facebook": ("c_user", "xs")}
-DOMAINS = {"instagram": "instagram.com", "facebook": "facebook.com"}
-ESSENTIAL = {"sessionid", "ds_user_id", "csrftoken", "mid", "ig_did", "c_user", "xs", "datr", "sb", "fr"}
+NEEDS = {"instagram": ("sessionid", "ds_user_id"), "facebook": ("c_user", "xs"), "reddit": ("reddit_session",)}
+DOMAINS = {"instagram": "instagram.com", "facebook": "facebook.com", "reddit": "reddit.com"}
+ESSENTIAL = {"sessionid", "ds_user_id", "csrftoken", "mid", "ig_did", "c_user", "xs", "datr", "sb", "fr",
+             "reddit_session", "token_v2", "loid", "edgebucket", "csv"}
+# one platform on its own: the word after the file name -> (the file written, the GitHub secret it is saved as, where to log in)
+ALONE = {"instagram": ("secret-instagram.txt", "PW_STORAGE_STATE_IG_B64", "https://www.instagram.com/"),
+         "reddit": ("secret-reddit.txt", "PW_STORAGE_STATE_REDDIT_B64", "https://www.reddit.com/login/")}
 
 
 def encoded(state: dict) -> str:
@@ -37,7 +45,7 @@ def encoded(state: dict) -> str:
 def slim(state: dict, only: str = "") -> dict:
     """Only the Facebook and Instagram cookies (the sweep reads cookies only), or one platform's when `only` names it; the login
     cookies alone if still too large."""
-    keep = [DOMAINS[only]] if only in DOMAINS else list(DOMAINS.values())
+    keep = [DOMAINS[only]] if only in DOMAINS else [DOMAINS["instagram"], DOMAINS["facebook"]]
     cookies = [c for c in state.get("cookies") or [] if any(d in str(c.get("domain") or "") for d in keep)]
     out = {"cookies": cookies, "origins": []}
     if len(encoded(out)) > LIMIT:
@@ -55,7 +63,8 @@ def held(state: dict) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    only = "instagram" if "instagram" in [a.lower() for a in (sys.argv[1:] if argv is None else argv)] else ""
+    words = [a.lower() for a in (sys.argv[1:] if argv is None else argv)]
+    only = next((w for w in ALONE if w in words), "")
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -66,16 +75,16 @@ def main(argv: list[str] | None = None) -> int:
         browser = pw.chromium.launch(headless=False)
         ctx = browser.new_context(locale="en-MY", viewport={"width": 1100, "height": 900})
         page = ctx.new_page()
-        page.goto("https://www.instagram.com/")
-        input("\n1) Log in to the throwaway INSTAGRAM account in the browser (finish any prompt, wait for the feed).\n"
-              "   Then come back here and press Enter... ")
+        page.goto(ALONE[only][2] if only else "https://www.instagram.com/")
+        input(f"\n1) Log in to the throwaway {(only or 'instagram').upper()} account in the browser (finish any prompt, wait for the "
+              "feed).\n   Then come back here and press Enter... ")
         if not only:
             page.goto("https://www.facebook.com/")
             input("\n2) Now log in to the throwaway FACEBOOK account the same way (do NOT use 'Log in with Facebook').\n"
                   "   Wait for the feed, then press Enter here... ")
         state = ctx.storage_state()
         browser.close()
-    missing = {k: v for k, v in held(state).items() if not only or k == only}
+    missing = {k: v for k, v in held(state).items() if (k == only if only else k != "reddit")}
     for platform, gone in missing.items():
         print(f"{platform.title()}: " + ("login cookie found" if not gone else f"NOT logged in ({', '.join(gone)} missing)"))
     upload = slim(state, only)
@@ -84,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     if len(text) > LIMIT:
         print("STILL TOO LARGE: run this again and visit nothing but the two logins.")
         return 1
-    out_file, secret = ("secret-instagram.txt", "PW_STORAGE_STATE_IG_B64") if only else ("secret.txt", "PW_STORAGE_STATE_B64")
+    out_file, secret = ALONE[only][:2] if only else ("secret.txt", "PW_STORAGE_STATE_B64")
     with open(out_file, "w", encoding="ascii") as fh:
         fh.write(text)
     print(f"\nWrote {out_file}. Open it, select ALL, copy, and paste it as the secret {secret} on GitHub.")

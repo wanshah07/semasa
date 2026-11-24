@@ -10,6 +10,16 @@
 > only = `community`, dry = true first, then false; the summary line shows `'instagram': N` above 0. (4) Delete
 > `secret-instagram.txt`. The rest of this page is the original two-platform route.
 
+> **Reddit, its own login (24 Nov 2026).** Reddit refuses the shared connection the sweep used (`429 Too Many Requests` on every
+> run), so Reddit gets a throwaway login of its own, as a **third secret**, `PW_STORAGE_STATE_REDDIT_B64`. No other secret is
+> touched; a missing or broken one is ignored and the shared connection is asked as before. Steps: (1) make a throwaway Reddit
+> account (never a personal one). (2) `python instagram_login.py reddit` (Mac: `python3`), log in to it in the browser that
+> opens, wait for the Reddit front page, press Enter; it writes `secret-reddit.txt` and says "login cookie found". (3) GitHub,
+> repo `wanshah07/semasa`, Settings, Secrets and variables, Actions, New repository secret, name
+> `PW_STORAGE_STATE_REDDIT_B64`, paste the WHOLE text. (4) Actions, **Sources**, Run workflow, only = `community`, dry = true;
+> the log says `reddit login: N reddit cookie(s) ... reddit_session present` and the summary shows `'reddit': N` and
+> `reddit_via=login`. (5) Delete `secret-reddit.txt`. The sweep only reads: it never posts, votes or follows.
+
 Instagram shows a login wall to every visitor, and Facebook loads only the first post of a hashtag page without a login
 (measured 13 Nov 2026). So the Sources sweep reads both with a **saved browser login** of a throwaway account, kept as the GitHub
 secret `PW_STORAGE_STATE_B64` (the same secret name the KKM complaint scraper uses, in its own repo). One file holds both logins.

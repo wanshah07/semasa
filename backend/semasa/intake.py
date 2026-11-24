@@ -21,7 +21,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import api_status, community, db, experts, folders, myra, social_web, threads_api, threads_web, watch
+from . import api_status, community, db, experts, folders, myra, reddit_web, social_web, threads_api, threads_web, watch
 from .log import get_logger
 
 log = get_logger("semasa.intake")
@@ -129,7 +129,18 @@ def write(store: Any, rows: list[dict[str, Any]], dry: bool) -> int:
 # --- the three duties -------------------------------------------------------------------------------------------------
 
 def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetime, dry: bool) -> dict[str, Any]:
-    raw = community.fetch(client, cfg)
+    # Reddit: Wan's own saved login first (reddit_web.py, 24 Nov 2026: the shared Composio app answers 429 every run); the shared
+    # app is asked only when no login is saved or the login read gave nothing, and a failed login read is reported by name
+    own, own_why = reddit_web.fetch(cfg, now)
+    raw = community.fetch(client, cfg, reddit=not own)
+    if own:
+        raw["posts"], raw["reddit_error"], raw["reddit_via"] = own, "", "login"
+    elif own_why:
+        shared = raw.get("reddit_error") or ""
+        raw["reddit_error"] = f"own login: {own_why}" + (f"; shared app: {shared}" if shared else "")
+        raw["reddit_via"] = "shared app" if raw.get("posts") else ""
+    else:
+        raw["reddit_via"] = "shared app"
     if (cfg.get("threads") or {}).get("enabled") is not False and not raw.get("threads"):
         # Composio's shared Threads app has no keyword-search permission; Wan's own app (supabase/080) is asked next
         own, why = threads_api.fetch(store, cfg, now)
@@ -170,6 +181,7 @@ def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: da
            "new": len(fresh),
            "shown": {p: sum(1 for r in kept if r["platform"] == p) for p in by},
            "hidden": len(rejected), "reddit_error": raw.get("reddit_error") or None,
+           "reddit_via": raw.get("reddit_via") or None,
            "youtube_error": raw.get("youtube_error") or None, "threads_error": raw.get("threads_error") or None,
            "facebook_error": raw.get("facebook_error") or None, "instagram_error": raw.get("instagram_error") or None,
            # what each browser read saw (found, too old, the page it landed on): why a source read nothing, in the report

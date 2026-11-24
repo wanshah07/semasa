@@ -8,6 +8,12 @@ export const MAX_HANDLES = 10;
 export const DEFAULT_KEYWORDS = ["halal kosmetik", "sunscreen", "sijil halal"];
 /* Facebook and Instagram are read by hashtag (backend/semasa/social_web.py turns each entry into #letters-and-digits). */
 export const DEFAULT_TAGS = ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"];
+/* Hashtags worth adding (Wan, 24 Nov 2026: "add recommendation # so instagram can read"): shown as one-tap chips in the Facebook and
+   Instagram tabs. Words, not claims about reach: a tag nobody posts under simply reads nothing. */
+export const RECOMMENDED_TAGS = ["halalmalaysia", "sijilhalal", "kosmetikmalaysia", "skincaremalaysia", "jakimhalal", "produkhalal",
+  "kosmetikhalal", "sunscreenmalaysia", "notifikasikosmetik", "kkmmalaysia", "labelhalal", "ingredientskincare"];
+/* Instagram accounts watched from the start (Wan, 24 Nov 2026: "add labmuffin and moskinlab to read"). */
+export const DEFAULT_ACCOUNTS = { instagram: ["labmuffinbeautyscience", "moskinlab"] };
 export const PLATFORMS = ["threads", "facebook", "instagram"];
 export const defaultsOf = (platform) => (platform === "threads" ? DEFAULT_KEYWORDS : DEFAULT_TAGS);
 
@@ -45,16 +51,23 @@ export function keywordsOf(sources, platform = "threads") {
   return Array.isArray(saved) ? cleanKeywords(saved) : defaultsOf(platform);
 }
 
+/** The accounts in force: what Wan saved (even an empty list), else the platform's starting list. */
 export function handlesOf(sources, platform = "threads") {
-  return cleanHandles(sources?.community?.[platform]?.accounts);
+  const saved = sources?.community?.[platform]?.accounts;
+  return Array.isArray(saved) ? cleanHandles(saved) : cleanHandles(DEFAULT_ACCOUNTS[platform]);
+}
+
+/** The recommended hashtags not already in `current` (any case, # ignored), so a chip is never offered twice. */
+export function recommendedFor(current) {
+  const have = new Set((Array.isArray(current) ? current : []).map((w) => String(w ?? "").replace(/^#/, "").replace(/\s+/g, "").toLowerCase()));
+  return RECOMMENDED_TAGS.filter((t) => !have.has(t));
 }
 
 /** The whole `sources` value with one platform's lists replaced and everything else (other sources, the last report) kept. */
 export function withPlatform(sources, platform, queries, accounts) {
   const s = sources || {};
   const community = s.community || {};
-  const mine = { ...(community[platform] || {}), queries: cleanKeywords(queries) };
-  if (platform === "threads") mine.accounts = cleanHandles(accounts);     // only Threads reads a watchlist of accounts
+  const mine = { ...(community[platform] || {}), queries: cleanKeywords(queries), accounts: cleanHandles(accounts) };   // all three read a watchlist
   return { ...s, community: { ...community, [platform]: mine } };
 }
 

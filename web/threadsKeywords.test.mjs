@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { DEFAULT_KEYWORDS, DEFAULT_TAGS, MAX_HANDLES, MAX_KEYWORDS, cleanHandles, cleanKeywords, handlesOf, keywordsOf, withPlatform, withThreads } from "./src/lib/threadsKeywords.js";
+import { DEFAULT_ACCOUNTS, DEFAULT_KEYWORDS, DEFAULT_TAGS, MAX_HANDLES, MAX_KEYWORDS, cleanHandles, cleanKeywords, handlesOf, keywordsOf, recommendedFor, RECOMMENDED_TAGS, withPlatform, withThreads } from "./src/lib/threadsKeywords.js";
 
 // keywords: trimmed, collapsed, 2..60 letters, no repeats in any case, at most eight
 assert.deepEqual(cleanKeywords(["  halal   kosmetik ", "Halal Kosmetik", "x", "", null, "sunscreen"]), ["halal kosmetik", "sunscreen"]);
@@ -33,7 +33,15 @@ assert.deepEqual(keywordsOf(undefined, "facebook"), DEFAULT_TAGS);
 assert.deepEqual(keywordsOf({ community: { threads: { queries: ["x y"] } } }, "instagram"), DEFAULT_TAGS);          // another platform's list is not borrowed
 assert.deepEqual(keywordsOf({ community: { instagram: { queries: ["halalmalaysia"] } } }, "instagram"), ["halalmalaysia"]);
 const fb = withPlatform({ community: { threads: { queries: ["a b"], accounts: ["ali"] }, facebook: { hours: 72 } } }, "facebook", ["Halal Malaysia", "halal malaysia"], ["ignored"]);
-assert.deepEqual(fb.community.facebook, { hours: 72, queries: ["Halal Malaysia"] });                              // no accounts key for Facebook
+assert.deepEqual(fb.community.facebook, { hours: 72, queries: ["Halal Malaysia"], accounts: ["ignored"] });        // Facebook pages are watched too, so its list is saved
+const ig = withPlatform({}, "instagram", ["halalmalaysia"], ["@labmuffinbeautyscience", "moskinlab"]);
+assert.deepEqual(ig.community.instagram.accounts, ["labmuffinbeautyscience", "moskinlab"]);                       // Instagram saves its watchlist
+assert.deepEqual(handlesOf(undefined, "instagram"), DEFAULT_ACCOUNTS.instagram);                                  // starts with LabMuffin and MoSkinLab
+assert.deepEqual(handlesOf({ community: { instagram: { accounts: [] } } }, "instagram"), []);                     // an emptied list stays empty
+assert.deepEqual(handlesOf(undefined, "facebook"), []);
+assert.ok(recommendedFor(["#HalalMalaysia", "sijil halal"]).every((t) => t !== "halalmalaysia" && t !== "sijilhalal"));
+assert.equal(recommendedFor(RECOMMENDED_TAGS).length, 0);
+assert.equal(recommendedFor(undefined).length, RECOMMENDED_TAGS.length);
 assert.deepEqual(fb.community.threads, { queries: ["a b"], accounts: ["ali"] });                                    // Threads untouched
 assert.deepEqual(withThreads({}, ["x y"], ["@a"]).community.threads, { queries: ["x y"], accounts: ["a"] });
 console.log("threadsKeywords: ok");

@@ -52,7 +52,8 @@ DEFAULTS: dict[str, Any] = {
         # Facebook and Instagram are read by hashtag: "queries" are turned into #tags (no spaces). Instagram needs a saved login.
         "facebook": {"enabled": True, "hours": 14 * 24, "accounts": [],
                      "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
-        "instagram": {"enabled": True, "hours": 14 * 24, "accounts": [],
+        # accounts are the dependable route on Instagram (a hashtag page shows its top posts, mostly old); Wan, 24 Nov 2026
+        "instagram": {"enabled": True, "hours": 14 * 24, "accounts": ["labmuffinbeautyscience", "moskinlab"],
                       "queries": ["halalmalaysia", "sijilhalal", "kosmetikmalaysia"]},
         "threads": {"enabled": True, "hours": 72, "max_results": 8, "accounts": [],
                     "queries": ["halal kosmetik", "sunscreen", "sijil halal"]},

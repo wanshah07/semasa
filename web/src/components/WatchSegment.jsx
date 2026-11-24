@@ -8,7 +8,7 @@ import { stampMYT } from "../lib/format";
 import { OWN_SECTIONS, linkOf, ownLine, ownSummary } from "../lib/ownSources";
 import { LINK_SECTIONS, linkSummary } from "../lib/linkSources";
 import { paperLine, watchIdea } from "../lib/watchIdea";
-import { MAX_HANDLES, MAX_KEYWORDS, cleanHandles, cleanKeywords, defaultsOf, handlesOf, keywordsOf, withPlatform } from "../lib/threadsKeywords";
+import { DEFAULT_ACCOUNTS, MAX_HANDLES, MAX_KEYWORDS, cleanHandles, cleanKeywords, defaultsOf, handlesOf, keywordsOf, recommendedFor, withPlatform } from "../lib/threadsKeywords";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 import Skeleton from "./ui/Skeleton";
@@ -90,6 +90,7 @@ function SourceKeywords({ platform = "threads", setting, saveSetting, onToast })
   const [newHandle, setNewHandle] = useState("");
   const [busy, setBusy] = useState(false);
   const savedWords = keywordsOf(setting, platform), savedHandles = handlesOf(setting, platform);
+  const suggestions = recommendedFor(words);
   const dirty = JSON.stringify(cleanKeywords(words)) !== JSON.stringify(savedWords) || JSON.stringify(cleanHandles(handles)) !== JSON.stringify(savedHandles);
 
   function addWord() {
@@ -132,6 +133,17 @@ function SourceKeywords({ platform = "threads", setting, saveSetting, onToast })
         ))}
         {words.length === 0 && <li className="text-xs text-muted">{t("Tiada kata kunci: hanya akaun di bawah dibaca.", "No keywords: only the accounts below are read.")}</li>}
       </ul>
+      {platform !== "threads" && suggestions.length > 0 && (
+        <div className="mt-2" data-tag-suggestions>
+          <p className="text-[11px] text-muted">{t("Cadangan hashtag (ketik untuk tambah):", "Recommended hashtags (tap to add):")}</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {suggestions.map((tag) => (
+              <button key={tag} type="button" onClick={() => setWords(cleanKeywords([...words, tag]))} disabled={words.length >= MAX_KEYWORDS}
+                className="rounded-pill bg-surface-2 px-2.5 py-1 text-xs text-ink hover:bg-accent/10 disabled:opacity-50">#{tag}</button>
+            ))}
+          </div>
+        </div>
+      )}
       <form className={`${row} mt-2`} onSubmit={(e) => { e.preventDefault(); addWord(); }}>
         <Input value={newWord} onChange={(e) => setNewWord(e.target.value)} placeholder={t("Kata kunci baharu, cth. label halal", "New keyword, e.g. halal label")} aria-label={t("Kata kunci baharu", "New keyword")} className="min-w-0 flex-1" />
         <Button type="submit" size="sm" variant="soft" disabled={!newWord.trim()}><Plus size={13} /> {t("Tambah", "Add")}</Button>
@@ -159,7 +171,7 @@ function SourceKeywords({ platform = "threads", setting, saveSetting, onToast })
       )}
 
       <div className="mt-3 flex flex-wrap justify-end gap-2">
-        <Button type="button" size="sm" variant="ghost" onClick={() => { setWords(defaultsOf(platform)); setHandles([]); }}>{t("Senarai asal", "Default list")}</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => { setWords(defaultsOf(platform)); setHandles(cleanHandles(DEFAULT_ACCOUNTS[platform])); }}>{t("Senarai asal", "Default list")}</Button>
         <Button type="button" size="sm" disabled={busy || !dirty} onClick={save}>{busy ? t("Menyimpan…", "Saving…") : t("Simpan", "Save")}</Button>
       </div>
     </details>

@@ -563,8 +563,8 @@ class LLM:
         return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
 
 
-# Claude's fifth generation refuses `temperature` outright: 400 "`temperature` is deprecated for this model" (24 Nov 2026, opus-5-5,
-# from the real sweep; the API probe sends none, so it passed while every real call failed and fell to the next robot).
+# Claude's fifth generation refuses `temperature` outright: 400 "`temperature` is deprecated for this model" (24 Nov 2026,
+# opus-5-5, in the real sweep; the API probe sends none, so it passed while every real call failed and fell to the next robot).
 NO_TEMPERATURE_RE = re.compile(r"claude-(opus|sonnet|haiku|fable)-5", re.I)
 NO_TEMPERATURE: set[str] = set()                 # models learned from a refusal in this run
 

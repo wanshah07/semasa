@@ -137,10 +137,15 @@ def test_a_refused_refresh_uses_what_another_run_just_saved():
 
 
 def test_a_refused_refresh_with_nothing_newer_says_to_log_in_again():
-    lg = login(store(minutes_left=2), Http(Resp(401, text="invalid_grant")))
+    st = store(minutes_left=2)
+    lg = login(st, Http(Resp(401, text="Your session has ended. Please log in again.")))
     with pytest.raises(cl.ChatGPTError) as e:
         lg.refresh()
-    assert e.value.auth and "codex login" in str(e.value)
+    assert e.value.auth and "log in again with a code" in str(e.value)
+    # 24 Nov 2026: eleven pictures were refused in one run and the page still showed the login as accepted, because only the
+    # 6-hourly check wrote the error. Whoever is asking, a refused login is written on the login's own row.
+    row = st.tables[cl.TABLE][0]
+    assert "Your session has ended" in row["last_error"] and row["last_error_at"]
 
 
 def test_check_refreshes_for_real_and_records_the_outcome_without_claiming_a_picture():

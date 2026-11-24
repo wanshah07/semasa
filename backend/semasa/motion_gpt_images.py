@@ -85,6 +85,8 @@ def ready(store: Any, *, login: Any = None, gemini: Any = None, cloudflare: Any 
     cfg = (login or chatgpt_login.Login(store)).settings()
     if cfg and cfg.get("enabled"):
         return True
+    if cfg is None and chatgpt_login.extra_logins(store):      # no main login, but an extra picture account (095) can draw
+        return True
     return bool((gemini if gemini is not None else gemini_images.Drawer(store)).ready()
                 or (cloudflare if cloudflare is not None else cloudflare_images.Drawer(store)).ready())
 
@@ -156,23 +158,60 @@ def draw_scenes(store: Any, row: dict[str, Any], scenes: list[dict[str, Any]], f
     login = login or chatgpt_login.Login(store)
     drawer = gemini if gemini is not None else gemini_images.Drawer(store)
     cfg = login.settings()
-    chatgpt_on = bool(cfg and cfg["enabled"])
+    # More than one ChatGPT account (supabase/095; Wan, 24 Nov 2026): the main login draws first, and when it says its allowance
+    # is used up (or its login is refused) the next extra picture account draws. The main login's switch turns all of them off.
+    extras = chatgpt_login.extra_logins(store) if (cfg is None or cfg["enabled"]) else []
+    gpt: list[tuple[Any, str]] = [(login, str(cfg["model"]))] if cfg and cfg["enabled"] else []
+    gpt += [(acc, str((acc.settings() or {}).get("model") or chatgpt_login.DEFAULT_MODEL)) for acc in extras]
+    chatgpt_on = bool(gpt)
     gemini_on = bool(drawer.ready())
     flare = cloudflare if cloudflare is not None else cloudflare_images.Drawer(store)
     flare_on = bool(flare.ready())
-    if cfg is None and not gemini_on and not flare_on:
+    if cfg is None and not extras and not gemini_on and not flare_on:
         return {}, ""                                     # nothing connected: not worth a line in every film's report
     if not chatgpt_on and not gemini_on and not flare_on:
         return {}, "ChatGPT pictures: switched off"
     clock = clock or time.monotonic
     started = clock()
-    todo = storyboard(scenes, cfg["max_images"] if cfg else drawer.max_images())
+    first = cfg or (extras[0].settings() if extras else None)
+    todo = storyboard(scenes, first["max_images"] if first else drawer.max_images())
+    spent: set[int] = set()                    # ChatGPT accounts not asked again in this film (limit, or login refused)
+    drew: set[int] = set()
     on = {"chatgpt": chatgpt_on, "gemini": gemini_on, "cloudflare": flare_on}
     active = [name for name in dict.fromkeys(order) if on.get(name)]
     tripped: set[str] = set()
     out: dict[str, dict[str, Any]] = {}
     by: dict[str, int] = {"chatgpt": 0, "gemini": 0, "cloudflare": 0}
     problems: list[str] = []
+
+    def gpt_draw(sid: str, prompt: str) -> bytes:
+        """ChatGPT's picture from the first account that draws it. An account at its limit or with a refused login is not asked
+        again in this film (an extra account also rests, chatgpt_login.rest) and the next account draws this same scene. Any
+        other failure is raised as it is: the next maker draws the scene, and ChatGPT is asked again for the next one."""
+        last: chatgpt_login.ChatGPTError | None = None
+        for i, (acc, model) in enumerate(gpt):
+            if i in spent:
+                continue
+            try:
+                data = acc.draw(prompt, size=size_for(resolution), model=model)
+            except chatgpt_login.ChatGPTError as exc:
+                if acc is not login and exc.limit:
+                    chatgpt_login.rest(acc, str(exc))
+                else:
+                    acc.failed(str(exc))
+                if not (exc.limit or exc.auth):
+                    raise
+                spent.add(i)
+                if last is not None:                       # the one before it is told here; the last one is told by the caller
+                    problems.append(f"{sid} (ChatGPT): {last}")
+                last = exc
+                continue
+            drew.add(i)
+            if last is not None:
+                problems.append(f"{sid} (ChatGPT, then account {chatgpt_login.name_of(acc)} drew): {last}")
+            return data
+        raise last or chatgpt_login.ChatGPTError("every ChatGPT account is at its limit or refused", limit=True)
+
     for sc in todo:
         if clock() - started > BUDGET_S:
             problems.append("out of time for the rest")
@@ -187,7 +226,7 @@ def draw_scenes(store: Any, row: dict[str, Any], scenes: list[dict[str, Any]], f
                 continue
             try:
                 if name == "chatgpt":
-                    data = login.draw(prompt, size=size_for(resolution), model=cfg["model"])
+                    data = gpt_draw(sid, prompt)
                 elif name == "gemini":
                     data = drawer.draw(prompt, resolution=resolution)
                 else:
@@ -195,9 +234,8 @@ def draw_scenes(store: Any, row: dict[str, Any], scenes: list[dict[str, Any]], f
                 rel = save(data, folder, f"scene-{sid}")
             except chatgpt_login.ChatGPTError as exc:
                 problems.append(f"{sid} (ChatGPT): {exc}")
-                login.failed(str(exc))
-                if exc.limit or exc.auth:
-                    tripped.add("chatgpt")                  # the allowance or the login is the same for every scene
+                if len(spent) >= len(gpt):
+                    tripped.add("chatgpt")                  # every account's allowance or login is the same for every scene
                 continue
             except gemini_images.GeminiError as exc:
                 problems.append(f"{sid} (Gemini): {exc}")
@@ -216,8 +254,8 @@ def draw_scenes(store: Any, row: dict[str, Any], scenes: list[dict[str, Any]], f
             out[sid] = {"path": rel, "id": f"{name}-{sid}", "credit": "", "page": "", "generated": True,
                         "alt": str(sc.get("heading") or "")[:140]}
             break
-    if by["chatgpt"]:
-        login.ok()
+    for i in sorted(drew):
+        gpt[i][0].ok()                                      # each account that drew a picture is proven
     tail = f" ({'; '.join(problems)[:300]})" if problems else ""
     if flare_on:
         note = (f"Pictures: {len(out)} of {len(todo)} scenes drawn "

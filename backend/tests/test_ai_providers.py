@@ -175,7 +175,8 @@ def test_the_anthropic_dialect_uses_x_api_key_and_v1_messages(monkeypatch):
         text = "{}"
 
         def json(self):
-            return {"data": [{"id": "claude-haiku"}], "usage": {"input_tokens": 3, "output_tokens": 2}}
+            return {"data": [{"id": "claude-haiku"}], "usage": {"input_tokens": 3, "output_tokens": 2},
+                    "content": [{"type": "thinking", "thinking": ""}, {"type": "text", "text": "OK"}], "stop_reason": "end_turn"}
 
     def fake(method, url, **kw):
         calls.append({"method": method, "url": url, **kw})
@@ -190,6 +191,49 @@ def test_the_anthropic_dialect_uses_x_api_key_and_v1_messages(monkeypatch):
     assert calls[0]["url"] == "https://api.anthropic.com/v1/models" and calls[0]["headers"]["x-api-key"] == "key-claude-1234"
     assert calls[1]["url"] == "https://api.anthropic.com/v1/messages" and calls[1]["headers"]["anthropic-version"]
     assert "Authorization" not in calls[0]["headers"] and "Authorization" not in calls[1]["headers"]
+    # a Claude that thinks first is asked with room for the thinking, at low effort: five tokens came back as 200 with no words
+    assert calls[1]["json"]["max_tokens"] == 3016 and calls[1]["json"]["output_config"] == {"effort": "low"}
+
+
+def test_a_claude_that_answers_200_with_no_words_is_not_live(monkeypatch):
+    """24 Nov 2026: the check said Claude was live (HTTP 200) while every long draft it wrote came back cut. Live means words."""
+    class R:
+        status_code = 200
+        text = "{}"
+
+        def __init__(self, j):
+            self._j = j
+
+        def json(self):
+            return self._j
+
+    answers = [{"content": [{"type": "thinking", "thinking": ""}], "stop_reason": "max_tokens",
+                "usage": {"input_tokens": 9, "output_tokens": 3016}}]
+    monkeypatch.setattr(api_status.requests, "post", lambda url, **kw: R(answers[0]))
+    gw = ai_providers.gateways(store(provider()))[0]
+    ok, _ms, usage, err = api_status._chat(gw, 5)
+    assert ok is False and err == "answered with no text (stop_reason=max_tokens)" and usage["completion_tokens"] == 3016
+    # an older Claude that does not think first is asked the five-token question as before, and 200 is enough
+    asked = []
+
+    def post(url, **kw):
+        asked.append(kw["json"])
+        return R({"usage": {"input_tokens": 3, "output_tokens": 2}})
+    monkeypatch.setattr(api_status.requests, "post", post)
+    old = {**gw, "model": "claude-haiku-4-5-20251001"}
+    assert api_status._chat(old, 5)[0] is True and asked[0]["max_tokens"] == 5 and "output_config" not in asked[0]
+    # an endpoint that refuses the effort is asked again without it
+    asked.clear()
+
+    class Bad:
+        status_code = 400
+        text = '{"error":{"message":"output_config: Extra inputs are not permitted"}}'
+
+    def picky(url, **kw):
+        asked.append(dict(kw["json"]))
+        return Bad() if "output_config" in kw["json"] else R({"content": [{"type": "text", "text": "OK"}], "usage": {}})
+    monkeypatch.setattr(api_status.requests, "post", picky)
+    assert api_status._chat(gw, 5)[0] is True and ["output_config" in b for b in asked] == [True, False]
 
 
 # ---- Telegram ----------------------------------------------------------------------------------------------------------------

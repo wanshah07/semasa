@@ -1120,7 +1120,23 @@ function anthropicPart(p) {
     those models carries none; an older model keeps it. */
 export function anthropicTakesTemperature(model) { return !/claude-(opus|sonnet|haiku|fable)-5/i.test(String(model || "")); }
 
-export function anthropicBody(payload, { stream = true } = {}) {
+/** Claude's fifth generation THINKS before it answers, whether asked to or not, and the thinking is spent out of `max_tokens`. The
+    worker asked for 5000 tokens on 24 Nov 2026 and got 5000 tokens of mostly thinking and a JSON cut mid-string, three times a
+    draft; here a 20-token yes/no or a 2400-token answer meets the same wall. So the answer keeps what was asked and the thinking gets
+    room of its own on top, never more than ANTHROPIC_MAX_TOKENS a call. */
+export const ANTHROPIC_THINK_ROOM = { low: 3000, medium: 6000, high: 9000 };
+export const ANTHROPIC_MAX_TOKENS = 16000;
+export const anthropicThinksFirst = (model) => !anthropicTakesTemperature(model);
+export function anthropicMaxTokens(model, asked, effort = "medium") {
+  const want = Number(asked) || 2400;
+  if (!anthropicThinksFirst(model)) return want;
+  return Math.max(want, Math.min(ANTHROPIC_MAX_TOKENS, want + (ANTHROPIC_THINK_ROOM[effort] || ANTHROPIC_THINK_ROOM.medium)));
+}
+
+/** `official` is true when the gate is Anthropic's own API: only there is `output_config.effort` sent (a gateway that merely speaks
+    the dialect may refuse a field it does not know, and a refused chat is worse than a slower one). Without it Claude thinks at its
+    own default, which is `high` on Sonnet, so the room is sized for that. */
+export function anthropicBody(payload, { stream = true, official = false } = {}) {
   const list = Array.isArray(payload?.messages) ? payload.messages : [];
   const system = list.filter((m) => m?.role === "system" && typeof m.content === "string" && m.content.trim()).map((m) => m.content).join("\n\n");
   const messages = [];
@@ -1145,12 +1161,16 @@ export function anthropicBody(payload, { stream = true } = {}) {
     }
   }
   if (messages.length && messages[0].role !== "user") messages.unshift({ role: "user", content: [{ type: "text", text: "(continue)" }] });
-  const body = { model: cleanModelId(payload?.model), max_tokens: Number(payload?.max_tokens) || 2400, messages, stream };
+  const model = cleanModelId(payload?.model);
+  const thinks = anthropicThinksFirst(model);
+  const body = { model, max_tokens: anthropicMaxTokens(model, payload?.max_tokens, official ? "medium" : "high"), messages, stream };
+  if (thinks && official) body.output_config = { effort: "medium" };
   if (system) body.system = system;
   if (payload?.temperature != null && anthropicTakesTemperature(body.model)) body.temperature = payload.temperature;
   const tools = (Array.isArray(payload?.tools) ? payload.tools : []).filter((t) => t?.type === "function" && t.function?.name)
     .map((t) => ({ name: t.function.name, description: String(t.function.description || ""), input_schema: t.function.parameters || { type: "object", properties: {} } }));
-  if (tools.length) { body.tools = tools; if (payload.tool_choice === "required") body.tool_choice = { type: "any" }; }
+  // a forced tool call ({type: "any"}) is itself a 400 on Claude Opus 5.5 and Sonnet 5.5: those models choose (auto), as asked or not
+  if (tools.length) { body.tools = tools; if (payload.tool_choice === "required" && !thinks) body.tool_choice = { type: "any" }; }
   return body;
 }
 
@@ -1204,7 +1224,7 @@ export function chatRequest(gate, payload, { stream = false } = {}) {
   const base = String(gate?.base || "").replace(/\/+$/, "");
   if (gate?.kind === "anthropic") {
     return { url: `${base}/v1/messages`, headers: { "x-api-key": String(gate.key || ""), "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json", ...(stream ? { accept: "text/event-stream" } : {}) },
-      body: JSON.stringify(anthropicBody(payload, { stream })) };
+      body: JSON.stringify(anthropicBody(payload, { stream, official: /^https:\/\/api\.anthropic\.com$/i.test(base) })) };
   }
   const p = gate?.repeatSystem && payload?.messages ? { ...payload, messages: withInstructions(payload.messages) } : payload;
   return { url: `${base}/chat/completions`, headers: { authorization: `Bearer ${gate?.key || ""}`, "content-type": "application/json", ...(stream ? { accept: "text/event-stream" } : {}) },

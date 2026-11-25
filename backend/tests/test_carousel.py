@@ -127,13 +127,14 @@ def test_a_squeezed_set_that_fails_to_draw_is_drawn_as_written(worker, monkeypat
 
     def render(words, **kw):
         seen.append(len(words))
-        if len(words) < 12:
+        if len(words) < 11:
             raise slides.SlideError("slide 3: too long to fit")
         return real(words, **kw)
     monkeypatch.setattr(slides, "render", render)
     row = _job("regulab", _set(12))
     assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
-    assert seen == [7, 12] and saved["meta"]["count"] == 14 and saved["meta"]["squeezed_from"] is None
+    # the hook slide is the cover, so the eleven content slides are what is squeezed or drawn as written: 11 pages + cover + logo
+    assert seen == [7, 11] and saved["meta"]["count"] == 13 and saved["meta"]["squeezed_from"] is None
 
 
 def test_a_studio_look_that_cannot_fit_a_slide_falls_back_to_the_classic_look(worker, monkeypatch):
@@ -197,7 +198,8 @@ def test_the_worker_puts_the_cover_first_for_ws_regulab_and_leaves_linkedin_alon
     saved, uploads = worker
     row = _job("regulab", _set(4))
     assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
-    assert saved["meta"]["cover"] is True and saved["meta"]["closing_logo"] is True and saved["meta"]["count"] == 6
+    assert saved["meta"]["cover"] is True and saved["meta"]["closing_logo"] is True
+    assert saved["meta"]["count"] == 5            # the hook is the cover, not a page too: 3 pages + the cover + the logo card
     assert saved["meta"]["cover_v"] == carousel.COVER_VERSION, "the cover is marked with its design version"
     cover = Image.open(io.BytesIO(uploads[0])).convert("RGB")
     assert min(cover.getpixel((540, 20))) > 240 and cover.getpixel((540, 20)) != slides.PAPER    # the white cover (22 Nov 2026)
@@ -219,7 +221,8 @@ def test_a_first_slide_with_points_keeps_its_points_behind_a_cover_in_front(work
     # Wan, 11 Nov 2026 ("add cover in front"): the cover goes in front and the content slide follows whole
     assert saved["meta"]["cover"] is True
     assert saved["meta"]["slides"][0].get("front_cover") is True and saved["meta"]["slides"][1] == items[0]
-    assert saved["meta"]["count"] == len(items) + 2 + (1 if saved["meta"]["closing_logo"] else 0)
+    # the hook put in front IS the cover (not a page as well), so the pictures are the content slides + cover + logo card
+    assert saved["meta"]["count"] == len(items) + 1 + (1 if saved["meta"]["closing_logo"] else 0)
 
 
 def test_a_hook_with_one_line_under_it_gets_the_cover_and_a_content_slide_does_not():
@@ -323,3 +326,71 @@ def test_a_join_keeps_the_first_slides_note_too():
                         {"title": "B", "lead": "dua", "note": "catatan dua", "points": []})
     assert "catatan satu" in " ".join(out["points"]) and "catatan dua" in " ".join(out["points"])
 
+
+
+# --- the cover is the hook, so slide 1 says something else (Wan, 25 Nov 2026) ---------------------------------------------------
+
+def _pages_drawn(monkeypatch):
+    """The words of every page the classic look is asked to draw (the cover is a picture of its own, never one of these)."""
+    seen = []
+    real = slides.render
+
+    def render(words, **kw):
+        seen.append([str(w.get("title") or "") for w in words])
+        return real(words, **kw)
+    monkeypatch.setattr(slides, "render", render)
+    return seen
+
+
+def test_page_one_after_the_cover_is_not_the_hook_the_cover_carries(worker, monkeypatch):
+    from fakestore import FakeStore
+    saved, uploads = worker
+    seen = _pages_drawn(monkeypatch)
+    items = _set(5)                                     # "Tajuk utama" is the hook slide, then three facts and a closing slide
+    row = _job("regulab", items)
+    assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
+    assert seen == [["Fakta nombor 1", "Fakta nombor 2", "Fakta nombor 3", "Penutup yang jelas"]]
+    assert saved["meta"]["cover"] is True and saved["meta"]["count"] == 6      # 4 pages + the cover + the logo card
+    assert saved["meta"]["cover_title"] == "Tajuk utama"                        # the cover still wears the hook
+    assert saved["meta"]["slides"] == items                                     # the words on the job are as written
+
+
+def test_a_hook_and_one_more_slide_still_get_their_cover(worker, monkeypatch):
+    from fakestore import FakeStore
+    saved, uploads = worker
+    seen = _pages_drawn(monkeypatch)
+    row = _job("regulab", _set(2))
+    assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
+    assert seen == [["Penutup yang jelas"]] and saved["meta"]["cover"] is True and saved["meta"]["count"] == 3
+
+
+def test_a_hook_put_in_front_of_a_content_slide_is_the_cover_and_not_a_page(worker, monkeypatch):
+    from fakestore import FakeStore
+    saved, uploads = worker
+    seen = _pages_drawn(monkeypatch)
+    items = _set(4)
+    items[0] = {"title": "Tajuk", "points": ["satu", "dua"]}
+    row = _job("regulab", items)
+    assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
+    assert seen[0][0] == "Tajuk" and seen[0].count("Tajuk") == 1               # the content slide keeps its title, once
+
+
+def test_the_cover_illustration_is_made_from_the_hook_slide(worker, monkeypatch):
+    from fakestore import FakeStore
+
+    from semasa import illustrated
+    got = []
+    monkeypatch.setattr(illustrated, "cover_art",
+                        lambda store, s, row, meta, item, *a, **k: got.append(item["title"]) or _drawing())
+    row = _job("regulab", _set(4))
+    assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
+    assert got == ["Tajuk utama"]
+
+
+def test_linkedin_has_no_cover_and_keeps_every_slide(worker, monkeypatch):
+    from fakestore import FakeStore
+    saved, uploads = worker
+    seen = _pages_drawn(monkeypatch)
+    row = _job("linkedin", _set(4))
+    assert media_generator.process_slides(FakeStore(media_generations=[row]), row, media_generator.MediaSettings.load()) is True
+    assert seen == [["Tajuk utama", "Fakta nombor 1", "Fakta nombor 2", "Penutup yang jelas"]]

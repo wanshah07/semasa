@@ -747,15 +747,24 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             # the caption's follow line is never a slide: the closing card carries it (Wan, 22 Nov 2026)
             items = [s for s in items if not (isinstance(s, dict) and carousel.is_follow_slide(s))] or items
             items = carousel.with_front_cover(items, stream)     # a content first slide gets a hook in front, for the cover
+        # The brand cover goes IN FRONT of the first page (Wan, 23 Nov 2026: the cover carries a short title and its own
+        # illustration; the long hook is the first page after it), so the pages are numbered from the second picture
+        cover_words = (carousel.cover_words(items[0]) if items else None) if (not kind and stream != "linkedin"
+                                                                               and len(items) >= 2) else None
+        # THE COVER IS THE HOOK, SO SLIDE 1 SAYS SOMETHING ELSE (Wan, 25 Nov 2026: "make sure cover and slide 1 content is
+        # different"): the cover's title is the hook, and the hook slide that followed it repeated the same words as page one.
+        # The hook slide is no longer drawn as a page; the first content slide is page one. The words on the job and the caption
+        # stay as written (the cover and its illustration are still made from this slide). A set of only a hook and one more
+        # slide still gets its cover: cover + that page + the logo card.
+        written = items                                           # the words on the job, hook slide included
+        hook_item = items[0] if cover_words and len(items) >= 2 else None
+        if hook_item is not None:
+            items = items[1:]
         squeeze, joined = (carousel.compact(items, stream) if not kind and kind != "threads" else (items, 0))
         attempts = [(squeeze, joined)] + ([(items, 0)] if joined else [])
         spread = carousel.split_full(items) if not kind else items       # a crowded slide drawn as two, when nothing else fits
         if len(spread) != len(items):
             attempts.append((spread, 0))
-        # The brand cover goes IN FRONT of the first page (Wan, 23 Nov 2026: the cover carries a short title and its own
-        # illustration; the long hook is the first page after it), so the pages are numbered from the second picture
-        cover_words = (carousel.cover_words(items[0]) if items else None) if (not kind and stream != "linkedin"
-                                                                               and len(items) >= 2) else None
         art_used = False
         drawn: list[dict[str, Any]] = []
         for n, (words_in, joined_here) in enumerate(attempts):
@@ -783,7 +792,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                         # it made. It never ships a card drawn without it, on the last try or for want of a maker; before
                         # this it did (meta.art_missing) and Diari was quietly redrawn in the Image look with no picture.
                         drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm, cut=False,
-                                                     covered=not kind and stream != "linkedin")
+                                                     covered=not kind and stream != "linkedin" and hook_item is None)
                         art_used = True
                     pics = studio_cards.render(drawn, look=look, stream=stream, eyebrow=eyebrow,
                                                source=str(meta.get("citation") or ""), ground=ground,
@@ -800,7 +809,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                         # Semasa's own look draws the slide's cut-out in a band at the foot too (illustrated.compose_band); the
                         # picture is mandatory here as well: a failure fails the job, never a card without it
                         got = illustrated.with_art(store, s, row, meta, [dict(x) for x in words_in], stream, llm, cut=False,
-                                                   covered=not kind and stream != "linkedin")
+                                                   covered=not kind and stream != "linkedin" and hook_item is None)
                         arts = [illustrated.art_bytes(x) for x in got]
                         art_used = True
                     with_art_band = bool(arts) and all(arts)
@@ -838,7 +847,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             from . import stickers
             pics = stickers.on_slides(pics, stickers.ensure(store, s, row_id, meta))
         cover = False
-        if cover_words and len(pics) >= 2:
+        if cover_words and (len(pics) >= 2 or hook_item is not None):
             # picture 1 is the branded cover: logo, a SHORT title and the hook's illustration as a transparent cut-out. It is
             # what Instagram's profile grid shows for the post, and the first slide (the long hook) follows it as page one.
             title = str(meta.get("cover_title") or "").strip()
@@ -849,7 +858,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
             if art_used:
                 # the cover's illustration is mandatory too: if it cannot be made the job fails and tries again (the slides'
                 # pictures are kept on the job, so the retry pays only for the cover)
-                cover_png = illustrated.cover_art(store, s, row, meta, items[0], stream, llm)
+                cover_png = illustrated.cover_art(store, s, row, meta, hook_item or items[0], stream, llm)
             try:
                 pics = [carousel.cover_jpeg(title, "", eyebrow, ground=ground, size=size, art=cover_png), *pics]
                 cover = True
@@ -870,9 +879,9 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
         if revise:
             meta.pop("revise", None)
             meta.setdefault("revisions", []).append({"note": note, "at": datetime.now(UTC).isoformat()})
-        meta.update(slides=items, slide_urls=urls, slide_paths=paths, sha256=sums, count=len(urls), look=look,
+        meta.update(slides=written, slide_urls=urls, slide_paths=paths, sha256=sums, count=len(urls), look=look,
                     cover=cover, cover_v=(carousel.COVER_VERSION if cover else None), closing_logo=closing,
-                    squeezed_from=(len(items) if joined else None), bg_used=ground_id,
+                    squeezed_from=(len(written) if joined else None), bg_used=ground_id,
                     content_type="image/jpeg", bytes=sum(len(p) for p in pics),
                     finished_at=datetime.now(UTC).isoformat())
         if style.get("url"):
@@ -882,7 +891,7 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                         error=None, meta=meta)
         _drop_files(store, row_id, [x for x in before if x not in paths])     # the last version's slides, all of them
         if illustrated.wants(look, kind):
-            _drop_files(store, row_id, illustrated.stale_paths(meta, items, stream, not kind and stream != "linkedin"))
+            _drop_files(store, row_id, illustrated.stale_paths(meta, written, stream, not kind and stream != "linkedin"))
         if row.get("post_id") and not meta.get("awaiting_confirm"):
             # a Design artwork is added to the post's pictures; a post's own carousel replaces its earlier one
             (db.attach_media_to_draft if kind else db.attach_slides_to_draft)(store, row["post_id"], row_id)

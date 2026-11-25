@@ -190,3 +190,25 @@ def no_thumbnail_downloads(monkeypatch):
     def refuse(url):
         raise OSError(f"no network in tests: {url}")
     monkeypatch.setattr(thumbs, "_fetch", refuse)
+
+
+@pytest.fixture
+def drawn_illustrations(monkeypatch):
+    """A card's illustration is MANDATORY (Wan, 25 Nov 2026: "for slide/carousel/single card/cover wajib ada illustration based on
+    the content"), so a slide job with no picture maker fails instead of drawing a bare card. A test that is about something else
+    (the look, the ground, the squeeze, the shapes) opts in here: every slide and the cover are handed a drawing, nothing is made
+    or uploaded. test_illustrated.py is the one place the pictures themselves are tested."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    from semasa import illustrated
+    buf = io.BytesIO()
+    Image.new("RGB", (900, 600), (239, 235, 224)).save(buf, "JPEG")
+    drawing = buf.getvalue()
+    uri = "data:image/jpeg;base64," + base64.b64encode(drawing).decode("ascii")
+    monkeypatch.setattr(illustrated, "with_art", lambda store, s, row, meta, items, stream, llm=None, **k: [
+        {**it, "art_url": uri, "art_label": ""} if illustrated._has_words(it) and not it.get("ayat") else it for it in items])
+    monkeypatch.setattr(illustrated, "cover_art", lambda *a, **k: drawing)
+    return drawing

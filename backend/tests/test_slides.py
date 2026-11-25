@@ -18,6 +18,12 @@ GOOD = [{"title": "Notifikasi *bukan* kelulusan", "points": []},
         {"title": "Ringkasnya", "points": ["Notifikasi ialah pendaftaran, bukan pengesahan keselamatan."]}]
 
 
+@pytest.fixture(autouse=True)
+def _illustrated(drawn_illustrations):
+    """The illustration is mandatory and these tests are about something else: see conftest.drawn_illustrations."""
+
+
+
 def _img(b: bytes) -> Image.Image:
     return Image.open(io.BytesIO(b)).convert("RGB")
 

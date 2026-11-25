@@ -179,6 +179,7 @@ def test_the_slide_job_draws_the_pictures_then_the_card_and_records_them(monkeyp
     monkeypatch.setattr(illustrated, "with_art", lambda store, s, row, meta, items, stream, llm=None, **k: (
         meta.update(art={"k": {"path": "p/art01.jpg"}}, art_paths=["p/art01.jpg"]) or
         [{**it, "art_url": "data:image/jpeg;base64,AAAA"} for it in items]))
+    monkeypatch.setattr(illustrated, "cover_art", lambda *a, **k: _paper())      # the cover's own illustration is mandatory too
     monkeypatch.setattr(media_generator.db, "upload_generated", lambda st, path, data, ct: f"https://cdn/{path}")
     job = {"id": "s1", "mode": "slides", "type": "image", "status": "processing", "attempts": 1,
            "created_at": "2099-01-01T00:00:00+00:00",
@@ -287,11 +288,15 @@ def _run(job, monkeypatch):
     return ok, store.tables["media_generations"][0]
 
 
-def test_an_automatic_diari_with_no_picture_maker_is_drawn_in_the_image_look_not_lost(monkeypatch):
+def test_an_automatic_diari_with_no_picture_maker_fails_with_the_reason_and_is_never_drawn_without_its_picture(monkeypatch):
+    # Wan, 25 Nov 2026: "for slide/carousel/single card/cover wajib ada illustration based on the content". Before this the
+    # automatic Diari was quietly redrawn in the Image look, with no picture at all, and the post went on without one.
     monkeypatch.setattr(illustrated, "makers", lambda s, store: [])
+    drawn = []
+    monkeypatch.setattr(studio_cards, "render", lambda items, **kw: drawn.append(1) or [_paper(1080, 1350) for _ in items])
     ok, row = _run(_job({"look_auto": True}), monkeypatch)
-    assert ok is True and row["status"] == "done" and row["meta"]["look"] == "image"
-    assert "no picture maker" in row["meta"]["look_fallback"]
+    assert ok is False and "no picture maker" in str(row.get("error") or "")
+    assert "look_fallback" not in row["meta"] and "art_missing" not in row["meta"] and not drawn, "no card was drawn without it"
 
 
 def test_a_diari_wan_chose_fails_with_the_reason_instead_of_changing_look(monkeypatch):
@@ -301,8 +306,12 @@ def test_a_diari_wan_chose_fails_with_the_reason_instead_of_changing_look(monkey
 
 
 def test_a_diari_poster_job_is_drawn_in_the_hand_look_never_without_its_picture(monkeypatch):
+    monkeypatch.setattr(illustrated, "makers", lambda s, store: ["x"])
+    monkeypatch.setattr(illustrated, "draw", lambda *a, **k: (_paper(), "x", None))
+    monkeypatch.setattr(illustrated, "fetch", lambda url: _paper())
     ok, row = _run(_job({"design": "poster", "format": "portrait", "slides": [SLIDES[1]]}), monkeypatch)
     assert ok is True and row["meta"]["look"] == "hand" and "one picture" in row["meta"]["look_fallback"]
+    assert row["meta"]["art"], "and the card has its picture: it is mandatory"
 
 
 def test_the_ws_regulab_set_keeps_the_white_brand_cover_first_and_the_logo_card_last(monkeypatch):
@@ -543,14 +552,16 @@ def test_a_single_poster_gets_a_picture_in_its_look(monkeypatch):
     assert seen["items"][0]["art_url"].startswith("data:image/jpeg;base64,"), "the card carries its own picture"
 
 
-def test_a_poster_with_no_picture_maker_is_still_drawn_without_the_band(monkeypatch):
+def test_a_poster_with_no_picture_maker_fails_with_the_reason_instead_of_going_out_bare(monkeypatch):
     monkeypatch.setattr(illustrated, "makers", lambda s, store: [])
-    monkeypatch.setattr(studio_cards, "render", lambda items, **kw: [_paper(1080, 1350)])
+    drawn = []
+    monkeypatch.setattr(studio_cards, "render", lambda items, **kw: drawn.append(1) or [_paper(1080, 1350)])
     monkeypatch.setattr(media_generator.db, "upload_generated", lambda st, path, data, ct: f"https://cdn/{path}")
     store = FakeStore(semasa_settings=[{"key": "brand", "value": {"regulab": {"website": "www.x.com"}}}], semasa_posts=[],
                       media_generations=[_poster_job("s2")])
-    assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is True
-    assert "no picture maker" in store.tables["media_generations"][0]["meta"].get("art_missing", "")
+    assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is False
+    row = store.tables["media_generations"][0]
+    assert "no picture maker" in str(row.get("error") or "") and "art_missing" not in row["meta"] and not drawn
 
 
 def test_a_studio_look_that_overflows_falls_back_to_classic_and_keeps_its_pictures(monkeypatch):
@@ -650,3 +661,108 @@ def test_when_chatgpt_and_cloudflare_cannot_draw_an_unsplash_photo_is_used_and_k
                                            {"chatgpt": Down("chatgpt", "usage limit"),
                                             "cloudflare": Down("cloudflare", "used up"), "openai": paid}, None, "m2")
     assert maker == "openai" and credit is None
+
+
+# ---- the illustration is MANDATORY (Wan, 25 Nov 2026: "for slide/carousel/single card/cover wajib ada illustration based on
+# the content") --------------------------------------------------------------------------------------------------------------
+def test_every_slide_with_any_words_takes_a_picture_and_only_a_verse_card_does_not():
+    only_lead = {"title": "", "points": [], "lead": "Ramai ingat NPRA sudah semak produk mereka.", "note": ""}
+    only_note = {"title": "  ", "points": [""], "lead": "", "note": "Siapa orang itu?"}
+    only_points = {"title": "", "points": ["Satu fakta penting."], "lead": "", "note": ""}
+    empty = {"title": "", "points": [], "lead": "", "note": ""}
+    verse = {"title": "Surah", "points": ["x"], "ayat": {"ref": "2:1"}}
+    items = [only_lead, only_note, only_points, empty, verse, SLIDES[0]]
+    # a lead or a note alone is enough; a verse card is the one exception
+    assert illustrated.slides_needing_art(items, "regulab") == [0, 1, 2, 5]
+    assert illustrated.slides_needing_art(items, "linkedin", covered=False) == [0, 1, 2, 5]
+
+
+def test_a_scene_is_always_drawn_from_what_the_slide_says():
+    lead_only = {"title": "", "points": [], "lead": "Pemegang notifikasi menjawab untuk produknya.", "note": ""}
+    point_only = {"title": "", "points": ["", "Bahan *terlarang* di Annex II."], "lead": "", "note": ""}
+    note_only = {"title": "", "points": [], "lead": "", "note": "Siapa orang itu?"}
+    got = illustrated.plan(None, [lead_only, point_only, note_only], [0, 1, 2], "regulab")
+    assert "Pemegang notifikasi" in got[0]["scene"], "no headline: the lead is what the picture is of"
+    assert "Bahan terlarang di Annex II" in got[1]["scene"] and "*" not in got[1]["scene"]
+    assert "Siapa orang itu" in got[2]["scene"]
+    assert "the idea" not in " ".join(g["scene"] for g in got.values())
+
+
+def test_a_blip_of_the_whole_chain_is_asked_again_and_only_three_blips_fail_the_slide(monkeypatch):
+    from semasa.providers import Generated, ProviderError
+    calls = []
+
+    def failover(providers, names, s, store, one, deadline=None, row_id=None):
+        calls.append(1)
+        if len(calls) < 3:
+            raise ProviderError("Response ended prematurely", kind="unavailable")
+        return Generated(_paper(), "image/jpeg", "m", {}), "cloudflare", []
+    monkeypatch.setattr(media_generator, "generate_with_failover", failover)
+    monkeypatch.setattr(illustrated.time, "sleep", lambda s: None)
+    data, maker, credit = illustrated.draw(None, None, "a scene", ["cloudflare"], {}, None, "j1")
+    assert maker == "cloudflare" and credit is None and data and len(calls) == 3, "two blips, then the third pass drew it"
+    calls.clear()
+
+    def dead(providers, names, s, store, one, deadline=None, row_id=None):
+        calls.append(1)
+        raise ProviderError("Response ended prematurely", kind="unavailable")
+    monkeypatch.setattr(media_generator, "generate_with_failover", dead)
+    with pytest.raises(ProviderError, match="ended prematurely"):
+        illustrated.draw(None, None, "a scene", ["cloudflare"], {}, None, "j1")
+    assert len(calls) == illustrated.DRAW_PASSES == 3, "three passes, then the slide fails and the job tries again"
+    calls.clear()
+    with pytest.raises(ProviderError):                                     # a spent deadline stops the extra passes
+        illustrated.draw(None, None, "a scene", ["cloudflare"], {}, 0.0, "j1")
+    assert len(calls) == 1
+
+
+def test_a_cover_whose_kept_illustration_cannot_be_read_back_fails_instead_of_going_bare():
+    item = {"title": "Notifikasi bukan kelulusan", "points": [], "lead": "x"}
+    meta = {"art": {"cover|" + illustrated.key_of(item): {"url": "https://cdn/c.jpg", "path": "c.jpg", "mime": "image/jpeg"}}}
+    with pytest.raises(illustrated.ArtError, match="read back"):
+        illustrated.cover_art(_store(), None, {"id": "j1"}, meta, item, "regulab", Llm(None), fetch_fn=lambda u: None)
+
+
+def _carousel_job(job_id: str, look: str) -> dict:
+    return {"id": job_id, "mode": "slides", "type": "image", "status": "processing", "attempts": 3,
+            "created_at": "2099-01-01T00:00:00+00:00",
+            "meta": {"stream": "regulab", "bg": "none", "slides": SLIDES, "look": look, "citation": "NPRA"}}
+
+
+@pytest.mark.parametrize("look", ["journal", "image", "classic"])
+def test_a_card_is_never_drawn_without_its_picture_even_on_the_last_attempt(monkeypatch, look):
+    # on the last attempt (attempts == max_attempts) the job used to ship the card without the picture (meta.art_missing)
+    def broke(*a, **k):
+        raise RuntimeError("Response ended prematurely")
+    monkeypatch.setattr(illustrated, "makers", lambda s, store: ["x"])
+    monkeypatch.setattr(illustrated, "draw", broke)
+    drawn = []
+    monkeypatch.setattr(studio_cards, "render", lambda items, **kw: drawn.append(1) or [_paper(1080, 1350) for _ in items])
+    monkeypatch.setattr(media_generator.db, "upload_generated", lambda st, path, data, ct: f"https://cdn/{path}")
+    store = FakeStore(semasa_settings=[{"key": "brand", "value": {"regulab": {"website": "www.x.com"}}}], semasa_posts=[],
+                      media_generations=[_carousel_job("c1", look)])
+    assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is False
+    row = store.tables["media_generations"][0]
+    assert row["status"] != "done" and "could not be made" in str(row.get("error") or ""), row.get("error")
+    assert not drawn and "art_missing" not in row["meta"] and "look_fallback" not in row["meta"]
+
+
+def test_a_cover_that_cannot_be_illustrated_fails_the_job_but_keeps_the_pictures_already_made(monkeypatch):
+    made = []
+
+    def draw(*a, **k):
+        made.append(1)
+        return _paper(), "x", None
+    monkeypatch.setattr(illustrated, "makers", lambda s, store: ["x"])
+    monkeypatch.setattr(illustrated, "draw", draw)
+    monkeypatch.setattr(illustrated, "fetch", lambda url: _paper())
+    monkeypatch.setattr(illustrated, "cover_art", lambda *a, **k: (_ for _ in ()).throw(illustrated.ArtError("cover: blip")))
+    monkeypatch.setattr(studio_cards, "render", lambda items, **kw: [_paper(1080, 1350) for _ in items])
+    monkeypatch.setattr(media_generator.db, "upload_generated", lambda st, path, data, ct: f"https://cdn/{path}")
+    store = FakeStore(semasa_settings=[{"key": "brand", "value": {"regulab": {"website": "www.x.com"}}}], semasa_posts=[],
+                      media_generations=[_carousel_job("c2", "journal")])
+    assert media_generator.process_row(store, store.tables["media_generations"][0], _settings(), {}, None) is False
+    row = store.tables["media_generations"][0]
+    assert "cover: blip" in str(row.get("error") or "") and row["status"] != "done"
+    assert len(row["meta"]["art"]) == len(made) >= 3, "every picture made is kept on the job: the retry pays for the cover only"
+    assert "art_missing" not in row["meta"]

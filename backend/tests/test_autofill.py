@@ -289,3 +289,95 @@ def test_a_row_with_no_words_is_never_a_candidate():
     assert [c["id"] for c in autofill.candidates(store, NOW)] == ["w1"]
     assert autofill.usable_title("Garis panduan baharu") and autofill.usable_title("Notis 1")
     assert not autofill.usable_title("40") and not autofill.usable_title(None) and not autofill.usable_title("*0*")
+
+
+# ---- focus topics: DRGD, FSQD and the FAQ bank (Wan, 25 Nov 2026) ---------------------------------------------------
+OPEN = {"regulab": {"slots": ["08:00", "13:00", "21:00"]}, "linkedin": {"slots": ["06:00"]}}      # no rota: every domain fits
+
+
+def _faq(i, category="farmaseutikal", **over):
+    return {"id": f"q{i}", "status": "ready", "needs_check": False, "category": category, "answer_source": "given",
+            "question_bm": f"Soalan lazim nombor {i}?",
+            "answer_bm": "Jawapan penuh yang menerangkan perkara ini dengan jelas dan lengkap.",
+            "instrument": "DRGD 2026, Bahagian 2", "created_at": "2026-11-20T00:00:00+00:00", **over}
+
+
+def _focus_store(watch, faqs=(), ideas=()):
+    return FakeStore(semasa_watch=list(watch), semasa_ideas=list(ideas), semasa_posts=[], semasa_log=[], semasa_faqs=list(faqs))
+
+
+def _fs(**over):
+    return {"brand": OPEN, "autofill": {"enabled": True, "days_ahead": 1, "per_run": 3, "streams": ["regulab"],
+                                         "min_drafts": 0, **over}}
+
+
+def test_topic_of_names_drgd_fsqd_and_faq():
+    t = autofill.topic_of
+    assert t({"section": "faq", "title": "x"}) == "faq"
+    assert t({"section": "regulatory", "title": "Pindaan DRGD 2026", "domain": "kosmetik"}) == "drgd"
+    assert t({"section": "website", "title": "Pendaftaran produk", "domain": "farmaseutikal"}) == "drgd"
+    assert t({"section": "regulatory", "title": "Notis FSQD tentang label", "domain": "halal_my"}) == "fsqd"
+    assert t({"section": "regulatory", "title": "Recall susu", "domain": "makanan"}) == "fsqd"
+    assert t({"section": "publication", "title": "Satu kajian", "domain": "makanan"}) is None      # a paper is not the division
+    assert t({"section": "regulatory", "title": "Notis kosmetik", "domain": "kosmetik"}) is None
+
+
+def test_the_faq_bank_gives_only_given_answers_with_an_instrument_that_no_idea_used():
+    used = {"id": "i1", "source_name": "FAQ Semasa", "source_title": "Soalan lazim nombor 5?", "brief": {"faq_id": "q4"}}
+    faqs = [_faq(1), _faq(2, needs_check=True), _faq(3, answer_source="ai"), _faq(4), _faq(5), _faq(6, instrument=""),
+            _faq(7, answer_bm="pendek"), _faq(8, category="lain"), _faq(9, category="halal")]
+    got = autofill.faq_candidates(_focus_store([], faqs, [used]))
+    assert [c["id"] for c in got] == ["faq:q1", "faq:q9"]            # q4 by id, q5 by its question; the rest fail a rule
+    assert got[0]["domain"] == "farmaseutikal" and got[1]["domain"] == "halal_my"
+    assert got[0]["summary"].endswith("Sumber: DRGD 2026, Bahagian 2") and got[0]["raw"] == {"faq_id": "q1"}
+
+
+def test_one_draft_in_three_is_a_focus_topic_when_one_fits():
+    titles = ["Hidrokuinon ditemui dalam krim pemutih", "Merkuri dalam bedak muka dilarang", "Tretinoin pada serum jerawat",
+              "Sibutramin dalam kopi kurus ditarik", "Steroid pada losyen ekzema diharamkan"]
+    plain = [{**_w(i, "kosmetik"), "title": t, "summary": t.split()[0], "created_at": f"2026-09-2{i % 3}T0{i}:00:00+00:00"}
+             for i, t in enumerate(titles, 1)]
+    drgd = {**_w(9, "farmaseutikal"), "title": "Garis panduan DRGD terkini", "summary": "Pendaftaran ubat",
+            "created_at": "2026-09-20T00:00:00+00:00"}
+    store = _focus_store([*plain, drgd])
+    autofill.run(store, _fs(), NOW)
+    ideas = sorted(store.tables["semasa_ideas"], key=lambda i: (i["brief"]["position"]["date"], i["brief"]["position"]["slot"]))
+    assert [i["brief"].get("focus") for i in ideas] == ["drgd", None, None]     # the first position is due one; then two ordinary
+
+
+def test_the_faq_bank_fills_a_focus_position_and_the_idea_carries_the_answer():
+    store = _focus_store([{**_w(1, "kosmetik"), "title": "Notis produk kosmetik"}], faqs=[_faq(1, "makanan")])
+    autofill.run(store, _fs(), NOW)
+    first = min(store.tables["semasa_ideas"], key=lambda i: (i["brief"]["position"]["date"], i["brief"]["position"]["slot"]))
+    assert first["source_name"] == "FAQ Semasa" and first["source_url"] is None and first["domain"] == "makanan"
+    assert first["source_title"] == "Soalan lazim nombor 1?" and first["source_summary"].endswith("Sumber: DRGD 2026, Bahagian 2")
+    assert first["brief"]["faq_id"] == "q1" and first["brief"]["focus"] == "faq" and "watch_id" not in first["brief"]
+    assert first["brief"]["source_priority"] == "official" and first["status"] == "new"
+
+
+def test_focus_off_leaves_the_pick_and_the_pool_as_they_were():
+    plain = [{**_w(i, "kosmetik"), "title": f"Notis produk kosmetik {i}"} for i in range(1, 4)]
+    drgd = {**_w(9, "farmaseutikal"), "title": "Garis panduan DRGD terkini", "created_at": "2026-09-01T00:00:00+00:00"}
+    store = _focus_store([*plain, drgd], faqs=[_faq(1)])
+    autofill.run(store, _fs(focus=[]), NOW)
+    assert all("focus" not in i["brief"] and i["source_name"] != "FAQ Semasa" for i in store.tables["semasa_ideas"])
+    assert autofill.config({"autofill": {"enabled": True, "focus": ["drgd", "x"]}})["focus"] == ["drgd"]
+    assert autofill.config({"autofill": {"enabled": True}})["focus"] == ["drgd", "fsqd", "faq"]
+
+
+def test_the_share_holds_across_runs_from_the_latest_auto_ideas():
+    done = lambda f: {"brief": {"auto": True, **({"focus": "faq"} if f else {})}}      # noqa: E731
+    cfg = {"focus": ["drgd", "fsqd", "faq"], "focus_every": 3}
+    assert autofill.Focus.load(_focus_store([], ideas=[]), cfg).prefer() == {"drgd", "fsqd", "faq"}     # nothing yet: due
+    after_focus = autofill.Focus(cfg["focus"], 3, [done(True)])
+    assert after_focus.prefer() is None                                  # 1 focus in 1 idea: the next two are ordinary
+    after_focus.wrote({"section": "regulatory", "title": "x", "domain": "kosmetik"})
+    assert after_focus.prefer() is None
+    after_focus.wrote({"section": "regulatory", "title": "y", "domain": "kosmetik"})
+    assert after_focus.prefer() == {"drgd", "fsqd", "faq"}               # 1 in 3: due again
+
+
+def test_linkedin_never_takes_an_faq_row():
+    store = _focus_store([], faqs=[_faq(1)])
+    autofill.run(store, _fs(streams=["linkedin"], days_ahead=3), NOW)
+    assert store.tables["semasa_ideas"] == []

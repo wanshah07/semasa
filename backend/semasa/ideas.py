@@ -375,7 +375,8 @@ slide in short, plain, complete sentences a reader understands at once:
 [{"title": "...", "lead": "...", "points": ["...", "..."], "foot": "Definisi: term = meaning"}, ...]
 - Slide 1 is the cover: its headline IS the hook (the same hook shape you filled for the caption's first line, no underscores,
   no figure the SOURCE does not give), at most 12 words, no "lead", "points" empty or one short line, no "foot". It is drawn
-  very large.
+  very large. Semasa draws it as the brand cover only, so slide 2 is page one of the story: its headline and words must say
+  something NEW, never the hook again in other words.
 - "foot" (FACTS FIRST rule 4a) is the slide's small definition note: "Definisi: term = meaning", up to 2 terms that appear on
   that slide, "" when none; never on the cover or the last slide.
 - Each middle slide is a FULL card, never a bare one: a title of at most 8 words, a "lead" (one sentence of at most 22 words that

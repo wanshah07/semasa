@@ -210,13 +210,14 @@ def test_slide_job_draws_uploads_and_replaces_the_old_set(monkeypatch):
     assert media_generator.process_row(store, row, _settings(), {}) is True     # no provider, no token needed
     done = store.tables["media_generations"][0]
     assert done["status"] == "done" and done["provider"] == "semasa" and done["model"] == "slides-v1"
-    # three written slides, the brand cover in front of the first (Wan, 23 Nov 2026) and the logo card at the end: five pictures
-    assert done["meta"]["count"] == 5 and len(done["meta"]["slide_urls"]) == 5 and done["meta"]["closing_logo"] is True
+    # three written slides: the first is the hook, which the brand cover in front carries (Wan, 23 Nov 2026), so it is not
+    # drawn again as a page (Wan, 25 Nov 2026: cover and slide 1 differ); two pages + the cover + the logo card: four pictures
+    assert done["meta"]["count"] == 4 and len(done["meta"]["slide_urls"]) == 4 and done["meta"]["closing_logo"] is True
     assert done["generated_media_url"] == done["meta"]["slide_urls"][0]
     assert done["meta"]["slides"] == compliance.normalise_slides(GOOD)
     assert all(ct == "image/jpeg" for _, ct in uploads.values())
     names = [p.rsplit("/", 1)[1] for p in uploads]
-    assert [re.sub(r"-\d{8}-", "-", n) for n in names] == [f"s1-slide0{n}.jpg" for n in range(1, 6)]
+    assert [re.sub(r"-\d{8}-", "-", n) for n in names] == [f"s1-slide0{n}.jpg" for n in range(1, 5)]
     assert store.tables["semasa_posts"][0]["media_ids"] == ["pic", "s1"]         # the old set replaced in place
 
 
@@ -327,7 +328,7 @@ def test_the_publisher_sends_every_slide_and_blocks_stale_pictures():
             "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}}, "citation": "NPRA",
             "media_ids": ["s1"], "published": {}, "errors": {}, "slides": full}
     media = {"id": "s1", "status": "done", "mode": "slides", "generated_media_url": "https://cdn/1.jpg",
-             "meta": {"slides": full, "slide_urls": [f"https://cdn/{n}.jpg" for n in range(1, 6)],
+             "meta": {"slides": full, "slide_urls": [f"https://cdn/{n}.jpg" for n in range(1, 5)],
                       "cover": True}}       # a real ws.regulab carousel opens on the branded cover (Instagram needs it)
     store = FakeStore(semasa_settings=[], semasa_posts=[post], media_generations=[media], semasa_publish_log=[])
     c = publisher.run(store, now)

@@ -81,10 +81,11 @@ def test_a_studio_look_is_drawn_by_studio_and_recorded(monkeypatch, _uploads):
     assert _run(store) is True
     done = store.tables["media_generations"][0]
     assert done["status"] == "done" and done["model"] == "studio-era" and done["meta"]["look"] == "era"
-    assert done["meta"]["count"] == 5 and len(_uploads) == 5       # three drawn by Studio + the cover in front + the logo card
+    # the hook slide is the cover (25 Nov 2026: slide 1 must differ): two drawn by Studio + the cover in front + the logo card
+    assert done["meta"]["count"] == 4 and len(_uploads) == 4
     assert seen == {"look": "era", "stream": "regulab", "eyebrow": "Kosmetik", "source": "NPRA, Garis Panduan",
-                    "ground": None, "ground_mime": "image/jpeg", "size": None, "n": 3, "fit": False, "design": None,
-                    "final": True, "offset": 1, "total": 5,    # a posted picture; the set's length with its cover and logo card
+                    "ground": None, "ground_mime": "image/jpeg", "size": None, "n": 2, "fit": False, "design": None,
+                    "final": True, "offset": 1, "total": 4,    # a posted picture; the set's length with its cover and logo card
                     "mascots": [{"k": k, "url": f"/cards/mascots/{k}.webp"} for k in ("wave", "point", "confused", "shocked")]}
 
 
@@ -107,6 +108,7 @@ def test_each_slide_gets_its_own_background_once_fetched(monkeypatch, _uploads):
 
     monkeypatch.setattr(studio_cards, "render", fake)
     store = _store({"look": "grid", "citation": "NPRA", "slides": [
+        {"title": "Cover hook", "points": []},                      # the hook slide: the cover carries it, no page of its own
         {"title": "Satu", "points": ["a"], "bg": "lib:g_makmal02", "scrim": "heavy"},
         {"title": "Dua", "points": ["b"]},
         {"title": "Tiga", "points": ["c"], "bg": "lib:g_tiada"}]})
@@ -115,7 +117,7 @@ def test_each_slide_gets_its_own_background_once_fetched(monkeypatch, _uploads):
     assert got[0]["bg_url"].startswith("data:image/jpeg;base64,") and got[0]["scrim"] == "heavy"
     assert "bg_url" not in got[1] and "bg_url" not in got[2]           # an unknown photograph: the set's background
     kept = store.tables["media_generations"][0]["meta"]["slides"]
-    assert kept[0]["bg"] == "lib:g_makmal02" and not any("bg_url" in k for k in kept)
+    assert kept[1]["bg"] == "lib:g_makmal02" and not any("bg_url" in k for k in kept)
 
 
 def test_the_classic_drawing_keeps_a_lead_and_a_note():
@@ -749,12 +751,12 @@ FOOT = "Definisi: PIF = Fail maklumat dan bukti keselamatan kosmetik, disimpan s
 def test_a_slides_foot_reaches_the_studio_renderer_and_the_words_kept_on_the_job(monkeypatch, _uploads):
     seen = {}
     monkeypatch.setattr(studio_cards, "render", lambda items, **kw: seen.update(items=items) or [_jpeg() for _ in items])
-    words = [{"title": "Satu", "points": ["a"]}, {"title": "Apa itu PIF", "points": ["b"], "foot": FOOT},
-             {"title": "Tiga", "points": ["c"]}]
+    words = [{"title": "Cover hook", "points": []}, {"title": "Satu", "points": ["a"]},
+             {"title": "Apa itu PIF", "points": ["b"], "foot": FOOT}, {"title": "Tiga", "points": ["c"]}]
     store = _store({"look": "grid", "slides": words})
     assert _run(store) is True
     assert [i.get("foot") for i in seen["items"]] == [None, FOOT, None]
-    assert store.tables["media_generations"][0]["meta"]["slides"][1]["foot"] == FOOT
+    assert store.tables["media_generations"][0]["meta"]["slides"][2]["foot"] == FOOT
 
 
 @browser

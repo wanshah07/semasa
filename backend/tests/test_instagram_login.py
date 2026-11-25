@@ -22,7 +22,7 @@ def test_it_needs_nothing_from_the_repo():
 
 def test_it_reports_which_login_cookies_are_missing_by_name():
     state = {"cookies": [_c("sessionid", ".instagram.com"), _c("ds_user_id", ".instagram.com"), _c("c_user", ".facebook.com")]}
-    assert il.held(state) == {"instagram": [], "facebook": ["xs"]}
+    assert il.held(state) == {"instagram": [], "facebook": ["xs"], "reddit": ["reddit_session"]}
 
 
 def test_the_secret_keeps_only_facebook_and_instagram_cookies_and_drops_page_data():
@@ -48,3 +48,15 @@ def test_instagram_alone_keeps_only_instagram_cookies_and_names_the_second_secre
     assert [c["name"] for c in il.slim(state, "instagram")["cookies"]] == ["sessionid"]
     assert len(il.slim(state)["cookies"]) == 2
 
+
+
+def test_reddit_alone_keeps_only_reddit_cookies_and_names_its_own_secret():
+    # Wan, 24 Nov 2026: "yes set up reddit login". Its own file and its own secret; the Instagram and Facebook ones are untouched
+    state = {"cookies": [_c("reddit_session", ".reddit.com"), _c("token_v2", ".reddit.com"), _c("sessionid", ".instagram.com"),
+                         _c("c_user", ".facebook.com")], "origins": [{"origin": "https://www.reddit.com", "localStorage": []}]}
+    out = il.slim(state, "reddit")
+    assert [c["name"] for c in out["cookies"]] == ["reddit_session", "token_v2"] and out["origins"] == []
+    assert il.ALONE["reddit"][:2] == ("secret-reddit.txt", "PW_STORAGE_STATE_REDDIT_B64")
+    assert il.ALONE["instagram"][:2] == ("secret-instagram.txt", "PW_STORAGE_STATE_IG_B64")
+    assert il.held(state)["reddit"] == []                                 # the login cookie is there
+    assert {c["name"] for c in il.slim(state)["cookies"]} == {"sessionid", "c_user"}   # the shared secret takes no Reddit cookie

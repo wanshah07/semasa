@@ -45,8 +45,11 @@ def _retrying(slug, args):
 
 
 q = "subreddit:" + P["subreddit"] + " (" + " OR ".join(P["terms"]) + ")"
-res, err = _retrying("REDDIT_SEARCH_ACROSS_SUBREDDITS",
-                     {"search_query": q, "sort": "top", "time_filter": P["window"], "limit": P["limit"], "result_type": ["link"]})
+res, err = {}, ""
+if P.get("reddit", True):          # False when Wan's own Reddit login already read it (reddit_web.py): no shared app
+    res, err = _retrying("REDDIT_SEARCH_ACROSS_SUBREDDITS",
+                         {"search_query": q, "sort": "top", "time_filter": P["window"], "limit": P["limit"],
+                          "result_type": ["link"]})
 if err:
     OUT["reddit_error"] = ("rate limit (429): Reddit refused the shared connection" if "429" in str(err) else str(err)[:200])
 for p in ((res.get("data") or {}).get("posts") or []):
@@ -155,10 +158,12 @@ WINDOW_HOURS = 72     # a viral post older than this is no longer what people ar
 MAX_TERMS = 20        # measured: 19 terms match as OR; 27 return the subreddit's general top (3 of 25 mention any term)
 
 
-def fetch(client: Any, cfg: dict[str, Any]) -> dict[str, Any]:
+def fetch(client: Any, cfg: dict[str, Any], reddit: bool = True) -> dict[str, Any]:
+    """`reddit` False: Reddit was already read with Wan's own login, so the cell leaves the shared Reddit app alone."""
     yt = cfg.get("youtube") or {}
     th = cfg.get("threads") or {}
     return client.cell(_CELL, {
+        "reddit": bool(reddit),
         "subreddit": str(cfg.get("subreddit") or "malaysia"), "terms": list(cfg.get("terms") or ["halal"])[:MAX_TERMS],
         "window": cfg.get("window") if cfg.get("window") in ("day", "week", "month") else "week",
         "limit": max(1, min(25, int(cfg.get("limit") or 15))),

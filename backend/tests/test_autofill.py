@@ -280,3 +280,12 @@ def test_floor_never_reuses_a_position_the_gap_pass_just_filled():
                                                        "streams": ["regulab"], "min_drafts": 3}}, NOW)
     spots = [(i["brief"]["position"]["date"], i["brief"]["position"]["slot"]) for i in store.tables["semasa_ideas"]]
     assert len(spots) == 3 and len(set(spots)) == 3                          # 1 from the gap pass (per_run 1) + 2 from the floor
+
+
+def test_a_row_with_no_words_is_never_a_candidate():
+    # 25 Nov 2026: spreadsheet cells titled "40" and "0" sat in the OneDrive angle bank and the floor wrote ideas from them
+    bank = [{**_w(i, "kosmetik", "folder"), "title": t, "summary": t} for i, t in ((7, "40"), (8, "0"), (9, "  "))]
+    store = _store([*bank, _w(1, "kosmetik")])
+    assert [c["id"] for c in autofill.candidates(store, NOW)] == ["w1"]
+    assert autofill.usable_title("Garis panduan baharu") and autofill.usable_title("Notis 1")
+    assert not autofill.usable_title("40") and not autofill.usable_title(None) and not autofill.usable_title("*0*")

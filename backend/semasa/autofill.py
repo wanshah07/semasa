@@ -369,6 +369,11 @@ def news_candidates(store: Any, now: datetime | None = None) -> list[dict[str, A
     return out
 
 
+def usable_title(title: Any) -> bool:
+    """A headline a writer can build on: it holds a word of three letters or more (never a bare number or a blank)."""
+    return re.search(r"[^\W\d_]{3}", str(title or "")) is not None
+
+
 def candidates(store: Any, now: datetime | None = None, news: bool = False) -> list[dict[str, Any]]:
     """Feed items an idea has not used yet. A regulator's notice is fresh for FRESH_DAYS; the OneDrive angle bank is not news and
     has no age limit (its rows are written once, when a file is first read, and wait until they are used). Only OFFICIAL sections
@@ -381,6 +386,9 @@ def candidates(store: Any, now: datetime | None = None, news: bool = False) -> l
     if not news:
         rows = [r for r in rows if r.get("section") in OFFICIAL_SECTIONS]            # no Reddit, YouTube, Threads or expert post
     rows = (news_candidates(store, now) if news else []) + rows + bank
+    # a row with no words to write from is no candidate: the OneDrive angle bank carried spreadsheet cells titled "40" and "0"
+    # (25 Nov 2026), and the floor spent two of its first three ideas on them, each one failing "no fit" at the writer
+    rows = [r for r in rows if usable_title(r.get("title"))]
     if not rows:
         return []
     urls = [r["url"] for r in rows]

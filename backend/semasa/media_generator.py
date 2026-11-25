@@ -776,27 +776,15 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                     drawn = own_photos(store, own_grounds(store, row, words_in))
                     journal = illustrated.wants(look, kind)
                     if journal:
-                        # a hand-inked picture for every slide, made once and kept on the job (illustrated.py): in the middle of
-                        # the page in the Journal look, in a band at the foot in every other Studio look
-                        try:
-                            drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm, cut=False,
-                                                         covered=not kind and stream != "linkedin")
-                        except illustrated.ArtError as exc:
-                            # With no picture maker, or on the last try, the post is still drawn rather than lost. Diari is
-                            # nothing without its pictures: taken from the rotation it becomes the Image look, and a Diari Wan
-                            # chose fails with the reason. Every other look works without them: drawn without the band.
-                            last = int(row.get("attempts") or 0) >= s.max_attempts
-                            soft = look != "journal" or bool(meta.get("look_auto"))
-                            if not (soft and (last or "no picture maker" in str(exc))):
-                                raise
-                            if look == "journal":
-                                meta["look_fallback"] = f"{look}: {str(exc)[:200]}"
-                                look = "image"
-                            else:
-                                meta["art_missing"] = str(exc)[:200]
-                            log.warning("%s: the pictures could not be made (%s); drawn as %s", row_id, str(exc)[:160], look)
-                        else:
-                            art_used = True
+                        # A hand-inked picture for every slide, made once and kept on the job (illustrated.py): in the middle of
+                        # the page in the Journal look, in a band at the foot in every other Studio look. The picture is
+                        # MANDATORY (Wan, 25 Nov 2026: "for slide/carousel/single card/cover wajib ada illustration based on
+                        # the content"): when it cannot be made the job fails with the reason and tries again, keeping what
+                        # it made. It never ships a card drawn without it, on the last try or for want of a maker; before
+                        # this it did (meta.art_missing) and Diari was quietly redrawn in the Image look with no picture.
+                        drawn = illustrated.with_art(store, s, row, meta, drawn, stream, llm, cut=False,
+                                                     covered=not kind and stream != "linkedin")
+                        art_used = True
                     pics = studio_cards.render(drawn, look=look, stream=stream, eyebrow=eyebrow,
                                                source=str(meta.get("citation") or ""), ground=ground,
                                                ground_mime=content_type_of(ground) if ground else "image/jpeg", size=size,
@@ -809,18 +797,12 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                     full = size or slides.SIZES.get(stream, slides.SIZES["regulab"])
                     arts = None
                     if illustrated.wants("classic", kind):
-                        # Semasa's own look draws the slide's cut-out in a band at the foot too (illustrated.compose_band)
-                        try:
-                            got = illustrated.with_art(store, s, row, meta, [dict(x) for x in words_in], stream, llm, cut=False,
-                                                       covered=not kind and stream != "linkedin")
-                            arts = [illustrated.art_bytes(x) for x in got]
-                            art_used = True
-                        except illustrated.ArtError as exc:
-                            last = int(row.get("attempts") or 0) >= s.max_attempts
-                            if not (last or "no picture maker" in str(exc)):
-                                raise
-                            meta["art_missing"] = str(exc)[:200]
-                            log.warning("%s: the pictures could not be made (%s); drawn without them", row_id, str(exc)[:160])
+                        # Semasa's own look draws the slide's cut-out in a band at the foot too (illustrated.compose_band); the
+                        # picture is mandatory here as well: a failure fails the job, never a card without it
+                        got = illustrated.with_art(store, s, row, meta, [dict(x) for x in words_in], stream, llm, cut=False,
+                                                   covered=not kind and stream != "linkedin")
+                        arts = [illustrated.art_bytes(x) for x in got]
+                        art_used = True
                     with_art_band = bool(arts) and all(arts)
                     cut_h = round(full[1] * illustrated.ART_BAND)
                     pics = slides.render(classic_words(words_in), stream=stream, eyebrow=eyebrow,
@@ -865,11 +847,9 @@ def process_slides(store: Any, row: dict[str, Any], s: MediaSettings, llm: LLM |
                 meta["cover_title"] = title
             cover_png = None
             if art_used:
-                try:
-                    cover_png = illustrated.cover_art(store, s, row, meta, items[0], stream, llm)
-                except illustrated.ArtError as exc:
-                    meta["art_missing"] = str(exc)[:200]
-                    log.info("%s: the cover is drawn without its illustration (%s)", row_id, str(exc)[:120])
+                # the cover's illustration is mandatory too: if it cannot be made the job fails and tries again (the slides'
+                # pictures are kept on the job, so the retry pays only for the cover)
+                cover_png = illustrated.cover_art(store, s, row, meta, items[0], stream, llm)
             try:
                 pics = [carousel.cover_jpeg(title, "", eyebrow, ground=ground, size=size, art=cover_png), *pics]
                 cover = True

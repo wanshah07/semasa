@@ -25,6 +25,12 @@ SLIDES = [{"title": "Notifikasi *bukan* kelulusan", "points": ["Nombor NOT berma
           {"title": "Ingat ini", "points": ["Notifikasi ialah permulaan."]}]
 
 
+@pytest.fixture(autouse=True)
+def _illustrated(drawn_illustrations):
+    """The illustration is mandatory and these tests are about something else: see conftest.drawn_illustrations."""
+
+
+
 def _settings():
     return MediaSettings(provider="cloudflare", batch=5, max_attempts=3, poll_seconds=0, max_wait_image=1,
                          max_wait_video=1, replicate_token=None, replicate_image_model="a/b",

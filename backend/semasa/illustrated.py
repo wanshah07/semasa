@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import io
 import re
+import time
 from typing import Any
 
 import requests
@@ -135,8 +136,17 @@ def slides_needing_art(items: list[dict[str, Any]], stream: str, covered: bool |
     """Indexes of the slides that get a picture: every one. The first slide of a ws.regulab post's own carousel is replaced by the
     white brand cover, and its picture is the HOOK's illustration on that cover (Wan, 23 Nov 2026: "can adjust coverpage by add
     illustration hook"); `covered` is kept so a caller can say which kind of set it is, and changes nothing here."""
-    # a slide that names an ayat is drawn as the verse card in every look (studio.js specsFor), which has no place for a picture
-    return [i for i, it in enumerate(items) if (it.get("title") or it.get("points")) and not it.get("ayat")]
+    # a slide that names an ayat is drawn as the verse card in every look (studio.js specsFor), which has no place for a picture:
+    # it is the ONE slide a set may carry without one. Every other slide with any words at all has its picture (Wan, 25 Nov 2026:
+    # "for slide/carousel/single card/cover wajib ada illustration based on the content"): a slide of only a lead or only a note
+    # used to be left bare, because only a title or a list of points counted.
+    return [i for i, it in enumerate(items) if _has_words(it) and not it.get("ayat")]
+
+
+def _has_words(item: dict[str, Any]) -> bool:
+    """Whether a slide says anything a picture can be drawn from."""
+    return bool(str(item.get("title") or "").strip() or str(item.get("lead") or "").strip() or str(item.get("note") or "").strip()
+                or any(str(p).strip() for p in item.get("points") or []))
 
 
 def safe_label(text: Any, stream: str, lang: str) -> str:
@@ -177,9 +187,18 @@ def plan(llm: Any, items: list[dict[str, Any]], idx: list[int], stream: str) -> 
     except Exception as exc:  # noqa: BLE001 - the plain scenes below stand in
         log.info("the scenes could not be planned (%s); each slide's own headline stands in", str(exc)[:120])
     for i in idx:
-        headline = " ".join(str(items[i].get("title") or "the idea").split())[:200]
-        got.setdefault(i, {"scene": "an everyday scene that shows: " + headline, "label": ""})
+        got.setdefault(i, {"scene": "an everyday scene that shows: " + plain_subject(items[i]), "label": ""})
     return got
+
+
+def plain_subject(item: dict[str, Any]) -> str:
+    """What a slide is about, in its own words: the headline, else the lead, else the first point, else the note. The picture is
+    always drawn from the content, so a slide with no headline is not drawn from 'the idea'."""
+    for part in (item.get("title"), item.get("lead"), *(item.get("points") or []), item.get("note")):
+        text = " ".join(str(part or "").replace("*", "").split())
+        if text:
+            return text[:200]
+    return "the idea"
 
 
 def prompt_of(scene: str, cut: bool = False) -> str:
@@ -290,6 +309,10 @@ def makers(s: Any, store: Any, cut: bool = False) -> list[str]:
     return out
 
 
+DRAW_PASSES = 3                      # times the whole chain of makers is asked for one picture before the slide fails
+DRAW_REST = 4                        # seconds rested before the second pass, twice that before the third
+
+
 def draw(store: Any, s: Any, prompt: str, names: list[str], providers: dict[str, Any], deadline: float | None,
          row_id: str) -> tuple[bytes, str, dict[str, Any] | None]:
     """(the picture, who made it, the photographer's credit when it is an Unsplash photograph else None)."""
@@ -301,10 +324,25 @@ def draw(store: Any, s: Any, prompt: str, names: list[str], providers: dict[str,
         return p.generate_from_text(prompt, opts)
     if "unsplash" in names:
         providers.setdefault("unsplash", UnsplashPhoto())
-    gen, name, _tried = mg.generate_with_failover(providers, names, s, store, one, deadline=deadline, row_id=row_id)
-    if not gen.data:
-        raise ProviderError("the picture maker returned no picture")
-    return shrink(gen.data), name, ((gen.meta or {}).get("credit") if name == "unsplash" else None)
+    # The picture is mandatory, so one blip of the whole chain ("Response ended prematurely", 23 Nov 2026) is not a failed job:
+    # the chain is asked again, DRAW_PASSES times in all, with a short rest between, and only then does the slide fail.
+    last: Exception | None = None
+    for turn in range(DRAW_PASSES):
+        if turn:
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            time.sleep(DRAW_REST * turn)
+        try:
+            gen, name, _tried = mg.generate_with_failover(providers, names, s, store, one, deadline=deadline, row_id=row_id)
+        except Exception as exc:  # noqa: BLE001 - the next pass asks every maker again
+            last = exc
+            log.info("no maker drew it (pass %d of %d): %s", turn + 1, DRAW_PASSES, str(exc)[:160])
+            continue
+        if not gen.data:
+            last = ProviderError("the picture maker returned no picture")
+            continue
+        return shrink(gen.data), name, ((gen.meta or {}).get("credit") if name == "unsplash" else None)
+    raise last or ProviderError("the picture maker returned no picture")
 
 
 def art_bytes(item: dict[str, Any]) -> bytes | None:
@@ -399,7 +437,7 @@ def cover_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], ite
               fetch_fn: Any = None) -> bytes | None:
     """The hook's illustration for the white brand cover: the same picture a slide gets (a rounded card, since Wan revoked
     the transparent cut-out on 23 Nov 2026), made once and kept on the job like the others. Raises ArtError when it cannot be
-    made; the cover is then drawn without it."""
+    made: the cover is never drawn without it (the job tries again and keeps what it already made)."""
     from datetime import UTC, datetime
     key = "cover|" + key_of(item)
     kept: dict[str, Any] = dict(meta.get("art") or {}) if isinstance(meta.get("art"), dict) else {}
@@ -427,4 +465,7 @@ def cover_art(store: Any, s: Any, row: dict[str, Any], meta: dict[str, Any], ite
         meta["art_paths"] = [e["path"] for e in kept.values() if e.get("path")]
         store.table(db.MEDIA).update({"meta": meta}).eq("id", row["id"]).execute()
         return data
-    return (fetch_fn or fetch)(entry["url"])
+    kept_data = (fetch_fn or fetch)(entry["url"])
+    if not kept_data:
+        raise ArtError("cover: its kept illustration could not be read back")
+    return kept_data

@@ -66,10 +66,25 @@ def test_the_logo_card_is_a_4_by_5_jpeg_with_the_logo_and_the_follow_line():
     assert over.size == (1080, 1350)
 
 
+def _drawing() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (900, 600), (239, 235, 224)).save(buf, "JPEG")
+    return buf.getvalue()
+
+
 @pytest.fixture
 def worker(monkeypatch):
-    from semasa import db, ideas
+    import base64
+
+    from semasa import db, ideas, illustrated
     saved, uploads = {}, []
+    # A card's illustration is mandatory (Wan, 25 Nov 2026), so a job with no picture maker fails instead of drawing a bare card.
+    # These tests are about the squeeze and the logo card, not the pictures: a drawing is handed to every slide and the cover
+    # without being uploaded (the uploads below count the pages).
+    uri = "data:image/jpeg;base64," + base64.b64encode(_drawing()).decode("ascii")
+    monkeypatch.setattr(illustrated, "with_art", lambda store, s, row, meta, items, stream, llm=None, **k: [
+        {**it, "art_url": uri, "art_label": ""} for it in items])
+    monkeypatch.setattr(illustrated, "cover_art", lambda *a, **k: _drawing())
     monkeypatch.setattr(db, "upload_generated", lambda store, path, data, ct: uploads.append(data) or f"https://x/{len(uploads)}.jpg")
     monkeypatch.setattr(db, "finish_media", lambda store, rid, **kw: saved.update(kw))
     monkeypatch.setattr(db, "attach_slides_to_draft", lambda *a, **k: None)

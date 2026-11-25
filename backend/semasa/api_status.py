@@ -339,6 +339,7 @@ def run(store: Any, settings: LLMSettings, timeout: int = 30, media: MediaSettin
     from . import ai_team
     chosen = ai_team.read_models(store)
     previous = last_balances(store)
+    api_credit.load_accounts(store)                     # so the full probe reads the same balance the credit run does
     for gw in ai_team.apply_models([*team(settings, media, github, cfg), *(extra or [])], chosen):
         prev = previous.get(gw["slug"])
         row = probe(gw, timeout, prev) if prev else probe(gw, timeout)
@@ -450,6 +451,9 @@ def credit_run(store: Any, gws: list[dict[str, Any]], timeout: float = 10, now: 
     probe and the pulse wrote it. A gateway with no row yet (the 6-hourly probe has not met it) or no key is skipped, and said."""
     now = now or datetime.now(UTC)
     previous = last_balances(store)
+    typed = api_credit.load_accounts(store)             # the account keys typed on the API credit page (supabase/096)
+    if typed:
+        log.info("account key typed in Semasa for: %s", ", ".join(typed))
     done = []
     for gw in gws:
         slug = gw["slug"]

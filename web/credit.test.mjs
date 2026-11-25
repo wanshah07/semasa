@@ -178,3 +178,18 @@ console.log(`credit: ${n} checks passed`);
   assert.equal(viewOf({ slug: "mireld", balance: { credit: { remaining: 5 } } }, null).keyInfo, null);
   console.log("credit key facts: ok");
 }
+
+// the account key typed into Semasa (supabase/096): what the page refuses before the database does
+{
+  const { ACCOUNT_KEY_SLUGS, accountKeyProblem } = await import("./src/lib/credit.js");
+  const assert = (await import("node:assert/strict")).default;
+  assert.deepEqual(ACCOUNT_KEY_SLUGS, ["kiosapi"]);
+  assert.equal(accountKeyProblem("a-long-access-token-1234", "77"), null);
+  assert.ok(accountKeyProblem("", "77"));
+  assert.ok(accountKeyProblem("a-long-access-token-1234", ""));
+  assert.ok(accountKeyProblem("short", "77"));
+  assert.ok(accountKeyProblem("has a space in the token 12", "77"));
+  assert.ok(accountKeyProblem("a-long-access-token-1234", "wan@example"));       // the user id is a number, not an e-mail
+  assert.equal(accountKeyProblem("  a-long-access-token-1234  ", " 77 "), null);  // pasted with spaces around: trimmed
+  console.log("credit account key: ok");
+}

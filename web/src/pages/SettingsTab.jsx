@@ -241,15 +241,17 @@ function AutofillSettings({ settings, save, onToast }) {
   useEffect(() => {
     setF({ enabled: a?.enabled === true, days: String(a?.days_ahead || 3), per: String(a?.per_run || 2),
       floor: String(a?.min_drafts ?? 2), reach: a?.floor_days,
+      focus: Array.isArray(a?.focus) ? a.focus : ["drgd", "fsqd", "faq"], every: String(a?.focus_every || 3),
       streams: Array.isArray(a?.streams) ? a.streams : ["regulab", "linkedin"], news: a?.news === true });
   }, [JSON.stringify(a)]); // eslint-disable-line react-hooks/exhaustive-deps -- a change elsewhere must not wipe an edit here
   if (!f) return null;
+  const toggleFocus = (k) => setF((x) => ({ ...x, focus: x.focus.includes(k) ? x.focus.filter((y) => y !== k) : [...x.focus, k] }));
   const toggleStream = (k) => setF((x) => ({ ...x, streams: x.streams.includes(k) ? x.streams.filter((y) => y !== k) : [...x.streams, k] }));
 
   async function submit() {
     setBusy(true);
     try {
-      await save("autofill", { enabled: f.enabled, days_ahead: Number(f.days), per_run: Number(f.per), min_drafts: Number(f.floor),
+      await save("autofill", { enabled: f.enabled, days_ahead: Number(f.days), per_run: Number(f.per), min_drafts: Number(f.floor), focus: f.focus, focus_every: Number(f.every),
         ...(f.reach ? { floor_days: Number(f.reach) } : {}), streams: f.streams, news: f.news });
       onToast(f.enabled ? t("Auto-isi dihidupkan. Larian Semasa seterusnya menulis idea untuk slot kosong; semuanya draf.",
         "Autofill is on. The next Semasa run writes ideas for empty slots; all of them stay drafts.")
@@ -285,6 +287,16 @@ function AutofillSettings({ settings, save, onToast }) {
           ))}
         </span>
       </div>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <span className="flex gap-3 text-sm">
+          {[["drgd", "DRGD"], ["fsqd", "FSQD"], ["faq", "FAQ"]].map(([k, l]) => (
+            <label key={k} className="flex items-center gap-1.5"><input type="checkbox" checked={f.focus.includes(k)} onChange={() => toggleFocus(k)} />{l}</label>
+          ))}
+        </span>
+        <label><Label>{t("Satu draf dalam setiap", "One draft in every")}</Label><Select value={f.every} onChange={(v) => setF((x) => ({ ...x, every: v }))} options={[2, 3, 4, 5, 6].map((n) => [String(n), String(n)])} /></label>
+      </div>
+      <p className="mt-1 text-[12px] text-muted">{t("Topik tumpuan: satu draf dalam setiap beberapa diambil daripada DRGD (pendaftaran ubat NPRA), FSQD (keselamatan dan kualiti makanan) atau bank FAQ anda, bila ada yang sesuai dengan rota. Kosongkan semua untuk mematikannya.",
+        "Focus topics: one draft in every few is drawn from DRGD (NPRA drug registration), FSQD (food safety and quality) or your FAQ bank when one fits the rota. Untick all to switch it off.")}</p>
       <Button className="mt-4" onClick={submit} disabled={busy}><Save size={14} /> {t("Simpan auto-isi", "Save autofill")}</Button>
     </Card>
   );

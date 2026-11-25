@@ -25,7 +25,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from . import buffer_queue, db
-from .ideas import ANY_DAY_DOMAINS, MYT
+from .ideas import ANY_DAY_DOMAINS, FAQ_SOURCE, MYT
 from .log import get_logger
 
 log = get_logger("semasa.autofill")
@@ -43,6 +43,19 @@ MAX_DAYS, MAX_PER_RUN = 7, 5
 # invents: with nothing fitting, the run says it is short and writes nothing.
 MIN_DRAFTS, MAX_MIN_DRAFTS = 2, 10
 FLOOR_DAYS, MAX_FLOOR_DAYS = 14, 30
+# FOCUS TOPICS (Wan, 25 Nov 2026: "for draft post, add more on DRGD, FAQ, FSQD"). One draft in every FOCUS_EVERY (default 3) is
+# drawn from these topics when something fitting exists: DRGD (NPRA's Drug Registration Guidance Document and drug registration),
+# FSQD (the Food Safety and Quality Division: the Food Act and Regulations, food labelling) and FAQ (the answers Wan keeps in his
+# FAQ bank, each with its instrument). The rota, the facts-first order and every other rule still apply: this only decides which
+# fitting item a position takes, and a position with no fitting focus item takes the ordinary pick. `settings.autofill.focus`
+# lists the topics ([] = off) and `focus_every` the share (3 = one in three).
+FOCUS_TOPICS = ("drgd", "fsqd", "faq")
+FOCUS_EVERY, MAX_FOCUS_EVERY = 3, 10
+FOCUS_WINDOW = 6                # how many of the latest auto-written ideas the share is read from
+FAQS = "semasa_faqs"
+FAQ_DOMAIN = {"halal": "halal_my", "skincare": "kosmetik", "kosmetik": "kosmetik", "makanan": "makanan",
+              "farmaseutikal": "farmaseutikal"}               # web/src/lib/brand.js FAQ_CATEGORY_TO_DOMAIN
+FAQ_POOL = 400                  # the newest FAQ rows read a run
 
 
 def config(settings: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
@@ -67,7 +80,12 @@ def config(settings: dict[str, Any], now: datetime | None = None) -> dict[str, A
         reach = max(days, min(MAX_FLOOR_DAYS, int(raw.get("floor_days") or FLOOR_DAYS)))
     except (TypeError, ValueError):
         reach = max(days, FLOOR_DAYS)
-    return {"enabled": on, "days_ahead": days, "per_run": per, "streams": streams,
+    focus = [t for t in (raw["focus"] if isinstance(raw.get("focus"), list) else FOCUS_TOPICS) if t in FOCUS_TOPICS]
+    try:
+        every = max(2, min(MAX_FOCUS_EVERY, int(raw.get("focus_every") or FOCUS_EVERY)))
+    except (TypeError, ValueError):
+        every = FOCUS_EVERY
+    return {"enabled": on, "days_ahead": days, "per_run": per, "streams": streams, "focus": focus, "focus_every": every,
             "news": raw.get("news") is True,              # the newspaper headline (isu semasa) is OFF unless Wan turns it on
             "min_drafts": floor, "floor_days": reach}
 
@@ -374,7 +392,87 @@ def usable_title(title: Any) -> bool:
     return re.search(r"[^\W\d_]{3}", str(title or "")) is not None
 
 
-def candidates(store: Any, now: datetime | None = None, news: bool = False) -> list[dict[str, Any]]:
+# What each focus topic looks like: a regulator's own words, whole words only. DRGD and FSQD are also a DOMAIN: a
+# drug-registration (farmaseutikal) or a food (makanan) item from an official section belongs to NPRA's or FSQD's field even
+# when its title does not spell the acronym.
+DRGD_RE = re.compile(r"\bDRGD\b|drug\s+registration\s+guidance|garis\s+panduan\s+pendaftaran\s+(?:ubat|produk)|"
+                     r"drug\s+control\s+authority|pihak\s+berkuasa\s+kawalan\s+dadah|\bPBKD\b", re.I)
+FSQD_RE = re.compile(r"\bFSQD\b|food\s+safety\s+and\s+quality|keselamatan\s+(?:dan\s+)?kualiti\s+makanan|food\s+act\s+1983|"
+                     r"akta\s+makanan\s+1983|food\s+regulations\s+1985|peraturan-peraturan\s+makanan|\bFoSIM\b|\bMeSTI\b", re.I)
+FOCUS_SECTIONS = ("regulatory", "website", "folder", "myra", "faq")
+
+
+def topic_of(item: dict[str, Any]) -> str | None:
+    """"faq", "drgd" or "fsqd" when the item belongs to one of Wan's focus topics (25 Nov 2026), else None."""
+    if item.get("section") == "faq":
+        return "faq"
+    text = f"{item.get('title') or ''} {item.get('summary') or ''}"
+    if DRGD_RE.search(text) or (item.get("domain") == "farmaseutikal" and item.get("section") in FOCUS_SECTIONS):
+        return "drgd"
+    if FSQD_RE.search(text) or (item.get("domain") == "makanan" and item.get("section") in FOCUS_SECTIONS):
+        return "fsqd"
+    return None
+
+
+def faq_candidates(store: Any) -> list[dict[str, Any]]:
+    """Wan's FAQ bank as feed-shaped items: a READY answer that was given (not an AI guess, not flagged for a check) with the
+    instrument it rests on, in a category that has a domain, that no idea has used. Never raises: no table is no FAQ."""
+    try:
+        rows = (store.table(FAQS).select("id,category,question_bm,question_en,raw_question,answer_bm,answer_en,instrument,"
+                                         "answer_source,needs_check,status,created_at")
+                .eq("status", "ready").eq("needs_check", False).order("created_at", desc=True).limit(FAQ_POOL)
+                .execute().data or [])
+        used = store.table(db.IDEAS).select("source_title,brief").eq("source_name", FAQ_SOURCE).execute().data or []
+    except Exception as exc:  # noqa: BLE001
+        log.info("faq candidates skipped: %s", str(exc)[:100])
+        return []
+    spent_ids = {str((u.get("brief") or {}).get("faq_id")) for u in used if isinstance(u.get("brief"), dict)}
+    spent_titles = {str(u.get("source_title") or "").strip().lower() for u in used}
+    out = []
+    for r in rows:
+        domain = FAQ_DOMAIN.get(str(r.get("category") or ""))
+        question = str(r.get("question_bm") or r.get("question_en") or r.get("raw_question") or "").strip()
+        answer = str(r.get("answer_bm") or r.get("answer_en") or "").strip()
+        instrument = str(r.get("instrument") or "").strip()
+        if (not domain or r.get("answer_source") == "ai" or not usable_title(question) or len(answer) < 40
+                or len(instrument) < 4 or str(r["id"]) in spent_ids or question.lower() in spent_titles):
+            continue
+        out.append({"id": f"faq:{r['id']}", "section": "faq", "source": FAQ_SOURCE, "kind": "faq", "title": question,
+                    "url": f"faq://{r['id']}", "summary": f"{answer}\n\nSumber: {instrument}", "why": None, "domain": domain,
+                    "raw": {"faq_id": str(r["id"])}, "published_at": None, "created_at": r.get("created_at")})
+    return out
+
+
+class Focus:
+    """Keeps one draft in every `every` on a focus topic, read from the latest auto-written ideas (brief.focus) so the share holds
+    across runs. `prefer()` is what the next position should draw from (the topics, or None), `wrote()` records an idea."""
+
+    def __init__(self, topics: list[str], every: int, recent: list[dict[str, Any]] | None = None) -> None:
+        self.topics, self.every = set(topics), max(2, every)
+        self.total = len(recent or [])
+        self.focused = sum(1 for r in (recent or []) if isinstance((r.get("brief") or {}).get("focus"), str))
+
+    def prefer(self) -> set[str] | None:
+        return self.topics if self.topics and self.focused * self.every < self.total + 1 else None
+
+    def wrote(self, item: dict[str, Any]) -> None:
+        self.total += 1
+        self.focused += int(topic_of(item) in self.topics)
+
+    @classmethod
+    def load(cls, store: Any, cfg: dict[str, Any]) -> Focus:
+        recent: list[dict[str, Any]] = []
+        if cfg.get("focus"):
+            try:
+                rows = (store.table(db.IDEAS).select("brief,created_at").order("created_at", desc=True).limit(60)
+                        .execute().data or [])
+                recent = [r for r in rows if isinstance(r.get("brief"), dict) and r["brief"].get("auto")][:FOCUS_WINDOW]
+            except Exception as exc:  # noqa: BLE001
+                log.info("focus share not read: %s", str(exc)[:100])
+        return cls(cfg.get("focus") or [], int(cfg.get("focus_every") or FOCUS_EVERY), recent)
+
+
+def candidates(store: Any, now: datetime | None = None, news: bool = False, faq: bool = False) -> list[dict[str, Any]]:
     """Feed items an idea has not used yet. A regulator's notice is fresh for FRESH_DAYS; the OneDrive angle bank is not news and
     has no age limit (its rows are written once, when a file is first read, and wait until they are used). Only OFFICIAL sections
     are read, and the newspaper headlines with them only when `news` is on (settings.autofill.news): facts first."""
@@ -385,7 +483,7 @@ def candidates(store: Any, now: datetime | None = None, news: bool = False) -> l
             .order("created_at", desc=True).limit(300).execute().data or [])
     if not news:
         rows = [r for r in rows if r.get("section") in OFFICIAL_SECTIONS]            # no Reddit, YouTube, Threads or expert post
-    rows = (news_candidates(store, now) if news else []) + rows + bank
+    rows = (news_candidates(store, now) if news else []) + rows + bank + (faq_candidates(store) if faq else [])
     # a row with no words to write from is no candidate: the OneDrive angle bank carried spreadsheet cells titled "40" and "0"
     # (25 Nov 2026), and the floor spent two of its first three ideas on them, each one failing "no fit" at the writer
     rows = [r for r in rows if usable_title(r.get("title"))]
@@ -448,12 +546,16 @@ def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> 
     return sorted(pool, key=key)
 
 
-def pick(pool: list[dict[str, Any]], stream: str, allow: list[str] | None, day: str) -> dict[str, Any] | None:
-    """An urgent file for THIS date first (Studio's `urgent post/DDMMYY` override), then the first item that fits."""
+def pick(pool: list[dict[str, Any]], stream: str, allow: list[str] | None, day: str,
+         prefer: set[str] | None = None) -> dict[str, Any] | None:
+    """An urgent file for THIS date first (Studio's `urgent post/DDMMYY` override), then the first item that fits. `prefer` (the
+    focus topics, when this position is due one) keeps only the fitting items on those topics, if there are any."""
     for x in pool:
         if (x.get("raw") or {}).get("urgent_for") == day:
             return x
     fitting = [x for x in pool if fits(x, stream, allow)]
+    if prefer:
+        fitting = [x for x in fitting if topic_of(x) in prefer] or fitting
     if stream == "linkedin":
         # the subject Wan wants most, then the best tier inside it, then the newest item
         return min(fitting, key=lambda x: (linkedin_subject(x), linkedin_tier(x), age_of(x)), default=None)
@@ -539,9 +641,16 @@ def write_idea(store: Any, brand: dict[str, Any], stream: str, item: dict[str, A
     # facts first (22 Nov 2026): a regulator's or an official source's own words are "official"; only a newspaper
     # headline or a social post (both off unless Wan switched `news` on) is "current". An announcement by a regulator
     # or the government is flagged so the writer opens with who announced what and from when.
-    official = item.get("section") in OFFICIAL_SECTIONS
+    faq = item.get("section") == "faq"
+    official = item.get("section") in OFFICIAL_SECTIONS or faq               # an FAQ answer rests on its instrument
     brief = {"position": {"date": date, "slot": slot}, "auto": True, "watch_id": item["id"],
              "hook_required": True, "story_mode": True, "source_priority": "official" if official else "current"}
+    topic = topic_of(item)
+    if topic:
+        brief["focus"] = topic                 # read back by Focus.load so the share of focus drafts holds across runs
+    if faq:
+        brief.pop("watch_id")                 # not a regulator-feed row: faq_id says where it came from
+        brief["faq_id"] = (item.get("raw") or {}).get("faq_id")
     if is_announcement(item):
         brief["announcement"] = True
     if news:
@@ -554,8 +663,8 @@ def write_idea(store: Any, brand: dict[str, Any], stream: str, item: dict[str, A
         brief["format"] = fmt                  # a poster is ONE 4:5 artwork (ideas.format_of), not a slide set
     store.table(db.IDEAS).insert({
         **({"trend_id": item["trend_id"]} if news else {}),
-        "source_title": str(item.get("title") or "")[:500], "source_url": item["url"],
-        "source_name": item.get("source") or None,
+        "source_title": str(item.get("title") or "")[:500], "source_url": None if faq else item["url"],
+        "source_name": FAQ_SOURCE if faq else (item.get("source") or None),
         "source_summary": (str(item.get("summary") or item.get("why") or "")
                            + (f" (Rujukan dalam dokumen: {(item.get('raw') or {}).get('cite')})"
                               if (item.get("raw") or {}).get("cite") else ""))[:4000] or None,
@@ -596,7 +705,8 @@ def guideline_first(pool: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def fill_floor(store: Any, brand: dict[str, Any], streams: list[str], taken: dict[str, set[tuple[str, str]]],
-               pool: list[dict[str, Any]], cfg: dict[str, Any], now: datetime | None = None) -> tuple[int, int]:
+               pool: list[dict[str, Any]], cfg: dict[str, Any], now: datetime | None = None,
+               focus: Focus | None = None) -> tuple[int, int]:
     """Top the drafts waiting for Wan up to `min_drafts`, looking as far ahead as `floor_days` (the 25 Nov 2026 floor). Returns
     (ideas written, still short). Streams take turns, nearest free position first, the rota and each stream's own pick order kept;
     a guideline or a new circular from a regulator is drawn first. A video slot is skipped (a film waits for Start, it is no
@@ -614,11 +724,13 @@ def fill_floor(store: Any, brand: dict[str, Any], streams: list[str], taken: dic
                 break
             while reach[stream]:
                 date, slot, allow = reach[stream].pop(0)
-                item = pick(pool, stream, allow, date)
+                item = pick(pool, stream, allow, date, focus.prefer() if focus else None)
                 if not item:
                     continue
                 pool = spend(pool, item)
                 write_idea(store, brand, stream, item, date, slot, allow)
+                if focus:
+                    focus.wrote(item)
                 taken.setdefault(stream, set()).add((date, slot))
                 written += 1
                 short -= 1
@@ -650,7 +762,8 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                         + f" at {queue['limit']}); ideas resume when a post goes out")
         else:
             streams = cfg["streams"]
-        pool = rank_candidates(candidates(store, now, cfg["news"]), now)
+        pool = rank_candidates(candidates(store, now, cfg["news"], "faq" in cfg["focus"]), now)
+        focus = Focus.load(store, cfg)
         brand = settings.get("brand") or {}
         made, empty, films = 0, 0, 0
         taken: dict[str, set[tuple[str, str]]] = {}
@@ -661,18 +774,19 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
             for date, slot, allow in gaps(stream, brand, busy, cfg["days_ahead"], now):
                 if made >= cfg["per_run"]:
                     break
-                item = pick(pool, stream, allow, date)
+                item = pick(pool, stream, allow, date, focus.prefer())
                 if not item:
                     empty += 1
                     continue
                 pool = spend(pool, item)
                 if write_idea(store, brand, stream, item, date, slot, allow):
                     films += 1
+                focus.wrote(item)
                 busy.add((date, slot))
                 made += 1
         floored, short = 0, 0
         if cfg["min_drafts"]:
-            floored, short = fill_floor(store, brand, streams, taken, pool, cfg, now)
+            floored, short = fill_floor(store, brand, streams, taken, pool, cfg, now, focus)
         if made or floored:
             db.log_event(store, "info", "idea", "idea.autofill",
                          f"{made - films + floored} idea ditulis untuk slot kosong (auto-isi); draf menunggu kelulusan"

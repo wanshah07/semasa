@@ -33,6 +33,16 @@ log = get_logger("semasa.autofill")
 WATCH = "semasa_watch"
 FRESH_DAYS = 21                 # an item older than this is not news any more
 MAX_DAYS, MAX_PER_RUN = 7, 5
+# A FLOOR OF DRAFTS (Wan, 25 Nov 2026: "make sure every hours ada at least 2 draft post, ambil dari guideline/new circular dulu
+# if no idea relevant"). The gap pass above only looks `days_ahead` days out, so once the next few days are full (or Wan has
+# approved everything waiting) nothing new is written and the Drafts counter reads 0 until a slot opens. The worker runs every
+# 15 minutes, so after the gap pass each run counts what is WAITING for Wan (drafts not yet approved, plus ideas already being
+# written into drafts) and, when that is under `min_drafts`, writes the difference for the next free positions, looking as far
+# as `floor_days` ahead. What it writes from: a guideline or a new circular from the regulator feed first (the "updated
+# circular/guideline" pattern LinkedIn already ranks first), then the rest of the official items in the usual order. It never
+# invents: with nothing fitting, the run says it is short and writes nothing.
+MIN_DRAFTS, MAX_MIN_DRAFTS = 2, 10
+FLOOR_DAYS, MAX_FLOOR_DAYS = 14, 30
 
 
 def config(settings: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
@@ -48,8 +58,18 @@ def config(settings: dict[str, Any], now: datetime | None = None) -> dict[str, A
     days = max(1, min(MAX_DAYS, int(raw.get("days_ahead") or 3)))
     per = max(1, min(MAX_PER_RUN, int(raw.get("per_run") or 2)))
     streams = [s for s in (raw.get("streams") or ["regulab", "linkedin"]) if s in ("regulab", "linkedin")]
-    # the newspaper headline (isu semasa) is OFF unless Wan switches it on: facts first (22 Nov 2026)
-    return {"enabled": on, "days_ahead": days, "per_run": per, "streams": streams, "news": raw.get("news") is True}
+    # the floor of waiting drafts: `min_drafts` 0 switches it off; the search reaches `floor_days` (never fewer than days_ahead)
+    try:
+        floor = max(0, min(MAX_MIN_DRAFTS, int(raw["min_drafts"]))) if "min_drafts" in raw else MIN_DRAFTS
+    except (TypeError, ValueError):
+        floor = MIN_DRAFTS
+    try:
+        reach = max(days, min(MAX_FLOOR_DAYS, int(raw.get("floor_days") or FLOOR_DAYS)))
+    except (TypeError, ValueError):
+        reach = max(days, FLOOR_DAYS)
+    return {"enabled": on, "days_ahead": days, "per_run": per, "streams": streams,
+            "news": raw.get("news") is True,              # the newspaper headline (isu semasa) is OFF unless Wan turns it on
+            "min_drafts": floor, "floor_days": reach}
 
 
 def gaps(stream: str, brand: dict[str, Any], taken: set[tuple[str, str]], days: int,
@@ -487,6 +507,117 @@ def fits(item: dict[str, Any], stream: str, allow: list[str] | None) -> bool:
     return dom in allow or dom in ANY_DAY_DOMAINS
 
 
+def spend(pool: list[dict[str, Any]], item: dict[str, Any]) -> list[dict[str, Any]]:
+    """The story leaves the pool whole, under every link."""
+    key = story_key(item.get("title"))
+    return [x for x in pool if x is not item and not (key and story_key(x.get("title")) == key)]
+
+
+def write_idea(store: Any, brand: dict[str, Any], stream: str, item: dict[str, Any], date: str, slot: str,
+               allow: list[str] | None) -> bool:
+    """Write the idea (or, for a video slot, the waiting Motion film) FOR one position. True when it was a film."""
+    domain = None
+    urgent = (item.get("raw") or {}).get("urgent_for") == date
+    if stream == "regulab":
+        domain = item.get("domain") if item.get("domain") and (urgent or fits(item, stream, allow)) else None
+        if allow and domain not in allow and domain not in ANY_DAY_DOMAINS and not urgent:
+            domain = allow[0]
+    fmt = slot_format(brand, stream, slot)
+    if fmt == "video":
+        store.table(MOTIONS).insert(film_row(item, stream, date, slot)).execute()
+        return True
+    fmt = auto_format(fmt)
+    news = item.get("section") == "news"
+    # facts first (22 Nov 2026): a regulator's or an official source's own words are "official"; only a newspaper
+    # headline or a social post (both off unless Wan switched `news` on) is "current". An announcement by a regulator
+    # or the government is flagged so the writer opens with who announced what and from when.
+    official = item.get("section") in OFFICIAL_SECTIONS
+    brief = {"position": {"date": date, "slot": slot}, "auto": True, "watch_id": item["id"],
+             "hook_required": True, "story_mode": True, "source_priority": "official" if official else "current"}
+    if is_announcement(item):
+        brief["announcement"] = True
+    if news:
+        brief["relate_regulatory"] = True      # a newspaper story: a rule where a real one governs it
+        brief.pop("watch_id")                 # not a regulator-feed row: trend_id says where it came from
+        brief["news"] = True
+    if fmt:
+        brief["slot_format"] = fmt             # the rota's format for this slot, shown on the idea
+    if fmt in ("carousel", "poster"):
+        brief["format"] = fmt                  # a poster is ONE 4:5 artwork (ideas.format_of), not a slide set
+    store.table(db.IDEAS).insert({
+        **({"trend_id": item["trend_id"]} if news else {}),
+        "source_title": str(item.get("title") or "")[:500], "source_url": item["url"],
+        "source_name": item.get("source") or None,
+        "source_summary": (str(item.get("summary") or item.get("why") or "")
+                           + (f" (Rujukan dalam dokumen: {(item.get('raw') or {}).get('cite')})"
+                              if (item.get("raw") or {}).get("cite") else ""))[:4000] or None,
+        "stream": stream, "domain": domain,
+        "angle": linkedin_angle(item) if stream == "linkedin" else None,
+        "make_media": "image", "status": "new", "created_by": None,
+        **({"make_slides": True} if fmt == "carousel" else {}),
+        # no note: the writer reads a note as Wan's words, and a note also lifts the already-published
+        # guard (ideas.process_idea). What this idea is for rides in the brief, shown as a pill.
+        "note": "",
+        "brief": brief,
+    }).execute()
+    return False
+
+
+def waiting(store: Any, streams: list[str], now: datetime | None = None) -> int:
+    """How many posts are waiting for Wan right now: drafts not yet approved, dated today or later, plus ideas the worker is
+    still turning into drafts (they become drafts within this or the next run). Never raises: unreadable counts as full, so a
+    failed read can never flood the queue."""
+    today = ((now or datetime.now(UTC)) + MYT).date().isoformat()
+    try:
+        drafts = (store.table(db.POSTS).select("id,stream").eq("status", "draft").gte("date", today)
+                  .in_("stream", streams).execute().data or [])
+        ideas = (store.table(db.IDEAS).select("id,stream").in_("status", ["new", "working"])
+                 .in_("stream", streams).execute().data or [])
+    except Exception as exc:  # noqa: BLE001
+        log.info("waiting drafts not counted (%s)", str(exc)[:120])
+        return 10**6
+    return len(drafts) + len(ideas)
+
+
+def guideline_first(pool: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A guideline or a new circular from a regulator first (Wan, 25 Nov 2026), the rest in their existing order."""
+    def guide(item: dict[str, Any]) -> int:
+        text = f"{item.get('title') or ''} {item.get('summary') or ''}"
+        return 0 if item.get("section") == "regulatory" and (UPDATED_GUIDELINE.search(text) or ANNOUNCEMENT.search(text)) else 1
+    return sorted(pool, key=guide)
+
+
+def fill_floor(store: Any, brand: dict[str, Any], streams: list[str], taken: dict[str, set[tuple[str, str]]],
+               pool: list[dict[str, Any]], cfg: dict[str, Any], now: datetime | None = None) -> tuple[int, int]:
+    """Top the drafts waiting for Wan up to `min_drafts`, looking as far ahead as `floor_days` (the 25 Nov 2026 floor). Returns
+    (ideas written, still short). Streams take turns, nearest free position first, the rota and each stream's own pick order kept;
+    a guideline or a new circular from a regulator is drawn first. A video slot is skipped (a film waits for Start, it is no
+    draft), a position with no fitting item is skipped for the next one, and nothing is approved, scheduled or posted."""
+    short = cfg["min_drafts"] - waiting(store, streams, now)
+    if short <= 0:
+        return 0, 0
+    pool = guideline_first(pool)
+    reach = {s: [g for g in gaps(s, brand, taken.get(s, set()), cfg["floor_days"], now) if slot_format(brand, s, g[1]) != "video"]
+             for s in streams}
+    written = 0
+    while short > 0 and any(reach.values()):
+        for stream in streams:
+            if short <= 0:
+                break
+            while reach[stream]:
+                date, slot, allow = reach[stream].pop(0)
+                item = pick(pool, stream, allow, date)
+                if not item:
+                    continue
+                pool = spend(pool, item)
+                write_idea(store, brand, stream, item, date, slot, allow)
+                taken.setdefault(stream, set()).add((date, slot))
+                written += 1
+                short -= 1
+                break
+    return written, max(0, short)
+
+
 def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> str:
     cfg = config(settings, now)
     if not cfg["enabled"]:
@@ -514,8 +645,9 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
         pool = rank_candidates(candidates(store, now, cfg["news"]), now)
         brand = settings.get("brand") or {}
         made, empty, films = 0, 0, 0
+        taken: dict[str, set[tuple[str, str]]] = {}
         for stream in streams:
-            busy = held(store, stream, now) | asked_for(store, stream) | film_positions(store, stream)
+            busy = taken[stream] = held(store, stream, now) | asked_for(store, stream) | film_positions(store, stream)
             if stream == "regulab" and queue:
                 busy |= {tuple(p) for p in queue["taken"]}
             for date, slot, allow in gaps(stream, brand, busy, cfg["days_ahead"], now):
@@ -525,64 +657,27 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                 if not item:
                     empty += 1
                     continue
-                key = story_key(item.get("title"))
-                # the story leaves the pool whole, under every link
-                pool = [x for x in pool if x is not item and not (key and story_key(x.get("title")) == key)]
-                domain = None
-                urgent = (item.get("raw") or {}).get("urgent_for") == date
-                if stream == "regulab":
-                    domain = item.get("domain") if item.get("domain") and (urgent or fits(item, stream, allow)) else None
-                    if allow and domain not in allow and domain not in ANY_DAY_DOMAINS and not urgent:
-                        domain = allow[0]
-                fmt = slot_format(brand, stream, slot)
-                if fmt == "video":
-                    store.table(MOTIONS).insert(film_row(item, stream, date, slot)).execute()
+                pool = spend(pool, item)
+                if write_idea(store, brand, stream, item, date, slot, allow):
                     films += 1
-                    made += 1
-                    continue
-                fmt = auto_format(fmt)
-                news = item.get("section") == "news"
-                # facts first (22 Nov 2026): a regulator's or an official source's own words are "official"; only a newspaper
-                # headline or a social post (both off unless Wan switched `news` on) is "current". An announcement by a regulator
-                # or the government is flagged so the writer opens with who announced what and from when.
-                official = item.get("section") in OFFICIAL_SECTIONS
-                brief = {"position": {"date": date, "slot": slot}, "auto": True, "watch_id": item["id"],
-                         "hook_required": True, "story_mode": True, "source_priority": "official" if official else "current"}
-                if is_announcement(item):
-                    brief["announcement"] = True
-                if news:
-                    brief["relate_regulatory"] = True      # a newspaper story: a rule where a real one governs it
-                    brief.pop("watch_id")                 # not a regulator-feed row: trend_id says where it came from
-                    brief["news"] = True
-                if fmt:
-                    brief["slot_format"] = fmt             # the rota's format for this slot, shown on the idea
-                if fmt in ("carousel", "poster"):
-                    brief["format"] = fmt                  # a poster is ONE 4:5 artwork (ideas.format_of), not a slide set
-                store.table(db.IDEAS).insert({
-                    **({"trend_id": item["trend_id"]} if news else {}),
-                    "source_title": str(item.get("title") or "")[:500], "source_url": item["url"],
-                    "source_name": item.get("source") or None,
-                    "source_summary": (str(item.get("summary") or item.get("why") or "")
-                                       + (f" (Rujukan dalam dokumen: {(item.get('raw') or {}).get('cite')})"
-                                          if (item.get("raw") or {}).get("cite") else ""))[:4000] or None,
-                    "stream": stream, "domain": domain,
-                    "angle": linkedin_angle(item) if stream == "linkedin" else None,
-                    "make_media": "image", "status": "new", "created_by": None,
-                    **({"make_slides": True} if fmt == "carousel" else {}),
-                    # no note: the writer reads a note as Wan's words, and a note also lifts the already-published
-                    # guard (ideas.process_idea). What this idea is for rides in the brief, shown as a pill.
-                    "note": "",
-                    "brief": brief,
-                }).execute()
+                busy.add((date, slot))
                 made += 1
-        if made:
+        floored, short = 0, 0
+        if cfg["min_drafts"]:
+            floored, short = fill_floor(store, brand, streams, taken, pool, cfg, now)
+        if made or floored:
             db.log_event(store, "info", "idea", "idea.autofill",
-                         f"{made - films} idea ditulis untuk slot kosong (auto-isi); draf menunggu kelulusan"
-                         + (f"; {films} filem Motion menunggu Start untuk slot video" if films else ""),
-                         detail={"made": made - films, "films": films, "no_fitting_item": empty})
+                         f"{made - films + floored} idea ditulis untuk slot kosong (auto-isi); draf menunggu kelulusan"
+                         + (f"; {films} filem Motion menunggu Start untuk slot video" if films else "")
+                         + (f"; {floored} untuk lantai {cfg['min_drafts']} draf menunggu" if floored else ""),
+                         detail={"made": made - films, "films": films, "no_fitting_item": empty, "floor": floored,
+                                 "floor_short": short})
         return (f"Autofill: {made - films} idea(s) written for empty slots"
                 + (f"; {films} Motion film(s) waiting for Start" if films else "")
-                + (f"; {empty} gap(s) had no fitting item" if empty else ""))
+                + (f"; {empty} gap(s) had no fitting item" if empty else "")
+                + (f"; floor: {floored} idea(s) so {cfg['min_drafts']} drafts are waiting" if floored else "")
+                + (f"; still {short} short of {cfg['min_drafts']} waiting drafts (nothing fitting in the next "
+                   f"{cfg['floor_days']} days)" if short else ""))
     except Exception as exc:  # noqa: BLE001 - a missing table or setting must not stop the worker
         log.warning("autofill skipped: %s", exc)
         return f"Autofill: skipped ({str(exc)[:120]})"

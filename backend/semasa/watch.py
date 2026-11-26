@@ -237,8 +237,9 @@ def parse_feed(html: str, base: str, today: date) -> list[dict[str, Any]]:
 
 # --- beyond cosmetics and medicines (Wan, 26 Sep 2026: "make sure the scope run not limit to pharma and cosmetic only")
 # Food and halal regulators whose own list pages a GitHub runner can read, measured from an open-internet sandbox on
-# 26 Sep 2026. Not reachable from there, so not here: e-Fatwa (e-fatwa.gov.my), FSQD (fsq.moh.gov.my) and moh.gov.my
-# (403). JAKIM's "Isu-Isu Tular Halal" pages carry no dates, so they are reference, not news: paste one when needed.
+# 26 Sep 2026. Not reachable from there, so not here: FSQD (fsq.moh.gov.my) and moh.gov.my (403). The fatwa pages are
+# further down (the state muftis; e-Fatwa itself, e-fatwa.gov.my, answers nobody outside Malaysia).
+# JAKIM's "Isu-Isu Tular Halal" pages carry no dates, so they are reference, not news: paste one when needed.
 
 def dated_links(html: str, base: str, pattern: str, kind: str, levels: int = 4) -> list[dict[str, Any]]:
     """Links whose href matches `pattern`, each dated from the nearest enclosing block that states a date in words
@@ -328,6 +329,73 @@ def parse_efsa(text: str, base: str, today: date) -> list[dict[str, Any]]:
     return [{**it, "kind": "EFSA opinion"} for it in parse_feed(text, base, today)]
 
 
+# --- fatwa: the state muftis (Wan, 26 Nov 2026: "fix this one, cari cara untuk dapatkan fatwa sebab ada banyak negeri ada
+# sumber fatwa") ---------------------------------------------------------------------------------------------------
+# The national e-Fatwa portal (e-fatwa.gov.my), JAKIM's i-Fiqh and e-SMAF and the Kelantan, Terengganu and Sarawak offices do
+# not answer from outside Malaysia (measured 26 Nov 2026 from an open-internet sandbox: no connection at all, Terengganu 403,
+# Sabah 500). Eight state offices do answer, and five of them keep a LIST that states a date for each item, which is all the
+# sweep needs: Wilayah Persekutuan's Bayan Linnas, Perlis's Himpunan Fatwa Negeri, Melaka's gazetted fatwa, Pahang's
+# Kenyataan Media and Selangor's Kenyataan Media. Johor, Perak, Kedah, Penang and Negeri Sembilan publish no date beside an
+# item, and a link with no date is a menu, so they are left out until one of them does. An item here is a FATWA (the domain
+# is set before the writer reads it), and the writer judges whether it touches a product, a food, a cosmetic or a medicine.
+
+def _fatwa(items: list[dict[str, Any]], kind: str) -> list[dict[str, Any]]:
+    return [{**it, "kind": kind, "domain": "fatwa"} for it in items]
+
+
+def parse_mufti_wp(html: str, base: str, today: date) -> list[dict[str, Any]]:
+    """Pejabat Mufti Wilayah Persekutuan: Bayan Linnas, one numbered statement on a current question."""
+    return _fatwa(dated_links(html, base, r"/artikel/bayan-linnas/", "Bayan Linnas"), "Bayan Linnas")
+
+
+def parse_mufti_perlis(html: str, base: str, today: date) -> list[dict[str, Any]]:
+    return _fatwa(dated_links(html, base, r"/himpunan-fatwa-negeri/\d+-", "Fatwa"), "Fatwa Perlis")
+
+
+def parse_mufti_pahang(html: str, base: str, today: date) -> list[dict[str, Any]]:
+    """Kenyataan Media Jabatan Mufti Pahang: each title starts with its own date ('06 Ogos 2026 Kenyataan ...')."""
+    out = _fatwa(dated_links(html, base, r"/sumber/media/.+", "Kenyataan Media"), "Kenyataan Mufti Pahang")
+    for it in out:
+        it["title"] = re.sub(r"^\d{1,2}\s+[A-Za-z]+\s+20\d{2}\s+", "", it["title"])
+    return out
+
+
+def parse_mufti_selangor(html: str, base: str, today: date) -> list[dict[str, Any]]:
+    """Pejabat Mufti Selangor (WordPress): the address carries the day it was published, /2026/05/18/<slug>/."""
+    soup = BeautifulSoup(html, "lxml")
+    out, seen = [], set()
+    for a in soup.find_all("a", href=True):
+        m = re.search(r"/(20\d{2})/(\d{2})/(\d{2})/[^/]+", a["href"])
+        title = re.sub(r"\s+", " ", a.get_text(" ", strip=True))
+        url = urljoin(base, a["href"].split("#")[0])
+        if not m or url in seen or len(title) < 15 or "/wp-content/" in url:
+            continue
+        try:
+            when = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            continue
+        seen.add(url)
+        out.append(_item(title, url, when, kind="Kenyataan Mufti Selangor", domain="fatwa"))
+    return out
+
+
+def parse_mufti_melaka(html: str, base: str, today: date) -> list[dict[str, Any]]:
+    """Fatwa gazetted in Melaka: each entry is <a class="mufti-announce"> with the category, the reference and ITS OWN date in
+    one span ('Aqidah · REF · 12 Sep 2024') and the title in another. The page's list is not ordered by that date."""
+    soup = BeautifulSoup(html, "lxml")
+    out, seen = [], set()
+    for a in soup.select("a.mufti-announce[href]"):
+        d, t = a.select_one(".date"), a.select_one(".title")
+        when = date_in_words(d.get_text(" ", strip=True)) if d else None
+        title = re.sub(r"\s+", " ", t.get_text(" ", strip=True)) if t else ""
+        url = urljoin(base, a["href"].split("#")[0])
+        if not when or len(title) < 15 or url in seen:
+            continue
+        seen.add(url)
+        out.append(_item(title, url, when, kind="Fatwa Melaka", domain="fatwa"))
+    return sorted(out, key=lambda it: it["published_at"], reverse=True)
+
+
 SOURCES: tuple[WatchSource, ...] = (
     WatchSource("NPRA", "regulatory", "https://www.npra.gov.my/index.php/en/", parse_npra, "en", "MY"),
     WatchSource("Portal Halal Malaysia", "regulatory", "https://www.halal.gov.my/", parse_halal_portal, "en", "MY"),
@@ -348,6 +416,15 @@ SOURCES: tuple[WatchSource, ...] = (
                 parse_fsa_alerts, "en", "UK"),
     WatchSource("EFSA", "regulatory", "https://www.efsa.europa.eu/en/all/rss", parse_efsa, "en", "EU"),
     WatchSource("EU food safety", "regulatory", "https://food.ec.europa.eu/food-safety-news_en", parse_eu_food, "en", "EU"),
+    WatchSource("Mufti Wilayah Persekutuan", "regulatory", "https://muftiwp.gov.my/ms/artikel/bayan-linnas", parse_mufti_wp,
+                "ms", "MY"),
+    WatchSource("Mufti Perlis", "regulatory", "https://muftiperlis.gov.my/index.php/himpunan-fatwa-negeri", parse_mufti_perlis,
+                "ms", "MY"),
+    WatchSource("Mufti Melaka", "regulatory", "https://muftimelaka.gov.my/fatwa", parse_mufti_melaka, "ms", "MY"),
+    WatchSource("Mufti Pahang", "regulatory", "https://mufti.pahang.gov.my/index.php/sumber/media", parse_mufti_pahang,
+                "ms", "MY"),
+    WatchSource("Mufti Selangor", "regulatory", "https://www.muftiselangor.gov.my/kenyataan-media/", parse_mufti_selangor, "ms",
+                "MY"),
 )
 
 
@@ -565,6 +642,11 @@ China). For each item decide:
   dermatology or a derma brand's own research. False for ceremonies, staff news, courtesy visits, vaccines-only or
   medical-device-only matters, and JAKIM's purely religious-administration notices (marriage courses, mosque or Quran
   administration, staff training).
+  A FATWA or a Mufti's statement (the National Fatwa Committee, a state Mufti's office) is relevant only when it settles
+  something a product business or its customers meet: halal and haram ingredients, najis, alcohol, gelatine, enzymes,
+  cosmetics, medicines and supplements, vaping, food and drink, a "halal" claim, a certification, selling, advertising or
+  a business's money (zakat on a business, takaful). False for prayer times, hilal sighting, haj, marriage, the
+  banning of a deviant group, politics and courtesy visits. A fatwa is domain "fatwa".
 - "domain": one of kosmetik, makanan, halal_my, farmaseutikal, fatwa, sains_kosmetik (a cosmetic-science paper),
   kajian_kes (an enforcement case on a cosmetic product), lain.
 - "summary": two sentences in Malaysian Malay (never Bahasa Indonesia) saying what it is, using ONLY the title and
@@ -791,6 +873,15 @@ HOSTS: tuple[tuple[str, str, str], ...] = (
     ("gov.uk", "UK Government", "UK"), ("nmpa.gov.cn", "China NMPA", "CN"), ("fda.gov", "US FDA", "US"),
     ("tga.gov.au", "TGA Australia", "AU"), ("mfds.go.kr", "MFDS Korea", "KR"), ("mhlw.go.jp", "MHLW Japan", "JP"),
     ("epingalert.org", "WTO ePing", ""), ("who.int", "WHO", ""),
+    # a pasted fatwa names its issuer: every state Mufti's office, whether the sweep can read it or not
+    ("muftiwp.gov.my", "Mufti Wilayah Persekutuan", "MY"), ("efatwa.muftiwp.gov.my", "Mufti Wilayah Persekutuan", "MY"),
+    ("muftiselangor.gov.my", "Mufti Selangor", "MY"), ("mufti.johor.gov.my", "Mufti Johor", "MY"),
+    ("mufti.perak.gov.my", "Mufti Perak", "MY"), ("mufti.kedah.gov.my", "Mufti Kedah", "MY"),
+    ("ifatwa.kedah.gov.my", "Mufti Kedah", "MY"), ("mufti.penang.gov.my", "Mufti Pulau Pinang", "MY"),
+    ("efatwa.penang.gov.my", "Mufti Pulau Pinang", "MY"), ("muftiperlis.gov.my", "Mufti Perlis", "MY"),
+    ("mufti.pahang.gov.my", "Mufti Pahang", "MY"), ("muftimelaka.gov.my", "Mufti Melaka", "MY"),
+    ("muftins.gov.my", "Mufti Negeri Sembilan", "MY"), ("mufti.sabah.gov.my", "Mufti Sabah", "MY"),
+    ("mufti.terengganu.gov.my", "Mufti Terengganu", "MY"), ("i-fiqh.islam.gov.my", "JAKIM · i-Fiqh", "MY"),
 )
 PMID_RE = re.compile(r"(?:pubmed\.ncbi\.nlm\.nih\.gov/|ncbi\.nlm\.nih\.gov/pubmed/)(\d{1,9})\b")
 DOI_RE = re.compile(r"\b(10\.\d{4,9}/[^\s?#\"'<>]+)")

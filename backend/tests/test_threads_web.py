@@ -99,11 +99,12 @@ def test_a_post_from_wans_own_account_is_not_a_viral_post():
     assert [p["id"] for p in posts] == ["O2"]
 
 
-def test_eight_keywords_and_ten_accounts_are_read_and_no_more():
+def test_five_keywords_and_six_accounts_are_read_and_no_more():
+    # Wan, 26 Nov 2026 ("add limit"): fewer pages per sweep keeps the saved login alive longer (was eight and ten)
     seen = []
     cfg = {"threads": {"queries": [f"kata {i}" for i in range(12)], "accounts": [f"akaun{i}" for i in range(15)]}}
     threads_web.collect(object(), cfg, NOW, lambda page, url: (seen.append(url), ([], ""))[1])
-    assert len([u for u in seen if "/search?" in u]) == 8 and len([u for u in seen if "/@" in u]) == 10
+    assert len([u for u in seen if "/search?" in u]) == 5 and len([u for u in seen if "/@" in u]) == 6
 
 
 def test_nothing_to_read_is_not_an_error():

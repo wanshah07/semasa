@@ -29,8 +29,10 @@ log = get_logger("semasa.threads_web")
 BASE = "https://www.threads.com"
 SETTLE_MS = 4000
 SCROLLS = 3
-MAX_QUERIES = 8        # keywords read per sweep (the page editor allows the same: web/src/lib/threadsKeywords.js)
-MAX_ACCOUNTS = 10
+# keywords read per sweep: was 8, and fewer pages keep the saved login alive (Wan, 26 Nov 2026; social_pace.py). The page editor
+# still allows 8 (web/src/lib/threadsKeywords.js); the first 5 are read.
+MAX_QUERIES = 5
+MAX_ACCOUNTS = 6       # (was 10)
 SCROLL_MS = 1500
 LABELS = {"Like": "likes", "Comment": "replies", "Repost": "reposts", "Share": "shares"}
 _WALL = ("/login", "accounts/login")
@@ -142,13 +144,14 @@ def read_url(page: Any, url: str, scrolls: int = SCROLLS, cap: int = 500,
     """(posts, error) for one search or profile page. A page that shows a login wall is an error, never a row. `cap` is how
     much of a post's words are kept: 500 for the feed of arguments, more where the post itself is the content (experts.py)."""
     try:
+        import random
         page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-        page.wait_for_timeout(SETTLE_MS)
+        page.wait_for_timeout(random.randint(SETTLE_MS - 500, SETTLE_MS + 3500))     # never the same beat (social_pace.py)
         if _wall(page):
             return [], "Threads asked for a login"
         for _ in range(scrolls):
             page.mouse.wheel(0, 2500)
-            page.wait_for_timeout(SCROLL_MS)
+            page.wait_for_timeout(random.randint(SCROLL_MS - 300, SCROLL_MS + 1100))
         rows = page.evaluate(_EXTRACT) or []
     except Exception as exc:  # noqa: BLE001 - one page failing must not stop the others
         return [], f"{type(exc).__name__}: {str(exc)[:160]}"

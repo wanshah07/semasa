@@ -21,7 +21,20 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import api_status, community, db, experts, folders, myra, reddit_web, social_web, threads_api, threads_web, watch
+from . import (
+    api_status,
+    community,
+    db,
+    experts,
+    folders,
+    myra,
+    reddit_web,
+    social_pace,
+    social_web,
+    threads_api,
+    threads_web,
+    watch,
+)
 from .log import get_logger
 
 log = get_logger("semasa.intake")
@@ -129,6 +142,8 @@ def write(store: Any, rows: list[dict[str, Any]], dry: bool) -> int:
 # --- the three duties -------------------------------------------------------------------------------------------------
 
 def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetime, dry: bool) -> dict[str, Any]:
+    forced = bool(cfg.get("_forced"))                  # "Sweep now" on the page waives the rest between reads (social_pace.py)
+    resting: dict[str, str] = {}                       # platform -> why it was not read this sweep
     # Reddit: Wan's own saved login first (reddit_web.py, 24 Nov 2026: the shared Composio app answers 429 every run); the shared
     # app is asked only when no login is saved or the login read gave nothing, and a failed login read is reported by name
     own, own_why = reddit_web.fetch(cfg, now)
@@ -149,16 +164,30 @@ def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: da
         elif why:
             raw["threads_error"] = why
         if not raw.get("threads"):
-            # no search permission anywhere: read the public pages in a browser, as the KKM complaint scraper does
-            seen, why = threads_web.fetch(cfg, now)
-            if seen:
-                raw["threads"], raw["threads_error"] = seen, ""
-            elif why and not raw.get("threads_error"):
-                raw["threads_error"] = why
+            # no search permission anywhere: read the public pages in a browser, as the KKM complaint scraper does, unless the
+            # saved login is resting (social_pace.py: a minimum gap between sweeps keeps it alive; "Sweep now" overrides)
+            until = social_pace.next_read(store, cfg, "threads", now, forced)
+            if until:
+                resting["threads"] = social_pace.rest_note("threads", until)
+            else:
+                seen, why = threads_web.fetch(cfg, now)
+                if not dry:
+                    social_pace.mark(store, "threads", now)
+                if seen:
+                    raw["threads"], raw["threads_error"] = seen, ""
+                elif why and not raw.get("threads_error"):
+                    raw["threads_error"] = why
     for platform in ("facebook", "instagram"):
         # read in a browser (social_web.py); each says so by name when the platform shows a login wall
         if (cfg.get(platform) or {}).get("enabled") is not False:
+            until = social_pace.next_read(store, cfg, platform, now, forced) if platform == "instagram" else None
+            if until:
+                raw[platform], raw[f"{platform}_error"] = [], ""
+                resting[platform] = social_pace.rest_note(platform, until)
+                continue
             got, why = social_web.fetch(platform, cfg, now)
+            if platform == "instagram" and not dry:
+                social_pace.mark(store, platform, now)
             raw[platform], raw[f"{platform}_error"] = got, why
     window = int(cfg.get("hours") or community.WINDOW_HOURS)
     cands = community.candidates(raw, now, window)
@@ -187,6 +216,12 @@ def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: da
            # what each browser read saw (found, too old, the page it landed on): why a source read nothing, in the report
            "facebook_stats": social_web.stats_text("facebook") or None,
            "instagram_stats": social_web.stats_text("instagram") or None}
+    for name, note in resting.items():                 # a resting platform keeps what its last real sweep read: its light stays
+        rep["read"][name] = social_pace.carried_read(store, name)
+        rep[f"{name}_stats"] = note
+    if resting:
+        rep["resting"] = resting
+        log.info("resting: %s", "; ".join(resting.values()))
     if raw.get("youtube_error"):
         log.warning("YouTube: %s (Reddit carries on)", raw["youtube_error"])
     if raw.get("reddit_error"):
@@ -328,7 +363,8 @@ def run(store: Any, llm: Any, client: Any, now: datetime | None = None, only: li
         if (only and name not in only) or cfg[name].get("enabled") is False:
             continue
         try:
-            report[name] = {"ok": True, **fn(store, llm, client, cfg[name], now, dry), "at": now.isoformat()}
+            report[name] = {"ok": True, **fn(store, llm, client, {**cfg[name], "_forced": bool(stored.get("force"))}, now, dry),
+                            "at": now.isoformat()}
         except NeedsMigration:
             raise
         except Exception as exc:  # noqa: BLE001 - one dead source must not stop the other two

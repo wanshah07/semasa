@@ -34,10 +34,10 @@ log = get_logger("semasa.social_web")
 SETTLE_MS = 5000
 SCROLLS = 2
 SCROLL_MS = 1500
-MAX_TAGS = 8
-PER_TAG_IG = 4                 # Instagram: posts opened per hashtag (each is a page load)
-PER_ACCOUNT_IG = 6             # and per watched account
-MAX_ACCOUNTS = 10
+MAX_TAGS = 5                   # fewer pages per sweep keeps a saved login alive longer (Wan, 26 Nov 2026: "add limit"; was 8)
+PER_TAG_IG = 2                 # Instagram: posts opened per hashtag (each is a page load; was 4)
+PER_ACCOUNT_IG = 3             # and per watched account (was 6)
+MAX_ACCOUNTS = 6               # (was 10)
 LAST: dict[str, dict[str, Any]] = {}       # what the last collect() saw per platform: the sweep's report, the watchdog light
 _NOTES: list[str] = []                     # one short line per page read: the address, its title, what was found on it
 FB_BASE = "https://www.facebook.com"
@@ -361,13 +361,19 @@ def parse_instagram(desc: str, time_attr: str, href: str, cap: int = 500) -> dic
             "counts": {k: parse_count(v) for k, v in shown.items()} or {"likes": None}, "shown": shown}
 
 
+def pace(page: Any, low: int, high: int) -> None:
+    """A random pause between two page loads, `low` to `high` ms (social_pace.py): the same beat every time reads as a robot."""
+    import random
+    page.wait_for_timeout(random.randint(low, high))
+
+
 def _ig_open(page: Any, links: list[str], cap: int = 500) -> tuple[list[dict[str, Any]], str]:
     """Open each post link and read its description and time. (posts, what the first unreadable post page said)."""
     out: list[dict[str, Any]] = []
     refused = ""
     for href in links:
         page.goto(IG_BASE + href, wait_until="domcontentloaded", timeout=30_000)
-        page.wait_for_timeout(2500)
+        pace(page, 2500, 6500)
         info = page.evaluate(_IG_POST) or {}
         post = parse_instagram(info.get("desc", ""), info.get("time", ""), href, cap)
         if post:
@@ -382,7 +388,7 @@ def read_instagram(page: Any, tag: str, now: datetime) -> tuple[list[dict[str, A
     February 2025), so this mostly finds nothing recent: accounts (read_instagram_account) are the reliable way to fresh posts."""
     try:
         page.goto(f"{IG_BASE}/explore/tags/{tag}/", wait_until="domcontentloaded", timeout=30_000)
-        page.wait_for_timeout(SETTLE_MS)
+        pace(page, 4000, 8500)
         if any(p in str(getattr(page, "url", "")) for p in _WALL_PARTS):
             return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_B64)"
         where = _where(page)
@@ -400,7 +406,7 @@ def read_instagram_account(page: Any, handle: str, now: datetime, cap: int = 500
     much of a caption is kept (500 for the feed of arguments, more where the post itself is the content)."""
     try:
         page.goto(f"{IG_BASE}/{handle}/", wait_until="domcontentloaded", timeout=30_000)
-        page.wait_for_timeout(SETTLE_MS)
+        pace(page, 4000, 8500)
         if any(p in str(getattr(page, "url", "")) for p in _WALL_PARTS):
             return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_B64)"
         where = _where(page)

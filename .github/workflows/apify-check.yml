@@ -1,0 +1,32 @@
+name: Apify check
+
+# Is the Apify token alive, and would the Instagram fallback be allowed to run now? (Wan, 26 Nov 2026: "make sure the Apify key
+# alive".) Reads the secret APIFY_TOKEN and asks Apify two read-only questions (/v2/users/me/limits and the actor's runs this
+# month). It runs no actor, spends no credit and prints neither the token nor the account's e-mail. Run it from the Actions tab.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.repository != 'wanshah07/argus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ask Apify
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          APIFY_MONTHLY_CAP_USD: ${{ vars.APIFY_MONTHLY_CAP_USD }}
+          APIFY_MONTHLY_RUNS: ${{ vars.APIFY_MONTHLY_RUNS }}
+          APIFY_ITEMS_PER_RUN: ${{ vars.APIFY_ITEMS_PER_RUN }}
+          APIFY_MIN_GAP_HOURS: ${{ vars.APIFY_MIN_GAP_HOURS }}
+        run: python -m semasa.apify_budget

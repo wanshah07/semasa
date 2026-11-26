@@ -1576,5 +1576,6 @@ def run_all(store: Any, llm: LLM) -> str:
     drafts, then drafts Wan asked to revise."""
     from . import autofill
     fill = autofill.run(store, load_settings(store)) if llm.configured else "Autofill: waiting for a writer"
+    log.info("%s", fill)                                    # the run's log said nothing about autofill before (26 Nov 2026)
     repair = repair_picture_only(store, llm) if llm.configured else "Poster repair: waiting for a writer"
     return "\n".join([fill, run(store, llm), revise_posts(store, llm), repair])

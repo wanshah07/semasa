@@ -381,3 +381,43 @@ def test_linkedin_never_takes_an_faq_row():
     store = _focus_store([], faqs=[_faq(1)])
     autofill.run(store, _fs(streams=["linkedin"], days_ahead=3), NOW)
     assert store.tables["semasa_ideas"] == []
+
+
+# ---- the feed window and the silent runs (26 Nov 2026) --------------------------------------------------------
+def test_official_rows_are_not_crowded_out_of_the_window_by_social_rows():
+    social = [{**_w(100 + i, "kosmetik", "expert"), "title": f"Hantaran pakar nombor {i} tentang sesuatu",
+               "created_at": "2026-09-23T12:00:00+00:00"} for i in range(250)]
+    old_notice = {**_w(1, "kosmetik"), "title": "Garis panduan baharu label", "created_at": "2026-09-10T00:00:00+00:00"}
+    got = autofill.candidates(_store([*social, old_notice]), NOW)
+    assert [c["id"] for c in got] == ["w1"]      # older than 250 social rows, still read; and no social row is a candidate
+
+
+def _stamp(store):
+    """The database stamps a log row's `at` itself; the fake store does not."""
+    from datetime import UTC, datetime
+    for r in store.tables["semasa_log"]:
+        r["at"] = datetime.now(UTC).isoformat()
+
+
+def test_a_run_that_writes_nothing_says_why_once():
+    store = _store([])
+    cfg = _fs(min_drafts=2)
+    autofill.run(store, cfg, NOW)
+    _stamp(store)
+    autofill.run(store, cfg, NOW)                                         # a second silent run adds no second line
+    lines = [r for r in store.tables["semasa_log"] if r.get("event") == "idea.autofill_idle"]
+    assert len(lines) == 1 and "kolam 0" in lines[0]["title"] and lines[0]["detail"]["floor_short"] == 2
+
+
+def test_a_run_that_dies_says_so_once():
+    class Broken(FakeStore):
+        def table(self, name):
+            if name == "semasa_watch":
+                raise RuntimeError("the feed table is gone")
+            return super().table(name)
+    store = Broken(semasa_watch=[], semasa_ideas=[], semasa_posts=[], semasa_log=[])
+    assert autofill.run(store, _fs(), NOW).startswith("Autofill: skipped")
+    _stamp(store)
+    autofill.run(store, _fs(), NOW)
+    lines = [r for r in store.tables["semasa_log"] if r.get("event") == "idea.autofill_error"]
+    assert len(lines) == 1 and "the feed table is gone" in lines[0]["title"]

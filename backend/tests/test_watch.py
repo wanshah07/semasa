@@ -541,5 +541,8 @@ def test_a_pasted_fatwa_link_names_its_state_office():
     assert watch.issuer_of("https://www.islam.gov.my/ms/kenyataan-media/1") == ("JAKIM", "MY")      # not caught by a mufti suffix
 
 
-def test_the_writer_is_told_what_makes_a_fatwa_relevant():
-    assert "FATWA" in watch.SYSTEM and "najis" in watch.SYSTEM and 'domain "fatwa"' in watch.SYSTEM
+def test_the_writer_is_told_a_fatwa_need_not_be_about_a_product():
+    text = watch.SYSTEM
+    assert "FATWA" in text and 'domain "fatwa"' in text and "does NOT have to be about a product" in text
+    for word in ("halal", "pharmaceutical", "cosmetics", "chemistry", "tatacara", "sirah"):
+        assert word in text.split("A FATWA", 1)[1].split('- "domain"', 1)[0], word

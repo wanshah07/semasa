@@ -242,7 +242,8 @@ function AutofillSettings({ settings, save, onToast }) {
     setF({ enabled: a?.enabled === true, days: String(a?.days_ahead || 3), per: String(a?.per_run || 2),
       floor: String(a?.min_drafts ?? 2), reach: a?.floor_days,
       focus: Array.isArray(a?.focus) ? a.focus : ["drgd", "fsqd", "faq"], every: String(a?.focus_every || 3), unofficial: a?.unofficial !== false,
-      streams: Array.isArray(a?.streams) ? a.streams : ["regulab", "linkedin"], news: a?.news === true });
+      streams: Array.isArray(a?.streams) ? a.streams : ["regulab", "linkedin"], news: a?.news === true,
+      regulabOnly: Array.isArray(a?.regulab_only) ? a.regulab_only : [] });
   }, [JSON.stringify(a)]); // eslint-disable-line react-hooks/exhaustive-deps -- a change elsewhere must not wipe an edit here
   if (!f) return null;
   const toggleFocus = (k) => setF((x) => ({ ...x, focus: x.focus.includes(k) ? x.focus.filter((y) => y !== k) : [...x.focus, k] }));
@@ -252,7 +253,7 @@ function AutofillSettings({ settings, save, onToast }) {
     setBusy(true);
     try {
       await save("autofill", { enabled: f.enabled, days_ahead: Number(f.days), per_run: Number(f.per), min_drafts: Number(f.floor), focus: f.focus, focus_every: Number(f.every), unofficial: f.unofficial,
-        ...(f.reach ? { floor_days: Number(f.reach) } : {}), streams: f.streams, news: f.news });
+        ...(f.reach ? { floor_days: Number(f.reach) } : {}), streams: f.streams, news: f.news, regulab_only: f.regulabOnly });
       onToast(f.enabled ? t("Auto-isi dihidupkan. Larian Semasa seterusnya menulis idea untuk slot kosong; semuanya draf.",
         "Autofill is on. The next Semasa run writes ideas for empty slots; all of them stay drafts.")
         : t("Auto-isi dimatikan.", "Autofill is off."), "ok");
@@ -287,6 +288,10 @@ function AutofillSettings({ settings, save, onToast }) {
           ))}
         </span>
       </div>
+      <label className="mt-3 flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={f.regulabOnly.includes("fatwa")}
+          onChange={(e) => setF((x) => ({ ...x, regulabOnly: e.target.checked ? ["fatwa"] : [] }))} />
+        {t("ws.regulab: tulis idea untuk fatwa SAHAJA (domain lain hanya daripada klik anda)", "ws.regulab: write ideas for FATWA only (every other domain comes only from your click)")}</label>
       <label className="mt-3 flex items-center gap-2 text-sm">
         <input type="checkbox" checked={f.unofficial} onChange={(e) => setF((x) => ({ ...x, unofficial: e.target.checked }))} />
         {t("Benarkan sumber tidak rasmi (Threads, Facebook, Instagram, YouTube, Reddit, berita) mengisi slot selepas semua sumber rasmi", "Let unofficial sources (Threads, Facebook, Instagram, YouTube, Reddit, news) fill slots after every official one")}</label>

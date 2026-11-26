@@ -642,11 +642,11 @@ China). For each item decide:
   dermatology or a derma brand's own research. False for ceremonies, staff news, courtesy visits, vaccines-only or
   medical-device-only matters, and JAKIM's purely religious-administration notices (marriage courses, mosque or Quran
   administration, staff training).
-  A FATWA or a Mufti's statement (the National Fatwa Committee, a state Mufti's office) is relevant only when it settles
-  something a product business or its customers meet: halal and haram ingredients, najis, alcohol, gelatine, enzymes,
-  cosmetics, medicines and supplements, vaping, food and drink, a "halal" claim, a certification, selling, advertising or
-  a business's money (zakat on a business, takaful). False for prayer times, hilal sighting, haj, marriage, the
-  banning of a deviant group, politics and courtesy visits. A fatwa is domain "fatwa".
+  A FATWA or a Mufti's statement (the National Fatwa Committee, a state Mufti's office) does NOT have to be about a product
+  (Wan, 26 Nov 2026): it is relevant when it touches halal and haram, a medicine or any pharmaceutical matter, cosmetics,
+  chemistry (a substance, an ingredient, najis, alcohol, gelatine, an enzyme), a tatacara (how something is to be done: a
+  procedure, a rite, a way of handling or dealing) or the sirah (the Prophet's life and what it teaches). False for politics,
+  ceremonies, courtesy visits, staff and administration, and the bare banning of a deviant group. A fatwa is domain "fatwa".
 - "domain": one of kosmetik, makanan, halal_my, farmaseutikal, fatwa, sains_kosmetik (a cosmetic-science paper),
   kajian_kes (an enforcement case on a cosmetic product), lain.
 - "summary": two sentences in Malaysian Malay (never Bahasa Indonesia) saying what it is, using ONLY the title and

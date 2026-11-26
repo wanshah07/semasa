@@ -166,7 +166,7 @@ export function App1({ stats, series, projects, activity, words, aside, below, f
             <CardDescription>{words.activityDescription}</CardDescription>
           </CardHeader>
           <CardContent>
-            <ol className="flex max-h-72 flex-col gap-3 overflow-y-auto">
+            <ol className="flex flex-col gap-3">
               {activity.map((e) => (
                 <li key={e.id} className="flex items-start gap-3">
                   <Avatar size="sm" className="mt-0.5 border border-line bg-surface-2">

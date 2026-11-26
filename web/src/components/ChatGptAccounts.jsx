@@ -4,9 +4,11 @@ import { errText, supabase } from "../lib/SupabaseClient";
 import { useLang } from "../lib/i18n";
 import { timeAgo } from "../lib/format";
 import { POLL_MS, clock, deviceView, forTarget, polling } from "../lib/chatgptDevice";
-import { ACCOUNT_CLS, ACCOUNT_WORDS, MAX_ACCOUNTS, accountState, canAdd, ordered, restMinutes, restText, usable } from "../lib/chatgptAccounts";
+import { ACCOUNT_CLS, ACCOUNT_WORDS, MAX_ACCOUNTS, REASONING, accountState, canAdd, ordered, restMinutes, restText, usable, validReasoning } from "../lib/chatgptAccounts";
+import { DEFAULT_MODEL, MAX_IMAGES, validModel } from "../lib/chatgptLogin";
 import Card from "./ui/Card";
 import Button from "./ui/Button";
+import { Input, Label } from "./ui/Field";
 
 /* More than one ChatGPT account for pictures (Wan, 24 Nov 2026: "add chatgpt segment that I can add multiple accounts to support
    image gen using chatgpt"). One ChatGPT plan draws only so many pictures before it answers "usage limit". The accounts added
@@ -28,6 +30,7 @@ export default function ChatGptAccounts({ onToast }) {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState("");
   const [sure, setSure] = useState("");             // the id whose Remove was clicked once
+  const [edits, setEdits] = useState({});           // id -> {model, reasoning, max} typed but not saved yet
   const timers = useRef([]);
   const lastPhase = useRef("idle");
 
@@ -116,6 +119,26 @@ export default function ChatGptAccounts({ onToast }) {
     onToast?.(said, "ok");
   }
 
+  // an account's own model, reasoning effort and pictures a film (supabase/098)
+  const draft = (r) => ({ model: r.model || DEFAULT_MODEL, reasoning: r.reasoning || "", max: String(r.max_images || 6), ...(edits[r.id] || {}) });
+  const edit = (r, patch) => setEdits((e) => ({ ...e, [r.id]: { ...draft(r), ...patch } }));
+  async function saveConfig(r) {
+    const d = draft(r);
+    if (!validModel(d.model)) return onToast?.(t("Nama model: huruf, nombor dan . _ : - sahaja.", "Model name: letters, digits and . _ : - only."), "warn");
+    if (!validReasoning(d.reasoning)) return onToast?.(t("Tahap reasoning tidak dikenali.", "Unknown reasoning effort."), "warn");
+    setBusy(r.id);
+    const { data, error } = await supabase.rpc("semasa_chatgpt_account_config",
+      { p_id: r.id, p_model: d.model.trim(), p_reasoning: d.reasoning, p_max: Number(d.max) });
+    setBusy("");
+    if (error) {
+      if (/semasa_chatgpt_account_config|PGRST202|42883/i.test(`${error.code} ${error.message}`)) return onToast?.(t("Jalankan supabase/098_chatgpt_account_config.sql sekali dahulu.", "Run supabase/098_chatgpt_account_config.sql once first."), "warn");
+      return onToast?.(errText(error), "danger");
+    }
+    setRows(ordered(data));
+    setEdits((e) => { const { [r.id]: _gone, ...rest } = e; return rest; });
+    onToast?.(t("Disimpan. Gambar seterusnya menggunakannya.", "Saved. The next picture uses it."), "ok");
+  }
+
   async function remove(row) {
     if (sure !== row.id) { setSure(row.id); timers.current.push(setTimeout(() => setSure(""), 6000)); return; }
     setBusy(row.id);
@@ -185,6 +208,17 @@ export default function ChatGptAccounts({ onToast }) {
                       {r.last_error_at ? `${timeAgo(r.last_error_at)}: ` : ""}{String(r.last_error).slice(0, 300)}
                     </p>
                   )}
+                </div>
+                <div className="flex w-full flex-wrap items-end gap-3 border-t border-line/60 pt-2" data-chatgpt-account-config={r.id}>
+                  <label className="block"><Label>{t("Model", "Model")}</Label>
+                    <Input value={draft(r).model} onChange={(e) => edit(r, { model: e.target.value })} className="w-40" aria-label={t("Model", "Model")} /></label>
+                  <label className="block"><Label>{t("Reasoning", "Reasoning")}</Label>
+                    <select value={draft(r).reasoning} onChange={(e) => edit(r, { reasoning: e.target.value })} aria-label="Reasoning"
+                      className="rounded-pill border border-line bg-surface px-3 py-2 text-xs">{REASONING.map(([k, w]) => <option key={k} value={k}>{w[L]}</option>)}</select></label>
+                  <label className="block"><Label>{t("Gambar paling banyak setiap video", "Most pictures a film")}</Label>
+                    <select value={draft(r).max} onChange={(e) => edit(r, { max: e.target.value })} aria-label={t("Gambar paling banyak", "Most pictures")}
+                      className="rounded-pill border border-line bg-surface px-3 py-2 text-xs">{MAX_IMAGES.map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
+                  <Button size="sm" variant="soft" disabled={busy === r.id || !edits[r.id]} onClick={() => saveConfig(r)}>{t("Simpan", "Save")}</Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {state === "resting" && (

@@ -368,3 +368,12 @@ def test_the_check_refreshes_every_extra_account_and_names_them_by_id_only(monke
     rows = {r["id"]: r for r in st.tables[cl.ACCOUNTS]}
     assert rows["acc1"]["checked_at"] and "refused" in rows["acc3"]["last_error"]
     assert cl.check_accounts(FakeStore()) == []
+
+
+def test_an_extra_accounts_own_model_and_reasoning_reach_its_requests():
+    logins = cl.picture_logins(store(acc(1, model="gpt-6.2-sol", reasoning="medium")))
+    extra = next(x for x in logins if cl.name_of(x) == "acc1")
+    assert extra.settings()["model"] == "gpt-6.2-sol" and extra.settings()["reasoning"] == "medium"
+    assert extra._body("a lab", "gpt-6.2-sol", "1024x1024", 0)["reasoning"] == {"effort": "medium"}
+    main = next(x for x in logins if cl.name_of(x) == "main")
+    assert "reasoning" not in main._body("a lab", "gpt-main", "1024x1024", 0)

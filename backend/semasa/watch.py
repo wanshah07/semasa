@@ -333,11 +333,12 @@ def parse_efsa(text: str, base: str, today: date) -> list[dict[str, Any]]:
 # sumber fatwa") ---------------------------------------------------------------------------------------------------
 # The national e-Fatwa portal (e-fatwa.gov.my), JAKIM's i-Fiqh and e-SMAF and the Kelantan, Terengganu and Sarawak offices do
 # not answer from outside Malaysia (measured 26 Nov 2026 from an open-internet sandbox: no connection at all, Terengganu 403,
-# Sabah 500). Eight state offices do answer, and five of them keep a LIST that states a date for each item, which is all the
-# sweep needs: Wilayah Persekutuan's Bayan Linnas, Perlis's Himpunan Fatwa Negeri, Melaka's gazetted fatwa, Pahang's
-# Kenyataan Media and Selangor's Kenyataan Media. Johor, Perak, Kedah, Penang and Negeri Sembilan publish no date beside an
-# item, and a link with no date is a menu, so they are left out until one of them does. An item here is a FATWA (the domain
-# is set before the writer reads it), and the writer judges whether it touches a product, a food, a cosmetic or a medicine.
+# Sabah 500). Eight state offices answer a sandbox; four of them also answer a GitHub runner and keep a LIST that states a date
+# for each item, which is all the sweep needs: Wilayah Persekutuan's Bayan Linnas, Perlis's Himpunan Fatwa Negeri, Melaka's
+# gazetted fatwa and Selangor's Kenyataan Media. (Pahang's Kenyataan Media answers a sandbox but NOT a runner: the 26 Nov 2026
+# sweep got a connection error from it, so it is not a source.) Johor, Perak, Kedah, Penang and Negeri Sembilan publish no date
+# beside an item, and a link with no date is a menu, so they are left out until one of them does. An item here is a FATWA (the
+# domain is set before the writer reads it), and the writer judges whether it touches a product, a food, a cosmetic or a medicine.
 
 def _fatwa(items: list[dict[str, Any]], kind: str) -> list[dict[str, Any]]:
     return [{**it, "kind": kind, "domain": "fatwa"} for it in items]
@@ -350,14 +351,6 @@ def parse_mufti_wp(html: str, base: str, today: date) -> list[dict[str, Any]]:
 
 def parse_mufti_perlis(html: str, base: str, today: date) -> list[dict[str, Any]]:
     return _fatwa(dated_links(html, base, r"/himpunan-fatwa-negeri/\d+-", "Fatwa"), "Fatwa Perlis")
-
-
-def parse_mufti_pahang(html: str, base: str, today: date) -> list[dict[str, Any]]:
-    """Kenyataan Media Jabatan Mufti Pahang: each title starts with its own date ('06 Ogos 2026 Kenyataan ...')."""
-    out = _fatwa(dated_links(html, base, r"/sumber/media/.+", "Kenyataan Media"), "Kenyataan Mufti Pahang")
-    for it in out:
-        it["title"] = re.sub(r"^\d{1,2}\s+[A-Za-z]+\s+20\d{2}\s+", "", it["title"])
-    return out
 
 
 def parse_mufti_selangor(html: str, base: str, today: date) -> list[dict[str, Any]]:
@@ -421,8 +414,6 @@ SOURCES: tuple[WatchSource, ...] = (
     WatchSource("Mufti Perlis", "regulatory", "https://muftiperlis.gov.my/index.php/himpunan-fatwa-negeri", parse_mufti_perlis,
                 "ms", "MY"),
     WatchSource("Mufti Melaka", "regulatory", "https://muftimelaka.gov.my/fatwa", parse_mufti_melaka, "ms", "MY"),
-    WatchSource("Mufti Pahang", "regulatory", "https://mufti.pahang.gov.my/index.php/sumber/media", parse_mufti_pahang,
-                "ms", "MY"),
     WatchSource("Mufti Selangor", "regulatory", "https://www.muftiselangor.gov.my/kenyataan-media/", parse_mufti_selangor, "ms",
                 "MY"),
 )

@@ -44,6 +44,29 @@ else:
     vals = (vr[0].get("values") if vr else None) or []
     since = P.get("since") or ""
     keep = []
+    # A row grew from a sentence into a 30,000-character write-up whose first 1,500 characters are the run's own notes (26 Nov
+    # 2026: MYRA read nothing for four days). So the row is cut into ONE ITEM PER REFERENCE in column F, each with the words
+    # that follow that reference up to the next one; a row with no reference keeps its fragments that are not the run's notes.
+    NOTES = ("tetingkap", "hari ini", "pertindihan", "permulaan", "hujungnya", "dedupe")
+    def items_of(text, refs):
+        low = text.lower()
+        at = [(low.find(x.lower()), x) for x in refs]
+        found = sorted(i for i, _ in at if i >= 0)
+        out = []
+        for i, ref in at:
+            if i < 0:
+                continue                              # a reference the text never names: column F still carries it
+            later = [j for j in found if j > i]
+            start = max(text.rfind(";", 0, i) + 1, i - 80)        # the sentence the reference sits in, no further back
+            end = min([i + 360] + later[:1])                       # and on to the next reference
+            out.append({"ref": ref, "text": " ".join(text[start:end].split()).replace(";", ",")})
+        if out:
+            return out[:12]
+        for p in text.split(";"):
+            p = " ".join(p.split())
+            if len(p) >= 15 and not p.lower().startswith(NOTES) and "larian ini" not in p.lower():
+                out.append({"ref": "", "text": p[:360]})
+        return out[:6]
     for r in vals[1:][-150:]:
         r = [str(c) for c in r] + [""] * (7 - len(r))
         if r[2].strip().lower() != "yes":              # only a row with an update is a finding
@@ -51,7 +74,8 @@ else:
         m = re.match(r"^\\s*(\\d{1,2})/(\\d{1,2})/(\\d{4})\\s*$", r[0])
         if m and since and "%s-%s-%s" % (m.group(3), m.group(2).zfill(2), m.group(1).zfill(2)) < since:
             continue                                   # older than the days that are read
-        keep.append([r[0][:12], "", r[2][:12], r[3][:80], r[4][:1500], r[5][:120], r[6][:300]])
+        refs = [x.strip() for x in r[5].split(";") if x.strip() and x.strip() not in ("-", "\\\\-")]
+        keep.append([r[0][:12], "", r[2][:12], r[3][:80], r[4][:300], r[5][:120], r[6][:300], items_of(r[4], refs)])
     # the workbench's answer is capped at 36,000 characters (14 Nov 2026: 46,249 failed every sweep): newest rows are kept
     while keep and len(json.dumps(keep, ensure_ascii=False)) > 30000:
         keep.pop(0)
@@ -110,8 +134,16 @@ def _date(v: str) -> date | None:
         return None
 
 
-def findings(rows: list[list[str]], today: date, days: int = 10, limit: int = 12) -> list[dict[str, Any]]:
-    """Feed rows (before the writer) for the recent days that had an update, newest first."""
+NOTE_RE = re.compile(r"^(?:tetingkap|hari ini|pertindihan|permulaan|hujungnya|dedupe)\b|larian ini", re.I)
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", str(text or "").lower()).strip("-")[:40]
+
+
+def findings(rows: list[list[Any]], today: date, days: int = 10, limit: int = 12) -> list[dict[str, Any]]:
+    """Feed rows (before the writer) for the recent days that had an update, newest first. A row the cell cut into items (one
+    per reference) gives one feed row each; an older-shaped row is split on `;` with the run's own notes left out."""
     out: list[dict[str, Any]] = []
     for r in rows:
         d = _date(r[0])
@@ -119,20 +151,29 @@ def findings(rows: list[list[str]], today: date, days: int = 10, limit: int = 12
             continue
         if (r[2] or "").strip().lower() != "yes":
             continue
-        parts = [p.strip() for p in re.split(r";", r[4] or "") if p.strip()]
         link, ref, markets = _none(r[6]), _none(r[5]), _none(r[3])
-        if not parts or not (link or ref or markets):
+        cut = r[7] if len(r) > 7 and isinstance(r[7], list) else []
+        items = [(str(i.get("ref") or ""), str(i.get("text") or "").strip(), f"f{n}")
+                 for n, i in enumerate(cut, 1) if isinstance(i, dict)]
+        if not items:
+            # no reference to cut by: the `;` fragments in their own numbering (the first-generation keys), minus the notes
+            items = [("", p.strip(), str(n)) for n, p in enumerate(re.split(r";", r[4] or ""), 1)
+                     if p.strip() and not NOTE_RE.search(p.strip())]
+        items = [(k, t, n) for k, t, n in items if t]
+        if not items or not (link or ref or markets):
             continue
-        for n, text in enumerate(parts, 1):
-            key = f"{d.isoformat()}-{n}"
+        for item_ref, text, n in items:
+            # a finding with a reference is keyed BY it, so an edit that moves it up or down the row does not make it a new one
+            # and it never meets the date-n keys of the first-generation rows, which were written from the run's own notes
+            key = f"{d.isoformat()}-{_slug(item_ref)}" if _slug(item_ref) else f"{d.isoformat()}-{n}"
             out.append({
                 "section": "myra", "source": "MYRA · Daftar Peraturan Kosmetik Global", "kind": "Sapuan harian",
                 "country": (markets or "").split(",")[0].strip()[:20] or None, "lang": "ms",
-                "title": text[:200], "summary": text[:700] + (f" (Rujukan: {ref})" if ref else ""),
+                "title": text[:200], "summary": text[:700] + (f" (Rujukan: {item_ref or ref})" if (item_ref or ref) else ""),
                 "url": f"{link}#myra-{key}" if link else f"myra://{key}",
                 "published_at": datetime(d.year, d.month, d.day, tzinfo=UTC),
-                "raw": {"row_date": d.isoformat(), "ref_no": ref, "markets": markets, "link": link,
-                        "link_shared": bool(link) and len(parts) > 1},
+                "raw": {"row_date": d.isoformat(), "ref_no": item_ref or ref, "markets": markets, "link": link,
+                        "link_shared": bool(link) and len(items) > 1},
             })
     out.sort(key=lambda x: x["published_at"], reverse=True)
     return out[:limit]

@@ -105,7 +105,7 @@ def test_collect_names_a_login_wall_and_stops_instagram_at_the_first_one():
 
     def wall(page, tag, now):
         seen.append(tag)
-        return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_B64)"
+        return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_IG_B64; see ops/SOCIAL-LOGIN.md)"
     cfg = {"instagram": {"queries": ["halal", "kosmetik", "skincare"]}}
     posts, err = social_web.collect(object(), "instagram", cfg, NOW, wall)
     assert posts == [] and "asked for a login" in err and seen == ["halal"]

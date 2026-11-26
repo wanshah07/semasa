@@ -390,7 +390,7 @@ def read_instagram(page: Any, tag: str, now: datetime) -> tuple[list[dict[str, A
         page.goto(f"{IG_BASE}/explore/tags/{tag}/", wait_until="domcontentloaded", timeout=30_000)
         pace(page, 4000, 8500)
         if any(p in str(getattr(page, "url", "")) for p in _WALL_PARTS):
-            return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_B64)"
+            return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_IG_B64; see ops/SOCIAL-LOGIN.md)"
         where = _where(page)
         links = (page.evaluate(_IG_LINKS) or [])[:PER_TAG_IG]
         out, refused = _ig_open(page, links)
@@ -408,7 +408,7 @@ def read_instagram_account(page: Any, handle: str, now: datetime, cap: int = 500
         page.goto(f"{IG_BASE}/{handle}/", wait_until="domcontentloaded", timeout=30_000)
         pace(page, 4000, 8500)
         if any(p in str(getattr(page, "url", "")) for p in _WALL_PARTS):
-            return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_B64)"
+            return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_IG_B64; see ops/SOCIAL-LOGIN.md)"
         where = _where(page)
         links = (page.evaluate(_IG_LINKS) or [])[:PER_ACCOUNT_IG]
         out, refused = _ig_open(page, links, cap)

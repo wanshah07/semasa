@@ -388,7 +388,7 @@ def ig_code_time(link: str) -> datetime | None:
 def newest_first(links: list[str], n: int) -> list[str]:
     """The `n` NEWEST posts of a grid, not the first `n` tiles. A profile grid is newest first EXCEPT that up to three PINNED
     posts sit at the top however old they are, so reading the first three tiles read exactly the three pinned ones: on 26 Nov 2026
-    (when PER_ACCOUNT_IG came down from 6 to 3) @labmuffinbeautyscience gave 3 posts 3,501 hours old and nothing fresh, every sweep.
+    (when PER_ACCOUNT_IG came down from 6 to 3) @labmuffinbeautyscience gave 3 posts 3,501 hours old and nothing fresh.
     The creation time is in each link (ig_code_time), so the newest are picked from every tile the grid showed, at no extra page
     load. If any link has no readable time the grid order stands, as before."""
     times = [ig_code_time(h) for h in links]

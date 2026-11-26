@@ -89,6 +89,14 @@ def _community(section: str, cfg: dict[str, Any], stored: dict[str, Any], latest
             return _light(ORANGE, "search quota used up for today; it tries again tomorrow")
         if "asked for a login" in low:
             return _light(RED, f"the login was refused or has expired: {err}")
+        read_now = int((rep.get("read") or {}).get(section) or 0)
+        if section == "youtube" and read_now > 0 and "403" in low:
+            # the search answered and the videos are kept; only their view counts were refused, and a count not read is never
+            # claimed (community.py): partial, not dead (26 Nov 2026)
+            return _light(ORANGE, f"{read_now} video(s) read, but Google refused their view counts (403): {err[:90]}", act=True)
+        if section == "reddit" and "429" in low:
+            return _light(RED, f"{err}. Save a Reddit login as the secret PW_STORAGE_STATE_REDDIT_B64 to stop depending on the "
+                               "shared connection (ops/SOCIAL-LOGIN.md)", act=True)
         return _light(RED, err)
     read = int((rep.get("read") or {}).get(section) or 0)
     hours = int(sub.get("hours") or com.get("hours") or 72)

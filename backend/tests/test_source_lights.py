@@ -33,7 +33,8 @@ def test_instagram_waiting_for_its_saved_login_is_orange_and_asks_for_it_by_name
 
 
 def test_a_login_the_platform_refused_and_a_source_error_are_red():
-    refused = lights(stored({"instagram_error": "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_B64)"}))
+    login = "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_IG_B64; see ops/SOCIAL-LOGIN.md)"
+    refused = lights(stored({"instagram_error": login}))
     assert refused["instagram"]["light"] == "red" and "refused or has expired" in refused["instagram"]["why"]
     yt = lights(stored({"youtube_error": "HTTP request failed: 403 Client Error: Forbidden"}))["youtube"]
     assert yt["light"] == "red" and "403" in yt["why"]
@@ -115,3 +116,15 @@ def test_update_saves_the_lights_and_never_raises():
     saved = next(r for r in store.tables["semasa_settings"] if r["key"] == "source_lights")["value"]
     assert saved["lights"]["threads"]["light"] == lights_now["threads"]["light"] == "green" and saved["at"]
     assert sl.update(object(), NOW) == {}                      # a store that cannot be read is a quiet failure, not a crash
+
+
+def test_youtube_that_read_videos_but_lost_their_view_counts_is_partial_not_dead():
+    # 26 Nov 2026: the search answered (10 videos kept), only the statistics call was refused with a 403
+    err = "HTTP request failed: 403 Client Error: Forbidden"
+    got = lights(stored({"youtube_error": err, "read": {"youtube": 10}}))["youtube"]
+    assert got["light"] == "orange" and got["act"] and "10 video(s) read" in got["why"] and "403" in got["why"]
+
+
+def test_reddit_rate_limited_on_the_shared_connection_names_the_login_secret_that_ends_it():
+    got = lights(stored({"reddit_error": "rate limit (429): Reddit refused the shared connection"}))["reddit"]
+    assert got["light"] == "red" and "PW_STORAGE_STATE_REDDIT_B64" in got["why"]

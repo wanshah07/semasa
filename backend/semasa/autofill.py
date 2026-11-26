@@ -56,6 +56,7 @@ FAQS = "semasa_faqs"
 FAQ_DOMAIN = {"halal": "halal_my", "skincare": "kosmetik", "kosmetik": "kosmetik", "makanan": "makanan",
               "farmaseutikal": "farmaseutikal"}               # web/src/lib/brand.js FAQ_CATEGORY_TO_DOMAIN
 FAQ_POOL = 400                  # the newest FAQ rows read a run
+WATCH_WINDOW = 500              # the newest fresh feed rows read a run (official sections only, unless headlines are on)
 
 
 def config(settings: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
@@ -477,8 +478,15 @@ def candidates(store: Any, now: datetime | None = None, news: bool = False, faq:
     has no age limit (its rows are written once, when a file is first read, and wait until they are used). Only OFFICIAL sections
     are read, and the newspaper headlines with them only when `news` is on (settings.autofill.news): facts first."""
     since = ((now or datetime.now(UTC)) - timedelta(days=FRESH_DAYS)).isoformat()
-    rows = (store.table(WATCH).select(SELECT).eq("relevant", True).eq("dismissed", False).gte("created_at", since)
-            .neq("section", "folder").order("created_at", desc=True).limit(200).execute().data or [])
+    # THE OFFICIAL SECTIONS ARE ASKED FOR BY NAME (26 Nov 2026). This read used to take the newest 200 rows of any section and
+    # drop the unofficial ones afterwards, and Instagram, Threads and the experts add dozens of rows a sweep: by 26 Nov only 57 of
+    # the 200 were official, the notices and papers behind them were out of reach, and the drafts floor found nothing to write
+    # from for fifteen hours. Asking for the sections directly keeps every fresh official row in the window.
+    query = (store.table(WATCH).select(SELECT).eq("relevant", True).eq("dismissed", False).gte("created_at", since)
+             .neq("section", "folder"))
+    if not news:
+        query = query.in_("section", [x for x in OFFICIAL_SECTIONS if x != "folder"])
+    rows = query.order("created_at", desc=True).limit(WATCH_WINDOW).execute().data or []
     bank = (store.table(WATCH).select(SELECT).eq("section", "folder").eq("relevant", True).eq("dismissed", False)
             .order("created_at", desc=True).limit(300).execute().data or [])
     if not news:
@@ -738,6 +746,18 @@ def fill_floor(store: Any, brand: dict[str, Any], streams: list[str], taken: dic
     return written, max(0, short)
 
 
+def note_once(store: Any, level: str, event: str, title: str, detail: dict[str, Any], hours: float = 3) -> None:
+    """One line in the Activity log, at most once every `hours` hours per event: what autofill did when it wrote nothing. Before
+    this a run that found nothing to write from, or died on an error, said nothing anywhere (26 Nov 2026: fifteen hours)."""
+    try:
+        since = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
+        if store.table("semasa_log").select("id").eq("event", event).gte("at", since).limit(1).execute().data:
+            return
+        db.log_event(store, level, "idea", event, title, detail=detail)
+    except Exception as exc:  # noqa: BLE001 - a log line must never stop the worker
+        log.info("autofill note not written: %s", str(exc)[:100])
+
+
 def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> str:
     cfg = config(settings, now)
     if not cfg["enabled"]:
@@ -763,6 +783,7 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
         else:
             streams = cfg["streams"]
         pool = rank_candidates(candidates(store, now, cfg["news"], "faq" in cfg["focus"]), now)
+        seen = {"pool": len(pool), "faq": sum(1 for x in pool if x.get("section") == "faq")}
         focus = Focus.load(store, cfg)
         brand = settings.get("brand") or {}
         made, empty, films = 0, 0, 0
@@ -787,6 +808,11 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
         floored, short = 0, 0
         if cfg["min_drafts"]:
             floored, short = fill_floor(store, brand, streams, taken, pool, cfg, now, focus)
+        if not (made or floored) and (empty or short):
+            note_once(store, "warn", "idea.autofill_idle",
+                      f"Auto-isi: tiada idea ditulis (kolam {seen['pool']}, FAQ {seen['faq']}, slot tiada padanan {empty}, "
+                      f"kurang {short} draf)", {**seen, "no_fitting_item": empty, "floor_short": short,
+                                                  "days_ahead": cfg["days_ahead"], "floor_days": cfg["floor_days"]})
         if made or floored:
             db.log_event(store, "info", "idea", "idea.autofill",
                          f"{made - films + floored} idea ditulis untuk slot kosong (auto-isi); draf menunggu kelulusan"
@@ -802,4 +828,6 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                    f"{cfg['floor_days']} days)" if short else ""))
     except Exception as exc:  # noqa: BLE001 - a missing table or setting must not stop the worker
         log.warning("autofill skipped: %s", exc)
+        note_once(store, "error", "idea.autofill_error", f"Auto-isi dilangkau: {type(exc).__name__}: {str(exc)[:160]}",
+                  {"error": f"{type(exc).__name__}: {str(exc)[:400]}"}, hours=1)
         return f"Autofill: skipped ({str(exc)[:120]})"

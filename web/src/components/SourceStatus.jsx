@@ -1,4 +1,5 @@
-import { Radio } from "lucide-react";
+import { Loader2, Radio, RefreshCw } from "lucide-react";
+import { useState } from "react";
 import { useLang } from "../lib/i18n";
 import { LIGHT_NAME, LIGHT_TINT, SOURCES, checkedText, lightCounts, lightOf } from "../lib/sourceLights";
 import Card from "./ui/Card";
@@ -8,8 +9,37 @@ import SourceLight from "./SourceLight";
    and what time checked"). One tile a source, tinted by its light, with the state in words, the reason and the time it was last
    swept. It reads settings.source_lights, the same reading the tabs of Isu semasa and the watchdog e-mail use, and the settings
    are re-read every 90 seconds, so it cannot say something the watchdog does not. A press opens that source's own tab. */
-export default function SourceStatus({ setting, go }) {
+// the sweep part behind each tile (backend intake.PARTS): the five social tiles are ONE sweep ("community"); regulatory and
+// publications are swept by the regulator watch instead (settings "watch")
+const PART_OF = { reddit: "community", youtube: "community", threads: "community", facebook: "community", instagram: "community",
+  folder: "folders", myra: "myra", expert: "experts" };
+const WATCH_IDS = ["regulatory", "publication"];
+
+export default function SourceStatus({ setting, go, settings, save, onToast }) {
   const { t, lang } = useLang();
+  const [asking, setAsking] = useState("");
+  const waiting = Boolean(settings?.sources?.force) || Boolean(settings?.watch?.force);
+  /* A refresh is a "Sweep now" for that source (Wan, 26 Nov 2026: "add button to refresh sweep platform"): it saves force:true on
+     the setting the worker's own trigger watches (supabase/024), with the part to sweep, and the rest between Instagram and
+     Threads reads (social_pace.py) is waived because he asked. `all` sweeps every part and the regulator watch. */
+  async function refresh(id) {
+    if (!save || asking) return;
+    setAsking(id);
+    try {
+      if (id === "all") {
+        await save("sources", { ...(settings?.sources || {}), force: true, force_part: null });
+        await save("watch", { ...(settings?.watch || {}), force: true });
+      } else if (WATCH_IDS.includes(id)) {
+        await save("watch", { ...(settings?.watch || {}), force: true });
+      } else {
+        await save("sources", { ...(settings?.sources || {}), force: true, force_part: PART_OF[id] || null });
+      }
+      onToast?.(t("Diminta. Pekerja menyapu dalam beberapa minit; lampu dikemas kini sendiri.",
+        "Asked. The worker sweeps within a few minutes; the lights update by themselves."), "ok");
+    } catch (e) {
+      onToast?.(e?.message || String(e), "danger");
+    } finally { setAsking(""); }
+  }
   const en = lang === "en";
   const now = Date.now();
   const n = lightCounts(setting, now);
@@ -29,6 +59,11 @@ export default function SourceStatus({ setting, go }) {
           <span className="inline-flex items-center gap-1.5"><SourceLight light="red" />{n.red} {t("tidak hidup", "unlive")}</span>
           {n.unknown > 0 && <span className="inline-flex items-center gap-1.5"><SourceLight light="unknown" />{n.unknown} {t("belum diketahui", "unknown")}</span>}
           {updated && <span className="tabular-nums text-ink/70">· {t("pengawas dikemas kini", "watchdog updated")} {updated} MYT</span>}
+          {save && <button type="button" onClick={() => refresh("all")} disabled={!!asking || waiting} data-refresh="all"
+            title={t("Sapu semua sumber sekarang", "Sweep every source now")}
+            className="inline-flex items-center gap-1.5 rounded-pill border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-ink/5 disabled:opacity-60">
+            {asking === "all" || waiting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            {waiting ? t("Menunggu sapuan", "Waiting for the sweep") : t("Segar semula semua", "Refresh all")}</button>}
         </p>
       </div>
       {/* a phone gets the compact form: a chip a source (light, name, time), then only the sources that need a look, each with
@@ -65,10 +100,14 @@ export default function SourceStatus({ setting, go }) {
           const l = lightOf(setting, id, now);
           const when = checkedText(l.checked, now, en);
           return (
-            <li key={id} className="min-w-0">
+            <li key={id} className="relative min-w-0">
+              {save && <button type="button" onClick={() => refresh(id)} disabled={!!asking || waiting} data-refresh={id}
+                title={t("Sapu sumber ini sekarang", "Sweep this source now")} aria-label={`${t("Segar semula", "Refresh")} ${t(bm, enName)}`}
+                className="absolute right-2 top-2 z-10 rounded-pill p-1 text-ink/70 hover:bg-ink/10 hover:text-ink disabled:opacity-50">
+                {asking === id ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}</button>}
               <button type="button" onClick={() => open(id, tab)} data-source={id} data-light={l.light} title={l.why}
                 className={`flex h-full w-full flex-col rounded-tile p-3 text-left text-ink transition hover:brightness-95 ${LIGHT_TINT[l.light]}`}>
-                <span className="flex items-center gap-1.5 text-sm font-semibold"><SourceLight light={l.light} why={l.why} /><span className="truncate">{t(bm, enName)}</span></span>
+                <span className="flex items-center gap-1.5 pr-6 text-sm font-semibold"><SourceLight light={l.light} why={l.why} /><span className="truncate">{t(bm, enName)}</span></span>
                 <span className="mt-1 text-[11px] font-medium">{t(LIGHT_NAME[l.light][0], LIGHT_NAME[l.light][1])}{when ? <span className="font-normal tabular-nums text-ink/70"> · {t("disemak", "checked")} {when}</span> : null}</span>
                 <span className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-ink/75 [overflow-wrap:anywhere]">{l.why}</span>
               </button>
